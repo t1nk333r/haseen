@@ -8,7 +8,8 @@
     "right": [
       "haseen.privacy",
       "haseen.idle",
-      "haseen.notifications",
+      "haseen.pager",
+      "haseen.prayers",
       "haseen.sysusage",
       "haseen.tray",
       "haseen.weather",
@@ -23,7 +24,8 @@
     "haseen.weather": { "enabled": false, "settings": { "location": "" } }
   },
   "services": [
-    "haseen.notifications",
+    "haseen.pager",
+    "haseen.prayers",
     "haseen.osd",
     "haseen.polkit",
     "haseen.idle",

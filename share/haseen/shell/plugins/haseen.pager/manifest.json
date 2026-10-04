@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.pager",
+  "name": "Pager",
+  "version": "1.0.0",
+  "description": "Notification daemon (port of njpatel's omapager, MIT): cards stack and group per source, safe markup, resolved source icons, KDE Connect inline reply, per-source snooze, held notifications, Recent and a disk history, verification-code handling. Do Not Disturb is the dnd flag. Local-first: website icons are fetched only with fetchRemoteIcons",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "stacking": {
+      "type": "string",
+      "default": "source",
+      "description": "source: a deck per sender; all: one deck for everything"
+    },
+    "actionsAlign": {
+      "type": "string",
+      "default": "right",
+      "description": "Which end of a card its buttons sit at: right or left"
+    },
+    "showCountdown": {
+      "type": "boolean",
+      "default": false,
+      "description": "Animate the time left along the bottom of the front card (expiry runs either way)"
+    },
+    "fontScale": {
+      "type": "integer",
+      "default": 100,
+      "description": "Card text size in percent of the theme font (75-200); the bar and panel keep theirs"
+    },
+    "width": {
+      "type": "integer",
+      "default": 380,
+      "description": "Card and panel width in px (240-800)"
+    },
+    "hideSettingsAction": {
+      "type": "boolean",
+      "default": true,
+      "description": "Hide the browser's repeated Settings action on web notifications"
+    },
+    "snoozeDurations": {
+      "type": "array",
+      "default": ["30", "60", "240", "tomorrow"],
+      "description": "Snooze choices: minutes (15, 30, 60, 120, 240, 480) or \"tomorrow\"; empty uses the default"
+    },
+    "wakeHour": {
+      "type": "integer",
+      "default": 8,
+      "description": "Hour (0-23) that \"tomorrow\" wakes a source at"
+    },
+    "sourceLimit": {
+      "type": "integer",
+      "default": 8,
+      "description": "Quietened sources listed in the panel (2-20)"
+    },
+    "heldPerSource": {
+      "type": "integer",
+      "default": 10,
+      "description": "Held notifications shown per source (3-25)"
+    },
+    "recentCount": {
+      "type": "integer",
+      "default": 5,
+      "description": "Recent notifications shown in the panel (1-20); memory only, cleared on shell restart"
+    },
+    "alwaysShow": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keep the bar bell visible when nothing is held back or snoozed"
+    },
+    "codesBypassQuiet": {
+      "type": "boolean",
+      "default": true,
+      "description": "Let verification-code notifications through snooze and Do Not Disturb (the panel's key button overrides and is remembered)"
+    },
+    "timeFormat": {
+      "type": "string",
+      "default": "system",
+      "description": "Panel times: system (LC_TIME), 24h or 12h"
+    },
+    "smartRaise": {
+      "type": "boolean",
+      "default": true,
+      "description": "When a web notification has no window of its own, match its site against browser window titles before opening the site"
+    },
+    "displayMode": {
+      "type": "string",
+      "default": "active",
+      "description": "active: the focused display for new decks; specific: displayName; all: every display"
+    },
+    "displayName": {
+      "type": "string",
+      "default": "",
+      "description": "Output name for displayMode specific (kept while disconnected)"
+    },
+    "edgeSpacing": {
+      "type": "integer",
+      "default": 12,
+      "description": "Gap between the deck and the screen edge / bar, in px (0-64)"
+    },
+    "avoidFullscreen": {
+      "type": "string",
+      "default": "off",
+      "description": "Never cover a fullscreen window: off, all, or steam (only Steam games); cards go to another display, or wait in Recent"
+    },
+    "offerSnoozeWhenSharing": {
+      "type": "boolean",
+      "default": true,
+      "description": "Offer a timed snooze when portal screen sharing starts (nothing is muted automatically)"
+    },
+    "fetchRemoteIcons": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fetch https://<site>/favicon.ico for web notifications with no local icon. Off by default: it tells the site your IP and when a notification arrived"
+    },
+    "allowDefaultActionOnCardClick": {
+      "type": "boolean",
+      "default": false,
+      "description": "Let a card click invoke the app's default action; off focuses the sender's window or opens the validated source site"
+    },
+    "historyHours": {
+      "type": "integer",
+      "default": 24,
+      "description": "Disk history retention: 0 (off), 1, 24 or 168 hours, at most 100 entries; verification codes are stored redacted"
+    },
+    "clipboardTimeout": {
+      "type": "integer",
+      "default": 60,
+      "description": "Seconds (30, 60 or 90) before a copied code is cleared, if it is still on the clipboard"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Debug: expose the haseen.pager IPC target (panel state, expand, fold) for smoke tests"
+    }
+  },
+  "permissions": [
+    "notifications",
+    "exec",
+    "files:read",
+    "files:write",
+    "network"
+  ],
+  "provides": [
+    "notifications"
+  ]
+}

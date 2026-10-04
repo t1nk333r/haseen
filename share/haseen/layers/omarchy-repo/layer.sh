@@ -21,7 +21,7 @@ LAYER_REQUIRES=(base)
 LAYER_CONFLICTS=()
 LAYER_DISTROS=(cachyos arch omarchy)
 
-OMARCHY_KEY_FPR=40DFB630FF42BCFFB047046CF0134EE680CAC571
+OMARCHY_KEY_FPR=40DFB630FF42BCFFB047046CF0134EE680CAC571 # gitleaks:allow (public GPG key fingerprint)
 OMARCHY_REPO_SERVER='https://pkgs.omarchy.org/stable/$arch'
 
 omarchy_repo_works() { omarchy_repo_enabled && pkg_repo_has omarchy omarchy-keyring; }

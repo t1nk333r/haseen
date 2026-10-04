@@ -187,6 +187,8 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `status()` |
 | `screensaver` | `start(style)` (`ttfx`, `native` or `default`) |
 | `nightlight` | `on()`, `off()`, `toggle()`, `refresh()`, `status(): string` |
+| `pager` | `count()`, `probe()`, `cards()`, `clear()`, `dnd()`, `expand()`, `snooze(minutes)`, `snoozeAll(minutes)`, `unsnooze(key)`, `snoozes()`, `codes(state)`, `open(deckKey)`, `act(identifier)`, `reply(text)`, `dismissOne()`, `dismissAll()`, `dismissShown()`, `invokeLast()`, `showHistory()`, `forgetHistory()`, `dismiss(summary)`, `recent(action)`, … (plan 025) |
+| `haseen.prayers` | `refresh()`, `status()` (plan 026) |
 
 Plugins with `settings.debugIpc` expose test-only targets named after the
 plugin, for example `haseen.menu`, `haseen.launcher` and `haseen.themepicker`.

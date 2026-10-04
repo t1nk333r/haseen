@@ -8,6 +8,8 @@
 SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
 PIN=5c4da021469517449770579793b37ce26d0a0d48
 OMARCHY_THEMES="catppuccin catppuccin-latte ethereal everforest flexoki-light gruvbox hackerman kanagawa last-horizon lumon lupine matte-black miasma nord osaka-jade retro-82 ristretto rose-pine solitude tokyo-night vantablack white"
+# Stock themes that are not Omarchy's (no fetchable images): the owner's default.
+HASEEN_THEMES="greek-noir-akane"
 
 # themes2_sandbox NAME — sandbox with probes faked and a private runtime dir,
 # so nothing reaches the developer's session or units.
@@ -31,7 +33,7 @@ img_jpg() { printf '\xff\xd8\xff\xe0\0\x10JFIF\0\1\1\0\0\1\0\1\0\0%s' "$2" >"$1"
 img_webp() { printf 'RIFF\x1a\0\0\0WEBPVP8L\x0d\0\0\0/\0\0\0\x10\x07\x10\x11\x11\x88\x88\xfe\x07\0%s' "$2" >"$1"; }
 
 # --- the stock set is Omarchy's, and every theme renders -------------------
-assert_eq "stock themes = Omarchy's at $PIN" "$(tr ' ' '\n' <<<"$OMARCHY_THEMES")" "$(ls "$HASEEN_PATH/themes" | LC_ALL=C sort)"
+assert_eq "stock themes = Omarchy's at $PIN + haseen's own" "$(tr ' ' '\n' <<<"$OMARCHY_THEMES $HASEEN_THEMES" | LC_ALL=C sort)" "$(ls "$HASEEN_PATH/themes" | LC_ALL=C sort)"
 assert_eq "no images shipped" "" "$(find "$HASEEN_PATH/themes" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.webp' \) -print)"
 manifest="$HASEEN_PATH/layers/theme/omarchy-assets.txt"
 assert_eq "manifest names every stock theme" "$(tr ' ' '\n' <<<"$OMARCHY_THEMES")" "$(awk '!/^#/ { sub(/\/.*/, "", $3); print $3 }' "$manifest" | LC_ALL=C sort -u)"
@@ -41,7 +43,7 @@ assert_eq "manifest: largest image under the fetch limit" "yes" "$(awk '!/^#/ &&
 assert_contains "manifest records the pin" "$(head -3 "$manifest")" "$PIN"
 
 themes2_sandbox themes2-render
-for t in $OMARCHY_THEMES; do
+for t in $OMARCHY_THEMES $HASEEN_THEMES; do
     capture env HASEEN_THEME_HEADLESS=1 haseen theme set "$t"
     assert_status "set $t" 0 "$STATUS"
     assert_not_contains "$t: no warnings" "$OUTPUT" "Warning"

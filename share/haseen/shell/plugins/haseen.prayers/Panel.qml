@@ -144,6 +144,7 @@ Item {
             id: revealTimer
 
             interval: 80
+            repeat: false
             onTriggered: scroller.revealBottom()
         }
 

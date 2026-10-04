@@ -41,7 +41,14 @@ between parts. The engineering record is `plans/`, indexed by
 tools/lint.sh      # bash -n, shellcheck -x --severity=warning, luac -p, jq, qmllint
 tests/run.sh       # hermetic; stub PATH; fixtures
 tools/check-docs.sh
+tools/secrets.sh   # before every push: gitleaks (history) + privacy patterns
 ```
+
+The repository is public. Never commit:
+- the owner's location, hostnames' addresses or tailnet IPs;
+- tokens, keys or anything under `~/.config` copied from a live machine.
+
+Plugin defaults use public, city-level values only.
 
 shellcheck is not installed on the author's laptop. Use
 `SHELLCHECK=/path/to/shellcheck tools/lint.sh` with the static release binary.

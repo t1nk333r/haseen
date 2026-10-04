@@ -14,7 +14,7 @@ LAYER_REQUIRES=(base)
 LAYER_CONFLICTS=()
 LAYER_DISTROS=(cachyos arch omarchy)
 
-CHAOTIC_KEY_FPR=EF925EA60F33D0CB85C44AD13056513887B78AEB
+CHAOTIC_KEY_FPR=EF925EA60F33D0CB85C44AD13056513887B78AEB # gitleaks:allow (public GPG key fingerprint)
 CHAOTIC_CDN=https://cdn-mirror.chaotic.cx/chaotic-aur
 
 # Usable, not merely configured: a half-failed enable leaves the stanza with

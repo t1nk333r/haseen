@@ -570,6 +570,7 @@ Scope {
         id: geocodeDebounce
 
         interval: 350
+        repeat: false
         onTriggered: root.startGeocode()
     }
 
@@ -579,6 +580,7 @@ Scope {
         id: notificationRetry
 
         interval: 5000
+        repeat: false
         onTriggered: root.startNotification()
     }
 
@@ -588,6 +590,7 @@ Scope {
         id: configRefresh
 
         interval: 250
+        repeat: false
         onTriggered: root.recompute()
     }
 
@@ -597,6 +600,7 @@ Scope {
         id: zoneRefresh
 
         interval: 86400000
+        repeat: false
         onTriggered: root.refresh()
     }
 

@@ -26,7 +26,10 @@ THEME_CURRENT_PATH="$THEME_CURRENT_DIR/theme"
 THEME_NEXT_PATH="$THEME_CURRENT_DIR/next-theme"
 THEME_NAME_FILE="$THEME_CURRENT_DIR/theme.name"
 THEME_BACKGROUND_LINK="$THEME_CURRENT_DIR/background"
-THEME_DEFAULT=tokyo-night
+# The owner's theme on luna (2026-10-04): HANCORE's Greek Noir with the
+# owner's "akane" border wipe. Not an Omarchy stock theme, so `theme fetch`
+# has no images for it; backgrounds go in ~/.config/haseen/backgrounds/<name>/.
+THEME_DEFAULT=greek-noir-akane
 # Fetched Omarchy images (never shipped: third-party artwork, 64 MB). Pinned
 # to one commit of omacom/omarchy; omarchy-assets.txt lists every image with
 # its sha256 and size at that commit.

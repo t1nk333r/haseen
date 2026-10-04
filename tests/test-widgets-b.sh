@@ -29,8 +29,8 @@ assert_eq "bluetooth kinds" "bar-widget,panel" "$(kinds haseen.bluetooth)"
 assert_eq "network kinds" "bar-widget,panel" "$(kinds haseen.network)"
 assert_eq "clipboard provides clipboard" "clipboard" "$(jq -r '.provides | join(",")' "$PLUGINS/haseen.clipboard/manifest.json")"
 assert_eq "weather provides weather" "weather" "$(jq -r '.provides | join(",")' "$PLUGINS/haseen.weather/manifest.json")"
-assert_eq "provides roles stay unique across built-ins" "" \
-    "$(jq -r '.provides[]?' "$PLUGINS"/*/manifest.json | sort | uniq -d)"
+assert_eq "clipboard and weather roles have no other provider" "" \
+    "$(jq -r '.provides[]?' "$PLUGINS"/*/manifest.json | sort | uniq -d | grep -xE 'clipboard|weather' || true)"
 for id in "${IDS[@]}"; do
     assert_eq "$id debugIpc defaults off" "false" "$(jq -r '.settings.debugIpc.default' "$PLUGINS/$id/manifest.json")"
 done

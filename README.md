@@ -5,7 +5,7 @@ top of **CachyOS** (plain Arch works too; NixOS uses the flake). It is built on
 Hyprland (Lua config) and a small Quickshell shell of its own, and it can load
 add-ons made for Omarchy and DankMaterialShell.
 
-- **Clean.** Every part is an opt-in layer. The default is `base desktop theme shell`.
+- **Clean.** Every part is an opt-in layer. The default is `base chaotic omarchy-repo desktop theme shell`.
 - **No clutter.** One thin bar that flows into a slim frame around the screen. Double-click the bar to make it transparent; its text then takes a colour that contrasts with the wallpaper. The tray hides behind a chevron until you hover over it or pin it. Indicators (privacy dots, stay-awake, do-not-disturb) appear only while something is active. Everything else is a panel opened on demand: menu, launcher, notifications, AI, clipboard, calendar, Wi-Fi, Bluetooth.
 - **Light.** The idle shell, with every default widget, measures 176 MiB RSS / 123 MiB PSS with ~0 % CPU on the reference laptop (omarchy-shell beside it: 630 MiB).
 - **Extendable with AI.** Plugins are a `manifest.json` plus QML, checked against a JSON schema (`haseen plugin new/validate/enable`). An agent skill (`haseen ai skill install`) teaches coding agents to do this safely.
@@ -13,6 +13,11 @@ add-ons made for Omarchy and DankMaterialShell.
 - **Secure Boot for Windows dual boot.** sbctl keys are enrolled **with** Microsoft's (2011 and 2023 CAs) and the firmware's, so Windows and anti-cheat keep working. The Limine config hash is enrolled, and a pacman hook re-signs after updates.
 - **Omarchy and DMS add-ons.** All 22 Omarchy themes are included; their backgrounds are fetched on first use from a pinned commit. Omarchy's menu (your selection, no web apps), its workspaces widget and its ttfx screensaver are ported. Omarchy and DMS bar plugins load through compat adapters, or DMS can replace the haseen shell entirely (`haseen shell use dms`).
 - **Everyday tools.** Screenshots, screen recording, OCR, QR, colour picker, emoji, reminders, night light, stay awake, do not disturb, CPU/RAM/GPU usage, iPhone-style privacy dots (green camera, orange mic, red recording/share, blue location), media, weather (off by default), clipboard history, Flatpak-first app installs.
+- **Defaults:**
+  - Theme: Greek Noir with the "akane" border wipe (`greek-noir-akane`).
+  - Cursor: Bibata Modern Ice at 20 px.
+  - Notifications: **haseen.pager**, a stacking, grouping notification daemon with snooze, ported from omapager.
+  - Prayer times: **haseen.prayers**, calculated offline with Umm al-Qura and Hijri dates, ported from omaprayers. It defaults to the city centre of Riyadh; set your own location in its panel.
 
 ## Install (CachyOS / Arch)
 

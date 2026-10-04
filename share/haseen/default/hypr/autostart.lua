@@ -11,6 +11,11 @@ hl.on("hyprland.start", function()
   -- exports it and signals readiness; repeating it is harmless if Hyprland
   -- already did. Skipped when the session was not started by uwsm.
   hl.exec_cmd("uwsm check is-active >/dev/null 2>&1 && uwsm finalize")
+  -- Cursor from the session env (desktop layer: Bibata-Modern-Ice 20): applied
+  -- to Hyprland itself and to GTK/libadwaita apps, which read gsettings.
+  hl.exec_cmd('[ -n "$XCURSOR_THEME" ] && hyprctl setcursor "$XCURSOR_THEME" "${XCURSOR_SIZE:-24}" && '
+    .. 'gsettings set org.gnome.desktop.interface cursor-theme "$XCURSOR_THEME" && '
+    .. 'gsettings set org.gnome.desktop.interface cursor-size "${XCURSOR_SIZE:-24}"')
   -- post-boot hooks (~/.config/haseen/hooks/post-boot{,.d/*}); a missing
   -- haseen CLI or hook runner must not break the session start.
   hl.exec_cmd("command -v haseen >/dev/null 2>&1 && haseen hook run post-boot")

@@ -306,11 +306,11 @@ before="$(tree)"
 capture env HASEEN_SYSROOT="$fx" DRY_RUN=true bash -c 'source "$HASEEN_PATH/lib/layers.sh"; layer_run_apply theme'
 assert_status "layer apply dry-run" 0 "$STATUS"
 assert_dry_pure "theme layer" "$OUTPUT"
-assert_contains "layer plans the default theme" "$OUTPUT" "DRYRUN: write $CUR/theme.name: tokyo-night"
+assert_contains "layer plans the default theme" "$OUTPUT" "DRYRUN: write $CUR/theme.name: greek-noir-akane"
 assert_eq "layer apply --dry-run writes nothing" "$before" "$(tree)"
 capture layer_cmd layer_apply
 assert_status "layer apply" 0 "$STATUS"
-assert_eq "default theme set" "tokyo-night" "$(cat "$CUR/theme.name" 2>/dev/null)"
+assert_eq "default theme set" "greek-noir-akane" "$(cat "$CUR/theme.name" 2>/dev/null)"
 haseen theme set gruvbox >/dev/null 2>&1
 capture layer_cmd layer_apply
 assert_contains "re-apply keeps the user's choice" "$OUTPUT" "theme already set: gruvbox"

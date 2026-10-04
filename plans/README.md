@@ -30,3 +30,5 @@ Read `handoff.md` first.
 | 022 | Starter widgets B: clipboard history, weather, Bluetooth and Wi-Fi panels | P1 | L | 005 010 011 | DONE 2026-10-04 (59 tests; live panels; no real connects) |
 | 023 | Package source order: repos, Chaotic-AUR, AUR last | P1 | S | 001 003 017 | DONE 2026-10-04 (source-order + chaotic layer tests) |
 | 024 | Omarchy repo as a package source (after Chaotic-AUR, never Omarchy itself) | P2 | S | 023 | DONE 2026-10-04 (source-order + layer tests) |
+| 025 | haseen.pager: omapager port as the default notification daemon | P1 | L | 010 | DONE 2026-10-04 |
+| 026 | haseen.prayers: omaprayers port (Riyadh defaults, city-level) | P2 | M | 005 | DONE 2026-10-04 |

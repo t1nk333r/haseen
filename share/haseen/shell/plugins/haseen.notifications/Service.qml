@@ -15,6 +15,10 @@ import qs.Haseen
 // Only one process can own the D-Bus name. While another daemon (DMS,
 // omarchy-shell, mako) holds it, Quickshell logs the failure and this service
 // just never receives anything; the rest of the shell is unaffected.
+//
+// Fallback only: haseen.pager is the default daemon. While haseen.pager is
+// listed in `services` (enabled and valid) this service creates no server and
+// gives up the `notifications` role, so the two never claim the name at once.
 Scope {
     id: root
 
@@ -32,7 +36,28 @@ Scope {
     // Notification objects shown as popups, newest first.
     property var popups: []
     // Every tracked notification, oldest first (the panel reverses it).
-    readonly property var history: server.trackedNotifications.values
+    readonly property var history: serverHost.object ? serverHost.object.trackedNotifications.values : []
+    readonly property bool superseded: Config.services.indexOf("haseen.pager") >= 0 && Config.isEnabled("haseen.pager") && Plugins.componentUrl("haseen.pager", "service") !== ""
+
+    // ServiceHost registers the role after creating this object: drop it
+    // whenever it lands here while superseded (haseen.pager reclaims it), and
+    // take it back once haseen.pager leaves `services`.
+    function _syncRole(): void {
+        if (superseded)
+            Plugins.unregisterRole("notifications", root);
+        else if (!Plugins.roles.notifications && pluginId !== "" && Config.services.indexOf(pluginId) >= 0 && Config.isEnabled(pluginId))
+            Plugins.registerRole("notifications", pluginId, root);
+    }
+
+    onSupersededChanged: Qt.callLater(_syncRole)
+    Component.onCompleted: Qt.callLater(_syncRole)
+
+    Connections {
+        target: Plugins
+        function onRolesChanged() {
+            Qt.callLater(root._syncRole);
+        }
+    }
 
     function _int(v: var, fallback: int, min: int): int {
         return (typeof v === "number" && isFinite(v) && v >= min) ? Math.round(v) : fallback;
@@ -49,7 +74,7 @@ Scope {
 
     function clear(): void {
         popups = [];
-        for (const n of server.trackedNotifications.values.slice())
+        for (const n of root.history.slice())
             n.dismiss();
     }
 
@@ -88,7 +113,7 @@ Scope {
     }
 
     function _trimHistory(): void {
-        const all = server.trackedNotifications.values;
+        const all = root.history;
         for (let i = 0; i < all.length - historySize; i++)
             all[i].dismiss();
     }
@@ -107,31 +132,37 @@ Scope {
         return screens.length > 0 ? screens[0] : null;
     }
 
-    NotificationServer {
-        id: server
+    // The server exists only while this service is the daemon (an Instantiator,
+    // not a LazyLoader: those are kept for windows here).
+    Instantiator {
+        id: serverHost
 
-        actionsSupported: true
-        bodySupported: true
-        // Plain text only: StyledText would fetch <img> sources from senders.
-        bodyMarkupSupported: false
-        bodyHyperlinksSupported: false
-        imageSupported: true
-        persistenceSupported: false
+        model: root.superseded ? 0 : 1
 
-        onNotification: n => {
-            n.tracked = true;
-            n.closed.connect(() => root._forget(n));
-            Qt.callLater(root._trimHistory);
-            if (root.dnd && n.urgency !== NotificationUrgency.Critical) {
-                if (n.transient)
-                    n.expire();
-                return;
+        delegate: NotificationServer {
+            actionsSupported: true
+            bodySupported: true
+            // Plain text only: StyledText would fetch <img> sources from senders.
+            bodyMarkupSupported: false
+            bodyHyperlinksSupported: false
+            imageSupported: true
+            persistenceSupported: false
+
+            onNotification: n => {
+                n.tracked = true;
+                n.closed.connect(() => root._forget(n));
+                Qt.callLater(root._trimHistory);
+                if (root.dnd && n.urgency !== NotificationUrgency.Critical) {
+                    if (n.transient)
+                        n.expire();
+                    return;
+                }
+                const next = [n].concat(root.popups.filter(p => p !== n));
+                for (const old of next.slice(root.maxPopups))
+                    if (old.transient)
+                        old.expire();
+                root.popups = next.slice(0, root.maxPopups);
             }
-            const next = [n].concat(root.popups.filter(p => p !== n));
-            for (const old of next.slice(root.maxPopups))
-                if (old.transient)
-                    old.expire();
-            root.popups = next.slice(0, root.maxPopups);
         }
     }
 

@@ -72,6 +72,14 @@ in
       # Hyprland and the shell from) both see the store path.
       home.sessionVariables.HASEEN_PATH = haseenPath;
       systemd.user.sessionVariables.HASEEN_PATH = haseenPath;
+      # The owner's cursor (luna): Bibata Modern Ice at 20 px. mkDefault so a
+      # user's own home.pointerCursor wins.
+      home.pointerCursor = {
+        package = lib.mkDefault pkgs.bibata-cursors;
+        name = lib.mkDefault "Bibata-Modern-Ice";
+        size = lib.mkDefault 20;
+        gtk.enable = lib.mkDefault true;
+      };
     }
 
     (mkIf cfg.shell.enable {

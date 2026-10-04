@@ -174,6 +174,10 @@ export HASEEN_PATH=$(printf '%q' "$HASEEN_PATH")
 export TERMINAL=foot
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export QT_QPA_PLATFORM='wayland;xcb'
+# Cursor: the owner's luna setup (Bibata Modern Ice, 20 px). Override in your
+# own ~/.config/uwsm/env.d/ file; Hyprland and GTK pick it up at session start.
+export XCURSOR_THEME=Bibata-Modern-Ice
+export XCURSOR_SIZE=20
 EOF
 }
 

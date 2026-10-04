@@ -7,7 +7,8 @@
 SHELL_DIR="$HASEEN_PATH/shell"
 PLUGINS="$SHELL_DIR/plugins"
 SURFACES=(haseen.notifications haseen.osd haseen.launcher haseen.lock haseen.idle haseen.polkit haseen.session)
-SERVICES=(haseen.notifications haseen.osd haseen.polkit haseen.idle haseen.lock)
+# haseen.notifications is the fallback daemon (plan 025): not started by default.
+SERVICES=(haseen.pager haseen.osd haseen.polkit haseen.idle haseen.lock)
 
 # timer_violations DIR... — one line per Timer that breaks the rule: an
 # unmarked Timer needs a literal interval >= 2000; a Timer whose previous
@@ -49,17 +50,33 @@ for id in "${SURFACES[@]}"; do
 done
 assert_not_contains "surfaces request no network" "$OUTPUT" "warning:"
 
-# --- roles: unique, and every routed IPC role has a built-in provider --------
-assert_eq "provides roles are unique across built-ins" "" \
-    "$(jq -r '.provides[]?' "$PLUGINS"/*/manifest.json | sort | uniq -d)"
+# --- roles: every routed IPC role has exactly one provider in the DEFAULT set --
+# Built-ins may offer alternatives for a role (haseen.pager is the default
+# notification daemon, haseen.notifications the lighter fallback, plan 025);
+# what must hold is that the default shell.json never enables two at once.
 role_provider() { # ROLE -> the built-in ids providing it
     jq -r --arg r "$1" 'select((.provides // []) | index($r)) | .id' "$PLUGINS"/*/manifest.json | paste -sd' '
 }
-assert_eq "notifications role" "haseen.notifications" "$(role_provider notifications)"
+default_ids="$(jq -r '[.bar.left, .bar.center, .bar.right, .services] | add | unique | .[]' "$HASEEN_PATH/default/shell.json")"
+default_provider() { # ROLE -> the providers of ROLE that the default config enables
+    # A provider is active when the default config lists it, or when it has no
+    # service kind at all (panels such as the launcher and the menu register
+    # from the registry and are never listed).
+    local id
+    for id in $(role_provider "$1"); do
+        if grep -qx "$id" <<<"$default_ids" ||
+            ! jq -e '.kinds | index("service")' "$PLUGINS/$id/manifest.json" >/dev/null; then
+            echo "$id"
+        fi
+    done | paste -sd' '
+}
+assert_eq "only notifications has alternative providers" "notifications" \
+    "$(jq -r '.provides[]?' "$PLUGINS"/*/manifest.json | sort | uniq -d | paste -sd' ')"
+assert_eq "default notifications provider" "haseen.pager" "$(default_provider notifications)"
 assert_eq "launcher role" "haseen.launcher" "$(role_provider launcher)"
 assert_eq "lock role" "haseen.lock" "$(role_provider lock)"
 while read -r role; do
-    assert_eq "routed role '$role' has one provider" "1" "$(role_provider "$role" | wc -w)"
+    assert_eq "routed role '$role' has one default provider" "1" "$(default_provider "$role" | wc -w)"
 done < <(grep -o 'routeRole("[a-z-]*"' "$SHELL_DIR/shell.qml" | cut -d'"' -f2 | sort -u)
 # The functions shell.qml routes to (architecture 5.5) exist on the providers.
 svc="$PLUGINS/haseen.notifications/Service.qml"

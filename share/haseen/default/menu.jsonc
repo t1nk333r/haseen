@@ -88,7 +88,7 @@
   "style.bar.position.right": {"icon":"󰁔","label":"Right","action":"haseen bar position right"},
   "style.bar.transparency": {"icon":"󰂵","label":"Transparency","action":"haseen bar transparent toggle"},
   "style.screensaver": {"icon":"󱄄","label":"Screensaver"},
-  "style.screensaver.style-ttfx": {"icon":"󱄄","label":"Omarchy (ttfx)","checked":"[[ \"$(haseen screensaver style)\" == ttfx ]]","action":"haseen screensaver style ttfx"},
+  "style.screensaver.style-ttfx": {"icon":"󱄄","label":"Text effects (ttfx)","checked":"[[ \"$(haseen screensaver style)\" == ttfx ]]","action":"haseen screensaver style ttfx"},
   "style.screensaver.style-native": {"icon":"󱄄","label":"Native","checked":"[[ \"$(haseen screensaver style)\" == native ]]","action":"haseen screensaver style native"},
   "style.screensaver.preview": {"icon":"","label":"Preview","action":"haseen screensaver --force"},
   "style.screensaver.text": {"icon":"","label":"Edit Text","action":"haseen branding screensaver text"},

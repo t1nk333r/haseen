@@ -30,3 +30,4 @@ zbar                         # haseen capture qr
 libnotify                    # notify-send for capture/reminder/toggle feedback
 hyprsunset                   # night light (haseen.nightlight)
 aur:ttfx                     # Omarchy's screensaver text effects, Rust port (owner choice over python tte)
+aur:bibata-cursor-theme      # cursor Bibata-Modern-Ice (owner's luna default); prebuilt in Chaotic-AUR
