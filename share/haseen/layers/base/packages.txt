@@ -1,0 +1,16 @@
+# base — what a bare CachyOS (or Arch) install lacks for haseen. Each entry
+# says why it is here; anything without a reason does not belong. CachyOS
+# already ships most of these, and the runner installs only what is missing
+# (pacman --needed), so on CachyOS this is usually a no-op.
+git             # haseen updates itself from git; AUR helpers need it
+curl            # downloads in haseen commands (models, themes, plugins)
+jq              # haseen commands read and write JSON (shell.json, manifests)
+ripgrep         # fast content search; the agent skill and launcher use it
+fd              # fast file finder for the launcher's file provider
+fzf             # fuzzy picker for interactive CLI menus
+btop            # the one resource monitor; "measure before claiming"
+man-db          # man pages for everything below
+unzip           # theme and plugin archives arrive as .zip
+noto-fonts      # one font family covering Latin, Arabic and most scripts
+ufw             # host firewall; layer_apply enables it with deny-incoming
+pacman-contrib  # paccache.timer keeps /var/cache/pacman bounded (pacman hygiene without touching pacman.conf)

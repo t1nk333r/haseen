@@ -1,0 +1,2 @@
+SUBVOLUME="/"
+FSTYPE="btrfs"

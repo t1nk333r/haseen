@@ -1,0 +1,2 @@
+# <file system> <dir> <type> <options> <dump> <pass>
+UUID=2222 / ext4 rw,relatime 0 1

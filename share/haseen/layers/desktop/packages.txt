@@ -1,0 +1,25 @@
+# desktop — the Hyprland session and the few tools its default binds call.
+# CachyOS already ships the audio stack; --needed makes those lines no-ops.
+# greetd/tuigreet and GPU extras are decided at apply time (layer.sh), not here.
+hyprland                     # the compositor (Lua config, 0.55+)
+uwsm                         # session manager: systemd units, env.d, graphical-session.target
+xdg-desktop-portal-hyprland  # screenshare/screencast portal for Hyprland
+xdg-desktop-portal-gtk       # file chooser and settings portals (the hyprland portal has none)
+pipewire                     # audio/video server
+pipewire-pulse               # PulseAudio clients (most apps) on PipeWire
+wireplumber                  # session manager for PipeWire; wpctl drives the volume keys
+quickshell                   # runtime for the haseen shell (layers/shell)
+foot                         # default terminal: the lightest Wayland terminal that is complete
+brightnessctl                # brightness keys
+playerctl                    # media keys (MPRIS)
+wl-clipboard                 # wl-copy: screenshots to the clipboard
+grim                         # screenshots
+slurp                        # region selection for screenshots
+hyprpicker                   # colour picker bind
+polkit                       # privilege prompts; the shell's haseen.polkit service is the agent
+gnome-keyring                # Secret Service for browsers/apps, unlocked by PAM at login (keepassxc is a GUI app, not a session service)
+xdg-utils                    # xdg-open / xdg-settings: the browser bind opens the default browser
+qt6-wayland                  # native Wayland for Qt 6 apps (Quickshell included)
+inter-font                   # shell UI font (theme token fontFamily)
+ttf-jetbrains-mono-nerd      # terminal and shell mono font with icon glyphs (fontMono)
+noto-fonts-emoji             # colour emoji; noto-fonts itself comes from base
