@@ -1,0 +1,19 @@
+# haseen-llama.service: llama.cpp's OpenAI-compatible server on loopback.
+# Enabled only by `haseen layer apply ai -- --backend llama.cpp` once
+# endpoints.llamacpp.modelPath is set in ~/.config/haseen/ai.json. The bind
+# address is fixed to 127.0.0.1 by `haseen ai serve`; the port comes from
+# endpoints.llamacpp.url.
+[Unit]
+Description=haseen llama.cpp server (OpenAI API on 127.0.0.1)
+
+[Service]
+Type=exec
+# Bare name: systemd searches /usr/local/bin and /usr/bin, so this works for
+# both install prefixes.
+ExecStart=haseen ai serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

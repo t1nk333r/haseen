@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# haseen:summary Chat with a local (or allowed) model; streams the reply
+# haseen:args    [--endpoint NAME] [--model M] ["prompt"]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai chat [--endpoint NAME] [--model M] [PROMPT...]
+
+Streams an OpenAI chat-completions reply token by token. The prompt comes
+from the arguments; piped stdin is read too and appended after a blank line:
+  haseen ai chat "why is the sky blue"
+  git diff | haseen ai chat "review this"
+Endpoint: ai.json "default" unless --endpoint. Model: --model, else the
+endpoint's "model", else the first one it serves. Remote endpoints are refused
+unless ai.json "policy" is "any".
+EOF
+}
+parse_common_flags "$@"
+endpoint=""
+model=""
+words=()
+set -- "${REST[@]}"
+while (($# > 0)); do
+    case "$1" in
+    --endpoint) endpoint="${2:?--endpoint needs a name}"; shift ;;
+    --endpoint=*) endpoint="${1#*=}" ;;
+    --model) model="${2:?--model needs a name}"; shift ;;
+    --model=*) model="${1#*=}" ;;
+    --) shift; words+=("$@"); break ;;
+    *) words+=("$1") ;;
+    esac
+    shift
+done
+
+prompt="${words[*]}"
+# Only a real pipe or file: a terminal or /dev/null on stdin is not input.
+if [[ -p /dev/stdin || -f /dev/stdin ]]; then
+    input="$(cat)"
+    if [[ -n $prompt && -n $input ]]; then
+        prompt+=$'\n\n'"$input"
+    else
+        prompt="${prompt:-$input}"
+    fi
+fi
+[[ -n ${prompt//[[:space:]]/} ]] || {
+    usage >&2
+    exit 2
+}
+
+ai_load_config
+ai_resolve_endpoint "$endpoint"
+model="${model:-$EP_MODEL}"
+if [[ -z $model ]]; then
+    models="$(ai_models)" || die "cannot reach $EP_URL (haseen ai status)"
+    model="${models%%$'\n'*}"
+    IFS=$'\t' read -r tag _ < <(ai_suggest_model)
+    [[ -n $model ]] || die "endpoint $EP_NAME serves no models (try: haseen ai pull $tag)"
+fi
+
+# SSE: keep "data: {json}" payloads, drop [DONE]; a non-SSE JSON body (an
+# HTTP error with --fail-with-body) passes through so jq can report it.
+# shellcheck disable=SC2016  # jq program, not shell
+filter='if type != "object" then empty
+    elif has("error") then ("error: " + (.error | if type == "object" then (.message // tostring) else tostring end) + "\n" | halt_error(1))
+    else (.choices[0].delta.content // empty) end'
+set +e
+jq -n --arg m "$model" --arg p "$prompt" \
+    '{model: $m, stream: true, messages: [{role: "user", content: $p}]}' |
+    ai_curl "$EP_KEYREF" -sSN --fail-with-body \
+        -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+        --data-binary @- "$EP_URL/chat/completions" |
+    sed -u -n -e 's/\r$//' -e '/^data: *\[DONE\]/d' -e 's/^data: *//p' -e 't' -e '/^{/p' |
+    jq --unbuffered -rj "$filter"
+st=("${PIPESTATUS[@]}")
+set -e
+echo
+((st[3] == 0)) || exit 1
+case "${st[1]}" in
+0) ;;
+7) die "cannot connect to $EP_URL (is the server running? haseen ai status)" ;;
+22) die "$EP_NAME answered with an HTTP error" ;;
+*) die "request to $EP_URL failed (curl exit ${st[1]})" ;;
+esac

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# haseen:summary Download a model into Ollama (ollama pull)
+# haseen:args    <model> [--endpoint NAME] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai pull <model> [--endpoint NAME] [--dry-run]
+
+Runs `ollama pull <model>` against the Ollama endpoint NAME (default: ollama),
+with OLLAMA_HOST taken from ai.json so the policy applies. Without a model,
+prints the suggestion for this machine's RAM. llama.cpp loads a .gguf file
+instead: set endpoints.llamacpp.modelPath in ~/.config/haseen/ai.json.
+EOF
+}
+parse_common_flags "$@"
+endpoint=ollama
+model=""
+set -- "${REST[@]}"
+while (($# > 0)); do
+    case "$1" in
+    --endpoint) endpoint="${2:?--endpoint needs a name}"; shift ;;
+    --endpoint=*) endpoint="${1#*=}" ;;
+    -*) usage >&2; exit 2 ;;
+    *)
+        [[ -z $model ]] || { usage >&2; exit 2; }
+        model="$1"
+        ;;
+    esac
+    shift
+done
+if [[ -z $model ]]; then
+    usage >&2
+    IFS=$'\t' read -r tag why < <(ai_suggest_model)
+    echo "suggested for this machine ($why): haseen ai pull $tag" >&2
+    exit 2
+fi
+[[ $model =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] || die "invalid model name '$model'"
+
+ai_load_config
+ai_resolve_endpoint "$endpoint"
+[[ $EP_URL == */v1 ]] || die "endpoint '$EP_NAME' ($EP_URL) is not an Ollama /v1 URL"
+run env OLLAMA_HOST="${EP_URL%/v1}" ollama pull "$model"

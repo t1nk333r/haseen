@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# haseen:summary Local AI health: backend, service, bound address, models
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai status
+
+Backend packages, the loopback drop-in, service state, who listens on the API
+port (ss), the endpoints in ai.json with the policy verdict, the models of the
+default endpoint and a model suggestion for this machine's RAM.
+Exit: 0 healthy, 1 no backend installed, 2 degraded (e.g. reachable from the network).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+ai_load_config
+rc=0
+echo "== backend"
+ai_status_lines || rc=$?
+if pkg_installed ollama; then
+    state="$(systemctl is-active ollama.service 2>/dev/null)" || true
+    echo "service: ollama.service ${state:-unknown}"
+fi
+if pkg_installed llama-cpp; then
+    state="$(systemctl --user is-active "$AI_LLAMA_UNIT" 2>/dev/null)" || true
+    echo "service: $AI_LLAMA_UNIT (user) ${state:-unknown}"
+fi
+
+echo "== endpoints (policy: $(ai_cfg '.policy'))"
+default="$(ai_cfg '.default // ""')"
+while IFS=$'\t' read -r name url; do
+    verdict=allowed
+    (ai_check_policy "$name" "$url") &>/dev/null || verdict="refused by policy"
+    printf '%s %-10s %s (%s)\n' "$([[ $name == "$default" ]] && echo '*' || echo ' ')" "$name" "$url" "$verdict"
+done < <(ai_cfg '.endpoints // {} | to_entries[] | [.key, (.value.url // "")] | @tsv')
+
+echo "== models"
+if (ai_resolve_endpoint) &>/dev/null; then
+    ai_resolve_endpoint
+    if models="$(ai_models 2>/dev/null)"; then
+        printf '%s\n' "${models:-(none pulled yet)}"
+    else
+        echo "($EP_NAME at $EP_URL not reachable)"
+    fi
+else
+    echo "(default endpoint '$default' refused or invalid; see above)"
+fi
+IFS=$'\t' read -r tag why < <(ai_suggest_model)
+echo "suggested: $tag ($why); download with: haseen ai pull $tag"
+exit "$rc"

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# haseen:summary Store an endpoint's API key in the Secret Service
+# haseen:args    <endpoint> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai key set <endpoint> [--dry-run]
+
+Stores the API key for <endpoint> with secret-tool under the attribute
+haseen-ai=<keyRef>. The key is read from the prompt (hidden) or stdin; it is
+never written to ai.json. The endpoint needs "keyRef" in ai.json.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+name="${REST[0]}"
+ai_load_config
+ai_cfg '.endpoints[$n] | type == "object"' --arg n "$name" | grep -qx true ||
+    die "unknown endpoint '$name' (known: $(ai_cfg '.endpoints // {} | keys | join(", ")'))"
+ref="$(ai_cfg '.endpoints[$n].keyRef // ""' --arg n "$name")"
+[[ -n $ref ]] || die "endpoint '$name' has no \"keyRef\"; add \"keyRef\": \"$name\" to endpoints.$name in $AI_USER_CONFIG"
+$DRY_RUN || require_cmds secret-tool
+[[ -t 0 ]] && info "enter the API key for '$name' (input hidden)"
+run secret-tool store --label="haseen ai: $name" "$AI_SECRET_ATTR" "$ref"
+$DRY_RUN || info "key stored for '$name' (keyRef $ref)"

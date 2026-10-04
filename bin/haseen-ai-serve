@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# haseen:summary Run llama-server on 127.0.0.1 for haseen-llama.service
+# haseen:args    [--dry-run]
+# haseen:hidden
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai serve [--dry-run]
+
+ExecStart of haseen-llama.service. Reads endpoints.llamacpp from ai.json:
+  url        the port to serve on (the host must be loopback)
+  modelPath  the .gguf file to load (~ allowed)
+  model      optional alias reported by /v1/models
+  args       optional extra llama-server arguments (no --host/--port)
+Always binds 127.0.0.1.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+ai_load_config
+url="$(ai_cfg '.endpoints.llamacpp.url // ""')"
+[[ -n $url ]] || die "ai.json: endpoints.llamacpp.url is empty"
+ai_host_is_loopback "$(ai_url_host "$url")" ||
+    die "endpoints.llamacpp.url must point at loopback (llama-server binds 127.0.0.1 only): $url"
+port="$(ai_url_port "$url")"
+[[ $port =~ ^[0-9]+$ ]] || die "endpoints.llamacpp.url: bad port '$port'"
+model_path="$(ai_cfg '.endpoints.llamacpp.modelPath // ""')"
+[[ -n $model_path ]] || die "set endpoints.llamacpp.modelPath to a .gguf file in $AI_USER_CONFIG"
+# shellcheck disable=SC2088  # matching a literal "~/" typed in ai.json
+[[ ${model_path:0:2} == '~/' ]] && model_path="$HOME/${model_path:2}"
+[[ -r $model_path ]] || die "model file not readable: $model_path"
+alias="$(ai_cfg '.endpoints.llamacpp.model // ""')"
+ai_cfg '.endpoints.llamacpp.args // [] | type == "array" and all(type == "string")' | grep -qx true ||
+    die "ai.json: endpoints.llamacpp.args must be an array of strings"
+mapfile -t extra < <(ai_cfg '.endpoints.llamacpp.args // [] | .[]')
+for a in "${extra[@]}"; do
+    [[ ! $a =~ ^--(host|port)(=|$) ]] || die "ai.json: endpoints.llamacpp.args may not set $a (the bind address is fixed to 127.0.0.1)"
+done
+
+cmd=(llama-server --host 127.0.0.1 --port "$port" -m "$model_path")
+[[ -z $alias ]] || cmd+=(--alias "$alias")
+cmd+=("${extra[@]}")
+if $DRY_RUN; then
+    echo "DRYRUN: ${cmd[*]}"
+    exit 0
+fi
+exec "${cmd[@]}"

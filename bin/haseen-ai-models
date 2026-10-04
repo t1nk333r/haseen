@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# haseen:summary List the models an AI endpoint serves (GET /v1/models)
+# haseen:args    [--endpoint NAME]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai models [--endpoint NAME]
+
+Prints one model id per line from NAME (default: ai.json "default").
+Remote endpoints are refused unless ai.json "policy" is "any".
+EOF
+}
+parse_common_flags "$@"
+endpoint=""
+set -- "${REST[@]}"
+while (($# > 0)); do
+    case "$1" in
+    --endpoint) endpoint="${2:?--endpoint needs a name}"; shift ;;
+    --endpoint=*) endpoint="${1#*=}" ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+
+ai_load_config
+ai_resolve_endpoint "$endpoint"
+models="$(ai_models)" || die "cannot list models at $EP_URL/models (haseen ai status)"
+if [[ -z $models ]]; then
+    IFS=$'\t' read -r tag _ < <(ai_suggest_model)
+    info "endpoint $EP_NAME serves no models yet (try: haseen ai pull $tag)"
+    exit 0
+fi
+printf '%s\n' "$models"

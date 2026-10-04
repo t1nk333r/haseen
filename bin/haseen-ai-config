@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# haseen:summary Print the effective ai.json (defaults merged with yours)
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen ai config
+
+Prints \$HASEEN_PATH/default/ai.json deep-merged with $AI_USER_CONFIG
+(objects merge, your scalars and arrays win), after validation. The AI panel
+reads this instead of merging on its own.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+ai_load_config
+printf '%s\n' "$AI_CONFIG"

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# haseen:summary Delete an endpoint's API key from the Secret Service
+# haseen:args    <endpoint> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/ai/ai.sh
+source "$HASEEN_PATH/layers/ai/ai.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai key clear <endpoint> [--dry-run]
+
+Deletes the secret stored under haseen-ai=<keyRef> for <endpoint>.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+name="${REST[0]}"
+ai_load_config
+ai_cfg '.endpoints[$n] | type == "object"' --arg n "$name" | grep -qx true ||
+    die "unknown endpoint '$name' (known: $(ai_cfg '.endpoints // {} | keys | join(", ")'))"
+ref="$(ai_cfg '.endpoints[$n].keyRef // ""' --arg n "$name")"
+[[ -n $ref ]] || die "endpoint '$name' has no \"keyRef\"; add \"keyRef\": \"$name\" to endpoints.$name in $AI_USER_CONFIG"
+$DRY_RUN || require_cmds secret-tool
+run secret-tool clear "$AI_SECRET_ATTR" "$ref"
+$DRY_RUN || info "key cleared for '$name' (keyRef $ref)"
