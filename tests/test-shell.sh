@@ -36,11 +36,27 @@ done < <(jq -r '[.bar.left, .bar.center, .bar.right, .services] | add | .[]' "$H
 # Widgets take colours from Theme only.
 assert_eq "no hex colour literals in built-in plugins/widgets" "" \
     "$(grep -rnE '"#[0-9a-fA-F]{3,8}"' "$SHELL_DIR/plugins" "$SHELL_DIR/Haseen/Widgets" "$SHELL_DIR/templates" || true)"
-# No polling timers in the shell (architecture 6). The only allowed Timer is a
-# documented single-shot UI timeout, marked by `// haseen:ui-timeout` on the
-# line directly above (plan 010: OSD hide, notification expiry).
-assert_eq "no unmarked Timer in shell QML" "" "$(find "$SHELL_DIR" -name '*.qml' -exec awk '
-    /^[[:space:]]*Timer[[:space:]]*\{/ && prev !~ /haseen:ui-timeout/ { print FILENAME ":" FNR }
+# No polling timers in the shell (architecture 6). Two kinds of Timer are
+# allowed, each marked on the line directly above:
+#   // haseen:ui-timeout  single-shot UI timeout (OSD hide, notification expiry)
+#   // haseen:sample      a sampler that runs only while visible: a literal
+#                         `interval:` >= 2000 and a `running:` binding that is
+#                         not the literal `true` (plan 021: system usage)
+assert_eq "no unmarked or too-fast Timer in shell QML" "" "$(find "$SHELL_DIR" -name '*.qml' -exec awk '
+    function report(why) { print FILENAME ":" start ": " why }
+    intimer && /\}/ {
+        if (kind == "sample" && (interval < 2000)) report("sample interval < 2000")
+        if (kind == "sample" && running != "gated") report("sample not gated by a running: binding")
+        intimer = 0
+    }
+    intimer && /interval:[[:space:]]*[0-9]+/ { match($0, /[0-9]+/); interval = substr($0, RSTART, RLENGTH) + 0 }
+    intimer && /running:/ { running = ($0 ~ /running:[[:space:]]*true[[:space:]]*$/) ? "always" : "gated" }
+    /^[[:space:]]*Timer[[:space:]]*\{/ {
+        start = FNR; interval = 0; running = ""; intimer = 1
+        if (prev ~ /haseen:ui-timeout/) kind = "ui"
+        else if (prev ~ /haseen:sample/) kind = "sample"
+        else { report("unmarked Timer"); intimer = 0 }
+    }
     { prev = $0 }' {} +)"
 
 # --- validate: built-ins pass ----------------------------------------------
