@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.weather",
+  "name": "Weather",
+  "version": "1.0.0",
+  "description": "Temperature in the bar and a 3-day forecast panel from wttr.in (fetched every 30 min while enabled; off by default)",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "location": {
+      "type": "string",
+      "default": "",
+      "description": "wttr.in location (city, airport code or lat,lon); empty = wttr.in guesses from your IP"
+    },
+    "units": {
+      "type": "string",
+      "default": "metric",
+      "description": "metric (°C, km/h) or imperial (°F, mph)"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.weather (loadFixture, refresh, state) and stop automatic fetching"
+    }
+  },
+  "permissions": [
+    "exec",
+    "network"
+  ],
+  "provides": [
+    "weather"
+  ]
+}

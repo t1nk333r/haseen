@@ -1,0 +1,374 @@
+{
+  "current_condition": [
+    {
+      "FeelsLikeC": "17",
+      "FeelsLikeF": "63",
+      "humidity": "57",
+      "observation_time": "11:45 AM",
+      "temp_C": "19",
+      "temp_F": "66",
+      "weatherCode": "122",
+      "weatherDesc": [
+        {
+          "value": "Overcast "
+        }
+      ],
+      "windspeedKmph": "9",
+      "windspeedMiles": "6"
+    }
+  ],
+  "nearest_area": [
+    {
+      "areaName": [
+        {
+          "value": "Berlin"
+        }
+      ],
+      "country": [
+        {
+          "value": "Germany"
+        }
+      ],
+      "region": [
+        {
+          "value": "Berlin"
+        }
+      ]
+    }
+  ],
+  "weather": [
+    {
+      "date": "2026-10-04",
+      "maxtempC": "20",
+      "maxtempF": "68",
+      "mintempC": "13",
+      "mintempF": "56",
+      "astronomy": [
+        {
+          "sunrise": "07:13 AM",
+          "sunset": "06:37 PM"
+        }
+      ],
+      "hourly": [
+        {
+          "time": "0",
+          "weatherCode": "176",
+          "weatherDesc": [
+            {
+              "value": "Patchy rain nearby"
+            }
+          ],
+          "tempC": "16",
+          "tempF": "62",
+          "chanceofrain": "31"
+        },
+        {
+          "time": "300",
+          "weatherCode": "176",
+          "weatherDesc": [
+            {
+              "value": "Patchy rain nearby"
+            }
+          ],
+          "tempC": "15",
+          "tempF": "58",
+          "chanceofrain": "33"
+        },
+        {
+          "time": "600",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "14",
+          "tempF": "57",
+          "chanceofrain": "31"
+        },
+        {
+          "time": "900",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "15",
+          "tempF": "58",
+          "chanceofrain": "26"
+        },
+        {
+          "time": "1200",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "18",
+          "tempF": "64",
+          "chanceofrain": "15"
+        },
+        {
+          "time": "1500",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "20",
+          "tempF": "68",
+          "chanceofrain": "11"
+        },
+        {
+          "time": "1800",
+          "weatherCode": "119",
+          "weatherDesc": [
+            {
+              "value": "Cloudy "
+            }
+          ],
+          "tempC": "19",
+          "tempF": "66",
+          "chanceofrain": "7"
+        },
+        {
+          "time": "2100",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Clear "
+            }
+          ],
+          "tempC": "16",
+          "tempF": "60",
+          "chanceofrain": "5"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-05",
+      "maxtempC": "21",
+      "maxtempF": "70",
+      "mintempC": "12",
+      "mintempF": "54",
+      "astronomy": [
+        {
+          "sunrise": "07:14 AM",
+          "sunset": "06:34 PM"
+        }
+      ],
+      "hourly": [
+        {
+          "time": "0",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Clear "
+            }
+          ],
+          "tempC": "14",
+          "tempF": "58",
+          "chanceofrain": "7"
+        },
+        {
+          "time": "300",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Clear "
+            }
+          ],
+          "tempC": "13",
+          "tempF": "56",
+          "chanceofrain": "9"
+        },
+        {
+          "time": "600",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "12",
+          "tempF": "54",
+          "chanceofrain": "24"
+        },
+        {
+          "time": "900",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "14",
+          "tempF": "57",
+          "chanceofrain": "22"
+        },
+        {
+          "time": "1200",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "18",
+          "tempF": "65",
+          "chanceofrain": "13"
+        },
+        {
+          "time": "1500",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "21",
+          "tempF": "70",
+          "chanceofrain": "10"
+        },
+        {
+          "time": "1800",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "19",
+          "tempF": "67",
+          "chanceofrain": "11"
+        },
+        {
+          "time": "2100",
+          "weatherCode": "119",
+          "weatherDesc": [
+            {
+              "value": "Cloudy "
+            }
+          ],
+          "tempC": "16",
+          "tempF": "62",
+          "chanceofrain": "8"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "maxtempC": "22",
+      "maxtempF": "71",
+      "mintempC": "13",
+      "mintempF": "55",
+      "astronomy": [
+        {
+          "sunrise": "07:16 AM",
+          "sunset": "06:32 PM"
+        }
+      ],
+      "hourly": [
+        {
+          "time": "0",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Clear "
+            }
+          ],
+          "tempC": "15",
+          "tempF": "59",
+          "chanceofrain": "6"
+        },
+        {
+          "time": "300",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Clear "
+            }
+          ],
+          "tempC": "14",
+          "tempF": "57",
+          "chanceofrain": "8"
+        },
+        {
+          "time": "600",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Clear "
+            }
+          ],
+          "tempC": "13",
+          "tempF": "55",
+          "chanceofrain": "8"
+        },
+        {
+          "time": "900",
+          "weatherCode": "116",
+          "weatherDesc": [
+            {
+              "value": "Partly Cloudy "
+            }
+          ],
+          "tempC": "14",
+          "tempF": "58",
+          "chanceofrain": "9"
+        },
+        {
+          "time": "1200",
+          "weatherCode": "113",
+          "weatherDesc": [
+            {
+              "value": "Sunny"
+            }
+          ],
+          "tempC": "19",
+          "tempF": "66",
+          "chanceofrain": "4"
+        },
+        {
+          "time": "1500",
+          "weatherCode": "119",
+          "weatherDesc": [
+            {
+              "value": "Cloudy "
+            }
+          ],
+          "tempC": "22",
+          "tempF": "71",
+          "chanceofrain": "9"
+        },
+        {
+          "time": "1800",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "19",
+          "tempF": "67",
+          "chanceofrain": "14"
+        },
+        {
+          "time": "2100",
+          "weatherCode": "122",
+          "weatherDesc": [
+            {
+              "value": "Overcast "
+            }
+          ],
+          "tempC": "18",
+          "tempF": "65",
+          "chanceofrain": "16"
+        }
+      ]
+    }
+  ]
+}

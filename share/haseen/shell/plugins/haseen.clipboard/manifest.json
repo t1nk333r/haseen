@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.clipboard",
+  "name": "Clipboard",
+  "version": "1.0.0",
+  "description": "Clipboard history with cliphist: a watcher service, a searchable panel (SUPER+CTRL+V) and a `>` launcher provider",
+  "kinds": [
+    "service",
+    "panel",
+    "launcher-provider"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "panel": "Panel.qml",
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {
+    "maxItems": {
+      "type": "integer",
+      "default": 750,
+      "description": "Entries cliphist keeps (cliphist -max-items); applies when the service starts"
+    },
+    "maxRows": {
+      "type": "integer",
+      "default": 10,
+      "description": "Text rows visible in the panel before it scrolls"
+    },
+    "width": {
+      "type": "integer",
+      "default": 480,
+      "description": "Panel width in px"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.clipboard to drive the open panel without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:write"
+  ],
+  "provides": [
+    "clipboard"
+  ]
+}

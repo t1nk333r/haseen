@@ -2,19 +2,31 @@
   "schemaVersion": 1,
   "id": "haseen.network",
   "name": "Network",
-  "version": "1.0.0",
-  "description": "NetworkManager connection state (Quickshell.Networking)",
+  "version": "1.1.0",
+  "description": "NetworkManager state in the bar and a panel for wired status and Wi-Fi (Quickshell.Networking)",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "panel"
   ],
   "entry": {
-    "bar-widget": "Widget.qml"
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
   },
   "settings": {
     "showName": {
       "type": "boolean",
       "default": false,
       "description": "Show the connected network name next to the glyph"
+    },
+    "maxNetworks": {
+      "type": "integer",
+      "default": 8,
+      "description": "Wi-Fi networks listed in the panel (strongest first)"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.network (state, prompt) while the panel is open; it never connects or toggles radios"
     }
   },
   "permissions": []

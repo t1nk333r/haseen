@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.bluetooth",
+  "name": "Bluetooth",
+  "version": "1.0.0",
+  "description": "Bluetooth state in the bar (hidden without an adapter) and a panel for power, paired devices and pairing (Quickshell.Bluetooth)",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "showName": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show the first connected device's name next to the glyph"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose read-only IPC target haseen.bluetooth (state) while the panel is open"
+    }
+  },
+  "permissions": []
+}

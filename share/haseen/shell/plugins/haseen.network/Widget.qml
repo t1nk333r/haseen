@@ -1,10 +1,12 @@
 import QtQuick
+import Quickshell
 import Quickshell.Networking
 import qs.Haseen
 import qs.Haseen.Widgets
 
 // NetworkManager over D-Bus via Quickshell.Networking: property change
-// signals only, no polling and no scanning (scannerEnabled stays off).
+// signals only, no polling and no scanning (the panel scans while open).
+// Click opens the haseen.network panel.
 BarButton {
     id: root
 
@@ -22,5 +24,7 @@ BarButton {
 
     glyph: wired ? "\u{F0200}" : wifi ? ["\u{F092F}", "\u{F091F}", "\u{F0922}", "\u{F0925}", "\u{F0928}"][Math.min(4, Math.ceil(strength * 4))] : "\u{F092E}"
     text: settings.showName === true ? (wired ? wired.name : wifiNetwork ? wifiNetwork.name : "") : ""
-    color: !wired && !wifi ? Theme.muted : limited ? Theme.warning : Theme.foreground
+    color: !wired && !wifi ? Theme.muted : limited ? Theme.warning : Theme.barForeground
+
+    onClicked: Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId])
 }
