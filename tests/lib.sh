@@ -24,7 +24,7 @@ STUBBED_CMDS=(sudo pkexec pacman paru yay makepkg sbctl systemctl limine
     limine-enroll-config limine-update limine-entry-tool limine-scan
     mkinitcpio bootctl efibootmgr mokutil cryptsetup systemd-cryptenroll
     podman docker distrobox ollama llama-server ufw snapper hyprctl qs
-    quickshell dms flatpak curl wget git)
+    quickshell dms flatpak curl wget git pkill gsettings secret-tool)
 
 # sandbox NAME — fresh scratch HOME + stub PATH; sets SANDBOX.
 sandbox() {
