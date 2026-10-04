@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# haseen:summary Check a plugin against plugin.schema.json (fields, id, kinds, entry files)
+# haseen:args <id|path>...
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin validate <id|path>...
+
+Checks every rule of share/haseen/shell/plugin.schema.json: required fields,
+the id pattern (which must equal the directory name), known kinds, an entry
+.qml file on disk for each kind, settings types and permissions. Prints the
+permissions and warns about 'network'. Exit 1 when any plugin is invalid.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} > 0)) || {
+    usage >&2
+    exit 2
+}
+
+rc=0
+for arg in "${REST[@]}"; do
+    dir="$(plugin_resolve "$arg")"
+    if problems="$(plugin_check "$dir")"; then
+        echo "ok: $(basename "$dir") ($(plugin_origin "$dir"): $dir)"
+        [[ -z $problems ]] || printf '%s\n' "$problems"
+        plugin_permissions "$dir"
+    else
+        echo "invalid: $(basename "$dir") ($dir)"
+        printf '%s\n' "$problems"
+        rc=1
+    fi
+done
+exit "$rc"

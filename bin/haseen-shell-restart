@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# haseen:summary Restart the haseen shell (the user unit when active, else the qs instance)
+# haseen:args [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen shell restart [--dry-run]
+
+Restarts haseen-shell.service when it is active. Otherwise kills the qs
+instance running \$HASEEN_PATH/shell and starts a detached one.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+shell_dir="$HASEEN_PATH/shell"
+# Read-only probe; is-active exits non-zero for inactive and unknown units.
+if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
+    run systemctl --user restart haseen-shell.service
+    info "haseen-shell.service restarted"
+    exit 0
+fi
+
+# No instance running is fine: qs kill then just reports nothing to kill.
+run qs kill -p "$shell_dir" || true
+run qs -p "$shell_dir" -d
+info "haseen shell relaunched (qs -p $shell_dir)"

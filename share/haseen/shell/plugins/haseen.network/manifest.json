@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.network",
+  "name": "Network",
+  "version": "1.0.0",
+  "description": "NetworkManager connection state (Quickshell.Networking)",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "showName": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show the connected network name next to the glyph"
+    }
+  },
+  "permissions": []
+}

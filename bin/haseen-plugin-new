@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# haseen:summary Scaffold a plugin in ~/.config/haseen/plugins/<id>/
+# haseen:args <id> --kind <kind> [--kind <kind>...] [--name <name>] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin new <id> --kind <kind> [--kind <kind>...] [--name <name>] [--dry-run]
+
+Kinds: ${PLUGIN_KINDS[*]}
+The id is <you>.<name> (lowercase, digits, dashes; haseen.* is reserved for
+built-ins). Writes manifest.json plus one QML file per kind that reads its
+colours and fonts from qs.Haseen Theme.
+EOF
+}
+parse_common_flags "$@"
+
+id=""
+name=""
+kinds=()
+set -- "${REST[@]}"
+while (($# > 0)); do
+    case "$1" in
+    --kind)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        kinds+=("$2")
+        shift 2
+        ;;
+    --kind=*)
+        kinds+=("${1#--kind=}")
+        shift
+        ;;
+    --name)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        name="$2"
+        shift 2
+        ;;
+    -*)
+        usage >&2
+        exit 2
+        ;;
+    *)
+        [[ -z $id ]] || {
+            usage >&2
+            exit 2
+        }
+        id="$1"
+        shift
+        ;;
+    esac
+done
+[[ -n $id && ${#kinds[@]} -gt 0 ]] || {
+    usage >&2
+    exit 2
+}
+
+[[ $id =~ $PLUGIN_ID_RE ]] || die "invalid id '$id': use <you>.<name>, matching $PLUGIN_ID_RE"
+[[ $id != haseen.* ]] || die "the haseen.* namespace is reserved for built-in plugins; use <you>.${id#haseen.}"
+for k in "${kinds[@]}"; do
+    plugin_kind_known "$k" || die "unknown kind '$k' (kinds: ${PLUGIN_KINDS[*]})"
+done
+mapfile -t kinds < <(printf '%s\n' "${kinds[@]}" | awk '!seen[$0]++')
+
+dest="$PLUGIN_USER_DIR/$id"
+[[ ! -e $dest ]] || die "$dest already exists"
+if [[ -z $name ]]; then
+    name="${id##*.}"
+    name="${name//-/ }"
+    name="${name^}"
+fi
+
+declare -A entry_file=([bar-widget]=Widget.qml [panel]=Panel.qml [service]=Service.qml [launcher-provider]=Provider.qml [overlay]=Overlay.qml)
+templates="$HASEEN_PATH/shell/templates"
+
+# Staged in a hidden directory (the shell's registry ignores dot-dirs) and
+# renamed into place, so the running shell only ever sees a complete plugin.
+stage="$PLUGIN_USER_DIR/.$id.new"
+if [[ -e $stage ]]; then
+    run rm -rf -- "$stage"
+fi
+
+entries="{}"
+for k in "${kinds[@]}"; do
+    entries="$(jq -c --arg k "$k" --arg f "${entry_file[$k]}" '. + {($k): $f}' <<<"$entries")"
+done
+kinds_json="$(printf '%s\n' "${kinds[@]}" | jq -R . | jq -sc .)"
+jq -n --arg id "$id" --arg name "$name" --argjson kinds "$kinds_json" --argjson entry "$entries" '{
+    schemaVersion: 1,
+    id: $id,
+    name: $name,
+    version: "0.1.0",
+    description: "",
+    kinds: $kinds,
+    entry: $entry,
+    settings: (if ($kinds | index(["bar-widget"])) then {label: {type: "string", default: $name, description: "Text shown in the bar"}} else {} end),
+    permissions: []
+}' | write_user_file "$stage/manifest.json"
+
+# Templates only carry @ID@ (regex-checked above); the display name lives in
+# the manifest, so no user text is ever spliced into QML.
+for k in "${kinds[@]}"; do
+    template="$(<"$templates/$k.qml")"
+    printf '%s\n' "${template//@ID@/"$id"}" | write_user_file "$stage/${entry_file[$k]}"
+done
+run mv -- "$stage" "$dest"
+
+info "created $dest"
+cat <<EOF
+Next:
+  haseen plugin validate $id
+  haseen plugin enable $id
+  haseen shell ipc shell reload
+EOF

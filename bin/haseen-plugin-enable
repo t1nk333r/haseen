@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# haseen:summary Turn a plugin on in ~/.config/haseen/shell.json
+# haseen:args <id> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin enable <id> [--dry-run]
+
+Sets plugins.<id>.enabled = true. A bar-widget not yet in any bar section is
+appended to bar.right; a service is appended to services. The section is
+copied from the merged config first, because a user array replaces the default.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+id="${REST[0]}"
+[[ $id =~ $PLUGIN_ID_RE ]] || die "invalid id '$id'"
+dir="$(plugin_resolve "$id")"
+if ! problems="$(plugin_check "$dir")"; then
+    printf '%s\n' "$problems"
+    die "refusing to enable invalid plugin $id (haseen plugin validate $id)"
+fi
+kinds_json="$(jq -c .kinds "$dir/manifest.json")"
+plugin_permissions "$dir"
+
+current="$(shell_user_json)"
+merged="$(shell_merged_json)"
+updated="$(jq --arg id "$id" --argjson m "$merged" --argjson kinds "$kinds_json" '
+    def has_id: any(.[]?; . == $id);
+    (if ($kinds | index(["bar-widget"])) and ([($m.bar.left // []), ($m.bar.center // []), ($m.bar.right // [])] | add | has_id | not)
+     then .bar.right = (($m.bar.right // []) + [$id]) else . end)
+    | (if ($kinds | index(["service"])) and (($m.services // []) | has_id | not)
+       then .services = (($m.services // []) + [$id]) else . end)
+    | .plugins[$id].enabled = true
+' <<<"$current")"
+
+if [[ $updated == "$current" ]]; then
+    info "$id is already enabled"
+    exit 0
+fi
+printf '%s\n' "$updated" | shell_config_write
+info "$id enabled in $SHELL_USER_CONFIG"

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# haseen:summary List shell plugins, where they come from and whether they are on
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin list
+
+STATE: enabled (in a bar section or services), disabled (plugins.<id>.enabled
+is false), available (not placed yet: haseen plugin enable <id>), on-demand
+(panels and other kinds opened through IPC), invalid (haseen plugin validate <id>).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+printf '%-28s %-8s %-10s %-24s %s\n' ID ORIGIN STATE KINDS NAME
+while read -r id; do
+    [[ -n $id ]] || continue
+    dir="$(plugin_dir "$id")"
+    origin="$(plugin_origin "$dir")"
+    [[ $origin == user && -d $PLUGIN_BUILTIN_DIR/$id ]] && origin="user*"
+    if plugin_check "$dir" >/dev/null; then
+        mapfile -t kinds < <(plugin_field "$dir" '.kinds[]')
+        state="$(plugin_state "$id" "${kinds[@]}")"
+        printf '%-28s %-8s %-10s %-24s %s\n' "$id" "$origin" "$state" "$(
+            IFS=,
+            echo "${kinds[*]}"
+        )" "$(plugin_field "$dir" .name)"
+    else
+        printf '%-28s %-8s %-10s %-24s %s\n' "$id" "$origin" invalid - "-"
+    fi
+done < <(plugin_ids)
+echo "(user* = user copy overriding a built-in)"

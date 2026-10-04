@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.audio",
+  "name": "Audio",
+  "version": "1.0.0",
+  "description": "Default output volume; scroll to change, click to mute",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "step": {
+      "type": "number",
+      "default": 0.05,
+      "description": "Volume change per scroll step (0-1)"
+    }
+  },
+  "permissions": []
+}

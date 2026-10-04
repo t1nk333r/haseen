@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "description": "Time and date in the bar",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "format": {
+      "type": "string",
+      "default": "HH:mm",
+      "description": "Qt date format"
+    }
+  },
+  "permissions": []
+}

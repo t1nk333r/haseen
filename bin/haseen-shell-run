@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# haseen:summary Run the haseen Quickshell shell in the foreground (used by haseen-shell.service)
+# haseen:args [qs options]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen shell run [qs options]
+
+Execs: qs -p \$HASEEN_PATH/shell [qs options]
+Normally started by haseen-shell.service; extra options go to qs (e.g. -n).
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
+[[ -r $HASEEN_PATH/shell/shell.qml ]] || die "shell not found: $HASEEN_PATH/shell/shell.qml"
+have qs || die "quickshell (qs) is not installed: haseen layer apply shell"
+exec qs -p "$HASEEN_PATH/shell" "$@"

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.workspaces",
+  "name": "Workspaces",
+  "version": "1.0.0",
+  "description": "Hyprland workspaces on this screen; click to focus",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "allMonitors": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show workspaces from every monitor, not just this bar's screen"
+    }
+  },
+  "permissions": []
+}

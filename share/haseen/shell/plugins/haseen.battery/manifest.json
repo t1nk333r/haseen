@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.battery",
+  "name": "Battery",
+  "version": "1.0.0",
+  "description": "Battery level via UPower; hidden without a battery",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "low": {
+      "type": "number",
+      "default": 15,
+      "description": "Percentage at which the level turns urgent"
+    }
+  },
+  "permissions": []
+}

@@ -165,7 +165,12 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 - No `Timer` with an interval under 2 s. A timer runs only while its consumer is visible, or as a service whose job requires it. Prefer events: Hyprland IPC, PipeWire, UPower and NetworkManager D-Bus, `FileView` watches.
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python in the shell path.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
-- Measure before claiming. `haseen doctor` prints the shell's RSS. The idle budget for the shell is < 150 MB RSS and ~0 % CPU, measured on the reference machine.
+- Measure before claiming. `haseen doctor` prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
+  - bare `qs` with an empty config: 122 MiB RSS
+  - haseen default bar on the software backend: 178 MiB RSS / 126 MiB PSS, 0.01 s CPU per 60 s
+  - omarchy-shell beside it: 630 MiB RSS / 554 MiB PSS
+
+  Any change that adds more than 10 MiB idle must say so in its plan.
 
 ## 7. Themes
 

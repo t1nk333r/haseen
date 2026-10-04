@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# haseen:summary Turn a plugin off in ~/.config/haseen/shell.json
+# haseen:args <id> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin disable <id> [--dry-run]
+
+Removes the id from every bar section and from services, and sets
+plugins.<id>.enabled = false. Works for ids that no longer exist on disk.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+id="${REST[0]}"
+[[ $id =~ $PLUGIN_ID_RE ]] || die "invalid id '$id'"
+plugin_dir "$id" >/dev/null || warn "no plugin '$id' on disk; removing it from shell.json anyway"
+
+current="$(shell_user_json)"
+merged="$(shell_merged_json)"
+updated="$(jq --arg id "$id" --argjson m "$merged" '
+    def has_id: any(.[]?; . == $id);
+    reduce ("left", "center", "right") as $s (.;
+        if (($m.bar[$s] // []) | has_id) then .bar[$s] = ($m.bar[$s] - [$id]) else . end)
+    | (if (($m.services // []) | has_id) then .services = ($m.services - [$id]) else . end)
+    | .plugins[$id].enabled = false
+' <<<"$current")"
+
+if [[ $updated == "$current" ]]; then
+    info "$id is already disabled"
+    exit 0
+fi
+printf '%s\n' "$updated" | shell_config_write
+info "$id disabled in $SHELL_USER_CONFIG"

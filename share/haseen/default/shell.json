@@ -1,0 +1,11 @@
+{
+  "bar": {
+    "position": "top",
+    "height": 28,
+    "left": ["haseen.workspaces"],
+    "center": ["haseen.clock"],
+    "right": ["haseen.tray", "haseen.audio", "haseen.network", "haseen.battery"]
+  },
+  "plugins": {},
+  "services": []
+}

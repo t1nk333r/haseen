@@ -1,0 +1,6 @@
+# The haseen shell. Quickshell 0.3 ships the Hyprland, PipeWire, UPower,
+# SystemTray and NetworkManager (Quickshell.Networking) modules it uses.
+quickshell
+jq                      # haseen plugin validate/enable/disable
+upower                  # battery widget (D-Bus)
+ttf-nerd-fonts-symbols  # bar glyphs

@@ -1,0 +1,5 @@
+module qs.Haseen
+singleton Paths 1.0 Paths.qml
+singleton Theme 1.0 Theme.qml
+singleton Config 1.0 Config.qml
+singleton Plugins 1.0 Plugins.qml

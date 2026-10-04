@@ -10,7 +10,7 @@ Read `handoff.md` first.
 | 002 | Secure Boot layer for Windows dual boot | P1 | L | 001 | DONE 2026-10-04 (205 tests; read-only live `status` ok; firmware enrollment = owner step, plan 014) |
 | 003 | Base, desktop and gaming layers | P1 | L | 001 | DONE 2026-10-04 (128 tests; `Hyprland --verify-config` ok; real login pending 014) |
 | 004 | Theme pipeline compatible with Omarchy colors.toml | P1 | M | 001 | DONE 2026-10-04 (215 tests; byte-parity with Omarchy renderer) |
-| 005 | Quickshell shell core and plugin host | P1 | L | 001 | PLANNED |
+| 005 | Quickshell shell core and plugin host | P1 | L | 001 | DONE 2026-10-04 (157 tests; live bar screenshot; 178 MiB RSS idle vs omarchy-shell 630) |
 | 006 | Local AI layer | P2 | M | 001 | DONE 2026-10-04 (164 tests; live streamed chat vs stub server) |
 | 007 | VAPT layer (BlackArch, contained by default) | P2 | M | 001 | BLOCKED 2026-10-04: owner hands it to DeepSeek; group lists + verified pins in `share/haseen/layers/vapt/groups/` |
 | 008 | DMS optional layer and shell switch | P2 | S | 005 | DONE 2026-10-04 (99 tests; `systemd-analyze verify` ok; live switch pending, DMS not installed) |

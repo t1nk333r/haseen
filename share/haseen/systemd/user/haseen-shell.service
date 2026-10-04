@@ -1,0 +1,15 @@
+[Unit]
+Description=haseen shell (Quickshell bar, panels and plugins)
+PartOf=graphical-session.target
+After=graphical-session.target
+Conflicts=dms.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env haseen shell run
+Restart=on-failure
+RestartSec=2
+Slice=app-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

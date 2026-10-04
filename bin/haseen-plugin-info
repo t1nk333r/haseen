@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# haseen:summary Show a plugin's manifest, settings, permissions and state
+# haseen:args <id>
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() { echo "Usage: haseen plugin info <id|path>"; }
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+
+dir="$(plugin_resolve "${REST[0]}")"
+if ! problems="$(plugin_check "$dir")"; then
+    printf '%s\n' "$problems"
+    die "invalid plugin: $dir (haseen plugin validate ${REST[0]})"
+fi
+id="$(plugin_field "$dir" .id)"
+mapfile -t kinds < <(plugin_field "$dir" '.kinds[]')
+jq -r --arg dir "$dir" --arg origin "$(plugin_origin "$dir")" '
+    "id:          \(.id)",
+    "name:        \(.name)",
+    "version:     \(.version)",
+    "description: \(if (.description // "") == "" then "-" else .description end)",
+    "origin:      \($origin) (\($dir))",
+    "kinds:       \(.kinds | join(", "))",
+    (.entry | to_entries[] | "entry:       \(.key) -> \(.value)"),
+    "provides:    \((.provides // []) | if length == 0 then "-" else join(", ") end)",
+    (if (.settings // {}) == {} then "settings:    -"
+     else "settings:", (.settings | to_entries[] | "  \(.key) (\(.value.type)) default=\(.value.default | tojson)\(if .value.description then " - " + .value.description else "" end)")
+     end)
+' "$dir/manifest.json"
+echo "state:       $(plugin_state "$id" "${kinds[@]}")"
+user_settings="$(shell_merged_json | jq -c --arg id "$id" '.plugins[$id].settings // empty')"
+[[ -z $user_settings ]] || echo "shell.json settings: $user_settings"
+plugin_permissions "$dir"

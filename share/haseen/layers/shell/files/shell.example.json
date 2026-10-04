@@ -1,0 +1,35 @@
+{
+  "bar": {
+    "position": "top",
+    "height": 28,
+    "left": [
+      "haseen.workspaces"
+    ],
+    "center": [
+      "haseen.clock"
+    ],
+    "right": [
+      "haseen.tray",
+      "haseen.audio",
+      "haseen.network",
+      "haseen.battery"
+    ]
+  },
+  "plugins": {
+    "haseen.clock": {
+      "enabled": true,
+      "settings": {
+        "format": "ddd d MMM  HH:mm"
+      }
+    },
+    "haseen.network": {
+      "settings": {
+        "showName": true
+      }
+    },
+    "haseen.battery": {
+      "enabled": false
+    }
+  },
+  "services": []
+}

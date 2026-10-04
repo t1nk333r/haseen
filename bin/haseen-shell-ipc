@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# haseen:summary Call the running shell over IPC (haseen shell or DMS, whichever is active)
+# haseen:args <target> <function> [args...]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen shell ipc <target> <function> [args...]
+
+Targets (architecture 5.5):
+  shell reload | shell plugins
+  panel toggle <id> | panel close
+  launcher toggle
+  lock lock
+  notifications clear | notifications toggleDnd
+
+When \$HASEEN_USER_STATE/active-shell says dms, the call goes to
+\$HASEEN_PATH/layers/dms/ipc-translate so Hyprland binds work with either shell.
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+esac
+(($# >= 2)) || {
+    usage >&2
+    exit 2
+}
+
+active=""
+if [[ -r $HASEEN_USER_STATE/active-shell ]]; then
+    read -r active _ <"$HASEEN_USER_STATE/active-shell" || true
+fi
+if [[ $active == dms ]]; then
+    translate="$HASEEN_PATH/layers/dms/ipc-translate"
+    [[ -x $translate ]] || die "active-shell is dms but $translate is missing (haseen layer apply dms)"
+    exec "$translate" "$@"
+fi
+exec qs -p "$HASEEN_PATH/shell" ipc call "$@"

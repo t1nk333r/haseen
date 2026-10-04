@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.tray",
+  "name": "Tray",
+  "version": "1.0.0",
+  "description": "StatusNotifier tray icons",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "permissions": []
+}
