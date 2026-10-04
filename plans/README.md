@@ -17,6 +17,6 @@ Read `handoff.md` first.
 | 009 | NixOS flake | P2 | L | 003 004 005 002 | DONE 2026-10-04 (`nix flake check` + toplevel eval + package build via nix-portable; no boot) |
 | 010 | Shell system surfaces | P1 | L | 005 | PLANNED |
 | 011 | Omarchy and DMS plugin compat adapters | P2 | L | 005 | PLANNED |
-| 012 | AI panel plugin and the haseen agent skill | P2 | M | 005 006 | PLANNED |
+| 012 | AI panel plugin and the haseen agent skill | P2 | M | 005 006 | DONE 2026-10-04 (75 tests; live streamed chat over IPC; skill followed end to end) |
 | 013 | PKGBUILDs for the stable layers | P3 | M | 001-012 | PLANNED (later phase, owner decision 2026-10-04) |
 | 014 | End-to-end acceptance on a real CachyOS guest | P1 | M | 001-012 | BLOCKED: no qemu, no sudo and no docker access on the author's laptop session (2026-10-04) |

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.ai",
+  "name": "AI",
+  "version": "1.0.0",
+  "description": "Chat with the local model (haseen ai chat); SUPER+A",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "endpoint": {
+      "type": "string",
+      "default": "",
+      "description": "ai.json endpoint name; empty = ai.json \"default\""
+    }
+  },
+  "permissions": [
+    "exec",
+    "network:local",
+    "files:write"
+  ]
+}

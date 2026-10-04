@@ -1,6 +1,5 @@
 # path<TAB>reason — paths the agent docs name that legitimately do not exist yet
 nix/	plan 009 creates it
-share/haseen/agents/skills/haseen/	plan 012 creates it
 share/haseen/shell/plugin.schema.json	plan 005 creates it
 plans/NNN-slug.md	naming pattern, not a file
 gitlab.com/t1nk33r/waydots	external repository

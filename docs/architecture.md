@@ -92,7 +92,7 @@ Rules every layer follows:
   - `Paths`: path constants.
   - `Plugins`: plugin registry.
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, …).
-- `qs.Compat.*` — **only** for adapted plugins (§5.4). Native code never imports it.
+- Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
 ### 5.2 Plugin manifest (`manifest.json`, schema `share/haseen/shell/plugin.schema.json`)
 

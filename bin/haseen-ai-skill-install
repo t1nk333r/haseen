@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# haseen:summary Link the haseen agent skill into the skill dirs of installed AI agents
+# haseen:args    [--dry-run]
+#
+# The agent list follows Omarchy's bin/omarchy-provision-user (MIT, David
+# Heinemeier Hansson): ~/.agents, ~/.claude, ~/.codex, ~/.pi/agent,
+# ~/.gemini/config and ~/.hermes (plus its profiles). Unlike Omarchy, only
+# agents that are present get a link, so no empty dot-directories appear.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen ai skill install [--dry-run]
+
+Symlinks $HASEEN_PATH/agents/skills/haseen to <skills dir>/haseen for every
+AI agent whose home exists:
+  ~/.agents            -> ~/.agents/skills
+  ~/.claude            -> ~/.claude/skills          ($CLAUDE_CONFIG_DIR honoured)
+  ~/.codex             -> ~/.codex/skills           ($CODEX_HOME honoured)
+  ~/.pi/agent          -> ~/.pi/agent/skills
+  ~/.gemini            -> ~/.gemini/config/skills
+  ~/.hermes            -> ~/.hermes/skills and ~/.hermes/profiles/*/skills
+An existing link to the skill is left as it is; a link elsewhere is replaced;
+a real file or directory named haseen is never touched.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+src="$HASEEN_PATH/agents/skills/haseen"
+[[ -r $src/SKILL.md ]] || die "skill not found: $src/SKILL.md"
+
+# "agent home<TAB>skills dir" for every agent that is present.
+skill_dirs() {
+    local claude="${CLAUDE_CONFIG_DIR:-$HOME/.claude}" codex="${CODEX_HOME:-$HOME/.codex}" profile
+    [[ -d $HOME/.agents ]] && printf '%s\t%s\n' "$HOME/.agents" "$HOME/.agents/skills"
+    [[ -d $claude ]] && printf '%s\t%s\n' "$claude" "$claude/skills"
+    [[ -d $codex ]] && printf '%s\t%s\n' "$codex" "$codex/skills"
+    [[ -d $HOME/.pi/agent ]] && printf '%s\t%s\n' "$HOME/.pi/agent" "$HOME/.pi/agent/skills"
+    [[ -d $HOME/.gemini ]] && printf '%s\t%s\n' "$HOME/.gemini" "$HOME/.gemini/config/skills"
+    if [[ -d $HOME/.hermes ]]; then
+        printf '%s\t%s\n' "$HOME/.hermes" "$HOME/.hermes/skills"
+        for profile in "$HOME"/.hermes/profiles/*/; do
+            [[ -d $profile ]] && printf '%s\t%s\n' "${profile%/}" "${profile%/}/skills"
+        done
+    fi
+    return 0
+}
+
+found=0
+while IFS=$'\t' read -r home dir; do
+    found=$((found + 1))
+    link="$dir/haseen"
+    if [[ -L $link && $(readlink "$link") == "$src" ]]; then
+        info "$link: already linked"
+        continue
+    fi
+    if [[ -e $link && ! -L $link ]]; then
+        warn "$link exists and is not a symlink; left alone"
+        continue
+    fi
+    [[ -d $dir ]] || run mkdir -p "$dir"
+    run ln -sfn "$src" "$link"
+    $DRY_RUN || info "$link -> $src (agent home $home)"
+done < <(skill_dirs)
+
+((found > 0)) || info "no AI agent found (looked for ~/.agents ~/.claude ~/.codex ~/.pi/agent ~/.gemini ~/.hermes); nothing linked"
