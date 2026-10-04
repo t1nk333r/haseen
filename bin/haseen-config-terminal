@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# haseen:summary Run a command in a floating terminal that stays open until Enter
+# haseen:args [--dry-run] -- <command> [args...]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen config terminal [--dry-run] -- <command> [args...]
+
+Opens \$TERMINAL (foot when unset) with app-id haseen.floating, which the
+window rules float and centre, runs the command and waits for Enter.
+EOF
+}
+
+# Only flags before `--` are ours; everything after belongs to the command.
+while (($# > 0)); do
+    case "$1" in
+    --dry-run) DRY_RUN=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --)
+        shift
+        break
+        ;;
+    *) break ;;
+    esac
+    shift
+done
+(($# > 0)) || {
+    usage >&2
+    exit 2
+}
+floating_terminal_exec "$@"

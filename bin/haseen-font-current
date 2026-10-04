@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# haseen:summary Print the mono font chosen with haseen font set (empty: the theme's)
+# haseen:args
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen font current
+
+Prints the family in $HASEEN_USER_CONFIG/font, or nothing when the theme's
+font is in use.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+f="$HASEEN_USER_CONFIG/font"
+[[ -r $f ]] && head -n1 "$f"
+exit 0

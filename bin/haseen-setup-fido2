@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# haseen:summary Use a FIDO2 security key for sudo and polkit (pam-u2f)
+# haseen:args [--dry-run] [--yes]
+#
+# Steps adapted from Omarchy bin/omarchy-setup-security-fido2 (MIT,
+# Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+PAM_LINE="auth      sufficient pam_u2f.so cue"
+PAM_FILES=(/etc/pam.d/sudo /etc/pam.d/polkit-1)
+KEYS="${XDG_CONFIG_HOME:-$HOME/.config}/Yubico/u2f_keys"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup fido2 [--dry-run] [--yes]
+
+Installs pam-u2f and libfido2, registers the plugged-in key with pamu2fcfg
+into $KEYS (touch the key when it blinks), then puts
+"$PAM_LINE" first in ${PAM_FILES[*]}.
+EOF
+}
+
+# pam_prepend FILE LINE — FILE with LINE inserted before its first rule.
+pam_prepend() {
+    local src
+    src="$(sysroot_path "$1")"
+    [[ -r $src ]] || return 0
+    grep -qF pam_u2f.so "$src" && return 0
+    awk -v line="$2" '!done && /^[[:space:]]*[a-z-]+[[:space:]]/ && !/^[[:space:]]*#/ { print line; done = 1 } { print } END { if (!done) print line }' "$src" | write_root_file "$1" 0644
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+confirm "Enable FIDO2 security key authentication for sudo and polkit?" || exit 1
+[[ -x $(sysroot_path /usr/bin/pamu2fcfg) ]] || run_root pacman -S --needed --noconfirm pam-u2f libfido2
+if $DRY_RUN; then
+    echo "DRYRUN: pamu2fcfg >> $KEYS"
+else
+    mkdir -p "$(dirname "$KEYS")"
+    info "touch your security key when it blinks"
+    if [[ -s $KEYS ]]; then
+        pamu2fcfg -n >>"$KEYS"
+    else
+        pamu2fcfg >"$KEYS"
+    fi
+    chmod 600 "$KEYS"
+fi
+# pam_u2f looks in ~/.config/Yubico/u2f_keys by default; nothing else to set.
+for f in "${PAM_FILES[@]}"; do
+    pam_prepend "$f" "$PAM_LINE"
+done
+info "FIDO2 key set up"

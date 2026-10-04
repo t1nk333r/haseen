@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# haseen:summary List installed monospace fonts usable as the terminal and shell mono font
+# haseen:args
+#
+# Filter adapted from Omarchy bin/omarchy-font-list (MIT, Copyright (c) David
+# Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen font list
+
+Monospace families from fontconfig, one per line, sorted; emoji, symbol and
+"Nerd Font Propo"/"Nerd Font Mono" duplicates are left out. Pick one with
+haseen font set NAME.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_cmds fc-list
+fc-list :spacing=mono family | cut -d, -f1 |
+    grep -viE 'emoji|symbol|nerd font (propo|mono)$|^$' |
+    sort -u

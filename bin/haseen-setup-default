@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# haseen:summary Set (or print) the default browser, terminal, editor or coding agent
+# haseen:args <browser|terminal|editor|agent> [name] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup default <browser|terminal|editor|agent> [name] [--dry-run]
+
+Without a name, prints the current default.
+  browser   firefox chromium chrome brave zen   (xdg-settings + http/https MIME)
+  terminal  foot alacritty ghostty kitty        (\$TERMINAL)
+  editor    nvim helix vim code zed emacs       (\$EDITOR)
+  agent     claude codex opencode omp gemini crush  (\$HASEEN_AGENT)
+Variables go to ~/.config/uwsm/env.d/60-haseen-defaults, read by the next
+login, and into the running systemd user manager for apps started now.
+EOF
+}
+
+ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/60-haseen-defaults"
+
+# name -> what the setting stores (command or .desktop id).
+declare -A BROWSERS=([firefox]=firefox.desktop [chromium]=chromium.desktop [chrome]=google-chrome.desktop
+    [brave]=brave-browser.desktop [zen]=zen.desktop)
+declare -A TERMINALS=([foot]=foot [alacritty]=alacritty [ghostty]=ghostty [kitty]=kitty)
+declare -A EDITORS=([nvim]=nvim [helix]=helix [vim]=vim [code]=code [zed]=zeditor [emacs]=emacs)
+declare -A AGENTS=([claude]=claude [codex]=codex [opencode]=opencode [omp]=omp [gemini]=gemini [crush]=crush)
+declare -A VARS=([browser]=BROWSER [terminal]=TERMINAL [editor]=EDITOR [agent]=HASEEN_AGENT)
+
+# env_value VAR — the value our env file exports for VAR, if any.
+env_value() {
+    [[ -r $ENV_FILE ]] || return 0
+    sed -n "s/^export $1=//p" "$ENV_FILE" | tail -n1 | tr -d "'\""
+}
+
+# name_for KIND VALUE — the menu name whose stored value is VALUE.
+name_for() {
+    local -n map="$2"
+    local k
+    for k in "${!map[@]}"; do
+        [[ ${map[$k]} == "$3" || $k == "$3" ]] && {
+            echo "$k"
+            return 0
+        }
+    done
+    [[ -n $3 ]] && echo "$3"
+    return 0
+}
+
+current() {
+    case "$1" in
+    browser)
+        local v
+        v="$(env_value BROWSER)"
+        [[ -n $v ]] || v="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+        name_for browser BROWSERS "${v%.desktop}.desktop" | sed 's/\.desktop$//'
+        ;;
+    terminal) name_for terminal TERMINALS "$(env_value TERMINAL | grep . || printf '%s' "${TERMINAL:-}")" ;;
+    editor) name_for editor EDITORS "$(env_value EDITOR | grep . || printf '%s' "${EDITOR:-}")" ;;
+    agent) name_for agent AGENTS "$(env_value HASEEN_AGENT | grep . || printf '%s' "${HASEEN_AGENT:-}")" ;;
+    esac
+}
+
+# write_env VAR VALUE — the env file with VAR replaced, the rest kept.
+write_env() {
+    {
+        echo "# Written by \`haseen setup default\`. Later files in env.d override it."
+        [[ -r $ENV_FILE ]] && grep -v -e "^export $1=" -e '^# Written by' "$ENV_FILE"
+        printf 'export %s=%q\n' "$1" "$2"
+    } | write_user_file "$ENV_FILE"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 1 && $# <= 2)) || {
+    usage >&2
+    exit 2
+}
+kind="$1"
+[[ -n ${VARS[$kind]:-} ]] || {
+    usage >&2
+    exit 2
+}
+if (($# == 1)); then
+    current "$kind"
+    exit 0
+fi
+name="$2"
+case "$kind" in
+browser) value="${BROWSERS[$name]:-}" ;;
+terminal) value="${TERMINALS[$name]:-}" ;;
+editor) value="${EDITORS[$name]:-}" ;;
+agent) value="${AGENTS[$name]:-}" ;;
+esac
+[[ -n $value ]] || die "unknown $kind '$name' (see haseen setup default --help)"
+
+var="${VARS[$kind]}"
+if [[ $kind == browser ]]; then
+    run xdg-settings set default-web-browser "$value"
+    for mime in x-scheme-handler/http x-scheme-handler/https text/html; do
+        run xdg-mime default "$value" "$mime"
+    done
+    write_env BROWSER "${value%.desktop}"
+else
+    have "$value" || $DRY_RUN || warn "$value is not installed yet"
+    write_env "$var" "$value"
+fi
+run systemctl --user set-environment "$var=${value%.desktop}"
+info "default $kind: $name"

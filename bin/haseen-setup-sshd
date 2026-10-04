@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# haseen:summary Enable the SSH server (key-only logins) and open its firewall port
+# haseen:args [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+DROPIN=/etc/ssh/sshd_config.d/90-haseen.conf
+
+usage() {
+    cat <<EOF
+Usage: haseen setup sshd [--dry-run] [--yes]
+
+Installs openssh, writes $DROPIN (no root login, no
+passwords: add your public key to ~/.ssh/authorized_keys first), enables
+sshd.service and, when ufw is active, allows port 22.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+if [[ ! -s $HOME/.ssh/authorized_keys ]]; then
+    warn "$HOME/.ssh/authorized_keys is empty: password logins stay off, so nobody can log in until you add a key"
+fi
+confirm "Enable the SSH server on this machine?" || exit 1
+[[ -x $(sysroot_path /usr/bin/sshd) ]] || run_root pacman -S --needed --noconfirm openssh
+write_root_file "$DROPIN" 0644 <<'EOF'
+# Written by `haseen setup sshd`.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+run_root systemctl enable --now sshd.service
+if [[ -x $(sysroot_path /usr/bin/ufw) ]]; then
+    run_root ufw allow 22/tcp
+fi
+info "sshd enabled"

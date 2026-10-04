@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# haseen:summary Use a monospace font in the terminals and the shell (or --reset to the theme's)
+# haseen:args <NAME|--reset> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen font set <NAME|--reset> [--dry-run]
+
+Writes NAME to $HASEEN_USER_CONFIG/font, which the theme render uses for
+font_mono (shell fontMono, foot, kitty, ghostty, alacritty), then re-applies
+the current theme. --reset removes the file. NAME must be an installed
+family: see haseen font list.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+name="${REST[0]}"
+file="$HASEEN_USER_CONFIG/font"
+if [[ $name == --reset ]]; then
+    [[ -e $file ]] && run rm -f "$file"
+else
+    # The theme render accepts only this charset; refuse rather than be ignored.
+    [[ $name =~ ^[A-Za-z0-9\ ._+-]+$ ]] || die "invalid font name '$name'"
+    if have fc-list && ! fc-list : family | tr ',' '\n' | grep -qxF "$name"; then
+        die "font '$name' is not installed (haseen font list)"
+    fi
+    printf '%s\n' "$name" | write_user_file "$file"
+fi
+theme="$(haseen theme current 2>/dev/null || true)"
+if [[ -n $theme ]]; then
+    if $DRY_RUN; then
+        haseen theme set "$theme" --dry-run
+    else
+        haseen theme set "$theme"
+    fi
+else
+    warn "no theme set yet; the font applies with the next haseen theme set"
+fi

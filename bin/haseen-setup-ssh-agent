@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# haseen:summary Use the GNOME keyring SSH agent (gcr-ssh-agent) for this user
+# haseen:args [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/61-haseen-ssh-agent"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup ssh-agent [--dry-run]
+
+Enables gcr-ssh-agent.socket for this user (installs gcr-4 when missing) and
+exports SSH_AUTH_SOCK=\$XDG_RUNTIME_DIR/gcr/ssh through
+$ENV_FILE, read at the next login.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+[[ -e $(sysroot_path /usr/lib/systemd/user/gcr-ssh-agent.socket) ]] || run_root pacman -S --needed --noconfirm gcr-4
+run systemctl --user enable --now gcr-ssh-agent.socket
+write_user_file "$ENV_FILE" <<'EOF'
+# Written by `haseen setup ssh-agent`.
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/gcr/ssh"
+EOF
+run systemctl --user set-environment "SSH_AUTH_SOCK=${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh"
+info "ssh agent enabled (new terminals use it now; everything after the next login)"

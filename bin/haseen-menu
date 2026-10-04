@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# haseen:summary Open the command menu, optionally at a submenu (trigger.capture, setup, power, …)
+# haseen:args [path] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen menu [path] [--dry-run]
+
+Toggles the menu (plugin haseen.menu) over IPC (target menu, toggle(path)).
+PATH is a menu id from $HASEEN_PATH/default/menu.jsonc (trigger.capture,
+setup.network.dns) or one of its aliases (capture, power, dns). A path that
+names an action runs it. Calling it again with the same path closes the menu.
+Your additions and overrides go in ~/.config/haseen/menu.jsonc.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+path="${REST[0]:-}"
+[[ -z $path || $path =~ ^:?[A-Za-z0-9._-]+$ ]] || die "invalid menu path '$path'"
+run haseen shell ipc menu toggle "$path"

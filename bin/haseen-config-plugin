@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# haseen:summary Add (scaffold) or remove one of your own shell plugins in ~/.config/haseen/plugins
+# haseen:args <add [ID KIND]|remove ID|list-removable> [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+PLUGINS="$HASEEN_USER_CONFIG/plugins"
+
+usage() {
+    cat <<EOF
+Usage: haseen config plugin add [ID KIND] [--dry-run]
+       haseen config plugin remove ID [--dry-run] [--yes]
+       haseen config plugin list-removable
+
+add      asks for an id and kind when not given, then runs haseen plugin new
+remove   disables ID and deletes $PLUGINS/ID
+list-removable  ids under $PLUGINS
+Only $PLUGINS is ever touched. Plugins read from
+~/.config/omarchy/plugins and ~/.config/DankMaterialShell/plugins are never
+removed: disable those with haseen plugin disable.
+EOF
+}
+
+# user_plugin_dir ID — the real directory of ID under $PLUGINS, or failure.
+# The resolved path must stay inside $PLUGINS: a symlink pointing at an
+# Omarchy or DMS plugin is refused, never followed.
+user_plugin_dir() {
+    local dir real root
+    [[ $1 =~ ^[a-z0-9-]+(\.[a-z0-9-]+)+$ ]] || return 1
+    dir="$PLUGINS/$1"
+    [[ -d $dir && ! -L $dir ]] || return 1
+    real="$(readlink -f "$dir")"
+    root="$(readlink -f "$PLUGINS")"
+    [[ $real == "$root/$1" ]] || return 1
+    printf '%s\n' "$real"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+verb="${1:-}"
+case "$verb" in
+list-removable)
+    (($# == 1)) || {
+        usage >&2
+        exit 2
+    }
+    [[ -d $PLUGINS ]] || exit 0
+    for d in "$PLUGINS"/*/; do
+        id="$(basename "$d")"
+        user_plugin_dir "$id" >/dev/null && printf '%s\n' "$id"
+    done
+    exit 0
+    ;;
+add)
+    shift
+    if (($# == 0)); then
+        in_floating_terminal add
+        read -r -p "Plugin id (you.name): " id
+        read -r -p "Kind (bar-widget, panel, service, launcher-provider, overlay) [bar-widget]: " kind
+        set -- "$id" "${kind:-bar-widget}"
+    fi
+    (($# == 2)) || {
+        usage >&2
+        exit 2
+    }
+    args=("$1" --kind "$2")
+    $DRY_RUN && args+=(--dry-run)
+    haseen plugin new "${args[@]}"
+    ;;
+remove)
+    (($# == 2)) || {
+        usage >&2
+        exit 2
+    }
+    id="$2"
+    dir="$(user_plugin_dir "$id")" || die "'$id' is not a plugin of yours in $PLUGINS"
+    confirm "Delete $dir?" || exit 1
+    if $DRY_RUN; then
+        haseen plugin disable "$id" --dry-run || true
+    else
+        haseen plugin disable "$id" >/dev/null 2>&1 || true
+    fi
+    run rm -rf -- "$dir"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

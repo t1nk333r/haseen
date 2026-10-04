@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.menu",
+  "name": "Menu",
+  "version": "1.0.0",
+  "description": "Command menu: apps, triggers, style, setup, install, update, about and power, from default/menu.jsonc plus ~/.config/haseen/menu.jsonc",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "width": {
+      "type": "integer",
+      "default": 380,
+      "description": "Panel width in px"
+    },
+    "maxRows": {
+      "type": "integer",
+      "default": 10,
+      "description": "Rows shown before the list scrolls"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.menu (select, back, accept, search, state) to drive the open menu without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ],
+  "provides": [
+    "menu"
+  ]
+}

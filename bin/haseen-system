@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# haseen:summary Lock, suspend, hibernate, log out, reboot or shut down
+# haseen:args <lock|suspend|hibernate|logout|reboot|shutdown> [--available] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen system <lock|suspend|hibernate|logout|reboot|shutdown> [--dry-run]
+       haseen system hibernate --available
+
+lock      the shell's lock screen (IPC lock lock), else loginctl lock-session
+suspend   systemctl suspend
+hibernate systemctl hibernate; --available exits 0 only when the kernel
+          offers suspend-to-disk and swap at least the size of RAM is active
+logout    ends the uwsm session (uwsm stop), else Hyprland's exit dispatcher
+reboot    systemctl reboot
+shutdown  systemctl poweroff
+EOF
+}
+
+# Suspend-to-disk needs kernel support (disk in /sys/power/state) and room
+# for the RAM image in swap. Read through sysroot_path so tests use fixtures.
+hibernate_available() {
+    local state swaps meminfo ram swap
+    state="$(sysroot_path /sys/power/state)"
+    swaps="$(sysroot_path /proc/swaps)"
+    meminfo="$(sysroot_path /proc/meminfo)"
+    [[ -r $state ]] && grep -qw disk "$state" || return 1
+    [[ -r $swaps && -r $meminfo ]] || return 1
+    ram="$(awk '/^MemTotal:/ { print $2 }' "$meminfo")"
+    swap="$(awk 'NR > 1 { s += $3 } END { print s + 0 }' "$swaps")"
+    ((swap >= ram))
+}
+
+parse_common_flags "$@"
+available=false
+action=""
+for a in "${REST[@]}"; do
+    case "$a" in
+    --available) available=true ;;
+    lock | suspend | hibernate | logout | reboot | shutdown)
+        [[ -z $action ]] || {
+            usage >&2
+            exit 2
+        }
+        action="$a"
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+[[ -n $action ]] || {
+    usage >&2
+    exit 2
+}
+if $available; then
+    [[ $action == hibernate ]] || {
+        usage >&2
+        exit 2
+    }
+    hibernate_available
+    exit
+fi
+
+case "$action" in
+lock)
+    if $DRY_RUN; then
+        run haseen shell ipc lock lock
+    else
+        haseen shell ipc lock lock 2>/dev/null || loginctl lock-session
+    fi
+    ;;
+suspend) run systemctl suspend ;;
+hibernate)
+    hibernate_available || die "hibernation is not available (needs suspend-to-disk and swap >= RAM)"
+    run systemctl hibernate
+    ;;
+logout)
+    # uwsm owns the session when it is installed (layers/desktop); stopping it
+    # tears Hyprland and every app unit down cleanly.
+    if have uwsm; then
+        run uwsm stop
+    else
+        run hyprctl dispatch 'hl.dsp.exit()'
+    fi
+    ;;
+reboot) run systemctl reboot ;;
+shutdown) run systemctl poweroff ;;
+esac

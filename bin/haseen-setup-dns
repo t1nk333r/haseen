@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# haseen:summary Choose DNS servers (systemd-resolved): DHCP, Cloudflare, Google or custom
+# haseen:args [dhcp|cloudflare|google|custom [SERVER...]] [--dry-run]
+#
+# Provider set and DoT choice adapted from Omarchy bin/omarchy-setup-dns (MIT,
+# Copyright (c) David Heinemeier Hansson); haseen writes one resolved drop-in
+# instead of editing resolved.conf and NetworkManager connections.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+DROPIN=/etc/systemd/resolved.conf.d/90-haseen-dns.conf
+
+usage() {
+    cat <<EOF
+Usage: haseen setup dns [dhcp|cloudflare|google|custom [SERVER...]] [--dry-run]
+
+Without a choice, prints the current one (dhcp, cloudflare, google, custom).
+cloudflare and google use DNS-over-TLS; custom asks for servers when none are
+given. The setting is the drop-in $DROPIN
+(Domains=~. so it wins over servers learnt from DHCP); dhcp removes it.
+systemd-resolved is restarted afterwards.
+EOF
+}
+
+current() {
+    local f
+    f="$(sysroot_path "$DROPIN")"
+    if [[ -r $f ]]; then
+        sed -n 's/^# haseen-dns: //p' "$f" | head -n1
+    else
+        echo dhcp
+    fi
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if (($# == 0)); then
+    current
+    exit 0
+fi
+choice="$1"
+shift
+servers=()
+dot=no
+case "$choice" in
+dhcp) (($# == 0)) || {
+    usage >&2
+    exit 2
+} ;;
+cloudflare)
+    servers=(1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com)
+    dot=yes
+    ;;
+google)
+    servers=(8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google)
+    dot=yes
+    ;;
+custom)
+    if (($# == 0)); then
+        in_floating_terminal custom "${REST[@]:1}"
+        read -r -p "DNS servers (space separated): " -a servers
+    else
+        servers=("$@")
+    fi
+    ((${#servers[@]} > 0)) || die "no servers given"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+for s in "${servers[@]}"; do
+    [[ $s =~ ^[0-9A-Fa-f:.]+(#[A-Za-z0-9.-]+)?$ ]] || die "invalid DNS server '$s'"
+done
+
+if [[ $choice == dhcp ]]; then
+    [[ -e $(sysroot_path "$DROPIN") ]] && run_root rm -f "$DROPIN"
+else
+    write_root_file "$DROPIN" 0644 <<EOF
+# haseen-dns: $choice
+# Written by \`haseen setup dns\`; \`haseen setup dns dhcp\` removes it.
+[Resolve]
+DNS=${servers[*]}
+Domains=~.
+DNSOverTLS=$dot
+EOF
+fi
+run_root systemctl restart systemd-resolved
+info "DNS: $choice"

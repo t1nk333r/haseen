@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# haseen:summary Set the text or image shown by the screensaver or the About panel
+# haseen:args <screensaver|about> <text [TEXT]|image [FILE]|reset> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+DIR="$HASEEN_USER_CONFIG/branding"
+
+usage() {
+    cat <<EOF
+Usage: haseen branding <screensaver|about> text [TEXT] [--dry-run]
+       haseen branding <screensaver|about> image [FILE] [--dry-run]
+       haseen branding <screensaver|about> reset [--dry-run]
+
+Files: $DIR/<target>.txt and <target>.png; both are watched,
+so changes show at once. text without TEXT opens the file in \$EDITOR (seeded
+from the default); image without FILE asks for a path. An image wins over
+the text. reset removes both.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 2)) || {
+    usage >&2
+    exit 2
+}
+target="$1" verb="$2"
+shift 2
+case "$target" in
+screensaver | about) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+txt="$DIR/$target.txt"
+png="$DIR/$target.png"
+
+case "$verb" in
+text)
+    if (($# > 0)); then
+        printf '%s\n' "$*" | write_user_file "$txt"
+        exit 0
+    fi
+    default="$HASEEN_PATH/default/$target/$target.txt"
+    if [[ ! -e $txt ]]; then
+        if [[ -r $default ]]; then
+            seed_user_file "$default" "$txt"
+        else
+            echo haseen | write_user_file "$txt"
+        fi
+    fi
+    run haseen config edit "$txt"
+    ;;
+image)
+    file="${1:-}"
+    if [[ -z $file ]]; then
+        in_floating_terminal "$target" image
+        read -r -e -p "Image file (PNG, JPEG, SVG): " file
+        file="${file/#\~/$HOME}"
+    fi
+    [[ -f $file ]] || die "no such file: $file"
+    case "${file,,}" in
+    *.png | *.jpg | *.jpeg | *.svg | *.webp) ;;
+    *) die "not an image: $file" ;;
+    esac
+    if $DRY_RUN; then
+        echo "DRYRUN: cp $file $png"
+    else
+        mkdir -p "$DIR"
+        cp -- "$file" "$png"
+    fi
+    ;;
+reset)
+    (($# == 0)) || {
+        usage >&2
+        exit 2
+    }
+    for f in "$txt" "$png"; do
+        [[ -e $f ]] && run rm -f "$f"
+    done
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+exit 0

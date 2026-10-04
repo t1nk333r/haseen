@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# haseen:summary Set up fingerprint login and sudo (fprintd), then enroll a finger
+# haseen:args [--dry-run] [--yes]
+#
+# Steps adapted from Omarchy bin/omarchy-setup-security-fingerprint (MIT,
+# Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+PAM_LINE="auth      sufficient pam_fprintd.so"
+PAM_FILES=(/etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/hyprlock)
+
+usage() {
+    cat <<EOF
+Usage: haseen setup fingerprint [--dry-run] [--yes]
+
+Installs fprintd, puts "$PAM_LINE" first in
+${PAM_FILES[*]} (those that exist), then runs fprintd-enroll and
+fprintd-verify. Runs in a floating terminal when started from the menu.
+EOF
+}
+
+# pam_prepend FILE LINE — FILE with LINE inserted before its first rule.
+pam_prepend() {
+    local src
+    src="$(sysroot_path "$1")"
+    [[ -r $src ]] || return 0
+    grep -qF "${2##* }" "$src" && return 0
+    awk -v line="$2" '!done && /^[[:space:]]*[a-z-]+[[:space:]]/ && !/^[[:space:]]*#/ { print line; done = 1 } { print } END { if (!done) print line }' "$src" | write_root_file "$1" 0644
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+if ! $DRY_RUN && ! in_sysroot && have lsusb && ! lsusb 2>/dev/null | grep -qiE 'fingerprint|synaptics|goodix|elan|validity|egis|focaltech'; then
+    warn "no fingerprint reader recognised on USB; continuing anyway"
+fi
+confirm "Enable fingerprint authentication for sudo and polkit?" || exit 1
+[[ -x $(sysroot_path /usr/bin/fprintd-enroll) ]] || run_root pacman -S --needed --noconfirm fprintd
+for f in "${PAM_FILES[@]}"; do
+    pam_prepend "$f" "$PAM_LINE"
+done
+run fprintd-enroll
+run fprintd-verify
+info "fingerprint set up"

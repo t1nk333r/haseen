@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# haseen:summary Show the About panel (OS, kernel, CPU, GPU, memory, uptime, version)
+# haseen:args [--facts] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen about [--facts] [--dry-run]
+
+Opens the About view of the menu. --facts prints the facts it shows instead,
+one "key<TAB>value" line each. Branding: haseen branding about.
+EOF
+}
+
+# Facts are read from /proc, /sys and os-release (through sysroot_path), never
+# from a probe that needs root, so the panel can ask for them on every open.
+os_name() {
+    local f name="" version=""
+    f="$(sysroot_path /etc/os-release)"
+    [[ -r $f ]] || f="$(sysroot_path /usr/lib/os-release)"
+    if [[ -r $f ]]; then
+        name="$(sed -n 's/^PRETTY_NAME=//p' "$f" | tr -d '"')"
+        [[ -n $name ]] || name="$(sed -n 's/^NAME=//p' "$f" | tr -d '"')"
+        version="$(sed -n 's/^VERSION_ID=//p' "$f" | tr -d '"')"
+        [[ -z $version || $name == *"$version"* ]] || name="$name $version"
+    fi
+    printf '%s\n' "${name:-Linux}"
+}
+
+kernel() {
+    local f
+    f="$(sysroot_path /proc/sys/kernel/osrelease)"
+    if [[ -r $f ]]; then cat "$f"; else uname -r; fi
+}
+
+cpu() {
+    local f model count
+    f="$(sysroot_path /proc/cpuinfo)"
+    [[ -r $f ]] || return 0
+    model="$(sed -n 's/^model name[[:space:]]*:[[:space:]]*//p' "$f" | head -n1)"
+    count="$(grep -c '^processor' "$f" || true)"
+    [[ -n $model ]] && printf '%s (%s)\n' "$(sed -E 's/\((R|TM|tm)\)//g; s/ CPU//; s/ +@.*//; s/  +/ /g' <<<"$model")" "$count"
+}
+
+# GPU names from lspci when present ("Intel Iris Xe Graphics": vendor plus
+# the marketing name in the last brackets); else DRM driver names from sysfs.
+gpu_name() {
+    local line="$1" vendor="" model
+    line="$(sed -E 's/ \(rev [0-9a-f]+\)$//' <<<"$line")"
+    case "$line" in
+    *NVIDIA*) vendor=NVIDIA ;;
+    *AMD* | *ATI* | *"Advanced Micro"*) vendor=AMD ;;
+    *Intel*) vendor=Intel ;;
+    esac
+    if [[ $line =~ \[([^]]+)\]$ ]]; then model="${BASH_REMATCH[1]}"; else model="$line"; fi
+    [[ -n $vendor && $model != "$vendor"* ]] && model="$vendor $model"
+    printf '%s\n' "$model"
+}
+
+gpu() {
+    local names=() d line
+    if ! in_sysroot && have lspci; then
+        while IFS= read -r line; do
+            names+=("$(gpu_name "$line")")
+        done < <(lspci 2>/dev/null | sed -n -E 's/^[^ ]+ (VGA compatible controller|3D controller|Display controller): //p')
+    fi
+    if ((${#names[@]} == 0)); then
+        for d in "$(sysroot_path /sys/class/drm)"/card[0-9]; do
+            [[ -e $d/device/driver ]] || continue
+            names+=("$(basename "$(readlink -f "$d/device/driver")")")
+        done
+    fi
+    ((${#names[@]} > 0)) || return 0
+    local IFS=,
+    printf '%s\n' "${names[*]}" | sed 's/,/, /g'
+}
+
+memory() {
+    local f total avail
+    f="$(sysroot_path /proc/meminfo)"
+    [[ -r $f ]] || return 0
+    total="$(awk '/^MemTotal:/ { print $2 }' "$f")"
+    avail="$(awk '/^MemAvailable:/ { print $2 }' "$f")"
+    [[ -n $total ]] || return 0
+    awk -v t="$total" -v a="${avail:-$total}" 'BEGIN { printf "%.1f / %.1f GiB\n", (t - a) / 1048576, t / 1048576 }'
+}
+
+uptime_text() {
+    local f s d h m out=""
+    f="$(sysroot_path /proc/uptime)"
+    [[ -r $f ]] || return 0
+    s="$(cut -d. -f1 "$f")"
+    d=$((s / 86400)) h=$((s % 86400 / 3600)) m=$((s % 3600 / 60))
+    ((d > 0)) && out+="${d}d "
+    ((h > 0)) && out+="${h}h "
+    printf '%s%dm\n' "$out" "$m"
+}
+
+facts() {
+    local key value
+    for key in OS Kernel CPU GPU Memory Uptime haseen; do
+        case "$key" in
+        OS) value="$(os_name)" ;;
+        Kernel) value="$(kernel)" ;;
+        CPU) value="$(cpu)" ;;
+        GPU) value="$(gpu)" ;;
+        Memory) value="$(memory)" ;;
+        Uptime) value="$(uptime_text)" ;;
+        haseen) value="$(cat "$HASEEN_PATH/VERSION" 2>/dev/null)" ;;
+        esac
+        [[ -n $value ]] && printf '%s\t%s\n' "$key" "$value"
+    done
+    return 0
+}
+
+parse_common_flags "$@"
+mode=panel
+for a in "${REST[@]}"; do
+    case "$a" in
+    --facts) mode=facts ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+if [[ $mode == facts ]]; then
+    facts
+    exit 0
+fi
+run haseen shell ipc menu toggle :about

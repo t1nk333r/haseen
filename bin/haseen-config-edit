@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# haseen:summary Edit a config file in $EDITOR (terminal editors open in a floating terminal)
+# haseen:args <path> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen config edit <path> [--dry-run]
+
+Opens PATH in \$EDITOR (nvim, then vi, when unset). GUI editors (code, zed,
+subl, gedit, kate, …) start directly; terminal editors run in a floating
+\$TERMINAL with app-id haseen.floating, or inline when already in a terminal.
+A missing file is created empty with its directory. Run from the menu, the
+Hyprland and shell configs reload by themselves when saved.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+path="${REST[0]/#\~/$HOME}"
+
+editor="${EDITOR:-}"
+if [[ -z $editor ]]; then
+    for e in nvim vim vi nano; do
+        have "$e" && {
+            editor="$e"
+            break
+        }
+    done
+fi
+[[ -n $editor ]] || die "no editor found: set \$EDITOR"
+read -r -a editor_argv <<<"$editor"
+
+if [[ ! -e $path ]]; then
+    if $DRY_RUN; then
+        echo "DRYRUN: create $path"
+    else
+        mkdir -p "$(dirname "$path")"
+        : >"$path"
+    fi
+fi
+
+case "${editor_argv[0]##*/}" in
+code | codium | zed | zeditor | subl | sublime_text | gedit | gnome-text-editor | kate | kwrite | cursor)
+    run setsid -f "${editor_argv[@]}" "$path"
+    exit 0
+    ;;
+esac
+if [[ -t 0 ]]; then
+    run "${editor_argv[@]}" "$path"
+    exit 0
+fi
+# The shared launcher holds the window after the command; an editor needs no
+# "press Enter", so take its terminal prefix and run the editor directly.
+floating_terminal_argv true
+argv=()
+for a in "${FLOAT_ARGV[@]}"; do
+    [[ $a == -e ]] && break
+    argv+=("$a")
+done
+run "${argv[@]}" -e "${editor_argv[@]}" "$path"
