@@ -21,7 +21,6 @@ file changes in the same commit.
 | 6 | local AI | `layers/ai` (Ollama/llama.cpp bound to loopback only) + the `haseen.ai` panel plugin |
 | 7 | Arch / CachyOS / NixOS | installer (CachyOS, Arch) + `flake.nix` (NixOS) |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
-| 9 | VAPT tooling | `layers/vapt` (BlackArch: container by default, host on request) |
 
 ## 2. Filesystem
 
@@ -61,7 +60,6 @@ already set when the layer runs.
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service` |
 | `secureboot` | base | sbctl own keys + Microsoft + firmware keys, signing hooks, Limine config enrollment |
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
-| `vapt` | base | BlackArch tool groups in a distrobox (default) or on the host |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
 

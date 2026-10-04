@@ -10,7 +10,7 @@ usage() {
 Usage: haseen layer apply <layer...> [--dry-run] [--yes] [-- ARGS]
 
 ARGS after -- go to the last named layer only (e.g. its own flags):
-  haseen layer apply vapt -- --groups core,web
+  haseen layer apply ai -- --backend llama.cpp
 Required layers are applied first. Run 'haseen layer list' for names.
 EOF
 }

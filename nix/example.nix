@@ -28,7 +28,6 @@
       enable = true;
       acceleration = "vulkan";
     };
-    vapt.enable = true;
     gaming.enable = true;
   };
 

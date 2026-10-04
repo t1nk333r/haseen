@@ -29,7 +29,7 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c]
                     [--tree-only] [--uninstall-tree]
 
   --layers      layers to apply (default: ${DEFAULT_LAYERS[*]})
-                optional: secureboot ai vapt dms gaming (haseen layer list)
+                optional: secureboot ai dms gaming (haseen layer list)
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user

@@ -75,44 +75,6 @@ in
       };
     };
 
-    vapt = {
-      enable = mkEnableOption ''
-        VAPT tooling the haseen way: rootless podman + distrobox, so
-        `haseen vapt install` builds the BlackArch container (container
-        mode). Host-mode BlackArch does not apply on NixOS; use
-        `haseen.vapt.hostPackages` for tools on the host
-      '';
-      hostPackages = mkOption {
-        type = types.listOf types.package;
-        default = with pkgs; [
-          nmap
-          tcpdump
-          wireshark-cli
-          netcat-openbsd
-          socat
-          proxychains-ng
-          dnsutils
-          whois
-          ffuf
-          gobuster
-          sqlmap
-          john
-          hashcat
-          thc-hydra
-        ];
-        defaultText = literalExpression ''
-          with pkgs; [ nmap tcpdump wireshark-cli netcat-openbsd socat
-            proxychains-ng dnsutils whois ffuf gobuster sqlmap john hashcat
-            thc-hydra ]
-        '';
-        description = ''
-          Security tools from nixpkgs installed on the host when
-          `haseen.vapt.enable` is set. Set to `[ ]` to keep everything in
-          the container.
-        '';
-      };
-    };
-
     gaming.enable = mkEnableOption "Steam, gamemode and gamescope (Steam is unfree)";
   };
 
@@ -217,13 +179,6 @@ in
       // lib.optionalAttrs (cfg.ai.acceleration != null) {
         package = ollamaPackage.${cfg.ai.acceleration};
       };
-    })
-
-    (mkIf cfg.vapt.enable {
-      # Rootless podman needs subuid/subgid ranges; NixOS allocates them for
-      # every isNormalUser account (users.users.<name>.autoSubUidGidRange).
-      virtualisation.podman.enable = true;
-      environment.systemPackages = [ pkgs.distrobox ] ++ cfg.vapt.hostPackages;
     })
 
     (mkIf cfg.gaming.enable {

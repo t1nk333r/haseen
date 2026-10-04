@@ -7,13 +7,13 @@ you get the same desktop from this flake:
 |---|---|
 | `packages.<system>.haseen` | `bin/` + `share/haseen`; every `haseen*` command is wrapped with `HASEEN_PATH=$out/share/haseen` and jq, curl, coreutils, quickshell, … on `PATH` |
 | `overlays.default` | adds `pkgs.haseen` |
-| `nixosModules.haseen` | system side: `haseen.enable`, `.secureboot`, `.ai`, `.vapt`, `.gaming` |
+| `nixosModules.haseen` | system side: `haseen.enable`, `.secureboot`, `.ai`, `.gaming` |
 | `homeManagerModules.haseen` | user side: the shell service, the theme, `~/.config/hypr/hyprland.lua` |
 | `nixosConfigurations.example` | CI host with every option on (`nix/example.nix`) |
 
 The installer layers map to options as follows. `base` + `desktop` →
 `haseen.enable`; `theme` → `haseen.theme` (home-manager); `shell` →
-`haseen.shell.enable` (home-manager); `secureboot`, `ai`, `vapt` and `gaming`
+`haseen.shell.enable` (home-manager); `secureboot`, `ai` and `gaming`
 → the options of the same name. `dms` has no option: nixpkgs ships its own
 `programs.dms-shell` module.
 
@@ -67,7 +67,6 @@ which means `nixos-unstable` as of 2026-10. The lanzaboote module is imported by
                                  # portals, polkit, fonts, NetworkManager, firewall
     # secureboot.enable = true;  # after the steps below
     # ai = { enable = true; acceleration = "vulkan"; };  # null | "cuda" | "rocm" | "vulkan"
-    # vapt.enable = true;        # podman + distrobox (+ vapt.hostPackages)
     # gaming.enable = true;      # Steam (unfree), gamemode, gamescope
   };
 
@@ -103,12 +102,6 @@ Notes:
   `services.ollama.acceleration`, so `haseen.ai.acceleration` selects
   `pkgs.ollama-cuda`, `pkgs.ollama-rocm` or `pkgs.ollama-vulkan` as
   `services.ollama.package`. `cuda` is unfree.
-- **VAPT.** Only container mode exists here. `haseen.vapt.enable` provides
-  rootless podman and distrobox (NixOS gives `isNormalUser` accounts subuid
-  and subgid ranges), and `haseen vapt install` builds the same `haseen-vapt`
-  BlackArch distrobox as on Arch. Host-mode BlackArch does not apply on NixOS.
-  `haseen.vapt.hostPackages` installs a curated list of nixpkgs security tools
-  on the host instead; set it to `[ ]` to keep everything in the container.
 - **Gaming.** Steam is unfree. Set `nixpkgs.config.allowUnfree = true` or an
   `allowUnfreePredicate` that allows it.
 

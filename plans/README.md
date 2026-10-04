@@ -12,7 +12,7 @@ Read `handoff.md` first.
 | 004 | Theme pipeline compatible with Omarchy colors.toml | P1 | M | 001 | DONE 2026-10-04 (215 tests; byte-parity with Omarchy renderer) |
 | 005 | Quickshell shell core and plugin host | P1 | L | 001 | DONE 2026-10-04 (157 tests; live bar screenshot; 178 MiB RSS idle vs omarchy-shell 630) |
 | 006 | Local AI layer | P2 | M | 001 | DONE 2026-10-04 (164 tests; live streamed chat vs stub server) |
-| 007 | VAPT layer (BlackArch, contained by default) | P2 | M | 001 | BLOCKED 2026-10-04: owner hands it to DeepSeek; group lists + verified pins in `share/haseen/layers/vapt/groups/` |
+| 007 | VAPT tooling layer | — | — | 001 | DROPPED 2026-10-04 (owner decision; out of scope) |
 | 008 | DMS optional layer and shell switch | P2 | S | 005 | DONE 2026-10-04 (99 tests; `systemd-analyze verify` ok; live switch pending, DMS not installed) |
 | 009 | NixOS flake | P2 | L | 003 004 005 002 | DONE 2026-10-04 (`nix flake check` + toplevel eval + package build via nix-portable; no boot) |
 | 010 | Shell system surfaces | P1 | L | 005 | PLANNED |
