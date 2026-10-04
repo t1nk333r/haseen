@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# haseen:summary Switch the current workspace between dwindle and scrolling layouts
+# haseen:args [dwindle|scrolling|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-hyprland-workspace-layout-toggle (MIT,
+# Copyright (c) David Heinemeier Hansson): a per-workspace hl.workspace_rule,
+# persisted as a Lua file the Hyprland config includes, applied live.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle workspace-layout [dwindle|scrolling|toggle] [--dry-run]
+
+Sets the layout of the active workspace and keeps it across reloads in
+\$HASEEN_USER_STATE/toggles/hypr/workspace-layout-<id>.lua.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+want=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $want in dwindle | scrolling | toggle) ;; *) usage >&2; exit 2 ;; esac
+
+ws_json="$(hyprctl activeworkspace -j)"
+id="$(jq -r '.id' <<<"$ws_json")"
+current="$(jq -r '.tiledLayout // "dwindle"' <<<"$ws_json")"
+[[ $id =~ ^-?[0-9]+$ ]] || die "cannot read the active workspace"
+if [[ $want == toggle ]]; then
+    if [[ $current == dwindle ]]; then want=scrolling; else want=dwindle; fi
+fi
+
+lua="hl.workspace_rule({ workspace = \"$id\", layout = \"$want\" })"
+file="$HASEEN_USER_STATE/toggles/hypr/workspace-layout-$id.lua"
+if [[ $want == dwindle ]]; then
+    # dwindle is the default: drop the rule instead of persisting it.
+    if $DRY_RUN; then echo "DRYRUN: rm -f $file"; else rm -f "$file"; fi
+else
+    printf '%s\n' "$lua" | write_user_file "$file"
+fi
+run hyprctl eval "$lua"
+$DRY_RUN && exit 0
+echo "Workspace $id layout: $want"
+if have notify-send; then
+    notify-send -a haseen "Workspace layout set to $want" || true
+fi

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# haseen:summary Turn the built-in laptop display off or on (keeps the external one)
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-hyprland-monitor-internal (MIT, Copyright
+# (c) David Heinemeier Hansson): refuse to disable the only active display,
+# persist the disable as a Lua toggle, wake the panel on re-enable.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hardware laptop-display [on|off|toggle] [--dry-run]
+
+"off" disables the built-in panel (eDP/LVDS/DSI) while an external monitor is
+active, and keeps it off across reloads. "on" brings it back.
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/laptop-display-off.lua"
+MIRROR_FILE="$HASEEN_USER_STATE/toggles/hypr/mirror-display.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on | off) ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=on; else action=off; fi ;;
+*) usage >&2; exit 2 ;;
+esac
+
+monitors="$(hyprctl monitors all -j)"
+internal="$(jq -r '[.[] | select(.name | test("^(eDP|LVDS|DSI)-")) | .name] | first // empty' <<<"$monitors")"
+external="$(jq -r '[.[] | select((.name | test("^(eDP|LVDS|DSI)-") | not) and (.disabled | not)) | .name] | first // empty' <<<"$monitors")"
+
+if [[ $action == on ]]; then
+    if $DRY_RUN; then echo "DRYRUN: rm -f $TOGGLE_FILE"; else rm -f "$TOGGLE_FILE"; fi
+    run hyprctl reload
+    run hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })'
+    $DRY_RUN || echo "Laptop display enabled"
+    exit 0
+fi
+
+[[ -n $internal ]] || die "no laptop display found"
+[[ $internal =~ ^[A-Za-z0-9._-]+$ ]] || die "refusing unusual monitor name: $internal"
+[[ -n $external ]] || die "can't disable the only active display"
+[[ ! -f $MIRROR_FILE ]] || die "mirroring is on; run: haseen hardware mirror-display off"
+
+lua="hl.monitor({ output = \"$internal\", disabled = true })"
+printf '%s\n' "$lua" | write_user_file "$TOGGLE_FILE"
+run hyprctl eval "$lua"
+$DRY_RUN || echo "Laptop display $internal disabled"

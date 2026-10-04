@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# haseen:summary Shrink a picture or video for sharing (copies the result as a file)
+# haseen:args [INPUT] [jpg|png|mp4|gif] [high|medium|low|4k|1080p|720p] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-transcode (MIT, Copyright (c) David
+# Heinemeier Hansson): magick/ffmpeg presets per format and resolution, output
+# beside the input, file URI on the clipboard.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen transcode [INPUT] [FORMAT] [RESOLUTION] [--dry-run]
+
+Pictures: FORMAT jpg|png (default jpg), RESOLUTION high|medium|low (default medium)
+Videos:   FORMAT mp4|gif (default mp4), RESOLUTION 4k|1080p|720p (default 1080p)
+
+Writes <name>-<resolution>.<format> next to INPUT and copies it to the
+clipboard as a file. With no INPUT a zenity chooser opens in ~/Pictures.
+EOF
+}
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 3)) || { usage >&2; exit 2; }
+input=${1:-} format=${2:-} res=${3:-}
+
+if [[ -z $input ]]; then
+    have zenity || { usage >&2; exit 2; }
+    input="$(zenity --file-selection --title="Transcode picture or video" --filename="$HOME/Pictures/" 2>/dev/null)" || exit 0
+fi
+[[ -f $input ]] || die "file not found: $input"
+
+mime="$(file -b --mime-type -- "$input")"
+case $mime in
+image/*) type=picture format=${format:-jpg} res=${res:-medium} ;;
+video/*) type=video format=${format:-mp4} res=${res:-1080p} ;;
+*) die "unsupported file type: $mime" ;;
+esac
+
+cmd=()
+dir="$(dirname -- "$input")"
+base="$(basename -- "$input")"
+out="$dir/${base%.*}-$res.$format"
+if [[ $type == picture ]]; then
+    case $res in high) size='3160x>' ;; medium) size='2160x>' ;; low) size='1080x>' ;; *) die "picture resolution: high|medium|low" ;; esac
+    case $format in
+    jpg) cmd=(magick "$input" -resize "$size" -quality 85 -strip "$out") ;;
+    png) cmd=(magick "$input" -resize "$size" -strip -define png:compression-level=9 -define png:exclude-chunk=all "$out") ;;
+    *) die "picture format: jpg|png" ;;
+    esac
+else
+    case $res in 4k) scale='scale=-2:2160' ;; 1080p) scale='scale=-2:1080' ;; 720p) scale='scale=-2:720' ;; *) die "video resolution: 4k|1080p|720p" ;; esac
+    case $format in
+    mp4)
+        codec=(-c:v libx264 -preset fast -crf 23)
+        [[ $res == 4k ]] && codec=(-c:v libx265 -preset slow -crf 24)
+        cmd=(ffmpeg -nostdin -y -i "$input" -vf "$scale" "${codec[@]}" -c:a aac -b:a 192k -movflags +faststart "$out")
+        ;;
+    gif) cmd=(ffmpeg -nostdin -y -i "$input" -vf "fps=10,$scale:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" "$out") ;;
+    *) die "video format: mp4|gif" ;;
+    esac
+fi
+
+run "${cmd[@]}"
+if $DRY_RUN; then
+    echo "DRYRUN: wl-copy --type text/uri-list file://$out"
+    exit 0
+fi
+printf 'file://%s\n' "$(realpath -- "$out")" | wl-copy --type text/uri-list
+printf '%s\n' "$out"
+notify "Transcoded to $res $format" "Saved and copied to the clipboard"

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# haseen:summary Hide or show the bar
+# haseen:args [--dry-run]
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle bar [--dry-run]
+
+Hides or shows the bar of the running shell (same as: haseen bar toggle).
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || { usage >&2; exit 2; }
+run haseen-shell-ipc bar toggle

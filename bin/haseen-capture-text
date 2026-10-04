@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# haseen:summary Copy the text in a screen region (OCR with tesseract)
+# haseen:args [--geometry "X,Y WxH" | --image FILE] [--lang LANGS] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-capture-text (MIT, Copyright (c) David
+# Heinemeier Hansson): freeze the screen with hyprpicker while slurp picks,
+# then grim | tesseract into the clipboard.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture text [--geometry "X,Y WxH" | --image FILE] [--lang LANGS] [--dry-run]
+
+Pick a region (or pass one), recognise its text with tesseract and copy it.
+--image reads an existing picture instead of the screen. --print also writes
+the text to stdout. LANGS defaults to \$HASEEN_OCR_LANGS or eng.
+EOF
+}
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+geometry="" image="" lang=${HASEEN_OCR_LANGS:-eng} print=false
+while (($#)); do
+    case "$1" in
+    --geometry | --image | --lang)
+        (($# > 1)) || { usage >&2; exit 2; }
+        case $1 in --geometry) geometry=$2 ;; --image) image=$2 ;; --lang) lang=$2 ;; esac
+        shift
+        ;;
+    --print) print=true ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+[[ -z $image || -r $image ]] || die "cannot read $image"
+
+if $DRY_RUN; then
+    src="grim -g ${geometry:-<slurp selection>} -"
+    [[ -n $image ]] && src="cat $image"
+    echo "DRYRUN: $src | tesseract stdin stdout -l $lang | wl-copy"
+    exit 0
+fi
+require_cmds tesseract
+
+if [[ -z $image && -z $geometry ]]; then
+    # Freeze the screen so the picked content cannot shift under the selection.
+    hyprpicker -r -z >/dev/null 2>&1 &
+    freeze=$!
+    trap 'kill "$freeze" 2>/dev/null || true' EXIT
+    sleep 0.1
+    geometry="$(slurp 2>/dev/null)" || exit 0
+    [[ -n $geometry ]] || exit 0
+fi
+
+if [[ -n $image ]]; then
+    text="$(tesseract "$image" stdout --oem 1 --psm 6 -l "$lang" -c preserve_interword_spaces=1 2>/dev/null)" || die "OCR failed"
+else
+    text="$(grim -g "$geometry" - | tesseract stdin stdout --oem 1 --psm 6 -l "$lang" --dpi 300 -c preserve_interword_spaces=1 2>/dev/null)" || die "OCR failed"
+fi
+if [[ -z ${text//[[:space:]]/} ]]; then
+    notify "No text found"
+    exit 1
+fi
+printf '%s' "$text" | wl-copy
+$print && printf '%s\n' "$text"
+notify "Copied text from the selection"

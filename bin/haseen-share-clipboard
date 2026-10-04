@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# haseen:summary Send the clipboard contents with LocalSend
+# haseen:args [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-menu-share (MIT, Copyright (c) David
+# Heinemeier Hansson): hand the files to LocalSend in its own systemd unit, so
+# closing the caller does not kill the transfer.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen share clipboard [--dry-run]
+
+Saves the clipboard (text or image) to a file under $XDG_RUNTIME_DIR and sends it.
+Uses the localsend package, or the Flathub app org.localsend.localsend_app.
+EOF
+}
+
+# localsend_cmd — set LOCALSEND to the LocalSend command line.
+localsend_cmd() {
+    if have localsend; then
+        LOCALSEND=(localsend)
+    elif have flatpak && flatpak info org.localsend.localsend_app &>/dev/null; then
+        LOCALSEND=(flatpak run org.localsend.localsend_app)
+    else
+        die "LocalSend is not installed (haseen install package localsend)"
+    fi
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# == 0)) || { usage >&2; exit 2; }
+dir="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-share"
+ext=txt
+types="$(wl-paste --list-types 2>/dev/null || true)"
+[[ $types == *image/png* ]] && ext=png
+file="$dir/clipboard-$(date +%Y%m%d-%H%M%S).$ext"
+if $DRY_RUN; then
+    echo "DRYRUN: wl-paste > $file"
+else
+    mkdir -p "$dir"
+    if [[ $ext == png ]]; then wl-paste --type image/png >"$file"; else wl-paste >"$file"; fi
+    [[ -s $file ]] || { rm -f "$file"; die "the clipboard is empty"; }
+fi
+files=("$file")
+localsend_cmd
+run systemd-run --user --quiet --collect "${LOCALSEND[@]}" --headless send "${files[@]}"
+

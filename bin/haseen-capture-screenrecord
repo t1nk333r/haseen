@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# haseen:summary Start or stop a screen recording (gpu-screen-recorder) into ~/Videos
+# haseen:args [--fullscreen|--geometry "X,Y WxH"] [--desktop-audio] [--microphone] [--webcam] [--stop] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-capture-screenrecording (MIT, Copyright (c)
+# David Heinemeier Hansson): slurp region or full monitor, merged desktop and
+# microphone audio, mpv webcam overlay, SIGINT stop so the file is finalised.
+#
+# The recording runs under a detached supervisor (this script, internal mode
+# --supervise). The supervisor writes the `recording` flag the bar and privacy
+# dot watch, and an EXIT trap removes it however the recorder ends. If the
+# supervisor itself is SIGKILLed, the next start sees its PID is gone and
+# clears the stale flag.
+set -Eeuo pipefail
+
+SELF="$(readlink -f "$0")"
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$SELF")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture screenrecord [options]
+
+Starts a recording, or stops the running one (same command toggles).
+
+Options:
+  --fullscreen          record the focused monitor (default: pick a region)
+  --geometry "X,Y WxH"  record this rectangle (no picker)
+  --desktop-audio       record desktop audio
+  --microphone          record the default microphone (merged with desktop)
+  --webcam              show a webcam overlay (mpv, first /dev/video*)
+  --webcam-device=DEV   webcam device for --webcam
+  --stop                only stop; exit 1 when nothing is recording
+  --dry-run             print the plan
+
+Files go to \$HASEEN_SCREENRECORD_DIR or \$(xdg-user-dir VIDEOS).
+EOF
+}
+
+FLAG="$HASEEN_USER_STATE/flags/recording"
+RUN_DIR="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-screenrecord"
+PID_FILE="$RUN_DIR/pid"
+GSR_PID_FILE="$RUN_DIR/gsr.pid"
+WEBCAM_ID=haseen-webcam
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+videos_dir() {
+    local d=${HASEEN_SCREENRECORD_DIR:-}
+    [[ -n $d ]] || d="$(xdg-user-dir VIDEOS 2>/dev/null || true)"
+    [[ -n $d && $d != "$HOME" ]] || d="$HOME/Videos"
+    printf '%s\n' "$d"
+}
+
+alive() { [[ -n ${1:-} ]] && kill -0 "$1" 2>/dev/null; }
+supervisor_pid() { [[ -r $PID_FILE ]] && cat "$PID_FILE" 2>/dev/null || true; }
+active() { alive "$(supervisor_pid)"; }
+
+# A flag or pid file whose supervisor is gone is left over from a crash.
+clear_stale() {
+    active && return 0
+    [[ -e $FLAG || -e $PID_FILE || -e $GSR_PID_FILE ]] || return 0
+    if $DRY_RUN; then
+        echo "DRYRUN: rm -f $FLAG $PID_FILE $GSR_PID_FILE (stale: recorder not running)"
+    else
+        rm -f "$FLAG" "$PID_FILE" "$GSR_PID_FILE"
+        echo "Cleared a stale recording flag"
+    fi
+}
+
+# --supervise FILE WEBCAM_DEVICE -- GSR_ARGS...
+supervise() {
+    local file=$1 webcam=$2
+    shift 3
+    # Globals, not locals: the EXIT trap runs after this function returns.
+    gsr_pid="" cam_pid=""
+    local rc=0
+    mkdir -p "$RUN_DIR" "$(dirname "$FLAG")"
+    echo $$ >"$PID_FILE"
+    finish() {
+        alive "$cam_pid" && kill "$cam_pid" 2>/dev/null
+        rm -f "$FLAG" "$PID_FILE" "$GSR_PID_FILE"
+    }
+    trap finish EXIT
+    trap 'alive "$gsr_pid" && kill -INT "$gsr_pid"' INT TERM HUP
+
+    if [[ -n $webcam ]]; then
+        mpv "av://v4l2:$webcam" --profile=low-latency --untimed --no-cache \
+            '--vf=lavfi=[crop=ih*8/9:ih]' --title=WebcamOverlay --wayland-app-id="$WEBCAM_ID" \
+            --no-border --no-audio --no-osc --osd-level=0 --really-quiet &>/dev/null &
+        cam_pid=$!
+        sleep 0.6 # let the overlay map before frames are captured
+    fi
+
+    # Without job control bash starts background jobs with SIGINT ignored,
+    # and the recorder must see SIGINT to finalise the file.
+    set -m
+    gpu-screen-recorder "$@" -o "$file" &
+    gsr_pid=$!
+    echo "$gsr_pid" >"$GSR_PID_FILE"
+    : >"$FLAG"
+    notify "Screen recording started" "Run it again to stop"
+
+    # wait returns early when a trapped signal arrives; keep waiting for the
+    # recorder to write its trailer.
+    while alive "$gsr_pid"; do
+        wait "$gsr_pid" && rc=0 || rc=$?
+    done
+    if [[ -s $file ]]; then
+        notify "Screen recording saved" "${file/#"$HOME"/\~}"
+    else
+        notify -u critical "Screen recording failed" "gpu-screen-recorder exited ($rc)"
+    fi
+}
+
+stop_recording() {
+    local sup gsr i
+    sup="$(supervisor_pid)"
+    gsr="$(cat "$GSR_PID_FILE" 2>/dev/null || true)"
+    if $DRY_RUN; then
+        echo "DRYRUN: kill -INT ${gsr:-$sup} (stop gpu-screen-recorder, supervisor $sup removes $FLAG)"
+        return 0
+    fi
+    # SIGINT makes gpu-screen-recorder finalise the file.
+    if alive "$gsr"; then kill -INT "$gsr"; else kill -TERM "$sup" 2>/dev/null || true; fi
+    for ((i = 0; i < 50; i++)); do
+        alive "$sup" || break
+        sleep 0.1
+    done
+    if alive "$sup"; then
+        alive "$gsr" && kill -KILL "$gsr" 2>/dev/null
+        kill -TERM "$sup" 2>/dev/null || true
+        notify -u critical "Screen recording error" "The recorder had to be killed; the video may be damaged"
+    fi
+    echo "Recording stopped"
+}
+
+if [[ ${1:-} == --supervise ]]; then
+    shift
+    supervise "$@"
+    exit
+fi
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+fullscreen=false geometry="" desktop=false mic=false webcam=false webcam_dev="" stop_only=false
+while (($#)); do
+    case "$1" in
+    --fullscreen) fullscreen=true ;;
+    --geometry)
+        (($# > 1)) || { usage >&2; exit 2; }
+        geometry=$2
+        shift
+        ;;
+    --geometry=*) geometry=${1#*=} ;;
+    --desktop-audio) desktop=true ;;
+    --microphone) mic=true ;;
+    --webcam) webcam=true ;;
+    --webcam-device=*) webcam=true webcam_dev=${1#*=} ;;
+    --stop) stop_only=true ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+if [[ -n $geometry && ! $geometry =~ ^(-?[0-9]+),(-?[0-9]+)\ ([0-9]+)x([0-9]+)$ ]]; then
+    echo "Error: --geometry wants \"X,Y WxH\", got: $geometry" >&2
+    exit 2
+fi
+
+clear_stale
+if active; then
+    stop_recording
+    exit 0
+fi
+if $stop_only; then
+    echo "Not recording" >&2
+    exit 1
+fi
+
+require_cmds gpu-screen-recorder
+
+target=()
+if $fullscreen; then
+    if $DRY_RUN; then
+        target=(-w focused)
+    else
+        mon="$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')"
+        target=(-w "${mon:-focused}")
+    fi
+else
+    if [[ -z $geometry ]]; then
+        if $DRY_RUN; then
+            geometry="0,0 0x0"
+            echo "DRYRUN: slurp -d (pick the region)"
+        else
+            geometry="$(slurp -d 2>/dev/null)" || exit 0
+            [[ -n $geometry ]] || exit 0
+        fi
+    fi
+    [[ $geometry =~ ^(-?[0-9]+),(-?[0-9]+)\ ([0-9]+)x([0-9]+)$ ]]
+    # gpu-screen-recorder takes logical coordinates, the same space slurp uses.
+    target=(-w "${BASH_REMATCH[3]}x${BASH_REMATCH[4]}+${BASH_REMATCH[1]}+${BASH_REMATCH[2]}")
+fi
+
+audio=""
+$desktop && audio=default_output
+# One merged track: players pick only one of several audio tracks.
+$mic && audio+="${audio:+|}default_input"
+gsr_args=("${target[@]}" -c mp4 -k auto -f 60 -fm cfr -fallback-cpu-encoding yes)
+[[ -n $audio ]] && gsr_args+=(-a "$audio" -ac aac)
+
+if $webcam && [[ -z $webcam_dev ]]; then
+    for d in /dev/video*; do
+        [[ -e $d ]] && { webcam_dev=$d; break; }
+    done
+    [[ -n $webcam_dev ]] || die "no webcam found (/dev/video*)"
+fi
+
+dir="$(videos_dir)"
+file="$dir/screenrecording-$(date +%Y-%m-%d_%H-%M-%S).mp4"
+
+if $DRY_RUN; then
+    [[ -n $webcam_dev ]] && echo "DRYRUN: mpv av://v4l2:$webcam_dev --wayland-app-id=$WEBCAM_ID (webcam overlay)"
+    echo "DRYRUN: gpu-screen-recorder ${gsr_args[*]} -o $file"
+    echo "DRYRUN: touch $FLAG (removed when the recorder exits)"
+    exit 0
+fi
+
+mkdir -p "$dir" "$RUN_DIR"
+log="$RUN_DIR/log"
+setsid -f "$SELF" --supervise "$file" "$webcam_dev" -- "${gsr_args[@]}" </dev/null >"$log" 2>&1
+
+# Report failure to start instead of returning silently.
+for ((i = 0; i < 30; i++)); do
+    [[ -e $FLAG ]] && break
+    sleep 0.1
+done
+if [[ ! -e $FLAG ]]; then
+    die "recording did not start (see $log)"
+fi
+echo "Recording to $file"

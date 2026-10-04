@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# haseen:summary Cancel every pending reminder
+# haseen:args [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-reminder (MIT, Copyright (c) David
+# Heinemeier Hansson).
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen reminder clear [--dry-run]
+
+Stops every haseen-reminder-* timer and deletes the saved messages.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# == 0)) || { usage >&2; exit 2; }
+
+msg_dir="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-reminders"
+if $DRY_RUN; then
+    echo "DRYRUN: systemctl --user stop 'haseen-reminder-*.timer'"
+    echo "DRYRUN: rm -f $msg_dir/haseen-reminder-*.message"
+    exit 0
+fi
+systemctl --user stop 'haseen-reminder-*.timer' 'haseen-reminder-*.service' 2>/dev/null || true
+rm -f "$msg_dir"/haseen-reminder-*.message
+echo "Reminders cleared"
+if have notify-send; then
+    notify-send -a haseen "All reminders cleared" || true
+fi

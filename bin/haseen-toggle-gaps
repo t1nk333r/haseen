@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# haseen:summary Toggle window gaps, borders and rounding off and back
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-hyprland-window-gaps-toggle and default/hypr/toggles (MIT, Copyright (c)
+# David Heinemeier Hansson): the toggle is a Lua file in a state directory
+# that the Hyprland config includes on every load, applied live with
+# `hyprctl eval`; switching off deletes it and reloads.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle gaps [on|off|toggle] [--dry-run]
+
+"on" removes gaps, borders and rounding; "off" restores the configured look.
+State: \$HASEEN_USER_STATE/toggles/hypr/no-gaps.lua (exists = on).
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/no-gaps.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on | off) ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=off; else action=on; fi ;;
+*) usage >&2; exit 2 ;;
+esac
+
+LUA=$(cat <<'LUA'
+-- haseen toggle: no window gaps, borders or rounding.
+hl.config({
+  general = { gaps_in = 0, gaps_out = 0, border_size = 0 },
+  decoration = { rounding = 0 },
+})
+LUA
+)
+
+if [[ $action == on ]]; then
+    printf '%s\n' "$LUA" | write_user_file "$TOGGLE_FILE"
+    if $DRY_RUN; then echo "DRYRUN: hyprctl eval <no-gaps.lua>"; else hyprctl eval "$LUA" >/dev/null; fi
+else
+    if $DRY_RUN; then echo "DRYRUN: rm -f $TOGGLE_FILE"; else rm -f "$TOGGLE_FILE"; fi
+    run hyprctl reload
+fi
+$DRY_RUN && exit 0
+echo "No-gaps mode $( [[ $action == on ]] && echo 'on' || echo 'off' )"
+if have notify-send; then
+    notify-send -a haseen "No-gaps mode $( [[ $action == on ]] && echo 'on' || echo 'off' )" || true
+fi

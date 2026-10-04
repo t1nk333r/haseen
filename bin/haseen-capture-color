@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# haseen:summary Pick a colour on screen and copy its hex value
+# haseen:args [--format hex|rgb|hsl|hsv|cmyk] [--dry-run]
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture color [--format hex|rgb|hsl|hsv|cmyk] [--dry-run]
+
+Freeze the screen with hyprpicker, click a pixel, copy the value and print it.
+Running it again while the picker is open does nothing new.
+EOF
+}
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+format=hex
+while (($#)); do
+    case "$1" in
+    --format)
+        (($# > 1)) || { usage >&2; exit 2; }
+        format=$2
+        shift
+        ;;
+    --format=*) format=${1#*=} ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+case $format in hex | rgb | hsl | hsv | cmyk) ;; *) usage >&2; exit 2 ;; esac
+
+if $DRY_RUN; then
+    echo "DRYRUN: hyprpicker -z -f $format | wl-copy"
+    exit 0
+fi
+require_cmds hyprpicker
+colour="$(hyprpicker -z -f "$format" 2>/dev/null || true)"
+[[ -n $colour ]] || exit 0 # cancelled
+printf '%s' "$colour" | wl-copy
+printf '%s\n' "$colour"
+notify "Colour copied" "$colour"

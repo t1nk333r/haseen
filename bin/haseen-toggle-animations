@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# haseen:summary Toggle Hyprland animations
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-toggle-animations and default/hypr/toggles (MIT, Copyright (c)
+# David Heinemeier Hansson): the toggle is a Lua file in a state directory
+# that the Hyprland config includes on every load, applied live with
+# `hyprctl eval`; switching off deletes it and reloads.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle animations [on|off|toggle] [--dry-run]
+
+"off" disables animations (for CPU rendering or less motion); "on" restores them.
+The state file records animations being OFF.
+State: \$HASEEN_USER_STATE/toggles/hypr/no-animations.lua (exists = on).
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/no-animations.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on) action=off ;;
+off) action=on ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=off; else action=on; fi ;;
+*) usage >&2; exit 2 ;;
+esac
+
+LUA=$(cat <<'LUA'
+-- haseen toggle: no animations.
+hl.config({ animations = { enabled = false } })
+LUA
+)
+
+if [[ $action == on ]]; then
+    printf '%s\n' "$LUA" | write_user_file "$TOGGLE_FILE"
+    if $DRY_RUN; then echo "DRYRUN: hyprctl eval <no-animations.lua>"; else hyprctl eval "$LUA" >/dev/null; fi
+else
+    if $DRY_RUN; then echo "DRYRUN: rm -f $TOGGLE_FILE"; else rm -f "$TOGGLE_FILE"; fi
+    run hyprctl reload
+fi
+$DRY_RUN && exit 0
+echo "Animations $( [[ $action == on ]] && echo 'disabled' || echo 'enabled' )"
+if have notify-send; then
+    notify-send -a haseen "Animations $( [[ $action == on ]] && echo 'disabled' || echo 'enabled' )" || true
+fi

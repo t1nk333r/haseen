@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# haseen:summary Show or switch the hybrid GPU mode (supergfxctl: integrated or hybrid)
+# haseen:args [status|integrated|hybrid|toggle] [--dry-run] [--yes]
+#
+# Adapted from Omarchy bin/omarchy-toggle-hybrid-gpu (MIT, Copyright (c) David
+# Heinemeier Hansson). haseen does not install supergfxctl or rewrite
+# /etc/supergfxd.conf here: supergfxd's own mode switch does the work, and the
+# user logs out (or reboots) to apply it.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+in_floating_terminal "$@"
+
+usage() {
+    cat <<EOF
+Usage: haseen hardware hybrid-gpu [status|integrated|hybrid|toggle] [--dry-run] [--yes]
+
+Needs supergfxctl with supergfxd running (install: haseen install package
+supergfxctl, then enable supergfxd.service). Switching asks for confirmation
+and takes effect after logging out.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-status}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in status | integrated | hybrid | toggle) ;; *) usage >&2; exit 2 ;; esac
+
+have supergfxctl || die "supergfxctl is not installed (haseen install package supergfxctl)"
+mode="$(timeout 3 supergfxctl -g 2>/dev/null || true)"
+[[ -n $mode ]] || die "supergfxd is not responding (systemctl status supergfxd)"
+
+if [[ $action == status ]]; then
+    echo "$mode"
+    exit 0
+fi
+if [[ $action == toggle ]]; then
+    if [[ $mode == Integrated ]]; then action=hybrid; else action=integrated; fi
+fi
+target=$([[ $action == integrated ]] && echo Integrated || echo Hybrid)
+if [[ $mode == "$target" ]]; then
+    echo "Already $target"
+    exit 0
+fi
+confirm "Switch GPU mode $mode -> $target? You must log out afterwards." || exit 1
+run supergfxctl -m "$target"
+$DRY_RUN && exit 0
+echo "GPU mode set to $target; log out to apply"
+if have notify-send; then
+    notify-send -a haseen "GPU mode: $target" "Log out to apply" || true
+fi

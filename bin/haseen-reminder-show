@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# haseen:summary List upcoming reminders
+# haseen:args [--json] [--notify]
+#
+# Adapted from Omarchy bin/omarchy-reminder (MIT, Copyright (c) David
+# Heinemeier Hansson): read the reminder timers back from systemd.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen reminder show [--json] [--notify]
+
+Prints one line per pending reminder ("HH:MM  in 4m  message").
+--json prints [{unit, at, atTime, remainingSeconds, message}].
+--notify shows the list as a notification as well.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+json=false notify=false
+for a in "$@"; do
+    case $a in
+    --json) json=true ;;
+    --notify) notify=true ;;
+    *) usage >&2; exit 2 ;;
+    esac
+done
+
+msg_dir="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-reminders"
+now=$(date +%s)
+rows="[]"
+# .next is in microseconds since the epoch.
+while IFS=$'\t' read -r timer next; do
+    [[ -n $timer && $next =~ ^[0-9]+$ ]] || continue
+    next=$((next / 1000000))
+    ((next > now)) || continue
+    unit=${timer%.timer}
+    mins=${unit#haseen-reminder-}
+    mins=${mins%%m-*}
+    msg="Your $mins minutes are up"
+    [[ -r $msg_dir/$unit.message ]] && msg="$(<"$msg_dir/$unit.message")"
+    rows="$(jq -c --arg unit "$unit" --arg msg "$msg" --arg t "$(date -d "@$next" +%H:%M)" \
+        --argjson at "$next" --argjson rem "$((next - now))" \
+        '. + [{unit: $unit, at: $at, atTime: $t, remainingSeconds: $rem, message: $msg}]' <<<"$rows")"
+done < <(systemctl --user list-timers --all --output=json 'haseen-reminder-*.timer' 2>/dev/null |
+    jq -r '.[]? | [.unit, (.next // 0 | tostring)] | @tsv')
+
+if $json; then
+    jq -c 'sort_by(.at)' <<<"$rows"
+    exit 0
+fi
+text="$(jq -r 'sort_by(.at)[] | "\(.atTime)  in \((.remainingSeconds / 60 | floor))m  \(.message)"' <<<"$rows")"
+printf '%s\n' "${text:-No reminders}"
+if $notify && have notify-send; then
+    notify-send -a haseen "Upcoming reminders" "${text:-No reminders}" || true
+fi

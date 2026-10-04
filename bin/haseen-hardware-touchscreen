@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# haseen:summary Enable, disable or toggle the touchscreen
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-toggle-input-device and omarchy-hw-touchscreen
+# (MIT, Copyright (c) David Heinemeier Hansson): find the device in
+# `hyprctl devices`, switch it with hl.device, persist the disable.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hardware touchscreen [on|off|toggle] [--dry-run]
+
+Switches the first touchscreen Hyprland reports. "off" persists across reloads in
+\$HASEEN_USER_STATE/toggles/hypr/touchscreen-disabled.lua.
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/touchscreen-disabled.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on | off) ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=on; else action=off; fi ;;
+*) usage >&2; exit 2 ;;
+esac
+
+device="$(hyprctl devices -j | jq -r '[.touch[]?.name, .tablets[]?.name] | first // empty')"
+# The name lands in generated Lua: only plain device names may pass.
+[[ -n $device ]] || die "no touchscreen found"
+[[ $device =~ ^[A-Za-z0-9\ ._:-]+$ ]] || die "refusing unusual device name: $device"
+
+lua="hl.device({ name = \"$device\", enabled = $([[ $action == on ]] && echo true || echo false) })"
+if [[ $action == on ]]; then
+    if $DRY_RUN; then echo "DRYRUN: rm -f $TOGGLE_FILE"; else rm -f "$TOGGLE_FILE"; fi
+else
+    printf '%s\n' "$lua" | write_user_file "$TOGGLE_FILE"
+fi
+run hyprctl eval "$lua"
+$DRY_RUN && exit 0
+state=$([[ $action == on ]] && echo enabled || echo disabled)
+echo "Touchscreen $state ($device)"
+if have notify-send; then
+    notify-send -a haseen "Touchscreen $state" || true
+fi

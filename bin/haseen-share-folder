@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# haseen:summary Send a folder with LocalSend
+# haseen:args [DIR] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-menu-share (MIT, Copyright (c) David
+# Heinemeier Hansson): hand the files to LocalSend in its own systemd unit, so
+# closing the caller does not kill the transfer.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen share folder [DIR] [--dry-run]
+
+With no DIR, a zenity folder chooser opens.
+Uses the localsend package, or the Flathub app org.localsend.localsend_app.
+EOF
+}
+
+# localsend_cmd — set LOCALSEND to the LocalSend command line.
+localsend_cmd() {
+    if have localsend; then
+        LOCALSEND=(localsend)
+    elif have flatpak && flatpak info org.localsend.localsend_app &>/dev/null; then
+        LOCALSEND=(flatpak run org.localsend.localsend_app)
+    else
+        die "LocalSend is not installed (haseen install package localsend)"
+    fi
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || { usage >&2; exit 2; }
+files=("$@")
+if ((${#files[@]} == 0)); then
+    have zenity || die "pass the folder, or install zenity for a chooser"
+    picked="$(zenity --file-selection --directory --title="Share folder" 2>/dev/null)" || exit 0
+    files=("$picked")
+fi
+[[ -d ${files[0]} ]] || die "not a folder: ${files[0]}"
+localsend_cmd
+run systemd-run --user --quiet --collect "${LOCALSEND[@]}" --headless send "${files[@]}"
+

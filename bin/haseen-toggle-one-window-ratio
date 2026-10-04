@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# haseen:summary Toggle a square aspect ratio for a lone tiled window
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-hyprland-window-single-square-aspect-toggle and default/hypr/toggles (MIT, Copyright (c)
+# David Heinemeier Hansson): the toggle is a Lua file in a state directory
+# that the Hyprland config includes on every load, applied live with
+# `hyprctl eval`; switching off deletes it and reloads.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle one-window-ratio [on|off|toggle] [--dry-run]
+
+Keeps a single tiled window from stretching across a wide screen.
+State: \$HASEEN_USER_STATE/toggles/hypr/single-window-aspect-ratio.lua (exists = on).
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/single-window-aspect-ratio.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on | off) ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=off; else action=on; fi ;;
+*) usage >&2; exit 2 ;;
+esac
+
+LUA=$(cat <<'LUA'
+-- haseen toggle: a lone tiled window keeps a 1:1 aspect ratio.
+hl.config({ layout = { single_window_aspect_ratio = { 1, 1 } } })
+LUA
+)
+
+if [[ $action == on ]]; then
+    printf '%s\n' "$LUA" | write_user_file "$TOGGLE_FILE"
+    if $DRY_RUN; then echo "DRYRUN: hyprctl eval <single-window-aspect-ratio.lua>"; else hyprctl eval "$LUA" >/dev/null; fi
+else
+    if $DRY_RUN; then echo "DRYRUN: rm -f $TOGGLE_FILE"; else rm -f "$TOGGLE_FILE"; fi
+    run hyprctl reload
+fi
+$DRY_RUN && exit 0
+echo "Single-window square ratio $( [[ $action == on ]] && echo 'on' || echo 'off' )"
+if have notify-send; then
+    notify-send -a haseen "Single-window square ratio $( [[ $action == on ]] && echo 'on' || echo 'off' )" || true
+fi

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# haseen:summary Mirror the laptop display to the external monitor, or extend again
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-hyprland-monitor-internal-mirror (MIT,
+# Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hardware mirror-display [on|off|toggle] [--dry-run]
+
+"on" makes the first external monitor mirror the built-in display (kept across
+reloads); "off" restores extended mode.
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/mirror-display.lua"
+LAPTOP_OFF_FILE="$HASEEN_USER_STATE/toggles/hypr/laptop-display-off.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on | off) ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=off; else action=on; fi ;;
+*) usage >&2; exit 2 ;;
+esac
+
+if [[ $action == off ]]; then
+    if $DRY_RUN; then echo "DRYRUN: rm -f $TOGGLE_FILE"; else rm -f "$TOGGLE_FILE"; fi
+    run hyprctl reload
+    $DRY_RUN || echo "Extended mode restored"
+    exit 0
+fi
+
+monitors="$(hyprctl monitors all -j)"
+internal="$(jq -r '[.[] | select(.name | test("^(eDP|LVDS|DSI)-")) | .name] | first // empty' <<<"$monitors")"
+external="$(jq -r '[.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | .name] | first // empty' <<<"$monitors")"
+[[ -n $internal ]] || die "no laptop display to mirror"
+[[ -n $external ]] || die "no external monitor found"
+for o in "$internal" "$external"; do
+    [[ $o =~ ^[A-Za-z0-9._-]+$ ]] || die "refusing unusual monitor name: $o"
+done
+
+# A disabled panel cannot be mirrored.
+if [[ -f $LAPTOP_OFF_FILE ]]; then
+    if $DRY_RUN; then echo "DRYRUN: rm -f $LAPTOP_OFF_FILE"; else rm -f "$LAPTOP_OFF_FILE"; fi
+fi
+printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = 1, mirror = "%s" })\n' \
+    "$external" "$internal" | write_user_file "$TOGGLE_FILE"
+run hyprctl reload
+$DRY_RUN || echo "Mirroring $internal on $external"

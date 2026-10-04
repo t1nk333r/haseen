@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# haseen:summary Screenshot a region, window or output to the clipboard and ~/Pictures
+# haseen:args [region|window|output|screen] [--geometry "X,Y WxH"] [--edit] [--no-save] [--no-copy] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-capture-screenshot and omarchy-capture-region
+# (MIT, Copyright (c) David Heinemeier Hansson): region picking with slurp,
+# window geometry from Hyprland, copy and save in one pass, optional editor.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture screenshot [region|window|output|screen] [options]
+
+Modes (default region):
+  region   pick a rectangle with slurp
+  window   the focused window
+  output   the focused monitor
+  screen   every monitor
+
+Options:
+  --geometry "X,Y WxH"  capture this rectangle (no picker; slurp's format)
+  --edit                open the shot in satty or swappy, whichever is installed
+  --no-save             clipboard only
+  --no-copy             file only
+  --dry-run             print the plan
+
+Files go to \$HASEEN_SCREENSHOT_DIR or \$(xdg-user-dir PICTURES).
+EOF
+}
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+pictures_dir() {
+    local d=${HASEEN_SCREENSHOT_DIR:-}
+    [[ -n $d ]] || d="$(xdg-user-dir PICTURES 2>/dev/null || true)"
+    [[ -n $d && $d != "$HOME" ]] || d="$HOME/Pictures"
+    printf '%s\n' "$d"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+mode=region geometry="" edit=false save=true copy=true
+while (($#)); do
+    case "$1" in
+    region | window | output | screen) mode=$1 ;;
+    --geometry)
+        (($# > 1)) || { usage >&2; exit 2; }
+        geometry=$2
+        shift
+        ;;
+    --geometry=*) geometry=${1#*=} ;;
+    --edit) edit=true ;;
+    --no-save) save=false ;;
+    --no-copy) copy=false ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+$save || $copy || $edit || die "--no-save and --no-copy together leave nothing to do"
+if [[ -n $geometry && ! $geometry =~ ^-?[0-9]+,-?[0-9]+\ [0-9]+x[0-9]+$ ]]; then
+    echo "Error: --geometry wants \"X,Y WxH\", got: $geometry" >&2
+    exit 2
+fi
+
+grim_args=()
+if [[ -n $geometry ]]; then
+    grim_args=(-g "$geometry")
+else
+    case $mode in
+    region)
+        if $DRY_RUN; then
+            grim_args=(-g '<slurp selection>')
+        else
+            geometry="$(slurp -d 2>/dev/null)" || exit 0 # cancelled
+            [[ -n $geometry ]] || exit 0
+            grim_args=(-g "$geometry")
+        fi
+        ;;
+    window)
+        if $DRY_RUN; then
+            grim_args=(-g '<focused window>')
+        else
+            geometry="$(hyprctl activewindow -j | jq -r 'select(.at) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')"
+            [[ -n $geometry ]] || die "no focused window"
+            grim_args=(-g "$geometry")
+        fi
+        ;;
+    output)
+        if $DRY_RUN; then
+            grim_args=(-o '<focused monitor>')
+        else
+            out="$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')"
+            [[ -n $out ]] || die "no focused monitor"
+            grim_args=(-o "$out")
+        fi
+        ;;
+    screen) ;;
+    esac
+fi
+
+editor=""
+if $edit; then
+    if have satty; then
+        editor=satty
+    elif have swappy; then
+        editor=swappy
+    else
+        warn "neither satty nor swappy is installed; saving without editing"
+    fi
+fi
+
+dir="$(pictures_dir)"
+file="$dir/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+
+if $DRY_RUN; then
+    echo "DRYRUN: grim ${grim_args[*]} $file"
+    [[ $editor == satty ]] && echo "DRYRUN: satty --filename $file --output-filename $file --early-exit --copy-command wl-copy"
+    [[ $editor == swappy ]] && echo "DRYRUN: swappy -f $file -o $file"
+    $copy && echo "DRYRUN: wl-copy -t image/png < $file"
+    $save || echo "DRYRUN: rm $file (clipboard only)"
+    exit 0
+fi
+
+$save || file="$(mktemp --suffix=.png)"
+mkdir -p "$(dirname "$file")"
+grim "${grim_args[@]}" "$file"
+
+case $editor in
+satty) satty --filename "$file" --output-filename "$file" --early-exit --copy-command wl-copy ;;
+swappy) swappy -f "$file" -o "$file" ;;
+esac
+
+$copy && wl-copy -t image/png <"$file"
+if $save; then
+    printf '%s\n' "$file"
+    notify -i "$file" "Screenshot saved" "${file/#"$HOME"/\~}"
+else
+    rm -f "$file"
+    notify "Screenshot copied to clipboard"
+fi

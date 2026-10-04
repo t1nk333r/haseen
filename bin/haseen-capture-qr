@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# haseen:summary Decode a QR code in a screen region into the clipboard
+# haseen:args [--geometry "X,Y WxH" | --image FILE] [--print] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-capture-qr (MIT, Copyright (c) David
+# Heinemeier Hansson): QR symbology only, sensitive clipboard copy.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture qr [--geometry "X,Y WxH" | --image FILE] [--print] [--dry-run]
+
+Pick a region (or pass one, or an image), decode the QR code with zbarimg and
+copy it as sensitive (clipboard history skips it). --print writes it to stdout
+too; it is never put in a notification, since QR codes often carry secrets
+such as otpauth:// URIs.
+EOF
+}
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+geometry="" image="" print=false
+while (($#)); do
+    case "$1" in
+    --geometry | --image)
+        (($# > 1)) || { usage >&2; exit 2; }
+        if [[ $1 == --geometry ]]; then geometry=$2; else image=$2; fi
+        shift
+        ;;
+    --print) print=true ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+[[ -z $image || -r $image ]] || die "cannot read $image"
+
+# Other symbologies false-positive on dense screen content.
+zbar=(zbarimg -q --raw -Sdisable -Sqrcode.enable)
+
+if $DRY_RUN; then
+    src="grim -g ${geometry:-<slurp selection>} -"
+    [[ -n $image ]] && src="cat $image"
+    echo "DRYRUN: $src | ${zbar[*]} - | wl-copy --sensitive"
+    exit 0
+fi
+require_cmds zbarimg
+
+if [[ -z $image && -z $geometry ]]; then
+    hyprpicker -r -z >/dev/null 2>&1 &
+    freeze=$!
+    trap 'kill "$freeze" 2>/dev/null || true' EXIT
+    sleep 0.1
+    geometry="$(slurp 2>/dev/null)" || exit 0
+    [[ -n $geometry ]] || exit 0
+fi
+
+if [[ -n $image ]]; then
+    result="$("${zbar[@]}" "$image" 2>/dev/null || true)"
+else
+    result="$(grim -g "$geometry" - | "${zbar[@]}" - 2>/dev/null || true)"
+fi
+if [[ -z $result ]]; then
+    notify -u critical "No QR code found" "Select a region containing a QR code"
+    exit 1
+fi
+printf '%s' "$result" | wl-copy --sensitive
+$print && printf '%s\n' "$result"
+notify "QR code copied to clipboard"

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# haseen:summary Measure disk write and read speed in a scratch file
+# haseen:args [DIR] [--size MB] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-disk-speedtest (MIT, Copyright (c) David
+# Heinemeier Hansson): incompressible data staged in RAM, direct I/O so the
+# page cache is not measured, NOCOW on btrfs, scratch files removed by a trap.
+# Uses fio when installed, dd otherwise.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+in_floating_terminal "$@"
+
+usage() {
+    cat <<EOF
+Usage: haseen test disk [DIR] [--size MB] [--dry-run]
+
+Writes and reads back a scratch file of MB megabytes (default 512) in DIR
+(default \$XDG_CACHE_HOME/haseen) and prints MB/s for each. Needs twice the
+size free. HASEEN_DISKTEST_NO_FIO=1 forces the dd path.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+dir="" size=512
+while (($#)); do
+    case "$1" in
+    --size)
+        (($# > 1)) || { usage >&2; exit 2; }
+        size=$2
+        shift
+        ;;
+    --size=*) size=${1#*=} ;;
+    -*) usage >&2; exit 2 ;;
+    *) [[ -z $dir ]] || { usage >&2; exit 2; }; dir=$1 ;;
+    esac
+    shift
+done
+[[ $size =~ ^[0-9]+$ ]] && ((size >= 16)) || { echo "Error: --size wants MB >= 16" >&2; exit 2; }
+dir=${dir:-${XDG_CACHE_HOME:-$HOME/.cache}/haseen}
+
+tool="dd"
+have fio && [[ ${HASEEN_DISKTEST_NO_FIO:-} != 1 ]] && tool=fio
+if $DRY_RUN; then
+    echo "DRYRUN: $tool write+read ${size}MB in $dir/disktest-XXXXXX (removed afterwards)"
+    exit 0
+fi
+
+mkdir -p "$dir"
+avail=$(df --output=avail -m "$dir" | tail -n1 | tr -d ' ')
+((avail >= size * 2)) || die "need $((size * 2)) MB free in $dir (have $avail)"
+
+file="" src=""
+cleanup() { rm -f ${file:+"$file"} ${src:+"$src"}; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+file="$(mktemp "$dir/disktest-XXXXXX")"
+chattr +C "$file" 2>/dev/null || true # direct I/O on btrfs needs NOCOW
+
+echo "Target: $dir ($(findmnt -no SOURCE --target "$dir" 2>/dev/null || echo '?'))"
+if [[ $tool == fio ]]; then
+    for rw in write read; do
+        bw=$(fio --name=haseen --filename="$file" --rw="$rw" --bs=4M --size="${size}M" \
+            --direct=1 --ioengine=psync --end_fsync=1 --output-format=json 2>/dev/null |
+            jq -r --arg rw "$rw" '.jobs[0][$rw].bw_bytes / 1000000 | floor')
+        printf '%-6s %s MB/s\n' "$rw" "$bw"
+    done
+    exit 0
+fi
+
+# dd: last stderr line is "N bytes ... copied, S s, R MB/s".
+rate() { sed -n 's/.*, \([0-9.,]* [kMG]B\/s\)$/\1/p' | tail -n1; }
+src="$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/haseen-disktest-XXXXXX")"
+dd if=/dev/urandom of="$src" bs=4M count=$((size / 4)) status=none
+w=$(dd if="$src" of="$file" bs=4M oflag=direct conv=fsync 2>&1 | rate) ||
+    w=$(dd if="$src" of="$file" bs=4M conv=fsync 2>&1 | rate)
+rm -f "$src"
+src=""
+r=$(dd if="$file" of=/dev/null bs=4M iflag=direct 2>&1 | rate) || r=""
+printf '%-6s %s\n' write "${w:-?}" read "${r:-?}"

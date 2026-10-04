@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.emoji",
+  "name": "Emoji",
+  "version": "1.0.0",
+  "description": "Searchable emoji grid; Enter or click copies the emoji to the clipboard",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "columns": {
+      "type": "integer",
+      "default": 9,
+      "description": "Emoji per row"
+    },
+    "rows": {
+      "type": "integer",
+      "default": 6,
+      "description": "Rows visible at once"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.emoji to drive the open panel without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# haseen:summary Notify after N minutes (a transient systemd user timer)
+# haseen:args <minutes> [message...] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-reminder (MIT, Copyright (c) David
+# Heinemeier Hansson): one `systemd-run --user --on-active` unit per reminder,
+# the message kept beside it in the runtime dir.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen reminder set <minutes> [message...] [--dry-run]
+
+Sends a notification after <minutes> (1-1440). Survives the shell restarting;
+not a reboot. See: haseen reminder show, haseen reminder clear.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+minutes=${1:-}
+if [[ ! $minutes =~ ^[0-9]+$ ]] || ((10#$minutes < 1 || 10#$minutes > 1440)); then
+    usage >&2
+    exit 2
+fi
+minutes=$((10#$minutes))
+shift
+custom="$*"
+message=${custom:-"Your $minutes minutes are up"}
+
+unit="haseen-reminder-${minutes}m-$(date +%s)"
+msg_dir="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-reminders"
+msg_file="$msg_dir/$unit.message"
+at="$(date -d "+$minutes minutes" +%H:%M)"
+
+# The message goes in as an argument, never into the bash -c string.
+if [[ -n $custom ]]; then
+    printf '%s' "$custom" | write_user_file "$msg_file"
+fi
+run systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
+    --description="haseen reminder: $message" \
+    bash -c 'notify-send -a haseen -u critical "Reminder" "$1"; rm -f "$2"' bash "$message" "$msg_file"
+$DRY_RUN && exit 0
+echo "Reminder at $at: $message"
+if have notify-send; then
+    notify-send -a haseen "Reminder set for $at" "$message" || true
+fi

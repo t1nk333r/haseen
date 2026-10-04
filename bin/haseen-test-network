@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# haseen:summary Measure internet download and upload speed
+# haseen:args [--dry-run]
+#
+# Runs the first speed-test CLI found: librespeed-cli (AUR), speedtest-go (AUR)
+# or speedtest-cli (extra). From the menu it opens in a floating terminal.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+in_floating_terminal "$@"
+
+usage() {
+    cat <<EOF
+Usage: haseen test network [--dry-run]
+
+Measures latency, download and upload against the nearest public server with
+librespeed-cli, speedtest-go or speedtest-cli (first one installed).
+Install one with: haseen install package speedtest-cli
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || { usage >&2; exit 2; }
+
+cmd=()
+if have librespeed-cli; then
+    cmd=(librespeed-cli --simple)
+elif have speedtest-go; then
+    cmd=(speedtest-go)
+elif have speedtest-cli; then
+    cmd=(speedtest-cli --simple --secure)
+else
+    die "no speed-test tool found (haseen install package speedtest-cli)"
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: ${cmd[*]}"
+    exit 0
+fi
+"${cmd[@]}"
