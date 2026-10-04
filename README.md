@@ -1,5 +1,7 @@
 # haseen
 
+[![ci](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml/badge.svg)](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml)
+
 حصين (*haseen*, "fortified"): a clean, low-resource desktop that installs on
 top of **CachyOS** (plain Arch works too; NixOS uses the flake). It is built on
 Hyprland (Lua config) and a small Quickshell shell of its own, and it can load

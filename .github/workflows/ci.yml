@@ -1,0 +1,104 @@
+# haseen CI: the same gates AGENTS.md asks for before every commit and push.
+#   lint    tools/lint.sh (bash -n, shellcheck, luac, jq, qmllint)
+#   test    tests/run.sh, as a normal user (haseen refuses to run as root)
+#   docs    tools/check-docs.sh (needs full history: plans cite commits)
+#   secrets gitleaks over every commit + tools/secrets.sh privacy patterns
+#   nix     nix flake check + example host evaluation
+# Lint and tests run in an Arch container, the distro haseen targets, so
+# shellcheck, Qt 6 and the other tools match what an Arch/CachyOS host has.
+# Third-party actions are pinned by commit SHA.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  ARCH_PACKAGES: >-
+    git bash jq lua shellcheck curl file python nodejs qt6-declarative
+    imagemagick qrencode zbar foot which diffutils
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Tools
+        run: |
+          read -ra pkgs <<<"$ARCH_PACKAGES"
+          pacman -Syu --noconfirm --needed "${pkgs[@]}"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Versions
+        run: |
+          bash --version | head -1
+          shellcheck --version | sed -n 2p
+          /usr/lib/qt6/bin/qmllint --version
+      - name: tools/lint.sh
+        run: tools/lint.sh
+
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Tools
+        run: |
+          read -ra pkgs <<<"$ARCH_PACKAGES"
+          pacman -Syu --noconfirm --needed "${pkgs[@]}"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unprivileged user
+        run: |
+          useradd -m ci
+          chown -R ci:ci "$GITHUB_WORKSPACE"
+      - name: tests/run.sh
+        # runuser keeps the working directory (the checkout).
+        run: runuser -u ci -- env QT_QPA_PLATFORM=offscreen HOME=/home/ci tests/run.sh
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: tools/check-docs.sh
+        run: tools/check-docs.sh
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks 8.30.1 (checksum pinned)
+        run: |
+          curl -fsSLo /tmp/gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+      - name: tools/secrets.sh
+        env:
+          GITLEAKS: /tmp/gitleaks
+        run: tools/secrets.sh
+
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: nix flake check
+        run: nix flake check --no-build
+      - name: example host evaluates
+        run: nix eval --raw .#nixosConfigurations.example.config.system.build.toplevel.drvPath
+      - name: package builds
+        run: nix build .#haseen --print-out-paths
