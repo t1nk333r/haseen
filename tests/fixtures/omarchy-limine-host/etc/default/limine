@@ -1,0 +1,2 @@
+ESP_PATH="/boot"
+KERNEL_CMDLINE[default]+="cryptdevice=PARTUUID=x:root root=/dev/mapper/root"

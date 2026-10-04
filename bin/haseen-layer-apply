@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# haseen:summary Apply layers (and what they require); idempotent
+# haseen:args    <layer...> [--dry-run] [--yes] [-- layer args]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/layers.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen layer apply <layer...> [--dry-run] [--yes] [-- ARGS]
+
+ARGS after -- go to the last named layer only (e.g. its own flags):
+  haseen layer apply vapt -- --groups core,web
+Required layers are applied first. Run 'haseen layer list' for names.
+EOF
+}
+
+layers=()
+layer_args=()
+while (($# > 0)); do
+    case "$1" in
+    --) shift; layer_args=("$@"); break ;;
+    --dry-run) DRY_RUN=true ;;
+    --yes | -y) ASSUME_YES=true ;;
+    -h | --help) usage; exit 0 ;;
+    -*) die "unknown flag: $1 (layer flags go after --)" ;;
+    *) layers+=("$1") ;;
+    esac
+    shift
+done
+((${#layers[@]} > 0)) || { usage >&2; exit 2; }
+require_not_root
+
+mapfile -t order < <(resolve_layers "${layers[@]}")
+((${#order[@]} > 0)) || exit 1
+check_conflicts "${order[@]}"
+
+last="${layers[-1]}"
+info "apply order: ${order[*]}"
+for n in "${order[@]}"; do
+    if [[ $n != "$last" ]] && layer_is_applied "$n" && [[ ! " ${layers[*]} " == *" $n "* ]]; then
+        info "layer $n already applied; skipping (re-apply explicitly to refresh)"
+        continue
+    fi
+    if [[ $n == "$last" ]]; then
+        layer_run_apply "$n" "${layer_args[@]}"
+    else
+        layer_run_apply "$n"
+    fi
+done

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# haseen:summary Print what haseen detects about this machine, then layer health
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/layers.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+
+usage() { echo "Usage: haseen doctor"; }
+parse_common_flags "$@"
+
+printf 'haseen %s (%s)\n' "$(haseen_version)" "$HASEEN_PATH"
+preflight_all
+preflight_report
+echo
+exec "$(dirname "$(readlink -f "$0")")/haseen-layer-status"

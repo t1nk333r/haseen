@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# haseen:summary Show health of applied layers (or the named ones)
+# haseen:args    [layer...]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/layers.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+
+usage() { echo "Usage: haseen layer status [layer...]   exit 0 healthy, 1 something missing, 2 degraded"; }
+parse_common_flags "$@"
+
+names=("${REST[@]}")
+if ((${#names[@]} == 0)); then
+    for n in $(layer_names); do
+        layer_is_applied "$n" && names+=("$n")
+    done
+fi
+((${#names[@]} > 0)) || {
+    info "no layers applied yet (haseen layer list)"
+    exit 0
+}
+
+worst=0
+for n in "${names[@]}"; do
+    layer_exists "$n" || die "unknown layer: $n"
+    echo "== $n"
+    rc=0
+    layer_run_status "$n" | sed 's/^/   /' || rc=${PIPESTATUS[0]}
+    ((rc > worst)) && worst=$rc
+done
+exit "$worst"

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# haseen:summary List layers, their state and what they need
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/layers.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+
+usage() { echo "Usage: haseen layer list"; }
+parse_common_flags "$@"
+
+printf '%-12s %-9s %-22s %s\n' LAYER STATE REQUIRES SUMMARY
+for name in $(layer_names); do
+    st=available
+    layer_is_applied "$name" && st=applied
+    requires="$(layer_field "$name" LAYER_REQUIRES | paste -sd, -)"
+    printf '%-12s %-9s %-22s %s\n' "$name" "$st" "${requires:--}" "$(layer_field "$name" LAYER_SUMMARY)"
+done

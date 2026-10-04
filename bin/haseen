@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# haseen — command router. `haseen a b c ARGS` runs the longest existing
+# bin/haseen-a-b-c, haseen-a-b or haseen-a next to this file.
+#
+# Router convention adapted from omarchy bin/omarchy (MIT, David Heinemeier
+# Hansson): every command is an executable file; its header comments carry
+# the metadata, so there is no registry to drift:
+#
+#   # haseen:summary One line shown by `haseen commands`
+#   # haseen:args    <required> [optional]
+#   # haseen:hidden  (omit from listings)
+set -Eeuo pipefail
+
+BIN_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+export HASEEN_PATH="${HASEEN_PATH:-$(cd "$BIN_DIR/../share/haseen" && pwd)}"
+export PATH="$BIN_DIR:$PATH"
+
+meta() { sed -n "s/^# haseen:$2[[:space:]]*//p" "$1" | head -n1; }
+
+# list_commands [PREFIX] — "route<TAB>args<TAB>summary" for visible commands.
+list_commands() {
+    local prefix="${1:-}" f base route
+    for f in "$BIN_DIR"/haseen-*; do
+        [[ -f $f && -x $f ]] || continue
+        base="${f##*/}"
+        route="${base#haseen-}"
+        [[ -z $prefix || $route == "$prefix" || $route == "$prefix"-* ]] || continue
+        grep -q '^# haseen:hidden' "$f" && continue
+        printf '%s\t%s\t%s\n' "${route//-/ }" "$(meta "$f" args)" "$(meta "$f" summary)"
+    done
+}
+
+print_commands() {
+    local rows
+    rows="$(list_commands "${1:-}")"
+    [[ -n $rows ]] || return 1
+    while IFS=$'\t' read -r route args summary; do
+        printf '  %-34s %s\n' "haseen $route${args:+ $args}" "$summary"
+    done <<<"$rows"
+}
+
+usage() {
+    cat <<EOF
+haseen — a clean, secure CachyOS/Arch desktop on Hyprland and Quickshell.
+
+Usage: haseen <command> [args]   (every command takes --help)
+
+Commands:
+EOF
+    print_commands
+}
+
+(($# > 0)) || {
+    usage
+    exit 0
+}
+
+case "$1" in
+-h | --help | help)
+    usage
+    exit 0
+    ;;
+commands)
+    print_commands "${2:-}"
+    exit 0
+    ;;
+--version | version)
+    cat "$HASEEN_PATH/VERSION"
+    exit 0
+    ;;
+esac
+
+# Longest prefix match over the leading non-flag words.
+words=()
+for a in "$@"; do
+    [[ $a == -* ]] && break
+    [[ $a =~ ^[a-z0-9][a-z0-9-]*$ ]] || break
+    words+=("$a")
+done
+
+for ((n = ${#words[@]}; n > 0; n--)); do
+    name="haseen-$(
+        IFS=-
+        echo "${words[*]:0:n}"
+    )"
+    if [[ -x $BIN_DIR/$name ]]; then
+        exec "$BIN_DIR/$name" "${@:n+1}"
+    fi
+done
+
+# `haseen <group>` or `haseen <group> --help` with no exact command: list it.
+if ((${#words[@]} > 0)) && print_commands "$(
+    IFS=-
+    echo "${words[*]}"
+)" >/dev/null; then
+    echo "haseen ${words[*]}:"
+    print_commands "$(
+        IFS=-
+        echo "${words[*]}"
+    )"
+    exit 0
+fi
+
+echo "haseen: unknown command: $*" >&2
+echo "Run 'haseen commands' for the list." >&2
+exit 2

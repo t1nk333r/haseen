@@ -1,0 +1,3 @@
+NAME=NixOS
+PRETTY_NAME="NixOS 26.05"
+ID=nixos

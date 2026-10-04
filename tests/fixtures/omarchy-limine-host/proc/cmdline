@@ -1,0 +1,1 @@
+cryptdevice=PARTUUID=x:root root=/dev/mapper/root rw

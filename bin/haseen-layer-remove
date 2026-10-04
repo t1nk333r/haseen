@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# haseen:summary Remove a layer's reversible changes
+# haseen:args    <layer> [--dry-run] [--yes] [-- layer args]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/layers.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+
+usage() { echo "Usage: haseen layer remove <layer> [--dry-run] [--yes] [-- ARGS]"; }
+
+name=""
+layer_args=()
+while (($# > 0)); do
+    case "$1" in
+    --) shift; layer_args=("$@"); break ;;
+    --dry-run) DRY_RUN=true ;;
+    --yes | -y) ASSUME_YES=true ;;
+    -h | --help) usage; exit 0 ;;
+    -*) die "unknown flag: $1" ;;
+    *) [[ -z $name ]] || die "one layer at a time"; name="$1" ;;
+    esac
+    shift
+done
+[[ -n $name ]] || { usage >&2; exit 2; }
+require_not_root
+layer_exists "$name" || die "unknown layer: $name"
+
+for other in $(layer_names); do
+    [[ $other == "$name" ]] && continue
+    layer_is_applied "$other" || continue
+    if layer_field "$other" LAYER_REQUIRES | grep -qx "$name"; then
+        die "layer $other requires $name; remove $other first"
+    fi
+done
+confirm "Remove layer $name?" || exit 1
+layer_run_remove "$name" "${layer_args[@]}"

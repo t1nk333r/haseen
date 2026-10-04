@@ -1,0 +1,6 @@
+/tests/.out/
+/result
+/result-*
+*.qmlc
+*.jsc
+.qmlls.ini

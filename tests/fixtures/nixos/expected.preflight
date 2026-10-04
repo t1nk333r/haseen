@@ -1,0 +1,8 @@
+distro=nixos
+firmware=bios
+secureboot=unknown
+bootloader=unknown
+esp=/boot
+windows_on_esp=false
+luks=false
+gpu=none

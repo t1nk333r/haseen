@@ -1,0 +1,8 @@
+distro=arch
+firmware=bios
+secureboot=unknown
+bootloader=grub
+esp=/boot
+windows_on_esp=false
+luks=false
+gpu=none
