@@ -8,7 +8,9 @@ import qs.Haseen
 // haseen.notifications: the org.freedesktop.Notifications server.
 // New notifications pop up top-right (at most maxPopups, newest on top) and
 // stay in memory for the panel until dismissed; nothing is written to disk.
-// Do-not-disturb keeps everything but critical out of the popups.
+// Do-not-disturb keeps everything but critical out of the popups. Its state
+// is the `dnd` flag (qs.Haseen Flags), so `haseen toggle dnd`, the panel,
+// the bar indicator and `notifications toggleDnd` all agree.
 //
 // Only one process can own the D-Bus name. While another daemon (DMS,
 // omarchy-shell, mako) holds it, Quickshell logs the failure and this service
@@ -26,7 +28,7 @@ Scope {
     readonly property int historySize: _int(settings.historySize, 50, 1)
     readonly property int popupWidth: _int(settings.width, 360, 200)
 
-    property bool dnd: false
+    readonly property bool dnd: Flags.dnd
     // Notification objects shown as popups, newest first.
     property var popups: []
     // Every tracked notification, oldest first (the panel reverses it).
@@ -37,7 +39,10 @@ Scope {
     }
 
     function toggleDnd(): void {
-        dnd = !dnd;
+        Flags.set("dnd", !dnd);
+    }
+
+    onDndChanged: {
         if (dnd)
             popups = popups.filter(n => n.urgency === NotificationUrgency.Critical);
     }

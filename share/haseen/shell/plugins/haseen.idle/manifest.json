@@ -3,14 +3,21 @@
   "id": "haseen.idle",
   "name": "Idle",
   "version": "1.0.0",
-  "description": "Locks the session and turns displays off after inactivity (ext-idle-notify, honours idle inhibitors)",
+  "description": "Screensaver, lock and display power-off after inactivity (ext-idle-notify, honours idle inhibitors and the idle-off/screensaver-off flags); bar indicator while Stay Awake is on",
   "kinds": [
-    "service"
+    "service",
+    "bar-widget"
   ],
   "entry": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml"
   },
   "settings": {
+    "screensaverAfter": {
+      "type": "integer",
+      "default": 150,
+      "description": "Seconds of inactivity before the screensaver starts (0 = never; ignored when not before lockAfter)"
+    },
     "lockAfter": {
       "type": "integer",
       "default": 300,
@@ -25,6 +32,11 @@
       "type": "boolean",
       "default": true,
       "description": "Do nothing while an app holds an idle inhibitor (video, presentation)"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Debug: expose the haseen.idle IPC target (state) for smoke tests"
     }
   },
   "permissions": []

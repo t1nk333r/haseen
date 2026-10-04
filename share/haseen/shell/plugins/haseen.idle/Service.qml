@@ -1,15 +1,28 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Haseen
+import "IdleLogic.js" as Logic
 
-// haseen.idle: two ext-idle-notify monitors, so the compositor does the
-// counting and the shell holds no timer. After lockAfter seconds it calls
-// the `lock` role (haseen.lock or any plugin providing it); after dpmsAfter
-// seconds it turns the displays off and back on at the next input. With
-// respectInhibitors, an idle inhibitor (mpv, a browser playing video) keeps
-// both from firing.
+// haseen.idle: up to three ext-idle-notify monitors, so the compositor does
+// the counting and the shell holds no timer.
+//   screensaverAfter: start the `screensaver` role (haseen.screensaver);
+//                     input dismisses it again.
+//   lockAfter:        call the `lock` role (haseen.lock or any provider).
+//   dpmsAfter:        turn the displays off, back on at the next input.
+// With respectInhibitors, an idle inhibitor (mpv, a browser playing video)
+// keeps all three from firing. The `idle-off` flag (`haseen toggle idle`,
+// Stay Awake) removes every monitor; `screensaver-off` removes only the
+// screensaver one. The decisions live in IdleLogic.js (unit-tested).
+//
+// Each monitor is its own object, created with its final timeout and
+// destroyed when that changes, never reconfigured in place. Quickshell
+// 0.3.1's IdleMonitor deletes and recreates its notification on every
+// parameter change; the allocator hands the new one the same address, the
+// isIdle binding sees an unchanged pointer, and the monitor never reports
+// idle again (observed in plan 019's smoke).
 Scope {
     id: root
 
@@ -18,14 +31,15 @@ Scope {
     property var settings: ({})
     property var screen: null
 
-    readonly property int lockAfter: _seconds(settings.lockAfter, 300)
-    readonly property int dpmsAfter: _seconds(settings.dpmsAfter, 330)
     readonly property bool respectInhibitors: settings.respectInhibitors !== false
+    readonly property bool haveScreensaver: Plugins.roles.screensaver !== undefined
+    readonly property var timeouts: Logic.timeouts(settings, {
+        idleOff: Flags.idleOff,
+        screensaverOff: Flags.screensaverOff
+    }, haveScreensaver)
     property bool _dpmsOff: false
-
-    function _seconds(v: var, fallback: int): int {
-        return (typeof v === "number" && isFinite(v) && v >= 0) ? Math.round(v) : fallback;
-    }
+    // name -> isIdle of the live monitors, for the debug hook.
+    property var _idle: ({})
 
     function _dpms(on: bool): void {
         // Hyprland 0.56 in Lua mode takes Lua dispatcher expressions.
@@ -33,28 +47,71 @@ Scope {
         Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.dpms({ action = \"" + action + "\" })" : "dpms " + (on ? "on" : "off"));
     }
 
-    IdleMonitor {
-        enabled: root.lockAfter > 0
-        timeout: Math.max(root.lockAfter, 1)
-        respectInhibitors: root.respectInhibitors
-        onIsIdleChanged: {
-            if (isIdle && !Plugins.callRole("lock", "lock", []))
-                Plugins.warnOnce(root.pluginId + ":nolock", "haseen.idle: no plugin provides 'lock'; idle lock skipped");
+    function _run(monitor: string, isIdle: bool): void {
+        const idle = Object.assign({}, _idle);
+        idle[monitor] = isIdle;
+        _idle = idle;
+        for (const action of Logic.actions(monitor, isIdle, { dpmsOff: _dpmsOff })) {
+            switch (action) {
+            case "screensaver.start":
+                Plugins.callRole("screensaver", "start", []);
+                break;
+            case "screensaver.dismiss":
+                Plugins.callRole("screensaver", "dismiss", []);
+                break;
+            case "lock":
+                if (!Plugins.callRole("lock", "lock", []))
+                    Plugins.warnOnce(pluginId + ":nolock", "haseen.idle: no plugin provides 'lock'; idle lock skipped");
+                break;
+            case "dpms.off":
+                _dpmsOff = true;
+                _dpms(false);
+                break;
+            case "dpms.on":
+                _dpmsOff = false;
+                _dpms(true);
+                break;
+            }
         }
     }
 
-    IdleMonitor {
-        enabled: root.dpmsAfter > 0
-        timeout: Math.max(root.dpmsAfter, 1)
-        respectInhibitors: root.respectInhibitors
-        onIsIdleChanged: {
-            if (isIdle) {
-                root._dpmsOff = true;
-                root._dpms(false);
-            } else if (root._dpmsOff) {
-                root._dpmsOff = false;
-                root._dpms(true);
+    // Keys like "lock:300:1" (Logic.monitors); ScriptModel diffs strings by
+    // value, so an unchanged monitor keeps its countdown.
+    Instantiator {
+        model: ScriptModel {
+            values: Logic.monitors(root.timeouts, root.respectInhibitors)
+        }
+
+        delegate: IdleMonitor {
+            required property string modelData
+            readonly property var spec: Logic.parseMonitor(modelData)
+
+            timeout: spec.timeout
+            respectInhibitors: spec.respectInhibitors
+            onIsIdleChanged: root._run(spec.name, isIdle)
+            // Removed while idle (Stay Awake turned on during the
+            // screensaver): undo what its idle state did.
+            Component.onDestruction: {
+                if (isIdle)
+                    root._run(spec.name, false);
             }
+        }
+    }
+
+    // Test hook (settings.debugIpc): read the monitors over IPC
+    // (`qs ipc call haseen.idle state`) instead of waiting blind.
+    IpcHandler {
+        target: "haseen.idle"
+        enabled: root.settings.debugIpc === true
+
+        function state(): string {
+            return JSON.stringify({
+                timeouts: root.timeouts,
+                haveScreensaver: root.haveScreensaver,
+                monitors: Logic.monitors(root.timeouts, root.respectInhibitors),
+                idle: root._idle,
+                dpmsOff: root._dpmsOff
+            });
         }
     }
 }

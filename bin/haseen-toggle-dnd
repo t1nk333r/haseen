@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# haseen:summary Turn do-not-disturb on or off (only critical notifications pop up)
+# haseen:args [on|off|toggle|status] [--dry-run]
+#
+# Plan 019. State is the flag file $HASEEN_USER_STATE/flags/dnd (exists =
+# do-not-disturb on). The shell reads it through qs.Haseen Flags (inotify, no
+# polling): haseen.notifications holds back popups
+# and its bar indicator appears.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle dnd [on|off|toggle|status] [--dry-run]
+
+Do-not-disturb keeps every notification but critical ones out of the
+popups; they still land in the notifications panel. The bar shows a
+crossed-out bell while it is on.
+Without an argument it toggles; "status" prints on or off.
+State: \$HASEEN_USER_STATE/flags/dnd (do-not-disturb on while it exists).
+EOF
+}
+
+FLAG="$HASEEN_USER_STATE/flags/dnd"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+action=${1:-toggle}
+
+# The feature is on when the flag exists.
+is_on() { [[ -e $FLAG ]]; }
+
+case $action in
+on | off) ;;
+toggle) if is_on; then action=off; else action=on; fi ;;
+status)
+    if is_on; then echo on; else echo off; fi
+    exit 0
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ $action == on ]]; then
+    write_user_file "$FLAG" </dev/null
+else
+    run rm -f -- "$FLAG"
+fi
+$DRY_RUN && exit 0
+echo "Do not disturb $action"

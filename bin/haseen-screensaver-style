@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# haseen:summary Print or set the screensaver style (ttfx or native)
+# haseen:args [ttfx|native] [--dry-run]
+#
+# Plan 019. The style is plugins."haseen.screensaver".settings.style in
+# ~/.config/haseen/shell.json; the running shell picks a change up live.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen screensaver style [ttfx|native] [--dry-run]
+
+Without an argument prints the current style. With one, saves it:
+  ttfx    Omarchy's screensaver: ttfx effects over the branding text in a
+          fullscreen terminal on every monitor (needs ttfx)
+  native  a drifting clock and the branding on the theme background
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+MANIFEST="$HASEEN_PATH/shell/plugins/haseen.screensaver/manifest.json"
+
+current_style() {
+    local s
+    s="$(shell_merged_json | jq -r '.plugins["haseen.screensaver"].settings.style // empty')"
+    case $s in
+    ttfx | native) echo "$s" ;;
+    *) jq -r '.settings.style.default' "$MANIFEST" ;;
+    esac
+}
+
+if ((${#REST[@]} == 0)); then
+    current_style
+    exit 0
+fi
+style="${REST[0]}"
+case $style in
+ttfx | native) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+shell_user_json | jq --arg s "$style" '.plugins["haseen.screensaver"].settings.style = $s' | shell_config_write
+$DRY_RUN || echo "Screensaver style: $style"

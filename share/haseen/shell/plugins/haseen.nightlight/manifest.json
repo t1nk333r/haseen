@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.nightlight",
+  "name": "Night light",
+  "version": "1.0.0",
+  "description": "Warms the screen through hyprsunset while the nightlight flag is on (haseen toggle nightlight), with an optional fixed sunset/sunrise schedule",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "settings": {
+    "temperature": {
+      "type": "integer",
+      "default": 4000,
+      "description": "Colour temperature in K while the night light is on (1000-20000)"
+    },
+    "sunset": {
+      "type": "string",
+      "default": "",
+      "description": "HH:MM to turn the night light on every day; empty (or equal to sunrise) = no schedule"
+    },
+    "sunrise": {
+      "type": "string",
+      "default": "",
+      "description": "HH:MM to turn the night light off every day"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
+}

@@ -3,14 +3,16 @@
   "id": "haseen.notifications",
   "name": "Notifications",
   "version": "1.0.0",
-  "description": "Notification server: popups top-right, do-not-disturb, and a panel with recent notifications (memory only)",
+  "description": "Notification server: popups top-right, do-not-disturb (the dnd flag) with a bar indicator while it is on, and a panel with recent notifications (memory only)",
   "kinds": [
     "service",
-    "panel"
+    "panel",
+    "bar-widget"
   ],
   "entry": {
     "service": "Service.qml",
-    "panel": "Panel.qml"
+    "panel": "Panel.qml",
+    "bar-widget": "Widget.qml"
   },
   "settings": {
     "timeout": {

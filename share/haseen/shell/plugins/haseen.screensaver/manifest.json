@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.screensaver",
+  "name": "Screensaver",
+  "version": "1.0.0",
+  "description": "Screensaver before the idle lock: Omarchy's ttfx effects in a fullscreen terminal per monitor (ttfx), or a drifting clock and branding overlay on every screen (native); any input ends it",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "settings": {
+    "style": {
+      "type": "string",
+      "default": "ttfx",
+      "description": "ttfx (Omarchy's screensaver: ttfx over the branding text in a fullscreen terminal per monitor; needs the AUR package ttfx) or native (clock and branding on the theme background)"
+    },
+    "clockFormat": {
+      "type": "string",
+      "default": "HH:mm",
+      "description": "Qt time format of the native clock"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Debug: expose the haseen.screensaver IPC target (dismiss, state, startIdle) for smoke tests"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ],
+  "provides": [
+    "screensaver"
+  ]
+}

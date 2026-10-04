@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# haseen:summary Show the screensaver now (Omarchy's ttfx terminals or the native clock overlay)
+# haseen:args [--force] [--style ttfx|native] [--dry-run]
+#
+# Plan 019. The shell's haseen.screensaver service runs it; this command asks
+# over IPC. The ttfx style is a port of Omarchy's screensaver: one fullscreen
+# terminal per monitor, each on its own special workspace, running ttfx (the
+# Rust port of terminaltexteffects, AUR `ttfx`) over the branding text until
+# a key press or a focus change. The service starts it with --ttfx-launch and
+# ends it with --stop; --ttfx-run is the loop inside each terminal.
+#
+# Adapted from Omarchy bin/omarchy-launch-screensaver and
+# bin/omarchy-screensaver (MIT, Copyright (c) David Heinemeier Hansson).
+# Changes: $TERMINAL instead of xdg-terminal-exec, terminal options on the
+# command line instead of shipped configs, polling `hyprctl clients` for the
+# new window instead of a socat event stream, the shell (not a background
+# loop) hands focus back, and ending kills the screensaver terminals by PID
+# instead of `pkill -f`.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+APP_ID=org.haseen.screensaver
+
+usage() {
+    cat <<EOF
+Usage: haseen screensaver [--force] [--style ttfx|native] [--dry-run]
+
+Shows the screensaver until the next key press, click or pointer motion.
+  --force         show it even when it is turned off (haseen toggle screensaver)
+  --style STYLE   ttfx (Omarchy's: ttfx effects over the branding text in a
+                  fullscreen terminal per monitor) or native (a clock and the
+                  branding on the theme background). Default: the saved style,
+                  see 'haseen screensaver style'.
+
+Branding text: ~/.config/haseen/branding/screensaver.txt, else
+\$HASEEN_PATH/default/screensaver/screensaver.txt.
+
+Internal, used by the shell service:
+  --ttfx-launch   open the screensaver terminal on every monitor (\$TERMINAL:
+                  foot, alacritty, kitty or ghostty; default foot)
+  --ttfx-run      the effect loop inside each terminal
+  --stop          close every screensaver terminal
+EOF
+}
+
+branding_file() {
+    local user="$HASEEN_USER_CONFIG/branding/screensaver.txt"
+    if [[ -s $user ]]; then
+        printf '%s\n' "$user"
+    else
+        printf '%s\n' "$HASEEN_PATH/default/screensaver/screensaver.txt"
+    fi
+}
+
+# terminal_cmd SELF — the terminal command line, one word per line.
+terminal_cmd() {
+    local self="$1"
+    local term="${TERMINAL:-foot}"
+    # $TERMINAL may be the xdg-terminal-exec wrapper; ask it which terminal it
+    # runs, as Omarchy does.
+    if [[ $(basename "$term") == xdg-terminal-exec ]] && have xdg-terminal-exec; then
+        term="$(xdg-terminal-exec --print-id 2>/dev/null || true)"
+    fi
+    case "${term,,}" in
+    *alacritty*) printf '%s\n' alacritty --class="$APP_ID" -o 'window.startup_mode="Fullscreen"' -o font.size=18 -o window.padding.x=0 -o window.padding.y=0 -e "$self" --ttfx-run ;;
+    *kitty*) printf '%s\n' kitty --class="$APP_ID" --start-as=fullscreen -o font_size=18 -o window_padding_width=0 -e "$self" --ttfx-run ;;
+    *ghostty*) printf '%s\n' ghostty --class="$APP_ID" --fullscreen=true --font-size=18 --window-padding-x=0 --window-padding-y=0 -e "$self" --ttfx-run ;;
+    *foot*) printf '%s\n' foot --app-id="$APP_ID" --fullscreen -o main.pad=0x0 -o main.font=monospace:size=18 -e "$self" --ttfx-run ;;
+    *) return 1 ;;
+    esac
+}
+
+# PIDs of the mapped screensaver terminals.
+screensaver_pids() {
+    hyprctl clients -j 2>/dev/null | jq -r --arg c "$APP_ID" '.[] | select(.class == $c) | .pid'
+}
+
+# hypr ARGS — hyprctl through the dry-run contract, its "ok" replies hidden.
+hypr() {
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl $*"
+    else
+        hyprctl "$@" >/dev/null
+    fi
+}
+
+ttfx_stop() {
+    local pid
+    while read -r pid; do
+        # A terminal that closed since the listing is fine.
+        [[ -n $pid ]] && { run kill "$pid" 2>/dev/null || true; }
+    done < <(screensaver_pids)
+    # The loop hides the cursor; a terminal killed hard cannot restore it.
+    hypr eval 'hl.config({ cursor = { invisible = false } })' || true
+}
+
+ttfx_launch() {
+    local self cmd=() command focused m special workspace before deadline
+    self="$(readlink -f "$0")"
+    have ttfx || die "ttfx is not installed (AUR: ttfx)"
+    mapfile -t cmd < <(terminal_cmd "$self" || true)
+    ((${#cmd[@]} > 0)) ||
+        die "the screensaver runs in foot, alacritty, kitty or ghostty, not $(basename "${TERMINAL:-}")"
+    have "${cmd[0]}" || die "terminal ${cmd[0]} not found (set \$TERMINAL)"
+    # Already showing: nothing to do.
+    [[ -z $(screensaver_pids) ]] || exit 0
+    printf -v command '%q ' "${cmd[@]}"
+
+    focused="$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')"
+    while read -r m special; do
+        hypr dispatch "hl.dsp.focus({ monitor = \"$m\" })"
+        # Share a special workspace already showing (the scratchpad), so it is
+        # still open afterwards.
+        workspace=${special:-special:screensaver-$m}
+        before="$(screensaver_pids | wc -l)"
+        hypr dispatch "hl.dsp.exec_cmd([[[workspace $workspace; idle_inhibit none] $command]])"
+        $DRY_RUN && continue
+        # A new window maps on whichever monitor is focused when it appears:
+        # wait for this one before moving on, or slow terminals pile up on
+        # the last monitor. The deadline is a safety net.
+        deadline=$((SECONDS + 5))
+        while ((SECONDS < deadline)) && (($(screensaver_pids | wc -l) <= before)); do
+            sleep 0.1
+        done
+    done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.specialWorkspace.name)"')
+    [[ -z $focused ]] || hypr dispatch "hl.dsp.focus({ monitor = \"$focused\" })"
+}
+
+ttfx_run() {
+    local file pid started
+    file="$(branding_file)"
+
+    screensaver_in_focus() {
+        hyprctl activewindow -j 2>/dev/null | jq -e --arg c "$APP_ID" '.class == $c' >/dev/null 2>&1
+    }
+    # One key or a focus change ends the screensaver on every monitor.
+    exit_screensaver() {
+        kill "${pid:-}" 2>/dev/null || true
+        ttfx_stop >/dev/null 2>&1 || true
+        exit 0
+    }
+    trap exit_screensaver INT TERM HUP QUIT
+
+    printf '\033]11;rgb:00/00/00\007' # black background
+    hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null || true
+
+    # Terminals start at 80x24 and resize once the compositor sizes the
+    # window; ttfx measures the canvas once, at startup.
+    local deadline=$((SECONDS + 2))
+    while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do
+        sleep 0.02
+    done
+
+    while true; do
+        started=$SECONDS
+        ttfx -i "$file" --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas \
+            --anchor-canvas c --anchor-text c --random-effect --no-eol --no-restore-cursor &
+        pid=$!
+        while kill -0 "$pid" 2>/dev/null; do
+            if read -rsn1 -t 1 || ! screensaver_in_focus; then
+                exit_screensaver
+            fi
+        done
+        # A failing ttfx must not respawn in a tight loop.
+        if ! wait "$pid"; then
+            ttfx_stop >/dev/null 2>&1 || true
+            die "ttfx failed"
+        fi
+        ((SECONDS - started >= 1)) || sleep 1
+    done
+}
+
+force=false
+style=default
+mode=ipc
+args=()
+while (($#)); do
+    case $1 in
+    --force) force=true ;;
+    --style)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        style=$2
+        shift
+        ;;
+    --style=*) style=${1#--style=} ;;
+    --ttfx-launch) mode=launch ;;
+    --ttfx-run) mode=run ;;
+    --stop) mode=stop ;;
+    *) args+=("$1") ;;
+    esac
+    shift
+done
+parse_common_flags "${args[@]}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+case $style in
+default | ttfx | native) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+case $mode in
+launch)
+    ttfx_launch
+    exit 0
+    ;;
+run) ttfx_run ;;
+stop)
+    ttfx_stop
+    exit 0
+    ;;
+esac
+
+if ! $force && [[ -e $HASEEN_USER_STATE/flags/screensaver-off ]]; then
+    info "the screensaver is off (haseen toggle screensaver on, or --force)"
+    exit 0
+fi
+run haseen shell ipc screensaver start "$style"

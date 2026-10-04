@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# haseen:summary Turn the night light (hyprsunset colour temperature) on or off
+# haseen:args [on|off|toggle|status] [--dry-run]
+#
+# Plan 019. State is the flag file $HASEEN_USER_STATE/flags/nightlight (exists =
+# night light on). The shell reads it through qs.Haseen Flags (inotify, no
+# polling): haseen.nightlight starts hyprsunset at the
+# configured temperature and stops it again.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle nightlight [on|off|toggle|status] [--dry-run]
+
+The night light warms the screen through hyprsunset. The temperature and
+an optional sunset/sunrise schedule are settings of haseen.nightlight in
+~/.config/haseen/shell.json; the running shell applies the change.
+Without an argument it toggles; "status" prints on or off.
+State: \$HASEEN_USER_STATE/flags/nightlight (night light on while it exists).
+EOF
+}
+
+FLAG="$HASEEN_USER_STATE/flags/nightlight"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+action=${1:-toggle}
+
+# The feature is on when the flag exists.
+is_on() { [[ -e $FLAG ]]; }
+
+case $action in
+on | off) ;;
+toggle) if is_on; then action=off; else action=on; fi ;;
+status)
+    if is_on; then echo on; else echo off; fi
+    exit 0
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ $action == on ]]; then
+    write_user_file "$FLAG" </dev/null
+else
+    run rm -f -- "$FLAG"
+fi
+$DRY_RUN && exit 0
+echo "Night light $action"

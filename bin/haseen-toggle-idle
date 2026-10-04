@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# haseen:summary Allow or prevent the idle screensaver, lock and display power-off (Stay Awake)
+# haseen:args [on|off|toggle|status] [--dry-run]
+#
+# Plan 019. State is the flag file $HASEEN_USER_STATE/flags/idle-off (exists =
+# idle actions off). The shell reads it through qs.Haseen Flags (inotify, no
+# polling): haseen.idle disables its monitors and its
+# bar indicator (a coffee cup) appears.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle idle [on|off|toggle|status] [--dry-run]
+
+"off" keeps the session awake: no screensaver, no lock, no display
+power-off after inactivity (Stay Awake). The bar shows a coffee cup while
+idle is off. "on" restores the normal idle behaviour.
+Without an argument it toggles; "status" prints on or off.
+State: \$HASEEN_USER_STATE/flags/idle-off (idle actions off while it exists).
+EOF
+}
+
+FLAG="$HASEEN_USER_STATE/flags/idle-off"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+action=${1:-toggle}
+
+# The feature is on when the flag is absent.
+is_on() { [[ ! -e $FLAG ]]; }
+
+case $action in
+on | off) ;;
+toggle) if is_on; then action=off; else action=on; fi ;;
+status)
+    if is_on; then echo on; else echo off; fi
+    exit 0
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ $action == off ]]; then
+    write_user_file "$FLAG" </dev/null
+else
+    run rm -f -- "$FLAG"
+fi
+$DRY_RUN && exit 0
+echo "Idle lock and screensaver $action"
