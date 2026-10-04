@@ -14,6 +14,12 @@ between parts. The engineering record is `plans/`, indexed by
   in `tests/fixtures/`, never against the live machine.
 - **Never edit the user's files after seeding them.** Behaviour that haseen owns
   lives in `share/haseen/default/`, and user files include it.
+- **Never remove the owner's plugins.** `~/.config/omarchy/plugins/` and
+  `~/.config/DankMaterialShell/plugins/` are read-only sources. No command,
+  layer, migration or cleanup may delete, move or rewrite anything in them.
+  haseen writes plugins only under `~/.config/haseen/plugins/`, and
+  `tests/test-core.sh` checks this. A full copy of the owner's set from the
+  machine luna is kept at `~/Backups/luna/omarchy-plugins-20261004/`.
 - **License: MIT.** You may adapt Omarchy and DMS code (MIT): keep the upstream
   notice in the file header and add a row to `NOTICE.md`. end-4 and caelestia
   are GPL-3.0 and are reference only. Never paste their code.
