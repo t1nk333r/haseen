@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.polkit",
+  "name": "Polkit agent",
+  "version": "1.0.0",
+  "description": "Authentication dialog for privileged actions (Quickshell.Services.Polkit)",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "permissions": []
+}

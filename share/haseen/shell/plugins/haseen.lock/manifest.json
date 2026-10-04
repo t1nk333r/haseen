@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.lock",
+  "name": "Lock screen",
+  "version": "1.0.0",
+  "description": "ext-session-lock screen with a clock and a password field, authenticated through PAM",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "settings": {
+    "pamConfig": {
+      "type": "string",
+      "default": "login",
+      "description": "PAM service name used to check the password"
+    },
+    "pamConfigDirectory": {
+      "type": "string",
+      "default": "/etc/pam.d",
+      "description": "Directory holding the PAM service file"
+    },
+    "preview": {
+      "type": "boolean",
+      "default": false,
+      "description": "Debug: lock() shows the lock UI in a normal overlay window and never locks the session (Escape closes it)"
+    }
+  },
+  "permissions": [],
+  "provides": [
+    "lock"
+  ]
+}

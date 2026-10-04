@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.idle",
+  "name": "Idle",
+  "version": "1.0.0",
+  "description": "Locks the session and turns displays off after inactivity (ext-idle-notify, honours idle inhibitors)",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "settings": {
+    "lockAfter": {
+      "type": "integer",
+      "default": 300,
+      "description": "Seconds of inactivity before lock (0 = never)"
+    },
+    "dpmsAfter": {
+      "type": "integer",
+      "default": 330,
+      "description": "Seconds of inactivity before displays turn off (0 = never)"
+    },
+    "respectInhibitors": {
+      "type": "boolean",
+      "default": true,
+      "description": "Do nothing while an app holds an idle inhibitor (video, presentation)"
+    }
+  },
+  "permissions": []
+}

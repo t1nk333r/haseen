@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.osd",
+  "name": "On-screen display",
+  "version": "1.0.0",
+  "description": "Short volume and brightness overlay on change (PipeWire and backlight events, no polling)",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "settings": {
+    "volume": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the OSD when the default sink volume or mute changes"
+    },
+    "brightness": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the OSD when the backlight changes"
+    },
+    "backlight": {
+      "type": "string",
+      "default": "",
+      "description": "Device under /sys/class/backlight; empty = the first one"
+    }
+  },
+  "permissions": [
+    "files:read"
+  ]
+}

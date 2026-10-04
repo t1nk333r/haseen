@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.session",
+  "name": "Session",
+  "version": "1.0.0",
+  "description": "Lock, log out, suspend, reboot and shut down",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "confirm": {
+      "type": "boolean",
+      "default": true,
+      "description": "Log out, reboot and shut down need a second press"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.session to drive the open panel without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
+}

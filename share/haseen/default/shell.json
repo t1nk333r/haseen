@@ -7,5 +7,5 @@
     "right": ["haseen.tray", "haseen.audio", "haseen.network", "haseen.battery"]
   },
   "plugins": {},
-  "services": []
+  "services": ["haseen.notifications", "haseen.osd", "haseen.polkit", "haseen.idle", "haseen.lock"]
 }

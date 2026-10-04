@@ -158,6 +158,7 @@ haseen plugin new me.widget --kind bar-widget >/dev/null
 haseen plugin new me.svc --kind service >/dev/null
 haseen plugin new me.pan --kind panel >/dev/null
 default_right="$(jq -c .bar.right "$HASEEN_PATH/default/shell.json")"
+default_services="$(jq -c .services "$HASEEN_PATH/default/shell.json")"
 
 capture haseen plugin enable me.widget --dry-run
 assert_dry_pure "enable" "$OUTPUT"
@@ -180,11 +181,11 @@ assert_eq "enable is idempotent" "$before" "$(cat "$CFG")"
 
 capture haseen plugin enable me.svc
 assert_not_contains "existing shell.json needs no reload hint" "$OUTPUT" "shell ipc shell reload"
-assert_eq "service appended to services" '["me.svc"]' "$(jq -c .services "$CFG")"
+assert_eq "service appended to services" "$(jq -c '. + ["me.svc"]' <<<"$default_services")" "$(jq -c .services "$CFG")"
 assert_eq "service not placed in the bar" "$(jq -c '. + ["me.widget"]' <<<"$default_right")" "$(jq -c .bar.right "$CFG")"
 capture haseen plugin enable me.pan
 assert_eq "panel only gets the flag" "true" "$(jq .plugins[\"me.pan\"].enabled "$CFG")"
-assert_eq "panel not placed anywhere" '["me.svc"]' "$(jq -c .services "$CFG")"
+assert_eq "panel not placed anywhere" "$(jq -c '. + ["me.svc"]' <<<"$default_services")" "$(jq -c .services "$CFG")"
 
 capture haseen plugin disable me.widget
 assert_status "disable" 0 "$STATUS"
@@ -197,7 +198,7 @@ assert_eq "disable is idempotent" "$before" "$(cat "$CFG")"
 capture haseen plugin disable haseen.clock
 assert_eq "built-in removed from the default center section" "[]" "$(jq -c .bar.center "$CFG")"
 capture haseen plugin disable me.svc
-assert_eq "service removed" "[]" "$(jq -c .services "$CFG")"
+assert_eq "service removed" "$default_services" "$(jq -c .services "$CFG")"
 capture haseen plugin enable me.widget
 assert_eq "re-enable puts it back once" "1" "$(jq '[.bar.right[] | select(. == "me.widget")] | length' "$CFG")"
 

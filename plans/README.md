@@ -15,7 +15,7 @@ Read `handoff.md` first.
 | 007 | VAPT tooling layer | — | — | 001 | DROPPED 2026-10-04 (owner decision; out of scope) |
 | 008 | DMS optional layer and shell switch | P2 | S | 005 | DONE 2026-10-04 (99 tests; `systemd-analyze verify` ok; live switch pending, DMS not installed) |
 | 009 | NixOS flake | P2 | L | 003 004 005 002 | DONE 2026-10-04 (`nix flake check` + toplevel eval + package build via nix-portable; no boot) |
-| 010 | Shell system surfaces | P1 | L | 005 | PLANNED |
+| 010 | Shell system surfaces | P1 | L | 005 | DONE 2026-10-04 (75 tests; live notifications/OSD/launcher/session/lock-preview; polkit + real lock pending 014) |
 | 011 | Omarchy and DMS plugin compat adapters | P2 | L | 005 | PLANNED |
 | 012 | AI panel plugin and the haseen agent skill | P2 | M | 005 006 | DONE 2026-10-04 (75 tests; live streamed chat over IPC; skill followed end to end) |
 | 013 | PKGBUILDs for the stable layers | P3 | M | 001-012 | PLANNED (later phase, owner decision 2026-10-04) |

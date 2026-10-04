@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.launcher",
+  "name": "Launcher",
+  "version": "1.0.0",
+  "description": "Fuzzy application launcher; input starting with a launcher-provider prefix goes to that provider",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "maxResults": {
+      "type": "integer",
+      "default": 8,
+      "description": "Rows shown at once"
+    },
+    "width": {
+      "type": "integer",
+      "default": 520,
+      "description": "Panel width in px"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.launcher to drive the open panel without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec"
+  ],
+  "provides": [
+    "launcher"
+  ]
+}

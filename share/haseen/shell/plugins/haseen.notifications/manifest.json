@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.notifications",
+  "name": "Notifications",
+  "version": "1.0.0",
+  "description": "Notification server: popups top-right, do-not-disturb, and a panel with recent notifications (memory only)",
+  "kinds": [
+    "service",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "timeout": {
+      "type": "integer",
+      "default": 5000,
+      "description": "Popup lifetime in ms when the sender asks for the server default"
+    },
+    "maxPopups": {
+      "type": "integer",
+      "default": 3,
+      "description": "Popups shown at once (1-3); older ones stay in the panel"
+    },
+    "historySize": {
+      "type": "integer",
+      "default": 50,
+      "description": "Notifications kept in the panel; the oldest is dropped beyond this"
+    },
+    "width": {
+      "type": "integer",
+      "default": 360,
+      "description": "Popup width in px"
+    }
+  },
+  "permissions": [
+    "notifications"
+  ],
+  "provides": [
+    "notifications"
+  ]
+}
