@@ -8,7 +8,10 @@ same commit that adds the code.
 
 | Upstream | License | Copyright | What was adapted | Where |
 |---|---|---|---|---|
-| [omacom/omarchy](https://github.com/omacom/omarchy) | MIT | David Heinemeier Hansson | `colors.toml` theme format, `{{ key }}` template renderer, stock themes, CLI router convention, hook runner | listed per file header |
+| [omacom/omarchy](https://github.com/omacom/omarchy) | MIT | David Heinemeier Hansson | theme renderer, colours parser, denylist, git-URL check, theme commands, hook runner | `share/haseen/layers/theme/theme-lib.sh`, `bin/haseen-theme-{set,install,list,current}`, `bin/haseen-hook` |
+| [omacom/omarchy](https://github.com/omacom/omarchy) | MIT | David Heinemeier Hansson | templates, copied unchanged | `share/haseen/themed/{hyprland.lua,foot.ini,kitty.conf,ghostty.conf,alacritty.toml,btop.theme,neovim.lua}.tpl` |
+| [omacom/omarchy](https://github.com/omacom/omarchy) | MIT | David Heinemeier Hansson | stock themes, text files only | `share/haseen/themes/{tokyo-night,catppuccin,gruvbox,rose-pine,catppuccin-latte}/`, `tests/fixtures/theme-omarchy-nord/` |
+| [omacom/omarchy](https://github.com/omacom/omarchy) | MIT | David Heinemeier Hansson | CLI router convention | `bin/haseen` |
 | [AvengeMedia/DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) | MIT | Avenge Media LLC | plugin manifest shape (compat adapter only) | listed per file header |
 | [t1nk333r/omacachy](https://github.com/t1nk333r/omacachy) | own | t1nk33r | dry-run helper contract, ESP bootloader detection, GPU dispatch | listed per file header |
 | [gitlab.com/t1nk33r/waydots](https://gitlab.com/t1nk33r/waydots) | own | t1nk33r | BlackArch security layer, package-source rules | listed per file header |

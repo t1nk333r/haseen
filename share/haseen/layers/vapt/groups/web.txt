@@ -1,0 +1,14 @@
+# Web application testing
+# Source per entry: bare name = official Arch repos; ba:name = BlackArch only.
+# Verified 2026-10-04 against the Arch sync dbs and blackarch.db (plans/007).
+sqlmap
+nikto
+gobuster
+zaproxy
+ba:ffuf
+ba:feroxbuster
+ba:wfuzz
+ba:burpsuite
+ba:nuclei
+ba:httpx
+ba:seclists

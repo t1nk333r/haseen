@@ -22,10 +22,13 @@ while read -r n; do
     compgen -G "plans/$n-*.md" >/dev/null || err "index row $n has no plan file"
 done < <(sed -n 's/^| \([0-9][0-9][0-9]\) |.*/\1/p' plans/README.md)
 
-# 2. cited commit hashes (7-40 hex inside backticks)
+# 2. cited commit hashes (7-40 hex inside backticks); allowlist for ids that
+#    are not commits of this repo: plans/.known-external-refs
+external="$(cut -f1 plans/.known-external-refs 2>/dev/null | grep -v '^#' || true)"
 if git rev-parse --git-dir >/dev/null 2>&1; then
     while read -r h; do
-        git cat-file -e "$h^{commit}" 2>/dev/null || err "plans cite unknown commit $h"
+        grep -qxF "$h" <<<"$external" && continue
+        git cat-file -e "$h^{commit}" 2>/dev/null || err "plans cite unknown commit $h (or list it in plans/.known-external-refs)"
     done < <(grep -ohE '`[0-9a-f]{7,40}`' plans/*.md | tr -d '`' | sort -u)
 fi
 

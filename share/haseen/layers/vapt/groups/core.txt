@@ -1,0 +1,12 @@
+# Recon and pivoting basics
+# Source per entry: bare name = official Arch repos; ba:name = BlackArch only.
+# Verified 2026-10-04 against the Arch sync dbs and blackarch.db (plans/007).
+nmap
+wireshark-cli
+tcpdump
+openbsd-netcat
+socat
+proxychains-ng
+ba:chisel
+ba:ligolo-ng
+metasploit

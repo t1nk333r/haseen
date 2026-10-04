@@ -1,0 +1,12 @@
+# Reversing and forensics
+# Source per entry: bare name = official Arch repos; ba:name = BlackArch only.
+# Verified 2026-10-04 against the Arch sync dbs and blackarch.db (plans/007).
+radare2
+gdb
+binwalk
+foremost
+sleuthkit
+yara
+strace
+volatility3
+ghidra
