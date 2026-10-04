@@ -56,8 +56,9 @@ already set when the layer runs.
 |---|---|---|
 | `base` | — | essentials, firewall, snapper sanity, pacman hygiene on CachyOS |
 | `desktop` | base | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
-| `theme` | base | theme pipeline + stock themes |
+| `theme` | base | theme pipeline, the 22 Omarchy stock themes, pinned background fetch, `haseen-background.service` (swaybg) |
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service` |
+| `flatpak` | desktop | Flathub remote in the per-user installation; `haseen install` is Flatpak-first for apps (catalogue `share/haseen/default/catalog.json`) |
 | `secureboot` | base | sbctl own keys + Microsoft + firmware keys, signing hooks, Limine config enrollment |
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
@@ -128,11 +129,25 @@ Rules every layer follows:
 
 ```json
 {
-  "bar": { "position": "top", "height": 28, "left": ["haseen.workspaces"], "center": ["haseen.clock"], "right": ["haseen.tray", "haseen.audio", "haseen.network", "haseen.battery"] },
-  "plugins": { "haseen.clock": { "enabled": true, "settings": { "format": "HH:mm" } } },
-  "services": ["haseen.notifications", "haseen.osd", "haseen.polkit", "haseen.idle"]
+  "bar": { "position": "top|bottom|left|right", "height": 28, "transparent": false,
+           "left": ["haseen.workspaces"], "center": ["haseen.clock", "haseen.media"], "right": ["haseen.tray", "…"] },
+  "frame": { "enabled": true, "thickness": 6 },
+  "plugins": { "haseen.clock": { "enabled": true, "settings": { "format": "HH:mm" } },
+               "haseen.tray": { "settings": { "pinned": false } } },
+  "services": ["haseen.notifications", "haseen.osd", "haseen.polkit", "haseen.idle", "haseen.lock", "…"]
 }
 ```
+
+`share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
+to `Theme.radius * 2`. Double-clicking empty bar space toggles `bar.transparent`;
+the text colour then comes from `Theme.barForeground`, which is set at runtime
+from the wallpaper under the bar (`bin/haseen-bar-text-color`) and is not a
+theme key. Every bar widget's normal-state text uses `Theme.barForeground`.
+
+Shared state flags live in `~/.local/state/haseen/flags/<name>`; the file
+existing means on. The names are `dnd`, `idle-off`, `screensaver-off`,
+`nightlight` and `recording`. Commands write them, and QML reads them only
+through the `qs.Haseen.Flags` singleton.
 
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
@@ -155,8 +170,16 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `shell` | `reload()`, `plugins(): string` |
 | `panel` | `toggle(id)`, `close()` |
 | `launcher` | `toggle()` |
+| `menu` | `toggle(path)`; `haseen menu [path]` wraps it |
 | `lock` | `lock()` |
-| `notifications` | `clear()`, `toggleDnd()` |
+| `notifications` | `clear()`, `toggleDnd()` (also writes the `dnd` flag) |
+| `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `status()` |
+| `screensaver` | `start(style)` (`ttfx`, `native` or `default`) |
+| `nightlight` | `on()`, `off()`, `toggle()`, `refresh()`, `status(): string` |
+
+Plugins with `settings.debugIpc` expose test-only targets named after the
+plugin, for example `haseen.menu`, `haseen.launcher` and `haseen.themepicker`.
+Smoke tests drive the UI through these, never through injected input.
 
 ## 6. Resource rules (enforced in review)
 
@@ -180,6 +203,10 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
   `mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth`.
   `Theme.qml` falls back to built-in values for any key that is missing.
 - **Hooks:** `~/.config/haseen/hooks/<event>` and `<event>.d/*`, run by `haseen hook run <event> [args]`. Events: `theme-set`, `post-update`, `post-boot`, `layer-applied`.
+- **Backgrounds:**
+  - Images are never shipped. `haseen theme fetch [NAME|--all]` downloads them from Omarchy at a pinned commit, checked against the hashes in `share/haseen/layers/theme/omarchy-assets.txt`, into `~/.cache/haseen/themes/<name>/`.
+  - `haseen theme bg list|set|next` maintains `current/background`, which `haseen-background.service` (swaybg) draws.
+  - `~/.config/haseen/font` overrides `fontMono`.
 
 ## 8. Secure Boot model
 

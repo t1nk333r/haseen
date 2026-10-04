@@ -1,0 +1,2 @@
+# theme: the wallpaper under haseen-background.service.
+swaybg                  # draws ~/.local/state/haseen/current/background

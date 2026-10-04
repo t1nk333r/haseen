@@ -23,3 +23,10 @@ qt6-wayland                  # native Wayland for Qt 6 apps (Quickshell included
 inter-font                   # shell UI font (theme token fontFamily)
 ttf-jetbrains-mono-nerd      # terminal and shell mono font with icon glyphs (fontMono)
 noto-fonts-emoji             # colour emoji; noto-fonts itself comes from base
+gpu-screen-recorder          # haseen capture screenrecord (drives the red privacy dot)
+tesseract                    # haseen capture text (OCR)
+tesseract-data-eng           # OCR language data
+zbar                         # haseen capture qr
+libnotify                    # notify-send for capture/reminder/toggle feedback
+hyprsunset                   # night light (haseen.nightlight)
+aur:ttfx                     # Omarchy's screensaver text effects, Rust port (owner choice over python tte)

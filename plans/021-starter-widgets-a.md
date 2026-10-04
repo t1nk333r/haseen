@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: WidgetsA)
+- **State**: DONE 2026-10-04. sysusage, privacy (mic and recording dots live), workspaces, media and calendar were verified live. Camera, screencast and GeoClue were checked by detection only.
 
 ## Why this matters
 

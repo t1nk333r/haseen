@@ -1,4 +1,4 @@
-# Plan 020: All 23 Omarchy themes, fetched backgrounds, theme picker
+# Plan 020: All 22 Omarchy themes, fetched backgrounds, theme picker
 
 ## Status
 
@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: Themes)
+- **State**: DONE 2026-10-04. Omarchy ships 22 stock themes, not 23, and all are present. A real pinned fetch of tokyo-night ran, and the picker was verified live over IPC.
 
 ## Why this matters
 

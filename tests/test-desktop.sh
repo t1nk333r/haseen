@@ -194,11 +194,20 @@ EOF
     assert_contains "lua: notifications bind" "$OUTPUT" "-> haseen shell ipc notifications clear"
     assert_contains "lua: volume via wpctl" "$OUTPUT" "BIND XF86AudioRaiseVolume -> wpctl set-volume"
     assert_contains "lua: brightness via brightnessctl" "$OUTPUT" "BIND XF86MonBrightnessUp -> brightnessctl"
-    assert_contains "lua: screenshot to clipboard" "$OUTPUT" '-> grim -g "$(slurp -d)" - | wl-copy'
+    assert_contains "lua: screenshot via haseen capture" "$OUTPUT" "BIND PRINT -> haseen capture screenshot"
+    assert_contains "lua: menu bind" "$OUTPUT" "BIND SUPER + ALT + SPACE -> haseen menu"
+    assert_eq "lua: no key bound twice" "" "$(grep -oE '^BIND [^>]+->' <<<"$OUTPUT" | sort | uniq -d)"
     assert_contains "lua: workspace binds" "$OUTPUT" "BIND SUPER + code:19 -> dsp.focus"
     assert_contains "lua: autostart on hyprland.start only" "$OUTPUT" "ON hyprland.start"
     assert_contains "lua: no blur" "$OUTPUT" "CONFIG decoration.blur.enabled=false"
     assert_not_contains "lua: no bar launched" "$OUTPUT" "qs -p"
+
+    # Toggles persisted by `haseen toggle …` load after the defaults.
+    mkdir -p "$HOME/.local/state/haseen/toggles/hypr"
+    printf '%s\n' 'hl.config({ general = { gaps_in = 0 } })' >"$HOME/.local/state/haseen/toggles/hypr/gaps.lua"
+    lua_run
+    assert_contains "lua: persisted toggle loaded" "$OUTPUT" "CONFIG general.gaps_in=0"
+    rm -rf "$HOME/.local/state/haseen/toggles"
 
     # Theme and user files load after the defaults, in that order.
     printf '%s\n' 'hl.config({ general = { col = { active_border = "rgb(THEME)" } } })' \

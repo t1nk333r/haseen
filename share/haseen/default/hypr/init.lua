@@ -113,3 +113,15 @@ local here = haseen.path .. "/default/hypr/"
 for _, module in ipairs({ "input", "looknfeel", "binds", "windowrules", "autostart" }) do
   dofile(here .. module .. ".lua")
 end
+
+-- Toggles that `haseen toggle …` / `haseen hardware …` persist (gaps,
+-- animations, workspace layout, displays, touchpad). They load after the
+-- defaults so they win, and before the user's files so those still win.
+local toggles = haseen.paths.state_home .. "/haseen/toggles/hypr"
+local listing = io.popen('ls -1 "' .. toggles .. '"/*.lua 2>/dev/null')
+if listing then
+  for file in listing:lines() do
+    haseen.include_optional(file)
+  end
+  listing:close()
+end

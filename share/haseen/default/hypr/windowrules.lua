@@ -42,6 +42,37 @@ hl.window_rule({
   idle_inhibit = "fullscreen",
 })
 
+-- The screensaver's terminals: fullscreen on a silent special workspace and
+-- never inhibiting idle, so lock and DPMS still fire behind it. This rule must
+-- follow haseen_fullscreen_idle, which it overrides.
+hl.window_rule({
+  name = "haseen_screensaver",
+  match = { class = "^org\\.haseen\\.screensaver$" },
+  float = true,
+  fullscreen = true,
+  idle_inhibit = "none",
+  workspace = "special:screensaver silent",
+})
+
+-- Terminals opened by haseen commands (pickers, setup steps, editors).
+hl.window_rule({
+  name = "haseen_floating_terminal",
+  match = { class = "^haseen\\.floating$" },
+  float = true,
+  center = true,
+  size = { 875, 600 },
+})
+
+-- Webcam overlay while screen recording: a small pinned corner window.
+hl.window_rule({
+  name = "haseen_webcam_overlay",
+  match = { class = "^haseen-webcam$" },
+  float = true,
+  pin = true,
+  no_initial_focus = true,
+  move = { "monitor_w-window_w-24", "monitor_h-window_h-24" },
+})
+
 -- slurp's region selection: no fade, so the frozen frame is what gets captured.
 hl.layer_rule({
   name = "haseen_slurp_selection",

@@ -212,7 +212,8 @@ capture haseen plugin disable me.widget
 assert_contains "disable again is a no-op" "$OUTPUT" "already disabled"
 assert_eq "disable is idempotent" "$before" "$(cat "$CFG")"
 capture haseen plugin disable haseen.clock
-assert_eq "built-in removed from the default center section" "[]" "$(jq -c .bar.center "$CFG")"
+assert_eq "built-in removed from the default center section" \
+    "$(jq -c '.bar.center - ["haseen.clock"]' "$HASEEN_PATH/default/shell.json")" "$(jq -c .bar.center "$CFG")"
 capture haseen plugin disable me.svc
 assert_eq "service removed" "$default_services" "$(jq -c .services "$CFG")"
 capture haseen plugin enable me.widget

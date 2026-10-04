@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: Trigger)
+- **State**: DONE 2026-10-04. A real region screenshot and a 2 s gpu-screen-recorder clip were taken. The recording flag lifecycle and the emoji panel were verified live.
 
 ## Why this matters
 

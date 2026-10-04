@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: Frame)
+- **State**: DONE 2026-10-04. Frame exclusive zones were proven with `hyprctl layers`/`monitors`. The text colour script and screenshots cover the transparent bar. Not exercised live: double-click and tray hover, because no pointer injection is used.
 
 ## Why this matters
 

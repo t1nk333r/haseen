@@ -90,6 +90,26 @@ in
         };
         Install.WantedBy = [ "graphical-session.target" ];
       };
+
+      # Wallpaper (plan 020): swaybg drawing ~/.local/state/haseen/current/background.
+      systemd.user.services.haseen-background = {
+        Unit = {
+          Description = "haseen background (swaybg)";
+          PartOf = [ "graphical-session.target" ];
+          After = [ "graphical-session.target" ];
+          Conflicts = [ "dms.service" ];
+        };
+        Service = {
+          ExecStart = "${lib.getExe cfg.package} theme bg run";
+          Environment = [
+            "HASEEN_PATH=${haseenPath}"
+            "PATH=${lib.makeBinPath [ pkgs.swaybg pkgs.coreutils ]}"
+          ];
+          Restart = "on-failure";
+          RestartSec = 2;
+        };
+        Install.WantedBy = [ "graphical-session.target" ];
+      };
     })
 
     (mkIf (cfg.theme != null) {

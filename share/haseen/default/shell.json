@@ -2,10 +2,35 @@
   "bar": {
     "position": "top",
     "height": 28,
+    "transparent": false,
     "left": ["haseen.workspaces"],
-    "center": ["haseen.clock"],
-    "right": ["haseen.tray", "haseen.audio", "haseen.network", "haseen.battery"]
+    "center": ["haseen.clock", "haseen.media"],
+    "right": [
+      "haseen.privacy",
+      "haseen.idle",
+      "haseen.notifications",
+      "haseen.sysusage",
+      "haseen.tray",
+      "haseen.weather",
+      "haseen.audio",
+      "haseen.bluetooth",
+      "haseen.network",
+      "haseen.battery"
+    ]
   },
-  "plugins": {},
-  "services": ["haseen.notifications", "haseen.osd", "haseen.polkit", "haseen.idle", "haseen.lock"]
+  "frame": { "enabled": true, "thickness": 6 },
+  "plugins": {
+    "haseen.weather": { "enabled": false, "settings": { "location": "" } }
+  },
+  "services": [
+    "haseen.notifications",
+    "haseen.osd",
+    "haseen.polkit",
+    "haseen.idle",
+    "haseen.lock",
+    "haseen.screensaver",
+    "haseen.nightlight",
+    "haseen.clipboard",
+    "haseen.weather"
+  ]
 }

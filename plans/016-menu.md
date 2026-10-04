@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: Menu)
+- **State**: DONE 2026-10-04. The menu is the owner's selection, with no Learn and no web apps. Navigation was verified live over the debug IPC. Root-only setup steps were tested as dry runs only.
 
 ## Why this matters
 

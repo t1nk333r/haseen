@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: Ambient)
+- **State**: DONE 2026-10-04. The ttfx (Rust) Omarchy screensaver is the default, per the owner on 2026-10-04, and native is selectable. Not run live: the multi-monitor ttfx launch, real hyprsunset, and the idle-driven lock.
 
 ## Why this matters
 

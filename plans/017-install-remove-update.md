@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: Catalog)
+- **State**: DONE 2026-10-04. All 30 Flathub refs returned HTTP 200. Install and remove were tested as dry runs only, with no real installs.
 
 ## Why this matters
 

@@ -14,20 +14,38 @@ local launch = haseen.launch
 
 -- Shell --------------------------------------------------------------------
 b("SUPER + SPACE", "Launcher", ipc("launcher", "toggle"))
+b("SUPER + ALT + SPACE", "Menu", "haseen menu")
+b("SUPER + CTRL + ESCAPE", "Power menu", "haseen menu system")
 b("SUPER + CTRL + L", "Lock screen", ipc("lock", "lock"))
 b("SUPER + A", "AI panel", ipc("panel", "toggle", "haseen.ai"))
 b("SUPER + SHIFT + comma", "Clear notifications", ipc("notifications", "clear"))
-b("SUPER + CTRL + comma", "Do not disturb", ipc("notifications", "toggleDnd"))
+b("SUPER + CTRL + comma", "Do not disturb", "haseen toggle dnd")
 b("SUPER + ESCAPE", "Close panel", ipc("panel", "close"))
+b("SUPER + SHIFT + SPACE", "Toggle bar", "haseen bar toggle")
+b("SUPER + CTRL + V", "Clipboard history", ipc("panel", "toggle", "haseen.clipboard"))
+b("SUPER + CTRL + E", "Emoji picker", ipc("panel", "toggle", "haseen.emoji"))
+b("SUPER + ALT + C", "Calendar", ipc("panel", "toggle", "haseen.calendar"))
+
+-- Style ------------------------------------------------------------------------
+b("SUPER + CTRL + SHIFT + SPACE", "Theme picker", ipc("panel", "toggle", "haseen.themepicker"))
+b("SUPER + CTRL + SPACE", "Next background", "haseen theme bg next")
+
+-- Ambient ----------------------------------------------------------------------
+b("SUPER + CTRL + I", "Stay awake", "haseen toggle idle")
+b("SUPER + CTRL + N", "Night light", "haseen toggle nightlight")
+b("SUPER + CTRL + S", "Screensaver", "haseen screensaver --force")
 
 -- Apps -----------------------------------------------------------------------
 b("SUPER + RETURN", "Terminal", launch('"${TERMINAL:-foot}"'))
 b("SUPER + B", "Browser", launch('"$(xdg-settings get default-web-browser)"'))
 
--- Screenshots and colour picker ----------------------------------------------
-b("PRINT", "Screenshot region to clipboard", 'grim -g "$(slurp -d)" - | wl-copy -t image/png')
-b("SHIFT + PRINT", "Screenshot screen to clipboard", "grim - | wl-copy -t image/png")
-b("SUPER + PRINT", "Colour picker", "pkill hyprpicker || hyprpicker -a")
+-- Capture ----------------------------------------------------------------------
+b("PRINT", "Screenshot region", "haseen capture screenshot")
+b("SHIFT + PRINT", "Screenshot window", "haseen capture screenshot window")
+b("CTRL + PRINT", "Screenshot monitor", "haseen capture screenshot output")
+b("ALT + PRINT", "Screen recording start/stop", "haseen capture screenrecord")
+b("SUPER + PRINT", "Colour picker", "haseen capture color")
+b("SUPER + CTRL + C", "Capture menu", "haseen menu trigger.capture")
 
 -- Session ----------------------------------------------------------------------
 b("SUPER + SHIFT + ESCAPE", "Log out", "uwsm stop")

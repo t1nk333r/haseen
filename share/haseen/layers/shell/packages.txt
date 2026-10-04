@@ -4,3 +4,5 @@ quickshell
 jq                      # haseen plugin validate/enable/disable
 upower                  # battery widget (D-Bus)
 ttf-nerd-fonts-symbols  # bar glyphs
+cliphist               # haseen.clipboard history store
+imagemagick            # transparent bar: samples the wallpaper for the text colour

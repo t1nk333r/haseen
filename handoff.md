@@ -34,6 +34,13 @@ The owner's other repos:
 | Notifications, OSD, launcher, lock, idle, polkit, session | `share/haseen/shell/plugins/haseen.*` | 010 |
 | Omarchy and DMS plugin compat | `share/haseen/shell/Compat/` + 6 root symlinks | 011 |
 | AI panel and agent skill | `share/haseen/shell/plugins/haseen.ai/`, `share/haseen/agents/skills/haseen/` | 012 |
+| Screen frame, transparent bar, tray | `share/haseen/shell/{Frame*,Bar}.qml`, `bin/haseen-bar-*`, `haseen.tray` | 015 |
+| Menu (Omarchy-style, owner's selection) | `share/haseen/shell/plugins/haseen.menu/`, `share/haseen/default/menu.jsonc`, `bin/haseen-{menu,about,system,setup-*,font-*,branding,config-*}` | 016 |
+| Flatpak-first install/remove, update | `share/haseen/default/catalog.json`, `share/haseen/lib/{catalog,terminal}.sh`, `bin/haseen-{install,remove,update,time,password,restart,refresh}`, `share/haseen/layers/flatpak/` | 017 |
+| Capture, recording, emoji, toggles, hardware, share, tests | `bin/haseen-{capture,reminder,toggle,hardware,share,test}-*`, `haseen.emoji` | 018 |
+| Screensaver (ttfx + native), night light, stay awake, DND | `haseen.{screensaver,nightlight,idle,notifications}`, `share/haseen/shell/Haseen/Flags.qml` | 019 |
+| 22 Omarchy themes, backgrounds, picker | `share/haseen/themes/`, `bin/haseen-theme-{fetch,bg}`, `haseen.themepicker`, `haseen-background.service` | 020 |
+| Starter widgets | `haseen.{sysusage,privacy,workspaces,media,calendar,clipboard,weather,bluetooth,network}` | 021, 022 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
@@ -53,7 +60,7 @@ All three passed at the last integration (2026-10-04):
 
 ```sh
 SHELLCHECK=/tmp/tools/shellcheck tools/lint.sh   # lint OK
-tests/run.sh                                     # 1283/1283
+tests/run.sh                                     # 2890/2890
 tools/check-docs.sh                              # OK
 ```
 
@@ -76,11 +83,15 @@ setup).
   - Ollama on hardware
   - the live DMS switch
 - **Plan 013.** PKGBUILDs are a later phase.
-- **Observed during the live smokes, not isolated.** Several agents ran
-  parallel shell instances, and the desktop showed repeated "Process crashed:
-  xdg-desktop-portal-hyprland" notifications. Each extra Quickshell instance
-  also logs "Failed to register with host portal". Re-check this with a single
-  instance in plan 014.
+- **Resolved: portal crash notifications.** The "Process crashed:
+  xdg-desktop-portal-hyprland" notifications came from scratch shells run
+  under `dbus-run-session`. qs activated the portal and xdph on the private
+  bus, and xdph segfaulted when that bus was torn down. `tools/smoke-session.conf`
+  defines a bus with no service directories, so nothing can be activated, and
+  the final integrated smoke left 0 coredumps.
+- **Not verified live (would need pointer events):** double-click
+  transparency on the bar (the IPC path was verified), tray hover, workspace and
+  media clicks.
 
 ## Working rules learned the hard way
 
@@ -88,8 +99,14 @@ setup).
   typed into the owner's terminal. Drive panels through IPC (`qs -p … ipc
   call`); `settings.debugIpc` exposes test hooks on the launcher and session
   panels.
-- Give each scratch shell instance its own `XDG_RUNTIME_DIR` (and
-  `dbus-run-session` for notifications). Otherwise IPC calls and D-Bus names
-  cross into other instances.
-- Disable `haseen.idle` and `haseen.lock` in scratch configs, or a smoke can
-  lock the owner's session.
+- Run scratch shells as `dbus-run-session --config-file=$PWD/tools/smoke-session.conf -- env XDG_CONFIG_HOME=… XDG_STATE_HOME=… XDG_CACHE_HOME=… QT_NO_XDG_DESKTOP_PORTAL=1 qs -p share/haseen/shell`.
+  Keep the real `XDG_RUNTIME_DIR`: moving it hides the Hyprland and PipeWire
+  sockets. Only run one scratch instance at a time, so IPC cannot cross into
+  another instance.
+- Kill only the PIDs you started (record `$!`). Two agents killed each other's
+  instances with `pkill -f`/`pgrep | head`.
+- Disable `haseen.idle`, `haseen.lock`, `haseen.polkit`, `haseen.screensaver`
+  and `haseen.nightlight` in scratch configs, or a smoke can lock, blank or
+  tint the owner's session.
+- Never remove or rewrite the owner's Omarchy/DMS plugin dirs (AGENTS.md).
+  A backup of luna's set is at `~/Backups/luna/omarchy-plugins-20261004/`.

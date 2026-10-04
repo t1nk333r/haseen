@@ -8,7 +8,7 @@
 - **Depends on**: 005 010 011
 - **Category**: shell
 - **Planned at**: 2026-10-04, owner request (second feature round)
-- **State**: PLANNED (executor: WidgetsB)
+- **State**: DONE 2026-10-04. Clipboard, weather (from a fixture), and the Bluetooth and Wi-Fi panels were verified live. No real connections or radio changes were made.
 
 ## Why this matters
 
