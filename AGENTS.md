@@ -44,6 +44,18 @@ tools/check-docs.sh
 tools/secrets.sh   # before every push: gitleaks (history) + privacy patterns
 ```
 
+`main` on GitHub is protected:
+- The CI checks `lint`, `test`, `docs`, `secrets` and `nix` must pass on an up-to-date branch.
+- History stays linear: no force pushes and no deletion.
+- Admins are included.
+
+Direct pushes to `main` are rejected. Every change lands through a pull request:
+
+```sh
+git switch -c <topic> && git push -u origin <topic>
+gh pr create --fill && gh pr merge --squash --auto --delete-branch
+```
+
 The repository is public. Never commit:
 - the owner's location, hostnames' addresses or tailnet IPs;
 - tokens, keys or anything under `~/.config` copied from a live machine.
