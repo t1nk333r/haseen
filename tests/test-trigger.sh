@@ -19,6 +19,9 @@ trig_sandbox() {
     stub xdg-user-dir 'echo "$HOME/$1"'
     stub systemd-run 'echo "systemd-run $*" >>"$CALLS"'
     stub localsend 'echo "localsend $*" >>"$CALLS"'
+    # Present (so dry-run plans do not depend on the host having it) but
+    # fatal if run; the lifecycle test replaces it with a fake recorder.
+    stub gpu-screen-recorder 'echo "STUB-CALLED: gpu-screen-recorder $*" >&2; exit 97'
     local mut='echo "STUB-CALLED: hyprctl $*" >&2; exit 97'
     [[ ${2:-} == live ]] && mut='echo "hyprctl $*" >>"$CALLS"; echo ok'
     stub hyprctl "case \"\$1\" in

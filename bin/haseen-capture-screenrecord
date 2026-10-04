@@ -52,7 +52,15 @@ videos_dir() {
     printf '%s\n' "$d"
 }
 
-alive() { [[ -n ${1:-} ]] && kill -0 "$1" 2>/dev/null; }
+# A PID is alive when it exists and is not a zombie: a killed supervisor that
+# nothing has reaped yet (no init in containers, a crashed parent) still
+# answers kill -0, but it will never remove the flag.
+alive() {
+    [[ -n ${1:-} ]] && kill -0 "$1" 2>/dev/null || return 1
+    local stat
+    stat="$(cat "/proc/$1/stat" 2>/dev/null)" || return 0
+    [[ ${stat##*) } != Z* ]]
+}
 supervisor_pid() { [[ -r $PID_FILE ]] && cat "$PID_FILE" 2>/dev/null || true; }
 active() { alive "$(supervisor_pid)"; }
 
