@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# haseen:summary Switch the desktop shell between the haseen shell and DMS
+# haseen:args    dms|haseen [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/layers.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen shell use dms|haseen [--dry-run] [--yes]
+
+Disables and stops the other shell's user unit, enables and starts the chosen
+one, and records it in $HASEEN_USER_STATE/active-shell so that
+'haseen shell ipc' (and so the Hyprland binds) reaches the running shell.
+
+  haseen   haseen-shell.service (needs: haseen layer apply shell)
+  dms      dms.service, DankMaterialShell (needs: haseen layer apply dms).
+           DMS takes over notifications, the polkit agent and the lock screen.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+case "${REST[0]}" in
+dms)
+    want=dms want_unit=dms.service want_layer=dms
+    other_unit=haseen-shell.service other_layer=shell
+    ;;
+haseen)
+    want=haseen want_unit=haseen-shell.service want_layer=shell
+    other_unit=dms.service other_layer=dms
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+layer_is_applied "$want_layer" ||
+    die "the $want_layer layer is not applied; apply it first: haseen layer apply $want_layer"
+
+if [[ $want == dms ]]; then
+    info "DMS will claim notifications, the polkit agent and the lock screen; the haseen shell stops."
+    info "Hyprland binds keep working through 'haseen shell ipc'; haseen-only panels (haseen.ai) are unavailable under DMS."
+fi
+confirm "Switch the desktop shell to $want?" || exit 1
+
+# Pick up units and drop-ins installed since the session started (the dms
+# layer's Conflicts= drop-in, a freshly installed haseen-shell.service).
+run systemctl --user daemon-reload
+# Only touch the other unit when its layer put it there: disabling a unit file
+# that does not exist is an error.
+if layer_is_applied "$other_layer"; then
+    run systemctl --user disable --now "$other_unit"
+fi
+run systemctl --user enable "$want_unit"
+# dms.service is Requisite=graphical-session.target and both units need a
+# Wayland session: outside one the start fails, but the enable still takes
+# effect at the next login.
+run systemctl --user start "$want_unit" ||
+    warn "$want_unit did not start now (no graphical session?); it starts at the next login"
+printf '%s\n' "$want" | write_user_file "$HASEEN_USER_STATE/active-shell"
+info "active shell: $want"

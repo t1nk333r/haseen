@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# ipc-translate — run a haseen IPC call (docs/architecture.md §5.5) against
+# DankMaterialShell. `haseen shell ipc` hands calls here when
+# ~/.local/state/haseen/active-shell says dms, so the Hyprland binds work with
+# either shell.
+#
+#   ipc-translate [--dry-run] <target> <fn> [args]
+#
+# Exit codes: the dms exit code for mapped calls, 2 usage error, 3 the call
+# has no DMS equivalent (one line on stderr says which).
+#
+# DMS target/function names, from DankMaterialShell (MIT, AvengeMedia):
+#   launcher toggle             quickshell/DMSShellIPC.qml:1508 (target :1537)
+#   powermenu toggle            quickshell/DMSShellIPC.qml:184 (target :197)
+#   lock lock                   quickshell/Modules/Lock/Lock.qml:377,379
+#   notifications toggle        quickshell/Modals/NotificationModal.qml:123 (target :193)
+#   notifications toggleDoNotDisturb                          ...:130
+#   notifications clearAll                                    ...:178
+#   dms restart                 quickshell/Services/SessionService.qml:656;
+#                               restarts dms.service when systemd manages it
+#                               (core/cmd/dms/systemd_restart.go:23-31)
+set -Eeuo pipefail
+# shellcheck source=../../lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../..}/lib/common.sh"
+
+usage() { echo "Usage: ipc-translate [--dry-run] <target> <fn> [args]"; }
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 2)) || {
+    usage >&2
+    exit 2
+}
+target="$1" fn="$2"
+shift 2
+
+unmapped() {
+    printf 'haseen ipc: "%s" has no DMS equivalent (active shell: dms; back to haseen: haseen shell use haseen)\n' "$*" >&2
+    exit 3
+}
+
+# A function that takes no arguments must not silently drop some.
+noargs() { (($# == 0)) || unmapped "$target $fn $*"; }
+
+dms_call() {
+    $DRY_RUN || have dms || die "dms is not installed (haseen layer apply dms)"
+    run dms "$@"
+}
+
+case "$target $fn" in
+"launcher toggle") noargs "$@" && dms_call ipc call launcher toggle ;;
+"lock lock") noargs "$@" && dms_call ipc call lock lock ;;
+"notifications clear") noargs "$@" && dms_call ipc call notifications clearAll ;;
+"notifications toggleDnd") noargs "$@" && dms_call ipc call notifications toggleDoNotDisturb ;;
+"shell reload") noargs "$@" && dms_call restart ;;
+"panel toggle")
+    (($# == 1)) || {
+        usage >&2
+        exit 2
+    }
+    case "$1" in
+    haseen.launcher) dms_call ipc call launcher toggle ;;
+    haseen.notifications) dms_call ipc call notifications toggle ;;
+    haseen.session) dms_call ipc call powermenu toggle ;;
+    *) unmapped "$target $fn $1" ;;
+    esac
+    ;;
+*) unmapped "$target $fn${*:+ $*}" ;;
+esac
