@@ -1,0 +1,8 @@
+distro=cachyos
+firmware=uefi
+secureboot=setup
+bootloader=grub
+esp=/boot
+windows_on_esp=false
+luks=false
+gpu=none

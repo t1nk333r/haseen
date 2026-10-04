@@ -1,0 +1,22 @@
+{
+    "/boot/EFI/systemd/systemd-bootx64.efi": {
+        "file": "/boot/EFI/systemd/systemd-bootx64.efi",
+        "output_file": "/boot/EFI/systemd/systemd-bootx64.efi"
+    },
+    "/boot/EFI/BOOT/BOOTX64.EFI": {
+        "file": "/boot/EFI/BOOT/BOOTX64.EFI",
+        "output_file": "/boot/EFI/BOOT/BOOTX64.EFI"
+    },
+    "/usr/lib/systemd/boot/efi/systemd-bootx64.efi": {
+        "file": "/usr/lib/systemd/boot/efi/systemd-bootx64.efi",
+        "output_file": "/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed"
+    },
+    "/boot/vmlinuz-linux": {
+        "file": "/boot/vmlinuz-linux",
+        "output_file": "/boot/vmlinuz-linux"
+    },
+    "/boot/EFI/Linux/arch-linux.efi": {
+        "file": "/boot/EFI/Linux/arch-linux.efi",
+        "output_file": "/boot/EFI/Linux/arch-linux.efi"
+    }
+}

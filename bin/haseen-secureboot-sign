@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# haseen:summary Re-sign the boot chain and re-enroll the Limine config
+# haseen:args    [--hook] [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/secureboot/secureboot.sh
+source "$HASEEN_PATH/layers/secureboot/secureboot.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen secureboot sign [--hook] [--dry-run] [--yes]
+
+Re-signs whatever sbctl tracks (sbctl sign-all), signs and tracks boot-chain
+files that are new (a new kernel, UKI or loader copy), and on Limine refreshes
+the #blake2b of the wallpaper, re-enrolls the config (limine-enroll-config) and
+replaces a raw Limine fallback with the enrolled binary.
+
+--hook  run from /etc/pacman.d/hooks/zz-haseen-secureboot.hook: exit 0 without
+        doing anything until Secure Boot keys exist, and leave sign-all to
+        sbctl's own zz-sbctl.hook, which runs right after.
+EOF
+}
+
+HOOK=false
+args=()
+for a in "$@"; do
+    if [[ $a == --hook ]]; then HOOK=true; else args+=("$a"); fi
+done
+parse_common_flags "${args[@]}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+preflight_all
+# A pacman hook must never fail a transaction for a machine that has not opted
+# in: no UEFI, no sbctl or no keys means there is nothing to sign.
+if [[ $FIRMWARE != uefi ]]; then
+    $HOOK && exit 0
+    die "Secure Boot needs UEFI firmware; this machine booted in legacy BIOS mode"
+fi
+if ! pkg_installed sbctl || ! sb_keys_exist; then
+    if $HOOK; then
+        echo "haseen: no Secure Boot keys yet; nothing to sign"
+        exit 0
+    fi
+    die "no Secure Boot keys yet: run haseen secureboot setup first"
+fi
+$HOOK || sb_reexec_as_root "$(readlink -f "$0")" "$@"
+
+if [[ $BOOTLOADER == limine ]]; then
+    if sb_limine_assets; then
+        changed=true
+    else
+        changed=false
+    fi
+    if [[ $(sb_limine_value ENABLE_ENROLL_LIMINE_CONFIG) != yes ]]; then
+        warn "ENABLE_ENROLL_LIMINE_CONFIG is not yes in $SB_LIMINE_DEFAULT: the Limine config is not enrolled (haseen secureboot setup sets it)"
+    elif ! sb_limine_tools; then
+        warn "limine-enroll-config is missing (package limine-mkinitcpio-hook): the Limine config was NOT re-enrolled"
+    else
+        sb_root limine-enroll-config
+    fi
+    if $changed && $DRY_RUN; then
+        sb_limine_refresh_fallback force
+    else
+        sb_limine_refresh_fallback
+    fi
+fi
+
+if sb_esp_readable; then
+    sb_track_chain
+else
+    echo "    (ESP not readable as this user: new boot-chain files are signed with sbctl sign -s when this runs)"
+fi
+
+if $HOOK && sb_sbctl_hook_active; then
+    # zz-sbctl.hook sorts after this hook and runs `sbctl sign-all -g`; a
+    # second sign-all here would only repeat it, and verifying now would
+    # report files that hook is about to re-sign.
+    exit 0
+fi
+sb_root sbctl sign-all
+
+$DRY_RUN && exit 0
+json="$(sb_root sbctl verify --json)" || die "sbctl verify failed"
+sb_classify_verify "$json"
+problems=("${SB_BLOCKERS[@]}")
+if [[ $BOOTLOADER == limine ]]; then
+    while IFS= read -r l; do
+        case "$l" in
+        blocker:*) problems+=("${l#blocker: }") ;;
+        note:*) warn "${l#note: }" ;;
+        esac
+    done < <(sb_limine_problems)
+fi
+for l in "${SB_NOTES[@]}"; do warn "$l"; done
+if ((${#problems[@]} > 0)); then
+    printf '  not ready: %s\n' "${problems[@]}" >&2
+    die "the boot chain is not fully signed; with Secure Boot on, the next boot may be refused"
+fi
+info "boot chain signed: $SB_SIGNED file(s)"

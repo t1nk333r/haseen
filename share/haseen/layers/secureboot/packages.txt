@@ -1,0 +1,2 @@
+# sbctl >= 0.17 enrolls the Microsoft 2023 UEFI CAs with --microsoft.
+sbctl

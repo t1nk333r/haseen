@@ -7,7 +7,7 @@ Read `handoff.md` first.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001 | Foundation: layer runner, CLI router, dry-run contract, fixtures | P1 | M | — | DONE 2026-10-04 |
-| 002 | Secure Boot layer for Windows dual boot | P1 | L | 001 | PLANNED |
+| 002 | Secure Boot layer for Windows dual boot | P1 | L | 001 | DONE 2026-10-04 (205 tests; read-only live `status` ok; firmware enrollment = owner step, plan 014) |
 | 003 | Base, desktop and gaming layers | P1 | L | 001 | DONE 2026-10-04 (128 tests; `Hyprland --verify-config` ok; real login pending 014) |
 | 004 | Theme pipeline compatible with Omarchy colors.toml | P1 | M | 001 | DONE 2026-10-04 (215 tests; byte-parity with Omarchy renderer) |
 | 005 | Quickshell shell core and plugin host | P1 | L | 001 | PLANNED |

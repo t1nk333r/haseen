@@ -2,3 +2,4 @@
 c59305b	nixpkgs pin in flake.lock (plan 009)
 ba33415	lanzaboote pin in flake.lock (plan 009)
 d338a4bb95d9e09f97508da68ac9e17d963b85f6	BlackArch strap.sh SHA-1 (plan 007)
+efb5099	Hyprland 0.56.2 build commit (plan 003)

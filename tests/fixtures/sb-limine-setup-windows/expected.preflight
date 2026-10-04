@@ -1,0 +1,8 @@
+distro=cachyos
+firmware=uefi
+secureboot=setup
+bootloader=limine
+esp=/boot
+windows_on_esp=true
+luks=false
+gpu=none

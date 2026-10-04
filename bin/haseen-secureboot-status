@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# haseen:summary Secure Boot state: firmware, keys, signatures, Limine enrollment
+# haseen:args
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/secureboot/secureboot.sh
+source "$HASEEN_PATH/layers/secureboot/secureboot.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen secureboot status
+
+Read-only. Firmware and Secure Boot state, bootloader and ESP, Windows on the
+ESP, sbctl and its keys, enrolled vendor keys, whether the boot chain is signed,
+whether Limine's config hash is enrolled and current, TPM2-bound LUKS volumes
+and the re-sign pacman hook. Never escalates: as a normal user the ESP (0700)
+and sbctl's keys cannot be read, and those checks say so. Run it as root for
+the full picture.
+
+Exit: 0 Secure Boot is enforcing and the whole boot chain is signed, 1 otherwise.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+preflight_all
+rc=0
+sb_report || rc=$?
+exit "$rc"

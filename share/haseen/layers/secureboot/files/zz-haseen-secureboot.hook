@@ -1,0 +1,40 @@
+# haseen secureboot: keep the boot chain signed and Limine's config enrolled.
+# Installed by `haseen layer apply secureboot`, removed by `haseen layer remove
+# secureboot`. Does nothing (exit 0) until Secure Boot keys exist.
+#
+# pacman runs hooks sorted by file name. This one runs after
+# 80-limine-efi-deploy, 90-mkinitcpio-install and 99-omarchy-limine (which
+# copies an unenrolled Limine over EFI/limine/limine_x64.efi), so limine.conf
+# and the Limine binary are final before re-enrollment; and before
+# zz-sbctl.hook, whose `sbctl sign-all -g` then re-signs every tracked file.
+# The Path targets mirror zz-sbctl.hook, so whenever sbctl's hook runs, this
+# one has run first. Those targets are taken from sbctl's
+# contrib/pacman/ZZ-sbctl.hook (MIT, Copyright 2020 Morten Linderud).
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = limine
+Target = limine-mkinitcpio-hook
+Target = linux*
+Target = systemd
+Target = mkinitcpio
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = boot/*
+Target = efi/*
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/modules/*/extramodules/*
+Target = usr/lib/initcpio/*
+Target = usr/lib/**/efi/*.efi*
+Target = usr/share/**/*.efi*
+
+[Action]
+Description = haseen: re-enrolling the Limine config and signing new boot files...
+When = PostTransaction
+Exec = @HASEEN_BIN@ secureboot sign --hook

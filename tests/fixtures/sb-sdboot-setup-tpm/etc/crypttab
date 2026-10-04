@@ -1,0 +1,2 @@
+# <name> <device> <password> <options>
+root UUID=0f3b2c1d-1111-4222-8333-944455556666 none tpm2-device=auto,discard

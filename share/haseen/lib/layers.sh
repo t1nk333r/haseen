@@ -14,6 +14,9 @@
 #                    layer_apply    idempotent; every mutation through the
 #                                   common.sh helpers; receives the layer's
 #                                   own arguments ("$@")
+#                    layer_precheck optional; read-only refusals that must
+#                                   happen before packages are installed
+#                                   (receives the same arguments)
 #                    layer_remove   optional; undoes what is safely reversible
 #                    layer_usage    optional; prints the layer's own flags
 #   packages.txt   optional manifest (lib/packages.sh), installed by the runner
@@ -156,6 +159,9 @@ layer_run_apply() {
         done
         $ok || die "layer $name does not support distro '$HASEEN_DISTRO' (supports: ${LAYER_DISTROS[*]})"
         info "layer $name: $LAYER_SUMMARY"
+        if declare -F layer_precheck >/dev/null; then
+            layer_precheck "$@"
+        fi
         if [[ -r $LAYER_DIR/packages.txt ]]; then
             pkg_install_manifest "$LAYER_DIR/packages.txt"
         fi

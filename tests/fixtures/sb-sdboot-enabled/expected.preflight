@@ -1,0 +1,8 @@
+distro=arch
+firmware=uefi
+secureboot=enabled
+bootloader=systemd-boot
+esp=/boot
+windows_on_esp=false
+luks=false
+gpu=none
