@@ -13,7 +13,7 @@ file changes in the same commit.
 
 | # | Requirement | Owner |
 |---|---|---|
-| 1 | clean | layers are opt-in; `base chaotic desktop theme shell` is the whole default |
+| 1 | clean | layers are opt-in; `base chaotic omarchy-repo desktop theme shell` is the whole default |
 | 2 | extendable with AI | plugin manifest + JSON schema + `haseen plugin new/validate`, agent skill in `share/haseen/agents/skills/haseen/` |
 | 3 | no visual clutter | shell defaults: one thin bar, no blur, no dock, no desktop widgets; everything else is a panel opened on demand |
 | 4 | DMS and Omarchy add-ons | `layers/dms` (run DMS in place of the haseen shell), the compat adapters in `shell/Compat/`, and the Omarchy `colors.toml` theme format |
@@ -56,6 +56,7 @@ already set when the layer runs.
 |---|---|---|
 | `base` | — | essentials, firewall, snapper sanity, pacman hygiene on CachyOS |
 | `chaotic` | base | Chaotic-AUR (pinned key `EF925EA6…87B78AEB`), so `aur:` entries install prebuilt |
+| `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt; `omarchy`/`omarchy-settings` refused (ADR 0001) |
 | `desktop` | base chaotic | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
 | `theme` | base | theme pipeline, the 22 Omarchy stock themes, pinned background fetch, `haseen-background.service` (swaybg) |
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service` |
@@ -72,11 +73,12 @@ Rules every layer follows:
 - **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file.
 - **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). There are two exceptions:
   - `ENABLE_ENROLL_LIMINE_CONFIG=yes` has to be appended to `/etc/default/limine`, because limine-entry-tool resets that key after it reads the drop-ins (`limine-common-functions:143-144`, plan 002).
-  - The `chaotic` layer appends the `[chaotic-aur]` stanza to `/etc/pacman.conf`, because pacman has no repository drop-ins (plan 023).
+  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024).
 - **Package sources, in order** (owner decision 2026-10-04, `lib/packages.sh`):
   1. official and CachyOS repositories;
   2. Chaotic-AUR;
-  3. the AUR, only as the last resort, with a warning.
+  3. Omarchy's `[omarchy]` repo;
+  4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.

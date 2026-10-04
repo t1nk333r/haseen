@@ -8,7 +8,12 @@ Omarchy 4 ships as Arch packages from its own repository (`pkgs.omarchy.org`). I
 
 ## Decision
 
-haseen is the base. It installs on CachyOS without the `[omarchy]` repository. These Omarchy pieces are lifted under MIT: the `colors.toml` theme format and template renderer, the CLI router convention, and the hook runner. Omarchy plugins and themes stay usable through compat (plan 011, plan 004).
+haseen is the base. It installs on CachyOS without Omarchy's system packages. These Omarchy pieces are lifted under MIT: the `colors.toml` theme format and template renderer, the CLI router convention, and the hook runner. Omarchy plugins and themes stay usable through compat (plan 011, plan 004).
+
+**Amended 2026-10-04 (owner, plan 024):** the `[omarchy]` repository may be used as a *package source* for leaf packages such as `ttfx`.
+- The `omarchy-repo` layer appends it last in `pacman.conf`, so official packages win name clashes.
+- `lib/packages.sh` asks it after Chaotic-AUR and before the AUR.
+- `omarchy` and `omarchy-settings` are refused by name in `PKG_DENY`. Those two are the packages that overwrite `pacman.conf`, the mirrorlist and HOOKS.
 
 ## Consequences
 

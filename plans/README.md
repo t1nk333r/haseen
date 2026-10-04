@@ -29,3 +29,4 @@ Read `handoff.md` first.
 | 021 | Starter widgets A: system usage, privacy dots, Omarchy workspaces, media, calendar | P1 | L | 005 010 011 | DONE 2026-10-04 (65 tests; live sysusage/privacy/workspaces/media/calendar) |
 | 022 | Starter widgets B: clipboard history, weather, Bluetooth and Wi-Fi panels | P1 | L | 005 010 011 | DONE 2026-10-04 (59 tests; live panels; no real connects) |
 | 023 | Package source order: repos, Chaotic-AUR, AUR last | P1 | S | 001 003 017 | DONE 2026-10-04 (source-order + chaotic layer tests) |
+| 024 | Omarchy repo as a package source (after Chaotic-AUR, never Omarchy itself) | P2 | S | 023 | DONE 2026-10-04 (source-order + layer tests) |

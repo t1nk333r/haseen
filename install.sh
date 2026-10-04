@@ -17,7 +17,7 @@ export HASEEN_PATH="$REPO/share/haseen"
 # shellcheck source=share/haseen/lib/preflight.sh
 source "$HASEEN_PATH/lib/preflight.sh"
 
-DEFAULT_LAYERS=(base chaotic desktop theme shell)
+DEFAULT_LAYERS=(base chaotic omarchy-repo desktop theme shell)
 PREFIX=/usr/local
 LAYERS=()
 TREE_ONLY=false

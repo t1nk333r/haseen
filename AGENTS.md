@@ -21,10 +21,12 @@ between parts. The engineering record is `plans/`, indexed by
   `tests/test-core.sh` checks this. A full copy of the owner's set from the
   machine luna is kept at `~/Backups/luna/omarchy-plugins-20261004/`.
 - **The AUR is the last resort.** Package sources are tried in this order:
-  official/CachyOS repos, then Chaotic-AUR, then the AUR. Never call
-  paru/yay directly to install anything: use `pkg_install` for repo packages
-  and `pkg_install_aur` for everything else, which applies the order. Prefer
-  a repo or Chaotic-AUR package over an AUR one when choosing a dependency.
+  official/CachyOS repos, then Chaotic-AUR, then Omarchy's `[omarchy]` repo,
+  then the AUR. Never call paru/yay directly to install anything: use
+  `pkg_install` for repo packages and `pkg_install_aur` for everything else,
+  which applies the order. Prefer a repo, Chaotic-AUR or `[omarchy]` package
+  over an AUR one when choosing a dependency. Never add `omarchy` or
+  `omarchy-settings` (`PKG_DENY`).
 - **License: MIT.** You may adapt Omarchy and DMS code (MIT): keep the upstream
   notice in the file header and add a row to `NOTICE.md`. end-4 and caelestia
   are GPL-3.0 and are reference only. Never paste their code.

@@ -8,9 +8,10 @@
 # A package name must match pacman's charset; anything else is a manifest
 # error, not something to pass to a shell.
 #
-# Source order for aur: entries (owner decision 2026-10-04): an enabled
-# official/CachyOS repo, then Chaotic-AUR (prebuilt, signed binaries; the
-# `chaotic` layer enables it), and the AUR itself only as the last resort.
+# Source order for aur: entries (owner decisions 2026-10-04): an enabled
+# official/CachyOS repo, then Chaotic-AUR (the `chaotic` layer), then
+# Omarchy's [omarchy] repo (the `omarchy-repo` layer), and the AUR itself only
+# as the last resort.
 
 [[ -n ${HASEEN_PACKAGES_SH:-} ]] && return 0
 HASEEN_PACKAGES_SH=1
@@ -61,9 +62,26 @@ aur_helper() {
     fi
 }
 
+# Packages haseen never installs, from any source: Omarchy's own system
+# packages overwrite pacman.conf, the mirrorlist and the mkinitcpio HOOKS
+# (ADR 0001, omacachy plan 015). The [omarchy] repo is used only for leaf
+# packages such as ttfx.
+PKG_DENY=(omarchy omarchy-settings)
+
+pkg_refuse_denied() {
+    local p d
+    for p in "$@"; do
+        for d in "${PKG_DENY[@]}"; do
+            [[ ${p##*/} == "$d" ]] && die "haseen never installs '$d': it overwrites pacman.conf, the mirrorlist and the initramfs HOOKS (docs/decisions/0001)"
+        done
+    done
+    return 0
+}
+
 # pkg_install NAME... — install official-repo packages that are missing.
 pkg_install() {
     local missing=() p
+    pkg_refuse_denied "$@"
     for p in "$@"; do
         pkg_installed "$p" || missing+=("$p")
     done
@@ -100,17 +118,24 @@ pkg_repo_has() {
 }
 
 chaotic_enabled() { pkg_enabled_repos | grep -qx chaotic-aur; }
+omarchy_repo_enabled() { pkg_enabled_repos | grep -qx omarchy; }
 
 # pkg_source NAME — where an aur: entry comes from: "repo:REPO" (an enabled
-# official/CachyOS repo carries it after all), "chaotic", or "aur".
+# official/CachyOS repo carries it after all), "chaotic", "omarchy" or "aur".
+# Chaotic-AUR and [omarchy] are third-party binary repos and are asked only
+# after the official ones, in that order.
 pkg_source() {
     local repo
     while read -r repo; do
-        [[ -n $repo && $repo != chaotic-aur ]] || continue
+        [[ -n $repo && $repo != chaotic-aur && $repo != omarchy ]] || continue
         pkg_repo_has "$repo" "$1" && { echo "repo:$repo"; return 0; }
     done < <(pkg_enabled_repos)
     if chaotic_enabled && pkg_repo_has chaotic-aur "$1"; then
         echo chaotic
+        return 0
+    fi
+    if omarchy_repo_enabled && pkg_repo_has omarchy "$1"; then
+        echo omarchy
         return 0
     fi
     echo aur
@@ -118,9 +143,11 @@ pkg_source() {
 
 # pkg_install_aur NAME... — install packages that are not in the official
 # repos. Each one comes from the first source that has it: an enabled repo,
-# Chaotic-AUR, then the AUR as the last resort (built as the invoking user).
+# Chaotic-AUR, the [omarchy] repo, then the AUR as the last resort (built as
+# the invoking user).
 pkg_install_aur() {
-    local missing=() p src helper repo_pkgs=() chaotic_pkgs=() aur_pkgs=()
+    local missing=() p src helper repo_pkgs=() chaotic_pkgs=() omarchy_pkgs=() aur_pkgs=()
+    pkg_refuse_denied "$@"
     for p in "$@"; do
         pkg_installed "$p" || missing+=("$p")
     done
@@ -130,6 +157,7 @@ pkg_install_aur() {
         case "$src" in
         repo:*) repo_pkgs+=("$p") ;;
         chaotic) chaotic_pkgs+=("chaotic-aur/$p") ;;
+        omarchy) omarchy_pkgs+=("omarchy/$p") ;;
         *) aur_pkgs+=("$p") ;;
         esac
     done
@@ -137,10 +165,11 @@ pkg_install_aur() {
     $ASSUME_YES && flags+=(--noconfirm)
     ((${#repo_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${repo_pkgs[@]}"
     ((${#chaotic_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${chaotic_pkgs[@]}"
+    ((${#omarchy_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${omarchy_pkgs[@]}"
     ((${#aur_pkgs[@]} > 0)) || return 0
 
     if chaotic_enabled; then
-        warn "not in the official repos or Chaotic-AUR, building from the AUR (last resort): ${aur_pkgs[*]}"
+        warn "not in the official repos, Chaotic-AUR or [omarchy], building from the AUR (last resort): ${aur_pkgs[*]}"
     else
         warn "building from the AUR (last resort): ${aur_pkgs[*]}. Prebuilt binaries: haseen layer apply chaotic"
     fi

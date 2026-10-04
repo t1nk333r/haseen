@@ -146,3 +146,34 @@ printf '[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >>"$fx/etc/
 capture env HASEEN_SYSROOT="$fx" haseen layer apply chaotic --dry-run
 assert_contains "chaotic: idempotent when it works" "$OUTPUT" "Chaotic-AUR already enabled"
 assert_not_contains "chaotic: no second stanza" "$OUTPUT" "append to /etc/pacman.conf"
+
+# --- [omarchy] repo: after Chaotic-AUR, before the AUR; never Omarchy itself --
+printf '[omarchy]\nSigLevel = Required DatabaseOptional\nServer = x\n' >>"$fx/etc/pacman.conf"
+printf 'ttfx\nomarchy-keyring\nxpadneo-dkms\nomarchy-settings\n' >"$fx/var/lib/pacman/sync/omarchy.pkgs"
+src ttfx
+assert_contains "omarchy repo before the AUR" "$OUTPUT" "DRYRUN: sudo pacman -S --needed omarchy/ttfx"
+assert_not_contains "omarchy hit never builds" "$OUTPUT" "paru -S"
+src xpadneo-dkms
+assert_contains "Chaotic-AUR before the omarchy repo" "$OUTPUT" "pacman -S --needed chaotic-aur/xpadneo-dkms"
+for denied in omarchy omarchy-settings; do
+    src "$denied"
+    assert_status "refuses $denied via pkg_install_aur" 1 "$STATUS"
+    assert_contains "refusal names $denied" "$OUTPUT" "haseen never installs '$denied'"
+    capture env HASEEN_SYSROOT="$fx" DRY_RUN=true bash -c 'source "$HASEEN_PATH/lib/packages.sh"; pkg_install "$1"' _ "$denied"
+    assert_status "refuses $denied via pkg_install" 1 "$STATUS"
+done
+assert_dry_pure "omarchy tier" "$OUTPUT"
+
+sed -i '/^\[omarchy\]/,+2d' "$fx/etc/pacman.conf"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply omarchy-repo --dry-run
+assert_dry_pure "omarchy-repo layer" "$OUTPUT"
+assert_contains "omarchy-repo: pinned key" "$OUTPUT" "pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org"
+assert_contains "omarchy-repo: fingerprint checked" "$OUTPUT" "verify the key fingerprint is 40DFB630FF42BCFFB047046CF0134EE680CAC571"
+assert_contains "omarchy-repo: signed packages required" "$OUTPUT" "    | SigLevel = Required DatabaseOptional"
+assert_contains "omarchy-repo: stable channel" "$OUTPUT" '    | Server = https://pkgs.omarchy.org/stable/$arch'
+assert_contains "omarchy-repo: keyring from the repo" "$OUTPUT" "pacman -S --needed omarchy/omarchy-keyring"
+assert_not_contains "omarchy-repo: never Omarchy itself" "$OUTPUT" "omarchy-settings"
+printf '[omarchy]\nServer = x\n' >>"$fx/etc/pacman.conf"
+capture env HASEEN_SYSROOT="$fx" haseen layer status omarchy-repo
+assert_status "omarchy-repo: status ok once enabled" 0 "$STATUS"
+assert_not_contains "omarchy-repo: last in pacman.conf, no shadow warning" "$OUTPUT" "not the last repo"
