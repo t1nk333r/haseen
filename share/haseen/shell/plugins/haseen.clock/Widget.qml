@@ -4,7 +4,8 @@ import qs.Haseen
 import qs.Haseen.Widgets
 
 // SystemClock ticks on the minute boundary (or the second, only when the
-// format shows seconds), and only while the bar is visible.
+// format shows seconds), and only while the bar is visible. A left click
+// toggles the calendar panel (settings.calendar, default haseen.calendar).
 BarButton {
     id: root
 
@@ -13,9 +14,18 @@ BarButton {
     property var settings: ({})
     property var screen: null
 
-    readonly property string format: typeof settings.format === "string" && settings.format !== "" ? settings.format : "HH:mm"
+    readonly property string format: {
+        const key = vertical ? "verticalFormat" : "format";
+        return typeof settings[key] === "string" && settings[key] !== "" ? settings[key] : vertical ? "HH\nmm" : "HH:mm";
+    }
+    readonly property string calendar: typeof settings.calendar === "string" ? settings.calendar : "haseen.calendar"
 
     text: Qt.formatDateTime(clock.date, format)
+
+    onClicked: button => {
+        if (button === Qt.LeftButton && calendar !== "")
+            Quickshell.execDetached(["qs", "-p", Quickshell.shellDir, "ipc", "call", "panel", "toggle", calendar]);
+    }
 
     SystemClock {
         id: clock

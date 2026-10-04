@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.workspaces",
   "name": "Workspaces",
-  "version": "1.0.0",
-  "description": "Hyprland workspaces on this screen; click to focus",
+  "version": "2.0.0",
+  "description": "Hyprland workspaces (port of Omarchy's): persistent 1-5, scratchpads, click to focus, scroll to walk",
   "kinds": [
     "bar-widget"
   ],
@@ -11,10 +11,15 @@
     "bar-widget": "Widget.qml"
   },
   "settings": {
+    "persistent": {
+      "type": "integer",
+      "default": 5,
+      "description": "Workspaces 1..N always shown, even when empty (0-10)"
+    },
     "allMonitors": {
       "type": "boolean",
       "default": false,
-      "description": "Show workspaces from every monitor, not just this bar's screen"
+      "description": "Show non-persistent workspaces from every monitor, not just this bar's screen"
     }
   },
   "permissions": []

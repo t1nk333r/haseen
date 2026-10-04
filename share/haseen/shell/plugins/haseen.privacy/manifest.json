@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.privacy",
+  "name": "Privacy",
+  "version": "1.0.0",
+  "description": "Coloured dots while the camera, microphone, screen or location is in use; hover shows which app",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "showCamera": {
+      "type": "boolean",
+      "default": true,
+      "description": "Green dot while a PipeWire camera is captured"
+    },
+    "showMicrophone": {
+      "type": "boolean",
+      "default": true,
+      "description": "Orange dot while a microphone is captured"
+    },
+    "showScreen": {
+      "type": "boolean",
+      "default": true,
+      "description": "Red dot while recording (flag `recording`) or sharing the screen"
+    },
+    "showLocation": {
+      "type": "boolean",
+      "default": true,
+      "description": "Blue dot while GeoClue reports location in use (needs geoclue)"
+    },
+    "ignore": {
+      "type": "array",
+      "default": [],
+      "description": "Application or node names whose captures never light a dot"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.privacy (summary of what the hover lists)"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
+}

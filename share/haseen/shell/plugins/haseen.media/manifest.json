@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.media",
+  "name": "Media",
+  "version": "1.0.0",
+  "description": "Now playing (MPRIS): click play/pause, scroll for next/previous; hidden without a player",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "maxLength": {
+      "type": "integer",
+      "default": 40,
+      "description": "Truncate the artist - title label to this many characters"
+    },
+    "showArtist": {
+      "type": "boolean",
+      "default": true,
+      "description": "Prefix the title with the artist"
+    }
+  },
+  "permissions": []
+}

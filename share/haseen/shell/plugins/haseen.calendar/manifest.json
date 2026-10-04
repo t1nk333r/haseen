@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.calendar",
+  "name": "Calendar",
+  "version": "1.0.0",
+  "description": "Month calendar panel; the clock opens it",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "weekStart": {
+      "type": "string",
+      "default": "locale",
+      "description": "First day of the week: locale, monday, sunday, saturday, ..."
+    },
+    "weekNumbers": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show ISO week numbers"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.calendar (shift months, read the shown month)"
+    }
+  },
+  "permissions": []
+}

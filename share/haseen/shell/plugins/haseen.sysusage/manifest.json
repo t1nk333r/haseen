@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.sysusage",
+  "name": "System usage",
+  "version": "1.0.0",
+  "description": "CPU, memory and GPU usage in the bar; click for details and top processes",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "showGpu": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the GPU reading"
+    },
+    "gpu": {
+      "type": "string",
+      "default": "auto",
+      "description": "GPU to read: auto (the boot VGA device, never a sleeping dGPU), off, or a DRM card name such as card1"
+    },
+    "warnAt": {
+      "type": "number",
+      "default": 80,
+      "description": "Percentage at which a reading turns the warning colour (95 % turns urgent)"
+    }
+  },
+  "permissions": [
+    "files:read",
+    "exec"
+  ]
+}

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.clock",
   "name": "Clock",
-  "version": "1.0.0",
-  "description": "Time and date in the bar",
+  "version": "1.1.0",
+  "description": "Time and date in the bar; click for the calendar",
   "kinds": [
     "bar-widget"
   ],
@@ -15,7 +15,19 @@
       "type": "string",
       "default": "HH:mm",
       "description": "Qt date format"
+    },
+    "verticalFormat": {
+      "type": "string",
+      "default": "HH\nmm",
+      "description": "Qt date format in a left/right bar"
+    },
+    "calendar": {
+      "type": "string",
+      "default": "haseen.calendar",
+      "description": "Panel a left click toggles; empty disables"
     }
   },
-  "permissions": []
+  "permissions": [
+    "exec"
+  ]
 }
