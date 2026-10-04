@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# haseen:summary Hide or show the bar for this session (the frame stays)
+# haseen:args [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar toggle [--dry-run]
+
+Hides or shows the bar of the running shell (IPC: bar toggle). Not saved: the
+next shell start shows the bar again. A hidden bar leaves a frame-thick strip
+when the screen frame is on, so the frame stays closed.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+run "$BIN_DIR/haseen-shell-ipc" bar toggle

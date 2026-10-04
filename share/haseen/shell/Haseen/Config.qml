@@ -7,17 +7,55 @@ import Quickshell.Io
 // default/shell.json deep-merged with ~/.config/haseen/shell.json, both
 // watched. Objects merge key by key; arrays and scalars from the user file
 // replace the default (so a user `bar.right` is the whole section).
+//
+// `runtime` sits on top: a setting changed from the shell (bar double-click,
+// tray pin, the `bar` IPC target) applies from there at once while
+// `haseen bar …` persists it to the user file. The next load of that file
+// clears the layer, so the file stays the truth (plan 015).
 Singleton {
     id: root
 
     property var defaults: ({})
     property var user: ({})
-    readonly property var merged: deepMerge(defaults, user)
+    property var runtime: ({})
+    readonly property var fileMerged: deepMerge(defaults, user)
+    readonly property var merged: deepMerge(fileMerged, runtime)
 
     readonly property var bar: _object(merged.bar)
-    readonly property string barPosition: bar.position === "bottom" ? "bottom" : "top"
+    readonly property string barPosition: ["top", "bottom", "left", "right"].indexOf(bar.position) >= 0 ? bar.position : "top"
+    readonly property bool barVertical: barPosition === "left" || barPosition === "right"
     readonly property int barHeight: (typeof bar.height === "number" && bar.height >= 16) ? bar.height : 28
+    // Size across the bar. A vertical bar needs room for a short label.
+    readonly property int barThickness: barVertical ? Math.max(barHeight, Theme.fontSize * 3) : barHeight
+    readonly property bool barTransparent: bar.transparent === true
+    readonly property var frame: _object(merged.frame)
+    readonly property bool frameEnabled: frame.enabled !== false
+    readonly property int frameThickness: _int(frame.thickness, 1, 64, 6)
+    // Inner corner radius: twice the theme radius unless frame.radius is set.
+    readonly property int frameRadius: _int(frame.radius, 0, 64, Theme.radius * 2)
     readonly property var services: _ids(merged.services)
+
+    function _int(v: var, min: int, max: int, fallback: int): int {
+        return (typeof v === "number" && v >= min && v <= max) ? Math.round(v) : fallback;
+    }
+
+    // The value at path (["bar", "transparent"]) in the files alone.
+    function fileValue(path: var): var {
+        let v = fileMerged;
+        for (const k of path)
+            v = (v && typeof v === "object") ? v[k] : undefined;
+        return v;
+    }
+
+    function setRuntime(path: var, value: var): void {
+        let over = value;
+        for (let i = path.length - 1; i >= 0; i--) {
+            const o = {};
+            o[path[i]] = over;
+            over = o;
+        }
+        runtime = deepMerge(runtime, over);
+    }
 
     function _object(v: var): var {
         return (v && typeof v === "object" && !Array.isArray(v)) ? v : {};
@@ -81,7 +119,10 @@ Singleton {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: root.user = root._parse(text(), path, root.user)
+        onLoaded: {
+            root.user = root._parse(text(), path, root.user);
+            root.runtime = {};
+        }
         onLoadFailed: root.user = {}
     }
 }

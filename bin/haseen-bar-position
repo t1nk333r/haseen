@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# haseen:summary Move the bar to a screen edge (saved in shell.json)
+# haseen:args <top|bottom|left|right> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar position <top|bottom|left|right> [--dry-run]
+
+Sets bar.position in $SHELL_USER_CONFIG, then tells the running shell. The
+screen frame follows the bar to the new edge.
+
+--no-apply   only save; used by the shell itself, which already applied it
+EOF
+}
+
+APPLY=true
+args=()
+for a in "$@"; do
+    if [[ $a == --no-apply ]]; then APPLY=false; else args+=("$a"); fi
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 1)) && [[ ${REST[0]} =~ ^(top|bottom|left|right)$ ]] || {
+    usage >&2
+    exit 2
+}
+pos="${REST[0]}"
+
+# At top level, so an unreadable user file stops here (exit 1), untouched.
+user="$(shell_user_json)"
+current="$(shell_merged_json | jq -r '.bar.position // "top"')"
+if [[ $current != "$pos" ]]; then
+    updated="$(jq --arg p "$pos" '.bar.position = $p' <<<"$user")"
+    printf '%s\n' "$updated" | shell_config_write
+fi
+info "bar position: $pos"
+
+if $APPLY; then
+    if $DRY_RUN; then
+        echo "DRYRUN: haseen shell ipc bar position $pos"
+    else
+        "$BIN_DIR/haseen-shell-ipc" bar position "$pos" >/dev/null 2>&1 ||
+            info "no running haseen shell answered; it applies at the next start"
+    fi
+fi

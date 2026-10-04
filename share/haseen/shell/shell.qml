@@ -26,6 +26,9 @@ ShellRoot {
     property var openPanels: []
     // Screen the open panel appears on, captured at toggle time.
     property var panelScreen: null
+    // `bar toggle` hides the bars for this session only.
+    property bool barHidden: false
+    readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
 
     function focusedScreen(): var {
         const mon = Hyprland.focusedMonitor;
@@ -70,10 +73,62 @@ ShellRoot {
         console.info("haseen: no plugin provides '" + role + "', " + role + "." + fn + "() ignored");
     }
 
+    // Apply a setting at once (Config runtime layer) and persist it through
+    // the CLI when the files disagree. The CLI calls back into `bar` IPC to
+    // apply its own changes, with values the files then already hold, so
+    // the two never loop (--no-apply on this side stops the echo).
+    function applySetting(path: var, value: var, cliArgs: var): void {
+        Config.setRuntime(path, value);
+        if (Config.fileValue(path) !== value)
+            Quickshell.execDetached([cli].concat(cliArgs, ["--no-apply"]));
+    }
+
+    function onOff(mode: string, current: bool): var {
+        if (mode === "on" || mode === "pin")
+            return true;
+        if (mode === "off" || mode === "unpin")
+            return false;
+        if (mode === "toggle" || mode === "")
+            return !current;
+        return null;
+    }
+
+    function setTransparent(mode: string): string {
+        const want = onOff(mode, Config.barTransparent);
+        if (want === null)
+            return "usage: transparent on|off|toggle";
+        applySetting(["bar", "transparent"], want, ["bar", "transparent", want ? "on" : "off"]);
+        return want ? "on" : "off";
+    }
+
+    // Picks the transparent bar's text colour; one for all screens.
+    FrameTextColor {
+        id: barText
+
+        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    }
+
+    // Per screen: the bar first, then the frame strips around it.
     Variants {
         model: Quickshell.screens
 
-        Bar {}
+        Scope {
+            id: screenScope
+
+            required property var modelData
+
+            Bar {
+                screen: screenScope.modelData
+                hidden: shell.barHidden
+                transparent: barText.active
+                onTransparencyToggleRequested: shell.setTransparent("toggle")
+            }
+
+            Frame {
+                screen: screenScope.modelData
+                transparent: barText.active
+            }
+        }
     }
 
     // service-kind plugins listed in shell.json `services`. ScriptModel
@@ -137,6 +192,63 @@ ShellRoot {
 
         function toggle(): void {
             shell.routeRole("launcher", "toggle");
+        }
+    }
+
+    IpcHandler {
+        target: "menu"
+
+        function toggle(path: string): void {
+            if (Plugins.callRole("menu", "toggle", [path]))
+                return;
+            shell.routeRole("menu", "toggle");
+            if (path !== "")
+                Qt.callLater(() => Plugins.callRole("menu", "open", [path]));
+        }
+    }
+
+    // `haseen bar …` (plan 015). Changes apply at once and persist through
+    // the CLI; toggle() is session-only.
+    IpcHandler {
+        target: "bar"
+
+        function toggle(): string {
+            shell.barHidden = !shell.barHidden;
+            return shell.barHidden ? "hidden" : "shown";
+        }
+
+        function transparent(mode: string): string {
+            return shell.setTransparent(mode);
+        }
+
+        function position(pos: string): string {
+            if (["top", "bottom", "left", "right"].indexOf(pos) < 0)
+                return "usage: position top|bottom|left|right";
+            shell.applySetting(["bar", "position"], pos, ["bar", "position", pos]);
+            return pos;
+        }
+
+        function tray(mode: string): string {
+            const want = shell.onOff(mode, Plugins.settingsFor("haseen.tray").pinned === true);
+            if (want === null)
+                return "usage: tray pin|unpin|toggle";
+            shell.applySetting(["plugins", "haseen.tray", "settings", "pinned"], want, ["bar", "tray", want ? "pin" : "unpin"]);
+            return want ? "pinned" : "unpinned";
+        }
+
+        // Test hook: what the bar shows right now.
+        function status(): string {
+            return JSON.stringify({
+                position: Config.barPosition,
+                hidden: shell.barHidden,
+                transparent: Config.barTransparent,
+                transparentActive: barText.active,
+                barForeground: barText.hex(Theme.barForeground),
+                frame: Config.frameEnabled,
+                frameThickness: Config.frameThickness,
+                frameRadius: Config.frameRadius,
+                trayPinned: Plugins.settingsFor("haseen.tray").pinned === true
+            });
         }
     }
 

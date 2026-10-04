@@ -21,7 +21,7 @@ BarButton {
 
     glyph: muted || volume <= 0 ? "\ueee8" : volume >= 0.67 ? "\uf028" : volume >= 0.34 ? "\uf027" : "\uf026"
     text: ready ? Math.round(volume * 100) + "%" : ""
-    color: muted ? Theme.muted : Theme.foreground
+    color: muted ? Theme.muted : Theme.barForeground
 
     onClicked: button => {
         if (ready && button === Qt.LeftButton)

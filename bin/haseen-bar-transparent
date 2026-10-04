@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# haseen:summary Make the bar and screen frame transparent or solid (saved in shell.json)
+# haseen:args [on|off|toggle] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar transparent [on|off|toggle] [--dry-run]
+
+Sets bar.transparent in $SHELL_USER_CONFIG (default: toggle), then tells the
+running shell. A transparent bar drops its background (the frame follows) and
+picks its text colour from the wallpaper under it. Double-clicking empty bar
+space does the same.
+
+--no-apply   only save; used by the shell itself, which already applied it
+EOF
+}
+
+APPLY=true
+args=()
+for a in "$@"; do
+    if [[ $a == --no-apply ]]; then APPLY=false; else args+=("$a"); fi
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+
+# At top level, so an unreadable user file stops here (exit 1), untouched.
+user="$(shell_user_json)"
+current="$(shell_merged_json | jq '.bar.transparent == true')"
+case "${REST[0]:-toggle}" in
+on) want=true ;;
+off) want=false ;;
+toggle) if [[ $current == true ]]; then want=false; else want=true; fi ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+word=off
+[[ $want == true ]] && word=on
+
+if [[ $current != "$want" ]]; then
+    updated="$(jq --argjson v "$want" '.bar.transparent = $v' <<<"$user")"
+    printf '%s\n' "$updated" | shell_config_write
+fi
+info "bar transparent: $word"
+
+if $APPLY; then
+    if $DRY_RUN; then
+        echo "DRYRUN: haseen shell ipc bar transparent $word"
+    else
+        "$BIN_DIR/haseen-shell-ipc" bar transparent "$word" >/dev/null 2>&1 ||
+            info "no running haseen shell answered; it applies at the next start"
+    fi
+fi

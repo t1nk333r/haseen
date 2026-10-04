@@ -24,5 +24,5 @@ BarButton {
 
     glyph: charging ? "\u{F0084}" : ["\u{F008E}", "\u{F007A}", "\u{F007B}", "\u{F007C}", "\u{F007D}", "\u{F007E}", "\u{F007F}", "\u{F0080}", "\u{F0081}", "\u{F0082}", "\u{F0079}"][Math.max(0, Math.min(10, Math.round(percent / 10)))]
     text: percent + "%"
-    color: !charging && percent <= low ? Theme.urgent : Theme.foreground
+    color: !charging && percent <= low ? Theme.urgent : Theme.barForeground
 }

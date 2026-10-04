@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# haseen:summary Pick a legible text colour for the transparent bar from the wallpaper under it
+# haseen:args <top|bottom|left|right> <bar-size> <text-hex> <background-hex> [--background FILE] [--screen WxH]
+# haseen:hidden
+#
+# Adapted from Omarchy bin/omarchy-bar-text-color (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: haseen paths and helpers, --help, and the
+# sample path is $HASEEN_USER_STATE/current/background (Omarchy:
+# ~/.local/state/omarchy/current/background). Read-only: prints one colour.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar text-color <top|bottom|left|right> <bar-size> <text-hex> <background-hex>
+                             [--background FILE] [--screen WxH]
+
+Prints <background-hex> when it contrasts more with the wallpaper strip under
+the bar than <text-hex> does (WCAG contrast ratio), else <text-hex>. Any
+missing input (no ImageMagick, no wallpaper, bad arguments) prints <text-hex>.
+
+The wallpaper defaults to \$HASEEN_USER_STATE/current/background (first frame
+of a video or animation), scaled to cover the screen like a wallpaper is.
+The screen defaults to the first monitor in hyprctl.
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
+position=${1:-top}
+bar_size=${2:-}
+text_color=${3:-}
+background_color=${4:-}
+background_path=""
+screen_size=""
+
+shift 4 2>/dev/null || shift $#
+while (($# > 0)); do
+    case "$1" in
+    --background)
+        background_path=${2:-}
+        shift $(($# >= 2 ? 2 : 1))
+        ;;
+    --screen)
+        screen_size=${2:-}
+        shift $(($# >= 2 ? 2 : 1))
+        ;;
+    *) shift ;;
+    esac
+done
+
+valid_hex() { [[ $1 =~ ^#[0-9A-Fa-f]{6}$ ]]; }
+
+fallback() {
+    printf '%s\n' "$text_color"
+    exit 0
+}
+
+# contrast FG BG — WCAG 2 contrast ratio of two #rrggbb colours.
+contrast() {
+    awk -v fg="$1" -v bg="$2" '
+        function hexval(s,   i, n, c) {
+            n = 0
+            s = tolower(s)
+            for (i = 1; i <= length(s); i++) {
+                c = index("0123456789abcdef", substr(s, i, 1)) - 1
+                n = n * 16 + c
+            }
+            return n
+        }
+        function channel(hex, start) { return hexval(substr(hex, start, 2)) / 255 }
+        function linear(c) { return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ^ 2.4 }
+        function luminance(hex) {
+            return 0.2126 * linear(channel(hex, 2)) + 0.7152 * linear(channel(hex, 4)) + 0.0722 * linear(channel(hex, 6))
+        }
+        BEGIN {
+            l1 = luminance(fg)
+            l2 = luminance(bg)
+            if (l1 < l2) { t = l1; l1 = l2; l2 = t }
+            printf "%.6f\n", (l1 + 0.05) / (l2 + 0.05)
+        }'
+}
+
+valid_hex "$text_color" || fallback
+valid_hex "$background_color" || fallback
+[[ $position =~ ^(top|bottom|left|right)$ ]] || fallback
+[[ $bar_size =~ ^[0-9]+$ ]] || fallback
+have magick || fallback
+
+if [[ -z $background_path ]]; then
+    background_path=$(readlink -f "$HASEEN_USER_STATE/current/background" 2>/dev/null || true)
+fi
+[[ -n $background_path && -f $background_path ]] || fallback
+
+if [[ -z $screen_size ]] && have hyprctl && have jq; then
+    screen_size=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0] | "\(.width)x\(.height)"' 2>/dev/null || true)
+fi
+[[ $screen_size =~ ^([0-9]+)x([0-9]+)$ ]] || fallback
+
+screen_width=${BASH_REMATCH[1]}
+screen_height=${BASH_REMATCH[2]}
+((screen_width > 0 && screen_height > 0 && bar_size > 0)) || fallback
+
+case "$position" in
+top) crop="${screen_width}x${bar_size}+0+0" ;;
+bottom)
+    crop_y=$((screen_height - bar_size))
+    ((crop_y >= 0)) || fallback
+    crop="${screen_width}x${bar_size}+0+${crop_y}"
+    ;;
+left) crop="${bar_size}x${screen_height}+0+0" ;;
+right)
+    crop_x=$((screen_width - bar_size))
+    ((crop_x >= 0)) || fallback
+    crop="${bar_size}x${screen_height}+${crop_x}+0"
+    ;;
+esac
+
+# Sample the first frame only. Without the selector a video background makes
+# ImageMagick decode the whole file and emit one value per frame, and the match
+# below then fails into the fallback colour.
+pixel=$(magick "${background_path}[0]" -auto-orient \
+    -resize "${screen_width}x${screen_height}^" \
+    -gravity center -extent "${screen_width}x${screen_height}" \
+    -gravity NorthWest -crop "$crop" +repage \
+    -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
+[[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
+
+sample=$(printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+text_contrast=$(contrast "$text_color" "$sample")
+background_contrast=$(contrast "$background_color" "$sample")
+
+if awk -v t="$text_contrast" -v b="$background_contrast" 'BEGIN { exit !(b > t) }'; then
+    printf '%s\n' "$background_color"
+else
+    printf '%s\n' "$text_color"
+fi

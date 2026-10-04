@@ -2,13 +2,22 @@
   "schemaVersion": 1,
   "id": "haseen.tray",
   "name": "Tray",
-  "version": "1.0.0",
-  "description": "StatusNotifier tray icons",
+  "version": "1.1.0",
+  "description": "StatusNotifier tray icons behind a chevron: hover to reveal, click the chevron to pin",
   "kinds": [
     "bar-widget"
   ],
   "entry": {
     "bar-widget": "Widget.qml"
   },
-  "permissions": []
+  "settings": {
+    "pinned": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keep the icons shown (the chevron click and `haseen bar tray` set this)"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
 }

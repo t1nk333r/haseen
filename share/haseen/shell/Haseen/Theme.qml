@@ -66,6 +66,11 @@ Singleton {
     readonly property int gap: token("gap")
     readonly property int borderWidth: token("borderWidth")
 
+    // Normal-state text and glyphs of bar widgets. It is the foreground, or
+    // while the bar is transparent the colour FrameTextColor.qml picks for the
+    // wallpaper under the bar (plan 015). Panels keep using foreground.
+    property color barForeground: foreground
+
     FileView {
         path: Paths.themeTokens
         watchChanges: true
