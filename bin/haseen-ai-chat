@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Chat with a local (or allowed) model; streams the reply
-# haseen:args    [--endpoint NAME] [--model M] ["prompt"]
+# haseen:args    [--endpoint NAME] [--model M] [--messages-file FILE] ["prompt"]
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
@@ -9,7 +9,7 @@ source "$HASEEN_PATH/layers/ai/ai.sh"
 
 usage() {
     cat <<'EOF'
-Usage: haseen ai chat [--endpoint NAME] [--model M] [PROMPT...]
+Usage: haseen ai chat [--endpoint NAME] [--model M] [--messages-file FILE] [PROMPT...]
 
 Streams an OpenAI chat-completions reply token by token. The prompt comes
 from the arguments; piped stdin is read too and appended after a blank line:
@@ -18,11 +18,15 @@ from the arguments; piped stdin is read too and appended after a blank line:
 Endpoint: ai.json "default" unless --endpoint. Model: --model, else the
 endpoint's "model", else the first one it serves. Remote endpoints are refused
 unless ai.json "policy" is "any".
+--messages-file FILE: a JSON array of {role, content} (roles system, user,
+assistant) sent as the conversation; a prompt, if given, is appended as the
+final user turn. Used by the haseen.ai panel for multi-turn chats.
 EOF
 }
 parse_common_flags "$@"
 endpoint=""
 model=""
+messages_file=""
 words=()
 set -- "${REST[@]}"
 while (($# > 0)); do
@@ -31,6 +35,8 @@ while (($# > 0)); do
     --endpoint=*) endpoint="${1#*=}" ;;
     --model) model="${2:?--model needs a name}"; shift ;;
     --model=*) model="${1#*=}" ;;
+    --messages-file) messages_file="${2:?--messages-file needs a file}"; shift ;;
+    --messages-file=*) messages_file="${1#*=}" ;;
     --) shift; words+=("$@"); break ;;
     *) words+=("$1") ;;
     esac
@@ -47,7 +53,15 @@ if [[ -p /dev/stdin || -f /dev/stdin ]]; then
         prompt="${prompt:-$input}"
     fi
 fi
-[[ -n ${prompt//[[:space:]]/} ]] || {
+history='[]'
+if [[ -n $messages_file ]]; then
+    [[ -r $messages_file ]] || die "messages file not readable: $messages_file"
+    history="$(jq -c 'if type == "array" and all(.[]; type == "object"
+            and (.role | IN("system", "user", "assistant")) and (.content | type == "string"))
+        then . else error("expected an array of {role, content}") end' "$messages_file")" ||
+        die "invalid messages file: $messages_file"
+fi
+[[ -n ${prompt//[[:space:]]/} || $history != '[]' ]] || {
     usage >&2
     exit 2
 }
@@ -69,8 +83,9 @@ filter='if type != "object" then empty
     elif has("error") then ("error: " + (.error | if type == "object" then (.message // tostring) else tostring end) + "\n" | halt_error(1))
     else (.choices[0].delta.content // empty) end'
 set +e
-jq -n --arg m "$model" --arg p "$prompt" \
-    '{model: $m, stream: true, messages: [{role: "user", content: $p}]}' |
+jq -n --arg m "$model" --arg p "$prompt" --argjson h "$history" \
+    '{model: $m, stream: true,
+      messages: ($h + (if ($p | test("\\S")) then [{role: "user", content: $p}] else [] end))}' |
     ai_curl "$EP_KEYREF" -sSN --fail-with-body \
         -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
         --data-binary @- "$EP_URL/chat/completions" |

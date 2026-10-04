@@ -332,6 +332,15 @@ PY
     capture haseen ai chat --model missing "hi" </dev/null
     assert_status "live: http error exit" 1 "$STATUS"
     assert_contains "live: server error shown" "$OUTPUT" 'error: model "missing" not found'
+    printf '%s' '[{"role":"system","content":"be brief"},{"role":"user","content":"first"},{"role":"assistant","content":"a"},{"role":"user","content":"second"}]' >"$SANDBOX/history.json"
+    capture haseen ai chat --model m3 --messages-file "$SANDBOX/history.json" </dev/null
+    assert_eq "live: messages file sent as the conversation" "[m3] echo: second" "$OUTPUT"
+    capture haseen ai chat --model m3 --messages-file "$SANDBOX/history.json" "third" </dev/null
+    assert_eq "live: prompt appended after the history" "[m3] echo: third" "$OUTPUT"
+    printf '%s' '[{"role":"tool","content":"x"}]' >"$SANDBOX/bad.json"
+    capture haseen ai chat --model m3 --messages-file "$SANDBOX/bad.json" </dev/null
+    assert_status "live: invalid messages file refused" 1 "$STATUS"
+    assert_contains "live: invalid messages file named" "$OUTPUT" "invalid messages file"
     kill "$srv_pid" 2>/dev/null || true
     wait "$srv_pid" 2>/dev/null || true
     capture haseen ai chat "hello" </dev/null

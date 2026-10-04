@@ -36,8 +36,12 @@ done < <(jq -r '[.bar.left, .bar.center, .bar.right, .services] | add | .[]' "$H
 # Widgets take colours from Theme only.
 assert_eq "no hex colour literals in built-in plugins/widgets" "" \
     "$(grep -rnE '"#[0-9a-fA-F]{3,8}"' "$SHELL_DIR/plugins" "$SHELL_DIR/Haseen/Widgets" "$SHELL_DIR/templates" || true)"
-# No polling timers in the shell (architecture 6).
-assert_eq "no Timer in shell QML" "" "$(grep -rn '^\s*Timer\s*{' "$SHELL_DIR" --include='*.qml' || true)"
+# No polling timers in the shell (architecture 6). The only allowed Timer is a
+# documented single-shot UI timeout, marked by `// haseen:ui-timeout` on the
+# line directly above (plan 010: OSD hide, notification expiry).
+assert_eq "no unmarked Timer in shell QML" "" "$(find "$SHELL_DIR" -name '*.qml' -exec awk '
+    /^[[:space:]]*Timer[[:space:]]*\{/ && prev !~ /haseen:ui-timeout/ { print FILENAME ":" FNR }
+    { prev = $0 }' {} +)"
 
 # --- validate: built-ins pass ----------------------------------------------
 sandbox shell-validate
