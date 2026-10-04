@@ -11,7 +11,8 @@
 # layers/ai (ollama-rocm / ggml-hip), its only consumer.
 
 LAYER_SUMMARY="Hyprland (Lua) + uwsm, greetd/tuigreet when no display manager, portals, audio, fonts, GPU session env"
-LAYER_REQUIRES=(base)
+# chaotic: aur: entries prefer Chaotic-AUR binaries over AUR builds (owner, 2026-10-04).
+LAYER_REQUIRES=(base chaotic)
 LAYER_CONFLICTS=()
 LAYER_DISTROS=(cachyos arch omarchy)
 

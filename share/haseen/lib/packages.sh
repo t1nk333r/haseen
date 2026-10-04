@@ -3,10 +3,14 @@
 #
 # Manifest format (layers/<name>/packages.txt and friends):
 #   pkgname            # official repos (CachyOS repos first on CachyOS)
-#   aur:pkgname        # AUR, built by paru or yay as the invoking user
+#   aur:pkgname        # not in the official repos; see pkg_install_aur
 #   # comment          # whole-line or trailing comments; blank lines ignored
 # A package name must match pacman's charset; anything else is a manifest
 # error, not something to pass to a shell.
+#
+# Source order for aur: entries (owner decision 2026-10-04): an enabled
+# official/CachyOS repo, then Chaotic-AUR (prebuilt, signed binaries; the
+# `chaotic` layer enables it), and the AUR itself only as the last resort.
 
 [[ -n ${HASEEN_PACKAGES_SH:-} ]] && return 0
 HASEEN_PACKAGES_SH=1
@@ -69,18 +73,88 @@ pkg_install() {
     run_root pacman -S "${flags[@]}" "${missing[@]}"
 }
 
-# pkg_install_aur NAME... — install AUR packages that are missing, as the user.
+# pkg_enabled_repos — the sync repositories pacman uses, one per line.
+# Fixture-aware: under a sysroot the [sections] of its pacman.conf.
+pkg_enabled_repos() {
+    if in_sysroot; then
+        local conf
+        conf="$(sysroot_path /etc/pacman.conf)"
+        [[ -r $conf ]] || return 0
+        sed -n 's/^[[:space:]]*\[\([^]]*\)\][[:space:]]*$/\1/p' "$conf" | grep -vx options || true
+    else
+        pacman-conf --repo-list 2>/dev/null || true
+    fi
+}
+
+# pkg_repo_has REPO NAME — REPO's sync database carries NAME. Read-only.
+# Under a sysroot the fixture lists a repo's packages, one per line, in
+# var/lib/pacman/sync/REPO.pkgs (a test convention, not a pacman file).
+pkg_repo_has() {
+    if in_sysroot; then
+        local list
+        list="$(sysroot_path "/var/lib/pacman/sync/$1.pkgs")"
+        [[ -r $list ]] && grep -qxF "$2" "$list"
+    else
+        pacman -Si "$1/$2" &>/dev/null
+    fi
+}
+
+chaotic_enabled() { pkg_enabled_repos | grep -qx chaotic-aur; }
+
+# pkg_source NAME — where an aur: entry comes from: "repo:REPO" (an enabled
+# official/CachyOS repo carries it after all), "chaotic", or "aur".
+pkg_source() {
+    local repo
+    while read -r repo; do
+        [[ -n $repo && $repo != chaotic-aur ]] || continue
+        pkg_repo_has "$repo" "$1" && { echo "repo:$repo"; return 0; }
+    done < <(pkg_enabled_repos)
+    if chaotic_enabled && pkg_repo_has chaotic-aur "$1"; then
+        echo chaotic
+        return 0
+    fi
+    echo aur
+}
+
+# pkg_install_aur NAME... — install packages that are not in the official
+# repos. Each one comes from the first source that has it: an enabled repo,
+# Chaotic-AUR, then the AUR as the last resort (built as the invoking user).
 pkg_install_aur() {
-    local missing=() p helper
+    local missing=() p src helper repo_pkgs=() chaotic_pkgs=() aur_pkgs=()
     for p in "$@"; do
         pkg_installed "$p" || missing+=("$p")
     done
     ((${#missing[@]} > 0)) || return 0
-    helper="$(aur_helper)"
-    [[ -n $helper ]] || die "AUR packages needed (${missing[*]}) but neither paru nor yay is installed"
+    for p in "${missing[@]}"; do
+        src="$(pkg_source "$p")"
+        case "$src" in
+        repo:*) repo_pkgs+=("$p") ;;
+        chaotic) chaotic_pkgs+=("chaotic-aur/$p") ;;
+        *) aur_pkgs+=("$p") ;;
+        esac
+    done
     local flags=(--needed)
     $ASSUME_YES && flags+=(--noconfirm)
-    run "$helper" -S "${flags[@]}" "${missing[@]}"
+    ((${#repo_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${repo_pkgs[@]}"
+    ((${#chaotic_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${chaotic_pkgs[@]}"
+    ((${#aur_pkgs[@]} > 0)) || return 0
+
+    if chaotic_enabled; then
+        warn "not in the official repos or Chaotic-AUR, building from the AUR (last resort): ${aur_pkgs[*]}"
+    else
+        warn "building from the AUR (last resort): ${aur_pkgs[*]}. Prebuilt binaries: haseen layer apply chaotic"
+    fi
+    helper="$(aur_helper)"
+    if [[ -z $helper ]]; then
+        # A helper is itself an AUR package on Arch; Chaotic-AUR ships paru prebuilt.
+        if chaotic_enabled && pkg_repo_has chaotic-aur paru; then
+            run_root pacman -S "${flags[@]}" chaotic-aur/paru
+            helper=paru
+        else
+            die "AUR packages needed (${aur_pkgs[*]}) but neither paru nor yay is installed (haseen layer apply chaotic provides paru)"
+        fi
+    fi
+    run "$helper" -S "${flags[@]}" "${aur_pkgs[@]}"
 }
 
 # pkg_install_manifest FILE — install every entry of a manifest. Entries are

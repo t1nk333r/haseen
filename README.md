@@ -21,7 +21,7 @@ Install CachyOS with its own installer (disk, LUKS, Limine), then:
 ```sh
 git clone <this repo> haseen && cd haseen
 ./install.sh --dry-run          # print the full plan, change nothing
-./install.sh                    # base desktop theme shell
+./install.sh                    # base chaotic desktop theme shell
 haseen layer apply ai gaming    # optional layers
 haseen secureboot setup         # interactive; firmware must be in Setup Mode
 ```
@@ -33,6 +33,7 @@ system accepts `--dry-run`.
 | Layer | What it adds |
 |---|---|
 | `base` | essentials, ufw, snapper check |
+| `chaotic` | Chaotic-AUR. Packages come from the official/CachyOS repos first, then Chaotic-AUR (prebuilt); the AUR is the last resort |
 | `desktop` | Hyprland (Lua) + uwsm, greetd/tuigreet (only if no display manager is enabled), portals, fonts, GPU session env |
 | `theme` | theme pipeline, the 22 Omarchy themes, background fetch + `haseen-background.service`, `haseen theme set/install/bg` |
 | `flatpak` | Flathub (per user); `haseen install app …` is Flatpak-first |

@@ -108,3 +108,41 @@ for id in me.keep dmsKeep; do
     done
 done
 assert_eq "plugin commands never change Omarchy/DMS plugin trees" "$before" "$(tree_sum)"
+
+# --- aur: entries: official repo, then Chaotic-AUR, AUR last (owner) --------
+sandbox pkg-source
+fx="$SANDBOX/fx"
+cp -a "$FIXTURES/cachyos-limine-luks-dualboot/." "$fx/"
+mkdir -p "$fx/var/lib/pacman/sync"
+printf '[options]\nArchitecture = auto\n[cachyos]\nInclude = x\n[core]\nInclude = x\n[extra]\nInclude = x\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >"$fx/etc/pacman.conf"
+printf 'lib32-nvidia-580xx-utils\n' >"$fx/var/lib/pacman/sync/cachyos.pkgs"
+printf 'chaotic-mirrorlist\nxpadneo-dkms\nparu\n' >"$fx/var/lib/pacman/sync/chaotic-aur.pkgs"
+src() { capture env HASEEN_SYSROOT="$fx" DRY_RUN=true bash -c 'source "$HASEEN_PATH/lib/packages.sh"; pkg_install_aur "$@"' _ "$@"; }
+src lib32-nvidia-580xx-utils
+assert_contains "aur: entry found in an official repo installs from it" "$OUTPUT" "DRYRUN: sudo pacman -S --needed lib32-nvidia-580xx-utils"
+assert_not_contains "repo hit never builds" "$OUTPUT" "paru -S"
+src xpadneo-dkms
+assert_contains "Chaotic-AUR preferred over the AUR" "$OUTPUT" "DRYRUN: sudo pacman -S --needed chaotic-aur/xpadneo-dkms"
+assert_not_contains "chaotic hit never builds" "$OUTPUT" "paru -S"
+src ttfx
+assert_contains "AUR only as the last resort" "$OUTPUT" "DRYRUN: paru -S --needed ttfx"
+assert_contains "last-resort warning" "$OUTPUT" "building from the AUR (last resort): ttfx"
+src xpadneo-dkms ttfx lib32-nvidia-580xx-utils
+assert_contains "mixed: chaotic part" "$OUTPUT" "pacman -S --needed chaotic-aur/xpadneo-dkms"
+assert_eq "mixed: only ttfx is built from the AUR" "DRYRUN: paru -S --needed ttfx" "$(grep 'paru -S' <<<"$OUTPUT")"
+assert_dry_pure "package source order" "$OUTPUT"
+sed -i '/chaotic-aur/,+1d' "$fx/etc/pacman.conf"
+src ttfx
+assert_contains "without Chaotic-AUR: suggests enabling it" "$OUTPUT" "haseen layer apply chaotic"
+
+capture env HASEEN_SYSROOT="$fx" haseen layer apply chaotic --dry-run
+assert_dry_pure "chaotic layer" "$OUTPUT"
+assert_contains "chaotic: pinned key" "$OUTPUT" "pacman-key --recv-key EF925EA60F33D0CB85C44AD13056513887B78AEB"
+assert_contains "chaotic: fingerprint checked" "$OUTPUT" "verify the key fingerprint is EF925EA60F33D0CB85C44AD13056513887B78AEB"
+assert_contains "chaotic: keyring + mirrorlist" "$OUTPUT" "chaotic-keyring.pkg.tar.zst https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst"
+assert_contains "chaotic: stanza appended" "$OUTPUT" "    | [chaotic-aur]"
+assert_contains "chaotic: full upgrade, not -Sy" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
+printf '[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >>"$fx/etc/pacman.conf"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply chaotic --dry-run
+assert_contains "chaotic: idempotent when it works" "$OUTPUT" "Chaotic-AUR already enabled"
+assert_not_contains "chaotic: no second stanza" "$OUTPUT" "append to /etc/pacman.conf"

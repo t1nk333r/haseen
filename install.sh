@@ -17,7 +17,7 @@ export HASEEN_PATH="$REPO/share/haseen"
 # shellcheck source=share/haseen/lib/preflight.sh
 source "$HASEEN_PATH/lib/preflight.sh"
 
-DEFAULT_LAYERS=(base desktop theme shell)
+DEFAULT_LAYERS=(base chaotic desktop theme shell)
 PREFIX=/usr/local
 LAYERS=()
 TREE_ONLY=false
@@ -29,7 +29,7 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c]
                     [--tree-only] [--uninstall-tree]
 
   --layers      layers to apply (default: ${DEFAULT_LAYERS[*]})
-                optional: secureboot ai dms gaming (haseen layer list)
+                optional: secureboot ai dms gaming flatpak (haseen layer list)
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user

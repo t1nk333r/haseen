@@ -107,7 +107,7 @@ assert_contains "docker db: loopback container" "$OUTPUT" "DRYRUN: sudo docker r
 capture haseen install app steam --dry-run
 all+="$OUTPUT"
 assert_status "steam: exit" 0 "$STATUS"
-assert_contains "steam: through the gaming layer" "$OUTPUT" "apply order: base desktop gaming"
+assert_contains "steam: through the gaming layer" "$OUTPUT" "apply order: base chaotic desktop gaming"
 assert_contains "steam: 32-bit drivers come along" "$OUTPUT" "lib32-vulkan-radeon"
 
 capture haseen install package htop 'bad;name' --dry-run
@@ -306,7 +306,7 @@ cat_root
 capture haseen layer apply flatpak --dry-run
 assert_status "layer flatpak: exit" 0 "$STATUS"
 assert_dry_pure "layer flatpak" "$OUTPUT"
-assert_contains "layer flatpak: order" "$OUTPUT" "apply order: base desktop flatpak"
+assert_contains "layer flatpak: order" "$OUTPUT" "apply order: base chaotic desktop flatpak"
 assert_contains "layer flatpak: package" "$OUTPUT" "DRYRUN: sudo pacman -S --needed flatpak"
 assert_contains "layer flatpak: user remote" "$OUTPUT" "DRYRUN: flatpak remote-add --user --if-not-exists flathub"
 capture haseen layer status flatpak

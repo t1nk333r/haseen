@@ -160,7 +160,7 @@
 
   // Install (catalog categories are added by the catalog-install provider)
   "install.package": {"icon":"󰣇","label":"Package","action":"haseen install package"},
-  "install.aur": {"icon":"󰣇","label":"AUR","action":"haseen install aur"},
+  "install.aur": {"icon":"󰣇","label":"AUR (Chaotic-AUR first)","action":"haseen install aur"},
   "install.theme": {"icon":"󰸌","label":"Theme","action":"haseen config terminal -- haseen theme fetch"},
 
   // Remove (installed catalog entries are added by the catalog-remove provider)

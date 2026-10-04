@@ -13,7 +13,9 @@ usage() {
 Usage: haseen install <what> [args] [--dry-run] [--yes]
 
   package [NAME...]   official repo packages; no NAME opens an fzf picker
-  aur [NAME...]       AUR packages via paru/yay; no NAME opens an fzf picker
+  aur [NAME...]       non-repo packages: Chaotic-AUR (prebuilt) first, building
+                      from the AUR only as the last resort; no NAME opens an
+                      fzf picker
   flatpak ID          a Flathub app into your user installation
   app NAME            an app from the catalogue ($HASEEN_CATALOG)
   font NAME           a Nerd Font from the catalogue, then switches to it
