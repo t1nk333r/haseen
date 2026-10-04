@@ -3,7 +3,8 @@ import Quickshell
 import qs.Haseen
 
 // A row of bar-widget plugins. Disabled ids are filtered out; unknown ones
-// are skipped by PluginSlot with one log line.
+// are skipped by PluginSlot with one log line. Row neither positions nor
+// spaces zero-width children, so a widget with implicitWidth 0 adds no gap.
 Row {
     id: section
 
@@ -24,6 +25,7 @@ Row {
             kind: "bar-widget"
             screen: section.screen
             height: section.height
+            width: status === Loader.Ready && item !== null ? item.implicitWidth : 0
         }
     }
 }

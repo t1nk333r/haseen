@@ -4,12 +4,18 @@ import QtQuick
 import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
+import "../Compat/Manifest.js" as CompatManifest
 
 // Plugin registry (architecture 5.2). Scans ~/.config/haseen/plugins/ and the
 // built-in shell/plugins/ (directory watch, no polling), reads every
 // manifest.json and validates the required fields. The directory name is the
 // plugin id; when both directories hold the same id the user copy wins, even
 // if it is broken, so an override never silently falls back.
+//
+// Compat (architecture 5.4): ~/.config/omarchy/plugins/ and
+// ~/.config/DankMaterialShell/plugins/ are scanned read-only after those two.
+// Compat/Manifest.js adapts Omarchy manifests and DMS plugin.json files to
+// the native shape; their bar widgets load through a Compat/ host.
 //
 // The full schema check lives in `haseen plugin validate`; this one only
 // keeps a malformed manifest from reaching a Loader.
@@ -20,11 +26,13 @@ Singleton {
     readonly property var idPattern: /^[a-z0-9-]+(\.[a-z0-9-]+)+$/
 
     // id -> { id, name, version, description, kinds, entry, settings,
-    //         permissions, provides, dir, origin, overrides, valid, errors }
+    //         permissions, provides, dir, origin, overrides, valid, errors,
+    //         compat ("" | "omarchy" | "dms"), upstreamId (the id in the
+    //         upstream manifest), unsupported (kinds not loaded) }
     property var registry: ({})
     // [{ id, message }] for every invalid manifest and load failure.
     property var errors: []
-    // True once both directories are listed and every manifest answered.
+    // True once every directory is listed and every manifest answered.
     readonly property bool ready: _listed && _pending === 0
 
     // role -> { id, instance } for loaded plugins that declare `provides`.
@@ -34,17 +42,24 @@ Singleton {
     property var _texts: ({})
     property int _pending: 0
     property bool _listed: false
-    // 1 when ~/.config/haseen/plugins is a directory, -1 when absent, 0 unknown.
-    // FolderListModel falls back to the working directory for a missing
-    // folder, so it is only created once the directory is known to exist.
-    // A plugins directory created later is picked up by `haseen shell ipc shell reload`.
-    property int _userDir: 0
+    readonly property string omarchyPlugins: Paths.configHome + "/omarchy/plugins"
+    readonly property string dmsPlugins: Paths.configHome + "/DankMaterialShell/plugins"
     property var _runtimeErrors: []
     property var _warned: ({})
 
     readonly property var panelIds: Object.keys(registry).filter(id => registry[id].valid && registry[id].kinds.indexOf("panel") >= 0)
 
+    // URL the hosts load: the plugin's own file, or for an adapted plugin the
+    // Compat host that provides the upstream contract around entryUrl().
     function componentUrl(id: string, kind: string): string {
+        const url = entryUrl(id, kind);
+        const rec = registry[id];
+        if (url === "" || rec.compat === "")
+            return url;
+        return Paths.fileUrl(Paths.shellDir + "/Compat/" + (rec.compat === "omarchy" ? "OmarchyHost.qml" : "DmsHost.qml"));
+    }
+
+    function entryUrl(id: string, kind: string): string {
         const rec = registry[id];
         if (!rec || !rec.valid || rec.kinds.indexOf(kind) < 0)
             return "";
@@ -98,14 +113,18 @@ Singleton {
             warnOnce("kind:" + id + ":" + kind, "plugin '" + id + "' has no '" + kind + "' entry, skipped");
     }
 
+    // A failure every bar reports once per screen is recorded once.
     function reportError(id: string, message: string): void {
+        if (_runtimeErrors.some(e => e.id === id && e.message === message))
+            return;
         _runtimeErrors = _runtimeErrors.concat([
             {
                 id: id,
                 message: message
             }
         ]);
-        console.warn("haseen: plugin", id + ":", message);
+        // Same key as onReadyChanged, so an error is logged once either way.
+        warnOnce("err:" + id + ":" + message, "plugin " + id + ": " + message);
         _rebuild();
     }
 
@@ -144,6 +163,8 @@ Singleton {
                 name: r.name,
                 version: r.version,
                 origin: r.origin,
+                compat: r.compat,
+                unsupported: r.unsupported,
                 overrides: r.overrides,
                 kinds: r.kinds,
                 provides: r.provides,
@@ -200,10 +221,8 @@ Singleton {
     }
 
     function _rescan(): void {
-        const user = userLoader.item;
         const builtinDone = builtinDirs.status === FolderListModel.Ready && builtinDirs.count > 0;
-        const userDone = _userDir === -1 || (_userDir === 1 && user !== null && user.status === FolderListModel.Ready);
-        if (!builtinDone || !userDone)
+        if (!builtinDone || !userSource.done || !omarchySource.done || !dmsSource.done)
             return;
         const dirs = [];
         const add = (model, base, origin) => {
@@ -214,9 +233,14 @@ Singleton {
                     origin: origin
                 });
         };
-        if (_userDir === 1)
-            add(user, Paths.userPlugins, "user");
+        // Search order: user, built-in, then the read-only compat dirs.
+        if (userSource.model)
+            add(userSource.model, userSource.path, "user");
         add(builtinDirs, Paths.builtinPlugins, "builtin");
+        if (omarchySource.model)
+            add(omarchySource.model, omarchySource.path, "omarchy");
+        if (dmsSource.model)
+            add(dmsSource.model, dmsSource.path, "dms");
         // Order matters: `ready` must only turn true after the registry holds
         // every manifest, or hosts would report known ids as unknown.
         const same = dirs.length === _dirs.length && dirs.every((d, i) => d.dir === _dirs[i].dir);
@@ -250,27 +274,17 @@ Singleton {
             const text = _texts[d.dir];
             if (text === undefined)
                 continue;
-            if (reg[d.name]) {
-                if (reg[d.name].origin === "user")
-                    reg[d.name].overrides = true;
+            const a = CompatManifest.adapt(d.name, text.manifest, text.plugin);
+            if (reg[a.id]) {
+                reg[a.id].overrides = true;
                 continue;
             }
-            let m = null;
-            let problems = [];
-            if (text === null) {
-                problems = ["manifest.json missing or unreadable"];
-            } else {
-                try {
-                    m = JSON.parse(text);
-                    problems = validate(d.name, m);
-                } catch (e) {
-                    problems = ["manifest.json is not valid JSON: " + e.message];
-                }
-            }
+            const m = a.manifest;
+            const problems = a.problems.length > 0 ? a.problems : validate(a.id, m);
             const ok = problems.length === 0;
-            reg[d.name] = {
-                id: d.name,
-                name: ok ? m.name : d.name,
+            reg[a.id] = {
+                id: a.id,
+                name: ok ? m.name : a.id,
                 version: ok ? m.version : "",
                 description: ok && typeof m.description === "string" ? m.description : "",
                 kinds: ok ? m.kinds : [],
@@ -280,13 +294,16 @@ Singleton {
                 provides: ok && Array.isArray(m.provides) ? m.provides : [],
                 dir: d.dir,
                 origin: d.origin,
+                compat: a.compat,
+                upstreamId: a.upstreamId,
+                unsupported: a.unsupported,
                 overrides: false,
                 valid: ok,
                 errors: problems
             };
             for (const p of problems)
                 errs.push({
-                    id: d.name,
+                    id: a.id,
                     message: p
                 });
         }
@@ -306,32 +323,66 @@ Singleton {
             warnOnce("err:" + e.id + ":" + e.message, "plugin " + e.id + ": " + e.message);
     }
 
-    FileView {
-        path: Paths.userPlugins
-        printErrors: false
-        onLoaded: {
-            root._userDir = -1;
-            root._scheduleRescan();
+    // A plugin directory that may not exist. FolderListModel falls back to the
+    // working directory for a missing folder, so the model is only created
+    // once a FileView probe (NotAFile = a directory) says it exists. A
+    // directory created later is picked up by `haseen shell ipc shell reload`.
+    component OptionalDir: Scope {
+        id: source
+
+        required property string path
+        // 1 directory, -1 absent, 0 unknown.
+        property int presence: 0
+        readonly property var model: presence === 1 ? loader.item : null
+        readonly property bool done: presence === -1 || (model !== null && model.status === FolderListModel.Ready)
+
+        signal listingChanged
+
+        FileView {
+            path: source.path
+            printErrors: false
+            onLoaded: {
+                source.presence = -1;
+                source.listingChanged();
+            }
+            onLoadFailed: error => {
+                source.presence = error === FileViewError.NotAFile ? 1 : -1;
+                source.listingChanged();
+            }
         }
-        onLoadFailed: error => {
-            root._userDir = error === FileViewError.NotAFile ? 1 : -1;
-            root._scheduleRescan();
+
+        LazyLoader {
+            id: loader
+            active: source.presence === 1
+
+            FolderListModel {
+                folder: Paths.fileUrl(source.path)
+                showDirs: true
+                showFiles: false
+                showDotAndDotDot: false
+                sortField: FolderListModel.Name
+                onStatusChanged: source.listingChanged()
+                onCountChanged: source.listingChanged()
+            }
         }
     }
 
-    LazyLoader {
-        id: userLoader
-        active: root._userDir === 1
+    OptionalDir {
+        id: userSource
+        path: Paths.userPlugins
+        onListingChanged: root._scheduleRescan()
+    }
 
-        FolderListModel {
-            folder: Paths.fileUrl(Paths.userPlugins)
-            showDirs: true
-            showFiles: false
-            showDotAndDotDot: false
-            sortField: FolderListModel.Name
-            onStatusChanged: root._scheduleRescan()
-            onCountChanged: root._scheduleRescan()
-        }
+    OptionalDir {
+        id: omarchySource
+        path: root.omarchyPlugins
+        onListingChanged: root._scheduleRescan()
+    }
+
+    OptionalDir {
+        id: dmsSource
+        path: root.dmsPlugins
+        onListingChanged: root._scheduleRescan()
     }
 
     FolderListModel {
@@ -345,16 +396,57 @@ Singleton {
         onCountChanged: root._scheduleRescan()
     }
 
+    // Native and Omarchy plugins have manifest.json, DMS plugins plugin.json;
+    // a user directory may hold either. undefined = not answered yet,
+    // null = absent. _setText runs once both files answered.
     Instantiator {
         model: root._dirs
-        delegate: FileView {
+        delegate: Scope {
+            id: probe
+
             required property var modelData
-            path: modelData.dir + "/manifest.json"
-            watchChanges: true
-            printErrors: false
-            onFileChanged: reload()
-            onLoaded: root._setText(modelData.dir, text())
-            onLoadFailed: root._setText(modelData.dir, null)
+            readonly property bool wantsManifest: modelData.origin !== "dms"
+            readonly property bool wantsPlugin: modelData.origin === "user" || modelData.origin === "dms"
+            property var manifest: wantsManifest ? undefined : null
+            property var plugin: wantsPlugin ? undefined : null
+
+            function report(): void {
+                if (manifest !== undefined && plugin !== undefined)
+                    root._setText(modelData.dir, {
+                        manifest: manifest,
+                        plugin: plugin
+                    });
+            }
+
+            FileView {
+                path: probe.wantsManifest ? probe.modelData.dir + "/manifest.json" : ""
+                watchChanges: probe.wantsManifest
+                printErrors: false
+                onFileChanged: reload()
+                onLoaded: {
+                    probe.manifest = text();
+                    probe.report();
+                }
+                onLoadFailed: {
+                    probe.manifest = null;
+                    probe.report();
+                }
+            }
+
+            FileView {
+                path: probe.wantsPlugin ? probe.modelData.dir + "/plugin.json" : ""
+                watchChanges: probe.wantsPlugin
+                printErrors: false
+                onFileChanged: reload()
+                onLoaded: {
+                    probe.plugin = text();
+                    probe.report();
+                }
+                onLoadFailed: {
+                    probe.plugin = null;
+                    probe.report();
+                }
+            }
         }
     }
 }

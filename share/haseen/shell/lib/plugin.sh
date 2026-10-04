@@ -4,6 +4,12 @@
 #
 # The checks mirror share/haseen/shell/plugin.schema.json (architecture 5.2);
 # Haseen/Plugins.qml repeats the minimal subset the running shell needs.
+#
+# Compat (architecture 5.4): Omarchy manifests (`entryPoints`) and DMS
+# plugin.json files are adapted to the native shape by plugin_adapt, the jq
+# twin of share/haseen/shell/Compat/Manifest.js, then checked like native
+# ones. ~/.config/omarchy/plugins and ~/.config/DankMaterialShell/plugins
+# are searched (read-only) after the user and built-in directories.
 
 [[ -n ${HASEEN_PLUGIN_SH:-} ]] && return 0
 HASEEN_PLUGIN_SH=1
@@ -16,6 +22,8 @@ PLUGIN_USER_DIR="$HASEEN_USER_CONFIG/plugins"
 PLUGIN_BUILTIN_DIR="$HASEEN_PATH/shell/plugins"
 SHELL_DEFAULT_CONFIG="$HASEEN_PATH/default/shell.json"
 SHELL_USER_CONFIG="$HASEEN_USER_CONFIG/shell.json"
+PLUGIN_OMARCHY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+PLUGIN_DMS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell/plugins"
 
 require_cmds jq
 
@@ -27,61 +35,212 @@ plugin_kind_known() {
     return 1
 }
 
-# plugin_dir ID — the directory that wins for ID (user copy first).
-plugin_dir() {
+# plugin_compat DIR — "" (native), omarchy or dms, from the manifest format.
+plugin_compat() {
+    if [[ -r $1/manifest.json ]]; then
+        jq -e 'type == "object" and (.entryPoints | type) == "object" and (has("entry") | not)' \
+            "$1/manifest.json" >/dev/null 2>&1 && echo omarchy
+    elif [[ -r $1/plugin.json ]]; then
+        echo dms
+    fi
+    return 0
+}
+
+# Compat/Manifest.js in jq: an Omarchy manifest or a DMS plugin.json ->
+# {compat, upstreamId, id, problems, unsupported, manifest}. Keep the two in
+# step; tests/test-compat.sh runs both over the same fixtures.
+# shellcheck disable=SC2016  # jq program, not shell expansions
+PLUGIN_ADAPT_JQ='
+def isobj: type == "object";
+def truthy: . != null and . != false and . != "" and . != 0;
+def kebab: gsub("(?<a>[a-z0-9])(?<b>[A-Z])"; "\(.a)-\(.b)") | gsub("(?<a>[A-Z])(?<b>[A-Z][a-z])"; "\(.a)-\(.b)")
+    | ascii_downcase | gsub("[^a-z0-9-]+"; "-") | gsub("^-+|-+$"; "");
+def dmsid: "dms." + (kebab | if . == "" then "unnamed" else . end);
+def settype($t; $v): if (["string", "number", "integer", "boolean", "array", "object"] | index([$t])) then $t
+    elif ($v | type) == "array" or ($v | type) == "boolean" or ($v | type) == "number" or ($v | type) == "object" then ($v | type)
+    else "string" end;
+def omsettings: (if (.barWidget | isobj) then .barWidget else {} end) as $bw
+    | (if ($bw.defaults | isobj) then $bw.defaults else {} end) as $d
+    | (if ($bw.schema | type) == "array" then $bw.schema else [] end) as $s
+    | reduce ($s[] | select(isobj and (.key | type) == "string" and .key != "")) as $e ({};
+        (if ($d | has($e.key)) then {v: $d[$e.key]} elif ($e | has("defaultValue")) then {v: $e.defaultValue} else {} end) as $val
+        | . + {($e.key): ({type: settype($e.type; $val.v)}
+            + (if ($val | has("v")) then {default: $val.v} else {} end)
+            + (if ($e.description | type) == "string" then {description: $e.description}
+               elif ($e.label | type) == "string" then {description: $e.label} else {} end))})
+    | reduce ($d | keys_unsorted[]) as $k (.; if has($k) then . else . + {($k): {type: settype(""; $d[$k]), default: $d[$k]}} end);
+def omarchy($dirname):
+    (if (.kinds | type) == "array" then [.kinds[] | select(type == "string")] else [] end) as $kinds
+    | (if (.entryPoints | isobj) then .entryPoints else {} end) as $ep
+    | ($kinds | map(select(. == "bar-widget"))) as $sup
+    | {compat: "omarchy", upstreamId: (if (.id | type) == "string" then .id else "" end), id: $dirname,
+       problems: (if ($kinds | length) == 0 then ["omarchy: kinds must be a non-empty array"]
+                  elif ($sup | length) == 0 then ["omarchy: no supported kind (has \($kinds | join(", ")); the compat adapter loads bar-widget only)"]
+                  else [] end),
+       unsupported: ($kinds | map(select(. != "bar-widget"))),
+       manifest: {schemaVersion: .schemaVersion, id: .id, name: .name, version: .version,
+                  description: (if (.description | type) == "string" then .description else "" end),
+                  kinds: $sup, entry: (reduce $sup[] as $k ({}; . + {($k): $ep.barWidget})),
+                  settings: omsettings, permissions: [], provides: []}};
+def dmssurfaces: (if (.capabilities | type) == "array" then .capabilities else [] end) as $caps
+    | if (.components | isobj) then (.components | with_entries(select(.value | truthy)))
+      elif (.component | truthy) then
+        {(if .type == "daemon" then "daemon"
+          elif .type == "launcher" or ($caps | index(["launcher"])) then "launcher"
+          elif .type == "desktop" or .type == "dash" or .type == "dashCard" then .type
+          else "widget" end): .component}
+      else {} end;
+def dms($dirname):
+    ((.id | type) == "string" and (.id | test("^[a-zA-Z][a-zA-Z0-9]*$"))) as $valid
+    | ((if $valid then .id else $dirname end) | dmsid) as $id
+    | dmssurfaces as $surf
+    | ($surf | keys_unsorted) as $names
+    | ((if (.permissions | type) == "string" then (.permissions | split(","))
+        elif (.permissions | type) == "array" then .permissions else [] end)
+       | reduce (.[] | tostring | gsub("^\\s+|\\s+$"; "") | {"process": "exec", "network": "network"}[.] // empty) as $p
+           ([]; if index([$p]) then . else . + [$p] end)) as $perms
+    | {compat: "dms", upstreamId: (if $valid then .id else "" end), id: $id,
+       problems: ((if $valid then [] else ["dms: id must match ^[a-zA-Z][a-zA-Z0-9]*$"] end)
+                  + (if ($surf | has("widget")) then []
+                     else ["dms: no bar widget surface (\(if ($names | length) > 0 then "has " + ($names | join(", ")) else "no component" end); the compat adapter loads the bar widget only)"] end)),
+       unsupported: [$names[] | select(. != "widget") | "dms:" + .],
+       manifest: {schemaVersion: 1, id: $id, name: .name, version: .version,
+                  description: (if (.description | type) == "string" then .description else "" end),
+                  kinds: (if ($surf | has("widget")) then ["bar-widget"] else [] end),
+                  entry: (if ($surf | has("widget")) then {"bar-widget": ($surf.widget | if type == "string" and startswith("./") then .[2:] else . end)} else {} end),
+                  settings: {}, permissions: $perms, provides: []}};
+'
+
+# plugin_adapt DIR — the adapter result for an Omarchy or DMS plugin (see
+# PLUGIN_ADAPT_JQ); a native directory comes back as compat "".
+plugin_adapt() {
+    local dir="$1" name compat
+    name="$(basename "$dir")"
+    compat="$(plugin_compat "$dir")"
+    case "$compat" in
+    omarchy) jq --arg d "$name" "$PLUGIN_ADAPT_JQ omarchy(\$d)" "$dir/manifest.json" ;;
+    dms)
+        if jq empty "$dir/plugin.json" 2>/dev/null && jq -e 'type == "object"' "$dir/plugin.json" >/dev/null 2>&1; then
+            jq --arg d "$name" "$PLUGIN_ADAPT_JQ dms(\$d)" "$dir/plugin.json"
+        else
+            jq -n --arg d "$name" "$PLUGIN_ADAPT_JQ"' {compat: "dms", upstreamId: "", id: ($d | dmsid), problems: ["plugin.json is not a valid JSON object"], unsupported: [], manifest: null}'
+        fi
+        ;;
+    *) jq -n --arg d "$name" '{compat: "", upstreamId: "", id: $d, problems: [], unsupported: [], manifest: null}' ;;
+    esac
+}
+
+# plugin_manifest DIR — the manifest as haseen sees it (native as written,
+# compat ones adapted).
+plugin_manifest() {
+    if [[ -z $(plugin_compat "$1") ]]; then
+        cat "$1/manifest.json"
+    else
+        plugin_adapt "$1" | jq .manifest
+    fi
+}
+
+# plugin_id_of DIR — the registry id: the directory name, or dms.<kebab id>.
+plugin_id_of() {
+    if [[ ! -e $1/manifest.json && -e $1/plugin.json ]]; then
+        plugin_adapt "$1" | jq -r .id
+    else
+        basename "$1"
+    fi
+}
+
+# plugin_index — "id<TAB>dir" for every plugin directory in search order:
+# user, built-in, then the read-only Omarchy and DMS directories.
+plugin_index() {
     local d
-    for d in "$PLUGIN_USER_DIR/$1" "$PLUGIN_BUILTIN_DIR/$1"; do
-        [[ -d $d ]] && {
-            printf '%s\n' "$d"
+    for d in "$PLUGIN_USER_DIR"/*/ "$PLUGIN_BUILTIN_DIR"/*/ "$PLUGIN_OMARCHY_DIR"/*/ "$PLUGIN_DMS_DIR"/*/; do
+        [[ -d $d ]] || continue
+        d="${d%/}"
+        printf '%s\t%s\n' "$(plugin_id_of "$d")" "$d"
+    done
+}
+
+# plugin_dir ID — the directory that wins for ID (user copy first). Only a
+# dms.* id needs the plugin.json scan; the others are directory names.
+plugin_dir() {
+    local id dir
+    if [[ $1 != dms.* ]]; then
+        for dir in "$PLUGIN_USER_DIR/$1" "$PLUGIN_BUILTIN_DIR/$1" "$PLUGIN_OMARCHY_DIR/$1" "$PLUGIN_DMS_DIR/$1"; do
+            [[ -d $dir && $(plugin_id_of "$dir") == "$1" ]] && {
+                printf '%s\n' "$dir"
+                return 0
+            }
+        done
+        return 1
+    fi
+    while IFS=$'\t' read -r id dir; do
+        [[ $id == "$1" ]] && {
+            printf '%s\n' "$dir"
             return 0
         }
-    done
+    done < <(plugin_index)
     return 1
 }
 
-# plugin_origin DIR — user | builtin | path (a checkout outside both dirs).
+# plugin_origin DIR — user | builtin | omarchy | dms | path (a checkout
+# outside those dirs). An adapted plugin in the user dir is user:<compat>.
 plugin_origin() {
+    local compat
     case "$(dirname "$1")" in
-    "$PLUGIN_USER_DIR") echo user ;;
+    "$PLUGIN_USER_DIR")
+        compat="$(plugin_compat "$1")"
+        echo "user${compat:+:$compat}"
+        ;;
     "$PLUGIN_BUILTIN_DIR") echo builtin ;;
+    "$PLUGIN_OMARCHY_DIR") echo omarchy ;;
+    "$PLUGIN_DMS_DIR") echo dms ;;
     *) echo path ;;
     esac
 }
 
-# plugin_resolve ARG — ARG is an id, a plugin directory or its manifest.json.
+# plugin_resolve ARG — ARG is an id, a plugin directory or its manifest.json
+# (plugin.json for a DMS plugin).
 plugin_resolve() {
     local arg="$1"
     if [[ $arg == */* || $arg == . || $arg == .. ]]; then
-        [[ -f $arg && ${arg##*/} == manifest.json ]] && arg="$(dirname "$arg")"
+        [[ -f $arg && (${arg##*/} == manifest.json || ${arg##*/} == plugin.json) ]] && arg="$(dirname "$arg")"
         [[ -d $arg ]] || die "no such plugin directory: $arg"
         (cd "$arg" && pwd)
         return 0
     fi
     plugin_dir "$arg" && return 0
-    die "unknown plugin: $arg (looked in $PLUGIN_USER_DIR and $PLUGIN_BUILTIN_DIR)"
+    die "unknown plugin: $arg (looked in $PLUGIN_USER_DIR, $PLUGIN_BUILTIN_DIR, $PLUGIN_OMARCHY_DIR and $PLUGIN_DMS_DIR)"
 }
 
-# plugin_ids — every plugin directory name in both locations, sorted, unique.
+# plugin_ids — every plugin id in all locations, sorted, unique.
 plugin_ids() {
-    local d
-    for d in "$PLUGIN_USER_DIR"/*/ "$PLUGIN_BUILTIN_DIR"/*/; do
-        [[ -d $d ]] && basename "$d"
-    done | sort -u
+    plugin_index | cut -f1 | sort -u
 }
 
 # plugin_check DIR — prints "error: …" / "warning: …" lines; returns 1 on any
 # error. The schema rules live in the jq program; bash adds what jq cannot
 # see: the directory name and the entry files on disk.
 plugin_check() {
-    local dir="$1" manifest="$1/manifest.json" name errors=0 line entry
+    local dir="$1" manifest="$1/manifest.json" name errors=0 line entry adapted json
     name="$(basename "$dir")"
-    if [[ ! -r $manifest ]]; then
-        echo "error: $manifest is missing"
-        return 1
-    fi
-    if ! jq empty "$manifest" 2>/dev/null; then
-        echo "error: manifest.json is not valid JSON"
-        return 1
+    if [[ -n $(plugin_compat "$dir") ]]; then
+        json="$(plugin_adapt "$dir")"
+        if jq -e '.problems | length > 0' <<<"$json" >/dev/null; then
+            jq -r '.problems[] | "error: \(.)"' <<<"$json"
+            return 1
+        fi
+        name="$(jq -r .id <<<"$json")"
+        adapted="$(jq .manifest <<<"$json")"
+    else
+        if [[ ! -r $manifest ]]; then
+            echo "error: $manifest is missing"
+            return 1
+        fi
+        if ! jq empty "$manifest" 2>/dev/null; then
+            echo "error: manifest.json is not valid JSON"
+            return 1
+        fi
+        adapted="$(cat "$manifest")"
     fi
     while IFS= read -r line; do
         [[ -n $line ]] || continue
@@ -166,19 +325,20 @@ plugin_check() {
             | "entry:\(.value)"
          else empty end)
         end
-    ' "$manifest" 2>&1)
+    ' <<<"$adapted" 2>&1)
     return "$errors"
 }
 
 # plugin_field DIR JQ_FILTER — read one value from a (valid) manifest.
-plugin_field() { jq -r "$2" "$1/manifest.json"; }
+plugin_field() { plugin_manifest "$1" | jq -r "$2"; }
 
 # plugin_permissions DIR — prints the permission summary; warns on network.
 plugin_permissions() {
-    local perms
-    perms="$(jq -r '(.permissions // []) | join(", ")' "$1/manifest.json")"
+    local manifest perms
+    manifest="$(plugin_manifest "$1")"
+    perms="$(jq -r '(.permissions // []) | join(", ")' <<<"$manifest")"
     echo "permissions: ${perms:-none}"
-    if jq -e '(.permissions // []) | index(["network"])' "$1/manifest.json" >/dev/null; then
+    if jq -e '(.permissions // []) | index(["network"])' <<<"$manifest" >/dev/null; then
         echo "warning: requests unrestricted 'network' access. QML cannot sandbox plugins; review the code before enabling it."
     fi
 }

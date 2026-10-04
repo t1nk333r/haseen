@@ -1,0 +1,6 @@
+module qs.Ui
+BarWidget 1.0 BarWidget.qml
+WidgetButton 1.0 WidgetButton.qml
+BarIconButton 1.0 BarIconButton.qml
+BarIndicator 1.0 BarIndicator.qml
+OpticalGlyph 1.0 OpticalGlyph.qml

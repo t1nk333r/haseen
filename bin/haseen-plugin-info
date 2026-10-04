@@ -31,7 +31,7 @@ jq -r --arg dir "$dir" --arg origin "$(plugin_origin "$dir")" '
     (if (.settings // {}) == {} then "settings:    -"
      else "settings:", (.settings | to_entries[] | "  \(.key) (\(.value.type)) default=\(.value.default | tojson)\(if .value.description then " - " + .value.description else "" end)")
      end)
-' "$dir/manifest.json"
+' <(plugin_manifest "$dir")
 echo "state:       $(plugin_state "$id" "${kinds[@]}")"
 user_settings="$(shell_merged_json | jq -c --arg id "$id" '.plugins[$id].settings // empty')"
 [[ -z $user_settings ]] || echo "shell.json settings: $user_settings"

@@ -26,7 +26,7 @@ if ! problems="$(plugin_check "$dir")"; then
     printf '%s\n' "$problems"
     die "refusing to enable invalid plugin $id (haseen plugin validate $id)"
 fi
-kinds_json="$(jq -c .kinds "$dir/manifest.json")"
+kinds_json="$(plugin_field "$dir" '.kinds | tojson')"
 plugin_permissions "$dir"
 
 current="$(shell_user_json)"
