@@ -27,6 +27,18 @@ THEME_NEXT_PATH="$THEME_CURRENT_DIR/next-theme"
 THEME_NAME_FILE="$THEME_CURRENT_DIR/theme.name"
 THEME_BACKGROUND_LINK="$THEME_CURRENT_DIR/background"
 THEME_DEFAULT=tokyo-night
+# Fetched Omarchy images (never shipped: third-party artwork, 64 MB). Pinned
+# to one commit of omacom/omarchy; omarchy-assets.txt lists every image with
+# its sha256 and size at that commit.
+THEME_CACHE_DIR="${HASEEN_USER_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/haseen}/themes"
+THEME_OMARCHY_REPO=omacom/omarchy
+THEME_OMARCHY_COMMIT=5c4da021469517449770579793b37ce26d0a0d48
+THEME_ASSETS_MANIFEST="$HASEEN_PATH/layers/theme/omarchy-assets.txt"
+# Largest image at the pin is 4.1 MB; anything over this is not one of them.
+THEME_ASSET_MAX_BYTES=$((8 * 1024 * 1024))
+THEME_BG_UNIT=haseen-background.service
+# The user's monospace font (`haseen font set`): one line, a family name.
+THEME_FONT_FILE="$HASEEN_USER_CONFIG/font"
 
 # What a theme installed from a git repo may not ship, because these run code:
 # Hyprland dofile()s the theme's hyprland.lua and Neovim loads neovim.lua, so no
@@ -382,6 +394,8 @@ theme_render_templates() {
     local -a templates pairs=()
     local -A seen=()
     theme_colors_load "$dir/colors.toml" || return 1
+    local font=""
+    theme_font_override && font="$REPLY" && THEME_COLORS[font_mono]="$font"
     mapfile -t templates < <(theme_template_files)
     ((${#templates[@]} > 0)) || return 0
 
@@ -471,7 +485,41 @@ theme_render_templates() {
     for ((i = 1; i < ${#pairs[@]}; i += 2)); do
         grep -q '{{' "${pairs[i]}" && warn "unrendered placeholder left in ${pairs[i]##*/}"
     done
+    # The user's font goes after the colours of each terminal config rendered
+    # here (a theme-shipped config is left alone). The include sits after the
+    # user's own [main] font in the seeded foot.ini, so this one wins.
+    if [[ -n $font ]]; then
+        for ((i = 1; i < ${#pairs[@]}; i += 2)); do
+            case "${pairs[i]##*/}" in
+            foot.ini) printf '\n[main]\nfont=%s:size=%s\n' "$font" "${THEME_COLORS[font_size]}" ;;
+            kitty.conf) printf '\nfont_family %s\n' "$font" ;;
+            # font-family accumulates fallbacks; the empty value resets the list.
+            ghostty.conf) printf '\nfont-family = ""\nfont-family = %s\n' "$font" ;;
+            alacritty.toml) printf '\n[font.normal]\nfamily = "%s"\n' "$font" ;;
+            *) continue ;;
+            esac >>"${pairs[i]}"
+        done
+    fi
     return 0
+}
+
+# theme_font_override — REPLY = the family in ~/.config/haseen/font (written by
+# `haseen font set`); 1 when there is none. A name outside letters, digits,
+# space and ._+- is ignored with a warning: it lands unquoted in configs.
+theme_font_override() {
+    local font
+    REPLY=""
+    [[ -r $THEME_FONT_FILE ]] || return 1
+    IFS= read -r font <"$THEME_FONT_FILE" || [[ -n $font ]] || return 1
+    _theme_trim "$font"
+    font="$REPLY"
+    REPLY=""
+    [[ -n $font ]] || return 1
+    if [[ ! $font =~ ^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\ ._+-]+$ ]]; then
+        warn "$THEME_FONT_FILE: unsupported characters in the font name, ignored"
+        return 1
+    fi
+    REPLY="$font"
 }
 
 # --- staging ----------------------------------------------------------------
@@ -566,17 +614,38 @@ theme_swap() {
     mv -- "$THEME_NAME_FILE.tmp" "$THEME_NAME_FILE"
 }
 
-# theme_backgrounds NAME — candidate images: ~/.config/haseen/backgrounds/<name>/
-# then current/theme/backgrounds/, each sorted.
+# theme_backgrounds NAME — candidate images, each source sorted, in this order:
+# ~/.config/haseen/backgrounds/<name>/ (the user's), current/theme/backgrounds/
+# (shipped by an installed theme), then the fetched cache
+# ~/.cache/haseen/themes/<name>/backgrounds/. Paths are absolute.
 theme_backgrounds() {
-    find -L "$THEME_USER_BACKGROUNDS_DIR/$1/" "$THEME_CURRENT_PATH/backgrounds/" -maxdepth 1 -type f \
-        \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' \) \
-        -print 2>/dev/null | LC_ALL=C sort
+    local dir
+    for dir in "$THEME_USER_BACKGROUNDS_DIR/$1" "$THEME_CURRENT_PATH/backgrounds" "$THEME_CACHE_DIR/$1/backgrounds"; do
+        [[ -d $dir ]] || continue
+        find -L "$dir/" -maxdepth 1 -type f \
+            \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' \) \
+            ! -name '.*' -print 2>/dev/null | LC_ALL=C sort
+    done
+    return 0
+}
+
+# theme_set_background_link PATH — point current/background at PATH, or remove
+# it for an empty PATH. A rename over the old link, so a watcher (the shell's
+# FileView, haseen-background.service) never sees it missing mid-change.
+theme_set_background_link() {
+    local tmp="$THEME_CURRENT_DIR/.background.tmp"
+    mkdir -p "$THEME_CURRENT_DIR"
+    if [[ -n $1 ]]; then
+        ln -nsf -- "$1" "$tmp"
+        mv -fT -- "$tmp" "$THEME_BACKGROUND_LINK"
+    else
+        rm -f "$THEME_BACKGROUND_LINK"
+    fi
 }
 
 # theme_link_background NAME — keep the current background when it belongs to
 # this theme, else the first candidate; no candidate removes the link (the
-# shell then paints the theme background colour).
+# background service then paints the theme background colour).
 theme_link_background() {
     local current first bg
     current="$(readlink "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
@@ -586,11 +655,70 @@ theme_link_background() {
         [[ -z $first ]] && first="$bg"
         if [[ $bg == "$current" ]]; then return 0; fi
     done < <(theme_backgrounds "$1")
-    if [[ -n $first ]]; then
-        ln -nsf -- "$first" "$THEME_BACKGROUND_LINK"
-    else
-        rm -f "$THEME_BACKGROUND_LINK"
+    theme_set_background_link "$first"
+}
+
+# theme_background_active — haseen-background.service is running. systemd
+# keeps an invocation:<unit> link in the user runtime dir while a unit is
+# active; reading it keeps this a pure check (no systemctl in tests or dry runs).
+theme_background_active() {
+    [[ -n ${XDG_RUNTIME_DIR:-} && -L $XDG_RUNTIME_DIR/systemd/units/invocation:$THEME_BG_UNIT ]]
+}
+
+# theme_background_reload — restart the running background service so swaybg
+# shows the new link. Not running (no session, other shell): nothing to do.
+theme_background_reload() {
+    theme_background_active || return 0
+    run systemctl --user try-restart "$THEME_BG_UNIT" || warn "restarting $THEME_BG_UNIT failed"
+}
+
+# --- fetched images (haseen theme fetch) ------------------------------------
+
+# theme_asset_base — URL prefix of the pinned Omarchy tree. Raw URLs carry the
+# commit, never a branch: branch URLs are cached and served stale.
+# HASEEN_THEME_MIRROR replaces the host part (tests use a file:// mirror laid
+# out the same way: <mirror>/<commit>/themes/<name>/<file>).
+theme_asset_base() {
+    printf '%s/%s/themes\n' "${HASEEN_THEME_MIRROR:-https://raw.githubusercontent.com/$THEME_OMARCHY_REPO}" "$THEME_OMARCHY_COMMIT"
+}
+
+# theme_assets NAME — "sha256 size relpath" for every image of NAME in the
+# pinned manifest (relpath under the theme: backgrounds/x.webp, preview.png).
+theme_assets() {
+    [[ -r $THEME_ASSETS_MANIFEST ]] || return 0
+    awk -v p="$1/" '!/^#/ && NF == 3 && index($3, p) == 1 { print $1, $2, substr($3, length(p) + 1) }' "$THEME_ASSETS_MANIFEST"
+}
+
+# theme_asset_names — themes the manifest has images for.
+theme_asset_names() {
+    [[ -r $THEME_ASSETS_MANIFEST ]] || return 0
+    awk '!/^#/ && NF == 3 { sub(/\/.*/, "", $3); print $3 }' "$THEME_ASSETS_MANIFEST" | LC_ALL=C sort -u
+}
+
+# theme_assets_missing NAME — true when an image of NAME is absent from the
+# cache or has the wrong size (cheap: no hashing; fetch verifies hashes).
+theme_assets_missing() {
+    local sha size rel f
+    while read -r sha size rel; do
+        f="$THEME_CACHE_DIR/$1/$rel"
+        [[ -f $f && $(stat -c %s -- "$f") == "$size" ]] || return 0
+    done < <(theme_assets "$1")
+    return 1
+}
+
+# theme_fetch_in_background NAME — `haseen theme set` starts a detached fetch
+# when the theme has images not yet cached. HASEEN_THEME_FETCH=0 turns it off
+# (tests, offline installs); the fetch logs to state/theme-fetch.log.
+theme_fetch_in_background() {
+    [[ ${HASEEN_THEME_FETCH:-1} != 0 ]] || return 0
+    theme_assets_missing "$1" || return 0
+    if $DRY_RUN; then
+        echo "DRYRUN: haseen-theme-fetch --quiet $1 (detached)"
+        return 0
     fi
+    mkdir -p "$HASEEN_USER_STATE"
+    setsid -f haseen-theme-fetch --quiet "$1" </dev/null >"$HASEEN_USER_STATE/theme-fetch.log" 2>&1 ||
+        warn "could not start the background fetch for $1 (run: haseen theme fetch $1)"
 }
 
 # --- post-set: retint what is running ---------------------------------------

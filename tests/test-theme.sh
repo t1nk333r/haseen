@@ -15,6 +15,9 @@ theme_sandbox() {
     stub pkill 'echo "STUB-CALLED: pkill $*" >&2; exit 97'
     stub gsettings 'echo "STUB-CALLED: gsettings $*" >&2; exit 97'
     unset HYPRLAND_INSTANCE_SIGNATURE DBUS_SESSION_BUS_ADDRESS HASEEN_THEME_HEADLESS
+    # No detached image fetch racing the tree comparisons (test-themes2.sh
+    # covers it), and a runtime dir without the developer's running units.
+    export HASEEN_THEME_FETCH=0 XDG_RUNTIME_DIR="$SANDBOX/run"
     CUR="$HOME/.local/state/haseen/current"
 }
 
@@ -48,7 +51,7 @@ for dir in "$HASEEN_PATH"/themes/*/; do
     sj="$CUR/theme/shell.json"
     if jq -e . "$sj" >/dev/null 2>&1; then
         assert_eq "$t shell.json has exactly the §7 keys" "$(tr ' ' '\n' <<<"$SHELL_KEYS" | sort)" "$(jq -r 'keys[]' "$sj" | sort)"
-        bad="$(jq -r --arg k "$SHELL_COLOUR_KEYS" '($k | split(" ")) as $ks | to_entries[] | select(.key as $x | $ks | index($x)) | select(.value | test("^#[0-9a-f]{6}$") | not) | .key' "$sj")"
+        bad="$(jq -r --arg k "$SHELL_COLOUR_KEYS" '($k | split(" ")) as $ks | to_entries[] | select(.key as $x | $ks | index($x)) | select(.value | test("^#[0-9a-fA-F]{6}$") | not) | .key' "$sj")"
         assert_eq "$t shell.json colours are #rrggbb" "" "$bad"
         assert_eq "$t shell.json numbers" "number number number number" "$(jq -r '[.fontSize, .radius, .gap, .borderWidth] | map(type) | join(" ")' "$sj")"
         assert_eq "$t mode follows colors.toml" "$(sed -n 's/^mode *= *"\(.*\)"/\1/p' "$dir/colors.toml")" "$(jq -r .mode "$sj")"
@@ -62,7 +65,9 @@ for dir in "$HASEEN_PATH"/themes/*/; do
         capture luac -p "$CUR/theme/hyprland.lua" "$CUR/theme/neovim.lua"
         assert_status "$t Lua outputs parse" 0 "$STATUS"
     fi
-    assert_eq "$t theme-shipped neovim.lua wins over the template" "$(<"$dir/neovim.lua")" "$(<"$CUR/theme/neovim.lua")"
+    if [[ -f $dir/neovim.lua ]]; then
+        assert_eq "$t theme-shipped neovim.lua wins over the template" "$(<"$dir/neovim.lua")" "$(<"$CUR/theme/neovim.lua")"
+    fi
     assert_eq "$t no staging leftovers" "" "$(ls -d "$CUR/next-theme" "$CUR/old-theme" 2>/dev/null)"
 done
 
@@ -123,9 +128,11 @@ unclassified="$(bash -c '
 assert_eq "every template output is denied or reviewed colour-only" "" "$unclassified"
 
 # --- install an Omarchy theme from a local git repo -------------------------
+# Named nordtest: nord is a stock theme now, and the stock copy would supply
+# the neovim.lua/vscode.json this block checks the denylist drops.
 theme_sandbox theme-install-nord
 stub git 'exec /usr/bin/git "$@"'
-src="$SANDBOX/src/omarchy-nord-theme"
+src="$SANDBOX/src/omarchy-nordtest-theme"
 mkdir -p "$src/backgrounds"
 cp "$FIXTURES/theme-omarchy-nord/"* "$src/"
 printf 'img' >"$src/backgrounds/1-test.png"
@@ -134,22 +141,22 @@ before="$(tree)"
 capture haseen theme install "$src" --dry-run
 assert_status "install dry-run" 0 "$STATUS"
 assert_dry_pure "install" "$OUTPUT"
-assert_contains "install dry-run plans the clone" "$OUTPUT" "DRYRUN: git clone -- $src $HOME/.config/haseen/themes/nord"
+assert_contains "install dry-run plans the clone" "$OUTPUT" "DRYRUN: git clone -- $src $HOME/.config/haseen/themes/nordtest"
 assert_eq "install --dry-run writes nothing" "$before" "$(tree)"
 capture haseen theme install "$src"
-assert_status "install nord" 0 "$STATUS"
-assert_eq "installed theme applied" "nord" "$(cat "$CUR/theme.name" 2>/dev/null)"
-assert_eq "clone kept as a repo" "yes" "$([[ -d $HOME/.config/haseen/themes/nord/.git ]] && echo yes)"
+assert_status "install nordtest" 0 "$STATUS"
+assert_eq "installed theme applied" "nordtest" "$(cat "$CUR/theme.name" 2>/dev/null)"
+assert_eq "clone kept as a repo" "yes" "$([[ -d $HOME/.config/haseen/themes/nordtest/.git ]] && echo yes)"
 assert_eq "nord palette staged" "$(<"$FIXTURES/theme-omarchy-nord/colors.toml")" "$(cat "$CUR/theme/colors.toml" 2>/dev/null)"
 assert_not_contains "installed neovim.lua dropped" "$(cat "$CUR/theme/neovim.lua" 2>/dev/null)" "nightfox"
 assert_contains "neovim.lua generated instead" "$(cat "$CUR/theme/neovim.lua" 2>/dev/null)" "aether"
 assert_eq "vscode.json dropped" "" "$(ls "$CUR/theme/vscode.json" 2>/dev/null)"
 assert_contains "dropped files named" "$OUTPUT" "neovim.lua"
 assert_eq "background linked" "$CUR/theme/backgrounds/1-test.png" "$(readlink "$CUR/background")"
-assert_contains "nord listed" "$(haseen theme list)" "nord"
+assert_contains "nordtest listed" "$(haseen theme list)" "nordtest"
 capture haseen theme install "$src" --yes
 assert_status "re-install converges" 0 "$STATUS"
-assert_eq "no install leftovers" "" "$(find "$HOME/.config/haseen/themes" -mindepth 1 -maxdepth 1 ! -name nord -printf '%f\n')"
+assert_eq "no install leftovers" "" "$(find "$HOME/.config/haseen/themes" -mindepth 1 -maxdepth 1 ! -name nordtest -printf '%f\n')"
 
 # --- the denylist rejects code an installed theme carries -------------------
 theme_sandbox theme-denylist
@@ -284,6 +291,12 @@ assert_contains "failing hook reported" "$OUTPUT" "Hook failed"
 
 # --- theme layer ------------------------------------------------------------
 theme_sandbox theme-layer
+# The layer also enables haseen-background.service (swaybg): a present
+# swaybg and a systemctl that records the enable as systemd would.
+stub swaybg 'exit 0'
+stub systemctl "[ \"\$*\" = '--user enable haseen-background.service' ] || { echo \"STUB-CALLED: systemctl \$*\" >&2; exit 97; }
+mkdir -p '$HOME/.config/systemd/user/graphical-session.target.wants'
+ln -sf /usr/lib/systemd/user/haseen-background.service '$HOME/.config/systemd/user/graphical-session.target.wants/haseen-background.service'"
 fx="$FIXTURES/cachyos-limine-luks-dualboot"
 layer_cmd() { env HASEEN_SYSROOT="$fx" DRY_RUN="${2:-false}" bash -c 'source "$HASEEN_PATH/lib/layers.sh"; _layer_env theme; '"$1"; }
 capture layer_cmd layer_status

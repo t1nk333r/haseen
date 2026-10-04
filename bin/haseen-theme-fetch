@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# haseen:summary Download an Omarchy theme's backgrounds and preview into ~/.cache/haseen/themes
+# haseen:args [name] [--all] [--quiet] [--dry-run]
+#
+# The images come from the omacom/omarchy repository (MIT; the artwork keeps
+# its own terms, which is why haseen does not ship it) at the commit pinned in
+# theme-lib.sh, and each one is checked against omarchy-assets.txt.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen theme fetch [name] [--all] [--quiet] [--dry-run]
+
+Download backgrounds/* and preview.png of an Omarchy stock theme (default: the
+current theme; --all: every one, about 64 MB) into
+$THEME_CACHE_DIR/<name>/.
+
+URLs name commit $THEME_OMARCHY_COMMIT,
+never a branch. Each file must be a PNG, JPEG or WebP image (file
+--mime-type), at most $((THEME_ASSET_MAX_BYTES / 1048576)) MiB, with the size and
+sha256 recorded in share/haseen/layers/theme/omarchy-assets.txt; anything else
+is deleted. Files already cached and intact are kept, and an interrupted
+download resumes from its .part file. When the theme is current and has no
+background yet, the first one is linked and haseen-background restarted.
+With glycin-thumbnailer (from gdk-pixbuf2) a 512 px preview-thumb.png is made
+for the theme picker.
+EOF
+}
+
+all=false
+quiet=false
+parse_common_flags "$@"
+args=()
+for a in "${REST[@]}"; do
+    case "$a" in
+    --all) all=true ;;
+    --quiet) quiet=true ;;
+    -*)
+        usage >&2
+        exit 2
+        ;;
+    *) args+=("$a") ;;
+    esac
+done
+if ((${#args[@]} > 1)) || { $all && ((${#args[@]} > 0)); }; then
+    usage >&2
+    exit 2
+fi
+require_not_root
+
+names=()
+if $all; then
+    mapfile -t names < <(theme_asset_names)
+    ((${#names[@]} > 0)) || die "no image manifest at $THEME_ASSETS_MANIFEST"
+elif ((${#args[@]} == 1)); then
+    theme_normalize_name "${args[0]}" || {
+        echo "Error: invalid theme name: ${args[0]}" >&2
+        exit 2
+    }
+    names=("$REPLY")
+else
+    name="$(theme_current_name)" || die "no current theme; name one (see: haseen theme list)"
+    names=("$name")
+fi
+for name in "${names[@]}"; do
+    [[ -n $(theme_assets "$name") ]] ||
+        die "'$name' is not an Omarchy stock theme; it has no images to fetch (put your own in $THEME_USER_BACKGROUNDS_DIR/$name/)"
+done
+
+say() { $quiet || info "$*"; }
+
+# cached_ok FILE SIZE SHA — FILE is the intact pinned image.
+cached_ok() {
+    [[ -f $1 && ! -L $1 && $(stat -c %s -- "$1") == "$2" ]] || return 1
+    [[ $(sha256sum -- "$1" | cut -d' ' -f1) == "$3" ]]
+}
+
+base="$(theme_asset_base)"
+protos="=https"
+[[ ${HASEEN_THEME_MIRROR:-} == file://* ]] && protos="=file"
+
+if $DRY_RUN; then
+    for name in "${names[@]}"; do
+        while read -r sha size rel; do
+            if cached_ok "$THEME_CACHE_DIR/$name/$rel" "$size" "$sha"; then
+                echo "cached: $name/$rel"
+            else
+                echo "DRYRUN: fetch $base/$name/$rel -> $THEME_CACHE_DIR/$name/$rel ($size bytes, sha256 $sha)"
+            fi
+        done < <(theme_assets "$name")
+    done
+    exit 0
+fi
+
+require_cmds curl file sha256sum
+
+# fetch_one NAME SHA SIZE REL — download, check type, size and hash, then move
+# into place. The partial file is hidden (.x.part) so a listing never shows it.
+fetch_one() {
+    local name="$1" sha="$2" size="$3" rel="$4" dest part have mime
+    dest="$THEME_CACHE_DIR/$name/$rel"
+    part="$(dirname -- "$dest")/.$(basename -- "$dest").part"
+    if cached_ok "$dest" "$size" "$sha"; then
+        CACHED=$((CACHED + 1))
+        return 0
+    fi
+    rm -f -- "$dest"
+    mkdir -p -- "$(dirname -- "$dest")"
+    have=0
+    [[ -f $part ]] && have="$(stat -c %s -- "$part")"
+    ((have <= size)) || {
+        rm -f -- "$part"
+        have=0
+    }
+    if ((have < size)); then
+        local status=0
+        curl --fail --silent --show-error --location --proto "$protos" --proto-redir "$protos" \
+            --max-filesize "$THEME_ASSET_MAX_BYTES" --connect-timeout 20 --retry 3 \
+            --continue-at - --output "$part" -- "$base/$name/$rel" || status=$?
+        if ((status == 63)); then
+            rm -f -- "$part"
+            warn "$name/$rel: larger than $THEME_ASSET_MAX_BYTES bytes, deleted"
+            return 1
+        elif ((status != 0)); then
+            warn "$name/$rel: download failed (curl exit $status; rerun to resume)"
+            return 1
+        fi
+    fi
+    have="$(stat -c %s -- "$part" 2>/dev/null)" || {
+        warn "$name/$rel: nothing downloaded"
+        return 1
+    }
+    mime="$(file --brief --mime-type -- "$part")"
+    case "$mime" in
+    image/png | image/jpeg | image/webp) ;;
+    *)
+        rm -f -- "$part"
+        warn "$name/$rel: not an image ($mime), deleted"
+        return 1
+        ;;
+    esac
+    if ((have > THEME_ASSET_MAX_BYTES || have != size)); then
+        rm -f -- "$part"
+        warn "$name/$rel: $have bytes, expected $size, deleted"
+        return 1
+    fi
+    if [[ $(sha256sum -- "$part" | cut -d' ' -f1) != "$sha" ]]; then
+        rm -f -- "$part"
+        warn "$name/$rel: sha256 does not match commit ${THEME_OMARCHY_COMMIT:0:7}, deleted"
+        return 1
+    fi
+    mv -f -- "$part" "$dest"
+    FETCHED=$((FETCHED + 1))
+    say "$name/$rel ($size bytes)"
+}
+
+# file_url PATH — file:// URL with everything outside a safe set escaped.
+file_url() {
+    local LC_ALL=C path="$1" out="" c i
+    for ((i = 0; i < ${#path}; i++)); do
+        c="${path:i:1}"
+        case "$c" in
+        [abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._~-]) out+="$c" ;;
+        *) out+="$(printf '%%%02X' "'$c")" ;;
+        esac
+    done
+    printf 'file://%s\n' "$out"
+}
+
+# make_thumb DIR — preview-thumb.png (512 px) beside preview.png, for the
+# theme picker: each 1800x1012 original decoded leaves ~5 MiB more in the
+# shell after the picker closes (measured: 4 originals +49.6 MiB RSS, 4 or 1
+# thumbnails +27 MiB, which is the one-off cost of loading any image).
+# glycin-thumbnailer comes with gdk-pixbuf2 (a swaybg dependency); without it
+# the picker shows the full preview.
+make_thumb() {
+    local preview="$1/preview.png" thumb="$1/preview-thumb.png" tmp="$1/.preview-thumb.png.tmp"
+    [[ -f $preview ]] || return 0
+    [[ -f $thumb && ! $thumb -ot $preview ]] && return 0
+    have glycin-thumbnailer || return 0
+    if glycin-thumbnailer --input "$(file_url "$preview")" --output "$tmp" --size 512 >/dev/null 2>&1 &&
+        [[ $(file --brief --mime-type -- "$tmp" 2>/dev/null) == image/png ]]; then
+        mv -f -- "$tmp" "$thumb"
+    else
+        rm -f -- "$tmp"
+        warn "${1##*/}: could not make preview-thumb.png (the picker uses preview.png)"
+    fi
+}
+
+rc=0
+for name in "${names[@]}"; do
+    dir="$THEME_CACHE_DIR/$name"
+    mkdir -p "$dir"
+    # One fetch per theme at a time: theme set may start one while the user
+    # runs another.
+    exec 8>"$dir/.fetch.lock"
+    if ! flock -n 8; then
+        say "$name: already being fetched"
+        exec 8>&-
+        continue
+    fi
+    FETCHED=0 CACHED=0 failed=0 total=0
+    while read -r sha size rel <&3; do
+        total=$((total + 1))
+        fetch_one "$name" "$sha" "$size" "$rel" || failed=$((failed + 1))
+    done 3< <(theme_assets "$name")
+    make_thumb "$dir"
+    exec 8>&-
+    if ((failed > 0)); then
+        warn "$name: $failed of $total images failed"
+        rc=1
+    else
+        say "$name: $total images in $dir ($FETCHED fetched, $CACHED cached)"
+    fi
+    # The theme was set before its images existed: give it its background now.
+    if [[ $(theme_current_name 2>/dev/null) == "$name" && ! -e $THEME_BACKGROUND_LINK ]]; then
+        theme_link_background "$name"
+        if [[ -e $THEME_BACKGROUND_LINK ]]; then
+            say "background: $(readlink "$THEME_BACKGROUND_LINK")"
+            theme_background_reload
+        fi
+    fi
+done
+exit "$rc"

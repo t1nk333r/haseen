@@ -22,10 +22,17 @@ Usage: haseen theme set <name> [--dry-run]
 Stage the theme (stock theme, then ~/.config/haseen/themes/<name> on top),
 render share/haseen/themed/*.tpl and ~/.config/haseen/themed/*.tpl into it,
 swap it into ~/.local/state/haseen/current/theme, then reload what is running
-(Hyprland, foot, kitty, ghostty, btop, GTK colour scheme) and run the
-theme-set hook. Names are case-insensitive; spaces become dashes.
+(Hyprland, foot, kitty, ghostty, btop, GTK colour scheme, haseen-background)
+and run the theme-set hook. Names are case-insensitive; spaces become dashes.
 
-HASEEN_THEME_HEADLESS=1 skips the reloads and the hook.
+An Omarchy theme whose images are not cached yet starts
+\`haseen theme fetch <name>\` in the background (log:
+~/.local/state/haseen/theme-fetch.log); its first background is linked when
+the download lands. ~/.config/haseen/font, when present, sets the monospace
+font of the shell and the terminal configs.
+
+HASEEN_THEME_HEADLESS=1 skips the reloads, the fetch and the hook;
+HASEEN_THEME_FETCH=0 skips only the fetch.
 EOF
 }
 
@@ -74,7 +81,11 @@ if $DRY_RUN; then
     echo "DRYRUN: write $THEME_NAME_FILE: $name"
     echo "DRYRUN: link $THEME_BACKGROUND_LINK to the theme's first background"
     theme_post_set "$src"
-    [[ ${HASEEN_THEME_HEADLESS:-0} == 1 ]] || run haseen-hook run theme-set "$name"
+    if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
+        theme_background_reload
+        theme_fetch_in_background "$name"
+        run haseen-hook run theme-set "$name"
+    fi
     exit 0
 fi
 
@@ -90,5 +101,11 @@ exec 9>&-
 
 info "theme: $name"
 theme_post_set "$THEME_CURRENT_PATH"
-[[ ${HASEEN_THEME_HEADLESS:-0} == 1 ]] || run haseen-hook run theme-set "$name"
+if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
+    theme_background_reload
+    # Omarchy images arrive in the background; haseen-theme-fetch links the
+    # first one when this theme is still current and has none.
+    theme_fetch_in_background "$name"
+    run haseen-hook run theme-set "$name"
+fi
 exit 0

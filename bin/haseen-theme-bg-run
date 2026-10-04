@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# haseen:summary Show current/background with swaybg in the foreground (used by haseen-background.service)
+# haseen:args
+# haseen:hidden
+#
+# The image is resolved once at start; `haseen theme bg set|next` and
+# `haseen theme set` restart the unit after changing the link. With no image,
+# swaybg paints the theme's background colour.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen theme bg run [--dry-run]
+
+Run swaybg on every output with the image $THEME_BACKGROUND_LINK points at
+(mode fill), or the current theme's background colour when there is none.
+haseen-background.service runs this; it does not return.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+image="$(readlink -f -- "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+if [[ -n $image && -f $image && -r $image ]]; then
+    args=(--mode fill --image "$image")
+else
+    colour="#000000"
+    if theme_colors_load "$THEME_CURRENT_PATH/colors.toml" 2>/dev/null &&
+        [[ ${THEME_COLORS[background]:-} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+        colour="${THEME_COLORS[background]}"
+    fi
+    args=(--color "$colour")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: swaybg ${args[*]}"
+    exit 0
+fi
+require_cmds swaybg
+exec swaybg "${args[@]}"

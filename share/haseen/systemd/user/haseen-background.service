@@ -1,0 +1,17 @@
+[Unit]
+Description=haseen background (swaybg showing ~/.local/state/haseen/current/background)
+Documentation=man:swaybg(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+# DMS draws its own wallpaper.
+Conflicts=dms.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env haseen theme bg run
+Restart=on-failure
+RestartSec=2
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

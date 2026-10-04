@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# haseen:summary List, set or cycle the current theme's background image
+# haseen:args <list|current|set FILE|next> [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-theme-bg-next and omarchy-theme-bg-set (MIT,
+# Copyright (c) David Heinemeier Hansson): current/background is a symlink to
+# the image, and the background service is restarted to show it.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen theme bg <list|current|set FILE|next> [--dry-run]
+
+  list      every background of the current theme, full paths, one per line:
+            $THEME_USER_BACKGROUNDS_DIR/<theme>/ first, then the theme's own
+            backgrounds/, then the fetched $THEME_CACHE_DIR/<theme>/backgrounds/
+  current   the image $THEME_BACKGROUND_LINK points at
+  set FILE  show FILE: a path from \`list\`, its file name, or any PNG, JPEG,
+            WebP, GIF or BMP image
+  next      the one after the current image in \`list\`, wrapping around
+
+set and next replace the link atomically and restart $THEME_BG_UNIT
+when it runs. No backgrounds yet? haseen theme fetch.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 1)) || {
+    usage >&2
+    exit 2
+}
+cmd="$1"
+shift
+
+theme_name() {
+    theme_current_name || die "no theme set (see: haseen theme set)"
+}
+
+# image_ok FILE — a readable image swaybg can show.
+image_ok() {
+    [[ -f $1 && -r $1 ]] || return 1
+    case "$(file --brief --mime-type -L -- "$1")" in
+    image/png | image/jpeg | image/webp | image/gif | image/bmp | image/x-ms-bmp) return 0 ;;
+    esac
+    return 1
+}
+
+# apply FILE — link and restart under the theme-set lock, so a concurrent
+# `haseen theme set` cannot interleave its own link.
+apply() {
+    if $DRY_RUN; then
+        echo "DRYRUN: link $THEME_BACKGROUND_LINK -> $1"
+        theme_background_reload
+        return 0
+    fi
+    mkdir -p "$THEME_CURRENT_DIR"
+    exec 9>"$THEME_CURRENT_DIR/.theme-set.lock"
+    flock 9
+    theme_set_background_link "$1"
+    flock -u 9
+    exec 9>&-
+    info "background: $1"
+    theme_background_reload
+}
+
+case "$cmd" in
+list)
+    (($# == 0)) || {
+        usage >&2
+        exit 2
+    }
+    theme_backgrounds "$(theme_name)"
+    ;;
+current)
+    (($# == 0)) || {
+        usage >&2
+        exit 2
+    }
+    [[ -L $THEME_BACKGROUND_LINK ]] || die "no background set"
+    readlink "$THEME_BACKGROUND_LINK"
+    ;;
+set)
+    (($# == 1)) || {
+        usage >&2
+        exit 2
+    }
+    name="$(theme_name)"
+    target=""
+    if [[ $1 == */* || -e $1 ]]; then
+        [[ -e $1 ]] || die "no such file: $1"
+        target="$(readlink -f -- "$1")"
+    else
+        while IFS= read -r bg; do
+            if [[ ${bg##*/} == "$1" ]]; then
+                target="$bg"
+                break
+            fi
+        done < <(theme_backgrounds "$name")
+        [[ -n $target ]] || die "'$1' is not a background of $name (see: haseen theme bg list)"
+    fi
+    image_ok "$target" || die "$target is not a PNG, JPEG, WebP, GIF or BMP image"
+    apply "$target"
+    ;;
+next)
+    (($# == 0)) || {
+        usage >&2
+        exit 2
+    }
+    name="$(theme_name)"
+    mapfile -t bgs < <(theme_backgrounds "$name")
+    ((${#bgs[@]} > 0)) || die "$name has no backgrounds (haseen theme fetch $name, or add images to $THEME_USER_BACKGROUNDS_DIR/$name/)"
+    current="$(readlink "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+    next="${bgs[0]}"
+    for i in "${!bgs[@]}"; do
+        if [[ ${bgs[i]} == "$current" ]]; then
+            next="${bgs[(i + 1) % ${#bgs[@]}]}"
+            break
+        fi
+    done
+    apply "$next"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
