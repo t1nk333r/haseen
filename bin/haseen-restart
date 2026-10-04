@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# haseen:summary Restart audio, Wi-Fi, Bluetooth, the trackpad driver or the shell
+# haseen:args <audio|wifi|bluetooth|trackpad|shell> [--dry-run]
+#
+# Adapted from omarchy bin/omarchy-restart-{audio,wifi,bluetooth,trackpad}
+# (MIT, Copyright (c) David Heinemeier Hansson). The USB-audio reset path of
+# omarchy-restart-audio is not ported: it needs usbreset and root for a rare
+# failure, and replugging does the same.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+
+# Touchpad transports whose driver reload re-probes the device: I2C-HID
+# (most laptops), Intel THC QuickI2C, and PS/2 Synaptics/ALPS (psmouse).
+TRACKPAD_MODULES=(i2c_hid_acpi intel_quicki2c psmouse)
+
+usage() {
+    cat <<EOF
+Usage: haseen restart <audio|wifi|bluetooth|trackpad|shell> [--dry-run]
+
+audio      restarts PipeWire, PipeWire-Pulse and WirePlumber (user units)
+wifi       unblocks Wi-Fi (rfkill) and turns the radio on (NetworkManager),
+           or restarts iwd when that is the network service
+bluetooth  unblocks Bluetooth (rfkill) and restarts bluetooth.service
+trackpad   reloads the loaded touchpad driver (${TRACKPAD_MODULES[*]})
+shell      restarts the haseen shell (haseen shell restart)
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+module_loaded() { grep -q "^$1 " "$(sysroot_path /proc/modules)" 2>/dev/null; }
+
+case "$1" in
+audio)
+    run systemctl --user restart pipewire.service pipewire-pulse.service wireplumber.service
+    info "audio services restarted"
+    ;;
+wifi)
+    run rfkill unblock wifi
+    if have nmcli; then
+        run nmcli radio wifi on
+        run nmcli device wifi rescan || true
+    elif have iwctl; then
+        in_floating_terminal "$@"
+        run_root systemctl restart iwd.service
+    fi
+    info "Wi-Fi unblocked"
+    ;;
+bluetooth)
+    in_floating_terminal "$@"
+    run rfkill unblock bluetooth
+    run_root systemctl restart bluetooth.service
+    info "Bluetooth restarted"
+    ;;
+trackpad)
+    # modprobe needs root: ask for it in a terminal.
+    in_floating_terminal "$@"
+    reloaded=0
+    for m in "${TRACKPAD_MODULES[@]}"; do
+        module_loaded "$m" || continue
+        run_root modprobe -r "$m"
+        run_root modprobe "$m"
+        reloaded=$((reloaded + 1))
+    done
+    ((reloaded > 0)) || die "no touchpad driver module is loaded (looked for: ${TRACKPAD_MODULES[*]}); it may be built into the kernel"
+    info "trackpad driver reloaded"
+    ;;
+shell)
+    args=()
+    $DRY_RUN && args+=(--dry-run)
+    exec "$(dirname "$(readlink -f "$0")")/haseen-shell-restart" "${args[@]}"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# haseen:summary Sync the clock over NTP or pick the timezone
+# haseen:args <sync|timezone [ZONE]> [--dry-run] [--yes]
+#
+# Adapted from omarchy bin/omarchy-update-time and omarchy-menu-timezone
+# (MIT, Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen time sync [--dry-run]
+       haseen time timezone [ZONE] [--dry-run]
+
+sync       turns on NTP (systemd-timesyncd) and restarts it for an immediate sync
+timezone   sets the system timezone; without ZONE, pick one with fzf
+
+Started without a terminal (menu), it opens a floating one for the password prompt.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 1)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+zoneinfo() { sysroot_path /usr/share/zoneinfo; }
+
+case "$1" in
+sync)
+    (($# == 1)) || die "usage: haseen time sync"
+    run_root timedatectl set-ntp true
+    run_root systemctl restart systemd-timesyncd.service
+    $DRY_RUN || timedatectl timesync-status 2>/dev/null || true
+    ;;
+timezone)
+    (($# <= 2)) || die "usage: haseen time timezone [ZONE]"
+    zone="${2:-}"
+    if [[ -z $zone ]]; then
+        if $DRY_RUN; then
+            echo "DRYRUN: pick a zone from 'timedatectl list-timezones' with fzf, then as root: timedatectl set-timezone <zone>"
+            exit 0
+        fi
+        require_cmds fzf
+        zone="$(timedatectl list-timezones | fzf --prompt 'timezone> ')" || exit 0
+    fi
+    # Zone names are paths under zoneinfo; refuse anything that is not one
+    # of its files (and any attempt to climb out of it).
+    [[ $zone =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ && -f $(zoneinfo)/$zone ]] ||
+        die "unknown timezone '$zone' (see: timedatectl list-timezones)"
+    run_root timedatectl set-timezone "$zone"
+    info "timezone: $zone"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# haseen:summary Install apps (Flathub first), packages, AUR packages, fonts and dev toolchains
+# haseen:args <package|aur|flatpak ID|app NAME|font NAME|dev LANG> [--dry-run] [--yes]
+#
+# Pickers adapted from omarchy bin/omarchy-pkg-install and
+# omarchy-pkg-aur-install (MIT, Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/catalog.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/catalog.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen install <what> [args] [--dry-run] [--yes]
+
+  package [NAME...]   official repo packages; no NAME opens an fzf picker
+  aur [NAME...]       AUR packages via paru/yay; no NAME opens an fzf picker
+  flatpak ID          a Flathub app into your user installation
+  app NAME            an app from the catalogue ($HASEEN_CATALOG)
+  font NAME           a Nerd Font from the catalogue, then switches to it
+  dev LANG            a toolchain through mise (node, python, go, rust, ...)
+
+  app --list [CATEGORY]     catalogue rows: id, source, label
+  app --installed [ID]      ids of installed entries (with ID: exit 0/1)
+
+Started without a terminal (menu, key bind), it opens a floating one.
+Apps are Flatpaks from Flathub; pacman and the AUR are for system pieces
+(terminals, fonts, drivers, services). Run 'haseen layer apply flatpak' once.
+EOF
+}
+
+# Read-only queries never need a terminal.
+if [[ ${1:-} == app && ${2:-} == --list ]]; then
+    catalog_list "${3:-}"
+    exit 0
+fi
+if [[ ${1:-} == app && ${2:-} == --installed ]]; then
+    catalog_installed_ids "${3:-}"
+    exit
+fi
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 1)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+what="$1"
+shift
+
+FZF_ARGS=(--multi --preview-window 'down:65%:wrap' --bind 'alt-p:toggle-preview'
+    --preview-label 'tab: select  alt-p: toggle details' --preview-label-pos bottom)
+
+# pick_packages "LIST CMD" PREVIEW_CMD — fzf over the list command's output.
+pick_packages() {
+    local list=()
+    require_cmds fzf
+    read -ra list <<<"$1"
+    "${list[@]}" | fzf "${FZF_ARGS[@]}" --preview "$2"
+}
+
+case "$what" in
+package)
+    if (($# == 0)); then
+        if $DRY_RUN; then
+            echo "DRYRUN: pick packages from 'pacman -Slq' with fzf, then as root: pacman -S --needed <picked>"
+            exit 0
+        fi
+        mapfile -t pkgs < <(pick_packages "pacman -Slq" 'pacman -Sii {1}')
+    else
+        pkgs=("$@")
+    fi
+    ((${#pkgs[@]} > 0)) || { info "nothing selected"; exit 0; }
+    check_pkg_names "${pkgs[@]}"
+    pkg_install "${pkgs[@]}"
+    ;;
+aur)
+    helper="$(aur_helper)"
+    if (($# == 0)); then
+        if $DRY_RUN; then
+            echo "DRYRUN: pick packages from '${helper:-paru} -Slqa' with fzf, then: ${helper:-paru} -S --needed <picked>"
+            exit 0
+        fi
+        [[ -n $helper ]] || die "neither paru nor yay is installed"
+        mapfile -t pkgs < <(pick_packages "$helper -Slqa" "$helper -Siia {1}")
+    else
+        pkgs=("$@")
+    fi
+    ((${#pkgs[@]} > 0)) || { info "nothing selected"; exit 0; }
+    check_pkg_names "${pkgs[@]}"
+    pkg_install_aur "${pkgs[@]}"
+    ;;
+flatpak)
+    (($# == 1)) || die "usage: haseen install flatpak <app id>"
+    flatpak_install_app "$1"
+    ;;
+app)
+    (($# == 1)) || die "usage: haseen install app <name> (list: haseen install app --list)"
+    catalog_install "$(catalog_resolve "$1")"
+    ;;
+font)
+    (($# == 1)) || die "usage: haseen install font <name> (list: haseen install app --list font)"
+    catalog_install "$(catalog_resolve "$1" font)"
+    ;;
+dev)
+    (($# == 1)) || die "usage: haseen install dev <lang> (list: haseen install app --list development)"
+    catalog_install "$(catalog_resolve "$1" development)"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

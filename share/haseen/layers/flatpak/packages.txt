@@ -1,0 +1,2 @@
+# flatpak — Flathub-first apps (plan 017). The remote is added per user by layer.sh.
+flatpak                      # Flatpak runtime; the portals come from layers/desktop

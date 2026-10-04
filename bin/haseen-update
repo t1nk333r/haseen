@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# haseen:summary Update the system (pacman, AUR, Flatpak) or the firmware (fwupd)
+# haseen:args [system|firmware] [--dry-run] [--yes]
+#
+# Firmware steps adapted from omarchy bin/omarchy-update-firmware (MIT,
+# Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/catalog.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/catalog.sh"
+# shellcheck source=../share/haseen/lib/preflight.sh
+source "$HASEEN_PATH/lib/preflight.sh"
+
+FWUPD_EFI=/usr/lib/fwupd/efi/fwupdx64.efi
+
+usage() {
+    cat <<EOF
+Usage: haseen update [system|firmware] [--dry-run] [--yes]
+
+  system     (default) pacman -Syu as root, then AUR packages with paru/yay
+             (-Sua), then 'flatpak update' for the user and, when it holds
+             apps, the system installation. Runs the post-update hooks.
+  firmware   fwupdmgr refresh + update (installs fwupd first if missing).
+             With Secure Boot on and sbctl keys, signs fwupd's EFI helper so
+             UEFI capsule updates still boot.
+
+Started without a terminal (menu), it opens a floating one.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+what="${REST[0]:-system}"
+
+update_system() {
+    local yes=()
+    $ASSUME_YES && yes=(--noconfirm)
+    info "official repositories"
+    run_root pacman -Syu "${yes[@]}"
+
+    local helper
+    helper="$(aur_helper)"
+    if [[ -n $helper ]]; then
+        info "AUR ($helper)"
+        run "$helper" -Sua "${yes[@]}"
+    fi
+
+    if have flatpak || $DRY_RUN; then
+        local fyes=()
+        $ASSUME_YES && fyes=(-y)
+        info "Flatpak"
+        run flatpak update --user "${fyes[@]}"
+        if compgen -G "$(sysroot_path /var/lib/flatpak/app)/*" >/dev/null; then
+            run flatpak update --system "${fyes[@]}"
+        fi
+    fi
+
+    local hook=(run post-update)
+    $DRY_RUN && hook+=(--dry-run)
+    "$HASEEN_EXE" hook "${hook[@]}"
+}
+
+update_firmware() {
+    have fwupdmgr || pkg_install fwupd
+    preflight_firmware
+    if [[ $FIRMWARE == uefi && $SECUREBOOT_STATE == enabled ]] && have sbctl &&
+        [[ -e $(sysroot_path "$FWUPD_EFI") && ! -e $(sysroot_path "$FWUPD_EFI.signed") ]]; then
+        # fwupd boots fwupdx64.efi.signed when it exists; with haseen's own
+        # Secure Boot keys the unsigned helper would be refused at reboot.
+        run_root sbctl sign -s -o "$FWUPD_EFI.signed" "$FWUPD_EFI"
+    fi
+    run fwupdmgr refresh --force
+    run fwupdmgr get-updates || {
+        info "no firmware updates (or none for this hardware)"
+        return 0
+    }
+    run_root fwupdmgr update
+}
+
+case "$what" in
+system) update_system ;;
+firmware) update_firmware ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
