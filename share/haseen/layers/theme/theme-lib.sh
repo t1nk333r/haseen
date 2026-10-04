@@ -1,0 +1,673 @@
+# shellcheck shell=bash disable=SC2034  # THEME_* globals are read by the commands and tests
+# theme-lib.sh — the theme pipeline shared by bin/haseen-theme-* and the theme
+# layer. Sourced after lib/common.sh, never executed.
+#
+# Adapted from Omarchy (MIT, Copyright (c) David Heinemeier Hansson):
+#   bin/omarchy-theme-color          colors.toml parser + alias/derive cascade
+#   bin/omarchy-theme-set-templates  template renderer (one awk pass)
+#   bin/omarchy-theme-set            staging dir, installed-theme denylist
+#   bin/omarchy-theme-osc            foot retint via OSC sequences
+#   bin/omarchy-git-url-check        git URL refusal rules
+# The colors.toml format and the template syntax ({{ key }}, {{ key_strip }},
+# {{ key_rgb }}, {{ mix… }}, {{ hypr_gradient… }}, {{ gradient_start… }},
+# {{ shell_gradient… }}) are kept byte-compatible so Omarchy themes and
+# Omarchy-style user templates work unchanged.
+
+[[ -n ${HASEEN_THEME_LIB_SH:-} ]] && return 0
+HASEEN_THEME_LIB_SH=1
+
+THEME_TEMPLATES_DIR="$HASEEN_PATH/themed"
+THEME_STOCK_DIR="$HASEEN_PATH/themes"
+THEME_USER_DIR="$HASEEN_USER_CONFIG/themes"
+THEME_USER_TEMPLATES_DIR="$HASEEN_USER_CONFIG/themed"
+THEME_USER_BACKGROUNDS_DIR="$HASEEN_USER_CONFIG/backgrounds"
+THEME_CURRENT_DIR="$HASEEN_USER_STATE/current"
+THEME_CURRENT_PATH="$THEME_CURRENT_DIR/theme"
+THEME_NEXT_PATH="$THEME_CURRENT_DIR/next-theme"
+THEME_NAME_FILE="$THEME_CURRENT_DIR/theme.name"
+THEME_BACKGROUND_LINK="$THEME_CURRENT_DIR/background"
+THEME_DEFAULT=tokyo-night
+
+# What a theme installed from a git repo may not ship, because these run code:
+# Hyprland dofile()s the theme's hyprland.lua and Neovim loads neovim.lua, so no
+# *.lua is staged at all; each terminal config names the program the terminal
+# launches; vscode.json names an extension (arbitrary JavaScript). Shell
+# scripts and anything carrying an exec bit are dropped too: nothing in a theme
+# has a reason to be executable. Everything else is colour and is kept.
+#
+# Adding a template for another terminal, or another editor that loads code,
+# means adding it here or to THEME_COLOUR_ONLY below; tests/test-theme.sh fails
+# on a template output that is in neither list.
+THEME_INSTALLED_DENIED=(alacritty.toml foot.ini ghostty.conf kitty.conf vscode.json)
+# Template outputs reviewed as pure data (colours, sizes, font names).
+THEME_COLOUR_ONLY=(btop.theme gtk.css shell.json)
+
+# Defaults for the non-colour shell tokens. A theme may set any of these in its
+# colors.toml; the value then wins, like every other key.
+declare -A THEME_TOKEN_DEFAULTS=(
+    [font_family]="Inter"
+    [font_mono]="JetBrainsMono Nerd Font"
+    [font_size]=11
+    [radius]=6
+    [gap]=6
+    [border_width]=1
+)
+
+# theme_normalize_name RAW — "Tokyo Night" -> tokyo-night (Omarchy rule). Sets
+# REPLY; returns 1 for names that could leave the themes directory.
+theme_normalize_name() {
+    local name
+    name="$(printf '%s' "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+    REPLY="$name"
+    [[ -n $name && $name != .* && $name != */* ]]
+}
+
+# theme_exists NAME — a stock or user theme directory exists.
+theme_exists() { [[ -d $THEME_STOCK_DIR/$1 || -d $THEME_USER_DIR/$1 ]]; }
+
+# theme_names — stock and user themes, sorted. The glob skips dot dirs, so an
+# in-progress `.install-*` clone is never listed.
+theme_names() {
+    local d
+    for d in "$THEME_STOCK_DIR"/*/ "$THEME_USER_DIR"/*/; do
+        if [[ -d $d ]]; then basename "$d"; fi
+    done | LC_ALL=C sort -u
+}
+
+theme_current_name() {
+    [[ -r $THEME_NAME_FILE ]] || return 1
+    local name
+    name="$(<"$THEME_NAME_FILE")"
+    [[ -n $name ]] || return 1
+    printf '%s\n' "$name"
+}
+
+# --- colors.toml ------------------------------------------------------------
+
+declare -A THEME_COLORS=()
+
+# _theme_mix START END AMOUNT — REPLY = blend of two #rrggbb colours. AMOUNT is a
+# fraction (0.35), a percentage (35%) or a bare number over 1 (35). Integer
+# parts-per-million arithmetic, rounded half up like Omarchy's awk.
+_theme_mix() {
+    local s="${1#\#}" e="${2#\#}" amount="$3" pct=false int frac a i out=""
+    REPLY=""
+    [[ $s =~ ^[0-9A-Fa-f]{6}$ && $e =~ ^[0-9A-Fa-f]{6}$ ]] || return 1
+    [[ $amount == *% ]] && pct=true && amount="${amount%\%}"
+    [[ $amount =~ ^[0-9]+([.][0-9]+)?$|^[.][0-9]+$ ]] || return 1
+    int="${amount%%.*}"
+    frac=""
+    [[ $amount == *.* ]] && frac="${amount#*.}"
+    frac="${frac}000000"
+    a=$((10#${int:-0} * 1000000 + 10#${frac:0:6}))
+    if $pct || ((a > 1000000)); then a=$((a / 100)); fi
+    ((a > 1000000)) && a=1000000
+    for i in 0 2 4; do
+        out+="$(printf '%02x' $(((16#${s:i:2} * (1000000 - a) + 16#${e:i:2} * a + 500000) / 1000000)))"
+    done
+    REPLY="#$out"
+}
+
+# colors.toml charset (omarchy-theme-color): letters spelled out because a
+# bracket range follows locale collation. Values exclude quotes, backslash and
+# anything else that could break out of a rendered config.
+_THEME_KEY_RE='^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]+$'
+_THEME_VALUE_RE='^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#(),._+/% -]*$'
+_THEME_NAME_RE='^[abcdefghijklmnopqrstuvwxyz0123456789_][abcdefghijklmnopqrstuvwxyz0123456789._+-]*$'
+
+_theme_alias() { [[ -n ${THEME_COLORS[$1]:-} ]] || THEME_COLORS[$1]="${THEME_COLORS[$2]:-}"; }
+
+_theme_derive() { # KEY SOURCE TARGET AMOUNT — KEY = mix(SOURCE, TARGET) unless set
+    [[ -n ${THEME_COLORS[$1]:-} ]] && return 0
+    _theme_mix "${THEME_COLORS[$2]:-}" "$3" "$4" && THEME_COLORS[$1]="$REPLY"
+    return 0
+}
+
+# theme_colors_load FILE — parse colors.toml into THEME_COLORS and resolve the
+# legacy aliases, derived shades and mode exactly as omarchy-theme-color does.
+# Keys/values outside the safe charset are skipped with a warning so a hostile
+# theme cannot smuggle text into a rendered config.
+theme_colors_load() {
+    local file="$1" key value bg lum
+    THEME_COLORS=()
+    [[ -f $file ]] || return 1
+
+    while IFS='=' read -r key value || [[ -n $key ]]; do
+        key="${key//[\"\' ]/}"
+        [[ -n $key && $key != \#* ]] || continue
+        if [[ $value == *[\"\']* ]]; then
+            value="${value#*[\"\']}"
+            value="${value%%[\"\']*}"
+        else
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+        fi
+        # Letters spelled out: a bracket range follows locale collation.
+        if [[ ! $key =~ $_THEME_KEY_RE ]]; then
+            warn "colors.toml: skipping key with unsupported characters"
+            continue
+        fi
+        if [[ ! $value =~ $_THEME_VALUE_RE ]]; then
+            warn "colors.toml: skipping $key: unsupported characters in value"
+            continue
+        fi
+        THEME_COLORS[$key]="$value"
+    done <"$file"
+
+    local -A legacy_palette=(
+        [background]=bg [dark_background]=dark_bg [darker_background]=darker_bg
+        [lighter_background]=lighter_bg [foreground]=fg [dark_foreground]=dark_fg
+        [light_foreground]=light_fg [bright_foreground]=bright_fg
+    )
+    for key in "${!legacy_palette[@]}"; do _theme_alias "$key" "${legacy_palette[$key]}"; done
+
+    _theme_alias background color0
+    _theme_alias foreground color7
+    [[ -n ${THEME_COLORS[background]:-} ]] && THEME_COLORS[color0]="${THEME_COLORS[background]}"
+    [[ -n ${THEME_COLORS[foreground]:-} ]] && THEME_COLORS[color7]="${THEME_COLORS[foreground]}"
+
+    local -A legacy_ansi=(
+        [red]=color1 [green]=color2 [yellow]=color3 [blue]=color4 [magenta]=color5
+        [cyan]=color6 [bright_red]=color9 [bright_green]=color10
+        [bright_yellow]=color11 [bright_blue]=color12 [bright_magenta]=color13
+        [bright_cyan]=color14
+    )
+    for key in "${!legacy_ansi[@]}"; do _theme_alias "$key" "${legacy_ansi[$key]}"; done
+    _theme_alias magenta purple
+    _theme_alias bright_magenta bright_purple
+
+    _theme_alias light_foreground color7
+    _theme_alias light_foreground foreground
+    _theme_alias bright_foreground color15
+    _theme_alias bright_foreground foreground
+    THEME_COLORS[cursor]="${THEME_COLORS[bright_foreground]:-}"
+    _theme_alias lighter_background color0
+    _theme_alias lighter_background background
+    _theme_alias dark_foreground color8
+    _theme_alias dark_foreground foreground
+    _theme_alias muted color8
+    _theme_alias muted dark_foreground
+    _theme_alias selection selection_background
+    _theme_alias selection color8
+    _theme_alias selection color0
+    _theme_alias selection background
+    _theme_alias selection_background selection
+    _theme_alias selection_foreground bright_foreground
+    _theme_alias orange yellow
+    # Omarchy leaves {{ accent }} raw for themes that predate it; the shell
+    # needs a value, and blue is what Omarchy's own consumers fall back to.
+    _theme_alias accent blue
+    _theme_derive brown orange "#000000" 50%
+    _theme_derive dark_background background "#000000" 25%
+    _theme_derive darker_background background "#000000" 50%
+    for key in red yellow green cyan blue magenta; do
+        _theme_derive "bright_$key" "$key" "#ffffff" 20%
+    done
+    _theme_alias purple magenta
+    _theme_alias bright_purple bright_magenta
+
+    local -A ansi=(
+        [color0]=background [color1]=red [color2]=green [color3]=yellow
+        [color4]=blue [color5]=magenta [color6]=cyan [color7]=foreground
+        [color8]=muted [color9]=bright_red [color10]=bright_green
+        [color11]=bright_yellow [color12]=bright_blue [color13]=bright_magenta
+        [color14]=bright_cyan [color15]=bright_foreground
+    )
+    for key in "${!ansi[@]}"; do _theme_alias "$key" "${ansi[$key]}"; done
+    for key in "${!legacy_palette[@]}"; do
+        [[ -n ${THEME_COLORS[$key]:-} ]] && THEME_COLORS[${legacy_palette[$key]}]="${THEME_COLORS[$key]}"
+    done
+
+    # Mode precedence: mode, legacy theme_type, light.mode marker, background
+    # luminance, dark.
+    _theme_alias mode theme_type
+    if [[ -z ${THEME_COLORS[mode]:-} ]]; then
+        bg="${THEME_COLORS[background]:-}"
+        if [[ -f $(dirname "$file")/light.mode ]]; then
+            THEME_COLORS[mode]=light
+        elif [[ $bg =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+            lum=$((16#${bg:1:2} + 16#${bg:3:2} + 16#${bg:5:2}))
+            if ((lum > 382)); then THEME_COLORS[mode]=light; else THEME_COLORS[mode]=dark; fi
+        else
+            THEME_COLORS[mode]=dark
+        fi
+    fi
+    THEME_COLORS[mode]="${THEME_COLORS[mode],,}"
+    [[ ${THEME_COLORS[mode]} == light ]] || THEME_COLORS[mode]=dark
+    THEME_COLORS[theme_type]="${THEME_COLORS[mode]}"
+
+    # Shell tokens: numbers must be numbers (they land unquoted in shell.json).
+    for key in "${!THEME_TOKEN_DEFAULTS[@]}"; do
+        value="${THEME_COLORS[$key]:-}"
+        if [[ -n $value && $key != font_family && $key != font_mono && ! $value =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            warn "colors.toml: $key must be a number, using ${THEME_TOKEN_DEFAULTS[$key]}"
+            value=""
+        fi
+        [[ -n $value ]] || THEME_COLORS[$key]="${THEME_TOKEN_DEFAULTS[$key]}"
+    done
+    # Remove keys that resolved to nothing (a theme without e.g. red).
+    for key in "${!THEME_COLORS[@]}"; do
+        [[ -n ${THEME_COLORS[$key]} ]] || unset "THEME_COLORS[$key]"
+    done
+    return 0
+}
+
+# theme_colors_valid FILE — the minimum a theme needs to render: hex
+# background and foreground after alias resolution.
+theme_colors_valid() {
+    theme_colors_load "$1" 2>/dev/null || return 1
+    [[ ${THEME_COLORS[background]:-} =~ ^#[0-9A-Fa-f]{6}$ && ${THEME_COLORS[foreground]:-} =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+# --- template rendering -----------------------------------------------------
+
+_THEME_MIX_RE='\{\{[[:space:]]*mix(_strip|_rgb)?[[:space:]]+[A-Za-z0-9_]+[[:space:]]+[A-Za-z0-9_]+[[:space:]]+[0-9]+([.][0-9]+)?%?[[:space:]]*\}\}'
+_THEME_GRADIENT_RE='\{\{[[:space:]]*(hypr_gradient|gradient_start|shell_gradient)[[:space:]]+[^}]+[[:space:]]*\}\}'
+
+_theme_trim() {
+    local v="$1"
+    v="${v#"${v%%[![:space:]]*}"}"
+    REPLY="${v%"${v##*[![:space:]]}"}"
+}
+
+_theme_resolve_ref() { # REF [FALLBACK] — palette key, else fallback key, else verbatim
+    if [[ -n ${THEME_COLORS[$1]+_} ]]; then
+        REPLY="${THEME_COLORS[$1]}"
+    elif [[ -n ${2:-} && -n ${THEME_COLORS[$2]+_} ]]; then
+        REPLY="${THEME_COLORS[$2]}"
+    else
+        REPLY="${2:-$1}"
+    fi
+}
+
+_theme_parse_gradient() { # SPEC — sets GRADIENT_COLORS / GRADIENT_ANGLE
+    local part
+    local -a parts
+    GRADIENT_COLORS=()
+    GRADIENT_ANGLE=""
+    read -ra parts <<<"$1"
+    for part in "${parts[@]}"; do
+        if [[ $part =~ ^-?[0-9]+([.][0-9]+)?deg$ ]]; then
+            GRADIENT_ANGLE="${part%deg}"
+        else
+            _theme_trim "$part"
+            [[ -n ${THEME_COLORS[$REPLY]+_} ]] && REPLY="${THEME_COLORS[$REPLY]}"
+            GRADIENT_COLORS+=("$REPLY")
+        fi
+    done
+}
+
+_theme_shell_hex() { # COLOR — first #rrggbb of hex / rgb() / rgba() / 0xAARRGGBB
+    local color="$1" r g b
+    [[ -n ${THEME_COLORS[$color]+_} ]] && color="${THEME_COLORS[$color]}"
+    if [[ $color =~ ^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$ ]]; then
+        REPLY="#${color:1:6}"
+    elif [[ $color =~ ^[Rr][Gg][Bb][Aa]?\(([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?\)$ ]]; then
+        REPLY="#${BASH_REMATCH[1]}"
+    elif [[ $color =~ ^[Rr][Gg][Bb][Aa]?\(([0-9]+),([0-9]+),([0-9]+)(,[0-9.]+)?\)$ ]]; then
+        r=${BASH_REMATCH[1]} g=${BASH_REMATCH[2]} b=${BASH_REMATCH[3]}
+        ((r > 255)) && r=255
+        ((g > 255)) && g=255
+        ((b > 255)) && b=255
+        printf -v REPLY '#%02x%02x%02x' "$r" "$g" "$b"
+    elif [[ $color =~ ^0x[0-9A-Fa-f]{8}$ ]]; then
+        REPLY="#${color:4:6}"
+    else
+        REPLY="$color"
+    fi
+}
+
+_theme_gradient_token() { # TOKEN — value for a gradient helper token, in REPLY
+    local content fn key fallback spec i value
+    content="${1#\{\{}"
+    content="${content%\}\}}"
+    read -r fn key fallback <<<"$content"
+    _theme_resolve_ref "$key" "${fallback:-}"
+    spec="$REPLY"
+    _theme_parse_gradient "$spec"
+    case "$fn" in
+    hypr_gradient)
+        if ((${#GRADIENT_COLORS[@]} == 0)); then
+            REPLY="\"$spec\""
+        elif ((${#GRADIENT_COLORS[@]} == 1)); then
+            REPLY="\"${GRADIENT_COLORS[0]}\""
+        else
+            value='{ colors = {'
+            for i in "${!GRADIENT_COLORS[@]}"; do
+                ((i > 0)) && value+=','
+                value+=" \"${GRADIENT_COLORS[$i]}\""
+            done
+            value+=' }'
+            [[ -n $GRADIENT_ANGLE ]] && value+=", angle = $GRADIENT_ANGLE"
+            REPLY="$value }"
+        fi
+        ;;
+    gradient_start)
+        if ((${#GRADIENT_COLORS[@]} == 0)); then _theme_shell_hex "$spec"; else _theme_shell_hex "${GRADIENT_COLORS[0]}"; fi
+        ;;
+    shell_gradient)
+        if ((${#GRADIENT_COLORS[@]} == 0)); then
+            REPLY="$spec"
+        else
+            value="${GRADIENT_COLORS[*]}"
+            [[ -n $GRADIENT_ANGLE ]] && value+=" ${GRADIENT_ANGLE}deg"
+            REPLY="$value"
+        fi
+        ;;
+    *) return 1 ;;
+    esac
+}
+
+# theme_template_files — user templates first, then stock; for each output
+# name the first one wins, so a user template overrides the stock one.
+theme_template_files() {
+    local tpl out
+    local -A seen=()
+    shopt -s nullglob
+    for tpl in "$THEME_USER_TEMPLATES_DIR"/*.tpl "$THEME_TEMPLATES_DIR"/*.tpl; do
+        out="${tpl##*/}"
+        out="${out%.tpl}"
+        [[ -n ${seen[$out]:-} ]] && continue
+        seen[$out]=1
+        printf '%s\n' "$tpl"
+    done
+    shopt -u nullglob
+}
+
+# theme_render_templates DIR — render every template into DIR from
+# DIR/colors.toml. A file the theme already ships is never overwritten, so a
+# hand-written themes/<name>/foot.ini wins over the template.
+theme_render_templates() {
+    local dir="$1" key value token tpl out content fn a b amount
+    local -a templates pairs=()
+    local -A seen=()
+    theme_colors_load "$dir/colors.toml" || return 1
+    mapfile -t templates < <(theme_template_files)
+    ((${#templates[@]} > 0)) || return 0
+
+    local table mixes
+    table="$(mktemp)"
+    mixes="$(mktemp)"
+    for key in "${!THEME_COLORS[@]}"; do
+        value="${THEME_COLORS[$key]}"
+        printf '{{ %s }}\037%s\n{{ %s_strip }}\037%s\n' "$key" "$value" "$key" "${value#\#}" >>"$table"
+        if [[ $value =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+            printf '{{ %s_rgb }}\037%d,%d,%d\n' "$key" "$((16#${value:1:2}))" "$((16#${value:3:2}))" "$((16#${value:5:2}))" >>"$table"
+        fi
+    done
+
+    while IFS= read -r token; do
+        [[ -n ${seen[$token]:-} ]] && continue
+        seen[$token]=1
+        if [[ $token =~ ^$_THEME_MIX_RE$ ]]; then
+            content="${token#\{\{}"
+            content="${content%\}\}}"
+            read -r fn a b amount <<<"$content"
+            _theme_mix "${THEME_COLORS[$a]:-}" "${THEME_COLORS[$b]:-}" "$amount" || continue
+            case "$fn" in
+            mix) value="$REPLY" ;;
+            mix_strip) value="${REPLY#\#}" ;;
+            mix_rgb) value="$((16#${REPLY:1:2})),$((16#${REPLY:3:2})),$((16#${REPLY:5:2}))" ;;
+            *) continue ;;
+            esac
+            printf '%s\037%s\n' "$token" "$value" >>"$mixes"
+        elif _theme_gradient_token "$token"; then
+            printf '%s\037%s\n' "$token" "$REPLY" >>"$mixes"
+        fi
+    done < <(grep -hEo "$_THEME_MIX_RE|$_THEME_GRADIENT_RE" "${templates[@]}" 2>/dev/null || true)
+
+    for tpl in "${templates[@]}"; do
+        out="${tpl##*/}"
+        out="${out%.tpl}"
+        [[ -e $dir/$out ]] || pairs+=("$tpl" "$dir/$out")
+    done
+
+    if ((${#pairs[@]} > 0)); then
+        # One process renders every template: each {{ … }} span is looked up
+        # whole; unknown spans are left as they are.
+        awk -v table="$table" -v mixes="$mixes" '
+            function render(line,    out, open, span, token) {
+                out = ""
+                while ((open = index(line, "{{")) > 0) {
+                    span = index(substr(line, open + 2), "}}")
+                    if (span == 0) break
+                    token = substr(line, open, span + 3)
+                    if (token in values) {
+                        out = out substr(line, 1, open - 1) values[token]
+                        line = substr(line, open + length(token))
+                    } else {
+                        out = out substr(line, 1, open)
+                        line = substr(line, open + 1)
+                    }
+                }
+                return out line
+            }
+            function load(file,    row, sep) {
+                while ((getline row < file) > 0) {
+                    sep = index(row, "\037")
+                    values[substr(row, 1, sep - 1)] = substr(row, sep + 1)
+                }
+                close(file)
+            }
+            BEGIN {
+                load(table)
+                load(mixes)
+                for (i = 1; i < ARGC; i += 2) {
+                    tpl = ARGV[i]
+                    out = ARGV[i + 1]
+                    printf "" > out
+                    while ((getline line < tpl) > 0) print render(line) > out
+                    close(tpl)
+                    close(out)
+                }
+                exit
+            }
+        ' "${pairs[@]}"
+    fi
+    rm -f "$table" "$mixes"
+    # A key the theme lacks leaves its {{ placeholder }} behind; name the file
+    # instead of letting the app fail to parse it later.
+    local i
+    for ((i = 1; i < ${#pairs[@]}; i += 2)); do
+        grep -q '{{' "${pairs[i]}" && warn "unrendered placeholder left in ${pairs[i]##*/}"
+    done
+    return 0
+}
+
+# --- staging ----------------------------------------------------------------
+
+# theme_denied_file PATH — true when an installed (git-cloned) theme may not
+# ship PATH. See THEME_INSTALLED_DENIED.
+theme_denied_file() {
+    local path="$1" name="${1##*/}" d
+    [[ -L $path ]] && return 0
+    case "$name" in *.lua | *.sh) return 0 ;; esac
+    for d in "${THEME_INSTALLED_DENIED[@]}"; do
+        [[ $name == "$d" ]] && return 0
+    done
+    [[ -f $path && -x $path ]]
+}
+
+# theme_from_repo DIR — `haseen theme install` clones, so a .git directory
+# means a stranger's contents. A plain directory or a symlink to the user's
+# own working copy is theirs and stages in full.
+theme_from_repo() { [[ ! -L $1 && -d $1/.git ]]; }
+
+# theme_denied_list DIR — relative paths a repo theme would have dropped.
+# Dotfiles (.git, .github) are skipped: staging never copies them.
+theme_denied_list() {
+    local root="$1"
+    _theme_walk_denied() {
+        local e
+        for e in "$1"/*; do
+            [[ -e $e || -L $e ]] || continue
+            if theme_denied_file "$e"; then
+                printf '%s\n' "${e#"$root"/}"
+            elif [[ -d $e ]]; then
+                _theme_walk_denied "$e"
+            fi
+        done
+    }
+    _theme_walk_denied "$root"
+    unset -f _theme_walk_denied
+}
+
+# _theme_copy_filtered SRC DEST — copy without following symlinks and without
+# denied files, at any depth. Dotfiles (.git, .github) are not theme content.
+_theme_copy_filtered() {
+    local src="$1" dest="$2" e name
+    mkdir -p "$dest"
+    for e in "$src"/*; do
+        [[ -e $e || -L $e ]] || continue
+        name="${e##*/}"
+        theme_denied_file "$e" && continue
+        if [[ -d $e ]]; then
+            _theme_copy_filtered "$e" "$dest/$name"
+        else
+            cp -- "$e" "$dest/$name"
+        fi
+    done
+}
+
+# theme_stage NAME — build THEME_NEXT_PATH: stock theme, then the user theme
+# on top (filtered when it came from a repo), then rendered templates. Prints
+# dropped files on stderr. Fails, removing the staging dir, without colors.toml.
+theme_stage() {
+    local name="$1" stock="$THEME_STOCK_DIR/$1" user="$THEME_USER_DIR/$1" dropped
+    rm -rf "$THEME_NEXT_PATH"
+    mkdir -p "$THEME_NEXT_PATH"
+    [[ -d $stock ]] && cp -r -- "$stock"/. "$THEME_NEXT_PATH"/
+    if theme_from_repo "$user"; then
+        _theme_copy_filtered "$user" "$THEME_NEXT_PATH"
+        dropped="$(theme_denied_list "$user" | grep -viE '(^|/)(readme|license|changelog)[^/]*$|\.(md|txt)$' || true)"
+        [[ -z $dropped ]] || warn "ignored in $user (installed themes cannot ship code or terminal configs): $(echo "$dropped" | tr '\n' ' ')"
+    elif [[ -d $user ]]; then
+        cp -r -- "$user"/. "$THEME_NEXT_PATH"/
+        rm -rf "$THEME_NEXT_PATH/.git"
+    fi
+    if ! theme_colors_valid "$THEME_NEXT_PATH/colors.toml"; then
+        rm -rf "$THEME_NEXT_PATH"
+        warn "theme '$name' has no usable colors.toml (needs hex background and foreground)"
+        return 1
+    fi
+    theme_render_templates "$THEME_NEXT_PATH"
+}
+
+# theme_swap NAME — move the staged theme into place and record its name. The
+# old tree is moved aside first, so current/theme is missing only between two
+# renames, never half-written.
+theme_swap() {
+    local old="$THEME_CURRENT_DIR/old-theme"
+    rm -rf "$old"
+    [[ -e $THEME_CURRENT_PATH ]] && mv -- "$THEME_CURRENT_PATH" "$old"
+    mv -- "$THEME_NEXT_PATH" "$THEME_CURRENT_PATH"
+    rm -rf "$old"
+    printf '%s\n' "$1" >"$THEME_NAME_FILE.tmp"
+    mv -- "$THEME_NAME_FILE.tmp" "$THEME_NAME_FILE"
+}
+
+# theme_backgrounds NAME — candidate images: ~/.config/haseen/backgrounds/<name>/
+# then current/theme/backgrounds/, each sorted.
+theme_backgrounds() {
+    find -L "$THEME_USER_BACKGROUNDS_DIR/$1/" "$THEME_CURRENT_PATH/backgrounds/" -maxdepth 1 -type f \
+        \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' \) \
+        -print 2>/dev/null | LC_ALL=C sort
+}
+
+# theme_link_background NAME — keep the current background when it belongs to
+# this theme, else the first candidate; no candidate removes the link (the
+# shell then paints the theme background colour).
+theme_link_background() {
+    local current first bg
+    current="$(readlink "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+    first=""
+    while IFS= read -r bg; do
+        [[ -n $bg ]] || continue
+        [[ -z $first ]] && first="$bg"
+        if [[ $bg == "$current" ]]; then return 0; fi
+    done < <(theme_backgrounds "$1")
+    if [[ -n $first ]]; then
+        ln -nsf -- "$first" "$THEME_BACKGROUND_LINK"
+    else
+        rm -f "$THEME_BACKGROUND_LINK"
+    fi
+}
+
+# --- post-set: retint what is running ---------------------------------------
+
+# theme_retint_foot — foot does not reload its config, so push the palette to
+# every running foot terminal as OSC sequences (omarchy-theme-set-foot).
+theme_retint_foot() {
+    local osc="" key i pid child tty
+    theme_colors_load "$THEME_CURRENT_PATH/colors.toml" || return 0
+    for key in 10:foreground 11:background 12:cursor 17:selection_background 19:selection_foreground; do
+        [[ -n ${THEME_COLORS[${key#*:}]:-} ]] && osc+="\033]${key%%:*};${THEME_COLORS[${key#*:}]}\007"
+    done
+    for i in {0..15}; do
+        [[ -n ${THEME_COLORS[color$i]:-} ]] && osc+="\033]4;$i;${THEME_COLORS[color$i]}\007"
+    done
+    for pid in $(pgrep -x foot); do
+        for child in $(pgrep -P "$pid"); do
+            tty="$(readlink "/proc/$child/fd/1" 2>/dev/null || true)"
+            [[ $tty == /dev/pts/* ]] && printf '%b' "$osc" >"$tty"
+        done
+    done
+    return 0
+}
+
+_theme_running() { pgrep -x "$1" >/dev/null 2>&1; }
+
+# theme_post_set DIR — reload only what is running; every action goes through
+# `run`, so --dry-run prints them. DIR holds the new theme's colors.toml and
+# icons.theme (the source theme in a dry run, which renders nothing).
+# HASEEN_THEME_HEADLESS=1 (installer, chroot, tests) skips this entirely.
+theme_post_set() {
+    local dir="$1" mode=dark icons=""
+    [[ ${HASEEN_THEME_HEADLESS:-0} == 1 ]] && return 0
+    if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && have hyprctl; then
+        run hyprctl reload || warn "hyprctl reload failed"
+    fi
+    if _theme_running foot; then run theme_retint_foot || warn "foot retint failed"; fi
+    if _theme_running kitty; then run pkill -USR1 -x kitty || warn "kitty reload failed"; fi
+    if _theme_running ghostty; then run pkill -USR2 -x ghostty || warn "ghostty reload failed"; fi
+    if _theme_running btop; then run pkill -USR2 -x btop || warn "btop reload failed"; fi
+    if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]] && have gsettings; then
+        theme_colors_load "$dir/colors.toml" && mode="${THEME_COLORS[mode]}"
+        [[ $mode == light ]] || mode=dark
+        run gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" || warn "gsettings failed"
+        [[ -r $dir/icons.theme ]] && icons="$(<"$dir/icons.theme")"
+        if [[ $icons =~ ^[A-Za-z0-9._+-]+$ && -d $(sysroot_path "/usr/share/icons/$icons") ]]; then
+            run gsettings set org.gnome.desktop.interface icon-theme "$icons" || warn "gsettings failed"
+        fi
+    fi
+    return 0
+}
+
+# --- git URLs (omarchy-git-url-check) ---------------------------------------
+
+# theme_git_url_ok URL — refuse git options, transport helpers (ext::) and
+# schemes git should not clone from.
+theme_git_url_ok() {
+    local url="$1" scheme t
+    [[ -n $url ]] || return 1
+    [[ $url == -* || $url =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*:: ]] && return 1
+    if [[ $url =~ ^([A-Za-z0-9][A-Za-z0-9+.-]*):// ]]; then
+        scheme="${BASH_REMATCH[1]}"
+        for t in ssh git git+ssh ssh+git http https file; do
+            [[ $scheme == "$t" ]] && return 0
+        done
+        return 1
+    fi
+    return 0
+}
+
+# theme_name_from_url URL — Omarchy rule: basename without .git, minus an
+# omarchy-/haseen- prefix and -theme suffix. Sets REPLY; 1 when unusable.
+theme_name_from_url() {
+    local path="$1" name
+    [[ $path != *"://"* && $path == *:* && ${path%%:*} != */* ]] && path="${path#*:}"
+    path="${path%/}"
+    name="$(basename -- "$path" .git | sed -E 's/^(omarchy|haseen)-//; s/-theme$//' | tr '[:upper:]' '[:lower:]')"
+    REPLY="$name"
+    [[ $name =~ $_THEME_NAME_RE ]]
+}

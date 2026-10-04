@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# haseen:summary Run or install user hooks in ~/.config/haseen/hooks
+# haseen:args run <event> [args...] | install <event> <script> [--dry-run] [--yes]
+#
+# Adapted from Omarchy bin/omarchy-hook (MIT, Copyright (c) David Heinemeier
+# Hansson).
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+HOOKS_DIR="$HASEEN_USER_CONFIG/hooks"
+# The events haseen fires (docs/architecture.md §7). `run` accepts any valid
+# name so a newer caller never breaks; `install` only these, to catch typos.
+HOOK_EVENTS=(theme-set post-update post-boot layer-applied)
+
+usage() {
+    cat <<EOF
+Usage: haseen hook run <event> [args...] [--dry-run]
+       haseen hook install <event> <script> [--dry-run] [--yes]
+
+run      runs $HOOKS_DIR/<event> and then every file in
+         $HOOKS_DIR/<event>.d/ (sorted, *.sample skipped) with bash,
+         passing the arguments. A failing hook is reported, never fatal.
+install  copies <script> to $HOOKS_DIR/<event>.d/<script name>.
+
+Events: ${HOOK_EVENTS[*]}
+EOF
+}
+
+# Hook names become file names: a slash would add directory levels and a bare
+# . or .. would name the directory itself or its parent.
+valid_event() { [[ -n $1 && $1 != */* && $1 != . && $1 != .. && $1 != -* ]]; }
+
+hook_run() {
+    local event="$1" hook
+    shift
+    local path="$HOOKS_DIR/$event"
+    if [[ -f $path ]]; then
+        run bash "$path" "$@" || echo "Hook failed: $path" >&2
+    fi
+    if [[ -d $path.d ]]; then
+        for hook in "$path.d"/*; do
+            [[ -f $hook && $hook != *.sample ]] || continue
+            run bash "$hook" "$@" || echo "Hook failed: $hook" >&2
+        done
+    fi
+    return 0
+}
+
+hook_install() {
+    local event="$1" script="$2" e known=false dest
+    for e in "${HOOK_EVENTS[@]}"; do [[ $e == "$event" ]] && known=true; done
+    if ! $known; then
+        echo "Error: unknown event '$event' (events: ${HOOK_EVENTS[*]})" >&2
+        exit 2
+    fi
+    [[ -f $script && -r $script ]] || die "not a readable file: $script"
+    dest="$HOOKS_DIR/$event.d/${script##*/}"
+    if [[ -e $dest ]]; then
+        if cmp -s -- "$script" "$dest"; then
+            info "already installed: $dest"
+            return 0
+        fi
+        confirm "Replace $dest?" || die "aborted"
+    fi
+    run install -Dm0755 -- "$script" "$dest"
+    info "installed $event hook: $dest"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 2)) || {
+    usage >&2
+    exit 2
+}
+verb="$1"
+event="$2"
+shift 2
+if ! valid_event "$event"; then
+    echo "Error: invalid hook name: $event" >&2
+    exit 2
+fi
+
+case "$verb" in
+run) hook_run "$event" "$@" ;;
+install)
+    if (($# != 1)); then
+        usage >&2
+        exit 2
+    fi
+    hook_install "$event" "$1"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

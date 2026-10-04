@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# haseen:summary Render a theme into ~/.local/state/haseen/current/theme and reload apps
+# haseen:args <name> [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-theme-set (MIT, Copyright (c) David
+# Heinemeier Hansson): staging dir + atomic swap, installed-theme denylist,
+# post-set retint of running apps, theme-set hook.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen theme set <name> [--dry-run]
+
+Stage the theme (stock theme, then ~/.config/haseen/themes/<name> on top),
+render share/haseen/themed/*.tpl and ~/.config/haseen/themed/*.tpl into it,
+swap it into ~/.local/state/haseen/current/theme, then reload what is running
+(Hyprland, foot, kitty, ghostty, btop, GTK colour scheme) and run the
+theme-set hook. Names are case-insensitive; spaces become dashes.
+
+HASEEN_THEME_HEADLESS=1 skips the reloads and the hook.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if (($# != 1)); then
+    usage >&2
+    exit 2
+fi
+if ! theme_normalize_name "$1"; then
+    echo "Error: invalid theme name: $1" >&2
+    exit 2
+fi
+name="$REPLY"
+require_not_root
+theme_exists "$name" || die "theme '$name' does not exist (see: haseen theme list)"
+
+if $DRY_RUN; then
+    # Nothing is staged, so plan from the sources the staging would read.
+    src="$THEME_STOCK_DIR/$name"
+    user="$THEME_USER_DIR/$name"
+    [[ -f $user/colors.toml && ! -L $user/colors.toml ]] && src="$user"
+    theme_colors_valid "$src/colors.toml" ||
+        die "theme '$name' has no usable colors.toml (needs hex background and foreground)"
+    echo "DRYRUN: stage $name into $THEME_NEXT_PATH"
+    if theme_from_repo "$user"; then
+        while IFS= read -r f; do
+            [[ -n $f ]] && echo "DRYRUN: drop from installed theme: $f"
+        done < <(theme_denied_list "$user")
+    fi
+    while IFS= read -r tpl; do
+        out="${tpl##*/}"
+        out="${out%.tpl}"
+        shipped=false
+        [[ -e $THEME_STOCK_DIR/$name/$out ]] && shipped=true
+        if [[ -e $user/$out ]] && { ! theme_from_repo "$user" || ! theme_denied_file "$user/$out"; }; then
+            shipped=true
+        fi
+        if $shipped; then
+            echo "DRYRUN: keep $out shipped by the theme"
+        else
+            echo "DRYRUN: render $tpl -> $THEME_NEXT_PATH/$out"
+        fi
+    done < <(theme_template_files)
+    echo "DRYRUN: swap $THEME_NEXT_PATH -> $THEME_CURRENT_PATH"
+    echo "DRYRUN: write $THEME_NAME_FILE: $name"
+    echo "DRYRUN: link $THEME_BACKGROUND_LINK to the theme's first background"
+    theme_post_set "$src"
+    [[ ${HASEEN_THEME_HEADLESS:-0} == 1 ]] || run haseen-hook run theme-set "$name"
+    exit 0
+fi
+
+mkdir -p "$THEME_CURRENT_DIR"
+# Serialize theme changes: they share the staging dir and the current links.
+exec 9>"$THEME_CURRENT_DIR/.theme-set.lock"
+flock 9
+theme_stage "$name" || exit 1
+theme_swap "$name"
+theme_link_background "$name"
+flock -u 9
+exec 9>&-
+
+info "theme: $name"
+theme_post_set "$THEME_CURRENT_PATH"
+[[ ${HASEEN_THEME_HEADLESS:-0} == 1 ]] || run haseen-hook run theme-set "$name"
+exit 0

@@ -1,0 +1,21 @@
+{
+  "mode": "{{ mode }}",
+  "background": "{{ background }}",
+  "surface": "{{ mix background foreground 6% }}",
+  "surfaceAlt": "{{ mix background foreground 12% }}",
+  "foreground": "{{ foreground }}",
+  "muted": "{{ muted }}",
+  "accent": "{{ accent }}",
+  "accentFg": "{{ background }}",
+  "urgent": "{{ red }}",
+  "warning": "{{ yellow }}",
+  "success": "{{ green }}",
+  "border": "{{ mix background foreground 20% }}",
+  "selection": "{{ selection }}",
+  "fontFamily": "{{ font_family }}",
+  "fontMono": "{{ font_mono }}",
+  "fontSize": {{ font_size }},
+  "radius": {{ radius }},
+  "gap": {{ gap }},
+  "borderWidth": {{ border_width }}
+}

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# haseen:summary Install a theme (Omarchy colors.toml format) from a git repository and apply it
+# haseen:args <git-url> [--dry-run] [--yes]
+#
+# Adapted from Omarchy bin/omarchy-theme-install and bin/omarchy-git-url-check
+# (MIT, Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen theme install <git-url> [--dry-run] [--yes]
+
+Clone the repository into ~/.config/haseen/themes/<name> (the name is the
+repository name without an omarchy-/haseen- prefix or -theme suffix), check
+that it carries a usable colors.toml, then apply it with \`haseen theme set\`.
+
+An installed theme is held to a denylist when it is applied: Lua, shell
+scripts, executables, symlinks and terminal/editor configs that name a program
+(${THEME_INSTALLED_DENIED[*]}) are dropped and
+generated from the templates instead. A theme you wrote yourself (no .git) is
+never replaced by an install.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if (($# != 1)); then
+    usage >&2
+    exit 2
+fi
+url="$1"
+require_not_root
+theme_git_url_ok "$url" || die "'$url' names a git option, a transport helper or an unsupported scheme, not a repository"
+theme_name_from_url "$url" || die "'$url' does not give a usable theme name"
+name="$REPLY"
+dest="$THEME_USER_DIR/$name"
+
+if [[ -e $dest || -L $dest ]]; then
+    theme_from_repo "$dest" || die "$dest exists and was not installed from git; refusing to replace your own theme"
+    confirm "Replace the installed theme '$name'?" || die "aborted"
+fi
+
+if $DRY_RUN; then
+    run git clone -- "$url" "$dest"
+    echo "DRYRUN: check $dest/colors.toml (hex background and foreground)"
+    run haseen-theme-set "$name"
+    exit 0
+fi
+
+require_cmds git
+mkdir -p "$THEME_USER_DIR"
+# Clone beside the destination, validate, then rename: a failed or invalid
+# clone never replaces a working theme.
+tmp="$(mktemp -d "$THEME_USER_DIR/.install-XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+git clone -- "$url" "$tmp/$name" || die "failed to clone $url"
+colors="$tmp/$name/colors.toml"
+if [[ ! -f $colors || -L $colors ]] || ! theme_colors_valid "$colors"; then
+    die "$url is not a theme: it needs a colors.toml with hex background and foreground"
+fi
+# The denylist is applied by `haseen theme set` at staging, which names every
+# dropped file; filtering there also covers later `git pull`s.
+rm -rf "$dest"
+mv -- "$tmp/$name" "$dest"
+info "installed $name in $dest"
+haseen-theme-set "$name"

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# haseen:summary List stock and user themes
+# haseen:args
+#
+# Adapted from Omarchy bin/omarchy-theme-list (MIT, Copyright (c) David
+# Heinemeier Hansson). Prints the names `haseen theme set` takes, one per line.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: haseen theme list
+
+Stock themes ($THEME_STOCK_DIR) and user themes ($THEME_USER_DIR),
+one name per line, sorted.
+USAGE
+}
+
+parse_common_flags "$@"
+if ((${#REST[@]} > 0)); then
+    usage >&2
+    exit 2
+fi
+theme_names

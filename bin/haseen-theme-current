@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# haseen:summary Print the name of the applied theme
+# haseen:args
+#
+# Adapted from Omarchy bin/omarchy-theme-current (MIT, Copyright (c) David
+# Heinemeier Hansson).
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: haseen theme current
+
+Prints the theme name from $THEME_NAME_FILE.
+Exits 1 when no theme has been set.
+USAGE
+}
+
+parse_common_flags "$@"
+if ((${#REST[@]} > 0)); then
+    usage >&2
+    exit 2
+fi
+theme_current_name || die "no theme set (try: haseen theme set $THEME_DEFAULT)"
