@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# haseen:summary List, add or remove the registries plugins are installed from
+# haseen:args [list|add NAME URL|remove NAME|sync] [--dry-run]
+#
+# Adapted from DankMaterialShell core/internal/registries (MIT, Copyright (c)
+# 2025 Avenge Media LLC): a registry is a git repository whose plugins/
+# directory holds one JSON file per plugin.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin registry [list|add NAME URL|remove NAME|sync] [--dry-run]
+
+  list     the sources, with how many plugins each one indexes
+  add      add a source (NAME is [a-z0-9-], URL is https:// or git@host:path)
+  remove   drop a source you added
+  sync     fetch every source now (install and search do this themselves)
+
+The built-in source is "$REGISTRY_DEFAULT_NAME" ($REGISTRY_DEFAULT_URL);
+its plugins are DankMaterialShell plugins, which haseen loads through the
+compatibility adapter.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+action="${1:-list}"
+
+case "$action" in
+list)
+    while IFS=$'\t' read -r name url; do
+        count="$(registry_entries | jq -c --arg s "$name" 'select(.source == $s)' | grep -c . || true)"
+        printf '%-12s %-6s %s\n' "$name" "$count" "$url"
+    done < <(registry_sources)
+    ;;
+sync)
+    registry_sync "${2:-}"
+    info "registries up to date"
+    ;;
+add)
+    (($# == 3)) || {
+        usage >&2
+        exit 2
+    }
+    registry_name_ok "$2" || die "a source name is lower-case letters, digits and dashes: $2"
+    registry_url_ok "$3" || die "a source URL must be https:// or git@host:path, with no credentials"
+    [[ $2 == "$REGISTRY_DEFAULT_NAME" ]] && die "$2 is the built-in source"
+    current="$([[ -f $REGISTRY_CONFIG ]] && cat "$REGISTRY_CONFIG" || echo '{"sources":[]}')"
+    jq --arg n "$2" --arg u "$3" '.sources = ((.sources // []) | map(select(.name != $n)) + [{name: $n, url: $u}])' \
+        <<<"$current" | write_user_file "$REGISTRY_CONFIG"
+    info "added registry $2"
+    ;;
+remove)
+    (($# == 2)) || {
+        usage >&2
+        exit 2
+    }
+    [[ -f $REGISTRY_CONFIG ]] || die "no registry named $2"
+    jq -e --arg n "$2" '.sources[]? | select(.name == $n)' "$REGISTRY_CONFIG" >/dev/null ||
+        die "no registry named $2"
+    jq --arg n "$2" '.sources |= map(select(.name != $n))' "$REGISTRY_CONFIG" |
+        write_user_file "$REGISTRY_CONFIG"
+    run rm -rf "$(registry_clone_dir "$2")"
+    info "removed registry $2"
+    ;;
+-h | --help)
+    usage
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

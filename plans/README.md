@@ -40,3 +40,4 @@ Read `handoff.md` first.
 | 032 | haseen-sidecar: sampling daemon, capability-gated (sysusage moved off QML timers) | P1 | L | 005 021 027 | DONE 2026-10-05 (31 tests + Go tests; measured CPU drop) |
 | 033 | Omarchy seeds: hibernation (LUKS+btrfs rewrite), power profiles, speaker tuning, web apps, notification CLI, config seeds, three panels | P2 | L | 001 003 010 025 031 | DONE 2026-10-05 (398 tests; hibernation resume unproven, owner step) |
 | 034 | Wallpaper palettes: aether's extractor, seed cache, colors.toml themes | P2 | M | 004 032 | DONE 2026-10-05 (24 tests + Go tests; 0.55 s cold, 0.11 s cached) |
+| 035 | Plugin registry and lockfile (install, pin, reproduce, update) | P1 | M | 005 011 | DONE 2026-10-05 (48 tests; live install from the DMS registry) |

@@ -50,6 +50,7 @@ The owner's other repos:
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
 | Hibernation | `bin/haseen-hibernation-*`, `share/haseen/lib/hibernate.sh` | 033 |
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
+| Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
