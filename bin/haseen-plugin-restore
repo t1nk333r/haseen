@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# haseen:summary Install every plugin in the lockfile, at the pinned commit
+# haseen:args [--prune] [--dry-run] [--yes]
+#
+# Adapted from DankMaterialShell core/internal/plugins/manager_lockfile.go
+# RestoreFromLockfile (MIT, Copyright (c) 2025 Avenge Media LLC): clone each
+# repository, check out the pinned commit, and verify the plugin's own id
+# matches the key it was pinned under. This is how a second machine ends up
+# with exactly what the first one has.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin restore [--prune] [--dry-run] [--yes]
+
+Reads $PLUGIN_LOCKFILE and installs every plugin in it at the commit it names.
+
+  --prune   also remove installed plugins the lockfile does not mention
+EOF
+}
+
+prune=false
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --prune) prune=true ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 0)) || {
+    usage >&2
+    exit 2
+}
+
+[[ -f $PLUGIN_LOCKFILE ]] || die "no lockfile at $PLUGIN_LOCKFILE (haseen plugin lock)"
+lock="$(lockfile_read)"
+lockfile_check "$lock" || die "$PLUGIN_LOCKFILE is not usable"
+
+# One checkout per repository, at the commit the lockfile pins for it: two
+# plugins from one monorepo share a clone, so they cannot be at two commits.
+while IFS= read -r repo; do
+    url="$(jq -r .repo <<<"$repo")"
+    commit="$(jq -r .commit <<<"$repo")"
+    info "repository $url at ${commit:0:12}"
+    registry_fetch "$url" "$commit" >/dev/null
+done < <(jq -c '.repositories | to_entries[] | {repo: .key, commit: .value}' <<<"$lock")
+
+restored=0
+# One JSON object per line: a tab-separated line would collapse an empty
+# `path` into the next field, because tab is IFS whitespace.
+while IFS= read -r entry; do
+    id="$(jq -r .id <<<"$entry")"
+    url="$(jq -r .repo <<<"$entry")"
+    path="$(jq -r .path <<<"$entry")"
+    commit="$(jq -r .commit <<<"$entry")"
+    [[ -n $id ]] || continue
+    info "restoring $id at ${commit:0:12}"
+    registry_fetch "$url" "$commit" >/dev/null
+    registry_link "$id" "$url" "$path"
+    # A plugin must declare the id it was pinned under; `plugin validate`
+    # enforces exactly that (id == directory name), so a lockfile describing
+    # something else than what landed fails here.
+    $DRY_RUN || registry_validate "$id" ||
+        die "$url@${commit:0:12} is not the plugin '$id' this lockfile pins"
+    restored=$((restored + 1))
+done < <(jq -c '.plugins | to_entries[] | {id: .key, repo: .value.repo, path: (.value.path // ""), commit: .value.commit}' <<<"$lock")
+
+if $prune; then
+    while IFS= read -r dir; do
+        id="${dir##*/}"
+        [[ $id == .* ]] && continue
+        jq -e --arg id "$id" '.plugins[$id]' <<<"$lock" >/dev/null && continue
+        info "pruning $id (not in the lockfile)"
+        run rm -rf "$dir"
+    done < <(find "$PLUGIN_USER_DIR" -mindepth 1 -maxdepth 1 2>/dev/null || true)
+fi
+info "$restored plugin(s) restored"

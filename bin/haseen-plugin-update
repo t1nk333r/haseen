@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# haseen:summary Update an installed plugin and bump its pin in the lockfile
+# haseen:args [id|--all] [--dry-run] [--yes]
+#
+# Adapted from DankMaterialShell core/internal/plugins/manager.go Update (MIT,
+# Copyright (c) 2025 Avenge Media LLC). The plugin is validated after the new
+# commit is checked out; a plugin that stops validating is rolled back to the
+# commit the lockfile still holds.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin update [id|--all] [--dry-run] [--yes]
+
+Moves a pinned plugin to the newest commit of its repository and writes the new
+commit to $PLUGIN_LOCKFILE. Without an id, nothing happens: say --all to update
+every pinned plugin.
+EOF
+}
+
+all=false
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --all) all=true ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+if $all; then
+    (($# == 0)) || {
+        usage >&2
+        exit 2
+    }
+    mapfile -t ids < <(lockfile_read | jq -r '.plugins | keys[]')
+else
+    (($# == 1)) || {
+        usage >&2
+        exit 2
+    }
+    ids=("$1")
+fi
+((${#ids[@]} > 0)) || {
+    info "no pinned plugins"
+    exit 0
+}
+
+updated=0
+for id in "${ids[@]}"; do
+    entry="$(lockfile_entry "$id")"
+    [[ -n $entry ]] || die "$id is not in $PLUGIN_LOCKFILE (haseen plugin install $id)"
+    url="$(jq -r .repo <<<"$entry")"
+    path="$(jq -r .path <<<"$entry")"
+    old="$(jq -r .commit <<<"$entry")"
+
+    resolved="$(registry_fetch "$url")"
+    if [[ $resolved == "$old" ]]; then
+        info "$id is already at ${old:0:12}"
+        continue
+    fi
+    registry_link "$id" "$url" "$path"
+    if ! registry_validate "$id"; then
+        warn "$id does not validate at ${resolved:0:12}; rolling back to ${old:0:12}"
+        registry_fetch "$url" "$old" >/dev/null
+        registry_link "$id" "$url" "$path"
+        continue
+    fi
+    $DRY_RUN || lockfile_pin "$id" "$url" "$path" "$resolved"
+    info "$id ${old:0:12} -> ${resolved:0:12}"
+    updated=$((updated + 1))
+done
+$DRY_RUN || info "$updated plugin(s) updated"

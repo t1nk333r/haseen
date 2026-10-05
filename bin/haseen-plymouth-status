@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# haseen:summary What the boot splash is, and whether it will actually show
+# haseen:args
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/plymouth.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/plymouth.sh"
+
+parse_common_flags "$@"
+
+if ! plymouth_installed; then
+    echo "plymouth:  not installed"
+    exit 0
+fi
+
+printf 'theme:     %s\n' "$(plymouth_current_theme || echo "(none)")"
+printf 'installed: %s\n' \
+    "$([[ -r $(sysroot_path "$PLYMOUTH_THEME_DIR/haseen.script") ]] && echo "$PLYMOUTH_THEME_DIR" || echo "haseen's theme is not installed")"
+printf 'hook:      %s\n' "$(plymouth_hook_present && echo "plymouth is in HOOKS" || echo "missing from HOOKS (no splash)")"
+printf 'cmdline:   %s\n' "$(boot_cmdline_has splash && echo "splash is on the kernel command line" || echo "no 'splash' (the kernel keeps the screen)")"
+
+ready=true
+plymouth_hook_present || ready=false
+boot_cmdline_has splash || ready=false
+[[ $(plymouth_current_theme) == haseen ]] || ready=false
+if $ready; then
+    echo "ready:     yes"
+else
+    echo "ready:     no (haseen plymouth set)"
+fi

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# haseen:summary Search the plugin registries
+# haseen:args [query] [--json] [--no-sync]
+#
+# Adapted from DankMaterialShell core/internal/plugins/search.go (MIT,
+# Copyright (c) 2025 Avenge Media LLC): a case-insensitive subsequence match
+# over the indexed id, name and description. The index is the registry clones;
+# there is no separate search service.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin search [query] [--json] [--no-sync]
+
+Without a query, every indexed plugin. --no-sync skips fetching the registries
+first and searches the clones as they are.
+EOF
+}
+
+json=false
+sync=true
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --json) json=true ;;
+    --no-sync) sync=false ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+query="${REST[0]:-}"
+
+$sync && registry_sync >/dev/null 2>&1
+
+matches="$(registry_entries | jq -c --arg q "${query,,}" '
+    select($q == "" or ((.id + " " + .name + " " + .description) | ascii_downcase | contains($q)))')"
+
+if $json; then
+    jq -s . <<<"${matches:-}"
+    exit 0
+fi
+[[ -n $matches ]] || {
+    echo "nothing matches ${query:-anything} (haseen plugin registry list)" >&2
+    exit 1
+}
+while IFS= read -r entry; do
+    id="$(jq -r .id <<<"$entry")"
+    installed=""
+    [[ -e $PLUGIN_USER_DIR/$id ]] && installed=" (installed)"
+    printf '%-28s %-10s %s%s\n' "$id" "$(jq -r .source <<<"$entry")" \
+        "$(jq -r .description <<<"$entry")" "$installed"
+done <<<"$matches"

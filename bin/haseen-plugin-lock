@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# haseen:summary Show or rewrite the lockfile that pins installed plugins
+# haseen:args [--write] [--dry-run]
+#
+# Adapted from DankMaterialShell core/internal/plugins/manager_lockfile.go
+# SnapshotLockfile (MIT, Copyright (c) 2025 Avenge Media LLC): walk the
+# installed plugins, read each one's repository and commit from its checkout,
+# and record them.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin lock [--write] [--dry-run]
+
+Without --write: print the current lockfile. With --write: rebuild it from what
+is actually installed, which is how a plugin installed before the lockfile
+existed, or moved by hand, gets pinned.
+EOF
+}
+
+write=false
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --write) write=true ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 0)) || {
+    usage >&2
+    exit 2
+}
+
+if ! $write; then
+    lockfile_read | jq .
+    exit 0
+fi
+
+snapshot="$(printf '{"version":%d,"plugins":{},"repositories":{}}' "$LOCKFILE_VERSION")"
+while IFS= read -r dir; do
+    id="${dir##*/}"
+    [[ $id == .* ]] && continue
+    # A plugin installed from a registry is a symlink into .repos/<hash>; its
+    # git checkout is what carries the repository URL and the commit.
+    target="$(readlink -f "$dir" 2>/dev/null || true)"
+    [[ -n $target ]] || continue
+    repo_root="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -n $repo_root ]] || continue
+    url="$(git -C "$repo_root" remote get-url origin 2>/dev/null || true)"
+    commit="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+    [[ -n $url && $commit =~ $COMMIT_RE ]] || continue
+    path="${target#"$repo_root"}"
+    path="${path#/}"
+    snapshot="$(jq -c --arg id "$id" --arg repo "$url" --arg path "$path" --arg commit "$commit" \
+        '.plugins[$id] = {repo: $repo, path: $path, commit: $commit} | .repositories[$repo] = $commit' \
+        <<<"$snapshot")"
+done < <(find "$PLUGIN_USER_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | sort)
+
+lockfile_write "$snapshot"
+$DRY_RUN || info "pinned $(jq '.plugins | length' <<<"$snapshot") plugin(s) in $PLUGIN_LOCKFILE"

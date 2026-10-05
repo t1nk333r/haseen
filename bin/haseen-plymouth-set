@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# haseen:summary Install the boot splash, coloured by the current theme
+# haseen:args [--theme NAME] [--no-rebuild] [--dry-run]
+#
+# Behaviour from omarchy bin/omarchy-plymouth-set (MIT, David Heinemeier
+# Hansson): colour the splash from the active theme, make it the default, and
+# rebuild the initramfs so the next boot shows it. The splash is where the
+# disk password is typed, so it has to be readable before it is pretty.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/plymouth.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/plymouth.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plymouth set [--theme NAME] [--no-rebuild] [--dry-run]
+
+Installs haseen's boot screen into $PLYMOUTH_THEME_DIR, in the colours of the
+current theme (or of NAME), adds the plymouth hook to the initramfs, puts
+'quiet splash' on the kernel command line and rebuilds the initramfs.
+
+Run it again after a theme change: the splash does not follow the theme by
+itself, because rewriting files under /usr needs root.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+theme=""
+no_rebuild=false
+while (($# > 0)); do
+    case "$1" in
+    --theme)
+        theme="${2:-}"
+        shift 2
+        ;;
+    --no-rebuild)
+        no_rebuild=true
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+plymouth_installed || die "plymouth is not installed (pacman -S plymouth)"
+
+# The colours: the named theme's shipped file, or what `haseen theme set`
+# rendered into the current theme.
+if [[ -n $theme ]]; then
+    colors="$HASEEN_PATH/themes/$theme/colors.toml"
+    [[ -r $colors ]] || colors="${XDG_CONFIG_HOME:-$HOME/.config}/haseen/themes/$theme/colors.toml"
+else
+    colors="${XDG_STATE_HOME:-$HOME/.local/state}/haseen/current/theme/colors.toml"
+fi
+[[ -r $colors ]] || die "no colors.toml for ${theme:-the current theme} ($colors)"
+read -r bg fg accent <<<"$(plymouth_theme_colors "$colors")"
+info "splash colours: background $bg, text $fg, accent $accent"
+
+install_root_file "$PLYMOUTH_SOURCE_DIR/haseen.plymouth" "$PLYMOUTH_THEME_DIR/haseen.plymouth"
+plymouth_script "$bg" "$fg" "$accent" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
+
+# The initramfs needs the hook, or there is no splash to colour. `plymouth`
+# goes right after `base udev`/`systemd`, before any hook that may ask for a
+# password, so the password prompt is the one this theme draws.
+if ! plymouth_hook_present; then
+    printf '%s\n' \
+        "# Added by haseen plymouth set: the splash needs its hook in the initramfs." \
+        'HOOKS=($(echo "${HOOKS[@]}" | sed -E "s/\b(base udev|systemd)\b/& plymouth/"))' |
+        write_root_file "$PLYMOUTH_HOOK_CONF"
+fi
+
+printf 'Theme=haseen\n' | write_root_file /etc/plymouth/plymouthd.conf.d/haseen.conf
+run_root plymouth-set-default-theme haseen
+
+# Without `splash` the kernel never hands the screen to plymouthd; without
+# `quiet` the splash is drawn over by boot messages.
+if ! boot_cmdline_has splash; then
+    boot_cmdline_add plymouth "quiet splash" ||
+        warn "add 'quiet splash' yourself, or the splash will not show"
+fi
+
+$no_rebuild && {
+    info "initramfs not rebuilt (--no-rebuild); regenerate it yourself before rebooting"
+    exit 0
+}
+boot_initramfs_rebuild
+info "boot splash installed; it shows on the next boot"

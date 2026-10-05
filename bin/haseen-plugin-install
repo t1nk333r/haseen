@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# haseen:summary Install a plugin from a registry (or a git URL) and pin it
+# haseen:args <id|url> [--path SUBDIR] [--commit SHA] [--enable] [--dry-run]
+#
+# Adapted from DankMaterialShell core/internal/plugins/manager.go (MIT,
+# Copyright (c) 2025 Avenge Media LLC): clone the plugin's repository, put it
+# where the shell looks, and record {repo, path, commit} in plugins.lock.json.
+#
+# What haseen adds: the installed plugin is validated against
+# plugin.schema.json before it is kept, and removed again if it fails. Upstream
+# checks nothing before foreign QML is loadable.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin install <id|url> [--path SUBDIR] [--commit SHA]
+                             [--enable] [--dry-run] [--yes]
+
+<id>   a plugin from the registries (haseen plugin search)
+<url>  a git repository, for something that is not indexed anywhere
+
+  --path SUBDIR   the plugin lives in this subdirectory of the repository
+  --commit SHA    install exactly that commit instead of the default branch
+  --enable        also turn it on in shell.json (haseen plugin enable)
+
+The install is pinned in $PLUGIN_LOCKFILE, so another machine running
+'haseen plugin restore' gets the same commit.
+EOF
+}
+
+path=""
+commit=""
+enable=false
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --path) path="${args[++i]:-}" ;;
+    --commit) commit="${args[++i]:-}" ;;
+    --enable) enable=true ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+target="$1"
+[[ -z $commit || $commit =~ $COMMIT_RE ]] || die "--commit takes a full 40-character commit"
+
+if [[ $target == *://* || $target == git@*:* || $target == /* ]]; then
+    url="$target"
+    id="${path:-${url##*/}}"
+    id="${id%.git}"
+    id="${id##*/}"
+else
+    registry_sync >/dev/null 2>&1
+    entry="$(registry_entry "$target")"
+    [[ -n $entry ]] || die "no plugin $target in any registry (haseen plugin search)"
+    url="$(jq -r .repo <<<"$entry")"
+    id="$(jq -r .id <<<"$entry")"
+    [[ -n $path ]] || path="$(jq -r .path <<<"$entry")"
+fi
+[[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "unsafe plugin id: $id"
+[[ $path != /* && $path != *..* ]] || die "unsafe path: $path"
+
+if [[ -e $PLUGIN_USER_DIR/$id ]] && ! $DRY_RUN; then
+    confirm "$id is already installed; replace it?" || exit 1
+fi
+
+info "installing $id from $url${path:+ ($path)}"
+resolved="$(registry_fetch "$url" "$commit")"
+registry_link "$id" "$url" "$path"
+registry_validate "$id" || die "$id does not validate against plugin.schema.json; not installed"
+$DRY_RUN || lockfile_pin "$id" "$url" "$path" "$resolved"
+$DRY_RUN && echo "DRYRUN: pin $id to $url@$resolved in $PLUGIN_LOCKFILE"
+
+# A registry id is a directory name; the id the shell loads it under is the one
+# in its manifest, which for a DankMaterialShell plugin is the adapted
+# `dms.<name>`. Say both, or `haseen plugin enable` is a guessing game.
+shell_id="$id"
+$DRY_RUN || shell_id="$(plugin_id_of "$PLUGIN_USER_DIR/$id" 2>/dev/null || echo "$id")"
+
+if $enable; then
+    haseen-plugin-enable "$shell_id" ${DRY_RUN:+--dry-run} 2>/dev/null ||
+        warn "installed, but could not enable $shell_id (haseen plugin enable $shell_id)"
+fi
+$DRY_RUN || info "$id installed at ${resolved:0:12}, loaded as '$shell_id' (haseen shell ipc shell reload)"

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=haseen
+Description=haseen boot screen, coloured by the current theme
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/haseen
+ScriptFile=/usr/share/plymouth/themes/haseen/haseen.script

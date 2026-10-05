@@ -12,6 +12,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/hibernate.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hibernate.sh"
+# shellcheck source=../share/haseen/lib/boot.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/boot.sh"
 
 usage() {
     cat <<EOF
@@ -125,33 +127,11 @@ cmdline="resume=$device resume_offset=$offset"
 [[ $(cat "$(sysroot_path /sys/power/mem_sleep)" 2>/dev/null) == *"[s2idle]"* ]] &&
     cmdline+=" rtc_cmos.use_acpi_alarm=1"
 
-case "$BOOTLOADER" in
-limine)
-    printf 'KERNEL_CMDLINE[default]+=" %s"\n' "$cmdline" |
-        write_root_file /etc/limine-entry-tool.d/haseen-resume.conf
-    ;;
-systemd-boot)
-    if [[ -f $(sysroot_path /etc/kernel/cmdline) ]]; then
-        printf '%s %s\n' "$(cat "$(sysroot_path /etc/kernel/cmdline)")" "$cmdline" |
-            write_root_file /etc/kernel/cmdline
-    else
-        printf '%s\n' "$cmdline" | write_root_file /etc/kernel/cmdline
-    fi
-    ;;
-grub)
-    warn "add this to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then run grub-mkconfig:"
-    warn "  $cmdline"
-    ;;
-*) die "unknown bootloader; add '$cmdline' to the kernel command line yourself" ;;
-esac
+boot_cmdline_add resume "$cmdline" || true
 
 $no_rebuild && {
     info "initramfs not rebuilt (--no-rebuild); run mkinitcpio -P and reboot"
     exit 0
 }
-if [[ $BOOTLOADER == limine ]] && have limine-mkinitcpio; then
-    run_root limine-mkinitcpio
-else
-    run_root mkinitcpio -P
-fi
+boot_initramfs_rebuild
 info "hibernation is set up; reboot once so the new command line is in effect"

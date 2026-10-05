@@ -1,0 +1,105 @@
+# haseen's Plymouth theme: the boot screen, and the box that asks for the disk
+# password. Drawn, not composed from images, so a theme change is three colour
+# substitutions and no binary assets live in this repository.
+#
+# haseen-plymouth-set substitutes the colour placeholders below with the
+# current theme's values before installing this file.
+
+bg_r = @@BG_R@@;
+bg_g = @@BG_G@@;
+bg_b = @@BG_B@@;
+fg_r = @@FG_R@@;
+fg_g = @@FG_G@@;
+fg_b = @@FG_B@@;
+accent_r = @@ACCENT_R@@;
+accent_g = @@ACCENT_G@@;
+accent_b = @@ACCENT_B@@;
+
+Window.SetBackgroundTopColor(bg_r, bg_g, bg_b);
+Window.SetBackgroundBottomColor(bg_r, bg_g, bg_b);
+
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+# --- the pulse: one bar that breathes, so a slow boot does not look hung -----
+
+bar_width = screen_width / 6;
+bar_height = 2;
+bar = Image(bar_width, bar_height);
+for (x = 0; x < bar_width; x++)
+    for (y = 0; y < bar_height; y++)
+        bar.SetPixel(x, y, accent_r, accent_g, accent_b, 1);
+
+bar_sprite = Sprite(bar);
+bar_sprite.SetX((screen_width - bar_width) / 2);
+bar_sprite.SetY(screen_height / 2);
+bar_sprite.SetZ(1);
+
+progress = 0;
+fun refresh_callback() {
+    progress++;
+    # A sine over ~2 s, never fully transparent: a dark screen that is still
+    # working should still look alive.
+    bar_sprite.SetOpacity(0.35 + 0.65 * (Math.Sin(progress / 16) + 1) / 2);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# --- messages and the password prompt ---------------------------------------
+
+message_sprite = Sprite();
+message_sprite.SetZ(10);
+
+fun write_message(text) {
+    if (text == "") {
+        message_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+        return;
+    }
+    image = Image.Text(text, fg_r, fg_g, fg_b);
+    message_sprite.SetImage(image);
+    message_sprite.SetX((screen_width - image.GetWidth()) / 2);
+    message_sprite.SetY(screen_height / 2 + 48);
+}
+
+fun message_callback(text) {
+    write_message(text);
+}
+Plymouth.SetMessageFunction(message_callback);
+
+prompt_sprite = Sprite();
+prompt_sprite.SetZ(10);
+bullets_sprite = Sprite();
+bullets_sprite.SetZ(10);
+
+fun display_password_callback(prompt, bullets) {
+    bar_sprite.SetOpacity(0);
+    if (prompt == "")
+        prompt = "Password";
+    image = Image.Text(prompt, fg_r, fg_g, fg_b);
+    prompt_sprite.SetImage(image);
+    prompt_sprite.SetX((screen_width - image.GetWidth()) / 2);
+    prompt_sprite.SetY(screen_height / 2 - 40);
+
+    # One dot per typed character, drawn as text so no image ships with it.
+    dots = "";
+    for (i = 0; i < bullets; i++)
+        dots += "•";
+    dot_image = Image.Text(dots, accent_r, accent_g, accent_b);
+    bullets_sprite.SetImage(dot_image);
+    bullets_sprite.SetX((screen_width - dot_image.GetWidth()) / 2);
+    bullets_sprite.SetY(screen_height / 2);
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+    prompt_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+    bullets_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+    bar_sprite.SetOpacity(1);
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+fun quit_callback() {
+    bar_sprite.SetOpacity(0);
+    prompt_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+    bullets_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+}
+Plymouth.SetQuitFunction(quit_callback);

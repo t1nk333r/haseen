@@ -99,7 +99,7 @@ root="$SANDBOX/sysroot"
 cp -a "$FIXTURES/desk-cachyos-amd" "$root"
 mkdir -p "$root/etc/systemd/system" "$root/etc/greetd"
 ln -s /usr/lib/systemd/system/greetd.service "$root/etc/systemd/system/display-manager.service"
-capture env HASEEN_SYSROOT="$root" bash -c "$LAYER_LIB; desktop_greetd_config"
+capture env HASEEN_SYSROOT="$root" bash -c "$LAYER_LIB; greetd_config"
 printf '%s\n' "$OUTPUT" >"$root/etc/greetd/config.toml"
 desktop_dry "$root"
 assert_dry_pure "greetd converge" "$OUTPUT"
@@ -136,6 +136,10 @@ assert_eq "seed: session env is valid shell" "$HASEEN_PATH" "$(
     source "$HOME/.config/uwsm/env.d/10-haseen"
     printf '%s' "$HASEEN_PATH"
 )"
+# Qt follows the GTK platform theme rather than a second Qt theming stack
+# (qt6ct/Kvantum); the plugin ships with qt6-base, so nothing extra installs.
+assert_contains "seed: Qt apps follow the GTK theme" \
+    "$(<"$HOME/.config/uwsm/env.d/10-haseen")" "export QT_QPA_PLATFORMTHEME=gtk3"
 printf '%s\n' '-- mine' >>"$HOME/.config/hypr/hyprland.lua"
 printf '%s\n' '# mine' >"$HOME/.config/foot/foot.ini"
 printf '%s\n' '[colors-dark]' 'background=000000' >"$HOME/.local/state/haseen/current/theme/foot.ini"

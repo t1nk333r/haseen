@@ -21,7 +21,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../base/lib.sh"
 
 # Marks files under /etc that this layer owns and may rewrite.
 DESKTOP_MARKER="# Written by haseen layers/desktop"
-GREETD_CONFIG=/etc/greetd/config.toml
+# shellcheck source=../../lib/greeter.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/greeter.sh" # GREETD_CONFIG, greetd_config
 NVIDIA_MODESET_CONF=/etc/modprobe.d/haseen-nvidia.conf
 
 desktop_config_home() { printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}"; }
@@ -174,6 +175,12 @@ export HASEEN_PATH=$(printf '%q' "$HASEEN_PATH")
 export TERMINAL=foot
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export QT_QPA_PLATFORM='wayland;xcb'
+# Qt apps take their palette from the GTK platform theme, which is the one
+# haseen already renders (themed/gtk.css.tpl + the gsettings colour scheme).
+# The plugin is libqgtk3.so from qt6-base, so this costs no package; qt6ct or
+# Kvantum would be a second theme source to keep in sync for nothing. Omarchy
+# reached the same conclusion and dropped Kvantum (its migration 1785351479).
+export QT_QPA_PLATFORMTHEME=gtk3
 # Cursor: the owner's luna setup (Bibata Modern Ice, 20 px). Override in your
 # own ~/.config/uwsm/env.d/ file; Hyprland and GTK pick it up at session start.
 export XCURSOR_THEME=Bibata-Modern-Ice
@@ -211,19 +218,8 @@ desktop_user_setup() {
 
 # --- login -----------------------------------------------------------------------
 
-desktop_greetd_config() {
-    cat <<EOF
-$DESKTOP_MARKER. Rewritten on every apply while this line is here;
-# delete the line to take the file over.
-[terminal]
-vt = 1
-
-[default_session]
-command = "tuigreet --time --remember --asterisks --cmd 'uwsm start hyprland.desktop'"
-user = "greeter"
-EOF
-}
-
+# The greetd config comes from lib/greeter.sh, which `haseen setup greeter`
+# writes too: one generator, so a layer apply cannot silently undo a choice.
 greetd_config_ours() {
     local f
     f="$(sysroot_path "$GREETD_CONFIG")"
@@ -233,7 +229,7 @@ greetd_config_ours() {
 greetd_config_current() {
     local f
     f="$(sysroot_path "$GREETD_CONFIG")"
-    [[ -r $f && "$(<"$f")" == "$(desktop_greetd_config)" ]]
+    [[ -r $f && "$(<"$f")" == "$(greetd_config)" ]]
 }
 
 # An enabled display manager (sddm, gdm, plasma-login, …) stays: uwsm's
@@ -258,7 +254,7 @@ desktop_login() {
             [[ ! -e $(sysroot_path "$GREETD_CONFIG.haseen-orig") ]]; then
             run_root cp -a "$GREETD_CONFIG" "$GREETD_CONFIG.haseen-orig"
         fi
-        desktop_greetd_config | write_root_file "$GREETD_CONFIG"
+        greetd_config | write_root_file "$GREETD_CONFIG"
     fi
     # Enable only: starting greetd now would take the VT from under this run.
     [[ $dm == greetd.service ]] || run_root systemctl enable greetd.service

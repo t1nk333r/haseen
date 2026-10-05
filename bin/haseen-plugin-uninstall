@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# haseen:summary Remove an installed plugin and its pin
+# haseen:args <id> [--dry-run] [--yes]
+#
+# Adapted from DankMaterialShell core/internal/plugins/manager.go Uninstall
+# (MIT, Copyright (c) 2025 Avenge Media LLC): drop the pin first, then the
+# files, so a failure half way leaves nothing claiming to be installed.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/registry.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/registry.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin uninstall <id> [--dry-run] [--yes]
+
+Turns the plugin off, removes it from $PLUGIN_USER_DIR and drops its pin.
+Built-in plugins and the read-only Omarchy/DMS directories are never touched;
+use 'haseen plugin disable' for those.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+id="$1"
+[[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "unsafe plugin id: $id"
+[[ -e $PLUGIN_USER_DIR/$id ]] || die "$id is not installed in $PLUGIN_USER_DIR"
+
+confirm "Remove $id?" || exit 1
+haseen-plugin-disable "$id" ${DRY_RUN:+--dry-run} >/dev/null 2>&1 || true
+$DRY_RUN || lockfile_drop "$id"
+$DRY_RUN && echo "DRYRUN: drop $id from $PLUGIN_LOCKFILE"
+run rm -rf "$PLUGIN_USER_DIR/$id"
+info "$id removed"
