@@ -98,6 +98,9 @@ rm -f "$plain/etc/mkinitcpio.conf.d/haseen-resume.conf" \
 # btrfs-progs is not in every container; a dry run must never execute it, so a
 # stub is both the presence check and the purity check.
 stub btrfs 'echo "STUB-CALLED: btrfs $*" >&2; exit 97'
+# Same for the Limine initramfs rebuild: present on a Limine machine, absent in
+# a container, and never run by a dry run.
+stub limine-mkinitcpio 'echo "STUB-CALLED: limine-mkinitcpio $*" >&2; exit 97'
 stub findmnt 'case "$*" in
     *FSTYPE*) echo btrfs ;;
     *UUID*) echo 2543f8d6-312f-4c8a-8bfb-01bd10d7766c ;;
