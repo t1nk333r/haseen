@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# haseen:summary Choose the login screen: tuigreet (default) or haseen's own
+# haseen:args [tuigreet|haseen|status] [--dry-run] [--yes]
+#
+# The graphical greeter is opt-in on purpose: a greeter that fails to start is
+# a machine you cannot log into graphically, and tuigreet is a text UI on the
+# VT that works when the GPU session does not. Switching back needs no desktop.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/greeter.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/greeter.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup greeter [tuigreet|haseen|status] [--dry-run] [--yes]
+       haseen setup greeter autologin <user>|off [--dry-run] [--yes]
+
+  tuigreet         the text greeter on VT 1 (default)
+  haseen           haseen's own graphical greeter (Hyprland + the greeter shell)
+  autologin USER   log USER straight in at boot; later logins use the greeter
+  autologin off    ask for a password at every login
+  status           what is configured now
+
+Autologin is for an encrypted root: the disk password typed at the boot splash
+is the authentication for that boot, and a second password proves nothing. On
+an unencrypted disk it means anyone who can press the power button is logged
+in, so it refuses unless you pass --yes.
+
+Writes $GREETER_CHOICE_FILE, $GREETER_AUTOLOGIN_FILE and $GREETD_CONFIG. If the
+graphical greeter ever fails to start, switch back from a TTY (Ctrl+Alt+F2):
+
+  sudo haseen setup greeter tuigreet && sudo systemctl restart greetd
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+choice="${1:-status}"
+
+if [[ $choice == status ]]; then
+    printf 'greeter:   %s\n' "$(greeter_choice)"
+    printf 'command:   %s\n' "$(greeter_command)"
+    printf 'autologin: %s\n' "$(greeter_autologin_user || true)"
+    printf 'config:    %s%s\n' "$GREETD_CONFIG" \
+        "$([[ -r $(sysroot_path "$GREETD_CONFIG") ]] || echo ' (absent)')"
+    printf 'users:     %s\n' "$(greeter_users | cut -f1 | tr '\n' ' ')"
+    printf 'sessions:  %s\n' "$(greeter_sessions | cut -f1 | tr '\n' ' ')"
+    exit 0
+fi
+
+if [[ $choice == autologin ]]; then
+    user="${2:-}"
+    (($# == 2)) || {
+        usage >&2
+        exit 2
+    }
+    if [[ $user == off ]]; then
+        run_root rm -f "$GREETER_AUTOLOGIN_FILE"
+        greetd_config "$(greeter_choice)" "" | write_root_file "$GREETD_CONFIG"
+        info "autologin: off (every login asks)"
+        exit 0
+    fi
+    greeter_users | cut -f1 | grep -qx "$user" ||
+        die "no such user on this machine: $user (haseen setup greeter status)"
+    preflight_luks
+    if [[ $LUKS_DETECTED != true ]]; then
+        warn "this root filesystem is not encrypted: autologin means no password at all"
+        confirm "Log $user in at boot anyway?" || exit 1
+    else
+        info "encrypted root: the disk password at the boot splash authenticates the boot"
+    fi
+    printf '%s\n' "$user" | write_root_file "$GREETER_AUTOLOGIN_FILE"
+    greetd_config "$(greeter_choice)" "$user" | write_root_file "$GREETD_CONFIG"
+    info "autologin: $user (reboot to use it; a logout lands on the greeter)"
+    exit 0
+fi
+
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+[[ $choice == tuigreet || $choice == haseen ]] || {
+    usage >&2
+    exit 2
+}
+
+if [[ $choice == haseen ]]; then
+    have Hyprland || die "the graphical greeter needs Hyprland (haseen layer apply desktop)"
+    have qs || have quickshell || die "the graphical greeter needs quickshell"
+    [[ -d $HASEEN_PATH/shell/greeter ]] || die "no greeter shell at $HASEEN_PATH/shell/greeter"
+    confirm "Use haseen's graphical greeter? (switch back from a TTY if it fails)" || exit 1
+fi
+
+printf '%s\n' "$choice" | write_root_file "$GREETER_CHOICE_FILE"
+greetd_config "$choice" | write_root_file "$GREETD_CONFIG"
+
+# The greeter user needs a home it can write: the session it picks and the user
+# it logged in last are remembered there.
+if [[ $choice == haseen ]]; then
+    run_root install -d -o greeter -g greeter -m 0700 "$GREETER_STATE_DIR"
+fi
+
+# Plymouth hands the screen over to greetd. Without this ordering the splash
+# and the greeter fight over the VT and the handover flickers through a black
+# console; with it, the splash stays up until there is something to replace it.
+printf '%s\n' \
+    "# Written by haseen setup greeter: no black console between the splash" \
+    "# and the login screen." \
+    "[Unit]" \
+    "After=plymouth-quit-wait.service" \
+    "[Service]" \
+    "TTYVTDisallocate=no" |
+    write_root_file /etc/systemd/system/greetd.service.d/haseen-plymouth.conf
+
+info "greeter: $choice (restart greetd, or reboot, to pick it up)"

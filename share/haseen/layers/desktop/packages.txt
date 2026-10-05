@@ -37,3 +37,4 @@ fcitx5                       # input method: Arabic and English on one key
 fcitx5-configtool            # fcitx5 GUI, the only sane way to edit a layout list
 fcitx5-qt                    # Qt 6 IME module (Quickshell, Qt apps)
 fcitx5-gtk                   # GTK IME module
+plymouth                     # boot splash and the LUKS password prompt (haseen plymouth set)

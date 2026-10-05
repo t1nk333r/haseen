@@ -28,6 +28,8 @@ HASEEN_HIBERNATE_SH=1
 
 # shellcheck source=preflight.sh
 source "$(dirname "${BASH_SOURCE[0]}")/preflight.sh"
+# shellcheck source=boot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/boot.sh" # boot_hooks, boot_cmdline_add
 # shellcheck disable=SC2034  # read by bin/haseen-hibernation-*
 SWAP_SUBVOL_NAME="${HASEEN_SWAP_SUBVOL:-@swap}"
 SWAP_MOUNT="${HASEEN_SWAP_MOUNT:-/swap}"
@@ -50,27 +52,10 @@ hibernate_swap_kib() {
         "$(sysroot_path /proc/swaps)" 2>/dev/null
 }
 
-# hibernate_hooks — the HOOKS this machine actually builds with. mkinitcpio
-# reads mkinitcpio.conf and then every conf.d drop-in in order, where `HOOKS=`
-# replaces and `HOOKS+=` appends, so the answer is not "every HOOKS line in
-# every file": a drop-in that replaces the list is what counts.
-hibernate_hooks() {
-    local file line hooks=""
-    for file in "$(sysroot_path /etc/mkinitcpio.conf)" "$(sysroot_path /etc/mkinitcpio.conf.d)"/*.conf; do
-        [[ -r $file ]] || continue
-        while IFS= read -r line; do
-            case "$line" in
-            HOOKS=*) hooks="$(tr -d '()"' <<<"${line#HOOKS=}")" ;;
-            HOOKS+=*) hooks+=" $(tr -d '()"' <<<"${line#HOOKS+=}")" ;;
-            esac
-        done <"$file"
-    done
-    tr ' ' '\n' <<<"$hooks" | grep -v '^$' || true
-}
 
 # hibernate_initramfs_style — systemd | busybox, from those effective hooks.
 hibernate_initramfs_style() {
-    if hibernate_hooks | grep -qx -e systemd -e sd-encrypt; then
+    if boot_hooks | grep -qx -e systemd -e sd-encrypt; then
         echo systemd
     else
         echo busybox
@@ -79,7 +64,7 @@ hibernate_initramfs_style() {
 
 # hibernate_resume_hook_present — a `resume` hook is configured (by haseen or
 # by whoever set this machine up before).
-hibernate_resume_hook_present() { hibernate_hooks | grep -qx resume; }
+hibernate_resume_hook_present() { boot_hooks | grep -qx resume; }
 
 # hibernate_cmdline — every kernel command line this machine can boot with:
 # the bootloader's own configuration plus the running one.
