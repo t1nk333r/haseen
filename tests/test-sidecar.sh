@@ -63,8 +63,8 @@ else
     assert_eq "the first sample does not wait for the interval" 1 "$([[ -n $events ]] && echo 1 || echo 0)"
     assert_eq "memory is read from this machine" true "$(head -1 <<<"$events" | jq '.data.mem.totalKiB > 0')"
     assert_eq "the process list is included when asked for" true "$(tail -1 <<<"$events" | jq '.data.processes | length > 0')"
-    assert_eq "several samples arrive on one subscription" true "$(($(wc -l <<<"$events") >= 2)) " 2>/dev/null ||
-        assert_eq "several samples arrive on one subscription" true "$([[ $(wc -l <<<"$events") -ge 2 ]] && echo true || echo false)"
+    assert_eq "several samples arrive on one subscription" true \
+        "$([[ $(wc -l <<<"$events") -ge 2 ]] && echo true || echo false)"
 
     frames="$(talk '{"id":3,"method":"subscribe","stream":"nonsense"}')"
     assert_eq "an unknown stream is refused" false "$(jq -r 'select(.type == "reply" and .id == 3) | .ok' <<<"$frames")"
@@ -79,8 +79,8 @@ else
     before="$(awk -F': ' '/^syscr/{print $2}' "/proc/$daemon/io")"
     sleep 2
     after="$(awk -F': ' '/^syscr/{print $2}' "/proc/$daemon/io")"
-    assert_eq "no subscriber, no sampling" true "$((after - before < 20)) " 2>/dev/null ||
-        assert_eq "no subscriber, no sampling" true "$([[ $((after - before)) -lt 20 ]] && echo true || echo false)"
+    assert_eq "no subscriber, no sampling" true \
+        "$([[ $((after - before)) -lt 20 ]] && echo true || echo false)"
 
     # A second daemon does not fight for the socket: it reports it as ready and
     # steps aside, which is what makes "start it on demand" safe from any shell.
