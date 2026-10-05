@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# haseen:summary Apply the remembered power profile for the current AC/battery state
+# haseen:args [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-powerprofiles-init (MIT, Copyright (c)
+# David Heinemeier Hansson). Upstream runs this from the Hyprland autostart at
+# login; the shell re-runs `set autodetect` whenever the power source changes.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen powerprofile init [--dry-run]
+
+Runs haseen powerprofile set autodetect: at login (and after a plug or
+unplug) the profile remembered for the current power source is re-applied.
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
+exec "$(dirname "$(readlink -f "$0")")/haseen-powerprofile-set" autodetect "$@"

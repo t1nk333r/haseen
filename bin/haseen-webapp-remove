@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# haseen:summary Remove a web app launcher and its icon
+# haseen:args [name] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-webapp-remove (MIT, Copyright (c) David
+# Heinemeier Hansson): index the launchers and delete the file that was found,
+# not a path rebuilt from the displayed name. haseen matches on the chromium
+# app-mode Exec its own installer writes instead of a launcher shim name.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen webapp remove [name] [--dry-run]
+
+Deletes the launcher written by \`haseen webapp install\` and the icon it
+fetched. Without a name, lists the web apps that can be removed.
+EOF
+}
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+DESKTOP_DIR="$DATA_HOME/applications"
+
+# Always index: a launcher installed before the name check could be nested in a
+# subdirectory, and that is exactly the one a reconstructed path cannot reach.
+web_apps=()
+web_app_paths=()
+while IFS= read -r -d '' file; do
+    grep -q '^Exec=.*--app=' "$file" || continue
+    web_apps+=("$(basename "${file%.desktop}")")
+    web_app_paths+=("$file")
+done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0 2>/dev/null)
+
+path_for_web_app() {
+    local wanted="$1" i
+    for i in "${!web_apps[@]}"; do
+        [[ ${web_apps[$i]} == "$wanted" ]] || continue
+        printf '%s\n' "${web_app_paths[$i]}"
+        return 0
+    done
+    return 1
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+require_not_root
+
+if (($# == 0)); then
+    ((${#web_apps[@]})) || die "no web apps to remove."
+    echo "Web apps:"
+    printf '%s\n' "${web_apps[@]}" | sort | sed 's/^/  /'
+    echo "Usage: haseen webapp remove <name>"
+    exit 2
+fi
+
+app_name="$*"
+desktop_file="$(path_for_web_app "$app_name" || true)"
+[[ -n $desktop_file ]] || die "no web app named '$app_name' (run without a name to list them)"
+
+icon_name="$(printf '%s\n' "$app_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')"
+run rm -f "$desktop_file"
+for icon in "$ICON_DIR/$icon_name".*; do
+    [[ -e $icon ]] || continue
+    run rm -f "$icon"
+done
+have gtk-update-icon-cache && run gtk-update-icon-cache "$DATA_HOME/icons/hicolor" >/dev/null 2>&1 || true
+have update-desktop-database && run update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+
+info "web app removed: $app_name"

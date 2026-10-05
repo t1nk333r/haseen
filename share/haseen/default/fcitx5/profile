@@ -1,0 +1,30 @@
+# haseen fcitx5 input-method group: English first, Arabic second.
+#
+# fcitx5 owns this file once it is seeded; fcitx5-configtool rewrites it when
+# you change the group. Control+space (see ../fcitx5/config) toggles between
+# the first method and the last used one, which with exactly two entries means
+# English <-> Arabic.
+
+[Groups/0]
+# Group Name
+Name=Default
+# The Latin layout stays the group default so SUPER binds, the launcher and
+# anything typing ASCII keep working when the group is inactive.
+Default Layout=us
+# Default Input Method
+DefaultIM=keyboard-us
+
+[Groups/0/Items/0]
+# Name
+Name=keyboard-us
+# Layout
+Layout=
+
+[Groups/0/Items/1]
+# Name
+Name=keyboard-ara
+# Layout
+Layout=
+
+[GroupOrder]
+0=Default

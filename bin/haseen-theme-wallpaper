@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# haseen:summary Build a theme from a wallpaper's own colours and switch to it
+# haseen:args <image> [--mode M] [--light] [--name N] [--no-apply] [--dry-run]
+#
+# Colour extraction is `haseen-palette` (core/internal/palette, a port of
+# aether's median-cut extractor, MIT, Copyright (c) Bjarne Overli). The cache,
+# the serialised regeneration and the "unchanged seed writes nothing" rule
+# follow DankMaterialShell core/internal/matugen (seedcache.go, queue.go,
+# renderColors; MIT, Copyright (c) 2025 Avenge Media LLC).
+#
+# The result is an ordinary haseen theme: colors.toml in
+# ~/.config/haseen/themes/<name>/ plus the wallpaper as its background, so
+# `haseen theme set` renders every template exactly as it does for a stock one.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+PALETTE_BIN="${HASEEN_PALETTE_BIN:-$HASEEN_PATH/sidecar/haseen-palette}"
+
+usage() {
+    cat <<EOF
+Usage: haseen theme wallpaper <image> [--mode M] [--light] [--name N]
+                              [--no-apply] [--dry-run] [--yes]
+
+Extracts the image's 16-colour ANSI palette, writes it as the theme <name>
+(default: wallpaper) and switches to it. The image becomes that theme's
+background.
+
+  --mode M     extraction mode (normal, monochromatic, analogous, pastel,
+               material, colorful, muted, bright, complementary, triadic,
+               split-complementary, tetradic, high-contrast, duotone)
+  --light      build a light palette
+  --name N     theme name to write (default: wallpaper)
+  --no-apply   write the theme but do not switch to it
+
+The palette is cached on the image's content, so re-running it for the same
+wallpaper reads the cache and rewrites nothing.
+EOF
+}
+
+mode=normal
+light=false
+name=wallpaper
+apply=true
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --mode) mode="${args[++i]:-}" ;;
+    --name) name="${args[++i]:-}" ;;
+    --light) light=true ;;
+    --no-apply) apply=false ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+image="$(readlink -f "$1")"
+[[ -f $image ]] || die "no such image: $1"
+[[ $name =~ ^[a-z0-9][a-z0-9._-]*$ ]] || die "invalid theme name: $name"
+[[ -x $PALETTE_BIN ]] || die "no palette generator at $PALETTE_BIN (haseen sidecar build)"
+
+theme_dir="$HASEEN_USER_CONFIG/themes/$name"
+background_dir="$HASEEN_USER_CONFIG/backgrounds/$name"
+colors="$theme_dir/colors.toml"
+
+flags=()
+$light && flags+=(--light)
+
+if $DRY_RUN; then
+    echo "DRYRUN: $PALETTE_BIN ${flags[*]} --mode $mode $image > $colors"
+    echo "DRYRUN: link $image into $background_dir"
+    $apply && echo "DRYRUN: haseen theme set $name"
+    exit 0
+fi
+
+# One generator at a time: two wallpaper changes in a row would otherwise race
+# on the same colors.toml. The second waits and then finds the cache warm.
+mkdir -p "$theme_dir" "$background_dir"
+exec 9>"$theme_dir/.lock"
+flock 9
+
+generated="$("$PALETTE_BIN" "${flags[@]+"${flags[@]}"}" --mode "$mode" "$image")" ||
+    die "could not read a palette out of $image"
+
+# Byte-compare before writing: an unchanged palette must not touch the file, so
+# nothing downstream (theme set, the shell's FileView, hooks) reacts to a
+# wallpaper that produced the same colours.
+if [[ -f $colors ]] && [[ "$(cat "$colors")" == "$generated" ]]; then
+    info "palette unchanged for $name"
+else
+    printf '%s' "$generated" >"$theme_dir/colors.toml.new"
+    mv "$theme_dir/colors.toml.new" "$colors"
+    info "wrote $colors"
+fi
+
+ln -sfn "$image" "$background_dir/${name}.${image##*.}"
+
+$apply || exit 0
+haseen-theme-set "$name"

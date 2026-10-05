@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# haseen:summary Dismiss notifications by summary text, or everything on screen
+# haseen:args <summary> | --all [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-notification-dismiss (MIT, Copyright (c)
+# David Heinemeier Hansson). Changes: the call goes through `haseen shell ipc`
+# (so it reaches whichever shell is active) to the haseen.pager verbs `dismiss`
+# and `dismissAll` instead of omarchy-shell's `notifications dismiss`, and
+# --all is added because the pager already exposes it.
+#
+# Used by a script that notified the user and then acted on the click: the
+# toast it put up is its own to take back down.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen notification dismiss <summary> [--dry-run]
+       haseen notification dismiss --all [--dry-run]
+
+Takes every notification whose summary contains <summary> off the screen, or
+with --all every notification that is showing. Dismissed cards stay in Recent
+and in history; "haseen shell ipc notifications clear" is what forgets them.
+Prints the daemon's answer: ok, or none when nothing matched.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+
+case "$1" in
+--all) run haseen-shell-ipc pager dismissAll ;;
+-*)
+    usage >&2
+    exit 2
+    ;;
+*) run haseen-shell-ipc pager dismiss "$1" ;;
+esac

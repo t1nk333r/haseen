@@ -1,0 +1,7 @@
+# Adapted from Omarchy default/udev/framework16-qmk-hid.rules (MIT, Copyright
+# (c) David Heinemeier Hansson).
+#
+# Unprivileged access to the Framework 16 keyboard/RGB modules over hidraw, so
+# qmk_hid and via can talk to them without root. uaccess hands the node to the
+# user sitting at the seat, not to every local user.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="32ac", ATTRS{idProduct}=="0012", MODE="0660", TAG+="uaccess"

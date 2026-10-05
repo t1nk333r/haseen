@@ -1,0 +1,33 @@
+# haseen fcitx5 defaults. Seeded once; fcitx5 owns the file afterwards.
+#
+# Switching: Control+space toggles between the group's first method
+# (keyboard-us) and the last used one (keyboard-ara). It is fcitx5's own
+# default key and collides with nothing in share/haseen/default/hypr/binds.lua,
+# where SUPER+SPACE is the launcher.
+
+[Hotkey]
+# Pressing the trigger again walks the group instead of toggling, which makes
+# the same key work if a third method is added later.
+EnumerateWithTriggerKeys=True
+
+[Hotkey/TriggerKeys]
+0=Control+space
+
+[Hotkey/AltTriggerKeys]
+# Hold Shift to go back to the first method for as long as it is held.
+0=Shift_L
+
+[Hotkey/EnumerateForwardKeys]
+0=Control+Shift_R
+
+[Hotkey/EnumerateBackwardKeys]
+0=Control+Shift_L
+
+[Behavior]
+# Sessions start in English; Control+space turns Arabic on.
+ActiveByDefault=False
+# Per-window state: the terminal stays English while a chat window stays Arabic.
+ShareInputState=No
+# A short on-screen note on switch, so the current script is never a guess.
+ShowInputMethodInformation=True
+ShowFirstInputMethodInformation=True

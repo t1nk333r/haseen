@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Chromium
+Exec=/usr/bin/chromium %U
+Terminal=false
+Type=Application
+Icon=chromium
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;

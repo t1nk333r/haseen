@@ -1,0 +1,4 @@
+# a btrfs root with subvolumes, as the CachyOS installer writes it
+UUID=0000-0000  /boot   vfat    defaults        0 2
+UUID=11111111-1111-1111-1111-111111111111  /  btrfs  subvol=/@,compress=zstd  0 0
+UUID=11111111-1111-1111-1111-111111111111  /home  btrfs  subvol=/@home  0 0

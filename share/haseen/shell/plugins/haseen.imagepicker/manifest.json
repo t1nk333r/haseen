@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.imagepicker",
+  "name": "Image picker",
+  "version": "1.0.0",
+  "description": "Grid of the images in a few directories; Enter hands the picked path to a command (haseen theme bg set by default)",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "directories": {
+      "type": "array",
+      "default": [
+        "~/Pictures",
+        "~/Pictures/Wallpapers",
+        "~/.config/haseen/backgrounds"
+      ],
+      "description": "Directories to scan; ~ and $HOME expand, missing ones are skipped"
+    },
+    "depth": {
+      "type": "integer",
+      "default": 3,
+      "description": "How many directory levels of each entry to scan"
+    },
+    "limit": {
+      "type": "integer",
+      "default": 400,
+      "description": "Most images shown; a larger find result is cut and the count said"
+    },
+    "command": {
+      "type": "array",
+      "default": [],
+      "description": "argv run with the picked path appended; empty means haseen theme bg set (use [\"haseen\", \"theme\", \"wallpaper\"] to build a theme from the image)"
+    },
+    "columns": {
+      "type": "integer",
+      "default": 4,
+      "description": "Images per row"
+    },
+    "rows": {
+      "type": "integer",
+      "default": 3,
+      "description": "Rows shown at once; the grid scrolls past them"
+    },
+    "labels": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show each image's name under its thumbnail"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.imagepicker to drive the open panel without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

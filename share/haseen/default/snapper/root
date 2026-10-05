@@ -1,0 +1,15 @@
+# Adapted from Omarchy default/snapper/root (MIT, Copyright (c) David
+# Heinemeier Hansson).
+#
+# haseen snapshots / only for pre-update recovery: five numbered snapshots,
+# no timeline. A timeline on a desktop fills the disk and buys nothing that
+# the pre-update snapshot does not already give.
+SUBVOLUME="/"
+FSTYPE="btrfs"
+
+NUMBER_CLEANUP="yes"
+NUMBER_MIN_AGE="0"
+NUMBER_LIMIT="5"
+NUMBER_LIMIT_IMPORTANT="5"
+
+TIMELINE_CREATE="no"

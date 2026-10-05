@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# haseen:summary Create a desktop launcher that opens a site as a web app
+# haseen:args <name> <url> [icon-url|icon-file|icon-name] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-webapp-install and bin/omarchy-launch-webapp
+# (MIT, Copyright (c) David Heinemeier Hansson): icon resolution, desktop-entry
+# escaping and the chromium --app= launch. haseen writes the browser command
+# into the entry instead of shipping a launcher shim, and resolves the browser
+# from xdg-settings rather than an omarchy-specific default.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen webapp install <name> <url> [icon-url|icon-file|icon-name] [--dry-run]
+
+Writes \$XDG_DATA_HOME/applications/<name>.desktop launching the default
+browser in app mode (chromium --app=), so the site gets its own window and
+its own entry in the app launcher.
+
+The icon is the site's own apple-touch-icon when no icon argument is given,
+a PNG URL, a local image file, or the name of an installed icon theme icon.
+
+Only chromium-family browsers have an app mode. When the default browser is
+Firefox-based the install is refused rather than opening the site as a tab;
+switch with \`haseen setup default browser chromium\`.
+EOF
+}
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+DESKTOP_DIR="$DATA_HOME/applications"
+
+safe_icon_name() {
+    printf '%s\n' "$1" |
+        tr '[:upper:]' '[:lower:]' |
+        sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
+}
+
+# The name becomes a filename: a slash would push the launcher into a
+# subdirectory that `haseen webapp remove` cannot address.
+require_plain_name() {
+    [[ $1 != */* ]] || die "app name cannot contain '/': $1"
+    [[ -n ${1//[[:space:]]/} ]] || die "app name cannot be empty"
+}
+
+icon_name_from_ref() {
+    local name
+    name="$(basename "$1")"
+    if [[ $name == *.* ]]; then safe_icon_name "${name%.*}"; else printf '%s\n' "$name"; fi
+}
+
+# Chromium --app= treats javascript:, file: and data: as a document to run, so
+# only http(s) is accepted. Whitespace would split the Exec argument.
+normalize_webapp_url() {
+    local url="$1"
+    [[ $url =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]] || url="https://$url"
+    printf '%s' "$url"
+}
+
+require_http_url() {
+    [[ ! $1 =~ [[:space:]] ]] || die "web app URL must not contain whitespace."
+    [[ ${1,,} =~ ^https?:// ]] || die "web app URL must be http or https."
+}
+
+download_icon() {
+    curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
+        [[ -s $2 ]] && [[ $(file -b --mime-type "$2") == image/* ]]
+}
+
+# Prefer the site's own high-res icon (apple-touch-icon is typically 180px+),
+# then the well-known path, then Google's favicon service as a last resort.
+fetch_site_icon() {
+    local site_url="$1" dest="$2" origin page icon_url
+    origin="$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")"
+    page="$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')" || true
+    icon_url="$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
+        grep -oiE "href=[\"'][^\"']+" | head -1 | sed -E "s/^href=[\"']//")" || true
+
+    case "$icon_url" in
+    http://* | https://*) ;;
+    //*) icon_url="https:$icon_url" ;;
+    /*) icon_url="$origin$icon_url" ;;
+    ?*) icon_url="$origin/$icon_url" ;;
+    esac
+
+    { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
+        download_icon "$origin/apple-touch-icon.png" "$dest" ||
+        download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
+}
+
+# Desktop Entry "string" value (freedesktop spec): a raw newline would start a
+# new key line and let a value inject a second Exec=.
+desktop_string_escape() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//$'\t'/\\t}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\n'/\\n}
+    [[ $value == " "* ]] && value="\\s${value# }"
+    printf '%s' "$value"
+}
+
+# One Exec argument, double-quoted per the freedesktop Exec spec: inside quotes
+# " ` $ \ take a backslash and a literal % becomes %%.
+desktop_exec_arg() {
+    local escaped
+    escaped="$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')"
+    printf '"%s"' "$escaped"
+}
+
+default_browser_desktop() {
+    local id=""
+    have xdg-settings && id="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+    [[ -n $id ]] || id="${BROWSER:+${BROWSER%.desktop}.desktop}"
+    printf '%s' "$id"
+}
+
+# The browser's own Exec binary, read from the entry that owns the desktop id.
+browser_exec_for() {
+    local id="$1" dir exec=""
+    for dir in "$DESKTOP_DIR" "$(sysroot_path /usr/local/share/applications)" "$(sysroot_path /usr/share/applications)"; do
+        [[ -r $dir/$id ]] || continue
+        exec="$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$dir/$id" | head -n1)"
+        [[ -n $exec ]] && break
+    done
+    printf '%s' "${exec:-${id%.desktop}}"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 2 && $# <= 3)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+app_name="$1"
+require_plain_name "$app_name"
+app_url="$(normalize_webapp_url "$2")"
+require_http_url "$app_url"
+icon_ref="${3:-}"
+
+browser_id="$(default_browser_desktop)"
+[[ -n $browser_id ]] ||
+    die "no default web browser is set (try: haseen setup default browser chromium)"
+case "$browser_id" in
+chromium* | chrome* | google-chrome* | brave* | microsoft-edge* | vivaldi* | opera* | helium* | thorium*) ;;
+*)
+    die "${browser_id%.desktop} has no app mode, so '$app_name' would open as an ordinary tab.
+Web apps need a chromium-family browser: haseen setup default browser chromium"
+    ;;
+esac
+browser_exec="$(browser_exec_for "$browser_id")"
+
+icon_value=""
+if [[ -z $icon_ref || $icon_ref =~ ^https?:// ]]; then
+    icon_value="$(safe_icon_name "$app_name")"
+    icon_dest="$ICON_DIR/$icon_value.png"
+    if $DRY_RUN; then
+        echo "DRYRUN: download icon for $app_name -> $icon_dest"
+    else
+        tmp="$(mktemp -t haseen-webapp-icon-XXXXXX)"
+        trap 'rm -f "$tmp"' EXIT
+        if [[ -n $icon_ref ]]; then
+            download_icon "$icon_ref" "$tmp" || die "failed to download icon: $icon_ref"
+        else
+            fetch_site_icon "$app_url" "$tmp" ||
+                die "could not fetch an icon for $app_url (pass an icon URL, file or name)"
+        fi
+        run install -Dm0644 "$tmp" "$icon_dest"
+    fi
+elif [[ -f $icon_ref ]]; then
+    icon_value="$(safe_icon_name "$app_name")"
+    ext="${icon_ref##*/}"
+    ext="${ext##*.}"
+    [[ $ext == "${icon_ref##*/}" ]] && ext="png"
+    run install -Dm0644 "$icon_ref" "$ICON_DIR/$icon_value.$ext"
+else
+    # An icon already installed in a theme: accept "HEY" and "HEY.png" alike.
+    icon_value="$(icon_name_from_ref "$icon_ref")"
+fi
+have gtk-update-icon-cache && run gtk-update-icon-cache "$DATA_HOME/icons/hicolor" >/dev/null 2>&1 || true
+
+exec_command="$browser_exec $(desktop_exec_arg "--app=$app_url")"
+desktop_file="$DESKTOP_DIR/$app_name.desktop"
+
+{
+    cat <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$(desktop_string_escape "$app_name")
+Comment=$(desktop_string_escape "$app_name")
+Exec=$(desktop_string_escape "$exec_command")
+Terminal=false
+Type=Application
+Icon=$(desktop_string_escape "$icon_value")
+StartupNotify=true
+EOF
+} | write_user_file "$desktop_file"
+have update-desktop-database && run update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+
+info "web app installed: $app_name (app launcher: SUPER + SPACE)"

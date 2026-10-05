@@ -10,6 +10,9 @@ if ! command -v "$GO" >/dev/null; then
 fi
 go_bin="$(dirname "$(command -v "$GO")")"
 export PATH="$go_bin:$PATH"
+# The module cache is read-only once written, and the sandbox is wiped with
+# rm -rf on the next run; keep it out of the sandbox.
+export GOPATH="$OUT/gopath" GOFLAGS=-mod=mod
 
 capture env GOFLAGS=-count=1 bash -c 'cd "$1/core" && exec "$2" test ./...' bash "$REPO" "$GO"
 assert_status "go tests pass" 0 "$STATUS"

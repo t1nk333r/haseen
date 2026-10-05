@@ -1,0 +1,79 @@
+package palette
+
+import (
+	"fmt"
+	"image"
+	"math"
+	"os"
+
+	"golang.org/x/image/draw"
+)
+
+// LoadAndSamplePixels loads an image, scales it to ImageScaleSize (preserving aspect ratio),
+// and samples up to MaxPixelsToSample pixels, skipping transparent pixels (alpha < 128).
+// Returns a slice of RGB values.
+func LoadAndSamplePixels(imagePath string) ([]RGB, error) {
+	f, err := os.Open(imagePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open image: %w", err)
+	}
+	defer f.Close()
+
+	src, err := decodeImage(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	bounds := src.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	// Scale to fit within ImageScaleSize x ImageScaleSize, preserving aspect ratio
+	var dstW, dstH int
+	if srcW >= srcH {
+		dstW = ImageScaleSize
+		dstH = int(math.Round(float64(srcH) * float64(ImageScaleSize) / float64(srcW)))
+		if dstH < 1 {
+			dstH = 1
+		}
+	} else {
+		dstH = ImageScaleSize
+		dstW = int(math.Round(float64(srcW) * float64(ImageScaleSize) / float64(srcH)))
+		if dstW < 1 {
+			dstW = 1
+		}
+	}
+
+	// CatmullRom (a 4x4 cubic kernel) preserves local contrast far better than the
+	// 2x2 ApproxBiLinear box: small vivid features (specular highlights, a flag, a
+	// neon sign) survive the downscale instead of being averaged into their muted
+	// surroundings, which is exactly the chroma the palette wants to capture. The
+	// kernel's slight overshoot is benign here — median-cut averages each bucket, so
+	// the few overshot pixels are pulled back toward real cluster centers.
+	dst := image.NewNRGBA(image.Rect(0, 0, dstW, dstH))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, draw.Over, nil)
+
+	totalPixels := dstW * dstH
+	step := int(math.Max(1, math.Floor(float64(totalPixels)/float64(MaxPixelsToSample))))
+
+	var colors []RGB
+	for y := 0; y < dstH; y += step {
+		for x := 0; x < dstW; x += step {
+			offset := (y*dstW + x) * 4
+			a := dst.Pix[offset+3]
+
+			// Skip transparent pixels
+			if a < 128 {
+				continue
+			}
+
+			colors = append(colors, RGB{
+				R: float64(dst.Pix[offset]),
+				G: float64(dst.Pix[offset+1]),
+				B: float64(dst.Pix[offset+2]),
+			})
+		}
+	}
+
+	return colors, nil
+}
