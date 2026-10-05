@@ -70,6 +70,14 @@ uninstall_tree() {
 
 install_tree() {
     local f
+    # The sampling daemon is compiled into the tree before it is copied. With no
+    # Go toolchain the build script says so and the tree ships without it: the
+    # shell then finds no capability and hides what needs it (plan 032).
+    if $DRY_RUN; then
+        echo "DRYRUN: tools/build-sidecar.sh"
+    else
+        "$REPO/tools/build-sidecar.sh"
+    fi
     # Replace share/haseen atomically: copy beside, then swap.
     run_root rm -rf "$PREFIX/share/haseen.new" "$PREFIX/share/haseen.old"
     run_root install -d -m 0755 "$PREFIX/share"

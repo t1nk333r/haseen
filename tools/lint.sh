@@ -57,5 +57,19 @@ if [[ -x $QMLLINT && -d share/haseen/shell ]]; then
     fi
 fi
 
+# The sidecar (core/) is only linted where a Go toolchain exists; a machine
+# without one ships no daemon at all (plan 032). Both tools run inside the
+# module: from the repo root `./core/...` is not part of it.
+GO="${GO:-go}"
+if command -v "$GO" >/dev/null && [[ -f core/go.mod ]]; then
+    unformatted="$(cd core && "$GO" fmt ./... 2>/dev/null || true)"
+    if [[ -n $unformatted ]]; then
+        echo "gofmt: $unformatted" >&2
+        fail=1
+    fi
+    (cd core && "$GO" vet ./...) || fail=1
+    echo "go: $(find core -name '*.go' | wc -l) files"
+fi
+
 ((fail == 0)) && echo "lint OK"
 exit "$fail"

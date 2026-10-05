@@ -46,6 +46,7 @@ The owner's other repos:
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
 | Keybind sheet | `bin/haseen-keybinds`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
+| Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
@@ -75,6 +76,13 @@ setup).
 
 ## Release gates (open)
 
+- **Plan 032 (sidecar).** The Nix package does not build `haseen-sidecar`
+  (it would need `buildGoModule` and a vendor hash), so a NixOS install has no
+  `sysusage` capability and the widget hides. The NVIDIA branch of the daemon
+  (`nvidia-smi -l` stream) has no hardware here and is unverified; the amdgpu,
+  i915 and xe branches were exercised against fixtures, i915 also live. There is
+  no `strace` on the author's machine, so "who does the work" was measured with
+  `/proc/<pid>/io` read counters.
 - **Plan 014.** No end-to-end run on a real CachyOS machine or VM yet. The
   author's session has no qemu, no passwordless sudo and no docker group.
   Everything was fixture-tested, and only the user-level parts were run live.

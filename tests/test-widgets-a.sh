@@ -43,7 +43,8 @@ for f in haseen.sysusage/Widget.qml haseen.workspaces/Widget.qml haseen.media/Wi
 done
 # Every Timer is marked on the line above (test-shell.sh rule): either a
 # `haseen:sample` with a literal interval >= 2000 and a gated `running:`, or a
-# `haseen:ui-timeout` that is single-shot. Only the sysusage sampler ticks.
+# `haseen:ui-timeout` that is single-shot. Since plan 032 no widget samples at
+# all: haseen-sidecar does, and the QML side only subscribes.
 timers="$(find "${dirs[@]}" -name '*.qml' -exec awk '
     /^[[:space:]]*Timer[[:space:]]*\{/ { inside = 1; depth = 0; start = FNR; sample = (prev ~ /haseen:sample/); ui = (prev ~ /haseen:ui-timeout/); iv = ""; gated = 0; single = 0 }
     inside {
@@ -55,11 +56,15 @@ timers="$(find "${dirs[@]}" -name '*.qml' -exec awk '
     }
     { prev = $0 }' {} +)"
 assert_not_contains "no fast or ungated Timer" "$timers" ":bad"
-assert_eq "only the sysusage sampler has a Timer" "$PLUGINS/haseen.sysusage/Sampler.qml" "$(cut -d: -f1 <<<"$timers" | sort -u)"
+assert_eq "no widget has a Timer any more" "" "$(cut -d: -f1 <<<"$timers" | sort -u)"
 sampler="$(cat "$PLUGINS/haseen.sysusage/Sampler.qml")"
-assert_contains "sampler ticks only while active" "$sampler" "running: root.active"
-assert_contains "nvidia is one long-running stream" "$sampler" '"-l", "3"'
-assert_contains "nvidia only while active" "$sampler" 'running: root.active && root.gpuMethod === "nvidia"'
+assert_not_contains "the sampler has no timer" "$sampler" "Timer"
+assert_not_contains "the sampler reads no files" "$sampler" "FileView"
+assert_not_contains "the sampler starts no process" "$sampler" "Process"
+assert_contains "the sampler subscribes to the daemon" "$sampler" 'Sidecar.want(_key, "sysusage"'
+assert_contains "it unsubscribes when it is not shown" "$sampler" "Sidecar.drop(_key)"
+assert_contains "the feature is gated on the capability" "$sampler" 'Sidecar.has("sysusage")'
+assert_contains "the widget hides without the daemon" "$(cat "$PLUGINS/haseen.sysusage/Widget.qml")" "sampler.available"
 assert_contains "widget samples only while its window shows" "$(cat "$PLUGINS/haseen.sysusage/Widget.qml")" "QsWindow.window.visible"
 assert_eq "privacy, media, workspaces, calendar never poll (no Timer/SystemClock ticks)" "" \
     "$(grep -lE 'Timer \{' "$PLUGINS"/haseen.{privacy,media,workspaces,calendar}/*.qml || true)"
@@ -111,44 +116,8 @@ Window {
     }
 
     function run() {
-        // /proc/stat: busy = (dtotal - didle) / dtotal; idle includes iowait.
-        const a = U.parseStat("cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 1 2 3 4\n");
-        const b = U.parseStat("cpu  150 0 150 800 100 0 0 0 0 0\n");
-        eq("stat total", 1000, a.total);
-        eq("stat idle+iowait", 800, a.idle);
-        eq("cpu percent", 50, U.cpuPercent(a, b));
-        eq("cpu first sample unknown", -1, U.cpuPercent(null, a));
-        eq("cpu counter reset unknown", -1, U.cpuPercent(b, a));
-        eq("stat garbage", null, U.parseStat("intr 1 2 3"));
-        // /proc/meminfo: used = MemTotal - MemAvailable (free(1)'s view).
-        const m = U.parseMeminfo("MemTotal:       32554964 kB\nMemFree:  1 kB\nMemAvailable:   18094064 kB\nSwapCached: 0 kB\nSwapTotal:      1000 kB\nSwapFree:       250 kB\n");
-        eq("mem used", 14460900, m.usedKiB);
-        eq("mem percent", 44.42, Math.round(m.percent * 100) / 100);
-        eq("swap used", 750, m.swapUsedKiB);
-        eq("mem fallback without MemAvailable", 30, U.parseMeminfo("MemTotal: 100 kB\nMemFree: 50 kB\nBuffers: 10 kB\nCached: 10 kB\n").percent);
-        eq("meminfo garbage", null, U.parseMeminfo(""));
-        // Intel residency, frequency, NVIDIA lines.
-        eq("rc6 busy", 15, Math.round(U.residencyBusy(1000, 2700, 2000) * 1000) / 1000);
-        eq("rc6 first sample", -1, U.residencyBusy(NaN, 10, 2000));
-        eq("rc6 clamps", 0, U.residencyBusy(0, 2500, 2000));
-        eq("freq ratio", 25, U.freqPercent("350\n", "1400\n"));
-        eq("freq unknown max", -1, U.freqPercent("350", "0"));
-        eq("nvidia line", 37, U.parseNvidia(" 37\n"));
-        eq("nvidia error line", -1, U.parseNvidia("[N/A]"));
-        // GPU probe output and choice: auto = boot VGA (iGPU on hybrids).
-        const gpus = U.parseGpus("card0 nvidia 0 nvidia 0000:01:00.0\ncard1 i915 1 rc6 /sys/x\ncard1-eDP-1 junk\n");
-        eq("gpus parsed", 2, gpus.length);
-        eq("auto picks boot vga", "card1", U.pickGpu(gpus, "auto").card);
-        eq("explicit card", "nvidia", U.pickGpu(gpus, "card0").method);
-        eq("off", null, U.pickGpu(gpus, "off"));
-        eq("unknown card", null, U.pickGpu(gpus, "card9"));
-        eq("no boot vga -> first", "card0", U.pickGpu(U.parseGpus("card0 amdgpu 0 busy /x\n"), "auto").card);
-        // top -b -n 2: last frame only, sorted by CPU.
-        const top = "top - 1\n    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n      1 root      20   0       1      1      1 S  99.0   0.1   0:01.00 stale\n\ntop - 2\n    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n     10 me        20   0       1      1      1 S   2.0   1.5   0:01.00 foot\n     11 me        20   0       1      1      1 R  30.5   0.2   0:01.00 Web Content\n";
-        const procs = U.parseTop(top, 8);
-        eq("top last frame", 2, procs.length);
-        eq("top sorted", "Web Content", procs[0].command);
-        eq("top cpu", 30.5, procs[0].cpu);
+        // Parsing moved into haseen-sidecar (plan 032); core/internal/sysusage
+        // owns those tests. Only formatting is left here.
         eq("format GiB", "3.0 GiB", U.formatKiB(3145728));
         eq("format MiB", "512 MiB", U.formatKiB(524288));
 
@@ -234,55 +203,14 @@ if [[ -x $QML ]]; then
     rc=$?
     set -e
     assert_status "qml unit runner exits 0" 0 "$rc"
-    assert_contains "qml unit runner ran" "$units" "UNIT-PASS stat total"
+    assert_contains "qml unit runner ran" "$units" "UNIT-PASS format GiB"
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "79" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "52" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
-
-# --- gpu-probe.sh against fixture sysfs trees ----------------------------------
-probe="$PLUGINS/haseen.sysusage/gpu-probe.sh"
-mkcard() { # ROOT CARD DRIVER BOOT_VGA [FILE...] — fixture DRM card
-    local root="$1" card="$2" drv="$3" vga="$4" d f
-    d="$root/sys/class/drm/$card"
-    mkdir -p "$d/device"
-    printf 'DRIVER=%s\nPCI_SLOT_NAME=0000:0%s:00.0\n' "$drv" "${card#card}" >"$d/device/uevent"
-    printf '%s\n' "$vga" >"$d/device/boot_vga"
-    shift 4
-    for f in "$@"; do
-        mkdir -p "$(dirname "$d/$f")"
-        echo 42 >"$d/$f"
-    done
-    mkdir -p "$root/sys/class/drm/$card-eDP-1"
-}
-R="$SANDBOX/sys-intel"
-mkcard "$R" card1 i915 1 gt/gt0/rc6_residency_ms gt_act_freq_mhz gt_max_freq_mhz
-assert_eq "intel: rc6 residency" "card1 i915 1 rc6 $R/sys/class/drm/card1/gt/gt0/rc6_residency_ms" "$(bash "$probe" "$R")"
-R="$SANDBOX/sys-intel-freq"
-mkcard "$R" card0 i915 1 gt_act_freq_mhz gt_max_freq_mhz
-assert_eq "intel without residency: frequency" \
-    "card0 i915 1 freq $R/sys/class/drm/card0/gt_act_freq_mhz $R/sys/class/drm/card0/gt_max_freq_mhz" "$(bash "$probe" "$R")"
-R="$SANDBOX/sys-xe"
-mkcard "$R" card0 xe 1 device/tile0/gt0/gtidle/idle_residency_ms
-assert_contains "xe: gtidle residency" "$(bash "$probe" "$R")" "rc6 $R/sys/class/drm/card0/device/tile0/gt0/gtidle/idle_residency_ms"
-R="$SANDBOX/sys-hybrid"
-mkcard "$R" card0 amdgpu 0 device/gpu_busy_percent
-mkcard "$R" card1 nvidia 1
-stub nvidia-smi 'echo STUB-CALLED: nvidia-smi >&2; exit 97'
-out="$(bash "$probe" "$R" 2>&1)"
-assert_contains "amdgpu busy file" "$out" "card0 amdgpu 0 busy $R/sys/class/drm/card0/device/gpu_busy_percent"
-assert_contains "nvidia by PCI slot" "$out" "card1 nvidia 1 nvidia 0000:01:00.0"
-assert_not_contains "probe never runs nvidia-smi" "$out" "STUB-CALLED"
-assert_not_contains "connectors skipped" "$out" "eDP"
-# Without nvidia-smi on PATH the card reports no source (tools only: no /usr/bin).
-mkdir -p "$SANDBOX/tools"
-ln -sf /usr/bin/sed /usr/bin/cat "$SANDBOX/tools/"
-assert_contains "nvidia without nvidia-smi: none" \
-    "$(PATH="$SANDBOX/tools" /usr/bin/bash "$probe" "$R" 2>&1)" "card1 nvidia 1 none"
-assert_eq "empty sysfs: no output" "" "$(bash "$probe" "$SANDBOX/nothing")"
 
 # --- geoclue-watch.sh with a stub gdbus ---------------------------------------
 watch="$PLUGINS/haseen.privacy/geoclue-watch.sh"

@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# haseen:summary Show, start or stop haseen-sidecar, the sampling daemon
+# haseen:args [status|start|stop|build] [--dry-run]
+#
+# The shell starts the daemon itself when a widget needs it (plan 032); this is
+# for looking at it and for building it from a checkout.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+BINARY="$HASEEN_PATH/sidecar/haseen-sidecar"
+SOCKET="${XDG_RUNTIME_DIR:-/tmp}/haseen/sidecar.sock"
+
+usage() {
+    cat <<EOF
+Usage: haseen sidecar [status|start|stop|build] [--dry-run]
+
+  status   binary, version, socket and the capabilities it announces
+  start    run the daemon in the background (the shell does this on demand)
+  stop     ask the running daemon to exit
+  build    compile it from core/ into $BINARY (needs go)
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+action="${1:-status}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+
+socket_answers() {
+    [[ -S $SOCKET ]] || return 1
+    have socat || return 0
+    timeout 2 socat -u /dev/null UNIX-CONNECT:"$SOCKET" 2>/dev/null
+}
+
+case "$action" in
+status)
+    if [[ -x $BINARY ]]; then
+        printf 'binary:       %s (%s)\n' "$BINARY" "$("$BINARY" -version)"
+        printf 'capabilities: %s\n' "$("$BINARY" -capabilities)"
+    else
+        printf 'binary:       missing (%s)\n' "$BINARY"
+        printf 'capabilities: none; features that need the daemon stay hidden\n'
+    fi
+    printf 'socket:       %s' "$SOCKET"
+    if socket_answers; then
+        printf ' (running)\n'
+    else
+        printf ' (not running)\n'
+    fi
+    ;;
+start)
+    [[ -x $BINARY ]] || die "no daemon at $BINARY (haseen sidecar build)"
+    if socket_answers; then
+        info "already running on $SOCKET"
+        exit 0
+    fi
+    if $DRY_RUN; then
+        echo "DRYRUN: $BINARY &"
+        exit 0
+    fi
+    setsid "$BINARY" >/dev/null 2>&1 &
+    info "started $BINARY"
+    ;;
+stop)
+    socket_answers || {
+        info "not running"
+        exit 0
+    }
+    if $DRY_RUN; then
+        echo "DRYRUN: ask the daemon on $SOCKET to shut down"
+        exit 0
+    fi
+    require_cmds socat
+    printf '{"id":1,"method":"shutdown"}\n' | timeout 2 socat - UNIX-CONNECT:"$SOCKET" >/dev/null || true
+    info "asked the daemon to exit"
+    ;;
+build)
+    if $DRY_RUN; then
+        echo "DRYRUN: $HASEEN_PATH/../tools/build-sidecar.sh"
+        exit 0
+    fi
+    script="$HASEEN_PATH/../tools/build-sidecar.sh"
+    [[ -x $script ]] || die "build-sidecar.sh is only in a checkout, not in an installed tree"
+    "$script" "$BINARY"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

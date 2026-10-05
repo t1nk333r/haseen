@@ -4,3 +4,4 @@
 *.qmlc
 *.jsc
 .qmlls.ini
+/share/haseen/sidecar/haseen-sidecar
