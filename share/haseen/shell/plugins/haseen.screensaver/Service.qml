@@ -51,6 +51,7 @@ Scope {
     property var _windows: ({})
     property int _windowCount: 0
     property string _focusedMonitor: ""
+    readonly property int windowCount: !active ? 0 : (style === "ttfx" ? _windowCount : Quickshell.screens.length)
 
     // The idle path: honours the screensaver-off flag.
     function start(): void {

@@ -20,6 +20,33 @@ Singleton {
     readonly property color urgent: Theme.urgent
     readonly property color muted: Theme.muted
 
+    readonly property string currentThemePath: Paths.themeTokens.replace(/\/shell\.json$/, "")
+    // Border reads the upstream flat token vocabulary, but values come only
+    // from haseen's watched Theme singleton, never Omarchy files or polling.
+    readonly property var shellValues: ({
+        "popups.border": Theme.border,
+        "popups.border-width": Theme.borderWidth,
+        "tooltip.border": Theme.border,
+        "tooltip.border-width": Theme.borderWidth,
+        "notifications.border": Theme.accent,
+        "notifications.border-width": Theme.borderWidth,
+        "menu.border": Theme.border,
+        "menu.border-width": Theme.borderWidth,
+        "hyprland.active-border": Theme.accent,
+        "hyprland.active-border-width": Theme.borderWidth
+    })
+
+    readonly property QtObject lock: QtObject {
+        readonly property color background: Util.alpha(Theme.background, 0.8)
+        readonly property color text: Theme.foreground
+        readonly property color placeholder: Util.alpha(Theme.foreground, 0.66)
+        readonly property color textError: Theme.urgent
+        readonly property color border: Theme.border
+        readonly property color borderActive: Theme.accent
+        readonly property color borderError: Theme.urgent
+        readonly property color selection: Util.alpha(Theme.accent, 0.45)
+    }
+
     readonly property QtObject bar: QtObject {
         readonly property color background: Theme.background
         readonly property color text: Theme.foreground

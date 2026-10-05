@@ -31,6 +31,9 @@ parse_common_flags "${args[@]+"${args[@]}"}"
 }
 
 # At top level, so an unreadable user file stops here (exit 1), untouched.
+# Under the transaction lock, so the value written below is computed from the
+# shell.json no other writer can replace until this one renames its own.
+shell_config_lock
 user="$(shell_user_json)"
 current="$(shell_merged_json | jq '.bar.transparent == true')"
 case "${REST[0]:-toggle}" in

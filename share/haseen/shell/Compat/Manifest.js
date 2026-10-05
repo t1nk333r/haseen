@@ -13,10 +13,9 @@
 //     quickshell/PLUGINS/plugin-schema.json and Services/PluginService.qml
 //     (_deriveLegacySurface: which surface a single `component` is)
 //
-// Only the bar widget is adapted. Every other surface is listed in
-// `unsupported` and never loaded; a plugin without a bar widget is refused.
-
-var supportedKinds = ["bar-widget"];
+// Omarchy services and panels use the same registry as native plugins. DMS
+// surfaces remain unchanged: its separate adapter still accepts bar widgets.
+var supportedKinds = ["bar-widget", "service", "panel", "overlay"];
 
 // Omarchy kind -> its entryPoints key.
 var omarchyEntryKeys = {
@@ -60,8 +59,8 @@ function settingType(type, value) {
     return "string";
 }
 
-// Omarchy barWidget.defaults + barWidget.schema -> native settings.
-function omarchySettings(bw) {
+// Omarchy section defaults/schema -> native setting descriptors.
+function omarchySectionSettings(bw) {
     var out = {};
     if (!isObject(bw))
         return out;
@@ -92,6 +91,39 @@ function omarchySettings(bw) {
     return out;
 }
 
+// Installed plugins use three schema forms: section defaults/schema, a flat
+// native-like top-level settings map, or settings.defaults/settings.schema.
+// Bar-specific descriptors win when the manifest declares both.
+function omarchySettings(m) {
+    var out = omarchySectionSettings(m);
+    for (var section of [m.service, m.panel, m.overlay])
+        Object.assign(out, omarchySectionSettings(section));
+    var top = isObject(m.settings) ? m.settings : {};
+    if (isObject(top.defaults) || Array.isArray(top.schema)) {
+        Object.assign(out, omarchySectionSettings(top));
+    } else {
+        for (var key in top) {
+            var descriptor = top[key];
+            var hasDefault = isObject(descriptor) && descriptor["default"] !== undefined;
+            var value = hasDefault ? descriptor["default"] : (isObject(descriptor) ? undefined : descriptor);
+            var entry = {type: settingType(isObject(descriptor) ? descriptor.type : "", value)};
+            if (value !== undefined)
+                entry["default"] = value;
+            if (isObject(descriptor) && typeof descriptor.description === "string")
+                entry.description = descriptor.description;
+            out[key] = entry;
+        }
+    }
+    return Object.assign(out, omarchySectionSettings(m.barWidget));
+}
+
+// Omarchy permits a single-segment id (for example omaconnect). Namespace it
+// for haseen's registry while retaining upstreamId for service lookups; never
+// rename or modify the directory in the read-only Omarchy source.
+function omarchyId(name) {
+    return /^[a-z0-9-]+$/.test(String(name)) ? "omarchy." + name : name;
+}
+
 function omarchy(dirName, m) {
     var problems = [];
     var kinds = Array.isArray(m.kinds) ? m.kinds.filter(function (k) {
@@ -107,25 +139,25 @@ function omarchy(dirName, m) {
     if (kinds.length === 0)
         problems.push("omarchy: kinds must be a non-empty array");
     else if (supported.length === 0)
-        problems.push("omarchy: no supported kind (has " + kinds.join(", ") + "; the compat adapter loads bar-widget only)");
+        problems.push("omarchy: no supported kind (has " + kinds.join(", ") + "; supported: " + supportedKinds.join(", ") + ")");
     var entry = {};
     for (var i = 0; i < supported.length; i++)
         entry[supported[i]] = ep[omarchyEntryKeys[supported[i]]];
     return {
         compat: "omarchy",
         upstreamId: typeof m.id === "string" ? m.id : "",
-        id: dirName,
+        id: omarchyId(dirName),
         problems: problems,
         unsupported: unsupported,
         manifest: {
             schemaVersion: m.schemaVersion,
-            id: m.id,
+            id: typeof m.id === "string" ? omarchyId(m.id) : m.id,
             name: m.name,
             version: m.version,
             description: typeof m.description === "string" ? m.description : "",
             kinds: supported,
             entry: entry,
-            settings: omarchySettings(m.barWidget),
+            settings: omarchySettings(m),
             permissions: [],
             provides: []
         }

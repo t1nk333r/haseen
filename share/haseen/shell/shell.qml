@@ -17,6 +17,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Haseen
+import qs.Compat as Compat
 
 ShellRoot {
     id: shell
@@ -29,6 +30,15 @@ ShellRoot {
     // `bar toggle` hides the bars for this session only.
     property bool barHidden: false
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
+
+    // Legacy plugin facades route native panels through this root, not through
+    // detached CLI round trips. The binding is restored when the shell dies.
+    Binding {
+        target: Compat.Runtime
+        property: "nativeShell"
+        value: shell
+        restoreMode: Binding.RestoreBindingOrValue
+    }
 
     function focusedScreen(): var {
         const mon = Hyprland.focusedMonitor;
@@ -131,11 +141,11 @@ ShellRoot {
         }
     }
 
-    // service-kind plugins listed in shell.json `services`. ScriptModel
-    // diffs the list, so editing shell.json never restarts unrelated services.
+    // Explicit services plus companions needed by listed Omarchy widgets.
+    // ScriptModel diffs the ids so an unrelated edit never restarts a service.
     Instantiator {
         model: ScriptModel {
-            values: Config.services.filter(id => Config.isEnabled(id))
+            values: Plugins.serviceKeys
         }
 
         delegate: ServiceHost {}
@@ -145,7 +155,7 @@ ShellRoot {
     // panel first opens, and closing it frees the window again.
     Instantiator {
         model: ScriptModel {
-            values: Plugins.panelIds
+            values: Plugins.panelIds.filter(id => !Compat.Runtime.panelSelfWindowed(id))
         }
 
         delegate: LazyLoader {
@@ -159,6 +169,31 @@ ShellRoot {
                 pluginId: panelLoader.modelData
                 screen: shell.panelScreen
                 onCloseRequested: shell.closePanel(panelLoader.modelData)
+            }
+        }
+    }
+
+    // A legacy panel that builds its own window gets no popup from the shell,
+    // exactly as upstream's panel loader gives it none: the popup's focus grab
+    // covers only the popup's window, so the plugin's first click on its own
+    // window would read as an outside click and destroy the panel. Loading
+    // stays lazy; the entry exists while the panel is open.
+    Instantiator {
+        model: ScriptModel {
+            values: Plugins.panelIds.filter(id => Compat.Runtime.panelSelfWindowed(id))
+        }
+
+        delegate: LazyLoader {
+            id: windowedPanelLoader
+
+            required property string modelData
+
+            active: shell.openPanels.indexOf(modelData) >= 0
+
+            PluginSlot {
+                pluginId: windowedPanelLoader.modelData
+                kind: "panel"
+                screen: shell.panelScreen
             }
         }
     }
@@ -179,11 +214,21 @@ ShellRoot {
         target: "panel"
 
         function toggle(id: string): void {
-            shell.togglePanel(id);
+            const key = Plugins.resolveId(id);
+            const rec = Plugins.registry[key];
+            // Legacy entries start closed and show themselves on open(payload),
+            // so every one of them opens through the compat lifecycle, not by
+            // being instantiated.
+            if (rec && rec.compat === "omarchy") {
+                Compat.Runtime.toggle(key, "");
+                return;
+            }
+            shell.togglePanel(key);
         }
 
         function close(): void {
             shell.openPanels = [];
+            Compat.Runtime.closePopout();
         }
     }
 

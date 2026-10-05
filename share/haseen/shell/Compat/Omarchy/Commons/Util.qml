@@ -6,8 +6,8 @@ import Quickshell
 // qs.Commons.Util for Omarchy plugins (architecture 5.4). Pure helpers.
 //
 // Adapted from Omarchy's shell/Commons/Util.qml
-// (MIT, Copyright (c) David Heinemeier Hansson). The bar-layout normalisers
-// belong to Omarchy's bar host and are left out.
+// (MIT, Copyright (c) David Heinemeier Hansson). Layout helpers normalize
+// plugin-facing bar configuration without mutating the native config.
 Singleton {
     function clamp(value: var, min: real, max: real): real {
         const n = Number(value);
@@ -120,5 +120,37 @@ Singleton {
         if (event.modifiers & Qt.ControlModifier)
             return text.replace(/\s+$/, "").replace(/\S+$/, "");
         return text.slice(0, -1);
+    }
+
+    // Layout normalization shared by bar config consumers
+    // so the two never drift. Entries are deep-cloned to decouple from the
+    // input config; consumers can mutate without leaking back to shell.json.
+    function normalizeLayoutEntry(entry) {
+      if (typeof entry === "string") return { id: canonicalWidgetId(entry) }
+      if (isPlainObject(entry) && entry.id) {
+        var copy = cloneJson(entry)
+        copy.id = canonicalWidgetId(copy.id)
+        return copy
+      }
+      return null
+    }
+
+    function normalizeLayoutSection(list) {
+      if (!Array.isArray(list)) return []
+      var out = []
+      for (var i = 0; i < list.length; i++) {
+        var e = normalizeLayoutEntry(list[i])
+        if (e) out.push(e)
+      }
+      return out
+    }
+
+    function normalizeLayout(layout) {
+      var src = isPlainObject(layout) ? layout : {}
+      return {
+        left:   normalizeLayoutSection(src.left),
+        center: normalizeLayoutSection(src.center),
+        right:  normalizeLayoutSection(src.right)
+      }
     }
 }

@@ -24,6 +24,9 @@ parse_common_flags "$@"
 values="${REST[0]}"
 jq -e 'type == "object"' <<<"$values" >/dev/null 2>&1 || die "settings must be a JSON object"
 
+# One panel click writes one key, but two screens can click at once: read and
+# write under the shared shell.json transaction lock.
+shell_config_lock
 current="$(shell_user_json)"
 updated="$(jq --argjson v "$values" '.plugins["haseen.prayers"].settings += $v' <<<"$current")"
 [[ $updated == "$current" ]] && exit 0

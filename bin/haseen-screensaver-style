@@ -46,5 +46,7 @@ ttfx | native) ;;
     exit 2
     ;;
 esac
+# Read and write as one transaction; the lock is inherited by the pipeline.
+shell_config_lock
 shell_user_json | jq --arg s "$style" '.plugins["haseen.screensaver"].settings.style = $s' | shell_config_write
 $DRY_RUN || echo "Screensaver style: $style"

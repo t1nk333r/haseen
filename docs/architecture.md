@@ -166,9 +166,14 @@ Nothing appears on screen for them.
 
 ### 5.4 Compat adapters (`shell/Compat/`)
 
-- **Omarchy plugins** (`manifest.json` with Omarchy `kind` and `entry`): the Omarchy plugin imports are provided under the same module names they use, backed by `qs.Haseen`. Plugins are found in `~/.config/haseen/plugins/` and also, read-only, in `~/.config/omarchy/plugins/` when that directory exists.
-- **DMS plugins** (`plugin.json`): the `qs.Common` / `qs.Services` / `qs.Widgets` / `qs.Modules.Plugins` subset that bar widgets use, backed by `qs.Haseen`. They are found in `~/.config/haseen/plugins/` and, read-only, in `~/.config/DankMaterialShell/plugins/`.
-- An adapted plugin appears in the registry with `"compat": "omarchy" | "dms"`. Unsupported APIs fail that plugin only, never the shell.
+- **Omarchy plugins** (`manifest.json` with `kinds` and `entryPoints`): bar widgets, services, panels and overlays are adapted to native registry records. The source directories `~/.config/omarchy/plugins/` and `~/.config/haseen/plugins/` are read without modifying them. Whole-bar replacements still require their original Omarchy bar host; they are not treated as slot widgets.
+- Omarchy imports `qs.Ui` and `qs.Commons` provide the shared panel, keyboard, popup, control, border and theme contracts. A real scoped facade supplies dependencies, popup ownership and settings. Settings writes go atomically to **haseen's** `shell.json` only. An accepted asynchronous mutation is not durable until `Runtime.settingsWritten(id, success)` fires.
+- Companion services and overlays of listed Omarchy widgets start once per plugin, shared across monitors. Distinct stable `service:<id>` / `overlay:<id>` keys avoid restarting them during unrelated config edits. Initial settings, source metadata and host APIs exist before plugin completion handlers run.
+- Legacy single-segment ids receive a namespace in haseen's registry (`omaconnect` → `omarchy.omaconnect`), while dependency lookups retain the original identity. Original directory names never change.
+- **DMS plugins** (`plugin.json`): the existing `qs.Common` / `qs.Services` / `qs.Widgets` / `qs.Modules.Plugins` bar-widget subset is unchanged. Its source directory is also read-only.
+- Adapted records expose `compat`, `upstreamId` and `unsupported`; component errors affect that plugin alone. This is **not a sandbox**. Package prerequisites, device permissions, credentials, direct original IPC handlers and hard-coded Omarchy config/scripts remain the plugin's responsibility. Native equivalents are not assumed identical.
+- Omarchy `ShellIpc` helpers negotiate one target owner and hand it to the next enabled instance on teardown. Immutable original direct `IpcHandler` children cannot be universally deduplicated by host injection. Native panels remain lazy; existing legacy inline Item bodies preserve their ids and may be eager.
+- Verification compiles every original entry without activating it first. Hazardous original services are exercised only inside a read-only, offline namespace with a private home/run/dev/proc and non-activating D-Bus, never directly on the owner's account.
 
 ### 5.5 IPC
 

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# haseen:summary Persist scoped compatibility plugin settings from JSON on stdin
+# haseen:args <id> [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin settings <id> [--dry-run] [--yes] < request.json
+
+Accepts {"settings":{...}} (merge own settings) or
+{"changes":[{"path":["bar","transparent"],"value":true}],"idleProvider":"haseen.idle"}.
+Changes may touch only this plugin's settings, bar presentation/layout, or
+idle.screensaver (mapped to the actual idle provider's settings).
+Payloads are read from stdin, never command-line arguments. The latest user
+shell.json is read under a lock, unrelated values are preserved, and the
+replacement is atomic. Prints the resulting user JSON on success. --dry-run
+shows the write without creating a file or contacting the running desktop.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || { usage >&2; exit 2; }
+id="${REST[0]}"
+[[ $id =~ $PLUGIN_ID_RE ]] || die "invalid id '$id'"
+dir="$(plugin_resolve "$id")"
+if ! problems="$(plugin_check "$dir")"; then
+    printf '%s\n' "$problems" >&2
+    die "refusing settings for invalid plugin $id"
+fi
+request="$(cat)"
+# Validation also rejects duplicate input documents, unsafe object keys and
+# any attempt to widen the facade's write scope. Only ids appear in jq argv.
+printf '%s\n' "$request" | jq -se --arg id "$id" '
+    def object: type == "object";
+    def safe_keys: all(paths; all(.[]; . != "__proto__" and . != "constructor" and . != "prototype"));
+    def permitted($p):
+        ($p | type == "array" and length >= 2 and all(.[]; type == "string")) and
+        (($p[0] == "plugins" and ($p | length) >= 3 and $p[1] == $id and $p[2] == "settings") or
+         ($p[0] == "idle" and ($p | length) == 2 and $p[1] == "screensaver") or
+         ($p[0] == "bar" and ($p | length) == 2 and (["position","height","transparent","left","center","right"] | index($p[1]) != null)));
+    length == 1 and (.[0] | object and safe_keys and
+      ((has("settings") and (.settings | object) and (keys == ["settings"])) or
+       (has("changes") and (.changes | type == "array") and
+        ((keys - ["changes","idleProvider"]) | length == 0) and
+        all(.changes[]; object and permitted(.path) and
+            ((.remove == true) or has("value")) and ((keys - ["path","value","remove"]) | length == 0)))))
+' >/dev/null || die "invalid or out-of-scope settings request"
+
+idle_provider="$(jq -r '.idleProvider // ""' <<<"$request")"
+if jq -e 'any(.changes[]?; .path[0] == "idle")' <<<"$request" >/dev/null; then
+    [[ $idle_provider =~ $PLUGIN_ID_RE ]] || die "idle.screensaver needs a native idle provider"
+    idle_dir="$(plugin_resolve "$idle_provider")"
+    if [[ $idle_provider != haseen.idle ]]; then
+        plugin_manifest "$idle_dir" | jq -e '(.provides // []) | index("idle") != null' >/dev/null ||
+            die "$idle_provider does not provide the idle role"
+    fi
+fi
+
+# One lock for every shell.json writer, held across the read below and the
+# rename in shell_config_write, so compatibility panels (including the same
+# widget on two screens) and the bar CLI cannot drop each other's updates.
+# Dry runs do not even create the directory/lock.
+shell_config_lock
+user="$(shell_user_json)"
+updated="$(printf '%s\n%s\n' "$user" "$request" | jq -s --arg id "$id" --arg idle "$idle_provider" '
+    .[0] as $user | .[1] as $request |
+    if $request | has("settings") then
+        $user | .plugins[$id].settings = ((.plugins[$id].settings // {}) * $request.settings)
+    else
+        reduce $request.changes[] as $change ($user;
+            (if $change.path[0] == "idle" then ["plugins",$idle,"settings","screensaverAfter"] else $change.path end) as $path |
+            if $change.remove == true then delpaths([$path]) else setpath($path; $change.value) end)
+    end
+')"
+# Validate only changed presentation fields, never unrelated user settings.
+printf '%s\n' "$request" | jq -e '
+    all(.changes[]?;
+        .remove == true or
+        (if .path[0] == "idle" then (.value | type == "number" and . >= 0)
+         elif .path[0] != "bar" then true
+         elif .path[1] == "position" then (.value | IN("top","bottom","left","right"))
+         elif .path[1] == "height" then (.value | type == "number" and . >= 16)
+         elif .path[1] == "transparent" then (.value | type == "boolean")
+         else (.value | type == "array" and all(.[]; type == "string")) end))
+' >/dev/null || die "invalid bar or screensaver setting"
+if [[ $updated != "$user" ]]; then
+    printf '%s\n' "$updated" | shell_config_write >&2
+fi
+$DRY_RUN || printf '%s\n' "$updated"

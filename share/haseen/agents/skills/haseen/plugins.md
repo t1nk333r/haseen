@@ -50,13 +50,14 @@ and dashes, at least one dot, e.g. `alice.load`. `haseen.*` is reserved.
 
        glyph: "\uf0e4"
        text: load.text().split(" ")[0]
-       color: Theme.foreground
+       color: Theme.barForeground
 
        FileView {
            id: load
            path: "/proc/loadavg"
        }
 
+       // haseen:sample
        Timer {
            interval: 10000
            running: root.visible
@@ -209,6 +210,37 @@ haseen shell ipc shell reload
 
 `haseen shell ipc shell plugins` then shows `"origin": "user", "overrides": true`.
 Delete the copy to go back to the built-in.
+
+## Existing Omarchy plugins
+
+Their original directory is read-only. Do not move, rewrite or remove anything
+under `~/.config/omarchy/plugins/`; no Omarchy settings file is updated by haseen.
+Inspect before enabling: QML plugins can start helpers or modify device state.
+Native haseen plugins remain the default; imported plugins are opt-in.
+
+```sh
+haseen plugin list
+haseen plugin info t1nk33r.tailscale
+haseen plugin validate t1nk33r.tailscale
+haseen plugin enable t1nk33r.tailscale --dry-run
+```
+
+Bar widgets, services, panels and overlays are supported. Listed legacy
+widgets start their companion service/overlay once per plugin, not per screen.
+`haseen shell ipc panel toggle <id>` also opens a legacy widget's nested panel.
+Single-segment upstream ids are namespaced in the list (`omaconnect` becomes
+`omarchy.omaconnect`), without renaming its source folder.
+
+Compilation and an empty error list do not prove a hardware/network action
+works. External prerequisites and original hard-coded config/scripts still
+need attention; whole-bar replacement plugins require their original host.
+Legacy inline Item bodies can be eager, so enable only the widgets you use.
+Always check the source before live activation and use a protected offline
+namespace when testing unknown startup behavior.
+
+Scoped settings use `haseen plugin settings <id>` with JSON on stdin. They
+preserve unrelated haseen settings and never write back to the original source.
+
 
 ## Remove a plugin
 
