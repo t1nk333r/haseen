@@ -32,3 +32,7 @@ Read `handoff.md` first.
 | 024 | Omarchy repo as a package source (after Chaotic-AUR, never Omarchy itself) | P2 | S | 023 | DONE 2026-10-04 (source-order + layer tests) |
 | 025 | haseen.pager: omapager port as the default notification daemon | P1 | L | 010 | DONE 2026-10-04 |
 | 026 | haseen.prayers: omaprayers port (Riyadh defaults, city-level) | P2 | M | 005 | DONE 2026-10-04 |
+| 027 | Luna plugins: panels, controls, scoped host APIs and service lifecycle | P1 | L | 005 011 025 026 | DONE 2026-10-05 (3,060+ tests; 29 imported widgets in a protected sandbox) |
+| 028 | Migration ledger: one-off upgrade steps, run once per user | P1 | S | 001 | DONE 2026-10-05 (30 tests; live apply + retry) |
+| 029 | Dual-boot control (EFI BootNext) and drive helpers | P1 | M | 001 002 010 | DONE 2026-10-05 (43 tests; BootNext set and cleared live) |
+| 030 | Keybind registry and searchable cheat sheet | P2 | M | 003 005 010 | DONE 2026-10-05 (17 tests; 234 live binds on screen) |

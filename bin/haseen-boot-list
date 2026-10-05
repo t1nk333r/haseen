@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# haseen:summary List the firmware's EFI boot entries (Windows, other installs)
+# haseen:args [--json]
+#
+# Entry parsing adapted from DankMaterialShell quickshell/Services/BootEntries.js
+# (MIT, Copyright (c) 2025 Avenge Media LLC): only active entries (the `*`), the
+# label stops at the tab efibootmgr 18+ puts before the device path, and
+# BootCurrent is the running one.
+#
+# Exit codes are the state, so a caller never has to parse prose:
+#   0 ready   3 noEfi (not booted in UEFI mode)   4 noTool (no efibootmgr)
+#   1 error   (efibootmgr failed; the reason is on stderr, and in --json)
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen boot list [--json]
+
+Lists the entries the firmware can start, with the running one marked. Use
+'haseen boot next' to start one of them on the next boot only.
+
+  --json   {"status","currentId","entries":[{"id","label"}]}; status is
+           ready, noEfi, noTool or error
+EOF
+}
+
+json=false
+for arg in "$@"; do
+    case "$arg" in
+    --json) json=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+emit() { # STATUS CURRENT ERROR < entries.tsv
+    if ! $json; then
+        return 0
+    fi
+    jq -R -s -c --arg status "$1" --arg current "$2" --arg error "$3" \
+        'split("\n") | map(select(length > 0) | split("\t") | {id: .[0], label: .[1]})
+         | {status: $status, currentId: $current, error: $error, entries: .}'
+}
+
+[[ -d $(sysroot_path /sys/firmware/efi) ]] || {
+    $json && emit noEfi "" "this system was not started in UEFI mode" </dev/null
+    $json || echo "not started in UEFI mode" >&2
+    exit 3
+}
+have efibootmgr || {
+    $json && emit noTool "" "efibootmgr is not installed" </dev/null
+    $json || echo "efibootmgr is not installed" >&2
+    exit 4
+}
+
+err="$(mktemp)"
+trap 'rm -f "$err"' EXIT
+if ! listing="$(efibootmgr 2>"$err")"; then
+    reason="$(tr -d '\r' <"$err" | tr '\n' ' ' | sed 's/ *$//')"
+    $json && emit error "" "${reason:-efibootmgr failed}" </dev/null
+    $json || echo "${reason:-efibootmgr failed}" >&2
+    exit 1
+fi
+
+current=""
+entries=""
+while IFS= read -r line; do
+    if [[ $line =~ ^BootCurrent:[[:space:]]*([0-9A-Fa-f]{4}) ]]; then
+        current="${BASH_REMATCH[1]^^}"
+    elif [[ $line =~ ^Boot([0-9A-Fa-f]{4})\*[[:space:]]+(.*)$ ]]; then
+        label="${BASH_REMATCH[2]%%$'\t'*}"
+        label="${label%"${label##*[![:space:]]}"}"
+        entries+="${BASH_REMATCH[1]^^}"$'\t'"$label"$'\n'
+    fi
+done <<<"$listing"
+
+if $json; then
+    printf '%s' "$entries" | emit ready "$current" ""
+    exit 0
+fi
+
+while IFS=$'\t' read -r id label; do
+    [[ -n $id ]] || continue
+    printf '%s %-4s %s\n' "$([[ $id == "$current" ]] && echo '*' || echo ' ')" "$id" "$label"
+done <<<"$entries"

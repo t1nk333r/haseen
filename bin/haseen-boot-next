@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# haseen:summary Start another installed OS (Windows) on the next boot only
+# haseen:args <id|label> [--label TEXT] [--reboot] [--dry-run] [--yes]
+#
+# Adapted from DankMaterialShell quickshell/Services/BootEntryService.qml
+# (MIT, Copyright (c) 2025 Avenge Media LLC): the entries are listed again
+# before BootNext is set, so a firmware that renumbered them is caught instead
+# of starting the wrong OS. Changes: this is the CLI, so the privileged step is
+# run_root (sudo) rather than pkexec, and the reboot is a separate opt-in.
+#
+# BootNext is cleared by the firmware after that one boot, so the normal
+# BootOrder (and Secure Boot) is untouched.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen boot next <id|label> [--label TEXT] [--reboot] [--dry-run] [--yes]
+
+Sets the firmware's BootNext to one entry from 'haseen boot list', for the next
+boot only.
+
+  <id|label>     Boot#### id (0000) or an entry label (Windows Boot Manager)
+  --label TEXT   refuse the id if its label is no longer TEXT, which is how a
+                 renumbered entry is caught
+  --reboot       reboot once BootNext is set
+EOF
+}
+
+wanted=""
+expect_label=""
+reboot=false
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --label)
+        expect_label="${args[++i]:-}"
+        ;;
+    --reboot) reboot=true ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+wanted="$1"
+
+listing="$(haseen-boot-list --json)" || {
+    status=$?
+    echo "$listing" | jq -r '.error' >&2
+    exit "$status"
+}
+
+if [[ $wanted =~ ^[0-9A-Fa-f]{4}$ ]]; then
+    id="${wanted^^}"
+    label="$(jq -r --arg id "$id" '.entries[] | select(.id == $id) | .label' <<<"$listing")"
+    [[ -n $label ]] || die "no active boot entry $id (haseen boot list)"
+else
+    matches="$(jq -r --arg label "$wanted" '[.entries[] | select(.label | ascii_downcase == ($label | ascii_downcase))] | .[].id' <<<"$listing")"
+    case "$(grep -c . <<<"$matches")" in
+    0) die "no active boot entry labelled '$wanted' (haseen boot list)" ;;
+    1) id="$matches" ;;
+    *) die "several entries are labelled '$wanted'; use the id: $(tr '\n' ' ' <<<"$matches")" ;;
+    esac
+    label="$(jq -r --arg id "$id" '.entries[] | select(.id == $id) | .label' <<<"$listing")"
+fi
+
+if [[ -n $expect_label && $expect_label != "$label" ]]; then
+    die "boot entry $id is now '$label', not '$expect_label'; the firmware renumbered it (haseen boot list)"
+fi
+
+[[ $(jq -r .currentId <<<"$listing") != "$id" ]] ||
+    warn "$label is the entry this session was started from"
+
+confirm "Start '$label' ($id) on the next boot?" || exit 1
+set_bootnext() {
+    if ((EUID == 0)); then
+        run efibootmgr --bootnext "$id"
+    else
+        run_root efibootmgr --bootnext "$id"
+    fi
+}
+if $DRY_RUN; then
+    set_bootnext
+else
+    set_bootnext >/dev/null
+    info "next boot: $label ($id)"
+fi
+
+$reboot || exit 0
+confirm "Reboot now?" || exit 0
+run systemctl reboot

@@ -33,6 +33,7 @@ The owner's other repos:
 | NixOS | `flake.nix`, `nix/` | 009 |
 | Notifications, OSD, launcher, lock, idle, polkit, session | `share/haseen/shell/plugins/haseen.*` | 010 |
 | Omarchy and DMS plugin compat | `share/haseen/shell/Compat/` + 6 root symlinks | 011 |
+| Extended luna-plugin compatibility | `share/haseen/shell/Compat/Omarchy/`, `share/haseen/shell/Compat/Runtime.qml`, `share/haseen/shell/Compat/ShellApi.qml`, `bin/haseen-plugin-settings` | 027 |
 | AI panel and agent skill | `share/haseen/shell/plugins/haseen.ai/`, `share/haseen/agents/skills/haseen/` | 012 |
 | Screen frame, transparent bar, tray | `share/haseen/shell/{Frame*,Bar}.qml`, `bin/haseen-bar-*`, `haseen.tray` | 015 |
 | Menu (Omarchy-style, owner's selection) | `share/haseen/shell/plugins/haseen.menu/`, `share/haseen/default/menu.jsonc`, `bin/haseen-{menu,about,system,setup-*,font-*,branding,config-*}` | 016 |
@@ -41,6 +42,9 @@ The owner's other repos:
 | Screensaver (ttfx + native), night light, stay awake, DND | `haseen.{screensaver,nightlight,idle,notifications}`, `share/haseen/shell/Haseen/Flags.qml` | 019 |
 | 22 Omarchy themes, backgrounds, picker | `share/haseen/themes/`, `bin/haseen-theme-{fetch,bg}`, `haseen.themepicker`, `haseen-background.service` | 020 |
 | Starter widgets | `haseen.{sysusage,privacy,workspaces,media,calendar,clipboard,weather,bluetooth,network}` | 021, 022 |
+| Migration ledger | `bin/haseen-migrate*`, `share/haseen/lib/migrate.sh`, `share/haseen/migrations/`, `share/haseen/systemd/user/haseen-migrate-notify.service` | 028 |
+| Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
+| Keybind sheet | `bin/haseen-keybinds`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
@@ -92,6 +96,18 @@ setup).
 - **Not verified live (would need pointer events):** double-click
   transparency on the bar (the IPC path was verified), tray hover, workspace and
   media clicks.
+- **Legacy source limits (plan 027):** whole-bar clones require the original
+  Omarchy bar host; original direct IpcHandler children can duplicate on
+  multiple screens. Nearby Share, Nook and several original helpers read or
+  write the old Omarchy config directly; the host does not reinterpret or
+  modify that source. Backends, device access and credentials were not tested
+  by importing a widget alone. Keep native defaults and opt in deliberately.
+- **Protected smoke:** all 54 original entries were compiled without
+  activation (53 ready; whole-bar clone failed). A read-only offline namespace
+  then constructed 29 widgets/companions and showed the original agents,
+  Tailscale and KDE Connect panels. No original plugin bytes changed. That
+  29-widget configuration measured 278 MiB RSS before opening panels and
+  291 MiB after; it is not the default low-resource layout.
 
 ## Working rules learned the hard way
 

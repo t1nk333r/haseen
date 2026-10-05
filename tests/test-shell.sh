@@ -234,6 +234,65 @@ capture haseen plugin enable me.widget
 assert_status "enable refuses a non-JSON shell.json" 1 "$STATUS"
 assert_eq "non-JSON shell.json untouched" '{ "bar": { // comment' "$(cat "$CFG")"
 
+# --- every shell.json writer shares one transaction lock --------------------
+# Each writer reads shell.json, computes an update and renames a staging file
+# over it. Without a lock held across the whole transaction, two writers read
+# the same snapshot and the second one silently drops the first one's edit.
+sandbox shell-lock
+CFG="$XDG_CONFIG_HOME/haseen/shell.json"
+LOCK="$XDG_CONFIG_HOME/haseen/.shell.json.lock"
+BASE='{"plugins":{"me.widget":{"settings":{"keep":1}}}}'
+haseen plugin new me.widget --kind bar-widget >/dev/null
+printf '%s\n' "$BASE" >"$CFG"
+
+capture haseen bar transparent on --no-apply --dry-run
+assert_status "bar transparent dry-run" 0 "$STATUS"
+assert_dry_pure "bar transparent" "$OUTPUT"
+assert_eq "dry run creates no lock" "absent" "$([[ -e $LOCK ]] && echo present || echo absent)"
+assert_eq "dry run leaves shell.json alone" "$BASE" "$(cat "$CFG")"
+capture haseen plugin settings me.widget --dry-run <<<'{"settings":{"ghost":true}}'
+assert_status "plugin settings dry-run" 0 "$STATUS"
+assert_dry_pure "plugin settings" "$OUTPUT"
+assert_eq "settings dry run creates no lock" "absent" "$([[ -e $LOCK ]] && echo present || echo absent)"
+assert_eq "settings dry run leaves shell.json alone" "$BASE" "$(cat "$CFG")"
+
+# Hold the lock, start a writer, and commit a competing edit while it waits:
+# the writer must read shell.json only after it gets the lock, so the edit it
+# could not have seen survives next to its own.
+exec 9<>"$LOCK"
+flock -x 9
+haseen bar transparent on --no-apply >"$SANDBOX/w-bar.log" 2>&1 &
+w_bar=$!
+sleep 1
+assert_eq "a writer waits for the transaction lock" "$BASE" "$(cat "$CFG")"
+jq -c '.plugins["me.widget"].settings.fromOther = true' <<<"$BASE" >"$CFG"
+flock -u 9
+exec 9>&-
+rc_bar=0
+wait "$w_bar" || rc_bar=$?
+assert_eq "the writer finished once the lock was free" 0 "$rc_bar"
+assert_eq "the waiting writer applied its own edit" "true" "$(jq -c .bar.transparent "$CFG")"
+assert_eq "the waiting writer kept the edit committed while it waited" "true" \
+    "$(jq -c '.plugins["me.widget"].settings.fromOther' "$CFG")"
+
+# Two different writers started together must both land.
+haseen bar position bottom --no-apply >"$SANDBOX/w-pos.log" 2>&1 &
+w_pos=$!
+haseen plugin settings me.widget >"$SANDBOX/w-set.log" 2>&1 <<<'{"settings":{"fromPanel":true}}' &
+w_set=$!
+rc_pos=0
+wait "$w_pos" || rc_pos=$?
+rc_set=0
+wait "$w_set" || rc_set=$?
+assert_eq "concurrent bar writer exits 0" 0 "$rc_pos"
+assert_eq "concurrent settings writer exits 0" 0 "$rc_set"
+assert_eq "concurrent writers kept the bar edit" '"bottom"' "$(jq -c .bar.position "$CFG")"
+assert_eq "concurrent writers kept the settings edit" "true" "$(jq -c '.plugins["me.widget"].settings.fromPanel' "$CFG")"
+assert_eq "concurrent writers kept the earlier edits" "true" "$(jq -c .bar.transparent "$CFG")"
+assert_eq "no writer dropped the untouched value" "1" "$(jq -c '.plugins["me.widget"].settings.keep' "$CFG")"
+assert_eq "no staging file left behind" "" \
+    "$(find "$XDG_CONFIG_HOME/haseen" -maxdepth 1 -name 'shell.json.new*' -print -quit)"
+
 # --- shell run / restart / ipc ---------------------------------------------
 sandbox shell-cmds
 record qs

@@ -91,9 +91,12 @@ for id in "${SERVICES[@]}"; do
     assert_eq "default services list $id" "yes" \
         "$(jq -r --arg id "$id" 'if (.services | index($id)) then "yes" else "no" end' "$HASEEN_PATH/default/shell.json")"
 done
+# `services` is the enable list for everything non-visual, so an overlay (a
+# plugin that owns its own layer surface) belongs there as much as a service.
 while read -r id; do
-    assert_contains "service id $id has a service entry" \
-        "$(jq -r '.kinds | join(" ")' "$PLUGINS/$id/manifest.json")" "service"
+    kinds="$(jq -r '.kinds | join(" ")' "$PLUGINS/$id/manifest.json")"
+    assert_eq "service id $id is a service or an overlay" "yes" \
+        "$(if [[ $kinds == *service* || $kinds == *overlay* ]]; then echo yes; else echo "no ($kinds)"; fi)"
 done < <(jq -r '.services[]' "$HASEEN_PATH/default/shell.json")
 
 # --- entry contract: every entry file takes pluginId/settings/screen ---------

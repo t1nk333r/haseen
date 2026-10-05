@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.keybinds",
+  "name": "Keybindings",
+  "version": "1.0.0",
+  "description": "Searchable sheet of the key bindings this session actually has (haseen keybinds)",
+  "kinds": [
+    "overlay"
+  ],
+  "entry": {
+    "overlay": "Overlay.qml"
+  },
+  "settings": {
+    "columns": {
+      "type": "integer",
+      "default": 2,
+      "description": "Columns the sheet is laid out in"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.keybinds to read the sheet without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
+}

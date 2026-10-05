@@ -13,6 +13,10 @@ import qs.Haseen.Widgets
 // `loginctl lock-session` for a lock daemon listening to logind. Log out is
 // Hyprland's exit dispatcher over its socket (what `hyprctl dispatch exit`
 // sends). Power actions go through `systemctl`, which asks logind and polkit.
+//
+// Another installed OS (Windows) is one more row: `haseen boot list` reads the
+// firmware's entries, and the row sets BootNext through pkexec and reboots, so
+// it starts once without touching the boot order or Secure Boot.
 Column {
     id: root
 
@@ -22,7 +26,14 @@ Column {
     property var screen: null
 
     readonly property bool confirm: settings.confirm !== false
-    readonly property var actions: [
+    readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
+    // Firmware menus and removable slots are entries too, and they are noise in
+    // a power menu. settings.bootEntries decides what shows: "auto" (the
+    // default) drops them by label, a list of ids or labels shows exactly those.
+    readonly property var bootNoise: /^(USB|PXE|IDER|ATA\b|ATAPI|CD\/DVD|Setup|Boot Menu|Diagnostic|Network|Startup|Rescue|MEBx)/i
+    property var bootActions: []
+    readonly property var actions: baseActions.concat(bootActions)
+    readonly property var baseActions: [
         {
             id: "lock",
             label: "Lock",
@@ -54,6 +65,48 @@ Column {
             destructive: true
         }
     ]
+
+    // Entries the firmware can start, read once while the panel is open.
+    Process {
+        id: bootList
+        running: root.settings.bootEntries !== false
+        command: [root.cli + "-boot-list", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let listing = {};
+                try {
+                    listing = JSON.parse(text);
+                } catch (e) {
+                    return;
+                }
+                if (listing.status !== "ready")
+                    return;
+                const wanted = Array.isArray(root.settings.bootEntries) ? root.settings.bootEntries.map(w => String(w).toLowerCase()) : null;
+                root.bootActions = (listing.entries || []).filter(entry => {
+                    if (entry.id === listing.currentId)
+                        return false;
+                    if (wanted)
+                        return wanted.indexOf(entry.id.toLowerCase()) >= 0 || wanted.indexOf(entry.label.toLowerCase()) >= 0;
+                    return !root.bootNoise.test(entry.label);
+                }).map(entry => ({
+                    id: "boot:" + entry.id,
+                    label: "Reboot into " + entry.label,
+                    bootLabel: entry.label,
+                    glyph: "\uf2f9",
+                    destructive: true
+                }));
+            }
+        }
+    }
+
+    // Sets BootNext as root, and reboots only once the firmware took it.
+    Process {
+        id: bootNext
+        onExited: code => {
+            if (code === 0)
+                Quickshell.execDetached(["systemctl", "reboot"]);
+        }
+    }
     property int current: 0
     // Id of the action waiting for its confirming press.
     property string armed: ""
@@ -71,6 +124,14 @@ Column {
         }
         armed = "";
         close();
+        if (id.startsWith("boot:")) {
+            const entry = actions.find(a => a.id === id);
+            // pkexec authenticates the BootNext write; the reboot that follows
+            // is the user's own, through logind.
+            bootNext.command = ["pkexec", root.cli + "-boot-next", id.slice(5), "--label", entry.bootLabel, "--yes"];
+            bootNext.running = true;
+            return;
+        }
         switch (id) {
         case "lock":
             if (!Plugins.callRole("lock", "lock", []))

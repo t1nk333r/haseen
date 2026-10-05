@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# haseen:summary Pick a drive from a list that shows size, model and contents
+# haseen:args [device...] [--luks]
+#
+# Adapted from Omarchy bin/omarchy-drive-select (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: fzf instead of gum, which is what every other
+# haseen picker uses, and --luks to list only encrypted containers.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen drive select [device...] [--luks]
+
+Prints the selected device path. Without arguments it lists whole disks;
+--luks lists LUKS containers (partitions) instead.
+EOF
+}
+
+luks=false
+devices=()
+for arg in "$@"; do
+    case "$arg" in
+    --luks) luks=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) devices+=("$arg") ;;
+    esac
+done
+require_cmds lsblk
+
+if ((${#devices[@]} == 0)); then
+    if $luks; then
+        mapfile -t devices < <(lsblk -prno NAME,FSTYPE | awk '$2 == "crypto_LUKS" { print $1 }')
+    else
+        # Real disks only: zram, loop and ram devices are not drives.
+        mapfile -t devices < <(lsblk -dpno NAME,TYPE |
+            awk '$2 == "disk" && $1 ~ /\/dev\/(sd|hd|vd|nvme|mmcblk|xv)/ { print $1 }')
+    fi
+fi
+((${#devices[@]} > 0)) || die "no $($luks && echo 'encrypted' || echo 'available') drives found"
+
+# One candidate needs no picker; scripts can rely on that.
+if ((${#devices[@]} == 1)); then
+    printf '%s\n' "${devices[0]}"
+    exit 0
+fi
+
+require_cmds fzf
+rows=""
+for device in "${devices[@]}"; do
+    rows+="$(haseen-drive-info "$device")"$'\n'
+done
+selection="$(printf '%s' "$rows" | fzf --prompt 'drive> ')" || exit 1
+printf '%s\n' "${selection%% *}"

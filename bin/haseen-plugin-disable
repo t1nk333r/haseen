@@ -22,6 +22,9 @@ id="${REST[0]}"
 [[ $id =~ $PLUGIN_ID_RE ]] || die "invalid id '$id'"
 plugin_dir "$id" >/dev/null || warn "no plugin '$id' on disk; removing it from shell.json anyway"
 
+# The read and the write are one transaction: another writer must not slip a
+# shell.json between them.
+shell_config_lock
 current="$(shell_user_json)"
 merged="$(shell_merged_json)"
 updated="$(jq --arg id "$id" --argjson m "$merged" '

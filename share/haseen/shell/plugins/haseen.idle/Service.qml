@@ -40,6 +40,7 @@ Scope {
     property bool _dpmsOff: false
     // name -> isIdle of the live monitors, for the debug hook.
     property var _idle: ({})
+    readonly property bool screensaverStartedThisCycle: _idle.screensaver === true
 
     function _dpms(on: bool): void {
         // Hyprland 0.56 in Lua mode takes Lua dispatcher expressions.

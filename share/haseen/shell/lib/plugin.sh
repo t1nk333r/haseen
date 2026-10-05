@@ -56,10 +56,13 @@ def truthy: . != null and . != false and . != "" and . != 0;
 def kebab: gsub("(?<a>[a-z0-9])(?<b>[A-Z])"; "\(.a)-\(.b)") | gsub("(?<a>[A-Z])(?<b>[A-Z][a-z])"; "\(.a)-\(.b)")
     | ascii_downcase | gsub("[^a-z0-9-]+"; "-") | gsub("^-+|-+$"; "");
 def dmsid: "dms." + (kebab | if . == "" then "unnamed" else . end);
+def omid: if test("^[a-z0-9-]+$") then "omarchy." + . else . end;
+def omsupported: ["bar-widget", "service", "panel", "overlay"];
+def omentry: {"bar-widget": "barWidget", "service": "service", "panel": "panel", "overlay": "overlay"};
 def settype($t; $v): if (["string", "number", "integer", "boolean", "array", "object"] | index([$t])) then $t
     elif ($v | type) == "array" or ($v | type) == "boolean" or ($v | type) == "number" or ($v | type) == "object" then ($v | type)
     else "string" end;
-def omsettings: (if (.barWidget | isobj) then .barWidget else {} end) as $bw
+def omsection: (if isobj then . else {} end) as $bw
     | (if ($bw.defaults | isobj) then $bw.defaults else {} end) as $d
     | (if ($bw.schema | type) == "array" then $bw.schema else [] end) as $s
     | reduce ($s[] | select(isobj and (.key | type) == "string" and .key != "")) as $e ({};
@@ -69,18 +72,30 @@ def omsettings: (if (.barWidget | isobj) then .barWidget else {} end) as $bw
             + (if ($e.description | type) == "string" then {description: $e.description}
                elif ($e.label | type) == "string" then {description: $e.label} else {} end))})
     | reduce ($d | keys_unsorted[]) as $k (.; if has($k) then . else . + {($k): {type: settype(""; $d[$k]), default: $d[$k]}} end);
+def omsettings:
+    . as $m | (if (.settings | isobj) then .settings else {} end) as $top
+    | (if ($top.defaults | isobj) or ($top.schema | type) == "array" then ($top | omsection)
+       else reduce ($top | keys_unsorted[]) as $key ({};
+         $top[$key] as $d
+         | (if ($d | isobj) and ($d | has("default")) then {v: $d.default}
+            elif ($d | isobj | not) then {v: $d} else {} end) as $val
+         | . + {($key): ({type: settype((if $d | isobj then $d.type else "" end); $val.v)}
+             + (if $val | has("v") then {default: $val.v} else {} end)
+             + (if ($d | isobj) and ($d.description | type) == "string" then {description: $d.description} else {} end))}) end) as $settings
+    | ($m | omsection) + ($m.service | omsection) + ($m.panel | omsection)
+      + ($m.overlay | omsection) + $settings + ($m.barWidget | omsection);
 def omarchy($dirname):
     (if (.kinds | type) == "array" then [.kinds[] | select(type == "string")] else [] end) as $kinds
     | (if (.entryPoints | isobj) then .entryPoints else {} end) as $ep
-    | ($kinds | map(select(. == "bar-widget"))) as $sup
-    | {compat: "omarchy", upstreamId: (if (.id | type) == "string" then .id else "" end), id: $dirname,
+    | ($kinds | map(select(. as $kind | omsupported | index($kind)))) as $sup
+    | {compat: "omarchy", upstreamId: (if (.id | type) == "string" then .id else "" end), id: ($dirname | omid),
        problems: (if ($kinds | length) == 0 then ["omarchy: kinds must be a non-empty array"]
-                  elif ($sup | length) == 0 then ["omarchy: no supported kind (has \($kinds | join(", ")); the compat adapter loads bar-widget only)"]
+                  elif ($sup | length) == 0 then ["omarchy: no supported kind (has \($kinds | join(", ")); supported: \(omsupported | join(", ")))"]
                   else [] end),
-       unsupported: ($kinds | map(select(. != "bar-widget"))),
-       manifest: {schemaVersion: .schemaVersion, id: .id, name: .name, version: .version,
+       unsupported: ($kinds | map(select(. as $kind | omsupported | index($kind) | not))),
+       manifest: {schemaVersion: .schemaVersion, id: (if (.id | type) == "string" then (.id | omid) else .id end), name: .name, version: .version,
                   description: (if (.description | type) == "string" then .description else "" end),
-                  kinds: $sup, entry: (reduce $sup[] as $k ({}; . + {($k): $ep.barWidget})),
+                  kinds: $sup, entry: (reduce $sup[] as $k ({}; . + {($k): $ep[(omentry | .[$k])]})),
                   settings: omsettings, permissions: [], provides: []}};
 def dmssurfaces: (if (.capabilities | type) == "array" then .capabilities else [] end) as $caps
     | if (.components | isobj) then (.components | with_entries(select(.value | truthy)))
@@ -140,9 +155,10 @@ plugin_manifest() {
     fi
 }
 
-# plugin_id_of DIR — the registry id: the directory name, or dms.<kebab id>.
+# plugin_id_of DIR — the registry id: native directory name, a namespaced
+# Omarchy id (single-segment upstream ids receive omarchy.), or dms.<kebab>.
 plugin_id_of() {
-    if [[ ! -e $1/manifest.json && -e $1/plugin.json ]]; then
+    if [[ -n $(plugin_compat "$1") ]]; then
         plugin_adapt "$1" | jq -r .id
     else
         basename "$1"
@@ -160,24 +176,23 @@ plugin_index() {
     done
 }
 
-# plugin_dir ID — the directory that wins for ID (user copy first). Only a
-# dms.* id needs the plugin.json scan; the others are directory names.
+# plugin_dir ID — the directory that wins for ID. Resolution must agree with
+# the running shell: Haseen/Plugins.qml scans user, built-in, Omarchy and DMS
+# in that order and keeps the first directory whose *adapted* id matches
+# (later ones only set `overrides`). plugin_index yields exactly that order,
+# one line at a time, so the loop below stops at the first hit. Matching on
+# the directory name first would be faster but wrong: a directory merely
+# named ID in a low-priority root (an adapted id such as
+# dms.example-emoji-plugin) would beat the user's copy of the same plugin
+# under its upstream name (ExampleEmojiPlugin), and the CLI would then edit a
+# manifest the shell never loads.
 plugin_dir() {
     local id dir
-    if [[ $1 != dms.* ]]; then
-        for dir in "$PLUGIN_USER_DIR/$1" "$PLUGIN_BUILTIN_DIR/$1" "$PLUGIN_OMARCHY_DIR/$1" "$PLUGIN_DMS_DIR/$1"; do
-            [[ -d $dir && $(plugin_id_of "$dir") == "$1" ]] && {
-                printf '%s\n' "$dir"
-                return 0
-            }
-        done
-        return 1
-    fi
     while IFS=$'\t' read -r id dir; do
-        [[ $id == "$1" ]] && {
+        if [[ $id == "$1" ]]; then
             printf '%s\n' "$dir"
             return 0
-        }
+        fi
     done < <(plugin_index)
     return 1
 }
@@ -343,6 +358,29 @@ plugin_permissions() {
     fi
 }
 
+# The shell.json transaction lock. Every read-modify-write of the user
+# shell.json — a CLI command, a panel calling `haseen plugin settings`, the
+# same widget on two screens — must hold it across *both* the read and the
+# rename, or one writer computes its update from a snapshot another writer
+# has already replaced and silently drops it.
+SHELL_CONFIG_LOCK="$HASEEN_USER_CONFIG/.shell.json.lock"
+
+# shell_config_lock — take the transaction lock for the rest of this process
+# (released when it exits). Idempotent: a second call sees the fd and returns,
+# which matters because flock(2) locks belong to the open file description, so
+# opening the same file twice in one process would deadlock against itself.
+# A dry run changes nothing, so it neither creates the lock file nor waits.
+shell_config_lock() {
+    if $DRY_RUN || [[ -n ${SHELL_CONFIG_LOCK_FD:-} ]]; then
+        return 0
+    fi
+    mkdir -p "$HASEEN_USER_CONFIG"
+    # The lock inode must survive, and must not be world-readable state.
+    (umask 077 && : >>"$SHELL_CONFIG_LOCK")
+    exec {SHELL_CONFIG_LOCK_FD}<"$SHELL_CONFIG_LOCK"
+    flock -x "$SHELL_CONFIG_LOCK_FD"
+}
+
 # shell_user_json — the user shell.json (or {} when absent). Dies on invalid
 # JSON rather than overwrite a file the user is editing.
 shell_user_json() {
@@ -367,11 +405,20 @@ shell_merged_json() {
 # and renamed into place, so the running shell (FileView watch) never reads a
 # half-written file. FileView cannot see a file that did not exist when the
 # shell started, so a first-time write asks for a reload.
+#
+# The staging name carries the writer's pid, so two writers never stage into
+# one file and rename each other's bytes. shell_config_lock is called here as
+# well: callers take it before their read (that is the part that needs it),
+# and this keeps the rename serialised even if one forgets.
 shell_config_write() {
-    local existed=true
+    local existed=true tmp="$SHELL_USER_CONFIG.new"
     [[ -e $SHELL_USER_CONFIG ]] || existed=false
-    write_user_file "$SHELL_USER_CONFIG.new"
-    run mv -f -- "$SHELL_USER_CONFIG.new" "$SHELL_USER_CONFIG"
+    if ! $DRY_RUN; then
+        shell_config_lock
+        tmp="$SHELL_USER_CONFIG.new.$$"
+    fi
+    write_user_file "$tmp"
+    run mv -f -- "$tmp" "$SHELL_USER_CONFIG"
     $existed || info "new $SHELL_USER_CONFIG: apply it to a running shell with: haseen shell ipc shell reload"
 }
 

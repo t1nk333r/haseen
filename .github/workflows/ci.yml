@@ -29,7 +29,7 @@ defaults:
 env:
   ARCH_PACKAGES: >-
     git bash jq lua shellcheck curl file python nodejs qt6-declarative
-    imagemagick qrencode zbar foot which diffutils
+    imagemagick qrencode zbar foot which diffutils quickshell
 
 jobs:
   lint:

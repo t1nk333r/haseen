@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# haseen:summary Run the one-off upgrade steps a new haseen version needs
+# haseen:args [--pending] [--seal] [--dry-run] [--yes]
+#
+# Mechanism adapted from Omarchy bin/omarchy-migrate and bin/omarchy-provision-user
+# (MIT, Copyright (c) David Heinemeier Hansson): timestamped scripts in the
+# installed tree, one marker file per applied script under the user's state dir,
+# a fresh install sealed so it starts with nothing pending.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/migrate.sh
+source "$HASEEN_PATH/lib/migrate.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen migrate [--pending] [--seal] [--dry-run] [--yes]
+
+Runs every migration in $HASEEN_PATH/migrations that this user has not run,
+oldest first, and records it in $(migrate_ledger_dir).
+
+  --pending   list what would run, exit 1 when nothing is pending
+  --seal      record every migration as done without running it; install.sh
+              uses this on a first install, where there is nothing to upgrade
+EOF
+}
+
+mode=run
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --pending | --check) mode=pending ;;
+    --seal) mode=seal ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+pending="$(migrate_pending)"
+
+if [[ $mode == pending ]]; then
+    [[ -n $pending ]] || exit 1
+    printf '%s\n' "$pending"
+    exit 0
+fi
+
+if [[ -z $pending ]]; then
+    info "no pending migrations"
+    exit 0
+fi
+
+if [[ $mode == seal ]]; then
+    while IFS= read -r name; do
+        migrate_record "$name" sealed
+    done <<<"$pending"
+    info "sealed $(wc -l <<<"$pending") migration(s) as already applied"
+    exit 0
+fi
+
+if ! $DRY_RUN && ! migrate_wait_for_pacman; then
+    info "pacman is still busy; migrations will run on the next login"
+    exit 0
+fi
+
+while IFS= read -r name; do
+    if $DRY_RUN; then
+        echo "DRYRUN: run migration $name"
+        continue
+    fi
+    info "running migration ${name%.sh}"
+    # A migration that fails keeps its marker unwritten, so the next run retries
+    # it; later migrations wait rather than running out of order.
+    if ! HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$name" \
+        bash -Eeuo pipefail "$(migrate_dir)/$name"; then
+        die "migration ${name%.sh} failed; nothing after it ran"
+    fi
+    migrate_record "$name" applied
+done <<<"$pending"

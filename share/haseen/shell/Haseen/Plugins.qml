@@ -14,8 +14,8 @@ import "../Compat/Manifest.js" as CompatManifest
 //
 // Compat (architecture 5.4): ~/.config/omarchy/plugins/ and
 // ~/.config/DankMaterialShell/plugins/ are scanned read-only after those two.
-// Compat/Manifest.js adapts Omarchy manifests and DMS plugin.json files to
-// the native shape; their bar widgets load through a Compat/ host.
+// Compat/Manifest.js adapts Omarchy manifests and DMS plugin.json files;
+// visual entries and services load through kind-specific Compat hosts.
 //
 // The full schema check lives in `haseen plugin validate`; this one only
 // keeps a malformed manifest from reaching a Loader.
@@ -49,6 +49,51 @@ Singleton {
 
     readonly property var panelIds: Object.keys(registry).filter(id => registry[id].valid && registry[id].kinds.indexOf("panel") >= 0)
 
+    // Service and overlay companions are shared across all screens. A listed
+    // legacy widget can depend on both, even when only the widget is configured.
+    readonly property var serviceIds: {
+        const ids = Config.services.filter(id => Config.isEnabled(id));
+        for (const id of Config.section("left").concat(Config.section("center"), Config.section("right"))) {
+            const rec = registry[id];
+            if (rec && rec.valid && rec.compat === "omarchy" && Config.isEnabled(id)
+                    && (rec.kinds.indexOf("service") >= 0 || rec.kinds.indexOf("overlay") >= 0) && ids.indexOf(id) < 0)
+                ids.push(id);
+        }
+        return [...new Set(ids)];
+    }
+
+    // Stable string model keys retain distinct service/overlay instances for
+    // a plugin that supplies both. Objects here would be recreated on registry
+    // updates and spuriously restart unrelated background services.
+    readonly property var serviceKeys: {
+        const keys = [];
+        for (const id of serviceIds) {
+            const rec = registry[id];
+            if (rec && rec.valid && rec.compat === "omarchy") {
+                for (const kind of ["service", "overlay"])
+                    if (rec.kinds.indexOf(kind) >= 0)
+                        keys.push(kind + ":" + id);
+            } else {
+                keys.push(serviceKind(id) + ":" + id);
+            }
+        }
+        return keys;
+    }
+
+    function serviceKind(id: string): string {
+        const rec = registry[id];
+        return rec && rec.kinds.indexOf("service") < 0 && rec.kinds.indexOf("overlay") >= 0 ? "overlay" : "service";
+    }
+
+    function resolveId(id: string): string {
+        if (registry[id])
+            return id;
+        for (const key in registry)
+            if (registry[key].compat !== "" && registry[key].upstreamId === id)
+                return key;
+        return id;
+    }
+
     // URL the hosts load: the plugin's own file, or for an adapted plugin the
     // Compat host that provides the upstream contract around entryUrl().
     function componentUrl(id: string, kind: string): string {
@@ -56,7 +101,11 @@ Singleton {
         const rec = registry[id];
         if (url === "" || rec.compat === "")
             return url;
-        return Paths.fileUrl(Paths.shellDir + "/Compat/" + (rec.compat === "omarchy" ? "OmarchyHost.qml" : "DmsHost.qml"));
+        if (rec.compat === "omarchy") {
+            const file = kind === "service" || kind === "overlay" ? "OmarchyServiceHost.qml" : "OmarchyHost.qml";
+            return Paths.fileUrl(Paths.shellDir + "/Compat/" + file);
+        }
+        return Paths.fileUrl(Paths.shellDir + "/Compat/DmsHost.qml");
     }
 
     function entryUrl(id: string, kind: string): string {
@@ -282,6 +331,8 @@ Singleton {
             const m = a.manifest;
             const problems = a.problems.length > 0 ? a.problems : validate(a.id, m);
             const ok = problems.length === 0;
+            const upstreamManifest = ok && a.compat !== ""
+                ? JSON.parse(a.compat === "dms" ? text.plugin : text.manifest) : null;
             reg[a.id] = {
                 id: a.id,
                 name: ok ? m.name : a.id,
@@ -296,6 +347,7 @@ Singleton {
                 origin: d.origin,
                 compat: a.compat,
                 upstreamId: a.upstreamId,
+                upstreamManifest: upstreamManifest,
                 unsupported: a.unsupported,
                 overrides: false,
                 valid: ok,
