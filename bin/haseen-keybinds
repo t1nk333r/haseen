@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# haseen:summary Show the key bindings this session actually has
+# haseen:args [--json] [--reload]
+#
+# Model adapted from DankMaterialShell core/internal/keybinds (MIT, Copyright
+# (c) 2025 Avenge Media LLC): one record per bind with key, modifiers,
+# description, action and category, grouped for a cheat sheet.
+#
+# Changes: the binds come from the running compositor (`hyprctl binds -j`), not
+# from parsing a config file, so a bind added by any Lua file, submap or plugin
+# is listed the moment Hyprland reloads. Only the category comes from the Lua
+# sources, where it is the `-- Section ---` comment the bind was written under.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen keybinds [--json] [--reload]
+
+Lists the live bindings, grouped by the section they were written under.
+
+  --json     [{"key","mods","combo","description","action","category",
+              "submap","repeat","locked"}]
+  --reload   ask Hyprland to reload its config first, so an edit you just
+             made is included
+EOF
+}
+
+json=false
+reload=false
+for arg in "$@"; do
+    case "$arg" in
+    --json) json=true ;;
+    --reload) reload=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+require_cmds hyprctl jq
+$reload && hyprctl reload >/dev/null
+
+binds="$(hyprctl binds -j)" || die "Hyprland is not answering (hyprctl binds)"
+
+# Categories: the `-- Name ------` comment each `b("KEY", "Description", ...)`
+# sits under, read from the Lua files that are actually loaded. The user's own
+# files come last, so their section wins for a description they rebound.
+categories() {
+    local file
+    for file in "$HASEEN_PATH/default/hypr"/*.lua "${XDG_CONFIG_HOME:-$HOME/.config}/hypr"/*.lua; do
+        [[ -f $file ]] || continue
+        awk '
+            /^[[:space:]]*--[[:space:]]*[A-Z][^-]*-{3,}/ {
+                section = $0
+                sub(/^[[:space:]]*--[[:space:]]*/, "", section)
+                sub(/[[:space:]]*-+[[:space:]]*$/, "", section)
+                next
+            }
+            match($0, /^[[:space:]]*(local[[:space:]]+)?b\(/) {
+                line = $0
+                if (match(line, /"[^"]*"[[:space:]]*,[[:space:]]*"[^"]*"/) == 0) next
+                field = substr(line, RSTART, RLENGTH)
+                if (match(field, /,[[:space:]]*"[^"]*"$/) == 0) next
+                desc = substr(field, RSTART, RLENGTH)
+                sub(/^,[[:space:]]*"/, "", desc)
+                sub(/"$/, "", desc)
+                if (section != "" && desc != "")
+                    printf "%s\t%s\n", desc, section
+            }
+        ' "$file"
+    done
+}
+
+records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" '
+    (split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries) as $cats
+    | [1, 2, 4, 8, 16, 32, 64, 128] as $bits
+    | ["SHIFT", "CAPS", "CTRL", "ALT", "MOD2", "MOD3", "SUPER", "MOD5"] as $names
+    | $binds | map(
+        . as $bind
+        | ([range(0; 8) | select(($bind.modmask % ($bits[.] * 2)) >= $bits[.]) | $names[.]]) as $mods
+        | {
+            key: .key,
+            mods: $mods,
+            combo: (($mods + [.key]) | join(" + ")),
+            description: (if .has_description then .description else "" end),
+            action: (if .dispatcher == "__lua" then "" else (.dispatcher + (if .arg == "" then "" else " " + .arg end)) end),
+            category: ($cats[.description] // (if .submap == "" then "Other" else "Submap: " + .submap end)),
+            submap: .submap,
+            repeat: .repeat,
+            locked: .locked
+        })
+    | sort_by(.category, .description, .combo)')" || die "could not read the bindings"
+
+if $json; then
+    printf '%s\n' "$records"
+    exit 0
+fi
+
+jq -r '
+    group_by(.category)[]
+    | "\n\(.[0].category)",
+      (.[] | "  \(.combo)\u0009\(if .description == "" then .action else .description end)")' <<<"$records" |
+    expand -t 34
