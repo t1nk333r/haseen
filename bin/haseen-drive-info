@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# haseen:summary Describe a drive: size, model and what is on it
+# haseen:args <device>
+#
+# Adapted from Omarchy bin/omarchy-drive-info (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: the partition summary names LUKS containers, so
+# an encrypted disk is obvious before you touch its passphrase.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() { echo "Usage: haseen drive info <device>   (e.g. /dev/nvme0n1)"; }
+
+[[ ${1:-} == -h || ${1:-} == --help ]] && {
+    usage
+    exit 0
+}
+drive="${1:-}"
+[[ -n $drive ]] || {
+    usage >&2
+    exit 2
+}
+require_cmds lsblk
+
+# A partition was given: describe the whole disk it sits on.
+whole="$(lsblk -no PKNAME "$drive" 2>/dev/null | tail -n1)"
+[[ -n $whole ]] && whole="/dev/$whole" || whole="$drive"
+
+size="$(lsblk -dno SIZE "$drive" 2>/dev/null | tr -d ' ')"
+vendor="$(lsblk -dno VENDOR "$whole" 2>/dev/null | sed 's/ *$//')"
+model="$(lsblk -dno MODEL "$whole" 2>/dev/null | sed 's/ *$//')"
+
+label=""
+if [[ -n $vendor && -n $model ]]; then
+    [[ $model == *"$vendor"* ]] && label="$model" || label="$vendor $model"
+else
+    label="${model:-$vendor}"
+fi
+
+display="$drive"
+[[ -n $size ]] && display+=" ($size)"
+[[ -n $label ]] && display+=" - $label"
+
+parts="$(lsblk -nro TYPE,NAME,FSTYPE,MOUNTPOINT "$whole" 2>/dev/null |
+    awk '$1 == "part" {
+        fs = ($3 == "" ? "unknown" : $3)
+        printf "%s%s%s", sep, fs, ($4 == "" ? "" : "(" $4 ")")
+        sep = ", "
+    }')"
+[[ -n $parts ]] && display+=" [$parts]"
+
+printf '%s\n' "$display"

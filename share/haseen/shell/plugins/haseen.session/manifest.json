@@ -16,6 +16,11 @@
       "default": true,
       "description": "Log out, reboot and shut down need a second press"
     },
+    "bootEntries": {
+      "type": "string",
+      "default": "auto",
+      "description": "Other installed systems to offer (one row each, reboots into it once): \"auto\" hides firmware and removable entries, false hides them all, or a list of Boot#### ids or labels from 'haseen boot list'"
+    },
     "debugIpc": {
       "type": "boolean",
       "default": false,
