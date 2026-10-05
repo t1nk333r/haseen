@@ -118,3 +118,11 @@ flags=()
 $DRY_RUN && flags+=(--dry-run)
 $ASSUME_YES && flags+=(--yes)
 HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" layer apply "${LAYERS[@]}" "${flags[@]}"
+
+# A first install has nothing to upgrade, so its migrations are recorded as
+# sealed; a reinstall over an existing ledger runs what is genuinely pending.
+if [[ -d $HASEEN_USER_STATE/migrations ]]; then
+    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate "${flags[@]}"
+else
+    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate --seal "${flags[@]}"
+fi

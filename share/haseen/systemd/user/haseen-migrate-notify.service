@@ -1,0 +1,14 @@
+[Unit]
+Description=haseen pending migration notice
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env haseen migrate notify
+# The toast waits for a click, so a long run is the normal case, not a hang.
+TimeoutStopSec=5
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

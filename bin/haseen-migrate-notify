@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# haseen:summary Tell the user when haseen has migrations waiting (login unit)
+# haseen:args [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-migrate-notify (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: haseen.pager is the notification daemon, so the
+# click is a freedesktop action this process waits on instead of a command the
+# daemon stores, and the terminal comes from `haseen config terminal`.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen migrate notify [--dry-run]
+
+Sends one critical notification when migrations are pending, and runs
+\`haseen migrate\` in a floating terminal if the user clicks it. Started by
+haseen-migrate-notify.service after the graphical session.
+EOF
+}
+
+parse_common_flags "$@"
+
+pending="$(haseen-migrate --pending 2>/dev/null)" || exit 0
+count="$(grep -c . <<<"$pending")"
+if ((count == 1)); then
+    message="Click to run 1 pending migration."
+else
+    message="Click to run $count pending migrations."
+fi
+
+if $DRY_RUN; then
+    echo "DRYRUN: notify about $count pending migration(s)"
+    exit 0
+fi
+
+# graphical-session.target is reached before the shell owns the notification
+# name; a toast sent into that gap is lost and the user never learns.
+if have busctl; then
+    for _ in {1..60}; do
+        busctl --user status org.freedesktop.Notifications &>/dev/null && break
+        sleep 0.5
+    done
+fi
+
+if ! have notify-send; then
+    printf 'haseen has pending migrations. Run `haseen migrate`:\n%s\n' "$pending" >&2
+    exit 0
+fi
+
+# --wait keeps this oneshot alive until the toast is answered or dismissed; the
+# action id is printed on stdout when it is clicked.
+answer="$(notify-send -a haseen -u critical --wait -A run=Run \
+    "Pending haseen migrations" "$message" || true)"
+[[ $answer == run ]] || exit 0
+exec haseen-config-terminal -- haseen-migrate
