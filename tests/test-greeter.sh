@@ -32,6 +32,11 @@ Exec=i3 %U
 Type=Application
 EOF
 
+# The graphical greeter checks that it has a compositor and a shell to run.
+# The CI container has neither, and this part of the test is about the config.
+stub Hyprland 'exit 0'
+stub qs 'exit 0'
+
 # --- the greetd config haseen writes ------------------------------------------
 capture haseen setup greeter status
 assert_contains "tuigreet is the default" "$OUTPUT" "greeter:   tuigreet"
