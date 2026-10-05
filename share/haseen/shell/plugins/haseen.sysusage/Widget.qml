@@ -32,10 +32,15 @@ Item {
         return v >= 95 ? Theme.urgent : v >= root.warnAt ? Theme.warning : Theme.barForeground;
     }
 
+    // Without haseen-sidecar (not installed, older, or killed) there is nothing
+    // to show, so the slot takes no room at all rather than showing "?".
+    readonly property bool available: sampler.available
+    visible: available
+
     // Vertical: the slot is the bar's width anyway; report content width
     // only (depending on the parent's width would loop through BarSection).
-    implicitWidth: vertical ? grid.implicitWidth : grid.implicitWidth + Theme.gap * 2
-    implicitHeight: vertical ? grid.implicitHeight + Theme.gap * 2 : Config.barHeight
+    implicitWidth: !available ? 0 : vertical ? grid.implicitWidth : grid.implicitWidth + Theme.gap * 2
+    implicitHeight: !available ? 0 : vertical ? grid.implicitHeight + Theme.gap * 2 : Config.barHeight
 
     Sampler {
         id: sampler

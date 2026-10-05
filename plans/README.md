@@ -37,3 +37,4 @@ Read `handoff.md` first.
 | 029 | Dual-boot control (EFI BootNext) and drive helpers | P1 | M | 001 002 010 | DONE 2026-10-05 (43 tests; BootNext set and cleared live) |
 | 030 | Keybind registry and searchable cheat sheet | P2 | M | 003 005 010 | DONE 2026-10-05 (17 tests; 234 live binds on screen) |
 | 031 | Hardware quirk table and dispatcher (DMI matching, ledger-backed) | P1 | M | 001 003 028 | DONE 2026-10-05 (47 tests; real DMI matched live) |
+| 032 | haseen-sidecar: sampling daemon, capability-gated (sysusage moved off QML timers) | P1 | L | 005 021 027 | DONE 2026-10-05 (31 tests + Go tests; measured CPU drop) |
