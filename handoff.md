@@ -45,6 +45,7 @@ The owner's other repos:
 | Migration ledger | `bin/haseen-migrate*`, `share/haseen/lib/migrate.sh`, `share/haseen/migrations/`, `share/haseen/systemd/user/haseen-migrate-notify.service` | 028 |
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
 | Keybind sheet | `bin/haseen-keybinds`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 |
+| Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security

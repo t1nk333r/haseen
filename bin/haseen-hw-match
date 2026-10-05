@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# haseen:summary Show this machine's DMI identity and the hardware quirks it matches
+# haseen:args [--json] [pattern]
+#
+# Adapted from Omarchy bin/omarchy-hw-match (MIT, Copyright (c) David Heinemeier
+# Hansson), which answers one case-insensitive pattern against the DMI product
+# name or family. With a pattern this does the same and says so through its exit
+# code; without one it prints the identity and every quirk id that matches.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/hardware.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hardware.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hw match [--json] [pattern]
+
+Without a pattern: the DMI triple (vendor, product, family) and the ids from
+$(hw_table) whose match rule holds here.
+
+With a pattern: exit 0 when it matches the product name or family
+(case-insensitive), 1 when it does not. Nothing is printed.
+
+Read a different machine by pointing HASEEN_SYSROOT at a tree that mirrors / .
+EOF
+}
+
+json=false
+pattern=""
+for arg in "$@"; do
+    case "$arg" in
+    --json) json=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) pattern="$arg" ;;
+    esac
+done
+
+hw_check_table
+if [[ -n $pattern ]]; then
+    shopt -s nocasematch
+    [[ "$(hw_dmi product_name)" =~ $pattern || "$(hw_dmi product_family)" =~ $pattern ]]
+    exit
+fi
+
+if $json; then
+    jq -n -c --arg vendor "$(hw_dmi sys_vendor)" --arg product "$(hw_dmi product_name)" \
+        --arg family "$(hw_dmi product_family)" --arg chassis "$(hw_dmi chassis_type)" \
+        --arg matched "$(hw_matched)" \
+        '{vendor: $vendor, product: $product, family: $family, chassis: $chassis,
+          matched: ($matched | split("\n") | map(select(length > 0)))}'
+    exit 0
+fi
+
+printf 'vendor:  %s\n' "$(hw_dmi sys_vendor)"
+printf 'product: %s\n' "$(hw_dmi product_name)"
+printf 'family:  %s\n' "$(hw_dmi product_family)"
+printf 'chassis: %s\n' "$(hw_dmi chassis_type)"
+echo
+matched="$(hw_matched)"
+if [[ -z $matched ]]; then
+    echo "matched: none"
+    exit 0
+fi
+echo "matched:"
+while IFS= read -r id; do
+    printf '  %-26s %-14s %s\n' "$id" "$(hw_state "$id")" "$(hw_row_field "$id" 3)"
+done <<<"$matched"

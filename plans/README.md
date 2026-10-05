@@ -36,3 +36,4 @@ Read `handoff.md` first.
 | 028 | Migration ledger: one-off upgrade steps, run once per user | P1 | S | 001 | DONE 2026-10-05 (30 tests; live apply + retry) |
 | 029 | Dual-boot control (EFI BootNext) and drive helpers | P1 | M | 001 002 010 | DONE 2026-10-05 (43 tests; BootNext set and cleared live) |
 | 030 | Keybind registry and searchable cheat sheet | P2 | M | 003 005 010 | DONE 2026-10-05 (17 tests; 234 live binds on screen) |
+| 031 | Hardware quirk table and dispatcher (DMI matching, ledger-backed) | P1 | M | 001 003 028 | DONE 2026-10-05 (47 tests; real DMI matched live) |

@@ -17,6 +17,7 @@ add-ons made for Omarchy and DankMaterialShell.
 - **Everyday tools.** Screenshots, screen recording, OCR, QR, colour picker, emoji, reminders, night light, stay awake, do not disturb, CPU/RAM/GPU usage, iPhone-style privacy dots (green camera, orange mic, red recording/share, blue location), media, weather (off by default), clipboard history, Flatpak-first app installs.
 - **Keys you can see.** `SUPER + /` opens a searchable sheet of the bindings the compositor actually has, grouped by the section they were written under (`haseen keybinds` prints the same in a terminal).
 - **Upgrades that are not reinstalls.** `haseen migrate` runs one-off upgrade steps once per user and records them in your state dir; a login notice offers to run what is pending.
+- **Knows your machine.** `haseen hw match` reads the firmware's DMI identity and lists the quirks that apply to it, from one table; `haseen hw apply` runs each matched fix once and records it, and a quirk nobody has written yet is reported, not hidden.
 - **Defaults:**
   - Theme: Greek Noir with the "akane" border wipe (`greek-noir-akane`).
   - Cursor: Bibata Modern Ice at 20 px.
