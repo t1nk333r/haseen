@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# haseen:summary List every hardware quirk, its match rule and its state here
+# haseen:args [--matched] [--json]
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/hardware.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hardware.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hw list [--matched] [--json]
+
+States: applied (matched, run, recorded), pending (matched, not run yet),
+unimplemented (matched, but no body ships for it), not-matched.
+
+  --matched   only the quirks this machine matches
+EOF
+}
+
+matched_only=false
+json=false
+for arg in "$@"; do
+    case "$arg" in
+    --matched) matched_only=true ;;
+    --json) json=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+hw_check_table
+rows=""
+while IFS=$'\t' read -r id match summary; do
+    state="$(hw_state "$id")"
+    $matched_only && [[ $state == not-matched ]] && continue
+    rows+="$id"$'\t'"$state"$'\t'"$match"$'\t'"$summary"$'\n'
+done < <(hw_rows)
+
+if $json; then
+    printf '%s' "$rows" | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
+        | {id: .[0], state: .[1], match: .[2], summary: .[3]})'
+    exit 0
+fi
+
+printf '%s' "$rows" | while IFS=$'\t' read -r id state match summary; do
+    printf '%-26s %-14s %-34s %s\n' "$id" "$state" "$match" "$summary"
+done

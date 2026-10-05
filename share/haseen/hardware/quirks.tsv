@@ -1,0 +1,52 @@
+# haseen hardware quirks: id<TAB>match<TAB>summary   (tabs, not spaces)
+#
+# The table is the whole dispatcher. A row with a body in
+# share/haseen/hardware/<id>.sh is applied once per user and recorded in the
+# ledger; a row without one is reported as unimplemented, never skipped in
+# silence. Adding a quirk is one file plus one row, and no code change.
+#
+# Rows and their match rules are adapted from Omarchy install/hardware/* and
+# bin/omarchy-hw-* (MIT, Copyright (c) David Heinemeier Hansson).
+#
+# match: `*` or comma-separated terms that must all hold
+#   vendor:RE product:RE family:RE chassis:RE   case-insensitive ERE over DMI
+#   probe:NAME    laptop vm nvidia nvidia-gsp nvidia-no-gsp intel-gpu amd-gpu
+#                 wifi bluetooth
+fkeys	*	F-keys stay F-keys on Apple-style keyboards (hid_apple fnmode=2)
+wireless-regdom	probe:wifi	Persist the wireless regulatory domain from the timezone
+vm	probe:vm	No animations or blur in a virtual machine (CPU rendering)
+clamshell	probe:laptop	Lid closed with an external monitor turns the built-in panel off
+nvidia-gsp	probe:nvidia-gsp	Early KMS for the open NVIDIA module (Turing or newer)
+nvidia-no-gsp	probe:nvidia-no-gsp	Legacy 580xx driver for pre-Turing NVIDIA cards
+vulkan	*	Vulkan ICD loaders for the GPUs present
+intel-sof	pci:0x8086/0x0403	SOF firmware for Intel DSP audio
+intel-ptl	product:(ux5406aa|b9406|xps),cpu:(Panther Lake|Core Ultra)	Panther Lake graphics and display workarounds
+intel-lpmd	cpu:Intel,probe:laptop	intel-lpmd low-power daemon on hybrid Intel cores
+intel-thermald	cpu:Intel,probe:laptop	thermald thermal management on Intel laptops
+intel-ipu7-camera	pci:0x8086/0x0480	IPU7 MIPI camera stack
+intel-fred	cpu:Intel	FRED (flexible return and event delivery) kernel flag
+intel-wifi7-eht	pci:0x8086/0x0280	Intel Wi-Fi 7 EHT stability workaround
+bluetooth	probe:bluetooth	Bluetooth service and autosuspend defaults
+asus-rog	vendor:ASUSTeK,family:ROG	asusctl and supergfxctl for ROG laptops
+asus-zenbook-ux5406aa	product:UX5406AA	Zenbook UX5406AA display and audio fixes
+asus-expertbook-b9406	product:B9406	ExpertBook B9406 display and touchpad fixes
+asus-z13-touchpad	product:ROG Flow Z13	ROG Flow Z13 touchpad wake fix
+framework16	vendor:Framework,product:Laptop 16	Framework 16 module and suspend fixes
+framework-qmk-hid	vendor:Framework	QMK HID access for the Framework keyboard
+dell-xps-haptic-touchpad	vendor:Dell,product:XPS	Haptic touchpad (VEN_06CB) support
+dell-xps-oled	vendor:Dell,product:XPS	OLED panel backlight and dithering fixes
+dell-xps13-sidecar-amps	vendor:Dell,product:DX13260	XPS 13 sidecar speaker amplifiers
+surface	vendor:Microsoft,product:Surface	Surface kernel modules and firmware
+surface-keyboard	vendor:Microsoft,product:Surface	Surface type cover keyboard wake fix
+apple-t2	vendor:Apple	T2 bridge (audio, keyboard, touchpad) support
+apple-spi-keyboard	vendor:Apple	SPI keyboard and touchpad modules
+apple-suspend-nvme	vendor:Apple	NVMe suspend quirk on Apple hardware
+apple-brcmfmac	vendor:Apple	brcmfmac Wi-Fi supplicant workaround
+lenovo-yoga-pro7-speakers	vendor:LENOVO,product:Yoga Pro 7	Yoga Pro 7 bass speaker routing
+tuxedo-backlight	vendor:(TUXEDO|Slimbook)	TUXEDO and Slimbook keyboard backlight
+bcm43xx	pci:0x14e4/0x0280	Broadcom BCM43xx firmware and driver choice
+yt6801-ethernet	pci:0x1f0a	Motorcomm YT6801 2.5G Ethernet driver
+elgato-camlink-4k	usb:0fd9:0066	Elgato Cam Link 4K as a 16:9 virtual camera
+synaptic-touchpad	input:synaptics	Synaptics touchpad tapping and scrolling defaults
+speaker-tuning	product:(UX5406AA|B9406|XPS 13|Yoga Pro 7|Zephyrus)	Per-model speaker EQ through WirePlumber
+webcam	probe:webcam	Webcam privacy and format defaults

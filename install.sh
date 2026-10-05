@@ -126,3 +126,7 @@ if [[ -d $HASEEN_USER_STATE/migrations ]]; then
 else
     HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate --seal "${flags[@]}"
 fi
+
+# Hardware quirks are matched against this machine and applied once each; the
+# ledger makes a reinstall and every later run a no-op.
+HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" hw apply "${flags[@]}"

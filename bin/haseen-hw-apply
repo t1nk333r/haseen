@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# haseen:summary Apply the hardware quirks this machine matches (once each)
+# haseen:args [id...] [--force] [--dry-run] [--yes]
+#
+# Dispatcher adapted from Omarchy install/hardware/all.sh (MIT, Copyright (c)
+# David Heinemeier Hansson), which runs a fixed list of scripts on every install
+# and leaves each one to decide whether it applies. Here the match rule is in
+# the table, the body is optional, and a body that ran is recorded in the ledger
+# (plan 028), so a second run and every later upgrade are no-ops.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/hardware.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hardware.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hw apply [id...] [--force] [--dry-run] [--yes]
+
+Runs each matched quirk's body once and records it. Without ids, every quirk
+this machine matches. A matched quirk with no body is reported as
+unimplemented, never skipped in silence.
+
+  --force   run matched bodies again, even when the ledger has them
+EOF
+}
+
+force=false
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --force) force=true ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+require_not_root
+
+hw_check_table
+ids=()
+if (($# > 0)); then
+    for id in "$@"; do
+        [[ -n $(hw_row_field "$id" 2) ]] || die "unknown quirk: $id (haseen hw list)"
+        ids+=("$id")
+    done
+else
+    mapfile -t ids < <(hw_matched)
+fi
+
+((${#ids[@]} > 0)) || {
+    info "hw: no quirks match this machine"
+    exit 0
+}
+
+applied=0
+skipped=0
+unimplemented=()
+for id in "${ids[@]}"; do
+    state="$(hw_state "$id")"
+    case "$state" in
+    not-matched)
+        warn "hw $id: does not match this machine ($(hw_row_field "$id" 2)); skipped"
+        continue
+        ;;
+    unimplemented)
+        unimplemented+=("$id")
+        continue
+        ;;
+    applied)
+        if ! $force; then
+            skipped=$((skipped + 1))
+            continue
+        fi
+        ;;
+    esac
+
+    if $DRY_RUN; then
+        echo "DRYRUN: run hardware quirk $id ($(hw_row_field "$id" 3))"
+    else
+        info "hw $id: $(hw_row_field "$id" 3)"
+    fi
+    # Sourced, not executed: a quirk body uses the same run/write_root_file
+    # helpers as everything else, so --dry-run prints its plan instead of
+    # changing the machine. A failure stops the run with no marker written, so
+    # the next run retries it.
+    # shellcheck source=/dev/null
+    (source "$(hw_body "$id")") || die "hardware quirk $id failed; nothing after it ran"
+    ledger_record hardware "$id" applied
+    applied=$((applied + 1))
+done
+
+if ((${#unimplemented[@]} > 0)); then
+    warn "matched but not implemented yet: ${unimplemented[*]}"
+    warn "add share/haseen/hardware/<id>.sh for one of them; the table already has the row"
+fi
+info "hw: $applied applied, $skipped already recorded, ${#unimplemented[@]} unimplemented"
