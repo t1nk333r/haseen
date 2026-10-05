@@ -1,0 +1,91 @@
+package palette
+
+import "fmt"
+
+func validateMode(mode string) error {
+	switch mode {
+	case "normal", "monochromatic", "analogous", "pastel", "material", "colorful", "muted", "bright",
+		"complementary", "triadic", "split-complementary", "tetradic",
+		"fire", "ocean", "forest", "earthtone", "neon", "sunset", "vaporwave",
+		"midnight", "aurora", "high-contrast", "duotone":
+		return nil
+	default:
+		return fmt.Errorf("unknown extraction mode %q", mode)
+	}
+}
+
+// normalizeCounts turns per-color pixel counts into coverage shares in [0,1]
+// (each count divided by the total). Returns nil for empty/zero input so callers
+// fall back to lightness-only selection.
+func normalizeCounts(counts []int) []float64 {
+	total := 0
+	for _, c := range counts {
+		total += c
+	}
+	if total == 0 {
+		return nil
+	}
+	weights := make([]float64, len(counts))
+	for i, c := range counts {
+		weights[i] = float64(c) / float64(total)
+	}
+	return weights
+}
+
+// GeneratePaletteByMode dispatches to the palette generator for a given mode.
+// In "normal" mode, auto-detects between monochrome and chromatic generators.
+// weights (optional, aligned with dominantColors) carries per-color image coverage;
+// only the default chromatic path consumes it for coverage-aware bg/fg selection.
+func GeneratePaletteByMode(dominantColors []string, weights []float64, lightMode bool, mode string) [16]string {
+	switch mode {
+	case "monochromatic":
+		return GenerateMonochromaticPalette(dominantColors, lightMode)
+	case "analogous":
+		return GenerateAnalogousPalette(dominantColors, lightMode)
+	case "pastel":
+		return GeneratePastelPalette(dominantColors, lightMode)
+	case "material":
+		return GenerateMaterialPalette(dominantColors, lightMode)
+	case "colorful":
+		return GenerateColorfulPalette(dominantColors, lightMode)
+	case "muted":
+		return GenerateMutedPalette(dominantColors, lightMode)
+	case "bright":
+		return GenerateBrightPalette(dominantColors, lightMode)
+	case "complementary":
+		return GenerateComplementaryPalette(dominantColors, lightMode)
+	case "triadic":
+		return GenerateTriadicPalette(dominantColors, lightMode)
+	case "split-complementary":
+		return GenerateSplitComplementaryPalette(dominantColors, lightMode)
+	case "tetradic":
+		return GenerateTetradicPalette(dominantColors, lightMode)
+	case "fire":
+		return GenerateFirePalette(dominantColors, lightMode)
+	case "ocean":
+		return GenerateOceanPalette(dominantColors, lightMode)
+	case "forest":
+		return GenerateForestPalette(dominantColors, lightMode)
+	case "earthtone":
+		return GenerateEarthtonePalette(dominantColors, lightMode)
+	case "neon":
+		return GenerateNeonPalette(dominantColors, lightMode)
+	case "sunset":
+		return GenerateSunsetPalette(dominantColors, lightMode)
+	case "vaporwave":
+		return GenerateVaporwavePalette(dominantColors, lightMode)
+	case "midnight":
+		return GenerateMidnightPalette(dominantColors, lightMode)
+	case "aurora":
+		return GenerateAuroraPalette(dominantColors, lightMode)
+	case "high-contrast":
+		return GenerateHighContrastPalette(dominantColors, lightMode)
+	case "duotone":
+		return GenerateDuotonePalette(dominantColors, lightMode)
+	default:
+		if isMonochromeWeighted(dominantColors, weights) {
+			return GenerateMonochromePalette(dominantColors, lightMode)
+		}
+		return GenerateChromaticPalette(dominantColors, weights, lightMode)
+	}
+}

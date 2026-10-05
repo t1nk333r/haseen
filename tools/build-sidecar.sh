@@ -22,4 +22,5 @@ cd "$REPO/core"
 # shelling out to git; the version is what the hello frame reports, so a stale
 # binary is visible in `haseen sidecar status`.
 go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$DEST" ./cmd/haseen-sidecar
+go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$(dirname "$DEST")/haseen-palette" ./cmd/haseen-palette
 echo "build-sidecar: $DEST ($VERSION)"

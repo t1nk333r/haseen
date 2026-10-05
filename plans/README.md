@@ -38,3 +38,5 @@ Read `handoff.md` first.
 | 030 | Keybind registry and searchable cheat sheet | P2 | M | 003 005 010 | DONE 2026-10-05 (17 tests; 234 live binds on screen) |
 | 031 | Hardware quirk table and dispatcher (DMI matching, ledger-backed) | P1 | M | 001 003 028 | DONE 2026-10-05 (47 tests; real DMI matched live) |
 | 032 | haseen-sidecar: sampling daemon, capability-gated (sysusage moved off QML timers) | P1 | L | 005 021 027 | DONE 2026-10-05 (31 tests + Go tests; measured CPU drop) |
+| 033 | Omarchy seeds: hibernation (LUKS+btrfs rewrite), power profiles, speaker tuning, web apps, notification CLI, config seeds, three panels | P2 | L | 001 003 010 025 031 | DONE 2026-10-05 (398 tests; hibernation resume unproven, owner step) |
+| 034 | Wallpaper palettes: aether's extractor, seed cache, colors.toml themes | P2 | M | 004 032 | DONE 2026-10-05 (24 tests + Go tests; 0.55 s cold, 0.11 s cached) |
