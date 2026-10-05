@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# haseen:summary Send a desktop notification (urgency, icon, replace id, click action)
+# haseen:args [-u <low|normal|critical>] [-i <icon>] [-t <ms>] [-r <id>] [-p] <headline> [body] [--exec <program> [args...]]
+#
+# Adapted from Omarchy bin/omarchy-notification-send (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: haseen.pager implements the freedesktop spec
+# including actions, so --exec is a real action this process waits on and then
+# execs itself (upstream handed the command to the daemon as an
+# omarchy-exec-argv hint, which needed a busctl Notify call and a jq-built JSON
+# vector). That leaves notify-send -a haseen, haseen's convention everywhere
+# else, as the sender; the headline and body ride behind `--` so a dash-leading
+# string is content, never an option or a hint.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen notification send [options] <headline> [body] [--exec <program> [args...]]
+
+Options:
+  -u, --urgency <low|normal|critical>   default: the daemon's (normal)
+  -i, --icon <name-or-path>             icon theme name or image file
+  -t, --expire-time <ms>                -1 daemon default, 0 never expires
+  -r, --replace-id <id>                 update that notification in place
+  -p, --print-id                        print the notification id
+  -a, --app-name <name>                 default: haseen
+      --action-label <text>             label of the --exec button (default: Open)
+      --exec <program> [args...]        run this when the notification is clicked
+      --dry-run                         print what would be sent
+
+--exec takes the command as separate words and runs them as-is, never through
+a shell, and must come last: everything after it is the command's argv. The
+click is a freedesktop action, so this process stays alive until the toast is
+answered or goes away.
+EOF
+}
+
+app_name="haseen"
+urgency=""
+icon=""
+expire=""
+replace=""
+action_label="Open"
+print_id=false
+exec_present=false
+exec_argv=()
+opt_consumed=0
+
+# Recognise a known option in both `--flag value` and `--flag=value` form, and
+# return 1 for anything else so the caller can take it as a positional (the
+# headline) or refuse it. Sets opt_consumed to the number of words used.
+parse_option() {
+    local opt=$1 val=${2-} nargs=2
+    if [[ $opt == --?*=* ]]; then
+        val=${opt#*=}
+        opt=${opt%%=*}
+        nargs=1
+    fi
+
+    # Flags take no value.
+    if [[ $opt == -p || $opt == --print-id ]]; then
+        print_id=true
+        opt_consumed=1
+        return 0
+    fi
+
+    case $opt in
+    -u | --urgency | -i | --icon | -t | --expire-time | -r | --replace-id | -a | --app-name | --action-label) ;;
+    *) return 1 ;;
+    esac
+    ((nargs == 1)) || (($# >= 2)) || die "missing value for $opt"
+
+    case $opt in
+    -u | --urgency)
+        [[ $val == low || $val == normal || $val == critical ]] ||
+            die "unknown urgency: $val (use low, normal or critical)"
+        urgency=$val
+        ;;
+    -i | --icon) icon=$val ;;
+    -a | --app-name) app_name=$val ;;
+    --action-label) action_label=$val ;;
+    -r | --replace-id)
+        [[ $val =~ ^[0-9]+$ ]] || die "--replace-id takes a numeric id: $val"
+        replace=$val
+        ;;
+    -t | --expire-time)
+        [[ $val =~ ^-?[0-9]+$ ]] || die "--expire-time takes milliseconds: $val"
+        expire=$val
+        ;;
+    esac
+    opt_consumed=$nargs
+    return 0
+}
+
+# A known option in the body's slot is an option; anything else is the body.
+known_flag() {
+    case $1 in
+    -u | -i | -t | -r | -a | -p | --urgency | --icon | --expire-time | --replace-id | --app-name | --print-id | --action-label | --exec) return 0 ;;
+    --urgency=* | --icon=* | --expire-time=* | --replace-id=* | --app-name=* | --action-label=*) return 0 ;;
+    esac
+    return 1
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+
+while (($# > 0)); do
+    parse_option "$@" || break
+    shift "$opt_consumed"
+done
+
+(($# >= 1)) || {
+    usage >&2
+    exit 2
+}
+headline=$1
+shift
+
+# The body is the next positional even when it begins with a dash: "-50% off"
+# or a negative number is content. Only a known flag in that slot is not it.
+body=""
+if (($# > 0)) && ! known_flag "$1"; then
+    body=$1
+    shift
+fi
+
+while (($# > 0)); do
+    if [[ $1 == --exec ]]; then
+        # --exec takes the rest of the line as the click command's argv. The
+        # caller's shell already split those words; they are passed to exec as
+        # discrete arguments and never re-parsed, so untrusted data in an
+        # argument stays one argument and can never become a command. It is
+        # recognised only here, after the positionals, so a headline that is
+        # literally "--exec" is text.
+        shift
+        exec_argv=("$@")
+        exec_present=true
+        break
+    elif parse_option "$@"; then
+        shift "$opt_consumed"
+    else
+        die "unknown option: $1"
+    fi
+done
+
+if $exec_present; then
+    ((${#exec_argv[@]} > 0)) && [[ -n ${exec_argv[0]} ]] ||
+        die "--exec needs a command: --exec <program> [args...]"
+    # One word with a space in it is a whole command quoted as a string, which
+    # would look for a program by that literal name. Splitting it here is the
+    # injection this avoids, so point at the unquoted form instead.
+    if ((${#exec_argv[@]} == 1)) && [[ ${exec_argv[0]} == *[[:space:]]* ]]; then
+        die "--exec takes the command as separate words, not one quoted string. Write: --exec ${exec_argv[0]}"
+    fi
+    # Both would print an id on stdout and the caller could not tell them apart.
+    $print_id && die "--print-id and --exec cannot be combined"
+fi
+
+$DRY_RUN || have notify-send || die "notify-send is not installed (package libnotify)"
+
+# One argv, built word by word: no string is ever assembled and re-parsed.
+cmd=(notify-send -a "$app_name")
+[[ -z $urgency ]] || cmd+=(-u "$urgency")
+[[ -z $icon ]] || cmd+=(-i "$icon")
+[[ -z $expire ]] || cmd+=(-t "$expire")
+[[ -z $replace ]] || cmd+=(-r "$replace")
+$print_id && cmd+=(-p)
+# -A implies --wait: notify-send stays up until the action is clicked or the
+# notification closes, then prints the clicked action's name on stdout.
+$exec_present && cmd+=(-A "exec=$action_label")
+# `--` keeps a dash-leading headline or body positional, so neither can be read
+# as an option or a hint.
+cmd+=(-- "$headline")
+[[ -z $body ]] || cmd+=("$body")
+
+if ! $exec_present; then
+    run "${cmd[@]}"
+    exit 0
+fi
+
+if $DRY_RUN; then
+    run "${cmd[@]}"
+    echo "DRYRUN: on click: ${exec_argv[*]}"
+    exit 0
+fi
+
+answer="$("${cmd[@]}" || true)"
+[[ $answer == exec ]] || exit 0
+exec "${exec_argv[@]}"

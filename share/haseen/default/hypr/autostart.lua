@@ -19,4 +19,7 @@ hl.on("hyprland.start", function()
   -- post-boot hooks (~/.config/haseen/hooks/post-boot{,.d/*}); a missing
   -- haseen CLI or hook runner must not break the session start.
   hl.exec_cmd("command -v haseen >/dev/null 2>&1 && haseen hook run post-boot")
+  -- Power profile for whichever source this session started on (AC or
+  -- battery); the remembered choice per source lives in haseen's state dir.
+  hl.exec_cmd("command -v haseen >/dev/null 2>&1 && haseen powerprofile init")
 end)

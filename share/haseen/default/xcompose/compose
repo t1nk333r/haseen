@@ -1,0 +1,41 @@
+# haseen compose sequences, included by ~/.XCompose.
+#
+# Adapted from Omarchy default/xcompose (MIT, Copyright (c) David Heinemeier
+# Hansson). The Compose key is CapsLock (kb_options compose:caps in
+# share/haseen/default/hypr/input.lua), so every sequence below starts with it.
+#
+# This file is haseen's and is replaced on upgrade. Put your own sequences in
+# ~/.XCompose, after the include.
+
+# Emoji
+<Multi_key> <m> <s> : "😄" # smile
+<Multi_key> <m> <c> : "😂" # cry
+<Multi_key> <m> <l> : "😍" # love
+<Multi_key> <m> <v> : "✌️"  # victory
+<Multi_key> <m> <h> : "❤️"  # heart
+<Multi_key> <m> <y> : "👍" # yes
+<Multi_key> <m> <n> : "👎" # no
+<Multi_key> <m> <w> : "🤞" # wish
+<Multi_key> <m> <r> : "🤘" # rock
+<Multi_key> <m> <e> : "🙄" # eyeroll
+<Multi_key> <m> <m> : "💰" # money
+<Multi_key> <m> <x> : "🎉" # celebrate
+<Multi_key> <m> <1> : "💯" # 100%
+<Multi_key> <m> <t> : "🥂" # toast
+<Multi_key> <m> <p> : "🙏" # pray
+<Multi_key> <m> <i> : "😉" # wink
+<Multi_key> <m> <o> : "👌" # OK
+<Multi_key> <m> <g> : "👋" # greeting
+<Multi_key> <m> <a> : "💪" # arm
+<Multi_key> <m> <b> : "🤯" # blowing
+
+# Arabic punctuation and marks that a Latin layout cannot reach
+<Multi_key> <a> <comma>    : "،"  # Arabic comma
+<Multi_key> <a> <semicolon> : "؛" # Arabic semicolon
+<Multi_key> <a> <question> : "؟"  # Arabic question mark
+<Multi_key> <a> <period>   : "۔"  # Arabic full stop
+<Multi_key> <a> <s>        : "ﷺ"  # sallallahu alayhi wasallam
+<Multi_key> <a> <b>        : "﷽"  # basmala
+
+# Typography
+<Multi_key> <space> <space> : "—"

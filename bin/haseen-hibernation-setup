@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# haseen:summary Set up suspend to disk: btrfs swapfile, resume hook, resume= cmdline
+# haseen:args [--size GiB] [--no-rebuild] [--dry-run] [--yes]
+#
+# The steps come from Omarchy bin/omarchy-hibernation-setup (MIT, Copyright (c)
+# David Heinemeier Hansson); the logic is rewritten for the installs haseen
+# targets. See share/haseen/lib/hibernate.sh for why: a top-level @swap
+# subvolume instead of a nested one, a resume device that is the opened LUKS
+# mapper, a resume hook only where busybox hooks need one, and the command line
+# written wherever this machine's bootloader reads it.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/hibernate.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hibernate.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hibernation setup [--size GiB] [--no-rebuild] [--dry-run] [--yes]
+
+Gives this machine a hibernation image area and tells the boot chain where it
+is. Idempotent: anything already in place (including a setup another distro
+made) is left alone.
+
+  --size GiB    swapfile size (default: as much as RAM)
+  --no-rebuild  do not regenerate the initramfs; you run mkinitcpio yourself
+
+Needs a btrfs root. The swapfile goes in a top-level $SWAP_SUBVOL_NAME subvolume
+mounted at $SWAP_MOUNT, so a snapper rollback of the root subvolume does not
+take it along.
+EOF
+}
+
+size_gib=""
+no_rebuild=false
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --size) size_gib="${args[++i]:-}" ;;
+    --no-rebuild) no_rebuild=true ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+require_cmds btrfs findmnt
+
+hibernate_supported || die "this kernel cannot hibernate (no /sys/power/image_size)"
+preflight_bootloader
+preflight_luks
+
+root_fstype="$(findmnt -no FSTYPE / 2>/dev/null || true)"
+[[ $root_fstype == btrfs ]] || die "the root filesystem is $root_fstype; this command only does btrfs swapfiles"
+
+if hibernate_ready; then
+    info "hibernation is already set up"
+    haseen-hibernation-status
+    exit 0
+fi
+
+mem_kib="$(hibernate_mem_kib)"
+size_kib="$mem_kib"
+if [[ -n $size_gib ]]; then
+    [[ $size_gib =~ ^[0-9]+$ ]] || die "--size takes whole GiB"
+    size_kib=$((size_gib * 1048576))
+fi
+info "swapfile: $(awk -v k="$size_kib" 'BEGIN { printf "%.1f GiB", k / 1048576 }') for $(awk -v k="$mem_kib" 'BEGIN { printf "%.1f GiB", k / 1048576 }') of RAM"
+$LUKS_DETECTED && info "the swap area is inside the LUKS container, so the image is encrypted too"
+
+confirm "Use that much disk on the boot drive for hibernation?" || exit 1
+
+# 1. A top-level subvolume for the swap area, mounted at $SWAP_MOUNT.
+root_uuid="$(findmnt -no UUID / 2>/dev/null || true)"
+[[ -n $root_uuid ]] || die "could not read the root filesystem UUID"
+if ! findmnt -no TARGET "$SWAP_MOUNT" >/dev/null 2>&1; then
+    top="$(mktemp -d)"
+    run_root mount -o subvolid=5 "/dev/disk/by-uuid/$root_uuid" "$top"
+    if $DRY_RUN || ! run_root btrfs subvolume show "$top/${SWAP_SUBVOL_NAME#@}" >/dev/null 2>&1; then
+        run_root btrfs subvolume create "$top/$SWAP_SUBVOL_NAME"
+    fi
+    run_root umount "$top"
+    rmdir "$top" 2>/dev/null || true
+    run_root mkdir -p "$SWAP_MOUNT"
+    if ! grep -q "[[:space:]]${SWAP_MOUNT}[[:space:]]" "$(sysroot_path /etc/fstab)" 2>/dev/null; then
+        printf '\n# haseen: hibernation image area\nUUID=%s %s btrfs subvol=/%s,noatime 0 0\n' \
+            "$root_uuid" "$SWAP_MOUNT" "$SWAP_SUBVOL_NAME" | append_root_file /etc/fstab
+    fi
+    run_root mount "$SWAP_MOUNT"
+fi
+
+# 2. The swapfile itself. mkswapfile sets NOCOW and refuses compression, which
+# a plain `fallocate` on btrfs would not.
+if ! run_root swaplabel "$SWAP_FILE" >/dev/null 2>&1 || $DRY_RUN; then
+    run_root btrfs filesystem mkswapfile -s "${size_kib}k" "$SWAP_FILE"
+fi
+if ! grep -q "^${SWAP_FILE//\//\\/}[[:space:]]" "$(sysroot_path /etc/fstab)" 2>/dev/null; then
+    printf '\n# haseen: hibernation swapfile (priority 0: zram stays the swap you use)\n%s none swap defaults,pri=0 0 0\n' \
+        "$SWAP_FILE" | append_root_file /etc/fstab
+fi
+hibernate_swapfile_active || run_root swapon -p 0 "$SWAP_FILE"
+
+# 3. The initramfs. systemd hooks resume by themselves from the command line;
+# busybox hooks need the `resume` hook, and appending it in a drop-in puts it
+# after `encrypt`, which is the order a LUKS install requires.
+if [[ $(hibernate_initramfs_style) == busybox ]] && ! hibernate_resume_hook_present; then
+    printf '# haseen: resume from the hibernation image (after encrypt/filesystems)\nHOOKS+=(resume)\n' |
+        write_root_file "$RESUME_HOOK_CONF"
+fi
+
+# 4. The command line. Without resume= the kernel never looks for the image.
+device="$(hibernate_resume_device)"
+offset="$(hibernate_resume_offset)"
+if $DRY_RUN; then
+    device="${device:-/dev/mapper/root}"
+    offset="${offset:-<computed after the swapfile exists>}"
+fi
+[[ -n $device && -n $offset ]] || die "could not read the resume device/offset for $SWAP_FILE"
+cmdline="resume=$device resume_offset=$offset"
+# s2idle machines need the ACPI alarm for a timed suspend-then-hibernate.
+[[ $(cat "$(sysroot_path /sys/power/mem_sleep)" 2>/dev/null) == *"[s2idle]"* ]] &&
+    cmdline+=" rtc_cmos.use_acpi_alarm=1"
+
+case "$BOOTLOADER" in
+limine)
+    printf 'KERNEL_CMDLINE[default]+=" %s"\n' "$cmdline" |
+        write_root_file /etc/limine-entry-tool.d/haseen-resume.conf
+    ;;
+systemd-boot)
+    if [[ -f $(sysroot_path /etc/kernel/cmdline) ]]; then
+        printf '%s %s\n' "$(cat "$(sysroot_path /etc/kernel/cmdline)")" "$cmdline" |
+            write_root_file /etc/kernel/cmdline
+    else
+        printf '%s\n' "$cmdline" | write_root_file /etc/kernel/cmdline
+    fi
+    ;;
+grub)
+    warn "add this to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then run grub-mkconfig:"
+    warn "  $cmdline"
+    ;;
+*) die "unknown bootloader; add '$cmdline' to the kernel command line yourself" ;;
+esac
+
+$no_rebuild && {
+    info "initramfs not rebuilt (--no-rebuild); run mkinitcpio -P and reboot"
+    exit 0
+}
+if [[ $BOOTLOADER == limine ]] && have limine-mkinitcpio; then
+    run_root limine-mkinitcpio
+else
+    run_root mkinitcpio -P
+fi
+info "hibernation is set up; reboot once so the new command line is in effect"

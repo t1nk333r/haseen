@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# haseen:summary Hand a crashed process to the default coding agent
+# haseen:args <pid> [comm] [exe] [signal] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-agent-crash (MIT, Copyright (c) David
+# Heinemeier Hansson): gather the facts systemd-coredump recorded and point an
+# agent at the diagnose-crash skill. haseen has no agent-account machinery, so
+# the agent is a single configurable command ($HASEEN_AGENT, set by
+# `haseen setup default agent`) rather than a per-agent wrapper.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen agent crash <pid> [comm] [exe] [signal] [--dry-run]
+
+Builds a report of what systemd-coredump recorded for a crashed PID (see
+\`coredumpctl list\`) and hands it to the coding agent as a prompt. The agent
+command is \$HASEEN_AGENT; set it with \`haseen setup default agent <name>\`.
+
+The method itself lives in the diagnose-crash skill, so it is edited in one
+place and works with whichever agent is default. --dry-run prints the prompt
+and starts nothing.
+EOF
+}
+
+# The skill ships with the agent setup, not with haseen; take the first copy
+# that exists so the prompt can name a path for harnesses without skills.
+skill_path() {
+    local candidate
+    for candidate in \
+        "$HASEEN_PATH/agents/skills/diagnose-crash/SKILL.md" \
+        "${XDG_CONFIG_HOME:-$HOME/.config}/agents/skills/diagnose-crash/SKILL.md" \
+        "$HOME/.agents/skills/diagnose-crash/SKILL.md"; do
+        [[ -r $candidate ]] && {
+            printf '%s' "$candidate"
+            return 0
+        }
+    done
+    printf '%s' "$HOME/.agents/skills/diagnose-crash/SKILL.md"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 1 && $# <= 4)) || {
+    usage >&2
+    exit 2
+}
+
+pid="$1"
+[[ $pid =~ ^[0-9]+$ ]] || {
+    echo "Not a PID: $pid" >&2
+    echo "Usage: haseen agent crash <pid>   (see: coredumpctl list)" >&2
+    exit 1
+}
+comm="${2:-unknown}"
+exe="${3:-unknown}"
+signal="${4:-unknown}"
+
+# Looked up live so a hand-run PID still gets a timestamp. A rotated-away core
+# only costs the timestamp, so failure is tolerated.
+when="$(coredumpctl list "$pid" --no-pager --no-legend 2>/dev/null | tail -n1 | cut -d' ' -f1-4)" || true
+when="${when:-unknown}"
+
+prompt="$(
+    cat <<PROMPT
+A process crashed on this machine and I want to know why.
+
+What systemd-coredump recorded:
+  process:  $comm
+  PID:      $pid
+  binary:   $exe
+  signal:   $signal
+  time:     $when
+
+Use the diagnose-crash skill: it covers how to investigate from the core dump,
+what to report, and what to leave alone. If your harness has no skill
+mechanism, read the skill file directly and follow it instead:
+
+  $(skill_path)
+PROMPT
+)"
+
+agent="${HASEEN_AGENT:-$(haseen-setup-default agent 2>/dev/null || true)}"
+[[ -n $agent ]] ||
+    die "no coding agent is set (try: haseen setup default agent claude)"
+
+if $DRY_RUN; then
+    printf '%s\n' "$prompt"
+    echo "DRYRUN: $agent --prompt <report above>"
+    exit 0
+fi
+have "$agent" || die "coding agent '$agent' is not installed (haseen setup default agent)"
+exec "$agent" --prompt "$prompt"

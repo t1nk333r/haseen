@@ -31,3 +31,9 @@ libnotify                    # notify-send for capture/reminder/toggle feedback
 hyprsunset                   # night light (haseen.nightlight)
 aur:ttfx                     # Omarchy's screensaver text effects, Rust port (owner choice over python tte)
 aur:bibata-cursor-theme      # cursor Bibata-Modern-Ice (owner's luna default); prebuilt in Chaotic-AUR
+power-profiles-daemon        # haseen powerprofile {list,set}: AC vs battery profile
+lsp-plugins-lv2              # lookahead limiter every speaker tuning ends in (haseen audio tuning)
+fcitx5                       # input method: Arabic and English on one key
+fcitx5-configtool            # fcitx5 GUI, the only sane way to edit a layout list
+fcitx5-qt                    # Qt 6 IME module (Quickshell, Qt apps)
+fcitx5-gtk                   # GTK IME module

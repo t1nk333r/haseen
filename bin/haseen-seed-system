@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# haseen:summary Install the root-owned seeds: udev rules and the snapper retention policy
+# haseen:args [--dry-run]
+#
+# Adapted from Omarchy (MIT, Copyright (c) David Heinemeier Hansson):
+# install/hardware/framework/qmk-hid.sh with default/udev/framework16-qmk-hid.rules,
+# and install/config/snapper.sh with default/snapper/root.
+#
+# Everything here is privileged, so everything goes through run_root,
+# install_root_file or write_root_file: `--dry-run` prints the plan and
+# changes nothing.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+
+DEFAULTS="$HASEEN_PATH/default"
+UDEV_RULE=/etc/udev/rules.d/50-haseen-framework-qmk-hid.rules
+SNAPPER_CONFIG=/etc/snapper/configs/root
+SNAPPER_CONF=/etc/conf.d/snapper
+
+usage() {
+    cat <<EOF
+Usage: haseen seed system [--dry-run] [--yes]
+
+Installs the parts of haseen's defaults that root owns:
+
+  $UDEV_RULE
+      hidraw access for the Framework keyboard modules (Framework machines only)
+  $SNAPPER_CONFIG and $SNAPPER_CONF
+      five numbered snapshots of /, no timeline (btrfs roots only)
+
+Nothing is installed on hardware or a filesystem that does not need it, and
+each step is skipped when it is already in place.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+# --- udev -------------------------------------------------------------------
+# Same gate as the `framework-qmk-hid` row in share/haseen/hardware/quirks.tsv:
+# the rule is inert on other hardware, but an unused rule file is still a file
+# somebody has to explain later.
+seed_udev() {
+    local vendor
+    vendor="$(hw_dmi sys_vendor)"
+    if [[ ${vendor,,} != framework* ]]; then
+        info "not a Framework machine: skipping the QMK HID rule"
+        return 0
+    fi
+    if [[ -e $(sysroot_path "$UDEV_RULE") ]]; then
+        info "$UDEV_RULE is already installed"
+        return 0
+    fi
+    install_root_file "$DEFAULTS/udev/framework-qmk-hid.rules" "$UDEV_RULE" 0644
+    run_root udevadm control --reload
+    run_root udevadm trigger --subsystem-match=hidraw
+}
+
+# --- snapper ----------------------------------------------------------------
+# Only / on btrfs: /etc/fstab is what the installer wrote and is readable
+# through the sysroot, unlike a live findmnt.
+root_is_btrfs() {
+    local fstab
+    fstab="$(sysroot_path /etc/fstab)"
+    [[ -r $fstab ]] || return 1
+    awk '$1 !~ /^#/ && $2 == "/" { print $3 }' "$fstab" | grep -qx btrfs
+}
+
+seed_snapper() {
+    if ! have snapper; then
+        info "snapper is not installed: skipping the snapshot policy"
+        return 0
+    fi
+    if ! root_is_btrfs; then
+        info "/ is not btrfs: skipping the snapshot policy"
+        return 0
+    fi
+
+    if [[ ! -e $(sysroot_path "$SNAPPER_CONFIG") ]]; then
+        # --no-dbus works during an install, before snapperd can be reached.
+        run_root snapper --no-dbus -c root create-config /
+    fi
+    # The template replaces snapper's generated config on purpose: its defaults
+    # turn the timeline on, which is the one thing this policy says no to. Skip
+    # it when the installed file is already ours, so a re-run is a no-op and an
+    # edited policy is only overwritten when it really differs.
+    if cmp -s "$DEFAULTS/snapper/root" "$(sysroot_path "$SNAPPER_CONFIG")"; then
+        info "$SNAPPER_CONFIG already carries haseen's policy"
+    else
+        install_root_file "$DEFAULTS/snapper/root" "$SNAPPER_CONFIG" 0644
+    fi
+
+    printf '%s\n' 'SNAPPER_CONFIGS="root"' | write_root_file "$SNAPPER_CONF" 0644
+
+    run_root systemctl disable --now snapper-timeline.timer
+    run_root systemctl enable --now snapper-cleanup.timer
+    # Only where the bootloader integration exists: it keeps the boot menu's
+    # snapshot entries in step with the cleanup above.
+    if [[ -e $(sysroot_path /usr/lib/systemd/system/limine-snapper-sync.service) ]]; then
+        run_root systemctl enable --now limine-snapper-sync.service
+    fi
+}
+
+seed_udev
+seed_snapper

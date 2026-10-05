@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# haseen:summary List the power profiles power-profiles-daemon offers
+# haseen:args [--active-state]
+#
+# Adapted from Omarchy bin/omarchy-powerprofiles-list (MIT, Copyright (c)
+# David Heinemeier Hansson).
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen powerprofile list [--active-state]
+
+Prints one profile per line, weakest first (power-saver, balanced,
+performance), as powerprofilesctl reports them. With --active-state each line
+gets a tab and 1 for the active profile, 0 otherwise.
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+"" | --active-state) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+
+have powerprofilesctl || die "powerprofilesctl is not installed (power-profiles-daemon)"
+
+# powerprofilesctl prints "  balanced:" / "* performance:" headers followed by
+# indented driver details; the headers are the only lines we want. It lists
+# strongest first, so tac gives the weakest-first order the shell expects.
+powerprofilesctl list 2>/dev/null |
+    awk -v with_state="${1:+1}" '/^[[:space:]]*[* ][[:space:]]*[a-zA-Z0-9-]+:$/ {
+        active = ($1 == "*") ? 1 : 0
+        gsub(/^[*[:space:]]+|:$/, "")
+        print $0 (with_state ? "\t" active : "")
+    }' |
+    tac

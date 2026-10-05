@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Firefox
+Exec=/usr/lib/firefox/firefox %u
+Terminal=false
+Type=Application
+Icon=firefox
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;

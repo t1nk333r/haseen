@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# haseen:summary Wait until a notification daemon owns org.freedesktop.Notifications
+# haseen:args [--timeout <seconds>] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-notification-wait (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: the timeout is the named option --timeout
+# instead of a bare positional, the probe is the bus name's owner (busctl, or
+# gdbus where it is absent) rather than a GetServerInformation call paired with
+# an `omarchy-shell notifications ping` haseen has no equivalent for, and
+# --dry-run prints the plan without touching the bus.
+#
+# Why it exists: graphical-session.target is reached before the shell claims
+# org.freedesktop.Notifications. A toast sent into that gap goes nowhere and
+# the user never learns. A script that fires early waits here first.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen notification wait [--timeout <seconds>] [--dry-run]
+
+Blocks until a notification daemon (haseen.pager) owns the session bus name
+org.freedesktop.Notifications, so a notification sent right after it cannot be
+lost. Exits 0 as soon as the name has an owner, 1 when the timeout passes.
+Default timeout: 10 seconds.
+EOF
+}
+
+timeout=10
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+while (($# > 0)); do
+    case "$1" in
+    --timeout)
+        (($# >= 2)) || die "--timeout needs a value in whole seconds"
+        timeout=$2
+        shift 2
+        ;;
+    --timeout=*)
+        timeout=${1#*=}
+        shift
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+[[ $timeout =~ ^[0-9]+$ ]] || die "--timeout takes whole seconds: $timeout"
+
+if $DRY_RUN; then
+    echo "DRYRUN: wait up to ${timeout}s for org.freedesktop.Notifications"
+    exit 0
+fi
+
+# busctl ships with systemd and is always here; gdbus (glib2) covers a session
+# without it. Both only read the bus, so neither is a state change.
+if have busctl; then
+    probe() { busctl --user status org.freedesktop.Notifications &>/dev/null; }
+elif have gdbus; then
+    probe() {
+        local answer
+        answer="$(gdbus call --session --dest org.freedesktop.DBus \
+            --object-path /org/freedesktop/DBus \
+            --method org.freedesktop.DBus.NameHasOwner \
+            org.freedesktop.Notifications 2>/dev/null)" || return 1
+        [[ $answer == *true* ]]
+    }
+else
+    die "neither busctl nor gdbus is available to query the session bus"
+fi
+
+# A bounded startup wait, not a steady-state poll: it ends the instant the name
+# is claimed. A quarter second keeps the caller from waiting noticeably longer
+# than the shell itself takes to come up.
+attempts=$((timeout * 4))
+((attempts > 0)) || attempts=1
+while ((attempts > 0)); do
+    probe && exit 0
+    attempts=$((attempts - 1))
+    ((attempts == 0)) || sleep 0.25
+done
+
+die "no notification daemon claimed org.freedesktop.Notifications within ${timeout}s"

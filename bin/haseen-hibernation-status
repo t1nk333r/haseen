@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# haseen:summary Say whether this machine can suspend to disk, and what is missing
+# haseen:args [--quiet]
+#
+# Adapted from Omarchy bin/omarchy-hibernation-available (MIT, Copyright (c)
+# David Heinemeier Hansson), which answers the same question with an exit code.
+# This also prints why, because on a LUKS + btrfs machine there are four
+# separate things to get right.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/hibernate.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hibernate.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hibernation status [--quiet]
+
+Exit 0 when this machine can hibernate: the kernel supports it, swap outside
+zram is at least as large as RAM, the initramfs can resume, and the kernel
+command line says where the image is.
+
+  --quiet   print nothing, just the exit code
+EOF
+}
+
+quiet=false
+for arg in "$@"; do
+    case "$arg" in
+    --quiet | -q) quiet=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+mem_kib="$(hibernate_mem_kib)"
+image_kib="$(hibernate_image_kib)"
+swap_kib="$(hibernate_swap_kib)"
+style="$(hibernate_initramfs_style)"
+human() { awk -v k="${1:-0}" 'BEGIN { printf "%.1f GiB", k / 1048576 }'; }
+
+if ! $quiet; then
+    printf 'kernel:    %s\n' "$(hibernate_supported && echo "hibernation supported" || echo "no /sys/power/image_size")"
+    printf 'memory:    %s\n' "$(human "$mem_kib")"
+    printf 'swap:      %s%s\n' "$(human "$swap_kib")" \
+        "$(hibernate_swapfile_active && echo " ($SWAP_FILE)" || echo " (not haseen's swapfile)")"
+    printf 'image:     up to %s (/sys/power/image_size)\n' "$(human "$image_kib")"
+    printf 'initramfs: %s hooks, resume hook %s\n' "$style" \
+        "$(hibernate_resume_hook_present && echo present || echo absent)$([[ $style == systemd ]] && echo " (not needed)")"
+    if hibernate_cmdline_has_resume; then
+        printf 'cmdline:   resume set, offset %s\n' "$(hibernate_cmdline_resume_offset)"
+    else
+        printf 'cmdline:   no resume= parameter\n'
+    fi
+fi
+
+if hibernate_ready; then
+    $quiet || echo "ready: systemctl hibernate will work"
+    exit 0
+fi
+$quiet || echo "not ready: run 'haseen hibernation setup'"
+exit 1

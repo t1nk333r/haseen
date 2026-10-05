@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# haseen:summary Set and remember the power profile for AC or battery use
+# haseen:args [autodetect|ac|battery] [power-saver|balanced|performance] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-powerprofiles-set and
+# bin/omarchy-power-present (MIT, Copyright (c) David Heinemeier Hansson).
+# Upstream autodetects with busctl (UPower.OnBattery); we read
+# /sys/class/power_supply through sysroot_path instead, so the fixture trees
+# under tests/fixtures/ can stand in for a machine and no D-Bus is needed on a
+# udev- or login-time run.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+STATE_DIR="$HASEEN_USER_STATE/powerprofile"
+
+usage() {
+    cat <<EOF
+Usage: haseen powerprofile set [autodetect|ac|battery] [PROFILE] [--dry-run]
+
+Sets the power profile and remembers it per power source in $STATE_DIR,
+so unplugging restores the battery profile and plugging in the AC one.
+
+  autodetect  (default) pick ac or battery from /sys/class/power_supply
+  ac|battery  name the power source directly, without unplugging anything
+
+With no PROFILE the remembered one for that source is re-applied, falling
+back to performance on AC and balanced on battery. PROFILE is remembered only
+when it is given explicitly. See haseen powerprofile list.
+EOF
+}
+
+# on_ac — true when the machine is running off mains. A machine with no
+# battery (a desktop) is always on AC, even when it exposes no supply at all.
+on_ac() {
+    local dir supply type online have_battery=false
+    dir="$(sysroot_path /sys/class/power_supply)"
+    for supply in "$dir"/*; do
+        [[ -r $supply/type ]] || continue
+        type="$(<"$supply/type")"
+        case "$type" in
+        Battery)
+            have_battery=true
+            ;;
+        Mains | USB)
+            [[ -r $supply/online ]] || continue
+            online="$(<"$supply/online")"
+            [[ $online == "1" ]] && return 0
+            ;;
+        esac
+    done
+    ! $have_battery
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 2)) || {
+    usage >&2
+    exit 2
+}
+
+action="${1:-autodetect}"
+requested_profile="${2:-}"
+
+case "$action" in
+autodetect)
+    if on_ac; then action=ac; else action=battery; fi
+    ;;
+ac | battery) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+mapfile -t profiles < <("$(dirname "$(readlink -f "$0")")/haseen-powerprofile-list")
+((${#profiles[@]} > 0)) || die "power-profiles-daemon offers no profiles"
+
+profile_available() { [[ " ${profiles[*]} " == *" $1 "* ]]; }
+
+state_file="$STATE_DIR/$action"
+profile=""
+
+if [[ -n $requested_profile ]]; then
+    profile_available "$requested_profile" ||
+        die "power profile is not available: $requested_profile"
+    profile="$requested_profile"
+elif [[ -r $state_file ]]; then
+    profile="$(<"$state_file")"
+fi
+
+# A remembered profile can disappear (a driver change, another daemon): fall
+# back rather than fail.
+if [[ -z $profile ]] || ! profile_available "$profile"; then
+    if [[ $action == ac ]] && profile_available performance; then
+        profile=performance
+    else
+        profile=balanced
+    fi
+fi
+
+run powerprofilesctl set "$profile"
+info "power profile: $profile ($action)"
+
+# Only an explicit choice is remembered; an autodetect run must not promote a
+# fallback into the saved preference.
+if [[ -n $requested_profile ]]; then
+    printf '%s\n' "$requested_profile" | write_user_file "$state_file"
+fi
