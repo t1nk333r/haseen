@@ -11,7 +11,7 @@
   "warning": "{{ yellow }}",
   "success": "{{ green }}",
   "border": "{{ mix background foreground 20% }}",
-  "selection": "{{ selection }}",
+  "selection": "{{ shell_selection }}",
   "fontFamily": "{{ font_family }}",
   "fontMono": "{{ font_mono }}",
   "fontSize": {{ font_size }},

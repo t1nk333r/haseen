@@ -260,9 +260,49 @@ theme_colors_load() {
         fi
         [[ -n $value ]] || THEME_COLORS[$key]="${THEME_TOKEN_DEFAULTS[$key]}"
     done
+    _theme_shell_selection
     # Remove keys that resolved to nothing (a theme without e.g. red).
     for key in "${!THEME_COLORS[@]}"; do
         [[ -n ${THEME_COLORS[$key]} ]] || unset "THEME_COLORS[$key]"
+    done
+    return 0
+}
+
+# _theme_contrast A B — REPLY = WCAG contrast ratio of two #rrggbb colours,
+# times 100 (integer), or empty when either is not a hex colour.
+_theme_contrast() {
+    REPLY=""
+    [[ $1 =~ ^#[0-9A-Fa-f]{6}$ && $2 =~ ^#[0-9A-Fa-f]{6}$ ]] || return 1
+    REPLY="$(awk -v a="${1#\#}" -v b="${2#\#}" '
+        function ch(h,   v) { v = index("0123456789abcdef", substr(h, 1, 1)) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 17
+            v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ^ 2.4 }
+        function lum(h) { h = tolower(h); return 0.2126 * ch(substr(h, 1, 2)) + 0.7152 * ch(substr(h, 3, 2)) + 0.0722 * ch(substr(h, 5, 2)) }
+        BEGIN { x = lum(a); y = lum(b); if (x < y) { t = x; x = y; y = t }
+            printf "%d", int((x + 0.05) / (y + 0.05) * 100) }')"
+}
+
+# The shell draws its foreground text on `selection` (highlighted rows, pager
+# buttons, switches). Terminals pair selection_background with its own
+# selection_foreground instead, so themes often pick a bright accent there
+# (greek-noir-akane: orange under light grey, 2.3:1). shell_selection is that
+# colour pulled toward the background until foreground text on it reaches
+# 4.5:1 (WCAG AA); a selection that already reads well is kept as is.
+_theme_shell_selection() {
+    local sel="${THEME_COLORS[selection]:-}" fg="${THEME_COLORS[foreground]:-}"
+    local bg="${THEME_COLORS[background]:-}" amount=0 candidate
+    THEME_COLORS[shell_selection]="$sel"
+    _theme_contrast "$sel" "$fg" || return 0
+    ((REPLY >= 450)) && return 0
+    [[ $bg =~ ^#[0-9A-Fa-f]{6}$ ]] || return 0
+    while ((amount <= 100)); do
+        _theme_mix "$sel" "$bg" "$amount%" || return 0
+        candidate=$REPLY
+        _theme_contrast "$candidate" "$fg"
+        if ((REPLY >= 450)); then
+            THEME_COLORS[shell_selection]="$candidate"
+            return 0
+        fi
+        amount=$((amount + 5))
     done
     return 0
 }
