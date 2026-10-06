@@ -74,6 +74,13 @@ for dir in "$HASEEN_PATH"/themes/*/; do
     assert_eq "$t no staging leftovers" "" "$(ls -d "$CUR/next-theme" "$CUR/old-theme" 2>/dev/null)"
 done
 
+# --- shell selection stays readable under foreground text -------------------
+# greek-noir-akane's selection_background is a bright orange (2.3:1 under its
+# light grey text); the shell token is darkened until the text reads (4.5:1).
+theme_sandbox theme-selection
+haseen theme set greek-noir-akane >/dev/null 2>&1
+assert_eq "bright selection darkened for the shell" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
+
 # --- shell.json mapping and idempotency (tokyo-night) -----------------------
 theme_sandbox theme-tokens
 haseen theme set tokyo-night >/dev/null 2>&1
@@ -81,6 +88,7 @@ first="$(cd "$CUR/theme" && cat -- *)"
 assert_eq "surface = mix background foreground 6%" "#232431" "$(jq -r .surface "$CUR/theme/shell.json")"
 assert_eq "border = mix background foreground 20%" "#373949" "$(jq -r .border "$CUR/theme/shell.json")"
 assert_eq "accentFg = background" "#1a1b26" "$(jq -r .accentFg "$CUR/theme/shell.json")"
+assert_eq "a readable selection is kept" "#292e42" "$(jq -r .selection "$CUR/theme/shell.json")"
 assert_eq "hyprland.lua active border" 'local active_border_color = "#7aa2f7"' "$(head -n1 "$CUR/theme/hyprland.lua")"
 capture haseen theme set "Tokyo Night"
 assert_status "display name normalizes" 0 "$STATUS"
