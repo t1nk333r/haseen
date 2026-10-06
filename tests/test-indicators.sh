@@ -75,6 +75,8 @@ for id in NightLight Dnd StayAwake Screensaver; do
     assert_eq "$id: a click while on clears $flag" "clear" "$([[ -e $flags/$flag ]] && echo set || echo clear)"
 done
 mapfile -t rec < <(jq -r '.ScreenRecording[1][1:][]' <<<"$cmds")
+# The recorder itself is not in the CI image; the dry run only needs it on PATH.
+stub gpu-screen-recorder "exit 0"
 capture haseen "${rec[@]}" --fullscreen --dry-run
 assert_status "ScreenRecording: the start command is haseen capture screenrecord" 0 "$STATUS"
 assert_eq "ScreenRecording: stop is screenrecord --stop" '["haseen","capture","screenrecord","--stop"]' \
