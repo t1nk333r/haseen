@@ -37,8 +37,9 @@ function offset(centre, size, extent, margin) {
 // widget. The popup and the bar measure from the same origin: Hyprland lays
 // both out in the area the surfaces arranged before them leave (the frame's
 // strips, which sit on the bottom layer). Without an opener the compositor
-// centres the popup along the bar edge.
-function place(position, press, width, height, margin) {
+// centres the popup along the bar edge. A panel whose `placement` setting is
+// "center" anchors nothing, so the compositor centres it on the screen.
+function place(position, press, width, height, margin, placement) {
     const edge = EDGES.indexOf(position) >= 0 ? position : "top";
     const r = {
         top: false,
@@ -50,6 +51,8 @@ function place(position, press, width, height, margin) {
         marginLeft: 0,
         marginRight: 0
     };
+    if (placement === "center")
+        return r;
     r[edge] = true;
     r["margin" + edge[0].toUpperCase() + edge.slice(1)] = margin;
     if (!press || press.position !== edge || !(press.extent > 0))

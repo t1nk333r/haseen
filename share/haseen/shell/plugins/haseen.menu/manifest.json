@@ -16,6 +16,11 @@
       "default": 380,
       "description": "Panel width in px"
     },
+    "placement": {
+      "type": "string",
+      "default": "center",
+      "description": "Where the menu opens: center (middle of the screen) or bar (under the bar)"
+    },
     "maxRows": {
       "type": "integer",
       "default": 10,
