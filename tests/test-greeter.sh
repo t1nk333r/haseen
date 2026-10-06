@@ -60,6 +60,27 @@ capture haseen setup greeter tuigreet --dry-run --yes
 assert_contains "switching back plans tuigreet" "$OUTPUT" "tuigreet --time --remember"
 assert_contains "and orders greetd after the splash" "$OUTPUT" "plymouth-quit-wait.service"
 
+# --- taking over from another display manager ----------------------------------
+mkdir -p "$sysroot/etc/systemd/system"
+ln -sfn /usr/lib/systemd/system/sddm.service "$sysroot/etc/systemd/system/display-manager.service"
+capture haseen setup greeter haseen --dry-run --yes
+assert_contains "SDDM is named as what gets replaced" "$OUTPUT" "sddm.service is the display manager now"
+assert_contains "greetd and the fallback greeter are installed" "$OUTPUT" "greetd greetd-tuigreet"
+assert_contains "SDDM is disabled" "$OUTPUT" "systemctl disable sddm.service"
+assert_contains "greetd is enabled" "$OUTPUT" "systemctl enable greetd.service"
+assert_not_contains "but nothing is started under the running session" "$OUTPUT" "enable --now"
+assert_contains "and the way back is printed" "$OUTPUT" "sudo systemctl enable sddm.service"
+DISABLE_AT="$(grep -n 'systemctl disable sddm' <<<"$OUTPUT" | cut -d: -f1)"
+ENABLE_AT="$(grep -n 'systemctl enable greetd' <<<"$OUTPUT" | cut -d: -f1)"
+assert_eq "SDDM lets go of display-manager.service before greetd takes it" true \
+    "$([[ ${DISABLE_AT:-0} -lt ${ENABLE_AT:-0} ]] && echo true || echo false)"
+
+ln -sfn /usr/lib/systemd/system/greetd.service "$sysroot/etc/systemd/system/display-manager.service"
+capture haseen setup greeter haseen --dry-run --yes
+assert_not_contains "with greetd already in place nothing is disabled" "$OUTPUT" "systemctl disable"
+assert_not_contains "or re-enabled" "$OUTPUT" "systemctl enable greetd"
+rm -f "$sysroot/etc/systemd/system/display-manager.service"
+
 # --- autologin: the disk password at the splash is the authentication ----------
 capture haseen setup greeter autologin t1nk33r --dry-run --yes
 assert_dry_pure "autologin dry run" "$OUTPUT"
@@ -122,6 +143,10 @@ Item {
 
         eq("sessions: an id appears once", ["a"], G.parseSessions([{id: "a", name: "A", exec: "a"}, {id: "a", name: "B", exec: "b"}]).map(s => s.id));
 
+        eq("default session: haseen's, not the first alphabetically", 2, G.preferredSessionIndex([{id: "awesome"}, {id: "omarchy"}, {id: "hyprland-uwsm"}, {id: "hyprland"}]));
+        eq("default session: plain Hyprland without uwsm's entry", 1, G.preferredSessionIndex([{id: "omarchy"}, {id: "hyprland"}]));
+        eq("default session: the first one when neither exists", 0, G.preferredSessionIndex([{id: "i3"}]));
+
         eq("command: field codes are dropped", ["i3"], G.commandFor("i3 %U"));
         eq("command: quotes hold a word together", ["sh", "-c", "a b"], G.commandFor("sh -c 'a b'"));
         eq("command: argv, not a shell string", ["uwsm", "start", "--", "hyprland.desktop"], G.commandFor("uwsm start -- hyprland.desktop"));
@@ -140,7 +165,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "greeter js unit count" 13 "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "greeter js unit count" 16 "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi

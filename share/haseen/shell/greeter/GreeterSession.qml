@@ -157,6 +157,7 @@ QtObject {
                 }
                 flush();
                 root.sessions = Greeter.parseSessions(parsed);
+                root.sessionIndex = Greeter.preferredSessionIndex(root.sessions);
                 root.restoreSessionFor(root.currentUser);
             }
         }

@@ -74,6 +74,19 @@ function parseSessions(entries) {
     return out;
 }
 
+// The session offered when nothing is remembered: haseen's own (Hyprland
+// under uwsm, the command autologin uses too), then plain Hyprland, then the
+// first one found. A machine migrated from another desktop still lists that
+// desktop's session, and it must not be the default by alphabetical accident.
+function preferredSessionIndex(sessions) {
+    for (const id of ["hyprland-uwsm", "hyprland"]) {
+        const index = (sessions || []).findIndex(s => s.id === id);
+        if (index >= 0)
+            return index;
+    }
+    return 0;
+}
+
 // greetd takes an argv, not a shell string. A desktop Exec may carry field
 // codes (%f, %U, …) and quotes; drop the codes, split on spaces outside quotes.
 function commandFor(exec) {

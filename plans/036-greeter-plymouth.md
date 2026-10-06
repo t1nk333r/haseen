@@ -93,6 +93,17 @@ sudo haseen setup greeter autologin $USER            # then reboot
 If the graphical greeter does not come up, Ctrl+Alt+F2 and
 `sudo haseen setup greeter tuigreet && sudo systemctl restart greetd`.
 
+## Amendment 2026-10-06: replacing SDDM
+
+First real target (io, an Omarchy 4 laptop) runs SDDM with autologin. The
+desktop layer deliberately keeps an enabled display manager, so there was no
+way to get from SDDM to greetd short of hand-run `systemctl`. `haseen setup
+greeter tuigreet|haseen` now does it: asks, installs `greetd greetd-tuigreet`,
+disables the old unit, enables greetd (enable only), and prints the command
+back. The greeter also prefers `hyprland-uwsm`, then `hyprland`, when nothing
+is remembered — on a migrated machine the old desktop's session sorts first.
+Tests: 53 in `tests/test-greeter.sh`.
+
 ## Execution record
 
 `share/haseen/lib/{greeter,plymouth,boot}.sh`,
