@@ -14,7 +14,8 @@
 //     (_deriveLegacySurface: which surface a single `component` is)
 //
 // Omarchy services and panels use the same registry as native plugins. DMS
-// surfaces remain unchanged: its separate adapter still accepts bar widgets.
+// bar widgets become bar-widget entries and DMS daemons service entries; the
+// other DMS surfaces stay unsupported.
 var supportedKinds = ["bar-widget", "service", "panel", "overlay"];
 
 // Omarchy kind -> its entryPoints key.
@@ -193,6 +194,12 @@ var dmsPermissions = {
     "network": "network"
 };
 
+// DMS surface -> haseen kind, for the surfaces the compat hosts load.
+var dmsKinds = {
+    "widget": "bar-widget",
+    "daemon": "service"
+};
+
 function dms(dirName, m) {
     var problems = [];
     var validId = typeof m.id === "string" && dmsIdPattern.test(m.id);
@@ -202,12 +209,19 @@ function dms(dirName, m) {
     var surfaces = dmsSurfaces(m);
     var names = Object.keys(surfaces);
     var unsupported = names.filter(function (s) {
-        return s !== "widget";
+        return dmsKinds[s] === undefined;
     }).map(function (s) {
         return "dms:" + s;
     });
-    if (surfaces.widget === undefined)
-        problems.push("dms: no bar widget surface (" + (names.length > 0 ? "has " + names.join(", ") : "no component") + "; the compat adapter loads the bar widget only)");
+    var kinds = [];
+    var entry = {};
+    for (var s in dmsKinds)
+        if (surfaces[s] !== undefined) {
+            kinds.push(dmsKinds[s]);
+            entry[dmsKinds[s]] = stripDotSlash(surfaces[s]);
+        }
+    if (kinds.length === 0)
+        problems.push("dms: no bar widget or daemon surface (" + (names.length > 0 ? "has " + names.join(", ") : "no component") + "; the compat adapter loads bar widgets and daemons only)");
     var perms = typeof m.permissions === "string" ? m.permissions.split(/\s*,\s*/) : (Array.isArray(m.permissions) ? m.permissions : []);
     var mapped = [];
     for (var i = 0; i < perms.length; i++) {
@@ -227,10 +241,8 @@ function dms(dirName, m) {
             name: m.name,
             version: m.version,
             description: typeof m.description === "string" ? m.description : "",
-            kinds: surfaces.widget !== undefined ? ["bar-widget"] : [],
-            entry: surfaces.widget !== undefined ? {
-                "bar-widget": stripDotSlash(surfaces.widget)
-            } : {},
+            kinds: kinds,
+            entry: entry,
             settings: {},
             permissions: mapped,
             provides: []

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): DMS plugins call DankMaterialShell's `dms`
+# CLI. Here `dms screenshot` is haseen's capture, `dms ipc` haseen's shell IPC,
+# and the toast target a desktop notification, as Compat/Dms/Services/
+# ToastService.qml does. Modes, flags and toast functions follow
+# DankMaterialShell core/cmd/dms/commands_screenshot.go and
+# quickshell/DMSShellIPC.qml (MIT, Copyright (c) 2025 Avenge Media LLC).
+set -Eeuo pipefail
+
+bin="${HASEEN_PATH:?}/../../bin"
+
+fail() {
+    printf 'dms (haseen compat): %s\n' "$*" >&2
+    exit 2
+}
+
+screenshot() {
+    local mode=region dir="" name="" format=png args=() flag value
+    while (($#)); do
+        flag=$1 value=""
+        case $flag in
+        --*=*) value=${flag#*=} flag=${flag%%=*} ;;
+        -o | --output | --cursor | -f | --format | -q | --quality | -d | --dir | --filename | --seat | --hud)
+            (($# > 1)) || fail "screenshot $flag needs a value"
+            value=$2
+            shift
+            ;;
+        esac
+        case $flag in
+        region | last) mode=region ;; # haseen keeps no last region: pick again
+        full | output) mode=output ;; # output -o NAME, else the focused one
+        all) mode=screen ;;
+        window) mode=window ;;
+        -o | --output) args+=(--output "$value") ;;
+        --cursor) if [[ ${value,,} == on ]]; then args+=(--cursor); fi ;;
+        -f | --format) format=${value,,} ;;
+        -q | --quality) args+=(--quality "$value") ;;
+        -d | --dir) dir=$value ;;
+        --filename) name=$value ;;
+        --no-file) args+=(--no-save) ;;
+        --no-clipboard) args+=(--no-copy) ;;
+        --no-notify) args+=(--no-notify) ;;
+        --stdout) args+=(--stdout) ;;
+        # Options of DMS's own region selector; slurp has no equivalent.
+        --no-confirm | --reset | --allow-multiple | --seat | --hud) ;;
+        *) fail "screenshot $flag is not supported (see: haseen capture screenshot --help)" ;;
+        esac
+        shift
+    done
+    case $format in
+    jpg | jpeg) format=jpg ;;
+    ppm) ;;
+    *) format=png ;; # DMS falls back to PNG too
+    esac
+    args+=(--format "$format")
+    if [[ -n $dir || -n $name ]]; then
+        name=${name:-screenshot_$(date +%Y-%m-%d_%H-%M-%S).$format}
+        args+=(--file "${dir:+$dir/}$name")
+    fi
+    exec "$bin/haseen-capture-screenshot" "$mode" "${args[@]}"
+}
+
+toast() {
+    local fn=${1:-} urgency
+    case $fn in
+    info | infoWith) urgency=low ;;
+    warn | warnWith) urgency=normal ;;
+    error | errorWith) urgency=critical ;;
+    hide | dismiss) exit 0 ;; # the notification daemon owns its popups
+    status)
+        echo hidden
+        exit 0
+        ;;
+    *) fail "ipc toast $fn is not supported" ;;
+    esac
+    [[ -n ${2:-} ]] || fail "ipc toast $fn: no message specified"
+    local args=(notify-send --app-name=haseen --urgency="$urgency" "$2")
+    if [[ $fn == *With && -n ${3:-} ]]; then args+=("$3"); fi
+    exec "${args[@]}"
+}
+
+ipc() {
+    [[ ${1:-} != call ]] || shift
+    (($# >= 2)) || fail "usage: dms ipc [call] <target> <function> [args...]"
+    [[ $1 != toast ]] || toast "${@:2}"
+    exec "$bin/haseen-shell-ipc" "$@"
+}
+
+case ${1:-} in
+screenshot) screenshot "${@:2}" ;;
+ipc) ipc "${@:2}" ;;
+*) fail "only 'dms screenshot' and 'dms ipc' exist under haseen, not '${1:-}'" ;;
+esac

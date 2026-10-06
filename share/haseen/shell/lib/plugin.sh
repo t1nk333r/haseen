@@ -105,24 +105,26 @@ def dmssurfaces: (if (.capabilities | type) == "array" then .capabilities else [
           elif .type == "desktop" or .type == "dash" or .type == "dashCard" then .type
           else "widget" end): .component}
       else {} end;
+def dmskinds: [["widget", "bar-widget"], ["daemon", "service"]];
 def dms($dirname):
     ((.id | type) == "string" and (.id | test("^[a-zA-Z][a-zA-Z0-9]*$"))) as $valid
     | ((if $valid then .id else $dirname end) | dmsid) as $id
     | dmssurfaces as $surf
     | ($surf | keys_unsorted) as $names
+    | [dmskinds[] | select(.[0] as $s | $surf | has($s))] as $loaded
     | ((if (.permissions | type) == "string" then (.permissions | split(","))
         elif (.permissions | type) == "array" then .permissions else [] end)
        | reduce (.[] | tostring | gsub("^\\s+|\\s+$"; "") | {"process": "exec", "network": "network"}[.] // empty) as $p
            ([]; if index([$p]) then . else . + [$p] end)) as $perms
     | {compat: "dms", upstreamId: (if $valid then .id else "" end), id: $id,
        problems: ((if $valid then [] else ["dms: id must match ^[a-zA-Z][a-zA-Z0-9]*$"] end)
-                  + (if ($surf | has("widget")) then []
-                     else ["dms: no bar widget surface (\(if ($names | length) > 0 then "has " + ($names | join(", ")) else "no component" end); the compat adapter loads the bar widget only)"] end)),
-       unsupported: [$names[] | select(. != "widget") | "dms:" + .],
+                  + (if ($loaded | length) > 0 then []
+                     else ["dms: no bar widget or daemon surface (\(if ($names | length) > 0 then "has " + ($names | join(", ")) else "no component" end); the compat adapter loads bar widgets and daemons only)"] end)),
+       unsupported: [$names[] | select(. as $s | [dmskinds[][0]] | index([$s]) | not) | "dms:" + .],
        manifest: {schemaVersion: 1, id: $id, name: .name, version: .version,
                   description: (if (.description | type) == "string" then .description else "" end),
-                  kinds: (if ($surf | has("widget")) then ["bar-widget"] else [] end),
-                  entry: (if ($surf | has("widget")) then {"bar-widget": ($surf.widget | if type == "string" and startswith("./") then .[2:] else . end)} else {} end),
+                  kinds: [$loaded[][1]],
+                  entry: (reduce $loaded[] as $k ({}; . + {($k[1]): ($surf[$k[0]] | if type == "string" and startswith("./") then .[2:] else . end)})),
                   settings: {}, permissions: $perms, provides: []}};
 '
 

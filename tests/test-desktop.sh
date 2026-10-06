@@ -183,7 +183,8 @@ hl = setmetatable({
   dsp = proxy("dsp"),
   config = function(t) flat("", t) end,
   bind = function(keys, d, _)
-    local what = d.dsp == "dsp.exec_cmd" and d.args[1] or d.dsp
+    -- A Lua function is a valid dispatcher (Hyprland runs it on the key).
+    local what = type(d) == "function" and "lua:function" or (d.dsp == "dsp.exec_cmd" and d.args[1] or d.dsp)
     print("BIND " .. keys .. " -> " .. what)
   end,
   unbind = function(keys) print("UNBIND " .. keys) end,

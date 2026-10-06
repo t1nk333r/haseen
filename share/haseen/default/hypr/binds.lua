@@ -47,6 +47,47 @@ b("SUPER + CTRL + S", "Screensaver", "haseen screensaver --force")
 b("SUPER + RETURN", "Terminal", launch('"${TERMINAL:-foot}"'))
 b("SUPER + B", "Browser", launch('"$(xdg-settings get default-web-browser)"'))
 
+-- Clipboard --------------------------------------------------------------------
+-- Universal copy, paste and cut: SUPER + C/V/X send the app's own shortcut, so
+-- one chord works in browsers, editors and terminals alike (terminals take
+-- CTRL+Insert / SHIFT+Insert, as CTRL+C would interrupt). Adapted from Omarchy
+-- default/hypr/bindings/clipboard.lua (MIT, Copyright (c) David Heinemeier
+-- Hansson). The chord is sent with explicit mods to the focused surface, so the
+-- held SUPER never merges into it; down and up are split because Hyprland's
+-- send_shortcut can leave a synthetic key stuck (hyprwm/Hyprland discussion 14099).
+local function send_once(mods, key)
+  return function()
+    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
+    hl.timer(function()
+      hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "up" }))
+    end, { timeout = 50, type = "oneshot" })
+  end
+end
+
+local function focused_is_terminal()
+  local window = hl.get_active_window()
+  for _, tag in ipairs(window and window.tags or {}) do
+    if tag:gsub("%*$", "") == "terminal" then
+      return true
+    end
+  end
+  return false
+end
+
+local function universal(mods, key, terminal_mods, terminal_key)
+  return function()
+    if focused_is_terminal() then
+      send_once(terminal_mods, terminal_key)()
+    else
+      send_once(mods, key)()
+    end
+  end
+end
+
+b("SUPER + C", "Universal copy", universal("CTRL", "C", "CTRL", "Insert"))
+b("SUPER + V", "Universal paste", universal("CTRL", "V", "SHIFT", "Insert"))
+b("SUPER + X", "Universal cut", send_once("CTRL", "X"))
+
 -- Capture ----------------------------------------------------------------------
 b("PRINT", "Screenshot region", "haseen capture screenshot")
 b("SHIFT + PRINT", "Screenshot window", "haseen capture screenshot window")

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# haseen:summary Print a one-line weather status: place, temperature and wind
+# haseen:args
+#
+# Adapted from Omarchy bin/omarchy-weather-status (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: one wttr.in j1 request for the location
+# haseen-weather-location resolves (manual, GeoClue or IP); the place falls
+# back to the area wttr.in reports, and settings.units picks °C/°F.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen weather status
+
+Prints "Place  ·  Temp 21°C  ·  Wind 9 km/h" for the weather location
+(haseen weather location), or "Weather unavailable" and exits 1.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || { usage >&2; exit 2; }
+
+unavailable() {
+    echo "Weather unavailable"
+    exit 1
+}
+
+settings="$(shell_merged_json | jq -c '.plugins["haseen.weather"].settings // {}')"
+query="$(haseen-weather-location --query 2>/dev/null)" || query=""
+report="$(curl -fsS --max-time 4 "https://wttr.in/${query}?format=j1" 2>/dev/null)" || unavailable
+line="$(jq -r --argjson s "$settings" --arg lang "${LC_ALL:-${LC_MEASUREMENT:-${LANG:-}}}" '
+    def str: if type == "string" then gsub("^\\s+|\\s+$"; "") else "" end;
+    (.current_condition[0] // empty) as $c |
+    (.nearest_area[0] // {}) as $a |
+    ($a.country[0].value // "" | ascii_downcase) as $country |
+    (($s.units // "") | str | ascii_downcase) as $unit |
+    (if $unit == "imperial" then true
+     elif $unit == "metric" then false
+     elif $country != "" then ($country | IN("united states of america","united states","usa","us","liberia","myanmar","burma"))
+     else ($lang | test("^(en_US|en_LR|my)([._@]|$)")) end) as $imperial |
+    (($s.location // "") | str) as $loc |
+    (($s.locationName // "") | str) as $name |
+    (if $loc != "" then (if ($loc | test("^-?[0-9.]+ *, *-?[0-9.]+$")) and $name != "" then $name else $loc end)
+     else ($a.areaName[0].value // "") end) as $place |
+    (if $imperial then "\($c.temp_F)°F" else "\($c.temp_C)°C" end) as $temp |
+    (if $imperial then "\($c.windspeedMiles) mph" else "\($c.windspeedKmph) km/h" end) as $wind |
+    select($c.temp_C != null) |
+    (if $place == "" then "" else ($place[:1] | ascii_upcase) + $place[1:] + "  ·  " end) + "Temp \($temp)  ·  Wind \($wind)"
+' <<<"$report" 2>/dev/null)" || unavailable
+[[ -n $line ]] || unavailable
+echo "$line"

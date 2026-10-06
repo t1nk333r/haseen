@@ -96,7 +96,8 @@ end
 hl = setmetatable({
   dsp = proxy("dsp"),
   bind = function(keys, d, opts)
-    local what = d.dsp == "dsp.exec_cmd" and d.args[1] or d.dsp
+    -- A Lua function is a valid dispatcher (Hyprland runs it on the key).
+    local what = type(d) == "function" and "lua:function" or (d.dsp == "dsp.exec_cmd" and d.args[1] or d.dsp)
     print(norm(keys) .. "\t" .. tostring(opts and opts.description) .. "\t" .. what)
   end,
 }, { __index = function() return function() end end })
@@ -129,6 +130,10 @@ done
 assert_eq "the system menu has one key" "SUPER+ESCAPE" "$(awk -F'\t' '$3 == "haseen menu system" { print $1 }' <<<"$shipped")"
 assert_eq "the shipped config binds keys" true "$( (($(wc -l <<<"$shipped") > 60)) && echo true || echo false)"
 assert_eq "no key is bound twice" "" "$(cut -f1 <<<"$shipped" | sort | uniq -d)"
+# Omarchy's universal clipboard chords: the owner's muscle memory for paste.
+for k in C V X; do
+    assert_eq "SUPER + $k is a universal clipboard key" "lua:function" "$(bound SUPER+$k | cut -f2)"
+done
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
 
 # --- a user bind on a key haseen binds replaces it ---------------------------

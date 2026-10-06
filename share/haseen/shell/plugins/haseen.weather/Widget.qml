@@ -3,10 +3,11 @@ import Quickshell
 import qs.Haseen
 import qs.Haseen.Widgets
 
-// Current temperature and a condition glyph from the haseen.weather service
-// (role `weather`). Takes no room until the service has a good answer, so an
-// offline machine or a disabled service shows nothing. Click opens the
-// 3-day forecast panel.
+// The weather pill, as Omarchy's weather bar widget (shell/plugins/panels/
+// weather/BarWidget.qml; MIT, Copyright (c) David Heinemeier Hansson): the
+// condition icon from the haseen.weather service (role `weather`), hidden
+// until there is one. Left click opens the forecast panel, right click sends
+// the status line as a notification, middle click refreshes.
 BarButton {
     id: root
 
@@ -19,12 +20,18 @@ BarButton {
         const entry = Plugins.roles.weather;
         return entry && entry.id === root.pluginId ? entry.instance : null;
     }
-    readonly property var current: service && service.forecast ? service.forecast.current : null
 
-    glyph: current ? current.glyph : ""
-    text: current ? current.temp + "°" : ""
+    glyph: service ? service.label : ""
     color: Theme.barForeground
-    implicitWidth: current ? contentWidth : 0
+    visible: glyph !== ""
+    implicitWidth: visible ? contentWidth : 0
 
-    onClicked: Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId])
+    onClicked: button => {
+        if (button === Qt.RightButton)
+            root.service.notifyStatus();
+        else if (button === Qt.MiddleButton)
+            root.service.refresh();
+        else
+            Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId]);
+    }
 }

@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# haseen:summary Show or pin the Wi-Fi band of the active connection
+# haseen:args [auto|2.4|5|6] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-network-band (MIT, Copyright (c) David
+# Heinemeier Hansson). haseen adds --dry-run and runs the profile changes
+# through common.sh's `run`.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen network band [auto|2.4|5|6] [--dry-run]
+
+Without a band, prints key<TAB>value lines for the connected Wi-Fi: band (the
+one in use), available (bands the SSID answers on, low to high) and selected
+(the pinned band, or auto). Prints nothing when no Wi-Fi is connected.
+
+With a band, pins the active connection profile to it (auto clears the pin)
+and reconnects; if the radio cannot come back on that band, the previous
+setting is restored. A band the network does not answer on is refused.
+EOF
+}
+
+# NetworkManager 1.44+ takes a third band value, so 5 and 6 GHz pin apart.
+# Pinning the band rather than a BSSID survives BSSID rotation and roaming.
+nm_band_for() {
+    case "$1" in
+    2.4) echo bg ;;
+    5) echo a ;;
+    6) echo 6GHz ;;
+    *) return 1 ;;
+    esac
+}
+
+band_from_nm() {
+    case "$1" in
+    bg) echo 2.4 ;;
+    a) echo 5 ;;
+    6GHz) echo 6 ;;
+    *) echo auto ;;
+    esac
+}
+
+# Takes nmcli's "2412 MHz" or iw's "5745.0": the leading digits only. The
+# boundaries match the panel's labels.
+band_for_freq() {
+    local mhz=${1%%[!0-9]*}
+    [[ -n $mhz ]] || return 1
+    if ((mhz >= 2400 && mhz < 2500)); then
+        echo 2.4
+    elif ((mhz >= 4900 && mhz < 5925)); then
+        echo 5
+    elif ((mhz >= 5925 && mhz < 7125)); then
+        echo 6
+    else
+        return 1
+    fi
+}
+
+# LC_ALL=C because nmcli translates state words; `-e no` because -g would
+# otherwise escape ':' and '\' and the SSID would never match iw's.
+nm_get() {
+    LC_ALL=C nmcli -e no -g "$@" 2>/dev/null || true
+}
+
+wifi_device() {
+    nm_get DEVICE,TYPE,STATE device status | awk -F: '$2 == "wifi" && $3 == "connected" { print $1; exit }'
+}
+
+wifi_profile() {
+    nm_get GENERAL.CONNECTION device show "$1"
+}
+
+# Sets ssid and freq from one `iw dev DEVICE link`. iw prints the SSID as the
+# rest of its line, so one containing ':' needs no special handling.
+read_link() {
+    local link
+    link="$(iw dev "$1" link 2>/dev/null || true)"
+    ssid="$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")"
+    freq="$(awk '/freq:/ { print $2; exit }' <<<"$link")"
+}
+
+# Every band the SSID answers on, low to high, always including the one in
+# use (weak radios are missed by plenty of scans). --rescan no reads
+# NetworkManager's cache, which the open panel's scanner keeps warm. The SSID
+# is the last field so one containing ':' can be put back together; it
+# reaches awk through the environment, since -v would expand backslashes.
+available_bands() {
+    local device=$1 want=$2 current=$3
+    {
+        [[ -z $current ]] || echo "$current"
+        nm_get FREQ,SSID dev wifi list ifname "$device" --rescan no |
+            want="$want" awk -F: '
+                BEGIN { want = ENVIRON["want"] }
+                {
+                    name = $2
+                    for (i = 3; i <= NF; i++) name = name ":" $i
+                    if (name == want) print $1
+                }' |
+            while read -r f; do band_for_freq "$f" || true; done
+    } | sort -u -g | tr '\n' ' ' | sed 's/ $//'
+}
+
+print_status() {
+    local device profile band available
+    device="$(wifi_device)"
+    [[ -n $device ]] || return 0
+    read_link "$device"
+    [[ -n $ssid ]] || return 0
+    band="$(band_for_freq "$freq" || true)"
+    available="$(available_bands "$device" "$ssid" "$band")"
+    profile="$(wifi_profile "$device")"
+    printf 'band\t%s\n' "$band"
+    printf 'available\t%s\n' "$available"
+    if [[ -n $profile ]]; then
+        printf 'selected\t%s\n' "$(band_from_nm "$(nm_get 802-11-wireless.band connection show "$profile")")"
+    fi
+}
+
+set_band() {
+    local target=$1 device profile previous desired=""
+    device="$(wifi_device)"
+    [[ -n $device ]] || die "no connected Wi-Fi device"
+    profile="$(wifi_profile "$device")"
+    [[ -n $profile ]] || die "no active Wi-Fi connection profile"
+
+    if [[ $target != auto ]]; then
+        read_link "$device"
+        [[ " $(available_bands "$device" "$ssid" "$(band_for_freq "$freq" || true)") " == *" $target "* ]] ||
+            die "${target} GHz is not available on this network"
+        desired="$(nm_band_for "$target")"
+    fi
+
+    previous="$(nm_get 802-11-wireless.band connection show "$profile")"
+    if [[ $previous == "$desired" ]]; then
+        info "band: already $(band_from_nm "$desired")"
+        return 0
+    fi
+
+    run nmcli connection modify "$profile" 802-11-wireless.band "$desired"
+    $DRY_RUN && {
+        run nmcli connection up "$profile"
+        return 0
+    }
+    # The band only changes on reassociation. If the radio cannot come back
+    # on it, restore the previous setting rather than stay offline.
+    if ! nmcli connection up "$profile" >/dev/null 2>&1; then
+        nmcli connection modify "$profile" 802-11-wireless.band "$previous" >/dev/null
+        nmcli connection up "$profile" >/dev/null 2>&1 || true
+        die "could not connect on ${target} GHz; reverted to the previous band"
+    fi
+    info "band: $target"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if (($# == 0)); then
+    print_status
+    exit 0
+fi
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+case "$1" in
+auto | 2.4 | 5 | 6) set_band "$1" ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -174,16 +174,20 @@ PanelWindow {
     root.applyingMask = false
   }
 
-  onMaskChanged: {
+  // Records what the panel asked for, then applies the closed-state rule.
+  // On creation the `mask` binding notifies first and applyMask() swaps in
+  // `closedMask` before Component.onCompleted runs, so `mask` there is our
+  // own empty region: adopting it as the panel's request would leave every
+  // open panel without pointer input (no hover, clicks, outside dismissal).
+  function adoptMask() {
     if (applyingMask) return
-    suppliedMask = mask
+    suppliedMask = PanelInput.suppliedMask(root.mask, root.suppliedMask, root.closedMask)
     applyMask()
   }
 
-  Component.onCompleted: {
-    suppliedMask = mask
-    applyMask()
-  }
+  onMaskChanged: adoptMask()
+
+  Component.onCompleted: adoptMask()
 
   // True while the surface must take no pointer input: the panel is
   // logically closed (the surface outlives it for the fade), or the mask in

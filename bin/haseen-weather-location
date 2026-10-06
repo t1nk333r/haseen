@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# haseen:summary Show or set the weather location (manual, else GeoClue, else IP)
+# haseen:args [--query|--detect|--set <name> [lat,lon]|--clear] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-weather-location (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: the stored location is haseen's
+# plugins."haseen.weather".settings (location = a city or "lat,lon",
+# locationName labels coordinates) instead of weather.json, and an unset
+# location asks GeoClue before falling back to wttr.in's IP lookup.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+ID=haseen.weather
+# GeoClue's demo client (package geoclue, desktop id geoclue-where-am-i).
+# HASEEN_WHERE_AM_I replaces it in tests.
+WHERE_AM_I="${HASEEN_WHERE_AM_I:-/usr/lib/geoclue-2.0/demos/where-am-i}"
+GEOCLUE_TIMEOUT=15
+COORDS_PATTERN='^(-?[0-9]+(\.[0-9]+)?),(-?[0-9]+(\.[0-9]+)?)$'
+
+usage() {
+    cat <<EOF
+Usage: haseen weather location [--query|--detect]
+       haseen weather location --set <name> [lat,lon] [--dry-run]
+       haseen weather location --clear [--dry-run]
+
+(no args)  the current location: the stored name (or coordinates), else the
+           area GeoClue places you in, else the city wttr.in guesses from
+           your IP address
+--query    the wttr.in path segment the weather uses (empty = IP lookup)
+--detect   GeoClue only: "lat,lon" at city accuracy (two decimals); exits 1
+           with the reason when GeoClue is missing or refuses
+           (see haseen setup geoclue)
+--set      store a location (with coordinates the forecast is exact)
+--clear    forget the stored location (GeoClue, else IP lookup)
+
+The location lives in ~/.config/haseen/shell.json as
+plugins."$ID".settings.location (+ locationName).
+EOF
+}
+
+# setting KEY — the merged (default + user) string setting, or empty.
+setting() {
+    shell_merged_json | jq -r --arg id "$ID" --arg k "$1" '.plugins[$id].settings[$k] // "" | if type == "string" then . else "" end'
+}
+
+trim() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    printf '%s' "${s%"${s##*[![:space:]]}"}"
+}
+
+# geoclue_detect — "lat,lon" from GeoClue at city accuracy. where-am-i keeps
+# running until its timeout, so it runs as a coprocess that is stopped as soon
+# as the first fix is printed. LC_ALL=C keeps the decimal point a point.
+geoclue_detect() {
+    if [[ ! -x $WHERE_AM_I ]]; then
+        echo "GeoClue: not installed (haseen setup geoclue)" >&2
+        return 1
+    fi
+    local line lat="" lon="" err="" fd pid
+    coproc WAI { LC_ALL=C exec "$WHERE_AM_I" -a 4 -t "$GEOCLUE_TIMEOUT" 2>&1; }
+    pid=$WAI_PID
+    exec {fd}<&"${WAI[0]}"
+    while IFS= read -r -t "$((GEOCLUE_TIMEOUT + 2))" line <&"$fd"; do
+        if [[ $line =~ ^Latitude:[[:space:]]*(-?[0-9]+(\.[0-9]+)?) ]]; then
+            lat="${BASH_REMATCH[1]}"
+        elif [[ $line =~ ^Longitude:[[:space:]]*(-?[0-9]+(\.[0-9]+)?) ]]; then
+            lon="${BASH_REMATCH[1]}"
+            break
+        elif [[ $line =~ GeoClue2\ service:\ (GDBus\.Error:[^ ]+\ )?(.*)$ ]]; then
+            err="${BASH_REMATCH[2]}"
+        elif [[ $line == *Failed* || $line == *rror* ]]; then
+            err="$line"
+        fi
+    done
+    exec {fd}<&-
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    if [[ -z $lat || -z $lon ]]; then
+        echo "GeoClue: ${err:-no answer within ${GEOCLUE_TIMEOUT}s (no GeoClue agent running?)} (haseen setup geoclue)" >&2
+        return 1
+    fi
+    LC_NUMERIC=C printf '%.2f,%.2f\n' "$lat" "$lon"
+}
+
+# manual_query — the wttr.in segment for the stored location, or empty.
+manual_query() {
+    local loc
+    loc="$(trim "$(setting location)")"
+    if [[ $loc =~ ^(-?[0-9]+(\.[0-9]+)?)[[:space:]]*,[[:space:]]*(-?[0-9]+(\.[0-9]+)?)$ ]]; then
+        printf '%s,%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+    elif [[ -n $loc ]]; then
+        jq -rn --arg l "$loc" '$l | @uri'
+    fi
+}
+
+location_query() {
+    local q
+    q="$(manual_query)"
+    if [[ -z $q ]]; then
+        q="$(geoclue_detect 2>/dev/null)" || q=""
+    fi
+    printf '%s\n' "$q"
+}
+
+location_name() {
+    local loc name coords
+    loc="$(trim "$(setting location)")"
+    name="$(trim "$(setting locationName)")"
+    if [[ -n $loc ]]; then
+        if [[ $loc =~ $COORDS_PATTERN && -n $name ]]; then echo "$name"; else echo "$loc"; fi
+        return 0
+    fi
+    if coords="$(geoclue_detect 2>/dev/null)"; then
+        name="$(curl -fsS --max-time 4 "https://wttr.in/$coords?format=j1" 2>/dev/null |
+            jq -r '.nearest_area[0].areaName[0].value // empty' 2>/dev/null)" || name=""
+        echo "${name:-$coords}"
+        return 0
+    fi
+    name="$(curl -fsS --max-time 4 "https://wttr.in/?format=%l" 2>/dev/null)" || name=""
+    name="${name%%,*}"
+    [[ -n $name ]] && echo "$name"
+    return 0
+}
+
+store() {
+    printf '%s\n' "$1" | haseen-plugin-settings "$ID" "${FLAGS[@]}" >/dev/null
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+FLAGS=()
+$DRY_RUN && FLAGS+=(--dry-run)
+
+case "${1:-}" in
+"")
+    (($# == 0)) || { usage >&2; exit 2; }
+    location_name
+    ;;
+--query)
+    (($# == 1)) || { usage >&2; exit 2; }
+    location_query
+    ;;
+--detect)
+    (($# == 1)) || { usage >&2; exit 2; }
+    geoclue_detect
+    ;;
+--set)
+    (($# == 2 || $# == 3)) && [[ -n $(trim "$2") ]] || {
+        echo "Usage: haseen weather location --set <name> [lat,lon]" >&2
+        exit 2
+    }
+    if (($# == 3)); then
+        [[ $3 =~ $COORDS_PATTERN ]] || die "invalid coordinates: $3 (expected lat,lon)"
+        store "$(jq -cn --arg n "$(trim "$2")" --arg l "$3" '{settings: {location: $l, locationName: $n}}')"
+    else
+        store "$(jq -cn --arg n "$(trim "$2")" '{settings: {location: $n, locationName: ""}}')"
+    fi
+    ;;
+--clear)
+    (($# == 1)) || { usage >&2; exit 2; }
+    store '{"settings":{"location":"","locationName":""}}'
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

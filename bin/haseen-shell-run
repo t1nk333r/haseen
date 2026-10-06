@@ -23,4 +23,7 @@ esac
 
 [[ -r $HASEEN_PATH/shell/shell.qml ]] || die "shell not found: $HASEEN_PATH/shell/shell.qml"
 have qs || die "quickshell (qs) is not installed: haseen layer apply shell"
+# Omarchy plugins call a few Omarchy commands that would act on Omarchy's own
+# shell or config; the shims there hand them to haseen (architecture 5.4).
+export PATH="$HASEEN_PATH/shell/Compat/bin:$PATH"
 exec qs -p "$HASEEN_PATH/shell" "$@"

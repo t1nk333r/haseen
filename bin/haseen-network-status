@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# haseen:summary Print the active route's interface, addresses, traffic counters and internet ping
+# haseen:args
+#
+# Adapted from Omarchy bin/omarchy-network-status --verbose (MIT, Copyright
+# (c) David Heinemeier Hansson). haseen keeps only the verbose report, which
+# the haseen.network panel samples while it is open; the bar reads
+# NetworkManager over D-Bus instead. The router ping is dropped (the panel
+# never showed it) and /sys is read through sysroot_path.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+INTERNET_PROBE=1.1.1.1
+
+usage() {
+    cat <<EOF
+Usage: haseen network status
+
+Prints key<TAB>value lines for the interface that carries the route to
+$INTERNET_PROBE: iface, ip, prefix, gateway, rx_bytes, tx_bytes, type
+(wifi or ethernet), then ssid, signal_dbm, freq and bitrate on Wi-Fi or speed
+and duplex on Ethernet, and internet_ping_ms (one ping to $INTERNET_PROBE,
+empty on timeout). Prints nothing without a route. Read-only.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+ping_latency_ms() {
+    LC_ALL=C ping -n -c 1 -W 1 "$1" 2>/dev/null | awk -F'time[=<]' '/time[=<]/ { split($2, parts, " "); print parts[1]; exit }' || true
+}
+
+route_json="$(ip -j route get "$INTERNET_PROBE" 2>/dev/null || true)"
+[[ -n $route_json ]] || exit 0
+iface="$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null || true)"
+[[ -n $iface ]] || exit 0
+gw="$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null || true)"
+src="$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null || true)"
+prefix="$(ip -j addr show "$iface" 2>/dev/null | jq -r '[.[0].addr_info[]? | select(.family == "inet") | .prefixlen][0] // ""' 2>/dev/null || true)"
+
+printf 'iface\t%s\n' "$iface"
+printf 'ip\t%s\n' "$src"
+printf 'prefix\t%s\n' "$prefix"
+printf 'gateway\t%s\n' "$gw"
+
+net="$(sysroot_path "/sys/class/net/$iface")"
+[[ -r $net/statistics/rx_bytes ]] && printf 'rx_bytes\t%s\n' "$(<"$net/statistics/rx_bytes")"
+[[ -r $net/statistics/tx_bytes ]] && printf 'tx_bytes\t%s\n' "$(<"$net/statistics/tx_bytes")"
+
+if [[ -d $net/wireless ]]; then
+    printf 'type\twifi\n'
+    if have iw; then
+        link="$(iw dev "$iface" link 2>/dev/null || true)"
+        if [[ -n $link ]]; then
+            printf 'ssid\t%s\n' "$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")"
+            printf 'signal_dbm\t%s\n' "$(awk '/signal:/ { print $2; exit }' <<<"$link")"
+            printf 'freq\t%s\n' "$(awk '/freq:/ { print $2; exit }' <<<"$link")"
+            printf 'bitrate\t%s\n' "$(awk '/tx bitrate:/ { print $3 " " $4; exit }' <<<"$link")"
+        fi
+    fi
+else
+    printf 'type\tethernet\n'
+    # speed reads EINVAL on a link that is down; that is "unknown", not an error.
+    [[ -r $net/speed ]] && printf 'speed\t%s\n' "$(cat "$net/speed" 2>/dev/null || true)"
+    [[ -r $net/duplex ]] && printf 'duplex\t%s\n' "$(cat "$net/duplex" 2>/dev/null || true)"
+fi
+
+if have ping; then
+    printf 'internet_ping_ms\t%s\n' "$(ping_latency_ms "$INTERNET_PROBE")"
+fi
