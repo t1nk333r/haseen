@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Haseen
 import "Calendar.js" as Cal
+import "Moon.js" as Moon
 
 // Month calendar. A click on the clock opens it (or `haseen shell ipc panel
 // toggle haseen.calendar`). Arrows or the wheel change month, Page Up/Down
@@ -108,6 +109,33 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: "\uf054"
             onActivated: root.shift(1)
+        }
+    }
+
+    // Tonight's moon, from the owner's old waybar clock tooltip. Follows the
+    // hourly clock above, so it is current whenever the panel is open.
+    Column {
+        width: body.width
+        visible: root.settings.moon !== false
+
+        readonly property var moon: Moon.lines(root.today.getTime())
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: parent.moon.title
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize
+        }
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: parent.moon.detail
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize - 1
         }
     }
 

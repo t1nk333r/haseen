@@ -45,7 +45,14 @@ def known($id): $known | index([$id]) != null;
 # block to ~/.config/hypr/hyprland.lua and binds the same touchpad gestures as
 # haseen.gestures (Hyprland rejects the second binding as overshadowed), so
 # the original is never listed or enabled, only replaced in place.
-def superseded: { "io.github.heroesofcode.omagesture": "haseen.gestures" };
+# OmaStats (CPU/GPU/RAM) gives way to haseen.sysusage, which reads the same
+# numbers through haseen-sidecar without polling from QML (plan 032): the
+# owner compared both on io and kept the haseen one (2026-10-06, plan 048).
+# The OmaStats-specific settings have no meaning there and are reported.
+def superseded: {
+    "io.github.heroesofcode.omagesture": "haseen.gestures",
+    "crmne.omastats": "haseen.sysusage"
+};
 def target($oid): builtin_map[$oid] // superseded[$oid];
 # "declared": every key the target manifest declares carries over under its
 # own name ($declared[target] = its setting keys); the rest are reported.
