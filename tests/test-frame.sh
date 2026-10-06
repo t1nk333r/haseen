@@ -159,8 +159,32 @@ tray_dir="$SHELL_DIR/plugins/haseen.tray"
 tray="$(cat "$tray_dir/Widget.qml")"
 assert_contains "tray keeps the Omarchy notice" "$tray" "Adapted from Omarchy shell/plugins/bar/widgets/Tray.qml"
 assert_contains "NOTICE lists the tray port" "$(cat "$REPO/NOTICE.md")" '`share/haseen/shell/plugins/haseen.tray/`'
-assert_contains "only the pin opens the drawer (no hover reveal)" "$tray" "property real reveal: pinned ? 1 : 0"
-assert_eq "no hover handler in the tray widget" "" "$(grep -n 'HoverHandler' "$tray_dir/Widget.qml" || true)"
+# When the drawer is open, under the real Qt JS engine: hover reveals, the
+# pin holds, an open item menu holds it, the grace after leaving holds it.
+H="$SANDBOX/drawer"
+mkdir -p "$H"
+cat >"$H/Drawer.qml" <<EOF
+import QtQuick
+import "file://$tray_dir/Drawer.js" as D
+
+Item {
+    Component.onCompleted: {
+        const s = (p, h, m, l) => ({ pinned: p, hovered: h, menuOpen: m, lingering: l });
+        const rows = [["collapsed", s(false, false, false, false)], ["hover", s(false, true, false, false)],
+                      ["pinned", s(true, false, false, false)], ["menu", s(false, false, true, false)],
+                      ["grace", s(false, false, false, true)]];
+        for (const [name, st] of rows)
+            console.warn("DRAWER " + name + " open=" + D.isOpen(st) + " grace=" + D.startsGrace(st));
+        Qt.exit(0);
+    }
+}
+EOF
+drawer="$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 60 "${QML_BIN:-/usr/lib/qt6/bin/qml}" "$H/Drawer.qml" 2>&1 | grep -o 'DRAWER .*' || true)"
+assert_contains "collapsed until hovered" "$drawer" "DRAWER collapsed open=false grace=true"
+assert_contains "hover reveals, no grace while hovered" "$drawer" "DRAWER hover open=true grace=false"
+assert_contains "pinned stays open, no grace" "$drawer" "DRAWER pinned open=true grace=false"
+assert_contains "an open item menu holds the drawer" "$drawer" "DRAWER menu open=true grace=false"
+assert_contains "the grace after leaving holds the drawer" "$drawer" "DRAWER grace open=true grace=true"
 assert_contains "chevron click toggles the pin" "$tray" "root.togglePinned();"
 assert_contains "chevron click persists through the bar CLI" "$tray" '"bar", "tray", next ? "pin" : "unpin", "--no-apply"'
 assert_contains "passive items stay hidden" "$tray" "item.status !== Status.Passive"

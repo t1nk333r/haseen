@@ -10,10 +10,12 @@ import "Overflow.js" as Overflow
 // bar is vertical). With the screen frame on, the bar is the frame's thick
 // edge (Frame.qml draws the rest); without it, a hairline marks the inner edge.
 //
-// Double-clicking empty bar space asks for transparency (plan 015, after
-// Omarchy's shell/plugins/bar/Bar.qml toggleTransparency, MIT,
-// Copyright (c) David Heinemeier Hansson). `transparent` comes from FrameTextColor:
-// it turns true only once a legible text colour for the wallpaper is known.
+// Double-clicking the bar asks for transparency (plan 015, after Omarchy's
+// shell/plugins/bar/Bar.qml toggleTransparency, MIT, Copyright (c) David
+// Heinemeier Hansson): on empty space and, as in Omarchy, on a widget too,
+// since a full bar has little empty space left (the chevron and arrange mode
+// excepted). `transparent` comes from FrameTextColor: it turns true only once
+// a legible text colour for the wallpaper is known.
 //
 // Overflow (architecture 5.3): when the sections do not fit the bar's length,
 // widgets move into a panel behind a chevron at the end of the bar
@@ -63,9 +65,16 @@ PanelWindow {
     // What the overflow panel shows, in order: for `bar status` too.
     readonly property var overflowShown: fit.shown
     property bool overflowOpen: false
-    // Arrange mode, only while the panel is open: a click on a widget, in
-    // the bar or in the panel, moves it to the other one.
+    // Arrange mode: a click on a widget, in the bar or in the panel, moves it
+    // to the other one, and a drag moves it where it is dropped (within a
+    // section, to another one, into or out of the panel). The panel is open
+    // while arranging, even with nothing in it, to drop widgets into.
     property bool arranging: false
+    // The widget being dragged while arranging, and where it would land
+    // (Overflow.dropTarget's answer, or { section: "overflow", before }),
+    // or null.
+    property string dragId: ""
+    property var drop: null
     // The overflow panel's cell for each id while it is open.
     property var cells: ({})
     // When a widget inside the overflow panel was last pressed (Date.now()).
@@ -78,6 +87,10 @@ PanelWindow {
     signal widgetPressed(var opener)
     // A click while arranging: `haseen bar overflow <verb> <id>` (add or pin).
     signal overflowEditRequested(string verb, string id)
+    // A drop while arranging: `haseen bar move <id> <to> --before <before>`.
+    signal moveRequested(string id, string to, string before, bool pin)
+    // The panel's edge buttons while arranging: `haseen bar position <pos>`.
+    signal positionRequested(string pos)
 
     function entries(section: Item): var {
         return section.shownIds.map(id => ({
@@ -104,6 +117,94 @@ PanelWindow {
         cells = next;
     }
 
+    function inTrack(item: Item): bool {
+        for (let n = item; n; n = n.parent)
+            if (n === track)
+                return true;
+        return false;
+    }
+
+    // Where a drag at (x, y) in this window's coordinates would land, or
+    // null: in the bar, the gap Overflow.dropTarget picks (the chevron
+    // means the panel's end); over the open panel's card, in front of the
+    // cell Overflow.panelTarget picks.
+    function dropAt(id: string, x: real, y: real): var {
+        if (x >= 0 && y >= 0 && x < width && y < height) {
+            const b = overflowButton.mapFromItem(null, x, y);
+            if (overflowButton.visible && overflowButton.contains(b))
+                return {
+                    section: "overflow",
+                    before: ""
+                };
+            const t = track.mapFromItem(null, x, y);
+            return Overflow.dropTarget(vertical ? t.y : t.x, {
+                length: vertical ? track.height : track.width,
+                spacing: spacing,
+                left: leftSection.spans(track),
+                center: centerSection.spans(track),
+                right: rightSection.spans(track)
+            }, id);
+        }
+        const panel = overflowLoader.item;
+        if (!panel)
+            return null;
+        const p = panel.fromBar(x, y);
+        if (!panel.cardContains(p.x, p.y))
+            return null;
+        const rects = [];
+        for (const cid of overflowShown) {
+            const holder = cells[cid];
+            if (!holder)
+                continue;
+            const o = holder.mapToItem(null, 0, 0);
+            rects.push({
+                id: cid,
+                x: o.x,
+                y: o.y,
+                w: holder.width,
+                h: holder.height
+            });
+        }
+        return {
+            section: "overflow",
+            before: Overflow.panelTarget(p, rects, id)
+        };
+    }
+
+    // A drag from a slot, in that slot's window: this bar or the panel.
+    function dragUpdate(id: string, slot: Item, x: real, y: real): void {
+        let p = Qt.point(x, y);
+        if (!inTrack(slot)) {
+            const panel = overflowLoader.item;
+            if (!panel) {
+                drop = null;
+                return;
+            }
+            p = panel.toBar(x, y);
+        }
+        dragId = id;
+        drop = dropAt(id, p.x, p.y);
+    }
+
+    // After the release has been handled: the move reparents (or rebuilds)
+    // the very slot whose MouseArea is delivering it.
+    function dragFinish(id: string, dropped: bool): void {
+        const d = drop;
+        dragId = "";
+        drop = null;
+        if (!dropped || !d)
+            return;
+        // Out of the panel means "here, for good": pinned, so the fit does
+        // not send it straight back.
+        const pin = d.section !== "overflow" && fit.ids.indexOf(id) >= 0;
+        Qt.callLater(() => bar.moveRequested(id, d.section, d.before, pin));
+    }
+
+    function setArranging(on: bool): void {
+        arranging = on;
+        overflowOpen = on || (overflowOpen && overflowShown.length > 0);
+    }
+
     // The bar spans its edge and the popups share its origin
     // (PanelPlacement.place), so the slot's centre in this window's
     // coordinates, less the overlap, is where along the edge a panel it
@@ -111,12 +212,7 @@ PanelWindow {
     // that origin (without the overlap), so a widget in it is measured the
     // same way and its own panel opens under it.
     function reportPress(slot: Item): void {
-        let inBar = false;
-        for (let n = slot; n; n = n.parent)
-            if (n === track) {
-                inBar = true;
-                break;
-            }
+        const inBar = inTrack(slot);
         if (!inBar)
             overflowPressTime = Date.now();
         const c = slot.mapToItem(null, slot.width / 2, slot.height / 2);
@@ -131,7 +227,7 @@ PanelWindow {
 
     onFitSpecChanged: Qt.callLater(bar.refit)
     onOverflowShownChanged: {
-        if (overflowShown.length === 0)
+        if (overflowShown.length === 0 && !arranging)
             overflowOpen = false;
     }
     onHiddenChanged: overflowOpen = false
@@ -172,12 +268,13 @@ PanelWindow {
         }
     }
 
-    // Below the sections: only clicks on empty bar space reach it.
+    // Below the sections: a right click on empty bar space arranges, as one
+    // on the chevron does.
     MouseArea {
         anchors.fill: parent
         enabled: !bar.hidden
-        acceptedButtons: Qt.LeftButton
-        onDoubleClicked: bar.transparencyToggleRequested()
+        acceptedButtons: Qt.RightButton
+        onClicked: bar.setArranging(!bar.arranging)
     }
 
     Item {
@@ -211,6 +308,9 @@ PanelWindow {
             arranging: bar.arranging
             onWidgetPressed: slot => bar.reportPress(slot)
             onMoveRequested: (id, overflowed) => bar.overflowEditRequested(overflowed ? "pin" : "add", id)
+            dragId: bar.dragId
+            onDragMoved: (id, slot, x, y) => bar.dragUpdate(id, slot, x, y)
+            onDragEnded: (id, dropped) => bar.dragFinish(id, dropped)
         }
 
         BarSection {
@@ -229,6 +329,9 @@ PanelWindow {
             arranging: bar.arranging
             onWidgetPressed: slot => bar.reportPress(slot)
             onMoveRequested: (id, overflowed) => bar.overflowEditRequested(overflowed ? "pin" : "add", id)
+            dragId: bar.dragId
+            onDragMoved: (id, slot, x, y) => bar.dragUpdate(id, slot, x, y)
+            onDragEnded: (id, dropped) => bar.dragFinish(id, dropped)
         }
 
         // Before the overflow button when it shows (left of it, or above it
@@ -251,6 +354,22 @@ PanelWindow {
             arranging: bar.arranging
             onWidgetPressed: slot => bar.reportPress(slot)
             onMoveRequested: (id, overflowed) => bar.overflowEditRequested(overflowed ? "pin" : "add", id)
+            dragId: bar.dragId
+            onDragMoved: (id, slot, x, y) => bar.dragUpdate(id, slot, x, y)
+            onDragEnded: (id, dropped) => bar.dragFinish(id, dropped)
+        }
+
+        // Where a dragged widget would land in the bar.
+        Rectangle {
+            readonly property bool shown: bar.drop !== null && bar.drop.section !== "overflow"
+
+            visible: shown
+            x: !shown ? 0 : bar.vertical ? 2 : Math.round(bar.drop.at - width / 2)
+            y: !shown ? 0 : bar.vertical ? Math.round(bar.drop.at - height / 2) : 2
+            width: bar.vertical ? track.width - 4 : 2
+            height: bar.vertical ? 2 : track.height - 4
+            radius: 1
+            color: Theme.accent
         }
 
         // The overflow button, at the very end of the bar, only while
@@ -272,16 +391,50 @@ PanelWindow {
             width: bar.vertical ? parent.width : implicitWidth
             height: bar.vertical ? implicitHeight : parent.height
             vertical: bar.vertical
-            visible: bar.fit.button
+            visible: bar.fit.button || bar.overflowOpen
             glyph: glyphs[bar.position][bar.overflowOpen ? 1 : 0]
-            highlighted: bar.overflowOpen
+            highlighted: bar.overflowOpen || (bar.drop !== null && bar.drop.section === "overflow")
             onClicked: button => {
                 if (button === Qt.LeftButton) {
                     bar.overflowOpen = !bar.overflowOpen;
                 } else if (button === Qt.RightButton) {
-                    bar.arranging = !bar.overflowOpen || !bar.arranging;
-                    bar.overflowOpen = true;
+                    bar.setArranging(!bar.overflowOpen || !bar.arranging);
                 }
+            }
+        }
+    }
+
+    // Over everything but the chevron, and only passive: a double click on a
+    // widget still reaches the widget, and both presses still open or close
+    // whatever it opens, as in Omarchy's bar. A PointHandler, as on the
+    // slots (BarSection.qml): it only ever takes a passive grab. A TapHandler
+    // here kept every widget from seeing its clicks (nested Hyprland). Two
+    // presses within the double-click interval and distance make a double
+    // click, as Qt counts them.
+    Item {
+        anchors.fill: parent
+
+        PointHandler {
+            property real lastTime: 0
+            property point lastAt: Qt.point(0, 0)
+
+            enabled: !bar.hidden && !bar.arranging
+            acceptedButtons: Qt.LeftButton
+            onActiveChanged: {
+                if (!active)
+                    return;
+                const p = point.scenePosition;
+                const now = Date.now();
+                const near = Math.abs(p.x - lastAt.x) + Math.abs(p.y - lastAt.y) <= Qt.styleHints.startDragDistance;
+                if (now - lastTime > Qt.styleHints.mouseDoubleClickInterval || !near) {
+                    lastTime = now;
+                    lastAt = p;
+                    return;
+                }
+                lastTime = 0;
+                const b = overflowButton.mapFromItem(null, p.x, p.y);
+                if (!overflowButton.visible || !overflowButton.contains(b))
+                    bar.transparencyToggleRequested();
             }
         }
     }
@@ -290,7 +443,9 @@ PanelWindow {
     // and closing it frees the window again (the widgets go back to their
     // parked cells in the bar first, BarSection.qml).
     LazyLoader {
-        active: bar.overflowOpen && bar.overflowShown.length > 0 && !bar.hidden
+        id: overflowLoader
+
+        active: bar.overflowOpen && (bar.overflowShown.length > 0 || bar.arranging) && !bar.hidden
 
         BarOverflowPanel {
             barWindow: bar
@@ -298,8 +453,10 @@ PanelWindow {
             ids: bar.overflowShown
             centre: bar.buttonCentre
             arranging: bar.arranging
-            onArrangeToggled: bar.arranging = !bar.arranging
+            dropBefore: bar.drop !== null && bar.drop.section === "overflow" ? bar.drop.before : null
+            onArrangeToggled: bar.setArranging(!bar.arranging)
             onCloseRequested: bar.overflowOpen = false
+            onPositionRequested: pos => bar.positionRequested(pos)
         }
     }
 

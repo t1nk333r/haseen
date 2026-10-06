@@ -162,6 +162,49 @@ Item {
         eq("edit refuses the tray", null, O.edit([], [], "add", "haseen.tray"));
         eq("edit unknown verb", null, O.edit([], [], "toss", "a"));
         eq("edit from missing lists", { overflow: ["a"], pinned: [] }, O.edit(undefined, null, "add", "a"));
+
+        // Drag and drop (Bar.qml arrange mode, haseen bar move).
+        const L = { left: ["l1", "l2"], center: ["c1"], right: ["haseen.tray", "r1", "r2"], overflow: ["r2"], pinned: ["r1"] };
+        const lists = r => r === null ? null : [r.left, r.center, r.right, r.overflow, r.pinned];
+        eq("move within a section", [["l2", "l1"], ["c1"], ["haseen.tray", "r1", "r2"], ["r2"], ["r1"]],
+           lists(O.move(L, "l2", "left", "l1", false)));
+        eq("move to another section, in front of a widget", [["l1", "l2"], ["r1", "c1"], ["haseen.tray", "r2"], ["r2"], ["r1"]],
+           lists(O.move(L, "r1", "center", "c1", false)));
+        eq("move never lands in front of the tray", ["haseen.tray", "l1", "r1", "r2"], O.move(L, "l1", "right", "haseen.tray", false).right);
+        eq("move to a section's end", ["haseen.tray", "r1", "r2", "l1"], O.move(L, "l1", "right", "", false).right);
+        eq("move in front of itself keeps its place", ["haseen.tray", "r1", "r2"], O.move(L, "r1", "right", "r1", false).right);
+        eq("move into the panel, in front of another", [["l1", "l2"], ["c1"], ["haseen.tray", "r1", "r2"], ["r1", "r2"], []],
+           lists(O.move(L, "r1", "overflow", "r2", false)));
+        eq("move out of the panel, pinned", [["l1", "l2"], ["c1", "r2"], ["haseen.tray", "r1"], [], ["r1", "r2"]],
+           lists(O.move(L, "r2", "center", "", true)));
+        eq("move refuses the tray", null, O.move(L, "haseen.tray", "left", "", false));
+        eq("move refuses an id not in the bar", null, O.move(L, "nope.x", "left", "", false));
+        eq("move refuses an unknown target", null, O.move(L, "l1", "middle", "", false));
+        eq("move takes an id listed twice out of both", [[], [], ["a"], [], []],
+           lists(O.move({ left: ["a"], center: ["a"] }, "a", "right", "", false)));
+
+        // Where a drag along a 1000 px bar lands.
+        const spans = { length: 1000, spacing: 4,
+                        left: [{ id: "a", start: 0, end: 50 }, { id: "b", start: 54, end: 104 }],
+                        center: [{ id: "c", start: 470, end: 530 }],
+                        right: [{ id: "haseen.tray", start: 800, end: 830 }, { id: "x", start: 834, end: 900 }, { id: "y", start: 904, end: 1000 }] };
+        eq("drop past a widget's middle: in front of the next", { section: "left", before: "b", at: 52 }, O.dropTarget(30, spans, "z"));
+        eq("drop in the gap near the left section: its end", { section: "left", before: "", at: 106 }, O.dropTarget(200, spans, "z"));
+        eq("drop in the gap near the centre: its start", { section: "center", before: "c", at: 468 }, O.dropTarget(400, spans, "z"));
+        eq("drop right of the centre: its end", { section: "center", before: "", at: 532 }, O.dropTarget(600, spans, "z"));
+        eq("drop on the tray: after it", { section: "right", before: "x", at: 832 }, O.dropTarget(810, spans, "z"));
+        eq("drop at the bar's end", { section: "right", before: "", at: 1000 }, O.dropTarget(1000, spans, "z"));
+        eq("the dragged widget is not a neighbour", { section: "right", before: "y", at: 902 }, O.dropTarget(880, spans, "x"));
+        const noCentre = { length: 1000, spacing: 4, left: spans.left, center: [], right: spans.right };
+        eq("an empty centre sits in the middle", { section: "center", before: "", at: 500 }, O.dropTarget(520, noCentre, "z"));
+
+        // Where a drop on the panel lands: rows left to right, top to bottom.
+        const cellRects = [{ id: "a", x: 0, y: 0, w: 40, h: 30 }, { id: "b", x: 50, y: 0, w: 40, h: 30 }, { id: "c", x: 0, y: 40, w: 40, h: 30 }];
+        eq("panel drop on a cell's first half", "a", O.panelTarget({ x: 10, y: 10 }, cellRects, "z"));
+        eq("panel drop on a cell's second half", "b", O.panelTarget({ x: 30, y: 10 }, cellRects, "z"));
+        eq("panel drop past a row's end: the next row", "c", O.panelTarget({ x: 95, y: 10 }, cellRects, "z"));
+        eq("panel drop after the last cell", "", O.panelTarget({ x: 60, y: 60 }, cellRects, "z"));
+        eq("panel drop skips the dragged cell", "c", O.panelTarget({ x: 60, y: 10 }, cellRects, "b"));
     }
 }
 EOF
@@ -174,7 +217,7 @@ if [[ -x $QML_BIN ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "overflow unit count" "51" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "overflow unit count" "75" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML_BIN"
 fi
@@ -299,3 +342,99 @@ printf '{"bar": ' >"$(CFG)"
 capture haseen bar overflow add me.a
 assert_status "invalid shell.json refused" 1 "$STATUS"
 assert_eq "invalid shell.json untouched" '{"bar": ' "$(cat "$(CFG)")"
+
+# --- haseen bar move (a drop in arrange mode) ---------------------------------
+layout() { jq -c '[.bar.left, .bar.center, .bar.right, .bar.overflow, .bar.pinned]' "$(CFG)"; }
+
+sandbox bar-move-cli
+f="$REPO/bin/haseen-bar-move"
+assert_eq "haseen-bar-move is executable" yes "$([[ -x $f ]] && echo yes || echo no)"
+assert_contains "move takes --dry-run" "$(sed -n 's/^# haseen:args //p' "$f")" "--dry-run"
+capture haseen bar move --help
+assert_status "move --help exits 0" 0 "$STATUS"
+assert_contains "move --help prints usage" "$OUTPUT" "Usage: haseen bar move"
+capture haseen commands bar
+assert_contains "move is listed with the bar commands" "$OUTPUT" "haseen bar move"
+
+mkdir -p "$XDG_CONFIG_HOME/haseen"
+printf '{"bar":{"left":["me.l"],"center":["haseen.clock"],"right":["haseen.tray","me.a","me.b"],"overflow":["me.b"],"pinned":[]},"plugins":{"me.a":{"enabled":true}}}\n' >"$(CFG)"
+before="$(cat "$(CFG)")"
+capture haseen bar move me.a center --before haseen.clock --dry-run
+assert_status "move --dry-run exits 0" 0 "$STATUS"
+assert_dry_pure "move --dry-run" "$OUTPUT"
+assert_contains "move dry run shows the write" "$OUTPUT" "DRYRUN: write $(CFG).new"
+assert_contains "move dry run shows the IPC apply" "$OUTPUT" "DRYRUN: haseen shell ipc bar move me.a center haseen.clock false"
+assert_eq "move dry run left the file alone" "$before" "$(cat "$(CFG)")"
+
+ipc_stub
+capture haseen bar move me.a center --before haseen.clock
+assert_status "move exits 0" 0 "$STATUS"
+assert_eq "move: to another section, in front of a widget" '[["me.l"],["me.a","haseen.clock"],["haseen.tray","me.b"],["me.b"],[]]' "$(layout)"
+assert_eq "move: plugin entries survive" true "$(jq '.plugins["me.a"].enabled' "$(CFG)")"
+assert_eq "move: applied live" "qs: -p $HASEEN_PATH/shell ipc call bar move me.a center haseen.clock false" "$(ipc_calls)"
+capture haseen bar move me.l right --before haseen.tray --no-apply
+assert_eq "move: never in front of the tray" '["haseen.tray","me.l","me.b"]' "$(jq -c .bar.right "$(CFG)")"
+assert_eq "move --no-apply skips IPC" "" "$(ipc_calls)"
+capture haseen bar move me.a overflow --before me.b --no-apply
+assert_eq "move: into the panel, in front of another" '[[],["me.a","haseen.clock"],["haseen.tray","me.l","me.b"],["me.a","me.b"],[]]' "$(layout)"
+capture haseen bar move me.b left --pin --no-apply
+assert_eq "move --pin: out of the panel and kept in the bar" '[["me.b"],["me.a","haseen.clock"],["haseen.tray","me.l"],["me.a"],["me.b"]]' "$(layout)"
+before="$(cat "$(CFG)")"
+capture haseen bar move me.l right --before me.l --dry-run
+assert_not_contains "move in front of itself writes nothing" "$OUTPUT" "DRYRUN: write"
+assert_eq "move in front of itself left the file alone" "$before" "$(cat "$(CFG)")"
+
+# The CLI and the shell share one rule: the same drops through Overflow.move.
+cat >"$H/Move.qml" <<EOF
+import QtQuick
+import "file://$SHELL_DIR/Overflow.js" as O
+Item {
+    Component.onCompleted: {
+        let r = { left: ["me.l"], center: ["haseen.clock"], right: ["haseen.tray", "me.a", "me.b"], overflow: ["me.b"], pinned: [] };
+        for (const [id, to, before, pin] of [["me.a", "center", "haseen.clock", false], ["me.l", "right", "haseen.tray", false],
+                                             ["me.a", "overflow", "me.b", false], ["me.b", "left", "", true], ["me.l", "right", "me.l", false]])
+            r = O.move(r, id, to, before, pin);
+        console.warn("MOVE " + JSON.stringify([r.left, r.center, r.right, r.overflow, r.pinned]));
+        Qt.exit(0);
+    }
+}
+EOF
+if [[ -x $QML_BIN ]]; then
+    js="$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 60 "$QML_BIN" "$H/Move.qml" 2>&1 | sed -n 's/.*MOVE //p')"
+    assert_eq "shell and CLI end with the same bar" "$js" "$(layout)"
+fi
+
+capture haseen bar move haseen.tray left
+assert_status "move refuses the tray" 1 "$STATUS"
+assert_contains "move says why" "$OUTPUT" "never moves"
+capture haseen bar move me.notthere left
+assert_status "move needs an id in the bar" 1 "$STATUS"
+capture haseen bar move me.a middle
+assert_status "move: unknown target is a usage error" 2 "$STATUS"
+capture haseen bar move me.a
+assert_status "move needs a target" 2 "$STATUS"
+capture haseen bar move me.a left --before
+assert_status "move: --before needs an id" 2 "$STATUS"
+capture haseen bar move me.a left --before NotAnId
+assert_status "move: malformed --before refused" 1 "$STATUS"
+printf '{"bar": ' >"$(CFG)"
+capture haseen bar move me.a left
+assert_status "move: invalid shell.json refused" 1 "$STATUS"
+assert_eq "move: invalid shell.json untouched" '{"bar": ' "$(cat "$(CFG)")"
+
+# --- haseen bar arrange (session only) -----------------------------------------
+sandbox bar-arrange-cli
+capture haseen bar arrange --help
+assert_status "arrange --help exits 0" 0 "$STATUS"
+assert_contains "arrange --help prints usage" "$OUTPUT" "Usage: haseen bar arrange"
+capture haseen bar arrange --dry-run
+assert_status "arrange --dry-run exits 0" 0 "$STATUS"
+assert_dry_pure "arrange --dry-run" "$OUTPUT"
+assert_contains "arrange defaults to toggle" "$OUTPUT" "bar arrange toggle"
+ipc_stub
+capture haseen bar arrange on
+assert_status "arrange on exits 0" 0 "$STATUS"
+assert_eq "arrange asks the running shell" "qs: -p $HASEEN_PATH/shell ipc call bar arrange on" "$(ipc_calls)"
+capture haseen bar arrange sideways
+assert_status "arrange: unknown mode is a usage error" 2 "$STATUS"
+assert_eq "arrange writes no shell.json" no "$([[ -e $(CFG) ]] && echo yes || echo no)"

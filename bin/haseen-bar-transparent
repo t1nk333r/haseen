@@ -12,8 +12,8 @@ Usage: haseen bar transparent [on|off|toggle] [--dry-run]
 
 Sets bar.transparent in $SHELL_USER_CONFIG (default: toggle), then tells the
 running shell. A transparent bar drops its background (the frame follows) and
-picks its text colour from the wallpaper under it. Double-clicking empty bar
-space does the same.
+picks its text colour from the wallpaper under it. Double-clicking the bar
+(empty space or a widget, not the overflow chevron) does the same.
 
 --no-apply   only save; used by the shell itself, which already applied it
 EOF

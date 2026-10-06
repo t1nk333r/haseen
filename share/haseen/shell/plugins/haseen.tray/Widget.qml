@@ -1,16 +1,18 @@
 // Adapted from Omarchy shell/plugins/bar/widgets/Tray.qml.
 // MIT, Copyright (c) David Heinemeier Hansson.
-// haseen: no hover reveal and no per-item pin/hide manager; the chevron click
-// pins the drawer open (settings.pinned, saved by `haseen bar tray`) and a
-// second click collapses it. Theme tokens, haseen popups.
+// haseen: no per-item pin/hide manager. Hovering the chevron or the icons
+// reveals the drawer (a short grace hides it after the pointer leaves, as
+// Omarchy did); the chevron click pins it open (settings.pinned, saved by
+// `haseen bar tray`) and a second click unpins. Theme tokens, haseen popups.
 import QtQuick
 import Quickshell
 import Quickshell.Services.SystemTray
 import qs.Haseen
+import "Drawer.js" as Drawer
 import qs.Haseen.Widgets
 
 // StatusNotifier items in a drawer behind a chevron. Collapsed, only the
-// chevron shows; clicking it slides the icons out and keeps them there.
+// chevron shows; hovering it slides the icons out, clicking it pins them.
 // Item clicks: left activates (or opens a menu-only item's menu), middle is
 // the secondary action, right opens the item's menu, the wheel scrolls it.
 Item {
@@ -27,8 +29,12 @@ Item {
     readonly property var items: SystemTray.items.values.filter(item => item.status !== Status.Passive)
     readonly property int count: items.length
     readonly property int cell: Theme.fontSize + Theme.gap * 2
+    // Hover reveal; `lingering` is the grace after the pointer leaves.
+    readonly property bool hovered: hover.hovered
+    property bool lingering: false
+    readonly property bool open: Drawer.isOpen({ pinned, hovered, menuOpen, lingering })
     // 0 collapsed .. 1 open; the reveal animates the drawer's extent.
-    property real reveal: pinned ? 1 : 0
+    property real reveal: open ? 1 : 0
     readonly property real iconsExtent: (vertical ? icons.implicitHeight : icons.implicitWidth) * reveal
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
 
@@ -49,6 +55,37 @@ Item {
     // The bar slot sets the real size; this is only the natural one, and
     // reading the parent here would feed the slot's size back into itself.
     implicitHeight: vertical ? cell + iconsExtent : Config.barThickness
+
+    function releaseHold(): void {
+        if (Drawer.startsGrace({ pinned, hovered, menuOpen })) {
+            lingering = true;
+            grace.restart();
+        }
+    }
+
+    onHoveredChanged: {
+        if (hovered) {
+            grace.stop();
+            lingering = false;
+        } else {
+            releaseHold();
+        }
+    }
+    onMenuOpenChanged: if (!menuOpen)
+        releaseHold()
+
+    // haseen:ui-timeout
+    Timer {
+        id: grace
+
+        interval: 400
+        repeat: false
+        onTriggered: root.lingering = false
+    }
+
+    HoverHandler {
+        id: hover
+    }
 
     function togglePinned(): void {
         const next = !pinned;
@@ -117,8 +154,8 @@ Item {
         height: root.vertical ? root.cell : root.height
         padding: 0
         // Points where the icons would appear while collapsed, back at the
-        // rest of the bar once pinned open; accent while pinned.
-        glyph: root.vertical ? (root.pinned ? "\uf078" : "\uf077") : (root.pinned ? "\uf054" : "\uf053")
+        // rest of the bar once open; accent while pinned.
+        glyph: root.vertical ? (root.open ? "\uf078" : "\uf077") : (root.open ? "\uf054" : "\uf053")
         color: root.pinned ? Theme.accent : Theme.barForeground
         onClicked: button => {
             if (button === Qt.LeftButton)

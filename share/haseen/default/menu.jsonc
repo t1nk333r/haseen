@@ -81,6 +81,7 @@
   "style.next-background": {"icon":"","label":"Next background","action":"haseen theme bg next"},
   "style.font": {"icon":"","label":"Font","aliases":["font"],"provider":"fonts"},
   "style.bar": {"icon":"󰍜","label":"Bar"},
+  "style.bar.arrange": {"icon":"","label":"Arrange widgets","aliases":["arrange"],"action":"haseen bar arrange on"},
   "style.bar.position": {"icon":"","label":"Position"},
   "style.bar.position.top": {"icon":"󰁝","label":"Top","action":"haseen bar position top"},
   "style.bar.position.bottom": {"icon":"󰁅","label":"Bottom","action":"haseen bar position bottom"},

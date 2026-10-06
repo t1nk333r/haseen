@@ -66,7 +66,9 @@ assert_status "built-ins validate" 0 "$STATUS"
 for id in "${BUILTINS[@]}"; do
     assert_contains "built-in $id ok" "$OUTPUT" "ok: $id (builtin:"
 done
-assert_not_contains "built-ins request no network" "$OUTPUT" "warning:"
+# haseen.network's panel pings 1.1.1.1 while open (Omarchy's ping row); no
+# other built-in here reaches the network.
+assert_eq "only haseen.network requests network" "1" "$(grep -c '^warning:' <<<"$OUTPUT")"
 
 # --- validate: broken manifests are refused --------------------------------
 P="$XDG_CONFIG_HOME/haseen/plugins"

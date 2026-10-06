@@ -21,7 +21,9 @@ Item {
     // Upstream hands a panel entry no surface, so one that builds its own
     // window is loaded outside the native popup and keeps its own geometry.
     readonly property bool selfWindowed: kind === "panel" && Compat.Runtime.panelSelfWindowed(pluginId)
-    implicitWidth: widget ? widget.implicitWidth : 0
+    // A bar widget hidden with `visible: false` takes no room, as in
+    // Omarchy's own bar layout (BarSection.qml sizes the slot from this).
+    implicitWidth: widget && (kind !== "bar-widget" || widget.visible) ? widget.implicitWidth : 0
     implicitHeight: widget ? widget.implicitHeight : Config.barThickness
 
     ShellApi { id: shellApi; pluginId: host.pluginId; bar: api }

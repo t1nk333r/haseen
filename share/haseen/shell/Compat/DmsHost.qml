@@ -24,7 +24,8 @@ Item {
     readonly property var record: Plugins.registry[pluginId] || null
     readonly property string section: ["left", "center", "right"].find(s => Config.section(s).indexOf(pluginId) >= 0) || "center"
 
-    implicitWidth: widget !== null ? widget.implicitWidth : 0
+    // A widget hidden with `visible: false` takes no room (BarSection.qml).
+    implicitWidth: widget !== null && widget.visible ? widget.implicitWidth : 0
     implicitHeight: parent ? parent.height : Config.barHeight
 
     // shell.json settings are part of pluginData.
