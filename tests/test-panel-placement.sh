@@ -55,6 +55,10 @@ Item {
     }
 
     function run() {
+        // placement "center": nothing anchored, the compositor centres it,
+        // even when a bar press opened it.
+        eq("center placement anchors nothing", {}, shape(P.place("top", press("top", 100, 1280, 0), 300, 200, 8, "center")));
+        eq("bar placement keeps the bar edge", {top: 8}, shape(P.place("top", null, 300, 200, 8, "bar")));
         // Centre and clamp along a 1280 px bar, 8 px margin, 300 px popup.
         eq("offset centred on the widget", 490, P.offset(640, 300, 1280, 8));
         eq("offset rounds", 491, P.offset(640.6, 300, 1280, 8));
@@ -103,7 +107,7 @@ if [[ -x $QML_BIN ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "placement unit count" "25" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "placement unit count" "27" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML_BIN"
 fi

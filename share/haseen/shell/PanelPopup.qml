@@ -8,15 +8,15 @@ import "PanelPlacement.js" as Placement
 
 // The popup window for one open panel plugin: a PanelSurface on the bar
 // edge, centred under (or beside) the bar widget whose click opened it, or
-// centred on the bar edge when a key or the CLI opened it
-// (PanelPlacement.js). Escape or a click outside closes it.
+// centred on the bar edge when a key or the CLI opened it, or centred on the
+// screen when the panel's `placement` setting is "center" (PanelPlacement.js). Escape or a click outside closes it.
 PanelWindow {
     id: popup
 
     required property string pluginId
     // The bar press that opened the panel (PanelPlacement.opener), or null.
     property var opener: null
-    readonly property var placement: Placement.place(Config.barPosition, opener, implicitWidth, implicitHeight, Theme.gap)
+    readonly property var placement: Placement.place(Config.barPosition, opener, implicitWidth, implicitHeight, Theme.gap, Plugins.settingsFor(pluginId).placement)
 
     signal closeRequested
 
