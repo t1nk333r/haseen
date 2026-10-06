@@ -165,18 +165,50 @@ assert_contains "facts: uptime" "$OUTPUT" $'Uptime\t1d 2h 3m'
 assert_contains "facts: version" "$OUTPUT" $'haseen\t'"$(cat "$HASEEN_PATH/VERSION")"
 
 # --- haseen system ---------------------------------------------------------------
+# The System menu is Omarchy's, row for row, each on a haseen command.
+assert_eq "system menu: Omarchy's rows, in order" \
+    "system.screensaver=haseen screensaver --force
+system.lock=haseen system lock
+system.suspend=haseen system suspend
+system.hibernate=haseen system hibernate
+system.logout=haseen system logout
+system.reboot=haseen system reboot
+system.shutdown=haseen system shutdown" \
+    "$(jq -r 'to_entries[] | select(.key | startswith("system.")) | "\(.key)=\(.value.action)"' <<<"$JSON")"
+assert_eq "system menu: hibernate shows only once it is set up" "haseen system hibernate --available" \
+    "$(jq -r '."system.hibernate".when' <<<"$JSON")"
+
+# Hibernate is offered only when it would resume: zram swap as large as RAM
+# is not enough (the image would live in the memory being saved).
 echo "freeze mem disk" >"$ROOT/sys/power/state"
-printf 'Filename Type Size Used Priority\n/swap file 8000000 0 -2\n' >"$ROOT/proc/swaps"
+echo 6400000000 >"$ROOT/sys/power/image_size"
+printf 'HOOKS=(base udev autodetect block encrypt filesystems fsck)\n' >"$ROOT/etc/mkinitcpio.conf"
+printf 'root=/dev/mapper/root rw\n' >"$ROOT/proc/cmdline"
+printf 'Filename Type Size Used Priority\n/dev/zram0 partition 17000000 0 100\n' >"$ROOT/proc/swaps"
 capture env HASEEN_SYSROOT="$ROOT" haseen system hibernate --available
-assert_status "hibernate unavailable: swap < RAM" 1 "$STATUS"
-printf 'Filename Type Size Used Priority\n/swap file 17000000 0 -2\n' >"$ROOT/proc/swaps"
+assert_status "hibernate unavailable: zram only" 1 "$STATUS"
+printf 'Filename Type Size Used Priority\n/swap/swapfile file 17000000 0 -2\n' >"$ROOT/proc/swaps"
 capture env HASEEN_SYSROOT="$ROOT" haseen system hibernate --available
-assert_status "hibernate available: disk + swap >= RAM" 0 "$STATUS"
-for a in suspend reboot shutdown logout lock; do
-    capture env HASEEN_SYSROOT="$ROOT" haseen system "$a" --dry-run
-    assert_status "system $a dry-run" 0 "$STATUS"
-    assert_dry_pure "system $a" "$OUTPUT"
-done
+assert_status "hibernate unavailable: swapfile but no resume" 1 "$STATUS"
+capture env HASEEN_SYSROOT="$ROOT" haseen system hibernate --dry-run
+assert_status "hibernate refuses when not set up" 1 "$STATUS"
+assert_contains "hibernate says what to check" "$OUTPUT" "haseen hibernation status"
+printf 'HOOKS=(base systemd autodetect block sd-encrypt filesystems fsck)\n' >"$ROOT/etc/mkinitcpio.conf"
+printf 'root=/dev/mapper/root rw resume=/dev/mapper/root resume_offset=1\n' >"$ROOT/proc/cmdline"
+capture env HASEEN_SYSROOT="$ROOT" haseen system hibernate --available
+assert_status "hibernate available: swapfile + resume" 0 "$STATUS"
+capture env HASEEN_SYSROOT="$ROOT" haseen hibernation status --quiet
+assert_status "the menu agrees with haseen hibernation status" 0 "$STATUS"
+
+# Every System row runs (dry) as written, hibernate included now it is set up.
+while IFS= read -r action; do
+    # shellcheck disable=SC2086 # the action is a word list, as the menu runs it
+    capture env HASEEN_SYSROOT="$ROOT" $action --dry-run
+    assert_status "system menu: $action" 0 "$STATUS"
+    assert_dry_pure "system menu: $action" "$OUTPUT"
+done < <(jq -r 'to_entries[] | select(.key | startswith("system.")) | .value.action' <<<"$JSON")
+capture env HASEEN_SYSROOT="$ROOT" haseen system hibernate --dry-run
+assert_eq "hibernate is systemctl hibernate" "DRYRUN: systemctl hibernate" "$OUTPUT"
 capture haseen system shutdown --dry-run
 assert_eq "shutdown is poweroff" "DRYRUN: systemctl poweroff" "$OUTPUT"
 capture haseen system nap

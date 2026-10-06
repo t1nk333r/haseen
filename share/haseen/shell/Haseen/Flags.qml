@@ -16,13 +16,16 @@ Singleton {
     id: root
 
     readonly property string dir: Paths.userState + "/flags"
-    readonly property var names: ["dnd", "idle-off", "screensaver-off", "nightlight", "recording"]
+    readonly property var names: ["dnd", "idle-off", "screensaver-off", "nightlight", "recording", "gestures"]
 
     readonly property bool dnd: dndFile.on
     readonly property bool idleOff: idleOffFile.on
     readonly property bool screensaverOff: screensaverOffFile.on
     readonly property bool nightlight: nightlightFile.on
     readonly property bool recording: recordingFile.on
+    // Set by the `gestures` hardware quirk on a machine with a touchpad: the
+    // haseen.gestures bar widget shows only then.
+    readonly property bool gestures: gesturesFile.on
 
     property bool _dirReady: false
 
@@ -80,5 +83,9 @@ Singleton {
     FlagFile {
         id: recordingFile
         name: "recording"
+    }
+    FlagFile {
+        id: gesturesFile
+        name: "gestures"
     }
 }

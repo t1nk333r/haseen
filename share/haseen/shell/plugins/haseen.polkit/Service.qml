@@ -156,6 +156,12 @@ Scope {
                             }
                             Keys.onEscapePressed: root.flow.cancelAuthenticationRequest()
                             Component.onCompleted: forceActiveFocus()
+                            // The field starts disabled until polkit asks for the
+                            // response; a disabled item cannot hold focus, so the
+                            // completion-time forceActiveFocus() is lost and typing
+                            // and Enter would go nowhere. Take focus when it opens.
+                            onEnabledChanged: if (enabled)
+                                forceActiveFocus()
                         }
 
                         Text {

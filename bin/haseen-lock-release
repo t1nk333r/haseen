@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# haseen:summary Unlock a session whose lock screen no longer accepts input (run from a TTY)
+# haseen:args [--dry-run]
+#
+# The way out when the lock screen is up but cannot be answered (a broken
+# input path, a hung shell). From another VT (Ctrl+Alt+F2), log in as the
+# same user and run this. It does what a lock client does when it unlocks,
+# so Hyprland releases the session cleanly instead of showing its red
+# "lock client died" screen:
+#   1. allow a new lock client to take over (misc.allow_session_lock_restore);
+#   2. stop the shell holding the lock;
+#   3. take the lock with a one-shot client and release it once Hyprland
+#      confirms it (WlSessionLock.secure);
+#   4. start the shell again.
+# Only the user who owns the session can do this, from a session they had
+# already authenticated (the TTY login), so it is not a way around the lock.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen lock release [--dry-run]
+
+Run from a TTY when the graphical session's lock screen is stuck.
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 0)) || {
+    usage >&2
+    exit 2
+}
+
+require_cmds hyprctl qs
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# From a TTY none of the graphical session's variables are set: find them.
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    HYPRLAND_INSTANCE_SIGNATURE="$(find "$runtime/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' 2>/dev/null |
+        sort -rn | head -n1 | cut -d' ' -f2)"
+fi
+[[ -n $HYPRLAND_INSTANCE_SIGNATURE ]] || die "no running Hyprland found under $runtime/hypr"
+export HYPRLAND_INSTANCE_SIGNATURE XDG_RUNTIME_DIR="$runtime"
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+    WAYLAND_DISPLAY="$(find "$runtime" -maxdepth 1 -name 'wayland-*' -type s -printf '%f\n' | sort | head -n1)"
+fi
+[[ -n $WAYLAND_DISPLAY ]] || die "no Wayland socket under $runtime"
+export WAYLAND_DISPLAY
+
+run hyprctl eval 'hl.config({ misc = { allow_session_lock_restore = true } })'
+run systemctl --user stop haseen-shell.service
+
+releaser="$(mktemp -d)"
+trap 'rm -rf "$releaser"' EXIT
+cat >"$releaser/shell.qml" <<'EOF'
+import QtQuick
+import Quickshell
+import Quickshell.Wayland
+
+ShellRoot {
+    WlSessionLock {
+        id: lock
+        locked: true
+        // Hyprland confirms the takeover with `secure`; releasing then is an
+        // ordinary unlock.
+        onSecureChanged: if (secure) { locked = false; Qt.callLater(Qt.quit) }
+        WlSessionLockSurface { color: "black" }
+    }
+}
+EOF
+if $DRY_RUN; then
+    echo "DRYRUN: qs -p $releaser (take the session lock, then release it)"
+else
+    timeout 20 qs -p "$releaser" >/dev/null 2>&1 || warn "the one-shot unlock client did not finish cleanly"
+fi
+# The released lock must not come back: the shell retakes a lock it finds
+# recorded as held (haseen.lock, after a crash), so record it as released.
+printf '0\n' | write_user_file "$runtime/haseen-lock-held"
+run systemctl --user start haseen-shell.service
+info "session unlocked; switch back with Ctrl+Alt+F1"

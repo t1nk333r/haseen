@@ -57,7 +57,11 @@ greeter_autologin_user() {
 }
 
 # greeter_session_command — what a logged-in session starts with.
-greeter_session_command() { printf '%s\n' "uwsm start hyprland.desktop"; }
+# uwsm narrates every step of the start on stdout, and greetd's sessions run
+# on the VT the splash just handed over: without systemd-cat that narration is
+# the "wall of text" between the splash and the desktop. In the journal it is
+# still there when a start fails (journalctl -t uwsm).
+greeter_session_command() { printf '%s\n' "systemd-cat -t uwsm uwsm start hyprland.desktop"; }
 
 # greeter_command CHOICE — what greetd starts. tuigreet logs in on the VT;
 # the haseen greeter is a Hyprland session that runs the shell's greeter

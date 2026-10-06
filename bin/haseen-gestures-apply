@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# haseen:summary Render touchpad gestures (haseen.gestures) into Hyprland and reload it
+# haseen:args [--set JSON] [--print] [--no-reload] [--dry-run] [--yes]
+#
+# Adapted from omagesture's omagesture-apply (github.com/heroesofcode/omagesture,
+# MIT, Copyright (c) 2026 Pedro Henrique): one command owns the generated Lua,
+# so the bar panel and a terminal cannot disagree about what a gesture means.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/gestures.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/gestures.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen gestures apply [--set JSON] [--print] [--no-reload] [--dry-run] [--yes]
+
+Renders plugins."$GESTURES_ID".settings (the plugin's defaults merged with
+shell.json) into $GESTURES_TOGGLE,
+which Hyprland loads after haseen's input defaults. When the file changes and
+Hyprland is running, the config is reloaded. A second run with the same
+settings changes nothing.
+
+  --set JSON   first merge these settings into ~/.config/haseen/shell.json
+               (what the bar panel does), e.g. '{"g3Up":"menu"}'
+  --print      print the Lua and change nothing
+  --no-reload  write the file but leave the running Hyprland alone
+
+Settings (defaults in $GESTURES_MANIFEST):
+  enabled, naturalScroll, swipeForever   true | false
+  clickMethod    clickfinger | buttonareas
+  drag           off | threefinger | fourfinger
+  middleButton   none | resize | move | screenshot
+  swipeRange     numbered | existing
+  g2PinchIn g2PinchOut, g3… g4… with Left Right Up Down PinchIn PinchOut:
+                 none workspace special fullscreen maximize float move_window
+                 resize_window close_window zoom menu
+EOF
+}
+
+patch=""
+print=false
+reload=true
+args=()
+while (($# > 0)); do
+    case "$1" in
+    --set)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        patch="$2"
+        shift 2
+        continue
+        ;;
+    --print) print=true ;;
+    --no-reload) reload=false ;;
+    *) args+=("$1") ;;
+    esac
+    shift
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+if $print; then
+    [[ -z $patch ]] || die "--print and --set do not combine: --print changes nothing"
+    gestures_render "$(gestures_settings)"
+    exit 0
+fi
+
+merged=""
+if [[ -n $patch ]]; then
+    gestures_check_patch "$patch"
+    # The same transaction as `haseen plugin settings`: read and rename under
+    # the shell.json lock, merge one key at a time, leave the rest alone.
+    shell_config_lock
+    current="$(shell_user_json)"
+    updated="$(jq --arg id "$GESTURES_ID" --argjson v "$patch" \
+        '.plugins[$id].settings = ((.plugins[$id].settings // {}) + $v)' <<<"$current")"
+    if [[ $updated != "$current" ]]; then
+        printf '%s\n' "$updated" | shell_config_write
+    fi
+    # Render from what the file now holds, or, after a dry run that wrote
+    # nothing, from what it would hold.
+    merged="$(jq --argjson u "$updated" '. * $u' "$SHELL_DEFAULT_CONFIG")"
+fi
+
+gestures_apply "$reload" "$merged"

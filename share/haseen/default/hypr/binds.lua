@@ -13,15 +13,18 @@ local ipc = haseen.ipc
 local launch = haseen.launch
 
 -- Shell --------------------------------------------------------------------
-b("SUPER + SPACE", "Launcher", ipc("launcher", "toggle"))
-b("SUPER + ALT + SPACE", "Menu", "haseen menu")
-b("SUPER + CTRL + ESCAPE", "Power menu", "haseen menu system")
+-- The menus sit on Omarchy's keys (SUPER+SPACE menu, SUPER+ESCAPE system
+-- menu), so muscle memory from Omarchy carries over; the app launcher takes
+-- SUPER+SHIFT+SPACE, which pushes the bar toggle to SUPER+ALT+SPACE.
+b("SUPER + SPACE", "Menu", "haseen menu")
+b("SUPER + SHIFT + SPACE", "Launcher", ipc("launcher", "toggle"))
+b("SUPER + ESCAPE", "System menu", "haseen menu system")
 b("SUPER + CTRL + L", "Lock screen", ipc("lock", "lock"))
 b("SUPER + A", "AI panel", ipc("panel", "toggle", "haseen.ai"))
 b("SUPER + SHIFT + comma", "Clear notifications", ipc("notifications", "clear"))
 b("SUPER + CTRL + comma", "Do not disturb", "haseen toggle dnd")
-b("SUPER + ESCAPE", "Close panel", ipc("panel", "close"))
-b("SUPER + SHIFT + SPACE", "Toggle bar", "haseen bar toggle")
+b("SUPER + CTRL + ESCAPE", "Close panel", ipc("panel", "close"))
+b("SUPER + ALT + SPACE", "Toggle bar", "haseen bar toggle")
 b("SUPER + SLASH", "Keybindings", ipc("keybinds", "toggle"))
 b("SUPER + CTRL + V", "Clipboard history", ipc("panel", "toggle", "haseen.clipboard"))
 b("SUPER + CTRL + E", "Emoji picker", ipc("panel", "toggle", "haseen.emoji"))

@@ -58,7 +58,8 @@ capture haseen setup greeter status
 assert_contains "the choice is read back" "$OUTPUT" "greeter:   haseen"
 capture haseen setup greeter tuigreet --dry-run --yes
 assert_contains "switching back plans tuigreet" "$OUTPUT" "tuigreet --time --remember"
-assert_contains "and orders greetd after the splash" "$OUTPUT" "plymouth-quit-wait.service"
+assert_contains "greetd quits the splash itself, keeping its last frame" "$OUTPUT" "ExecStartPre=-/usr/bin/plymouth quit --retain-splash"
+assert_contains "instead of letting plymouth-quit clear to the console" "$OUTPUT" "Conflicts=plymouth-quit.service"
 
 # --- taking over from another display manager ----------------------------------
 mkdir -p "$sysroot/etc/systemd/system"
@@ -87,7 +88,7 @@ assert_dry_pure "autologin dry run" "$OUTPUT"
 assert_contains "it records the user" "$OUTPUT" "/etc/haseen/autologin"
 assert_contains "and greetd starts a session at boot" "$OUTPUT" "[initial_session]"
 assert_contains "as that user" "$OUTPUT" 'user = "t1nk33r"'
-assert_contains "running the desktop" "$OUTPUT" 'command = "uwsm start hyprland.desktop"'
+assert_contains "running the desktop, its start-up chatter in the journal not on the VT" "$OUTPUT" 'command = "systemd-cat -t uwsm uwsm start hyprland.desktop"'
 assert_contains "while later logins still reach the greeter" "$OUTPUT" "[default_session]"
 
 capture haseen setup greeter autologin nobody --dry-run --yes
@@ -314,6 +315,7 @@ EOF
         assert_contains "it answered the password prompt" "$sent" '"type": "post_auth_message_response"'
         assert_contains "and started the session it offered" "$sent" '"type": "start_session"'
         assert_contains "with an argv, not a shell string" "$sent" '"uwsm", "start", "--", "hyprland.desktop"'
+        assert_contains "its output going to the journal, not the VT" "$sent" '"cmd": ["systemd-cat", "-t", "hyprland-uwsm"'
         assert_eq "the session it picked is remembered" "hyprland-uwsm" \
             "$(jq -r '.sessions.t1nk33r' "$greeter_home/.local/state/haseen-greeter.json" 2>/dev/null || echo missing)"
     fi

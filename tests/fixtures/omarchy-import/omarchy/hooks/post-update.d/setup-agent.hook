@@ -1,0 +1,3 @@
+#!/bin/bash
+# Omarchy's own invitation: calls Omarchy commands, so it stays behind.
+omarchy-notification-send "Set your default agent"

@@ -2,8 +2,8 @@
 # haseen:summary Lock, suspend, hibernate, log out, reboot or shut down
 # haseen:args <lock|suspend|hibernate|logout|reboot|shutdown> [--available] [--dry-run]
 set -Eeuo pipefail
-# shellcheck source=../share/haseen/lib/common.sh
-source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/hibernate.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hibernate.sh"
 
 usage() {
     cat <<EOF
@@ -12,26 +12,12 @@ Usage: haseen system <lock|suspend|hibernate|logout|reboot|shutdown> [--dry-run]
 
 lock      the shell's lock screen (IPC lock lock), else loginctl lock-session
 suspend   systemctl suspend
-hibernate systemctl hibernate; --available exits 0 only when the kernel
-          offers suspend-to-disk and swap at least the size of RAM is active
+hibernate systemctl hibernate; --available exits 0 only when hibernation is
+          set up (same check as haseen hibernation status)
 logout    ends the uwsm session (uwsm stop), else Hyprland's exit dispatcher
 reboot    systemctl reboot
 shutdown  systemctl poweroff
 EOF
-}
-
-# Suspend-to-disk needs kernel support (disk in /sys/power/state) and room
-# for the RAM image in swap. Read through sysroot_path so tests use fixtures.
-hibernate_available() {
-    local state swaps meminfo ram swap
-    state="$(sysroot_path /sys/power/state)"
-    swaps="$(sysroot_path /proc/swaps)"
-    meminfo="$(sysroot_path /proc/meminfo)"
-    [[ -r $state ]] && grep -qw disk "$state" || return 1
-    [[ -r $swaps && -r $meminfo ]] || return 1
-    ram="$(awk '/^MemTotal:/ { print $2 }' "$meminfo")"
-    swap="$(awk 'NR > 1 { s += $3 } END { print s + 0 }' "$swaps")"
-    ((swap >= ram))
 }
 
 parse_common_flags "$@"
@@ -62,7 +48,7 @@ if $available; then
         usage >&2
         exit 2
     }
-    hibernate_available
+    hibernate_ready
     exit
 fi
 
@@ -76,7 +62,7 @@ lock)
     ;;
 suspend) run systemctl suspend ;;
 hibernate)
-    hibernate_available || die "hibernation is not available (needs suspend-to-disk and swap >= RAM)"
+    hibernate_ready || die "hibernation is not set up (see haseen hibernation status)"
     run systemctl hibernate
     ;;
 logout)

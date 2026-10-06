@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.gestures",
+  "name": "Gestures",
+  "version": "1.0.0",
+  "description": "Touchpad gestures: three fingers slide between workspaces, four resize the focused window, and every swipe and pinch maps to a window action from a panel. Shown in the bar on machines with a touchpad. Ported from omagesture",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Gestures enabled. Off removes every mapped swipe and pinch; the touchpad tuning still applies."
+    },
+    "naturalScroll": {
+      "type": "boolean",
+      "default": true,
+      "description": "Natural scrolling on the touchpad and the mouse: content follows the fingers."
+    },
+    "clickMethod": {
+      "type": "string",
+      "default": "clickfinger",
+      "description": "Click method (one of: clickfinger, buttonareas). clickfinger: two fingers anywhere is a right click, three a middle click. buttonareas: the bottom-right corner is the right button."
+    },
+    "drag": {
+      "type": "string",
+      "default": "off",
+      "description": "Multi-finger drag (one of: off, threefinger, fourfinger). Dropped while swipes of the same finger count are mapped: libinput gives the fingers to one of the two."
+    },
+    "middleButton": {
+      "type": "string",
+      "default": "move",
+      "description": "Middle click, a three-finger click under clickfinger (one of: none, resize, move, screenshot). move and resize turn a three-finger press-and-drag into window handling; any value but none takes middle click away from applications."
+    },
+    "swipeRange": {
+      "type": "string",
+      "default": "numbered",
+      "description": "Workspace swipe reaches (one of: numbered, existing). numbered keeps going to empty workspaces by number; existing is Hyprland's default and stops one past the last open workspace."
+    },
+    "swipeForever": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keep swiping without lifting: one continuous motion crosses several workspaces."
+    },
+    "g2PinchIn": {
+      "type": "string",
+      "default": "none",
+      "description": "Two fingers, pinch in (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu). Two-finger swipes are scroll and are never mapped; a mapped two-finger pinch is taken from applications (browser pinch-to-zoom)."
+    },
+    "g2PinchOut": {
+      "type": "string",
+      "default": "none",
+      "description": "Two fingers, pinch out (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu). Two-finger swipes are scroll and are never mapped; a mapped two-finger pinch is taken from applications (browser pinch-to-zoom)."
+    },
+    "g3Left": {
+      "type": "string",
+      "default": "workspace",
+      "description": "Three fingers, swipe left (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g3Right": {
+      "type": "string",
+      "default": "workspace",
+      "description": "Three fingers, swipe right (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g3Up": {
+      "type": "string",
+      "default": "none",
+      "description": "Three fingers, swipe up (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g3Down": {
+      "type": "string",
+      "default": "none",
+      "description": "Three fingers, swipe down (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g3PinchIn": {
+      "type": "string",
+      "default": "none",
+      "description": "Three fingers, pinch in (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g3PinchOut": {
+      "type": "string",
+      "default": "none",
+      "description": "Three fingers, pinch out (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g4Left": {
+      "type": "string",
+      "default": "resize_window",
+      "description": "Four fingers, swipe left (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g4Right": {
+      "type": "string",
+      "default": "resize_window",
+      "description": "Four fingers, swipe right (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g4Up": {
+      "type": "string",
+      "default": "resize_window",
+      "description": "Four fingers, swipe up (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g4Down": {
+      "type": "string",
+      "default": "resize_window",
+      "description": "Four fingers, swipe down (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g4PinchIn": {
+      "type": "string",
+      "default": "none",
+      "description": "Four fingers, pinch in (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    },
+    "g4PinchOut": {
+      "type": "string",
+      "default": "none",
+      "description": "Four fingers, pinch out (one of: none, workspace, special, fullscreen, maximize, float, move_window, resize_window, close_window, zoom, menu)."
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:write"
+  ]
+}

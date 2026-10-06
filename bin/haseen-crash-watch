@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# haseen:summary Watch for crashed programs and offer an AI diagnosis (haseen-crash-watch.service)
+# haseen:args
+# haseen:hidden
+#
+# Adapted from Omarchy bin/omarchy-crash-watch (MIT, Copyright (c) David
+# Heinemeier Hansson): systemd-coredump journals every core dump under one
+# MESSAGE_ID with structured COREDUMP_* fields; each crash of one of this
+# user's programs becomes a notification whose click hands the crash to the
+# default coding agent (`haseen agent crash`).
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+[[ ${1:-} == -h || ${1:-} == --help ]] && {
+    echo "Usage: haseen crash watch   (runs as haseen-crash-watch.service)"
+    exit 0
+}
+
+require_cmds journalctl jq
+
+# See systemd.journal-fields(7).
+readonly COREDUMP_MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1
+# A crash loop dumps core again and again: one notification per program per
+# window.
+readonly dedupe_seconds=${HASEEN_CRASH_DEDUPE_SECONDS:-60}
+# Extended regex of program names never worth announcing.
+readonly ignore_pattern=${HASEEN_CRASH_IGNORE:-}
+
+declare -A last_notified
+
+# The agent is checked per crash, not at start, so choosing one with
+# `haseen setup default agent` takes effect without restarting this service.
+agent_configured() {
+    [[ -n ${HASEEN_AGENT:-} ]] || [[ -n $(haseen-setup-default agent 2>/dev/null || true) ]]
+}
+
+announce() {
+    local name=$1 pid=$2 exe=$3 signal=$4
+    # The shell owns org.freedesktop.Notifications: when the shell itself is
+    # what crashed, wait for its restart to claim the name again, or the toast
+    # about the crash most worth reporting is the one that gets lost.
+    haseen-notification-wait || return 1
+    # Crash details travel as separate argv words, so a hostile process name
+    # can never be re-read as a command. --exec takes the rest of the line.
+    haseen-notification-send -u critical \
+        "Program crashed: $name" "Click to diagnose with AI" \
+        --action-label "Diagnose" \
+        --exec haseen-agent-crash "$pid" "$name" "$exe" "$signal"
+}
+
+# -n 0: a restart of this watcher does not re-announce old crashes.
+journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
+    while IFS= read -r entry; do
+        IFS=$'\t' read -r uid comm pid exe signal < <(
+            jq -r '[(._UID // "-"), (.COREDUMP_COMM // "-"), (.COREDUMP_PID // "-"),
+                    (.COREDUMP_EXE // "-"), (.COREDUMP_SIGNAL_NAME // "-")] | @tsv' <<<"$entry" 2>/dev/null
+        ) || continue
+        [[ $pid =~ ^[0-9]+$ ]] || continue
+        # Only this user's programs: a system daemon's core is the admin's.
+        [[ $uid =~ ^[0-9]+$ ]] && ((uid == UID)) || continue
+        agent_configured || continue
+        # comm is cut at 15 characters; the executable's name is not.
+        name=$comm
+        [[ $exe == /* ]] && name=${exe##*/}
+        [[ -n $ignore_pattern && $name =~ $ignore_pattern ]] && continue
+        # Never about our own machinery, or it notifies about itself.
+        [[ $name == haseen-crash-* || $name == haseen-agent-* ]] && continue
+        now=$EPOCHSECONDS
+        ((now - ${last_notified[$name]:-0} < dedupe_seconds)) && continue
+        # Only a delivered toast opens the dedupe window: a failed send that
+        # counted would hide the rest of a crash loop, and -n 0 never replays.
+        if announce "$name" "$pid" "$exe" "$signal"; then
+            last_notified[$name]=$now
+        fi
+    done

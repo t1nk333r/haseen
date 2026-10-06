@@ -164,6 +164,46 @@ hw_probe_wifi() {
     return 1
 }
 
+# hw_probe_touchpad — an input device the kernel describes as a touchpad: a
+# pointer (INPUT_PROP_POINTER) that is not direct (a touchscreen), reports
+# finger tools (BTN_TOOL_FINGER, 0x145) and no pen (BTN_TOOL_PEN, 0x140).
+# That is udev's ID_INPUT_TOUCHPAD rule, which is what libinput (and so
+# Hyprland's gestures) goes by. Names are not used: Apple's bcm5974 and many
+# I2C pads never say "touchpad", and a TrackPoint is a pointer without finger
+# tools. The bitmaps are the kernel's hex longs, most significant first
+# (64-bit words on the x86_64 kernels haseen targets).
+hw_probe_touchpad() {
+    local devices
+    devices="$(sysroot_path /proc/bus/input/devices)"
+    [[ -r $devices ]] || return 1
+    awk -v RS= -F'\n' '
+        function bit(map, n,   words, w, word, d, v) {
+            w = split(map, words, " ")
+            w -= int(n / 64)
+            if (w < 1) return 0
+            word = words[w]
+            n %= 64
+            d = int(n / 4)
+            if (d >= length(word)) return 0
+            v = index("0123456789abcdef", tolower(substr(word, length(word) - d, 1))) - 1
+            return int(v / 2 ^ (n % 4)) % 2
+        }
+        {
+            prop = ""
+            key = ""
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^B: PROP=/) prop = substr($i, 9)
+                else if ($i ~ /^B: KEY=/) key = substr($i, 8)
+            }
+            if (bit(prop, 0) && !bit(prop, 1) && bit(key, 325) && !bit(key, 320)) {
+                found = 1
+                exit
+            }
+        }
+        END { exit !found }
+    ' "$devices"
+}
+
 hw_probe_bluetooth() {
     local dev
     shopt -s nullglob
@@ -184,6 +224,7 @@ hw_probe() {
     amd-gpu) hw_probe_amd_gpu ;;
     wifi) hw_probe_wifi ;;
     bluetooth) hw_probe_bluetooth ;;
+    touchpad) hw_probe_touchpad ;;
     webcam) hw_probe_webcam ;;
     *) die "unknown probe in $(hw_table): $1" ;;
     esac
