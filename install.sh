@@ -81,7 +81,9 @@ install_tree() {
     # Replace share/haseen atomically: copy beside, then swap.
     run_root rm -rf "$PREFIX/share/haseen.new" "$PREFIX/share/haseen.old"
     run_root install -d -m 0755 "$PREFIX/share"
-    run_root cp -a "$REPO/share/haseen" "$PREFIX/share/haseen.new"
+    # Root-owned, not the checkout owner's: root commands (sudo haseen …) and the
+    # greeter, which runs as another user, execute from this tree.
+    run_root cp -R --preserve=mode,timestamps,links "$REPO/share/haseen" "$PREFIX/share/haseen.new"
     if [[ -d $PREFIX/share/haseen ]]; then
         run_root mv "$PREFIX/share/haseen" "$PREFIX/share/haseen.old"
     fi
