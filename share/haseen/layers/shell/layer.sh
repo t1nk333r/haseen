@@ -8,6 +8,10 @@ LAYER_DISTROS=(cachyos arch omarchy)
 
 SHELL_UNIT=haseen-shell.service
 SHELL_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$SHELL_UNIT"
+# Locks the screen before suspend (bin/haseen-lock-before-sleep). Part of the
+# shell layer because the lock it triggers is the shell's.
+SLEEP_LOCK_UNIT=haseen-sleep-lock.service
+SLEEP_LOCK_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$SLEEP_LOCK_UNIT"
 
 layer_status() {
     local ok=0 missing=0 p
@@ -36,6 +40,13 @@ layer_status() {
         echo "missing: $SHELL_UNIT not enabled"
         missing=$((missing + 1))
     fi
+    if [[ -L $SLEEP_LOCK_UNIT_WANTS ]]; then
+        echo "ok: $SLEEP_LOCK_UNIT enabled"
+        ok=$((ok + 1))
+    else
+        echo "missing: $SLEEP_LOCK_UNIT not enabled (no lock before suspend)"
+        missing=$((missing + 1))
+    fi
     ((missing == 0)) && return 0
     ((ok == 0)) && return 1
     return 2
@@ -49,12 +60,20 @@ layer_apply() {
     else
         run systemctl --user enable "$SHELL_UNIT"
     fi
+    if [[ -L $SLEEP_LOCK_UNIT_WANTS ]]; then
+        info "$SLEEP_LOCK_UNIT already enabled"
+    else
+        run systemctl --user enable "$SLEEP_LOCK_UNIT"
+    fi
     info "the shell starts with the next graphical session; to start it now: haseen shell restart"
 }
 
 layer_remove() {
     if [[ -L $SHELL_UNIT_WANTS ]]; then
         run systemctl --user disable "$SHELL_UNIT"
+    fi
+    if [[ -L $SLEEP_LOCK_UNIT_WANTS ]]; then
+        run systemctl --user disable "$SLEEP_LOCK_UNIT"
     fi
     info "kept $HASEEN_USER_CONFIG/shell.json and plugins/ (user files)"
 }

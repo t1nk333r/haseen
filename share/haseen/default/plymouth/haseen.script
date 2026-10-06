@@ -24,11 +24,11 @@ screen_height = Window.GetHeight();
 # --- the pulse: one bar that breathes, so a slow boot does not look hung -----
 
 bar_width = screen_width / 6;
-bar_height = 2;
-bar = Image(bar_width, bar_height);
-for (x = 0; x < bar_width; x++)
-    for (y = 0; y < bar_height; y++)
-        bar.SetPixel(x, y, accent_r, accent_g, accent_b, 1);
+bar_height = 3;
+# Plymouth's script module cannot make a blank image or set pixels (its Image
+# is a file, a text label, or a transform of one): a single bullet in the
+# accent colour, stretched, is the bar.
+bar = Image.Text("•", accent_r, accent_g, accent_b).Scale(bar_width, bar_height);
 
 bar_sprite = Sprite(bar);
 bar_sprite.SetX((screen_width - bar_width) / 2);

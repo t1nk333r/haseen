@@ -9,6 +9,10 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/greeter.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/greeter.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../share/haseen/layers/base/lib.sh
+source "$HASEEN_PATH/layers/base/lib.sh" # display_manager_unit
 
 usage() {
     cat <<EOF
@@ -91,6 +95,18 @@ if [[ $choice == haseen ]]; then
     confirm "Use haseen's graphical greeter? (switch back from a TTY if it fails)" || exit 1
 fi
 
+# Choosing a greeter is choosing greetd. The desktop layer leaves another
+# display manager alone (SDDM on an Omarchy machine, say); this command is the
+# explicit request to replace it, so it asks once and then does it.
+dm="$(display_manager_unit)"
+if [[ -n $dm && $dm != greetd.service ]]; then
+    warn "$dm is the display manager now; greetd replaces it at the next boot"
+    confirm "Disable $dm and enable greetd?" || exit 1
+fi
+
+# tuigreet is installed even for the graphical greeter: it is the way back.
+pkg_install greetd greetd-tuigreet
+
 printf '%s\n' "$choice" | write_root_file "$GREETER_CHOICE_FILE"
 greetd_config "$choice" | write_root_file "$GREETD_CONFIG"
 
@@ -112,4 +128,15 @@ printf '%s\n' \
     "TTYVTDisallocate=no" |
     write_root_file /etc/systemd/system/greetd.service.d/haseen-plymouth.conf
 
+# display-manager.service is an alias only one unit can hold: the old one lets
+# go first. Enable only; starting greetd now would take the VT from under the
+# running session.
+if [[ -n $dm && $dm != greetd.service ]]; then
+    run_root systemctl disable "$dm"
+fi
+[[ $dm == greetd.service ]] || run_root systemctl enable greetd.service
+
 info "greeter: $choice (restart greetd, or reboot, to pick it up)"
+if [[ -n $dm && $dm != greetd.service ]]; then
+    info "to go back to $dm: sudo systemctl disable greetd && sudo systemctl enable $dm"
+fi

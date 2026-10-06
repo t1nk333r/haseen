@@ -93,6 +93,47 @@ sudo haseen setup greeter autologin $USER            # then reboot
 If the graphical greeter does not come up, Ctrl+Alt+F2 and
 `sudo haseen setup greeter tuigreet && sudo systemctl restart greetd`.
 
+## Amendment 2026-10-06: replacing SDDM
+
+First real target (io, an Omarchy 4 laptop) runs SDDM with autologin. The
+desktop layer deliberately keeps an enabled display manager, so there was no
+way to get from SDDM to greetd short of hand-run `systemctl`. `haseen setup
+greeter tuigreet|haseen` now does it: asks, installs `greetd greetd-tuigreet`,
+disables the old unit, enables greetd (enable only), and prints the command
+back. The greeter also prefers `hyprland-uwsm`, then `hyprland`, when nothing
+is remembered — on a migrated machine the old desktop's session sorts first.
+Tests: 53 in `tests/test-greeter.sh`.
+
+Three handover bugs the first real target exposed before its first reboot,
+all of which the fake-greetd test passed straight through (it records
+`start_session`; it never waits for the greeter to leave):
+- `Greetd.launch(…, false)` keeps Quickshell running, and greetd starts the
+  session only after the greeter exits: the login would have hung. Now
+  `launch(…, true)`, with the remembered-session write made synchronous first.
+- `hyprctl dispatch exit` is an error under a Lua config; the dispatcher is
+  `hyprctl dispatch 'hl.dsp.exit()'`. Confirmed: `start-hyprland` returns 0
+  within 2 s of it.
+- greetd runs `haseen-greeter` as `greeter`, whose PATH need not reach
+  `/usr/local/bin`: the config now names it by absolute path, and the
+  launcher's HOME is always `/var/lib/haseen/greeter` (greetd's user has `/`).
+`tools/smoke-greeter.sh` now ends with the real handover: a good password, then
+the compositor must exit (`start_session ["uwsm","start","-e","-D","Hyprland",
+"hyprland.desktop"]`, compositor gone).
+
+Two more gaps the same machine exposed:
+- The greeter's compositor config was hyprlang `.conf`, which Hyprland 0.56
+  already flags for removal in 0.57; it is Lua now, and the launcher starts
+  Hyprland through `start-hyprland`, without which 0.56 paints a red "started
+  without start-hyprland" banner across the login screen. `tools/smoke-greeter.sh`
+  now runs the launcher's own generated config.
+- haseen never locked before suspend; Omarchy does (its sleep monitor drives
+  Omarchy's shell, so it does nothing once that shell is gone). Ported as
+  `bin/haseen-lock-before-sleep` + `haseen-sleep-lock.service`, enabled by the
+  shell layer: a logind delay inhibitor is held, `haseen shell ipc lock lock`
+  runs on PrepareForSleep(true), the inhibitor is released (also when the lock
+  does not answer, so a broken shell can never stop a suspend), and retaken
+  after resume. Tests: `tests/test-sleeplock.sh` (6), `tests/test-shell.sh`.
+
 ## Execution record
 
 `share/haseen/lib/{greeter,plymouth,boot}.sh`,

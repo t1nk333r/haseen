@@ -50,7 +50,7 @@ capture haseen setup greeter haseen --dry-run --yes
 assert_dry_pure "greeter switch dry run" "$OUTPUT"
 assert_contains "it plans the choice file" "$OUTPUT" "/etc/haseen/greeter"
 assert_contains "and the greetd config" "$OUTPUT" "/etc/greetd/config.toml"
-assert_contains "pointing greetd at haseen-greeter" "$OUTPUT" 'command = "haseen-greeter"'
+assert_contains "pointing greetd at haseen-greeter by absolute path" "$OUTPUT" "command = \"$REPO/bin/haseen-greeter\""
 assert_eq "a dry run changes nothing" "" "$(cat "$sysroot/etc/haseen/greeter" 2>/dev/null || true)"
 
 echo haseen >"$sysroot/etc/haseen/greeter"
@@ -59,6 +59,27 @@ assert_contains "the choice is read back" "$OUTPUT" "greeter:   haseen"
 capture haseen setup greeter tuigreet --dry-run --yes
 assert_contains "switching back plans tuigreet" "$OUTPUT" "tuigreet --time --remember"
 assert_contains "and orders greetd after the splash" "$OUTPUT" "plymouth-quit-wait.service"
+
+# --- taking over from another display manager ----------------------------------
+mkdir -p "$sysroot/etc/systemd/system"
+ln -sfn /usr/lib/systemd/system/sddm.service "$sysroot/etc/systemd/system/display-manager.service"
+capture haseen setup greeter haseen --dry-run --yes
+assert_contains "SDDM is named as what gets replaced" "$OUTPUT" "sddm.service is the display manager now"
+assert_contains "greetd and the fallback greeter are installed" "$OUTPUT" "greetd greetd-tuigreet"
+assert_contains "SDDM is disabled" "$OUTPUT" "systemctl disable sddm.service"
+assert_contains "greetd is enabled" "$OUTPUT" "systemctl enable greetd.service"
+assert_not_contains "but nothing is started under the running session" "$OUTPUT" "enable --now"
+assert_contains "and the way back is printed" "$OUTPUT" "sudo systemctl enable sddm.service"
+DISABLE_AT="$(grep -n 'systemctl disable sddm' <<<"$OUTPUT" | cut -d: -f1)"
+ENABLE_AT="$(grep -n 'systemctl enable greetd' <<<"$OUTPUT" | cut -d: -f1)"
+assert_eq "SDDM lets go of display-manager.service before greetd takes it" true \
+    "$([[ ${DISABLE_AT:-0} -lt ${ENABLE_AT:-0} ]] && echo true || echo false)"
+
+ln -sfn /usr/lib/systemd/system/greetd.service "$sysroot/etc/systemd/system/display-manager.service"
+capture haseen setup greeter haseen --dry-run --yes
+assert_not_contains "with greetd already in place nothing is disabled" "$OUTPUT" "systemctl disable"
+assert_not_contains "or re-enabled" "$OUTPUT" "systemctl enable greetd"
+rm -f "$sysroot/etc/systemd/system/display-manager.service"
 
 # --- autologin: the disk password at the splash is the authentication ----------
 capture haseen setup greeter autologin t1nk33r --dry-run --yes
@@ -87,8 +108,10 @@ rm -f "$sysroot/etc/haseen/autologin"
 capture haseen greeter --print-config
 assert_status "the launcher can show its config" 0 "$STATUS"
 assert_contains "it runs the greeter shell" "$OUTPUT" "shell/greeter"
-assert_contains "and quits the compositor when it exits" "$OUTPUT" "hyprctl dispatch exit"
-assert_contains "animations are off on a login screen" "$OUTPUT" "animations { enabled = false }"
+assert_contains "and quits the compositor when it exits, in Lua dispatcher form" "$OUTPUT" "hyprctl dispatch 'hl.dsp.exit()'"
+assert_contains "animations are off on a login screen" "$OUTPUT" "animations = { enabled = false }"
+assert_contains "the config is Lua, not the hyprlang format 0.57 drops" "$OUTPUT" "hl.config({"
+assert_contains "and the greeter starts once, at compositor start" "$OUTPUT" 'hl.on("hyprland.start"' 
 capture haseen greeter
 assert_status "without greetd in the environment it refuses" 1 "$STATUS"
 assert_contains "and says why" "$OUTPUT" "GREETD_SOCK"
@@ -122,6 +145,10 @@ Item {
 
         eq("sessions: an id appears once", ["a"], G.parseSessions([{id: "a", name: "A", exec: "a"}, {id: "a", name: "B", exec: "b"}]).map(s => s.id));
 
+        eq("default session: haseen's, not the first alphabetically", 2, G.preferredSessionIndex([{id: "awesome"}, {id: "omarchy"}, {id: "hyprland-uwsm"}, {id: "hyprland"}]));
+        eq("default session: plain Hyprland without uwsm's entry", 1, G.preferredSessionIndex([{id: "omarchy"}, {id: "hyprland"}]));
+        eq("default session: the first one when neither exists", 0, G.preferredSessionIndex([{id: "i3"}]));
+
         eq("command: field codes are dropped", ["i3"], G.commandFor("i3 %U"));
         eq("command: quotes hold a word together", ["sh", "-c", "a b"], G.commandFor("sh -c 'a b'"));
         eq("command: argv, not a shell string", ["uwsm", "start", "--", "hyprland.desktop"], G.commandFor("uwsm start -- hyprland.desktop"));
@@ -140,7 +167,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "greeter js unit count" 13 "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "greeter js unit count" 16 "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -263,7 +290,7 @@ EOF
 
     # pgrep -f would match the `timeout`/`dbus-run-session` wrappers too; the
     # shell is the one whose argv starts with the quickshell binary.
-    pid="$(pgrep -f "^$QS_BIN -p" | head -1 || true)"
+    pid="$(pgrep -f "^$QS_BIN -p $SANDBOX/driver" | head -1 || true)"
     if [[ -z $pid ]]; then
         _fail "the greeter did not start" "$(tail -5 "$SANDBOX/greeter.log")"
     else

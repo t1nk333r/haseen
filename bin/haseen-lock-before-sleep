@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# haseen:summary Lock the screen before the machine sleeps (runs as haseen-sleep-lock.service)
+# haseen:hidden
+#
+# Behaviour from omarchy bin/omarchy-system-sleep-monitor and
+# omarchy-system-sleep-lock (MIT, David Heinemeier Hansson): watch logind's
+# PrepareForSleep, lock before the machine goes down, so a lid opened later
+# shows the lock screen and never the desktop.
+#
+# The mechanism is logind's delay inhibitor: while this holds one, logind
+# waits (up to InhibitDelayMaxSec, 5 s by default) after announcing sleep. On
+# PrepareForSleep(true) the screen is locked and the inhibitor released, which
+# lets the sleep proceed; on PrepareForSleep(false), after resume, a new
+# inhibitor is taken for the next time.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen lock before sleep
+
+Runs until stopped; haseen-sleep-lock.service starts it with the session.
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+"") ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+require_cmds dbus-monitor systemd-inhibit
+
+# How long the compositor gets to put the lock surface up before the inhibitor
+# goes. The lock is a Wayland session lock: once Hyprland has it, it holds
+# across the suspend whatever the shell does next. Kept well under logind's
+# 5 s default so a slow lock can never turn into a sleep that does not happen.
+LOCK_GRACE="${HASEEN_LOCK_GRACE:-0.8}"
+
+inhibitor=""
+take_inhibitor() {
+    [[ -z $inhibitor ]] || return 0
+    systemd-inhibit --what=sleep --mode=delay --who=haseen \
+        --why="lock the screen before sleeping" sleep infinity &
+    inhibitor=$!
+}
+release_inhibitor() {
+    [[ -n $inhibitor ]] || return 0
+    kill "$inhibitor" 2>/dev/null || true
+    wait "$inhibitor" 2>/dev/null || true
+    inhibitor=""
+}
+trap release_inhibitor EXIT
+
+take_inhibitor
+while IFS= read -r line; do
+    case "$line" in
+    *"boolean true"*)
+        info "sleep: locking first"
+        haseen shell ipc lock lock || warn "the lock did not answer; sleeping anyway"
+        sleep "$LOCK_GRACE"
+        release_inhibitor
+        ;;
+    *"boolean false"*)
+        take_inhibitor
+        ;;
+    esac
+done < <(dbus-monitor --system \
+    "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'")

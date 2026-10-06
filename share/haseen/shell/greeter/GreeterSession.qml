@@ -82,7 +82,10 @@ QtObject {
         // Remembered before the launch: once greetd starts the session this
         // process is on its way out, and a later write may not land.
         memoryFile.setText(JSON.stringify(Greeter.withMemory(memory, currentUser ? currentUser.name : "", currentSession.id)));
-        Greetd.launch(Greeter.commandFor(currentSession.exec), [], false);
+        // quit = true: greetd starts the session only once the greeter is gone,
+        // and Quickshell's own docs warn that a greeter that lingers gets
+        // restarted. The memory write above is synchronous (blockWrites).
+        Greetd.launch(Greeter.commandFor(currentSession.exec), [], true);
     }
 
     property Connections greetd: Connections {
@@ -157,6 +160,7 @@ QtObject {
                 }
                 flush();
                 root.sessions = Greeter.parseSessions(parsed);
+                root.sessionIndex = Greeter.preferredSessionIndex(root.sessions);
                 root.restoreSessionFor(root.currentUser);
             }
         }
@@ -165,7 +169,8 @@ QtObject {
     property FileView memoryFile: FileView {
         path: root.stateFile
         printErrors: false
-        blockWrites: false
+        // Synchronous: launch() exits the process right after this write.
+        blockWrites: true
         onLoaded: {
             root.memory = Greeter.readMemory(text());
             root.restoreSessionFor(root.currentUser);
