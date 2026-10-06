@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # haseen import omarchy: an Omarchy 4 user's shell.json (the real shape, with
 # public city-level coordinates), branding, hooks, themes and Hyprland files
 # become haseen's files; what has no equivalent is reported; Omarchy's own

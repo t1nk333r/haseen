@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Secure Boot layer (plan 002): setup decisions per bootloader fixture, the
 # refusals (BIOS, outside Setup Mode, old sbctl, unready boot chain), the typed
 # ENROLL confirmation that --yes cannot answer, BitLocker and TPM2 warnings,

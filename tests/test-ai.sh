@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # AI layer (plan 006): backend package per GPU fixture, the loopback drop-in,
 # idempotency, the ai.json policy and merge, keys kept out of argv, dry-run
 # purity, and a real streaming round trip against a stub OpenAI server.

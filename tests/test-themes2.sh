@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Plan 020: every Omarchy stock theme renders; `haseen theme fetch` against a
 # local file:// mirror (pinned URLs, type/size/hash checks, resume,
 # idempotency); `haseen theme bg` list/set/next and the background service

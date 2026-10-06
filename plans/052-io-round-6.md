@@ -90,3 +90,15 @@ windows carry `terminal*`.
   read-only to haseen) and Bluetooth on for Quick Share.
 - The toolbar's own `Settings.qml` is not shown: haseen has no plugin settings
   screen. Its controller listener has a hard-coded home path.
+
+## Incident: a test run outside the runner wrote into the owner's config
+
+An agent ran `bash tests/test-compat.sh` directly. Without `tests/lib.sh`,
+`sandbox` was undefined, HOME stayed real, and the fixtures landed in the
+owner's `~/.config/omarchy/plugins` (11 `me.*` dirs and omaconnect's
+`manifest.json`/`Service.qml` overwritten), `~/.config/DankMaterialShell/plugins`
+and `~/.config/haseen/plugins`. All were restored from the morning's config
+backup and the strays removed (kept in `~/haseen-io-backup/`). Every
+`tests/test-*.sh` now refuses to run unless `tests/run.sh` loaded the harness;
+`test-core.sh` runs each file directly against a scratch HOME and expects
+exit 2 with nothing written.

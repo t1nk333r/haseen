@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Omarchy plugins draw Nerd Font codepoints as plain text in the bar font
 # (t1nk33r.omaprayers: "\ueed3" through WidgetButton). Omarchy's family is
 # the fontconfig `monospace` alias, so the compat Style and bar facade must

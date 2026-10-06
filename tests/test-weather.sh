@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # haseen.weather: Omarchy's weather (wttr.in + Open-Meteo, 15-minute refresh,
 # city search) with the location from settings, else GeoClue, else wttr.in's
 # IP lookup. The pure model runs under the stock `qml` tool; the location,
@@ -292,7 +295,9 @@ ShellRoot {
         onTriggered: {
             if (!probe.svc && Plugins.registry["haseen.weather"])
                 probe.create();
-            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.dailyForecastReport || !probe.svc.report || probe.svc.savingLocation)
+            // Wait for the forecast and for the pick to reach shell.json: the
+            // save runs as its own process and may finish after the forecast.
+            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.dailyForecastReport || !probe.svc.report || probe.svc.savingLocation || probe.svc.persistingLocation)
                 return;
             if (Quickshell.env("WEATHER_SAVE") === "1" && !probe.saved) {
                 probe.saved = true;

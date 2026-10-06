@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # AI panel and agent skill (plan 012): the haseen.ai manifest, the panel's
 # contract with the CLI, the skill's references, and `haseen ai skill install`
 # (one link per present agent, idempotent, dry-run pure).

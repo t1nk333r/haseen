@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # The bar's overflow panel (architecture 5.3): which widgets leave a bar that
 # is too short for them, in which order, and `haseen bar overflow`, which
 # edits bar.overflow / bar.pinned. The fit in Overflow.js runs under the real

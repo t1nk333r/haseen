@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Canonical false must turn an actual bool setting off, and multiple screen
 # handlers sharing one IPC target must dispatch to one owner with clean failover.
 QS_BIN=${QS_BIN:-/usr/bin/qs}

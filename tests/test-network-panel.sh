@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # haseen.network panel (port of Omarchy's): the manifest declares the panel,
 # the pure helpers in Model.js (icons, details, ping and traffic, band, row
 # order, sections and status, credentials, failure reasons, DNS names) run
