@@ -61,8 +61,11 @@ capture haseen setup greeter status
 assert_contains "the choice is read back" "$OUTPUT" "greeter:   haseen"
 capture haseen setup greeter tuigreet --dry-run --yes
 assert_contains "switching back plans tuigreet" "$OUTPUT" "tuigreet --time --remember"
-assert_contains "greetd quits the splash itself, keeping its last frame" "$OUTPUT" "ExecStartPre=-/usr/bin/plymouth quit --retain-splash"
-assert_contains "instead of letting plymouth-quit clear to the console" "$OUTPUT" "Conflicts=plymouth-quit.service"
+# The Conflicts=plymouth-quit / --retain-splash drop-in deadlocked boot on io:
+# greetd waits for plymouth to quit, after the splash, never conflicts with it.
+assert_contains "and orders greetd after the splash" "$OUTPUT" "After=plymouth-quit-wait.service"
+assert_not_contains "never conflicts with plymouth-quit" "$OUTPUT" "Conflicts=plymouth-quit.service"
+assert_not_contains "nor quits the splash itself" "$OUTPUT" "--retain-splash"
 
 # --- taking over from another display manager ----------------------------------
 mkdir -p "$sysroot/etc/systemd/system"

@@ -38,6 +38,10 @@ subdir…"), printed onto VT 1 because greetd's sessions run there. Two fixes:
   the last splash frame stays until Hyprland's first frame instead of plymouth
   clearing to the text console first. Rejected: `After=plymouth-quit-wait`
   (what 036 shipped): it is exactly the order that shows the console.
+  **Reverted 2026-10-06:** the `Conflicts=plymouth-quit` / `--retain-splash`
+  drop-in deadlocked boot on io and was patched out of the installed copy there.
+  The drop-in is back to `After=plymouth-quit-wait.service`; the text-wall fix
+  rests on the journal redirection above.
 
 **3. `haseen import omarchy`** (`bin/haseen-import-omarchy`,
 `share/haseen/lib/omarchy-import.sh`). Reads `~/.config/omarchy` (never writes
