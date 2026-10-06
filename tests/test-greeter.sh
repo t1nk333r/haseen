@@ -50,7 +50,7 @@ capture haseen setup greeter haseen --dry-run --yes
 assert_dry_pure "greeter switch dry run" "$OUTPUT"
 assert_contains "it plans the choice file" "$OUTPUT" "/etc/haseen/greeter"
 assert_contains "and the greetd config" "$OUTPUT" "/etc/greetd/config.toml"
-assert_contains "pointing greetd at haseen-greeter" "$OUTPUT" 'command = "haseen-greeter"'
+assert_contains "pointing greetd at haseen-greeter by absolute path" "$OUTPUT" "command = \"$REPO/bin/haseen-greeter\""
 assert_eq "a dry run changes nothing" "" "$(cat "$sysroot/etc/haseen/greeter" 2>/dev/null || true)"
 
 echo haseen >"$sysroot/etc/haseen/greeter"
@@ -108,7 +108,7 @@ rm -f "$sysroot/etc/haseen/autologin"
 capture haseen greeter --print-config
 assert_status "the launcher can show its config" 0 "$STATUS"
 assert_contains "it runs the greeter shell" "$OUTPUT" "shell/greeter"
-assert_contains "and quits the compositor when it exits" "$OUTPUT" "hyprctl dispatch exit"
+assert_contains "and quits the compositor when it exits, in Lua dispatcher form" "$OUTPUT" "hyprctl dispatch 'hl.dsp.exit()'"
 assert_contains "animations are off on a login screen" "$OUTPUT" "animations = { enabled = false }"
 assert_contains "the config is Lua, not the hyprlang format 0.57 drops" "$OUTPUT" "hl.config({"
 assert_contains "and the greeter starts once, at compositor start" "$OUTPUT" 'hl.on("hyprland.start"' 
@@ -290,7 +290,7 @@ EOF
 
     # pgrep -f would match the `timeout`/`dbus-run-session` wrappers too; the
     # shell is the one whose argv starts with the quickshell binary.
-    pid="$(pgrep -f "^$QS_BIN -p" | head -1 || true)"
+    pid="$(pgrep -f "^$QS_BIN -p $SANDBOX/driver" | head -1 || true)"
     if [[ -z $pid ]]; then
         _fail "the greeter did not start" "$(tail -5 "$SANDBOX/greeter.log")"
     else

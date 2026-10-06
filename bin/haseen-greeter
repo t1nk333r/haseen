@@ -26,7 +26,10 @@ EOF
 # The greeter has no login session: no systemd user manager, no XDG runtime dir
 # of its own unless greetd made one. Everything it writes goes under its state
 # directory, which the setup command creates and chowns.
-export HOME="${HOME:-$GREETER_STATE_DIR}"
+# Always the state dir, never the greeter user's passwd home (`/` for greetd's
+# user): `haseen setup greeter haseen` creates it, owned by greeter, and the
+# remembered user and session live there.
+export HOME="$GREETER_STATE_DIR"
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_STATE_HOME="$HOME/.local/state"
 export XDG_CACHE_HOME="$HOME/.cache"
@@ -54,7 +57,7 @@ hl.config({
 -- The greeter is the whole session: when it exits (greetd launched the user's
 -- session, or it failed), the compositor goes with it and greetd takes over.
 hl.on("hyprland.start", function()
-  hl.exec_cmd("$QS -p $HASEEN_PATH/shell/greeter; hyprctl dispatch exit")
+  hl.exec_cmd("$QS -p $HASEEN_PATH/shell/greeter; hyprctl dispatch 'hl.dsp.exit()'")
 end)
 EOF
 }

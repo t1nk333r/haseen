@@ -64,7 +64,9 @@ greeter_session_command() { printf '%s\n' "uwsm start hyprland.desktop"; }
 # config and exits when it does (bin/haseen-greeter).
 greeter_command() {
     case "${1:-$(greeter_choice)}" in
-    haseen) printf '%s\n' "haseen-greeter" ;;
+    # An absolute path: greetd runs this as `greeter`, whose PATH need not
+    # include the /usr/local/bin haseen installs into.
+    haseen) printf '%s\n' "$(readlink -f "$HASEEN_PATH/../../bin")/haseen-greeter" ;;
     *) printf '%s\n' "tuigreet --time --remember --asterisks --cmd '$(greeter_session_command)'" ;;
     esac
 }

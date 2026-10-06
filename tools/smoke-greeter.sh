@@ -13,8 +13,8 @@ rm -rf "$OUT"
 mkdir -p "$OUT/home/.local/state" "$OUT/run"
 export HASEEN_PATH="$REPO/share/haseen"
 
-# A fake greetd: the smoke is about the screen, not about PAM. It answers one
-# password prompt, so the error path has something to show.
+# A fake greetd: the smoke is about the screen and the handover, not about PAM.
+# "correct horse" is the password; anything else is "Login incorrect".
 cat >"$OUT/greetd.py" <<'PY'
 import json, os, socket, struct, sys, threading
 path = sys.argv[1]
@@ -32,7 +32,13 @@ def serve():
         if req["type"] == "create_session":
             out = {"type": "auth_message", "auth_message_type": "secret", "auth_message": "Password:"}
         elif req["type"] == "post_auth_message_response":
-            out = {"type": "error", "error_type": "auth_error", "description": "Login incorrect"}
+            if req.get("response") == "correct horse":
+                out = {"type": "success"}
+            else:
+                out = {"type": "error", "error_type": "auth_error", "description": "Login incorrect"}
+        elif req["type"] == "start_session":
+            print("start_session", json.dumps(req["cmd"]), flush=True)
+            out = {"type": "success"}
         else:
             out = {"type": "success"}
         raw = json.dumps(out).encode()
@@ -60,10 +66,12 @@ export HOME="$OUT/home" XDG_STATE_HOME="$OUT/home/.local/state"
 export GREETD_SOCK="$OUT/greetd.sock" QT_QUICK_BACKEND=software HYPRLAND_NO_SD_NOTIFY=1
 
 before="$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -name 'wayland-*' -not -name '*.lock' | sort)"
-dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- \
+# Its own process group, so the trap takes the greeter's qs down with the
+# compositor: killing only the compositor left qs orphaned on a dead display.
+setsid dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- \
     start-hyprland -- -c "$OUT/hyprland.lua" >"$OUT/hyprland.log" 2>&1 &
 hypr=$!
-trap 'kill "$hypr" "$greetd" 2>/dev/null || true' EXIT
+trap 'kill -- -"$hypr" 2>/dev/null || true; kill "$greetd" 2>/dev/null || true' EXIT
 
 for _ in $(seq 60); do
     sock="$(comm -13 <(printf '%s\n' "$before") \
@@ -92,8 +100,23 @@ grim "$OUT/greeter.png" && echo "shot: $OUT/greeter.png"
 # And the failure path, which is the one a tired human sees at 2am.
 qs ipc --pid "$pid" call greeter login wrong >/dev/null || true
 for _ in $(seq 20); do
-    qs ipc --pid "$pid" call greeter state | grep -q '"status":"[^"]' && break
+    qs ipc --pid "$pid" call greeter state | grep -q '"status":"Login incorrect' && break
     sleep 0.25
 done
 echo "after a wrong password: $(qs ipc --pid "$pid" call greeter state)"
 grim "$OUT/greeter-wrong.png" && echo "shot: $OUT/greeter-wrong.png"
+
+# The handover greetd depends on: after a good password the greeter asks for
+# the session, Quickshell exits, and the compositor exits with it. A greeter
+# that lingers here is a login that never completes.
+qs ipc --pid "$pid" call greeter login "correct horse" >/dev/null || true
+for _ in $(seq 40); do
+    kill -0 "$hypr" 2>/dev/null || break
+    sleep 0.25
+done
+echo "session requested: $(grep start_session "$OUT/greetd.log" || echo none)"
+if kill -0 "$hypr" 2>/dev/null; then
+    echo "FAIL: the greeter compositor is still running after the login" >&2
+    exit 1
+fi
+echo "handover: the greeter and its compositor exited"
