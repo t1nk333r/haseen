@@ -450,7 +450,7 @@ Column {
         guardProc.running = true;
     }
 
-    width: typeof settings.width === "number" && settings.width >= 260 ? settings.width : 380
+    width: typeof settings.width === "number" && settings.width >= 260 ? settings.width : 280
     spacing: Theme.gap
     focus: true
 
