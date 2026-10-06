@@ -179,6 +179,7 @@ a notification, and the rest of the config still loads.
 - "Move the clock to the right" → copy `bar.center`/`bar.right` from `haseen shell ipc shell plugins` or `$HASEEN_PATH/default/shell.json` into `~/.config/haseen/shell.json` and move `haseen.clock` (arrays replace, so write the whole section).
 - "Use 24-hour time with seconds" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.clock": {"settings": {"format": "HH:mm:ss"}}}`.
 - "Hide the battery" → `haseen plugin disable haseen.battery`.
+- "Three-finger swipe up opens the menu" → `haseen gestures apply --set '{"g3Up":"menu"}'` (the gestures panel in the bar does the same; `haseen gestures apply --help` lists every key). Never hand-edit `~/.local/state/haseen/toggles/hypr/gestures.lua`: every apply rewrites it.
 - "Super+E opens the file manager" → `~/.config/hypr/bindings.lua` (see `hyprland.md`).
 - "Smaller gaps" → `~/.config/hypr/local.lua` with `hl.config({ general = { gaps_out = 2 } })`.
 - "Switch to gruvbox" → `haseen theme set gruvbox`.

@@ -3,7 +3,7 @@
 # Switching: Control+space toggles between the group's first method
 # (keyboard-us) and the last used one (keyboard-ara). It is fcitx5's own
 # default key and collides with nothing in share/haseen/default/hypr/binds.lua,
-# where SUPER+SPACE is the launcher.
+# where SUPER+SPACE is the menu.
 
 [Hotkey]
 # Pressing the trigger again walks the group instead of toggling, which makes

@@ -157,8 +157,11 @@ theme key. Every bar widget's normal-state text uses `Theme.barForeground`.
 
 Shared state flags live in `~/.local/state/haseen/flags/<name>`; the file
 existing means on. The names are `dnd`, `idle-off`, `screensaver-off`,
-`nightlight` and `recording`. Commands write them, and QML reads them only
-through the `qs.Haseen.Flags` singleton.
+`nightlight`, `recording` and `gestures`. Commands write them, and QML reads
+them only through the `qs.Haseen.Flags` singleton. `gestures` is written by the
+`gestures` hardware quirk on a machine with a touchpad; the `haseen.gestures`
+widget is listed in the default `bar.right` and takes no room without it, so
+enabling it never rewrites the user's `shell.json`.
 
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.

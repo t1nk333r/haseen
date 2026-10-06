@@ -12,6 +12,9 @@ SHELL_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-sessi
 # shell layer because the lock it triggers is the shell's.
 SLEEP_LOCK_UNIT=haseen-sleep-lock.service
 SLEEP_LOCK_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$SLEEP_LOCK_UNIT"
+# Turns core dumps into a "diagnose with AI" notification (bin/haseen-crash-watch).
+CRASH_WATCH_UNIT=haseen-crash-watch.service
+CRASH_WATCH_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$CRASH_WATCH_UNIT"
 
 layer_status() {
     local ok=0 missing=0 p
@@ -47,6 +50,13 @@ layer_status() {
         echo "missing: $SLEEP_LOCK_UNIT not enabled (no lock before suspend)"
         missing=$((missing + 1))
     fi
+    if [[ -L $CRASH_WATCH_UNIT_WANTS ]]; then
+        echo "ok: $CRASH_WATCH_UNIT enabled"
+        ok=$((ok + 1))
+    else
+        echo "missing: $CRASH_WATCH_UNIT not enabled (no crash notifications)"
+        missing=$((missing + 1))
+    fi
     ((missing == 0)) && return 0
     ((ok == 0)) && return 1
     return 2
@@ -65,6 +75,11 @@ layer_apply() {
     else
         run systemctl --user enable "$SLEEP_LOCK_UNIT"
     fi
+    if [[ -L $CRASH_WATCH_UNIT_WANTS ]]; then
+        info "$CRASH_WATCH_UNIT already enabled"
+    else
+        run systemctl --user enable "$CRASH_WATCH_UNIT"
+    fi
     info "the shell starts with the next graphical session; to start it now: haseen shell restart"
 }
 
@@ -74,6 +89,9 @@ layer_remove() {
     fi
     if [[ -L $SLEEP_LOCK_UNIT_WANTS ]]; then
         run systemctl --user disable "$SLEEP_LOCK_UNIT"
+    fi
+    if [[ -L $CRASH_WATCH_UNIT_WANTS ]]; then
+        run systemctl --user disable "$CRASH_WATCH_UNIT"
     fi
     info "kept $HASEEN_USER_CONFIG/shell.json and plugins/ (user files)"
 }

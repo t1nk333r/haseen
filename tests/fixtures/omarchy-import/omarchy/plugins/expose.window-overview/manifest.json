@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "expose.window-overview",
+  "name": "expose.window-overview",
+  "version": "1.0.0",
+  "kinds": [
+    "overlay"
+  ],
+  "entryPoints": {
+    "overlay": "Overlay.qml"
+  }
+}

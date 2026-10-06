@@ -79,10 +79,11 @@ fun display_password_callback(prompt, bullets) {
     prompt_sprite.SetX((screen_width - image.GetWidth()) / 2);
     prompt_sprite.SetY(screen_height / 2 - 40);
 
-    # One dot per typed character, drawn as text so no image ships with it.
+    # One asterisk per typed character (owner's choice), drawn as text so no
+    # image ships with it.
     dots = "";
     for (i = 0; i < bullets; i++)
-        dots += "•";
+        dots += "*";
     dot_image = Image.Text(dots, accent_r, accent_g, accent_b);
     bullets_sprite.SetImage(dot_image);
     bullets_sprite.SetX((screen_width - dot_image.GetWidth()) / 2);

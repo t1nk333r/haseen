@@ -359,6 +359,7 @@ assert_contains "shell.json seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/has
 assert_contains "example seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/haseen/shell.example.json"
 assert_contains "unit enabled" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-shell.service"
 assert_contains "lock-before-sleep enabled with it" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-sleep-lock.service"
+assert_contains "and the crash watcher" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-crash-watch.service"
 assert_eq "layer dry-run wrote nothing" "" "$(find "$HOME" -mindepth 1 -print -quit)"
 assert_eq "seeded shell.json is {}" "{}" "$(jq -c . "$HASEEN_PATH/layers/shell/files/shell.json")"
 capture jq -e '.bar.right | length > 0' "$HASEEN_PATH/layers/shell/files/shell.example.json"
@@ -375,6 +376,7 @@ shell_layer "$fx_qs" 'layer_run_status shell'
 assert_status "status: degraded without the lock-before-sleep unit" 2 "$STATUS"
 assert_contains "status says what that costs" "$OUTPUT" "no lock before suspend"
 ln -s /usr/lib/systemd/user/haseen-sleep-lock.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-sleep-lock.service"
+ln -s /usr/lib/systemd/user/haseen-crash-watch.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-crash-watch.service"
 shell_layer "$fx_bare" 'layer_run_status shell'
 assert_status "status: degraded without packages" 2 "$STATUS"
 assert_contains "status names the missing package" "$OUTPUT" "missing: package quickshell"

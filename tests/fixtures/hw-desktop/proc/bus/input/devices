@@ -1,0 +1,69 @@
+I: Bus=0019 Vendor=0000 Product=0001 Version=0000
+N: Name="Power Button"
+P: Phys=LNXPWRBN/button/input0
+S: Sysfs=/devices/platform/LNXPWRBN:00/input/input1
+U: Uniq=
+H: Handlers=kbd event0 
+B: PROP=0
+B: EV=3
+B: KEY=8000 10000000000000 0
+
+I: Bus=0003 Vendor=046d Product=c52b Version=0111
+N: Name="Logitech USB Receiver Keyboard"
+P: Phys=usb-0000:00:14.0-2/input2:1
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.2/0003:046D:C52B.0003/input/input4
+U: Uniq=
+H: Handlers=sysrq kbd leds event2 
+B: PROP=0
+B: EV=120013
+B: KEY=1000000000007 ff9f207ac14057ff febeffdfffefffff fffffffffffffffe
+B: MSC=10
+B: LED=1f
+
+I: Bus=0003 Vendor=046d Product=c52b Version=0111
+N: Name="Logitech USB Receiver Mouse"
+P: Phys=usb-0000:00:14.0-2/input2:2
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.2/0003:046D:C52B.0003/input/input5
+U: Uniq=
+H: Handlers=mouse0 event3 
+B: PROP=0
+B: EV=17
+B: KEY=ffff0000 0 0 0 0
+B: REL=1943
+B: MSC=10
+
+I: Bus=0003 Vendor=17ef Product=60ee Version=0111
+N: Name="Lenovo TrackPoint Keyboard II Mouse"
+P: Phys=usb-0000:00:14.0-3/input1
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.1/0003:17EF:60EE.0005/input/input7
+U: Uniq=
+H: Handlers=mouse1 event5 
+B: PROP=21
+B: EV=17
+B: KEY=70000 0 0 0 0
+B: REL=903
+B: MSC=10
+
+I: Bus=0003 Vendor=056a Product=0374 Version=0110
+N: Name="Wacom Intuos S Pen"
+P: Phys=usb-0000:00:14.0-4/input0
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-4/1-4:1.0/0003:056A:0374.0006/input/input9
+U: Uniq=
+H: Handlers=mouse2 event6 
+B: PROP=1
+B: EV=1b
+B: KEY=1c23 0 0 0 0 0
+B: ABS=3000003
+B: MSC=1
+
+I: Bus=0003 Vendor=222a Product=0001 Version=0110
+N: Name="ILITEK Multi-Touch"
+P: Phys=usb-0000:00:14.0-5/input0
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-5/1-5:1.0/0003:222A:0001.0007/input/input11
+U: Uniq=
+H: Handlers=mouse3 event7 
+B: PROP=2
+B: EV=1b
+B: KEY=420 0 0 0 0 0
+B: ABS=260800000000003
+B: MSC=20

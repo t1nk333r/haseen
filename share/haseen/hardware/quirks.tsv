@@ -11,11 +11,12 @@
 # match: `*` or comma-separated terms that must all hold
 #   vendor:RE product:RE family:RE chassis:RE   case-insensitive ERE over DMI
 #   probe:NAME    laptop vm nvidia nvidia-gsp nvidia-no-gsp intel-gpu amd-gpu
-#                 wifi bluetooth
+#                 wifi bluetooth touchpad webcam
 fkeys	*	F-keys stay F-keys on Apple-style keyboards (hid_apple fnmode=2)
 wireless-regdom	probe:wifi	Persist the wireless regulatory domain from the timezone
 vm	probe:vm	No animations or blur in a virtual machine (CPU rendering)
 clamshell	probe:laptop	Lid closed with an external monitor turns the built-in panel off
+gestures	probe:touchpad	Touchpad gestures (haseen.gestures): three-finger workspace swipe, four-finger resize, bar widget
 nvidia-gsp	probe:nvidia-gsp	Early KMS for the open NVIDIA module (Turing or newer)
 nvidia-no-gsp	probe:nvidia-no-gsp	Legacy 580xx driver for pre-Turing NVIDIA cards
 vulkan	*	Vulkan ICD loaders for the GPUs present

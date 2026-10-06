@@ -202,4 +202,4 @@ EOF
 } | write_user_file "$desktop_file"
 have update-desktop-database && run update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 
-info "web app installed: $app_name (app launcher: SUPER + SPACE)"
+info "web app installed: $app_name (app launcher: SUPER + SHIFT + SPACE)"

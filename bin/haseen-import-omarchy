@@ -1,0 +1,445 @@
+#!/usr/bin/env bash
+# haseen:summary Bring an Omarchy user's bar, plugins, idle, branding, hooks, themes and Hyprland files over
+# haseen:args [--from DIR] [--hypr DIR] [--state DIR] [--merge] [--dry-run] [--yes]
+#
+# Reads Omarchy's files and never writes to them: the Omarchy config, state
+# and Hyprland backup are sources only (AGENTS.md: the plugins under
+# ~/.config/omarchy/plugins stay where they are and haseen loads them in
+# place, under the same ids).
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+# shellcheck source=../share/haseen/lib/omarchy-import.sh
+source "$HASEEN_PATH/lib/omarchy-import.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+FROM="$CONFIG_HOME/omarchy"
+OMARCHY_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+HYPR_SRC=""
+HYPR_DEST="$CONFIG_HOME/hypr"
+MERGE=false
+# Omarchy's install tree, read only to recognise its stock branding art.
+OMARCHY_SHARE="${OMARCHY_PATH:-/usr/share/omarchy}"
+# The events `haseen hook run` fires (bin/haseen-hook, architecture §7) that
+# Omarchy fires under the same name and arguments.
+HOOK_EVENTS=(theme-set post-update post-boot)
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+usage() {
+    cat <<EOF
+Usage: haseen import omarchy [--from DIR] [--hypr DIR] [--state DIR] [--merge]
+                             [--dry-run] [--yes]
+
+Translates an Omarchy 4 setup into haseen's files:
+
+  shell.json    bar position, transparency and the three sections in order.
+                Omarchy built-ins become their haseen twins (clock formats
+                carry over); add-on plugins keep their id and settings and are
+                enabled, except ones haseen has ported (omagesture becomes
+                haseen.gestures, then haseen gestures apply renders it);
+                Omarchy's service plugins join "services"; idle
+                screensaver/lock seconds go to haseen.idle.
+                -> $SHELL_USER_CONFIG
+  branding      screensaver.txt and about.txt (not Omarchy's stock art)
+                -> $HASEEN_USER_CONFIG/branding/
+  hooks         theme-set, post-update and post-boot hooks that do not call
+                Omarchy commands -> $HASEEN_USER_CONFIG/hooks/
+  themes        user themes with a colors.toml -> $THEME_USER_DIR/
+  Hyprland      plain hl.* settings from monitors.lua, input.lua,
+                looknfeel.lua and autostart.lua, and bindings.lua with o.bind
+                turned into haseen.bind -> $HYPR_DEST/{monitors,local,bindings}.lua,
+                each in a marked block a re-run replaces.
+
+Anything without a haseen equivalent is listed at the end, never guessed.
+
+A user shell.json that already has settings is left alone unless --merge is
+given: then the import goes underneath (every key you set keeps your value;
+service plugins are added to your services). Each file that is changed is
+copied to <file>.bak-<timestamp> first. Re-running changes nothing.
+
+  --from DIR    Omarchy config (default $CONFIG_HOME/omarchy)
+  --hypr DIR    Omarchy's Hyprland files (default: the newest
+                $CONFIG_HOME/hypr.omarchy-* backup)
+  --state DIR   Omarchy state, for the weather location
+                (default ${XDG_STATE_HOME:-$HOME/.local/state}/omarchy)
+  --merge       merge into a shell.json that already has settings
+EOF
+}
+
+args=()
+while (($# > 0)); do
+    case "$1" in
+    --from | --hypr | --state)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        case "$1" in
+        --from) FROM="$2" ;;
+        --hypr) HYPR_SRC="$2" ;;
+        --state) OMARCHY_STATE="$2" ;;
+        esac
+        shift 2
+        ;;
+    --merge)
+        MERGE=true
+        shift
+        ;;
+    *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+[[ -d $FROM ]] || die "no Omarchy config at $FROM (point --from at it)"
+FROM="$(cd "$FROM" && pwd)"
+
+IMPORTED=()
+NOT_IMPORTED=()
+HYPR_CHANGED=false
+GESTURES_MAPPED=false
+SHELL_WRITTEN=false
+GESTURES_G3UP=""
+
+# backup FILE — keep the current FILE beside it before it is replaced.
+backup() {
+    [[ -e $1 ]] || return 0
+    run cp -p -- "$1" "$1.bak-$STAMP"
+}
+
+# copy_file SRC DEST MODE LABEL — copy a whole file that has no merge
+# semantics (branding text, hook scripts): a different file already in place
+# is the user's and stays.
+copy_file() {
+    local src="$1" dest="$2" mode="$3" label="$4"
+    if [[ -e $dest ]]; then
+        if cmp -s -- "$src" "$dest"; then
+            IMPORTED+=("$label (already there)")
+        else
+            NOT_IMPORTED+=("$label: $dest already exists and differs, kept yours")
+        fi
+        return 0
+    fi
+    run install -Dm"$mode" -- "$src" "$dest"
+    IMPORTED+=("$label")
+}
+
+# --- shell.json ---------------------------------------------------------------
+
+# provided_ids — the ids the Omarchy plugin directory provides: the registry
+# id haseen gives each directory and its manifest's own id.
+provided_ids() {
+    local d
+    for d in "$FROM/plugins"/*/; do
+        [[ -d $d ]] || continue
+        d="${d%/}"
+        plugin_id_of "$d" 2>/dev/null || true
+        jq -r '.id // empty | strings | if test("^[a-z0-9-]+$") then "omarchy." + . else . end' \
+            "$d/manifest.json" 2>/dev/null || true
+    done
+}
+
+# weather_location — Omarchy's stored weather location as a wttr.in query
+# (coordinates when it has them); empty means "guess from the IP" in both.
+weather_location() {
+    local f="$OMARCHY_STATE/settings/weather.json"
+    [[ -r $f ]] || return 0
+    jq -r 'if (.latitude | type) == "number" and (.longitude | type) == "number" then "\(.latitude),\(.longitude)"
+           elif (.name | type) == "string" then .name else "" end' "$f" 2>/dev/null || true
+}
+
+import_shell_json() {
+    local om='{}' known services result imp added user merged
+    if [[ -f $FROM/shell.json ]]; then
+        jq -e 'type == "object"' "$FROM/shell.json" >/dev/null 2>&1 ||
+            die "$FROM/shell.json is not a JSON object"
+        om="$(jq -c . "$FROM/shell.json")"
+    fi
+    known="$({ plugin_ids; provided_ids; } | jq -R . | jq -sc 'map(select(. != "")) | unique')"
+    services="$(jq -c '.services // []' "$SHELL_DEFAULT_CONFIG")"
+    result="$(omarchy_import_shell "$om" "$known" "$services" "$(weather_location)" "$(ported_declared)")"
+    jq -e 'any(.mapped[]; endswith("-> haseen.gestures"))' <<<"$result" >/dev/null && GESTURES_MAPPED=true
+    imp="$(jq -c .config <<<"$result")"
+    added="$(jq -c .added <<<"$result")"
+    mapfile -t -O "${#NOT_IMPORTED[@]}" NOT_IMPORTED < <(jq -r '.report[]' <<<"$result")
+    mapfile -t -O "${#IMPORTED[@]}" IMPORTED < <(jq -r '
+        (.mapped[] | "bar: \(.)"),
+        (.kept[] | "bar: \(.) (plugin, settings kept)"),
+        (.added[] | "services: \(.)"),
+        (.config.plugins["haseen.idle"].settings // {} | to_entries[] | "haseen.idle: \(.key) = \(.value) s"),
+        (.config.bar // {} | to_entries[] | select(.value | type != "array") | "bar.\(.key) = \(.value)")' <<<"$result")
+
+    # Read and write under the shell.json lock, like every other writer.
+    shell_config_lock
+    user="$(shell_user_json)"
+    merged="$(omarchy_import_merge "$user" "$imp" "$added")"
+    GESTURES_G3UP="$(gestures_g3up "$merged")"
+    if [[ $(jq -Sc . <<<"$merged") == "$(jq -Sc . <<<"$user")" ]]; then
+        info "$SHELL_USER_CONFIG already holds the import"
+        return 0
+    fi
+    if [[ $(jq -c . <<<"$user") != '{}' ]] && ! $MERGE; then
+        die "$SHELL_USER_CONFIG already has your settings; re-run with --merge to add the import under them (yours win, a backup is kept)"
+    fi
+    backup "$SHELL_USER_CONFIG"
+    jq . <<<"$merged" | shell_config_write
+    SHELL_WRITTEN=true
+}
+
+# ported_declared — {"<ported id>": [its setting keys]} from the manifests
+# haseen loads, so only settings the port declares are carried to it.
+ported_declared() {
+    local id dir out='{}' keys
+    for id in "${OMARCHY_PORTED[@]}"; do
+        dir="$(plugin_dir "$id")" || continue
+        keys="$(plugin_manifest "$dir" | jq -c '.settings // {} | keys')"
+        out="$(jq -c --arg id "$id" --argjson keys "$keys" '.[$id] = $keys' <<<"$out")"
+    done
+    printf '%s\n' "$out"
+}
+
+# gestures_g3up USER_JSON — the haseen.gestures g3Up in effect once USER_JSON
+# is the user shell.json (manifest default under haseen's defaults under it);
+# empty when haseen.gestures is not installed.
+gestures_g3up() {
+    local dir default
+    dir="$(plugin_dir haseen.gestures)" || return 0
+    default="$(plugin_manifest "$dir" | jq -c '.settings.g3Up.default // "none"')"
+    jq -rn --slurpfile d "$SHELL_DEFAULT_CONFIG" --argjson u "$1" --argjson def "$default" \
+        '($d[0] * $u).plugins["haseen.gestures"].settings.g3Up // $def'
+}
+
+# apply_gestures — haseen.gestures renders its settings into Hyprland only
+# through `haseen gestures apply`, so an import that just wrote omagesture's
+# settings over to it runs that (or says to, when the command is missing).
+apply_gestures() {
+    $GESTURES_MAPPED && $SHELL_WRITTEN || return 0
+    if [[ -x $BIN_DIR/haseen-gestures-apply ]]; then
+        run "$BIN_DIR/haseen-gestures-apply" ||
+            warn "haseen gestures apply failed; run it again to apply the imported gestures"
+    else
+        info "imported touchpad gestures: apply them with haseen gestures apply"
+    fi
+}
+
+# --- shell.toml -----------------------------------------------------------------
+
+import_font() {
+    local toml="$FROM/shell.toml" section key value
+    [[ -r $toml ]] || return 0
+    while IFS=$'\t' read -r section key value; do
+        if [[ $section == font && $key == base-size ]]; then
+            if [[ $value == "${THEME_TOKEN_DEFAULTS[font_size]}" ]]; then
+                IMPORTED+=("font base-size $value (haseen's default size already)")
+            else
+                NOT_IMPORTED+=("shell.toml [font] base-size = $value: haseen takes the size from the theme (font_size in colors.toml), not imported")
+            fi
+        else
+            NOT_IMPORTED+=("shell.toml [$section] $key: no haseen equivalent, dropped")
+        fi
+    done < <(awk '
+        /^[ \t]*(#|$)/ { next }
+        /^[ \t]*\[/ { s = $0; gsub(/^[ \t]*\[|\][ \t]*$/, "", s); next }
+        /=/ {
+            k = $0; sub(/[ \t]*=.*/, "", k); gsub(/^[ \t]+/, "", k)
+            v = $0; sub(/^[^=]*=[ \t]*/, "", v); sub(/[ \t]*(#.*)?$/, "", v); gsub(/^"|"$/, "", v)
+            print s "\t" k "\t" v
+        }' "$toml")
+}
+
+# --- branding, hooks, themes ----------------------------------------------------
+
+# omarchy_stock FILE — FILE is art Omarchy ships (its logo seeds about.txt),
+# which would brand haseen as Omarchy.
+omarchy_stock() {
+    local share f
+    share="$(sysroot_path "$OMARCHY_SHARE")"
+    for f in "$share/logo.txt" "$share/icon.txt" "$share/config/omarchy/branding/"*.txt; do
+        [[ -f $f ]] && cmp -s -- "$1" "$f" && return 0
+    done
+    return 1
+}
+
+import_branding() {
+    local target src
+    for target in screensaver about; do
+        src="$FROM/branding/$target.txt"
+        [[ -f $src ]] || continue
+        if omarchy_stock "$src"; then
+            NOT_IMPORTED+=("branding/$target.txt: Omarchy's stock art, kept haseen's")
+            continue
+        fi
+        copy_file "$src" "$HASEEN_USER_CONFIG/branding/$target.txt" 0644 "branding/$target.txt"
+    done
+}
+
+# import_hook SRC EVENT DEST LABEL
+import_hook() {
+    local src="$1" event="$2" dest="$3" label="$4" e
+    for e in "${HOOK_EVENTS[@]}"; do
+        if [[ $e == "$event" ]]; then
+            if grep -Eq "$OMARCHY_CMD_ERE" "$src"; then
+                NOT_IMPORTED+=("$label: runs Omarchy commands, not imported")
+            else
+                copy_file "$src" "$dest" 0755 "$label"
+            fi
+            return 0
+        fi
+    done
+    NOT_IMPORTED+=("$label: haseen has no $event event, not imported")
+}
+
+import_hooks() {
+    local path name hook
+    for path in "$FROM/hooks"/*; do
+        name="${path##*/}"
+        if [[ -d $path && $name == *.d ]]; then
+            for hook in "$path"/*; do
+                # *.sample files are switched off in Omarchy too.
+                [[ -f $hook && $hook != *.sample ]] || continue
+                import_hook "$hook" "${name%.d}" "$HASEEN_USER_CONFIG/hooks/$name/${hook##*/}" "hooks/$name/${hook##*/}"
+            done
+        elif [[ -f $path && $name != *.sample ]]; then
+            import_hook "$path" "$name" "$HASEEN_USER_CONFIG/hooks/$name" "hooks/$name"
+        fi
+    done
+}
+
+import_themes() {
+    local d name dest
+    for d in "$FROM/themes"/*/; do
+        [[ -d $d ]] || continue
+        d="${d%/}"
+        name="${d##*/}"
+        if [[ ! -f $d/colors.toml ]]; then
+            NOT_IMPORTED+=("themes/$name: no colors.toml, not a theme haseen can render")
+            continue
+        fi
+        if [[ ! $name =~ $_THEME_NAME_RE ]]; then
+            NOT_IMPORTED+=("themes/$name: not a valid theme name, not imported")
+            continue
+        fi
+        dest="$THEME_USER_DIR/$name"
+        if [[ -e $dest ]]; then
+            if diff -rq -- "$d" "$dest" >/dev/null 2>&1; then
+                IMPORTED+=("themes/$name (already there)")
+            else
+                NOT_IMPORTED+=("themes/$name: $dest already exists and differs, kept yours")
+            fi
+            continue
+        fi
+        run mkdir -p -- "$THEME_USER_DIR"
+        # -L: a theme linked in from elsewhere arrives as real files.
+        run cp -RL -- "$d" "$dest"
+        IMPORTED+=("themes/$name (haseen theme set $name)")
+    done
+}
+
+# --- Hyprland -------------------------------------------------------------------
+
+declare -A HYPR_ORIG=() HYPR_TEXT=()
+
+# hypr_carry SRC_NAME DEST_NAME — translate SRC_NAME from the Omarchy dir into
+# its marked block in DEST_NAME (held in memory until hypr_write).
+hypr_carry() {
+    local name="$1" dest="$2" src="$HYPR_SRC/$1" outside stream body="" kind line block shown
+    [[ -f $src ]] || return 0
+    if [[ -z ${HYPR_ORIG[$dest]+set} ]]; then
+        HYPR_ORIG[$dest]=""
+        [[ -f $HYPR_DEST/$dest ]] && HYPR_ORIG[$dest]="$(cat -- "$HYPR_DEST/$dest")"
+        HYPR_TEXT[$dest]="${HYPR_ORIG[$dest]}"
+    fi
+    outside="$(omarchy_lua_splice <(printf '%s' "${HYPR_TEXT[$dest]}") "$name" /dev/null)"
+    stream="$(omarchy_lua_translate "$src" <(printf '%s\n' "$outside") "$name" "$GESTURES_G3UP")"
+    while IFS= read -r line; do
+        kind="${line%%$'\t'*}"
+        line="${line#*$'\t'}"
+        case "$kind" in
+        L) body+="$line"$'\n' ;;
+        R) NOT_IMPORTED+=("hypr/$line") ;;
+        esac
+    done <<<"$stream"
+    block=""
+    if [[ $body =~ [^[:space:]] ]]; then
+        shown="${src/#"$HOME"/\~}"
+        block="$(omarchy_lua_begin "$name")"$'\n'
+        block+="-- Carried over from $shown by \`haseen import omarchy\`;"$'\n'
+        block+="-- a re-run replaces everything up to the closing marker."$'\n'
+        block+="$body$(omarchy_lua_end "$name")"$'\n'
+        IMPORTED+=("hypr/$name -> $dest")
+    else
+        IMPORTED+=("hypr/$name: nothing new for $dest")
+    fi
+    HYPR_TEXT[$dest]="$(omarchy_lua_splice <(printf '%s' "${HYPR_TEXT[$dest]}") "$name" <(printf '%s' "$block"))"
+}
+
+hypr_write() {
+    local dest file
+    for dest in monitors.lua local.lua bindings.lua; do
+        [[ -n ${HYPR_TEXT[$dest]+set} && ${HYPR_TEXT[$dest]} != "${HYPR_ORIG[$dest]}" ]] || continue
+        file="$HYPR_DEST/$dest"
+        backup "$file"
+        printf '%s\n' "${HYPR_TEXT[$dest]}" | write_user_file "$file"
+        HYPR_CHANGED=true
+    done
+}
+
+import_hypr() {
+    local f name
+    if [[ -n $HYPR_SRC ]]; then
+        [[ -d $HYPR_SRC ]] || die "no such directory: $HYPR_SRC"
+    else
+        for f in "$CONFIG_HOME"/hypr.omarchy-*/; do
+            [[ -d $f ]] && HYPR_SRC="${f%/}"
+        done
+        if [[ -z $HYPR_SRC ]]; then
+            NOT_IMPORTED+=("Hyprland: no $CONFIG_HOME/hypr.omarchy-* backup found; point --hypr at Omarchy's hypr directory")
+            return 0
+        fi
+    fi
+    HYPR_SRC="$(cd "$HYPR_SRC" && pwd)"
+    [[ $HYPR_SRC != "$(realpath -m -- "$HYPR_DEST")" ]] ||
+        die "--hypr is haseen's own $HYPR_DEST; point it at a copy of Omarchy's files"
+    hypr_carry monitors.lua monitors.lua
+    hypr_carry input.lua local.lua
+    hypr_carry looknfeel.lua local.lua
+    hypr_carry autostart.lua local.lua
+    hypr_carry bindings.lua bindings.lua
+    for f in "$HYPR_SRC"/*.lua; do
+        name="${f##*/}"
+        [[ -f $f ]] || continue
+        case "$name" in
+        monitors.lua | input.lua | looknfeel.lua | autostart.lua | bindings.lua) ;;
+        *) NOT_IMPORTED+=("hypr/$name: not imported (haseen seeds its own hyprland.lua; put personal additions in local.lua)") ;;
+        esac
+    done
+    hypr_write
+}
+
+# shell.json first: a refusal there must stop the run before anything is written.
+import_shell_json
+import_font
+import_branding
+import_hooks
+import_themes
+import_hypr
+apply_gestures
+
+echo "Imported:"
+((${#IMPORTED[@]} == 0)) || printf '  %s\n' "${IMPORTED[@]}"
+echo "Not imported:"
+((${#NOT_IMPORTED[@]} == 0)) || printf '  %s\n' "${NOT_IMPORTED[@]}"
+if $HYPR_CHANGED && ! $DRY_RUN; then
+    info "Hyprland files changed: apply them with hyprctl reload"
+fi

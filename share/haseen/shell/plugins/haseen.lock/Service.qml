@@ -34,7 +34,43 @@ Scope {
     readonly property string pamConfigDirectory: _text(settings.pamConfigDirectory, "/etc/pam.d")
 
     property bool previewShown: false
-    readonly property bool locked: sessionLock.locked || previewShown
+    // Our own record of "a lock was asked for and not yet released". Not
+    // `sessionLock.locked`: Quickshell 0.3 does not notify a change to that
+    // property when it is assigned from JS, so a binding on it stayed false
+    // for the whole lock, submit() returned early, and Enter on the lock screen
+    // did nothing (io, 2026-10-06; reproduced in a nested session, plan 048).
+    // `secure` is the compositor's confirmation and does notify.
+    property bool lockRequested: false
+    readonly property bool locked: lockRequested || sessionLock.secure || previewShown
+
+    // "Oopsie daisy, your lock screen app died": when the shell crashes while
+    // the session is locked, Hyprland keeps the session locked behind its red
+    // screen and waits for a lock client. systemd restarts the shell
+    // (Restart=on-failure), and this marker tells the new instance the old one
+    // was holding the lock, so it takes the lock back
+    // (misc.allow_session_lock_restore, set in default/hypr/looknfeel.lua)
+    // and the owner gets a password field instead of the red screen. In the
+    // runtime dir, so a reboot forgets it. `haseen lock release` clears it.
+    readonly property string heldMarker: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/haseen-lock-held"
+
+    onLockRequestedChanged: if (!previewMode)
+        heldFile.setText(lockRequested ? "1\n" : "0\n")
+
+    FileView {
+        id: heldFile
+
+        path: root.heldMarker
+        printErrors: false
+        // Synchronous: the marker must be on disk before the session can die.
+        blockWrites: true
+        atomicWrites: true
+        onLoaded: {
+            if (!root.previewMode && text().trim() === "1" && !root.locked) {
+                console.warn(root.pluginId + ": the previous shell died holding the lock; taking it back");
+                root.lock();
+            }
+        }
+    }
     property bool busy: false
     property string message: ""
     property string _pending: ""
@@ -53,6 +89,7 @@ Scope {
             previewShown = true;
             return;
         }
+        lockRequested = true;
         sessionLock.locked = true;
     }
 
@@ -87,10 +124,12 @@ Scope {
 
     function _unlocked(): void {
         _reset();
-        if (previewShown)
+        if (previewShown) {
             previewShown = false;
-        else
+        } else {
+            lockRequested = false;
             sessionLock.locked = false;
+        }
     }
 
     function _failed(text: string): void {
@@ -130,7 +169,10 @@ Scope {
         config: root.pamConfig
         configDirectory: root.pamConfigDirectory
 
-        onResponseRequiredChanged: root._respond()
+        // pamMessage only. Handling responseRequiredChanged as well answered
+        // the first "Password:" twice: the second call saw an answered prompt
+        // and aborted as "Unsupported PAM prompt", so even the right password
+        // could never unlock (io, 2026-10-06, plan 048).
         onPamMessage: root._respond()
         onCompleted: result => {
             if (result === PamResult.Success)

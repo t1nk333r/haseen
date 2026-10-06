@@ -52,8 +52,9 @@ haseen.bind("SUPER + N", "Notes", haseen.ipc("panel", "toggle", "alice.notes"))
 
 Options (4th argument) are Hyprland bind flags, e.g.
 `{ locked = true, repeating = true }` (see `binds.lua` for volume keys).
-Default shell keys: SUPER+SPACE launcher, SUPER+A AI panel, SUPER+ESCAPE
-close panel, SUPER+CTRL+L lock.
+Default shell keys: SUPER+SPACE menu, SUPER+SHIFT+SPACE app launcher,
+SUPER+ESCAPE system menu, SUPER+A AI panel, SUPER+CTRL+ESCAPE close panel,
+SUPER+CTRL+L lock.
 
 ## Monitors (`~/.config/hypr/monitors.lua`)
 

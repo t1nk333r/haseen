@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "t1nk33r.active-window",
+  "name": "t1nk33r.active-window",
+  "version": "1.0.0",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  }
+}

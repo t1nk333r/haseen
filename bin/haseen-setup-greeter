@@ -116,15 +116,21 @@ if [[ $choice == haseen ]]; then
     run_root install -d -o greeter -g greeter -m 0700 "$GREETER_STATE_DIR"
 fi
 
-# Plymouth hands the screen over to greetd. Without this ordering the splash
-# and the greeter fight over the VT and the handover flickers through a black
-# console; with it, the splash stays up until there is something to replace it.
+# Plymouth hands the screen straight to the session. The stock ordering
+# (After=plymouth-quit-wait) lets plymouth quit and clear first, so the VT's
+# text console shows between the splash and the first compositor frame.
+# Instead greetd takes over the way GDM does: it conflicts with
+# plymouth-quit.service and quits plymouth itself with --retain-splash, which
+# leaves the last splash frame on screen until Hyprland draws over it. The
+# leading '-' keeps a boot without plymouth working.
 printf '%s\n' \
-    "# Written by haseen setup greeter: no black console between the splash" \
-    "# and the login screen." \
+    "# Written by haseen setup greeter: the splash stays up until the" \
+    "# compositor draws, with no text console in between." \
     "[Unit]" \
-    "After=plymouth-quit-wait.service" \
+    "Conflicts=plymouth-quit.service" \
+    "After=plymouth-start.service plymouth-quit.service systemd-user-sessions.service" \
     "[Service]" \
+    "ExecStartPre=-/usr/bin/plymouth quit --retain-splash" \
     "TTYVTDisallocate=no" |
     write_root_file /etc/systemd/system/greetd.service.d/haseen-plymouth.conf
 

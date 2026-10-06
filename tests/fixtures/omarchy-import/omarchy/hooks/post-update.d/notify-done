@@ -1,0 +1,3 @@
+#!/bin/bash
+# A user hook with no Omarchy dependency: carried to haseen's post-update.
+notify-send "System updated"

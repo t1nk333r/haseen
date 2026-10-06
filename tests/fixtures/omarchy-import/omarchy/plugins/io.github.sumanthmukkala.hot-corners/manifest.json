@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.sumanthmukkala.hot-corners",
+  "name": "io.github.sumanthmukkala.hot-corners",
+  "version": "1.0.0",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

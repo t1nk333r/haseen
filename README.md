@@ -40,6 +40,11 @@ The installer copies the tree to `/usr/local` (`bin/haseen*`, `share/haseen/`)
 and applies layers through `haseen layer apply`. Every command that changes the
 system accepts `--dry-run`.
 
+Coming from Omarchy? `haseen import omarchy --dry-run` shows how your bar,
+add-on plugins, idle times, branding, hooks, themes and Hyprland overrides
+translate, and lists what has no haseen equivalent; run it without
+`--dry-run` to write them. Omarchy's own files are only read.
+
 | Layer | What it adds |
 |---|---|
 | `base` | essentials, ufw, snapper check |

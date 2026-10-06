@@ -85,7 +85,9 @@ QtObject {
         // quit = true: greetd starts the session only once the greeter is gone,
         // and Quickshell's own docs warn that a greeter that lingers gets
         // restarted. The memory write above is synchronous (blockWrites).
-        Greetd.launch(Greeter.commandFor(currentSession.exec), [], true);
+        // systemd-cat: the session's own start-up output goes to the journal,
+        // not onto the VT under the first compositor frame.
+        Greetd.launch(["systemd-cat", "-t", currentSession.id].concat(Greeter.commandFor(currentSession.exec)), [], true);
     }
 
     property Connections greetd: Connections {

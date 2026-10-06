@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "idle": {
+    "screensaver": 150,
+    "lock": 300
+  },
+  "bar": {
+    "position": "top",
+    "transparent": false,
+    "centerAnchor": "omarchy.clock",
+    "layout": {
+      "left": [
+        {
+          "id": "omarchy.menu"
+        },
+        {
+          "id": "omarchy.workspaces"
+        },
+        {
+          "id": "agx.screen-time"
+        },
+        {
+          "id": "t1nk33r.active-window",
+          "maxChars": 25
+        }
+      ],
+      "center": [
+        {
+          "id": "omarchy.indicators"
+        },
+        {
+          "id": "omarchy.clock",
+          "format": "dddd HH:mm",
+          "formatAlt": "d MMMM 'W'ww yyyy",
+          "verticalFormat": "HH\n—\nmm"
+        },
+        {
+          "id": "t1nk33r.omaprayers",
+          "barDisplay": "Icon only",
+          "calculationMethod": 4,
+          "iqamaAsr": 20,
+          "iqamaDhuhr": 20,
+          "iqamaFajr": 25,
+          "iqamaIsha": 20,
+          "iqamaMaghrib": 5,
+          "istijabah": true,
+          "istijabahLeadMinutes": 15,
+          "language": "English",
+          "latitude": "24.7136",
+          "locationLabel": "Riyadh",
+          "longitude": "46.6753",
+          "notifications": false,
+          "panelStyle": "Horizon",
+          "timeFormat": "24-hour",
+          "timezone": "Asia/Riyadh"
+        },
+        {
+          "id": "omarchy.keyboard-layout"
+        },
+        {
+          "id": "omarchy.weather"
+        },
+        {
+          "id": "t1nk33r.privacy"
+        },
+        {
+          "id": "omarchy.system-update"
+        }
+      ],
+      "right": [
+        {
+          "id": "omarchy.tray"
+        },
+        {
+          "id": "crmne.omastats",
+          "barLabels": "text",
+          "batteryStyle": "text",
+          "cpuStyle": "text",
+          "gpuTabVersion": 1,
+          "graphWidth": 32,
+          "modules": "cpu,memory",
+          "showProcesses": true,
+          "tabs": "cpu,gpu,memory,disks,network,sensors,battery",
+          "utilizationColors": false,
+          "memoryStyle": "text"
+        },
+        {
+          "id": "t1nk33r.adb-devices"
+        },
+        {
+          "id": "t1nk33r.workspace-layout"
+        },
+        {
+          "id": "t1nk33r.vigil"
+        },
+        {
+          "id": "io.github.heroesofcode.omagesture",
+          "g3Up": "none",
+          "g3Down": "none"
+        },
+        {
+          "id": "t1nk33r.tailscale"
+        },
+        {
+          "id": "t1nk33r.agents"
+        },
+        {
+          "id": "t1nk33r.nearby-share",
+          "mode": "localsend",
+          "receiverEnabled": true
+        },
+        {
+          "id": "omarchy.bluetooth"
+        },
+        {
+          "id": "omarchy.network"
+        },
+        {
+          "id": "omarchy.audio"
+        },
+        {
+          "id": "io.github.juliusmork-sys.monitor-settings-extender"
+        },
+        {
+          "id": "t1nk33r.power",
+          "showPercentage": true
+        }
+      ]
+    }
+  },
+  "plugins": [
+    {
+      "id": "io.github.sumanthmukkala.hot-corners"
+    },
+    {
+      "id": "expose.window-overview"
+    }
+  ]
+}
