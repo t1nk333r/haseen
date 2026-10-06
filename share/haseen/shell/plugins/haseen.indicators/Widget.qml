@@ -12,6 +12,11 @@ import "Indicators.js" as Logic
 // appear dimmed so they can be switched on. A click runs the `haseen toggle …`
 // / `haseen capture screenrecord` command that flips the state; the flag
 // watch brings the change back here, so nothing is polled.
+//
+// Only the indicators that are on take room in the bar. Omarchy reveals the
+// others inline, which widens the widget, and in the centre section that
+// shifted the clock and every other module on each hover. Here they open in a
+// strip laid over the bar beside the widget, so the bar never moves.
 Item {
     id: root
 
@@ -32,39 +37,50 @@ Item {
     })
     property bool revealHeld: false
     readonly property bool reveal: settings.alwaysShow === true || revealHeld
-    // Inactive first: the active block keeps its place next to whatever sits
-    // after the widget (the clock, in Omarchy's layout) as the others appear.
-    readonly property var cells: (reveal ? parts.inactive.map(id => ({ id: id, active: false })) : []).concat(parts.active.map(id => ({ id: id, active: true })))
+    readonly property var activeCells: parts.active.map(id => ({ id: id, active: true }))
+    readonly property var revealCells: reveal ? parts.inactive.map(id => ({ id: id, active: false })) : []
     // With nothing on, a sliver stays to hover over.
     readonly property int hoverZone: ids.length > 0 ? Theme.gap : 0
+    readonly property bool hovered: hover.hovered || revealHovered
+    property bool revealHovered: false
 
     property Item tipItem: null
     property string tipText: ""
 
-    implicitWidth: cells.length > 0 ? grid.implicitWidth : hoverZone
-    implicitHeight: vertical ? (cells.length > 0 ? grid.implicitHeight : hoverZone) : Config.barHeight
+    implicitWidth: activeCells.length > 0 ? grid.implicitWidth : hoverZone
+    implicitHeight: vertical ? (activeCells.length > 0 ? grid.implicitHeight : hoverZone) : Config.barHeight
 
-    HoverHandler {
-        id: hover
-        onHoveredChanged: {
-            if (hovered) {
-                hideTimer.stop();
-                root.revealHeld = true;
-            } else {
-                hideTimer.restart();
-            }
+    function showTip(item: Item, on: bool): void {
+        if (on) {
+            tipItem = item;
+            tipText = item.cell.tooltip;
+        } else if (tipItem === item) {
+            tipItem = null;
         }
     }
 
-    // Revealing widens the widget and can slide it out from under the
-    // pointer for a moment; a short grace keeps it from flickering shut.
+    onHoveredChanged: {
+        if (hovered) {
+            hideTimer.stop();
+            revealHeld = true;
+        } else {
+            hideTimer.restart();
+        }
+    }
+
+    HoverHandler {
+        id: hover
+    }
+
+    // The pointer crosses from the bar into the strip, a separate surface;
+    // a short grace keeps the strip from closing on the way.
     // haseen:ui-timeout
     Timer {
         id: hideTimer
         interval: 400
         repeat: false
         onTriggered: {
-            if (!hover.hovered)
+            if (!root.hovered)
                 root.revealHeld = false;
         }
     }
@@ -72,33 +88,62 @@ Item {
     Grid {
         id: grid
         anchors.centerIn: parent
-        columns: root.vertical ? 1 : Math.max(1, root.cells.length)
+        columns: root.vertical ? 1 : Math.max(1, root.activeCells.length)
 
         Repeater {
-            model: root.cells
+            model: root.activeCells
 
-            delegate: BarButton {
-                id: button
-
-                required property var modelData
-                readonly property var cell: Logic.cell(modelData.id, modelData.active)
-
+            delegate: IndicatorCell {
+                host: root
                 vertical: root.vertical
-                // Not root.height: the slot is 0 high until the widget has
-                // width, and Grid skips zero-sized children.
-                height: root.vertical ? implicitHeight : Config.barHeight
-                padding: Math.round(Theme.gap * 0.75)
-                glyph: cell.glyph
-                opacity: modelData.active ? 1 : 0.45
-                onClicked: Quickshell.execDetached(cell.command)
+            }
+        }
+    }
+
+    // The dimmed indicators, beside the widget on the bar's own row (above
+    // it on a side bar), toward the start of the bar so the active block
+    // keeps its neighbour. At the start edge the compositor flips the strip
+    // to the other side. A popup draws over the bar, so nothing reflows.
+    LazyLoader {
+        active: root.revealCells.length > 0
+
+        PopupWindow {
+            visible: true
+            color: "transparent"
+            anchor.item: root
+            anchor.edges: root.vertical ? Edges.Top | Edges.Left : Edges.Left | Edges.Top
+            anchor.gravity: root.vertical ? Edges.Top | Edges.Right : Edges.Left | Edges.Bottom
+            anchor.adjustment: PopupAdjustment.Flip
+            // Never 0: the strip empties a moment before the loader drops the
+            // window, and a popup repositioned to size 0 is a protocol error
+            // that kills the shell's Wayland connection.
+            implicitWidth: Math.max(1, root.vertical ? root.width : strip.implicitWidth)
+            implicitHeight: Math.max(1, root.vertical ? strip.implicitHeight : Config.barHeight)
+            onVisibleChanged: if (!visible) root.revealHovered = false
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.background
+                radius: Theme.radius
 
                 HoverHandler {
-                    onHoveredChanged: {
-                        if (hovered) {
-                            root.tipItem = button;
-                            root.tipText = button.cell.tooltip;
-                        } else if (root.tipItem === button) {
-                            root.tipItem = null;
+                    onHoveredChanged: root.revealHovered = hovered
+                }
+
+                Grid {
+                    id: strip
+                    anchors.centerIn: parent
+                    columns: root.vertical ? 1 : Math.max(1, root.revealCells.length)
+
+                    Repeater {
+                        model: root.revealCells
+
+                        delegate: IndicatorCell {
+                            host: root
+                            vertical: root.vertical
+                            // The strip has the bar's colour even when the
+                            // bar itself is see-through.
+                            color: Theme.foreground
                         }
                     }
                 }
