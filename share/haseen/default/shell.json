@@ -6,19 +6,21 @@
     "left": ["haseen.workspaces"],
     "center": ["haseen.clock", "haseen.media"],
     "right": [
+      "haseen.tray",
       "haseen.privacy",
       "haseen.idle",
       "haseen.pager",
       "haseen.prayers",
       "haseen.sysusage",
-      "haseen.tray",
       "haseen.weather",
       "haseen.gestures",
       "haseen.audio",
       "haseen.bluetooth",
       "haseen.network",
       "haseen.battery"
-    ]
+    ],
+    "overflow": [],
+    "pinned": []
   },
   "frame": { "enabled": true, "thickness": 6 },
   "plugins": {

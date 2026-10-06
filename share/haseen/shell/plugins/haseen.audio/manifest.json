@@ -3,18 +3,25 @@
   "id": "haseen.audio",
   "name": "Audio",
   "version": "1.0.0",
-  "description": "Default output volume; scroll to change, click to mute",
+  "description": "Default output volume in the bar (scroll to change, middle click to mute) and a panel for output/input volume and device and per-app volumes (Quickshell.Services.Pipewire)",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "panel"
   ],
   "entry": {
-    "bar-widget": "Widget.qml"
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
   },
   "settings": {
     "step": {
       "type": "number",
       "default": 0.05,
       "description": "Volume change per scroll step (0-1)"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose read-only IPC target haseen.audio (state) while the panel is open"
     }
   },
   "permissions": []

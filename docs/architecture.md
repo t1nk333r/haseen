@@ -141,7 +141,8 @@ Rules every layer follows:
 ```json
 {
   "bar": { "position": "top|bottom|left|right", "height": 28, "transparent": false,
-           "left": ["haseen.workspaces"], "center": ["haseen.clock", "haseen.media"], "right": ["haseen.tray", "…"] },
+           "left": ["haseen.workspaces"], "center": ["haseen.clock", "haseen.media"], "right": ["haseen.tray", "…"],
+           "overflow": [], "pinned": [] },
   "frame": { "enabled": true, "thickness": 6 },
   "plugins": { "haseen.clock": { "enabled": true, "settings": { "format": "HH:mm" } },
                "haseen.tray": { "settings": { "pinned": false } } },
@@ -154,6 +155,46 @@ to `Theme.radius * 2`. Double-clicking empty bar space toggles `bar.transparent`
 the text colour then comes from `Theme.barForeground`, which is set at runtime
 from the wallpaper under the bar (`bin/haseen-bar-text-color`) and is not a
 theme key. Every bar widget's normal-state text uses `Theme.barForeground`.
+
+**Tray anchor.** `haseen.tray` anchors the right section: when listed in
+`bar.right` it is always drawn first there, whatever its index, and nothing is
+placed before it (`Overflow.sections`). An id listed in two sections is shown
+once, where it comes first (left, centre, right).
+
+**Overflow.** When the sections do not fit the bar's length, widgets move into
+a panel behind a chevron at the end of the bar (the right end, or the bottom of
+a vertical bar), shown only while something is in it. "Does not fit" means a
+side section comes within `Theme.gap` of the centred centre section (or, with
+no centre, of the other side section). `share/haseen/shell/Overflow.js` decides,
+and `tests/test-bar-overflow.sh` tests it:
+
+- `bar.overflow` ids are always in the panel, first, in their order, from any
+  section. The tray never is.
+- Then, automatically, the right section gives up widgets from its innermost
+  end (the first after the tray) outwards; if the left section still reaches
+  the centre, it gives up its innermost (last) widgets. The centre section never
+  overflows on its own. `bar.pinned` ids, the tray and zero-width widgets are
+  never moved automatically; `bar.overflow` wins over `bar.pinned`.
+- The chevron's own length counts. A widget that left comes back only once it
+  fits with `2 × Theme.gap` to spare, so a width that wobbles does not flip it.
+- Each screen's bar computes its own, again whenever a widget's size, the bar's
+  length or these settings change (bindings and a deferred call, no timer).
+
+The panel (`BarOverflowPanel.qml`, lazy) slides out under the chevron, placed
+by `PanelPlacement.offset`, and holds the widgets live: each one's bar slot is
+moved into the panel's cell while it is open and back to a zero-size, clipped
+cell in the bar when it closes, never rebuilt or hidden, so widgets keep their
+state, IPC targets stay single, and a click opens their own popup as in the bar.
+Its window spans the bar edge from the popups' origin, transparent and without
+input outside the card, so native panels open under the widget and Omarchy
+popups (`Ui/KeyboardPanel`) below the panel; the panel stays open under such a
+popup and closes with it. Escape or a click outside closes it. **Arrange** in
+the panel's footer, or a right click on the chevron, turns clicks into moves: a
+click on a bar widget runs `haseen bar overflow add`, one in the panel `pin`
+("keep in bar"). A modifier gesture cannot do this, because Wayland only tells
+the client with keyboard focus about Shift, and a bar never has it. The same
+edits from a terminal: `haseen bar overflow add|remove|pin|unpin <id>` and
+`list`.
 
 Shared state flags live in `~/.local/state/haseen/flags/<name>`; the file
 existing means on. The names are `dnd`, `idle-off`, `screensaver-off`,
@@ -193,7 +234,7 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `menu` | `toggle(path)`; `haseen menu [path]` wraps it |
 | `lock` | `lock()` |
 | `notifications` | `clear()`, `toggleDnd()` (also writes the `dnd` flag) |
-| `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `status()` |
+| `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `overflow(verb, id)`, `status()` (with each screen's `overflow` panel) |
 | `screensaver` | `start(style)` (`ttfx`, `native` or `default`) |
 | `nightlight` | `on()`, `off()`, `toggle()`, `refresh()`, `status(): string` |
 | `pager` | `count()`, `probe()`, `cards()`, `clear()`, `dnd()`, `expand()`, `snooze(minutes)`, `snoozeAll(minutes)`, `unsnooze(key)`, `snoozes()`, `codes(state)`, `open(deckKey)`, `act(identifier)`, `reply(text)`, `dismissOne()`, `dismissAll()`, `dismissShown()`, `invokeLast()`, `showHistory()`, `forgetHistory()`, `dismiss(summary)`, `recent(action)`, … (plan 025) |

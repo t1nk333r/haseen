@@ -77,8 +77,14 @@ Column {
     spacing: Theme.gap
     focus: true
 
-    Keys.onReturnPressed: apply(grid.currentIndex)
-    Keys.onEnterPressed: apply(grid.currentIndex)
+    // Enter applies the highlighted cell. A window shortcut, not a key handler
+    // on this item: the grid cell that holds focus took the press before it
+    // could propagate here, so Enter did nothing (io, plan 050).
+    Shortcut {
+        sequences: ["Return", "Enter"]
+        context: Qt.WindowShortcut
+        onActivated: root.apply(grid.currentIndex)
+    }
     Keys.onTabPressed: grid.moveCurrentIndexRight()
     Keys.onBacktabPressed: grid.moveCurrentIndexLeft()
     Keys.onPressed: event => {

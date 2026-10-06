@@ -7,7 +7,8 @@ import qs.Haseen.Widgets
 // MIT, Copyright (c) 2026 Neil Jagdish Patel).
 //
 // It takes a slot only while something is being kept from you - Do Not
-// Disturb, everything snoozed, one source snoozed - or while a detected screen
+// Disturb, everything snoozed, one source snoozed, notifications held back
+// unread (their count sits beside the bell) - or while a detected screen
 // share is waiting for a snooze decision (`alwaysShow` keeps it). A bell that
 // is always there, always showing nothing, is clutter.
 //
@@ -44,7 +45,10 @@ BarButton {
         service.recentRevision;
         return service.recentForPanel(service.recentCount).length;
     }
-    readonly property bool revealed: hasState || sharingOfferPending || settings.alwaysShow === true
+    // Held Back: notifications quiet kept off screen and not yet seen. They
+    // stay held after the quiet ends, until the panel clears them.
+    readonly property int heldCount: service ? service.heldRows.length : 0
+    readonly property bool revealed: hasState || heldCount > 0 || sharingOfferPending || settings.alwaysShow === true
 
     visible: revealed
     implicitWidth: visible ? contentWidth : 0
@@ -52,8 +56,9 @@ BarButton {
     // bell-sleep for snoozed, a plain bell otherwise.
     glyph: sharingOfferPending ? "\u{f1483}" : silenced ? "\u{f009b}" : (globalSnoozed || snoozedSources > 0) ? "\u{f00a0}" : "\u{f009a}"
     color: sharingOfferPending ? Theme.accent : silenced ? Theme.urgent : (globalSnoozed || snoozedSources > 0) ? Theme.accent : Theme.barForeground
-    // The resting bell is dim only while Recent is empty.
-    opacity: hasState || sharingOfferPending || recentCount > 0 ? 1 : 0.6
+    text: heldCount > 0 ? String(heldCount) : ""
+    // The resting bell is dim only while Recent and Held Back are empty.
+    opacity: hasState || heldCount > 0 || sharingOfferPending || recentCount > 0 ? 1 : 0.6
 
     onClicked: button => {
         if (button === Qt.RightButton && !sharingOfferPending) {

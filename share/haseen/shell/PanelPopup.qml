@@ -38,7 +38,25 @@ PanelWindow {
     color: "transparent"
     WlrLayershell.namespace: "haseen-panel"
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    // The keyboard is taken when the panel appears and then held on demand,
+    // as Omarchy's KeyboardPanel does. Exclusive first, so Escape and Enter
+    // reach the panel however it was opened: plain OnDemand only gave it the
+    // keyboard after a click inside it. OnDemand once the window is active, so
+    // the compositor goes back to normal pointer handling and a click outside
+    // clears the focus grab below and closes the panel. Under Exclusive that
+    // click never cleared the grab. The panel keeps the keyboard because it
+    // already has it.
+    property bool focusPrimed: false
+    WlrLayershell.keyboardFocus: focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive
+
+    Connections {
+        target: surface.Window
+
+        function onActiveChanged(): void {
+            if (surface.Window.active)
+                popup.focusPrimed = true;
+        }
+    }
 
     HyprlandFocusGrab {
         windows: [popup]
@@ -46,11 +64,21 @@ PanelWindow {
         onCleared: popup.closeRequested()
     }
 
+    // Escape closes the panel whatever item inside it has focus. A key handler
+    // on the surface only saw the key when nothing below it took the press:
+    // in the theme and background pickers the focused grid cell's press never
+    // reached it (releases did), so Escape did nothing. A window shortcut runs
+    // before item delivery.
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        onActivated: popup.closeRequested()
+    }
+
     PanelSurface {
         id: surface
 
         focus: true
-        Keys.onEscapePressed: popup.closeRequested()
 
         PluginSlot {
             pluginId: popup.pluginId

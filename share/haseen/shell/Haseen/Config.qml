@@ -28,6 +28,10 @@ Singleton {
     // Size across the bar. A vertical bar needs room for a short label.
     readonly property int barThickness: barVertical ? Math.max(barHeight, Theme.fontSize * 3) : barHeight
     readonly property bool barTransparent: bar.transparent === true
+    // Overflow panel (Bar.qml): ids always in it, and ids never moved there
+    // automatically.
+    readonly property var barOverflow: _ids(bar.overflow)
+    readonly property var barPinned: _ids(bar.pinned)
     readonly property var frame: _object(merged.frame)
     readonly property bool frameEnabled: frame.enabled !== false
     readonly property int frameThickness: _int(frame.thickness, 1, 64, 6)

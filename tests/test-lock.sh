@@ -144,7 +144,7 @@ ShellRoot {
                 probe.result.offeredAfterWrong = probe.b.fingerprintAvailable;
                 probe.phase = 4;
                 probe.mark = probe.tick;
-            } else if (probe.phase === 4 && (probe.b._fingerprintGaveUp || t > 150)) {
+            } else if (probe.phase === 4 && (probe.b._fingerprintGaveUp || t > 400) /* 5 retries 2 s apart: 40 s for a loaded CI runner */) {
                 probe.result.gaveUpOnDeadReader = probe.b._fingerprintGaveUp;
                 probe.result.disabledStillShown = probe.e.previewShown;
                 probe.e.closePreview();

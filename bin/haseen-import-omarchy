@@ -51,15 +51,19 @@ Translates an Omarchy 4 setup into haseen's files:
                 Omarchy commands -> $HASEEN_USER_CONFIG/hooks/
   themes        user themes with a colors.toml -> $THEME_USER_DIR/
   Hyprland      plain hl.* settings from monitors.lua, input.lua,
-                looknfeel.lua and autostart.lua, and bindings.lua with o.bind
-                turned into haseen.bind -> $HYPR_DEST/{monitors,local,bindings}.lua,
+                looknfeel.lua and autostart.lua, bindings.lua with o.bind
+                turned into haseen.bind, and from hyprland.lua only the blocks
+                that load generated state files (a plugin's layouts.lua)
+                -> $HYPR_DEST/{monitors,local,bindings}.lua,
                 each in a marked block a re-run replaces.
 
 Anything without a haseen equivalent is listed at the end, never guessed.
 
 A user shell.json that already has settings is left alone unless --merge is
 given: then the import goes underneath (every key you set keeps your value;
-service plugins are added to your services). Each file that is changed is
+service plugins are added to your services; an imported bar widget your bar
+does not have is added beside its Omarchy neighbour, nothing of yours is
+removed or reordered). Each file that is changed is
 copied to <file>.bak-<timestamp> first. Re-running changes nothing.
 
   --from DIR    Omarchy config (default $CONFIG_HOME/omarchy)
@@ -184,6 +188,10 @@ import_shell_json() {
     shell_config_lock
     user="$(shell_user_json)"
     merged="$(omarchy_import_merge "$user" "$imp" "$added")"
+    mapfile -t -O "${#IMPORTED[@]}" IMPORTED < <(jq -rn --argjson u "$user" --argjson m "$merged" '
+        "left", "center", "right" | . as $sec
+        | select(($u.bar[$sec] | type) == "array")
+        | ($m.bar[$sec] - $u.bar[$sec])[] | "bar.\($sec): added \(.) to your bar"')
     GESTURES_G3UP="$(gestures_g3up "$merged")"
     if [[ $(jq -Sc . <<<"$merged") == "$(jq -Sc . <<<"$user")" ]]; then
         info "$SHELL_USER_CONFIG already holds the import"
@@ -350,10 +358,11 @@ import_themes() {
 
 declare -A HYPR_ORIG=() HYPR_TEXT=()
 
-# hypr_carry SRC_NAME DEST_NAME — translate SRC_NAME from the Omarchy dir into
-# its marked block in DEST_NAME (held in memory until hypr_write).
+# hypr_carry SRC_NAME DEST_NAME [LOADERS] — translate SRC_NAME from the Omarchy
+# dir into its marked block in DEST_NAME (held in memory until hypr_write);
+# LOADERS=1 keeps only blocks that load generated state files.
 hypr_carry() {
-    local name="$1" dest="$2" src="$HYPR_SRC/$1" outside stream body="" kind line block shown
+    local name="$1" dest="$2" loaders="${3:-0}" src="$HYPR_SRC/$1" outside stream body="" kind line block shown
     [[ -f $src ]] || return 0
     if [[ -z ${HYPR_ORIG[$dest]+set} ]]; then
         HYPR_ORIG[$dest]=""
@@ -361,7 +370,7 @@ hypr_carry() {
         HYPR_TEXT[$dest]="${HYPR_ORIG[$dest]}"
     fi
     outside="$(omarchy_lua_splice <(printf '%s' "${HYPR_TEXT[$dest]}") "$name" /dev/null)"
-    stream="$(omarchy_lua_translate "$src" <(printf '%s\n' "$outside") "$name" "$GESTURES_G3UP")"
+    stream="$(omarchy_lua_translate "$src" <(printf '%s\n' "$outside") "$name" "$GESTURES_G3UP" "$loaders")"
     while IFS= read -r line; do
         kind="${line%%$'\t'*}"
         line="${line#*$'\t'}"
@@ -416,11 +425,16 @@ import_hypr() {
     hypr_carry looknfeel.lua local.lua
     hypr_carry autostart.lua local.lua
     hypr_carry bindings.lua bindings.lua
+    # Omarchy's entry file is its bootstrap plus the user's own lines; a
+    # plugin's generated-file loader (t1nk33r.workspace-layout) is the part
+    # that still means something under haseen.
+    hypr_carry hyprland.lua local.lua 1
     for f in "$HYPR_SRC"/*.lua; do
         name="${f##*/}"
         [[ -f $f ]] || continue
         case "$name" in
         monitors.lua | input.lua | looknfeel.lua | autostart.lua | bindings.lua) ;;
+        hyprland.lua) NOT_IMPORTED+=("hypr/hyprland.lua: only blocks that load generated state files are carried (haseen seeds its own hyprland.lua; put personal additions in local.lua)") ;;
         *) NOT_IMPORTED+=("hypr/$name: not imported (haseen seeds its own hyprland.lua; put personal additions in local.lua)") ;;
         esac
     done

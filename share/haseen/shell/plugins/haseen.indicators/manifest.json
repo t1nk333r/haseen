@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.indicators",
+  "name": "Indicators",
+  "version": "1.0.0",
+  "description": "State indicators (port of Omarchy's, MIT): screen recording, night light, do not disturb, stay awake and screensaver hold show while on; hovering reveals the others dimmed; a click toggles one. Entries another bar widget already shows (pager, idle, privacy) are left out",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "items": {
+      "type": "array",
+      "default": [],
+      "description": "Which indicators to show, in order: ScreenRecording, NightLight, Dnd, StayAwake, Screensaver; empty shows all"
+    },
+    "alwaysShow": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show inactive indicators (dimmed) without waiting for hover"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
+}
