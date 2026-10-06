@@ -87,7 +87,12 @@ Item {
         anchors.centerIn: parent
         text: root.text
         color: root.active && root.useActiveColor ? root.activeColor : root.foreground
-        font.family: root.fontFamily
+        // An icon-only label (private-use code points only) is drawn in
+        // "Symbols Nerd Font" when it is installed. In the monospace Nerd Font
+        // an icon's advance is one cell while its ink is wider, so the button,
+        // sized and centred on the advance, showed a gap left of the icon and
+        // the ink ran into the right margin (t1nk33r.omaprayers on io, plan 049).
+        font.family: /^[\ue000-\uf8ff\s]+$/.test(root.text) && Qt.fontFamilies().indexOf("Symbols Nerd Font") >= 0 ? "Symbols Nerd Font" : root.fontFamily
         font.pixelSize: root.fontSize
         rotation: root.textRotation
         horizontalAlignment: Text.AlignHCenter
