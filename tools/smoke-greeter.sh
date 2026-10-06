@@ -43,12 +43,11 @@ PY
 python3 "$OUT/greetd.py" "$OUT/greetd.sock" >"$OUT/greetd.log" 2>&1 &
 greetd=$!
 
-cat >"$OUT/hyprland.conf" <<EOF
-monitor = , 1280x800@60, 0x0, 1
-animations { enabled = false }
-misc { disable_hyprland_logo = true; disable_splash_rendering = true }
-exec-once = sh -c "qs -p $HASEEN_PATH/shell/greeter >$OUT/qs.log 2>&1"
-EOF
+# The compositor config is the one greetd's launcher would write, so this
+# smoke also proves Hyprland accepts it. Only the monitor changes: nested, the
+# output is a 1280x800 window.
+"$REPO/bin/haseen-greeter" --print-config |
+    sed 's|mode = "preferred", position = "auto"|mode = "1280x800@60", position = "0x0"|' >"$OUT/hyprland.lua"
 
 # Hyprland's DRM backend needs a seat this process does not have, so the
 # compositor nests in the session that is already running: one window, no
@@ -62,7 +61,7 @@ export GREETD_SOCK="$OUT/greetd.sock" QT_QUICK_BACKEND=software HYPRLAND_NO_SD_N
 
 before="$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -name 'wayland-*' -not -name '*.lock' | sort)"
 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- \
-    Hyprland -c "$OUT/hyprland.conf" >"$OUT/hyprland.log" 2>&1 &
+    start-hyprland -- -c "$OUT/hyprland.lua" >"$OUT/hyprland.log" 2>&1 &
 hypr=$!
 trap 'kill "$hypr" "$greetd" 2>/dev/null || true' EXIT
 
@@ -80,7 +79,7 @@ done
 export WAYLAND_DISPLAY="${sock##*/}"
 sleep 6
 
-pid="$(pgrep -f 'qs -p .*shell/greeter' | head -1 || true)"
+pid="$(pgrep -f '^[^ ]*qs -p .*shell/greeter' | head -1 || true)"
 [[ -n $pid ]] || {
     tail -20 "$OUT/hyprland.log"
     echo "the greeter shell is not running" >&2
@@ -92,6 +91,9 @@ grim "$OUT/greeter.png" && echo "shot: $OUT/greeter.png"
 
 # And the failure path, which is the one a tired human sees at 2am.
 qs ipc --pid "$pid" call greeter login wrong >/dev/null || true
-sleep 2
+for _ in $(seq 20); do
+    qs ipc --pid "$pid" call greeter state | grep -q '"status":"[^"]' && break
+    sleep 0.25
+done
 echo "after a wrong password: $(qs ipc --pid "$pid" call greeter state)"
 grim "$OUT/greeter-wrong.png" && echo "shot: $OUT/greeter-wrong.png"

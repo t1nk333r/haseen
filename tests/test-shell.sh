@@ -358,6 +358,7 @@ assert_contains "packages planned" "$OUTPUT" "DRYRUN: sudo pacman -S --needed qu
 assert_contains "shell.json seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/haseen/shell.json from $HASEEN_PATH/layers/shell/files/shell.json"
 assert_contains "example seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/haseen/shell.example.json"
 assert_contains "unit enabled" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-shell.service"
+assert_contains "lock-before-sleep enabled with it" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-sleep-lock.service"
 assert_eq "layer dry-run wrote nothing" "" "$(find "$HOME" -mindepth 1 -print -quit)"
 assert_eq "seeded shell.json is {}" "{}" "$(jq -c . "$HASEEN_PATH/layers/shell/files/shell.json")"
 capture jq -e '.bar.right | length > 0' "$HASEEN_PATH/layers/shell/files/shell.example.json"
@@ -370,6 +371,10 @@ assert_status "status: nothing applied" 1 "$STATUS"
 mkdir -p "$XDG_CONFIG_HOME/haseen" "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants"
 echo '{"bar":{"height":30}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
 ln -s /usr/lib/systemd/user/haseen-shell.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-shell.service"
+shell_layer "$fx_qs" 'layer_run_status shell'
+assert_status "status: degraded without the lock-before-sleep unit" 2 "$STATUS"
+assert_contains "status says what that costs" "$OUTPUT" "no lock before suspend"
+ln -s /usr/lib/systemd/user/haseen-sleep-lock.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-sleep-lock.service"
 shell_layer "$fx_bare" 'layer_run_status shell'
 assert_status "status: degraded without packages" 2 "$STATUS"
 assert_contains "status names the missing package" "$OUTPUT" "missing: package quickshell"

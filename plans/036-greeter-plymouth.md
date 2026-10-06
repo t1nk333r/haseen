@@ -104,6 +104,20 @@ back. The greeter also prefers `hyprland-uwsm`, then `hyprland`, when nothing
 is remembered — on a migrated machine the old desktop's session sorts first.
 Tests: 53 in `tests/test-greeter.sh`.
 
+Two more gaps the same machine exposed:
+- The greeter's compositor config was hyprlang `.conf`, which Hyprland 0.56
+  already flags for removal in 0.57; it is Lua now, and the launcher starts
+  Hyprland through `start-hyprland`, without which 0.56 paints a red "started
+  without start-hyprland" banner across the login screen. `tools/smoke-greeter.sh`
+  now runs the launcher's own generated config.
+- haseen never locked before suspend; Omarchy does (its sleep monitor drives
+  Omarchy's shell, so it does nothing once that shell is gone). Ported as
+  `bin/haseen-lock-before-sleep` + `haseen-sleep-lock.service`, enabled by the
+  shell layer: a logind delay inhibitor is held, `haseen shell ipc lock lock`
+  runs on PrepareForSleep(true), the inhibitor is released (also when the lock
+  does not answer, so a broken shell can never stop a suspend), and retaken
+  after resume. Tests: `tests/test-sleeplock.sh` (6), `tests/test-shell.sh`.
+
 ## Execution record
 
 `share/haseen/lib/{greeter,plymouth,boot}.sh`,

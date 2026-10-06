@@ -109,7 +109,9 @@ capture haseen greeter --print-config
 assert_status "the launcher can show its config" 0 "$STATUS"
 assert_contains "it runs the greeter shell" "$OUTPUT" "shell/greeter"
 assert_contains "and quits the compositor when it exits" "$OUTPUT" "hyprctl dispatch exit"
-assert_contains "animations are off on a login screen" "$OUTPUT" "animations { enabled = false }"
+assert_contains "animations are off on a login screen" "$OUTPUT" "animations = { enabled = false }"
+assert_contains "the config is Lua, not the hyprlang format 0.57 drops" "$OUTPUT" "hl.config({"
+assert_contains "and the greeter starts once, at compositor start" "$OUTPUT" 'hl.on("hyprland.start"' 
 capture haseen greeter
 assert_status "without greetd in the environment it refuses" 1 "$STATUS"
 assert_contains "and says why" "$OUTPUT" "GREETD_SOCK"
