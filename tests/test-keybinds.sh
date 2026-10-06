@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # The keybind sheet reads the running compositor, and takes only its categories
 # from the Lua sources. The shipped binds.lua puts the three menus on
 # Omarchy's keys and binds no key twice.

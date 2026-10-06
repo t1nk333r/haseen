@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Theme pipeline: every stock theme renders completely, shell.json carries the
 # architecture §7 tokens, helpers match Omarchy's output, user templates win,
 # installed themes go through the denylist, hooks run, dry runs write nothing.

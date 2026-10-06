@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Native panel placement: a panel opened by a click on a bar widget sits
 # centred under (or beside) that widget, clamped to the bar; one opened by a
 # key, the CLI or the menu stays centred on the bar edge. The pure math in

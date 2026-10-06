@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # `haseen theme wallpaper`: a wallpaper becomes an ordinary haseen theme, the
 # palette is cached on the image's content, and an unchanged palette rewrites
 # nothing. Needs the Go toolchain to build the generator; without it a machine

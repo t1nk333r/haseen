@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Menu (plan 016): default/menu.jsonc parses and holds exactly the owner's
 # selection (no Learn, no web apps), every action's `haseen …` command exists
 # in bin/, the model's overlay merge/guards/catalog rows behave, and the

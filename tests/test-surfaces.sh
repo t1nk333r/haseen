@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # System surfaces (plan 010): the notifications, osd, launcher, lock, idle,
 # polkit and session built-ins. Manifests validate, IPC roles have exactly
 # one provider, widgets use Theme tokens only, and timers follow the

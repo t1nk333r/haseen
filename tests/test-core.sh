@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Core: preflight detection, CLI router, layer runner, installer dry-run.
 
 # --- preflight against every fixture ---------------------------------------
@@ -177,3 +180,16 @@ printf '[omarchy]\nServer = x\n' >>"$fx/etc/pacman.conf"
 capture env HASEEN_SYSROOT="$fx" haseen layer status omarchy-repo
 assert_status "omarchy-repo: status ok once enabled" 0 "$STATUS"
 assert_not_contains "omarchy-repo: last in pacman.conf, no shadow warning" "$OUTPUT" "not the last repo"
+
+# A test file run by hand, without tests/run.sh, has no sandbox: it must stop
+# before its fixtures reach the real ~/.config (it once overwrote an owner's
+# plugin that way).
+direct="$SANDBOX/direct-home"
+mkdir -p "$direct"
+refused=0
+for f in "$REPO"/tests/test-*.sh; do
+    env -u TESTS_RUN HOME="$direct" XDG_CONFIG_HOME="$direct/.config" bash "$f" >/dev/null 2>&1 && continue
+    [[ $? -eq 2 ]] && refused=$((refused + 1))
+done
+assert_eq "every test file refuses to run outside tests/run.sh" "$(ls "$REPO"/tests/test-*.sh | wc -l)" "$refused"
+assert_eq "a test file run directly writes nothing" "" "$(ls -A "$direct")"

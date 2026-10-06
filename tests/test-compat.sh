@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
+# off the live machine. Run directly, the fixtures land in the real ~/.config.
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Plugin compat (plan 011): Omarchy manifest.json and DMS plugin.json
 # adaptation in the CLI (shell/lib/plugin.sh, jq) and in the shell
 # (shell/Compat/Manifest.js, run headless through Qt's qml tool when it is
