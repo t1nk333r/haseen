@@ -116,3 +116,32 @@ assert_eq "the system menu has one key" "SUPER+ESCAPE" "$(awk -F'\t' '$3 == "has
 assert_eq "the shipped config binds keys" true "$( (($(wc -l <<<"$shipped") > 60)) && echo true || echo false)"
 assert_eq "no key is bound twice" "" "$(cut -f1 <<<"$shipped" | sort | uniq -d)"
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
+
+# --- a user bind on a key haseen binds replaces it ---------------------------
+# Hyprland stacks binds: a user's (or an Omarchy import's) SUPER + Q on top of
+# haseen's would close two windows. haseen.rebind unbinds first.
+cat >"$SANDBOX/hl-stack.lua" <<'LUA'
+local binds = {}
+local function norm(keys)
+  local parts = {}
+  for p in keys:gmatch("[^+]+") do parts[#parts + 1] = p:match("^%s*(.-)%s*$"):upper() end
+  local key = table.remove(parts); table.sort(parts); parts[#parts + 1] = key
+  return table.concat(parts, "+")
+end
+local function proxy(name)
+  return setmetatable({}, { __index = function(_, k) return proxy(name .. "." .. k) end,
+    __call = function(_, ...) return { dsp = name } end })
+end
+hl = setmetatable({
+  dsp = proxy("dsp"),
+  bind = function(keys) local k = norm(keys); binds[k] = (binds[k] or 0) + 1 end,
+  unbind = function(keys) binds[norm(keys)] = nil end,
+}, { __index = function() return function() end end })
+function REPORT() for k, n in pairs(binds) do if n > 1 then print(k) end end end
+LUA
+capture lua -e "dofile('$SANDBOX/hl-stack.lua')" -e "dofile('$REPO/share/haseen/default/hypr/init.lua')
+haseen.rebind('SUPER + Q', 'Close window', hl.dsp.window.close())
+haseen.rebind('SUPER + A', 'Exposé', hl.dsp.event('x'))
+REPORT()"
+assert_status "rebind runs on top of the shipped config" 0 "$STATUS"
+assert_eq "a rebound key fires one action, not two" "" "$OUTPUT"

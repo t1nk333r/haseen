@@ -39,7 +39,7 @@ capture "$REPO/bin/haseen-import-omarchy" --dry-run
 assert_status "dry run succeeds" 0 "$STATUS"
 assert_dry_pure "import" "$OUTPUT"
 assert_contains "dry run shows the shell.json it would write" "$OUTPUT" '"haseen.workspaces"'
-assert_contains "dry run shows the bindings it would write" "$OUTPUT" 'haseen.bind("SUPER + H"'
+assert_contains "dry run shows the bindings it would write" "$OUTPUT" 'haseen.rebind("SUPER + H"'
 assert_eq "dry run creates no haseen config" "absent" "$([[ -e $HC || -e $HY ]] && echo present || echo absent)"
 assert_eq "dry run leaves Omarchy's files alone" "$before" "$(omarchy_sum)"
 assert_contains "dry run shows it would apply the gestures it carried over" "$OUTPUT" "DRYRUN: $REPO/bin/haseen-gestures-apply"
@@ -116,10 +116,10 @@ assert_contains "a theme without colors.toml is reported" "$OUTPUT" "themes/no-c
 assert_eq "and not copied" "absent" "$([[ -e $HC/themes/no-colors ]] && echo present || echo absent)"
 
 binds="$(cat "$HY/bindings.lua" 2>/dev/null)"
-assert_contains "o.bind becomes haseen.bind" "$binds" 'haseen.bind("SUPER + H", "Move focus left", hl.dsp.focus({ direction = "left" }))'
-assert_contains "binds inside loops are translated" "$binds" '	haseen.bind("SUPER + SHIFT + " .. key'
-assert_contains "o.launch becomes haseen.launch" "$binds" 'haseen.bind("SUPER + SHIFT + Z", "Browser", haseen.launch("zen-browser"))'
-assert_contains "{ launch = … } becomes haseen.launch" "$binds" "haseen.bind(\"SUPER + SHIFT + F\", \"File manager\", haseen.launch('flea --gui'))"
+assert_contains "o.bind becomes haseen.rebind, so it replaces a haseen default on the same key" "$binds" 'haseen.rebind("SUPER + H", "Move focus left", hl.dsp.focus({ direction = "left" }))'
+assert_contains "binds inside loops are translated" "$binds" '	haseen.rebind("SUPER + SHIFT + " .. key'
+assert_contains "o.launch becomes haseen.launch" "$binds" 'haseen.rebind("SUPER + SHIFT + Z", "Browser", haseen.launch("zen-browser"))'
+assert_contains "{ launch = … } becomes haseen.launch" "$binds" "haseen.rebind(\"SUPER + SHIFT + F\", \"File manager\", haseen.launch('flea --gui'))"
 assert_contains "plain hl.* statements are kept whole" "$binds" 'end, { description = "Cycle windows (raise)" })'
 assert_contains "unbinds are kept" "$binds" 'hl.unbind("SUPER + J") -- toggle split -> focus down'
 assert_not_contains "no Omarchy helper is left to call" "$(grep -v '^[[:space:]]*--' "$HY/bindings.lua")" "o."

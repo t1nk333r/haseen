@@ -109,6 +109,15 @@ function haseen.bind(keys, description, dispatcher, options)
   return hl.bind(keys, dispatcher, opts)
 end
 
+-- haseen.rebind: the same, but it replaces whatever `keys` already does.
+-- Hyprland stacks binds, so a user bind on a key haseen also binds would run
+-- both actions (a close-window key closing two windows). Unbinding a key that
+-- is not bound is harmless.
+function haseen.rebind(keys, description, dispatcher, options)
+  hl.unbind(keys)
+  return haseen.bind(keys, description, dispatcher, options)
+end
+
 local here = haseen.path .. "/default/hypr/"
 for _, module in ipairs({ "input", "looknfeel", "binds", "windowrules", "autostart" }) do
   dofile(here .. module .. ".lua")

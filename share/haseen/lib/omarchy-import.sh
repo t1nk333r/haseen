@@ -179,7 +179,8 @@ omarchy_import_merge() {
 # Lua carry-over. The source is cut into top-level statements ("chunks"):
 # bracket and block-keyword depth, ignoring strings and comments, decides
 # where one ends. Each chunk is then
-#   - translated: o.bind -> haseen.bind, o.launch / { launch = X } ->
+#   - translated: o.bind -> haseen.rebind (an Omarchy bind replaces haseen's
+#     on the same key instead of both firing), o.launch / { launch = X } ->
 #     haseen.launch, single-line o.launch_on_start / o.exec_on_start -> an
 #     hl.on("hyprland.start") handler;
 #   - skipped (and reported) when it still calls an Omarchy command or
@@ -270,7 +271,7 @@ function first_line(s,    t) {
     return t
 }
 function finish(    t, code, why, helper) {
-    t = on_start(subst_call(subst_call(launch_tables(chunk), "bind", "haseen.bind"), "launch", "haseen.launch"))
+    t = on_start(subst_call(subst_call(launch_tables(chunk), "bind", "haseen.rebind"), "launch", "haseen.launch"))
     code = code_of(t)
     why = ""
     if (code ~ /(^|[^A-Za-z0-9_\/.~-])omarchy(-[a-z]|[ \t]+[a-z])/ || code ~ /\{[^}]*(omarchy|webapp|tui|focus)[ \t]*=/)
