@@ -295,7 +295,9 @@ ShellRoot {
         onTriggered: {
             if (!probe.svc && Plugins.registry["haseen.weather"])
                 probe.create();
-            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.dailyForecastReport || !probe.svc.report || probe.svc.savingLocation)
+            // Wait for the forecast and for the pick to reach shell.json: the
+            // save runs as its own process and may finish after the forecast.
+            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.dailyForecastReport || !probe.svc.report || probe.svc.savingLocation || probe.svc.persistingLocation)
                 return;
             if (Quickshell.env("WEATHER_SAVE") === "1" && !probe.saved) {
                 probe.saved = true;

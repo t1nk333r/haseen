@@ -56,6 +56,8 @@ Scope {
     // A committed location shows a spinner until its first answer arrives.
     property bool savingLocation: false
     property bool savingLocationQueryStarted: false
+    // shell.json is still being written (`haseen-weather-location --set/--clear`).
+    readonly property bool persistingLocation: locationSaveProc.running
 
     readonly property var openMeteoCurrent: Model.openMeteoCurrentCondition(dailyForecastReport)
     readonly property var current: (hasConfiguredCoordinates && openMeteoCurrent) ? openMeteoCurrent : ((report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : openMeteoCurrent)
