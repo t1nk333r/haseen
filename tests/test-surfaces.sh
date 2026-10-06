@@ -116,11 +116,15 @@ assert_eq "no hex colour literals in surfaces" "" \
     "$(grep -rnE '#[0-9a-fA-F]{3,8}\b' "${surface_dirs[@]}" --include='*.qml' --include='*.js' || true)"
 assert_eq "no Timer under 2000 ms except marked single-shot UI timeouts" "" "$(timer_violations "$SHELL_DIR")"
 # Windows owned by services exist only while shown (LazyLoader), apart from
-# the session lock, whose surfaces Quickshell creates only while locked.
+# the session lock, whose surfaces Quickshell creates only while locked. A
+# window may sit in a file of its own that a LazyLoader loads by URL
+# (haseen.lock's PreviewWindow.qml).
 for id in "${SERVICES[@]}"; do
     f="$PLUGINS/$id/Service.qml"
+    windows=("$f")
+    while IFS= read -r src; do windows+=("$PLUGINS/$id/$src"); done < <(sed -n 's/.*source: Qt.resolvedUrl("\([^"]*\.qml\)").*/\1/p' "$f")
     assert_eq "$id: every PanelWindow sits in a LazyLoader" \
-        "$(grep -c 'PanelWindow {' "$f")" "$(grep -c 'LazyLoader {' "$f")"
+        "$(cat "${windows[@]}" | grep -c 'PanelWindow {')" "$(grep -c 'LazyLoader {' "$f")"
 done
 assert_eq "notifications are memory-only (no FileView/Process)" "" \
     "$(grep -rnE 'FileView|Process \{|execDetached' "$PLUGINS/haseen.notifications" || true)"

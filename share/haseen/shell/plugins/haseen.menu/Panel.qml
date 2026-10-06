@@ -312,15 +312,6 @@ Column {
                             action: "haseen font set " + Model.shellQuote(f[0])
                         }))
             },
-            "backgrounds": {
-                script: "cur=$(haseen theme bg current 2>/dev/null); haseen theme bg list 2>/dev/null | while IFS= read -r f; do [ -n \"$f\" ] && printf '%s\\t%s\\n' \"$f\" \"$cur\"; done",
-                parse: (id, text) => tabRows(id, text, f => ({
-                            label: f[0].replace(/^.*\//, ""),
-                            icon: "\uf03e",
-                            checkedNow: f[0] === f[1],
-                            action: "haseen theme bg set " + Model.shellQuote(f[0])
-                        }))
-            },
             "plugins-enable": {
                 script: "haseen plugin list 2>/dev/null | awk 'NR > 1 && ($3 == \"available\" || $3 == \"disabled\") { print $1 }'",
                 parse: (id, text) => tabRows(id, text, f => ({

@@ -31,8 +31,12 @@ b("SUPER + CTRL + E", "Emoji picker", ipc("panel", "toggle", "haseen.emoji"))
 b("SUPER + ALT + C", "Calendar", ipc("panel", "toggle", "haseen.calendar"))
 
 -- Style ------------------------------------------------------------------------
+-- Omarchy's keys: SUPER+CTRL+SHIFT+SPACE picks a theme, SUPER+CTRL+SPACE picks a
+-- background. Both are pickers; stepping to the next background (also `n` in
+-- the picker) gets ALT added.
 b("SUPER + CTRL + SHIFT + SPACE", "Theme picker", ipc("panel", "toggle", "haseen.themepicker"))
-b("SUPER + CTRL + SPACE", "Next background", "haseen theme bg next")
+b("SUPER + CTRL + SPACE", "Background picker", ipc("panel", "toggle", "haseen.background"))
+b("SUPER + CTRL + ALT + SPACE", "Next background", "haseen theme bg next")
 
 -- Ambient ----------------------------------------------------------------------
 b("SUPER + CTRL + I", "Stay awake", "haseen toggle idle")

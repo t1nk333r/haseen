@@ -3,13 +3,24 @@ import Quickshell
 import qs.Haseen
 
 // The lock screen itself: clock, date, password field and a status line.
-// Shared by the session-lock surfaces and the preview window.
+// Shared by the session-lock surfaces and the preview window. When the
+// fingerprint reader is armed, a fingerprint glyph sits inside the field's
+// right edge, as in Omarchy's lock (shell/plugins/lock/LockView.qml, MIT,
+// Copyright (c) David Heinemeier Hansson) and hyprlock.
 Rectangle {
     id: root
 
     property bool busy: false
     property string message: ""
     property bool preview: false
+    // Fingerprint unlock is armed: show the hint. fingerprintError: the last
+    // scan did not match, so the hint turns urgent until the next one.
+    property bool fingerprint: false
+    property bool fingerprintError: false
+
+    // Room kept clear on both sides for the hint, so the centred dots stay
+    // centred and never run under it.
+    readonly property real fingerprintReserve: fingerprint ? Math.ceil(fingerprintHint.implicitWidth + Theme.gap) : 0
 
     signal submitted(string password)
     signal cancelled
@@ -62,8 +73,8 @@ Rectangle {
                 id: input
 
                 anchors.fill: parent
-                anchors.leftMargin: Theme.gap * 2
-                anchors.rightMargin: Theme.gap * 2
+                anchors.leftMargin: Theme.gap * 2 + root.fingerprintReserve
+                anchors.rightMargin: Theme.gap * 2 + root.fingerprintReserve
                 verticalAlignment: TextInput.AlignVCenter
                 horizontalAlignment: TextInput.AlignHCenter
                 echoMode: TextInput.Password
@@ -90,6 +101,21 @@ Rectangle {
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize + 2
+            }
+
+            Text {
+                id: fingerprintHint
+
+                objectName: "fingerprintHint"
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.gap * 2
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.fingerprint
+                // nf-md-fingerprint
+                text: "󰈷"
+                color: root.fingerprintError ? Theme.urgent : Theme.muted
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.fontSize + 6
             }
         }
 

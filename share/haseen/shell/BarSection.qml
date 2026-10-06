@@ -11,12 +11,18 @@ import qs.Haseen
 // Vertical: every slot is the bar's width. A widget that declares
 // `property bool vertical` gets it set and sizes its own height; any other
 // widget gets a square cell, clipped, so it stays inside the bar.
+//
+// Every shown widget gets a hover highlight from its slot. widgetPressed(slot)
+// reports every press on a widget, for the panel host: a toggle that follows
+// it opens the panel under that widget (shell.qml).
 Grid {
     id: section
 
     required property var ids
     required property var screen
     property bool vertical: false
+
+    signal widgetPressed(Item slot)
 
     // Column count only (no `rows`): flipping both at once briefly asks for
     // a 1x1 grid and Qt warns.
@@ -54,6 +60,44 @@ Grid {
                 if (adapts)
                     item.vertical = Qt.binding(() => section.vertical);
             })
+
+            // Hover highlight for every widget, native or compat, drawn
+            // behind it with BarButton's tint and insets, so a BarButton
+            // widget looks as it always did. On the slot itself, not on the
+            // item above the widget: a HoverHandler there takes the hover
+            // from the widget's own MouseArea.
+            HoverHandler {
+                id: hover
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.topMargin: section.vertical ? 0 : 3
+                anchors.bottomMargin: section.vertical ? 0 : 3
+                anchors.leftMargin: section.vertical ? 3 : 0
+                anchors.rightMargin: section.vertical ? 3 : 0
+                z: -1
+                radius: Theme.radius
+                color: Theme.surfaceAlt
+                visible: hover.hovered
+            }
+
+            // Above the widget, so it sees the press first; a PointHandler
+            // takes only a passive grab, so the press still reaches the
+            // widget's own MouseArea or TapHandler. One in the slot itself
+            // would never see a press the widget accepts.
+            Item {
+                anchors.fill: parent
+                z: 1
+
+                PointHandler {
+                    acceptedButtons: Qt.AllButtons
+                    onActiveChanged: {
+                        if (active)
+                            section.widgetPressed(slot);
+                    }
+                }
+            }
         }
     }
 }

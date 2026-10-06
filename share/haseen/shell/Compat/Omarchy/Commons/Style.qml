@@ -178,9 +178,13 @@ Singleton {
     readonly property color selectionFill: selectionFillFor(Theme.foreground, Theme.accent, Theme.urgent)
 
     // ------------------------------------------------------------ typography
-    readonly property string fontFamily: Theme.fontFamily
-    readonly property string resolvedFontFamily: Theme.fontFamily
-    readonly property string menuFontFamily: Theme.fontFamily
+    // Omarchy's family is the fontconfig `monospace` alias (a Nerd Font on
+    // Omarchy installs); plugins draw Nerd Font codepoints (e.g. U+EED3) as
+    // plain text in it. Theme.fontMono is haseen's equivalent; the sans
+    // Theme.fontFamily lacks those glyphs and falls back to stray letters.
+    readonly property string fontFamily: Theme.fontMono
+    readonly property string resolvedFontFamily: Theme.fontMono
+    readonly property string menuFontFamily: Theme.fontMono
     readonly property int fontBaseSize: Math.max(1, Theme.fontSize)
     readonly property real fontScale: Math.max(1 / 12, fontBaseSize / 12)
 

@@ -13,6 +13,14 @@ import qs.Haseen
 // mask). The edges and corners live on the bottom layer: decoration belongs
 // behind windows, so a fullscreen window covers the frame (the owner's
 // t1nk33r.screen-frame made the same choice).
+//
+// Seams: every piece reaches 1 logical px under the pieces it meets (the
+// bar under the strips at its ends, each strip past both of its ends, each
+// corner square under the strip and the bar beside it). At a fractional
+// scale a shared edge falls inside a physical pixel (6 px at 1.25 is 7.5),
+// which neither surface then covers fully, and the wallpaper showed through
+// as a darker line. The pieces share one colour, so the overlap is
+// invisible, and in the transparent mode both are clear.
 Scope {
     id: frame
 

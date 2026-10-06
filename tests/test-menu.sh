@@ -66,6 +66,15 @@ assert_eq "about runs haseen about" "haseen about" "$(jq -r '.about.action' <<<"
 assert_eq "apps uses the launcher provider" "apps" "$(jq -r '.apps.provider' <<<"$JSON")"
 assert_eq "install rendered from the catalog" "catalog-install" "$(jq -r '.install.provider' <<<"$JSON")"
 assert_eq "remove rendered from the catalog" "catalog-remove" "$(jq -r '.remove.provider' <<<"$JSON")"
+# Style opens the pickers, as Omarchy's Style menu does; a bare list of
+# background files left the background picker panel unreachable.
+assert_eq "style.theme opens the theme picker" "haseen shell ipc panel toggle haseen.themepicker" "$(jq -r '."style.theme".action' <<<"$JSON")"
+assert_eq "style.background opens the background picker" "haseen shell ipc panel toggle haseen.background" "$(jq -r '."style.background".action' <<<"$JSON")"
+assert_eq "next background stays in the menu" "haseen theme bg next" "$(jq -r '."style.next-background".action' <<<"$JSON")"
+for id in $(jq -r '.[].action // empty' <<<"$JSON" | sed -n 's/^haseen shell ipc panel toggle \([a-z0-9.-]*\)$/\1/p' | sort -u); do
+    assert_eq "menu panel $id is a shipped panel plugin" "panel" \
+        "$(jq -r '.kinds[] | select(. == "panel")' "$REPO/share/haseen/shell/plugins/$id/manifest.json" 2>/dev/null)"
+done
 
 # Every `haseen …` command an action or guard names must exist. Commands of
 # other plan-016 slices are listed until they land.

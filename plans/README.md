@@ -43,3 +43,4 @@ Read `handoff.md` first.
 | 035 | Plugin registry and lockfile (install, pin, reproduce, update) | P1 | M | 005 011 | DONE 2026-10-05 (48 tests; live install from the DMS registry) |
 | 036 | Login: Plymouth splash, the greeter shell, autologin after the disk password | P1 | L | 003 005 033 | DONE 2026-10-05 (72 tests + nested-compositor smoke; real boot is an owner step) |
 | 048 | Omarchy parity on io: quiet boot handover, `*` splash, Omarchy import, three menus, gestures, lock-screen fixes | P1 | L | 016 019 031 036 | DONE 2026-10-06 (owner checks the boot and swipes) |
+| 049 | io round 3: popups under their icon, frame/bar seam, compat icon font, pickers, lock fingerprint, Omarchy tray, hover highlight | P1 | L | 015 036 048 | DONE 2026-10-06 (real finger and click are owner checks) |

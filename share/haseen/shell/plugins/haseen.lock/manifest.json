@@ -3,7 +3,7 @@
   "id": "haseen.lock",
   "name": "Lock screen",
   "version": "1.0.0",
-  "description": "ext-session-lock screen with a clock and a password field, authenticated through PAM",
+  "description": "ext-session-lock screen with a clock and a password field, authenticated through PAM, with fingerprint unlock when a finger is enrolled",
   "kinds": [
     "service"
   ],
@@ -25,6 +25,16 @@
       "type": "boolean",
       "default": false,
       "description": "Debug: lock() shows the lock UI in a normal overlay window and never locks the session (Escape closes it)"
+    },
+    "fingerprint": {
+      "type": "boolean",
+      "default": true,
+      "description": "Offer fingerprint unlock (pam_fprintd) when the fingerprint PAM service exists and fprintd has a finger enrolled for the user"
+    },
+    "fingerprintPamConfig": {
+      "type": "string",
+      "default": "haseen-lock-fingerprint",
+      "description": "PAM service name used for fingerprint unlock, in pamConfigDirectory; written by haseen setup fingerprint"
     }
   },
   "permissions": [],

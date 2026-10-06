@@ -8,7 +8,7 @@ kind. User plugins live in `~/.config/haseen/plugins/<id>/`; built-ins in
 | Kind | What it is | Entry root | Shown when |
 |---|---|---|---|
 | `bar-widget` | an item in a bar section | `BarButton` or any `Item` | its id is in `shell.json` `bar.left/center/right` |
-| `panel` | a popup card under the bar | any `Item` with an implicit size | `haseen shell ipc panel toggle <id>` (bind a key) |
+| `panel` | a popup card under the bar widget that opened it (centred on the bar edge when a key opened it) | any `Item` with an implicit size | `haseen shell ipc panel toggle <id>` (bind a key) |
 | `service` | a non-visual object created at startup | `Scope` / `QtObject` | its id is in `shell.json` `services` |
 | `launcher-provider` | search results for the launcher | `QtObject` with `prefix` and `query(text)` | the launcher asks it |
 | `overlay` | a full-screen layer surface it owns (OSD, lock) | `Scope` with a `PanelWindow` | the plugin decides; keep it hidden at idle |
@@ -161,6 +161,8 @@ No other top-level fields are allowed. `permissions` is review metadata
   list, never by building a shell string from user input.
 - **Opening a panel from a widget**:
   `Quickshell.execDetached(["haseen", "shell", "ipc", "panel", "toggle", "alice.notes"])`.
+  The shell pairs the toggle with the click on your widget and opens the
+  panel under it; nothing to pass.
 - **A key for a panel**: in `~/.config/hypr/bindings.lua`,
   `haseen.bind("SUPER + N", "Notes", haseen.ipc("panel", "toggle", "alice.notes"))`
   (see `hyprland.md`).

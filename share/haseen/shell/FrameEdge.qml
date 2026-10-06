@@ -11,12 +11,20 @@ PanelWindow {
     required property string edge
     property int thickness: 6
     property color fill: Theme.background
+    readonly property bool horizontal: edge === "top" || edge === "bottom"
 
     anchors {
         top: root.edge !== "bottom"
         bottom: root.edge !== "top"
         left: root.edge !== "right"
         right: root.edge !== "left"
+    }
+    // 1 px past both ends, under the piece each end meets (seams: Frame.qml).
+    margins {
+        top: root.horizontal ? 0 : -1
+        bottom: root.horizontal ? 0 : -1
+        left: root.horizontal ? -1 : 0
+        right: root.horizontal ? -1 : 0
     }
     implicitWidth: thickness
     implicitHeight: thickness

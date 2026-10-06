@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Set up fingerprint login and sudo (fprintd), then enroll a finger
+# haseen:summary Set up fingerprint login, sudo and lock screen (fprintd), then enroll a finger
 # haseen:args [--dry-run] [--yes]
 #
 # Steps adapted from Omarchy bin/omarchy-setup-security-fingerprint (MIT,
@@ -12,13 +12,29 @@ source "$HASEEN_PATH/lib/terminal.sh"
 
 PAM_LINE="auth      sufficient pam_fprintd.so"
 PAM_FILES=(/etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/hyprlock)
+# The lock screen (haseen.lock) runs this service next to its password field.
+# A file of its own, so haseen does not depend on Omarchy's
+# omarchy-lock-fingerprint, and pam_fprintd is `required`: the password is
+# checked separately (the `login` service), never through this stack.
+LOCK_PAM=/etc/pam.d/haseen-lock-fingerprint
+
+lock_pam() {
+    cat <<'EOF'
+#%PAM-1.0
+# haseen lock screen, fingerprint only (written by haseen setup fingerprint)
+auth       required                    pam_fprintd.so
+account    include                     system-local-login
+EOF
+}
 
 usage() {
     cat <<EOF
 Usage: haseen setup fingerprint [--dry-run] [--yes]
 
 Installs fprintd, puts "$PAM_LINE" first in
-${PAM_FILES[*]} (those that exist), then runs fprintd-enroll and
+${PAM_FILES[*]} (those that exist), writes the lock screen's
+fingerprint service $LOCK_PAM, then runs fprintd-enroll (skipped when
+a finger is already enrolled; run fprintd-enroll yourself to add another) and
 fprintd-verify. Runs in a floating terminal when started from the menu.
 EOF
 }
@@ -32,6 +48,14 @@ pam_prepend() {
     awk -v line="$2" '!done && /^[[:space:]]*[a-z-]+[[:space:]]/ && !/^[[:space:]]*#/ { print line; done = 1 } { print } END { if (!done) print line }' "$src" | write_root_file "$1" 0644
 }
 
+# finger_enrolled — fprintd lists one " - #0: right-index-finger" line per
+# enrolled finger ("has no fingers enrolled" otherwise). A live D-Bus probe,
+# so never against a fixture tree.
+finger_enrolled() {
+    ! in_sysroot && have fprintd-list &&
+        fprintd-list "${USER:-$(id -un)}" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]*#[0-9]+:'
+}
+
 in_floating_terminal "$@"
 parse_common_flags "$@"
 ((${#REST[@]} == 0)) || {
@@ -43,11 +67,18 @@ require_not_root
 if ! $DRY_RUN && ! in_sysroot && have lsusb && ! lsusb 2>/dev/null | grep -qiE 'fingerprint|synaptics|goodix|elan|validity|egis|focaltech'; then
     warn "no fingerprint reader recognised on USB; continuing anyway"
 fi
-confirm "Enable fingerprint authentication for sudo and polkit?" || exit 1
+confirm "Enable fingerprint authentication for sudo, polkit and the lock screen?" || exit 1
 [[ -x $(sysroot_path /usr/bin/fprintd-enroll) ]] || run_root pacman -S --needed --noconfirm fprintd
 for f in "${PAM_FILES[@]}"; do
     pam_prepend "$f" "$PAM_LINE"
 done
-run fprintd-enroll
+if [[ "$(cat "$(sysroot_path "$LOCK_PAM")" 2>/dev/null)" != "$(lock_pam)" ]]; then
+    lock_pam | write_root_file "$LOCK_PAM" 0644
+fi
+if finger_enrolled; then
+    info "a finger is already enrolled; skipping fprintd-enroll"
+else
+    run fprintd-enroll
+fi
 run fprintd-verify
-info "fingerprint set up"
+info "fingerprint set up; the lock screen offers it from the next lock"

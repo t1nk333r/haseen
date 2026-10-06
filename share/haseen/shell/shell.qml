@@ -18,6 +18,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Haseen
 import qs.Compat as Compat
+import "PanelPlacement.js" as Placement
 
 ShellRoot {
     id: shell
@@ -27,6 +28,11 @@ ShellRoot {
     property var openPanels: []
     // Screen the open panel appears on, captured at toggle time.
     property var panelScreen: null
+    // The last press on a bar widget (Bar.widgetPressed), and the one the
+    // open panel was toggled from: the panel opens under that widget
+    // (PanelPlacement.js). Null when a key or the CLI opened it.
+    property var barPress: null
+    property var panelOpener: null
     // `bar toggle` hides the bars for this session only.
     property bool barHidden: false
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
@@ -50,6 +56,9 @@ ShellRoot {
     }
 
     function togglePanel(id: string): void {
+        // Every toggle takes the press, so a later key never reuses an old click.
+        const press = Placement.opener(barPress, Date.now());
+        barPress = null;
         if (openPanels.indexOf(id) >= 0) {
             closePanel(id);
             return;
@@ -62,7 +71,8 @@ ShellRoot {
             console.info("haseen: panel toggle: plugin '" + id + "' is disabled");
             return;
         }
-        panelScreen = focusedScreen();
+        panelOpener = press;
+        panelScreen = press ? press.screen : focusedScreen();
         openPanels = [id];
     }
 
@@ -132,6 +142,7 @@ ShellRoot {
                 hidden: shell.barHidden
                 transparent: barText.active
                 onTransparencyToggleRequested: shell.setTransparent("toggle")
+                onWidgetPressed: opener => shell.barPress = opener
             }
 
             Frame {
@@ -167,6 +178,7 @@ ShellRoot {
 
             PanelPopup {
                 pluginId: panelLoader.modelData
+                opener: shell.panelOpener
                 screen: shell.panelScreen
                 onCloseRequested: shell.closePanel(panelLoader.modelData)
             }

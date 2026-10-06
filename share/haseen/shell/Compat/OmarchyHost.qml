@@ -38,7 +38,7 @@ Item {
         readonly property color text: Theme.barForeground
         readonly property color background: Theme.background
         readonly property color urgent: Theme.urgent
-        readonly property string fontFamily: Theme.fontFamily
+        readonly property string fontFamily: Theme.fontMono // Omarchy's bar font is `monospace`
         readonly property string position: Config.barPosition
         readonly property bool vertical: host.vertical
         readonly property int barSize: Config.barThickness

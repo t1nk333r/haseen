@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Screen frame, transparent bar, hover tray (plan 015): the `haseen bar …`
+# Screen frame, transparent bar, chevron tray (plan 015): the `haseen bar …`
 # commands (dry-run purity, shell.json persistence, IPC calls), the
 # wallpaper-sampling text colour script, and the contracts between the CLI
 # and the QML (IPC function names, positions, frame surfaces).
@@ -155,6 +155,24 @@ capture haseen bar tray stick
 assert_status "unknown tray mode is a usage error" 2 "$STATUS"
 assert_eq "manifest declares the pinned setting" "boolean false" \
     "$(jq -r '.settings.pinned | "\(.type) \(.default)"' "$SHELL_DIR/plugins/haseen.tray/manifest.json")"
+tray_dir="$SHELL_DIR/plugins/haseen.tray"
+tray="$(cat "$tray_dir/Widget.qml")"
+assert_contains "tray keeps the Omarchy notice" "$tray" "Adapted from Omarchy shell/plugins/bar/widgets/Tray.qml"
+assert_contains "NOTICE lists the tray port" "$(cat "$REPO/NOTICE.md")" '`share/haseen/shell/plugins/haseen.tray/`'
+assert_contains "only the pin opens the drawer (no hover reveal)" "$tray" "property real reveal: pinned ? 1 : 0"
+assert_eq "no hover handler in the tray widget" "" "$(grep -n 'HoverHandler' "$tray_dir/Widget.qml" || true)"
+assert_contains "chevron click toggles the pin" "$tray" "root.togglePinned();"
+assert_contains "chevron click persists through the bar CLI" "$tray" '"bar", "tray", next ? "pin" : "unpin", "--no-apply"'
+assert_contains "passive items stay hidden" "$tray" "item.status !== Status.Passive"
+item="$(cat "$tray_dir/TrayItem.qml")"
+for call in "modelData.activate()" "modelData.secondaryActivate()" "modelData.scroll(event.angleDelta.y, false)" "root.menuRequested("; do
+    assert_contains "tray item calls $call" "$item" "$call"
+done
+menu="$(cat "$tray_dir/TrayMenu.qml")"
+assert_contains "menu drills into submenus" "$menu" "function enterSubmenu("
+assert_contains "menu entries trigger" "$menu" "entry.modelData.triggered();"
+assert_contains "menu settle is a marked UI timeout" "$menu" $'// haseen:ui-timeout\n    Timer {'
+assert_contains "menu closes on outside click" "$menu" "HyprlandFocusGrab {"
 
 # --- toggle (session only) --------------------------------------------------
 sandbox frame-toggle
@@ -247,6 +265,5 @@ assert_contains "bar can turn transparent (alpha surface)" "$(cat "$SHELL_DIR/Ba
 assert_contains "strips can turn transparent (alpha surface)" "$edge" "surfaceFormat.opaque: false"
 assert_contains "transparent text colour reaches widgets" "$(cat "$SHELL_DIR/Haseen/Theme.qml")" "property color barForeground: foreground"
 assert_contains "text colour script is the one the shell runs" "$(cat "$SHELL_DIR/FrameTextColor.qml")" '"/../../bin/haseen-bar-text-color"'
-assert_contains "tray collapse is a marked UI timeout" "$(cat "$SHELL_DIR/plugins/haseen.tray/Widget.qml")" $'// haseen:ui-timeout\n    Timer {'
 assert_eq "no hex colour literals in frame/bar QML" "" \
     "$(grep -nE '"#[0-9a-fA-F]{3,8}"' "$SHELL_DIR"/{Bar,BarSection,Frame,FrameEdge,FrameCorners,FrameCorner,FrameTextColor}.qml || true)"

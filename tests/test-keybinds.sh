@@ -112,6 +112,20 @@ assert_eq "SUPER + SHIFT + SPACE opens the app launcher" $'Launcher\thaseen shel
 assert_eq "SUPER + ESCAPE opens the system menu" $'System menu\thaseen menu system' "$(bound SUPER+ESCAPE)"
 assert_eq "the bar toggle moved to SUPER + ALT + SPACE" $'Toggle bar\thaseen bar toggle' "$(bound ALT+SUPER+SPACE)"
 assert_eq "closing a panel moved to SUPER + CTRL + ESCAPE" $'Close panel\thaseen shell ipc panel close' "$(bound CTRL+SUPER+ESCAPE)"
+# The style pickers sit on Omarchy's keys (default/hypr/bindings/utilities.lua):
+# SUPER + CTRL + SPACE opened only "next background" before, so the background
+# picker panel had no key at all.
+assert_eq "SUPER + CTRL + SHIFT + SPACE opens the theme picker" \
+    $'Theme picker\thaseen shell ipc panel toggle \'haseen.themepicker\'' "$(bound CTRL+SHIFT+SUPER+SPACE)"
+assert_eq "SUPER + CTRL + SPACE opens the background picker" \
+    $'Background picker\thaseen shell ipc panel toggle \'haseen.background\'' "$(bound CTRL+SUPER+SPACE)"
+assert_eq "the next background moved to SUPER + CTRL + ALT + SPACE" \
+    $'Next background\thaseen theme bg next' "$(bound ALT+CTRL+SUPER+SPACE)"
+# Every panel a key toggles is a shipped panel plugin.
+for id in $(grep -o "panel toggle '[^']*'" <<<"$shipped" | cut -d"'" -f2 | sort -u); do
+    assert_eq "bound panel $id is a shipped panel plugin" "panel" \
+        "$(jq -r '.kinds[] | select(. == "panel")' "$REPO/share/haseen/shell/plugins/$id/manifest.json" 2>/dev/null)"
+done
 assert_eq "the system menu has one key" "SUPER+ESCAPE" "$(awk -F'\t' '$3 == "haseen menu system" { print $1 }' <<<"$shipped")"
 assert_eq "the shipped config binds keys" true "$( (($(wc -l <<<"$shipped") > 60)) && echo true || echo false)"
 assert_eq "no key is bound twice" "" "$(cut -f1 <<<"$shipped" | sort | uniq -d)"
