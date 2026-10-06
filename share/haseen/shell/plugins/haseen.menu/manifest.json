@@ -13,7 +13,7 @@
   "settings": {
     "width": {
       "type": "integer",
-      "default": 380,
+      "default": 280,
       "description": "Panel width in px"
     },
     "placement": {
