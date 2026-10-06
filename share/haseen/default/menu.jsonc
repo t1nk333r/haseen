@@ -9,7 +9,7 @@
   // Optional fields:
   //   aliases   extra names for `haseen menu <name>`; also searched
   //   title     header shown inside the submenu (defaults to label)
-  //   provider  fills the submenu when entered: apps, fonts, backgrounds,
+  //   provider  fills the submenu when entered: apps, fonts,
   //             plugins-enable, plugins-disable, plugins-remove,
   //             catalog-install, catalog-remove
   //   when      bash guard; the row shows only once it succeeds
@@ -77,8 +77,8 @@
 
   // Style
   "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"haseen shell ipc panel toggle haseen.themepicker"},
-  "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"provider":"backgrounds"},
-  "style.background.next": {"icon":"","label":"Next","action":"haseen theme bg next"},
+  "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"action":"haseen shell ipc panel toggle haseen.background"},
+  "style.next-background": {"icon":"","label":"Next background","action":"haseen theme bg next"},
   "style.font": {"icon":"","label":"Font","aliases":["font"],"provider":"fonts"},
   "style.bar": {"icon":"󰍜","label":"Bar"},
   "style.bar.position": {"icon":"","label":"Position"},

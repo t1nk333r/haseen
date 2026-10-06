@@ -125,7 +125,7 @@ Rules every layer follows:
 - `id`: `^[a-z0-9-]+(\.[a-z0-9-]+)+$`. Built-in plugins use `haseen.*`; user plugins use `<user>.*`.
 - `kinds` (each kind needs an `entry`):
   - `bar-widget`: an `Item` placed in a bar section.
-  - `panel`: an `Item` the host shows in a popup surface. Toggle it with `panel toggle <id>`.
+  - `panel`: an `Item` the host shows in a popup surface. Toggle it with `panel toggle <id>`. A toggle within 1.5 s of a press on a bar widget opens the popup centred under (or beside) that widget on its screen, clamped to the bar; any other toggle centres it on the bar edge of the focused screen (`share/haseen/shell/PanelPlacement.js`).
   - `service`: a non-visual object created once at startup.
   - `launcher-provider`: a `QtObject` with `prefix: string` and `function query(text): [{title, subtitle, icon, exec(): void}]`.
   - `overlay`: a full-screen layer surface the plugin owns, such as OSD or lock.
@@ -171,6 +171,7 @@ Nothing appears on screen for them.
 
 - **Omarchy plugins** (`manifest.json` with `kinds` and `entryPoints`): bar widgets, services, panels and overlays are adapted to native registry records. The source directories `~/.config/omarchy/plugins/` and `~/.config/haseen/plugins/` are read without modifying them. Whole-bar replacements still require their original Omarchy bar host; they are not treated as slot widgets.
 - Omarchy imports `qs.Ui` and `qs.Commons` provide the shared panel, keyboard, popup, control, border and theme contracts. A real scoped facade supplies dependencies, popup ownership and settings. Settings writes go atomically to **haseen's** `shell.json` only. An accepted asynchronous mutation is not durable until `Runtime.settingsWritten(id, success)` fires.
+- Omarchy's font family is the fontconfig `monospace` alias, and its plugins draw Nerd Font codepoints as plain text in it. So `Style.font.family` and the bar facade's `fontFamily` are `Theme.fontMono`, never the sans `Theme.fontFamily`.
 - Companion services and overlays of listed Omarchy widgets start once per plugin, shared across monitors. Distinct stable `service:<id>` / `overlay:<id>` keys avoid restarting them during unrelated config edits. Initial settings, source metadata and host APIs exist before plugin completion handlers run.
 - Legacy single-segment ids receive a namespace in haseen's registry (`omaconnect` → `omarchy.omaconnect`), while dependency lookups retain the original identity. Original directory names never change.
 - **DMS plugins** (`plugin.json`): the existing `qs.Common` / `qs.Services` / `qs.Widgets` / `qs.Modules.Plugins` bar-widget subset is unchanged. Its source directory is also read-only.
@@ -227,6 +228,7 @@ Smoke tests drive the UI through these, never through injected input.
 - **Backgrounds:**
   - Images are never shipped. `haseen theme fetch [NAME|--all]` downloads them from Omarchy at a pinned commit, checked against the hashes in `share/haseen/layers/theme/omarchy-assets.txt`, into `~/.cache/haseen/themes/<name>/`.
   - `haseen theme bg list|set|next` maintains `current/background`, which `haseen-background.service` (swaybg) draws.
+  - Pickers on Omarchy's keys: the panels `haseen.themepicker` (SUPER + CTRL + SHIFT + SPACE, menu Style › Theme) and `haseen.background` (SUPER + CTRL + SPACE, menu Style › Background). `bg next` is SUPER + CTRL + ALT + SPACE and Style › Next background.
   - `~/.config/haseen/font` overrides `fontMono`.
 
 

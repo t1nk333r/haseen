@@ -4,24 +4,33 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Haseen
 import qs.Haseen.Widgets
+import "PanelPlacement.js" as Placement
 
-// The popup window for one open panel plugin: a PanelSurface centred on the
-// bar edge of the focused screen. Escape or a click outside closes it.
+// The popup window for one open panel plugin: a PanelSurface on the bar
+// edge, centred under (or beside) the bar widget whose click opened it, or
+// centred on the bar edge when a key or the CLI opened it
+// (PanelPlacement.js). Escape or a click outside closes it.
 PanelWindow {
     id: popup
 
     required property string pluginId
-    readonly property bool atBottom: Config.barPosition === "bottom"
+    // The bar press that opened the panel (PanelPlacement.opener), or null.
+    property var opener: null
+    readonly property var placement: Placement.place(Config.barPosition, opener, implicitWidth, implicitHeight, Theme.gap)
 
     signal closeRequested
 
     anchors {
-        top: !popup.atBottom
-        bottom: popup.atBottom
+        top: popup.placement.top
+        bottom: popup.placement.bottom
+        left: popup.placement.left
+        right: popup.placement.right
     }
     margins {
-        top: Theme.gap
-        bottom: Theme.gap
+        top: popup.placement.marginTop
+        bottom: popup.placement.marginBottom
+        left: popup.placement.marginLeft
+        right: popup.placement.marginRight
     }
     exclusiveZone: 0
     implicitWidth: Math.max(surface.implicitWidth, 1)

@@ -21,6 +21,17 @@ import qs.Haseen
 // PanelWindow instead. The session is never locked, Escape closes it, and a
 // correct password closes it too, so the UI and the PAM flow can be exercised
 // without risking the real session.
+//
+// Fingerprint: while locked, a second PamContext runs the
+// `haseen-lock-fingerprint` service (pam_fprintd, written by `haseen setup
+// fingerprint`) next to the password field, and a touch unlocks. It is
+// offered only when that service exists and fprintd has a finger enrolled
+// for the user (checked when the shell starts and at every lock, never
+// polled), and restarted after each failed scan. The mechanism (a parallel
+// fingerprint context started once the lock is secure, retried, gated on an
+// enrolled finger, a hint inside the field) is adapted from Omarchy's lock,
+// shell/plugins/lock/Service.qml (MIT, Copyright (c) David Heinemeier
+// Hansson).
 Scope {
     id: root
 
@@ -32,6 +43,18 @@ Scope {
     readonly property bool previewMode: settings.preview === true
     readonly property string pamConfig: _text(settings.pamConfig, "login")
     readonly property string pamConfigDirectory: _text(settings.pamConfigDirectory, "/etc/pam.d")
+    readonly property bool fingerprintEnabled: settings.fingerprint !== false
+    readonly property string fingerprintPamConfig: _text(settings.fingerprintPamConfig, "haseen-lock-fingerprint")
+    readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
+
+    // Result of the last fprintd check (refreshFingerprint()).
+    property bool fingerprintEnrolled: false
+    readonly property bool fingerprintAvailable: fingerprintEnabled && fingerprintEnrolled && !_fingerprintGaveUp
+    // The last pam_fprintd message was an error ("Failed to match fingerprint").
+    property bool fingerprintError: false
+    property bool _fingerprintGaveUp: false
+    property int _fingerprintQuickFailures: 0
+    property double _fingerprintStartedAt: 0
 
     property bool previewShown: false
     // Our own record of "a lock was asked for and not yet released". Not
@@ -84,9 +107,15 @@ Scope {
         if (locked)
             return;
         _reset();
+        _fingerprintGaveUp = false;
+        _fingerprintQuickFailures = 0;
+        // The cached answer starts the reader at once; this one catches a
+        // finger enrolled (or removed) since the last lock.
+        refreshFingerprint();
         if (previewMode) {
             console.info(pluginId + ": preview mode, showing the lock UI without locking the session");
             previewShown = true;
+            _startFingerprint();
             return;
         }
         lockRequested = true;
@@ -111,6 +140,7 @@ Scope {
             return;
         if (pam.active)
             pam.abort();
+        _stopFingerprint();
         _reset();
         previewShown = false;
     }
@@ -122,7 +152,12 @@ Scope {
         _responded = false;
     }
 
+    // Either path unlocks: stop the other one, so a password check still in
+    // flight cannot report "Wrong password" on an unlocked session.
     function _unlocked(): void {
+        if (pam.active)
+            pam.abort();
+        _stopFingerprint();
         _reset();
         if (previewShown) {
             previewShown = false;
@@ -154,6 +189,59 @@ Scope {
         pam.respond(answer);
     }
 
+    function refreshFingerprint(): void {
+        if (fingerprintEnabled && userName !== "" && !fingerprintCheck.running)
+            fingerprintCheck.running = true;
+    }
+
+    // On a real lock, only once the compositor confirms it (secure), so a
+    // touch can never "unlock" a session that is not locked yet.
+    function _startFingerprint(): void {
+        if (!fingerprintAvailable || fingerprintPam.active || fingerprintRetry.running)
+            return;
+        if (!previewShown && !(lockRequested && sessionLock.secure))
+            return;
+        fingerprintError = false;
+        _fingerprintStartedAt = Date.now();
+        if (!fingerprintPam.start())
+            _fingerprintFinished(false);
+    }
+
+    function _stopFingerprint(): void {
+        fingerprintRetry.stop();
+        if (fingerprintPam.active)
+            fingerprintPam.abort();
+        fingerprintError = false;
+    }
+
+    function _fingerprintFinished(success: bool): void {
+        if (!locked)
+            return;
+        if (success) {
+            _unlocked();
+            return;
+        }
+        // pam_fprintd waits for a finger (30 s by default) and gives up after
+        // three mismatches, both of which take seconds; it is then restarted
+        // at once. An attempt that fails immediately means the reader cannot
+        // be reached (lid shut, device busy, fprintd missing): back off to
+        // 2 s and give up after five in a row, so a dead reader does not
+        // churn PAM conversations for the whole lock. The password still works.
+        if (Date.now() - _fingerprintStartedAt < 2000) {
+            _fingerprintQuickFailures += 1;
+            if (_fingerprintQuickFailures >= 5) {
+                console.warn(pluginId + ": the fingerprint reader keeps failing; fingerprint unlock is off until the next lock");
+                _fingerprintGaveUp = true;
+                return;
+            }
+            fingerprintRetry.interval = 2000;
+        } else {
+            _fingerprintQuickFailures = 0;
+            fingerprintRetry.interval = 250;
+        }
+        fingerprintRetry.restart();
+    }
+
     function focusedScreen(): var {
         const mon = Hyprland.focusedMonitor;
         const screens = Quickshell.screens;
@@ -183,6 +271,59 @@ Scope {
         onError: error => root._failed("Authentication error: " + PamError.toString(error))
     }
 
+    PamContext {
+        id: fingerprintPam
+
+        config: root.fingerprintPamConfig
+        configDirectory: root.pamConfigDirectory
+
+        // pam_fprintd only informs ("Place your finger…", "Failed to match
+        // fingerprint"). A stack that asks for typed input cannot be answered
+        // from here, and waiting on it would hold the context forever.
+        onPamMessage: {
+            if (responseRequired) {
+                console.warn(root.pluginId + ": " + root.fingerprintPamConfig + " asks for input; fingerprint unlock is off until the next lock");
+                abort();
+                root._fingerprintGaveUp = true;
+                return;
+            }
+            root.fingerprintError = messageIsError;
+        }
+        // An error is followed by completed(Error), so this sees every end.
+        onCompleted: result => root._fingerprintFinished(result === PamResult.Success)
+    }
+
+    // Single shot, armed only when a fingerprint attempt has ended (250 ms
+    // after a real scan, 2 s after an immediate failure, see
+    // _fingerprintFinished), so it never runs on its own.
+    // haseen:ui-timeout
+    Timer {
+        id: fingerprintRetry
+
+        repeat: false
+        onTriggered: root._startFingerprint()
+    }
+
+    // `fprintd-list` prints each enrolled finger as " - #0: right-index-finger"
+    // and "User x has no fingers enrolled" otherwise, so match the list
+    // entry, not the word "finger". No PAM service file, no fingerprint.
+    Process {
+        id: fingerprintCheck
+
+        command: ["sh", "-c", "test -f \"$1\" && exec fprintd-list \"$2\"", "sh", root.pamConfigDirectory + "/" + root.fingerprintPamConfig, root.userName]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.fingerprintEnrolled = /^\s*-\s*#\d+:/m.test(text);
+                if (root.fingerprintAvailable)
+                    root._startFingerprint();
+                else
+                    root._stopFingerprint();
+            }
+        }
+    }
+
+    Component.onCompleted: refreshFingerprint()
+
     // Test hook, preview mode only: submit a password to the preview over
     // IPC (`qs ipc call haseen.lock submit x`) instead of injecting keys.
     // Disabled whenever lock() would take the real session lock.
@@ -205,7 +346,9 @@ Scope {
                 sessionLocked: sessionLock.locked,
                 busy: root.busy,
                 message: root.message,
-                pamConfig: root.pamConfig
+                pamConfig: root.pamConfig,
+                fingerprint: root.fingerprintAvailable,
+                fingerprintActive: fingerprintPam.active
             });
         }
     }
@@ -214,6 +357,8 @@ Scope {
         id: sessionLock
 
         locked: false
+        onSecureStateChanged: if (secure)
+            root._startFingerprint()
 
         WlSessionLockSurface {
             color: Theme.background
@@ -222,6 +367,8 @@ Scope {
                 anchors.fill: parent
                 busy: root.busy
                 message: root.message
+                fingerprint: root.fingerprintAvailable
+                fingerprintError: root.fingerprintError
                 onSubmitted: password => root.submit(password)
             }
         }
@@ -229,29 +376,8 @@ Scope {
 
     LazyLoader {
         active: root.previewShown
-
-        PanelWindow {
-            screen: root.focusedScreen()
-            anchors {
-                top: true
-                bottom: true
-                left: true
-                right: true
-            }
-            exclusionMode: ExclusionMode.Ignore
-            color: Theme.background
-            WlrLayershell.namespace: "haseen-lock-preview"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-
-            LockView {
-                anchors.fill: parent
-                preview: true
-                busy: root.busy
-                message: root.message
-                onSubmitted: password => root.submit(password)
-                onCancelled: root.closePreview()
-            }
-        }
+        source: Qt.resolvedUrl("PreviewWindow.qml")
+        onItemChanged: if (item)
+            item.service = root
     }
 }

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.tray",
   "name": "Tray",
-  "version": "1.1.0",
-  "description": "StatusNotifier tray icons behind a chevron: hover to reveal, click the chevron to pin",
+  "version": "2.0.0",
+  "description": "StatusNotifier tray (Omarchy port) behind a chevron: click the chevron to pin it open, click again to collapse",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
     "pinned": {
       "type": "boolean",
       "default": false,
-      "description": "Keep the icons shown (the chevron click and `haseen bar tray` set this)"
+      "description": "Tray drawer pinned open (the chevron click and `haseen bar tray` set this)"
     }
   },
   "permissions": [

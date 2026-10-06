@@ -21,8 +21,28 @@ PanelWindow {
     readonly property bool vertical: Config.barVertical
     // A hidden bar leaves a frame-thick strip so the frame stays closed.
     readonly property int thickness: !hidden ? Config.barThickness : Config.frameEnabled ? Config.frameThickness : 0
+    // With the frame on, the bar reaches 1 px under the frame strips at both
+    // of its ends (the seam note in Frame.qml).
+    readonly property int overlap: Config.frameEnabled ? 1 : 0
 
     signal transparencyToggleRequested
+    // A press on a bar widget, as PanelPlacement.js's opener.
+    signal widgetPressed(var opener)
+
+    // The bar spans its edge and the popups share its origin
+    // (PanelPlacement.place), so the slot's centre in this window's
+    // coordinates, less the overlap, is where along the edge a panel it
+    // opens belongs.
+    function reportPress(slot: Item): void {
+        const c = slot.mapToItem(null, slot.width / 2, slot.height / 2);
+        bar.widgetPressed({
+            screen: bar.screen,
+            position: bar.position,
+            centre: (bar.vertical ? c.y : c.x) - overlap,
+            extent: (bar.vertical ? bar.height : bar.width) - 2 * overlap,
+            time: Date.now()
+        });
+    }
 
     visible: thickness > 0
     anchors {
@@ -30,6 +50,12 @@ PanelWindow {
         bottom: bar.position !== "top"
         left: bar.position !== "right"
         right: bar.position !== "left"
+    }
+    margins {
+        top: bar.vertical ? -bar.overlap : 0
+        bottom: bar.vertical ? -bar.overlap : 0
+        left: bar.vertical ? 0 : -bar.overlap
+        right: bar.vertical ? 0 : -bar.overlap
     }
     implicitWidth: thickness
     implicitHeight: thickness
@@ -60,40 +86,48 @@ PanelWindow {
 
     Item {
         anchors.fill: parent
-        anchors.leftMargin: bar.vertical ? 0 : Theme.gap
-        anchors.rightMargin: bar.vertical ? 0 : Theme.gap
-        anchors.topMargin: bar.vertical ? Theme.gap : 0
-        anchors.bottomMargin: bar.vertical ? Theme.gap : 0
+        anchors.leftMargin: bar.vertical ? 0 : Theme.gap + bar.overlap
+        anchors.rightMargin: bar.vertical ? 0 : Theme.gap + bar.overlap
+        anchors.topMargin: bar.vertical ? Theme.gap + bar.overlap : 0
+        anchors.bottomMargin: bar.vertical ? Theme.gap + bar.overlap : 0
         visible: !bar.hidden
 
+        // Each section is anchored on both axes, the one across the bar
+        // being a no-op (the section spans it). Anchoring only the axis along
+        // the bar left a section at its old offset after a live switch
+        // between a vertical and a horizontal bar: removing an anchor keeps
+        // the position it set, so the right section sat outside a 28 px bar.
         BarSection {
-            anchors.left: bar.vertical ? undefined : parent.left
-            anchors.top: bar.vertical ? parent.top : undefined
+            anchors.left: parent.left
+            anchors.top: parent.top
             width: bar.vertical ? parent.width : implicitWidth
             height: bar.vertical ? implicitHeight : parent.height
             vertical: bar.vertical
             ids: Config.section("left")
             screen: bar.screen
+            onWidgetPressed: slot => bar.reportPress(slot)
         }
 
         BarSection {
-            anchors.horizontalCenter: bar.vertical ? undefined : parent.horizontalCenter
-            anchors.verticalCenter: bar.vertical ? parent.verticalCenter : undefined
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
             width: bar.vertical ? parent.width : implicitWidth
             height: bar.vertical ? implicitHeight : parent.height
             vertical: bar.vertical
             ids: Config.section("center")
             screen: bar.screen
+            onWidgetPressed: slot => bar.reportPress(slot)
         }
 
         BarSection {
-            anchors.right: bar.vertical ? undefined : parent.right
-            anchors.bottom: bar.vertical ? parent.bottom : undefined
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
             width: bar.vertical ? parent.width : implicitWidth
             height: bar.vertical ? implicitHeight : parent.height
             vertical: bar.vertical
             ids: Config.section("right")
             screen: bar.screen
+            onWidgetPressed: slot => bar.reportPress(slot)
         }
     }
 
