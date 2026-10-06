@@ -24,6 +24,11 @@ import "PanelPlacement.js" as Placement
 // pointer, and closes with it: Escape or a click outside closes both. Native
 // panels open in their own popup, whose focus grab closes this one, as one
 // popup at a time does elsewhere.
+//
+// Arrange mode (Bar.arranging) also shows four edge buttons that move the
+// bar (`haseen bar position`), and takes drops: a widget dragged here from
+// the bar (or within the panel) lands in front of the cell under the
+// pointer (`dropBefore`, Bar.dropAt), marked by an accent line.
 PanelWindow {
     id: panel
 
@@ -38,6 +43,9 @@ PanelWindow {
     property bool hold: false
     // Arrange mode (Bar.arranging), toggled from the footer.
     property bool arranging: false
+    // Where a dragged widget would land here: in front of this id, "" at
+    // the end, null when the drag is elsewhere.
+    property var dropBefore: null
     // 0 tucked under the bar .. 1 out.
     property real reveal: 0
     readonly property real travel: (vertical ? card.width : card.height) + Theme.gap
@@ -50,6 +58,35 @@ PanelWindow {
 
     signal closeRequested
     signal arrangeToggled
+    signal positionRequested(string pos)
+
+    // This window's origin in the bar window's coordinates. Along the edge
+    // both start at the popups' origin, the bar reaching `overlap` further;
+    // across it, this window starts where the bar's exclusive zone ends.
+    function origin(): point {
+        const b = barWindow;
+        if (edge === "top")
+            return Qt.point(b.overlap, b.height);
+        if (edge === "bottom")
+            return Qt.point(b.overlap, -height);
+        if (edge === "left")
+            return Qt.point(b.width, b.overlap);
+        return Qt.point(-width, b.overlap);
+    }
+
+    function toBar(x: real, y: real): point {
+        const o = origin();
+        return Qt.point(x + o.x, y + o.y);
+    }
+
+    function fromBar(x: real, y: real): point {
+        const o = origin();
+        return Qt.point(x - o.x, y - o.y);
+    }
+
+    function cardContains(x: real, y: real): bool {
+        return x >= card.x && y >= card.y && x < card.x + card.width && y < card.y + card.height;
+    }
 
     // The card's background contrasts with the widgets' text colour, which
     // follows the wallpaper while the bar is transparent (Theme.barForeground
@@ -157,9 +194,24 @@ PanelWindow {
         height: content.implicitHeight + 2 * padding
         color: panel.cardColor
         radius: Theme.radius
-        border.color: Theme.border
-        border.width: Theme.borderWidth
+        border.color: panel.dropBefore === "" ? Theme.accent : Theme.border
+        border.width: panel.dropBefore === "" ? Theme.borderWidth * 2 : Theme.borderWidth
         focus: true
+
+        // In front of the cell a dragged widget would land before.
+        Rectangle {
+            readonly property Item target: typeof panel.dropBefore === "string" && panel.dropBefore !== "" ? panel.barWindow.cells[panel.dropBefore] || null : null
+            readonly property point at: target ? target.mapToItem(card, 0, 0) : Qt.point(0, 0)
+
+            z: 1
+            visible: target !== null
+            x: Math.round(at.x - Theme.gap / 2 - width / 2)
+            y: at.y
+            width: 2
+            height: target ? target.height : 0
+            radius: 1
+            color: Theme.accent
+        }
 
         Column {
             id: content
@@ -188,15 +240,15 @@ PanelWindow {
                 }
             }
 
-            // Arrange: clicks move widgets instead of reaching them
-            // (BarSection.qml), so placing them needs no modifier key.
+            // Arrange: clicks and drags move widgets instead of reaching
+            // them (BarSection.qml), so placing them needs no modifier key.
             Row {
                 spacing: Theme.gap
 
                 Text {
                     width: card.contentWidth - arrangeButton.width - Theme.gap
                     anchors.verticalCenter: parent.verticalCenter
-                    text: panel.arranging ? "Click a bar widget to move it here, or one here to keep it in the bar" : "Widgets moved off the bar"
+                    text: panel.arranging ? "Drag a widget to move it, here included; a click moves it between the bar and here" : "Widgets moved off the bar"
                     wrapMode: Text.WordWrap
                     color: Theme.barForeground
                     opacity: 0.6
@@ -214,6 +266,54 @@ PanelWindow {
                     onClicked: button => {
                         if (button === Qt.LeftButton)
                             panel.arrangeToggled();
+                    }
+                }
+            }
+
+            // While arranging: the screen edge the bar sits on.
+            Row {
+                visible: panel.arranging
+                spacing: Theme.gap
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Bar edge"
+                    color: Theme.barForeground
+                    opacity: 0.6
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Math.max(8, Theme.fontSize - 3)
+                }
+
+                Repeater {
+                    model: [
+                        {
+                            pos: "top",
+                            glyph: "\uf062"
+                        },
+                        {
+                            pos: "bottom",
+                            glyph: "\uf063"
+                        },
+                        {
+                            pos: "left",
+                            glyph: "\uf060"
+                        },
+                        {
+                            pos: "right",
+                            glyph: "\uf061"
+                        }
+                    ]
+
+                    delegate: BarButton {
+                        required property var modelData
+
+                        height: Theme.fontSize * 2
+                        glyph: modelData.glyph
+                        highlighted: panel.edge === modelData.pos
+                        onClicked: button => {
+                            if (button === Qt.LeftButton && panel.edge !== modelData.pos)
+                                panel.positionRequested(modelData.pos);
+                        }
                     }
                 }
             }

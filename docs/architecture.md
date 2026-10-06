@@ -128,6 +128,7 @@ Rules every layer follows:
   - `panel`: an `Item` the host shows in a popup surface. Toggle it with `panel toggle <id>`. A toggle within 1.5 s of a press on a bar widget opens the popup centred under (or beside) that widget on its screen, clamped to the bar; any other toggle centres it on the bar edge of the focused screen (`share/haseen/shell/PanelPlacement.js`).
   - `service`: a non-visual object created once at startup.
   - `launcher-provider`: a `QtObject` with `prefix: string` and `function query(text): [{title, subtitle, icon, exec(): void}]`.
+    Prefixes in use: `>` clipboard history (haseen.clipboard), `=` calculator (haseen.calculator).
   - `overlay`: a full-screen layer surface the plugin owns, such as OSD or lock.
 - `permissions`: declarative. Values: `exec`, `network`, `network:local`, `files:read`, `files:write`, `notifications`. `haseen plugin validate` and `haseen plugin info` show them, and `network` triggers a warning. QML cannot sandbox, so this field is review metadata, not enforcement. The docs say so.
 - Search order: `~/.config/haseen/plugins/<id>/`, then `$HASEEN_PATH/shell/plugins/<id>/`. The first match wins, so a user copy overrides the built-in one.
@@ -151,10 +152,17 @@ Rules every layer follows:
 ```
 
 `share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
-to `Theme.radius * 2`. Double-clicking empty bar space toggles `bar.transparent`;
-the text colour then comes from `Theme.barForeground`, which is set at runtime
-from the wallpaper under the bar (`bin/haseen-bar-text-color`) and is not a
-theme key. Every bar widget's normal-state text uses `Theme.barForeground`.
+to `Theme.radius * 2`. Double-clicking the bar toggles `bar.transparent`: on
+empty space and, as in Omarchy's bar, on a widget too (a passive `PointHandler`
+over the bar, so the widget still gets both clicks), but not on the overflow
+chevron or in arrange mode. The text colour then comes from
+`Theme.barForeground`, which is set at runtime from the wallpaper under the
+bar (`bin/haseen-bar-text-color`) and is not a theme key. Every bar widget's
+normal-state text uses `Theme.barForeground`.
+
+A bar widget that is invisible (`visible: false`, also inside an Omarchy or
+DMS host) or reports `implicitWidth` 0 gets a zero-size slot: no room, no
+spacing, no hover highlight and no press area.
 
 **Tray anchor.** `haseen.tray` anchors the right section: when listed in
 `bar.right` it is always drawn first there, whatever its index, and nothing is
@@ -163,10 +171,11 @@ once, where it comes first (left, centre, right).
 
 **Overflow.** When the sections do not fit the bar's length, widgets move into
 a panel behind a chevron at the end of the bar (the right end, or the bottom of
-a vertical bar), shown only while something is in it. "Does not fit" means a
-side section comes within `Theme.gap` of the centred centre section (or, with
-no centre, of the other side section). `share/haseen/shell/Overflow.js` decides,
-and `tests/test-bar-overflow.sh` tests it:
+a vertical bar), shown only while something is in it or the panel is open.
+"Does not fit" means a side section comes within `Theme.gap` of the centred
+centre section (or, with no centre, of the other side section).
+`share/haseen/shell/Overflow.js` decides, and `tests/test-bar-overflow.sh`
+tests it:
 
 - `bar.overflow` ids are always in the panel, first, in their order, from any
   section. The tray never is.
@@ -188,13 +197,33 @@ state, IPC targets stay single, and a click opens their own popup as in the bar.
 Its window spans the bar edge from the popups' origin, transparent and without
 input outside the card, so native panels open under the widget and Omarchy
 popups (`Ui/KeyboardPanel`) below the panel; the panel stays open under such a
-popup and closes with it. Escape or a click outside closes it. **Arrange** in
-the panel's footer, or a right click on the chevron, turns clicks into moves: a
-click on a bar widget runs `haseen bar overflow add`, one in the panel `pin`
-("keep in bar"). A modifier gesture cannot do this, because Wayland only tells
-the client with keyboard focus about Shift, and a bar never has it. The same
-edits from a terminal: `haseen bar overflow add|remove|pin|unpin <id>` and
-`list`.
+popup and closes with it. Escape or a click outside closes it.
+
+**Arrange mode** opens the panel (even with nothing in it) from its footer's
+**Arrange**, a right click on the chevron or on empty bar space,
+`haseen bar arrange` or Style › Bar › Arrange widgets in the menu. Widgets
+then show an outline and take the pointer instead of the widget under it:
+
+- a click moves a widget between the bar and the panel: `haseen bar overflow
+  add` from the bar, `pin` ("keep in bar") from the panel;
+- a drag moves it where it is dropped, marked by an accent line: within its
+  section, to another section, onto the chevron or the panel (into
+  `bar.overflow`, in front of the cell under the pointer), or out of the panel
+  into the bar (out of `bar.overflow` and into `bar.pinned`). The drop is
+  saved with `haseen bar move <id> <left|center|right|overflow> [--before
+  <id>] [--pin]`; `Overflow.move` and `Overflow.dropTarget` hold the rule,
+  and nothing ever lands in front of the tray. A drag that starts in one
+  window (bar or panel) keeps the pointer until the release, so the bar maps
+  the panel's coordinates onto its own;
+- four edge buttons in the footer move the bar to another screen edge
+  (`haseen bar position`), live, with the panel following.
+
+Dragging works only in arrange mode: outside it every press belongs to the
+widget (sliders, drags, its own popups), and a hold-to-drag gesture would have
+to cancel the widget's press after the fact. A modifier gesture cannot do it
+either, because Wayland only tells the client with keyboard focus about Shift,
+and a bar never has it. The same edits from a terminal: `haseen bar overflow
+add|remove|pin|unpin <id>`, `list`, and `haseen bar move`.
 
 Shared state flags live in `~/.local/state/haseen/flags/<name>`; the file
 existing means on. The names are `dnd`, `idle-off`, `screensaver-off`,
@@ -234,7 +263,7 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `menu` | `toggle(path)`; `haseen menu [path]` wraps it |
 | `lock` | `lock()` |
 | `notifications` | `clear()`, `toggleDnd()` (also writes the `dnd` flag) |
-| `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `overflow(verb, id)`, `status()` (with each screen's `overflow` panel) |
+| `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `overflow(verb, id)`, `move(id, to, before, pin)`, `arrange(mode)` (focused screen, session only), `status()` (with each screen's `overflow` panel and `arranging`) |
 | `screensaver` | `start(style)` (`ttfx`, `native` or `default`) |
 | `nightlight` | `on()`, `off()`, `toggle()`, `refresh()`, `status(): string` |
 | `pager` | `count()`, `probe()`, `cards()`, `clear()`, `dnd()`, `expand()`, `snooze(minutes)`, `snoozeAll(minutes)`, `unsnooze(key)`, `snoozes()`, `codes(state)`, `open(deckKey)`, `act(identifier)`, `reply(text)`, `dismissOne()`, `dismissAll()`, `dismissShown()`, `invokeLast()`, `showHistory()`, `forgetHistory()`, `dismiss(summary)`, `recent(action)`, … (plan 025) |

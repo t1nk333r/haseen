@@ -4,9 +4,10 @@ import qs.Haseen
 
 // A row (or, in a left/right bar, a column) of bar-widget plugins. Disabled
 // ids are filtered out; unknown ones are skipped by PluginSlot with one log
-// line. Positioners neither place nor space zero-size children, so a widget
-// reporting implicitWidth 0 (its "hidden" signal in both orientations) adds
-// no gap.
+// line. A widget that is invisible or reports implicitWidth 0 (its "hidden"
+// signal in both orientations) gets a zero-size slot: positioners neither
+// place nor space zero-size children, so it adds no gap, and it gets no
+// hover highlight and no press or arrange area.
 //
 // Vertical: every slot is the bar's width. A widget that declares
 // `property bool vertical` gets it set and sizes its own height; any other
@@ -15,6 +16,11 @@ import qs.Haseen
 // Every shown widget gets a hover highlight from its slot. widgetPressed(slot)
 // reports every press on a widget, for the panel host: a toggle that follows
 // it opens the panel under that widget (shell.qml).
+//
+// Arrange mode: a click moves a widget between the bar and the overflow
+// panel (moveRequested); a drag reports where the pointer is, in the window
+// the widget sits in (dragMoved), and its end (dragEnded), and the bar
+// (Bar.qml) decides where it lands.
 //
 // Overflow (Bar.qml, Overflow.js): each widget sits in a placeholder cell of
 // this grid. An overflowed widget's cell shrinks to nothing (the grid skips
@@ -38,8 +44,11 @@ Grid {
     // Ids that never overflow; arranging leaves them alone.
     property var fixedIds: []
     // Arrange mode (the overflow panel's "Arrange"): a click on a widget
-    // moves it between the bar and the panel instead of reaching it.
+    // moves it between the bar and the panel instead of reaching it, and a
+    // drag moves it anywhere.
     property bool arranging: false
+    // The id being dragged, drawn dimmed where it is until it is dropped.
+    property string dragId: ""
     readonly property var shownIds: ids.filter(id => Config.isEnabled(id))
     // id -> natural length along the bar.
     property var lengths: ({})
@@ -47,6 +56,28 @@ Grid {
     signal widgetPressed(Item slot)
     // A click while arranging: `overflowed` says where the widget is now.
     signal moveRequested(string id, bool overflowed)
+    // A drag while arranging: the pointer in the slot's window coordinates.
+    signal dragMoved(string id, Item slot, real x, real y)
+    signal dragEnded(string id, bool dropped)
+
+    // The shown widgets still in the bar, in order, as [{ id, start, end }]
+    // along the bar in `target`'s coordinates (Overflow.dropTarget).
+    function spans(target: Item): var {
+        const out = [];
+        for (let i = 0; i < repeater.count; i++) {
+            const c = repeater.itemAt(i);
+            if (!c || c.overflowed || c.length <= 0)
+                continue;
+            const p = c.mapToItem(target, 0, 0);
+            const start = vertical ? p.y : p.x;
+            out.push({
+                id: c.modelData,
+                start: start,
+                end: start + c.length
+            });
+        }
+        return out;
+    }
 
     function report(id: string, length: real): void {
         if (lengths[id] === length)
@@ -70,6 +101,8 @@ Grid {
     spacing: Math.round(Theme.gap / 2)
 
     Repeater {
+        id: repeater
+
         model: ScriptModel {
             values: section.shownIds
         }
@@ -97,7 +130,11 @@ Grid {
                 // Set once per loaded item, not bound: a binding that reads the
                 // item's `vertical` while also writing it loops.
                 property bool adapts: false
-                readonly property bool shown: ready && item.implicitWidth > 0
+                // `visible` too: an invisible widget with a size (an Omarchy
+                // widget hidden by `visible: false`) must not leave an empty,
+                // hoverable gap. Compat hosts report their widget's visibility
+                // through their implicitWidth (OmarchyHost, DmsHost).
+                readonly property bool shown: ready && item.visible && item.implicitWidth > 0
 
                 parent: cell.host || cell
                 pluginId: cell.modelData
@@ -109,6 +146,7 @@ Grid {
                 // its parent) and must get a fixed cell.
                 height: !shown ? 0 : !section.vertical ? section.height : adapts && item.vertical ? item.implicitHeight : section.width
                 clip: section.vertical && !adapts
+                opacity: section.dragId === cell.modelData ? 0.35 : 1
                 // After the load settles: assigning while the Loader is still
                 // parenting and sizing the new item trips a binding-loop warning.
                 onItemChanged: Qt.callLater(() => {
@@ -155,25 +193,66 @@ Grid {
                         }
                     }
 
-                    // Arrange mode: this takes the click, so the widget never
-                    // sees it, and moves the widget (outlined, so the mode
-                    // shows). A modifier gesture could not do this: a bar has
-                    // no keyboard focus, so Wayland never tells it about Shift.
+                    // Arrange mode: this takes the press, so the widget never
+                    // sees it (outlined, so the mode shows). A click moves the
+                    // widget between the bar and the panel; a drag moves it
+                    // where it is dropped (Bar.qml). A modifier gesture could
+                    // not do this: a bar has no keyboard focus, so Wayland
+                    // never tells it about Shift. While the button is held the
+                    // compositor keeps sending the pointer here (an implicit
+                    // grab), even over the other window (bar or panel).
                     MouseArea {
                         id: arrange
+
+                        property point pressAt: Qt.point(0, 0)
+                        property bool dragging: false
+
+                        function finish(dropped: bool): void {
+                            if (!dragging)
+                                return;
+                            dragging = false;
+                            section.dragEnded(cell.modelData, dropped);
+                        }
 
                         anchors.fill: parent
                         enabled: section.arranging && section.fixedIds.indexOf(cell.modelData) < 0
                         hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: section.moveRequested(cell.modelData, cell.overflowed)
+                        preventStealing: true
+                        // Unset outside arrange mode (undefined resets it):
+                        // a disabled MouseArea's cursor still wins over the
+                        // widget's own under it.
+                        cursorShape: !enabled ? undefined : dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                        onPressed: mouse => {
+                            pressAt = Qt.point(mouse.x, mouse.y);
+                            dragging = false;
+                        }
+                        onPositionChanged: mouse => {
+                            if (!pressed)
+                                return;
+                            if (!dragging && Math.abs(mouse.x - pressAt.x) + Math.abs(mouse.y - pressAt.y) < Qt.styleHints.startDragDistance)
+                                return;
+                            dragging = true;
+                            const p = mapToItem(null, mouse.x, mouse.y);
+                            section.dragMoved(cell.modelData, slot, p.x, p.y);
+                        }
+                        onReleased: mouse => {
+                            if (dragging)
+                                finish(true);
+                            else if (containsMouse)
+                                section.moveRequested(cell.modelData, cell.overflowed);
+                        }
+                        onCanceled: finish(false)
+                        onEnabledChanged: {
+                            if (!enabled)
+                                finish(false);
+                        }
 
                         Rectangle {
                             anchors.fill: parent
                             anchors.margins: 2
                             visible: arrange.enabled
                             radius: Theme.radius
-                            color: arrange.containsMouse ? Qt.rgba(Theme.selection.r, Theme.selection.g, Theme.selection.b, 0.5) : "transparent"
+                            color: arrange.containsMouse || arrange.dragging ? Qt.rgba(Theme.selection.r, Theme.selection.g, Theme.selection.b, 0.5) : "transparent"
                             border.color: Theme.accent
                             border.width: Theme.borderWidth
                         }

@@ -36,9 +36,13 @@ ShellRoot {
     property var panelOpener: null
     // `bar toggle` hides the bars for this session only.
     property bool barHidden: false
-    // Screen name -> { ids, open }: what each bar's overflow panel holds.
+    // Screen name -> { ids, open, arranging }: what each bar's overflow
+    // panel holds, and whether that bar is in arrange mode.
     property var overflowState: ({})
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
+
+    // `bar arrange`: arrange mode on or off on the bar of this screen.
+    signal arrangeRequested(string name, bool on)
 
     // Legacy plugin facades route native panels through this root, not through
     // detached CLI round trips. The binding is restored when the shell dies.
@@ -138,6 +142,35 @@ ShellRoot {
         return JSON.stringify(r);
     }
 
+    function setPosition(pos: string): string {
+        if (["top", "bottom", "left", "right"].indexOf(pos) < 0)
+            return "usage: position top|bottom|left|right";
+        applySetting(["bar", "position"], pos, ["bar", "position", pos]);
+        return pos;
+    }
+
+    // One drag-and-drop in arrange mode (Overflow.move), applied at once;
+    // `persist` saves it through `haseen bar move`, which a drop needs and
+    // the CLI's own IPC call does not.
+    function moveWidget(id: string, to: string, before: string, pin: bool, persist: bool): string {
+        const b = Config.bar;
+        const r = Overflow.move({
+            left: b.left,
+            center: b.center,
+            right: b.right,
+            overflow: b.overflow,
+            pinned: b.pinned
+        }, id, to, before, pin);
+        if (r === null)
+            return "usage: move <id in the bar, not the tray> left|center|right|overflow [before-id] [pin]";
+        for (const k of ["left", "center", "right", "overflow", "pinned"])
+            if (JSON.stringify(r[k]) !== JSON.stringify(Config._ids(b[k])))
+                Config.setRuntime(["bar", k], r[k]);
+        if (persist)
+            Quickshell.execDetached([cli, "bar", "move", id, to].concat(before !== "" ? ["--before", before] : [], pin ? ["--pin"] : [], ["--no-apply"]));
+        return JSON.stringify(r);
+    }
+
     function noteOverflow(name: string, state: var): void {
         const next = Object.assign({}, overflowState);
         if (state === null)
@@ -169,7 +202,8 @@ ShellRoot {
                 function report(): void {
                     shell.noteOverflow(screenScope.modelData.name, {
                         ids: screenBar.overflowShown,
-                        open: screenBar.overflowOpen
+                        open: screenBar.overflowOpen,
+                        arranging: screenBar.arranging
                     });
                 }
 
@@ -179,10 +213,22 @@ ShellRoot {
                 onTransparencyToggleRequested: shell.setTransparent("toggle")
                 onWidgetPressed: opener => shell.barPress = opener
                 onOverflowEditRequested: (verb, id) => shell.editOverflow(verb, id, true)
+                onMoveRequested: (id, to, before, pin) => shell.moveWidget(id, to, before, pin, true)
+                onPositionRequested: pos => shell.setPosition(pos)
                 onOverflowShownChanged: report()
                 onOverflowOpenChanged: report()
+                onArrangingChanged: report()
                 Component.onCompleted: report()
                 Component.onDestruction: shell.noteOverflow(screenScope.modelData.name, null)
+
+                Connections {
+                    target: shell
+
+                    function onArrangeRequested(name: string, on: bool): void {
+                        if (name === screenScope.modelData.name)
+                            screenBar.setArranging(on);
+                    }
+                }
             }
 
             Frame {
@@ -319,10 +365,7 @@ ShellRoot {
         }
 
         function position(pos: string): string {
-            if (["top", "bottom", "left", "right"].indexOf(pos) < 0)
-                return "usage: position top|bottom|left|right";
-            shell.applySetting(["bar", "position"], pos, ["bar", "position", pos]);
-            return pos;
+            return shell.setPosition(pos);
         }
 
         function tray(mode: string): string {
@@ -337,6 +380,24 @@ ShellRoot {
         // saving, so it never saves again.
         function overflow(verb: string, id: string): string {
             return shell.editOverflow(verb, id, false);
+        }
+
+        // `haseen bar move` calls it after saving, so it never saves again.
+        function move(id: string, to: string, before: string, pin: bool): string {
+            return shell.moveWidget(id, to, before, pin, false);
+        }
+
+        // Arrange mode on the focused screen's bar: on|off|toggle. Session
+        // only, like toggle().
+        function arrange(mode: string): string {
+            const s = shell.focusedScreen();
+            const name = s ? s.name : "";
+            const state = shell.overflowState[name];
+            const want = shell.onOff(mode, !!(state && state.arranging));
+            if (want === null || name === "")
+                return "usage: arrange on|off|toggle";
+            shell.arrangeRequested(name, want);
+            return want ? "arranging" : "done";
         }
 
         // Test hook: what the bar shows right now.

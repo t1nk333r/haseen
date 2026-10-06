@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# haseen:summary Move a bar widget to another place in the bar or into the overflow panel (saved in shell.json)
+# haseen:args <id> <left|center|right|overflow> [--before <id>] [--pin] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar move <id> <left|center|right|overflow> [--before <id>] [--pin] [--dry-run]
+
+Moves a widget that is in the bar: to the end of a section, or in front of
+the widget named by --before, or into the overflow panel (bar.overflow, in
+front of --before there). Edits bar.left, bar.center, bar.right,
+bar.overflow and bar.pinned in $SHELL_USER_CONFIG, then tells the running
+shell. The tray stays first in the right section and never moves.
+
+Moving to a section takes the widget out of bar.overflow; --pin also keeps
+it in the bar (bar.pinned), as dragging it out of the panel does.
+
+In the shell, arrange mode (right click on empty bar space or on the
+chevron, "Arrange" in the overflow panel, or \`haseen bar arrange\`) lets you
+drag widgets there instead.
+
+--no-apply   only save; used by the shell itself, which already applied it
+EOF
+}
+
+APPLY=true
+PIN=false
+BEFORE=""
+args=()
+while (($#)); do
+    case $1 in
+    --no-apply) APPLY=false ;;
+    --pin) PIN=true ;;
+    --before)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        BEFORE=$2
+        shift
+        ;;
+    *) args+=("$1") ;;
+    esac
+    shift
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 2)) && [[ ${REST[1]} =~ ^(left|center|right|overflow)$ ]] || {
+    usage >&2
+    exit 2
+}
+id="${REST[0]}"
+to="${REST[1]}"
+id_re='^[a-z0-9-]+(\.[a-z0-9-]+)+$'
+[[ $id =~ $id_re ]] || die "not a plugin id: $id"
+[[ -z $BEFORE || $BEFORE =~ $id_re ]] || die "not a plugin id: $BEFORE"
+[[ $id == haseen.tray ]] && die "the tray anchors the bar and never moves"
+
+# At top level, so an unreadable user file stops here (exit 1), untouched.
+# Under the transaction lock, so the value written below is computed from the
+# shell.json no other writer can replace until this one renames its own.
+shell_config_lock
+user="$(shell_user_json)"
+merged="$(shell_merged_json)"
+jq -e --arg id "$id" '[.bar.left, .bar.center, .bar.right] | map(if type == "array" then . else [] end) | add | index($id) != null' <<<"$merged" >/dev/null ||
+    die "$id is not in the bar (bar.left, bar.center or bar.right)"
+
+# The same rule as Overflow.move in the shell. The lists are read from the
+# merged config (the defaults may hold them) and written whole, as arrays
+# replace in the merge.
+layout="$(jq -c 'def ids: if type == "array" then map(select(type == "string")) else [] end;
+    {left: (.bar.left | ids), center: (.bar.center | ids), right: (.bar.right | ids),
+     overflow: (.bar.overflow | ids), pinned: (.bar.pinned | ids)}' <<<"$merged")"
+updated="$(jq --argjson l "$layout" --arg id "$id" --arg to "$to" --arg before "$BEFORE" --argjson pin "$PIN" '
+    # In front of itself: where it already is, so in front of its successor.
+    ($l[$to]) as $target |
+    (if $before == $id then
+        ($target | index($id)) as $i |
+        if $i != null and $i + 1 < ($target | length) then $target[$i + 1] else "" end
+     else $before end) as $b |
+    def put: (. - [$id]) as $rest |
+        (if $b == "" then null else ($rest | index($b)) end) as $i |
+        if $i == null then $rest + [$id] else $rest[:$i] + [$id] + $rest[$i:] end;
+    # Never in front of the tray.
+    def after_tray: (index("haseen.tray")) as $t | (index($id)) as $i |
+        if $t != null and $t > $i then (. - [$id]) | .[:$t] + [$id] + .[$t:] else . end;
+    (if $to == "overflow" then
+        $l | .overflow |= put | .pinned -= [$id]
+     else
+        reduce ("left", "center", "right") as $s ($l; if $s == $to then . else .[$s] -= [$id] end) |
+        .[$to] |= (put | after_tray) |
+        .overflow -= [$id] |
+        (if $pin and (.pinned | index($id)) == null then .pinned += [$id] else . end)
+     end) as $r |
+    .bar.left = $r.left | .bar.center = $r.center | .bar.right = $r.right |
+    .bar.overflow = $r.overflow | .bar.pinned = $r.pinned' <<<"$user")"
+keys='[.bar.left, .bar.center, .bar.right, .bar.overflow, .bar.pinned] | map(if type == "array" then map(select(type == "string")) else [] end)'
+if [[ "$(jq -c "$keys" <<<"$updated")" != "$(jq -c "$keys" <<<"$merged")" ]]; then
+    printf '%s\n' "$updated" | shell_config_write
+fi
+if [[ $to == overflow ]]; then
+    info "$id: in the overflow panel"
+else
+    info "$id: in the bar's $to section${BEFORE:+, before $BEFORE}"
+fi
+
+if $APPLY; then
+    if $DRY_RUN; then
+        echo "DRYRUN: haseen shell ipc bar move $id $to ${BEFORE:-\"\"} $PIN"
+    else
+        "$BIN_DIR/haseen-shell-ipc" bar move "$id" "$to" "$BEFORE" "$PIN" >/dev/null 2>&1 ||
+            info "no running haseen shell answered; it applies at the next start"
+    fi
+fi

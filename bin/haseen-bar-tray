@@ -11,8 +11,9 @@ usage() {
 Usage: haseen bar tray [pin|unpin|toggle] [--dry-run]
 
 Sets plugins."haseen.tray".settings.pinned in $SHELL_USER_CONFIG (default:
-toggle), then tells the running shell. Unpinned, the tray shows only a chevron;
-pinned, its icons stay out. Clicking the chevron does the same as this.
+toggle), then tells the running shell. Unpinned, the tray shows only a chevron
+and hovering it reveals the icons; pinned, they stay out. Clicking the chevron
+does the same as this.
 
 --no-apply   only save; used by the shell itself, which already applied it
 EOF

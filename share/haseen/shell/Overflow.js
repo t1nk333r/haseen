@@ -184,3 +184,118 @@ function edit(overflow, pinned, verb, id) {
         return { overflow: had ? overflow.slice() : o, pinned: p };
     return null;
 }
+
+const SECTIONS = ["left", "center", "right"];
+
+function strings(list) {
+    return Array.isArray(list) ? list.filter(x => typeof x === "string") : [];
+}
+
+// The bar's lists after one drag-and-drop (Bar.qml's arrange mode), the rule
+// `haseen bar move` applies too. layout: { left, center, right, overflow,
+// pinned } as in shell.json's `bar`. `id` leaves every section and lands in
+// section `to` in front of `before` (an id there; empty, unknown or `id`
+// itself: at the end, or where it already is), and out of bar.overflow;
+// `pin` also puts it in bar.pinned, so a widget dragged out of the panel is
+// not moved straight back. `to` "overflow" keeps the sections as they are
+// and puts `id` in bar.overflow in front of `before` (unpinned), as `edit`
+// "add" does. The tray never moves and nothing lands in front of it.
+// Returns null for the tray, an id not in the bar or an unknown target.
+function move(layout, id, to, before, pin) {
+    const l = layout || {};
+    const out = {
+        left: strings(l.left),
+        center: strings(l.center),
+        right: strings(l.right),
+        overflow: strings(l.overflow),
+        pinned: strings(l.pinned)
+    };
+    if (typeof id !== "string" || id === TRAY || !SECTIONS.some(s => out[s].indexOf(id) >= 0))
+        return null;
+    if (to !== "overflow" && SECTIONS.indexOf(to) < 0)
+        return null;
+    const target = to === "overflow" ? out.overflow : out[to];
+    // In front of itself: where it already is, so in front of its successor.
+    let b = typeof before === "string" ? before : "";
+    if (b === id) {
+        const i = target.indexOf(id);
+        b = i >= 0 && i + 1 < target.length ? target[i + 1] : "";
+    }
+    const put = list => {
+        const rest = list.filter(x => x !== id);
+        const i = b === "" ? -1 : rest.indexOf(b);
+        if (i < 0)
+            rest.push(id);
+        else
+            rest.splice(i, 0, id);
+        return rest;
+    };
+    if (to === "overflow") {
+        out.overflow = put(out.overflow);
+        out.pinned = out.pinned.filter(x => x !== id);
+        return out;
+    }
+    for (const s of SECTIONS)
+        if (s !== to)
+            out[s] = out[s].filter(x => x !== id);
+    let list = put(out[to]);
+    const t = list.indexOf(TRAY), i = list.indexOf(id);
+    if (t > i) {
+        list = list.filter(x => x !== id);
+        list.splice(t, 0, id);
+    }
+    out[to] = list;
+    out.overflow = out.overflow.filter(x => x !== id);
+    if (pin && out.pinned.indexOf(id) < 0)
+        out.pinned.push(id);
+    return out;
+}
+
+// Where a widget dragged along the bar lands. `p` is the pointer's position
+// along the bar; spans: { length, spacing, left, center, right } with each
+// section the shown widgets in bar order as [{ id, start, end }] (the bar's
+// coordinates). The section is the one whose widgets are nearest (an empty
+// one sits at its anchor: the start, the middle or the end of the bar); in
+// it, the widget goes in front of the first other widget whose middle lies
+// past `p`. Returns { section, before, at }: `before` that widget's id or ""
+// for the section's end, `at` where to draw the insertion mark. Never in
+// front of the tray.
+function dropTarget(p, spans, id) {
+    const L = Number(spans.length) || 0;
+    const sp = Number(spans.spacing) || 0;
+    const anchors = { left: 0, center: L / 2, right: L };
+    let best = null;
+    for (const s of SECTIONS) {
+        const items = Array.isArray(spans[s]) ? spans[s] : [];
+        const lo = items.length ? items[0].start : anchors[s];
+        const hi = items.length ? items[items.length - 1].end : anchors[s];
+        const d = p < lo ? lo - p : p > hi ? p - hi : 0;
+        if (best === null || d < best.d)
+            best = { d: d, section: s, items: items, hi: hi };
+    }
+    const others = best.items.filter(e => e.id !== id);
+    let i = 0;
+    while (i < others.length && (others[i].start + others[i].end) / 2 <= p)
+        i++;
+    if (best.section === "right")
+        while (i < others.length && others.slice(i).some(e => e.id === TRAY))
+            i++;
+    if (i < others.length)
+        return { section: best.section, before: others[i].id, at: others[i].start - sp / 2 };
+    const last = others.length ? others[others.length - 1].end + sp / 2 : best.hi;
+    return { section: best.section, before: "", at: Math.min(last, L) };
+}
+
+// Where a widget dropped on the overflow panel lands: cells are the panel's
+// widgets in panel order as [{ id, x, y, w, h }] (rows left to right, top
+// to bottom); the drop goes in front of the first other cell after `pt`.
+// Returns the id to go in front of, or "" for the end.
+function panelTarget(pt, cells, id) {
+    for (const c of cells) {
+        if (c.id === id)
+            continue;
+        if (pt.y < c.y || (pt.y < c.y + c.h && pt.x < c.x + c.w / 2))
+            return c.id;
+    }
+    return "";
+}

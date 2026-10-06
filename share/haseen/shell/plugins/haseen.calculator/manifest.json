@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.calculator",
+  "name": "Calculator",
+  "version": "1.0.0",
+  "description": "Type = in the launcher to calculate; Enter copies the result",
+  "kinds": ["launcher-provider"],
+  "entry": {
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {},
+  "permissions": ["exec"]
+}
