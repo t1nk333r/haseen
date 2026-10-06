@@ -19,7 +19,7 @@ assert_status "widgets-b validate" 0 "$STATUS"
 for id in "${IDS[@]}"; do
     assert_contains "$id validates" "$OUTPUT" "ok: $id (builtin:"
 done
-assert_eq "weather and network (panel ping) ask for network" "2" "$(grep -c "requests unrestricted 'network'" <<<"$OUTPUT")"
+assert_eq "only weather asks for network" "1" "$(grep -c "requests unrestricted 'network'" <<<"$OUTPUT")"
 assert_dry_pure "plugin validate" "$OUTPUT"
 
 kinds() { jq -r '.kinds | join(",")' "$PLUGINS/$1/manifest.json"; }
