@@ -83,9 +83,10 @@ settings live in `shell.json`), the Bubblewrap helper sandbox and its
 - **Timers.** The card's 100 ms countdown ticker is a single-shot timer that
   banks paused time; the countdown line (`showCountdown`, off by default) is a
   `NumberAnimation`. The repeating 900 ms copied-code closer is single-shot.
-- **Bar.** The bell appears only while something is quiet or a share offer is
-  waiting (`alwaysShow` keeps it); Omarchy's bar-centre reveal does not exist
-  here. Left click opens the panel, right click silences or resumes.
+- **Bar.** The bell appears only while something is quiet, notifications are
+  held back (their count sits beside it) or a share offer is waiting
+  (`alwaysShow` keeps it); Omarchy's bar-centre reveal does not exist here.
+  Left click opens the panel, right click silences or resumes.
 - **Panel.** No keyboard cursor over the source list and no tooltips; Escape
   closes it (panel host). History has a Clear button (`forgetHistory`).
 - **Click actions** from `omarchy-exec-argv` hints (screenshot editor,

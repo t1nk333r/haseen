@@ -33,7 +33,8 @@ def builtin_map: {
     "omarchy.bluetooth": "haseen.bluetooth",
     "omarchy.network": "haseen.network",
     "omarchy.audio": "haseen.audio",
-    "omarchy.power": "haseen.battery"
+    "omarchy.power": "haseen.battery",
+    "omarchy.indicators": "haseen.indicators"
 };
 # Legacy single-segment ids get the namespace haseen registers them under
 # (architecture 5.4: omaconnect -> omarchy.omaconnect).
@@ -49,16 +50,22 @@ def known($id): $known | index([$id]) != null;
 # numbers through haseen-sidecar without polling from QML (plan 032): the
 # owner compared both on io and kept the haseen one (2026-10-06, plan 048).
 # The OmaStats-specific settings have no meaning there and are reported.
+# omapager is ported as haseen.pager (plan 025), the notification daemon
+# haseen runs as a service anyway.
 def superseded: {
     "io.github.heroesofcode.omagesture": "haseen.gestures",
-    "crmne.omastats": "haseen.sysusage"
+    "crmne.omastats": "haseen.sysusage",
+    "njpatel.omapager": "haseen.pager",
+    "omarchy.omapager": "haseen.pager"
 };
 def target($oid): builtin_map[$oid] // superseded[$oid];
 # "declared": every key the target manifest declares carries over under its
 # own name ($declared[target] = its setting keys); the rest are reported.
 def setting_map: {
     "haseen.clock": { "format": "format", "verticalFormat": "verticalFormat" },
-    "haseen.gestures": "declared"
+    "haseen.indicators": { "items": "items", "indicators": "items", "alwaysShow": "alwaysShow" },
+    "haseen.gestures": "declared",
+    "haseen.pager": "declared"
 };
 def unsupported($hid; $k; $v): $hid == "haseen.gestures" and $k == "middleButton" and $v == "paste";
 # An Omarchy built-in: written as omarchy.* and provided by no plugin
@@ -117,6 +124,13 @@ def service($raw):
     | if ($oid | type) != "string" or $oid == "" then note("plugins: an entry without an id, skipped")
       elif (builtin_map | has($oid)) or builtin($e) then
         note("\($oid): Omarchy built-in service with no haseen equivalent, dropped")
+      elif superseded[$oid] != null then
+        superseded[$oid] as $hid
+        | translate_settings($oid; $hid; $s) as $t
+        | .report += $t.report
+        | .mapped += ["\($oid) -> \($hid)"]
+        | (if ($t.settings | length) > 0 then .cfg.plugins[$hid].settings = ((.cfg.plugins[$hid].settings // {}) + $t.settings) else . end)
+        | (if ($services | index([$hid])) or (.added | index([$hid])) then . else .added += [$hid] end)
       else
         .cfg.plugins[$oid].enabled = true
         | (if ($s | length) > 0 then .cfg.plugins[$oid].settings = $s else . end)
@@ -144,6 +158,22 @@ def service($raw):
       .cfg.bar[$sec] = []
       | reduce (($layout[$sec] | if type == "array" then .[] else empty end)) as $e (.; place($sec; $e))
     else . end)
+# Omarchy draws notifications itself and its bar always had their state (the
+# Do Not Disturb bell among the indicators). haseen keeps that in the bell of
+# haseen.pager, so a right section without one gets it, right after the tray
+# (the owner rule: haseen.tray leads bar.right), shown even with nothing held
+# back.
+| (if ($layout | has("right")) and (.seen | index(["haseen.tray"])) then
+     .cfg.bar.right = (["haseen.tray"] + (.cfg.bar.right - ["haseen.tray"]))
+   else . end)
+| (if ($layout | has("right")) and (.seen | index(["haseen.pager"]) | not) then
+     (if .cfg.bar.right[0] == "haseen.tray" then 1 else 0 end) as $at
+     | .cfg.bar.right = .cfg.bar.right[0:$at] + ["haseen.pager"] + .cfg.bar.right[$at:]
+     | .seen += ["haseen.pager"]
+     | .mapped += ["Omarchy notifications -> haseen.pager (bell, alwaysShow)"]
+     | (if (.cfg.plugins["haseen.pager"].settings // {}) | has("alwaysShow") then .
+        else .cfg.plugins["haseen.pager"].settings.alwaysShow = true end)
+   else . end)
 | (if ($idle.screensaver | type) == "number" then .cfg.plugins["haseen.idle"].settings.screensaverAfter = ($idle.screensaver | floor) else . end)
 | (if ($idle.lock | type) == "number" then .cfg.plugins["haseen.idle"].settings.lockAfter = ($idle.lock | floor) else . end)
 | reduce ($idle | keys_unsorted[] | select(IN("screensaver", "lock") | not)) as $k (.;
@@ -159,7 +189,7 @@ def service($raw):
 # The native ports `superseded` maps onto; the command reads their declared
 # setting keys from the manifests haseen loads.
 # shellcheck disable=SC2034  # read by bin/haseen-import-omarchy
-OMARCHY_PORTED=(haseen.gestures)
+OMARCHY_PORTED=(haseen.gestures haseen.pager)
 
 # omarchy_import_shell OMARCHY_JSON KNOWN_IDS_JSON SERVICES_JSON WEATHER_LOCATION DECLARED_JSON
 # — {config, added, report, mapped, kept}: config is the haseen user
@@ -174,11 +204,35 @@ omarchy_import_shell() {
 
 # omarchy_import_merge USER_JSON IMPORT_JSON ADDED_JSON — the user's file with
 # the import underneath: objects merge, and any key the user has set keeps
-# the user's value. The one exception is additive: the imported services are
-# appended to a services list the user has set, never removing an entry.
+# the user's value. Two exceptions are additive, never removing an entry:
+# the imported services are appended to a services list the user has set,
+# and an imported bar widget that is in none of the bar's sections is put
+# into the user's section next to the imported neighbour it followed (or
+# preceded). A re-run therefore adds what a newer haseen maps (Omarchy's
+# indicators, the pager bell) to a bar the user arranged after an earlier
+# import; it also brings back an imported widget the user since removed.
 omarchy_import_merge() {
     jq -n --argjson user "$1" --argjson imp "$2" --argjson added "$3" '
-        ($imp * $user)
+        def ids: if type == "array" then map(strings) else [] end;
+        def insert_missing($from; $present):
+            reduce range(0; $from | length) as $i (.;
+                $from[$i] as $id
+                | if $present | index([$id]) then .
+                  else . as $cur
+                    | ([$from[0:$i][] as $p | $cur | index([$p]) | values] | last) as $after
+                    | ([$from[$i + 1:][] as $p | $cur | index([$p]) | values] | first) as $before
+                    | if $after != null then $cur[0:$after + 1] + [$id] + $cur[$after + 1:]
+                      elif $before != null then $cur[0:$before] + [$id] + $cur[$before:]
+                      else $cur + [$id] end
+                  end);
+        ($imp * $user) as $m
+        | ([$m.bar.left, $m.bar.center, $m.bar.right] | map(ids) | add) as $present
+        | reduce ("left", "center", "right") as $sec ($m;
+            if ($user.bar[$sec] | type) == "array" and ($imp.bar[$sec] | type) == "array"
+            then .bar[$sec] |= insert_missing($imp.bar[$sec] | ids; $present) else . end)
+        # haseen.tray leads bar.right; nothing is put before it.
+        | if (.bar.right | type) == "array" and (.bar.right | index(["haseen.tray"]))
+          then .bar.right = (["haseen.tray"] + (.bar.right - ["haseen.tray"])) else . end
         | if ($user | has("services")) and ($added | length) > 0
           then .services = ($user.services + ($added - $user.services)) else . end'
 }
@@ -280,6 +334,18 @@ function first_line(s,    t) {
 function finish(    t, code, why, helper) {
     t = on_start(subst_call(subst_call(launch_tables(chunk), "bind", "haseen.rebind"), "launch", "haseen.launch"))
     code = code_of(t)
+    # loaders mode (an entry file such as hyprland.lua): only a block that
+    # loads a generated file from the state dir comes along, so long as it
+    # needs nothing of Omarchy; the bootstrap and requires around it are
+    # Omarchy itself and go silently.
+    if (loaders && (code !~ /(^|[^A-Za-z0-9_])(dofile|loadfile)([^A-Za-z0-9_]|$)/ ||
+                    code !~ /XDG_STATE_HOME|\.local\/state/ ||
+                    code ~ /(^|[^A-Za-z0-9_])require([^A-Za-z0-9_]|$)|OMARCHY_PATH/ ||
+                    code ~ /(^|[^A-Za-z0-9_\/.~-])omarchy(-[a-z]|[ \t]+[a-z])/ ||
+                    code ~ /(^|[^A-Za-z0-9_.])o\.[A-Za-z_]+/)) {
+        comments = ""; chunk = ""; depth = 0; inchunk = 0; after = 0
+        return
+    }
     why = ""
     if (code ~ /(^|[^A-Za-z0-9_\/.~-])omarchy(-[a-z]|[ \t]+[a-z])/ || code ~ /\{[^}]*(omarchy|webapp|tui|focus)[ \t]*=/)
         why = "runs an Omarchy command"
@@ -330,12 +396,13 @@ END {
 }
 '
 
-# omarchy_lua_translate SRC_FILE EXISTING_TEXT_FILE LABEL [G3UP] — the L/R
-# stream above for SRC_FILE, checked against EXISTING_TEXT_FILE (the
+# omarchy_lua_translate SRC_FILE EXISTING_TEXT_FILE LABEL [G3UP] [LOADERS] — the
+# L/R stream above for SRC_FILE, checked against EXISTING_TEXT_FILE (the
 # destination without this import's block). LABEL names the source in report
-# lines; G3UP is the haseen.gestures g3Up setting in effect.
+# lines; G3UP is the haseen.gestures g3Up setting in effect; LOADERS=1 keeps
+# only the blocks that load generated state files.
 omarchy_lua_translate() {
-    awk -v src="$3" -v g3up="${4:-}" "$OMARCHY_LUA_AWK" "$2" "$1"
+    awk -v src="$3" -v g3up="${4:-}" -v loaders="${5:-0}" "$OMARCHY_LUA_AWK" "$2" "$1"
 }
 
 # omarchy_lua_begin / omarchy_lua_end NAME — the marker lines of the block an

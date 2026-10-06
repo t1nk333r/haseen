@@ -44,3 +44,4 @@ Read `handoff.md` first.
 | 036 | Login: Plymouth splash, the greeter shell, autologin after the disk password | P1 | L | 003 005 033 | DONE 2026-10-05 (72 tests + nested-compositor smoke; real boot is an owner step) |
 | 048 | Omarchy parity on io: quiet boot handover, `*` splash, Omarchy import, three menus, gestures, lock-screen fixes | P1 | L | 016 019 031 036 | DONE 2026-10-06 (owner checks the boot and swipes) |
 | 049 | io round 3: popups under their icon, frame/bar seam, compat icon font, pickers, lock fingerprint, Omarchy tray, hover highlight | P1 | L | 015 036 048 | DONE 2026-10-06 (real finger and click are owner checks) |
+| 050 | io round 4: overflow slide panel, keyboard in panels, audio panel, indicators and bell, tray anchor, luna plugins | P1 | L | 048 049 | DONE 2026-10-06 (physical clicks and keys are owner checks) |

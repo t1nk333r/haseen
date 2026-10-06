@@ -1,10 +1,12 @@
 import QtQuick
+import Quickshell
 import Quickshell.Services.Pipewire
 import qs.Haseen
 import qs.Haseen.Widgets
 
 // PipeWire default sink via Quickshell.Services.Pipewire (event-driven).
-// Scroll changes the volume, click toggles mute.
+// Left click opens the haseen.audio panel, middle click toggles mute,
+// scroll changes the volume.
 BarButton {
     id: root
 
@@ -24,8 +26,13 @@ BarButton {
     color: muted ? Theme.muted : Theme.barForeground
 
     onClicked: button => {
-        if (ready && button === Qt.LeftButton)
-            sink.audio.muted = !sink.audio.muted;
+        if (button === Qt.MiddleButton) {
+            if (ready)
+                sink.audio.muted = !sink.audio.muted;
+            return;
+        }
+        if (button === Qt.LeftButton)
+            Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId]);
     }
     onScrolled: steps => {
         if (ready)

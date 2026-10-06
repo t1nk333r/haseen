@@ -56,17 +56,22 @@ assert_eq "Omarchy's files are untouched" "$before" "$(omarchy_sum)"
 assert_eq "bar position and transparency carry over" '["top",false]' "$(cfg '[.bar.position, .bar.transparent]')"
 assert_eq "left section: built-ins mapped, add-ons kept, order kept" \
     '["haseen.workspaces","agx.screen-time","t1nk33r.active-window"]' "$(cfg .bar.left)"
-assert_eq "centre section: dropped built-ins leave no gap" \
-    '["haseen.clock","t1nk33r.omaprayers","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
-assert_eq "right section starts with the tray and ends with the power add-on" \
-    '["haseen.tray","t1nk33r.power",14]' "$(cfg '[.bar.right[0], .bar.right[-1], (.bar.right | length)]')"
+assert_eq "centre section: indicators keep their slot, dropped built-ins leave no gap" \
+    '["haseen.indicators","haseen.clock","t1nk33r.omaprayers","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
+assert_eq "Omarchy's indicators settings would carry; none set, none written" "null" "$(cfg '.plugins["haseen.indicators"]')"
+# Omarchy's bar always carried notification state; the pager bell takes that
+# place right after the tray (haseen.tray leads bar.right; nothing goes before
+# it) and shows even with nothing held back.
+assert_eq "right section starts with the tray, then the pager bell, and ends with the power add-on" \
+    '["haseen.tray","haseen.pager","t1nk33r.power",15]' "$(cfg '[.bar.right[0], .bar.right[1], .bar.right[-1], (.bar.right | length)]')"
+assert_eq "the imported bell always shows" "true" "$(cfg '.plugins["haseen.pager"].settings.alwaysShow')"
 assert_eq "right section maps bluetooth, network and audio in place" \
-    '["haseen.bluetooth","haseen.network","haseen.audio"]' "$(cfg '.bar.right[9:12]')"
+    '["haseen.bluetooth","haseen.network","haseen.audio"]' "$(cfg '.bar.right[10:13]')"
 # haseen.gestures is the native port of omagesture; the original's panel would
 # rewrite ~/.config/hypr/hyprland.lua and fight the port over the gestures.
 assert_eq "omagesture is replaced in place by haseen.gestures, settings kept" \
     '["haseen.gestures",{"g3Up":"none","g3Down":"none"},null,null]' \
-    "$(cfg '[.bar.right[5], .plugins["haseen.gestures"].settings, (.bar | [.left, .center, .right] | add | index("io.github.heroesofcode.omagesture")), .plugins["io.github.heroesofcode.omagesture"]]')"
+    "$(cfg '[.bar.right[6], .plugins["haseen.gestures"].settings, (.bar | [.left, .center, .right] | add | index("io.github.heroesofcode.omagesture")), .plugins["io.github.heroesofcode.omagesture"]]')"
 assert_eq "the carried-over gestures are rendered into Hyprland (haseen gestures apply)" "present" \
     "$([[ -s $XDG_STATE_HOME/haseen/toggles/hypr/gestures.lua ]] && echo present || echo absent)"
 assert_eq "clock formats carry over (Qt formats in both)" \
@@ -74,7 +79,7 @@ assert_eq "clock formats carry over (Qt formats in both)" \
 assert_eq "add-on settings pass through under the same id, enabled" \
     '[true,"Riyadh",4,"Asia/Riyadh"]' \
     "$(cfg '.plugins["t1nk33r.omaprayers"] | [.enabled, .settings.locationLabel, .settings.calculationMethod, .settings.timezone]')"
-assert_eq "OmaStats gives way to haseen.sysusage in the same slot" '["haseen.tray","haseen.sysusage"]' "$(cfg '.bar.right[0:2]')"
+assert_eq "OmaStats gives way to haseen.sysusage in the same slot" '["haseen.pager","haseen.sysusage"]' "$(cfg '.bar.right[1:3]')"
 assert_eq "and is neither listed nor enabled under its own id" "null" "$(cfg '.plugins["crmne.omastats"]')"
 assert_eq "per-widget settings never leak the id key" "null" "$(cfg '.plugins["t1nk33r.power"].settings.id')"
 assert_eq "weather is turned on with Omarchy's stored location" \
@@ -88,7 +93,7 @@ merged="$(jq -c --slurpfile u "$HC/shell.json" '. * $u[0] | .bar.left' "$HASEEN_
 assert_eq "the running shell's merged config shows the imported bar" \
     '["haseen.workspaces","agx.screen-time","t1nk33r.active-window"]' "$merged"
 
-for item in "omarchy.menu: Omarchy built-in with no haseen equivalent" "omarchy.indicators: Omarchy built-in" \
+for item in "omarchy.menu: Omarchy built-in with no haseen equivalent" \
     "omarchy.keyboard-layout: Omarchy built-in" "omarchy.system-update: Omarchy built-in" \
     "omarchy.clock: setting formatAlt has no haseen equivalent" "bar.centerAnchor (omarchy.clock)" \
     "crmne.omastats"; do
@@ -140,7 +145,22 @@ assert_contains "o.launch_on_start becomes a start handler" "$localf" \
 assert_contains "an Omarchy start command is reported" "$OUTPUT" 'autostart.lua: runs an Omarchy command: o.exec_on_start("omarchy-cmd-first-run")'
 assert_not_contains "a looknfeel.lua of only comments adds nothing" "$localf" "looknfeel.lua"
 assert_contains "monitors carry over" "$(cat "$HY/monitors.lua" 2>/dev/null)" 'hl.monitor({ output = "", mode = "preferred"'
-assert_contains "Omarchy's entry file is reported, not copied" "$OUTPUT" "hypr/hyprland.lua: not imported"
+assert_contains "Omarchy's entry file is reported, not copied" "$OUTPUT" "hypr/hyprland.lua: only blocks that load generated state files"
+# The workspace-layout plugin writes layouts.lua into the state dir and relies
+# on a loader block in hyprland.lua; that block comes along to local.lua.
+assert_contains "a generated-file loader from hyprland.lua goes to local.lua" "$localf" \
+    '.. "/omarchy/t1nk33r.workspace-layout/layouts.lua"'
+assert_contains "with its comment" "$localf" "-- t1nk33r.workspace-layout: load generated layouts, if present."
+assert_not_contains "Omarchy's bootstrap stays behind" "$localf" "OMARCHY_PATH"
+assert_not_contains "and its requires" "$localf" "require"
+assert_not_contains "and the free-standing examples" "$localf" 'o.window("qemu"'
+assert_not_contains "nothing of hyprland.lua is marked as skipped" "$localf" "skipped (loads Omarchy modules)"
+mkdir -p "$XDG_STATE_HOME/omarchy/t1nk33r.workspace-layout"
+printf 'loaded_layouts = 42\n' >"$XDG_STATE_HOME/omarchy/t1nk33r.workspace-layout/layouts.lua"
+{ sed -n '/>>> haseen import omarchy: hyprland.lua/,/<<< haseen import omarchy: hyprland.lua/p' "$HY/local.lua"
+    echo 'print(loaded_layouts)'; } >"$SANDBOX/loader.lua"
+capture env XDG_STATE_HOME="$XDG_STATE_HOME" lua "$SANDBOX/loader.lua"
+assert_eq "the carried loader runs the generated file" "42" "$OUTPUT"
 for f in bindings local monitors; do
     capture luac -p "$HY/$f.lua"
     assert_status "$f.lua is valid Lua" 0 "$STATUS"
@@ -159,7 +179,10 @@ assert_eq "re-run with --merge changes nothing either" "$before" "$(haseen_sum)"
 # --- an existing shell.json: refused without --merge, merged with it ----------
 import_sandbox omarchy-import-merge
 mkdir -p "$HC" "$HY"
-user_json='{"bar":{"position":"bottom"},"plugins":{"haseen.clock":{"settings":{"format":"HH:mm:ss"}}},"services":["haseen.lock"]}'
+# A user bar arranged after an earlier import (OmaStats already swapped for
+# sysusage, a widget of the user's own added), from before haseen mapped the
+# indicators and the bell.
+user_json='{"bar":{"position":"bottom","center":["haseen.clock","t1nk33r.omaprayers","haseen.weather","t1nk33r.privacy"],"right":["mine.first","haseen.tray","haseen.sysusage","mine.extra","t1nk33r.adb-devices"]},"plugins":{"haseen.clock":{"settings":{"format":"HH:mm:ss"}}},"services":["haseen.lock"]}'
 printf '%s\n' "$user_json" >"$HC/shell.json"
 # What an earlier hand carry-over left: the same input block and monitors.lua.
 cp "$XDG_CONFIG_HOME/hypr.omarchy-20261006/monitors.lua" "$HY/monitors.lua"
@@ -183,6 +206,16 @@ assert_eq "keys the user had not set are imported" '["HH\n—\nmm","haseen.works
     "$(cfg '[.plugins["haseen.clock"].settings.verticalFormat, .bar.left[0], .plugins["haseen.idle"].settings.screensaverAfter]')"
 assert_eq "service plugins are added to the user's own services list" \
     '["haseen.lock","io.github.sumanthmukkala.hot-corners","expose.window-overview"]' "$(cfg .services)"
+assert_eq "imported widgets the user bar lacks are added beside their Omarchy neighbours" \
+    '["haseen.indicators","haseen.clock","t1nk33r.omaprayers","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
+assert_eq "haseen.tray leads bar.right; the bell is not put before it" \
+    '["haseen.tray","mine.first","haseen.pager","haseen.sysusage","mine.extra","t1nk33r.adb-devices","t1nk33r.workspace-layout"]' "$(cfg '.bar.right[0:7]')"
+assert_eq "every other user widget is still there in the same relative order" \
+    '["mine.first","haseen.sysusage","mine.extra","t1nk33r.adb-devices"]' \
+    "$(cfg '[.bar.right[] | select(IN("mine.first","haseen.sysusage","mine.extra","t1nk33r.adb-devices"))]')"
+assert_eq "OmaStats is not brought back next to sysusage" "null" "$(cfg '.bar.right | index("crmne.omastats")')"
+assert_contains "the additions are listed" "$OUTPUT" "bar.center: added haseen.indicators to your bar"
+assert_contains "the bell addition is listed" "$OUTPUT" "bar.right: added haseen.pager to your bar"
 backups=("$HC"/shell.json.bak-*)
 assert_eq "the old shell.json is kept as a timestamped backup" "$(jq -c . <<<"$user_json")" "$(jq -c . "${backups[0]}" 2>/dev/null)"
 assert_eq "monitors.lua already carried over is left alone" \
@@ -203,11 +236,14 @@ assert_eq "a second --merge changes nothing" "$before" "$(haseen_sum)"
 sandbox omarchy-import-ids
 src="$SANDBOX/elsewhere"
 mkdir -p "$src"
-printf '%s\n' '{"bar":{"layout":{"right":[{"id":"omaconnect"},{"id":"omarchy.power"},{"id":"omarchy.spacer","size":12},{"id":"omarchy.power"},{"id":"io.github.heroesofcode.omagesture","middleButton":"paste","g4Up":"none","pinchSpeed":2}]}}}' >"$src/shell.json"
+printf '%s\n' '{"bar":{"layout":{"right":[{"id":"omaconnect"},{"id":"omarchy.power"},{"id":"omarchy.spacer","size":12},{"id":"omarchy.power"},{"id":"io.github.heroesofcode.omagesture","middleButton":"paste","g4Up":"none","pinchSpeed":2},{"id":"njpatel.omapager","showCountdown":true,"fullscreenOverlay":"all"}]}}}' >"$src/shell.json"
 capture "$REPO/bin/haseen-import-omarchy" --from "$src" --state "$SANDBOX/none"
 assert_status "--from reads another directory" 0 "$STATUS"
-assert_eq "single-segment ids get haseen's omarchy. namespace; power maps to battery" \
-    '["omarchy.omaconnect","haseen.battery","haseen.gestures"]' "$(jq -c .bar.right "$XDG_CONFIG_HOME/haseen/shell.json")"
+assert_eq "single-segment ids get haseen's omarchy. namespace; power maps to battery; omapager to the pager" \
+    '["omarchy.omaconnect","haseen.battery","haseen.gestures","haseen.pager"]' "$(jq -c .bar.right "$XDG_CONFIG_HOME/haseen/shell.json")"
+assert_eq "omapager settings the pager declares carry over, no forced bell" '{"showCountdown":true}' \
+    "$(jq -c '.plugins["haseen.pager"].settings' "$XDG_CONFIG_HOME/haseen/shell.json")"
+assert_contains "an omapager setting the pager lacks is reported" "$OUTPUT" "setting fullscreenOverlay is not a haseen.pager setting"
 assert_eq "an omagesture setting the port lacks is dropped, the rest kept" '{"g4Up":"none"}' \
     "$(jq -c '.plugins["haseen.gestures"].settings' "$XDG_CONFIG_HOME/haseen/shell.json")"
 assert_contains "and reported" "$OUTPUT" 'setting middleButton = "paste" is not supported by haseen.gestures'

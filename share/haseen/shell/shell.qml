@@ -19,6 +19,7 @@ import Quickshell.Io
 import qs.Haseen
 import qs.Compat as Compat
 import "PanelPlacement.js" as Placement
+import "Overflow.js" as Overflow
 
 ShellRoot {
     id: shell
@@ -35,6 +36,8 @@ ShellRoot {
     property var panelOpener: null
     // `bar toggle` hides the bars for this session only.
     property bool barHidden: false
+    // Screen name -> { ids, open }: what each bar's overflow panel holds.
+    property var overflowState: ({})
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
 
     // Legacy plugin facades route native panels through this root, not through
@@ -121,6 +124,29 @@ ShellRoot {
         return want ? "on" : "off";
     }
 
+    // `bar.overflow` / `bar.pinned` after one edit (Overflow.edit), applied
+    // at once; `persist` saves it through `haseen bar overflow`, which a
+    // click in arrange mode needs and the CLI's own IPC call does not.
+    function editOverflow(verb: string, id: string, persist: bool): string {
+        const r = Overflow.edit(Config.barOverflow, Config.barPinned, verb, id);
+        if (r === null || id === "")
+            return "usage: overflow add|remove|pin|unpin <id>";
+        Config.setRuntime(["bar", "overflow"], r.overflow);
+        Config.setRuntime(["bar", "pinned"], r.pinned);
+        if (persist)
+            Quickshell.execDetached([cli, "bar", "overflow", verb, id, "--no-apply"]);
+        return JSON.stringify(r);
+    }
+
+    function noteOverflow(name: string, state: var): void {
+        const next = Object.assign({}, overflowState);
+        if (state === null)
+            delete next[name];
+        else
+            next[name] = state;
+        overflowState = next;
+    }
+
     // Picks the transparent bar's text colour; one for all screens.
     FrameTextColor {
         id: barText
@@ -138,11 +164,25 @@ ShellRoot {
             required property var modelData
 
             Bar {
+                id: screenBar
+
+                function report(): void {
+                    shell.noteOverflow(screenScope.modelData.name, {
+                        ids: screenBar.overflowShown,
+                        open: screenBar.overflowOpen
+                    });
+                }
+
                 screen: screenScope.modelData
                 hidden: shell.barHidden
                 transparent: barText.active
                 onTransparencyToggleRequested: shell.setTransparent("toggle")
                 onWidgetPressed: opener => shell.barPress = opener
+                onOverflowEditRequested: (verb, id) => shell.editOverflow(verb, id, true)
+                onOverflowShownChanged: report()
+                onOverflowOpenChanged: report()
+                Component.onCompleted: report()
+                Component.onDestruction: shell.noteOverflow(screenScope.modelData.name, null)
             }
 
             Frame {
@@ -293,6 +333,12 @@ ShellRoot {
             return want ? "pinned" : "unpinned";
         }
 
+        // add|remove|pin|unpin <id>; `haseen bar overflow` calls it after
+        // saving, so it never saves again.
+        function overflow(verb: string, id: string): string {
+            return shell.editOverflow(verb, id, false);
+        }
+
         // Test hook: what the bar shows right now.
         function status(): string {
             return JSON.stringify({
@@ -304,7 +350,8 @@ ShellRoot {
                 frame: Config.frameEnabled,
                 frameThickness: Config.frameThickness,
                 frameRadius: Config.frameRadius,
-                trayPinned: Plugins.settingsFor("haseen.tray").pinned === true
+                trayPinned: Plugins.settingsFor("haseen.tray").pinned === true,
+                overflow: shell.overflowState
             });
         }
     }

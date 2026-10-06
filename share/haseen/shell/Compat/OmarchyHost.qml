@@ -55,13 +55,45 @@ Item {
         property Item tooltipTarget: null
         property string tooltipText: ""
         property bool tooltipShown: false
+        property Item pendingTooltipTarget: null
+        property string pendingTooltipText: ""
+        // Upstream Bar.qml: a tooltip needs its target still hovered, visible
+        // and opaque. A target without `tooltipHovered` (a plugin's own item)
+        // counts as hovered until it says otherwise.
+        function targetTooltipHovered(target) {
+            return !!target && target.visible !== false && target.opacity !== 0 && target.tooltipHovered !== false;
+        }
+        // This widget's own panel is open: its tooltip would sit on top of it.
+        readonly property bool ownPopoutOpen: activePopout !== null && host.widget !== null
+            && (activePopout === host.widget || Compat.Runtime.belongsTo(activePopout, host.widget))
+        // What the tooltip window follows. A binding, not a poll: it drops the
+        // moment the target stops being hovered or the widget's panel opens.
+        readonly property bool tooltipVisible: tooltipShown && !ownPopoutOpen && targetTooltipHovered(tooltipTarget)
+        onOwnPopoutOpenChanged: if (ownPopoutOpen) clearTooltip()
 
-        function clearTooltip() { tooltipShown = false; tooltipTarget = null; tooltipText = ""; }
+        function clearTooltip() {
+            tooltipDelay.stop();
+            pendingTooltipTarget = null; pendingTooltipText = "";
+            tooltipShown = false; tooltipTarget = null; tooltipText = "";
+        }
+        // Shown after 400 ms of hover, as upstream: a pointer crossing the bar
+        // or clicking straight through does not flash one.
         function showTooltip(target, text) {
             clearTooltip(); tooltipRequest++;
-            tooltipTarget = target; tooltipText = String(text || ""); tooltipShown = tooltipText !== "";
+            const value = String(text || "");
+            if (value === "" || ownPopoutOpen || !targetTooltipHovered(target)) return;
+            pendingTooltipTarget = target; pendingTooltipText = value;
+            tooltipDelay.restart();
         }
-        function hideTooltip(target) { if (!target || tooltipTarget === target) clearTooltip(); }
+        function revealPendingTooltip() {
+            const target = pendingTooltipTarget, value = pendingTooltipText;
+            pendingTooltipTarget = null; pendingTooltipText = "";
+            if (ownPopoutOpen || !targetTooltipHovered(target)) { clearTooltip(); return; }
+            tooltipTarget = target; tooltipText = value; tooltipShown = true;
+        }
+        function hideTooltip(target) {
+            if (!target || tooltipTarget === target || pendingTooltipTarget === target) { tooltipRequest++; clearTooltip(); }
+        }
         function registerClickTarget(target) {
             if (target && clickTargets.indexOf(target) < 0) clickTargets = clickTargets.concat([target]);
         }
@@ -96,9 +128,16 @@ Item {
             Quickshell.execDetached(["bash", "-lc", String(command)]); return true;
         }
     }
+    // haseen:ui-timeout
+    Timer {
+        id: tooltipDelay
+        interval: 400
+        repeat: false
+        onTriggered: api.revealPendingTooltip()
+    }
     Tooltip {
-        target: api.tooltipShown ? api.tooltipTarget : null
-        text: api.tooltipShown ? api.tooltipText : ""
+        target: api.tooltipVisible ? api.tooltipTarget : null
+        text: api.tooltipVisible ? api.tooltipText : ""
     }
     // Below the plugin's own MouseAreas: forwards only otherwise unhandled
     // slot presses, avoiding a duplicate press on interactive plugin children.
