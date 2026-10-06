@@ -76,7 +76,8 @@ if ! plymouth_hook_present; then
         write_root_file "$PLYMOUTH_HOOK_CONF"
 fi
 
-printf 'Theme=haseen\n' | write_root_file /etc/plymouth/plymouthd.conf.d/haseen.conf
+# plymouth-set-default-theme writes Theme= into /etc/plymouth/plymouthd.conf,
+# the only file plymouthd reads (there is no plymouthd.conf.d).
 run_root plymouth-set-default-theme haseen
 
 # Without `splash` the kernel never hands the screen to plymouthd; without
