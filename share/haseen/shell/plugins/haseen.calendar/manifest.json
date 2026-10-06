@@ -25,6 +25,11 @@
       "type": "boolean",
       "default": false,
       "description": "Test hook: expose IPC target haseen.calendar (shift months, read the shown month)"
+    },
+    "moon": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the moon phase under the month title (from the owner's waybar clock tooltip)"
     }
   },
   "permissions": []

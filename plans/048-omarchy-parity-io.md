@@ -103,6 +103,16 @@ Omarchy's crash → AI diagnosis):
   agent, for other users, for itself, and within 60 s of the same program.
   `tests/test-crashwatch.sh` (12).
 
+**8. Follow-ups after the import was live on io.**
+- Moon phase in the calendar panel: only the moon part of the owner's retired
+  waybar clock (waydots `.config/waybar/scripts/clock-moon.sh`, retired in
+  `780cc23`): `haseen.calendar/Moon.js`, same synodic formula, a line under the
+  month title (`settings.moon`, default on). Checked against published phases
+  (Jan 2024 new, first quarter, full) in `test-widgets-a.sh`.
+- The owner compared Omarchy's OmaStats with haseen's own CPU/GPU/RAM widget
+  and kept haseen's: the import maps `crmne.omastats` to `haseen.sysusage` in
+  the same bar slot.
+
 ## Verification
 
 Tests: `test-gestures.sh`, `test-omarchy-import.sh`, `test-keybinds.sh` (the

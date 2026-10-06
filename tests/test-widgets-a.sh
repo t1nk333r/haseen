@@ -85,6 +85,7 @@ import "file://$PLUGINS/haseen.sysusage/Usage.js" as U
 import "file://$PLUGINS/haseen.privacy/Privacy.js" as P
 import "file://$PLUGINS/haseen.workspaces/Workspaces.js" as W
 import "file://$PLUGINS/haseen.calendar/Calendar.js" as C
+import "file://$PLUGINS/haseen.calendar/Moon.js" as Moon
 import "file://$PLUGINS/haseen.media/Media.js" as M
 
 Window {
@@ -181,6 +182,14 @@ Window {
         eq("week start locale", 1, C.weekStart("locale", 1));
         eq("week start junk", 0, C.weekStart("blursday", 7));
         eq("weekday order", [1, 2, 3, 4, 5, 6, 0], C.weekdayOrder(1));
+        // Published phases (UTC): the formula is good to about a day.
+        eq("moon: the reference new moon", "New Moon", Moon.phase(Date.UTC(2000, 0, 6, 18, 14)).name);
+        eq("moon: full moon of 25 January 2024", "Full Moon", Moon.phase(Date.UTC(2024, 0, 25, 17, 54)).name);
+        eq("moon: first quarter of 17 January 2024", "First Quarter", Moon.phase(Date.UTC(2024, 0, 18, 3, 52)).name);
+        eq("moon: a full moon is fully lit", true, Moon.phase(Date.UTC(2024, 0, 25, 17, 54)).illumination >= 98);
+        eq("moon: a new moon is dark", true, Moon.phase(Date.UTC(2024, 0, 11, 11, 57)).illumination <= 2);
+        eq("moon: the age stays inside one synodic month", true, (() => { for (let d = 0; d < 400; d++) { const a = Moon.phase(Date.UTC(2025, 0, 1) + d * 86400000).age; if (a < 0 || a > 29.6) return false; } return true; })());
+        eq("moon: the waybar lines", { title: "🌕  Full Moon", detail: "100% lit · 14.6 days old" }, Moon.lines(Date.UTC(2024, 0, 25, 17, 54)));
 
         // Media: playing wins, then paused; truncation by code point.
         eq("pick playing", 1, M.pickIndex([{ isPlaying: false, stopped: false }, { isPlaying: true, stopped: false }]));
@@ -207,7 +216,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "52" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "59" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi

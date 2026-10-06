@@ -74,7 +74,8 @@ assert_eq "clock formats carry over (Qt formats in both)" \
 assert_eq "add-on settings pass through under the same id, enabled" \
     '[true,"Riyadh",4,"Asia/Riyadh"]' \
     "$(cfg '.plugins["t1nk33r.omaprayers"] | [.enabled, .settings.locationLabel, .settings.calculationMethod, .settings.timezone]')"
-assert_eq "omastats keeps every setting" "10" "$(cfg '.plugins["crmne.omastats"].settings | length')"
+assert_eq "OmaStats gives way to haseen.sysusage in the same slot" '["haseen.tray","haseen.sysusage"]' "$(cfg '.bar.right[0:2]')"
+assert_eq "and is neither listed nor enabled under its own id" "null" "$(cfg '.plugins["crmne.omastats"]')"
 assert_eq "per-widget settings never leak the id key" "null" "$(cfg '.plugins["t1nk33r.power"].settings.id')"
 assert_eq "weather is turned on with Omarchy's stored location" \
     '[true,"24.7136,46.6753"]' "$(cfg '.plugins["haseen.weather"] | [.enabled, .settings.location]')"
@@ -90,7 +91,7 @@ assert_eq "the running shell's merged config shows the imported bar" \
 for item in "omarchy.menu: Omarchy built-in with no haseen equivalent" "omarchy.indicators: Omarchy built-in" \
     "omarchy.keyboard-layout: Omarchy built-in" "omarchy.system-update: Omarchy built-in" \
     "omarchy.clock: setting formatAlt has no haseen equivalent" "bar.centerAnchor (omarchy.clock)" \
-    "crmne.omastats: plugin not installed"; do
+    "crmne.omastats"; do
     assert_contains "reported: ${item%%:*}" "$OUTPUT" "$item"
 done
 assert_not_contains "a plugin Omarchy provides is not called missing" "$OUTPUT" "t1nk33r.active-window: plugin not installed"
