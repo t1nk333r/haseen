@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): Omarchy plugins restart "the shell" with this; here that is haseen's.
+exec "${HASEEN_PATH:?}/../../bin/haseen-shell-restart" "$@"

@@ -33,6 +33,11 @@ QtObject {
     // instance changed meanwhile; only this instance's own delta is persisted.
     property var _delivered: ({})
     property bool _wrote: false
+    // The entry this instance last asked to mirror into Omarchy's own
+    // shell.json. Omarchy plugins may read their entry back from that file
+    // (t1nk33r.nearby-share keeps its receiver, mode and device name there),
+    // so the settings command mirrors what the plugin wrote, Omarchy's way.
+    property string _mirrored: ""
     onSettingsChanged: if (!_wrote) _delivered = snapshot(settings)
     Component.onCompleted: _delivered = snapshot(settings)
     function snapshot(value) {
@@ -50,11 +55,21 @@ QtObject {
             && !change.path.some(key => ["__proto__", "constructor", "prototype"].indexOf(key) >= 0));
         _wrote = true;
         _delivered = next;
-        if (!delta.length)
+        // Only Omarchy plugins have an entry in Omarchy's shell.json; the
+        // settings command refuses omarchyEntry from any other plugin.
+        const record = Plugins.registry[pluginId];
+        const omarchy = !!record && record.compat === "omarchy";
+        const entry = omarchy ? JSON.stringify(next) : "";
+        const mirror = omarchy && entry !== _mirrored;
+        _mirrored = entry;
+        if (!delta.length && !mirror)
             return true;
-        return Compat.Runtime.persist(pluginId, { changes: delta.map(change => change.remove
+        const request = { changes: delta.map(change => change.remove
             ? ({ path: ["plugins", pluginId, "settings"].concat(change.path), remove: true })
-            : ({ path: ["plugins", pluginId, "settings"].concat(change.path), value: change.value })) });
+            : ({ path: ["plugins", pluginId, "settings"].concat(change.path), value: change.value })) };
+        if (omarchy)
+            request.omarchyEntry = next;
+        return Compat.Runtime.persist(pluginId, request);
     }
     function mutateShellConfig(mutator) {
         if (typeof mutator !== "function") return false;

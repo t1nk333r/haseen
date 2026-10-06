@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.weather",
   "name": "Weather",
-  "version": "1.0.0",
-  "description": "Temperature in the bar and a 3-day forecast panel from wttr.in (fetched every 30 min while enabled; off by default)",
+  "version": "2.0.0",
+  "description": "Condition icon in the bar and a forecast panel (Omarchy's weather: wttr.in + Open-Meteo, every 15 min while enabled; off by default). Location: settings, else GeoClue, else IP",
   "kinds": [
     "service",
     "bar-widget",
@@ -18,22 +18,29 @@
     "location": {
       "type": "string",
       "default": "",
-      "description": "wttr.in location (city, airport code or lat,lon); empty = wttr.in guesses from your IP"
+      "description": "City or lat,lon; empty = GeoClue (haseen setup geoclue), else wttr.in guesses from your IP"
+    },
+    "locationName": {
+      "type": "string",
+      "default": "",
+      "description": "Label shown for a lat,lon location (set by the panel's city search)"
     },
     "units": {
       "type": "string",
-      "default": "metric",
-      "description": "metric (°C, km/h) or imperial (°F, mph)"
+      "default": "",
+      "description": "metric (°C, km/h), imperial (°F, mph), or empty = from the forecast's country, else the locale"
     },
     "debugIpc": {
       "type": "boolean",
       "default": false,
-      "description": "Test hook: expose IPC target haseen.weather (loadFixture, refresh, state) and stop automatic fetching"
+      "description": "Test hook: expose IPC targets haseen.weather (loadFixture, refresh, state) and haseen.weather.panel, and stop automatic fetching"
     }
   },
   "permissions": [
     "exec",
-    "network"
+    "network",
+    "files:write",
+    "notifications"
   ],
   "provides": [
     "weather"

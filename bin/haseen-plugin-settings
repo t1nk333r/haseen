@@ -17,6 +17,13 @@ Payloads are read from stdin, never command-line arguments. The latest user
 shell.json is read under a lock, unrelated values are preserved, and the
 replacement is atomic. Prints the resulting user JSON on success. --dry-run
 shows the write without creating a file or contacting the running desktop.
+
+An Omarchy compatibility plugin's request may add "omarchyEntry":{...}, the
+whole entry it passed to updateEntryInline. Omarchy plugins may read their
+entry back from ~/.config/omarchy/shell.json, so when that file exists the
+entry is mirrored there by Omarchy's own rule: the plugin's object entry in
+bar.layout, else its plugins[] marker, replaced by {id, ...entry}; nothing
+else changes. The first mirror keeps shell.json.haseen-bak beside it.
 EOF
 }
 parse_common_flags "$@"
@@ -42,10 +49,13 @@ printf '%s\n' "$request" | jq -se --arg id "$id" '
     length == 1 and (.[0] | object and safe_keys and
       ((has("settings") and (.settings | object) and (keys == ["settings"])) or
        (has("changes") and (.changes | type == "array") and
-        ((keys - ["changes","idleProvider"]) | length == 0) and
+        ((keys - ["changes","idleProvider","omarchyEntry"]) | length == 0) and
+        ((has("omarchyEntry") | not) or (.omarchyEntry | object)) and
         all(.changes[]; object and permitted(.path) and
             ((.remove == true) or has("value")) and ((keys - ["path","value","remove"]) | length == 0)))))
 ' >/dev/null || die "invalid or out-of-scope settings request"
+mirror="$(jq -c '.omarchyEntry // empty' <<<"$request")"
+[[ -z $mirror || $(plugin_compat "$dir") == omarchy ]] || die "omarchyEntry is for Omarchy compatibility plugins only"
 
 idle_provider="$(jq -r '.idleProvider // ""' <<<"$request")"
 if jq -e 'any(.changes[]?; .path[0] == "idle")' <<<"$request" >/dev/null; then
@@ -86,5 +96,45 @@ printf '%s\n' "$request" | jq -e '
 ' >/dev/null || die "invalid bar or screensaver setting"
 if [[ $updated != "$user" ]]; then
     printf '%s\n' "$updated" | shell_config_write >&2
+fi
+# haseen's shell.json above is the record. Omarchy plugins may also read their
+# entry back from Omarchy's own shell.json (the file Omarchy's updateEntryInline
+# writes), so the entry they wrote is mirrored there with Omarchy's rule. Only
+# an existing file is touched, only this plugin's entry changes, and a failure
+# here leaves haseen's write standing. The rule is adapted from Omarchy
+# shell/shell.qml updateEntryInline (MIT, Copyright (c) David Heinemeier Hansson).
+mirror_omarchy_entry() {
+    local file="$HOME/.config/omarchy/shell.json" upstream current next tmp
+    [[ -f $file ]] || return 0
+    upstream="$(plugin_adapt "$dir" | jq -r '.upstreamId')"
+    [[ -n $upstream ]] || return 0
+    if ! current="$(jq -e 'if type == "object" then . else error("not an object") end' "$file" 2>/dev/null)"; then
+        warn "$file is not a JSON object; $upstream's entry was not mirrored there"
+        return 0
+    fi
+    next="$(jq --arg id "$upstream" --argjson entry "$mirror" '
+        ({id: $id} + ($entry | del(.id))) as $new |
+        def swap: if type == "object" and .id == $id then $new else . end;
+        def sections: "left", "center", "right";
+        def in_layout: any(sections as $s | (.bar.layout[$s]? // []) | arrays | .[]; type == "object" and .id == $id);
+        if in_layout then
+            reduce sections as $s (.; if (.bar.layout[$s] | type) == "array" then .bar.layout[$s] |= map(swap) else . end)
+        elif (.plugins | type) == "array" then .plugins |= map(swap)
+        else . end
+    ' <<<"$current")"
+    [[ $next != "$current" ]] || return 0
+    if [[ ! -e $file.haseen-bak ]]; then
+        run cp -p -- "$file" "$file.haseen-bak" || return 1
+    fi
+    tmp="$file.new"
+    $DRY_RUN || tmp="$file.new.$$"
+    printf '%s\n' "$next" | write_user_file "$tmp" || return 1
+    if ! { run chmod --reference="$file" -- "$tmp" && run mv -f -- "$tmp" "$file"; }; then
+        $DRY_RUN || rm -f -- "$tmp"
+        return 1
+    fi
+}
+if [[ -n $mirror ]] && ! mirror_omarchy_entry >&2; then
+    warn "$id: could not mirror its entry into $HOME/.config/omarchy/shell.json"
 fi
 $DRY_RUN || printf '%s\n' "$updated"

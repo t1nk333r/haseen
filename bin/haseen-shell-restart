@@ -4,13 +4,15 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
 
 usage() {
     cat <<EOF
 Usage: haseen shell restart [--dry-run]
 
 Restarts haseen-shell.service when it is active. Otherwise kills the qs
-instance running \$HASEEN_PATH/shell and starts a detached one.
+instance running \$HASEEN_PATH/shell and starts a detached one through
+'haseen shell run', as the unit does.
 EOF
 }
 parse_common_flags "$@"
@@ -27,7 +29,16 @@ if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
     exit 0
 fi
 
+# A caller the shell started (an Omarchy panel's restart button reaches this
+# through Compat/bin) shares its session and its stdout pipe dies with it right
+# after the kill, so the relaunch would never run: finish in a session of our
+# own, writing nowhere the old shell owned.
+if ! $DRY_RUN && [[ -z ${HASEEN_SHELL_RESTART_DETACHED:-} ]]; then
+    info "restarting the haseen shell (qs -p $shell_dir)"
+    HASEEN_SHELL_RESTART_DETACHED=1 exec setsid -f "$BIN_DIR/haseen-shell-restart" "$@" </dev/null >/dev/null 2>&1
+fi
 # No instance running is fine: qs kill then just reports nothing to kill.
 run qs kill -p "$shell_dir" || true
-run qs -p "$shell_dir" -d
-info "haseen shell relaunched (qs -p $shell_dir)"
+# Through haseen-shell-run, as the unit does, so the relaunch gets the same PATH.
+run "$BIN_DIR/haseen-shell-run" -d
+info "haseen shell relaunched (haseen shell run -d)"

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# haseen:summary Let the weather locate this machine through GeoClue (on|off)
+# haseen:args [on|off] [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+
+DROPIN=/etc/geoclue/conf.d/90-haseen.conf
+WHERE_AM_I=/usr/lib/geoclue-2.0/demos/where-am-i
+# systemd's XDG-autostart unit for geoclue's own
+# /etc/xdg/autostart/geoclue-demo-agent.desktop. uwsm starts
+# xdg-desktop-autostart.target, so the agent also runs at every login.
+AGENT_UNIT='app-geoclue\x2ddemo\x2dagent@autostart.service'
+
+usage() {
+    cat <<EOF
+Usage: haseen setup geoclue [on|off] [--dry-run] [--yes]
+
+Without a choice, prints on or off.
+
+haseen-weather-location asks GeoClue through its where-am-i client (desktop id
+geoclue-where-am-i) at city accuracy. GeoClue answers no client until an agent
+is registered for the user; geoclue's demo agent is that agent here.
+
+on   installs geoclue (and libnotify, which its agent links), writes
+     $DROPIN allowing geoclue-where-am-i for this user only,
+     restarts geoclue so it reads it, and starts the demo agent now.
+off  rewrites the drop-in to deny geoclue-where-am-i, so the weather uses
+     wttr.in's IP lookup. The package stays installed.
+EOF
+}
+
+current() {
+    local f
+    f="$(sysroot_path "$DROPIN")"
+    if [[ -x $(sysroot_path "$WHERE_AM_I") && -r $f ]] && grep -qx 'allowed=true' "$f"; then
+        echo on
+    else
+        echo off
+    fi
+}
+
+# dropin ALLOWED — the drop-in body. geoclue skips an app section without
+# all three keys; users= (empty = everyone) names this user when allowing.
+dropin() {
+    local users=""
+    [[ $1 == true ]] && users="$(id -u)"
+    cat <<EOF
+# Written by \`haseen setup geoclue\` (on|off).
+# haseen.weather asks GeoClue for a city-level position through where-am-i.
+[geoclue-where-am-i]
+allowed=$1
+system=false
+users=$users
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if (($# == 0)); then
+    current
+    exit 0
+fi
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+case "$1" in
+on | off) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+require_not_root
+
+if [[ $1 == on ]]; then
+    pkg_install geoclue libnotify
+    dropin true | write_root_file "$DROPIN" 0644
+else
+    dropin false | write_root_file "$DROPIN" 0644
+fi
+# geoclue reads its configuration at start; it is D-Bus activated and exits
+# when idle, so restarting a running one is harmless.
+run_root systemctl try-restart geoclue.service
+if [[ $1 == on ]]; then
+    run systemctl --user daemon-reload
+    run systemctl --user start "$AGENT_UNIT" ||
+        warn "could not start the GeoClue agent now; it starts with the next login"
+fi
+info "GeoClue for the weather: $1"

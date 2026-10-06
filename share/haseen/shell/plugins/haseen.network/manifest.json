@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.network",
   "name": "Network",
-  "version": "1.1.0",
-  "description": "NetworkManager state in the bar and a panel for wired status and Wi-Fi (Quickshell.Networking)",
+  "version": "2.0.0",
+  "description": "Connection state in the bar and Omarchy's network panel: connection details with ping and traffic, speed test, Wi-Fi switch, Wi-Fi band, DNS provider and the Wi-Fi networks in range (Quickshell.Networking)",
   "kinds": [
     "bar-widget",
     "panel"
@@ -21,13 +21,16 @@
     "maxNetworks": {
       "type": "integer",
       "default": 8,
-      "description": "Wi-Fi networks listed in the panel (strongest first)"
+      "description": "Wi-Fi networks listed in the panel (connected, then saved, then strongest)"
     },
     "debugIpc": {
       "type": "boolean",
       "default": false,
-      "description": "Test hook: expose IPC target haseen.network (state, prompt) while the panel is open; it never connects or toggles radios"
+      "description": "Test hook: expose IPC target haseen.network (state, prompt) while the panel is open; it never connects, forgets, changes band or DNS, or toggles radios"
     }
   },
-  "permissions": []
+  "permissions": [
+    "exec",
+    "network"
+  ]
 }

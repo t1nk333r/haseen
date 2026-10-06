@@ -3,13 +3,15 @@ import Quickshell
 import qs.Haseen
 import qs.Services as Dms
 import "Host.js" as Host
+import "Layers.js" as Layers
 
 // Bar-widget host for DankMaterialShell plugins (architecture 5.4).
 // PluginSlot loads this file for a registry record with compat "dms"; it
 // creates the plugin's widget component (a PluginComponent) and sets what
 // DMS's bar sets: pluginId (the DMS id, which the plugin's own
 // savePluginData calls use), pluginService, section, parentScreen and the
-// bar thickness. A plugin that fails to compile (an import or type the
+// bar thickness. Under the software renderer its layer effects are turned
+// off (Layers.js). A plugin that fails to compile (an import or type the
 // adapter does not provide) is reported once through Plugins.reportError
 // and takes no room.
 Item {
@@ -64,6 +66,8 @@ Item {
                 w.widgetThickness = Qt.binding(() => Config.barHeight);
             w.height = Qt.binding(() => host.height);
             host.widget = w;
+            if (Quickshell.env("QT_QUICK_BACKEND") === "software")
+                Layers.dropEffects(w);
         });
     }
 }

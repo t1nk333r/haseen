@@ -118,19 +118,49 @@ assert_eq "dms: single component of a widget type is the bar widget" '{"bar-widg
 assert_eq "dms: process -> exec, duplicates and DMS-only permissions dropped" '["exec"]' "$(jq -c .manifest.permissions <<<"$out")"
 out="$(adapt "$D/Composite")"
 assert_eq "dms composite: digits in the id" dms.composite2-demo "$(jq -r .id <<<"$out")"
-assert_eq "dms composite: components.widget is the bar widget" '{"bar-widget":"W.qml"}' "$(jq -c .manifest.entry <<<"$out")"
-assert_eq "dms composite: other surfaces unsupported, empty ones ignored" '["dms:daemon","dms:desktop"]' "$(jq -c .unsupported <<<"$out")"
+assert_eq "dms composite: widget and daemon are the bar widget and service" '{"bar-widget":"W.qml","service":"D.qml"}' "$(jq -c .manifest.entry <<<"$out")"
+assert_eq "dms composite: other surfaces unsupported, empty ones ignored" '["dms:desktop"]' "$(jq -c .unsupported <<<"$out")"
 assert_eq "dms composite: comma-separated permissions" '["network"]' "$(jq -c .manifest.permissions <<<"$out")"
+out="$(adapt "$D/Daemon")"
+assert_eq "dms daemon: a daemon-type component is a service" '["service"]' "$(jq -c .manifest.kinds <<<"$out")"
+assert_eq "dms daemon: service entry" '{"service":"D.qml"}' "$(jq -c .manifest.entry <<<"$out")"
 
-capture haseen plugin validate dms.example-startup-check dms.composite2-demo
+capture haseen plugin validate dms.example-startup-check dms.composite2-demo dms.just-daemon
 assert_status "dms plugins validate by registry id" 0 "$STATUS"
 assert_contains "dms validate names the compat origin" "$OUTPUT" "(dms: $D/StartupCheck)"
 assert_contains "dms network permission warns" "$OUTPUT" "warning: requests unrestricted 'network' access"
-check_invalid "dms launcher only" "$D/Launcher" "error: dms: no bar widget surface (has launcher; the compat adapter loads the bar widget only)"
-check_invalid "dms daemon only" "$D/Daemon" "error: dms: no bar widget surface (has daemon;"
+check_invalid "dms launcher only" "$D/Launcher" "error: dms: no bar widget or daemon surface (has launcher; the compat adapter loads bar widgets and daemons only)"
 check_invalid "dms bad id" "$D/BadId" "error: dms: id must match ^[a-zA-Z][a-zA-Z0-9]*\$"
 check_invalid "dms without name" "$D/NoName" "error: name is required"
 check_invalid "dms invalid JSON" "$D/Broken" "error: plugin.json is not a valid JSON object"
+
+# --- the dms command shim (Compat/bin/dms) -----------------------------------
+# DMS plugins shell out to `dms screenshot` and `dms ipc`; the haseen shell
+# puts this shim first on PATH. DRY_RUN reaches haseen capture's plan.
+DMS_SHIM="$SHELL_DIR/Compat/bin/dms"
+capture env DRY_RUN=true "$DMS_SHIM" screenshot full --cursor=on -f jpg -q 80 --no-notify --dir "$SANDBOX/shots" --filename "shot.jpg"
+assert_status "dms screenshot maps to haseen capture" 0 "$STATUS"
+assert_contains "dms screenshot full: focused output, JPEG quality, pointer, the plugin's file" "$OUTPUT" \
+    "DRYRUN: grim -o <focused monitor> -t jpeg -q 80 -c $SANDBOX/shots/shot.jpg"
+assert_contains "dms screenshot --no-notify" "$OUTPUT" "DRYRUN: no notification"
+assert_contains "dms screenshot copies with the format's type" "$OUTPUT" "DRYRUN: wl-copy -t image/jpeg < $SANDBOX/shots/shot.jpg"
+capture env DRY_RUN=true "$DMS_SHIM" screenshot output -o DP-2 --stdout
+assert_eq "dms screenshot output -o NAME --stdout writes only the image" "DRYRUN: grim -o DP-2 -" "$OUTPUT"
+capture env DRY_RUN=true "$DMS_SHIM" screenshot all --no-clipboard
+assert_not_contains "dms screenshot all is every monitor" "$OUTPUT" "grim -o"
+assert_not_contains "dms --no-clipboard copies nothing" "$OUTPUT" "wl-copy"
+capture "$DMS_SHIM" screenshot scroll
+assert_status "dms screenshot scroll is refused" 2 "$STATUS"
+stub qs 'echo "qs: $*"'
+stub notify-send 'echo "notify-send: $*"'
+capture "$DMS_SHIM" ipc call screenCaptureToolbar cancelRecording
+assert_eq "dms ipc call goes to the haseen shell" "qs: -p $HASEEN_PATH/shell ipc call screenCaptureToolbar cancelRecording" "$OUTPUT"
+capture "$DMS_SHIM" ipc screenCaptureToolbar recordingStarted
+assert_eq "dms ipc without call too" "qs: -p $HASEEN_PATH/shell ipc call screenCaptureToolbar recordingStarted" "$OUTPUT"
+capture "$DMS_SHIM" ipc call toast infoWith "Recording Stopped" "Saved to x.mkv" "" screencapture
+assert_eq "dms toast is a notification" "notify-send: --app-name=haseen --urgency=low Recording Stopped Saved to x.mkv" "$OUTPUT"
+capture "$DMS_SHIM" restart
+assert_status "other dms commands are refused" 2 "$STATUS"
 
 # --- list / info: the compat source is visible -------------------------------
 capture haseen plugin list
@@ -149,6 +179,10 @@ capture haseen plugin enable dms.example-startup-check
 assert_status "enable a dms plugin by registry id" 0 "$STATUS"
 assert_eq "enable places the dms bar widget" true \
     "$(jq '.bar.right | index("dms.example-startup-check") != null' "$XDG_CONFIG_HOME/haseen/shell.json")"
+capture haseen plugin enable dms.just-daemon
+assert_status "enable a dms daemon" 0 "$STATUS"
+assert_eq "enable starts the dms daemon as a service" 1 \
+    "$(jq '[.services[] | select(. == "dms.just-daemon")] | length' "$XDG_CONFIG_HOME/haseen/shell.json")"
 capture haseen plugin enable t1nk33r.missing
 assert_status "enable an unknown compat id fails" 1 "$STATUS"
 
@@ -288,20 +322,41 @@ ShellRoot {
         });
     }
 
+    // KeyboardPanel's own creation order: the \`mask\` binding notifies
+    // first (the request is recorded, then the host presents its closed
+    // region), and Component.onCompleted reads \`mask\` again afterwards.
+    function created(notifiesFirst) {
+        var supplied = null;
+        var presented = probe.pluginMask;
+        if (notifiesFirst) {
+            supplied = PanelInput.suppliedMask(presented, supplied, probe.closedMask);
+            presented = PanelInput.effectiveMask(false, supplied, probe.closedMask);
+        }
+        supplied = PanelInput.suppliedMask(presented, supplied, probe.closedMask);
+        var shown = PanelInput.effectiveMask(true, supplied, probe.closedMask);
+        return {
+            keepsPanelMask: shown === probe.pluginMask,
+            openW: shown ? shown.width : -1,
+            suspended: PanelInput.pointerInputSuspended(true, shown)
+        };
+    }
+    property var creation: null
+
     Timer {
         interval: 20
         repeat: true
         running: true
         property int phase: 0
         onTriggered: {
-            if (phase === 0) { probe.opened = true; phase = 1; }
+            if (phase === 0) { probe.creation = { created: probe.created(true), completedOnly: probe.created(false) }; probe.opened = true; phase = 1; }
             else if (phase === 1) { probe.snap("open"); probe.carrying = true; phase = 2; }
             else if (phase === 2) { probe.snap("carry"); probe.carrying = false; probe.opened = false; phase = 3; }
             else if (phase === 3) { probe.snap("fade"); probe.opened = true; phase = 4; }
             else if (phase === 4) { probe.snap("reopen"); probe.carrying = true; phase = 5; }
             else {
                 probe.snap("reopen-carry");
-                console.warn("RESULT " + JSON.stringify({ unmasked: PanelInput.regionIsEmpty(null), snaps: probe.snaps }));
+                console.warn("RESULT " + JSON.stringify({ unmasked: PanelInput.regionIsEmpty(null), snaps: probe.snaps,
+                    created: probe.creation.created, completedOnly: probe.creation.completedOnly }));
                 running = false;
                 Qt.quit();
             }
@@ -330,6 +385,12 @@ EOF
         assert_eq "the panel's mask still follows the panel after a reopen" 0 "$(at reopen-carry hostW)"
         assert_eq "an emptied mask suspends the panel after a reopen too" true "$(at reopen-carry suspended)"
         assert_eq "a surface without a mask keeps taking pointer input" false "$(jq -r .unmasked <<<"$panel_result")"
+        created() { jq -r --arg k "$2" ".$1[\$k]" <<<"$panel_result"; }
+        assert_eq "a new panel keeps its mask when the binding notifies before completion" true "$(created created keepsPanelMask)"
+        assert_eq "a new panel takes pointer input on first open" 1920 "$(created created openW)"
+        assert_eq "a new panel is not suspended on first open" false "$(created created suspended)"
+        assert_eq "a new panel keeps its mask when only completion records it" true "$(created completedOnly keepsPanelMask)"
+        assert_eq "that panel takes pointer input on first open too" 1920 "$(created completedOnly openW)"
     else
         _fail "pointer-input scenario produced no result" "$OUTPUT"
     fi

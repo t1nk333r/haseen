@@ -4,4 +4,5 @@ ShellApi 1.0 ShellApi.qml
 OmarchyHost 1.0 OmarchyHost.qml
 OmarchyServiceHost 1.0 OmarchyServiceHost.qml
 DmsHost 1.0 DmsHost.qml
+DmsServiceHost 1.0 DmsServiceHost.qml
 Tooltip 1.0 Tooltip.qml

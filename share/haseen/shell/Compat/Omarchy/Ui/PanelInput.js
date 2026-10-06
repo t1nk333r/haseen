@@ -30,6 +30,16 @@ function effectiveMask(open, supplied, closed) {
     return open ? supplied : closed
 }
 
+// The mask a panel asked for, after its surface's `mask` became `current`.
+// The host's own empty `closed` region is what the host put there, never
+// what the panel asked for: adopting it would leave an open panel without
+// any pointer input. That happens on creation, where the `mask` binding
+// notifies (and the host swaps in `closed`) before Component.onCompleted
+// reads `mask` again.
+function suppliedMask(current, supplied, closed) {
+    return current === closed ? supplied : current
+}
+
 // Whether the surface takes no pointer input, either because the panel is
 // closed or because the mask in force is empty (a panel empties its mask
 // while a drag must be droppable into the application underneath).

@@ -105,7 +105,7 @@ Singleton {
             const file = kind === "service" || kind === "overlay" ? "OmarchyServiceHost.qml" : "OmarchyHost.qml";
             return Paths.fileUrl(Paths.shellDir + "/Compat/" + file);
         }
-        return Paths.fileUrl(Paths.shellDir + "/Compat/DmsHost.qml");
+        return Paths.fileUrl(Paths.shellDir + "/Compat/" + (kind === "service" ? "DmsServiceHost.qml" : "DmsHost.qml"));
     }
 
     function entryUrl(id: string, kind: string): string {

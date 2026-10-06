@@ -66,7 +66,9 @@ assert_status "built-ins validate" 0 "$STATUS"
 for id in "${BUILTINS[@]}"; do
     assert_contains "built-in $id ok" "$OUTPUT" "ok: $id (builtin:"
 done
-assert_not_contains "built-ins request no network" "$OUTPUT" "warning:"
+# haseen.network's panel pings 1.1.1.1 while open (Omarchy's ping row); no
+# other built-in here reaches the network.
+assert_eq "only haseen.network requests network" "1" "$(grep -c '^warning:' <<<"$OUTPUT")"
 
 # --- validate: broken manifests are refused --------------------------------
 P="$XDG_CONFIG_HOME/haseen/plugins"
@@ -299,6 +301,27 @@ record qs
 capture haseen shell run
 assert_eq "run execs qs -p HASEEN_PATH/shell" "qs: -p $HASEEN_PATH/shell" "$OUTPUT"
 
+# Processes the shell starts reach haseen through the Compat command shims,
+# never Omarchy's own commands (a stub here stands in for an installed one).
+stub omarchy-restart-shell 'echo "STUB-CALLED: omarchy-restart-shell $*" >&2; exit 97'
+stub omarchy-hyprland-monitor-internal-mirror 'echo "STUB-CALLED: omarchy-hyprland-monitor-internal-mirror $*" >&2; exit 97'
+stub systemctl '[ "$2" = is-active ] && exit 0; echo "STUB-CALLED: systemctl $*" >&2; exit 97'
+stub qs 'DRY_RUN=true exec omarchy-restart-shell'
+capture haseen shell run
+assert_status "shell child: omarchy-restart-shell exits 0" 0 "$STATUS"
+assert_dry_pure "shell child: omarchy-restart-shell" "$OUTPUT"
+assert_contains "shell child: omarchy-restart-shell restarts the haseen unit" "$OUTPUT" \
+    "DRYRUN: systemctl --user restart haseen-shell.service"
+stub qs 'DRY_RUN=true exec omarchy-hyprland-monitor-internal-mirror off'
+capture haseen shell run
+assert_status "shell child: mirror off exits 0" 0 "$STATUS"
+assert_dry_pure "shell child: mirror off" "$OUTPUT"
+assert_contains "shell child: mirror off drops haseen's toggle" "$OUTPUT" \
+    "DRYRUN: rm -f $XDG_STATE_HOME/haseen/toggles/hypr/mirror-display.lua"
+assert_contains "shell child: mirror off reloads Hyprland" "$OUTPUT" "DRYRUN: hyprctl reload"
+record qs
+stub systemctl 'echo "STUB-CALLED: systemctl $*" >&2; exit 97'
+
 capture haseen shell ipc panel toggle me.x
 assert_eq "ipc goes to qs by default" "qs: -p $HASEEN_PATH/shell ipc call panel toggle me.x" "$OUTPUT"
 capture haseen shell ipc shell
@@ -338,7 +361,11 @@ stub systemctl '[ "$2" = is-active ] && exit 3; echo "STUB-CALLED: systemctl $*"
 capture haseen shell restart --dry-run
 assert_dry_pure "restart instance" "$OUTPUT"
 assert_contains "restart kills the instance for the path" "$OUTPUT" "DRYRUN: qs kill -p $HASEEN_PATH/shell"
-assert_contains "restart relaunches detached" "$OUTPUT" "DRYRUN: qs -p $HASEEN_PATH/shell -d"
+assert_contains "restart relaunches detached through shell run" "$OUTPUT" "DRYRUN: $REPO/bin/haseen-shell-run -d"
+stub setsid "echo \"setsid: \$*\" >\"$SANDBOX/setsid.log\""
+capture haseen shell restart
+assert_contains "restart without the unit finishes in its own session" "$(cat "$SANDBOX/setsid.log")" \
+    "setsid: -f $REPO/bin/haseen-shell-restart"
 capture haseen shell restart extra
 assert_status "restart rejects arguments" 2 "$STATUS"
 

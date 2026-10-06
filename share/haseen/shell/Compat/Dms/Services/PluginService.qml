@@ -5,15 +5,34 @@ import Quickshell
 import qs.Common
 
 // qs.Services.PluginService for DankMaterialShell plugins (architecture 5.4):
-// the plugin-data calls bar widgets make, on top of SettingsData. Names
-// follow DankMaterialShell's quickshell/Services/PluginService.qml
-// (MIT, Copyright (c) 2025 Avenge Media LLC). Variants (several instances
-// of one widget with their own config) are not supported: a plugin sees an
-// empty variant list and variant edits log once.
+// the plugin-data and global-variable calls widgets and daemons make, on top
+// of SettingsData. Names follow DankMaterialShell's
+// quickshell/Services/PluginService.qml (MIT, Copyright (c) 2025 Avenge
+// Media LLC). Variants (several instances of one widget with their own
+// config) are not supported: a plugin sees an empty variant list and variant
+// edits log once.
 Singleton {
     id: root
 
+    // DMS plugin id -> { name: value }, shared by a plugin's surfaces for the
+    // life of the shell; never persisted, as in DMS.
+    property var globalVars: ({})
+
     signal pluginDataChanged(string pluginId)
+    signal globalVarChanged(string pluginId, string varName)
+
+    function getGlobalVar(pluginId: string, varName: string, defaultValue: var): var {
+        const vars = globalVars[pluginId];
+        return vars && varName in vars ? vars[varName] : defaultValue;
+    }
+
+    function setGlobalVar(pluginId: string, varName: string, value: var): void {
+        const all = Object.assign({}, globalVars);
+        all[pluginId] = Object.assign({}, all[pluginId] || {});
+        all[pluginId][varName] = value;
+        globalVars = all;
+        globalVarChanged(pluginId, varName);
+    }
 
     function savePluginData(pluginId: string, key: string, value: var): bool {
         SettingsData.setPluginSetting(pluginId, key, value);

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): Omarchy's toggle file is not in haseen's Hyprland config; haseen's is.
+exec "${HASEEN_PATH:?}/../../bin/haseen-hardware-mirror-display" "$@"

@@ -54,6 +54,16 @@ hl.window_rule({
   workspace = "special:screensaver silent",
 })
 
+-- The "terminal" tag: one definition of what counts as a terminal, which the
+-- universal copy/paste binds (binds.lua) read. Adapted from Omarchy
+-- default/hypr/apps/terminals.lua (MIT, Copyright (c) David Heinemeier
+-- Hansson). The class is matched in full, so foot's other app-id is spelt out.
+hl.window_rule({
+  name = "haseen_terminal_tag",
+  match = { class = "^(Alacritty|kitty|com\\.mitchellh\\.ghostty|foot|footclient|org\\.codeberg\\.dnkl\\.foot|wezterm|org\\.wezfurlong\\.wezterm|haseen\\.floating)$" },
+  tag = "+terminal",
+})
+
 -- Terminals opened by haseen commands (pickers, setup steps, editors).
 hl.window_rule({
   name = "haseen_floating_terminal",

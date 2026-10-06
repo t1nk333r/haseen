@@ -28,6 +28,7 @@ Singleton {
     readonly property color surface: Haseen.Theme.background
     readonly property color surfaceContainer: Haseen.Theme.surface
     readonly property color surfaceContainerHigh: Haseen.Theme.surfaceAlt
+    readonly property color surfaceContainerHighest: Haseen.Theme.surfaceAlt
     readonly property color surfaceVariant: Haseen.Theme.surfaceAlt
     readonly property color hostSurface: Haseen.Theme.background
     readonly property color cardSurface: Haseen.Theme.surface
