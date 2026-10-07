@@ -26,7 +26,7 @@ capture "$REPO/tools/build-sidecar.sh" "$binary"
 assert_status "the daemon builds" 0 "$STATUS"
 assert_contains "the build reports where it landed" "$OUTPUT" "$binary"
 
-assert_eq "the build announces its capabilities" "sysusage" "$("$binary" -capabilities)"
+assert_eq "the build announces its capabilities" "sysusage borderwipe" "$("$binary" -capabilities)"
 
 # --- the wire protocol over a real socket -------------------------------------
 if ! command -v socat >/dev/null; then
@@ -37,7 +37,12 @@ else
     chmod 700 "$XDG_RUNTIME_DIR"
     socket="$XDG_RUNTIME_DIR/haseen/sidecar.sock"
 
-    "$binary" -idle-timeout 0 >"$SANDBOX/daemon.log" 2>&1 &
+    # The border wipe reads its theme from -state. No Hyprland signature: the
+    # daemon must never reach the Hyprland the tests run under.
+    state="$SANDBOX/state"
+    mkdir -p "$state/current/theme"
+    cp "$HASEEN_PATH/themes/haseen/colors.toml" "$state/current/theme/colors.toml"
+    env -u HYPRLAND_INSTANCE_SIGNATURE "$binary" -idle-timeout 0 -state "$state" >"$SANDBOX/daemon.log" 2>&1 &
     daemon=$!
     trap 'kill "$daemon" 2>/dev/null || true' EXIT
     for ((i = 0; i < 100; i++)); do
@@ -97,6 +102,43 @@ else
 
     capture env HASEEN_PATH="$HASEEN_PATH" haseen sidecar status
     assert_contains "the CLI finds the socket" "$OUTPUT" "$socket"
+
+    # --- the border wipe (plan 069) ---------------------------------------------
+    assert_contains "the border wipe is off until someone subscribes" "$OUTPUT" "border wipe:  off (nobody subscribed)"
+
+    # The shell holds this subscription while the theme asks for a wipe. The
+    # haseen theme asks for 36 s a turn, slower than borderangle goes, so the
+    # loop would be the daemon's; with no Hyprland to reach, it waits.
+    { printf '{"id":1,"method":"subscribe","stream":"borderwipe"}\n'; sleep 2; } |
+        timeout 5 socat - UNIX-CONNECT:"$socket" >"$SANDBOX/wipe.log" 2>/dev/null &
+    holder=$!
+    for ((i = 0; i < 40; i++)); do
+        grep -q '"stream":"borderwipe"' "$SANDBOX/wipe.log" 2>/dev/null && break
+        sleep 0.05
+    done
+    capture env HASEEN_PATH="$HASEEN_PATH" haseen sidecar status
+    assert_contains "status: waiting for Hyprland, at the theme's pace" "$OUTPUT" \
+        "border wipe:  waiting (Hyprland is not answering), 36 s a turn"
+    wait "$holder" || true
+    event="$(jq -c 'select(.type == "event" and .stream == "borderwipe") | .data' "$SANDBOX/wipe.log" | tail -1)"
+    assert_eq "the subscriber hears the state" waiting "$(jq -r .state <<<"$event")"
+    assert_eq "with the theme's seconds per turn" 36 "$(jq -r .secondsPerTurn <<<"$event")"
+    assert_eq "and no frame sent" 0 "$(jq -r .frames <<<"$event")"
+    # The daemon sees the client go asynchronously: give it a moment.
+    for ((i = 0; i < 40; i++)); do
+        capture env HASEEN_PATH="$HASEEN_PATH" haseen sidecar status
+        [[ $OUTPUT == *"border wipe:  off"* ]] && break
+        sleep 0.05
+    done
+    assert_contains "the subscriber gone, the loop is off" "$OUTPUT" "border wipe:  off (nobody subscribed)"
+
+    grep -v '^border_wipe' "$HASEEN_PATH/themes/haseen/colors.toml" >"$state/current/theme/colors.toml"
+    frames="$(talk '{"id":2,"method":"subscribe","stream":"borderwipe"}')"
+    assert_eq "a theme without border_wipe asks for nothing" "off|the theme asks for no wipe" \
+        "$(jq -r 'select(.type == "event" and .stream == "borderwipe") | .data | "\(.state)|\(.reason)"' <<<"$frames" | tail -1)"
+
+    frames="$(talk '{"id":3,"method":"status"}')"
+    assert_eq "status answers over the protocol too" off "$(jq -r 'select(.type == "reply") | .data.borderwipe.state' <<<"$frames")"
 
     printf '{"id":9,"method":"shutdown"}\n' | timeout 3 socat - UNIX-CONNECT:"$socket" >/dev/null 2>&1 || true
     for ((i = 0; i < 50; i++)); do

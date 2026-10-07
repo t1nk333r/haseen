@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# haseen:summary Show, start or stop haseen-sidecar, the sampling daemon
+# haseen:summary Show, start or stop haseen-sidecar, the sampling and border wipe daemon
 # haseen:args [status|start|stop|build] [--dry-run]
 #
-# The shell starts the daemon itself when a widget needs it (plan 032); this is
-# for looking at it and for building it from a checkout.
+# The shell starts the daemon itself when a widget needs it (plan 032) or the
+# theme asks for a border wipe (plan 069); this is for looking at it and for
+# building it from a checkout.
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
@@ -16,7 +17,9 @@ usage() {
     cat <<EOF
 Usage: haseen sidecar [status|start|stop|build] [--dry-run]
 
-  status   binary, version, socket and the capabilities it announces
+  status   binary, version, socket, the capabilities it announces and, while
+           it runs, the border wipe: off, waiting, native (Hyprland turns the
+           border), paused or running, with the reason
   start    run the daemon in the background (the shell does this on demand)
   stop     ask the running daemon to exit
   build    compile it from core/ into $BINARY (needs go)
@@ -37,6 +40,21 @@ socket_answers() {
     timeout 2 socat -u /dev/null UNIX-CONNECT:"$SOCKET" 2>/dev/null
 }
 
+# wipe_status — the border wipe line, from the daemon's `status` answer.
+wipe_status() {
+    have socat && have jq || return 0
+    local line
+    line="$(printf '{"id":1,"method":"status"}\n' | timeout 2 socat -t1 - UNIX-CONNECT:"$SOCKET" 2>/dev/null |
+        jq -r 'select(.type == "reply") | .data.borderwipe // empty |
+            .state
+            + (if .reason then " (" + .reason + ")" else "" end)
+            + (if .secondsPerTurn then ", \(.secondsPerTurn) s a turn" else "" end)
+            + (if .state == "running" or .state == "paused" then ", angle \(.angle), \(.frames) frames" else "" end)' 2>/dev/null)" || line=""
+    if [[ -n $line ]]; then
+        printf 'border wipe:  %s\n' "$line"
+    fi
+}
+
 case "$action" in
 status)
     if [[ -x $BINARY ]]; then
@@ -49,6 +67,7 @@ status)
     printf 'socket:       %s' "$SOCKET"
     if socket_answers; then
         printf ' (running)\n'
+        wipe_status
     else
         printf ' (not running)\n'
     fi

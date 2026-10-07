@@ -1,6 +1,6 @@
 # haseen: haseen's own theme and the default for new installs. It derives
 # from HANCORE's Greek Noir (MIT, see LICENSE and UPSTREAM.md) as the owner
-# runs it on luna, with the "akane" active-border wipe in hyprland.lua. `mode`
+# runs it on luna, with the "akane" active-border wipe (border_wipe below). `mode`
 # added by haseen (luminance gives the same answer); every colour is
 # byte-identical to luna's copy.
 mode = "dark"
@@ -9,6 +9,13 @@ mode = "dark"
 accent = "#F25623"
 active_border_color = "#88A57D"
 active_tab_background = "#F25623"
+
+# The active border's clockwise wipe (plan 069): the gradient that turns, and
+# the seconds one turn takes. hyprland.lua reads both. Up to 10 s a turn,
+# Hyprland's borderangle animation draws it; slower than that (Hyprland's
+# speed stops at 100 ds), haseen-sidecar turns the angle instead.
+border_wipe = "rgba(F25623ff) rgba(F25623cc) rgba(F2562311) rgba(F25623cc)"
+border_wipe_seconds = 36
 
 # Cursor colors
 cursor = "#aeab94"
