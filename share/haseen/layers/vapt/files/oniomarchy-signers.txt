@@ -1,0 +1,7 @@
+# oniomarchy repository signing key: the one reviewed primary fingerprint.
+# Source: the owner-supplied repository facts (key published at
+# https://pkgs.oniomarchy.com/oniomarchy.gpg), reviewed 2026-10-07.
+# The fetched key must have exactly this primary; it is never taken from a
+# keyserver. Later signers come only from an authenticated keyring package
+# signed by a currently accepted primary, never from this file.
+0F5F9214F312B067ECBF1DF125E2C00AA6340BD0

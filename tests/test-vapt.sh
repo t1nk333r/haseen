@@ -241,9 +241,10 @@ vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
     "chaotic-aur|omarchy-apktool|1-1|https://github.com/basecamp/omarchy|android-apktool" \
     "extra|android-tools|35.0.2-1|https://developer.android.com/tools/releases/platform-tools"
 vapt_plan "omarchy provider" --groups mobile
-assert_not_contains "android-tools never resolves to an Omarchy package" "$(vapt_row android-tools)" "omarchy"
+assert_not_contains "android-tools never resolves to an Omarchy package" "$(vapt_field android-tools 3) $(vapt_field android-tools 4)" "omarchy"
 assert_eq "the genuine android-tools is planned" yes "$(vapt_planned extra/android-tools)"
-assert_not_contains "android-apktool never resolves to an Omarchy package" "$(vapt_row android-apktool)" "omarchy"
+# attempted_tiers may name the unselected oniomarchy tier; source and target may not.
+assert_not_contains "android-apktool never resolves to an Omarchy package" "$(vapt_field android-apktool 3) $(vapt_field android-apktool 4)" "omarchy"
 
 # Already-enabled Chaotic is a source only with its keyring canary.
 vapt_sandbox vapt-chaotic

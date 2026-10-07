@@ -6,23 +6,24 @@ VAPT_DIR="${LAYER_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
 source "$HASEEN_PATH/lib/packages.sh"
 source "$VAPT_DIR/pacman.sh"
 source "$VAPT_DIR/blackarch.sh"
+source "$VAPT_DIR/oniomarchy.sh"
 source "$VAPT_DIR/native.sh"
 source "$VAPT_DIR/environment.sh"
 VAPT_GROUPS=(core network web passwords ad osint cloud mobile forensics api htb-cjca htb-cpts htb-cwes htb-cwee htb-coae
     sdr wireless privacy anonymity automotive social reporting ai exploitation services)
-# Reviewed package sources whose facts the alias/dependency tables record but
-# which are not resolution tiers (plan 083): their rows are validated, never
-# consulted, until the source itself is admitted.
-VAPT_FACT_ONLY_SOURCES=(oniomarchy)
+# The reviewed fixed oniomarchy admission set (packages/oniomarchy.tsv): a
+# 53rd published name needs a reviewed table and code change, never adoption.
+VAPT_ONIOMARCHY_ADMITTED=52
 vapt_reset() {
     declare -gA VAPT_NATIVE_SPEC=() VAPT_NATIVE_PROBE=() VAPT_NATIVE_BA=() VAPT_NATIVE_GROUP=() VAPT_PINS=()
     declare -gA VAPT_MEMBERSHIP=() VAPT_ENABLED=() VAPT_DATABASE=() VAPT_PACKAGE=() VAPT_VERSION=() VAPT_URL=() VAPT_PROVIDES=() VAPT_UNSAFE=() VAPT_SOURCE_BLOCKED=()
     declare -gA VAPT_SOURCE=() VAPT_TARGET=() VAPT_RESOLUTION=() VAPT_APPLIED=() VAPT_REASON=() VAPT_ATTEMPTS=() VAPT_INFRA_DONE=()
     declare -gA VAPT_INFRA_TARGET=() VAPT_INFRA_APPLY=() VAPT_INFRA_REASON=()
     declare -gA VAPT_ID_SOURCE=() VAPT_ID_TARGET=() VAPT_ID_UPSTREAM=() VAPT_ID_POLICY=() VAPT_ID_POLICY_REASON=()
-    declare -gA VAPT_ALIAS=() VAPT_DEPENDENCY=() VAPT_DEPENDENCY_SOURCE=()
-    declare -ga VAPT_SELECTED=() VAPT_ITEMS=() VAPT_REPOS=() VAPT_INFRA_ROWS=() VAPT_NATIVE_ORDER=()
+    declare -gA VAPT_ALIAS=() VAPT_DEPENDENCY=() VAPT_DEPENDENCY_SOURCE=() VAPT_ONIO_ROLE=() VAPT_ONIO_LOGICAL=()
+    declare -ga VAPT_SELECTED=() VAPT_ITEMS=() VAPT_REPOS=() VAPT_INFRA_ROWS=() VAPT_NATIVE_ORDER=() VAPT_DEPENDENCY_ROWS=()
     VAPT_MUTATION_FAILED=0 VAPT_PACMAN_BLOCKED=0 VAPT_ENV_STATUS=unknown VAPT_STAGE='' VAPT_COAE_REQUIRED=0 VAPT_BLACKARCH_STAGED=''
+    VAPT_ONIOMARCHY_OPT=0 VAPT_ONIOMARCHY_SCOPE='' VAPT_ONIOMARCHY_STATE=not-selected VAPT_ONIOMARCHY_REASON=''
     vapt_native_paths
 }
 vapt_select() {
@@ -33,12 +34,14 @@ vapt_select() {
         case "$arg" in
         --groups) (($#)) || { warn '--groups needs a comma-separated list'; return 2; }; [[ $seen == false && $all == false ]] || return 2; selection="$1"; shift; seen=true ;;
         --all) [[ $seen == false && $all == false ]] || return 2; all=true ;;
+        # Per-operation source consent; it selects no tool and is not stored.
+        --with-oniomarchy) [[ $VAPT_ONIOMARCHY_OPT == 0 ]] || return 2; VAPT_ONIOMARCHY_OPT=1 ;;
         *) warn "unknown VAPT argument: $arg"; return 2 ;;
         esac
     done
     if $all; then VAPT_SELECTED=("${VAPT_GROUPS[@]}")
     elif $seen && [[ -n $selection && $selection != ,* && $selection != *, && $selection != *,,* ]]; then IFS=, read -r -a VAPT_SELECTED <<<"$selection"
-    else warn 'VAPT requires --groups GROUP,... or --all (no default tools)'; return 2
+    else warn 'VAPT requires --groups GROUP,... or --all (no default tools; --with-oniomarchy selects none)'; return 2
     fi
     local -A selected=()
     local dedup=()
@@ -50,13 +53,6 @@ vapt_select() {
         selected[$group]=1
     done
     VAPT_SELECTED=("${dedup[@]}")
-}
-# vapt_table_repo REPO — an allowed resolution tier or a fact-only source.
-vapt_table_repo() {
-    local fact
-    vapt_repo_allowed "$1" && return 0
-    for fact in "${VAPT_FACT_ONLY_SOURCES[@]}"; do [[ $1 != "$fact" ]] || return 0; done
-    return 1
 }
 # vapt_url_parse URL — split an absolute http(s) URL into VAPT_URL_SCHEME,
 # VAPT_URL_HOST and VAPT_URL_PATH (lowercase, no trailing slash). Userinfo,
@@ -83,7 +79,7 @@ vapt_manifest_validate() {
         done <"$VAPT_DIR/packages/security/$group.txt"
     done
     local table
-    for table in security/native.tsv pins.tsv identities.tsv identity-policy.tsv dependencies.tsv aliases.tsv; do
+    for table in security/native.tsv pins.tsv identities.tsv identity-policy.tsv dependencies.tsv aliases.tsv oniomarchy.tsv; do
         [[ -r $VAPT_DIR/packages/$table ]] || { warn "missing VAPT table: $table"; return 2; }
     done
     while IFS=$'\t' read -r group logical ba manager spec probe rest; do
@@ -100,7 +96,8 @@ vapt_manifest_validate() {
     done <"$VAPT_DIR/packages/security/native.tsv"
     while IFS=$'\t' read -r logical target rest; do
         [[ -n $logical && $logical != \#* ]] || continue
-        [[ $logical =~ $PKG_NAME_RE && ${roots[$logical]:-} && ! ${VAPT_PINS[$logical]:-} && $target == */* && ${target##*/} =~ $PKG_NAME_RE && -z $rest ]] && vapt_repo_allowed "${target%%/*}" || return 2
+        # A pin never names the private source: it is only ever the last tier.
+        [[ $logical =~ $PKG_NAME_RE && ${roots[$logical]:-} && ! ${VAPT_PINS[$logical]:-} && $target == */* && ${target##*/} =~ $PKG_NAME_RE && -z $rest ]] && vapt_repo_allowed "${target%%/*}" && [[ ${target%%/*} != oniomarchy ]] || return 2
         VAPT_PINS[$logical]="$target"
     done <"$VAPT_DIR/packages/pins.tsv"
     local required_source required_target upstream reason
@@ -111,7 +108,7 @@ vapt_manifest_validate() {
         # boundary; a repository identity names any target (*) or exactly one.
         vapt_url_parse "$upstream" && [[ $upstream != */ ]] || return 2
         if [[ $required_source == repository && $required_target != '*' ]]; then
-            [[ $required_target == */* && ${required_target##*/} =~ $PKG_NAME_RE ]] && vapt_repo_allowed "${required_target%%/*}" || return 2
+            [[ $required_target == */* && ${required_target##*/} =~ $PKG_NAME_RE ]] && vapt_repo_allowed "${required_target%%/*}" && [[ ${required_target%%/*} != oniomarchy ]] || return 2
         fi
         VAPT_ID_SOURCE[$logical]="$required_source"; VAPT_ID_TARGET[$logical]="$required_target"
         VAPT_ID_UPSTREAM[$logical]="$upstream"
@@ -131,13 +128,13 @@ vapt_manifest_validate() {
         [[ -n $logical && $logical != \#* ]] || continue
         # Dependency-only packages never become selectable roots.
         [[ $logical =~ $PKG_NAME_RE && ! ${roots[$logical]:-} && ! ${VAPT_DEPENDENCY[$logical]:-} && ( $consumer == '*' || ${roots[$consumer]:-} ) ]] || return 2
-        [[ $target == */* && ${target##*/} =~ $PKG_NAME_RE && $reason == dependency && -z $rest ]] && vapt_table_repo "${target%%/*}" || return 2
+        [[ $target == */* && ${target##*/} =~ $PKG_NAME_RE && $reason == dependency && -z $rest ]] && vapt_repo_allowed "${target%%/*}" || return 2
         VAPT_DEPENDENCY[$logical]="$consumer"; VAPT_DEPENDENCY_SOURCE[$logical]="$target"
     done <"$VAPT_DIR/packages/dependencies.tsv"
     local repo package
     while IFS=$'\t' read -r logical repo package rest; do
         [[ -n $logical && $logical != \#* ]] || continue
-        [[ $logical =~ $PKG_NAME_RE && ( ${roots[$logical]:-} || ${VAPT_DEPENDENCY[$logical]:-} ) && $package =~ $PKG_NAME_RE && $package != "$logical" && -z $rest ]] && vapt_table_repo "$repo" || return 2
+        [[ $logical =~ $PKG_NAME_RE && ( ${roots[$logical]:-} || ${VAPT_DEPENDENCY[$logical]:-} ) && $package =~ $PKG_NAME_RE && $package != "$logical" && -z $rest ]] && vapt_repo_allowed "$repo" || return 2
         [[ ! ${VAPT_ALIAS[$logical/$repo]:-} && ( $repo != blackarch || ! ${VAPT_NATIVE_SPEC[$logical]:-} ) && ${VAPT_ID_POLICY[$logical]:-} != blocked ]] || return 2
         VAPT_ALIAS[$logical/$repo]="$package"
     done <"$VAPT_DIR/packages/aliases.tsv"
@@ -145,6 +142,38 @@ vapt_manifest_validate() {
     for logical in "${!VAPT_DEPENDENCY_SOURCE[@]}"; do
         target="${VAPT_DEPENDENCY_SOURCE[$logical]}"
         [[ ${target##*/} == "$logical" || ${VAPT_ALIAS[$logical/${target%%/*}]:-} == "${target##*/}" ]] || return 2
+    done
+    # The fixed oniomarchy admission table: exactly the reviewed published
+    # names, each a candidate (serving one item by exact name or reviewed
+    # alias, or none), a dependency, or the keyring infrastructure.
+    local role count=0
+    while IFS=$'\t' read -r package role logical rest; do
+        [[ -n $package && $package != \#* ]] || continue
+        [[ $package =~ $PKG_NAME_RE && ! ${VAPT_ONIO_ROLE[$package]:-} && -n $logical && -z $rest ]] || return 2
+        case "$role" in
+        infrastructure) [[ $package == oniomarchy-keyring && $logical == - ]] || return 2 ;;
+        dependency)
+            [[ $logical == - || ${VAPT_DEPENDENCY_SOURCE[$logical]:-} == "oniomarchy/$package" ]] || return 2 ;;
+        candidate)
+            if [[ $logical != - ]]; then
+                [[ ${roots[$logical]:-} && ${VAPT_ID_POLICY[$logical]:-} != blocked && ! ${VAPT_DEPENDENCY[$package]:-} ]] || return 2
+                [[ $package == "$logical" && ! ${VAPT_ALIAS[$logical/oniomarchy]:-} ]] || [[ ${VAPT_ALIAS[$logical/oniomarchy]:-} == "$package" ]] || return 2
+            fi ;;
+        *) return 2 ;;
+        esac
+        VAPT_ONIO_ROLE[$package]="$role"; VAPT_ONIO_LOGICAL[$package]="$logical"
+        count=$((count + 1))
+    done <"$VAPT_DIR/packages/oniomarchy.tsv"
+    ((count == VAPT_ONIOMARCHY_ADMITTED)) || return 2
+    # Every alias or dependency naming the source points at its exact row.
+    for target in "${!VAPT_ALIAS[@]}"; do
+        [[ $target == */oniomarchy ]] || continue
+        package="${VAPT_ALIAS[$target]}" logical="${target%/oniomarchy}"
+        [[ ${VAPT_ONIO_LOGICAL[$package]:-} == "$logical" ]] || return 2
+    done
+    for logical in "${!VAPT_DEPENDENCY_SOURCE[@]}"; do
+        target="${VAPT_DEPENDENCY_SOURCE[$logical]}"
+        [[ $target != oniomarchy/* || ${VAPT_ONIO_ROLE[${target#oniomarchy/}]:-} == dependency ]] || return 2
     done
     return 0
 }
@@ -211,6 +240,9 @@ vapt_repo_usable() {
     case "$repo" in
     blackarch) [[ $(vapt_blackarch_state) == usable ]] ;;
     chaotic-aur) [[ ${VAPT_PACKAGE[chaotic-aur/chaotic-keyring]:-} || ${VAPT_PACKAGE[chaotic-aur/chaotic-mirrorlist]:-} ]] ;;
+    # The private source is usable only for an operation that opted in and
+    # whose descriptor, database signature and keyring authority verified.
+    oniomarchy) [[ $VAPT_ONIOMARCHY_STATE == usable && -n $VAPT_ONIOMARCHY_SCOPE ]] ;;
     *) return 0 ;;
     esac
 }
@@ -281,14 +313,49 @@ vapt_resolve_item() {
                 for repo in core extra multilib; do target="$(vapt_repo_target "$repo" "$logical")" && break; done
             fi
         fi
+        if [[ -z $target ]]; then
+            local state
+            vapt_oniomarchy_target "$logical" || true
+            state="$VAPT_ONIO_TIER"
+            attempts+=",oniomarchy${state:+:$state}"
+            [[ -n $state ]] || target="$VAPT_ONIO_TARGET"
+        fi
     fi
     VAPT_ATTEMPTS[$logical]="$attempts"
     if [[ -n $target ]]; then
         VAPT_SOURCE[$logical]="${target%%/*}"; VAPT_TARGET[$logical]="$target"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}concrete allowed repository identity"
+        [[ ${target%%/*} != oniomarchy ]] || VAPT_REASON[$logical]+='; private oniomarchy source (opted in for this operation), exact reviewed mapping; publisher metadata, not independent provenance'
     else
         VAPT_REASON[$logical]="${pin_reason}no acceptable source in available metadata; disabled/unavailable sources are not proof of absence"
     fi
     return 0
+}
+# vapt_oniomarchy_target LOGICAL — the last tier. Only the item's exact name
+# or its reviewed alias, only an admitted candidate mapped to this item, never
+# Provides, and never a name another configured source also publishes.
+# Sets VAPT_ONIO_TARGET, or VAPT_ONIO_TIER to the state recorded in
+# attempted_tiers (not-selected, declined, unavailable, ...).
+vapt_oniomarchy_target() {
+    local logical="$1" package repo
+    VAPT_ONIO_TARGET='' VAPT_ONIO_TIER=''
+    if [[ $VAPT_ONIOMARCHY_STATE != usable ]]; then
+        case "$VAPT_ONIOMARCHY_STATE" in
+        not-selected | declined | unsupported-architecture) VAPT_ONIO_TIER="$VAPT_ONIOMARCHY_STATE" ;;
+        *) VAPT_ONIO_TIER=unavailable ;;
+        esac
+        return 1
+    fi
+    package="${VAPT_ALIAS[$logical/oniomarchy]:-$logical}"
+    if ! vapt_repo_usable oniomarchy || [[ ${VAPT_ONIO_ROLE[$package]:-} != candidate || ${VAPT_ONIO_LOGICAL[$package]:-} != "$logical" ||
+        ! ${VAPT_PACKAGE[oniomarchy/$package]:-} ]]; then
+        VAPT_ONIO_TIER=unavailable; return 1
+    fi
+    for repo in "${VAPT_REPOS[@]}"; do
+        [[ $repo != oniomarchy ]] && vapt_repo_usable "$repo" || continue
+        [[ ! ${VAPT_PACKAGE[$repo/$package]:-} ]] || { VAPT_ONIO_TIER=identity-rejected; return 1; }
+    done
+    vapt_identity_ok "$logical" "oniomarchy/$package" || { VAPT_ONIO_TIER=identity-rejected; return 1; }
+    VAPT_ONIO_TARGET="oniomarchy/$package"
 }
 vapt_resolve_groups() {
     vapt_collect_groups "$@"
@@ -344,7 +411,13 @@ vapt_report() {
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$logical" "${VAPT_MEMBERSHIP[$logical]}" "${VAPT_SOURCE[$logical]}" "${VAPT_TARGET[$logical]}" "${VAPT_RESOLUTION[$logical]}" "${VAPT_APPLIED[$logical]}" "$reason" "${VAPT_ATTEMPTS[$logical]}"
     done
     printf '# environment\t%s\n# source\t%s\n# mutation-failed\t%s\n' "$VAPT_ENV_STATUS" "${VAPT_SOURCE_REASON:-observed source metadata}" "$VAPT_MUTATION_FAILED"
+    # The private source's state for this operation is an annotation: a
+    # declined or unselected source alone never degrades a complete run.
+    reason="${VAPT_ONIOMARCHY_REASON//$'\n'/ }"
+    printf '# oniomarchy\t%s\t%s\n' "$VAPT_ONIOMARCHY_STATE" "${reason//$'\t'/ }"
     for logical in "${VAPT_INFRA_ROWS[@]}"; do printf '# infrastructure\t%s\n' "$logical"; done
+    # Dependencies a commit installed: annotations, never launcher roots.
+    for logical in "${VAPT_DEPENDENCY_ROWS[@]}"; do printf '# dependency\t%s\n' "$logical"; done
 }
 vapt_seed_shell() {
     # Reuse an existing 60-shell include, but tooling-only provisioning must
@@ -396,6 +469,8 @@ vapt_provision() (
         fi
     fi
     vapt_blackarch_prepare || VAPT_MUTATION_FAILED=1
+    # Last: the private source joins only this operation's configuration.
+    vapt_oniomarchy_prepare || VAPT_MUTATION_FAILED=1
     vapt_resolve_groups "${VAPT_SELECTED[@]}"
     vapt_install_infra openldap perl-image-exiftool python-pipx || true
     # A partially successful activation must not remain hidden behind a

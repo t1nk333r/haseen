@@ -131,8 +131,10 @@ vapt_blackarch_activate() {
 # Accepted recovery of a recorded reviewed commit: when that commit staged
 # BlackArch (and no stanza exists yet), review/commit the same repository set
 # again and activate afterwards rather than forgetting the staged repository.
+# A commit that carried the private oniomarchy source resumes with it only
+# while the approved descriptor and keyring authority are the recorded ones.
 vapt_pacman_recover() {
-    local marker="$HASEEN_STATE_DIR/vapt/upgrade-pending" record rc=0
+    local marker="$HASEEN_STATE_DIR/vapt/upgrade-pending" record rc=0 scope='' digest
     vapt_root_lock || return $?
     vapt_state_path_safe "$marker" || return 2
     # The record is an exact protocol: unreadable, redirected or unknown
@@ -143,11 +145,22 @@ vapt_pacman_recover() {
     case "$record" in
     generic) ;;
     blackarch-staged) [[ ${VAPT_ENABLED[blackarch]:-} ]] || VAPT_BLACKARCH_STAGED=1 ;;
+    'oniomarchy-private '* | 'blackarch-staged oniomarchy-private '*)
+        digest="$(vapt_meta oniomarchy-scope 2>&1)" || digest=''
+        [[ $digest == "${record##* }" ]] || {
+            VAPT_APPLY_REASON='recorded oniomarchy scope differs from the approved descriptor/keyring authority; preserved, manual review required'
+            return 2
+        }
+        scope=1
+        if [[ $record == blackarch-staged* && ! ${VAPT_ENABLED[blackarch]:-} ]]; then VAPT_BLACKARCH_STAGED=1; fi
+        ;;
     *) return 2 ;;
     esac
     VAPT_RECOVERING=1
+    local previous="${VAPT_ONIOMARCHY_SCOPE:-}"
+    VAPT_ONIOMARCHY_SCOPE="$scope"
     vapt_pacman_upgrade || rc=$?
-    VAPT_RECOVERING='' VAPT_BLACKARCH_STAGED=''
+    VAPT_RECOVERING='' VAPT_BLACKARCH_STAGED='' VAPT_ONIOMARCHY_SCOPE="$previous"
     return "$rc"
 }
 vapt_blackarch_prepare() {

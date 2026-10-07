@@ -1,9 +1,16 @@
 # shellcheck shell=bash disable=SC2034  # VAPT_* outputs are consumed by provision.sh/native.sh/blackarch.sh
 # VAPT never calls the general package/AUR pipeline. Every target is qualified.
-vapt_repo_allowed() { [[ $1 =~ ^(core|extra|multilib|blackarch|chaotic-aur|cachyos(-[a-z0-9-]+)?)$ ]]; }
+# oniomarchy is admissible only through its private descriptor, for an
+# operation that opted in (VAPT_ONIOMARCHY_SCOPE); pins never name it.
+vapt_repo_allowed() { [[ $1 =~ ^(core|extra|multilib|blackarch|chaotic-aur|oniomarchy|cachyos(-[a-z0-9-]+)?)$ ]]; }
 # A staged BlackArch bootstrap makes its reviewed stanza visible to the private
-# review/frozen commit only; /etc/pacman.conf changes after that commit.
-vapt_meta() { python3 "$VAPT_DIR/metadata.py" "$@" --root "$HASEEN_SYSROOT" ${VAPT_BLACKARCH_STAGED:+--with-blackarch}; }
+# review/frozen commit only; /etc/pacman.conf changes after that commit. The
+# approved private oniomarchy stanza joins VAPT's own configuration only for
+# an operation whose source state is usable (or the exact recorded recovery).
+vapt_meta() {
+    python3 "$VAPT_DIR/metadata.py" "$@" --root "$HASEEN_SYSROOT" ${VAPT_BLACKARCH_STAGED:+--with-blackarch} \
+        ${VAPT_ONIOMARCHY_SCOPE:+--with-oniomarchy}
+}
 vapt_read_path() { if in_sysroot; then sysroot_path "$1"; else printf '%s\n' "$1"; fi; }
 vapt_path_ancestors_safe() {
     local path="${1%/*}" seen
@@ -184,6 +191,15 @@ vapt_transaction_prepare() {
     vapt_root_exec /usr/bin/cp -a -- "$VAPT_BASE_DB/sync/." "$VAPT_DB/sync/" || return 1
     vapt_root_exec /usr/bin/cp -a -- /var/lib/pacman/local "$VAPT_DB/local" || return 1
     vapt_root_exec /usr/bin/cp -a -- "$VAPT_DB/local" "$VAPT_BASE_DB/local" || return 1
+    if [[ -n ${VAPT_ONIOMARCHY_SCOPE:-} ]]; then
+        # The private source's database is exactly the signed bytes verified
+        # for this operation (never a host sync DB of the same name).
+        local db
+        for db in "$VAPT_DB/sync" "$VAPT_BASE_DB/sync"; do
+            vapt_root_exec /usr/bin/cp -- /var/lib/haseen/vapt/sources/sync/oniomarchy.db \
+                /var/lib/haseen/vapt/sources/sync/oniomarchy.db.sig "$db/" || return 1
+        done
+    fi
 }
 vapt_transaction_seal() {
     # Root copies each planned artifact (+ .sig) out of the DownloadUser cache
@@ -368,6 +384,7 @@ vapt_pacman_apply_transaction() {
     if ((${#deps[@]})) && ! vapt_root_pacman --config "$VAPT_STAGE/commit.conf" -D --asdeps -- "${deps[@]}"; then
         VAPT_APPLY_REASON='install reason bookkeeping failed'; return 1
     fi
+    for name in "${deps[@]}"; do VAPT_DEPENDENCY_ROWS+=("$name"$'\t'"$target"$'\t'dependency); done
     if ! vapt_root_pacman --config "$VAPT_STAGE/commit.conf" -D --asexplicit -- "${target##*/}"; then
         VAPT_APPLY_REASON='install reason bookkeeping failed'; return 1
     fi
@@ -402,6 +419,9 @@ vapt_pacman_upgrade_transaction() {
     # Checkupdates-style private DB: rejected sync/download/audit leaves the
     # system databases unchanged and does not create a recovery marker.
     vapt_root_pacman --config "$config" --dbpath "$VAPT_DB" -Syuw --cachedir "$VAPT_CACHE/packages" --noconfirm || return 1
+    # pacman accepts any locally trusted key on a refreshed database; the
+    # private source's refresh must still carry an accepted pinned primary.
+    if [[ -n ${VAPT_ONIOMARCHY_SCOPE:-} ]]; then vapt_oniomarchy_reverify "$VAPT_DB/sync" || return $?; fi
     content="$(LC_ALL=C pacman --config "$config" --dbpath "$VAPT_DB" -Sup --print-format $'%r\t%n\t%v\t%f' 2>"$VAPT_STAGE/plan.err")" || {
         VAPT_APPLY_REASON="upgrade resolution failed: $(<"$VAPT_STAGE/plan.err")"; return 2;
     }
@@ -412,7 +432,7 @@ vapt_pacman_upgrade_transaction() {
     vapt_transaction_audit "$VAPT_STAGE/upgrade.tsv" || return $?
     # Freeze reviewed DB payloads: final -Syu must not pick up a newer,
     # unaudited transaction from live mirrors between review and commit.
-    local repo database frozen="$VAPT_CACHE/reviewed"
+    local repo database frozen="$VAPT_CACHE/reviewed" signed=''
     # Explicit modes (not the caller umask) so DownloadUser can read the
     # file:// mirror; install -p keeps the reviewed DB's own mtime.
     vapt_root_exec /usr/bin/install -d -m 0755 "$frozen" || return 1
@@ -424,6 +444,11 @@ vapt_pacman_upgrade_transaction() {
         vapt_root_exec /usr/bin/install -p -m 0644 -- "$VAPT_DB/sync/$repo.db" "$frozen/$repo/$repo.db" || return 1
         if [[ -f $database.sig ]]; then
             vapt_root_exec /usr/bin/install -p -m 0644 -- "$VAPT_DB/sync/$repo.db.sig" "$frozen/$repo/$repo.db.sig" || return 1
+        elif [[ $repo == oniomarchy ]]; then
+            VAPT_APPLY_REASON='oniomarchy database signature missing; DatabaseRequired blocks the commit'; return 2
+        fi
+        if [[ $repo == oniomarchy ]]; then
+            signed="$(vapt_meta file-digest "$database") $(vapt_meta file-digest "$database.sig")" || return 2
         fi
     done
     content="$(vapt_meta config --frozen "$frozen")" || return 2
@@ -439,10 +464,26 @@ vapt_pacman_upgrade_transaction() {
         return 2
     fi
     [[ ${VAPT_BLACKARCH_STAGED:-} != 1 ]] || note=$'\tblackarch-staged'
+    if [[ -n ${VAPT_ONIOMARCHY_SCOPE:-} ]]; then
+        # The record binds recovery to this approved descriptor and authority.
+        local scope
+        scope="$(vapt_meta oniomarchy-scope)" || { VAPT_APPLY_REASON='private source scope unavailable'; return 2; }
+        note+=$'\toniomarchy-private\t'"$scope"
+    fi
     printf 'reviewed-full-upgrade-commit-pending%s\n' "$note" |
         vapt_root_meta state-write "$(vapt_read_path "$marker")" || return 1
     $ASSUME_YES && flags+=(--noconfirm)
     vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" "$(vapt_read_path "$frozen")" || return $?
+    if [[ -n $signed ]]; then
+        # The frozen signed database is rechecked against the reviewed bytes
+        # immediately before the commit (pacman then verifies it again).
+        local observed
+        observed="$(vapt_meta file-digest "$(vapt_read_path "$frozen/oniomarchy/oniomarchy.db")") $(vapt_meta file-digest \
+            "$(vapt_read_path "$frozen/oniomarchy/oniomarchy.db.sig")")" || observed=''
+        [[ $observed == "$signed" ]] || {
+            VAPT_APPLY_REASON='frozen oniomarchy database or signature differs from the reviewed bytes; nothing committed'; return 2;
+        }
+    fi
     # -yy: always fetch the frozen reviewed DBs. A plain -y is If-Modified-Since
     # the live DB, so a newer live refresh would otherwise resolve the commit.
     vapt_root_pacman --config "$config" -Syyu --cachedir "$VAPT_CACHE/sealed" "${flags[@]}" || return 1

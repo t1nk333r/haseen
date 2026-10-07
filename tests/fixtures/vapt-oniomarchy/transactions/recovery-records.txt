@@ -1,0 +1,10 @@
+# Recovery record protocol cases: accept|refuse<TAB>record (\t and \n are escapes; DIGEST is the current scope digest).
+accept	reviewed-full-upgrade-commit-pending\n
+accept	reviewed-full-upgrade-commit-pending\tblackarch-staged\n
+accept	reviewed-full-upgrade-commit-pending\toniomarchy-private\tDIGEST\n
+accept	reviewed-full-upgrade-commit-pending\tblackarch-staged\toniomarchy-private\tDIGEST\n
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\n
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\t0000000000000000000000000000000000000000000000000000000000000000\n
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\tDIGEST\tblackarch-staged\n
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy\tDIGEST\n
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\tDIGEST

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# haseen:summary Inspect VAPT repository trust and availability without changing it
+# haseen:args [--json] [--dry-run] [oniomarchy]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+usage() {
+    echo "Usage: haseen vapt repo-status [--json] [--dry-run] [oniomarchy]"
+    echo "  Offline: no network, refresh, lock or tool execution. --json prints one schemaVersion 1 object."
+}
+parse_common_flags "$@"
+json=false
+for arg in "${REST[@]}"; do
+    case "$arg" in
+    --json) json=true ;;
+    oniomarchy) ;;
+    *) usage >&2; exit 2 ;;
+    esac
+done
+layer_run_function vapt vapt_repo status "$json"

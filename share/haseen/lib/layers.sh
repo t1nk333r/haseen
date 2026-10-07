@@ -147,6 +147,18 @@ layer_run_status() {
     )
 }
 
+# layer_run_function NAME FUNCTION [ARGS...] — a layer's own command (one the
+# layer defines beyond status/apply/remove), in the same layer subshell.
+layer_run_function() {
+    local name="$1" function="$2"
+    shift 2
+    (
+        _layer_env "$name"
+        declare -F "$function" >/dev/null || die "layer $name has no $function"
+        "$function" "$@"
+    )
+}
+
 # layer_run_apply NAME [ARGS...] — distro gate, packages, layer_apply, marker.
 layer_run_apply() {
     local name="$1"

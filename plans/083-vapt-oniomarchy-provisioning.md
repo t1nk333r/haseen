@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-07. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics, docs) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the private signed source) is not started. Independent review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics, docs) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B is partly implemented and not complete: the private descriptor, `--with-oniomarchy`, the `repo-status`/`repo-enable`/`repo-disable` commands, the pinned HTTPS key check, database/keyring verification, keyring authority and rotation rules, strict `Required DatabaseRequired` rendering/freezing/recovery, the 52-name admission table and the last-tier resolver exist, with `tests/test-vapt-oniomarchy.sh`. The trust and transaction suites (`tests/test-vapt-oniomarchy-trust.sh`, `tests/test-vapt-oniomarchy-transactions.sh`) are not written, so the approval, rotation, frozen-signature and recovery paths are unexercised; the 1B docs updates are not done. Independent review of both slices is outstanding.
 
 ## Goal
 

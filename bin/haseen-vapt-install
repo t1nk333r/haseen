@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# haseen:summary Provision explicitly selected VAPT groups without running tools
-# haseen:args [--dry-run] [--yes] (--groups GROUP,... | --all)
+# haseen:summary Provision explicitly selected VAPT groups from reviewed sources without running tools
+# haseen:args [--dry-run] [--yes] [--with-oniomarchy] (--groups GROUP,... | --all)
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
-usage() { echo "Usage: haseen vapt install [--dry-run] [--yes] (--groups GROUP,... | --all)"; }
+usage() {
+    echo "Usage: haseen vapt install [--dry-run] [--yes] [--with-oniomarchy] (--groups GROUP,... | --all)"
+    echo "  --with-oniomarchy  use the approved private oniomarchy source as the last tier for this run only"
+    echo "                     (asks to approve it first if needed); --all never implies it"
+}
 parse_common_flags "$@"
 require_not_root
 layer_run_apply vapt "${REST[@]}"

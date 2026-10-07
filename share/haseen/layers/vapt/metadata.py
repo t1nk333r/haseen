@@ -25,9 +25,10 @@ import sys
 import tempfile
 
 NAME = re.compile(r"^[a-z0-9@._+][a-z0-9@._+-]*$")
-ALLOWED = re.compile(r"^(core|extra|multilib|blackarch|chaotic-aur|cachyos(?:-[a-z0-9-]+)?)$")
+ALLOWED = re.compile(r"^(core|extra|multilib|blackarch|chaotic-aur|oniomarchy|cachyos(?:-[a-z0-9-]+)?)$")
 # Base vendor: the only sources whose packages may vouch for reviewed stock
-# maintenance programs. Narrower than ALLOWED: never BlackArch or Chaotic.
+# maintenance programs. Narrower than ALLOWED: never BlackArch, Chaotic or
+# the private oniomarchy source.
 BASE_VENDOR = re.compile(r"^(core|extra|multilib|cachyos(?:-[a-z0-9-]+)?)$")
 ACTIVATION = re.compile(r"(?:systemctl|service|rc-update|sv)\s+(?:[^\n;]*\s)?(?:enable|start|restart|preset|add)\b|(?:ln|install|cp)\s+[^\n]*\.wants/|omarchy", re.I)
 # The reviewed BlackArch stanza. A bootstrap stages it in memory for the
@@ -35,6 +36,21 @@ ACTIVATION = re.compile(r"(?:systemctl|service|rc-update|sv)\s+(?:[^\n;]*\s)?(?:
 # reviewed full upgrade succeeded (--with-blackarch).
 BLACKARCH_STANZA = ('SigLevel = Required DatabaseOptional', 'Server = https://blackarch.org/blackarch/$repo/os/$arch')
 WITH_BLACKARCH = False
+# The private oniomarchy source (plan 083). Its approved descriptor lives only
+# under haseen's root state and enters VAPT's own configuration only for an
+# operation that opted in (--with-oniomarchy); a host [oniomarchy] section is
+# reported, never adopted. Never a base vendor; never written to pacman.conf.
+ONIOMARCHY = 'oniomarchy'
+ONIOMARCHY_SERVER = 'https://pkgs.oniomarchy.com/$arch'
+ONIOMARCHY_POLICY = 'SigLevel = Required DatabaseRequired'
+ONIOMARCHY_USAGE = 'Usage = Sync Search Install'
+ONIOMARCHY_DESCRIPTOR = ('[oniomarchy]\n' + ONIOMARCHY_POLICY + '\nServer = ' + ONIOMARCHY_SERVER + '\n').encode()
+ONIOMARCHY_STATE = '/var/lib/haseen/vapt/sources'
+ONIOMARCHY_KEYRING_FILES = ('usr/share/pacman/keyrings/oniomarchy.gpg', 'usr/share/pacman/keyrings/oniomarchy-trusted',
+                            'usr/share/pacman/keyrings/oniomarchy-revoked')
+ONIOMARCHY_ADMITTED = 52
+WITH_ONIOMARCHY = False
+HOST_STANZAS = {}
 
 
 def unquoted_text(text):
@@ -432,12 +448,37 @@ def read_config(root):
                 sections[section].append(line)
         stack.remove(real)
     parse(Path(str(root) + '/etc/pacman.conf'))
+    # A host [oniomarchy] section is foreign: recorded for reporting, never a
+    # VAPT repository. Only the approved private descriptor, for an operation
+    # that opted in, adds the source, and always after every other one.
+    HOST_STANZAS[str(root)] = sections.pop(ONIOMARCHY, None)
     if WITH_BLACKARCH and 'blackarch' not in sections:
         sections['blackarch'] = list(BLACKARCH_STANZA)
+    if WITH_ONIOMARCHY and oniomarchy_descriptor(root) == 'approved':
+        sections[ONIOMARCHY] = [ONIOMARCHY_POLICY, 'Server = ' + ONIOMARCHY_SERVER, ONIOMARCHY_USAGE]
     return sections
 
 
 def repositories(root, dbpath=None):
+    """Sync records per repository. Any oniomarchy database in a system or
+    fixture sync directory is ignored: the private source's records come only
+    from its own signed database (the approved cache, or the copy placed in a
+    private DBPATH), filtered by the fixed admission table."""
+    records = sync_repositories(root, dbpath)
+    records.pop(ONIOMARCHY, None)
+    if WITH_ONIOMARCHY:
+        if dbpath:
+            database = Path(dbpath) / 'sync' / 'oniomarchy.db'
+        else:
+            database = Path(str(root) + ONIOMARCHY_STATE + '/sync/oniomarchy.db')
+        try:
+            records[ONIOMARCHY] = oniomarchy_records(database)
+        except (OSError, ValueError):
+            records[ONIOMARCHY] = []
+    return records
+
+
+def sync_repositories(root, dbpath=None):
     if root:
         # Fixture DB protocol, honouring DBPATH like libalpm: the sync DB of
         # DBPATH (a copied pre-refresh snapshot or a private refresh), else
@@ -494,14 +535,16 @@ def emit_snapshot(root, offline):
         if repo == 'options' or not ALLOWED.fullmatch(repo):
             continue
         print('repo', repo, 'enabled', sep='\t')
+        if not repository_policy_safe(repo, lines):
+            print('unsafe', repo, 'insecure signature policy', sep='\t')
         for line in lines:
-            if line.startswith('SigLevel') and re.search(r'Never|TrustAll', line):
-                print('unsafe', repo, 'insecure signature policy', sep='\t')
-            if line.startswith('Server') and ('omarchy' in line.lower() or not line.split('=', 1)[1].strip().startswith('https://')):
+            if line.startswith('Server') and not repository_mirror_safe(repo, line.split('=', 1)[1]):
                 print('unsafe', repo, 'forbidden mirror URL', sep='\t')
     for repo, records in repositories(root).items():
         if repo not in config or not ALLOWED.fullmatch(repo):
             continue
+        if repo == ONIOMARCHY and not records:
+            continue  # no admitted record: the private database is unavailable
         print('database', repo, 'available', sep='\t')
         for record in records:
             print('package', repo, record['name'], record.get('version') or '-', record.get('url') or '-',
@@ -527,21 +570,22 @@ def render_config(root, frozen=None, local=False):
     for repo, lines in config.items():
         if not ALLOWED.fullmatch(repo):
             continue
+        if not repository_policy_safe(repo, lines):
+            raise ValueError('insecure repository ' + repo)
         print('[' + repo + ']')
         for line in lines:
             key = line.split('=', 1)[0].strip()
             if key == 'Server':
-                if not line.split('=', 1)[1].strip().startswith('https://') or 'omarchy' in line.lower():
+                if not repository_mirror_safe(repo, line.split('=', 1)[1]):
                     raise ValueError('non-HTTPS/Omarchy repository mirror ' + repo)
                 print('Server = file://' + frozen + '/' + repo if frozen else line)
             elif key in ('SigLevel', 'Usage'):
                 if key == 'SigLevel':
-                    if re.search(r'Never|TrustAll', line):
-                        raise ValueError('insecure repository ' + repo)
-                    print('SigLevel = Required DatabaseOptional')
+                    # The private source keeps its stricter declared policy in
+                    # sync, frozen and recovery configurations alike.
+                    print(ONIOMARCHY_POLICY if repo == ONIOMARCHY else 'SigLevel = Required DatabaseOptional')
                 else:
                     print(line)
-
 
 def cache_permissions(root, path):
     if not re.fullmatch(r'/var/cache/haseen-vapt\.[A-Za-z0-9]+/packages', path):
@@ -585,13 +629,180 @@ def forbidden(record):
     return record.get('name', '').startswith('omarchy') or any('omarchy' in d for d in record.get('depends', []))
 
 
+def repository_mirror_safe(repo, url):
+    """One mirror rule for snapshot, rendering, closure and bootstrap: HTTPS
+    and no Omarchy host for every source; the private source only at its one
+    exact HTTPS root (no credentials, port, query, fragment or other path)."""
+    url = url.strip(' \t\r\v\f')
+    if repo == ONIOMARCHY:
+        return url in (ONIOMARCHY_SERVER, 'https://pkgs.oniomarchy.com/x86_64')
+    return url.startswith('https://') and 'omarchy' not in url.lower()
+
+
+def repository_policy_safe(repo, lines):
+    """Never/TrustAll are refused everywhere. The private source must declare
+    exactly Required DatabaseRequired (trusted-only package and database
+    signatures), with no other signature, include or option line."""
+    levels = [line for line in lines if line.split('=', 1)[0].strip() == 'SigLevel']
+    if any(re.search(r'Never|TrustAll', line) for line in levels):
+        return False
+    if repo != ONIOMARCHY:
+        return True
+    keys = [line.split('=', 1)[0].strip() for line in lines]
+    usage = [line for line in lines if line.split('=', 1)[0].strip() == 'Usage']
+    return (len(levels) == 1 and levels[0].split('=', 1)[1].split() == ['Required', 'DatabaseRequired']
+            and keys.count('Server') >= 1 and set(keys) <= {'SigLevel', 'Server', 'Usage'}
+            and all(line == ONIOMARCHY_USAGE for line in usage))
+
+
 def repository_safe(source, config):
     if not ALLOWED.fullmatch(source) or source not in config:
         return False
-    return not any((line.startswith('Server') and ('omarchy' in line.lower()
-                   or not line.split('=', 1)[1].strip().startswith('https://')))
-                   or (line.startswith('SigLevel') and re.search(r'Never|TrustAll', line))
-                   for line in config[source])
+    return (repository_policy_safe(source, config[source])
+            and all(repository_mirror_safe(source, line.split('=', 1)[1])
+                    for line in config[source] if line.startswith('Server')))
+
+
+def oniomarchy_path(root, name):
+    return Path(str(root) + ONIOMARCHY_STATE + '/' + name)
+
+
+def oniomarchy_state_bytes(root, name, limit=1024 * 1024):
+    """No-follow bytes of a root-owned, single-link regular state file under
+    the private source directory (the caller's own in a fixture sysroot);
+    None when absent. Anything else is a conflict."""
+    path = oniomarchy_path(root, name)
+    if not os.path.lexists(path):
+        return None
+    info = os.lstat(path)
+    owners = (0, os.geteuid()) if root else (0,)
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid not in owners
+            or info.st_mode & 0o022):
+        raise ValueError('private source state is not a single root-owned regular file: ' + name)
+    nonreplaceable_ancestry(path.parent, bool(root))
+    return metadata_bytes(path, limit)
+
+
+def oniomarchy_descriptor(root):
+    """absent, approved (exactly the reviewed stanza) or conflict."""
+    try:
+        data = oniomarchy_state_bytes(root, 'oniomarchy.conf', 4096)
+    except (OSError, ValueError):
+        return 'conflict'
+    if data is None:
+        return 'absent'
+    return 'approved' if data == ONIOMARCHY_DESCRIPTOR else 'conflict'
+
+
+def oniomarchy_admission():
+    """package -> (role, logical) from the reviewed fixed admission table."""
+    table = {}
+    path = Path(__file__).resolve().parent / 'packages' / 'oniomarchy.tsv'
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        fields = line.split('\t')
+        if (len(fields) != 3 or not NAME.fullmatch(fields[0]) or fields[0] in table
+                or fields[1] not in ('candidate', 'dependency', 'infrastructure')):
+            raise ValueError('malformed oniomarchy admission table')
+        table[fields[0]] = (fields[1], fields[2])
+    if len(table) != ONIOMARCHY_ADMITTED:
+        raise ValueError('oniomarchy admission table is not the reviewed fixed set')
+    return table
+
+
+def oniomarchy_records(database, keep_infrastructure=True):
+    """Admitted x86_64/any records of the private signed database. Names
+    outside the fixed table are never records, even when a newer signed
+    database publishes them; a duplicate record makes the database unusable."""
+    if not os.path.lexists(database):
+        return []
+    admitted = oniomarchy_admission()
+    records, seen = [], set()
+    for name, text in archive_members(metadata_bytes(Path(database), 64 * 1024 * 1024)):
+        if not name.endswith('/desc'):
+            continue
+        record = field_data(text)
+        package = record.get('name', '')
+        if package in seen:
+            raise ValueError('duplicate oniomarchy database record ' + package)
+        seen.add(package)
+        if package not in admitted or len(record.get('arch', [])) != 1 or record['arch'][0] not in ('x86_64', 'any'):
+            continue
+        if admitted[package][0] == 'infrastructure' and not keep_infrastructure:
+            continue
+        record['role'] = admitted[package][0]
+        records.append(record)
+    return records
+
+
+def oniomarchy_admit(record, target=False):
+    """A planned/candidate record of the private source: an admitted
+    candidate or dependency (a candidate only as the requested target), never
+    the keyring outside its own path, never a replacement or conflict."""
+    role = oniomarchy_admission().get(record.get('name', ''), ('', ''))[0]
+    if role not in (('candidate',) if target else ('candidate', 'dependency')):
+        raise ValueError('oniomarchy package outside the admitted role set: ' + record.get('name', ''))
+    if record.get('replaces') or record.get('conflicts'):
+        raise ValueError('oniomarchy package declares a replacement/conflict: ' + record.get('name', ''))
+
+
+def source_satisfies(source, record, dep):
+    """The private source satisfies a dependency only by its exact package
+    name, never through a Provides declaration."""
+    if source == ONIOMARCHY:
+        return record.get('name') == re.split(r'[<>=]', dep, maxsplit=1)[0] and satisfies(
+            {k: v for k, v in record.items() if k != 'provides'}, dep)
+    return satisfies(record, dep)
+
+
+def vapt_tables():
+    """identities.tsv, identity-policy.tsv and aliases.tsv, as the shell
+    validator accepted them (the validator refuses malformed rows first)."""
+    base = Path(__file__).resolve().parent / 'packages'
+    def rows(name):
+        return [line.split('\t') for line in (base / name).read_text().splitlines()
+                if line.strip() and not line.startswith('#')]
+    identities = {f[0]: (f[1], f[2], f[3]) for f in rows('identities.tsv') if len(f) == 5}
+    policies = {f[0]: f[1] for f in rows('identity-policy.tsv') if len(f) == 3}
+    aliases = {(f[1], f[2]): f[0] for f in rows('aliases.tsv') if len(f) == 3}
+    return identities, policies, aliases
+
+
+def url_parts(url):
+    match = re.fullmatch(r'([Hh][Tt][Tt][Pp][Ss]?)://([A-Za-z0-9.-]+)(/[A-Za-z0-9._~+/-]*)?', url or '')
+    if not match:
+        return None
+    host, path = match[2].lower(), (match[3] or '').lower().rstrip('/')
+    if host.startswith('.') or host.endswith('.') or '..' in host:
+        return None
+    if any(segment in ('', '.', '..') for segment in path.split('/')[1:]):
+        return None
+    return match[1].lower(), host, path
+
+
+def closure_identity_ok(source, record):
+    """The leaf resolver's identity rules for any package the closure plans
+    or accepts: a package that names an inventory item (directly or through
+    that repository's reviewed alias) must be that item's identity."""
+    identities, policies, aliases = vapt_tables()
+    name = record.get('name', '')
+    logical = aliases.get((source, name), name)
+    if policies.get(logical) == 'blocked':
+        return False
+    if logical not in identities:
+        return True
+    kind, target, upstream = identities[logical]
+    if kind == 'native':
+        return False
+    if target not in ('*', source + '/' + name):
+        return False
+    expected, actual = url_parts(upstream), url_parts(record.get('url', ''))
+    if not expected or not actual or actual[1] != expected[1]:
+        return False
+    if actual[0] != expected[0] and actual[0] != 'https':
+        return False
+    return actual[2] == expected[2] or actual[2].startswith(expected[2] + '/')
 
 
 def allowed_local(record, config, repos, sources=ALLOWED):
@@ -618,7 +829,21 @@ def reject_removals(incoming, local):
 def closure(root, target, transaction=None, dbpath=None):
     config = read_config(root)
     repos = repositories(root, dbpath)
-    planned = []
+    planned, sources = [], {}
+    target_repo, target_name = target.split('/', 1) if target != '-' else ('', '')
+    def earlier_homonym(name):
+        return any(p.get('name') == name for source in config
+                   if source != ONIOMARCHY and repository_safe(source, config) for p in repos.get(source, []))
+    def admit(source, record, requested=False):
+        # The private source never shadows a same-named package of another
+        # configured source, never supplies a role outside its fixed table,
+        # and every source's packages keep the inventory identity rules.
+        if source == ONIOMARCHY:
+            oniomarchy_admit(record, target=requested)
+            if earlier_homonym(record['name']):
+                raise ValueError('oniomarchy package shadows a package of an earlier source: ' + record['name'])
+        if not closure_identity_ok(source, record):
+            raise ValueError('package identity does not match the reviewed inventory identity: ' + source + '/' + record['name'])
     if transaction:
         for row in Path(transaction).read_text().splitlines():
             if not row.strip():
@@ -629,15 +854,18 @@ def closure(root, target, transaction=None, dbpath=None):
             record = next((p for p in repos.get(source, []) if p['name'] == package and p.get('version') == version), None)
             if record is None or record.get('metadata_unknown'):
                 raise ValueError('transaction differs from inspected metadata')
+            admit(source, record, requested=(source, package) == (target_repo, target_name))
             planned.append(record)
+            sources[id(record)] = source
     selected = []
     if target != '-':
-        repo, name = target.split('/', 1)
-        if not repository_safe(repo, config):
+        if not repository_safe(target_repo, config):
             raise ValueError('forbidden or disabled repository')
-        selected = [p for p in repos.get(repo, []) if p['name'] == name]
+        selected = [p for p in repos.get(target_repo, []) if p['name'] == target_name]
         if len(selected) != 1:
             raise ValueError('dependency metadata unavailable')
+        admit(target_repo, selected[0], requested=True)
+        sources[id(selected[0])] = target_repo
     local = installed(root)
     planned_names = {p['name'] for p in planned}
     retained = [p for p in local if p['name'] not in planned_names]
@@ -657,12 +885,16 @@ def closure(root, target, transaction=None, dbpath=None):
         for dep in record.get('depends', []):
             if 'omarchy' in dep:
                 raise ValueError('forbidden dependency ' + dep)
-            candidates = [(p, False) for p in planned if satisfies(p, dep)]
+            candidates = [(p, False) for p in planned if source_satisfies(sources.get(id(p), ''), p, dep)]
             candidates += [(p, True) for p in retained if satisfies(p, dep)]
             if not candidates and not transaction:
                 for source in config:
                     if repository_safe(source, config):
-                        candidates += [(p, False) for p in repos.get(source, []) if satisfies(p, dep)]
+                        found = [p for p in repos.get(source, []) if source_satisfies(source, p, dep)]
+                        for candidate in found:
+                            admit(source, candidate)
+                            sources[id(candidate)] = source
+                        candidates += [(p, False) for p in found]
                         if candidates:
                             break
             if not candidates:
@@ -683,7 +915,7 @@ def keyring_population_script(text):
         raise ValueError('changed/unknown BlackArch keyring population scriptlet')
 
 
-def audit_archives(root, filenames, keyring_population=False, plan=None, dbpath=None, reference=None, report=None,
+def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=None, reference=None, report=None,
                    sudo_plugins_path=None, base_dbpath=None, authority_facts_path=None):
     sudo_plugins = None
     config = read_config(root)
@@ -704,6 +936,13 @@ def audit_archives(root, filenames, keyring_population=False, plan=None, dbpath=
         if len(fields) < 3 or not ALLOWED.fullmatch(fields[0]) or fields[1] in {n for n, _ in planned_sources}:
             raise ValueError('malformed/duplicate transaction plan row ' + row)
         planned_sources[(fields[1], fields[2])] = fields[0]
+    oniomarchy_rows = [name for (name, _), source in planned_sources.items() if source == ONIOMARCHY]
+    if oniomarchy_rows:
+        # The fixed admission table applies to every audited private-source
+        # row; the exact records are compared below like any other source.
+        admitted = oniomarchy_admission()
+        if any(admitted.get(name, ('',))[0] not in ('candidate', 'dependency') for name in oniomarchy_rows):
+            raise ValueError('oniomarchy plan row outside the admitted role set')
     options = config.get('options', [])
     # The package backend is pinned to C as well; Python startup locale
     # coercion and sudo policy must not change hook relevance.
@@ -843,9 +1082,15 @@ def audit_archives(root, filenames, keyring_population=False, plan=None, dbpath=
             except UnicodeDecodeError as error:
                 raise ValueError('package scriptlet is not exact UTF-8 text ' + package + '; manual review required') from error
             if keyring_population:
-                if package != 'blackarch-keyring':
+                # One exemption per bootstrap, for exactly its own keyring.
+                if package != keyring_population:
                     raise ValueError('keyring population exemption cannot apply to another package')
-                keyring_population_script(install_text)
+                if package == 'blackarch-keyring':
+                    keyring_population_script(install_text)
+                elif package == 'oniomarchy-keyring':
+                    oniomarchy_population_script(install_text)
+                else:
+                    raise ValueError('no reviewed population scriptlet policy for ' + package)
             else:
                 scriptlets.append((package, install_text, operation))
     if plan:
@@ -2858,10 +3103,15 @@ def nss_service_names(data):
 
 
 def recovery_record(path):
-    """The exact recovery protocol; anything else fails closed."""
+    """The exact recovery protocol; anything else fails closed. A commit that
+    carried the private oniomarchy source also records the digest of the
+    approved descriptor and keyring authority it was reviewed under."""
     records = {b'reviewed-full-upgrade-commit-pending\n': 'generic',
                b'reviewed-full-upgrade-commit-pending\tblackarch-staged\n': 'blackarch-staged'}
     data = metadata_bytes(Path(path), 4096)
+    match = re.fullmatch(rb'reviewed-full-upgrade-commit-pending(\tblackarch-staged)?\toniomarchy-private\t([0-9a-f]{64})\n', data)
+    if match:
+        return ('blackarch-staged ' if match[1] else '') + 'oniomarchy-private ' + match[2].decode()
     if data not in records:
         raise ValueError('unrecognised full-upgrade recovery record; manual review required')
     return records[data]
@@ -3498,7 +3748,7 @@ def merge_report(path):
             if not fields or fields[0] == 'logical' or fields[0] == '# haseen-vapt-report-v1':
                 continue
             if fields[0].startswith('#'):
-                key = tuple(fields[:2]) if fields[0] == '# infrastructure' else (fields[0],)
+                key = tuple(fields[:2]) if fields[0] in ('# infrastructure', '# dependency') else (fields[0],)
                 annotations[key] = line
             elif len(fields) == 8:
                 if fields[0] in rows:
@@ -3513,10 +3763,330 @@ def merge_report(path):
         print(line)
 
 
+# --- private oniomarchy source: trust anchor, keyring authority, canary ------
+AUTHORITY_HEADER = 'haseen-vapt-oniomarchy-authority-v1'
+DATABASE_HEADER = 'haseen-vapt-oniomarchy-database-v1'
+FINGERPRINT = re.compile('[A-F0-9]{40}')
+
+
+def pinned_signers():
+    """The reviewed initial trust anchor (files/oniomarchy-signers.txt)."""
+    path = Path(__file__).resolve().parent / 'files' / 'oniomarchy-signers.txt'
+    pins = [line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith('#')]
+    if len(pins) != 1 or not FINGERPRINT.fullmatch(pins[0]):
+        raise ValueError('oniomarchy signer pin file must hold exactly one primary fingerprint')
+    return pins[0]
+
+
+def oniomarchy_population_script(text):
+    """Only the literal keyring population operation is accepted (it is then
+    performed explicitly, never by running the scriptlet)."""
+    allowed = {'post_install() {', 'post_upgrade() {', 'post_install()', 'post_upgrade()', '{', '}',
+               'pacman-key --populate oniomarchy', '/usr/bin/pacman-key --populate oniomarchy'}
+    lines = [' '.join(line.split()) for line in text.splitlines()]
+    if len(text.encode('utf-8')) > 4096 or any(line and not line.startswith('#') and line not in allowed for line in lines):
+        raise ValueError('changed/unknown oniomarchy keyring scriptlet; manual review required')
+
+
+def key_primary(text):
+    """The one primary of a fetched public key (gpg --with-colons show-only
+    listing): exactly one primary, the reviewed pin, not revoked, expired,
+    disabled or invalid. A second primary is refused, not ignored."""
+    import time
+    primaries, pending = [], None
+    for line in text.splitlines():
+        fields = line.split(':')
+        if fields[0] == 'pub':
+            pending = {'validity': fields[1] if len(fields) > 1 else '', 'expires': fields[6] if len(fields) > 6 else ''}
+            primaries.append(pending)
+        elif fields[0] == 'fpr' and pending is not None:
+            pending['fpr'] = fields[9] if len(fields) > 9 else ''
+            pending = None
+        elif fields[0] in ('sub', 'ssb', 'sec'):
+            pending = None
+    if len(primaries) != 1:
+        raise ValueError('fetched key must contain exactly one primary key')
+    primary = primaries[0]
+    if primary.get('fpr') != pinned_signers():
+        raise ValueError('fetched key primary differs from the reviewed fingerprint')
+    if primary['validity'] in ('r', 'e', 'i', 'd', 'n'):
+        raise ValueError('fetched key is revoked, expired, disabled or invalid')
+    if primary['expires'] and (not primary['expires'].isdigit() or int(primary['expires']) <= time.time()):
+        raise ValueError('fetched key is expired')
+    return primary['fpr']
+
+
+def parse_keyring_lists(trusted, revoked):
+    """Accepted and revoked primaries declared by keyring payload files."""
+    def fingerprints(text, suffix):
+        found = set()
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            match = re.fullmatch('([A-F0-9]{40})' + suffix, line)
+            if not match:
+                raise ValueError('malformed oniomarchy keyring list line')
+            found.add(match[1])
+        return found
+    return fingerprints(trusted, '(?::[0-9]+:)?'), fingerprints(revoked, '')
+
+
+def parse_authority(text):
+    lines = text.split('\n')
+    if lines[-1] != '':
+        raise ValueError('malformed keyring authority record')
+    lines = lines[:-1]
+    keys = ('package', 'version', 'sha256', 'signer', 'accepted', 'revoked')
+    if len(lines) != 1 + len(keys) + len(ONIOMARCHY_KEYRING_FILES) or lines[0] != AUTHORITY_HEADER:
+        raise ValueError('malformed keyring authority record')
+    record = {}
+    for key, line in zip(keys, lines[1:]):
+        fields = line.split('\t')
+        if len(fields) != 2 or fields[0] != key:
+            raise ValueError('malformed keyring authority record')
+        record[key] = fields[1]
+    record['files'] = {}
+    for path, line in zip(ONIOMARCHY_KEYRING_FILES, lines[1 + len(keys):]):
+        fields = line.split('\t')
+        if len(fields) != 3 or fields[:2] != ['file', path] or not re.fullmatch('[0-9a-f]{64}', fields[2]):
+            raise ValueError('malformed keyring authority record')
+        record['files'][path] = fields[2]
+    accepted = set(record['accepted'].split(','))
+    revoked = set() if record['revoked'] == '-' else set(record['revoked'].split(','))
+    if (record['package'] != 'oniomarchy-keyring' or not re.fullmatch('[0-9a-f]{64}', record['sha256'])
+            or not FINGERPRINT.fullmatch(record['signer']) or not accepted
+            or not all(FINGERPRINT.fullmatch(f) for f in accepted | revoked) or accepted & revoked
+            or not re.fullmatch(r'[A-Za-z0-9.+:_~-]+', record['version'])):
+        raise ValueError('malformed keyring authority record')
+    record['accepted'], record['revoked'] = accepted, revoked
+    return record
+
+
+def render_authority(record):
+    lines = [AUTHORITY_HEADER, 'package\toniomarchy-keyring', 'version\t' + record['version'], 'sha256\t' + record['sha256'],
+             'signer\t' + record['signer'], 'accepted\t' + ','.join(sorted(record['accepted'])),
+             'revoked\t' + (','.join(sorted(record['revoked'])) or '-')]
+    lines += ['file\t' + path + '\t' + record['files'][path] for path in ONIOMARCHY_KEYRING_FILES]
+    return '\n'.join(lines) + '\n'
+
+
+def oniomarchy_authority(root):
+    """(absent|ok|mismatch, record, reason): the retained root authority
+    record must match the installed keyring package version and the bytes
+    of its retained keyring files; anything else is missing proof."""
+    try:
+        data = oniomarchy_state_bytes(root, 'oniomarchy.authority', 64 * 1024)
+    except (OSError, ValueError) as error:
+        return 'mismatch', None, str(error)
+    if data is None:
+        return 'absent', None, 'no keyring authority recorded'
+    try:
+        record = parse_authority(data.decode('utf-8', 'strict'))
+    except (UnicodeDecodeError, ValueError) as error:
+        return 'mismatch', None, str(error)
+    local = [p for p in installed(root) if p.get('name') == 'oniomarchy-keyring']
+    if len(local) != 1 or local[0].get('version') != record['version']:
+        return 'mismatch', None, 'installed oniomarchy-keyring differs from the recorded authority'
+    for path, digest in record['files'].items():
+        try:
+            observed = hashlib.sha256(metadata_bytes(Path(str(root) + '/' + path), 16 * 1024 * 1024)).hexdigest()
+        except (OSError, ValueError):
+            return 'mismatch', None, 'retained keyring file unreadable or redirected: /' + path
+        if observed != digest:
+            return 'mismatch', None, 'retained keyring file changed: /' + path
+    return 'ok', record, 'installed keyring matches the recorded authority'
+
+
+def oniomarchy_signers(root):
+    """Accepted primaries for database/package verification: the authority
+    record when one exists, else the reviewed pin. Missing proof refuses."""
+    state, record, reason = oniomarchy_authority(root)
+    if state == 'ok':
+        return sorted(record['accepted'] - record['revoked'])
+    if state == 'absent':
+        return [pinned_signers()]
+    raise ValueError('keyring authority unverified: ' + reason)
+
+
+def oniomarchy_database(root):
+    """(absent|verified|unverified, keyring record present): the cached
+    private database and detached signature against the root record of the
+    exact bytes verified at the last refresh, signed by an accepted primary."""
+    try:
+        db = oniomarchy_state_bytes(root, 'sync/oniomarchy.db', 64 * 1024 * 1024)
+        sig = oniomarchy_state_bytes(root, 'sync/oniomarchy.db.sig', 64 * 1024)
+        note = oniomarchy_state_bytes(root, 'oniomarchy.database', 4096)
+    except (OSError, ValueError):
+        return 'unverified', False
+    if db is None:
+        return 'absent', False
+    if sig is None or note is None:
+        return 'unverified', False
+    expected = (DATABASE_HEADER + '\ndb\t' + hashlib.sha256(db).hexdigest() + '\nsig\t'
+                + hashlib.sha256(sig).hexdigest() + '\nsigner\t')
+    text = note.decode('utf-8', 'replace')
+    try:
+        accepted = oniomarchy_signers(root)
+    except (OSError, ValueError):
+        return 'unverified', False
+    if not text.startswith(expected) or text[len(expected):].rstrip('\n') not in accepted or not text.endswith('\n'):
+        return 'unverified', False
+    try:
+        keyring = any(r['name'] == 'oniomarchy-keyring' for r in oniomarchy_records(oniomarchy_path(root, 'sync/oniomarchy.db')))
+    except (OSError, ValueError):
+        return 'unverified', False
+    return 'verified', keyring
+
+
+def host_architecture(root):
+    if root:
+        path = Path(str(root) + '/var/lib/haseen/vapt/fixture-architecture')
+        return path.read_text().strip() if path.is_file() else 'unknown'
+    return os.uname().machine
+
+
+def oniomarchy_canary(root):
+    """Offline readiness of the private source from recorded evidence only:
+    no network, refresh, lock or key operation. An operation that opts in
+    re-verifies the live database before using it."""
+    read_config(root)
+    row = {'name': ONIOMARCHY, 'selected': False, 'architecture': host_architecture(root),
+           'hostStanza': 'declared' if HOST_STANZAS.get(str(root)) is not None else 'absent',
+           'descriptor': oniomarchy_descriptor(root)}
+    row['descriptorPolicy'] = 'Required DatabaseRequired' if row['descriptor'] == 'approved' else row['descriptor']
+    authority, _, authority_reason = oniomarchy_authority(root)
+    row['keyringAuthorityState'] = authority
+    database, keyring = oniomarchy_database(root)
+    row['databaseSignatureState'] = database
+    if row['architecture'] != 'x86_64':
+        state, reason = 'unsupported-architecture', 'oniomarchy publishes x86_64 only; host is ' + row['architecture']
+    elif row['hostStanza'] == 'declared':
+        state, reason = 'broken', '/etc/pacman.conf declares [oniomarchy]; preserved, not adopted; the private source is refused while a global declaration exists'
+    elif row['descriptor'] == 'conflict':
+        state, reason = 'broken', 'private descriptor changed or unsafe; preserved, not repaired'
+    elif row['descriptor'] == 'absent':
+        state, reason = 'absent', 'not approved (haseen vapt repo-enable oniomarchy)'
+    elif authority != 'ok':
+        state, reason = 'unverified', 'keyring authority ' + authority + ': ' + authority_reason
+    elif database != 'verified':
+        state, reason = 'unverified', 'cached database signature ' + database
+    elif not keyring:
+        state, reason = 'unverified', 'authenticated database has no oniomarchy-keyring record'
+    else:
+        state, reason = 'usable', 'cached evidence verified at the last refresh; an opted-in operation re-verifies'
+    row['state'], row['reason'] = state, reason
+    return row
+
+
+def oniomarchy_scope_digest(root):
+    """Digest binding a recorded full-upgrade commit to the approved
+    descriptor and keyring authority it was reviewed under."""
+    descriptor = oniomarchy_state_bytes(root, 'oniomarchy.conf', 4096)
+    state, _, reason = oniomarchy_authority(root)
+    if descriptor != ONIOMARCHY_DESCRIPTOR or state != 'ok':
+        raise ValueError('private source scope unavailable: ' + (reason if state != 'ok' else 'descriptor not approved'))
+    authority = oniomarchy_state_bytes(root, 'oniomarchy.authority', 64 * 1024)
+    return hashlib.sha256(descriptor + b'\0' + authority).hexdigest()
+
+
+def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path, authority_facts_path):
+    """Audit the sealed keyring archive before any trust operation and print
+    the authority record it establishes. Rotation is accepted only from a
+    package signed by a currently accepted, non-revoked primary; revocations
+    never roll back and a package never authorizes its own signer."""
+    records = [r for r in oniomarchy_records(database) if r['name'] == 'oniomarchy-keyring']
+    if len(records) != 1:
+        raise ValueError('authenticated database has no single oniomarchy-keyring record')
+    record = records[0]
+    data = metadata_bytes(Path(archive), 64 * 1024 * 1024)
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != record.get('sha256sum'):
+        raise ValueError('keyring archive differs from the authenticated database digest')
+    entries, contents = read_archive(data, contents=True)
+    (name, version), fields = snapshot_identity(data)
+    if (name, version) != ('oniomarchy-keyring', record.get('version')):
+        raise ValueError('keyring archive identity differs from the authenticated database record')
+    if fields.get('arch', []) != record.get('arch', []) or sorted(fields.get('depend', [])) != sorted(record.get('depends', [])):
+        raise ValueError('keyring archive architecture/dependency metadata differs from the database')
+    if fields.get('provides') or fields.get('conflict') or fields.get('replaces') or fields.get('backup'):
+        raise ValueError('keyring archive declares provides/conflicts/replaces/backup; manual review required')
+    directories = {'usr', 'usr/share', 'usr/share/pacman', 'usr/share/pacman/keyrings'}
+    metadata = {'.PKGINFO', '.MTREE', '.BUILDINFO', '.INSTALL'}
+    for member, (kind, symlink, hardlink, *_rest) in entries.items():
+        if member in metadata and kind == stat.S_IFREG and hardlink is None:
+            continue
+        if member in directories and kind == stat.S_IFDIR:
+            continue
+        if member in ONIOMARCHY_KEYRING_FILES and kind == stat.S_IFREG and hardlink is None and symlink is None:
+            continue
+        raise ValueError('unknown oniomarchy keyring layout member ' + member + '; manual review required')
+    if any(path not in contents for path in ONIOMARCHY_KEYRING_FILES):
+        raise ValueError('oniomarchy keyring layout incomplete; manual review required')
+    try:
+        trusted, revoked = parse_keyring_lists(contents[ONIOMARCHY_KEYRING_FILES[1]].decode('ascii'),
+                                               contents[ONIOMARCHY_KEYRING_FILES[2]].decode('ascii'))
+    except UnicodeDecodeError as error:
+        raise ValueError('malformed oniomarchy keyring list') from error
+    state, previous, reason = oniomarchy_authority(root)
+    if state == 'mismatch':
+        raise ValueError('existing keyring authority unverified (' + reason + '); manual review required')
+    pin = pinned_signers()
+    previous_accepted = previous['accepted'] - previous['revoked'] if previous else {pin}
+    previous_revoked = previous['revoked'] if previous else set()
+    if signer not in previous_accepted:
+        raise ValueError('keyring package is not signed by a currently accepted primary')
+    if not previous_revoked <= revoked:
+        raise ValueError('keyring package withdraws a recorded revocation')
+    accepted = trusted - revoked
+    if not accepted:
+        raise ValueError('keyring package leaves no accepted primary')
+    if previous is None and pin not in accepted:
+        raise ValueError('initial keyring package does not trust the reviewed primary')
+    if previous is not None:
+        compare = subprocess.run(['vercmp', version, previous['version']], capture_output=True, text=True, check=True)
+        if int(compare.stdout.strip()) < 0:
+            raise ValueError('keyring package version older than the recorded authority')
+    local, seen = installed(root), set()
+    config, repos = read_config(root), repositories(root)
+    def check_dependency(dep):
+        candidates = [r for r in local if satisfies(r, dep)]
+        if not candidates:
+            raise ValueError('keyring dependency not already available ' + dep)
+        for candidate in candidates:
+            if candidate['name'] in seen:
+                continue
+            seen.add(candidate['name'])
+            if not allowed_local(candidate, config, repos):
+                raise ValueError('unresolved retained keyring dependency source/identity ' + candidate['name'])
+            for required in candidate.get('depends', []):
+                check_dependency(required)
+    for dep in fields.get('depend', []):
+        check_dependency(dep)
+    audit_archives(root, [archive], keyring_population='oniomarchy-keyring', sudo_plugins_path=sudo_plugins_path,
+                   authority_facts_path=authority_facts_path)
+    files = {path: hashlib.sha256(contents[path]).hexdigest() for path in ONIOMARCHY_KEYRING_FILES}
+    return render_authority({'version': version, 'sha256': digest, 'signer': signer, 'accepted': accepted,
+                             'revoked': revoked, 'files': files})
+
+
+def oniomarchy_status(root, as_json):
+    row = oniomarchy_canary(root)
+    if as_json:
+        keys = ('name', 'selected', 'state', 'architecture', 'descriptorPolicy', 'databaseSignatureState',
+                'keyringAuthorityState', 'reason')
+        print(json.dumps({'schemaVersion': 1, 'repositories': [{key: row[key] for key in keys}]}, sort_keys=False))
+        return
+    for key in ('state', 'architecture', 'hostStanza', 'descriptor', 'descriptorPolicy', 'databaseSignatureState',
+                'keyringAuthorityState', 'reason'):
+        print(key, row[key], sep='\t')
+
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions'])
+    parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions',
+                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-scope', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'file-digest', 'install-reason'])
     parser.add_argument('args', nargs='*')
     parser.add_argument('--root', default='')
     parser.add_argument('--offline', action='store_true')
@@ -3530,12 +4100,49 @@ def main():
     parser.add_argument('--authority-facts')
     parser.add_argument('--base-dbpath')
     parser.add_argument('--out')
+    parser.add_argument('--with-oniomarchy', action='store_true')
+    parser.add_argument('--db')
+    parser.add_argument('--signer')
+    parser.add_argument('--json', action='store_true')
     options = parser.parse_args()
     args = options.args
-    global WITH_BLACKARCH
+    global WITH_BLACKARCH, WITH_ONIOMARCHY
     WITH_BLACKARCH = options.with_blackarch
+    WITH_ONIOMARCHY = options.with_oniomarchy
     try:
         if options.operation == 'snapshot': emit_snapshot(options.root, options.offline)
+        elif options.operation == 'oniomarchy-status': oniomarchy_status(options.root, options.json)
+        elif options.operation == 'oniomarchy-signers': print('\n'.join(oniomarchy_signers(options.root)))
+        elif options.operation == 'oniomarchy-scope': print(oniomarchy_scope_digest(options.root))
+        elif options.operation == 'key-primary': print(key_primary(metadata_bytes(Path(args[0]), 1024 * 1024).decode('utf-8', 'replace')))
+        elif options.operation == 'file-digest': print(hashlib.sha256(metadata_bytes(Path(args[0]), 512 * 1024 * 1024)).hexdigest())
+        elif options.operation == 'install-reason':
+            match = [r for r in installed(options.root) if r.get('name') == args[0]]
+            reason = (match[0].get('reason') if match else None)
+            # libalpm desc: %REASON% 1 marks a dependency; fixtures name it.
+            print('absent' if not match else 'depend' if reason in ('depend', ['1']) else 'explicit')
+        elif options.operation == 'oniomarchy-keyring':
+            print(oniomarchy_keyring_audit(options.root, args[0], options.db, options.signer, options.sudo_plugins,
+                                           options.authority_facts), end='')
+        elif options.operation in ('oniomarchy-approve', 'oniomarchy-withdraw'):
+            # Root-only: exactly the canonical private descriptor (fixture: under --root).
+            canonical = options.root.rstrip('/') + ONIOMARCHY_STATE + '/oniomarchy.conf'
+            if args != [canonical]:
+                raise ValueError('private descriptor path is not the canonical ' + ONIOMARCHY_STATE + '/oniomarchy.conf')
+            current = oniomarchy_descriptor(options.root)
+            if options.operation == 'oniomarchy-approve':
+                if current == 'conflict':
+                    raise ValueError('existing private descriptor differs; preserved, not replaced')
+                if current == 'absent':
+                    import io
+                    # The descriptor bytes come from this module, never stdin.
+                    sys.stdin = io.TextIOWrapper(io.BytesIO(ONIOMARCHY_DESCRIPTOR))
+                    state_path(canonical, 'state-write')
+            else:
+                if current == 'conflict':
+                    raise ValueError('private descriptor changed or foreign; preserved, not removed')
+                if current == 'approved':
+                    state_path(canonical, 'state-clear')
         elif options.operation == 'config':
             if options.frozen and not re.fullmatch(r'/var/cache/haseen-vapt\.[A-Za-z0-9]+/reviewed', options.frozen):
                 raise ValueError('unexpected reviewed mirror path')
@@ -3609,10 +4216,19 @@ def main():
         elif options.operation == 'report-merge': merge_report(args[0])
         elif options.operation == 'cache-permissions': cache_permissions(options.root, args[0])
         elif options.operation == 'discover':
-            records = [field_data(text) for name, text in archive_members(args[0])
-                       if name.endswith('/desc') and field_data(text).get('name') == 'blackarch-keyring']
+            # discover DB [KEYRING]: the one keyring record of a database the
+            # caller has already authenticated (oniomarchy: by its pinned
+            # detached signature) or, for BlackArch, its bootstrap database.
+            keyring = args[1] if len(args) > 1 else 'blackarch-keyring'
+            if keyring not in ('blackarch-keyring', 'oniomarchy-keyring'):
+                raise ValueError('unknown keyring package')
+            if keyring == 'oniomarchy-keyring':
+                records = [r for r in oniomarchy_records(args[0]) if r['name'] == keyring]
+            else:
+                records = [field_data(text) for name, text in archive_members(args[0])
+                           if name.endswith('/desc') and field_data(text).get('name') == keyring]
             if (len(records) != 1
-                    or not re.fullmatch(r'blackarch-keyring-[A-Za-z0-9.+_-]+\.pkg\.tar\.(?:xz|zst|gz)', records[0].get('filename', ''))
+                    or not re.fullmatch(re.escape(keyring) + r'-[A-Za-z0-9.+_-]+\.pkg\.tar\.(?:xz|zst|gz)', records[0].get('filename', ''))
                     or not re.fullmatch('[0-9a-f]{64}', records[0].get('sha256sum', ''))):
                 raise ValueError('invalid/ambiguous keyring artifact or digest')
             # The bootstrap seals exactly these bytes before verify/audit/install.
@@ -3645,7 +4261,7 @@ def main():
                         check_dependency(required)
             for dep in fields.get('depend', []):
                 check_dependency(dep)
-            audit_archives(options.root, args, keyring_population=True, sudo_plugins_path=options.sudo_plugins,
+            audit_archives(options.root, args, keyring_population='blackarch-keyring', sudo_plugins_path=options.sudo_plugins,
                            authority_facts_path=options.authority_facts)
         elif options.operation == 'audit':
             audit_archives(options.root, args, plan=options.plan, dbpath=options.dbpath, reference=options.reference,

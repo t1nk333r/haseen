@@ -5,14 +5,16 @@ LAYER_REQUIRES=()
 LAYER_CONFLICTS=()
 layer_usage() {
     cat <<'EOF'
-Usage: haseen layer apply vapt [--dry-run] [--yes] -- --groups GROUP,...
-       haseen layer apply vapt [--dry-run] [--yes] -- --all
+Usage: haseen layer apply vapt [--dry-run] [--yes] -- [--with-oniomarchy] --groups GROUP,...
+       haseen layer apply vapt [--dry-run] [--yes] -- [--with-oniomarchy] --all
 Groups: core,network,web,passwords,ad,osint,cloud,mobile,forensics,api,
         htb-cjca,htb-cpts,htb-cwes,htb-cwee,htb-coae,sdr,wireless,privacy,
         anonymity,automotive,social,reporting,ai,exploitation,services
 There are no default tools. Provisioning never runs security tools or services.
 Source order: explicit repository pins; BlackArch; pinned native; already-enabled
-Chaotic; CachyOS; Arch. Microsoft PyRIT is forced native, never WPA BlackArch pyrit.
+Chaotic; CachyOS; Arch; last, only with --with-oniomarchy for this operation,
+the private signed oniomarchy source (exact reviewed names, x86_64 only).
+--all selects groups, never a repository. Microsoft PyRIT is forced native.
 Dependency-only packages are never selected; blocked identities stay unavailable.
 Unavailable items are reported and skipped; actual mutation failures return 1.
 Dry-run is offline and write-free; unknown fixture metadata stays unknown.
@@ -64,6 +66,11 @@ layer_status() {
     source "$LAYER_DIR/provision.sh"
     vapt_reset
     vapt_manifest_validate || { echo 'warn: invalid VAPT inventory'; return 2; }
+    # Read-only inspection includes an approved private source's cached
+    # signed metadata; it never authorizes a transaction.
+    if vapt_oniomarchy_canary && [[ ${VAPT_ONIO[state]} == usable ]]; then
+        VAPT_ONIOMARCHY_STATE=usable VAPT_ONIOMARCHY_SCOPE=1
+    fi
     local report="$HASEEN_USER_STATE/vapt/report.tsv" logical groups source_name target resolution applied reason tiers degraded=false
     vapt_state_path_safe "$HASEEN_USER_STATE/vapt/removed" || { echo 'warn: redirected VAPT removal state'; return 2; }
     if [[ -f $(vapt_read_path "$HASEEN_USER_STATE/vapt/removed") ]]; then
@@ -77,6 +84,11 @@ layer_status() {
         [[ $logical != logical ]] || continue
         if [[ $logical == '# environment' ]]; then [[ $groups == ok ]] || degraded=true; continue; fi
         if [[ $logical == '# mutation-failed' ]]; then [[ $groups == 0 ]] || degraded=true; continue; fi
+        if [[ $logical == '# dependency' ]]; then
+            [[ $(vapt_meta install-reason "$groups" 2>/dev/null) == depend ]] ||
+                echo "warn: dependency $groups (installed for $source_name) is no longer recorded as a dependency"
+            continue
+        fi
         if [[ $logical == '# infrastructure' ]]; then
             if [[ $target != ok || $source_name != */* ]] ||
                 [[ $(vapt_meta installed "${source_name%%/*}" "${source_name##*/}" "${VAPT_VERSION[$source_name]:--}" "${VAPT_URL[$source_name]:--}") != exact ]] ||
@@ -113,4 +125,31 @@ layer_remove() (
     vapt_environment_remove || return $?
     [[ ${VAPT_ENV_DEGRADED:-0} == 0 ]] || return 2
     printf 'owned-activation-removed\n' | vapt_state_write "$HASEEN_USER_STATE/vapt/removed"
+)
+# vapt_repo VERB [--json] — the private source commands (status, enable,
+# disable). Status is read-only and offline; enable/disable mutate only
+# through the common.sh gateways and refuse a fixture sysroot unless dry-run.
+vapt_repo() (
+    local verb="$1" json="${2:-false}" command
+    source "$LAYER_DIR/provision.sh"
+    vapt_reset
+    vapt_manifest_validate || { warn 'invalid VAPT inventory or source tables'; return 2; }
+    if [[ $verb == status ]]; then
+        vapt_oniomarchy_status_command "$json"
+        return
+    fi
+    require_not_root
+    vapt_refuse_sysroot_mutation || return $?
+    preflight_distro
+    [[ $HASEEN_DISTRO == arch || $HASEEN_DISTRO == cachyos ]] || {
+        warn "VAPT supports Arch/CachyOS only (detected $HASEEN_DISTRO)"; return 2;
+    }
+    for command in python3 pacman vercmp curl gpg; do
+        have "$command" || { warn "VAPT prerequisite missing: $command"; return 2; }
+    done
+    case "$verb" in
+    enable) vapt_oniomarchy_enable_command ;;
+    disable) vapt_oniomarchy_disable_command ;;
+    *) return 2 ;;
+    esac
 )

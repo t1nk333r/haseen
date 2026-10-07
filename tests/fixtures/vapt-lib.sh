@@ -66,7 +66,7 @@ vapt_sandbox() {
     export VAPT_FIXTURE_DRIVER="$FIXTURES/vapt-driver.py"
     unset VAPT_PLAN VAPT_ARCHIVES VAPT_PACMAN_FAIL VAPT_FAIL_WRITE VAPT_FAKE_UV VAPT_LN_RACE VAPT_LIVE_PLAN VAPT_FAKE_TRUST \
         VAPT_MOCK_SIGNATURES VAPT_SWAP_COMMIT VAPT_SWAP_DOWNLOAD VAPT_SUDO_PATH VAPT_COMMIT_PATH \
-        VAPT_FAIL_ROOT_OP VAPT_SEALED_ANCESTOR_MODE
+        VAPT_FAIL_ROOT_OP VAPT_SEALED_ANCESTOR_MODE VAPT_ONIO_NO_DBSIG VAPT_ONIO_REFRESH_STATUS VAPT_ONIO_TAMPER_FROZEN
     local c
     # shellcheck disable=SC2046  # one name per word
     for c in "${STUBBED_CMDS[@]}" gpg gpg2 pacman-key pip pip3 pipx uv uvx npm npx cargo gem \
@@ -412,6 +412,84 @@ if \$showonly; then
     fpr=\$(basename "\$file" .asc)
     printf 'pub:-:255:22:%s:1700000000:::-:::scESC::::::::0:\nfpr:::::::::%s:\n' "\$fpr" "\$fpr"
 fi
+exit 0
+EOF
+    chmod +x "$SANDBOX/stubs/curl" "$SANDBOX/stubs/gpg"
+    export VAPT_FAKE_TRUST=1
+}
+
+# --- private oniomarchy source (plan 083 slice 1B) -------------------------------
+# vapt_onio_arch ARCH — the fixture host architecture metadata.py reports.
+vapt_onio_arch() { printf '%s\n' "$1" >"$ROOT/var/lib/haseen/vapt/fixture-architecture"; }
+
+# vapt_onio_serve [key=value...] — publish the fixture repository the curl stub
+# serves (keyring=VERSION trusted=PIN,ROT revoked=OLD variant=plain|scriptlet|
+# hostile-scriptlet|extra-member|hook|symlink|missing-file exclude=NAME,...
+# dbstatus/pkgstatus=pinned|rotated|wrong|expired|revoked|unknown|multiple|
+# bad|none key=pinned|wrong|extra|revoked|expired pkgdigest=bad). Call after
+# vapt_repos: its records join the fixture JSON production ignores.
+vapt_onio_serve() { python3 "$VAPT_FIXTURE_DRIVER" onio-serve "$@"; }
+
+# vapt_onio_seed — the approved, verified state a completed approval leaves.
+vapt_onio_seed() { python3 "$VAPT_FIXTURE_DRIVER" onio-seed; }
+
+# vapt_onio_stubs — curl serves only https://pkgs.oniomarchy.com/ artifacts of
+# the fixture repository (anything else fails like an unreachable host); gpg
+# lists the fixture key and replays the status recorded for exactly the
+# verified bytes. Both log argv in $CALLS/<name> and their order in
+# $CALLS/order. Nothing cryptographic or networked happens.
+vapt_onio_stubs() {
+    local onio="$SANDBOX/onio"
+    cat >"$SANDBOX/stubs/curl" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>'$CALLS/curl'
+out='' url=''
+while [ \$# -gt 0 ]; do
+    case "\$1" in
+    --output) out="\$2"; shift ;;
+    --proto | --proto-redir | --max-redirs) shift ;;
+    -*) ;;
+    *) url="\$1" ;;
+    esac
+    shift
+done
+printf 'curl %s\n' "\$url" >>'$CALLS/order'
+case "\$url" in
+https://pkgs.oniomarchy.com/*) ;;
+*) exit 6 ;;
+esac
+name="\${url##*/}"
+[ -f '$onio/serve/'"\$name" ] || exit 22
+cp '$onio/serve/'"\$name" "\$out"
+EOF
+    cat >"$SANDBOX/stubs/gpg" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>'$CALLS/gpg'
+status='' verify=false showonly=false output='' last='' previous=''
+while [ \$# -gt 0 ]; do
+    case "\$1" in
+    --status-file) status="\$2"; shift ;;
+    --verify) verify=true ;;
+    --import-options) [ "\$2" != show-only ] || showonly=true; shift ;;
+    --output) output="\$2"; shift ;;
+    --homedir | --export) shift ;;
+    -*) ;;
+    *) previous="\$last"; last="\$1" ;;
+    esac
+    shift
+done
+if \$verify; then
+    sum=\$(sha256sum "\$last" | cut -d' ' -f1)
+    printf 'gpg-verify %s\n' "\${last##*/}" >>'$CALLS/order'
+    if [ -f '$onio/status/'"\$sum" ] && [ "\$(cat "\$previous")" = "fixture-sig \$sum" ]; then
+        cp '$onio/status/'"\$sum" "\$status"
+        exit 0
+    fi
+    printf '[GNUPG:] BADSIG 0000000000000000 fixture\n' >"\$status"
+    exit 1
+fi
+if \$showonly; then cat '$onio/key.colons'; exit 0; fi
+[ -z "\$output" ] || printf 'fixture exported key\n' >"\$output"
 exit 0
 EOF
     chmod +x "$SANDBOX/stubs/curl" "$SANDBOX/stubs/gpg"

