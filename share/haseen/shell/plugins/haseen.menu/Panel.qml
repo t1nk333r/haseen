@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import qs.Haseen
+import qs.Haseen.Widgets
 import "MenuModel.js" as Model
 
 // haseen.menu: the command menu. A JSONC tree (default/menu.jsonc merged key
@@ -572,6 +573,15 @@ Column {
         width: parent.width
         spacing: Theme.gap
 
+        // haseen's mark where Omarchy shows its logo; submenus show the way back.
+        BrandImage {
+            visible: root.activeMenu === "root"
+            height: 16 * Math.max(1, Math.round((Theme.fontSize + 2) / 16))
+            path: Branding.symbolicPath
+            color: Theme.accent
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
         Text {
             visible: root.activeMenu !== "root"
             text: "\uf053"
@@ -589,6 +599,7 @@ Column {
 
         Text {
             width: parent.width - Theme.fontSize * 2
+            anchors.verticalCenter: parent.verticalCenter
             text: root.heading
             color: Theme.foreground
             elide: Text.ElideLeft

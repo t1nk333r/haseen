@@ -1,29 +1,67 @@
 #!/usr/bin/env bash
-# haseen:summary Set the text or image shown by the screensaver or the About panel
-# haseen:args <screensaver|about> <text [TEXT]|image [FILE]|reset> [--dry-run]
+# haseen:summary Choose haseen's mark, or set the text or image of the screensaver or the About panel
+# haseen:args <mark [kufic|shield|gate]|screensaver|about> <text [TEXT]|image [FILE]|reset> [--dry-run]
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../share/haseen/lib/branding.sh
+source "$HASEEN_PATH/lib/branding.sh"
 
 DIR="$HASEEN_USER_CONFIG/branding"
 
 usage() {
     cat <<EOF
-Usage: haseen branding <screensaver|about> text [TEXT] [--dry-run]
+Usage: haseen branding mark [kufic|shield|gate] [--dry-run]
+       haseen branding <screensaver|about> text [TEXT] [--dry-run]
        haseen branding <screensaver|about> image [FILE] [--dry-run]
        haseen branding <screensaver|about> reset [--dry-run]
 
 Files: $DIR/<target>.txt and <target>.png; both are watched,
 so changes show at once. text without TEXT opens the file in \$EDITOR (seeded
 from the default); image without FILE asks for a path. An image wins over
-the text. reset removes both.
+the text. reset removes both. Without either, they show haseen's mark.
+
+mark: haseen's logo in the menu, the About panel (and \`haseen about --logo\`),
+the screensaver, the optional bar logo (haseen.logo) and the app icon
+(-i haseen). Saved as branding.mark in shell.json (default kufic); without a
+name it prints the current one. The boot splash takes it at the next
+\`haseen plymouth set\`.
 EOF
+}
+
+# set_mark NAME — branding.mark in the user shell.json (the running shell
+# watches it), then the app icon in the user's hicolor theme, which wins over
+# the one install.sh put under PREFIX.
+set_mark() {
+    local name="$1" user icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+    branding_known "$name" || die "unknown mark '$name' (one of: ${BRANDING_MARKS[*]})"
+    # shellcheck source=../share/haseen/shell/lib/plugin.sh
+    source "$HASEEN_PATH/shell/lib/plugin.sh"
+    shell_config_lock
+    user="$(shell_user_json)"
+    if [[ $(jq -r '.branding.mark // ""' <<<"$user") != "$name" ]]; then
+        jq --arg m "$name" '.branding.mark = $m' <<<"$user" | shell_config_write
+    fi
+    branding_svg mark "$(branding_accent)" "$name" | write_user_file "$icons/scalable/apps/haseen.svg"
+    write_user_file "$icons/symbolic/apps/haseen-symbolic.svg" <"$(branding_file symbolic "$name")"
+    info "mark: $name (the boot splash follows at the next: haseen plymouth set)"
 }
 
 parse_common_flags "$@"
 set -- "${REST[@]}"
+if [[ ${1:-} == mark ]]; then
+    case $# in
+    1) branding_mark ;;
+    2) set_mark "$2" ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    exit 0
+fi
 (($# >= 2)) || {
     usage >&2
     exit 2
@@ -46,14 +84,8 @@ text)
         printf '%s\n' "$*" | write_user_file "$txt"
         exit 0
     fi
-    default="$HASEEN_PATH/default/$target/$target.txt"
-    if [[ ! -e $txt ]]; then
-        if [[ -r $default ]]; then
-            seed_user_file "$default" "$txt"
-        else
-            echo haseen | write_user_file "$txt"
-        fi
-    fi
+    # Seeded from the selected mark's terminal logo, the text both show by default.
+    [[ -e $txt ]] || seed_user_file "$(branding_file logo)" "$txt"
     run haseen config edit "$txt"
     ;;
 image)

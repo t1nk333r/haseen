@@ -23,8 +23,10 @@
     "pinned": []
   },
   "frame": { "enabled": true, "thickness": 6 },
+  "branding": { "mark": "kufic" },
   "plugins": {
-    "haseen.weather": { "enabled": false, "settings": { "location": "" } }
+    "haseen.weather": { "enabled": false, "settings": { "location": "" } },
+    "haseen.logo": { "enabled": false }
   },
   "services": [
     "haseen.pager",

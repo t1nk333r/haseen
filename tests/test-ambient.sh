@@ -285,7 +285,7 @@ assert_status "ttfx-run: a failing ttfx stops the loop" 1 "$STATUS"
 assert_contains "ttfx-run: says why" "$OUTPUT" "ttfx failed"
 assert_eq "ttfx-run: ttfx ran once" "1" "$(grep -c '^--random-effect$' "$HOME/ttfx.args")"
 assert_eq "ttfx-run: Omarchy's ttfx flags" \
-    "-i $HASEEN_PATH/default/screensaver/screensaver.txt --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c --random-effect --no-eol --no-restore-cursor" \
+    "-i $HASEEN_PATH/branding/logo-kufic.txt --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c --random-effect --no-eol --no-restore-cursor" \
     "$(paste -sd' ' "$HOME/ttfx.args")"
 assert_contains "ttfx-run hides the cursor" "$(cat "$HOME/hypr.log")" "eval hl.config({ cursor = { invisible = true } })"
 assert_contains "ttfx-run restores the cursor on failure" "$(cat "$HOME/hypr.log")" "eval hl.config({ cursor = { invisible = false } })"
@@ -310,7 +310,12 @@ mkdir -p "$XDG_CONFIG_HOME/haseen/branding"
 echo "hello" >"$XDG_CONFIG_HOME/haseen/branding/screensaver.txt"
 capture timeout 5 haseen screensaver --ttfx-run </dev/null
 assert_eq "ttfx-run prefers the user's branding" "$XDG_CONFIG_HOME/haseen/branding/screensaver.txt" "$(sed -n 2p "$HOME/ttfx.args")"
-assert_eq "default branding text exists" "yes" "$([[ -s $HASEEN_PATH/default/screensaver/screensaver.txt ]] && echo yes || echo no)"
+# Without the user's text, the selected mark's logo (plan 059).
+rm -f "$XDG_CONFIG_HOME/haseen/branding/screensaver.txt" "$HOME/ttfx.args"
+echo '{"branding": {"mark": "gate"}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
+capture timeout 5 haseen screensaver --ttfx-run </dev/null
+assert_eq "ttfx-run shows the selected mark's logo" "$HASEEN_PATH/branding/logo-gate.txt" "$(sed -n 2p "$HOME/ttfx.args")"
+rm -f "$XDG_CONFIG_HOME/haseen/shell.json"
 
 # --- pure logic in Qt's JS engine -----------------------------------------------
 if [[ -x $QML_BIN ]]; then

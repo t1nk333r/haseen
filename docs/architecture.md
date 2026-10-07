@@ -36,6 +36,7 @@ file changes in the same commit.
 | `share/haseen/themed/*.tpl` | theme templates | theme |
 | `share/haseen/shell/` | Quickshell config root (§5) | shell |
 | `share/haseen/systemd/user/*` | user units → `PREFIX/lib/systemd/user` | per slice |
+| `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `/var/lib/haseen/layers/<name>` | applied-layer marker | core |
@@ -105,7 +106,8 @@ Rules every layer follows:
   - `Config`: `default/shell.json` deep-merged with `~/.config/haseen/shell.json`, watched.
   - `Paths`: path constants.
   - `Plugins`: plugin registry.
-- `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, …).
+  - `Branding`: the selected mark and its file paths (§11).
+- `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
 ### 5.2 Plugin manifest (`manifest.json`, schema `share/haseen/shell/plugin.schema.json`)
@@ -147,6 +149,7 @@ Rules every layer follows:
            "left": ["haseen.workspaces"], "center": ["haseen.clock", "haseen.media"], "right": ["haseen.tray", "…"],
            "overflow": [], "pinned": [] },
   "frame": { "enabled": true, "thickness": 6 },
+  "branding": { "mark": "kufic|shield|gate" },
   "plugins": { "haseen.clock": { "enabled": true, "settings": { "format": "HH:mm" } },
                "haseen.tray": { "settings": { "pinned": false } } },
   "services": ["haseen.notifications", "haseen.osd", "haseen.polkit", "haseen.idle", "haseen.lock", "…"]
@@ -323,7 +326,7 @@ Smoke tests drive the UI through these, never through injected input.
 From the bootloader to the desktop, every step is switchable on its own and the
 default is the one that cannot lock you out.
 
-- **Splash:** `haseen plymouth set` installs `share/haseen/default/plymouth/` into `/usr/share/plymouth/themes/haseen`, coloured from the current theme's `colors.toml`, adds the `plymouth` hook, puts `quiet splash` on the kernel command line through `share/haseen/lib/boot.sh`, and rebuilds the initramfs. The theme is a plymouth script that draws its own password prompt, so no images ship here. `haseen plymouth status` says which of the three preconditions is missing.
+- **Splash:** `haseen plymouth set` installs `share/haseen/default/plymouth/` into `/usr/share/plymouth/themes/haseen`, coloured from the current theme's `colors.toml`, adds the `plymouth` hook, puts `quiet splash` on the kernel command line through `share/haseen/lib/boot.sh`, and rebuilds the initramfs. The theme is a plymouth script that draws its own password prompt; its one image, `logo.png`, is the selected mark (§11) rendered from its SVG in the accent colour at install time, so no images ship here. `haseen plymouth status` says which of the three preconditions is missing.
 - **Greeter:** greetd starts either tuigreet (default) or `bin/haseen-greeter`, which runs a throwaway Hyprland whose config only starts `share/haseen/shell/greeter/`. Authentication is `Quickshell.Services.Greetd`; `GreeterSession.qml` holds the logic and the `greeter` IPC target, `GreeterCard.qml` only draws it, and `GreeterPalette.qml` keeps the login screen free of `qs.Haseen` singletons that read a logged-in user's files.
 - **Autologin:** `haseen setup greeter autologin <user>` writes greetd's `[initial_session]`, which runs once at boot. With an encrypted root the disk password at the splash is that boot's authentication; without one, the command warns that it means no password at all.
 - **Replacing another display manager:** `haseen layer apply desktop` keeps an enabled SDDM/GDM; `haseen setup greeter tuigreet|haseen` is the explicit request to replace it. It asks, installs greetd and tuigreet, disables the old unit before enabling greetd (`display-manager.service` is an alias only one unit holds), starts nothing, and prints the way back.
@@ -345,3 +348,16 @@ step calls it.
 - **Plugin sources stay read-only.** Existing files under `~/.config/omarchy/plugins` and `~/.config/DankMaterialShell/plugins` are never replaced; new files are added.
 - **Omarchy config.** A repo that carries `~/.config/omarchy` gets `haseen import omarchy --merge`, unless it also tracks `~/.config/haseen/shell.json` (it is set up for haseen already).
 - **yadm bootstrap** runs only with `--bootstrap`. If a yadm repo with a different remote already exists, the command refuses. `haseen setup dotfiles status` prints the remote, the branch and the number of changed files.
+
+## 11. Branding
+
+haseen has three original marks (plan 059): `kufic` (the default, a square-Kufic
+حصين), `shield` and `gate`. Each lives in `share/haseen/branding/<mark>/` as
+`mark.svg`, `symbolic.svg` (16 px grid), `symbolic-24.svg` and `wordmark.svg`,
+all filled with `currentColor`, plus a terminal logo `logo-<mark>.txt` (at most
+81 columns).
+
+- **One setting.** `branding.mark` in `shell.json`; `haseen branding mark <name>` writes it. `share/haseen/lib/branding.sh` (`branding_mark`, `branding_file`) and `qs.Haseen.Branding` (`mark`, `paths`, `pathsFor()`) read it with one rule: anything but the three names is `kufic`.
+- **Colour.** QML draws the SVGs through `qs.Haseen.Widgets.BrandImage`, which writes a `Theme` colour into the SVG text (the software renderer has no shader recolouring). Files outside the shell get a baked colour: the plymouth `logo.png` and the scalable app icon use the theme accent.
+- **Where it shows.** The menu header, the About panel (the wordmark, unless `haseen branding about` set a text or image), `haseen about --logo`, the screensaver's default text (both styles), the boot splash, and the app icon `haseen` / `haseen-symbolic` in hicolor (installed by `install.sh` under `PREFIX`, and per user by `haseen branding mark`). The optional bar widget `haseen.logo` opens the menu; it is off and in no default bar section. The greeter shows no logo.
+- **Applying a change.** The shell follows `shell.json` at once; the splash needs `haseen plymouth set` again (it lives under `/usr`).

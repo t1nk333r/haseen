@@ -5,7 +5,8 @@
 # Hansson): theme the splash from the active colour scheme, set it as the
 # default, and rebuild the initramfs so the next boot shows it. haseen's theme
 # is drawn by a script, not composed from PNGs, so a theme change is a colour
-# substitution and this repository ships no binary assets.
+# substitution and this repository ships no binary assets: the one image, the
+# mark, is rendered from its SVG when the theme is installed.
 #
 # The point of the splash is not decoration: with an encrypted root the disk
 # password is typed here, and with autologin that is the only password the
@@ -18,6 +19,8 @@ HASEEN_PLYMOUTH_SH=1
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 # shellcheck source=boot.sh
 source "$(dirname "${BASH_SOURCE[0]}")/boot.sh"
+# shellcheck source=branding.sh
+source "$(dirname "${BASH_SOURCE[0]}")/branding.sh"
 
 # shellcheck disable=SC2034  # read by bin/haseen-plymouth-*
 PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/haseen
@@ -70,4 +73,29 @@ plymouth_script() {
         done
     done
     printf '%s\n' "$out"
+}
+
+# plymouth_install_logo ACCENT — the selected mark (haseen branding mark) as
+# $PLYMOUTH_THEME_DIR/logo.png, 112 px tall in ACCENT. Rendered by ImageMagick
+# (the shell layer's dependency) into a scratch file, then installed. Without
+# magick the splash has no mark and says nothing worse: the script draws
+# everything else without it.
+plymouth_install_logo() {
+    local accent="$1" mark svg tmp
+    mark="$(branding_mark)"
+    svg="$(branding_file mark "$mark")"
+    if $DRY_RUN; then
+        echo "DRYRUN: render $svg in $accent -> logo.png (mark: $mark)"
+        install_root_file logo.png "$PLYMOUTH_THEME_DIR/logo.png"
+        return 0
+    fi
+    if ! have magick; then
+        warn "magick is not installed: the splash shows no mark"
+        return 0
+    fi
+    tmp="$(mktemp -d)"
+    branding_svg mark "$accent" "$mark" >"$tmp/logo.svg"
+    magick -background none -density 600 "$tmp/logo.svg" -resize x112 "$tmp/logo.png"
+    install_root_file "$tmp/logo.png" "$PLYMOUTH_THEME_DIR/logo.png"
+    rm -rf "$tmp"
 }

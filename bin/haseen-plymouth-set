@@ -16,10 +16,11 @@ usage() {
 Usage: haseen plymouth set [--theme NAME] [--no-rebuild] [--dry-run]
 
 Installs haseen's boot screen into $PLYMOUTH_THEME_DIR, in the colours of the
-current theme (or of NAME), adds the plymouth hook to the initramfs, puts
-'quiet splash' on the kernel command line and rebuilds the initramfs.
+current theme (or of NAME) with haseen's mark (haseen branding mark), adds the
+plymouth hook to the initramfs, puts 'quiet splash' on the kernel command line
+and rebuilds the initramfs.
 
-Run it again after a theme change: the splash does not follow the theme by
+Run it again after a theme or mark change: the splash does not follow them by
 itself, because rewriting files under /usr needs root.
 EOF
 }
@@ -65,6 +66,7 @@ info "splash colours: background $bg, text $fg, accent $accent"
 
 install_root_file "$PLYMOUTH_SOURCE_DIR/haseen.plymouth" "$PLYMOUTH_THEME_DIR/haseen.plymouth"
 plymouth_script "$bg" "$fg" "$accent" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
+plymouth_install_logo "$accent"
 
 # The initramfs needs the hook, or there is no splash to colour. `plymouth`
 # goes right after `base udev`/`systemd`, before any hook that may ask for a

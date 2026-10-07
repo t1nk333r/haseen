@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.logo",
+  "name": "Logo",
+  "version": "1.0.0",
+  "description": "haseen's mark in the bar (haseen branding mark); click opens the menu. Off by default",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "menu": {
+      "type": "string",
+      "default": "",
+      "description": "Menu path a left click opens (empty: the top of the menu)"
+    }
+  },
+  "permissions": [
+    "exec"
+  ]
+}

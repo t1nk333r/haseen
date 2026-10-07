@@ -16,7 +16,8 @@ import qs.Haseen
 //   children of the shell, so they are followed through Hyprland's
 //   openwindow/closewindow events, and `--stop` closes them. Without ttfx
 //   or a supported terminal it falls back to native.
-// native: one overlay per screen with a clock and the branding text (or
+// native: one overlay per screen with a clock and the branding text (default
+//   the selected mark's logo, Branding.logoPath; or the user's text or
 //   image) on the theme background. The card moves a few pixels every 2 s
 //   (Drift.js); there is no animation between steps, so the cost is one
 //   small repaint per tick.
@@ -228,10 +229,11 @@ Scope {
                 onFileChanged: reload()
             }
 
+            // The selected mark's terminal logo (`haseen branding mark`).
             FileView {
                 id: defaultText
 
-                path: Paths.haseenPath + "/default/screensaver/screensaver.txt"
+                path: Branding.logoPath
                 printErrors: false
             }
 

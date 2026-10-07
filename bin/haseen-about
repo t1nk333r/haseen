@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # haseen:summary Show the About panel (OS, kernel, CPU, GPU, memory, uptime, version)
-# haseen:args [--facts] [--dry-run]
+# haseen:args [--facts|--logo] [--dry-run]
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/branding.sh
+source "$HASEEN_PATH/lib/branding.sh"
 
 usage() {
     cat <<EOF
-Usage: haseen about [--facts] [--dry-run]
+Usage: haseen about [--facts|--logo] [--dry-run]
 
 Opens the About view of the menu. --facts prints the facts it shows instead,
-one "key<TAB>value" line each. Branding: haseen branding about.
+one "key<TAB>value" line each. --logo prints them under haseen's mark, for a
+terminal (the mark: haseen branding mark). Branding: haseen branding about.
 EOF
 }
 
@@ -130,6 +133,7 @@ mode=panel
 for a in "${REST[@]}"; do
     case "$a" in
     --facts) mode=facts ;;
+    --logo) mode=logo ;;
     *)
         usage >&2
         exit 2
@@ -138,6 +142,12 @@ for a in "${REST[@]}"; do
 done
 if [[ $mode == facts ]]; then
     facts
+    exit 0
+fi
+if [[ $mode == logo ]]; then
+    cat "$(branding_file logo)"
+    echo
+    facts | awk -F '\t' '{ printf "  %-8s %s\n", $1, $2 }'
     exit 0
 fi
 run haseen shell ipc menu toggle :about

@@ -2,11 +2,13 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 
 // The About view of haseen.menu: facts from `haseen about --facts` (OS,
 // kernel, CPU, GPU, memory, uptime, haseen version) under the user's
 // branding: ~/.config/haseen/branding/about.png if present, else about.txt,
-// else the haseen name. Facts are read once per refresh(), never polled.
+// else the wordmark of the selected mark (Branding, plan 059). Facts are read
+// once per refresh(), never polled.
 Column {
     id: root
 
@@ -70,10 +72,19 @@ Column {
         sourceSize.height: Theme.fontSize * 12
     }
 
+    BrandImage {
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: !root.hasImage && root.brandText === ""
+        height: Theme.fontSize * 4
+        width: Math.min(implicitWidth, root.width)
+        path: Branding.wordmarkPath
+        color: Theme.accent
+    }
+
     Text {
         width: parent.width
-        visible: !root.hasImage
-        text: root.brandText !== "" ? root.brandText : "haseen"
+        visible: !root.hasImage && root.brandText !== ""
+        text: root.brandText
         color: Theme.accent
         horizontalAlignment: Text.AlignHCenter
         textFormat: Text.PlainText
