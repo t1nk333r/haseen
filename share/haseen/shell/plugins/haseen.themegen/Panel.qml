@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Themegen.js" as Model
 import "Wallhaven.js" as Wh
 // The image list and its thumbnail card are haseen.imagepicker's, shared
@@ -10,18 +11,22 @@ import "../haseen.imagepicker" as Picker
 import "../haseen.imagepicker/Images.js" as Images
 
 // haseen.themegen: build a theme from an image with matugen. Pick an image in
-// the strip, a scheme and dark or light; the preview shows the palette as
+// the grid, a scheme and dark or light; the preview shows the palette as
 // swatches and on a small mock desktop. Save writes the theme
 // (`haseen theme generate … --no-apply`), Apply writes it and switches to it.
 // The source switch picks between the user's own images and Wallhaven
 // (plan 072, WallhavenGrid.qml): a search, sort chips and a paged grid whose
 // pick is downloaded with `haseen wallhaven get` and then previewed the same.
-// Keys (plan 083) go in three stages, the active one framed in the accent and
-// named with its keys in the header. The search field: type to filter (to
-// search, on Wallhaven); Enter (searching first on Wallhaven) or Down moves
-// to the pictures. The pictures: h/j/k/l or the arrows move (by a row in the
-// Wallhaven grid), Enter picks (downloads, on Wallhaven) and moves to the
-// palette. The palette: h/j/k/l or the arrows change the scheme, Enter
+// Both sources show two rows of thumbnails in an area of one height, and the
+// preview keeps its place while it is made, so the centred panel never
+// changes size under the pointer. The header names the active stage's keys
+// on a line of their own; notes and errors sit beside the title.
+// Keys (plan 083) go in three stages, the active one framed in the accent.
+// The search field: type to filter (to search, on Wallhaven); Enter
+// (searching first on Wallhaven) or Down moves to the pictures. The
+// pictures: h/j/k/l or the arrows move (by a row up and down), Enter picks
+// (downloads, on Wallhaven) and moves to the palette. The palette: h/j/k/l
+// or the arrows change the scheme, Enter
 // applies once the preview is of the picture picked. Tab flips dark/light,
 // Ctrl+S saves, `/` goes back to the field and Backspace back one stage;
 // Escape closes (the panel host handles it). The panel opens in the middle
@@ -55,8 +60,14 @@ Column {
     // would pass 60% of the screen's width or about 85% of its height.
     readonly property int cardWidth: Math.max(Theme.fontSize * 10, Math.min(Theme.fontSize * 18, Math.floor((screenWidth * 0.6 - Theme.gap) / columns) - Theme.gap, Math.floor((screenHeight * 0.85 - Theme.fontSize * 28) / 2.2)))
     readonly property int cellWidth: cardWidth + Theme.gap
+    // A thumbnail with its caption; both sources show two rows of them.
+    readonly property int cellHeight: Math.round(cardWidth * 9 / 16) + Theme.fontSize * 2
+    // The pictures area: Wallhaven's sort chips, two rows and the download
+    // track, for the user's images too, so a source switch moves nothing.
+    readonly property int imagesHeight: Math.max(Math.round(Theme.fontSize * 2.1) + cellHeight * 2 + Math.max(2, Math.round(Theme.gap / 2)), wallhaven.item ? wallhaven.item.implicitHeight : 0)
     // The palette mock spans two thumbnails, at the 2:1 it always had.
     readonly property int mockWidth: cardWidth * 2 + Theme.gap
+    readonly property color subtle: Theme.subtle(Theme.surface)
 
     property var images: []
     property string query: ""
@@ -94,7 +105,7 @@ Column {
         if (stage === "images")
             return "h j k l or arrows move · Enter " + (source === "wallhaven" ? "downloads" : "picks") + " · / search · Esc closes";
         if (stage === "palette")
-            return "h j k l or arrows: scheme · Tab dark/light · Enter applies · Ctrl+S saves · Backspace: pictures";
+            return "h j k l or arrows: scheme · Tab dark/light · " + (ready ? "Enter applies" : "Enter applies once ready") + " · Ctrl+S saves · Backspace: pictures";
         return source === "wallhaven" ? "Enter searches · Down: pictures · Esc closes" : "Enter or Down: pictures · Esc closes";
     }
 
@@ -272,14 +283,16 @@ Column {
         pick(strip.currentIndex);
     }
 
-    // The pictures: the strip's (up and down step like left and right) or
-    // the Wallhaven grid's, by a row there. Moving downloads nothing.
+    // The pictures: the user's grid or the Wallhaven grid, by one sideways
+    // and by a row up and down. Moving downloads nothing.
     function move(dx: int, dy: int): void {
         if (source === "wallhaven") {
             if (wallhaven.item)
                 wallhaven.item.move(dx, dy);
-        } else if (results.length > 0) {
-            strip.currentIndex = Math.max(0, Math.min(results.length - 1, strip.currentIndex + dx + dy));
+        } else {
+            const next = Wh.gridStep(strip.currentIndex, results.length, columns, dx, dy);
+            if (next >= 0)
+                strip.currentIndex = next;
         }
     }
 
@@ -501,9 +514,9 @@ Column {
         }
     }
 
-    Row {
+    Item {
         width: parent.width
-        spacing: Theme.gap
+        height: title.implicitHeight
 
         Text {
             id: title
@@ -515,16 +528,30 @@ Column {
             font.bold: true
         }
 
-        // The current stage's keys, then the latest note; an error alone.
+        // The latest note, the run in progress or an error, beside the title.
         Text {
+            anchors.right: parent.right
             anchors.baseline: title.baseline
-            width: parent.width - title.width - Theme.gap
-            text: root.noticeIsError ? root.notice : [root.hint, root.notice !== "" ? root.notice : previewProc.running ? "generating…" : ""].filter(s => s !== "").join(" · ")
-            color: root.noticeIsError ? Theme.urgent : Theme.muted
+            width: Math.min(implicitWidth, parent.width - title.width - Theme.gap * 2)
+            horizontalAlignment: Text.AlignRight
+            textFormat: Text.PlainText
+            text: root.notice !== "" ? root.notice : previewProc.running ? "generating…" : ""
+            color: root.noticeIsError ? Theme.urgent : root.subtle
             elide: Text.ElideRight
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }
+    }
+
+    // The current stage's keys, always whole: wrapped, never cut.
+    Text {
+        width: parent.width
+        text: root.hint
+        textFormat: Text.PlainText
+        color: root.subtle
+        wrapMode: Text.WordWrap
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.fontSize - 1
     }
 
     Row {
@@ -542,7 +569,7 @@ Column {
                 }
             ]
 
-            Choice {
+            Pill {
                 required property var modelData
 
                 text: modelData.label
@@ -588,7 +615,7 @@ Column {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.source === "wallhaven" ? "search wallhaven · Enter searches" : "filter images"
-                color: Theme.muted
+                color: root.subtle
                 visible: input.text === ""
                 font: input.font
             }
@@ -596,64 +623,76 @@ Column {
     }
 
     StageFrame {
-        width: parent.width
+        x: -pad
+        width: parent.width + pad * 2
         active: root.stage === "images"
 
-        ListView {
-            id: strip
-
+        Item {
             width: parent.width
-            height: Math.round(root.cardWidth * 9 / 16) + Theme.fontSize * 2
-            orientation: ListView.Horizontal
-            spacing: Theme.gap
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            highlightMoveDuration: 0
-            visible: root.source === "local"
-            model: root.results
-            onCurrentIndexChanged: {
-                positionViewAtIndex(currentIndex, ListView.Contain);
-                if (root.source === "local")
-                    root.pick(currentIndex);
+            height: root.imagesHeight
+
+            GridView {
+                id: strip
+
+                width: parent.width
+                height: root.cellHeight * 2
+                cellWidth: root.cellWidth
+                cellHeight: root.cellHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                highlightMoveDuration: 0
+                visible: root.source === "local"
+                model: root.results
+                onCurrentIndexChanged: {
+                    positionViewAtIndex(currentIndex, GridView.Contain);
+                    if (root.source === "local")
+                        root.pick(currentIndex);
+                }
+
+                delegate: Picker.ImageCard {
+                    required property var modelData
+                    required property int index
+
+                    width: root.cardWidth
+                    path: modelData.path
+                    label: modelData.label
+                    selected: GridView.isCurrentItem
+                    pixelRatio: root.pixelRatio
+                    onPicked: strip.currentIndex = index
+                }
+
+                ScrollMark {
+                    view: strip
+                }
             }
 
-            delegate: Picker.ImageCard {
-                required property var modelData
-                required property int index
+            // Loaded on the first switch to Wallhaven and kept, so switching back
+            // and forth keeps the results.
+            Loader {
+                id: wallhaven
 
-                width: root.cardWidth
-                path: modelData.path
-                label: modelData.label
-                selected: ListView.isCurrentItem
-                pixelRatio: root.pixelRatio
-                onPicked: strip.currentIndex = index
-            }
-        }
+                width: parent.width
+                active: root.wallhavenUsed
+                visible: root.source === "wallhaven"
 
-        // Loaded on the first switch to Wallhaven and kept, so switching back
-        // and forth keeps the results.
-        Loader {
-            id: wallhaven
-
-            active: root.wallhavenUsed
-            visible: root.source === "wallhaven"
-
-            sourceComponent: WallhavenGrid {
-                cli: root.cli
-                columns: root.columns
-                cardWidth: root.cardWidth
-                pixelRatio: root.pixelRatio
-                onSaid: (text, error) => root.say(text, error)
-                onStarted: root.awaitDownload()
-                onPicked: (path, id) => root.useDownload(path, id)
-                onFailed: root.downloadFailed()
-                Component.onCompleted: search("")
+                sourceComponent: WallhavenGrid {
+                    cli: root.cli
+                    columns: root.columns
+                    cardWidth: root.cardWidth
+                    pixelRatio: root.pixelRatio
+                    onSaid: (text, error) => root.say(text, error)
+                    onStarted: root.awaitDownload()
+                    onPicked: (path, id) => root.useDownload(path, id)
+                    onFailed: root.downloadFailed()
+                    Component.onCompleted: search("")
+                }
             }
         }
     }
 
     StageFrame {
-        width: parent.width
+        x: -pad
+        width: parent.width + pad * 2
         active: root.stage === "palette"
 
         Flow {
@@ -663,7 +702,7 @@ Column {
             Repeater {
                 model: Model.SCHEMES
 
-                Choice {
+                Pill {
                     required property string modelData
 
                     text: Model.schemeLabel(modelData)
@@ -679,7 +718,7 @@ Column {
             Repeater {
                 model: Model.MODES
 
-                Choice {
+                Pill {
                     required property string modelData
 
                     text: Model.schemeLabel(modelData)
@@ -723,13 +762,13 @@ Column {
                 }
             }
 
-            Choice {
+            Pill {
                 text: "Save"
                 enabled: root.ready
                 onClicked: root.write(false)
             }
 
-            Choice {
+            Pill {
                 text: "Apply"
                 active: true
                 enabled: root.ready
@@ -739,9 +778,11 @@ Column {
     }
 
     // Built from a complete preview only: the mock never draws half a palette.
+    // Its place is kept while there is none, so the panel keeps its height.
     Loader {
+        width: parent.width
+        height: Math.round(root.mockWidth / 2)
         active: root.preview.ok
-        visible: active
 
         sourceComponent: Row {
             spacing: Theme.gap
@@ -776,7 +817,7 @@ Column {
                             parts.push("clamped: " + root.preview.clamped.join(", "));
                         return parts.join(" · ");
                     }
-                    color: Model.canWrite(root.preview.target) ? Theme.muted : Theme.urgent
+                    color: Model.canWrite(root.preview.target) ? root.subtle : Theme.urgent
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 2
                 }

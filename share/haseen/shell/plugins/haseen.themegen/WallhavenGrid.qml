@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Wallhaven.js" as Wh
 import "../haseen.imagepicker" as Picker
 
@@ -231,7 +232,7 @@ Column {
         Repeater {
             model: Wh.SORTS
 
-            Choice {
+            Pill {
                 required property string modelData
 
                 text: Wh.sortLabel(modelData)
@@ -271,6 +272,10 @@ Column {
             selected: index === root.currentIndex
             pixelRatio: root.pixelRatio
             onPicked: root.select(index)
+        }
+
+        ScrollMark {
+            view: grid
         }
     }
 

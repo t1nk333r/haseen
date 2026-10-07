@@ -214,7 +214,8 @@ assert_eq "search: h j k l land in the field" '["hjkl","search",0]' "$(s '[.quer
 key Backspace Backspace Backspace Backspace
 assert_eq "search: Backspace edits the field" '["","search",6]' "$(s '[.query, .stage, .shown]')"
 
-# The pictures: Down enters them, h/l and j/k step through the strip.
+# The pictures: Down enters them; h/l step by one, j/k by a row (two rows of
+# four here, six images), as in the Wallhaven grid.
 key Down
 assert_eq "images: Down from the field" '"images"' "$(s .stage)"
 typed "ll"
@@ -222,8 +223,11 @@ key Right
 typed "h"
 assert_eq "images: l l Right h" '2' "$(s .strip)"
 typed "j"
-key Up Up
-assert_eq "images: in the strip up and down step like left and right" '1' "$(s .strip)"
+assert_eq "images: j from the first row to the short second row's last" '5' "$(s .strip)"
+key Up
+assert_eq "images: Up a row" '1' "$(s .strip)"
+key Up
+assert_eq "images: Up on the first row stays" '1' "$(s .strip)"
 typed "/"
 assert_eq "images: / goes back to the field" '"search"' "$(s .stage)"
 key Return

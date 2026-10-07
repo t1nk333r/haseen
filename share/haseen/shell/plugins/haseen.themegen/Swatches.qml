@@ -44,7 +44,7 @@ Column {
                         text: Model.swatchLabel(parent.modelData.key)
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
-                        color: Theme.muted
+                        color: Theme.subtle(Theme.surface)
                         font.family: Theme.fontFamily
                         font.pixelSize: Math.max(8, Theme.fontSize - 3)
                     }
