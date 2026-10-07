@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.websearch",
+  "name": "Web search",
+  "version": "1.0.0",
+  "description": "Type ? in the launcher to search the web in the default browser (xdg-open); the shell itself makes no request",
+  "kinds": ["launcher-provider"],
+  "entry": {
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {
+    "url": {
+      "type": "string",
+      "default": "https://duckduckgo.com/?q=%s",
+      "description": "Search URL; %s becomes the percent-encoded query. Only http:// and https:// URLs open"
+    }
+  },
+  "permissions": ["exec"]
+}

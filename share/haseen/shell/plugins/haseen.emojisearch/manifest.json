@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.emojisearch",
+  "name": "Emoji search",
+  "version": "1.0.0",
+  "description": "Type : in the launcher to search emoji (haseen.emoji's list); Enter copies it",
+  "kinds": ["launcher-provider"],
+  "entry": {
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {},
+  "permissions": ["exec", "files:read"]
+}

@@ -9,7 +9,8 @@ import "Fuzzy.js" as Fuzzy
 // (or Tab) to move, Enter to launch, Escape to close (the panel host handles
 // Escape). Input that starts with an enabled launcher-provider's prefix is
 // sent to that provider's query() instead. Providers are created when the
-// launcher opens and destroyed with it, so they cost nothing while closed.
+// launcher opens and destroyed with it, so they cost nothing while closed;
+// their prefixes are listed under the empty input (plan 081).
 // Opened by `haseen shell ipc launcher toggle` (the `launcher` role).
 Column {
     id: root
@@ -28,6 +29,12 @@ Column {
     readonly property color subtitleColor: Theme.subtle(Theme.surface)
     readonly property color selectedSubtitleColor: Theme.subtle(Theme.selection)
     property string query: ""
+    // The enabled providers' prefixes, shown under the empty input:
+    // "= Calculator    > Clipboard    : Emoji search".
+    readonly property string prefixHelp: providers.filter(p => typeof p.prefix === "string" && p.prefix !== "").map(p => {
+        const rec = Plugins.registry[p.pluginId];
+        return p.prefix + " " + (rec && rec.name ? rec.name : p.pluginId);
+    }).join("    ")
 
     // [{ title, subtitle, icon, run }]
     readonly property var results: {
@@ -151,7 +158,8 @@ Column {
             return JSON.stringify({
                 query: root.query,
                 current: list.currentIndex,
-                results: root.results.slice(0, root.maxResults).map(r => r.title)
+                results: root.results.slice(0, root.maxResults).map(r => r.title),
+                prefixes: root.prefixHelp
             });
         }
     }
@@ -194,6 +202,19 @@ Column {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
         }
+    }
+
+    Text {
+        width: parent.width
+        leftPadding: Theme.gap * 1.5
+        rightPadding: Theme.gap * 1.5
+        visible: root.query === "" && root.prefixHelp !== ""
+        text: root.prefixHelp
+        color: root.subtitleColor
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.fontSize - 2
     }
 
     ListView {

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.commands",
+  "name": "Commands",
+  "version": "1.0.0",
+  "description": "Type / in the launcher to search the menu's commands; Enter runs one as the menu would",
+  "kinds": ["launcher-provider"],
+  "entry": {
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {},
+  "permissions": ["exec", "files:read"]
+}
