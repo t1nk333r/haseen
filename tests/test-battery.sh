@@ -130,7 +130,12 @@ Window {
            ["critical", ""], feed(dflt, [[5, d], [4, d]]).events);
         eq("charging resets: the next crossing warns again",
            ["warn", "", "", "warn"], feed(dflt, [[20, d], [19, "charging"], [25, d], [20, d]]).events);
-        eq("charging state is the initial state", L.initial(), feed(dflt, [[5, d], [5, "charging"]]).state);
+        eq("charging keeps a level reached until the charge climbs above it",
+           { warned: true, critical: true, armed: false, cancelled: false, deadline: 0, low: 5 }, feed(dflt, [[5, d], [5, "charging"]]).state);
+        eq("a charger that comes and goes at 19% warns once (review: a warning per unplug)",
+           ["warn", "", "", "", ""], feed(dflt, [[19, d], [19, "charging"], [19, d], [19, "charging"], [19, d]]).events);
+        eq("a charger that raises the charge resets the levels",
+           ["critical", "", "critical"], feed(dflt, [[9, d], [10, "charging"], [9, d]]).events);
         eq("unknown power changes nothing", ["warn", "", ""], feed(dflt, [[20, d], [10, "unknown"], [19, d]]).events);
         eq("criticalAt 0 never goes critical", ["warn", ""], feed(L.config({ criticalAt: 0 }), [[20, d], [1, d]]).events);
         eq("no battery: nothing", { state: L.initial(), events: [] }, L.step(L.initial(), { present: false }, dflt, 0));
@@ -167,6 +172,25 @@ Window {
             L.fire(armed.state, onBattery, L.config({ criticalAction: "poweroff" }), 65000).verb]);
         eq("action command", ["/x/bin/haseen-system", "suspend"], L.actionCommand("/x/bin", "suspend"));
         eq("no command without a verb", [], L.actionCommand("/x/bin", ""));
+        // review fixes: flapping charger, Cancel kept, action turned off,
+        // Unknown at the deadline, the countdown runs from when it is shown
+        eq("a flapping charger re-arms the countdown without a second critical notice",
+           ["critical+arm", "disarm", "arm", "disarm", "arm"], feed(sus, [[9, d], [9, "charging"], [9, d], [9, "charging"], [9, d]]).events);
+        eq("a Cancel holds across a charger that comes and goes",
+           ["", "", ""], feed(sus, [[9, "charging"], [9, d], [8, d]], L.cancel(armed.state)).events);
+        eq("a Cancel is forgotten once the charge rises on a charger",
+           ["", "critical+arm"], feed(sus, [[10, "charging"], [9, d]], L.cancel(armed.state)).events);
+        eq("criticalAction none while armed disarms (no countdown left to come back)",
+           { events: ["disarm"], armed: false }, (r => ({ events: r.events, armed: r.state.armed }))(L.step(armed.state, { present: true, percent: 8, power: d }, dflt, 6000)));
+        eq("turning the action back on re-arms only a countdown that was not cancelled",
+           [["arm"], []], [L.step(L.step(armed.state, onBattery, dflt, 6000).state, onBattery, sus, 7000).events,
+                          L.step(L.cancel(armed.state), onBattery, sus, 7000).events]);
+        eq("fire: Unknown at the deadline runs nothing and looks again in 2 s",
+           { run: false, rearm: false, retry: true, delay: 2000, armed: true },
+           (r => ({ run: r.run, rearm: r.rearm, retry: r.retry, delay: r.delay, armed: r.state.armed }))(L.fire(armed.state, { present: true, percent: 8, power: "unknown" }, sus, 65000)));
+        eq("shown: the countdown runs from when the notification is on screen", 90000, L.shown(armed.state, sus, 30000).deadline);
+        eq("shown: nothing to re-base when not armed", 0, L.shown(L.cancel(armed.state), sus, 30000).deadline);
+        eq("cancel marks the countdown called off", true, L.cancel(armed.state).cancelled);
 
         // notification texts
         eq("warn message", { summary: "Battery low", body: "20% left, about 1 h 05 min.", urgency: "normal" },
@@ -213,7 +237,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "65" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "76" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -228,8 +252,15 @@ else
     export LOG
     # Every notification and power command lands in $LOG. notify-send answers
     # "exec" (the Cancel button) when CLICK is set and it carries an action.
+    # Like notify-send 0.8: with -A it prints the id (-p) once shown and
+    # waits; SIGINT closes the notification (logged). NOTE_FAIL=hang prints 0
+    # (not shown) and waits; NOTE_FAIL=exit fails at once (no server).
     stub notify-send 'printf "notify-send %s\n" "$*" >>"$LOG"
-case "$* $CLICK" in *exec=Cancel*yes) sleep 1; echo exec ;; esac'
+case "$*" in *exec=Cancel*) ;; *) exit 0 ;; esac
+case "$NOTE_FAIL" in exit) exit 1 ;; hang) echo 0 ;; *) echo 41 ;; esac
+trap "echo notify-send closed >>\"\$LOG\"; exit 0" INT
+if [ "$CLICK" = yes ] && [ -z "$NOTE_FAIL" ]; then sleep 1; echo exec; exit 0; fi
+i=0; while [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done'
     stub systemctl 'printf "systemctl %s\n" "$*" >>"$LOG"'
     harness="$SANDBOX/shell"
     mkdir -p "$harness"
@@ -251,7 +282,7 @@ ShellRoot {
         interval: Number(Quickshell.env("BATTERY_RUN_MS"))
         running: true
         onTriggered: {
-            console.warn("RESULT " + JSON.stringify({ logic: svc.logic, sent: svc.sent, lastAction: svc.lastAction }));
+            console.warn("RESULT " + JSON.stringify({ logic: svc.logic, sent: svc.sent, lastAction: svc.lastAction, undelivered: svc.undelivered }));
             Qt.quit();
         }
     }
@@ -287,7 +318,7 @@ QML
     scenario levels '{"warnAt":20,"criticalAt":10}' 9000 "Percentage=25 State=2" \
         "sleep=2 Percentage=21" "sleep=0.6 Percentage=20" "sleep=0.6 Percentage=19" \
         "sleep=0.6 Percentage=22" "sleep=0.6 Percentage=20" "sleep=0.6 Percentage=10" \
-        "sleep=0.6 Percentage=9" "sleep=0.6 State=1" "sleep=0.6 State=2 Percentage=18"
+        "sleep=0.6 Percentage=9" "sleep=0.6 State=1" "sleep=0.6 Percentage=12" "sleep=0.6 State=2 Percentage=18"
     assert_eq "levels: warn, critical, then warn again after charging" '["warn","critical","warn"]' "$(sent)"
     assert_eq "levels: three notifications sent" 3 "$(grep -c '^notify-send' <<<"$CALLS")"
     assert_contains "levels: the warn is normal urgency, through haseen notification send" "$CALLS" "notify-send -a haseen -u normal -- Battery low 20% left, about 3 h."
@@ -298,11 +329,22 @@ QML
     scenario countdown '{"criticalAction":"suspend"}' 6000 "Percentage=12 State=2" \
         "sleep=2 Percentage=10" "sleep=1.5 State=1"
     assert_contains "countdown: the critical notification has a Cancel button" "$CALLS" \
-        "-u critical -A exec=Cancel -- Battery critical 10% left, about 3 h. Suspending in 60 s: plug in or press Cancel."
+        "-u critical -p -A exec=Cancel -- Battery critical 10% left, about 3 h. Suspending in 60 s: plug in or press Cancel."
     assert_contains "countdown: a charger calls it off" "$CALLS" "-u low -- Battery The suspend is called off."
     assert_eq "countdown: disarmed" "false" "$(jq '.logic.armed' <<<"$RESULT")"
     assert_eq "countdown: nothing ran" '""' "$(jq '.lastAction' <<<"$RESULT")"
     assert_not_contains "countdown: no systemctl" "$CALLS" "systemctl"
+    assert_contains "countdown: the charger closes the countdown notification (no orphaned notify-send)" "$CALLS" "notify-send closed"
+
+    # The countdown notification is not shown: fail closed, nothing armed.
+    for mode in hang exit; do
+        export NOTE_FAIL=$mode
+        scenario "undelivered-$mode" '{"criticalAction":"poweroff"}' 4000 "Percentage=12 State=2" "sleep=2 Percentage=9"
+        assert_eq "undelivered ($mode): the countdown is called off" "false true 1" \
+            "$(jq -r '"\(.logic.armed) \(.logic.cancelled) \(.undelivered)"' <<<"$RESULT")"
+        assert_not_contains "undelivered ($mode): no systemctl" "$CALLS" "systemctl"
+    done
+    unset NOTE_FAIL
 
     # Cancel pressed: disarmed, the level stays reached, nothing comes back.
     export CLICK=yes

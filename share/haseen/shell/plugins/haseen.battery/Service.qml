@@ -14,10 +14,12 @@ import "BatteryLogic.js" as Logic
 //   criticalAt  one critical notification;
 //   criticalAction (none by default) suspend, hibernate or poweroff: the
 //               critical notification then carries a Cancel button, and
-//               `haseen system <verb>` runs 60 s later unless Cancel was
-//               pressed or a charger came. Closing the notification is not
-//               a cancel.
-// A charger resets both levels; nothing repeats while the charge stays below.
+//               `haseen system <verb>` runs 60 s after it is shown unless
+//               Cancel was pressed or a charger came. Closing the
+//               notification is not a cancel; a notification that could
+//               not be shown is (fail closed: no action without a Cancel).
+// A level resets once the charge climbs 3 points above it; nothing repeats
+// while the charge stays below, also across a charger that comes and goes.
 // Notifications go through `haseen notification send`, so the shell's own
 // notification server shows them and keeps them in its history.
 Scope {
@@ -44,6 +46,11 @@ Scope {
     // Every notification sent, for the debug hook.
     property var sent: []
     property string lastAction: ""
+    // Countdown notifications that could not be shown, for the debug hook.
+    property int undelivered: 0
+    // The countdown notification's sender has started and has not yet said
+    // it is shown. Its exit in that state means it never was.
+    property bool _awaitingNote: false
 
     function _info(): var {
         return {
@@ -61,19 +68,44 @@ Scope {
     }
 
     // The countdown notification: the --exec of `haseen notification send`
-    // is its Cancel button, and that command's output, "cancel", reaches
-    // countdownNote's stdout only when the button is pressed.
+    // is its Cancel button. With -p the sender prints the notification's id
+    // once it is on screen, and later "cancel" (the --exec's output) only
+    // when the button is pressed. The countdown starts on the id; a sender
+    // that ends without one never showed a Cancel, so nothing will run.
+    // Stopping the sender closes its notification (it traps TERM).
     function _startCountdown(): void {
         const m = Logic.message("critical", _info(), cfg);
         sent = sent.concat(["critical: " + m.summary + " | " + m.body]);
+        countdown.stop();
+        _awaitingNote = false;
         countdownNote.running = false;
-        countdownNote.command = [binDir + "/haseen-notification-send", "-u", "critical", "--action-label", "Cancel", m.summary, m.body, "--exec", "echo", "cancel"];
+        countdownNote.command = [binDir + "/haseen-notification-send", "-u", "critical", "-p", "--action-label", "Cancel", m.summary, m.body, "--exec", "echo", "cancel"];
         countdownNote.running = true;
+    }
+
+    function _noteShown(): void {
+        if (!_awaitingNote)
+            return;
+        _awaitingNote = false;
+        if (!logic.armed)
+            return;
+        logic = Logic.shown(logic, cfg, Date.now());
         countdown.interval = Math.max(1000, logic.deadline - Date.now());
         countdown.restart();
     }
 
+    function _noteFailed(): void {
+        _awaitingNote = false;
+        if (!logic.armed)
+            return;
+        undelivered++;
+        console.warn("haseen.battery: the critical notification could not be shown; " + cfg.criticalAction + " called off");
+        logic = Logic.cancel(logic);
+        countdown.stop();
+    }
+
     function _stopCountdown(): void {
+        _awaitingNote = false;
         countdown.stop();
         countdownNote.running = false;
     }
@@ -117,10 +149,19 @@ Scope {
     Process {
         id: countdownNote
 
-        stdout: StdioCollector {
-            waitForEnd: true
-            onStreamFinished: {
-                if (text.trim() === "cancel")
+        // A restart (running = false; running = true) delivers the old
+        // sender's exit before the new one starts, so only the current
+        // sender can find _awaitingNote set.
+        onStarted: root._awaitingNote = root.logic.armed
+        onExited: {
+            if (root._awaitingNote)
+                root._noteFailed();
+        }
+        stdout: SplitParser {
+            onRead: line => {
+                if (/^[0-9]+$/.test(line))
+                    root._noteShown();
+                else if (line.trim() === "cancel")
                     root.cancel();
             }
         }
@@ -136,6 +177,9 @@ Scope {
             root.logic = r.state;
             if (r.rearm) {
                 root._startCountdown();
+            } else if (r.retry) {
+                countdown.interval = r.delay;
+                countdown.restart();
             } else if (r.run) {
                 countdownNote.running = false;
                 root.lastAction = r.verb;
@@ -158,7 +202,8 @@ Scope {
                 logic: root.logic,
                 remaining: Logic.remaining(root.logic, Date.now()),
                 sent: root.sent,
-                lastAction: root.lastAction
+                lastAction: root.lastAction,
+                undelivered: root.undelivered
             });
         }
 

@@ -81,3 +81,25 @@ logging stubs on the shell's PATH.
 - A second timer that updates the notification every second: a static "in 60 s" text is enough, and
   a live count would need replace ids, which `--exec` cannot print.
 - Treating a dismissed notification as Cancel: dismissing means "seen", and the action is opt-in anyway.
+
+## Review fixes (2026-10-08)
+
+- **Fail closed when the Cancel notification is not shown.** `haseen notification send --exec` now asks
+  notify-send for the id (`-p`), and fails (exit 1, runs nothing) when the id is 0 or missing (no server,
+  daemon error). `Service.qml` starts the countdown only when the id arrives, re-based to that moment
+  (`Logic.shown`); a sender that exits without one cancels the countdown (`undelivered` in the debug state).
+- **No orphaned notify-send.** Stopping the sender (disarm, re-arm, the action running) used to TERM only
+  bash; notify-send kept waiting and the toast, with a dead Cancel, stayed up. The sender now runs
+  notify-send beside itself with SIGINT restored and, on TERM/HUP/INT, sends it SIGINT, notify-send's own
+  "close the notification and quit" (libnotify 0.8.8 `tools/notify-send.c` `on_sigint`).
+- **Charger flaps, Unknown, action turned off.** A charger resets the levels and a Cancel only once the
+  charge rises on it (`low`); a flap re-arms an uncancelled countdown without a second critical notice and
+  never re-warns. `fire` acts only on `discharging` and retries in 2 s on Unknown. `criticalAction: none`
+  while armed disarms.
+- Evidence: `tests/test-battery.sh` (47; 76 units, incl. flap, Cancel kept, Unknown retry, `shown`; engine:
+  the charger closes the notification, an unshown notification (id 0, or notify-send failing) leaves the
+  countdown called off); `tests/test-notification.sh` (50: `-p` with `--exec`, unshown fails, TERM closes).
+- Rejected: a fixed replace-id for the countdown toast (still orphans the waiting notify-send); closing by
+  id over D-Bus from the sender (a test or dry run could close a live notification on the owner's bus).
+- Known limit: on a shell restart systemd TERMs notify-send and the sender together; the sender's SIGINT may
+  arrive after notify-send has died, leaving a toast on a non-haseen notification daemon.
