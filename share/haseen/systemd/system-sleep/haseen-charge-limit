@@ -4,4 +4,4 @@
 # back (a drained battery can come back at 0-100%). systemd-sleep runs it as
 # root with "pre"/"post" and the sleep action.
 [ "$1" = post ] || exit 0
-PATH=${PATH:+$PATH:}/usr/local/bin:/usr/bin exec haseen battery limit restore
+HOME=${HOME:-/root} PATH=${PATH:+$PATH:}/usr/local/bin:/usr/bin exec haseen battery limit restore

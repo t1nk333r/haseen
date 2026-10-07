@@ -7,6 +7,9 @@ Description=haseen: restore the battery charge limit
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# System units get no HOME; haseen's common.sh needs one (it is never written
+# for these root-only commands).
+Environment=HOME=/root
 ExecStart=/usr/bin/env haseen battery limit restore
 ExecStop=/usr/bin/env haseen battery limit save
 
