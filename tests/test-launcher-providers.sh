@@ -291,6 +291,7 @@ ShellRoot {
                 probe.launcher.results[0].run();
                 probe.launcher.query = "@";
                 probe.put("windowsEmpty", probe.titles());
+                probe.put("windowGlyph", probe.launcher.results[0].glyph);
                 const rows = probe.provider("haseen.windows").rowsFor([
                     { address: "0xab12", title: "Fixture window", wmClass: "fakeapp", workspace: "3", focus: 0 }
                 ], "fix");
@@ -309,6 +310,9 @@ ShellRoot {
                     return s === "" || s.startsWith("image://icon/");
                 }));
                 rows[0].exec();
+                // Nothing read for emoji until a `:` query asks.
+                probe.put("emojiUnread", probe.provider("haseen.emojisearch").emojis.length === 0 && !probe.provider("haseen.emojisearch").wanted);
+                probe.launcher.query = ":";
                 probe.step = 1;
             } else if (probe.step === 1 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
                 // The first `/` query: no guard has answered yet.
@@ -318,11 +322,13 @@ ShellRoot {
             } else if (probe.step === 2 && probe.provider("haseen.emojisearch").emojis.length > 0 && probe.provider("haseen.commands").guards) {
                 probe.put("commandsAfter", probe.titles());
                 probe.put("commandsSubtitle", probe.launcher.results[0].subtitle);
+                probe.put("commandsGlyphs", probe.launcher.results.map(r => r.icon === "" && r.glyph !== ""));
                 probe.pick("Fixture Go");
                 probe.pick("Fixture Guarded");
                 probe.pick("Fixture Panel");
                 probe.launcher.query = ":red heart";
                 probe.put("emoji", probe.titles().slice(0, 2));
+                probe.put("emojiGlyph", probe.launcher.results[0].glyph);
                 probe.launcher.results[0].run();
                 // A second open: the shell-wide cache now holds this
                 // open's answers, but a new open must not run a guarded row
@@ -365,6 +371,7 @@ QML
         "systemd-run|--user|--scope|--slice=app-graphical.slice|--collect|--quiet|--unit=app-haseen-haseen_websearch-"
     assert_contains "web: the URL is the template with the encoded query" "$ARGV" "|--|xdg-open|https://duckduckgo.com/?q=a%20b%26c"
     assert_eq "windows: without Hyprland the list says so" '["No open windows"]' "$(r .windowsEmpty)"
+    assert_eq "windows: a window glyph stands in when the icon theme has none" $'"\uf2d0"' "$(r .windowGlyph)"
     assert_eq "windows: a row is the title over class and workspace" '["Fixture window","fakeapp  ·  workspace 3"]' "$(r .windowRow)"
     assert_contains "windows: Enter focuses it through hyprctl" "$ARGV" "hyprctl|dispatch|focuswindow|address:0xab12"
     assert_eq "windows: a client-set class that is a URL or a path becomes the generic icon" \
@@ -376,12 +383,15 @@ QML
     assert_eq "commands: a new open never shows a guarded row on the cached answers of an earlier one" \
         '["Fixture Go","Fixture Panel"]' "$(r .commandsReopen)"
     assert_eq "commands: the breadcrumb is the subtitle" '"Fixture"' "$(r .commandsSubtitle)"
+    assert_eq "commands: every row has a glyph and no icon-theme name" '[true,true,true]' "$(r .commandsGlyphs)"
     assert_contains "commands: Enter runs the action in bash through Apps.launch" "$ARGV" \
         "|--|bash|-c|PATH=\"\$1:\$PATH\"; eval \"\$2\"|bash|$REPO/bin|fakeapp command \"two words\""
     assert_contains "commands: a guarded row that answered true runs" "$ARGV" "|fakeapp guarded"
     assert_not_contains "commands: a guard that answered false never runs" "$ARGV" "fakeapp never"
     assert_contains "commands: a panel toggle goes to this shell over qs ipc" "$ARGV" "|call|panel|toggle|haseen.display"
-    assert_eq "emoji: :red heart lists the red heart first" '"❤️"' "$(r '.emoji[0] | split(" ")[0]')"
+    assert_eq "emoji: nothing is read before the first : query" true "$(r .emojiUnread)"
+    assert_eq "emoji: :red heart lists the red heart first, the emoji in the icon column" '"❤️"' "$(r .emojiGlyph)"
+    assert_eq "emoji: its title is its words, without the emoji" '"red heart heart love"' "$(r '.emoji[0]')"
     assert_contains "emoji: Enter copies it with wl-copy" "$ARGV" "wl-copy|--|❤️"
     assert_not_contains "nothing reached a stubbed binary" "$OUTPUT" "STUB-CALLED"
 fi

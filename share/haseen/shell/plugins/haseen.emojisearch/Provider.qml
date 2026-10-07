@@ -8,7 +8,9 @@ import "../haseen.emoji/EmojiSearch.js" as EmojiSearch
 // Launcher provider (plan 081): `:text` searches emoji with haseen.emoji's
 // list (whether or not that panel is enabled); Enter copies the emoji with
 // wl-copy. Never typed into a window: no key injection (plan 018). The
-// 100 KiB list is read when the launcher opens and freed with it.
+// 100 KiB list is read on the first `:` query of a launcher open, not on
+// every open, and freed with the launcher. The emoji itself fills the
+// row's icon column.
 Scope {
     id: root
 
@@ -19,6 +21,7 @@ Scope {
 
     readonly property string prefix: ":"
     property var emojis: []
+    property bool wanted: false
     // haseen.emoji's directory: a user copy when one overrides it.
     readonly property string dataDir: {
         const rec = Plugins.registry["haseen.emoji"];
@@ -30,6 +33,8 @@ Scope {
     }
 
     function query(text: string): var {
+        if (!wanted)
+            Qt.callLater(() => root.wanted = true);
         if (emojis.length === 0)
             return [
                 {
@@ -40,9 +45,9 @@ Scope {
                 }
             ];
         const rows = Emoji.rank(emojis, text, 50).map(item => ({
-                    title: item.e + "   " + item.k,
+                    title: item.k,
                     subtitle: "Emoji  ·  Enter copies",
-                    icon: "",
+                    glyph: item.e,
                     exec: () => root.copy(item.e)
                 }));
         if (rows.length === 0)
@@ -58,7 +63,7 @@ Scope {
     }
 
     FileView {
-        path: root.dataDir + "/emojis.json"
+        path: root.wanted ? root.dataDir + "/emojis.json" : ""
         onLoaded: root.emojis = EmojiSearch.parseEmojis(text())
     }
 }

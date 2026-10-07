@@ -28,8 +28,9 @@ function allowed(items, entry, guards) {
     return false;
 }
 
-// [{ id, label, path, action }] in menu order: action leaves a user could
-// reach in the menu, with the guards known so far.
+// [{ id, label, path, action, glyph }] in menu order: action leaves a user
+// could reach in the menu, with the guards known so far. `glyph` is the menu
+// row's own icon (a Nerd Font glyph).
 function leaves(items, itemOrder, guards) {
     const out = [];
     const c = guards && guards.c ? guards.c : {};
@@ -42,6 +43,7 @@ function leaves(items, itemOrder, guards) {
             label: Model.labelFor(entry, c, {}),
             path: Model.parentPathFor(items, entry.id),
             action: entry.action,
+            glyph: entry.icon || "",
             entry: entry
         });
     }

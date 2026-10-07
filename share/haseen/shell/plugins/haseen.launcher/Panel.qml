@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Fuzzy.js" as Fuzzy
 
 // haseen.launcher: type to fuzzy-filter DesktopEntries.applications, arrows
@@ -36,7 +37,9 @@ Column {
         return p.prefix + " " + (rec && rec.name ? rec.name : p.pluginId);
     }).join("    ")
 
-    // [{ title, subtitle, icon, run }]
+    // [{ title, subtitle, icon, glyph, run }]: `glyph` is drawn in the icon
+    // column when `icon` is empty or does not resolve in the icon theme, so
+    // no row shows a blank cell.
     readonly property var results: {
         const text = query;
         for (const p of providers) {
@@ -58,6 +61,7 @@ Column {
                     title: e.name,
                     subtitle: e.genericName || e.comment || "",
                     icon: e.icon,
+                    glyph: "\u{f003b}",
                     run: () => Apps.launchEntry(e)
                 }));
     }
@@ -71,6 +75,7 @@ Column {
                         title: String(r.title || ""),
                         subtitle: String(r.subtitle || ""),
                         icon: String(r.icon || ""),
+                        glyph: String(r.glyph || ""),
                         run: typeof r.exec === "function" ? r.exec : () => {}
                     }));
         } catch (e) {
@@ -198,7 +203,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             visible: input.text === ""
             text: "Search applications"
-            color: Theme.muted
+            color: root.subtitleColor
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
         }
@@ -248,7 +253,16 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 implicitSize: Theme.fontSize * 2
                 source: root.iconSource(row.modelData.icon)
-                visible: source.toString() !== ""
+                visible: source.toString() !== "" && status === Image.Ready
+            }
+
+            Glyph {
+                anchors.horizontalCenter: icon.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !icon.visible
+                glyph: row.modelData.glyph
+                color: row.ListView.isCurrentItem ? Theme.foreground : root.subtitleColor
+                font.pixelSize: Math.round(Theme.fontSize * 1.6)
             }
 
             Column {
@@ -293,7 +307,7 @@ Column {
         width: parent.width
         visible: root.results.length === 0
         text: "No matches"
-        color: Theme.muted
+        color: root.subtitleColor
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize

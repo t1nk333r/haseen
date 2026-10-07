@@ -63,19 +63,21 @@ Scope {
         if (!asked)
             Qt.callLater(askGuards);
         const ranked = Commands.rank(tree.items, rows, text).slice(0, 50);
+        // The menu row's own glyph, a terminal glyph for one without; no
+        // icon-theme name, which most themes lack for a command.
         if (ranked.length === 0)
             return [
                 {
                     title: defaultText === "" ? "Reading the menu…" : "No matching command",
                     subtitle: "Commands: the menu's actions, e.g. /theme, /screenshot, /update",
-                    icon: "system-run",
+                    glyph: "\uf120",
                     exec: () => {}
                 }
             ];
         return ranked.map(r => ({
                     title: r.label,
                     subtitle: r.path || "Menu",
-                    icon: "system-run",
+                    glyph: r.glyph || "\uf120",
                     exec: () => root.run(r.action)
                 }));
     }
