@@ -59,6 +59,13 @@ def dmsid: "dms." + (kebab | if . == "" then "unnamed" else . end);
 def omid: if test("^[a-z0-9-]+$") then "omarchy." + . else . end;
 def omsupported: ["bar-widget", "service", "panel", "overlay"];
 def omentry: {"bar-widget": "barWidget", "service": "service", "panel": "panel", "overlay": "overlay"};
+# toolsfrom: Manifest.js toolsFrom — plain names from upstream lists,
+# deduplicated; null when none, so the manifest carries no requires.
+def toolsfrom($lists): [$lists[] | select(type == "array") | .[] | select(type == "string")
+        | gsub("^\\s+|\\s+$"; "") | select(test("^[A-Za-z0-9][A-Za-z0-9._+-]*$"))]
+    | reduce .[] as $b ([]; if index([$b]) then . else . + [$b] end)
+    | if length > 0 then {tools: .} else null end;
+def withrequires($r): if $r == null then . else . + {requires: $r} end;
 def settype($t; $v): if (["string", "number", "integer", "boolean", "array", "object"] | index([$t])) then $t
     elif ($v | type) == "array" or ($v | type) == "boolean" or ($v | type) == "number" or ($v | type) == "object" then ($v | type)
     else "string" end;
@@ -88,15 +95,16 @@ def omarchy($dirname):
     (if (.kinds | type) == "array" then [.kinds[] | select(type == "string")] else [] end) as $kinds
     | (if (.entryPoints | isobj) then .entryPoints else {} end) as $ep
     | ($kinds | map(select(. as $kind | omsupported | index($kind)))) as $sup
+    | (.requires | if type == "array" then toolsfrom([.]) else . end) as $req
     | {compat: "omarchy", upstreamId: (if (.id | type) == "string" then .id else "" end), id: ($dirname | omid),
        problems: (if ($kinds | length) == 0 then ["omarchy: kinds must be a non-empty array"]
                   elif ($sup | length) == 0 then ["omarchy: no supported kind (has \($kinds | join(", ")); supported: \(omsupported | join(", ")))"]
                   else [] end),
        unsupported: ($kinds | map(select(. as $kind | omsupported | index($kind) | not))),
-       manifest: {schemaVersion: .schemaVersion, id: (if (.id | type) == "string" then (.id | omid) else .id end), name: .name, version: .version,
+       manifest: ({schemaVersion: .schemaVersion, id: (if (.id | type) == "string" then (.id | omid) else .id end), name: .name, version: .version,
                   description: (if (.description | type) == "string" then .description else "" end),
                   kinds: $sup, entry: (reduce $sup[] as $k ({}; . + {($k): $ep[(omentry | .[$k])]})),
-                  settings: omsettings, permissions: [], provides: []}};
+                  settings: omsettings, permissions: [], provides: []} | withrequires($req))};
 def dmssurfaces: (if (.capabilities | type) == "array" then .capabilities else [] end) as $caps
     | if (.components | isobj) then (.components | with_entries(select(.value | truthy)))
       elif (.component | truthy) then
@@ -116,16 +124,17 @@ def dms($dirname):
         elif (.permissions | type) == "array" then .permissions else [] end)
        | reduce (.[] | tostring | gsub("^\\s+|\\s+$"; "") | {"process": "exec", "network": "network"}[.] // empty) as $p
            ([]; if index([$p]) then . else . + [$p] end)) as $perms
+    | toolsfrom([.dependencies, .requires]) as $req
     | {compat: "dms", upstreamId: (if $valid then .id else "" end), id: $id,
        problems: ((if $valid then [] else ["dms: id must match ^[a-zA-Z][a-zA-Z0-9]*$"] end)
                   + (if ($loaded | length) > 0 then []
                      else ["dms: no bar widget, daemon or desktop surface (\(if ($names | length) > 0 then "has " + ($names | join(", ")) else "no component" end); the compat adapter loads bar widgets, daemons and desktop widgets only)"] end)),
        unsupported: [$names[] | select(. as $s | [dmskinds[][0]] | index([$s]) | not) | "dms:" + .],
-       manifest: {schemaVersion: 1, id: $id, name: .name, version: .version,
+       manifest: ({schemaVersion: 1, id: $id, name: .name, version: .version,
                   description: (if (.description | type) == "string" then .description else "" end),
                   kinds: [$loaded[][1]],
                   entry: (reduce $loaded[] as $k ({}; . + {($k[1]): ($surf[$k[0]] | if type == "string" and startswith("./") then .[2:] else . end)})),
-                  settings: {}, permissions: $perms, provides: []}};
+                  settings: {}, permissions: $perms, provides: []} | withrequires($req))};
 '
 
 # plugin_adapt DIR — the adapter result for an Omarchy or DMS plugin (see
@@ -278,7 +287,7 @@ plugin_check() {
     done < <(jq -r --arg re "$PLUGIN_ID_RE" --arg dirname "$name" '
         def kinds: ["bar-widget", "panel", "service", "launcher-provider", "overlay"];
         def perms: ["exec", "network", "network:local", "files:read", "files:write", "notifications"];
-        def fields: ["schemaVersion", "id", "name", "version", "description", "kinds", "entry", "settings", "permissions", "provides"];
+        def fields: ["schemaVersion", "id", "name", "version", "description", "kinds", "entry", "settings", "permissions", "provides", "requires"];
         def settypes: ["string", "number", "integer", "boolean", "array", "object"];
         def is_str: type == "string";
         def typeok($t): if $t == "integer" then (type == "number" and . == floor)
@@ -337,6 +346,20 @@ plugin_check() {
                 (if (.provides | length) != (.provides | unique | length) then "provides has duplicates" else empty end)
             end
          else empty end),
+        (if has("requires") then
+            if (.requires | type) != "object" then "requires must be an object"
+            else .requires |
+                (keys - ["bins", "tools", "layers", "haseen"] | .[] | "requires: unknown field \u0027\(.)\u0027"),
+                (if has("bins") and ((.bins | type) != "array" or (.bins | any(.[]; (is_str | not) or (test("^[A-Za-z0-9][A-Za-z0-9._+-]*$") | not))))
+                 then "requires.bins must be an array of command names" else empty end),
+                (if has("tools") and ((.tools | type) != "array" or (.tools | any(.[]; (is_str | not) or (test("^[A-Za-z0-9][A-Za-z0-9._+-]*$") | not))))
+                 then "requires.tools must be an array of command or package names" else empty end),
+                (if has("layers") and ((.layers | type) != "array" or (.layers | any(.[]; (is_str | not) or (test("^[a-z0-9-]+$") | not))))
+                 then "requires.layers must be an array of layer names" else empty end),
+                (if has("haseen") and ((.haseen | is_str | not) or (.haseen | test("^[0-9]+\\.[0-9]+\\.[0-9]+$") | not))
+                 then "requires.haseen must be a version (e.g. 0.2.0)" else empty end)
+            end
+         else empty end),
         (if (.entry | type) == "object" then .entry | to_entries[]
             | select((.value | is_str) and (.value | test("^/|(^|/)\\.\\.(/|$)") | not) and (.value | test("\\.qml$")))
             | "entry:\(.value)"
@@ -344,6 +367,77 @@ plugin_check() {
         end
     ' <<<"$adapted" 2>&1)
     return "$errors"
+}
+
+# plugin_version_at_least INSTALLED MINIMUM — Haseen/Requires.js atLeast: only
+# major.minor.patch count, so 0.1.0-dev satisfies 0.1.0; an unreadable
+# installed version satisfies nothing.
+plugin_version_at_least() {
+    local -a installed minimum
+    local i
+    [[ $1 =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]] || return 1
+    installed=("${BASH_REMATCH[@]:1:3}")
+    IFS=. read -ra minimum <<<"$2"
+    for i in 0 1 2; do
+        ((10#${installed[i]} == 10#${minimum[i]})) && continue
+        ((10#${installed[i]} > 10#${minimum[i]}))
+        return
+    done
+}
+
+# plugin_unmet DIR — the unmet `requires` of a valid plugin, one line each
+# with the messages of shell/Haseen/Requires.js (the shell refuses the plugin
+# for the same reasons); returns 1 when any is unmet. bins: a command on
+# PATH. tools (DMS `dependencies`: commands and package names mixed): a
+# command, or an installed package or provider (pacman -T); a name no
+# repository knows (another distribution's package) cannot be checked and
+# counts as met.
+plugin_unmet() {
+    local req name min have rc=0
+    # The shell runs plugins with the Compat command shims first on PATH
+    # (bin/haseen-shell-run), so a shimmed command (ydotool, dms) is there.
+    local PATH="$HASEEN_PATH/shell/Compat/bin:$PATH"
+    req="$(plugin_manifest "$1" | jq -c '.requires // {}')"
+    while IFS= read -r name; do
+        [[ -n $name ]] || continue
+        type -P "$name" >/dev/null || {
+            echo "requires: command '$name' is not on PATH"
+            rc=1
+        }
+    done < <(jq -r '(.bins // [])[]' <<<"$req")
+    while IFS= read -r name; do
+        [[ -n $name ]] || continue
+        type -P "$name" >/dev/null || pacman -T "$name" >/dev/null 2>&1 || ! pacman -Si "$name" >/dev/null 2>&1 || {
+            echo "requires: '$name' is neither a command on PATH nor an installed package"
+            rc=1
+        }
+    done < <(jq -r '(.tools // [])[]' <<<"$req")
+    while IFS= read -r name; do
+        [[ -n $name ]] || continue
+        [[ -r $(sysroot_path "$HASEEN_STATE_DIR/layers/$name") ]] || {
+            echo "requires: layer '$name' is not applied (haseen layer apply $name)"
+            rc=1
+        }
+    done < <(jq -r '(.layers // [])[]' <<<"$req")
+    min="$(jq -r '.haseen // empty' <<<"$req")"
+    if [[ -n $min ]]; then
+        have="$(cat "$HASEEN_PATH/VERSION" 2>/dev/null || true)"
+        plugin_version_at_least "$have" "$min" || {
+            echo "requires: haseen $min or newer (installed: ${have:-unknown})"
+            rc=1
+        }
+    fi
+    return "$rc"
+}
+
+# plugin_requires DIR — "commands a; tools b; layers c; haseen >= x.y.z", or
+# nothing.
+plugin_requires() {
+    plugin_manifest "$1" | jq -r '(.requires // {}) | [
+        (if (.bins // []) != [] then "commands " + (.bins | join(", ")) else empty end),
+        (if (.tools // []) != [] then "tools " + (.tools | join(", ")) else empty end),
+        (if (.layers // []) != [] then "layers " + (.layers | join(", ")) else empty end),
+        (if .haseen then "haseen >= " + .haseen else empty end)] | join("; ")'
 }
 
 # plugin_field DIR JQ_FILTER — read one value from a (valid) manifest.

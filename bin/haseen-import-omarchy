@@ -370,8 +370,8 @@ import_themes() {
 # are moved aside, never deleted.
 import_nvim() {
     local name f line
-    if ! theme_nvim_lazyvim; then
-        [[ -d $THEME_NVIM_CONFIG ]] && NOT_IMPORTED+=("nvim: $THEME_NVIM_CONFIG is not a LazyVim config, left as is")
+    if ! theme_nvim_follows; then
+        [[ -d $THEME_NVIM_CONFIG ]] && NOT_IMPORTED+=("nvim: $THEME_NVIM_CONFIG is neither LazyVim nor haseen.nvim, left as is")
         return 0
     fi
     if [[ ! -f $THEME_CURRENT_PATH/neovim.lua ]]; then

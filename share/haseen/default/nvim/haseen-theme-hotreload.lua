@@ -1,6 +1,6 @@
--- haseen theme hot-reload for LazyVim. `haseen theme set` links this file
--- into ~/.config/nvim/lua/plugins/ next to theme.lua, which points at
--- ~/.local/state/haseen/current/theme/neovim.lua.
+-- haseen theme hot-reload for LazyVim and haseen.nvim. `haseen theme set`
+-- links this file into ~/.config/nvim/lua/plugins/ next to theme.lua, which
+-- points at ~/.local/state/haseen/current/theme/neovim.lua.
 --
 -- lazy.nvim's change detection stats every spec file every 2 s, following the
 -- theme.lua link, and fires `User LazyReload` once the new theme is in place.

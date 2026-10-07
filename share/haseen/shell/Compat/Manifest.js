@@ -16,7 +16,9 @@
 // Omarchy services and panels use the same registry as native plugins. DMS
 // bar widgets become bar-widget entries, DMS daemons service entries and DMS
 // desktop widgets overlay entries (Compat/DmsDesktopHost.qml puts them on the
-// desktop layer); the other DMS surfaces stay unsupported.
+// desktop layer); the other DMS surfaces stay unsupported. DMS
+// `dependencies` become requires.tools, which the shell gates on
+// (Haseen/Requires.js).
 var supportedKinds = ["bar-widget", "service", "panel", "overlay"];
 
 // Omarchy kind -> its entryPoints key.
@@ -31,9 +33,38 @@ var omarchyEntryKeys = {
 
 var dmsIdPattern = /^[a-zA-Z][a-zA-Z0-9]*$/;
 var settingTypes = ["string", "number", "integer", "boolean", "array", "object"];
+// Haseen/Requires.js commandPattern: a name the requirement probe can look up.
+var commandPattern = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 
 function isObject(v) {
     return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+// Upstream requirement lists -> native requires.tools. DMS `dependencies`
+// (and its deprecated alias `requires`) are "required system tools", in
+// practice commands and package names mixed, so they become tools, not
+// strict bins. An entry that is not a plain name ("gpu screen recorder", a
+// version range) cannot be probed and is dropped. Undefined when nothing is
+// left, so the manifest has no `requires`.
+function toolsFrom(lists) {
+    var tools = [];
+    for (var i = 0; i < lists.length; i++)
+        if (Array.isArray(lists[i]))
+            for (var j = 0; j < lists[i].length; j++) {
+                var name = typeof lists[i][j] === "string" ? lists[i][j].trim() : "";
+                if (commandPattern.test(name) && tools.indexOf(name) < 0)
+                    tools.push(name);
+            }
+    return tools.length > 0 ? {
+        tools: tools
+    } : undefined;
+}
+
+// Omarchy's manifest has no requirement field and its registry ignores
+// unknown keys, so a plugin may carry haseen's `requires` object as is; a
+// bare array is read like DMS's list, and null as none.
+function omarchyRequires(r) {
+    return Array.isArray(r) ? toolsFrom([r]) : (r === null ? undefined : r);
 }
 
 // exampleEmojiPlugin -> example-emoji-plugin
@@ -161,7 +192,8 @@ function omarchy(dirName, m) {
             entry: entry,
             settings: omarchySettings(m),
             permissions: [],
-            provides: []
+            provides: [],
+            requires: omarchyRequires(m.requires)
         }
     };
 }
@@ -249,7 +281,8 @@ function dms(dirName, m) {
             entry: entry,
             settings: {},
             permissions: mapped,
-            provides: []
+            provides: [],
+            requires: toolsFrom([m.dependencies, m.requires])
         }
     };
 }

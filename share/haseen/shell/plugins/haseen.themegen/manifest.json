@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.themegen",
+  "name": "Theme generator",
+  "version": "1.0.0",
+  "description": "Pick an image, a matugen scheme and dark or light; preview the palette on a mock desktop, then Save it as a theme or Apply it (haseen theme generate)",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "requires": {
+    "bins": [
+      "matugen"
+    ]
+  },
+  "settings": {
+    "directories": {
+      "type": "array",
+      "default": [
+        "~/Pictures",
+        "~/Pictures/Wallpapers",
+        "~/.config/haseen/backgrounds"
+      ],
+      "description": "Directories to scan for images; ~ and $HOME expand, missing ones are skipped"
+    },
+    "depth": {
+      "type": "integer",
+      "default": 3,
+      "description": "How many directory levels of each entry to scan"
+    },
+    "limit": {
+      "type": "integer",
+      "default": 400,
+      "description": "Most images listed; a larger find result is cut and the count said"
+    },
+    "columns": {
+      "type": "integer",
+      "default": 5,
+      "description": "Thumbnails shown at once in the image strip"
+    },
+    "scheme": {
+      "type": "string",
+      "default": "tonal-spot",
+      "description": "Scheme selected when the panel opens (tonal-spot, content, expressive, fidelity, fruit-salad, monochrome, neutral, rainbow, vibrant)"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.themegen to drive the open panel without a keyboard"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

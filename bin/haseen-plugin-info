@@ -32,7 +32,14 @@ jq -r --arg dir "$dir" --arg origin "$(plugin_origin "$dir")" '
      else "settings:", (.settings | to_entries[] | "  \(.key) (\(.value.type)) default=\(.value.default | tojson)\(if .value.description then " - " + .value.description else "" end)")
      end)
 ' <(plugin_manifest "$dir")
-echo "state:       $(plugin_state "$id" "${kinds[@]}")"
+requires="$(plugin_requires "$dir")"
+echo "needs:       ${requires:--}"
+if unmet="$(plugin_unmet "$dir")"; then
+    echo "state:       $(plugin_state "$id" "${kinds[@]}")"
+else
+    echo "state:       unmet (the shell does not load it)"
+    printf '%s\n' "$unmet"
+fi
 user_settings="$(shell_merged_json | jq -c --arg id "$id" '.plugins[$id].settings // empty')"
 [[ -z $user_settings ]] || echo "shell.json settings: $user_settings"
 plugin_permissions "$dir"

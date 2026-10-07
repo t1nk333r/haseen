@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# haseen:summary Install haseen.nvim, the owner's Neovim config, into ~/.config/nvim (an existing config only with --replace, after a backup)
+# haseen:args [--replace | --if-absent] [--dry-run] [--yes]
+#
+# haseen.nvim is fetched, not shipped: haseen clones the owner's repository at
+# a pinned commit (plan 065) and adds one link of its own,
+# lua/plugins/haseen-colorscheme.lua, through which the config follows
+# `haseen theme set` like a LazyVim config does. The clone is staged beside
+# ~/.config/nvim and moved into place only once it is complete, so a failed
+# fetch leaves the old config as it was.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+# The repository haseen.nvim is fetched from, and the commit it is pinned to.
+# The repository is expected to become t1nk333r/haseen.nvim; GitHub redirects
+# a renamed repository's old URL, and this is the one line to change.
+NVIM_REPO_URL="${HASEEN_NVIM_REPO:-https://github.com/t1nk333r/nvim}"
+NVIM_COMMIT="${HASEEN_NVIM_COMMIT:-e6ef714cb535fa6eecca88bc3902549ddf3ac787}"
+
+DEST="$THEME_NVIM_CONFIG"
+BRIDGE="$THEME_NVIM_BRIDGE"
+BACKUP="$DEST.bak-$(date +%Y%m%d-%H%M%S)"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup nvim [--replace | --if-absent] [--dry-run] [--yes]
+
+Installs haseen.nvim, the owner's Neovim config, into $DEST:
+
+  1. Clones $NVIM_REPO_URL
+     at commit ${NVIM_COMMIT:0:12} next to $DEST.
+  2. Links lua/plugins/$BRIDGE (haseen's theme bridge),
+     and, once a haseen theme is set, theme.lua, haseen-theme-hotreload.lua
+     and haseen-all-themes.lua, as \`haseen theme set\` does. The links are
+     listed in the checkout's .git/info/exclude.
+  3. Moves the clone into place. lazy.nvim installs the plugins on nvim's
+     first start.
+
+The config is a git checkout: \`git -C $DEST pull\` follows the repository
+past the pinned commit.
+
+An existing $DEST is never touched unless --replace is given:
+
+  --replace     move it to $DEST.bak-<timestamp> first (asks first; --yes
+                does not ask). Plugins and data under ~/.local/share/nvim stay.
+  --if-absent   do nothing when it exists (the first install's seed)
+EOF
+}
+
+REPLACE=false
+IF_ABSENT=false
+args=()
+for arg in "$@"; do
+    case "$arg" in
+    --replace) REPLACE=true ;;
+    --if-absent) IF_ABSENT=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+if ((${#REST[@]} > 0)) || { $REPLACE && $IF_ABSENT; }; then
+    usage >&2
+    exit 2
+fi
+require_not_root
+
+EXISTS=false
+[[ -e $DEST || -L $DEST ]] && EXISTS=true
+if $EXISTS; then
+    if $IF_ABSENT; then
+        info "$DEST exists: yours, left as is (haseen setup nvim --replace installs haseen.nvim over it, after a backup)"
+        exit 0
+    fi
+    $REPLACE || die "$DEST exists; haseen setup nvim --replace moves it to $DEST.bak-<timestamp> and installs haseen.nvim"
+fi
+require_cmds git
+
+echo "haseen.nvim: $NVIM_REPO_URL at ${NVIM_COMMIT:0:12} -> $DEST"
+if $EXISTS; then
+    echo "Your config moves to $BACKUP (plugins and data in ~/.local/share/nvim stay)."
+    confirm "Replace $DEST with haseen.nvim?" || exit 1
+fi
+
+# --- stage -----------------------------------------------------------------------
+
+PARENT="$(dirname "$DEST")"
+if $DRY_RUN; then
+    STAGE="$PARENT/.nvim-haseen.XXXXXX"
+else
+    mkdir -p -- "$PARENT"
+    STAGE="$(mktemp -d "$PARENT/.nvim-haseen.XXXXXX")"
+    trap 'rm -rf -- "$STAGE"' EXIT
+fi
+
+run git clone --quiet --no-checkout -- "$NVIM_REPO_URL" "$STAGE" || die "cannot clone $NVIM_REPO_URL"
+# The clone's default branch moves to the pin, keeping its upstream, so a
+# later `git pull` fast-forwards from there.
+run git -C "$STAGE" reset --quiet --hard "$NVIM_COMMIT" ||
+    die "commit $NVIM_COMMIT is not in $NVIM_REPO_URL"
+
+src="$(readlink -f -- "$THEME_NVIM_DEFAULTS")"
+run mkdir -p -- "$STAGE/lua/plugins"
+run ln -s -- "$src/$BRIDGE" "$STAGE/lua/plugins/$BRIDGE"
+
+# The theme links, made in the stage: the bridge marks it as haseen.nvim.
+THEME_NVIM_CONFIG="$STAGE"
+THEME_NVIM_PLUGINS="$STAGE/lua/plugins"
+if $DRY_RUN; then
+    echo "then: theme.lua, haseen-theme-hotreload.lua and haseen-all-themes.lua linked as \`haseen theme set\` does"
+else
+    theme_link_nvim
+    for line in "${THEME_NVIM_CHANGED[@]}"; do info "$line"; done
+fi
+
+exclude="$STAGE/.git/info/exclude"
+{
+    [[ -f $exclude ]] && cat -- "$exclude"
+    echo "# Links haseen makes (haseen setup nvim, haseen theme set)."
+    printf '/lua/plugins/%s\n' theme.lua haseen-theme-hotreload.lua haseen-all-themes.lua "$BRIDGE"
+} | write_user_file "$exclude"
+
+# --- place -----------------------------------------------------------------------
+
+$EXISTS && run mv -T -- "$DEST" "$BACKUP"
+run mv -T -- "$STAGE" "$DEST"
+
+$DRY_RUN && exit 0
+trap - EXIT
+info "haseen.nvim is in $DEST (${NVIM_COMMIT:0:12})"
+$EXISTS && info "your previous config is in $BACKUP"
+if [[ ! -f $THEME_CURRENT_PATH/neovim.lua ]]; then
+    info "no haseen theme yet: \`haseen theme set <name>\` links lua/plugins/theme.lua"
+fi
+info "lazy.nvim installs the plugins when nvim first starts"

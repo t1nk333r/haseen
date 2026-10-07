@@ -1,0 +1,7 @@
+#!/bin/sh
+# haseen system-sleep hook (plan 060), installed by `haseen setup battery-limit
+# on`: after a resume or a thaw from hibernation, put the recorded charge limit
+# back (a drained battery can come back at 0-100%). systemd-sleep runs it as
+# root with "pre"/"post" and the sleep action.
+[ "$1" = post ] || exit 0
+HOME=${HOME:-/root} PATH=${PATH:+$PATH:}/usr/local/bin:/usr/bin exec haseen battery limit restore

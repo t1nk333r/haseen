@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# haseen:summary Switch the runtime context: normal, focus, game or present
+# haseen:args <normal|focus|game|present|status|auto-game> [--auto] [--dry-run]
+#
+# Plan 062. A context is a named set of haseen's own switches, entered and
+# left as one: the flags of `haseen toggle dnd|idle|screensaver|nightlight`,
+# and for game a Hyprland override applied live with `hyprctl eval`. Entering
+# from normal records the switches as they were; leaving puts every one back
+# to that record, whatever the context changed. Entering another context while
+# one is active replaces it against the same record, so focus → game → normal
+# still ends where it began. The idea of named runtime contexts comes from
+# aphotic-hypr (GPL): idea only, none of its code or text.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: haseen context <normal|focus|game|present> [--auto] [--dry-run]
+       haseen context [status]
+       haseen context auto-game [status|on|off|toggle|set CLASS…] [--dry-run]
+
+  normal   leave the active context: every switch it changed goes back to
+           what it was before the context began
+  focus    notifications held (do not disturb): popups and toasts stay quiet
+  game     notifications held, idle lock held off, Hyprland animations,
+           blur and shadows off
+  present  notifications held, idle lock and screensaver held off, the night
+           light paused
+  status   print the active context (normal when none)
+
+Switching from one context to another replaces it: the switches go back to
+the record taken when the first one began, then the new context applies.
+
+auto-game enters game by itself while a fullscreen window whose class
+matches one of the patterns (JavaScript regular expressions, whole class) has
+focus, and leaves when it loses focus or fullscreen. It is off by default.
+"on" watches Steam games (steam_app_<id>); "set" takes your own patterns.
+It never replaces a context you picked by hand. The watcher is the service of
+haseen.indicators, which "on" and "set" add to the shell's services.
+--auto marks a switch made by that watcher: game --auto does nothing while
+another context is active, normal --auto leaves only a game it entered.
+
+State: \$HASEEN_USER_STATE/flags/context (the name, while not normal),
+\$HASEEN_USER_STATE/context/saved (the record to restore) and, in game,
+\$HASEEN_USER_STATE/toggles/hypr/context-game.lua (kept across a Hyprland reload).
+EOF
+}
+
+CONTEXTS=(normal focus game present)
+# The flags a context may change, in the order they are applied; leaving
+# runs it backwards, so do not disturb is the last to go.
+FLAGS=(dnd idle-off screensaver-off nightlight)
+CONTEXT_FLAG="$HASEEN_USER_STATE/flags/context"
+STATE_DIR="$HASEEN_USER_STATE/context"
+SAVED="$STATE_DIR/saved"
+GAME_LUA="$HASEEN_USER_STATE/toggles/hypr/context-game.lua"
+INDICATORS=haseen.indicators
+# Steam runs every game under this class; haseen.pager knows games by it too.
+STEAM_CLASS='steam_app_\d+'
+
+# want CONTEXT FLAG — 1 = set, 0 = clear, "" = leave as recorded.
+want() {
+    case "$1:$2" in
+    focus:dnd | game:dnd | game:idle-off | present:dnd | present:idle-off | present:screensaver-off) echo 1 ;;
+    present:nightlight) echo 0 ;;
+    *) echo "" ;;
+    esac
+}
+
+flag_on() { [[ -e $HASEEN_USER_STATE/flags/$1 ]]; }
+
+# set_flag FLAG 0|1 — through the toggle that owns it, only when it differs.
+set_flag() {
+    local flag=$1 on=$2 cmd word now=0
+    if flag_on "$flag"; then now=1; fi
+    if [[ $now == "$on" ]]; then return 0; fi
+    case $flag in
+    dnd) cmd=dnd word=$([[ $on == 1 ]] && echo on || echo off) ;;
+    nightlight) cmd=nightlight word=$([[ $on == 1 ]] && echo on || echo off) ;;
+    # These two flags record the feature being off.
+    idle-off) cmd=idle word=$([[ $on == 1 ]] && echo off || echo on) ;;
+    screensaver-off) cmd=screensaver word=$([[ $on == 1 ]] && echo off || echo on) ;;
+    esac
+    if $DRY_RUN; then
+        HASEEN_NO_NOTIFY=1 "$BIN_DIR/haseen-toggle-$cmd" "$word" --dry-run
+    else
+        # The context is the change the user asked for; each toggle's own
+        # message would only repeat it.
+        HASEEN_NO_NOTIFY=1 "$BIN_DIR/haseen-toggle-$cmd" "$word" >/dev/null
+    fi
+}
+
+current() {
+    local name=""
+    if [[ -f $CONTEXT_FLAG ]]; then name=$(<"$CONTEXT_FLAG"); fi
+    case $name in
+    focus | game | present) echo "$name" ;;
+    *) echo normal ;;
+    esac
+}
+
+# The record: key=value lines (auto, flag.<name>, hypr.<option>).
+declare -A REC=()
+load_saved() {
+    REC=()
+    [[ -f $SAVED ]] || return 0
+    local k v
+    while IFS='=' read -r k v; do
+        if [[ -n $k ]]; then REC[$k]=$v; fi
+    done <"$SAVED"
+}
+write_saved() {
+    local k
+    for k in "${!REC[@]}"; do printf '%s=%s\n' "$k" "${REC[$k]}"; done | sort | write_user_file "$SAVED"
+}
+
+HYPR_OPTIONS=(animations:enabled decoration:blur:enabled decoration:shadow:enabled)
+# hypr_lua ANIMATIONS BLUR SHADOW — the three game options as one hl.config.
+hypr_lua() {
+    printf 'hl.config({ animations = { enabled = %s }, decoration = { blur = { enabled = %s }, shadow = { enabled = %s } } })\n' "$1" "$2" "$3"
+}
+hypr_eval() {
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl eval $1"
+    elif ! hyprctl eval "$1" >/dev/null 2>&1; then
+        warn "Hyprland did not take: $1"
+    fi
+}
+
+# Record the live values game changes, so leaving restores them exactly,
+# including a value set live (hyprctl) that no config file holds.
+save_hypr() {
+    local opt value
+    for opt in "${HYPR_OPTIONS[@]}"; do
+        if $DRY_RUN; then
+            echo "DRYRUN: record hyprctl getoption $opt"
+            continue
+        fi
+        value=$(hyprctl getoption "$opt" -j 2>/dev/null |
+            jq -r 'if has("bool") then .bool elif has("int") then (.int != 0) else empty end' 2>/dev/null) || value=""
+        if [[ $value == true || $value == false ]]; then REC[hypr.$opt]=$value; fi
+    done
+}
+
+enter_game_hypr() {
+    {
+        echo "-- haseen context game: \`haseen context normal\` removes this file."
+        hypr_lua false false false
+    } | write_user_file "$GAME_LUA"
+    hypr_eval "$(hypr_lua false false false)"
+}
+
+leave_game_hypr() {
+    run rm -f -- "$GAME_LUA"
+    local a=${REC[hypr.animations:enabled]:-} b=${REC[hypr.decoration:blur:enabled]:-} s=${REC[hypr.decoration:shadow:enabled]:-}
+    if [[ -n $a && -n $b && -n $s ]]; then
+        hypr_eval "$(hypr_lua "$a" "$b" "$s")"
+    elif $DRY_RUN; then
+        echo "DRYRUN: hyprctl eval <the recorded animations, blur and shadow>"
+    else
+        # Nothing recorded (Hyprland was not answering then): the config is
+        # the best record there is.
+        hyprctl reload >/dev/null 2>&1 || warn "Hyprland did not reload"
+    fi
+    unset 'REC[hypr.animations:enabled]' 'REC[hypr.decoration:blur:enabled]' 'REC[hypr.decoration:shadow:enabled]'
+}
+
+switch_to() {
+    local target=$1 auto=$2 cur flag i w
+    cur=$(current)
+    load_saved
+
+    if [[ $target == "$cur" ]]; then
+        # Picked by hand, a game the watcher entered becomes the user's:
+        # losing focus no longer leaves it.
+        if ! $auto && [[ ${REC[auto]:-0} == 1 ]]; then
+            REC[auto]=0
+            write_saved
+        fi
+        echo "Already in the $cur context"
+        return 0
+    fi
+    if $auto; then
+        if [[ $target == game && $cur != normal ]]; then
+            echo "Not replacing the $cur context (picked by hand)"
+            return 0
+        fi
+        if [[ $target == normal && ${REC[auto]:-0} != 1 ]]; then
+            echo "Not leaving the $cur context (picked by hand)"
+            return 0
+        fi
+    fi
+    if [[ $cur != normal && ! -f $SAVED ]]; then
+        warn "no record of the switches before the $cur context; they stay as they are"
+    fi
+
+    if [[ $cur == normal ]]; then
+        REC=()
+        for flag in "${FLAGS[@]}"; do
+            REC[flag.$flag]=$(flag_on "$flag" && echo 1 || echo 0)
+        done
+    fi
+    if [[ $cur == game ]]; then leave_game_hypr; fi
+
+    if [[ $target == normal ]]; then
+        for ((i = ${#FLAGS[@]} - 1; i >= 0; i--)); do
+            flag=${FLAGS[i]}
+            if [[ -n ${REC[flag.$flag]:-} ]]; then set_flag "$flag" "${REC[flag.$flag]}"; fi
+        done
+        run rm -f -- "$CONTEXT_FLAG" "$SAVED"
+        $DRY_RUN || echo "Back to normal"
+        return 0
+    fi
+
+    REC[auto]=$($auto && echo 1 || echo 0)
+    if [[ $target == game ]]; then save_hypr; fi
+    # The record lands first: a switch cut short can still be undone.
+    write_saved
+    for flag in "${FLAGS[@]}"; do
+        w=$(want "$target" "$flag")
+        if [[ -z $w ]]; then w=${REC[flag.$flag]:-}; fi
+        if [[ -n $w ]]; then set_flag "$flag" "$w"; fi
+    done
+    if [[ $target == game ]]; then enter_game_hypr; fi
+    printf '%s\n' "$target" | write_user_file "$CONTEXT_FLAG"
+    $DRY_RUN || echo "Context: $target"
+}
+
+# --- auto-game: the setting the haseen.indicators service watches -----------
+auto_classes() {
+    shell_merged_json | jq -c --arg id "$INDICATORS" '[.plugins[$id].settings.gameClasses // [] | .[]? | strings | select(length > 0)]'
+}
+
+# auto_write CLASSES_JSON — set the patterns; the service goes in the shell's
+# services while there are any and out when there are none.
+auto_write() {
+    local classes=$1 user merged updated
+    shell_config_lock
+    user=$(shell_user_json)
+    merged=$(shell_merged_json)
+    updated=$(jq --arg id "$INDICATORS" --argjson c "$classes" --argjson m "$merged" '
+        .plugins[$id].settings.gameClasses = $c
+        | .services = (($m.services // []) - [$id] + (if ($c | length) > 0 then [$id] else [] end))
+    ' <<<"$user")
+    if [[ $updated != "$user" ]]; then
+        printf '%s\n' "$updated" | shell_config_write
+    fi
+}
+
+auto_game() {
+    local action=${1:-status} classes c
+    classes=$(auto_classes)
+    case $action in
+    status)
+        (($# <= 1)) || { usage >&2; exit 2; }
+        if [[ $classes == "[]" ]]; then echo off; else jq -r '.[]' <<<"$classes"; fi
+        return 0
+        ;;
+    toggle)
+        (($# <= 1)) || { usage >&2; exit 2; }
+        if [[ $classes == "[]" ]]; then action=on; else action=off; fi
+        ;;
+    on | off) (($# <= 1)) || { usage >&2; exit 2; } ;;
+    set)
+        shift
+        (($# > 0)) || { usage >&2; exit 2; }
+        for c in "$@"; do
+            [[ -n $c && $c != *[[:cntrl:]]* ]] || die "empty pattern or control character in '$c'"
+        done
+        auto_write "$(printf '%s\n' "$@" | jq -R . | jq -sc .)"
+        $DRY_RUN || echo "Auto game: $*"
+        return 0
+        ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    if [[ $action == on ]]; then
+        [[ $classes != "[]" ]] || classes=$(jq -nc --arg c "$STEAM_CLASS" '[$c]')
+        auto_write "$classes"
+        $DRY_RUN || echo "Auto game: $(jq -r 'join(" ")' <<<"$classes")"
+    else
+        auto_write '[]'
+        $DRY_RUN || echo "Auto game: off"
+        # The watcher goes with the setting, so it cannot leave a game it
+        # entered; leave it here (a context picked by hand stays).
+        if $DRY_RUN; then
+            "$BIN_DIR/haseen-context" normal --auto --dry-run
+        else
+            "$BIN_DIR/haseen-context" normal --auto >/dev/null
+        fi
+    fi
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-status}
+
+if [[ $action == auto-game ]]; then
+    shift
+    auto_game "$@"
+    exit 0
+fi
+
+auto=false
+args=()
+for a in "$@"; do
+    if [[ $a == --auto ]]; then auto=true; else args+=("$a"); fi
+done
+((${#args[@]} <= 1)) || { usage >&2; exit 2; }
+action=${args[0]:-status}
+
+case $action in
+status)
+    $auto && { usage >&2; exit 2; }
+    current
+    ;;
+*)
+    known=false
+    for c in "${CONTEXTS[@]}"; do [[ $c == "$action" ]] && known=true; done
+    $known || { usage >&2; exit 2; }
+    if $auto && [[ $action != game && $action != normal ]]; then
+        usage >&2
+        exit 2
+    fi
+    # One switch at a time: the watcher and a menu click may race, and two
+    # records taken at once would restore the wrong switches.
+    if ! $DRY_RUN; then
+        mkdir -p "$STATE_DIR"
+        exec {lock_fd}>"$STATE_DIR/lock"
+        flock -x "$lock_fd"
+    fi
+    switch_to "$action" "$auto"
+    ;;
+esac

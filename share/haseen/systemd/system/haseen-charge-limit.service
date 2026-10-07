@@ -1,0 +1,17 @@
+[Unit]
+Description=haseen: restore the battery charge limit
+# Installed and enabled only by `haseen setup battery-limit on` (plan 060).
+# Start applies /etc/haseen/charge-limit; stop records what the battery holds,
+# so a limit a power panel set itself survives a clean reboot.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# System units get no HOME; haseen's common.sh needs one (it is never written
+# for these root-only commands).
+Environment=HOME=/root
+ExecStart=/usr/bin/env haseen battery limit restore
+ExecStop=/usr/bin/env haseen battery limit save
+
+[Install]
+WantedBy=multi-user.target

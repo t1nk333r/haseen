@@ -17,7 +17,7 @@ BarButton {
     required property Item host
     property bool active: false
 
-    readonly property var cell: Logic.cell(modelData, active)
+    readonly property var cell: Logic.cell(modelData, active, Flags.context)
 
     // Not the parent's height: a Grid's parent is 0 high until it has width,
     // and Grid skips zero-sized children.

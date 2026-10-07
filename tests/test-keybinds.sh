@@ -125,6 +125,8 @@ assert_eq "SUPER + CTRL + SPACE opens the background picker" \
     $'Background picker\thaseen shell ipc panel toggle \'haseen.background\'' "$(bound CTRL+SUPER+SPACE)"
 assert_eq "the next background moved to SUPER + CTRL + ALT + SPACE" \
     $'Next background\thaseen theme bg next' "$(bound ALT+CTRL+SUPER+SPACE)"
+assert_eq "SUPER + CTRL + M opens the context menu (plan 062)" \
+    $'Context menu\thaseen menu trigger.context' "$(bound CTRL+SUPER+M)"
 # Every panel a key toggles is a shipped panel plugin.
 for id in $(grep -o "panel toggle '[^']*'" <<<"$shipped" | cut -d"'" -f2 | sort -u); do
     assert_eq "bound panel $id is a shipped panel plugin" "panel" \

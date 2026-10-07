@@ -1,0 +1,389 @@
+#!/usr/bin/env bash
+# haseen:summary Recover a failing shell: suspect plugin, safe mode, last good shell.json
+# haseen:args <present|offer|status|disable-suspect [id]|safe-mode <on [reason]|off|toggle|status>|restore-last|snapshot [--force]> [--dry-run]
+#
+# Plan 061. haseen-shell.service has OnFailure=haseen-shell-recover.service,
+# which runs `present` once a crash loop reaches the unit's start limit:
+#   1. the tail of the shell's journal is matched against every plugin's id
+#      and directory, and the failure and its suspect are recorded;
+#   2. a floating terminal (`offer`) asks what to do: disable the suspect,
+#      safe mode, restore the last good shell.json, or start it as it is.
+# The offer is a terminal, not a second Quickshell config: whatever stopped
+# the shell (a plugin, Qt, quickshell itself) can stop that one as well.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+SERVICE=haseen-shell.service
+RECOVERY_DIR="$HASEEN_USER_STATE/recovery"
+# Haseen/Plugins.qml watches this file; its parent is created by `haseen shell run`.
+SAFE_MODE_FILE="$HASEEN_USER_STATE/safe-mode"
+FAILURE_FILE="$RECOVERY_DIR/last-failure.json"
+LAST_GOOD_FILE="$RECOVERY_DIR/last-good.json"
+REPLACED_FILE="$RECOVERY_DIR/shell.json.replaced"
+JOURNAL_LINES=${HASEEN_RECOVER_JOURNAL_LINES:-300}
+HEALTHY_MINUTES=${HASEEN_SHELL_HEALTHY_MINUTES:-10}
+
+usage() {
+    cat <<EOF
+Usage: haseen shell recover <command> [--dry-run]
+
+  present              record why the shell stopped, then open the offer
+                       (run by haseen-shell-recover.service on failure)
+  offer                the recovery choices, in this terminal
+  status               safe mode, the last failure, the last good shell.json
+  disable-suspect [ID] haseen plugin disable on the recorded suspect (or ID)
+  safe-mode on [REASON]|off|toggle
+                       hold back every plugin that is not built in
+                       (user, user:omarchy, user:dms, omarchy, dms); the
+                       running shell follows at once
+  safe-mode status [--quiet]
+                       --quiet: no output, exit 0 when on
+  restore-last         put the last good shell.json back (the replaced one is
+                       kept as $REPLACED_FILE)
+  snapshot [--force]   save shell.json as the last good one once the shell has
+                       run for $HEALTHY_MINUTES minutes and shell.json is as old
+                       (haseen-crash-watch.service asks every 5 minutes)
+
+Each fix starts the shell again when the start limit stopped it.
+Files: $SAFE_MODE_FILE, $RECOVERY_DIR/
+Environment: HASEEN_SHELL_HEALTHY_MINUTES (default 10).
+EOF
+}
+
+# write_atomic DEST — stdin becomes DEST through a rename, so the shell's
+# watch never reads half a file.
+write_atomic() {
+    local dest="$1" tmp="$1.new"
+    $DRY_RUN || tmp="$1.new.$$"
+    write_user_file "$tmp"
+    run mv -f -- "$tmp" "$dest"
+}
+
+# resume_shell — start the shell again only when the start limit left it
+# failed. A stopped unit was stopped on purpose (haseen shell use dms).
+resume_shell() {
+    if systemctl --user is-failed --quiet "$SERVICE" 2>/dev/null; then
+        run systemctl --user reset-failed "$SERVICE"
+        run systemctl --user start "$SERVICE"
+        info "$SERVICE started again"
+    fi
+}
+
+journal_tail() {
+    journalctl --user -u "$SERVICE" -b -n "$JOURNAL_LINES" -o cat --no-pager 2>/dev/null || true
+}
+
+# find_suspect LOG — "id<TAB>dir<TAB>origin<TAB>line" for the plugin the log
+# blames, or nothing. A plugin is named by its directory (QML errors carry
+# file URLs) or its id as a whole word (haseen's own warnings). A plugin
+# that is not built in beats a built-in, then the later mention wins:
+# built-ins ship tested with haseen, and the last words before a crash are
+# the likeliest cause.
+find_suspect() {
+    local log="$1" id dir real origin n n2 re rank best_rank=-1 best=""
+    # plugin_index lists a shadowed copy after the copy that wins: the winner
+    # names the directory and origin, either copy may carry the mention.
+    declare -A winner=()
+    [[ -n $log ]] || return 0
+    while IFS=$'\t' read -r id dir; do
+        [[ -n $id ]] || continue
+        [[ -n ${winner[$id]:-} ]] || winner[$id]=$dir
+        real="$(readlink -f -- "$dir")"
+        re="${id//./\\.}"
+        n="$(grep -nF -e "$dir/" -e "$real/" <<<"$log" | tail -n 1 | cut -d: -f1)"
+        n2="$(grep -nE "(^|[^A-Za-z0-9._-])$re(\$|[^A-Za-z0-9_.-]|\\.(\$|[^A-Za-z0-9_-]))" <<<"$log" | tail -n 1 | cut -d: -f1)"
+        ((${n2:-0} > ${n:-0})) && n=$n2
+        [[ -n $n ]] || continue
+        origin="$(plugin_origin "${winner[$id]}")"
+        rank=$n
+        [[ $origin == builtin ]] || rank=$((n + 1000000))
+        if ((rank > best_rank)); then
+            best_rank=$rank
+            best="$id"$'\t'"${winner[$id]}"$'\t'"$origin"$'\t'"$(sed -n "${n}p" <<<"$log")"
+        fi
+    done < <(plugin_index)
+    [[ -z $best ]] || printf '%s\n' "$best"
+}
+
+record_failure() {
+    local log suspect
+    log="$(journal_tail)"
+    suspect="$(find_suspect "$log")"
+    jq -n --arg time "$(date -Iseconds)" --arg unit "$SERVICE" --arg suspect "$suspect" --arg log "$log" '
+        ($suspect | split("\t")) as $s
+        | {time: $time, unit: $unit,
+           suspect: (if ($s | length) >= 3 then {id: $s[0], dir: $s[1], origin: $s[2], line: ($s[3:] | join("\t"))} else null end),
+           tail: ($log | split("\n") | map(select(length > 0)) | .[-12:])}' |
+        write_atomic "$FAILURE_FILE"
+    if [[ -n $suspect ]]; then
+        info "shell failure recorded; suspect: $(cut -f1 <<<"$suspect") ($(cut -f3 <<<"$suspect"))"
+    else
+        info "shell failure recorded; no plugin named in the last $JOURNAL_LINES journal lines"
+    fi
+}
+
+failure_field() { jq -r "$1 // empty" "$FAILURE_FILE" 2>/dev/null || true; }
+
+safe_mode_on() {
+    local reason="${1:-turned on by hand}"
+    if [[ -e $SAFE_MODE_FILE ]]; then
+        info "safe mode is already on"
+    else
+        jq -n --arg reason "$reason" --arg since "$(date -Iseconds)" '{reason: $reason, since: $since}' |
+            write_atomic "$SAFE_MODE_FILE"
+        info "safe mode on: plugins that are not built in are held back (off: haseen shell recover safe-mode off)"
+    fi
+    resume_shell
+}
+
+safe_mode_off() {
+    if [[ -e $SAFE_MODE_FILE ]]; then
+        run rm -f -- "$SAFE_MODE_FILE"
+        info "safe mode off: every enabled plugin loads again"
+    else
+        info "safe mode is already off"
+    fi
+}
+
+safe_mode_status() {
+    if [[ ! -e $SAFE_MODE_FILE ]]; then
+        echo "safe mode: off"
+        return 0
+    fi
+    local since reason
+    since="$(jq -r '.since // empty' "$SAFE_MODE_FILE" 2>/dev/null || true)"
+    reason="$(jq -r '.reason // empty' "$SAFE_MODE_FILE" 2>/dev/null || true)"
+    echo "safe mode: on${since:+ since $since}${reason:+ ($reason)}"
+}
+
+disable_suspect() {
+    local id="${1:-}" dry=()
+    [[ -n $id ]] || id="$(failure_field .suspect.id)"
+    [[ -n $id ]] || die "no suspect recorded (haseen shell recover status); name one: haseen shell recover disable-suspect <id>"
+    $DRY_RUN && dry=(--dry-run)
+    "$BIN_DIR/haseen-plugin-disable" "$id" "${dry[@]}"
+    resume_shell
+}
+
+restore_last() {
+    [[ -r $LAST_GOOD_FILE ]] ||
+        die "no last good shell.json yet: one is saved after the shell has run $HEALTHY_MINUTES minutes"
+    jq -e 'type == "object"' "$LAST_GOOD_FILE" >/dev/null 2>&1 || die "$LAST_GOOD_FILE is not a JSON object"
+    shell_config_lock
+    if [[ -e $SHELL_USER_CONFIG ]] && cmp -s -- "$LAST_GOOD_FILE" "$SHELL_USER_CONFIG"; then
+        info "shell.json already is the last good one"
+    else
+        # The raw bytes: a shell.json that is not JSON may be what broke it.
+        local kept=""
+        if [[ -e $SHELL_USER_CONFIG ]]; then
+            write_atomic "$REPLACED_FILE" <"$SHELL_USER_CONFIG"
+            kept="; the replaced one is $REPLACED_FILE"
+        fi
+        shell_config_write <"$LAST_GOOD_FILE"
+        info "restored the last good shell.json from $(date -r "$LAST_GOOD_FILE" '+%F %R')$kept"
+    fi
+    resume_shell
+}
+
+# snapshot FORCE — the last good shell.json. Healthy means: the unit has
+# been active for HEALTHY_MINUTES, shell.json has not changed for as long
+# (a fresh edit has proven nothing yet), and safe mode is off (a shell that
+# runs only built-ins proves nothing about the rest).
+snapshot() {
+    local force=$1 healthy=$((HEALTHY_MINUTES * 60)) state since
+    if ! $force; then
+        if [[ -e $SAFE_MODE_FILE ]]; then
+            info "safe mode is on: no snapshot"
+            return 0
+        fi
+        state="$(systemctl --user show -P ActiveState "$SERVICE" 2>/dev/null || true)"
+        if [[ $state != active ]]; then
+            info "$SERVICE is not active: no snapshot"
+            return 0
+        fi
+        since="$(systemctl --user show --timestamp=unix -P ActiveEnterTimestamp "$SERVICE" 2>/dev/null || true)"
+        since="${since#@}"
+        if [[ ! $since =~ ^[0-9]+$ ]] || ((EPOCHSECONDS - since < healthy)); then
+            info "the shell has run less than $HEALTHY_MINUTES minutes: no snapshot"
+            return 0
+        fi
+        if [[ -e $SHELL_USER_CONFIG ]] && ((EPOCHSECONDS - $(stat -c %Y -- "$SHELL_USER_CONFIG") < healthy)); then
+            info "shell.json changed less than $HEALTHY_MINUTES minutes ago: no snapshot"
+            return 0
+        fi
+    fi
+    if [[ -e $SHELL_USER_CONFIG ]]; then
+        jq -e 'type == "object"' "$SHELL_USER_CONFIG" >/dev/null 2>&1 || die "$SHELL_USER_CONFIG is not a JSON object: no snapshot"
+        if [[ -r $LAST_GOOD_FILE ]] && cmp -s -- "$SHELL_USER_CONFIG" "$LAST_GOOD_FILE"; then
+            info "the last good shell.json is current"
+            return 0
+        fi
+        write_atomic "$LAST_GOOD_FILE" <"$SHELL_USER_CONFIG"
+    else
+        # No user file runs the defaults: restoring means an empty overlay.
+        [[ -r $LAST_GOOD_FILE && $(jq -c . "$LAST_GOOD_FILE" 2>/dev/null) == '{}' ]] && return 0
+        echo '{}' | write_atomic "$LAST_GOOD_FILE"
+    fi
+    info "saved the last good shell.json: $LAST_GOOD_FILE"
+}
+
+status() {
+    local state time id origin
+    state="$(systemctl --user is-active "$SERVICE" 2>/dev/null || true)"
+    echo "shell: ${state:-unknown}"
+    safe_mode_status
+    if [[ -r $FAILURE_FILE ]]; then
+        time="$(failure_field .time)"
+        id="$(failure_field .suspect.id)"
+        origin="$(failure_field .suspect.origin)"
+        if [[ -n $id ]]; then
+            echo "last failure: $time, suspect $id ($origin)"
+        else
+            echo "last failure: $time, no plugin named"
+        fi
+    else
+        echo "last failure: none recorded"
+    fi
+    if [[ -r $LAST_GOOD_FILE ]]; then
+        echo "last good shell.json: $(date -r "$LAST_GOOD_FILE" '+%F %R') ($LAST_GOOD_FILE)"
+    else
+        echo "last good shell.json: none yet"
+    fi
+}
+
+# offer — the choices, one key each. Every fix starts the shell again.
+offer() {
+    local id origin dir line choice reason keys
+    id="$(failure_field .suspect.id)"
+    origin="$(failure_field .suspect.origin)"
+    dir="$(failure_field .suspect.dir)"
+    line="$(failure_field .suspect.line)"
+    echo "haseen shell recovery"
+    echo
+    if [[ -r $FAILURE_FILE ]]; then
+        echo "The shell stopped after failing again and again ($(failure_field .time))."
+        if [[ -n $id ]]; then
+            echo "Suspect: $id ($origin)"
+            echo "  $dir"
+            echo "  > ${line:0:200}"
+        else
+            echo "No plugin is named in its log. The last lines:"
+            jq -r '.tail[-5:][] | "  > " + .[0:200]' "$FAILURE_FILE" 2>/dev/null || true
+        fi
+    else
+        echo "No failure recorded."
+    fi
+    echo
+    safe_mode_status
+    echo
+    keys=""
+    if [[ -n $id ]]; then
+        echo "  d  Disable $id"
+        keys+=d
+    fi
+    if [[ ! -e $SAFE_MODE_FILE ]]; then
+        echo "  s  Safe mode: run built-in plugins only"
+        keys+=s
+    fi
+    if [[ -r $LAST_GOOD_FILE ]]; then
+        echo "  r  Restore the last good shell.json ($(date -r "$LAST_GOOD_FILE" '+%F %R'))"
+        keys+=r
+    fi
+    echo "  c  Continue: start the shell as it is"
+    echo "  q  Leave it stopped"
+    keys+=cq
+    while true; do
+        read -r -p "Choice [$keys]: " choice || choice=q
+        [[ ${#choice} == 1 && $keys == *"$choice"* ]] && break
+    done
+    echo
+    case "$choice" in
+    d) disable_suspect "$id" ;;
+    s)
+        reason="the shell kept failing"
+        [[ -n $id ]] && reason+="; suspect $id"
+        safe_mode_on "$reason"
+        ;;
+    r) restore_last ;;
+    c) resume_shell ;;
+    q) info "the shell stays stopped; start it with: systemctl --user reset-failed $SERVICE && systemctl --user start $SERVICE" ;;
+    esac
+}
+
+present() {
+    record_failure
+    if [[ -t 0 || ${HASEEN_INLINE:-} == 1 ]]; then
+        offer
+        return
+    fi
+    if ! have "${TERMINAL:-foot}" && ! have foot; then
+        die "no terminal for the offer; from a text console (Ctrl+Alt+F3) run: haseen shell recover offer"
+    fi
+    local args=(offer)
+    $DRY_RUN && args+=(--dry-run)
+    floating_terminal_exec "$(readlink -f "$0")" "${args[@]}"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+case "${1:-}" in
+present | offer | status | restore-last)
+    (($# == 1)) || {
+        usage >&2
+        exit 2
+    }
+    case "$1" in
+    present) present ;;
+    offer) offer ;;
+    status) status ;;
+    restore-last) restore_last ;;
+    esac
+    ;;
+disable-suspect)
+    (($# <= 2)) || {
+        usage >&2
+        exit 2
+    }
+    [[ -z ${2:-} || $2 =~ $PLUGIN_ID_RE ]] || die "invalid id '$2'"
+    disable_suspect "${2:-}"
+    ;;
+safe-mode)
+    case "${2:-}" in
+    on)
+        shift 2
+        safe_mode_on "$*"
+        ;;
+    off) safe_mode_off ;;
+    toggle) if [[ -e $SAFE_MODE_FILE ]]; then safe_mode_off; else safe_mode_on ""; fi ;;
+    status | "")
+        if [[ ${3:-} == --quiet ]]; then
+            [[ -e $SAFE_MODE_FILE ]]
+        else
+            safe_mode_status
+        fi
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    ;;
+snapshot)
+    case "${2:-}" in
+    "") snapshot false ;;
+    --force) snapshot true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

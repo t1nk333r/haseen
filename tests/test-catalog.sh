@@ -191,12 +191,37 @@ assert_contains "update: repos" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
 assert_contains "update: AUR" "$OUTPUT" "DRYRUN: paru -Sua"
 assert_contains "update: user flatpaks" "$OUTPUT" "DRYRUN: flatpak update --user"
 assert_contains "update: system flatpaks when present" "$OUTPUT" "DRYRUN: flatpak update --system"
+# A machine that still carries the omarchy package has a pacman hook that aborts
+# any -Syu not started by `omarchy update`; haseen update must get through it.
+guard_root="$SANDBOX/omarchy-guard"
+mkdir -p "$guard_root/usr/share/libalpm/hooks"
+: >"$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+assert_contains "update: passes Omarchy's pacman guard where it is installed" "$OUTPUT" \
+    "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syu"
 capture haseen update firmware --dry-run --yes
 all+="$OUTPUT"
 assert_contains "firmware: refresh" "$OUTPUT" "DRYRUN: fwupdmgr refresh --force"
 assert_contains "firmware: update as root" "$OUTPUT" "DRYRUN: sudo fwupdmgr update"
 capture haseen update kernel --dry-run
 assert_status "update: unknown target" 2 "$STATUS"
+
+# A real (not dry) update on a terminal, as the floating terminal runs it:
+# the banner must not stop it (plan 060: it read a file plan 059 removed, so
+# every click on an update button ended at "No such file" before pacman).
+# Root, AUR and Flatpak are stubs that only record their arguments.
+tty_bin="$SANDBOX/update-tty"
+mkdir -p "$tty_bin"
+for c in sudo paru flatpak; do
+    printf '#!/bin/sh\necho "RAN: %s $*"\n' "$c" >"$tty_bin/$c"
+    chmod +x "$tty_bin/$c"
+done
+capture env PATH="$tty_bin:$PATH" script -qec "haseen update" /dev/null
+assert_status "update on a TTY: completes" 0 "$STATUS"
+assert_not_contains "update on a TTY: no missing banner file" "$OUTPUT" "No such file"
+assert_contains "update on a TTY: shows the mark's logo" "$OUTPUT" "$(head -n1 "$HASEEN_PATH/branding/logo-kufic.txt")"
+assert_contains "update on a TTY: reaches pacman" "$OUTPUT" "RAN: sudo pacman -Syu"
+assert_contains "update on a TTY: reaches the AUR" "$OUTPUT" "RAN: paru -Sua"
 
 capture haseen time sync --dry-run
 all+="$OUTPUT"

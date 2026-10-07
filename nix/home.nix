@@ -89,14 +89,34 @@ in
           PartOf = [ "graphical-session.target" ];
           After = [ "graphical-session.target" ];
           Conflicts = [ "dms.service" ];
+          # Recovery (plan 061): only a crash loop reaching the start limit
+          # leaves the unit failed and opens the offer.
+          OnFailure = [ "haseen-shell-recover.service" ];
+          StartLimitIntervalSec = 60;
+          StartLimitBurst = 4;
         };
         Service = {
+          # The safe-mode watch needs ~/.local/state/haseen to exist.
+          ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p %S/haseen";
           ExecStart = "${lib.getExe' cfg.package.quickshell "qs"} -p ${haseenPath}/shell";
           Environment = [ "HASEEN_PATH=${haseenPath}" ];
           Restart = "on-failure";
           RestartSec = 2;
+          RestartMode = "direct";
         };
         Install.WantedBy = [ "graphical-session.target" ];
+      };
+
+      systemd.user.services.haseen-shell-recover = {
+        Unit = {
+          Description = "haseen: offer recovery when the shell keeps failing";
+          PartOf = [ "graphical-session.target" ];
+          After = [ "graphical-session.target" ];
+        };
+        Service = {
+          ExecStart = "${lib.getExe cfg.package} shell recover present";
+          Environment = [ "HASEEN_PATH=${haseenPath}" ];
+        };
       };
 
       # Wallpaper (plan 020): swaybg drawing ~/.local/state/haseen/current/background.

@@ -419,7 +419,7 @@ function childCount(items, itemOrder, id) {
 // runs each once and substitutes the captured value, so Defaults > Browser
 // asks `haseen setup default browser` once rather than once per row. Eager:
 // a lazy memo set inside one `$(...)` would die with that subshell.
-var GUARD_READERS = ["haseen setup dns", "haseen setup default browser", "haseen setup default terminal", "haseen setup default editor", "haseen setup default agent", "haseen font current"];
+var GUARD_READERS = ["haseen setup dns", "haseen setup default browser", "haseen setup default terminal", "haseen setup default editor", "haseen setup default agent", "haseen font current", "haseen context status"];
 
 // Package and command presence asked one at a time are almost all fork; the
 // helpers answer them inside the guard process. `pacman -Qi` provides are

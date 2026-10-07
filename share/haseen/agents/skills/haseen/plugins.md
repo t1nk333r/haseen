@@ -127,10 +127,20 @@ After editing the QML of an existing plugin, run step 6 again. Edits to
 | `settings` | `{ name: { type, default, description } }`; type is `string number integer boolean array object` |
 | `permissions` | any of `exec network network:local files:read files:write notifications` |
 | `provides` | optional roles the plugin answers: `launcher`, `lock`, `notifications` |
+| `requires` | optional `{ bins: [commands], tools: [command or package names], layers: [haseen layers], haseen: "0.2.0" }` |
 
 No other top-level fields are allowed. `permissions` is review metadata
 (QML cannot be sandboxed): declare honestly what the code does. `network`
 (beyond localhost) makes `validate` warn; tell the user why it is needed.
+
+`requires` is enforced: while a `bins` command is missing from PATH, a
+`tools` name is neither a command nor an installed package, a layer is not
+applied or haseen is older than `haseen`, the shell does not load the plugin.
+Use `bins` for commands the code runs; `tools` exists for DMS-style lists.
+`haseen plugin validate` and `haseen plugin list` show it as `unmet` with the
+reason, and the user gets one notification when an enabled plugin is refused.
+Declare only what the plugin cannot work without. After installing the
+missing piece, `haseen shell ipc shell reload` checks again.
 
 ## Writing the QML
 

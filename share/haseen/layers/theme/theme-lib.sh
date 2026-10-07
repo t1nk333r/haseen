@@ -27,10 +27,14 @@ THEME_CURRENT_PATH="$THEME_CURRENT_DIR/theme"
 THEME_NEXT_PATH="$THEME_CURRENT_DIR/next-theme"
 THEME_NAME_FILE="$THEME_CURRENT_DIR/theme.name"
 THEME_BACKGROUND_LINK="$THEME_CURRENT_DIR/background"
-# The owner's theme on luna (2026-10-04): HANCORE's Greek Noir with the
-# owner's "akane" border wipe. Not an Omarchy stock theme, so `theme fetch`
-# has no images for it; backgrounds go in ~/.config/haseen/backgrounds/<name>/.
-THEME_DEFAULT=greek-noir-akane
+# haseen's own theme (plan 066): HANCORE's Greek Noir with the owner's "akane"
+# border wipe. Not an Omarchy stock theme, so `theme fetch` has no images for
+# it; backgrounds go in ~/.config/haseen/backgrounds/<name>/.
+THEME_DEFAULT=haseen
+# Renamed stock themes, old name -> current name. `theme set OLD` and an old
+# theme.name resolve to the current name, and the current name also finds
+# backgrounds under ~/.config/haseen/backgrounds/OLD/.
+declare -A THEME_ALIASES=([greek-noir-akane]=haseen)
 # Fetched Omarchy images (never shipped: third-party artwork, 64 MB). Pinned
 # to one commit of omacom/omarchy; omarchy-assets.txt lists every image with
 # its sha256 and size at that commit.
@@ -78,6 +82,25 @@ theme_normalize_name() {
     [[ -n $name && $name != .* && $name != */* ]]
 }
 
+# theme_resolve_alias NAME — REPLY = the current name of a renamed stock theme,
+# with a one-line notice on stderr; any other name is kept. A user theme
+# directory of the old name is the user's own and is kept too.
+theme_resolve_alias() {
+    REPLY="$1"
+    local new="${THEME_ALIASES[$1]:-}"
+    [[ -n $new && ! -d $THEME_USER_DIR/$1 ]] || return 0
+    printf "theme '%s' is now called '%s'\n" "$1" "$new" >&2
+    REPLY="$new"
+}
+
+# theme_alias_names NAME — the old names that resolve to NAME, one per line.
+theme_alias_names() {
+    local old
+    for old in "${!THEME_ALIASES[@]}"; do
+        if [[ ${THEME_ALIASES[$old]} == "$1" ]]; then printf '%s\n' "$old"; fi
+    done | LC_ALL=C sort
+}
+
 # theme_exists NAME — a stock or user theme directory exists.
 theme_exists() { [[ -d $THEME_STOCK_DIR/$1 || -d $THEME_USER_DIR/$1 ]]; }
 
@@ -90,12 +113,15 @@ theme_names() {
     done | LC_ALL=C sort -u
 }
 
+# theme_current_name — the current theme's name; an old name (theme.name
+# written before a rename) prints the current one.
 theme_current_name() {
     [[ -r $THEME_NAME_FILE ]] || return 1
     local name
     name="$(<"$THEME_NAME_FILE")"
     [[ -n $name ]] || return 1
-    printf '%s\n' "$name"
+    theme_resolve_alias "$name"
+    printf '%s\n' "$REPLY"
 }
 
 # --- colors.toml ------------------------------------------------------------
@@ -285,7 +311,7 @@ _theme_contrast() {
 # The shell draws its foreground text on `selection` (highlighted rows, pager
 # buttons, switches). Terminals pair selection_background with its own
 # selection_foreground instead, so themes often pick a bright accent there
-# (greek-noir-akane: orange under light grey, 2.3:1). shell_selection is that
+# (haseen: orange under light grey, 2.3:1). shell_selection is that
 # colour pulled toward the background until foreground text on it reaches
 # 4.5:1 (WCAG AA); a selection that already reads well is kept as is.
 _theme_shell_selection() {
@@ -681,7 +707,7 @@ EOF
     done
 }
 
-# --- Neovim (LazyVim) ---------------------------------------------------------
+# --- Neovim (LazyVim, haseen.nvim) ----------------------------------------------
 # Omarchy points ~/.config/nvim/lua/plugins/theme.lua at its current theme's
 # neovim.lua (omarchy-nvim-setup) and ships omarchy-theme-hotreload.lua plus
 # all-themes.lua beside it. lazy.nvim's change detection stats every spec file
@@ -689,9 +715,12 @@ EOF
 # the hot-reload plugin answers it by applying the new colourscheme, and
 # all-themes.lua keeps every theme's plugin installed so that works offline.
 # haseen links its own copies of the three (share/haseen/default/nvim/).
+# haseen.nvim (`haseen setup nvim`, plan 065) is a plain lazy.nvim config;
+# its link to haseen-colorscheme.lua stands in for LazyVim.
 THEME_NVIM_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
 THEME_NVIM_PLUGINS="$THEME_NVIM_CONFIG/lua/plugins"
 THEME_NVIM_DEFAULTS="$HASEEN_PATH/default/nvim"
+THEME_NVIM_BRIDGE=haseen-colorscheme.lua
 # Filled by theme_link_nvim: what changed, and what was left because it is
 # the user's (or Omarchy's twin still does the job).
 THEME_NVIM_CHANGED=()
@@ -702,6 +731,16 @@ THEME_NVIM_KEPT=()
 theme_nvim_lazyvim() {
     [[ -f $THEME_NVIM_CONFIG/lazyvim.json ]] || grep -qs 'LazyVim/LazyVim' "$THEME_NVIM_CONFIG/lua/config/lazy.lua"
 }
+
+# theme_nvim_haseen — nvim's config is haseen.nvim: lua/plugins holds haseen's
+# colourscheme bridge (a dangling link from another prefix counts too), which
+# disables the LazyVim entry and applies its colourscheme.
+theme_nvim_haseen() {
+    [[ -L $THEME_NVIM_PLUGINS/$THEME_NVIM_BRIDGE || -e $THEME_NVIM_PLUGINS/$THEME_NVIM_BRIDGE ]]
+}
+
+# theme_nvim_follows — nvim's config takes haseen's theme spec.
+theme_nvim_follows() { theme_nvim_lazyvim || theme_nvim_haseen; }
 
 # theme_nvim_omarchy_file PATH — PATH is Omarchy's twin of a haseen nvim file:
 # omarchy-theme-hotreload.lua by its name; all-themes.lua when it is the copy
@@ -749,18 +788,19 @@ _theme_nvim_link() {
     fi
 }
 
-# theme_link_nvim [--replacing-omarchy] — in a LazyVim config, link
-# lua/plugins/theme.lua to current/theme/neovim.lua and add haseen's
+# theme_link_nvim [--replacing-omarchy] — in a LazyVim or haseen.nvim config,
+# link lua/plugins/theme.lua to current/theme/neovim.lua and add haseen's
 # hot-reload and theme-plugin list. While Omarchy's twin of either is still in
 # lua/plugins, haseen's is not added (both would reload, or list, the same
 # thing); `haseen import omarchy` moves the twins aside and passes
-# --replacing-omarchy.
+# --replacing-omarchy. haseen.nvim's bridge link is repointed when it comes
+# from another prefix.
 theme_link_nvim() {
     local replacing=false src name twin
     [[ ${1:-} == --replacing-omarchy ]] && replacing=true
     THEME_NVIM_CHANGED=()
     THEME_NVIM_KEPT=()
-    theme_nvim_lazyvim || return 0
+    theme_nvim_follows || return 0
     # A link to a file that is not there yet would break nvim's startup.
     if $DRY_RUN || [[ -f $THEME_CURRENT_PATH/neovim.lua ]]; then
         _theme_nvim_link "$THEME_CURRENT_PATH/neovim.lua" "$THEME_NVIM_PLUGINS/theme.lua" \
@@ -777,16 +817,25 @@ theme_link_nvim() {
         fi
         _theme_nvim_link "$src/$name" "$THEME_NVIM_PLUGINS/$name" "/haseen/default/nvim/${name//./\\.}\$"
     done
+    if [[ -L $THEME_NVIM_PLUGINS/$THEME_NVIM_BRIDGE ]]; then
+        _theme_nvim_link "$src/$THEME_NVIM_BRIDGE" "$THEME_NVIM_PLUGINS/$THEME_NVIM_BRIDGE" \
+            "/haseen/default/nvim/${THEME_NVIM_BRIDGE//./\\.}\$"
+    fi
     return 0
 }
 
 # theme_backgrounds NAME — candidate images, each source sorted, in this order:
-# ~/.config/haseen/backgrounds/<name>/ (the user's), current/theme/backgrounds/
+# ~/.config/haseen/backgrounds/<name>/ (the user's), the same folder under each
+# old name of a renamed theme (THEME_ALIASES), current/theme/backgrounds/
 # (shipped by an installed theme), then the fetched cache
 # ~/.cache/haseen/themes/<name>/backgrounds/. Paths are absolute.
 theme_backgrounds() {
-    local dir
-    for dir in "$THEME_USER_BACKGROUNDS_DIR/$1" "$THEME_CURRENT_PATH/backgrounds" "$THEME_CACHE_DIR/$1/backgrounds"; do
+    local dir old dirs=("$THEME_USER_BACKGROUNDS_DIR/$1")
+    while IFS= read -r old; do
+        if [[ -n $old ]]; then dirs+=("$THEME_USER_BACKGROUNDS_DIR/$old"); fi
+    done < <(theme_alias_names "$1")
+    dirs+=("$THEME_CURRENT_PATH/backgrounds" "$THEME_CACHE_DIR/$1/backgrounds")
+    for dir in "${dirs[@]}"; do
         [[ -d $dir ]] || continue
         find -L "$dir/" -maxdepth 1 -type f \
             \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' \) \

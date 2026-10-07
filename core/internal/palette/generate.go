@@ -12,6 +12,9 @@ type Result struct {
 	Light   bool       `json:"light"`
 	Cached  bool       `json:"cached"`
 	Palette [16]string `json:"palette"`
+	// Selection is the surface the shell draws foreground text on; colors.toml
+	// writes it as selection and selection_background.
+	Selection string `json:"selection"`
 }
 
 // Modes the extractor accepts, in the order `haseen theme wallpaper --help`
@@ -26,6 +29,10 @@ var Modes = []string{
 // Generate extracts the 16-colour ANSI palette for one image. The seed is the
 // image's content hash: the same picture under another name, or re-saved, is
 // not a new seed and costs no work (Result.Cached says which happened).
+//
+// The cache holds the generator's own palette and ClampAnchors runs on every
+// return, cached or fresh, so entries written before the clamp existed come
+// out readable too.
 func Generate(imagePath string, light bool, mode string) (Result, error) {
 	if mode == "" {
 		mode = "normal"
@@ -40,30 +47,30 @@ func Generate(imagePath string, light bool, mode string) (Result, error) {
 	result := Result{Seed: seed, Mode: mode, Light: light}
 
 	key := cacheKey(seed, mode, light)
-	if cached, ok := loadCached(key); ok {
-		result.Palette, result.Cached = cached, true
-		return result, nil
+	generated, cached := loadCached(key)
+	var cacheErr error
+	if !cached {
+		dominant, counts, err := ExtractDominantColors(imagePath, DominantColorsToExtract)
+		if err != nil {
+			return Result{}, fmt.Errorf("extract colours: %w", err)
+		}
+		if len(dominant) < 8 {
+			return Result{}, fmt.Errorf("not enough colours in %s", imagePath)
+		}
+		generated = NormalizeBrightness(GeneratePaletteByMode(dominant, normalizeCounts(counts), light, mode))
+		if err := saveCached(key, cacheEntry{
+			Version: cacheVersion,
+			Seed:    seed,
+			Mode:    mode,
+			Light:   light,
+			Palette: generated,
+		}); err != nil {
+			cacheErr = fmt.Errorf("cache palette: %w", err)
+		}
 	}
-
-	dominant, counts, err := ExtractDominantColors(imagePath, DominantColorsToExtract)
-	if err != nil {
-		return Result{}, fmt.Errorf("extract colours: %w", err)
-	}
-	if len(dominant) < 8 {
-		return Result{}, fmt.Errorf("not enough colours in %s", imagePath)
-	}
-	result.Palette = NormalizeBrightness(GeneratePaletteByMode(dominant, normalizeCounts(counts), light, mode))
-
-	if err := saveCached(key, cacheEntry{
-		Version: cacheVersion,
-		Seed:    seed,
-		Mode:    mode,
-		Light:   light,
-		Palette: result.Palette,
-	}); err != nil {
-		return result, fmt.Errorf("cache palette: %w", err)
-	}
-	return result, nil
+	result.Cached = cached
+	result.Palette, result.Selection = ClampAnchors(generated, light)
+	return result, cacheErr
 }
 
 // ColorsTOML renders the palette as haseen's (and Omarchy's) theme format: the
@@ -74,19 +81,16 @@ func Generate(imagePath string, light bool, mode string) (Result, error) {
 //
 // Key choice follows aether internal/template/variables.go: accent defaults to
 // blue (color4), the cursor to the foreground, and the selection to a surface
-// shade near the background rather than an inverted pair.
+// shade near the background rather than an inverted pair (ClampAnchors keeps
+// all three readable).
 // The text is a function of the seed alone — no image path, no timestamp — so
 // the same wallpaper under another name produces a byte-identical file and the
 // caller can skip the write.
 func (r Result) ColorsTOML() string {
-	p := r.Palette
+	p, selection := r.Palette, r.Selection
 	mode := "dark"
 	if r.Light {
 		mode = "light"
-	}
-	selection := LightenRGB(p[0], 10)
-	if r.Light {
-		selection = DarkenRGB(p[0], 85)
 	}
 
 	var b strings.Builder

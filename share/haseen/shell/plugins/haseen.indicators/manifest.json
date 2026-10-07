@@ -2,24 +2,31 @@
   "schemaVersion": 1,
   "id": "haseen.indicators",
   "name": "Indicators",
-  "version": "1.0.0",
-  "description": "State indicators: screen recording, night light, do not disturb, stay awake and screensaver hold show while on; hovering reveals the others dimmed; a click toggles one. Entries another bar widget already shows (pager, idle, privacy) are left out",
+  "version": "1.1.0",
+  "description": "State indicators: screen recording, night light, do not disturb, stay awake, screensaver hold and the runtime context show while on; hovering reveals the others dimmed; a click toggles one. Entries another bar widget already shows (pager, idle, privacy) are left out. Its service, off until gameClasses is set, enters the game context for a fullscreen game",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "service"
   ],
   "entry": {
-    "bar-widget": "Widget.qml"
+    "bar-widget": "Widget.qml",
+    "service": "Service.qml"
   },
   "settings": {
     "items": {
       "type": "array",
       "default": [],
-      "description": "Which indicators to show, in order: ScreenRecording, NightLight, Dnd, StayAwake, Screensaver; empty shows all"
+      "description": "Which indicators to show, in order: ScreenRecording, NightLight, Dnd, StayAwake, Screensaver, Context; empty shows all. Context shows only while a context other than normal is active"
     },
     "alwaysShow": {
       "type": "boolean",
       "default": false,
       "description": "Show inactive indicators (dimmed) without waiting for hover"
+    },
+    "gameClasses": {
+      "type": "array",
+      "default": [],
+      "description": "Window classes (JavaScript regular expressions, whole class) that enter the game context while fullscreen and focused, e.g. steam_app_\\d+; empty = off. Set with haseen context auto-game"
     }
   },
   "permissions": [

@@ -19,7 +19,7 @@ add-ons made for Omarchy and DankMaterialShell.
 - **Upgrades that are not reinstalls.** `haseen migrate` runs one-off upgrade steps once per user and records them in your state dir; a login notice offers to run what is pending.
 - **Knows your machine.** `haseen hw match` reads the firmware's DMI identity and lists the quirks that apply to it, from one table; `haseen hw apply` runs each matched fix once and records it, and a quirk nobody has written yet is reported, not hidden.
 - **Defaults:**
-  - Theme: Greek Noir with the "akane" border wipe (`greek-noir-akane`).
+  - Theme: `haseen`, haseen's own theme: HANCORE's Greek Noir with the "akane" border wipe (formerly `greek-noir-akane`, which still works as a name).
   - Cursor: Bibata Modern Ice at 20 px.
   - Notifications: **haseen.pager**, a stacking, grouping notification daemon with snooze, ported from omapager.
   - Prayer times: **haseen.prayers**, calculated offline with Umm al-Qura and Hijri dates, ported from omaprayers. It defaults to the city centre of Riyadh; set your own location in its panel.
@@ -30,11 +30,19 @@ Install CachyOS with its own installer (disk, LUKS, Limine), then:
 
 ```sh
 git clone <this repo> haseen && cd haseen
-./install.sh --dry-run          # print the full plan, change nothing
-./install.sh                    # base chaotic omarchy-repo desktop theme shell
-haseen layer apply ai gaming    # optional layers
+./install.sh --dry-run          # pick, then print the full plan; change nothing
+./install.sh                    # pick layers and optional steps, then install
+./install.sh --yes              # no questions: base chaotic omarchy-repo desktop theme shell
+haseen layer apply ai gaming    # optional layers, later
 haseen secureboot setup         # interactive; firmware must be in Setup Mode
 ```
+
+At a terminal the installer first offers a picker: the default layers start
+ticked, while the optional layers (secureboot, ai, dms, gaming, flatpak) and setup
+steps (keyd, fingerprint, geoclue, dotfiles) start off. It uses gum when
+installed, else a numbered list. The choice is saved to
+`~/.config/haseen/install.toml`, and the next run offers to reuse it. Piped,
+`--yes` and `--layers a,b,c` runs ask nothing; `--pick` forces the picker.
 
 The installer copies the tree to `/usr/local` (`bin/haseen*`, `share/haseen/`)
 and applies layers through `haseen layer apply`. Every command that changes the
@@ -51,7 +59,7 @@ translate, and lists what has no haseen equivalent; run it without
 | `chaotic` | Chaotic-AUR. Packages come from the official/CachyOS repos first, then Chaotic-AUR, then Omarchy's repo (all prebuilt); the AUR is the last resort |
 | `omarchy-repo` | Omarchy's repo, last in pacman.conf, as a source for leaf packages like ttfx. Omarchy itself (`omarchy`, `omarchy-settings`) is never installed |
 | `desktop` | Hyprland (Lua) + uwsm, greetd/tuigreet (only if no display manager is enabled), portals, fonts, GPU session env |
-| `theme` | theme pipeline, the 22 Omarchy themes, background fetch + `haseen-background.service`, `haseen theme set/install/bg` |
+| `theme` | theme pipeline, the 22 Omarchy themes plus haseen's own (the default), background fetch + `haseen-background.service`, `haseen theme set/install/bg` |
 | `flatpak` | Flathub (per user); `haseen install app …` is Flatpak-first |
 | `shell` | the haseen Quickshell shell as `haseen-shell.service` |
 | `secureboot` | sbctl, signing hook; `haseen secureboot setup` enrolls the keys |

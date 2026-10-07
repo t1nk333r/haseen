@@ -332,13 +332,14 @@ ln -s "$HASEEN_PATH/lib" "$FAKE/share/haseen/lib"
 ln -s "$HASEEN_PATH/shell/Compat" "$FAKE/share/haseen/shell/Compat"
 : >"$FAKE/share/haseen/shell/shell.qml"
 for t in haseen-update haseen-config-terminal haseen-menu haseen-powerprofile-list haseen-powerprofile-set \
-    haseen-capture-screenrecord haseen-notification-send; do
+    haseen-capture-screenrecord haseen-notification-send haseen-battery-status; do
     printf '#!/bin/sh\nprintf %%s "${0##*/}"; for a in "$@"; do printf " [%%s]" "$a"; done; echo\n' >"$FAKE/bin/$t"
     chmod +x "$FAKE/bin/$t"
 done
 ln -s "$REPO/bin/haseen-toggle-idle" "$FAKE/bin/haseen-toggle-idle"
 for c in omarchy-update omarchy-launch-floating-terminal-with-presentation omarchy-menu omarchy-toggle-idle \
-    omarchy-powerprofiles-list omarchy-powerprofiles-set omarchy-capture-screenrecording omarchy-notification-send; do
+    omarchy-powerprofiles-list omarchy-powerprofiles-set omarchy-capture-screenrecording omarchy-notification-send \
+    omarchy-battery-status; do
     stub "$c" "echo \"STUB-CALLED: $c \$*\" >&2; exit 97"
 done
 # shell_child LABEL EXPECTED CMD — the shell's child runs CMD (sh syntax); its
@@ -359,6 +360,7 @@ shell_child "menu root" "haseen-menu" 'exec omarchy-menu'
 shell_child "power profiles list" "haseen-powerprofile-list [--active-state]" 'exec omarchy-powerprofiles-list --active-state'
 shell_child "power profile set" "haseen-powerprofile-set [battery] [power-saver]" \
     'exec omarchy-powerprofiles-set battery power-saver'
+shell_child "battery status (plan 060)" "haseen-battery-status [--shell]" 'exec omarchy-battery-status --shell'
 shell_child "recording stop" "haseen-capture-screenrecord [--stop]" 'exec omarchy-capture-screenrecording --stop-recording'
 shell_child "recording flags" "haseen-capture-screenrecord [--fullscreen] [--desktop-audio] [--microphone] [--webcam]" \
     'exec omarchy-capture-screenrecording --fullscreen --with-desktop-audio --with-microphone-audio --with-webcam --webcam-size=large'

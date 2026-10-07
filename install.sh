@@ -9,6 +9,10 @@
 #    /usr/local because these files are not owned by a package (yet; see
 #    plans/README.md, PKGBUILD phase).
 # 3. Apply the default layers through the installed `haseen layer apply`.
+#    At a terminal, without --layers or --yes, a picker chooses the layers and
+#    the optional setup steps first (all optional pieces start off) and
+#    remembers the choice in ~/.config/haseen/install.toml; a re-run offers to
+#    reuse it (share/haseen/lib/install-picker.sh, plans/063-install-picker.md).
 #
 # Everything privileged goes through the common.sh helpers; --dry-run prints
 # the full plan and changes nothing.
@@ -20,20 +24,28 @@ export HASEEN_PATH="$REPO/share/haseen"
 source "$HASEEN_PATH/lib/preflight.sh"
 # shellcheck source=share/haseen/lib/branding.sh
 source "$HASEEN_PATH/lib/branding.sh"
+# shellcheck source=share/haseen/lib/install-picker.sh
+source "$HASEEN_PATH/lib/install-picker.sh"
 
 DEFAULT_LAYERS=(base chaotic omarchy-repo desktop theme shell)
 PREFIX=/usr/local
 LAYERS=()
 TREE_ONLY=false
 UNINSTALL=false
+PICK=false
 
 usage() {
     cat <<EOF
-Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c]
+Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
                     [--tree-only] [--uninstall-tree]
 
   --layers      layers to apply (default: ${DEFAULT_LAYERS[*]})
                 optional: secureboot ai dms gaming flatpak (haseen layer list)
+  --pick        choose the layers and optional setup steps (keyd, fingerprint,
+                geoclue, dotfiles) from a list, even when stdin is not a
+                terminal; at a terminal this is the default unless --layers or
+                --yes is given. The choice is saved to
+                ~/.config/haseen/install.toml and offered again next time.
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user
@@ -49,13 +61,19 @@ while (($# > 0)); do
     --prefix) PREFIX="${2:?--prefix needs a directory}"; shift ;;
     --layers) IFS=, read -r -a LAYERS <<<"${2:?--layers needs a list}"; shift ;;
     --tree-only) TREE_ONLY=true ;;
+    --pick) PICK=true ;;
     --uninstall-tree) UNINSTALL=true ;;
     -h | --help) usage; exit 0 ;;
     *) usage >&2; die "unknown argument: $1" ;;
     esac
     shift
 done
-((${#LAYERS[@]} > 0)) || LAYERS=("${DEFAULT_LAYERS[@]}")
+LAYERS_GIVEN=false
+((${#LAYERS[@]} == 0)) || LAYERS_GIVEN=true
+if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL; }; then
+    die "--pick chooses interactively; it does not combine with --layers, --yes, --tree-only or --uninstall-tree"
+fi
+$LAYERS_GIVEN || LAYERS=("${DEFAULT_LAYERS[@]}")
 require_not_root
 
 UNIT_DIR="$PREFIX/lib/systemd/user"
@@ -137,7 +155,17 @@ if $UNINSTALL; then
     exit 0
 fi
 
-confirm "Install haseen into $PREFIX and apply: ${LAYERS[*]}?" || exit 1
+# The guided choice: asked for (--pick) or at a terminal with nothing decided
+# on the command line. Piped or --yes runs keep the defaults and ask nothing.
+PICKED=false
+if ! $LAYERS_GIVEN && ! $ASSUME_YES && ! $TREE_ONLY && { $PICK || [[ -t 0 ]]; }; then
+    picker_run "${DEFAULT_LAYERS[@]}"
+    LAYERS=("${PICK_LAYERS[@]}")
+    PICKED=true
+fi
+
+confirm "Install haseen into $PREFIX and apply: ${LAYERS[*]}${PICK_SETUP[*]:+, then setup: ${PICK_SETUP[*]}}?" || exit 1
+if $PICKED; then picker_save; fi
 install_tree
 $TREE_ONLY && exit 0
 
@@ -147,16 +175,30 @@ $DRY_RUN && haseen_bin="$REPO/bin/haseen"
 flags=()
 $DRY_RUN && flags+=(--dry-run)
 $ASSUME_YES && flags+=(--yes)
+# A HOME haseen has run in (a migration ledger, the shell config, or a theme
+# set) is an upgrade even when no migration was ever recorded; decided before
+# the layers write theme.name.
+fresh_home=true
+if [[ -d $HASEEN_USER_STATE/migrations || -e $HASEEN_USER_CONFIG/shell.json || -e $HASEEN_USER_STATE/current/theme.name ]]; then
+    fresh_home=false
+fi
 HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" layer apply "${LAYERS[@]}" "${flags[@]}"
 
-# A first install has nothing to upgrade, so its migrations are recorded as
-# sealed; a reinstall over an existing ledger runs what is genuinely pending.
-if [[ -d $HASEEN_USER_STATE/migrations ]]; then
+# A fresh HOME has nothing to upgrade, so its migrations are recorded as
+# sealed; an existing haseen user gets what is genuinely pending run.
+if ! $fresh_home; then
     HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate "${flags[@]}"
 else
     HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate --seal "${flags[@]}"
+    # A first install also seeds haseen.nvim when ~/.config/nvim is absent
+    # (plan 065). An existing config is left alone, and later runs never seed.
+    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
+        warn "haseen.nvim was not seeded; run: haseen setup nvim"
 fi
 
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.
 HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" hw apply "${flags[@]}"
+
+# The optional setup steps the picker chose; none otherwise.
+picker_run_setup "$haseen_bin" "${flags[@]}"

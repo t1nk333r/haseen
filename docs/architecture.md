@@ -61,7 +61,7 @@ already set when the layer runs.
 | `chaotic` | base | Chaotic-AUR (pinned key `EF925EA6…87B78AEB`), so `aur:` entries install prebuilt |
 | `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt; `omarchy`/`omarchy-settings` refused (ADR 0001) |
 | `desktop` | base chaotic | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
-| `theme` | base | theme pipeline, the 22 Omarchy stock themes, pinned background fetch, `haseen-background.service` (swaybg) |
+| `theme` | base | theme pipeline, the 22 Omarchy stock themes plus haseen's own `haseen` (the default), pinned background fetch, `haseen-background.service` (swaybg) |
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service` |
 | `flatpak` | desktop | Flathub remote in the per-user installation; `haseen install` is Flatpak-first for apps (catalogue `share/haseen/default/catalog.json`) |
 | `secureboot` | base | sbctl own keys + Microsoft + firmware keys, signing hooks, Limine config enrollment |
@@ -99,6 +99,23 @@ Rules every layer follows:
 `bin/haseen-shell-run` from `haseen-shell.service`. That unit is
 `PartOf=graphical-session.target`, `Conflicts=dms.service`.
 
+Recovery (plan 061): one crash restarts the shell (`RestartMode=direct`).
+Four failures within 60 s reach the start limit, and the unit's
+`OnFailure=` starts `haseen-shell-recover.service`, which runs
+`haseen shell recover present` (`bin/haseen-shell-recover`). It matches
+the tail of the shell's journal against every plugin's directory and id. A
+plugin that is not built in beats a built-in, and a later mention beats an
+earlier one. It records the failure and the suspect in
+`~/.local/state/haseen/recovery/last-failure.json`. Then a floating terminal
+offers four choices: disable the suspect, safe mode, restore the last good
+`shell.json`, or start the shell as it is. Each fix starts the failed unit
+again. A second Quickshell config was rejected for the offer: whatever
+stopped the shell may stop it too. `haseen-crash-watch.service` asks
+`haseen shell recover snapshot` every 5 minutes. That copies `shell.json`
+to `recovery/last-good.json` once the shell has been active for 10 minutes
+(`HASEEN_SHELL_HEALTHY_MINUTES`) and the file has not changed for as long,
+but never while safe mode is on.
+
 ### 5.1 QML modules
 
 - `qs.Haseen` (`shell/Haseen/`) — singletons:
@@ -135,11 +152,13 @@ Rules every layer follows:
     Prefixes in use: `>` clipboard history (haseen.clipboard), `=` calculator (haseen.calculator).
   - `overlay`: a full-screen layer surface the plugin owns, such as OSD or lock.
 - `permissions`: declarative. Values: `exec`, `network`, `network:local`, `files:read`, `files:write`, `notifications`. `haseen plugin validate` and `haseen plugin info` show them, and `network` triggers a warning. QML cannot sandbox, so this field is review metadata, not enforcement. The docs say so.
+- `requires` (plan 064): `{ "bins": ["cmd"], "tools": ["cmd-or-package"], "layers": ["gaming"], "haseen": "0.2.0" }`, all optional. Unlike `permissions` it is enforced: while a `bins` command is not on PATH, a `tools` name is neither a command nor an installed package (or provider, `pacman -T`), a layer is not applied (`/var/lib/haseen/layers/<name>`) or haseen's `VERSION` is older (major.minor.patch only, so `0.1.0-dev` satisfies `0.1.0`), the plugin is not valid and nothing loads it. Other plugins are unaffected. A `tools` name that no repository knows (`pacman -Si` fails, e.g. Debian's `pulseaudio-utils`) cannot be checked and counts as met. `haseen plugin validate`/`list`/`info` show a refused plugin as `unmet` with the reason (`share/haseen/shell/lib/plugin.sh` `plugin_unmet`); the shell (`Haseen/Plugins.qml` with `Haseen/Requires.js`) probes the facts in one `bash` run per new set, puts the same messages in its plugin errors and sends one notification when a host asks for a refused plugin. The facts are probed again when a plugin directory appears or goes, and on `haseen shell ipc shell reload`. DMS `dependencies` (and its deprecated `requires`) map to `tools`, dropping entries that are not plain names; Omarchy manifests have no requirement field, so an Omarchy plugin may carry haseen's `requires` object as is (an array is read as `tools`).
 - Search order: `~/.config/haseen/plugins/<id>/`, then `$HASEEN_PATH/shell/plugins/<id>/`. The first match wins, so a user copy overrides the built-in one.
 - Every entry component gets these properties:
   - `pluginId: string`
   - `settings: var` (manifest defaults merged with `shell.json` → `plugins.<id>.settings`)
   - `screen: var` (the `ShellScreen` for bar widgets and panels)
+- Safe mode (plan 061): while `~/.local/state/haseen/safe-mode` exists (JSON `{reason, since}`; `haseen shell recover safe-mode on|off`), `Plugins.held(id)` is true for every plugin whose origin is not `builtin` (user, user:omarchy, user:dms, omarchy, dms). A held plugin has no `entryUrl` and `Config.isEnabled` is false for it, so the running shell unloads it without a restart. A user copy of a built-in id gives way to the built-in. `shell plugins` over IPC reports `held` per plugin and a `safeMode` object. `haseen shell run` creates the state directory, because a `FileView` watch needs its parent to exist.
 
 ### 5.3 `shell.json`
 
@@ -238,6 +257,17 @@ them only through the `qs.Haseen.Flags` singleton. `gestures` is written by the
 widget is listed in the default `bar.right` and takes no room without it, so
 enabling it never rewrites the user's `shell.json`.
 
+Runtime contexts (plan 062): `haseen context normal|focus|game|present`
+switches several of those flags as one. Entering from normal records them in
+`~/.local/state/haseen/context/saved`; leaving sets every one back to that
+record, and a second context replaces the first against the same record. The
+flag `context` holds the active name (absent = normal) and is read through
+`Flags.context`; only the command writes it. Game also writes
+`toggles/hypr/context-game.lua` and applies it live, and restores the
+animations, blur and shadow values it read with `hyprctl getoption`. The
+optional game watcher is the `haseen.indicators` service, listed only by
+`haseen context auto-game on|set`.
+
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
 Nothing appears on screen for them.
@@ -258,7 +288,7 @@ Nothing appears on screen for them.
 - Omarchy `ShellIpc` helpers negotiate one target owner and hand it to the next enabled instance on teardown. Immutable original direct `IpcHandler` children cannot be universally deduplicated by host injection. Native panels remain lazy; existing legacy inline Item bodies preserve their ids and may be eager.
 - Verification compiles every original entry without activating it first. Hazardous original services are exercised only inside a read-only, offline namespace with a private home/run/dev/proc and non-activating D-Bus, never directly on the owner's account.
 - **Command shims** (`shell/Compat/bin/`): `haseen shell run` (the unit and `haseen shell restart` both go through it) puts this directory first on the shell's `PATH`, so an Omarchy command a plugin process runs that would act on Omarchy's own shell or config reaches haseen instead. Each shim is one `exec` of the haseen command: `omarchy-restart-shell` → `haseen shell restart`; `omarchy-hyprland-monitor-internal-mirror` → `haseen hardware mirror-display`; `dms` (DMS plugins) → `haseen capture screenshot` for `dms screenshot` (modes and flags translated), `haseen shell ipc` for `dms ipc`, and a desktop notification for its `toast` target. `ydotool` (DMS on-screen keyboards) is not an `exec`: `ydotool key CODE:STATE …` becomes Hyprland `send_key_state` dispatches (key code + 8, modifiers held between calls in `$XDG_RUNTIME_DIR/haseen`) aimed at the active window of the shell's own Hyprland instance, because haseen runs no root `ydotoold` and gives nothing `/dev/uinput`; it takes `--dry-run`, and other ydotool commands go to a real ydotool further down `PATH`. Other Omarchy commands still run as installed.
-- **Debrand shims** (same directory, plan 057): Omarchy commands that would show Omarchy's own UI or branding, or change Omarchy state haseen does not read, reach the haseen command instead. `omarchy-update` → `haseen update` (which opens on haseen's wordmark and a `haseen update: <target>` line); `omarchy-launch-floating-terminal-with-presentation CMD…` → `haseen config terminal -- bash -c "CMD…"` (haseen's floating terminal, no Omarchy logo or title); `omarchy-notification-send` → `haseen notification send` (Omarchy's argument order, `low` default urgency, `--image` as the icon, the glyph dropped, so toasts are no longer named `omarchy-action`); `omarchy-menu [toggle|summon] [route]` → `haseen menu [route]`; `omarchy-toggle-idle` → `haseen toggle idle`, keeping Omarchy's verbs and its `status` JSON; `omarchy-powerprofiles-list`/`-set` → `haseen powerprofile list`/`set`; `omarchy-capture-screenrecording` → `haseen capture screenrecord` with its flags translated. Only processes the shell starts see them: Hyprland binds, systemd units and terminals opened elsewhere still find Omarchy's commands. Commands with no haseen equivalent are not shimmed; plan 057 lists them.
+- **Debrand shims** (same directory, plan 057): Omarchy commands that would show Omarchy's own UI or branding, or change Omarchy state haseen does not read, reach the haseen command instead. `omarchy-update` → `haseen update` (which opens on the selected mark's terminal logo and a `haseen update: <target>` line); `omarchy-launch-floating-terminal-with-presentation CMD…` → `haseen config terminal -- bash -c "CMD…"` (haseen's floating terminal, no Omarchy logo or title); `omarchy-notification-send` → `haseen notification send` (Omarchy's argument order, `low` default urgency, `--image` as the icon, the glyph dropped, so toasts are no longer named `omarchy-action`); `omarchy-menu [toggle|summon] [route]` → `haseen menu [route]`; `omarchy-toggle-idle` → `haseen toggle idle`, keeping Omarchy's verbs and its `status` JSON; `omarchy-powerprofiles-list`/`-set` → `haseen powerprofile list`/`set`; `omarchy-capture-screenrecording` → `haseen capture screenrecord` with its flags translated. `omarchy-battery-status [--shell]` → `haseen battery status` (plan 060): Omarchy's output, but the charge-limit window comes from `charge_control_*_threshold`, not UPower's fixed 75-80% default, so a power panel shows the limit the hardware holds. The battery controller can forget that limit (a drained battery came back at 0-100%). `haseen battery limit set|off|save|restore` writes and records it in `/etc/haseen/charge-limit`. `haseen setup battery-limit on` is opt-in, off by default and offered in the Setup menu on laptops only. It installs `haseen-charge-limit.service` (restore at boot, save at shutdown) from `share/haseen/systemd/system/` and a system-sleep hook (restore after resume and thaw) from `share/haseen/systemd/system-sleep/`. Only processes the shell starts see them: Hyprland binds, systemd units and terminals opened elsewhere still find Omarchy's commands. Commands with no haseen equivalent are not shimmed; plan 057 lists them.
 
 ### 5.5 IPC
 
@@ -302,11 +332,14 @@ Smoke tests drive the UI through these, never through injected input.
 
 - **Format:** Omarchy `colors.toml` (de-facto community standard), so Omarchy themes install unchanged. The keys are `mode`, `accent`, `selection`, `muted`, `background` (+ `dark_`/`darker_`/`lighter_` variants), `foreground` (+ variants), and the eight ANSI colour names plus their `bright_` variants.
 - **Rendering:** `haseen theme set <name>` renders `share/haseen/themed/*.tpl` (plus user templates in `~/.config/haseen/themed/`) into `~/.local/state/haseen/current/theme/`. App configs include those outputs with one line each.
-- **Neovim:** in a LazyVim config, `haseen theme set` links `~/.config/nvim/lua/plugins/theme.lua` to `current/theme/neovim.lua` when it is missing or links to an Omarchy or haseen theme (a file of the user's stays), plus `haseen-theme-hotreload.lua` and `haseen-all-themes.lua` from `share/haseen/default/nvim/`. lazy.nvim's change detection sees the new spec and fires `User LazyReload`, and the hot-reload applies its colourscheme in running nvims. While Omarchy's `omarchy-theme-hotreload.lua`/`all-themes.lua` are there, haseen's twins are not added; `haseen import omarchy` moves them to `<file>.bak-<timestamp>` (plan 058).
+- **Default:** `haseen` (`THEME_DEFAULT` in `theme-lib.sh`) is haseen's own theme, derived from HANCORE's Greek Noir (MIT) with the owner's "akane" border wipe; the theme layer sets it for a user who has none. Renamed stock themes are aliases (`THEME_ALIASES`): `haseen theme set greek-noir-akane` and a `theme.name` of `greek-noir-akane` resolve to `haseen` with a one-line notice, and `haseen` also finds backgrounds in `~/.config/haseen/backgrounds/greek-noir-akane/`. The migration `1791356361-theme-haseen.sh` renames `theme.name` and moves that folder to `backgrounds/haseen/`, only for a user whose current theme is `greek-noir-akane` (plan 066).
+- **Neovim:** in a LazyVim or haseen.nvim config, `haseen theme set` links `~/.config/nvim/lua/plugins/theme.lua` to `current/theme/neovim.lua` when it is missing or links to an Omarchy or haseen theme (a file of the user's stays), plus `haseen-theme-hotreload.lua` and `haseen-all-themes.lua` from `share/haseen/default/nvim/`. lazy.nvim's change detection sees the new spec and fires `User LazyReload`, and the hot-reload applies its colourscheme in running nvims. While Omarchy's `omarchy-theme-hotreload.lua`/`all-themes.lua` are there, haseen's twins are not added; `haseen import omarchy` moves them to `<file>.bak-<timestamp>` (plan 058).
+- **haseen.nvim:** haseen's Neovim config is the owner's plain lazy.nvim config, fetched rather than shipped. `haseen setup nvim` (`bin/haseen-setup-nvim`) clones it at a pinned commit (`NVIM_REPO_URL`, `NVIM_COMMIT`) into `~/.config/nvim` and links `share/haseen/default/nvim/haseen-colorscheme.lua` into its `lua/plugins/`. That bridge disables the theme spec's `LazyVim/LazyVim` entry and applies its colourscheme on `User LazyDone`; its presence is what makes `haseen theme set` link a config that is not LazyVim. A first install runs it with `--if-absent`; an existing config is replaced only with `--replace`, after it moves to `~/.config/nvim.bak-<timestamp>` (plan 065).
 - **Shell tokens:** `current/theme/shell.json` uses these keys:
   `mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth`.
-  `Theme.qml` falls back to built-in values for any key that is missing.
+  `Theme.qml` falls back to built-in values for any key that is missing; they are the `haseen` theme's rendered `shell.json`, so a missing file still looks like the default.
 - **Hooks:** `~/.config/haseen/hooks/<event>` and `<event>.d/*`, run by `haseen hook run <event> [args]`. Events: `theme-set`, `post-update`, `post-boot`, `layer-applied`.
+- **Generated themes:** two commands turn an image into an ordinary user theme (`~/.config/haseen/themes/<name>/colors.toml` plus the image as its background), on demand only. `haseen theme wallpaper` uses haseen's own extractor (`haseen-palette`, plan 034). `haseen theme generate` runs matugen (Material You, an optional package called as a program with `--json hex --dry-run` and haseen's `share/haseen/layers/theme/matugen.toml`). It maps the Material roles onto `colors.toml` keys and takes the ANSI hues from matugen custom colours. Foreground, accent and selection are held to plan 064's contrast floors, and a theme of the user's own is never overwritten. Its panel `haseen.themegen` (image strip, scheme, dark/light, swatches and a mock desktop, Save/Apply; menu Style › Theme Generator) is off by default (plan 067).
 - **Backgrounds:**
   - Images are never shipped. `haseen theme fetch [NAME|--all]` downloads them from Omarchy at a pinned commit, checked against the hashes in `share/haseen/layers/theme/omarchy-assets.txt`, into `~/.cache/haseen/themes/<name>/`.
   - `haseen theme bg list|set|next` maintains `current/background`, which `haseen-background.service` (swaybg) draws.
@@ -336,8 +369,8 @@ default is the one that cannot lock you out.
 
 `haseen setup dotfiles <git-url> [--branch B] [--bootstrap]`
 (`bin/haseen-setup-dotfiles`, menu Setup › Dotfiles) puts a yadm repository in
-`$HOME`. It is optional and never runs on its own: no layer and no installer
-step calls it.
+`$HOME`. It is optional and never runs on its own: no layer calls it, and the
+installer runs it only when it is ticked in the install picker (plan 063).
 
 - **Plan first.** A throwaway bare clone lists what is new, what is identical and what would be replaced. That clone is the only thing `--dry-run` runs.
 - **Backup, then the repo wins.** Every file the repo replaces is copied to `~/.local/state/haseen/dotfiles-backup/<timestamp>/` first. Then `yadm clone --no-bootstrap` runs, followed by `yadm checkout` of those files.

@@ -7,6 +7,10 @@ import Quickshell.Io
 // Shell tokens (architecture 7) from current/theme/shell.json, rendered by
 // `haseen theme set`. Every key has a built-in fallback, so a missing, partial
 // or broken file never breaks the bar. Values of the wrong type fall back too.
+// The fallbacks are the default theme's rendered shell.json (`haseen`, plan
+// 066; its palette is HANCORE's Greek Noir, MIT, Copyright (c) 2026 HANCORE,
+// see NOTICE.md; tests/test-theme-haseen.sh keeps them in step), so a missing
+// file still looks like haseen.
 Singleton {
     id: root
 
@@ -14,21 +18,21 @@ Singleton {
 
     readonly property var fallback: ({
             mode: "dark",
-            background: "#16161d",
-            surface: "#1f1f28",
-            surfaceAlt: "#2a2a37",
-            foreground: "#dcd7ba",
-            muted: "#727169",
-            accent: "#7e9cd8",
-            accentFg: "#16161d",
-            urgent: "#e46876",
-            warning: "#e6c384",
-            success: "#98bb6c",
-            border: "#2a2a37",
-            selection: "#2d4f67",
-            fontFamily: "sans-serif",
-            fontMono: "monospace",
-            fontSize: 13,
+            background: "#171717",
+            surface: "#222222",
+            surfaceAlt: "#2d2d2d",
+            foreground: "#CCD0CF",
+            muted: "#525252",
+            accent: "#F25623",
+            accentFg: "#171717",
+            urgent: "#aeab94",
+            warning: "#757864",
+            success: "#F25623",
+            border: "#3b3c3c",
+            selection: "#864313",
+            fontFamily: "Inter",
+            fontMono: "JetBrainsMono Nerd Font",
+            fontSize: 11,
             radius: 6,
             gap: 6,
             borderWidth: 1

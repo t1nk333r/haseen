@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): same arguments and output shape as Omarchy's,
+# but the charge-limit window is the hardware's, not UPower's 75-80% default.
+exec "${HASEEN_PATH:?}/../../bin/haseen-battery-status" "$@"

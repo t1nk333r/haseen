@@ -47,7 +47,8 @@ Item {
         "nightlight": Flags.nightlight,
         "dnd": Flags.dnd,
         "idle-off": Flags.idleOff,
-        "screensaver-off": Flags.screensaverOff
+        "screensaver-off": Flags.screensaverOff,
+        "context": Flags.context
     })
     // The pointer is on the widget or its strip, or left them less than the
     // grace ago.

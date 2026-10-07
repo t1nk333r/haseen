@@ -54,10 +54,38 @@ const SPECS = {
         // `haseen toggle screensaver on` allows it; the flag means "off".
         on: ["haseen", "toggle", "screensaver", "off"],
         off: ["haseen", "toggle", "screensaver", "on"]
+    },
+    // haseen's own (plan 062): the runtime context. Its flag holds a name,
+    // not a bool; the entry shows only while a context other than normal is
+    // active and never waits in the hover strip (activeOnly). A click goes
+    // back to normal; the glyph and tooltip name the context (CONTEXTS).
+    Context: {
+        flag: "context",
+        activeOnly: true,
+        glyph: "\u{F0328}",
+        activeTip: "Back to normal",
+        inactiveTip: "Contexts",
+        on: ["haseen", "menu", "trigger.context"],
+        off: ["haseen", "context", "normal"]
     }
 };
 
-const DEFAULT_ITEMS = ["ScreenRecording", "NightLight", "Dnd", "StayAwake", "Screensaver"];
+const CONTEXTS = {
+    focus: {
+        glyph: "\u{F08C9}",
+        label: "Focus"
+    },
+    game: {
+        glyph: "\u{F0297}",
+        label: "Game"
+    },
+    present: {
+        glyph: "\u{F0428}",
+        label: "Present"
+    }
+};
+
+const DEFAULT_ITEMS = ["ScreenRecording", "NightLight", "Dnd", "StayAwake", "Screensaver", "Context"];
 
 // A bar widget that already shows the same state, and whose presence in the
 // bar makes the entry a duplicate: the pager bell turns into bell-off under
@@ -100,9 +128,10 @@ function entries(settings, barIds) {
     return out;
 }
 
-// flags: { "<flag name>": bool }. Returns { active: [...], inactive: [...] }
-// in entry order. Omarchy keeps the active block next to the clock (after
-// the inactive one in a left-to-right bar).
+// flags: { "<flag name>": bool }, and "context": the active context's name
+// ("" for normal). Returns { active: [...], inactive: [...] } in entry
+// order. Omarchy keeps the active block next to the clock (after the
+// inactive one in a left-to-right bar).
 function split(ids, flags) {
     const f = flags || {};
     const active = [];
@@ -111,24 +140,62 @@ function split(ids, flags) {
         const spec = SPECS[ids[i]];
         if (!spec)
             continue;
-        (f[spec.flag] === true ? active : inactive).push(ids[i]);
+        const on = spec.flag === "context" ? CONTEXTS.hasOwnProperty(f.context) : f[spec.flag] === true;
+        if (on)
+            active.push(ids[i]);
+        else if (!spec.activeOnly)
+            inactive.push(ids[i]);
     }
     return { active: active, inactive: inactive };
 }
 
 // What the cell looks like and does: { glyph, tooltip, command }; command is
-// the argv a click runs (it turns the state the other way).
-function cell(id, active) {
+// the argv a click runs (it turns the state the other way). context is the
+// active context's name, read by the Context entry only.
+function cell(id, active, context) {
     const spec = SPECS[id];
     if (!spec)
         return null;
+    const ctx = spec.flag === "context" && active && CONTEXTS.hasOwnProperty(context) ? CONTEXTS[context] : null;
     return {
-        glyph: spec.glyph,
-        tooltip: active ? spec.activeTip : spec.inactiveTip,
+        glyph: ctx ? ctx.glyph : spec.glyph,
+        tooltip: ctx ? ctx.label + " context: " + spec.activeTip.toLowerCase() : active ? spec.activeTip : spec.inactiveTip,
         command: (active ? spec.off : spec.on).slice()
     };
 }
 
 function flagOf(id) {
     return SPECS[id] ? SPECS[id].flag : "";
+}
+
+// The game context's watcher (Service.qml, plan 062). settings.gameClasses
+// lists JavaScript regular expressions, each matched against the whole window
+// class; one that does not compile is dropped. Empty = the watcher is off.
+function gamePatterns(list) {
+    const out = [];
+    if (!Array.isArray(list))
+        return out;
+    for (let i = 0; i < list.length; i++) {
+        if (typeof list[i] !== "string" || list[i] === "")
+            continue;
+        try {
+            out.push(new RegExp("^(?:" + list[i] + ")$"));
+        } catch (e) {
+            continue;
+        }
+    }
+    return out;
+}
+
+// Is the focused window a game? Only a real fullscreen counts (Hyprland's
+// fullscreen mode bit 2; 1 is maximised), as haseen.pager decides it.
+function isGame(patterns, appClass, fullscreen) {
+    if ((Number(fullscreen) & 2) === 0)
+        return false;
+    const cls = String(appClass || "");
+    for (let i = 0; i < patterns.length; i++) {
+        if (patterns[i].test(cls))
+            return true;
+    }
+    return false;
 }
