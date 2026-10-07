@@ -6,7 +6,8 @@ import qs.Haseen as Haseen
 import qs.Compat as Compat
 
 // qs.Common.SettingsData for DankMaterialShell plugins (architecture 5.4):
-// only the per-plugin settings calls plugins make. Names follow
+// the per-plugin settings calls plugins make, and the desktop-widget
+// instance list (below). Names follow
 // DankMaterialShell's quickshell/Common/SettingsData.qml
 // (MIT, Copyright (c) 2025 Avenge Media LLC).
 //
@@ -83,5 +84,59 @@ Singleton {
                 changes: changes
             });
         }
+    }
+
+    // DMS saves its settings file here; haseen already wrote each key above.
+    function savePluginSettings(): void {
+    }
+
+    // ------------------------------------------------- desktop widgets
+    // DMS keeps a list of desktop-widget instances (SettingsData
+    // desktopWidgetInstances, read by Modules/DesktopWidgetLayer.qml). haseen
+    // runs one per enabled DMS plugin with a desktop surface
+    // (Compat/DmsDesktopHost.qml): its id and widgetType are the DMS plugin
+    // id and its config is the plugin's settings. Hiding or showing one with
+    // updateDesktopWidgetInstance({ enabled }) lasts for the session; turning
+    // the plugin off for good is `haseen plugin disable`.
+    property var _hiddenDesktopWidgets: ({})
+    readonly property var desktopWidgetInstances: {
+        const reg = Haseen.Plugins.registry;
+        const out = [];
+        for (const id of Haseen.Plugins.serviceIds) {
+            const rec = reg[id];
+            if (rec && rec.valid && rec.compat === "dms" && rec.kinds.indexOf("overlay") >= 0)
+                out.push({
+                    id: rec.upstreamId,
+                    widgetType: rec.upstreamId,
+                    name: rec.name,
+                    enabled: !_hiddenDesktopWidgets[rec.upstreamId],
+                    config: getPluginSettingsForPlugin(rec.upstreamId)
+                });
+        }
+        return out;
+    }
+
+    function desktopWidgetShown(instanceId: string): bool {
+        return _hiddenDesktopWidgets[instanceId] !== true;
+    }
+
+    function updateDesktopWidgetInstance(instanceId: string, updates: var): void {
+        if (!updates || typeof updates !== "object")
+            return;
+        if (typeof updates.enabled === "boolean") {
+            const hidden = Object.assign({}, _hiddenDesktopWidgets);
+            if (updates.enabled)
+                delete hidden[instanceId];
+            else
+                hidden[instanceId] = true;
+            _hiddenDesktopWidgets = hidden;
+        }
+        if (updates.config && typeof updates.config === "object")
+            updateDesktopWidgetInstanceConfig(instanceId, updates.config);
+    }
+
+    function updateDesktopWidgetInstanceConfig(instanceId: string, updates: var): void {
+        for (const key in updates)
+            setPluginSetting(instanceId, key, updates[key]);
     }
 }

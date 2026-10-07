@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# haseen:summary Install a plugin from a dms:// link (the DMS plugin gallery's Install button)
+# haseen:args <dms://plugin/install/ID> [--dry-run] [--yes]
+#
+# The handler for x-scheme-handler/dms
+# (share/haseen/default/applications/haseen-dms-url.desktop). The link format
+# is DankMaterialShell's (MIT, Copyright (c) 2025 Avenge Media LLC): the gallery
+# at https://danklinux.com/plugins links `dms://plugin/install/<id>`, and DMS
+# (quickshell/DMSShell.qml, onOpenUrlRequested) keeps the id up to the first
+# `?` or `#` and installs that id from its registry. `dms://theme/install/<id>`
+# is a DMS colour theme, which haseen cannot use. The link never names a
+# repository; the registry entry does.
+#
+# What haseen adds: the id is looked up in the plugin registries the way
+# `haseen plugin search` does, the entry must point at an https git
+# repository, and the user reads what will be installed and confirms in a
+# floating terminal before `haseen plugin install` runs. A dry run still
+# refreshes the registry clones under ~/.cache, as search does: the plan is
+# made from them.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plugin url <dms://plugin/install/ID> [--dry-run] [--yes]
+
+Installs the plugin a DankMaterialShell gallery link names
+(https://danklinux.com/plugins), after showing it and asking. Browsers run it
+through haseen-dms-url.desktop, the x-scheme-handler/dms handler; started
+without a terminal, it opens a floating one.
+
+Refused: other dms:// links (themes), an id with characters a plugin id cannot
+have, a plugin no registry indexes, and a registry entry whose repository is
+not an https git URL. When the active shell is DankMaterialShell
+(haseen shell use dms), the link goes to \`dms open\` instead.
+EOF
+}
+
+# refuse MESSAGE — die, and say so on screen when a browser started us: nobody
+# reads the stderr of a scheme handler.
+refuse() {
+    if [[ ! -t 0 && ${HASEEN_INLINE:-} != 1 ]] && ! $DRY_RUN && have notify-send; then
+        notify-send -a haseen "Plugin link refused" "$1" || true
+    fi
+    die "$1"
+}
+
+# link_plugin_id URL — the plugin id of a dms://plugin/install/<id> link, or
+# nothing. Like DMS, everything from the first ? or # on is ignored; one
+# trailing slash (some browsers add it) is dropped.
+link_plugin_id() {
+    local rest="${1#[dD][mM][sS]://}" id
+    rest="${rest%%[?#]*}"
+    rest="${rest%/}"
+    [[ $rest == plugin/install/* ]] || return 0
+    id="${rest#plugin/install/}"
+    [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && ${#id} -le 128 ]] && printf '%s\n' "$id"
+    return 0
+}
+
+# https_repo_ok URL — a plain https URL to a repository on a host: no
+# credentials, no whitespace, no other scheme. git@ and local paths, which a
+# hand-typed `haseen plugin install` accepts, are refused for a web link.
+https_repo_ok() { [[ $1 =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/[^[:space:]@]+$ ]]; }
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+link="$1"
+[[ ${link,,} == dms://* ]] || refuse "not a dms:// link: $link"
+
+# Switched to DMS, the link is DMS's own business: it has its own install flow.
+active=haseen
+[[ -r $HASEEN_USER_STATE/active-shell ]] && { read -r active _ <"$HASEEN_USER_STATE/active-shell" || true; }
+if [[ $active == dms ]] && have dms; then
+    $DRY_RUN || exec dms open "$link"
+    echo "DRYRUN: dms open $link"
+    exit 0
+fi
+
+[[ ${link,,} == dms://theme/* ]] &&
+    refuse "that link is a DankMaterialShell theme; haseen themes are installed with 'haseen theme install'"
+id="$(link_plugin_id "$link")"
+[[ -n $id ]] || refuse "not a plugin install link: $link (expected dms://plugin/install/<id>)"
+
+in_floating_terminal "$@"
+
+info "looking up $id in the plugin registries"
+entry="$(haseen-plugin-search --json "$id" | jq -c --arg id "$id" 'map(select(.id == $id))[0] // empty')"
+[[ -n $entry ]] || refuse "no registry indexes a plugin $id (haseen plugin registry list)"
+repo="$(jq -r .repo <<<"$entry")"
+path="$(jq -r .path <<<"$entry")"
+https_repo_ok "$repo" || refuse "$id comes from $repo, which is not an https git repository; not installed"
+[[ $path != /* && $path != *..* ]] || refuse "$id names an unsafe directory: $path"
+
+printf '\n%s\n' "Install a DankMaterialShell plugin"
+printf '  %-11s %s\n' \
+    plugin "$(jq -r '"\(.name) (\(.id))"' <<<"$entry")" \
+    author "$(jq -r '.author | if . == "" then "unknown" else . end' <<<"$entry")" \
+    repository "$repo" \
+    directory "${path:-/}" \
+    registry "$(jq -r .source <<<"$entry")"
+jq -r '.description | select(. != "")' <<<"$entry" | fold -s -w 72 | sed 's/ *$//; s/^/  /'
+printf '\n%s\n%s\n\n' \
+    "A plugin runs inside your shell with your rights. haseen checks its manifest," \
+    "not its code; install only what you trust."
+
+confirm "Install $id from $repo?" || {
+    info "nothing installed"
+    exit 1
+}
+# The id, not the repository: the plugin lands under the same name
+# `haseen plugin install $id` gives it. --no-sync resolves it against the
+# clones just shown, so what is installed is what was confirmed.
+flags=(--no-sync)
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+exec haseen-plugin-install "$id" "${flags[@]}"

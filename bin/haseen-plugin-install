@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Install a plugin from a registry (or a git URL) and pin it
-# haseen:args <id|url> [--path SUBDIR] [--commit SHA] [--enable] [--dry-run]
+# haseen:args <id|url> [--path SUBDIR] [--commit SHA] [--enable] [--no-sync] [--dry-run]
 #
 # Adapted from DankMaterialShell core/internal/plugins/manager.go (MIT,
 # Copyright (c) 2025 Avenge Media LLC): clone the plugin's repository, put it
@@ -16,14 +16,20 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/l
 usage() {
     cat <<EOF
 Usage: haseen plugin install <id|url> [--path SUBDIR] [--commit SHA]
-                             [--enable] [--dry-run] [--yes]
+                             [--enable] [--no-sync] [--dry-run] [--yes]
 
 <id>   a plugin from the registries (haseen plugin search)
-<url>  a git repository, for something that is not indexed anywhere
+<url>  a git repository, for something that is not indexed anywhere; or a
+       forge link to the plugin's directory in one, as copied from the
+       browser (https://github.com/O/R/tree/REF/DIR, GitLab's /-/tree/,
+       Codeberg's /src/branch/): DIR becomes --path, and a REF other than the
+       default branch is installed at the commit it names now (--commit)
 
   --path SUBDIR   the plugin lives in this subdirectory of the repository
   --commit SHA    install exactly that commit instead of the default branch
   --enable        also turn it on in shell.json (haseen plugin enable)
+  --no-sync       resolve <id> against the registry clones as they are, without
+                  fetching them first
 
 The install is pinned in $PLUGIN_LOCKFILE, so another machine running
 'haseen plugin restore' gets the same commit.
@@ -33,6 +39,7 @@ EOF
 path=""
 commit=""
 enable=false
+sync=true
 REST=()
 args=("$@")
 for ((i = 0; i < ${#args[@]}; i++)); do
@@ -40,6 +47,7 @@ for ((i = 0; i < ${#args[@]}; i++)); do
     --path) path="${args[++i]:-}" ;;
     --commit) commit="${args[++i]:-}" ;;
     --enable) enable=true ;;
+    --no-sync) sync=false ;;
     *) REST+=("${args[i]}") ;;
     esac
 done
@@ -54,11 +62,22 @@ target="$1"
 
 if [[ $target == *://* || $target == git@*:* || $target == /* ]]; then
     url="$target"
+    if tree="$(registry_split_tree "$target")"; then
+        IFS=$'\t' read -r url tree_kind tree_rest <<<"$tree"
+        tree="$(registry_resolve_tree "$url" "$tree_kind" "$tree_rest")"
+        IFS=$'\t' read -r tree_commit tree_default tree_dir <<<"$tree"
+        [[ -z $path || $path == "$tree_dir" ]] || die "$target already names the directory '$tree_dir'; drop --path"
+        path="$tree_dir"
+        # The default branch installs like the bare repository URL, at the head
+        # `haseen plugin update` follows; any other branch, tag or commit is
+        # pinned where it points now.
+        [[ -n $commit || $tree_default == true ]] || commit="$tree_commit"
+    fi
     id="${path:-${url##*/}}"
     id="${id%.git}"
     id="${id##*/}"
 else
-    registry_sync >/dev/null 2>&1
+    $sync && registry_sync >/dev/null 2>&1
     entry="$(registry_entry "$target")"
     [[ -n $entry ]] || die "no plugin $target in any registry (haseen plugin search)"
     url="$(jq -r .repo <<<"$entry")"
@@ -86,7 +105,10 @@ shell_id="$id"
 $DRY_RUN || shell_id="$(plugin_id_of "$PLUGIN_USER_DIR/$id" 2>/dev/null || echo "$id")"
 
 if $enable; then
-    haseen-plugin-enable "$shell_id" ${DRY_RUN:+--dry-run} 2>/dev/null ||
+    # DRY_RUN is "true" or "false", never empty, so the flag is chosen here.
+    dry=()
+    $DRY_RUN && dry=(--dry-run)
+    haseen-plugin-enable "$shell_id" "${dry[@]+"${dry[@]}"}" 2>/dev/null ||
         warn "installed, but could not enable $shell_id (haseen plugin enable $shell_id)"
 fi
 $DRY_RUN || info "$id installed at ${resolved:0:12}, loaded as '$shell_id' (haseen shell ipc shell reload)"

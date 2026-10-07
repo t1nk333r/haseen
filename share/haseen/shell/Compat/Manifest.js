@@ -14,8 +14,9 @@
 //     (_deriveLegacySurface: which surface a single `component` is)
 //
 // Omarchy services and panels use the same registry as native plugins. DMS
-// bar widgets become bar-widget entries and DMS daemons service entries; the
-// other DMS surfaces stay unsupported.
+// bar widgets become bar-widget entries, DMS daemons service entries and DMS
+// desktop widgets overlay entries (Compat/DmsDesktopHost.qml puts them on the
+// desktop layer); the other DMS surfaces stay unsupported.
 var supportedKinds = ["bar-widget", "service", "panel", "overlay"];
 
 // Omarchy kind -> its entryPoints key.
@@ -194,10 +195,13 @@ var dmsPermissions = {
     "network": "network"
 };
 
-// DMS surface -> haseen kind, for the surfaces the compat hosts load.
+// DMS surface -> haseen kind, for the surfaces the compat hosts load. A
+// desktop widget is a layer surface the host owns on every screen, which is
+// what the overlay kind means (architecture 5.2).
 var dmsKinds = {
     "widget": "bar-widget",
-    "daemon": "service"
+    "daemon": "service",
+    "desktop": "overlay"
 };
 
 function dms(dirName, m) {
@@ -221,7 +225,7 @@ function dms(dirName, m) {
             entry[dmsKinds[s]] = stripDotSlash(surfaces[s]);
         }
     if (kinds.length === 0)
-        problems.push("dms: no bar widget or daemon surface (" + (names.length > 0 ? "has " + names.join(", ") : "no component") + "; the compat adapter loads bar widgets and daemons only)");
+        problems.push("dms: no bar widget, daemon or desktop surface (" + (names.length > 0 ? "has " + names.join(", ") : "no component") + "; the compat adapter loads bar widgets, daemons and desktop widgets only)");
     var perms = typeof m.permissions === "string" ? m.permissions.split(/\s*,\s*/) : (Array.isArray(m.permissions) ? m.permissions : []);
     var mapped = [];
     for (var i = 0; i < perms.length; i++) {

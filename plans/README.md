@@ -47,3 +47,4 @@ Read `handoff.md` first.
 | 050 | io round 4: overflow slide panel, keyboard in panels, audio panel, indicators and bell, tray anchor, luna plugins | P1 | L | 048 049 | DONE 2026-10-06 (physical clicks and keys are owner checks) |
 | 051 | io round 5: tray hover, arrange and drag, bar edge buttons, double-click anywhere, hidden widgets, calculator | P2 | M | 050 | DONE 2026-10-06 (touchpad double-tap and physical drags are owner checks) |
 | 052 | io round 6: live compat panels (input mask), Omarchy command shims and shell.json mirror, wifi and weather ports with GeoClue, universal paste, DMS daemons | P1 | L | 049 050 051 | DONE 2026-10-06 (physical clicks and real GeoClue positioning are owner checks) |
+| 054 | io round 7: steady indicators, gestures that stay on, `dms://` links, DMS desktop/popout/state compat, browse-URL installs, the default-plugin rule | P1 | L | 035 048 050 052 | DONE 2026-10-07 (real swipe, finger and OSK typing are owner checks) |

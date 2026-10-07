@@ -45,7 +45,8 @@ Singleton {
     }
 
     // want(key, stream, params) — register or update one consumer.
-    // params for `sysusage`: intervalMs, gpu ("auto"/"off"/"cardN"), processes.
+    // params for `sysusage`: intervalMs, gpu ("auto"/"off"/"cardN"), processes,
+    // system (cpuTempC, cpuFreqMHz, net and disks, for the DMS compat layer).
     function want(key: string, stream: string, params: var): void {
         const next = Object.assign({}, _consumers);
         next[key] = {
@@ -91,7 +92,7 @@ Singleton {
 
     // _sync — one subscribe per stream, merged from every consumer: the
     // shortest interval, the first GPU choice that is not "off", and processes
-    // when anyone asked for them.
+    // and system when anyone asked for them.
     function _sync(): void {
         if (!socket.connected)
             return;
@@ -102,13 +103,15 @@ Singleton {
             const m = merged[consumer.stream] || (merged[consumer.stream] = {
                 intervalMs: 0,
                 gpu: "off",
-                processes: false
+                processes: false,
+                system: false
             });
             if (typeof params.intervalMs === "number" && params.intervalMs > 0)
                 m.intervalMs = m.intervalMs === 0 ? params.intervalMs : Math.min(m.intervalMs, params.intervalMs);
             if (typeof params.gpu === "string" && params.gpu !== "off")
                 m.gpu = params.gpu;
             m.processes = m.processes || params.processes === true;
+            m.system = m.system || params.system === true;
         }
         for (const stream of ["sysusage"]) {
             if (merged[stream] !== undefined)

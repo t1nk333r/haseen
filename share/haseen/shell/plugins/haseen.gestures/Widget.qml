@@ -6,9 +6,15 @@ import qs.Haseen.Widgets
 // Touchpad gestures in the bar. Listed in the default bar.right, but takes no
 // room until the `gestures` flag exists: the hardware quirk sets it on a
 // machine with a touchpad, so a desktop never shows it and the user's
-// shell.json is never rewritten to switch it on. Left click opens the panel;
-// right click turns every gesture off and on, as in omagesture's bar button
-// (github.com/heroesofcode/omagesture, MIT, Copyright (c) 2026 Pedro Henrique).
+// shell.json is never rewritten to switch it on. The glyph dims while
+// gestures are off.
+//
+// Every click opens the panel, whose first row switches gestures off and on.
+// omagesture's bar button (github.com/heroesofcode/omagesture, MIT, Copyright
+// (c) 2026 Pedro Henrique) turned every gesture off on a right click; here
+// that was one stray tap from losing them: under clickfinger a two-finger tap
+// is a right click, and on io one in the overflow panel switched every swipe
+// off with nothing said (2026-10-07).
 BarButton {
     id: root
 
@@ -24,18 +30,5 @@ BarButton {
     glyph: "\u{F0821}"
     color: on ? Theme.barForeground : Theme.muted
 
-    GestureSettings {
-        id: store
-        pluginId: root.pluginId
-    }
-
-    onClicked: button => {
-        if (button === Qt.RightButton) {
-            store.save({
-                enabled: !root.on
-            });
-            return;
-        }
-        Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId]);
-    }
+    onClicked: Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId])
 }

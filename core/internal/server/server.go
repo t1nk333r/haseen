@@ -44,6 +44,7 @@ type subscription struct {
 	interval time.Duration
 	gpu      string
 	top      bool
+	system   bool
 }
 
 type client struct {
@@ -225,6 +226,7 @@ func (s *Server) dispatch(c *client, req proto.Request) {
 			sub.gpu = v
 		}
 		sub.top, _ = req.Params["processes"].(bool)
+		sub.system, _ = req.Params["system"].(bool)
 		s.mu.Lock()
 		c.sub = sub
 		s.mu.Unlock()
@@ -283,7 +285,7 @@ func (s *Server) tick() {
 func (s *Server) sampleOnce() {
 	s.mu.Lock()
 	subs := make([]*client, 0, len(s.clients))
-	gpu, top := "off", false
+	gpu, top, system := "off", false, false
 	for c := range s.clients {
 		if c.sub == nil {
 			continue
@@ -293,6 +295,7 @@ func (s *Server) sampleOnce() {
 			gpu = c.sub.gpu
 		}
 		top = top || c.sub.top
+		system = system || c.sub.system
 	}
 	s.mu.Unlock()
 	if len(subs) == 0 {
@@ -301,7 +304,9 @@ func (s *Server) sampleOnce() {
 
 	// One sample for every subscriber: two bars on two screens and the panel
 	// read the same files once, which the per-widget QML sampler could not do.
-	sample := s.sampler.Sample(gpu, top)
+	// The process list and the system stats are read when anyone asks, and
+	// everyone receives them.
+	sample := s.sampler.Sample(gpu, top, system)
 	event := proto.Event{Type: proto.TypeEvent, Stream: proto.StreamSysusage, Data: sample}
 	for _, c := range subs {
 		c.send(event)

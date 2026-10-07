@@ -1,2 +1,5 @@
 module qs.Modules.Plugins
 PluginComponent 1.0 PluginComponent.qml
+PluginPopout 1.0 PluginPopout.qml
+PopoutComponent 1.0 PopoutComponent.qml
+DesktopPluginComponent 1.0 DesktopPluginComponent.qml

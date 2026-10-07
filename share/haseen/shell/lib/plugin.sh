@@ -105,7 +105,7 @@ def dmssurfaces: (if (.capabilities | type) == "array" then .capabilities else [
           elif .type == "desktop" or .type == "dash" or .type == "dashCard" then .type
           else "widget" end): .component}
       else {} end;
-def dmskinds: [["widget", "bar-widget"], ["daemon", "service"]];
+def dmskinds: [["widget", "bar-widget"], ["daemon", "service"], ["desktop", "overlay"]];
 def dms($dirname):
     ((.id | type) == "string" and (.id | test("^[a-zA-Z][a-zA-Z0-9]*$"))) as $valid
     | ((if $valid then .id else $dirname end) | dmsid) as $id
@@ -119,7 +119,7 @@ def dms($dirname):
     | {compat: "dms", upstreamId: (if $valid then .id else "" end), id: $id,
        problems: ((if $valid then [] else ["dms: id must match ^[a-zA-Z][a-zA-Z0-9]*$"] end)
                   + (if ($loaded | length) > 0 then []
-                     else ["dms: no bar widget or daemon surface (\(if ($names | length) > 0 then "has " + ($names | join(", ")) else "no component" end); the compat adapter loads bar widgets and daemons only)"] end)),
+                     else ["dms: no bar widget, daemon or desktop surface (\(if ($names | length) > 0 then "has " + ($names | join(", ")) else "no component" end); the compat adapter loads bar widgets, daemons and desktop widgets only)"] end)),
        unsupported: [$names[] | select(. as $s | [dmskinds[][0]] | index([$s]) | not) | "dms:" + .],
        manifest: {schemaVersion: 1, id: $id, name: .name, version: .version,
                   description: (if (.description | type) == "string" then .description else "" end),

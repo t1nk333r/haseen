@@ -97,3 +97,37 @@ formatting, `gpu-probe.sh` removed), `bin/haseen-sidecar`,
 Known gap: the Nix package does not build the daemon (it would need
 `buildGoModule` and a vendor hash), so a NixOS install has no `sysusage`
 capability and the widget hides. Recorded in `handoff.md`.
+
+## Addition 2026-10-07: system stats for the DMS compat layer
+
+DMS desktop plugins (dms-conky) read CPU temperature and clock, network rates
+and disk mounts from DMS's `DgopService`. They ride on `sysusage` rather than a
+new stream or capability: a subscribe param `"system": true`, OR-merged across
+subscribers like `processes` (`core/internal/server/server.go:229`,
+`:298`; `share/haseen/shell/Haseen/Sidecar.qml:114`). When anyone asks, every
+event also carries `cpuTempC`, `cpuFreqMHz`, `net` {`rxBps`, `txBps`} and
+`disks` (`core/internal/sysusage/system.go:20`); when nobody does, `Sample`
+embeds a nil `*System` (`core/internal/sysusage/sysusage.go:45`) and the
+payload is byte-for-byte what haseen.sysusage had.
+
+- Temperature (`system.go:91`): hwmon `coretemp` "Package id 0", then
+  `k10temp`/`zenpower` Tdie before Tctl (Tctl can carry a fan offset), then the
+  `x86_pkg_temp` thermal zone, else -1. Probed once, re-probed when the node
+  stops answering.
+- Frequency (`system.go:166`): mean `scaling_cur_freq` over CPUs whose policy
+  answers (offline ones return EBUSY), else `/proc/cpuinfo` `cpu MHz`, else -1.
+- Network (`system.go:239`): `/proc/net/dev` per interface except `lo`, so an
+  interface going away or a counter reset adds nothing instead of a negative
+  rate; -1 on the first sample, and again after a tick without `system`.
+- Disks (`system.go:332`): `/proc/self/mounts` sources under `/dev/`, minus
+  loop and RAM disks and a denylist of image filesystems (squashfs, erofs,
+  iso9660; `system.go:323`). Rejected: an allowlist, which would hide f2fs,
+  bcachefs or a fuseblk NTFS stick. One row per device at its shortest
+  mountpoint (btrfs subvolumes), sized with an injectable `Statfs`.
+- No fork; single-integer nodes are read into a scratch buffer.
+
+Verification: `go test ./...` in `core` (`system_test.go`: sensor precedence
+and re-probe, frequency mean and fallback, net delta/reset/interface churn,
+disk filter/dedupe/sort/percent with a fake statfs, fields absent without
+`system`). A one-shot on the reference laptop read 47 °C (coretemp), 782 MHz,
+253 kB/s down, and two disks, `/` (btrfs, 4 mounts deduplicated) and `/boot`.

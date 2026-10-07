@@ -30,7 +30,13 @@ id="$1"
 [[ -e $PLUGIN_USER_DIR/$id ]] || die "$id is not installed in $PLUGIN_USER_DIR"
 
 confirm "Remove $id?" || exit 1
-haseen-plugin-disable "$id" ${DRY_RUN:+--dry-run} >/dev/null 2>&1 || true
+# The shell knows the plugin by its manifest id (a DMS plugin is `dms.<name>`),
+# which is what `haseen plugin install --enable` turned on. DRY_RUN is "true"
+# or "false", never empty, so the flag is chosen here.
+shell_id="$(plugin_id_of "$PLUGIN_USER_DIR/$id" 2>/dev/null || echo "$id")"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+haseen-plugin-disable "$shell_id" "${dry[@]+"${dry[@]}"}" >/dev/null 2>&1 || true
 $DRY_RUN || lockfile_drop "$id"
 $DRY_RUN && echo "DRYRUN: drop $id from $PLUGIN_LOCKFILE"
 run rm -rf "$PLUGIN_USER_DIR/$id"

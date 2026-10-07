@@ -4,9 +4,11 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Touchpad gestures (haseen.gestures, ported from omagesture): the Lua the
 # defaults and a changed mapping render to, what `haseen gestures apply`
-# writes and reloads (once, and nothing on a dry run), the `gestures` hardware
-# quirk on a touchpad laptop and a desktop, and the plugin itself — manifest,
-# panel catalogue against the CLI, and the panel and widget in the real engine.
+# writes and reloads (once, and nothing on a dry run), the notice when
+# gestures go off or come back, the `gestures` hardware quirk on a touchpad
+# laptop and a desktop, and the plugin itself — manifest, panel catalogue
+# against the CLI, and the panel and widget in the real engine (a right click
+# opens the panel and switches nothing off).
 
 PLUGIN="$HASEEN_PATH/shell/plugins/haseen.gestures"
 QS_BIN=${QS_BIN:-/usr/bin/qs}
@@ -141,6 +143,33 @@ for bad in '{"g3Up":"bogus"}' '{"g9Left":"workspace"}' '{"enabled":"yes"}' '["g3
     assert_status "--set refuses $bad" 1 "$STATUS"
 done
 assert_eq "a refused --set leaves shell.json alone" "$before" "$(cat "$CFG")"
+
+# --- switching gestures off is never silent -----------------------------------
+# On io a stray two-finger tap (a right click under clickfinger) switched
+# every swipe off with nothing said. Whatever turns them off now says so and
+# names the way back; turning them on again says so too.
+NOTIFY_LOG="$SANDBOX/notify.log"
+stub notify-send "printf '%s|' \"\$@\" >>\"$NOTIFY_LOG\"; echo >>\"$NOTIFY_LOG\""
+notices() { if [[ -e $NOTIFY_LOG ]]; then wc -l <"$NOTIFY_LOG"; else echo 0; fi; }
+capture haseen gestures apply --set '{"enabled":false}' --dry-run
+assert_dry_pure "apply --set enabled=false" "$OUTPUT"
+assert_contains "the dry run shows the notice" "$OUTPUT" "DRYRUN: notify-send -a haseen Touchpad gestures off"
+assert_eq "and sends none" 0 "$(notices)"
+capture haseen gestures apply --set '{"enabled":false}'
+assert_status "switching gestures off" 0 "$STATUS"
+assert_eq "off: the file maps no gesture" 0 "$(gesture_lines "$(cat "$TOGGLE")")"
+assert_eq "off: one notification" 1 "$(notices)"
+assert_contains "it says gestures are off" "$(cat "$NOTIFY_LOG")" "-a|haseen|Touchpad gestures off|"
+assert_contains "and names the way back" "$(cat "$NOTIFY_LOG")" "haseen gestures apply --set '{\"enabled\":true}'"
+assert_contains "the terminal is told too" "$OUTPUT" "Touchpad gestures off."
+capture haseen gestures apply --set '{"naturalScroll":false}'
+assert_contains "a change while off is written" "$(cat "$TOGGLE")" "natural_scroll = false"
+assert_eq "but says nothing new" 1 "$(notices)"
+capture haseen gestures apply --set '{"enabled":true,"naturalScroll":true}'
+assert_contains "back on: the swipes are mapped again" "$(cat "$TOGGLE")" 'hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })'
+assert_eq "and that is said" "Touchpad gestures on" "$(tail -n 1 "$NOTIFY_LOG" | cut -d'|' -f3)"
+capture haseen gestures apply --set '{"enabled":true}'
+assert_eq "an apply that changes nothing says nothing" 2 "$(notices)"
 unset HYPRLAND_INSTANCE_SIGNATURE
 
 # --- coexistence with the Omarchy original -----------------------------------
@@ -228,6 +257,9 @@ if [[ -x $QS_BIN ]]; then
     harness="$SANDBOX/shell"
     mkdir -p "$harness" "$SANDBOX/run"
     chmod 700 "$SANDBOX/run"
+    # The widget opens its panel through `qs ipc`: record the call.
+    stub qs "echo \"\$*\" >>\"$SANDBOX/qs.log\""
+    stub notify-send "echo \"\$*\" >>\"$SANDBOX/notify.log\""
     for module in Haseen Compat Ui Commons plugins; do
         ln -s "$HASEEN_PATH/shell/$module" "$harness/$module"
     done
@@ -274,6 +306,14 @@ ShellRoot {
                 // The CLI runs detached: wait for its file. (A FileView
                 // cannot watch a file that did not exist when it started.)
                 checker.running = true;
+            } else if (probe.phase === 3) {
+                // A right click, which a two-finger tap is under
+                // clickfinger: it opens the panel and switches nothing.
+                probe.widget.clicked(Qt.RightButton);
+                probe.result.onAfterRightClick = probe.widget.on;
+                probe.phase = 4;
+            } else if (probe.phase === 4 && !opener.running) {
+                opener.running = true;
             }
         }
     }
@@ -291,6 +331,16 @@ ShellRoot {
         onExited: code => {
             if (code === 0) {
                 probe.result.rendered = true;
+                probe.phase = 3;
+            }
+        }
+    }
+    Process {
+        id: opener
+        command: ["grep", "-q", "call panel toggle haseen.gestures", Quickshell.env("SANDBOX") + "/qs.log"]
+        onExited: code => {
+            if (code === 0) {
+                probe.result.opened = true;
                 console.log("RESULT " + JSON.stringify(probe.result));
                 Qt.quit();
             }
@@ -298,7 +348,7 @@ ShellRoot {
     }
 }
 QML
-    capture env XDG_RUNTIME_DIR="$SANDBOX/run" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+    capture env SANDBOX="$SANDBOX" XDG_RUNTIME_DIR="$SANDBOX/run" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
         timeout 40 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
     result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n 1)"
     [[ -n $result ]] || result='{"error":"no result"}'
@@ -309,6 +359,11 @@ QML
     assert_eq "a pick shows at once" menu "$(jq -r .immediate <<<"$result")"
     assert_eq "and reaches gestures.lua through the CLI" true "$(jq -r .rendered <<<"$result")"
     assert_eq "the pick is saved in shell.json" menu "$(jq -r '.plugins["haseen.gestures"].settings.g3Up' "$XDG_CONFIG_HOME/haseen/shell.json" 2>/dev/null)"
+    assert_eq "a right click on the widget opens its panel" true "$(jq -r .opened <<<"$result")"
+    assert_eq "with one call, nothing else" "1" "$(wc -l <"$SANDBOX/qs.log" 2>/dev/null || echo 0)"
+    assert_eq "and leaves gestures on" true "$(jq -r .onAfterRightClick <<<"$result")"
+    assert_eq "nothing is saved for it" false "$(jq '.plugins["haseen.gestures"].settings | has("enabled")' "$XDG_CONFIG_HOME/haseen/shell.json" 2>/dev/null)"
+    assert_eq "and nothing announced" no "$([[ -e $SANDBOX/notify.log ]] && echo yes || echo no)"
 else
     echo "  skip: quickshell not installed; the panel is not loaded" >&2
 fi

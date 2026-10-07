@@ -15,6 +15,25 @@ SLEEP_LOCK_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-
 # Turns core dumps into a "diagnose with AI" notification (bin/haseen-crash-watch).
 CRASH_WATCH_UNIT=haseen-crash-watch.service
 CRASH_WATCH_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$CRASH_WATCH_UNIT"
+# dms:// links (the DankMaterialShell plugin gallery's Install button) open
+# bin/haseen-plugin-url. The desktop file is installed with the tree.
+DMS_URL_DESKTOP=haseen-dms-url.desktop
+DMS_URL_MIME=x-scheme-handler/dms
+# DMS's own handler (assets/dms-open.desktop in dms-shell) is replaced:
+# haseen-plugin-url hands the link back to `dms open` when DMS is the active shell.
+DMS_OWN_DESKTOP=dms-open.desktop
+MIMEAPPS_LIST="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+
+# dms_url_handler — the dms:// default the user's mimeapps.list names, if any.
+# Read directly rather than through `xdg-mime query`, which also falls back to
+# system caches: only an explicit choice counts as the user's.
+dms_url_handler() {
+    [[ -r $MIMEAPPS_LIST ]] || return 0
+    awk -F= -v key="$DMS_URL_MIME" '
+        /^\[/ { section = $0; next }
+        section == "[Default Applications]" && $1 == key { split($2, v, ";"); print v[1]; exit }
+    ' "$MIMEAPPS_LIST"
+}
 
 layer_status() {
     local ok=0 missing=0 p
@@ -57,6 +76,22 @@ layer_status() {
         echo "missing: $CRASH_WATCH_UNIT not enabled (no crash notifications)"
         missing=$((missing + 1))
     fi
+    local handler
+    handler="$(dms_url_handler)"
+    case "$handler" in
+    "$DMS_URL_DESKTOP")
+        echo "ok: dms:// links open haseen plugin url"
+        ok=$((ok + 1))
+        ;;
+    "" | "$DMS_OWN_DESKTOP")
+        echo "missing: dms:// links are not handled by haseen (no plugin installs from the DMS gallery)"
+        missing=$((missing + 1))
+        ;;
+    *)
+        echo "ok: dms:// links open $handler (your choice)"
+        ok=$((ok + 1))
+        ;;
+    esac
     ((missing == 0)) && return 0
     ((ok == 0)) && return 1
     return 2
@@ -80,6 +115,13 @@ layer_apply() {
     else
         run systemctl --user enable "$CRASH_WATCH_UNIT"
     fi
+    local handler
+    handler="$(dms_url_handler)"
+    case "$handler" in
+    "$DMS_URL_DESKTOP") info "dms:// links already open haseen plugin url" ;;
+    "" | "$DMS_OWN_DESKTOP") run xdg-mime default "$DMS_URL_DESKTOP" "$DMS_URL_MIME" ;;
+    *) info "dms:// links stay with $handler (your choice); haseen's is: xdg-mime default $DMS_URL_DESKTOP $DMS_URL_MIME" ;;
+    esac
     info "the shell starts with the next graphical session; to start it now: haseen shell restart"
 }
 

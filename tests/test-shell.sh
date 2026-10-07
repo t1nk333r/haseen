@@ -410,6 +410,7 @@ ln -s /usr/lib/systemd/user/haseen-crash-watch.service "$XDG_CONFIG_HOME/systemd
 shell_layer "$fx_bare" 'layer_run_status shell'
 assert_status "status: degraded without packages" 2 "$STATUS"
 assert_contains "status names the missing package" "$OUTPUT" "missing: package quickshell"
+printf '[Default Applications]\nx-scheme-handler/dms=haseen-dms-url.desktop;\n' >"$XDG_CONFIG_HOME/mimeapps.list"
 shell_layer "$fx_qs" 'layer_run_status shell'
 assert_status "status: applied" 0 "$STATUS"
 shell_layer "$fx_qs" 'layer_run_apply shell'

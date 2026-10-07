@@ -3,7 +3,8 @@
 #
 # 1. Preflight: refuse NixOS (use the flake) and unknown distros.
 # 2. Install the tree: bin/ -> PREFIX/bin, share/haseen -> PREFIX/share/haseen,
-#    systemd user units -> PREFIX/lib/systemd/user. PREFIX defaults to
+#    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
+#    PREFIX/share/applications. PREFIX defaults to
 #    /usr/local because these files are not owned by a package (yet; see
 #    plans/README.md, PKGBUILD phase).
 # 3. Apply the default layers through the installed `haseen layer apply`.
@@ -55,6 +56,9 @@ done
 require_not_root
 
 UNIT_DIR="$PREFIX/lib/systemd/user"
+# Desktop entries (the dms:// link handler) go where XDG_DATA_DIRS finds them;
+# the shell layer makes haseen-dms-url.desktop the default for dms:// links.
+APP_DIR="$PREFIX/share/applications"
 
 uninstall_tree() {
     local f
@@ -63,6 +67,9 @@ uninstall_tree() {
     done
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
+    done
+    for f in "$REPO"/share/haseen/default/applications/*.desktop; do
+        [[ -e $f ]] && run_root rm -f "$APP_DIR/${f##*/}"
     done
     run_root rm -rf "$PREFIX/share/haseen"
     info "haseen tree removed from $PREFIX"
@@ -94,6 +101,9 @@ install_tree() {
     done
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && install_root_file "$f" "$UNIT_DIR/${f##*/}" 0644
+    done
+    for f in "$REPO"/share/haseen/default/applications/*.desktop; do
+        [[ -e $f ]] && install_root_file "$f" "$APP_DIR/${f##*/}" 0644
     done
     info "haseen $(cat "$REPO/share/haseen/VERSION") installed under $PREFIX"
 }

@@ -194,11 +194,13 @@ registry_fetch() {
     local url="$1" commit="${2:-}" dir
     registry_url_ok "$url" || die "refusing repository URL: $url"
     dir="$(repo_dir "$url")"
+    # stdout is the commit, which callers capture: what is done (or, in a dry
+    # run, planned) goes to stderr so the plan prints in order.
     if [[ ! -d $dir/.git ]]; then
-        run mkdir -p "$PLUGIN_REPOS_DIR"
-        run git clone --quiet "$url" "$dir" || die "could not clone $url"
+        run mkdir -p "$PLUGIN_REPOS_DIR" >&2
+        run git clone --quiet "$url" "$dir" >&2 || die "could not clone $url"
     else
-        run git -C "$dir" fetch --quiet --all --tags
+        run git -C "$dir" fetch --quiet --all --tags >&2
     fi
     if $DRY_RUN; then
         # No apostrophe: inside "${x:-…}" bash reads one as an opening quote.
@@ -227,6 +229,63 @@ registry_link() {
     run mkdir -p "$PLUGIN_USER_DIR"
     run rm -rf "$PLUGIN_USER_DIR/$id"
     run ln -sfn "$src" "$PLUGIN_USER_DIR/$id"
+}
+
+# registry_split_tree URL — a repository browse URL that names a directory, as
+# copied from a forge's file view, split into "REPO<TAB>KIND<TAB>REST":
+#   GitHub           https://github.com/O/R/tree/REF/DIR
+#   GitLab           https://gitlab.com/GROUP/…/R/-/tree/REF/DIR
+#   Forgejo / Gitea  https://codeberg.org/O/R/src/branch|tag|commit/REF/DIR
+# REST is REF/DIR: a branch or tag name may itself hold slashes, so only the
+# remote's refs can tell where REF ends (registry_resolve_tree). Fails for any
+# other URL. Upstream has no such form: DMS installs a plugin in a
+# subdirectory only from a registry entry's `path`, which --path mirrors.
+registry_split_tree() {
+    local url="${1%%[?#]*}" re='^(https://[^/]+/[^/]+/[^/]+)/(tree|src/branch|src/tag|src/commit)/(.+)$'
+    url="${url%/}"
+    if [[ $url == https://*/-/tree/* ]]; then
+        printf '%s\ttree\t%s\n' "${url%%/-/tree/*}" "${url#*/-/tree/}"
+    elif [[ $url =~ $re ]]; then
+        printf '%s\t%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+    else
+        return 1
+    fi
+}
+
+# registry_resolve_tree REPO KIND REST — "COMMIT<TAB>DEFAULT<TAB>DIR" for a
+# split browse URL: the commit REF names on the remote now, the directory
+# below it, and whether REF is the remote's default branch. REF is the
+# longest branch or tag name REST starts with (a full commit hash also
+# works); the remote is asked with `git ls-remote`, which changes nothing.
+registry_resolve_tree() {
+    local repo="$1" kind="$2" rest="$3" refs head name sha best="" best_sha=""
+    registry_url_ok "$repo" || die "refusing repository URL: $repo"
+    if [[ $kind == src/commit || ${rest%%/*} =~ $COMMIT_RE ]]; then
+        [[ ${rest%%/*} =~ $COMMIT_RE ]] || die "$repo: '${rest%%/*}' is not a full commit hash"
+        best="${rest%%/*}" best_sha="$best"
+    else
+        refs="$(git ls-remote --symref "$repo" HEAD 'refs/heads/*' 'refs/tags/*')" ||
+            die "could not list the branches of $repo"
+        head="$(awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }' <<<"$refs")"
+        # Annotated tags come twice; the peeled ^{} line, read last, is the commit.
+        while read -r sha name; do
+            [[ $sha != ref: ]] || continue
+            case $kind:$name in
+            tree:refs/heads/* | src/branch:refs/heads/*) name="${name#refs/heads/}" ;;
+            tree:refs/tags/* | src/tag:refs/tags/*) name="${name#refs/tags/}" name="${name%^\{\}}" ;;
+            *) continue ;;
+            esac
+            [[ $rest == "$name" || $rest == "$name"/* ]] || continue
+            if ((${#name} >= ${#best})); then best="$name" best_sha="$sha"; fi
+        done <<<"$refs"
+        [[ -n $best ]] || die "$repo has no branch or tag at the start of '$rest'"
+    fi
+    local dir="${rest#"$best"}"
+    dir="${dir#/}"
+    [[ $dir != /* && $dir != *..* ]] || die "unsafe path: $dir"
+    # DIR last: it is empty for the repository root, and read collapses the
+    # tabs around an empty middle field.
+    printf '%s\t%s\t%s\n' "$best_sha" "$([[ $kind != src/tag && $kind != src/commit && $best == "$head" ]] && echo true || echo false)" "$dir"
 }
 
 # registry_validate ID — the check upstream does not do. A plugin that fails is
