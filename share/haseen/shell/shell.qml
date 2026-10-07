@@ -53,6 +53,10 @@ ShellRoot {
         restoreMode: Binding.RestoreBindingOrValue
     }
 
+    // The border wipe (plan 069): reading it creates the singleton, which
+    // subscribes to haseen-sidecar while the theme asks for a wipe.
+    readonly property bool borderWipe: BorderWipe.wanted
+
     function focusedScreen(): var {
         const mon = Hyprland.focusedMonitor;
         const screens = Quickshell.screens;

@@ -47,6 +47,73 @@ assert_eq "theme.name" "haseen" "$(cat "$CUR/theme.name")"
 assert_eq "the shell selection stays readable" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
 assert_eq "the menu rounds like haseen's windows" "4" "$(jq -r .windowRadius "$CUR/theme/shell.json")"
 
+# --- the border wipe (plan 069) ------------------------------------------------
+# hyprland.lua reads border_wipe and border_wipe_seconds from the colors.toml
+# beside it. Up to 10 s a turn Hyprland's borderangle loop turns the border;
+# slower, borderangle stays off and haseen-sidecar does it. Run the installed
+# file under Lua with a recording `hl`.
+wipe_hl() { # — what the installed hyprland.lua asks of Hyprland
+    lua - "$CUR/theme/hyprland.lua" <<'LUA'
+local out = {}
+hl = {
+  animation = function(t)
+    if t.leaf == "borderangle" then
+      out[#out + 1] = ("borderangle enabled=%s speed=%s style=%s"):format(tostring(t.enabled), tostring(t.speed), tostring(t.style))
+    end
+  end,
+  config = function(t)
+    local b = t.general and t.general.col and t.general.col.active_border
+    if type(b) == "table" then out[#out + 1] = "active_border " .. table.concat(b.colors, " ") end
+    local g = t.group and t.group.col and t.group.col.border_active
+    if type(g) == "table" then out[#out + 1] = "group " .. table.concat(g.colors, " ") end
+  end,
+}
+dofile(arg[1])
+print(table.concat(out, "\n"))
+LUA
+}
+wipe_toml() { # SED-SCRIPT — the installed colors.toml, rewritten from the stock one
+    local stock="$HASEEN_PATH/themes/haseen/colors.toml" cur="$CUR/theme/colors.toml"
+    # A fresh file, never written through: the installed one may link to the repo.
+    sed "$1" "$stock" >"$cur.new"
+    rm -f "$cur"
+    mv "$cur.new" "$cur"
+}
+if command -v lua >/dev/null; then
+    assert_contains "colors.toml declares the owner's pace" "$(cat "$CUR/theme/colors.toml")" "border_wipe_seconds = 36"
+    capture wipe_hl
+    assert_contains "36 s a turn: borderangle stays off, the sidecar turns it" "$OUTPUT" "borderangle enabled=false speed=nil"
+    assert_contains "the gradient is colors.toml's" "$OUTPUT" \
+        "active_border rgba(F25623ff) rgba(F25623cc) rgba(F2562311) rgba(F25623cc)"
+    assert_contains "and the group border's too" "$OUTPUT" \
+        "group rgba(F25623ff) rgba(F25623cc) rgba(F2562311) rgba(F25623cc)"
+    wipe_toml 's/^border_wipe_seconds = .*/border_wipe_seconds = 10/'
+    capture wipe_hl
+    assert_contains "10 s a turn: Hyprland's own loop, at its slowest" "$OUTPUT" "borderangle enabled=true speed=100 style=loop"
+    wipe_toml 's/^border_wipe_seconds = .*/border_wipe_seconds = 4/'
+    capture wipe_hl
+    assert_contains "4 s a turn: speed 40" "$OUTPUT" "borderangle enabled=true speed=40 style=loop"
+    wipe_toml '/^border_wipe/d'
+    capture wipe_hl
+    assert_contains "no declaration: no turning" "$OUTPUT" "borderangle enabled=false"
+    assert_contains "and the accent stands still" "$OUTPUT" "active_border rgba(F25623ff)"$'\n'
+else
+    echo "  skip: lua missing; the haseen theme's border wipe is not exercised" >&2
+fi
+if command -v Hyprland >/dev/null; then
+    # Hyprland refuses an animation speed above 100: the theme must never ask.
+    mkdir -p "$SANDBOX/verify" "$SANDBOX/run"
+    chmod 700 "$SANDBOX/run"
+    for seconds in 36 10; do
+        wipe_toml "s/^border_wipe_seconds = .*/border_wipe_seconds = $seconds/"
+        printf 'dofile("%s")\n' "$CUR/theme/hyprland.lua" >"$SANDBOX/verify/wipe-$seconds.lua"
+        capture env XDG_RUNTIME_DIR="$SANDBOX/run" timeout 30 Hyprland --verify-config -c "$SANDBOX/verify/wipe-$seconds.lua"
+        assert_contains "Hyprland accepts the theme at $seconds s a turn" "$OUTPUT" "config ok"
+    done
+else
+    echo "  skip: Hyprland not installed; --verify-config not run" >&2
+fi
+
 # --- Theme.qml falls back to the haseen palette -----------------------------
 qml="$HASEEN_PATH/shell/Haseen/Theme.qml"
 while IFS=$'\t' read -r key value; do

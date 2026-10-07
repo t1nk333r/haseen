@@ -5,6 +5,11 @@ PartOf=graphical-session.target
 After=graphical-session.target
 # DMS draws its own wallpaper.
 Conflicts=dms.service
+# Wallpaper changes restart this unit on purpose, often several in a few
+# seconds (theme set, then bg set). Under the default start limit that tripped
+# start-limit-hit and left the screen without a wallpaper until the next login.
+# A real crash loop is still paced by RestartSec.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

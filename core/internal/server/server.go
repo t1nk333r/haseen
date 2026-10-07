@@ -1,10 +1,11 @@
-// Package server is the sidecar: one unix socket, JSON lines, and a sampler
-// that runs only while somebody is subscribed.
+// Package server is the sidecar: one unix socket, JSON lines, a sampler that
+// runs only while somebody is subscribed, and the border wipe loop (plan 069),
+// likewise.
 //
 // Adapted from DankMaterialShell core/internal/server (MIT, Copyright (c) 2025
 // Avenge Media LLC): a single daemon the shell connects to, capabilities
 // announced on connect, and per-stream subscriptions instead of a request per
-// frame. haseen keeps this to one stream.
+// frame. haseen keeps this to two streams.
 package server
 
 import (
@@ -18,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/t1nk333r/haseen/core/internal/borderwipe"
 	"github.com/t1nk333r/haseen/core/internal/proto"
 	"github.com/t1nk333r/haseen/core/internal/sysusage"
 )
@@ -38,6 +40,9 @@ type Options struct {
 	IdleTimeout time.Duration
 	// Root is the filesystem the sampler reads ("" = this machine).
 	Root string
+	// BorderWipe is the wipe loop's state dir, Hyprland runtime dir and
+	// default instance; its OnChange is the server's.
+	BorderWipe borderwipe.Options
 }
 
 type subscription struct {
@@ -52,6 +57,11 @@ type client struct {
 	enc  *json.Encoder
 	mu   sync.Mutex
 	sub  *subscription
+	// wipe is set while this client subscribes to the border wipe, with the
+	// Hyprland instance it named; wipeSeq orders those subscriptions.
+	wipe    bool
+	wipeSig string
+	wipeSeq int
 }
 
 func (c *client) send(v any) {
@@ -66,16 +76,18 @@ type Server struct {
 	opts    Options
 	ln      net.Listener
 	sampler sysusage.Sampler
+	wipe    *borderwipe.Controller
 
 	mu      sync.Mutex
 	clients map[*client]struct{}
 	ticker  *time.Timer
 	lastGo  time.Time
+	wipeSeq int
 	done    chan struct{}
 	once    sync.Once
 }
 
-func Capabilities() []string { return []string{proto.StreamSysusage} }
+func Capabilities() []string { return []string{proto.StreamSysusage, proto.StreamBorderWipe} }
 
 // ErrAlreadyRunning says a live daemon already owns the socket. The caller that
 // started this one on demand wants the socket, not this process, so it reports
@@ -105,14 +117,18 @@ func Listen(opts Options) (*Server, error) {
 		ln.Close()
 		return nil, err
 	}
-	return &Server{
+	s := &Server{
 		opts:    opts,
 		ln:      ln,
 		sampler: sysusage.Sampler{Root: opts.Root},
 		clients: map[*client]struct{}{},
 		lastGo:  time.Now(),
 		done:    make(chan struct{}),
-	}, nil
+	}
+	wipe := opts.BorderWipe
+	wipe.OnChange = s.wipeChanged
+	s.wipe = borderwipe.New(wipe)
+	return s, nil
 }
 
 func (s *Server) Addr() string { return s.opts.Socket }
@@ -129,6 +145,7 @@ func (s *Server) Close() {
 // the idle timeout expires with nobody connected.
 func (s *Server) Serve() error {
 	go s.idleWatch()
+	go s.wipe.Run(s.done)
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -178,6 +195,7 @@ func (s *Server) handle(conn net.Conn) {
 		s.lastGo = time.Now()
 		s.mu.Unlock()
 		s.reschedule()
+		s.syncWipe()
 		_ = conn.Close()
 	}()
 
@@ -211,34 +229,35 @@ func (s *Server) dispatch(c *client, req proto.Request) {
 	case proto.MethodCapabilities:
 		reply.Capabilities = Capabilities()
 	case proto.MethodSubscribe:
-		if req.Stream != proto.StreamSysusage {
+		switch req.Stream {
+		case proto.StreamSysusage:
+			s.subscribeSysusage(c, req)
+		case proto.StreamBorderWipe:
+			sig, _ := req.Params["signature"].(string)
+			s.mu.Lock()
+			s.wipeSeq++
+			c.wipe, c.wipeSig, c.wipeSeq = true, sig, s.wipeSeq
+			s.mu.Unlock()
+			s.syncWipe()
+			// Every subscriber hears the state once it is settled, changed or
+			// not; later changes follow as events.
+			s.wipe.Announce()
+		default:
 			reply.OK, reply.Error = false, "unknown stream: "+req.Stream
-			break
 		}
-		sub := &subscription{interval: DefaultInterval, gpu: "auto"}
-		if v, ok := req.Params["intervalMs"].(float64); ok && v > 0 {
-			sub.interval = time.Duration(v) * time.Millisecond
-			if sub.interval < minInterval {
-				sub.interval = minInterval
-			}
-		}
-		if v, ok := req.Params["gpu"].(string); ok && v != "" {
-			sub.gpu = v
-		}
-		sub.top, _ = req.Params["processes"].(bool)
-		sub.system, _ = req.Params["system"].(bool)
-		s.mu.Lock()
-		c.sub = sub
-		s.mu.Unlock()
-		s.reschedule()
-		// Answer the first sample immediately: a widget that just appeared
-		// should not show "?" for a whole interval.
-		go s.sampleOnce()
 	case proto.MethodUnsubscribe:
 		s.mu.Lock()
-		c.sub = nil
+		if req.Stream == "" || req.Stream == proto.StreamSysusage {
+			c.sub = nil
+		}
+		if req.Stream == "" || req.Stream == proto.StreamBorderWipe {
+			c.wipe = false
+		}
 		s.mu.Unlock()
 		s.reschedule()
+		s.syncWipe()
+	case proto.MethodStatus:
+		reply.Data = map[string]any{proto.StreamBorderWipe: s.wipe.Status()}
 	case proto.MethodShutdown:
 		c.send(reply)
 		s.Close()
@@ -248,6 +267,62 @@ func (s *Server) dispatch(c *client, req proto.Request) {
 	}
 	if req.ID != 0 || !reply.OK {
 		c.send(reply)
+	}
+}
+
+func (s *Server) subscribeSysusage(c *client, req proto.Request) {
+	sub := &subscription{interval: DefaultInterval, gpu: "auto"}
+	if v, ok := req.Params["intervalMs"].(float64); ok && v > 0 {
+		sub.interval = time.Duration(v) * time.Millisecond
+		if sub.interval < minInterval {
+			sub.interval = minInterval
+		}
+	}
+	if v, ok := req.Params["gpu"].(string); ok && v != "" {
+		sub.gpu = v
+	}
+	sub.top, _ = req.Params["processes"].(bool)
+	sub.system, _ = req.Params["system"].(bool)
+	s.mu.Lock()
+	c.sub = sub
+	s.mu.Unlock()
+	s.reschedule()
+	// Answer the first sample immediately: a widget that just appeared
+	// should not show "?" for a whole interval.
+	go s.sampleOnce()
+}
+
+// syncWipe runs the border wipe while any client subscribes to it, for the
+// Hyprland instance the latest of them named: a shell started after a
+// Hyprland restart names the new one.
+func (s *Server) syncWipe() {
+	s.mu.Lock()
+	active, sig, seq := false, "", 0
+	for c := range s.clients {
+		if c.wipe && c.wipeSeq > seq {
+			active, sig, seq = true, c.wipeSig, c.wipeSeq
+		}
+	}
+	s.mu.Unlock()
+	s.wipe.Set(active, sig)
+}
+
+func (s *Server) wipeChanged(st borderwipe.Status) {
+	// Pausing and resuming follow focus; only trouble goes to the log.
+	if st.State == borderwipe.StateWaiting {
+		log.Printf("border wipe waiting: %s", st.Reason)
+	}
+	s.mu.Lock()
+	subs := make([]*client, 0, 1)
+	for c := range s.clients {
+		if c.wipe {
+			subs = append(subs, c)
+		}
+	}
+	s.mu.Unlock()
+	event := proto.Event{Type: proto.TypeEvent, Stream: proto.StreamBorderWipe, Data: st}
+	for _, c := range subs {
+		c.send(event)
 	}
 }
 

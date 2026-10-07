@@ -124,6 +124,8 @@ but never while safe mode is on.
   - `Paths`: path constants.
   - `Plugins`: plugin registry.
   - `Branding`: the selected mark and its file paths (§11).
+  - `Sidecar`: the connection to haseen-sidecar (§5.6).
+  - `BorderWipe`: holds the `borderwipe` subscription while the theme asks for a wipe (§5.6, §7).
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
@@ -317,6 +319,27 @@ Plugins with `settings.debugIpc` expose test-only targets named after the
 plugin, for example `haseen.menu`, `haseen.launcher` and `haseen.themepicker`.
 Smoke tests drive the UI through these, never through injected input.
 
+### 5.6 haseen-sidecar
+
+`core/` builds `haseen-sidecar` into `share/haseen/sidecar/` (`tools/build-sidecar.sh`). `qs.Haseen.Sidecar` (`shell/Haseen/Sidecar.qml`) starts it on demand and talks JSON lines over `$XDG_RUNTIME_DIR/haseen/sidecar.sock` (`core/internal/proto`). The daemon greets with its capabilities, runs a stream only while some client subscribes to it, and exits 5 minutes after its last client leaves. `haseen sidecar status` (`bin/haseen-sidecar`) shows the binary, the socket and the border wipe's state.
+
+| stream | what | subscriber |
+|---|---|---|
+| `sysusage` | CPU, memory, GPU, processes (plan 032) | the haseen.sysusage widget, the DMS `DgopService` |
+| `borderwipe` | turns the active border's gradient for a theme that asks (§7, plan 069) | `qs.Haseen.BorderWipe`, while the theme's `colors.toml` has `border_wipe` |
+
+Methods: `subscribe`/`unsubscribe` (with `stream`), `capabilities`, `status` (answers `{"borderwipe": {state, reason, secondsPerTurn, angle, frames}}`), `shutdown`.
+
+The border wipe loop (`core/internal/borderwipe`) is a port of the owner's `hypr-border-wipe` from luna. Each frame is one `eval hl.config(...)` on Hyprland's request socket (connect, send, receive, close), built in a reused buffer, with no process started. Frames run at most 10 a second, a degree each at 36 s a turn. Its states:
+
+- `off`: nobody subscribed, or the theme asks for no wipe.
+- `waiting`: Hyprland is not answering. It retries every 2 s and reconnects when the socket returns. A shell started after a Hyprland restart subscribes with the new instance's signature.
+- `native`: Hyprland's `borderangle` leaf loops. The loop stands aside, so the two never run together.
+- `paused`: the `game` context (`flags/context`), `animations:enabled` false, or no window focused. The first two are read every 2 s; focus and reloads come from Hyprland's event socket.
+- `running`.
+
+A reload that hands the border back (a theme without the wipe, or one that `borderangle` turns) after frames went out gets one more `reload`, so that a late frame cannot keep the old gradient.
+
 ## 6. Resource rules (enforced in review)
 
 - Every `Timer` is marked on the line above it, and `tests/test-shell.sh` enforces both kinds. Prefer events: Hyprland IPC, PipeWire, UPower and NetworkManager D-Bus, `FileView` watches.
@@ -324,6 +347,7 @@ Smoke tests drive the UI through these, never through injected input.
   - `// haseen:sample`: a repeating sampler with an interval of 2 s or more and a `running:` binding gated on visibility or enablement.
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python in the shell path.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
+- The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 12 MiB RSS.
 - Measure before claiming. `haseen doctor` prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
   - bare `qs` with an empty config: 122 MiB RSS
   - haseen default bar on the software backend: 178 MiB RSS / 126 MiB PSS, 0.01 s CPU per 60 s
@@ -336,6 +360,7 @@ Smoke tests drive the UI through these, never through injected input.
 - **Format:** Omarchy `colors.toml` (de-facto community standard), so Omarchy themes install unchanged. The keys are `mode`, `accent`, `selection`, `muted`, `background` (+ `dark_`/`darker_`/`lighter_` variants), `foreground` (+ variants), and the eight ANSI colour names plus their `bright_` variants.
 - **Rendering:** `haseen theme set <name>` renders `share/haseen/themed/*.tpl` (plus user templates in `~/.config/haseen/themed/`) into `~/.local/state/haseen/current/theme/`. App configs include those outputs with one line each.
 - **Default:** `haseen` (`THEME_DEFAULT` in `theme-lib.sh`) is haseen's own theme, derived from HANCORE's Greek Noir (MIT) with the owner's "akane" border wipe; the theme layer sets it for a user who has none. Renamed stock themes are aliases (`THEME_ALIASES`): `haseen theme set greek-noir-akane` and a `theme.name` of `greek-noir-akane` resolve to `haseen` with a one-line notice, and `haseen` also finds backgrounds in `~/.config/haseen/backgrounds/greek-noir-akane/`. The migration `1791356361-theme-haseen.sh` renames `theme.name` and moves that folder to `backgrounds/haseen/`, only for a user whose current theme is `greek-noir-akane` (plan 066).
+- **Border wipe:** a theme may ask for the active border's gradient to turn clockwise with two `colors.toml` keys: `border_wipe` (the stops, `rgba(RRGGBBAA)`, `rgb(RRGGBB)` or `0xAARRGGBB`, space-separated) and `border_wipe_seconds` (one turn). The `haseen` theme declares four orange stops at 36 s, the pace of the owner's loop on luna. Its `hyprland.lua` reads both keys from the `colors.toml` beside it. Up to 10 s a turn it enables Hyprland's `borderangle` animation in `loop` style, at speed = seconds × 10, with the built-in `linear` curve. Hyprland 0.56 refuses a speed above 100. Slower than that, it turns `borderangle` off and haseen-sidecar's `borderwipe` loop does the turning (§5.6). Either way a theme switch carries the wipe along, and the two never run together. Hyprland starts the native loop when a window maps, so windows that were already open before a reload into a ≤ 10 s pace stay still until they are reopened (plan 069).
 - **Neovim:** in a LazyVim or haseen.nvim config, `haseen theme set` links `~/.config/nvim/lua/plugins/theme.lua` to `current/theme/neovim.lua` when it is missing or links to an Omarchy or haseen theme (a file of the user's stays), plus `haseen-theme-hotreload.lua` and `haseen-all-themes.lua` from `share/haseen/default/nvim/`. lazy.nvim's change detection sees the new spec and fires `User LazyReload`, and the hot-reload applies its colourscheme in running nvims. While Omarchy's `omarchy-theme-hotreload.lua`/`all-themes.lua` are there, haseen's twins are not added; `haseen import omarchy` moves them to `<file>.bak-<timestamp>` (plan 058).
 - **haseen.nvim:** haseen's Neovim config is the owner's plain lazy.nvim config, fetched rather than shipped. `haseen setup nvim` (`bin/haseen-setup-nvim`) clones it at a pinned commit (`NVIM_REPO_URL`, `NVIM_COMMIT`) into `~/.config/nvim` and links `share/haseen/default/nvim/haseen-colorscheme.lua` into its `lua/plugins/`. That bridge disables the theme spec's `LazyVim/LazyVim` entry and applies its colourscheme on `User LazyDone`; its presence is what makes `haseen theme set` link a config that is not LazyVim. A first install runs it with `--if-absent`; an existing config is replaced only with `--replace`, after it moves to `~/.config/nvim.bak-<timestamp>` (plan 065).
 - **Shell tokens:** `current/theme/shell.json` uses these keys:

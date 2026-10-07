@@ -6,7 +6,7 @@
 // the daemon announces its capabilities on connect and the shell gates every
 // feature on them, so an old, missing or killed daemon degrades the UI instead
 // of breaking it. haseen keeps its own Quickshell IPC for everything else; this
-// socket carries sampling only.
+// socket carries sampling and the border wipe fallback (plan 069).
 package proto
 
 // Version is bumped when the wire format changes in a way a client can see.
@@ -22,18 +22,27 @@ const (
 // Methods a client may call.
 const (
 	MethodSubscribe    = "subscribe"
-	MethodUnsubscribe  = "unsubscribe"
+	MethodUnsubscribe  = "unsubscribe" // `stream`; none = every stream of this client
 	MethodCapabilities = "capabilities"
+	MethodStatus       = "status"
 	MethodShutdown     = "shutdown"
 )
 
-// StreamSysusage is the only stream today: CPU, memory, GPU and the process
+// StreamSysusage is CPU, memory, GPU and the process
 // list that haseen.sysusage used to poll from QML. Subscribe params:
 // intervalMs, gpu ("auto"/"off"/"cardN"), processes (adds `processes`) and
 // system (adds `cpuTempC`, `cpuFreqMHz`, `net` {rxBps, txBps} and `disks`, which
 // the DMS compat DgopService reads; absent unless some subscriber asks). The
 // payload is sysusage.Sample.
 const StreamSysusage = "sysusage"
+
+// StreamBorderWipe turns the active border for a theme that declares
+// border_wipe in colors.toml, when Hyprland's borderangle animation does not
+// (plan 069). The loop runs only while someone is subscribed. Subscribe
+// params: signature (the HYPRLAND_INSTANCE_SIGNATURE to drive; default the
+// daemon's own). Events carry borderwipe.Status when its state changes;
+// `status` answers with the angle and the frame count as well.
+const StreamBorderWipe = "borderwipe"
 
 // Hello is the first line the daemon writes. `capabilities` is the contract:
 // a client that does not find its stream there must not use it.
@@ -60,6 +69,8 @@ type Reply struct {
 	OK           bool     `json:"ok"`
 	Error        string   `json:"error,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
+	// Data answers `status`: {"borderwipe": borderwipe.Status}.
+	Data any `json:"data,omitempty"`
 }
 
 // Event carries one sample. Data is the stream's own payload.

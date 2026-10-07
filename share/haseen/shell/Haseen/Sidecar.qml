@@ -47,6 +47,7 @@ Singleton {
     // want(key, stream, params) — register or update one consumer.
     // params for `sysusage`: intervalMs, gpu ("auto"/"off"/"cardN"), processes,
     // system (cpuTempC, cpuFreqMHz, net and disks, for the DMS compat layer).
+    // params for `borderwipe`: signature (the Hyprland instance to turn).
     function want(key: string, stream: string, params: var): void {
         const next = Object.assign({}, _consumers);
         next[key] = {
@@ -100,7 +101,12 @@ Singleton {
         for (const key in _consumers) {
             const consumer = _consumers[key];
             const params = consumer.params || {};
-            const m = merged[consumer.stream] || (merged[consumer.stream] = {
+            if (consumer.stream !== "sysusage") {
+                // One wish for the whole shell; the last consumer's params stand.
+                merged[consumer.stream] = Object.assign({}, params);
+                continue;
+            }
+            const m = merged.sysusage || (merged.sysusage = {
                 intervalMs: 0,
                 gpu: "off",
                 processes: false,
@@ -113,7 +119,7 @@ Singleton {
             m.processes = m.processes || params.processes === true;
             m.system = m.system || params.system === true;
         }
-        for (const stream of ["sysusage"]) {
+        for (const stream of ["sysusage", "borderwipe"]) {
             if (merged[stream] !== undefined)
                 send({
                     id: _nextId++,
