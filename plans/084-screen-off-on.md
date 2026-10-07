@@ -110,6 +110,13 @@ with `--delay 0` 0.5 s after input:
 Screenshots looked at: `shots/panel.png` (the Screen row under Power profile), `shots/menu-system.png` and
 `shots/menu-screen-off-selected.png` (the two rows after Lock), `shots/locked.png`.
 
+## Review fixes (2026-10-08)
+
+- `--delay` takes at most 5 digits after leading zeros: `2^63` passed as a negative number and `2^64+1000` as
+  1000, both dispatching at once (`tests/test-screen.sh` "off --delay … is refused").
+- `bin/haseen-screen-off`'s header now says what runs it: the menu through Apps.launch, the power panel through
+  `Quickshell.execDetached` (a shell restart within that second loses the off).
+
 ## Not verified
 
 - A real panel or monitor going dark: the nest's headless output only reports `dpmsStatus`.

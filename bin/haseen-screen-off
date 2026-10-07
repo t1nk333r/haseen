@@ -6,10 +6,12 @@
 # motion (misc.key_press_enables_dpms, mouse_move_enables_dpms), so an off
 # sent at once is undone by the release of the click or of Enter that asked
 # for it. The command waits --delay first (default 1000 ms) and only then
-# dispatches. It waits in the foreground: the menu and the power panel start
-# it through Apps.launch, in its own scope, so it outlives the menu or panel
-# closing (and a shell restart). haseen.idle never turns these displays back
-# on: it only re-enables DPMS it turned off itself (plan 084 has the analysis).
+# dispatches. It waits in the foreground: the menu starts it through
+# Apps.launch, in its own scope, so it outlives the menu closing and a shell
+# restart; the power panel starts it with Quickshell.execDetached, so a shell
+# restart within that second loses the off (plan 084). haseen.idle never turns
+# these displays back on: it only re-enables DPMS it turned off itself (plan
+# 084 has the analysis).
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
@@ -52,7 +54,9 @@ while (($#)); do
         ;;
     esac
 done
-[[ $delay =~ ^[0-9]+$ ]] && ((10#$delay <= DELAY_MAX)) || die "--delay takes 0-$DELAY_MAX milliseconds, not '$delay'"
+# At most 5 digits after leading zeros, so no value wraps round in Bash's
+# 64-bit arithmetic and slips under the maximum.
+[[ $delay =~ ^0*([0-9]{1,5})$ ]] && ((10#${BASH_REMATCH[1]} <= DELAY_MAX)) || die "--delay takes 0-$DELAY_MAX milliseconds, not '$delay'"
 delay=$((10#$delay))
 
 if ((delay > 0)); then

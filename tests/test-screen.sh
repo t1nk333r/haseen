@@ -109,6 +109,14 @@ assert_status "off --delay abc" 1 "$STATUS"
 assert_contains "off --delay abc says why" "$OUTPUT" "--delay takes 0-60000 milliseconds, not 'abc'"
 capture haseen screen off --delay 60001
 assert_status "off --delay over a minute" 1 "$STATUS"
+# Digits that wrap round in 64-bit arithmetic (before: 2^63 passed as a
+# negative number and 2^64+1000 as 1000, both dispatched).
+for big in 9223372036854775808 18446744073709552616 0000000000000000060001; do
+    capture haseen screen off --delay "$big" --dry-run
+    assert_status "off --delay $big is refused" 1 "$STATUS"
+done
+capture haseen screen off --delay 000000000000000000250 --dry-run
+assert_contains "zeros before a delay are decimal" "$OUTPUT" "DRYRUN: sleep 0.250"
 capture haseen screen off --delay
 assert_status "off --delay without a value" 2 "$STATUS"
 capture haseen screen off now
