@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# haseen:summary Download a wallhaven.cc wallpaper by id into your backgrounds
+# haseen:args <id> [--to DIR] [--dry-run]
+#
+# Plan 072. One API call for the wallpaper's record, then the image itself
+# from w.wallhaven.cc. Only an https URL on wallhaven's image host is fetched;
+# the answer must be announced as an image, be a JPEG, PNG or WebP by its own
+# bytes, fit 50 MiB and match the size the API gave, or it is deleted. The
+# last line on stdout is the image's path; "progress N" lines on stderr are
+# the haseen.themegen panel's progress bar.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/lib/wallhaven.sh
+source "$HASEEN_PATH/lib/wallhaven.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen wallhaven get <id> [--to DIR] [--dry-run]
+
+Downloads the wallpaper <id> (as in https://wallhaven.cc/w/<id>) to
+$WH_DEST/<id>.<ext>, or into DIR, and prints its path.
+A file already there is kept. Sketchy and NSFW wallpapers need your API key in
+$WH_KEY_FILE (mode 600).
+EOF
+}
+
+dest_dir="$WH_DEST"
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --to) dest_dir="${args[++i]:-}" ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# == 1)) || {
+    usage >&2
+    exit 2
+}
+id="$1"
+# A page URL works too: https://wallhaven.cc/w/<id> or whvn.cc/<id>.
+[[ $id =~ ^(https?://)?(www\.)?(wallhaven\.cc/w|whvn\.cc)/([a-z0-9]+)/?$ ]] && id="${BASH_REMATCH[4]}"
+[[ $id =~ ^[a-z0-9]{1,16}$ ]] || die "not a wallhaven id: $1"
+[[ -n $dest_dir ]] || die "--to needs a directory"
+wh_key
+have_key=false
+[[ -n $REPLY ]] && have_key=true
+
+# A file from an earlier run is kept: the id names one picture for good.
+for ext in jpg png webp; do
+    if [[ -s $dest_dir/$id.$ext ]] && wh_is_image "$dest_dir/$id.$ext"; then
+        $DRY_RUN && echo "DRYRUN: $dest_dir/$id.$ext is already there"
+        info "already downloaded" >&2
+        printf '%s\n' "$dest_dir/$id.$ext"
+        exit 0
+    fi
+done
+
+if $DRY_RUN; then
+    echo "DRYRUN: GET $WH_API/w/$id"
+    $have_key && echo "DRYRUN: with the API key from $WH_KEY_FILE (X-API-Key header)"
+    echo "DRYRUN: download its image (JPEG, PNG or WebP, at most $((WH_MAX_IMAGE >> 20)) MiB) to $dest_dir/$id.<ext>"
+    exit 0
+fi
+
+have curl || die "curl is not installed"
+record="$(wh_api "w/$id")" || exit 1
+IFS=$'\t' read -r purity url size type < <(jq -r '.data | [.purity // "", .path // "", (.file_size // 0 | tostring), .file_type // ""] | @tsv' <<<"$record") ||
+    die "wallhaven sent a record haseen cannot read"
+[[ $purity == sfw ]] || $have_key || die "$id is $purity; haseen fetches SFW only without an API key in $WH_KEY_FILE"
+[[ $url =~ ^https://w\.wallhaven\.cc/(full/)?[a-z0-9]{2}/wallhaven-$id\.(jpg|png|webp)$ ]] ||
+    die "wallhaven gave an image address haseen does not fetch: ${url:-none}"
+ext="${BASH_REMATCH[2]}"
+[[ $size =~ ^[0-9]+$ ]] || size=0
+((size <= WH_MAX_IMAGE)) || die "$id is $((size >> 20)) MiB, more than $((WH_MAX_IMAGE >> 20)) MiB"
+case $type in image/jpeg | image/png | image/webp) ;; *) die "$id is not a picture haseen can use (${type:-no type})" ;; esac
+
+mkdir -p -- "$dest_dir"
+dest="$dest_dir/$id.$ext"
+part="$dest_dir/.$id.$ext.part"
+meta="$(mktemp)"
+trap 'rm -f -- "$part" "$meta"' EXIT
+
+# curl's progress bar ("###  42.0%" redrawn with \r) becomes "progress 42"
+# lines; anything else it says (an error) passes through.
+status=0
+curl --fail --show-error --progress-bar --proto '=https' --max-time 300 --connect-timeout 15 \
+    --user-agent "$WH_UA" --max-filesize "$WH_MAX_IMAGE" --output "$part" \
+    --write-out '%{content_type}\n%{size_download}\n' -- "$url" >"$meta" \
+    2> >(tr '\r' '\n' | sed -u -n -E 's/^#.* ([0-9]+)(\.[0-9])?%$/progress \1/p; /^#|^ *$|^[ #]*[0-9.]+%$/!p' >&2) || status=$?
+wait $! 2>/dev/null || true
+((status != 63)) || die "$id is larger than $((WH_MAX_IMAGE >> 20)) MiB"
+((status == 0)) || die "downloading $id failed (curl exit $status)"
+{
+    read -r got_type
+    read -r got_size
+} <"$meta"
+case "${got_type%%;*}" in
+image/jpeg | image/png | image/webp) ;;
+*) die "$url was not sent as an image (${got_type:-no content type}); nothing kept" ;;
+esac
+wh_is_image "$part" || die "$url is not an image; nothing kept"
+if ((size > 0 && got_size != size)); then
+    die "$id arrived with $got_size bytes, wallhaven said $size; nothing kept"
+fi
+mv -f -- "$part" "$dest"
+echo "progress 100" >&2
+info "saved $dest" >&2
+printf '%s\n' "$dest"

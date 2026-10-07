@@ -1,0 +1,32 @@
+{
+  "data": {
+    "id": "gif001",
+    "url": "https://wallhaven.cc/w/lygg6r",
+    "short_url": "https://whvn.cc/lygg6r",
+    "views": 7005,
+    "favorites": 118,
+    "source": "",
+    "purity": "sfw",
+    "category": "general",
+    "dimension_x": 4928,
+    "dimension_y": 3280,
+    "resolution": "4928x3280",
+    "ratio": "1.5",
+    "file_size": 1854551,
+    "file_type": "image/gif",
+    "created_at": "2026-10-02 13:39:14",
+    "colors": [
+      "#000000",
+      "#999999",
+      "#424153",
+      "#cccccc",
+      "#ffffff"
+    ],
+    "path": "https://w.wallhaven.cc/full/gi/wallhaven-gif001.jpg",
+    "thumbs": {
+      "large": "https://th.wallhaven.cc/lg/ly/lygg6r.jpg",
+      "original": "https://th.wallhaven.cc/orig/ly/lygg6r.jpg",
+      "small": "https://th.wallhaven.cc/small/ly/lygg6r.jpg"
+    }
+  }
+}
