@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import qs.Haseen
+import qs.Haseen.Widgets
 import "MenuModel.js" as Model
 import "MenuStyle.js" as Style
 
@@ -13,9 +14,10 @@ import "MenuStyle.js" as Style
 // answered by one asynchronous batch per open.
 //
 // Omarchy's menu: a card centred over a dimmed screen (placement "overlay",
-// PanelPopup), no fade. The header reads "Go…" or the submenu's title until
-// you type; typing filters the current submenu and everything under it, with
-// a divider before the rows of deeper submenus and each row's path under
+// PanelPopup), no fade. haseen's mark leads the header, which reads "Go…"
+// or the submenu's title until you type; typing filters the current submenu
+// and everything under it, with a divider before the rows of deeper
+// submenus and each row's path under
 // it. Up/Down (PageUp/PageDown by six) move, Enter or Right opens or runs,
 // Left or Backspace on an empty query goes back, Backspace, Ctrl+Backspace
 // and Ctrl+U edit the query, Escape clears it and then closes. The first
@@ -944,12 +946,24 @@ Item {
             anchors.margins: root.contentMargin + root.borderWidth
             spacing: root.contentSpacing
 
+            // Omarchy's header (no search field, the query in the heading),
+            // with haseen's mark in the rows' icon column: the text starts
+            // where the row labels do.
             Item {
                 width: parent.width
                 height: root.headerHeight
 
+                BrandImage {
+                    x: root.space(8) + (root.iconColumn - width) / 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: root.headingSize
+                    path: Branding.symbolicPath
+                    color: Theme.accent
+                }
+
                 Text {
                     anchors.left: parent.left
+                    anchors.leftMargin: root.space(8) + root.iconColumn + root.space(6)
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.filterText || root.heading + "…"
