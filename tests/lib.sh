@@ -24,7 +24,8 @@ STUBBED_CMDS=(sudo pkexec pacman paru yay makepkg sbctl systemctl limine
     limine-enroll-config limine-update limine-entry-tool limine-scan
     mkinitcpio bootctl efibootmgr mokutil cryptsetup systemd-cryptenroll
     podman docker distrobox ollama llama-server ufw snapper hyprctl qs
-    quickshell dms flatpak curl wget git pkill gsettings secret-tool)
+    quickshell dms flatpak curl wget git pkill gsettings secret-tool
+    notify-send xdg-open systemd-run uwsm-app)
 
 # sandbox NAME — fresh scratch HOME + stub PATH; sets SANDBOX.
 sandbox() {
@@ -41,6 +42,16 @@ sandbox() {
     export XDG_DATA_HOME="$HOME/.local/share" XDG_CACHE_HOME="$HOME/.cache"
     export PATH="$SANDBOX/stubs:$REPO/bin:/usr/bin:/bin"
     unset HASEEN_USER_CONFIG HASEEN_USER_STATE HASEEN_COMMON_SH
+    # Nothing under test may reach the session it runs in: a test once sent
+    # its `haseen plugin url dmsKeep` refusal to the owner's live notification
+    # daemon. A dead bus address and no compositor sockets make any leak fail
+    # inside the test instead.
+    export DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
+    export XDG_RUNTIME_DIR="$SANDBOX/run"
+    mkdir "$XDG_RUNTIME_DIR" && chmod 0700 "$XDG_RUNTIME_DIR"
+    unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK NIRI_SOCKET
+    # The session's platform theme (gtk3) needs a display and aborts without one.
+    unset QT_QPA_PLATFORMTHEME
 }
 
 # stub CMD SCRIPT — replace a stub with a scripted fake (e.g. a read-only
