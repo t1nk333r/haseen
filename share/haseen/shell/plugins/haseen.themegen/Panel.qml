@@ -16,9 +16,16 @@ import "../haseen.imagepicker/Images.js" as Images
 // The source switch picks between the user's own images and Wallhaven
 // (plan 072, WallhavenGrid.qml): a search, sort chips and a paged grid whose
 // pick is downloaded with `haseen wallhaven get` and then previewed the same.
-// Keys: type to filter (Enter searches on Wallhaven), Left/Right move through
-// the images, Up/Down change the scheme, Tab flips dark/light, Enter applies,
-// Ctrl+S saves; Escape closes (the panel host handles it). Open with
+// Keys (plan 083) go in three stages, the active one framed in the accent and
+// named with its keys in the header. The search field: type to filter (to
+// search, on Wallhaven); Enter (searching first on Wallhaven) or Down moves
+// to the pictures. The pictures: h/j/k/l or the arrows move (by a row in the
+// Wallhaven grid), Enter picks (downloads, on Wallhaven) and moves to the
+// palette. The palette: h/j/k/l or the arrows change the scheme, Enter
+// applies once the preview is of the picture picked. Tab flips dark/light,
+// Ctrl+S saves, `/` goes back to the field and Backspace back one stage;
+// Escape closes (the panel host handles it). The panel opens in the middle
+// of the screen (`placement` "center"). Open with
 // `haseen shell ipc panel toggle haseen.themegen` or menu Style › Theme
 // Generator.
 //
@@ -40,10 +47,16 @@ Column {
     readonly property var dirs: Images.directories(Array.isArray(settings.directories) && settings.directories.length > 0 ? settings.directories : ["~/Pictures", "~/Pictures/Wallpapers", Paths.userConfig + "/backgrounds"], Paths.home)
     readonly property int depth: typeof settings.depth === "number" && settings.depth >= 1 ? Math.round(settings.depth) : 3
     readonly property int limit: typeof settings.limit === "number" && settings.limit >= 1 ? Math.round(settings.limit) : 400
-    readonly property int columns: typeof settings.columns === "number" && settings.columns >= 1 ? Math.round(settings.columns) : 5
-    readonly property int cardWidth: Theme.fontSize * 10
-    readonly property int cellWidth: cardWidth + Theme.gap
+    readonly property int columns: typeof settings.columns === "number" && settings.columns >= 1 ? Math.round(settings.columns) : 4
     readonly property real pixelRatio: screen && screen.devicePixelRatio ? screen.devicePixelRatio : 1
+    readonly property real screenWidth: screen && screen.width > 0 ? screen.width : 1920
+    readonly property real screenHeight: screen && screen.height > 0 ? screen.height : 1080
+    // Thumbnails 18 em wide (10 before plan 083), smaller only where the panel
+    // would pass 60% of the screen's width or about 85% of its height.
+    readonly property int cardWidth: Math.max(Theme.fontSize * 10, Math.min(Theme.fontSize * 18, Math.floor((screenWidth * 0.6 - Theme.gap) / columns) - Theme.gap, Math.floor((screenHeight * 0.85 - Theme.fontSize * 28) / 2.2)))
+    readonly property int cellWidth: cardWidth + Theme.gap
+    // The palette mock spans two thumbnails, at the 2:1 it always had.
+    readonly property int mockWidth: cardWidth * 2 + Theme.gap
 
     property var images: []
     property string query: ""
@@ -64,6 +77,22 @@ Column {
     // "local" (the strip of the user's images) or "wallhaven" (plan 072).
     property string source: settings.source === "wallhaven" ? "wallhaven" : "local"
     property bool wallhavenUsed: source === "wallhaven"
+    // The keyboard flow (plan 083): "search" (the text field has the focus),
+    // "images" (the strip or the Wallhaven grid) or "palette" (the scheme
+    // chips); in the last two the panel itself has the focus.
+    property string stage: "search"
+    readonly property bool downloading: wallhaven.item !== null && wallhaven.item.fetching
+    // Save and Apply only for the picture on show: never while its download
+    // or a preview run is still to land, so Enter cannot apply a half-loaded
+    // pick (plan 083).
+    readonly property bool ready: preview.ok && !previewProc.running && !previewQueued && !downloading && !writing && Model.validName(name) && Model.canWrite(preview.target)
+    readonly property string hint: {
+        if (stage === "images")
+            return "h j k l or arrows move · Enter " + (source === "wallhaven" ? "downloads" : "picks") + " · / search · Esc closes";
+        if (stage === "palette")
+            return "h j k l or arrows: scheme · Tab dark/light · Enter applies · Ctrl+S saves · Backspace: pictures";
+        return source === "wallhaven" ? "Enter searches · Down: pictures · Esc closes" : "Enter or Down: pictures · Esc closes";
+    }
 
     function close(): void {
         const win = QsWindow.window;
@@ -101,10 +130,95 @@ Column {
         refresh();
     }
 
-    function step(delta: int): void {
-        if (results.length === 0)
+    function setStage(value: string): void {
+        if (value !== "search" && value !== "images" && value !== "palette")
             return;
-        strip.currentIndex = Math.max(0, Math.min(results.length - 1, strip.currentIndex + delta));
+        stage = value;
+        if (value === "search")
+            input.forceActiveFocus();
+        else
+            root.forceActiveFocus();
+    }
+
+    // Enter in the field: the filter is live already; on Wallhaven, search.
+    // The pictures are next either way.
+    function submit(): void {
+        if (source === "wallhaven" && wallhaven.item)
+            wallhaven.item.search(input.text);
+        setStage("images");
+    }
+
+    // Enter on a picture: a local one is previewed already, a Wallhaven one
+    // is downloaded now. The palette is next either way.
+    function choose(): void {
+        if (source === "wallhaven") {
+            if (!wallhaven.item || wallhaven.item.currentIndex < 0)
+                return;
+            wallhaven.item.select(wallhaven.item.currentIndex);
+        } else {
+            if (results.length === 0)
+                return;
+            pick(strip.currentIndex);
+        }
+        setStage("palette");
+    }
+
+    // Enter on the palette: Apply, once the preview is of the picture picked.
+    function confirm(): void {
+        if (ready)
+            write(true);
+        else if (downloading)
+            say("still downloading: Enter applies once the preview shows", false);
+    }
+
+    // The pictures and palette stages' keys; false leaves the key alone.
+    // Ctrl, Alt and Super chords are the shortcuts'.
+    function handleKey(key: int, modifiers: int): bool {
+        if (stage === "search" || !root.activeFocus || (modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
+            return false;
+        let dx = 0;
+        let dy = 0;
+        switch (key) {
+        case Qt.Key_Left:
+        case Qt.Key_H:
+            dx = -1;
+            break;
+        case Qt.Key_Right:
+        case Qt.Key_L:
+            dx = 1;
+            break;
+        case Qt.Key_Up:
+        case Qt.Key_K:
+            dy = -1;
+            break;
+        case Qt.Key_Down:
+        case Qt.Key_J:
+            dy = 1;
+            break;
+        case Qt.Key_Return:
+        case Qt.Key_Enter:
+            if (stage === "images")
+                choose();
+            else
+                confirm();
+            return true;
+        case Qt.Key_Backspace:
+            setStage(stage === "palette" ? "images" : "search");
+            return true;
+        case Qt.Key_Slash:
+            setStage("search");
+            return true;
+        case Qt.Key_Tab:
+            setMode(Model.cycle(Model.MODES, mode, 1));
+            return true;
+        default:
+            return false;
+        }
+        if (stage === "images")
+            move(dx, dy);
+        else
+            setScheme(Model.cycle(Model.SCHEMES, scheme, dx + dy));
+        return true;
     }
 
     function setScheme(value: string): void {
@@ -129,7 +243,7 @@ Column {
     }
 
     function write(apply: bool): void {
-        if (writing || image === "" || !preview.ok || !Model.validName(name) || !Model.canWrite(preview.target))
+        if (!ready)
             return;
         writing = true;
         say(apply ? "applying " + name + "…" : "saving " + name + "…", false);
@@ -153,13 +267,14 @@ Column {
         pick(strip.currentIndex);
     }
 
-    // Left/Right: the strip's images, or the Wallhaven grid's.
-    function move(delta: int): void {
+    // The pictures: the strip's (up and down step like left and right) or
+    // the Wallhaven grid's, by a row there. Moving downloads nothing.
+    function move(dx: int, dy: int): void {
         if (source === "wallhaven") {
             if (wallhaven.item)
-                wallhaven.item.step(delta);
-        } else {
-            step(delta);
+                wallhaven.item.move(dx, dy);
+        } else if (results.length > 0) {
+            strip.currentIndex = Math.max(0, Math.min(results.length - 1, strip.currentIndex + dx + dy));
         }
     }
 
@@ -181,6 +296,7 @@ Column {
     width: columns * cellWidth + Theme.gap
     spacing: Theme.gap
     focus: true
+    Keys.onPressed: event => event.accepted = root.handleKey(event.key, event.modifiers)
 
     Component.onCompleted: {
         if (dirs.length === 0)
@@ -207,7 +323,7 @@ Column {
         }
 
         function move(delta: int): void {
-            root.step(delta);
+            root.move(delta, 0);
         }
 
         function setScheme(value: string): void {
@@ -264,15 +380,20 @@ Column {
                 mode: root.mode,
                 name: root.name,
                 busy: previewProc.running || root.writing,
+                ready: root.ready,
                 preview: root.preview,
                 notice: root.notice,
                 source: root.source,
+                stage: root.stage,
+                query: input.text,
+                strip: strip.currentIndex,
                 wallhaven: wallhaven.item ? {
-                    count: wallhaven.item.items.length,
+                    count: wallhaven.item.count,
                     page: wallhaven.item.page,
                     lastPage: wallhaven.item.lastPage,
                     sort: wallhaven.item.sort,
                     current: wallhaven.item.currentIndex,
+                    scrollY: wallhaven.item.scrollY,
                     downloading: wallhaven.item.downloading
                 } : null
             });
@@ -369,10 +490,11 @@ Column {
             font.bold: true
         }
 
+        // The current stage's keys, then the latest note; an error alone.
         Text {
             anchors.baseline: title.baseline
             width: parent.width - title.width - Theme.gap
-            text: root.notice !== "" ? root.notice : previewProc.running ? "generating…" : root.source === "wallhaven" ? "Enter searches · Esc closes" : "Enter applies · Ctrl+S saves · Esc closes"
+            text: root.noticeIsError ? root.notice : [root.hint, root.notice !== "" ? root.notice : previewProc.running ? "generating…" : ""].filter(s => s !== "").join(" · ")
             color: root.noticeIsError ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
@@ -427,31 +549,20 @@ Column {
             font.pixelSize: Theme.fontSize
             onTextChanged: if (root.source === "local")
                 root.query = text
-            onAccepted: {
-                if (root.source === "wallhaven" && wallhaven.item)
-                    wallhaven.item.search(text);
-                else
-                    root.write(true);
-            }
-            Keys.onUpPressed: root.setScheme(Model.cycle(Model.SCHEMES, root.scheme, -1))
-            Keys.onDownPressed: root.setScheme(Model.cycle(Model.SCHEMES, root.scheme, 1))
+            // Enter (a search first, on Wallhaven) or Down: to the pictures.
+            // Keys, not onAccepted: TextInput passes an accepted Return on to
+            // its parent, where the pictures stage would take it as a pick.
+            Keys.onReturnPressed: root.submit()
+            Keys.onEnterPressed: root.submit()
+            // A click in the field is the search stage too.
+            onActiveFocusChanged: if (activeFocus)
+                root.stage = "search"
+            Keys.onDownPressed: root.setStage("images")
             Keys.onTabPressed: root.setMode(Model.cycle(Model.MODES, root.mode, 1))
-            Keys.onLeftPressed: event => {
-                if (cursorPosition === 0 || text === "")
-                    root.move(-1);
-                else
-                    event.accepted = false;
-            }
-            Keys.onRightPressed: event => {
-                if (cursorPosition === text.length)
-                    root.move(1);
-                else
-                    event.accepted = false;
-            }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.source === "wallhaven" ? "search wallhaven · Enter searches · click a picture to use it" : "filter images"
+                text: root.source === "wallhaven" ? "search wallhaven · Enter searches" : "filter images"
                 color: Theme.muted
                 visible: input.text === ""
                 font: input.font
@@ -459,134 +570,144 @@ Column {
         }
     }
 
-    ListView {
-        id: strip
-
+    StageFrame {
         width: parent.width
-        height: Math.round(root.cardWidth * 9 / 16) + Theme.fontSize * 2
-        orientation: ListView.Horizontal
-        spacing: Theme.gap
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        highlightMoveDuration: 0
-        visible: root.source === "local"
-        model: root.results
-        onCurrentIndexChanged: {
-            positionViewAtIndex(currentIndex, ListView.Contain);
-            if (root.source === "local")
-                root.pick(currentIndex);
+        active: root.stage === "images"
+
+        ListView {
+            id: strip
+
+            width: parent.width
+            height: Math.round(root.cardWidth * 9 / 16) + Theme.fontSize * 2
+            orientation: ListView.Horizontal
+            spacing: Theme.gap
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            highlightMoveDuration: 0
+            visible: root.source === "local"
+            model: root.results
+            onCurrentIndexChanged: {
+                positionViewAtIndex(currentIndex, ListView.Contain);
+                if (root.source === "local")
+                    root.pick(currentIndex);
+            }
+
+            delegate: Picker.ImageCard {
+                required property var modelData
+                required property int index
+
+                width: root.cardWidth
+                path: modelData.path
+                label: modelData.label
+                selected: ListView.isCurrentItem
+                pixelRatio: root.pixelRatio
+                onPicked: strip.currentIndex = index
+            }
         }
 
-        delegate: Picker.ImageCard {
-            required property var modelData
-            required property int index
+        // Loaded on the first switch to Wallhaven and kept, so switching back
+        // and forth keeps the results.
+        Loader {
+            id: wallhaven
 
-            width: root.cardWidth
-            path: modelData.path
-            label: modelData.label
-            selected: ListView.isCurrentItem
-            pixelRatio: root.pixelRatio
-            onPicked: strip.currentIndex = index
-        }
-    }
+            active: root.wallhavenUsed
+            visible: root.source === "wallhaven"
 
-    // Loaded on the first switch to Wallhaven and kept, so switching back
-    // and forth keeps the results.
-    Loader {
-        id: wallhaven
-
-        active: root.wallhavenUsed
-        visible: root.source === "wallhaven"
-
-        sourceComponent: WallhavenGrid {
-            cli: root.cli
-            columns: root.columns
-            cardWidth: root.cardWidth
-            pixelRatio: root.pixelRatio
-            onSaid: (text, error) => root.say(text, error)
-            onPicked: (path, id) => root.useDownload(path, id)
-            Component.onCompleted: search("")
-        }
-    }
-
-    Flow {
-        width: parent.width
-        spacing: Math.round(Theme.gap / 2)
-
-        Repeater {
-            model: Model.SCHEMES
-
-            Choice {
-                required property string modelData
-
-                text: Model.schemeLabel(modelData)
-                active: root.scheme === modelData
-                onClicked: root.setScheme(modelData)
+            sourceComponent: WallhavenGrid {
+                cli: root.cli
+                columns: root.columns
+                cardWidth: root.cardWidth
+                pixelRatio: root.pixelRatio
+                onSaid: (text, error) => root.say(text, error)
+                onPicked: (path, id) => root.useDownload(path, id)
+                Component.onCompleted: search("")
             }
         }
     }
 
-    Row {
-        spacing: Math.round(Theme.gap / 2)
+    StageFrame {
+        width: parent.width
+        active: root.stage === "palette"
 
-        Repeater {
-            model: Model.MODES
+        Flow {
+            width: parent.width
+            spacing: Math.round(Theme.gap / 2)
 
-            Choice {
-                required property string modelData
+            Repeater {
+                model: Model.SCHEMES
 
-                text: Model.schemeLabel(modelData)
-                active: root.mode === modelData
-                onClicked: root.setMode(modelData)
-            }
-        }
+                Choice {
+                    required property string modelData
 
-        Item {
-            width: Theme.gap
-            height: 1
-        }
-
-        Rectangle {
-            width: Theme.fontSize * 14
-            height: Math.round(Theme.fontSize * 2.1)
-            radius: Theme.radius
-            color: Theme.surfaceAlt
-            border.color: nameInput.activeFocus ? Theme.accent : Model.validName(root.name) ? Theme.border : Theme.urgent
-            border.width: Theme.borderWidth
-
-            TextInput {
-                id: nameInput
-
-                anchors.fill: parent
-                anchors.leftMargin: Theme.gap
-                anchors.rightMargin: Theme.gap
-                verticalAlignment: TextInput.AlignVCenter
-                text: root.name
-                color: Theme.foreground
-                selectionColor: Theme.selection
-                clip: true
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 1
-                onTextEdited: {
-                    root.nameEdited = text !== "";
-                    root.name = text;
+                    text: Model.schemeLabel(modelData)
+                    active: root.scheme === modelData
+                    onClicked: root.setScheme(modelData)
                 }
-                onEditingFinished: root.refresh()
-                onAccepted: root.write(false)
             }
         }
 
-        Choice {
-            text: "Save"
-            enabled: root.preview.ok && !root.writing && Model.validName(root.name) && Model.canWrite(root.preview.target)
-            onClicked: root.write(false)
-        }
+        Row {
+            spacing: Math.round(Theme.gap / 2)
 
-        Choice {
-            text: "Apply"
-            active: true
-            enabled: root.preview.ok && !root.writing && Model.validName(root.name) && Model.canWrite(root.preview.target)
-            onClicked: root.write(true)
+            Repeater {
+                model: Model.MODES
+
+                Choice {
+                    required property string modelData
+
+                    text: Model.schemeLabel(modelData)
+                    active: root.mode === modelData
+                    onClicked: root.setMode(modelData)
+                }
+            }
+
+            Item {
+                width: Theme.gap
+                height: 1
+            }
+
+            Rectangle {
+                width: Theme.fontSize * 14
+                height: Math.round(Theme.fontSize * 2.1)
+                radius: Theme.radius
+                color: Theme.surfaceAlt
+                border.color: nameInput.activeFocus ? Theme.accent : Model.validName(root.name) ? Theme.border : Theme.urgent
+                border.width: Theme.borderWidth
+
+                TextInput {
+                    id: nameInput
+
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.gap
+                    anchors.rightMargin: Theme.gap
+                    verticalAlignment: TextInput.AlignVCenter
+                    text: root.name
+                    color: Theme.foreground
+                    selectionColor: Theme.selection
+                    clip: true
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontSize - 1
+                    onTextEdited: {
+                        root.nameEdited = text !== "";
+                        root.name = text;
+                    }
+                    onEditingFinished: root.refresh()
+                    onAccepted: root.write(false)
+                }
+            }
+
+            Choice {
+                text: "Save"
+                enabled: root.ready
+                onClicked: root.write(false)
+            }
+
+            Choice {
+                text: "Apply"
+                active: true
+                enabled: root.ready
+                onClicked: root.write(true)
+            }
         }
     }
 
@@ -599,8 +720,8 @@ Column {
             spacing: Theme.gap
 
             PaletteMock {
-                width: Theme.fontSize * 26
-                height: Theme.fontSize * 13
+                width: root.mockWidth
+                height: Math.round(root.mockWidth / 2)
                 colors: root.preview.colors
                 image: root.image
                 pixelRatio: root.pixelRatio
@@ -612,11 +733,11 @@ Column {
                 Swatches {
                     colors: root.preview.colors
                     // Seven swatches (the anchor row) across what the mock leaves.
-                    swatch: Math.floor((root.width - Theme.fontSize * 26 - Theme.gap * 2 - Math.round(Theme.gap / 2) * 6) / 7)
+                    swatch: Math.floor((root.width - root.mockWidth - Theme.gap * 2 - Math.round(Theme.gap / 2) * 6) / 7)
                 }
 
                 Text {
-                    width: root.width - Theme.fontSize * 26 - Theme.gap * 2
+                    width: root.width - root.mockWidth - Theme.gap * 2
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     text: {

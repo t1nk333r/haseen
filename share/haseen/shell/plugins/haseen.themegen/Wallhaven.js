@@ -1,7 +1,8 @@
 .pragma library
 
 // Model for haseen.themegen's Wallhaven source (plan 072): the argv of each
-// `haseen wallhaven search` / `get` run and the reading of their output.
+// `haseen wallhaven search` / `get` run, the reading of their output and the
+// grid's key movement (plan 083).
 // Pure, so tests/test-wallhaven.sh runs it under the Qt JS engine against the
 // CLI's own --json. The network, the SFW rule, the thumbnail cache and the
 // image checks are the CLI's; the panel only lists and picks.
@@ -88,18 +89,40 @@ function parseSearch(text) {
     };
 }
 
-// The list after another page: new ids appended, repeats dropped (a toplist
-// can shift between two calls).
-function append(items, more) {
-    var seen = {};
+// The entries of another page that the grid does not list yet (a toplist can
+// shift between two calls). `seen` (id -> true) is updated in place, so the
+// grid's model is only ever appended to and keeps its scroll position and
+// its current cell (plan 083).
+function fresh(seen, more) {
     var out = [];
-    items.concat(more).forEach(function (item) {
+    more.forEach(function (item) {
         if (!seen[item.id]) {
             seen[item.id] = true;
             out.push(item);
         }
     });
     return out;
+}
+
+// The cell a key moves to in a grid of `count` cells, `columns` to a row
+// (plan 083): dx steps by one cell, dy by a row. A step above the first row
+// stays put; a step down into a shorter last row lands on the last cell, and
+// one down from the last row stays put. No cell yet: the first one.
+function gridStep(index, count, columns, dx, dy) {
+    if (count <= 0)
+        return -1;
+    if (index < 0 || index >= count)
+        return 0;
+    var cols = Math.max(1, columns);
+    if (dy !== 0) {
+        var target = index + dy * cols;
+        if (target < 0)
+            return index;
+        if (target >= count)
+            return Math.floor((count - 1) / cols) > Math.floor(index / cols) ? count - 1 : index;
+        return target;
+    }
+    return Math.max(0, Math.min(count - 1, index + dx));
 }
 
 function hasMore(page, lastPage) {

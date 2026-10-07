@@ -37,8 +37,13 @@
     },
     "columns": {
       "type": "integer",
-      "default": 5,
-      "description": "Thumbnails shown at once in the image strip"
+      "default": 4,
+      "description": "Thumbnails in a row: shown at once in the image strip, and the Wallhaven grid's columns"
+    },
+    "placement": {
+      "type": "string",
+      "default": "center",
+      "description": "Where the panel opens: center (the middle of the screen) or bar (a panel under the bar)"
     },
     "scheme": {
       "type": "string",
