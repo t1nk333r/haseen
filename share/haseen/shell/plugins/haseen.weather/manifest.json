@@ -3,7 +3,7 @@
   "id": "haseen.weather",
   "name": "Weather",
   "version": "2.0.0",
-  "description": "Condition icon in the bar and a forecast panel (Omarchy's weather: wttr.in + Open-Meteo, every 15 min while enabled; off by default). Location: settings, else GeoClue, else IP",
+  "description": "Condition icon in the bar and a forecast panel (wttr.in + Open-Meteo, every 15 min while enabled; off by default). Location: settings, else GeoClue, else IP",
   "kinds": [
     "service",
     "bar-widget",

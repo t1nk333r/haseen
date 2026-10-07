@@ -185,6 +185,8 @@ assert_dry_pure "remove" "$all"
 all=""
 capture haseen update --dry-run
 all+="$OUTPUT"
+assert_contains "update: opens on haseen's name" "$OUTPUT" "[*] haseen update: system"
+assert_not_contains "update: never Omarchy's" "$OUTPUT" "Omarchy"
 assert_contains "update: repos" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
 assert_contains "update: AUR" "$OUTPUT" "DRYRUN: paru -Sua"
 assert_contains "update: user flatpaks" "$OUTPUT" "DRYRUN: flatpak update --user"

@@ -13,7 +13,7 @@ usage() {
 Usage: haseen screensaver style [ttfx|native] [--dry-run]
 
 Without an argument prints the current style. With one, saves it:
-  ttfx    Omarchy's screensaver: ttfx effects over the branding text in a
+  ttfx    text effects (ttfx) over the branding text in a
           fullscreen terminal on every monitor (needs ttfx)
   native  a drifting clock and the branding on the theme background
 EOF

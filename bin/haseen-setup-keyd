@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# haseen:summary Remap CapsLock with keyd: hold = hyper (SUPER+SHIFT+ALT+CTRL), tap = Escape
+# haseen:args [on|off|status] [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../share/haseen/layers/base/lib.sh
+source "$HASEEN_PATH/layers/base/lib.sh"
+
+CONF=/etc/keyd/default.conf
+SHIPPED="$HASEEN_PATH/default/keyd/default.conf"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup keyd [on|off|status] [--dry-run] [--yes]
+
+  on      install keyd, write $CONF (hold CapsLock = hyper, i.e.
+          SUPER + SHIFT + ALT + CTRL; tap = Escape; RightAlt+CapsLock =
+          CapsLock), enable keyd.service and reload it. A different existing
+          $CONF is backed up first.
+  off     disable and stop keyd.service ($CONF stays).
+  status  installed, enabled/active and whether $CONF matches (default).
+
+Off by default: nothing runs keyd until you ask for it.
+EOF
+}
+
+conf_state() {
+    local live
+    live="$(sysroot_path "$CONF")"
+    if [[ ! -e $live ]]; then
+        echo missing
+    elif cmp -s "$live" "$SHIPPED"; then
+        echo matches
+    else
+        echo differs
+    fi
+}
+
+# Live machine only: a sysroot has no running units.
+service_active() { ! in_sysroot && systemctl is-active --quiet keyd.service 2>/dev/null; }
+
+status() {
+    local installed=no enabled=no active=no
+    pkg_installed keyd && installed=yes
+    unit_enabled keyd.service && enabled=yes
+    service_active && active=yes
+    printf 'installed: %s\nenabled:   %s\nactive:    %s\nconfig:    %s (%s)\n' \
+        "$installed" "$enabled" "$active" "$(conf_state)" "$CONF"
+}
+
+on() {
+    local state changed=false
+    state="$(conf_state)"
+    if pkg_installed keyd && [[ $state == matches ]] && unit_enabled keyd.service; then
+        info "keyd is already on with the haseen mapping"
+        return 0
+    fi
+    confirm "Install keyd and remap CapsLock (hold = hyper, tap = Escape)?" || exit 1
+    pkg_install keyd
+    if [[ $state == differs ]]; then
+        local bak
+        bak="$CONF.haseen-bak-$(date +%Y%m%d-%H%M%S)"
+        run_root cp -a "$CONF" "$bak"
+        info "existing $CONF differs: backed up to $bak"
+    fi
+    if [[ $state != matches ]]; then
+        write_root_file "$CONF" 0644 <"$SHIPPED"
+        changed=true
+    fi
+    run_root systemctl enable --now keyd.service
+    if $changed; then
+        run_root keyd reload
+    fi
+    info "keyd on: hold CapsLock = hyper, tap = Escape, RightAlt+CapsLock = CapsLock"
+}
+
+off() {
+    if ! unit_enabled keyd.service && ! service_active; then
+        info "keyd is already off"
+        return 0
+    fi
+    confirm "Disable keyd (CapsLock goes back to normal)?" || exit 1
+    run_root systemctl disable --now keyd.service
+    info "keyd off ($CONF left in place)"
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-status}"
+case "$verb" in
+status) status ;;
+on | off)
+    in_floating_terminal "$@"
+    require_not_root
+    "$verb"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

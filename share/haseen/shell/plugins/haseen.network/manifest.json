@@ -3,7 +3,7 @@
   "id": "haseen.network",
   "name": "Network",
   "version": "2.0.0",
-  "description": "Connection state in the bar and Omarchy's network panel: connection details with ping and traffic, speed test, Wi-Fi switch, Wi-Fi band, DNS provider and the Wi-Fi networks in range (Quickshell.Networking)",
+  "description": "Connection state in the bar and a network panel: connection details with ping and traffic, speed test, Wi-Fi switch, Wi-Fi band, DNS provider and the Wi-Fi networks in range (Quickshell.Networking)",
   "kinds": [
     "bar-widget",
     "panel"

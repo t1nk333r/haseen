@@ -36,6 +36,16 @@ parse_common_flags "$@"
 require_not_root
 what="${REST[0]:-system}"
 
+# The update opens on haseen's name: its wordmark (the default screensaver
+# text) when a person watches the terminal, then one line naming the update.
+banner() {
+    if [[ -t 1 ]] && ! $DRY_RUN; then
+        cat "$HASEEN_PATH/default/screensaver/screensaver.txt"
+        echo
+    fi
+    info "haseen update: $what"
+}
+
 update_system() {
     local yes=()
     $ASSUME_YES && yes=(--noconfirm)
@@ -82,8 +92,14 @@ update_firmware() {
 }
 
 case "$what" in
-system) update_system ;;
-firmware) update_firmware ;;
+system)
+    banner
+    update_system
+    ;;
+firmware)
+    banner
+    update_firmware
+    ;;
 *)
     usage >&2
     exit 2

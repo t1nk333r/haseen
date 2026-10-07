@@ -3,7 +3,7 @@
   "id": "haseen.workspaces",
   "name": "Workspaces",
   "version": "2.0.0",
-  "description": "Hyprland workspaces (port of Omarchy's): persistent 1-5, scratchpads, click to focus, scroll to walk",
+  "description": "Hyprland workspaces: persistent 1-5, scratchpads, click to focus, scroll to walk",
   "kinds": [
     "bar-widget"
   ],

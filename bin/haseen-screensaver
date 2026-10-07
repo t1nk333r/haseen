@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Show the screensaver now (Omarchy's ttfx terminals or the native clock overlay)
+# haseen:summary Show the screensaver now (ttfx text effects in terminals or the native clock overlay)
 # haseen:args [--force] [--style ttfx|native] [--dry-run]
 #
 # Plan 019. The shell's haseen.screensaver service runs it; this command asks
@@ -28,7 +28,7 @@ Usage: haseen screensaver [--force] [--style ttfx|native] [--dry-run]
 
 Shows the screensaver until the next key press, click or pointer motion.
   --force         show it even when it is turned off (haseen toggle screensaver)
-  --style STYLE   ttfx (Omarchy's: ttfx effects over the branding text in a
+  --style STYLE   ttfx (text effects over the branding text in a
                   fullscreen terminal per monitor) or native (a clock and the
                   branding on the theme background). Default: the saved style,
                   see 'haseen screensaver style'.

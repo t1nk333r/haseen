@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# haseen:summary Bring an Omarchy user's bar, plugins, idle, branding, hooks, themes and Hyprland files over
+# haseen:summary Bring an Omarchy user's bar, plugins, idle, branding, hooks, themes, Neovim theme link and Hyprland files over
 # haseen:args [--from DIR] [--hypr DIR] [--state DIR] [--merge] [--dry-run] [--yes]
 #
 # Reads Omarchy's files and never writes to them: the Omarchy config, state
 # and Hyprland backup are sources only (AGENTS.md: the plugins under
 # ~/.config/omarchy/plugins stay where they are and haseen loads them in
-# place, under the same ids).
+# place, under the same ids). The exception is the two plugin files Omarchy
+# seeded into ~/.config/nvim/lua/plugins: they are moved aside, kept as
+# <file>.bak-<timestamp>, so haseen's twins do not reload nvim twice.
 set -Eeuo pipefail
 
 BIN_DIR="$(dirname "$(readlink -f "$0")")"
@@ -50,6 +52,12 @@ Translates an Omarchy 4 setup into haseen's files:
   hooks         theme-set, post-update and post-boot hooks that do not call
                 Omarchy commands -> $HASEEN_USER_CONFIG/hooks/
   themes        user themes with a colors.toml -> $THEME_USER_DIR/
+  Neovim        in a LazyVim ~/.config/nvim: lua/plugins/theme.lua is
+                repointed from Omarchy's current theme to haseen's, and
+                Omarchy's omarchy-theme-hotreload.lua and all-themes.lua are
+                moved to <file>.bak-<timestamp> and replaced by links to
+                haseen-theme-hotreload.lua and haseen-all-themes.lua. Your
+                own files in lua/plugins stay. Needs a haseen theme set first.
   Hyprland      plain hl.* settings from monitors.lua, input.lua,
                 looknfeel.lua and autostart.lua, bindings.lua with o.bind
                 turned into haseen.bind, and from hyprland.lua only the blocks
@@ -354,6 +362,36 @@ import_themes() {
     done
 }
 
+# --- Neovim ---------------------------------------------------------------------
+
+# import_nvim — Omarchy's LazyVim wiring (theme.lua linked to Omarchy's
+# current theme, its hot-reload and theme list) becomes haseen's. Omarchy's
+# two plugin files were seeded into the user's config by omarchy-nvim, so they
+# are moved aside, never deleted.
+import_nvim() {
+    local name f line
+    if ! theme_nvim_lazyvim; then
+        [[ -d $THEME_NVIM_CONFIG ]] && NOT_IMPORTED+=("nvim: $THEME_NVIM_CONFIG is not a LazyVim config, left as is")
+        return 0
+    fi
+    if [[ ! -f $THEME_CURRENT_PATH/neovim.lua ]]; then
+        NOT_IMPORTED+=("nvim: no haseen theme yet; run haseen theme set <name>, then import again")
+        return 0
+    fi
+    for name in omarchy-theme-hotreload.lua all-themes.lua; do
+        f="$THEME_NVIM_PLUGINS/$name"
+        theme_nvim_omarchy_file "$f" || continue
+        run mv -- "$f" "$f.bak-$STAMP"
+        IMPORTED+=("nvim lua/plugins/$name: Omarchy's, moved to $name.bak-$STAMP")
+    done
+    theme_link_nvim --replacing-omarchy
+    for line in "${THEME_NVIM_CHANGED[@]}"; do IMPORTED+=("$line"); done
+    for line in "${THEME_NVIM_KEPT[@]}"; do NOT_IMPORTED+=("$line"); done
+    if ((${#THEME_NVIM_CHANGED[@]} + ${#THEME_NVIM_KEPT[@]} == 0)); then
+        IMPORTED+=("nvim: already on haseen's theme and hot-reload")
+    fi
+}
+
 # --- Hyprland -------------------------------------------------------------------
 
 declare -A HYPR_ORIG=() HYPR_TEXT=()
@@ -447,6 +485,7 @@ import_font
 import_branding
 import_hooks
 import_themes
+import_nvim
 import_hypr
 apply_gestures
 

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): an Omarchy plugin's update button (t1nk33r.updates)
+# runs Omarchy's updater and its logo; here it is haseen's. Omarchy's only flag, -y,
+# is haseen update's -y (--yes).
+exec "${HASEEN_PATH:?}/../../bin/haseen-update" "$@"
