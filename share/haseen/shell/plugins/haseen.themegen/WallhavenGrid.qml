@@ -45,7 +45,12 @@ Column {
     // For the panel's debugIpc state: the view's scroll position.
     readonly property real scrollY: grid.contentY
 
+    // A pick: `started` as soon as it is made (the panel drops the picture
+    // on show, so nothing applies it in the meantime), then `picked` with the
+    // file or `failed` when the download did not land.
+    signal started(string id)
     signal picked(string path, string id)
+    signal failed(string id)
     signal said(string text, bool error)
 
     // A new search: page 1 of the query and sort, the grid emptied. The page
@@ -109,6 +114,7 @@ Column {
         const id = results.get(index).wallId;
         currentIndex = index;
         grid.positionViewAtIndex(index, GridView.Contain);
+        started(id);
         if (getProc.running) {
             queued = id;
             return;
@@ -210,6 +216,7 @@ Column {
             root.queued = "";
             if (path === "") {
                 root.said(getErr.last !== "" ? getErr.last : "could not download " + id, true);
+                root.failed(id);
                 return;
             }
             root.said("", false);

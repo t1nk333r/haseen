@@ -113,6 +113,7 @@ case "\$1 \$2" in
     if [ "\$query" = few ]; then cat '$FIX/few.json'; else cat '$FIX/page-'"\$page"'.json'; fi ;;
 "wallhaven get")
     [ -e '$SANDBOX/SLOW_GET' ] && sleep 3
+    [ -e '$SANDBOX/FAIL_GET' ] && { echo "Error: network is unreachable" >&2; exit 1; }
     cp '$thumb' '$DL'/"\$3".jpg
     echo "progress 100" >&2
     echo '$DL'/"\$3".jpg ;;
@@ -314,6 +315,28 @@ key Return
 for ((i = 0; i < 50; i++)); do [[ -n $(applies) ]] && break; sleep 0.1; done
 assert_eq "wallhaven: then Enter applies the downloaded picture" \
     "theme generate $DL/p1i2.jpg --scheme content --mode light --name wallhaven-p1i2" "$(applies)"
+
+# A pick whose download fails: the picture on show before (p1i2) is dropped
+# at the pick, so neither Enter nor Apply uses it, and the panel goes back to
+# the pictures with the error.
+touch "$SANDBOX/SLOW_GET" "$SANDBOX/FAIL_GET"
+: >"$LOG"
+key Backspace
+typed "l"
+key Return
+until_state "wallhaven: a new pick drops the picture on show" \
+    '.stage == "palette" and .wallhaven.downloading == "p1i3" and .image == "" and (.ready | not) and (.preview.ok | not)'
+key Return
+until_state "wallhaven: a failed download goes back to the pictures, nothing ready" \
+    '.stage == "images" and .wallhaven.downloading == "" and .image == "" and (.ready | not)'
+assert_contains "wallhaven: and shows the download's error" "$(s .notice)" "network is unreachable"
+rm "$SANDBOX/SLOW_GET"
+ipc haseen.themegen apply >/dev/null
+key Backspace Down Return
+for ((i = 0; i < 30; i++)); do [[ $(grep -c 'wallhaven get' "$LOG") -ge 2 ]] && break; sleep 0.1; done
+until_state "wallhaven: the second failed pick also ends on the pictures" '.stage == "images" and .wallhaven.downloading == "" and (.ready | not)'
+assert_eq "wallhaven: nothing applied after a failed download (Enter, Apply)" "" "$(applies)"
+rm "$SANDBOX/FAIL_GET"
 
 kill -- -"$qs_pid" 2>/dev/null || true
 wait "$qs_pid" 2>/dev/null || true

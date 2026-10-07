@@ -64,6 +64,17 @@ images (no network), matugen stubbed, keys from the nest-only virtual keyboard: 
 `2-images-stage.png`, `3-palette-stage.png`, `5-wallhaven-row6-before-page2.png` and
 `6-wallhaven-page2-kept.png` (same rows, cell 20, "page 2 of 3"), `8-wallhaven-palette.png`.
 
+## Review fixes (2026-10-08)
+
+- **A failed Wallhaven download applied the picture before it.** `ready` checked the preview, the download and
+  the name, not that the preview was of the picture picked: after a failed download the previous picture stayed
+  `ready` and the next Enter applied it. Now a pick drops the picture on show at once (`WallhavenGrid.qml`
+  signal `started` → `Panel.qml` `awaitDownload`), `ready` needs `previewImage === image` (`previewProc.image`
+  records which picture a run is for), and a failed download (`failed`) returns to the pictures with the error.
+  `tests/test-themegen-keys.sh` "wallhaven: a new pick drops the picture on show", "…a failed download goes back
+  to the pictures, nothing ready", "…nothing applied after a failed download (Enter, Apply)": 5 of these fail on
+  2981fb3 (the stub CLI's `wallhaven get` exits 1 with "network is unreachable").
+
 ## Rejected
 
 - Restoring contentY by hand after a reassignment: keeps the cause and flickers.

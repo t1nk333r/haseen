@@ -70,6 +70,9 @@ Column {
     property bool nameEdited: false
 
     property var preview: Model.parsePreview("")
+    // The image the preview on show was made from: Save and Apply need it to
+    // be the picture picked, not one shown before (plan 083).
+    property string previewImage: ""
     property bool previewQueued: false
     property string notice: ""
     property bool noticeIsError: false
@@ -84,8 +87,9 @@ Column {
     readonly property bool downloading: wallhaven.item !== null && wallhaven.item.fetching
     // Save and Apply only for the picture on show: never while its download
     // or a preview run is still to land, so Enter cannot apply a half-loaded
-    // pick (plan 083).
-    readonly property bool ready: preview.ok && !previewProc.running && !previewQueued && !downloading && !writing && Model.validName(name) && Model.canWrite(preview.target)
+    // pick (plan 083). A Wallhaven pick drops the picture before it lands,
+    // and a failed download leaves none, so Enter never applies an older one.
+    readonly property bool ready: image !== "" && previewImage === image && preview.ok && !previewProc.running && !previewQueued && !downloading && !writing && Model.validName(name) && Model.canWrite(preview.target)
     readonly property string hint: {
         if (stage === "images")
             return "h j k l or arrows move · Enter " + (source === "wallhaven" ? "downloads" : "picks") + " · / search · Esc closes";
@@ -115,6 +119,7 @@ Column {
         }
         say("", false);
         previewProc.command = Model.previewArgv(cli, image, scheme, mode, name);
+        previewProc.image = image;
         previewProc.running = true;
     }
 
@@ -287,6 +292,19 @@ Column {
         refresh();
     }
 
+    // A Wallhaven pick: the picture on show is not the one picked any more.
+    function awaitDownload(): void {
+        image = "";
+        previewImage = "";
+        preview = Model.parsePreview("");
+    }
+
+    // The pick did not download: back to the pictures, with the error shown.
+    function downloadFailed(): void {
+        if (stage === "palette")
+            setStage("images");
+    }
+
     onResultsChanged: {
         strip.currentIndex = 0;
         if (source === "local")
@@ -434,6 +452,9 @@ Column {
     Process {
         id: previewProc
 
+        // The image this run is for.
+        property string image: ""
+
         stdout: StdioCollector {
             id: previewOut
         }
@@ -441,8 +462,12 @@ Column {
             id: previewErr
         }
         onExited: code => {
-            root.preview = code === 0 ? Model.parsePreview(previewOut.text) : Model.parsePreview("");
-            if (code !== 0)
+            // A Wallhaven pick dropped the picture meanwhile: nothing to show.
+            // Otherwise `previewImage` says which picture this palette is of.
+            const ok = code === 0 && root.image !== "";
+            root.preview = ok ? Model.parsePreview(previewOut.text) : Model.parsePreview("");
+            root.previewImage = ok ? previewProc.image : "";
+            if (code !== 0 && root.image !== "")
                 root.say(Model.errorLine(previewErr.text, "haseen theme generate failed"), true);
             if (root.previewQueued) {
                 root.previewQueued = false;
@@ -619,7 +644,9 @@ Column {
                 cardWidth: root.cardWidth
                 pixelRatio: root.pixelRatio
                 onSaid: (text, error) => root.say(text, error)
+                onStarted: root.awaitDownload()
                 onPicked: (path, id) => root.useDownload(path, id)
+                onFailed: root.downloadFailed()
                 Component.onCompleted: search("")
             }
         }
