@@ -63,8 +63,9 @@ Column {
     // A thumbnail with its caption; both sources show two rows of them.
     readonly property int cellHeight: Math.round(cardWidth * 9 / 16) + Theme.fontSize * 2
     // The pictures area: Wallhaven's sort chips, two rows and the download
-    // track, for the user's images too, so a source switch moves nothing.
-    readonly property int imagesHeight: Math.max(Math.round(Theme.fontSize * 2.1) + cellHeight * 2 + Math.max(2, Math.round(Theme.gap / 2)), wallhaven.item ? wallhaven.item.implicitHeight : 0)
+    // track with the gaps between them (its Column spacing), for the user's
+    // images too, so a source switch moves nothing.
+    readonly property int imagesHeight: Math.max(Math.round(Theme.fontSize * 2.1) + cellHeight * 2 + Math.max(2, Math.round(Theme.gap / 2)) + Theme.gap * 2, wallhaven.item ? wallhaven.item.implicitHeight : 0)
     // The palette mock spans two thumbnails, at the 2:1 it always had.
     readonly property int mockWidth: cardWidth * 2 + Theme.gap
     readonly property color subtle: Theme.subtle(Theme.surface)
