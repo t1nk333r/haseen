@@ -26,6 +26,8 @@ import dbus.service
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
+import fakebus
+
 UPOWER = "org.freedesktop.UPower"
 DEVICE = "org.freedesktop.UPower.Device"
 PROFILES = "org.freedesktop.UPower.PowerProfiles"
@@ -177,8 +179,9 @@ def battery_props():
 
 def main():
     address = os.environ.get("DBUS_SYSTEM_BUS_ADDRESS", "")
-    if not address or address.startswith("unix:path=/run/dbus") or address.startswith("unix:path=/var/run/dbus"):
-        sys.exit("fake-upower: set DBUS_SYSTEM_BUS_ADDRESS to a private bus, never the real system bus")
+    why = fakebus.refusal(address)
+    if why:
+        sys.exit("fake-upower: set DBUS_SYSTEM_BUS_ADDRESS to a private bus, never the real system bus (%s)" % why)
     DBusGMainLoop(set_as_default=True)
     bus = dbus.bus.BusConnection(address)
 

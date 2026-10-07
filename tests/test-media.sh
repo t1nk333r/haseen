@@ -136,6 +136,25 @@ else
     _fail "qml runner missing: $QML"
 fi
 
+# --- the fakes' private-bus guard (tools/fakebus.py) -------------------------------
+# A sandbox socket stands in for the real bus: escaped, symlinked and listed
+# spellings of it are refused before any connection (before: raw-string checks).
+sandbox media-fakebus
+real="$SANDBOX/run/bus"
+python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$real"
+ln -s "$real" "$SANDBOX/alias"
+guard() { PYTHONPATH="$REPO/tools" python3 -c 'import fakebus, sys; print(fakebus.refusal(sys.argv[1], [sys.argv[2]]) is None)' "$1" "$real"; }
+for bad in "unix:path=${real%bus}%62us" "unix:path=$SANDBOX/alias" "unix:path=$SANDBOX/run/../run/bus" \
+    "unix:path=$SANDBOX/private;unix:path=$real" "unix:abstract=x" "tcp:host=localhost,port=1" "unix:runtime=yes" "unix:path=rel/bus" ""; do
+    assert_eq "fakebus refuses '$bad'" "False" "$(guard "$bad")"
+done
+assert_eq "fakebus accepts a private socket" "True" "$(guard "unix:path=$SANDBOX/private,guid=0123")"
+if python3 -c 'import dbus, gi' 2>/dev/null; then
+    capture env DBUS_SESSION_BUS_ADDRESS="unix:path=$SANDBOX/run/%62us" timeout 10 python3 "$REPO/tools/fake-mpris.py" probe
+    assert_status "fake-mpris refuses an escaped login-bus address" 1 "$STATUS"
+    assert_contains "and says why" "$OUTPUT" "is a real bus"
+fi
+
 # --- the panel in the real engine against fake players --------------------------
 QS_BIN=${QS_BIN:-/usr/bin/qs}
 if [[ ! -x $QS_BIN ]] || ! command -v dbus-daemon >/dev/null || ! python3 -c 'import dbus, gi' 2>/dev/null; then

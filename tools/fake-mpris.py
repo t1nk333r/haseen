@@ -31,6 +31,8 @@ import dbus.service
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
+import fakebus
+
 ROOT = "org.mpris.MediaPlayer2"
 PLAYER = "org.mpris.MediaPlayer2.Player"
 PROPS = "org.freedesktop.DBus.Properties"
@@ -245,9 +247,9 @@ def main():
     if len(sys.argv) < 2 or sys.argv[1].startswith("-") or "=" in sys.argv[1]:
         sys.exit(__doc__)
     address = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
-    if not address or ("unix:path=%s/bus" % runtime) in address or ("unix:path=/run/user/%d/bus" % os.getuid()) in address:
-        sys.exit("fake-mpris: set DBUS_SESSION_BUS_ADDRESS to a private bus, never the login session's")
+    why = fakebus.refusal(address)
+    if why:
+        sys.exit("fake-mpris: set DBUS_SESSION_BUS_ADDRESS to a private bus, never the login session's (%s)" % why)
     name = sys.argv[1]
     DBusGMainLoop(set_as_default=True)
     bus = dbus.bus.BusConnection(address)
