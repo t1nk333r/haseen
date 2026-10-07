@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# haseen:summary Search wallhaven.cc for wallpapers (SFW unless you have an API key)
+# haseen:args [query] [--sort S] [--top-range R] [--ratio 16x9] [--atleast WxH] [--color HEX] [--page N] [--seed S] [--json] [--no-thumbs] [--dry-run]
+#
+# One call to the Wallhaven API (plan 072), then the page's small thumbnails
+# in one parallel curl into ~/.cache/haseen/wallhaven/thumbs, a cache pruned by
+# age and count. --json is what the haseen.themegen panel reads.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+# shellcheck source=../share/haseen/lib/wallhaven.sh
+source "$HASEEN_PATH/lib/wallhaven.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen wallhaven search [query] [--sort S] [--top-range R] [--ratio 16x9]
+                               [--atleast WxH] [--color HEX] [--categories 111]
+                               [--purity 100] [--page N] [--seed S] [--json]
+                               [--no-thumbs] [--dry-run]
+
+Searches wallhaven.cc (24 results a page) and caches the small thumbnails in
+$WH_THUMBS.
+
+  --query Q       the query, also when it starts with - (wallhaven's -tag
+                  excludes a tag)
+  --sort S        ${WH_SORTS[*]} (default: toplist)
+  --top-range R   ${WH_RANGES[*]} (toplist only; default 1M)
+  --ratio R       aspect ratios, e.g. 16x9 or 16x9,21x9
+  --atleast WxH   smallest resolution (default: the focused monitor's)
+  --color HEX     wallhaven's colour filter, e.g. 336600
+  --categories C  general/anime/people as 1 or 0 (default 111)
+  --purity P      sfw/sketchy/nsfw as 1 or 0 (default 100). Anything but 100
+                  needs your API key in $WH_KEY_FILE (mode 600).
+  --page N        page number (default 1)
+  --seed S        the seed a random search printed, to page without repeats
+  --json          {page, last_page, total, seed, results: [{id, thumb, …}]}
+  --no-thumbs     do not fetch the thumbnails (thumb is then "")
+
+Wallhaven allows 45 calls a minute; haseen counts them and refuses beyond.
+EOF
+}
+
+query="" sort=toplist range="" ratio="" atleast="" color="" categories=111 purity=100 page=1 seed="" json=false want_thumbs=true
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --query) query="${args[++i]:-}" ;;
+    --sort) sort="${args[++i]:-}" ;;
+    --top-range) range="${args[++i]:-}" ;;
+    --ratio) ratio="${args[++i]:-}" ;;
+    --atleast) atleast="${args[++i]:-}" ;;
+    --color) color="${args[++i]:-}" ;;
+    --categories) categories="${args[++i]:-}" ;;
+    --purity) purity="${args[++i]:-}" ;;
+    --page) page="${args[++i]:-}" ;;
+    --seed) seed="${args[++i]:-}" ;;
+    --json) json=true ;;
+    --no-thumbs) want_thumbs=false ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+if (($# == 1)); then
+    [[ $1 != -* ]] || die "unknown option: $1 (a query that starts with - goes in --query)"
+    query="$1"
+fi
+
+[[ " ${WH_SORTS[*]} " == *" $sort "* ]] || die "unknown sort '$sort' (${WH_SORTS[*]})"
+if [[ -n $range ]]; then
+    [[ " ${WH_RANGES[*]} " == *" $range "* ]] || die "unknown top range '$range' (${WH_RANGES[*]})"
+    [[ $sort == toplist ]] || die "--top-range needs --sort toplist"
+fi
+[[ -z $ratio || $ratio =~ ^[0-9]+x[0-9]+(,[0-9]+x[0-9]+)*$ ]] || die "a ratio looks like 16x9: $ratio"
+[[ -z $atleast || $atleast =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || die "--atleast looks like 2560x1440: $atleast"
+color="${color#\#}"
+color="${color,,}"
+[[ -z $color || $color =~ ^[0-9a-f]{6}$ ]] || die "a colour is six hex digits: $color"
+[[ $categories =~ ^[01]{3}$ && $categories != 000 ]] || die "--categories is three 0/1 digits, not all 0: $categories"
+[[ $purity =~ ^[01]{3}$ && $purity != 000 ]] || die "--purity is three 0/1 digits, not all 0: $purity"
+[[ $page =~ ^[1-9][0-9]{0,4}$ ]] || die "--page is a positive number: $page"
+[[ -z $seed || $seed =~ ^[a-zA-Z0-9]{6}$ ]] || die "a seed is six letters or digits: $seed"
+# SFW unless the user has a key: a guest cannot see more, and haseen does not
+# ask for more on its own.
+wh_key
+have_key=false
+[[ -n $REPLY ]] && have_key=true
+if [[ $purity != 100 ]] && ! $have_key; then
+    die "--purity $purity needs a Wallhaven API key in $WH_KEY_FILE (mode 600); without one haseen searches SFW only"
+fi
+[[ -n $atleast ]] || {
+    wh_atleast
+    atleast=$REPLY
+}
+
+kv=("categories=$categories" "purity=$purity" "sorting=$sort" "order=desc" "page=$page" "atleast=$atleast")
+[[ -z $query ]] || kv+=("q=$query")
+[[ -z $range ]] || kv+=("topRange=$range")
+[[ -z $ratio ]] || kv+=("ratios=$ratio")
+[[ -z $color ]] || kv+=("colors=$color")
+[[ -z $seed ]] || kv+=("seed=$seed")
+# The query string, encoded by jq, so the dry run prints the exact URL.
+qs="$(printf '%s\n' "${kv[@]}" | jq -Rnr '[inputs | (index("=")) as $i | .[:$i] + "=" + (.[$i + 1:] | @uri)] | join("&")')"
+
+if $DRY_RUN; then
+    echo "DRYRUN: GET $WH_API/search?$qs"
+    $have_key && echo "DRYRUN: with the API key from $WH_KEY_FILE (X-API-Key header)"
+    $want_thumbs && echo "DRYRUN: cache thumbnails in $WH_THUMBS (pruned after $WH_THUMB_DAYS days or $WH_THUMB_MAX files)"
+    exit 0
+fi
+
+have curl || die "curl is not installed"
+listing="$(wh_api "search?$qs")" || exit 1
+
+# A guest listing is SFW already; dropping anything else is the second lock.
+filter='.'
+$have_key || filter='map(select(.purity == "sfw"))'
+results="$(jq -c "[.data // [] | .[] | $WH_ENTRY] | $filter" <<<"$listing")" ||
+    die "wallhaven sent a listing haseen cannot read"
+
+thumbs='{}'
+if $want_thumbs; then
+    thumbs="$(jq -r '.[] | [.id, .thumb_url] | @tsv' <<<"$results" | wh_thumbs |
+        jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}')"
+fi
+
+if $json; then
+    jq -n --argjson listing "$listing" --argjson results "$results" --argjson thumbs "$thumbs" \
+        --arg sort "$sort" --arg query "$query" --arg atleast "$atleast" '
+        {query: $query, sort: $sort, atleast: $atleast,
+         page: ($listing.meta.current_page // 1), last_page: ($listing.meta.last_page // 1),
+         total: ($listing.meta.total // 0), seed: ($listing.meta.seed // ""),
+         results: [$results[] | . + {thumb: ($thumbs[.id] // "")}]}'
+    exit 0
+fi
+
+jq -r --argjson listing "$listing" '
+    "page \($listing.meta.current_page // 1) of \($listing.meta.last_page // 1), \($listing.meta.total // 0) wallpapers"
+    + (if ($listing.meta.seed // "") != "" then " (seed \($listing.meta.seed))" else "" end),
+    (.[] | "\(.id)\t\(.resolution)\t\(.category)\t\(.url)")' <<<"$results"

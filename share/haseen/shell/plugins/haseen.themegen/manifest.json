@@ -3,7 +3,7 @@
   "id": "haseen.themegen",
   "name": "Theme generator",
   "version": "1.0.0",
-  "description": "Pick an image, a matugen scheme and dark or light; preview the palette on a mock desktop, then Save it as a theme or Apply it (haseen theme generate)",
+  "description": "Pick an image from your wallpapers or from Wallhaven (haseen wallhaven search/get, SFW), a matugen scheme and dark or light; preview the palette on a mock desktop, then Save it as a theme or Apply it (haseen theme generate)",
   "kinds": [
     "panel"
   ],
@@ -45,6 +45,11 @@
       "default": "tonal-spot",
       "description": "Scheme selected when the panel opens (tonal-spot, content, expressive, fidelity, fruit-salad, monochrome, neutral, rainbow, vibrant)"
     },
+    "source": {
+      "type": "string",
+      "default": "local",
+      "description": "Image source when the panel opens: local (your wallpaper directories) or wallhaven (wallhaven.cc search, SFW unless you keep an API key in ~/.config/haseen/wallhaven.key)"
+    },
     "debugIpc": {
       "type": "boolean",
       "default": false,
@@ -53,6 +58,7 @@
   },
   "permissions": [
     "exec",
-    "files:read"
+    "files:read",
+    "network"
   ]
 }

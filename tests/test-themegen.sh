@@ -217,7 +217,7 @@ assert_contains "as a built-in" "$OUTPUT" "ok: haseen.themegen (builtin:"
 M="$PLUGIN/manifest.json"
 assert_eq "a panel and nothing else" "panel" "$(jq -r '.kinds | join(" ")' "$M")"
 assert_eq "it needs matugen" "matugen" "$(jq -r '.requires.bins | join(" ")' "$M")"
-assert_eq "exec and files:read only" "exec files:read" "$(jq -r '.permissions | sort | join(" ")' "$M")"
+assert_eq "exec, files:read and network (Wallhaven, plan 072)" "exec files:read network" "$(jq -r '.permissions | sort | join(" ")' "$M")"
 assert_eq "debugIpc defaults off" "false" "$(jq -r .settings.debugIpc.default "$M")"
 assert_eq "the default scheme is one the CLI knows" "tonal-spot" "$(jq -r .settings.scheme.default "$M")"
 for key in $(grep -ohE 'settings\.[a-zA-Z]+' "$PLUGIN"/*.qml | cut -d. -f2 | sort -u); do

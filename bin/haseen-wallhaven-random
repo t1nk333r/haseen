@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# haseen:summary Download a random wallhaven.cc wallpaper (SFW) and print its path
+# haseen:args [query] [--ratio 16x9] [--atleast WxH] [--color HEX] [--to DIR] [--dry-run]
+#
+# Plan 072: `haseen wallhaven search --sort random` without thumbnails, then
+# `haseen wallhaven get` for its first result. Two API calls.
+set -Eeuo pipefail
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HASEEN_PATH="${HASEEN_PATH:-$BIN_DIR/../share/haseen}"
+export PATH="$BIN_DIR:$PATH"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen wallhaven random [query] [--ratio 16x9] [--atleast WxH] [--color HEX]
+                               [--to DIR] [--dry-run]
+
+Picks a random wallpaper on wallhaven.cc (the search options of
+haseen wallhaven search apply), downloads it like haseen wallhaven get and
+prints its path. To use it: haseen theme generate "\$(haseen wallhaven random)"
+EOF
+}
+
+search=() get=()
+REST=()
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+    --query | --ratio | --atleast | --color | --categories | --purity) search+=("${args[i]}" "${args[++i]:-}") ;;
+    --to) get+=(--to "${args[++i]:-}") ;;
+    *) REST+=("${args[i]}") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+search+=("$@")
+
+if $DRY_RUN; then
+    haseen-wallhaven-search --sort random --no-thumbs --dry-run "${search[@]}"
+    echo "DRYRUN: haseen wallhaven get <the first result>${get[*]:+ ${get[*]}}"
+    exit 0
+fi
+
+listing="$(haseen-wallhaven-search --sort random --no-thumbs --json "${search[@]}")" || exit 1
+id="$(jq -r '.results[0].id // empty' <<<"$listing")"
+[[ -n $id ]] || die "wallhaven found nothing to pick from"
+haseen-wallhaven-get "$id" "${get[@]+"${get[@]}"}"

@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Haseen
 import "Themegen.js" as Model
+import "Wallhaven.js" as Wh
 // The image list and its thumbnail card are haseen.imagepicker's, shared
 // rather than copied: both panels scan the same directories the same way.
 import "../haseen.imagepicker" as Picker
@@ -12,9 +13,12 @@ import "../haseen.imagepicker/Images.js" as Images
 // the strip, a scheme and dark or light; the preview shows the palette as
 // swatches and on a small mock desktop. Save writes the theme
 // (`haseen theme generate … --no-apply`), Apply writes it and switches to it.
-// Keys: type to filter, Left/Right move through the images, Up/Down change
-// the scheme, Tab flips dark/light, Enter applies, Ctrl+S saves; Escape
-// closes (the panel host handles it). Open with
+// The source switch picks between the user's own images and Wallhaven
+// (plan 072, WallhavenGrid.qml): a search, sort chips and a paged grid whose
+// pick is downloaded with `haseen wallhaven get` and then previewed the same.
+// Keys: type to filter (Enter searches on Wallhaven), Left/Right move through
+// the images, Up/Down change the scheme, Tab flips dark/light, Enter applies,
+// Ctrl+S saves; Escape closes (the panel host handles it). Open with
 // `haseen shell ipc panel toggle haseen.themegen` or menu Style › Theme
 // Generator.
 //
@@ -57,6 +61,9 @@ Column {
     property string notice: ""
     property bool noticeIsError: false
     property bool writing: false
+    // "local" (the strip of the user's images) or "wallhaven" (plan 072).
+    property string source: settings.source === "wallhaven" ? "wallhaven" : "local"
+    property bool wallhavenUsed: source === "wallhaven"
 
     function close(): void {
         const win = QsWindow.window;
@@ -131,9 +138,44 @@ Column {
         writeProc.running = true;
     }
 
+    // My wallpapers or Wallhaven. Back on the user's own images, the strip's
+    // picture is previewed again.
+    function setSource(value: string): void {
+        if ((value !== "local" && value !== "wallhaven") || value === source)
+            return;
+        source = value;
+        input.text = "";
+        if (value === "wallhaven") {
+            wallhavenUsed = true;
+            return;
+        }
+        image = "";
+        pick(strip.currentIndex);
+    }
+
+    // Left/Right: the strip's images, or the Wallhaven grid's.
+    function move(delta: int): void {
+        if (source === "wallhaven") {
+            if (wallhaven.item)
+                wallhaven.item.step(delta);
+        } else {
+            step(delta);
+        }
+    }
+
+    // A picture `haseen wallhaven get` saved: previewed like the user's own,
+    // named after its wallhaven id until the user types a name.
+    function useDownload(path: string, id: string): void {
+        image = path;
+        if (!nameEdited)
+            name = Wh.themeName(id);
+        refresh();
+    }
+
     onResultsChanged: {
         strip.currentIndex = 0;
-        pick(0);
+        if (source === "local")
+            pick(0);
     }
 
     width: columns * cellWidth + Theme.gap
@@ -188,6 +230,31 @@ Column {
             root.write(true);
         }
 
+        function setSource(value: string): void {
+            root.setSource(value);
+        }
+
+        function search(text: string): void {
+            input.text = text;
+            if (wallhaven.item)
+                wallhaven.item.search(text);
+        }
+
+        function setSort(value: string): void {
+            if (wallhaven.item)
+                wallhaven.item.setSort(value);
+        }
+
+        function more(): void {
+            if (wallhaven.item)
+                wallhaven.item.more();
+        }
+
+        function pickResult(index: int): void {
+            if (wallhaven.item)
+                wallhaven.item.select(index);
+        }
+
         function state(): string {
             return JSON.stringify({
                 count: root.images.length,
@@ -198,7 +265,16 @@ Column {
                 name: root.name,
                 busy: previewProc.running || root.writing,
                 preview: root.preview,
-                notice: root.notice
+                notice: root.notice,
+                source: root.source,
+                wallhaven: wallhaven.item ? {
+                    count: wallhaven.item.items.length,
+                    page: wallhaven.item.page,
+                    lastPage: wallhaven.item.lastPage,
+                    sort: wallhaven.item.sort,
+                    current: wallhaven.item.currentIndex,
+                    downloading: wallhaven.item.downloading
+                } : null
             });
         }
     }
@@ -296,11 +372,36 @@ Column {
         Text {
             anchors.baseline: title.baseline
             width: parent.width - title.width - Theme.gap
-            text: root.notice !== "" ? root.notice : previewProc.running ? "generating…" : "Enter applies · Ctrl+S saves · Esc closes"
+            text: root.notice !== "" ? root.notice : previewProc.running ? "generating…" : root.source === "wallhaven" ? "Enter searches · Esc closes" : "Enter applies · Ctrl+S saves · Esc closes"
             color: root.noticeIsError ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
+        }
+    }
+
+    Row {
+        spacing: Math.round(Theme.gap / 2)
+
+        Repeater {
+            model: [
+                {
+                    key: "local",
+                    label: "My wallpapers"
+                },
+                {
+                    key: "wallhaven",
+                    label: "Wallhaven"
+                }
+            ]
+
+            Choice {
+                required property var modelData
+
+                text: modelData.label
+                active: root.source === modelData.key
+                onClicked: root.setSource(modelData.key)
+            }
         }
     }
 
@@ -324,27 +425,33 @@ Column {
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize
-            onTextChanged: root.query = text
-            onAccepted: root.write(true)
+            onTextChanged: if (root.source === "local")
+                root.query = text
+            onAccepted: {
+                if (root.source === "wallhaven" && wallhaven.item)
+                    wallhaven.item.search(text);
+                else
+                    root.write(true);
+            }
             Keys.onUpPressed: root.setScheme(Model.cycle(Model.SCHEMES, root.scheme, -1))
             Keys.onDownPressed: root.setScheme(Model.cycle(Model.SCHEMES, root.scheme, 1))
             Keys.onTabPressed: root.setMode(Model.cycle(Model.MODES, root.mode, 1))
             Keys.onLeftPressed: event => {
                 if (cursorPosition === 0 || text === "")
-                    root.step(-1);
+                    root.move(-1);
                 else
                     event.accepted = false;
             }
             Keys.onRightPressed: event => {
                 if (cursorPosition === text.length)
-                    root.step(1);
+                    root.move(1);
                 else
                     event.accepted = false;
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "filter images"
+                text: root.source === "wallhaven" ? "search wallhaven · Enter searches · click a picture to use it" : "filter images"
                 color: Theme.muted
                 visible: input.text === ""
                 font: input.font
@@ -362,10 +469,12 @@ Column {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         highlightMoveDuration: 0
+        visible: root.source === "local"
         model: root.results
         onCurrentIndexChanged: {
             positionViewAtIndex(currentIndex, ListView.Contain);
-            root.pick(currentIndex);
+            if (root.source === "local")
+                root.pick(currentIndex);
         }
 
         delegate: Picker.ImageCard {
@@ -378,6 +487,25 @@ Column {
             selected: ListView.isCurrentItem
             pixelRatio: root.pixelRatio
             onPicked: strip.currentIndex = index
+        }
+    }
+
+    // Loaded on the first switch to Wallhaven and kept, so switching back
+    // and forth keeps the results.
+    Loader {
+        id: wallhaven
+
+        active: root.wallhavenUsed
+        visible: root.source === "wallhaven"
+
+        sourceComponent: WallhavenGrid {
+            cli: root.cli
+            columns: root.columns
+            cardWidth: root.cardWidth
+            pixelRatio: root.pixelRatio
+            onSaid: (text, error) => root.say(text, error)
+            onPicked: (path, id) => root.useDownload(path, id)
+            Component.onCompleted: search("")
         }
     }
 
