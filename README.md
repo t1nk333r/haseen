@@ -66,7 +66,7 @@ translate, and lists what has no haseen equivalent; run it without
 | `ai` | Ollama (GPU-matched) or llama.cpp on loopback; `haseen ai chat/models/pull` |
 | `dms` | DankMaterialShell, available to swap in with `haseen shell use dms` |
 | `gaming` | CachyOS gaming packages (Steam, gamemode, MangoHud, Proton) |
-| `vapt` | optional security tool inventory in 25 explicit groups (the owner's lists plus oniomarchy's tool categories) and native/COAE environments; no AUR or Omarchy dependency, no assessment execution, no service started ([details](docs/vapt.md)) |
+| `vapt` | optional security tool inventory in 25 explicit groups (the owner's lists plus oniomarchy's tool categories) and native/COAE environments; an opt-in, per-run, signature-required private oniomarchy source (`--with-oniomarchy`) that never touches `/etc/pacman.conf`; no AUR or Omarchy dependency, no assessment execution, no service started ([details](docs/vapt.md)) |
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.

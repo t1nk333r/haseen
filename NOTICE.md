@@ -71,7 +71,7 @@ same commit that adds the code.
 
 | Source | License | What was used | Where |
 |---|---|---|---|
-| oniomarchy package source, [pkgs.oniomarchy.com](https://pkgs.oniomarchy.com/) | not stated here; none of its code or text is included | facts only: its tool category memberships, its published package names (including `-git`/`-bin` names and dependency packages), its repository stanza and signing-key fingerprint. haseen's groups, aliases, dependency roles and source policy are implemented independently (plan 083) | `share/haseen/layers/vapt/packages/`, `docs/vapt.md`, `plans/083-vapt-oniomarchy-provisioning.md` |
+| oniomarchy package source, [pkgs.oniomarchy.com](https://pkgs.oniomarchy.com/) | not stated here; none of its code or text is included | facts only: its tool category memberships, its published package names (including `-git`/`-bin` names and dependency packages), its repository stanza and signing-key fingerprint. haseen's groups, aliases, dependency roles, admission table and opt-in private-source trust policy are implemented independently (plan 083); no upstream installer, bootstrap script or prose is copied | `share/haseen/layers/vapt/packages/`, `share/haseen/layers/vapt/oniomarchy.sh`, `share/haseen/layers/vapt/files/oniomarchy-signers.txt`, `docs/vapt.md`, `plans/083-vapt-oniomarchy-provisioning.md` |
 
 ## Reference only (GPL-3.0, **no code copied**)
 

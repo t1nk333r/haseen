@@ -349,29 +349,86 @@ reviewed change, not automatic trust adoption. System packages, keyring trust,
 repository configuration, and upgrade results are not reversible by removing
 this layer.
 
-### oniomarchy: inventory facts now, a signed source later
+### oniomarchy: an opt-in private signed source
 
 The plan 083 groups use oniomarchy's tool categories as facts; none of its
-installer code is used. Today oniomarchy is **not** a package source: it is
-not in the repository allowlist, an `[oniomarchy]` stanza in pacman.conf is
-never used as a source, like any other unlisted repository, and its rows in
-`aliases.tsv` and `dependencies.tsv` are validated but never consulted. Items
-that only it publishes (for example `chirp` and `supersdr`) are reported
-unavailable.
+installer code is used. Its package repository can also serve as the **last**
+source tier, after Arch, but only when you ask for it in that run:
 
-Plan 083's second slice describes the planned source, which does not exist
-yet: opt-in per invocation (`--all` is not consent), x86_64 only, a private
-stanza used only by VAPT's own transactions (never `/etc/pacman.conf`),
-`SigLevel = Required DatabaseRequired` kept everywhere, a pinned signing key,
-the last tier after Arch, and admission limited to the 52 published package
-names through exact names or reviewed aliases. Its dependency-only packages
-(`java17-openjfx-bin`, `sleuthkit-java`, `powershell-bin`, the libsoup and
-webkit2gtk packages and thirteen `python-*` libraries) and its keyring package
-would never be selectable tools. Importing its key would extend the shared
-pacman keyring; disabling the source would keep installed packages and keys.
-A valid signature proves continuity with the reviewed key, not who built the
-package or that its code is safe. A newly published package name needs a
-reviewed change before it is accepted.
+```sh
+haseen vapt repo-status                            # offline; never selects the source
+haseen vapt repo-enable --dry-run oniomarchy       # describes approval; fetches nothing
+haseen vapt repo-enable oniomarchy                 # approve the pinned source (asks first)
+haseen vapt install --with-oniomarchy --groups sdr # use it for this run only
+haseen vapt repo-disable oniomarchy                # remove the private descriptor
+```
+
+- **Per operation.** Without `--with-oniomarchy` there is no fetch, no key
+  import, no private stanza and no candidate from it; attempted tiers record
+  `oniomarchy:not-selected`. `--all` selects groups, never a repository, and
+  nothing remembers the choice. If the source is not yet approved,
+  `--with-oniomarchy` asks to approve it; declining is reported as
+  `oniomarchy:declined` and does not make an otherwise complete run degraded.
+- **Private scope.** The approved stanza (`[oniomarchy]`,
+  `SigLevel = Required DatabaseRequired`,
+  `Server = https://pkgs.oniomarchy.com/$arch`) lives in
+  `/var/lib/haseen/vapt/sources/oniomarchy.conf` and enters only VAPT's own
+  transaction configuration, with `Usage = Sync Search Install` (never a
+  full-upgrade source). `/etc/pacman.conf` is never changed. A host
+  `[oniomarchy]` section is reported and the private source is refused while
+  it exists; a changed descriptor is preserved and reported, never repaired.
+- **What stays global.** Approval imports and locally signs the pinned key and
+  installs the `oniomarchy-keyring` package, which populates the shared pacman
+  keyring. That trust is machine-wide, not isolated to VAPT, and it is kept
+  when the source is disabled; revoking it is a separate `pacman-key`
+  decision. A full upgrade that carried the private source leaves its frozen
+  database copy in pacman's sync directory; pacman ignores it unless
+  `/etc/pacman.conf` declares the repository.
+- **Trust anchor.** The key comes only from
+  `https://pkgs.oniomarchy.com/oniomarchy.gpg` (HTTPS, no redirect, never a
+  keyserver, no bootstrap script) and must have exactly one primary, the
+  reviewed `0F5F9214F312B067ECBF1DF125E2C00AA6340BD0`
+  (`files/oniomarchy-signers.txt`), not revoked or expired. The database's
+  detached signature must carry exactly one accepted primary before any
+  filename is read from it. The keyring archive the database names is sealed
+  against the database digest, its own signature checked, and audited
+  (identity, exact layout, dependencies, a population-only scriptlet, hooks,
+  protected paths) before any trust change.
+- **Rotation.** Later signers come only from a keyring package signed by a
+  currently accepted, non-revoked primary. Revocations never roll back, the
+  keyring version never goes down, and neither the downloaded key nor the
+  database nor an installed file can add a signer. The accepted set is
+  recorded in root-owned state; missing proof after a local keyring change
+  makes the source `unverified`, and `repo-enable` refuses it for manual
+  review.
+- **Strict signatures everywhere.** `Required DatabaseRequired` is kept in the
+  private, frozen and recovery configurations. A missing or unaccepted
+  database signature makes the source unavailable rather than weaker; the
+  frozen signature is rechecked against the reviewed bytes right before a
+  commit. A recovery record names the private scope and the digest of the
+  descriptor and keyring authority, and resumes only while they match.
+- **x86_64 only.** Other architectures report `unsupported-architecture`
+  before any fetch or trust change; the other sources still work.
+- **Admission.** Only the 52 published names in `packages/oniomarchy.tsv`
+  count, each a candidate (serving an item by its exact name or a reviewed
+  `aliases.tsv` row, so `chirp` maps to `chirp-next`), a dependency
+  (`java17-openjfx-bin`, `sleuthkit-java`, `powershell-bin`, the libsoup and
+  webkit2gtk packages and thirteen `python-*` libraries; never a root target)
+  or the keyring. A 53rd name in a newer signed database is ignored until a
+  reviewed change admits it. The source never satisfies anything through
+  `Provides`, never wins over an acceptable earlier package, refuses a name
+  another configured source also publishes, and never declares replacements.
+  It is not a base vendor and gains no stock-helper authority. Its
+  `metasploit-mcp` and `hexstrike-ai` gaps stay unavailable.
+- **Reports.** `report.tsv` keeps its v1 columns; `selected_source` is
+  `oniomarchy` and `target` the actual published name (for example
+  `oniomarchy/chirp-next`) only after a real resolution. A `# oniomarchy`
+  annotation records the run's source state and `# dependency` rows the
+  dependencies a commit installed.
+
+A valid signature proves continuity with the reviewed key, not who built a
+package, that its code is safe, or that it is the upstream tool its name
+suggests. Package URLs are the publisher's own metadata.
 
 ## Environment and user files
 

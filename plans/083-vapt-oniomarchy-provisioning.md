@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics, docs) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B is partly implemented and not complete: the private descriptor, `--with-oniomarchy`, the `repo-status`/`repo-enable`/`repo-disable` commands, the pinned HTTPS key check, database/keyring verification, keyring authority and rotation rules, strict `Required DatabaseRequired` rendering/freezing/recovery, the 52-name admission table and the last-tier resolver exist, with `tests/test-vapt-oniomarchy.sh`. The trust and transaction suites (`tests/test-vapt-oniomarchy-trust.sh`, `tests/test-vapt-oniomarchy-transactions.sh`) are not written, so the approval, rotation, frozen-signature and recovery paths are unexercised; the 1B docs updates are not done. Independent review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy.sh`, `tests/test-vapt-oniomarchy-trust.sh` and `tests/test-vapt-oniomarchy-transactions.sh`; every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
 
 ## Goal
 
@@ -185,53 +185,79 @@ as a substring, and parsed but ignored `required-target`. Now:
 URL identity is the publisher's own metadata, not independent proof of code
 provenance.
 
-## Slice 1B: the private signed source (not started)
+## Slice 1B: the private signed source (implemented)
 
-Planned contract, for review before any code:
+- **Opt-in, per operation.** `haseen vapt install --with-oniomarchy` (also
+  accepted by the layer's `vapt_select`); `--all` is not consent and nothing
+  stores the choice. New commands `haseen vapt repo-status [--json]`,
+  `repo-enable oniomarchy` and `repo-disable oniomarchy`, each with `--help`
+  and a pure `--dry-run`; mutations refuse a fixture sysroot.
+- **Private scope.** `share/haseen/layers/vapt/oniomarchy.sh` writes the exact
+  stanza to `/var/lib/haseen/vapt/sources/oniomarchy.conf` (the descriptor is
+  also the approval record). `metadata.py:read_config` takes any host
+  `[oniomarchy]` section out of VAPT's view and adds the private stanza, last,
+  only with `--with-oniomarchy` (set by the shell only when the source is
+  usable for this operation, during read-only status, or for an exact
+  recorded recovery). Rendered with `Usage = Sync Search Install`.
+- **One mirror and policy rule.** `repository_mirror_safe` and
+  `repository_policy_safe` serve snapshot, rendering, closure and the frozen
+  configuration: the source only at `https://pkgs.oniomarchy.com/$arch`
+  (or `/x86_64`), exactly `Required DatabaseRequired`; every other source keeps
+  the HTTPS and Omarchy-host rules.
+- **Trust.** Key from the fixed URL (`curl --max-redirs 0 --proto =https`),
+  exactly one primary equal to `files/oniomarchy-signers.txt`, not revoked or
+  expired (`key-primary`). Database and keyring signatures go through
+  `verify_status`. Root copies the fetched database into the run's root stage
+  before verification; the keyring archive is sealed against the database
+  digest and audited by `oniomarchy-keyring` (identity, exact layout,
+  dependencies, population-only scriptlet, then the generic `audit_archives`
+  with a per-package population exemption). Root state:
+  `oniomarchy.authority` (keyring version, digest, signer, accepted and
+  revoked primaries, retained file digests), `sync/oniomarchy.db{,.sig}` and
+  `oniomarchy.database` (exactly which bytes were verified and by whom).
+- **Rotation.** Accepted only from a keyring signed by a currently accepted,
+  non-revoked primary; revocations never shrink, the version never goes down,
+  the first keyring must trust the pin. Applied only by `repo-enable`.
+- **Canary.** `oniomarchy_canary`: unsupported-architecture, broken (host
+  stanza, changed or redirected descriptor), absent, unverified (authority
+  mismatch, cached database or signature not the verified bytes, no keyring
+  record), usable. An opted-in run also refreshes and re-verifies the
+  database (unavailable when unreachable; declined when the user refuses).
+- **Admission.** `packages/oniomarchy.tsv` (52 rows, enforced by
+  `VAPT_ONIOMARCHY_ADMITTED` and `ONIOMARCHY_ADMITTED`); the resolver tries the
+  source after Arch, by exact name or `aliases.tsv` only, refuses a name any
+  other usable source publishes, and records
+  `oniomarchy:not-selected|declined|unavailable|unsupported-architecture|identity-rejected`.
+  `closure` admits only candidates/dependencies by exact name (never
+  Provides), refuses replaces/conflicts and homonyms, and now applies the
+  inventory identities to every planned package; `audit_archives` re-checks
+  the roles. Pins and required targets may not name the source. Not in
+  `BASE_VENDOR`.
+- **Transactions.** The verified cached database is copied into the private
+  DBPath; after a private `-Syuw` it is re-verified against the accepted
+  primaries; freezing requires its `.sig` and the frozen pair is rechecked
+  against the reviewed digests right before the commit. Recovery records gain
+  `\toniomarchy-private\t<sha256 of descriptor and authority>` and resume the
+  scope only on a match; the old generic and blackarch-staged records keep
+  working.
+- **Report.** v1 schema kept; `# oniomarchy` and `# dependency` annotations.
 
-- **Opt-in, per invocation.** `haseen vapt install --with-oniomarchy`; `--all`
-  is not consent. New commands `haseen vapt repo-status`, `repo-enable
-  oniomarchy`, `repo-disable oniomarchy`.
-- **Private scope.** The stanza lives at
-  `/var/lib/haseen/vapt/sources/oniomarchy.conf` and only VAPT's own
-  transaction configuration includes it. `/etc/pacman.conf` is never changed;
-  a host `[oniomarchy]` stanza is reported, not adopted. Importing the signing
-  key still extends the shared pacman keyring, which is disclosed at approval.
-- **Strict signatures.** `Required DatabaseRequired` is preserved everywhere,
-  including frozen databases and recovery. The cost: no detached database
-  signature, no source; a publisher outage makes the source unavailable rather
-  than weaker.
-- **Trust anchor.** The key is fetched over HTTPS from the fixed host only,
-  must have exactly the pinned primary, and is never taken from a keyserver.
-  The keyring package is discovered from the verified database, sealed,
-  audited and installed through the existing sealed path. No bootstrap script
-  runs. Rotation is accepted only from an authenticated keyring package signed
-  by a currently accepted signer.
-- **Canary.** Usable only when opted in, on x86_64, with the approved
-  descriptor, a verified database signature, and an authenticated keyring
-  record. States: not-selected, absent, declined, unsupported-architecture,
-  unavailable, unverified, broken, usable.
-- **Admission.** Last tier, after Arch. Only the exact 52 names, only through
-  an item's exact name or its `aliases.tsv` row, never Provides. Roles:
-  `oniomarchy-keyring` is infrastructure; java17-openjfx-bin, sleuthkit-java,
-  powershell-bin, libsoup, libsoup-docs, webkit2gtk, webkit2gtk-docs and the
-  thirteen `python-*` packages are dependencies; the rest are candidates that
-  serve an existing item only through a reviewed mapping. A 53rd name in a
-  newer database is refused until reviewed. Not `BASE_VENDOR`, no stock-hook
-  authority, no full-upgrade selection.
-- **Report.** `report.tsv` keeps its v1 schema; `selected_source` is
-  `oniomarchy` only after a concrete resolution, and tiers record
-  `oniomarchy:not-selected` and the other states. A declined source alone does
-  not degrade an otherwise complete selection.
-- **Removal.** `repo-disable` removes only an unchanged haseen-owned
-  descriptor. Packages and keyring trust stay.
-
-Its hermetic suites are planned as `tests/test-vapt-oniomarchy.sh`,
-`tests/test-vapt-oniomarchy-trust.sh` and
-`tests/test-vapt-oniomarchy-transactions.sh`.
+Choices where the design was silent: the descriptor doubles as the approval
+record; a host `[oniomarchy]` section makes the private source `broken`;
+dry-run plans from cached evidence verified at the last refresh and says it
+did not re-verify; disable keeps the authority record and cache (inert without
+the descriptor).
 
 ## Rejected options
 
+- **`Usage = Search Install` (no Sync) for the private source**, so pacman
+  never refreshes it behind the pinned verifier: rejected for the design's
+  `Sync Search Install`; instead every private refresh is re-verified against
+  the accepted primaries before review.
+- **Falling back to a stale cached database when the host is unreachable**:
+  the source is reported unavailable instead.
+- **Using a host `[oniomarchy]` section beside the private one**: two
+  definitions of one repository; the private source is refused while it exists.
 - **Adding every one of the 52 names as a root**, or a post-exploitation group
   just for powershell-bin: dependencies and infrastructure are not tools.
 - **Suffix stripping** (`-git`, `-bin`) to map names: guesses. Every
@@ -283,22 +309,43 @@ The fixture `tests/fixtures/vapt-oniomarchy/inventory.json` holds the expected
 inventory: the 52 source packages with their roles, the added roots, aliases,
 pins and dependencies.
 
+Slice 1B suites (fixtures in `tests/fixtures/vapt-oniomarchy/`, served by the
+hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
+
+- `tests/test-vapt-oniomarchy.sh`: no flag and `--all` select nothing;
+  opted-in exact and alias resolution as the last tier; approval planned, not
+  fabricated; architecture cases; every canary state from
+  `source-states.json`, never repaired; shadowing, Provides and wrong-arch
+  cases from `transactions/shadowing.json`; a 53rd name and other broken
+  admission tables refuse; the mirror/policy validator; a declined source
+  never changes status.
+- `tests/test-vapt-oniomarchy-trust.sh`: the full approval sequence and its
+  order (database signature before any keyring filename); refresh; disable;
+  wrong/extra/revoked/expired keys; wrong/expired/revoked/unknown/multiple/bad/
+  missing database signatures; keyring signature, digest and hostile layouts;
+  redirected state; rotation cases from `trust/rotation.json` and raw-key
+  replacement; dry-run and sysroot refusal of the real commands.
+- `tests/test-vapt-oniomarchy-transactions.sh`: rendered/frozen policy;
+  closure cases from `transactions/closure.json`; an opted-in commit; the
+  frozen-signature cases from `transactions/db-signature-cases.json`; the
+  recovery protocol from `transactions/recovery-records.txt` and a changed
+  authority.
+
 ## Evidence
 
-Exercised in this tree before the slice 1A commit:
+Exercised in this tree before the slice 1B commits (fixtures only; no live
+fetch, key, package or service operation):
 
 ```sh
-QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh   # 14 files, 3159/3159 checks
+QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh   # see the slice 1B commit message for counts
 SHELLCHECK=$(command -v shellcheck) tools/lint.sh             # lint OK
 tools/check-docs.sh                                           # check-docs OK
 ```
 
-`tests/test-vapt-inventory.sh` alone is 329 checks. `tests/test-vapt-env.sh`
-needed one fixture change: its "all non-COAE provisioning exact" control
-selects `osint`, which now also contains recon-ng and theharvester, so the
-fixture publishes and installs both.
+Slice 1A alone: 14 files, 3159/3159 checks (`tests/test-vapt-inventory.sh` 329).
 
 Not exercised: any live package installation, any fetch from the oniomarchy
-host, and the published signatures of its database or keyring. The
-metadata.py dependency closure does not yet apply `identities.tsv` to
-dependencies; that belongs with the source tier in slice 1B.
+host, the real published key, database and keyring signatures, the real
+keyring package layout and scriptlet (the accepted layout is the conventional
+one and is an inference until a real package is audited), and pacman's own
+handling of `Usage` and `DatabaseRequired` on a real system.

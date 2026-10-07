@@ -185,6 +185,11 @@ def pacman(argv):
             old = next((p for p in installed if p['name'] == name), None)
             record['reason'] = (old or {}).get('reason', 'explicit') if old else (
                 'depend' if '--asdeps' in argv else 'explicit')
+            if name == 'oniomarchy-keyring':
+                # libalpm records the package's file list; an upgrade audit needs it.
+                with tarfile.open(observed(value), 'r:*') as archive:
+                    record['files'] = sorted(m.name + ('/' if m.isdir() else '') for m in archive.getmembers()
+                                             if not m.name.startswith('.'))
             installed = [p for p in installed if p['name'] != name] + [record]
         if '--noscriptlet' not in argv:
             log_helper_path([observed(value) for value in files])

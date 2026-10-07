@@ -686,6 +686,13 @@ def oniomarchy_state_bytes(root, name, limit=1024 * 1024):
 def oniomarchy_descriptor(root):
     """absent, approved (exactly the reviewed stanza) or conflict."""
     try:
+        # The private state directory itself must be a real, non-replaceable
+        # directory (or absent): a redirected one is a conflict, not absence.
+        for directory in (oniomarchy_path(root, ''), oniomarchy_path(root, 'sync')):
+            if os.path.lexists(directory):
+                info = os.lstat(directory)
+                if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+                    return 'conflict'
         data = oniomarchy_state_bytes(root, 'oniomarchy.conf', 4096)
     except (OSError, ValueError):
         return 'conflict'
@@ -4063,8 +4070,11 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
                 check_dependency(required)
     for dep in fields.get('depend', []):
         check_dependency(dep)
-    audit_archives(root, [archive], keyring_population='oniomarchy-keyring', sudo_plugins_path=sudo_plugins_path,
-                   authority_facts_path=authority_facts_path)
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):  # its "safe" is not part of the record
+        audit_archives(root, [archive], keyring_population='oniomarchy-keyring', sudo_plugins_path=sudo_plugins_path,
+                       authority_facts_path=authority_facts_path)
     files = {path: hashlib.sha256(contents[path]).hexdigest() for path in ONIOMARCHY_KEYRING_FILES}
     return render_authority({'version': version, 'sha256': digest, 'signer': signer, 'accepted': accepted,
                              'revoked': revoked, 'files': files})

@@ -70,7 +70,7 @@ already set when the layer runs.
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
-| `vapt` | — | explicit owner tool groups (plus the oniomarchy-category groups of plan 083), checked binary/native sources, passive PATH and the optional shared COAE Python environment; dependency-only packages are never roots; no assessment execution or service activation (plans 007, 083) |
+| `vapt` | — | explicit owner tool groups (plus the oniomarchy-category groups of plan 083), checked binary/native sources (the private oniomarchy source only per operation, last), passive PATH and the optional shared COAE Python environment; dependency-only packages are never roots; no assessment execution or service activation (plans 007, 083) |
 
 Rules every layer follows:
 
@@ -93,9 +93,12 @@ Rules every layer follows:
   canonical upstream identities decide which package may stand for a tool.
   Its dedicated transaction path
   excludes AUR/Omarchy dependencies, reports unavailable items, and never runs
-  the tools it installs. oniomarchy is an inventory input only; plan 083 plans
-  it as a later opt-in, private, signature-required last tier that never
-  touches `/etc/pacman.conf`. See `docs/vapt.md` for its trust, environment, and
+  the tools it installs. oniomarchy's repository is an opt-in, per-operation,
+  x86_64-only last tier (`--with-oniomarchy`, `haseen vapt repo-*`) whose
+  stanza stays in haseen's root state and VAPT's own configuration, never
+  `/etc/pacman.conf`; it keeps `Required DatabaseRequired`, admits only 52
+  reviewed names, is never a base vendor, and its key import into the shared
+  pacman keyring is global (plan 083). See `docs/vapt.md` for its trust, environment, and
   limited owned-link removal contracts. It does not require the desktop or
   default layers.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.

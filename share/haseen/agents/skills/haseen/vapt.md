@@ -33,12 +33,14 @@ haseen vapt remove --dry-run                           # only owned activation l
   way: no AUR helper, no `pip`/`pipx` by hand, no `makepkg`, no downloaded
   script. `metasploit-mcp` is blocked on purpose (its upstream project is
   ambiguous); `hexstrike-ai` has no reviewed source.
-- **No source opt-in exists yet.** oniomarchy's categories shaped the
-  `sdr` … `services` groups, but its repository is not a source today. Items
-  only it publishes (for example `chirp`, `supersdr`) stay unavailable. Do not
-  add `[oniomarchy]` to `/etc/pacman.conf` to work around this: haseen would
-  ignore it, and it would reach every other pacman operation. A later opt-in,
-  private, signature-required source is planned (plan 083).
+- **The oniomarchy source is opt-in per run.** Items only its repository
+  publishes (for example `chirp`, `supersdr`) come from it only with
+  `haseen vapt install --with-oniomarchy …`; `--all` never implies it. Approve
+  it with `haseen vapt repo-enable oniomarchy` (preview with `--dry-run`, which
+  fetches nothing) and inspect with `haseen vapt repo-status`. Tell the user
+  that approval imports a signing key into the shared pacman keyring, which
+  stays after `haseen vapt repo-disable oniomarchy`. Never add `[oniomarchy]`
+  to `/etc/pacman.conf`: haseen then refuses the private source.
 - **Services stay off.** `services` installs openssh and remmina; `anonymity`
   installs macchanger and tor. Starting sshd or Tor, or changing a MAC address,
   is the user's explicit decision, done by them, not part of provisioning.

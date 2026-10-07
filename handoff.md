@@ -62,7 +62,9 @@ The owner's other repos:
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
 tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
-the optional `vapt` layer; plan 083 extends its inventory.
+the optional `vapt` layer; plan 083 extends its inventory and adds the opt-in
+private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
+`bin/haseen-vapt-repo-status`; independent review outstanding).
 
 ## Decisions
 
