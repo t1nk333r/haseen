@@ -260,7 +260,7 @@ Column {
     }
 
     function runSpeedTest(): void {
-        Quickshell.execDetached([binDir + "/haseen-test-network"]);
+        Apps.launch([binDir + "/haseen-test-network"]);
         Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "close"]);
     }
 

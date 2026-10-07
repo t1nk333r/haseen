@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import qs.Haseen
 
 // qs.Commons.Util for Omarchy plugins (architecture 5.4). Pure helpers.
 //
@@ -57,13 +58,15 @@ Singleton {
         return "'" + String(value || "").replace(/'/g, "'\\''") + "'";
     }
 
+    // Plugins start apps with these, so they run in their own scope
+    // (Apps, plan 074) and survive a shell restart.
     function execDetached(command: var): void {
-        Quickshell.execDetached(["bash", "-lc", String(command)]);
+        Apps.launch(["bash", "-lc", String(command)]);
     }
 
     // argv without shell interpretation: the args land in "$@" only.
     function execArgv(argv: var): void {
-        Quickshell.execDetached(["bash", "-lc", 'exec "$@"', "bash"].concat(argv));
+        Apps.launch(["bash", "-lc", 'exec "$@"', "bash"].concat(argv));
     }
 
     function isPlainObject(value: var): bool {

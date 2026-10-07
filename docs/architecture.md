@@ -117,6 +117,19 @@ to `recovery/last-good.json` once the shell has been active for 10 minutes
 (`HASEEN_SHELL_HEALTHY_MINUTES`) and the file has not changed for as long,
 but never while safe mode is on.
 
+Spawning (plan 074): whatever qs starts lands in `haseen-shell.service`'s
+cgroup, and the unit's `KillMode=control-group` kills it on every restart.
+An app that moves itself into its own scope (Chromium, Helium) leaves the
+`cat` readers of its stdout/stderr behind, and the restart breaks its pipes.
+So every user-facing app, terminal or menu action goes through `Apps.launch`
+(`qs.Haseen`), which execs it in its own scope as `haseen.launch` does in
+Hyprland: `uwsm-app --` in a uwsm session, else
+`systemd-run --user --scope --slice=app-graphical.slice` as
+`app-haseen-<id>-<random>.scope`, else the bare argv. `Apps.launchEntry`
+runs a desktop entry's `command` without field codes, in `$TERMINAL -e`
+for `Terminal=true`. `Quickshell.execDetached` and `Process` remain for the
+shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
+
 ### 5.1 QML modules
 
 - `qs.Haseen` (`shell/Haseen/`) — singletons:
@@ -127,6 +140,7 @@ but never while safe mode is on.
   - `Branding`: the selected mark and its file paths (§11).
   - `Sidecar`: the connection to haseen-sidecar (§5.6).
   - `BorderWipe`: holds the `borderwipe` subscription while the theme asks for a wipe (§5.6, §7).
+  - `Apps`: starts user apps outside the shell's cgroup (§5, plan 074).
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 

@@ -51,7 +51,7 @@ Column {
                     title: e.name,
                     subtitle: e.genericName || e.comment || "",
                     icon: e.icon,
-                    run: () => e.execute()
+                    run: () => Apps.launchEntry(e)
                 }));
     }
 

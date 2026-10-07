@@ -127,7 +127,7 @@ Item {
         }
         function run(command) {
             if (!command) return false;
-            Quickshell.execDetached(["bash", "-lc", String(command)]); return true;
+            Apps.launch(["bash", "-lc", String(command)]); return true;
         }
     }
     // haseen:ui-timeout

@@ -7,3 +7,4 @@ singleton Flags 1.0 Flags.qml
 singleton Sidecar 1.0 Sidecar.qml
 singleton Branding 1.0 Branding.qml
 singleton BorderWipe 1.0 BorderWipe.qml
+singleton Apps 1.0 Apps.qml

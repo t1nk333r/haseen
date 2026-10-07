@@ -505,18 +505,22 @@ Item {
         if (r.kind === "menu" || r.kind === "link") {
             setActiveMenu(r.target || r.itemId, true, fromPointer);
         } else if (r.kind === "app") {
-            const entry = DesktopEntries.byId(r.appId);
             close();
-            if (entry)
-                entry.execute();
+            launchApp(r.appId);
         } else {
             run(r.action);
         }
     }
 
-    // Actions run detached in bash with haseen's bin/ first on PATH. Two kinds
-    // stay in-process: opening the About view, and toggling another panel
-    // (which replaces this one, so close first).
+    // Apps and actions start through Apps, in their own scope (plan 074), so
+    // a shell restart does not take them down.
+    function launchApp(appId: string): void {
+        Apps.launchEntry(DesktopEntries.byId(appId));
+    }
+
+    // Actions run in bash with haseen's bin/ first on PATH, in their own
+    // scope. Two kinds stay in-process: opening the About view, and toggling
+    // another panel (which replaces this one, so close first).
     function run(action: string): void {
         if (action.trim() === "haseen about") {
             setActiveMenu(":about", true, false);
@@ -528,7 +532,9 @@ Item {
             Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", panel]);
             return;
         }
-        Quickshell.execDetached(["bash", "-c", "PATH=\"$1:$PATH\"; eval \"$2\"", "bash", binDir, action]);
+        Apps.launch(["bash", "-c", "PATH=\"$1:$PATH\"; eval \"$2\"", "bash", binDir, action], {
+            desktopId: "haseen-menu"
+        });
     }
 
     // IPC `menu select(request)`: REQUEST is a JSON file
