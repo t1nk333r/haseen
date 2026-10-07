@@ -29,6 +29,7 @@ it for the user without breaking updates.
 - Keybindings, monitors, window rules, gaps, borders, animations.
 - Themes, colours, fonts, the shell's look.
 - The local AI endpoint (`~/.config/haseen/ai.json`).
+- Optional security tooling (`haseen vapt …`).
 - Running `haseen …` commands for the user.
 
 **About to edit a file under `~/.config/` on this machine? Read this skill
@@ -42,6 +43,7 @@ Read the matching guide before you start:
 - [`hyprland.md`](hyprland.md): keybindings, monitors, window rules, look and feel in Lua.
 - [`theming.md`](theming.md): themes, colours, fonts, templates, hooks.
 - [`ai.md`](ai.md): the local AI endpoint, `ai.json`, the `local` policy, the AI panel.
+- [`vapt.md`](vapt.md): the optional VAPT tool groups, previews, status and what provisioning never does.
 
 ## The one hard rule: never edit `$HASEEN_PATH`
 
@@ -102,6 +104,7 @@ cat "$(command -v haseen-plugin-new)"   # read the source (on NixOS the real scr
 | `haseen hook` | event scripts | `haseen hook install theme-set ./notify.sh` |
 | `haseen ai` | local AI | `haseen ai status`, `haseen ai models`, `haseen ai chat "hi"` |
 | `haseen layer` | optional features (packages + config) | `haseen layer list`, `haseen layer apply ai --dry-run` |
+| `haseen vapt` | optional security tool groups (see `vapt.md`) | `haseen vapt install --groups sdr --dry-run`, `haseen vapt status` |
 | `haseen doctor` | what haseen detects, layer health, shell RSS | `haseen doctor` |
 
 Prefer `--dry-run` first for anything that installs packages or touches

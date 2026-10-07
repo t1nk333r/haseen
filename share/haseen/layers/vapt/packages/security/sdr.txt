@@ -1,0 +1,17 @@
+# Additional tool-name inventory from oniomarchy category facts; independently resolved by haseen; no upstream installer code copied.
+airspy
+chirp
+cubicsdr
+dump1090
+gnuradio
+gqrx
+hackrf
+inspectrum
+limesuite
+multimon-ng
+qspectrumanalyzer
+rtl-sdr
+rtl_433
+soapysdr
+supersdr
+urh

@@ -1,6 +1,7 @@
 # Optional VAPT workstation provisioning
 
-The `vapt` layer provisions the owner's waydots tool inventory on **Arch and
+The `vapt` layer provisions the owner's waydots tool inventory, plus tool
+groups taken from oniomarchy's categories (plan 083), on **Arch and
 CachyOS**. It does not run assessments, launch security tools, start their
 backends, change firewall rules, or enable services. It has no required desktop,
 Omarchy, Chaotic-AUR, or AUR layer. No tools are selected by default.
@@ -36,20 +37,42 @@ A tooling-only installation skips sidecar compilation, migration execution,
 and unrelated hardware-quirk application. Other explicitly selected layers
 retain their normal installer behavior.
 
-Groups are `core`, `network`, `web`, `passwords`, `ad`, `osint`, `cloud`,
-`mobile`, `forensics`, `api`, `htb-cjca`, `htb-cpts`, `htb-cwes`, `htb-cwee`,
-and `htb-coae`. Their original memberships are retained in
-`share/haseen/layers/vapt/packages/security/`. Together with the native adapter
-entries they represent **158 distinct tool names**. Overlapping selections
-resolve each logical tool once and retain its selected-group memberships.
+There are 25 groups. The owner's fifteen are `core`, `network`, `web`,
+`passwords`, `ad`, `osint`, `cloud`, `mobile`, `forensics`, `api`, `htb-cjca`,
+`htb-cpts`, `htb-cwes`, `htb-cwee` and `htb-coae`; their original memberships
+are retained in `share/haseen/layers/vapt/packages/security/`. Plan 083 adds
+ten more and a few roots to two existing ones:
+
+| Group | Tools |
+|---|---|
+| `sdr` | airspy, chirp, cubicsdr, dump1090, gnuradio, gqrx, hackrf, inspectrum, limesuite, multimon-ng, qspectrumanalyzer, rtl-sdr, rtl_433, soapysdr, supersdr, urh |
+| `wireless` | airgeddon, bully, cowpatty, fern-wifi-cracker, hcxdumptool, hcxtools, hostapd, kismet, pixiewps, reaver, wifite |
+| `privacy` | keepassxc, mat2, veracrypt |
+| `anonymity` | macchanger, tor (no address is changed and Tor is not started) |
+| `automotive` | can-utils |
+| `social` | gophish, social-engineer-toolkit |
+| `reporting` | maltego |
+| `ai` | hexstrike-ai, metasploit-mcp (inventory only; nothing is registered with an AI client and no MCP server starts) |
+| `exploitation` | armitage, beef, routersploit |
+| `services` | openssh, remmina (client and support packages; no unit is enabled or started) |
+| `osint` (added) | recon-ng, theharvester |
+| `passwords` (added) | wordlists, a data collection distinct from seclists |
+
+Together with the native adapter entries the manifests represent **204
+distinct tool names**. Overlapping selections resolve each logical tool once
+and retain its selected-group memberships. Every group file is validated on
+every run, selected or not.
 
 ## Sources and identity
 
 This layer intentionally does **not** use the general installer's AUR fallback.
 Its source order preserves the waydots security policy:
 
-1. Explicit `extra` repository pins for `nmap`, `radare2`, `jadx`, `binwalk`,
-   and `dotnet-sdk`.
+1. Explicit repository pins (`packages/pins.tsv`): the original `extra` pins
+   for `nmap`, `radare2`, `jadx`, `binwalk`, and `dotnet-sdk`; the twelve SDR
+   and nine wireless tools Arch publishes, `keepassxc`, `mat2`, `veracrypt`,
+   `macchanger`, `tor`, `routersploit` and `remmina` from `extra`;
+   `core/openssh`; and `blackarch/set` for the Social-Engineer Toolkit.
 2. BlackArch, with concrete package identity and reviewed providers.
 3. The pinned native adapter, when one exists.
 4. Already-enabled Chaotic-AUR binary packages.
@@ -223,6 +246,33 @@ katana-framework. One source identity error is explicitly corrected:
 BlackArch's `pyrit` is the WPA cracker. COAE instead receives **Microsoft
 PyRIT**, pinned to `pyrit==1.1.0`; the BlackArch homonym cannot satisfy it.
 
+Upstream identities (`packages/identities.tsv`) are canonical `http(s)` URLs.
+A package matches when its URL has the same host and the identity's path or a
+descendant at a `/` boundary; case and a trailing slash do not matter. URLs
+with userinfo, a port, a query, a fragment, escapes or dot segments never
+match, an `https` identity refuses `http`, and a `required-target` other than
+`*` must be the exact `repository/package`. This is the publisher's own
+metadata, not independent proof of where the code came from.
+
+Reviewed package names that differ from the tool's name are listed in
+`packages/aliases.tsv`; for example the toolkit is BlackArch's `set`. An alias
+makes that repository's lookup exact, so no Provides declaration can replace
+it, and `-git`/`-bin` suffixes are never stripped by rule.
+`packages/identity-policy.tsv` blocks `metasploit-mcp`, because the inventory
+does not establish which of several similarly named projects it means; it is
+always reported unavailable. `wordlists` is exact-name only, so `seclists` or
+a provider cannot stand in for it. `hexstrike-ai` has no reviewed source and is
+reported unavailable unless a package with its upstream identity appears.
+Neither AI item falls back to PyPI or the AUR.
+
+Dependency-only packages (`packages/dependencies.tsv`) are never tool roots:
+`powershell-bin` and `xorg-xhost` with no assumed consumer,
+`jdk17-openjdk`, `java17-openjfx` and `sleuthkit-java` for autopsy,
+`jdk-openjdk` for ghidra and `python-wxpython` for wfuzz. Adding one to a group
+manifest refuses provisioning. They arrive only through a selected package's
+own declared dependencies and are recorded as dependencies; `xorg-xhost` is
+never run to change display access.
+
 The eight original native pins are retained:
 
 | Logical tool | Native fallback |
@@ -298,6 +348,30 @@ The trust anchors are documented upstream at
 reviewed change, not automatic trust adoption. System packages, keyring trust,
 repository configuration, and upgrade results are not reversible by removing
 this layer.
+
+### oniomarchy: inventory facts now, a signed source later
+
+The plan 083 groups use oniomarchy's tool categories as facts; none of its
+installer code is used. Today oniomarchy is **not** a package source: it is
+not in the repository allowlist, an `[oniomarchy]` stanza in pacman.conf is
+never used as a source, like any other unlisted repository, and its rows in
+`aliases.tsv` and `dependencies.tsv` are validated but never consulted. Items
+that only it publishes (for example `chirp` and `supersdr`) are reported
+unavailable.
+
+Plan 083's second slice describes the planned source, which does not exist
+yet: opt-in per invocation (`--all` is not consent), x86_64 only, a private
+stanza used only by VAPT's own transactions (never `/etc/pacman.conf`),
+`SigLevel = Required DatabaseRequired` kept everywhere, a pinned signing key,
+the last tier after Arch, and admission limited to the 52 published package
+names through exact names or reviewed aliases. Its dependency-only packages
+(`java17-openjfx-bin`, `sleuthkit-java`, `powershell-bin`, the libsoup and
+webkit2gtk packages and thirteen `python-*` libraries) and its keyring package
+would never be selectable tools. Importing its key would extend the shared
+pacman keyring; disabling the source would keep installed packages and keys.
+A valid signature proves continuity with the reviewed key, not who built the
+package or that its code is safe. A newly published package name needs a
+reviewed change before it is accepted.
 
 ## Environment and user files
 
@@ -391,4 +465,5 @@ uninstaller.
   were intentionally not performed as implementation validation.
 
 The engineering record and exercised checks are in
-[`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md).
+[`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md) and
+[`plans/083-vapt-oniomarchy-provisioning.md`](../plans/083-vapt-oniomarchy-provisioning.md).

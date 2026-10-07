@@ -48,7 +48,7 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
                 --yes is given. The choice is saved to
                 ~/.config/haseen/install.toml and offered again next time.
   --vapt-groups explicitly provision optional VAPT groups after the layers;
-                use 'all' for all 15 groups. No VAPT tools are selected by default.
+                use 'all' for all 25 groups. No VAPT tools are selected by default.
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user

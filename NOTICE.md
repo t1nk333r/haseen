@@ -67,6 +67,12 @@ same commit that adds the code.
 | [gitlab.com/t1nk33r/waydots](https://gitlab.com/t1nk33r/waydots) | own | t1nk33r | package-source rules | listed per file header |
 | [gitlab.com/t1nk33r/waydots](https://gitlab.com/t1nk33r/waydots) | own requirements | t1nk33r | factual VAPT tool memberships, native/version pins, source priority, and shared COAE runtime requirements; installer implementation and prose reexpressed, no assessment workflows copied | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `docs/vapt.md` |
 
+## Factual inputs (**no code or prose copied**)
+
+| Source | License | What was used | Where |
+|---|---|---|---|
+| oniomarchy package source, [pkgs.oniomarchy.com](https://pkgs.oniomarchy.com/) | not stated here; none of its code or text is included | facts only: its tool category memberships, its published package names (including `-git`/`-bin` names and dependency packages), its repository stanza and signing-key fingerprint. haseen's groups, aliases, dependency roles and source policy are implemented independently (plan 083) | `share/haseen/layers/vapt/packages/`, `docs/vapt.md`, `plans/083-vapt-oniomarchy-provisioning.md` |
+
 ## Reference only (GPL-3.0, **no code copied**)
 
 [end-4/dots-hyprland](https://github.com/end-4/dots-hyprland) and

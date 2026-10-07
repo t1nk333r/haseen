@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "comment": "Expected plan 083 inventory: the 52-package oniomarchy index with its roles, the added group roots, reviewed aliases, official pins and dependency-only names. Test data only; production never reads it.",
+  "sourcePackages": {
+    "airgeddon": "candidate",
+    "android-apktool-bin": "candidate",
+    "armitage-git": "candidate",
+    "autopsy": "candidate",
+    "beef-xss": "candidate",
+    "burpsuite": "candidate",
+    "caido-desktop": "candidate",
+    "can-utils": "candidate",
+    "chirp-next": "candidate",
+    "cubicsdr": "candidate",
+    "dirb": "candidate",
+    "dump1090-git": "candidate",
+    "eyewitness-git": "candidate",
+    "fern-wifi-cracker-git": "candidate",
+    "ffuf": "candidate",
+    "gophish": "candidate",
+    "java17-openjfx-bin": "dependency",
+    "libsoup": "dependency",
+    "libsoup-docs": "dependency",
+    "maltego": "candidate",
+    "nuclei": "candidate",
+    "oniomarchy-keyring": "infrastructure",
+    "peass-ng": "candidate",
+    "powershell-bin": "dependency",
+    "powershell-empire-git": "candidate",
+    "recon-ng": "candidate",
+    "responder": "candidate",
+    "seclists": "candidate",
+    "sherlock": "candidate",
+    "sleuthkit-java": "dependency",
+    "sliver": "candidate",
+    "social-engineer-toolkit": "candidate",
+    "steghide": "candidate",
+    "supersdr": "candidate",
+    "theharvester-git": "candidate",
+    "webkit2gtk": "dependency",
+    "webkit2gtk-docs": "dependency",
+    "wfuzz": "candidate",
+    "wordlists": "candidate",
+    "python-aiomultiprocess": "dependency",
+    "python-croniter": "dependency",
+    "python-dicttoxml": "dependency",
+    "python-flasgger": "dependency",
+    "python-flask-restful": "dependency",
+    "python-limits": "dependency",
+    "python-rq": "dependency",
+    "python-selenium": "dependency",
+    "python-slowapi": "dependency",
+    "python-torrequest": "dependency",
+    "python-unicodecsv": "dependency",
+    "python-yattag": "dependency",
+    "python-zombie-imp": "dependency"
+  },
+  "addedGroups": {
+    "sdr": [
+      "airspy",
+      "chirp",
+      "cubicsdr",
+      "dump1090",
+      "gnuradio",
+      "gqrx",
+      "hackrf",
+      "inspectrum",
+      "limesuite",
+      "multimon-ng",
+      "qspectrumanalyzer",
+      "rtl-sdr",
+      "rtl_433",
+      "soapysdr",
+      "supersdr",
+      "urh"
+    ],
+    "wireless": [
+      "airgeddon",
+      "bully",
+      "cowpatty",
+      "fern-wifi-cracker",
+      "hcxdumptool",
+      "hcxtools",
+      "hostapd",
+      "kismet",
+      "pixiewps",
+      "reaver",
+      "wifite"
+    ],
+    "privacy": [
+      "keepassxc",
+      "mat2",
+      "veracrypt"
+    ],
+    "anonymity": [
+      "macchanger",
+      "tor"
+    ],
+    "automotive": [
+      "can-utils"
+    ],
+    "social": [
+      "gophish",
+      "social-engineer-toolkit"
+    ],
+    "reporting": [
+      "maltego"
+    ],
+    "ai": [
+      "hexstrike-ai",
+      "metasploit-mcp"
+    ],
+    "exploitation": [
+      "armitage",
+      "beef",
+      "routersploit"
+    ],
+    "services": [
+      "openssh",
+      "remmina"
+    ]
+  },
+  "appendedRoots": {
+    "osint": [
+      "recon-ng",
+      "theharvester"
+    ],
+    "passwords": [
+      "wordlists"
+    ]
+  },
+  "originalGroups": [
+    "core",
+    "network",
+    "web",
+    "passwords",
+    "ad",
+    "osint",
+    "cloud",
+    "mobile",
+    "forensics",
+    "api",
+    "htb-cjca",
+    "htb-cpts",
+    "htb-cwes",
+    "htb-cwee",
+    "htb-coae"
+  ],
+  "originalUnion": 158,
+  "dependencies": {
+    "powershell-bin": "*",
+    "xorg-xhost": "*",
+    "jdk17-openjdk": "autopsy",
+    "java17-openjfx": "autopsy",
+    "sleuthkit-java": "autopsy",
+    "jdk-openjdk": "ghidra",
+    "python-wxpython": "wfuzz"
+  },
+  "aliases": [
+    [
+      "chirp",
+      "oniomarchy",
+      "chirp-next"
+    ],
+    [
+      "armitage",
+      "oniomarchy",
+      "armitage-git"
+    ],
+    [
+      "beef",
+      "oniomarchy",
+      "beef-xss"
+    ],
+    [
+      "dump1090",
+      "oniomarchy",
+      "dump1090-git"
+    ],
+    [
+      "fern-wifi-cracker",
+      "oniomarchy",
+      "fern-wifi-cracker-git"
+    ],
+    [
+      "theharvester",
+      "oniomarchy",
+      "theharvester-git"
+    ],
+    [
+      "java17-openjfx",
+      "oniomarchy",
+      "java17-openjfx-bin"
+    ],
+    [
+      "social-engineer-toolkit",
+      "blackarch",
+      "set"
+    ]
+  ],
+  "officialPins": {
+    "airspy": "extra/airspy",
+    "gnuradio": "extra/gnuradio",
+    "gqrx": "extra/gqrx",
+    "hackrf": "extra/hackrf",
+    "inspectrum": "extra/inspectrum",
+    "limesuite": "extra/limesuite",
+    "multimon-ng": "extra/multimon-ng",
+    "qspectrumanalyzer": "extra/qspectrumanalyzer",
+    "rtl-sdr": "extra/rtl-sdr",
+    "rtl_433": "extra/rtl_433",
+    "soapysdr": "extra/soapysdr",
+    "urh": "extra/urh",
+    "bully": "extra/bully",
+    "cowpatty": "extra/cowpatty",
+    "hcxdumptool": "extra/hcxdumptool",
+    "hcxtools": "extra/hcxtools",
+    "hostapd": "extra/hostapd",
+    "kismet": "extra/kismet",
+    "pixiewps": "extra/pixiewps",
+    "reaver": "extra/reaver",
+    "wifite": "extra/wifite",
+    "keepassxc": "extra/keepassxc",
+    "mat2": "extra/mat2",
+    "veracrypt": "extra/veracrypt",
+    "macchanger": "extra/macchanger",
+    "tor": "extra/tor",
+    "routersploit": "extra/routersploit",
+    "remmina": "extra/remmina",
+    "openssh": "core/openssh"
+  },
+  "blockedIdentities": [
+    "metasploit-mcp"
+  ]
+}

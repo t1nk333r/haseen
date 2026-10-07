@@ -1,19 +1,26 @@
 # shellcheck shell=bash
-# Owner inventory: waydots/packages/security. Source names/pins are facts;
-# provisioning policy here is independent of the source installer.
+# Owner inventory: waydots/packages/security, plus the plan 083 groups whose
+# tool names come from oniomarchy category facts. Source names/pins are facts;
+# provisioning policy here is independent of either source's installer.
 VAPT_DIR="${LAYER_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
 source "$HASEEN_PATH/lib/packages.sh"
 source "$VAPT_DIR/pacman.sh"
 source "$VAPT_DIR/blackarch.sh"
 source "$VAPT_DIR/native.sh"
 source "$VAPT_DIR/environment.sh"
-VAPT_GROUPS=(core network web passwords ad osint cloud mobile forensics api htb-cjca htb-cpts htb-cwes htb-cwee htb-coae)
+VAPT_GROUPS=(core network web passwords ad osint cloud mobile forensics api htb-cjca htb-cpts htb-cwes htb-cwee htb-coae
+    sdr wireless privacy anonymity automotive social reporting ai exploitation services)
+# Reviewed package sources whose facts the alias/dependency tables record but
+# which are not resolution tiers (plan 083): their rows are validated, never
+# consulted, until the source itself is admitted.
+VAPT_FACT_ONLY_SOURCES=(oniomarchy)
 vapt_reset() {
     declare -gA VAPT_NATIVE_SPEC=() VAPT_NATIVE_PROBE=() VAPT_NATIVE_BA=() VAPT_NATIVE_GROUP=() VAPT_PINS=()
     declare -gA VAPT_MEMBERSHIP=() VAPT_ENABLED=() VAPT_DATABASE=() VAPT_PACKAGE=() VAPT_VERSION=() VAPT_URL=() VAPT_PROVIDES=() VAPT_UNSAFE=() VAPT_SOURCE_BLOCKED=()
     declare -gA VAPT_SOURCE=() VAPT_TARGET=() VAPT_RESOLUTION=() VAPT_APPLIED=() VAPT_REASON=() VAPT_ATTEMPTS=() VAPT_INFRA_DONE=()
     declare -gA VAPT_INFRA_TARGET=() VAPT_INFRA_APPLY=() VAPT_INFRA_REASON=()
-    declare -gA VAPT_ID_SOURCE=() VAPT_ID_TARGET=() VAPT_ID_UPSTREAM=()
+    declare -gA VAPT_ID_SOURCE=() VAPT_ID_TARGET=() VAPT_ID_UPSTREAM=() VAPT_ID_POLICY=() VAPT_ID_POLICY_REASON=()
+    declare -gA VAPT_ALIAS=() VAPT_DEPENDENCY=() VAPT_DEPENDENCY_SOURCE=()
     declare -ga VAPT_SELECTED=() VAPT_ITEMS=() VAPT_REPOS=() VAPT_INFRA_ROWS=() VAPT_NATIVE_ORDER=()
     VAPT_MUTATION_FAILED=0 VAPT_PACMAN_BLOCKED=0 VAPT_ENV_STATUS=unknown VAPT_STAGE='' VAPT_COAE_REQUIRED=0 VAPT_BLACKARCH_STAGED=''
     vapt_native_paths
@@ -44,14 +51,40 @@ vapt_select() {
     done
     VAPT_SELECTED=("${dedup[@]}")
 }
+# vapt_table_repo REPO — an allowed resolution tier or a fact-only source.
+vapt_table_repo() {
+    local fact
+    vapt_repo_allowed "$1" && return 0
+    for fact in "${VAPT_FACT_ONLY_SOURCES[@]}"; do [[ $1 != "$fact" ]] || return 0; done
+    return 1
+}
+# vapt_url_parse URL — split an absolute http(s) URL into VAPT_URL_SCHEME,
+# VAPT_URL_HOST and VAPT_URL_PATH (lowercase, no trailing slash). Userinfo,
+# ports, queries, fragments, escapes and empty or dot path segments are
+# refused, so a path boundary check cannot be steered around.
+vapt_url_parse() {
+    local path
+    [[ $1 =~ ^([Hh][Tt][Tt][Pp][Ss]?)://([A-Za-z0-9.-]+)(/[A-Za-z0-9._~+/-]*)?$ ]] || return 1
+    VAPT_URL_SCHEME="${BASH_REMATCH[1],,}" VAPT_URL_HOST="${BASH_REMATCH[2],,}" path="${BASH_REMATCH[3],,}"
+    while [[ $path == */ ]]; do path="${path%/}"; done
+    [[ $VAPT_URL_HOST != .* && $VAPT_URL_HOST != *. && $VAPT_URL_HOST != *..* ]] || return 1
+    [[ $path/ != *//* && $path/ != */./* && $path/ != */../* ]] || return 1
+    VAPT_URL_PATH="$path"
+}
 vapt_manifest_validate() {
     local group logical ba manager spec probe rest line target
+    local -A roots=()
     for group in "${VAPT_GROUPS[@]}"; do
         [[ -r $VAPT_DIR/packages/security/$group.txt ]] || return 2
         while IFS= read -r line || [[ -n $line ]]; do
             line="${line%%#*}"; line="${line//[[:space:]]/}"
             [[ -z $line || $line =~ $PKG_NAME_RE ]] || { warn "malformed VAPT manifest: $group"; return 2; }
+            [[ -z $line ]] || roots[$line]=1
         done <"$VAPT_DIR/packages/security/$group.txt"
+    done
+    local table
+    for table in security/native.tsv pins.tsv identities.tsv identity-policy.tsv dependencies.tsv aliases.tsv; do
+        [[ -r $VAPT_DIR/packages/$table ]] || { warn "missing VAPT table: $table"; return 2; }
     done
     while IFS=$'\t' read -r group logical ba manager spec probe rest; do
         [[ -n $group && $group != \#* ]] || continue
@@ -63,21 +96,56 @@ vapt_manifest_validate() {
         $present && [[ ! ${VAPT_NATIVE_SPEC[$logical]:-} ]] || return 2
         VAPT_NATIVE_SPEC[$logical]="$spec"; VAPT_NATIVE_PROBE[$logical]="$probe"; VAPT_NATIVE_BA[$logical]="$ba"; VAPT_NATIVE_GROUP[$logical]="${group#security/}"
         VAPT_NATIVE_ORDER+=("$logical")
+        roots[$logical]=1
     done <"$VAPT_DIR/packages/security/native.tsv"
     while IFS=$'\t' read -r logical target rest; do
         [[ -n $logical && $logical != \#* ]] || continue
-        [[ $logical =~ $PKG_NAME_RE && $target == */* && ${target##*/} =~ $PKG_NAME_RE && -z $rest ]] && vapt_repo_allowed "${target%%/*}" || return 2
+        [[ $logical =~ $PKG_NAME_RE && ${roots[$logical]:-} && ! ${VAPT_PINS[$logical]:-} && $target == */* && ${target##*/} =~ $PKG_NAME_RE && -z $rest ]] && vapt_repo_allowed "${target%%/*}" || return 2
         VAPT_PINS[$logical]="$target"
     done <"$VAPT_DIR/packages/pins.tsv"
     local required_source required_target upstream reason
     while IFS=$'\t' read -r logical required_source required_target upstream reason rest; do
         [[ -n $logical && $logical != \#* ]] || continue
-        [[ $logical =~ $PKG_NAME_RE && ( $required_source == native || $required_source == repository ) && -n $required_target && -n $upstream && -n $reason && -z $rest ]] || return 2
+        [[ $logical =~ $PKG_NAME_RE && ${roots[$logical]:-} && ! ${VAPT_ID_SOURCE[$logical]:-} && ( $required_source == native || $required_source == repository ) && -n $required_target && -n $upstream && -n $reason && -z $rest ]] || return 2
+        # Identities are canonical http(s) URLs matched by host and path
+        # boundary; a repository identity names any target (*) or exactly one.
+        vapt_url_parse "$upstream" && [[ $upstream != */ ]] || return 2
+        if [[ $required_source == repository && $required_target != '*' ]]; then
+            [[ $required_target == */* && ${required_target##*/} =~ $PKG_NAME_RE ]] && vapt_repo_allowed "${required_target%%/*}" || return 2
+        fi
         VAPT_ID_SOURCE[$logical]="$required_source"; VAPT_ID_TARGET[$logical]="$required_target"
         VAPT_ID_UPSTREAM[$logical]="$upstream"
     done <"$VAPT_DIR/packages/identities.tsv"
     [[ ${VAPT_ID_SOURCE[pyrit]:-} == native && ${VAPT_ID_TARGET[pyrit]:-} == pyrit==1.1.0 ]] || return 2
     [[ ${VAPT_NATIVE_SPEC[pyrit]:-} == pyrit==1.1.0 && ${VAPT_NATIVE_BA[pyrit]:-} == none ]] || return 2
+    local policy
+    while IFS=$'\t' read -r logical policy reason rest; do
+        [[ -n $logical && $logical != \#* ]] || continue
+        [[ $logical =~ $PKG_NAME_RE && ${roots[$logical]:-} && ! ${VAPT_ID_POLICY[$logical]:-} && ( $policy == blocked || $policy == exact-name ) && -n $reason && -z $rest ]] || return 2
+        # A blocked identity has no route a pin or adapter could reopen.
+        [[ $policy != blocked || ( ! ${VAPT_PINS[$logical]:-} && ! ${VAPT_NATIVE_SPEC[$logical]:-} && ! ${VAPT_ID_SOURCE[$logical]:-} ) ]] || return 2
+        VAPT_ID_POLICY[$logical]="$policy"; VAPT_ID_POLICY_REASON[$logical]="$reason"
+    done <"$VAPT_DIR/packages/identity-policy.tsv"
+    local consumer
+    while IFS=$'\t' read -r logical consumer target reason rest; do
+        [[ -n $logical && $logical != \#* ]] || continue
+        # Dependency-only packages never become selectable roots.
+        [[ $logical =~ $PKG_NAME_RE && ! ${roots[$logical]:-} && ! ${VAPT_DEPENDENCY[$logical]:-} && ( $consumer == '*' || ${roots[$consumer]:-} ) ]] || return 2
+        [[ $target == */* && ${target##*/} =~ $PKG_NAME_RE && $reason == dependency && -z $rest ]] && vapt_table_repo "${target%%/*}" || return 2
+        VAPT_DEPENDENCY[$logical]="$consumer"; VAPT_DEPENDENCY_SOURCE[$logical]="$target"
+    done <"$VAPT_DIR/packages/dependencies.tsv"
+    local repo package
+    while IFS=$'\t' read -r logical repo package rest; do
+        [[ -n $logical && $logical != \#* ]] || continue
+        [[ $logical =~ $PKG_NAME_RE && ( ${roots[$logical]:-} || ${VAPT_DEPENDENCY[$logical]:-} ) && $package =~ $PKG_NAME_RE && $package != "$logical" && -z $rest ]] && vapt_table_repo "$repo" || return 2
+        [[ ! ${VAPT_ALIAS[$logical/$repo]:-} && ( $repo != blackarch || ! ${VAPT_NATIVE_SPEC[$logical]:-} ) && ${VAPT_ID_POLICY[$logical]:-} != blocked ]] || return 2
+        VAPT_ALIAS[$logical/$repo]="$package"
+    done <"$VAPT_DIR/packages/aliases.tsv"
+    # A dependency's concrete package is its own name or a reviewed alias.
+    for logical in "${!VAPT_DEPENDENCY_SOURCE[@]}"; do
+        target="${VAPT_DEPENDENCY_SOURCE[$logical]}"
+        [[ ${target##*/} == "$logical" || ${VAPT_ALIAS[$logical/${target%%/*}]:-} == "${target##*/}" ]] || return 2
+    done
     return 0
 }
 vapt_add_item() {
@@ -118,13 +186,19 @@ vapt_snapshot() {
     return 0
 }
 vapt_identity_ok() {
-    local logical="$1" target="$2" url="${VAPT_URL[$2]:-}" lower
+    local logical="$1" target="$2" scheme host path
     # Tool-specific mappings must never exempt a forbidden provider.
     [[ ${target##*/} != omarchy* ]] || return 1
-    [[ ${VAPT_ID_SOURCE[$logical]:-} != native ]] || return 1
-    lower="${url,,}"
+    [[ ${VAPT_ID_SOURCE[$logical]:-} != native && ${VAPT_ID_POLICY[$logical]:-} != blocked ]] || return 1
     if [[ ${VAPT_ID_UPSTREAM[$logical]:-} ]]; then
-        [[ $lower == *"${VAPT_ID_UPSTREAM[$logical],,}"* ]] || return 1
+        [[ ${VAPT_ID_TARGET[$logical]} == '*' || ${VAPT_ID_TARGET[$logical]} == "$target" ]] || return 1
+        # Same host, the identity's path or a descendant at a '/' boundary;
+        # an http identity also accepts https, never the reverse.
+        vapt_url_parse "${VAPT_ID_UPSTREAM[$logical]}" || return 1
+        scheme="$VAPT_URL_SCHEME" host="$VAPT_URL_HOST" path="$VAPT_URL_PATH"
+        vapt_url_parse "${VAPT_URL[$target]:-}" || return 1
+        [[ $VAPT_URL_HOST == "$host" && ( $VAPT_URL_SCHEME == "$scheme" || $VAPT_URL_SCHEME == https ) ]] || return 1
+        [[ $VAPT_URL_PATH == "$path" || $VAPT_URL_PATH == "$path"/* ]] || return 1
     fi
     case "$logical" in
     android-tools) [[ $target != blackarch/* || $target == blackarch/android-tools || $target == blackarch/android-sdk-platform-tools ]] ;;
@@ -141,9 +215,14 @@ vapt_repo_usable() {
     esac
 }
 vapt_repo_target() {
-    local repo="$1" logical="$2" mapped="${3:-$2}" key token target='' count=0
+    local repo="$1" logical="$2" mapped="${3:-$2}" key token target='' count=0 exact=false
     vapt_repo_usable "$repo" || return 1
+    # A reviewed alias names the one concrete package; exact-name policy
+    # keeps any provider from substituting for the item.
+    if [[ ${VAPT_ALIAS[$logical/$repo]:-} ]]; then mapped="${VAPT_ALIAS[$logical/$repo]}"; exact=true; fi
+    [[ ${VAPT_ID_POLICY[$logical]:-} != exact-name ]] || exact=true
     if [[ ${VAPT_PACKAGE[$repo/$mapped]:-} ]] && vapt_identity_ok "$logical" "$repo/$mapped"; then printf '%s\n' "$repo/$mapped"; return 0; fi
+    ! $exact || return 1
     local values=()
     for key in "${!VAPT_PACKAGE[@]}"; do
         [[ $key == "$repo/"* ]] || continue
@@ -164,6 +243,9 @@ vapt_resolve_item() {
     if [[ $logical == pyrit ]]; then
         VAPT_SOURCE[$logical]=native; VAPT_TARGET[$logical]="${VAPT_NATIVE_SPEC[$logical]}"; VAPT_RESOLUTION[$logical]=resolved
         VAPT_REASON[$logical]='Microsoft PyRIT identity override; BlackArch WPA homonym excluded'; VAPT_ATTEMPTS[$logical]=identity-native; return 0
+    fi
+    if [[ ${VAPT_ID_POLICY[$logical]:-} == blocked ]]; then
+        VAPT_REASON[$logical]="identity blocked: ${VAPT_ID_POLICY_REASON[$logical]}"; VAPT_ATTEMPTS[$logical]=identity-blocked; return 0
     fi
     if [[ ${VAPT_PINS[$logical]:-} ]]; then
         target="${VAPT_PINS[$logical]}"; repo="${target%%/*}"
@@ -189,9 +271,11 @@ vapt_resolve_item() {
         fi
         if [[ -z $target ]]; then
             # Exact-name matches throughout the Arch tier precede providers.
+            local name
             for repo in core extra multilib; do
                 attempts+=",$repo"
-                if vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$repo/$logical]:-} ]] && vapt_identity_ok "$logical" "$repo/$logical"; then target="$repo/$logical"; break; fi
+                name="${VAPT_ALIAS[$logical/$repo]:-$logical}"
+                if vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$repo/$name]:-} ]] && vapt_identity_ok "$logical" "$repo/$name"; then target="$repo/$name"; break; fi
             done
             if [[ -z $target ]]; then
                 for repo in core extra multilib; do target="$(vapt_repo_target "$repo" "$logical")" && break; done

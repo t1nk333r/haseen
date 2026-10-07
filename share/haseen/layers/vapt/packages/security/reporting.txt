@@ -1,5 +1,2 @@
-# Owner tool-name inventory from waydots/packages/security/osint.txt.
-whois
 # Additional tool-name inventory from oniomarchy category facts; independently resolved by haseen; no upstream installer code copied.
-recon-ng
-theharvester
+maltego

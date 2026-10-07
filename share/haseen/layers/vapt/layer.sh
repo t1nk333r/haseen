@@ -8,10 +8,12 @@ layer_usage() {
 Usage: haseen layer apply vapt [--dry-run] [--yes] -- --groups GROUP,...
        haseen layer apply vapt [--dry-run] [--yes] -- --all
 Groups: core,network,web,passwords,ad,osint,cloud,mobile,forensics,api,
-        htb-cjca,htb-cpts,htb-cwes,htb-cwee,htb-coae
+        htb-cjca,htb-cpts,htb-cwes,htb-cwee,htb-coae,sdr,wireless,privacy,
+        anonymity,automotive,social,reporting,ai,exploitation,services
 There are no default tools. Provisioning never runs security tools or services.
-Source order: five explicit repo pins; BlackArch; pinned native; already-enabled
+Source order: explicit repository pins; BlackArch; pinned native; already-enabled
 Chaotic; CachyOS; Arch. Microsoft PyRIT is forced native, never WPA BlackArch pyrit.
+Dependency-only packages are never selected; blocked identities stay unavailable.
 Unavailable items are reported and skipped; actual mutation failures return 1.
 Dry-run is offline and write-free; unknown fixture metadata stays unknown.
 Remove reverses owned unchanged links only; packages, repository, keyring trust,
