@@ -16,11 +16,21 @@ EOF
 
 # Facts are read from /proc, /sys and os-release (through sysroot_path), never
 # from a probe that needs root, so the panel can ask for them on every open.
+os_id() { sed -n 's/^ID=//p' "$1" | tr -d '"'; }
+
 os_name() {
-    local f name="" version=""
+    local f base name="" version=""
     f="$(sysroot_path /etc/os-release)"
-    [[ -r $f ]] || f="$(sysroot_path /usr/lib/os-release)"
-    if [[ -r $f ]]; then
+    base="$(sysroot_path /usr/lib/os-release)"
+    [[ -r $f ]] || f=$base
+    # Omarchy writes its own name over /etc/os-release. Under haseen the OS
+    # line names the distribution underneath, which /usr/lib/os-release
+    # (package filesystem) still describes, or just Linux.
+    if [[ -r $f && $(os_id "$f") == omarchy ]]; then
+        f=""
+        [[ -r $base && $(os_id "$base") != omarchy ]] && f=$base
+    fi
+    if [[ -n $f && -r $f ]]; then
         name="$(sed -n 's/^PRETTY_NAME=//p' "$f" | tr -d '"')"
         [[ -n $name ]] || name="$(sed -n 's/^NAME=//p' "$f" | tr -d '"')"
         version="$(sed -n 's/^VERSION_ID=//p' "$f" | tr -d '"')"

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): Omarchy plugins open "the menu" at a route
+# (`omarchy-menu toggle setup.plugin`); Omarchy's menu lives in its own shell,
+# so here it is haseen's menu. Verbs follow Omarchy bin/omarchy-menu (MIT,
+# Copyright (c) David Heinemeier Hansson): toggle and summon open a route
+# ("root" is the top level), the rest belong to Omarchy's menu plugin.
+set -Eeuo pipefail
+
+verb=${1:-toggle} route=${2:-root}
+[[ $route != root ]] || route=""
+case $verb in
+toggle | summon) exec "${HASEEN_PATH:?}/../../bin/haseen-menu" ${route:+"$route"} ;;
+*)
+    printf 'omarchy-menu (haseen compat): only toggle and summon open haseen menu, not %s\n' "$verb" >&2
+    exit 2
+    ;;
+esac

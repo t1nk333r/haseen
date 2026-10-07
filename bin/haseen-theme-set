@@ -22,8 +22,22 @@ Usage: haseen theme set <name> [--dry-run]
 Stage the theme (stock theme, then ~/.config/haseen/themes/<name> on top),
 render share/haseen/themed/*.tpl and ~/.config/haseen/themed/*.tpl into it,
 swap it into ~/.local/state/haseen/current/theme, then reload what is running
-(Hyprland, foot, kitty, ghostty, btop, GTK colour scheme, haseen-background)
-and run the theme-set hook. Names are case-insensitive; spaces become dashes.
+(Hyprland, foot, kitty, ghostty, btop, GTK colour scheme and Adwaita or
+Adwaita-dark, haseen-background) and run the theme-set hook. Names are
+case-insensitive; spaces become dashes.
+
+GTK 3 and GTK 4 apps (libadwaita included) take the theme's colours from
+~/.config/gtk-{3,4}.0/gtk.css: when missing, each is written once with an
+@import of current/theme/gtk.css. GTK apps already running keep their
+colours until restarted.
+
+In a LazyVim config (~/.config/nvim), lua/plugins/theme.lua is linked to
+current/theme/neovim.lua when it is missing or links to an Omarchy or
+haseen theme; a file of your own stays. haseen-theme-hotreload.lua (running
+nvims switch colourscheme) and haseen-all-themes.lua (every stock theme's
+plugin, installed ahead) are linked beside it unless Omarchy's
+omarchy-theme-hotreload.lua / all-themes.lua are still there
+(\`haseen import omarchy\` swaps them).
 
 An Omarchy theme whose images are not cached yet starts
 \`haseen theme fetch <name>\` in the background (log:
@@ -80,6 +94,8 @@ if $DRY_RUN; then
     echo "DRYRUN: swap $THEME_NEXT_PATH -> $THEME_CURRENT_PATH"
     echo "DRYRUN: write $THEME_NAME_FILE: $name"
     echo "DRYRUN: link $THEME_BACKGROUND_LINK to the theme's first background"
+    theme_link_gtk
+    theme_link_nvim
     theme_post_set "$src"
     if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
         theme_background_reload
@@ -98,6 +114,9 @@ theme_swap "$name"
 theme_link_background "$name"
 flock -u 9
 exec 9>&-
+theme_link_gtk
+theme_link_nvim
+for line in "${THEME_NVIM_CHANGED[@]}"; do info "$line"; done
 
 info "theme: $name"
 theme_post_set "$THEME_CURRENT_PATH"

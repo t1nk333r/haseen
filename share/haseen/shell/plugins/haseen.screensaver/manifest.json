@@ -3,7 +3,7 @@
   "id": "haseen.screensaver",
   "name": "Screensaver",
   "version": "1.0.0",
-  "description": "Screensaver before the idle lock: Omarchy's ttfx effects in a fullscreen terminal per monitor (ttfx), or a drifting clock and branding overlay on every screen (native); any input ends it",
+  "description": "Screensaver before the idle lock: ttfx text effects in a fullscreen terminal per monitor (ttfx), or a drifting clock and branding overlay on every screen (native); any input ends it",
   "kinds": [
     "service"
   ],
@@ -14,7 +14,7 @@
     "style": {
       "type": "string",
       "default": "ttfx",
-      "description": "ttfx (Omarchy's screensaver: ttfx over the branding text in a fullscreen terminal per monitor; needs the AUR package ttfx) or native (clock and branding on the theme background)"
+      "description": "ttfx (text effects over the branding text in a fullscreen terminal per monitor; needs the AUR package ttfx) or native (clock and branding on the theme background)"
     },
     "clockFormat": {
       "type": "string",

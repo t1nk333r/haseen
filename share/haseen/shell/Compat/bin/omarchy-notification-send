@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): Omarchy's sender names every toast
+# "omarchy-action" unless told otherwise and hands click commands to its own
+# notification daemon in a private hint; here the toast is haseen's (app name
+# haseen, --exec a real action, as haseen notification send does). The
+# argument shape follows Omarchy bin/omarchy-notification-send (MIT,
+# Copyright (c) David Heinemeier Hansson): options, the headline, the
+# description, more options, then --exec and its argv. Translated: -g/--glyph
+# is dropped (haseen's toasts draw no glyph), --image becomes the icon, and
+# urgency defaults to Omarchy's "low".
+set -Eeuo pipefail
+
+opts=(-u low) used=0
+
+# omarchy_option ARGS... — translate one Omarchy option onto opts and set
+# used to the words it took; return 1 when $1 is not one.
+omarchy_option() {
+    local opt=$1 val=${2-} n=2
+    if [[ $opt == --?*=* ]]; then
+        val=${opt#*=} opt=${opt%%=*} n=1
+    fi
+    case $opt in
+    -p | --print-id)
+        opts+=(-p) used=1
+        return 0
+        ;;
+    -g | --glyph | --image | -u | --urgency | --app-name | -i | --icon | -r | --replace-id | -t | --expire-time) ;;
+    *) return 1 ;;
+    esac
+    ((n == 1 || $# >= 2)) || {
+        printf 'Missing value for %s\n' "$opt" >&2
+        exit 1
+    }
+    case $opt in
+    -g | --glyph) ;;
+    --image) opts+=(-i "$val") ;;
+    *) opts+=("$opt" "$val") ;;
+    esac
+    used=$n
+}
+
+while (($#)) && omarchy_option "$@"; do shift "$used"; done
+(($#)) || {
+    echo "Usage: omarchy-notification-send [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [-i <icon>] [-t <ms>] [-r <id>] [-p] [--image <path-or-uri>] <headline> [description] [--exec <program> [args...]]" >&2
+    exit 1
+}
+text=("$1")
+shift
+# The description is the next word unless that is an option or --exec.
+if (($#)) && [[ $1 != --exec ]] && ! omarchy_option "$@"; then
+    text+=("$1")
+    shift
+elif (($#)) && [[ $1 != --exec ]]; then
+    shift "$used"
+fi
+while (($#)) && [[ $1 != --exec ]]; do
+    omarchy_option "$@" || {
+        printf 'Unknown option: %s\n' "$1" >&2
+        exit 1
+    }
+    shift "$used"
+done
+exec "${HASEEN_PATH:?}/../../bin/haseen-notification-send" "${opts[@]}" "${text[@]}" "$@"

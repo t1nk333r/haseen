@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): Omarchy plugins (t1nk33r.privacy's stop
+# button) start and stop recordings with this; here it is haseen's recorder,
+# so its indicator and files are the ones haseen shows. Flags follow Omarchy
+# bin/omarchy-capture-screenrecording (MIT, Copyright (c) David Heinemeier
+# Hansson). haseen sizes the webcam overlay and keeps the output resolution
+# itself, so --webcam-size and --resolution are dropped.
+set -Eeuo pipefail
+
+args=()
+for arg in "$@"; do
+    case $arg in
+    --fullscreen) args+=(--fullscreen) ;;
+    --with-desktop-audio) args+=(--desktop-audio) ;;
+    --with-microphone-audio) args+=(--microphone) ;;
+    --with-webcam) args+=(--webcam) ;;
+    --webcam-device=*) args+=("$arg") ;;
+    --stop-recording) args+=(--stop) ;;
+    --webcam-size=* | --resolution=*) ;;
+    *)
+        printf 'omarchy-capture-screenrecording (haseen compat): %s is not supported (see: haseen capture screenrecord --help)\n' "$arg" >&2
+        exit 2
+        ;;
+    esac
+done
+exec "${HASEEN_PATH:?}/../../bin/haseen-capture-screenrecord" "${args[@]}"

@@ -7,6 +7,7 @@
 #   bin/omarchy-theme-set-templates  template renderer (one awk pass)
 #   bin/omarchy-theme-set            staging dir, installed-theme denylist
 #   bin/omarchy-theme-osc            foot retint via OSC sequences
+#   bin/omarchy-theme-set-gnome      GTK colour scheme + Adwaita/Adwaita-dark
 #   bin/omarchy-git-url-check        git URL refusal rules
 # The colors.toml format and the template syntax ({{ key }}, {{ key_strip }},
 # {{ key_rgb }}, {{ mix… }}, {{ hypr_gradient… }}, {{ gradient_start… }},
@@ -657,6 +658,128 @@ theme_swap() {
     mv -- "$THEME_NAME_FILE.tmp" "$THEME_NAME_FILE"
 }
 
+# theme_link_gtk — GTK 3 and GTK 4 (libadwaita apps included) load
+# $XDG_CONFIG_HOME/gtk-{3,4}.0/gtk.css at user priority, above libadwaita's
+# palette and an app's own stylesheet. Each is written once with an @import
+# of the rendered current/theme/gtk.css, so every later theme set recolours
+# newly started GTK apps. An existing gtk.css (or link) is the user's: left
+# as it is. An absolute path, because GTK CSS has no ~ or $HOME.
+theme_link_gtk() {
+    local cfg="${XDG_CONFIG_HOME:-$HOME/.config}" css="$THEME_CURRENT_PATH/gtk.css" v dest
+    if [[ $css == *[\"\\$'\n']* ]]; then
+        warn "not linking GTK to the theme: unsupported characters in $css"
+        return 0
+    fi
+    for v in 3.0 4.0; do
+        dest="$cfg/gtk-$v/gtk.css"
+        [[ -e $dest || -L $dest ]] && continue
+        write_user_file "$dest" <<EOF
+/* Written once by \`haseen theme set\`, yours from now on. The import keeps
+ * GTK apps on the current haseen theme; add your own rules below it. */
+@import url("$css");
+EOF
+    done
+}
+
+# --- Neovim (LazyVim) ---------------------------------------------------------
+# Omarchy points ~/.config/nvim/lua/plugins/theme.lua at its current theme's
+# neovim.lua (omarchy-nvim-setup) and ships omarchy-theme-hotreload.lua plus
+# all-themes.lua beside it. lazy.nvim's change detection stats every spec file
+# every 2 s, following the link, and fires `User LazyReload` when one changed;
+# the hot-reload plugin answers it by applying the new colourscheme, and
+# all-themes.lua keeps every theme's plugin installed so that works offline.
+# haseen links its own copies of the three (share/haseen/default/nvim/).
+THEME_NVIM_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
+THEME_NVIM_PLUGINS="$THEME_NVIM_CONFIG/lua/plugins"
+THEME_NVIM_DEFAULTS="$HASEEN_PATH/default/nvim"
+# Filled by theme_link_nvim: what changed, and what was left because it is
+# the user's (or Omarchy's twin still does the job).
+THEME_NVIM_CHANGED=()
+THEME_NVIM_KEPT=()
+
+# theme_nvim_lazyvim — nvim's config is LazyVim: the theme spec is a lazy.nvim
+# spec whose LazyVim entry sets opts.colorscheme, which means nothing elsewhere.
+theme_nvim_lazyvim() {
+    [[ -f $THEME_NVIM_CONFIG/lazyvim.json ]] || grep -qs 'LazyVim/LazyVim' "$THEME_NVIM_CONFIG/lua/config/lazy.lua"
+}
+
+# theme_nvim_omarchy_file PATH — PATH is Omarchy's twin of a haseen nvim file:
+# omarchy-theme-hotreload.lua by its name; all-themes.lua when it is the copy
+# the omarchy-nvim package seeds or says Omarchy (a user's own list stays).
+theme_nvim_omarchy_file() {
+    local f
+    case "${1##*/}" in
+    omarchy-theme-hotreload.lua) [[ -e $1 || -L $1 ]] ;;
+    all-themes.lua)
+        [[ -f $1 ]] || return 1
+        for f in /etc/skel/.config/nvim/lua/plugins/all-themes.lua /usr/share/omarchy-nvim/config/lua/plugins/all-themes.lua; do
+            f="$(sysroot_path "$f")"
+            [[ -f $f ]] && cmp -s -- "$1" "$f" && return 0
+        done
+        grep -qi omarchy -- "$1"
+        ;;
+    *) return 1 ;;
+    esac
+}
+
+# _theme_nvim_link TARGET LINK ERE — point LINK at TARGET when LINK is absent
+# or a symlink whose target matches ERE (one haseen or Omarchy made). A file
+# or any other link is the user's and stays. The new link is renamed over the
+# old one, so lazy's poll never sees the spec missing.
+_theme_nvim_link() {
+    local target="$1" link="$2" ere="$3" old="" rel="lua/plugins/${2##*/}"
+    if [[ -L $link ]]; then
+        old="$(readlink -- "$link")"
+        [[ $old == "$target" ]] && return 0
+        if [[ ! $old =~ $ere ]]; then
+            THEME_NVIM_KEPT+=("nvim $rel links to $old: yours, left as is")
+            return 0
+        fi
+    elif [[ -e $link ]]; then
+        THEME_NVIM_KEPT+=("nvim $rel is your own file, left as is")
+        return 0
+    fi
+    run mkdir -p -- "${link%/*}"
+    run ln -sfn -- "$target" "$link.haseen-tmp"
+    run mv -fT -- "$link.haseen-tmp" "$link"
+    if [[ -n $old ]]; then
+        THEME_NVIM_CHANGED+=("nvim $rel: $old -> $target")
+    else
+        THEME_NVIM_CHANGED+=("nvim $rel -> $target")
+    fi
+}
+
+# theme_link_nvim [--replacing-omarchy] — in a LazyVim config, link
+# lua/plugins/theme.lua to current/theme/neovim.lua and add haseen's
+# hot-reload and theme-plugin list. While Omarchy's twin of either is still in
+# lua/plugins, haseen's is not added (both would reload, or list, the same
+# thing); `haseen import omarchy` moves the twins aside and passes
+# --replacing-omarchy.
+theme_link_nvim() {
+    local replacing=false src name twin
+    [[ ${1:-} == --replacing-omarchy ]] && replacing=true
+    THEME_NVIM_CHANGED=()
+    THEME_NVIM_KEPT=()
+    theme_nvim_lazyvim || return 0
+    # A link to a file that is not there yet would break nvim's startup.
+    if $DRY_RUN || [[ -f $THEME_CURRENT_PATH/neovim.lua ]]; then
+        _theme_nvim_link "$THEME_CURRENT_PATH/neovim.lua" "$THEME_NVIM_PLUGINS/theme.lua" \
+            '/(omarchy|haseen)/current/theme/neovim\.lua$'
+    fi
+    src="$(readlink -f -- "$THEME_NVIM_DEFAULTS")" || return 0
+    for name in haseen-theme-hotreload.lua haseen-all-themes.lua; do
+        [[ -f $src/$name ]] || continue
+        twin=omarchy-theme-hotreload.lua
+        [[ $name == haseen-all-themes.lua ]] && twin=all-themes.lua
+        if ! $replacing && theme_nvim_omarchy_file "$THEME_NVIM_PLUGINS/$twin"; then
+            THEME_NVIM_KEPT+=("nvim lua/plugins/$twin is Omarchy's and does the job of $name (haseen import omarchy swaps it)")
+            continue
+        fi
+        _theme_nvim_link "$src/$name" "$THEME_NVIM_PLUGINS/$name" "/haseen/default/nvim/${name//./\\.}\$"
+    done
+    return 0
+}
+
 # theme_backgrounds NAME — candidate images, each source sorted, in this order:
 # ~/.config/haseen/backgrounds/<name>/ (the user's), current/theme/backgrounds/
 # (shipped by an installed theme), then the fetched cache
@@ -793,7 +916,7 @@ _theme_running() { pgrep -x "$1" >/dev/null 2>&1; }
 # icons.theme (the source theme in a dry run, which renders nothing).
 # HASEEN_THEME_HEADLESS=1 (installer, chroot, tests) skips this entirely.
 theme_post_set() {
-    local dir="$1" mode=dark icons=""
+    local dir="$1" mode=dark icons="" gtk_theme
     [[ ${HASEEN_THEME_HEADLESS:-0} == 1 ]] && return 0
     if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && have hyprctl; then
         run hyprctl reload || warn "hyprctl reload failed"
@@ -806,6 +929,15 @@ theme_post_set() {
         theme_colors_load "$dir/colors.toml" && mode="${THEME_COLORS[mode]}"
         [[ $mode == light ]] || mode=dark
         run gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" || warn "gsettings failed"
+        # GTK 3 ignores color-scheme; Adwaita has a separate dark theme. Any
+        # other GTK theme is the user's choice and stays.
+        gtk_theme="$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null || true)"
+        gtk_theme="${gtk_theme//\'/}"
+        if [[ -z $gtk_theme || $gtk_theme == Adwaita || $gtk_theme == Adwaita-dark ]]; then
+            gtk_theme=Adwaita-dark
+            [[ $mode == light ]] && gtk_theme=Adwaita
+            run gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme" || warn "gsettings failed"
+        fi
         [[ -r $dir/icons.theme ]] && icons="$(<"$dir/icons.theme")"
         if [[ $icons =~ ^[A-Za-z0-9._+-]+$ && -d $(sysroot_path "/usr/share/icons/$icons") ]]; then
             run gsettings set org.gnome.desktop.interface icon-theme "$icons" || warn "gsettings failed"

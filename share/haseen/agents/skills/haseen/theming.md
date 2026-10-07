@@ -16,6 +16,13 @@ swaps it in, reloads Hyprland, terminals, btop and the GTK colour scheme, and
 runs the `theme-set` hook. The shell follows `current/theme/shell.json` live.
 Never edit `current/theme/` by hand: the next `theme set` replaces it.
 
+GTK 3 and GTK 4 apps, libadwaita ones included, take their colours from
+`current/theme/gtk.css` (libadwaita named colours such as `window_bg_color`
+and `accent_bg_color`). `theme set` writes `~/.config/gtk-4.0/gtk.css` and
+`~/.config/gtk-3.0/gtk.css` once with an `@import` of it; a gtk.css that
+already exists is left alone, so add that import line yourself to keep your
+own. Restart a running GTK app to see a new theme.
+
 ## Change colours
 
 - **Tweak a stock theme**: put only the keys you change in

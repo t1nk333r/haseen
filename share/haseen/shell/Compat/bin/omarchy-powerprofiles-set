@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): same arguments as Omarchy's, but the profile
+# is remembered where haseen powerprofile init reads it back on AC changes.
+exec "${HASEEN_PATH:?}/../../bin/haseen-powerprofile-set" "$@"

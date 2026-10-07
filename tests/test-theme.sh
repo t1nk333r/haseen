@@ -64,6 +64,12 @@ for dir in "$HASEEN_PATH"/themes/*/; do
     fi
     bg="$(colour_of "$dir/colors.toml" background)"
     assert_contains "$t foot background" "$(<"$CUR/theme/foot.ini")" "background=${bg#\#}"
+    # libadwaita and GTK 3 named colours come from the theme's own colours.
+    gtk="$(<"$CUR/theme/gtk.css")"
+    assert_contains "$t libadwaita window background" "$gtk" "@define-color window_bg_color $bg;"
+    assert_contains "$t libadwaita window foreground" "$gtk" "@define-color window_fg_color $(colour_of "$dir/colors.toml" foreground);"
+    assert_contains "$t libadwaita accent" "$gtk" "@define-color accent_bg_color $(colour_of "$dir/colors.toml" accent);"
+    assert_contains "$t GTK 3 base colour" "$gtk" "@define-color theme_base_color $bg;"
     if command -v luac >/dev/null; then
         capture luac -p "$CUR/theme/hyprland.lua" "$CUR/theme/neovim.lua"
         assert_status "$t Lua outputs parse" 0 "$STATUS"
@@ -240,7 +246,9 @@ stub hyprctl 'echo "HYPRCTL $*"'
 stub pgrep '[ "$2" = kitty ]'
 stub pkill 'echo "PKILL $*"'
 export HYPRLAND_INSTANCE_SIGNATURE=test DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
-stub gsettings 'echo "GSETTINGS $*"'
+# `gsettings get … gtk-theme` answers from $HOME/gtk-theme (quoted, as gsettings does).
+stub gsettings '[ "$1" = get ] && { cat "$HOME/gtk-theme"; exit 0; }; echo "GSETTINGS $*"'
+echo "'Adwaita-dark'" >"$HOME/gtk-theme"
 
 before="$(tree)"
 capture haseen theme set catppuccin-latte --dry-run
@@ -253,6 +261,8 @@ assert_contains "dry-run hyprctl" "$OUTPUT" "DRYRUN: hyprctl reload"
 assert_contains "dry-run kitty reload" "$OUTPUT" "DRYRUN: pkill -USR1 -x kitty"
 assert_not_contains "foot not running, not retinted" "$OUTPUT" "theme_retint_foot"
 assert_contains "dry-run light colour scheme" "$OUTPUT" "DRYRUN: gsettings set org.gnome.desktop.interface color-scheme prefer-light"
+assert_contains "dry-run light GTK 3 theme" "$OUTPUT" "DRYRUN: gsettings set org.gnome.desktop.interface gtk-theme Adwaita"
+assert_not_contains "dry-run light keeps no dark GTK 3 theme" "$OUTPUT" "gtk-theme Adwaita-dark"
 assert_contains "dry-run hook" "$OUTPUT" "DRYRUN: haseen-hook run theme-set catppuccin-latte"
 
 capture haseen theme set catppuccin-latte
@@ -260,6 +270,8 @@ assert_status "set with session" 0 "$STATUS"
 assert_contains "hyprctl reload ran" "$OUTPUT" "HYPRCTL reload"
 assert_contains "kitty signalled" "$OUTPUT" "PKILL -USR1 -x kitty"
 assert_contains "gsettings light" "$OUTPUT" "GSETTINGS set org.gnome.desktop.interface color-scheme prefer-light"
+assert_contains "Adwaita-dark becomes Adwaita for a light theme" "$OUTPUT" "GSETTINGS set org.gnome.desktop.interface gtk-theme Adwaita"
+assert_not_contains "light theme sets no Adwaita-dark" "$OUTPUT" "gtk-theme Adwaita-dark"
 assert_eq "hooks ran in order, samples skipped" $'HOOK catppuccin-latte\nD catppuccin-latte' "$(cat "$HOME/hook.out" 2>/dev/null)"
 
 rm -f "$HOME/hook.out"
@@ -270,6 +282,42 @@ assert_eq "headless skips hooks" "" "$(cat "$HOME/hook.out" 2>/dev/null)"
 capture haseen theme set tokyo-night
 assert_not_contains "no Hyprland, no hyprctl" "$OUTPUT" "HYPRCTL"
 assert_contains "dark colour scheme" "$OUTPUT" "color-scheme prefer-dark"
+assert_contains "Adwaita becomes Adwaita-dark for a dark theme" "$OUTPUT" "GSETTINGS set org.gnome.desktop.interface gtk-theme Adwaita-dark"
+echo "'Breeze'" >"$HOME/gtk-theme"
+capture haseen theme set tokyo-night
+assert_not_contains "a user's own GTK theme stays" "$OUTPUT" "gtk-theme"
+
+# --- GTK and libadwaita follow the theme ------------------------------------
+# gtk-4.0/gtk.css (libadwaita included) and gtk-3.0/gtk.css are written once
+# with an @import of the rendered colours; a gtk.css the user has stays theirs.
+theme_sandbox theme-gtk
+cfg="$HOME/.config"
+before="$(tree)"
+capture haseen theme set tokyo-night --dry-run
+assert_contains "dry-run plans the GTK 4 import" "$OUTPUT" "DRYRUN: write $cfg/gtk-4.0/gtk.css"
+assert_contains "dry-run plans the GTK 3 import" "$OUTPUT" "DRYRUN: write $cfg/gtk-3.0/gtk.css"
+assert_eq "GTK dry-run writes nothing" "$before" "$(tree)"
+capture haseen theme set tokyo-night
+assert_status "set tokyo-night" 0 "$STATUS"
+for v in 3.0 4.0; do
+    assert_contains "gtk-$v/gtk.css imports the rendered colours" "$(cat "$cfg/gtk-$v/gtk.css" 2>/dev/null)" "@import url(\"$CUR/theme/gtk.css\");"
+done
+gtk="$(<"$CUR/theme/gtk.css")"
+assert_contains "views on the theme background" "$gtk" "@define-color view_bg_color #1a1b26;"
+assert_contains "cards mix background toward foreground" "$gtk" "@define-color card_bg_color #232431;"
+assert_contains "popovers a step further" "$gtk" "@define-color popover_bg_color #2b2d3b;"
+assert_contains "text on accent is the background" "$gtk" "@define-color accent_fg_color #1a1b26;"
+assert_contains "warning colour from yellow" "$gtk" "@define-color warning_bg_color #e0af68;"
+assert_contains "GTK 3 selection is the accent" "$gtk" "@define-color theme_selected_bg_color #7aa2f7;"
+capture haseen theme set greek-noir-akane
+assert_contains "a theme change recolours through the same import" "$(<"$CUR/theme/gtk.css")" "@define-color accent_bg_color #F25623;"
+echo "/* mine */" >"$cfg/gtk-4.0/gtk.css"
+rm "$cfg/gtk-3.0/gtk.css"
+ln -s /nonexistent "$cfg/gtk-3.0/gtk.css"
+capture haseen theme set gruvbox
+assert_status "set over the user's gtk.css" 0 "$STATUS"
+assert_eq "the user's gtk-4.0/gtk.css stays" "/* mine */" "$(<"$cfg/gtk-4.0/gtk.css")"
+assert_eq "the user's gtk-3.0/gtk.css link stays" "/nonexistent" "$(readlink "$cfg/gtk-3.0/gtk.css")"
 
 # --- haseen hook ------------------------------------------------------------
 theme_sandbox theme-hook

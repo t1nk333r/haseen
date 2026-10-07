@@ -3,7 +3,7 @@
   "id": "haseen.tray",
   "name": "Tray",
   "version": "2.1.0",
-  "description": "StatusNotifier tray (Omarchy port) behind a chevron: hover to reveal the icons, click the chevron to pin them open, click again to unpin",
+  "description": "StatusNotifier tray behind a chevron: hover to reveal the icons, click the chevron to pin them open, click again to unpin",
   "kinds": [
     "bar-widget"
   ],

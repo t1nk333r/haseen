@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): Omarchy runs "$*" as one shell command in its
+# own branded terminal (logo first, title Omarchy); here it runs in haseen's
+# floating terminal (app-id haseen.floating, title haseen), which waits for Enter.
+exec "${HASEEN_PATH:?}/../../bin/haseen-config-terminal" -- bash -c "$*"

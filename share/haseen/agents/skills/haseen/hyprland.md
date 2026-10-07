@@ -56,6 +56,11 @@ Default shell keys: SUPER+SPACE menu, SUPER+SHIFT+SPACE app launcher,
 SUPER+ESCAPE system menu, SUPER+A AI panel, SUPER+CTRL+ESCAPE close panel,
 SUPER+CTRL+L lock.
 
+Hyper binds (`SUPER + SHIFT + ALT + CTRL + key`) need keyd: `haseen setup
+keyd on` makes holding CapsLock send all four modifiers (tap = Escape,
+RightAlt+CapsLock = CapsLock). It is off by default, and the defaults ship
+no hyper binds: add your own in `bindings.lua`.
+
 ## Monitors (`~/.config/hypr/monitors.lua`)
 
 ```lua

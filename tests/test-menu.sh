@@ -175,6 +175,17 @@ assert_contains "facts: CPU" "$OUTPUT" $'CPU\t11th Gen Intel Core i7-1165G7 (2)'
 assert_contains "facts: memory" "$OUTPUT" $'Memory\t7.6 / 15.3 GiB'
 assert_contains "facts: uptime" "$OUTPUT" $'Uptime\t1d 2h 3m'
 assert_contains "facts: version" "$OUTPUT" $'haseen\t'"$(cat "$HASEEN_PATH/VERSION")"
+# Omarchy writes its name over /etc/os-release; the OS line names the
+# distribution underneath (/usr/lib/os-release), or Linux without one.
+OROOT="$SANDBOX/omarchy-root"
+mkdir -p "$OROOT/etc" "$OROOT/usr/lib"
+printf 'NAME="Omarchy"\nPRETTY_NAME="Omarchy"\nID=omarchy\nID_LIKE=arch\nVERSION_ID="4.0.4"\n' >"$OROOT/etc/os-release"
+capture env HASEEN_SYSROOT="$OROOT" haseen about --facts
+assert_contains "facts: no base os-release under Omarchy is Linux" "$OUTPUT" $'OS\tLinux'
+printf 'NAME="Arch Linux"\nPRETTY_NAME="Arch Linux"\nID=arch\nBUILD_ID=rolling\n' >"$OROOT/usr/lib/os-release"
+capture env HASEEN_SYSROOT="$OROOT" haseen about --facts
+assert_contains "facts: OS under Omarchy is the base distribution" "$OUTPUT" $'OS\tArch Linux\n'
+assert_not_contains "facts: never Omarchy" "$OUTPUT" "Omarchy"
 
 # --- haseen system ---------------------------------------------------------------
 # The System menu is Omarchy's, row for row, each on a haseen command.

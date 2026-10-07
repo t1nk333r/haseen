@@ -322,6 +322,59 @@ assert_dry_pure "shell child: mirror off" "$OUTPUT"
 assert_contains "shell child: mirror off drops haseen's toggle" "$OUTPUT" \
     "DRYRUN: rm -f $XDG_STATE_HOME/haseen/toggles/hypr/mirror-display.lua"
 assert_contains "shell child: mirror off reloads Hyprland" "$OUTPUT" "DRYRUN: hyprctl reload"
+
+# The debrand shims (plan 057) hand each Omarchy command to its haseen
+# command. A haseen tree whose bin/ holds recording stubs stands in for the
+# targets: each prints its name and every argument in brackets.
+FAKE="$SANDBOX/fake"
+mkdir -p "$FAKE/bin" "$FAKE/share/haseen/shell"
+ln -s "$HASEEN_PATH/lib" "$FAKE/share/haseen/lib"
+ln -s "$HASEEN_PATH/shell/Compat" "$FAKE/share/haseen/shell/Compat"
+: >"$FAKE/share/haseen/shell/shell.qml"
+for t in haseen-update haseen-config-terminal haseen-menu haseen-powerprofile-list haseen-powerprofile-set \
+    haseen-capture-screenrecord haseen-notification-send; do
+    printf '#!/bin/sh\nprintf %%s "${0##*/}"; for a in "$@"; do printf " [%%s]" "$a"; done; echo\n' >"$FAKE/bin/$t"
+    chmod +x "$FAKE/bin/$t"
+done
+ln -s "$REPO/bin/haseen-toggle-idle" "$FAKE/bin/haseen-toggle-idle"
+for c in omarchy-update omarchy-launch-floating-terminal-with-presentation omarchy-menu omarchy-toggle-idle \
+    omarchy-powerprofiles-list omarchy-powerprofiles-set omarchy-capture-screenrecording omarchy-notification-send; do
+    stub "$c" "echo \"STUB-CALLED: $c \$*\" >&2; exit 97"
+done
+# shell_child LABEL EXPECTED CMD — the shell's child runs CMD (sh syntax); its
+# output must be EXPECTED and no installed Omarchy command may run.
+shell_child() {
+    stub qs "$3"
+    capture env HASEEN_PATH="$FAKE/share/haseen" "$REPO/bin/haseen-shell-run"
+    assert_status "shell child: $1 exits 0" 0 "$STATUS"
+    assert_dry_pure "shell child: $1" "$OUTPUT"
+    assert_eq "shell child: $1" "$2" "$OUTPUT"
+}
+shell_child "update is haseen update" "haseen-update [-y]" 'exec omarchy-update -y'
+shell_child "presentation terminal is haseen's floating terminal" \
+    "haseen-config-terminal [--] [bash] [-c] [omarchy-update --all]" \
+    'exec omarchy-launch-floating-terminal-with-presentation omarchy-update --all'
+shell_child "menu route" "haseen-menu [setup.plugin]" 'exec omarchy-menu toggle setup.plugin'
+shell_child "menu root" "haseen-menu" 'exec omarchy-menu'
+shell_child "power profiles list" "haseen-powerprofile-list [--active-state]" 'exec omarchy-powerprofiles-list --active-state'
+shell_child "power profile set" "haseen-powerprofile-set [battery] [power-saver]" \
+    'exec omarchy-powerprofiles-set battery power-saver'
+shell_child "recording stop" "haseen-capture-screenrecord [--stop]" 'exec omarchy-capture-screenrecording --stop-recording'
+shell_child "recording flags" "haseen-capture-screenrecord [--fullscreen] [--desktop-audio] [--microphone] [--webcam]" \
+    'exec omarchy-capture-screenrecording --fullscreen --with-desktop-audio --with-microphone-audio --with-webcam --webcam-size=large'
+shell_child "notification: haseen's sender, Omarchy's low default, no glyph" \
+    "haseen-notification-send [-u] [low] [--app-name] [Nearby] [-u] [normal] [Incoming] [-50% off]" \
+    'exec omarchy-notification-send --app-name Nearby -g X -u normal Incoming "-50% off"'
+shell_child "notification: image is the icon, --exec kept" \
+    "haseen-notification-send [-u] [low] [-i] [/p.png] [-t] [8000] [Copied] [--exec] [xdg-open] [/p.png]" \
+    'exec omarchy-notification-send --image=/p.png Copied -t 8000 --exec xdg-open /p.png'
+# Stay awake is haseen's idle switch, in Omarchy's words.
+shell_child "stay awake" "disabled" 'exec omarchy-toggle-idle stay-awake'
+assert_eq "stay awake turns haseen's idle off" "off" "$(haseen toggle idle status)"
+shell_child "stay-awake status" '{"enabled":true,"class":"enabled","tooltip":"Allow Idle Lock & Screensaver"}' \
+    'exec omarchy-toggle-idle status'
+shell_child "allow idle" "enabled" 'exec omarchy-toggle-idle allow-idle'
+assert_eq "allow idle turns haseen's idle on" "on" "$(haseen toggle idle status)"
 record qs
 stub systemctl 'echo "STUB-CALLED: systemctl $*" >&2; exit 97'
 

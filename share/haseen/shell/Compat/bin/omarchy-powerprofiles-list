@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): same arguments and output as Omarchy's.
+exec "${HASEEN_PATH:?}/../../bin/haseen-powerprofile-list" "$@"
