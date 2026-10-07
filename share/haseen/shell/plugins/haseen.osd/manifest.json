@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.osd",
   "name": "On-screen display",
-  "version": "1.0.0",
-  "description": "Short volume and brightness overlay on change (PipeWire and backlight events, no polling)",
+  "version": "1.1.0",
+  "description": "Short overlay on a change of volume, microphone, brightness, keyboard layout or (opt-in) Caps/Num Lock: PipeWire, backlight and Hyprland events, no polling",
   "kinds": [
     "service"
   ],
@@ -25,9 +25,25 @@
       "type": "string",
       "default": "",
       "description": "Device under /sys/class/backlight; empty = the first one"
+    },
+    "mic": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the OSD when the default source (microphone) volume or mute changes"
+    },
+    "layout": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the OSD when a keyboard switches layout (Hyprland activelayout event)"
+    },
+    "lockKeys": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show the OSD when Caps Lock or Num Lock changes. The default binds.lua calls `haseen shell ipc osd lockkeys` on a release of either key, which reads `hyprctl -j devices` once"
     }
   },
   "permissions": [
+    "exec",
     "files:read"
   ]
 }

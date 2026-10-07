@@ -27,7 +27,8 @@
   "plugins": {
     "haseen.weather": { "enabled": false, "settings": { "location": "" } },
     "haseen.themegen": { "enabled": false },
-    "haseen.display": { "enabled": false }
+    "haseen.display": { "enabled": false },
+    "haseen.kblayout": { "enabled": false }
   },
   "services": [
     "haseen.pager",

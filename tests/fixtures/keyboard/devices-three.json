@@ -1,0 +1,29 @@
+{
+    "mice": [
+        {
+            "address": "0x55d0c0de1111",
+            "name": "logitech-usb-receiver",
+            "defaultSpeed": 0.0,
+            "scrollFactor": 1.0
+        }
+    ],
+    "keyboards": [
+        {
+            "address": "0x55d0c0de9a6b",
+            "name": "at-translated-set-2-keyboard",
+            "rules": "",
+            "model": "",
+            "layout": "us,ara,ara",
+            "variant": ",,buckwalter",
+            "options": "compose:caps,grp:alts_toggle",
+            "active_layout_index": 2,
+            "active_keymap": "Arabic (Buckwalter)",
+            "capsLock": false,
+            "numLock": false,
+            "main": true
+        }
+    ],
+    "tablets": [],
+    "touch": [],
+    "switches": []
+}

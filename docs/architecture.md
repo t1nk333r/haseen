@@ -142,6 +142,7 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `Sidecar`: the connection to haseen-sidecar (§5.6).
   - `BorderWipe`: holds the `borderwipe` subscription while the theme asks for a wipe (§5.6, §7).
   - `Apps`: starts user apps outside the shell's cgroup (§5, plan 074).
+  - `Keyboard`: the keyboard layout from one `hyprctl -j devices` read plus Hyprland's `activelayout` event, and the lock-key reader (plans 079, 080).
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
@@ -330,6 +331,7 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `nightlight` | `on()`, `off()`, `toggle()`, `refresh()`, `status(): string` |
 | `pager` | `count()`, `probe()`, `cards()`, `clear()`, `dnd()`, `expand()`, `snooze(minutes)`, `snoozeAll(minutes)`, `unsnooze(key)`, `snoozes()`, `codes(state)`, `open(deckKey)`, `act(identifier)`, `reply(text)`, `dismissOne()`, `dismissAll()`, `dismissShown()`, `invokeLast()`, `showHistory()`, `forgetHistory()`, `dismiss(summary)`, `recent(action)`, … (plan 025) |
 | `haseen.prayers` | `refresh()`, `status()` (plan 026) |
+| `osd` | `lockkeys()`: read Caps/Num Lock once and show a change (the default `code:66`/`code:77` release binds call it; plan 079), `state(): string` |
 
 Plugins with `settings.debugIpc` expose test-only targets named after the
 plugin, for example `haseen.menu`, `haseen.launcher` and `haseen.themepicker`.

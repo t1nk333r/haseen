@@ -118,6 +118,18 @@ b("XF86AudioPause", "Play/pause", "playerctl play-pause", once)
 b("XF86AudioNext", "Next track", "playerctl next", once)
 b("XF86AudioPrev", "Previous track", "playerctl previous", once)
 
+-- Lock keys ----------------------------------------------------------------
+-- Hyprland sends no event when Caps Lock or Num Lock changes, so a bind on
+-- the keys themselves tells the OSD to read the state once (plan 079).
+-- code:66 and code:77 are the Caps Lock and Num Lock keys whatever they
+-- type: under compose:caps Caps is Compose, and the read then finds nothing
+-- changed. non_consuming: the key still reaches xkb and the app; release:
+-- the lock state has settled; ignore_mods: Shift + Caps Lock too. The OSD
+-- shows nothing unless haseen.osd's lockKeys setting is on.
+local lockkey = { non_consuming = true, release = true, ignore_mods = true }
+b("code:66", "Caps Lock OSD", ipc("osd", "lockkeys"), lockkey)
+b("code:77", "Num Lock OSD", ipc("osd", "lockkeys"), lockkey)
+
 -- Windows ----------------------------------------------------------------------
 b("SUPER + W", "Close window", hl.dsp.window.close())
 b("SUPER + T", "Toggle floating", hl.dsp.window.float({ action = "toggle" }))
