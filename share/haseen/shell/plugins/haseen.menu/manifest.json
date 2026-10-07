@@ -13,18 +13,13 @@
   "settings": {
     "width": {
       "type": "integer",
-      "default": 280,
-      "description": "Panel width in px"
+      "default": 300,
+      "description": "Card width in px at the default font size (Omarchy's 300); Capture › Screenrecord and Style › Font open at 520"
     },
     "placement": {
       "type": "string",
-      "default": "center",
-      "description": "Where the menu opens: center (middle of the screen) or bar (under the bar)"
-    },
-    "maxRows": {
-      "type": "integer",
-      "default": 10,
-      "description": "Rows shown before the list scrolls"
+      "default": "overlay",
+      "description": "Where the menu opens: overlay (Omarchy's: a card centred over the dimmed screen), center (a panel in the middle of the screen) or bar (a panel under the bar)"
     },
     "debugIpc": {
       "type": "boolean",

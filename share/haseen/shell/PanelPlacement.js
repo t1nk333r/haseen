@@ -38,7 +38,9 @@ function offset(centre, size, extent, margin) {
 // both out in the area the surfaces arranged before them leave (the frame's
 // strips, which sit on the bottom layer). Without an opener the compositor
 // centres the popup along the bar edge. A panel whose `placement` setting is
-// "center" anchors nothing, so the compositor centres it on the screen.
+// "center" anchors nothing, so the compositor centres it on the screen. One
+// whose placement is "overlay" anchors every edge: it gets the whole screen
+// and draws its own scrim and card, as Omarchy's menu does.
 function place(position, press, width, height, margin, placement) {
     const edge = EDGES.indexOf(position) >= 0 ? position : "top";
     const r = {
@@ -53,6 +55,10 @@ function place(position, press, width, height, margin, placement) {
     };
     if (placement === "center")
         return r;
+    if (placement === "overlay") {
+        r.top = r.bottom = r.left = r.right = true;
+        return r;
+    }
     r[edge] = true;
     r["margin" + edge[0].toUpperCase() + edge.slice(1)] = margin;
     if (!press || press.position !== edge || !(press.extent > 0))

@@ -22,6 +22,11 @@ Column {
     readonly property int maxResults: typeof settings.maxResults === "number" && settings.maxResults >= 1 ? Math.round(settings.maxResults) : 8
     readonly property int rowHeight: Theme.fontSize * 3
     property var providers: []
+    // Subtitles: the foreground at Omarchy's description alpha, raised to read
+    // at 3:1 on the panel and on the selection (Theme.subtle). Theme.muted
+    // was below 2:1 on the panel and near 1:1 on the selection in most themes.
+    readonly property color subtitleColor: Theme.subtle(Theme.surface)
+    readonly property color selectedSubtitleColor: Theme.subtle(Theme.selection)
     property string query: ""
 
     // [{ title, subtitle, icon, run }]
@@ -246,7 +251,7 @@ Column {
                     width: parent.width
                     text: row.modelData.subtitle
                     visible: text !== ""
-                    color: Theme.muted
+                    color: row.ListView.isCurrentItem ? root.selectedSubtitleColor : root.subtitleColor
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                     font.family: Theme.fontFamily

@@ -8,7 +8,7 @@
 # restart; the detached fetch `theme set` starts; the user font override;
 # dry-run purity throughout.
 
-SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
+SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth windowRadius"
 PIN=5c4da021469517449770579793b37ce26d0a0d48
 OMARCHY_THEMES="catppuccin catppuccin-latte ethereal everforest flexoki-light gruvbox hackerman kanagawa last-horizon lumon lupine matte-black miasma nord osaka-jade retro-82 ristretto rose-pine solitude tokyo-night vantablack white"
 # Stock themes that are not Omarchy's (no fetchable images): haseen's own,

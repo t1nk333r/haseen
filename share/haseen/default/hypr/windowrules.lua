@@ -89,3 +89,11 @@ hl.layer_rule({
   match = { namespace = "selection" },
   no_anim = true,
 })
+
+-- The menu (placement "overlay") pops in and out without the layer fade, as
+-- Omarchy's menu does; mid-fade it showed the windows behind it through.
+hl.layer_rule({
+  name = "haseen_overlay_panel",
+  match = { namespace = "^haseen-overlay$" },
+  no_anim = true,
+})
