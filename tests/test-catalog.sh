@@ -191,6 +191,14 @@ assert_contains "update: repos" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
 assert_contains "update: AUR" "$OUTPUT" "DRYRUN: paru -Sua"
 assert_contains "update: user flatpaks" "$OUTPUT" "DRYRUN: flatpak update --user"
 assert_contains "update: system flatpaks when present" "$OUTPUT" "DRYRUN: flatpak update --system"
+# A machine that still carries the omarchy package has a pacman hook that aborts
+# any -Syu not started by `omarchy update`; haseen update must get through it.
+guard_root="$SANDBOX/omarchy-guard"
+mkdir -p "$guard_root/usr/share/libalpm/hooks"
+: >"$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+assert_contains "update: passes Omarchy's pacman guard where it is installed" "$OUTPUT" \
+    "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syu"
 capture haseen update firmware --dry-run --yes
 all+="$OUTPUT"
 assert_contains "firmware: refresh" "$OUTPUT" "DRYRUN: fwupdmgr refresh --force"

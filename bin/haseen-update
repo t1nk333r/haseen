@@ -56,7 +56,14 @@ update_system() {
     local yes=()
     $ASSUME_YES && yes=(--noconfirm)
     info "official repositories"
-    run_root pacman -Syu "${yes[@]}"
+    # On a machine that still has the omarchy package, its pre-transaction hook
+    # (00-omarchy-update-guard.hook) aborts every `pacman -Syu` that does not
+    # come from `omarchy update`. haseen update is the update path here, so it
+    # says so with the variable the guard reads; nothing else changes.
+    local guard=()
+    [[ -e $(sysroot_path /usr/share/libalpm/hooks/00-omarchy-update-guard.hook) ]] &&
+        guard=(env OMARCHY_ALLOW_DIRECT_PACMAN=1)
+    run_root "${guard[@]}" pacman -Syu "${yes[@]}"
 
     local helper
     helper="$(aur_helper)"
