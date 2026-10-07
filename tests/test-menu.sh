@@ -53,7 +53,7 @@ for id in apps trigger style setup install remove update about system \
     trigger.share.receive trigger.tests.disk trigger.transcode style.theme style.background style.font \
     style.bar.position.left style.bar.transparency style.screensaver.image style.about.text \
     setup.monitors setup.network.dns.custom setup.network.qr setup.default.agent setup.plugin.remove \
-    setup.config.hyprland setup.config.nightlight setup.security.passwordless-sudo setup.secureboot.setup \
+    setup.config.hyprland setup.config.nightlight setup.dotfiles.clone setup.security.passwordless-sudo setup.secureboot.setup \
     setup.ai.chat update.firmware update.timezone update.password.drive update.hardware.trackpad \
     update.config.nightlight system.screensaver system.hibernate system.shutdown; do
     assert_contains "menu has $id" "$ids"$'\n' "$id"$'\n'

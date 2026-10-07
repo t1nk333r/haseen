@@ -39,7 +39,7 @@ file changes in the same commit.
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `/var/lib/haseen/layers/<name>` | applied-layer marker | core |
 | `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/` | user |
-| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell` | runtime |
+| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced) | runtime |
 
 `PREFIX` is `/usr/local` for the installer. When the PKGBUILD phase lands it
 becomes `/usr`. Code never hard-codes either one: resolve `$HASEEN_PATH`, or use
@@ -325,3 +325,20 @@ default is the one that cannot lock you out.
 - **Autologin:** `haseen setup greeter autologin <user>` writes greetd's `[initial_session]`, which runs once at boot. With an encrypted root the disk password at the splash is that boot's authentication; without one, the command warns that it means no password at all.
 - **Replacing another display manager:** `haseen layer apply desktop` keeps an enabled SDDM/GDM; `haseen setup greeter tuigreet|haseen` is the explicit request to replace it. It asks, installs greetd and tuigreet, disables the old unit before enabling greetd (`display-manager.service` is an alias only one unit holds), starts nothing, and prints the way back.
 - **Getting back:** `sudo haseen setup greeter tuigreet && sudo systemctl restart greetd` from a TTY, which is why tuigreet stays the default.
+
+## 10. Dotfiles (yadm)
+
+`haseen setup dotfiles <git-url> [--branch B] [--bootstrap]`
+(`bin/haseen-setup-dotfiles`, menu Setup › Dotfiles) puts a yadm repository in
+`$HOME`. It is optional and never runs on its own: no layer and no installer
+step calls it.
+
+- **Plan first.** A throwaway bare clone lists what is new, what is identical and what would be replaced. That clone is the only thing `--dry-run` runs.
+- **Backup, then the repo wins.** Every file the repo replaces is copied to `~/.local/state/haseen/dotfiles-backup/<timestamp>/` first. Then `yadm clone --no-bootstrap` runs, followed by `yadm checkout` of those files.
+- **haseen's entry point stays.** If the repo's `~/.config/hypr/hyprland.lua` does not load `default/hypr/init.lua` (the desktop layer's seed test), the repo's `.config/hypr` is Omarchy's:
+  - haseen's files there are kept, and the seed is restored when it is missing;
+  - the repo's Omarchy files are taken back out;
+  - the repo's copy goes to `~/.local/state/haseen/dotfiles-omarchy/<timestamp>/` for the import.
+- **Plugin sources stay read-only.** Existing files under `~/.config/omarchy/plugins` and `~/.config/DankMaterialShell/plugins` are never replaced; new files are added.
+- **Omarchy config.** A repo that carries `~/.config/omarchy` gets `haseen import omarchy --merge`, unless it also tracks `~/.config/haseen/shell.json` (it is set up for haseen already).
+- **yadm bootstrap** runs only with `--bootstrap`. If a yadm repo with a different remote already exists, the command refuses. `haseen setup dotfiles status` prints the remote, the branch and the number of changed files.

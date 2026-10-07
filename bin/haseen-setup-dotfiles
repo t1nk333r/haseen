@@ -1,0 +1,334 @@
+#!/usr/bin/env bash
+# haseen:summary Put your dotfiles in place with yadm (backing up what they replace), or show their state
+# haseen:args <git-url> [--branch B] [--bootstrap] [--dry-run] [--yes] | status
+#
+# The dotfiles are the user's, and they win over files already in $HOME, but
+# only after those files are copied to a timestamped backup. haseen's own
+# entry point is the exception: a repo whose ~/.config/hypr/hyprland.lua does
+# not load haseen carries Omarchy's Hyprland config. Placing it would take
+# haseen's defaults out of the session, so that directory stays haseen's and
+# the repo's copy becomes a source for `haseen import omarchy`.
+set -Eeuo pipefail
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$BIN_DIR/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$HASEEN_USER_STATE/dotfiles-backup/$STAMP"
+# The repo's Omarchy Hyprland files, checked out for the import to read.
+OMARCHY_HYPR_DIR="$HASEEN_USER_STATE/dotfiles-omarchy/$STAMP"
+HYPR_SEED="$HASEEN_PATH/default/hypr/user/hyprland.lua"
+# yadm paths are relative to $HOME.
+HYPR_REL=.config/hypr
+# Read-only plugin sources (AGENTS.md): a file there is never replaced.
+PROTECTED_PREFIXES=(.config/omarchy/plugins/ .config/DankMaterialShell/plugins/)
+
+usage() {
+    cat <<EOF
+Usage: haseen setup dotfiles <git-url> [--branch B] [--bootstrap] [--dry-run] [--yes]
+       haseen setup dotfiles status
+
+Clones a yadm dotfiles repository into \$HOME (installs yadm first):
+
+  1. Lists what the repo would add and which existing files it would
+     replace, and asks before it starts.
+  2. Copies every file it replaces to
+     $HASEEN_USER_STATE/dotfiles-backup/<timestamp>/ first.
+  3. Runs \`yadm clone --no-bootstrap\`, then lets the repo's version win.
+
+Kept as they are:
+  ~/.config/hypr      when the repo's hyprland.lua does not load haseen (an
+                      Omarchy config): haseen's files stay. The repo's
+                      directory is copied to
+                      $HASEEN_USER_STATE/dotfiles-omarchy/<timestamp>/ for the
+                      import.
+  plugin directories  ~/.config/omarchy/plugins and
+                      ~/.config/DankMaterialShell/plugins: new files are
+                      added, existing ones are never replaced.
+
+Then, when the repo carries ~/.config/omarchy, \`haseen import omarchy
+--merge\` brings its bar, plugins and Hyprland settings over. The import is
+skipped when the repo also tracks ~/.config/haseen/shell.json, because that
+repo is already set up for haseen.
+
+  --branch B    clone branch B instead of the remote's default
+  --bootstrap   run \`yadm bootstrap\` at the end (never run otherwise)
+  status        the yadm repo, its remote, branch and number of changed files
+
+Refuses when a yadm repo with a different remote already exists.
+EOF
+}
+
+# yadm_repo — where yadm keeps its repository (yadm 3 default when yadm is
+# not installed yet).
+yadm_repo() {
+    local r=""
+    have yadm && r="$(yadm introspect repo 2>/dev/null || true)"
+    printf '%s\n' "${r:-${XDG_DATA_HOME:-$HOME/.local/share}/yadm/repo.git}"
+}
+
+# ygit ARGS... — read-only git against the yadm repo. yadm's own config sets
+# the work tree; it is passed again so a half-configured repo reads the same.
+ygit() { git --git-dir="$REPO_DIR" --work-tree="$HOME" "$@"; }
+
+# same_url A B — the same remote, ignoring a trailing slash or .git.
+same_url() {
+    local a="${1%/}" b="${2%/}"
+    [[ ${a%.git} == "${b%.git}" ]]
+}
+
+show_status() {
+    if [[ ! -d $REPO_DIR ]]; then
+        echo "dotfiles: not set up (haseen setup dotfiles <git-url>)"
+        return 0
+    fi
+    local branch dirty
+    branch="$(ygit symbolic-ref --short -q HEAD 2>/dev/null || ygit rev-parse --short HEAD 2>/dev/null || echo '?')"
+    dirty="$(ygit status --porcelain --untracked-files=no 2>/dev/null | wc -l)"
+    printf 'repo:     %s\n' "$REPO_DIR"
+    printf 'remote:   %s\n' "$(ygit config --get remote.origin.url 2>/dev/null || echo none)"
+    printf 'branch:   %s\n' "$branch"
+    printf 'changed:  %s\n' "$dirty"
+    printf 'yadm:     %s\n' "$(have yadm && echo installed || echo 'not installed')"
+}
+
+# --- arguments -------------------------------------------------------------------
+
+[[ ${1:-} == status ]] || in_floating_terminal "$@"
+BRANCH=""
+BOOTSTRAP=false
+args=()
+while (($# > 0)); do
+    case "$1" in
+    --branch | -b)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        BRANCH="$2"
+        shift 2
+        ;;
+    --branch=*)
+        BRANCH="${1#--branch=}"
+        shift
+        ;;
+    --bootstrap)
+        BOOTSTRAP=true
+        shift
+        ;;
+    *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+REPO_DIR="$(yadm_repo)"
+if [[ ${REST[0]} == status ]]; then
+    show_status
+    exit 0
+fi
+URL="${REST[0]}"
+[[ -n $URL && $URL != -* ]] || {
+    usage >&2
+    exit 2
+}
+# yadm clones from $HOME, so a local path given relative to here must not move.
+[[ -d $URL ]] && URL="$(cd "$URL" && pwd)"
+[[ -z $BRANCH || $BRANCH != -* ]] || die "invalid branch '$BRANCH'"
+require_not_root
+require_cmds git
+
+if [[ -e $REPO_DIR ]]; then
+    current="$(git --git-dir="$REPO_DIR" config --get remote.origin.url 2>/dev/null || true)"
+    if [[ -n $current ]] && same_url "$current" "$URL"; then
+        info "yadm already manages $URL; nothing to clone"
+        show_status
+        exit 0
+    fi
+    die "a yadm repo already exists at $REPO_DIR with remote '${current:-none}', not $URL; refusing to replace it (move it away first, or manage it with yadm directly)"
+fi
+
+# --- plan --------------------------------------------------------------------------
+
+# A throwaway bare clone shows what the repo holds before anything in $HOME
+# changes; under --dry-run it is the only thing that runs.
+PLAN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/haseen-dotfiles.XXXXXX")"
+trap 'rm -rf "$PLAN_TMP"' EXIT
+PLAN_GIT="$PLAN_TMP/repo.git"
+clone_args=(clone --quiet --bare)
+[[ -z $BRANCH ]] || clone_args+=(--branch "$BRANCH")
+git "${clone_args[@]}" -- "$URL" "$PLAN_GIT" || die "cannot clone $URL${BRANCH:+ (branch $BRANCH)}"
+pgit() { git --git-dir="$PLAN_GIT" "$@"; }
+pgit rev-parse -q --verify HEAD >/dev/null || die "$URL${BRANCH:+ (branch $BRANCH)} has no commits"
+
+OMARCHY_HYPR=false
+if pgit cat-file -e "HEAD:$HYPR_REL/hyprland.lua" 2>/dev/null; then
+    # Same test as the desktop layer's seed check.
+    [[ "$(pgit cat-file -p "HEAD:$HYPR_REL/hyprland.lua")" == *default/hypr/init.lua* ]] || OMARCHY_HYPR=true
+fi
+
+paths=() modes=() objs=()
+while IFS= read -r -d '' entry; do
+    read -r mode type obj <<<"${entry%%$'\t'*}"
+    [[ $type == blob ]] || continue
+    paths+=("${entry#*$'\t'}")
+    modes+=("$mode")
+    objs+=("$obj")
+done < <(pgit ls-tree -r -z HEAD)
+
+# Hash every existing regular file the repo also has, in one git call.
+declare -A local_hash=()
+hash_idx=()
+for i in "${!paths[@]}"; do
+    f="$HOME/${paths[$i]}"
+    [[ ${modes[$i]} != 120000 && -f $f && ! -L $f ]] && hash_idx+=("$i")
+done
+if ((${#hash_idx[@]} > 0)); then
+    mapfile -t hashes < <(for i in "${hash_idx[@]}"; do printf '%s\n' "$HOME/${paths[$i]}"; done |
+        git hash-object --no-filters --stdin-paths)
+    for k in "${!hash_idx[@]}"; do
+        local_hash[${hash_idx[$k]}]="${hashes[$k]}"
+    done
+fi
+
+# local_matches I — the file in $HOME already is the repo's entry I.
+local_matches() {
+    local i="$1" f="$HOME/${paths[$1]}"
+    if [[ ${modes[$i]} == 120000 ]]; then
+        [[ -L $f && "$(readlink -- "$f")" == "$(pgit cat-file -p "${objs[$i]}")" ]]
+    else
+        [[ ${local_hash[$i]:-} == "${objs[$i]}" ]] || return 1
+        # yadm reports an executable-bit change as a modification too.
+        [[ ${modes[$i]} == 100755 ]] && [[ -x $f ]] && return 0
+        [[ ${modes[$i]} == 100644 ]] && [[ ! -x $f ]]
+    fi
+}
+
+protected() {
+    local p
+    for p in "${PROTECTED_PREFIXES[@]}"; do
+        [[ $1 == "$p"* ]] && return 0
+    done
+    return 1
+}
+
+NEW=() SAME=() CONFLICT=() HYPR_KEEP=() HYPR_SKIP=() PROTECTED=() BLOCKED=()
+HAS_OMARCHY=false
+HASEEN_NATIVE=false
+for i in "${!paths[@]}"; do
+    p="${paths[$i]}"
+    f="$HOME/$p"
+    [[ $p == .config/omarchy/* ]] && HAS_OMARCHY=true
+    [[ $p == .config/haseen/shell.json ]] && HASEEN_NATIVE=true
+    in_hypr=false
+    $OMARCHY_HYPR && [[ $p == "$HYPR_REL"/* ]] && in_hypr=true
+    if [[ ! -e $f && ! -L $f ]]; then
+        if $in_hypr; then HYPR_SKIP+=("$p"); else NEW+=("$p"); fi
+    elif local_matches "$i"; then
+        SAME+=("$p")
+    elif [[ -d $f && ! -L $f ]]; then
+        BLOCKED+=("$p")
+    elif $in_hypr; then
+        HYPR_KEEP+=("$p")
+    elif protected "$p"; then
+        PROTECTED+=("$p")
+    else
+        CONFLICT+=("$p")
+    fi
+done
+
+RUN_IMPORT=false
+$HAS_OMARCHY && ! $HASEEN_NATIVE && RUN_IMPORT=true
+import_args=(--merge)
+$OMARCHY_HYPR && import_args+=(--hypr "$OMARCHY_HYPR_DIR/$HYPR_REL")
+$ASSUME_YES && import_args+=(--yes)
+
+# list TITLE PATHS... — one indented ~/path per line under TITLE.
+list() {
+    local title="$1"
+    shift
+    (($# > 0)) || return 0
+    echo "$title"
+    printf '    ~/%s\n' "$@"
+}
+
+echo "Dotfiles: $URL${BRANCH:+ (branch $BRANCH)}"
+echo "  ${#paths[@]} files: ${#NEW[@]} new, ${#SAME[@]} already identical, ${#CONFLICT[@]} replaced"
+if ((${#NEW[@]} > 0)); then
+    echo "New, by directory:"
+    printf '%s\n' "${NEW[@]}" | awk -F/ '{ print (NF > 2 ? $1 "/" $2 : (NF == 2 ? $1 : "~")) }' |
+        sort | uniq -c | sort -rn | awk '{ printf "    %5d  %s\n", $1, ($2 == "~" ? "(home)" : "~/" $2) }'
+fi
+list "Replaced by the repo's version, after a backup to $BACKUP_DIR:" "${CONFLICT[@]+"${CONFLICT[@]}"}"
+if $OMARCHY_HYPR; then
+    echo "The repo's hyprland.lua does not load haseen (an Omarchy config), so haseen's files in ~/$HYPR_REL stay;"
+    echo "  the repo's copy goes to $OMARCHY_HYPR_DIR/$HYPR_REL"
+    list "  Kept (haseen's, differ from the repo):" "${HYPR_KEEP[@]+"${HYPR_KEEP[@]}"}"
+    list "  Not placed (the repo's, Omarchy format):" "${HYPR_SKIP[@]+"${HYPR_SKIP[@]}"}"
+fi
+list "Kept (plugin directories are never rewritten):" "${PROTECTED[@]+"${PROTECTED[@]}"}"
+list "Skipped (a directory is in the way):" "${BLOCKED[@]+"${BLOCKED[@]}"}"
+if $RUN_IMPORT; then
+    echo "Then: haseen import omarchy ${import_args[*]}"
+elif $HAS_OMARCHY; then
+    echo "Omarchy import: skipped (the repo tracks ~/.config/haseen/shell.json: it is set up for haseen already)"
+fi
+if $BOOTSTRAP; then
+    echo "Then: yadm bootstrap"
+else
+    echo "yadm bootstrap: not run (pass --bootstrap to run it)"
+fi
+
+confirm "Clone $URL into $HOME with yadm?" || exit 1
+
+# --- apply -------------------------------------------------------------------------
+
+cd "$HOME"
+pkg_install yadm
+
+if ((${#CONFLICT[@]} > 0)); then
+    run mkdir -p "$BACKUP_DIR"
+    run cp -a --parents -- "${CONFLICT[@]}" "$BACKUP_DIR/"
+fi
+
+yadm_args=(clone --no-bootstrap)
+[[ -z $BRANCH ]] || yadm_args+=(-b "$BRANCH")
+run yadm "${yadm_args[@]}" "$URL"
+# yadm clone leaves every differing file alone; the backups are taken, so the
+# repo's version wins now.
+((${#CONFLICT[@]} == 0)) || run yadm checkout -- "${CONFLICT[@]}"
+
+if $OMARCHY_HYPR; then
+    # yadm clone placed the Omarchy files that were missing here; take them
+    # back out (they stay in the repo) and make sure haseen's seed is there.
+    ((${#HYPR_SKIP[@]} == 0)) || run rm -f -- "${HYPR_SKIP[@]}"
+    seed_user_file "$HYPR_SEED" "$HOME/$HYPR_REL/hyprland.lua"
+    run mkdir -p "$OMARCHY_HYPR_DIR"
+    run git --git-dir="$PLAN_GIT" --work-tree="$OMARCHY_HYPR_DIR" checkout -q HEAD -- "$HYPR_REL"
+fi
+
+if $RUN_IMPORT; then
+    run "$BIN_DIR/haseen-import-omarchy" "${import_args[@]}" ||
+        warn "the Omarchy import failed; run it again with: haseen import omarchy ${import_args[*]}"
+fi
+
+if $BOOTSTRAP; then
+    run yadm bootstrap || warn "yadm bootstrap failed (exit $?)"
+fi
+
+$DRY_RUN && exit 0
+info "dotfiles from $URL are in place (${#NEW[@]} new, ${#CONFLICT[@]} replaced)"
+((${#CONFLICT[@]} == 0)) || info "replaced files are backed up in $BACKUP_DIR"
+if $OMARCHY_HYPR; then
+    info "haseen's ~/$HYPR_REL stays: \`yadm status\` lists it as changed until the repo carries a hyprland.lua that loads haseen"
+fi
+((${#PROTECTED[@]} + ${#BLOCKED[@]} == 0)) || info "files left as they were show as changed in \`yadm status\`"
