@@ -1,0 +1,12 @@
+# The handler for dms:// links (bin/haseen-plugin-url). Shape of
+# DankMaterialShell assets/dms-open.desktop (MIT, Copyright (c) 2025 Avenge
+# Media LLC), narrowed to the dms scheme. The shell layer makes it the default.
+[Desktop Entry]
+Type=Application
+Name=haseen plugin link
+Comment=Install a plugin from the DankMaterialShell plugin gallery
+Exec=haseen-plugin-url %u
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/dms;
+Categories=Utility;

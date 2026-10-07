@@ -1,8 +1,9 @@
 // Package sysusage samples what haseen.sysusage shows: CPU, memory, GPU busy
-// and the top processes. The QML plugin used to do this itself, with a 3 s
-// Timer, five FileViews and a `top -b -n 2` process per tick; here it is one
-// sampler shared by every subscriber, and the process list is read straight
-// from /proc instead of forking top.
+// and the top processes, plus, on request, the system stats DMS desktop plugins
+// read (temperature, clock, network, disks). The QML plugin used to do this
+// itself, with a 3 s Timer, five FileViews and a `top -b -n 2` process per
+// tick; here it is one sampler shared by every subscriber, and the process list
+// is read straight from /proc instead of forking top.
 package sysusage
 
 import (
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -19,14 +21,20 @@ import (
 // it is "" (the live machine) everywhere else.
 type Sampler struct {
 	Root string
+	// Statfs sizes the disks (nil = syscall.Statfs). A fixture tree has no
+	// mounted filesystems to ask, so tests fake it.
+	Statfs func(path string, st *syscall.Statfs_t) error
 
 	prevCPU    cpuTimes
 	havePrev   bool
 	prevProc   map[int]procTimes
 	prevProcAt time.Time
 	gpu        gpuState
+	sys        sysState
 }
 
+// Sample is one sysusage event. The embedded *System adds cpuTempC,
+// cpuFreqMHz, net and disks at the top level only when it is set.
 type Sample struct {
 	CPU       float64   `json:"cpu"`
 	Mem       *Mem      `json:"mem"`
@@ -34,6 +42,7 @@ type Sample struct {
 	GPUs      []GPU     `json:"gpus"`
 	GPUInfo   *GPU      `json:"gpuInfo"`
 	Processes []Process `json:"processes"`
+	*System
 }
 
 type Mem struct {
@@ -66,14 +75,22 @@ func (s *Sampler) path(p string) string { return filepath.Join(s.Root, p) }
 
 // Sample reads one tick. gpuChoice is "auto", "off" or a card name, the same
 // values haseen.sysusage's `gpu` setting takes. wantProcesses adds the process
-// list, which only the panel needs.
-func (s *Sampler) Sample(gpuChoice string, wantProcesses bool) Sample {
+// list, which only the panel needs; wantSystem adds System, which only the DMS
+// compat layer needs.
+func (s *Sampler) Sample(gpuChoice string, wantProcesses, wantSystem bool) Sample {
 	out := Sample{CPU: -1, GPU: -1, Processes: []Process{}}
 	out.CPU = s.cpuPercent()
 	out.Mem = s.mem()
 	out.GPUs, out.GPUInfo, out.GPU = s.gpuSample(gpuChoice)
 	if wantProcesses {
 		out.Processes = s.processes(8)
+	}
+	if wantSystem {
+		out.System = s.system()
+	} else {
+		// A subscriber that asks again later gets -1 first, not the average
+		// over the time nobody was asking.
+		s.sys.net = nil
 	}
 	return out
 }

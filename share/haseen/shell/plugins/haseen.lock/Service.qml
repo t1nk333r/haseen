@@ -45,6 +45,8 @@ Scope {
     readonly property string pamConfigDirectory: _text(settings.pamConfigDirectory, "/etc/pam.d")
     readonly property bool fingerprintEnabled: settings.fingerprint !== false
     readonly property string fingerprintPamConfig: _text(settings.fingerprintPamConfig, "haseen-lock-fingerprint")
+    // Silence after which a fingerprint conversation counts as hung (_fingerprintStall).
+    readonly property int fingerprintStallMs: typeof settings.fingerprintStallMs === "number" && settings.fingerprintStallMs >= 100 ? Math.round(settings.fingerprintStallMs) : 5000
     readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
 
     // Result of the last fprintd check (refreshFingerprint()).
@@ -55,6 +57,8 @@ Scope {
     property bool _fingerprintGaveUp: false
     property int _fingerprintQuickFailures: 0
     property double _fingerprintStartedAt: 0
+    // The current conversation was aborted as hung; its late end is ignored.
+    property bool _fingerprintStalled: false
 
     property bool previewShown: false
     // Our own record of "a lock was asked for and not yet released". Not
@@ -197,18 +201,48 @@ Scope {
     // On a real lock, only once the compositor confirms it (secure), so a
     // touch can never "unlock" a session that is not locked yet.
     function _startFingerprint(): void {
-        if (!fingerprintAvailable || fingerprintPam.active || fingerprintRetry.running)
+        if (!fingerprintAvailable || fingerprintRetry.running)
             return;
+        if (fingerprintPam.active) {
+            // Still holding a conversation aborted as hung: that is another
+            // failure, so a context that never lets go reaches the give-up.
+            if (_fingerprintStalled) {
+                _fingerprintStartedAt = Date.now();
+                _fingerprintFinished(false);
+            }
+            return;
+        }
         if (!previewShown && !(lockRequested && sessionLock.secure))
             return;
         fingerprintError = false;
+        _fingerprintStalled = false;
         _fingerprintStartedAt = Date.now();
-        if (!fingerprintPam.start())
+        fingerprintStall.restart();
+        if (!fingerprintPam.start()) {
+            fingerprintStall.stop();
             _fingerprintFinished(false);
+        }
+    }
+
+    // A conversation that neither speaks nor ends has hung: pam_fprintd says
+    // "Place your finger…" as soon as it holds the reader, and a stack that
+    // cannot reach it fails at once. Seen on CI: a context restarted every 2 s
+    // stopped answering, and fingerprint was then dead for the whole lock.
+    // Abort it and count it as a failure that came at once, so the retry and
+    // give-up rules above apply.
+    function _fingerprintStall(): void {
+        if (!fingerprintPam.active)
+            return;
+        console.warn(pluginId + ": the fingerprint conversation stopped answering; restarting it");
+        _fingerprintStalled = true;
+        fingerprintPam.abort();
+        _fingerprintStartedAt = Date.now();
+        _fingerprintFinished(false);
     }
 
     function _stopFingerprint(): void {
         fingerprintRetry.stop();
+        fingerprintStall.stop();
         if (fingerprintPam.active)
             fingerprintPam.abort();
         fingerprintError = false;
@@ -281,6 +315,7 @@ Scope {
         // fingerprint"). A stack that asks for typed input cannot be answered
         // from here, and waiting on it would hold the context forever.
         onPamMessage: {
+            fingerprintStall.stop();
             if (responseRequired) {
                 console.warn(root.pluginId + ": " + root.fingerprintPamConfig + " asks for input; fingerprint unlock is off until the next lock");
                 abort();
@@ -290,7 +325,15 @@ Scope {
             root.fingerprintError = messageIsError;
         }
         // An error is followed by completed(Error), so this sees every end.
-        onCompleted: result => root._fingerprintFinished(result === PamResult.Success)
+        // The end of a conversation aborted as hung was already counted.
+        onCompleted: result => {
+            fingerprintStall.stop();
+            if (root._fingerprintStalled) {
+                root._fingerprintStalled = false;
+                return;
+            }
+            root._fingerprintFinished(result === PamResult.Success);
+        }
     }
 
     // Single shot, armed only when a fingerprint attempt has ended (250 ms
@@ -302,6 +345,17 @@ Scope {
 
         repeat: false
         onTriggered: root._startFingerprint()
+    }
+
+    // Single shot, armed for each fingerprint attempt and stopped by its first
+    // message or its end (_fingerprintStall).
+    // haseen:ui-timeout
+    Timer {
+        id: fingerprintStall
+
+        interval: root.fingerprintStallMs
+        repeat: false
+        onTriggered: root._fingerprintStall()
     }
 
     // `fprintd-list` prints each enrolled finger as " - #0: right-index-finger"

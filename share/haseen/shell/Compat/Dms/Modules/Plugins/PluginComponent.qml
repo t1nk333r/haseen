@@ -7,16 +7,18 @@ import qs.Services
 // qs.Modules.Plugins.PluginComponent for DankMaterialShell plugins
 // (architecture 5.4): the root of a DMS bar widget. It draws the plugin's
 // horizontalBarPill in a hover cell, runs pillClickAction /
-// pillRightClickAction, and keeps pluginData in sync with SettingsData.
+// pillRightClickAction, opens popoutContent in a PluginPopout, and keeps
+// pluginData in sync with SettingsData.
 //
-// The property names and the pill-action calling convention
-// (action() or action(x, y, width, section, screen)) follow
-// DankMaterialShell's quickshell/Modules/Plugins/PluginComponent.qml
-// (MIT, Copyright (c) 2025 Avenge Media LLC).
+// The property names, the pill-action calling convention
+// (action() or action(x, y, width, section, screen)) and the click order
+// (pillClickAction, else the popout) follow DankMaterialShell's
+// quickshell/Modules/Plugins/PluginComponent.qml (MIT, Copyright (c) 2025
+// Avenge Media LLC).
 //
 // Not provided by haseen, so declared only for the plugins that set them:
-//   - popouts (popoutContent): a click logs once; nothing opens;
-//   - the control center (cc*) and attached expansions;
+//   - the control center (cc*) and attached expansions (attachedContent
+//     without a popout: a click logs once; nothing opens);
 //   - vertical bars (verticalBarPill is never shown: the haseen bar is
 //     horizontal);
 //   - visibilityInterval polling: visibilityCommand runs once per change.
@@ -146,6 +148,7 @@ Item {
     }
 
     function closePopout() {
+        pluginPopout.close();
     }
 
     function runPillAction(action) {
@@ -159,16 +162,20 @@ Item {
         action(p.x, p.y, pill.width, section, parentScreen);
     }
 
-    property bool _popoutWarned: false
+    property bool _attachedWarned: false
 
     function triggerPopout() {
         if (pillClickAction) {
             runPillAction(pillClickAction);
             return;
         }
-        if ((hasPopout || attachedContent !== null) && !_popoutWarned) {
-            _popoutWarned = true;
-            console.warn("haseen: plugin", pluginId + ": DMS popouts are not supported by the compat adapter");
+        if (hasPopout) {
+            pluginPopout.toggle();
+            return;
+        }
+        if (attachedContent !== null && !_attachedWarned) {
+            _attachedWarned = true;
+            console.warn("haseen: plugin", pluginId + ": DMS attached expansions are not supported by the compat adapter");
         }
     }
 
@@ -208,5 +215,15 @@ Item {
                     root.triggerPopout();
             }
         }
+    }
+
+    PluginPopout {
+        id: pluginPopout
+
+        pluginId: root.pluginId
+        anchorItem: pill
+        contentWidth: root.popoutWidth
+        contentHeight: root.popoutHeight
+        pluginContent: root.popoutContent
     }
 }

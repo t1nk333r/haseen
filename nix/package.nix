@@ -67,6 +67,7 @@ stdenvNoCC.mkDerivation {
 
     mkdir -p "$out/bin" "$out/libexec/haseen" "$out/share"
     cp -r share/haseen "$out/share/haseen"
+    install -Dm0644 -t "$out/share/applications" share/haseen/default/applications/*.desktop
     install -m 0755 bin/haseen* "$out/libexec/haseen/"
     for f in "$out"/libexec/haseen/haseen*; do
         makeWrapper "$f" "$out/bin/''${f##*/}" \

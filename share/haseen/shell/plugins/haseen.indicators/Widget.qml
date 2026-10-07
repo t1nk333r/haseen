@@ -17,6 +17,20 @@ import "Indicators.js" as Logic
 // others inline, which widens the widget, and in the centre section that
 // shifted the clock and every other module on each hover. Here they open in a
 // strip laid over the bar beside the widget, so the bar never moves.
+//
+// While the pointer is on the widget or its strip, every cell stays where it
+// is: a click turns it on or off in place (it dims or lights up), and the bar
+// takes the new layout, one cell wider or narrower, only once the pointer has
+// left. A block that resized under the pointer moved the cells away from it,
+// re-centred the modules beside it, and Qt re-checks the hover before it lays
+// the bar out again, so the strip closed under a resting pointer and opened
+// again at the next unrelated repaint.
+//
+// The strip is an item drawn over the widget's own window, not a popup: it
+// moves with the widget in the same frame and goes away with it. A popup's
+// anchor stays where the widget was until the popup is resized, and a popup
+// shrunk before it closes is redrawn by the compositor, fading, at the new
+// spot over the clock.
 Item {
     id: root
 
@@ -35,22 +49,59 @@ Item {
         "idle-off": Flags.idleOff,
         "screensaver-off": Flags.screensaverOff
     })
-    property bool revealHeld: false
-    readonly property bool reveal: settings.alwaysShow === true || revealHeld
-    readonly property var activeCells: parts.active.map(id => ({ id: id, active: true }))
-    readonly property var revealCells: reveal ? parts.inactive.map(id => ({ id: id, active: false })) : []
+    // The pointer is on the widget or its strip, or left them less than the
+    // grace ago.
+    property bool held: false
+    // The split as it was when the pointer arrived, kept while it is held.
+    property var heldParts: null
+    // Which cells sit in the bar (active) and which in the strip (inactive).
+    readonly property var placed: heldParts !== null ? heldParts : parts
+    readonly property bool reveal: settings.alwaysShow === true || held
     // With nothing on, a sliver stays to hover over.
     readonly property int hoverZone: ids.length > 0 ? Theme.gap : 0
-    readonly property bool hovered: hover.hovered || revealHovered
-    property bool revealHovered: false
+    readonly property bool hovered: hover.hovered || (strip !== null && strip.hovered)
+    // The open strip, or null.
+    readonly property Item strip: stripLoader.item
 
-    property Item tipItem: null
+    // The widget's corner in its window. Every ancestor's position is read,
+    // so this follows the widget when the bar lays it out again (a
+    // neighbour's width changes, the section re-centres, the slot moves into
+    // the overflow panel); mapToItem alone is not re-evaluated then.
+    // inView is false while a clipping ancestor has no room for it (a widget
+    // parked for the overflow panel).
+    readonly property var corner: {
+        let x = 0;
+        let y = 0;
+        let inView = true;
+        for (let item = root; item !== null; item = item.parent) {
+            x += item.x;
+            y += item.y;
+            if (item.clip && (item.width <= 0 || item.height <= 0))
+                inView = false;
+        }
+        return {
+            x: x,
+            y: y,
+            inView: inView
+        };
+    }
+
+    property IndicatorCell tipItem: null
+    // Kept after the pointer leaves the cell: a tooltip window emptied before
+    // it closes is shrunk first, and the compositor fades the old picture
+    // out at the shrunk window's place.
     property string tipText: ""
 
-    implicitWidth: activeCells.length > 0 ? grid.implicitWidth : hoverZone
-    implicitHeight: vertical ? (activeCells.length > 0 ? grid.implicitHeight : hoverZone) : Config.barHeight
+    implicitWidth: placed.active.length > 0 ? grid.implicitWidth : hoverZone
+    implicitHeight: vertical ? (placed.active.length > 0 ? grid.implicitHeight : hoverZone) : Config.barHeight
 
-    function showTip(item: Item, on: bool): void {
+    function isOn(id: string): bool {
+        return parts.active.indexOf(id) >= 0;
+    }
+
+    // A cell calls this when the pointer enters or leaves it, and again when
+    // its state flips under the pointer (the tooltip says what a click does).
+    function showTip(item: IndicatorCell, on: bool): void {
         if (on) {
             tipItem = item;
             tipText = item.cell.tooltip;
@@ -62,18 +113,19 @@ Item {
     onHoveredChanged: {
         if (hovered) {
             hideTimer.stop();
-            revealHeld = true;
+            held = true;
         } else {
             hideTimer.restart();
         }
     }
+    onHeldChanged: heldParts = held ? parts : null
 
     HoverHandler {
         id: hover
     }
 
-    // The pointer crosses from the bar into the strip, a separate surface;
-    // a short grace keeps the strip from closing on the way.
+    // A short grace keeps the strip open while the pointer crosses between
+    // the widget and the strip, or skims off the edge.
     // haseen:ui-timeout
     Timer {
         id: hideTimer
@@ -81,70 +133,76 @@ Item {
         repeat: false
         onTriggered: {
             if (!root.hovered)
-                root.revealHeld = false;
+                root.held = false;
         }
     }
 
     Grid {
         id: grid
         anchors.centerIn: parent
-        columns: root.vertical ? 1 : Math.max(1, root.activeCells.length)
+        columns: root.vertical ? 1 : Math.max(1, root.placed.active.length)
 
         Repeater {
-            model: root.activeCells
+            // Keeps the cells that stay when the list changes.
+            model: ScriptModel {
+                values: root.placed.active
+            }
 
             delegate: IndicatorCell {
+                id: barCell
                 host: root
                 vertical: root.vertical
+                active: root.isOn(barCell.modelData)
             }
         }
     }
 
     // The dimmed indicators, beside the widget on the bar's own row (above
-    // it on a side bar), toward the start of the bar so the active block
-    // keeps its neighbour. At the start edge the compositor flips the strip
-    // to the other side. A popup draws over the bar, so nothing reflows.
-    LazyLoader {
-        active: root.revealCells.length > 0
+    // it in a side bar), toward the start of the bar so the active block
+    // keeps its neighbour; at the start edge, on the other side. Over every
+    // other item of the window, so nothing reflows and nothing covers it.
+    Loader {
+        id: stripLoader
 
-        PopupWindow {
-            visible: true
-            color: "transparent"
-            anchor.item: root
-            anchor.edges: root.vertical ? Edges.Top | Edges.Left : Edges.Left | Edges.Top
-            anchor.gravity: root.vertical ? Edges.Top | Edges.Right : Edges.Left | Edges.Bottom
-            anchor.adjustment: PopupAdjustment.Flip
-            // Never 0: the strip empties a moment before the loader drops the
-            // window, and a popup repositioned to size 0 is a protocol error
-            // that kills the shell's Wayland connection.
-            implicitWidth: Math.max(1, root.vertical ? root.width : strip.implicitWidth)
-            implicitHeight: Math.max(1, root.vertical ? strip.implicitHeight : Config.barHeight)
-            onVisibleChanged: if (!visible) root.revealHovered = false
+        readonly property real before: root.vertical ? root.corner.y - height : root.corner.x - width
+        readonly property bool flipped: before < 0
 
-            Rectangle {
-                anchors.fill: parent
-                color: Theme.background
-                radius: Theme.radius
+        parent: root.Window.contentItem
+        z: 1
+        active: root.reveal && parent !== null && root.corner.inView && root.placed.inactive.length > 0
+        x: root.vertical ? root.corner.x : flipped ? root.corner.x + root.width : before
+        y: !root.vertical ? root.corner.y : flipped ? root.corner.y + root.height : before
 
-                HoverHandler {
-                    onHoveredChanged: root.revealHovered = hovered
-                }
+        sourceComponent: Rectangle {
+            readonly property bool hovered: stripHover.hovered
 
-                Grid {
-                    id: strip
-                    anchors.centerIn: parent
-                    columns: root.vertical ? 1 : Math.max(1, root.revealCells.length)
+            implicitWidth: root.vertical ? root.width : cells.implicitWidth
+            implicitHeight: root.vertical ? cells.implicitHeight : Config.barHeight
+            color: Theme.background
+            radius: Theme.radius
 
-                    Repeater {
-                        model: root.revealCells
+            HoverHandler {
+                id: stripHover
+            }
 
-                        delegate: IndicatorCell {
-                            host: root
-                            vertical: root.vertical
-                            // The strip has the bar's colour even when the
-                            // bar itself is see-through.
-                            color: Theme.foreground
-                        }
+            Grid {
+                id: cells
+                anchors.centerIn: parent
+                columns: root.vertical ? 1 : Math.max(1, root.placed.inactive.length)
+
+                Repeater {
+                    model: ScriptModel {
+                        values: root.placed.inactive
+                    }
+
+                    delegate: IndicatorCell {
+                        id: stripCell
+                        host: root
+                        vertical: root.vertical
+                        active: root.isOn(stripCell.modelData)
+                        // The strip has the bar's colour even when the
+                        // bar itself is see-through.
+                        color: Theme.foreground
                     }
                 }
             }

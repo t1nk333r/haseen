@@ -55,6 +55,9 @@ if [[ -x $QS_BIN && -e /usr/lib/security/pam_permit.so ]]; then
     PAM="$SANDBOX/pam"
     printf 'auth required pam_permit.so\naccount required pam_permit.so\n' | tee "$PAM/pw-permit" >"$PAM/fp-permit"
     printf 'auth required pam_deny.so\naccount required pam_permit.so\n' | tee "$PAM/pw-deny" >"$PAM/fp-deny"
+    # A conversation that never answers: pam_exec waits on a command that
+    # shows no message and does not end in time.
+    printf 'auth required pam_exec.so /usr/bin/sleep 20\naccount required pam_permit.so\n' >"$PAM/fp-hang"
     # fprintd-list's real output for a user with one enrolled finger.
     stub fprintd-list "printf '%s\n' 'found 1 devices' 'Device at /net/reactivated/Fprint/Device/0' 'Using device /net/reactivated/Fprint/Device/0' \"Fingerprints for user \$1 on Synaptics Sensors (press):\" ' - #0: right-index-finger'"
 
@@ -70,6 +73,7 @@ ShellRoot {
     property var result: ({})
     property var a: null
     property var b: null
+    property var h: null
     property var d: null
     property var e: null
     function make(fp: string, extra: var): var {
@@ -89,7 +93,8 @@ ShellRoot {
     }
     Component.onCompleted: {
         a = make("fp-permit", {});
-        b = make("fp-deny", {});
+        b = make("fp-deny", { fingerprintStallMs: 1000 });
+        h = make("fp-hang", { fingerprintStallMs: 300 });
         d = make("fp-absent", {});
         e = make("fp-permit", { fingerprint: false });
         const v = Qt.createComponent("file://$PLUGIN/LockView.qml");
@@ -131,6 +136,7 @@ ShellRoot {
             } else if (probe.phase === 1 && !probe.a.previewShown) {
                 probe.result.fingerprintUnlocked = true;
                 probe.b.lock();
+                probe.h.lock();
                 probe.phase = 2;
                 probe.mark = probe.tick;
             } else if (probe.phase === 1 && t > 50) {
@@ -147,8 +153,9 @@ ShellRoot {
                 probe.result.offeredAfterWrong = probe.b.fingerprintAvailable;
                 probe.phase = 4;
                 probe.mark = probe.tick;
-            } else if (probe.phase === 4 && (probe.b._fingerprintGaveUp || t > 400) /* 5 retries 2 s apart: 40 s for a loaded CI runner */) {
+            } else if (probe.phase === 4 && ((probe.b._fingerprintGaveUp && probe.h._fingerprintGaveUp) || t > 400) /* 5 retries 2 s apart: 40 s for a loaded CI runner */) {
                 probe.result.gaveUpOnDeadReader = probe.b._fingerprintGaveUp;
+                probe.result.gaveUpOnHungReader = probe.h._fingerprintGaveUp;
                 probe.result.disabledStillShown = probe.e.previewShown;
                 probe.e.closePreview();
                 const s = Object.assign({}, probe.b.settings);
@@ -179,6 +186,10 @@ QML
     assert_eq "a wrong password still says so" "Wrong password" "$(jq -r .wrongMessage <<<"$RESULT")"
     assert_eq "and keeps the lock" true "$(jq -r .shownAfterWrong <<<"$RESULT")"
     assert_eq "a reader that fails at once is given up on" true "$(jq -r .gaveUpOnDeadReader <<<"$RESULT")"
+    if [[ -e /usr/lib/security/pam_exec.so ]]; then
+        assert_contains "a conversation that stops answering is aborted" "$OUTPUT" "fingerprint conversation stopped answering"
+        assert_eq "and a reader that keeps hanging is given up on" true "$(jq -r .gaveUpOnHungReader <<<"$RESULT")"
+    fi
     assert_eq "fingerprint off: no unlock without a password" true "$(jq -r .disabledStillShown <<<"$RESULT")"
     assert_eq "the right password unlocks" true "$(jq -r .passwordUnlocked <<<"$RESULT")"
     assert_eq "the hint shows inside the field" true "$(jq -r .hintShown <<<"$RESULT")"

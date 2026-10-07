@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Haseen
+import qs.Compat as Compat
 import qs.Services as Dms
 import "Host.js" as Host
 import "Layers.js" as Layers
@@ -12,7 +13,8 @@ import "Layers.js" as Layers
 // Media LLC), the daemon gets pluginId (the DMS id, which its own
 // savePluginData calls use) and pluginService; shell.json settings reach it
 // as pluginData. Under the software renderer its layer effects are turned
-// off (Layers.js). A daemon that fails to compile is reported once through
+// off (Layers.js). A daemon that fails to compile, or whose plugin.json
+// `startupCheck` refuses (DmsStartupGate), is reported once through
 // Plugins.reportError and nothing else starts.
 Scope {
     id: host
@@ -25,6 +27,11 @@ Scope {
     property var instance: null
     property var _cancelLoad: null
     property bool _destroying: false
+    // Shared with the startup check's callback, which can answer after this
+    // host is gone and must not touch it then.
+    property var _life: ({
+            gone: false
+        })
 
     onSettingsChanged: {
         if (instance !== null && typeof instance.loadPluginData === "function")
@@ -35,6 +42,14 @@ Scope {
         const url = Plugins.entryUrl(pluginId, "service");
         const record = Plugins.registry[pluginId];
         const upstream = record ? record.upstreamId : "";
+        const life = _life;
+        Compat.DmsStartupGate.run(pluginId, ok => {
+            if (ok && !life.gone)
+                host._build(url, upstream);
+        });
+    }
+
+    function _build(url: string, upstream: string): void {
         _cancelLoad = Host.load(url, host, result => {
             if (host._destroying) {
                 if (result.item)
@@ -62,6 +77,7 @@ Scope {
     // The daemon dies before its component (Host.load).
     Component.onDestruction: {
         _destroying = true;
+        _life.gone = true;
         if (instance !== null)
             instance.destroy();
         instance = null;

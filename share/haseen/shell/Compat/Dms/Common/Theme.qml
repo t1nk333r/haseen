@@ -22,6 +22,14 @@ Singleton {
     readonly property color primaryText: Haseen.Theme.accentFg
     readonly property color onPrimary: Haseen.Theme.accentFg
     readonly property color primaryContainer: Haseen.Theme.selection
+    // Accent state layers and the opaque card surface, derived as DMS does
+    // (haseen draws no translucent popups, so readableSurface is opaque).
+    readonly property color primaryHover: withAlpha(primary, 0.12)
+    readonly property color primaryPressed: withAlpha(primary, 0.16)
+    readonly property color primarySelected: withAlpha(primary, 0.3)
+    readonly property color readableSurface: Haseen.Theme.background
+    readonly property color inverseSurface: Haseen.Theme.foreground
+    readonly property color inverseOnSurface: Haseen.Theme.background
     readonly property color secondary: Haseen.Theme.accent
     readonly property color secondaryContainer: Haseen.Theme.selection
     readonly property color onSecondaryContainer: Haseen.Theme.foreground
@@ -47,6 +55,11 @@ Singleton {
     readonly property color success: Haseen.Theme.success
     readonly property color widgetIconColor: Haseen.Theme.foreground
     readonly property color widgetTextColor: Haseen.Theme.foreground
+    // A card inside a popout, error-tinted hover, secondary text: DMS
+    // derives them from the tokens above the same way.
+    readonly property color nestedSurface: Haseen.Theme.surfaceAlt
+    readonly property color errorHover: withAlpha(error, 0.12)
+    readonly property color surfaceTextMedium: withAlpha(surfaceText, 0.7)
 
     function withAlpha(c: color, a: real): color {
         return Qt.rgba(c.r, c.g, c.b, a);

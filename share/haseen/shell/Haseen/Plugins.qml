@@ -50,12 +50,15 @@ Singleton {
     readonly property var panelIds: Object.keys(registry).filter(id => registry[id].valid && registry[id].kinds.indexOf("panel") >= 0)
 
     // Service and overlay companions are shared across all screens. A listed
-    // legacy widget can depend on both, even when only the widget is configured.
+    // legacy widget can depend on both, even when only the widget is
+    // configured: an Omarchy widget on its service, a DMS bar pill on the
+    // daemon or desktop surface of the same plugin (DMS loads every surface
+    // of an enabled plugin).
     readonly property var serviceIds: {
         const ids = Config.services.filter(id => Config.isEnabled(id));
         for (const id of Config.section("left").concat(Config.section("center"), Config.section("right"))) {
             const rec = registry[id];
-            if (rec && rec.valid && rec.compat === "omarchy" && Config.isEnabled(id)
+            if (rec && rec.valid && rec.compat !== "" && Config.isEnabled(id)
                     && (rec.kinds.indexOf("service") >= 0 || rec.kinds.indexOf("overlay") >= 0) && ids.indexOf(id) < 0)
                 ids.push(id);
         }
@@ -69,7 +72,7 @@ Singleton {
         const keys = [];
         for (const id of serviceIds) {
             const rec = registry[id];
-            if (rec && rec.valid && rec.compat === "omarchy") {
+            if (rec && rec.valid && rec.compat !== "") {
                 for (const kind of ["service", "overlay"])
                     if (rec.kinds.indexOf(kind) >= 0)
                         keys.push(kind + ":" + id);
@@ -105,7 +108,11 @@ Singleton {
             const file = kind === "service" || kind === "overlay" ? "OmarchyServiceHost.qml" : "OmarchyHost.qml";
             return Paths.fileUrl(Paths.shellDir + "/Compat/" + file);
         }
-        return Paths.fileUrl(Paths.shellDir + "/Compat/" + (kind === "service" ? "DmsServiceHost.qml" : "DmsHost.qml"));
+        const dmsHosts = {
+            "service": "DmsServiceHost.qml",
+            "overlay": "DmsDesktopHost.qml"
+        };
+        return Paths.fileUrl(Paths.shellDir + "/Compat/" + (dmsHosts[kind] || "DmsHost.qml"));
     }
 
     function entryUrl(id: string, kind: string): string {

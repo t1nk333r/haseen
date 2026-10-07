@@ -28,7 +28,11 @@ const (
 )
 
 // StreamSysusage is the only stream today: CPU, memory, GPU and the process
-// list that haseen.sysusage used to poll from QML.
+// list that haseen.sysusage used to poll from QML. Subscribe params:
+// intervalMs, gpu ("auto"/"off"/"cardN"), processes (adds `processes`) and
+// system (adds `cpuTempC`, `cpuFreqMHz`, `net` {rxBps, txBps} and `disks`, which
+// the DMS compat DgopService reads; absent unless some subscriber asks). The
+// payload is sysusage.Sample.
 const StreamSysusage = "sysusage"
 
 // Hello is the first line the daemon writes. `capabilities` is the contract:

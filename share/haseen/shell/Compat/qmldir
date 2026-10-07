@@ -5,4 +5,7 @@ OmarchyHost 1.0 OmarchyHost.qml
 OmarchyServiceHost 1.0 OmarchyServiceHost.qml
 DmsHost 1.0 DmsHost.qml
 DmsServiceHost 1.0 DmsServiceHost.qml
+DmsDesktopHost 1.0 DmsDesktopHost.qml
+DmsDesktopWindow 1.0 DmsDesktopWindow.qml
+singleton DmsStartupGate 1.0 DmsStartupGate.qml
 Tooltip 1.0 Tooltip.qml

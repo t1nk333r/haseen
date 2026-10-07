@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Haseen
+import qs.Compat as Compat
 import qs.Services as Dms
 import "Host.js" as Host
 import "Layers.js" as Layers
@@ -13,7 +14,8 @@ import "Layers.js" as Layers
 // bar thickness. Under the software renderer its layer effects are turned
 // off (Layers.js). A plugin that fails to compile (an import or type the
 // adapter does not provide) is reported once through Plugins.reportError
-// and takes no room.
+// and takes no room; so does one whose plugin.json `startupCheck` refuses
+// (DmsStartupGate).
 Item {
     id: host
 
@@ -36,9 +38,23 @@ Item {
             widget.loadPluginData();
     }
 
+    // Set to true on destruction; the startup check can answer later.
+    property var _life: ({
+            gone: false
+        })
+    Component.onDestruction: _life.gone = true
+
     Component.onCompleted: {
         const url = Plugins.entryUrl(pluginId, "bar-widget");
         const upstream = record ? record.upstreamId : "";
+        const life = _life;
+        Compat.DmsStartupGate.run(pluginId, ok => {
+            if (ok && !life.gone)
+                host._build(url, upstream);
+        });
+    }
+
+    function _build(url: string, upstream: string): void {
         Host.load(url, host, result => {
             if (result.error !== "") {
                 // Deferred: see OmarchyHost.

@@ -91,6 +91,15 @@ assert_eq "ScreenRecording: stop is screenrecord --stop" '["haseen","capture","s
 # on may take room; the revealed ones open over the bar. The sandbox bar has
 # the pager, idle and privacy widgets, so the entries are NightLight (on here)
 # and Screensaver.
+#
+# Switching one off (or on) under the pointer used to resize the widget under
+# it: the bar re-centred, the strip closed under the resting pointer and came
+# back at the next repaint, and the strip, a popup, stayed where the widget had
+# been. Now the cells keep their place while the pointer is on the widget, the
+# bar takes the one-cell change once it has left, and the strip follows the
+# widget wherever the bar lays it out. Qt's offscreen platform has a pointer
+# resting near the window's corner: a widget moved under it has the pointer on
+# it, and moved away, the pointer has left (real hover events, no faked state).
 QS_BIN=${QS_BIN:-/usr/bin/qs}
 if [[ -x $QS_BIN ]]; then
     shell="$SANDBOX/widget"
@@ -108,30 +117,82 @@ import qs.Haseen
 ShellRoot {
     id: probe
     property int tick: 0
+    property int stage: 0
+    property int since: 0
+    property var out: ({})
     property var hidden: null
     property var shown: null
-    function make(settings) {
+    property var edge: null
+    property var side: null
+    property var rest: null
+    function make(parentItem, settings, props) {
         const c = Qt.createComponent("file://$PLUGINS/haseen.indicators/Widget.qml");
         if (c.status !== Component.Ready) {
-            console.log("RESULT " + JSON.stringify({ error: c.errorString() }));
-            Qt.quit();
+            out.error = c.errorString();
+            finish();
             return null;
         }
-        return c.createObject(holder, { pluginId: "haseen.indicators", settings: settings });
+        return c.createObject(parentItem, Object.assign({ pluginId: "haseen.indicators", settings: settings }, props || {}));
+    }
+    function at(item) {
+        const p = item.mapToItem(null, 0, 0);
+        return { x: p.x, y: p.y, w: item.width, h: item.height };
+    }
+    function near(a, b) {
+        return Math.abs(a - b) < 0.5;
+    }
+    // The strip's end toward the widget meets the widget's start.
+    function beside(w) {
+        if (!w.strip)
+            return false;
+        const a = at(w), s = at(w.strip);
+        return near(s.x + s.w, a.x) && near(s.y, a.y) && near(s.h, a.h);
+    }
+    function finish() {
+        console.log("RESULT " + JSON.stringify(out));
+        Qt.quit();
+    }
+    function next() {
+        stage += 1;
+        since = tick;
+    }
+    function waited(n) {
+        return tick - since >= n;
+    }
+    // Puts the widget under the pointer, its corner 2 px from it, so the
+    // pointer is on it however narrow it is.
+    function arrive(w) {
+        const p = pointer.point.scenePosition;
+        w.x = p.x - 2;
+        w.y = p.y - 2;
     }
     // In a window: positioners lay out only there.
     FloatingWindow {
         visible: true
-        implicitWidth: 400
-        implicitHeight: 40
+        implicitWidth: 600
+        implicitHeight: 200
         Item {
             id: holder
             anchors.fill: parent
+            HoverHandler {
+                id: pointer
+            }
+            // A bar section: it moves when a neighbour's width changes.
+            Item {
+                id: section
+                x: 300
+                y: 100
+                width: 100
+                height: 28
+            }
         }
     }
     Component.onCompleted: {
-        hidden = make({});
-        shown = make({ alwaysShow: true });
+        hidden = make(holder, {}, { x: 100, y: 100 });
+        shown = make(section, { alwaysShow: true });
+        edge = make(holder, { alwaysShow: true }, { x: 0, y: 150 });
+        side = make(holder, { alwaysShow: true }, { x: 550, y: 100, vertical: true });
+        rest = make(holder, {}, { x: 200, y: 100 });
     }
     Timer {
         interval: 100
@@ -139,25 +200,120 @@ ShellRoot {
         running: true
         onTriggered: {
             probe.tick += 1;
-            if (!probe.shown || ((!Flags.nightlight || probe.tick < 5) && probe.tick < 50))
+            if (probe.tick > 250) {
+                probe.out.error = "stuck at stage " + probe.stage;
+                probe.finish();
+            } else if (probe.out.error === undefined) {
+                probe.step();
+            }
+        }
+    }
+    function step() {
+        switch (stage) {
+        case 0:
+            if (!Flags.nightlight || tick < 5)
                 return;
-            console.log("RESULT " + JSON.stringify({
-                hiddenWidth: probe.hidden.implicitWidth,
-                shownWidth: probe.shown.implicitWidth,
-                sliver: Theme.gap
-            }));
-            Qt.quit();
+            out.hiddenWidth = hidden.implicitWidth;
+            out.shownWidth = shown.implicitWidth;
+            out.sliver = Theme.gap;
+            out.beside = beside(shown);
+            if (edge.strip) {
+                const e = at(edge), s = at(edge.strip);
+                out.flipped = near(s.x, e.x + e.w) && near(s.y, e.y);
+            }
+            if (side.strip) {
+                const v = at(side), s = at(side.strip);
+                out.above = near(s.y + s.h, v.y) && near(s.x, v.x) && near(s.w, v.w);
+            }
+            section.x = 337;
+            next();
+            return;
+        case 1:
+            if (!waited(1))
+                return;
+            out.follows = beside(shown) && near(at(shown).x, 337);
+            if (!pointer.hovered) {
+                out.error = "no pointer in the offscreen window";
+                finish();
+                return;
+            }
+            // The pointer arrives on a widget with NightLight on.
+            arrive(rest);
+            next();
+            return;
+        case 2:
+            if (!waited(3))
+                return;
+            out.restOpen = rest.strip !== null;
+            out.restWidth = rest.implicitWidth;
+            Flags.set("nightlight", false);
+            next();
+            return;
+        case 3:
+            if (Flags.nightlight || !waited(3))
+                return;
+            out.restWidthOffHeld = rest.implicitWidth;
+            // The pointer leaves.
+            rest.y = 100;
+            next();
+            return;
+        case 4:
+            if (!waited(8))
+                return;
+            out.restWidthOffLeft = rest.implicitWidth;
+            out.restClosed = rest.strip === null;
+            arrive(rest);
+            next();
+            return;
+        case 5:
+            if (!waited(3))
+                return;
+            out.restWidthBeforeOn = rest.implicitWidth;
+            Flags.set("screensaver-off", true);
+            next();
+            return;
+        case 6:
+            if (!Flags.screensaverOff || !waited(3))
+                return;
+            out.restWidthOnHeld = rest.implicitWidth;
+            rest.y = 100;
+            next();
+            return;
+        case 7:
+            if (!waited(8))
+                return;
+            out.restWidthOnLeft = rest.implicitWidth;
+            Flags.set("nightlight", true);
+            next();
+            return;
+        case 8:
+            if (!Flags.nightlight || !waited(3))
+                return;
+            out.allOnStrip = shown.strip !== null || edge.strip !== null;
+            finish();
         }
     }
 }
 QML
     capture env XDG_RUNTIME_DIR="$SANDBOX/run" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
-        timeout 30 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$shell"
+        timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$shell"
     result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n 1)"
     [[ -n $result ]] || result="$(jq -cn --arg o "$OUTPUT" '{error: ("no result: " + $o)}')"
-    assert_eq "the widget loads" "" "$(jq -r '.error // empty' <<<"$result")"
-    assert_eq "an indicator that is on takes room in the bar" "true" "$(jq -r '.hiddenWidth > .sliver' <<<"$result")"
-    assert_eq "revealing does not widen the widget, so nothing beside it moves" \
-        "$(jq -r .hiddenWidth <<<"$result")" "$(jq -r .shownWidth <<<"$result")"
-    rm -f "$flags/nightlight"
+    w() { jq -r "$1" <<<"$result"; }
+    assert_eq "the widget loads" "" "$(w '.error // empty')"
+    assert_eq "an indicator that is on takes room in the bar" "true" "$(w '.hiddenWidth > .sliver')"
+    assert_eq "revealing does not widen the widget, so nothing beside it moves" "$(w .hiddenWidth)" "$(w .shownWidth)"
+    assert_eq "the strip opens on the bar's row, toward its start, against the widget" "true" "$(w .beside)"
+    assert_eq "at the bar's start edge the strip opens on the other side" "true" "$(w .flipped)"
+    assert_eq "in a side bar the strip opens above the widget, as wide as the bar" "true" "$(w .above)"
+    assert_eq "the strip follows the widget when the bar lays it out again" "true" "$(w .follows)"
+    assert_eq "the pointer on the widget opens the strip" "true" "$(w .restOpen)"
+    assert_eq "switching an indicator off under the pointer moves nothing" "$(w .restWidth)" "$(w .restWidthOffHeld)"
+    assert_eq "once the pointer has left, the cell leaves the bar" "$(w .sliver)" "$(w .restWidthOffLeft)"
+    assert_eq "and the strip closes" "true" "$(w .restClosed)"
+    assert_eq "switching one on under the pointer moves nothing either" "$(w .restWidthBeforeOn)" "$(w .restWidthOnHeld)"
+    assert_eq "once the pointer has left, the cell takes room in the bar" "true" "$(w '.restWidthOnLeft > .sliver')"
+    assert_eq "with every entry on there is nothing to reveal, so no strip" "false" "$(w .allOnStrip)"
+    assert_not_contains "the widget logs no QML warning" "$OUTPUT" "haseen.indicators/"
+    rm -f "$flags"/*
 fi

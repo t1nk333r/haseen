@@ -34,6 +34,20 @@ between parts. The engineering record is `plans/`, indexed by
   blur, panels load lazily.
 - **No visual clutter.** A new on-screen element needs a reason in its plan.
   Default to a panel opened on demand, not something always visible.
+- **Never ship optional plugins by default.** The owner approves the default
+  set plugin by plugin; anything else ships off or not at all.
+  - Approved on by default (owner, 2026-10-07):
+    - bar: workspaces, clock, tray, audio, network, battery, bluetooth,
+      privacy, idle, pager, media, prayers, sysusage, weather, gestures;
+    - services: lock, idle, osd, polkit, screensaver, nightlight, clipboard,
+      keybinds;
+    - also: calculator, indicators, calendar, emoji, ai, agents and the pickers;
+    - the desktop itself, never optional: launcher, menu, notifications,
+      session, background.
+  - A new built-in plugin is off until the owner adds it to this list.
+  - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
+    added to haseen's defaults. The owner installs them with
+    `haseen plugin install`, and installing does not enable them.
 
 ## Gates (run both before every commit)
 

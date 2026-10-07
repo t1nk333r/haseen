@@ -1,3 +1,10 @@
 module qs.Services
 singleton PluginService 1.0 PluginService.qml
 singleton ToastService 1.0 ToastService.qml
+singleton BatteryService 1.0 BatteryService.qml
+singleton PopoutService 1.0 PopoutService.qml
+singleton DgopService 1.0 DgopService.qml
+singleton MprisController 1.0 MprisController.qml
+singleton CavaService 1.0 CavaService.qml
+singleton WeatherService 1.0 WeatherService.qml
+singleton DMSNetworkService 1.0 DMSNetworkService.qml

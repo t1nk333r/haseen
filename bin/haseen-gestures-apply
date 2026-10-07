@@ -18,7 +18,8 @@ Renders plugins."$GESTURES_ID".settings (the plugin's defaults merged with
 shell.json) into $GESTURES_TOGGLE,
 which Hyprland loads after haseen's input defaults. When the file changes and
 Hyprland is running, the config is reloaded. A second run with the same
-settings changes nothing.
+settings changes nothing. Switching gestures off (enabled false) or back on
+says so in a notification, naming the way back.
 
   --set JSON   first merge these settings into ~/.config/haseen/shell.json
                (what the bar panel does), e.g. '{"g3Up":"menu"}'

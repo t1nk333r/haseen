@@ -34,6 +34,9 @@ GESTURES_FLAG="$HASEEN_USER_STATE/flags/gestures"
 # The Omarchy original, which haseen's compat layer can still load from
 # ~/.config/omarchy/plugins/ (read-only, never touched here).
 GESTURES_UPSTREAM_ID=io.github.heroesofcode.omagesture
+# The line the rendered file carries while gestures are off. gestures_apply
+# reads it back to tell whether a write switches them off or back on.
+GESTURES_OFF_LINE="-- Gestures are off. The touchpad tuning below still applies."
 
 # What each key accepts. Keys absent here are booleans (enabled, naturalScroll,
 # swipeForever); every g<fingers><direction> key takes an action.
@@ -110,7 +113,7 @@ gestures_render() {
     emit "-- defaults: change the mapping from the gestures panel in the bar, or run"
     emit "--   haseen gestures apply --set '{\"g3Up\":\"menu\"}'"
     emit ""
-    [[ ${S[enabled]} == true ]] || emit "-- Gestures are off. The touchpad tuning below still applies."
+    [[ ${S[enabled]} == true ]] || emit "$GESTURES_OFF_LINE"
 
     # --- touchpad tuning (loads after default/hypr/input.lua, so it wins) ---
     local click=false drag=0
@@ -290,6 +293,38 @@ gestures_write() {
     printf '%s\n' "$lua" | write_user_file "$GESTURES_TOGGLE"
 }
 
+# gestures_state — "off" or "on" for the toggle file as it stands, nothing
+# when there is none yet.
+gestures_state() {
+    [[ -r $GESTURES_TOGGLE ]] || return 0
+    if grep -qxF -- "$GESTURES_OFF_LINE" "$GESTURES_TOGGLE"; then echo off; else echo on; fi
+}
+
+# gestures_announce BEFORE AFTER — say so when a write switches gestures off
+# or back on; a first render (BEFORE empty) has nothing to compare. Off must
+# never be silent: the only other sign is a dimmed bar glyph, and on io a
+# stray two-finger tap took every swipe away unnoticed (2026-10-07). The
+# panel and the terminal both apply through here, so both are covered.
+gestures_announce() {
+    local before="$1" after="$2" title body
+    [[ -n $before && $before != "$after" ]] || return 0
+    # The way back leads: a toast shows about two lines, and the title
+    # already says what happened.
+    if [[ $after == off ]]; then
+        title="Touchpad gestures off"
+        body="Turn them back on from the gestures panel in the bar, or with haseen gestures apply --set '{\"enabled\":true}'"
+    else
+        title="Touchpad gestures on"
+        body="Swipes and pinches work again."
+    fi
+    $DRY_RUN || info "$title. $body"
+    if $DRY_RUN; then
+        run notify-send -a haseen "$title" "$body"
+    elif have notify-send; then
+        notify-send -a haseen "$title" "$body" 2>/dev/null || true
+    fi
+}
+
 # gestures_reload — gestures cannot be unregistered, so a changed file needs a
 # config reload. Outside a Hyprland session there is nothing to reload: the
 # file loads at the next login.
@@ -321,16 +356,20 @@ gestures_check_upstream() {
 }
 
 # gestures_apply [RELOAD] [MERGED_SHELL_JSON] — render the current settings,
-# write them if they changed, then reload Hyprland. The shared step of
-# `haseen gestures apply` and the hardware quirk.
+# write them if they changed, then reload Hyprland, saying so when that turns
+# gestures off or back on. The shared step of `haseen gestures apply` and the
+# hardware quirk.
 gestures_apply() {
-    local reload="${1:-true}" merged="${2:-}" lua
+    local reload="${1:-true}" merged="${2:-}" lua before after=on
     [[ -n $merged ]] || merged="$(shell_merged_json)"
     lua="$(gestures_render "$(gestures_settings "$merged")")"
     gestures_check_upstream "$merged"
+    before="$(gestures_state)"
+    grep -qxF -- "$GESTURES_OFF_LINE" <<<"$lua" && after=off
     if gestures_write "$lua"; then
         $DRY_RUN || info "gestures: wrote ${GESTURES_TOGGLE/#$HOME/\~}"
         if $reload; then gestures_reload; fi
+        gestures_announce "$before" "$after"
     else
         info "gestures: ${GESTURES_TOGGLE/#$HOME/\~} is already current"
     fi

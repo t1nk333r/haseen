@@ -78,3 +78,67 @@ Install prints both, because `haseen plugin enable` wants the second.
 `share/haseen/shell/lib/registry.sh`,
 `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}`, and
 `tests/test-registry.sh`.
+
+## dms:// links from the DMS gallery (io round 7)
+
+The owner could not install anything from https://danklinux.com/plugins: its
+Install button is a `dms://` link and nothing on haseen handled the scheme.
+
+What DMS does (AvengeMedia/DankMaterialShell at 5eb78f1, MIT):
+- `assets/dms-open.desktop` claims `x-scheme-handler/dms` and runs `dms open %u`,
+  which hands the URL to the running shell (`core/cmd/dms/commands_open.go:82,121`).
+- `quickshell/DMSShell.qml:892-907` knows two forms, `dms://theme/install/<id>`
+  and `dms://plugin/install/<id>`, keeps the id up to the first `?` or `#`, asks
+  "Install plugin '<id>' from the DMS registry?" and installs that registry id
+  (`core/internal/plugins/registry.go` `Get`: exact `id`, then `name`).
+- The gallery page (bundle `72f5456f.03f2f6df.js`) builds
+  `dms://plugin/install/${e.id}` from `https://api.danklinux.com/plugins`, whose
+  369 entries are the files of `dms-plugin-registry/plugins/` (same count, same
+  ids). Theme links carry `?flavor=&accent=` or `?variant=`. No link names a
+  repository: the registry entry's `repo` (and `path`) does.
+
+What haseen does:
+- `share/haseen/default/applications/haseen-dms-url.desktop` (MimeType
+  `x-scheme-handler/dms`) runs `bin/haseen-plugin-url %u`. install.sh installs it
+  to `PREFIX/share/applications`; the Nix package to `$out/share/applications`.
+- `haseen plugin url` refuses anything but `dms://plugin/install/<id>` with a
+  plugin-id-shaped id (themes, other actions, `..`, `%`-encoding, shell
+  characters), looks the id up with `haseen plugin search --json` (the same
+  clones `haseen plugin install` reads), refuses an entry whose repository is
+  not `https://host/...` without credentials (git@, local paths and http are
+  fine for a hand-typed install, not for a web link) or whose path climbs out,
+  prints name, author, repository, directory and description, asks, and then
+  runs `haseen plugin install <id> --no-sync`. `--no-sync` (new) makes install
+  resolve against the clones just shown, so what is installed is what was
+  confirmed. Started by a browser it has no TTY, so it reopens itself in the
+  `haseen.floating` terminal (lib/terminal.sh, as `haseen password` does); a
+  refusal there is a notification, since nobody reads a scheme handler's stderr.
+- When DMS is the active shell (`haseen shell use dms`) the link goes to
+  `dms open` unchanged, so taking over DMS's handler loses nothing.
+- The shell layer sets `xdg-mime default haseen-dms-url.desktop
+  x-scheme-handler/dms` when `~/.config/mimeapps.list` names no default or DMS's
+  `dms-open.desktop`, and keeps any other handler the user chose (status says
+  which). The file is read directly: `xdg-mime query` falls back to system
+  caches, which are not a user choice.
+
+Found on the way: install and uninstall passed `${DRY_RUN:+--dry-run}` to
+`haseen plugin enable/disable`, but DRY_RUN is always "true" or "false", so
+`install --enable` never enabled and `uninstall` never disabled. Both now pass
+the flag only in a dry run, and uninstall disables the manifest id
+(`dms.<name>`), which is what enable turned on. `registry_fetch` printed its dry
+run plan into the commit its callers capture, so the plan came out inside the
+"pin" line; it now goes to stderr.
+
+Rejected: a `?repo=` parameter in the link (DMS ignores the query, and it would
+let any web page pick the repository); reading `api.danklinux.com` (a second
+index next to the registry clones install already uses); enabling the plugin
+after install, as DMS does (it is a user plugin; the install line says how).
+
+Verification: `tests/test-dms-url.sh` (77) with git serving
+`https://example.invalid/*` from local repositories; a dry run of the real link
+`dms://plugin/install/quickCapture` printed the plan (hthienloc/dms-plugins,
+directory quickCapture); a real install of `dms://plugin/install/openrgbThemeSync`
+into a scratch home pinned 3DTreeDee/openrgb-theme-sync and loaded it as
+`dms.openrgb-theme-sync`; in a nested Hyprland, `xdg-open` of the link with the
+handler registered in a scratch `mimeapps.list` opened the confirm prompt in a
+`haseen.floating` foot.

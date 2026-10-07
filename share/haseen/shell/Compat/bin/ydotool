@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Compat shim (architecture 5.4): DMS plugins that type for the user (the
+# virtualKeyboard on-screen keyboard) run `ydotool key CODE:STATE …`. Real
+# ydotool injects through /dev/uinput via a root-capable ydotoold, so its keys
+# reach whichever compositor owns the seat. Under haseen the shell's own
+# Hyprland takes them instead, through its send_key_state dispatcher
+# (Hyprland >= 0.50): no daemon, no uinput access, and the keys can only land
+# in the session the shell runs in ($HYPRLAND_INSTANCE_SIGNATURE).
+#
+# The keys go to the active window, so a click on an on-screen keyboard that
+# takes keyboard focus does not swallow them. Hyprland sends modifiers with
+# each key rather than tracking held ones, so this shim remembers which
+# modifier keys (Shift, Ctrl, Alt, Super) are down between calls, per
+# Hyprland instance, under $XDG_RUNTIME_DIR/haseen, and sends them with every
+# other key; a modifier key itself only changes that record. Calls are
+# serialised with flock, so keys arrive in the order they were asked for.
+#
+# Only `key` is translated. Any other ydotool command goes to a real ydotool
+# further down PATH when one is installed, else fails. The CODE:STATE syntax
+# and -d/--key-delay follow ydotool 1.x (AGPL-3.0; the interface only, no
+# code).
+set -Eeuo pipefail
+# shellcheck source=../../../lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../../..}/lib/common.sh"
+
+fail() {
+    printf 'ydotool (haseen compat): %s\n' "$*" >&2
+    exit 2
+}
+
+# The next ydotool on PATH after this directory.
+passthrough() {
+    local self dir
+    self="$(dirname "$(readlink -f "$0")")"
+    IFS=: read -ra dirs <<<"$PATH"
+    for dir in "${dirs[@]}"; do
+        [[ -n $dir && $(readlink -f "$dir" 2>/dev/null) != "$self" && -x $dir/ydotool ]] || continue
+        exec "$dir/ydotool" "$@"
+    done
+    fail "only 'ydotool key' is provided under haseen; install ydotool for '${1:-}'"
+}
+
+# Linux input-event codes of the modifiers Hyprland takes as a mod mask.
+modifier() {
+    case $1 in
+    42 | 54) echo SHIFT ;;
+    29 | 97) echo CTRL ;;
+    56 | 100) echo ALT ;;
+    125 | 126) echo SUPER ;;
+    *) return 1 ;;
+    esac
+}
+
+key() {
+    local delay=12 events=() ev
+    while (($#)); do
+        case $1 in
+        -d | --key-delay)
+            (($# > 1)) || fail "key $1 needs a value"
+            delay=$2
+            shift
+            ;;
+        --key-delay=*) delay=${1#*=} ;;
+        --dry-run) DRY_RUN=true ;;
+        -h | --help)
+            echo "usage: ydotool key [--dry-run] [-d MS] CODE:STATE ... (STATE 1 = press, 0 = release)"
+            exit 0
+            ;;
+        *:*) events+=("$1") ;;
+        *) fail "key: '$1' is not CODE:STATE" ;;
+        esac
+        shift
+    done
+    [[ $delay =~ ^[0-9]+$ ]] || fail "key: delay must be milliseconds"
+    for ev in "${events[@]}"; do
+        [[ $ev =~ ^[0-9]+:[01]$ ]] || fail "key: '$ev' is not CODE:STATE"
+    done
+    ((${#events[@]} > 0)) || return 0
+    [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || fail "not inside a Hyprland session"
+
+    local dir="${XDG_RUNTIME_DIR:-/tmp}/haseen"
+    local held_file="$dir/ydotool-$HYPRLAND_INSTANCE_SIGNATURE.held" lock
+    mkdir -p "$dir"
+    exec {lock}>>"$held_file.lock"
+    flock "$lock"
+
+    local -A held=()
+    local code
+    if [[ -r $held_file ]]; then
+        while read -r code; do
+            [[ -n $code ]] && held[$code]=1
+        done <"$held_file"
+    fi
+
+    local i=0 state mods out
+    for ev in "${events[@]}"; do
+        code=${ev%:*} state=${ev#*:}
+        if modifier "$code" >/dev/null; then
+            if ((state)); then held[$code]=1; else unset "held[$code]"; fi
+            continue
+        fi
+        mods=""
+        for code_held in "${!held[@]}"; do
+            mods+="$(modifier "$code_held") "
+        done
+        ((i++ == 0)) || sleep "$(printf '0.%03d' "$((delay % 1000))")"
+        # Hyprland takes a number above 9 as an XKB keycode: evdev + 8.
+        out="$(run hyprctl dispatch "hl.dsp.send_key_state({ mods = \"${mods% }\", key = \"$((code + 8))\", state = \"$( ((state)) && echo down || echo up)\", window = \"activewindow\" })")"
+        if $DRY_RUN; then
+            printf '%s\n' "$out"
+        elif [[ $out != ok ]]; then
+            fail "hyprctl: $out"
+        fi
+    done
+
+    printf '%s\n' "${!held[@]}" | sed '/^$/d' | write_user_file "$held_file"
+}
+
+case ${1:-} in
+key) key "${@:2}" ;;
+*) passthrough "$@" ;;
+esac

@@ -35,6 +35,11 @@
       "type": "string",
       "default": "haseen-lock-fingerprint",
       "description": "PAM service name used for fingerprint unlock, in pamConfigDirectory; written by haseen setup fingerprint"
+    },
+    "fingerprintStallMs": {
+      "type": "integer",
+      "default": 5000,
+      "description": "A fingerprint attempt that neither shows a message nor ends within this many ms is aborted and retried as a failure (a hung PAM conversation)"
     }
   },
   "permissions": [],
