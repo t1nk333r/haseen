@@ -66,6 +66,19 @@ a scratch HOME and `lockKeys` on. Screenshots in `~/.cache/haseen-wt/scratch-key
   computed like a real keyboard, `~/.cache/haseen-wt/scratch-keyboard/vkbd/`): the release bind fired, the
   read found `capsLock: true` on the main keyboard, the card reads `Caps Lock on`.
 
+## Review fixes (2026-10-08)
+
+- **Lock-key binds cost nothing while the kind is off.** The `code:66`/`code:77` binds run
+  `test -e "$XDG_RUNTIME_DIR/haseen/osd-lockkeys" && haseen shell ipc osd lockkeys`; haseen.osd creates the flag
+  while `lockKeys` is on and removes it when it turns off and when the shell exits (`Service.qml` `flagLockKeys`).
+  Before, every Caps/Num release (Compose under `compose:caps`) started bash, haseen-shell-ipc and a qs client
+  (~40 ms), and under DMS logged an "unmapped" error. `tests/test-keyboard.sh` "lock key with the kind off: no IPC
+  call", "lockKeys on: the OSD keeps the binds' flag", "and removes it when the shell exits".
+- Caps and Num changing in one read show Caps (the first change); a seed asked for while a read runs makes that
+  read and its re-run seeds, so turning the kind on never flashes a card.
+- The off card keeps "Caps Lock off" in `Theme.foreground`; the glyph and a muted level's percentage use
+  `Theme.subtle(Theme.surface)` (design review M1/M2: muted on surface was 2.04:1).
+
 ## Not verified
 
 - Num Lock in the nest (the engine test covers it); a real mic mute (no PipeWire source in the nest).

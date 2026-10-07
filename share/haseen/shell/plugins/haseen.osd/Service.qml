@@ -198,6 +198,9 @@ Scope {
     property var _locks: null
     property bool _lockAgain: false
     property bool _lockSeed: false
+    // A seed asked for while a read runs: that read and its re-run are seeds
+    // too, so turning the kind on during a read never shows a card.
+    property bool _lockAgainSeed: false
 
     // `haseen shell ipc osd lockkeys`. With the kind off the call returns at
     // once and starts nothing.
@@ -209,6 +212,10 @@ Scope {
     function readLocks(seed: bool): void {
         if (lockProc.running) {
             _lockAgain = true;
+            if (seed) {
+                _lockSeed = true;
+                _lockAgainSeed = true;
+            }
             return;
         }
         _lockSeed = seed;
@@ -222,17 +229,32 @@ Scope {
         const changes = _lockSeed ? [] : Osd.lockChanges(_locks, now);
         _locks = now;
         if (changes.length > 0)
-            showCard(Osd.lockCard(changes[changes.length - 1]));
+            showCard(Osd.lockCard(changes[0]));
+    }
+
+    // The binds call `lockkeys` only while this flag exists (binds.lua), so
+    // with the kind off a Caps or Num Lock press starts no IPC client. One
+    // process per setting change and at start and exit; never per key.
+    readonly property string lockFlag: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/haseen/osd-lockkeys"
+
+    function flagLockKeys(on: bool): void {
+        Quickshell.execDetached(on ? ["sh", "-c", "mkdir -p -- \"${1%/*}\" && : >\"$1\"", "sh", lockFlag] : ["rm", "-f", "--", lockFlag]);
     }
 
     onLockKeysEnabledChanged: {
         _locks = null;
+        flagLockKeys(lockKeysEnabled);
         if (lockKeysEnabled)
             readLocks(true);
     }
     Component.onCompleted: {
+        flagLockKeys(lockKeysEnabled);
         if (lockKeysEnabled)
             readLocks(true);
+    }
+    Component.onDestruction: {
+        if (lockKeysEnabled)
+            flagLockKeys(false);
     }
 
     Process {
@@ -245,7 +267,8 @@ Scope {
         onExited: {
             if (root._lockAgain) {
                 root._lockAgain = false;
-                root._lockSeed = false;
+                root._lockSeed = root._lockAgainSeed;
+                root._lockAgainSeed = false;
                 running = true;
             }
         }

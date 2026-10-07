@@ -124,11 +124,15 @@ b("XF86AudioPrev", "Previous track", "playerctl previous", once)
 -- code:66 and code:77 are the Caps Lock and Num Lock keys whatever they
 -- type: under compose:caps Caps is Compose, and the read then finds nothing
 -- changed. non_consuming: the key still reaches xkb and the app; release:
--- the lock state has settled; ignore_mods: Shift + Caps Lock too. The OSD
--- shows nothing unless haseen.osd's lockKeys setting is on.
+-- the lock state has settled; ignore_mods: Shift + Caps Lock too.
+-- The kind is off by default, and Caps is a busy key under compose:caps: so
+-- the bind is one `test` in the shell Hyprland runs it with, and the IPC
+-- call (two scripts and a qs client, ~40 ms) only follows while haseen.osd
+-- has lockKeys on and keeps the flag file in $XDG_RUNTIME_DIR/haseen.
 local lockkey = { non_consuming = true, release = true, ignore_mods = true }
-b("code:66", "Caps Lock OSD", ipc("osd", "lockkeys"), lockkey)
-b("code:77", "Num Lock OSD", ipc("osd", "lockkeys"), lockkey)
+local lockkeys = 'test -e "$XDG_RUNTIME_DIR/haseen/osd-lockkeys" && ' .. ipc("osd", "lockkeys")
+b("code:66", "Caps Lock OSD", lockkeys, lockkey)
+b("code:77", "Num Lock OSD", lockkeys, lockkey)
 
 -- Windows ----------------------------------------------------------------------
 b("SUPER + W", "Close window", hl.dsp.window.close())

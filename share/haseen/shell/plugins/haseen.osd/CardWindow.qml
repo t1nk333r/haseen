@@ -49,7 +49,8 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: win.card.text === ""
                 glyph: win.card.glyph
-                color: win.card.dim ? Theme.muted : Theme.foreground
+                // Off or muted: the glyph steps back, still readable (3:1).
+                color: win.card.dim ? Theme.subtle(Theme.surface) : Theme.foreground
                 font.pixelSize: Theme.fontSize * 1.6
             }
 
@@ -85,7 +86,7 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: win.level
                 text: Math.round(win.card.value * 100) + "%"
-                color: win.card.dim ? Theme.muted : Theme.foreground
+                color: win.card.dim ? Theme.subtle(Theme.surface) : Theme.foreground
                 horizontalAlignment: Text.AlignRight
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -96,7 +97,8 @@ PanelWindow {
                 visible: !win.level
                 text: win.card.label
                 textFormat: Text.PlainText
-                color: win.card.dim ? Theme.muted : Theme.foreground
+                // "Caps Lock off" is the message: it stays in the text colour.
+                color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize * 1.2
             }
