@@ -184,5 +184,6 @@ a notification, and the rest of the config still loads.
 - "Super+E opens the file manager" → `~/.config/hypr/bindings.lua` (see `hyprland.md`).
 - "Smaller gaps" → `~/.config/hypr/local.lua` with `hl.config({ general = { gaps_out = 2 } })`.
 - "Switch to gruvbox" → `haseen theme set gruvbox`.
+- "Use the shield logo" → `haseen branding mark shield` (or `kufic`, the default, or `gate`): menu, About, screensaver and app icon follow at once; run `haseen plymouth set` for the boot splash. A logo in the bar that opens the menu: `haseen plugin enable haseen.logo` (off by default; it lands at the end of `bar.right`).
 - "Make the accent orange in tokyo-night" → `~/.config/haseen/themes/tokyo-night/colors.toml` with `accent = "#ff9e64"`, then `haseen theme set tokyo-night`.
 - "Chat with my local model" → SUPER+A opens the AI panel; `ai.md` for endpoints.

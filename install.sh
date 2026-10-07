@@ -4,7 +4,8 @@
 # 1. Preflight: refuse NixOS (use the flake) and unknown distros.
 # 2. Install the tree: bin/ -> PREFIX/bin, share/haseen -> PREFIX/share/haseen,
 #    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
-#    PREFIX/share/applications. PREFIX defaults to
+#    PREFIX/share/applications, the app icon (`-i haseen`) ->
+#    PREFIX/share/icons/hicolor. PREFIX defaults to
 #    /usr/local because these files are not owned by a package (yet; see
 #    plans/README.md, PKGBUILD phase).
 # 3. Apply the default layers through the installed `haseen layer apply`.
@@ -17,6 +18,8 @@ REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 export HASEEN_PATH="$REPO/share/haseen"
 # shellcheck source=share/haseen/lib/preflight.sh
 source "$HASEEN_PATH/lib/preflight.sh"
+# shellcheck source=share/haseen/lib/branding.sh
+source "$HASEEN_PATH/lib/branding.sh"
 
 DEFAULT_LAYERS=(base chaotic omarchy-repo desktop theme shell)
 PREFIX=/usr/local
@@ -59,6 +62,10 @@ UNIT_DIR="$PREFIX/lib/systemd/user"
 # Desktop entries (the dms:// link handler) go where XDG_DATA_DIRS finds them;
 # the shell layer makes haseen-dms-url.desktop the default for dms:// links.
 APP_DIR="$PREFIX/share/applications"
+# The app icon for menus and notifications (`notify-send -i haseen`): the
+# selected mark (haseen branding mark), the full one in the theme's accent and
+# the symbolic one in currentColor, which GTK recolours.
+ICON_DIR="$PREFIX/share/icons/hicolor"
 
 uninstall_tree() {
     local f
@@ -71,6 +78,7 @@ uninstall_tree() {
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && run_root rm -f "$APP_DIR/${f##*/}"
     done
+    run_root rm -f "$ICON_DIR/scalable/apps/haseen.svg" "$ICON_DIR/symbolic/apps/haseen-symbolic.svg"
     run_root rm -rf "$PREFIX/share/haseen"
     info "haseen tree removed from $PREFIX"
 }
@@ -105,6 +113,8 @@ install_tree() {
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && install_root_file "$f" "$APP_DIR/${f##*/}" 0644
     done
+    branding_svg mark "$(branding_accent)" | write_root_file "$ICON_DIR/scalable/apps/haseen.svg"
+    install_root_file "$(branding_file symbolic)" "$ICON_DIR/symbolic/apps/haseen-symbolic.svg" 0644
     info "haseen $(cat "$REPO/share/haseen/VERSION") installed under $PREFIX"
 }
 

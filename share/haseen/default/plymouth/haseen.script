@@ -1,6 +1,8 @@
 # haseen's Plymouth theme: the boot screen, and the box that asks for the disk
 # password. Drawn, not composed from images, so a theme change is three colour
-# substitutions and no binary assets live in this repository.
+# substitutions; the one image, haseen's mark (logo.png), is rendered from the
+# selected mark's SVG in the accent colour when the theme is installed, so no
+# binary asset lives in this repository either.
 #
 # haseen-plymouth-set substitutes the colour placeholders below with the
 # current theme's values before installing this file.
@@ -20,6 +22,16 @@ Window.SetBackgroundBottomColor(bg_r, bg_g, bg_b);
 
 screen_width = Window.GetWidth();
 screen_height = Window.GetHeight();
+
+# --- the mark: above the password prompt, so it stays while the disk asks ----
+
+logo = Image("logo.png");
+if (logo) {
+    logo_sprite = Sprite(logo);
+    logo_sprite.SetX((screen_width - logo.GetWidth()) / 2);
+    logo_sprite.SetY(screen_height / 2 - 72 - logo.GetHeight());
+    logo_sprite.SetZ(1);
+}
 
 # --- the pulse: one bar that breathes, so a slow boot does not look hung -----
 

@@ -19,6 +19,8 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/branding.sh
+source "$HASEEN_PATH/lib/branding.sh"
 
 APP_ID=org.haseen.screensaver
 
@@ -33,8 +35,8 @@ Shows the screensaver until the next key press, click or pointer motion.
                   branding on the theme background). Default: the saved style,
                   see 'haseen screensaver style'.
 
-Branding text: ~/.config/haseen/branding/screensaver.txt, else
-\$HASEEN_PATH/default/screensaver/screensaver.txt.
+Branding text: ~/.config/haseen/branding/screensaver.txt, else the selected
+mark's logo (\$HASEEN_PATH/branding/logo-<mark>.txt, haseen branding mark).
 
 Internal, used by the shell service:
   --ttfx-launch   open the screensaver terminal on every monitor (\$TERMINAL:
@@ -44,12 +46,12 @@ Internal, used by the shell service:
 EOF
 }
 
-branding_file() {
+screensaver_text() {
     local user="$HASEEN_USER_CONFIG/branding/screensaver.txt"
     if [[ -s $user ]]; then
         printf '%s\n' "$user"
     else
-        printf '%s\n' "$HASEEN_PATH/default/screensaver/screensaver.txt"
+        branding_file logo
     fi
 }
 
@@ -129,7 +131,7 @@ ttfx_launch() {
 
 ttfx_run() {
     local file pid started
-    file="$(branding_file)"
+    file="$(screensaver_text)"
 
     screensaver_in_focus() {
         hyprctl activewindow -j 2>/dev/null | jq -e --arg c "$APP_ID" '.class == $c' >/dev/null 2>&1

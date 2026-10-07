@@ -2,3 +2,4 @@ module qs.Haseen.Widgets
 BarButton 1.0 BarButton.qml
 Glyph 1.0 Glyph.qml
 PanelSurface 1.0 PanelSurface.qml
+BrandImage 1.0 BrandImage.qml

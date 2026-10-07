@@ -46,6 +46,13 @@ assert_contains "it adds the initramfs hook" "$OUTPUT" "haseen-plymouth.conf"
 assert_contains "sets the default theme" "$OUTPUT" "plymouth-set-default-theme haseen"
 assert_contains "puts splash on the command line" "$OUTPUT" "quiet splash"
 assert_contains "and rebuilds the initramfs" "$OUTPUT" "mkinitcpio -P"
+assert_contains "it renders the selected mark in the accent (plan 059)" "$OUTPUT" "render $HASEEN_PATH/branding/kufic/mark.svg in #dcd7ba -> logo.png (mark: kufic)"
+assert_contains "and installs it beside the script" "$OUTPUT" "/usr/share/plymouth/themes/haseen/logo.png"
+mkdir -p "$XDG_CONFIG_HOME/haseen"
+echo '{"branding": {"mark": "gate"}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
+capture haseen plymouth set --dry-run
+assert_contains "a mark change reaches the splash" "$OUTPUT" "branding/gate/mark.svg"
+rm -f "$XDG_CONFIG_HOME/haseen/shell.json"
 
 capture haseen plymouth set --theme kanagawa --dry-run
 assert_contains "a named theme is used instead" "$OUTPUT" "background #1f1f28"

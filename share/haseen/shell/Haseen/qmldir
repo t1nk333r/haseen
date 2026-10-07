@@ -5,3 +5,4 @@ singleton Config 1.0 Config.qml
 singleton Plugins 1.0 Plugins.qml
 singleton Flags 1.0 Flags.qml
 singleton Sidecar 1.0 Sidecar.qml
+singleton Branding 1.0 Branding.qml
