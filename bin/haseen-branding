@@ -24,7 +24,7 @@ from the default); image without FILE asks for a path. An image wins over
 the text. reset removes both. Without either, they show haseen's mark.
 
 mark: haseen's logo in the menu, the About panel (and \`haseen about --logo\`),
-the screensaver, the optional bar logo (haseen.logo) and the app icon
+the screensaver, the bar logo (haseen.logo) and the app icon
 (-i haseen). Saved as branding.mark in shell.json (default kufic); without a
 name it prints the current one. The boot splash takes it at the next
 \`haseen plymouth set\`.

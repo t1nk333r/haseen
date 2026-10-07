@@ -3,7 +3,7 @@
     "position": "top",
     "height": 28,
     "transparent": false,
-    "left": ["haseen.workspaces"],
+    "left": ["haseen.logo", "haseen.workspaces"],
     "center": ["haseen.clock", "haseen.media"],
     "right": [
       "haseen.tray",
@@ -26,7 +26,6 @@
   "branding": { "mark": "kufic" },
   "plugins": {
     "haseen.weather": { "enabled": false, "settings": { "location": "" } },
-    "haseen.logo": { "enabled": false },
     "haseen.themegen": { "enabled": false }
   },
   "services": [

@@ -37,7 +37,7 @@ between parts. The engineering record is `plans/`, indexed by
 - **Never ship optional plugins by default.** The owner approves the default
   set plugin by plugin; anything else ships off or not at all.
   - Approved on by default (owner, 2026-10-07):
-    - bar: workspaces, clock, tray, audio, network, battery, bluetooth,
+    - bar: logo (owner, 2026-10-07, plan 070), workspaces, clock, tray, audio, network, battery, bluetooth,
       privacy, idle, pager, media, prayers, sysusage, weather, gestures;
     - services: lock, idle, osd, polkit, screensaver, nightlight, clipboard,
       keybinds;
