@@ -87,7 +87,9 @@ assert_eq "leaves run haseen or xdg-open" "" \
 assert_eq "URLs only through xdg-open or a web app" "" \
     "$(grep '://' <<<"$actions" | grep -Ev "^xdg-open 'https://|^haseen config terminal -- haseen webapp install " || true)"
 assert_not_contains "never an omarchy- command" "$(jq -r '.[] | (.action // empty), (.when // empty), (.checked // empty)' <<<"$JSON")" "omarchy-"
-assert_eq "keybindings open haseen's sheet" "haseen shell ipc keybinds toggle" "$(jq -r '."learn.keybindings".action' <<<"$JSON")"
+# Plan 071: Omarchy's Learn lists, searchable in the menu card.
+assert_eq "keybindings open the searchable list" "haseen keybinds list" "$(jq -r '."learn.keybindings".action' <<<"$JSON")"
+assert_eq "tmux opens its annotated list" "haseen tmux keybinds" "$(jq -r '."learn.tmux-keybindings".action' <<<"$JSON")"
 assert_eq "Omarchy's Install > Style > Font is the catalogue's fonts" "install.style|install.style.font" \
     "$(jq -r '."install.font" | "\(.parent)|\(.aliases | join(","))"' <<<"$JSON")"
 assert_eq "about runs haseen about" "haseen about" "$(jq -r '.about.action' <<<"$JSON")"
@@ -147,6 +149,30 @@ console.log(old.split(' ').filter(r => !m.items[resolveRoute(m.items, m.itemOrde
 console.log(resolveRoute(m.items, m.itemOrder, 'install.theme'));
 ")"
     assert_eq "previous routes and aliases still resolve" $'\ninstall.style.theme' "$out"
+
+    # `haseen menu select` rows (plan 071): glyph, label and detail split
+    # Omarchy's way, every query word must match label or detail, the
+    # returned value carries the detail, and the given order is kept.
+    out="$(model "
+const opts = ['SUPER + 1      → Workspace 1', 'SUPER + SHIFT + 1  → Move window to workspace 1',
+  '\uf11c\tCopy\tSUPER + C', 'PREFIX + %     → Split window horizontally', 'plain'];
+const show = q => pickRows(opts, q).map(r => r.label.replace(/ +/g, ' ') + '=' + r.action.replace(/ +/g, ' ').replace('\t', '/')).join(';');
+console.log(show(''));
+console.log(show('workspace'));
+console.log(show('  shift   WORKSPACE '));
+console.log(show('super copy'));
+console.log(show('nothing-like-it'));
+const r = pickRows(opts, 'copy')[0];
+console.log([r.icon === '\uf11c', r.detail, r.kind, r.itemId].join('|'));
+")"
+    assert_eq "pick rows: every option, in the given order" \
+        "SUPER + 1 → Workspace 1|SUPER + SHIFT + 1 → Move window to workspace 1|Copy|PREFIX + % → Split window horizontally|plain" \
+        "$(sed -n 1p <<<"$out" | tr ';' '\n' | cut -d= -f1 | paste -sd'|' -)"
+    assert_eq "pick rows: a word filters, case-insensitive" 2 "$(sed -n 2p <<<"$out" | tr ';' '\n' | wc -l)"
+    assert_eq "pick rows: every word must match" "SUPER + SHIFT + 1 → Move window to workspace 1=SUPER + SHIFT + 1 → Move window to workspace 1" "$(sed -n 3p <<<"$out")"
+    assert_eq "pick rows: the detail is searched and returned with the label" "Copy=Copy/SUPER + C" "$(sed -n 4p <<<"$out")"
+    assert_eq "pick rows: no match, no rows" "" "$(sed -n 5p <<<"$out")"
+    assert_eq "pick rows: glyph shown, detail kept, a pick row" "true|SUPER + C|pick|pick.2" "$(sed -n 6p <<<"$out")"
 
     # Guards: one bash batch, `when` hides until it answers true.
     script="$(model "

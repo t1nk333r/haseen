@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# haseen:summary Search tmux's key bindings, annotated, in the menu
+# haseen:args [--print] [--config PATH]
+#
+# Adapted from Omarchy bin/omarchy-menu-tmux-keybindings (MIT, Copyright (c)
+# David Heinemeier Hansson): a throwaway tmux server on its own socket reads
+# the config, and its prefix, root and copy-mode tables become
+# "PREFIX + KEY → note" rows with readable key names, shown in a searchable
+# list 800 px wide and 40% of the screen high. Changes: `haseen menu select`
+# for the list, ~/.tmux.conf as a second default, and the bindings tmux
+# really has (its defaults too, unless the config unbinds them) read with
+# `list-keys -F`: tmux 3.7 lists nothing for `list-keys -T root` once that
+# table has been emptied, and Omarchy's one-command chain runs source-file
+# after the listing. Mouse events are left out, and the copy-mode table is
+# the one `mode-keys` picks.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen tmux keybinds [--print] [--config PATH]
+
+Lists the key bindings tmux has with your config, as "PREFIX + KEY → note"
+rows (root keys bare, copy mode as COPY MODE + KEY), in the menu's searchable
+list. The config is read by a separate tmux server that is stopped again;
+your sessions are not touched.
+
+  --print         print the rows instead of showing them
+  --config PATH   the config to read (default \$TMUX_CONF, then
+                  ~/.config/tmux/tmux.conf, then ~/.tmux.conf; with none,
+                  tmux's own bindings)
+EOF
+}
+
+print=false
+config=""
+while (($#)); do
+    case "$1" in
+    --print | -p) print=true ;;
+    --config)
+        (($# >= 2)) || die "--config needs a path"
+        config=$2
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    shift
+done
+
+require_cmds tmux
+
+if [[ -n $config ]]; then
+    [[ -f $config ]] || die "tmux config not found: $config"
+else
+    for candidate in "${TMUX_CONF:-}" "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf" "$HOME/.tmux.conf"; do
+        if [[ -n $candidate && -f $candidate ]]; then
+            config=$candidate
+            break
+        fi
+    done
+fi
+
+rows() (
+    socket_dir="$(mktemp -d)"
+    socket="$socket_dir/tmux"
+    trap 'tmux -S "$socket" kill-server >/dev/null 2>&1 || true; rm -rf "$socket_dir"' EXIT
+    t() { env -u TMUX tmux -S "$socket" "$@"; }
+    # A session keeps the server up between the separate commands; each one
+    # finishes before the next, so the config is in place before the listing.
+    t -f /dev/null new-session -d -s haseen-keys cat || exit 1
+    # A config error (a missing plugin manager) still leaves the rest bound.
+    [[ -z $config ]] || t source-file "$config" >/dev/null 2>&1 || true
+    prefix="$(t show-options -gv prefix)"
+    prefix2="$(t show-options -gv prefix2)"
+    copy="copy-mode"
+    [[ $(t show-options -gv mode-keys) != vi ]] || copy="copy-mode-vi"
+    t list-keys -F $'#{key_table}\t#{key_string}\t#{key_note}\t#{key_command}' |
+        awk -F'\t' -v prefix="$prefix" -v prefix2="$prefix2" -v copy="$copy" '
+function key_part_text(part, is_modifier, part_count) {
+    gsub(/^\\/, "", part)
+    if (is_modifier && part == "C") return "CTRL"
+    if (is_modifier && part == "M") return "ALT"
+    if (is_modifier && part == "S") return "SHIFT"
+    if (part == "Space") return "SPACE"
+    if (part == "BSpace") return "BACKSPACE"
+    if (part == "BTab") return "SHIFT + TAB"
+    if (part == "PPage") return "PAGE UP"
+    if (part == "NPage") return "PAGE DOWN"
+    if (part == "DC") return "DELETE"
+    if (part == "IC") return "INSERT"
+    if (part_count == 1 && part ~ /^[a-z]$/) return part
+    return toupper(part)
+}
+
+# "C--" is CTRL + "-": split on the dashes after a modifier only.
+function key_text(key, parts, count, i, text) {
+    gsub(/\\/, "", key)
+    count = 0
+    while (key ~ /^[CMS]-./) {
+        parts[++count] = substr(key, 1, 1)
+        key = substr(key, 3)
+    }
+    parts[++count] = key
+    text = ""
+    for (i = 1; i <= count; i++)
+        text = text (text == "" ? "" : " + ") key_part_text(parts[i], i < count, count)
+    return text
+}
+
+function row(combo, what, line) {
+    line = sprintf("%-32s → %s", combo, what)
+    return seen[line]++ ? "" : line "\n"
+}
+
+BEGIN {
+    head = key_text(prefix)
+    if (prefix2 != "" && prefix2 != "None")
+        head = head " / " key_text(prefix2)
+    out["prefix"] = row("PREFIX", head)
+}
+{
+    table = $1
+    key = $2
+    what = $3 != "" ? $3 : $4
+    if (table != "prefix" && table != "root" && table != copy) next
+    # Clicks and wheel turns are not keys to learn.
+    if (key ~ /(Mouse|Wheel|DoubleClick|TripleClick|SecondClick)/) next
+    if (table == "root") combo = key_text(key)
+    else combo = (table == "prefix" ? "PREFIX" : "COPY MODE") " + " key_text(key)
+    out[table] = out[table] row(combo, what)
+}
+END { printf "%s%s%s", out["prefix"], out["root"], out[copy] }'
+)
+
+list="$(rows)" || die "tmux could not read ${config:-its defaults}"
+[[ -n $list ]] || die "tmux has no key bindings with ${config:-its defaults}"
+
+if $print; then
+    printf '%s\n' "$list"
+    exit 0
+fi
+
+# 40% of the focused monitor, as Omarchy sizes it.
+height="$(hyprctl monitors -j 2>/dev/null | jq -r 'map(select(.focused)) | first | .height // empty' 2>/dev/null || true)"
+[[ $height =~ ^[0-9]+$ ]] && ((height > 0)) || height=900
+printf '%s\n' "$list" | haseen-menu-select 'Tmux keybindings' --width 800 --height $((height * 40 / 100)) >/dev/null || true

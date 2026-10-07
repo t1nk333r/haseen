@@ -6,9 +6,10 @@ import "MenuStyle.js" as Style
 
 // One row of haseen.menu (Panel.qml's ListView delegate), Omarchy's row: a
 // glyph or app icon in a fixed column, the label, the description under it
-// while a search runs, a chevron on submenus. The selected row is tinted with
-// the foreground and draws in the accent; it changes at once, with no moving
-// highlight to lag behind or overshoot. Roles come from MenuModel.displayRow.
+// while a search runs (always in a pick list), a chevron on submenus. The
+// selected row is tinted with the foreground and draws in the accent; it
+// changes at once, with no moving highlight to lag behind or overshoot. Roles
+// come from MenuModel.displayRow and MenuModel.pickRows.
 //
 // Adapted from Omarchy shell/plugins/menu/Menu.qml (MIT, Copyright (c)
 // David Heinemeier Hansson).
@@ -92,7 +93,7 @@ Rectangle {
 
         Text {
             width: parent.width
-            visible: row.menu.filterText !== "" && row.detail !== ""
+            visible: row.menu.detailShown(row.detail)
             text: row.detail
             color: row.hasCursor ? row.menu.detailOnSelected : row.menu.detailOnCard
             elide: Text.ElideRight

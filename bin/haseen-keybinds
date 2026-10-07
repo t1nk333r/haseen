@@ -10,6 +10,12 @@
 # from parsing a config file, so a bind added by any Lua file, submap or plugin
 # is listed the moment Hyprland reloads. Only the category comes from the Lua
 # sources, where it is the `-- Section ---` comment the bind was written under.
+#
+# Key names and Lua binds adapted from Omarchy bin/omarchy-menu-keybindings
+# (MIT, Copyright (c) David Heinemeier Hansson): `code:N` resolved to its key
+# symbol through `xkbcli compile-keymap`, mouse buttons named, and each `__lua`
+# bind's key and dispatcher read back from the Lua config
+# (share/haseen/lib/keybinds-scan.lua), which Hyprland 0.56 does not report.
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
@@ -21,8 +27,11 @@ Usage: haseen keybinds [--json] [--reload]
 
 Lists the live bindings, grouped by the section they were written under.
 
-  --json     [{"key","mods","combo","description","action","category",
-              "submap","repeat","locked"}]
+  --json     [{"key","mods","combo","description","action","dispatcher",
+              "arg","category","submap","repeat","locked"}]
+             key is readable (code:10 becomes 1, mouse:272 LEFT MOUSE BUTTON);
+             dispatcher is exec, lua (arg: a hl.dsp expression), a native
+             dispatcher, or "" for a Lua function nothing can replay
   --reload   ask Hyprland to reload its config first, so an edit you just
              made is included
 EOF
@@ -79,20 +88,95 @@ categories() {
     done
 }
 
-records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" '
-    (split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries) as $cats
-    | [1, 2, 4, 8, 16, 32, 64, 128] as $bits
+# modmask<TAB>description<TAB>key<TAB>kind<TAB>arg for every described bind in
+# the Lua config, which knows the key of a `code:N` bind and what a `__lua`
+# bind does. Without lua the sheet still lists every bind, less those two.
+lua_binds() {
+    have lua || return 0
+    local config="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hyprland.lua"
+    [[ -f $config ]] || config="$HASEEN_PATH/default/hypr/init.lua"
+    lua "$HASEEN_PATH/lib/keybinds-scan.lua" "$config" 2>/dev/null || true
+}
+
+# keycode<TAB>SYMBOL from the compiled keymap; the number row is the fallback
+# when xkbcli cannot answer, since haseen binds workspaces to code:10..19.
+keysyms() {
+    printf '10\t1\n11\t2\n12\t3\n13\t4\n14\t5\n15\t6\n16\t7\n17\t8\n18\t9\n19\t0\n'
+    printf '20\tMINUS\n21\tEQUAL\n59\tCOMMA\n60\tPERIOD\n61\tSLASH\n'
+    have xkbcli || return 0
+    xkbcli compile-keymap </dev/null 2>/dev/null | awk '
+        /xkb_keycodes/ { section = "codes"; next }
+        /xkb_symbols/ { section = "syms"; next }
+        section == "codes" && /^[[:space:]]*<[A-Za-z0-9_+-]+>[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*;/ {
+            line = $0
+            gsub(/[[:space:]<>;]/, "", line)
+            split(line, kv, "=")
+            code[kv[1]] = kv[2]
+        }
+        section == "syms" && /^[[:space:]]*key[[:space:]]*<[A-Za-z0-9_+-]+>[[:space:]]*\{[[:space:]]*\[/ {
+            line = $0
+            sub(/^[[:space:]]*key[[:space:]]*</, "", line)
+            name = line
+            sub(/>.*/, "", name)
+            sub(/^[^[]*\[[[:space:]]*/, "", line)
+            sub(/[[:space:],\]].*/, "", line)
+            sym[name] = line
+        }
+        END {
+            for (name in code)
+                if (sym[name] != "" && sym[name] != "NoSymbol")
+                    printf "%s\t%s\n", code[name], toupper(sym[name])
+        }' || true
+}
+
+records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --arg lua "$(lua_binds)" --arg syms "$(keysyms)" '
+    def tsv: split("\n") | map(select(length > 0) | split("\t"));
+    (tsv | map({key: .[0], value: .[1]}) | from_entries) as $cats
+    # The last line for a code wins: the keymap over the fallback.
+    | ($syms | tsv | map({key: .[0], value: .[1]}) | from_entries) as $sym
+    | ($lua | tsv) as $lua
+    | ($lua | map({key: "\(.[0])\t\(.[1])", value: .[2]}) | from_entries) as $luakey
+    | ($lua | map({key: "\(.[0])\t\(.[1])\t\(.[2] | ascii_upcase)", value: {kind: .[3], arg: (.[4] // ""), section: (.[5] // "")}}) | from_entries) as $luado
+    | {"272": "LEFT MOUSE BUTTON", "273": "RIGHT MOUSE BUTTON", "274": "MIDDLE MOUSE BUTTON",
+       "275": "SIDE MOUSE BUTTON", "276": "EXTRA MOUSE BUTTON"} as $mouse
+    | def keyname:
+        if startswith("code:") then $sym[.[5:]] // .
+        elif startswith("mouse:") then $mouse[.[6:]] // .
+        elif . == "mouse_down" then "SCROLL DOWN"
+        elif . == "mouse_up" then "SCROLL UP"
+        elif . == "mouse_left" then "SCROLL LEFT"
+        elif . == "mouse_right" then "SCROLL RIGHT"
+        elif test("^[a-z]+$") or length == 1 then ascii_upcase
+        else . end;
+    [1, 2, 4, 8, 16, 32, 64, 128] as $bits
     | ["SHIFT", "CAPS", "CTRL", "ALT", "MOD2", "MOD3", "SUPER", "MOD5"] as $names
     | $binds | map(
         . as $bind
-        | ([range(0; 8) | select(($bind.modmask % ($bits[.] * 2)) >= $bits[.]) | $names[.]]) as $mods
+        | (if .has_description then .description else "" end) as $desc
+        # A Lua bind reports "SUPER + code:20" or, for code:N, nothing at all.
+        | (.key | sub("^.* \\+ "; "")
+            | if . == "" and $bind.keycode != 0 then "code:\($bind.keycode)" else . end
+            | if . == "" then $luakey["\($bind.modmask)\t\($desc)"] // "" else . end) as $key
+        | ($luado["\(.modmask)\t\($desc)\t\($key | ascii_upcase)"] // {kind: "", arg: "", section: ""}) as $src
+        | (if .dispatcher == "__lua" then $src else {kind: .dispatcher, arg: .arg} end) as $do
+        | select(.dispatcher != "__lua" or $desc != "")
+        # In the order binds.lua writes them: SUPER + SHIFT + CTRL + ALT.
+        | ([[6, 0, 2, 3, 1, 4, 5, 7][] | select(($bind.modmask % ($bits[.] * 2)) >= $bits[.]) | $names[.]]) as $mods
+        | ($key | keyname) as $name
         | {
-            key: .key,
+            key: $name,
             mods: $mods,
-            combo: (($mods + [.key]) | join(" + ")),
-            description: (if .has_description then .description else "" end),
-            action: (if .dispatcher == "__lua" then "" else (.dispatcher + (if .arg == "" then "" else " " + .arg end)) end),
-            category: ($cats[.description] // (if .submap == "" then "Other" else "Submap: " + .submap end)),
+            combo: (($mods + [$name]) | join(" + ")),
+            description: $desc,
+            action: (if $do.kind == "exec" then ($do.arg | sub("^uwsm-app -- "; ""))
+                elif $do.kind == "lua" or $do.kind == "" then $do.arg
+                else $do.kind + (if $do.arg == "" then "" else " " + $do.arg end) end),
+            dispatcher: $do.kind,
+            arg: $do.arg,
+            # The section the bind was written under: from the Lua call site
+            # (loops included), else from the b("KEY", "Description") lines.
+            category: (if $src.section != "" then $src.section
+                else $cats[.description] // (if .submap == "" then "Other" else "Submap: " + .submap end) end),
             submap: .submap,
             repeat: .repeat,
             locked: .locked

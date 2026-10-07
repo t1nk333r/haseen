@@ -7,7 +7,8 @@
 // David Heinemeier Hansson). Changes: haseen guard helpers and readers,
 // `hidden` for overlays, `when` hides a row until its guard answers true,
 // the catalog row builder, disabled rows, in-place row sync and the memory
-// kept across opens, no dmenu/summon paths.
+// kept across opens; the dmenu mode is pickRows over `haseen menu select`'s
+// request file, not a summon payload.
 .pragma library
 
 // Full-line `//` comments and trailing commas. A `//` inside a string value
@@ -606,4 +607,44 @@ function parseGuardOutput(text) {
 function panelAction(action) {
     var m = /^haseen shell ipc panel toggle ([a-z0-9.-]+)$/.exec(String(action || "").trim());
     return m ? m[1] : "";
+}
+
+// `haseen menu select`: the rows of a list handed in (Omarchy's dmenu mode).
+// An option is "label", "glyph<TAB>label" or "glyph<TAB>label<TAB>detail";
+// the glyph is shown but never returned, the detail shows under the label
+// and comes back with it ("label<TAB>detail") as a key for same-named rows.
+// The row's `action` carries that returned value. A query keeps the rows
+// whose label or detail holds every one of its words, in the given order.
+function pickRows(options, query) {
+    var words = String(query || "").toLowerCase().split(/\s+/).filter(function (w) {
+        return w;
+    });
+    var rows = [];
+    for (var i = 0; i < options.length; i++) {
+        var parts = String(options[i] === undefined || options[i] === null ? "" : options[i]).split("\t");
+        var icon = parts.length > 1 ? parts.shift() : "";
+        var label = parts.shift() || "";
+        var detail = parts.join("\t");
+        var text = (label + "\n" + detail).toLowerCase();
+        if (!words.every(function (w) {
+            return text.indexOf(w) >= 0;
+        }))
+            continue;
+        rows.push({
+            itemId: "pick." + i,
+            kind: "pick",
+            icon: icon,
+            appIcon: "",
+            appId: "",
+            label: label,
+            target: "",
+            detail: detail,
+            path: "",
+            action: detail ? label + "\t" + detail : label,
+            childCount: 0,
+            disabled: false,
+            section: ""
+        });
+    }
+    return rows;
 }
