@@ -33,6 +33,7 @@ Scope {
                     title: "Web search is off: the URL template is not http(s)",
                     subtitle: "plugins.haseen.websearch.settings.url needs https://…%s",
                     icon: "dialog-warning",
+                    glyph: "\uf071",
                     exec: () => {}
                 }
             ];
@@ -43,6 +44,7 @@ Scope {
                     title: "Web search",
                     subtitle: "Type what to search for on " + WebSearch.host(template),
                     icon: "web-browser",
+                    glyph: "\uf002",
                     exec: () => {}
                 }
             ];
@@ -51,6 +53,7 @@ Scope {
                 title: "Search “" + text.trim() + "”",
                 subtitle: WebSearch.host(template) + "  ·  Enter opens the browser",
                 icon: "web-browser",
+                glyph: "\uf002",
                 exec: () => root.open(target)
             }
         ];

@@ -41,6 +41,7 @@ Scope {
                     title: "Loading emoji…",
                     subtitle: "",
                     icon: "face-smile",
+                    glyph: "\uf118",
                     exec: () => {}
                 }
             ];
@@ -56,6 +57,7 @@ Scope {
                     title: "No matching emoji",
                     subtitle: "Emoji: type a word like heart, smile, cat",
                     icon: "face-smile",
+                    glyph: "\uf118",
                     exec: () => {}
                 }
             ];
