@@ -247,7 +247,10 @@ widget (sliders, drags, its own popups), and a hold-to-drag gesture would have
 to cancel the widget's press after the fact. A modifier gesture cannot do it
 either, because Wayland only tells the client with keyboard focus about Shift,
 and a bar never has it. The same edits from a terminal: `haseen bar overflow
-add|remove|pin|unpin <id>`, `list`, and `haseen bar move`.
+add|remove|pin|unpin <id>`, `list`, and `haseen bar move`. A widget that is
+in no section yet goes in with `haseen bar add <id> <left|center|right>
+[--before <id>]`, which turns the plugin on when it was off and refuses a
+widget already in the bar.
 
 Shared state flags live in `~/.local/state/haseen/flags/<name>`; the file
 existing means on. The names are `dnd`, `idle-off`, `screensaver-off`,
@@ -392,5 +395,5 @@ all filled with `currentColor`, plus a terminal logo `logo-<mark>.txt` (at most
 
 - **One setting.** `branding.mark` in `shell.json`; `haseen branding mark <name>` writes it. `share/haseen/lib/branding.sh` (`branding_mark`, `branding_file`) and `qs.Haseen.Branding` (`mark`, `paths`, `pathsFor()`) read it with one rule: anything but the three names is `kufic`.
 - **Colour.** QML draws the SVGs through `qs.Haseen.Widgets.BrandImage`, which writes a `Theme` colour into the SVG text (the software renderer has no shader recolouring). Files outside the shell get a baked colour: the plymouth `logo.png` and the scalable app icon use the theme accent.
-- **Where it shows.** The menu header, the About panel (the wordmark, unless `haseen branding about` set a text or image), `haseen about --logo`, the screensaver's default text (both styles), the boot splash, and the app icon `haseen` / `haseen-symbolic` in hicolor (installed by `install.sh` under `PREFIX`, and per user by `haseen branding mark`). The optional bar widget `haseen.logo` opens the menu; it is off and in no default bar section. The greeter shows no logo.
+- **Where it shows.** The menu header, the About panel (the wordmark, unless `haseen branding about` set a text or image), `haseen about --logo`, the screensaver's default text (both styles), the boot splash, and the app icon `haseen` / `haseen-symbolic` in hicolor (installed by `install.sh` under `PREFIX`, and per user by `haseen branding mark`). The bar widget `haseen.logo`, first in `bar.left` by default (plan 070), opens the menu. The greeter shows no logo.
 - **Applying a change.** The shell follows `shell.json` at once; the splash needs `haseen plymouth set` again (it lives under `/usr`).

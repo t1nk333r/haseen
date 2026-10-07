@@ -191,7 +191,9 @@ plugin and offers to disable it, safe mode, the last good `shell.json`
 - "Super+E opens the file manager" → `~/.config/hypr/bindings.lua` (see `hyprland.md`).
 - "Smaller gaps" → `~/.config/hypr/local.lua` with `hl.config({ general = { gaps_out = 2 } })`.
 - "Switch to gruvbox" → `haseen theme set gruvbox`.
-- "Use the shield logo" → `haseen branding mark shield` (or `kufic`, the default, or `gate`): menu, About, screensaver and app icon follow at once; run `haseen plymouth set` for the boot splash. A logo in the bar that opens the menu: `haseen plugin enable haseen.logo` (off by default; it lands at the end of `bar.right`).
+- "Use the shield logo" → `haseen branding mark shield` (or `kufic`, the default, or `gate`): menu, About, screensaver and app icon follow at once; run `haseen plymouth set` for the boot splash. The bar logo `haseen.logo` (first in `bar.left`, on by default since plan 070) opens the menu on a click; put it back after removing it with `haseen bar add haseen.logo left --before haseen.workspaces`.
+- "Add a widget to the bar" → `haseen bar add <id> <left|center|right> [--before <id>] [--dry-run]` (a widget not in the bar yet; turns it on if it was off; a widget already there is refused, use `haseen bar move`).
+- "Default browser" → `haseen setup default browser zen|chromium|helium|firefox|chrome|brave`. haseen's default browsers, in order: Zen and Chromium (Flathub), Helium (`helium-browser-bin`, Chaotic-AUR; not on Flathub), all via `haseen install app <id>`; Zen is the one to make the system handler.
 - "Make the accent orange in tokyo-night" → `~/.config/haseen/themes/tokyo-night/colors.toml` with `accent = "#ff9e64"`, then `haseen theme set tokyo-night`.
 - "Make a theme from this wallpaper" → `haseen theme generate <image>` (matugen; `--scheme`, `--mode light`, `--no-apply`; needs `haseen install package matugen`). The panel is `haseen.themegen` (off by default: `haseen plugin enable haseen.themegen`). `haseen theme wallpaper <image>` is the extractor without matugen.
 - "Chat with my local model" → SUPER+A opens the AI panel; `ai.md` for endpoints.

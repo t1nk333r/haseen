@@ -43,7 +43,8 @@ assert_eq "catalog: fonts carry a family" "" "$(jq -r '.entries[] | select(.cate
 assert_eq "catalog: dev toolchains use mise or docker" "" "$(jq -r '.entries[] | select(.category == "development" and .source != "mise" and (.ref | test("docker") | not)) | .id' "$CATALOG")"
 assert_contains "catalog: Flathub verification date" "$(jq -r .flathubVerified "$CATALOG")" "2026-"
 assert_contains "catalog: browsers are Flatpaks" "$(jq -r '[.entries[] | select(.category == "browser") | .source] | unique | join(",")' "$CATALOG")" "flatpak"
-assert_eq "catalog: browsers only Flatpaks" "flatpak" "$(jq -r '[.entries[] | select(.category == "browser") | .source] | unique | join(",")' "$CATALOG")"
+# Helium is not on Flathub (plan 070): helium-browser-bin from Chaotic-AUR.
+assert_eq "catalog: browsers only Flatpaks, but Helium" "flatpak" "$(jq -r '[.entries[] | select(.category == "browser" and .id != "helium") | .source] | unique | join(",")' "$CATALOG")"
 
 # --- install dispatch per source (dry-run) ------------------------------------
 sandbox catalog-install

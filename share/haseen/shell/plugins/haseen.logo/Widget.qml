@@ -4,9 +4,9 @@ import qs.Haseen
 import qs.Haseen.Widgets
 
 // haseen.logo: the selected mark (Branding, `haseen branding mark`) as a bar
-// cell; a left click toggles the menu, as Omarchy's bar logo does. Off by
-// default and in no default bar section (plan 059, no visual clutter): the
-// menu is already on a key, so this is for people who want a click target.
+// cell; a left click toggles the menu (top level unless settings.menu names a
+// path), as Omarchy's bar logo does. On by default, first in bar.left (plan
+// 070, owner-approved).
 BarButton {
     id: root
 
@@ -22,7 +22,7 @@ BarButton {
 
     onClicked: button => {
         if (button === Qt.LeftButton)
-            Quickshell.execDetached(["qs", "-p", Quickshell.shellDir, "ipc", "call", "menu", "toggle", menuPath]);
+            Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "menu", "toggle", menuPath]);
     }
 
     BrandImage {

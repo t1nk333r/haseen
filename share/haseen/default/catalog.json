@@ -12,12 +12,13 @@
     { "id": "development", "label": "Development", "icon": "󰵮" }
   ],
   "entries": [
+    { "id": "zen", "category": "browser", "label": "Zen", "icon": "󰖟", "source": "flatpak", "ref": "app.zen_browser.zen" },
+    { "id": "chromium", "category": "browser", "label": "Chromium", "icon": "", "source": "flatpak", "ref": "org.chromium.Chromium" },
+    { "id": "helium", "category": "browser", "label": "Helium", "icon": "", "source": "aur", "ref": "helium-browser-bin" },
     { "id": "firefox", "category": "browser", "label": "Firefox", "icon": "", "source": "flatpak", "ref": "org.mozilla.firefox" },
     { "id": "chrome", "category": "browser", "label": "Chrome", "icon": "", "source": "flatpak", "ref": "com.google.Chrome" },
-    { "id": "chromium", "category": "browser", "label": "Chromium", "icon": "", "source": "flatpak", "ref": "org.chromium.Chromium" },
     { "id": "edge", "category": "browser", "label": "Edge", "icon": "󰇩", "source": "flatpak", "ref": "com.microsoft.Edge" },
     { "id": "brave", "category": "browser", "label": "Brave", "icon": "", "source": "flatpak", "ref": "com.brave.Browser" },
-    { "id": "zen", "category": "browser", "label": "Zen", "icon": "󰖟", "source": "flatpak", "ref": "app.zen_browser.zen" },
 
     { "id": "vscode", "category": "editor", "label": "VSCode", "icon": "", "source": "flatpak", "ref": "com.visualstudio.code" },
     { "id": "vscodium", "category": "editor", "label": "VSCodium", "icon": "", "source": "flatpak", "ref": "com.vscodium.codium" },

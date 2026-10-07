@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# haseen:summary Put a bar widget that is not in the bar yet into a bar section (saved in shell.json)
+# haseen:args <id> <left|center|right> [--before <id>] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar add <id> <left|center|right> [--before <id>] [--dry-run]
+
+Puts a bar widget that is in no bar section yet at the end of a section, or
+in front of the widget named by --before (the end when that widget is not in
+the section). Edits bar.left, bar.center or bar.right in
+$SHELL_USER_CONFIG and turns the plugin on when it was off; the running
+shell picks the file up. The tray stays first in the right section.
+
+A widget already in the bar (or in the overflow panel) is refused: move it
+with \`haseen bar move\`.
+EOF
+}
+
+BEFORE=""
+args=()
+while (($#)); do
+    case $1 in
+    --before)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        BEFORE=$2
+        shift
+        ;;
+    *) args+=("$1") ;;
+    esac
+    shift
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 2)) && [[ ${REST[1]} =~ ^(left|center|right)$ ]] || {
+    usage >&2
+    exit 2
+}
+id="${REST[0]}"
+to="${REST[1]}"
+[[ $id =~ $PLUGIN_ID_RE ]] || die "not a plugin id: $id"
+[[ -z $BEFORE || $BEFORE =~ $PLUGIN_ID_RE ]] || die "not a plugin id: $BEFORE"
+dir="$(plugin_resolve "$id")"
+plugin_field "$dir" '.kinds | index("bar-widget") != null' | grep -qx true ||
+    die "$id is not a bar widget"
+
+# Read and write are one transaction (see haseen bar move).
+shell_config_lock
+user="$(shell_user_json)"
+merged="$(shell_merged_json)"
+if jq -e --arg id "$id" '[.bar.left, .bar.center, .bar.right, .bar.overflow] | map(if type == "array" then . else [] end) | add | index($id) != null' <<<"$merged" >/dev/null; then
+    die "$id is already in the bar (move it with: haseen bar move $id $to)"
+fi
+
+# The section is read from the merged config (the defaults may hold it) and
+# written whole, as arrays replace in the merge.
+updated="$(jq --argjson m "$merged" --arg id "$id" --arg to "$to" --arg before "$BEFORE" '
+    ($m.bar[$to] | if type == "array" then map(select(type == "string")) else [] end) as $s |
+    (if $before == "" then null else ($s | index($before)) end) as $i |
+    (if $i == null then $s + [$id] else $s[:$i] + [$id] + $s[$i:] end) as $r |
+    # Never in front of the tray.
+    ($r | index("haseen.tray")) as $t | ($r | index($id)) as $p |
+    .bar[$to] = (if $t != null and $t > $p then ($r - [$id]) | .[:$t] + [$id] + .[$t:] else $r end) |
+    (if $m.plugins[$id].enabled == false then .plugins[$id].enabled = true else . end)' <<<"$user")"
+printf '%s\n' "$updated" | shell_config_write
+info "$id: in the bar's $to section${BEFORE:+, before $BEFORE}"

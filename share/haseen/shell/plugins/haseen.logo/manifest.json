@@ -3,7 +3,7 @@
   "id": "haseen.logo",
   "name": "Logo",
   "version": "1.0.0",
-  "description": "haseen's mark in the bar (haseen branding mark); click opens the menu. Off by default",
+  "description": "haseen's mark in the bar (haseen branding mark); click opens the menu. First in bar.left by default",
   "kinds": [
     "bar-widget"
   ],

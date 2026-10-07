@@ -10,7 +10,7 @@ usage() {
 Usage: haseen setup default <browser|terminal|editor|agent> [name] [--dry-run]
 
 Without a name, prints the current default.
-  browser   firefox chromium chrome brave zen   (xdg-settings + http/https MIME)
+  browser   zen chromium helium firefox chrome brave  (xdg-settings + http/https MIME)
   terminal  foot alacritty ghostty kitty        (\$TERMINAL)
   editor    nvim helix vim code zed emacs       (\$EDITOR)
   agent     claude codex opencode omp gemini crush  (\$HASEEN_AGENT)
@@ -21,9 +21,14 @@ EOF
 
 ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/60-haseen-defaults"
 
-# name -> what the setting stores (command or .desktop id).
-declare -A BROWSERS=([firefox]=firefox.desktop [chromium]=chromium.desktop [chrome]=google-chrome.desktop
-    [brave]=brave-browser.desktop [zen]=zen.desktop)
+# name -> what the setting stores (command or .desktop id). A browser lists
+# its desktop ids, native package first, then the Flathub app the catalogue
+# installs; setting it picks the first one installed. haseen's default
+# browsers, in order: zen, chromium, helium (plan 070).
+declare -A BROWSERS=([zen]="zen.desktop app.zen_browser.zen.desktop"
+    [chromium]="chromium.desktop org.chromium.Chromium.desktop" [helium]=helium.desktop
+    [firefox]="firefox.desktop org.mozilla.firefox.desktop" [chrome]="google-chrome.desktop com.google.Chrome.desktop"
+    [brave]="brave-browser.desktop com.brave.Browser.desktop")
 declare -A TERMINALS=([foot]=foot [alacritty]=alacritty [ghostty]=ghostty [kitty]=kitty)
 declare -A EDITORS=([nvim]=nvim [helix]=helix [vim]=vim [code]=code [zed]=zeditor [emacs]=emacs)
 declare -A AGENTS=([claude]=claude [codex]=codex [opencode]=opencode [omp]=omp [gemini]=gemini [crush]=crush)
@@ -35,12 +40,38 @@ env_value() {
     sed -n "s/^export $1=//p" "$ENV_FILE" | tail -n1 | tr -d "'\""
 }
 
+# desktop_installed ID — a .desktop entry ID exists in an applications dir
+# (XDG data dirs and both Flatpak export dirs).
+desktop_installed() {
+    local dir dirs
+    IFS=: read -ra dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    dirs+=("${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share" "$(sysroot_path /var/lib/flatpak/exports/share)")
+    for dir in "${dirs[@]}"; do
+        [[ -r $dir/applications/$1 ]] && return 0
+    done
+    return 1
+}
+
+# browser_desktop IDS — of a browser's desktop ids, the first installed one,
+# else the first (the native package's).
+browser_desktop() {
+    local id ids
+    read -ra ids <<<"$1"
+    for id in "${ids[@]}"; do
+        desktop_installed "$id" && {
+            echo "$id"
+            return 0
+        }
+    done
+    echo "${ids[0]}"
+}
+
 # name_for KIND VALUE — the menu name whose stored value is VALUE.
 name_for() {
     local -n map="$2"
     local k
     for k in "${!map[@]}"; do
-        [[ ${map[$k]} == "$3" || $k == "$3" ]] && {
+        [[ " ${map[$k]} " == *" $3 "* || $k == "$3" ]] && {
             echo "$k"
             return 0
         }
@@ -89,7 +120,7 @@ if (($# == 1)); then
 fi
 name="$2"
 case "$kind" in
-browser) value="${BROWSERS[$name]:-}" ;;
+browser) value="${BROWSERS[$name]:+$(browser_desktop "${BROWSERS[$name]}")}" ;;
 terminal) value="${TERMINALS[$name]:-}" ;;
 editor) value="${EDITORS[$name]:-}" ;;
 agent) value="${AGENTS[$name]:-}" ;;
