@@ -18,11 +18,12 @@ BarButton {
     property var screen: null
 
     readonly property bool multi: Keyboard.layouts.length > 1
-    readonly property string fallback: Keyboard.index >= 0 && Keyboard.index < Keyboard.layouts.length ? Keyboard.layouts[Keyboard.index].code : ""
 
     visible: multi
     implicitWidth: multi ? contentWidth : 0
-    text: Keyboard.code !== "" ? Keyboard.code : fallback
+    // The list's code for the active layout (Keyboard.code), so the bar and
+    // the list never show two codes for one layout.
+    text: Keyboard.code
 
     onClicked: button => {
         if (button === Qt.LeftButton)

@@ -93,6 +93,24 @@ Window {
            { keyboard: "at-kbd", layout: "Arabic (AZERTY, Eastern Arabic numerals)" },
            K.parseLayoutEvent("at-kbd,Arabic (AZERTY, Eastern Arabic numerals)"));
         eq("event: junk", [null, null, null], ["", "nocomma", ",Arabic"].map(K.parseLayoutEvent));
+        eq("event: a known keyboard name with a comma (Hyprland keeps it)",
+           { keyboard: "logitech,-inc.-keyboard", layout: "Arabic" },
+           K.parseLayoutEvent("logitech,-inc.-keyboard,Arabic", ["logitech", "logitech,-inc.-keyboard"]));
+        eq("event: the longest known name wins, the description keeps its comma",
+           { keyboard: "a,b", layout: "Arabic (AZERTY, Eastern Arabic numerals)" },
+           K.parseLayoutEvent("a,b,Arabic (AZERTY, Eastern Arabic numerals)", ["a", "a,b"]));
+        eq("layout event: a switch on a keyboard whose name has a comma", [true, "Arabic"],
+           (r => [r.switched, r.layout])(K.layoutEvent({ "logitech,-inc.-keyboard": "English (US)" }, "logitech,-inc.-keyboard,Arabic")));
+
+        // xkb names and the entry a switch went to
+        eq("layout names: xkb's descriptions", ["Arabic", "English (US)", "German", "Tajik", "klingon"],
+           ["ara", "us", "de", "tj", "klingon"].map(K.layoutName));
+        const usAra = [{ layout: "us", variant: "", code: "EN" }, { layout: "ara", variant: "", code: "AR" }];
+        eq("index: a switch by description", [1, 0], [K.indexOf(usAra, "Arabic"), K.indexOf(usAra, "English (US)")]);
+        eq("index: a variant or an unknown description waits for a read", [-1, -1],
+           [K.indexOf(usAra.concat([{ layout: "ara", variant: "buckwalter", code: "AR" }]), "Arabic (Buckwalter)"), K.indexOf(usAra, "French")]);
+        eq("index: two entries with one description is not a guess", -1,
+           K.indexOf([{ layout: "ara", variant: "", code: "AR" }, { layout: "ara", variant: "", code: "AR" }], "Arabic"));
 
         // devices
         const two = K.readDevices(fixture("devices-two.json"));
@@ -156,7 +174,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "43" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "50" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -197,10 +215,22 @@ function haseen.bind(keys, description, dispatcher, options)
 end
 dofile(haseen.path .. '/default/hypr/binds.lua')"
     assert_status "binds.lua loads" 0 "$STATUS"
+    lockcmd='test -e "$XDG_RUNTIME_DIR/haseen/osd-lockkeys" && haseen shell ipc osd lockkeys'
     assert_contains "Caps Lock: a non-consuming release bind that asks the OSD" "$OUTPUT" \
-        "BIND code:66 -> haseen shell ipc osd lockkeys [non_consuming,release,ignore_mods] Caps Lock OSD"
+        "BIND code:66 -> $lockcmd [non_consuming,release,ignore_mods] Caps Lock OSD"
     assert_contains "Num Lock: the same" "$OUTPUT" \
-        "BIND code:77 -> haseen shell ipc osd lockkeys [non_consuming,release,ignore_mods] Num Lock OSD"
+        "BIND code:77 -> $lockcmd [non_consuming,release,ignore_mods] Num Lock OSD"
+    # The bind as Hyprland runs it (sh -c): no IPC client unless the OSD has
+    # lockKeys on and keeps the flag (before: one per Caps/Num release).
+    bindcmd="$(sed -n 's/^BIND code:66 -> \(.*\) \[non_consuming.*$/\1/p' <<<"$OUTPUT")"
+    stub haseen "printf '%s\n' \"\$*\" >>'$SANDBOX/haseen.log'"
+    : >"$SANDBOX/haseen.log"
+    sh -c "$bindcmd" || true
+    assert_eq "lock key with the kind off: no IPC call" "" "$(cat "$SANDBOX/haseen.log")"
+    mkdir -p "$XDG_RUNTIME_DIR/haseen" && : >"$XDG_RUNTIME_DIR/haseen/osd-lockkeys"
+    sh -c "$bindcmd"
+    assert_eq "lock key with the flag: one IPC call" "shell ipc osd lockkeys" "$(cat "$SANDBOX/haseen.log")"
+    rm -f "$XDG_RUNTIME_DIR/haseen/osd-lockkeys"
 else
     _fail "lua missing"
 fi
@@ -244,6 +274,7 @@ ShellRoot {
             text: widget.text,
             main: Keyboard.mainKeyboard,
             layouts: Keyboard.layouts.length,
+            index: Keyboard.index,
             shown: osd.shown,
             card: osd.card,
             locks: osd._locks
@@ -321,6 +352,29 @@ ShellRoot {
         interval: 800
         onTriggered: {
             shellRoot.states.push(shellRoot.snap());
+            // A read that finds no keyboard (a compositor hiccup during a
+            // reload) keeps the last good one.
+            shellRoot.swap("devices-none.json");
+            // Whether the lock-key bind's flag is there now (lockKeys on).
+            Quickshell.execDetached(["sh", "-c", "if test -e \"\$1\"; then echo on; else echo off; fi >\"\$2\"", "sh", osd.lockFlag, "$SANDBOX/flag-state"]);
+            empty.start();
+        }
+    }
+
+    Timer {
+        id: empty
+        interval: 600
+        onTriggered: {
+            Keyboard.refresh();
+            done.start();
+        }
+    }
+
+    Timer {
+        id: done
+        interval: 800
+        onTriggered: {
+            shellRoot.states.push(shellRoot.snap());
             console.warn("RESULT " + JSON.stringify(shellRoot.states));
             Qt.quit();
         }
@@ -345,6 +399,7 @@ QML
     assert_eq "startup flashes no OSD (the lock read is only the baseline)" "false" "$(s 0 .shown)"
     assert_eq "the lock baseline" '{"caps":false,"num":true}' "$(s 0 .locks)"
     assert_eq "an activelayout switch: the widget shows AR" '"AR"' "$(s 1 .text)"
+    assert_eq "a switch by description places the list entry without a read" '1' "$(s 1 .index)"
     assert_eq "an activelayout switch: the OSD shows the code and the name" \
         '{"glyph":"","text":"AR","label":"Arabic","value":0,"dim":false}' "$(s 1 .card)"
     assert_eq "an activelayout switch shows the OSD" "true" "$(s 1 .shown)"
@@ -352,14 +407,18 @@ QML
     assert_not_contains "a right click with two layouts opens no list" "$QSLOG" "panel toggle"
     assert_eq "Caps Lock pressed: one read, the OSD says so" '["Caps Lock on",false]' "$(jq -c '.[2].card | [.label, .dim]' <<<"$RESULT")"
     assert_eq "Num Lock released: the OSD says it is off" '["Num Lock off",true]' "$(jq -c '.[3].card | [.label, .dim]' <<<"$RESULT")"
-    assert_eq "devices reads: Keyboard once, the lock baseline, one per key" "4" "$(grep -cx -- '-j devices' <<<"$HYPRCTL")"
+    assert_eq "devices reads: Keyboard once, the lock baseline, one per key, one refresh" "5" "$(grep -cx -- '-j devices' <<<"$HYPRCTL")"
+    assert_eq "a read with no keyboard keeps the layouts and the code" '[2,"AR",true]' "$(jq -c '.[4] | [.layouts, .text, .visible]' <<<"$RESULT")"
+    assert_eq "lockKeys on: the OSD keeps the binds' flag" "on" "$(cat "$SANDBOX/flag-state" 2>/dev/null)"
+    assert_eq "and removes it when the shell exits" "absent" "$(test -e "$XDG_RUNTIME_DIR/haseen/osd-lockkeys" && echo present || echo absent)"
 
     # One layout, lock keys off (the default).
     kb_run one devices-one.json '{}'
     assert_status "the harness completes with one layout" 0 "$STATUS"
     assert_eq "one layout: the widget takes no room" '[false,0]' "$(jq -c '.[0] | [.visible, .width]' <<<"$RESULT")"
-    assert_eq "lock keys off: lockkeys reads nothing (only Keyboard's read)" "1" "$(grep -cx -- '-j devices' <<<"$HYPRCTL")"
+    assert_eq "lock keys off: lockkeys reads nothing (Keyboard: startup, a switch not in the list, the refresh)" "3" "$(grep -cx -- '-j devices' <<<"$HYPRCTL")"
     assert_eq "lock keys off: no lock card" "null" "$(s 3 .locks)"
+    assert_eq "lock keys off: no flag, so the binds start nothing" "off" "$(cat "$SANDBOX/flag-state" 2>/dev/null)"
 
     # Three layouts: a right click opens the list.
     kb_run three devices-three.json '{"layout": false}'
@@ -367,4 +426,14 @@ QML
     assert_eq "three layouts: the active one is the Arabic variant" '"AR"' "$(s 0 .text)"
     assert_contains "three layouts: a right click opens the list" "$QSLOG" "call panel toggle haseen.kblayout"
     assert_eq "layout kind off: a switch shows no OSD" "false" "$(s 1 .shown)"
+
+    # The bar shows the list's code: Tajik is TJ in both, not TA from its
+    # description (before, the bar said TA and the list TJ).
+    jq '.keyboards[1] += {layout: "us,tj", variant: ",", active_keymap: "Tajik", active_layout_index: 1}' \
+        "$FX/devices-two.json" >"$OUT/devices-tajik.json"
+    FX_SAVE="$FX"
+    FX="$OUT"
+    kb_run tajik devices-tajik.json '{}'
+    FX="$FX_SAVE"
+    assert_eq "us,tj: the bar shows TJ, the list's code" '["TJ",1]' "$(jq -c '.[0] | [.text, .index]' <<<"$RESULT")"
 fi

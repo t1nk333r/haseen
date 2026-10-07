@@ -10,7 +10,8 @@ import "Keyboard.js" as Model
 // haseen.osd layout card and the haseen.kblayout bar widget. One
 // `hyprctl -j devices` read when the first user appears and one after each
 // config reload (the layout list may have changed); everything else is the
-// socket2 `activelayout` event. Nothing polls.
+// socket2 `activelayout` event, plus one read after a switch the event alone
+// cannot place in the list (a variant, or another keyboard). Nothing polls.
 Singleton {
     id: root
 
@@ -18,12 +19,16 @@ Singleton {
     property string mainKeyboard: ""
     // [{layout, variant, code}] of the main keyboard ("us,ara" -> two).
     property var layouts: []
-    // active_layout_index at the last read; -1 before it.
+    // active_layout_index at the last read, then the entry a switch went to;
+    // -1 before the first read and while a switch waits for its read.
     property int index: -1
     // The description of the active layout ("Arabic"): the main keyboard at
     // the last read, then the last keyboard that switched.
     property string layout: ""
-    readonly property string code: Model.codeFromName(layout)
+    // The list's code for the active entry, so the bar, the list and the OSD
+    // agree ("TJ" for Tajik, not "TA" from its description); the
+    // description's code only while the entry is not known.
+    readonly property string code: index >= 0 && index < layouts.length ? layouts[index].code : Model.codeFromName(layout)
     readonly property bool ready: _read
 
     // Each keyboard's layout as last seen, so a reload or a new keyboard (both
@@ -61,8 +66,17 @@ Singleton {
         return Model.lockState(text);
     }
 
+    // "ara" -> "Arabic", for the layout list.
+    function layoutName(name: string): string {
+        return Model.layoutName(name);
+    }
+
     function applyDevices(text: string): void {
         const d = Model.readDevices(text);
+        // A failed or empty read (a compositor hiccup during a reload) keeps
+        // what the last good one said, so the bar code does not vanish.
+        if (d.main === "" && _read)
+            return;
         mainKeyboard = d.main;
         layouts = d.layouts;
         index = d.index;
@@ -78,6 +92,9 @@ Singleton {
         if (!r.switched)
             return;
         layout = r.layout;
+        index = r.keyboard === mainKeyboard ? Model.indexOf(layouts, r.layout) : -1;
+        if (index < 0)
+            refresh();
         switched(r.layout);
     }
 

@@ -37,6 +37,20 @@
 `~/.cache/haseen-wt/scratch-keyboard/shots/bar-en-crop.png` (EN in the bar with us,ara) and
 `switch-ar.png` (AR after a switch on the nest socket).
 
+## Review fixes (2026-10-08)
+
+- **One code everywhere.** `Keyboard.code` is the list entry's xkb code (`layouts[index].code`), the description's
+  code only while the entry is unknown, so the bar, the list and the OSD agree (Tajik: TJ, not TA). A switch event
+  places the entry by its xkb description (`Keyboard.js` `indexOf`, `XKB_NAMES` from xkeyboard-config 2.48's
+  evdev.xml, MIT); a variant, a duplicate or another keyboard reads the devices once.
+- **A failed or empty devices read keeps the last good one** (the widget no longer vanishes on a reload hiccup).
+- **Keyboard names with a comma** ("logitech,-inc.-keyboard"): the longest known name wins in `parseLayoutEvent`.
+- **The list** (design review M9): rows show code, xkb description ("Arabic") and the xkb name/variant in
+  `Theme.subtle`; the cursor row has the `Theme.selection` fill, the active code is in the accent; the title is the
+  accent panel title; Up/Down, j/k, Tab move and Enter picks, as in haseen.session.
+- `tests/test-keyboard.sh` 44 checks; 10 of them fail on 2981fb3. No nested screenshot of the list was taken in
+  this pass (run out of time); the engine test drives it.
+
 ## Not verified
 
 - A pointer click on the widget and the layout panel in the nest (the engine test drives both).

@@ -102,16 +102,58 @@ function codeFromXkb(layout) {
     return XKB[name] || name.replace(/[^a-z]/g, "").slice(0, 2).toUpperCase();
 }
 
-// One `activelayout` payload: "KEYBOARD,LAYOUT". Keyboard names never hold a
-// comma; descriptions can ("Arabic (AZERTY, Eastern Arabic numerals)").
-function parseLayoutEvent(data) {
+// xkb layout names -> their description, for the layout list: the
+// top-level `<layout>` entries of xkeyboard-config 2.48's
+// rules/evdev.xml (MIT).
+const XKB_NAMES = {
+    "al": "Albanian", "et": "Amharic", "am": "Armenian", "ara": "Arabic", "eg": "Arabic (Egypt)",
+    "iq": "Arabic (Iraq)", "ma": "Arabic (Morocco)", "sy": "Arabic (Syria)", "az": "Azerbaijani", "ml": "Bambara",
+    "bd": "Bangla", "by": "Belarusian", "be": "Belgian", "dz": "Berber (Algeria, Latin)", "ba": "Bosnian",
+    "brai": "Braille", "bg": "Bulgarian", "mm": "Burmese", "cn": "Chinese", "hr": "Croatian", "cz": "Czech",
+    "dk": "Danish", "af": "Dari", "mv": "Dhivehi", "nl": "Dutch", "bt": "Dzongkha", "au": "English (Australia)",
+    "cm": "English (Cameroon)", "gh": "English (Ghana)", "nz": "English (New Zealand)", "ng": "English (Nigeria)",
+    "za": "English (South Africa)", "gb": "English (UK)", "us": "English (US)", "epo": "Esperanto",
+    "ee": "Estonian", "fo": "Faroese", "ph": "Filipino", "fi": "Finnish", "fr": "French", "ca": "French (Canada)",
+    "cd": "French (Democratic Republic of the Congo)", "tg": "French (Togo)", "ge": "Georgian", "de": "German",
+    "at": "German (Austria)", "ch": "German (Switzerland)", "gr": "Greek", "il": "Hebrew", "hu": "Hungarian",
+    "is": "Icelandic", "in": "Indian", "id": "Indonesian (Latin)", "ie": "Irish", "it": "Italian", "jp": "Japanese",
+    "kz": "Kazakh", "kh": "Khmer (Cambodia)", "kr": "Korean", "kg": "Kyrgyz", "la": "Lao", "lv": "Latvian",
+    "lt": "Lithuanian", "mk": "Macedonian", "my": "Malay (Jawi, Arabic Keyboard)", "mt": "Maltese",
+    "md": "Moldavian", "mn": "Mongolian", "me": "Montenegrin", "np": "Nepali", "gn": "N'Ko (AZERTY)",
+    "no": "Norwegian", "ir": "Persian", "pl": "Polish", "pt": "Portuguese", "br": "Portuguese (Brazil)",
+    "ro": "Romanian", "ru": "Russian", "rs": "Serbian", "lk": "Sinhala (phonetic)", "sk": "Slovak",
+    "si": "Slovenian", "es": "Spanish", "latam": "Spanish (Latin American)", "ke": "Swahili (Kenya)",
+    "tz": "Swahili (Tanzania)", "se": "Swedish", "tw": "Taiwanese", "tj": "Tajik", "th": "Thai", "bw": "Tswana",
+    "tm": "Turkmen", "tr": "Turkish", "ua": "Ukrainian", "pk": "Urdu (Pakistan)", "uz": "Uzbek", "vn": "Vietnamese",
+    "sn": "Wolof", "custom": "A user-defined custom Layout"
+};
+
+// "ara" -> "Arabic"; an unknown name is shown as it is.
+function layoutName(layout) {
+    const name = typeof layout === "string" ? layout.trim().toLowerCase() : "";
+    return XKB_NAMES[name] || name;
+}
+
+// One `activelayout` payload: "KEYBOARD,LAYOUT". Descriptions can hold a
+// comma ("Arabic (AZERTY, Eastern Arabic numerals)"), and so can a keyboard
+// name: Hyprland only replaces its spaces ("logitech,-inc.-keyboard"). So the
+// longest keyboard in `names` the payload starts with wins; the first comma
+// is the split only for a keyboard not seen before.
+function parseLayoutEvent(data, names) {
     const text = typeof data === "string" ? data : "";
-    const comma = text.indexOf(",");
-    if (comma <= 0)
-        return null;
+    let keyboard = "";
+    for (const name of Array.isArray(names) ? names : [])
+        if (typeof name === "string" && name.length > keyboard.length && text.startsWith(name + ","))
+            keyboard = name;
+    if (keyboard === "") {
+        const comma = text.indexOf(",");
+        if (comma <= 0)
+            return null;
+        keyboard = text.slice(0, comma);
+    }
     return {
-        keyboard: text.slice(0, comma),
-        layout: text.slice(comma + 1)
+        keyboard: keyboard,
+        layout: text.slice(keyboard.length + 1)
     };
 }
 
@@ -182,8 +224,8 @@ function lockState(devicesJson) {
 // event for every keyboard on a config reload and for a new keyboard; those
 // only update the baseline.
 function layoutEvent(known, data) {
-    const ev = parseLayoutEvent(data);
     const next = Object.assign({}, known || {});
+    const ev = parseLayoutEvent(data, Object.keys(next));
     if (!ev)
         return { known: next, switched: false, keyboard: "", layout: "" };
     const before = next[ev.keyboard];
@@ -194,4 +236,20 @@ function layoutEvent(known, data) {
         keyboard: ev.keyboard,
         layout: ev.layout
     };
+}
+
+// Which of `layouts` (readDevices) a switch to the description `layout`
+// went to: the one plain layout whose description it is; -1 for a variant
+// or two matches, and the caller reads the devices again.
+function indexOf(layouts, layout) {
+    const list = Array.isArray(layouts) ? layouts : [];
+    let hit = -1;
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].variant !== "" || layoutName(list[i].layout) !== layout)
+            continue;
+        if (hit >= 0)
+            return -1;
+        hit = i;
+    }
+    return hit;
 }
