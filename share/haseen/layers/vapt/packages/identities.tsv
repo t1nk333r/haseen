@@ -1,0 +1,4 @@
+# logical	required-source	required-target	upstream-identity	reason
+pyrit	native	pyrit==1.1.0	https://github.com/microsoft/PyRIT	BlackArch pyrit is an unrelated WPA cracker
+httpx	repository	*	github.com/projectdiscovery/httpx	ProjectDiscovery CLI not Python httpx
+katana-pd	repository	*	github.com/projectdiscovery/katana	ProjectDiscovery CLI not katana-framework

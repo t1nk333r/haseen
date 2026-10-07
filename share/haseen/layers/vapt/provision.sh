@@ -1,0 +1,365 @@
+# shellcheck shell=bash
+# Owner inventory: waydots/packages/security. Source names/pins are facts;
+# provisioning policy here is independent of the source installer.
+VAPT_DIR="${LAYER_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
+source "$HASEEN_PATH/lib/packages.sh"
+source "$VAPT_DIR/pacman.sh"
+source "$VAPT_DIR/blackarch.sh"
+source "$VAPT_DIR/native.sh"
+source "$VAPT_DIR/environment.sh"
+VAPT_GROUPS=(core network web passwords ad osint cloud mobile forensics api htb-cjca htb-cpts htb-cwes htb-cwee htb-coae)
+vapt_reset() {
+    declare -gA VAPT_NATIVE_SPEC=() VAPT_NATIVE_PROBE=() VAPT_NATIVE_BA=() VAPT_NATIVE_GROUP=() VAPT_PINS=()
+    declare -gA VAPT_MEMBERSHIP=() VAPT_ENABLED=() VAPT_DATABASE=() VAPT_PACKAGE=() VAPT_VERSION=() VAPT_URL=() VAPT_PROVIDES=() VAPT_UNSAFE=() VAPT_SOURCE_BLOCKED=()
+    declare -gA VAPT_SOURCE=() VAPT_TARGET=() VAPT_RESOLUTION=() VAPT_APPLIED=() VAPT_REASON=() VAPT_ATTEMPTS=() VAPT_INFRA_DONE=()
+    declare -gA VAPT_INFRA_TARGET=() VAPT_INFRA_APPLY=() VAPT_INFRA_REASON=()
+    declare -gA VAPT_ID_SOURCE=() VAPT_ID_TARGET=() VAPT_ID_UPSTREAM=()
+    declare -ga VAPT_SELECTED=() VAPT_ITEMS=() VAPT_REPOS=() VAPT_INFRA_ROWS=() VAPT_NATIVE_ORDER=()
+    VAPT_MUTATION_FAILED=0 VAPT_PACMAN_BLOCKED=0 VAPT_ENV_STATUS=unknown VAPT_STAGE='' VAPT_COAE_REQUIRED=0 VAPT_BLACKARCH_STAGED=''
+    vapt_native_paths
+}
+vapt_select() {
+    VAPT_SELECTED=()
+    local arg group known all=false selection='' seen=false
+    while (($#)); do
+        arg="$1"; shift
+        case "$arg" in
+        --groups) (($#)) || { warn '--groups needs a comma-separated list'; return 2; }; [[ $seen == false && $all == false ]] || return 2; selection="$1"; shift; seen=true ;;
+        --all) [[ $seen == false && $all == false ]] || return 2; all=true ;;
+        *) warn "unknown VAPT argument: $arg"; return 2 ;;
+        esac
+    done
+    if $all; then VAPT_SELECTED=("${VAPT_GROUPS[@]}")
+    elif $seen && [[ -n $selection && $selection != ,* && $selection != *, && $selection != *,,* ]]; then IFS=, read -r -a VAPT_SELECTED <<<"$selection"
+    else warn 'VAPT requires --groups GROUP,... or --all (no default tools)'; return 2
+    fi
+    local -A selected=()
+    local dedup=()
+    for group in "${VAPT_SELECTED[@]}"; do
+        known=false
+        for arg in "${VAPT_GROUPS[@]}"; do [[ $group != "$arg" ]] || known=true; done
+        $known || { warn "unknown VAPT group: $group"; return 2; }
+        [[ ${selected[$group]:-} ]] || dedup+=("$group")
+        selected[$group]=1
+    done
+    VAPT_SELECTED=("${dedup[@]}")
+}
+vapt_manifest_validate() {
+    local group logical ba manager spec probe rest line target
+    for group in "${VAPT_GROUPS[@]}"; do
+        [[ -r $VAPT_DIR/packages/security/$group.txt ]] || return 2
+        while IFS= read -r line || [[ -n $line ]]; do
+            line="${line%%#*}"; line="${line//[[:space:]]/}"
+            [[ -z $line || $line =~ $PKG_NAME_RE ]] || { warn "malformed VAPT manifest: $group"; return 2; }
+        done <"$VAPT_DIR/packages/security/$group.txt"
+    done
+    while IFS=$'\t' read -r group logical ba manager spec probe rest; do
+        [[ -n $group && $group != \#* ]] || continue
+        [[ $group == security/* && $logical =~ $PKG_NAME_RE && $ba =~ $PKG_NAME_RE && $manager == pipx && $probe =~ ^[A-Za-z0-9._+-]+$ && -z $rest ]] || return 2
+        [[ $ba != none || $logical == pyrit ]] || return 2
+        [[ $spec =~ ^[a-z0-9._-]+==[0-9][a-zA-Z0-9.+-]*$ || $spec == git+https://github.com/Pennyw0rth/NetExec@c7dc286ba65daf10402cdc470e531b84e6d3d911 ]] || return 2
+        local present=false candidate
+        for candidate in "${VAPT_GROUPS[@]}"; do [[ ${group#security/} != "$candidate" ]] || present=true; done
+        $present && [[ ! ${VAPT_NATIVE_SPEC[$logical]:-} ]] || return 2
+        VAPT_NATIVE_SPEC[$logical]="$spec"; VAPT_NATIVE_PROBE[$logical]="$probe"; VAPT_NATIVE_BA[$logical]="$ba"; VAPT_NATIVE_GROUP[$logical]="${group#security/}"
+        VAPT_NATIVE_ORDER+=("$logical")
+    done <"$VAPT_DIR/packages/security/native.tsv"
+    while IFS=$'\t' read -r logical target rest; do
+        [[ -n $logical && $logical != \#* ]] || continue
+        [[ $logical =~ $PKG_NAME_RE && $target == */* && ${target##*/} =~ $PKG_NAME_RE && -z $rest ]] && vapt_repo_allowed "${target%%/*}" || return 2
+        VAPT_PINS[$logical]="$target"
+    done <"$VAPT_DIR/packages/pins.tsv"
+    local required_source required_target upstream reason
+    while IFS=$'\t' read -r logical required_source required_target upstream reason rest; do
+        [[ -n $logical && $logical != \#* ]] || continue
+        [[ $logical =~ $PKG_NAME_RE && ( $required_source == native || $required_source == repository ) && -n $required_target && -n $upstream && -n $reason && -z $rest ]] || return 2
+        VAPT_ID_SOURCE[$logical]="$required_source"; VAPT_ID_TARGET[$logical]="$required_target"
+        VAPT_ID_UPSTREAM[$logical]="$upstream"
+    done <"$VAPT_DIR/packages/identities.tsv"
+    [[ ${VAPT_ID_SOURCE[pyrit]:-} == native && ${VAPT_ID_TARGET[pyrit]:-} == pyrit==1.1.0 ]] || return 2
+    [[ ${VAPT_NATIVE_SPEC[pyrit]:-} == pyrit==1.1.0 && ${VAPT_NATIVE_BA[pyrit]:-} == none ]] || return 2
+    return 0
+}
+vapt_add_item() {
+    local logical="$1" group="$2"
+    [[ ${VAPT_MEMBERSHIP[$logical]:-} ]] || VAPT_ITEMS+=("$logical")
+    if [[ ,${VAPT_MEMBERSHIP[$logical]:-}, != *,$group,* ]]; then
+        VAPT_MEMBERSHIP[$logical]="${VAPT_MEMBERSHIP[$logical]:+${VAPT_MEMBERSHIP[$logical]},}$group"
+    fi
+}
+vapt_collect_groups() {
+    local group line logical
+    for group in "$@"; do
+        while IFS= read -r line || [[ -n $line ]]; do
+            line="${line%%#*}"; line="${line//[[:space:]]/}"
+            [[ -z $line ]] || vapt_add_item "$line" "$group"
+        done <"$VAPT_DIR/packages/security/$group.txt"
+        # Adapters indexed globally; native-only membership injected solely
+        # for selected groups, duplicates share the same adapter everywhere.
+        for logical in "${VAPT_NATIVE_ORDER[@]}"; do
+            [[ ${VAPT_NATIVE_GROUP[$logical]} != "$group" ]] || vapt_add_item "$logical" "$group"
+        done
+    done
+}
+vapt_snapshot() {
+    local output kind repo name version url provides flags=()
+    $DRY_RUN && flags+=(--offline)
+    output="$(vapt_meta snapshot "${flags[@]}" 2>/dev/null)" || { warn 'VAPT source metadata unreadable; cannot claim provisioning'; return 1; }
+    VAPT_ENABLED=(); VAPT_DATABASE=(); VAPT_PACKAGE=(); VAPT_VERSION=(); VAPT_URL=(); VAPT_PROVIDES=(); VAPT_UNSAFE=(); VAPT_REPOS=()
+    while IFS=$'\t' read -r kind repo name version url provides; do
+        [[ -n $kind ]] || continue
+        case "$kind" in
+        repo) VAPT_ENABLED[$repo]=1; VAPT_REPOS+=("$repo") ;;
+        database) VAPT_DATABASE[$repo]=1 ;;
+        unsafe) VAPT_UNSAFE[$repo]=1 ;;
+        package) VAPT_PACKAGE[$repo/$name]=1; VAPT_VERSION[$repo/$name]="$version"; VAPT_URL[$repo/$name]="$url"; VAPT_PROVIDES[$repo/$name]="$provides" ;;
+        esac
+    done <<<"$output"
+    return 0
+}
+vapt_identity_ok() {
+    local logical="$1" target="$2" url="${VAPT_URL[$2]:-}" lower
+    # Tool-specific mappings must never exempt a forbidden provider.
+    [[ ${target##*/} != omarchy* ]] || return 1
+    [[ ${VAPT_ID_SOURCE[$logical]:-} != native ]] || return 1
+    lower="${url,,}"
+    if [[ ${VAPT_ID_UPSTREAM[$logical]:-} ]]; then
+        [[ $lower == *"${VAPT_ID_UPSTREAM[$logical],,}"* ]] || return 1
+    fi
+    case "$logical" in
+    android-tools) [[ $target != blackarch/* || $target == blackarch/android-tools || $target == blackarch/android-sdk-platform-tools ]] ;;
+    *) return 0 ;;
+    esac
+}
+vapt_repo_usable() {
+    local repo="$1"
+    [[ ${VAPT_ENABLED[$repo]:-} && ${VAPT_DATABASE[$repo]:-} && ! ${VAPT_UNSAFE[$repo]:-} && ! ${VAPT_SOURCE_BLOCKED[$repo]:-} ]] || return 1
+    case "$repo" in
+    blackarch) [[ $(vapt_blackarch_state) == usable ]] ;;
+    chaotic-aur) [[ ${VAPT_PACKAGE[chaotic-aur/chaotic-keyring]:-} || ${VAPT_PACKAGE[chaotic-aur/chaotic-mirrorlist]:-} ]] ;;
+    *) return 0 ;;
+    esac
+}
+vapt_repo_target() {
+    local repo="$1" logical="$2" mapped="${3:-$2}" key token target='' count=0
+    vapt_repo_usable "$repo" || return 1
+    if [[ ${VAPT_PACKAGE[$repo/$mapped]:-} ]] && vapt_identity_ok "$logical" "$repo/$mapped"; then printf '%s\n' "$repo/$mapped"; return 0; fi
+    local values=()
+    for key in "${!VAPT_PACKAGE[@]}"; do
+        [[ $key == "$repo/"* ]] || continue
+        IFS=, read -r -a values <<<"${VAPT_PROVIDES[$key]:-}"
+        for token in "${values[@]}"; do
+            token="${token%%[<>=]*}"
+            [[ $token == "$mapped" ]] || continue
+            if vapt_identity_ok "$logical" "$key"; then target="$key"; count=$((count + 1)); fi
+            break
+        done
+    done
+    ((count == 1)) || return 1
+    printf '%s\n' "$target"
+}
+vapt_resolve_item() {
+    local logical="$1" target='' repo mapped="${VAPT_NATIVE_BA[$1]:-$1}" attempts='' pin_reason=''
+    VAPT_SOURCE[$logical]=none; VAPT_TARGET[$logical]='-'; VAPT_RESOLUTION[$logical]=unavailable; VAPT_APPLIED[$logical]=skipped
+    if [[ $logical == pyrit ]]; then
+        VAPT_SOURCE[$logical]=native; VAPT_TARGET[$logical]="${VAPT_NATIVE_SPEC[$logical]}"; VAPT_RESOLUTION[$logical]=resolved
+        VAPT_REASON[$logical]='Microsoft PyRIT identity override; BlackArch WPA homonym excluded'; VAPT_ATTEMPTS[$logical]=identity-native; return 0
+    fi
+    if [[ ${VAPT_PINS[$logical]:-} ]]; then
+        target="${VAPT_PINS[$logical]}"; repo="${target%%/*}"
+        attempts="pin:$target"
+        if vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$target]:-} ]] && vapt_identity_ok "$logical" "$target"; then
+            VAPT_SOURCE[$logical]="$repo"; VAPT_TARGET[$logical]="$target"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]='explicit repository pin'; VAPT_ATTEMPTS[$logical]="$attempts"; return 0
+        fi
+        pin_reason='pin missing; '
+    fi
+    attempts+="${attempts:+,}blackarch"
+    if target="$(vapt_repo_target blackarch "$logical" "$mapped")"; then repo=blackarch
+    elif [[ ${VAPT_NATIVE_SPEC[$logical]:-} ]]; then
+        VAPT_SOURCE[$logical]=native; VAPT_TARGET[$logical]="${VAPT_NATIVE_SPEC[$logical]}"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}pinned native fallback"; VAPT_ATTEMPTS[$logical]="$attempts,native"; return 0
+    else
+        target=''; attempts+=',native,chaotic-aur'
+        if target="$(vapt_repo_target chaotic-aur "$logical")"; then repo=chaotic-aur
+        else
+            for repo in "${VAPT_REPOS[@]}"; do
+                [[ $repo == cachyos || $repo == cachyos-* ]] || continue
+                attempts+=",$repo"
+                target="$(vapt_repo_target "$repo" "$logical")" && break
+            done
+        fi
+        if [[ -z $target ]]; then
+            # Exact-name matches throughout the Arch tier precede providers.
+            for repo in core extra multilib; do
+                attempts+=",$repo"
+                if vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$repo/$logical]:-} ]] && vapt_identity_ok "$logical" "$repo/$logical"; then target="$repo/$logical"; break; fi
+            done
+            if [[ -z $target ]]; then
+                for repo in core extra multilib; do target="$(vapt_repo_target "$repo" "$logical")" && break; done
+            fi
+        fi
+    fi
+    VAPT_ATTEMPTS[$logical]="$attempts"
+    if [[ -n $target ]]; then
+        VAPT_SOURCE[$logical]="${target%%/*}"; VAPT_TARGET[$logical]="$target"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}concrete allowed repository identity"
+    else
+        VAPT_REASON[$logical]="${pin_reason}no acceptable source in available metadata; disabled/unavailable sources are not proof of absence"
+    fi
+    return 0
+}
+vapt_resolve_groups() {
+    vapt_collect_groups "$@"
+    local logical
+    for logical in "${VAPT_ITEMS[@]}"; do vapt_resolve_item "$logical"; done
+}
+vapt_install_infra() {
+    local name repo target rc result=0
+    for name in "$@"; do
+        [[ $name =~ $PKG_NAME_RE && $name != omarchy* ]] || { result=1; continue; }
+        # A cached decision never skips the recovery-record recheck: another
+        # user's incomplete reviewed full upgrade blocks native/COAE use too.
+        if vapt_upgrade_pending; then
+            VAPT_PACMAN_BLOCKED=1 result=1
+            continue
+        fi
+        if [[ ${VAPT_INFRA_DONE[$name]:-} ]]; then
+            [[ ${VAPT_INFRA_DONE[$name]} == ok ]] || result=1
+            continue
+        fi
+        target=''
+        # Infrastructure is binary-only. Preserve host native repo priority;
+        # already-enabled Chaotic is last, never an AUR manager/build path.
+        for repo in "${VAPT_REPOS[@]}"; do
+            [[ $repo == cachyos || $repo == cachyos-* || $repo == core || $repo == extra || $repo == multilib ]] || continue
+            if vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$repo/$name]:-} ]]; then target="$repo/$name"; break; fi
+        done
+        if [[ -z $target ]] && vapt_repo_usable chaotic-aur && [[ ${VAPT_PACKAGE[chaotic-aur/$name]:-} ]]; then target="chaotic-aur/$name"; fi
+        VAPT_INFRA_TARGET[$name]="${target:--}"
+        if [[ -z $target || $VAPT_PACMAN_BLOCKED == 1 ]]; then
+            VAPT_INFRA_DONE[$name]=unavailable; VAPT_INFRA_REASON[$name]='no usable binary source or full-upgrade block'
+            VAPT_INFRA_ROWS+=("$name"$'\t'"${target:--}"$'\t''unavailable'$'\t'"${VAPT_INFRA_REASON[$name]}")
+            result=1; continue
+        fi
+        rc=0; vapt_pacman_apply "$target" || rc=$?
+        case "$rc" in
+        0) VAPT_INFRA_DONE[$name]=ok; VAPT_INFRA_APPLY[$name]="$VAPT_PACMAN_STATE" ;;
+        2) VAPT_INFRA_DONE[$name]=rejected; result=1 ;;
+        *) VAPT_INFRA_DONE[$name]=failed; result=1 ;;
+        esac
+        VAPT_INFRA_REASON[$name]="${VAPT_APPLY_REASON:-}"
+        VAPT_INFRA_REASON[$name]="${VAPT_INFRA_REASON[$name]//$'\n'/ }"
+        VAPT_INFRA_REASON[$name]="${VAPT_INFRA_REASON[$name]//$'\t'/ }"
+        VAPT_INFRA_ROWS+=("$name"$'\t'"$target"$'\t'"${VAPT_INFRA_DONE[$name]}"$'\t'"${VAPT_INFRA_REASON[$name]}")
+    done
+    return "$result"
+}
+vapt_report() {
+    printf '# haseen-vapt-report-v1\nlogical\tselected_groups\tselected_source\ttarget\tresolution_state\tapply_state\treason\tattempted_tiers\n'
+    local logical reason
+    for logical in "${VAPT_ITEMS[@]}"; do
+        reason="${VAPT_REASON[$logical]}"; reason="${reason//$'\n'/ }"; reason="${reason//$'\t'/ }"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$logical" "${VAPT_MEMBERSHIP[$logical]}" "${VAPT_SOURCE[$logical]}" "${VAPT_TARGET[$logical]}" "${VAPT_RESOLUTION[$logical]}" "${VAPT_APPLIED[$logical]}" "$reason" "${VAPT_ATTEMPTS[$logical]}"
+    done
+    printf '# environment\t%s\n# source\t%s\n# mutation-failed\t%s\n' "$VAPT_ENV_STATUS" "${VAPT_SOURCE_REASON:-observed source metadata}" "$VAPT_MUTATION_FAILED"
+    for logical in "${VAPT_INFRA_ROWS[@]}"; do printf '# infrastructure\t%s\n' "$logical"; done
+}
+vapt_seed_shell() {
+    # Reuse an existing 60-shell include, but tooling-only provisioning must
+    # not introduce the unrelated general aliases/functions/tool init.
+    local general="${HASEEN_INSTALL_PATH:-$HASEEN_PATH}/default/shell/init.sh"
+    local include="$HASEEN_USER_CONFIG/vapt/shell.sh" rc observed degraded=0
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+        observed=''
+        observed="$(vapt_read_path "$rc")"
+        [[ $rc != *.zshrc || -L $observed || -e $observed ]] || continue
+        if vapt_meta includes "$rc" "$include" "$general" 2>/dev/null; then continue; fi
+        if [[ -n $observed && ( -L $observed || ( -e $observed && ! -f $observed ) ) ]]; then
+            warn "VAPT shell include: nonregular/symlinked rc preserved: $rc"
+            degraded=2; continue
+        fi
+        vapt_path_ancestors_safe "$rc" || { degraded=2; continue; }
+        printf '\n# haseen VAPT: passive native-tool PATH only.\n[ -r "%s" ] && . "%s"\n' "$include" "$include" |
+            append_user_file "$(vapt_read_path "$rc")" || return 1
+    done
+    return "$degraded"
+}
+vapt_provision() (
+    local logical rc=0 output report="$HASEEN_USER_STATE/vapt/report.tsv"
+    # Reject unreadable source metadata before even creating the lock tree.
+    vapt_snapshot || return 1
+    vapt_lifecycle_lock || return 1
+    trap 'vapt_transaction_cleanup; vapt_pacman_cleanup' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    vapt_state_path_safe "$report" || { warn 'VAPT report conflict preserved'; return 1; }
+    VAPT_COAE_REQUIRED="$(vapt_meta report-requires "$(vapt_read_path "$report")" htb-coae)" || return 1
+    for logical in "${VAPT_SELECTED[@]}"; do
+        [[ $logical != htb-coae ]] || VAPT_COAE_REQUIRED=1
+    done
+    vapt_state_repair || { warn "VAPT: $VAPT_APPLY_REASON"; return 1; }
+    vapt_state_path_safe "$HASEEN_STATE_DIR/vapt/upgrade-pending" || return 1
+    if [[ -e $(vapt_read_path "$HASEEN_STATE_DIR/vapt/upgrade-pending") || -L $(vapt_read_path "$HASEEN_STATE_DIR/vapt/upgrade-pending") ]]; then
+        VAPT_PACMAN_BLOCKED=1
+        VAPT_SOURCE_REASON='recorded full upgrade remains incomplete; package installs blocked'
+        if confirm 'An interrupted VAPT full upgrade is recorded. Review/resume the allowed full upgrade?'; then
+            rc=0; vapt_pacman_recover || rc=$?
+            if ((rc == 0)); then
+                VAPT_PACMAN_BLOCKED=0
+                vapt_snapshot || return 1
+            else
+                local reason="${VAPT_APPLY_REASON:-}"
+                VAPT_SOURCE_REASON="recorded full upgrade remains incomplete; recovery refused${reason:+: ${reason//$'\n'/ }}"
+            fi
+        fi
+    fi
+    vapt_blackarch_prepare || VAPT_MUTATION_FAILED=1
+    vapt_resolve_groups "${VAPT_SELECTED[@]}"
+    vapt_install_infra openldap perl-image-exiftool python-pipx || true
+    # A partially successful activation must not remain hidden behind a
+    # previous removal marker, even if another provisioning item fails.
+    vapt_state_clear "$HASEEN_USER_STATE/vapt/removed" || return 1
+    rc=0; vapt_environment_apply "${VAPT_SELECTED[@]}" || rc=$?
+    if ((rc == 0)); then VAPT_ENV_STATUS=ok
+    else
+        VAPT_ENV_STATUS=degraded
+        ((rc != 1)) || VAPT_MUTATION_FAILED=1
+    fi
+    [[ ${VAPT_ENV_DEGRADED:-0} == 0 ]] || VAPT_ENV_STATUS=degraded
+    rc=0; vapt_seed_shell || rc=$?
+    if ((rc == 1)); then VAPT_MUTATION_FAILED=1
+    elif ((rc != 0)); then VAPT_ENV_STATUS=degraded
+    fi
+    for logical in "${VAPT_ITEMS[@]}"; do
+        [[ ${VAPT_RESOLUTION[$logical]} == resolved ]] || continue
+        rc=0
+        if [[ ${VAPT_SOURCE[$logical]} == native ]]; then
+            VAPT_APPLY_STATE=skipped; vapt_native_apply "$logical" || rc=$?
+            ((rc != 1)) || VAPT_APPLY_STATE=failed
+            VAPT_APPLIED[$logical]="$VAPT_APPLY_STATE"
+        elif [[ ${VAPT_INFRA_TARGET[$logical]:-} == "${VAPT_TARGET[$logical]}" ]]; then
+            VAPT_APPLY_REASON="${VAPT_INFRA_REASON[$logical]:-}"
+            case "${VAPT_INFRA_DONE[$logical]}" in
+            ok) VAPT_APPLIED[$logical]="${VAPT_INFRA_APPLY[$logical]}" ;;
+            failed) VAPT_APPLIED[$logical]=failed; rc=1 ;;
+            *) VAPT_APPLIED[$logical]=skipped; rc=2 ;;
+            esac
+        elif [[ $VAPT_PACMAN_BLOCKED == 1 ]]; then
+            VAPT_APPLIED[$logical]=skipped; VAPT_APPLY_REASON='package transaction blocked following incomplete full upgrade'; rc=2
+        else
+            vapt_pacman_apply "${VAPT_TARGET[$logical]}" || rc=$?
+            case "$rc" in
+            0) VAPT_APPLIED[$logical]="$VAPT_PACMAN_STATE" ;;
+            1) VAPT_APPLIED[$logical]=failed ;;
+            *) VAPT_APPLIED[$logical]=skipped ;;
+            esac
+        fi
+        if [[ -n ${VAPT_APPLY_REASON:-} ]]; then VAPT_REASON[$logical]+="; $VAPT_APPLY_REASON"; fi
+    done
+    vapt_pacman_cleanup || VAPT_MUTATION_FAILED=1
+    output="$(vapt_report)"
+    output="$(printf '%s\n' "$output" | vapt_meta report-merge "$(vapt_read_path "$report")")" || {
+        warn 'VAPT cumulative report cannot be reconciled'; return 1;
+    }
+    printf '%s\n' "$output"
+    printf '%s\n' "$output" | vapt_state_write "$report" || VAPT_MUTATION_FAILED=1
+    [[ $VAPT_MUTATION_FAILED == 0 ]]
+)

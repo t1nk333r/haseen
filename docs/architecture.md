@@ -22,6 +22,7 @@ file changes in the same commit.
 | 7 | Arch / CachyOS / NixOS | installer (CachyOS, Arch) + `flake.nix` (NixOS) |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
 | 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
+| 10 | optional VAPT workstation environment, no AUR or tool execution | `layers/vapt`, explicit group manifests and owned native environments (plan 007) |
 
 ## 2. Filesystem
 
@@ -69,15 +70,16 @@ already set when the layer runs.
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
+| `vapt` | — | explicit owner tool groups, checked binary/native sources, passive PATH and the optional shared COAE Python environment; no assessment execution or service activation (plan 007) |
 
 Rules every layer follows:
 
 - **Idempotent.** A re-apply converges and never duplicates anything.
 - **Dry-run pure.** Every mutation goes through `run`, `run_root`, `write_root_file`, `append_root_file`, `install_root_file`, `write_user_file` or `seed_user_file`.
 - **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file.
-- **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). There are two exceptions:
+- **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). These exceptions are necessary:
   - `ENABLE_ENROLL_LIMINE_CONFIG=yes` has to be appended to `/etc/default/limine`, because limine-entry-tool resets that key after it reads the drop-ins (`limine-common-functions:143-144`, plan 002).
-  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024).
+  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024). The optional VAPT layer appends a reviewed BlackArch stanza the same way, and only after its reviewed upgrade commits (plan 007).
 - **Package sources, in order** (owner decision 2026-10-04, `lib/packages.sh`):
   1. official and CachyOS repositories;
   2. Chaotic-AUR;
@@ -85,6 +87,13 @@ Rules every layer follows:
   4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
+  VAPT is an explicit exception preserving the owner's security-tool policy:
+  its five repository pins precede BlackArch, pinned native adapters,
+  already-enabled Chaotic-AUR, CachyOS, and Arch. Its dedicated transaction path
+  excludes AUR/Omarchy dependencies, reports unavailable items, and never runs
+  the tools it installs. See `docs/vapt.md` for its trust, environment, and
+  limited owned-link removal contracts. It does not require the desktop or
+  default layers.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions

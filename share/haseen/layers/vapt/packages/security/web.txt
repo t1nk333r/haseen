@@ -1,0 +1,9 @@
+# Owner tool-name inventory from waydots/packages/security/web.txt.
+sqlmap
+nikto
+ffuf
+gobuster
+burpsuite
+feroxbuster
+wfuzz
+seclists

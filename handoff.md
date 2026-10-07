@@ -53,6 +53,7 @@ The owner's other repos:
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
+| Optional VAPT workstation provisioning | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `docs/vapt.md` | 007 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |

@@ -1,0 +1,6 @@
+# logical	repository/package
+nmap	extra/nmap
+radare2	extra/radare2
+jadx	extra/jadx
+binwalk	extra/binwalk
+dotnet-sdk	extra/dotnet-sdk

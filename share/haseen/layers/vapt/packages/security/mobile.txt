@@ -1,0 +1,4 @@
+# Owner tool-name inventory from waydots/packages/security/mobile.txt.
+android-tools
+android-apktool
+jadx

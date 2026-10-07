@@ -67,7 +67,10 @@ write_root_file() {
         echo "DRYRUN: write $dest (mode $mode):"
         sed 's/^/    | /'
     else
-        sudo install -d -m 0755 "$(dirname "$dest")"
+        # install -d creates missing parents at 0755 & ~umask, and sudo ORs
+        # the caller's umask in: pin 022 so a 077 owner cannot make shared
+        # root state directories (e.g. /var/lib/haseen) untraversable.
+        (umask 022; sudo install -d -m 0755 "$(dirname "$dest")")
         sudo tee "$dest" >/dev/null
         sudo chmod "$mode" "$dest"
     fi
@@ -102,6 +105,20 @@ write_user_file() {
     else
         mkdir -p "$(dirname "$dest")"
         cat >"$dest"
+    fi
+}
+
+# append_user_file DEST — append stdin to unprivileged file DEST, creating it
+# and its parents if needed. The caller decides whether appending is right:
+# this helper never looks at what is already there.
+append_user_file() {
+    local dest="$1"
+    if $DRY_RUN; then
+        echo "DRYRUN: append to $dest:"
+        sed 's/^/    | /'
+    else
+        mkdir -p "$(dirname "$dest")"
+        cat >>"$dest"
     fi
 }
 

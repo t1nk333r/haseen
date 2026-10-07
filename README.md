@@ -66,6 +66,7 @@ translate, and lists what has no haseen equivalent; run it without
 | `ai` | Ollama (GPU-matched) or llama.cpp on loopback; `haseen ai chat/models/pull` |
 | `dms` | DankMaterialShell, available to swap in with `haseen shell use dms` |
 | `gaming` | CachyOS gaming packages (Steam, gamemode, MangoHud, Proton) |
+| `vapt` | optional owner tool inventory and native/COAE environments; explicit groups, no AUR or Omarchy dependency, no assessment execution ([details](docs/vapt.md)) |
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.

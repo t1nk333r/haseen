@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# haseen:summary Provision explicitly selected VAPT groups without running tools
+# haseen:args [--dry-run] [--yes] (--groups GROUP,... | --all)
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+usage() { echo "Usage: haseen vapt install [--dry-run] [--yes] (--groups GROUP,... | --all)"; }
+parse_common_flags "$@"
+require_not_root
+layer_run_apply vapt "${REST[@]}"

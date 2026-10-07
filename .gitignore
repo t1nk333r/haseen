@@ -5,3 +5,6 @@
 *.jsc
 .qmlls.ini
 /share/haseen/sidecar/haseen-sidecar
+
+# Python bytecode from the VAPT auditor
+__pycache__/
