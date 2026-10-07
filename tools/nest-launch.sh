@@ -31,7 +31,7 @@ chmod +x "$dir/run.sh"
 wayland_sockets() {
     local f
     for f in "$XDG_RUNTIME_DIR"/wayland-*; do
-        [[ ${f##*/} =~ ^wayland-[0-9]+$ ]] && printf '%s\n' "${f##*/}"
+        if [[ ${f##*/} =~ ^wayland-[0-9]+$ ]]; then printf '%s\n' "${f##*/}"; fi
     done | sort
 }
 before=$(wayland_sockets)

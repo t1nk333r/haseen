@@ -127,8 +127,6 @@ Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
   nests (plan 075). Start it on a private `dbus-daemon` and give the shell the same
   `DBUS_SYSTEM_BUS_ADDRESS`. Each stdin line is a property change
   (`sleep=1 Percentage=10 State=2`). It refuses the real system bus.
-- Known bug: `tools/nest-launch.sh` exits at `before=$(wayland_sockets)` when
-  the last `wayland-*` entry is a `.lock` (pipefail; seen on luna, plan 075).
 - `tools/sync-apply.sh REPO STAGE_TAR EXPECT_TSV DELETE_TSV`: moves a checkout
   that carries uncommitted WIP onto a new `main`. Per file changed between the
   last synced main and the new one: main's version where the checkout still
