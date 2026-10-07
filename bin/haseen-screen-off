@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# haseen:summary Turn the displays off (DPMS) once the input that asked has ended; any key or pointer motion wakes them
+# haseen:args [--delay MS] [--dry-run]
+#
+# Plan 084. Hyprland wakes the displays on the next key press or pointer
+# motion (misc.key_press_enables_dpms, mouse_move_enables_dpms), so an off
+# sent at once is undone by the release of the click or of Enter that asked
+# for it. The command waits --delay first (default 1000 ms) and only then
+# dispatches. It waits in the foreground: the menu and the power panel start
+# it through Apps.launch, in its own scope, so it outlives the menu or panel
+# closing (and a shell restart). haseen.idle never turns these displays back
+# on: it only re-enables DPMS it turned off itself (plan 084 has the analysis).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+DELAY_MAX=60000
+
+usage() {
+    cat <<EOF
+Usage: haseen screen off [--delay MS] [--dry-run]
+
+Turns every display off (DPMS) after MS milliseconds (default 1000, at most
+$DELAY_MAX; 0 = now). The wait lets the click or key press that asked end
+first: its release would wake the displays again. The next key press or
+pointer motion turns them back on, as does 'haseen screen on'.
+EOF
+}
+
+parse_common_flags "$@"
+delay=1000
+set -- "${REST[@]+"${REST[@]}"}"
+while (($#)); do
+    case "$1" in
+    --delay)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        delay=$2
+        shift 2
+        ;;
+    --delay=*)
+        delay=${1#--delay=}
+        shift
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+[[ $delay =~ ^[0-9]+$ ]] && ((10#$delay <= DELAY_MAX)) || die "--delay takes 0-$DELAY_MAX milliseconds, not '$delay'"
+delay=$((10#$delay))
+
+if ((delay > 0)); then
+    run sleep "$(printf '%d.%03d' $((delay / 1000)) $((delay % 1000)))"
+fi
+screen_dpms off

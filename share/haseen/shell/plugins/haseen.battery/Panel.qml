@@ -10,7 +10,8 @@ import "Model.js" as Model
 // power draw, energy, health and cycles; the power profile
 // (power-profiles-daemon, `haseen powerprofile set`, remembered per power
 // source) and the charge limit (`haseen battery limit`, which asks for the
-// password in a floating terminal); a link to the Setup menu. The device's
+// password in a floating terminal); Screen off and Screen on (`haseen screen
+// off|on`, DPMS, plan 084); a link to the Setup menu. The device's
 // values are UPower property bindings; `haseen battery status --shell`
 // (cycles, the limit window, whether the limit holds the charge) and
 // `haseen powerprofile list` run when the panel opens and again when the
@@ -75,6 +76,18 @@ Column {
 
     function openSetup(): void {
         Quickshell.execDetached(["sh", "-c", "qs ipc --pid \"$1\" call panel close; exec qs ipc --pid \"$1\" call menu toggle setup", "sh", pid]);
+    }
+
+    // Screen off (plan 084): the panel closes first, then `haseen screen
+    // off` waits its default second before the DPMS off, so the release of
+    // this click (and the pointer motion after it) cannot wake the displays
+    // again. Detached, so it outlives the panel; the next input wakes them.
+    function screenOff(): void {
+        Quickshell.execDetached(["sh", "-c", "qs ipc --pid \"$1\" call panel close; exec \"$2\"", "sh", pid, binDir + "/haseen-screen-off"]);
+    }
+
+    function screenOn(): void {
+        Quickshell.execDetached([binDir + "/haseen-screen-on"]);
     }
 
     Process {
@@ -298,6 +311,26 @@ Column {
                 active: modelData === root.limit
                 onClicked: root.setLimit(modelData)
             }
+        }
+    }
+
+    SectionLabel {
+        text: "Screen"
+    }
+
+    Row {
+        spacing: Theme.gap
+
+        Choice {
+            objectName: "screenOff"
+            label: "Screen off"
+            onClicked: root.screenOff()
+        }
+
+        Choice {
+            objectName: "screenOn"
+            label: "Screen on"
+            onClicked: root.screenOn()
         }
     }
 

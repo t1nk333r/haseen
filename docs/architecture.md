@@ -299,6 +299,11 @@ true; a plug event recreates only the monitors whose timeout changed. The
 monitor, and the suspend monitor always honours Wayland idle inhibitors.
 Hyprland counts only inhibitors on windows, not on layer-shell surfaces.
 `haseen setup idle` (Setup › Idle and Suspend) prints and sets the timeouts.
+`haseen screen off|on` (plan 084) is the manual DPMS switch, from the menu
+(System) and the battery panel too: off waits `--delay` (1000 ms) so the
+releasing click or key cannot wake the displays. haseen.idle sends `dpms.on`
+only for an off it made itself (`_dpmsOff`), so it never undoes a manual off;
+its lock and dpms monitors keep counting from the last input.
 
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.

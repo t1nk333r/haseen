@@ -317,6 +317,8 @@
   // System
   "system.screensaver": {"icon":"󱄄","label":"Screensaver","action":"haseen screensaver --force"},
   "system.lock": {"icon":"","label":"Lock","action":"haseen system lock"},
+  "system.screen-off": {"icon":"󰶐","label":"Screen off","description":"until the next key or pointer motion","action":"haseen screen off"},
+  "system.screen-on": {"icon":"󰍹","label":"Screen on","action":"haseen screen on"},
   "system.suspend": {"icon":"󰒲","label":"Suspend","action":"haseen system suspend"},
   "system.hibernate": {"icon":"󰤁","label":"Hibernate","when":"haseen system hibernate --available","action":"haseen system hibernate"},
   "system.logout": {"icon":"󰍃","label":"Logout","action":"haseen system logout"},

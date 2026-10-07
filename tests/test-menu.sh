@@ -250,10 +250,13 @@ assert_contains "facts: OS under Omarchy is the base distribution" "$OUTPUT" $'O
 assert_not_contains "facts: never Omarchy" "$OUTPUT" "Omarchy"
 
 # --- haseen system ---------------------------------------------------------------
-# The System menu is Omarchy's, row for row, each on a haseen command.
-assert_eq "system menu: Omarchy's rows, in order" \
+# The System menu is Omarchy's, row for row, each on a haseen command, plus
+# haseen's Screen off and Screen on after Lock (plan 084).
+assert_eq "system menu: Omarchy's rows, in order, and the screen rows" \
     "system.screensaver=haseen screensaver --force
 system.lock=haseen system lock
+system.screen-off=haseen screen off
+system.screen-on=haseen screen on
 system.suspend=haseen system suspend
 system.hibernate=haseen system hibernate
 system.logout=haseen system logout
@@ -298,6 +301,29 @@ capture haseen system shutdown --dry-run
 assert_eq "shutdown is poweroff" "DRYRUN: systemctl poweroff" "$OUTPUT"
 capture haseen system nap
 assert_status "system rejects unknown" 2 "$STATUS"
+
+# Screen off and Screen on (plan 084) run as the menu runs an action
+# (haseen.menu Panel.qml run(): bash, haseen's bin/ first on PATH, eval) and
+# reach Hyprland only through `haseen screen`, off after its default delay.
+export SCREEN_LOG="$SANDBOX/screen.log"
+: >"$SCREEN_LOG"
+stub hyprctl 'case "$1" in
+status) echo "{\"configProvider\":\"lua\"}" ;;
+*) printf "%s %s\n" "$(date +%s%N)" "$*" >>"$SCREEN_LOG" ;;
+esac'
+# menu_run ID — the row's action the way the menu runs it.
+menu_run() {
+    capture bash -c 'PATH="$1:$PATH"; eval "$2"' bash "$REPO/bin" "$(jq -r --arg id "$1" '.[$id].action' <<<"$JSON")"
+    assert_status "$1 runs from the menu" 0 "$STATUS"
+}
+off_start=$(date +%s%N)
+menu_run system.screen-off
+menu_run system.screen-on
+assert_eq "menu rows: one dpms dispatch each, off then on" \
+    'dispatch hl.dsp.dpms({ action = "disable" })
+dispatch hl.dsp.dpms({ action = "enable" })' "$(cut -d' ' -f2- "$SCREEN_LOG")"
+off_ms=$((($(head -1 "$SCREEN_LOG" | cut -d' ' -f1) - off_start) / 1000000))
+assert_eq "menu Screen off: dispatched 1000 ms or more after the row ran" yes "$( ((off_ms >= 1000)) && echo yes || echo "no ($off_ms ms)")"
 
 # --- haseen setup dns / default ----------------------------------------------------
 capture env HASEEN_SYSROOT="$ROOT" haseen setup dns

@@ -8,7 +8,8 @@
 # panel formatting in BatteryLogic.js and Model.js under the real Qt JS
 # engine, and the service itself in the real Quickshell engine against
 # tools/fake-upower.py on a private system bus, with every notification and
-# power command recorded by a stub.
+# power command recorded by a stub; the panel's Screen off and Screen on
+# buttons clicked in the real engine (plan 084).
 
 PLUGIN="$HASEEN_PATH/shell/plugins/haseen.battery"
 DEFAULT="$HASEEN_PATH/default/shell.json"
@@ -311,4 +312,98 @@ QML
     assert_eq "cancel: disarmed by the button" "false true" "$(jq -r '"\(.logic.armed) \(.logic.critical)"' <<<"$RESULT")"
     assert_eq "cancel: one notification only" 1 "$(grep -c '^notify-send' <<<"$CALLS")"
     assert_not_contains "cancel: no systemctl" "$CALLS" "systemctl"
+    unset CLICK
+
+    # The panel's Screen off and Screen on buttons (plan 084), clicked in the
+    # real engine: the panel closes (qs ipc), then `haseen screen off` sends
+    # the DPMS off no sooner than 1000 ms after the click; on is at once. qs
+    # and hyprctl are stubs that stamp each call; no UPower is reachable.
+    sandbox battery-panel
+    LOG="$SANDBOX/calls.log"
+    : >"$LOG"
+    stub qs 'printf "%s qs %s\n" "$(date +%s%N)" "$*" >>"$LOG"'
+    stub hyprctl 'case "$1" in
+status) echo "{\"configProvider\":\"lua\"}" ;;
+*) printf "%s hyprctl %s\n" "$(date +%s%N)" "$*" >>"$LOG" ;;
+esac'
+    harness="$SANDBOX/shell"
+    mkdir -p "$harness"
+    for module in Haseen Compat Ui Commons; do
+        ln -s "$HASEEN_PATH/shell/$module" "$harness/$module"
+    done
+    ln -s "$HASEEN_PATH/shell/plugins" "$harness/plugins"
+    cat >"$harness/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import "plugins/haseen.battery" as Battery
+ShellRoot {
+    id: shell
+
+    function find(item, name) {
+        if (item.objectName === name)
+            return item;
+        for (const child of item.children) {
+            const hit = find(child, name);
+            if (hit)
+                return hit;
+        }
+        return null;
+    }
+
+    function click(name) {
+        const button = find(panel, name);
+        console.warn("CLICK " + name + " " + Date.now() + " " + (button !== null && button.visible));
+        button.clicked();
+    }
+
+    Battery.Panel {
+        id: panel
+
+        pluginId: "haseen.battery"
+    }
+
+    Timer {
+        interval: 1000
+        running: true
+        onTriggered: {
+            shell.click("screenOff");
+            on.running = true;
+        }
+    }
+
+    Timer {
+        id: on
+
+        interval: 2500
+        onTriggered: {
+            shell.click("screenOn");
+            quit.running = true;
+        }
+    }
+
+    Timer {
+        id: quit
+
+        interval: 700
+        onTriggered: Qt.quit()
+    }
+}
+QML
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent LOG="$LOG" \
+        timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+    if [[ $STATUS == 0 ]]; then _pass; else _fail "panel: harness completes in the real engine (exit $STATUS)" "$(tail -n 20 <<<"$OUTPUT")"; fi
+    clicked() { sed -n "s/^.*CLICK $1 \([0-9]*\) \(.*\)$/\1 \2/p" <<<"$OUTPUT" | head -1; }
+    assert_eq "panel: both screen buttons shown" "true true" "$(clicked screenOff | cut -d' ' -f2) $(clicked screenOn | cut -d' ' -f2)"
+    assert_eq "panel: the panel closes, then the off, then the on" \
+        "qs ipc --pid PID call panel close
+hyprctl dispatch hl.dsp.dpms({ action = \"disable\" })
+hyprctl dispatch hl.dsp.dpms({ action = \"enable\" })" "$(cut -d' ' -f2- "$LOG" | sed 's/--pid [0-9]*/--pid PID/')"
+    off_click=$(clicked screenOff | cut -d' ' -f1)
+    close_ms=$((($(sed -n 1p "$LOG" | cut -d' ' -f1) / 1000000) - off_click))
+    off_ms=$((($(sed -n 2p "$LOG" | cut -d' ' -f1) / 1000000) - off_click))
+    on_ms=$((($(sed -n 3p "$LOG" | cut -d' ' -f1) / 1000000) - $(clicked screenOn | cut -d' ' -f1)))
+    assert_eq "panel: closed within 500 ms of the click" yes "$( ((close_ms < 500)) && echo yes || echo "no ($close_ms ms)")"
+    assert_eq "panel: the off 1000 ms or more after the click" yes "$( ((off_ms >= 1000)) && echo yes || echo "no ($off_ms ms)")"
+    assert_eq "panel: the on within 500 ms of its click" yes "$( ((on_ms < 500)) && echo yes || echo "no ($on_ms ms)")"
 fi

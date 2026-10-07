@@ -53,6 +53,42 @@ Item {
         out("m-idle-off", Idle.monitors(Idle.timeouts(ac, { idleOff: true, onBattery: true }, true), true));
         out("m-plug", [Idle.monitors(Idle.timeouts(ac, { onBattery: false }, true), true), Idle.monitors(Idle.timeouts(ac, { onBattery: true }, true), true)]);
         out("m-parse", Idle.parseMonitor("suspend:300:1"));
+        // Manual screen off/on (plan 084) against haseen.idle. The model:
+        // Hyprland's DPMS state, written by haseen screen off|on, by the
+        // service's dispatches and by input (key_press_enables_dpms and
+        // mouse_move_enables_dpms wake the displays before any monitor
+        // reports activity). The service part is Service.qml _run: dpms.off
+        // sets _dpmsOff and sends off, dpms.on clears it and sends on.
+        // "stay-awake" removes every monitor; an idle one runs its
+        // non-idle edge (the delegate's Component.onDestruction).
+        const sim = events => {
+            const st = { screen: true, dpmsOff: false, idle: {}, sent: [] };
+            const apply = (m, isIdle) => {
+                st.idle[m] = isIdle;
+                for (const a of Idle.actions(m, isIdle, { dpmsOff: st.dpmsOff, idleOff: false })) {
+                    st.sent.push(a);
+                    if (a === "dpms.off") { st.dpmsOff = true; st.screen = false; }
+                    if (a === "dpms.on") { st.dpmsOff = false; st.screen = true; }
+                }
+            };
+            const wake = () => { for (const m of Object.keys(st.idle)) if (st.idle[m]) apply(m, false); };
+            for (const e of events) {
+                if (e === "manual-off") st.screen = false;
+                else if (e === "manual-on") st.screen = true;
+                else if (e === "input") { st.screen = true; wake(); }
+                else if (e === "stay-awake") { wake(); st.idle = {}; }
+                else apply(e.replace(/^idle:/, ""), true);
+            }
+            return { screen: st.screen, dpmsOff: st.dpmsOff, sent: st.sent };
+        };
+        out("s-off-input", sim(["manual-off", "input"]));
+        out("s-off-stays", sim(["manual-off", "idle:screensaver"]));
+        out("s-off-stay-awake", sim(["manual-off", "idle:screensaver", "stay-awake"]));
+        out("s-off-lock-dpms", sim(["manual-off", "idle:screensaver", "idle:lock", "idle:dpms"]));
+        out("s-off-lock-dpms-input", sim(["manual-off", "idle:screensaver", "idle:lock", "idle:dpms", "input"]));
+        out("s-idle-off-manual-on", sim(["idle:dpms", "manual-on", "input", "idle:dpms"]));
+        out("s-idle-off-manual-on-cycle", sim(["idle:dpms", "manual-on", "input", "idle:dpms", "input"]));
+        out("s-on-awake", sim(["manual-on"]));
         Qt.quit();
     }
 }
@@ -88,6 +124,23 @@ EOF
     assert_eq "unplugging changes only the overridden monitors' keys" \
         '[["screensaver:150:1","lock:300:1","dpms:330:1","suspend:900:1"],["lock:120:1","dpms:150:1","suspend:300:1"]]' "$(r m-plug)"
     assert_eq "suspend keys parse back" '{"name":"suspend","timeout":300,"respectInhibitors":true}' "$(r m-parse)"
+    # Manual screen off/on against the service (plan 084, the model above).
+    assert_eq "manual off, then input: the input wakes the displays; the service sends nothing" \
+        '{"screen":true,"dpmsOff":false,"sent":[]}' "$(r s-off-input)"
+    assert_eq "manual off, the screensaver monitor fires: the displays stay off" \
+        '{"screen":false,"dpmsOff":false,"sent":["screensaver.start"]}' "$(r s-off-stays)"
+    assert_eq "manual off, then Stay Awake removes an idle monitor: no dpms.on, the displays stay off" \
+        '{"screen":false,"dpmsOff":false,"sent":["screensaver.start","screensaver.dismiss"]}' "$(r s-off-stay-awake)"
+    assert_eq "manual off: the lock still comes at lockAfter, then the service's own dpms off" \
+        '{"screen":false,"dpmsOff":true,"sent":["screensaver.start","screensaver.dismiss","lock","dpms.off"]}' "$(r s-off-lock-dpms)"
+    assert_eq "manual off, an idle cycle, input: the service turns on only what it turned off" \
+        '{"screen":true,"dpmsOff":false,"sent":["screensaver.start","screensaver.dismiss","lock","dpms.off","screensaver.dismiss","dpms.on"]}' "$(r s-off-lock-dpms-input)"
+    assert_eq "manual on while the service holds the displays off: its next cycle still turns them off" \
+        '{"screen":false,"dpmsOff":true,"sent":["dpms.off","dpms.on","dpms.off"]}' "$(r s-idle-off-manual-on)"
+    assert_eq "manual on, input, a second cycle: off and on as before" \
+        '{"screen":true,"dpmsOff":false,"sent":["dpms.off","dpms.on","dpms.off","dpms.on"]}' "$(r s-idle-off-manual-on-cycle)"
+    assert_eq "manual on with the displays on: nothing for the service" \
+        '{"screen":true,"dpmsOff":false,"sent":[]}' "$(r s-on-awake)"
 else
     echo "  skip: $QML_BIN not installed, IdleLogic not exercised" >&2
 fi
