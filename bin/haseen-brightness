@@ -7,8 +7,10 @@
 # through logind, so no root and no udev rule are needed. External monitors
 # are written over DDC/CI by ddcutil (VCP 0x10) when it is installed and
 # /dev/i2c-* exists (`haseen setup ddc on`). `ddcutil detect` takes seconds,
-# so the bus of each monitor is cached in $XDG_CACHE_HOME/haseen; a cached bus
-# that stops answering triggers one fresh detect.
+# so the bus of each monitor is cached in $XDG_CACHE_HOME/haseen, with what
+# the map depends on (this boot, the connected outputs, the i2c buses): a
+# change there detects again. A monitor that does not answer, or a map with
+# none, is looked for again at most every DDC_RETRY seconds, never per call.
 #
 # The percentage maths is done here and brightnessctl/ddcutil get raw values,
 # so one rule covers all three kinds and the tests can check it. The shell's
@@ -19,6 +21,9 @@ set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 
 DDC_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/haseen/ddc-displays.tsv"
+# A monitor asleep, off or with DDC/CI turned off answers no getvcp; detecting
+# again for it on every key press would cost seconds a press.
+DDC_RETRY=600
 # The old brightness binds ran `brightnessctl -e4 -n2`: steps on a 4th-power
 # curve, so the dim end moves in small steps, and never below raw 2, so the
 # keys cannot turn the panel black.
@@ -165,19 +170,59 @@ ddc_detect() {
 
 DDC_RESCANNED=false
 
-# ddc_rescan — detect again and replace the cache (a cache, so no dry run).
+# ddc_signature — what a bus map depends on: this boot (bus numbers can move
+# between boots), the connected DRM outputs (a monitor plugged in or out) and
+# the i2c buses (i2c-dev loaded, a GPU or dock added).
+ddc_signature() {
+    local boot="" f outputs="" buses=""
+    f="$(sysroot_path /proc/sys/kernel/random/boot_id)"
+    [[ -r $f ]] && boot="$(<"$f")"
+    for f in "$(sysroot_path /sys/class/drm)"/card*-*/status; do
+        [[ -r $f && "$(<"$f")" == connected ]] || continue
+        f="${f%/status}"
+        outputs+="${f##*/},"
+    done
+    for f in "$(sysroot_path /dev)"/i2c-*; do
+        [[ -e $f ]] && buses+="${f##*-},"
+    done
+    printf 'boot=%s outputs=%s i2c=%s\n' "$boot" "${outputs%,}" "${buses%,}"
+}
+
+# ddc_rescan [SIGNATURE] — detect again and replace the cache (a cache, so no
+# dry run). A failed or timed-out detect still writes a map, an empty one, so
+# the DDC_RETRY wait applies to it and no temporary file is left behind.
 ddc_rescan() {
-    local tmp
+    local sig="${1:-}" tmp
+    [[ -n $sig ]] || sig="$(ddc_signature)"
     DDC_RESCANNED=true
     mkdir -p "${DDC_CACHE%/*}"
     tmp="$(mktemp "$DDC_CACHE.XXXXXX")"
-    ddc_detect >"$tmp"
+    {
+        printf '# %s\n' "$sig"
+        ddc_detect || true
+    } >"$tmp"
     mv -f -- "$tmp" "$DDC_CACHE"
 }
 
-ddc_cached() {
-    [[ -f $DDC_CACHE ]] || ddc_rescan
-    cat -- "$DDC_CACHE"
+# ddc_cache_old — the map was made DDC_RETRY seconds ago or more.
+ddc_cache_old() {
+    local made now
+    made="$(stat -c %Y -- "$DDC_CACHE" 2>/dev/null)" || return 0
+    printf -v now '%(%s)T' -1
+    ((now - made >= DDC_RETRY))
+}
+
+# ddc_map — the cached BUS CONNECTOR MODEL lines. Detected again when there is
+# no map, when it was made for another signature (or before maps had one),
+# and when it lists no monitor and is old (one asleep at the last detect).
+ddc_map() {
+    local sig head=""
+    sig="$(ddc_signature)"
+    [[ -f $DDC_CACHE ]] && { IFS= read -r head <"$DDC_CACHE" || true; }
+    if [[ $head != "# $sig" ]] || { ! grep -q '^[0-9]' -- "$DDC_CACHE" && ddc_cache_old; }; then
+        ddc_rescan "$sig"
+    fi
+    grep -v '^#' -- "$DDC_CACHE" || true
 }
 
 # ddc_read BUS — "VALUE MAX" of VCP 0x10 ("VCP 10 C 50 100").
@@ -186,12 +231,21 @@ ddc_read() {
 }
 
 # ddc_devices — DDC monitors with their current value. A monitor that does
-# not answer from the cache means the buses moved: detect once more.
+# not answer is left out; when the map is old, the buses may have moved, so
+# detect once more.
 ddc_devices() {
     ddc_present || return 0
-    local bus conn model id name vm out="" failed=false
-    while IFS=$'\t' read -r bus conn model; do
-        [[ -n $bus ]] || continue
+    local line rest bus conn model id name vm out="" failed=false
+    # Split by hand: tab is IFS whitespace, so `read` would merge the empty
+    # connector of a monitor detect gives none for into the model.
+    while IFS= read -r line; do
+        bus="${line%%$'\t'*}"
+        [[ $bus =~ ^[0-9]+$ ]] || continue
+        rest=""
+        [[ $line == *$'\t'* ]] && rest="${line#*$'\t'}"
+        conn="${rest%%$'\t'*}"
+        model=""
+        [[ $rest == *$'\t'* ]] && model="${rest#*$'\t'}"
         if ! vm="$(ddc_read "$bus")"; then
             failed=true
             continue
@@ -199,8 +253,8 @@ ddc_devices() {
         id="ddc:${conn:-i2c-$bus}"
         name="${model:-Monitor}${conn:+ ($conn)}"
         out+="$(printf '%s\tddc\t%s\t%s\t%s\t-\t%s' "$id" "${vm% *}" "${vm#* }" "$name" "$bus")"$'\n'
-    done < <(ddc_cached)
-    if $failed && ! $DDC_RESCANNED; then
+    done < <(ddc_map)
+    if $failed && ! $DDC_RESCANNED && ddc_cache_old; then
         ddc_rescan
         ddc_devices
         return
@@ -258,14 +312,30 @@ write() {
     esac
 }
 
-# lock_writes — one change at a time. A held key repeats faster than DDC
-# answers (and a relative step is a read, then a write), so each set/up/down
-# waits for the one before it to finish before it reads.
+# lock_writes [skip] — one change at a time. A relative step is a read, then
+# a write, so each set/up/down waits for the one before it to finish before
+# it reads. With `skip` (up/down on DDC monitors, where one step takes longer
+# than a held key's repeat) a change still running drops this one instead:
+# the next repeat carries on, and nothing queues up behind a slow monitor to
+# keep stepping after the key is let go.
 lock_writes() {
     $DRY_RUN && return 0
     have flock || return 0
     exec 9>"${XDG_RUNTIME_DIR:-/tmp}/haseen-brightness.lock"
+    if [[ ${1:-} == skip ]]; then
+        flock -n 9 || exit 0
+        return 0
+    fi
     flock -w 5 9 || die "another haseen brightness change is still running"
+}
+
+# targets_ddc [DEVICE] — DEVICE means DDC monitors (decided without asking them).
+targets_ddc() {
+    case "${1:-}" in
+    "") [[ -z $(sysfs_devices backlight | head -n1) ]] ;;
+    ddc | ddc:*) return 0 ;;
+    *) return 1 ;;
+    esac
 }
 
 # apply RECORD MODE ARG — compute the new value, write it, print the line.
@@ -285,7 +355,14 @@ apply() {
 
 # --- commands --------------------------------------------------------------------------
 
-valid_value() { [[ $1 =~ ^[+-][0-9]+%$ || $1 =~ ^[0-9]+%?$ ]]; }
+# valid_value VALUE — N%, +N%, -N% or a raw N. Sets VALUE without leading
+# zeros (so arithmetic never reads it as octal) and allows at most 9 digits
+# (so it never wraps round in 64-bit arithmetic).
+valid_value() {
+    [[ $1 =~ ^([+-]?)0*([0-9]{1,9})(%?)$ ]] || return 1
+    [[ -n ${BASH_REMATCH[1]} && -z ${BASH_REMATCH[3]} ]] && return 1
+    VALUE="${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+}
 
 usage_error() {
     printf 'haseen brightness: %s\n' "$1" >&2
@@ -310,7 +387,7 @@ for ((i = 0; i < ${#REST[@]}; i++)); do
     *) args+=("$a") ;;
     esac
 done
-[[ $step_pct =~ ^[0-9]+$ ]] && ((step_pct >= 1 && step_pct <= 100)) || usage_error "--step takes 1-100"
+[[ $step_pct =~ ^0*([0-9]{1,3})$ ]] && step_pct=$((10#${BASH_REMATCH[1]})) && ((step_pct >= 1 && step_pct <= 100)) || usage_error "--step takes 1-100"
 [[ $kinds =~ ^(backlight|keyboard|ddc)(,(backlight|keyboard|ddc))*$ ]] || usage_error "--kind takes backlight, keyboard and ddc"
 
 verb="${args[0]:-}"
@@ -332,8 +409,8 @@ get)
     ;;
 set)
     (($# == 1 || $# == 2)) || usage_error "set takes [DEVICE] VALUE"
-    value="${!#}"
-    valid_value "$value" || usage_error "VALUE is N%, +N%, -N% or a raw N, not '$value'"
+    valid_value "${!#}" || usage_error "VALUE is N%, +N%, -N% or a raw N, not '${!#}'"
+    value="$VALUE"
     device=""
     (($# == 2)) && device="$1"
     lock_writes
@@ -344,7 +421,11 @@ set)
     ;;
 up | down)
     (($# <= 1)) || usage_error "$verb takes one device"
-    lock_writes
+    if targets_ddc "${1:-}"; then
+        lock_writes skip
+    else
+        lock_writes
+    fi
     records="$(resolve "${1:-}")"
     dir=1
     [[ $verb == down ]] && dir=-1

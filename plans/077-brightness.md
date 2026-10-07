@@ -18,15 +18,15 @@
     and written by `brightnessctl --class=… --device=… set RAW` (logind, no root;
     `bin/haseen-brightness:255-256`); DDC/CI monitors through `ddcutil --bus N setvcp 10 RAW` when
     ddcutil is on PATH and `/dev/i2c-*` exists (`:151`, `:257`).
-  - `ddcutil detect --brief` is parsed once (`:155-164`: "Invalid display" blocks skipped, connector and
-    model kept, serial dropped) and cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`; a cached bus that
-    stops answering triggers exactly one fresh detect.
+  - `ddcutil detect --brief` is parsed once (`ddc_detect`: "Invalid display" blocks skipped, connector and
+    model kept, serial dropped) and cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv` under a signature
+    line (boot id, connected DRM outputs, i2c buses); see Review fixes for when it is detected again.
   - The percent maths is in the command, so all kinds share it: absolute and relative percents are
     rounded to raw and clamped; a relative change moves at least one raw unit; `up`/`down` follow the
     4th-power curve the old binds used (`brightnessctl -e4`) for backlights and stay linear for keyboards
     and monitors; a backlight never goes below raw 2 (the old `-n2`). An unchanged value writes nothing.
   - One change at a time (`flock` on `$XDG_RUNTIME_DIR/haseen-brightness.lock`), so a held key cannot
-    interleave DDC read-modify-writes.
+    interleave DDC read-modify-writes; `up`/`down` on DDC monitors drop a repeat while one runs.
   - `--dry-run` prints the brightnessctl/ddcutil call through `run` and changes nothing.
 - `share/haseen/default/hypr/binds.lua`: `XF86MonBrightnessUp/Down` run `haseen brightness up|down`
   (the backlight, or every DDC monitor on a machine without one); new `XF86KbdBrightnessUp/Down` run
@@ -75,6 +75,27 @@ Nest from `tools/nest-launch.sh`, scratch shell with `HASEEN_SYSROOT` pointing a
 - `…/shots/panel-dragged.png`: a `tools/vptr` drag on the backlight slider: three live
   `brightnessctl … set` calls, none repeated on release. An earlier drag on the DDC slider sent one
   `setvcp 10 24` on release.
+
+## Review fixes (2026-10-08)
+
+- **DDC cache.** Before, a rescan happened only when a cached bus stopped answering, and then on every call
+  (`DDC_RESCANNED` was per process): a monitor asleep or with DDC/CI off cost a `ddcutil detect` (seconds) per
+  key press under the write lock, while an empty map (made with the monitor off) or a monitor plugged in later
+  was never found. Now (`bin/haseen-brightness` `ddc_signature`, `ddc_map`, `ddc_devices`):
+  - the map's first line records the boot id, the connected `/sys/class/drm/card*-*` outputs and the
+    `/dev/i2c-*` buses; a different signature (a new boot, a monitor plugged in or out, i2c-dev loaded, a map
+    from before this change) detects again;
+  - a cached monitor that does not answer is left out; only a map 10 minutes old or more (`DDC_RETRY`) is
+    detected again for it, and a map with no monitor likewise;
+  - a failing detect still writes an (empty) map, so it is retried after `DDC_RETRY` and leaves no temp file.
+- **Held keys.** `up`/`down` whose target is DDC (`ddc`, `ddc:*`, or the default on a machine without a
+  backlight) take the lock with `flock -n` and exit 0 when a change is running: a held key's repeats are
+  dropped, not queued for seconds after the release. Sysfs targets and `set` still wait (`-w 5`).
+- **Values.** `VALUE` and `--step` drop leading zeros (`08` was an arithmetic error with exit 0, `010` octal)
+  and take at most 9 (3) digits (`2^63` and `10^20 %` wrapped round to raw 2).
+- **Cache lines without a connector.** Read with `IFS=$'\t' read`, an empty connector field merged into the
+  model (`ddc:DELL U2415`); the fields are now split by hand, so such a monitor is `ddc:i2c-N`.
+- Evidence: `tests/test-brightness.sh` 142 checks; 26 of the new ones fail on 2981fb3.
 
 ## Not verified
 

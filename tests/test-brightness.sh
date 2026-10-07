@@ -56,7 +56,7 @@ printf "%s\n" "$v" >"$dir/brightness"
 exit 0'
 stub ddcutil 'printf "ddcutil %s\n" "$*" >>"$LOG"
 case "$*" in
-"detect --brief") cat "$DDC_DETECT" ;;
+"detect --brief") [ -e "$DDC_DETECT.fail" ] && exit 1; cat "$DDC_DETECT" ;;
 "--bus $DDC_BUS getvcp 10 --brief") echo "VCP 10 C $(cat "$DDC_VALUE") 100" ;;
 *getvcp*) echo "No monitor detected on bus" >&2; exit 1 ;;
 *" setvcp 10 "*) for a; do v=$a; done; echo "$v" >"$DDC_VALUE" ;;
@@ -82,7 +82,8 @@ tpacpi::kbd_backlight${T}keyboard${T}50${T}1${T}2${T}Keyboard backlight${T}$KB/b
 ddc:DP-1${T}ddc${T}40${T}40${T}100${T}LG ULTRAGEAR (DP-1)${T}-" "$OUTPUT"
 assert_eq "list: one detect, one read of the monitor" "ddcutil detect --brief
 ddcutil --bus 7 getvcp 10 --brief" "$(calls)"
-assert_eq "the DDC bus is cached without the serial" "7${T}DP-1${T}LG ULTRAGEAR" "$(cat "$CACHE")"
+assert_eq "the DDC bus is cached without the serial" "7${T}DP-1${T}LG ULTRAGEAR" "$(grep -v '^#' "$CACHE")"
+assert_eq "with what the map depends on" "# boot= outputs= i2c=6,7" "$(head -n1 "$CACHE")"
 
 reset_log
 capture haseen brightness list --kind ddc
@@ -106,18 +107,77 @@ capture haseen brightness get input3::capslock
 assert_status "a LED that is no keyboard backlight is no device" 1 "$STATUS"
 assert_contains "and says so" "$OUTPUT" "no brightness device 'input3::capslock'"
 
-# The monitor moved to another bus: the cached one stops answering, one
-# fresh detect finds it.
+# The monitor moved to another bus: the cached one stops answering. While
+# the map is fresh that is a monitor asleep or with DDC/CI off: it is left
+# out and nothing is detected again (before, every call ran a detect).
 detect_output 9
 export DDC_BUS=9
 reset_log
 capture haseen brightness list --kind ddc
-assert_eq "a moved monitor is found again" "ddc:DP-1${T}ddc${T}40" "$(cut -f1-3 <<<"$OUTPUT")"
+assert_eq "a fresh map: a monitor that does not answer is left out" "" "$OUTPUT"
+assert_eq "and no detect on every call" "ddcutil --bus 7 getvcp 10 --brief" "$(calls)"
+reset_log
+capture haseen brightness up ddc
+assert_status "up ddc with no monitor answering fails" 1 "$STATUS"
+assert_eq "still without a detect" 0 "$(grep -c 'detect --brief' <<<"$(calls)")"
+# Once the map is DDC_RETRY (10 min) old, one fresh detect finds it.
+touch -d '-11 minutes' "$CACHE"
+reset_log
+capture haseen brightness list --kind ddc
+assert_eq "an old map: a moved monitor is found again" "ddc:DP-1${T}ddc${T}40" "$(cut -f1-3 <<<"$OUTPUT")"
 assert_eq "after exactly one fresh detect" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
-assert_eq "the cache follows" "9" "$(cut -f1 "$CACHE")"
+assert_eq "the cache follows" "9" "$(grep -v '^#' "$CACHE" | cut -f1)"
 reset_log
 capture haseen brightness list --kind ddc --rescan
 assert_eq "--rescan detects again" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
+
+# A map with no monitor (made while it was off): looked for again once old.
+printf '%s\n' 'Invalid display' '   I2C bus:          /dev/i2c-6' '' >"$DDC_DETECT"
+capture haseen brightness list --kind ddc --rescan
+detect_output 9
+reset_log
+capture haseen brightness list --kind ddc
+assert_eq "an empty fresh map: nothing, no detect" "|" "$OUTPUT|$(calls)"
+touch -d '-11 minutes' "$CACHE"
+reset_log
+capture haseen brightness list --kind ddc
+assert_eq "an empty old map: detected again, the monitor found" "ddc:DP-1" "$(cut -f1 <<<"$OUTPUT")"
+assert_eq "with one detect" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
+
+# A monitor plugged in later: the connected outputs change, the map follows.
+mkdir -p "$ROOT/sys/class/drm/card1-DP-1" "$ROOT/sys/class/drm/card1-HDMI-A-1"
+printf 'connected\n' >"$ROOT/sys/class/drm/card1-DP-1/status"
+printf 'disconnected\n' >"$ROOT/sys/class/drm/card1-HDMI-A-1/status"
+reset_log
+capture haseen brightness list --kind ddc
+assert_eq "a newly connected output detects again" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
+assert_eq "and records it" "# boot= outputs=card1-DP-1 i2c=6,7" "$(head -n1 "$CACHE")"
+reset_log
+capture haseen brightness list --kind ddc
+assert_eq "then the map is used again" 0 "$(grep -c 'detect --brief' <<<"$(calls)")"
+
+# A map from before maps had a signature (or a corrupt one) is replaced.
+printf '9\tDP-1\tLG ULTRAGEAR\n' >"$CACHE"
+reset_log
+capture haseen brightness list --kind ddc
+assert_eq "a map without a signature detects again" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
+
+# A failing detect: no temporary file left, and no detect on the next call.
+rm -f "$CACHE"
+touch "$DDC_DETECT.fail"
+reset_log
+capture haseen brightness list --kind ddc
+capture haseen brightness list --kind ddc
+rm "$DDC_DETECT.fail"
+assert_eq "a failing detect runs once for two calls" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
+assert_eq "and leaves no temporary file" "ddc-displays.tsv" "$(find "${CACHE%/*}" -name 'ddc-displays*' -printf '%f\n')"
+
+# A monitor detect gives no connector for: an empty field, not merged.
+printf '%s\n' 'Display 1' '   I2C bus:          /dev/i2c-9' '   Monitor:          DEL:DELL U2415:SERIAL3' '' >"$DDC_DETECT"
+capture haseen brightness list --kind ddc --rescan
+assert_eq "no connector: the bus names it" "ddc:i2c-9${T}ddc${T}40${T}40${T}100${T}DELL U2415" "$(cut -f1-6 <<<"$OUTPUT")"
+detect_output 9
+capture haseen brightness list --kind ddc --rescan
 
 # --- set: percent maths and clamping (brightnessctl gets raw values) ---------------------
 last_call() { calls | tail -n1; }
@@ -147,6 +207,28 @@ assert_eq "150% is max (already there: no write)" "set 48000" "$(last_call | gre
 setb 47990
 capture haseen brightness set +1%
 assert_eq "a relative step stops at max" "set 48000" "$(last_call | grep -o 'set [0-9]*$')"
+
+# Leading zeros are decimal, and digits that would wrap round in 64-bit
+# arithmetic are refused (before: 08 failed silently with exit 0, 010 was
+# compared as octal 8, 2^63 and 10^20 % set raw 2).
+capture haseen brightness set 010
+assert_eq "set 010 is raw 10" "set 10|0" "$(last_call | grep -o 'set [0-9]*$')|$STATUS"
+capture haseen brightness set 08
+assert_eq "set 08 is raw 8, cleanly" "set 8|0|intel_backlight${T}backlight${T}0${T}8" "$(last_call | grep -o 'set [0-9]*$')|$STATUS|$(cut -f1-4 <<<"$OUTPUT")"
+capture haseen brightness set 0000000000050%
+assert_eq "zeros before a percentage" "set 24000" "$(last_call | grep -o 'set [0-9]*$')"
+reset_log
+for bad in 9223372036854775808 100000000000000000000% +100000000000000000000% -100000000000000000000% 1234567890; do
+    capture haseen brightness set "$bad"
+    assert_status "set $bad: too many digits is a usage error" 2 "$STATUS"
+done
+assert_eq "and nothing was written" "" "$(calls)"
+setb 24000
+capture haseen brightness up --step 8
+eight="$(last_call | grep -o 'set [0-9]*$')"
+setb 24000
+capture haseen brightness up --step 08
+assert_eq "--step 08 is --step 8" "0|$eight" "$STATUS|$(last_call | grep -o 'set [0-9]*$')"
 
 # up/down: brightnessctl -e4's curve, 5 % a step, at least one raw unit.
 setb 24000
@@ -189,6 +271,30 @@ capture haseen brightness up ddc
 assert_eq "up ddc: every monitor, linear" "ddcutil --bus 9 setvcp 10 75" "$(last_call)"
 capture haseen brightness down ddc:DP-1 --step 100
 assert_eq "a monitor may go to 0" "ddcutil --bus 9 setvcp 10 0" "$(last_call)"
+
+# A held key on DDC monitors: a repeat while a change runs is dropped, not
+# queued (each would wait up to 5 s and keep stepping after the release).
+# Sysfs backlights are fast, so a change there waits its turn.
+lockf="$XDG_RUNTIME_DIR/haseen-brightness.lock"
+hold_lock() { # SECONDS
+    flock "$lockf" sleep "$1" &
+    holder=$!
+    for ((i = 0; i < 50; i++)); do flock -n "$lockf" true || return 0; sleep 0.05; done
+}
+hold_lock 2
+reset_log
+began=$SECONDS
+capture haseen brightness up ddc
+assert_status "a DDC repeat while a change runs succeeds" 0 "$STATUS"
+assert_eq "and is dropped at once: no read, no write" "|0" "$(calls)|$((SECONDS - began > 1 ? 1 : 0))"
+HASEEN_SYSROOT="$(fixture heldkey nobacklight)" capture haseen brightness up
+assert_eq "no backlight: the default key is DDC, dropped too" "0|" "$STATUS|$(calls)"
+wait "$holder" 2>/dev/null || true
+hold_lock 1
+capture haseen brightness down kbd
+assert_eq "a keyboard backlight step waits for the one running" "0|set 0" "$STATUS|$(last_call | grep -o 'set [0-9]*$')"
+wait "$holder" 2>/dev/null || true
+capture haseen brightness set kbd 1
 
 # No backlight: the keys move the monitors.
 ROOT2="$(fixture desktop nobacklight)"
