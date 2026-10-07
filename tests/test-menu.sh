@@ -46,25 +46,50 @@ capture bash -c "$(declare -f menu_json); MENU_JSONC='$MENU_JSONC' menu_json | j
 assert_status "menu.jsonc parses as JSONC" 0 "$STATUS"
 JSON="$(menu_json)"
 ids="$(jq -r 'keys[]' <<<"$JSON")"
-for id in apps trigger style setup install remove update about system \
+# Plan 068 "Merged tree": Omarchy 4's tree in its order, on haseen commands,
+# with haseen's own rows kept.
+assert_eq "root: Omarchy's sections, in Omarchy's order" \
+    "apps learn trigger style setup install remove update about system" \
+    "$(jq -r 'keys_unsorted[] | select(contains(".") | not)' <<<"$JSON" | paste -sd' ')"
+for id in apps learn trigger style setup install remove update about system \
+    learn.keybindings learn.hyprland learn.arch learn.neovim learn.bash learn.tmux-keybindings learn.herdr-keybindings \
     trigger.capture.screenshot trigger.capture.screenrecord.webcam trigger.capture.screenrecord-stop \
     trigger.capture.text trigger.capture.qr trigger.capture.color trigger.emoji trigger.reminder.set \
     trigger.toggle.idle trigger.toggle.dnd trigger.toggle.one-window-ratio trigger.hardware.hybrid-gpu \
+    trigger.hardware.touchpad-haptics.mid trigger.context.game \
     trigger.share.receive trigger.tests.disk trigger.transcode style.theme style.background style.font \
+    style.unlock style.hyprland style.mark.gate \
     style.bar.position.left style.bar.transparency style.screensaver.image style.about.text \
-    setup.monitors setup.network.dns.custom setup.network.qr setup.default.agent setup.plugin.remove \
-    setup.config.hyprland setup.config.nightlight setup.dotfiles.clone setup.security.passwordless-sudo setup.secureboot.setup \
-    setup.ai.chat update.firmware update.timezone update.password.drive update.hardware.trackpad \
-    update.config.nightlight system.screensaver system.hibernate system.shutdown; do
+    setup.monitors setup.network.dns.custom setup.network.qr setup.default.agent setup.default.agent.pi \
+    setup.default.browser.edge setup.default.editor.sublime setup.plugin.remove setup.keyd.on setup.battery-limit.80 \
+    setup.config.hyprland setup.config.nightlight setup.config.xcompose setup.dotfiles.clone \
+    setup.security.passwordless-sudo setup.secureboot.setup \
+    setup.ai.chat install.webapp install.style.theme install.style.background install.font \
+    install.development.php install.gaming.xbox-cloud remove.webapp remove.development.ocaml \
+    update.firmware update.timezone update.themes update.process.hyprsunset update.recovery.safe-mode \
+    update.password.drive update.hardware.trackpad update.config.nightlight update.config.plymouth \
+    system.screensaver system.hibernate system.shutdown; do
     assert_contains "menu has $id" "$ids"$'\n' "$id"$'\n'
 done
-assert_not_contains "no Learn group" $'\n'"$ids" $'\n'"learn"
-assert_not_contains "no web apps (ids)" "$ids" "webapp"
-assert_not_contains "no web apps (actions)" "$(jq -r '.[].action // empty' <<<"$JSON")" "webapp"
-assert_not_contains "no URLs in actions" "$(jq -r '.[].action // empty' <<<"$JSON")" "://"
-for gone in crash-capture herdr xcompose direct-boot reset channel; do
+# Left out, each needing Omarchy itself or a haseen command that does not
+# exist (the reasons are in plan 068).
+for gone in learn.omarchy learn.community crash-capture battery-percentage direct-boot setup.reset \
+    sudoless-docker plugin.clone install.tui remove.tui install.windows remove.windows preinstalls \
+    channel update.config.tmux remove.theme remove.security chromium-account battlenet \
+    geforce-now retro-launcher; do
     assert_not_contains "omitted: $gone" "$ids" "$gone"
 done
+# A row runs haseen, opens a web page, or calls the one tool haseen has no
+# command for (Dell's haptics, guarded by its presence); never Omarchy.
+actions="$(jq -r '.[].action // empty' <<<"$JSON")"
+assert_eq "leaves run haseen or xdg-open" "" \
+    "$(grep -Ev "^(haseen |xdg-open 'https://[^' ]+'$|dell-xps-touchpad-haptics set )" <<<"$actions" || true)"
+assert_eq "URLs only through xdg-open or a web app" "" \
+    "$(grep '://' <<<"$actions" | grep -Ev "^xdg-open 'https://|^haseen config terminal -- haseen webapp install " || true)"
+assert_not_contains "never an omarchy- command" "$(jq -r '.[] | (.action // empty), (.when // empty), (.checked // empty)' <<<"$JSON")" "omarchy-"
+assert_eq "keybindings open haseen's sheet" "haseen shell ipc keybinds toggle" "$(jq -r '."learn.keybindings".action' <<<"$JSON")"
+assert_eq "Omarchy's Install > Style > Font is the catalogue's fonts" "install.style|install.style.font" \
+    "$(jq -r '."install.font" | "\(.parent)|\(.aliases | join(","))"' <<<"$JSON")"
 assert_eq "about runs haseen about" "haseen about" "$(jq -r '.about.action' <<<"$JSON")"
 assert_eq "apps uses the launcher provider" "apps" "$(jq -r '.apps.provider' <<<"$JSON")"
 assert_eq "install rendered from the catalog" "catalog-install" "$(jq -r '.install.provider' <<<"$JSON")"
@@ -111,6 +136,17 @@ console.log([it['system.lock'].label, it['system.lock'].action, String(!!it['sys
   String(parseMenuJsonc('{broken') === null)].join('|'));
 ")"
     assert_eq "overlay merge, hide, add, routes" "Lock now|haseen system lock|false|root|action|true|system|trigger.capture|root|true" "$out"
+    # Every route the menu answered before the merge (its aliases, the ids
+    # binds.lua opens, and install.theme, which moved under Install > Style)
+    # still lands on an entry.
+    out="$(model "
+const d = parseMenuJsonc(require('fs').readFileSync('$MENU_JSONC', 'utf8'));
+const m = mergeMenuSources(d, null);
+const old = 'app applications settings uninstall restart refresh power power-menu capture screenshot screenrecord emoji emojis reminder remind toggle toggles dnd context contexts hardware hw share theme themes themegen matugen generate background wallpaper font arrange network dns wifi-qr default defaults plugin plugins dotfiles yadm secureboot keyd hyper capslock battery-limit charge-limit ai recover recovery safe-mode system trigger.capture trigger.context install.theme';
+console.log(old.split(' ').filter(r => !m.items[resolveRoute(m.items, m.itemOrder, r)]).join(' '));
+console.log(resolveRoute(m.items, m.itemOrder, 'install.theme'));
+")"
+    assert_eq "previous routes and aliases still resolve" $'\ninstall.style.theme' "$out"
 
     # Guards: one bash batch, `when` hides until it answers true.
     script="$(model "

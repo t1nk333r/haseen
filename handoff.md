@@ -37,7 +37,7 @@ The owner's other repos:
 | Extended luna-plugin compatibility | `share/haseen/shell/Compat/Omarchy/`, `share/haseen/shell/Compat/Runtime.qml`, `share/haseen/shell/Compat/ShellApi.qml`, `bin/haseen-plugin-settings` | 027 |
 | AI panel and agent skill | `share/haseen/shell/plugins/haseen.ai/`, `share/haseen/agents/skills/haseen/` | 012 |
 | Screen frame, transparent bar, tray | `share/haseen/shell/{Frame*,Bar}.qml`, `bin/haseen-bar-*`, `haseen.tray` | 015 |
-| Menu (Omarchy-style, owner's selection) | `share/haseen/shell/plugins/haseen.menu/`, `share/haseen/default/menu.jsonc`, `bin/haseen-{menu,about,system,setup-*,font-*,branding,config-*}` | 016 |
+| Menu (Omarchy 4's tree and look, haseen's commands and rows) | `share/haseen/shell/plugins/haseen.menu/`, `share/haseen/default/menu.jsonc`, `bin/haseen-{menu,about,system,setup-*,font-*,branding,config-*}` | 016 068 |
 | Flatpak-first install/remove, update | `share/haseen/default/catalog.json`, `share/haseen/lib/{catalog,terminal}.sh`, `bin/haseen-{install,remove,update,time,password,restart,refresh}`, `share/haseen/layers/flatpak/` | 017 |
 | Capture, recording, emoji, toggles, hardware, share, tests | `bin/haseen-{capture,reminder,toggle,hardware,share,test}-*`, `haseen.emoji` | 018 |
 | Screensaver (ttfx + native), night light, stay awake, DND | `haseen.{screensaver,nightlight,idle,notifications}`, `share/haseen/shell/Haseen/Flags.qml` | 019 |

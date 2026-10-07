@@ -44,7 +44,8 @@ assert_eq "catalog: dev toolchains use mise or docker" "" "$(jq -r '.entries[] |
 assert_contains "catalog: Flathub verification date" "$(jq -r .flathubVerified "$CATALOG")" "2026-"
 assert_contains "catalog: browsers are Flatpaks" "$(jq -r '[.entries[] | select(.category == "browser") | .source] | unique | join(",")' "$CATALOG")" "flatpak"
 # Helium is not on Flathub (plan 070): helium-browser-bin from Chaotic-AUR.
-assert_eq "catalog: browsers only Flatpaks, but Helium" "flatpak" "$(jq -r '[.entries[] | select(.category == "browser" and .id != "helium") | .source] | unique | join(",")' "$CATALOG")"
+# Brave Origin neither (plan 068, merged menu): brave-origin-bin.
+assert_eq "catalog: browsers only Flatpaks, but Helium and Brave Origin" "flatpak" "$(jq -r '[.entries[] | select(.category == "browser" and .id != "helium" and .id != "brave-origin") | .source] | unique | join(",")' "$CATALOG")"
 
 # --- install dispatch per source (dry-run) ------------------------------------
 sandbox catalog-install

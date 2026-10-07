@@ -19,6 +19,7 @@
     { "id": "chrome", "category": "browser", "label": "Chrome", "icon": "", "source": "flatpak", "ref": "com.google.Chrome" },
     { "id": "edge", "category": "browser", "label": "Edge", "icon": "󰇩", "source": "flatpak", "ref": "com.microsoft.Edge" },
     { "id": "brave", "category": "browser", "label": "Brave", "icon": "", "source": "flatpak", "ref": "com.brave.Browser" },
+    { "id": "brave-origin", "category": "browser", "label": "Brave Origin", "icon": "", "source": "aur", "ref": "brave-origin-bin" },
 
     { "id": "vscode", "category": "editor", "label": "VSCode", "icon": "", "source": "flatpak", "ref": "com.visualstudio.code" },
     { "id": "vscodium", "category": "editor", "label": "VSCodium", "icon": "", "source": "flatpak", "ref": "com.vscodium.codium" },
@@ -41,6 +42,13 @@
     { "id": "newelle", "category": "ai", "label": "Newelle", "icon": "󱚤", "source": "flatpak", "ref": "io.github.qwersyk.Newelle" },
     { "id": "lm-studio", "category": "ai", "label": "LM Studio", "icon": "󱚤", "source": "flatpak", "ref": "ai.lmstudio.lm-studio", "when": "[[ $(uname -m) == x86_64 ]]" },
     { "id": "dictation", "category": "ai", "label": "Dictation (Speech Note)", "icon": "", "source": "flatpak", "ref": "net.mkiol.SpeechNote" },
+    { "id": "ollama", "category": "ai", "label": "Ollama", "icon": "󱚤", "source": "pacman", "ref": "ollama" },
+    { "id": "chatgpt", "category": "ai", "label": "ChatGPT Desktop", "icon": "󱚤", "source": "aur", "ref": "openai-codex-desktop" },
+    { "id": "grok-bot", "category": "ai", "label": "Grok Bot", "icon": "󱚤", "source": "aur", "ref": "grok-bot" },
+    { "id": "t3-code", "category": "ai", "label": "T3 Code", "icon": "󱚤", "source": "aur", "ref": "t3code-bin" },
+    { "id": "hermes", "category": "ai", "label": "Hermes Desktop", "icon": "󱚤", "source": "aur", "ref": "hermes-desktop" },
+    { "id": "openclaw", "category": "ai", "label": "OpenClaw", "icon": "󱚤", "source": "aur", "ref": "openclaw" },
+    { "id": "perplexity", "category": "ai", "label": "Perplexity", "icon": "󱚤", "source": "aur", "ref": "perplexity" },
 
     { "id": "steam", "category": "gaming", "label": "Steam", "icon": "", "source": "pacman", "ref": "steam", "layer": "gaming", "when": "[[ $(uname -m) == x86_64 ]]" },
     { "id": "lutris", "category": "gaming", "label": "Lutris", "icon": "", "source": "flatpak", "ref": "net.lutris.Lutris" },
@@ -60,6 +68,7 @@
     { "id": "obsidian", "category": "service", "label": "Obsidian", "icon": "", "source": "flatpak", "ref": "md.obsidian.Obsidian" },
     { "id": "tailscale", "category": "service", "label": "Tailscale", "icon": "", "source": "pacman", "ref": "tailscale" },
     { "id": "nordvpn", "category": "service", "label": "NordVPN", "icon": "󱇱", "source": "aur", "ref": "nordvpn-bin" },
+    { "id": "once", "category": "service", "label": "ONCE", "icon": "󰏖", "source": "aur", "ref": "once-bin" },
 
     { "id": "jetbrains-mono", "category": "font", "label": "JetBrains Mono", "icon": "", "source": "pacman", "ref": "ttf-jetbrains-mono-nerd", "family": "JetBrainsMono Nerd Font" },
     { "id": "cascadia-mono", "category": "font", "label": "Cascadia Mono", "icon": "", "source": "pacman", "ref": "ttf-cascadia-mono-nerd", "family": "CaskaydiaMono Nerd Font" },

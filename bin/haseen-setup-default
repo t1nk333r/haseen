@@ -10,10 +10,12 @@ usage() {
 Usage: haseen setup default <browser|terminal|editor|agent> [name] [--dry-run]
 
 Without a name, prints the current default.
-  browser   zen chromium helium firefox chrome brave  (xdg-settings + http/https MIME)
+  browser   zen chromium helium firefox chrome brave brave-origin edge
+            (xdg-settings + http/https MIME)
   terminal  foot alacritty ghostty kitty        (\$TERMINAL)
-  editor    nvim helix vim code zed emacs       (\$EDITOR)
-  agent     claude codex opencode omp gemini crush  (\$HASEEN_AGENT)
+  editor    nvim helix vim code cursor zed sublime emacs  (\$EDITOR)
+  agent     claude codex copilot crush cursor-agent gemini grok hermes muse
+            omp openclaw opencode pi            (\$HASEEN_AGENT)
 Variables go to ~/.config/uwsm/env.d/60-haseen-defaults, read by the next
 login, and into the running systemd user manager for apps started now.
 EOF
@@ -28,10 +30,14 @@ ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/60-haseen-defaults"
 declare -A BROWSERS=([zen]="zen.desktop app.zen_browser.zen.desktop"
     [chromium]="chromium.desktop org.chromium.Chromium.desktop" [helium]=helium.desktop
     [firefox]="firefox.desktop org.mozilla.firefox.desktop" [chrome]="google-chrome.desktop com.google.Chrome.desktop"
-    [brave]="brave-browser.desktop com.brave.Browser.desktop")
+    [brave]="brave-browser.desktop com.brave.Browser.desktop" [brave-origin]=brave-origin.desktop
+    [edge]="microsoft-edge.desktop com.microsoft.Edge.desktop")
 declare -A TERMINALS=([foot]=foot [alacritty]=alacritty [ghostty]=ghostty [kitty]=kitty)
-declare -A EDITORS=([nvim]=nvim [helix]=helix [vim]=vim [code]=code [zed]=zeditor [emacs]=emacs)
-declare -A AGENTS=([claude]=claude [codex]=codex [opencode]=opencode [omp]=omp [gemini]=gemini [crush]=crush)
+declare -A EDITORS=([nvim]=nvim [helix]=helix [vim]=vim [code]=code [cursor]=cursor [zed]=zeditor
+    [sublime]=sublime_text [emacs]=emacs)
+declare -A AGENTS=([claude]=claude [codex]=codex [copilot]=copilot [crush]=crush [cursor-agent]=cursor-agent
+    [gemini]=gemini [grok]=grok [hermes]=hermes [muse]=muse [omp]=omp [openclaw]=openclaw
+    [opencode]=opencode [pi]=pi)
 declare -A VARS=([browser]=BROWSER [terminal]=TERMINAL [editor]=EDITOR [agent]=HASEEN_AGENT)
 
 # env_value VAR — the value our env file exports for VAR, if any.
