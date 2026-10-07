@@ -7,6 +7,8 @@
 //   m <x> <y>   move the pointer to an absolute position
 //   d           press the left button
 //   u           release the left button
+//   rd / ru     press / release the right button
+//   md / mu     press / release the middle button
 //   s <ms>      sleep
 //
 // With no commands it reads them from stdin, one per line, until EOF. The
@@ -68,10 +70,14 @@ static int apply(struct zwlr_virtual_pointer_v1 *pointer, struct wl_display *dis
     zwlr_virtual_pointer_v1_motion_absolute(pointer, now_ms(), (uint32_t)atoi(token[1]),
                                             (uint32_t)atoi(token[2]), extent_x, extent_y);
     zwlr_virtual_pointer_v1_frame(pointer);
-  } else if (count >= 1 && (strcmp(token[0], "d") == 0 || strcmp(token[0], "u") == 0)) {
-    uint32_t state = token[0][0] == 'd' ? WL_POINTER_BUTTON_STATE_PRESSED
-                                        : WL_POINTER_BUTTON_STATE_RELEASED;
-    zwlr_virtual_pointer_v1_button(pointer, now_ms(), BTN_LEFT, state);
+  } else if (count >= 1 && (strcmp(token[0], "d") == 0 || strcmp(token[0], "u") == 0 ||
+                            strcmp(token[0], "rd") == 0 || strcmp(token[0], "ru") == 0 ||
+                            strcmp(token[0], "md") == 0 || strcmp(token[0], "mu") == 0)) {
+    const char *verb = token[0][1] ? token[0] + 1 : token[0];
+    uint32_t button = token[0][0] == 'r' ? BTN_RIGHT : token[0][0] == 'm' ? BTN_MIDDLE : BTN_LEFT;
+    uint32_t state = verb[0] == 'd' ? WL_POINTER_BUTTON_STATE_PRESSED
+                                    : WL_POINTER_BUTTON_STATE_RELEASED;
+    zwlr_virtual_pointer_v1_button(pointer, now_ms(), button, state);
     zwlr_virtual_pointer_v1_frame(pointer);
   } else if (count >= 2 && strcmp(token[0], "s") == 0) {
     wl_display_flush(display);

@@ -47,6 +47,7 @@ The owner's other repos:
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
 | Keybind sheet; Learn's keybinding and tmux lists | `bin/haseen-keybinds`, `bin/haseen-keybinds-list`, `bin/haseen-tmux-keybinds`, `bin/haseen-menu-select`, `share/haseen/lib/keybinds-scan.lua`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 071 |
 | Brightness command, DDC setup, display panel | `bin/haseen-brightness`, `bin/haseen-setup-ddc`, `share/haseen/shell/plugins/haseen.display/` | 077 |
+| Media panel (cover art, seek, switcher) | `share/haseen/shell/plugins/haseen.media/`, `tools/fake-mpris.py` | 078 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
@@ -123,11 +124,17 @@ Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
   `DBUS_SESSION_BUS_ADDRESS` is a `/tmp/dbus-*` path (nest orphans take over
   the session's at-spi bus).
 - `tools/vptr/`: a virtual pointer for drag and hover tests (`build.sh` builds
-  it). Point it only at a nest, never at the live session.
+  it; `d`/`u` left, `rd`/`ru` right, `md`/`mu` middle button). Point it only at
+  a nest, never at the live session.
 - `tools/fake-upower.py`: a fake UPower and power-profiles-daemon for tests and
   nests (plan 075). Start it on a private `dbus-daemon` and give the shell the same
   `DBUS_SYSTEM_BUS_ADDRESS`. Each stdin line is a property change
   (`sleep=1 Percentage=10 State=2`). It refuses the real system bus.
+- `tools/fake-mpris.py NAME [KEY=VALUE…]`: a fake MPRIS player for tests and
+  nests (plan 078): capabilities, metadata, `omit=Shuffle,Volume` for properties
+  a player lacks; every call and write is logged. Start it on a private
+  `dbus-daemon` and give the shell the same `DBUS_SESSION_BUS_ADDRESS`. It
+  refuses the login session's bus, where the owner's players are.
 - `tools/sync-apply.sh REPO STAGE_TAR EXPECT_TSV DELETE_TSV`: moves a checkout
   that carries uncommitted WIP onto a new `main`. Per file changed between the
   last synced main and the new one: main's version where the checkout still
