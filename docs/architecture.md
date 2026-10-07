@@ -306,7 +306,7 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `shell` | `reload()`, `plugins(): string` |
 | `panel` | `toggle(id)`, `close()` |
 | `launcher` | `toggle()` |
-| `menu` | `toggle(path)`; `haseen menu [path]` wraps it |
+| `menu` | `toggle(path)`; `haseen menu [path]` wraps it. `select(request): string`: the card as a pick list (plan 071) on a JSON request file `{prompt, options, selectionFile, doneFile, width, height}`; the choice goes to `selectionFile`, then one line to the caller's FIFO `doneFile`, also when nothing was chosen; answers the shell's PID. `haseen menu select` wraps it |
 | `lock` | `lock()` |
 | `notifications` | `clear()`, `toggleDnd()` (also writes the `dnd` flag) |
 | `bar` | `toggle()`, `transparent(mode)`, `position(pos)`, `tray(mode)`, `overflow(verb, id)`, `move(id, to, before, pin)`, `arrange(mode)` (focused screen, session only), `status()` (with each screen's `overflow` panel and `arranging`) |

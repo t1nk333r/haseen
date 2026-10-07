@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# haseen:summary Pick one line from a list in the menu card, dmenu-style
+# haseen:args <prompt> [option...] [--width N] [--height N]
+#
+# Adapted from Omarchy bin/omarchy-menu-select (MIT, Copyright (c) David
+# Heinemeier Hansson): the prompt, options from the arguments or stdin, the
+# "glyph<TAB>label<TAB>detail" option format and `-- --width N --height N`.
+# Changes: the options reach the shell in a request file, so a list of any
+# length fits, and the answer comes back through a FIFO instead of a 50 ms
+# poll; the wait gives up if the shell dies.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen menu select <prompt> [option...] [--width N] [--height N]
+
+Opens the menu (plugin haseen.menu) as a searchable list of OPTIONs, or of
+the lines on stdin when none are given, and prints the one chosen. Typing
+filters the rows by every word of the query. Exits 1 when nothing is chosen
+(Escape, a click outside, the menu closed).
+
+An option is "label", "glyph<TAB>label" or "glyph<TAB>label<TAB>detail". The
+glyph is shown, never printed; a detail shows under the label and is printed
+with it, as "label<TAB>detail".
+
+  --width N    card width in px at the default font size (default 300)
+  --height N   most px the rows may take before the list scrolls
+
+Omarchy's form, "<prompt> [option...] -- --width N --height N", works too.
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+"")
+    usage >&2
+    exit 2
+    ;;
+esac
+
+prompt=$1
+shift
+options=()
+width="" height=""
+while (($#)); do
+    case "$1" in
+    --) ;;
+    --width | --height | --maxheight)
+        (($# >= 2)) && [[ $2 =~ ^[0-9]+$ ]] || die "$1 needs a number of pixels"
+        if [[ $1 == --width ]]; then width=$2; else height=$2; fi
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) options+=("$1") ;;
+    esac
+    shift
+done
+
+if ((${#options[@]} == 0)) && [[ ! -t 0 ]]; then
+    mapfile -t options
+fi
+((${#options[@]} > 0)) || die "nothing to choose from: give options as arguments or on stdin"
+
+require_cmds jq mkfifo
+
+dir="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/haseen-select.XXXXXX")"
+trap 'rm -rf "$dir"' EXIT
+mkfifo -m 0600 "$dir/done"
+# Read-write, so neither side's open blocks: the menu writes one line here
+# when it closes, chosen or not.
+exec 3<>"$dir/done"
+
+printf '%s\n' "${options[@]}" | jq -R . | jq -s \
+    --arg prompt "$prompt" --arg selection "$dir/selection" --arg donefile "$dir/done" \
+    --arg width "$width" --arg height "$height" '{
+        prompt: $prompt,
+        options: .,
+        selectionFile: $selection,
+        doneFile: $donefile,
+        width: ($width | if . == "" then null else tonumber end),
+        height: ($height | if . == "" then null else tonumber end)
+    }' >"$dir/request.json"
+
+shell_pid="$(haseen shell ipc menu select "$dir/request.json")" || die "the shell did not answer (haseen shell ipc menu select)"
+shell_pid=${shell_pid//[^0-9]/}
+
+until read -r -t 2 -u 3 _; do
+    if [[ -n $shell_pid ]] && ! kill -0 "$shell_pid" 2>/dev/null; then
+        die "the shell went away before anything was chosen"
+    fi
+done
+
+[[ -s $dir/selection ]] || exit 1
+cat "$dir/selection"

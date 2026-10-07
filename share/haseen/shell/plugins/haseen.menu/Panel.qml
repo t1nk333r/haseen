@@ -34,6 +34,11 @@ import "MenuStyle.js" as Style
 // registers the `menu` role while it exists so a second toggle reaches it.
 // The special path ":about" shows the About view (`haseen about`).
 //
+// `haseen menu select` (IPC `menu select(request)`) turns the card into
+// Omarchy's dmenu (omarchy-menu-select): the request file's options, filtered
+// by the query, at its width and maximum rows height; Enter writes the row
+// back to the caller, and any other way out answers "nothing chosen".
+//
 // Adapted from Omarchy shell/plugins/menu/Menu.qml (MIT, Copyright (c)
 // David Heinemeier Hansson): route resolution, provider queue, guard batch,
 // search, layout, keys and look. haseen's: the data side (menu.jsonc, its
@@ -88,7 +93,10 @@ Item {
     readonly property int iconColumn: space(36)
     readonly property bool wide: Style.WIDE_MENUS.indexOf(activeMenu) >= 0
     readonly property int baseWidth: typeof settings.width === "number" && settings.width >= 260 ? settings.width : Style.WIDTH
-    readonly property int cardWidth: overlay ? Math.min(space(wide ? Style.WIDE : baseWidth), width - gapsOut * 2) : space(wide ? Style.WIDE : baseWidth)
+    readonly property int cardWidth: {
+        const w = picking ? space(pickWidth) : space(wide ? Style.WIDE : baseWidth);
+        return overlay ? Math.min(w, width - gapsOut * 2) : w;
+    }
     readonly property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
     readonly property int bodyHeight: aboutView ? about.implicitHeight : visibleRowsHeight
     readonly property int cardHeight: {
@@ -133,6 +141,15 @@ Item {
     property string waitingProvider: ""
     property string pendingRoute: ""
 
+    // pick(): the open `haseen menu select` request.
+    property bool picking: false
+    property string pickPrompt: ""
+    property var pickOptions: []
+    property int pickWidth: Style.WIDTH
+    property int pickHeight: 0
+    property string pickSelectionFile: ""
+    property string pickDoneFile: ""
+
     // The card opens centred. The first search keystroke or submenu step
     // freezes its top edge where it sits, and the rows' height with it, so
     // from then on the card grows and shrinks downward instead of
@@ -146,7 +163,7 @@ Item {
 
     readonly property bool aboutView: activeMenu === ":about"
     readonly property var activeItem: items[activeMenu] || null
-    readonly property string heading: aboutView ? "About" : (activeMenu !== "root" && activeItem ? (activeItem.title || activeItem.label) : "Go")
+    readonly property string heading: picking ? pickPrompt : aboutView ? "About" : (activeMenu !== "root" && activeItem ? (activeItem.title || activeItem.label) : "Go")
 
     implicitWidth: cardWidth
     implicitHeight: cardHeight
@@ -222,6 +239,7 @@ Item {
     }
 
     function enter(id: string, push: bool, fromPointer: bool): void {
+        finishPick(null);
         if (id !== ":about" && !items[id])
             id = "root";
         if (push && id !== activeMenu)
@@ -241,7 +259,7 @@ Item {
     }
 
     function goBack(): bool {
-        if (activeMenu === "root")
+        if (picking || activeMenu === "root")
             return false;
         if (navStack.length > 0) {
             const prev = navStack[navStack.length - 1];
@@ -275,7 +293,10 @@ Item {
         const keepId = keep && selectedIndex >= 0 && selectedIndex < displayModel.count ? displayModel.get(selectedIndex).itemId : "";
         const rows = [];
         searchDivider = false;
-        if (loaded && !aboutView) {
+        if (picking) {
+            for (const r of Model.pickRows(pickOptions, filterText))
+                rows.push(r);
+        } else if (loaded && !aboutView) {
             const active = items[activeMenu] ? activeMenu : "root";
             const q = filterText.trim();
             if (q !== "") {
@@ -378,8 +399,14 @@ Item {
         selectedIndex = index;
     }
 
+    // A description shows under the label while a search runs, and always in
+    // a pick list, where it is part of the row.
+    function detailShown(detail: string): bool {
+        return (filterText !== "" || picking) && detail !== "";
+    }
+
     function rowHeightForDetail(detail: string): int {
-        return filterText !== "" && detail !== "" ? detailRowHeight : baseRowHeight;
+        return detailShown(detail) ? detailRowHeight : baseRowHeight;
     }
 
     // Height the card can give its rows before running off the screen, or
@@ -391,6 +418,9 @@ Item {
         // submenu scrolls behind the fold instead of growing the card.
         if (maxRowsHeight >= 0)
             available = Math.min(available, maxRowsHeight);
+        // The caller of a pick list sets its own ceiling (Omarchy's --height).
+        if (picking && pickHeight > 0)
+            available = Math.min(available, space(pickHeight));
         // A card that swallows the whole screen reads as a page, not a menu.
         return Math.min(available, Math.round(areaHeight * 0.7));
     }
@@ -464,6 +494,11 @@ Item {
         const r = displayModel.get(index);
         if (r.disabled)
             return;
+        if (r.kind === "pick") {
+            finishPick(r.action);
+            close();
+            return;
+        }
         const e = items[r.itemId];
         if (!e)
             return;
@@ -494,6 +529,57 @@ Item {
             return;
         }
         Quickshell.execDetached(["bash", "-c", "PATH=\"$1:$PATH\"; eval \"$2\"", "bash", binDir, action]);
+    }
+
+    // IPC `menu select(request)`: REQUEST is a JSON file
+    // {prompt, options, selectionFile, doneFile, width, height}. An open pick
+    // list it replaces answers "nothing chosen" first.
+    function pick(request: string): void {
+        finishPick(null);
+        pickReader.command = ["cat", "--", request];
+        pickReader.running = true;
+    }
+
+    function startPick(text: string): void {
+        let req = null;
+        try {
+            req = JSON.parse(text);
+        } catch (e) {
+            console.warn("haseen: menu: unreadable select request -", e);
+            return;
+        }
+        pickPrompt = String(req.prompt || "Select");
+        pickOptions = Array.isArray(req.options) ? req.options : [];
+        pickWidth = Number(req.width) > 0 ? Number(req.width) : Style.WIDTH;
+        pickHeight = Number(req.height) > 0 ? Number(req.height) : 0;
+        pickSelectionFile = String(req.selectionFile || "");
+        pickDoneFile = String(req.doneFile || "");
+        picking = true;
+        navStack = [];
+        activeMenu = "root";
+        filterText = "";
+        selectedIndex = 0;
+        cursorActive = true;
+        cardTop = -1;
+        maxRowsHeight = -1;
+        pointerGate.reset();
+        rebuildDisplay(false);
+        keyCatcher.forceActiveFocus();
+    }
+
+    // Answers the caller once: the chosen row, or null for nothing chosen.
+    // The done file is the caller's FIFO; opened read-write, a write never
+    // blocks, even when the caller has gone.
+    function finishPick(selection: var): void {
+        if (!picking)
+            return;
+        const args = ["sh", "-c", "[ $# -gt 2 ] && printf '%s\\n' \"$3\" > \"$1\"; printf 'x\\n' 1<>\"$2\"", "sh", pickSelectionFile, pickDoneFile];
+        picking = false;
+        pickOptions = [];
+        if (pickDoneFile !== "")
+            Quickshell.execDetached(selection === null ? args : args.concat([String(selection)]));
+        pickDoneFile = "";
+        pickSelectionFile = "";
     }
 
     // Omarchy's query editing keys (Util.editsFilter/editedFilter).
@@ -783,7 +869,10 @@ Item {
         }
         keyCatcher.forceActiveFocus();
     }
-    Component.onDestruction: Plugins.unregisterRole("menu", root)
+    Component.onDestruction: {
+        finishPick(null);
+        Plugins.unregisterRole("menu", root);
+    }
 
     // DesktopEntries scans on first use and again when .desktop files change;
     // refill an Apps menu that was already entered.
@@ -808,6 +897,14 @@ Item {
                     root.applyRows(providerProc.menuId, spec.parse(providerProc.menuId, text), true);
                 Qt.callLater(root.startProvider);
             }
+        }
+    }
+
+    Process {
+        id: pickReader
+
+        stdout: StdioCollector {
+            onStreamFinished: root.startPick(text)
         }
     }
 
@@ -886,6 +983,7 @@ Item {
             return JSON.stringify({
                 menu: root.activeMenu,
                 heading: root.heading,
+                picking: root.picking,
                 query: root.filterText,
                 current: root.selectedIndex,
                 rows: rows

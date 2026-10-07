@@ -43,13 +43,13 @@
   "system": {"icon":"","label":"System","aliases":["power","power-menu"]},
 
   // Learn
-  "learn.keybindings": {"icon":"","label":"Keybindings","aliases":["keybinds"],"action":"haseen shell ipc keybinds toggle"},
+  "learn.keybindings": {"icon":"","label":"Keybindings","aliases":["keybinds"],"action":"haseen keybinds list"},
   "learn.haseen": {"icon":"","label":"haseen","action":"xdg-open 'https://github.com/t1nk333r/haseen#readme'"},
   "learn.hyprland": {"icon":"","label":"Hyprland","action":"xdg-open 'https://wiki.hypr.land/'"},
   "learn.arch": {"icon":"󰣇","label":"Arch","action":"xdg-open 'https://wiki.archlinux.org/title/Main_page'"},
   "learn.neovim": {"icon":"","label":"Neovim","action":"xdg-open 'https://www.lazyvim.org/keymaps'"},
   "learn.bash": {"icon":"󱆃","label":"Bash","action":"xdg-open 'https://devhints.io/bash'"},
-  "learn.tmux-keybindings": {"icon":"","label":"Tmux","when":"haseen-cmd-present tmux","action":"haseen config terminal -- sh -c 'tmux start-server \\; list-keys -N | less'"},
+  "learn.tmux-keybindings": {"icon":"","label":"Tmux","when":"haseen-cmd-present tmux","action":"haseen tmux keybinds"},
   "learn.herdr-keybindings": {"icon":"","label":"Herdr","description":"herdr's config.toml: its key bindings","when":"haseen-cmd-present herdr","action":"haseen config edit \"${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml\""},
 
   // Trigger

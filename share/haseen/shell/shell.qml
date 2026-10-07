@@ -352,6 +352,17 @@ ShellRoot {
             if (path !== "")
                 Qt.callLater(() => Plugins.callRole("menu", "open", [path]));
         }
+
+        // `haseen menu select`: open the menu as a pick list on REQUEST (a
+        // JSON file). Answers this shell's PID, so the waiting caller can
+        // tell a shell that died from a user still choosing.
+        function select(request: string): string {
+            if (!Plugins.callRole("menu", "pick", [request])) {
+                shell.routeRole("menu", "toggle");
+                Qt.callLater(() => Plugins.callRole("menu", "pick", [request]));
+            }
+            return String(Quickshell.processId);
+        }
     }
 
     // `haseen bar …` (plan 015). Changes apply at once and persist through

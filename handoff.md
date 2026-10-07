@@ -45,7 +45,7 @@ The owner's other repos:
 | Starter widgets | `haseen.{sysusage,privacy,workspaces,media,calendar,clipboard,weather,bluetooth,network}` | 021, 022 |
 | Migration ledger | `bin/haseen-migrate*`, `share/haseen/lib/migrate.sh`, `share/haseen/migrations/`, `share/haseen/systemd/user/haseen-migrate-notify.service` | 028 |
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
-| Keybind sheet | `bin/haseen-keybinds`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 |
+| Keybind sheet; Learn's keybinding and tmux lists | `bin/haseen-keybinds`, `bin/haseen-keybinds-list`, `bin/haseen-tmux-keybinds`, `bin/haseen-menu-select`, `share/haseen/lib/keybinds-scan.lua`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 071 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |

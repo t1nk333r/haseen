@@ -13,6 +13,7 @@ Targets (architecture 5.5):
   shell reload | shell plugins
   panel toggle <id> | panel close
   launcher toggle
+  menu toggle <path> | menu select <request.json>
   lock lock
   notifications clear | notifications toggleDnd
 

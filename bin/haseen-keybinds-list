@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# haseen:summary Search the key bindings in the menu and run the one chosen
+# haseen:args [--print] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-menu-keybindings (MIT, Copyright (c) David
+# Heinemeier Hansson): one "KEYS → what it does" row per bind, the most used
+# first, in a 800 × 500 searchable list, and Enter replays the bind's
+# dispatcher. Changes: the rows come from `haseen keybinds --json`, which
+# already resolves code:N keys, mouse buttons and Lua binds (the overlay on
+# SUPER + / reads the same records), the list is `haseen menu select`, and
+# the priorities name haseen's descriptions.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen keybinds list [--print] [--dry-run]
+
+Shows every live binding as "KEYS → description" in the menu's searchable
+list; Enter runs the chosen one, as if its keys were pressed. A bind whose
+action is a Lua function cannot be replayed and only closes the list.
+
+  --print     print the rows instead of showing them
+  --dry-run   show the list, then print the dispatch instead of running it
+EOF
+}
+
+print=false
+parse_common_flags "$@"
+for arg in "${REST[@]}"; do
+    case "$arg" in
+    --print | -p) print=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+require_cmds jq
+
+# label<TAB>dispatcher<TAB>arg, the most used binds first (Omarchy's order on
+# haseen's descriptions), then by section and keys; a label shown twice keeps
+# its first record.
+records() {
+    haseen-keybinds --json | jq -r '
+        [
+            "^Keybindings$", "^Menu$", "^Terminal$", "^Browser$", "^File manager$",
+            "^Launcher$", "^System menu$", "^Theme picker$", "^Background picker$",
+            "^Fullscreen$", "^Maximise$", "^Close window$", "^Lock screen$",
+            "^Toggle floating$", "^Toggle split$", "^Universal", "^Clipboard",
+            "^Emoji", "^Colou?r picker$", "^Screenshot", "^Screen recording",
+            "^Capture menu$", "^AI panel$", "^Calendar$", "notification|^Do not disturb$",
+            "^(Next|Previous) workspace$", "^Workspace [0-9]+$", "^Move window to workspace",
+            "^Move window silently to workspace", "^Swap window", "^Focus", "^Move window$",
+            "^Resize window$", "^(Grow|Shrink)", "[Ss]cratchpad", "group", "monitor",
+            "^(Night light|Stay awake|Screensaver|Toggle bar)$"
+        ] as $order
+        | map(
+            (if .description != "" then .description else .action end) as $what
+            | select($what != "")
+            | {
+                prio: (([range(0; $order | length) | select(. as $i | $what | test($order[$i]))] | first) // 50)
+                    + (if .key | test("^XF86") then 100 else 0 end),
+                category, combo, what: $what, dispatcher, arg
+            })
+        | sort_by(.prio, .category, .combo)[]
+        | [.combo, .what, .dispatcher, .arg] | map(gsub("[\t\n]"; " ")) | join("\t")' |
+        awk -F'\t' '{
+            label = sprintf("%-35s → %s", $1, $2)
+            if (seen[label]++) next
+            printf "%s\t%s\t%s\n", label, $3, $4
+        }'
+}
+
+lua_string() {
+    local s=${1//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    printf '"%s"' "$s"
+}
+
+# Hyprland 0.56 takes a Lua dispatcher expression; older ones the classic
+# `dispatch exec`. True when Hyprland accepted EXPR.
+dispatch_lua() {
+    local out
+    out="$(hyprctl dispatch "$1" 2>&1)" || return 1
+    [[ -z $out || $out == ok ]]
+}
+
+dispatch() {
+    local dispatcher=$1 arg=$2
+    if $DRY_RUN; then
+        case "$dispatcher" in
+        exec) echo "DRYRUN: hyprctl dispatch hl.dsp.exec_cmd($(lua_string "$arg"))" ;;
+        lua) echo "DRYRUN: hyprctl dispatch $arg" ;;
+        "") echo "DRYRUN: nothing (a Lua function)" ;;
+        *) echo "DRYRUN: hyprctl dispatch $dispatcher $arg" ;;
+        esac
+        return 0
+    fi
+    case "$dispatcher" in
+    exec)
+        [[ -n $arg ]] || return 1
+        dispatch_lua "hl.dsp.exec_cmd($(lua_string "$arg"))" || hyprctl dispatch exec "$arg" >/dev/null
+        ;;
+    lua)
+        [[ -n $arg ]] || return 1
+        dispatch_lua "$arg" || die "Hyprland refused: $arg"
+        ;;
+    "")
+        warn "this bind runs a Lua function, which cannot be replayed from the list"
+        return 1
+        ;;
+    *)
+        if [[ -n $arg ]]; then
+            hyprctl dispatch "$dispatcher" "$arg" >/dev/null
+        else
+            hyprctl dispatch "$dispatcher" >/dev/null
+        fi
+        ;;
+    esac
+}
+
+all="$(records)" && [[ -n $all ]] || die "no bindings: is Hyprland running? (haseen keybinds)"
+
+if $print; then
+    cut -f1 <<<"$all"
+    exit 0
+fi
+
+selection="$(cut -f1 <<<"$all" | haseen-menu-select Keybindings --width 800 --height 500)" || exit 0
+[[ -n $selection ]] || exit 0
+record="$(awk -F'\t' -v s="$selection" '$1 == s { print; exit }' <<<"$all")"
+[[ -n $record ]] || die "no binding reads '$selection'"
+dispatch "$(cut -f2 <<<"$record")" "$(cut -f3- <<<"$record")"
