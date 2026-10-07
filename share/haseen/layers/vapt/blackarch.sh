@@ -94,16 +94,23 @@ vapt_blackarch_bootstrap_steps() {
     vapt_root_exec /usr/bin/pacman-key --init || { VAPT_MUTATION_FAILED=1; return 1; }
     vapt_root_exec /usr/bin/pacman-key --add "$stage/signer.gpg" || { VAPT_MUTATION_FAILED=1; return 1; }
     vapt_root_exec /usr/bin/pacman-key --lsign-key "$VAPT_KEYRING_SIGNER" || { VAPT_MUTATION_FAILED=1; return 1; }
-    local flags=()
+    # From here the shared keyring already trusts the pinned signer: any later
+    # refusal or failure is a mutation failure that says so.
+    local flags=() changed='BlackArch signing key imported into the shared pacman keyring (global trust changed), but the keyring package was not installed'
     $ASSUME_YES && flags+=(--noconfirm)
     if ! $DRY_RUN; then
-        vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || { VAPT_SOURCE_REASON="$VAPT_APPLY_REASON"; return 2; }
+        vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || {
+            VAPT_SOURCE_REASON="$changed: $VAPT_APPLY_REASON"; VAPT_MUTATION_FAILED=1; return 1;
+        }
     fi
     # Only the signed, exactly reviewed population-only keyring scriptlet is
     # replaced by the explicit pacman-key action below. Hooks remain audited.
     vapt_root_pacman --config "$stage/commit.conf" -U --noscriptlet "${flags[@]}" -- \
-        "${VAPT_CACHE:-<root-stage>}/sealed/$filename" || { VAPT_MUTATION_FAILED=1; return 1; }
-    vapt_root_exec /usr/bin/pacman-key --populate blackarch || { VAPT_MUTATION_FAILED=1; return 1; }
+        "${VAPT_CACHE:-<root-stage>}/sealed/$filename" || { VAPT_SOURCE_REASON="$changed: pacman -U failed"; VAPT_MUTATION_FAILED=1; return 1; }
+    vapt_root_exec /usr/bin/pacman-key --populate blackarch || {
+        VAPT_SOURCE_REASON='BlackArch keyring installed (global trust changed), but pacman-key --populate blackarch failed'
+        VAPT_MUTATION_FAILED=1; return 1;
+    }
     # The repository stanza is staged, not written: it becomes globally visible
     # only after the reviewed full upgrade commits (vapt_blackarch_activate).
     return 0
@@ -131,12 +138,14 @@ vapt_blackarch_activate() {
 # Accepted recovery of a recorded reviewed commit: when that commit staged
 # BlackArch (and no stanza exists yet), review/commit the same repository set
 # again and activate afterwards rather than forgetting the staged repository.
-# A commit that carried the private oniomarchy source resumes with it only
-# while the approved descriptor and keyring authority are the recorded ones.
+# The private oniomarchy source never joins a full upgrade, so no record names
+# it. The digest of the parsed record is kept: a record whose bytes change
+# during the recovery is preserved, never overwritten (pacman.sh).
 vapt_pacman_recover() {
-    local marker="$HASEEN_STATE_DIR/vapt/upgrade-pending" record rc=0 scope='' digest
+    local marker="$HASEEN_STATE_DIR/vapt/upgrade-pending" record rc=0
     vapt_root_lock || return $?
     vapt_state_path_safe "$marker" || return 2
+    VAPT_RECOVERY_DIGEST="$(vapt_meta file-digest "$(vapt_read_path "$marker")" 2>/dev/null)" || VAPT_RECOVERY_DIGEST=''
     # The record is an exact protocol: unreadable, redirected or unknown
     # content fails closed and is preserved, never resumed as something else.
     record="$(vapt_meta recovery-record "$(vapt_read_path "$marker")" 2>&1)" || {
@@ -145,22 +154,11 @@ vapt_pacman_recover() {
     case "$record" in
     generic) ;;
     blackarch-staged) [[ ${VAPT_ENABLED[blackarch]:-} ]] || VAPT_BLACKARCH_STAGED=1 ;;
-    'oniomarchy-private '* | 'blackarch-staged oniomarchy-private '*)
-        digest="$(vapt_meta oniomarchy-scope 2>&1)" || digest=''
-        [[ $digest == "${record##* }" ]] || {
-            VAPT_APPLY_REASON='recorded oniomarchy scope differs from the approved descriptor/keyring authority; preserved, manual review required'
-            return 2
-        }
-        scope=1
-        if [[ $record == blackarch-staged* && ! ${VAPT_ENABLED[blackarch]:-} ]]; then VAPT_BLACKARCH_STAGED=1; fi
-        ;;
     *) return 2 ;;
     esac
     VAPT_RECOVERING=1
-    local previous="${VAPT_ONIOMARCHY_SCOPE:-}"
-    VAPT_ONIOMARCHY_SCOPE="$scope"
     vapt_pacman_upgrade || rc=$?
-    VAPT_RECOVERING='' VAPT_BLACKARCH_STAGED='' VAPT_ONIOMARCHY_SCOPE="$previous"
+    VAPT_RECOVERING='' VAPT_BLACKARCH_STAGED='' VAPT_RECOVERY_DIGEST=''
     return "$rc"
 }
 vapt_blackarch_prepare() {

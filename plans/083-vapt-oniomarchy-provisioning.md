@@ -234,12 +234,17 @@ provenance.
   the roles. Pins and required targets may not name the source. Not in
   `BASE_VENDOR`.
 - **Transactions.** The verified cached database is copied into the private
-  DBPath; after a private `-Syuw` it is re-verified against the accepted
-  primaries; freezing requires its `.sig` and the frozen pair is rechecked
-  against the reviewed digests right before the commit. Recovery records gain
-  `\toniomarchy-private\t<sha256 of descriptor and authority>` and resume the
-  scope only on a match; the old generic and blackarch-staged records keep
-  working.
+  DBPath of an opted-in install. The source never joins a full upgrade (its
+  `Usage` excludes Upgrade; its prelude runs after BlackArch preparation and
+  recovery): `vapt_pacman_upgrade` refuses a set private scope, and recovery
+  records stay the generic and blackarch-staged ones. The earlier
+  post-`-Syuw` re-verify, frozen `.db.sig` recheck and `oniomarchy-private`
+  record extension were unreachable and are removed (batch A fixes).
+- **Admission refinements (batch A).** A declared conflict is admitted and
+  left to `reject_removals` (replaces stays refused); unmapped candidates are
+  never installed; a reviewed alias's logical name satisfies a dependency;
+  retained providers get source and identity admission; identity mismatches
+  on planned upgrades of installed same-name packages are warnings.
 - **Report.** v1 schema kept; `# oniomarchy` and `# dependency` annotations.
 
 Choices where the design was silent: the descriptor doubles as the approval
@@ -326,10 +331,17 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   redirected state; rotation cases from `trust/rotation.json` and raw-key
   replacement; dry-run and sysroot refusal of the real commands.
 - `tests/test-vapt-oniomarchy-transactions.sh`: rendered/frozen policy;
-  closure cases from `transactions/closure.json`; an opted-in commit; the
-  frozen-signature cases from `transactions/db-signature-cases.json`; the
-  recovery protocol from `transactions/recovery-records.txt` and a changed
-  authority.
+  closure cases from `transactions/closure.json`; an opted-in commit; a full
+  upgrade that never carries the private source (and refuses a set scope);
+  the recovery protocol from `transactions/recovery-records.txt`.
+- Adversarial suites (`-consent-`, `-admission-`, `-trust-`, `-report-adversarial`,
+  `-abuse`, `-abuse-boundaries`, helper `fixtures/vapt-onio-adversarial.sh`).
+
+Batch A evidence (fixtures only): `QT_QPA_PLATFORM=offscreen tests/run.sh` on
+each oniomarchy suite — consent 96/96, trust-adversarial 184/184, abuse
+108/108, abuse-boundaries 19/19, transactions 62/62, trust 213/213,
+admission 147/148 (beef logical homonym through the shell resolver open),
+report 55/57 (recorded-dependency status: batch B).
 
 ## Evidence
 

@@ -332,6 +332,7 @@ vapt_pacman_closure() {
     reason="$(vapt_meta closure "$target" "$VAPT_STAGE/transaction.tsv" --dbpath "$(vapt_read_path "$VAPT_DB")" 2>&1)" || {
         VAPT_APPLY_REASON="$reason"; return 2;
     }
+    vapt_closure_warnings "$reason"
     if ! vapt_root_pacman --config "$VAPT_STAGE/pacman.conf" --dbpath "$VAPT_DB" -Sw --cachedir "$VAPT_CACHE/packages" --noconfirm -- "$target"; then
         VAPT_APPLY_REASON='signed package download failed'; return 1
     fi
@@ -401,7 +402,18 @@ vapt_pacman_apply() {
     ((rc != 1)) || VAPT_MUTATION_FAILED=1
     return "$rc"
 }
+vapt_closure_warnings() {
+    # A passed closure prints "safe" after any warning (an identity mismatch
+    # on a planned upgrade of an already-installed package); show those.
+    local line
+    while IFS= read -r line; do
+        [[ -z $line || $line == safe ]] || warn "vapt: $line"
+    done <<<"$1"
+}
 vapt_pacman_upgrade_transaction() {
+    # The private oniomarchy source never joins a full upgrade: its Usage
+    # excludes Upgrade and no prelude selects it before one runs.
+    [[ -z ${VAPT_ONIOMARCHY_SCOPE:-} ]] || { VAPT_APPLY_REASON='the private oniomarchy source never joins a full upgrade'; return 2; }
     if $DRY_RUN; then
         info 'vapt: review full allowed-repository system upgrade (not reversible)'
         vapt_root_pacman --config '<reviewed-vapt-config>' -Syyu
@@ -419,9 +431,6 @@ vapt_pacman_upgrade_transaction() {
     # Checkupdates-style private DB: rejected sync/download/audit leaves the
     # system databases unchanged and does not create a recovery marker.
     vapt_root_pacman --config "$config" --dbpath "$VAPT_DB" -Syuw --cachedir "$VAPT_CACHE/packages" --noconfirm || return 1
-    # pacman accepts any locally trusted key on a refreshed database; the
-    # private source's refresh must still carry an accepted pinned primary.
-    if [[ -n ${VAPT_ONIOMARCHY_SCOPE:-} ]]; then vapt_oniomarchy_reverify "$VAPT_DB/sync" || return $?; fi
     content="$(LC_ALL=C pacman --config "$config" --dbpath "$VAPT_DB" -Sup --print-format $'%r\t%n\t%v\t%f' 2>"$VAPT_STAGE/plan.err")" || {
         VAPT_APPLY_REASON="upgrade resolution failed: $(<"$VAPT_STAGE/plan.err")"; return 2;
     }
@@ -429,26 +438,22 @@ vapt_pacman_upgrade_transaction() {
     reason="$(vapt_meta closure - "$VAPT_STAGE/upgrade.tsv" --dbpath "$(vapt_read_path "$VAPT_DB")" 2>&1)" || {
         VAPT_APPLY_REASON="$reason"; return 2;
     }
+    vapt_closure_warnings "$reason"
     vapt_transaction_audit "$VAPT_STAGE/upgrade.tsv" || return $?
     # Freeze reviewed DB payloads: final -Syu must not pick up a newer,
     # unaudited transaction from live mirrors between review and commit.
-    local repo database frozen="$VAPT_CACHE/reviewed" signed=''
+    local repo database frozen="$VAPT_CACHE/reviewed"
     # Explicit modes (not the caller umask) so DownloadUser can read the
     # file:// mirror; install -p keeps the reviewed DB's own mtime.
     vapt_root_exec /usr/bin/install -d -m 0755 "$frozen" || return 1
     for repo in "${VAPT_TRANSACTION_REPOS[@]}"; do
-        vapt_repo_allowed "$repo" || return 2
+        vapt_repo_allowed "$repo" && [[ $repo != oniomarchy ]] || return 2
         database="$(vapt_read_path "$VAPT_DB/sync/$repo.db")"
         [[ -f $database ]] || { VAPT_APPLY_REASON="reviewed database unavailable: $repo"; return 2; }
         vapt_root_exec /usr/bin/install -d -m 0755 "$frozen/$repo" || return 1
         vapt_root_exec /usr/bin/install -p -m 0644 -- "$VAPT_DB/sync/$repo.db" "$frozen/$repo/$repo.db" || return 1
         if [[ -f $database.sig ]]; then
             vapt_root_exec /usr/bin/install -p -m 0644 -- "$VAPT_DB/sync/$repo.db.sig" "$frozen/$repo/$repo.db.sig" || return 1
-        elif [[ $repo == oniomarchy ]]; then
-            VAPT_APPLY_REASON='oniomarchy database signature missing; DatabaseRequired blocks the commit'; return 2
-        fi
-        if [[ $repo == oniomarchy ]]; then
-            signed="$(vapt_meta file-digest "$database") $(vapt_meta file-digest "$database.sig")" || return 2
         fi
     done
     content="$(vapt_meta config --frozen "$frozen")" || return 2
@@ -464,26 +469,19 @@ vapt_pacman_upgrade_transaction() {
         return 2
     fi
     [[ ${VAPT_BLACKARCH_STAGED:-} != 1 ]] || note=$'\tblackarch-staged'
-    if [[ -n ${VAPT_ONIOMARCHY_SCOPE:-} ]]; then
-        # The record binds recovery to this approved descriptor and authority.
-        local scope
-        scope="$(vapt_meta oniomarchy-scope)" || { VAPT_APPLY_REASON='private source scope unavailable'; return 2; }
-        note+=$'\toniomarchy-private\t'"$scope"
+    # A recovery rewrites only the record it parsed: changed bytes (another
+    # root writer) are preserved for manual review, never overwritten.
+    if [[ ${VAPT_RECOVERING:-} == 1 ]]; then
+        local observed
+        observed="$(vapt_meta file-digest "$(vapt_read_path "$marker")" 2>/dev/null)" || observed=''
+        [[ -n $observed && $observed == "${VAPT_RECOVERY_DIGEST:-}" ]] || {
+            VAPT_APPLY_REASON='recovery record changed during recovery; preserved, manual review required; nothing committed'; return 2;
+        }
     fi
     printf 'reviewed-full-upgrade-commit-pending%s\n' "$note" |
         vapt_root_meta state-write "$(vapt_read_path "$marker")" || return 1
     $ASSUME_YES && flags+=(--noconfirm)
     vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" "$(vapt_read_path "$frozen")" || return $?
-    if [[ -n $signed ]]; then
-        # The frozen signed database is rechecked against the reviewed bytes
-        # immediately before the commit (pacman then verifies it again).
-        local observed
-        observed="$(vapt_meta file-digest "$(vapt_read_path "$frozen/oniomarchy/oniomarchy.db")") $(vapt_meta file-digest \
-            "$(vapt_read_path "$frozen/oniomarchy/oniomarchy.db.sig")")" || observed=''
-        [[ $observed == "$signed" ]] || {
-            VAPT_APPLY_REASON='frozen oniomarchy database or signature differs from the reviewed bytes; nothing committed'; return 2;
-        }
-    fi
     # -yy: always fetch the frozen reviewed DBs. A plain -y is If-Modified-Since
     # the live DB, so a newer live refresh would otherwise resolve the commit.
     vapt_root_pacman --config "$config" -Syyu --cachedir "$VAPT_CACHE/sealed" "${flags[@]}" || return 1

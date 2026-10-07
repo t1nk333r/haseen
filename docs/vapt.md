@@ -402,11 +402,23 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   makes the source `unverified`, and `repo-enable` refuses it for manual
   review.
 - **Strict signatures everywhere.** `Required DatabaseRequired` is kept in the
-  private, frozen and recovery configurations. A missing or unaccepted
-  database signature makes the source unavailable rather than weaker; the
-  frozen signature is rechecked against the reviewed bytes right before a
-  commit. A recovery record names the private scope and the digest of the
-  descriptor and keyring authority, and resumes only while they match.
+  private and install configurations. A missing or unaccepted database
+  signature makes the source unavailable rather than weaker. The source's
+  `Usage = Sync Search Install` excludes Upgrade and its prelude runs after
+  any full upgrade, so a full upgrade never carries it: a full upgrade under
+  the private scope is refused, and no recovery record names the source (a
+  record that does is refused and preserved for review).
+- **Revocations stay inside the source's authority.** `pacman-key --populate
+  oniomarchy` applies the keyring's revoked list to the shared keyring, so an
+  audited keyring may revoke only a previously accepted or revoked, pinned or
+  trusted primary; any other revocation (an Arch/CachyOS or administrator key)
+  refuses the keyring with the offending fingerprints named. The recorded
+  authority must equal what the retained keyring lists declare.
+- **Trust changes are reported as such.** Once the pinned key is imported (or
+  an audited keyring update reached the shared keyring), any later refusal is
+  a mutation failure saying the trust changed but the source is not approved;
+  approval is claimed only when the recorded evidence makes the source usable.
+  A busy root lock reports `unavailable` ("privileged transaction busy").
 - **x86_64 only.** Other architectures report `unsupported-architecture`
   before any fetch or trust change; the other sources still work.
 - **Admission.** Only the 52 published names in `packages/oniomarchy.tsv`

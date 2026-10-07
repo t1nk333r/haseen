@@ -1,10 +1,9 @@
-# Recovery record protocol cases: accept|refuse<TAB>record (\t and \n are escapes; DIGEST is the current scope digest).
+# Recovery record protocol cases: accept|refuse<TAB>record (\t and \n are escapes). The private source never joins a full upgrade, so a record naming it is never part of the protocol.
 accept	reviewed-full-upgrade-commit-pending\n
 accept	reviewed-full-upgrade-commit-pending\tblackarch-staged\n
-accept	reviewed-full-upgrade-commit-pending\toniomarchy-private\tDIGEST\n
-accept	reviewed-full-upgrade-commit-pending\tblackarch-staged\toniomarchy-private\tDIGEST\n
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\t3a3f0d6b7c2e1f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2\n
+refuse	reviewed-full-upgrade-commit-pending\tblackarch-staged\toniomarchy-private\t3a3f0d6b7c2e1f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2\n
 refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\n
-refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\t0000000000000000000000000000000000000000000000000000000000000000\n
-refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\tDIGEST\tblackarch-staged\n
-refuse	reviewed-full-upgrade-commit-pending\toniomarchy\tDIGEST\n
-refuse	reviewed-full-upgrade-commit-pending\toniomarchy-private\tDIGEST
+refuse	reviewed-full-upgrade-commit-pending\toniomarchy\t3a3f0d6b7c2e1f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2\n
+refuse	reviewed-full-upgrade-commit-pending
+refuse	reviewed-full-upgrade-commit-pending\tblackarch-staged

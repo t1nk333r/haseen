@@ -8,11 +8,12 @@ usage() {
     echo "  Offline: no network, refresh, lock or tool execution. --json prints one schemaVersion 1 object."
 }
 parse_common_flags "$@"
-json=false
+json=false named=false
+# At most one --json and one source operand, like the other repo commands.
 for arg in "${REST[@]}"; do
     case "$arg" in
-    --json) json=true ;;
-    oniomarchy) ;;
+    --json) ! $json || { usage >&2; exit 2; }; json=true ;;
+    oniomarchy) ! $named || { usage >&2; exit 2; }; named=true ;;
     *) usage >&2; exit 2 ;;
     esac
 done

@@ -101,21 +101,8 @@ def pacman(argv):
             log('review-repos', repos)
             for repo in repos:
                 if repo == 'oniomarchy':
-                    # The private source publishes its signed DB (+ .sig);
-                    # VAPT_ONIO_NO_DBSIG drops the signature,
-                    # VAPT_ONIO_REFRESH_STATUS republishes it signed otherwise.
-                    served = ONIO / 'serve' / 'oniomarchy.db'
-                    data = served.read_bytes()
-                    if os.environ.get('VAPT_ONIO_REFRESH_STATUS'):
-                        data += b'\0'
-                    (db / 'oniomarchy.db').write_bytes(data)
-                    (db / 'oniomarchy.db.sig').unlink(missing_ok=True)
-                    if not os.environ.get('VAPT_ONIO_NO_DBSIG'):
-                        if os.environ.get('VAPT_ONIO_REFRESH_STATUS'):
-                            onio_sign(db / 'oniomarchy.db', os.environ['VAPT_ONIO_REFRESH_STATUS'])
-                        else:
-                            shutil.copyfile(Path(str(served) + '.sig'), db / 'oniomarchy.db.sig')
-                    continue
+                    # The private source never joins a full upgrade.
+                    return 97
                 (db / (repo + '.db')).write_text('reviewed fixture DB ' + repo)
             # The refresh fetches what the mirrors publish now: the fixture
             # repository records become this DBPath's sync DB (the copied
@@ -226,13 +213,9 @@ def pacman(argv):
                 log('frozen-modes', [repo, oct(database.stat().st_mode & 0o777),
                                      oct(directory.stat().st_mode & 0o777), oct(directory.parent.stat().st_mode & 0o777)])
                 if repo == 'oniomarchy':
-                    # DatabaseRequired: the frozen mirror must carry the
-                    # detached signature next to the reviewed database.
-                    log('frozen-config', [config.replace('\n', '|')])
-                    if not Path(str(database) + '.sig').is_file():
-                        return 97
-                    shutil.copyfile(Path(str(database) + '.sig'), root / 'var/lib/pacman/sync/oniomarchy.db.sig')
-                elif database.read_text() != 'reviewed fixture DB ' + repo:
+                    # The private source never joins a frozen full upgrade.
+                    return 97
+                if database.read_text() != 'reviewed fixture DB ' + repo:
                     return 97
                 live = root / 'var/lib/pacman/sync' / database.name
                 if '-Syyu' not in argv and live.exists() and live.stat().st_mtime > database.stat().st_mtime:
@@ -830,7 +813,7 @@ def stock_archive(name, version, out, change='', registration='register'):
 # here is cryptographic and production code never reads these files.
 ONIO = sandbox / 'onio'
 ONIO_FX = Path(__file__).resolve().parent / 'vapt-oniomarchy'
-ONIO_FPR = {'PIN': '0F5F9214F312B067ECBF1DF125E2C00AA6340BD0', 'ROT': 'B0' * 20, 'OLD': 'C0' * 20}
+ONIO_FPR = {'PIN': '0F5F9214F312B067ECBF1DF125E2C00AA6340BD0', 'ROT': 'B0' * 20, 'OLD': 'C0' * 20, 'ARCH': 'D0' * 20}
 ONIO_KEYRINGS = 'usr/share/pacman/keyrings/'
 
 
@@ -1143,12 +1126,6 @@ else:
                 # (real sysroot mode change; nothing is mocked).
                 for stage in root.glob('var/cache/haseen-vapt.*'):
                     stage.chmod(int(os.environ['VAPT_SEALED_ANCESTOR_MODE'], 8))
-            if (argv[1] == 'state-write' and argv[2].endswith('/var/lib/haseen/vapt/upgrade-pending')
-                    and os.environ.get('VAPT_ONIO_TAMPER_FROZEN')):
-                # Another actor replaces the frozen private signature after
-                # the review froze it and before the commit.
-                for frozen in root.glob('var/cache/haseen-vapt.*/reviewed/oniomarchy/oniomarchy.db.sig'):
-                    frozen.write_text('fixture-sig ' + '1' * 64 + '\n')
             if argv[1] == 'shared-lock-prepare' and os.environ.get('VAPT_PENDING_AT_LOCK'):
                 # Another user's reviewed commit failed just before this run
                 # took the shared lock: its recovery record now exists.

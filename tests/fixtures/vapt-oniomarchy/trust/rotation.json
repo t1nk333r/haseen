@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "comment": "Keyring authority rotation. Each case starts from an approved source whose authority came from an initial keyring (initialTrusted/initialRevoked, signed by the reviewed pin), then republishes the keyring. PIN, ROT and OLD stand for the fingerprints below.",
-  "fingerprints": {"PIN": "0F5F9214F312B067ECBF1DF125E2C00AA6340BD0", "ROT": "B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0", "OLD": "C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0"},
+  "comment": "Keyring authority rotation. Each case starts from an approved source whose authority came from an initial keyring (initialTrusted/initialRevoked, signed by the reviewed pin), then republishes the keyring. PIN, ROT and OLD stand for the fingerprints below; ARCH stands for an unrelated global signing key (an Arch/CachyOS or administrator key) outside the oniomarchy authority. A revocation may name only a previously accepted or revoked, pinned or trusted primary: pacman-key --populate applies it to the shared keyring.",
+  "fingerprints": {"PIN": "0F5F9214F312B067ECBF1DF125E2C00AA6340BD0", "ROT": "B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0", "OLD": "C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0", "ARCH": "D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0"},
   "cases": [
-    {"name": "previous-authority signed rotation", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["OLD"], "signedBy": "pinned", "expect": "accepted"},
+    {"name": "previous-authority signed rotation", "initialTrusted": ["PIN", "OLD"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["OLD"], "signedBy": "pinned", "expect": "accepted"},
     {"name": "self-authorized new signer", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["ROT"], "revoked": [], "signedBy": "rotated", "expect": "refused"},
-    {"name": "revocation rollback", "initialTrusted": ["PIN"], "initialRevoked": ["OLD"], "version": "20261101-1", "trusted": ["PIN"], "revoked": [], "signedBy": "pinned", "expect": "refused"},
+    {"name": "revocation rollback", "initialTrusted": ["PIN", "OLD"], "initialRevoked": ["OLD"], "version": "20261101-1", "trusted": ["PIN"], "revoked": [], "signedBy": "pinned", "expect": "refused"},
     {"name": "keyring version rollback", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20250101-1", "trusted": ["PIN"], "revoked": [], "signedBy": "pinned", "expect": "refused"},
-    {"name": "no accepted primary left", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN"], "revoked": ["PIN"], "signedBy": "pinned", "expect": "refused"}
+    {"name": "no accepted primary left", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN"], "revoked": ["PIN"], "signedBy": "pinned", "expect": "refused"},
+    {"name": "revocation of a key outside the oniomarchy authority", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["ARCH"], "signedBy": "pinned", "expect": "refused"}
   ]
 }

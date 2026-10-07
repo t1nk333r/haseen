@@ -120,17 +120,5 @@ repo-disable)
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac
     done
     vapt_oniomarchy_disable_command ;;
-onio-upgrade)
-    # A reviewed full upgrade carrying the approved private source, as the
-    # opted-in provisioning prelude would run it.
-    ASSUME_YES=true
-    vapt_oniomarchy_canary && [[ ${VAPT_ONIO[state]} == usable ]] || { echo "STATE=${VAPT_ONIO[state]:-unreadable}"; exit 2; }
-    VAPT_ONIOMARCHY_STATE=usable VAPT_ONIOMARCHY_SCOPE=1
-    vapt_snapshot || exit $?
-    vapt_pacman_upgrade; rc=$?
-    reason="${VAPT_APPLY_REASON:-}"
-    printf 'REASON=%s\n' "${reason//$'\n'/ }"
-    vapt_pacman_cleanup
-    exit "$rc" ;;
 *) exit 2 ;;
 esac

@@ -23,7 +23,7 @@ vapt_reset() {
     declare -gA VAPT_ALIAS=() VAPT_DEPENDENCY=() VAPT_DEPENDENCY_SOURCE=() VAPT_ONIO_ROLE=() VAPT_ONIO_LOGICAL=()
     declare -ga VAPT_SELECTED=() VAPT_ITEMS=() VAPT_REPOS=() VAPT_INFRA_ROWS=() VAPT_NATIVE_ORDER=() VAPT_DEPENDENCY_ROWS=()
     VAPT_MUTATION_FAILED=0 VAPT_PACMAN_BLOCKED=0 VAPT_ENV_STATUS=unknown VAPT_STAGE='' VAPT_COAE_REQUIRED=0 VAPT_BLACKARCH_STAGED=''
-    VAPT_ONIOMARCHY_OPT=0 VAPT_ONIOMARCHY_SCOPE='' VAPT_ONIOMARCHY_STATE=not-selected VAPT_ONIOMARCHY_REASON=''
+    VAPT_ONIOMARCHY_OPT=0 VAPT_ONIOMARCHY_SCOPE='' VAPT_ONIOMARCHY_STATE=not-selected VAPT_ONIOMARCHY_REASON='' VAPT_ONIO_TRUST_CHANGED=''
     vapt_native_paths
 }
 vapt_select() {
@@ -73,7 +73,7 @@ vapt_manifest_validate() {
     for group in "${VAPT_GROUPS[@]}"; do
         [[ -r $VAPT_DIR/packages/security/$group.txt ]] || return 2
         while IFS= read -r line || [[ -n $line ]]; do
-            line="${line%%#*}"; line="${line//[[:space:]]/}"
+            line="${line%%#*}"; line="${line//[$PKG_SPACE]/}"
             [[ -z $line || $line =~ $PKG_NAME_RE ]] || { warn "malformed VAPT manifest: $group"; return 2; }
             [[ -z $line ]] || roots[$line]=1
         done <"$VAPT_DIR/packages/security/$group.txt"
@@ -188,7 +188,7 @@ vapt_collect_groups() {
     local group line logical
     for group in "$@"; do
         while IFS= read -r line || [[ -n $line ]]; do
-            line="${line%%#*}"; line="${line//[[:space:]]/}"
+            line="${line%%#*}"; line="${line//[$PKG_SPACE]/}"
             [[ -z $line ]] || vapt_add_item "$line" "$group"
         done <"$VAPT_DIR/packages/security/$group.txt"
         # Adapters indexed globally; native-only membership injected solely
@@ -209,6 +209,9 @@ vapt_snapshot() {
         repo) VAPT_ENABLED[$repo]=1; VAPT_REPOS+=("$repo") ;;
         database) VAPT_DATABASE[$repo]=1 ;;
         unsafe) VAPT_UNSAFE[$repo]=1 ;;
+        # A record whose metadata would break these columns or reach a
+        # terminal is not offered; the reason column says which.
+        rejected) warn "vapt: $repo: $name" ;;
         package) VAPT_PACKAGE[$repo/$name]=1; VAPT_VERSION[$repo/$name]="$version"; VAPT_URL[$repo/$name]="$url"; VAPT_PROVIDES[$repo/$name]="$provides" ;;
         esac
     done <<<"$output"

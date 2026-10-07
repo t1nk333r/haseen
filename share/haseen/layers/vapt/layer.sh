@@ -82,6 +82,11 @@ layer_status() {
     vapt_snapshot || { echo 'warn: VAPT source metadata unreadable'; return 2; }
     while IFS=$'\t' read -r logical groups source_name target resolution applied reason tiers; do
         [[ $logical != logical ]] || continue
+        # A report row reaches the terminal only without control bytes, and an
+        # item row only with a logical name an inventory could hold.
+        if [[ "$logical$groups$source_name$target$resolution$applied$reason$tiers" == *[[:cntrl:]]* ]]; then
+            echo 'warn: malformed VAPT report row ignored (not installation evidence)'; degraded=true; continue
+        fi
         if [[ $logical == '# environment' ]]; then [[ $groups == ok ]] || degraded=true; continue; fi
         if [[ $logical == '# mutation-failed' ]]; then [[ $groups == 0 ]] || degraded=true; continue; fi
         if [[ $logical == '# dependency' ]]; then
@@ -96,6 +101,9 @@ layer_status() {
             continue
         fi
         [[ $logical != \#* && -n $logical ]] || continue
+        if [[ ! $logical =~ $PKG_NAME_RE ]]; then
+            echo 'warn: malformed VAPT report row ignored (not installation evidence)'; degraded=true; continue
+        fi
         [[ ,$groups, != *,htb-coae,* ]] || VAPT_COAE_REQUIRED=1
         printf '%s: %s -> %s (%s/%s) %s\n' "$source_name" "$logical" "$target" "$resolution" "$applied" "$reason"
         [[ $resolution == resolved && ( $applied == installed || $applied == already-exact ) ]] || degraded=true

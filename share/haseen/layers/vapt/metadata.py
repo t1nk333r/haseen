@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 
+# ASCII only and locale-independent, exactly lib/packages.sh's PKG_NAME_RE.
 NAME = re.compile(r"^[a-z0-9@._+][a-z0-9@._+-]*$")
 ALLOWED = re.compile(r"^(core|extra|multilib|blackarch|chaotic-aur|oniomarchy|cachyos(?:-[a-z0-9-]+)?)$")
 # Base vendor: the only sources whose packages may vouch for reviewed stock
@@ -547,8 +548,26 @@ def emit_snapshot(root, offline):
             continue  # no admitted record: the private database is unavailable
         print('database', repo, 'available', sep='\t')
         for record in records:
-            print('package', repo, record['name'], record.get('version') or '-', record.get('url') or '-',
-                  ','.join(record.get('provides', [])) or '-', sep='\t')
+            fields = (record['name'], record.get('version') or '-', record.get('url') or '-',
+                      ','.join(record.get('provides', [])) or '-')
+            if not emit_safe(*fields):
+                # A tab or newline would shift the columns the shell reads; a
+                # control byte would reach a terminal. Refused, not encoded.
+                label = record['name'] if emit_safe(record['name']) and NAME.fullmatch(record['name']) else 'with an unprintable name'
+                print('rejected', repo, 'package record ' + label
+                      + ' has a tab, newline or control character in its metadata; not offered', sep='\t')
+                continue
+            print('package', repo, *fields, sep='\t')
+
+
+# Tab/newline (field- and row-breaking) and any other C0/C1 control or DEL.
+CONTROL = re.compile('[\x00-\x1f\x7f-\x9f]')
+
+
+def emit_safe(*fields):
+    """True when no field could break a tab-separated row or carry a
+    terminal control sequence into emitted metadata."""
+    return not any(CONTROL.search(str(field)) for field in fields)
 
 
 def render_config(root, frozen=None, local=False):
@@ -667,10 +686,15 @@ def oniomarchy_path(root, name):
     return Path(str(root) + ONIOMARCHY_STATE + '/' + name)
 
 
-def oniomarchy_state_bytes(root, name, limit=1024 * 1024):
-    """No-follow bytes of a root-owned, single-link regular state file under
-    the private source directory (the caller's own in a fixture sysroot);
-    None when absent. Anything else is a conflict."""
+ONIOMARCHY_STATE_FILES = ('oniomarchy.conf', 'oniomarchy.authority', 'oniomarchy.database',
+                          'sync/oniomarchy.db', 'sync/oniomarchy.db.sig')
+
+
+def oniomarchy_state_safe(root, name):
+    """The path of a root-owned, single-link regular state file under the
+    private source directory (the caller's own in a fixture sysroot) whose
+    ancestry nobody else can replace; None when absent. Anything else is a
+    conflict."""
     path = oniomarchy_path(root, name)
     if not os.path.lexists(path):
         return None
@@ -680,19 +704,26 @@ def oniomarchy_state_bytes(root, name, limit=1024 * 1024):
             or info.st_mode & 0o022):
         raise ValueError('private source state is not a single root-owned regular file: ' + name)
     nonreplaceable_ancestry(path.parent, bool(root))
-    return metadata_bytes(path, limit)
+    return path
+
+
+def oniomarchy_state_bytes(root, name, limit=1024 * 1024):
+    """No-follow bytes of a safe private state file; None when absent."""
+    path = oniomarchy_state_safe(root, name)
+    return None if path is None else metadata_bytes(path, limit)
 
 
 def oniomarchy_descriptor(root):
-    """absent, approved (exactly the reviewed stanza) or conflict."""
+    """absent, approved (exactly the reviewed stanza) or conflict. Any unsafe
+    private state (a redirected, replaceable or group/other-writable state
+    directory, or a state path that is not a single root-owned regular file)
+    is a conflict: it is preserved and never rewritten by an approval."""
     try:
-        # The private state directory itself must be a real, non-replaceable
-        # directory (or absent): a redirected one is a conflict, not absence.
         for directory in (oniomarchy_path(root, ''), oniomarchy_path(root, 'sync')):
             if os.path.lexists(directory):
-                info = os.lstat(directory)
-                if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-                    return 'conflict'
+                nonreplaceable_ancestry(directory, bool(root))
+        for name in ONIOMARCHY_STATE_FILES:
+            oniomarchy_state_safe(root, name)
         data = oniomarchy_state_bytes(root, 'oniomarchy.conf', 4096)
     except (OSError, ValueError):
         return 'conflict'
@@ -746,26 +777,44 @@ def oniomarchy_records(database, keep_infrastructure=True):
 def oniomarchy_admit(record, target=False):
     """A planned/candidate record of the private source: an admitted
     candidate or dependency (a candidate only as the requested target), never
-    the keyring outside its own path, never a replacement or conflict."""
-    role = oniomarchy_admission().get(record.get('name', ''), ('', ''))[0]
+    the keyring outside its own path, never a candidate without an inventory
+    mapping, never a replacement. A declared conflict is admitted: it removes
+    nothing unless a conflicting package is installed, which
+    reject_removals refuses."""
+    role, logical = oniomarchy_admission().get(record.get('name', ''), ('', ''))
     if role not in (('candidate',) if target else ('candidate', 'dependency')):
         raise ValueError('oniomarchy package outside the admitted role set: ' + record.get('name', ''))
-    if record.get('replaces') or record.get('conflicts'):
-        raise ValueError('oniomarchy package declares a replacement/conflict: ' + record.get('name', ''))
+    if role == 'candidate' and logical == '-':
+        raise ValueError('oniomarchy candidate without an inventory mapping is never selected or installed: '
+                         + record.get('name', ''))
+    if record.get('replaces'):
+        raise ValueError('oniomarchy package declares a replacement/conflict removal: ' + record.get('name', ''))
 
 
 def source_satisfies(source, record, dep):
     """The private source satisfies a dependency only by its exact package
-    name, never through a Provides declaration."""
-    if source == ONIOMARCHY:
-        return record.get('name') == re.split(r'[<>=]', dep, maxsplit=1)[0] and satisfies(
-            {k: v for k, v in record.items() if k != 'provides'}, dep)
-    return satisfies(record, dep)
+    name or, for a reviewed alias (aliases.tsv), by that alias's logical name
+    which the record itself provides; never through any other Provides."""
+    if source != ONIOMARCHY:
+        return satisfies(record, dep)
+    name = re.split(r'[<>=]', dep, maxsplit=1)[0]
+    if record.get('name') == name:
+        return satisfies({k: v for k, v in record.items() if k != 'provides'}, dep)
+    if vapt_tables()[2].get((ONIOMARCHY, record.get('name'))) != name:
+        return False
+    provides = [p for p in record.get('provides', []) if re.split(r'[<>=]', p, maxsplit=1)[0] == name]
+    return bool(provides) and satisfies(dict(record, name='', provides=provides), dep)
+
+
+_VAPT_TABLES = None
 
 
 def vapt_tables():
     """identities.tsv, identity-policy.tsv and aliases.tsv, as the shell
     validator accepted them (the validator refuses malformed rows first)."""
+    global _VAPT_TABLES
+    if _VAPT_TABLES is not None:
+        return _VAPT_TABLES
     base = Path(__file__).resolve().parent / 'packages'
     def rows(name):
         return [line.split('\t') for line in (base / name).read_text().splitlines()
@@ -773,7 +822,8 @@ def vapt_tables():
     identities = {f[0]: (f[1], f[2], f[3]) for f in rows('identities.tsv') if len(f) == 5}
     policies = {f[0]: f[1] for f in rows('identity-policy.tsv') if len(f) == 3}
     aliases = {(f[1], f[2]): f[0] for f in rows('aliases.tsv') if len(f) == 3}
-    return identities, policies, aliases
+    _VAPT_TABLES = identities, policies, aliases
+    return _VAPT_TABLES
 
 
 def url_parts(url):
@@ -838,19 +888,28 @@ def closure(root, target, transaction=None, dbpath=None):
     repos = repositories(root, dbpath)
     planned, sources = [], {}
     target_repo, target_name = target.split('/', 1) if target != '-' else ('', '')
+    local = installed(root)
+    local_names = {p['name'] for p in local}
     def earlier_homonym(name):
-        return any(p.get('name') == name for source in config
+        # The package name, or the logical item a reviewed alias maps it to.
+        names = {name, vapt_tables()[2].get((ONIOMARCHY, name), name)}
+        return any(p.get('name') in names for source in config
                    if source != ONIOMARCHY and repository_safe(source, config) for p in repos.get(source, []))
-    def admit(source, record, requested=False):
+    def admit(source, record, requested=False, upgrade=False):
         # The private source never shadows a same-named package of another
         # configured source, never supplies a role outside its fixed table,
-        # and every source's packages keep the inventory identity rules.
+        # and every source's packages keep the inventory identity rules. A
+        # planned upgrade of an already-installed same-name package is not a
+        # new selection: an identity mismatch there is a warning.
         if source == ONIOMARCHY:
             oniomarchy_admit(record, target=requested)
             if earlier_homonym(record['name']):
                 raise ValueError('oniomarchy package shadows a package of an earlier source: ' + record['name'])
         if not closure_identity_ok(source, record):
-            raise ValueError('package identity does not match the reviewed inventory identity: ' + source + '/' + record['name'])
+            message = 'package identity does not match the reviewed inventory identity: ' + source + '/' + record['name']
+            if not upgrade:
+                raise ValueError(message)
+            print('warning: ' + message + ' (planned upgrade of the installed package; not a new selection)', file=sys.stderr)
     if transaction:
         for row in Path(transaction).read_text().splitlines():
             if not row.strip():
@@ -861,7 +920,8 @@ def closure(root, target, transaction=None, dbpath=None):
             record = next((p for p in repos.get(source, []) if p['name'] == package and p.get('version') == version), None)
             if record is None or record.get('metadata_unknown'):
                 raise ValueError('transaction differs from inspected metadata')
-            admit(source, record, requested=(source, package) == (target_repo, target_name))
+            requested = (source, package) == (target_repo, target_name)
+            admit(source, record, requested=requested, upgrade=not requested and package in local_names)
             planned.append(record)
             sources[id(record)] = source
     selected = []
@@ -873,10 +933,25 @@ def closure(root, target, transaction=None, dbpath=None):
             raise ValueError('dependency metadata unavailable')
         admit(target_repo, selected[0], requested=True)
         sources[id(selected[0])] = target_repo
-    local = installed(root)
     planned_names = {p['name'] for p in planned}
     retained = [p for p in local if p['name'] not in planned_names]
     reject_removals(planned or selected, local)
+    by_name = {}
+    def origin(record):
+        # The earliest configured allowed source whose exact record (name,
+        # version, URL) vouches for a retained package; '' when none does.
+        for source in config:
+            if not (repository_safe(source, config) and ALLOWED.fullmatch(source)):
+                continue
+            if source not in by_name:
+                by_name[source] = {}
+                for p in repos.get(source, []):
+                    by_name[source].setdefault(p.get('name'), []).append(p)
+            if any(p.get('version') == record.get('version') and not p.get('metadata_unknown')
+                   and p.get('url', '').rstrip('/') == record.get('url', '').rstrip('/')
+                   for p in by_name[source].get(record['name'], [])):
+                return source
+        return ''
     checked = set()
     def visit(record, unchanged=False):
         key = (record['name'], record.get('version', ''))
@@ -885,15 +960,19 @@ def closure(root, target, transaction=None, dbpath=None):
         checked.add(key)
         if forbidden(record) or record.get('metadata_unknown'):
             raise ValueError('forbidden/unknown dependency ' + record['name'])
-        if unchanged and not allowed_local(record, config, repos):
-            raise ValueError('unresolved retained provider allowed-source identity ' + record['name'])
-        if not unchanged:
+        if unchanged:
+            if not allowed_local(record, config, repos):
+                raise ValueError('unresolved retained provider allowed-source identity ' + record['name'])
+            # A retained provider keeps its source's admission and the
+            # inventory identity rules, as a newly planned one would.
+            admit(origin(record), record)
+        else:
             reject_removals([record], local)
         for dep in record.get('depends', []):
             if 'omarchy' in dep:
                 raise ValueError('forbidden dependency ' + dep)
             candidates = [(p, False) for p in planned if source_satisfies(sources.get(id(p), ''), p, dep)]
-            candidates += [(p, True) for p in retained if satisfies(p, dep)]
+            candidates += [(p, True) for p in retained if source_satisfies(origin(p), p, dep)]
             if not candidates and not transaction:
                 for source in config:
                     if repository_safe(source, config):
@@ -3110,15 +3189,11 @@ def nss_service_names(data):
 
 
 def recovery_record(path):
-    """The exact recovery protocol; anything else fails closed. A commit that
-    carried the private oniomarchy source also records the digest of the
-    approved descriptor and keyring authority it was reviewed under."""
+    """The exact recovery protocol; anything else fails closed. The private
+    oniomarchy source never joins a full upgrade, so no record names it."""
     records = {b'reviewed-full-upgrade-commit-pending\n': 'generic',
                b'reviewed-full-upgrade-commit-pending\tblackarch-staged\n': 'blackarch-staged'}
     data = metadata_bytes(Path(path), 4096)
-    match = re.fullmatch(rb'reviewed-full-upgrade-commit-pending(\tblackarch-staged)?\toniomarchy-private\t([0-9a-f]{64})\n', data)
-    if match:
-        return ('blackarch-staged ' if match[1] else '') + 'oniomarchy-private ' + match[2].decode()
     if data not in records:
         raise ValueError('unrecognised full-upgrade recovery record; manual review required')
     return records[data]
@@ -3895,13 +3970,23 @@ def oniomarchy_authority(root):
     local = [p for p in installed(root) if p.get('name') == 'oniomarchy-keyring']
     if len(local) != 1 or local[0].get('version') != record['version']:
         return 'mismatch', None, 'installed oniomarchy-keyring differs from the recorded authority'
+    contents = {}
     for path, digest in record['files'].items():
         try:
-            observed = hashlib.sha256(metadata_bytes(Path(str(root) + '/' + path), 16 * 1024 * 1024)).hexdigest()
+            contents[path] = metadata_bytes(Path(str(root) + '/' + path), 16 * 1024 * 1024)
         except (OSError, ValueError):
             return 'mismatch', None, 'retained keyring file unreadable or redirected: /' + path
-        if observed != digest:
+        if hashlib.sha256(contents[path]).hexdigest() != digest:
             return 'mismatch', None, 'retained keyring file changed: /' + path
+    # The record is authority only for the sets those files declare: an
+    # accepted/revoked set they never declared is not proof.
+    try:
+        trusted, revoked = parse_keyring_lists(contents[ONIOMARCHY_KEYRING_FILES[1]].decode('ascii'),
+                                               contents[ONIOMARCHY_KEYRING_FILES[2]].decode('ascii'))
+    except (UnicodeDecodeError, ValueError):
+        return 'mismatch', None, 'retained keyring lists malformed'
+    if record['accepted'] != trusted - revoked or record['revoked'] != revoked:
+        return 'mismatch', None, 'recorded accepted/revoked primaries differ from the retained keyring lists'
     return 'ok', record, 'installed keyring matches the recorded authority'
 
 
@@ -3966,12 +4051,16 @@ def oniomarchy_canary(root):
     row['keyringAuthorityState'] = authority
     database, keyring = oniomarchy_database(root)
     row['databaseSignatureState'] = database
-    if row['architecture'] != 'x86_64':
+    if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', row['architecture']):
+        # Never emitted raw (rows, JSON or a terminal): refused with a reason.
+        row['architecture'] = 'unreadable'
+        state, reason = 'unsupported-architecture', 'host architecture unreadable (tab, newline or control character); refused'
+    elif row['architecture'] != 'x86_64':
         state, reason = 'unsupported-architecture', 'oniomarchy publishes x86_64 only; host is ' + row['architecture']
     elif row['hostStanza'] == 'declared':
         state, reason = 'broken', '/etc/pacman.conf declares [oniomarchy]; preserved, not adopted; the private source is refused while a global declaration exists'
     elif row['descriptor'] == 'conflict':
-        state, reason = 'broken', 'private descriptor changed or unsafe; preserved, not repaired'
+        state, reason = 'broken', 'private descriptor or source state changed or unsafe; preserved, not repaired'
     elif row['descriptor'] == 'absent':
         state, reason = 'absent', 'not approved (haseen vapt repo-enable oniomarchy)'
     elif authority != 'ok':
@@ -3984,17 +4073,6 @@ def oniomarchy_canary(root):
         state, reason = 'usable', 'cached evidence verified at the last refresh; an opted-in operation re-verifies'
     row['state'], row['reason'] = state, reason
     return row
-
-
-def oniomarchy_scope_digest(root):
-    """Digest binding a recorded full-upgrade commit to the approved
-    descriptor and keyring authority it was reviewed under."""
-    descriptor = oniomarchy_state_bytes(root, 'oniomarchy.conf', 4096)
-    state, _, reason = oniomarchy_authority(root)
-    if descriptor != ONIOMARCHY_DESCRIPTOR or state != 'ok':
-        raise ValueError('private source scope unavailable: ' + (reason if state != 'ok' else 'descriptor not approved'))
-    authority = oniomarchy_state_bytes(root, 'oniomarchy.authority', 64 * 1024)
-    return hashlib.sha256(descriptor + b'\0' + authority).hexdigest()
 
 
 def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path, authority_facts_path):
@@ -4045,6 +4123,14 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
         raise ValueError('keyring package is not signed by a currently accepted primary')
     if not previous_revoked <= revoked:
         raise ValueError('keyring package withdraws a recorded revocation')
+    # `pacman-key --populate oniomarchy` applies the revoked list to the
+    # shared keyring: the package may revoke only primaries within its own
+    # authority, never an Arch/CachyOS or administrator key.
+    authority = (previous['accepted'] | previous_revoked if previous else set()) | {pin} | trusted
+    foreign = revoked - authority
+    if foreign:
+        raise ValueError('keyring package revokes primaries outside the oniomarchy authority (' + ','.join(sorted(foreign))
+                         + '); a revocation may name only a previously accepted or revoked, pinned or trusted primary')
     accepted = trusted - revoked
     if not accepted:
         raise ValueError('keyring package leaves no accepted primary')
@@ -4096,7 +4182,7 @@ def oniomarchy_status(root, as_json):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions',
-                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-scope', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'file-digest', 'install-reason'])
+                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'file-digest', 'install-reason'])
     parser.add_argument('args', nargs='*')
     parser.add_argument('--root', default='')
     parser.add_argument('--offline', action='store_true')
@@ -4123,7 +4209,6 @@ def main():
         if options.operation == 'snapshot': emit_snapshot(options.root, options.offline)
         elif options.operation == 'oniomarchy-status': oniomarchy_status(options.root, options.json)
         elif options.operation == 'oniomarchy-signers': print('\n'.join(oniomarchy_signers(options.root)))
-        elif options.operation == 'oniomarchy-scope': print(oniomarchy_scope_digest(options.root))
         elif options.operation == 'key-primary': print(key_primary(metadata_bytes(Path(args[0]), 1024 * 1024).decode('utf-8', 'replace')))
         elif options.operation == 'file-digest': print(hashlib.sha256(metadata_bytes(Path(args[0]), 512 * 1024 * 1024)).hexdigest())
         elif options.operation == 'install-reason':
@@ -4294,7 +4379,10 @@ def main():
                 pass
             # db (base: the pre-refresh snapshot; reviewed) source owner version filename sha256
             for owner, (db, source, record) in sorted(missing.items()):
-                print(db, source, owner, record['version'], record['filename'], record['sha256sum'], sep='\t')
+                row = (db, source, owner, record['version'], record['filename'], record['sha256sum'])
+                if not emit_safe(*row):
+                    raise ValueError('base reference metadata has a tab, newline or control character; refused')
+                print(*row, sep='\t')
         elif options.operation == 'absent':
             present = {record['name'] for record in installed(options.root)}
             print('\n'.join(name for name in args if name not in present))

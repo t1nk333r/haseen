@@ -41,16 +41,28 @@ vapt_oniomarchy_verify() {
 }
 
 # vapt_oniomarchy_plan — the dry-run description of approval: nothing is
-# fetched, verified, imported or written, and no filename is invented.
+# fetched, verified, imported or written, and no filename is invented. It
+# describes the run the recorded state would actually perform: a re-approval
+# under a recorded keyring authority fetches no key and imports no pin.
 vapt_oniomarchy_plan() {
     info 'vapt: oniomarchy approval plan (dry-run: nothing is fetched, checked, imported or written)'
     info 'vapt: would refuse unless the host architecture is x86_64 and /etc/pacman.conf declares no [oniomarchy]'
+    if [[ ${VAPT_ONIO[keyringAuthorityState]:-} == ok ]]; then
+        info 'vapt: re-approval under the recorded keyring authority: no signing key is fetched and the pinned key is not imported again'
+        info "vapt: would fetch $VAPT_ONIOMARCHY_REPO_URL/oniomarchy.db and its detached .sig and require exactly one primary the recorded authority accepts"
+        info 'vapt: would fetch the oniomarchy-keyring archive the database names (<filename-unknown-until-then>) and its .sig, sealed against the database digest'
+        info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks, signer, revocations) before any trust change'
+        info 'vapt: an unchanged audited keyring changes no trust; a changed one would be installed with --noscriptlet, then pacman-key --populate oniomarchy'
+        info "vapt: would record the verified database and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
+        printf '[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch\n' | sed 's/^/    | /'
+        return 0
+    fi
     info "vapt: would fetch $VAPT_ONIOMARCHY_KEY_URL over HTTPS (no redirect, no keyserver)"
     info "vapt: would require exactly one primary key, $(grep -m1 -E '^[A-F0-9]{40}$' "$VAPT_DIR/files/oniomarchy-signers.txt"), not revoked or expired"
     info "vapt: would fetch $VAPT_ONIOMARCHY_REPO_URL/oniomarchy.db and its detached .sig (no signature: the source stays unavailable)"
     info 'vapt: would require exactly one accepted primary on the database signature before reading any filename from it'
     info 'vapt: would fetch the oniomarchy-keyring archive the database names (<filename-unknown-until-then>) and its .sig, sealed against the database digest'
-    info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks) before any trust change'
+    info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks, revocations) before any trust change'
     info 'vapt: would run sudo pacman-key --add/--lsign-key for the pinned primary only, install the sealed keyring with --noscriptlet, then pacman-key --populate oniomarchy'
     info "vapt: would record the keyring authority and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
     printf '[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch\n' | sed 's/^/    | /'
@@ -119,13 +131,41 @@ vapt_oniomarchy_keys() {
     run gpg --homedir "$keys" --batch --import "$stage/oniomarchy.gpg" >/dev/null 2>&1 || return 1
 }
 
+# vapt_oniomarchy_lock — the shared root lock for a source step. A busy (or
+# unsafe) lock is "unavailable" with nothing changed (3), never "unverified".
+vapt_oniomarchy_lock() {
+    local rc=0
+    VAPT_APPLY_REASON=''
+    vapt_root_lock || rc=$?
+    if ((rc == 2)); then
+        VAPT_ONIOMARCHY_REASON="privileged transaction busy (${VAPT_APPLY_REASON:-lock unavailable}); nothing changed"
+        return 3
+    fi
+    return "$rc"
+}
+
+# vapt_oniomarchy_recheck — the offline canary again, under the root lock: the
+# state the caller decided on may have changed before the lock was taken.
+vapt_oniomarchy_recheck() {
+    vapt_oniomarchy_canary || { VAPT_ONIOMARCHY_REASON='private source state unreadable; preserved'; return 2; }
+    case "${VAPT_ONIO[state]}" in
+    unsupported-architecture | broken) VAPT_ONIOMARCHY_REASON="${VAPT_ONIO[reason]}"; return 2 ;;
+    esac
+    if [[ ${VAPT_ONIO[keyringAuthorityState]} == mismatch ]]; then
+        VAPT_ONIOMARCHY_REASON="keyring authority unverified (${VAPT_ONIO[reason]}); manual review required"
+        return 2
+    fi
+}
+
 # vapt_oniomarchy_bootstrap_steps — approve (or re-approve) the private
 # source: trust anchor, verified database, audited keyring, authority record,
 # cached database and finally the private descriptor. Returns 0 approved,
-# 1 failed mutation, 2 refused, 3 unreachable before any trust change.
+# 1 failed mutation, 2 refused, 3 unavailable before any trust change. Sets
+# VAPT_ONIO_TRUST_CHANGED to what changed in the shared keyring, once it has.
 vapt_oniomarchy_bootstrap_steps() {
     local rc=0
-    vapt_root_lock || return $?
+    vapt_oniomarchy_lock || return $?
+    vapt_oniomarchy_recheck || return $?
     if vapt_upgrade_pending; then
         VAPT_PACMAN_BLOCKED=1
         VAPT_ONIOMARCHY_REASON='recorded full upgrade remains incomplete; source not prepared'
@@ -172,12 +212,15 @@ vapt_oniomarchy_bootstrap_steps() {
             # locally signed; the audited keyring then populates the rest.
             run gpg --homedir "$keys" --batch --output "$stage/signer.gpg" --export "$VAPT_ONIO_PRIMARY" || return 1
             vapt_root_exec /usr/bin/pacman-key --init || return 1
+            VAPT_ONIO_TRUST_CHANGED='the pinned oniomarchy key is imported into the shared pacman keyring (global trust changed)'
             vapt_root_exec /usr/bin/pacman-key --add "$stage/signer.gpg" || return 1
             vapt_root_exec /usr/bin/pacman-key --lsign-key "$VAPT_ONIO_PRIMARY" || return 1
         fi
         vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || { VAPT_ONIOMARCHY_REASON="$VAPT_APPLY_REASON"; return 2; }
         # The reviewed population-only scriptlet is replaced by the explicit
         # pacman-key action below; nothing else from the package runs.
+        [[ -n $VAPT_ONIO_TRUST_CHANGED ]] ||
+            VAPT_ONIO_TRUST_CHANGED='the audited oniomarchy keyring update reached the shared pacman keyring (global trust changed)'
         vapt_root_pacman --config "$stage/commit.conf" -U --noscriptlet "${flags[@]}" -- "$VAPT_CACHE/sealed/$filename" || return 1
         vapt_root_exec /usr/bin/pacman-key --populate oniomarchy || return 1
         printf '%s\n' "$authority" |
@@ -188,27 +231,16 @@ vapt_oniomarchy_bootstrap_steps() {
     return "$rc"
 }
 
-# vapt_oniomarchy_reverify SYNC — a private review refreshed the database:
-# its signature must be present and carry exactly one accepted primary.
-vapt_oniomarchy_reverify() {
-    local sync="$1" stage="$VAPT_STAGE/oniomarchy-review" keys="$VAPT_STAGE/oniomarchy-review/keys" rc=0
-    vapt_oniomarchy_canary || { VAPT_APPLY_REASON='private source state unreadable'; return 2; }
-    vapt_oniomarchy_keys "$stage" "$keys" || rc=$?
-    ((rc == 0)) || { VAPT_APPLY_REASON="oniomarchy keys unavailable for the review: ${VAPT_ONIOMARCHY_REASON:-}"; return 2; }
-    [[ -f $(vapt_read_path "$sync/oniomarchy.db.sig") ]] || {
-        VAPT_APPLY_REASON='refreshed oniomarchy database has no detached signature; DatabaseRequired blocks the review'; return 2;
-    }
-    vapt_oniomarchy_verify "$(vapt_read_path "$sync/oniomarchy.db")" "$(vapt_read_path "$sync/oniomarchy.db.sig")" \
-        "$keys" "$stage/signers" >/dev/null || {
-        VAPT_APPLY_REASON='refreshed oniomarchy database signature has no single accepted primary'; return 2;
-    }
-}
-
 # vapt_oniomarchy_refresh_steps — an approved source: fetch and verify the
 # live database with the recorded accepted primaries, then cache exactly
 # those bytes. No trust change happens here.
 vapt_oniomarchy_refresh_steps() {
-    vapt_root_lock || return $?
+    vapt_oniomarchy_lock || return $?
+    vapt_oniomarchy_recheck || return $?
+    if [[ ${VAPT_ONIO[descriptor]} != approved || ${VAPT_ONIO[keyringAuthorityState]} != ok ]]; then
+        VAPT_ONIOMARCHY_REASON="${VAPT_ONIO[reason]}"
+        return 2
+    fi
     if vapt_upgrade_pending; then
         VAPT_PACMAN_BLOCKED=1
         VAPT_ONIOMARCHY_REASON='recorded full upgrade remains incomplete; source not refreshed'
@@ -230,6 +262,31 @@ vapt_oniomarchy_run() {
     vapt_transaction_cleanup || { ((rc)) || rc=1; }
     VAPT_CACHE=''
     return "$rc"
+}
+
+# vapt_oniomarchy_approve — run the approval. Once the shared keyring changed,
+# any later refusal or failure is a mutation failure (1) whose reason says
+# the trust change happened but the source is not approved.
+vapt_oniomarchy_approve() {
+    local rc=0
+    VAPT_ONIO_TRUST_CHANGED='' VAPT_ONIOMARCHY_REASON=''
+    vapt_oniomarchy_run vapt_oniomarchy_bootstrap_steps || rc=$?
+    if ((rc)) && [[ -n $VAPT_ONIO_TRUST_CHANGED ]]; then
+        VAPT_ONIOMARCHY_REASON="$VAPT_ONIO_TRUST_CHANGED, but the source is not approved: ${VAPT_ONIOMARCHY_REASON:-${VAPT_APPLY_REASON:-preparation failed}}"
+        return 1
+    fi
+    return "$rc"
+}
+
+# vapt_oniomarchy_scope — join this operation's snapshot. The scope is set
+# only once that snapshot succeeded and is cleared when it fails.
+vapt_oniomarchy_scope() {
+    VAPT_ONIOMARCHY_SCOPE=''
+    if ! VAPT_ONIOMARCHY_SCOPE=1 vapt_snapshot; then
+        VAPT_ONIOMARCHY_STATE=unavailable VAPT_ONIOMARCHY_REASON='source metadata snapshot failed; not used'
+        return 1
+    fi
+    VAPT_ONIOMARCHY_SCOPE=1
 }
 
 # vapt_oniomarchy_prepare — the provisioning prelude for this operation's
@@ -260,9 +317,8 @@ vapt_oniomarchy_prepare() {
             vapt_oniomarchy_plan
             VAPT_ONIOMARCHY_REASON='approval planned; no source/trust evidence fabricated'
         elif [[ $VAPT_ONIOMARCHY_STATE == usable ]]; then
-            VAPT_ONIOMARCHY_SCOPE=1
             VAPT_ONIOMARCHY_REASON='dry-run plans from the cached signed database verified at the last refresh; not re-verified'
-            vapt_snapshot || return 1
+            vapt_oniomarchy_scope || return 1
         fi
         return 0
     fi
@@ -271,13 +327,12 @@ vapt_oniomarchy_prepare() {
             VAPT_ONIOMARCHY_STATE=declined VAPT_ONIOMARCHY_REASON='source approval declined for this operation'
             return 0
         }
-        VAPT_ONIOMARCHY_REASON=''
-        vapt_oniomarchy_run vapt_oniomarchy_bootstrap_steps || rc=$?
+        vapt_oniomarchy_approve || rc=$?
     elif [[ ${VAPT_ONIO[keyringAuthorityState]:-} != ok ]]; then
         # Missing proof after a local keyring change is never repaired here.
         return 0
     else
-        VAPT_ONIOMARCHY_REASON=''
+        VAPT_ONIO_TRUST_CHANGED='' VAPT_ONIOMARCHY_REASON=''
         vapt_oniomarchy_run vapt_oniomarchy_refresh_steps || rc=$?
     fi
     case "$rc" in
@@ -289,9 +344,12 @@ vapt_oniomarchy_prepare() {
     vapt_oniomarchy_canary || { VAPT_ONIOMARCHY_STATE=broken VAPT_ONIOMARCHY_REASON='private source state unreadable'; return 0; }
     VAPT_ONIOMARCHY_STATE="${VAPT_ONIO[state]}"
     if [[ $VAPT_ONIOMARCHY_STATE == usable ]]; then
-        VAPT_ONIOMARCHY_SCOPE=1
         VAPT_ONIOMARCHY_REASON='signed database verified for this operation'
-        vapt_snapshot || return 1
+        vapt_oniomarchy_scope || return 1
+    elif [[ -n $VAPT_ONIO_TRUST_CHANGED ]]; then
+        # Trust changed, yet the recorded evidence does not make it usable.
+        VAPT_ONIOMARCHY_REASON="$VAPT_ONIO_TRUST_CHANGED, but the source is not approved: ${VAPT_ONIO[reason]}"
+        return 1
     else
         VAPT_ONIOMARCHY_REASON="${VAPT_ONIO[reason]}"
     fi
@@ -316,17 +374,26 @@ vapt_oniomarchy_enable_command() {
     case "${VAPT_ONIO[state]}" in
     unsupported-architecture | broken) warn "oniomarchy ${VAPT_ONIO[state]}: ${VAPT_ONIO[reason]}; nothing changed"; return 1 ;;
     esac
-    if $DRY_RUN; then vapt_oniomarchy_plan; return 0; fi
     if [[ ${VAPT_ONIO[keyringAuthorityState]} == mismatch ]]; then
         warn "oniomarchy keyring authority unverified (${VAPT_ONIO[reason]}); manual review required; nothing changed"
         return 1
     fi
+    if $DRY_RUN; then vapt_oniomarchy_plan; return 0; fi
     confirm "$VAPT_ONIOMARCHY_DISCLOSURE Approve the pinned oniomarchy source?" || { warn 'declined; nothing changed'; return 1; }
-    VAPT_ONIOMARCHY_REASON=''
-    vapt_oniomarchy_run vapt_oniomarchy_bootstrap_steps || rc=$?
+    vapt_oniomarchy_approve || rc=$?
     vapt_pacman_cleanup || ((rc)) || rc=1
     if ((rc)); then
-        warn "oniomarchy not approved: ${VAPT_ONIOMARCHY_REASON:-${VAPT_APPLY_REASON:-preparation failed}}"
+        if [[ -n $VAPT_ONIO_TRUST_CHANGED ]]; then
+            warn "oniomarchy: ${VAPT_ONIOMARCHY_REASON}"
+        else
+            warn "oniomarchy not approved: ${VAPT_ONIOMARCHY_REASON:-${VAPT_APPLY_REASON:-preparation failed}}"
+        fi
+        return 1
+    fi
+    # Approval is claimed only when the recorded evidence makes it usable
+    # (a rotation away from the signer of the cached database does not).
+    if ! vapt_oniomarchy_canary || [[ ${VAPT_ONIO[state]} != usable ]]; then
+        warn "oniomarchy: ${VAPT_ONIO_TRUST_CHANGED:-the approval was recorded}, but the source is not approved: ${VAPT_ONIO[state]:-unreadable}: ${VAPT_ONIO[reason]:-private source state unreadable}"
         return 1
     fi
     info 'oniomarchy approved for dedicated VAPT transactions; use haseen vapt install --with-oniomarchy per operation'
@@ -336,8 +403,14 @@ vapt_oniomarchy_disable_command() {
     vapt_oniomarchy_canary || { warn 'oniomarchy source state unreadable; nothing changed'; return 1; }
     case "${VAPT_ONIO[descriptor]}" in
     absent) info 'oniomarchy is not approved; nothing to disable'; return 0 ;;
-    conflict) warn 'private oniomarchy descriptor changed or foreign; preserved, not removed'; return 1 ;;
+    conflict) warn 'private oniomarchy descriptor or source state changed or unsafe; preserved, not removed'; return 1 ;;
     esac
+    if $DRY_RUN; then
+        info 'vapt: oniomarchy disable plan (dry-run: nothing is removed or written)'
+        info "vapt: would remove the unchanged private descriptor $VAPT_ONIOMARCHY_SOURCES/oniomarchy.conf under the root lock"
+        info 'vapt: would keep packages installed from it and the pacman keyring trust (revoking that key is a separate administrator decision)'
+        return 0
+    fi
     confirm 'Disable the private oniomarchy source? Installed packages and pacman keyring trust remain.' || {
         warn 'declined; nothing changed'; return 1;
     }
