@@ -290,6 +290,16 @@ animations, blur and shadow values it read with `hyprctl getoption`. The
 optional game watcher is the `haseen.indicators` service, listed only by
 `haseen context auto-game on|set`.
 
+Idle (`haseen.idle`, plans 019, 082) runs one ext-idle-notify monitor per
+non-zero timeout: `screensaverAfter`, `lockAfter`, `dpmsAfter` and
+`suspendAfter` (0 = never, the default), which runs `haseen system suspend`.
+`onBattery` holds any of those four and wins while UPower's `onBattery` is
+true; a plug event recreates only the monitors whose timeout changed. The
+`idle-off` flag (Stay Awake, the game and present contexts) removes every
+monitor, and the suspend monitor always honours Wayland idle inhibitors.
+Hyprland counts only inhibitors on windows, not on layer-shell surfaces.
+`haseen setup idle` (Setup › Idle and Suspend) prints and sets the timeouts.
+
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
 Nothing appears on screen for them.

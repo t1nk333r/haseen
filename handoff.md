@@ -48,6 +48,7 @@ The owner's other repos:
 | Keybind sheet; Learn's keybinding and tmux lists | `bin/haseen-keybinds`, `bin/haseen-keybinds-list`, `bin/haseen-tmux-keybinds`, `bin/haseen-menu-select`, `share/haseen/lib/keybinds-scan.lua`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 071 |
 | Brightness command, DDC setup, display panel | `bin/haseen-brightness`, `bin/haseen-setup-ddc`, `share/haseen/shell/plugins/haseen.display/` | 077 |
 | Media panel (cover art, seek, switcher) | `share/haseen/shell/plugins/haseen.media/`, `tools/fake-mpris.py` | 078 |
+| Idle suspend, AC/battery timeouts | `share/haseen/shell/plugins/haseen.idle/`, `bin/haseen-setup-idle`, `tests/test-idle.sh` | 019 082 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |

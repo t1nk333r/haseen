@@ -3,7 +3,7 @@
   "id": "haseen.idle",
   "name": "Idle",
   "version": "1.0.0",
-  "description": "Screensaver, lock and display power-off after inactivity (ext-idle-notify, honours idle inhibitors and the idle-off/screensaver-off flags); bar indicator while Stay Awake is on",
+  "description": "Screensaver, lock, display power-off and optional suspend after inactivity, with battery overrides (ext-idle-notify, honours idle inhibitors and the idle-off/screensaver-off flags); bar indicator while Stay Awake is on",
   "kinds": [
     "service",
     "bar-widget"
@@ -27,6 +27,16 @@
       "type": "integer",
       "default": 330,
       "description": "Seconds of inactivity before displays turn off (0 = never)"
+    },
+    "suspendAfter": {
+      "type": "integer",
+      "default": 0,
+      "description": "Seconds of inactivity before the machine suspends through haseen system suspend (0 = never). Always waits while an app holds an idle inhibitor or Stay Awake is on"
+    },
+    "onBattery": {
+      "type": "object",
+      "default": {},
+      "description": "Overrides while on battery (UPower onBattery): any of screensaverAfter, lockAfter, dpmsAfter, suspendAfter in seconds; a missing or null key keeps the value above"
     },
     "respectInhibitors": {
       "type": "boolean",
