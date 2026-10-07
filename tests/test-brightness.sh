@@ -59,7 +59,7 @@ case "$*" in
 "detect --brief") [ -e "$DDC_DETECT.fail" ] && exit 1; cat "$DDC_DETECT" ;;
 "--bus $DDC_BUS getvcp 10 --brief") echo "VCP 10 C $(cat "$DDC_VALUE") 100" ;;
 *getvcp*) echo "No monitor detected on bus" >&2; exit 1 ;;
-*" setvcp 10 "*) for a; do v=$a; done; echo "$v" >"$DDC_VALUE" ;;
+*" setvcp 10 "*) [ -e "$DDC_VALUE.refuse" ] && exit 1; for a; do v=$a; done; echo "$v" >"$DDC_VALUE" ;;
 *) exit 1 ;;
 esac'
 detect_output 7
@@ -519,6 +519,8 @@ ShellRoot {
 
     property var opened: null
     property var watched: null
+    property var written: null
+    property int asked: -1
 
     function view() {
         const out = {};
@@ -535,6 +537,14 @@ ShellRoot {
         id: panel
 
         pluginId: "haseen.display"
+        settings: ({ debugIpc: true })
+    }
+
+    // The monitor starts refusing writes.
+    Process {
+        id: refuse
+
+        command: ["touch", Quickshell.env("DDC_VALUE") + ".refuse"]
     }
 
     // Firmware moves the backlight: only the watch can tell the panel.
@@ -575,13 +585,35 @@ ShellRoot {
 
         interval: 5000
         onTriggered: {
-            console.warn("RESULT " + JSON.stringify({ opened: shell.opened, watched: shell.watched, final: shell.view(), sent: panel.sent, busy: panel.busy, nightlight: panel.nightlightShown }));
+            shell.written = { final: shell.view(), sent: panel.sent, busy: panel.busy, errors: panel.errors };
+            refuse.running = true;
+            step4.running = true;
+        }
+    }
+
+    Timer {
+        id: step4
+
+        interval: 500
+        onTriggered: {
+            panel.send(shell.find("ddc:DP-1"), 20);
+            shell.asked = shell.view()["ddc:DP-1"];
+            step5.running = true;
+        }
+    }
+
+    Timer {
+        id: step5
+
+        interval: 3000
+        onTriggered: {
+            console.warn("RESULT " + JSON.stringify({ opened: shell.opened, watched: shell.watched, final: shell.written.final, sent: shell.written.sent, busy: shell.written.busy, errors: shell.written.errors, nightlight: panel.nightlightShown, asked: shell.asked, refused: shell.view()["ddc:DP-1"], refusedErrors: panel.errors, refusedBusy: panel.busy }));
             Qt.quit();
         }
     }
 }
 QML
-    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 BL="$BL" \
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 BL="$BL" DDC_VALUE="$DDC_VALUE" \
         timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
     if [[ $STATUS == 0 ]]; then _pass; else _fail "panel: harness completes in the real engine (exit $STATUS)" "$(tail -n 20 <<<"$OUTPUT")"; fi
     RESULT="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
@@ -592,13 +624,20 @@ QML
     assert_eq "panel: one write at a time; a newer value replaces the waiting one" \
         '["set intel_backlight 80%","set intel_backlight 30%","set ddc:DP-1 70%","set tpacpi::kbd_backlight 0%"]' "$(jq -c .sent <<<"$RESULT")"
     assert_eq "panel: the queue drained" false "$(jq .busy <<<"$RESULT")"
+    assert_eq "panel: no error while every write lands" '{}' "$(jq -c .errors <<<"$RESULT")"
     assert_eq "panel: values after the writes (sysfs from the watch, DDC as asked)" \
         '{"intel_backlight":14400,"tpacpi::kbd_backlight":0,"ddc:DP-1":70}' "$(jq -c .final <<<"$RESULT")"
     assert_eq "panel: the writes, through haseen brightness" "brightnessctl --quiet --class=backlight --device=intel_backlight set 38400
 brightnessctl --quiet --class=backlight --device=intel_backlight set 14400
 ddcutil --bus 7 setvcp 10 70
-brightnessctl --quiet --class=leds --device=tpacpi::kbd_backlight set 0" "$(grep -E 'brightnessctl|setvcp' "$LOG")"
-    assert_eq "panel: DDC read on open and before its write only" 2 "$(grep -c 'getvcp' "$LOG")"
+brightnessctl --quiet --class=leds --device=tpacpi::kbd_backlight set 0
+ddcutil --bus 7 setvcp 10 20" "$(grep -E 'brightnessctl|setvcp' "$LOG")"
+    assert_eq "panel: DDC read on open and before each write only" 3 "$(grep -c 'getvcp' "$LOG")"
     assert_eq "panel: the night light row with haseen.nightlight running" true "$(jq .nightlight <<<"$RESULT")"
+    assert_eq "panel: a DDC write shows the value asked for at once" 20 "$(jq .asked <<<"$RESULT")"
+    assert_eq "panel: a refused write puts the slider back to the value the monitor took" 70 "$(jq .refused <<<"$RESULT")"
+    assert_eq "panel: and says so under the row" '{"ddc:DP-1":"LG ULTRAGEAR (DP-1) did not accept the change"}' "$(jq -c .refusedErrors <<<"$RESULT")"
+    assert_eq "panel: the refused write still ends the queue" false "$(jq .refusedBusy <<<"$RESULT")"
+    rm -f "$DDC_VALUE.refuse"
 fi
 unset HASEEN_SYSROOT

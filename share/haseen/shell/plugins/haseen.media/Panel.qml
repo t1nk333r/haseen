@@ -104,47 +104,8 @@ Column {
         }
     }
 
-    // A bordered choice, as in the battery panel: `active` is filled.
-    component Choice: Item {
-        id: choice
-
-        property string label
-        property bool active: false
-
-        signal clicked
-
-        implicitWidth: choiceText.implicitWidth + Theme.gap * 3
-        implicitHeight: Math.round(Theme.fontSize * 2.1)
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radius
-            color: choice.active ? Theme.accent : choiceMouse.containsMouse ? Theme.surfaceAlt : "transparent"
-            border.color: choice.active || choiceMouse.containsMouse ? Theme.accent : Theme.border
-            border.width: Theme.borderWidth
-        }
-
-        Text {
-            id: choiceText
-
-            anchors.centerIn: parent
-            textFormat: Text.PlainText
-            text: choice.label
-            color: choice.active ? Theme.accentFg : Theme.foreground
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
-            font.bold: choice.active
-        }
-
-        MouseArea {
-            id: choiceMouse
-
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: choice.clicked()
-        }
-    }
+    // Secondary text: readable on the panel (Theme.subtle), never muted.
+    readonly property color subtle: Theme.subtle(Theme.surface)
 
     // A transport button: a glyph cell sized for the panel, not the bar.
     component Control: BarButton {
@@ -173,7 +134,7 @@ Column {
             elide: Text.ElideRight
             textFormat: Text.PlainText
             text: root.labels.length > 0 ? root.labels[0] : ""
-            color: Theme.muted
+            color: root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }
@@ -184,7 +145,7 @@ Column {
         visible: root.player === null
         wrapMode: Text.WordWrap
         text: "Nothing is playing (no MPRIS player on the bus)."
-        color: Theme.muted
+        color: root.subtle
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
     }
@@ -198,11 +159,11 @@ Column {
         Repeater {
             model: root.labels
 
-            delegate: Choice {
+            delegate: Pill {
                 required property int index
                 required property string modelData
 
-                label: modelData
+                text: modelData
                 active: index === root.index
                 onClicked: root.choose(index)
             }
@@ -232,7 +193,7 @@ Column {
                 anchors.centerIn: parent
                 visible: artImage.status !== Image.Ready
                 glyph: "\uf001"
-                color: Theme.muted
+                color: root.subtle
                 font.pixelSize: Theme.fontSize * 3
             }
 
@@ -285,7 +246,7 @@ Column {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 text: root.player ? String(root.player.trackAlbum || "").trim() : ""
-                color: Theme.muted
+                color: root.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
             }
@@ -314,7 +275,7 @@ Column {
 
                 anchors.left: parent.left
                 text: Media.formatTime(root.position)
-                color: Theme.muted
+                color: root.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
             }
@@ -322,7 +283,7 @@ Column {
             Text {
                 anchors.right: parent.right
                 text: root.player ? Media.formatTime(root.player.length) : ""
-                color: Theme.muted
+                color: root.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
             }
@@ -340,10 +301,11 @@ Column {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Theme.gap
 
+            // Off is the foreground, not muted: off is a state, not disabled.
             Control {
                 visible: root.controls.shuffle
                 glyph: "\uf074"
-                color: root.player && root.player.shuffle ? Theme.accent : Theme.muted
+                color: root.player && root.player.shuffle ? Theme.accent : Theme.foreground
                 onClicked: root.toggleShuffle()
             }
 
@@ -354,12 +316,39 @@ Column {
                 onClicked: root.player.previous()
             }
 
-            Control {
+            // The main control as the active pill draws it: the accent fill
+            // with the accent's own text colour, which reads at 3:1 or more.
+            Item {
+                objectName: "playPause"
                 visible: root.controls.playPause
-                glyph: root.player && root.player.isPlaying ? "\uf04c" : "\uf04b"
-                color: Theme.accent
-                highlighted: true
-                onClicked: root.player.togglePlaying()
+                implicitWidth: playGlyph.implicitWidth + Theme.gap * 3
+                implicitHeight: Math.round(Theme.fontSize * 2.4)
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.topMargin: 3
+                    anchors.bottomMargin: 3
+                    radius: Theme.radius
+                    color: Theme.accent
+                    opacity: playMouse.containsMouse ? 0.85 : 1
+                }
+
+                Glyph {
+                    id: playGlyph
+
+                    anchors.centerIn: parent
+                    glyph: root.player && root.player.isPlaying ? "\uf04c" : "\uf04b"
+                    color: Theme.accentFg
+                }
+
+                MouseArea {
+                    id: playMouse
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.player.togglePlaying()
+                }
             }
 
             Control {
@@ -372,7 +361,7 @@ Column {
             Control {
                 visible: root.controls.loop
                 glyph: root.player ? Media.loopGlyph(root.player.loopState) : ""
-                color: root.player && root.player.loopState !== MprisLoopState.None ? Theme.accent : Theme.muted
+                color: root.player && root.player.loopState !== MprisLoopState.None ? Theme.accent : Theme.foreground
                 onClicked: root.cycleLoop()
             }
         }
@@ -390,7 +379,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.fontSize * 2
             glyph: Media.volumeGlyph(root.player ? root.player.volume : 0)
-            color: Theme.muted
+            color: Theme.foreground
         }
 
         TrackBar {
@@ -411,7 +400,7 @@ Column {
             width: Theme.fontSize * 2.6
             horizontalAlignment: Text.AlignRight
             text: Math.round((root.player ? root.player.volume : 0) * 100) + "%"
-            color: Theme.muted
+            color: root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }

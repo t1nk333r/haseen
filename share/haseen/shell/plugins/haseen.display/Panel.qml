@@ -13,7 +13,10 @@ import "Model.js" as Model
 // an inotify watch (FileView) on the file the list names, so keys and other
 // tools move the sliders too; DDC values are read on open only. Every change
 // goes through `haseen brightness set ID N%`, one at a time, the latest
-// waiting one replacing older ones. Off by default; open it with
+// waiting one replacing older ones. A write the device refuses puts its
+// slider back where it was and says so under the row. Rows are keyed by
+// device id, so the DDC list landing late keeps the backlight row (and a
+// drag on it). Off by default; open it with
 // `haseen shell ipc panel toggle haseen.display` or Setup › Display.
 Column {
     id: root
@@ -38,7 +41,14 @@ Column {
     // True from a write's start until the queue is empty; the process alone
     // is not running for a moment between two writes.
     property bool busy: false
+    // Values each device last took, by id, for a refused write to go back
+    // to; the list's value until a write lands.
+    property var confirmed: ({})
+    // A refused write's message, by id, until the next write lands.
+    property var errors: ({})
+    // The writes run, for the debugIpc test hook only.
     property var sent: []
+    readonly property color subtle: Theme.subtle(Theme.surface)
 
     readonly property bool nightlightShown: Plugins.componentUrl("haseen.nightlight", "service") !== "" && Config.isListed("haseen.nightlight") && Config.isEnabled("haseen.nightlight")
 
@@ -71,9 +81,37 @@ Column {
 
     function run(command: var): void {
         busy = true;
-        sent = sent.concat([command.slice(1).join(" ")]);
+        if (settings.debugIpc === true)
+            sent = sent.concat([command.slice(1).join(" ")]);
+        setProc.deviceId = command[2];
+        setProc.percent = parseInt(command[3], 10);
         setProc.command = command;
         setProc.running = true;
+    }
+
+    function setEntry(map: var, id: string, value: var): var {
+        const next = Object.assign({}, map);
+        if (value === undefined)
+            delete next[id];
+        else
+            next[id] = value;
+        return next;
+    }
+
+    // The write for `id` ended. Refused: back to the value it last took
+    // (a newer write waiting for it shows its own value instead), and say so.
+    function landed(id: string, pct: int, ok: bool): void {
+        const device = find(id);
+        if (!device)
+            return;
+        if (ok) {
+            confirmed = setEntry(confirmed, id, Model.valueFor(device, pct));
+            errors = setEntry(errors, id, undefined);
+            return;
+        }
+        errors = setEntry(errors, id, device.label + " did not accept the change");
+        if (!device.watch && !pending.some(p => p.id === id))
+            noteValue(id, confirmed[id] !== undefined ? confirmed[id] : device.value);
     }
 
     function find(id: string): var {
@@ -106,7 +144,11 @@ Column {
     Process {
         id: setProc
 
-        onExited: {
+        property string deviceId: ""
+        property int percent: 0
+
+        onExited: code => {
+            root.landed(setProc.deviceId, setProc.percent, code === 0);
             if (root.pending.length === 0) {
                 root.busy = false;
                 return;
@@ -128,7 +170,8 @@ Column {
                 devices: root.devices.map(d => ({ id: d.id, kind: d.kind, label: d.label, value: root.valueOf(d), max: d.max })),
                 ddcDone: root.ddcDone,
                 nightlight: root.nightlightShown,
-                sent: root.sent
+                sent: root.sent,
+                errors: root.errors
             });
         }
 
@@ -159,14 +202,18 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             visible: !root.ddcDone
             text: "Looking for monitors…"
-            color: Theme.muted
+            color: root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }
     }
 
     Repeater {
-        model: root.devices
+        // Keyed by id: a row is rebuilt only for a device that is new.
+        model: ScriptModel {
+            values: root.devices
+            objectProp: "id"
+        }
 
         delegate: Column {
             id: row
@@ -174,22 +221,11 @@ Column {
             required property var modelData
             readonly property var device: modelData
             readonly property int value: root.valueOf(device)
-            property bool dragging: false
-            property int dragPercent: 0
-            readonly property int shownPercent: dragging ? dragPercent : Model.percent(value, device.max)
+            readonly property int shownPercent: slider.dragging ? Math.round(slider.dragValue * 100) : Model.percent(value, device.max)
+            readonly property string error: root.errors[device.id] || ""
 
             width: root.width
             spacing: Math.round(Theme.gap / 2)
-
-            // A press sends at once; a move sends only when the percent
-            // changes, so the release does not repeat the last one.
-            function slideTo(x: real, pressed: bool): void {
-                const pct = Model.fromFraction(x / track.width, device.max);
-                const moved = pressed || pct !== dragPercent;
-                dragPercent = pct;
-                if (moved && Model.live(device.kind))
-                    root.send(device, pct);
-            }
 
             FileView {
                 path: row.device.watch
@@ -232,67 +268,33 @@ Column {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: row.shownPercent + "%"
-                    color: Theme.muted
+                    color: root.subtle
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.fontSize - 1
                 }
             }
 
-            Item {
-                id: track
+            // Backlights send while dragged (each new level once), a DDC
+            // monitor once on release; a 3-level keyboard snaps to its levels.
+            TrackBar {
+                id: slider
 
                 width: parent.width
-                height: Math.round(Theme.fontSize * 1.4)
+                live: Model.live(row.device.kind)
+                steps: row.device.max < 100 ? row.device.max : 0
+                value: Model.percent(row.value, row.device.max) / 100
+                onMoved: v => root.send(row.device, Model.fromFraction(v, row.device.max))
+            }
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
-                    height: Math.max(Theme.gap, 4)
-                    radius: height / 2
-                    color: Theme.surfaceAlt
-
-                    Rectangle {
-                        width: parent.width * row.shownPercent / 100
-                        height: parent.height
-                        radius: parent.radius
-                        color: Theme.accent
-                    }
-                }
-
-                Rectangle {
-                    x: Math.max(0, Math.min(parent.width - width, parent.width * row.shownPercent / 100 - width / 2))
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.round(Theme.fontSize * 1.1)
-                    height: width
-                    radius: width / 2
-                    color: Theme.accent
-                    border.color: Theme.surface
-                    border.width: Theme.borderWidth
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    preventStealing: true
-                    onPressed: mouse => {
-                        row.dragging = true;
-                        row.slideTo(mouse.x, true);
-                    }
-                    onPositionChanged: mouse => {
-                        if (pressed)
-                            row.slideTo(mouse.x, false);
-                    }
-                    onReleased: mouse => {
-                        row.slideTo(mouse.x, false);
-                        if (!Model.live(row.device.kind))
-                            root.send(row.device, row.dragPercent);
-                        row.dragging = false;
-                    }
-                    onWheel: wheel => {
-                        const pct = Math.max(0, Math.min(100, row.shownPercent + (wheel.angleDelta.y > 0 ? 5 : -5)));
-                        root.send(row.device, pct);
-                    }
-                }
+            Text {
+                width: parent.width
+                visible: row.error !== ""
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+                text: row.error
+                color: Theme.urgent
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize - 1
             }
         }
     }
@@ -302,7 +304,7 @@ Column {
         visible: text !== ""
         wrapMode: Text.WordWrap
         text: Model.emptyText(root.devices.length, root.sysfsDone && root.ddcDone)
-        color: Theme.muted
+        color: root.subtle
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
     }
@@ -339,26 +341,12 @@ Column {
             font.pixelSize: Theme.fontSize
         }
 
-        Rectangle {
+        // The state only: the row's MouseArea above it takes the click.
+        Pill {
             anchors.right: parent.right
-            anchors.rightMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            width: stateText.implicitWidth + Theme.gap * 3
-            height: Math.round(Theme.fontSize * 1.8)
-            radius: Theme.radius
-            color: Flags.nightlight ? Theme.accent : "transparent"
-            border.color: Flags.nightlight ? Theme.accent : Theme.border
-            border.width: Theme.borderWidth
-
-            Text {
-                id: stateText
-
-                anchors.centerIn: parent
-                text: Flags.nightlight ? "On" : "Off"
-                color: Flags.nightlight ? Theme.accentFg : Theme.foreground
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
-            }
+            text: Flags.nightlight ? "On" : "Off"
+            active: Flags.nightlight
         }
 
         MouseArea {

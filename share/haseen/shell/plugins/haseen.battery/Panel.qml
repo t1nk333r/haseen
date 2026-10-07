@@ -6,7 +6,8 @@ import qs.Haseen
 import qs.Haseen.Widgets
 import "Model.js" as Model
 
-// haseen.battery panel (plan 076): charge, state, time to empty or full,
+// haseen.battery panel (plan 076), titled Power and Battery like the menu
+// row that opens it: charge, state, time to empty or full,
 // power draw, energy, health and cycles; the power profile
 // (power-profiles-daemon, `haseen powerprofile set`, remembered per power
 // source) and the charge limit (`haseen battery limit`, which asks for the
@@ -37,6 +38,9 @@ Column {
     readonly property bool charging: present && Model.isCharging(deviceState)
 
     property var status: ({})
+    // A state change while the status read runs: read again once it ends,
+    // so the limit and holding line never keeps the older answer.
+    property bool _statusAgain: false
     property var profiles: []
     property string pendingProfile: ""
     readonly property string activeProfile: Model.profileName(PowerProfiles.profile)
@@ -52,7 +56,9 @@ Column {
     spacing: Theme.gap
 
     onDeviceStateChanged: {
-        if (!statusProc.running)
+        if (statusProc.running)
+            _statusAgain = true;
+        else
             statusProc.running = true;
     }
     onActiveProfileChanged: pendingProfile = ""
@@ -99,6 +105,12 @@ Column {
             waitForEnd: true
             onStreamFinished: root.status = Model.parseStatus(text)
         }
+        onExited: {
+            if (root._statusAgain) {
+                root._statusAgain = false;
+                running = true;
+            }
+        }
     }
 
     Process {
@@ -124,53 +136,9 @@ Column {
     component SectionLabel: Text {
         width: root.width
         topPadding: Theme.gap
-        color: Theme.muted
+        color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1
-    }
-
-    // A bordered choice in a row: `active` is the value in force (filled),
-    // `pending` the one asked for while the change is in flight.
-    component Choice: Item {
-        id: choice
-
-        property string label
-        property bool active: false
-        property bool pending: false
-
-        signal clicked
-
-        implicitWidth: choiceText.implicitWidth + Theme.gap * 3
-        implicitHeight: Math.round(Theme.fontSize * 2.1)
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radius
-            color: choice.active ? Theme.accent : choiceMouse.containsMouse ? Theme.surfaceAlt : "transparent"
-            border.color: choice.active || choice.pending || choiceMouse.containsMouse ? Theme.accent : Theme.border
-            border.width: Theme.borderWidth
-        }
-
-        Text {
-            id: choiceText
-
-            anchors.centerIn: parent
-            textFormat: Text.PlainText
-            text: choice.label
-            color: choice.active ? Theme.accentFg : Theme.foreground
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
-            font.bold: choice.active || choice.pending
-        }
-
-        MouseArea {
-            id: choiceMouse
-
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: choice.clicked()
-        }
     }
 
     Item {
@@ -180,7 +148,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Battery"
+            text: "Power and Battery"
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -191,7 +159,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.present
             text: Model.stateLabel(root.deviceState, root.status.state === "holding", root.status.threshold || "")
-            color: Theme.muted
+            color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }
@@ -202,7 +170,7 @@ Column {
         visible: !root.present
         wrapMode: Text.WordWrap
         text: "No battery (UPower reports none)."
-        color: Theme.muted
+        color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
     }
@@ -232,7 +200,7 @@ Column {
             Text {
                 visible: text !== ""
                 text: root.present ? Model.timeLine(root.deviceState, root.device.timeToEmpty, root.device.timeToFull) : ""
-                color: Theme.muted
+                color: Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
             }
@@ -252,7 +220,7 @@ Column {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: parent.modelData.label
-                color: Theme.muted
+                color: Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
             }
@@ -281,10 +249,10 @@ Column {
         Repeater {
             model: root.profiles
 
-            delegate: Choice {
+            delegate: Pill {
                 required property string modelData
 
-                label: Model.profileLabel(modelData)
+                text: Model.profileLabel(modelData)
                 active: modelData === root.activeProfile
                 pending: modelData === root.pendingProfile
                 onClicked: root.setProfile(modelData)
@@ -304,10 +272,10 @@ Column {
         Repeater {
             model: Model.limitChoices(root.limit)
 
-            delegate: Choice {
+            delegate: Pill {
                 required property int modelData
 
-                label: Model.limitLabel(modelData)
+                text: Model.limitLabel(modelData)
                 active: modelData === root.limit
                 onClicked: root.setLimit(modelData)
             }
@@ -321,15 +289,15 @@ Column {
     Row {
         spacing: Theme.gap
 
-        Choice {
+        Pill {
             objectName: "screenOff"
-            label: "Screen off"
+            text: "Screen off"
             onClicked: root.screenOff()
         }
 
-        Choice {
+        Pill {
             objectName: "screenOn"
-            label: "Screen on"
+            text: "Screen on"
             onClicked: root.screenOn()
         }
     }
@@ -358,7 +326,7 @@ Column {
             anchors.left: setupGlyph.right
             anchors.leftMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            text: "System settings"
+            text: "Setup"
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize

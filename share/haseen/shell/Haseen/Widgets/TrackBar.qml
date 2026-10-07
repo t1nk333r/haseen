@@ -1,21 +1,25 @@
 import QtQuick
 import qs.Haseen
 
-// Thin draggable bar for a 0..1 value (seek position, player volume), drawn
-// like the audio panel's volume rows. It shows `value` and emits `moved`;
-// the owner writes the player and the bar follows the player back. With
-// `live` false (seeking) a drag only moves the knob and `moved` fires once,
-// on release, so a drag is one SetPosition, not one per pixel. Read-only
-// without `enabled`.
+// Thin draggable bar for a 0..1 value, drawn like the audio panel's volume
+// rows: the media panel's seek and volume, the display panel's brightness.
+// It shows `value` and emits `moved`; the owner writes the value and the bar
+// follows it back. While pressed the knob follows the pointer. With `live`
+// false (seeking, a DDC monitor) a drag only moves the knob and `moved` fires
+// once, on release, so a drag is one write, not one per pixel. `steps` > 0
+// snaps the knob to that many even steps (a 3-level keyboard backlight).
+// Read-only without `enabled`.
 Item {
     id: bar
 
     property real value: 0
     property bool live: true
+    property int steps: 0
     property real wheelStep: 0.05
     property real dragValue: 0
+    readonly property bool dragging: mouse.pressed
 
-    readonly property real shown: Math.max(0, Math.min(1, mouse.pressed && !live ? dragValue : value))
+    readonly property real shown: clamp(dragging ? dragValue : value)
 
     signal moved(real value)
 
@@ -23,9 +27,15 @@ Item {
         return Math.max(0, Math.min(1, v));
     }
 
+    function snap(v: real): real {
+        return steps > 0 ? Math.round(v * steps) / steps : v;
+    }
+
     function drag(x: real): void {
-        dragValue = clamp(x / Math.max(1, width));
-        if (live)
+        const next = snap(clamp(x / Math.max(1, width)));
+        const changed = next !== dragValue;
+        dragValue = next;
+        if (live && (changed || !mouse.moving))
             bar.moved(dragValue);
     }
 
@@ -61,11 +71,19 @@ Item {
     MouseArea {
         id: mouse
 
+        // False for the press itself, true for the moves after it: a press
+        // always sends, a move only when the snapped value changes.
+        property bool moving: false
+
         anchors.fill: parent
         enabled: bar.enabled
         cursorShape: Qt.PointingHandCursor
         preventStealing: true
-        onPressed: event => bar.drag(event.x)
+        onPressed: event => {
+            moving = false;
+            bar.drag(event.x);
+            moving = true;
+        }
         onPositionChanged: event => {
             if (pressed)
                 bar.drag(event.x);
@@ -74,6 +92,10 @@ Item {
             if (!bar.live)
                 bar.moved(bar.dragValue);
         }
-        onWheel: event => bar.moved(bar.clamp(bar.value + (event.angleDelta.y > 0 ? bar.wheelStep : -bar.wheelStep)))
+        // With steps, one notch is at least one step, or snapping would undo it.
+        onWheel: event => {
+            const step = bar.steps > 0 ? Math.max(bar.wheelStep, 1 / bar.steps) : bar.wheelStep;
+            bar.moved(bar.snap(bar.clamp(bar.value + (event.angleDelta.y > 0 ? step : -step))));
+        }
     }
 }
