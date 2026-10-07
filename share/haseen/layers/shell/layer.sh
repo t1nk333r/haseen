@@ -1,10 +1,16 @@
 # shellcheck shell=bash disable=SC2034  # LAYER_* are read by lib/layers.sh
-# layers/shell — the haseen Quickshell shell as a user unit (architecture 5).
+# layers/shell — the haseen Quickshell shell as a user unit (architecture 5),
+# and the Helium browser with the Cairn extension (owner, 2026-10-07, plan 073).
 
-LAYER_SUMMARY="the haseen Quickshell shell as haseen-shell.service"
+LAYER_SUMMARY="the haseen Quickshell shell as haseen-shell.service, and Helium with Cairn"
 LAYER_REQUIRES=(desktop theme)
 LAYER_CONFLICTS=()
 LAYER_DISTROS=(cachyos arch omarchy)
+
+# Linted on its own: followed from here, shellcheck mixes common.sh's
+# require_cmds array `missing` with layer_status's counter (SC2178).
+# shellcheck source=/dev/null
+source "$HASEEN_PATH/lib/cairn.sh"
 
 SHELL_UNIT=haseen-shell.service
 SHELL_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$SHELL_UNIT"
@@ -38,7 +44,7 @@ dms_url_handler() {
 
 layer_status() {
     local ok=0 missing=0 p
-    for p in quickshell jq; do
+    for p in quickshell jq helium-browser-bin; do
         if pkg_installed "$p"; then
             echo "ok: $p installed"
             ok=$((ok + 1))
@@ -93,6 +99,11 @@ layer_status() {
         ok=$((ok + 1))
         ;;
     esac
+    if cairn_status; then
+        ok=$((ok + 1))
+    else
+        missing=$((missing + 1))
+    fi
     ((missing == 0)) && return 0
     ((ok == 0)) && return 1
     return 2
@@ -123,6 +134,9 @@ layer_apply() {
     "" | "$DMS_OWN_DESKTOP") run xdg-mime default "$DMS_URL_DESKTOP" "$DMS_URL_MIME" ;;
     *) info "dms:// links stay with $handler (your choice); haseen's is: xdg-mime default $DMS_URL_DESKTOP $DMS_URL_MIME" ;;
     esac
+    # Cairn is fetched from its releases; without a network the shell still
+    # applies, and status reports Cairn missing.
+    cairn_install || warn "Cairn was not set up for Helium; run: haseen setup cairn"
     info "the shell starts with the next graphical session; to start it now: haseen shell restart"
 }
 
@@ -136,5 +150,5 @@ layer_remove() {
     if [[ -L $CRASH_WATCH_UNIT_WANTS ]]; then
         run systemctl --user disable "$CRASH_WATCH_UNIT"
     fi
-    info "kept $HASEEN_USER_CONFIG/shell.json and plugins/ (user files)"
+    info "kept $HASEEN_USER_CONFIG/shell.json and plugins/ (user files), and Helium with Cairn"
 }

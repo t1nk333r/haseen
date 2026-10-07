@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# haseen:summary Install Cairn, the extensions and bookmarks backup, into Helium, or update it to the latest release
+# haseen:args [install|status|update] [--dry-run] [--yes]
+#
+# Cairn is downloaded, not shipped (AGPL-3.0, plan 073): see lib/cairn.sh.
+# The shell layer runs `install`; `update` follows the releases past the pin.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/cairn.sh
+source "$HASEEN_PATH/lib/cairn.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup cairn [install|status|update] [--dry-run] [--yes]
+
+Cairn (github.com/t1nk333r/cairn) backs up the browser's extensions and
+bookmarks to Git, Gitea, WebDAV or S3. haseen hands its signed release to
+Helium as an external extension:
+  $CAIRN_EXTERNAL_JSON
+Helium installs it on its next start, enabled, without developer mode.
+
+  install  release $CAIRN_VERSION, the one haseen pins (default; the shell layer
+           runs it). The .crx goes to $CAIRN_DIR/<version>/
+           and must match its sha256 and Cairn's extension ID, $CAIRN_ID.
+           A later release already set up stays.
+  status   what Helium has or will install
+  update   the latest release, checked against the sha256 GitHub publishes
+           for it; Helium updates Cairn on its next start and keeps its settings
+
+Removing Cairn in Helium (chrome://extensions) is respected: haseen does not
+install it again.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-install}"
+case "$verb" in
+status)
+    cairn_status || true
+    echo "pinned: $CAIRN_VERSION"
+    ;;
+install | update)
+    require_not_root
+    "cairn_$verb"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
