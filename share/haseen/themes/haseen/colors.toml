@@ -1,6 +1,8 @@
-# Greek Noir (HANCORE, MIT) as the owner runs it on luna, with the "akane"
-# active-border wipe in hyprland.lua. `mode` added by haseen (luminance gives
-# the same answer); everything else is byte-identical to luna's copy.
+# haseen: haseen's own theme and the default for new installs. It derives
+# from HANCORE's Greek Noir (MIT, see LICENSE and UPSTREAM.md) as the owner
+# runs it on luna, with the "akane" active-border wipe in hyprland.lua. `mode`
+# added by haseen (luminance gives the same answer); every colour is
+# byte-identical to luna's copy.
 mode = "dark"
 
 # Accent and UI colors

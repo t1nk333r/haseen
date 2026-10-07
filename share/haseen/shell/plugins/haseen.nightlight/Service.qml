@@ -70,6 +70,10 @@ Scope {
             _lastScheduled = null;
             return;
         }
+        // The present context pauses the night light (plan 062): a crossing
+        // during it waits, and lands at the first check after it ends.
+        if (Flags.context === "present")
+            return;
         if (initial || s !== _lastScheduled) {
             _lastScheduled = s;
             Flags.set("nightlight", s);

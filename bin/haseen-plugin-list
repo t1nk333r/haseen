@@ -10,7 +10,9 @@ Usage: haseen plugin list
 
 STATE: enabled (in a bar section or services), disabled (plugins.<id>.enabled
 is false), available (not placed yet: haseen plugin enable <id>), on-demand
-(panels and other kinds opened through IPC), invalid (haseen plugin validate <id>).
+(panels and other kinds opened through IPC), unmet (valid, but a 'requires' is
+not met here, so the shell does not load it; the reason follows the name),
+invalid (haseen plugin validate <id>).
 EOF
 }
 parse_common_flags "$@"
@@ -27,11 +29,17 @@ while read -r id; do
     [[ $origin == user && -d $PLUGIN_BUILTIN_DIR/$id ]] && origin="user*"
     if plugin_check "$dir" >/dev/null; then
         mapfile -t kinds < <(plugin_field "$dir" '.kinds[]')
-        state="$(plugin_state "$id" "${kinds[@]}")"
+        name="$(plugin_field "$dir" .name)"
+        if unmet="$(plugin_unmet "$dir")"; then
+            state="$(plugin_state "$id" "${kinds[@]}")"
+        else
+            state=unmet
+            name+=" (${unmet//$'\n'/; })"
+        fi
         printf '%-28s %-8s %-10s %-24s %s\n' "$id" "$origin" "$state" "$(
             IFS=,
             echo "${kinds[*]}"
-        )" "$(plugin_field "$dir" .name)"
+        )" "$name"
     else
         printf '%-28s %-8s %-10s %-24s %s\n' "$id" "$origin" invalid - "-"
     fi

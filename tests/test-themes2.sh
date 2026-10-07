@@ -11,8 +11,9 @@
 SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
 PIN=5c4da021469517449770579793b37ce26d0a0d48
 OMARCHY_THEMES="catppuccin catppuccin-latte ethereal everforest flexoki-light gruvbox hackerman kanagawa last-horizon lumon lupine matte-black miasma nord osaka-jade retro-82 ristretto rose-pine solitude tokyo-night vantablack white"
-# Stock themes that are not Omarchy's (no fetchable images): the owner's default.
-HASEEN_THEMES="greek-noir-akane"
+# Stock themes that are not Omarchy's (no fetchable images): haseen's own,
+# the default (plan 066).
+HASEEN_THEMES="haseen"
 
 # themes2_sandbox NAME — sandbox with probes faked and a private runtime dir,
 # so nothing reaches the developer's session or units.

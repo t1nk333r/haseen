@@ -1,0 +1,3 @@
+  INFO: Launching config: "@HASEEN_PATH@/shell/shell.qml"
+qs: symbol lookup error: /usr/lib/libQt6Quick.so.6: undefined symbol: _ZN7QQuick3Foo
+haseen-shell.service: Main process exited, code=exited, status=127/n/a

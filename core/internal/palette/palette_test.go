@@ -196,4 +196,8 @@ func TestColorsTOML(t *testing.T) {
 	if !strings.Contains(result.ColorsTOML(), result.Palette[0]) {
 		t.Error("the background colour is not in the output")
 	}
+	// The clamped selection, not a fresh derivation, is what gets written.
+	if !strings.Contains(out, "\nselection_background = \""+result.Selection+"\"") {
+		t.Errorf("selection_background is not the clamped %s", result.Selection)
+	}
 }

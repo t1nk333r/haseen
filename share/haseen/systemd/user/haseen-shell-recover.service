@@ -1,0 +1,13 @@
+[Unit]
+Description=haseen: offer recovery when the shell keeps failing
+# Started by OnFailure= in haseen-shell.service (plan 061); never enabled.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# The offer is a floating terminal that stays the main process until it is
+# closed: the unit is active while the offer is open, and a new failure
+# meanwhile does not open a second one.
+Type=simple
+ExecStart=/usr/bin/env haseen shell recover present
+Slice=app-graphical.slice

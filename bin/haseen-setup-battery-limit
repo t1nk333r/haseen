@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# haseen:summary Keep the battery charge limit across reboots, hibernation and resume
+# haseen:args [on|off|status] [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../share/haseen/layers/base/lib.sh
+source "$HASEEN_PATH/layers/base/lib.sh"
+
+UNIT=haseen-charge-limit.service
+UNIT_DEST=/etc/systemd/system/$UNIT
+HOOK_DEST=/usr/lib/systemd/system-sleep/haseen-charge-limit
+UNIT_SRC="$HASEEN_PATH/systemd/system/$UNIT"
+HOOK_SRC="$HASEEN_PATH/systemd/system-sleep/haseen-charge-limit"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup battery-limit [on|off|status] [--dry-run] [--yes]
+
+  on      install $UNIT (restores /etc/haseen/charge-limit at
+          boot, records the battery's thresholds at shutdown) and the
+          system-sleep hook $HOOK_DEST
+          (restores after resume and thaw), record the current window and
+          enable the unit. Laptops with charge_control thresholds only.
+  off     disable the unit and remove it and the hook. The battery keeps
+          its current window and the record stays.
+  status  installed, enabled and the limit (default).
+
+Off by default. Set the limit with 'haseen battery limit set END'.
+EOF
+}
+
+has_thresholds() {
+    compgen -G "$(sysroot_path /sys/class/power_supply)/*/charge_control_end_threshold" >/dev/null
+}
+
+installed() { [[ -e $(sysroot_path "$UNIT_DEST") && -e $(sysroot_path "$HOOK_DEST") ]]; }
+
+status() {
+    local inst=no enabled=no
+    installed && inst=yes
+    unit_enabled "$UNIT" && enabled=yes
+    printf 'installed: %s\nenabled:   %s\n' "$inst" "$enabled"
+    haseen-battery-limit status
+}
+
+on() {
+    has_thresholds || die "no battery with charge_control thresholds here: nothing to keep"
+    if installed && unit_enabled "$UNIT"; then
+        info "battery limit restore is already on"
+        return 0
+    fi
+    confirm "Restore the battery charge limit at boot and after resume?" || exit 1
+    install_root_file "$UNIT_SRC" "$UNIT_DEST" 0644
+    install_root_file "$HOOK_SRC" "$HOOK_DEST" 0755
+    # Record what the battery holds now, so the first boot restores it.
+    local save=(save)
+    $DRY_RUN && save+=(--dry-run)
+    haseen-battery-limit "${save[@]}"
+    run_root systemctl daemon-reload
+    run_root systemctl enable --now "$UNIT"
+    info "battery limit restore on: set it with 'haseen battery limit set END'"
+}
+
+off() {
+    if ! installed && ! unit_enabled "$UNIT"; then
+        info "battery limit restore is already off"
+        return 0
+    fi
+    confirm "Stop restoring the battery charge limit?" || exit 1
+    unit_enabled "$UNIT" && run_root systemctl disable --now "$UNIT"
+    run_root rm -f "$UNIT_DEST" "$HOOK_DEST"
+    run_root systemctl daemon-reload
+    info "battery limit restore off (the battery keeps its window; /etc/haseen/charge-limit stays)"
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-status}"
+case "$verb" in
+status) status ;;
+on | off)
+    in_floating_terminal "$@"
+    require_not_root
+    "$verb"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

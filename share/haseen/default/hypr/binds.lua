@@ -42,6 +42,8 @@ b("SUPER + CTRL + ALT + SPACE", "Next background", "haseen theme bg next")
 b("SUPER + CTRL + I", "Stay awake", "haseen toggle idle")
 b("SUPER + CTRL + N", "Night light", "haseen toggle nightlight")
 b("SUPER + CTRL + S", "Screensaver", "haseen screensaver --force")
+-- M for mode: free in haseen and in Omarchy's SUPER + CTRL row (plan 062).
+b("SUPER + CTRL + M", "Context menu", "haseen menu trigger.context")
 
 -- Apps -----------------------------------------------------------------------
 b("SUPER + RETURN", "Terminal", launch('"${TERMINAL:-foot}"'))

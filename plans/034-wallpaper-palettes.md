@@ -51,6 +51,10 @@ for a stock theme. The GUI question is answered by compatibility rather than
 code: aether itself writes the same `colors.toml` format, so a user who wants
 the visual editor installs aether and haseen reads its output.
 
+Superseded 2026-10-07 by plan 067: the owner dropped Aether. The GUI is
+haseen's own panel `haseen.themegen` over `haseen theme generate`
+(matugen). The extractor taken from aether's code above stays.
+
 ## Verification
 
 - Go tests (`core/internal/palette`): the cache hits on a second run, a copy of

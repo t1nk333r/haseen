@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# haseen:summary Print the battery's charge, power draw and charge-limit window
+# haseen:args [--shell]
+#
+# Everything comes from the kernel's power_supply files, the charge-limit
+# window included. UPower reports a fixed 75-80% window on ThinkPads until its
+# own EnableChargeThreshold is used, whatever the hardware actually holds, so
+# a reader trusting it shows a limit that is not set (plan 060). The output
+# keeps the shape of Omarchy's omarchy-battery-status, which its plugins
+# parse; the code is haseen's.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen battery status [--shell]
+
+One line: charge, time to full or empty, power draw and capacity, or
+"Holding at START-END%" when the charge limit keeps a plugged-in battery
+from charging. Prints nothing without a battery.
+
+  --shell   tab-separated key/value lines instead: percentage, state
+            (UPower's names, or holding), rate, size, time, cycles and
+            threshold (START-END% or END%, from charge_control_*_threshold).
+EOF
+}
+
+shell_output=false
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+--shell) shell_output=true ;;
+"") ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+
+supplies="$(sysroot_path /sys/class/power_supply)"
+
+# sysfs FILE — one power_supply attribute of the battery, empty when absent.
+sysfs() { cat "$bat/$1" 2>/dev/null || true; }
+
+# The system battery: type Battery, not a peripheral (scope Device is a mouse
+# or headset reporting its own charge).
+bat=""
+for d in "$supplies"/*; do
+    [[ $(cat "$d/type" 2>/dev/null) == Battery ]] || continue
+    [[ $(cat "$d/scope" 2>/dev/null) == Device ]] && continue
+    bat="$d"
+    break
+done
+[[ -n $bat ]] || exit 0
+
+ac_online=false
+for d in "$supplies"/*; do
+    [[ $(cat "$d/type" 2>/dev/null) == Mains && $(cat "$d/online" 2>/dev/null) == 1 ]] || continue
+    ac_online=true
+    break
+done
+
+case "$(sysfs status)" in
+Charging) state=charging ;;
+Discharging) state=discharging ;;
+Full) state=fully-charged ;;
+"Not charging") state=pending-charge ;;
+*) state=unknown ;;
+esac
+
+threshold_start="$(sysfs charge_control_start_threshold)"
+threshold_end="$(sysfs charge_control_end_threshold)"
+cycles="$(sysfs cycle_count)"
+
+# Energy in uWh/uW when the driver reports it, else charge in uAh/uA scaled by
+# the voltage. One awk pass prints: percentage, rate W, size Wh, time.
+read -r percentage rate size time_left < <(awk \
+    -v capacity="$(sysfs capacity)" -v state="$state" \
+    -v e_now="$(sysfs energy_now)" -v e_full="$(sysfs energy_full)" -v p_now="$(sysfs power_now)" \
+    -v c_now="$(sysfs charge_now)" -v c_full="$(sysfs charge_full)" -v i_now="$(sysfs current_now)" \
+    -v volt="$(sysfs voltage_now)" '
+    function trim(x,   s) { s = sprintf("%.1f", x); sub(/\.0$/, "", s); return s }
+    BEGIN {
+        if (e_full == "" && c_full != "") {
+            e_now = c_now * volt / 1e6; e_full = c_full * volt / 1e6; p_now = i_now * volt / 1e6
+        }
+        now = e_now / 1e6; full = e_full / 1e6; watts = (p_now < 0 ? -p_now : p_now) / 1e6
+        pct = capacity != "" ? int(capacity) : (full > 0 ? int(now / full * 100 + 0.5) : 0)
+        hours = -1
+        if (watts > 0 && state == "charging") hours = (full - now) / watts
+        if (watts > 0 && state == "discharging") hours = now / watts
+        t = "-"
+        if (hours >= 0) {
+            m = int(hours * 60 + 0.5)
+            if (m < 60) t = m "m"
+            else if (m % 60 == 0) t = int(m / 60) "h"
+            else t = int(m / 60) "h_" (m % 60) "m"
+        }
+        printf "%d %s %d %s\n", pct, trim(watts), int(full), t
+    }')
+[[ $time_left == - ]] && time_left="" || time_left="${time_left/_/ }"
+
+# Plugged in and not taking charge because of the limit: the controller
+# reports "Not charging", or Full below 99%, or Charging with no current at
+# or above the end threshold.
+holding=false
+if $ac_online && [[ -n $threshold_end ]]; then
+    case "$state" in
+    pending-charge) holding=true ;;
+    fully-charged) ((percentage < 99)) && holding=true ;;
+    charging)
+        if ((threshold_end < 99 && percentage >= threshold_end)) &&
+            awk -v r="$rate" 'BEGIN { exit !(r <= 0.2) }'; then
+            holding=true
+        fi
+        ;;
+    esac
+fi
+
+window=""
+if [[ -n $threshold_end ]]; then
+    if [[ -n $threshold_start && $threshold_start != "$threshold_end" ]]; then
+        window="$threshold_start-$threshold_end%"
+    else
+        window="$threshold_end%"
+    fi
+fi
+
+if $shell_output; then
+    printf 'percentage\t%s%%\n' "$percentage"
+    printf 'state\t%s\n' "$($holding && echo holding || echo "$state")"
+    printf 'rate\t%sW\n' "$rate"
+    printf 'size\t%sWh\n' "$size"
+    printf 'time\t%s\n' "$time_left"
+    [[ -z $cycles ]] || printf 'cycles\t%s\n' "$cycles"
+    [[ -z $window ]] || printf 'threshold\t%s\n' "$window"
+    exit 0
+fi
+
+if $holding; then
+    echo "Battery $percentage%  ·  Holding at $window  ·  ${rate}W / ${size}Wh"
+elif [[ $state == charging ]]; then
+    echo "Battery $percentage%  ·  $time_left to full  ·  "$'\uf062'" ${rate}W / ${size}Wh"
+else
+    echo "Battery $percentage%  ·  $time_left left  ·  "$'\uf063'" ${rate}W / ${size}Wh"
+fi

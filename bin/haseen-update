@@ -9,6 +9,8 @@ set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/catalog.sh"
 # shellcheck source=../share/haseen/lib/preflight.sh
 source "$HASEEN_PATH/lib/preflight.sh"
+# shellcheck source=../share/haseen/lib/branding.sh
+source "$HASEEN_PATH/lib/branding.sh"
 
 FWUPD_EFI=/usr/lib/fwupd/efi/fwupdx64.efi
 
@@ -36,11 +38,15 @@ parse_common_flags "$@"
 require_not_root
 what="${REST[0]:-system}"
 
-# The update opens on haseen's name: its wordmark (the default screensaver
-# text) when a person watches the terminal, then one line naming the update.
+# The update opens on haseen's name: the selected mark's terminal logo (the
+# one `haseen about` and the screensaver show) when a person watches the
+# terminal, then one line naming the update. The logo is decoration: a
+# missing file must never stop an update before it starts (plan 060).
 banner() {
-    if [[ -t 1 ]] && ! $DRY_RUN; then
-        cat "$HASEEN_PATH/default/screensaver/screensaver.txt"
+    local logo
+    logo="$(branding_file logo)"
+    if [[ -t 1 && -r $logo ]] && ! $DRY_RUN; then
+        cat "$logo"
         echo
     fi
     info "haseen update: $what"

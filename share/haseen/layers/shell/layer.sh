@@ -12,7 +12,8 @@ SHELL_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-sessi
 # shell layer because the lock it triggers is the shell's.
 SLEEP_LOCK_UNIT=haseen-sleep-lock.service
 SLEEP_LOCK_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$SLEEP_LOCK_UNIT"
-# Turns core dumps into a "diagnose with AI" notification (bin/haseen-crash-watch).
+# Turns core dumps into a "diagnose with AI" notification and keeps the last
+# good shell.json for shell recovery (bin/haseen-crash-watch, plan 061).
 CRASH_WATCH_UNIT=haseen-crash-watch.service
 CRASH_WATCH_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$CRASH_WATCH_UNIT"
 # dms:// links (the DankMaterialShell plugin gallery's Install button) open

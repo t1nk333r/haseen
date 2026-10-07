@@ -41,6 +41,13 @@ Item {
         out("glyphs", all.every(id => L.cell(id, true).glyph !== "" && L.cell(id, true).glyph === L.cell(id, false).glyph));
         out("tips", [L.cell("Dnd", true).tooltip, L.cell("Dnd", false).tooltip]);
         out("unknown", L.cell("Dictation", true));
+        out("split-context", L.split(all, { context: "game" }));
+        out("split-context-odd", L.split(all, { context: "party" }));
+        out("context-cells", ["focus", "game", "present"].map(c => [L.cell("Context", true, c).glyph.codePointAt(0).toString(16), L.cell("Context", true, c).tooltip]));
+        const pats = L.gamePatterns(["steam_app_[0-9]+", "bad(", "", 3]);
+        out("game-patterns", [pats.length, L.gamePatterns(undefined).length]);
+        out("is-game", [L.isGame(pats, "steam_app_570", 2), L.isGame(pats, "steam_app_570", 3), L.isGame(pats, "steam_app_570", 1),
+            L.isGame(pats, "steam_app_570", 0), L.isGame(pats, "xsteam_app_570", 2), L.isGame([], "steam_app_570", 2)]);
         Qt.quit();
     }
 }
@@ -48,24 +55,32 @@ EOF
 js_out="$(cd "$harness" && QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" Harness.qml 2>&1 | sed -n 's/^.*RESULT //p')"
 r() { sed -n "s/^$1 //p" <<<"$js_out"; }
 
-assert_eq "all of haseen's entries by default, in Omarchy's order" \
-    '["ScreenRecording","NightLight","Dnd","StayAwake","Screensaver"]' "$(r default)"
+assert_eq "all of haseen's entries by default, in Omarchy's order, then the context" \
+    '["ScreenRecording","NightLight","Dnd","StayAwake","Screensaver","Context"]' "$(r default)"
 assert_eq "items picks and orders; no source, unknown or repeated ids are dropped" '["Dnd","NightLight"]' "$(r items)"
 assert_eq "Omarchy's older indicators key still works" '["StayAwake"]' "$(r legacy-key)"
 assert_eq "an empty items list means all" "true" "$(r empty-items)"
-assert_eq "entries another bar widget shows are left out" '["NightLight","Screensaver"]' "$(r covered)"
-assert_eq "nothing on: all wait for hover" \
+assert_eq "entries another bar widget shows are left out" '["NightLight","Screensaver","Context"]' "$(r covered)"
+assert_eq "nothing on: all wait for hover, but the context is in neither block" \
     '{"active":[],"inactive":["ScreenRecording","NightLight","Dnd","StayAwake","Screensaver"]}' "$(r split-none)"
 assert_eq "flags on: those are the always-shown block" \
     '{"active":["ScreenRecording","Dnd"],"inactive":["NightLight","StayAwake","Screensaver"]}' "$(r split-some)"
 assert_eq "one glyph per entry, the same either way" "true" "$(r glyphs)"
 assert_eq "the tooltip says what a click does" '["Allow notifications","Silence notifications"]' "$(r tips)"
 assert_eq "an entry haseen has no source for has no cell" "null" "$(r unknown)"
+assert_eq "a context other than normal is in the always-shown block" \
+    '{"active":["Context"],"inactive":["ScreenRecording","NightLight","Dnd","StayAwake","Screensaver"]}' "$(r split-context)"
+assert_eq "a name that is no context shows nothing" \
+    '{"active":[],"inactive":["ScreenRecording","NightLight","Dnd","StayAwake","Screensaver"]}' "$(r split-context-odd)"
+assert_eq "each context has its glyph and names itself" \
+    '[["f08c9","Focus context: back to normal"],["f0297","Game context: back to normal"],["f0428","Present context: back to normal"]]' "$(r context-cells)"
+assert_eq "game classes: patterns that do not compile, empty or not strings are dropped" "[1,0]" "$(r game-patterns)"
+assert_eq "a game is a matching class in real fullscreen, matched whole" "[true,true,false,false,false,false]" "$(r is-game)"
 
 # A click must flip the flag the entry shows: run each command for real
 # (screen recording only as a dry run; it would start the recorder).
 cmds="$(r cmds)"
-assert_eq "every entry has a command for both states" "5" "$(jq '[.[] | select((.[1] | length) > 0 and (.[2] | length) > 0)] | length' <<<"${cmds:-{\}}")"
+assert_eq "every entry has a command for both states" "6" "$(jq '[.[] | select((.[1] | length) > 0 and (.[2] | length) > 0)] | length' <<<"${cmds:-{\}}")"
 flags="$XDG_STATE_HOME/haseen/flags"
 for id in NightLight Dnd StayAwake Screensaver; do
     flag="$(jq -r --arg id "$id" '.[$id][0]' <<<"$cmds")"
@@ -84,6 +99,15 @@ capture haseen "${rec[@]}" --fullscreen --dry-run
 assert_status "ScreenRecording: the start command is haseen capture screenrecord" 0 "$STATUS"
 assert_eq "ScreenRecording: stop is screenrecord --stop" '["haseen","capture","screenrecord","--stop"]' \
     "$(jq -c '.ScreenRecording[2]' <<<"$cmds")"
+# The context cell's click leaves the context; its flag holds the name.
+mapfile -t ctx_off < <(jq -r '.Context[2][1:][]' <<<"$cmds")
+haseen context focus >/dev/null
+assert_eq "Context: its flag holds the context's name" "focus" "$(cat "$flags/$(jq -r '.Context[0]' <<<"$cmds")")"
+capture haseen "${ctx_off[@]}"
+assert_eq "Context: a click goes back to normal" "normal" "$(haseen context status)"
+mapfile -t ctx_on < <(jq -r '.Context[1][1:][]' <<<"$cmds")
+capture haseen "${ctx_on[@]}" --dry-run
+assert_eq "Context: the inactive cell would open the context menu" "DRYRUN: haseen shell ipc menu toggle trigger.context" "$OUTPUT"
 
 # --- the widget in the real engine: revealing never moves the bar ------------
 # Omarchy reveals the dimmed indicators inline, which widened the widget and
@@ -290,6 +314,24 @@ ShellRoot {
             if (!Flags.nightlight || !waited(3))
                 return;
             out.allOnStrip = shown.strip !== null || edge.strip !== null;
+            // A runtime context begins (haseen context game writes the name).
+            out.widthNoContext = hidden.implicitWidth;
+            Quickshell.execDetached(["sh", "-c", "echo game >\"\$1\"", "sh", Flags.path("context")]);
+            next();
+            return;
+        case 9:
+            if (Flags.context !== "game" || !waited(3))
+                return;
+            out.contextActive = hidden.parts.active.indexOf("Context") >= 0;
+            out.contextGrows = hidden.implicitWidth > out.widthNoContext;
+            Quickshell.execDetached(["rm", "-f", "--", Flags.path("context")]);
+            next();
+            return;
+        case 10:
+            if (Flags.context !== "" || !waited(3))
+                return;
+            out.contextGone = hidden.parts.active.indexOf("Context") < 0 && hidden.parts.inactive.indexOf("Context") < 0;
+            out.widthAfterContext = hidden.implicitWidth;
             finish();
         }
     }
@@ -314,6 +356,10 @@ QML
     assert_eq "switching one on under the pointer moves nothing either" "$(w .restWidthBeforeOn)" "$(w .restWidthOnHeld)"
     assert_eq "once the pointer has left, the cell takes room in the bar" "true" "$(w '.restWidthOnLeft > .sliver')"
     assert_eq "with every entry on there is nothing to reveal, so no strip" "false" "$(w .allOnStrip)"
+    assert_eq "a context other than normal shows its indicator" "true" "$(w .contextActive)"
+    assert_eq "the context indicator takes room in the bar" "true" "$(w .contextGrows)"
+    assert_eq "back to normal, the context indicator is in neither block" "true" "$(w .contextGone)"
+    assert_eq "and the bar gives its room back" "$(w .widthNoContext)" "$(w .widthAfterContext)"
     assert_not_contains "the widget logs no QML warning" "$OUTPUT" "haseen.indicators/"
     rm -f "$flags"/*
 fi

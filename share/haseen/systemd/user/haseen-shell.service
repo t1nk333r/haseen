@@ -3,12 +3,19 @@ Description=haseen shell (Quickshell bar, panels and plugins)
 PartOf=graphical-session.target
 After=graphical-session.target
 Conflicts=dms.service
+# Recovery (plan 061): a crash loop that reaches the start limit leaves the
+# unit failed, and only then is the offer shown; one crash just restarts.
+OnFailure=haseen-shell-recover.service
+StartLimitIntervalSec=60
+StartLimitBurst=4
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/env haseen shell run
 Restart=on-failure
 RestartSec=2
+# Restart without passing through "failed", so OnFailure= waits for the limit.
+RestartMode=direct
 Slice=app-graphical.slice
 
 [Install]

@@ -6,6 +6,8 @@
 # screensaver off). The shell reads it through qs.Haseen Flags (inotify, no
 # polling): haseen.idle skips the screensaver and
 # `haseen screensaver` refuses to start without --force.
+# HASEEN_NO_NOTIFY=1 skips the desktop notification: `haseen context` sets
+# it, since the context it switches to is the news.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
@@ -54,6 +56,6 @@ else
 fi
 $DRY_RUN && exit 0
 echo "Screensaver $action"
-if have notify-send; then
+if [[ ${HASEEN_NO_NOTIFY:-} != 1 ]] && have notify-send; then
     notify-send -a haseen -u low "Screensaver $action" 2>/dev/null || true
 fi

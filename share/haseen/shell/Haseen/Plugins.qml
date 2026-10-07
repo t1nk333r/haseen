@@ -5,6 +5,7 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import "../Compat/Manifest.js" as CompatManifest
+import "Requires.js" as Requires
 
 // Plugin registry (architecture 5.2). Scans ~/.config/haseen/plugins/ and the
 // built-in shell/plugins/ (directory watch, no polling), reads every
@@ -19,6 +20,20 @@ import "../Compat/Manifest.js" as CompatManifest
 //
 // The full schema check lives in `haseen plugin validate`; this one only
 // keeps a malformed manifest from reaching a Loader.
+//
+// Safe mode (plan 061): while $HASEEN_USER_STATE/safe-mode exists, every
+// plugin that is not built in is held back: entryUrl() answers "" and
+// Config.isEnabled() false, so hosts unload it at once, and a user copy
+// that overrides a built-in id gives way to the built-in. Removing the file
+// brings them back. `haseen shell recover safe-mode on|off` writes it.
+//
+// Requirements (plan 064): a manifest's `requires` (commands, tools, layers,
+// a minimum haseen version; DMS `dependencies` map to tools) is probed in
+// one bash run per new set of facts, never polled. A plugin is not valid
+// while a fact is unknown (`checking`, silent) or a requirement is unmet
+// (`unmet`: in errors, logged, and one notification when a host asks for
+// it). The facts are probed again when a plugin directory appears or goes,
+// and on `haseen shell ipc shell reload`.
 Singleton {
     id: root
 
@@ -28,12 +43,15 @@ Singleton {
     // id -> { id, name, version, description, kinds, entry, settings,
     //         permissions, provides, dir, origin, overrides, valid, errors,
     //         compat ("" | "omarchy" | "dms"), upstreamId (the id in the
-    //         upstream manifest), unsupported (kinds not loaded) }
+    //         upstream manifest), unsupported (kinds not loaded),
+    //         requires (the manifest's), unmet (messages), checking }
     property var registry: ({})
-    // [{ id, message }] for every invalid manifest and load failure.
+    // [{ id, message }] for every invalid manifest, unmet requirement and
+    // load failure.
     property var errors: []
-    // True once every directory is listed and every manifest answered.
-    readonly property bool ready: _listed && _pending === 0
+    // True once every directory is listed, every manifest answered and every
+    // requirement fact probed.
+    readonly property bool ready: _listed && _pending === 0 && _wanted.length === 0
 
     // role -> { id, instance } for loaded plugins that declare `provides`.
     property var roles: ({})
@@ -45,6 +63,17 @@ Singleton {
     readonly property string omarchyPlugins: Paths.configHome + "/omarchy/plugins"
     readonly property string dmsPlugins: Paths.configHome + "/DankMaterialShell/plugins"
     property var _runtimeErrors: []
+    // Requirement facts (Requires.js keys): "bin:x"/"layer:y" -> bool,
+    // "version" -> installed version text. _wanted: keys still to probe;
+    // _asking: the keys of the running probe.
+    property var _facts: ({})
+    property var _wanted: []
+    property var _asking: []
+
+    // Safe mode: the flag file exists. Its JSON body ({ reason, since }) is
+    // shown by `shell plugins`; an unreadable body still means "on".
+    readonly property bool safeMode: safeModeFile.on
+    readonly property var safeModeInfo: safeModeFile.info
     property var _warned: ({})
 
     readonly property var panelIds: Object.keys(registry).filter(id => registry[id].valid && registry[id].kinds.indexOf("panel") >= 0)
@@ -117,9 +146,16 @@ Singleton {
 
     function entryUrl(id: string, kind: string): string {
         const rec = registry[id];
-        if (!rec || !rec.valid || rec.kinds.indexOf(kind) < 0)
+        if (!rec || !rec.valid || held(id) || rec.kinds.indexOf(kind) < 0)
             return "";
         return Paths.fileUrl(rec.dir + "/" + rec.entry[kind]);
+    }
+
+    // True for a plugin that safe mode keeps from loading: anything not
+    // built in (user, user:omarchy, user:dms, omarchy, dms).
+    function held(id: string): bool {
+        const rec = registry[id];
+        return safeMode && rec !== undefined && rec.origin !== "builtin";
     }
 
     // Manifest defaults overlaid with shell.json plugins.<id>.settings.
@@ -163,10 +199,26 @@ Singleton {
         const rec = registry[id];
         if (!rec)
             warnOnce("unknown:" + id, "unknown plugin id '" + id + "', skipped");
+        else if (held(id))
+            warnOnce("held:" + id, "safe mode: plugin '" + id + "' (" + rec.origin + ") held back");
+        else if (rec.checking)
+            return;
+        else if (rec.unmet.length > 0)
+            _refuse(rec);
         else if (!rec.valid)
             warnOnce("invalid:" + id, "plugin '" + id + "' is invalid, skipped: " + rec.errors.join("; "));
         else if (rec.kinds.indexOf(kind) < 0)
             warnOnce("kind:" + id + ":" + kind, "plugin '" + id + "' has no '" + kind + "' entry, skipped");
+    }
+
+    // An enabled plugin whose requirements are unmet: logged and notified
+    // once for the life of the shell. Critical, so it stays until read, as
+    // a refused DMS startup check does (Compat/DmsStartupGate.qml).
+    function _refuse(rec: var): void {
+        if (_warned["unmet:" + rec.id])
+            return;
+        warnOnce("unmet:" + rec.id, "plugin '" + rec.id + "' not loaded: " + rec.unmet.join("; "));
+        Quickshell.execDetached(["notify-send", "--app-name=haseen", "--urgency=critical", rec.name + " not loaded", rec.unmet.join("\n") + "\n\nInstall what it needs, then reload the shell (haseen shell ipc shell reload)."]);
     }
 
     // A failure every bar reports once per screen is recorded once.
@@ -227,8 +279,11 @@ Singleton {
                 permissions: r.permissions,
                 valid: r.valid,
                 enabled: Config.isEnabled(id),
+                held: held(id),
                 listed: Config.isListed(id),
-                errors: r.errors
+                errors: r.errors,
+                requires: r.requires,
+                unmet: r.unmet
             };
         });
         const roleMap = {};
@@ -236,6 +291,11 @@ Singleton {
             roleMap[role] = roles[role].id;
         return JSON.stringify({
             ready: ready,
+            safeMode: safeMode ? Object.assign({
+                on: true
+            }, safeModeInfo) : {
+                on: false
+            },
             plugins: list,
             roles: roleMap,
             errors: errors
@@ -269,7 +329,7 @@ Singleton {
         }
         if (m.provides !== undefined && !(Array.isArray(m.provides) && m.provides.every(p => typeof p === "string")))
             errs.push("provides must be an array of strings");
-        return errs;
+        return errs.concat(Requires.problems(m.requires));
     }
 
     function _scheduleRescan(): void {
@@ -308,6 +368,8 @@ Singleton {
             _texts = texts;
             _pending = dirs.filter(d => texts[d.dir] === undefined).length;
             _dirs = dirs;
+            // A new plugin set may need tools installed since the last probe.
+            _facts = {};
             _rebuild();
         }
         _listed = true;
@@ -326,7 +388,13 @@ Singleton {
     function _rebuild(): void {
         const reg = {};
         const errs = [];
+        const wanted = [];
+        // In safe mode a user copy of a built-in id is skipped, so the
+        // built-in behind it loads instead of nothing.
+        const builtins = safeMode ? _dirs.filter(d => d.origin === "builtin").map(d => d.name) : [];
         for (const d of _dirs) {
+            if (d.origin === "user" && builtins.indexOf(d.name) >= 0)
+                continue;
             const text = _texts[d.dir];
             if (text === undefined)
                 continue;
@@ -338,6 +406,14 @@ Singleton {
             const m = a.manifest;
             const problems = a.problems.length > 0 ? a.problems : validate(a.id, m);
             const ok = problems.length === 0;
+            const gate = ok ? Requires.unmet(m.requires, _facts) : {
+                pending: false,
+                messages: []
+            };
+            if (ok)
+                for (const k of Requires.keys(m.requires))
+                    if (_facts[k] === undefined && wanted.indexOf(k) < 0)
+                        wanted.push(k);
             const upstreamManifest = ok && a.compat !== ""
                 ? JSON.parse(a.compat === "dms" ? text.plugin : text.manifest) : null;
             reg[a.id] = {
@@ -357,10 +433,13 @@ Singleton {
                 upstreamManifest: upstreamManifest,
                 unsupported: a.unsupported,
                 overrides: false,
-                valid: ok,
-                errors: problems
+                valid: ok && !gate.pending && gate.messages.length === 0,
+                errors: problems.concat(gate.messages),
+                requires: ok && m.requires ? m.requires : {},
+                unmet: gate.messages,
+                checking: gate.pending
             };
-            for (const p of problems)
+            for (const p of problems.concat(gate.messages))
                 errs.push({
                     id: a.id,
                     message: p
@@ -373,6 +452,64 @@ Singleton {
         }
         registry = reg;
         errors = errs;
+        _wanted = wanted;
+        if (wanted.length > 0)
+            Qt.callLater(_probe);
+    }
+
+    function _probe(): void {
+        if (requirementProbe.running || _wanted.length === 0)
+            return;
+        _asking = _wanted;
+        requirementProbe.command = ["bash", "-c", requirementProbe.script, "probe", Paths.haseenPath + "/VERSION"].concat(_asking);
+        requirementProbe.running = true;
+    }
+
+    // Every asked key gets an answer, so a failed probe refuses the plugins
+    // that asked instead of leaving the registry not ready.
+    function _answer(text: string): void {
+        if (_asking.length === 0)
+            return;
+        const lines = text.split("\n");
+        const facts = Object.assign({}, _facts);
+        for (const k of _asking) {
+            if (k === "version") {
+                const line = lines.find(l => l.startsWith("version:"));
+                facts.version = line ? line.slice(8).trim() : "";
+            } else {
+                facts[k] = lines.indexOf(k) >= 0;
+            }
+        }
+        _asking = [];
+        _facts = facts;
+        _rebuild();
+    }
+
+    // One run answers every key, as plugin_unmet in shell/lib/plugin.sh does:
+    // bin = a command on PATH; tool = a command, an installed package or
+    // provider (pacman -T), or a name no repository knows (unknowable, so
+    // met); layer = its applied state file (layers.sh layer_is_applied);
+    // version = the VERSION text.
+    Process {
+        id: requirementProbe
+
+        readonly property string script: ["v=$1; shift", "for k; do", "    n=${k#*:}", "    case $k in",
+            "    bin:*) if type -P \"$n\" >/dev/null; then echo \"$k\"; fi ;;",
+            "    tool:*) if type -P \"$n\" >/dev/null || pacman -T \"$n\" >/dev/null 2>&1 || ! pacman -Si \"$n\" >/dev/null 2>&1; then echo \"$k\"; fi ;;",
+            "    layer:*) if [[ -r ${HASEEN_SYSROOT:-}${HASEEN_STATE_DIR:-/var/lib/haseen}/layers/$n ]]; then echo \"$k\"; fi ;;",
+            "    version) echo \"version:$(cat -- \"$v\" 2>/dev/null)\" ;;", "    esac", "done"].join("\n")
+
+        stdout: StdioCollector {
+            id: probeOutput
+        }
+        onExited: root._answer(probeOutput.text)
+        onRunningChanged: {
+            if (!running)
+                Qt.callLater(() => {
+                    if (!requirementProbe.running)
+                        root._answer("");
+                });
+        }
     }
 
     onReadyChanged: {
@@ -380,6 +517,40 @@ Singleton {
             return;
         for (const e of errors)
             warnOnce("err:" + e.id + ":" + e.message, "plugin " + e.id + ": " + e.message);
+    }
+
+    onSafeModeChanged: {
+        console.warn("haseen: safe mode", safeMode ? "on: plugins that are not built in are held back" : "off");
+        _rebuild();
+    }
+
+    FileView {
+        id: safeModeFile
+
+        property bool on: false
+        property var info: ({})
+
+        // The parent directory must exist for the watch to see the file
+        // appear; `haseen shell run` creates it.
+        path: Paths.userState + "/safe-mode"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            let parsed = {};
+            try {
+                parsed = JSON.parse(text());
+            } catch (e) {}
+            info = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? {
+                reason: typeof parsed.reason === "string" ? parsed.reason : "",
+                since: typeof parsed.since === "string" ? parsed.since : ""
+            } : {};
+            on = true;
+        }
+        onLoadFailed: {
+            on = false;
+            info = {};
+        }
     }
 
     // A plugin directory that may not exist. FolderListModel falls back to the

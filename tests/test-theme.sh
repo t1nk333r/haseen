@@ -81,10 +81,10 @@ for dir in "$HASEEN_PATH"/themes/*/; do
 done
 
 # --- shell selection stays readable under foreground text -------------------
-# greek-noir-akane's selection_background is a bright orange (2.3:1 under its
+# haseen's selection_background is a bright orange (2.3:1 under its
 # light grey text); the shell token is darkened until the text reads (4.5:1).
 theme_sandbox theme-selection
-haseen theme set greek-noir-akane >/dev/null 2>&1
+haseen theme set haseen >/dev/null 2>&1
 assert_eq "bright selection darkened for the shell" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
 
 # --- shell.json mapping and idempotency (tokyo-night) -----------------------
@@ -309,7 +309,7 @@ assert_contains "popovers a step further" "$gtk" "@define-color popover_bg_color
 assert_contains "text on accent is the background" "$gtk" "@define-color accent_fg_color #1a1b26;"
 assert_contains "warning colour from yellow" "$gtk" "@define-color warning_bg_color #e0af68;"
 assert_contains "GTK 3 selection is the accent" "$gtk" "@define-color theme_selected_bg_color #7aa2f7;"
-capture haseen theme set greek-noir-akane
+capture haseen theme set haseen
 assert_contains "a theme change recolours through the same import" "$(<"$CUR/theme/gtk.css")" "@define-color accent_bg_color #F25623;"
 echo "/* mine */" >"$cfg/gtk-4.0/gtk.css"
 rm "$cfg/gtk-3.0/gtk.css"
@@ -365,11 +365,11 @@ before="$(tree)"
 capture env HASEEN_SYSROOT="$fx" DRY_RUN=true bash -c 'source "$HASEEN_PATH/lib/layers.sh"; layer_run_apply theme'
 assert_status "layer apply dry-run" 0 "$STATUS"
 assert_dry_pure "theme layer" "$OUTPUT"
-assert_contains "layer plans the default theme" "$OUTPUT" "DRYRUN: write $CUR/theme.name: greek-noir-akane"
+assert_contains "layer plans the default theme" "$OUTPUT" "DRYRUN: write $CUR/theme.name: haseen"
 assert_eq "layer apply --dry-run writes nothing" "$before" "$(tree)"
 capture layer_cmd layer_apply
 assert_status "layer apply" 0 "$STATUS"
-assert_eq "default theme set" "greek-noir-akane" "$(cat "$CUR/theme.name" 2>/dev/null)"
+assert_eq "default theme set" "haseen" "$(cat "$CUR/theme.name" 2>/dev/null)"
 haseen theme set gruvbox >/dev/null 2>&1
 capture layer_cmd layer_apply
 assert_contains "re-apply keeps the user's choice" "$OUTPUT" "theme already set: gruvbox"

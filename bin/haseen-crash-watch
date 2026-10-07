@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Watch for crashed programs and offer an AI diagnosis (haseen-crash-watch.service)
+# haseen:summary Watch for crashed programs and offer an AI diagnosis; keep the last good shell.json (haseen-crash-watch.service)
 # haseen:args
 # haseen:hidden
 #
@@ -49,6 +49,23 @@ announce() {
         --action-label "Diagnose" \
         --exec haseen-agent-crash "$pid" "$name" "$exe" "$signal"
 }
+
+# The last good shell.json (plan 061): every few minutes `haseen shell
+# recover snapshot` decides whether the shell has run healthy long enough
+# for its shell.json to be the one recovery goes back to. The sleep is
+# killed with the loop, so nothing outlives this watcher.
+readonly snapshot_seconds=${HASEEN_SNAPSHOT_INTERVAL:-300}
+(
+    trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
+    while true; do
+        sleep "$snapshot_seconds" &
+        sleeper=$!
+        wait "$sleeper"
+        haseen-shell-recover snapshot || true
+    done
+) </dev/null >/dev/null 2>&1 &
+snapshot_loop=$!
+trap 'kill "$snapshot_loop" 2>/dev/null || true' EXIT
 
 # -n 0: a restart of this watcher does not re-announce old crashes.
 journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |

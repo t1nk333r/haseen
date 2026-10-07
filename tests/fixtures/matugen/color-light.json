@@ -1,0 +1,125 @@
+{
+  "mode": "light",
+  "colors": {
+    "blue": {
+      "default": {
+        "color": "#4a5c92"
+      }
+    },
+    "blue_container": {
+      "default": {
+        "color": "#dbe1ff"
+      }
+    },
+    "cyan": {
+      "default": {
+        "color": "#0e6681"
+      }
+    },
+    "cyan_container": {
+      "default": {
+        "color": "#bbe9ff"
+      }
+    },
+    "green": {
+      "default": {
+        "color": "#4d662a"
+      }
+    },
+    "green_container": {
+      "default": {
+        "color": "#ceeda2"
+      }
+    },
+    "magenta": {
+      "default": {
+        "color": "#854b71"
+      }
+    },
+    "magenta_container": {
+      "default": {
+        "color": "#ffd8ec"
+      }
+    },
+    "on_blue": {
+      "default": {
+        "color": "#ffffff"
+      }
+    },
+    "on_blue_container": {
+      "default": {
+        "color": "#00184a"
+      }
+    },
+    "on_cyan": {
+      "default": {
+        "color": "#ffffff"
+      }
+    },
+    "on_cyan_container": {
+      "default": {
+        "color": "#001f29"
+      }
+    },
+    "on_green": {
+      "default": {
+        "color": "#ffffff"
+      }
+    },
+    "on_green_container": {
+      "default": {
+        "color": "#112000"
+      }
+    },
+    "on_magenta": {
+      "default": {
+        "color": "#ffffff"
+      }
+    },
+    "on_magenta_container": {
+      "default": {
+        "color": "#37072a"
+      }
+    },
+    "on_red": {
+      "default": {
+        "color": "#ffffff"
+      }
+    },
+    "on_red_container": {
+      "default": {
+        "color": "#3b0809"
+      }
+    },
+    "on_yellow": {
+      "default": {
+        "color": "#ffffff"
+      }
+    },
+    "on_yellow_container": {
+      "default": {
+        "color": "#271900"
+      }
+    },
+    "red": {
+      "default": {
+        "color": "#904a47"
+      }
+    },
+    "red_container": {
+      "default": {
+        "color": "#ffdad7"
+      }
+    },
+    "yellow": {
+      "default": {
+        "color": "#7b580c"
+      }
+    },
+    "yellow_container": {
+      "default": {
+        "color": "#ffdea8"
+      }
+    }
+  }
+}

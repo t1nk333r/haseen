@@ -1,0 +1,21 @@
+# matugen config for `haseen theme generate` (plan 067). Passed with -c so a
+# user's ~/.config/matugen/config.toml (templates, hooks) never takes part, and
+# matugen always runs with --dry-run: it only prints JSON.
+#
+# Material You has no terminal colours, so the six ANSI hues are custom colours:
+# fixed seeds, blended toward the wallpaper's source colour and given Material
+# tones for the mode. haseen asks for them from a tonal-spot scheme of the
+# source colour, so red stays red under every scheme (expressive rotates hues,
+# monochrome drops them).
+[config]
+
+[config.custom_colors]
+red = { color = "#e53935", blend = true }
+green = { color = "#43a047", blend = true }
+yellow = { color = "#fdd835", blend = true }
+blue = { color = "#1e88e5", blend = true }
+magenta = { color = "#c026d3", blend = true }
+cyan = { color = "#00acc1", blend = true }
+
+# matugen refuses a config without this table.
+[templates]

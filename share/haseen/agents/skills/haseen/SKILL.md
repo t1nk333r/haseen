@@ -156,11 +156,17 @@ haseen doctor                         # machine facts, layer health, shell RSS
 haseen layer status                   # health of applied layers
 haseen shell restart                  # restart the shell (service or qs instance)
 haseen plugin disable <id>            # take a broken plugin out of the bar
+haseen shell recover status           # safe mode, the last failure and its suspect plugin
+haseen shell recover safe-mode on     # built-in plugins only, live; `off` undoes it
 hyprctl configerrors                  # Hyprland errors after an edit
 ```
 
 A Hyprland user file that throws is caught: the error is printed and shown as
 a notification, and the rest of the config still loads.
+
+A shell that keeps failing opens a recovery terminal. It names the suspect
+plugin and offers to disable it, safe mode, the last good `shell.json`
+(`haseen shell recover restore-last`) or a plain restart.
 
 ## Decision framework
 
@@ -179,6 +185,7 @@ a notification, and the rest of the config still loads.
 - "Move the clock to the right" → copy `bar.center`/`bar.right` from `haseen shell ipc shell plugins` or `$HASEEN_PATH/default/shell.json` into `~/.config/haseen/shell.json` and move `haseen.clock` (arrays replace, so write the whole section).
 - "Use 24-hour time with seconds" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.clock": {"settings": {"format": "HH:mm:ss"}}}`.
 - "Hide the battery" → `haseen plugin disable haseen.battery`.
+- "Game mode" / "I'm presenting" / "Let me focus" → `haseen context game|present|focus`; `haseen context normal` puts every switch back as it was. "Game mode by itself for Steam games" → `haseen context auto-game on` (off by default; `set CLASS…` for other games). Do not flip `haseen toggle dnd|idle|…` by hand during a context: leaving it restores the record.
 - "Three-finger swipe up opens the menu" → `haseen gestures apply --set '{"g3Up":"menu"}'` (the gestures panel in the bar does the same; `haseen gestures apply --help` lists every key). Never hand-edit `~/.local/state/haseen/toggles/hypr/gestures.lua`: every apply rewrites it.
 - "Swipes stopped working" → `haseen gestures apply --print` says `Gestures are off` when `plugins."haseen.gestures".settings.enabled` is false (the first switch in the gestures panel; turning it off sends a notification). Turn them back on with `haseen gestures apply --set '{"enabled":true}'`.
 - "Super+E opens the file manager" → `~/.config/hypr/bindings.lua` (see `hyprland.md`).
@@ -186,4 +193,5 @@ a notification, and the rest of the config still loads.
 - "Switch to gruvbox" → `haseen theme set gruvbox`.
 - "Use the shield logo" → `haseen branding mark shield` (or `kufic`, the default, or `gate`): menu, About, screensaver and app icon follow at once; run `haseen plymouth set` for the boot splash. A logo in the bar that opens the menu: `haseen plugin enable haseen.logo` (off by default; it lands at the end of `bar.right`).
 - "Make the accent orange in tokyo-night" → `~/.config/haseen/themes/tokyo-night/colors.toml` with `accent = "#ff9e64"`, then `haseen theme set tokyo-night`.
+- "Make a theme from this wallpaper" → `haseen theme generate <image>` (matugen; `--scheme`, `--mode light`, `--no-apply`; needs `haseen install package matugen`). The panel is `haseen.themegen` (off by default: `haseen plugin enable haseen.themegen`). `haseen theme wallpaper <image>` is the extractor without matugen.
 - "Chat with my local model" → SUPER+A opens the AI panel; `ai.md` for endpoints.

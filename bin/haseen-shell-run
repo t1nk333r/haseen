@@ -26,4 +26,7 @@ have qs || die "quickshell (qs) is not installed: haseen layer apply shell"
 # Omarchy plugins call a few Omarchy commands that would act on Omarchy's own
 # shell or config; the shims there hand them to haseen (architecture 5.4).
 export PATH="$HASEEN_PATH/shell/Compat/bin:$PATH"
+# The shell watches $HASEEN_USER_STATE/safe-mode (plan 061); a watch needs
+# the directory to exist when it starts.
+mkdir -p -- "$HASEEN_USER_STATE"
 exec qs -p "$HASEEN_PATH/shell" "$@"

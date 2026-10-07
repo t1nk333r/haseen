@@ -1,0 +1,5 @@
+  INFO: Launching config: "@HASEEN_PATH@/shell/shell.qml"
+  WARN qml: haseen: plugin haseen.weather: no location yet, retrying in 10 min
+  WARN scene: file://@HASEEN_PATH@/shell/plugins/haseen.clock/Widget.qml:31: TypeError: Cannot read property 'text' of undefined
+  WARN qml: haseen: plugin me.broken-extra.v2: not installed
+haseen-shell.service: Main process exited, code=exited, status=1/FAILURE

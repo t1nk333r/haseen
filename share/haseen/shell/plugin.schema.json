@@ -66,6 +66,33 @@
       "description": "Shell roles this plugin answers. IPC calls for a role (launcher.toggle, lock.lock, notifications.*) go to the loaded plugin that provides it.",
       "uniqueItems": true,
       "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "requires": {
+      "type": "object",
+      "description": "What the plugin needs on this machine. haseen refuses to load it while any requirement is unmet and says which: haseen plugin validate/list, the shell's plugin errors and one notification when an enabled plugin is refused. The shell checks at start and reload and when a plugin directory appears. Compat plugins: DMS `dependencies` map to tools; an Omarchy manifest may carry this object as is (an array there is read as tools).",
+      "additionalProperties": false,
+      "properties": {
+        "bins": {
+          "type": "array",
+          "description": "Commands that must be on PATH.",
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$" }
+        },
+        "tools": {
+          "type": "array",
+          "description": "Commands or package names, as DMS `dependencies` mix them. Met by a command on PATH or an installed package (or one that provides it); a name no configured repository knows, such as another distribution's package, cannot be checked and counts as met.",
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$" }
+        },
+        "layers": {
+          "type": "array",
+          "description": "haseen layers that must be applied (haseen layer list).",
+          "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+        },
+        "haseen": {
+          "type": "string",
+          "description": "Minimum haseen version (share/haseen/VERSION). Only major.minor.patch are compared: 0.1.0-dev satisfies 0.1.0.",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
     }
   },
   "allOf": [

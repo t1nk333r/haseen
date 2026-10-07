@@ -1,0 +1,4 @@
+  INFO: Launching config: "@HASEEN_PATH@/shell/shell.qml"
+  WARN scene: file://@CONFIG@/omarchy/plugins/ticker/Service.qml:40: ReferenceError: feed is not defined
+  WARN qml: haseen: plugin haseen.weather: no location yet, retrying in 10 min
+haseen-shell.service: Main process exited, code=dumped, status=6/ABRT

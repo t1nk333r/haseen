@@ -198,6 +198,23 @@ assert_contains "firmware: update as root" "$OUTPUT" "DRYRUN: sudo fwupdmgr upda
 capture haseen update kernel --dry-run
 assert_status "update: unknown target" 2 "$STATUS"
 
+# A real (not dry) update on a terminal, as the floating terminal runs it:
+# the banner must not stop it (plan 060: it read a file plan 059 removed, so
+# every click on an update button ended at "No such file" before pacman).
+# Root, AUR and Flatpak are stubs that only record their arguments.
+tty_bin="$SANDBOX/update-tty"
+mkdir -p "$tty_bin"
+for c in sudo paru flatpak; do
+    printf '#!/bin/sh\necho "RAN: %s $*"\n' "$c" >"$tty_bin/$c"
+    chmod +x "$tty_bin/$c"
+done
+capture env PATH="$tty_bin:$PATH" script -qec "haseen update" /dev/null
+assert_status "update on a TTY: completes" 0 "$STATUS"
+assert_not_contains "update on a TTY: no missing banner file" "$OUTPUT" "No such file"
+assert_contains "update on a TTY: shows the mark's logo" "$OUTPUT" "$(head -n1 "$HASEEN_PATH/branding/logo-kufic.txt")"
+assert_contains "update on a TTY: reaches pacman" "$OUTPUT" "RAN: sudo pacman -Syu"
+assert_contains "update on a TTY: reaches the AUR" "$OUTPUT" "RAN: paru -Sua"
+
 capture haseen time sync --dry-run
 all+="$OUTPUT"
 assert_contains "time sync: ntp" "$OUTPUT" "DRYRUN: sudo timedatectl set-ntp true"

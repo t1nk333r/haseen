@@ -26,6 +26,11 @@ Singleton {
     // Set by the `gestures` hardware quirk on a machine with a touchpad: the
     // haseen.gestures bar widget shows only then.
     readonly property bool gestures: gesturesFile.on
+    // The runtime context (plan 062): `haseen context` writes its name into
+    // flags/context while one other than normal is active. "" = normal.
+    // Not in `names`: only the CLI switches it, since leaving restores the
+    // switches it recorded.
+    readonly property string context: contextFile.on ? contextFile.value : ""
 
     property bool _dirReady: false
 
@@ -55,12 +60,17 @@ Singleton {
     component FlagFile: FileView {
         required property string name
         property bool on: false
+        // The file's first line, for a flag that names something.
+        property string value: ""
 
         path: root._dirReady ? root.path(name) : ""
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: on = true
+        onLoaded: {
+            value = text().split("\n")[0].trim();
+            on = true;
+        }
         onLoadFailed: on = false
     }
 
@@ -87,5 +97,9 @@ Singleton {
     FlagFile {
         id: gesturesFile
         name: "gestures"
+    }
+    FlagFile {
+        id: contextFile
+        name: "context"
     }
 }

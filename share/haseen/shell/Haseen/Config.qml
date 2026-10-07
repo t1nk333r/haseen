@@ -89,8 +89,9 @@ Singleton {
         return _object(_object(merged.plugins)[id]);
     }
 
+    // Safe mode holds back every plugin that is not built in (Plugins.held).
     function isEnabled(id: string): bool {
-        return pluginEntry(id).enabled !== false;
+        return pluginEntry(id).enabled !== false && !Plugins.held(id);
     }
 
     function isListed(id: string): bool {

@@ -1,0 +1,7 @@
+  INFO: Launching config: "@HASEEN_PATH@/shell/shell.qml"
+  INFO: Shell ID: "5d1c0b6c" Path ID "5d1c0b6c"
+  WARN qml: haseen: plugin haseen.weather: no location yet, retrying in 10 min
+  WARN scene: file://@CONFIG@/haseen/plugins/me.broken/Widget.qml:7:5: TypeError: Cannot read property 'width' of null
+  WARN scene: file://@HASEEN_PATH@/shell/plugins/haseen.clock/Widget.qml:31: QML Text: Binding loop detected for property "width"
+ DEBUG qml: haseen.workspaces: 4 workspaces
+haseen-shell.service: Main process exited, code=dumped, status=11/SEGV

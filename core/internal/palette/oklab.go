@@ -41,10 +41,11 @@ func RGBToOKLab(rgb RGB) OKLab {
 	g := srgbToLinear(rgb.G / 255.0)
 	b := srgbToLinear(rgb.B / 255.0)
 
-	// Linear RGB to LMS (using the M1 matrix from Oklab spec)
+	// Linear RGB to LMS (M1 from the Oklab spec). It must stay the inverse of
+	// the matrix in oklabToLinearRGB, or hues drift on every round trip.
 	l := 0.4122214708*r + 0.5363325363*g + 0.0514459929*b
 	m := 0.2119034982*r + 0.6806995451*g + 0.1073969566*b
-	s := 0.0883024619*r + 0.2164557844*g + 0.6952417517*b
+	s := 0.0883024619*r + 0.2817188376*g + 0.6299787005*b
 
 	// Cube root (perceptual non-linearity)
 	l_ := math.Cbrt(l)
@@ -59,9 +60,9 @@ func RGBToOKLab(rgb RGB) OKLab {
 	}
 }
 
-// OKLabToRGB converts an OKLab color back to RGB (0-255 per channel).
-// Out-of-gamut values are clamped to the sRGB gamut.
-func OKLabToRGB(lab OKLab) RGB {
+// oklabToLinearRGB converts OKLab to linear-light sRGB without clamping, so
+// callers can tell an out-of-gamut colour from one on the gamut edge.
+func oklabToLinearRGB(lab OKLab) (r, g, b float64) {
 	// OKLab to LMS (inverse of M2)
 	l_ := lab.L + 0.3963377774*lab.A + 0.2158037573*lab.B
 	m_ := lab.L - 0.1055613458*lab.A - 0.0638541728*lab.B
@@ -73,9 +74,16 @@ func OKLabToRGB(lab OKLab) RGB {
 	s := s_ * s_ * s_
 
 	// LMS to linear RGB (inverse of M1)
-	r := +4.0767416621*l - 3.3077115913*m + 0.2309699292*s
-	g := -1.2684380046*l + 2.6097574011*m - 0.3413193965*s
-	b := -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+	r = +4.0767416621*l - 3.3077115913*m + 0.2309699292*s
+	g = -1.2684380046*l + 2.6097574011*m - 0.3413193965*s
+	b = -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+	return r, g, b
+}
+
+// OKLabToRGB converts an OKLab color back to RGB (0-255 per channel).
+// Out-of-gamut values are clamped to the sRGB gamut.
+func OKLabToRGB(lab OKLab) RGB {
+	r, g, b := oklabToLinearRGB(lab)
 
 	// Gamut clamp to [0, 1]
 	r = math.Max(0, math.Min(1, r))

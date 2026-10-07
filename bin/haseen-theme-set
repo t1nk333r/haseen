@@ -24,20 +24,21 @@ render share/haseen/themed/*.tpl and ~/.config/haseen/themed/*.tpl into it,
 swap it into ~/.local/state/haseen/current/theme, then reload what is running
 (Hyprland, foot, kitty, ghostty, btop, GTK colour scheme and Adwaita or
 Adwaita-dark, haseen-background) and run the theme-set hook. Names are
-case-insensitive; spaces become dashes.
+case-insensitive; spaces become dashes. A renamed theme's old name sets the
+new one, with a notice (greek-noir-akane is now haseen).
 
 GTK 3 and GTK 4 apps (libadwaita included) take the theme's colours from
 ~/.config/gtk-{3,4}.0/gtk.css: when missing, each is written once with an
 @import of current/theme/gtk.css. GTK apps already running keep their
 colours until restarted.
 
-In a LazyVim config (~/.config/nvim), lua/plugins/theme.lua is linked to
-current/theme/neovim.lua when it is missing or links to an Omarchy or
-haseen theme; a file of your own stays. haseen-theme-hotreload.lua (running
-nvims switch colourscheme) and haseen-all-themes.lua (every stock theme's
-plugin, installed ahead) are linked beside it unless Omarchy's
-omarchy-theme-hotreload.lua / all-themes.lua are still there
-(\`haseen import omarchy\` swaps them).
+In a LazyVim or haseen.nvim config (~/.config/nvim; see \`haseen setup
+nvim\`), lua/plugins/theme.lua is linked to current/theme/neovim.lua when it
+is missing or links to an Omarchy or haseen theme; a file of your own stays.
+haseen-theme-hotreload.lua (running nvims switch colourscheme) and
+haseen-all-themes.lua (every stock theme's plugin, installed ahead) are
+linked beside it unless Omarchy's omarchy-theme-hotreload.lua /
+all-themes.lua are still there (\`haseen import omarchy\` swaps them).
 
 An Omarchy theme whose images are not cached yet starts
 \`haseen theme fetch <name>\` in the background (log:
@@ -60,6 +61,7 @@ if ! theme_normalize_name "$1"; then
     echo "Error: invalid theme name: $1" >&2
     exit 2
 fi
+theme_resolve_alias "$REPLY"
 name="$REPLY"
 require_not_root
 theme_exists "$name" || die "theme '$name' does not exist (see: haseen theme list)"

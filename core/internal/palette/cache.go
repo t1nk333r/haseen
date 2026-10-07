@@ -19,7 +19,9 @@ import (
 // Entries are per user, under $XDG_CACHE_HOME/haseen/palette/<key>.json, and are
 // written atomically: a half-written entry would be read back as a palette.
 
-const cacheVersion = 1
+// cacheVersion changes whenever the generator would give a seed another
+// palette; 2 is the corrected OKLab matrix.
+const cacheVersion = 2
 
 type cacheEntry struct {
 	Version int        `json:"version"`

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Check a plugin against plugin.schema.json (fields, id, kinds, entry files)
+# haseen:summary Check a plugin against plugin.schema.json and its requirements on this machine
 # haseen:args <id|path>...
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/shell/lib/plugin.sh
@@ -11,8 +11,14 @@ Usage: haseen plugin validate <id|path>...
 
 Checks every rule of share/haseen/shell/plugin.schema.json: required fields,
 the id pattern (which must equal the directory name), known kinds, an entry
-.qml file on disk for each kind, settings types and permissions. Prints the
-permissions and warns about 'network'. Exit 1 when any plugin is invalid.
+.qml file on disk for each kind, settings types, permissions and requires.
+Prints the permissions and warns about 'network'.
+
+A valid plugin whose 'requires' is not met here (a command not on PATH, a
+layer not applied, an older haseen) is reported as unmet with the reasons:
+the shell refuses to load it for the same reasons.
+
+Exit 1 when any plugin is invalid or unmet.
 EOF
 }
 parse_common_flags "$@"
@@ -25,8 +31,16 @@ rc=0
 for arg in "${REST[@]}"; do
     dir="$(plugin_resolve "$arg")"
     if problems="$(plugin_check "$dir")"; then
-        echo "ok: $(basename "$dir") ($(plugin_origin "$dir"): $dir)"
+        if unmet="$(plugin_unmet "$dir")"; then
+            echo "ok: $(basename "$dir") ($(plugin_origin "$dir"): $dir)"
+        else
+            echo "unmet: $(basename "$dir") ($(plugin_origin "$dir"): $dir)"
+            printf '%s\n' "$unmet"
+            rc=1
+        fi
         [[ -z $problems ]] || printf '%s\n' "$problems"
+        requires="$(plugin_requires "$dir")"
+        [[ -z $requires ]] || echo "needs: $requires"
         plugin_permissions "$dir"
     else
         echo "invalid: $(basename "$dir") ($dir)"

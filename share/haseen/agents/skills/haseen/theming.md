@@ -10,6 +10,12 @@ haseen theme set tokyo-night      # names are case-insensitive; spaces become da
 haseen theme install https://github.com/<owner>/<repo>   # clone into ~/.config/haseen/themes/<name>, then set it
 ```
 
+The default theme is `haseen`, haseen's own (HANCORE's Greek Noir with an
+animated active border). Its old name `greek-noir-akane` still sets it, with a
+notice. It ships no images: the user's own go in
+`~/.config/haseen/backgrounds/haseen/` (the old `backgrounds/greek-noir-akane/`
+is still read), and `haseen theme bg next` cycles them.
+
 `haseen theme set` renders `$HASEEN_PATH/themed/*.tpl` (and the user's
 `~/.config/haseen/themed/*.tpl`) into `~/.local/state/haseen/current/theme/`,
 swaps it in, reloads Hyprland, terminals, btop and the GTK colour scheme, and
