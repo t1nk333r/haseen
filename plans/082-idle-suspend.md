@@ -38,14 +38,38 @@
 - Spec naming: the gap text's `{dimAfter, lockAfter, screenOffAfter, suspendAfter}` maps to haseen's
   existing names (`screensaverAfter`, `lockAfter`, `dpmsAfter`); haseen has no dim step.
 
+### Review fixes (2026-10-08)
+
+- **Timeouts above 2147483 s suspended at once.** Quickshell 0.3.1's `IdleMonitor::updateNotification`
+  computes `static_cast<quint32>(std::max(0, static_cast<int>(timeout * 1000)))`; a double above INT_MAX
+  cast to int is INT_MIN on x86-64, so the ext-idle-notify timeout became 0 ms and `suspendAfter 3000000`
+  ("practically never") suspended as soon as input stopped, again after every wake. `IdleLogic.seconds`
+  now holds every timeout at `MAX_SECONDS` = 2147483 (about 24.8 days), and `haseen setup idle` `set` and
+  `prompt` refuse a larger value (exit 2 / ask again). `seconds_ok` drops leading zeros and checks the
+  length before any arithmetic, so 2^63 or 2^64 can no longer wrap to a negative number or to 0 (`lock 0`
+  would have silently turned the lock off). `status` shows a hand-edited larger value as the shell uses it.
+- **A failed locked read or transform emptied shell.json.** `save()` piped `shell_user_json | jq` into
+  `shell_config_write`; pipeline members run concurrently, so the writer renamed empty output into place
+  before pipefail reported the failure. `save()` now produces the new file in full first, and
+  `shell_config_write` (`shell/lib/plugin.sh`) refuses anything but exactly one JSON object, which also
+  covers its other pipe callers (`haseen screensaver style`, `haseen branding mark`).
+- **A plug event lit the displays.** A monitor recreated with a new timeout ran its destruction hook, which
+  sends `dpms.on` and dismisses the screensaver, while nobody was at the machine. `IdleLogic.replaced`
+  tells a replacement (same monitor name still wanted) from a removal (idle-off, Stay Awake, set to 0);
+  only a removal undoes the idle state now. Hyprland's `key_press_enables_dpms`/`mouse_move_enables_dpms`
+  wake the displays on return.
+
 ## Evidence
 
-- `tests/test-idle.sh` (63): the manifest defaults; in Qt's JS engine the timeout selection (AC vs battery,
+- `tests/test-idle.sh` (95): the manifest defaults; in Qt's JS engine the timeout selection (AC vs battery,
   partial override merge, battery-only suspend, 0 = off on battery, null/invalid/non-object overrides
-  ignored, only timeout keys overridden, idle-off wins on battery, the user's object not mutated) and the
-  gating (suspend action, none under idle-off, suspend keys always `:1`, no suspend monitor by default, a plug
-  changes only the overridden keys); `haseen setup idle` status, set, `--battery`, unset, prompts through a
-  pipe with retries, `--dry-run` purity, refusals, unrelated settings kept, a broken shell.json left alone.
+  ignored, only timeout keys overridden, idle-off wins on battery, the user's object not mutated, values
+  above 2147483 s held there) and the gating (suspend action, none under idle-off, suspend keys always `:1`,
+  no suspend monitor by default, a plug changes only the overridden keys, a replaced monitor is not undone);
+  `haseen setup idle` status, set, `--battery`, unset, prompts through a pipe with retries, `--dry-run`
+  purity, refusals (including 2147484, 2^63, 2^64), unrelated settings kept, a broken shell.json left alone,
+  a failing transform (stub `jq` exiting 7) leaving shell.json unchanged, and `shell_config_write` refusing
+  empty input from `haseen screensaver style`.
 - `tests/test-ambient.sh` (242) still passes: the old idle table is unchanged with suspend 0.
 
 ## Nested proof
@@ -86,3 +110,6 @@ practical case holds; a shell-side inhibitor would have to sit on a window.
 - **Honouring `respectInhibitors: false` for suspend**: that setting exists for lock-under-video; a suspend
   under a playing video loses work.
 - **New key names (`dimAfter`, `screenOffAfter`)**: a second vocabulary for the same settings.
+- **Refusing values above 2147483 s in the shell (fallback to the default)** instead of holding them there:
+  someone who typed a huge number meant "practically never", and the default lock of 300 s is the opposite.
+- **Skipping the destruction hook's `dpms.on` only**: the screensaver dismiss has the same problem.

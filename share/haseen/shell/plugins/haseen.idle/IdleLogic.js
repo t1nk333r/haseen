@@ -2,9 +2,17 @@
 // QML so tests/test-ambient.sh can run them under node. No QML or Quickshell
 // types here.
 
-// A non-negative whole number of seconds, else the fallback.
+// The longest timeout an IdleMonitor can take. Quickshell 0.3.1 turns
+// seconds into ms with static_cast<int>(timeout * 1000) clamped at 0
+// (src/wayland/idle_notify/monitor.cpp), so anything above INT_MAX ms
+// (2147483 s, about 24.8 days) becomes a 0 ms timeout: idle at once.
+const MAX_SECONDS = 2147483;
+
+// A non-negative whole number of seconds, else the fallback. A larger
+// value means "practically never" and is held at MAX_SECONDS rather than
+// let through to wrap into an immediate timeout.
 function seconds(v, fallback) {
-    return (typeof v === "number" && isFinite(v) && v >= 0) ? Math.round(v) : fallback;
+    return (typeof v === "number" && isFinite(v) && v >= 0) ? Math.min(Math.round(v), MAX_SECONDS) : fallback;
 }
 
 // The timeout settings an onBattery override may replace (plan 082).
@@ -89,5 +97,16 @@ function parseMonitor(key) {
     return { name: p[0], timeout: Number(p[1]) || 1, respectInhibitors: p[2] !== "0" };
 }
 
+// A monitor going away while idle undoes its idle state (dpms.on,
+// screensaver.dismiss) only when it is removed (idle-off, Stay Awake, set
+// to 0). When another key of the same name replaces it (a plug event or a
+// settings change gave it a new timeout), the person is still away: lighting
+// the displays or dropping the screensaver then would be the opposite of
+// what they configured. keys: the monitors now wanted (monitors()).
+function replaced(key, keys) {
+    const name = parseMonitor(key).name;
+    return (keys || []).some(k => k !== key && parseMonitor(k).name === name);
+}
+
 if (typeof module !== "undefined")
-    module.exports = { seconds: seconds, effective: effective, timeouts: timeouts, actions: actions, monitors: monitors, parseMonitor: parseMonitor };
+    module.exports = { MAX_SECONDS: MAX_SECONDS, seconds: seconds, effective: effective, timeouts: timeouts, actions: actions, monitors: monitors, parseMonitor: parseMonitor, replaced: replaced };

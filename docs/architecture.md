@@ -294,7 +294,10 @@ Idle (`haseen.idle`, plans 019, 082) runs one ext-idle-notify monitor per
 non-zero timeout: `screensaverAfter`, `lockAfter`, `dpmsAfter` and
 `suspendAfter` (0 = never, the default), which runs `haseen system suspend`.
 `onBattery` holds any of those four and wins while UPower's `onBattery` is
-true; a plug event recreates only the monitors whose timeout changed. The
+true; a plug event recreates only the monitors whose timeout changed, and a
+monitor replaced while idle keeps its idle state (displays stay off). Every
+timeout is held at 2147483 s: Quickshell's IdleMonitor turns a longer one
+into 0 ms. The
 `idle-off` flag (Stay Awake, the game and present contexts) removes every
 monitor, and the suspend monitor always honours Wayland idle inhibitors.
 Hyprland counts only inhibitors on windows, not on layer-shell surfaces.

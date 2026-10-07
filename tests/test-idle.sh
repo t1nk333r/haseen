@@ -53,6 +53,13 @@ Item {
         out("m-idle-off", Idle.monitors(Idle.timeouts(ac, { idleOff: true, onBattery: true }, true), true));
         out("m-plug", [Idle.monitors(Idle.timeouts(ac, { onBattery: false }, true), true), Idle.monitors(Idle.timeouts(ac, { onBattery: true }, true), true)]);
         out("m-parse", Idle.parseMonitor("suspend:300:1"));
+        // Quickshell's IdleMonitor turns a timeout above 2147483 s into 0 ms
+        // (idle at once), so larger values are held at the maximum.
+        out("max", [t({ suspendAfter: 2147483 }, {}), t({ suspendAfter: 2147484 }, {}), t({ lockAfter: 3000000, onBattery: { dpmsAfter: 1e21 } }, { onBattery: true })]);
+        out("m-max", Idle.monitors(Idle.timeouts({ suspendAfter: 1e21 }, {}, true), true));
+        // A plug event replacing an idle dpms monitor is not a removal.
+        const plug = [Idle.monitors(Idle.timeouts(ac, { onBattery: false }, true), true), Idle.monitors(Idle.timeouts(ac, { onBattery: true }, true), true)];
+        out("replaced", [Idle.replaced("dpms:330:1", plug[1]), Idle.replaced("screensaver:150:1", plug[1]), Idle.replaced("dpms:330:1", []), Idle.replaced("dpms:330:1", ["dpms:330:1"])]);
         // Manual screen off/on (plan 084) against haseen.idle. The model:
         // Hyprland's DPMS state, written by haseen screen off|on, by the
         // service's dispatches and by input (key_press_enables_dpms and
@@ -124,6 +131,12 @@ EOF
     assert_eq "unplugging changes only the overridden monitors' keys" \
         '[["screensaver:150:1","lock:300:1","dpms:330:1","suspend:900:1"],["lock:120:1","dpms:150:1","suspend:300:1"]]' "$(r m-plug)"
     assert_eq "suspend keys parse back" '{"name":"suspend","timeout":300,"respectInhibitors":true}' "$(r m-parse)"
+    assert_eq "timeouts above 2147483 s are held there, not passed on to wrap to 0 ms" \
+        '["150,300,330,2147483","150,300,330,2147483","150,2147483,2147483,0"]' "$(r max)"
+    assert_eq "a huge suspendAfter never makes an immediate monitor" \
+        '["screensaver:150:1","lock:300:1","dpms:330:1","suspend:2147483:1"]' "$(r m-max)"
+    assert_eq "a monitor replaced by a new timeout is not undone; one removed (screensaver dropped, idle-off) is" \
+        '[true,false,false,false]' "$(r replaced)"
     # Manual screen off/on against the service (plan 084, the model above).
     assert_eq "manual off, then input: the input wakes the displays; the service sends nothing" \
         '{"screen":true,"dpmsOff":false,"sent":[]}' "$(r s-off-input)"
@@ -183,7 +196,7 @@ assert_eq "other settings are kept" "bottom false 0" \
 # AC: keep screensaver, lock 200, retry a bad dpms answer, suspend 0.
 capture env HASEEN_INLINE=1 bash -c 'printf "\n200\nsoon\n400\n0\n" | haseen setup idle prompt'
 assert_status "prompt (AC)" 0 "$STATUS"
-assert_contains "prompt asks again after a bad answer" "$OUTPUT" "a whole number of seconds, please"
+assert_contains "prompt asks again after a bad answer" "$OUTPUT" "a whole number of seconds up to 2147483, please"
 assert_eq "prompt (AC) saves the answers, Enter keeps" "null 200 400 0" \
     "$(jq -r '.plugins["haseen.idle"].settings | "\(.screensaverAfter) \(.lockAfter) \(.dpmsAfter) \(.suspendAfter)"' "$CFG")"
 # Battery: screensaver 30, lock "-" (follow AC; it was unset), keep dpms,
@@ -204,6 +217,43 @@ for bad in "set suspend" "set suspend soon" "set nap 60" "set suspend -5" "unset
     assert_status "refuses: setup idle $bad" 2 "$STATUS"
 done
 assert_eq "refusals leave the file" "$before" "$(cat "$CFG")"
+
+# Timeouts beyond what IdleMonitor takes (2147483 s; more wraps to an
+# immediate timeout) and digit strings that would wrap Bash's integers are
+# refused, never stored.
+for bad in 2147484 3000000 9223372036854775808 18446744073709551616 99999999999999999999999; do
+    capture haseen setup idle set suspend "$bad"
+    assert_status "refuses: set suspend $bad" 2 "$STATUS"
+    capture haseen setup idle set --battery lock "$bad"
+    assert_status "refuses: set --battery lock $bad" 2 "$STATUS"
+done
+assert_eq "out-of-range refusals leave the file" "$before" "$(cat "$CFG")"
+capture env HASEEN_INLINE=1 bash -c 'printf "\n3000000\n\n\n\n" | haseen setup idle prompt'
+assert_contains "prompt refuses a timeout above the maximum" "$OUTPUT" "up to 2147483, please"
+assert_eq "prompt with only a refused answer leaves the file" "$before" "$(cat "$CFG")"
+capture haseen setup idle set suspend 0002147483
+assert_status "set accepts the maximum (leading zeros dropped)" 0 "$STATUS"
+assert_eq "the maximum is stored as a number" "2147483" "$(jq -r '.plugins["haseen.idle"].settings.suspendAfter' "$CFG")"
+jq '.plugins["haseen.idle"].settings.lockAfter = 3000000' "$CFG" >"$CFG.tmp" && mv "$CFG.tmp" "$CFG"
+capture haseen setup idle
+assert_contains "status shows a hand-edited huge value as the shell uses it" "$OUTPUT" "lock         2147483s"
+
+# A failed locked read or transform writes nothing (plan 082 review): the
+# new file is produced in full before shell_config_write replaces the old.
+before="$(cat "$CFG")"
+real_jq="$(command -v jq)"
+stub jq 'case "$*" in *"as \$s"*) echo "injected transform failure" >&2; exit 7;; esac; exec '"$real_jq"' "$@"'
+capture haseen setup idle set suspend 60
+assert_status "set reports the failed transform" 7 "$STATUS"
+assert_eq "a failed transform leaves shell.json as it was" "$before" "$(cat "$CFG")"
+# The shared writer refuses anything but one JSON object, for every caller
+# that pipes into it (here haseen screensaver style).
+stub jq 'case "$*" in *".style = \$s"*) exit 5;; esac; exec '"$real_jq"' "$@"'
+capture haseen screensaver style native
+assert_status "screensaver style reports the failed transform" 1 "$STATUS"
+assert_contains "the writer says why it wrote nothing" "$OUTPUT" "not one JSON object"
+assert_eq "shell_config_write keeps the file on empty input" "$before" "$(cat "$CFG")"
+rm -f "$SANDBOX/stubs/jq"
 
 # A broken user shell.json is never overwritten.
 echo '{ broken' >"$CFG"

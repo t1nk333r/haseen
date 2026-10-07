@@ -49,8 +49,10 @@ Scope {
     // DPMS bookkeeping: true only from the moment the dpms monitor turned the
     // displays off until it turned them back on. Input after idle sends
     // dpms.on only when this is set, so displays someone else turned off
-    // are left alone; a monitor removed while idle (Stay Awake, a timeout
-    // change, a plug event) turns them on through its destruction hook.
+    // are left alone; a monitor removed while idle (Stay Awake, idle-off)
+    // turns them on through its destruction hook. One replaced by a new
+    // timeout (a plug event, a settings change) leaves them off: nobody
+    // came back, and Hyprland wakes the displays on input itself.
     property bool _dpmsOff: false
     readonly property string binDir: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin"
     // Suspends requested this session, for the debug hook.
@@ -117,9 +119,10 @@ Scope {
             respectInhibitors: spec.respectInhibitors
             onIsIdleChanged: root._run(spec.name, isIdle)
             // Removed while idle (Stay Awake turned on during the
-            // screensaver): undo what its idle state did.
+            // screensaver): undo what its idle state did. Replaced by the
+            // same monitor with a new timeout: keep it (Logic.replaced).
             Component.onDestruction: {
-                if (isIdle)
+                if (isIdle && !Logic.replaced(modelData, Logic.monitors(root.timeouts, root.respectInhibitors)))
                     root._run(spec.name, false);
             }
         }
