@@ -91,3 +91,16 @@ skips it.
 - The virtual keyboard's bar pill has zero width under DMS too: it reads
   `parent.widgetThickness` from a Loader. This is an upstream bug.
 - cava and dgop are not installed on io, so conky's visualiser stays empty.
+
+## Addendum: the lock test that kept failing on CI
+
+Since #13, `test-lock.sh` "a reader that fails at once is given up on" failed on
+most CI runs and passed locally. A throwaway CI run with a timeline
+(`ci/lock-diag`) showed the cause: the fourth fingerprint conversation started
+but never sent a message or ended, so it never reached the fifth quick failure.
+On a real lock the same hang would leave fingerprint dead until the next lock.
+Fix: a fingerprint attempt that stays silent past `fingerprintStallMs` (default
+5 s; pam_fprintd prompts at once when it holds the reader) is aborted and
+counted as a failure that came at once. A context that stays active after the
+abort counts again on each retry, so the give-up rule still applies. The test
+gains a `pam_exec` stack that hangs; it fails without the watchdog.
