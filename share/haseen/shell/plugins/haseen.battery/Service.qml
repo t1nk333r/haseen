@@ -108,7 +108,9 @@ Scope {
         _stopCountdown();
     }
 
-    onReadingChanged: evaluate()
+    // Deferred: UPower sends percentage and time-to-empty in one
+    // PropertiesChanged, and the message should read both new values.
+    onReadingChanged: Qt.callLater(evaluate)
     onCfgChanged: evaluate()
     Component.onCompleted: evaluate()
 

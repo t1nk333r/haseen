@@ -8,7 +8,7 @@
 - **Depends on**: 010 060
 - **Category**: shell, power
 - **Planned at**: 2026-10-07, gap 1 of `docs/reference-shell-gaps.md`; the owner approved the warnings on by default
-- **State**: DONE 2026-10-07 (`tests/test-battery.sh`; nested proof not run, see below)
+- **State**: DONE 2026-10-07 (`tests/test-battery.sh`; nested proof on a fake UPower)
 
 ## Change
 
@@ -52,12 +52,29 @@
   Cancel notification and then `systemctl suspend` from the stub after 60 s.
 - Read-only probe against the fake: Quickshell's `healthPercentage` is 0-100 and `percentage` is 0-1.
 
+## Nested proof
+
+The worktree shell ran in a nest (`tools/nest-launch.sh`) with a scratch HOME/XDG and a fake UPower. The
+fake `tools/fake-upower.py` was on a private system bus. idle, lock, polkit, screensaver, nightlight and
+prayers were off. `criticalAction` was `suspend`, and `systemctl`, `systemd-run` and `uwsm-app` were
+logging stubs on the shell's PATH.
+
+- 20 %: the low notification went out (`~/.cache/haseen-wt/scratch-battery/shots/notify-low.png`).
+- 10 %: the critical card in the shell's pager: "10% left, about 40 min. Suspending in 60 s: plug in or
+  press Cancel." (`~/.cache/haseen-wt/scratch-battery/shots/notify-critical.png`). The IPC state showed `armed: true`, 58 s
+  remaining.
+- `pager act exec` pressed the notification's Cancel action. The state then showed `armed: false`,
+  `lastAction: ""`, and the systemctl stub logged nothing.
+- The nest showed the first warning as "about 3 h": the reading was evaluated before
+  `TimeToEmpty` from the same PropertiesChanged arrived. Evaluation is now deferred with
+  `Qt.callLater`. That fix was not re-shot in the nest.
+
 ## Not verified
 
-- No nested screenshot of the notification. On luna, `tools/nest-launch.sh` exits at
-  `before=$(wayland_sockets)`: under `pipefail`, the last glob entry (`wayland-1.lock`) makes the loop
-  status 1. Not fixed here.
-- No real laptop: luna is a desktop. Hardware suspend was not exercised.
+- The pager card shows the Cancel action behind its action affordance. The nest pressed it through
+  the pager's IPC (`act`), not with a pointer click.
+- No real laptop: luna is a desktop. Hardware suspend was not exercised (the 60 s path ran against a
+  systemctl stub only).
 
 ## Rejected
 

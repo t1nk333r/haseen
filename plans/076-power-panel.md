@@ -8,7 +8,7 @@
 - **Depends on**: 060 075
 - **Category**: shell, power
 - **Planned at**: 2026-10-07, gap 4 of `docs/reference-shell-gaps.md`
-- **State**: DONE 2026-10-07 (`tests/test-battery.sh` model units; nested screenshot not taken, see below)
+- **State**: DONE 2026-10-07 (`tests/test-battery.sh` model units; nested screenshots)
 
 ## Change
 
@@ -35,10 +35,27 @@
 - `tests/test-battery.sh` model units (duration, time line, labels, rate, energy, health, glyphs,
   profiles, status parse, limit choices and args).
 
+## Nested proof
+
+Same nest and fake UPower as plan 075. A scratch sysroot with charge thresholds 75-80 % and 120 cycles was
+set through `HASEEN_SYSROOT`.
+
+- `~/.cache/haseen-wt/scratch-battery/shots/panel.png`: the panel, opened with `panel toggle haseen.battery`. It shows 25 %, "3 h left", "On battery",
+  8.4 W, 25 / 50 Wh, health 88 %, 120 cycles, profiles with Balanced active, the limit with 80 % active,
+  and System settings.
+- `~/.cache/haseen-wt/scratch-battery/shots/panel-performance.png`: a virtual-pointer click (`tools/vptr`) on Performance. It ran
+  `haseen powerprofile set` through powerprofilesctl against the fake. Performance became active from
+  the PowerProfiles signal, and `powerprofile/battery` in the scratch state holds `performance`.
+- A click on 60 % logged `systemd-run --user --scope … -- bin/haseen-battery-limit set 60` in the stub
+  (Apps.launch), and the panel closed.
+
 ## Not verified
 
-- No nested screenshot. `tools/nest-launch.sh` fails on luna (plan 075). The panel was not rendered.
-- The charge limit and profile clicks were not exercised in a shell.
+- A virtual-pointer click on the bar battery did not show the panel in the nest. The first IPC toggle had
+  opened it while the nest's window output was still enabled (a "dangling screen object" warning), so
+  the click probably closed that one. The click path was not shown working.
+- The real `haseen battery limit` sudo terminal and a real power-profiles-daemon were not run.
+- The "System settings" row was not clicked.
 
 ## Rejected
 
