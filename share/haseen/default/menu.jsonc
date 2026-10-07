@@ -139,12 +139,17 @@
 
   // Setup
   "setup.monitors": {"icon":"󰍹","label":"Monitors","action":"haseen config edit \"$HOME/.config/hypr/monitors.lua\""},
+  "setup.display": {"icon":"󰃟","label":"Display","aliases":["brightness","backlight","display-panel"],"description":"brightness sliders, night light","when":"jq -e '.plugins[\"haseen.display\"].enabled == true' \"${XDG_CONFIG_HOME:-$HOME/.config}/haseen/shell.json\"","action":"haseen shell ipc panel toggle haseen.display"},
   "setup.keybindings": {"icon":"","label":"Keybindings","action":"haseen config edit \"$HOME/.config/hypr/bindings.lua\""},
   "setup.input": {"icon":"","label":"Input","description":"local.lua: input and anything else","action":"haseen config edit \"$HOME/.config/hypr/local.lua\""},
   "setup.keyd": {"icon":"󰌌","label":"CapsLock Hyper (keyd)","aliases":["keyd","hyper","capslock"]},
   "setup.keyd.status": {"icon":"󰌌","label":"Status","action":"haseen config terminal -- haseen setup keyd status"},
   "setup.keyd.on": {"icon":"󰄬","label":"Turn On","checked":"systemctl -q is-enabled keyd.service","action":"haseen setup keyd on"},
   "setup.keyd.off": {"icon":"󰅖","label":"Turn Off","action":"haseen setup keyd off"},
+  "setup.ddc": {"icon":"󰍹","label":"Monitor Brightness (DDC/CI)","aliases":["ddc","ddcutil"]},
+  "setup.ddc.status": {"icon":"󰍹","label":"Status","action":"haseen config terminal -- haseen setup ddc status"},
+  "setup.ddc.on": {"icon":"󰄬","label":"Turn On","checked":"haseen-cmd-present ddcutil","action":"haseen setup ddc on"},
+  "setup.ddc.off": {"icon":"󰅖","label":"Turn Off","action":"haseen setup ddc off"},
   "setup.network": {"icon":"󰛳","label":"Network","aliases":["network"]},
   "setup.network.dns": {"icon":"󰇖","label":"DNS","aliases":["dns"]},
   "setup.network.dns.dhcp": {"icon":"󰩟","label":"DHCP","checked":"[[ \"$(haseen setup dns)\" == dhcp ]]","action":"haseen setup dns dhcp"},

@@ -22,6 +22,7 @@ file changes in the same commit.
 | 7 | Arch / CachyOS / NixOS | installer (CachyOS, Arch) + `flake.nix` (NixOS) |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
 | 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
+| 10 | Brightness (plan 077) | `haseen brightness`: backlights and `*::kbd_backlight` via brightnessctl (logind), DDC/CI monitors via ddcutil (bus map cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`); `haseen setup ddc on` (opt-in) installs ddcutil and loads i2c-dev; the `haseen.display` panel (off) slides each device |
 
 ## 2. Filesystem
 

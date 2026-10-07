@@ -29,6 +29,7 @@
       acceleration = "vulkan";
     };
     gaming.enable = true;
+    ddc.enable = true;
   };
 
   users.users.demo = {
@@ -36,6 +37,7 @@
     extraGroups = [
       "wheel"
       "networkmanager"
+      "i2c"
     ];
     initialPassword = "demo";
   };

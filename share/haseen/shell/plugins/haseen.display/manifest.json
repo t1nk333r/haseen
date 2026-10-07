@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.display",
+  "name": "Display",
+  "version": "1.0.0",
+  "description": "Brightness sliders for the laptop backlight, the keyboard backlight and external monitors over DDC/CI (haseen brightness), and the night light when haseen.nightlight runs",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.display (state, slide) from the open panel"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

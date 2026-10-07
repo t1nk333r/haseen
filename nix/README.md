@@ -7,14 +7,15 @@ you get the same desktop from this flake:
 |---|---|
 | `packages.<system>.haseen` | `bin/` + `share/haseen`; every `haseen*` command is wrapped with `HASEEN_PATH=$out/share/haseen` and jq, curl, coreutils, quickshell, … on `PATH` |
 | `overlays.default` | adds `pkgs.haseen` |
-| `nixosModules.haseen` | system side: `haseen.enable`, `.secureboot`, `.ai`, `.gaming` |
+| `nixosModules.haseen` | system side: `haseen.enable`, `.secureboot`, `.ai`, `.gaming`, `.ddc` |
 | `homeManagerModules.haseen` | user side: the shell service, the theme, `~/.config/hypr/hyprland.lua` |
 | `nixosConfigurations.example` | CI host with every option on (`nix/example.nix`) |
 
 The installer layers map to options as follows. `base` + `desktop` →
 `haseen.enable`; `theme` → `haseen.theme` (home-manager); `shell` →
 `haseen.shell.enable` (home-manager); `secureboot`, `ai` and `gaming`
-→ the options of the same name. `dms` has no option: nixpkgs ships its own
+→ the options of the same name; the optional `haseen setup ddc` step →
+`haseen.ddc.enable`. `dms` has no option: nixpkgs ships its own
 `programs.dms-shell` module.
 
 ## Flake inputs
@@ -68,6 +69,7 @@ which means `nixos-unstable` as of 2026-10. The lanzaboote module is imported by
     # secureboot.enable = true;  # after the steps below
     # ai = { enable = true; acceleration = "vulkan"; };  # null | "cuda" | "rocm" | "vulkan"
     # gaming.enable = true;      # Steam (unfree), gamemode, gamescope
+    # ddc.enable = true;         # monitor brightness over DDC/CI (ddcutil, i2c group)
   };
 
   users.users.you = {

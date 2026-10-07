@@ -26,7 +26,8 @@
   "branding": { "mark": "kufic" },
   "plugins": {
     "haseen.weather": { "enabled": false, "settings": { "location": "" } },
-    "haseen.themegen": { "enabled": false }
+    "haseen.themegen": { "enabled": false },
+    "haseen.display": { "enabled": false }
   },
   "services": [
     "haseen.pager",

@@ -5,8 +5,9 @@
 -- both actions fire.
 --
 -- Shell actions go through `haseen shell ipc`, which talks to whichever shell
--- is active (haseen or DMS). Volume and brightness call wpctl/brightnessctl
--- directly; the shell's OSD watches PipeWire and the backlight itself.
+-- is active (haseen or DMS). Volume calls wpctl directly and brightness goes
+-- through `haseen brightness` (the backlight, or DDC monitors on a machine
+-- without one); the shell's OSD watches PipeWire and the backlight itself.
 
 local b = haseen.bind
 local ipc = haseen.ipc
@@ -108,8 +109,10 @@ b("XF86AudioRaiseVolume", "Volume up", "wpctl set-volume -l 1 @DEFAULT_AUDIO_SIN
 b("XF86AudioLowerVolume", "Volume down", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-", held)
 b("XF86AudioMute", "Mute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle", once)
 b("XF86AudioMicMute", "Mute microphone", "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle", once)
-b("XF86MonBrightnessUp", "Brightness up", "brightnessctl -e4 -n2 set 5%+", held)
-b("XF86MonBrightnessDown", "Brightness down", "brightnessctl -e4 -n2 set 5%-", held)
+b("XF86MonBrightnessUp", "Brightness up", "haseen brightness up", held)
+b("XF86MonBrightnessDown", "Brightness down", "haseen brightness down", held)
+b("XF86KbdBrightnessUp", "Keyboard backlight up", "haseen brightness up kbd", held)
+b("XF86KbdBrightnessDown", "Keyboard backlight down", "haseen brightness down kbd", held)
 b("XF86AudioPlay", "Play/pause", "playerctl play-pause", once)
 b("XF86AudioPause", "Play/pause", "playerctl play-pause", once)
 b("XF86AudioNext", "Next track", "playerctl next", once)

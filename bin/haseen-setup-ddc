@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# haseen:summary Monitor brightness over DDC/CI: install ddcutil and load i2c-dev (off by default)
+# haseen:args [on|off|status] [--dry-run] [--yes]
+#
+# Plan 077. `haseen brightness` drives external monitors through ddcutil when
+# it is installed and /dev/i2c-* exists. Arch's ddcutil package ships what the
+# rest needs: /usr/lib/modules-load.d/ddcutil.conf (i2c-dev at boot) and
+# /usr/lib/udev/rules.d/60-ddcutil-i2c.rules (TAG+="uaccess" on the i2c
+# devices of display adapters, so the seat user needs no i2c group). This
+# step installs it and loads the module now.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+DDC_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/haseen/ddc-displays.tsv"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup ddc [on|off|status] [--dry-run] [--yes]
+
+  on      install ddcutil (it loads i2c-dev at every boot and gives the
+          logged-in user the monitors' i2c devices), load i2c-dev now and
+          look for monitors. Then 'haseen brightness list' shows them.
+  off     remove ddcutil ('haseen remove package ddcutil'). i2c-dev stays
+          loaded until the next boot.
+  status  installed, i2c-dev loaded and the monitors found (default).
+
+Off by default. Laptop panels and keyboard backlights need none of this.
+EOF
+}
+
+module_loaded() { [[ -d $(sysroot_path /sys/module/i2c_dev) ]]; }
+
+status() {
+    local installed=no loaded=no monitors=-
+    pkg_installed ddcutil && installed=yes
+    module_loaded && loaded=yes
+    if [[ $installed == yes && $loaded == yes ]] && have ddcutil; then
+        monitors="$(haseen-brightness list --kind ddc | cut -f1,6 | sed 's/\t/  /' || true)"
+        [[ -n $monitors ]] || monitors="none answer over DDC/CI"
+    fi
+    printf 'installed: %s\ni2c-dev:   %s\nmonitors:  %s\n' "$installed" "$loaded" "${monitors//$'\n'/$'\n'           }"
+}
+
+on() {
+    local fresh=false
+    if pkg_installed ddcutil && module_loaded; then
+        info "DDC is already on"
+        return 0
+    fi
+    confirm "Install ddcutil and load i2c-dev, so haseen brightness reaches external monitors?" || exit 1
+    pkg_installed ddcutil || fresh=true
+    pkg_install ddcutil
+    if ! module_loaded; then
+        run_root modprobe i2c-dev
+    elif $fresh; then
+        # The devices predate the package's udev rule: replay their add
+        # events so the uaccess tag reaches them now.
+        run_root udevadm trigger --action=add --subsystem-match=i2c-dev
+    fi
+    if ! $DRY_RUN; then
+        info "monitors over DDC/CI:"
+        haseen-brightness list --kind ddc --rescan || true
+    fi
+    info "DDC on: haseen brightness list"
+}
+
+off() {
+    if ! pkg_installed ddcutil; then
+        info "DDC is already off"
+        return 0
+    fi
+    confirm "Remove ddcutil (monitors stop following haseen brightness)?" || exit 1
+    local remove=(package ddcutil --yes)
+    $DRY_RUN && remove+=(--dry-run)
+    haseen-remove "${remove[@]}"
+    run rm -f -- "$DDC_CACHE"
+    info "DDC off (i2c-dev stays loaded until the next boot)"
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-status}"
+case "$verb" in
+status) status ;;
+on | off)
+    in_floating_terminal "$@"
+    require_not_root
+    "$verb"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
