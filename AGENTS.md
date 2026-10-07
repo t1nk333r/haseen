@@ -44,6 +44,9 @@ between parts. The engineering record is `plans/`, indexed by
     - also: calculator, indicators, calendar, emoji, ai, agents and the pickers;
     - the desktop itself, never optional: launcher, menu, notifications,
       session, background.
+  - Installed with the shell layer (owner, 2026-10-07, plan 073): the Helium
+    browser (`helium-browser-bin`) and its Cairn extension, downloaded from
+    Cairn's releases (AGPL-3.0, never vendored).
   - A new built-in plugin is off until the owner adds it to this list.
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with

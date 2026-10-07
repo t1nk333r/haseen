@@ -6,3 +6,6 @@ upower                  # battery widget (D-Bus)
 ttf-nerd-fonts-symbols  # bar glyphs
 cliphist               # haseen.clipboard history store
 imagemagick            # transparent bar: samples the wallpaper for the text colour
+# The browser the shell installs, with Cairn (owner, 2026-10-07, plan 073).
+# Not in the official repos: Chaotic-AUR ships it prebuilt.
+aur:helium-browser-bin
