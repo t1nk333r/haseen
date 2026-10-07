@@ -1,6 +1,6 @@
 # Handoff — haseen
 
-Orientation for whoever picks this up next, human or agent. Updated 2026-10-04.
+Orientation for whoever picks this up next, human or agent. Updated 2026-10-07.
 
 ## What this repo is
 
@@ -70,19 +70,74 @@ tooling) was dropped by the owner and is out of scope.
 - 0003: own shell, DMS swap-in, plugin compat
 - 0004: installer now, PKGBUILDs later
 
+## State and queue (2026-10-07)
+
+- `main` = 96193cf: plans up to 074 are merged (PRs #13–#34).
+- Queued: the 8 gaps from `docs/reference-shell-gaps.md`, approved by the
+  owner ("tackle all 8"). They land as one unit: one branch, luna/gaps, built
+  gap after gap, one PR. Plan numbers are fixed:
+
+  | Gap | Plan | Default |
+  |---|---|---|
+  | 1 low-battery warnings | 075 | ON (owner-approved; record in AGENTS.md) |
+  | 4 power/battery panel | 076 | panel kind on `haseen.battery` |
+  | 2 `haseen brightness` + `haseen.display` panel | 077 | panel OFF; `haseen setup ddc` OFF |
+  | 3 media panel | 078 | panel kind on `haseen.media` |
+  | 5 OSD mic/layout/lock keys | 079 | lock keys OFF |
+  | 6 `haseen.kblayout` widget | 080 | OFF |
+  | 7 launcher providers: windows, emoji, commands, web | 081 | each OFF |
+  | 8 idle suspend + AC/battery timeouts | 082 | `suspendAfter` 0 (never) |
+
+  The next free plan number after them is 083.
+
 ## Gates
 
-All three passed at the last integration (2026-10-04):
+Run before every PR, all from the repo root:
 
 ```sh
-SHELLCHECK=/tmp/tools/shellcheck tools/lint.sh   # lint OK
-tests/run.sh                                     # 2890/2890
-tools/check-docs.sh                              # OK
+SHELLCHECK=$(command -v shellcheck) GO=<go ≥ 1.26> tools/lint.sh
+QT_QPA_PLATFORM=offscreen tests/run.sh   # ≈ 6100 checks, 8–11 min: run it in tmux
+tools/check-docs.sh
+tools/secrets.sh                          # before every push
 ```
 
-shellcheck is not installed on the author's laptop; the static release binary
-is used. nix is used through nix-portable (`/tmp/tools/np`; see plan 009 for
-setup).
+`core/go.mod` needs Go ≥ 1.26; pass a mise-installed Go as `GO=` when the
+system one is older. nix is used through nix-portable (plan 009). Tests are
+behavioural only and run only through `tests/run.sh`; since plan 074
+`tests/lib.sh` `sandbox()` cuts every test off the live session.
+
+Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
+`plans/README.md`: keep every row, in number order. A PR that is BEHIND gets
+`gh pr update-branch N`; one that is CLEAN but stuck is merged by hand.
+
+## Developer tools (`tools/`)
+
+- `tools/nest-launch.sh DIR [MODE]`: the only way to run UI proofs next to a
+  live session. It starts a nested Hyprland on workspace 5, silently, through
+  the owner's exec rule, and needs the owner session's
+  `HYPRLAND_INSTANCE_SIGNATURE`. Wrap it in `flock ~/.cache/haseen-wt/nest.lock`.
+  Screenshot with `WAYLAND_DISPLAY=$(cat DIR/socket) grim -o IO shot.png`.
+  Stop with `kill -- -$(cat DIR/pid)`, then remove
+  `$XDG_RUNTIME_DIR/hypr/$(cat DIR/sig)` and any `at-spi-bus-launcher` whose
+  `DBUS_SESSION_BUS_ADDRESS` is a `/tmp/dbus-*` path (nest orphans take over
+  the session's at-spi bus).
+- `tools/vptr/`: a virtual pointer for drag and hover tests (`build.sh` builds
+  it). Point it only at a nest, never at the live session.
+- `tools/sync-apply.sh REPO STAGE_TAR EXPECT_TSV DELETE_TSV`: moves a checkout
+  that carries uncommitted WIP onto a new `main`. Per file changed between the
+  last synced main and the new one: main's version where the checkout still
+  has the old one, a 3-way `git merge-file` where it was edited, and a write
+  only if the file still has the expected blob. Snapshot the WIP first with a
+  temporary `GIT_INDEX_FILE` commit to `refs/sync/<host>-before-rN`.
+
+## Installing a checkout with WIP on a machine
+
+Build tree = checkout files (`git ls-files -co --exclude-standard`, so WIP is
+included) plus `git diff <last-installed-main> origin/main` for code paths
+(not docs, plans, nix, NOTICE, AGENTS, handoff, README) applied with
+`patch -p1`. Then `./install.sh --tree-only --yes` with Go on `PATH`,
+`systemctl --user daemon-reload`, `hyprctl reload`, `haseen migrate`, and
+re-apply the theme.
 
 ## Release gates (open)
 
@@ -145,3 +200,13 @@ setup).
   tint the owner's session.
 - Never remove or rewrite the owner's Omarchy/DMS plugin dirs (AGENTS.md).
   A backup of luna's set is at `~/Backups/luna/omarchy-plugins-20261004/`.
+- Work in worktrees under `~/.cache/haseen-wt/<dir>` created from
+  origin/main, never in a checkout that holds WIP, and always with absolute
+  paths: relative paths in agent edits corrupted a checkout twice. Never
+  `git reset/stash/checkout --/restore/clean` in a shared worktree.
+- No `qs ipc`, panel opens, shell restarts or `hyprctl dispatch/eval` against
+  the owner's live shell. A menu opened live grabbed the keyboard while the
+  owner typed and launched an app. UI proofs go in a nest (`tools/nest-launch.sh`).
+- A shell restart used to kill apps it had launched (they sat in
+  `haseen-shell.service`'s cgroup; plan 074 fixed it for new launches). Apps
+  started by an older shell still die on restart: close them first.
