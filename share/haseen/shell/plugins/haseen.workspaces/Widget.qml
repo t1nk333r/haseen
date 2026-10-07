@@ -25,6 +25,8 @@ Item {
     property var settings: ({})
     property var screen: null
     property bool vertical: false
+    // No hover tint from the bar slot (BarSection); the owner wants none here.
+    readonly property bool barHoverHighlight: false
 
     readonly property var monitor: screen ? Hyprland.monitorFor(screen) : null
     readonly property bool allMonitors: settings.allMonitors === true
@@ -67,7 +69,8 @@ Item {
 
     Component.onCompleted: Hyprland.refreshMonitors()
 
-    // One workspace or scratchpad cell: label, hover tint, click.
+    // One workspace or scratchpad cell: label and click. No hover tint, here
+    // or from the bar slot (barHoverHighlight): the owner wants none.
     component Cell: Item {
         id: cell
 
@@ -78,14 +81,6 @@ Item {
 
         width: root.vertical ? root.width : root.cellSize
         height: root.vertical ? root.cellSize : Math.max(1, root.height)
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 3
-            radius: Theme.radius
-            color: Theme.surfaceAlt
-            visible: cellMouse.containsMouse
-        }
 
         Text {
             anchors.centerIn: parent
@@ -99,7 +94,6 @@ Item {
         MouseArea {
             id: cellMouse
             anchors.fill: parent
-            hoverEnabled: true
             onClicked: cell.activated()
         }
     }

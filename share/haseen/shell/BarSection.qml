@@ -13,7 +13,8 @@ import qs.Haseen
 // `property bool vertical` gets it set and sizes its own height; any other
 // widget gets a square cell, clipped, so it stays inside the bar.
 //
-// Every shown widget gets a hover highlight from its slot. widgetPressed(slot)
+// Every shown widget gets a hover highlight from its slot unless it sets
+// `barHoverHighlight: false` (haseen.workspaces). widgetPressed(slot)
 // reports every press on a widget, for the panel host: a toggle that follows
 // it opens the panel under that widget (shell.qml).
 //
@@ -173,7 +174,9 @@ Grid {
                     z: -1
                     radius: Theme.radius
                     color: Theme.surfaceAlt
-                    visible: hover.hovered
+                    // A widget that sets `barHoverHighlight: false` opts out
+                    // (haseen.workspaces: the owner wants no tint there).
+                    visible: hover.hovered && !(slot.item && slot.item.barHoverHighlight === false)
                 }
 
                 // Above the widget, so it sees the press first; a PointHandler
