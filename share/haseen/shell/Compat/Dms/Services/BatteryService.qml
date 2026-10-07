@@ -11,9 +11,10 @@ import qs.Common
 // function names, the multi-battery aggregation, the 20 % / 10 % low and
 // critical thresholds and the Material icon names follow DankMaterialShell's
 // quickshell/Services/BatteryService.qml (MIT, Copyright (c) 2025 Avenge
-// Media LLC). Not provided: DMS's battery alerts and sounds (haseen's own
-// battery widget and notifications cover those), the FreeBSD fallback, and
-// anything that changes power state.
+// Media LLC). Not provided here: DMS's battery alerts (the haseen.battery
+// service sends the low and critical notifications, plan 075), its sounds
+// (haseen has none), the FreeBSD fallback, and anything that changes power
+// state.
 Singleton {
     id: root
 

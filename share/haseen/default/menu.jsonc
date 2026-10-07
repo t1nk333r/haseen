@@ -211,6 +211,7 @@
   "setup.dotfiles": {"icon":"","label":"Dotfiles","aliases":["dotfiles","yadm"]},
   "setup.dotfiles.status": {"icon":"","label":"Status","action":"haseen config terminal -- haseen setup dotfiles status"},
   "setup.dotfiles.clone": {"icon":"","label":"Clone Repository","description":"yadm: backs up the files it replaces","action":"haseen config terminal -- bash -c 'haseen setup dotfiles status; read -rp \"Dotfiles git URL: \" u && [[ -n $u ]] && haseen setup dotfiles \"$u\"'"},
+  "setup.power": {"icon":"󰁹","label":"Power and Battery","aliases":["battery","power-profile"],"description":"charge, time left, power profile, charge limit","when":"haseen battery status | grep -q .","action":"haseen shell ipc panel toggle haseen.battery"},
   "setup.battery-limit": {"icon":"󰁹","label":"Battery Charge Limit","aliases":["battery-limit","charge-limit"],"when":"compgen -G '/sys/class/power_supply/*/charge_control_end_threshold'"},
   "setup.battery-limit.status": {"icon":"󰁹","label":"Status","action":"haseen config terminal -- haseen setup battery-limit status"},
   "setup.battery-limit.80": {"icon":"󰁹","label":"Limit to 80%","action":"haseen battery limit set 80"},

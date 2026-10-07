@@ -40,7 +40,8 @@ between parts. The engineering record is `plans/`, indexed by
     - bar: logo (owner, 2026-10-07, plan 070), workspaces, clock, tray, audio, network, battery, bluetooth,
       privacy, idle, pager, media, prayers, sysusage, weather, gestures;
     - services: lock, idle, osd, polkit, screensaver, nightlight, clipboard,
-      keybinds;
+      keybinds, battery (low-battery warnings; owner, 2026-10-07, plan 075;
+      `criticalAction` stays `none`);
     - also: calculator, indicators, calendar, emoji, ai, agents and the pickers;
     - the desktop itself, never optional: launcher, menu, notifications,
       session, background.
