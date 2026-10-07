@@ -20,7 +20,7 @@ destroys them with it (unchanged), and now lists their prefixes under the empty 
 
 | Prefix | Plugin | Rows | Enter |
 |---|---|---|---|
-| `@` | `haseen.windows` | `Hyprland.toplevels`: title over class and workspace, the class's desktop-entry icon | `hyprctl dispatch` focus (Process, `execDetached`) |
+| `@` | `haseen.windows` | `Hyprland.toplevels`: title over class and workspace, the class's desktop-entry icon (else the class as an icon-theme name, or a generic icon) | `hyprctl dispatch` focus (Process, `execDetached`) |
 | `:` | `haseen.emojisearch` | `haseen.emoji/emojis.json` and its `EmojiSearch.js` match | `wl-copy -- EMOJI` (never typed, plan 018) |
 | `/` | `haseen.commands` | the action leaves of `default/menu.jsonc` + `~/.config/haseen/menu.jsonc` merged by `MenuModel.js`; submenu path as subtitle | the action in bash with `bin/` first through `Apps.launch`, as the menu runs it; a bare `haseen shell ipc panel toggle ID` goes to this shell over `qs ipc --pid` |
 | `?` | `haseen.websearch` | one row for the query, the template's host as subtitle | `xdg-open URL` through `Apps.launch` |
@@ -31,36 +31,46 @@ destroys them with it (unchanged), and now lists their prefixes under the empty 
   `hl.dsp.focus({window = hl.get_window("address:…")})` in a Lua config (haseen's, as `haseen.pager`
   does), `focuswindow address:…` in a hyprlang one. An address that is not `0x` + hex runs nothing, so a
   title can never reach the Lua string. `Hyprland.refreshToplevels()` once per open fills class and focus order.
+  The class is client input (Wayland `app_id`, X11 `WM_CLASS`): without a desktop entry it is used only as an
+  icon-theme name when it is plain letters, digits, `.`, `_`, `-` (`Windows.themeIcon`); anything else, such
+  as `http://host/x.png` or `/path/x.svg`, gets `application-x-executable`. Before the review fix, the
+  launcher loaded such a class as an image URL or file (`Panel.qml` `iconSource` passes `://` and `/` through).
 - **Emoji** (`haseen.emojisearch/Emoji.js:10`): `EmojiSearch.filterEmojis`'s substring match, ordered
   keywords-start-with-the-word (the emoji's name), then whole word, then word prefix, then substring, each
   in the data's order; 50 rows. The list is read from `haseen.emoji`'s directory in the registry (a user
   copy wins), whether or not that panel is enabled.
 - **Commands** (`haseen.commands/Commands.js:13`): a leaf is listed only when every `when` on it and on its
-  submenus has answered true and its `disabled` guard (if any) answered false. Answers come from
-  `MenuModel.memory.guards` (a `.pragma library`, so the menu and the provider share it for the shell's
-  life) and from one guard batch (`MenuModel.guardScript`) the provider runs the first time `/` is typed in
-  an open launcher (`Provider.qml:50`); new answers merge over the cached ones (`mergeGuards`, `:83`). An
-  unknown guard hides the row: a guarded command never runs on a guess. Ranking is the menu's own search
-  (`matchesQuery`, `searchScore`); empty query keeps menu order.
+  submenus has answered true and its `disabled` guard (if any) answered false, **in this open of the
+  launcher**: the provider runs one guard batch (`MenuModel.guardScript`) the first time `/` is typed
+  (`Provider.qml:51`) and lists guarded rows only from its answers, which it also merges into
+  `MenuModel.memory.guards` for the menu. An unknown guard hides the row: a guarded command never runs on a
+  guess, nor on an answer cached by an earlier open (review fix; the provider first started from the cache).
+  Ranking is the menu's own search (`matchesQuery`, `searchScore`); empty query keeps menu order.
 - **Web search** (`haseen.websearch/WebSearch.js:11`): setting `url`, default
-  `https://duckduckgo.com/?q=%s`. Only `http://`/`https://` templates with a host, no whitespace and a
-  `%s` are accepted; anything else shows a warning row and opens nothing. Every `%s` becomes
-  `encodeURIComponent(query)` (`:24`), so the query cannot change the host or add parameters. The shell
+  `https://duckduckgo.com/?q=%s`. Only `http://`/`https://` templates whose authority is a fixed host name,
+  IPv4 or bracketed IPv6 address with an optional port, with no whitespace or backslash and a `%s` after
+  the authority, are accepted (review fix: `https://search.%s/` let the query pick the host); anything else
+  shows a warning row and opens nothing. Every `%s` becomes
+  `encodeURIComponent(query)` (`:34`), so the query cannot change the host or add parameters. The shell
   makes no request; `xdg-open` hands the URL to the default browser in its own scope (plan 074).
 
 ## Evidence
 
-- `tests/test-launcher-providers.sh` (49 checks): each plugin validates, is off by default, `haseen plugin
-  enable` turns it on in the user `shell.json` without a bar or service entry, `disable` turns it off; 54
+- `tests/test-launcher-providers.sh` (52 checks): each plugin validates, is off by default, `haseen plugin
+  enable` turns it on in the user `shell.json` without a bar or service entry, `disable` turns it off; 59
   model units in the Qt JS engine (window ranking, bad addresses, both focus syntaxes; emoji tiers on a
   fixture and the real list; command leaves under unknown/true/false `when`, a guarded submenu, `disabled`,
   hidden parents, breadcrumbs, ✓, ranking, both run paths, guard merge, and no `when` row of the real
-  default menu listed without answers; URL encoding, every refused template kind); and the launcher with
+  default menu listed without answers; URL encoding, every refused template kind, including `%s`, userinfo,
+  escapes and a backslash in the authority; a window class that is a URL or path becoming the generic icon);
+  and the launcher with
   all four enabled in the real Quickshell engine against recording stubs: the prefixes listed, `?a b&c` →
   `systemd-run … --unit=app-haseen-haseen_websearch-… -- xdg-open https://duckduckgo.com/?q=a%20b%26c`,
   a window row → `hyprctl dispatch focuswindow address:0xab12`, `/fixture` lists only the unguarded rows
   until the batch answers, then the `when: true` row and never the `when: false` one, runs go through
-  `systemd-run … bash -c … eval`, a panel row → `qs ipc --pid … call panel toggle`, `:red heart` → `wl-copy -- ❤️`.
+  `systemd-run … bash -c … eval`, a panel row → `qs ipc --pid … call panel toggle`, `:red heart` → `wl-copy -- ❤️`,
+  a hostile window class resolving only through `image://icon/`, and a second open listing no guarded row
+  before its own batch answers.
 - `tests/test-apps.sh`, `tests/test-calculator.sh`, `tests/test-menu.sh`, `tests/test-menu-view.sh` and the
   other suites reading `default/shell.json` or the launcher pass unchanged.
 
@@ -95,3 +105,10 @@ destroys them with it (unchanged), and now lists their prefixes under the empty 
   keystroke; the brief forbids it.
 - **A `:` provider inside `haseen.emoji`**: enabling the emoji panel would then also take the `:` prefix;
   each provider is its own plugin.
+- **Showing guarded rows from the menu's cache until the batch answers** (and correcting the "never on a
+  guess" claim instead): the cache lives for the shell's lifetime, so a row whose guard has since turned
+  false (a package removed, a recording stopped) could run.
+- **Fetching a window class that is a URL, behind the media panel's `remoteArt` opt-in**: the class is set
+  by any client, not by the user; a generic icon costs nothing.
+- **Repairing a template with `%s` in the host** (moving it to a query parameter): a refused template is
+  shown as a warning row, the same as the other refused kinds.

@@ -95,6 +95,10 @@ Window {
             eq("windows: an address that is not hex runs nothing", [], W.focusArgv('0x1")}) os.execute("x', true));
             eq("windows: Quickshell's bare address gets its 0x", ["0x55d0", "0x55d0", ""], [W.normalAddress("55d0"), W.normalAddress("0x55d0"), W.normalAddress("")]);
             eq("windows: subtitle is class and workspace", "foot  ·  workspace 1", W.subtitle(wins[1]));
+            eq("windows: a plain class is an icon-theme name", ["foot", "org.gnome.nautilus", "firefox-esr"], ["foot", "org.gnome.Nautilus", "firefox-esr"].map(W.themeIcon));
+            eq("windows: a class that is a URL or a path never becomes an icon source",
+               ["application-x-executable", "application-x-executable", "application-x-executable", "application-x-executable", "application-x-executable"],
+               ["http://127.0.0.1:8765/window-class.png", "file:///etc/passwd", "/tmp/x/y.svg", "../x", "a b"].map(W.themeIcon));
 
             // Emoji: haseen.emoji's match, whole words first.
             const fx = [
@@ -173,6 +177,14 @@ Window {
                 S.validTemplate("https:///?q=%s"), S.validTemplate("https://exa mple.com/%s"), S.validTemplate("https://duckduckgo.com/"),
                 S.validTemplate("https://%s.example.com/")]);
             eq("web: a refused template opens nothing", "", S.url("file:///tmp/%s", "x"));
+            eq("web: %s in the authority, userinfo, escapes or a backslash are refused (the query never picks the host)",
+               [false, false, false, false, false, false, false, false],
+               [S.validTemplate("https://search.%s/?q=fixed"), S.validTemplate("https://search.example%s/?q=%s"), S.validTemplate("https://example.com:%s/"),
+                S.validTemplate("https://%s@example.com/?q=%s"), S.validTemplate("https://user@example.com/?q=%s"), S.validTemplate("https://exa%6dple.com/?q=%s"),
+                S.validTemplate("https://example.com\\@evil.example/?q=%s"), S.validTemplate("https://example.com%s")]);
+            eq("web: a hostname-slot template opens nothing", "", S.url("https://search.%s/?q=fixed", "attacker.example"));
+            eq("web: IPv4, IPv6 and a port are fixed hosts", [true, true, true],
+               [S.validTemplate("http://127.0.0.1:8888/search?q=%s"), S.validTemplate("http://[::1]:8888/?q=%s"), S.validTemplate("https://example.com./#q=%s")]);
             eq("web: the host is shown", ["duckduckgo.com", "www.google.com"], [S.host(ddg), S.host("https://www.google.com/search?q=%s")]);
             eq("web: xdg-open opens the URL", ["xdg-open", "https://duckduckgo.com/?q=x"], S.openArgv("https://duckduckgo.com/?q=x"));
             eq("web: nothing to open, nothing runs", [], S.openArgv(""));
@@ -191,7 +203,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         _fail "js: ${line#*UNIT-FAIL }"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "provider model unit count" "54" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "provider model unit count" "59" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -283,6 +295,19 @@ ShellRoot {
                     { address: "0xab12", title: "Fixture window", wmClass: "fakeapp", workspace: "3", focus: 0 }
                 ], "fix");
                 probe.put("windowRow", [rows[0].title, rows[0].subtitle]);
+                // The launcher's own resolution: only image://icon/ (or
+                // nothing, when the sandbox theme lacks the icon), never the
+                // client's URL or path.
+                const iconRows = probe.provider("haseen.windows").rowsFor([
+                    { address: "0xab12", title: "Fixture window", wmClass: "fakeapp", workspace: "3", focus: 0 },
+                    { address: "0xab13", title: "Hostile window", wmClass: "http://127.0.0.1:8765/window-class.png", workspace: "3", focus: 1 },
+                    { address: "0xab14", title: "Path window", wmClass: "/etc/haseen-probe.svg", workspace: "3", focus: 2 }
+                ], "");
+                probe.put("windowIcons", iconRows.map(row => row.title + "=" + row.icon).sort());
+                probe.put("windowSources", iconRows.every(row => {
+                    const s = probe.launcher.iconSource(row.icon);
+                    return s === "" || s.startsWith("image://icon/");
+                }));
                 rows[0].exec();
                 probe.step = 1;
             } else if (probe.step === 1 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
@@ -299,7 +324,16 @@ ShellRoot {
                 probe.launcher.query = ":red heart";
                 probe.put("emoji", probe.titles().slice(0, 2));
                 probe.launcher.results[0].run();
+                // A second open: the shell-wide cache now holds this
+                // open's answers, but a new open must not run a guarded row
+                // on them before its own batch answers.
+                probe.launcher.destroy();
+                probe.launcher = launcherComponent.createObject(null, { settings: Plugins.settingsFor("haseen.launcher") });
                 probe.step = 3;
+            } else if (probe.step === 3 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
+                probe.launcher.query = "/fixture";
+                probe.put("commandsReopen", probe.titles());
+                probe.step = 4;
                 quit.start();
             }
         }
@@ -333,9 +367,14 @@ QML
     assert_eq "windows: without Hyprland the list says so" '["No open windows"]' "$(r .windowsEmpty)"
     assert_eq "windows: a row is the title over class and workspace" '["Fixture window","fakeapp  ·  workspace 3"]' "$(r .windowRow)"
     assert_contains "windows: Enter focuses it through hyprctl" "$ARGV" "hyprctl|dispatch|focuswindow|address:0xab12"
+    assert_eq "windows: a client-set class that is a URL or a path becomes the generic icon" \
+        '["Fixture window=fakeapp","Hostile window=application-x-executable","Path window=application-x-executable"]' "$(r .windowIcons)"
+    assert_eq "windows: the launcher resolves every window icon through the icon theme only" "true" "$(r .windowSources)"
     assert_eq "commands: before the guards answer, guarded rows are left out" '["Fixture Go","Fixture Panel"]' "$(r .commandsBefore)"
     assert_eq "commands: after the batch, a guard that answered true shows, false never" \
         '["Fixture Go","Fixture Guarded","Fixture Panel"]' "$(r .commandsAfter)"
+    assert_eq "commands: a new open never shows a guarded row on the cached answers of an earlier one" \
+        '["Fixture Go","Fixture Panel"]' "$(r .commandsReopen)"
     assert_eq "commands: the breadcrumb is the subtitle" '"Fixture"' "$(r .commandsSubtitle)"
     assert_contains "commands: Enter runs the action in bash through Apps.launch" "$ARGV" \
         "|--|bash|-c|PATH=\"\$1:\$PATH\"; eval \"\$2\"|bash|$REPO/bin|fakeapp command \"two words\""

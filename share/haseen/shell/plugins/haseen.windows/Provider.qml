@@ -38,11 +38,13 @@ Scope {
         return out;
     }
 
+    // A desktop entry's icon is installed data; the class itself is client
+    // input and only ever becomes an icon-theme name (Windows.themeIcon).
     function icon(wmClass: string): string {
         if (wmClass === "")
             return "";
         const entry = DesktopEntries.heuristicLookup(wmClass);
-        return entry && entry.icon ? entry.icon : wmClass.toLowerCase();
+        return entry && entry.icon ? entry.icon : Windows.themeIcon(wmClass);
     }
 
     function focus(address: string): void {

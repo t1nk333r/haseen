@@ -68,6 +68,21 @@ function subtitle(w) {
     return parts.join("  ·  ");
 }
 
+// The generic icon for a window whose class names no icon.
+const GENERIC_ICON = "application-x-executable";
+
+// The icon-theme name to try for a window class with no desktop entry. The
+// class is whatever the client set (Wayland app_id, X11 WM_CLASS): the
+// launcher loads anything with "://" or a leading "/" as is, so a class like
+// "http://host/x.png" or "/tmp/x/y.svg" would make the shell fetch a URL or
+// read a file a client chose. Only a plain icon name (letters, digits, . _ -)
+// is passed on, and only to the icon theme; anything else gets the generic
+// icon.
+function themeIcon(wmClass) {
+    const name = String(wmClass || "").toLowerCase();
+    return /^[a-z0-9][a-z0-9._-]*$/.test(name) ? name : GENERIC_ICON;
+}
+
 // hyprctl dispatch focuswindow, in the dispatcher syntax of the running
 // Hyprland: a Lua config (haseen's) takes hl.dsp.focus, as haseen.pager
 // does; a hyprlang config takes `focuswindow address:…`. [] for a bad

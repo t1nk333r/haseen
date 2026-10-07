@@ -11,10 +11,11 @@ import "../haseen.menu/MenuModel.js" as Model
 // action as the menu would, through Apps.launch.
 //
 // `when` and `disabled` guards: a guarded row shows only once its guard has
-// answered. Answers come from the menu's cache (MenuModel.memory.guards, kept
-// for the shell's lifetime) and from one guard batch this provider runs the
-// first time `/` is typed in an open launcher; until then guarded rows are
-// left out, never run on a guess.
+// answered in this open of the launcher. The provider runs one guard batch
+// the first time `/` is typed and uses only those answers; until they land,
+// guarded rows are left out, never run on a guess or on an answer the menu
+// cached earlier (a package removed, the battery gone). The answers are
+// merged into MenuModel.memory.guards for the menu as before.
 Scope {
     id: root
 
@@ -27,7 +28,7 @@ Scope {
     readonly property string binDir: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin"
     property string defaultText: ""
     property string userText: ""
-    property var guards: Model.memory.guards
+    property var guards: null
     property bool asked: false
     readonly property var tree: {
         const defaults = Model.parseMenuJsonc(defaultText) || [];
@@ -95,9 +96,9 @@ Scope {
 
         stdout: StdioCollector {
             onStreamFinished: {
-                const merged = Commands.mergeGuards(Model.memory.guards, Model.parseGuardOutput(text));
-                Model.memory.guards = merged;
-                root.guards = merged;
+                const fresh = Commands.mergeGuards(null, Model.parseGuardOutput(text));
+                Model.memory.guards = Commands.mergeGuards(Model.memory.guards, fresh);
+                root.guards = fresh;
             }
         }
     }

@@ -5,12 +5,22 @@
 
 var DEFAULT_TEMPLATE = "https://duckduckgo.com/?q=%s";
 
-// Only http(s) URLs with a host and a %s slot. A file:, javascript: or
-// custom-scheme template would let a setting open anything through
-// xdg-open, so it is refused rather than repaired.
+// Only http(s) URLs with a fixed host and a %s slot after it. A file:,
+// javascript: or custom-scheme template would let a setting open anything
+// through xdg-open, so it is refused rather than repaired. The authority
+// (everything up to the first / ? #) must be a plain host name, IPv4 or
+// bracketed IPv6 address with an optional port: no %s (the query would pick
+// the destination: "https://search.%s/"), no userinfo, no percent escapes,
+// no backslash (browsers read "\" as "/", which moves the authority).
 function validTemplate(template) {
     const t = String(template || "").trim();
-    return /^https?:\/\/[^\s\/?#%]+/i.test(t) && !/\s/.test(t) && t.indexOf("%s") >= 0;
+    if (/[\s\\]/.test(t))
+        return false;
+    const m = /^https?:\/\/([^\/?#]*)([\/?#].*)$/i.exec(t);
+    if (!m)
+        return false;
+    const authority = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.?(?::[0-9]{1,5})?$|^\[[0-9a-f:.]+\](?::[0-9]{1,5})?$/i;
+    return authority.test(m[1]) && m[2].indexOf("%s") >= 0;
 }
 
 // The template's host, shown under the query ("duckduckgo.com").
