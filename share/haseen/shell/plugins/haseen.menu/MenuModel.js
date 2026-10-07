@@ -1,11 +1,13 @@
 // Menu model for haseen.menu: JSONC parsing, the default+overlay merge,
-// routing, visibility, search and the batched guard script. Pure functions,
-// no QML, so tests/test-menu.sh runs the same code under node/bun.
+// routing, visibility, search, the batched guard script and the view's rows.
+// Pure functions (syncRows takes any ListModel-shaped object), so
+// tests/test-menu.sh runs the same code under node/bun and the Qt JS engine.
 //
 // Adapted from Omarchy shell/plugins/menu/MenuModel.js (MIT, Copyright (c)
 // David Heinemeier Hansson). Changes: haseen guard helpers and readers,
 // `hidden` for overlays, `when` hides a row until its guard answers true,
-// the catalog row builder, no app/dmenu/summon paths.
+// the catalog row builder, disabled rows, in-place row sync and the memory
+// kept across opens, no dmenu/summon paths.
 .pragma library
 
 // Full-line `//` comments and trailing commas. A `//` inside a string value
@@ -386,22 +388,39 @@ function matchesQuery(entry, query) {
     return true;
 }
 
+function descriptionTextMatches(query, text) {
+    var terms = String(query || "").toLowerCase().trim().split(/\s+/);
+    for (var i = 0; i < terms.length; i++) {
+        if (terms[i] && !termInSearchWords(terms[i], text))
+            return false;
+    }
+    return true;
+}
+
 function searchScore(items, entry, query) {
     var needle = String(query || "").toLowerCase().trim();
     var label = entry.label.toLowerCase();
     var score = 80;
     if (label === needle)
         score = entry.parent === "root" ? 2 : 0;
+    // An installed app whose name holds the query as a whole word ("zen" for
+    // Zen Browser) beats exact-labelled menu rows like Install › Zen.
+    else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0)
+        score = 0;
     else if (label.indexOf(needle) === 0)
         score = 10;
     else if (label.indexOf(needle) >= 0)
         score = 30;
     else if (nameSearchText(entry).indexOf(needle) >= 0)
         score = 40;
-    else
+    else if (descriptionTextMatches(needle, String(entry.description || "").toLowerCase()))
         score = 60;
     if (entry.kind === "menu" || entry.kind === "link")
         score -= 2;
+    // Apps sort after the menu rows and lose ties to them; outrank those
+    // within the tier so a better match still wins.
+    if (entry.kind === "app")
+        score -= 5;
     return score * 1000 + depthFor(items, entry.id) * 25 + entry.order;
 }
 
@@ -414,6 +433,96 @@ function childCount(items, itemOrder, id) {
     }
     return count;
 }
+
+// One row of the view's ListModel. Every role always has the same type, as a
+// ListModel requires.
+function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, section) {
+    var target = entry.kind === "link" ? entry.target : entry.id;
+    return {
+        itemId: entry.id,
+        kind: entry.kind,
+        icon: entry.icon || "",
+        appIcon: entry.appIcon || "",
+        appId: entry.appId || "",
+        label: labelFor(entry, checkedResults, disabledResults),
+        target: target || "",
+        detail: detail || "",
+        path: pathFor(items, entry.id),
+        action: entry.action || "",
+        childCount: (entry.kind === "menu" || entry.kind === "link") ? childCount(items, itemOrder, target) : 0,
+        disabled: isDisabled(disabledResults, entry),
+        section: section || ""
+    };
+}
+
+function rowIndex(rows, itemId) {
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].itemId === itemId)
+            return i;
+    }
+    return -1;
+}
+
+// Where the cursor goes when the rows change under it: onto the row it was
+// on (keepId) wherever that row now is, else the same position, clamped.
+function selectionAfter(rows, keepId, index) {
+    var at = keepId ? rowIndex(rows, keepId) : -1;
+    return at >= 0 ? at : Math.max(0, Math.min(index, rows.length - 1));
+}
+
+var ROLES = ["itemId", "kind", "icon", "appIcon", "appId", "label", "target", "detail", "path", "action", "childCount", "disabled", "section"];
+
+// Brings a ListModel to `rows` in place, keyed by itemId: a row that is still
+// wanted keeps its model entry (and so its delegate), moved into place if
+// rows before it came or went; a changed one is updated role by role; new
+// rows are inserted and rows no longer wanted removed. Replacing the whole
+// model (a new JS array, or Omarchy's clear and refill) rebuilt every
+// delegate on each guard or provider answer. Returns the number of model
+// operations, 0 when nothing changed.
+function syncRows(model, rows) {
+    var ops = 0;
+    var ids = [];
+    for (var n = 0; n < model.count; n++)
+        ids.push(model.get(n).itemId);
+    for (var i = 0; i < rows.length; i++) {
+        var want = rows[i];
+        var at = ids.indexOf(want.itemId, i);
+        if (at < 0) {
+            model.insert(i, want);
+            ids.splice(i, 0, want.itemId);
+            ops += 1;
+            continue;
+        }
+        if (at > i) {
+            model.move(at, i, 1);
+            ids.splice(i, 0, ids.splice(at, 1)[0]);
+            ops += 1;
+        }
+        var have = model.get(i);
+        for (var k = 0; k < ROLES.length; k++) {
+            if (have[ROLES[k]] !== want[ROLES[k]]) {
+                model.setProperty(i, ROLES[k], want[ROLES[k]]);
+                ops += 1;
+            }
+        }
+    }
+    if (model.count > rows.length) {
+        model.remove(rows.length, model.count - rows.length);
+        ops += 1;
+    }
+    return ops;
+}
+
+// What the menu learnt in this shell's lifetime, kept across opens: the panel
+// is destroyed on close, but a `.pragma library` script lives as long as the
+// engine. A reopened menu starts from the last guard answers and provider
+// rows instead of an empty set the batch (about a second on io) fills in.
+var memory = {
+    defaultText: null,
+    userText: null,
+    guards: null,
+    providerRows: {}
+};
 
 // Commands whose answer several `checked:` rows compare against. The batch
 // runs each once and substitutes the captured value, so Defaults > Browser

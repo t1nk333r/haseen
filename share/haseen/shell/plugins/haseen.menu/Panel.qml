@@ -3,24 +3,41 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import qs.Haseen
-import qs.Haseen.Widgets
 import "MenuModel.js" as Model
+import "MenuStyle.js" as Style
 
-// haseen.menu: the command menu. A JSONC tree (default/menu.jsonc merged key
-// by key with ~/.config/haseen/menu.jsonc), with providers that fill a
-// submenu when it is entered and bash guards (`when`, `checked`, `disabled`)
-// answered by one asynchronous batch per open. Type to search the current
-// submenu and everything under it; arrows move, Enter or Right opens, Left
-// or Backspace on an empty query goes back, Escape closes (panel host).
+// haseen.menu: the command menu, a port of Omarchy's menu in look and
+// behaviour on haseen's data. A JSONC tree (default/menu.jsonc merged key by
+// key with ~/.config/haseen/menu.jsonc), with providers that fill a submenu
+// when it is entered and bash guards (`when`, `checked`, `disabled`)
+// answered by one asynchronous batch per open.
+//
+// Omarchy's menu: a card centred over a dimmed screen (placement "overlay",
+// PanelPopup), no fade. The header reads "Go…" or the submenu's title until
+// you type; typing filters the current submenu and everything under it, with
+// a divider before the rows of deeper submenus and each row's path under
+// it. Up/Down (PageUp/PageDown by six) move, Enter or Right opens or runs,
+// Left or Backspace on an empty query goes back, Backspace, Ctrl+Backspace
+// and Ctrl+U edit the query, Escape clears it and then closes. The first
+// search or submenu step freezes the card's top edge and height; a longer
+// list scrolls with the next row peeking past the fold.
+//
+// Asynchronous answers (guards, providers, desktop entries, a menu file
+// edited while open) update the rows in place (MenuModel.syncRows), keep the
+// selected row by identity and never move the card's top edge. The last
+// answers live on across opens (MenuModel.memory), so a reopened menu draws
+// its final rows at once.
 //
 // Opened by `haseen menu [path]` (IPC `menu toggle(path)`); the panel
 // registers the `menu` role while it exists so a second toggle reaches it.
 // The special path ":about" shows the About view (`haseen about`).
 //
-// Engine adapted from Omarchy shell/plugins/menu/Menu.qml (MIT, Copyright (c)
+// Adapted from Omarchy shell/plugins/menu/Menu.qml (MIT, Copyright (c)
 // David Heinemeier Hansson): route resolution, provider queue, guard batch,
-// search ranking. The UI is haseen's own.
-Column {
+// search, layout, keys and look. haseen's: the data side (menu.jsonc, its
+// overlay, providers, `disabled`, the About view), in-place updates and
+// colours mapped onto Theme (MenuStyle.js).
+Item {
     id: root
 
     // Contract (architecture 5.2): every entry component gets these.
@@ -30,12 +47,62 @@ Column {
 
     readonly property string defaultMenuPath: Paths.haseenPath + "/default/menu.jsonc"
     readonly property string userMenuPath: Paths.userConfig + "/menu.jsonc"
-    readonly property string catalogPath: Paths.haseenPath + "/default/catalog.json"
     // bin/ next to share/haseen first, so actions find `haseen` in a checkout too.
     readonly property string binDir: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin"
-    readonly property int maxRows: typeof settings.maxRows === "number" && settings.maxRows >= 3 ? Math.round(settings.maxRows) : 10
-    readonly property int rowHeight: Theme.fontSize * 2.6
 
+    // The whole screen to draw on (placement "overlay", the default). In a
+    // plain popup ("center" or "bar") the card alone, in the popup's border.
+    readonly property bool overlay: settings.placement === "overlay"
+    readonly property real areaHeight: overlay ? height : (screen ? screen.height : 0)
+
+    // ------------------------------------------------------------ look
+    readonly property color background: Theme.background
+    readonly property color foreground: Theme.foreground
+    readonly property color scrim: Qt.alpha(Theme.background, Style.SCRIM)
+    readonly property color selectedBackground: Qt.alpha(Theme.foreground, Style.SELECTED_FILL)
+    readonly property color selectedText: Theme.accent
+    // Row descriptions: Omarchy's 0.52 foreground, raised where a theme needs
+    // it to read at 3:1 (Theme.subtle), on the card and on the selected row.
+    readonly property color detailOnCard: Theme.subtle(Theme.background)
+    readonly property color detailOnSelected: Theme.subtle(Theme.over(Theme.foreground, Style.SELECTED_FILL, Theme.background))
+    readonly property string fontFamily: Theme.fontMono
+    // Omarchy rounds the menu like the windows (Style.cornerRadius is
+    // Hyprland's decoration:rounding); Theme.windowRadius is that value.
+    readonly property int cornerRadius: Theme.windowRadius
+    readonly property int gapsOut: Math.round(Theme.gap / 2)
+    readonly property int borderWidth: overlay ? space(2) : 0
+    readonly property int contentMargin: space(18)
+    readonly property int headerHeight: Math.max(space(34), fontPx(1.167) + space(6) * 2)
+    readonly property int contentSpacing: space(6)
+    readonly property int baseRowHeight: Math.max(space(50), fontPx(1) + space(12) * 2)
+    readonly property int detailRowHeight: Math.max(space(58), fontPx(1) + fontPx(0.833) + space(12) * 2)
+    // How much of the first hidden row stays visible at the fold: enough to
+    // read as a cut-off row rather than a bottom border.
+    readonly property int rowPeek: Math.round(baseRowHeight * 0.55)
+    readonly property int rowSpacing: space(3)
+    readonly property int dividerHeight: space(17)
+    readonly property int headingSize: fontPx(1.333)
+    readonly property int iconSize: fontPx(1.5)
+    readonly property int iconColumn: space(36)
+    readonly property bool wide: Style.WIDE_MENUS.indexOf(activeMenu) >= 0
+    readonly property int baseWidth: typeof settings.width === "number" && settings.width >= 260 ? settings.width : Style.WIDTH
+    readonly property int cardWidth: overlay ? Math.min(space(wide ? Style.WIDE : baseWidth), width - gapsOut * 2) : space(wide ? Style.WIDE : baseWidth)
+    readonly property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
+    readonly property int bodyHeight: aboutView ? about.implicitHeight : visibleRowsHeight
+    readonly property int cardHeight: {
+        const h = (contentMargin + borderWidth) * 2 + headerHeight + contentSpacing + bodyHeight;
+        return overlay ? Math.min(h, areaHeight - gapsOut * 2) : h;
+    }
+
+    function space(px: real): int {
+        return Style.space(Theme.fontSize, px);
+    }
+
+    function fontPx(mult: real): int {
+        return Style.fontPx(Theme.fontSize, mult);
+    }
+
+    // ------------------------------------------------------------ state
     property var defaultItems: []
     property var userItems: []
     property var items: ({})
@@ -44,24 +111,56 @@ Column {
 
     property string activeMenu: "root"
     property var navStack: []
-    property string query: ""
-    property int current: 0
-    property var rows: []
+    property string filterText: ""
+    property int selectedIndex: 0
+    // The selected row's itemId: rows draw their cursor from it, so the tint
+    // stays on its row while rows move in the model during a refresh.
+    property string selectedId: ""
+    onSelectedIndexChanged: syncSelectedId()
+    property bool cursorActive: true
+    property bool searchDivider: false
+    property int layoutSerial: 0
 
     property var whenResults: ({})
     property var checkedResults: ({})
     property var disabledResults: ({})
+    property bool guardsPending: false
     property var providersLoaded: ({})
+    property var providerQueue: []
     property string waitingRoute: ""
     property string waitingProvider: ""
-    property var providerQueue: []
     property string pendingRoute: ""
+
+    // The card opens centred. The first search keystroke or submenu step
+    // freezes its top edge where it sits, and the rows' height with it, so
+    // from then on the card grows and shrinks downward instead of
+    // re-centring on every change (Omarchy). An asynchronous answer freezes
+    // the top edge only: the rows it adds grow the card downward, and the
+    // rows already shown stay where they are.
+    property int cardTop: -1
+    property int maxRowsHeight: -1
+    readonly property int centeredTop: Math.max(gapsOut, Math.round((areaHeight - cardHeight) / 2))
+    readonly property int effectiveCardTop: cardTop >= 0 ? cardTop : centeredTop
 
     readonly property bool aboutView: activeMenu === ":about"
     readonly property var activeItem: items[activeMenu] || null
-    readonly property string heading: aboutView ? "About" : (activeMenu === "root" ? "Menu" : (activeItem ? (activeItem.title || Model.pathFor(items, activeMenu)) : ""))
+    readonly property string heading: aboutView ? "About" : (activeMenu !== "root" && activeItem ? (activeItem.title || activeItem.label) : "Go")
 
-    // ---------------------------------------------------------------- open
+    implicitWidth: cardWidth
+    implicitHeight: cardHeight
+
+    // Not before the compositor has sized the window: a top taken then is the
+    // margin, and the card would stay stuck to the screen's top edge.
+    function freezeCardTop(withHeight: bool): void {
+        if (!overlay || areaHeight <= 0)
+            return;
+        if (cardTop < 0)
+            cardTop = effectiveCardTop;
+        if (withHeight && maxRowsHeight < 0)
+            maxRowsHeight = visibleRowsHeight;
+    }
+
+    // ------------------------------------------------------------ open
     function close(): void {
         const win = QsWindow.window;
         if (win && typeof win.closeRequested === "function")
@@ -105,79 +204,124 @@ Column {
                 if (items[p] && items[p].provider) {
                     waitingRoute = id;
                     waitingProvider = p;
-                    enter(p, false);
+                    enter(p, false, false);
                     return;
                 }
             }
         }
-        enter(entry && entry.kind === "link" ? entry.target : id, false);
+        enter(entry && entry.kind === "link" ? entry.target : id, false, false);
     }
 
-    function enter(id: string, push: bool): void {
+    // A step taken inside the open menu freezes the card first (Omarchy); a
+    // route opened from outside (open()) shows the menu centred as it is.
+    function setActiveMenu(id: string, push: bool, fromPointer: bool): void {
+        freezeCardTop(true);
+        enter(id, push, fromPointer);
+    }
+
+    function enter(id: string, push: bool, fromPointer: bool): void {
         if (id !== ":about" && !items[id])
             id = "root";
         if (push && id !== activeMenu)
             navStack = navStack.concat([activeMenu]);
         activeMenu = id;
-        input.text = "";
-        query = "";
-        current = 0;
+        filterText = "";
+        selectedIndex = 0;
+        cursorActive = true;
+        if (fromPointer)
+            pointerGate.allowInitialSample();
+        else
+            pointerGate.reset();
         if (id === ":about")
             about.refresh();
-        else
-            loadProvider(id, true);
-        rebuild();
+        rebuildDisplay(false);
+        loadProvider(id, true);
     }
 
-    function back(): bool {
+    function goBack(): bool {
         if (activeMenu === "root")
             return false;
         if (navStack.length > 0) {
             const prev = navStack[navStack.length - 1];
             navStack = navStack.slice(0, -1);
-            enter(prev, false);
+            setActiveMenu(prev, false, false);
             return true;
         }
         const entry = items[activeMenu];
-        enter(entry && entry.parent ? entry.parent : "root", false);
+        setActiveMenu(entry && entry.parent ? entry.parent : "root", false, false);
         return true;
     }
 
-    // ---------------------------------------------------------------- rows
-    function rebuild(): void {
-        if (!loaded || aboutView) {
-            rows = [];
+    function setFilter(text: string): void {
+        if (aboutView)
             return;
-        }
-        const out = [];
-        const q = query.trim();
-        if (q !== "") {
-            const scored = [];
-            for (const id of itemOrder) {
-                const e = items[id];
-                if (!e || !Model.isDescendantOf(items, id, activeMenu) || !Model.matchesQuery(e, q))
-                    continue;
-                if (!Model.isVisible(items, itemOrder, whenResults, e, 0) || !parentsVisible(e))
-                    continue;
-                scored.push({
-                    e: e,
-                    s: Model.searchScore(items, e, q)
-                });
+        freezeCardTop(true);
+        filterText = text;
+        selectedIndex = 0;
+        cursorActive = true;
+        pointerGate.reset();
+        if (text.trim() !== "")
+            searchProviders();
+        rebuildDisplay(false);
+    }
+
+    // ------------------------------------------------------------ rows
+    // keep: an asynchronous refresh, which keeps the selected row by identity.
+    // Otherwise (a new query or submenu) the selection is where the caller
+    // put it.
+    function rebuildDisplay(keep: bool): void {
+        const keepId = keep && selectedIndex >= 0 && selectedIndex < displayModel.count ? displayModel.get(selectedIndex).itemId : "";
+        const rows = [];
+        searchDivider = false;
+        if (loaded && !aboutView) {
+            const active = items[activeMenu] ? activeMenu : "root";
+            const q = filterText.trim();
+            if (q !== "") {
+                const here = [];
+                const deeper = [];
+                for (const id of itemOrder) {
+                    const e = items[id];
+                    if (!e || !Model.isDescendantOf(items, id, active) || !Model.matchesQuery(e, q))
+                        continue;
+                    if (!Model.isVisible(items, itemOrder, whenResults, e, 0) || !parentsVisible(e))
+                        continue;
+                    const r = Model.displayRow(items, itemOrder, checkedResults, disabledResults, e, Model.parentPathFor(items, id), "");
+                    r.score = Model.searchScore(items, e, q);
+                    (e.parent === active ? here : deeper).push(r);
+                }
+                const bySearch = (a, b) => a.score !== b.score ? a.score - b.score : a.path.localeCompare(b.path);
+                here.sort(bySearch);
+                deeper.sort(bySearch);
+                searchDivider = here.length > 0 && deeper.length > 0;
+                if (searchDivider)
+                    for (const r of deeper)
+                        r.section = "drilldown";
+                for (const r of here.concat(deeper)) {
+                    delete r.score;
+                    rows.push(r);
+                }
+            } else {
+                for (const id of itemOrder) {
+                    const e = items[id];
+                    if (e && e.parent === active && Model.isVisible(items, itemOrder, whenResults, e, 0))
+                        rows.push(Model.displayRow(items, itemOrder, checkedResults, disabledResults, e, e.description, ""));
+                }
+                // DesktopEntries can reorder its values when an application
+                // starts: keep Apps alphabetical whatever the provider order.
+                if (active === "apps")
+                    rows.sort((a, b) => {
+                        const al = a.label.toLowerCase(), bl = b.label.toLowerCase();
+                        return al < bl ? -1 : al > bl ? 1 : (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0);
+                    });
             }
-            scored.sort((a, b) => a.s - b.s);
-            for (const x of scored.slice(0, 60))
-                out.push(row(x.e, Model.parentPathFor(items, x.e.id)));
-        } else {
-            for (const id of itemOrder) {
-                const e = items[id];
-                if (e && e.parent === activeMenu && Model.isVisible(items, itemOrder, whenResults, e, 0))
-                    out.push(row(e, e.description));
-            }
-            if (activeMenu === "apps")
-                out.sort((a, b) => a.label.localeCompare(b.label));
         }
-        rows = out;
-        settle(1);
+        Model.syncRows(displayModel, rows);
+        layoutSerial += 1;
+        selectedIndex = settle(Model.selectionAfter(rows, keepId, selectedIndex), 1);
+        syncSelectedId();
+        if (!keep)
+            pointerGate.reset();
+        Qt.callLater(revealCursor);
     }
 
     function parentsVisible(e: var): bool {
@@ -190,60 +334,146 @@ Column {
         return true;
     }
 
-    function row(e: var, detail: string): var {
-        return {
-            id: e.id,
-            kind: e.kind,
-            icon: e.icon,
-            appIcon: e.appIcon || "",
-            label: Model.labelFor(e, checkedResults, disabledResults),
-            detail: detail || "",
-            disabled: Model.isDisabled(disabledResults, e),
-            submenu: e.kind === "menu" || e.kind === "link"
-        };
+    function syncSelectedId(): void {
+        selectedId = selectedIndex >= 0 && selectedIndex < displayModel.count ? displayModel.get(selectedIndex).itemId : "";
     }
 
-    // Park the cursor on a selectable row, moving in direction dir.
-    function settle(dir: int): void {
-        const n = rows.length;
-        if (n === 0) {
-            current = 0;
-            return;
-        }
-        let i = Math.max(0, Math.min(current, n - 1));
+    // The nearest selectable row from index on, moving in direction dir.
+    function settle(index: int, dir: int): int {
+        const n = displayModel.count;
+        if (n === 0)
+            return 0;
+        let i = Math.max(0, Math.min(index, n - 1));
         for (let k = 0; k < n; k++) {
-            if (!rows[i].disabled) {
-                current = i;
-                list.positionViewAtIndex(i, ListView.Contain);
-                return;
-            }
+            if (!displayModel.get(i).disabled)
+                return i;
             i = (i + dir + n) % n;
         }
+        return Math.max(0, Math.min(index, n - 1));
     }
 
-    function shift(delta: int): void {
-        if (rows.length === 0)
+    function select(delta: int): void {
+        const n = displayModel.count;
+        if (n === 0)
             return;
-        current = (current + delta + rows.length) % rows.length;
-        settle(delta);
+        pointerGate.reset();
+        if (!cursorActive) {
+            cursorActive = true;
+            selectedIndex = settle(delta < 0 ? n - 1 : 0, delta < 0 ? -1 : 1);
+        } else {
+            const step = ((selectedIndex + delta) % n + n) % n;
+            selectedIndex = settle(step, delta < 0 ? -1 : 1);
+        }
+        revealCursor();
     }
 
-    function accept(index: int): void {
-        const r = rows[index];
-        if (!r || r.disabled)
+    function selectFromPointer(index: int, item: Item, mouse: var): void {
+        if (!pointerGate.moved(item, mouse))
             return;
-        const e = items[r.id];
+        if (index < 0 || index >= displayModel.count || displayModel.get(index).disabled)
+            return;
+        cursorActive = true;
+        selectedIndex = index;
+    }
+
+    function rowHeightForDetail(detail: string): int {
+        return filterText !== "" && detail !== "" ? detailRowHeight : baseRowHeight;
+    }
+
+    // Height the card can give its rows before running off the screen, or
+    // past the frozen top edge.
+    function availableRowsHeight(): int {
+        const top = cardTop >= 0 ? cardTop : gapsOut;
+        let available = areaHeight - top - gapsOut - (contentMargin + borderWidth) * 2 - headerHeight - contentSpacing;
+        // The starting menu sets the ceiling with the top edge: a longer
+        // submenu scrolls behind the fold instead of growing the card.
+        if (maxRowsHeight >= 0)
+            available = Math.min(available, maxRowsHeight);
+        // A card that swallows the whole screen reads as a page, not a menu.
+        return Math.min(available, Math.round(areaHeight * 0.7));
+    }
+
+    // When every row fits, the list gets its full height. When they do not,
+    // the card ends mid-row: a clipped row tells the eye there is more below
+    // the fold, so never come out even on a row boundary.
+    function foldedListHeight(totals: var, available: int): int {
+        const count = totals.length;
+        if (count === 0)
+            return baseRowHeight;
+        if (totals[count - 1] <= available)
+            return totals[count - 1];
+        let full = 0;
+        while (full < count && totals[full] <= available)
+            full++;
+        while (full > 1 && totals[full - 1] + rowSpacing + rowPeek > available)
+            full--;
+        if (full < 1)
+            return Math.max(available, baseRowHeight);
+        return totals[full - 1] + rowSpacing + rowPeek;
+    }
+
+    // The arguments only make the binding above re-evaluate.
+    function rowListHeight(_serial: int, _count: int, _filter: string, _divider: bool): int {
+        if (displayModel.count === 0)
+            return baseRowHeight;
+        const totals = [];
+        let total = 0;
+        let previous = "";
+        for (let i = 0; i < displayModel.count; i++) {
+            const row = displayModel.get(i);
+            if (i > 0)
+                total += rowSpacing;
+            if (row.section === "drilldown" && previous !== "drilldown")
+                total += dividerHeight;
+            total += rowHeightForDetail(row.detail);
+            previous = row.section;
+            totals.push(total);
+        }
+        return foldedListHeight(totals, availableRowsHeight());
+    }
+
+    // ListView.Contain alone parks the cursor row flush with the edge and
+    // hides its neighbour; keep the next hidden row peeking past the cursor
+    // in the direction of travel.
+    function revealCursor(): void {
+        if (displayModel.count === 0)
+            return;
+        list.positionViewAtIndex(selectedIndex, ListView.Contain);
+        const item = list.itemAtIndex(selectedIndex);
+        if (!item)
+            return;
+        const reach = rowPeek + rowSpacing;
+        if (selectedIndex < displayModel.count - 1) {
+            const maxY = Math.max(list.originY, list.originY + list.contentHeight - list.height);
+            const overhang = item.y + item.height + reach - (list.contentY + list.height);
+            if (overhang > 0)
+                list.contentY = Math.min(list.contentY + overhang, maxY);
+        }
+        if (selectedIndex > 0) {
+            const underhang = list.contentY - (item.y - reach);
+            if (underhang > 0)
+                list.contentY = Math.max(list.contentY - underhang, list.originY);
+        }
+    }
+
+    function activateIndex(index: int, fromPointer: bool): void {
+        if (index < 0 || index >= displayModel.count)
+            return;
+        const r = displayModel.get(index);
+        if (r.disabled)
+            return;
+        const e = items[r.itemId];
         if (!e)
             return;
-        if (r.submenu) {
-            enter(e.kind === "link" ? e.target : e.id, true);
-        } else if (e.kind === "app") {
-            const entry = DesktopEntries.byId(e.appId);
+        if (r.kind === "menu" || r.kind === "link") {
+            setActiveMenu(r.target || r.itemId, true, fromPointer);
+        } else if (r.kind === "app") {
+            const entry = DesktopEntries.byId(r.appId);
             close();
             if (entry)
                 entry.execute();
         } else {
-            run(e.action);
+            run(r.action);
         }
     }
 
@@ -252,7 +482,7 @@ Column {
     // (which replaces this one, so close first).
     function run(action: string): void {
         if (action.trim() === "haseen about") {
-            enter(":about", true);
+            setActiveMenu(":about", true, false);
             return;
         }
         close();
@@ -264,13 +494,71 @@ Column {
         Quickshell.execDetached(["bash", "-c", "PATH=\"$1:$PATH\"; eval \"$2\"", "bash", binDir, action]);
     }
 
-    // ---------------------------------------------------------------- data
+    // Omarchy's query editing keys (Util.editsFilter/editedFilter).
+    function editsFilter(event: var): bool {
+        if (filterText === "" || (event.modifiers & (Qt.AltModifier | Qt.MetaModifier)))
+            return false;
+        if (event.key === Qt.Key_U)
+            return event.modifiers === Qt.ControlModifier;
+        return event.key === Qt.Key_Backspace;
+    }
+
+    function editedFilter(event: var): string {
+        if (event.key === Qt.Key_U)
+            return "";
+        if (event.modifiers & Qt.ControlModifier)
+            return filterText.replace(/\s+$/, "").replace(/\S+$/, "");
+        return filterText.slice(0, -1);
+    }
+
+    function handleKey(event: var): void {
+        const k = event.key;
+        event.accepted = true;
+        if (k === Qt.Key_Escape) {
+            if (filterText !== "")
+                setFilter("");
+            else
+                close();
+        } else if (editsFilter(event)) {
+            setFilter(editedFilter(event));
+        } else if ((k === Qt.Key_Backspace || k === Qt.Key_Left) && filterText === "") {
+            goBack();
+        } else if (k === Qt.Key_Up || k === Qt.Key_Backtab) {
+            select(-1);
+        } else if (k === Qt.Key_Down || k === Qt.Key_Tab) {
+            select(1);
+        } else if (k === Qt.Key_PageUp) {
+            select(-6);
+        } else if (k === Qt.Key_PageDown) {
+            select(6);
+        } else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Right) {
+            if (cursorActive)
+                activateIndex(selectedIndex, false);
+            else if (displayModel.count > 0)
+                cursorActive = true;
+        } else if (event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+            setFilter(filterText + event.text);
+        } else {
+            event.accepted = false;
+        }
+    }
+
+    // ------------------------------------------------------------ data
     function reloadModel(): void {
         const merged = Model.mergeMenuSources(defaultItems, userItems);
-        items = merged.items;
-        itemOrder = merged.itemOrder;
+        let next = {
+            items: merged.items,
+            itemOrder: merged.itemOrder
+        };
+        // Provider rows from earlier opens, until their provider answers again.
+        for (const menuId in Model.memory.providerRows)
+            if (next.items[menuId])
+                next = Model.swapProviderRows(next.items, next.itemOrder, menuId, Model.memory.providerRows[menuId]);
+        items = next.items;
+        itemOrder = next.itemOrder;
         providersLoaded = ({});
         providerQueue = [];
+        const first = !loaded;
         loaded = true;
         evaluateGuards();
         if (pendingRoute !== "") {
@@ -280,25 +568,34 @@ Column {
         } else {
             if (!aboutView && !items[activeMenu])
                 activeMenu = "root";
+            if (!first)
+                freezeCardTop(false);
+            rebuildDisplay(!first);
             loadProvider(activeMenu, true);
-            rebuild();
         }
     }
 
-    function applyRows(menuId: string, newRows: var): void {
+    // late: the rows answered after the menu was drawn (a provider process,
+    // a desktop entry change); the Apps rows come at once on entering.
+    function applyRows(menuId: string, newRows: var, late: bool): void {
+        const memory = Object.assign({}, Model.memory.providerRows);
+        memory[menuId] = newRows;
+        Model.memory.providerRows = memory;
         const merged = Model.swapProviderRows(items, itemOrder, menuId, newRows);
         items = merged.items;
         itemOrder = merged.itemOrder;
         // Catalog rows carry their own `when` (e.g. laptop-only entries).
         if (newRows.some(r => r.when))
             evaluateGuards();
-        rebuild();
+        if (late)
+            freezeCardTop(false);
+        rebuildDisplay(true);
         if (waitingProvider === menuId) {
             const route = waitingRoute;
             waitingRoute = "";
             waitingProvider = "";
             if (items[route] && activeMenu === menuId)
-                enter(route, true);
+                setActiveMenu(route, true, false);
         }
     }
 
@@ -400,7 +697,7 @@ Column {
         next[id] = true;
         providersLoaded = next;
         if (e.provider === "apps") {
-            applyRows(id, appRows());
+            applyRows(id, appRows(), false);
             return;
         }
         if (!providers[e.provider]) {
@@ -436,8 +733,6 @@ Column {
         }
     }
 
-    property bool guardsPending: false
-
     function evaluateGuards(): void {
         if (guardProc.running) {
             guardsPending = true;
@@ -451,13 +746,40 @@ Column {
         guardProc.running = true;
     }
 
-    width: typeof settings.width === "number" && settings.width >= 260 ? settings.width : 280
-    spacing: Theme.gap
-    focus: true
+    function loadSource(user: bool, text: string): void {
+        const parsed = Model.parseMenuJsonc(text);
+        const path = user ? userMenuPath : defaultMenuPath;
+        if (parsed === null) {
+            console.warn("haseen: menu:", path, user ? "is not valid JSONC, ignoring it" : "is not valid JSONC, keeping the previous menu");
+            return;
+        }
+        if (user) {
+            Model.memory.userText = text;
+            userItems = parsed;
+        } else {
+            Model.memory.defaultText = text;
+            defaultItems = parsed;
+        }
+        if (defaultItems.length > 0)
+            reloadModel();
+    }
 
     Component.onCompleted: {
         Plugins.registerRole("menu", pluginId, root);
-        input.forceActiveFocus();
+        // A reopened menu starts from what the last one knew; the files and
+        // the guard batch then confirm it in place.
+        const memory = Model.memory;
+        if (memory.guards) {
+            whenResults = memory.guards.w;
+            checkedResults = memory.guards.c;
+            disabledResults = memory.guards.d;
+        }
+        if (memory.defaultText !== null) {
+            if (memory.userText !== null)
+                userItems = Model.parseMenuJsonc(memory.userText) || [];
+            loadSource(false, memory.defaultText);
+        }
+        keyCatcher.forceActiveFocus();
     }
     Component.onDestruction: Plugins.unregisterRole("menu", root)
 
@@ -467,7 +789,7 @@ Column {
         target: DesktopEntries.applications
         function onValuesChanged() {
             if (root.providersLoaded["apps"])
-                root.applyRows("apps", root.appRows());
+                root.applyRows("apps", root.appRows(), true);
         }
     }
 
@@ -481,7 +803,7 @@ Column {
             onStreamFinished: {
                 const spec = root.providers[providerProc.kind];
                 if (spec && root.items[providerProc.menuId])
-                    root.applyRows(providerProc.menuId, spec.parse(providerProc.menuId, text));
+                    root.applyRows(providerProc.menuId, spec.parse(providerProc.menuId, text), true);
                 Qt.callLater(root.startProvider);
             }
         }
@@ -493,10 +815,12 @@ Column {
         stdout: StdioCollector {
             onStreamFinished: {
                 const r = Model.parseGuardOutput(text);
+                Model.memory.guards = r;
                 root.whenResults = r.w;
                 root.checkedResults = r.c;
                 root.disabledResults = r.d;
-                root.rebuild();
+                root.freezeCardTop(false);
+                root.rebuildDisplay(true);
                 if (root.guardsPending)
                     Qt.callLater(root.evaluateGuards);
             }
@@ -508,13 +832,8 @@ Column {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
-            const parsed = Model.parseMenuJsonc(text());
-            if (parsed === null) {
-                console.warn("haseen: menu:", path, "is not valid JSONC, keeping the previous menu");
-                return;
-            }
-            root.defaultItems = parsed;
-            root.reloadModel();
+            if (text() !== Model.memory.defaultText || !root.loaded)
+                root.loadSource(false, text());
         }
         onLoadFailed: error => console.warn("haseen: menu: cannot read", path, "-", FileViewError.toString(error))
     }
@@ -525,14 +844,12 @@ Column {
         printErrors: false
         onFileChanged: reload()
         onLoaded: {
-            const parsed = Model.parseMenuJsonc(text());
-            if (parsed === null) {
-                console.warn("haseen: menu:", path, "is not valid JSONC, ignoring it");
-                return;
-            }
-            root.userItems = parsed;
-            if (root.defaultItems.length > 0)
-                root.reloadModel();
+            if (text() !== Model.memory.userText)
+                root.loadSource(true, text());
+        }
+        onLoadFailed: {
+            if (Model.memory.userText !== null && Model.memory.userText !== "")
+                root.loadSource(true, "");
         }
     }
 
@@ -542,251 +859,237 @@ Column {
         enabled: root.settings.debugIpc === true
 
         function select(index: int): void {
-            root.current = Math.max(0, Math.min(index, root.rows.length - 1));
+            root.selectedIndex = root.settle(index, 1);
+            root.revealCursor();
         }
 
         function back(): void {
-            root.back();
+            root.goBack();
         }
 
         function accept(): void {
-            root.accept(root.current);
+            root.activateIndex(root.selectedIndex, false);
         }
 
         function search(text: string): void {
-            input.text = text;
+            root.setFilter(text);
         }
 
         function state(): string {
+            const rows = [];
+            for (let i = 0; i < displayModel.count; i++) {
+                const r = displayModel.get(i);
+                rows.push((r.disabled ? "-" : "") + r.label + (r.kind === "menu" || r.kind === "link" ? " >" : ""));
+            }
             return JSON.stringify({
                 menu: root.activeMenu,
                 heading: root.heading,
-                query: root.query,
-                current: root.current,
-                rows: root.rows.map(r => (r.disabled ? "-" : "") + r.label + (r.submenu ? " >" : ""))
+                query: root.filterText,
+                current: root.selectedIndex,
+                rows: rows
             });
         }
     }
 
-    // ---------------------------------------------------------------- view
-    Row {
-        width: parent.width
-        spacing: Theme.gap
+    ListModel {
+        id: displayModel
+    }
 
-        // haseen's mark where Omarchy shows its logo; submenus show the way back.
-        BrandImage {
-            visible: root.activeMenu === "root"
-            height: 16 * Math.max(1, Math.round((Theme.fontSize + 2) / 16))
-            path: Branding.symbolicPath
-            color: Theme.accent
-            anchors.verticalCenter: parent.verticalCenter
-        }
+    PointerGate {
+        id: pointerGate
 
-        Text {
-            visible: root.activeMenu !== "root"
-            text: "\uf053"
-            color: Theme.muted
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.fontSize
-            anchors.verticalCenter: parent.verticalCenter
+        referenceItem: card
+    }
 
-            MouseArea {
-                anchors.fill: parent
-                anchors.margins: -Theme.gap
-                onClicked: root.back()
-            }
-        }
+    // ------------------------------------------------------------ view
+    Rectangle {
+        anchors.fill: parent
+        visible: root.overlay
+        color: root.scrim
+    }
 
-        Text {
-            width: parent.width - Theme.fontSize * 2
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.heading
-            color: Theme.foreground
-            elide: Text.ElideLeft
-            textFormat: Text.PlainText
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 1
-            font.bold: true
-        }
+    MouseArea {
+        anchors.fill: parent
+        enabled: root.overlay
+        onClicked: root.close()
     }
 
     Rectangle {
-        width: parent.width
-        height: Theme.fontSize * 2.4
-        radius: Theme.radius
-        color: Theme.surfaceAlt
-        border.color: Theme.accent
-        border.width: Theme.borderWidth
-        visible: !root.aboutView
+        id: card
 
-        TextInput {
-            id: input
+        x: root.overlay ? Math.round((root.width - width) / 2) : 0
+        y: root.overlay ? root.effectiveCardTop : 0
+        width: root.cardWidth
+        height: root.overlay ? Math.min(root.cardHeight, root.areaHeight - root.gapsOut - root.effectiveCardTop) : root.cardHeight
+        radius: root.cornerRadius
+        color: root.overlay ? root.background : "transparent"
+        border.color: root.foreground
+        border.width: root.borderWidth
+
+        MouseArea {
+            anchors.fill: parent
+        }
+
+        Item {
+            id: keyCatcher
 
             anchors.fill: parent
-            anchors.leftMargin: Theme.gap * 1.5
-            anchors.rightMargin: Theme.gap * 1.5
-            verticalAlignment: TextInput.AlignVCenter
             focus: true
-            color: Theme.foreground
-            selectionColor: Theme.selection
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 1
-            onTextChanged: {
-                root.query = text;
-                root.current = 0;
-                if (text.trim() !== "")
-                    root.searchProviders();
-                root.rebuild();
-            }
-            onAccepted: root.accept(root.current)
-            Keys.onUpPressed: root.shift(-1)
-            Keys.onDownPressed: root.shift(1)
-            Keys.onTabPressed: root.shift(1)
-            Keys.onBacktabPressed: root.shift(-1)
-            Keys.onRightPressed: event => {
-                if (text === "" && root.rows[root.current] && root.rows[root.current].submenu)
-                    root.accept(root.current);
-                else
-                    event.accepted = false;
-            }
-            Keys.onLeftPressed: event => {
-                event.accepted = text === "" && root.back();
-            }
-            Keys.onPressed: event => {
-                if (event.key === Qt.Key_Backspace && text === "")
-                    event.accepted = root.back();
-            }
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: event => root.handleKey(event)
         }
 
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: Theme.gap * 1.5
-            anchors.verticalCenter: parent.verticalCenter
-            visible: input.text === ""
-            text: "Search"
-            color: Theme.muted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 1
-        }
-    }
-
-    ListView {
-        id: list
-
-        width: parent.width
-        height: Math.max(1, Math.min(root.rows.length, root.maxRows)) * root.rowHeight
-        visible: !root.aboutView
-        clip: true
-        model: root.rows
-        currentIndex: root.current
-        boundsBehavior: Flickable.StopAtBounds
-        highlightMoveDuration: 0
-
-        delegate: Rectangle {
-            id: rowItem
-
-            required property var modelData
-            required property int index
-
-            width: ListView.view.width
-            height: root.rowHeight
-            radius: Theme.radius
-            color: index === root.current && !modelData.disabled ? Theme.selection : "transparent"
-            opacity: modelData.disabled ? 0.5 : 1
+        Column {
+            anchors.fill: parent
+            anchors.margins: root.contentMargin + root.borderWidth
+            spacing: root.contentSpacing
 
             Item {
-                id: iconBox
+                width: parent.width
+                height: root.headerHeight
 
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.gap
-                anchors.verticalCenter: parent.verticalCenter
-                width: Theme.fontSize * 1.8
-                height: width
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.filterText || root.heading + "…"
+                    color: root.foreground
+                    opacity: root.filterText ? 1 : Style.HEADER
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    font.family: root.fontFamily
+                    font.pixelSize: root.headingSize
+                }
+            }
 
-                IconImage {
+            Item {
+                width: parent.width
+                height: root.visibleRowsHeight
+                visible: !root.aboutView
+
+                ListView {
+                    id: list
+
                     anchors.fill: parent
-                    visible: rowItem.modelData.appIcon !== ""
-                    source: rowItem.modelData.appIcon === "" ? "" : Quickshell.iconPath(rowItem.modelData.appIcon, true)
+                    model: displayModel
+                    clip: true
+                    spacing: root.rowSpacing
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    section.property: "section"
+                    section.criteria: ViewSection.FullString
+                    section.delegate: Item {
+                        required property string section
+
+                        width: ListView.view.width
+                        height: section === "drilldown" ? root.dividerHeight : 0
+                        visible: section === "drilldown"
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.leftMargin: root.space(4)
+                            anchors.right: parent.right
+                            anchors.rightMargin: root.space(4)
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: root.space(1)
+                            color: Qt.alpha(root.foreground, Style.DIVIDER)
+                        }
+                    }
+
+                    delegate: MenuRow {
+                        required property int index
+
+                        width: ListView.view.width
+                        menu: root
+                        hasCursor: root.cursorActive && itemId === root.selectedId
+                        onHovered: (item, mouse) => root.selectFromPointer(index, item, mouse)
+                        onClicked: {
+                            if (disabled)
+                                return;
+                            root.cursorActive = true;
+                            root.selectedIndex = index;
+                            root.activateIndex(index, true);
+                        }
+                    }
                 }
 
-                Text {
+                // Scroll scrims: once the list has scrolled, content hides above
+                // the card top as well as below. Their strength follows the
+                // distance still hidden past each edge rather than a clock, so a
+                // jump (wrapping from the last row to the first) lands faded.
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: Math.min(root.space(28), parent.height / 2)
+                    visible: root.overlay && opacity > 0
+                    opacity: list.contentHeight > list.height ? Math.max(0, Math.min(1, (list.contentY - list.originY) / height)) : 0
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: root.background
+                        }
+                        GradientStop {
+                            position: 1
+                            color: Qt.alpha(root.background, 0)
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: Math.min(root.space(28), parent.height / 2)
+                    visible: root.overlay && opacity > 0
+                    opacity: list.contentHeight > list.height ? Math.max(0, Math.min(1, (list.originY + list.contentHeight - list.height - list.contentY) / height)) : 0
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: Qt.alpha(root.background, 0)
+                        }
+                        GradientStop {
+                            position: 1
+                            color: root.background
+                        }
+                    }
+                }
+
+                Column {
                     anchors.centerIn: parent
-                    visible: rowItem.modelData.appIcon === ""
-                    text: rowItem.modelData.icon
-                    color: Theme.accent
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSize + 2
+                    spacing: root.space(8)
+                    visible: displayModel.count === 0
+
+                    Text {
+                        width: root.space(320)
+                        text: "\u{f0209}"
+                        color: root.selectedText
+                        opacity: Style.EMPTY_GLYPH
+                        horizontalAlignment: Text.AlignHCenter
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontPx(2.333)
+                    }
+
+                    Text {
+                        width: root.space(320)
+                        text: root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
+                        color: root.foreground
+                        opacity: Style.EMPTY_TEXT
+                        horizontalAlignment: Text.AlignHCenter
+                        textFormat: Text.PlainText
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontPx(1.167)
+                    }
                 }
             }
 
-            Column {
-                anchors.left: iconBox.right
-                anchors.leftMargin: Theme.gap
-                anchors.right: chevron.left
-                anchors.rightMargin: Theme.gap
-                anchors.verticalCenter: parent.verticalCenter
+            About {
+                id: about
 
-                Text {
-                    width: parent.width
-                    text: rowItem.modelData.label
-                    color: Theme.foreground
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
-                }
-
-                Text {
-                    width: parent.width
-                    visible: text !== ""
-                    text: rowItem.modelData.detail
-                    color: Theme.muted
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                }
-            }
-
-            Text {
-                id: chevron
-
-                anchors.right: parent.right
-                anchors.rightMargin: Theme.gap
-                anchors.verticalCenter: parent.verticalCenter
-                text: rowItem.modelData.submenu ? "\uf054" : ""
-                color: Theme.muted
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 2
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                onEntered: {
-                    if (!rowItem.modelData.disabled)
-                        root.current = rowItem.index;
-                }
-                onClicked: root.accept(rowItem.index)
+                width: parent.width
+                visible: root.aboutView
+                binDir: root.binDir
             }
         }
-    }
-
-    Text {
-        width: parent.width
-        visible: !root.aboutView && root.rows.length === 0
-        text: root.loaded ? "Nothing here" : "Loading"
-        color: Theme.muted
-        horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
-    }
-
-    About {
-        id: about
-
-        width: parent.width
-        visible: root.aboutView
-        binDir: root.binDir
     }
 }

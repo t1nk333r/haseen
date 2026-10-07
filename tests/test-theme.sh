@@ -7,7 +7,7 @@
 # installed themes go through the denylist, hooks run, dry runs write nothing.
 
 THEME_OUTPUTS=(hyprland.lua foot.ini kitty.conf ghostty.conf alacritty.toml btop.theme neovim.lua gtk.css shell.json colors.toml)
-SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
+SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth windowRadius"
 SHELL_COLOUR_KEYS="background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection"
 
 # theme_sandbox NAME — sandbox plus fakes for the probes theme set uses to find
@@ -56,8 +56,14 @@ for dir in "$HASEEN_PATH"/themes/*/; do
         assert_eq "$t shell.json has exactly the §7 keys" "$(tr ' ' '\n' <<<"$SHELL_KEYS" | sort)" "$(jq -r 'keys[]' "$sj" | sort)"
         bad="$(jq -r --arg k "$SHELL_COLOUR_KEYS" '($k | split(" ")) as $ks | to_entries[] | select(.key as $x | $ks | index($x)) | select(.value | test("^#[0-9a-fA-F]{6}$") | not) | .key' "$sj")"
         assert_eq "$t shell.json colours are #rrggbb" "" "$bad"
-        assert_eq "$t shell.json numbers" "number number number number" "$(jq -r '[.fontSize, .radius, .gap, .borderWidth] | map(type) | join(" ")' "$sj")"
+        assert_eq "$t shell.json numbers" "number number number number number" "$(jq -r '[.fontSize, .radius, .gap, .borderWidth, .windowRadius] | map(type) | join(" ")' "$sj")"
         assert_eq "$t mode follows colors.toml" "$(sed -n 's/^mode *= *"\(.*\)"/\1/p' "$dir/colors.toml")" "$(jq -r .mode "$sj")"
+        # windowRadius is the window rounding under the theme (plan 068): the
+        # theme's own hyprland.lua, else haseen's default looknfeel.lua.
+        want_round=""
+        [[ ! -f $dir/hyprland.lua ]] || want_round="$(sed -n 's/^ *rounding *= *\([0-9]*\).*/\1/p' "$dir/hyprland.lua" | head -n1)"
+        [[ -n $want_round ]] || want_round="$(sed -n 's/^ *rounding *= *\([0-9]*\).*/\1/p' "$HASEEN_PATH/default/hypr/looknfeel.lua" | head -n1)"
+        assert_eq "$t windowRadius follows the window rounding" "$want_round" "$(jq -r .windowRadius "$sj")"
         assert_eq "$t accent from colors.toml" "$(colour_of "$dir/colors.toml" accent)" "$(jq -r .accent "$sj")"
     else
         _fail "$t shell.json is valid JSON" "$(cat "$sj" 2>/dev/null)"

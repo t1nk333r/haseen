@@ -17,5 +17,6 @@
   "fontSize": {{ font_size }},
   "radius": {{ radius }},
   "gap": {{ gap }},
-  "borderWidth": {{ border_width }}
+  "borderWidth": {{ border_width }},
+  "windowRadius": {{ window_radius }}
 }

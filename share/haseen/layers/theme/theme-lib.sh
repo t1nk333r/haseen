@@ -456,6 +456,21 @@ theme_template_files() {
     shopt -u nullglob
 }
 
+# _theme_window_radius DIR — THEME_COLORS[window_radius]: the window rounding
+# Hyprland draws under this theme (decoration.rounding of the theme's own
+# hyprland.lua, else haseen's default looknfeel.lua, else radius). Shell.json's
+# windowRadius: the menu rounds like the windows, as Omarchy's menu follows
+# decoration:rounding (plan 068).
+_theme_window_radius() {
+    local f r=""
+    for f in "$1/hyprland.lua" "$HASEEN_PATH/default/hypr/looknfeel.lua"; do
+        [[ -f $f ]] || continue
+        r="$(sed -n 's/^[[:space:]]*rounding[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$f" | head -n1)"
+        [[ -n $r ]] && break
+    done
+    THEME_COLORS[window_radius]="${r:-${THEME_COLORS[radius]:-${THEME_TOKEN_DEFAULTS[radius]}}}"
+}
+
 # theme_render_templates DIR — render every template into DIR from
 # DIR/colors.toml. A file the theme already ships is never overwritten, so a
 # hand-written themes/<name>/foot.ini wins over the template.
@@ -464,6 +479,7 @@ theme_render_templates() {
     local -a templates pairs=()
     local -A seen=()
     theme_colors_load "$dir/colors.toml" || return 1
+    _theme_window_radius "$dir"
     local font=""
     theme_font_override && font="$REPLY" && THEME_COLORS[font_mono]="$font"
     mapfile -t templates < <(theme_template_files)
