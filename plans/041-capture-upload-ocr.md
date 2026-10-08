@@ -28,12 +28,12 @@ because it's been almost nothing but AI botnet spam"*.
   Default: XBackBone when `[xbackbone] url` is configured, otherwise **catbox**
   (keyless, verified live). imgur and 0x0 are selectable but never chosen
   automatically, and `--help` states why for each.
-- **Credentials go to curl through `curl --config -` on stdin** (`form = "token=…"`,
+- **Credentials go to curl through `curl --config -` on stdin** (`form-string = "token=…"`,
   `header = "Authorization: Bearer …"`). No token ever reaches argv,
   `/proc/<pid>/cmdline`, `ps`, a dry-run plan, a notification or stdout. The
   tests assert it in both directions: present in the recorded curl stdin, absent
   from the recorded argv and from the output. `~/.config/haseen/upload.toml` is
-  seeded at mode 0600.
+  seeded at mode 0600 (created under umask 077).
 - **XBackBone has two shapes and they are detected, not guessed.** `api = auto`
   does `GET <base>/api/v1/upload`: `404`/`000` → the tagged ≤3.8.2 shape
   (`POST /upload`, `token` as a **form field**, part named `upload`); anything
@@ -108,3 +108,27 @@ is Google's.
 - `tests/test-capture-upload.sh` no longer reads the scripts' headers; it checks
   that `haseen commands` lists `haseen upload` and `haseen search screen` with
   their arguments and summaries.
+
+## Review fixes 2026-10-08 (PR #38)
+
+- **SEC-2, one file-part encoder.** Every backend builds its `-F` file part
+  with `form_file FIELD PATH`, which puts the path inside curl's quoted form
+  (`@"…"`, `"` and `\` escaped). Unquoted, curl read `shot.png,.env` as two
+  files and `;` as the start of `type=`/`filename=`. The XBackBone form token
+  is a `form-string`, so a token starting with `@` or `<` is never read as a
+  file. `tests/fixtures/multipart-receiver.py` is a loopback-only receiver;
+  the test runs the real curl through a stub that only rewrites the host, and
+  asserts exactly one file part with the selected file's bytes for comma,
+  semicolon, quote and backslash names on every curl backend.
+- **SEC-6, no credential over plain http.** The XBackBone base URL, and the
+  0x0 target (it answers with a management token), must be `https://`. Plain
+  `http://` is accepted only to this machine (`localhost`, `127.0.0.0/8`,
+  `[::1]`); a scheme-less URL is refused, since curl would default to http.
+- **SEC-4, private delete token.** The 0x0/imgur delete token goes to
+  `$XDG_RUNTIME_DIR/haseen-upload.delete-token` only when that directory is
+  ours and 0700, otherwise to `$HASEEN_USER_STATE/upload/` (created 0700).
+  It is written to a fresh `mktemp` file (0600) and renamed over the name, so
+  a planted link is replaced, never followed. Never a shared `/tmp` path.
+- **XBackBone probe.** A connection failure printed `000000`
+  (`-w` plus `|| echo 000`) and was read as next-gen; anything that is not
+  three digits is now `000`, the tagged-release shape.
