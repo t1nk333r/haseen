@@ -63,7 +63,7 @@ tools/secrets.sh   # before every push: gitleaks (history) + privacy patterns
 ```
 
 `main` on GitHub is protected:
-- The CI checks `lint`, `test`, `docs`, `secrets` and `nix` must pass on an up-to-date branch.
+- The CI checks `lint`, `test`, `docs` and `secrets` must pass on an up-to-date branch.
 - History stays linear: no force pushes and no deletion.
 - Admins are included.
 

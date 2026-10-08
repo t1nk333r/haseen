@@ -238,8 +238,8 @@ EOF
     rebind_line="$(grep -n '^BIND SUPER + B -> uwsm-app -- firefox$' <<<"$OUTPUT" | cut -d: -f1)"
     assert_eq "lua: user bindings after defaults" "true" "$([[ -n $unbind_line && -n $rebind_line && $unbind_line -lt $rebind_line ]] && echo true || echo false)"
 
-    # init.lua finds share/haseen from its own location (Nix store paths have
-    # no HASEEN_PATH at first login).
+    # init.lua finds share/haseen from its own location (a first login can
+    # have no HASEEN_PATH yet).
     capture env -u HASEEN_PATH lua -e "dofile('$stub_lua')" -e "dofile('$HASEEN_PATH/default/hypr/init.lua'); print('PATH ' .. haseen.path)"
     assert_contains "lua: own location wins" "$OUTPUT" "PATH $HASEEN_PATH"
 fi

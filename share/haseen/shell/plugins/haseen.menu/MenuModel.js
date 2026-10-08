@@ -534,7 +534,7 @@ var GUARD_READERS = ["haseen setup dns", "haseen setup default browser", "haseen
 // Package and command presence asked one at a time are almost all fork; the
 // helpers answer them inside the guard process. `pacman -Qi` provides are
 // included so a provider package (gvim for vim) counts as present. Without
-// pacman (NixOS) every package reads as missing.
+// pacman every package reads as missing.
 function guardHelpers() {
     return 'declare -A __haseen_pkgs=()\n'
         + 'if command -v pacman >/dev/null; then mapfile -t __haseen_pkg_names < <({ pacman -Qq; LC_ALL=C pacman -Qi'

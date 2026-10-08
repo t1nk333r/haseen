@@ -1,8 +1,8 @@
 # haseen architecture
 
 حصين (*haseen*): fortified, hard to breach. A clean, low-resource desktop
-layered onto an existing **CachyOS** install (Arch also works; NixOS goes through
-the flake). It runs on Hyprland (Lua config) with its own Quickshell shell, and
+layered onto an existing **CachyOS** install (Arch also works; NixOS is not
+supported). It runs on Hyprland (Lua config) with its own Quickshell shell, and
 it can load DankMaterialShell and Omarchy add-ons without depending on either
 project.
 
@@ -19,7 +19,7 @@ file changes in the same commit.
 | 4 | DMS and Omarchy add-ons | `layers/dms` (run DMS in place of the haseen shell), the compat adapters in `shell/Compat/`, and the Omarchy `colors.toml` theme format |
 | 5 | not a resource hog | §6 resource rules |
 | 6 | local AI | `layers/ai` (Ollama/llama.cpp bound to loopback only) + the `haseen.ai` panel plugin |
-| 7 | Arch / CachyOS / NixOS | installer (CachyOS, Arch) + `flake.nix` (NixOS) |
+| 7 | Arch / CachyOS | installer (CachyOS, Arch); NixOS is detected and refused |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
 | 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
 | 10 | Brightness (plan 077) | `haseen brightness`: backlights and `*::kbd_backlight` via brightnessctl (logind), DDC/CI monitors via ddcutil (bus map cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`); `haseen setup ddc on` (opt-in) installs ddcutil and loads i2c-dev; the `haseen.display` panel (off) slides each device |

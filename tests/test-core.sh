@@ -83,14 +83,15 @@ assert_status "install tree dry-run" 0 "$STATUS"
 assert_dry_pure "install.sh" "$OUTPUT"
 assert_contains "installs router" "$OUTPUT" "install -Dm0755 $REPO/bin/haseen /usr/local/bin/haseen"
 capture env HASEEN_SYSROOT="$FIXTURES/nixos" "$REPO/install.sh" --dry-run
-assert_contains "nixos refused" "$OUTPUT" "flake"
+assert_status "nixos refused" 1 "$STATUS"
+assert_contains "nixos refused as unsupported" "$OUTPUT" "NixOS is not supported"
 
 # --- the owner's Omarchy/DMS plugins are read-only (AGENTS.md) ---------------
 # Static: no line naming those dirs (literally or via the variables that hold
 # them) may also delete, move or write.
 assert_eq "no destructive op on ~/.config/omarchy|DankMaterialShell/plugins" "" \
     "$(grep -rnE '(omarchy|DankMaterialShell)/plugins|PLUGIN_(OMARCHY|DMS)_DIR|omarchyPlugins|dmsPlugins' \
-        "$REPO/bin" "$REPO/share" "$REPO/install.sh" "$REPO/nix" |
+        "$REPO/bin" "$REPO/share" "$REPO/install.sh" |
         grep -E '(\brm\b|\bmv\b|rmdir|unlink|ln -s|>[^&|=]*(plugins|_DIR)|write_user_file|seed_user_file|removeFile|\.remove\()' || true)"
 # Behaviour: every plugin command run against an Omarchy and a DMS plugin
 # leaves both source trees byte-identical.

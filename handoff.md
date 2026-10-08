@@ -31,7 +31,6 @@ The owner's other repos:
 | Shell core and plugin CLI | `share/haseen/shell/`, `bin/haseen-shell-*`, `bin/haseen-plugin-*` | 005 |
 | Local AI | `share/haseen/layers/ai/`, `bin/haseen-ai-*` | 006 |
 | DMS swap-in | `share/haseen/layers/dms/`, `bin/haseen-shell-use` | 008 |
-| NixOS | `flake.nix`, `nix/` | 009 |
 | Notifications, OSD, launcher, lock, idle, polkit, session | `share/haseen/shell/plugins/haseen.*` | 010 |
 | Omarchy and DMS plugin compat | `share/haseen/shell/Compat/` + 6 root symlinks | 011 |
 | Extended luna-plugin compatibility | `share/haseen/shell/Compat/Omarchy/`, `share/haseen/shell/Compat/Runtime.qml`, `share/haseen/shell/Compat/ShellApi.qml`, `bin/haseen-plugin-settings` | 027 |
@@ -117,9 +116,10 @@ tools/secrets.sh                          # before every push
 ```
 
 `core/go.mod` needs Go ≥ 1.26; pass a mise-installed Go as `GO=` when the
-system one is older. nix is used through nix-portable (plan 009). Tests are
-behavioural only and run only through `tests/run.sh`; since plan 074
-`tests/lib.sh` `sandbox()` cuts every test off the live session.
+system one is older. Tests are behavioural only and run only through
+`tests/run.sh`; since plan 074 `tests/lib.sh` `sandbox()` cuts every test off
+the live session. Supported targets are CachyOS and Arch. NixOS support was
+dropped by owner decision on 2026-10-05 (plan 009); the installer refuses it.
 
 Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
 `plans/README.md`: keep every row, in number order. A PR that is BEHIND gets
@@ -161,16 +161,14 @@ Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
 
 Build tree = checkout files (`git ls-files -co --exclude-standard`, so WIP is
 included) plus `git diff <last-installed-main> origin/main` for code paths
-(not docs, plans, nix, NOTICE, AGENTS, handoff, README) applied with
+(not docs, plans, NOTICE, AGENTS, handoff, README) applied with
 `patch -p1`. Then `./install.sh --tree-only --yes` with Go on `PATH`,
 `systemctl --user daemon-reload`, `hyprctl reload`, `haseen migrate`, and
 re-apply the theme.
 
 ## Release gates (open)
 
-- **Plan 032 (sidecar).** The Nix package does not build `haseen-sidecar`
-  (it would need `buildGoModule` and a vendor hash), so a NixOS install has no
-  `sysusage` capability and the widget hides. The NVIDIA branch of the daemon
+- **Plan 032 (sidecar).** The NVIDIA branch of the daemon
   (`nvidia-smi -l` stream) has no hardware here and is unverified; the amdgpu,
   i915 and xe branches were exercised against fixtures, i915 also live. There is
   no `strace` on the author's machine, so "who does the work" was measured with

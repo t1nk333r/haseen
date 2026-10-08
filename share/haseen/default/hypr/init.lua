@@ -31,7 +31,7 @@ local function env_or(name, fallback)
 end
 
 -- share/haseen is two directories above this file. Taking it from our own
--- location works for the repo checkout, /usr/local, /usr and a Nix store path
+-- location works for the repo checkout, /usr/local and /usr
 -- alike; HASEEN_PATH (exported by ~/.config/uwsm/env.d/10-haseen) is only the
 -- fallback for a VM without the debug library.
 local function own_root()

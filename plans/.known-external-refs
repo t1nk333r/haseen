@@ -1,6 +1,6 @@
 # hash<TAB>reason — hex ids cited in plans/ that are not commits of this repo
-c59305b	nixpkgs pin in flake.lock (plan 009)
-ba33415	lanzaboote pin in flake.lock (plan 009)
+c59305b	nixpkgs pin cited by plan 009 (Nix support dropped)
+ba33415	Secure Boot input pin cited by plan 009 (Nix support dropped)
 efb5099	Hyprland 0.56.2 build commit (plan 003)
 5c4da021469517449770579793b37ce26d0a0d48	Omarchy pin for theme assets (plan 020)
 5cf5fec	omapager as installed on luna (upstream c389e73 + owner commits), plan 025

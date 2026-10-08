@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — put haseen on an existing CachyOS (or Arch) install.
 #
-# 1. Preflight: refuse NixOS (use the flake) and unknown distros.
+# 1. Preflight: refuse NixOS and unknown distros.
 # 2. Install the tree: bin/ -> PREFIX/bin, share/haseen -> PREFIX/share/haseen,
 #    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
 #    PREFIX/share/applications, the app icon (`-i haseen`) ->
@@ -145,8 +145,8 @@ omarchy)
     warn "read docs/decisions/0001-haseen-replaces-omarchy.md before continuing."
     confirm "Continue on an Omarchy host?" || exit 1
     ;;
-nixos) die "NixOS is configured through the flake (nix/README.md), not this installer." ;;
-*) die "unsupported distro '${DISTRO_PRETTY:-unknown}'. haseen targets CachyOS, Arch and NixOS." ;;
+nixos) die "NixOS is not supported. haseen targets CachyOS and Arch." ;;
+*) die "unsupported distro '${DISTRO_PRETTY:-unknown}'. haseen targets CachyOS and Arch." ;;
 esac
 
 if $UNINSTALL; then

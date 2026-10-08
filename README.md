@@ -3,7 +3,7 @@
 [![ci](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml/badge.svg)](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml)
 
 حصين (*haseen*, "fortified"): a clean, low-resource desktop that installs on
-top of **CachyOS** (plain Arch works too; NixOS uses the flake). It is built on
+top of **CachyOS** (plain Arch works too). It is built on
 Hyprland (Lua config) and a small Quickshell shell of its own, and it can load
 add-ons made for Omarchy and DankMaterialShell.
 
@@ -70,10 +70,7 @@ translate, and lists what has no haseen equivalent; run it without
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.
 
-## NixOS
-
-See [`nix/README.md`](nix/README.md): `nixosModules.haseen` (with lanzaboote
-for Secure Boot) and `homeManagerModules.haseen`.
+NixOS is not supported: the installer refuses it.
 
 ## Docs
 
@@ -87,7 +84,6 @@ for Secure Boot) and `homeManagerModules.haseen`.
 0.1.0-dev. Covered so far:
 - Fixture-tested.
 - The shell was run live next to an existing session.
-- The flake was evaluated and built.
 
 Not run yet: a real install on a CachyOS machine, Secure Boot enrollment on real firmware, and greetd login (plan 014).
 
