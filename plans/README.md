@@ -48,6 +48,7 @@ Read `handoff.md` first.
 | 042 | Clipboard history with a toggleable preview | P2 | M | 022 | DONE 2026-10-05 (84 tests; live panel screenshots; oversized entry never decoded) |
 | 043 | Keybinds follow waydots, and hyprmod's place in the load order | P1 | M | 003 030 | DONE 2026-10-05 (62 tests; `Hyprland --verify-config` ok with two negative controls; 99→122 binds) |
 | 044 | Multiplexer (herdr + tmux), yazi, and the disposable-VM rig | P2 | M | 004 024 038 | DONE 2026-10-05 (96 tests; herdr/tmux/yazi configs parsed by the real tools; no VM built) |
+| 045 | The settings index: one map over six stores | P2 | S | 005 019 033 | DONE 2026-10-05 (40 tests at landing 2026-10-08; re-checked against 075–085) |
 | 047 | Fonts, Arabic rendering, Qt theming and the seed registry | P1 | M | 004 033 | DONE 2026-10-05 (live `fc-match`: Arabic→Naskh, Urdu→Nastaliq, Omarchy's system assign defeated) |
 | 048 | Omarchy parity on io: quiet boot handover, `*` splash, Omarchy import, three menus, gestures, lock-screen fixes | P1 | L | 016 019 031 036 | DONE 2026-10-06 (owner checks the boot and swipes) |
 | 049 | io round 3: popups under their icon, frame/bar seam, compat icon font, pickers, lock fingerprint, Omarchy tray, hover highlight | P1 | L | 015 036 048 | DONE 2026-10-06 (real finger and click are owner checks) |
