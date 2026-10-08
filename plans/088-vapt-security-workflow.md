@@ -216,8 +216,8 @@ native text editing. No GUI fingerprint entry duplicates terminal authorization.
   (`closure_identity_ok`) and `:910` (`allowed_local`).
 - Native metadata reuse: `share/haseen/layers/vapt/metadata.py:3727`
   (`native_state`); no installed Python execution.
-- Owned-file discovery: `share/haseen/layers/vapt/workflow.py:106`
-  (`owned_file`), `:158` (`native_evidence`), `:211` (`discover`).
+- Owned-file discovery: `share/haseen/layers/vapt/workflow.py:107`
+  (`owned_file`), `:184` (`native_evidence`), `:237` (`discover`).
 - Preserved provisioning verifier: `share/haseen/layers/vapt/workflow.sh:9`
   (`vapt_workflow_status`) and `bin/haseen-vapt-status:11`.
 - Seed-once boundary: `share/haseen/layers/vapt/provision.sh:491`.
@@ -226,25 +226,26 @@ native text editing. No GUI fingerprint entry duplicates terminal authorization.
   stubs, real pacman local-DB fixtures, native metadata, ambiguity, foreign
   ownership/symlinks, data-only roots, single-object JSON, no automatic launch.
 - Shared local policy: `share/haseen/layers/vapt/workflow_support.py:72`
-  (`validate_endpoint`) and `:182` (`inspect_certificate_data`). Helpers validate
+  (`validate_endpoint`) and `:203` (`inspect_certificate_data`). Helpers validate
   literal IP/1024–65535 ports, explicit owned files and confinement; certificate
   inspection parses one current CA via absolute OpenSSL only on explicit
   request and returns nonsecret fingerprint/validity metadata. It never trusts.
 - Reviewed installed adapters and actual readiness:
-  `share/haseen/layers/vapt/workflow_actions.py:40` (`adapter`) and `:115`
-  (`local_capabilities`). Service unit/current-fragment checks are at `:64`;
+  `share/haseen/layers/vapt/workflow_actions.py:43` (`adapter`) and `:134`
+  (`local_capabilities`). Service unit/current-fragment checks are at `:83`;
   no candidate is inferred from a package basename.
 - Terminal confirmation/root gateway and immediate revalidation:
-  `share/haseen/layers/vapt/workflow_actions.sh:17`, `:42`, `:110`
+  `share/haseen/layers/vapt/workflow_actions.sh:37`, `:68`, `:136`
   (`vapt_service_action`, `vapt_endpoint_action`, `vapt_ca_action`).
 - Descriptor confinement and approved-inode checks:
-  `share/haseen/layers/vapt/workflow_actions.py:188`, `:252`, `:273`
-  (`ConfinedHandler`, `open_selected`, `serve`).
+  `share/haseen/layers/vapt/workflow_actions.py:256`, `:332`
+  (`ConfinedHandler`, `serve`) and shared no-follow opener
+  `share/haseen/layers/vapt/workflow_support.py:98` (`open_selected`).
 - Immutable CA input and fingerprint binding:
-  `share/haseen/layers/vapt/workflow_support.py:235` (`read_certificate_bytes`)
-  and `share/haseen/layers/vapt/workflow_actions.py:312` (`certificate_payload`).
+  `share/haseen/layers/vapt/workflow_support.py:256` (`read_certificate_bytes`)
+  and `share/haseen/layers/vapt/workflow_actions.py:370` (`certificate_payload`).
 - Root-only unchanged-anchor journal:
-  `share/haseen/layers/vapt/workflow_ca.py:104`, `:146` (`ca_status`, `mutate`).
+  `share/haseen/layers/vapt/workflow_ca.py:109`, `:151` (`ca_status`, `mutate`).
 - Behavioural action suites: `tests/test-vapt-services.sh:1` and
   `tests/test-vapt-net.sh:1`; owned stubs fail if executed, fixture gateways
   capture consent/argv, loopback requests prove path confinement, fixture
@@ -304,10 +305,10 @@ trust. No trust decision follows from a panel launch or inspection.
   Text-only extension output is also unsafe: malformed DER containing printable
   `CA:TRUE` is rendered as apparent extension text. The native decoder avoids
   that fallback, with no custom certificate parser or native struct layout.
-  Evidence: `share/haseen/layers/vapt/workflow_support.py:160`
-  (`_basic_constraints_ca`), `:182` (shared inspection),
-  `share/haseen/layers/vapt/workflow_actions.py:312` (payload reuse),
-  `share/haseen/layers/vapt/workflow_ca.py:157` (privileged reuse).
+  Evidence: `share/haseen/layers/vapt/workflow_support.py:181`
+  (`_basic_constraints_ca`), `:203` (shared inspection),
+  `share/haseen/layers/vapt/workflow_actions.py:370` (payload reuse),
+  `share/haseen/layers/vapt/workflow_ca.py:162` (privileged reuse).
   Actual certificate fixtures cover genuine critical/noncritical CAs and
   self-signed subject/issuer `CA:TRUE` spoofing with absent, false and malformed
   constraints, including critical/noncritical printable malformed DER.
@@ -318,8 +319,8 @@ trust. No trust decision follows from a panel launch or inspection.
   The request handler now requires `st_nlink == 1` on the opened regular leaf
   before sending bytes, for both directory and single-file modes. Selection
   and startup also refuse multiply-linked selected files. Evidence:
-  `share/haseen/layers/vapt/workflow_actions.py:230` (every request), `:293`
-  (single-file startup), `share/haseen/layers/vapt/workflow_support.py:141`
+  `share/haseen/layers/vapt/workflow_actions.py:305` (every request), `:352`
+  (single-file startup), `share/haseen/layers/vapt/workflow_support.py:162`
   (owned-file selection). Real ephemeral loopback fixtures serve a normal file,
   refuse an inside hardlink to outside bytes, refuse a second link added after
   startup, and refuse multiply-linked `/file` bytes. The CA anchor/state path
@@ -392,3 +393,81 @@ are not established by those engine assertions. No owner's desktop is used.
 - `SHELLCHECK=$(command -v shellcheck) tools/lint.sh`: **lint OK**, 397 shell, 33 Lua, 180 JSON, 255 QML and 41 Go files. An initial fixture-array SC2054 diagnostic was corrected by quoting the single extension operand.
 - `QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh tests/test-vapt-security-ui.sh`: **5,070/5,070 passed**, 30 suite executions (29 unique; the requested explicit UI suite also matches the glob), 1,607.96 seconds with a 3,600-second deadline. An intermediate run was cancelled before final native-classifier fixtures landed; it is not counted as verification.
 - `tools/check-docs.sh`: **check-docs OK** after the finding, scope and evidence documentation updates.
+
+### Batch J: CLI/actions findings
+
+- **AUD-04 / TEST-02 / TEST-03 — fixed for CLI records:** CA ownership records
+  require an object, integer schema version, typed fingerprint/content hash,
+  known transaction state and control-free subject/issuer strings before use.
+  Service manager snapshots require an object and validated consumed field
+  types/enums. Wrong-shaped top-level manager snapshots emit one explicit
+  refused object with exit 1 and diagnostics only on stderr; unsafe row evidence
+  is unknown. No new catch-all handler masks programming failures.
+  Inspection rejects malformed JSON certificate input; source/package status
+  retains its provisioning exit meanings, while doctor refuses unsafe CA
+  readiness. Evidence: `workflow_ca.py:88`, `workflow_actions.py:56` under
+  `share/haseen/layers/vapt/`; settings shape/refusal cases also cover status and
+  doctor. `tests/test-vapt-{net,services,workflow}.sh` exercise `[]`, null,
+  numeric and string containers, malformed consumed fields/enums, one-object
+  stdout and stderr-only diagnostics without traceback leakage.
+- **AUD-05 — fixed:** documentation readiness requires a confined read-only
+  descriptor open. Installed identity and owned file inventory are retained
+  separately from readable usage evidence. Real help reopens the document,
+  freshly checks owned evidence and revalidates its opened inode before reading.
+  Evidence: `share/haseen/layers/vapt/workflow.py:124`, `:130`, `:140`, `:149`.
+  Workflow fixtures deny document opens, revoke readability after discovery and
+  replace the document with a cross-owner symlink before presentation; neither
+  preview nor real help invents successful usage or prints substituted bytes.
+- **AUD-01 — fixed:** after validation and consent, the common foreground
+  gateway executes `exec` with the reviewed adapter/server argv, replacing
+  the wrapper rather than leaving a long-lived child. Dry-run still returns
+  before any handoff. Evidence: `share/haseen/layers/vapt/workflow_actions.sh:130`,
+  `:132`; fixture SIGTERM/SIGHUP checks prove the adapter has the wrapper PID,
+  signal exit codes propagate and literal loopback endpoints can be rebound.
+- **AUD-02 — fixed:** `LiteralHTTPServer.server_bind` uses the literal
+  TCP binding primitive and assigns server-name metadata without reverse DNS.
+  Scoped IPv6 bindings resolve only the local interface index, not a host name.
+  Evidence: `share/haseen/layers/vapt/workflow_actions.py:207`; loopback startup
+  succeeds with `getfqdn` and `gethostbyaddr` patched to fail if called.
+- **AUD-03 — fixed:** deliberately serial serving has no unbounded thread pool.
+  Accepted-client idle waits are five seconds; one monotonic thirty-second
+  absolute connection deadline spans reading and writing, preventing slow-drip
+  clients from extending the budget indefinitely. Known timeout/disconnect
+  failures close the connection without attempting another expired write.
+  Evidence: `share/haseen/layers/vapt/workflow_actions.py:229`, `:256`.
+  Real loopback fixtures prove idle, slow-drip and stopped-reader clients cannot
+  monopolize the helper; ordinary requests and descriptor confinement survive.
+- **AUD-06 — CLI contract completed:** accept IPv4/IPv6 literals, with at most
+  one optional IPv6 `%SCOPE` matching `[A-Za-z0-9_.-]{1,64}`. Preserve the
+  complete CLI-provided scoped address unchanged; validate literal and scope
+  separately. The CLI remains authoritative, with no interface-presence/DNS
+  probe in preview. Evidence: `share/haseen/layers/vapt/workflow_support.py:72`;
+  fixtures accept `%enp5s0`, `%wlan0`, `%lo` and refuse duplicate scope suffixes.
+  The panel half is a separate batch; no panel/menu files change here.
+- **TEST-01 — CLI fixed:** stop does not request a terminal or confirmation,
+  but retains displayed-unit/fragment expectations and the immediate second
+  ownership read before normal root authorization. Start/restart still require
+  the terminal and consent, propagating the unavailable-terminal gateway status
+  rather than rewriting it. Evidence:
+  `share/haseen/layers/vapt/workflow_actions.sh:37`. Hermetic unavailable-terminal
+  fixtures prove stop succeeds, stale expectations/current fragments refuse,
+  and start/restart cannot reach the root gateway. The panel half is separate.
+
+The adversarial confinement suite previously modelled a `makefile`-backed
+in-memory transport. Its fixture now models `recv_into`, `settimeout` and explicit
+idle/total server deadlines, matching the production socket/descriptor contract.
+The same traversal, encoded traversal/NUL, symlink, hardlink, FIFO, directory,
+parent/root replacement and single-file assertions remain reachable and unchanged;
+no production test shim or weakened assertion was introduced.
+
+- `QT_QPA_PLATFORM=offscreen TMPDIR="$HOME/.cache/haseen-wt/jtmp" tests/run.sh tests/test-vapt-workflow.sh tests/test-vapt-services.sh tests/test-vapt-net.sh tests/test-vapt-confinement-adversarial.sh tests/test-vapt-workflow-adversarial.sh`: **613/613 passed**, five suites, after the final terminal-status and top-level service-refusal corrections.
+- `SHELLCHECK=$(command -v shellcheck) tools/lint.sh`: **lint OK**, 400 shell, 33 Lua, 180 JSON, 255 QML and 41 Go files.
+- An earlier default-scratch full run reported **5,478/5,484**. Four CLI
+  expectation mismatches prompted the final corrections above; one panel stop
+  launcher mismatch belongs to its separate batch. The last shared-prerequisite
+  assertion was invalidated by `/tmp` `EDQUOT` errors while creating heredocs,
+  an environmental scratch-quota artifact, not evidence of a package/action
+  regression. Subsequent checks use a real-filesystem `TMPDIR` outside the
+  checkout; no unrelated scratch is removed.
+- `QT_QPA_PLATFORM=offscreen TMPDIR="$HOME/.cache/haseen-wt/jtmp" tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`: **5,491/5,492 passed**, 32 suites. The only failure is the separately scoped panel stop consumer launching through `config terminal` instead of directly. All CLI/action and confined transport cases passed; the relocated run had no scratch-quota failure.
+- `tools/check-docs.sh`: **check-docs OK**.

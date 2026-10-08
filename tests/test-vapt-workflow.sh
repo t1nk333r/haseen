@@ -152,3 +152,67 @@ printf '{"bindAddress":"::1","owner":"keep"}\n' >"$ROOT$XDG_CONFIG_HOME/haseen/v
 vapt_api install --groups privacy
 assert_eq 'reapply preserves owner settings bytes' '{"bindAddress":"::1","owner":"keep"}' "$(cat "$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json")"
 workflow_no_calls seed
+workflow_fixture vapt-workflow-doc-readability
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import argparse,contextlib,io,pathlib,sys
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1]);import workflow as wf
+root=pathlib.Path(sys.argv[2]);real_open=wf.os.open
+def deny_document(path,*args,**kwargs):
+    if str(path)=='scan-one.1':raise PermissionError('fixture document denied')
+    return real_open(path,*args,**kwargs)
+args=argparse.Namespace(tool='nmap',entry='/usr/bin/scan-one',command='tool-help',dry_run=True)
+with patch.object(wf.os,'open',side_effect=deny_document):
+    tool=next(t for t in wf.discover()['tools'] if t['id']=='nmap')
+    entry=next(e for e in tool['entrypoints'] if e['id']==args.entry)
+    assert tool['state']=='installed' and not tool['dataOnly']
+    assert '/usr/share/man/man1/scan-one.1' in tool['packages'][0]['files'],'owned identity must remain separate'
+    assert not entry['documentation'] and entry['usage']['state']=='unavailable'
+    try:wf.show_help(args)
+    except ValueError:pass
+    else:raise AssertionError('preview advertised unreadable evidence')
+real_document=wf.open_document;opens=0
+def revoked_document(path):
+    global opens
+    if path=='/usr/share/man/man1/scan-one.1':
+        opens+=1
+        if opens==2:raise PermissionError('fixture permission revoked after discovery')
+    return real_document(path)
+args.dry_run=False;output=io.StringIO()
+with patch.object(wf,'open_document',side_effect=revoked_document),contextlib.redirect_stdout(output):
+    try:wf.show_help(args)
+    except PermissionError:pass
+    else:raise AssertionError('execution did not reopen document')
+assert not output.getvalue()
+opens=0;document=root/'usr/share/man/man1/scan-one.1';original=document.read_bytes()
+def replaced_document(path):
+    global opens
+    if path=='/usr/share/man/man1/scan-one.1':
+        opens+=1
+        if opens==2:
+            document.unlink();document.symlink_to(root/'usr/share/wordlists/sample.txt')
+    return real_document(path)
+try:
+    with patch.object(wf,'open_document',side_effect=replaced_document),contextlib.redirect_stdout(output):
+        try:wf.show_help(args)
+        except ValueError:pass
+        else:raise AssertionError('execution did not revalidate ownership')
+    assert not output.getvalue()
+finally:document.unlink();document.write_bytes(original)
+print('unreadable readiness, reopen and ownership revalidation passed')
+PY
+assert_status 'owned document readability is confined and revalidated' 0 "$STATUS"
+workflow_no_calls doc-readability
+mkdir -p "$ROOT$XDG_CONFIG_HOME/haseen/vapt"
+for content in '[]' null 17 '"wrong"'; do
+    printf '%s\n' "$content" >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json"
+    for command in status doctor; do
+        status=0
+        "haseen-vapt-$command" --json --dry-run >"$SANDBOX/json-out" 2>"$SANDBOX/json-err" || status=$?
+        assert_status "$command malformed settings fails honestly" 1 "$status"
+        assert_eq "$command wrong-shaped settings exactly one stdout object" 1 "$(jq -s 'length' "$SANDBOX/json-out")"
+        assert_eq "$command wrong-shaped settings explicit unavailable" unavailable "$(jq -r '.error.state' "$SANDBOX/json-out")"
+        assert_contains "$command malformed settings diagnostics stderr" "$(<"$SANDBOX/json-err")" 'vapt:'
+        assert_not_contains "$command malformed settings no traceback" "$(<"$SANDBOX/json-err")" Traceback
+    done
+done

@@ -62,20 +62,45 @@ assert_eq 'single-file capability names exact CLI command' net-file-server "$(jq
 # Exercise the actual confined handler only on loopback, with inert fixture
 # bytes. Requests cannot execute, escape, follow links or expose a directory.
 capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
-import functools,http.client,http.server,os,pathlib,sys,threading
-sys.path.insert(0,sys.argv[1]);from workflow_actions import ConfinedHandler
+import functools,http.client,os,pathlib,socket,sys,threading,time
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1]);from workflow_actions import ConfinedHandler,LiteralHTTPServer
 root=pathlib.Path(sys.argv[2]);directory=root/'usr/share/doc/nmap'
 (directory/'outside').symlink_to(root/'usr/share/wordlists/sample.txt')
 (root/'external-secret.txt').write_bytes(b'outside selected directory\n')
 os.link(root/'external-secret.txt',directory/'hardlink')
 rootfd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY)
-server=http.server.HTTPServer(('127.0.0.1',0),functools.partial(ConfinedHandler,root_fd=rootfd))
+with patch.object(socket,'getfqdn',side_effect=AssertionError('reverse lookup')),patch.object(socket,'gethostbyaddr',side_effect=AssertionError('reverse lookup')):
+    server=LiteralHTTPServer(('127.0.0.1',0),functools.partial(ConfinedHandler,root_fd=rootfd))
+server.request_idle_seconds=.1;server.request_total_seconds=.35
 thread=threading.Thread(target=server.serve_forever);thread.start()
 def request(path):
     connection=http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=3)
     connection.request('GET',path);response=connection.getresponse();status=response.status;data=response.read();connection.close();return status,data
 try:
     assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
+    idle=socket.create_connection(('127.0.0.1',server.server_port),timeout=2)
+    try:assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
+    finally:idle.close()
+    slow=socket.create_connection(('127.0.0.1',server.server_port),timeout=2);sent=[]
+    def drip():
+        for byte in b'GET /scan-two.txt HTTP/1.0\r\n':
+            try:slow.sendall(bytes([byte]));sent.append(byte)
+            except OSError:break
+            time.sleep(.05)
+    dripper=threading.Thread(target=drip);dripper.start()
+    try:
+        assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
+        dripper.join(2);assert not dripper.is_alive() and len(sent)<26
+    finally:slow.close();dripper.join(2)
+    large=directory/'large.bin'
+    with large.open('wb') as output:output.truncate(16*1024*1024)
+    stalled=socket.socket();stalled.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1024)
+    stalled.settimeout(2);stalled.connect(('127.0.0.1',server.server_port))
+    try:
+        stalled.sendall(b'GET /large.bin HTTP/1.0\r\n\r\n')
+        assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
+    finally:stalled.close();large.unlink()
     for path in ['/outside','/hardlink','/../wordlists/sample.txt','/%2e%2e/wordlists/sample.txt','/']:
         assert request(path)[0]==404,path
     os.link(directory/'scan-two.txt',root/'late-link')
@@ -85,7 +110,7 @@ try:
 finally:
     server.shutdown();thread.join();server.server_close();os.close(rootfd)
 filefd=os.open(root/'usr/share/wordlists/sample.txt',os.O_RDONLY)
-server=http.server.HTTPServer(('127.0.0.1',0),functools.partial(ConfinedHandler,root_fd=None,file_fd=filefd))
+server=LiteralHTTPServer(('127.0.0.1',0),functools.partial(ConfinedHandler,root_fd=None,file_fd=filefd))
 thread=threading.Thread(target=server.serve_forever);thread.start()
 try:
     assert request('/file')==(200,b'data\n')
@@ -216,6 +241,60 @@ for cmd in service-list service-start service-stop service-restart net-addresses
 done
 assert_eq 'no real privileged calls' '' "$(vapt_calls sudo)$(vapt_calls systemctl)"
 actions_untouched net
+for content in '[]' null 17 '"wrong"'; do
+    printf '%s\n' "$content" >"$ROOT/var/lib/haseen/vapt/proxy-ca.json"
+    capture haseen-vapt-net-proxy-ca status --json
+    assert_status 'wrong-shaped CA record is refusal' 1 "$STATUS"
+    assert_eq 'wrong-shaped CA status one object' 1 "$(jq -s 'length' <<<"$OUTPUT")"
+    assert_eq 'wrong-shaped CA status explicit unknown' unknown "$(jq -r '.state' <<<"$OUTPUT")"
+    capture haseen-vapt-net-proxy-ca inspect /var/lib/haseen/vapt/proxy-ca.json --json
+    assert_status 'wrong-shaped JSON is not certificate input' 1 "$STATUS"
+    assert_eq 'wrong-shaped inspect one object' 1 "$(jq -s 'length' <<<"$OUTPUT")"
+    assert_eq 'wrong-shaped inspect explicit invalid' invalid "$(jq -r '.state' <<<"$OUTPUT")"
+    for command in status doctor; do
+        capture "haseen-vapt-$command" --json --dry-run
+        assert_eq "$command wrong-shaped auxiliary record one object" 1 "$(jq -s 'length' <<<"$OUTPUT")"
+        assert_eq "$command preserves versioned diagnostics" 1 "$(jq '.schemaVersion' <<<"$OUTPUT")"
+        assert_not_contains "$command malformed record no traceback" "$OUTPUT" Traceback
+    done
+    assert_eq 'doctor refuses unsafe CA readiness' refused "$(jq -r '.workflow.capabilities[] | select(.id=="proxy-ca") | .state' <<<"$OUTPUT")"
+done
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import json,pathlib,sys
+sys.path.insert(0,sys.argv[1]);from workflow_ca import ca_status
+root=pathlib.Path(sys.argv[2]);path=root/'var/lib/haseen/vapt/proxy-ca.json'
+record={'schemaVersion':1,'sha256':'A'*64,'contentSha256':'0'*64,'state':'created','subject':'fixture','issuer':'fixture'}
+for key in record:
+    for value in ([],None,17,True):
+        row=dict(record);row[key]=value;path.write_text(json.dumps(row))
+        assert ca_status(str(root))['state']=='unknown',(key,value)
+row=dict(record);row['state']='future';path.write_text(json.dumps(row))
+assert ca_status(str(root))['state']=='unknown'
+path.unlink()
+print('all consumed CA record fields validate without exception masking')
+PY
+assert_status 'CA consumed field types/enums refuse safely' 0 "$STATUS"
+capture python3 -B - "$FIXTURES" "$CALLS" <<'PY'
+import json,os,pathlib,signal,socket,subprocess,sys,time
+fixtures=pathlib.Path(sys.argv[1]);calls=pathlib.Path(sys.argv[2]);adapter=calls/'foreground-adapter'
+adapter.write_text('#!/usr/bin/python3\nimport json,os,socket,time\ns=socket.socket();s.bind(("127.0.0.1",0));s.listen(1)\nwith open(os.environ["VAPT_FOREGROUND_READY"],"w") as f:json.dump({"pid":os.getpid(),"port":s.getsockname()[1]},f)\nwhile True:time.sleep(1)\n')
+adapter.chmod(0o755)
+for kind,args in [('listener',['8080']),('http-server',['/explicit-fixture','8080'])]:
+    for stop in (signal.SIGTERM,signal.SIGHUP):
+        ready=calls/('ready-'+kind+'-'+str(stop));env=dict(os.environ,VAPT_REAL_FOREGROUND='true',VAPT_ENDPOINT_ADAPTER=str(adapter),VAPT_FOREGROUND_READY=str(ready),VAPT_CONFIRM='yes')
+        process=subprocess.Popen(['/usr/bin/bash',str(fixtures/'vapt-actions-runner.sh'),'endpoint',kind,*args],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        try:
+            deadline=time.monotonic()+3
+            while not ready.exists() and process.poll() is None and time.monotonic()<deadline:time.sleep(.01)
+            assert ready.exists(),process.communicate(timeout=1)
+            data=json.loads(ready.read_text());assert data['pid']==process.pid,'wrapper did not hand off its pid'
+            process.send_signal(stop);assert process.wait(timeout=2)==-stop,'signal/exit code not propagated'
+            with socket.socket() as probe:probe.bind(('127.0.0.1',data['port']))
+        finally:
+            if process.poll() is None:process.kill();process.wait(timeout=2)
+print('SIGTERM/SIGHUP handoff reclaims literal loopback endpoints')
+PY
+assert_status 'foreground wrapper signals leave no helper endpoint behind' 0 "$STATUS"
 actions_fixture vapt-net-unverified
 python3 - "$ROOT/var/lib/haseen/vapt/installed.json" <<'PY'
 import json,sys
@@ -228,3 +307,15 @@ capture haseen-vapt-doctor --json --dry-run
 assert_eq 'unverified prerequisite still present diagnostic' true "$(jq '.workflow.capabilities[] | select(.id=="listener") | .installed' <<<"$OUTPUT")"
 assert_eq 'unverified adapter no available action' false "$(jq '.workflow.capabilities[] | select(.id=="listener") | .available' <<<"$OUTPUT")"
 actions_untouched unverified-adapter
+actions_fixture vapt-scoped-endpoints
+for address in fe80::1%enp5s0 fe80::1%wlan0 fe80::1%lo; do
+    capture haseen-vapt-net-listener --bind "$address" 8080 --dry-run
+    assert_status 'scoped IPv6 literal accepted offline' 0 "$STATUS"
+    assert_contains 'scoped address preserved exactly once' "$OUTPUT" "$address"
+done
+capture haseen-vapt-net-listener --bind fe80::1%enp5s0%enp5s0 8080 --dry-run
+assert_status 'duplicate IPv6 scope refused' 1 "$STATUS"
+printf '[{"interface":"enp5s0","address":"fe80::1%%enp5s0","prefixLength":64}]\n' >"$ROOT/var/lib/haseen/vapt/addresses.json"
+capture haseen-vapt-net-addresses --json
+assert_eq 'CLI address inventory emits one complete scoped literal' fe80::1%enp5s0 "$(jq -r '.addresses[0].address' <<<"$OUTPUT")"
+actions_untouched scoped-endpoints

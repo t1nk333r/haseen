@@ -51,13 +51,13 @@ vapt_service_action() {
         return 0
     fi
     vapt_action_refuse_fixture || return 1
-    source "$HASEEN_PATH/lib/terminal.sh"
-    local terminal_args=("$service")
-    [[ -z $expected_unit ]] || terminal_args+=(--expect-unit "$expected_unit")
-    [[ -z $expected_fragment ]] || terminal_args+=(--expect-fragment "$expected_fragment")
-    $ASSUME_YES && terminal_args+=(--yes)
-    in_floating_terminal "${terminal_args[@]}"
     if [[ $verb != stop ]]; then
+        source "$HASEEN_PATH/lib/terminal.sh"
+        local terminal_args=("$service")
+        [[ -z $expected_unit ]] || terminal_args+=(--expect-unit "$expected_unit")
+        [[ -z $expected_fragment ]] || terminal_args+=(--expect-fragment "$expected_fragment")
+        $ASSUME_YES && terminal_args+=(--yes)
+        in_floating_terminal "${terminal_args[@]}" || return $?
         confirm "Accept exposure uncertainty and $verb $unit?" || { warn 'cancelled; no service operation'; return 1; }
     fi
     second="$(vapt_actions service-plan "$service")" || return 1
@@ -127,9 +127,9 @@ vapt_endpoint_action() {
     adapter="$(printf '%s' "$plan" | vapt_json_field adapter)"
     if [[ $kind == listener ]]; then
         family="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print("-4" if json.load(sys.stdin)["endpoint"]["family"] == "ipv4" else "-6")')"
-        run "$adapter" "$family" -l -n -- "$address" "$port"
+        run exec "$adapter" "$family" -l -n -- "$address" "$port"
     else
-        run "$adapter" -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
+        run exec "$adapter" -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
     fi
 }
 

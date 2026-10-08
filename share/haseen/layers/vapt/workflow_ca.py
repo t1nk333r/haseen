@@ -90,7 +90,12 @@ def record_read(fd, fixture=False):
         row = json.loads(read_owned(fd, RECORD, fixture))
     except FileNotFoundError:
         return None
-    if row.get('schemaVersion') != 1 or not FINGERPRINT.fullmatch(row.get('sha256', '')) or not re.fullmatch(r'[a-f0-9]{64}', row.get('contentSha256', '')) or row.get('state') not in ('pending', 'created', 'removing'):
+    if (not isinstance(row, dict) or type(row.get('schemaVersion')) is not int or row.get('schemaVersion') != 1
+            or not isinstance(row.get('sha256'), str) or not FINGERPRINT.fullmatch(row['sha256'])
+            or not isinstance(row.get('contentSha256'), str) or not re.fullmatch(r'[a-f0-9]{64}', row['contentSha256'])
+            or not isinstance(row.get('state'), str) or row['state'] not in ('pending', 'created', 'removing')
+            or any(not isinstance(row.get(key), str) or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in row[key])
+                   for key in ('subject', 'issuer'))):
         raise ValueError('CA ownership record malformed')
     return row
 
@@ -128,12 +133,12 @@ def ca_status(root=''):
         except FileNotFoundError:
             data = None
         unchanged = data is not None and hashlib.sha256(data).hexdigest() == row['contentSha256']
-        result['anchor'] = {'sha256': row['sha256'], 'subject': row.get('subject', ''), 'issuer': row.get('issuer', ''),
+        result['anchor'] = {'sha256': row['sha256'], 'subject': row['subject'], 'issuer': row['issuer'],
                             'path': ANCHORS + '/' + name, 'unchanged': unchanged}
         result.update(state='owned' if unchanged else 'modified', reason='unchanged fingerprint-bound owned anchor' if unchanged else 'owned anchor missing or modified; preserved')
         if unchanged and row['state'] != 'created':
             result.update(state='unknown', reason='owned anchor transaction incomplete; no success assumed')
-    except (OSError, ValueError, TypeError, KeyError):
+    except (OSError, ValueError):
         result.update(state='unknown', reason='CA ownership state unsafe or unreadable; preserved')
     finally:
         if state_fd is not None:

@@ -15,10 +15,11 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import stat
 import sys
 
 import metadata as meta
-from workflow_support import validate_endpoint, inspect_certificate, confined_path, selected_owned_file, local_addresses
+from workflow_support import validate_endpoint, inspect_certificate, confined_path, selected_owned_file, local_addresses, open_selected
 
 LAYER = Path(__file__).resolve().parent
 ROOT = os.environ.get('HASEEN_SYSROOT', '').rstrip('/')
@@ -120,15 +121,40 @@ def owned_file(path, owner, owners):
         return None
 
 
+def validate_document_fd(fd, path):
+    observed, current = os.fstat(fd), physical(path).stat()
+    if not stat.S_ISREG(observed.st_mode) or (observed.st_dev, observed.st_ino) != (current.st_dev, current.st_ino):
+        raise ValueError('owned document changed during open')
+
+
+def open_document(path):
+    fd = open_selected(physical(path))
+    try:
+        validate_document_fd(fd, path)
+        return fd
+    except (OSError, ValueError):
+        os.close(fd)
+        raise
+
+
+def readable_document(path):
+    try:
+        fd = open_document(path)
+    except (OSError, ValueError):
+        return False
+    os.close(fd)
+    return True
+
+
 def documentation(entry, paths):
     basename = Path(entry).name
     docs = []
     for path in paths:
         name = Path(path).name.removesuffix('.gz')
-        if path.startswith('/usr/share/man/') and re.fullmatch(re.escape(basename) + r'\.[1-9][a-z]*', name):
-            docs.append({'path': path, 'kind': 'man'})
-        elif '/share/doc/' in path and name in (basename + '.txt', basename + '.md', basename + '.rst', basename + '-help.txt'):
-            docs.append({'path': path, 'kind': 'document'})
+        kind = 'man' if path.startswith('/usr/share/man/') and re.fullmatch(re.escape(basename) + r'\.[1-9][a-z]*', name) else \
+            'document' if '/share/doc/' in path and name in (basename + '.txt', basename + '.md', basename + '.rst', basename + '-help.txt') else None
+        if kind and readable_document(path):
+            docs.append({'path': path, 'kind': kind})
     return sorted(docs, key=lambda d: (d['kind'] != 'man', d['path']))
 
 
@@ -277,7 +303,7 @@ def settings():
 
 
 def validate_settings(values):
-    if values.get('schemaVersion') != 1:
+    if not isinstance(values, dict) or type(values.get('schemaVersion')) is not int or values['schemaVersion'] != 1:
         raise ValueError('unsupported workflow schema')
     validate_endpoint(values['bindAddress'], 1024)
     script = values['enumerationScript']
@@ -373,8 +399,13 @@ def show_help(args):
         if result.returncode:
             return 1
     else:
-        path = physical(evidence['path'])
-        data = gzip.decompress(path.read_bytes()) if path.name.endswith('.gz') else path.read_bytes()
+        with os.fdopen(open_document(evidence['path']), 'rb') as document:
+            if usage_evidence(*selected(args.tool, args.entry)) != evidence:
+                raise ValueError('owned document evidence changed before presentation')
+            validate_document_fd(document.fileno(), evidence['path'])
+            data = document.read()
+        if evidence['path'].endswith('.gz'):
+            data = gzip.decompress(data)
         # Print document bytes as text: no man macros, pager, terminal or
         # helper execution. Keep line breaks, remove terminal control bytes.
         print('\n'.join(clean(line) for line in data.decode('utf-8', errors='replace').splitlines()))

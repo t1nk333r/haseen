@@ -95,6 +95,27 @@ def validate_endpoint(address, port):
             'loopback': loopback, 'requiresConfirmation': not loopback}
 
 
+def open_selected(path, directory=False):
+    """Open every ancestor through no-follow descriptors, retaining one inode."""
+    parent = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        parts = Path(path).parts[1:]
+        if not parts:
+            if not directory:
+                raise ValueError('root is not a regular file')
+            return os.dup(parent)
+        for part in parts[:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            os.close(parent)
+            parent = child
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        if directory:
+            flags |= os.O_DIRECTORY
+        return os.open(parts[-1], flags, dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
 def selected_directory(path):
     if not isinstance(path, str) or not path:
         raise ValueError('select an explicit directory')

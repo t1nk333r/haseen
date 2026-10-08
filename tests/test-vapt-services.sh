@@ -83,3 +83,46 @@ assert_eq 'installed but unverified package retained diagnostic' true "$(jq '.se
 assert_eq 'unverified unit cannot control' refused "$(jq -r '.services[] | select(.id=="nginx") | .ownership' <<<"$OUTPUT")"
 assert_not_contains 'never enable via gateway' "$(vapt_calls action-root)" ' enable '
 actions_untouched service
+actions_fixture vapt-services-batch-j
+VAPT_TERMINAL_UNAVAILABLE=true actions_api service stop ssh owned-secure-login.service /usr/lib/systemd/system/owned-secure-login.service
+assert_status 'stop needs no available terminal' 0 "$STATUS"
+assert_contains 'terminal-free stop exact root unit' "$(vapt_calls action-root)" 'stop -- owned-secure-login.service'
+rm "$CALLS/action-root"
+for verb in start restart; do
+    VAPT_TERMINAL_UNAVAILABLE=true VAPT_CONFIRM=yes actions_api service "$verb" ssh
+    assert_status "$verb propagates unavailable terminal status" 19 "$STATUS"
+    assert_contains "$verb terminal refusal" "$OUTPUT" TERMINAL-UNAVAILABLE
+done
+assert_eq 'terminal refusal no service root call' '' "$(vapt_calls action-root)"
+VAPT_TERMINAL_UNAVAILABLE=true actions_api service stop ssh old.service /usr/lib/systemd/system/owned-secure-login.service
+assert_status 'terminal-free stop rejects changed unit expectation' 1 "$STATUS"
+VAPT_TERMINAL_UNAVAILABLE=true actions_api service stop ssh owned-secure-login.service /old/fragment.service
+assert_status 'terminal-free stop rejects changed fragment expectation' 1 "$STATUS"
+VAPT_TERMINAL_UNAVAILABLE=true VAPT_CHANGE_BEFORE_SECOND=true actions_api service stop ssh
+assert_status 'terminal-free stop revalidates current fragment before root' 1 "$STATUS"
+assert_eq 'all terminal-free stale refusals no root command' '' "$(vapt_calls action-root)"
+for content in '[]' null 17 '"wrong"'; do
+    printf '%s\n' "$content" >"$ROOT/var/lib/haseen/vapt/services.json"
+    capture bash -c 'haseen-vapt-service-list --json 2>"$1"' bash "$SANDBOX/service-json-err"
+    assert_status 'wrong-shaped service container explicit refusal' 1 "$STATUS"
+    assert_eq 'wrong-shaped service one object' 1 "$(jq -s 'length' <<<"$OUTPUT")"
+    assert_eq 'wrong-shaped service root refusal state' refused "$(jq -r '.state' <<<"$OUTPUT")"
+    assert_contains 'wrong-shaped service diagnostic only stderr' "$(<"$SANDBOX/service-json-err")" 'vapt:'
+    assert_not_contains 'wrong-shaped service has no traceback' "$(<"$SANDBOX/service-json-err")" Traceback
+    printf '{"owned-secure-login.service":%s}\n' "$content" >"$ROOT/var/lib/haseen/vapt/services.json"
+    capture haseen-vapt-service-list --json
+    assert_eq 'wrong-shaped service row current ownership unknown' unknown "$(jq -r '.services[] | select(.id=="ssh") | .ownership' <<<"$OUTPUT")"
+done
+capture python3 -B - "$VAPT_LAYER" <<'PY'
+import sys
+sys.path.insert(0,sys.argv[1]);from workflow_actions import manager_record
+record={'FragmentPath':'/usr/lib/systemd/system/owned.service','ActiveState':'inactive','SubState':'dead','LoadState':'loaded'}
+for key in record:
+    for value in ([],None,17,'invalid token'):
+        changed=dict(record);changed[key]=value
+        assert manager_record(changed)=={},(key,value)
+assert manager_record(record)==record
+print('all consumed manager fields validated')
+PY
+assert_status 'manager consumed field types/enums refuse safely' 0 "$STATUS"
+actions_untouched services-batch-j

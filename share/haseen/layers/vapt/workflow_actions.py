@@ -15,10 +15,13 @@ import stat
 import subprocess
 import sys
 import urllib.parse
+import io
+import socketserver
+import time
 
 import workflow as wf
 import metadata as meta
-from workflow_support import validate_endpoint, selected_owned_file, local_addresses, inspect_certificate, inspect_certificate_data, read_certificate_bytes
+from workflow_support import validate_endpoint, selected_owned_file, local_addresses, inspect_certificate, inspect_certificate_data, read_certificate_bytes, open_selected
 
 FAMILIES = [('ssh', ['openssh']), ('postgresql', ['postgresql']), ('apache', ['apache']),
             ('nginx', ['nginx']), ('beef', ['beef', 'beef-xss'])]
@@ -50,15 +53,31 @@ def adapter(name):
     return path
 
 
+def manager_record(value):
+    """Malformed manager metadata is unavailable evidence, never authority."""
+    if not isinstance(value, dict):
+        return {}
+    if (value.get('ActiveState') not in ('active', 'reloading', 'inactive', 'failed', 'activating', 'deactivating', 'maintenance', 'refreshing')
+            or value.get('LoadState') not in ('stub', 'loaded', 'not-found', 'bad-setting', 'error', 'merged', 'masked')
+            or not isinstance(value.get('SubState'), str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}', value['SubState'])
+            or not isinstance(value.get('FragmentPath'), str)
+            or (value['FragmentPath'] and (not value['FragmentPath'].startswith('/') or '..' in Path(value['FragmentPath']).parts))
+            or wf.clean(value['FragmentPath']) != value['FragmentPath']):
+        return {}
+    return value
+
+
 def manager_state(unit):
     if wf.ROOT:
         fixture = wf.read_json('/var/lib/haseen/vapt/services.json', {})
-        return fixture.get(unit, {})
+        if not isinstance(fixture, dict):
+            raise ValueError('service manager snapshot must be an object; refused')
+        return manager_record(fixture.get(unit))
     result = subprocess.run(['/usr/bin/systemctl', 'show', '--property=FragmentPath,ActiveState,SubState,LoadState', '--', unit],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     if result.returncode:
         return {}
-    return dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+    return manager_record(dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line))
 
 
 def service_list():
@@ -93,7 +112,7 @@ def service_list():
                            subState=wf.clean(current.get('SubState', '')) or None)
                 if not current:
                     row.update(ownership='unknown', reason='service manager state unreadable; exposure unknown')
-                elif current.get('LoadState') not in (None, 'loaded') or not fragment or wf.owned_file(fragment, index, owners) is None or wf.physical(fragment) != wf.physical(path):
+                elif current['LoadState'] != 'loaded' or not fragment or wf.owned_file(fragment, index, owners) is None or wf.physical(fragment) != wf.physical(path):
                     row.update(ownership='refused', reason='FragmentPath changed, overridden or unowned; exposure unknown')
                 else:
                     row.update(ownership='verified', reason='installed unit and current FragmentPath ownership verified; exposure unknown')
@@ -185,6 +204,55 @@ def endpoint_plan(kind, address, port, path):
             'adapter': program, 'selectionIdentity': identity, 'dryRun': True, 'reason': 'preview only; no bind, serving or execution performed'}
 
 
+class LiteralHTTPServer(http.server.HTTPServer):
+    """One client at a time, bounded idle/total waits, no reverse lookup."""
+    allow_reuse_address = False
+    request_idle_seconds = 5.0
+    request_total_seconds = 30.0
+
+    def server_bind(self):
+        literal, port = self.server_address[:2]
+        if self.address_family == socket.AF_INET6 and '%' in literal:
+            address, scope = literal.split('%')
+            index = int(scope) if scope.isdecimal() else socket.if_nametoindex(scope)
+            self.server_address = (address, port, 0, index)
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = literal
+        self.server_port = self.server_address[1]
+
+    def get_request(self):
+        connection, address = super().get_request()
+        connection.settimeout(self.request_idle_seconds)
+        return connection, address
+
+
+class DeadlineIO(io.RawIOBase):
+    """Enforce one absolute connection deadline, including slow-drip clients."""
+    def __init__(self, connection, idle, deadline, reading):
+        self.connection, self.idle, self.deadline, self.reading = connection, idle, deadline, reading
+
+    def readable(self):
+        return self.reading
+
+    def writable(self):
+        return not self.reading
+
+    def prepare(self):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('local helper request deadline reached')
+        self.connection.settimeout(min(self.idle, remaining))
+
+    def readinto(self, buffer):
+        self.prepare()
+        return self.connection.recv_into(buffer)
+
+    def write(self, data):
+        self.prepare()
+        self.connection.sendall(data)
+        return len(data)
+
+
 class ConfinedHandler(http.server.BaseHTTPRequestHandler):
     """Byte-only handler: dirfd + O_NOFOLLOW at every request component.
 
@@ -195,6 +263,13 @@ class ConfinedHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, *args, root_fd, file_fd=None, **kwargs):
         self.root_fd, self.file_fd = root_fd, file_fd
         super().__init__(*args, **kwargs)
+
+    def setup(self):
+        self.connection = self.request
+        deadline = time.monotonic() + self.server.request_total_seconds
+        idle = self.server.request_idle_seconds
+        self.rfile = io.BufferedReader(DeadlineIO(self.connection, idle, deadline, True))
+        self.wfile = DeadlineIO(self.connection, idle, deadline, False)
 
     def log_message(self, format, *args):
         pass  # Ephemeral local helpers keep no request/address log.
@@ -242,32 +317,16 @@ class ConfinedHandler(http.server.BaseHTTPRequestHandler):
                         break
                     self.wfile.write(chunk)
                     offset += len(chunk)
+        except (TimeoutError, BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
         except (OSError, ValueError, UnicodeError):
-            self.send_error(404, 'Selected bytes unavailable')
+            try:
+                self.send_error(404, 'Selected bytes unavailable')
+            except (TimeoutError, BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
         finally:
             if fd is not None:
                 os.close(fd)
-
-
-def open_selected(path, directory=False):
-    """Open every ancestor through no-follow descriptors, retaining one inode."""
-    parent = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        parts = Path(path).parts[1:]
-        if not parts:
-            if not directory:
-                raise ValueError('root is not a regular file')
-            return os.dup(parent)
-        for part in parts[:-1]:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            os.close(parent)
-            parent = child
-        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-        if directory:
-            flags |= os.O_DIRECTORY
-        return os.open(parts[-1], flags, dir_fd=parent)
-    finally:
-        os.close(parent)
 
 
 def serve(kind, address, port, path, expected):
@@ -295,9 +354,8 @@ def serve(kind, address, port, path, expected):
         if {'device': bound.st_dev, 'inode': bound.st_ino} != plan['selectionIdentity']:
             raise ValueError('selected inode changed before serving')
         family = socket.AF_INET6 if endpoint['family'] == 'ipv6' else socket.AF_INET
-        class Server(http.server.HTTPServer):
+        class Server(LiteralHTTPServer):
             address_family = family
-            allow_reuse_address = False
         handler = functools.partial(ConfinedHandler, root_fd=root_fd, file_fd=file_fd)
         with Server((endpoint['address'], endpoint['port']), handler) as server:
             print('Foreground byte server; Ctrl-C stops. Endpoint: ' + ('/file' if file_fd is not None else 'explicit files only'), flush=True)

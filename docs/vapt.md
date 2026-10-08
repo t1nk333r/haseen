@@ -658,7 +658,10 @@ probe is used. Ownership proves metadata association, not unchanged file bytes.
 
 `tool-help` requires one entry (choose `--entry` when there are several). It
 prefers a unique owned basename-matching man page, then matching help document,
-and prints the document directly without a pager/man helper. Man pages appear
+and prints the document directly without a pager/man helper. A confined
+descriptor open must establish readability before documentation is ready;
+owned file inventory/installed identity remains separate. Execution reopens the
+document and revalidates ownership and inode before reading. Man pages appear
 as plain roff source. Otherwise it requires a reviewed package/entry-specific
 help-only argv binding, rechecked against current ownership. The shipped registry
 is deliberately empty: no arbitrary `--help` guesses. Missing or ambiguous
@@ -701,14 +704,23 @@ commands require explicit user requests; all dry-runs are offline/write-free.
   installed files, never package-name guesses. Missing/ambiguous/current-foreign
   fragments refuse action. `service-start ID` and `service-restart ID` require
   terminal confirmation (or explicit `--yes` acceptance of unknown exposure);
-  `service-stop ID` does not. All recheck ownership immediately before the root
-  gateway. None enables, presets, initializes or installs a service.
+  `service-stop ID` requires neither confirmation nor a terminal; normal root
+  authorization is still required. All recheck ownership immediately before the
+  root gateway. None enables, presets, initializes or installs a service.
   Optional `--expect-unit UNIT --expect-fragment PATH` binds a displayed
   snapshot: either mismatch refuses before any privileged operation. Without
   expectations, direct CLI behaviour is unchanged; dry-run reports the check.
+  A wrong-shaped manager snapshot emits one refused JSON object with exit 1;
+  malformed row fields report unknown current evidence, never verified ownership
+  or guessed activity. Diagnostic failures remain on stderr.
 - `haseen vapt net-addresses --json`: ephemeral local interface addresses,
   no DNS/network probe, storage or logging. IPv4/IPv6 endpoints accept literal
   addresses only and ports 1024–65535; missing real-action ports prompt locally.
+  IPv6 may include one `%SCOPE`, with scope matching `[A-Za-z0-9_.-]{1,64}`,
+  for example `fe80::1%enp5s0`, `fe80::1%wlan0` or `fe80::1%lo`. The reader emits the
+  complete scoped literal; consumers must preserve it unchanged, never append
+  another scope. Validate the literal and scope separately; the CLI is
+  authoritative. Preview does not resolve interface presence or promise a bind.
 - `haseen vapt net-listener [--bind ADDRESS] [PORT]`: an owned reviewed neutral
   foreground listener adapter, no received-data execution or payload features.
   The default is loopback; every non-loopback bind requires terminal consent.
@@ -717,6 +729,10 @@ commands require explicit user requests; all dry-runs are offline/write-free.
   traversal, symlinks and multiply-linked leaves are refused. Each request
   checks the opened file's link count, including links added after startup.
   No listing, CGI, upload, firewall changes, background daemon or fetched content.
+  Startup uses the literal endpoint without reverse DNS. Serving remains serial,
+  with five-second accepted-client idle waits and a thirty-second absolute
+  connection deadline, including slow-drip requests and clients that stop
+  reading. There is no unbounded thread pool.
 - `haseen vapt net-file-server [--file FILE] [--bind ADDRESS] [PORT]`: one
   explicitly selected package-owned single-link regular file, served only at `/file`.
   It may use the user's `enumerationScript` setting or prompt when unset; it
@@ -724,6 +740,9 @@ commands require explicit user requests; all dry-runs are offline/write-free.
   The doctor capability id `enumeration-host` maps to fixed command
   `net-file-server`; there is no alias. Every foreground server requires consent.
   File selection, startup and every request refuse a multiply-linked file.
+  After validation/consent, listener/server wrappers hand their process over
+  through the common foreground gateway; wrapper signals cannot orphan a helper
+  holding the bound endpoint or selected descriptors.
 - `haseen vapt net-remmina`: launch only the verified owned client with no target,
   connection, credentials or backend; dry-run previews ownership without launch.
   The panel uses its normal `Apps.launch` boundary, not a shell command string.
@@ -747,6 +766,10 @@ documented proper X509v3 CA result is admitted; subject/issuer text, printable
 malformed extension bytes and legacy-only CA evidence cannot confer CA status.
 Absent, false or malformed constraints are refused. Inspection, trust payload
 and privileged validation share this same classifier.
+Malformed CA ownership containers or consumed fields report explicit unknown
+state; doctor refuses that readiness. Inspection of malformed JSON as a
+certificate remains explicit invalid input. JSON commands emit exactly one
+versioned object without traceback text; diagnostic failures use stderr.
 
 `trust CERT` requires typing the full displayed fingerprint, including with
 `--yes`. It rechecks immutable certificate bytes and owned updater evidence,
