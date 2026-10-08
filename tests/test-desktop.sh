@@ -325,3 +325,20 @@ assert_status "[omarchy] enabled: exit" 0 "$STATUS"
 assert_contains "[omarchy] enabled: both from the repo" "$OUTPUT" \
     "DRYRUN: sudo pacman -S --needed omarchy/xdg-terminal-exec omarchy/herdr"
 assert_not_contains "[omarchy] enabled: no skip warning" "$OUTPUT" "skipping xdg-terminal-exec"
+
+# [omarchy] enabled but not carrying them, or its database unreadable (a
+# failed lookup): still skipped with the warning, never built from the AUR,
+# even with an AUR helper at hand.
+stub paru 'exit 0'
+for lookup in absent failed; do
+    printf 'omarchy-keyring\nttfx\n' >"$fx/var/lib/pacman/sync/omarchy.pkgs"
+    [[ $lookup == absent ]] || chmod 000 "$fx/var/lib/pacman/sync/omarchy.pkgs"
+    desktop_dry "$fx"
+    chmod 644 "$fx/var/lib/pacman/sync/omarchy.pkgs"
+    assert_status "[omarchy] enabled, lookup $lookup: the desktop still applies" 0 "$STATUS"
+    assert_contains "[omarchy] enabled, lookup $lookup: a warning names both" "$OUTPUT" \
+        "skipping xdg-terminal-exec herdr: haseen installs them only prebuilt, and no enabled repository ([omarchy] included) carries them; they are never built from the AUR"
+    assert_eq "[omarchy] enabled, lookup $lookup: neither is installed from any source" "" \
+        "$(grep -E '^DRYRUN: .*(pacman|paru|yay) .*(herdr|xdg-terminal-exec)' <<<"$OUTPUT" || true)"
+    assert_contains "[omarchy] enabled, lookup $lookup: the layer completes" "$OUTPUT" "layer desktop applied"
+done

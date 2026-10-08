@@ -154,7 +154,16 @@ pkg_source() {
 # repos. Each one comes from the first source that has it: an enabled repo,
 # Chaotic-AUR, the [omarchy] repo, then the AUR as the last resort (built as
 # the invoking user).
-pkg_install_aur() {
+pkg_install_aur() { _pkg_install_sourced aur "$@"; }
+
+# _pkg_install_sourced LAST NAME... — the shared source order. LAST is what
+# happens to a package no enabled binary repo carries (or whose lookup
+# failed): "aur" builds it, "skip" leaves it out with a warning. The source of
+# each package is resolved once, so a lookup that fails cannot route it
+# differently between the decision and the install.
+_pkg_install_sourced() {
+    local last=$1
+    shift
     local missing=() p src helper repo_pkgs=() chaotic_pkgs=() omarchy_pkgs=() aur_pkgs=()
     pkg_refuse_denied "$@"
     for p in "$@"; do
@@ -177,6 +186,10 @@ pkg_install_aur() {
     ((${#omarchy_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${omarchy_pkgs[@]}"
     ((${#aur_pkgs[@]} > 0)) || return 0
 
+    if [[ $last == skip ]]; then
+        warn "skipping ${aur_pkgs[*]}: haseen installs them only prebuilt, and no enabled repository ([omarchy] included) carries them; they are never built from the AUR"
+        return 0
+    fi
     if chaotic_enabled; then
         warn "not in the official repos, Chaotic-AUR or [omarchy], building from the AUR (last resort): ${aur_pkgs[*]}"
     else
@@ -210,15 +223,16 @@ _omarchy_repo_applied_before() {
 # pkg_install_omarchy NAME... — omarchy: entries: packages haseen takes only
 # prebuilt from Omarchy's [omarchy] repo (owner, 2026-10-08), such as herdr,
 # whose AUR build differs in licence and once hung for 44 minutes (plan 014).
-# With the repo enabled they go through pkg_install_aur's source order like
-# aur: entries. Without it they are skipped with a warning, never built. A
-# dry run that applies omarchy-repo earlier plans them from the repo, which
-# the real run will have enabled by then.
+# With the repo enabled they go through the binary part of pkg_install_aur's
+# source order; one that no enabled repo carries, or whose lookup fails, is
+# skipped with a warning, never built from the AUR. Without the repo they are
+# skipped with a warning too. A dry run that applies omarchy-repo earlier
+# plans them from the repo, which the real run will have enabled by then.
 pkg_install_omarchy() {
     local p missing=()
     pkg_refuse_denied "$@"
     if omarchy_repo_enabled; then
-        pkg_install_aur "$@"
+        _pkg_install_sourced skip "$@"
         return
     fi
     for p in "$@"; do
