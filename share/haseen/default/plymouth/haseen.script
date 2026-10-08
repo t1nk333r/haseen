@@ -33,63 +33,75 @@ if (logo) {
     logo_sprite.SetZ(1);
 }
 
-# --- the pulse: one bar that breathes, so a slow boot does not look hung -----
+# --- the scanner: a KITT sweep, so a slow boot does not look hung ------------
+# One lit segment runs back and forth along a dim track, leaving a fading
+# trail of ghosts at the positions it just passed.
 
-bar_width = screen_width / 6;
-bar_height = 3;
+track_width = screen_width / 4;
+track_x = (screen_width - track_width) / 2;
+bar_height = 4;
+bar_y = screen_height / 2;
+seg_width = track_width / 6;
+travel = track_width - seg_width;
+
 # Plymouth's script module cannot make a blank image or set pixels (its Image
 # is a file, a text label, or a transform of one): a single bullet in the
-# accent colour, stretched, is the bar.
-bar = Image.Text("•", accent_r, accent_g, accent_b).Scale(bar_width, bar_height);
+# accent colour, stretched, is each bar.
+dot = Image.Text("•", accent_r, accent_g, accent_b);
+seg = dot.Scale(seg_width, bar_height);
+track = dot.Scale(track_width, bar_height);
+track_sprite = Sprite(track);
+track_sprite.SetX(track_x);
+track_sprite.SetY(bar_y);
+track_sprite.SetZ(1);
+track_sprite.SetOpacity(0.12);
 
-bar_sprite = Sprite(bar);
-bar_sprite.SetX((screen_width - bar_width) / 2);
-bar_sprite.SetY(screen_height / 2);
-bar_sprite.SetZ(1);
+# Head plus four ghosts; ghost i shows where the head was i * lag frames ago.
+ghosts = 5;
+lag = 3;
+for (i = 0; i < ghosts; i++) {
+    scan[i] = Sprite(seg);
+    scan[i].SetY(bar_y);
+    scan[i].SetZ(2 + ghosts - i);
+    scan[i].SetOpacity(1 / (1 + i * 1.2));
+}
 
+# Ping-pong position of frame t: 0 .. travel .. 0 over 2 * steps frames.
+steps = 45;
+fun scan_x(t) {
+    if (t < 0)
+        t = 0;
+    p = t % (2 * steps);
+    if (p > steps)
+        p = 2 * steps - p;
+    return track_x + travel * p / steps;
+}
+
+scanning = 1;
 progress = 0;
+fun show_scanner(on) {
+    scanning = on;
+    track_sprite.SetOpacity(0.12 * on);
+    for (i = 0; i < ghosts; i++)
+        scan[i].SetOpacity(on / (1 + i * 1.2));
+}
+
 fun refresh_callback() {
     progress++;
-    # A sine over ~2 s, never fully transparent: a dark screen that is still
-    # working should still look alive.
-    bar_sprite.SetOpacity(0.35 + 0.65 * (Math.Sin(progress / 16) + 1) / 2);
+    for (i = 0; i < ghosts; i++)
+        scan[i].SetX(scan_x(progress - i * lag));
 }
 Plymouth.SetRefreshFunction(refresh_callback);
 
-# --- messages and the password prompt ---------------------------------------
+# --- the password prompt -----------------------------------------------------
+# No text on the splash: boot messages are ignored, and the disk password is
+# asked with dots only.
 
-message_sprite = Sprite();
-message_sprite.SetZ(10);
-
-fun write_message(text) {
-    if (text == "") {
-        message_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
-        return;
-    }
-    image = Image.Text(text, fg_r, fg_g, fg_b);
-    message_sprite.SetImage(image);
-    message_sprite.SetX((screen_width - image.GetWidth()) / 2);
-    message_sprite.SetY(screen_height / 2 + 48);
-}
-
-fun message_callback(text) {
-    write_message(text);
-}
-Plymouth.SetMessageFunction(message_callback);
-
-prompt_sprite = Sprite();
-prompt_sprite.SetZ(10);
 bullets_sprite = Sprite();
 bullets_sprite.SetZ(10);
 
 fun display_password_callback(prompt, bullets) {
-    bar_sprite.SetOpacity(0);
-    if (prompt == "")
-        prompt = "Password";
-    image = Image.Text(prompt, fg_r, fg_g, fg_b);
-    prompt_sprite.SetImage(image);
-    prompt_sprite.SetX((screen_width - image.GetWidth()) / 2);
-    prompt_sprite.SetY(screen_height / 2 - 40);
+    show_scanner(0);
 
     # One asterisk per typed character (owner's choice), drawn as text so no
     # image ships with it.
@@ -104,15 +116,13 @@ fun display_password_callback(prompt, bullets) {
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
 
 fun display_normal_callback() {
-    prompt_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
     bullets_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
-    bar_sprite.SetOpacity(1);
+    show_scanner(1);
 }
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 
 fun quit_callback() {
-    bar_sprite.SetOpacity(0);
-    prompt_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+    show_scanner(0);
     bullets_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
 }
 Plymouth.SetQuitFunction(quit_callback);

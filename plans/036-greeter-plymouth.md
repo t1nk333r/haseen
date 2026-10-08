@@ -27,7 +27,7 @@ Behaviour from omarchy `bin/omarchy-plymouth-set`: colour the splash from the
 active theme, make it the default, rebuild the initramfs. What is **not**
 copied is the asset pipeline: Omarchy ships nine PNGs per theme and recolours
 them with ImageMagick on every theme change. haseen's theme is a plymouth
-*script* that draws what it needs — a breathing accent bar, the password
+*script* that draws what it needs — a breathing accent bar (a scanner since the 2026-10-08 addendum), the password
 prompt, the typed bullets — so a theme change substitutes six floats
 (`share/haseen/default/plymouth/haseen.script`) and this repository ships no
 binary assets. The splash draws the LUKS prompt itself, which is the whole
@@ -133,6 +133,27 @@ Two more gaps the same machine exposed:
   runs on PrepareForSleep(true), the inhibitor is released (also when the lock
   does not answer, so a broken shell can never stop a suspend), and retaken
   after resume. Tests: `tests/test-sleeplock.sh` (6), `tests/test-shell.sh`.
+
+## Addendum 2026-10-08: the scanner splash
+
+The owner replaced the breathing bar in `share/haseen/default/plymouth/haseen.script`
+with a KITT-style scanner, and the splash now draws no text (owner decision
+D11, 2026-10-08):
+
+- A dim accent track, a quarter of the screen wide, with one lit segment (a
+  sixth of the track) sweeping back and forth across it, 45 frames each way,
+  trailed by four fading ghosts at the positions it passed 3, 6, 9 and 12
+  frames earlier. A slow boot still moves, so it still does not look hung.
+- Boot messages are no longer drawn: the theme registers no message
+  function, and the "Password" label is gone. The LUKS prompt is the
+  asterisks alone. While it is up the scanner is hidden; it returns on the
+  normal display and hides on quit.
+- Still no binary assets: each bar is the accent bullet `•`, stretched.
+
+Verification: `tests/test-plymouth.sh` renders the script and checks that it
+still draws the password prompt and registers no message function. Plymouth's
+script engine runs only inside `plymouthd`, so the scanner itself is seen only
+on a real boot, which stays the owner's check.
 
 ## Execution record
 
