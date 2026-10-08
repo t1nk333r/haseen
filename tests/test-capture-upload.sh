@@ -14,13 +14,13 @@ IMGUR_ID="imgur-fixture-id-0000"
 cap_sandbox() {
     sandbox "$1"
     export XDG_RUNTIME_DIR="$SANDBOX/run"
-    mkdir -p "$XDG_RUNTIME_DIR"
+    mkdir -p -m 700 "$XDG_RUNTIME_DIR"
     CALLS="$SANDBOX/calls"
     CALLS_STDIN="$SANDBOX/calls.stdin"
     : >"$CALLS"
     : >"$CALLS_STDIN"
     export CALLS CALLS_STDIN
-    export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404
+    export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404 CURL_PROBE_RC=0
     stub notify-send 'echo "notify-send $*" >>"$CALLS"'
     stub wl-copy 'printf "wl-copy %s: " "$*" >>"$CALLS"; cat >>"$CALLS"; echo >>"$CALLS"'
     stub xdg-user-dir 'echo "$HOME/$1"'
@@ -44,7 +44,7 @@ for a in "$@"; do
   [ "$a" = "-w" ] && probe=1
   prev=$a
 done
-if [ "$probe" = 1 ]; then printf "%s" "${CURL_PROBE_CODE:-404}"; exit 0; fi
+if [ "$probe" = 1 ]; then printf "%s" "${CURL_PROBE_CODE:-404}"; exit "${CURL_PROBE_RC:-0}"; fi
 cat >>"$CALLS_STDIN"
 if [ "$dump" = "-" ]; then printf "%s" "$CURL_HEADERS"
 elif [ -n "$dump" ]; then printf "%s" "$CURL_HEADERS" >"$dump"; fi
@@ -125,18 +125,18 @@ for b in catbox uguu temp.sh 0x0 xbackbone imgur rclone; do
     assert_not_contains "$b dry run hides the imgur id" "$OUTPUT" "$IMGUR_ID"
 done
 capture haseen upload "$SHOT" --backend catbox --dry-run
-assert_contains "catbox endpoint planned" "$OUTPUT" "-F reqtype=fileupload -F fileToUpload=@$SHOT https://catbox.moe/user/api.php"
+assert_contains "catbox endpoint planned" "$OUTPUT" "-F reqtype=fileupload -F fileToUpload=@\"$SHOT\" https://catbox.moe/user/api.php"
 capture haseen upload "$SHOT" --backend uguu --dry-run
-assert_contains "uguu endpoint planned" "$OUTPUT" "-F files[]=@$SHOT https://uguu.se/upload?output=text"
+assert_contains "uguu endpoint planned" "$OUTPUT" "-F files[]=@\"$SHOT\" https://uguu.se/upload?output=text"
 capture haseen upload "$SHOT" --backend temp.sh --dry-run
-assert_contains "temp.sh endpoint planned" "$OUTPUT" "-F file=@$SHOT https://temp.sh/upload"
+assert_contains "temp.sh endpoint planned" "$OUTPUT" "-F file=@\"$SHOT\" https://temp.sh/upload"
 capture haseen upload "$SHOT" --backend 0x0 --expires 2 --dry-run
-assert_contains "0x0 endpoint planned" "$OUTPUT" "-F file=@$SHOT -F expires=2 https://0x0.st"
+assert_contains "0x0 endpoint planned" "$OUTPUT" "-F file=@\"$SHOT\" -F expires=2 https://0x0.st"
 capture haseen upload "$SHOT" --backend xbackbone --dry-run
-assert_contains "xbackbone endpoint planned" "$OUTPUT" "-F upload=@$SHOT https://share.example.com/upload"
+assert_contains "xbackbone endpoint planned" "$OUTPUT" "-F upload=@\"$SHOT\" https://share.example.com/upload"
 assert_contains "the plan says where the token comes from" "$OUTPUT" "read from $HASEEN_UPLOAD_CONFIG and passed on stdin (never shown)"
 capture haseen upload "$SHOT" --backend imgur --dry-run
-assert_contains "imgur endpoint planned" "$OUTPUT" "-F image=@$SHOT https://api.imgur.com/3/image"
+assert_contains "imgur endpoint planned" "$OUTPUT" "-F image=@\"$SHOT\" https://api.imgur.com/3/image"
 capture haseen upload "$SHOT" --backend rclone --dry-run
 assert_contains "rclone copy planned" "$OUTPUT" "DRYRUN: rclone copyto $SHOT r2:bucket/shots/shot.png"
 assert_contains "rclone link planned" "$OUTPUT" "DRYRUN: rclone link r2:bucket/shots/shot.png"
@@ -149,7 +149,7 @@ export CURL_BODY="https://files.catbox.moe/abc123.png"
 capture haseen upload "$SHOT"
 assert_status "catbox upload succeeds" 0 "$STATUS"
 assert_eq "catbox returns the link on stdout" "https://files.catbox.moe/abc123.png" "$OUTPUT"
-assert_contains "catbox request shape" "$(calls)" "-F reqtype=fileupload -F fileToUpload=@$SHOT https://catbox.moe/user/api.php"
+assert_contains "catbox request shape" "$(calls)" "-F reqtype=fileupload -F fileToUpload=@\"$SHOT\" https://catbox.moe/user/api.php"
 assert_contains "catbox sends a haseen user agent" "$(calls)" "-A haseen-upload/"
 assert_contains "the link lands on the clipboard" "$(calls)" "wl-copy : https://files.catbox.moe/abc123.png"
 assert_contains "the upload is notified" "$(calls)" "notify-send -a haseen"
@@ -159,7 +159,7 @@ cap_sandbox upload-uguu
 export CURL_BODY="https://d.uguu.se/bTPPlbJd.png"
 capture haseen upload "$SHOT" --backend uguu --no-copy --quiet
 assert_eq "uguu returns the link" "https://d.uguu.se/bTPPlbJd.png" "$OUTPUT"
-assert_contains "uguu request shape" "$(calls)" "-F files[]=@$SHOT https://uguu.se/upload?output=text"
+assert_contains "uguu request shape" "$(calls)" "-F files[]=@\"$SHOT\" https://uguu.se/upload?output=text"
 assert_not_contains "--no-copy keeps the clipboard alone" "$(calls)" "wl-copy"
 assert_not_contains "--quiet sends no notification" "$(calls)" "notify-send"
 
@@ -167,7 +167,7 @@ cap_sandbox upload-temp
 export CURL_BODY="https://temp.sh/aBcDe/shot.png"
 capture haseen upload "$SHOT" --backend temp.sh
 assert_eq "temp.sh returns the link" "https://temp.sh/aBcDe/shot.png" "$OUTPUT"
-assert_contains "temp.sh request shape" "$(calls)" "-F file=@$SHOT https://temp.sh/upload"
+assert_contains "temp.sh request shape" "$(calls)" "-F file=@\"$SHOT\" https://temp.sh/upload"
 
 cap_sandbox upload-0x0
 export CURL_BODY="https://0x0.st/aB.png"
@@ -176,7 +176,7 @@ x-token: 0x0-fixture-management-token
 "
 capture haseen upload "$SHOT" --backend 0x0 --expires 1
 assert_eq "0x0 returns the link" "https://0x0.st/aB.png" "$OUTPUT"
-assert_contains "0x0 request shape" "$(calls)" "-F file=@$SHOT -F expires=1 https://0x0.st"
+assert_contains "0x0 request shape" "$(calls)" "-F file=@\"$SHOT\" -F expires=1 https://0x0.st"
 assert_not_contains "the management token is never printed" "$OUTPUT" "0x0-fixture-management-token"
 assert_eq "the management token is kept out of the clipboard too" "" \
     "$(grep -c '0x0-fixture-management-token' "$CALLS" | tr -d '0')"
@@ -194,8 +194,8 @@ capture haseen upload "$SHOT" --backend xbackbone
 assert_status "an XBackBone form upload succeeds" 0 "$STATUS"
 assert_eq "the instance link is returned" "https://share.example.com/abcd.png" "$OUTPUT"
 assert_contains "the tagged release endpoint is used" "$(calls)" "https://share.example.com/upload"
-assert_contains "the file part is sent" "$(calls)" "-F upload=@$SHOT"
-assert_contains "the token goes to curl on stdin" "$(curl_stdin)" "form = \"token=$TOKEN\""
+assert_contains "the file part is sent" "$(calls)" "-F upload=@\"$SHOT\""
+assert_contains "the token goes to curl on stdin as a literal string" "$(curl_stdin)" "form-string = \"token=$TOKEN\""
 assert_not_contains "the token never reaches the command line" "$(calls)" "$TOKEN"
 assert_not_contains "the token is never printed" "$OUTPUT" "$TOKEN"
 assert_contains "curl reads its credentials from stdin" "$(calls)" "--config -"
@@ -209,7 +209,7 @@ export CURL_BODY='{"data":{"raw_url":"https://share.example.com/r/abcd.png","del
 capture haseen upload "$SHOT" --backend xbackbone
 assert_eq "the next-gen raw link is returned" "https://share.example.com/r/abcd.png" "$OUTPUT"
 assert_contains "the next-gen endpoint is used" "$(calls)" "https://share.example.com/api/v1/upload"
-assert_contains "the next-gen file part is file=" "$(calls)" "-F file=@$SHOT"
+assert_contains "the next-gen file part is file=" "$(calls)" "-F file=@\"$SHOT\""
 assert_contains "the bearer header goes on stdin" "$(curl_stdin)" "header = \"Authorization: Bearer $TOKEN\""
 assert_not_contains "the bearer token never reaches the command line" "$(calls)" "$TOKEN"
 
@@ -234,7 +234,7 @@ export HASEEN_XBACKBONE_URL="https://env.example.com" HASEEN_XBACKBONE_TOKEN="en
 export HASEEN_XBACKBONE_API=form CURL_BODY='{"url":"https://env.example.com/x.png"}'
 capture haseen upload "$SHOT"
 assert_eq "the environment configures a backend with no file at all" "https://env.example.com/x.png" "$OUTPUT"
-assert_contains "the env token also goes on stdin" "$(curl_stdin)" 'form = "token=env-token-0000"'
+assert_contains "the env token also goes on stdin" "$(curl_stdin)" 'form-string = "token=env-token-0000"'
 assert_not_contains "and never into argv" "$(calls)" "env-token-0000"
 unset HASEEN_XBACKBONE_URL HASEEN_XBACKBONE_TOKEN HASEEN_XBACKBONE_API
 capture haseen upload "$SHOT" --backend xbackbone
@@ -251,7 +251,7 @@ client_id = "'"$IMGUR_ID"'"'
 export CURL_BODY='{"data":{"link":"https://i.imgur.com/x.png","deletehash":"dh"},"success":true}'
 capture haseen upload "$SHOT" --backend imgur
 assert_eq "imgur returns data.link" "https://i.imgur.com/x.png" "$OUTPUT"
-assert_contains "imgur uses the v3 image endpoint" "$(calls)" "-F image=@$SHOT https://api.imgur.com/3/image"
+assert_contains "imgur uses the v3 image endpoint" "$(calls)" "-F image=@\"$SHOT\" https://api.imgur.com/3/image"
 assert_contains "the client id goes on stdin" "$(curl_stdin)" "header = \"Authorization: Client-ID $IMGUR_ID\""
 assert_not_contains "the client id never reaches argv" "$(calls)" "$IMGUR_ID"
 
@@ -276,6 +276,134 @@ export CURL_BODY='{"url":"https://share.example.com/abcd.png"}'
 capture haseen upload "$SHOT"
 assert_contains "a readable credentials file is a warning" "$OUTPUT" "readable by others (mode 644)"
 assert_not_contains "the warning does not quote the token" "$OUTPUT" "$TOKEN"
+
+# --- the real curl against a local receiver: exactly the selected file -------
+# Every file part goes through one encoder. curl's -F grammar splits an
+# unquoted @value at ',' (a file list) and ';' (type=/filename=), so a file
+# named "shot.png,.env" beside shot.png and .env must upload its own bytes and
+# nothing else. The stub curl only rewrites https://HOST to the loopback
+# receiver and execs the real curl; the receiver parses the multipart body.
+REAL_CURL="$(PATH=/usr/local/bin:/usr/bin:/bin command -v curl || true)"
+if [[ -z $REAL_CURL ]]; then
+    echo "  (note: curl is not installed; multipart receiver regressions were skipped)"
+else
+    cap_sandbox upload-multipart
+    RECV_LOG="$SANDBOX/received.jsonl"
+    python3 "$FIXTURES/multipart-receiver.py" "$SANDBOX/port" "$RECV_LOG" &
+    RECV_PID=$!
+    for _ in $(seq 100); do [[ -s $SANDBOX/port ]] && break; sleep 0.05; done
+    RECV_PORT="$(cat "$SANDBOX/port")"
+    export REAL_CURL RECV_PORT
+    cat >"$SANDBOX/stubs/curl" <<'EOF'
+#!/usr/bin/env bash
+args=()
+for a in "$@"; do
+    if [[ $a == https://* ]]; then
+        rest=${a#https://}
+        [[ $rest == */* ]] && a="http://127.0.0.1:$RECV_PORT/${rest#*/}" || a="http://127.0.0.1:$RECV_PORT/"
+    fi
+    args+=("$a")
+done
+exec "$REAL_CURL" "${args[@]}"
+EOF
+    chmod +x "$SANDBOX/stubs/curl"
+    files="$SANDBOX/files"
+    mkdir -p "$files"
+    printf 'sibling shot bytes' >"$files/shot.png"
+    printf 'SECRET=do-not-upload\n' >"$files/.env"
+    received_file_parts() { # → "sha256" per file part of the last request
+        tail -n1 "$RECV_LOG" | jq -r '.parts[] | select(.filename != null) | .sha256'
+    }
+    export HASEEN_IMGUR_CLIENT_ID="$IMGUR_ID" HASEEN_0X0_URL="http://127.0.0.1:$RECV_PORT"
+    for name in 'shot.png,.env' 'semi;filename=evil.png' 'q"uote.png' 'back\slash.png'; do
+        printf 'selected file: %s' "$name" >"$files/$name"
+        want="$(sha256sum <"$files/$name" | cut -d' ' -f1)"
+        for b in catbox uguu temp.sh 0x0 imgur xbackbone:form xbackbone:bearer; do
+            unset HASEEN_XBACKBONE_URL HASEEN_XBACKBONE_TOKEN HASEEN_XBACKBONE_API
+            if [[ $b == xbackbone:* ]]; then
+                export HASEEN_XBACKBONE_URL="http://127.0.0.1:$RECV_PORT" HASEEN_XBACKBONE_TOKEN="$TOKEN"
+                export HASEEN_XBACKBONE_API=${b#*:}
+            fi
+            : >"$RECV_LOG"
+            capture haseen upload "$files/$name" --backend "${b%%:*}" --no-copy --quiet
+            assert_status "$b uploads '$name'" 0 "$STATUS"
+            assert_eq "$b sends exactly the bytes of '$name', one file part" "$want" "$(received_file_parts)"
+        done
+    done
+    unset HASEEN_XBACKBONE_URL HASEEN_XBACKBONE_TOKEN HASEEN_XBACKBONE_API
+    # A token is a literal form string: "@path" is never read as a file.
+    export HASEEN_XBACKBONE_URL="http://127.0.0.1:$RECV_PORT" HASEEN_XBACKBONE_API=form
+    export HASEEN_XBACKBONE_TOKEN="@$files/.env"
+    : >"$RECV_LOG"
+    capture haseen upload "$files/shot.png" --backend xbackbone --no-copy --quiet
+    assert_status "an @-leading token uploads" 0 "$STATUS"
+    assert_eq "the token field is the literal token, not a file" "@$files/.env" \
+        "$(tail -n1 "$RECV_LOG" | jq -r '.parts[] | select(.name == "token") | .value')"
+    assert_not_contains "the token's named file is never sent" "$(cat "$RECV_LOG")" \
+        "$(sha256sum <"$files/.env" | cut -d' ' -f1)"
+    unset HASEEN_XBACKBONE_URL HASEEN_XBACKBONE_TOKEN HASEEN_XBACKBONE_API HASEEN_IMGUR_CLIENT_ID HASEEN_0X0_URL
+    kill "$RECV_PID" 2>/dev/null || true
+    wait "$RECV_PID" 2>/dev/null || true
+fi
+
+# --- a token or management token never crosses a network in the clear ------
+cap_sandbox upload-plaintext
+export CURL_BODY='{"url":"https://share.example.com/abcd.png"}' HASEEN_XBACKBONE_TOKEN="$TOKEN"
+for url in http://share.example.com share.example.com 'http://localhost@evil.example.com' 'http://127.0.0.1.evil.example'; do
+    : >"$CALLS"
+    HASEEN_XBACKBONE_URL="$url" capture haseen upload "$SHOT" --backend xbackbone
+    assert_status "XBackBone at '$url' is refused" 1 "$STATUS"
+    assert_contains "and says to use https" "$OUTPUT" "use an https:// URL"
+    assert_not_contains "nothing is sent to '$url'" "$(calls)" "curl"
+done
+for url in http://localhost:8080 'http://127.0.0.1:9000/xbb' 'http://[::1]:8080' https://share.example.com; do
+    HASEEN_XBACKBONE_URL="$url" HASEEN_XBACKBONE_API=form capture haseen upload "$SHOT" --backend xbackbone --dry-run
+    assert_status "XBackBone at '$url' is allowed" 0 "$STATUS"
+done
+: >"$CALLS"
+HASEEN_0X0_URL=http://0x0.example.com capture haseen upload "$SHOT" --backend 0x0
+assert_status "a plain-http 0x0 (it returns a management token) is refused" 1 "$STATUS"
+assert_not_contains "nothing is sent to the plain-http 0x0" "$(calls)" "curl"
+unset HASEEN_XBACKBONE_TOKEN
+
+# --- the XBackBone probe: a connection failure is not "next-gen" -------------
+cap_sandbox upload-xbb-probe-fail
+write_upload_config '[xbackbone]
+url = "https://share.example.com"
+token = "'"$TOKEN"'"'
+export CURL_BODY='{"url":"https://share.example.com/abcd.png"}' CURL_PROBE_CODE=000 CURL_PROBE_RC=7
+capture haseen upload "$SHOT"
+assert_contains "a failed probe falls back to the tagged release" "$(calls)" "https://share.example.com/upload"
+assert_not_contains "and never to the next-gen route" "$(calls)" "api/v1/upload https"
+
+# --- the delete token is private, never a shared /tmp file -------------------
+token_file="haseen-upload.delete-token"
+for runtime in shared unset; do
+    cap_sandbox "upload-token-$runtime"
+    export CURL_BODY="https://0x0.st/aB.png" CURL_HEADERS=$'HTTP/2 200\nx-token: 0x0-fixture-management-token\n'
+    if [[ $runtime == shared ]]; then chmod 755 "$XDG_RUNTIME_DIR"; else unset XDG_RUNTIME_DIR; fi
+    saved_umask="$(umask)"
+    umask 022
+    capture haseen upload "$SHOT" --backend 0x0 --no-copy --quiet
+    umask "$saved_umask"
+    assert_status "$runtime runtime dir: the upload succeeds" 0 "$STATUS"
+    [[ $runtime == unset ]] || assert_eq "$runtime runtime dir: the token is not left there" no \
+        "$([[ -e $SANDBOX/run/$token_file ]] && echo yes || echo no)"
+    state="$XDG_STATE_HOME/haseen/upload"
+    assert_eq "$runtime runtime dir: the token is kept in the private state dir" "0x0-fixture-management-token" \
+        "$(cat "$state/$token_file" 2>/dev/null)"
+    assert_eq "$runtime runtime dir: that dir is 0700" 700 "$(stat -c %a "$state" 2>/dev/null)"
+    assert_eq "$runtime runtime dir: the token file is 0600" 600 "$(stat -c %a "$state/$token_file" 2>/dev/null)"
+done
+cap_sandbox upload-token-link
+export CURL_BODY="https://0x0.st/aB.png" CURL_HEADERS=$'HTTP/2 200\nx-token: 0x0-fixture-management-token\n'
+printf 'victim\n' >"$SANDBOX/victim"
+ln -s "$SANDBOX/victim" "$XDG_RUNTIME_DIR/$token_file"
+capture haseen upload "$SHOT" --backend 0x0 --no-copy --quiet
+assert_eq "a link planted at the token path is never written through" victim "$(cat "$SANDBOX/victim")"
+assert_eq "the link is replaced by the private token file" "0x0-fixture-management-token" \
+    "$([[ ! -L $XDG_RUNTIME_DIR/$token_file ]] && cat "$XDG_RUNTIME_DIR/$token_file")"
+assert_eq "the replaced token file is 0600" 600 "$(stat -c %a "$XDG_RUNTIME_DIR/$token_file")"
 
 # --- OCR: the exact argv -----------------------------------------------------
 OCR_ARGV="--oem 1 --psm 6 -l ara+eng -c preserve_interword_spaces=1"
@@ -412,6 +540,17 @@ assert_contains "satty's palette is high contrast, not theme-derived" \
     "$(cat "$HOME/.config/satty/config.toml")" '"#eb4d4bff"'
 capture haseen seed user --dry-run
 assert_eq "a second plan is empty" "" "$(grep -c DRYRUN <<<"$OUTPUT" | tr -d '0')"
+# The file is private from the moment it exists, not only after the chmod:
+# with chmod a no-op the mode it was created with shows.
+cap_sandbox capture-seed-umask
+export HASEEN_SYSROOT="$FIXTURES/seeds-plain"
+stub chmod 'exit 0'
+saved_umask="$(umask)"
+umask 022
+capture haseen seed user
+umask "$saved_umask"
+assert_eq "upload.toml is created 0600, never world-readable first" 600 \
+    "$(stat -c '%a' "$HOME/.config/haseen/upload.toml")"
 
 # --- nothing in the tree carries a credential --------------------------------
 assert_eq "no backend bakes in a key" "" \

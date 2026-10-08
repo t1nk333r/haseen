@@ -25,12 +25,14 @@ seed_main() {
         run ln -snf "$target" "$link"
     fi
 
-    # The uploader's credentials file. It is created empty of secrets and with
-    # mode 0600 from the start, so a token is never written into a file that
-    # was world-readable first.
+    # The uploader's credentials file. It is created empty of secrets and,
+    # under umask 077, with mode 0600 from the start, so a token is never
+    # written into a file that was world-readable first. Its directory keeps
+    # the ordinary mode.
     local upload="$CONFIG/haseen/upload.toml"
     if [[ ! -e $upload ]]; then
-        write_user_file "$upload" <<'EOF'
+        $DRY_RUN || mkdir -p "$CONFIG/haseen"
+        (umask 077 && write_user_file "$upload") <<'EOF'
 # haseen upload — backends and credentials. Keep this file mode 0600.
 # `haseen upload --list` shows every backend; `haseen upload --help` explains
 # the keys. Nothing here is set by default: with no configuration the uploader
