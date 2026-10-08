@@ -2,10 +2,12 @@
 -- dofile()s. Never edited by users; overrides go in ~/.config/hypr/*.lua.
 --
 -- Load order (each later step may override the earlier ones):
---   1. defaults: this file and its siblings (input, looknfeel, binds, …)
+--   1. defaults: this file and its siblings (input, looknfeel, binds, …),
+--                then the theme's shared window radius (current/theme/rounding.lua)
 --   2. toggles:  $XDG_STATE_HOME/haseen/toggles/hypr/*.lua       (runtime)
 --   3. hyprmod:  ~/.config/hypr/hyprland-gui.lua                 (GUI app)
---   4. theme:    ~/.local/state/haseen/current/theme/hyprland.lua (user file)
+--   4. theme:    ~/.local/state/haseen/current/theme/hyprland.lua (user file;
+--                its own decoration.rounding is dropped, see haseen.theme_hl)
 --   5. user:     ~/.config/hypr/{monitors,bindings,local}.lua    (user file)
 --
 -- Modules are run with dofile(), not require(): Hyprland keeps one Lua VM
@@ -120,10 +122,43 @@ function haseen.rebind(keys, description, dispatcher, options)
   return haseen.bind(keys, description, dispatcher, options)
 end
 
+-- haseen.theme_hl(hl) — the `hl` the current theme's hyprland.lua sees
+-- (haseen theme set prefixes it with `local hl = haseen.theme_hl(hl)`):
+-- everything passes through except decoration.rounding. The window radius
+-- is one rule shared with the shell's frame and menu (plan 046), set with
+-- the defaults below, so a toggle, hyprmod or the user's files can still
+-- change it and a theme cannot split it from the frame.
+function haseen.theme_hl(real)
+  local function without_rounding(t)
+    if type(t) ~= "table" or type(t.decoration) ~= "table" or t.decoration.rounding == nil then
+      return t
+    end
+    local copy, decoration = {}, {}
+    for k, v in pairs(t) do
+      copy[k] = v
+    end
+    for k, v in pairs(t.decoration) do
+      decoration[k] = v
+    end
+    decoration.rounding = nil
+    copy.decoration = next(decoration) ~= nil and decoration or nil
+    return copy
+  end
+  return setmetatable({
+    config = function(t, ...)
+      return real.config(without_rounding(t), ...)
+    end,
+  }, { __index = real })
+end
+
 local here = haseen.path .. "/default/hypr/"
 for _, module in ipairs({ "input", "looknfeel", "binds", "windowrules", "autostart" }) do
   dofile(here .. module .. ".lua")
 end
+
+-- The shared window radius, rendered by `haseen theme set` from the shell's
+-- frame radius. A default: the toggles, hyprmod and user files below win.
+haseen.include_optional(haseen.paths.state_home .. "/haseen/current/theme/rounding.lua")
 
 -- Toggles that `haseen toggle …` / `haseen hardware …` persist (gaps,
 -- animations, workspace layout, displays, touchpad). They load after the

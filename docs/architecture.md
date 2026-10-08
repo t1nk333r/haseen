@@ -222,8 +222,10 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
 
 `share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
 to `Theme.radius * 2`. Windows and the menu round to the same radius (plan 046):
-`haseen theme set` resolves it by this rule into `windowRadius` and ends the
-theme's `hyprland.lua` with it as `decoration.rounding`, so a change to
+`haseen theme set` resolves it by this rule into `windowRadius` and writes it as
+Hyprland's `decoration.rounding` in `current/theme/rounding.lua`, which
+`init.lua` loads with the defaults: toggles, hyprmod and the user's files still
+override it, and the theme's own `rounding` is dropped. A change to
 `frame.radius` reaches the windows at the next `haseen theme set`. Double-clicking the bar toggles `bar.transparent`: on
 empty space and, as in Omarchy's bar, on a widget too (a passive `PointHandler`
 over the bar, so the widget still gets both clicks), but not on the overflow
