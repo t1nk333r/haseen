@@ -120,3 +120,17 @@ rc branch), `share/haseen/layers/base/packages.txt` (+3 after the owner's
 Landing 2026-10-08: the two source reads of `catalog.sh` in
 `tests/test-shelltools.sh` became a behavioural check (`haseen install dev
 python --dry-run` with and without the include line).
+
+Landing review 2026-10-08: interactive bash expands the user's aliases while
+it parses a sourced file, so the fragment broke on a real rc. Omarchy's `alias
+cd=zd` turned `HASEEN_SHELL_DIR` into zd's output, and an alias named like a
+function (`decompress`, `ga`, `gd`, `ff`) made `ga() {` a syntax error that
+left every later function undefined. The fix: `function name {` for every
+definition, `builtin cd`/`builtin pwd` and a quoted `\.` in `init.sh`,
+`builtin cd` inside the functions, and the zsh branch reads its own path with
+`${(%):-%x}` instead of `$0`. `aliases.sh` keeps an alias the user's rc
+already defines (the include is the last line, so haseen's used to replace
+it). The seed matches an existing include by its `share/haseen/default/shell/init.sh`
+suffix, so a second tree adds no second include, and it skips a dangling rc
+link with a warning. `tests/test-shelltools.sh` sources the include under
+`bash -i` with those aliases, a printing `cd` alias and a silent one.

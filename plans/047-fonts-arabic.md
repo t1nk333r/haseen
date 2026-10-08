@@ -65,6 +65,15 @@ A fourth problem was structural: every new user-config seed meant editing
   `seed_main` and declare `# haseen:seed <path>|<description>` lines;
   `bin/haseen-seed-user` sources and runs them in name order and builds `--help`
   from the declarations. Adding a seed is now adding a file.
+- **Seeds reach every user** (landing review, 2026-10-08). Nothing called
+  `haseen seed user`, so the seeded defaults of this plan and of 037, 038, 041
+  and 044 reached only a user who knew to run it. `install.sh` now runs it
+  after the layers and migrations on every run, fresh or upgrade (not
+  `--tree-only`), and migration `1791466288-seed-user.sh` runs it once for a
+  HOME upgraded another way. Each `seed_main` runs in its own errexit
+  subshell; a failed seed is named at the end and the others still land. The
+  migration and the installer warn on a failed seed rather than failing, so
+  a read-only rc does not hold back later migrations.
 - **A theme installed from a git repo may not ship `fonts.conf`**
   (`THEME_INSTALLED_DENIED`): fontconfig's `<include>` reads any path, so a
   stranger's theme could pull a file of its choosing into every application's
@@ -112,6 +121,11 @@ A fourth problem was structural: every new user-config seed meant editing
 
 - `haseen seed user --help` lists every seeded path with its description,
   generated from the modules.
+- `tests/test-migrate-defaults.sh`: `install.sh --dry-run` plans the seeds on
+  a fresh and an upgraded HOME and not under `--tree-only`; the migration
+  seeds, leaves a user's own file alone, changes nothing on a re-run, and
+  exits 0 with the failed seed named when `~/.bashrc` is read-only.
+  `tests/test-seeds.sh`: one failing seed does not stop the others.
 
 ## Open
 
@@ -130,4 +144,7 @@ A fourth problem was structural: every new user-config seed meant editing
 `bin/haseen-seed-user` (rewritten as a module runner),
 `share/haseen/layers/theme/theme-lib.sh` (`THEME_INSTALLED_DENIED`),
 `share/haseen/layers/desktop/layer.sh` (`QT_QPA_PLATFORMTHEME`),
-`tests/test-seeds.sh`, `tests/test-theme.sh`, `tests/test-desktop.sh`.
+`tests/test-seeds.sh`, `tests/test-theme.sh`, `tests/test-desktop.sh`;
+landing review: `install.sh` (seed user on every run),
+`share/haseen/migrations/1791466288-seed-user.sh`, `tests/test-migrate-defaults.sh`,
+`tests/test-paths.sh` (one more installer phase).

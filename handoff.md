@@ -175,7 +175,9 @@ included) plus `git diff <last-installed-main> origin/main` for code paths
 (not docs, plans, NOTICE, AGENTS, handoff, README) applied with
 `patch -p1`. Then `./install.sh --tree-only --yes` with Go on `PATH`,
 `systemctl --user daemon-reload`, `hyprctl reload`, `haseen migrate`, and
-re-apply the theme.
+re-apply the theme. `--tree-only` runs no seeds; `haseen migrate` runs
+`haseen seed user` once (migration `1791466288-seed-user.sh`); run it by
+hand after a later tree-only install that adds a seed.
 
 ## Release gates (open)
 

@@ -24,10 +24,10 @@ expected_haseen_path="$(readlink -f -- "$stage/share/haseen")"
 assert_contains "installer dry-run passes the normalized checkout tree" \
     "$OUTPUT" "HASEEN_PATH=$expected_haseen_path"
 assert_not_contains "installer dry-run path has no parent traversal" "$OUTPUT" "/../"
-# A fresh HOME runs four CLI phases: layer apply, migrate --seal, setup nvim
-# --if-absent (plan 065) and hw apply.
+# A fresh HOME runs five CLI phases: layer apply, migrate --seal, setup nvim
+# --if-absent (plan 065), seed user and hw apply.
 haseen_path_calls="$(grep -Fc "HASEEN_PATH=$expected_haseen_path" <<<"$OUTPUT" || true)"
-assert_eq "all dry-run CLI phases receive the same normalized path" 4 "$haseen_path_calls"
+assert_eq "all dry-run CLI phases receive the same normalized path" 5 "$haseen_path_calls"
 if [[ ! -e $SANDBOX/prefix ]]; then
     _pass
 else
@@ -43,8 +43,9 @@ assert_status "reinstall dry-run succeeds without an installed tree" 0 "$STATUS"
 assert_contains "reinstall dry-run passes the normalized checkout tree" \
     "$OUTPUT" "HASEEN_PATH=$expected_haseen_path"
 assert_not_contains "reinstall dry-run path has no parent traversal" "$OUTPUT" "/../"
+# An upgrade runs four: layer apply, migrate, seed user and hw apply.
 haseen_path_calls="$(grep -Fc "HASEEN_PATH=$expected_haseen_path" <<<"$OUTPUT" || true)"
-assert_eq "reinstall CLI phases receive the same normalized path" 3 "$haseen_path_calls"
+assert_eq "reinstall CLI phases receive the same normalized path" 4 "$haseen_path_calls"
 # The /proc scan cannot be faked in a hermetic test. Exercise the same argv/path
 # matcher against NUL-separated cmdline fixtures instead.
 source "$HASEEN_PATH/lib/doctor.sh"
@@ -69,6 +70,24 @@ mkdir -p "$spaced_shell_dir"
 printf '%s\0' qs -p "$prefix/bin/../share/haseen/shell with spaces" >"$cmdline"
 capture doctor_shell_cmdline_matches "$spaced_shell_dir" "$prefix" "$cmdline"
 assert_status "doctor preserves spaces in a single -p argv value" 0 "$STATUS"
+
+# Quickshell's other spellings of the project, and its client subcommands.
+touch "$shell_dir/shell.qml"
+matches() { # LABEL EXPECTED ARGV...
+    local label="$1" expected="$2"
+    shift 2
+    printf '%s\0' "$@" >"$cmdline"
+    capture doctor_shell_cmdline_matches "$shell_dir" "$prefix" "$cmdline"
+    assert_status "$label" "$expected" "$STATUS"
+}
+matches "doctor matches --path DIR" 0 qs --path "$shell_dir"
+matches "doctor matches -p=DIR" 0 qs "-p=$shell_dir"
+matches "doctor matches --path=DIR" 0 quickshell "--path=$shell_dir"
+matches "doctor matches -p DIR/shell.qml" 0 qs -p "$shell_dir/shell.qml"
+matches "doctor skips qs ipc -p DIR" 1 qs ipc -p "$shell_dir" call bar toggle
+matches "doctor skips qs -p DIR ipc" 1 qs -p "$shell_dir" ipc call bar toggle
+matches "doctor skips qs kill -p DIR" 1 qs kill -p "$shell_dir"
+matches "argv0 alone is not a project" 1 "$shell_dir"
 
 # Relative -p paths belong to the candidate process, not the doctor's cwd.
 mkdir -p "$SANDBOX/doctor" "$SANDBOX/other-project/share/haseen/shell"

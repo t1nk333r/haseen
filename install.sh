@@ -74,8 +74,8 @@ while (($# > 0)); do
 done
 LAYERS_GIVEN=false
 ((${#LAYERS[@]} == 0)) || LAYERS_GIVEN=true
-if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL; }; then
-    die "--pick chooses interactively; it does not combine with --layers, --yes, --tree-only or --uninstall-tree"
+if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL || [[ -n $VAPT_GROUPS ]]; }; then
+    die "--pick chooses interactively; it does not combine with --layers, --yes, --vapt-groups, --tree-only or --uninstall-tree"
 fi
 $LAYERS_GIVEN || LAYERS=("${DEFAULT_LAYERS[@]}")
 if [[ -n $VAPT_GROUPS ]] && { $TREE_ONLY || $UNINSTALL; }; then
@@ -86,6 +86,7 @@ for layer in "${LAYERS[@]}"; do
     if [[ $layer == vapt ]]; then
         [[ -n $VAPT_GROUPS ]] || die "--layers vapt requires explicit --vapt-groups GROUP,...|all"
     else
+        layer_exists "$layer" || die "unknown layer: '$layer' (see: haseen layer list); nothing was installed"
         ordinary_layers+=("$layer")
     fi
 done
@@ -260,6 +261,13 @@ else
     HASEEN_PATH="$installed_haseen_path" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
         warn "haseen.nvim was not seeded; run: haseen setup nvim"
 fi
+
+# The user-level defaults (fontconfig, the shell rc include, mux, yazi,
+# capture, handlers): every run, fresh or upgrade. A seed writes only what is
+# missing, so a file the user has made their own is never touched; a seed
+# that fails is named, and the others are still in place.
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" seed user "${flags[@]}" ||
+    warn "some seeds failed (named above); fix them and run: haseen seed user"
 
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.

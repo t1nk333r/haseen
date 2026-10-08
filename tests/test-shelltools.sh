@@ -237,3 +237,60 @@ capture env -i HOME="$HOME" PATH="$GITPATH" bash --noprofile --norc -c \
     ". '$SHELLDIR/init.sh'; cd '$REPOD' && gd -y"
 assert_contains "gd refuses outside a worktree" "$OUTPUT" "is not a <repo>--<branch> worktree"
 assert_status "and fails" 1 "$STATUS"
+
+# --- an interactive rc with the user's own aliases ----------------------------
+# Interactive bash expands aliases while it parses a sourced file, so the
+# fragment has to survive the aliases a real rc defines before the include:
+# Omarchy's `alias cd=zd` (a jump function that prints) and its decompress, ga,
+# gd and ff aliases, which share names with the functions here.
+RC="$SANDBOX/interactive.bashrc"
+cat >"$RC" <<EOF
+zd() { echo "ZD-JUMPED \$*"; }
+alias cd=zd
+alias decompress='tar -xzf'
+alias ga='git add'
+alias gd='git diff'
+alias ff='flatpak'
+alias ls='ls --my-own-flags'
+[ -r "$INCLUDE" ] && . "$INCLUDE"
+EOF
+FAKE_EZA="$SANDBOX/fake-eza"
+mkdir -p "$FAKE_EZA"
+cp -a "$GITPATH"/. "$FAKE_EZA/"
+printf '#!/bin/sh\nexit 0\n' >"$FAKE_EZA/eza"
+chmod +x "$FAKE_EZA/eza"
+interactive() { # COMMAND — run it in `bash -i` after the rc above, from $WORK
+    capture env -i HOME="$HOME" PATH="$FAKE_EZA" bash --noprofile --rcfile "$RC" -i -c \
+        "builtin cd '$WORK' && $1"
+}
+interactive 'printf "dir=%s\n" "$HASEEN_SHELL_DIR"; for f in decompress ga gd ff tdl _haseen_mux; do declare -F "$f" >/dev/null && printf "%s=function\n" "$f"; done'
+assert_status "an aliased rc still sources the fragment" 0 "$STATUS"
+assert_not_contains "no syntax error from an alias named like a function" "$OUTPUT" "syntax error"
+assert_not_contains "no missing sibling file" "$OUTPUT" "No such file"
+assert_not_contains "the user's cd alias never ran" "$OUTPUT" "ZD-JUMPED"
+assert_contains "the fragment finds its own directory" "$OUTPUT" "dir=$(builtin cd "$SHELLDIR" && pwd -P)"
+# The user's alias still wins at the prompt (their rc, their choice); the
+# function is defined underneath it and reachable as \ga.
+for fn in decompress ga gd ff tdl _haseen_mux; do
+    assert_contains "$fn is defined under the user's aliases" "$OUTPUT" "$fn=function"
+done
+interactive 'alias ls'
+assert_contains "the user's own ls alias wins over haseen's" "$OUTPUT" "ls --my-own-flags"
+interactive "builtin cd '$REPOD' && \\ga feature2 >/dev/null && basename \"\$PWD\" && \\gd -y >/dev/null && basename \"\$PWD\""
+assert_status "ga then gd work with cd aliased" 0 "$STATUS"
+assert_contains "ga moves with the real cd, not the alias" "$OUTPUT" "project--feature2"
+assert_not_contains "ga/gd never ran the user's cd alias" "$OUTPUT" "ZD-JUMPED"
+assert_eq "gd removed the second worktree" "" "$(ls -d "$SANDBOX/wt/project--feature2" 2>/dev/null)"
+
+# An alias that quietly changes directory and succeeds must not move the
+# fragment's notion of where it lives either (it would source $PWD/aliases.sh).
+mkdir -p "$WORK/decoy"
+echo 'echo DECOY-SOURCED' >"$WORK/decoy/aliases.sh"
+cat >"$RC" <<EOF
+zd() { builtin cd '$WORK/decoy'; }
+alias cd=zd
+[ -r "$INCLUDE" ] && . "$INCLUDE"
+EOF
+interactive 'type -t tdl'
+assert_not_contains "a silent cd alias cannot redirect the sources" "$OUTPUT" "DECOY-SOURCED"
+assert_contains "and the functions still load" "$OUTPUT" "function"

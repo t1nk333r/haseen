@@ -222,8 +222,10 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
 
 `share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
 to `Theme.radius * 2`. Windows and the menu round to the same radius (plan 046):
-`haseen theme set` resolves it by this rule into `windowRadius` and ends the
-theme's `hyprland.lua` with it as `decoration.rounding`, so a change to
+`haseen theme set` resolves it by this rule into `windowRadius` and writes it as
+Hyprland's `decoration.rounding` in `current/theme/rounding.lua`, which
+`init.lua` loads with the defaults: toggles, hyprmod and the user's files still
+override it, and the theme's own `rounding` is dropped. A change to
 `frame.radius` reaches the windows at the next `haseen theme set`. Double-clicking the bar toggles `bar.transparent`: on
 empty space and, as in Omarchy's bar, on a widget too (a passive `PointHandler`
 over the bar, so the widget still gets both clicks), but not on the overflow
@@ -319,7 +321,10 @@ file; `~/.local/state/haseen/toggles/hypr/*.lua` is Lua because Hyprland reads
 Lua; other `~/.local/state/haseen` files hold the theme name, the active shell
 and the remembered power profile; `~/.config/uwsm/env.d/60-haseen-defaults` is
 read by uwsm before anything could read `shell.json`. `haseen settings set`
-owns no state: it `exec`s the command that already owns the key.
+owns no state: it `exec`s the command that already owns the key. Each row says
+what that command takes, so on/off always mean the setting as listed (`gaps
+off` runs `haseen toggle gaps on`, the no-gaps mode), and a key an editor owns
+takes no value.
 
 Runtime contexts (plan 062): `haseen context normal|focus|game|present`
 switches several of those flags as one. Entering from normal records them in
