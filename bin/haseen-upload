@@ -142,23 +142,53 @@ curl_quote() {
 # quoted form (`@"…"` with `"` and `\` backslash-escaped) names exactly PATH.
 form_file() { printf '%s=@%s' "$1" "$(curl_quote "$2")"; }
 
-# secure_endpoint URL — https://, or plain http:// only to this machine
-# (localhost, 127.0.0.0/8, [::1]). A token or a management token must not
-# cross a network in the clear, and a scheme-less URL would default to http.
-secure_endpoint() {
-    [[ $1 =~ ^https://[^/?#[:space:]]+ ]] ||
-        [[ $1 =~ ^http://(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[::1\])(:[0-9]+)?(/[^[:space:]]*)?$ ]]
+# loopback_http URL — plain http:// to this machine only (localhost,
+# 127.0.0.0/8, [::1]).
+loopback_http() {
+    [[ $1 =~ ^http://(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[::1\])(:[0-9]+)?(/[^[:space:]]*)?$ ]]
 }
 
-# http POST-ARGS… — run curl with the shared options. Prints the response body.
-# Backends read it inside a command substitution, so the response headers go to
-# a file (a variable set in that subshell would be lost on return).
+# secure_endpoint URL — https://, or plain http:// only to this machine. A
+# token or a management token must not cross a network in the clear, and a
+# scheme-less URL would default to http.
+secure_endpoint() { [[ $1 =~ ^https://[^/?#[:space:]]+ ]] || loopback_http "$1"; }
+
+# curl_transport URL — the transport every curl call here gets, set in
+# TRANSPORT. The URL check above is only half of it; curl itself must not
+# widen it. -q (first, in curl_run) skips ~/.curlrc, so no `location`,
+# `proxy` or `insecure` there applies, and no -L is ever passed, so a
+# redirect is never followed with the form, token or file; --proto-redir
+# also pins one to https should that change. https:// is the only protocol
+# curl may speak, except for a loopback endpoint, which gets plain http
+# and no proxy at all: an inherited http_proxy would otherwise carry the
+# cleartext request, token included, off the machine.
+TRANSPORT=()
+curl_transport() {
+    if loopback_http "$1"; then
+        TRANSPORT=(--proto '=http' --proto-redir '=https' --noproxy '*')
+    else
+        TRANSPORT=(--proto '=https' --proto-redir '=https')
+    fi
+}
+
+# curl_run URL ARGS… — curl with the transport for URL. -q only works as the
+# very first argument.
+curl_run() {
+    curl_transport "$1"
+    shift
+    curl -q "${TRANSPORT[@]}" "$@"
+}
+
+# http POST-ARGS… URL — run curl with the shared options. Prints the response
+# body. Backends read it inside a command substitution, so the response
+# headers go to a file (a variable set in that subshell would be lost on
+# return).
 HTTP_HEADER_FILE=""
 http() {
     local rc=0 body
     # --config - keeps every credential out of the command line.
     body="$(printf '%s' "$CURL_SECRETS" |
-        curl --config - -sS --fail-with-body --max-time 120 -A "$UA" \
+        curl_run "${!#}" --config - -sS --fail-with-body --max-time 120 -A "$UA" \
             -D "$HTTP_HEADER_FILE" "$@")" || rc=$?
     printf '%s' "$body"
     return "$rc"
@@ -344,7 +374,7 @@ backend_xbackbone() {
         else
             # curl prints 000 itself when it cannot connect; anything that is
             # not three digits counts as no answer.
-            code="$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 20 "$base/api/v1/upload")" || true
+            code="$(curl_run "$base" -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 20 "$base/api/v1/upload")" || true
             [[ $code =~ ^[0-9]{3}$ ]] || code=000
             case $code in
             404 | 000) api=form ;;

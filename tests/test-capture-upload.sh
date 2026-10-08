@@ -199,6 +199,13 @@ assert_contains "the token goes to curl on stdin as a literal string" "$(curl_st
 assert_not_contains "the token never reaches the command line" "$(calls)" "$TOKEN"
 assert_not_contains "the token is never printed" "$OUTPUT" "$TOKEN"
 assert_contains "curl reads its credentials from stdin" "$(calls)" "--config -"
+assert_contains "curl skips ~/.curlrc (-q first) and speaks https only" "$(calls)" \
+    "curl -q --proto =https --proto-redir =https --config -"
+assert_not_contains "no redirect is ever followed" "$(calls)" " -L "
+: >"$CALLS"
+HASEEN_XBACKBONE_URL=http://127.0.0.1:9000 capture haseen upload "$SHOT" --backend xbackbone --no-copy --quiet
+assert_contains "a loopback instance gets plain http and no proxy" "$(calls)" \
+    "curl -q --proto =http --proto-redir =https --noproxy * --config -"
 
 cap_sandbox upload-xbb-bearer
 write_upload_config '[xbackbone]
@@ -294,6 +301,9 @@ else
     for _ in $(seq 100); do [[ -s $SANDBOX/port ]] && break; sleep 0.05; done
     RECV_PORT="$(cat "$SANDBOX/port")"
     export REAL_CURL RECV_PORT
+    # The fake https endpoint is the plain-http receiver, so the stub lowers
+    # the uploader's --proto =https with it; the real-https cases below use
+    # the real curl unchanged.
     cat >"$SANDBOX/stubs/curl" <<'EOF'
 #!/usr/bin/env bash
 args=()
@@ -301,6 +311,8 @@ for a in "$@"; do
     if [[ $a == https://* ]]; then
         rest=${a#https://}
         [[ $rest == */* ]] && a="http://127.0.0.1:$RECV_PORT/${rest#*/}" || a="http://127.0.0.1:$RECV_PORT/"
+    elif [[ $a == =https ]]; then
+        a==http
     fi
     args+=("$a")
 done
@@ -341,6 +353,52 @@ EOF
         "$(tail -n1 "$RECV_LOG" | jq -r '.parts[] | select(.name == "token") | .value')"
     assert_not_contains "the token's named file is never sent" "$(cat "$RECV_LOG")" \
         "$(sha256sum <"$files/.env" | cut -d' ' -f1)"
+
+    # --- curl's own configuration never widens the transport (SEC-6) ---------
+    # start_receiver NAME ARGS… — another receiver: NAME_port, NAME.jsonl.
+    EXTRA_PIDS=()
+    start_receiver() {
+        local name=$1
+        shift
+        python3 "$FIXTURES/multipart-receiver.py" "$SANDBOX/$name.port" "$SANDBOX/$name.jsonl" "$@" &
+        EXTRA_PIDS+=($!)
+        for _ in $(seq 100); do [[ -s $SANDBOX/$name.port ]] && break; sleep 0.05; done
+        : >"$SANDBOX/$name.jsonl"
+    }
+    # An inherited remote proxy (here a recording receiver) never carries the
+    # plaintext loopback request with the token and the file.
+    start_receiver proxy
+    export HASEEN_XBACKBONE_URL="http://127.0.0.1:$RECV_PORT" HASEEN_XBACKBONE_API=form HASEEN_XBACKBONE_TOKEN="$TOKEN"
+    : >"$RECV_LOG"
+    proxy="http://127.0.0.1:$(cat "$SANDBOX/proxy.port")"
+    capture env -u no_proxy -u NO_PROXY http_proxy="$proxy" all_proxy="$proxy" ALL_PROXY="$proxy" \
+        haseen upload "$files/shot.png" --backend xbackbone --no-copy --quiet
+    assert_status "a loopback upload with a proxy in the environment succeeds" 0 "$STATUS"
+    assert_eq "the proxy never sees the loopback upload" "" "$(cat "$SANDBOX/proxy.jsonl")"
+    assert_eq "the loopback instance gets the token directly" "$TOKEN" \
+        "$(tail -n1 "$RECV_LOG" | jq -r '.parts[] | select(.name == "token") | .value')"
+    # A ~/.curlrc asking to follow redirects never replays the form, token and
+    # file from an https instance to the plain-http address its 307 names.
+    if command -v openssl >/dev/null; then
+        openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 \
+            -subj /CN=127.0.0.1 -addext subjectAltName=IP:127.0.0.1 \
+            -keyout "$SANDBOX/tls.key" -out "$SANDBOX/tls.crt" 2>/dev/null
+        start_receiver observer
+        start_receiver tls --tls "$SANDBOX/tls.crt" "$SANDBOX/tls.key" \
+            --redirect "http://127.0.0.1:$(cat "$SANDBOX/observer.port")/upload"
+        printf 'location\n' >"$HOME/.curlrc"
+        printf '#!/usr/bin/env bash\nexec "$REAL_CURL" "$@"\n' >"$SANDBOX/stubs/curl"
+        capture env CURL_HOME="$HOME" CURL_CA_BUNDLE="$SANDBOX/tls.crt" \
+            HASEEN_XBACKBONE_URL="https://127.0.0.1:$(cat "$SANDBOX/tls.port")" \
+            haseen upload "$files/shot.png" --backend xbackbone --no-copy --quiet
+        assert_eq "the https instance received the upload" 1 "$(grep -c . "$SANDBOX/tls.jsonl")"
+        assert_eq "the redirect is not followed: nothing reaches plain http" "" "$(cat "$SANDBOX/observer.jsonl")"
+        rm -f "$HOME/.curlrc"
+    else
+        echo "  (note: openssl is not installed; the https redirect regression was skipped)"
+    fi
+    kill "${EXTRA_PIDS[@]}" 2>/dev/null || true
+    wait "${EXTRA_PIDS[@]}" 2>/dev/null || true
     unset HASEEN_XBACKBONE_URL HASEEN_XBACKBONE_TOKEN HASEEN_XBACKBONE_API HASEEN_IMGUR_CLIENT_ID HASEEN_0X0_URL
     kill "$RECV_PID" 2>/dev/null || true
     wait "$RECV_PID" 2>/dev/null || true
