@@ -15,9 +15,10 @@
 # that user file through xdg-mime; this one is only the fallback for a fresh
 # install where the user has chosen nothing yet.
 #
-# Every app named here is installed by the desktop layer
-# (share/haseen/layers/desktop/packages.txt), so none of these entries dangle.
-# The desktop ids were read from the packages themselves (pacman -Ql / -Fl).
+# Every app named here is installed by a default layer (desktop, and shell for
+# Helium), except the editor: neovim is in the catalogue, not a layer, so the
+# text block names nvim.desktop for when it is installed. The desktop ids
+# were read from the packages themselves (pacman -Ql / -Fl).
 
 [Default Applications]
 # File manager: yazi is the portable default (a TUI, Terminal=true, so it opens
@@ -84,8 +85,8 @@ text/x-c++=nvim.desktop
 application/xml=nvim.desktop
 text/xml=nvim.desktop
 
-# Web links. No browser is installed by default (browsers are Flatpaks from the
-# catalogue), so this is a hint, not a promise: `haseen setup default browser`
-# writes the real answer into ~/.config/mimeapps.list and xdg-settings.
-x-scheme-handler/http=firefox.desktop
-x-scheme-handler/https=firefox.desktop
+# Web links: Helium, the browser the shell layer installs (plan 070). `haseen
+# setup default browser` writes another choice into ~/.config/mimeapps.list
+# and xdg-settings.
+x-scheme-handler/http=helium.desktop
+x-scheme-handler/https=helium.desktop
