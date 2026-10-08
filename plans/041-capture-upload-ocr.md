@@ -184,10 +184,14 @@ is Google's.
   hung before, 316/316 in 2.9s after.
 - **Fix.** The probe first tries a helper-free `unshare --user --map-root-user`
   and runs the `--map-auto` step under `timeout` with no descriptor of the
-  suite. tests/run.sh collects each file's output in a file (it waits for the
-  file's subshell, not for every process holding its stdout) and gives tests
-  `/dev/null` as stdin, since the scripted curl drains stdin and hung on an
-  open pipe. The loopback receivers write to their own logs, time out idle
-  connections (the TLS handshake included) and exit after 300s on their own;
-  the receiver cases skip without python3. tests/test-run-harness.sh fails
-  against the old runner (timed out, 0/2) and passes after.
+  suite. tests/run.sh collects each file's output in a fresh file of its own,
+  unlinked once read and on interrupt (it waits for the file's subshell, not
+  for every process holding its stdout, and a straggler of one file writes
+  only into that file's capture), and gives tests `/dev/null` as stdin, since
+  the scripted curl drains stdin and hung on an open pipe. The loopback
+  receivers write to their own logs, time out idle connections (the TLS
+  handshake included) and exit after 300s on their own; the receiver cases
+  skip without python3. tests/test-run-harness.sh fails against the old
+  runner (timed out, 0/2) and, for the late-writer case, against a single
+  shared capture file (the straggler's output showed up in the next file's
+  results); it passes after.
