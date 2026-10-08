@@ -388,7 +388,7 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python in the shell path.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
 - The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 12 MiB RSS.
-- Measure before claiming. `haseen doctor` prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
+- Measure before claiming. `haseen doctor` matches the shell by canonicalizing absolute `qs -p` paths and resolving relative ones against that process's working directory; equivalent path spellings are recognized. It also prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
   - bare `qs` with an empty config: 122 MiB RSS
   - haseen default bar on the software backend: 178 MiB RSS / 126 MiB PSS, 0.01 s CPU per 60 s
   - omarchy-shell beside it: 630 MiB RSS / 554 MiB PSS

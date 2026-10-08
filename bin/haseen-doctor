@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/layers.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+# shellcheck source=../share/haseen/lib/doctor.sh
+source "$HASEEN_PATH/lib/doctor.sh"
 
 usage() { echo "Usage: haseen doctor"; }
 parse_common_flags "$@"
@@ -13,10 +15,12 @@ preflight_report
 
 # The running haseen shell's memory: the budget in docs/architecture.md §6.
 if ! in_sysroot; then
-    shell_dir="$(readlink -f "$HASEEN_PATH/shell")"
+    shell_dir="$(readlink -f -- "$HASEEN_PATH/shell")"
     shell_seen=false
     for pid in $(pgrep -u "$EUID" -x 'qs|quickshell' || true); do
-        tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -qF -e "-p $shell_dir" -e "-p $HASEEN_PATH/shell" || continue
+        if ! doctor_shell_cmdline_matches "$shell_dir" "/proc/$pid/cwd" "/proc/$pid/cmdline"; then
+            continue
+        fi
         rss="$(sed -n 's/^Rss: *\([0-9]*\) kB/\1/p' "/proc/$pid/smaps_rollup")"
         pss="$(sed -n 's/^Pss: *\([0-9]*\) kB/\1/p' "/proc/$pid/smaps_rollup")"
         printf 'shell=pid %s rss=%s MiB pss=%s MiB (budget < 200 MiB rss)\n' "$pid" "$((rss / 1024))" "$((pss / 1024))"

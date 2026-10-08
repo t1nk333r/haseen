@@ -172,6 +172,9 @@ $TREE_ONLY && exit 0
 # Under --dry-run nothing was copied, so plan the layers from the checkout.
 haseen_bin="$PREFIX/bin/haseen"
 $DRY_RUN && haseen_bin="$REPO/bin/haseen"
+# Normalize the checkout path as well as the installed path; the installed tree
+# is absent during --dry-run.
+installed_haseen_path="$(readlink -f -- "$(dirname "$haseen_bin")/../share/haseen")"
 flags=()
 $DRY_RUN && flags+=(--dry-run)
 $ASSUME_YES && flags+=(--yes)
@@ -182,23 +185,23 @@ fresh_home=true
 if [[ -d $HASEEN_USER_STATE/migrations || -e $HASEEN_USER_CONFIG/shell.json || -e $HASEEN_USER_STATE/current/theme.name ]]; then
     fresh_home=false
 fi
-HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" layer apply "${LAYERS[@]}" "${flags[@]}"
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" layer apply "${LAYERS[@]}" "${flags[@]}"
 
 # A fresh HOME has nothing to upgrade, so its migrations are recorded as
 # sealed; an existing haseen user gets what is genuinely pending run.
 if ! $fresh_home; then
-    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate "${flags[@]}"
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" migrate "${flags[@]}"
 else
-    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate --seal "${flags[@]}"
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" migrate --seal "${flags[@]}"
     # A first install also seeds haseen.nvim when ~/.config/nvim is absent
     # (plan 065). An existing config is left alone, and later runs never seed.
-    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
         warn "haseen.nvim was not seeded; run: haseen setup nvim"
 fi
 
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.
-HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" hw apply "${flags[@]}"
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" hw apply "${flags[@]}"
 
 # The optional setup steps the picker chose; none otherwise.
 picker_run_setup "$haseen_bin" "${flags[@]}"

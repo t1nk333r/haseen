@@ -175,18 +175,31 @@ re-apply the theme.
   i915 and xe branches were exercised against fixtures, i915 also live. There is
   no `strace` on the author's machine, so "who does the work" was measured with
   `/proc/<pid>/io` read counters.
-- **Plan 014.** No end-to-end run on a real CachyOS machine or VM yet. The
-  author's session has no qemu, no passwordless sudo and no docker group.
-  Everything was fixture-tested, and only the user-level parts were run live.
-  Still unproven:
-  - greetd login
-  - the uwsm session
-  - Secure Boot enrollment on real firmware (the author's laptop is in Setup Mode, so it is the natural first target, with the owner at the keyboard)
-  - the polkit dialog
-  - the real session lock
-  - display power-off
-  - Ollama on hardware
-  - the live DMS switch
+- **Plan 014.** Run in a CachyOS lab VM on 2026-10-06 (`tools/lab.sh`, a separate
+  copy of the lab at `~/.cache/haseen/lab`, `LAB_SECUREBOOT=on`):
+  - Install exited 0, greetd/tuigreet login reached the haseen desktop, and Secure
+    Boot was enrolled and enforced (`haseen secureboot status` all ok).
+  - Fixed along the way:
+    - `--firmware-builtin` now applies only when the firmware has default keys;
+    - doctor's shell detection (un-normalised `HASEEN_PATH` from `install.sh`).
+  - Open:
+    - `desktop` silently needs `omarchy-repo`; without it the AUR fallback for
+      ttfx fails on `rustup`;
+    - a fresh install has no background and the hint points at an impossible
+      fetch;
+    - whether doctor's root-only "not checked" warnings block "all green";
+    - shell RSS reached 204 MiB, over the 200 MiB budget, after about 30
+      minutes with two reinstalls (188 MiB at login); not yet measured under
+      controlled conditions.
+  - Still unproven:
+    - the polkit dialog;
+    - the real session lock;
+    - display power-off;
+    - Ollama on hardware;
+    - the live DMS switch;
+    - Secure Boot on real firmware: the author's laptop is in Setup Mode, so it
+      is the natural target, with the owner at the keyboard.
+  - Details: `plans/014-vm-acceptance.md`.
 - **Plan 013.** PKGBUILDs are a later phase.
 - **Resolved: portal crash notifications.** The "Process crashed:
   xdg-desktop-portal-hyprland" notifications came from scratch shells run
