@@ -74,7 +74,7 @@ The owner's other repos:
 tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
 the optional `vapt` layer; plan 087 extends its inventory and adds the opt-in
 private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
-`bin/haseen-vapt-repo-status`; independent review outstanding).
+`bin/haseen-vapt-repo-status`; independent phase-1 review READY TO MERGE at efaa4e0).
 
 ## Decisions
 

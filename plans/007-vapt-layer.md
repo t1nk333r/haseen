@@ -38,7 +38,7 @@ The layer landed as `share/haseen/layers/vapt/` with `docs/vapt.md`,
 `bin/haseen-vapt-{install,status,remove}` and the `tests/test-vapt*.sh`
 suites. Requirement 11 in `docs/architecture.md` and the `vapt` row in its
 layer table now describe it; the "no architecture rows" line above describes
-the 2026-10-04 state only. Independent final review is outstanding.
+the 2026-10-04 state only. The independent phase-1 review returned READY TO MERGE at efaa4e0.
 
 The layer sets `LAYER_PICKABLE=false` (contract in `share/haseen/lib/layers.sh`),
 so the interactive install picker never offers it and drops it from a saved
