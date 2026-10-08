@@ -203,13 +203,13 @@ ddc_rescan() {
         return 0
     fi
     [[ -n $sig ]] || sig="$(ddc_signature)"
-    mkdir -p "${DDC_CACHE%/*}"
-    tmp="$(mktemp "$DDC_CACHE.XXXXXX")"
+    run mkdir -p "${DDC_CACHE%/*}"
+    tmp="$(run mktemp "$DDC_CACHE.XXXXXX")"
     {
         printf '# %s\n' "$sig"
         ddc_detect || true
-    } >"$tmp"
-    mv -f -- "$tmp" "$DDC_CACHE"
+    } | write_user_file "$tmp"
+    run mv -f -- "$tmp" "$DDC_CACHE"
 }
 
 # ddc_cache_old — the map was made DDC_RETRY seconds ago or more.

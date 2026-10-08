@@ -103,16 +103,19 @@ Nest from `tools/nest-launch.sh`, scratch shell with `HASEEN_SYSROOT` pointing a
 
 - **A dry run writes no cache.** `ddc_rescan` ran `mkdir`, `mktemp` and `mv` in a dry run too, so `set`,
   `up`, `down` or `list --rescan` with `--dry-run` created or replaced `ddc-displays.tsv` when the map was
-  missing or stale. In a dry run the detect now goes to `DDC_DETECTED` and `ddc_map` answers from it. The
-  real write stays a local mktemp + `mv` rather than `write_user_file`, which writes in place and would let
-  a key press racing a rescan read half a map.
+  missing or stale. In a dry run the detect now goes to `DDC_DETECTED` and `ddc_map` answers from it. A
+  real rescan uses the `common.sh` helpers to create a sibling temporary file, write the map, and
+  atomically rename it over the cache, so racing key presses never read a partial map.
 - **`haseen setup ddc` on NixOS.** `on` ran `pacman -S` and `off` reported "already off" from pacman's
-  database. On NixOS both now refuse (exit 1, nothing run) with the `haseen.ddc.enable` hint; `status`
-  reads the command there and prints a line naming the option; `--help` and the skill say so. The menu's
-  Turn On/Off run the command in a held terminal, so the hint is what a NixOS user sees there.
-- Evidence: `tests/test-brightness.sh` 172/172. Before the fixes: the three cache checks (no map, `list
-  --rescan`, a map for another signature) fail on 5879d80 (154/157), the eleven NixOS checks with the
-  previous `bin/haseen-setup-ddc` (161/172).
+  database. On NixOS both now refuse (exit 1, nothing run) with verb-specific
+  `haseen.ddc.enable = true` / `false` guidance; `on` also names the `hardware.i2c.enable` setting and
+  the i2c group, while `off` says to rebuild. `status` reads the command there and prints a line naming
+  the option; `--help` explains both verbs. The menu's Turn On/Off run the command in a held terminal,
+  so the hint is what a NixOS user sees there.
+- Evidence: `tests/test-brightness.sh` 186/186, including the common-helper rescan order and the
+  verb-specific NixOS fixtures. Before these fixes: the three cache checks (no map, `list --rescan`, a
+  map for another signature) fail on 5879d80 (154/157), the eleven NixOS checks with the previous
+  `bin/haseen-setup-ddc` (161/172).
 
 ## Not verified
 

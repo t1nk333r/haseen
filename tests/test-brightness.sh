@@ -90,6 +90,38 @@ capture haseen brightness list --kind ddc
 assert_eq "list --kind ddc: the monitor only" "ddc:DP-1" "$(cut -f1 <<<"$OUTPUT")"
 assert_eq "a second list reads the cache, no detect" "ddcutil --bus 7 getvcp 10 --brief" "$(calls)"
 
+# A real cache refresh delegates directory creation, temporary-file creation,
+# writing and replacement to the common helpers while retaining atomic rename.
+helper_share="$SANDBOX/common-spy"
+helper_trace="$SANDBOX/common-helpers.log"
+mkdir -p "$helper_share/lib"
+cat >"$helper_share/lib/common.sh" <<'SH'
+source "$REAL_HASEEN_PATH/lib/common.sh"
+run() {
+    printf 'run\t%s\n' "$*" >>"$HASEEN_HELPER_TRACE"
+    command "$@"
+}
+write_user_file() {
+    printf 'write_user_file\t%s\n' "$1" >>"$HASEEN_HELPER_TRACE"
+    cat >"$1"
+}
+SH
+rm -f "$CACHE"
+: >"$helper_trace"
+capture env HASEEN_PATH="$helper_share" REAL_HASEEN_PATH="$HASEEN_PATH" \
+    HASEEN_HELPER_TRACE="$helper_trace" haseen brightness list --kind ddc
+assert_status "a helper-routed rescan succeeds" 0 "$STATUS"
+assert_eq "the helper-routed rescan lists the detected monitor" "ddc:DP-1" "$(cut -f1 <<<"$OUTPUT")"
+helper_calls="$(cat "$helper_trace")"
+helper_tmp="${helper_calls#*$'\nwrite_user_file\t'}"
+helper_tmp="${helper_tmp%%$'\n'*}"
+expected_helper_calls=$'run\tmkdir -p '"${CACHE%/*}"$'\nrun\tmktemp '"$CACHE.XXXXXX"$'\nwrite_user_file\t'"$helper_tmp"$'\nrun\tmv -f -- '"$helper_tmp $CACHE"
+assert_eq "cache mutations use common helpers in atomic order" "$expected_helper_calls" "$helper_calls"
+assert_eq "the helper-written cache has the detected bus map" \
+    "7${T}DP-1${T}LG ULTRAGEAR" "$(grep -v '^#' "$CACHE")"
+assert_eq "atomic replacement leaves no temporary cache file" "ddc-displays.tsv" \
+    "$(find "${CACHE%/*}" -name 'ddc-displays*' -printf '%f\n')"
+
 reset_log
 capture haseen brightness list --kind backlight,keyboard
 assert_eq "list --kind backlight,keyboard" "intel_backlight tpacpi::kbd_backlight" "$(cut -f1 <<<"$OUTPUT" | paste -sd' ')"
