@@ -45,6 +45,7 @@ Read `handoff.md` first.
 | 037 | Default handlers (four places) and the catalogue's missing half | P1 | L | 003 017 023 024 | DONE 2026-10-05 (301 tests; 13 categories, 110 entries at landing; flea's omarchy pull is guarded, owner-approved) |
 | 038 | Shell rc layer: tools, aliases, functions, `mise activate` | P2 | M | 001 017 023 | DONE 2026-10-05 (100 tests; live compress/ga/gd round trips; zsh unverified) |
 | 041 | Sharing a capture: uploader, annotation, Arabic OCR, circle to search | P2 | L | 004 018 | DONE 2026-10-05 (188 tests; imgur and 0x0 proven dead, never defaults) |
+| 042 | Clipboard history with a toggleable preview | P2 | M | 022 | DONE 2026-10-05 (84 tests; live panel screenshots; oversized entry never decoded) |
 | 043 | Keybinds follow waydots, and hyprmod's place in the load order | P1 | M | 003 030 | DONE 2026-10-05 (62 tests; `Hyprland --verify-config` ok with two negative controls; 99→122 binds) |
 | 044 | Multiplexer (herdr + tmux), yazi, and the disposable-VM rig | P2 | M | 004 024 038 | DONE 2026-10-05 (96 tests; herdr/tmux/yazi configs parsed by the real tools; no VM built) |
 | 047 | Fonts, Arabic rendering, Qt theming and the seed registry | P1 | M | 004 033 | DONE 2026-10-05 (live `fc-match`: Arabic→Naskh, Urdu→Nastaliq, Omarchy's system assign defeated) |
