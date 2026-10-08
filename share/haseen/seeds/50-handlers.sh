@@ -40,7 +40,8 @@ seed_terminal_name() {
 
 seed_main() {
     local list="$CONFIG/xdg-terminals.list" name
-    [[ -e $list ]] && return 0
+    # -L too: a dangling link is the user's, never written through.
+    [[ -e $list || -L $list ]] && return 0
     name="$(seed_terminal_name)"
     write_user_file "$list" <<EOF
 # Terminal preference for xdg-terminal-exec: desktop entries with

@@ -115,6 +115,46 @@ capture haseen seed user --help
 assert_status "--help exits 0" 0 "$STATUS"
 assert_contains "--help names the files" "$OUTPUT" ".XCompose"
 
+# --- a broken user file stops only its own seed -----------------------------
+# A dangling link (a dotfiles checkout not cloned yet) is the user's file: it
+# is never followed to create its target. A read-only rc fails the shell seed
+# only; the seeds after it still run, and the run reports the failure.
+DOTS="$SANDBOX/dotfiles-not-cloned"
+mkdir -p "$DOTS"
+rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf" \
+    "$CONFIG/tmux/tmux.conf" "$CONFIG/yazi/yazi.toml" "$HOME/.bashrc"
+ln -s "$DOTS/fonts.conf" "$CONFIG/fontconfig/fonts.conf"
+ln -s "$DOTS/xdg-terminals.list" "$CONFIG/xdg-terminals.list"
+ln -s "$DOTS/btop.conf" "$CONFIG/btop/btop.conf"
+printf '# read-only rc\n' >"$HOME/.bashrc"
+chmod 444 "$HOME/.bashrc"
+capture haseen seed user
+chmod 644 "$HOME/.bashrc"
+assert_status "a failing seed fails the run" 1 "$STATUS"
+assert_contains "the failing seed is named" "$OUTPUT" "60-shell.sh"
+assert_eq "the seeds after it still ran (tmux)" "yes" "$([[ -f $CONFIG/tmux/tmux.conf ]] && echo yes)"
+assert_eq "the seeds after it still ran (yazi)" "yes" "$([[ -f $CONFIG/yazi/yazi.toml ]] && echo yes)"
+assert_eq "no dangling link was written through" "" "$(ls -A "$DOTS" 2>/dev/null)"
+assert_eq "the dangling links are left as they were" "3" \
+    "$(find "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf" -type l | wc -l)"
+rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf"
+
+# An rc that already includes the fragment from another tree (the checkout,
+# then /usr/local) is not given a second include: init.sh would run twice.
+printf '[ -r "/usr/local/share/haseen/default/shell/init.sh" ] && . "/usr/local/share/haseen/default/shell/init.sh"\n' \
+    >"$HOME/.bashrc"
+capture haseen seed user
+assert_status "seeding over another tree's include succeeds" 0 "$STATUS"
+assert_eq "one include, whichever tree wrote it" "1" "$(grep -c 'default/shell/init.sh' "$HOME/.bashrc")"
+# A dangling rc link is skipped with a warning, not written through.
+rm -f "$HOME/.bashrc"
+ln -s "$DOTS/bashrc" "$HOME/.bashrc"
+capture haseen seed user
+assert_status "a dangling rc link is not an error" 0 "$STATUS"
+assert_contains "and is reported" "$OUTPUT" "$HOME/.bashrc is a dangling link"
+assert_eq "and is not followed" "" "$(ls -A "$DOTS" 2>/dev/null)"
+rm -f "$HOME/.bashrc"
+
 # --- system seeds: a Framework laptop on btrfs -------------------------------
 export HASEEN_SYSROOT="$FIXTURES/seeds-framework"
 capture haseen seed system --dry-run

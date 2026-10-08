@@ -67,12 +67,28 @@ set -- "${REST[@]}"
 }
 require_not_root
 
+# One seed's failure (a read-only rc, a directory where a file should be) does
+# not stop the others: each seed_main runs in its own errexit subshell, outside
+# any conditional so errexit still applies inside it, and the run reports
+# every failed seed at the end.
+failed=()
 while IFS= read -r module; do
     # shellcheck disable=SC1090  # module list is this tree's own seeds/
     source "$module"
     declare -F seed_main >/dev/null || die "${module##*/}: no seed_main"
-    seed_main
+    set +e
+    (
+        set -e
+        seed_main
+    )
+    status=$?
+    set -e
+    if ((status != 0)); then
+        warn "seed ${module##*/} failed (status $status); the other seeds still run"
+        failed+=("${module##*/}")
+    fi
     unset -f seed_main
 done < <(seed_modules)
 
+((${#failed[@]} == 0)) || die "these seeds failed, the rest are in place: ${failed[*]}"
 info "seeds are in place; log out and back in for the input method to load"

@@ -9,7 +9,8 @@
 # Generated rather than copied: it carries the absolute path of the installed
 # tree, which differs between the checkout, /usr/local and /usr.
 seed_main() {
-    [[ -e $COMPOSE ]] && return 0
+    # -L too: a dangling link is the user's, never written through.
+    [[ -e $COMPOSE || -L $COMPOSE ]] && return 0
     write_user_file "$COMPOSE" <<EOF
 # Your compose sequences. haseen writes this file once and never again.
 # The Compose key is CapsLock (hypr input option compose:caps).

@@ -21,12 +21,16 @@
 #     --dry-run. That is `haseen drive select` / `haseen drive info` territory,
 #     not an rc fragment's;
 #   - the `ssh` reconnect wrapper is not ported either: wrapping the ssh binary
-#     in a retry loop for every login shell was not asked for.
+#     in a retry loop for every login shell was not asked for;
+#   - the file is sourced from an interactive rc, where bash expands the
+#     user's aliases while it parses: every function is defined with the
+#     `function name {` form (an alias named `ga` or `ff` would otherwise turn
+#     `ga() {` into a syntax error) and every `cd` is `builtin cd`.
 
 # --- archives ---------------------------------------------------------------
 
 # compress PATH — tar.gz the file or directory, next to it.
-compress() {
+function compress {
     if [ -z "${1:-}" ]; then
         echo "Usage: compress <file|dir>" >&2
         return 1
@@ -36,7 +40,7 @@ compress() {
 
 # decompress ARCHIVE... — expand a tar.gz (a function, not an alias, so it can
 # check its argument).
-decompress() {
+function decompress {
     if [ -z "${1:-}" ]; then
         echo "Usage: decompress <file.tar.gz>" >&2
         return 1
@@ -50,7 +54,7 @@ decompress() {
 # --- git worktrees ----------------------------------------------------------
 
 # ga BRANCH — new worktree and branch beside this repository; jump into it.
-ga() {
+function ga {
     if [ -z "${1:-}" ]; then
         echo "Usage: ga <branch>" >&2
         return 1
@@ -67,11 +71,11 @@ ga() {
     if command -v mise >/dev/null 2>&1; then
         mise trust "$worktree" >/dev/null 2>&1 || true
     fi
-    cd "$worktree" || return 1
+    builtin cd "$worktree" || return 1
 }
 
 # gd [-y] — remove the worktree you are in, and its branch.
-gd() {
+function gd {
     local assume_yes=0 reply cwd worktree root branch
     case "${1:-}" in
     -y | --yes) assume_yes=1 ;;
@@ -103,7 +107,7 @@ gd() {
         *) return 1 ;;
         esac
     fi
-    cd "../$root" || return 1
+    builtin cd "../$root" || return 1
     git worktree remove "$cwd" --force || return 1
     git branch -D "$branch"
 }
@@ -111,7 +115,7 @@ gd() {
 # --- ssh port forwards ------------------------------------------------------
 
 # fip HOST PORT... — forward remote ports to the same local ports.
-fip() {
+function fip {
     if [ "$#" -lt 2 ]; then
         echo "Usage: fip <host> <port> [port...]" >&2
         return 1
@@ -125,7 +129,7 @@ fip() {
 }
 
 # dip PORT... — stop forwarding those ports.
-dip() {
+function dip {
     if [ "$#" -eq 0 ]; then
         echo "Usage: dip <port> [port...]" >&2
         return 1
@@ -141,7 +145,7 @@ dip() {
 }
 
 # lip — list the forwards this shell's user has open.
-lip() {
+function lip {
     pgrep -af "ssh.*-L [0-9]+:localhost:[0-9]+" || echo "No active forwards"
 }
 
@@ -149,7 +153,7 @@ lip() {
 
 # rsw SRC DEST — mirror SRC to DEST now, then on every change. DEST may be
 # remote (rsw ~/Work/app host:Work/app).
-rsw() {
+function rsw {
     if [ "$#" -ne 2 ]; then
         echo "Usage: rsw <source> <destination>" >&2
         return 1
@@ -175,7 +179,7 @@ rsw() {
 }
 
 # lsw — list the watchers rsw started.
-lsw() {
+function lsw {
     local pid cmd rest found=0
     while read -r pid cmd; do
         rest="${cmd##*rsw-watch }"
@@ -186,7 +190,7 @@ lsw() {
 }
 
 # dsw — stop every watcher rsw started.
-dsw() {
+function dsw {
     local pid found=0
     for pid in $(pgrep -f 'rsw-watch '); do
         if kill -- -"$pid" 2>/dev/null; then
@@ -203,7 +207,7 @@ dsw() {
 # The session you are already in wins; then the preference `haseen seed user`
 # wrote to ~/.config/haseen/mux (a user file, editable); then what is
 # installed, herdr first, because that is haseen's default.
-_haseen_mux() {
+function _haseen_mux {
     local file preferred
     if [ -n "${HERDR_PANE_ID:-}" ]; then
         echo herdr
@@ -239,7 +243,7 @@ _haseen_mux() {
 # _haseen_layout KIND ARGS... — run KIND (dl|ds|dlm|sl) on the resolved
 # multiplexer. tdl/hdl and friends are both entry points to this, so muscle
 # memory from either tool lands on whatever is actually running.
-_haseen_layout() {
+function _haseen_layout {
     local kind="$1" mux
     shift
     mux="$(_haseen_mux)" || {
@@ -250,10 +254,10 @@ _haseen_layout() {
 }
 
 # The agent the layouts start: `haseen setup default agent` sets $HASEEN_AGENT.
-_haseen_agent() { printf '%s\n' "${1:-${HASEEN_AGENT:-opencode}}"; }
-_haseen_editor() { printf '%s\n' "${EDITOR:-nvim}"; }
+function _haseen_agent { printf '%s\n' "${1:-${HASEEN_AGENT:-opencode}}"; }
+function _haseen_editor { printf '%s\n' "${EDITOR:-nvim}"; }
 # hunk is Omarchy's diff watcher and is not a haseen package; fall back to git.
-_haseen_diff_watch() {
+function _haseen_diff_watch {
     if command -v hunk >/dev/null 2>&1; then
         echo "hunk diff --watch"
     else
@@ -261,18 +265,18 @@ _haseen_diff_watch() {
     fi
 }
 
-tdl() { _haseen_layout dl "$@"; }
-tds() { _haseen_layout ds "$@"; }
-tdlm() { _haseen_layout dlm "$@"; }
-tsl() { _haseen_layout sl "$@"; }
-hdl() { _haseen_layout dl "$@"; }
-hds() { _haseen_layout ds "$@"; }
-hdlm() { _haseen_layout dlm "$@"; }
-hsl() { _haseen_layout sl "$@"; }
+function tdl { _haseen_layout dl "$@"; }
+function tds { _haseen_layout ds "$@"; }
+function tdlm { _haseen_layout dlm "$@"; }
+function tsl { _haseen_layout sl "$@"; }
+function hdl { _haseen_layout dl "$@"; }
+function hds { _haseen_layout ds "$@"; }
+function hdlm { _haseen_layout dlm "$@"; }
+function hsl { _haseen_layout sl "$@"; }
 
 # --- tmux layouts -----------------------------------------------------------
 
-_haseen_tmux_ready() {
+function _haseen_tmux_ready {
     if [ -z "${TMUX:-}" ]; then
         echo "start tmux first (haseen's layouts drive the session you are in)" >&2
         return 1
@@ -280,7 +284,7 @@ _haseen_tmux_ready() {
 }
 
 # editor left, agent right, terminal underneath.
-_haseen_tmux_dl() {
+function _haseen_tmux_dl {
     _haseen_tmux_ready || return 1
     local dir="$PWD" editor_pane ai_pane ai2_pane ai ai2
     ai="$(_haseen_agent "${1:-}")"
@@ -300,7 +304,7 @@ _haseen_tmux_dl() {
 }
 
 # editor, diff watch, terminal and agent in four quarters.
-_haseen_tmux_ds() {
+function _haseen_tmux_ds {
     _haseen_tmux_ready || return 1
     local dir="$PWD" editor_pane diff_pane terminal_pane ai_pane
     editor_pane="$TMUX_PANE"
@@ -318,7 +322,7 @@ _haseen_tmux_ds() {
 }
 
 # one dl window per subdirectory.
-_haseen_tmux_dlm() {
+function _haseen_tmux_dlm {
     _haseen_tmux_ready || return 1
     local ai ai2 base first dir dirpath pane_id
     ai="$(_haseen_agent "${1:-}")"
@@ -340,7 +344,7 @@ _haseen_tmux_dlm() {
 }
 
 # COUNT panes in a grid, all running the same command.
-_haseen_tmux_sl() {
+function _haseen_tmux_sl {
     _haseen_tmux_ready || return 1
     if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then
         echo "Usage: tsl <pane_count> <command>" >&2
@@ -365,22 +369,22 @@ _haseen_tmux_sl() {
 
 # --- herdr layouts ----------------------------------------------------------
 
-_haseen_herdr_ready() {
+function _haseen_herdr_ready {
     if [ -z "${HERDR_PANE_ID:-}" ]; then
         echo "start herdr first (haseen's layouts drive the session you are in)" >&2
         return 1
     fi
 }
 
-_haseen_herdr_ratio() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.4f", a / b }'; }
+function _haseen_herdr_ratio { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.4f", a / b }'; }
 
 # _haseen_herdr_split PANE right|down RATIO CWD — echoes the new pane id.
-_haseen_herdr_split() {
+function _haseen_herdr_split {
     herdr pane split "$1" --direction "$2" --ratio "$3" --cwd "$4" --no-focus |
         jq -r '.result.pane.pane_id'
 }
 
-_haseen_herdr_dl() {
+function _haseen_herdr_dl {
     _haseen_herdr_ready || return 1
     local dir="$PWD" editor_pane ai_pane ai2_pane ai ai2
     ai="$(_haseen_agent "${1:-}")"
@@ -397,7 +401,7 @@ _haseen_herdr_dl() {
     herdr pane run "$editor_pane" "$(_haseen_editor) ." >/dev/null
 }
 
-_haseen_herdr_ds() {
+function _haseen_herdr_ds {
     _haseen_herdr_ready || return 1
     local dir="$PWD" editor_pane diff_pane terminal_pane ai_pane
     editor_pane="$HERDR_PANE_ID"
@@ -410,7 +414,7 @@ _haseen_herdr_ds() {
     herdr pane run "$ai_pane" "$(_haseen_agent)" >/dev/null
 }
 
-_haseen_herdr_dlm() {
+function _haseen_herdr_dlm {
     _haseen_herdr_ready || return 1
     local ai ai2 base first dir dirpath command pane_id
     ai="$(_haseen_agent "${1:-}")"
@@ -435,7 +439,7 @@ _haseen_herdr_dlm() {
     done
 }
 
-_haseen_herdr_sl() {
+function _haseen_herdr_sl {
     _haseen_herdr_ready || return 1
     if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then
         echo "Usage: hsl <pane_count> <command>" >&2
@@ -478,7 +482,7 @@ _haseen_herdr_sl() {
 
 # ff [dir] — pick a file with fzf, previewed with bat. Prints the path, so it
 # composes: $EDITOR "$(ff)".
-ff() {
+function ff {
     if ! command -v fzf >/dev/null 2>&1; then
         echo "ff: needs fzf" >&2
         return 1
@@ -488,7 +492,7 @@ ff() {
         preview='bat --style=numbers --color=always {}'
     fi
     if [ -n "${1:-}" ]; then
-        (cd "$1" && fzf --preview "$preview")
+        (builtin cd "$1" && fzf --preview "$preview")
     else
         fzf --preview "$preview"
     fi

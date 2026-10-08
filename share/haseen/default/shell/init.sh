@@ -23,24 +23,30 @@
 # Where we live, so the siblings can be sourced without the rc knowing paths.
 if [ -n "${ZSH_VERSION:-}" ]; then
     _haseen_shell=zsh
-    _haseen_self="$0"
+    # %x is the file being sourced; $0 is that only with FUNCTION_ARGZERO set
+    # (not under `emulate sh`). zsh-only syntax, so bash never parses it.
+    eval '_haseen_self="${(%):-%x}"'
 else
     _haseen_shell=bash
     _haseen_self="${BASH_SOURCE[0]}"
 fi
-HASEEN_SHELL_DIR="$(CDPATH='' cd -- "$(dirname -- "$_haseen_self")" && pwd -P)"
+
+# This file is sourced from an interactive rc, so bash expands the user's
+# aliases while it reads it: Omarchy's `alias cd=zd` prints and may land
+# elsewhere. `builtin` and a quoted `\.` reach the real commands.
+HASEEN_SHELL_DIR="$(CDPATH='' builtin cd -- "$(dirname -- "$_haseen_self")" >/dev/null && builtin pwd -P)"
 unset _haseen_self
 
 # shellcheck source=share/haseen/default/shell/aliases.sh
-. "$HASEEN_SHELL_DIR/aliases.sh"
+\. "$HASEEN_SHELL_DIR/aliases.sh"
 # shellcheck source=share/haseen/default/shell/functions.sh
-. "$HASEEN_SHELL_DIR/functions.sh"
+\. "$HASEEN_SHELL_DIR/functions.sh"
 
 # VAPT layer PATH, only while the layer owns this link (layers/vapt/
 # environment.sh creates and removes it). A plain test and source: nothing runs.
 _haseen_vapt="${XDG_CONFIG_HOME:-$HOME/.config}/haseen/vapt/shell.sh"
 # shellcheck source=share/haseen/default/vapt/shell.sh
-[ -r "$_haseen_vapt" ] && . "$_haseen_vapt"
+[ -r "$_haseen_vapt" ] && \. "$_haseen_vapt"
 unset _haseen_vapt
 
 # zoxide: `z partial-name` jumps, `zi` picks interactively.

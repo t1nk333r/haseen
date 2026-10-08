@@ -23,7 +23,8 @@ seed_main() {
     seed_user_file "$DEFAULTS/tmux/tmux.conf" "$CONFIG/tmux/tmux.conf"
 
     local choice="$CONFIG/haseen/mux"
-    [[ -e $choice ]] && return 0
+    # -L too: a dangling link is the user's, never written through.
+    [[ -e $choice || -L $choice ]] && return 0
     # herdr wins whenever it is there, including when tmux is too. A home
     # seeded before the packages land still gets herdr: that is what the
     # layers install, and the resolver falls back on its own if it is absent.

@@ -18,10 +18,18 @@ seed_main() {
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
         # A zshrc is only written when the user already has one: haseen does
         # not decide that you use zsh.
-        [[ $rc == *.zshrc && ! -e $rc ]] && continue
-        # grep -F on the path, so an edited comment or a reordered rc still
-        # counts as "already included".
-        grep -qsF "$include" "$rc" && continue
+        [[ $rc == *.zshrc && ! -e $rc && ! -L $rc ]] && continue
+        # A dangling rc link (stow before the clone) is never followed.
+        if [[ -L $rc && ! -e $rc ]]; then
+            warn "$rc is a dangling link; not adding haseen's include through it"
+            continue
+        fi
+        # Matched on the tree-relative suffix, not the absolute path: an rc
+        # seeded from the checkout and then from /usr/local (or shared between
+        # machines with different prefixes) already includes the fragment, and
+        # a second include would run init.sh twice. An edited comment or a
+        # reordered rc still counts as "already included".
+        grep -qsF "share/haseen/default/shell/init.sh" "$rc" && continue
         append_user_file "$rc" <<EOF
 
 # haseen: aliases, functions and tool init. Yours is everything else here.
