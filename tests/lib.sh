@@ -40,6 +40,9 @@ sandbox() {
     export HOME="$SANDBOX/home"
     export XDG_CONFIG_HOME="$HOME/.config" XDG_STATE_HOME="$HOME/.local/state"
     export XDG_DATA_HOME="$HOME/.local/share" XDG_CACHE_HOME="$HOME/.cache"
+    # The session's data dirs name this machine's /usr/share; a test that
+    # needs some sets them itself (plan 037: a host app must not count).
+    unset XDG_DATA_DIRS
     export PATH="$SANDBOX/stubs:$REPO/bin:/usr/bin:/bin"
     unset HASEEN_USER_CONFIG HASEEN_USER_STATE HASEEN_COMMON_SH
     # Nothing under test may reach the session it runs in: a test once sent

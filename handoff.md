@@ -62,6 +62,7 @@ The owner's other repos:
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Fonts and Arabic rendering, Qt platform theme, seed modules | `share/haseen/themed/fonts.conf.tpl`, `share/haseen/default/fontconfig/`, `share/haseen/seeds/`, `bin/haseen-seed-user` | 047 |
+| Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |
 | Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
 | Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088, 090 |
@@ -194,6 +195,16 @@ re-apply the theme.
       is the natural target, with the owner at the keyboard.
   - Details: `plans/014-vm-acceptance.md`.
 - **Plan 013.** PKGBUILDs are a later phase.
+- **flea pulls Omarchy in, by owner decision (plan 037).** `flea` hard-depends
+  on the `omarchy` package, which depends on `omarchy-settings`. `PKG_DENY`
+  still refuses both as direct install targets, but `haseen install app flea`
+  is allowed to let pacman pull them as dependencies after printing the
+  closure and the files that collide with haseen subsystems:
+  `/etc/fonts/conf.d/50-omarchy.conf` (plan 047 defeats it at the user level),
+  `/etc/limine-entry-tool.d/omarchy-*.conf` (plan 002),
+  `/etc/mkinitcpio.conf.d/omarchy_hooks.conf` (plan 033) and `/etc/sddm.conf.d/*`
+  (haseen uses greetd). Nothing else in the catalogue does this: `yazi` is the
+  default `inode/directory` handler and has no such dependency.
 - **Resolved: portal crash notifications.** The "Process crashed:
   xdg-desktop-portal-hyprland" notifications came from scratch shells run
   under `dbus-run-session`. qs activated the portal and xdph on the private

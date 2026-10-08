@@ -28,7 +28,11 @@ between parts. The engineering record is `plans/`, indexed by
   `pkg_install` for repo packages and `pkg_install_aur` for everything else,
   which applies the order. Prefer a repo, Chaotic-AUR or `[omarchy]` package
   over an AUR one when choosing a dependency. Never add `omarchy` or
-  `omarchy-settings` (`PKG_DENY`).
+  `omarchy-settings` (`PKG_DENY`). One owner-approved exception (2026-10-05,
+  confirmed 2026-10-08, plan 037): the catalogue's `flea` entry
+  (`"pullsOmarchy": true`) may let pacman pull both in as dependencies, and
+  only after `catalog_confirm_omarchy` prints the closure and asks. No other
+  entry may set `pullsOmarchy`.
 - **License: MIT.** You may adapt Omarchy and DMS code (MIT): keep the upstream
   notice in the file header and add a row to `NOTICE.md`. end-4 and caelestia
   are GPL-3.0 and are reference only. Never paste their code.
@@ -50,6 +54,8 @@ between parts. The engineering record is `plans/`, indexed by
   - Installed with the shell layer (owner, 2026-10-07, plan 073): the Helium
     browser (`helium-browser-bin`) and its Cairn extension, downloaded from
     Cairn's releases (AGPL-3.0, never vendored).
+  - Installed with the desktop layer (owner, 2026-10-08): the default file
+    handlers `yazi`, `imv`, `mpv`, `papers` and `xdg-terminal-exec` (plan 037).
   - A new built-in plugin is off until the owner adds it to this list.
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with

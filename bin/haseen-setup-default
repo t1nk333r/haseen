@@ -1,27 +1,13 @@
 #!/usr/bin/env bash
-# haseen:summary Set (or print) the default browser, terminal, editor or coding agent
-# haseen:args <browser|terminal|editor|agent> [name] [--dry-run]
+# haseen:summary Set (or print) the default browser, terminal, editor, coding agent and file handlers
+# haseen:args <browser|terminal|editor|agent|files|image|video|pdf|text> [name] [--dry-run]
+# shellcheck disable=SC2034  # the handler/MIME maps are reached through namerefs
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 
-usage() {
-    cat <<EOF
-Usage: haseen setup default <browser|terminal|editor|agent> [name] [--dry-run]
-
-Without a name, prints the current default.
-  browser   zen chromium helium firefox chrome brave brave-origin edge
-            (xdg-settings + http/https MIME)
-  terminal  foot alacritty ghostty kitty        (\$TERMINAL)
-  editor    nvim helix vim code cursor zed sublime emacs  (\$EDITOR)
-  agent     claude codex copilot crush cursor-agent gemini grok hermes muse
-            omp openclaw opencode pi            (\$HASEEN_AGENT)
-Variables go to ~/.config/uwsm/env.d/60-haseen-defaults, read by the next
-login, and into the running systemd user manager for apps started now.
-EOF
-}
-
 ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/60-haseen-defaults"
+TERMINALS_LIST="${XDG_CONFIG_HOME:-$HOME/.config}/xdg-terminals.list"
 
 # name -> what the setting stores (command or .desktop id). A browser lists
 # its desktop ids, native package first, then the Flathub app the catalogue
@@ -40,22 +26,167 @@ declare -A AGENTS=([claude]=claude [codex]=codex [copilot]=copilot [crush]=crush
     [opencode]=opencode [pi]=pi)
 declare -A VARS=([browser]=BROWSER [terminal]=TERMINAL [editor]=EDITOR [agent]=HASEEN_AGENT)
 
+# --- file handlers ------------------------------------------------------------
+# The handler kinds own one MIME set each and write it with `xdg-mime default`,
+# which lands in ~/.config/mimeapps.list: the top of the XDG precedence stack,
+# above haseen's vendor list in PREFIX/share/applications/mimeapps.list and
+# above whatever /usr/share still carries from an Omarchy install.
+#
+# Map values are candidate .desktop ids, best first; the first one installed
+# wins, so the same name works whether the app came from pacman or Flathub.
+# Every id was read from the package that ships it (pacman -Ql / -Fl), never
+# guessed.
+declare -A FILE_MANAGERS=([yazi]=yazi.desktop [flea]=com.thisisgm.flea.desktop)
+declare -A IMAGE_VIEWERS=([imv]=imv.desktop [loupe]=org.gnome.Loupe.desktop)
+declare -A VIDEO_PLAYERS=([mpv]=mpv.desktop [celluloid]=io.github.celluloid_player.Celluloid.desktop)
+declare -A PDF_VIEWERS=([papers]=org.gnome.Papers.desktop [zathura]=org.pwmt.zathura.desktop
+    [xournalpp]=com.github.xournalpp.xournalpp.desktop)
+declare -A TEXT_EDITORS=([nvim]=nvim.desktop [helix]=Helix.desktop [vim]=vim.desktop
+    [code]="code.desktop com.visualstudio.code.desktop" [zed]=dev.zed.Zed.desktop
+    [emacs]="emacs.desktop org.gnu.emacs.desktop")
+declare -A HANDLERS=([files]=FILE_MANAGERS [image]=IMAGE_VIEWERS [video]=VIDEO_PLAYERS
+    [pdf]=PDF_VIEWERS [text]=TEXT_EDITORS)
+
+# The MIME sets, one array per kind. They are exactly the keys of the matching
+# block in share/haseen/default/applications/mimeapps.list, so setting a
+# handler replaces the vendor default type for type; tests/test-handlers.sh
+# asserts the two stay in step.
+MIME_files=(inode/directory)
+MIME_image=(image/png image/x-png image/jpeg image/jpg image/pjpeg image/gif image/bmp image/x-bmp
+    image/tiff image/tiff-fx image/webp image/heif image/avif image/jxl image/qoi
+    image/x-farbfeld image/svg+xml)
+MIME_video=(video/mp4 video/x-msvideo video/x-matroska video/x-flv video/x-ms-wmv video/mpeg
+    video/ogg video/webm video/quicktime video/3gpp video/3gpp2 video/x-ms-asf
+    video/x-ogm+ogg video/x-theora+ogg application/ogg)
+MIME_pdf=(application/pdf)
+MIME_text=(text/plain text/english text/x-makefile text/x-c++hdr text/x-c++src text/x-chdr
+    text/x-csrc text/x-java text/x-moc text/x-pascal text/x-tcl text/x-tex
+    application/x-shellscript text/x-c text/x-c++ application/xml text/xml)
+
+# The .desktop id each terminal ships. Kept in step with
+# SEED_TERMINAL_DESKTOPS in share/haseen/seeds/50-handlers.sh, which seeds the
+# same file on a fresh home; tests/test-handlers.sh asserts the two maps agree.
+declare -A TERMINAL_DESKTOPS=([foot]=foot.desktop [alacritty]=Alacritty.desktop
+    [ghostty]=com.mitchellh.ghostty.desktop [kitty]=kitty.desktop)
+
+# desktop_installed ID — a desktop entry named ID exists anywhere XDG looks:
+# XDG_DATA_HOME, XDG_DATA_DIRS and both Flatpak export dirs. An explicit
+# XDG_DATA_DIRS is read as given; its default (/usr/local/share:/usr/share)
+# and the system Flatpak dir go through sysroot_path, so tests see a fixture
+# instead of this machine.
+desktop_installed() {
+    local dir dirs=() data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+    if [[ -n ${XDG_DATA_DIRS:-} ]]; then
+        IFS=: read -ra dirs <<<"$XDG_DATA_DIRS"
+    else
+        dirs=("$(sysroot_path /usr/local/share)" "$(sysroot_path /usr/share)")
+    fi
+    for dir in "$data_home" "${dirs[@]}" "$data_home/flatpak/exports/share" "$(sysroot_path /var/lib/flatpak/exports/share)"; do
+        [[ -r $dir/applications/$1 ]] && return 0
+    done
+    return 1
+}
+
+# Each helper takes its own nameref scope: re-declaring one in a loop would
+# make bash complain about a circular reference.
+handler_known() {
+    local -n _map="${HANDLERS[$1]}"
+    [[ -n ${_map[$2]:-} ]]
+}
+
+handler_names() {
+    local -n _map="${HANDLERS[$1]}"
+    printf '%s\n' "${!_map[@]}" | sort
+}
+
+# handler_desktop KIND NAME — the first candidate .desktop that is installed,
+# else the first candidate (so a plan can still be printed and a warning given).
+handler_desktop() {
+    local -n _map="${HANDLERS[$1]}"
+    local c
+    for c in ${_map[$2]:-}; do
+        desktop_installed "$c" && {
+            printf '%s\n' "$c"
+            return 0
+        }
+    done
+    printf '%s\n' "${_map[$2]:-}" | cut -d' ' -f1
+}
+
+handler_mimes() {
+    local -n _mimes="MIME_$1"
+    printf '%s\n' "${_mimes[@]}"
+}
+
+# handler_name_for KIND DESKTOP — the kind's name for a .desktop id, or the
+# raw id when it is some app haseen does not list.
+handler_name_for() {
+    local -n _map="${HANDLERS[$1]}"
+    local k c
+    for k in "${!_map[@]}"; do
+        for c in ${_map[$k]}; do
+            [[ $c == "$2" ]] && {
+                printf '%s\n' "$k"
+                return 0
+            }
+        done
+    done
+    [[ -z $2 ]] || printf '%s\n' "$2"
+    return 0
+}
+
+handler_current() {
+    local first v
+    first="$(handler_mimes "$1" | head -n1)"
+    v="$(xdg-mime query default "$first" 2>/dev/null | head -n1 || true)"
+    handler_name_for "$1" "$v"
+}
+
+# handler_help — one row per handler kind: what it owns and which of its apps
+# are installed on this machine.
+handler_help() {
+    local kind name row head mimes=()
+    for kind in files image video pdf text; do
+        mapfile -t mimes < <(handler_mimes "$kind")
+        head="${mimes[0]}"
+        ((${#mimes[@]} > 1)) && head+=" +$((${#mimes[@]} - 1)) more"
+        row=""
+        while IFS= read -r name; do
+            if desktop_installed "$(handler_desktop "$kind" "$name")"; then
+                row+=" $name"
+            else
+                row+=" $name(not installed)"
+            fi
+        done < <(handler_names "$kind")
+        printf '  %-9s %-28s%s\n' "$kind" "$head" "$row"
+    done
+}
+
+usage() {
+    cat <<EOF
+Usage: haseen setup default <kind> [name] [--dry-run]
+
+Without a name, prints the current default.
+
+Session variables, written to ~/.config/uwsm/env.d/60-haseen-defaults (read by
+the next login) and into the running systemd user manager for apps started now:
+  browser   zen chromium helium firefox chrome brave brave-origin edge
+            (xdg-settings + http/https MIME)
+  terminal  foot alacritty ghostty kitty        (\$TERMINAL; also $TERMINALS_LIST)
+  editor    nvim helix vim code zed emacs       (\$EDITOR; also the text/* handlers)
+  agent     claude codex copilot crush cursor-agent gemini grok hermes muse
+            omp openclaw opencode pi            (\$HASEEN_AGENT)
+
+File handlers, written with xdg-mime into ~/.config/mimeapps.list, which
+outranks haseen's vendor defaults in PREFIX/share/applications/mimeapps.list:
+$(handler_help)
+EOF
+}
+
 # env_value VAR — the value our env file exports for VAR, if any.
 env_value() {
     [[ -r $ENV_FILE ]] || return 0
     sed -n "s/^export $1=//p" "$ENV_FILE" | tail -n1 | tr -d "'\""
-}
-
-# desktop_installed ID — a .desktop entry ID exists in an applications dir
-# (XDG data dirs and both Flatpak export dirs).
-desktop_installed() {
-    local dir dirs
-    IFS=: read -ra dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    dirs+=("${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share" "$(sysroot_path /var/lib/flatpak/exports/share)")
-    for dir in "${dirs[@]}"; do
-        [[ -r $dir/applications/$1 ]] && return 0
-    done
-    return 1
 }
 
 # browser_desktop IDS — of a browser's desktop ids, the first installed one,
@@ -97,6 +228,7 @@ current() {
     terminal) name_for terminal TERMINALS "$(env_value TERMINAL | grep . || printf '%s' "${TERMINAL:-}")" ;;
     editor) name_for editor EDITORS "$(env_value EDITOR | grep . || printf '%s' "${EDITOR:-}")" ;;
     agent) name_for agent AGENTS "$(env_value HASEEN_AGENT | grep . || printf '%s' "${HASEEN_AGENT:-}")" ;;
+    *) handler_current "$1" ;;
     esac
 }
 
@@ -109,6 +241,31 @@ write_env() {
     } | write_user_file "$ENV_FILE"
 }
 
+# set_handler KIND NAME — point every MIME type the kind owns at NAME.
+set_handler() {
+    local kind="$1" name="$2" desktop mimes=()
+    handler_known "$kind" "$name" || die "unknown $kind '$name' (see haseen setup default --help)"
+    desktop="$(handler_desktop "$kind" "$name")"
+    desktop_installed "$desktop" || $DRY_RUN || warn "$desktop is not installed yet"
+    mapfile -t mimes < <(handler_mimes "$kind")
+    run xdg-mime default "$desktop" "${mimes[@]}"
+    info "default $kind: $name ($desktop)"
+}
+
+# write_terminals_list NAME — the list xdg-terminal-exec reads first, so a
+# desktop entry with Terminal=true (yazi, nvim), GTK's "Open in Terminal" and
+# flea all open the terminal the user just chose.
+write_terminals_list() {
+    local desktop="${TERMINAL_DESKTOPS[$1]:-}"
+    [[ -n $desktop ]] || return 0
+    {
+        echo "# Written by \`haseen setup default terminal\`. xdg-terminal-exec reads"
+        echo "# this first: desktop entries with Terminal=true, GTK's \"Open in"
+        echo "# Terminal\" and flea all open it. First valid entry wins."
+        printf '%s\n' "$desktop"
+    } | write_user_file "$TERMINALS_LIST"
+}
+
 parse_common_flags "$@"
 set -- "${REST[@]}"
 (($# >= 1 && $# <= 2)) || {
@@ -116,7 +273,7 @@ set -- "${REST[@]}"
     exit 2
 }
 kind="$1"
-[[ -n ${VARS[$kind]:-} ]] || {
+[[ -n ${VARS[$kind]:-} || -n ${HANDLERS[$kind]:-} ]] || {
     usage >&2
     exit 2
 }
@@ -125,6 +282,10 @@ if (($# == 1)); then
     exit 0
 fi
 name="$2"
+if [[ -n ${HANDLERS[$kind]:-} ]]; then
+    set_handler "$kind" "$name"
+    exit 0
+fi
 case "$kind" in
 browser) value="${BROWSERS[$name]:+$(browser_desktop "${BROWSERS[$name]}")}" ;;
 terminal) value="${TERMINALS[$name]:-}" ;;
@@ -146,3 +307,16 @@ else
 fi
 run systemctl --user set-environment "$var=${value%.desktop}"
 info "default $kind: $name"
+
+# The terminal is also the one xdg-terminal-exec hands to GTK apps and flea,
+# and the editor is also the text/* handler when it ships a desktop entry.
+if [[ $kind == terminal ]]; then
+    write_terminals_list "$name"
+elif [[ $kind == editor ]] && handler_known text "$name"; then
+    desktop="$(handler_desktop text "$name")"
+    if desktop_installed "$desktop"; then
+        set_handler text "$name"
+    else
+        info "$desktop is not installed, so the text/* handlers are unchanged; run 'haseen setup default text $name' after installing it"
+    fi
+fi

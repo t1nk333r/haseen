@@ -7,7 +7,12 @@
 # optional `when` bash guard. Extras: `family` (fonts), `layer` (installed by
 # applying that haseen layer), `needs` (pacman packages a mise toolchain
 # builds against), `container` (a Docker database; ref is then the docker
-# package that runs it).
+# package that runs it), `pullsOmarchy` (see the guard below).
+#
+# `"source": "aur"` means "not in the official repos", not "built from the
+# AUR": it goes through pkg_install_aur, which tries an enabled repo, then
+# Chaotic-AUR, then [omarchy], and builds from the AUR only as the last
+# resort. [omarchy]-repo apps (flea, localsend, omacalc, herdr) use it.
 #
 # Flatpaks live in the per-user installation (`flatpak --user`): installing,
 # updating and removing apps then needs no root and no polkit prompt, and the
@@ -269,6 +274,56 @@ container_remove() {
     run_root docker rm -f "$name"
 }
 
+# --- the [omarchy] dependency-pull guard -------------------------------------------
+#
+# `omarchy` and `omarchy-settings` stay in PKG_DENY: haseen never installs them
+# as a target (ADR 0001, lib/packages.sh). flea is the exception the owner
+# asked for. It is a leaf app in the [omarchy] repo that hard-depends on
+# `omarchy`, so pacman drags the pair in as dependencies of a package that is
+# itself allowed. A catalogue entry declares that with "pullsOmarchy": true,
+# and this prints the whole closure plus the system files it will drop, then
+# asks. Nothing else changes: `haseen install package omarchy` is still
+# refused.
+#
+# Both lists were read from this machine on 2026-10-05, never invented:
+#   pacman -Si flea             -> Depends On: ... omarchy ...
+#   pacman -Si omarchy          -> OMARCHY_CLOSURE below (omarchy 4.0.4-1)
+#   pacman -Ql omarchy-settings -> OMARCHY_COLLISIONS below
+# Asking pacman at run time is not an option: it is a privileged/network call,
+# and the fixture tests and the dry-run contract must not make one.
+OMARCHY_CLOSURE="omarchy omarchy-keyring omarchy-settings=4.0.4 hyprland quickshell uwsm sddm \
+xdg-desktop-portal-hyprland wireplumber pipewire gnome-keyring gum jq git perl fakeroot \
+pacman-contrib ttf-jetbrains-mono-nerd-basic limine limine-mkinitcpio-hook limine-snapper-sync snapper"
+
+# "<file omarchy-settings owns>|<the haseen subsystem it lands on>".
+OMARCHY_COLLISIONS=(
+    "/etc/fonts/conf.d/50-omarchy.conf|fonts: haseen's fontconfig seed and theme render"
+    "/etc/limine-entry-tool.d/omarchy-defaults.conf|Limine entries: plan 002 Secure Boot"
+    "/etc/limine-entry-tool.d/omarchy-uki.conf|Limine entries: plan 002 Secure Boot"
+    "/etc/mkinitcpio.conf.d/omarchy_hooks.conf|initramfs HOOKS: plan 033 hibernation"
+    "/etc/sddm.conf.d/10-theme.conf|display manager: haseen uses greetd + tuigreet"
+    "/etc/sddm.conf.d/10-wayland.conf|display manager: haseen uses greetd + tuigreet"
+    "/usr/lib/environment.d/10-omarchy-fcitx.conf|input method: haseen's fcitx5 seed"
+    "/usr/share/applications/mimeapps.list|default handlers: haseen's vendor mimeapps.list"
+    "/usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list|default terminal: haseen's vendor list"
+)
+
+# catalog_confirm_omarchy ID — show the closure and the collisions, then ask.
+# --yes answers it; --dry-run prints it and carries on (confirm does both).
+catalog_confirm_omarchy() {
+    local id="$1" label row p
+    label="$(catalog_field "$id" label)"
+    warn "$label depends on the 'omarchy' package, which haseen replaces (docs/decisions/0001)."
+    info "pacman will pull in this dependency closure: $OMARCHY_CLOSURE"
+    info "omarchy-settings then owns these system files, which land on haseen subsystems:"
+    for row in "${OMARCHY_COLLISIONS[@]}"; do
+        p="${row%%|*}"
+        printf '    %-56s %s\n' "$p" "${row#*|}"
+    done
+    info "pacman owns those paths afterwards: haseen does not fight it, and removing $label with 'haseen remove app $id' leaves them behind (pacman -Rns omarchy omarchy-settings does not, but read ADR 0001 first)."
+    confirm "Install $label and the omarchy dependency chain?" || die "not confirmed; nothing was installed"
+}
+
 # --- per-entry extra steps ---------------------------------------------------------
 
 XPAD_BLACKLIST=/etc/modprobe.d/haseen-xpadneo.conf
@@ -331,6 +386,7 @@ font_apply() {
 
 catalog_install() {
     local id="$1" source ref layer container family r refs=() needs=()
+    local pulls_omarchy
     source="$(catalog_field "$id" source)"
     ref="$(catalog_field "$id" ref)"
     layer="$(catalog_field "$id" layer)"
@@ -339,6 +395,10 @@ catalog_install() {
     mapfile -t needs < <(catalog_field "$id" needs)
     read -ra refs <<<"$ref"
     catalog_when_ok "$id" || die "$(catalog_field "$id" label) is not available on this machine (guard: $(catalog_field "$id" when))"
+    pulls_omarchy="$(catalog_field "$id" pullsOmarchy)"
+    if [[ $pulls_omarchy == true ]]; then
+        catalog_confirm_omarchy "$id"
+    fi
     info "installing $(catalog_field "$id" label) ($source: $ref)"
     case "$source" in
     flatpak) for r in "${refs[@]}"; do flatpak_install_app "$r"; done ;;
