@@ -33,11 +33,17 @@ Usage: haseen setup ddc [on|off|status] [--dry-run] [--yes]
   status  installed, i2c-dev loaded and the monitors found (default).
 
 Off by default. Laptop panels and keyboard backlights need none of this.
-On NixOS set haseen.ddc.enable = true (nixosModules.haseen) instead of 'on'.
+On NixOS use the flake option instead of 'on' or 'off':
+  on:  set haseen.ddc.enable = true (nixosModules.haseen sets
+       hardware.i2c.enable = true and installs ddcutil); add your user to
+       the i2c group, then run nixos-rebuild switch.
+  off: set haseen.ddc.enable = false (nixosModules.haseen), then run
+       nixos-rebuild switch.
 EOF
 }
 
-NIXOS_HINT="on NixOS, DDC belongs to the flake: set haseen.ddc.enable = true (nixosModules.haseen; it installs ddcutil and loads i2c-dev), add your user to the i2c group and run nixos-rebuild switch"
+NIXOS_ON_HINT="on NixOS, set haseen.ddc.enable = true (nixosModules.haseen sets hardware.i2c.enable = true and installs ddcutil); add your user to the i2c group and run nixos-rebuild switch"
+NIXOS_OFF_HINT="off NixOS, set haseen.ddc.enable = false (nixosModules.haseen) and run nixos-rebuild switch"
 
 # installed — ddcutil is there. On NixOS that is the command (the flake puts
 # it on PATH); elsewhere the package, which is what on and off manage.
@@ -113,7 +119,12 @@ on | off)
     require_not_root
     case "$HASEEN_DISTRO" in
     cachyos | arch | omarchy) ;;
-    nixos) die "$NIXOS_HINT" ;;
+    nixos)
+        case "$verb" in
+        on) die "$NIXOS_ON_HINT" ;;
+        off) die "$NIXOS_OFF_HINT" ;;
+        esac
+        ;;
     *) die "unsupported distro: $HASEEN_DISTRO (haseen setup ddc installs ddcutil with pacman)" ;;
     esac
     "$verb"
