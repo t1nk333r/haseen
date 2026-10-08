@@ -18,6 +18,10 @@ Singleton {
     function effectiveSetting(savedValue: var): var {
         return pendingDayName !== null ? pendingDayName : savedValue;
     }
+    function releaseFailedOverride(): void {
+        if (writes.length === 0)
+            pendingDayName = null;
+    }
 
     function setDayName(enabled: bool): void {
         pendingDayName = enabled;
@@ -55,6 +59,7 @@ Singleton {
                 console.warn("haseen.clock: cannot start clock settings persistence");
                 root.writing = null;
                 writer.stdinEnabled = true;
+                root.releaseFailedOverride();
                 root.startWrite();
             });
         }
@@ -63,6 +68,7 @@ Singleton {
                 return;
             if (code !== 0) {
                 console.warn("haseen.clock: clock settings persistence failed:", errors.text);
+                root.releaseFailedOverride();
             } else if (root.writes.length === 0 && root.pendingDayName !== null) {
                 // A user-file reload may have cleared Config.runtime before the
                 // newest write completed. Reassert the confirmed value before

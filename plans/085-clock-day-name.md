@@ -7,7 +7,7 @@
 - **Risk**: LOW (one optional boolean setting; live UI and user-config write)
 - **Depends on**: 021, 027, 076
 - **Planned at**: 2026-10-08, owner request
-- **State**: DONE 2026-10-08 (`tests/test-clock-dayname.sh`: 19 assertions and 28 Qt JS cases; `tests/test-widgets-a.sh`: 64 assertions); nested screenshots captured and inspected
+- **State**: DONE 2026-10-08 (`tests/test-clock-dayname.sh`: 32 assertions and 28 Qt JS cases; `tests/test-widgets-a.sh`: 64 assertions); nested screenshots captured and inspected
 
 ## Change
 
@@ -22,9 +22,9 @@
 - `share/haseen/shell/Haseen/ClockDayName.js`: quote-aware Qt `d`-run tokenization, numeric-day preservation, scoped separator cleanup and vertical prefix.
 - `share/haseen/shell/Haseen/ClockDayName.qml` and `share/haseen/shell/Haseen/qmldir`: shared formatter and long-lived settings singletons.
 - `share/haseen/shell/plugins/haseen.calendar/Panel.qml`: initial state from the effective clock setting and bottom toggle row with Tab/Space/Enter support.
-- `share/haseen/shell/Haseen/ClockSettings.qml`: shell-lifetime write queue; the newest requested value stays effective across config reloads until its write succeeds.
+- `share/haseen/shell/Haseen/ClockSettings.qml`: shell-lifetime write queue; the newest requested value stays effective across config reloads until its write succeeds, while a failed final write releases the override if no newer request remains.
 - `share/haseen/shell/plugins/haseen.clock/Widget.qml`: apply the pending setting override when deriving the live format.
-- `tests/test-clock-dayname.sh`: 28 Qt JS cases and real-engine calendar/clock tests, with delayed CLI writes covering panel teardown and intermediate queued-write reloads.
+- `tests/test-clock-dayname.sh`: 28 Qt JS cases and real-engine calendar/clock tests for delayed panel teardown, intermediate queued-write reloads, an earlier failed write with a newer request queued, and final nonzero/cannot-start failures followed by external settings reloads and panel recreation.
 - `tests/test-widgets-a.sh` (64 assertions): existing clock/calendar widget contract.
 
 ## Nested proof
@@ -46,3 +46,4 @@ Stopped the nested processes and removed the runtime/config scratch; only these 
 - Giving `showDayName` a true or false default: either default would change existing bars. An absent value instead preserves the current format-driven display.
 - Owning the process queue in the calendar panel: closing the popup destroys it and can cancel an accepted write. Keep the service in the shell's Haseen singleton instead.
 - Writing `shell.json` directly from the panel or adding another persistence endpoint: reuse `Config.setRuntime` for the immediate update and the existing lock-safe `haseen plugin settings` CLI for persistence.
+- Keeping the optimistic override after a failed final write: with no write pending, that stale value would override later saved settings. Release it only when the queue is empty; preserve it if a newer request remains.

@@ -89,6 +89,14 @@ else
     for entry in "$HASEEN_PATH"/*; do ln -s "$entry" "$FAKE/share/haseen/${entry##*/}"; done
     cat >"$FAKE/bin/haseen-plugin-settings" <<EOF
 #!/usr/bin/env bash
+if [[ -e "\$XDG_CONFIG_HOME/haseen/fail" ]]; then
+    if [[ -e "\$XDG_CONFIG_HOME/haseen/fail-once" ]]; then
+        sleep 0.5
+        rm -f -- "\$XDG_CONFIG_HOME/haseen/fail" "\$XDG_CONFIG_HOME/haseen/fail-once"
+    fi
+    echo injected-write-failure >&2
+    exit 1
+fi
 sleep 1
 exec "$REPO/bin/haseen-plugin-settings" "\$@"
 EOF
@@ -237,6 +245,18 @@ QML
         done
         _fail "$label" "saved config: $(jq -c . "$cfg")$(printf '\n')$(tail -n 20 "$SANDBOX/qs.log")"
     }
+    until_log() {
+        local label=$1 needle=$2 minimum=${3:-1} count i
+        for ((i = 0; i < 100; i++)); do
+            count=$(grep -Fc "$needle" "$SANDBOX/qs.log" || true)
+            if (( count >= minimum )); then
+                _pass
+                return 0
+            fi
+            sleep 0.1
+        done
+        _fail "$label" "log: $(tail -n 20 "$SANDBOX/qs.log")"
+    }
 
     until_state "unset setting initially reflects the existing day name" \
         '.dayNameShown == true and .setting == null and .format == "dddd HH:mm" and .toggle == "On"'
@@ -272,6 +292,37 @@ QML
     until_saved "closing panel preserves the accepted setting write" true
     ipc dayNameTest openPanel >/dev/null
     until_state "reopened panel reflects the persisted day name" '.dayNameShown == true and .setting == true and .toggle == "On"'
+    touch "$XDG_CONFIG_HOME/haseen/fail" "$XDG_CONFIG_HOME/haseen/fail-once"
+    ipc dayNameTest click >/dev/null
+    ipc dayNameTest click >/dev/null
+    until_log "earlier queued write fails" "clock settings persistence failed"
+    printf '%s\n' '{"plugins":{"haseen.clock":{"settings":{"format":"HH:mm","showDayName":false}}}}' >"$cfg"
+    until_state "newer queued value stays live after an earlier write fails" '.setting == false and .dayNameShown == true and .format == "dddd HH:mm" and .toggle == "On"'
+    until_saved "newer queued value persists after earlier failure" true
+    ipc dayNameTest click >/dev/null
+    until_state "clock returns Off before injected final write failure" '.dayNameShown == false and .toggle == "Off"'
+    until_saved "Off is saved before injected final write failure" false
+    touch "$XDG_CONFIG_HOME/haseen/fail"
+    ipc dayNameTest click >/dev/null
+    until_log "failed final write is reported" "clock settings persistence failed" 2
+    assert_eq "failed final On write leaves saved setting Off" false "$(jq -r '.plugins["haseen.clock"].settings.showDayName' "$cfg")"
+    rm "$XDG_CONFIG_HOME/haseen/fail"
+    printf '%s\n' '{"plugins":{"haseen.clock":{"settings":{"format":"HH:mm","showDayName":false}}}}' >"$cfg"
+    until_state "external settings reload controls the clock after final write failure" '.setting == false and .dayNameShown == false and .format == "HH:mm" and .toggle == "Off"'
+    ipc dayNameTest closePanel >/dev/null
+    ipc dayNameTest openPanel >/dev/null
+    until_state "recreated calendar follows external setting after final write failure" '.setting == false and .dayNameShown == false and .format == "HH:mm" and .toggle == "Off"'
+
+    chmod -x "$FAKE/bin/haseen-plugin-settings"
+    ipc dayNameTest click >/dev/null
+    until_log "final cannot-start write is reported" "cannot start clock settings persistence"
+    chmod +x "$FAKE/bin/haseen-plugin-settings"
+    assert_eq "cannot-start final write leaves saved setting Off" false "$(jq -r '.plugins["haseen.clock"].settings.showDayName' "$cfg")"
+    printf '%s\n' '{"plugins":{"haseen.clock":{"settings":{"format":"dddd HH:mm","showDayName":true}}}}' >"$cfg"
+    until_state "external settings reload controls the clock after cannot-start failure" '.setting == true and .dayNameShown == true and .format == "dddd HH:mm" and .toggle == "On"'
+    ipc dayNameTest closePanel >/dev/null
+    ipc dayNameTest openPanel >/dev/null
+    until_state "recreated calendar follows external setting after cannot-start failure" '.setting == true and .dayNameShown == true and .format == "dddd HH:mm" and .toggle == "On"'
 
     cleanup_clock_dayname
     trap - EXIT
