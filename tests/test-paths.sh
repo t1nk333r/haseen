@@ -24,10 +24,10 @@ expected_haseen_path="$(readlink -f -- "$stage/share/haseen")"
 assert_contains "installer dry-run passes the normalized checkout tree" \
     "$OUTPUT" "HASEEN_PATH=$expected_haseen_path"
 assert_not_contains "installer dry-run path has no parent traversal" "$OUTPUT" "/../"
-# A fresh HOME runs four CLI phases: layer apply, migrate --seal, setup nvim
-# --if-absent (plan 065) and hw apply.
+# A fresh HOME runs five CLI phases: layer apply, migrate --seal, setup nvim
+# --if-absent (plan 065), seed user and hw apply.
 haseen_path_calls="$(grep -Fc "HASEEN_PATH=$expected_haseen_path" <<<"$OUTPUT" || true)"
-assert_eq "all dry-run CLI phases receive the same normalized path" 4 "$haseen_path_calls"
+assert_eq "all dry-run CLI phases receive the same normalized path" 5 "$haseen_path_calls"
 if [[ ! -e $SANDBOX/prefix ]]; then
     _pass
 else
@@ -43,8 +43,9 @@ assert_status "reinstall dry-run succeeds without an installed tree" 0 "$STATUS"
 assert_contains "reinstall dry-run passes the normalized checkout tree" \
     "$OUTPUT" "HASEEN_PATH=$expected_haseen_path"
 assert_not_contains "reinstall dry-run path has no parent traversal" "$OUTPUT" "/../"
+# An upgrade runs four: layer apply, migrate, seed user and hw apply.
 haseen_path_calls="$(grep -Fc "HASEEN_PATH=$expected_haseen_path" <<<"$OUTPUT" || true)"
-assert_eq "reinstall CLI phases receive the same normalized path" 3 "$haseen_path_calls"
+assert_eq "reinstall CLI phases receive the same normalized path" 4 "$haseen_path_calls"
 # The /proc scan cannot be faked in a hermetic test. Exercise the same argv/path
 # matcher against NUL-separated cmdline fixtures instead.
 source "$HASEEN_PATH/lib/doctor.sh"

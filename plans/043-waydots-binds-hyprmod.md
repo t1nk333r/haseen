@@ -50,6 +50,13 @@ CLI toggle is worse than no GUI.
   theme and the user's own Lua. The owner's call — the GUI wins over
   `haseen toggle` and `haseen hw`; the user's hand-written Lua still wins over
   the GUI. The consequence is written in the comment, not left to be discovered.
+- **Existing users are told once** (landing review, 2026-10-08). `binds.lua`
+  is loaded from the installed tree, so nothing moves, but SUPER + / and
+  SUPER + CTRL + V stop working and a key a user's `bindings.lua` already
+  binds now fires twice. Migration `1791466290-keybinds-notice.sh` only prints
+  what changed and how to `hl.unbind()` a clash, in `haseen migrate`'s output
+  (the login notice runs it in a terminal that stays open). A fresh install
+  seals it, so a new user sees nothing.
 
 ## Rejected
 
@@ -106,4 +113,7 @@ owner's session is forbidden (handoff.md).
 `share/haseen/default/hypr/{binds,init}.lua`,
 `share/haseen/shell/plugins/haseen.keybinds/Overlay.qml` (one stale comment),
 `share/haseen/agents/skills/haseen/hyprland.md`, `README.md`,
-`tests/test-keybinds.sh`, `tests/test-desktop.sh`.
+`tests/test-keybinds.sh`, `tests/test-desktop.sh`;
+landing review: `share/haseen/migrations/1791466290-keybinds-notice.sh`,
+`tests/test-migrate-defaults.sh` (the notice writes nothing, and every key it
+names is bound in `binds.lua`).
