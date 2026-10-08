@@ -84,43 +84,146 @@ fun show_scanner(on) {
         scan[i].SetOpacity(on / (1 + i * 1.2));
 }
 
+# The script plugin calls this 50 times a second (FRAMES_PER_SECOND).
 fun refresh_callback() {
     progress++;
     for (i = 0; i < ghosts; i++)
         scan[i].SetX(scan_x(progress - i * lag));
+    caret_sprite.SetOpacity(prompt_on * caret_opacity(progress - caret_epoch));
 }
 Plymouth.SetRefreshFunction(refresh_callback);
 
 # --- the password prompt -----------------------------------------------------
 # No text on the splash: boot messages are ignored, and the disk password is
-# asked with dots only.
+# asked with asterisks only. The field is KITT meets Person of Interest (owner,
+# 2026-10-08): four thin corner brackets frame it like the Machine's
+# surveillance boxes, and a block caret in the scanner's accent pulses at 1 Hz
+# where the next asterisk goes, so the prompt shows before the first key.
+# The field takes the scanner's place: as wide as its track, centred on it.
+
+prompt_font = "Monospace 14";
+prompt_pad = 12;
+bracket_arm = 12;
+bracket_line = 2;
+bracket_opacity = 0.6;
+# One blink is 50 frames, 1 s: lit for the first half, then the scanner's
+# ghost falloff (1 / (1 + i * 1.2), i in trail steps of `lag` frames) fades it
+# out, the way a KITT segment dies away. A key press restarts the cycle lit.
+blink_frames = 50;
+
+# A full block is a solid cell: the caret as it is, and stretched, each arm
+# of the brackets.
+caret_image = Image.Text("█", accent_r, accent_g, accent_b, 1, prompt_font);
+caret_sprite = Sprite(caret_image);
+caret_sprite.SetZ(11);
+caret_sprite.SetOpacity(0);
+arm_h = caret_image.Scale(bracket_arm, bracket_line);
+arm_v = caret_image.Scale(bracket_line, bracket_arm);
+# Corner c: horizontal arm bracket[c], vertical arm bracket[c + 4]; corners
+# 1 and 3 are on the right, 2 and 3 at the bottom.
+for (i = 0; i < 4; i++) {
+    bracket[i] = Sprite(arm_h);
+    bracket[i + 4] = Sprite(arm_v);
+}
+for (i = 0; i < 8; i++) {
+    bracket[i].SetZ(10);
+    bracket[i].SetOpacity(0);
+}
 
 bullets_sprite = Sprite();
 bullets_sprite.SetZ(10);
+
+prompt_on = 0;
+caret_epoch = 0;
+
+fun caret_opacity(t) {
+    p = t % blink_frames;
+    if (p < blink_frames / 2)
+        return 1;
+    return 1 / (1 + (p - blink_frames / 2 + 1) / lag * 1.2);
+}
+
+fun place_bracket(c, right, bottom, left_x, top_y, width, height) {
+    hx = left_x;
+    vx = left_x;
+    if (right) {
+        hx = left_x + width - bracket_arm;
+        vx = left_x + width - bracket_line;
+    }
+    hy = top_y;
+    vy = top_y;
+    if (bottom) {
+        hy = top_y + height - bracket_line;
+        vy = top_y + height - bracket_arm;
+    }
+    bracket[c].SetX(hx);
+    bracket[c].SetY(hy);
+    bracket[c + 4].SetX(vx);
+    bracket[c + 4].SetY(vy);
+}
+
+# Lay the field out around text_width pixels of asterisks: the asterisks from
+# the left padding, the caret right after them, the brackets widening past
+# the track when a long passphrase needs it.
+fun layout_prompt(text_width) {
+    gap = 0;
+    if (text_width > 0)
+        gap = 2;
+    field_width = track_width;
+    needed = text_width + gap + caret_image.GetWidth() + 2 * prompt_pad;
+    if (needed > field_width)
+        field_width = needed;
+    field_height = caret_image.GetHeight() + 2 * prompt_pad;
+    left_x = (screen_width - field_width) / 2;
+    top_y = bar_y + bar_height / 2 - field_height / 2;
+    place_bracket(0, 0, 0, left_x, top_y, field_width, field_height);
+    place_bracket(1, 1, 0, left_x, top_y, field_width, field_height);
+    place_bracket(2, 0, 1, left_x, top_y, field_width, field_height);
+    place_bracket(3, 1, 1, left_x, top_y, field_width, field_height);
+    bullets_sprite.SetX(left_x + prompt_pad);
+    bullets_sprite.SetY(top_y + prompt_pad);
+    caret_sprite.SetX(left_x + prompt_pad + text_width + gap);
+    caret_sprite.SetY(top_y + prompt_pad);
+}
+
+fun show_prompt(on) {
+    prompt_on = on;
+    for (i = 0; i < 8; i++)
+        bracket[i].SetOpacity(bracket_opacity * on);
+    bullets_sprite.SetOpacity(on);
+    caret_sprite.SetOpacity(on);
+}
 
 fun display_password_callback(prompt, bullets) {
     show_scanner(0);
 
     # One asterisk per typed character (owner's choice), drawn as text so no
     # image ships with it.
-    dots = "";
-    for (i = 0; i < bullets; i++)
-        dots += "*";
-    dot_image = Image.Text(dots, accent_r, accent_g, accent_b);
-    bullets_sprite.SetImage(dot_image);
-    bullets_sprite.SetX((screen_width - dot_image.GetWidth()) / 2);
-    bullets_sprite.SetY(screen_height / 2);
+    text_width = 0;
+    if (bullets > 0) {
+        dots = "";
+        for (i = 0; i < bullets; i++)
+            dots += "*";
+        dot_image = Image.Text(dots, accent_r, accent_g, accent_b, 1, prompt_font);
+        bullets_sprite.SetImage(dot_image);
+        text_width = dot_image.GetWidth();
+    }
+    layout_prompt(text_width);
+    show_prompt(1);
+    if (bullets == 0)
+        bullets_sprite.SetOpacity(0);
+    caret_epoch = progress;
 }
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
 
 fun display_normal_callback() {
-    bullets_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+    show_prompt(0);
     show_scanner(1);
 }
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 
 fun quit_callback() {
     show_scanner(0);
-    bullets_sprite.SetImage(Image.Text("", fg_r, fg_g, fg_b));
+    show_prompt(0);
 }
 Plymouth.SetQuitFunction(quit_callback);

@@ -5,6 +5,9 @@
 # The boot splash: the colours come from the current theme, the hook and the
 # kernel command line are what decide whether it is ever seen, and status says
 # which of those is missing.
+# node runs the script against a fake Plymouth API; looked up before sandbox()
+# narrows PATH.
+NODE="$(command -v node || true)"
 sandbox plymouth
 
 sysroot="$SANDBOX/sysroot"
@@ -74,6 +77,73 @@ assert_contains "the background is the theme's, as plymouth floats" "$script" "b
 assert_contains "and its blue channel too" "$script" "bg_b = 0.157"
 assert_contains "the password prompt is drawn by the theme" "$script" "SetDisplayPasswordFunction"
 assert_not_contains "boot messages are not drawn: the splash shows no text" "$script" "SetMessageFunction"
+
+# --- the LUKS prompt under a fake Plymouth (plan 036, 2026-10-08) -------------
+# tests/fixtures/plymouth-harness.js runs the rendered script with a recording
+# Window/Image/Sprite/Plymouth and drives it as plymouthd does: 50 refreshes a
+# second, the password prompt with 0, 3 and 120 asterisks, normal, quit.
+if [[ -z $NODE ]]; then
+    echo "  SKIP prompt checks: node not found" >&2
+else
+    printf '%s\n' "$script" >"$SANDBOX/haseen.script"
+    capture "$NODE" "$REPO/tests/fixtures/plymouth-harness.js" "$SANDBOX/haseen.script"
+    assert_status "the script runs under the fake Plymouth" 0 "$STATUS"
+    report="$OUTPUT"
+    q() { jq -c "$1" <<<"$report"; }
+    # Sprites by what they show: the caret is the bare block, the brackets are
+    # blocks stretched to arms, the scanner is the stretched bullet, the
+    # asterisks are text of '*'.
+    CARET='map(select(.kind == "text" and .text == "█"))[0]'
+    ARMS='map(select(.src == "█"))'
+    STARS='map(select(.kind == "text" and (.text // "" | test("^\\*+$"))))[0]'
+    SCAN='map(select(.src == "•"))'
+    assert_eq "it registers the four callbacks it uses" \
+        '["SetDisplayNormalFunction","SetDisplayPasswordFunction","SetQuitFunction","SetRefreshFunction"]' "$(q .registered)"
+
+    # Before the first key: a lit caret inside four corner brackets, no text.
+    assert_eq "before a key: the caret shows" "1" "$(q ".empty | $CARET | .opacity")"
+    assert_eq "before a key: eight bracket arms show" "8" "$(q "[.empty | $ARMS | .[] | select(.opacity > 0)] | length")"
+    assert_eq "the brackets are thin (2 px) arms of 12 px" '[[2,12],[12,2]]' "$(q "[.empty | $ARMS | .[] | [.w, .h]] | unique")"
+    assert_eq "the brackets are dimmer than the caret" "0.6" "$(q "[.empty | $ARMS | .[] | .opacity] | unique | .[0]")"
+    assert_eq "before a key: no asterisk shows" "true" "$(q "[.empty[] | select(.kind == \"text\" and .text != \"█\" and .opacity > 0)] | length == 0")"
+    assert_eq "the scanner hides while the prompt is up" "0" "$(q "[.empty | $SCAN | .[] | .opacity] | max")"
+    assert_eq "the caret is tinted like the scanner" "$(q ".empty | $SCAN | .[0].color")" "$(q ".empty | $CARET | .color")"
+    # The field takes the scanner's place: the track's width (a quarter of the
+    # 1920 px screen), centred, and the caret sits inside it.
+    box() { q "(.$1 | $ARMS) as \$a | [([\$a[] | .x] | min), ([\$a[] | .y] | min), ([\$a[] | .x + .w] | max), ([\$a[] | .y + .h] | max)]"; }
+    assert_eq "the field is the track's width, centred" '[720,519,1200,565]' "$(box empty)"
+    inside() { q "(.$1 | $ARMS) as \$a | (.$1 | $CARET) as \$c | \$c.x > ([\$a[] | .x] | min) and \$c.x + \$c.w < ([\$a[] | .x + .w] | max) and \$c.y > ([\$a[] | .y] | min) and \$c.y + \$c.h < ([\$a[] | .y + .h] | max)"; }
+    assert_eq "the caret sits inside the brackets" "true" "$(inside empty)"
+
+    # About 1 Hz at 50 frames a second: lit 25 frames, then the scanner's
+    # ghost falloff for 25, twice in 100 frames.
+    assert_eq "the caret is lit 25 of every 50 frames" "25 25" \
+        "$(q '[.blink[0:50], .blink[50:100]] | map(map(select(. == 1)) | length) | map(tostring) | join(" ")' | tr -d '"')"
+    assert_eq "it goes dark twice in 100 frames (1 Hz)" "2" \
+        "$(q '[range(0; 99) as $i | select(.blink[$i] == 1 and .blink[$i + 1] < 1)] | length')"
+    assert_eq "the dark half fades out like a scanner ghost" "true" \
+        "$(q '.blink[24:49] as $f | ($f | . == (sort | reverse)) and $f[0] < 1 and $f[-1] < 0.15 and $f[-1] > 0')"
+
+    # Typing: the asterisks run from the left padding, the caret follows them.
+    assert_eq "three keys: three asterisks" '"***"' "$(q ".typed | $STARS | .text")"
+    assert_eq "the asterisks show" "1" "$(q ".typed | $STARS | .opacity")"
+    assert_eq "the caret follows the last asterisk" "true" \
+        "$(q "(.typed | $STARS) as \$s | (.typed | $CARET) as \$c | \$c.x == \$s.x + \$s.w + 2 and \$c.y == \$s.y")"
+    assert_eq "a key press restarts the blink lit" "1" "$(q ".typedNextFrame | $CARET | .opacity")"
+    assert_eq "the field keeps its size for a short password" "$(box empty)" "$(box typed)"
+    assert_eq "120 keys: the field widens to hold them" "true" "$(q "(.long | $ARMS) as \$a | ([\$a[] | .x + .w] | max) - ([\$a[] | .x] | min) > 120 * 11")"
+    assert_eq "and the caret stays inside" "true" "$(inside long)"
+    assert_eq "the caret and the asterisks share one monospace font" '["Monospace 14"]' \
+        "$(q '[.textCalls[] | select(.text == "█" or (.text | test("^\\*+$"))) | .font] | unique')"
+
+    # Back to normal and quit: the prompt goes, the scanner comes back.
+    assert_eq "normal: the caret hides" "0" "$(q ".normal | $CARET | .opacity")"
+    assert_eq "normal: the brackets hide" "0" "$(q "[.normal | $ARMS | .[] | .opacity] | max")"
+    assert_eq "normal: the asterisks hide" "0" "$(q ".normal | $STARS | .opacity")"
+    assert_eq "normal: the scanner returns" "1" "$(q "[.normal | $SCAN | .[] | .opacity] | max")"
+    assert_eq "quit: nothing of the prompt or the scanner stays" "0" \
+        "$(q "[(.quit | $ARMS | .[]), (.quit | $SCAN | .[]), (.quit | $CARET), (.quit | $STARS)] | map(.opacity) | max")"
+fi
 
 # --- the hook is evaluated the way mkinitcpio does it -------------------------
 printf 'HOOKS=(base systemd plymouth autodetect)\n' >"$sysroot/etc/mkinitcpio.conf.d/zz.conf"
