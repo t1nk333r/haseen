@@ -28,6 +28,7 @@ yazi                         # default inode/directory handler (TUI, Terminal=tr
 imv                          # default image/* handler (pulls libheif for HEIC/AVIF)
 mpv                          # default video/* and application/ogg handler
 papers                       # default application/pdf handler
+aur:herdr                    # default terminal multiplexer; only in [omarchy] (Apache-2.0 there, AGPL-3.0 in the AUR build), and that repo is applied before this layer
 qt6-wayland                  # native Wayland for Qt 6 apps (Quickshell included)
 inter-font                   # shell UI font (theme token fontFamily)
 ttf-jetbrains-mono-nerd      # terminal and shell mono font with icon glyphs (fontMono)

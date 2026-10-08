@@ -65,6 +65,7 @@ The owner's other repos:
 | Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |
 | Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
 | Upload, annotation, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `share/haseen/default/satty/`, `share/haseen/themed/satty.css.tpl` | 041 |
+| Multiplexer, yazi, the VM rig | `share/haseen/default/{herdr,tmux,yazi}/`, `share/haseen/themed/yazi.toml.tpl`, `tools/lab.sh` | 044 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
 | Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088, 090 |
 | Optional Security panel and menu | `share/haseen/shell/plugins/haseen.security/`, `share/haseen/shell/Haseen/{SecurityRoute.qml,SecurityEvidence.js}`, `share/haseen/shell/plugins/haseen.menu/`, `tests/test-vapt-security-ui.sh` | 088, 090 |
