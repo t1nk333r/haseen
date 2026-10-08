@@ -35,6 +35,8 @@ noto-fonts-emoji             # colour emoji; noto-fonts itself comes from base
 gpu-screen-recorder          # haseen capture screenrecord (drives the red privacy dot)
 tesseract                    # haseen capture text (OCR)
 tesseract-data-eng           # OCR language data
+tesseract-data-ara           # Arabic OCR; -l ara+eng is what mixed screen text needs
+satty                        # annotation editor for haseen capture screenshot --edit
 zbar                         # haseen capture qr
 libnotify                    # notify-send for capture/reminder/toggle feedback
 hyprsunset                   # night light (haseen.nightlight)

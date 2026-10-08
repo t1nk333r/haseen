@@ -1,0 +1,67 @@
+# haseen's satty defaults. Seeded once to ~/.config/satty/config.toml; after
+# that the file is yours and haseen never touches it again.
+#
+# Satty is the annotation editor behind `haseen capture screenshot --edit`
+# (extra/satty 0.22.0-1). Colours of the window chrome are not here: satty
+# reads ~/.config/satty/overrides.css for those, and the seed points that at
+# the theme pipeline's render, so a `haseen theme set` restyles the editor too.
+#
+# The annotation palette below is deliberately NOT theme-derived. Annotations
+# are drawn on top of a picture of the screen, which usually carries the
+# current theme, so theme-coloured arrows would be the one thing on the shot
+# that cannot be seen. These are high-contrast marker colours instead.
+
+[general]
+# Enter copies and leaves; Escape leaves. One keystroke each, like ShareX.
+actions-on-enter = ["save-to-clipboard"]
+actions-on-escape = ["exit"]
+early-exit = ["all"]
+copy-command = "wl-copy"
+# The tool people reach for first on a screenshot is an arrow, not a brush.
+initial-tool = "arrow"
+corner-roundness = 12
+default-round-caps = true
+# CTRL at the start of a highlight gives the freehand one.
+primary-highlighter = "block"
+# haseen already notifies from the capture command; a second toast is clutter.
+disable-notifications = true
+# Hyprland owns the decorations; asking for none keeps the editor a clean box.
+no-window-decoration = true
+floating-hack = true
+# Smooths the brush without lagging it (upstream suggests 5-10).
+brush-smooth-history-size = 8
+
+[keybinds]
+pointer = "p"
+crop = "c"
+brush = "b"
+line = "i"
+arrow = "z"
+rectangle = "r"
+ellipse = "e"
+text = "t"
+marker = "m"
+blur = "u"
+highlight = "g"
+
+[font]
+# The shell's UI font (desktop layer: inter-font), with the Arabic face the
+# fontconfig rules pick and the emoji font as fallbacks. Satty has no fallback
+# chain of its own beyond this list.
+family = "Inter"
+style = "Regular"
+fallback = ["Noto Naskh Arabic", "Noto Color Emoji"]
+
+[color-palette]
+# 1-9/0 select these in order.
+palette = [
+    "#eb4d4bff", # red
+    "#f0932bff", # orange
+    "#f9ca24ff", # yellow
+    "#6ab04cff", # green
+    "#22a6b3ff", # cyan
+    "#4834d4ff", # blue
+    "#ffffffff", # white
+    "#000000ff", # black
+]
+custom = []

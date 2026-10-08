@@ -44,6 +44,7 @@ Read `handoff.md` first.
 | 036 | Login: Plymouth splash, the greeter shell, autologin after the disk password | P1 | L | 003 005 033 | DONE 2026-10-05 (72 tests + nested-compositor smoke; real boot is an owner step) |
 | 037 | Default handlers (four places) and the catalogue's missing half | P1 | L | 003 017 023 024 | DONE 2026-10-05 (301 tests; 13 categories, 110 entries at landing; flea's omarchy pull is guarded, owner-approved) |
 | 038 | Shell rc layer: tools, aliases, functions, `mise activate` | P2 | M | 001 017 023 | DONE 2026-10-05 (100 tests; live compress/ga/gd round trips; zsh unverified) |
+| 041 | Sharing a capture: uploader, annotation, Arabic OCR, circle to search | P2 | L | 004 018 | DONE 2026-10-05 (188 tests; imgur and 0x0 proven dead, never defaults) |
 | 047 | Fonts, Arabic rendering, Qt theming and the seed registry | P1 | M | 004 033 | DONE 2026-10-05 (live `fc-match`: Arabic→Naskh, Urdu→Nastaliq, Omarchy's system assign defeated) |
 | 048 | Omarchy parity on io: quiet boot handover, `*` splash, Omarchy import, three menus, gestures, lock-screen fixes | P1 | L | 016 019 031 036 | DONE 2026-10-06 (owner checks the boot and swipes) |
 | 049 | io round 3: popups under their icon, frame/bar seam, compat icon font, pickers, lock fingerprint, Omarchy tray, hover highlight | P1 | L | 015 036 048 | DONE 2026-10-06 (real finger and click are owner checks) |

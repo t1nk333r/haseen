@@ -55,7 +55,8 @@ between parts. The engineering record is `plans/`, indexed by
     browser (`helium-browser-bin`) and its Cairn extension, downloaded from
     Cairn's releases (AGPL-3.0, never vendored).
   - Installed with the desktop layer (owner, 2026-10-08): the default file
-    handlers `yazi`, `imv`, `mpv`, `papers` and `xdg-terminal-exec` (plan 037).
+    handlers `yazi`, `imv`, `mpv`, `papers` and `xdg-terminal-exec` (plan 037),
+    and the capture tools `satty` and `tesseract-data-ara` (plan 041).
   - A new built-in plugin is off until the owner adds it to this list.
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with

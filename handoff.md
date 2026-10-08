@@ -64,6 +64,7 @@ The owner's other repos:
 | Fonts and Arabic rendering, Qt platform theme, seed modules | `share/haseen/themed/fonts.conf.tpl`, `share/haseen/default/fontconfig/`, `share/haseen/seeds/`, `bin/haseen-seed-user` | 047 |
 | Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |
 | Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
+| Upload, annotation, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `share/haseen/default/satty/`, `share/haseen/themed/satty.css.tpl` | 041 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
