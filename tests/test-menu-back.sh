@@ -50,6 +50,14 @@ ShellRoot {
 QML
 
 settings='{"debugIpc":true}'
+menu_config="$XDG_CONFIG_HOME/haseen/menu.jsonc"
+mkdir -p "$(dirname "$menu_config")"
+cat >"$menu_config" <<'JSON'
+{"items": {
+  "power-link": {"label": "Power Link", "target": "system"},
+  "system-link": {"label": "System Link", "target": "system"}
+}}
+JSON
 setsid env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software \
     QT_NO_XDG_DESKTOP_PORTAL=1 HASEEN_PATH="$FAKE/share/haseen" MENU_SETTINGS="$settings" \
     timeout 120 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness" \
@@ -105,6 +113,19 @@ assert_eq "first back selects Capture's row" "$capture_index" "$(s .current)"
 ipc haseen.menu back >/dev/null
 until_state "second back returns to the root" '.menu == "root"'
 assert_eq "second back selects Trigger's root row" "$trigger_index" "$(s .current)"
+
+# Two user links share one submenu. Back must restore the specific link row
+# used to enter it, not select the submenu's own row.
+for link in 'Power Link' 'System Link'; do
+    link_index="$(row_index "$link >")"
+    assert_eq "root includes $link" true "$([[ $link_index -ge 0 ]] && echo true || echo false)"
+    ipc haseen.menu select "$link_index" >/dev/null
+    ipc haseen.menu accept >/dev/null
+    until_state "$link enters the linked System submenu" '.menu == "system"'
+    ipc haseen.menu back >/dev/null
+    until_state "back from $link returns to root" '.menu == "root"'
+    assert_eq "back selects the $link row" "$link_index" "$(s .current)"
+done
 
 ipc haseen.menu search reminder >/dev/null
 until_state "search finds the deep Reminder submenu" \
