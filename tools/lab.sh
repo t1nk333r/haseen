@@ -227,8 +227,8 @@ plan() {
 
     # install.sh refuses root (require_not_root) and escalates itself through
     # common.sh; the guest user's sudo is what it uses there. The default layer
-    # set plus secureboot: desktop's packages.txt expects omarchy-repo (herdr,
-    # ttfx prebuilt), so a list without it measures an AUR fallback instead.
+    # set plus secureboot: without omarchy-repo, desktop skips herdr and
+    # xdg-terminal-exec and builds ttfx from the AUR, which no default install does.
     lab ssh "cd ~/$GUEST_DIR && ./install.sh --yes --layers base,chaotic,omarchy-repo,desktop,theme,shell,secureboot"
     lab ssh "cd ~/$GUEST_DIR && tests/run.sh"
     # Evidence a machine can read: a green suite says nothing about whether the

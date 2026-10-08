@@ -23,12 +23,14 @@ xdg-utils                    # xdg-open / xdg-settings: the browser bind opens t
 # they ship with the session: a vendor default that points at a missing app is
 # worse than none. xdg-terminal-exec is how a Terminal=true entry (yazi, nvim)
 # and GTK's "Open in Terminal" reach $TERMINAL.
-aur:xdg-terminal-exec        # only in [omarchy]; flea depends on it too
+# omarchy: entries come only from [omarchy] (the omarchy-repo layer); without
+# it they are skipped with a warning, never built from the AUR (owner, 2026-10-08).
+omarchy:xdg-terminal-exec    # prebuilt in [omarchy]; flea depends on it too
 yazi                         # default inode/directory handler (TUI, Terminal=true)
 imv                          # default image/* handler (pulls libheif for HEIC/AVIF)
 mpv                          # default video/* and application/ogg handler
 papers                       # default application/pdf handler
-aur:herdr                    # default terminal multiplexer; only in [omarchy] (Apache-2.0 there, AGPL-3.0 in the AUR build), and that repo is applied before this layer
+omarchy:herdr                # default terminal multiplexer; Apache-2.0 in [omarchy], AGPL-3.0 in the AUR build
 qt6-wayland                  # native Wayland for Qt 6 apps (Quickshell included)
 inter-font                   # shell UI font (theme token fontFamily)
 ttf-jetbrains-mono-nerd      # terminal and shell mono font with icon glyphs (fontMono)

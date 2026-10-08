@@ -59,3 +59,31 @@ on luna, which has Chaotic-AUR, on 2026-10-04.
 - **Putting `[omarchy]` before Chaotic-AUR.** Chaotic-AUR rebuilds from AUR PKGBUILDs, which tracks upstream more closely. Omarchy's repo is curated for Omarchy's own versions (ttfx 0.3.2 vs 0.5.0).
 - **The rc/edge channels.** haseen pins `stable`.
 - **Making `desktop` require the layer.** One leaf package does not justify a hard dependency on a second third-party repo.
+
+## Amendment 2026-10-08: [omarchy]-only packages
+
+Owner decision: herdr and xdg-terminal-exec are taken only from `[omarchy]`.
+herdr's AUR build is AGPL-3.0 (Apache-2.0 in `[omarchy]`) and once hung for 44
+minutes in a `zig fetch` (plan 014, finding 3). `desktop` still does not require
+the layer, so a `--layers` list or a picker choice without it must not fail.
+
+- The manifest gains an `omarchy:` prefix (`share/haseen/lib/packages.sh`).
+  `pkg_install_omarchy` sends these entries through `pkg_install_aur`'s source
+  order when `[omarchy]` is enabled, as before. Without it, they are skipped
+  with one warning that names them and the command that adds them:
+  `haseen layer apply omarchy-repo desktop`. They are never built from the AUR.
+- `haseen layer apply` exports its apply order as `HASEEN_APPLY_LAYERS`. A dry
+  run in which `omarchy-repo` comes before `desktop` plans the packages from
+  the repo (`omarchy/herdr`), because the real run will have enabled it by then.
+  When `omarchy-repo` comes after `desktop` they are skipped, as the real run
+  would skip them.
+- `desktop/packages.txt`: `omarchy:xdg-terminal-exec`, `omarchy:herdr`. ttfx
+  stays an `aur:` entry.
+
+Evidence: `tests/test-desktop.sh`, section "herdr and xdg-terminal-exec need
+[omarchy]". On the AMD fixture without the repo, the layer applies, warns
+about both packages, and plans no install of either from any source. With
+`omarchy-repo desktop` it plans `pacman -S --needed omarchy/xdg-terminal-exec
+omarchy/herdr` and gives no warning. With `desktop omarchy-repo` both are
+skipped. With `[omarchy]` already in `pacman.conf` both install from it.
+Before the change, 146/150 passed; after, 150/150.
