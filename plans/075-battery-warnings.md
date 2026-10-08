@@ -71,16 +71,24 @@ logging stubs on the shell's PATH.
 - 10 %: the critical card in the shell's pager: "10% left, about 40 min. Suspending in 60 s: plug in or
   press Cancel." (`~/.cache/haseen-wt/scratch-battery/shots/notify-critical.png`). The IPC state showed `armed: true`, 58 s
   remaining.
-- `pager act exec` pressed the notification's Cancel action. The state then showed `armed: false`,
-  `lastAction: ""`, and the systemctl stub logged nothing.
+- Historical nest interaction: Cancel was pressed through pager IPC (act). The state then showed
+  `armed: false`, `lastAction: ""`, and the systemctl stub logged nothing.
 - The nest showed the first warning as "about 3 h": the reading was evaluated before
   `TimeToEmpty` from the same PropertiesChanged arrived. Evaluation is now deferred with
   `Qt.callLater`. That fix was not re-shot in the nest.
 
+## Final visual evidence
+
+- Cancel is directly visible on the critical card, not hidden behind an action affordance
+  (`scratch-design/shots/1a-critical-card.png`).
+- The after-cancel screenshot has no critical card (`scratch-design/shots/1b-after-cancel.png`); its
+  state records `armed: false, cancelled: true, lastAction: ""`
+  (`scratch-design/shots/1c-battery-state-after-cancel.json`).
+
 ## Not verified
 
-- The pager card shows the Cancel action behind its action affordance. The nest pressed it through
-  the pager's IPC (`act`), not with a pointer click.
+- No pointer click was exercised; the historical pager IPC (act) interaction and these screenshots/state
+  do not establish pointer-click use.
 - No real laptop: luna is a desktop. Hardware suspend was not exercised (the 60 s path ran against a
   systemctl stub only).
 
