@@ -307,11 +307,14 @@ provenance.
   `[ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"`
   (written with the absolute path). That is reported, not degraded.
   `append_user_file` had no other caller and was removed from `common.sh`.
-  **Deliberate divergence:** both the upstream project's installer and this
-  plan's earlier implementation appended a source line to the user's rc. That
-  contradicts the design record and `docs/architecture.md`: user files are
-  seeded once and then belong to the user, and haseen-owned behaviour lives
-  in `share/haseen/default/`. Activation is therefore the user's own edit.
+  **Deliberate divergence from haseen's earlier implementation on this
+  branch**, which appended a source line to the user's rc. That contradicted
+  the design record and `docs/architecture.md`: user files are seeded once and
+  then belong to the user, and haseen-owned behaviour lives in
+  `share/haseen/default/`. The layer now creates only its owned link and
+  never creates or edits a user file; activation is the user's own edit.
+  (The upstream project has no rc handling: its tools install as pacman
+  packages into `/usr/bin`.)
 
 Choices where the design was silent: the descriptor doubles as the approval
 record; a host `[oniomarchy]` section makes the private source `broken`;
@@ -326,9 +329,9 @@ packages already installed from the source.
   never refreshes it behind the pinned verifier: rejected for the design's
   `Sync Search Install`; instead every private refresh is re-verified against
   the accepted primaries before review.
-- **Appending a source line to `~/.bashrc`/`~/.zshrc`** (the earlier
-  implementation, and the upstream project's behaviour): it edits a user
-  file after seeding. Replaced by reporting the exact line (batch C).
+- **Appending a source line to `~/.bashrc`/`~/.zshrc`** (haseen's earlier
+  implementation on this branch): it edited a user file after seeding.
+  Replaced by reporting the exact line (batch C).
 - **Falling back to a stale cached database when the host is unreachable**:
   the source is reported unavailable instead.
 - **Using a host `[oniomarchy]` section beside the private one**: two
@@ -465,14 +468,31 @@ whole-suite run was 10698/10700 (the same two ydotool checks).
 Historical, slice 1A alone at its commit: 14 files, 3159/3159 checks
 (`tests/test-vapt-inventory.sh` 329).
 
-Not verified: any live package installation, any fetch from the oniomarchy
-host, the real published key, database and keyring signatures, the real
-keyring package layout and scriptlet (the accepted layout is the conventional
-one and is an inference until a real package is audited), and pacman's own
-handling of `Usage` and `DatabaseRequired` on a real system. Also unverified:
+Externally observed published bytes (2026-10-08, fetched over HTTPS from the
+public repository during independent review, not by haseen's code):
+`oniomarchy-keyring-20260906-1-any.pkg.tar.zst` (architecture `any`; a
+`.sig` file sits next to it). Its contents:
+
+- `usr/share/pacman/keyrings/oniomarchy-trusted` holds exactly one line,
+  `0F5F9214F312B067ECBF1DF125E2C00AA6340BD0:4:` (the reviewed pin);
+- `usr/share/pacman/keyrings/oniomarchy-revoked` is empty;
+- `.INSTALL` is a population-only scriptlet calling
+  `pacman-key --populate oniomarchy`.
+
+The real first keyring's revoked list is empty, so the stricter
+revocation-authority rule (batch C: `revoked ⊆ previous accepted ∪ previous
+revoked ∪ {pin}`) admits it today. These are the published file's contents
+only. Its signature was not verified, and haseen's `oniomarchy-keyring` audit
+was not run on it. A future keyring release could differ; that case is what
+the authority rule exists for.
+
+Not verified: any live package installation, any fetch by haseen's code from
+the oniomarchy host, and the real published key, database and keyring
+signatures. The full real keyring package layout was not audited by
+haseen's audit either (only the three contents above were observed), and
+pacman's own handling of `Usage` and `DatabaseRequired` on a real system is
+untested. Also unverified:
 - a real publisher key rotation end to end (only fixture rotations);
-- whether the real first `oniomarchy-keyring` carries historical revocations
-  of non-pin keys, which the stricter revocation rule now refuses;
 - the real database's dependency graph against the consumer, candidate-role
   and earlier-provider rules (a real package that breaks one is now refused);
 - the activation line in a real interactive bash/zsh session;
