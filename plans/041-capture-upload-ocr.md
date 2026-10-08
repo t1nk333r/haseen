@@ -124,6 +124,17 @@ is Google's.
   0x0 target (it answers with a management token), must be `https://`. Plain
   `http://` is accepted only to this machine (`localhost`, `127.0.0.0/8`,
   `[::1]`); a scheme-less URL is refused, since curl would default to http.
+  The URL check alone did not bind curl (security re-review): every call,
+  the XBackBone probe included, now goes through `curl_run`, which starts
+  with `-q` (no `~/.curlrc`, so no `location`, `proxy` or `insecure` from
+  it), passes no `-L`, and pins `--proto =https --proto-redir =https`; a
+  loopback endpoint gets `--proto =http --noproxy '*'`, so an inherited
+  `http_proxy` never carries the cleartext request off the machine. The
+  real-curl tests run a recording receiver as `http_proxy`/`all_proxy` for a
+  loopback form upload, and an HTTPS receiver (self-signed, trusted through
+  `CURL_CA_BUNDLE`) that answers 307 to a plain-http receiver while
+  `~/.curlrc` says `location`. Before the fix the proxy got the request and
+  the redirect replayed it over http (279/284); after, 284/284.
 - **SEC-4, private delete token.** The 0x0/imgur delete token goes to
   `$XDG_RUNTIME_DIR/haseen-upload.delete-token` only when that directory is
   ours and 0700, otherwise to `$HASEEN_USER_STATE/upload/` (created 0700).
