@@ -77,10 +77,8 @@ fun scan_x(t) {
     return track_x + travel * p / steps;
 }
 
-scanning = 1;
 progress = 0;
 fun show_scanner(on) {
-    scanning = on;
     track_sprite.SetOpacity(0.12 * on);
     for (i = 0; i < ghosts; i++)
         scan[i].SetOpacity(on / (1 + i * 1.2));
