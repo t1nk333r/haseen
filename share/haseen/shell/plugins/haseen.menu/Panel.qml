@@ -74,8 +74,10 @@ Item {
     readonly property color detailOnSelected: Theme.subtle(Theme.over(Theme.foreground, Style.SELECTED_FILL, Theme.background))
     readonly property string fontFamily: Theme.fontMono
     // Omarchy rounds the menu like the windows (Style.cornerRadius is
-    // Hyprland's decoration:rounding); Theme.windowRadius is that value.
-    readonly property int cornerRadius: Theme.windowRadius
+    // Hyprland's decoration:rounding). haseen's windows round at the frame's
+    // inner radius (plan 046), so the menu binds the frame's own rule and
+    // follows a frame.radius edit at once, as the frame does.
+    readonly property int cornerRadius: Config.frameRadius
     readonly property int gapsOut: Math.round(Theme.gap / 2)
     readonly property int borderWidth: overlay ? space(2) : 0
     readonly property int contentMargin: space(18)

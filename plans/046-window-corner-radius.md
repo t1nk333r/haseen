@@ -32,8 +32,9 @@ frame's inner radius, by `Config.qml`'s rule: `frame.radius` from the user's
 (rounded); otherwise twice the theme's `radius` token.
 
 - `_theme_window_radius` in `share/haseen/layers/theme/theme-lib.sh` resolves
-  it into `THEME_COLORS[window_radius]`. The rendered `shell.json` carries it as
-  `windowRadius`, so the menu (`Theme.windowRadius`) rounds like the windows.
+  it into `THEME_COLORS[window_radius]` for Hyprland. The menu does not wait
+  for a render: `haseen.menu/Panel.qml` binds `Config.frameRadius`, the frame's
+  own property (follow-up below).
 - `_theme_window_rounding` writes the staged `current/theme/rounding.lua`,
   `hl.config({ decoration = { rounding = <radius> } })`, which `init.lua`
   loads right after its own modules, as a default. `haseen toggle gaps on`,
@@ -50,8 +51,9 @@ frame's inner radius, by `Config.qml`'s rule: `frame.radius` from the user's
   `solitude` keeps upstream's file as it is; its `rounding = 6` is dropped.
 - A fractional `radius` token truncates (7.5 → 7 → 14), as `Theme.qml`'s int
   property does, so bash and QML cannot drift.
-- The unrendered fallbacks follow the same rule at the default radius:
-  `looknfeel.lua` `rounding = 12` and `Theme.qml` `windowRadius: 12`.
+- The unrendered fallback follows the same rule at the default radius:
+  `looknfeel.lua` `rounding = 12` (`Config.frameRadius` needs none: it
+  falls back to twice `Theme.radius`, 12 on the built-in palette).
 
 The first rework (2026-10-08) appended the rounding to the theme file instead.
 The landing review found that it loaded after the toggles and hyprmod, so
@@ -59,12 +61,19 @@ The landing review found that it loaded after the toggles and hyprmod, so
 never applied; it also broke a theme file ending in `return` and wrote
 through a dangling link.
 
-A `frame.radius` edit reaches the frame at once and the windows and menu at
-the next `haseen theme set`. The settings index notes it. An existing HOME
+A `frame.radius` edit reaches the frame and the menu at once and the windows
+at the next `haseen theme set`. The settings index notes it. An existing HOME
 gets the new render from migration `1791466289-theme-rounding.sh`: when
 `current/theme` has no `rounding.lua`, it runs `haseen theme set` on the
 current theme once (no theme, or a render that already has the file: nothing
 to do; a theme that cannot render warns and keeps the old render).
+
+Follow-up 2026-10-08 (audit finding F5): the menu first read the radius from
+the rendered `shell.json` (`windowRadius`, `Theme.windowRadius`), so a
+`frame.radius` edit left the frame and the menu disagreeing until the next
+theme set. It now binds `Config.frameRadius`, and the `windowRadius` token is
+gone from `shell.json` and `Theme.qml`: nothing else read it, and Hyprland
+takes the value from `rounding.lua`.
 
 ## Rejected
 
@@ -95,8 +104,11 @@ to do; a theme that cannot render warns and keeps the old render).
   one ending in `return` parses and loads. A `radius = 7.5` token gives 14.
   The dry run plans `rounding.lua`. Hyprland `--verify-config` accepts the
   two staged files.
-- `tests/test-theme-haseen.sh`: the default theme's menu radius is 12, and
+- `tests/test-theme-haseen.sh`: the default theme's window radius is 12, and
   `Theme.qml`'s fallbacks equal the rendered `haseen` tokens.
+- `tests/test-menu-radius.sh`: the menu `Panel.qml` under Quickshell rounds at
+  `frame.radius` 20, then at 5 after `shell.json` is rewritten, with no theme
+  set in between (before the fix: 12 both times).
 - `tests/test-migrate-defaults.sh`: the migration gives an old render (no
   `rounding.lua`, the theme's own rounding unprefixed) both files; a re-run
   leaves the render byte-identical; no theme writes nothing; a current theme
@@ -115,6 +127,8 @@ session with the frame enabled, which is the owner's live desktop.
 include), `bin/haseen-theme-set` (dry-run plan),
 `share/haseen/default/hypr/looknfeel.lua`,
 `share/haseen/themes/haseen/hyprland.lua`, `share/haseen/shell/Haseen/Theme.qml`,
+`share/haseen/shell/plugins/haseen.menu/Panel.qml` (`cornerRadius`),
+`share/haseen/themed/shell.json.tpl`, `tests/test-menu-radius.sh`,
 `share/haseen/lib/settings.sh`, `docs/architecture.md`,
 `share/haseen/agents/skills/haseen/theming.md`, `tests/test-theme.sh`,
 `tests/test-theme-haseen.sh`, `share/haseen/migrations/1791466289-theme-rounding.sh`,

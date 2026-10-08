@@ -7,7 +7,7 @@
 # installed themes go through the denylist, hooks run, dry runs write nothing.
 
 THEME_OUTPUTS=(hyprland.lua foot.ini kitty.conf ghostty.conf alacritty.toml btop.theme neovim.lua gtk.css fonts.conf yazi.toml satty.css shell.json colors.toml)
-SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth windowRadius"
+SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
 SHELL_COLOUR_KEYS="background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection"
 
 # theme_sandbox NAME — sandbox plus fakes for the probes theme set uses to find
@@ -35,6 +35,9 @@ make_repo() {
 }
 
 colour_of() { sed -n "s/^$2 *= *\"\(#[0-9a-fA-F]*\)\".*/\1/p" "$1"; }
+
+# staged_rounding — the radius `haseen theme set` wrote to current/theme/rounding.lua.
+staged_rounding() { sed -n 's/.*rounding = \([0-9]*\).*/\1/p' "$CUR/theme/rounding.lua"; }
 
 # window_rounding — the decoration.rounding Hyprland ends up with after the
 # whole load order the seeded ~/.config/hypr/hyprland.lua runs (defaults, the
@@ -82,13 +85,14 @@ for dir in "$HASEEN_PATH"/themes/*/; do
         assert_eq "$t shell.json has exactly the §7 keys" "$(tr ' ' '\n' <<<"$SHELL_KEYS" | sort)" "$(jq -r 'keys[]' "$sj" | sort)"
         bad="$(jq -r --arg k "$SHELL_COLOUR_KEYS" '($k | split(" ")) as $ks | to_entries[] | select(.key as $x | $ks | index($x)) | select(.value | test("^#[0-9a-fA-F]{6}$") | not) | .key' "$sj")"
         assert_eq "$t shell.json colours are #rrggbb" "" "$bad"
-        assert_eq "$t shell.json numbers" "number number number number number" "$(jq -r '[.fontSize, .radius, .gap, .borderWidth, .windowRadius] | map(type) | join(" ")' "$sj")"
+        assert_eq "$t shell.json numbers" "number number number number" "$(jq -r '[.fontSize, .radius, .gap, .borderWidth] | map(type) | join(" ")' "$sj")"
         assert_eq "$t mode follows colors.toml" "$(sed -n 's/^mode *= *"\(.*\)"/\1/p' "$dir/colors.toml")" "$(jq -r .mode "$sj")"
         # One radius for the frame, the menu and the windows (plans 046, 068):
         # twice the theme's radius with no frame.radius set, and the rendered
         # hyprland.lua leaves Hyprland at it, the theme's own rounding or not.
+        # The menu reads it from Config.frameRadius (tests/test-menu-radius.sh).
         want_round="$(($(jq -r .radius "$sj") * 2))"
-        assert_eq "$t windowRadius is the frame radius" "$want_round" "$(jq -r .windowRadius "$sj")"
+        assert_eq "$t rounding.lua is the frame radius" "$want_round" "$(staged_rounding)"
         if command -v lua >/dev/null; then
             assert_eq "$t windows round like the frame" "$want_round" "$(window_rounding)"
         fi
@@ -122,7 +126,7 @@ frame_case() { # NAME SHELL.JSON WANT — set haseen under that user shell.json
     printf '%s\n' "$2" >"$HOME/.config/haseen/shell.json"
     capture haseen theme set haseen
     assert_status "$1: the theme still sets" 0 "$STATUS"
-    assert_eq "$1: the menu" "$3" "$(jq -r .windowRadius "$CUR/theme/shell.json")"
+    assert_eq "$1: rounding.lua" "$3" "$(staged_rounding)"
     if command -v lua >/dev/null; then
         assert_eq "$1: the windows" "$3" "$(window_rounding)"
     fi
@@ -204,7 +208,7 @@ printf 'radius = 7.5\n' >>"$HOME/.config/haseen/themes/frac/colors.toml"
 rm -f "$HOME/.config/haseen/shell.json"
 capture haseen theme set frac
 assert_status "set a theme with a fractional radius" 0 "$STATUS"
-assert_eq "the menu radius truncates the token like QML" 14 "$(jq -r .windowRadius "$CUR/theme/shell.json")"
+assert_eq "the window radius truncates the token like QML" 14 "$(staged_rounding)"
 if command -v Hyprland >/dev/null; then
     mkdir -p "$SANDBOX/verify" "$SANDBOX/run"
     chmod 700 "$SANDBOX/run"
