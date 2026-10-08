@@ -14,7 +14,13 @@ import "Cliphist.js" as Cliphist
 //     entry over `maxBytes` or `maxPixels` is described from the list line
 //     and never read (Qt decodes a PNG in full before scaling it, so an
 //     unbounded screenshot would cost hundreds of MiB of pixmap);
-//   - text is read through `head -c`, so the pane holds at most `textCap`;
+//   - text is decoded once and read through `head -c`, so the pane holds at
+//     most `textCap`; the rest is only counted;
+//   - binary data (cliphist's "binary data" that is not an image Qt reads
+//     here, such as a TIFF, or a decoded body holding a NUL byte) is
+//     described by its type and size, never shown as text;
+//   - an image is decoded only into the private cache (Cliphist.imageCommand);
+//     with no XDG_RUNTIME_DIR there is none, and the pane says so;
 //   - the Image is loaded with sourceSize set to the pane, so the retained
 //     pixmap is the pane, not the file.
 Item {
@@ -22,7 +28,7 @@ Item {
 
     // A Cliphist.parse row, or null.
     property var entry: null
-    // Where decoded images land; Panel.qml owns and removes this directory.
+    // Where decoded images land, "" for none; Panel.qml owns and removes it.
     property string thumbDir: ""
     property int maxBytes: 8388608
     property int maxPixels: 12000000
@@ -32,6 +38,7 @@ Item {
     readonly property int textCap: Math.max(1024, Math.min(maxBytes, 65536))
     readonly property string entryId: entry ? entry.id : ""
     readonly property bool isImage: entry !== null && entry.image === true
+    readonly property bool isBinary: entry !== null && entry.binary === true && !isImage
     readonly property string refused: Cliphist.tooLarge(entry, maxBytes, maxPixels)
     readonly property string imagePath: isImage && refused === "" && thumbDir !== "" ? thumbDir + "/" + entry.id + "." + entry.ext : ""
 
@@ -41,6 +48,8 @@ Item {
     property bool truncated: false
     property bool imageReady: false
     property string failure: ""
+    // Set when the decoded body turns out to be binary (a NUL byte).
+    property bool binaryBody: false
 
     readonly property int lines: body === "" ? 0 : body.split("\n").length
     readonly property string meta: {
@@ -49,7 +58,15 @@ Item {
         const base = Cliphist.summary(entry, isImage ? entry.bytes : bytes, lines);
         return truncated ? base + " \u00b7 first " + Cliphist.humanSize(textCap) : base;
     }
-    readonly property string notice: refused !== "" ? entry.type + ", " + refused : failure
+    readonly property string notice: {
+        if (refused !== "")
+            return entry.type + ", " + refused;
+        if (isBinary || binaryBody)
+            return "Binary data, not shown as text.";
+        if (isImage && thumbDir === "")
+            return "Images are not decoded: XDG_RUNTIME_DIR is not set, and there is no other private place to put them.";
+        return failure;
+    }
 
     // Panel.qml maps PageUp/PageDown here: +1 scrolls a pane down, -1 up.
     function scroll(direction: int): void {
@@ -77,12 +94,15 @@ Item {
         truncated = false;
         imageReady = false;
         failure = "";
+        binaryBody = false;
         flick.contentY = 0;
-        if (!entry || refused !== "")
+        if (!entry || refused !== "" || isBinary)
             return;
         if (isImage) {
+            if (imagePath === "")
+                return;
             imageDecoder.run = _run;
-            imageDecoder.command = ["sh", "-c", imageDecoder.script, "sh", entry.id, imagePath];
+            imageDecoder.command = Cliphist.imageCommand(entry.id, imagePath);
             imageDecoder.running = true;
             return;
         }
@@ -98,16 +118,20 @@ Item {
         imageDecoder.running = false;
     }
 
-    // The size first, then the capped body: the count streams through wc, so
-    // neither pass holds the entry. The id goes in argv, never in the script.
+    // One decode: the body goes to stdout through `head -c`, and the byte
+    // count of the body and of the rest go to stderr, so no pass holds the
+    // entry. The id goes in argv, never in the script.
     Process {
         id: textDecoder
 
         property int run: 0
-        readonly property string script: "command -v cliphist >/dev/null || exit 127\n" + "cliphist decode \"$1\" | wc -c | tr -d ' \\n'\n" + "printf '\\n'\n" + "cliphist decode \"$1\" 2>/dev/null | head -c \"$2\"\n"
+        readonly property string script: "command -v cliphist >/dev/null || exit 127\n" + "cliphist decode \"$1\" 2>/dev/null | { head -c \"$2\" | tee /dev/fd/3 | wc -c >&2; wc -c >&2; } 3>&1\n"
 
         stdout: StdioCollector {
             id: decoded
+        }
+        stderr: StdioCollector {
+            id: counted
         }
         onExited: code => {
             if (textDecoder.run !== root._run)
@@ -120,22 +144,21 @@ Item {
                 root.failure = "cliphist decode failed (exit " + code + ").";
                 return;
             }
+            const counts = counted.text.trim().split(/\s+/).map(n => parseInt(n, 10));
+            const valid = counts.length === 2 && !isNaN(counts[0]) && !isNaN(counts[1]);
+            root.bytes = valid ? counts[0] + counts[1] : -1;
+            root.truncated = valid && counts[1] > 0;
             const text = decoded.text;
-            const nl = text.indexOf("\n");
-            const size = nl < 0 ? NaN : parseInt(text.slice(0, nl), 10);
-            root.bytes = isNaN(size) ? -1 : size;
-            root.body = nl < 0 ? "" : text.slice(nl + 1);
-            root.truncated = root.bytes > root.textCap;
+            root.binaryBody = text.indexOf("\u0000") >= 0;
+            root.body = root.binaryBody ? "" : text;
         }
     }
 
-    // Written through a temporary file so the row thumbnail and the pane can
-    // ask for the same entry at once without reading a half-written image.
+    // The same decode as the row thumbnail, into the same private cache.
     Process {
         id: imageDecoder
 
         property int run: 0
-        readonly property string script: "command -v cliphist >/dev/null || exit 127\n" + "mkdir -p \"${2%/*}\"\n" + "[ -s \"$2\" ] || { cliphist decode \"$1\" > \"$2.part.$$\" && mv -f \"$2.part.$$\" \"$2\"; }\n"
 
         onExited: code => {
             if (imageDecoder.run !== root._run)
@@ -143,6 +166,8 @@ Item {
             root.imageReady = code === 0;
             if (code === 127)
                 root.failure = "cliphist is not installed.";
+            else if (code === 3)
+                root.failure = "Images are not decoded: the image cache (or XDG_RUNTIME_DIR) is not a private directory of yours.";
             else if (code !== 0)
                 root.failure = "cliphist decode failed (exit " + code + ").";
         }

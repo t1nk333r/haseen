@@ -32,9 +32,10 @@ cliphist collapses whitespace and truncates each preview to
   `previewMaxBytes` (8 MiB) or `previewMaxPixels` (12 MP). **The list rows use
   the same guard**: the unbounded thumbnail decode in the row delegate was the
   actual RSS hazard, not the pane.
-- **Text is capped without lying about the size**: `cliphist decode | wc -c`
-  gives the exact size, then `cliphist decode | head -c <cap>` gives the body,
-  so memory is O(1) and the meta line can say `… · first 64 KiB`.
+- **Text is capped without lying about the size**: one `cliphist decode`
+  feeds `head -c <cap>` for the body and `wc -c` for the rest, so memory is
+  O(1), the true size is known and the meta line can say `… · first 64 KiB`.
+  (Until the 2026-10-08 review fixes this decoded each entry twice.)
 - **Decodes are serialised and race-free**: each run carries a serial and a
   superseded run's exit is ignored; the image decoder writes through a temp file
   and `mv`, so it cannot race the row thumbnail on the same path.
@@ -95,3 +96,35 @@ parser — an empty string cannot be passed over IPC.
 
 `share/haseen/shell/plugins/haseen.clipboard/{Preview.qml,Panel.qml,Cliphist.js,manifest.json}`,
 `tests/test-widgets-b.sh`.
+
+## Review fixes 2026-10-08 (PR #38)
+
+- **SEC-5, private image cache.** Decoded images went to
+  `${XDG_RUNTIME_DIR:-/tmp}/haseen-clipboard`, created under the shell's
+  umask (0755 dirs, 0644 files under 022). The `/tmp` fallback is gone:
+  without an absolute `XDG_RUNTIME_DIR` no image is decoded, rows stay text
+  lines and the pane says why. The row thumbnail and the pane share one
+  decode, `Cliphist.imageCommand`: umask 077, the cache made with
+  `mkdir -m 700`, and the runtime dir and the cache must both be real
+  directories of ours at mode 0700. A symlinked, foreign or group/other-open
+  cache exits 3 untouched (its mode is never changed) and the pane names the
+  refusal. Closing the panel removes the cache only when it passes the same
+  check, so a planted link is never followed or removed.
+- **U-042, bounds and binary.** `previewMaxBytes`/`previewMaxPixels` go
+  through `Cliphist.limit`, which clamps to 1..2^31-1: a QML `int` is 32-bit
+  and 3000000000 wrapped to -1294967296, which switched the byte bound off
+  and cut text to 1 KiB. Binary entries are described by type and size and
+  never shown as text: cliphist's `binary data` that is not a Qt-native image
+  (a TIFF, `application/octet-stream`) is not decoded at all, and a decoded
+  body holding a NUL byte (current cliphist previews unmarked binary as text)
+  is withheld.
+- **Single text decode.** See "Text is capped" above; one shell and one
+  `cliphist` per selection instead of two.
+- Tests (`tests/test-widgets-b.sh`, the real panel under `qs` and umask 022):
+  the cache is 0700/0600; each text entry is decoded once; a TIFF, an
+  octet-stream entry and an unmarked NUL body are described with an empty
+  body, and the marked ones are never decoded; bounds of 3000000000 read
+  back as 2147483647 and keep the 64 KiB text cap; a symlinked cache, an
+  existing 0755 cache, a 0755 runtime dir and an unset `XDG_RUNTIME_DIR` all
+  leave image 2 undecoded, write nothing through the link and leave the
+  link and the 0755 dir as they were. 17 of these failed before the fix.
