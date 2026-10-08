@@ -1027,6 +1027,17 @@ def closure(root, target, transaction=None, dbpath=None):
             if same_record(record, by_name[source].get(record['name'], [])):
                 return source
         return ONIOMARCHY if cached_proof(record) else ''
+    def earlier_satisfier(dep):
+        # The offline search's order as a rule for every mode: any other
+        # configured repository record satisfying DEP (by name or versioned
+        # Provides) precedes a new private dependency, so a reviewed
+        # transaction never admits one the dry-run would not have chosen.
+        for source in config:
+            if source != ONIOMARCHY and repository_safe(source, config):
+                found = next((p for p in repos.get(source, []) if satisfies(p, dep)), None)
+                if found is not None:
+                    return source + '/' + found['name']
+        return ''
     checked = set()
     def visit(record, unchanged=False):
         key = (record['name'], record.get('version', ''))
@@ -1071,6 +1082,11 @@ def closure(root, target, transaction=None, dbpath=None):
                 if source == ONIOMARCHY and not oniomarchy_consumer_ok(candidate, consumers):
                     raise ValueError('oniomarchy dependency ' + candidate['name'] + ' serves only its recorded consumer '
                                      '(dependencies.tsv), not ' + ', '.join(sorted(c for c in consumers if c)))
+                if source == ONIOMARCHY and not retained_provider:
+                    other = earlier_satisfier(dep)
+                    if other:
+                        raise ValueError('oniomarchy dependency ' + candidate['name'] + ' would win over the earlier provider '
+                                         + other + ' of ' + dep + '; the private source is the last tier')
                 visit(candidate, retained_provider)
     for record in selected + planned:
         visit(record)
@@ -4241,13 +4257,16 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
     if not previous_revoked <= revoked:
         raise ValueError('keyring package withdraws a recorded revocation')
     # `pacman-key --populate oniomarchy` applies the revoked list to the
-    # shared keyring: the package may revoke only primaries within its own
-    # authority, never an Arch/CachyOS or administrator key.
-    authority = (previous['accepted'] | previous_revoked if previous else set()) | {pin} | trusted
+    # shared keyring: the package may revoke only primaries this source
+    # already owned (previously accepted or revoked, or the pin), never an
+    # Arch/CachyOS or administrator key. Its own trusted list grants no
+    # revocation authority: a signer it introduces is not revocable in the
+    # same archive, or {PIN,ARCH}/revoked={ARCH} would launder ARCH's revocation.
+    authority = (previous['accepted'] | previous_revoked if previous else set()) | {pin}
     foreign = revoked - authority
     if foreign:
         raise ValueError('keyring package revokes primaries outside the oniomarchy authority (' + ','.join(sorted(foreign))
-                         + '); a revocation may name only a previously accepted or revoked, pinned or trusted primary')
+                         + '); a revocation may name only a previously accepted or revoked, or the pinned primary')
     accepted = trusted - revoked
     if not accepted:
         raise ValueError('keyring package leaves no accepted primary')

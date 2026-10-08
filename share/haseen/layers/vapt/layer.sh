@@ -135,6 +135,12 @@ layer_status() {
         fi
     done <"$report"
     vapt_environment_status || degraded=true
+    # Not degraded: rc files belong to the user and haseen never edits them.
+    if vapt_shell_active; then
+        echo 'ok: an interactive shell rc sources the VAPT link'
+    else
+        echo "warn: no ~/.bashrc or ~/.zshrc sources the VAPT link (not degraded; haseen never edits rc files); to activate it, add: $(vapt_shell_line)"
+    fi
     if $degraded; then echo 'warn: VAPT degraded; unavailable/skipped items are not installation evidence'; return 2; fi
     echo 'ok: recorded VAPT provisioning complete (metadata only; no security tools executed)'
 }

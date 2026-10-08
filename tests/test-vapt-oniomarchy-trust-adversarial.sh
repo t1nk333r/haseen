@@ -133,6 +133,17 @@ assert_contains 'pending rotation: the run names repo-enable' "$(adv_annotation_
 assert_eq 'pending rotation: the refresh changes no trust' '' "$(adv_trust_ops)"
 assert_eq 'pending rotation: the authority is unchanged' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
 
+# --- a keyring's own trusted list never grants revocation authority ----------
+# trusted={PIN,ARCH}, revoked={ARCH}, signed by PIN: populate would revoke the
+# unrelated global ARCH key. Refused at the first approval, before any trust op.
+adv_case vapt-adv-trust-revocation-launder
+vapt_onio_serve trusted=PIN,ARCH revoked=ARCH
+vapt_api repo-enable --yes
+assert_status 'revocation launder: refused' 1 "$STATUS"
+assert_contains 'revocation launder: the foreign key is named' "$OUTPUT" 'outside the oniomarchy authority'
+assert_eq 'revocation launder: no trust change (no populate)' '' "$(adv_trust_ops)"
+assert_eq 'revocation launder: not approved' no "$(adv_exists "$ROOT$SOURCES/oniomarchy.conf")"
+
 # --- repeated approval of an unchanged keyring changes no trust --------------
 adv_case vapt-adv-trust-reapprove
 vapt_api repo-enable --yes

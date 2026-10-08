@@ -150,12 +150,20 @@ assert_contains 'it needs manual review' "$OUTPUT" 'manual review'
 assert_eq 'redirected keyring file: no trust change' '' "$(trust_ops)"
 
 # --- rotation -----------------------------------------------------------------
-while IFS=$'\t' read -r name itrusted irevoked version trusted revoked signed expect; do
+while IFS=$'\t' read -r name itrusted irevoked via version trusted revoked signed expect; do
     [[ $irevoked != - ]] || irevoked=''
     [[ $revoked != - ]] || revoked=''
     trust_case vapt-onio-rotation "trusted=$itrusted" "revoked=$irevoked"
     vapt_api repo-enable --yes
     assert_status "$name: initial approval" 0 "$STATUS"
+    if [[ $via != - ]]; then
+        # An accepted intermediate keyring (VERSION/TRUSTED/REVOKED) first.
+        IFS=/ read -r vversion vtrusted vrevoked <<<"$via"
+        [[ $vrevoked != - ]] || vrevoked=''
+        vapt_onio_serve "keyring=$vversion" "trusted=$vtrusted" "revoked=$vrevoked" pkgstatus=pinned
+        vapt_api repo-enable --yes
+        assert_status "$name: intermediate keyring accepted" 0 "$STATUS"
+    fi
     vapt_onio_serve "keyring=$version" "trusted=$trusted" "revoked=$revoked" "pkgstatus=$signed"
     authority_before="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
     : >"$CALLS/sudo"
@@ -173,7 +181,9 @@ done < <(python3 -c '
 import json, sys
 for c in json.load(open(sys.argv[1]))["cases"]:
     j = lambda v: ",".join(v) or "-"
-    print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c["expect"], sep="\t")
+    v = c.get("via")
+    via = "/".join((v["version"], j(v["trusted"]), j(v["revoked"]))) if v else "-"
+    print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), via, c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c["expect"], sep="\t")
 ' "$ONIO_FX/trust/rotation.json")
 
 # Raw-key replacement: after approval, a new key file and a database signed by

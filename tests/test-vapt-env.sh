@@ -22,7 +22,6 @@ link_state() {
     elif [[ -f $LINK ]]; then printf 'file %s\n' "$(cat "$LINK")"
     else echo absent; fi
 }
-includes() { grep -cF "$VAPT_LINK" "$1" 2>/dev/null || true; }
 tree_of() { find "$1" -printf '%P %y %m %s %T@ %l\n' 2>/dev/null | LC_ALL=C sort; }
 coae_env() {
     local dir="$1" py="$2" pin site
@@ -40,20 +39,25 @@ env_install() { vapt_api install --groups "${1:-osint}"; }
 
 # Creation/reapply/removal: no runtime execution; only unchanged owned links go.
 env_case vapt-env-lifecycle
+printf '# my bashrc\n' >"$TEST_HOME/.bashrc"
+rc_before="$(cat "$TEST_HOME/.bashrc")"
 env_install
 assert_status 'missing binary sources are skips, not mutation failures' 0 "$STATUS"
 assert_eq 'shell activation target' "$VAPT_FRAGMENT" "$(readlink "$LINK")"
-assert_eq 'passive include appended once' 1 "$(includes "$TEST_HOME/.bashrc")"
+assert_eq 'the user rc is never edited' "$rc_before" "$(cat "$TEST_HOME/.bashrc")"
+assert_contains 'the missing activation is reported with the exact line' "$OUTPUT" \
+    "add this line yourself: [ -r \"$VAPT_LINK\" ] && . \"$VAPT_LINK\""
 assert_eq 'no zshrc invented' no "$([[ -e $TEST_HOME/.zshrc ]] && echo yes || echo no)"
 assert_eq 'no uwsm directory invented' no "$([[ -e ${SESSION%/*} ]] && echo yes || echo no)"
 assert_eq 'no COAE workspace invented for osint' no "$([[ -e $COAE ]] && echo yes || echo no)"
-assert_contains 'environment report contract' "$(report)" $'# environment\tok'
+assert_contains 'environment report contract (a missing rc line does not degrade)' "$(report)" $'# environment\tok'
 assert_eq 'transaction failure is reported per item' skipped "$(vapt_field whois 6)"
+vapt_api status
+assert_contains 'status names the line to add' "$OUTPUT" "haseen never edits rc files); to activate it, add: [ -r \"$VAPT_LINK\" ]"
 env_install
-assert_eq 'reapply keeps one include' 1 "$(includes "$TEST_HOME/.bashrc")"
+assert_eq 'reapply still leaves the rc alone' "$rc_before" "$(cat "$TEST_HOME/.bashrc")"
 coae_env "$COAE" 3.12.7 "${COAE_PINS[@]}"
 mkdir -p "$ROOT$XDG_DATA_HOME/haseen/vapt/pipx/venvs/kept"
-rc_before="$(cat "$TEST_HOME/.bashrc")"
 vapt_cli remove --dry-run --yes
 assert_status 'CLI removal dry-run' 0 "$STATUS"
 assert_dry_pure 'CLI removal' "$OUTPUT"
@@ -343,29 +347,35 @@ assert_contains 'explicit user uv bin honored' "$OUTPUT" "$SANDBOX/custom-uv"
 assert_not_contains 'explicit user uv bin replaces default' "$OUTPUT" "$XDG_DATA_HOME/uv/bin"
 vapt_tools_untouched fragment
 
-# Shell seed accepts an already-present include before refusing a symlink,
-# never follows an unincluded rc to add one, and never invents a zshrc.
-for included in yes no; do
+# Activation is read-only: an rc (even a symlinked one) that already sources
+# the link, or the optional shell-rc layer's init.sh, counts; otherwise the
+# exact line is reported. No rc is ever written or invented.
+for included in yes init no; do
     env_case "vapt-env-rc-link-$included"
     printf '# managed elsewhere\n' >"$ROOT/managed.rc"
-    if [[ $included == yes ]]; then
-        printf '[ -r "%s" ] && . "%s"\n' "$VAPT_LINK" "$VAPT_LINK" >>"$ROOT/managed.rc"
-    fi
+    case "$included" in
+    yes) printf '[ -r "%s" ] && . "%s"\n' "$VAPT_LINK" "$VAPT_LINK" >>"$ROOT/managed.rc" ;;
+    init) printf '. "%s"\n' "$VAPT_INCLUDE" >>"$ROOT/managed.rc" ;;
+    esac
     ln -s /managed.rc "$TEST_HOME/.bashrc"
     before="$(cat "$ROOT/managed.rc")"
     env_install
     assert_status "$included rc include apply" 0 "$STATUS"
     assert_eq "$included symlinked rc unchanged" "$before" "$(cat "$ROOT/managed.rc")"
-    expected=degraded
-    [[ $included != yes ]] || expected=ok
-    assert_contains "$included rc include environment state" "$(report)" $'# environment\t'"$expected"
+    assert_eq "$included rc still a link" /managed.rc "$(readlink "$TEST_HOME/.bashrc")"
+    assert_contains "$included rc include environment state" "$(report)" $'# environment\tok'
+    if [[ $included == no ]]; then
+        assert_contains 'an unincluded rc gets the line reported' "$OUTPUT" 'add this line yourself'
+    else
+        assert_not_contains "$included: an existing include is reused, nothing reported" "$OUTPUT" 'add this line yourself'
+    fi
 done
 env_case vapt-env-existing-zsh
 printf '# zsh mine\n' >"$TEST_HOME/.zshrc"
 env_install
 env_install
-assert_eq 'existing zshrc includes once' 1 "$(includes "$TEST_HOME/.zshrc")"
-assert_contains 'existing zshrc content retained' "$(cat "$TEST_HOME/.zshrc")" '# zsh mine'
+assert_eq 'existing zshrc never edited' '# zsh mine' "$(cat "$TEST_HOME/.zshrc")"
+assert_eq 'no bashrc invented' no "$([[ -e $TEST_HOME/.bashrc ]] && echo yes || echo no)"
 
 env_case vapt-env-session-parent
 mkdir -p "$ROOT/session-elsewhere" "$ROOT$XDG_CONFIG_HOME"

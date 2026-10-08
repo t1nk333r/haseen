@@ -80,6 +80,15 @@ assert_contains "a saved vapt choice is dropped with a reason" "$OUTPUT" "layer 
 assert_contains "the rest of the saved choice is applied" "$OUTPUT" "HASEEN-CLI layer apply base --dry-run"$'\n'
 assert_not_contains "a saved vapt choice is never applied bare" "$OUTPUT" "layer apply vapt"
 rm -f "$HOME/.config/haseen/install.toml"
+# --pick with --vapt-groups is refused before the tree or any layer, like the
+# other --pick conflicts (the picker would otherwise be skipped silently).
+capture env HASEEN_SYSROOT="$FIXTURES/desk-cachyos-amd" \
+    "$stage/install.sh" --dry-run --pick --vapt-groups core --prefix "$SANDBOX/prefix" <<<""
+assert_status "--pick with --vapt-groups is refused" 1 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "does not combine with"
+assert_not_contains "the refusal precedes the tree" "$OUTPUT" "DRYRUN:"
+assert_not_contains "the refusal precedes every layer" "$OUTPUT" "HASEEN-CLI"
+assert_not_contains "no picker is shown" "$OUTPUT" "Toggle a number"
 
 # --- Microsoft PyRIT versus the BlackArch WPA cracker; the COAE environment ---
 vapt_sandbox vapt-pyrit

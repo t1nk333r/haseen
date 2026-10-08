@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A (source-tier security/correctness) and B landed. Batch B covered: the install picker no longer offers `vapt`; the shell activation docs match the code; private rows are retained across runs without the source; status separates a disabled source from drift; retained proof is read-only; `dependencies.tsv` consumer/role enforcement; one homonym repository set and the earlier-source uncertainty; rotation behaviour and docs agree; self-reference labels. The whole suite passes except two host-dependent ydotool checks that fail identically on `main`. Lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A, B and C landed. Batch C: a keyring may revoke only primaries the source already owned (its own trusted list no longer launders revocations); a new private dependency never beats an earlier repository provider; the layer no longer edits user rc files and only seeds its owned link (a deliberate divergence, recorded below); `--pick --vapt-groups` is refused; the docs match the final code. The whole suite passes except two host-dependent ydotool checks that fail identically on `main`. Lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
 
 ## Goal
 
@@ -126,8 +126,9 @@ registers nothing with an AI client and starts no MCP server.
 | wordlists | — | exact name only | `wordlists` | exact-name policy |
 
 "Usual order" is plan 007's: pins, BlackArch, pinned native, enabled
-Chaotic-AUR, CachyOS, Arch exact then reviewed Provides. Until slice 1B lands,
-an item whose only publisher is oniomarchy is reported unavailable.
+Chaotic-AUR, CachyOS, Arch exact then reviewed Provides. (Historical, slice 1A
+only: until slice 1B landed, an item whose only publisher is oniomarchy was
+reported unavailable. Slice 1B adds the opt-in private last tier.)
 
 ### Tables
 
@@ -163,10 +164,11 @@ table refuses provisioning before anything runs.
   `--asdeps` (`pacman.sh`, after the `-U` commit). `xorg-xhost` is never run to
   change X11 access.
 
-The alias and dependency tables can name `oniomarchy`, which is listed in
-`VAPT_FACT_ONLY_SOURCES`: its rows are validated but never consulted for
-resolution. `vapt_repo_allowed` is unchanged, so a pin, required target or
-transaction cannot use it.
+Historical (slice 1A state, superseded by slice 1B): the alias and dependency
+tables could name `oniomarchy`, then listed in `VAPT_FACT_ONLY_SOURCES`, whose
+rows were validated but never consulted for resolution. That list no longer
+exists; slice 1B admits the source as the opt-in last tier (below). Pins and
+required targets still may not name it.
 
 ### Identity matching
 
@@ -196,9 +198,10 @@ provenance.
   stanza to `/var/lib/haseen/vapt/sources/oniomarchy.conf` (the descriptor is
   also the approval record). `metadata.py:read_config` takes any host
   `[oniomarchy]` section out of VAPT's view and adds the private stanza, last,
-  only with `--with-oniomarchy` (set by the shell only when the source is
-  usable for this operation, during read-only status, or for an exact
-  recorded recovery). Rendered with `Usage = Sync Search Install`.
+  only with `--with-oniomarchy`. The shell sets that flag only when the
+  source is usable for this operation or during read-only status. No
+  recovery record names the source, so recovery never sets it. Rendered with
+  `Usage = Sync Search Install`.
 - **One mirror and policy rule.** `repository_mirror_safe` and
   `repository_policy_safe` serve snapshot, rendering, closure and the frozen
   configuration: the source only at `https://pkgs.oniomarchy.com/$arch`
@@ -217,7 +220,13 @@ provenance.
   `oniomarchy.database` (exactly which bytes were verified and by whom).
 - **Rotation.** Accepted only from a keyring signed by a currently accepted,
   non-revoked primary; revocations never shrink, the version never goes down,
-  the first keyring must trust the pin. Applied only by an approval:
+  the first keyring must trust the pin. A revocation may name only a primary
+  the source already owned: `revoked ⊆ previous accepted ∪ previous revoked ∪
+  {pin}`. The archive's own trusted list grants no revocation authority, so a
+  new signer is not revocable in the archive that introduces it, and
+  `trusted={PIN,ARCH}`/`revoked={ARCH}` is refused before `pacman-key
+  --populate` could revoke an unrelated global key. Batch C closed this; the
+  earlier rule also counted the incoming trusted list. Applied only by an approval:
   `repo-enable`, or the approval a `--with-oniomarchy` run asks for (with the
   same confirmation) when the source is not approved, e.g. after
   `repo-disable`. The refresh of an approved source never changes trust.
@@ -246,8 +255,13 @@ provenance.
   `dependency` role, and a `dependency` row named in `dependencies.tsv` only
   as its recorded target in its recorded consumer's closure (`*` for any;
   consumers are the declaring package's and the requested target's logical
-  names). It never admits through Provides, refuses replaces and homonyms,
-  and applies the inventory identities to every planned package;
+  names). It admits no arbitrary Provides: the source satisfies a dependency
+  only by exact name or through a reviewed alias the package's own Provides
+  backs. A new private dependency never wins over any earlier configured
+  repository record satisfying the same dependency (by name or versioned
+  Provides), in offline and transaction modes alike (batch C). It refuses
+  replaces and homonyms, and applies the inventory identities to every
+  planned package;
   `audit_archives` re-checks the roles. Pins and required targets may not
   name the source. Not in `BASE_VENDOR`. The generic Omarchy substring
   refusals still refuse a match on `oniomarchy` itself but label it
@@ -279,16 +293,25 @@ provenance.
   database whose bytes were verified at the last refresh
   (`retained_private_records`), with or without opt-in and after
   `repo-disable`. That cache never supplies a candidate or a target.
-- **Installer (batch B).** `vapt` sets `LAYER_PICKABLE=false`, so the
+- **Installer (batch B, C).** `vapt` sets `LAYER_PICKABLE=false`, so the
   interactive install picker never offers it and drops it from a saved
   choice with a warning. `--vapt-groups` (alone or with `--layers vapt`) is
-  the only installer route.
-- **Shell activation.** The layer appends one marked, guarded line,
-  `[ -r ~/.config/haseen/vapt/shell.sh ] && . …`, to `~/.bashrc` (and an
-  existing `~/.zshrc`). An rc that already names the link, or sources the
-  optional shell-rc layer's `default/shell/init.sh`, is reused. Remove keeps
-  the line, which is inert once the owned link is gone. That shell-rc layer
-  is not part of this branch.
+  the only installer route. `--pick --vapt-groups` is refused before the
+  tree or any layer, like the other `--pick` conflicts. Before, the
+  requested picker was skipped silently.
+- **Shell activation (batch C).** The layer seeds only the owned link
+  `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc` or `~/.zshrc`.
+  An rc that already sources the link, or sources the optional shell-rc
+  layer's `default/shell/init.sh` (absent on this branch), is reused. When
+  none does, apply and status print the exact line the user may add,
+  `[ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"`
+  (written with the absolute path). That is reported, not degraded.
+  `append_user_file` had no other caller and was removed from `common.sh`.
+  **Deliberate divergence:** both the upstream project's installer and this
+  plan's earlier implementation appended a source line to the user's rc. That
+  contradicts the design record and `docs/architecture.md`: user files are
+  seeded once and then belong to the user, and haseen-owned behaviour lives
+  in `share/haseen/default/`. Activation is therefore the user's own edit.
 
 Choices where the design was silent: the descriptor doubles as the approval
 record; a host `[oniomarchy]` section makes the private source `broken`;
@@ -303,6 +326,9 @@ packages already installed from the source.
   never refreshes it behind the pinned verifier: rejected for the design's
   `Sync Search Install`; instead every private refresh is re-verified against
   the accepted primaries before review.
+- **Appending a source line to `~/.bashrc`/`~/.zshrc`** (the earlier
+  implementation, and the upstream project's behaviour): it edits a user
+  file after seeding. Replaced by reporting the exact line (batch C).
 - **Falling back to a stale cached database when the host is unreachable**:
   the source is reported unavailable instead.
 - **Using a host `[oniomarchy]` section beside the private one**: two
@@ -342,7 +368,9 @@ logging stubs (no network, no host state):
 - Official pins win over BlackArch homonyms; a missing pin falls through and
   is reported; `social-engineer-toolkit` is `blackarch/set` only with the
   TrustedSec identity, and a BlackArch provider cannot replace the alias.
-- Rows from a fact-only source are never resolved or planned.
+- Without `--with-oniomarchy`, rows naming the private source (aliases such as
+  chirp→chirp-next) are never resolved or planned; pins and required targets
+  naming it refuse (the suite's "fact-only" wording predates slice 1B).
 - URL identity: case and trailing slash normalised; descendants accepted;
   sibling prefixes, embedded hosts, subdomain tricks, scheme downgrade,
   userinfo, ports, queries, dot segments and a missing URL refused; an http
@@ -389,22 +417,35 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   read-only retained proof after disable (and none from a tampered cache, no
   private target without opt-in), a kept and re-annotated row after a run
   without the source, and an identity-rejected row replacing it (report).
-- `tests/test-vapt.sh`: the install picker never offers `vapt`, and a saved
-  `vapt` choice is dropped with a reason instead of aborting the installer.
+  Batch C added: the `{PIN,ARCH}`/`revoked={ARCH}` launder refused at the
+  first approval with no `pacman-key` call (trust-adversarial), and rotation
+  cases for that launder and for a new signer revoked in its own archive.
+  The "revocation rollback" case now reaches its revoked state through an
+  accepted intermediate keyring (`via`), because a first keyring may no
+  longer revoke a non-pin signer. Also added: an earlier repository
+  providing a private dependency under another name (versioned `Provides`)
+  is preferred offline and refused for the private package in a transaction,
+  while too old a provider does not block it (admission).
+- `tests/test-vapt.sh`: the install picker never offers `vapt`; a saved
+  `vapt` choice is dropped with a reason instead of aborting the installer;
+  `--pick --vapt-groups` is refused before the tree or any layer (batch C).
+- `tests/test-vapt-env.sh` (batch C): no rc is written or invented. An
+  existing, symlinked or zsh rc stays byte-identical. An rc that sources the
+  link or the shell-rc include is reused silently, and otherwise apply and
+  status print the exact line.
 
-Batch A evidence (fixtures only): `QT_QPA_PLATFORM=offscreen tests/run.sh` on
-each oniomarchy suite — consent 96/96, trust-adversarial 184/184, abuse
-108/108, abuse-boundaries 19/19, transactions 62/62, trust 213/213,
-admission 147/148 (beef logical homonym through the shell resolver open),
-report 55/57 (recorded-dependency status). Both are closed in batch B.
+Historical, batch A evidence (fixtures only): `QT_QPA_PLATFORM=offscreen
+tests/run.sh` on each oniomarchy suite — consent 96/96, trust-adversarial
+184/184, abuse 108/108, abuse-boundaries 19/19, transactions 62/62, trust
+213/213, admission 147/148, report 55/57. Both gaps were closed in batch B.
 
 ## Evidence
 
-Batch B, on the final tree (fixtures only; no live fetch, key, package or
+Batch C, on the final tree (fixtures only; no live fetch, key, package or
 service operation):
 
 ```sh
-QT_QPA_PLATFORM=offscreen tests/run.sh                # whole suite: 103 files, 10698/10700
+QT_QPA_PLATFORM=offscreen tests/run.sh                # whole suite: 103 files, 10733/10735
 SHELLCHECK=$(command -v shellcheck) tools/lint.sh     # lint OK (356 shell files)
 tools/check-docs.sh                                   # check-docs OK
 ```
@@ -413,20 +454,27 @@ The two failures are both in `tests/test-compat-desktop.sh` ("a non-key
 command reaches the real ydotool", "with its arguments untouched"). They fail
 identically on `main` (96193cf) on this host. The cause is the host's
 `/usr/bin/ydotool`, which precedes the test's appended stub on `PATH`; it is
-unrelated to VAPT. `tests/test-install-picker.sh` passes 60/60 unmodified. A
-focused run of the oniomarchy suites, `test-vapt.sh`, `test-vapt-env.sh` and
-the picker before the batch B tests were added: 1782/1782. `tools/secrets.sh`
-was not run because no gitleaks binary is installed.
+unrelated to VAPT. `tests/test-install-picker.sh` passes unmodified (inside
+the full run). `tools/secrets.sh` was not run because no gitleaks binary is
+installed. Before the rotation fixture was restructured, the VAPT suites
+and the picker (`tests/test-vapt*.sh tests/test-install-picker.sh`) gave
+4270/4271: only the old one-step "revocation rollback" setup failed. After
+the restructure, the two trust suites passed 416/416. Historical: batch B's
+whole-suite run was 10698/10700 (the same two ydotool checks).
 
-Slice 1A alone: 14 files, 3159/3159 checks (`tests/test-vapt-inventory.sh` 329).
+Historical, slice 1A alone at its commit: 14 files, 3159/3159 checks
+(`tests/test-vapt-inventory.sh` 329).
 
 Not verified: any live package installation, any fetch from the oniomarchy
 host, the real published key, database and keyring signatures, the real
 keyring package layout and scriptlet (the accepted layout is the conventional
 one and is an inference until a real package is audited), and pacman's own
 handling of `Usage` and `DatabaseRequired` on a real system. Also unverified:
-a real publisher key rotation end to end (only fixture rotations), the real
-database's dependency graph against the consumer rule (a real private package
-whose dependency is another consumer's row, or a candidate, is now refused),
-the shell activation line in a real interactive bash/zsh session, the gum
-picker UI (only the plain `select` path is driven), and `tools/secrets.sh`.
+- a real publisher key rotation end to end (only fixture rotations);
+- whether the real first `oniomarchy-keyring` carries historical revocations
+  of non-pin keys, which the stricter revocation rule now refuses;
+- the real database's dependency graph against the consumer, candidate-role
+  and earlier-provider rules (a real package that breaks one is now refused);
+- the activation line in a real interactive bash/zsh session;
+- the gum picker UI (only the plain `select` path is driven);
+- `tools/secrets.sh`.

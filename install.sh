@@ -44,11 +44,13 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
                 optional: secureboot ai dms gaming flatpak (haseen layer list)
   --pick        choose the layers and optional setup steps (keyd, fingerprint,
                 geoclue, dotfiles) from a list, even when stdin is not a
-                terminal; at a terminal this is the default unless --layers or
-                --yes is given. The choice is saved to
+                terminal; at a terminal this is the default unless --layers,
+                --yes or --vapt-groups is given. The choice is saved to
                 ~/.config/haseen/install.toml and offered again next time.
+                The picker never offers vapt.
   --vapt-groups explicitly provision optional VAPT groups after the layers;
-                use 'all' for all 25 groups. No VAPT tools are selected by default.
+                use 'all' for all 25 groups. No VAPT tools are selected by
+                default. Not combined with --pick.
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user
@@ -74,8 +76,8 @@ while (($# > 0)); do
 done
 LAYERS_GIVEN=false
 ((${#LAYERS[@]} == 0)) || LAYERS_GIVEN=true
-if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL; }; then
-    die "--pick chooses interactively; it does not combine with --layers, --yes, --tree-only or --uninstall-tree"
+if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL || [[ -n $VAPT_GROUPS ]]; }; then
+    die "--pick chooses interactively; it does not combine with --layers, --yes, --tree-only, --uninstall-tree or --vapt-groups"
 fi
 $LAYERS_GIVEN || LAYERS=("${DEFAULT_LAYERS[@]}")
 if [[ -n $VAPT_GROUPS ]] && { $TREE_ONLY || $UNINSTALL; }; then

@@ -387,9 +387,7 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   installs the `oniomarchy-keyring` package, which populates the shared pacman
   keyring. That trust is machine-wide, not isolated to VAPT, and it is kept
   when the source is disabled; revoking it is a separate `pacman-key`
-  decision. A full upgrade that carried the private source leaves its frozen
-  database copy in pacman's sync directory; pacman ignores it unless
-  `/etc/pacman.conf` declares the repository.
+  decision.
 - **Trust anchor.** The key comes only from
   `https://pkgs.oniomarchy.com/oniomarchy.gpg` (HTTPS, no redirect, never a
   keyserver, no bootstrap script) and must have exactly one primary, the
@@ -425,11 +423,15 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   the private scope is refused, and no recovery record names the source (a
   record that does is refused and preserved for review).
 - **Revocations stay inside the source's authority.** `pacman-key --populate
-  oniomarchy` applies the keyring's revoked list to the shared keyring, so an
-  audited keyring may revoke only a previously accepted or revoked, pinned or
-  trusted primary; any other revocation (an Arch/CachyOS or administrator key)
-  refuses the keyring with the offending fingerprints named. The recorded
-  authority must equal what the retained keyring lists declare.
+  oniomarchy` applies the keyring's revoked list to the shared keyring. An
+  audited keyring may therefore revoke only a primary this source already
+  owned: one previously accepted or revoked, or the pin. Its own trusted list
+  grants no revocation authority, so a signer it introduces cannot be revoked
+  in the same archive, and `trusted={PIN,ARCH}`/`revoked={ARCH}` cannot launder
+  a revocation of an unrelated key. Any other revocation (an Arch/CachyOS or
+  administrator key) refuses the keyring with the offending fingerprints
+  named. The recorded authority must equal what the retained keyring lists
+  declare.
 - **Trust changes are reported as such.** Once the pinned key is imported (or
   an audited keyring update reached the shared keyring), any later refusal is
   a mutation failure saying the trust changed but the source is not approved;
@@ -443,8 +445,10 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   (`java17-openjfx-bin`, `sleuthkit-java`, `powershell-bin`, the libsoup and
   webkit2gtk packages and thirteen `python-*` libraries; never a root target)
   or the keyring. A 53rd name in a newer signed database is ignored until a
-  reviewed change admits it. The source never satisfies anything through
-  `Provides`, never wins over an acceptable earlier package, and never
+  reviewed change admits it. The source never satisfies a dependency through
+  an arbitrary `Provides`, only by exact name or through a reviewed alias
+  backed by the package's own metadata. It never wins over an acceptable
+  earlier package or provider, and never
   declares replacements. It refuses any name, or the logical item an alias
   maps it to, that another configured source with readable metadata
   publishes, usable this run or not (the resolver and the dependency closure
@@ -507,23 +511,22 @@ or unsafe distribution metadata are left untouched, not reconciled by uv.
 A passive shell fragment adds available native/local tool-bin directories
 without launching anything or replacing system Python. It exposes
 `HASEEN_VAPT_COAE_ENV` but does not auto-activate that environment. The layer
-links the fragment as `~/.config/haseen/vapt/shell.sh` and appends one marked,
-guarded line to `~/.bashrc` (and to `~/.zshrc` only when that file exists),
-written with the link's absolute path:
+seeds only an owned link to the fragment, `~/.config/haseen/vapt/shell.sh`. It
+never creates, appends to or otherwise edits a user file such as `~/.bashrc` or
+`~/.zshrc`, which belong to you. If an rc already sources the link, or sources
+the optional shell-rc layer's `default/shell/init.sh` (which loads the same
+link), interactive shells pick it up. Otherwise apply and
+`haseen layer status vapt` print the exact line you may add yourself (written
+with the absolute path; the missing line is reported, not counted as degraded):
 
 ```sh
-# haseen VAPT: passive native-tool PATH only.
 [ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"
 ```
 
-The line is appended once; an rc that already names the link, or that sources
-the optional shell-rc layer's `default/shell/init.sh` (which loads the same
-link), is left unchanged, so tooling-only provisioning never opts the user into
-unrelated aliases or tool initialization. Symlinked or non-regular rc files are
-preserved and reported. `haseen layer remove vapt` deletes the owned link and
-keeps the line: rc files stay user-owned, and the guard makes the line inert
-once the link is gone. Only activation links created by this layer are
-journaled for reversible removal; borrowed, conflicting, dangling, or
+The guard makes that line inert once `haseen layer remove vapt` deletes the
+owned link. Tooling-only provisioning therefore never opts you into unrelated
+aliases or tool initialization. Only activation links created by this layer
+are journaled for reversible removal; borrowed, conflicting, dangling, or
 subsequently modified links are preserved.
 
 When the desktop's `~/.config/uwsm/env.d/` already exists, a second owned link,

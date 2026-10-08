@@ -188,6 +188,32 @@ cp "$ROOT/var/lib/haseen/vapt/repositories.json" "$db/sync/"
 capture python3 "$VAPT_META" closure oniomarchy/supersdr "$SANDBOX/shadow.tsv" --dbpath "$db" --root "$ROOT" --with-oniomarchy
 assert_status 'a planned private dependency shadowing an earlier one is refused' 1 "$STATUS"
 assert_contains 'the shadowing refusal is explicit' "$OUTPUT" 'shadows a package of an earlier source'
+# An earlier provider under another name (versioned Provides) also precedes a
+# private dependency, in the reviewed transaction exactly as in the dry run.
+adv_approved vapt-adv-admit-earlier-provider "extra|yattag-compat|1.16-1|https://www.yattag.org|python-yattag=1.16"
+adv_publish "[{$SUPERSDR,\"depends\":[\"python-yattag\"]},{\"name\":\"python-yattag\",\"version\":\"1.16-1\",\"arch\":\"any\",\"url\":\"https://www.yattag.org\"}]"
+adv_closure oniomarchy/supersdr
+assert_status 'offline: the earlier provider closes the private target' 0 "$STATUS"
+db="$ROOT/var/cache/haseen-vapt.review/db"
+mkdir -p "$db/sync"
+cp "$SANDBOX/onio/serve/oniomarchy.db" "$ROOT/var/lib/haseen/vapt/repositories.json" "$db/sync/"
+printf 'oniomarchy\tsupersdr\t1.0-1\noniomarchy\tpython-yattag\t1.16-1\n' >"$SANDBOX/private-dep.tsv"
+capture python3 "$VAPT_META" closure oniomarchy/supersdr "$SANDBOX/private-dep.tsv" --dbpath "$db" --root "$ROOT" --with-oniomarchy
+assert_status 'transaction: a private dependency over an earlier provider is refused' 1 "$STATUS"
+assert_contains 'and the earlier provider is named' "$OUTPUT" 'would win over the earlier provider extra/yattag-compat of python-yattag'
+printf 'oniomarchy\tsupersdr\t1.0-1\nextra\tyattag-compat\t1.16-1\n' >"$SANDBOX/earlier-dep.tsv"
+capture python3 "$VAPT_META" closure oniomarchy/supersdr "$SANDBOX/earlier-dep.tsv" --dbpath "$db" --root "$ROOT" --with-oniomarchy
+assert_status 'transaction: the earlier provider closes' 0 "$STATUS"
+adv_approved vapt-adv-admit-earlier-provider-version "extra|yattag-compat|1.16-1|https://www.yattag.org|python-yattag=1.16"
+adv_publish "[{$SUPERSDR,\"depends\":[\"python-yattag>=2\"]},{\"name\":\"python-yattag\",\"version\":\"2.0-1\",\"arch\":\"any\",\"url\":\"https://www.yattag.org\"}]"
+db="$ROOT/var/cache/haseen-vapt.review/db"
+mkdir -p "$db/sync"
+cp "$SANDBOX/onio/serve/oniomarchy.db" "$ROOT/var/lib/haseen/vapt/repositories.json" "$db/sync/"
+printf 'oniomarchy\tsupersdr\t1.0-1\noniomarchy\tpython-yattag\t2.0-1\n' >"$SANDBOX/private-dep.tsv"
+capture python3 "$VAPT_META" closure oniomarchy/supersdr "$SANDBOX/private-dep.tsv" --dbpath "$db" --root "$ROOT" --with-oniomarchy
+assert_status 'an earlier provider of too old a version does not block the private dependency' 0 "$STATUS"
+adv_closure oniomarchy/supersdr
+assert_status 'offline agrees: the private dependency closes' 0 "$STATUS"
 
 # --- a reviewed dependency alias is usable ------------------------------------
 # dependencies.tsv/aliases.tsv review java17-openjfx -> oniomarchy/java17-openjfx-bin

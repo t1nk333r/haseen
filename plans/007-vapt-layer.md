@@ -44,11 +44,13 @@ The layer sets `LAYER_PICKABLE=false` (contract in `share/haseen/lib/layers.sh`)
 so the interactive install picker never offers it and drops it from a saved
 choice. Applied without groups it refuses, which once aborted the installer
 after the earlier layers had applied (plan 083 batch B). `./install.sh
---vapt-groups` remains the installer route. Shell activation appends one
-guarded line to `~/.bashrc` (and an existing `~/.zshrc`) that sources the
-owned link. The line is retained on remove and is inert once the link is
-gone (`docs/vapt.md`).
+--vapt-groups` remains the installer route, and `--pick` with it is refused.
+Shell activation seeds only the owned link `~/.config/haseen/vapt/shell.sh`.
+The layer never edits `~/.bashrc` or `~/.zshrc`; it reuses an rc or shell-rc
+include that already sources the link and otherwise prints the exact line to
+add (plan 083 batch C, `docs/vapt.md`).
 
-Plan 083 extends this layer: ten more tool groups from oniomarchy's
+Plan 083 extends this layer with ten more tool groups from oniomarchy's
 categories, reviewed package aliases and dependency roles, canonical URL
-identities, and later an opt-in signed package source.
+identities, and the opt-in private signed oniomarchy package source (slice 1B,
+implemented).

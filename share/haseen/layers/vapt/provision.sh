@@ -433,29 +433,23 @@ vapt_report() {
     # Dependencies a commit installed: annotations, never launcher roots.
     for logical in "${VAPT_DEPENDENCY_ROWS[@]}"; do printf '# dependency\t%s\n' "$logical"; done
 }
-vapt_seed_shell() {
-    # Each existing rc (~/.bashrc always, ~/.zshrc only when present) gets one
-    # marked line that sources the owned link only while it is readable, so
-    # the line is inert once removal deletes the link; remove retains it (rc
-    # files stay user-owned). An rc that already names the link, or sources
-    # the shell-rc layer's default/shell/init.sh (which loads the same link;
-    # that layer is optional and may be absent), is reused unchanged.
+# vapt_shell_active — 0 when ~/.bashrc or ~/.zshrc already sources the owned
+# link, directly or through the optional shell-rc layer's default/shell/init.sh
+# (which loads the same link; that layer may be absent). Read-only: haseen
+# seeds only the owned link and never edits a user rc file (plan 083 batch C).
+vapt_shell_active() {
     local general="${HASEEN_INSTALL_PATH:-$HASEEN_PATH}/default/shell/init.sh"
-    local include="$HASEEN_USER_CONFIG/vapt/shell.sh" rc observed degraded=0
+    local include="$HASEEN_USER_CONFIG/vapt/shell.sh" rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-        observed=''
-        observed="$(vapt_read_path "$rc")"
-        [[ $rc != *.zshrc || -L $observed || -e $observed ]] || continue
-        if vapt_meta includes "$rc" "$include" "$general" 2>/dev/null; then continue; fi
-        if [[ -n $observed && ( -L $observed || ( -e $observed && ! -f $observed ) ) ]]; then
-            warn "VAPT shell include: nonregular/symlinked rc preserved: $rc"
-            degraded=2; continue
-        fi
-        vapt_path_ancestors_safe "$rc" || { degraded=2; continue; }
-        printf '\n# haseen VAPT: passive native-tool PATH only.\n[ -r "%s" ] && . "%s"\n' "$include" "$include" |
-            append_user_file "$(vapt_read_path "$rc")" || return 1
+        vapt_meta includes "$rc" "$include" "$general" 2>/dev/null && return 0
     done
-    return "$degraded"
+    return 1
+}
+# vapt_shell_line — the exact line a user may add to their rc; inert once the
+# owned link is removed.
+vapt_shell_line() {
+    local include="$HASEEN_USER_CONFIG/vapt/shell.sh"
+    printf '[ -r "%s" ] && . "%s"\n' "$include" "$include"
 }
 vapt_provision() (
     local logical rc=0 output report="$HASEEN_USER_STATE/vapt/report.tsv"
@@ -501,9 +495,9 @@ vapt_provision() (
         ((rc != 1)) || VAPT_MUTATION_FAILED=1
     fi
     [[ ${VAPT_ENV_DEGRADED:-0} == 0 ]] || VAPT_ENV_STATUS=degraded
-    rc=0; vapt_seed_shell || rc=$?
-    if ((rc == 1)); then VAPT_MUTATION_FAILED=1
-    elif ((rc != 0)); then VAPT_ENV_STATUS=degraded
+    if ! vapt_shell_active; then
+        info "VAPT shell activation: no ~/.bashrc or ~/.zshrc sources $HASEEN_USER_CONFIG/vapt/shell.sh, and haseen never edits them."
+        info "To put the VAPT tool directories on PATH in interactive shells, add this line yourself: $(vapt_shell_line)"
     fi
     for logical in "${VAPT_ITEMS[@]}"; do
         [[ ${VAPT_RESOLUTION[$logical]} == resolved ]] || continue
