@@ -36,21 +36,29 @@ make_repo() {
 
 colour_of() { sed -n "s/^$2 *= *\"\(#[0-9a-fA-F]*\)\".*/\1/p" "$1"; }
 
-# window_rounding FILE — the decoration.rounding Hyprland ends up with after
-# running FILE (a rendered hyprland.lua) under Lua with a recording `hl`.
+# window_rounding — the decoration.rounding Hyprland ends up with after the
+# whole load order the seeded ~/.config/hypr/hyprland.lua runs (defaults, the
+# shared radius, toggles, hyprmod, the current theme, the user's files), under
+# Lua with a recording `hl`. A file that fails to load prints FAILED instead.
 window_rounding() {
-    lua - "$1" <<'LUA'
-local rounding = "unset"
-local noop = function() end
+    HYPR_USER="$HASEEN_PATH/default/hypr/user/hyprland.lua" lua - <<'LUA'
+local rounding, failed = "unset", nil
+local function proxy()
+  return setmetatable({}, { __index = function() return proxy() end, __call = function() return proxy() end })
+end
 hl = setmetatable({
   config = function(t)
-    if type(t.decoration) == "table" and t.decoration.rounding ~= nil then
+    if type(t) == "table" and type(t.decoration) == "table" and t.decoration.rounding ~= nil then
       rounding = t.decoration.rounding
     end
   end,
-}, { __index = function() return noop end })
-dofile(arg[1])
-print(rounding)
+}, { __index = function() return proxy() end })
+print = function(...)
+  local line = table.concat({ ... }, " ")
+  if line:find("failed to load", 1, true) then failed = line end
+end
+dofile(os.getenv("HYPR_USER"))
+io.write(failed and ("FAILED " .. failed) or tostring(rounding), "\n")
 LUA
 }
 
@@ -82,7 +90,7 @@ for dir in "$HASEEN_PATH"/themes/*/; do
         want_round="$(($(jq -r .radius "$sj") * 2))"
         assert_eq "$t windowRadius is the frame radius" "$want_round" "$(jq -r .windowRadius "$sj")"
         if command -v lua >/dev/null; then
-            assert_eq "$t windows round like the frame" "$want_round" "$(window_rounding "$CUR/theme/hyprland.lua")"
+            assert_eq "$t windows round like the frame" "$want_round" "$(window_rounding)"
         fi
         assert_eq "$t accent from colors.toml" "$(colour_of "$dir/colors.toml" accent)" "$(jq -r .accent "$sj")"
     else
@@ -116,7 +124,7 @@ frame_case() { # NAME SHELL.JSON WANT — set haseen under that user shell.json
     assert_status "$1: the theme still sets" 0 "$STATUS"
     assert_eq "$1: the menu" "$3" "$(jq -r .windowRadius "$CUR/theme/shell.json")"
     if command -v lua >/dev/null; then
-        assert_eq "$1: the windows" "$3" "$(window_rounding "$CUR/theme/hyprland.lua")"
+        assert_eq "$1: the windows" "$3" "$(window_rounding)"
     fi
 }
 mkdir -p "$HOME/.config/haseen"
@@ -127,7 +135,7 @@ frame_case "frame.radius above 64 falls back" '{"frame":{"radius":65}}' 12
 frame_case "a text frame.radius falls back" '{"frame":{"radius":"20"}}' 12
 frame_case "an unreadable shell.json falls back" '{"frame":' 12
 # A user theme whose hyprland.lua links elsewhere: the link target is the
-# user's, never written; the staged copy still ends at the shared radius.
+# user's, never written; the staged copy still leaves the shared radius.
 rm -f "$HOME/.config/haseen/shell.json"
 mkdir -p "$HOME/.config/haseen/themes/linked"
 cp "$HASEEN_PATH/themes/tokyo-night/colors.toml" "$HOME/.config/haseen/themes/linked/"
@@ -137,14 +145,72 @@ capture haseen theme set linked
 assert_status "a linked theme hyprland.lua sets" 0 "$STATUS"
 assert_eq "the linked file is left as it was" 'hl.config({ decoration = { rounding = 3 } })' "$(<"$SANDBOX/own-hyprland.lua")"
 if command -v lua >/dev/null; then
-    assert_eq "its windows still round like the frame" 12 "$(window_rounding "$CUR/theme/hyprland.lua")"
+    assert_eq "its windows still round like the frame" 12 "$(window_rounding)"
 fi
+# A dangling link is the user's too: the template renders in its place in the
+# staging copy, and the link's target is never created.
+mkdir -p "$SANDBOX/dots" "$HOME/.config/haseen/themes/dangling"
+cp "$HASEEN_PATH/themes/tokyo-night/colors.toml" "$HOME/.config/haseen/themes/dangling/"
+ln -s "$SANDBOX/dots/hyprland.lua" "$HOME/.config/haseen/themes/dangling/hyprland.lua"
+capture haseen theme set dangling
+assert_status "a dangling theme hyprland.lua sets" 0 "$STATUS"
+assert_eq "the dangling link's target is not created" "" "$(ls -A "$SANDBOX/dots")"
+assert_contains "the template renders in its place" "$(<"$CUR/theme/hyprland.lua")" "active_border"
+assert_eq "the staged file is not a link" "" "$(find "$CUR/theme/hyprland.lua" -type l)"
+# A theme file that ends in a top-level `return` still parses: the radius
+# hook is a prefix, not a line after the return.
+mkdir -p "$HOME/.config/haseen/themes/returns"
+cp "$HASEEN_PATH/themes/tokyo-night/colors.toml" "$HOME/.config/haseen/themes/returns/"
+printf 'local t = {}\nhl.config({ decoration = { rounding = 3 } })\nreturn t\n' \
+    >"$HOME/.config/haseen/themes/returns/hyprland.lua"
+capture haseen theme set returns
+assert_status "a theme ending in return sets" 0 "$STATUS"
+if command -v luac >/dev/null; then
+    capture luac -p "$CUR/theme/hyprland.lua"
+    assert_status "and its staged hyprland.lua parses" 0 "$STATUS"
+fi
+if command -v lua >/dev/null; then
+    assert_eq "and loads, at the shared radius" 12 "$(window_rounding)"
+fi
+
+# --- the shared radius is a default, not the last word (load order) ---------
+# init.lua: defaults + current/theme/rounding.lua, then toggles, then hyprmod,
+# then the theme file (its own rounding dropped), then the user's files.
+theme_sandbox theme-rounding-order
+stub hyprctl 'exit 0'
+mkdir -p "$HOME/.config/haseen" "$HOME/.config/hypr"
+printf '{"frame":{"radius":20}}\n' >"$HOME/.config/haseen/shell.json"
+capture haseen theme set solitude
+assert_status "set solitude (a theme with its own rounding)" 0 "$STATUS"
+capture haseen theme set --dry-run solitude
+assert_contains "the dry run plans the shared radius" "$OUTPUT" "rounding.lua: window corners 20"
+if command -v lua >/dev/null; then
+    assert_eq "the shared radius beats the theme's own rounding" 20 "$(window_rounding)"
+    capture haseen toggle gaps on
+    assert_status "toggle gaps on" 0 "$STATUS"
+    assert_eq "haseen toggle gaps on still squares the corners" 0 "$(window_rounding)"
+    capture haseen toggle gaps off
+    assert_eq "and off brings the shared radius back" 20 "$(window_rounding)"
+    printf 'hl.config({ decoration = { rounding = 5 } })\n' >"$HOME/.config/hypr/hyprland-gui.lua"
+    assert_eq "hyprmod's rounding wins over the shared radius" 5 "$(window_rounding)"
+    printf 'hl.config({ decoration = { rounding = 9 } })\n' >"$HOME/.config/hypr/local.lua"
+    assert_eq "the user's own files win over hyprmod" 9 "$(window_rounding)"
+    rm -f "$HOME/.config/hypr/hyprland-gui.lua" "$HOME/.config/hypr/local.lua"
+fi
+# A fractional radius token truncates like Theme.qml's int property (7.5 -> 7).
+mkdir -p "$HOME/.config/haseen/themes/frac"
+sed 's/^radius *=.*//' "$HASEEN_PATH/themes/tokyo-night/colors.toml" >"$HOME/.config/haseen/themes/frac/colors.toml"
+printf 'radius = 7.5\n' >>"$HOME/.config/haseen/themes/frac/colors.toml"
+rm -f "$HOME/.config/haseen/shell.json"
+capture haseen theme set frac
+assert_status "set a theme with a fractional radius" 0 "$STATUS"
+assert_eq "the menu radius truncates the token like QML" 14 "$(jq -r .windowRadius "$CUR/theme/shell.json")"
 if command -v Hyprland >/dev/null; then
     mkdir -p "$SANDBOX/verify" "$SANDBOX/run"
     chmod 700 "$SANDBOX/run"
-    printf 'dofile("%s")\n' "$CUR/theme/hyprland.lua" >"$SANDBOX/verify/rounding.lua"
+    printf 'dofile("%s")\ndofile("%s")\n' "$CUR/theme/rounding.lua" "$CUR/theme/hyprland.lua" >"$SANDBOX/verify/rounding.lua"
     capture env XDG_RUNTIME_DIR="$SANDBOX/run" timeout 30 Hyprland --verify-config -c "$SANDBOX/verify/rounding.lua"
-    assert_contains "Hyprland accepts the rounding line" "$OUTPUT" "config ok"
+    assert_contains "Hyprland accepts the rounding files" "$OUTPUT" "config ok"
 fi
 
 # --- shell selection stays readable under foreground text -------------------
@@ -162,7 +228,7 @@ assert_eq "surface = mix background foreground 6%" "#232431" "$(jq -r .surface "
 assert_eq "border = mix background foreground 20%" "#373949" "$(jq -r .border "$CUR/theme/shell.json")"
 assert_eq "accentFg = background" "#1a1b26" "$(jq -r .accentFg "$CUR/theme/shell.json")"
 assert_eq "a readable selection is kept" "#292e42" "$(jq -r .selection "$CUR/theme/shell.json")"
-assert_eq "hyprland.lua active border" 'local active_border_color = "#7aa2f7"' "$(head -n1 "$CUR/theme/hyprland.lua")"
+assert_eq "hyprland.lua active border" 'local active_border_color = "#7aa2f7"' "$(grep -m1 '^local active_border_color' "$CUR/theme/hyprland.lua")"
 capture haseen theme set "Tokyo Night"
 assert_status "display name normalizes" 0 "$STATUS"
 assert_eq "re-set is byte-identical" "$first" "$(cd "$CUR/theme" && cat -- *)"
@@ -190,7 +256,7 @@ capture haseen theme set probe
 assert_status "set user theme" 0 "$STATUS"
 assert_eq "helpers match Omarchy" 'mix=#2f3240 strip=3c4a6f rgb=98,102,126 hg={ colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 } sg=rgba(33ccffee) rgba(00ff99ee) 45deg gs=#33ccff hf="rgba(595959aa)" a=122,162,247 s=7aa2f7 u={{ unknown_key }}' "$(<"$CUR/theme/probe.txt")"
 assert_contains "unknown placeholder is reported" "$OUTPUT" "unrendered placeholder left in probe.txt"
-assert_eq "gradient reaches hyprland.lua" 'local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }' "$(head -n1 "$CUR/theme/hyprland.lua")"
+assert_eq "gradient reaches hyprland.lua" 'local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }' "$(grep -m1 '^local active_border_color' "$CUR/theme/hyprland.lua")"
 
 # --- user template override wins --------------------------------------------
 theme_sandbox theme-user-template
@@ -295,10 +361,10 @@ mkdir -p "$HOME/.config/haseen/themes/mine"
 cp "$FIXTURES/theme-omarchy-nord/colors.toml" "$HOME/.config/haseen/themes/mine/"
 printf -- '-- mine\n' >"$HOME/.config/haseen/themes/mine/hyprland.lua"
 haseen theme set mine >/dev/null 2>&1
-assert_eq "own theme ships its hyprland.lua" "-- mine" "$(head -n1 "$CUR/theme/hyprland.lua")"
+assert_contains "own theme ships its hyprland.lua" "$(<"$CUR/theme/hyprland.lua")" "-- mine"
 if command -v lua >/dev/null; then
     assert_eq "and its windows round like the frame" "$(($(jq -r .radius "$CUR/theme/shell.json") * 2))" \
-        "$(window_rounding "$CUR/theme/hyprland.lua")"
+        "$(window_rounding)"
 fi
 mkdir -p "$SANDBOX/src/mine"
 cp "$FIXTURES/theme-omarchy-nord/colors.toml" "$SANDBOX/src/mine/"

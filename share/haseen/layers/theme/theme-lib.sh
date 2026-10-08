@@ -477,27 +477,40 @@ _theme_window_radius() {
         done
     fi
     if [[ -z $r ]]; then
+        # Theme.qml holds the token in an int property, which truncates a
+        # fraction (6.5 -> 6); the same here, so the rule cannot drift.
         r="${THEME_COLORS[radius]:-}"
-        [[ $r =~ ^[0-9]+$ ]] || r="${THEME_TOKEN_DEFAULTS[radius]}"
-        r=$((r * 2))
+        if [[ $r =~ ^([0-9]+)(\.[0-9]*)?$ ]]; then
+            r="${BASH_REMATCH[1]}"
+        else
+            r="${THEME_TOKEN_DEFAULTS[radius]}"
+        fi
+        r=$((10#$r * 2))
     fi
     THEME_COLORS[window_radius]="$r"
 }
 
-# _theme_window_rounding DIR — end DIR/hyprland.lua, rendered or the theme's
-# own, with window_radius as Hyprland's decoration.rounding. It is the last
-# word of the theme file, so a theme's own rounding never splits the windows
-# from the frame and the menu; the user's files load after it and still win.
-# The file is rewritten, never appended through: a user theme may link it.
+# _theme_window_rounding DIR — the shared radius for Hyprland (plans 046, 068).
+# DIR/rounding.lua carries window_radius as decoration.rounding; init.lua loads
+# it with the defaults, so `haseen toggle gaps`, hyprmod and the user's files
+# still override it. DIR/hyprland.lua (rendered or the theme's own) loads
+# later, so it is prefixed with a local `hl` (init.lua's haseen.theme_hl) that
+# drops decoration.rounding from its hl.config calls: a theme's own rounding
+# never splits the windows from the frame and the menu. A prefix, not a
+# suffix, so a file that ends in `return` still parses. The file is
+# rewritten, never written through: a user theme may link it.
 _theme_window_rounding() {
-    local f="$1/hyprland.lua" body=""
-    if [[ -e $f ]]; then
-        body="$(<"$f")"$'\n\n'
-        rm -f -- "$f"
-    fi
-    printf '%s%s\nhl.config({ decoration = { rounding = %s } })\n' "$body" \
-        "-- haseen: window corners follow the shell's frame (plan 046)." \
-        "${THEME_COLORS[window_radius]}" >"$f"
+    local dir="$1" f="$1/hyprland.lua" body=""
+    [[ -e $f ]] && body="$(<"$f")"
+    [[ -e $f || -L $f ]] && rm -f -- "$f"
+    printf '%s\n%s\n\n%s\n' \
+        "-- haseen: decoration.rounding is the shared window radius in rounding.lua (plan 046)." \
+        "local hl = haseen and haseen.theme_hl and haseen.theme_hl(hl) or hl" \
+        "$body" >"$f"
+    rm -f -- "$dir/rounding.lua"
+    printf '%s\nhl.config({ decoration = { rounding = %s } })\n' \
+        "-- haseen: window corners follow the shell's frame (plan 046); written by haseen theme set." \
+        "${THEME_COLORS[window_radius]}" >"$dir/rounding.lua"
 }
 
 # theme_render_templates DIR — render every template into DIR from
@@ -548,6 +561,11 @@ theme_render_templates() {
     for tpl in "${templates[@]}"; do
         out="${tpl##*/}"
         out="${out%.tpl}"
+        # A dangling link (a user theme pointing at a file not there yet) is
+        # replaced by the render inside the staging copy, never written through.
+        if [[ -L $dir/$out && ! -e $dir/$out ]]; then
+            rm -f -- "$dir/$out"
+        fi
         [[ -e $dir/$out ]] || pairs+=("$tpl" "$dir/$out")
     done
 
