@@ -7,8 +7,13 @@ backends, change firewall rules, or enable services. It has no required desktop,
 Omarchy, Chaotic-AUR, or AUR layer. No tools are selected by default.
 
 The installer runtime prerequisites are `python3` with its standard library,
-`pacman`, `vercmp`, `bsdtar`, `curl`, and `gpg`. Precheck reports missing
-prerequisites before changing the tree. A minimal Arch installation may need
+`pacman`, `vercmp`, `curl`, `gpg`, and libalpm's own `libarchive.so.13`,
+which archives are read through via `ctypes`. Precheck reports missing
+prerequisites before changing the tree; `bsdtar` is neither checked nor
+invoked at runtime. Test-only prerequisites are separate: several VAPT test
+suites skip themselves unless a host `bsdtar` is installed (their fixtures
+also stub it), and `tools/lint.sh` needs `shellcheck`.
+A minimal Arch installation may need
 Python installed first; this layer does not use an unchecked interpreter
 bootstrap. Hosts whose OS identity is `omarchy` are refused by this layer:
 its supported provisioning targets are Arch and CachyOS.
@@ -383,19 +388,30 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   full-upgrade source). `/etc/pacman.conf` is never changed. A host
   `[oniomarchy]` section is reported and the private source is refused while
   it exists; a changed descriptor is preserved and reported, never repaired.
-- **What stays global.** Approval imports and locally signs the pinned key,
-  installs the `oniomarchy-keyring` package with its scriptlet suppressed,
-  and then populates the shared pacman keyring itself. haseen never runs
-  `pacman-key --populate oniomarchy`, which would apply the publisher's
-  ownertrust column and revoked list as given. Instead, only the newly
-  accepted primaries are exported from the audited package's own key file
+- **What stays global.** Approval imports and locally signs the pinned key
+  and makes every other trust change itself. The `oniomarchy-keyring` package
+  is fetched, sealed and audited but never installed. Its trusted and
+  revoked files (and their ownertrust column) therefore never land in
+  `/usr/share/pacman/keyrings/`, and a manual `pacman-key --populate` (with
+  or without `oniomarchy`) has nothing of this source's to apply. haseen keeps
+  the audited archive in its own root state
+  (`/var/lib/haseen/vapt/sources/oniomarchy-keyring.pkg`) and binds the
+  recorded authority to it. haseen never runs `pacman-key --populate
+  oniomarchy` and never imports publisher-declared ownertrust. Only the
+  newly accepted primaries are exported from that archive's key file
   (checked to hold exactly those primaries), added with `pacman-key --add`
   and locally signed one by one with `pacman-key --lsign-key`. Newly revoked
-  keys are deleted from the keyring. No publisher-declared ownertrust is ever
-  imported, so a trusted-list entry such as `KEY:128:` or `KEY:3:` cannot
-  disable or distrust an unrelated key. That trust is machine-wide, not
-  isolated to VAPT, and it is kept when the source is disabled; revoking it
-  is a separate `pacman-key` decision.
+  keys are deleted from the keyring, but only after a keyring listing that
+  succeeded: a failed lookup or deletion fails the approval and leaves the
+  revocation pending for a retry. An approval refuses while an
+  `oniomarchy-keyring` package or any `oniomarchy*` file from an earlier
+  install remains there (remove it with `pacman -R oniomarchy-keyring`).
+  The added keys are machine-wide trust, not isolated to VAPT. `repo-disable`
+  removes only the private descriptor: the added keys stay in the shared
+  keyring, and the authority record, stored keyring archive and verified
+  database cache stay under `/var/lib/haseen/vapt/sources/`. These are inert
+  without the descriptor, and no keyring package or file is left to remove.
+  Revoking the added keys is a separate `pacman-key` decision.
 - **Trust anchor.** The key comes only from
   `https://pkgs.oniomarchy.com/oniomarchy.gpg` (HTTPS, no redirect, never a
   keyserver, no bootstrap script) and must have exactly one primary, the
@@ -409,9 +425,10 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
 - **Rotation.** Later signers come only from a keyring package signed by a
   currently accepted, non-revoked primary. Revocations never roll back, the
   keyring version never goes down, and neither the downloaded key nor the
-  database nor an installed file can add a signer. The accepted set is
-  recorded in root-owned state; missing proof after a local keyring change
-  makes the source `unverified`, and `repo-enable` refuses it for manual
+  database nor any file on the host can add a signer. The accepted set is
+  recorded in root-owned state; a stored keyring archive or authority record
+  that no longer matches makes the source `unverified`, and `repo-enable`
+  refuses it for manual
   review. A rotation is applied only by an approval: `repo-enable`, or the
   approval an opted-in run asks for when the source is not approved (for
   example after `repo-disable`). The refresh an opted-in run performs on an
@@ -442,7 +459,7 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   offending fingerprints named. A signer cannot revoke itself in the archive
   that introduces it; a retiring signer that has signed before may revoke
   itself while it hands over to a new one. The recorded authority must equal
-  what the retained keyring lists declare.
+  what the stored keyring archive's lists declare.
 - **Trust changes are reported as such.** Once the pinned key is imported (or
   an audited keyring update reached the shared keyring), any later refusal is
   a mutation failure saying the trust changed but the source is not approved;

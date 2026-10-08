@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–E landed. Batch E: haseen populates the shared keyring itself (explicit `--add`/`--lsign-key` of the newly accepted primaries, exported from the audited key file, with newly revoked keys deleted) and never runs `pacman-key --populate` or imports publisher ownertrust; a signer cannot revoke itself in the archive that introduces it. Batch D: revocations only of keys this source has used (observed signers), never of a merely listed fingerprint. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch E VAPT suites and the picker, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–F landed. Batch F: the keyring package is never installed; its audited archive is kept in haseen's root state, and the authority binds to it. A revoked key is treated as absent only after a keyring listing that succeeded, and a failed lookup or deletion fails the approval, leaving the revocation pending. Batch E: haseen makes every keyring change itself, never `pacman-key --populate` and never publisher ownertrust. Batch D: revocations only of keys this source has used. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch F VAPT suites and the picker, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
 
 ## Goal
 
@@ -32,10 +32,13 @@ Supplied facts (the owner's brief; not independently authenticated here):
   `Server = https://pkgs.oniomarchy.com/$arch`, x86_64 only. Its key is
   published at `https://pkgs.oniomarchy.com/oniomarchy.gpg`, primary
   fingerprint `0F5F9214F312B067ECBF1DF125E2C00AA6340BD0`.
-- None of the SDR suite; wifite, reaver, bully, cowpatty, hostapd,
-  hcxdumptool, hcxtools, kismet, pixiewps; keepassxc, mat2, veracrypt;
-  macchanger, tor; openssh, remmina; ghidra's `jdk-openjdk`; hexstrike-ai or
-  metasploit-mcp is in that repository.
+- None of the twelve official SDR names (airspy, gnuradio, gqrx, hackrf,
+  inspectrum, limesuite, multimon-ng, qspectrumanalyzer, rtl-sdr, rtl_433,
+  soapysdr, urh); wifite, reaver, bully, cowpatty, hostapd, hcxdumptool,
+  hcxtools, kismet, pixiewps; keepassxc, mat2, veracrypt; macchanger, tor;
+  openssh, remmina; ghidra's `jdk-openjdk`; hexstrike-ai or metasploit-mcp is
+  in that repository. Its SDR packages are chirp-next, cubicsdr,
+  dump1090-git and supersdr (see the source table below).
 
 Public catalogue lookups (time-sensitive; they say what was published when
 queried, not what a given machine's sync databases hold):
@@ -216,24 +219,36 @@ provenance.
   dependencies, population-only scriptlet, then the generic `audit_archives`
   with a per-package population exemption). Root state:
   `oniomarchy.authority` (keyring version, digest, signer, accepted and
-  revoked primaries, observed signers, retained file digests),
+  revoked primaries, observed signers, digests of the archive's key-file
+  members), `oniomarchy-keyring.pkg` (the audited archive itself, batch F),
   `sync/oniomarchy.db{,.sig}` and `oniomarchy.database` (exactly which bytes
-  were verified and by whom).
-- **Population (batch E; deviation from the earlier `--populate` design).**
-  haseen never runs `pacman-key --populate oniomarchy`. On the host, populate
-  lsigns every trusted ID and runs `gpg --import-ownertrust` on the raw
-  trusted file. A pin-signed keyring that revokes nothing could therefore
-  still disable an unrelated key (`KEY:128:`) or mark Arch masters never-trust
-  (`KEY:3:`). Instead, after `-U --noscriptlet`, haseen adds only the newly
-  accepted primaries (`trusted − revoked`, minus those already accepted):
-  they are exported from the audited archive's own `oniomarchy.gpg`
-  (`keyring-gpg`), and the export must hold exactly those primaries
-  (`key-primaries`) before any trust change. haseen then runs
-  `pacman-key --add` and `pacman-key --lsign-key FPR` for each, and deletes
-  newly revoked keys with `pacman-key --delete`. The ownertrust column is
-  ignored and never imported (rather than refused): no step of haseen reads
-  it, and refusing would also refuse the conventional `:4:`. The accepted-signer set and the
-  authority rule are unchanged.
+  were verified and by whom). The authority binds to the stored archive:
+  its digest, identity, member digests and declared lists. Since batch F it
+  no longer binds to an installed package or to files under
+  `/usr/share/pacman/keyrings/`.
+- **Population (batches E, F; deviation from the earlier `--populate` and
+  install design).** haseen never runs `pacman-key --populate oniomarchy`
+  and never installs the keyring package. On the host, populate lsigns every
+  trusted ID and runs `gpg --import-ownertrust` on the raw trusted file. A
+  pin-signed keyring that revokes nothing could therefore still disable an
+  unrelated key (`KEY:128:`) or mark Arch masters never-trust (`KEY:3:`).
+  Installing the package (batch E still did, with `-U --noscriptlet`) left
+  those files in `/usr/share/pacman/keyrings/`, where a later manual or
+  no-argument `pacman-key --populate` would apply them, and `repo-disable`
+  kept them. Now haseen adds only the newly accepted primaries
+  (`trusted − revoked`, minus those already accepted). They are exported from
+  the audited archive's own `oniomarchy.gpg` (`keyring-gpg`), and the export
+  must hold exactly those primaries (`key-primaries`) before any trust
+  change. haseen then runs `pacman-key --add` and `pacman-key --lsign-key FPR`
+  for each. Newly revoked keys are deleted with `pacman-key --delete`, but
+  only when a `pacman-key --list-keys` that succeeded shows them. A failed
+  listing or deletion fails the approval before the authority is written,
+  so the revocation stays pending and the retry repeats it (batch F). An
+  approval refuses while an `oniomarchy-keyring` package or `oniomarchy*`
+  file from an earlier install remains. The ownertrust column is ignored
+  and never imported (rather than refused): no step of haseen reads it, and
+  refusing would also refuse the conventional `:4:`. The accepted-signer set
+  and the authority rule are unchanged.
 - **Rotation.** Accepted only from a keyring signed by a currently accepted,
   non-revoked primary; revocations never shrink, the version never goes down,
   the first keyring must trust the pin. **Invariant (batches D, E):** a
@@ -350,9 +365,11 @@ provenance.
 Choices where the design was silent: the descriptor doubles as the approval
 record; a host `[oniomarchy]` section makes the private source `broken`;
 dry-run plans from cached evidence verified at the last refresh and says it
-did not re-verify; disable keeps the authority record and cache. Without the
-descriptor they authorise nothing, and they serve only the read-only proof of
-packages already installed from the source.
+did not re-verify; disable keeps the authority record, the stored keyring
+archive and the cache, plus the keys already added to the shared keyring.
+No keyring package or file exists to keep. Without the descriptor this
+state authorises nothing; it serves only the read-only proof of packages
+already installed from the source.
 
 ## Rejected options
 
@@ -475,7 +492,16 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   initial approval lsigns exactly the pin. The rollback case now revokes the
   pin through an intermediate keyring (ROT-signed database). The
   intermediate `via` step names its keyring and database signers, and
-  `trust/old.status` provides an OLD signature.
+  `trust/old.status` provides an OLD signature. Batch F added: approval
+  never runs `-U`, leaves nothing named `oniomarchy*` under
+  `/usr/share/pacman/keyrings/`, and keeps the archive in root state
+  (trust). An installed leftover keyring file refuses approval with no trust
+  change. For both a failing `pacman-key --list-keys` and a failing
+  `--delete` (`VAPT_PACMAN_KEY_FAIL`), the approval fails, the authority is
+  unchanged, and a retry deletes the pin and records the revocation. The
+  evidence mutations (tamper, symlink, FIFO, version drift, report "stored
+  keyring archive changed") now target the stored archive and authority
+  instead of installed files.
 - `tests/test-vapt.sh`: the install picker never offers `vapt`; a saved
   `vapt` choice is dropped with a reason instead of aborting the installer;
   `--pick --vapt-groups` is refused before the tree or any layer (batch C).
@@ -491,14 +517,21 @@ tests/run.sh` on each oniomarchy suite — consent 96/96, trust-adversarial
 
 ## Evidence
 
-Batch E (explicit population, no publisher ownertrust, no first-appearance
-self-revocation), fixtures only:
+Batch F (keyring package never installed; revoked-key removal fails closed),
+fixtures only:
 
 ```sh
-QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh   # 24 files, 4547/4547
+QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh   # 24 files, 4567/4567
 SHELLCHECK=$(command -v shellcheck) tools/lint.sh     # lint OK
 tools/check-docs.sh                                   # check-docs OK
 ```
+
+Batch F changed only the oniomarchy approval steps, the authority check and
+their fixtures, so the whole suite was not re-run.
+
+Historical, batch E (explicit population, no publisher ownertrust, no
+first-appearance self-revocation): the same command, 24 files, 4547/4547;
+lint and check-docs OK.
 
 Batch E changed only the oniomarchy approval steps, the keyring audit and
 their fixtures, so the whole suite was not re-run.
@@ -510,8 +543,8 @@ tests/test-vapt.sh`, 10 files, 1594/1594; lint and check-docs OK.
 Batch D changed only the keyring audit, the authority record format, the
 approval call and their fixtures, so the whole suite was not re-run.
 
-Batch C, on that tree (fixtures only; no live fetch, key, package or
-service operation):
+Historical, batch C on its own tree (not the final tree; fixtures only; no
+live fetch, key, package or service operation):
 
 ```sh
 QT_QPA_PLATFORM=offscreen tests/run.sh                # whole suite: 103 files, 10733/10735
@@ -568,9 +601,11 @@ untested. Also unverified:
 - the activation line in a real interactive bash/zsh session;
 - the gum picker UI (only the plain `select` path is driven);
 - `tools/secrets.sh`;
-- real `pacman-key --add`/`--lsign-key`/`--delete` and `gpg --export`
-  behaviour (both are stubbed; the explicit population is exercised against
-  fixtures only);
+- real `pacman-key --add`/`--lsign-key`/`--list-keys`/`--delete` and
+  `gpg --export` behaviour. Both are stubbed; the explicit population is
+  exercised against fixtures only. The absence check relies on a
+  successful `pacman-key --list-keys` printing each key's full fingerprint,
+  as gpg 2.1+ does by default; that is an inference, not observed here.
 - the BlackArch keyring (plan 007): it still runs its reviewed population as
   `pacman-key --populate blackarch`, so that publisher's ownertrust column
   would still be imported. That source is outside batch E and needs its own

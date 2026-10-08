@@ -933,23 +933,18 @@ def onio_serve(options):
 
 def onio_seed(options):
     """An approved, verified private source exactly as a completed approval
-    leaves it (descriptor, installed keyring, authority, verified cache)."""
+    leaves it (descriptor, stored keyring archive, authority, verified cache);
+    no keyring package is installed."""
     meta = json.loads((ONIO / 'serve.json').read_text())
     sources = root / 'var/lib/haseen/vapt/sources'
     (sources / 'sync').mkdir(parents=True, exist_ok=True)
     (sources / 'oniomarchy.conf').write_bytes((ONIO_FX / 'source-descriptor.conf').read_bytes())
+    # The keyring package is never installed: an approval keeps the audited
+    # archive in haseen's own root state.
+    (sources / 'oniomarchy-keyring.pkg').write_bytes((ONIO / 'serve' / meta['keyring']).read_bytes())
     with tarfile.open(ONIO / 'serve' / meta['keyring'], 'r:*') as archive:
         files = {member.name: archive.extractfile(member).read() for member in archive.getmembers()
                  if member.isfile() and member.name.startswith(ONIO_KEYRINGS)}
-    for name, data in files.items():
-        target = root / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
-    installed = load_installed()
-    installed = [p for p in installed if p['name'] != 'oniomarchy-keyring'] + [
-        {'name': 'oniomarchy-keyring', 'version': meta['version'], 'url': 'https://pkgs.oniomarchy.com',
-         'files': sorted(files)}]
-    save_installed(installed)
     fingerprints = lambda text, suffix: sorted({line.split(':')[0] for line in text.splitlines() if line.strip()})
     trusted = set(fingerprints(files[ONIO_KEYRINGS + 'oniomarchy-trusted'].decode(), ':'))
     revoked = set(fingerprints(files[ONIO_KEYRINGS + 'oniomarchy-revoked'].decode(), ''))
@@ -1080,6 +1075,16 @@ else:
         log('sudo', args)
     if mode == 'root' and os.environ.get('VAPT_FAKE_TRUST') == '1' and command == 'pacman-key':
         # Records the trust request; no keyring is initialised or modified.
+        # VAPT_PACMAN_KEY_FAIL=<option> models an operational failure of that
+        # option (an unreadable keyring, a failed deletion); --list-keys
+        # lists every fixture primary as present.
+        option = argv[0] if argv else ''
+        if os.environ.get('VAPT_PACMAN_KEY_FAIL') and option == '--' + os.environ['VAPT_PACMAN_KEY_FAIL']:
+            print('pacman-key: fixture ' + option + ' failure', file=sys.stderr)
+            sys.exit(2)
+        if option == '--list-keys':
+            for fpr in ONIO_FPR.values():
+                print('pub   ed25519 2026-01-01 [SC]\n      ' + fpr + '\nuid           [ full ] fixture\n')
         sys.exit(0)
     if mode == 'root' and os.environ.get('VAPT_FAKE_TRUST') == '1' and command == 'tee' and len(argv) in (1, 2):
         # Global repository activation (tee -a) and the layer's applied record

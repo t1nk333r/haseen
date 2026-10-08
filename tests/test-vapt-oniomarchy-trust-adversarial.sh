@@ -37,23 +37,24 @@ state_mutate() { # CASE
     symlinked-cached-database) mv "$s/sync/oniomarchy.db" "$SANDBOX/db"; ln -s "$SANDBOX/db" "$s/sync/oniomarchy.db" ;;
     database-note-directory) rm "$s/oniomarchy.database"; mkdir "$s/oniomarchy.database" ;;
     hardlinked-authority) ln "$s/oniomarchy.authority" "$SANDBOX/authority.link" ;;
-    symlinked-keyring-directory)
-        mv "$ROOT/usr/share/pacman/keyrings" "$SANDBOX/keyrings"
-        ln -s "$SANDBOX/keyrings" "$ROOT/usr/share/pacman/keyrings" ;;
-    keyring-file-fifo) rm "$ROOT/usr/share/pacman/keyrings/oniomarchy-revoked"; mkfifo "$ROOT/usr/share/pacman/keyrings/oniomarchy-revoked" ;;
+    symlinked-keyring-archive)
+        mv "$s/oniomarchy-keyring.pkg" "$SANDBOX/keyring.pkg"
+        ln -s "$SANDBOX/keyring.pkg" "$s/oniomarchy-keyring.pkg" ;;
+    keyring-archive-fifo) rm "$s/oniomarchy-keyring.pkg"; mkfifo "$s/oniomarchy-keyring.pkg" ;;
     *) return 97 ;;
     esac
 }
-# The private root state and the retained keyring files: type, mode, link
-# count and content (no file is opened that could block, e.g. a FIFO).
+# The private root state (with the stored keyring archive) and the pacman
+# keyrings directory, which must stay free of oniomarchy files: type, mode,
+# link count and content (no file is opened that could block, e.g. a FIFO).
 trust_state() {
     find -P "$ROOT$SOURCES" "$ROOT/usr/share/pacman/keyrings" -printf '%P %y %m %n %s %l\n' 2>/dev/null | LC_ALL=C sort || true
     adv_digest "$ROOT$SOURCES"
-    adv_digest "$ROOT/usr/share/pacman/keyrings"
+    adv_digest "$ROOT/usr/share/pacman/keyrings" || true # absent: nothing is ever installed there
 }
 for case_name in hardlinked-descriptor group-writable-descriptor descriptor-directory world-writable-sources \
     world-writable-sync symlinked-sync sources-regular-file symlinked-state-ancestor symlinked-cached-database \
-    database-note-directory hardlinked-authority symlinked-keyring-directory keyring-file-fifo; do
+    database-note-directory hardlinked-authority symlinked-keyring-archive keyring-archive-fifo; do
     adv_approved "vapt-adv-trust-path-$case_name"
     state_mutate "$case_name"
     before="$(vapt_tree)"
@@ -197,6 +198,41 @@ assert_status 'a key file lacking an accepted primary is refused' 1 "$STATUS"
 assert_contains 'and says so' "$OUTPUT" 'does not hold exactly the newly accepted primaries'
 assert_eq 'key file short: no trust change' '' "$(adv_trust_ops)"
 assert_eq 'key file short: no authority write' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+
+# --- revoked-key removal: absence only from a listing that succeeded ---------
+# A rotation that revokes the pin (ROT already accepted, ROT-signed database).
+# A failed keyring lookup or deletion fails the approval before the authority
+# is written, so the revocation stays pending; a retry then completes it.
+for failing in list-keys delete; do
+    adv_case "vapt-adv-trust-revoke-$failing"
+    vapt_onio_serve trusted=PIN,ROT
+    vapt_api repo-enable --yes
+    assert_status "revoke $failing: initial approval" 0 "$STATUS"
+    vapt_onio_serve keyring=20261015-1 trusted=ROT revoked=PIN pkgstatus=pinned dbstatus=rotated
+    authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+    : >"$CALLS/sudo"
+    VAPT_PACMAN_KEY_FAIL="$failing" vapt_api repo-enable --yes
+    assert_status "revoke $failing: an operational failure fails the approval" 1 "$STATUS"
+    assert_contains "revoke $failing: and says the trust change is incomplete" "$OUTPUT" 'retry the approval'
+    assert_eq "revoke $failing: the revocation is not recorded as completed" "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+    : >"$CALLS/sudo"
+    vapt_api repo-enable --yes
+    assert_status "revoke $failing: a retry after recovery completes" 0 "$STATUS"
+    assert_contains "revoke $failing: the retry removes the revoked key" "$(adv_trust_ops)" "pacman-key --delete $PIN"
+    assert_contains "revoke $failing: and records the revocation" "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'revoked\t'"$PIN"
+done
+
+# --- an installed oniomarchy keyring package is never left in place ----------
+# Its files are where a manual pacman-key --populate would apply them.
+adv_case vapt-adv-trust-installed-keyring
+mkdir -p "$ROOT/usr/share/pacman/keyrings"
+printf '%s:128:\n' D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0 >"$ROOT/usr/share/pacman/keyrings/oniomarchy-trusted"
+vapt_api repo-enable --yes
+assert_status 'an installed oniomarchy keyring file refuses approval' 1 "$STATUS"
+assert_contains 'and names it' "$OUTPUT" '/usr/share/pacman/keyrings/oniomarchy-trusted'
+assert_contains 'and why' "$OUTPUT" 'haseen never installs it'
+assert_eq 'installed keyring: no trust change' '' "$(adv_trust_ops)"
+assert_eq 'installed keyring: not approved' no "$(adv_exists "$ROOT$SOURCES/oniomarchy.conf")"
 
 # --- repeated approval of an unchanged keyring changes no trust --------------
 adv_case vapt-adv-trust-reapprove

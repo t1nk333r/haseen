@@ -59,10 +59,13 @@ assert_eq 'the fetch order is key, database, signature, keyring, signature' \
     "$(paste -sd'|' "$CALLS/order")"
 assert_contains 'only the pinned primary is locally signed' "$(trust_ops)" "pacman-key --lsign-key $PIN"
 assert_not_contains 'pacman-key --populate is never run' "$(trust_ops)" '--populate'
-assert_not_contains 'no publisher ownertrust is imported' "$(trust_ops)" 'ownertrust'
+assert_not_contains 'no publisher ownertrust is imported' "$(trust_ops)" 'import-ownertrust'
 assert_eq 'the initial approval lsigns exactly the pin' "pacman-key --lsign-key $PIN" "$(grep -o 'pacman-key --lsign-key [A-F0-9]*' <<<"$(trust_ops)")"
-assert_contains 'the keyring is installed without scriptlets' "$(vapt_calls sudo)" '-U --noscriptlet'
-assert_not_contains 'the keyring commit config names no repository' "$(vapt_calls commit-config)" '[oniomarchy]'
+assert_not_contains 'the keyring package is never installed' "$(vapt_calls sudo)" ' -U '
+assert_eq 'nothing named oniomarchy-* lands in the pacman keyrings directory' '' \
+    "$(compgen -G "$ROOT/usr/share/pacman/keyrings/oniomarchy*" || true)"
+assert_eq 'the audited archive is kept in haseen root state' yes \
+    "$([[ -f $ROOT$SOURCES/oniomarchy-keyring.pkg ]] && echo yes || echo no)"
 assert_contains 'the authority accepts the pin' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'accepted\t'"$PIN"
 vapt_api repo-status true
 assert_contains 'the approved source is usable from recorded evidence' "$OUTPUT" '"state": "usable"'
@@ -144,12 +147,12 @@ assert_eq 'nothing is written through it' '' "$(ls -A "$SANDBOX/elsewhere")"
 assert_eq 'redirected directory: no trust change' '' "$(trust_ops)"
 trust_case vapt-onio-trust-redirected
 vapt_onio_seed
-mv "$ROOT/usr/share/pacman/keyrings/oniomarchy-trusted" "$SANDBOX/trusted"
-ln -s "$SANDBOX/trusted" "$ROOT/usr/share/pacman/keyrings/oniomarchy-trusted"
+mv "$ROOT$SOURCES/oniomarchy-keyring.pkg" "$SANDBOX/keyring.pkg"
+ln -s "$SANDBOX/keyring.pkg" "$ROOT$SOURCES/oniomarchy-keyring.pkg"
 vapt_api repo-enable --yes
-assert_status 'a redirected retained keyring file is refused' 1 "$STATUS"
+assert_status 'a redirected stored keyring archive is refused' 1 "$STATUS"
 assert_contains 'it needs manual review' "$OUTPUT" 'manual review'
-assert_eq 'redirected keyring file: no trust change' '' "$(trust_ops)"
+assert_eq 'redirected keyring archive: no trust change' '' "$(trust_ops)"
 
 # --- rotation -----------------------------------------------------------------
 while IFS=$'\t' read -r name itrusted irevoked via version trusted revoked signed dbsigned expect; do

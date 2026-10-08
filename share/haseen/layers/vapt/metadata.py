@@ -4090,10 +4090,16 @@ def render_authority(record):
     return '\n'.join(lines) + '\n'
 
 
+ONIOMARCHY_KEYRING_ARCHIVE = 'oniomarchy-keyring.pkg'
+
+
 def oniomarchy_authority(root):
     """(absent|ok|mismatch, record, reason): the retained root authority
-    record must match the installed keyring package version and the bytes
-    of its retained keyring files; anything else is missing proof."""
+    record must match the audited keyring archive haseen keeps in its own
+    root state (sources/oniomarchy-keyring.pkg: digest, identity, member
+    digests and declared lists). The keyring package is never installed, so
+    nothing under /usr/share/pacman/keyrings is evidence; anything else is
+    missing proof."""
     try:
         data = oniomarchy_state_bytes(root, 'oniomarchy.authority', 64 * 1024)
     except (OSError, ValueError) as error:
@@ -4104,27 +4110,47 @@ def oniomarchy_authority(root):
         record = parse_authority(data.decode('utf-8', 'strict'))
     except (UnicodeDecodeError, ValueError) as error:
         return 'mismatch', None, str(error)
-    local = [p for p in installed(root) if p.get('name') == 'oniomarchy-keyring']
-    if len(local) != 1 or local[0].get('version') != record['version']:
-        return 'mismatch', None, 'installed oniomarchy-keyring differs from the recorded authority'
-    contents = {}
+    try:
+        archive = oniomarchy_state_bytes(root, ONIOMARCHY_KEYRING_ARCHIVE, 64 * 1024 * 1024)
+    except (OSError, ValueError):
+        return 'mismatch', None, 'stored keyring archive unreadable or redirected'
+    if archive is None:
+        return 'mismatch', None, 'stored keyring archive missing'
+    if hashlib.sha256(archive).hexdigest() != record['sha256']:
+        return 'mismatch', None, 'stored keyring archive changed'
+    try:
+        (name, version), _ = snapshot_identity(archive)
+        _, contents = read_archive(archive, contents=True)
+    except (OSError, ValueError):
+        return 'mismatch', None, 'stored keyring archive unreadable'
+    if (name, version) != ('oniomarchy-keyring', record['version']):
+        return 'mismatch', None, 'stored keyring archive differs from the recorded authority'
     for path, digest in record['files'].items():
-        try:
-            contents[path] = metadata_bytes(Path(str(root) + '/' + path), 16 * 1024 * 1024)
-        except (OSError, ValueError):
-            return 'mismatch', None, 'retained keyring file unreadable or redirected: /' + path
-        if hashlib.sha256(contents[path]).hexdigest() != digest:
-            return 'mismatch', None, 'retained keyring file changed: /' + path
-    # The record is authority only for the sets those files declare: an
-    # accepted/revoked set they never declared is not proof.
+        if path not in contents or hashlib.sha256(contents[path]).hexdigest() != digest:
+            return 'mismatch', None, 'stored keyring archive member differs: /' + path
+    # The record is authority only for the sets the archive declares: an
+    # accepted/revoked set it never declared is not proof.
     try:
         trusted, revoked = parse_keyring_lists(contents[ONIOMARCHY_KEYRING_FILES[1]].decode('ascii'),
                                                contents[ONIOMARCHY_KEYRING_FILES[2]].decode('ascii'))
     except (UnicodeDecodeError, ValueError):
-        return 'mismatch', None, 'retained keyring lists malformed'
+        return 'mismatch', None, 'stored keyring lists malformed'
     if record['accepted'] != trusted - revoked or record['revoked'] != revoked:
-        return 'mismatch', None, 'recorded accepted/revoked primaries differ from the retained keyring lists'
-    return 'ok', record, 'installed keyring matches the recorded authority'
+        return 'mismatch', None, 'recorded accepted/revoked primaries differ from the stored keyring lists'
+    return 'ok', record, 'stored keyring archive matches the recorded authority'
+
+
+def oniomarchy_installed_keyring(root):
+    """Leftovers of an installed oniomarchy-keyring package: the package
+    record and any oniomarchy-* file under usr/share/pacman/keyrings, where
+    a manual pacman-key --populate would apply the publisher's lists and
+    ownertrust."""
+    found = ['package oniomarchy-keyring' for p in installed(root) if p.get('name') == 'oniomarchy-keyring']
+    directory = Path(str(root) + '/usr/share/pacman/keyrings')
+    if os.path.lexists(directory):
+        found += ['/usr/share/pacman/keyrings/' + child.name for child in sorted(directory.iterdir())
+                  if child.name.startswith('oniomarchy')]
+    return found
 
 
 def oniomarchy_signers(root):
@@ -4253,6 +4279,11 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
     state, previous, reason = oniomarchy_authority(root)
     if state == 'mismatch':
         raise ValueError('existing keyring authority unverified (' + reason + '); manual review required')
+    leftovers = oniomarchy_installed_keyring(root)
+    if leftovers:
+        raise ValueError('an installed oniomarchy keyring (' + ', '.join(leftovers) + ') would let pacman-key --populate '
+                         'apply the publisher lists and ownertrust; haseen never installs it. Remove it first '
+                         '(pacman -R oniomarchy-keyring); manual review required')
     pin = pinned_signers()
     previous_accepted = previous['accepted'] - previous['revoked'] if previous else {pin}
     previous_revoked = previous['revoked'] if previous else set()

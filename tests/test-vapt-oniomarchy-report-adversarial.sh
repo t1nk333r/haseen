@@ -113,7 +113,7 @@ while IFS='|' read -r label expected; do
     case "$label" in
     'host stanza declared') vapt_conf_add "$HOST_STANZA" ;;
     'source disabled') rm "$ROOT$SOURCES/oniomarchy.conf" ;;
-    'retained keyring file changed') printf 'x' >>"$ROOT/usr/share/pacman/keyrings/oniomarchy-trusted" ;;
+    'stored keyring archive changed') printf 'x' >>"$ROOT$SOURCES/oniomarchy-keyring.pkg" ;;
     'cached database changed') printf 'x' >>"$ROOT$SOURCES/sync/oniomarchy.db" ;;
     'installed version drifted') sed -i 's/"1.0-1"/"0.9-1"/' "$ROOT/var/lib/haseen/vapt/installed.json" ;;
     'unsupported architecture') vapt_onio_arch aarch64 ;;
@@ -135,7 +135,7 @@ EOF
 done <<'EOF'
 host stanza declared|2
 source disabled|2
-retained keyring file changed|2
+stored keyring archive changed|2
 cached database changed|2
 installed version drifted|2
 unsupported architecture|2

@@ -99,7 +99,9 @@ done < <(python3 -c 'import json, sys; [print(k, v) for k, v in json.load(open(s
 
 # --- offline canary: every recorded-evidence state, never silently repaired ---
 onio_mutate() { # MUTATION — break one piece of the approved evidence
-    local keyrings="$ROOT/usr/share/pacman/keyrings"
+    # The keyring package is never installed; its evidence is the audited
+    # archive kept in the private root state.
+    local archive="$ROOT$SOURCES/oniomarchy-keyring.pkg"
     case "$1" in
     none) ;;
     remove-descriptor) rm "$ROOT$SOURCES/oniomarchy.conf" ;;
@@ -111,12 +113,12 @@ onio_mutate() { # MUTATION — break one piece of the approved evidence
     tamper-database) printf 'x' >>"$ROOT$SOURCES/sync/oniomarchy.db" ;;
     remove-signature) rm "$ROOT$SOURCES/sync/oniomarchy.db.sig" ;;
     no-keyring-record) vapt_onio_serve exclude=oniomarchy-keyring && vapt_onio_seed ;;
-    tamper-keyring-file) printf 'x' >>"$keyrings/oniomarchy-trusted" ;;
+    tamper-keyring-file) printf 'x' >>"$archive" ;;
     symlink-keyring-file)
-        cp "$keyrings/oniomarchy-trusted" "$SANDBOX/elsewhere"
-        rm "$keyrings/oniomarchy-trusted"
-        ln -s "$SANDBOX/elsewhere" "$keyrings/oniomarchy-trusted" ;;
-    drift-keyring-version) sed -i 's/"20260906-1"/"20260101-1"/' "$ROOT/var/lib/haseen/vapt/installed.json" ;;
+        cp "$archive" "$SANDBOX/elsewhere"
+        rm "$archive"
+        ln -s "$SANDBOX/elsewhere" "$archive" ;;
+    drift-keyring-version) sed -i 's/^version\t20260906-1$/version\t20260101-1/' "$ROOT$SOURCES/oniomarchy.authority" ;;
     remove-authority) rm "$ROOT$SOURCES/oniomarchy.authority" ;;
     arch-aarch64) vapt_onio_arch aarch64 ;;
     *) return 97 ;;
