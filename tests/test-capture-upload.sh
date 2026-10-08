@@ -585,6 +585,64 @@ assert_contains "--image declined: nothing was sent" "$OUTPUT" "Nothing was uplo
 assert_eq "--image declined: the original is unchanged" "PNG-original" "$(cat "$SHOT")"
 assert_eq "--image declined: the temporary copy is gone" "" "$(search_copies)"
 
+# RV-1: a picture of the screen is stored only in a private directory of ours.
+# Without XDG_RUNTIME_DIR there is no shared /tmp fallback, and an existing
+# capture directory that is a link, someone else's, or open to others is
+# refused before anything is swept or captured into it.
+# refused_store LABEL — the last run captured nothing and said why.
+refused_store() {
+    assert_status "$1: refused" 1 "$STATUS"
+    assert_contains "$1: it says why" "$OUTPUT" "not a private directory"
+    assert_not_contains "$1: nothing was captured" "$(calls)" "grim"
+    assert_not_contains "$1: nothing reached the clipboard" "$(calls)" "wl-copy"
+}
+cap_sandbox search-store-noruntime
+capture env -u XDG_RUNTIME_DIR haseen search screen image --geometry "0,0 10x10"
+assert_status "no XDG_RUNTIME_DIR: refused" 1 "$STATUS"
+assert_contains "no XDG_RUNTIME_DIR: it says why" "$OUTPUT" "XDG_RUNTIME_DIR"
+assert_not_contains "no XDG_RUNTIME_DIR: no /tmp fallback, nothing captured" "$(calls)" "grim"
+
+cap_sandbox search-store-runtime-open
+chmod 755 "$XDG_RUNTIME_DIR"
+capture haseen search screen image --geometry "0,0 10x10"
+refused_store "a runtime dir open to others"
+assert_eq "a runtime dir open to others: no capture dir is made in it" "absent" \
+    "$([[ -e $XDG_RUNTIME_DIR/haseen-search-screen ]] && echo present || echo absent)"
+
+cap_sandbox search-store-link
+mkdir -m 700 "$SANDBOX/elsewhere"
+printf old >"$SANDBOX/elsewhere/capture-old"
+touch -d '-1 hour' "$SANDBOX/elsewhere/capture-old"
+ln -s "$SANDBOX/elsewhere" "$XDG_RUNTIME_DIR/haseen-search-screen"
+capture haseen search screen image --geometry "0,0 10x10"
+refused_store "a symlinked capture dir"
+assert_eq "a symlinked capture dir: nothing is swept or written through it" "capture-old" \
+    "$(ls -A "$SANDBOX/elsewhere")"
+assert_eq "a symlinked capture dir: the link is left alone" "$SANDBOX/elsewhere" \
+    "$(readlink "$XDG_RUNTIME_DIR/haseen-search-screen")"
+
+cap_sandbox search-store-open
+mkdir -m 755 "$XDG_RUNTIME_DIR/haseen-search-screen"
+printf old >"$XDG_RUNTIME_DIR/haseen-search-screen/capture-old"
+touch -d '-1 hour' "$XDG_RUNTIME_DIR/haseen-search-screen/capture-old"
+capture haseen search screen image --geometry "0,0 10x10"
+refused_store "a capture dir open to others"
+assert_eq "a capture dir open to others: its mode and contents are not touched" "755|capture-old" \
+    "$(stat -c %a "$XDG_RUNTIME_DIR/haseen-search-screen")|$(ls -A "$XDG_RUNTIME_DIR/haseen-search-screen")"
+
+# A directory that is really someone else's needs a second uid: the user's
+# subordinate range, through an unprivileged user namespace, chowns a fresh
+# 0700 directory to it.
+cap_sandbox search-store-foreign
+foreign="$XDG_RUNTIME_DIR/haseen-search-screen"
+if unshare --map-auto --map-root-user sh -c 'mkdir -m 700 -- "$1" && chown 1:1 -- "$1"' sh "$foreign" 2>/dev/null &&
+    [[ -d $foreign && ! -O $foreign ]]; then
+    capture haseen search screen image --geometry "0,0 10x10"
+    refused_store "someone else's capture dir"
+else
+    echo "  skip: no subordinate uid to own a foreign capture dir (unshare --map-auto)" >&2
+fi
+
 # --- annotate then upload ----------------------------------------------------
 cap_sandbox shot-upload
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload --dry-run

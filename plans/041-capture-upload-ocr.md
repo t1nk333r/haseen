@@ -51,8 +51,10 @@ because it's been almost nothing but AI botnet spam"*.
   prints the warning to stderr, asks for confirmation **on every invocation**
   (no "don't ask again"), posts `encoded_image` to
   `https://lens.google.com/v3/upload`, follows the `Location:` header and
-  `xdg-open`s it. Captures live in a 0700 `$XDG_RUNTIME_DIR` dir, are
-  `mktemp`'d, swept after 10 minutes and deleted on exit.
+  `xdg-open`s it. Captures live in `$XDG_RUNTIME_DIR/haseen-search-screen`,
+  used only when it and the runtime dir are real 0700 directories of ours,
+  are `mktemp`'d, swept after 10 minutes and deleted on exit. There is no
+  `/tmp` fallback.
 - **satty is themed through `overrides.css`**, symlinked to the theme render
   (`share/haseen/themed/satty.css.tpl` → `current/theme/satty.css`), because
   satty's `config.toml` is TOML and cannot include another file. Satty 0.22.0
@@ -143,3 +145,27 @@ is Google's.
 - **XBackBone probe.** A connection failure printed `000000`
   (`-w` plus `|| echo 000`) and was read as next-gen; anything that is not
   three digits is now `000`, the tagged-release shape.
+
+## Final review fixes 2026-10-08 (PR #38)
+
+- **RV-1, private capture storage.** The capture dir fell back to the shared
+  `/tmp/haseen-search-screen`, and an existing dir was used without checking
+  that it was ours, real or private (a failed `chmod` was ignored), with the
+  sweep running first. Now image mode settles the directory before freezing
+  the screen, sweeping or capturing: no `XDG_RUNTIME_DIR` stops it (no `/tmp`
+  fallback); the runtime dir must be ours and 0700; the capture dir is made
+  0700 if absent, and one that is a link, someone else's, or open to others
+  is refused untouched. The undocumented `HASEEN_SEARCH_TMP` override is gone.
+  Cases: no runtime dir, an open runtime dir, a symlinked, a 0755 and a
+  foreign-owned capture dir (chowned to a subordinate uid through
+  `unshare --map-auto`; skipped where none is available), each asserting
+  that grim never ran and nothing was swept or written. 18 failed before.
+- **RV-2, `--image` copy.** Cleanup skipped the capture whenever `--image`
+  was given, so every hand-off and upload left a copy of the picture behind.
+  The command-owned copy is now removed on every exit; the user's file never
+  is. Cases: hand-off, consented upload and declined upload, each asserting
+  the original is unchanged and no copy remains. 3 failed before.
+- **RV-4, OCR fixture.** The tesseract stub answered without reading stdin,
+  so a grim that wrote late got `SIGPIPE` and the `pipefail` OCR reported
+  failure. The stub now drains stdin when its input is `stdin`; a
+  `GRIM_DELAY` case makes the race deterministic (failed before).
