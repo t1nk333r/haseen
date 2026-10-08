@@ -131,7 +131,7 @@ Window {
         eq("charging resets: the next crossing warns again",
            ["warn", "", "", "warn"], feed(dflt, [[20, d], [19, "charging"], [25, d], [20, d]]).events);
         eq("charging keeps a level reached until the charge climbs above it",
-           { warned: true, critical: true, armed: false, cancelled: false, deadline: 0, low: 5 }, feed(dflt, [[5, d], [5, "charging"]]).state);
+           { warned: true, critical: true, armed: false, cancelled: false, acted: false, deadline: 0, low: 5 }, feed(dflt, [[5, d], [5, "charging"]]).state);
         eq("a charger that comes and goes at 19% warns once (review: a warning per unplug)",
            ["warn", "", "", "", ""], feed(dflt, [[19, d], [19, "charging"], [19, d], [19, "charging"], [19, d]]).events);
         eq("a charger that raises the charge resets the levels",
@@ -167,6 +167,17 @@ Window {
         eq("fire: slept through the deadline: a fresh countdown, no action", { run: false, rearm: true, deadline: 65000 + 3600000 + 60000 },
            { run: late.run, rearm: late.rearm, deadline: late.state.deadline });
         eq("fire: it disarms after running", false, L.fire(armed.state, onBattery, sus, 65000).state.armed);
+        // review R1: the action ran (suspend at 9%); back from it, still on
+        // battery below criticalAt, nothing starts again until a reset
+        const ran = L.fire(armed.state, onBattery, sus, 65000).state;
+        eq("after the action ran, readings below criticalAt start no new countdown",
+           ["", "", ""], feed(sus, [[8, d], [8, d], [7, d]], ran).events);
+        eq("after the action ran, turning the action off and on starts none either",
+           [], L.step(L.step(ran, onBattery, dflt, 70000).state, onBattery, sus, 71000).events);
+        eq("after the action ran, a charge risen on a charger resets: the next crossing arms again",
+           ["", "critical+arm"], feed(sus, [[10, "charging"], [9, d]], ran).events);
+        eq("after the action ran, climbing to criticalAt+3 resets: the next crossing arms again",
+           ["", "critical+arm"], feed(sus, [[13, d], [10, d]], ran).events);
         eq("action verbs", ["hibernate", "shutdown"],
            [L.fire(armed.state, onBattery, L.config({ criticalAction: "hibernate" }), 65000).verb,
             L.fire(armed.state, onBattery, L.config({ criticalAction: "poweroff" }), 65000).verb]);
@@ -174,8 +185,10 @@ Window {
         eq("no command without a verb", [], L.actionCommand("/x/bin", ""));
         // review fixes: flapping charger, Cancel kept, action turned off,
         // Unknown at the deadline, the countdown runs from when it is shown
-        eq("a flapping charger re-arms the countdown without a second critical notice",
-           ["critical+arm", "disarm", "arm", "disarm", "arm"], feed(sus, [[9, d], [9, "charging"], [9, d], [9, "charging"], [9, d]]).events);
+        eq("a flapping charger calls the countdown off once and never brings it back (review R3)",
+           ["critical+arm", "disarm", "", "", ""], feed(sus, [[9, d], [9, "charging"], [9, d], [9, "charging"], [9, d]]).events);
+        eq("a charger that rises after a flap resets: the next crossing arms again",
+           ["critical+arm", "disarm", "", "", "critical+arm"], feed(sus, [[9, d], [9, "charging"], [9, d], [10, "charging"], [9, d]]).events);
         eq("a Cancel holds across a charger that comes and goes",
            ["", "", ""], feed(sus, [[9, "charging"], [9, d], [8, d]], L.cancel(armed.state)).events);
         eq("a Cancel is forgotten once the charge rises on a charger",
@@ -237,7 +250,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "76" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "81" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -338,6 +351,17 @@ QML
     assert_eq "countdown: nothing ran" '""' "$(jq '.lastAction' <<<"$RESULT")"
     assert_not_contains "countdown: no systemctl" "$CALLS" "systemctl"
     assert_contains "countdown: the charger closes the countdown notification (no orphaned notify-send)" "$CALLS" "notify-send closed"
+
+    # A charger that comes and goes at 10% (a loose cable): the countdown is
+    # called off once and does not come back, so one critical notification
+    # and one "called off" for the crossing, however often it flaps.
+    scenario flap '{"criticalAction":"suspend"}' 8000 "Percentage=12 State=2" \
+        "sleep=2 Percentage=10" "sleep=1.2 State=1" "sleep=0.8 State=2" "sleep=0.8 State=1" "sleep=0.8 State=2"
+    assert_eq "flap: one critical notification for the crossing" 1 "$(grep -c '^notify-send .*Battery critical' <<<"$CALLS")"
+    assert_eq "flap: one called-off notification" 1 "$(grep -c '^notify-send .*called off' <<<"$CALLS")"
+    assert_eq "flap: three notifications in all (the warn at 12%, the critical, the called-off)" 3 "$(grep -c '^notify-send -' <<<"$CALLS")"
+    assert_eq "flap: called off, not armed" "false true" "$(jq -r '"\(.logic.armed) \(.logic.cancelled)"' <<<"$RESULT")"
+    assert_not_contains "flap: no systemctl" "$CALLS" "systemctl"
 
     # The countdown notification is not shown: fail closed, nothing armed.
     for mode in hang exit; do

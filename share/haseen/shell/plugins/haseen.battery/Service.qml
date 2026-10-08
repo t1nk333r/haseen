@@ -18,8 +18,11 @@ import "BatteryLogic.js" as Logic
 //               Cancel was pressed or a charger came. Closing the
 //               notification is not a cancel; a notification that could
 //               not be shown is (fail closed: no action without a Cancel).
-// A level resets once the charge climbs 3 points above it; nothing repeats
-// while the charge stays below, also across a charger that comes and goes.
+// A level resets once the charge climbs 3 points above it or rises on a
+// charger; nothing repeats while the charge stays below, also across a
+// charger that comes and goes. One countdown per crossing: once it ran, was
+// cancelled or was called off by a charger, it does not start again before
+// that reset.
 // Notifications go through `haseen notification send`, so the shell's own
 // notification server shows them and keeps them in its history.
 Scope {

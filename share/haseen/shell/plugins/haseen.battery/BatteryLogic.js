@@ -58,11 +58,13 @@ function reading(device) {
     };
 }
 
-// cancelled: the countdown was called off (Cancel) or could not be offered
-// (its notification was not shown); it does not come back until the charge
-// recovers. low: the charge at the last discharging reading (-1: none yet).
+// cancelled: the countdown was called off (Cancel, or a charger came) or
+// could not be offered (its notification was not shown). acted: the action
+// ran. Either way this crossing's countdown is spent: it does not come back
+// until the charge recovers. low: the charge at the last discharging reading
+// (-1: none yet).
 function initial() {
-    return { warned: false, critical: false, armed: false, cancelled: false, deadline: 0, low: -1 };
+    return { warned: false, critical: false, armed: false, cancelled: false, acted: false, deadline: 0, low: -1 };
 }
 
 function copy(state) {
@@ -73,17 +75,19 @@ function copy(state) {
 //   "warn"     notify once: the charge reached warnAt while discharging
 //   "critical" notify once (urgency critical): it reached criticalAt
 //   "arm"      start the countdown (with "critical", when an action is set;
-//              alone when back on battery below criticalAt, or the action
-//              was turned on there, and it was not cancelled)
+//              alone when the action was turned on below criticalAt and
+//              this crossing's countdown is not spent)
 //   "disarm"   stop the countdown: a charger came, the charge recovered,
 //              the battery went away or criticalAction became none
-// A charger resets both levels and a Cancel once the charge has risen on it
-// (above `low`): a charger that comes and goes without charging (a loose
-// cable) neither repeats the notifications nor forgets a Cancel. Without a
-// charger a level resets once the charge is HYSTERESIS points above it (a
-// recalibrated reading, a swapped battery). Unknown and no battery change
-// nothing else (no battery also disarms). Reaching both levels in one
-// reading (a start at 5%) notifies once, as critical.
+// One critical notification per crossing: a countdown that was cancelled,
+// called off by a charger or not shown, or whose action ran, stays spent
+// until the level resets. A charger resets both levels once the charge has
+// risen on it (above `low`): a charger that comes and goes without charging
+// (a loose cable) neither repeats the notifications nor brings a countdown
+// back. Without a charger a level resets once the charge is HYSTERESIS
+// points above it (a recalibrated reading, a swapped battery). Unknown and
+// no battery change nothing else (no battery also disarms). Reaching both
+// levels in one reading (a start at 5%) notifies once, as critical.
 function step(state, r, cfg, nowMs) {
     const next = copy(state);
     const events = [];
@@ -105,9 +109,15 @@ function step(state, r, cfg, nowMs) {
     if (cfg.criticalAction === "none")
         disarm();
     if (r.power === "charging") {
-        disarm();
-        if (next.low < 0 || r.percent > next.low)
+        if (next.low < 0 || r.percent > next.low) {
+            disarm();
             return { state: initial(), events: events };
+        }
+        // Called off, and it stays called off: coming back would take a
+        // second Cancel notification for the same crossing.
+        if (next.armed)
+            next.cancelled = true;
+        disarm();
         return { state: next, events: events };
     }
     if (r.power !== "discharging")
@@ -118,6 +128,7 @@ function step(state, r, cfg, nowMs) {
         disarm();
         next.critical = false;
         next.cancelled = false;
+        next.acted = false;
     }
     if (next.warned && !next.critical && r.percent >= cfg.warnAt + HYSTERESIS)
         next.warned = false;
@@ -129,7 +140,7 @@ function step(state, r, cfg, nowMs) {
         events.push("critical");
         if (action)
             arm();
-    } else if (next.critical && action && !next.armed && !next.cancelled && r.percent <= cfg.criticalAt) {
+    } else if (next.critical && action && !next.armed && !next.cancelled && !next.acted && r.percent <= cfg.criticalAt) {
         arm();
     } else if (!next.warned && r.percent <= cfg.warnAt) {
         next.warned = true;
@@ -174,7 +185,9 @@ function remaining(state, nowMs) {
 //         fresh notification and countdown start instead of acting at once;
 //   retry UPower's state is Unknown (it is, briefly, around plug events):
 //         look again in `delay` ms (RETRY_MS) rather than act on no news.
-// A charger, Cancel or a missing battery leaves nothing to run.
+// A charger, Cancel or a missing battery leaves nothing to run. Running
+// spends the countdown (acted): the next reading below criticalAt, after a
+// resume, does not start another one.
 function fire(state, r, cfg, nowMs) {
     const next = copy(state);
     const verb = ACTION_VERBS[cfg.criticalAction] || "";
@@ -190,6 +203,7 @@ function fire(state, r, cfg, nowMs) {
     if (r.power !== "discharging")
         return { run: false, rearm: false, retry: true, delay: RETRY_MS, verb: "", state: next };
     next.armed = false;
+    next.acted = true;
     next.deadline = 0;
     return { run: true, rearm: false, retry: false, verb: verb, state: next };
 }

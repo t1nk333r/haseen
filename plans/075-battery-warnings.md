@@ -25,8 +25,10 @@
   - The critical notification has urgency critical. With an action set, it says
     "Suspending in 60 s: plug in or press Cancel" and carries a Cancel button. `haseen system
     suspend|hibernate|shutdown` runs 60 s later, unless Cancel was pressed, a charger came, or the charge
-    recovered. After a cancel nothing comes back until a charger resets the level. A timer that fires more
-    than 30 s late (the machine slept through it) starts a fresh notification and countdown and does not act.
+    recovered. One countdown per crossing: once it ran, was cancelled, was called off by a charger or could
+    not be shown, nothing comes back until the level resets (the charge rises on a charger, or climbs 3
+    points above `criticalAt`). A timer that fires more than 30 s late (the machine slept through it)
+    starts a fresh notification and countdown and does not act.
 - Notifications go through `bin/haseen-notification-send`, so the shell's own server (haseen.pager)
   shows them and keeps them in history. The Cancel button is that command's `--exec echo cancel`. The service
   reads "cancel" from the process's stdout. Closing the notification is not a cancel.
@@ -35,10 +37,16 @@
   is listed in `share/haseen/default/shell.json` `services`. The migration
   `share/haseen/migrations/1791397394-battery-service.sh` appends it to a user `services` array, because
   arrays replace the default.
+- NixOS: Home Manager runs no haseen migrations. A user whose `shell.json` has its own `services` array
+  adds `haseen.battery` to it once, by hand or with `haseen migrate` (which also runs any other pending
+  migration; `haseen migrate --pending` lists them); `nix/README.md` says so. Running migrations from the
+  activation was rejected: an existing Nix user's ledger is empty, so every older migration would run
+  unattended, including the one that puts `haseen.logo` back into a bar the user may have trimmed.
 - `Compat/Dms/Services/BatteryService.qml` no longer claims that haseen covers DMS's battery alerts.
   haseen.battery's service now provides the alerts. DMS's sounds stay unprovided.
 - `tools/fake-upower.py` is a fake UPower and power-profiles-daemon on a private bus
-  (`DBUS_SYSTEM_BUS_ADDRESS`). Each stdin line is one property change. It refuses the real system bus.
+  (`DBUS_SYSTEM_BUS_ADDRESS`). Each stdin line is one property change; a `client` line holds the rest
+  until a client has read the display device. It refuses the real system bus.
 
 ## Evidence
 
@@ -93,9 +101,9 @@ logging stubs on the shell's PATH.
   notify-send beside itself with SIGINT restored and, on TERM/HUP/INT, sends it SIGINT, notify-send's own
   "close the notification and quit" (libnotify 0.8.8 `tools/notify-send.c` `on_sigint`).
 - **Charger flaps, Unknown, action turned off.** A charger resets the levels and a Cancel only once the
-  charge rises on it (`low`); a flap re-arms an uncancelled countdown without a second critical notice and
-  never re-warns. `fire` acts only on `discharging` and retries in 2 s on Unknown. `criticalAction: none`
-  while armed disarms.
+  charge rises on it (`low`), so a flap never re-warns. `fire` acts only on `discharging` and retries in
+  2 s on Unknown. `criticalAction: none` while armed disarms. (This round also let a flap re-arm the
+  countdown; that sent a second critical notification and was replaced, see below.)
 - Evidence: `tests/test-battery.sh` (47; 76 units, incl. flap, Cancel kept, Unknown retry, `shown`; engine:
   the charger closes the notification, an unshown notification (id 0, or notify-send failing) leaves the
   countdown called off); `tests/test-notification.sh` (50: `-p` with `--exec`, unshown fails, TERM closes).
@@ -103,3 +111,25 @@ logging stubs on the shell's PATH.
   id over D-Bus from the sender (a test or dry run could close a live notification on the owner's bus).
 - Known limit: on a shell restart systemd TERMs notify-send and the sender together; the sender's SIGINT may
   arrive after notify-send has died, leaving a toast on a non-haseen notification daemon.
+
+## Final review fixes (2026-10-08)
+
+- **A completed action no longer re-arms.** `fire` cleared `armed` but left the crossing unspent, so the
+  first discharging reading after a resume below `criticalAt` started another countdown and could
+  suspend the machine again. `fire` now sets `acted`; `step` arms again only after the level resets.
+- **A charger flap sends one critical notification per crossing.** The model re-armed after a flap
+  without a `critical` event, but every arm sends the Cancel notification, so each unplug sent another
+  one. A charger that arrives while armed, without the charge rising, now calls the countdown off for
+  the crossing (`cancelled`, one "called off" notice). Re-arming would need a fresh Cancel
+  notification (fail closed), which is the repeat the contract rules out. Rejected: keeping the old
+  toast up while on the charger and resuming under it, which leaves "plug in or press Cancel" on screen
+  indefinitely on a charge-limited battery that never rises.
+- **Engine scenarios are timed from the shell.** The fake applied its script from its own start, so a
+  shell that took more than ~3.5 s to start (the full suite) saw the charger before the 10 % reading and
+  three countdown checks failed. Reproduced by a `QS_BIN` wrapper that sleeps 4 s before `qs`
+  (44/47); the fake's `client` gate fixes it (47/47 with the same wrapper).
+- Evidence: `tests/test-battery.sh` 53/53 (81 JS units). New: fire then readings below `criticalAt`
+  start nothing, also with the action turned off and on; a risen charge or `criticalAt + 3` resets and
+  the next crossing arms; a flap gives `critical+arm, disarm` and nothing more; the engine `flap`
+  scenario counts one critical and one called-off notify-send call across two flaps. Before the fix:
+  47/59 (critical 3, called-off 2).
