@@ -16,6 +16,15 @@ VAPT_FRAGMENT="$HASEEN_PATH/default/vapt/shell.sh"
 VAPT_META="$VAPT_LAYER/metadata.py"
 VAPT_INCLUDE="$HASEEN_PATH/default/shell/init.sh"
 
+# Privileged fixture paths are checked all the way back to /. A CI checkout
+# may sit below a host-runner-owned mount (such as /__w) that the unprivileged
+# container user cannot trust. Keep mutable sysroots outside that ancestry;
+# TMPDIR can select a real filesystem when /tmp is a small tmpfs.
+VAPT_TEST_OUT="$(mktemp -d "${TMPDIR:-/tmp}/haseen-vapt-tests.XXXXXXXX")"
+vapt_fixture_cleanup() { rm -rf -- "$VAPT_TEST_OUT"; }
+trap vapt_fixture_cleanup EXIT
+OUT="$(cd "$VAPT_TEST_OUT" && pwd -P)"
+
 # Repository rows (repo|name|version|url|provides|depends|install) every
 # scenario starts from: the native and COAE build/runtime prerequisites.
 VAPT_BASE=(

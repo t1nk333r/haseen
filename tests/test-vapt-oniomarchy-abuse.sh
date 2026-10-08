@@ -22,7 +22,7 @@ ABUSE_SANDBOX=''
 abuse_cleanup() {
     [[ -z $ABUSE_SANDBOX ]] || rm -rf -- "$ABUSE_SANDBOX"
 }
-trap abuse_cleanup EXIT
+trap 'abuse_cleanup; vapt_fixture_cleanup' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 ABUSE_CONF=$'[options]\nArchitecture = auto\nDownloadUser = alpm\nSigLevel = Required DatabaseOptional\n\n[core]\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n\n[extra]\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
