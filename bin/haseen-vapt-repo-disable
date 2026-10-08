@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# haseen:summary Disable the privately configured oniomarchy source without removing packages or signing keys
+# haseen:args [--dry-run] [--yes] oniomarchy
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+usage() {
+    echo "Usage: haseen vapt repo-disable [--dry-run] [--yes] oniomarchy"
+    echo "  Removes only the unchanged haseen-owned private descriptor. Installed packages and the"
+    echo "  pacman keyring trust remain."
+}
+parse_common_flags "$@"
+[[ ${#REST[@]} == 1 && ${REST[0]} == oniomarchy ]] || { usage >&2; exit 2; }
+require_not_root
+layer_run_function vapt vapt_repo disable

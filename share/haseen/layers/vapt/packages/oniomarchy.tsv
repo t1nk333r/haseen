@@ -1,0 +1,63 @@
+# The reviewed fixed oniomarchy admission set (plan 087): every package its
+# repository publishes, by exact name, with its role. Nothing outside this
+# table is ever a candidate, even when a newer signed database lists it; a
+# change needs review here and in VAPT_ONIOMARCHY_ADMITTED.
+#   candidate       may serve the named inventory item (its exact name or the
+#                   aliases.tsv row) as the last tier; "-" serves no item, so
+#                   the row selects or installs nothing by itself
+#   dependency      only as a selected package's exact declared dependency;
+#                   never a root target ("-" or its dependencies.tsv name)
+#   infrastructure  oniomarchy-keyring: only the source approval path
+# package	role	logical
+airgeddon	candidate	airgeddon
+android-apktool-bin	candidate	-
+armitage-git	candidate	armitage
+autopsy	candidate	autopsy
+beef-xss	candidate	beef
+burpsuite	candidate	burpsuite
+caido-desktop	candidate	caido-desktop
+can-utils	candidate	can-utils
+chirp-next	candidate	chirp
+cubicsdr	candidate	cubicsdr
+dirb	candidate	dirb
+dump1090-git	candidate	dump1090
+eyewitness-git	candidate	-
+fern-wifi-cracker-git	candidate	fern-wifi-cracker
+ffuf	candidate	ffuf
+gophish	candidate	gophish
+java17-openjfx-bin	dependency	java17-openjfx
+libsoup	dependency	-
+libsoup-docs	dependency	-
+maltego	candidate	maltego
+nuclei	candidate	nuclei
+oniomarchy-keyring	infrastructure	-
+peass-ng	candidate	-
+powershell-bin	dependency	powershell-bin
+powershell-empire-git	candidate	-
+recon-ng	candidate	recon-ng
+responder	candidate	responder
+seclists	candidate	seclists
+sherlock	candidate	sherlock
+sleuthkit-java	dependency	sleuthkit-java
+sliver	candidate	sliver
+social-engineer-toolkit	candidate	social-engineer-toolkit
+steghide	candidate	steghide
+supersdr	candidate	supersdr
+theharvester-git	candidate	theharvester
+webkit2gtk	dependency	-
+webkit2gtk-docs	dependency	-
+wfuzz	candidate	wfuzz
+wordlists	candidate	wordlists
+python-aiomultiprocess	dependency	-
+python-croniter	dependency	-
+python-dicttoxml	dependency	-
+python-flasgger	dependency	-
+python-flask-restful	dependency	-
+python-limits	dependency	-
+python-rq	dependency	-
+python-selenium	dependency	-
+python-slowapi	dependency	-
+python-torrequest	dependency	-
+python-unicodecsv	dependency	-
+python-yattag	dependency	-
+python-zombie-imp	dependency	-

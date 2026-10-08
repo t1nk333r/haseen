@@ -8,4 +8,6 @@
 /tools/vptr/vptr
 /tools/vptr/wlr-virtual-pointer-unstable-v1-client-protocol.h
 /tools/vptr/wlr-virtual-pointer-unstable-v1-protocol.c
-tools/__pycache__/
+
+# Python bytecode (tools/, the VAPT auditor)
+__pycache__/

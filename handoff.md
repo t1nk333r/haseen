@@ -69,6 +69,7 @@ The owner's other repos:
 | Multiplexer, yazi, the VM rig | `share/haseen/default/{herdr,tmux,yazi}/`, `share/haseen/themed/yazi.toml.tpl`, `tools/lab.sh` | 044 |
 | Settings index | `share/haseen/lib/settings.sh`, `bin/haseen-settings-*` | 045 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
+| Optional VAPT workstation provisioning | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `docs/vapt.md` | 007, 087 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |
@@ -76,7 +77,10 @@ The owner's other repos:
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
-tooling) was dropped by the owner and is out of scope.
+tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
+the optional `vapt` layer; plan 087 extends its inventory and adds the opt-in
+private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
+`bin/haseen-vapt-repo-status`; independent review outstanding).
 
 ## Decisions
 
