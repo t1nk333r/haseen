@@ -7,6 +7,8 @@ efb5099	Hyprland 0.56.2 build commit (plan 003)
 c389e73	njpatel/omapager upstream commit, plan 025
 e101d4c	salemsayed/omaprayers v2.5.0, plan 026
 92dafcd81244	rochacbruno/WorldClock commit pinned in the plan 035 registry smoke
+6b8ed87	Foxboron/sbctl tag 0.18, plan 002 decision 7
+69fb7dba244f	Foxboron/go-uefi pin of sbctl 0.17/0.18, plan 002 decision 7
 780cc23	waydots commit that retired the waybar config (clock-moon.sh), plan 048
 e6ef714	t1nk333r/nvim commit haseen.nvim is pinned to, plan 065
 29d07b1a8f474c77bf02aece948373f40abed105	bjarneo/aether main, read for plan 072 (wallhaven defaults)
