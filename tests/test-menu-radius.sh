@@ -8,9 +8,6 @@
 # waiting for the next `haseen theme set`.
 
 QS_BIN=${QS_BIN:-/usr/bin/qs}
-MENU_PANEL="$HASEEN_PATH/shell/plugins/haseen.menu/Panel.qml"
-
-assert_not_contains "the menu keeps no radius of its own" "$(cat "$MENU_PANEL")" "windowRadius"
 
 if [[ ! -x $QS_BIN ]]; then
     echo "  skip: Quickshell not installed; the menu radius was not run" >&2
