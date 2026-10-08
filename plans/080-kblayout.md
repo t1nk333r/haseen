@@ -8,7 +8,7 @@
 - **Depends on**: 079
 - **Category**: shell, input
 - **Planned at**: 2026-10-07, gap 6 of `docs/reference-shell-gaps.md`
-- **State**: DONE 2026-10-07 (`tests/test-keyboard.sh`; nested screenshots EN and AR)
+- **State**: DONE 2026-10-07 (`tests/test-keyboard.sh`; nested screenshots EN and AR, and the three-layout list)
 
 ## Change
 
@@ -48,8 +48,9 @@
 - **The list** (design review M9): rows show code, xkb description ("Arabic") and the xkb name/variant in
   `Theme.subtle`; the cursor row has the `Theme.selection` fill, the active code is in the accent; the title is the
   accent panel title; Up/Down, j/k, Tab move and Enter picks, as in haseen.session.
-- `tests/test-keyboard.sh` 44 checks; 10 of them fail on 2981fb3. No nested screenshot of the list was taken in
-  this pass (run out of time); the engine test drives it.
+- `tests/test-keyboard.sh` 44 checks; 10 of them fail on 2981fb3. The list in a nest with three layouts:
+  `~/.cache/haseen-wt/scratch-design/shots/7c-kblayout-list.png` (EN English (US) `us` on the selection
+  fill with the accent code, AR Arabic `ara`, DE German `de nodeadkeys`, accent title "Keyboard layout").
 
 ## Not verified
 

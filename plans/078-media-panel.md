@@ -16,20 +16,21 @@
   toggles play/pause; a right or middle click opens the panel (`Widget.qml:36-43`), and so does
   `haseen shell ipc panel toggle haseen.media`. The host loads it lazily and frees it on close.
 - Contents, all `Quickshell.Services.Mpris` property bindings (D-Bus signals):
-  - a switcher, one pill per player, shown with two or more (`Panel.qml:193`). The picked player is held by
+  - a switcher, one shared `Pill` per player, shown with two or more (`Panel.qml:156`). The picked player is held by
     D-Bus name while the panel is open; with no pick, or when the picked one leaves, the panel shows the
     bar's pick: playing, else paused, else the first (`Media.js:40` `selectIndex`, `playerLabels` `:128`);
   - cover art, title, artist, album. Art that cannot show leaves a themed placeholder (a note glyph on
-    `Theme.surfaceAlt`); the image is decoded at most at twice its cell (`Panel.qml:248`);
+    `Theme.surfaceAlt`); the image is decoded at most at twice its cell (`Panel.qml:209`);
   - a seek bar with elapsed and total time (`formatTime` `:52`, `fraction` `:62`). A drag moves only the
-    knob and sends one `SetPosition` on release (`TrackBar.qml`, `live: false`);
+    knob and sends one `SetPosition` on release (the shared `TrackBar`, `live: false`);
   - shuffle, previous, play/pause, next, repeat (None → Playlist → Track, `nextLoop` `:109`);
   - the player's own volume (`Volume`), a bar like the audio panel's.
 - A control the player does not offer is hidden, not greyed (`Media.js:90` `controls`): previous, next and
   play/pause follow `CanGoPrevious`/`CanGoNext`/`CanPlay|CanPause`; the time row needs `Position` and a
   length; dragging needs `CanSeek`; shuffle, repeat and volume need `CanControl` and the property itself.
-- Theme tokens only; inline `Choice` (as in the battery panel) and `Control` components; `TrackBar.qml`
-  is the plugin's one shared bar.
+- Theme tokens only. The switcher pills and the seek and volume bars are the shared `qs.Haseen.Widgets`
+  `Pill` and `TrackBar` (`share/haseen/shell/Haseen/Widgets/`, also used by the battery and display
+  panels); only `Control` (a `BarButton`) stays inline. Play/pause is an accent pill.
 - `tools/fake-mpris.py`: a fake MPRIS player for tests and nests (capabilities, metadata, `omit=` for
   properties a player lacks; every call and write is logged). It refuses the login session's bus.
 - `tools/vptr`: `rd`/`ru` and `md`/`mu` press and release the right and middle buttons.
@@ -98,6 +99,15 @@ seek/length/shuffle/repeat/volume, https art). Pointer input through `tools/vptr
 - `remoteArt` on with a real https URL: no network fetch was made from a test or the nest.
 - Real players (Spotify, Firefox, mpv with mpv-mpris); only the fake was on the bus.
 - Dragging the seek and volume bars with the pointer (the engine test calls the same functions).
+
+## Final shape (2026-10-08)
+
+The review round moved the plugin-local `TrackBar.qml` and the inline `Choice` to the shared `Pill` and
+`TrackBar`, made the secondary text readable (`Theme.subtle`) and drew play/pause as an accent pill.
+`~/.cache/haseen-wt/scratch-design/shots/4a-media-panel.png` (two fake players, Spotify picked: cover,
+title/artist/album, seek 4:18 / 4:34, shuffle, previous, pause, next, repeat, volume 65 %) and
+`4b-media-radio.png` (Radio picked) are the final panel in a nest; `tests/test-media.sh` drives it in the
+real engine.
 
 ## Rejected
 

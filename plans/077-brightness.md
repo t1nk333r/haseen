@@ -111,8 +111,8 @@ Nest from `tools/nest-launch.sh`, scratch shell with `HASEEN_SYSROOT` pointing a
   reads the command there and prints a line naming the option; `--help` and the skill say so. The menu's
   Turn On/Off run the command in a held terminal, so the hint is what a NixOS user sees there.
 - Evidence: `tests/test-brightness.sh` 172/172. Before the fixes: the three cache checks (no map, `list
-  --rescan`, a map for another signature) fail on 685f212's parent (154/157), the eleven NixOS checks on
-  the previous `bin/haseen-setup-ddc` (161/172).
+  --rescan`, a map for another signature) fail on 5879d80 (154/157), the eleven NixOS checks with the
+  previous `bin/haseen-setup-ddc` (161/172).
 
 ## Not verified
 

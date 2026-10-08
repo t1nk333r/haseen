@@ -24,11 +24,13 @@
   - charge limit pills (60 %, 80 %, Full, plus the current one) from the status `threshold`. A click
     starts `haseen battery limit set N|off` through `Apps.launch`, which asks for the password in its
     floating terminal, then closes the panel;
-  - a "System settings" row, which opens the menu at `setup`.
+  - Screen off / Screen on buttons (plan 084);
+  - a "Setup" row, which opens the menu at `setup`.
 - Formatting lives in `Model.js` (glyph, state, duration, rate, energy, health, profiles, status parse,
   limit choices). The bar widget shares the glyph and charging rules.
-- Theme tokens only, inline components (`Choice`, `SectionLabel`), no timers. Status and profile list
-  run on open and when the state changes.
+- Theme tokens only, no timers. The pills are the shared `qs.Haseen.Widgets` `Pill`
+  (`share/haseen/shell/Haseen/Widgets/Pill.qml`, also used by the media and display panels); only
+  `SectionLabel` stays inline. Status and profile list run on open and when the state changes.
 
 ## Evidence
 
@@ -55,7 +57,18 @@ set through `HASEEN_SYSROOT`.
   opened it while the nest's window output was still enabled (a "dangling screen object" warning), so
   the click probably closed that one. The click path was not shown working.
 - The real `haseen battery limit` sudo terminal and a real power-profiles-daemon were not run.
-- The "System settings" row was not clicked.
+- The "Setup" row was not clicked.
+- The menu's Setup › Power and Battery row only where a battery exists, and the panel in a light theme,
+  were not shot.
+
+## Final shape (2026-10-08)
+
+The review round replaced the panel's inline `Choice` with the shared `Pill`, made the secondary text
+readable (`Theme.subtle`), added the Screen row (plan 084) and renamed "System settings" to "Setup".
+`~/.cache/haseen-wt/scratch-design/shots/2-battery-panel.png` is the final panel in a nest on the fake
+UPower: 9 %, "15 min left", On battery, 8.4 W, 25 / 50 Wh, health 88 %, 120 cycles, Balanced and 80 %
+active, Screen off / Screen on, Setup. `tests/test-battery.sh` clicks Screen off and Screen on in the real
+engine (the panel closes, then the DPMS off 1000 ms or more after the click; on within 500 ms).
 
 ## Rejected
 

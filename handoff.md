@@ -1,6 +1,6 @@
 # Handoff — haseen
 
-Orientation for whoever picks this up next, human or agent. Updated 2026-10-07.
+Orientation for whoever picks this up next, human or agent. Updated 2026-10-08.
 
 ## What this repo is
 
@@ -46,9 +46,16 @@ The owner's other repos:
 | Migration ledger | `bin/haseen-migrate*`, `share/haseen/lib/migrate.sh`, `share/haseen/migrations/`, `share/haseen/systemd/user/haseen-migrate-notify.service` | 028 |
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
 | Keybind sheet; Learn's keybinding and tmux lists | `bin/haseen-keybinds`, `bin/haseen-keybinds-list`, `bin/haseen-tmux-keybinds`, `bin/haseen-menu-select`, `share/haseen/lib/keybinds-scan.lua`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 071 |
+| Low-battery warnings, power and battery panel | `share/haseen/shell/plugins/haseen.battery/` (`Service.qml`, `BatteryLogic.js`, `Panel.qml`), `share/haseen/migrations/1791397394-battery-service.sh`, `tools/fake-upower.py`, `tests/test-battery.sh` | 075 076 |
 | Brightness command, DDC setup, display panel | `bin/haseen-brightness`, `bin/haseen-setup-ddc`, `share/haseen/shell/plugins/haseen.display/` | 077 |
 | Media panel (cover art, seek, switcher) | `share/haseen/shell/plugins/haseen.media/`, `tools/fake-mpris.py` | 078 |
+| Shared panel widgets: `Pill`, `TrackBar` (battery, display, media panels) | `share/haseen/shell/Haseen/Widgets/` | 076 077 078 |
+| OSD mic, layout and lock-key cards; keyboard state | `share/haseen/shell/plugins/haseen.osd/`, `share/haseen/shell/Haseen/Keyboard.{qml,js}`, `tests/test-keyboard.sh` | 079 |
+| Keyboard-layout bar widget and list | `share/haseen/shell/plugins/haseen.kblayout/` | 080 |
+| Launcher providers (`@` windows, `:` emoji, `/` commands, `?` web) | `share/haseen/shell/plugins/haseen.{windows,emojisearch,commands,websearch}/`, `tests/test-launcher-providers.sh` | 081 |
 | Idle suspend, AC/battery timeouts | `share/haseen/shell/plugins/haseen.idle/`, `bin/haseen-setup-idle`, `tests/test-idle.sh` | 019 082 |
+| Theme generator keys and Wallhaven paging | `share/haseen/shell/plugins/haseen.themegen/`, `tests/test-themegen-keys.sh` | 083 |
+| Screen off / Screen on | `bin/haseen-screen-{off,on}`, menu System rows, the battery panel's Screen row, `tests/test-screen.sh` | 084 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
@@ -73,25 +80,30 @@ tooling) was dropped by the owner and is out of scope.
 - 0003: own shell, DMS swap-in, plugin compat
 - 0004: installer now, PKGBUILDs later
 
-## State and queue (2026-10-07)
+## State and queue (2026-10-08)
 
 - `main` = 96193cf: plans up to 074 are merged (PRs #13–#34).
-- Queued: the 8 gaps from `docs/reference-shell-gaps.md`, approved by the
-  owner ("tackle all 8"). They land as one unit: one branch, luna/gaps, built
-  gap after gap, one PR. Plan numbers are fixed:
+- Branch luna/gaps (one PR) implements the 8 gaps from
+  `docs/reference-shell-gaps.md` ("tackle all 8", owner) as plans 075–082, plus
+  083 (theme generator keys and paging) and 084 (Screen off / Screen on). All
+  ten are DONE; `plans/README.md` and each plan record the final behaviour and
+  evidence, including the review rounds' fixes.
 
   | Gap | Plan | Default |
   |---|---|---|
-  | 1 low-battery warnings | 075 | ON (owner-approved; record in AGENTS.md) |
+  | 1 low-battery warnings | 075 | ON (owner-approved; in AGENTS.md); `criticalAction` none |
   | 4 power/battery panel | 076 | panel kind on `haseen.battery` |
   | 2 `haseen brightness` + `haseen.display` panel | 077 | panel OFF; `haseen setup ddc` OFF |
-  | 3 media panel | 078 | panel kind on `haseen.media` |
+  | 3 media panel | 078 | panel kind on `haseen.media`; `remoteArt` OFF |
   | 5 OSD mic/layout/lock keys | 079 | lock keys OFF |
   | 6 `haseen.kblayout` widget | 080 | OFF |
   | 7 launcher providers: windows, emoji, commands, web | 081 | each OFF |
   | 8 idle suspend + AC/battery timeouts | 082 | `suspendAfter` 0 (never) |
 
-  The next free plan number after them is 083.
+  Owner decision 2026-10-08: `onBattery` keeps haseen's names
+  (`screensaverAfter`, `lockAfter`, `dpmsAfter`, `suspendAfter`) instead of
+  the spec's `dimAfter`/`screenOffAfter`; there is no dim step (plan 082).
+  The next free plan number is 085.
 
 ## Gates
 
@@ -130,7 +142,9 @@ Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
 - `tools/fake-upower.py`: a fake UPower and power-profiles-daemon for tests and
   nests (plan 075). Start it on a private `dbus-daemon` and give the shell the same
   `DBUS_SYSTEM_BUS_ADDRESS`. Each stdin line is a property change
-  (`sleep=1 Percentage=10 State=2`). It refuses the real system bus.
+  (`sleep=1 Percentage=10 State=2`); a `client` line holds the rest until the
+  shell has read the display device, so a script is timed from the shell's
+  start. It refuses the real system bus.
 - `tools/fake-mpris.py NAME [KEY=VALUE…]`: a fake MPRIS player for tests and
   nests (plan 078): capabilities, metadata, `omit=Shuffle,Volume` for properties
   a player lacks; every call and write is logged. Start it on a private
