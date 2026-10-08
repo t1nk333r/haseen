@@ -338,6 +338,30 @@ assert_eq "dry-run ddc prints the ddcutil call" "DRYRUN: ddcutil --bus 9 setvcp 
 assert_not_contains "and never writes the monitor" "$(calls)" "setvcp"
 assert_eq "the monitor did not move" "40" "$(cat "$DDC_VALUE")"
 
+# A dry run that has to detect (no map, or one made for another signature)
+# resolves the monitor from that detect and still touches nothing: no cache
+# directory, no cache file, no temporary file, an old map left as it was.
+rm -rf "${CACHE%/*}"
+reset_log
+capture haseen brightness up ddc:DP-1 --dry-run
+assert_status "dry-run ddc without a map succeeds" 0 "$STATUS"
+assert_eq "without a map: the call from a fresh detect" "DRYRUN: ddcutil --bus 9 setvcp 10 45" "$OUTPUT"
+assert_eq "without a map: it detected" 1 "$(grep -c 'detect --brief' <<<"$(calls)")"
+assert_eq "without a map: no cache directory made" no "$([[ -e ${CACHE%/*} ]] && echo yes || echo no)"
+capture haseen brightness list --kind ddc --rescan --dry-run
+assert_eq "list --rescan --dry-run lists from the detect" "ddc:DP-1" "$(cut -f1 <<<"$OUTPUT")"
+assert_eq "and makes no cache either" no "$([[ -e ${CACHE%/*} ]] && echo yes || echo no)"
+mkdir -p "${CACHE%/*}"
+printf '# boot=another outputs= i2c=6,7\n7\tDP-1\tLG ULTRAGEAR\n' >"$CACHE"
+touch -d '-1 hour' "$CACHE"
+stale="$(stat -c '%Y %s' "$CACHE")"
+reset_log
+capture haseen brightness set ddc:DP-1 50% --dry-run
+assert_eq "a map for another signature: the call from a fresh detect, not the stale bus" "DRYRUN: ddcutil --bus 9 setvcp 10 50" "$OUTPUT"
+assert_eq "the stale map is not replaced" "# boot=another outputs= i2c=6,7|$stale" "$(head -n1 "$CACHE")|$(stat -c '%Y %s' "$CACHE")"
+assert_eq "and no temporary file is left" "ddc-displays.tsv" "$(find "${CACHE%/*}" -name 'ddc-displays*' -printf '%f\n')"
+assert_eq "the monitor did not move in any dry run" "40" "$(cat "$DDC_VALUE")"
+
 # --- haseen setup ddc ----------------------------------------------------------------------
 export HASEEN_INLINE=1
 recorder() {

@@ -169,6 +169,8 @@ ddc_detect() {
 }
 
 DDC_RESCANNED=false
+# A dry run's detect: kept here, never written to the cache.
+DDC_DETECTED=""
 
 # ddc_signature — what a bus map depends on: this boot (bus numbers can move
 # between boots), the connected DRM outputs (a monitor plugged in or out) and
@@ -188,13 +190,19 @@ ddc_signature() {
     printf 'boot=%s outputs=%s i2c=%s\n' "$boot" "${outputs%,}" "${buses%,}"
 }
 
-# ddc_rescan [SIGNATURE] — detect again and replace the cache (a cache, so no
-# dry run). A failed or timed-out detect still writes a map, an empty one, so
-# the DDC_RETRY wait applies to it and no temporary file is left behind.
+# ddc_rescan [SIGNATURE] — detect again and replace the cache. A failed or
+# timed-out detect still writes a map, an empty one, so the DDC_RETRY wait
+# applies to it and no temporary file is left behind. The map is replaced
+# atomically (mktemp + mv), so a key press racing it never reads half a map.
+# A dry run touches nothing: it detects into DDC_DETECTED instead.
 ddc_rescan() {
     local sig="${1:-}" tmp
-    [[ -n $sig ]] || sig="$(ddc_signature)"
     DDC_RESCANNED=true
+    if $DRY_RUN; then
+        DDC_DETECTED="$(ddc_detect || true)"
+        return 0
+    fi
+    [[ -n $sig ]] || sig="$(ddc_signature)"
     mkdir -p "${DDC_CACHE%/*}"
     tmp="$(mktemp "$DDC_CACHE.XXXXXX")"
     {
@@ -215,12 +223,19 @@ ddc_cache_old() {
 # ddc_map — the cached BUS CONNECTOR MODEL lines. Detected again when there is
 # no map, when it was made for another signature (or before maps had one),
 # and when it lists no monitor and is old (one asleep at the last detect).
+# In a dry run a detect is used from memory and the cache stays as it was.
 ddc_map() {
     local sig head=""
-    sig="$(ddc_signature)"
-    [[ -f $DDC_CACHE ]] && { IFS= read -r head <"$DDC_CACHE" || true; }
-    if [[ $head != "# $sig" ]] || { ! grep -q '^[0-9]' -- "$DDC_CACHE" && ddc_cache_old; }; then
-        ddc_rescan "$sig"
+    if ! { $DRY_RUN && $DDC_RESCANNED; }; then
+        sig="$(ddc_signature)"
+        [[ -f $DDC_CACHE ]] && { IFS= read -r head <"$DDC_CACHE" || true; }
+        if [[ $head != "# $sig" ]] || { ! grep -q '^[0-9]' -- "$DDC_CACHE" && ddc_cache_old; }; then
+            ddc_rescan "$sig"
+        fi
+    fi
+    if $DRY_RUN && $DDC_RESCANNED; then
+        [[ -z $DDC_DETECTED ]] || printf '%s\n' "$DDC_DETECTED"
+        return 0
     fi
     grep -v '^#' -- "$DDC_CACHE" || true
 }
