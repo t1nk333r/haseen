@@ -822,6 +822,8 @@ Item {
         const e = items[id];
         if (!e || !e.provider || (!fresh && providersLoaded[id]))
             return;
+        if (!Model.providerAllowed(e.provider, Config.pluginEntry("haseen.security").enabled))
+            return;
         const next = Object.assign({}, providersLoaded);
         next[id] = true;
         providersLoaded = next;
@@ -848,7 +850,7 @@ Item {
         const id = providerQueue[0];
         providerQueue = providerQueue.slice(1);
         const e = items[id];
-        if (!e || !providers[e.provider]) {
+        if (!e || !providers[e.provider] || !Model.providerAllowed(e.provider, Config.pluginEntry("haseen.security").enabled)) {
             startProvider();
             return;
         }
@@ -939,7 +941,7 @@ Item {
         stderr: StdioCollector { id: providerErr }
         onExited: code => {
             const spec = root.providers[kind];
-            if (spec && root.items[menuId]) {
+            if (spec && root.items[menuId] && Model.providerAllowed(kind, Config.pluginEntry("haseen.security").enabled)) {
                 const security = kind.startsWith("security-");
                 const rows = security && code !== 0 && kind !== "security-local"
                     ? Model.securityInfo(menuId, "error", Security.text(providerErr.text))

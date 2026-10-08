@@ -108,10 +108,25 @@ choice. Missing usage evidence is refusal, not permission to guess a command.
 
 The panel uses fixed whitelisted capability verbs and argv, never package/path
 shell interpolation. Service actions pass displayed unit/FragmentPath
-expectations; either mismatch refuses before privilege. The terminal remains
-the confirmation authority and no panel launch passes `--yes`. CA trust still
-requires the full typed fingerprint. A launch is only a request, not success;
+expectations; either mismatch refuses before privilege. Stop launches directly
+without a terminal or Review/confirmation. Start/restart and other confirmation
+gates remain terminal-authoritative, and no panel launch passes `--yes`. CA trust
+still requires the full typed fingerprint. A launch is only a request, not success;
 status changes require explicit Refresh or reopen, never polling or retries.
 Preview is the real pure dry-run capture. Forms/paths/addresses/certificates
 stay in memory and user defaults are never rewritten. Do not publish them.
 
+List focus never wraps; Home/End and viewport PageUp/PageDown work in every
+inventory/choice list, while editing keys stay native. Heading entry focus
+announces the nested view, Tab reaches its first control and Review focuses Cancel.
+Endpoint Enter safely validates/prepares Review; certificate-path Enter only
+inspects. Errors preserve the draft and identify/focus the invalid field.
+The first Escape closes an open address chooser only. Preserve the reader's
+complete scoped IPv6 address as one unchanged argv operand: at most one
+`%SCOPE` matching `[A-Za-z0-9_.-]{1,64}`, with separate numeric literal validation.
+Unscoped link-local addresses require explicit interface selection, never DNS.
+Source read errors retain successful sections. Existing-anchor ownership and
+the full selectable fingerprint are independent of inspected certificate data
+and repeated in removal Review. Disabled Security providers perform no reads,
+even during ordinary menu search; do not bypass enablement or a CLI refusal.
+Offscreen fixtures are not actual AT-SPI screen-reader verification.

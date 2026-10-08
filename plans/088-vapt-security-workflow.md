@@ -150,6 +150,8 @@ Component boundaries, one file each:
 - `ActionButton.qml`, `Label.qml`, `Field.qml`, `GroupFilter.qml`,
   `IncludeMissing.qml`: Theme-only readable controls, labelled native editing,
   visible focus, compact wrapped action geometry and missing-inventory checkbox.
+- `SelectableText.qml`: wrapped copyable paths/units, full fingerprints and
+  captured output with a 2px Tab focus ring.
 
 Only `haseen.menu`'s existing static provider map is extended. Flat static ids:
 `setup.security.vapt`, `.panel`, `.tools`, `.services`, `.local`, `.status`.
@@ -471,3 +473,89 @@ no production test shim or weakened assertion was introduced.
   checkout; no unrelated scratch is removed.
 - `QT_QPA_PLATFORM=offscreen TMPDIR="$HOME/.cache/haseen-wt/jtmp" tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`: **5,491/5,492 passed**, 32 suites. The only failure is the separately scoped panel stop consumer launching through `config terminal` instead of directly. All CLI/action and confined transport cases passed; the relocated run had no scratch-quota failure.
 - `tools/check-docs.sh`: **check-docs OK**.
+
+### Batch K: panel conformance and disabled-provider boundary
+
+The final panel interaction requirements are implemented without reinstating
+the superseded wide-form layout, decorative badge/icon or special-width rules.
+The single-column layout, wrapped rows, generic Review label, header Refresh
+and persistent offline-safe copy remain the approved simplified treatments.
+
+1. **Keyboard:** `Inventory.key/focusIndex/pageMove` handles non-wrapping
+   Up/Down/j/k, Home/End and viewport PageUp/PageDown in all six surfaces.
+   Enter/Right/l explicitly inspect/select only; tabs add Home/End and clamp
+   at their edges. `Field` retains native editing and separates submission
+   from blur. Real Qt keyboard events cover each list and editing/Tab paths.
+2. **Reveal/focus:** all six lists forward focused items to `Panel.reveal`,
+   including Tab/mouse focus and identity-stable refresh fallback. Layout/focus
+   notifications also reveal read-only controls after wrapping settles. A surviving
+   id stays focused; a removed id uses the surviving index, or the named empty
+   action/heading. Fitting rows are fully revealed; oversized wrapped rows
+   reveal their beginning. Wrapped content determines row height plus 12px
+   scaled padding on each side. Read-only controls have visible 2px rings.
+3. **Accessible entry:** the card declares pane role/name “Security workstation”;
+   full row names/state/reason and explicit “Item N of M” metadata are retained.
+   Nested headings receive focus/announcement, normal Tab reaches the next
+   control, and focus never selects. Review still initially focuses Cancel.
+   Real heading/Tab/picker tests pass; actual bridge exposure is limited below.
+4. **Long content:** row height follows wrapped text, with no safety-text cap.
+   `SelectableText` keeps paths, unit/FragmentPath, captured diagnostics and full
+   labelled fingerprints wrapped and copyable, using only Theme tokens.
+5. **Scoped literals / AUD-06:** `Model.addressError` validates IPv4/IPv6
+   separately from a single optional `%SCOPE` matching `[A-Za-z0-9_.-]{1,64}`.
+   Chooser records use stable interface/family/address identities and preserve
+   the selected `address` unchanged, including `%enp3s0/%wlan0`;
+   duplicate scopes, malformed numeric literals and missing link-local scope
+   refuse without DNS. `localArgv` retains the whole address as one operand;
+   CLI dry-run remains locality/ownership authority.
+6. **Submission:** endpoint Enter performs field-related syntax validation,
+   focuses the first invalid field and prepares authoritative dry-run/Review
+   only. Certificate-path Enter only inspects. Blur errors use accessible
+   descriptions; drafts survive validation and Back. Actual CLI refusals remain
+   selectable Preview output rather than stderr-derived invented field types.
+7. **Chooser Escape:** explicit `showAddresses` state closes on the first Escape
+   only, preserves the draft and closes after selection. Another Escape backs
+   out normally. Opening the chooser remains the only address-read trigger.
+8. **Source errors:** a source-labelled `repo-status` error and Retry/Refresh
+   remain visible independently, while successful sections stay intact.
+   A fixture injects the source refusal and proves retained tool evidence.
+9. **Anchor/refusals:** the existing anchor's ownership and labelled full
+   selectable SHA-256 are independent of inspection. Removal Review repeats
+   that fingerprint and machine-wide consequence; unchanged owned state is
+   still mandatory. Each inspection/read/preview refusal response announces
+   once through an Item's supported Accessible API, not a Process/Read attachment
+   or a change-triggered duplicate. Real certificate Enter/anchor/Review tests
+   reject unsupported accessibility attachments. No private certificate contents
+   or GUI authorization field exist.
+10. **Rendered evidence and limit:** production components render offscreen at
+    360×480, 560×640 and 720×640, fontSize 11 and 17, using tokens generated by
+    the existing pure theme renderer for stock Flexoki Light and Everforest.
+    Twelve fixture screenshots are generated; the six lists undergo **72**
+    keyboard/focus/scroll matrix checks, with additional oversized wrapped rows.
+    Rendered row text/focus token contrasts meet
+    4.5:1/3:1 in both palettes. The nested D-Bus AT-SPI registry initialized,
+    but the offscreen QML application was not exposed in its accessible tree.
+    Actual AT-SPI roles/names/state, screen-reader order and announcement
+    delivery are **not verified**. No live owner session was accessed.
+
+- **TEST-01 panel half:** `Panel.launch` uses direct `Apps.launch` argv for
+  `service-stop`, without terminal or Review/confirmation, while preserving
+  `--expect-unit/--expect-fragment`. Start/restart retain terminal Review and
+  CLI confirmation. The tester's unchanged direct-stop adversarial assertion
+  passes; no detached launch claims success or refreshes automatically.
+- **Disabled providers:** `MenuModel.providerAllowed` gates only the three
+  fixed Security providers on literal resolved enablement. `loadProvider`,
+  queued dispatch and response application use that gate. The real offscreen
+  menu harness deliberately returns a stale successful row guard: disabled
+  root search/direct load still queue/run zero reads; enabled search performs
+  exactly tool-list/service-list/doctor and produces guarded rows. Unrelated
+  provider conventions and existing default-menu guards remain unchanged.
+- Both tester-authored adversarial suites are included without weakening their
+  assertions. New conformance/provider suites use production components and
+  fixture transports, never a live service, terminal, certificate trust change
+  or installed security tool.
+- `QT_QPA_PLATFORM=offscreen TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt-panel-conformance.sh tests/test-vapt-menu-providers.sh tests/test-vapt-ui-adversarial.sh`: **252/252 passed**, three suites. The conformance runner includes four test functions plus Qt init/cleanup (**6 passed, 0 failed**) alongside the existing **81** UI behavioural engine cases.
+- `TMPDIR=~/.cache/haseen-wt/ktmp SHELLCHECK=$(command -v shellcheck) tools/lint.sh`: **lint OK**, 402 shell, 33 Lua, 180 JSON, 256 QML (qmllint included) and 41 Go files.
+- `tools/check-docs.sh`: **check-docs OK** after the panel behavior, scoped-address
+  and agent-skill documentation updates.
+- `QT_QPA_PLATFORM=offscreen TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`: **5,591/5,591 passed**, 34 suites, 1,583.76 seconds. This includes both unchanged tester adversarial suites, the direct-stop consumer, real disabled/enabled menu providers and the complete panel conformance matrix.

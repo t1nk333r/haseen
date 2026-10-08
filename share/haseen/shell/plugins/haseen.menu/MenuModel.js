@@ -193,6 +193,9 @@ function providerRow(menuId, key, fields) {
 
 var SECURITY_ACTION = "haseen shell ipc panel toggle haseen.security";
 var SECURITY_GUARD = "haseen vapt menu --enabled";
+function providerAllowed(provider, securityEnabled) {
+    return ["security-tools", "security-services", "security-local"].indexOf(provider) < 0 || securityEnabled === true;
+}
 var SERVICE_GUARDS = {
     ssh: SECURITY_GUARD + " && haseen-pkg-present openssh",
     postgresql: SECURITY_GUARD + " && haseen-pkg-present postgresql",

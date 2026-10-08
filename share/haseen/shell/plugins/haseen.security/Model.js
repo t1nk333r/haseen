@@ -99,13 +99,38 @@ function serviceArgv(cli, s, verb) {
     if (!path(cli) || !s || !service(s) || !s.installed || s.ownership !== "verified" || !s.unit || !s.fragmentPath || !member(verb, ["service-start", "service-stop", "service-restart"]) || s.state === "transitioning" || (s.state === "unknown" && verb !== "service-stop")) return [];
     return [cli, "vapt", verb, s.id, "--expect-unit", s.unit, "--expect-fragment", s.fragmentPath];
 }
-function endpointError(d, variant) {
-    if (!d.address) return "Choose a local bind address.";
-    if (!string(d.address) || !/^[0-9a-fA-F:.%_-]+$/.test(d.address) || (d.address.indexOf(":") < 0 && !/^\d{1,3}(\.\d{1,3}){3}$/.test(d.address))) return "Use a local IP address, not a hostname or URL.";
-    if (!d.port) return "Enter a port.";
-    if (!/^\d+$/.test(d.port) || Number(d.port) < 1024 || Number(d.port) > 65535) return "Use a whole-number port from 1024 to 65535. Local helpers do not elevate.";
-    if (variant !== "listener" && !path(d.path)) return variant === "http-server" ? "Choose a directory to serve." : "Choose one installed package-owned file to serve.";
+function addressError(value) {
+    if (!value) return "Choose a local bind address.";
+    if (!string(value)) return "Use a local IP address, not a hostname or URL.";
+    var parts = value.split("%"), literal = parts[0];
+    if (parts.length > 2 || (parts.length === 2 && !/^[A-Za-z0-9_.-]{1,64}$/.test(parts[1]))) return "Use one local interface scope (1–64 letters, digits, _, . or -).";
+    if (literal.indexOf(":") < 0) {
+        if (parts.length !== 1 || !/^\d{1,3}(\.\d{1,3}){3}$/.test(literal) || !literal.split(".").every(function(v) { return Number(v) <= 255 && (v === "0" || v[0] !== "0"); })) return "Use a local IP address, not a hostname or URL.";
+        return "";
+    }
+    // Validate the literal separately; an embedded IPv4 tail occupies two groups.
+    var tail = literal.split(":").pop();
+    if (tail.indexOf(".") >= 0) {
+        if (addressError(tail)) return "Use a valid numeric IPv6 literal.";
+        literal = literal.slice(0, literal.length - tail.length) + "0:0";
+    }
+    if (!/^[0-9a-fA-F:]+$/.test(literal) || literal.indexOf(":::") >= 0 || literal.split("::").length > 2) return "Use a valid numeric IPv6 literal.";
+    var compressed = literal.indexOf("::") >= 0;
+    var groups = literal.split(":").filter(function(v) { return v !== ""; });
+    if (!groups.every(function(v) { return /^[0-9a-fA-F]{1,4}$/.test(v); }) || (compressed ? groups.length >= 8 : groups.length !== 8 || literal[0] === ":" || literal.slice(-1) === ":")) return "Use a valid numeric IPv6 literal.";
+    if (/^fe[89ab][0-9a-f]:/i.test(literal) && parts.length !== 2) return "Choose a local interface scope for this link-local address.";
     return "";
+}
+function endpointErrors(d, variant) {
+    return {
+        address: addressError(d.address),
+        port: !d.port ? "Enter a port." : !/^\d+$/.test(d.port) || Number(d.port) < 1024 || Number(d.port) > 65535 ? "Use a whole-number port from 1024 to 65535. Local helpers do not elevate." : "",
+        path: variant !== "listener" && !path(d.path) ? variant === "http-server" ? "Choose an absolute directory path to serve." : "Choose one absolute installed package-owned file path to serve." : ""
+    };
+}
+function endpointError(d, variant) {
+    var errors = endpointErrors(d, variant);
+    return errors.address || errors.port || errors.path;
 }
 function localArgv(cli, c, draft, operation) {
     if (!path(cli) || !c || !capability(c) || !c.installed || member(c.state, ["missing", "unknown", "refused"])) return [];

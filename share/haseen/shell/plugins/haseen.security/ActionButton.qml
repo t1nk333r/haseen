@@ -10,7 +10,7 @@ Controls.Button {
     property string glyph: ""
     property bool glyphOnly: false
     readonly property real scale: Math.max(1 / 11, Theme.fontSize / 11)
-    implicitHeight: Math.max(40 * scale, contentItem.implicitHeight + 20 * scale)
+    implicitHeight: Math.max(40 * scale, contentItem.implicitHeight + 24 * scale)
     implicitWidth: contentItem.implicitWidth + 24 * scale
     padding: 12 * scale
     activeFocusOnTab: true
@@ -34,11 +34,12 @@ Controls.Button {
             id: label
             x: icon.visible ? icon.width : 0
             width: parent.width - x
-            height: parent.height
+            height: implicitHeight
             text: control.text
             font.family: control.glyphOnly ? Theme.fontMono : Theme.fontFamily
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+            anchors.verticalCenter: parent.verticalCenter
         }
     }
     background: Rectangle {

@@ -17,14 +17,14 @@ Row {
             width: root.width / 4
             text: modelData
             current: root.selected === index
-            activeFocusOnTab: current
+            activeFocusOnTab: activeFocus || current
             Accessible.role: Accessible.PageTab
             Accessible.name: index === 3 ? "Local actions" : modelData
             Accessible.selected: current
             onClicked: root.chosen(index)
             Keys.onPressed: event => {
-                if (event.key === Qt.Key_Left || event.key === Qt.Key_H || event.key === Qt.Key_Right || event.key === Qt.Key_L) {
-                    root.chosen((index + (event.key === Qt.Key_Left || event.key === Qt.Key_H ? 3 : 1)) % 4);
+                if ([Qt.Key_Left, Qt.Key_H, Qt.Key_Right, Qt.Key_L, Qt.Key_Home, Qt.Key_End].indexOf(event.key) >= 0) {
+                    root.chosen(event.key === Qt.Key_Home ? 0 : event.key === Qt.Key_End ? 3 : Math.max(0, Math.min(3, index + (event.key === Qt.Key_Left || event.key === Qt.Key_H ? -1 : 1))));
                     root.focusSelected();
                     event.accepted = true;
                 }

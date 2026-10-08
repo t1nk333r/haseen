@@ -26,7 +26,6 @@ Item {
     property string group: ""
     property bool includeMissing: false
     property string notice: ""
-    onNoticeChanged: if (notice !== "") Accessible.announce(notice, Accessible.Polite)
     property var draft: ({address: "", port: "", path: ""})
     property var inspection: null
     property var anchor: null
@@ -51,8 +50,15 @@ Item {
     function reveal(item: var): void {
         const f = scroll.contentItem;
         const point = item.mapToItem(f.contentItem, 0, 0);
-        if (point.y < f.contentY) f.contentY = point.y;
-        else if (point.y + item.height > f.contentY + f.height) f.contentY = point.y + item.height - f.height;
+        const top = Math.max(0, point.y);
+        if (item.height > f.height || top < f.contentY) f.contentY = top;
+        else if (top + item.height > f.contentY + f.height) f.contentY = top + item.height - f.height;
+    }
+    function revealFocused(): void {
+        const item = root.Window.window ? root.Window.window.activeFocusItem : null;
+        for (let ancestor = item; ancestor; ancestor = ancestor.parent) {
+            if (ancestor === scroll) { reveal(item); return; }
+        }
     }
 
     function close(): void {
@@ -61,6 +67,7 @@ Item {
         if (win && typeof win.closeRequested === "function") win.closeRequested();
     }
     function back(): void {
+        if (view === "endpoint" && body.item && body.item.cancelChoices()) return;
         intentArgv = [];
         if (view === "preview" || view === "review") view = returnView;
         else if (view === "picker") view = "tool";
@@ -128,8 +135,9 @@ Item {
     function launch(): void {
         if (refreshing || intentArgv.length === 0) return;
         // No detached result exists. The foreground CLI is confirmation authority.
-        Apps.launch(selectedId === "remmina" ? intentArgv : Model.terminal(cli, intentArgv), {desktopId: "haseen-security"});
-        notice = selectedId === "remmina" ? "Client launch requested — completion has not been checked." : "Opened in terminal — completion has not been checked. Helpers run until stopped with Ctrl+C.";
+        const direct = selectedId === "remmina" || intentArgv[2] === "service-stop";
+        Apps.launch(direct ? intentArgv : Model.terminal(cli, intentArgv), {desktopId: "haseen-security"});
+        notice = direct ? "Launch requested — completion has not been checked." : "Opened in terminal — completion has not been checked. Helpers run until stopped with Ctrl+C.";
         intentArgv = [];
         view = returnView;
     }
@@ -139,7 +147,8 @@ Item {
         returnView = source === "client" ? "" : source;
         intentCopy = source === "service" ? "May expose network ports according to local configuration. haseen does not change bindings or firewall rules and does not enable this service." : source === "certificate" ? "Machine-wide CA trust change. The terminal re-inspects current bytes and requires the full typed SHA-256 fingerprint for trust; foreign/modified removal is refused." : source === "client" ? "Open the installed remote desktop client. No address, saved connection or credentials are passed." : "Runs in a foreground terminal; stop with Ctrl+C. " + (selectedId === "listener" ? "Receives bytes only. It does not execute received data." : selectedId === "http-server" ? "Serves readable files within this selected directory; escapes outside it are refused." : "Serves only this file as bytes at /file; does not execute it or expose its containing directory.") + "\n" + (draft.address === "::1" || /^127\./.test(draft.address) ? "Loopback only — accessible from this workstation." : "Network exposure — other machines may reach this endpoint. The terminal requires exposure confirmation.");
         previewThenReview = source === "endpoint" && !preview;
-        if (preview || previewThenReview) capturePreview(); else view = "review";
+        if (preview || previewThenReview) capturePreview();
+        else if (argv[2] !== "service-stop") view = "review";
     }
     function capturePreview(): void {
         if (!intentArgv.length || previewProc.running) return;
@@ -156,6 +165,7 @@ Item {
         if (operation === "trust" && (!inspection || inspection.state !== "valid")) return;
         if (operation === "remove" && (!anchor || anchor.state !== "owned" || !anchor.anchor || !anchor.anchor.unchanged)) return;
         prepare(Model.localArgv(cli, selectedCapability, {path: draft.path, fingerprint: anchor && anchor.anchor ? anchor.anchor.sha256 : ""}, operation), "certificate", preview);
+        if (operation === "remove") intentCopy += "\nRemove existing unchanged owned anchor SHA-256: " + Model.fingerprint(anchor.anchor.sha256);
     }
 
     Component.onCompleted: {
@@ -167,6 +177,14 @@ Item {
     Connections {
         target: Config
         function onMergedChanged() { if (Config.pluginEntry("haseen.security").enabled !== true) root.close(); }
+    }
+    Connections {
+        target: root.Window.window
+        function onActiveFocusItemChanged() { Qt.callLater(root.revealFocused); }
+    }
+    Connections {
+        target: scroll.contentItem
+        function onContentHeightChanged() { Qt.callLater(root.revealFocused); }
     }
     Keys.onEscapePressed: event => { root.back(); event.accepted = true; }
     // Text inputs consume their own editing keys before these navigation keys.
@@ -180,9 +198,9 @@ Item {
     Read { id: toolsRead; cli: root.cli; kind: "tools"; operands: root.includeMissing ? ["--all"] : []; onReceived: (kind, gen, data, error) => root.apply(kind, gen, data, error) }
     Read { id: servicesRead; cli: root.cli; kind: "services"; onReceived: (kind, gen, data, error) => root.apply(kind, gen, data, error) }
     Read { id: doctorRead; cli: root.cli; kind: "doctor"; onReceived: (kind, gen, data, error) => root.apply(kind, gen, data, error) }
-    Read { id: addressesRead; cli: root.cli; kind: "addresses"; onReceived: (kind, gen, data, error) => { if (gen !== root.generation) return; root.addresses = data ? data.addresses : []; if (error) root.notice = error; } }
-    Read { id: anchorRead; cli: root.cli; kind: "anchor"; operands: ["status"]; onReceived: (kind, gen, data, error) => { if (gen !== root.generation) return; root.anchor = data; if (error) root.notice = error; } }
-    Read { id: certificateRead; cli: root.cli; kind: "certificate"; onReceived: (kind, gen, data, error) => { if (gen !== root.generation) return; if (operands[1] === root.draft.path) root.inspection = data; if (error) root.notice = error; } }
+    Read { id: addressesRead; cli: root.cli; kind: "addresses"; onReceived: (kind, gen, data, error) => { if (gen !== root.generation) return; root.addresses = data ? data.addresses : []; if (error) { root.notice = error; root.Accessible.announce(error, Accessible.Assertive); } } }
+    Read { id: anchorRead; cli: root.cli; kind: "anchor"; operands: ["status"]; onReceived: (kind, gen, data, error) => { if (gen !== root.generation) return; root.anchor = data; if (error) { root.notice = error; root.Accessible.announce(error, Accessible.Assertive); } else if (data && data.state === "refused") root.Accessible.announce(data.reason, Accessible.Assertive); } }
+    Read { id: certificateRead; cli: root.cli; kind: "certificate"; onReceived: (kind, gen, data, error) => { if (gen !== root.generation || operands[1] !== root.draft.path) return; root.inspection = data; if (error) { root.notice = error; root.Accessible.announce(error, Accessible.Assertive); } else if (data && data.state !== "valid") root.Accessible.announce(data.reason, Accessible.Assertive); } }
     Process {
         id: previewProc
         stdout: StdioCollector { id: previewOut }
@@ -193,6 +211,7 @@ Item {
             const output = previewOut.text + "\n" + previewErr.text;
             root.previewOutput = Model.output(output).slice(0, 65536);
             if (output.length > 65536) { root.previewOutput += "\nOutput overflow — preview refused."; root.previewCode = 1; }
+            if (root.previewCode !== 0) root.Accessible.announce("Preview refused or helper error. " + root.previewOutput, Accessible.Assertive);
             if (root.previewThenReview && root.previewCode === 0 && root.view === "preview") root.view = "review";
             root.previewThenReview = false;
         }
@@ -210,6 +229,8 @@ Item {
         radius: Theme.radius
         border.width: Theme.borderWidth
         border.color: Theme.border
+        Accessible.role: Accessible.Pane
+        Accessible.name: "Security workstation"
         MouseArea { anchors.fill: parent; onClicked: {} }
         Column {
             anchors.fill: parent
@@ -228,14 +249,16 @@ Item {
                     width: scroll.availableWidth
                     spacing: Theme.gap * 2
                     StateMessage { width: parent.width; visible: root.errors[root.section] !== undefined && root.errors[root.section] !== ""; state: "error"; message: "Could not read " + root.section; description: root.errors[root.section] || ""; action: "Retry"; onActivated: root.refresh() }
+                    StateMessage { width: parent.width; visible: root.errors.sources !== undefined && root.errors.sources !== ""; state: "error"; message: "Could not read repository sources (repo-status)"; description: root.errors.sources || ""; action: "Retry source read / Refresh"; onActivated: root.refresh() }
                     StateMessage { width: parent.width; visible: root.sectionLoading; state: root.snapshots[root.section] ? "stale" : "loading"; message: root.snapshots[root.section] ? "Refreshing local snapshot…" : "Reading " + root.section + "…"; description: root.snapshots[root.section] ? "Previous snapshot — actions disabled until refreshed." : "Nothing runs during discovery." }
+                    SelectableText { width: parent.width; visible: root.notice !== ""; text: root.notice; Accessible.name: "Security request notice or read diagnostics" }
                     Loader {
                         id: body
                         width: parent.width
                         sourceComponent: root.view === "tool" ? toolDetail : root.view === "picker" ? picker : root.view === "service" ? serviceDetail : root.view === "endpoint" ? endpointForm : root.view === "certificate" ? certificateForm : root.view === "review" ? review : root.view === "preview" ? preview : [overview, toolList, serviceList, localList][root.page]
                         onLoaded: {
-                            if (root.view !== "" && root.view !== "review") item.forceActiveFocus();
                             scroll.contentItem.contentY = 0;
+                            if (root.view !== "" && root.view !== "review" && typeof item.focusHeading === "function") item.focusHeading();
                         }
                     }
                 }
@@ -245,7 +268,6 @@ Item {
                 width: parent.width
                 spacing: Theme.gap
                 Label { width: parent.width; text: "Local status • no network access" }
-                Label { width: parent.width; visible: root.notice !== ""; text: root.notice }
                 ActionButton { visible: root.notice !== ""; text: "Refresh status"; enabled: !root.refreshing; onClicked: root.refresh() }
             }
         }
@@ -259,15 +281,15 @@ Item {
             GroupFilter { width: parent.width; model: root.groups; currentIndex: Math.max(0, root.groups.indexOf(root.group || "All groups")); onActivated: root.group = currentIndex === 0 ? "" : root.groups[currentIndex] }
             IncludeMissing { checked: root.includeMissing; enabled: !toolsRead.running; onToggled: { root.includeMissing = checked; toolsRead.generation = root.generation; toolsRead.running = true; } }
             StateMessage { id: emptyTools; width: parent.width; visible: !root.sectionLoading && root.tools.length === 0; message: root.query || root.group ? "No tools match this filter." : "No installed VAPT tools found."; description: "Provisioning reports are not proof of installed entrypoints."; action: root.query || root.group ? "Clear filters" : "Show inventory"; onActivated: { const filtered = root.query !== "" || root.group !== ""; root.query = ""; root.group = ""; if (!filtered) { root.includeMissing = true; if (!toolsRead.running) toolsRead.running = true; } } }
-            Inventory { width: parent.width; rows: root.tools; onInspected: itemId => root.inspect(itemId); onReveal: item => root.reveal(item); onEmptyFocused: emptyTools.focusAction() }
+            Inventory { width: parent.width; rows: root.tools; viewportHeight: scroll.height; onInspected: itemId => root.inspect(itemId); onReveal: item => root.reveal(item); onEmptyFocused: emptyTools.focusAction() }
         }
     }
-    Component { id: serviceList; Column { spacing: Theme.gap; StateMessage { width: parent.width; visible: !root.sectionLoading && root.services.length === 0; message: "No supported installed service packages found."; description: "Supported families: SSH, PostgreSQL, Apache, Nginx, BeEF. No service is installed or enabled here."; action: "Refresh"; onActivated: root.refresh() } Inventory { width: parent.width; rows: root.services; services: true; onInspected: itemId => root.inspect(itemId); onReveal: item => root.reveal(item) } } }
-    Component { id: localList; QuickActions { capabilities: root.capabilities; onChosen: itemId => root.inspect(itemId) } }
+    Component { id: serviceList; Column { spacing: Theme.gap; StateMessage { id: emptyServices; width: parent.width; visible: !root.sectionLoading && root.services.length === 0; message: "No supported installed service packages found."; description: "Supported families: SSH, PostgreSQL, Apache, Nginx, BeEF. No service is installed or enabled here."; action: "Refresh"; onActivated: root.refresh() } Inventory { width: parent.width; rows: root.services; services: true; viewportHeight: scroll.height; onInspected: itemId => root.inspect(itemId); onReveal: item => root.reveal(item); onEmptyFocused: emptyServices.focusAction() } } }
+    Component { id: localList; QuickActions { capabilities: root.capabilities; viewportHeight: scroll.height; onReveal: item => root.reveal(item); onChosen: itemId => root.inspect(itemId) } }
     Component { id: toolDetail; ToolDetail { tool: root.selectedTool || null; entryId: root.entryId; stale: root.refreshing; onPick: root.view = "picker"; onRequested: (verb, preview) => { const argv = Model.toolArgv(root.cli, root.selectedTool, root.entryId, verb); if (preview) root.prepare(argv, "tool", true); else { root.prepare(argv, "tool", false); root.launch(); } } } }
-    Component { id: picker; EntryPicker { entries: root.selectedTool ? root.selectedTool.entrypoints : []; selected: root.entryId; onChosen: entryId => { root.entryId = entryId; root.view = "tool"; } } }
+    Component { id: picker; EntryPicker { entries: root.selectedTool ? root.selectedTool.entrypoints : []; selected: root.entryId; viewportHeight: scroll.height; onReveal: item => root.reveal(item); onChosen: entryId => { root.entryId = entryId; root.view = "tool"; } } }
     Component { id: serviceDetail; ServiceDetail { service: root.selectedService || null; stale: root.refreshing; onRequested: (verb, preview) => { root.prepare(Model.serviceArgv(root.cli, root.selectedService, verb), "service", preview); if (!preview && verb === "service-stop") root.launch(); } } }
-    Component { id: endpointForm; EndpointForm { capability: root.selectedCapability || null; draft: root.draft; addresses: root.addresses; files: root.snapshots.doctor && root.selectedId === "enumeration-host" ? Model.ownedFiles(root.snapshots.doctor.tools) : []; onChanged: value => root.draft = value; onChooseAddresses: { if (!addressesRead.running) { addressesRead.generation = root.generation; addressesRead.running = true; } } onRequested: (value, preview) => root.endpoint(value, preview) } }
+    Component { id: endpointForm; EndpointForm { capability: root.selectedCapability || null; draft: root.draft; addresses: root.addresses; viewportHeight: scroll.height; onReveal: item => root.reveal(item); files: root.snapshots.doctor && root.selectedId === "enumeration-host" ? Model.ownedFiles(root.snapshots.doctor.tools) : []; onChanged: value => root.draft = value; onChooseAddresses: { if (!addressesRead.running) { addressesRead.generation = root.generation; addressesRead.running = true; } } onRequested: (value, preview) => root.endpoint(value, preview) } }
     Component { id: certificateForm; CertificateForm { path: root.draft.path; inspection: root.inspection; anchor: root.anchor; checking: certificateRead.running; anchorChecking: anchorRead.running; onPathChangedByUser: value => { if (root.draft.path !== value) root.inspection = null; root.draft = {path: value}; } onInspect: value => { if (!certificateRead.running) { certificateRead.generation = root.generation; certificateRead.operands = ["inspect", value]; certificateRead.running = true; } } onRequested: (operation, preview) => root.certificate(operation, preview) } }
     Component { id: review; Review { intent: root.intentArgv.map(Model.text).join("\n"); consequences: root.intentCopy; allowed: !root.refreshing && root.intentArgv.length > 0; onCancel: root.back(); onPreview: root.capturePreview(); onProceed: root.launch() } }
     Component { id: preview; Preview { output: root.previewOutput; exitCode: root.previewCode; loading: previewProc.running; onBack: root.back(); onReview: root.view = "review" } }

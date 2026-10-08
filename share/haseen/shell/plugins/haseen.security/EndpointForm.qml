@@ -8,42 +8,66 @@ Column {
     property var addresses: []
     property var files: []
     property bool showFiles: false
+    property bool showAddresses: false
+    property real viewportHeight: 0
+    signal reveal(var item)
+    function focusHeading(): void { title.focusHeading(); }
+    function cancelChoices(): bool {
+        if (!showAddresses) return false;
+        showAddresses = false;
+        chooser.forceActiveFocus();
+        return true;
+    }
     property string error: ""
     signal changed(var value)
     signal chooseAddresses()
     signal requested(var value, bool preview)
     spacing: Theme.gap * 2
     function value(): var { return {address: address.text, port: port.text, path: selection.text}; }
-    function submit(preview: bool): void {
+    function validate(): var {
         const d = value();
         root.changed(d);
-        root.error = Model.endpointError(d, capability.id);
-        address.error = ""; port.error = ""; selection.error = "";
+        const errors = Model.endpointErrors(d, capability.id);
+        address.error = errors.address; port.error = errors.port; selection.error = errors.path;
+        root.error = errors.address || errors.port || errors.path;
+        return errors;
+    }
+    function submit(preview: bool): void {
+        const errors = validate();
         if (root.error !== "") {
-            if (!d.address || root.error.indexOf("address") >= 0) { address.error = root.error; address.focusInput(); }
-            else if (!d.port || root.error.indexOf("port") >= 0) { port.error = root.error; port.focusInput(); }
-            else { selection.error = root.error; selection.focusInput(); }
+            if (errors.address) address.focusInput();
+            else if (errors.port) port.focusInput();
+            else selection.focusInput();
+            Accessible.announce(root.error, Accessible.Assertive);
             return;
         }
-        root.requested(d, preview);
+        root.requested(value(), preview);
     }
-    Label { width: parent.width; heading: true; text: root.capability ? {listener: "TCP listener", "http-server": "Directory server", "enumeration-host": "Selected file server"}[root.capability.id] : "Unavailable helper" }
+    Label { id: title; width: parent.width; heading: true; entryHeading: true; text: root.capability ? {listener: "TCP listener", "http-server": "Directory server", "enumeration-host": "Selected file server"}[root.capability.id] : "Unavailable helper" }
     Label { width: parent.width; text: root.capability ? Model.text(root.capability.reason) : "No capability evidence" }
-    Field { id: address; width: parent.width; label: "Local bind address"; text: root.draft.address; onCommitted: root.changed(root.value()) }
-    ActionButton { width: parent.width; text: "Choose local interface address"; onClicked: { root.changed(root.value()); root.chooseAddresses(); } }
+    Field { id: address; width: parent.width; label: "Local bind address"; text: root.draft.address; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.addressError(text); } onSubmitted: root.submit(false) }
+    ActionButton { id: chooser; width: parent.width; text: root.showAddresses ? "Hide local interface addresses" : "Choose local interface address"; onClicked: { root.changed(root.value()); root.showAddresses = !root.showAddresses; if (root.showAddresses) root.chooseAddresses(); } }
     Row { spacing: Theme.gap; ActionButton { text: "127.0.0.1"; onClicked: { address.text = text; root.changed(root.value()); } } ActionButton { text: "::1"; onClicked: { address.text = text; root.changed(root.value()); } } }
     Inventory {
+        id: addressChoices
         width: parent.width
         choices: true
-        rows: root.addresses.map(a => ({id: a.address + (a.scope === "link" && a.family === "ipv6" ? "%" + a.interface : ""), label: Model.text(a.interface) + " • " + Model.text(a.address) + " • " + Model.text(a.scope)}))
-        onInspected: itemId => { address.text = itemId; root.changed(root.value()); }
+        visible: root.showAddresses
+        viewportHeight: root.viewportHeight
+        rows: root.showAddresses ? root.addresses.map(a => ({id: JSON.stringify([a.interface, a.family, a.address]), address: a.address, label: Model.text(a.interface) + " • " + Model.text(a.address) + " • " + Model.text(a.scope)})) : []
+        onReveal: item => root.reveal(item)
+        onEmptyFocused: chooser.forceActiveFocus()
+        onInspected: itemId => { const chosen = addressChoices.rows.find(a => a.id === itemId); if (!chosen) return; address.text = chosen.address; root.changed(root.value()); root.showAddresses = false; address.focusInput(); }
     }
-    Field { id: port; width: parent.width; label: "Port (1024–65535)"; text: root.draft.port; onCommitted: root.changed(root.value()) }
-    Field { id: selection; width: parent.width; visible: root.capability && root.capability.id !== "listener"; label: root.capability && root.capability.id === "http-server" ? "Absolute directory path" : "Absolute installed package-owned file path"; text: root.draft.path; onCommitted: root.changed(root.value()) }
-    ActionButton { width: parent.width; visible: root.capability && root.capability.id === "enumeration-host"; text: root.showFiles ? "Hide verified file choices" : "Show verified file choices"; onClicked: root.showFiles = !root.showFiles }
+    Field { id: port; width: parent.width; label: "Port (1024–65535)"; text: root.draft.port; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.endpointErrors(root.value(), root.capability.id).port; } onSubmitted: root.submit(false) }
+    Field { id: selection; width: parent.width; visible: root.capability && root.capability.id !== "listener"; label: root.capability && root.capability.id === "http-server" ? "Absolute directory path" : "Absolute installed package-owned file path"; text: root.draft.path; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.endpointErrors(root.value(), root.capability.id).path; } onSubmitted: root.submit(false) }
+    ActionButton { id: fileChooser; width: parent.width; visible: root.capability && root.capability.id === "enumeration-host"; text: root.showFiles ? "Hide verified file choices" : "Show verified file choices"; onClicked: root.showFiles = !root.showFiles }
     Inventory {
         width: parent.width
         choices: true
+        viewportHeight: root.viewportHeight
+        onReveal: item => root.reveal(item)
+        onEmptyFocused: fileChooser.forceActiveFocus()
         rows: root.showFiles ? root.files.map(f => ({id: f, label: "Select owned file: " + Model.text(f)})) : []
         onInspected: itemId => { selection.text = itemId; root.changed(root.value()); }
     }

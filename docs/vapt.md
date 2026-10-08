@@ -805,10 +805,11 @@ verbs and separate argv operands. Local helper verbs come from the capability
 record, including `enumeration-host` → `net-file-server`. The panel passes the
 actual displayed service unit/fragment as expectations and never passes `--yes`.
 Review explains scope, but **the foreground terminal confirms and revalidates**:
-start/restart and exposure gates remain there, stop does not prompt, and CA
-trust requires the full typed fingerprint. A launch says “completion has not
-been checked”, never success. Refusal/cancellation/errors after launch are
-reported by that terminal; the panel does not invent a result channel.
+start/restart and exposure gates remain there; Stop launches directly without
+a terminal or Review/confirmation, retaining the unit/fragment expectations.
+CA trust requires the full typed fingerprint. A launch says “completion has not
+been checked”, never success. The panel does not invent a detached result channel;
+terminal operations report their post-launch refusals/errors in that terminal.
 
 Reopen or explicit Refresh reads a new authoritative snapshot; launch never
 refreshes or polls. Preview captures only the real `--dry-run` output and exit
@@ -818,9 +819,42 @@ addresses, fingerprints, drafts and handoff selection live only in memory and
 are discarded with the panel; feature defaults remain seed-once and user-owned.
 All reads are offline-safe, with no connectivity probe.
 
-Tab visits controls; arrows/jk move list selection, Enter/Right/l inspect,
-Left/h goes back outside editors, and Esc unwinds nested views, clears search,
-then closes. Review initially focuses Cancel. Fingerprint and preview text are
-selectable. The single scrolling card adapts to compact viewports without
-shrinking type or truncating safety text.
+Tab visits controls; arrows/jk move list focus without wrapping, Home/End move
+to the first/last item, and PageUp/PageDown move by the visible body viewport.
+The same rules apply to tools, services, entrypoints, quick actions and both
+endpoint choice lists. Tabs also accept Home/End. Enter/Right/l inspect or
+explicitly select, never execute. Left/h goes back outside editors; native
+text-editing keys stay native. Detail/picker headings receive named entry focus,
+then normal Tab reaches the first control; focusing never selects an entry.
+Review initially focuses Cancel. Every Tab stop has a visible focus indication.
+The single scrolling card reveals focused rows fully when they fit; an oversized
+wrapped row starts at its beginning and remains normally scrollable.
+
+Enter in endpoint fields validates the draft and prepares Review through the
+authoritative dry-run, never launches. Enter in the certificate-path field
+performs Inspect, never trust. Syntax errors are shown with the relevant field
+and its accessible description, and submission focuses the first invalid field.
+CLI refusals remain on selectable Preview with Back preserving the draft.
+The address chooser has an explicit open state: its first Escape hides only
+the choices; another Escape unwinds the form. Selection closes the choices and
+preserves the CLI's scoped literal byte-for-byte. Unscoped link-local IPv6
+requires a local interface scope, rather than guessing one.
+
+Repository-source read failures remain independently labelled with diagnostics
+and Retry/Refresh, without clearing successful tool/service/provisioning reads.
+The existing anchor's labelled, full selectable SHA-256 and ownership are
+independent of the inspected certificate; removal Review repeats that anchor
+fingerprint and the machine-wide consequence. Inspection/read/preview refusals
+receive one immediate accessibility announcement per response. Detail paths,
+units/FragmentPath, fingerprints and dry-run output are copyable. Row height
+follows wrapped text without line caps, shrinking type or truncating safety text.
+Security menu discovery providers read nothing while the resolved plugin flag
+is disabled, including during ordinary root search; fixed row guards remain.
+
+The production components have offscreen keyboard/scroll/render checks at
+360×480, 560×640 and 720×640, stock Flexoki Light/Everforest tokens and enlarged
+text. These fixtures measure text/focus contrast and never touch a live desktop.
+The isolated offscreen accessibility bridge did not expose the QML application;
+actual AT-SPI screen-reader order, names/state and announcement delivery remain
+unverified, not implied by source declarations or engine counts.
 

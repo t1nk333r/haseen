@@ -10,6 +10,7 @@ Column {
     property bool choices: false
     property int current: 0
     property string currentId: ""
+    property real viewportHeight: 0
     signal inspected(string itemId)
     signal reveal(var item)
     signal emptyFocused()
@@ -33,19 +34,31 @@ Column {
         current = found >= 0 ? found : Math.max(0, Math.min(current, rows.length - 1));
         currentId = rows.length ? rows[current].id : "";
         if (hadFocus) Qt.callLater(function() {
+            root.forceLayout();
             if (rows.length) {
                 const item = entries.itemAt(current).item;
                 if (item) { item.forceActiveFocus(); root.reveal(item); }
             } else root.emptyFocused();
         });
     }
-    function move(delta: int): void {
-        if (!rows.length) return;
-        current = (current + delta + rows.length) % rows.length;
+    function focusIndex(index: int): void {
+        if (!rows.length) { root.emptyFocused(); return; }
+        root.forceLayout();
+        current = Math.max(0, Math.min(index, rows.length - 1));
         currentId = rows[current].id;
         const item = entries.itemAt(current).item;
-        item.forceActiveFocus();
-        root.reveal(item);
+        if (item) item.forceActiveFocus();
+    }
+    function move(delta: int): void { focusIndex(current + delta); }
+    function pageMove(direction: int): void {
+        if (!rows.length) return;
+        const origin = entries.itemAt(current);
+        let target = current;
+        for (let i = current + direction; i >= 0 && i < rows.length; i += direction) {
+            target = i;
+            if (Math.abs(entries.itemAt(i).y - origin.y) >= viewportHeight) break;
+        }
+        focusIndex(target);
     }
     ListModel { id: stable }
     Repeater {
@@ -62,7 +75,9 @@ Column {
                 id: tool
                 ToolRow {
                     tool: row.modelData
-                    activeFocusOnTab: row.index === root.current
+                    activeFocusOnTab: activeFocus || row.index === root.current
+                    explanation: (tool ? tool.reason : "") + ". Item " + (row.index + 1) + " of " + root.rows.length
+                    onActiveFocusChanged: if (activeFocus) { root.current = row.index; root.currentId = row.itemId; root.reveal(this); }
                     onClicked: { root.current = row.index; root.currentId = row.modelData.id; root.inspected(row.modelData.id); }
                     Keys.onPressed: event => root.key(event)
                 }
@@ -71,7 +86,9 @@ Column {
                 id: service
                 ServiceRow {
                     service: row.modelData
-                    activeFocusOnTab: row.index === root.current
+                    activeFocusOnTab: activeFocus || row.index === root.current
+                    explanation: (service ? service.ownership + ". " + service.reason : "") + ". Item " + (row.index + 1) + " of " + root.rows.length
+                    onActiveFocusChanged: if (activeFocus) { root.current = row.index; root.currentId = row.itemId; root.reveal(this); }
                     onClicked: { root.current = row.index; root.currentId = row.modelData.id; root.inspected(row.modelData.id); }
                     Keys.onPressed: event => root.key(event)
                 }
@@ -79,10 +96,12 @@ Column {
             Component {
                 id: choice
                 ActionButton {
-                    implicitHeight: Math.max(64 * scale, contentItem.implicitHeight + 20 * scale)
+                    implicitHeight: Math.max(64 * scale, contentItem.implicitHeight + 24 * scale)
                     text: row.modelData ? row.modelData.label : ""
-                    activeFocusOnTab: row.index === root.current
+                    activeFocusOnTab: activeFocus || row.index === root.current
                     Accessible.role: Accessible.ListItem
+                    explanation: "Item " + (row.index + 1) + " of " + root.rows.length
+                    onActiveFocusChanged: if (activeFocus) { root.current = row.index; root.currentId = row.itemId; root.reveal(this); }
                     onClicked: { root.current = row.index; root.currentId = row.itemId; root.inspected(row.itemId); }
                     Keys.onPressed: event => root.key(event)
                 }
@@ -93,7 +112,13 @@ Column {
         if (event.key === Qt.Key_Up || event.key === Qt.Key_K || event.key === Qt.Key_Down || event.key === Qt.Key_J) {
             move(event.key === Qt.Key_Up || event.key === Qt.Key_K ? -1 : 1);
             event.accepted = true;
-        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_L) {
+        } else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
+            focusIndex(event.key === Qt.Key_Home ? 0 : rows.length - 1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown) {
+            pageMove(event.key === Qt.Key_PageUp ? -1 : 1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_L || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.inspected(currentId);
             event.accepted = true;
         }

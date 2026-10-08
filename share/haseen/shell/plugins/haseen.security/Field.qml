@@ -7,6 +7,7 @@ Column {
     property alias text: input.text
     property string error: ""
     signal committed()
+    signal submitted()
     signal edited(string value)
     spacing: Theme.gap
     function focusInput(): void { input.forceActiveFocus(); }
@@ -24,6 +25,8 @@ Column {
         Accessible.name: root.label
         Accessible.description: root.error
         onEditingFinished: root.committed()
+        onAccepted: root.submitted()
+        Keys.priority: Keys.AfterItem
         onTextEdited: root.edited(text)
         background: Rectangle {
             color: Theme.surfaceAlt
