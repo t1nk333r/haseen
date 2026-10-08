@@ -52,6 +52,26 @@ assert_status "--pick with --layers is refused" 1 "$STATUS"
 assert_contains "and says why" "$OUTPUT" "does not combine"
 install_with "" --pick --yes --dry-run
 assert_status "--pick with --yes is refused" 1 "$STATUS"
+install_with "" --pick --vapt-groups web --dry-run
+assert_status "--pick with --vapt-groups is refused" 1 "$STATUS"
+assert_contains "and names it" "$OUTPUT" "--vapt-groups"
+assert_not_contains "and applies nothing" "$OUTPUT" "apply order"
+
+# A bad --layers entry stops before the tree is installed.
+capture "$REPO/install.sh" --dry-run --layers ,mobile, </dev/null
+assert_status "an empty layer name is refused" 1 "$STATUS"
+assert_contains "and says which" "$OUTPUT" "unknown layer: ''"
+assert_not_contains "before the tree is copied" "$OUTPUT" "cp -R"
+capture "$REPO/install.sh" --dry-run --layers base,nosuch </dev/null
+assert_status "an unknown layer is refused" 1 "$STATUS"
+assert_contains "and named" "$OUTPUT" "unknown layer: 'nosuch'"
+assert_not_contains "before the tree is copied (unknown)" "$OUTPUT" "cp -R"
+
+# A zero-padded number toggles the same entry as the plain one (not octal).
+install_with $'09\n13\n5' --pick --dry-run
+assert_status "a zero-padded reply works" 0 "$STATUS"
+assert_not_contains "no arithmetic error" "$OUTPUT" "value too great for base"
+assert_contains "09 toggles flatpak, as 9 does" "$OUTPUT" "[*] apply order: base chaotic omarchy-repo desktop theme shell flatpak"$'\n'
 
 # --- the picker's defaults: core layers on, every optional piece off -----------
 install_with "" --pick --dry-run

@@ -88,6 +88,7 @@ for layer in "${LAYERS[@]}"; do
     if [[ $layer == vapt ]]; then
         [[ -n $VAPT_GROUPS ]] || die "--layers vapt requires explicit --vapt-groups GROUP,...|all"
     else
+        layer_exists "$layer" || die "unknown layer: '$layer' (see: haseen layer list); nothing was installed"
         ordinary_layers+=("$layer")
     fi
 done
