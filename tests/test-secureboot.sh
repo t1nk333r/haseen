@@ -33,6 +33,8 @@ scratch() {
 
 # recorder — sudo that records its argv in $SANDBOX/sudo.log and runs nothing.
 # `sbctl verify --json` answers with $SANDBOX/verify.json; tee drains stdin.
+# HASEEN_TEST_STUBBED_SUDO tells setup that sudo is this recorder, so a
+# non-dry run under HASEEN_SYSROOT may proceed (it refuses otherwise).
 recorder() {
     : >"$SANDBOX/sudo.log"
     stub sudo "printf '%s\n' \"\$*\" >>'$SANDBOX/sudo.log'
@@ -41,6 +43,7 @@ case \"\$*\" in
 tee*) cat >/dev/null ;;
 esac
 exit 0"
+    export HASEEN_TEST_STUBBED_SUDO=1
 }
 
 # verify_json FILE[=STATE]... — `sbctl verify --json` output in sbctl's own
@@ -103,11 +106,11 @@ assert_not_contains "limine: kernels are hash-checked, not signed" "$OUTPUT" "si
 assert_contains "limine: microsoft + firmware keys always" "$OUTPUT" \
     "DRYRUN: sudo sbctl enroll-keys --microsoft --firmware-builtin"
 assert_contains "limine: BitLocker recovery URL" "$OUTPUT" "https://aka.ms/myrecoverykey"
-before "BitLocker warning precedes enrollment" "$OUTPUT" "PCR 7" "sbctl enroll-keys"
+before "BitLocker warning precedes enrollment" "$OUTPUT" "PCR 7" "sudo sbctl enroll-keys"
 before "enrollment hash set before limine-update" "$OUTPUT" "ENABLE_ENROLL_LIMINE_CONFIG=yes" "limine-update"
 before "wallpaper hashed before enrollment" "$OUTPUT" "limine-hash-assets.sh" "limine-enroll-config"
 before "Limine enrolled before the fallback copy" "$OUTPUT" "limine-enroll-config" "sudo cp "
-before "verify gate precedes enrollment" "$OUTPUT" "sbctl verify --json" "sbctl enroll-keys"
+before "verify gate precedes enrollment" "$OUTPUT" "sbctl verify --json" "sudo sbctl enroll-keys"
 assert_not_contains "limine: no TPM2 warning without a TPM2 binding" "$OUTPUT" "systemd-cryptenroll"
 
 # /etc/default/limine already enrolls, and the config already verifies:
@@ -168,7 +171,7 @@ assert_not_contains "sdboot: no BitLocker warning without Windows" "$OUTPUT" "ak
 assert_contains "TPM2 crypttab: warning" "$OUTPUT" "LUKS unlocked by the TPM2"
 assert_contains "TPM2 crypttab: re-enroll command" "$OUTPUT" \
     "systemd-cryptenroll --wipe-slot=tpm2 --tpm2-device=auto --tpm2-pcrs=7 /dev/disk/by-uuid/0f3b2c1d-1111-4222-8333-944455556666"
-before "TPM2 warning precedes enrollment" "$OUTPUT" "LUKS unlocked by the TPM2" "sbctl enroll-keys"
+before "TPM2 warning precedes enrollment" "$OUTPUT" "LUKS unlocked by the TPM2" "sudo sbctl enroll-keys"
 # Same machine without the TPM2 option: no warning.
 root="$(scratch no-tpm "$FX_SDTPM")"
 printf 'root UUID=0f3b2c1d-1111-4222-8333-944455556666 none discard\n' >"$root/etc/crypttab"
@@ -179,6 +182,49 @@ chmod 000 "$root/etc/crypttab"
 capture env HASEEN_SYSROOT="$root" haseen secureboot setup --dry-run
 chmod 644 "$root/etc/crypttab"
 assert_contains "unreadable crypttab: conditional TPM2 warning" "$OUTPUT" "readable only by root"
+
+# --- setup: firmware without built-in default keys ---------------------------
+# sbctl's --firmware-builtin opens dbDefault and KEKDefault and aborts when
+# either is missing (OVMF secboot in Setup Mode has neither): plan 002, decision 7.
+sandbox sb-nodefaults
+capture env HASEEN_SYSROOT="$FX_SDTPM" haseen secureboot setup --dry-run
+assert_contains "default keys present: plan names the command" "$OUTPUT" \
+    "(sbctl enroll-keys --microsoft --firmware-builtin)"
+assert_not_contains "default keys present: no warning" "$OUTPUT" "without --firmware-builtin"
+root="$(scratch no-defaults "$FX_SDTPM")"
+rm "$root"/sys/firmware/efi/efivars/{db,KEK}Default-8be4df61-93ca-11d2-aa0d-00e098032b8c
+capture env HASEEN_SYSROOT="$root" haseen secureboot setup --dry-run
+assert_status "no default keys: dry-run exit" 0 "$STATUS"
+assert_dry_pure "no default keys" "$OUTPUT"
+assert_contains "no default keys: microsoft only" "$OUTPUT" "DRYRUN: sudo sbctl enroll-keys --microsoft"$'\n'
+assert_not_contains "no default keys: no --firmware-builtin" "$OUTPUT" "enroll-keys --microsoft --firmware-builtin"
+# The warning: present, names both variables as not both available, says the
+# flag is left out, and never claims the firmware has no built-in keys.
+warning="$(grep '^Warning:.*--firmware-builtin' <<<"$OUTPUT")"
+assert_contains "no default keys: warning" "$warning" "Warning:"
+assert_contains "no default keys: warning names both defaults" "$warning" "both dbDefault and KEKDefault"
+assert_contains "no default keys: warning says the flag is omitted" "$warning" "without --firmware-builtin"
+assert_not_contains "no default keys: warning makes no absence claim" "$warning" "no built-in"
+assert_contains "no default keys: plan names the command" "$OUTPUT" "(sbctl enroll-keys --microsoft)"$'\n'
+assert_contains "no default keys: plan says not both available" "$OUTPUT" "dbDefault and KEKDefault are not both available"
+assert_contains "no default keys: enrollment text" "$OUTPUT" "Enrolling writes your keys and Microsoft's into"
+before "no default keys: warning in the plan, before signing" "$OUTPUT" "without --firmware-builtin" "sbctl sign"
+before "no default keys: TPM2 warning still precedes enrollment" "$OUTPUT" "LUKS unlocked by the TPM2" "sudo sbctl enroll-keys"
+# One default alone is not enough: sbctl reads both, and the owner's policy is
+# all-or-nothing. The text must not claim the other one is absent too.
+for keep in db KEK; do
+    gone=KEK
+    [[ $keep == KEK ]] && gone=db
+    root="$(scratch "$keep-default-only" "$FX_SDTPM")"
+    rm "$root/sys/firmware/efi/efivars/${gone}Default-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+    capture env HASEEN_SYSROOT="$root" haseen secureboot setup --dry-run
+    assert_status "${keep}Default only: dry-run exit" 0 "$STATUS"
+    assert_eq "${keep}Default only: microsoft only" "DRYRUN: sudo sbctl enroll-keys --microsoft" \
+        "$(grep 'enroll-keys' <<<"$OUTPUT" | grep '^DRYRUN')"
+    assert_contains "${keep}Default only: plan names the command" "$OUTPUT" "(sbctl enroll-keys --microsoft)"$'\n'
+    assert_contains "${keep}Default only: warning says the flag is omitted" "$OUTPUT" "without --firmware-builtin"
+    assert_not_contains "${keep}Default only: no false absence claim" "$OUTPUT" "no built-in"
+done
 
 # --- setup: GRUB ---------------------------------------------------------------
 sandbox sb-grub
@@ -252,6 +298,26 @@ recorder
 capture env HASEEN_SYSROOT="$FX_SDTPM" haseen secureboot setup <<<$'y\nENROLL'
 assert_status "y then ENROLL: enrolls" 0 "$STATUS"
 assert_contains "y then ENROLL: enrolled" "$(<"$SANDBOX/sudo.log")" "enroll-keys --microsoft --firmware-builtin"
+
+# No built-in default keys: the real run enrolls without --firmware-builtin.
+root="$(scratch typed-no-defaults "$FX_SDTPM")"
+rm "$root"/sys/firmware/efi/efivars/{db,KEK}Default-8be4df61-93ca-11d2-aa0d-00e098032b8c
+recorder
+capture env HASEEN_SYSROOT="$root" haseen secureboot setup --yes <<<"ENROLL"
+assert_status "no default keys, typed ENROLL: enrolls" 0 "$STATUS"
+assert_eq "no default keys, typed ENROLL: microsoft only" "sbctl enroll-keys --microsoft" \
+    "$(grep 'enroll-keys' "$SANDBOX/sudo.log")"
+assert_contains "no default keys, typed ENROLL: warned" "$OUTPUT" "without --firmware-builtin"
+
+# A sysroot redirects reads only: without the recorder marker a real run would
+# decide from the fixture's efivars and enroll this machine's firmware. Refused
+# before anything privileged, even with the typed word.
+recorder
+capture env -u HASEEN_TEST_STUBBED_SUDO HASEEN_SYSROOT="$root" haseen secureboot setup --yes <<<"ENROLL"
+assert_status "sysroot without dry-run: refused" 1 "$STATUS"
+assert_contains "sysroot without dry-run: reason" "$OUTPUT" "use --dry-run with HASEEN_SYSROOT"
+assert_eq "sysroot without dry-run: nothing privileged ran" "" "$(<"$SANDBOX/sudo.log")"
+assert_not_contains "sysroot without dry-run: no plan" "$OUTPUT" "enrollment:"
 
 # --- the verify gate: an unsigned boot file blocks enrollment -----------------
 recorder

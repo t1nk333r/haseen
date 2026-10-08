@@ -555,6 +555,19 @@ sb_warn_tpm() {
 
 # --- firmware instructions ---------------------------------------------------
 
+# sb_firmware_has_builtin_keys — does the firmware expose the default key
+# databases that `sbctl enroll-keys --firmware-builtin` reads? With no value the
+# flag means "db,KEK" (sbctl enroll-keys.go NoOptDefVal), so sbctl opens
+# dbDefault and then KEKDefault (certs/builtin.go). Its "missing default is
+# empty" branch compares the wrapped *PathError with == os.ErrNotExist and never
+# matches, so a missing variable aborts enrollment (plan 002, decision 7).
+sb_firmware_has_builtin_keys() {
+    local v
+    for v in dbDefault KEKDefault; do
+        [[ -e $(sysroot_path "/sys/firmware/efi/efivars/$v-$EFI_GLOBAL_GUID") ]] || return 1
+    done
+}
+
 sb_firmware_steps() {
     local state="$SECUREBOOT_STATE"
     [[ $state == unknown ]] && state="in an unknown state (efivars unreadable)"

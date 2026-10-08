@@ -27,7 +27,7 @@ Requirement 8. Anti-cheat on Windows (Vanguard, FACEIT, EA Javelin) requires Sec
 - Refuses outside Setup Mode.
 - Typed confirmation is required.
 - The BitLocker warning is printed when Windows is present.
-- Microsoft and firmware-builtin keys are always enrolled.
+- Microsoft keys are always enrolled, and firmware-builtin keys too when the firmware has them (decision 7).
 - Real-hardware enrollment is an owner acceptance step (plan 014).
 
 ## Execution record
@@ -40,7 +40,7 @@ Requirement 8. Anti-cheat on Windows (Vanguard, FACEIT, EA Javelin) requires Sec
   - `limine-hash-assets.sh`: root helper that adds or refreshes the `#blake2b` of `wallpaper:`/`term_font:` lines. Kernel and module paths are never re-hashed.
   - `packages.txt` (`sbctl`) and `files/zz-haseen-secureboot.hook`.
 - `bin/haseen-secureboot-status`: read-only, never escalates. Exit 0 only when Secure Boot is enabled, the boot chain verifies signed and, on Limine, the config hash is enrolled, current and every boot path is hashed.
-- `bin/haseen-secureboot-setup`: refuses BIOS, NixOS and anything outside Setup Mode (prints the firmware steps, exit 1). Then: sbctl present and >= 0.17, Limine needs limine-entry-tool, rerun as root when the ESP is 0700. Order: plan, plain `confirm` (answered by `--yes`), create-keys if missing, sign per bootloader, verify gate, BitLocker and TPM2 warnings, `confirm_typed … ENROLL` (`--yes` cannot answer it), `sbctl enroll-keys --microsoft --firmware-builtin`, firmware instructions.
+- `bin/haseen-secureboot-setup`: refuses BIOS, NixOS and anything outside Setup Mode (prints the firmware steps, exit 1). Then: sbctl present and >= 0.17, Limine needs limine-entry-tool, a real (non-dry) run under `HASEEN_SYSROOT` is refused, rerun as root when the ESP is 0700. Order: plan, plain `confirm` (answered by `--yes`), create-keys if missing, sign per bootloader, verify gate, BitLocker and TPM2 warnings, `confirm_typed … ENROLL` (`--yes` cannot answer it), `sbctl enroll-keys --microsoft --firmware-builtin` when the firmware has both default key variables (otherwise a warning and `sbctl enroll-keys --microsoft`), firmware instructions.
 - `bin/haseen-secureboot-sign [--hook]`: Limine asset hashes, `limine-enroll-config`, fallback refresh. It signs and tracks (`-s`) boot-chain files sbctl does not track yet, runs `sbctl sign-all` and verifies. With `--hook` it exits 0 without doing anything when there is no UEFI, no sbctl or no keys, and it leaves sign-all to `zz-sbctl.hook` when that hook is active.
 - `tests/test-secureboot.sh` (205 assertions) and the fixtures `tests/fixtures/sb-{limine-setup-windows,sdboot-setup-tpm,sdboot-enabled,grub-setup}` (each with `expected.preflight`, so `test-core.sh` checks preflight on them too).
 
@@ -76,7 +76,14 @@ Requirement 8. Anti-cheat on Windows (Vanguard, FACEIT, EA Javelin) requires Sec
    - `git tag --contains 6df94e4` lists 0.17 and 0.18;
    - `certs/certs.go` `GetOEMCerts` appends every file in the directory, and `cmd/sbctl/enroll-keys.go:152-167` appends the db and KEK sets for `microsoft`.
 
-   So sbctl >= 0.17 enrolls the 2011 *and* 2023 CAs (Arch ships 0.18-2). Setup refuses an older sbctl, because it would enroll only the CAs that expired in June 2026. `--firmware-builtin` reads the volatile `dbDefault`/`KEKDefault` and treats a missing default as empty (`certs/builtin.go`), so enrolling both is always possible.
+   So sbctl >= 0.17 enrolls the 2011 *and* 2023 CAs (Arch ships 0.18-2). Setup refuses an older sbctl, because it would enroll only the CAs that expired in June 2026.
+
+   `--firmware-builtin` needs the firmware's default key variables. The 2026-10-04 claim here, that sbctl "treats a missing default as empty", was wrong; corrected 2026-10-06 from sbctl 0.18 (tag `0.18`, `6b8ed87`) and the plan 014 VM run:
+   - with no value the flag means `db,KEK` (`cmd/sbctl/enroll-keys.go:377`, `NoOptDefVal`), and enroll-keys reads each in that order, returning "could not enroll built-in firmware keys" on the first error (`:181-184`);
+   - `certs/builtin.go:21-22` maps them to `dbDefault`/`KEKDefault`. Its "not finding a default db is not a failure" branch tests `err == os.ErrNotExist` (`:39`), but go-uefi `ReadEfivarsFile` returns the unwrapped `*fs.PathError` from `Open` (`efi/attributes/attributes.go:96-100` at `69fb7dba244f`, the version 0.17 and 0.18 pin), so the comparison never matches and a missing variable aborts the whole enrollment. 0.17 has the same code;
+   - observed in a CachyOS 7.2.9 VM (OVMF secboot build, Setup Mode, sbctl 0.18): `sbctl enroll-keys --microsoft --firmware-builtin` failed with `couldn't sync keys: could not enroll built-in firmware keys: open /sys/firmware/efi/efivars/dbDefault-8be4df61-93ca-11d2-aa0d-00e098032b8c: no such file or directory`. Nothing was written (still Setup Mode), and `/sys/firmware/efi/efivars` had no `PKDefault`/`KEKDefault`/`dbDefault`/`dbxDefault`.
+
+   So setup passes `--firmware-builtin` only when both `dbDefault-…` and `KEKDefault-…` exist (`sb_firmware_has_builtin_keys`, read through `sysroot_path`). Otherwise it warns that the firmware does not expose both, which `--firmware-builtin` needs, and runs `sbctl enroll-keys --microsoft`. The plan's `enrollment:` line names the command that will run.
 8. **sbctl output and permissions.**
    - `sbctl verify --json` prints `[{file_name, is_signed}]` through `json.MarshalIndent` (`cmd/sbctl/verify.go`, `main.go:69-79`), with `is_signed` 1/0/-1. It walks the whole ESP, so Microsoft's own binaries show as unsigned (by our key) and are ignored by the classifier. On Limine, plain kernels are checked by hash, not signature.
    - Key files are written 0400 (`backend/backend.go:99`) in 0755 directories, and `files.json` is 0644 (`database.go:45`). Key presence and the tracked list can therefore be read without root. Signatures cannot: sbctl itself fails with "sbctl requires root" (`main.go:196`).
@@ -125,7 +132,9 @@ rc=0
 - *`sudo cat` per privileged read*: one root re-exec is simpler and keeps every read on the same code path.
 - *jq for sbctl's JSON*: the reference machine's `jq` is jaq 2.3.0. sbctl's MarshalIndent shape is fixed, so a grep-based parser is enough.
 - *Typed confirmation up front*: it would precede the verify gate, so the user would confirm before knowing whether enrollment is safe.
-- *Omitting `--firmware-builtin` on ASUS/Gigabyte* (CachyOS wiki caution): the owner requires both flags always. Recorded as a risk below.
+- *Omitting `--firmware-builtin` on ASUS/Gigabyte* (CachyOS wiki caution): the owner requires the flag whenever the firmware has its default keys (decision 7). Recorded as a risk below.
+- *Always passing `--firmware-builtin`*: on firmware without `dbDefault`/`KEKDefault` sbctl aborts enrollment (decision 7), so setup could never finish there.
+- *`--firmware-builtin=db` when only `dbDefault` exists*: not requested; the owner decision is all-or-nothing on the firmware's defaults.
 
 ### Open risks
 
@@ -137,3 +146,11 @@ rc=0
 - The hook's `Exec` hard-codes `/usr/local/bin/haseen`. The PKGBUILD phase (PREFIX `/usr`) must rewrite it.
 - `sb_sbctl_version` looks for the `sbctl` package only, so `sbctl-git` reads as "not installed".
 - The runner installs `packages.txt` before `layer_apply` runs, so on a BIOS machine sbctl is installed and then the layer refuses. See the core request in the report.
+
+### 2026-10-06: `--firmware-builtin` only when the firmware has default keys
+
+- Trigger: the plan 014 VM acceptance run (CachyOS 7.2.9, OVMF secboot build in Setup Mode, sbctl 0.18) failed at `sbctl enroll-keys --microsoft --firmware-builtin` because the firmware has no `dbDefault`. Nothing was enrolled. Decision 7 has the evidence and the corrected sbctl behaviour.
+- Owner decision (2026-10-06): pass `--firmware-builtin` only when the firmware exposes its built-in default key variables; otherwise warn and enroll own keys + Microsoft's. `--microsoft` stays unconditional, and every other gate (Setup Mode, verify gate, typed `ENROLL`, BitLocker/TPM2 warnings, sbctl >= 0.17) is unchanged.
+- Changed: `share/haseen/layers/secureboot/secureboot.sh` `sb_firmware_has_builtin_keys`; `bin/haseen-secureboot-setup` builds the enroll command from it, prints it on the `enrollment:` line and warns when the flag is left out; the fixtures `sb-{limine-setup-windows,sdboot-setup-tpm,grub-setup}` gained volatile `dbDefault`/`KEKDefault` efivars so their `--firmware-builtin` assertions stay meaningful. `tests/test-secureboot.sh` covers the two single-default cases (only `dbDefault`, only `KEKDefault`) in dry-run, and the both-present and neither-present cases in dry-run and in the recorded non-dry run.
+- Still open: a default variable that exists but is non-volatile makes sbctl refuse (`certs/builtin.go:46`, possible tampering). Setup still passes the flag then, and sbctl fails before writing anything, which is the safe outcome.
+- Security review follow-up (same day): the decision reads efivars through `sysroot_path`, but enrollment writes the live firmware, so a real run with `HASEEN_SYSROOT` set could enroll this machine from a fixture's defaults. Setup now refuses a non-dry run under a sysroot before the plan, always as root, and as any other user unless `HASEEN_TEST_STUBBED_SUDO=1` is set. `--dry-run` with a sysroot is unchanged. The marker is an explicit test opt-in, set only by `tests/test-secureboot.sh`'s `recorder`; it is not a privilege boundary and does not prove that sudo is stubbed, so someone who sets it on purpose can still mix fixture state with a live run. A test without the marker proves nothing reaches sudo. The fallback text now says that `dbDefault` and `KEKDefault` are not both available instead of claiming the firmware has no built-in keys, which was false when only one is missing. The policy stays all-or-nothing.
