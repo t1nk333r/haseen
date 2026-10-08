@@ -74,8 +74,8 @@ while (($# > 0)); do
 done
 LAYERS_GIVEN=false
 ((${#LAYERS[@]} == 0)) || LAYERS_GIVEN=true
-if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL; }; then
-    die "--pick chooses interactively; it does not combine with --layers, --yes, --tree-only or --uninstall-tree"
+if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL || [[ -n $VAPT_GROUPS ]]; }; then
+    die "--pick chooses interactively; it does not combine with --layers, --yes, --vapt-groups, --tree-only or --uninstall-tree"
 fi
 $LAYERS_GIVEN || LAYERS=("${DEFAULT_LAYERS[@]}")
 if [[ -n $VAPT_GROUPS ]] && { $TREE_ONLY || $UNINSTALL; }; then
@@ -86,6 +86,7 @@ for layer in "${LAYERS[@]}"; do
     if [[ $layer == vapt ]]; then
         [[ -n $VAPT_GROUPS ]] || die "--layers vapt requires explicit --vapt-groups GROUP,...|all"
     else
+        layer_exists "$layer" || die "unknown layer: '$layer' (see: haseen layer list); nothing was installed"
         ordinary_layers+=("$layer")
     fi
 done
