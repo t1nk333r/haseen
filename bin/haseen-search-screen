@@ -92,9 +92,11 @@ kill_hard() {
     done
     kill -KILL "$pid" 2>/dev/null || true
 }
+# CAPTURE is always the command's own file (with --image, a copy of IMAGE),
+# so it goes on every exit; IMAGE itself is never deleted.
 cleanup() {
     kill_hard "$FREEZE_PID"
-    [[ -n $IMAGE ]] || discard_capture "$CAPTURE"
+    discard_capture "$CAPTURE"
     return 0
 }
 

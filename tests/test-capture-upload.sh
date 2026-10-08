@@ -560,6 +560,31 @@ assert_status "a declined upload is not a failure" 0 "$STATUS"
 assert_contains "and it says nothing was sent" "$OUTPUT" "Nothing was uploaded."
 assert_not_contains "no request was made" "$(calls)" "lens.google.com"
 
+# RV-2: --image works on a copy the command makes in its private directory.
+# Every way out removes that copy; the user's own file is never touched.
+search_copies() { find "$XDG_RUNTIME_DIR/haseen-search-screen" -type f 2>/dev/null; }
+cap_sandbox search-image-file
+printf 'PNG-original' >"$SHOT"
+capture haseen search screen image --image "$SHOT"
+assert_status "--image hand-off succeeds" 0 "$STATUS"
+assert_contains "--image hand-off: the picture goes on the clipboard" "$(calls)" \
+    "wl-copy --type image/png --sensitive: PNG-original"
+assert_eq "--image hand-off: the original is unchanged" "PNG-original" "$(cat "$SHOT")"
+assert_eq "--image hand-off: the temporary copy is gone" "" "$(search_copies)"
+export CURL_HEADERS="HTTP/2 200
+location: https://www.google.com/search?vsrid=FIXTURE&udm=26
+"
+capture haseen search screen image --image "$SHOT" --upload --yes
+assert_status "--image upload succeeds" 0 "$STATUS"
+assert_contains "--image upload: the copy is what is sent" "$(calls)" \
+    "-F encoded_image=@$XDG_RUNTIME_DIR/haseen-search-screen/capture-"
+assert_eq "--image upload: the original is unchanged" "PNG-original" "$(cat "$SHOT")"
+assert_eq "--image upload: the temporary copy is gone" "" "$(search_copies)"
+capture haseen search screen image --image "$SHOT" --upload </dev/null
+assert_contains "--image declined: nothing was sent" "$OUTPUT" "Nothing was uploaded."
+assert_eq "--image declined: the original is unchanged" "PNG-original" "$(cat "$SHOT")"
+assert_eq "--image declined: the temporary copy is gone" "" "$(search_copies)"
+
 # --- annotate then upload ----------------------------------------------------
 cap_sandbox shot-upload
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload --dry-run
