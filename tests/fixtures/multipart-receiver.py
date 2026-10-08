@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
 """Fixture-only HTTP receiver for tests/test-capture-upload.sh.
 
+Usage: multipart-receiver.py PORT_FILE LOG_FILE [--redirect URL] [--tls CERT KEY]
+
 Binds 127.0.0.1 on an ephemeral port (written to PORT_FILE), parses every
 multipart POST with the standard library and appends one JSON line per
 request to LOG_FILE: the path and each leaf part's field name, filename,
 sha256 and (for parts without a filename) its text value. It answers in the
 shape each uploader backend reads, so the real curl, not a stub, decides what
-is sent. Nothing leaves the loopback interface.
+is sent. With --redirect every POST is answered 307 to URL instead (a client
+that follows replays its body there); with --tls it speaks HTTPS with that
+certificate. A request through it as a proxy logs the absolute URL as its
+path. Nothing leaves the loopback interface.
 """
 import email.parser
 import email.policy
 import hashlib
 import json
 import os
+import ssl
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT_FILE, LOG_FILE = sys.argv[1], sys.argv[2]
+REDIRECT = sys.argv[sys.argv.index('--redirect') + 1] if '--redirect' in sys.argv else None
+TLS = sys.argv[sys.argv.index('--tls') + 1:sys.argv.index('--tls') + 3] if '--tls' in sys.argv else None
 LINK = 'https://share.example.com/r/fixture.png'
 
 
@@ -54,7 +62,11 @@ class Handler(BaseHTTPRequestHandler):
         else:
             answer = LINK
         data = answer.encode()
-        self.send_response(200)
+        if REDIRECT:
+            self.send_response(307)
+            self.send_header('Location', REDIRECT)
+        else:
+            self.send_response(200)
         self.send_header('X-Token', 'fixture-management-token')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
@@ -62,6 +74,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+if TLS:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(TLS[0], TLS[1])
+    server.socket = context.wrap_socket(server.socket, server_side=True)
 # Publish the port only once it is bound (rename is atomic).
 with open(PORT_FILE + '.new', 'w', encoding='ascii') as stream:
     stream.write(str(server.server_address[1]))
