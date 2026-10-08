@@ -291,6 +291,9 @@ container_remove() {
 #   pacman -Ql omarchy-settings -> OMARCHY_COLLISIONS below
 # Asking pacman at run time is not an option: it is a privileged/network call,
 # and the fixture tests and the dry-run contract must not make one.
+# OMARCHY_CLOSURE_READ dates them: the closure changes with omarchy releases,
+# so the prompt says when it was read and that pacman lists the real one.
+OMARCHY_CLOSURE_READ="2026-10-05, omarchy 4.0.4-1"
 OMARCHY_CLOSURE="omarchy omarchy-keyring omarchy-settings=4.0.4 hyprland quickshell uwsm sddm \
 xdg-desktop-portal-hyprland wireplumber pipewire gnome-keyring gum jq git perl fakeroot \
 pacman-contrib ttf-jetbrains-mono-nerd-basic limine limine-mkinitcpio-hook limine-snapper-sync snapper"
@@ -314,14 +317,32 @@ catalog_confirm_omarchy() {
     local id="$1" label row p
     label="$(catalog_field "$id" label)"
     warn "$label depends on the 'omarchy' package, which haseen replaces (docs/decisions/0001)."
-    info "pacman will pull in this dependency closure: $OMARCHY_CLOSURE"
-    info "omarchy-settings then owns these system files, which land on haseen subsystems:"
+    info "pacman will pull in this dependency closure (as read on $OMARCHY_CLOSURE_READ; pacman lists the current one before it installs): $OMARCHY_CLOSURE"
+    info "omarchy-settings then owns these system files (as read on $OMARCHY_CLOSURE_READ), which land on haseen subsystems:"
     for row in "${OMARCHY_COLLISIONS[@]}"; do
         p="${row%%|*}"
         printf '    %-56s %s\n' "$p" "${row#*|}"
     done
     info "pacman owns those paths afterwards: haseen does not fight it, and removing $label with 'haseen remove app $id' leaves them behind (pacman -Rns omarchy omarchy-settings does not, but read ADR 0001 first)."
     confirm "Install $label and the omarchy dependency chain?" || die "not confirmed; nothing was installed"
+}
+
+# catalog_guard_packages NAME... — `haseen install package|aur` name packages
+# directly. A package that a pullsOmarchy entry installs (flea, also as
+# omarchy/flea) gets the same confirmation as `haseen install app <id>`, so
+# the bare routes are not a way around it.
+catalog_guard_packages() {
+    local ids=() id
+    # Collected first: the confirmation reads stdin, which a `while read` loop
+    # would hand it.
+    mapfile -t ids < <(jq -r '
+        [$ARGS.positional[] | sub("^.*/"; "")] as $names
+        | .entries[] | select(.pullsOmarchy == true)
+        | select(any(.ref | splits(" +") | sub("^.*/"; ""); . as $r | any($names[]; . == $r)))
+        | .id' "$HASEEN_CATALOG" --args "$@")
+    for id in "${ids[@]}"; do
+        catalog_confirm_omarchy "$id"
+    done
 }
 
 # --- per-entry extra steps ---------------------------------------------------------

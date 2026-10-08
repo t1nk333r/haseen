@@ -386,6 +386,7 @@ assert_contains "flea: names the dependency it drags in" "$OUTPUT" "depends on t
 assert_contains "flea: prints the whole closure" "$OUTPUT" \
     "omarchy omarchy-keyring omarchy-settings=4.0.4 hyprland quickshell uwsm sddm"
 assert_contains "flea: the closure reaches the boot pieces" "$OUTPUT" "limine-snapper-sync snapper"
+assert_contains "flea: the closure says when it was read" "$OUTPUT" "as read on 2026-10-05, omarchy 4.0.4-1"
 for f in /etc/fonts/conf.d/50-omarchy.conf /etc/limine-entry-tool.d/omarchy-uki.conf \
     /etc/mkinitcpio.conf.d/omarchy_hooks.conf /etc/sddm.conf.d/10-wayland.conf \
     /usr/share/applications/mimeapps.list; do
@@ -402,6 +403,23 @@ assert_contains "flea: refusal message" "$OUTPUT" "not confirmed; nothing was in
 assert_not_contains "flea: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
 capture env HASEEN_INLINE=1 bash -c 'haseen install app flea --yes </dev/null'
 assert_contains "flea: --yes answers the prompt" "$OUTPUT" "STUB-CALLED: sudo pacman -S --needed --noconfirm omarchy/flea"
+
+# The bare routes name the package directly; they get the same confirmation.
+# (A repo-qualified name such as omarchy/flea is not a package name there.)
+for route in package aur; do
+    capture haseen install "$route" flea --dry-run
+    assert_contains "install $route flea: shows the omarchy closure" "$OUTPUT" "depends on the 'omarchy' package"
+    assert_dry_pure "install $route flea" "$OUTPUT"
+    capture env HASEEN_INLINE=1 bash -c 'echo n | haseen install "$1" flea' _ "$route"
+    assert_status "install $route flea: a refusal stops it" 1 "$STATUS"
+    assert_contains "install $route flea: refusal message" "$OUTPUT" "not confirmed; nothing was installed"
+    assert_not_contains "install $route flea: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
+    capture haseen install "$route" omarchy/flea --dry-run
+    assert_status "install $route omarchy/flea: refused" 1 "$STATUS"
+    assert_not_contains "install $route omarchy/flea: nothing planned" "$OUTPUT" "DRYRUN: "
+done
+capture haseen install package localsend --dry-run
+assert_not_contains "install package localsend: no omarchy warning" "$OUTPUT" "depends on the 'omarchy' package"
 
 # Everything else in the [omarchy] repo is an ordinary leaf package: no guard.
 capture haseen install app localsend --dry-run

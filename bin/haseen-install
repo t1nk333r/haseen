@@ -75,6 +75,7 @@ package)
     fi
     ((${#pkgs[@]} > 0)) || { info "nothing selected"; exit 0; }
     check_pkg_names "${pkgs[@]}"
+    catalog_guard_packages "${pkgs[@]}"
     pkg_install "${pkgs[@]}"
     ;;
 aur)
@@ -91,6 +92,7 @@ aur)
     fi
     ((${#pkgs[@]} > 0)) || { info "nothing selected"; exit 0; }
     check_pkg_names "${pkgs[@]}"
+    catalog_guard_packages "${pkgs[@]}"
     pkg_install_aur "${pkgs[@]}"
     ;;
 flatpak)
