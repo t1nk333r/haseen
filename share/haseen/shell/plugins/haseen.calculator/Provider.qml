@@ -22,6 +22,7 @@ Scope {
                     title: "Calculator",
                     subtitle: "Type an expression: 12*(3+4), sqrt(2), 200 + 10%, 2^10",
                     icon: "accessories-calculator",
+                    glyph: "\u{F00EC}",
                     exec: () => {}
                 }
             ];
@@ -32,6 +33,7 @@ Scope {
                     title: text.trim(),
                     subtitle: r.error,
                     icon: "accessories-calculator",
+                    glyph: "\u{F00EC}",
                     exec: () => {}
                 }
             ];
@@ -41,6 +43,7 @@ Scope {
                 title: shown,
                 subtitle: text.trim() + "  ·  Enter copies",
                 icon: "accessories-calculator",
+                glyph: "\u{F00EC}",
                 exec: () => Quickshell.execDetached(["wl-copy", "--", shown])
             }
         ];

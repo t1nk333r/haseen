@@ -179,6 +179,10 @@ Left out (`test-menu.sh` checks each is absent):
   development rule is mise or Docker toolchains (`test-catalog.sh`); they are
   menu rows on `haseen install package`/`aur` instead.
 
+## Review notes
+
+- Back selects the submenu just left when visible and leaves a valid selection after a search-only drilldown; covered by `tests/test-menu-back.sh`.
+
 ## Verification
 
 - `tests/test-menu-view.sh`: a real ListModel and ListView under the Qt engine;

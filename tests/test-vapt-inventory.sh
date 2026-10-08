@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# VAPT inventory (plan 083 slice 1A): the 25 fixed groups, the added group
+# VAPT inventory (plan 087 slice 1A): the 25 fixed groups, the added group
 # roots, dependency-only names, reviewed aliases, official pins, canonical URL
 # identities and blocked identities. Every host is a fixture sysroot and every
 # manager or tool a logging stub (tests/fixtures/vapt-lib.sh); expectations

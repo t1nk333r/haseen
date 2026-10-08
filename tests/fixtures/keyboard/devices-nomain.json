@@ -1,0 +1,29 @@
+{
+    "mice": [
+        {
+            "address": "0x55d0c0de1111",
+            "name": "logitech-usb-receiver",
+            "defaultSpeed": 0.0,
+            "scrollFactor": 1.0
+        }
+    ],
+    "keyboards": [
+        {
+            "address": "0x55d0c0de9f64",
+            "name": "wooting-60he",
+            "rules": "",
+            "model": "",
+            "layout": "de,ara",
+            "variant": "nodeadkeys,qwerty",
+            "options": "compose:caps,grp:alts_toggle",
+            "active_layout_index": 0,
+            "active_keymap": "German (no dead keys)",
+            "capsLock": true,
+            "numLock": false,
+            "main": false
+        }
+    ],
+    "tablets": [],
+    "touch": [],
+    "switches": []
+}

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Calendar.js" as Cal
 import "Moon.js" as Moon
 
@@ -26,6 +27,14 @@ Column {
     readonly property var cells: Cal.monthGrid(year, month, first)
     readonly property var weeks: Cal.rowWeeks(cells)
     readonly property int cell: Math.round(Theme.fontSize * 2.2)
+    readonly property var clockSettings: Plugins.settingsFor("haseen.clock")
+    readonly property string clockFormat: {
+        const key = Config.barVertical ? "verticalFormat" : "format";
+        const fallback = Config.barVertical ? "HH\nmm" : "HH:mm";
+        return typeof clockSettings[key] === "string" && clockSettings[key] !== "" ? clockSettings[key] : fallback;
+    }
+    readonly property bool dayNameShown: ClockDayName.isShown(clockFormat, ClockSettings.effectiveSetting(clockSettings.showDayName))
+
 
     function shift(delta: int): void {
         const m = Cal.shiftMonth(year, month, delta);
@@ -170,6 +179,7 @@ Column {
         }
 
         Grid {
+            id: calendarGrid
             columns: 7
 
             Repeater {
@@ -234,6 +244,46 @@ Column {
         }
     }
 
+
+    Row {
+        id: dayNameRow
+
+        // Align to the seven date columns, not the optional week numbers.
+        x: body.x + calendarGrid.x
+        width: calendarGrid.width
+        height: dayNameToggle.implicitHeight
+        spacing: Theme.gap
+
+        Item {
+            width: Math.max(0, dayNameRow.width - dayNameToggle.implicitWidth - dayNameRow.spacing)
+            height: dayNameRow.height
+
+            Text {
+                anchors.fill: parent
+                text: "Day name"
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
+        Pill {
+            id: dayNameToggle
+
+            objectName: "clockDayNameToggle"
+            text: root.dayNameShown ? "On" : "Off"
+            activeFocusOnTab: true
+            active: root.dayNameShown
+            onClicked: ClockSettings.setDayName(!root.dayNameShown)
+            Keys.onPressed: event => {
+                if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+                    return;
+                dayNameToggle.clicked();
+                event.accepted = true;
+            }
+        }
+    }
     // Test hook (settings.debugIpc): change and read the shown month without
     // a keyboard or pointer.
     IpcHandler {

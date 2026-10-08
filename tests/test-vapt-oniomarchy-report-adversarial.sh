@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 adversarial: the v1 report keeps its eight columns with the private
+# Plan 087 adversarial: the v1 report keeps its eight columns with the private
 # source, memberships are a union, attempted_tiers says only what was tried,
 # and `haseen vapt status` keeps 0 complete / 1 missing / 2 degraded when the
 # private source's evidence or a recorded dependency goes away. Hermetic.

@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 slice 1B: approving the private oniomarchy source. The key comes
+# Plan 087 slice 1B: approving the private oniomarchy source. The key comes
 # only from the fixed HTTPS URL with exactly the reviewed primary; the
 # database signature is checked before any filename is read from it; the
 # keyring archive is sealed, signature-checked and audited before any trust

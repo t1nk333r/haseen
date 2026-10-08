@@ -1,0 +1,14 @@
+{
+    "mice": [
+        {
+            "address": "0x55d0c0de1111",
+            "name": "logitech-usb-receiver",
+            "defaultSpeed": 0.0,
+            "scrollFactor": 1.0
+        }
+    ],
+    "keyboards": [],
+    "tablets": [],
+    "touch": [],
+    "switches": []
+}

@@ -418,7 +418,7 @@ EOF
     export VAPT_FAKE_TRUST=1
 }
 
-# --- private oniomarchy source (plan 083 slice 1B) -------------------------------
+# --- private oniomarchy source (plan 087 slice 1B) -------------------------------
 # vapt_onio_arch ARCH — the fixture host architecture metadata.py reports.
 vapt_onio_arch() { printf '%s\n' "$1" >"$ROOT/var/lib/haseen/vapt/fixture-architecture"; }
 

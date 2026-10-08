@@ -26,7 +26,13 @@
   "branding": { "mark": "kufic" },
   "plugins": {
     "haseen.weather": { "enabled": false, "settings": { "location": "" } },
-    "haseen.themegen": { "enabled": false }
+    "haseen.themegen": { "enabled": false },
+    "haseen.display": { "enabled": false },
+    "haseen.kblayout": { "enabled": false },
+    "haseen.windows": { "enabled": false },
+    "haseen.emojisearch": { "enabled": false },
+    "haseen.commands": { "enabled": false },
+    "haseen.websearch": { "enabled": false }
   },
   "services": [
     "haseen.pager",
@@ -39,6 +45,7 @@
     "haseen.nightlight",
     "haseen.clipboard",
     "haseen.weather",
-    "haseen.keybinds"
+    "haseen.keybinds",
+    "haseen.battery"
   ]
 }

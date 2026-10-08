@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 slice 1B: transactions with the private oniomarchy source keep
+# Plan 087 slice 1B: transactions with the private oniomarchy source keep
 # Required DatabaseRequired in rendered, private and frozen configurations;
 # closure admits only the fixed roles by exact name or reviewed alias; a full
 # upgrade never carries the private source and no recovery record names it.

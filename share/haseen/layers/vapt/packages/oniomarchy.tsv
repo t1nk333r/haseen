@@ -1,4 +1,4 @@
-# The reviewed fixed oniomarchy admission set (plan 083): every package its
+# The reviewed fixed oniomarchy admission set (plan 087): every package its
 # repository publishes, by exact name, with its role. Nothing outside this
 # table is ever a candidate, even when a newer signed database lists it; a
 # change needs review here and in VAPT_ONIOMARCHY_ADMITTED.

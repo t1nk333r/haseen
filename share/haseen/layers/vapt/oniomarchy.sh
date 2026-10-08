@@ -1,5 +1,5 @@
 # shellcheck shell=bash disable=SC2034  # VAPT_* outputs are consumed by provision.sh
-# The private oniomarchy source (plan 083). It is opted into per operation
+# The private oniomarchy source (plan 087). It is opted into per operation
 # (--with-oniomarchy or repo-enable); its stanza lives only in haseen's root
 # state and VAPT's own transaction configuration, never in /etc/pacman.conf.
 # The initial signing key comes only from the fixed HTTPS URL and must be the

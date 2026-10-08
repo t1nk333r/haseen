@@ -1,6 +1,6 @@
 # Handoff — haseen
 
-Orientation for whoever picks this up next, human or agent. Updated 2026-10-04.
+Orientation for whoever picks this up next, human or agent. Updated 2026-10-08.
 
 ## What this repo is
 
@@ -46,6 +46,16 @@ The owner's other repos:
 | Migration ledger | `bin/haseen-migrate*`, `share/haseen/lib/migrate.sh`, `share/haseen/migrations/`, `share/haseen/systemd/user/haseen-migrate-notify.service` | 028 |
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |
 | Keybind sheet; Learn's keybinding and tmux lists | `bin/haseen-keybinds`, `bin/haseen-keybinds-list`, `bin/haseen-tmux-keybinds`, `bin/haseen-menu-select`, `share/haseen/lib/keybinds-scan.lua`, `share/haseen/shell/plugins/haseen.keybinds/` | 030 071 |
+| Low-battery warnings, power and battery panel | `share/haseen/shell/plugins/haseen.battery/` (`Service.qml`, `BatteryLogic.js`, `Panel.qml`), `share/haseen/migrations/1791397394-battery-service.sh`, `tools/fake-upower.py`, `tests/test-battery.sh` | 075 076 |
+| Brightness command, DDC setup, display panel | `bin/haseen-brightness`, `bin/haseen-setup-ddc`, `share/haseen/shell/plugins/haseen.display/` | 077 |
+| Media panel (cover art, seek, switcher) | `share/haseen/shell/plugins/haseen.media/`, `tools/fake-mpris.py` | 078 |
+| Shared panel widgets: `Pill`, `TrackBar` (battery, display, media panels) | `share/haseen/shell/Haseen/Widgets/` | 076 077 078 |
+| OSD mic, layout and lock-key cards; keyboard state | `share/haseen/shell/plugins/haseen.osd/`, `share/haseen/shell/Haseen/Keyboard.{qml,js}`, `tests/test-keyboard.sh` | 079 |
+| Keyboard-layout bar widget and list | `share/haseen/shell/plugins/haseen.kblayout/` | 080 |
+| Launcher providers (`@` windows, `:` emoji, `/` commands, `?` web) | `share/haseen/shell/plugins/haseen.{windows,emojisearch,commands,websearch}/`, `tests/test-launcher-providers.sh` | 081 |
+| Idle suspend, AC/battery timeouts | `share/haseen/shell/plugins/haseen.idle/`, `bin/haseen-setup-idle`, `tests/test-idle.sh` | 019 082 |
+| Theme generator keys and Wallhaven paging | `share/haseen/shell/plugins/haseen.themegen/`, `tests/test-themegen-keys.sh` | 083 |
+| Screen off / Screen on | `bin/haseen-screen-{off,on}`, menu System rows, the battery panel's Screen row, `tests/test-screen.sh` | 084 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
@@ -53,7 +63,7 @@ The owner's other repos:
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
-| Optional VAPT workstation provisioning | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `docs/vapt.md` | 007, 083 |
+| Optional VAPT workstation provisioning | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `docs/vapt.md` | 007, 087 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |
@@ -62,7 +72,7 @@ The owner's other repos:
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
 tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
-the optional `vapt` layer; plan 083 extends its inventory and adds the opt-in
+the optional `vapt` layer; plan 087 extends its inventory and adds the opt-in
 private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
 `bin/haseen-vapt-repo-status`; independent review outstanding).
 
@@ -74,19 +84,92 @@ private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
 - 0003: own shell, DMS swap-in, plugin compat
 - 0004: installer now, PKGBUILDs later
 
+## State and queue (2026-10-08)
+
+- `main` = 96193cf: plans up to 074 are merged (PRs #13–#34).
+- Branch luna/gaps (one PR) implements the 8 gaps from
+  `docs/reference-shell-gaps.md` ("tackle all 8", owner) as plans 075–082, plus
+  083 (theme generator keys and paging) and 084 (Screen off / Screen on). All
+  ten are DONE; `plans/README.md` and each plan record the final behaviour and
+  evidence, including the review rounds' fixes.
+
+  | Gap | Plan | Default |
+  |---|---|---|
+  | 1 low-battery warnings | 075 | ON (owner-approved; in AGENTS.md); `criticalAction` none |
+  | 4 power/battery panel | 076 | panel kind on `haseen.battery` |
+  | 2 `haseen brightness` + `haseen.display` panel | 077 | panel OFF; `haseen setup ddc` OFF |
+  | 3 media panel | 078 | panel kind on `haseen.media`; `remoteArt` OFF |
+  | 5 OSD mic/layout/lock keys | 079 | lock keys OFF |
+  | 6 `haseen.kblayout` widget | 080 | OFF |
+  | 7 launcher providers: windows, emoji, commands, web | 081 | each OFF |
+  | 8 idle suspend + AC/battery timeouts | 082 | `suspendAfter` 0 (never) |
+
+  Owner decision 2026-10-08: `onBattery` keeps haseen's names
+  (`screensaverAfter`, `lockAfter`, `dpmsAfter`, `suspendAfter`) instead of
+  the spec's `dimAfter`/`screenOffAfter`; there is no dim step (plan 082).
+  The next free plan number is 088 (085 and 086 landed on main after this
+  queue; 087 is the VAPT inventory and private oniomarchy source).
+
 ## Gates
 
-All three passed at the last integration (2026-10-04):
+Run before every PR, all from the repo root:
 
 ```sh
-SHELLCHECK=/tmp/tools/shellcheck tools/lint.sh   # lint OK
-tests/run.sh                                     # 2890/2890
-tools/check-docs.sh                              # OK
+SHELLCHECK=$(command -v shellcheck) GO=<go ≥ 1.26> tools/lint.sh
+QT_QPA_PLATFORM=offscreen tests/run.sh   # ≈ 6100 checks, 8–11 min: run it in tmux
+tools/check-docs.sh
+tools/secrets.sh                          # before every push
 ```
 
-shellcheck is not installed on the author's laptop; the static release binary
-is used. nix is used through nix-portable (`/tmp/tools/np`; see plan 009 for
-setup).
+`core/go.mod` needs Go ≥ 1.26; pass a mise-installed Go as `GO=` when the
+system one is older. nix is used through nix-portable (plan 009). Tests are
+behavioural only and run only through `tests/run.sh`; since plan 074
+`tests/lib.sh` `sandbox()` cuts every test off the live session.
+
+Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
+`plans/README.md`: keep every row, in number order. A PR that is BEHIND gets
+`gh pr update-branch N`; one that is CLEAN but stuck is merged by hand.
+
+## Developer tools (`tools/`)
+
+- `tools/nest-launch.sh DIR [MODE]`: the only way to run UI proofs next to a
+  live session. It starts a nested Hyprland on workspace 5, silently, through
+  the owner's exec rule, and needs the owner session's
+  `HYPRLAND_INSTANCE_SIGNATURE`. Wrap it in `flock ~/.cache/haseen-wt/nest.lock`.
+  Screenshot with `WAYLAND_DISPLAY=$(cat DIR/socket) grim -o IO shot.png`.
+  Stop with `kill -- -$(cat DIR/pid)`, then remove
+  `$XDG_RUNTIME_DIR/hypr/$(cat DIR/sig)` and any `at-spi-bus-launcher` whose
+  `DBUS_SESSION_BUS_ADDRESS` is a `/tmp/dbus-*` path (nest orphans take over
+  the session's at-spi bus).
+- `tools/vptr/`: a virtual pointer for drag and hover tests (`build.sh` builds
+  it; `d`/`u` left, `rd`/`ru` right, `md`/`mu` middle button). Point it only at
+  a nest, never at the live session.
+- `tools/fake-upower.py`: a fake UPower and power-profiles-daemon for tests and
+  nests (plan 075). Start it on a private `dbus-daemon` and give the shell the same
+  `DBUS_SYSTEM_BUS_ADDRESS`. Each stdin line is a property change
+  (`sleep=1 Percentage=10 State=2`); a `client` line holds the rest until the
+  shell has read the display device, so a script is timed from the shell's
+  start. It refuses the real system bus.
+- `tools/fake-mpris.py NAME [KEY=VALUE…]`: a fake MPRIS player for tests and
+  nests (plan 078): capabilities, metadata, `omit=Shuffle,Volume` for properties
+  a player lacks; every call and write is logged. Start it on a private
+  `dbus-daemon` and give the shell the same `DBUS_SESSION_BUS_ADDRESS`. It
+  refuses the login session's bus, where the owner's players are.
+- `tools/sync-apply.sh REPO STAGE_TAR EXPECT_TSV DELETE_TSV`: moves a checkout
+  that carries uncommitted WIP onto a new `main`. Per file changed between the
+  last synced main and the new one: main's version where the checkout still
+  has the old one, a 3-way `git merge-file` where it was edited, and a write
+  only if the file still has the expected blob. Snapshot the WIP first with a
+  temporary `GIT_INDEX_FILE` commit to `refs/sync/<host>-before-rN`.
+
+## Installing a checkout with WIP on a machine
+
+Build tree = checkout files (`git ls-files -co --exclude-standard`, so WIP is
+included) plus `git diff <last-installed-main> origin/main` for code paths
+(not docs, plans, nix, NOTICE, AGENTS, handoff, README) applied with
+`patch -p1`. Then `./install.sh --tree-only --yes` with Go on `PATH`,
+`systemctl --user daemon-reload`, `hyprctl reload`, `haseen migrate`, and
+re-apply the theme.
 
 ## Release gates (open)
 
@@ -149,3 +232,13 @@ setup).
   tint the owner's session.
 - Never remove or rewrite the owner's Omarchy/DMS plugin dirs (AGENTS.md).
   A backup of luna's set is at `~/Backups/luna/omarchy-plugins-20261004/`.
+- Work in worktrees under `~/.cache/haseen-wt/<dir>` created from
+  origin/main, never in a checkout that holds WIP, and always with absolute
+  paths: relative paths in agent edits corrupted a checkout twice. Never
+  `git reset/stash/checkout --/restore/clean` in a shared worktree.
+- No `qs ipc`, panel opens, shell restarts or `hyprctl dispatch/eval` against
+  the owner's live shell. A menu opened live grabbed the keyboard while the
+  owner typed and launched an app. UI proofs go in a nest (`tools/nest-launch.sh`).
+- A shell restart used to kill apps it had launched (they sat in
+  `haseen-shell.service`'s cgroup; plan 074 fixed it for new launches). Apps
+  started by an older shell still die on restart: close them first.

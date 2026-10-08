@@ -37,7 +37,7 @@ ACTIVATION = re.compile(r"(?:systemctl|service|rc-update|sv)\s+(?:[^\n;]*\s)?(?:
 # reviewed full upgrade succeeded (--with-blackarch).
 BLACKARCH_STANZA = ('SigLevel = Required DatabaseOptional', 'Server = https://blackarch.org/blackarch/$repo/os/$arch')
 WITH_BLACKARCH = False
-# The private oniomarchy source (plan 083). Its approved descriptor lives only
+# The private oniomarchy source (plan 087). Its approved descriptor lives only
 # under haseen's root state and enters VAPT's own configuration only for an
 # operation that opted in (--with-oniomarchy); a host [oniomarchy] section is
 # reported, never adopted. Never a base vendor; never written to pacman.conf.

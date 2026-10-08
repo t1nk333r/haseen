@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 slice 1B: the private oniomarchy source is opt-in per operation,
+# Plan 087 slice 1B: the private oniomarchy source is opt-in per operation,
 # private to VAPT's own configuration, x86_64-only, strictly signed, the last
 # tier and admitted only by exact reviewed names. Every fetch, key, package
 # and tool command is a logging stub (tests/fixtures/vapt-lib.sh); signed

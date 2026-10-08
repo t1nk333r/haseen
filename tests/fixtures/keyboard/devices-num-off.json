@@ -1,0 +1,43 @@
+{
+    "mice": [
+        {
+            "address": "0x55d0c0de1111",
+            "name": "logitech-usb-receiver",
+            "defaultSpeed": 0.0,
+            "scrollFactor": 1.0
+        }
+    ],
+    "keyboards": [
+        {
+            "address": "0x55d0c0de1f3c",
+            "name": "power-button",
+            "rules": "",
+            "model": "",
+            "layout": "us,ara",
+            "variant": ",",
+            "options": "compose:caps,grp:alts_toggle",
+            "active_layout_index": 0,
+            "active_keymap": "English (US)",
+            "capsLock": false,
+            "numLock": true,
+            "main": false
+        },
+        {
+            "address": "0x55d0c0de9a6b",
+            "name": "at-translated-set-2-keyboard",
+            "rules": "",
+            "model": "",
+            "layout": "us,ara",
+            "variant": ",",
+            "options": "compose:caps,grp:alts_toggle",
+            "active_layout_index": 1,
+            "active_keymap": "Arabic",
+            "capsLock": true,
+            "numLock": false,
+            "main": true
+        }
+    ],
+    "tablets": [],
+    "touch": [],
+    "switches": []
+}

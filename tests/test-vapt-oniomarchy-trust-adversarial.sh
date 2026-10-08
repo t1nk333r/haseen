@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 adversarial: the private source's root state is never usable when
+# Plan 087 adversarial: the private source's root state is never usable when
 # a path is symlinked, hardlinked, replaceable or the wrong type; recorded
 # keyring authority is the only signer set and cannot be widened or rolled
 # back; signature statuses fail closed; a refresh that cannot verify changes
@@ -317,7 +317,7 @@ recover_case() { # NAME
     export VAPT_PLAN="$SANDBOX/plan.tsv" VAPT_ARCHIVES="$SANDBOX/archives" VAPT_MOCK_SIGNATURES=1
     mkdir -p "$SANDBOX/archives"
     printf 'original system sync DB\n' >"$ROOT/var/lib/pacman/sync/extra.db"
-    # The private source never joins a full upgrade (plan 083), so no scope
+    # The private source never joins a full upgrade (plan 087), so no scope
     # digest exists to bind; any such record is refused and preserved.
     DIGEST="$(printf 'recorded scope' | sha256sum | cut -d' ' -f1)"
 }

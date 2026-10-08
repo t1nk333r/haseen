@@ -5,8 +5,9 @@
 -- both actions fire.
 --
 -- Shell actions go through `haseen shell ipc`, which talks to whichever shell
--- is active (haseen or DMS). Volume and brightness call wpctl/brightnessctl
--- directly; the shell's OSD watches PipeWire and the backlight itself.
+-- is active (haseen or DMS). Volume calls wpctl directly and brightness goes
+-- through `haseen brightness` (the backlight, or DDC monitors on a machine
+-- without one); the shell's OSD watches PipeWire and the backlight itself.
 
 local b = haseen.bind
 local ipc = haseen.ipc
@@ -108,12 +109,30 @@ b("XF86AudioRaiseVolume", "Volume up", "wpctl set-volume -l 1 @DEFAULT_AUDIO_SIN
 b("XF86AudioLowerVolume", "Volume down", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-", held)
 b("XF86AudioMute", "Mute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle", once)
 b("XF86AudioMicMute", "Mute microphone", "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle", once)
-b("XF86MonBrightnessUp", "Brightness up", "brightnessctl -e4 -n2 set 5%+", held)
-b("XF86MonBrightnessDown", "Brightness down", "brightnessctl -e4 -n2 set 5%-", held)
+b("XF86MonBrightnessUp", "Brightness up", "haseen brightness up", held)
+b("XF86MonBrightnessDown", "Brightness down", "haseen brightness down", held)
+b("XF86KbdBrightnessUp", "Keyboard backlight up", "haseen brightness up kbd", held)
+b("XF86KbdBrightnessDown", "Keyboard backlight down", "haseen brightness down kbd", held)
 b("XF86AudioPlay", "Play/pause", "playerctl play-pause", once)
 b("XF86AudioPause", "Play/pause", "playerctl play-pause", once)
 b("XF86AudioNext", "Next track", "playerctl next", once)
 b("XF86AudioPrev", "Previous track", "playerctl previous", once)
+
+-- Lock keys ----------------------------------------------------------------
+-- Hyprland sends no event when Caps Lock or Num Lock changes, so a bind on
+-- the keys themselves tells the OSD to read the state once (plan 079).
+-- code:66 and code:77 are the Caps Lock and Num Lock keys whatever they
+-- type: under compose:caps Caps is Compose, and the read then finds nothing
+-- changed. non_consuming: the key still reaches xkb and the app; release:
+-- the lock state has settled; ignore_mods: Shift + Caps Lock too.
+-- The kind is off by default, and Caps is a busy key under compose:caps: so
+-- the bind is one `test` in the shell Hyprland runs it with, and the IPC
+-- call (two scripts and a qs client, ~40 ms) only follows while haseen.osd
+-- has lockKeys on and keeps the flag file in $XDG_RUNTIME_DIR/haseen.
+local lockkey = { non_consuming = true, release = true, ignore_mods = true }
+local lockkeys = 'test -e "$XDG_RUNTIME_DIR/haseen/osd-lockkeys" && ' .. ipc("osd", "lockkeys")
+b("code:66", "Caps Lock OSD", lockkeys, lockkey)
+b("code:77", "Num Lock OSD", lockkeys, lockkey)
 
 -- Windows ----------------------------------------------------------------------
 b("SUPER + W", "Close window", hl.dsp.window.close())

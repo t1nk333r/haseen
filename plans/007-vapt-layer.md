@@ -36,21 +36,21 @@ an optional layer rather than a requirement:
 
 The layer landed as `share/haseen/layers/vapt/` with `docs/vapt.md`,
 `bin/haseen-vapt-{install,status,remove}` and the `tests/test-vapt*.sh`
-suites. Requirement 10 in `docs/architecture.md` and the `vapt` row in its
+suites. Requirement 11 in `docs/architecture.md` and the `vapt` row in its
 layer table now describe it; the "no architecture rows" line above describes
 the 2026-10-04 state only. Independent final review is outstanding.
 
 The layer sets `LAYER_PICKABLE=false` (contract in `share/haseen/lib/layers.sh`),
 so the interactive install picker never offers it and drops it from a saved
 choice. Applied without groups it refuses, which once aborted the installer
-after the earlier layers had applied (plan 083 batch B). `./install.sh
+after the earlier layers had applied (plan 087 batch B). `./install.sh
 --vapt-groups` remains the installer route, and `--pick` with it is refused.
 Shell activation seeds only the owned link `~/.config/haseen/vapt/shell.sh`.
 The layer never edits `~/.bashrc` or `~/.zshrc`; it reuses an rc or shell-rc
 include that already sources the link and otherwise prints the exact line to
-add (plan 083 batch C, `docs/vapt.md`).
+add (plan 087 batch C, `docs/vapt.md`).
 
-Plan 083 extends this layer with ten more tool groups from oniomarchy's
+Plan 087 extends this layer with ten more tool groups from oniomarchy's
 categories, reviewed package aliases and dependency roles, canonical URL
 identities, and the opt-in private signed oniomarchy package source (slice 1B,
 implemented).

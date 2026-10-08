@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Allow or prevent the idle screensaver, lock and display power-off (Stay Awake)
+# haseen:summary Allow or prevent the idle screensaver, lock, display power-off and suspend (Stay Awake)
 # haseen:args [on|off|toggle|status] [--dry-run]
 #
 # Plan 019. State is the flag file $HASEEN_USER_STATE/flags/idle-off (exists =
@@ -15,8 +15,8 @@ usage() {
 Usage: haseen toggle idle [on|off|toggle|status] [--dry-run]
 
 "off" keeps the session awake: no screensaver, no lock, no display
-power-off after inactivity (Stay Awake). The bar shows a coffee cup while
-idle is off. "on" restores the normal idle behaviour.
+power-off and no suspend after inactivity (Stay Awake). The bar shows a
+coffee cup while idle is off. "on" restores the normal idle behaviour.
 Without an argument it toggles; "status" prints on or off.
 State: \$HASEEN_USER_STATE/flags/idle-off (idle actions off while it exists).
 EOF

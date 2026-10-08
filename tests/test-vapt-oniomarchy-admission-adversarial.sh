@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 adversarial: the private source admits only its fixed 52 names in
+# Plan 087 adversarial: the private source admits only its fixed 52 names in
 # their reviewed roles, by exact name or reviewed alias, never through
 # Provides, never as a dependency-only or unmapped root, never shadowing an
 # earlier source, never with replaces/conflicts and only for x86_64/any. Each
@@ -26,7 +26,7 @@ assert_status 'control: an admitted candidate closes' 0 "$STATUS"
 # --- unmapped candidates are not installable, even as dependencies ----------
 # peass-ng, powershell-empire-git, eyewitness-git and android-apktool-bin are
 # published candidates with no inventory mapping (logical "-"): a row for them
-# "does not select or install it" (plan 083 admission contract).
+# "does not select or install it" (plan 087 admission contract).
 for unmapped in peass-ng powershell-empire-git eyewitness-git android-apktool-bin; do
     adv_approved "vapt-adv-admit-unmapped-$unmapped"
     adv_publish "[{$SUPERSDR,\"depends\":[\"$unmapped\"]},{\"name\":\"$unmapped\",\"version\":\"1-1\",\"arch\":\"any\",\"url\":\"https://example.org/$unmapped\"}]"

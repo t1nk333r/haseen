@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083 adversarial: consent to the private oniomarchy source is per
+# Plan 087 adversarial: consent to the private oniomarchy source is per
 # operation (--with-oniomarchy) and never implied by --all, --yes, a repeated
 # run, an existing host [oniomarchy] stanza or an existing descriptor. The
 # repository commands' dry-runs are pure and claim nothing. Interrupted

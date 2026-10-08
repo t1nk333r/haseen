@@ -22,7 +22,8 @@ file changes in the same commit.
 | 7 | Arch / CachyOS / NixOS | installer (CachyOS, Arch) + `flake.nix` (NixOS) |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
 | 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
-| 10 | optional VAPT workstation environment, no AUR or tool execution | `layers/vapt`, 25 explicit group manifests and owned native environments (plans 007, 083) |
+| 10 | Brightness (plan 077) | `haseen brightness`: backlights and `*::kbd_backlight` via brightnessctl (logind), DDC/CI monitors via ddcutil (bus map cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`); `haseen setup ddc on` (opt-in) installs ddcutil and loads i2c-dev; the `haseen.display` panel (off) slides each device |
+| 11 | optional VAPT workstation environment, no AUR or tool execution | `layers/vapt`, 25 explicit group manifests and owned native environments (plans 007, 087) |
 
 ## 2. Filesystem
 
@@ -72,13 +73,13 @@ Preflight globals are already set when the layer runs.
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
-| `vapt` | — | explicit owner tool groups (plus the oniomarchy-category groups of plan 083), checked binary/native sources (the private oniomarchy source only per operation, last), passive PATH and the optional shared COAE Python environment; dependency-only packages are never roots; no assessment execution or service activation (plans 007, 083) |
+| `vapt` | — | explicit owner tool groups (plus the oniomarchy-category groups of plan 087), checked binary/native sources (the private oniomarchy source only per operation, last), passive PATH and the optional shared COAE Python environment; dependency-only packages are never roots; no assessment execution or service activation (plans 007, 087) |
 
 Rules every layer follows:
 
 - **Idempotent.** A re-apply converges and never duplicates anything.
 - **Dry-run pure.** Every mutation goes through `run`, `run_root`, `write_root_file`, `append_root_file`, `install_root_file`, `write_user_file` or `seed_user_file`.
-- **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file. No layer appends to or edits a user file after seeding. The optional VAPT layer seeds only its owned link `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc`/`~/.zshrc`. When no rc sources the link, it prints the line the user may add (plan 083).
+- **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file. No layer appends to or edits a user file after seeding. The optional VAPT layer seeds only its owned link `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc`/`~/.zshrc`. When no rc sources the link, it prints the line the user may add (plan 087).
 - **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). These exceptions are necessary:
   - `ENABLE_ENROLL_LIMINE_CONFIG=yes` has to be appended to `/etc/default/limine`, because limine-entry-tool resets that key after it reads the drop-ins (`limine-common-functions:143-144`, plan 002).
   - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024). The optional VAPT layer appends a reviewed BlackArch stanza the same way, and only after its reviewed upgrade commits (plan 007).
@@ -100,7 +101,7 @@ Rules every layer follows:
   stanza stays in haseen's root state and VAPT's own configuration, never
   `/etc/pacman.conf`; it keeps `Required DatabaseRequired`, admits only 52
   reviewed names, is never a base vendor, and its key import into the shared
-  pacman keyring is global (plan 083). See `docs/vapt.md` for its trust, environment, and
+  pacman keyring is global (plan 087). See `docs/vapt.md` for its trust, environment, and
   limited owned-link removal contracts. It does not require the desktop or
   default layers.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
@@ -159,6 +160,8 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `Sidecar`: the connection to haseen-sidecar (§5.6).
   - `BorderWipe`: holds the `borderwipe` subscription while the theme asks for a wipe (§5.6, §7).
   - `Apps`: starts user apps outside the shell's cgroup (§5, plan 074).
+  - `Keyboard`: the keyboard layout from one `hyprctl -j devices` read plus Hyprland's `activelayout` event, and the lock-key reader (plans 079, 080).
+  - `ClockDayName`: pure date-format handling shared by the `haseen.clock` widget and calendar panel.
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
@@ -173,7 +176,10 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   "description": "Time and date in the bar",
   "kinds": ["bar-widget"],
   "entry": { "bar-widget": "Widget.qml" },
-  "settings": { "format": { "type": "string", "default": "HH:mm", "description": "Qt date format" } },
+  "settings": {
+    "format": { "type": "string", "default": "HH:mm", "description": "Qt date format" },
+    "showDayName": { "type": "boolean", "description": "Unset follows the date format" }
+  },
   "permissions": []
 }
 ```
@@ -184,7 +190,7 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `panel`: an `Item` the host shows in a popup surface. Toggle it with `panel toggle <id>`. A toggle within 1.5 s of a press on a bar widget opens the popup centred under (or beside) that widget on its screen, clamped to the bar; any other toggle centres it on the bar edge of the focused screen (`share/haseen/shell/PanelPlacement.js`).
   - `service`: a non-visual object created once at startup.
   - `launcher-provider`: a `QtObject` with `prefix: string` and `function query(text): [{title, subtitle, icon, exec(): void}]`.
-    Prefixes in use: `>` clipboard history (haseen.clipboard), `=` calculator (haseen.calculator).
+    Prefixes in use: `>` clipboard history (haseen.clipboard), `=` calculator (haseen.calculator); off by default (plan 081): `@` windows (haseen.windows, `hyprctl dispatch` focus), `:` emoji (haseen.emojisearch, haseen.emoji's list, wl-copy), `/` menu commands (haseen.commands, MenuModel.js leaves; a `when`/`disabled` row only once its guard answered, from the menu's cache or one batch per open) and `?` web search (haseen.websearch, http(s) `url` template, `xdg-open` through `Apps.launch`, no request from the shell). The empty launcher lists the enabled prefixes.
   - `overlay`: a full-screen layer surface the plugin owns, such as OSD or lock.
 - `permissions`: declarative. Values: `exec`, `network`, `network:local`, `files:read`, `files:write`, `notifications`. `haseen plugin validate` and `haseen plugin info` show them, and `network` triggers a warning. QML cannot sandbox, so this field is review metadata, not enforcement. The docs say so.
 - `requires` (plan 064): `{ "bins": ["cmd"], "tools": ["cmd-or-package"], "layers": ["gaming"], "haseen": "0.2.0" }`, all optional. Unlike `permissions` it is enforced: while a `bins` command is not on PATH, a `tools` name is neither a command nor an installed package (or provider, `pacman -T`), a layer is not applied (`/var/lib/haseen/layers/<name>`) or haseen's `VERSION` is older (major.minor.patch only, so `0.1.0-dev` satisfies `0.1.0`), the plugin is not valid and nothing loads it. Other plugins are unaffected. A `tools` name that no repository knows (`pacman -Si` fails, e.g. Debian's `pulseaudio-utils`) cannot be checked and counts as met. `haseen plugin validate`/`list`/`info` show a refused plugin as `unmet` with the reason (`share/haseen/shell/lib/plugin.sh` `plugin_unmet`); the shell (`Haseen/Plugins.qml` with `Haseen/Requires.js`) probes the facts in one `bash` run per new set, puts the same messages in its plugin errors and sends one notification when a host asks for a refused plugin. The facts are probed again when a plugin directory appears or goes, and on `haseen shell ipc shell reload`. DMS `dependencies` (and its deprecated `requires`) map to `tools`, dropping entries that are not plain names; Omarchy manifests have no requirement field, so an Omarchy plugin may carry haseen's `requires` object as is (an array is read as `tools`).
@@ -306,6 +312,24 @@ animations, blur and shadow values it read with `hyprctl getoption`. The
 optional game watcher is the `haseen.indicators` service, listed only by
 `haseen context auto-game on|set`.
 
+Idle (`haseen.idle`, plans 019, 082) runs one ext-idle-notify monitor per
+non-zero timeout: `screensaverAfter`, `lockAfter`, `dpmsAfter` and
+`suspendAfter` (0 = never, the default), which runs `haseen system suspend`.
+`onBattery` holds any of those four and wins while UPower's `onBattery` is
+true; a plug event recreates only the monitors whose timeout changed, and a
+monitor replaced while idle keeps its idle state (displays stay off). Every
+timeout is held at 2147483 s: Quickshell's IdleMonitor turns a longer one
+into 0 ms. The
+`idle-off` flag (Stay Awake, the game and present contexts) removes every
+monitor, and the suspend monitor always honours Wayland idle inhibitors.
+Hyprland counts only inhibitors on windows, not on layer-shell surfaces.
+`haseen setup idle` (Setup › Idle and Suspend) prints and sets the timeouts.
+`haseen screen off|on` (plan 084) is the manual DPMS switch, from the menu
+(System) and the battery panel too: off waits `--delay` (1000 ms) so the
+releasing click or key cannot wake the displays. haseen.idle sends `dpms.on`
+only for an off it made itself (`_dpmsOff`), so it never undoes a manual off;
+its lock and dpms monitors keep counting from the last input.
+
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
 Nothing appears on screen for them.
@@ -347,6 +371,7 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 | `nightlight` | `on()`, `off()`, `toggle()`, `refresh()`, `status(): string` |
 | `pager` | `count()`, `probe()`, `cards()`, `clear()`, `dnd()`, `expand()`, `snooze(minutes)`, `snoozeAll(minutes)`, `unsnooze(key)`, `snoozes()`, `codes(state)`, `open(deckKey)`, `act(identifier)`, `reply(text)`, `dismissOne()`, `dismissAll()`, `dismissShown()`, `invokeLast()`, `showHistory()`, `forgetHistory()`, `dismiss(summary)`, `recent(action)`, … (plan 025) |
 | `haseen.prayers` | `refresh()`, `status()` (plan 026) |
+| `osd` | `lockkeys()`: read Caps/Num Lock once and show a change (the default `code:66`/`code:77` release binds call it; plan 079), `state(): string` |
 
 Plugins with `settings.debugIpc` expose test-only targets named after the
 plugin, for example `haseen.menu`, `haseen.launcher` and `haseen.themepicker`.
@@ -376,7 +401,7 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 ## 6. Resource rules (enforced in review)
 
 - Every `Timer` is marked on the line above it, and `tests/test-shell.sh` enforces both kinds. Prefer events: Hyprland IPC, PipeWire, UPower and NetworkManager D-Bus, `FileView` watches.
-  - `// haseen:ui-timeout`: a single-shot UI timeout.
+  - `// haseen:ui-timeout`: a single-shot UI timeout. One is re-armed as a clock: the `haseen.media` panel's seek bar emits `positionChanged()` once a second while the panel is open and the player plays (plan 078); the panel is freed on close, and a tick makes no D-Bus call.
   - `// haseen:sample`: a repeating sampler with an interval of 2 s or more and a `running:` binding gated on visibility or enablement.
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python in the shell path.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.

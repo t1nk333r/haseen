@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# haseen:summary Turn the displays back on (DPMS), also any output left off
+# haseen:args [--dry-run]
+#
+# Plan 084. The counterpart of `haseen screen off`. From the menu or the power
+# panel the displays are usually on already (any input wakes them); it is
+# still the way to wake an output DPMS left off, and harmless when all are on.
+# haseen.idle keeps its own bookkeeping and still turns the displays off and
+# on at the next idle cycle.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen screen on [--dry-run]
+
+Turns every display back on (DPMS) at once. A key press or pointer motion
+does the same; this also wakes an output that was left off.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+screen_dpms on

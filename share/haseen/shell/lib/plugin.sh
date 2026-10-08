@@ -502,18 +502,26 @@ shell_merged_json() {
 # half-written file. FileView cannot see a file that did not exist when the
 # shell started, so a first-time write asks for a reload.
 #
+# stdin is read whole and must be exactly one JSON object, else nothing is
+# written: a caller piping a failed read or jq transform in (pipeline members
+# run concurrently, so pipefail only reports after this has run) would
+# otherwise publish empty output over the user's whole configuration.
+#
 # The staging name carries the writer's pid, so two writers never stage into
 # one file and rename each other's bytes. shell_config_lock is called here as
 # well: callers take it before their read (that is the part that needs it),
 # and this keeps the rename serialised even if one forgets.
 shell_config_write() {
-    local existed=true tmp="$SHELL_USER_CONFIG.new"
+    local existed=true tmp="$SHELL_USER_CONFIG.new" content
+    content="$(cat)"
+    jq -e -s 'length == 1 and (.[0] | type) == "object"' <<<"$content" >/dev/null 2>&1 ||
+        die "refusing to write $SHELL_USER_CONFIG: the new content is not one JSON object (the file is unchanged)"
     [[ -e $SHELL_USER_CONFIG ]] || existed=false
     if ! $DRY_RUN; then
         shell_config_lock
         tmp="$SHELL_USER_CONFIG.new.$$"
     fi
-    write_user_file "$tmp"
+    printf '%s\n' "$content" | write_user_file "$tmp"
     run mv -f -- "$tmp" "$SHELL_USER_CONFIG"
     $existed || info "new $SHELL_USER_CONFIG: apply it to a running shell with: haseen shell ipc shell reload"
 }

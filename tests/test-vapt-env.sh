@@ -406,7 +406,7 @@ infra=(
     'extra|openldap|2.6.10-1|https://www.openldap.org/'
     'extra|perl-image-exiftool|13.36-1|https://exiftool.org/'
 )
-# osint's plan 083 roots resolve and are installed too, so osint is complete.
+# osint's plan 087 roots resolve and are installed too, so osint is complete.
 osint_roots=(
     'blackarch|recon-ng|5.1.2-1|https://github.com/lanmaster53/recon-ng'
     'blackarch|theharvester|4.8.0-1|https://github.com/laramies/theHarvester'

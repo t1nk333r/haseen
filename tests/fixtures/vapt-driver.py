@@ -805,7 +805,7 @@ def stock_archive(name, version, out, change='', registration='register'):
     print(archive)
 
 
-# --- private oniomarchy source fixtures (plan 083 slice 1B) -------------------
+# --- private oniomarchy source fixtures (plan 087 slice 1B) -------------------
 # A fixture repository the curl stub serves from $SANDBOX/onio/serve, signed
 # by the fixture signature protocol: NAME.sig holds "fixture-sig <sha256>"
 # and $SANDBOX/onio/status/<sha256> the gpg status a stub replays for exactly

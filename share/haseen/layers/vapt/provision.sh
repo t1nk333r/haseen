@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Owner inventory: waydots/packages/security, plus the plan 083 groups whose
+# Owner inventory: waydots/packages/security, plus the plan 087 groups whose
 # tool names come from oniomarchy category facts. Source names/pins are facts;
 # provisioning policy here is independent of either source's installer.
 VAPT_DIR="${LAYER_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
@@ -436,7 +436,7 @@ vapt_report() {
 # vapt_shell_active — 0 when ~/.bashrc or ~/.zshrc already sources the owned
 # link, directly or through the optional shell-rc layer's default/shell/init.sh
 # (which loads the same link; that layer may be absent). Read-only: haseen
-# seeds only the owned link and never edits a user rc file (plan 083 batch C).
+# seeds only the owned link and never edits a user rc file (plan 087 batch C).
 vapt_shell_active() {
     local general="${HASEEN_INSTALL_PATH:-$HASEEN_PATH}/default/shell/init.sh"
     local include="$HASEEN_USER_CONFIG/vapt/shell.sh" rc

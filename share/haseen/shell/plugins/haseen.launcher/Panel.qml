@@ -3,13 +3,15 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Fuzzy.js" as Fuzzy
 
 // haseen.launcher: type to fuzzy-filter DesktopEntries.applications, arrows
 // (or Tab) to move, Enter to launch, Escape to close (the panel host handles
 // Escape). Input that starts with an enabled launcher-provider's prefix is
 // sent to that provider's query() instead. Providers are created when the
-// launcher opens and destroyed with it, so they cost nothing while closed.
+// launcher opens and destroyed with it, so they cost nothing while closed;
+// their prefixes are listed under the empty input (plan 081).
 // Opened by `haseen shell ipc launcher toggle` (the `launcher` role).
 Column {
     id: root
@@ -28,8 +30,16 @@ Column {
     readonly property color subtitleColor: Theme.subtle(Theme.surface)
     readonly property color selectedSubtitleColor: Theme.subtle(Theme.selection)
     property string query: ""
+    // The enabled providers' prefixes, shown under the empty input:
+    // "= Calculator    > Clipboard    : Emoji search".
+    readonly property string prefixHelp: providers.filter(p => typeof p.prefix === "string" && p.prefix !== "").map(p => {
+        const rec = Plugins.registry[p.pluginId];
+        return p.prefix + " " + (rec && rec.name ? rec.name : p.pluginId);
+    }).join("    ")
 
-    // [{ title, subtitle, icon, run }]
+    // [{ title, subtitle, icon, glyph, run }]: `glyph` is drawn in the icon
+    // column when `icon` is empty or does not resolve in the icon theme, so
+    // no row shows a blank cell.
     readonly property var results: {
         const text = query;
         for (const p of providers) {
@@ -51,6 +61,7 @@ Column {
                     title: e.name,
                     subtitle: e.genericName || e.comment || "",
                     icon: e.icon,
+                    glyph: "\u{f003b}",
                     run: () => Apps.launchEntry(e)
                 }));
     }
@@ -64,6 +75,7 @@ Column {
                         title: String(r.title || ""),
                         subtitle: String(r.subtitle || ""),
                         icon: String(r.icon || ""),
+                        glyph: String(r.glyph || ""),
                         run: typeof r.exec === "function" ? r.exec : () => {}
                     }));
         } catch (e) {
@@ -151,7 +163,8 @@ Column {
             return JSON.stringify({
                 query: root.query,
                 current: list.currentIndex,
-                results: root.results.slice(0, root.maxResults).map(r => r.title)
+                results: root.results.slice(0, root.maxResults).map(r => r.title),
+                prefixes: root.prefixHelp
             });
         }
     }
@@ -190,10 +203,23 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             visible: input.text === ""
             text: "Search applications"
-            color: Theme.muted
+            color: root.subtitleColor
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
         }
+    }
+
+    Text {
+        width: parent.width
+        leftPadding: Theme.gap * 1.5
+        rightPadding: Theme.gap * 1.5
+        visible: root.query === "" && root.prefixHelp !== ""
+        text: root.prefixHelp
+        color: root.subtitleColor
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.fontSize - 2
     }
 
     ListView {
@@ -227,7 +253,16 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 implicitSize: Theme.fontSize * 2
                 source: root.iconSource(row.modelData.icon)
-                visible: source.toString() !== ""
+                visible: source.toString() !== "" && status === Image.Ready
+            }
+
+            Glyph {
+                anchors.horizontalCenter: icon.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !icon.visible
+                glyph: row.modelData.glyph
+                color: row.ListView.isCurrentItem ? Theme.foreground : root.subtitleColor
+                font.pixelSize: Math.round(Theme.fontSize * 1.6)
             }
 
             Column {
@@ -272,7 +307,7 @@ Column {
         width: parent.width
         visible: root.results.length === 0
         text: "No matches"
-        color: Theme.muted
+        color: root.subtitleColor
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize

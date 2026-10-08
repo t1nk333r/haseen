@@ -1,7 +1,7 @@
 # Optional VAPT workstation provisioning
 
 The `vapt` layer provisions the owner's waydots tool inventory, plus tool
-groups taken from oniomarchy's categories (plan 083), on **Arch and
+groups taken from oniomarchy's categories (plan 087), on **Arch and
 CachyOS**. It does not run assessments, launch security tools, start their
 backends, change firewall rules, or enable services. It has no required desktop,
 Omarchy, Chaotic-AUR, or AUR layer. No tools are selected by default.
@@ -48,7 +48,7 @@ retain their normal installer behavior.
 There are 25 groups. The owner's fifteen are `core`, `network`, `web`,
 `passwords`, `ad`, `osint`, `cloud`, `mobile`, `forensics`, `api`, `htb-cjca`,
 `htb-cpts`, `htb-cwes`, `htb-cwee` and `htb-coae`; their original memberships
-are retained in `share/haseen/layers/vapt/packages/security/`. Plan 083 adds
+are retained in `share/haseen/layers/vapt/packages/security/`. Plan 087 adds
 ten more and a few roots to two existing ones:
 
 | Group | Tools |
@@ -362,7 +362,7 @@ this layer.
 
 ### oniomarchy: an opt-in private signed source
 
-The plan 083 groups use oniomarchy's tool categories as facts; none of its
+The plan 087 groups use oniomarchy's tool categories as facts; none of its
 installer code is used. Its package repository can also serve as the **last**
 source tier, after Arch, but only when you ask for it in that run:
 
@@ -631,4 +631,4 @@ uninstaller.
 
 The engineering record and exercised checks are in
 [`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md) and
-[`plans/083-vapt-oniomarchy-provisioning.md`](../plans/083-vapt-oniomarchy-provisioning.md).
+[`plans/087-vapt-oniomarchy-provisioning.md`](../plans/087-vapt-oniomarchy-provisioning.md).

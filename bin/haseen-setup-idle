@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# haseen:summary Idle timeouts on AC and on battery: screensaver, lock, display off and suspend
+# haseen:args [status|prompt [--battery]|set [--battery] KEY SECONDS|unset --battery KEY] [--dry-run]
+#
+# Plan 082. The timeouts are plugins."haseen.idle".settings in
+# ~/.config/haseen/shell.json: screensaverAfter, lockAfter, dpmsAfter,
+# suspendAfter, and settings.onBattery holding any of those four, which win
+# while UPower reports the machine on battery. The running shell picks a
+# change up live. Suspend goes through `haseen system suspend` and never
+# fires while an app inhibits idle or Stay Awake is on.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+MANIFEST="$HASEEN_PATH/shell/plugins/haseen.idle/manifest.json"
+KEYS=(screensaver lock dpms suspend)
+# IdleLogic.MAX_SECONDS: Quickshell's IdleMonitor turns a longer timeout
+# into 0 ms, so the machine would go idle (and suspend) at once.
+MAX_SECONDS=2147483
+
+usage() {
+    cat <<EOF
+Usage: haseen setup idle [status] [--dry-run]
+       haseen setup idle prompt [--battery]
+       haseen setup idle set [--battery] KEY SECONDS
+       haseen setup idle unset --battery KEY
+
+KEY is screensaver, lock, dpms (displays off) or suspend; SECONDS a whole
+number up to $MAX_SECONDS (about 24 days), 0 = never.
+  status  the timeouts on AC and on battery (default)
+  prompt  ask for each timeout in a terminal; Enter keeps the value shown.
+          With --battery, the battery values; "-" there follows AC again.
+  set     save one timeout; --battery saves it for battery only
+  unset   drop one battery value, so the AC value applies on battery too
+
+suspendAfter is 0 (never) by default. Suspend never happens while an app
+holds an idle inhibitor, Stay Awake is on or the game/present context runs.
+EOF
+}
+
+setting() { printf '%sAfter' "$1"; }
+
+valid_key() {
+    local k
+    for k in "${KEYS[@]}"; do
+        [[ $k == "$1" ]] && return 0
+    done
+    return 1
+}
+
+# The haseen.idle settings in force (defaults, then the user's), as JSON.
+settings_json() {
+    shell_merged_json | jq --slurpfile m "$MANIFEST" '
+        ($m[0].settings | with_entries(.value |= .default)) * (.plugins["haseen.idle"].settings // {})'
+}
+
+# ac KEY / battery KEY — the saved value: seconds, or "" for a battery key
+# that follows AC. Invalid values print as the manifest default (AC) or ""
+# (battery), and values above MAX_SECONDS as MAX_SECONDS, like the shell
+# reads them (IdleLogic.seconds).
+ac() {
+    jq -r --arg k "$(setting "$1")" --argjson max "$MAX_SECONDS" --slurpfile m "$MANIFEST" '
+        .[$k] | if type == "number" and . >= 0 then ([floor, $max] | min) else $m[0].settings[$k].default end' <<<"$SETTINGS"
+}
+battery() {
+    jq -r --arg k "$(setting "$1")" --argjson max "$MAX_SECONDS" '
+        (.onBattery | if type == "object" then .[$k] else null end)
+        | if type == "number" and . >= 0 then ([floor, $max] | min) else "" end' <<<"$SETTINGS"
+}
+
+word() {
+    if [[ -z $1 ]]; then echo "as on AC"; elif [[ $1 == 0 ]]; then echo never; else echo "${1}s"; fi
+}
+
+status() {
+    local k
+    printf '%-12s %-10s %s\n' "" "on AC" "on battery"
+    for k in "${KEYS[@]}"; do
+        printf '%-12s %-10s %s\n' "$k" "$(word "$(ac "$k")")" "$(word "$(battery "$k")")"
+    done
+}
+
+# save JQ_FILTER ARGS... — one read-modify-write of the user shell.json under
+# the lock; the filter sees $s (the haseen.idle settings object). The new
+# file is produced in full first, so a failed read or transform (an editor
+# broke the file while we waited for the lock) stops here and writes nothing.
+save() {
+    local filter="$1" user updated
+    shift
+    shell_config_lock
+    user="$(shell_user_json)"
+    updated="$(jq "$@" '
+        (.plugins["haseen.idle"].settings // {}) as $s
+        | .plugins["haseen.idle"].settings = ($s | '"$filter"')' <<<"$user")"
+    printf '%s\n' "$updated" | shell_config_write
+}
+
+# seconds_ok S — S is a whole number of seconds from 0 to MAX_SECONDS.
+# Leading zeros are dropped and the length checked before any arithmetic,
+# so a long digit string can never wrap round in Bash's 64-bit integers.
+seconds_ok() {
+    [[ $1 =~ ^[0-9]+$ ]] || return 1
+    local d="${1#"${1%%[!0]*}"}"
+    ((${#d} <= ${#MAX_SECONDS})) && ((10#${d:-0} <= MAX_SECONDS))
+}
+
+parse_common_flags "$@"
+battery_mode=false
+args=()
+for a in "${REST[@]}"; do
+    case "$a" in
+    --battery) battery_mode=true ;;
+    *) args+=("$a") ;;
+    esac
+done
+# Dies here on a broken user shell.json (errexit does not reach into the
+# command substitution below).
+shell_user_json >/dev/null
+SETTINGS="$(settings_json)"
+verb="${args[0]:-status}"
+case "$verb" in
+status)
+    ((${#args[@]} <= 1)) && ! $battery_mode || {
+        usage >&2
+        exit 2
+    }
+    status
+    ;;
+set)
+    ((${#args[@]} == 3)) && valid_key "${args[1]}" && seconds_ok "${args[2]}" || {
+        usage >&2
+        exit 2
+    }
+    k="$(setting "${args[1]}")" v=$((10#${args[2]}))
+    if $battery_mode; then
+        save '.onBattery = ((.onBattery | if type == "object" then . else {} end) + {($k): $v})' --arg k "$k" --argjson v "$v"
+    else
+        save '.[$k] = $v' --arg k "$k" --argjson v "$v"
+    fi
+    $DRY_RUN || echo "${args[1]} on $($battery_mode && echo battery || echo AC): $(word "$v")"
+    ;;
+unset)
+    ((${#args[@]} == 2)) && $battery_mode && valid_key "${args[1]}" || {
+        usage >&2
+        exit 2
+    }
+    save 'if (.onBattery | type) == "object" then .onBattery |= del(.[$k]) else . end' --arg k "$(setting "${args[1]}")"
+    $DRY_RUN || echo "${args[1]} on battery: $(word "")"
+    ;;
+prompt)
+    ((${#args[@]} == 1)) || {
+        usage >&2
+        exit 2
+    }
+    in_floating_terminal "$@"
+    if $battery_mode; then
+        echo "Idle timeouts on battery, in seconds (0 = never, - = as on AC, Enter keeps)."
+    else
+        echo "Idle timeouts on AC, in seconds (0 = never, Enter keeps)."
+    fi
+    changes='{}' removals='[]'
+    for k in "${KEYS[@]}"; do
+        if $battery_mode; then cur="$(battery "$k")"; else cur="$(ac "$k")"; fi
+        while :; do
+            read -r -p "$(printf '%-12s [%s]: ' "$k" "$(word "$cur")")" answer || answer=""
+            answer="${answer//[[:space:]]/}"
+            if [[ -z $answer ]]; then
+                break
+            elif [[ $answer == - ]] && $battery_mode; then
+                removals="$(jq -c --arg k "$(setting "$k")" '. + [$k]' <<<"$removals")"
+                break
+            elif seconds_ok "$answer"; then
+                changes="$(jq -c --arg k "$(setting "$k")" --argjson v "$((10#$answer))" '. + {($k): $v}' <<<"$changes")"
+                break
+            fi
+            echo "  a whole number of seconds up to $MAX_SECONDS, please$($battery_mode && echo ', or -')"
+        done
+    done
+    if [[ $changes == '{}' && $removals == '[]' ]]; then
+        echo "Nothing changed."
+        exit 0
+    fi
+    if $battery_mode; then
+        save '.onBattery = (((.onBattery | if type == "object" then . else {} end) + $c) | delpaths($r | map([.])))' \
+            --argjson c "$changes" --argjson r "$removals"
+    else
+        save '. + $c' --argjson c "$changes"
+    fi
+    $DRY_RUN && exit 0
+    SETTINGS="$(settings_json)"
+    status
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

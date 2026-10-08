@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "comment": "Expected plan 083 inventory: the 52-package oniomarchy index with its roles, the added group roots, reviewed aliases, official pins and dependency-only names. Test data only; production never reads it.",
+  "comment": "Expected plan 087 inventory: the 52-package oniomarchy index with its roles, the added group roots, reviewed aliases, official pins and dependency-only names. Test data only; production never reads it.",
   "sourcePackages": {
     "airgeddon": "candidate",
     "android-apktool-bin": "candidate",

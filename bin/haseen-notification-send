@@ -23,7 +23,8 @@ Options:
   -i, --icon <name-or-path>             icon theme name or image file
   -t, --expire-time <ms>                -1 daemon default, 0 never expires
   -r, --replace-id <id>                 update that notification in place
-  -p, --print-id                        print the notification id
+  -p, --print-id                        print the notification id (with --exec,
+                                        once it is shown, before anything else)
   -a, --app-name <name>                 default: haseen
       --action-label <text>             label of the --exec button (default: Open)
       --exec <program> [args...]        run this when the notification is clicked
@@ -32,7 +33,8 @@ Options:
 --exec takes the command as separate words and runs them as-is, never through
 a shell, and must come last: everything after it is the command's argv. The
 click is a freedesktop action, so this process stays alive until the toast is
-answered or goes away.
+answered or goes away. When no notification server shows it, --exec fails
+(exit 1) and runs nothing; stopping this process (TERM, HUP, INT) closes it.
 EOF
 }
 
@@ -153,8 +155,6 @@ if $exec_present; then
     if ((${#exec_argv[@]} == 1)) && [[ ${exec_argv[0]} == *[[:space:]]* ]]; then
         die "--exec takes the command as separate words, not one quoted string. Write: --exec ${exec_argv[0]}"
     fi
-    # Both would print an id on stdout and the caller could not tell them apart.
-    $print_id && die "--print-id and --exec cannot be combined"
 fi
 
 $DRY_RUN || have notify-send || die "notify-send is not installed (package libnotify)"
@@ -165,7 +165,10 @@ cmd=(notify-send -a "$app_name")
 [[ -z $icon ]] || cmd+=(-i "$icon")
 [[ -z $expire ]] || cmd+=(-t "$expire")
 [[ -z $replace ]] || cmd+=(-r "$replace")
-$print_id && cmd+=(-p)
+# With --exec the id is always asked for: notify-send prints it once the
+# daemon has shown the notification (0 when it could not), which is how this
+# script knows the action button exists at all.
+{ $print_id || $exec_present; } && cmd+=(-p)
 # -A implies --wait: notify-send stays up until the action is clicked or the
 # notification closes, then prints the clicked action's name on stdout.
 $exec_present && cmd+=(-A "exec=$action_label")
@@ -185,6 +188,39 @@ if $DRY_RUN; then
     exit 0
 fi
 
-answer="$("${cmd[@]}" || true)"
+# notify-send runs beside this script rather than in a command substitution,
+# so that being stopped (TERM, HUP, INT: a caller giving up on the answer,
+# such as the battery countdown when a charger comes) can close the
+# notification. Killing only this process would leave notify-send waiting and
+# its toast, with a Cancel that no longer reaches anyone, on screen. SIGINT
+# is notify-send's own "close the notification and quit".
+# Bash starts a background child with SIGINT ignored; restore it, or the
+# close request would never reach notify-send.
+exec {note}< <(
+    trap - INT
+    exec "${cmd[@]}"
+)
+note_pid=$!
+stop_note() { kill -INT "$note_pid" 2>/dev/null || true; }
+trap 'stop_note; exit 143' TERM HUP
+trap 'stop_note; exit 130' INT
+
+# Not shown (no notification server, a daemon error): say so and fail, so a
+# caller that relies on the button (a countdown with Cancel) can fail closed.
+id=""
+read -r id <&"$note" || true
+if ! [[ $id =~ ^[1-9][0-9]*$ ]]; then
+    stop_note
+    wait "$note_pid" 2>/dev/null || true
+    die "the notification was not shown (is a notification server running?)"
+fi
+# With --print-id the id comes first, before anything the command prints.
+! $print_id || printf '%s\n' "$id"
+
+answer=""
+read -r answer <&"$note" || true
+wait "$note_pid" 2>/dev/null || true
+trap - TERM HUP INT
+exec {note}<&-
 [[ $answer == exec ]] || exit 0
 exec "${exec_argv[@]}"

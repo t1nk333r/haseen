@@ -5,6 +5,9 @@
 *.jsc
 .qmlls.ini
 /share/haseen/sidecar/haseen-sidecar
+/tools/vptr/vptr
+/tools/vptr/wlr-virtual-pointer-unstable-v1-client-protocol.h
+/tools/vptr/wlr-virtual-pointer-unstable-v1-protocol.c
 
-# Python bytecode from the VAPT auditor
+# Python bytecode anywhere (tools/, the VAPT auditor)
 __pycache__/

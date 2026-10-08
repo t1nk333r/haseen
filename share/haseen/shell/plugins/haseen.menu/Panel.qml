@@ -223,27 +223,27 @@ Item {
                 if (items[p] && items[p].provider) {
                     waitingRoute = id;
                     waitingProvider = p;
-                    enter(p, false, false);
+                    enter(p, false, false, "");
                     return;
                 }
             }
         }
-        enter(entry && entry.kind === "link" ? entry.target : id, false, false);
+        enter(entry && entry.kind === "link" ? entry.target : id, false, false, "");
     }
 
     // A step taken inside the open menu freezes the card first (Omarchy); a
     // route opened from outside (open()) shows the menu centred as it is.
-    function setActiveMenu(id: string, push: bool, fromPointer: bool): void {
+    function setActiveMenu(id: string, push: bool, fromPointer: bool, rowId: string): void {
         freezeCardTop(true);
-        enter(id, push, fromPointer);
+        enter(id, push, fromPointer, rowId);
     }
 
-    function enter(id: string, push: bool, fromPointer: bool): void {
+    function enter(id: string, push: bool, fromPointer: bool, rowId: string): void {
         finishPick(null);
         if (id !== ":about" && !items[id])
             id = "root";
         if (push && id !== activeMenu)
-            navStack = navStack.concat([activeMenu]);
+            navStack = navStack.concat([{ menu: activeMenu, row: rowId }]);
         activeMenu = id;
         filterText = "";
         selectedIndex = 0;
@@ -258,18 +258,34 @@ Item {
         loadProvider(id, true);
     }
 
+    // Back restores the row used to enter the parent menu. Routes opened from
+    // outside have no origin row, so fall back to the child menu's row.
     function goBack(): bool {
         if (picking || activeMenu === "root")
             return false;
+        const child = activeMenu;
         if (navStack.length > 0) {
-            const prev = navStack[navStack.length - 1];
+            const frame = navStack[navStack.length - 1];
             navStack = navStack.slice(0, -1);
-            setActiveMenu(prev, false, false);
-            return true;
+            setActiveMenu(frame.menu, false, false, "");
+            selectRow(frame.row || child);
+        } else {
+            const entry = items[activeMenu];
+            setActiveMenu(entry && entry.parent ? entry.parent : "root", false, false, "");
+            selectRow(child);
         }
-        const entry = items[activeMenu];
-        setActiveMenu(entry && entry.parent ? entry.parent : "root", false, false);
         return true;
+    }
+    // Select the visible row for an item id; nothing changes when it is not shown.
+    function selectRow(id: string): void {
+        for (let i = 0; i < displayModel.count; i++) {
+            if (displayModel.get(i).itemId === id) {
+                selectedIndex = i;
+                syncSelectedId();
+                Qt.callLater(revealCursor);
+                return;
+            }
+        }
     }
 
     function setFilter(text: string): void {
@@ -503,7 +519,7 @@ Item {
         if (!e)
             return;
         if (r.kind === "menu" || r.kind === "link") {
-            setActiveMenu(r.target || r.itemId, true, fromPointer);
+            setActiveMenu(r.target || r.itemId, true, fromPointer, r.itemId);
         } else if (r.kind === "app") {
             close();
             launchApp(r.appId);
@@ -523,7 +539,7 @@ Item {
     // another panel (which replaces this one, so close first).
     function run(action: string): void {
         if (action.trim() === "haseen about") {
-            setActiveMenu(":about", true, false);
+            setActiveMenu(":about", true, false, "");
             return;
         }
         close();
@@ -689,7 +705,7 @@ Item {
             waitingRoute = "";
             waitingProvider = "";
             if (items[route] && activeMenu === menuId)
-                setActiveMenu(route, true, false);
+                setActiveMenu(route, true, false, "");
         }
     }
 

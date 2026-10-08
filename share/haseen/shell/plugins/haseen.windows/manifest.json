@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.windows",
+  "name": "Windows",
+  "version": "1.0.0",
+  "description": "Type @ in the launcher to switch to an open window; Enter focuses it",
+  "kinds": ["launcher-provider"],
+  "entry": {
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {},
+  "permissions": ["exec"]
+}
