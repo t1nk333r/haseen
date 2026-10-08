@@ -13,8 +13,10 @@ usage() {
     cat <<EOF
 Usage: haseen settings set <key> [value] [--dry-run]
 
-Runs the command that owns <key> with <value> appended. With no value, the
-owning command runs bare, which is how the toggles flip.
+Runs the command that owns <key> with <value>. With no value, the owning
+command runs bare, which is how the toggles flip. on/off always mean the
+setting itself, as \`haseen settings list\` reports it: \`gaps off\` removes
+the gaps.
 
   haseen settings set nightlight on
   haseen settings set theme tokyo-night
@@ -22,7 +24,9 @@ owning command runs bare, which is how the toggles flip.
   haseen settings set dnd                 # toggles
 
 Keys: haseen settings list
-Settings whose owner is an editor (bar.height, frame.*) open that file.
+Settings whose owner is an editor (bar.height, frame.*, the plugin settings
+that open shell.json) take no value: \`haseen settings set frame.radius\` opens
+the file.
 EOF
 }
 
@@ -35,17 +39,41 @@ set -- "${REST[@]}"
 key="$1"
 shift
 
-setter="$(settings_setter "$key" || true)"
-[[ -n $setter ]] || die "unknown setting '$key' (see haseen settings list)"
+settings_lookup "$key" || die "unknown setting '$key' (see haseen settings list)"
+setter="$SETTING_SETTER"
 
 # The setter is a haseen command line from our own table, so word splitting it
 # is intentional; nothing the user typed reaches it except the value, which is
-# appended as one argument. argv[0] is always the literal "haseen": the router
+# passed as one argument. argv[0] is always the literal "haseen": the router
 # next to this command runs the rest, which keeps one resolution path.
 read -r -a argv <<<"$setter"
 [[ ${argv[0]} == haseen ]] || die "settings table: setter does not start with haseen: $setter"
 argv=("${argv[@]:1}")
-(($# == 1)) && argv+=("$1")
+if (($# == 1)); then
+    case "$SETTING_TAKES" in
+    none)
+        echo "Error: $key takes no value; run 'haseen settings set $key' to change it with: $setter" >&2
+        exit 2
+        ;;
+    on-off | inverted)
+        case "$1" in
+        on | off) ;;
+        *)
+            echo "Error: $key takes on or off, not '$1'" >&2
+            exit 2
+            ;;
+        esac
+        value="$1"
+        # The owning command's on is the feature off (haseen toggle gaps on =
+        # no gaps); the index speaks of the feature.
+        if [[ $SETTING_TAKES == inverted ]]; then
+            [[ $value == on ]] && value=off || value=on
+        fi
+        argv+=("$value")
+        ;;
+    *) argv+=("$1") ;;
+    esac
+fi
 $DRY_RUN && argv+=(--dry-run)
 
 exec "$HASEEN_BIN_DIR/haseen" "${argv[@]}"

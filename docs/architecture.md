@@ -321,7 +321,10 @@ file; `~/.local/state/haseen/toggles/hypr/*.lua` is Lua because Hyprland reads
 Lua; other `~/.local/state/haseen` files hold the theme name, the active shell
 and the remembered power profile; `~/.config/uwsm/env.d/60-haseen-defaults` is
 read by uwsm before anything could read `shell.json`. `haseen settings set`
-owns no state: it `exec`s the command that already owns the key.
+owns no state: it `exec`s the command that already owns the key. Each row says
+what that command takes, so on/off always mean the setting as listed (`gaps
+off` runs `haseen toggle gaps on`, the no-gaps mode), and a key an editor owns
+takes no value.
 
 Runtime contexts (plan 062): `haseen context normal|focus|game|present`
 switches several of those flags as one. Entering from normal records them in
