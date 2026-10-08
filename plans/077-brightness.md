@@ -112,8 +112,9 @@ Nest from `tools/nest-launch.sh`, scratch shell with `HASEEN_SYSROOT` pointing a
   the i2c group, while `off` says to rebuild. `status` reads the command there and prints a line naming
   the option; `--help` explains both verbs. The menu's Turn On/Off run the command in a held terminal,
   so the hint is what a NixOS user sees there.
-- Evidence: `tests/test-brightness.sh` 186/186, including the common-helper rescan order and the
-  verb-specific NixOS fixtures. Before these fixes: the three cache checks (no map, `list --rescan`, a
+- Evidence: `tests/test-brightness.sh` 185/185: the cache-refresh and dry-run behaviour checks and the
+  verb-specific NixOS fixtures. The helpers are used at `bin/haseen-brightness:206-212` (read, not
+  tested). Before these fixes: the three cache checks (no map, `list --rescan`, a
   map for another signature) fail on 5879d80 (154/157), the eleven NixOS checks with the previous
   `bin/haseen-setup-ddc` (161/172).
 
