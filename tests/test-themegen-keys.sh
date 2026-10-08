@@ -2,15 +2,14 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 083: haseen.themegen's keyboard flow, the Wallhaven grid's paging and
-# the panel's placement. The panel runs in the real engine (qs, offscreen) in
-# a window of its own, with the CLI a stub that logs its argv and answers
-# `wallhaven search` from generated pages, `wallhaven get` with a local file
-# and `theme generate --json` with a preview recorded from the real CLI (on
-# the matugen stub of tests/test-themegen.sh). Keys are real key events, sent
-# into the harness window by QtTest's TestEvent through an IPC hook of the
-# harness; the panel's state is read through its debugIpc `state`. Nothing
-# reaches the network or the session.
+# Plan 086: haseen.themegen's Quick Look and plan 083's keyboard flow,
+# Wallhaven paging and panel placement. The panel runs in the real engine
+# (qs, offscreen) in a window of its own, with the CLI a stub that logs argv
+# and answers `wallhaven search` from generated pages, `wallhaven get` with a
+# local file and `theme generate --json` with a preview recorded from the real
+# CLI (on the matugen stub of tests/test-themegen.sh). Keys are real key events,
+# sent by QtTest through the harness; the panel's state is read through its
+# debugIpc `state`. Nothing reaches the network or the session.
 
 PLUGIN="$HASEEN_PATH/shell/plugins/haseen.themegen"
 M="$PLUGIN/manifest.json"
@@ -144,11 +143,17 @@ ShellRoot {
         width: 1300
         height: 1000
         visible: true
+        property int closeRequests: 0
         Component.onCompleted: requestActivate()
 
         Themegen.Panel {
             pluginId: "haseen.themegen"
             settings: JSON.parse(Quickshell.env("THEMEGEN_SETTINGS"))
+        }
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            onActivated: win.closeRequests++
         }
 
         Item {
@@ -173,6 +178,9 @@ ShellRoot {
                 ok = events.keyClickChar(ch, 0, -1) && ok;
             return ok;
         }
+        function closeRequests(): int {
+            return win.closeRequests;
+        }
     }
 }
 QML
@@ -188,6 +196,7 @@ qs_pid=$!
 ipc() { "$QS_BIN" -p "$harness" ipc call "$@" 2>/dev/null; }
 key() { for k in "$@"; do ipc keys press "$k" >/dev/null; done; }
 typed() { ipc keys type "$1" >/dev/null; }
+close_requests() { ipc keys closeRequests; }
 state() { ipc haseen.themegen state; }
 # until_state LABEL JQ — the panel's state once JQ holds (10 s at most).
 until_state() {
@@ -207,17 +216,19 @@ applies() { grep -v -e '--json' -e '^wallhaven' "$LOG" || true; }
 
 until_state "the panel starts on the local images, in the search field" \
     '.count == 6 and .stage == "search" and .preview.ok'
+assert_eq "Quick Look has no image source while closed" '""' "$(s .quickLookSource)"
 
-# h j k l in the search field are text, not moves.
-typed "hjkl"
-assert_eq "search: h j k l land in the field" '["hjkl","search",0]' "$(s '[.query, .stage, .strip]')"
-key Backspace Backspace Backspace Backspace
+# h j k l and Space in the search field are text, not moves.
+typed "h jkl"
+assert_eq "search: h j k l and Space land in the field" '["h jkl","search",0]' "$(s '[.query, .stage, .strip]')"
+key Backspace Backspace Backspace Backspace Backspace
 assert_eq "search: Backspace edits the field" '["","search",6]' "$(s '[.query, .stage, .shown]')"
 
 # The pictures: Down enters them; h/l step by one, j/k by a row (two rows of
 # four here, six images), as in the Wallhaven grid.
 key Down
 assert_eq "images: Down from the field" '"images"' "$(s .stage)"
+assert_contains "images: the key hint offers Quick Look" "$(s .hint)" "Space quick look"
 typed "ll"
 key Right
 typed "h"
@@ -228,6 +239,36 @@ key Up
 assert_eq "images: Up a row" '1' "$(s .strip)"
 key Up
 assert_eq "images: Up on the first row stays" '1' "$(s .strip)"
+
+# Quick Look previews the selected local file, moves in either key style and
+# closes without taking down the panel. Enter still follows the normal pick.
+key Space
+until_state "local Quick Look opens on the highlighted picture" '.quickLook and .stage == "images" and .quickLookSource != ""'
+assert_eq "local Quick Look uses the wallpaper file" "\"$PICS/b.jpg\"" "$(s .quickLookPath)"
+assert_contains "local Quick Look loads the selected image source" "$(s .quickLookSource)" "$PICS/b.jpg"
+key Right
+assert_eq "local Quick Look: Right moves to the next picture" '2' "$(s .strip)"
+typed "h"
+assert_eq "local Quick Look: h moves to the previous picture" '1' "$(s .strip)"
+typed "j"
+assert_eq "local Quick Look: j moves to the next picture" '2' "$(s .strip)"
+typed "k"
+assert_eq "local Quick Look: k moves to the previous picture" '1' "$(s .strip)"
+typed "l"
+assert_eq "local Quick Look: l moves to the next picture" '2' "$(s .strip)"
+key Space
+assert_eq "local Quick Look: Space closes only the preview" '[false,"images",2]' "$(s '[.quickLook,.stage,.strip]')"
+assert_eq "Quick Look clears the image source while closed" '""' "$(s .quickLookSource)"
+key Space Escape
+assert_eq "local Quick Look: Escape closes only the preview" '[false,"images",2]' "$(s '[.quickLook,.stage,.strip]')"
+assert_eq "first Escape does not request panel close" "0" "$(close_requests)"
+key Escape
+assert_eq "second Escape requests panel close" "1" "$(close_requests)"
+key Space Left Enter
+until_state "local Quick Look: Enter picks and closes the preview" \
+    ".stage == \"palette\" and .image == \"$PICS/b.jpg\" and .ready and (.quickLook | not)"
+key Backspace
+
 typed "/"
 assert_eq "images: / goes back to the field" '"search"' "$(s .stage)"
 key Return
@@ -298,6 +339,24 @@ typed "few"
 key Return
 until_state "grid: a new search starts at the top" \
     '.wallhaven.count == 6 and .wallhaven.page == 1 and .wallhaven.current == 0 and .wallhaven.scrollY == 0'
+
+# Wallhaven Quick Look uses the CLI's cached thumbs.small path; opening and
+# browsing never downloads the full wallpaper.
+key Space
+until_state "wallhaven Quick Look shows the cached thumbnail" \
+    ".quickLook and .quickLookPath == \"$thumb\" and .wallhaven.current == 0 and .quickLookSource != \"\""
+assert_eq "Wallhaven Quick Look uses the cached small thumbnail" "\"$thumb\"" "$(s .quickLookPath)"
+assert_contains "Wallhaven Quick Look loads its cached image source" "$(s .quickLookSource)" "$thumb"
+assert_eq "Wallhaven Quick Look downloads no full image" "" "$(grep 'wallhaven get' "$LOG" || true)"
+key Right
+assert_eq "Wallhaven Quick Look: Right moves to the next picture" '1' "$(s .wallhaven.current)"
+typed "h"
+assert_eq "Wallhaven Quick Look: h moves to the previous picture" '0' "$(s .wallhaven.current)"
+key Escape
+assert_eq "Wallhaven Quick Look: Escape closes only the preview" '[false,"images",0]' "$(s '[.quickLook,.stage,.wallhaven.current]')"
+assert_eq "Wallhaven Quick Look clears its image source when closed" '""' "$(s .quickLookSource)"
+assert_eq "Wallhaven Quick Look Escape does not close the panel" "1" "$(close_requests)"
+
 typed "lljj"
 assert_eq "grid: down into a shorter last row lands on the last cell" '5' "$(s .wallhaven.current)"
 typed "khll"

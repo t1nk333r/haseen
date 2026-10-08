@@ -41,6 +41,9 @@ Column {
     // and that page is dropped.
     property bool restart: false
     readonly property int count: results.count
+    // The cached thumbs.small path is the largest preview search keeps; the
+    // full image is not fetched until the user chooses it with Enter.
+    readonly property string previewPath: currentIndex >= 0 && currentIndex < results.count ? results.get(currentIndex).thumb : ""
     readonly property bool fetching: getProc.running
     readonly property bool busy: searchProc.running || getProc.running
     // For the panel's debugIpc state: the view's scroll position.
