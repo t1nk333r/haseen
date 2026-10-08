@@ -623,6 +623,11 @@ uninstaller.
   not complete installability on every future repository snapshot. Live package
   installation, keyring bootstrap, native dependency builds, and tool execution
   were intentionally not performed as implementation validation.
+- The opt-in source's signing keys are added to the **shared** pacman keyring,
+  which pacman does not scope per repository. Approving the source therefore
+  expands machine-wide trust, and disabling the descriptor keeps it; the
+  separate BlackArch path (`pacman-key --populate blackarch`) still applies that
+  publisher's ownertrust column and needs its own review.
 
 The engineering record and exercised checks are in
 [`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md) and

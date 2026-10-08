@@ -8,7 +8,9 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–G landed. Batch G: a revoked key's presence is decided only from a strictly parsed `gpg --with-colons` listing of pacman's keyring, and any uninterpretable answer aborts the approval; private-source packages may place nothing under `/usr/share/pacman/keyrings/`. Batch F: the keyring package is never installed; its audited archive is kept in root state, and the authority binds to it. Batch E: haseen makes every keyring change itself (never `--populate`, never publisher ownertrust). Batch D: revocations only of keys this source has used. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch G VAPT suites and the picker, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–G landed. Batch G: a revoked key's presence is decided only from a strictly parsed `gpg --with-colons` listing of pacman's keyring, and any uninterpretable answer aborts the approval; private-source packages may place nothing under `/usr/share/pacman/keyrings/`. Batch F: the keyring package is never installed; its audited archive is kept in root state, and the authority binds to it. Batch E: haseen makes every keyring change itself (never `--populate`, never publisher ownertrust). Batch D: revocations only of keys this source has used. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch G VAPT suites and the picker, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation).
+
+- **Review**: the independent phase-1 review at `efaa4e0` returned READY TO MERGE with no blocking item, and the security rechecks closed the shared-trust class for every path haseen runs; the remaining Low hypotheses and the machine-wide trust limits are disclosed in Evidence below. The three disclosed-limit paragraphs in this file and in `docs/vapt.md` were added after that verdict — documentation only, no code changed.
 
 ## Goal
 
@@ -632,3 +634,22 @@ untested. Also unverified:
   `pacman-key --populate blackarch`, so that publisher's ownertrust column
   would still be imported. That source is outside batch E and needs its own
   review.
+
+Accepted limits of the private source, from the security rechecks of batches
+E–G. None is a known defect; each is a boundary the owner should know about:
+- Adding a key expands the **shared** pacman keyring. pacman does not scope
+  keys per repository, so an accepted primary — including a fingerprint that
+  was only listed as trusted — is valid machine-wide, and a key dropped from
+  the trusted list without being revoked stays locally signed. Disabling the
+  descriptor retains that trust, on purpose.
+- The private-package rule that refuses payloads under
+  `usr/share/pacman/keyrings/` matches member names. A package that shipped a
+  symlinked directory at that path could still reach the directory through the
+  link. Unproven, and the same class as the existing libalpm symlink modelling
+  in the audit.
+- The trust step stages `accepted.gpg`/`signer.gpg` as the invoking user and
+  root reads them afterwards, so a local process running as that same user
+  could replace them between staging and use. The layer lock and the caller's
+  identity are the boundary.
+- A 64-hex v5/v6 primary fingerprint in pacman's keyring is refused. That fails
+  closed; the cost is liveness if such a key ever appears there.
