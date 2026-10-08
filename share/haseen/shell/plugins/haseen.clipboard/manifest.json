@@ -30,6 +30,26 @@
       "default": 480,
       "description": "Panel width in px"
     },
+    "preview": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the selected entry in full under the list; Ctrl+P or the eye button toggles it and writes the new value here"
+    },
+    "previewHeight": {
+      "type": "integer",
+      "default": 220,
+      "description": "Preview pane height in px"
+    },
+    "previewMaxBytes": {
+      "type": "integer",
+      "default": 8388608,
+      "description": "Entries larger than this are described, never decoded; decoded text is additionally capped at 64 KiB because the pane lays it out"
+    },
+    "previewMaxPixels": {
+      "type": "integer",
+      "default": 12000000,
+      "description": "Images with more pixels than this are described, never decoded: Qt decodes an image in full before it scales it down"
+    },
     "debugIpc": {
       "type": "boolean",
       "default": false,

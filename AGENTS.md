@@ -61,6 +61,8 @@ between parts. The engineering record is `plans/`, indexed by
     in `share/haseen/default/hypr/binds.lua` is everyone's default (SUPER + F1
     sheet, ALT + V clipboard, vim focus and move, a silent SUPER + SHIFT + n,
     the HYPER snap layer); Omarchy's arrows and SUPER + W stay bound.
+  - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
+    plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
