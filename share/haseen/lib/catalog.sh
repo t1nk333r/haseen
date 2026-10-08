@@ -221,11 +221,15 @@ mise_install_tools() {
     for spec in "$@"; do
         run mise use --global "$spec"
     done
+    # haseen's shell fragment runs `mise activate` itself
+    # (default/shell/init.sh), so there is nothing to advise once the rc
+    # includes it. A hand-wired `mise activate` counts too, and fish is not a
+    # shell haseen seeds, so it keeps the manual answer.
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"; do
-        grep -qs 'mise activate' "$rc" && return 0
+        grep -qsE 'mise activate|default/shell/init\.sh' "$rc" && return 0
     done
-    info "mise tools are on PATH once your shell activates mise; add to ~/.bashrc: eval \"\$(mise activate bash)\""
+    info "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
 }
 
 mise_remove_tools() {

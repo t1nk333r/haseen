@@ -62,6 +62,7 @@ The owner's other repos:
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Fonts and Arabic rendering, Qt platform theme, seed modules | `share/haseen/themed/fonts.conf.tpl`, `share/haseen/default/fontconfig/`, `share/haseen/seeds/`, `bin/haseen-seed-user` | 047 |
+| Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
 | Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088, 090 |
 | Optional Security panel and menu | `share/haseen/shell/plugins/haseen.security/`, `share/haseen/shell/Haseen/{SecurityRoute.qml,SecurityEvidence.js}`, `share/haseen/shell/plugins/haseen.menu/`, `tests/test-vapt-security-ui.sh` | 088, 090 |
