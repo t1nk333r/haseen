@@ -73,7 +73,7 @@ assert_not_contains "no placeholder survives" "$script" "@@"
 assert_contains "the background is the theme's, as plymouth floats" "$script" "bg_r = 0.122"
 assert_contains "and its blue channel too" "$script" "bg_b = 0.157"
 assert_contains "the password prompt is drawn by the theme" "$script" "SetDisplayPasswordFunction"
-assert_contains "and so is the message line" "$script" "SetMessageFunction"
+assert_not_contains "boot messages are not drawn: the splash shows no text" "$script" "SetMessageFunction"
 
 # --- the hook is evaluated the way mkinitcpio does it -------------------------
 printf 'HOOKS=(base systemd plymouth autodetect)\n' >"$sysroot/etc/mkinitcpio.conf.d/zz.conf"
