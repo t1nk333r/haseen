@@ -8,6 +8,9 @@
 #                    LAYER_REQUIRES=(other layers applied first)
 #                    LAYER_CONFLICTS=(layers that must not be applied with it)
 #                    LAYER_DISTROS=(cachyos arch omarchy)   # installer targets
+#                    LAYER_PICKABLE=false  optional; the layer needs its own
+#                                   arguments, so the install picker never
+#                                   offers it (default: offered)
 #                    layer_status   read-only; prints "ok: …" / "missing: …" /
 #                                   "warn: …" lines; returns 0 applied and
 #                                   healthy, 1 not applied, 2 degraded

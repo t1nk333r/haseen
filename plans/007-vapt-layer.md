@@ -40,6 +40,15 @@ suites. Requirement 10 in `docs/architecture.md` and the `vapt` row in its
 layer table now describe it; the "no architecture rows" line above describes
 the 2026-10-04 state only. Independent final review is outstanding.
 
+The layer sets `LAYER_PICKABLE=false` (contract in `share/haseen/lib/layers.sh`),
+so the interactive install picker never offers it and drops it from a saved
+choice. Applied without groups it refuses, which once aborted the installer
+after the earlier layers had applied (plan 083 batch B). `./install.sh
+--vapt-groups` remains the installer route. Shell activation appends one
+guarded line to `~/.bashrc` (and an existing `~/.zshrc`) that sources the
+owned link. The line is retained on remove and is inert once the link is
+gone (`docs/vapt.md`).
+
 Plan 083 extends this layer: ten more tool groups from oniomarchy's
 categories, reviewed package aliases and dependency roles, canonical URL
 identities, and later an opt-in signed package source.

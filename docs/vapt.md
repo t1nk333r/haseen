@@ -31,7 +31,10 @@ Remove `--dry-run` only when deliberately provisioning the target workstation.
 `--yes` accepts installer confirmations. `--vapt-groups all` selects all groups;
 otherwise pass a comma-separated list. When `--layers` is omitted, the existing
 installer defaults still apply and VAPT is appended; use `--layers vapt` for a
-standalone, Omarchy-independent tooling installation.
+standalone, Omarchy-independent tooling installation. The interactive install
+picker never offers `vapt` (its layer sets `LAYER_PICKABLE=false`) and drops it
+from a saved choice, because the layer refuses to run without explicit groups;
+`--vapt-groups` is the only installer route.
 
 A tooling-only installation skips sidecar compilation, migration execution,
 and unrelated hardware-quirk application. Other explicitly selected layers
@@ -271,7 +274,10 @@ Dependency-only packages (`packages/dependencies.tsv`) are never tool roots:
 `jdk-openjdk` for ghidra and `python-wxpython` for wfuzz. Adding one to a group
 manifest refuses provisioning. They arrive only through a selected package's
 own declared dependencies and are recorded as dependencies; `xorg-xhost` is
-never run to change display access.
+never run to change display access. The consumer column is enforced for the
+private source's rows: `java17-openjfx-bin` and `sleuthkit-java` are admitted
+only in autopsy's closure. Rows from Arch repositories are ordinary packages
+there, so the column documents them and enforces nothing.
 
 The eight original native pins are retained:
 
@@ -400,6 +406,16 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   database nor an installed file can add a signer. The accepted set is
   recorded in root-owned state; missing proof after a local keyring change
   makes the source `unverified`, and `repo-enable` refuses it for manual
+  review. A rotation is applied only by an approval: `repo-enable`, or the
+  approval an opted-in run asks for when the source is not approved (for
+  example after `repo-disable`). The refresh an opted-in run performs on an
+  approved source never changes trust. When its database is not signed by a
+  recorded primary, the source is `unverified` and the reason names
+  `haseen vapt repo-enable oniomarchy`. When the database names a keyring
+  package other than the recorded one, the run says so and names the same
+  command. An approval can apply a rotation only while the database is still
+  signed by an accepted primary. Once the publisher has moved its database to
+  a key that is not yet accepted, the source stays refused pending manual
   review.
 - **Strict signatures everywhere.** `Required DatabaseRequired` is kept in the
   private and install configurations. A missing or unaccepted database
@@ -428,15 +444,41 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   webkit2gtk packages and thirteen `python-*` libraries; never a root target)
   or the keyring. A 53rd name in a newer signed database is ignored until a
   reviewed change admits it. The source never satisfies anything through
-  `Provides`, never wins over an acceptable earlier package, refuses a name
-  another configured source also publishes, and never declares replacements.
-  It is not a base vendor and gains no stock-helper authority. Its
-  `metasploit-mcp` and `hexstrike-ai` gaps stay unavailable.
+  `Provides`, never wins over an acceptable earlier package, and never
+  declares replacements. It refuses any name, or the logical item an alias
+  maps it to, that another configured source with readable metadata
+  publishes, usable this run or not (the resolver and the dependency closure
+  check the same repository set). A candidate is admitted only as the
+  requested target, never as somebody's dependency. A dependency row named in
+  `dependencies.tsv` serves only its recorded consumer (`*` for any), so
+  `java17-openjfx-bin` and `sleuthkit-java` serve only `autopsy`; rows marked
+  `-` there have no recorded consumer. When the source wins while an earlier
+  configured source could not be read this run, the reason says
+  "earlier source unavailable this run; not proof this is the inventory
+  tool". It is not a base vendor and gains no stock-helper authority. Its
+  `metasploit-mcp` and `hexstrike-ai` gaps stay unavailable. The generic
+  Omarchy refusals (names, dependencies, hook text, helpers, mirrors) also
+  match the string `oniomarchy`. Such a match is still refused, but it is
+  reported as "oniomarchy self-reference requires review" rather than as
+  Omarchy.
 - **Reports.** `report.tsv` keeps its v1 columns; `selected_source` is
   `oniomarchy` and `target` the actual published name (for example
   `oniomarchy/chirp-next`) only after a real resolution. A `# oniomarchy`
   annotation records the run's source state and `# dependency` rows the
-  dependencies a commit installed.
+  dependencies a commit installed. A later run that cannot use the source
+  (not selected, declined, unavailable or unsupported architecture) keeps the
+  earlier row of an item installed from it, with "source not selected this
+  run; installed package retained" (or the state) appended. A homonym that
+  appeared in an earlier source replaces it as usual.
+- **Status after the source is gone.** While the source is approved, status
+  (which never selects it) re-checks installed private packages, read-only,
+  from the cached database verified at the last refresh. After
+  `repo-disable` (or while it is unverified), status reports such an item as
+  "oniomarchy source disabled or unverified … provenance unverifiable" (degraded),
+  not as drift. A recorded dependency that is no longer installed is degraded
+  too. Packages retained from the source still prove themselves from that
+  verified cache when other items' closures depend on them. The cache never
+  offers a candidate or authorises an install.
 
 A valid signature proves continuity with the reviewed key, not who built a
 package, that its code is safe, or that it is the upstream tool its name
@@ -464,13 +506,25 @@ or unsafe distribution metadata are left untouched, not reconciled by uv.
 
 A passive shell fragment adds available native/local tool-bin directories
 without launching anything or replacing system Python. It exposes
-`HASEEN_VAPT_COAE_ENV` but does not auto-activate that environment. A fresh
-tooling-only installation seeds only its VAPT shell include, rather than opting
-the user into unrelated desktop aliases or tool initialization. An existing
-haseen shell include already loads the fragment. User rc files remain user-owned
-afterward. Only activation links created by this layer are journaled for
-reversible removal; borrowed, conflicting, dangling, or subsequently modified
-links are preserved.
+`HASEEN_VAPT_COAE_ENV` but does not auto-activate that environment. The layer
+links the fragment as `~/.config/haseen/vapt/shell.sh` and appends one marked,
+guarded line to `~/.bashrc` (and to `~/.zshrc` only when that file exists),
+written with the link's absolute path:
+
+```sh
+# haseen VAPT: passive native-tool PATH only.
+[ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"
+```
+
+The line is appended once; an rc that already names the link, or that sources
+the optional shell-rc layer's `default/shell/init.sh` (which loads the same
+link), is left unchanged, so tooling-only provisioning never opts the user into
+unrelated aliases or tool initialization. Symlinked or non-regular rc files are
+preserved and reported. `haseen layer remove vapt` deletes the owned link and
+keeps the line: rc files stay user-owned, and the guard makes the line inert
+once the link is gone. Only activation links created by this layer are
+journaled for reversible removal; borrowed, conflicting, dangling, or
+subsequently modified links are preserved.
 
 When the desktop's `~/.config/uwsm/env.d/` already exists, a second owned link,
 `70-haseen-vapt`, loads the same passive fragment for future graphical sessions.

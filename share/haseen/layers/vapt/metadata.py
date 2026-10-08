@@ -540,7 +540,7 @@ def emit_snapshot(root, offline):
             print('unsafe', repo, 'insecure signature policy', sep='\t')
         for line in lines:
             if line.startswith('Server') and not repository_mirror_safe(repo, line.split('=', 1)[1]):
-                print('unsafe', repo, 'forbidden mirror URL', sep='\t')
+                print('unsafe', repo, mirror_refusal(repo, line.split('=', 1)[1]) + ' mirror URL', sep='\t')
     for repo, records in repositories(root).items():
         if repo not in config or not ALLOWED.fullmatch(repo):
             continue
@@ -596,7 +596,7 @@ def render_config(root, frozen=None, local=False):
             key = line.split('=', 1)[0].strip()
             if key == 'Server':
                 if not repository_mirror_safe(repo, line.split('=', 1)[1]):
-                    raise ValueError('non-HTTPS/Omarchy repository mirror ' + repo)
+                    raise ValueError(mirror_refusal(repo, line.split('=', 1)[1]) + ' repository mirror ' + repo)
                 print('Server = file://' + frozen + '/' + repo if frozen else line)
             elif key in ('SigLevel', 'Usage'):
                 if key == 'SigLevel':
@@ -648,6 +648,25 @@ def forbidden(record):
     return record.get('name', '').startswith('omarchy') or any('omarchy' in d for d in record.get('depends', []))
 
 
+def omarchy_refusal(*texts):
+    """The label of a refusal by the generic 'omarchy' substring rules. They
+    also match this private source's own name; that stays refused, but is
+    reported for review rather than mislabelled as Omarchy."""
+    lowered = ' '.join(texts).lower()
+    if 'omarchy' in lowered.replace(ONIOMARCHY, ''):
+        return 'forbidden Omarchy'
+    return 'oniomarchy self-reference requires review' if 'omarchy' in lowered else 'forbidden'
+
+
+def activation_refusal(text):
+    """'' unless ACTIVATION matches TEXT; then 'activation' or the Omarchy
+    label (omarchy_refusal) of the match."""
+    match = ACTIVATION.search(text)
+    if not match:
+        return ''
+    return omarchy_refusal(text) if match.group(0).lower() == 'omarchy' else 'activation'
+
+
 def repository_mirror_safe(repo, url):
     """One mirror rule for snapshot, rendering, closure and bootstrap: HTTPS
     and no Omarchy host for every source; the private source only at its one
@@ -656,6 +675,15 @@ def repository_mirror_safe(repo, url):
     if repo == ONIOMARCHY:
         return url in (ONIOMARCHY_SERVER, 'https://pkgs.oniomarchy.com/x86_64')
     return url.startswith('https://') and 'omarchy' not in url.lower()
+
+
+def mirror_refusal(repo, url):
+    """Why repository_mirror_safe refused URL, for the report."""
+    if repo == ONIOMARCHY:
+        return 'not the reviewed private source root:'
+    if 'omarchy' in url.lower():
+        return omarchy_refusal(url) + ':'
+    return 'non-HTTPS'
 
 
 def repository_policy_safe(repo, lines):
@@ -774,21 +802,36 @@ def oniomarchy_records(database, keep_infrastructure=True):
     return records
 
 
-def oniomarchy_admit(record, target=False):
-    """A planned/candidate record of the private source: an admitted
-    candidate or dependency (a candidate only as the requested target), never
-    the keyring outside its own path, never a candidate without an inventory
-    mapping, never a replacement. A declared conflict is admitted: it removes
-    nothing unless a conflicting package is installed, which
-    reject_removals refuses."""
-    role, logical = oniomarchy_admission().get(record.get('name', ''), ('', ''))
-    if role not in (('candidate',) if target else ('candidate', 'dependency')):
-        raise ValueError('oniomarchy package outside the admitted role set: ' + record.get('name', ''))
+def oniomarchy_admit(record, target=False, installed=False):
+    """A planned/candidate record of the private source: a candidate only as
+    the requested target (or an already-installed package, which is not a new
+    selection), otherwise an admitted dependency; never the keyring outside
+    its own path, never a candidate without an inventory mapping, never a
+    replacement. A declared conflict is admitted: it removes nothing unless a
+    conflicting package is installed, which reject_removals refuses."""
+    name = record.get('name', '')
+    role, logical = oniomarchy_admission().get(name, ('', ''))
+    if role == 'candidate' and not (target or installed):
+        raise ValueError('oniomarchy candidate is admitted only as the requested target, never as a dependency: ' + name)
+    if role not in ('candidate', 'dependency') or (target and role != 'candidate'):
+        raise ValueError('oniomarchy package outside the admitted role set: ' + name)
     if role == 'candidate' and logical == '-':
-        raise ValueError('oniomarchy candidate without an inventory mapping is never selected or installed: '
-                         + record.get('name', ''))
+        raise ValueError('oniomarchy candidate without an inventory mapping is never selected or installed: ' + name)
     if record.get('replaces'):
-        raise ValueError('oniomarchy package declares a replacement/conflict removal: ' + record.get('name', ''))
+        raise ValueError('oniomarchy package declares a replacement/conflict removal: ' + name)
+
+
+def oniomarchy_consumer_ok(record, consumers):
+    """A private dependency row named in dependencies.tsv serves only its
+    recorded consumer (or any, for '*') and only as its recorded target;
+    CONSUMERS are the logical names of the package that declares the
+    dependency and of the requested target. A row whose logical is '-' has no
+    dependencies.tsv entry and no recorded consumer."""
+    role, logical = oniomarchy_admission().get(record.get('name', ''), ('', ''))
+    if role != 'dependency' or logical == '-':
+        return True
+    consumer, target = vapt_tables()[3].get(logical, ('', ''))
+    return target == ONIOMARCHY + '/' + record['name'] and (consumer == '*' or consumer in consumers)
 
 
 def source_satisfies(source, record, dep):
@@ -810,8 +853,9 @@ _VAPT_TABLES = None
 
 
 def vapt_tables():
-    """identities.tsv, identity-policy.tsv and aliases.tsv, as the shell
-    validator accepted them (the validator refuses malformed rows first)."""
+    """identities.tsv, identity-policy.tsv, aliases.tsv and dependencies.tsv
+    (logical -> (consumer, target)), as the shell validator accepted them
+    (the validator refuses malformed rows first)."""
     global _VAPT_TABLES
     if _VAPT_TABLES is not None:
         return _VAPT_TABLES
@@ -822,7 +866,8 @@ def vapt_tables():
     identities = {f[0]: (f[1], f[2], f[3]) for f in rows('identities.tsv') if len(f) == 5}
     policies = {f[0]: f[1] for f in rows('identity-policy.tsv') if len(f) == 3}
     aliases = {(f[1], f[2]): f[0] for f in rows('aliases.tsv') if len(f) == 3}
-    _VAPT_TABLES = identities, policies, aliases
+    dependencies = {f[0]: (f[1], f[2]) for f in rows('dependencies.tsv') if len(f) == 4}
+    _VAPT_TABLES = identities, policies, aliases, dependencies
     return _VAPT_TABLES
 
 
@@ -842,7 +887,7 @@ def closure_identity_ok(source, record):
     """The leaf resolver's identity rules for any package the closure plans
     or accepts: a package that names an inventory item (directly or through
     that repository's reviewed alias) must be that item's identity."""
-    identities, policies, aliases = vapt_tables()
+    identities, policies, aliases, _ = vapt_tables()
     name = record.get('name', '')
     logical = aliases.get((source, name), name)
     if policies.get(logical) == 'blocked':
@@ -872,6 +917,20 @@ def allowed_local(record, config, repos, sources=ALLOWED):
                for p in repos.get(source, []))
 
 
+def retained_private_records(root):
+    """Read-only provenance for packages already installed from the private
+    source when this operation did not opt in (or the source was disabled):
+    the cached database whose exact bytes were verified at the last refresh,
+    while the private state is not a conflict. These records only vouch for
+    an installed package; they are never candidates and authorise nothing."""
+    if WITH_ONIOMARCHY or oniomarchy_descriptor(root) == 'conflict' or oniomarchy_database(root)[0] != 'verified':
+        return []
+    try:
+        return oniomarchy_records(oniomarchy_path(root, 'sync/oniomarchy.db'), keep_infrastructure=False)
+    except (OSError, ValueError):
+        return []
+
+
 def reject_removals(incoming, local):
     """Removal scriptlets/side effects are not reviewed by an add-only plan."""
     for new in incoming:
@@ -890,19 +949,23 @@ def closure(root, target, transaction=None, dbpath=None):
     target_repo, target_name = target.split('/', 1) if target != '-' else ('', '')
     local = installed(root)
     local_names = {p['name'] for p in local}
+    # The repository set both homonym checks use (the shell's
+    # vapt_oniomarchy_target too): every other configured repository with
+    # safe policy/mirror and readable metadata, usable this run or not.
     def earlier_homonym(name):
         # The package name, or the logical item a reviewed alias maps it to.
         names = {name, vapt_tables()[2].get((ONIOMARCHY, name), name)}
         return any(p.get('name') in names for source in config
                    if source != ONIOMARCHY and repository_safe(source, config) for p in repos.get(source, []))
-    def admit(source, record, requested=False, upgrade=False):
+    def admit(source, record, requested=False, upgrade=False, present=False):
         # The private source never shadows a same-named package of another
-        # configured source, never supplies a role outside its fixed table,
+        # configured source, never supplies a role outside its fixed table
+        # (a candidate only as the requested target or an installed package),
         # and every source's packages keep the inventory identity rules. A
         # planned upgrade of an already-installed same-name package is not a
         # new selection: an identity mismatch there is a warning.
         if source == ONIOMARCHY:
-            oniomarchy_admit(record, target=requested)
+            oniomarchy_admit(record, target=requested, installed=upgrade or present)
             if earlier_homonym(record['name']):
                 raise ValueError('oniomarchy package shadows a package of an earlier source: ' + record['name'])
         if not closure_identity_ok(source, record):
@@ -910,6 +973,9 @@ def closure(root, target, transaction=None, dbpath=None):
             if not upgrade:
                 raise ValueError(message)
             print('warning: ' + message + ' (planned upgrade of the installed package; not a new selection)', file=sys.stderr)
+    def logical_of(source, name):
+        return vapt_tables()[2].get((source, name), name)
+    root_logical = logical_of(target_repo, target_name) if target != '-' else ''
     if transaction:
         for row in Path(transaction).read_text().splitlines():
             if not row.strip():
@@ -937,9 +1003,20 @@ def closure(root, target, transaction=None, dbpath=None):
     retained = [p for p in local if p['name'] not in planned_names]
     reject_removals(planned or selected, local)
     by_name = {}
+    cached = retained_private_records(root)
+    def same_record(record, candidates):
+        return any(p.get('version') == record.get('version') and not p.get('metadata_unknown')
+                   and p.get('url', '').rstrip('/') == record.get('url', '').rstrip('/')
+                   for p in candidates)
+    def cached_proof(record):
+        # Read-only: an installed package the verified private cache vouches
+        # for, when this operation did not opt into the source.
+        return (bool(record.get('version')) and bool(record.get('url')) and not forbidden(record)
+                and same_record(record, [p for p in cached if p.get('name') == record['name']]))
     def origin(record):
         # The earliest configured allowed source whose exact record (name,
-        # version, URL) vouches for a retained package; '' when none does.
+        # version, URL) vouches for a retained package, then the verified
+        # private cache; '' when none does.
         for source in config:
             if not (repository_safe(source, config) and ALLOWED.fullmatch(source)):
                 continue
@@ -947,30 +1024,34 @@ def closure(root, target, transaction=None, dbpath=None):
                 by_name[source] = {}
                 for p in repos.get(source, []):
                     by_name[source].setdefault(p.get('name'), []).append(p)
-            if any(p.get('version') == record.get('version') and not p.get('metadata_unknown')
-                   and p.get('url', '').rstrip('/') == record.get('url', '').rstrip('/')
-                   for p in by_name[source].get(record['name'], [])):
+            if same_record(record, by_name[source].get(record['name'], [])):
                 return source
-        return ''
+        return ONIOMARCHY if cached_proof(record) else ''
     checked = set()
     def visit(record, unchanged=False):
         key = (record['name'], record.get('version', ''))
         if key in checked:
             return
         checked.add(key)
-        if forbidden(record) or record.get('metadata_unknown'):
-            raise ValueError('forbidden/unknown dependency ' + record['name'])
+        if record.get('metadata_unknown'):
+            raise ValueError('unknown dependency metadata ' + record['name'])
+        if forbidden(record):
+            if record['name'].startswith('omarchy'):
+                raise ValueError(omarchy_refusal(record['name']) + ': package ' + record['name'])
+            named = [d for d in record.get('depends', []) if 'omarchy' in d]
+            raise ValueError(omarchy_refusal(*named) + ': ' + record['name'] + ' depends on ' + ', '.join(named))
         if unchanged:
-            if not allowed_local(record, config, repos):
+            if not allowed_local(record, config, repos) and not cached_proof(record):
                 raise ValueError('unresolved retained provider allowed-source identity ' + record['name'])
             # A retained provider keeps its source's admission and the
             # inventory identity rules, as a newly planned one would.
-            admit(origin(record), record)
+            admit(origin(record), record, present=True)
         else:
             reject_removals([record], local)
+        consumers = {logical_of(origin(record) if unchanged else sources.get(id(record), ''), record['name']), root_logical}
         for dep in record.get('depends', []):
             if 'omarchy' in dep:
-                raise ValueError('forbidden dependency ' + dep)
+                raise ValueError(omarchy_refusal(dep) + ': dependency ' + dep)
             candidates = [(p, False) for p in planned if source_satisfies(sources.get(id(p), ''), p, dep)]
             candidates += [(p, True) for p in retained if source_satisfies(origin(p), p, dep)]
             if not candidates and not transaction:
@@ -986,6 +1067,10 @@ def closure(root, target, transaction=None, dbpath=None):
             if not candidates:
                 raise ValueError('unresolvable dependency ' + dep)
             for candidate, retained_provider in candidates:
+                source = origin(candidate) if retained_provider else sources.get(id(candidate), '')
+                if source == ONIOMARCHY and not oniomarchy_consumer_ok(candidate, consumers):
+                    raise ValueError('oniomarchy dependency ' + candidate['name'] + ' serves only its recorded consumer '
+                                     '(dependencies.tsv), not ' + ', '.join(sorted(c for c in consumers if c)))
                 visit(candidate, retained_provider)
     for record in selected + planned:
         visit(record)
@@ -2003,8 +2088,9 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         if entry is None or origin[1] != rel or action['Exec'] != entry[1]:
             return False
         owner, words, bindings = entry
-        if ACTIVATION.search(' '.join(words)):
-            raise ValueError('activation/Omarchy in stock hook ' + name)
+        label = activation_refusal(' '.join(words))
+        if label:
+            raise ValueError(label + ' in stock hook ' + name)
         stock_bytes(rel, owner, view if origin[0] == 'incoming' else 'PreTransaction')
         for token in bindings:
             stock_binding(token, view)
@@ -2042,8 +2128,10 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         # lets incomplete read-only sysroot fixtures inspect the supplied script.
         shell_checked.add(executable)
     def helper(executable, when):
-        if not executable.startswith('/') or 'omarchy' in executable.lower():
-            raise ValueError('unresolved/forbidden delegated helper ' + executable)
+        if not executable.startswith('/'):
+            raise ValueError('unresolved delegated helper ' + executable)
+        if 'omarchy' in executable.lower():
+            raise ValueError(omarchy_refusal(executable) + ': delegated helper ' + executable)
         name = executable.lstrip('/')
         if isinstance(when, tuple):
             package, phase = when
@@ -2099,8 +2187,9 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
             text = ' '.join(words)
         elif words[0] in ('echo', 'printf') and not re.search(r'[$`<>]|[;&|]', text):
             return
-        if ACTIVATION.search(text):
-            raise ValueError('activation/Omarchy in ' + context)
+        label = activation_refusal(text)
+        if label:
+            raise ValueError(label + ' in ' + context)
         if re.search(r'[$`<>;&|\\]', text):
             raise ValueError('opaque dynamic command requires manual review ' + context)
         if not direct:
@@ -2166,8 +2255,10 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
                 raise ValueError('effective hook path redirected/removed by transaction ' + context)
     def hook_directory(directory, when):
         path = Path(directory)
-        if not path.is_absolute() or '..' in path.parts or 'omarchy' in directory.lower():
+        if not path.is_absolute() or '..' in path.parts:
             raise ValueError('forbidden hook directory')
+        if 'omarchy' in directory.lower():
+            raise ValueError(omarchy_refusal(directory) + ': hook directory')
         path = Path('/' + directory.lstrip('/'))
         # Path normalizes trailing/repeated slashes and dot components;
         # observed_resolve keeps both absolute and relative aliases fixture-rooted.
@@ -3819,6 +3910,27 @@ def report_requires(path, group):
                for line in text.splitlines() for fields in [line.split('\t')])
 
 
+RETAINED_NOTE = re.compile(r'; source (?:not selected|[a-z-]+) this run \(oniomarchy:[a-z-]+\); installed package retained$')
+
+
+def retained_private_row(old, new):
+    """A later run that could not use the private source (not selected,
+    declined, unavailable, unsupported architecture) keeps the earlier row of
+    an item installed from it, annotated, instead of overwriting the record
+    with "unavailable": the installed package is retained. A homonym that
+    appeared in an earlier source (identity-rejected) or any other resolution
+    replaces the row as usual."""
+    if old is None or old[2] != ONIOMARCHY or old[5] not in ('installed', 'already-exact'):
+        return None
+    tiers = new[7].split(',')
+    state = tiers[-1].split(':', 1)[1] if tiers[-1].startswith(ONIOMARCHY + ':') else ''
+    if new[4] == 'resolved' or state not in ('not-selected', 'declined', 'unavailable', 'unsupported-architecture'):
+        return None
+    reason = RETAINED_NOTE.sub('', old[6])
+    why = 'not selected' if state == 'not-selected' else state
+    return old[:6] + [reason + '; source ' + why + ' this run (oniomarchy:' + state + '); installed package retained', old[7]]
+
+
 def merge_report(path):
     old = metadata_read(path) if Path(path).exists() else ''
     new = sys.stdin.read()
@@ -3833,8 +3945,13 @@ def merge_report(path):
                 key = tuple(fields[:2]) if fields[0] in ('# infrastructure', '# dependency') else (fields[0],)
                 annotations[key] = line
             elif len(fields) == 8:
-                if fields[0] in rows:
-                    fields[1] = ','.join(dict.fromkeys(rows[fields[0]][1].split(',') + fields[1].split(',')))
+                previous = rows.get(fields[0])
+                if previous is not None:
+                    fields[1] = ','.join(dict.fromkeys(previous[1].split(',') + fields[1].split(',')))
+                    kept = retained_private_row(previous, fields)
+                    if kept is not None:
+                        kept[1] = fields[1]
+                        fields = kept
                 rows[fields[0]] = fields
             else:
                 raise ValueError('malformed retained provisioning report')

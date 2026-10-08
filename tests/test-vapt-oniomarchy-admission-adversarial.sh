@@ -57,6 +57,12 @@ assert_status 'a 53rd name is never a requested target' 1 "$STATUS"
 adv_publish "[{$SUPERSDR,\"depends\":[\"oniomarchy-keyring\"]}]"
 adv_closure oniomarchy/supersdr
 assert_status 'the keyring is never a dependency' 1 "$STATUS"
+assert_contains 'a self-reference is refused for review, not labelled Omarchy' "$OUTPUT" 'oniomarchy self-reference requires review: supersdr depends on oniomarchy-keyring'
+adv_publish "[{$SUPERSDR,\"depends\":[\"omarchy-settings\"]}]"
+adv_closure oniomarchy/supersdr
+assert_status 'an Omarchy dependency is refused' 1 "$STATUS"
+assert_contains 'and labelled Omarchy' "$OUTPUT" 'forbidden Omarchy: supersdr depends on omarchy-settings'
+adv_publish "[{$SUPERSDR,\"depends\":[\"oniomarchy-keyring\"]}]"
 adv_closure oniomarchy/oniomarchy-keyring
 assert_status 'the keyring is never a requested target' 1 "$STATUS"
 adv_publish '[{"name":"powershell-bin","version":"7.5.3-1","arch":"x86_64","url":"https://github.com/PowerShell/PowerShell"},{"name":"python-yattag","version":"1.16-1","arch":"any","url":"https://www.yattag.org"}]'
@@ -191,6 +197,38 @@ adv_approved vapt-adv-admit-dependency-alias
 adv_publish '[{"name":"autopsy","version":"4.22-1","arch":"x86_64","url":"https://www.autopsy.com","depends":["java17-openjfx"]},{"name":"java17-openjfx-bin","version":"17-1","arch":"x86_64","url":"https://openjfx.io","provides":["java17-openjfx"]}]'
 adv_closure oniomarchy/autopsy
 assert_status 'the reviewed java17-openjfx alias satisfies autopsy' 0 "$STATUS"
+
+# --- dependencies.tsv consumer and role (closure enforces them) ---------------
+# A mapped candidate is admitted only as the requested target.
+adv_approved vapt-adv-admit-candidate-as-dependency
+adv_publish "[{$SUPERSDR,\"depends\":[\"can-utils\"]},{$CANUTILS,\"arch\":\"x86_64\"}]"
+adv_closure oniomarchy/supersdr
+assert_status 'a mapped candidate pulled in as a dependency is refused' 1 "$STATUS"
+assert_contains 'and the refusal names the role rule' "$OUTPUT" 'admitted only as the requested target'
+adv_closure oniomarchy/can-utils
+assert_status 'control: the same candidate as the requested target closes' 0 "$STATUS"
+# java17-openjfx-bin and sleuthkit-java serve only autopsy; powershell-bin (*) anyone.
+adv_approved vapt-adv-admit-dependency-consumer
+adv_publish "[{$SUPERSDR,\"depends\":[\"java17-openjfx\",\"sleuthkit-java\"]},{\"name\":\"java17-openjfx-bin\",\"version\":\"17-1\",\"arch\":\"x86_64\",\"url\":\"https://openjfx.io\",\"provides\":[\"java17-openjfx\"]},{\"name\":\"sleuthkit-java\",\"version\":\"4.14-1\",\"arch\":\"x86_64\",\"url\":\"https://www.sleuthkit.org\"}]"
+adv_closure oniomarchy/supersdr
+assert_status "another consumer's private dependency is refused" 1 "$STATUS"
+assert_contains 'and the refusal names the recorded consumer rule' "$OUTPUT" 'serves only its recorded consumer'
+adv_publish "[{$SUPERSDR,\"depends\":[\"powershell-bin\"]},{\"name\":\"powershell-bin\",\"version\":\"7.5.3-1\",\"arch\":\"x86_64\",\"url\":\"https://github.com/PowerShell/PowerShell\"}]"
+adv_closure oniomarchy/supersdr
+assert_status 'a private dependency recorded for any consumer (*) closes' 0 "$STATUS"
+
+# --- an earlier configured source unreadable this run is recorded ------------
+adv_approved vapt-adv-admit-earlier-unseen
+printf '\n[chaotic-aur]\nServer = https://cdn-mirror.chaotic.cx/$repo/$arch\n' >>"$ROOT/etc/pacman.conf"
+adv_publish "[{$SUPERSDR}]"
+vapt_plan 'earlier source unavailable' --with-oniomarchy --groups sdr
+assert_eq 'the private source still resolves supersdr' oniomarchy/supersdr "$(vapt_field supersdr 4)"
+assert_contains 'the reason records the unread earlier source' "$(vapt_field supersdr 7)" \
+    'earlier source unavailable this run (chaotic-aur); not proof this is the inventory tool'
+adv_approved vapt-adv-admit-earlier-seen
+adv_publish "[{$SUPERSDR}]"
+vapt_plan 'every earlier source read' --with-oniomarchy --groups sdr
+assert_not_contains 'control: no uncertainty when every earlier source was read' "$(vapt_field supersdr 7)" 'earlier source unavailable'
 
 # --- alias / admission table tampering ----------------------------------------
 adv_approved vapt-adv-admit-tables

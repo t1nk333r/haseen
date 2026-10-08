@@ -165,7 +165,7 @@ for operation in repo-disable repo-enable; do
     chmod +x "$SANDBOX/stubs/curl"
     bash "$FIXTURES/vapt-runner.sh" repo-enable --yes >"$SANDBOX/first.out" 2>&1 &
     first=$!
-    read -r -t 20 ready <"$SANDBOX/ready"
+    read -r -t 20 _ <"$SANDBOX/ready"
     vapt_api "$operation" --yes
     assert_status "$operation during approval: rejected under mutex" 1 "$STATUS"
     assert_contains "$operation during approval: truthful busy reason" "$OUTPUT" busy

@@ -92,6 +92,7 @@ adv_db_status() {
 }
 
 adv_annotation() { awk -F'\t' '$1 == "# oniomarchy" { print $2; exit }' <<<"$OUTPUT"; }
+adv_annotation_reason() { awk -F'\t' '$1 == "# oniomarchy" { print $3; exit }' <<<"$OUTPUT"; }
 adv_state() { python3 "$VAPT_META" oniomarchy-status --root "$ROOT" | awk -F'\t' '$1 == "state" { print $2 }'; }
 adv_field() { python3 "$VAPT_META" oniomarchy-status --root "$ROOT" | awk -F'\t' -v k="$1" '$1 == k { print $2 }'; }
 adv_closure() { capture python3 "$VAPT_META" closure "$1" --root "$ROOT" --with-oniomarchy; }

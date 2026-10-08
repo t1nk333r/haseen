@@ -43,6 +43,8 @@ steps (keyd, fingerprint, geoclue, dotfiles) start off. It uses gum when
 installed, else a numbered list. The choice is saved to
 `~/.config/haseen/install.toml`, and the next run offers to reuse it. Piped,
 `--yes` and `--layers a,b,c` runs ask nothing; `--pick` forces the picker.
+The picker never offers `vapt`, which needs explicit groups
+(`./install.sh --vapt-groups GROUP,...`, see [docs/vapt.md](docs/vapt.md)).
 
 The installer copies the tree to `/usr/local` (`bin/haseen*`, `share/haseen/`)
 and applies layers through `haseen layer apply`. Every command that changes the

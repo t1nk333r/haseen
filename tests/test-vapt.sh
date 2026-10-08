@@ -63,6 +63,23 @@ assert_contains "vapt is not applied as an ordinary layer" "$OUTPUT" "HASEEN-CLI
 assert_contains "the groups reach the vapt layer" "$OUTPUT" "HASEEN-CLI layer apply vapt --dry-run --yes -- --groups core,web"
 vapt_install_sh --layers base --vapt-groups all
 assert_contains "'all' selects every group explicitly" "$OUTPUT" "HASEEN-CLI layer apply vapt --dry-run --yes -- --all"
+# The guided picker never offers vapt: applied bare it would refuse after the
+# earlier layers, and a remembered choice would repeat that on every run.
+capture env HASEEN_SYSROOT="$FIXTURES/desk-cachyos-amd" \
+    "$stage/install.sh" --dry-run --pick --prefix "$SANDBOX/prefix" <<<""
+assert_status "picker run without vapt succeeds" 0 "$STATUS"
+assert_contains "the picker still lists optional layers" "$OUTPUT" "[ ] secureboot"
+assert_not_contains "the picker does not offer vapt" "$OUTPUT" "] vapt"
+assert_not_contains "a picked run never applies vapt" "$OUTPUT" "layer apply vapt"
+mkdir -p "$HOME/.config/haseen"
+printf 'layers = ["base", "vapt"]\nsetup = []\n' >"$HOME/.config/haseen/install.toml"
+capture env HASEEN_SYSROOT="$FIXTURES/desk-cachyos-amd" \
+    "$stage/install.sh" --dry-run --pick --prefix "$SANDBOX/prefix" <<<"y"
+assert_status "a saved vapt choice does not abort the installer" 0 "$STATUS"
+assert_contains "a saved vapt choice is dropped with a reason" "$OUTPUT" "layer 'vapt' needs its own arguments"
+assert_contains "the rest of the saved choice is applied" "$OUTPUT" "HASEEN-CLI layer apply base --dry-run"$'\n'
+assert_not_contains "a saved vapt choice is never applied bare" "$OUTPUT" "layer apply vapt"
+rm -f "$HOME/.config/haseen/install.toml"
 
 # --- Microsoft PyRIT versus the BlackArch WPA cracker; the COAE environment ---
 vapt_sandbox vapt-pyrit

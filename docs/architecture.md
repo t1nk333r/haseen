@@ -54,8 +54,10 @@ becomes `/usr`. Code never hard-codes either one: resolve `$HASEEN_PATH`, or use
 The contract is the header of `share/haseen/lib/layers.sh`. In short:
 `layer.sh` sets `LAYER_SUMMARY`, `LAYER_REQUIRES`, `LAYER_CONFLICTS` and
 `LAYER_DISTROS`, and defines `layer_status`, `layer_apply` and optionally
-`layer_remove`. An optional `packages.txt` installs first. Preflight globals are
-already set when the layer runs.
+`layer_remove`. A layer that needs its own arguments sets `LAYER_PICKABLE=false`
+so the install picker never offers it (`vapt`: its groups come from
+`./install.sh --vapt-groups`). An optional `packages.txt` installs first.
+Preflight globals are already set when the layer runs.
 
 | Layer | Requires | Summary |
 |---|---|---|

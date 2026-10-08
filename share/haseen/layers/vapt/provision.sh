@@ -23,7 +23,7 @@ vapt_reset() {
     declare -gA VAPT_ALIAS=() VAPT_DEPENDENCY=() VAPT_DEPENDENCY_SOURCE=() VAPT_ONIO_ROLE=() VAPT_ONIO_LOGICAL=()
     declare -ga VAPT_SELECTED=() VAPT_ITEMS=() VAPT_REPOS=() VAPT_INFRA_ROWS=() VAPT_NATIVE_ORDER=() VAPT_DEPENDENCY_ROWS=()
     VAPT_MUTATION_FAILED=0 VAPT_PACMAN_BLOCKED=0 VAPT_ENV_STATUS=unknown VAPT_STAGE='' VAPT_COAE_REQUIRED=0 VAPT_BLACKARCH_STAGED=''
-    VAPT_ONIOMARCHY_OPT=0 VAPT_ONIOMARCHY_SCOPE='' VAPT_ONIOMARCHY_STATE=not-selected VAPT_ONIOMARCHY_REASON='' VAPT_ONIO_TRUST_CHANGED=''
+    VAPT_ONIOMARCHY_OPT=0 VAPT_ONIOMARCHY_SCOPE='' VAPT_ONIOMARCHY_STATE=not-selected VAPT_ONIOMARCHY_REASON='' VAPT_ONIO_TRUST_CHANGED='' VAPT_ONIO_UNSEEN='' VAPT_ONIO_ROTATION_NOTE=''
     vapt_native_paths
 }
 vapt_select() {
@@ -327,7 +327,11 @@ vapt_resolve_item() {
     VAPT_ATTEMPTS[$logical]="$attempts"
     if [[ -n $target ]]; then
         VAPT_SOURCE[$logical]="${target%%/*}"; VAPT_TARGET[$logical]="$target"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}concrete allowed repository identity"
-        [[ ${target%%/*} != oniomarchy ]] || VAPT_REASON[$logical]+='; private oniomarchy source (opted in for this operation), exact reviewed mapping; publisher metadata, not independent provenance'
+        if [[ ${target%%/*} == oniomarchy ]]; then
+            VAPT_REASON[$logical]+='; private oniomarchy source (opted in for this operation), exact reviewed mapping; publisher metadata, not independent provenance'
+            [[ -z $VAPT_ONIO_UNSEEN ]] ||
+                VAPT_REASON[$logical]+="; earlier source unavailable this run ($VAPT_ONIO_UNSEEN); not proof this is the inventory tool"
+        fi
     else
         VAPT_REASON[$logical]="${pin_reason}no acceptable source in available metadata; disabled/unavailable sources are not proof of absence"
     fi
@@ -337,10 +341,11 @@ vapt_resolve_item() {
 # or its reviewed alias, only an admitted candidate mapped to this item, never
 # Provides, and never a name another configured source also publishes.
 # Sets VAPT_ONIO_TARGET, or VAPT_ONIO_TIER to the state recorded in
-# attempted_tiers (not-selected, declined, unavailable, ...).
+# attempted_tiers (not-selected, declined, unavailable, ...). On success,
+# VAPT_ONIO_UNSEEN lists earlier configured sources this run could not read.
 vapt_oniomarchy_target() {
     local logical="$1" package repo
-    VAPT_ONIO_TARGET='' VAPT_ONIO_TIER=''
+    VAPT_ONIO_TARGET='' VAPT_ONIO_TIER='' VAPT_ONIO_UNSEEN=''
     if [[ $VAPT_ONIOMARCHY_STATE != usable ]]; then
         case "$VAPT_ONIOMARCHY_STATE" in
         not-selected | declined | unsupported-architecture) VAPT_ONIO_TIER="$VAPT_ONIOMARCHY_STATE" ;;
@@ -353,11 +358,17 @@ vapt_oniomarchy_target() {
         ! ${VAPT_PACKAGE[oniomarchy/$package]:-} ]]; then
         VAPT_ONIO_TIER=unavailable; return 1
     fi
+    # The homonym rule metadata.py closure applies (earlier_homonym): every
+    # other configured repository with readable, safe metadata, usable this
+    # run or not, by the package name and by the item's logical name.
     for repo in "${VAPT_REPOS[@]}"; do
-        [[ $repo != oniomarchy ]] && vapt_repo_usable "$repo" || continue
-        [[ ! ${VAPT_PACKAGE[$repo/$package]:-} ]] || { VAPT_ONIO_TIER=identity-rejected; return 1; }
+        [[ $repo != oniomarchy ]] || continue
+        if [[ ${VAPT_DATABASE[$repo]:-} && ! ${VAPT_UNSAFE[$repo]:-} ]]; then
+            [[ ! ${VAPT_PACKAGE[$repo/$package]:-} && ! ${VAPT_PACKAGE[$repo/$logical]:-} ]] || { VAPT_ONIO_TIER=identity-rejected; return 1; }
+        fi
+        vapt_repo_usable "$repo" || VAPT_ONIO_UNSEEN+="${VAPT_ONIO_UNSEEN:+, }$repo"
     done
-    vapt_identity_ok "$logical" "oniomarchy/$package" || { VAPT_ONIO_TIER=identity-rejected; return 1; }
+    vapt_identity_ok "$logical" "oniomarchy/$package" || { VAPT_ONIO_TIER=identity-rejected; VAPT_ONIO_UNSEEN=''; return 1; }
     VAPT_ONIO_TARGET="oniomarchy/$package"
 }
 vapt_resolve_groups() {
@@ -423,8 +434,12 @@ vapt_report() {
     for logical in "${VAPT_DEPENDENCY_ROWS[@]}"; do printf '# dependency\t%s\n' "$logical"; done
 }
 vapt_seed_shell() {
-    # Reuse an existing 60-shell include, but tooling-only provisioning must
-    # not introduce the unrelated general aliases/functions/tool init.
+    # Each existing rc (~/.bashrc always, ~/.zshrc only when present) gets one
+    # marked line that sources the owned link only while it is readable, so
+    # the line is inert once removal deletes the link; remove retains it (rc
+    # files stay user-owned). An rc that already names the link, or sources
+    # the shell-rc layer's default/shell/init.sh (which loads the same link;
+    # that layer is optional and may be absent), is reused unchanged.
     local general="${HASEEN_INSTALL_PATH:-$HASEEN_PATH}/default/shell/init.sh"
     local include="$HASEEN_USER_CONFIG/vapt/shell.sh" rc observed degraded=0
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do

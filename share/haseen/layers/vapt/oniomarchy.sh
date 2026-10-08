@@ -233,8 +233,13 @@ vapt_oniomarchy_bootstrap_steps() {
 
 # vapt_oniomarchy_refresh_steps — an approved source: fetch and verify the
 # live database with the recorded accepted primaries, then cache exactly
-# those bytes. No trust change happens here.
+# those bytes. No trust change happens here: a publisher key rotation is
+# applied only by an approval (repo-enable, or the approval an opted-in run
+# asks for when the source is not approved), so a refresh that cannot verify,
+# or that sees a keyring package other than the recorded authority, names
+# repo-enable (VAPT_ONIO_ROTATION_NOTE).
 vapt_oniomarchy_refresh_steps() {
+    local rc=0 record digest authority
     vapt_oniomarchy_lock || return $?
     vapt_oniomarchy_recheck || return $?
     if [[ ${VAPT_ONIO[descriptor]} != approved || ${VAPT_ONIO[keyringAuthorityState]} != ok ]]; then
@@ -250,7 +255,17 @@ vapt_oniomarchy_refresh_steps() {
     local stage="$VAPT_STAGE/oniomarchy" keys="$VAPT_STAGE/oniomarchy/keys"
     vapt_oniomarchy_keys "$stage" "$keys" || return $?
     vapt_transaction_cache || return $?
-    vapt_oniomarchy_database "$stage" "$keys" || return $?
+    vapt_oniomarchy_database "$stage" "$keys" || rc=$?
+    if ((rc)); then
+        [[ $rc != 2 || $VAPT_ONIOMARCHY_REASON != 'database signature rejected'* ]] ||
+            VAPT_ONIOMARCHY_REASON+='; a refresh never changes trust: if the publisher rotated its key, review and apply the rotation with haseen vapt repo-enable oniomarchy'
+        return "$rc"
+    fi
+    record="$(vapt_meta discover "$(vapt_read_path "$VAPT_ONIO_DB")" oniomarchy-keyring 2>/dev/null)" &&
+        IFS=$'\t' read -r _ digest <<<"$record" &&
+        authority="$(vapt_meta state-read "$(vapt_read_path "$VAPT_ONIOMARCHY_SOURCES/oniomarchy.authority")" 2>/dev/null)" &&
+        [[ -n $digest && $authority != *$'\nsha256\t'"$digest"$'\n'* ]] &&
+        VAPT_ONIO_ROTATION_NOTE='the published oniomarchy-keyring differs from the recorded authority; a refresh never applies it: review it with haseen vapt repo-enable oniomarchy'
     vapt_oniomarchy_store_database "$VAPT_ONIO_DB" "$VAPT_ONIO_SIG" "$VAPT_ONIO_SIGNER"
 }
 
@@ -332,7 +347,7 @@ vapt_oniomarchy_prepare() {
         # Missing proof after a local keyring change is never repaired here.
         return 0
     else
-        VAPT_ONIO_TRUST_CHANGED='' VAPT_ONIOMARCHY_REASON=''
+        VAPT_ONIO_TRUST_CHANGED='' VAPT_ONIOMARCHY_REASON='' VAPT_ONIO_ROTATION_NOTE=''
         vapt_oniomarchy_run vapt_oniomarchy_refresh_steps || rc=$?
     fi
     case "$rc" in
@@ -344,7 +359,7 @@ vapt_oniomarchy_prepare() {
     vapt_oniomarchy_canary || { VAPT_ONIOMARCHY_STATE=broken VAPT_ONIOMARCHY_REASON='private source state unreadable'; return 0; }
     VAPT_ONIOMARCHY_STATE="${VAPT_ONIO[state]}"
     if [[ $VAPT_ONIOMARCHY_STATE == usable ]]; then
-        VAPT_ONIOMARCHY_REASON='signed database verified for this operation'
+        VAPT_ONIOMARCHY_REASON="signed database verified for this operation${VAPT_ONIO_ROTATION_NOTE:+; $VAPT_ONIO_ROTATION_NOTE}"
         vapt_oniomarchy_scope || return 1
     elif [[ -n $VAPT_ONIO_TRUST_CHANGED ]]; then
         # Trust changed, yet the recorded evidence does not make it usable.

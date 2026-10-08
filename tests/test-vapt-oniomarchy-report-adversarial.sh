@@ -143,4 +143,61 @@ recorded dependency removed|2
 removal marker|1
 report missing|1
 EOF
+
+# --- status says why: a disabled source is not drift ---------------------------
+status_case vapt-adv-report-status-why
+rm "$ROOT$SOURCES/oniomarchy.conf"
+vapt_api status
+assert_contains 'disabled source: provenance unverifiable' "$OUTPUT" 'supersdr: oniomarchy source disabled or unverified (absent:'
+assert_contains 'disabled source: the package is retained' "$OUTPUT" 'installed package retained, provenance unverifiable'
+assert_not_contains 'disabled source: not reported as drift' "$OUTPUT" 'drifted'
+status_case vapt-adv-report-status-why
+sed -i 's/"1.0-1"/"0.9-1"/' "$ROOT/var/lib/haseen/vapt/installed.json"
+vapt_api status
+assert_contains 'drift is reported as drift' "$OUTPUT" 'supersdr package drifted from its recorded source metadata'
+status_case vapt-adv-report-status-why
+python3 - "$ROOT/var/lib/haseen/vapt/installed.json" <<'EOF'
+import json, sys
+path = sys.argv[1]
+json.dump([r for r in json.load(open(path)) if r['name'] != 'python-yattag'], open(path, 'w'))
+EOF
+vapt_api status
+assert_contains 'a removed recorded dependency is named' "$OUTPUT" 'dependency python-yattag (installed for oniomarchy/supersdr) is no longer installed'
+
+# --- retained private packages still prove themselves after repo-disable ------
+status_case vapt-adv-report-retained-proof
+rm "$ROOT$SOURCES/oniomarchy.conf"
+python3 - "$ROOT/var/lib/haseen/vapt/repositories.json" <<'EOF'
+import json, sys
+path = sys.argv[1]
+repos = json.load(open(path))
+repos['extra'].append({'name': 'yattag-user', 'version': '1-1', 'url': 'https://example.org/yattag-user',
+                       'depends': ['python-yattag']})
+json.dump(repos, open(path, 'w'))
+EOF
+capture python3 "$VAPT_META" closure extra/yattag-user --root "$ROOT"
+assert_status 'a retained private dependency is proven by the verified cache after disable' 0 "$STATUS"
+capture python3 "$VAPT_META" closure oniomarchy/supersdr --root "$ROOT"
+assert_status 'the cache never authorises a private target without opt-in' 1 "$STATUS"
+printf 'x' >>"$ROOT$SOURCES/sync/oniomarchy.db"
+capture python3 "$VAPT_META" closure extra/yattag-user --root "$ROOT"
+assert_status 'an unverified cache proves nothing' 1 "$STATUS"
+
+# --- a later run that cannot use the source keeps the installed row -----------
+status_case vapt-adv-report-retained-row
+find "$CALLS" -mindepth 1 -delete # env-apply's own stub calls, not the plan's
+vapt_plan 'later run without --with-oniomarchy' --groups sdr
+assert_eq 'the earlier private row is kept' oniomarchy/supersdr "$(vapt_field supersdr 4)"
+assert_eq 'its apply state is kept' installed "$(vapt_field supersdr 6)"
+assert_contains 'and annotated' "$(vapt_field supersdr 7)" 'source not selected this run (oniomarchy:not-selected); installed package retained'
+report="$SANDBOX/merge.tsv"
+printf '# haseen-vapt-report-v1\nlogical\tselected_groups\tselected_source\ttarget\tresolution_state\tapply_state\treason\tattempted_tiers\n%s\n' \
+    "$(vapt_row supersdr)" >"$report"
+merged="$(printf 'supersdr\tsdr\tnone\t-\tunavailable\tskipped\tno acceptable source\tcore,extra,oniomarchy:declined\n' |
+    python3 "$VAPT_META" report-merge "$report")"
+assert_contains 'a repeated annotation replaces the previous one' "$merged" \
+    $'concrete allowed repository identity; source declined this run (oniomarchy:declined); installed package retained\t'
+merged="$(printf 'supersdr\tsdr\tnone\t-\tunavailable\tskipped\tno acceptable source\tcore,extra,oniomarchy:identity-rejected\n' |
+    python3 "$VAPT_META" report-merge "$report")"
+assert_contains 'an earlier homonym replaces the retained row' "$merged" $'supersdr\tsdr\tnone\t-\tunavailable'
 vapt_tools_untouched 'report adversarial'

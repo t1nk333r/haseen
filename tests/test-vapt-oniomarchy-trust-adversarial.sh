@@ -114,9 +114,24 @@ vapt_sudo_noop
 vapt_api install --yes --with-oniomarchy --groups automotive
 assert_not_contains 'rotation away: a database signed by the revoked pin is refused' "$(adv_annotation)" usable
 assert_eq 'rotation away: a pin-signed database resolves nothing' none "$(vapt_field can-utils 3)"
+assert_contains 'rotation away: the refusal names repo-enable' "$(adv_annotation_reason)" 'haseen vapt repo-enable oniomarchy'
 vapt_onio_serve keyring=20261101-1 trusted=ROT revoked=PIN pkgstatus=rotated dbstatus=rotated
 vapt_api install --yes --with-oniomarchy --groups automotive
 assert_eq 'rotation away: a ROT-signed refresh is usable' usable "$(adv_annotation)"
+
+# --- a refresh never applies a published keyring change, but says so --------
+adv_case vapt-adv-trust-rotation-pending
+vapt_api repo-enable --yes
+authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+vapt_onio_serve keyring=20261101-1 trusted=ROT revoked=PIN pkgstatus=pinned
+: >"$CALLS/sudo"
+vapt_sudo_noop
+vapt_api install --yes --with-oniomarchy --groups automotive
+assert_eq 'pending rotation: the refreshed source stays usable' usable "$(adv_annotation)"
+assert_contains 'pending rotation: the run names repo-enable' "$(adv_annotation_reason)" \
+    'differs from the recorded authority; a refresh never applies it: review it with haseen vapt repo-enable oniomarchy'
+assert_eq 'pending rotation: the refresh changes no trust' '' "$(adv_trust_ops)"
+assert_eq 'pending rotation: the authority is unchanged' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
 
 # --- repeated approval of an unchanged keyring changes no trust --------------
 adv_case vapt-adv-trust-reapprove
@@ -162,6 +177,8 @@ for variant in bad wrong none unreachable; do
     assert_eq "refresh $variant: cached private state byte-identical" "$cached" "$(adv_digest "$ROOT$SOURCES")"
     assert_eq "refresh $variant: no trust change" '' "$(adv_trust_ops)"
     assert_contains "refresh $variant: tier recorded" "$(vapt_field can-utils 8)" 'oniomarchy:'
+    [[ $variant != wrong ]] ||
+        assert_contains 'refresh wrong: the reason names repo-enable for a rotation' "$(adv_annotation_reason)" 'haseen vapt repo-enable oniomarchy'
 done
 
 # --- a served database differing from the cached one is never planned from ---

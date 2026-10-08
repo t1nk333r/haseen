@@ -3,6 +3,9 @@ LAYER_SUMMARY='Optional owner VAPT inventory, pinned native environments and pas
 LAYER_DISTROS=(arch cachyos)
 LAYER_REQUIRES=()
 LAYER_CONFLICTS=()
+# Provisioning needs explicit groups, so the install picker never offers it:
+# ./install.sh --vapt-groups (or --layers vapt --vapt-groups) is the route.
+LAYER_PICKABLE=false
 layer_usage() {
     cat <<'EOF'
 Usage: haseen layer apply vapt [--dry-run] [--yes] -- [--with-oniomarchy] --groups GROUP,...
@@ -90,8 +93,13 @@ layer_status() {
         if [[ $logical == '# environment' ]]; then [[ $groups == ok ]] || degraded=true; continue; fi
         if [[ $logical == '# mutation-failed' ]]; then [[ $groups == 0 ]] || degraded=true; continue; fi
         if [[ $logical == '# dependency' ]]; then
-            [[ $(vapt_meta install-reason "$groups" 2>/dev/null) == depend ]] ||
-                echo "warn: dependency $groups (installed for $source_name) is no longer recorded as a dependency"
+            # A removed dependency leaves its consumer incomplete; one the
+            # user marked explicit is still installed and only reported.
+            case "$(vapt_meta install-reason "$groups" 2>/dev/null)" in
+            depend) ;;
+            explicit) echo "warn: dependency $groups (installed for $source_name) is no longer recorded as a dependency" ;;
+            *) echo "warn: dependency $groups (installed for $source_name) is no longer installed"; degraded=true ;;
+            esac
             continue
         fi
         if [[ $logical == '# infrastructure' ]]; then
@@ -112,10 +120,17 @@ layer_status() {
                 echo "warn: $logical native metadata missing/drifted/unknown"; degraded=true;
             }
         elif [[ $resolution == resolved && $target == */* ]]; then
-            if ! vapt_repo_usable "${target%%/*}" ||
-                [[ $(vapt_meta installed "${target%%/*}" "${target##*/}" "${VAPT_VERSION[$target]:--}" "${VAPT_URL[$target]:--}") != exact ]] ||
-                ! vapt_meta closure "$target" >/dev/null 2>&1; then
-                echo "warn: $logical repository/package metadata unavailable or drifted"; degraded=true
+            if [[ ${target%%/*} == oniomarchy ]] && ! vapt_repo_usable oniomarchy; then
+                # Not drift: without an approved, verified source the
+                # installed package's provenance cannot be re-checked here.
+                echo "warn: $logical: oniomarchy source disabled or unverified (${VAPT_ONIO[state]:-unreadable}: ${VAPT_ONIO[reason]:-private source state unreadable}); installed package retained, provenance unverifiable"
+                degraded=true
+            elif ! vapt_repo_usable "${target%%/*}"; then
+                echo "warn: $logical: source ${target%%/*} unavailable; provenance unverifiable"; degraded=true
+            elif [[ $(vapt_meta installed "${target%%/*}" "${target##*/}" "${VAPT_VERSION[$target]:--}" "${VAPT_URL[$target]:--}") != exact ]]; then
+                echo "warn: $logical package drifted from its recorded source metadata (missing, other version or URL)"; degraded=true
+            elif ! vapt_meta closure "$target" >/dev/null 2>&1; then
+                echo "warn: $logical dependency closure no longer verifies"; degraded=true
             fi
         fi
     done <"$report"
