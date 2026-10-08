@@ -258,18 +258,33 @@ Item {
         loadProvider(id, true);
     }
 
+    // Back to the parent submenu, with the row of the submenu just left
+    // selected, so going in and out keeps your place.
     function goBack(): bool {
         if (picking || activeMenu === "root")
             return false;
+        const child = activeMenu;
         if (navStack.length > 0) {
             const prev = navStack[navStack.length - 1];
             navStack = navStack.slice(0, -1);
             setActiveMenu(prev, false, false);
-            return true;
+        } else {
+            const entry = items[activeMenu];
+            setActiveMenu(entry && entry.parent ? entry.parent : "root", false, false);
         }
-        const entry = items[activeMenu];
-        setActiveMenu(entry && entry.parent ? entry.parent : "root", false, false);
+        selectRow(child);
         return true;
+    }
+    // Select the visible row for an item id; nothing changes when it is not shown.
+    function selectRow(id: string): void {
+        for (let i = 0; i < displayModel.count; i++) {
+            if (displayModel.get(i).itemId === id) {
+                selectedIndex = i;
+                syncSelectedId();
+                Qt.callLater(revealCursor);
+                return;
+            }
+        }
     }
 
     function setFilter(text: string): void {
