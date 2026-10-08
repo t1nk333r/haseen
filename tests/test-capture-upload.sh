@@ -295,13 +295,17 @@ assert_not_contains "the warning does not quote the token" "$OUTPUT" "$TOKEN"
 # named "shot.png,.env" beside shot.png and .env must upload its own bytes and
 # nothing else. The stub curl only rewrites https://HOST to the loopback
 # receiver and execs the real curl; the receiver parses the multipart body.
+# Receivers never hold this suite's stdout (tests/run.sh reads it to EOF) and
+# exit on their own after a while (multipart-receiver.py), so a case that
+# aborts before it kills them fails instead of hanging the run.
 REAL_CURL="$(PATH=/usr/local/bin:/usr/bin:/bin command -v curl || true)"
-if [[ -z $REAL_CURL ]]; then
-    echo "  (note: curl is not installed; multipart receiver regressions were skipped)"
+if [[ -z $REAL_CURL ]] || ! command -v python3 >/dev/null; then
+    echo "  (note: curl or python3 is not installed; multipart receiver regressions were skipped)"
 else
     cap_sandbox upload-multipart
     RECV_LOG="$SANDBOX/received.jsonl"
-    python3 "$FIXTURES/multipart-receiver.py" "$SANDBOX/port" "$RECV_LOG" &
+    python3 "$FIXTURES/multipart-receiver.py" "$SANDBOX/port" "$RECV_LOG" \
+        </dev/null >"$SANDBOX/receiver.log" 2>&1 &
     RECV_PID=$!
     for _ in $(seq 100); do [[ -s $SANDBOX/port ]] && break; sleep 0.05; done
     RECV_PORT="$(cat "$SANDBOX/port")"
@@ -365,7 +369,8 @@ EOF
     start_receiver() {
         local name=$1
         shift
-        python3 "$FIXTURES/multipart-receiver.py" "$SANDBOX/$name.port" "$SANDBOX/$name.jsonl" "$@" &
+        python3 "$FIXTURES/multipart-receiver.py" "$SANDBOX/$name.port" "$SANDBOX/$name.jsonl" "$@" \
+            </dev/null >"$SANDBOX/$name.log" 2>&1 &
         EXTRA_PIDS+=($!)
         for _ in $(seq 100); do [[ -s $SANDBOX/$name.port ]] && break; sleep 0.05; done
         : >"$SANDBOX/$name.jsonl"
@@ -632,10 +637,18 @@ assert_eq "a capture dir open to others: its mode and contents are not touched" 
 
 # A directory that is really someone else's needs a second uid: the user's
 # subordinate range, through an unprivileged user namespace, chowns a fresh
-# 0700 directory to it.
+# 0700 directory to it. util-linux's --map-auto forks a newuidmap helper that
+# waits for the namespace; when unshare(2) itself is refused (a container's
+# seccomp, user.max_user_namespaces=0) that helper is orphaned and waits
+# forever, holding whatever it inherited open. So a plain --map-root-user
+# (no helper) probes first, and the --map-auto run gets no descriptor of this
+# suite and a time limit.
 cap_sandbox search-store-foreign
 foreign="$XDG_RUNTIME_DIR/haseen-search-screen"
-if unshare --map-auto --map-root-user sh -c 'mkdir -m 700 -- "$1" && chown 1:1 -- "$1"' sh "$foreign" 2>/dev/null &&
+if command -v unshare >/dev/null && command -v timeout >/dev/null &&
+    timeout 10 unshare --user --map-root-user true </dev/null >/dev/null 2>&1 &&
+    timeout 10 unshare --map-auto --map-root-user sh -c 'mkdir -m 700 -- "$1" && chown 1:1 -- "$1"' sh "$foreign" \
+        </dev/null >/dev/null 2>&1 &&
     [[ -d $foreign && ! -O $foreign ]]; then
     capture haseen search screen image --geometry "0,0 10x10"
     refused_store "someone else's capture dir"

@@ -11,7 +11,11 @@ shape each uploader backend reads, so the real curl, not a stub, decides what
 is sent. With --redirect every POST is answered 307 to URL instead (a client
 that follows replays its body there); with --tls it speaks HTTPS with that
 certificate. A request through it as a proxy logs the absolute URL as its
-path. Nothing leaves the loopback interface.
+path. Nothing leaves the loopback interface. Every wait is bounded: a
+connection idle for CONN_TIMEOUT seconds is dropped (the TLS handshake
+included, so one stalled client cannot block the accept loop) and the
+process exits on its own after LIFETIME seconds, so a test that aborts
+before it kills the receiver cannot leave it running.
 """
 import email.parser
 import email.policy
@@ -20,15 +24,20 @@ import json
 import os
 import ssl
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT_FILE, LOG_FILE = sys.argv[1], sys.argv[2]
 REDIRECT = sys.argv[sys.argv.index('--redirect') + 1] if '--redirect' in sys.argv else None
 TLS = sys.argv[sys.argv.index('--tls') + 1:sys.argv.index('--tls') + 3] if '--tls' in sys.argv else None
 LINK = 'https://share.example.com/r/fixture.png'
+CONN_TIMEOUT = 10
+LIFETIME = 300
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = CONN_TIMEOUT
+
     def log_message(self, *args):
         pass
 
@@ -74,10 +83,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+server.daemon_threads = True
 if TLS:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(TLS[0], TLS[1])
-    server.socket = context.wrap_socket(server.socket, server_side=True)
+    # The handshake runs on the first read in the handler thread, under its
+    # timeout, not inside accept() on the serving thread.
+    server.socket = context.wrap_socket(server.socket, server_side=True,
+                                        do_handshake_on_connect=False)
+watchdog = threading.Timer(LIFETIME, os._exit, args=(3,))
+watchdog.daemon = True
+watchdog.start()
 # Publish the port only once it is bound (rename is atomic).
 with open(PORT_FILE + '.new', 'w', encoding='ascii') as stream:
     stream.write(str(server.server_address[1]))

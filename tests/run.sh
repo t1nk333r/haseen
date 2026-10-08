@@ -10,18 +10,28 @@ files=("$@")
 
 total=0
 failed=0
+# Each file's output goes to a file, not a command substitution: $(…) reads
+# to EOF, so any process a test leaves behind with its stdout (an orphaned
+# helper, a receiver it never killed) would hang the run instead of failing.
+# Waiting for the subshell itself is bounded by the test.
+result_file="$(mktemp)"
+trap 'rm -f -- "$result_file"' EXIT
 for f in "${files[@]}"; do
     printf '%s\n' "${f##*/}"
     set +e
-    result="$(
+    (
         set -Eeuo pipefail
+        # A test never reads the caller's terminal or pipe: a stub that
+        # drains stdin (the scripted curl) would wait on it forever.
+        exec </dev/null
         # shellcheck source=tests/lib.sh
         source tests/lib.sh
         # shellcheck disable=SC1090
         source "$f"
         printf 'RESULT %d %d\n' "$TESTS_RUN" "$TESTS_FAILED"
-    )"
+    ) >"$result_file"
     rc=$?
+    result="$(<"$result_file")"
     set -e
     printf '%s\n' "$result" | grep -v '^RESULT ' || true
     line="$(printf '%s\n' "$result" | grep '^RESULT ' || true)"
