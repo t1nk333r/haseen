@@ -182,6 +182,19 @@ capture env HASEEN_SYSROOT="$fx" haseen layer status omarchy-repo
 assert_status "omarchy-repo: status ok once enabled" 0 "$STATUS"
 assert_not_contains "omarchy-repo: last in pacman.conf, no shadow warning" "$OUTPUT" "not the last repo"
 
+# --- write_root_file under a restrictive umask ------------------------------
+# sudo keeps the caller's umask, so a 077 owner would create shared root state
+# directories (/var/lib/haseen) the services cannot traverse. A sudo that just
+# runs its argv shows the parents the helper really creates.
+sandbox root-umask
+stub sudo 'exec "$@"'
+dest="$SANDBOX/root/var/lib/haseen/state"
+capture bash -c 'umask 077; source "$HASEEN_PATH/lib/common.sh"; DRY_RUN=false; echo x | write_root_file "$1" 0600' _ "$dest"
+assert_status "write_root_file under umask 077" 0 "$STATUS"
+assert_eq "new parent directories stay traversable under umask 077" "755 755 755" \
+    "$(stat -c %a "$SANDBOX/root/var" "$SANDBOX/root/var/lib" "$SANDBOX/root/var/lib/haseen" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "the file keeps the mode it was given" "600" "$(stat -c %a "$dest")"
+
 # A test file run by hand, without tests/run.sh, has no sandbox: it must stop
 # before its fixtures reach the real ~/.config (it once overwrote an owner's
 # plugin that way).
