@@ -15,7 +15,8 @@ usage() {
 Usage: haseen settings list [--json]
 
 Prints every setting as: key, value, store, and the command that changes it.
---json prints the same rows as a JSON array (key, value, store, path, setter).
+--json prints the same rows as a JSON array (key, value, store, path, setter,
+takes: what \`settings set\` accepts, one of value, on-off, inverted, none).
 
 Stores:
   shell.json   ~/.config/haseen/shell.json, your file, watched by the shell
@@ -26,7 +27,7 @@ Stores:
   state        other ~/.local/state/haseen files (theme, active shell)
   env          ~/.config/uwsm/env.d/60-haseen-defaults, read at next login
 
-Change one with: haseen settings set <key> <value>
+Change one with: haseen settings set <key> [value]
 EOF
 }
 
@@ -48,11 +49,11 @@ if $json; then
     # jq -R/-s builds the array from the tab-separated rows, so no value is
     # ever concatenated into JSON by hand.
     settings_rows | jq -R -s 'split("\n") | map(select(length > 0) | split("\t"))
-        | map({key: .[0], store: .[1], path: .[2], value: .[3], setter: .[4]})'
+        | map({key: .[0], store: .[1], path: .[2], value: .[3], setter: .[4], takes: .[5]})'
     exit 0
 fi
 
 printf '%-30s %-26s %-12s %s\n' KEY VALUE STORE CHANGE-WITH
-while IFS=$'\t' read -r key store _ value setter; do
+while IFS=$'\t' read -r key store _ value setter _; do
     printf '%-30s %-26s %-12s %s\n' "$key" "$value" "$store" "$setter"
 done < <(settings_rows)

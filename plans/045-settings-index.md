@@ -103,6 +103,27 @@ Re-checked against main's plans 075–085 before landing:
   stays out.
 - `tests/test-settings.sh`: 40 checks.
 
+## Addendum: landing review (2026-10-08)
+
+- **`settings set gaps off` turned the gaps on.** The row reports gaps in the
+  user's terms, but `haseen toggle gaps` names the no-gaps mode (its `on`
+  removes them). Each row now carries a sixth column, `takes`: `value`
+  (appended as is), `on-off`, `inverted` (on/off swapped before the owner
+  runs; only `gaps`) or `none`. `animations`, `idle`, `screensaver`, `dnd`,
+  `nightlight` and `one-window-ratio` already agreed with their commands, and
+  a set→list round trip for all seven now pins that. A word other than on/off
+  is refused for those rows.
+- **Editor-owned keys exited 2 with a value.** `bar.height`, `frame.*`, the
+  plugin rows that open `shell.json`, and `recording` (one command starts and
+  stops it) are `none`: a value is refused with the command to run instead;
+  bare, they still open the file.
+- **A broken user `shell.json` was listed as the shipped defaults** without a
+  word. The list now warns on stderr that the values are the defaults.
+- **A tab in a value shifted the row** (the setter column then held the tail
+  of the value). A string with a control character prints as its JSON form,
+  and `_settings_row` escapes a tab or newline from any other store.
+- `tests/test-settings.sh`: 104 checks.
+
 ## Execution record
 
 `share/haseen/lib/settings.sh`, `bin/haseen-settings-list`,
