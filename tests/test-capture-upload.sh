@@ -25,7 +25,10 @@ cap_sandbox() {
     stub wl-copy 'printf "wl-copy %s: " "$*" >>"$CALLS"; cat >>"$CALLS"; echo >>"$CALLS"'
     stub xdg-user-dir 'echo "$HOME/$1"'
     stub xdg-open 'echo "xdg-open $*" >>"$CALLS"'
+    # GRIM_DELAY holds the picture back, so the OCR consumer is already
+    # waiting on the pipe before anything is written to it.
     stub grim 'echo "grim $*" >>"$CALLS"
+[ -n "${GRIM_DELAY:-}" ] && sleep "$GRIM_DELAY"
 out=""; prev=""
 for a in "$@"; do prev2=$prev; prev=$a; done
 [ -n "$prev" ] && [ "$prev" != "-" ] && out=$prev
@@ -34,7 +37,9 @@ if [ -n "$out" ]; then printf PNG >"$out"; else printf PNG; fi'
     stub hyprpicker 'echo "hyprpicker $*" >>"$CALLS"; sleep 2'
     stub satty 'echo "satty $*" >>"$CALLS"'
     stub rclone 'echo "rclone $*" >>"$CALLS"; [ "$1" = link ] && echo "https://r2.example.com/shot.png"; exit 0'
-    stub tesseract 'echo "tesseract $*" >>"$CALLS"; printf "%s" "${TESS_TEXT:-recognised text}"'
+    # Like the real one, it reads the whole picture before it answers when
+    # the picture comes on stdin, so grim never writes into a closed pipe.
+    stub tesseract 'echo "tesseract $*" >>"$CALLS"; [ "$1" = stdin ] && cat >/dev/null; printf "%s" "${TESS_TEXT:-recognised text}"'
     # Records argv and the curl config read on stdin; answers with $CURL_BODY
     # and $CURL_HEADERS. -w (used only by the XBackBone probe) answers a code.
     stub curl 'echo "curl $*" >>"$CALLS"
@@ -519,6 +524,11 @@ capture haseen search screen --search
 assert_status "--search succeeds" 0 "$STATUS"
 assert_eq "--search says nothing on stdout" "" "$OUTPUT"
 assert_contains "--search opens a text search" "$(calls)" "xdg-open https://www.google.com/search?q=recognised%20text"
+# RV-4: the OCR reads the whole picture grim writes, however late it comes; a
+# reader that left early would turn a good capture into "OCR failed".
+GRIM_DELAY=0.3 capture haseen search screen --geometry "0,0 10x10" --print
+assert_status "a slow grim still reaches the OCR" 0 "$STATUS"
+assert_eq "and its text is read" "recognised text" "$OUTPUT"
 
 cap_sandbox search-image
 capture haseen search screen image
