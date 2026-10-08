@@ -184,7 +184,10 @@ done
 sandbox lab
 use_path
 export HASEEN_LAB_DIR="$SANDBOX/lab"
-# A read-only probe, not a mutation: lab.sh asks docker whether it is there.
+mkdir -p "$HASEEN_LAB_DIR/.git"
+printf '#!/bin/sh\n' >"$HASEEN_LAB_DIR/lab"
+export KVM_DEV=/dev/null
+# A read-only probe: docker fails and qemu is absent from this controlled PATH.
 stub docker "exit 1"
 
 capture "$REPO/tools/lab.sh" --help
@@ -203,14 +206,14 @@ assert_contains "the missing prerequisite is named" "$OUTPUT" "MISSING qemu"
 assert_contains "the guest it would build is a CachyOS one" "$OUTPUT" \
     "CachyOS desktop ISO"
 assert_contains "it points the lab at this checkout" "$OUTPUT" "$REPO -> ~/haseen in the guest"
-# With no lab checkout there is no cachyos arm and no Secure Boot firmware
-# knob to point at; both are prerequisites, and the report says where to fix them.
+# This checkout has neither required lab feature; test-lab covers a missing checkout.
 assert_contains "the missing cachyos guest mode is reported" "$OUTPUT" \
     "the lab checkout has no LAB_DISTRO=cachyos arm"
 assert_contains "the missing Secure Boot firmware is reported" "$OUTPUT" \
     "the lab checkout has no LAB_SECUREBOOT knob"
 assert_not_contains "no lab command was planned" "$OUTPUT" "DRYRUN:"
-assert_eq "no clone landed anywhere" "" "$([[ -e $HASEEN_LAB_DIR ]] && echo exists)"
+assert_eq "no VM image was created" "" \
+    "$([[ -e $HASEEN_LAB_DIR/images ]] && echo exists)"
 assert_eq "and nothing landed in the repo" "" \
     "$([[ -e $REPO/lab || -e $REPO/images || -e $REPO/t1nk33r-lab ]] && echo exists)"
 
