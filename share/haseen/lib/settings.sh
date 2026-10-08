@@ -112,6 +112,7 @@ settings_rows() {
     _settings_row frame.thickness shell.json "$HASEEN_USER_CONFIG/shell.json" \
         "$(_settings_json .frame.thickness 6)" "haseen config edit $HASEEN_USER_CONFIG/shell.json"
     # Unset means twice the theme's radius (qs.Haseen Config.frameRadius).
+    # Windows and the menu share it from the next `haseen theme set` (plan 046).
     _settings_row frame.radius shell.json "$HASEEN_USER_CONFIG/shell.json" \
         "$(_settings_json .frame.radius "(theme radius x2)")" "haseen config edit $HASEEN_USER_CONFIG/shell.json"
 

@@ -203,7 +203,10 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
 ```
 
 `share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
-to `Theme.radius * 2`. Double-clicking the bar toggles `bar.transparent`: on
+to `Theme.radius * 2`. Windows and the menu round to the same radius (plan 046):
+`haseen theme set` resolves it by this rule into `windowRadius` and ends the
+theme's `hyprland.lua` with it as `decoration.rounding`, so a change to
+`frame.radius` reaches the windows at the next `haseen theme set`. Double-clicking the bar toggles `bar.transparent`: on
 empty space and, as in Omarchy's bar, on a widget too (a passive `PointHandler`
 over the bar, so the widget still gets both clicks), but not on the overflow
 chevron or in arrange mode. The text colour then comes from
@@ -422,7 +425,7 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 - **haseen.nvim:** haseen's Neovim config is the owner's plain lazy.nvim config, fetched rather than shipped. `haseen setup nvim` (`bin/haseen-setup-nvim`) clones it at a pinned commit (`NVIM_REPO_URL`, `NVIM_COMMIT`) into `~/.config/nvim` and links `share/haseen/default/nvim/haseen-colorscheme.lua` into its `lua/plugins/`. That bridge disables the theme spec's `LazyVim/LazyVim` entry and applies its colourscheme on `User LazyDone`; its presence is what makes `haseen theme set` link a config that is not LazyVim. A first install runs it with `--if-absent`; an existing config is replaced only with `--replace`, after it moves to `~/.config/nvim.bak-<timestamp>` (plan 065).
 - **Shell tokens:** `current/theme/shell.json` uses these keys:
   `mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth windowRadius`.
-  `windowRadius` is Hyprland's window rounding under the theme (its `hyprland.lua`, else `default/hypr/looknfeel.lua`), so the menu rounds like the windows, as Omarchy's does (plan 068).
+  `windowRadius` is the window corner radius, the frame's inner radius (`frame.radius`, else twice `radius`), which `haseen theme set` also gives Hyprland as `decoration.rounding`, so the menu rounds like the windows, as Omarchy's does (plans 068, 046).
   `Theme.qml` falls back to built-in values for any key that is missing; they are the `haseen` theme's rendered `shell.json`, so a missing file still looks like the default.
 - **Hooks:** `~/.config/haseen/hooks/<event>` and `<event>.d/*`, run by `haseen hook run <event> [args]`. Events: `theme-set`, `post-update`, `post-boot`, `layer-applied`.
 - **Generated themes:** two commands turn an image into an ordinary user theme (`~/.config/haseen/themes/<name>/colors.toml` plus the image as its background), on demand only. `haseen theme wallpaper` uses haseen's own extractor (`haseen-palette`, plan 034). `haseen theme generate` runs matugen (Material You, an optional package called as a program with `--json hex --dry-run` and haseen's `share/haseen/layers/theme/matugen.toml`). It maps the Material roles onto `colors.toml` keys and takes the ANSI hues from matugen custom colours. Foreground, accent and selection are held to plan 064's contrast floors, and a theme of the user's own is never overwritten. Its panel `haseen.themegen` (image strip, scheme, dark/light, swatches and a mock desktop, Save/Apply; menu Style › Theme Generator) is off by default (plan 067).
