@@ -64,6 +64,7 @@ The owner's other repos:
 | Fonts and Arabic rendering, Qt platform theme, seed modules | `share/haseen/themed/fonts.conf.tpl`, `share/haseen/default/fontconfig/`, `share/haseen/seeds/`, `bin/haseen-seed-user` | 047 |
 | Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |
 | Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
+| Phones (Android and iOS) | `share/haseen/layers/mobile/`, `bin/haseen-mobile-*` | 040 |
 | Upload, annotation, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `share/haseen/default/satty/`, `share/haseen/themed/satty.css.tpl` | 041 |
 | Multiplexer, yazi, the VM rig | `share/haseen/default/{herdr,tmux,yazi}/`, `share/haseen/themed/yazi.toml.tpl`, `tools/lab.sh` | 044 |
 | Settings index | `share/haseen/lib/settings.sh`, `bin/haseen-settings-*` | 045 |

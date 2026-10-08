@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# haseen:summary Full iPhone/iPad backup with idevicebackup2 (iOS only)
+# haseen:args [DIR] [--udid UDID]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/mobile/mobile.sh
+source "$HASEEN_PATH/layers/mobile/mobile.sh"
+
+DEFAULT_DIR="$HOME/Backups/ios"
+
+usage() {
+    cat <<EOF
+Usage: haseen mobile backup [DIR] [--udid UDID] [--dry-run] [--yes]
+
+Takes a full iTunes-format backup of a connected, trusted iPhone or iPad with
+\`idevicebackup2 backup --full\`, into DIR (default $DEFAULT_DIR).
+This is the one genuinely strong iOS-on-Linux feature: it is the same format
+Finder and iTunes write, encryption and all.
+
+  --udid UDID   which device, when more than one is attached
+
+Restore the same way round, with the phone plugged in and trusted:
+
+    idevicebackup2 --udid UDID restore <DIR>
+
+\`idevicebackup2 list\` is broken upstream
+(https://github.com/libimobiledevice/libimobiledevice/issues/1058); read the
+backup directory instead.
+
+There is no Android equivalent and this command will not pretend otherwise:
+\`adb backup\` is deprecated and current Android versions exclude nearly every
+app from it, and no maintained packaged replacement exists. For an Android
+phone, mount it with \`aft-mtp-mount ~/phone\` and copy what you want out of
+/sdcard, or use the vendor's cloud backup.
+
+Exit: 0 ok, 1 failure, 2 usage error.
+EOF
+}
+
+parse_common_flags "$@"
+
+dir=""
+udid=""
+i=0
+while ((i < ${#REST[@]})); do
+    arg="${REST[i]}"
+    case "$arg" in
+    --udid)
+        i=$((i + 1))
+        ((i < ${#REST[@]})) || {
+            usage >&2
+            exit 2
+        }
+        udid="${REST[i]}"
+        ;;
+    --udid=*) udid="${arg#--udid=}" ;;
+    -*)
+        echo "haseen mobile backup: unknown flag '$arg'" >&2
+        usage >&2
+        exit 2
+        ;;
+    *)
+        [[ -z $dir ]] || {
+            echo "haseen mobile backup: only one directory, got '$dir' and '$arg'" >&2
+            exit 2
+        }
+        dir="$arg"
+        ;;
+    esac
+    i=$((i + 1))
+done
+dir="${dir:-$DEFAULT_DIR}"
+
+have idevicebackup2 ||
+    die "libimobiledevice is not installed. Run: haseen layer apply mobile"
+have idevice_id ||
+    die "libimobiledevice is not installed. Run: haseen layer apply mobile"
+
+udids="$(idevice_id -l 2>/dev/null || true)"
+if [[ -z $udids ]]; then
+    die "no iOS device: plug in an unlocked iPhone or iPad. usbmuxd starts from its own udev rule; check with: haseen mobile status"
+fi
+if [[ -z $udid ]]; then
+    if (($(wc -l <<<"$udids") > 1)); then
+        die "more than one device ($(tr '\n' ' ' <<<"$udids")); pick one with --udid UDID"
+    fi
+    udid="$(head -n1 <<<"$udids")"
+elif ! grep -qxF "$udid" <<<"$udids"; then
+    die "device '$udid' is not attached ($(tr '\n' ' ' <<<"$udids"))"
+fi
+
+if ! idevicepair -u "$udid" validate &>/dev/null; then
+    die "$udid is attached but not trusted: unlock it, tap Trust on the phone, then run: idevicepair -u $udid pair"
+fi
+
+name="$(idevicename -u "$udid" 2>/dev/null || true)"
+info "device: $udid ${name:+($name)}"
+info "destination: $dir"
+info "a first full backup copies everything on the phone and can take a long time; leave it plugged in and unlocked"
+confirm "Back up $udid to $dir?" || die "cancelled"
+
+run mkdir -p "$dir"
+run idevicebackup2 --udid "$udid" backup --full "$dir"
+info "done. Restore with: idevicebackup2 --udid $udid restore $dir"
