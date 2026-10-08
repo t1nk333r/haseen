@@ -6,6 +6,7 @@ Item {
     id: root
 
     property string imagePath: ""
+    readonly property string imageSource: picture.source
     property real pixelRatio: 1
 
     Rectangle {

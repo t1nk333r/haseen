@@ -406,6 +406,8 @@ Column {
     width: quickLookOpen ? quickLookWidth : columns * cellWidth + Theme.gap
     spacing: Theme.gap
     focus: true
+    // Escape closes Quick Look before PanelPopup's window shortcut.
+    Keys.onShortcutOverride: event => event.accepted = root.quickLookOpen && event.key === Qt.Key_Escape
     Keys.onPressed: event => event.accepted = root.handleKey(event.key, event.modifiers)
 
     Component.onCompleted: {
@@ -497,6 +499,7 @@ Column {
                 stage: root.stage,
                 quickLook: root.quickLookOpen,
                 quickLookPath: root.quickLookPath,
+                quickLookSource: quickLook.imageSource,
                 hint: root.hint,
                 query: input.text,
                 strip: strip.currentIndex,
@@ -772,10 +775,11 @@ Column {
                 }
             }
             QuickLook {
+                id: quickLook
                 anchors.fill: parent
                 visible: root.quickLookOpen
                 z: 1
-                imagePath: root.quickLookPath
+                imagePath: root.quickLookOpen ? root.quickLookPath : ""
                 pixelRatio: root.pixelRatio
             }
         }
