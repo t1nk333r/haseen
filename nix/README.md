@@ -7,14 +7,15 @@ you get the same desktop from this flake:
 |---|---|
 | `packages.<system>.haseen` | `bin/` + `share/haseen`; every `haseen*` command is wrapped with `HASEEN_PATH=$out/share/haseen` and jq, curl, coreutils, quickshell, … on `PATH` |
 | `overlays.default` | adds `pkgs.haseen` |
-| `nixosModules.haseen` | system side: `haseen.enable`, `.secureboot`, `.ai`, `.gaming` |
+| `nixosModules.haseen` | system side: `haseen.enable`, `.secureboot`, `.ai`, `.gaming`, `.ddc` |
 | `homeManagerModules.haseen` | user side: the shell service, the theme, `~/.config/hypr/hyprland.lua` |
 | `nixosConfigurations.example` | CI host with every option on (`nix/example.nix`) |
 
 The installer layers map to options as follows. `base` + `desktop` →
 `haseen.enable`; `theme` → `haseen.theme` (home-manager); `shell` →
 `haseen.shell.enable` (home-manager); `secureboot`, `ai` and `gaming`
-→ the options of the same name. `dms` has no option: nixpkgs ships its own
+→ the options of the same name; the optional `haseen setup ddc` step →
+`haseen.ddc.enable`. `dms` has no option: nixpkgs ships its own
 `programs.dms-shell` module.
 
 ## Flake inputs
@@ -68,6 +69,7 @@ which means `nixos-unstable` as of 2026-10. The lanzaboote module is imported by
     # secureboot.enable = true;  # after the steps below
     # ai = { enable = true; acceleration = "vulkan"; };  # null | "cuda" | "rocm" | "vulkan"
     # gaming.enable = true;      # Steam (unfree), gamemode, gamescope
+    # ddc.enable = true;         # monitor brightness over DDC/CI (ddcutil, i2c group)
   };
 
   users.users.you = {
@@ -98,6 +100,15 @@ Notes:
   config.
 - **Theme.** `haseen.theme = null` (the default) leaves the theme to
   `haseen theme set` at runtime. A name re-applies it on every switch.
+- **Upgrades.** home-manager runs none of haseen's one-off migrations
+  (`share/haseen/migrations`, `haseen migrate` on the installer path). One
+  needs a step by hand: the low-battery warnings (`haseen.battery`, plan 075)
+  are on through the default `services` list, and an array in
+  `~/.config/haseen/shell.json` replaces the default, so a `shell.json` with
+  its own `services` array gets no warnings until you add `"haseen.battery"`
+  to it.
+  `haseen migrate` does that for you, but it also runs every other migration
+  your user has not recorded; `haseen migrate --pending` lists them first.
 - **AI.** Ollama listens on `127.0.0.1:11434` only. nixpkgs removed
   `services.ollama.acceleration`, so `haseen.ai.acceleration` selects
   `pkgs.ollama-cuda`, `pkgs.ollama-rocm` or `pkgs.ollama-vulkan` as

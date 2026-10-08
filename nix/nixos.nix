@@ -76,6 +76,12 @@ in
     };
 
     gaming.enable = mkEnableOption "Steam, gamemode and gamescope (Steam is unfree)";
+
+    ddc.enable = mkEnableOption ''
+      external monitor brightness over DDC/CI for `haseen brightness`: ddcutil
+      and the i2c-dev module (`hardware.i2c`; add your user to the `i2c`
+      group). The counterpart of `haseen setup ddc on`
+    '';
   };
 
   config = mkMerge [
@@ -188,6 +194,11 @@ in
         enable = true;
         capSysNice = mkDefault true;
       };
+    })
+
+    (mkIf cfg.ddc.enable {
+      hardware.i2c.enable = true;
+      environment.systemPackages = [ pkgs.ddcutil ];
     })
   ];
 }

@@ -94,7 +94,7 @@ assert_status "send needs a headline" 2 "$STATUS"
 # --exec is a real freedesktop action: notify-send -A waits and prints the
 # clicked action's name, and the argv runs as the words it was given.
 stub clicked-cmd 'printf "CLICKED:%s\n" "$@"'
-stub notify-send "printf '%s\n' \"\$@\" >'$argv'; echo exec"
+stub notify-send "printf '%s\n' \"\$@\" >'$argv'; echo 7; echo exec"
 capture haseen notification send "Head" --exec clicked-cmd one "two three"
 assert_status "a clicked action runs its command" 0 "$STATUS"
 assert_eq "the command's argv is not re-split" "CLICKED:one
@@ -102,7 +102,7 @@ CLICKED:two three" "$OUTPUT"
 assert_contains "the action is offered to the daemon" "$(cat "$argv")" "-A
 exec=Open"
 
-stub notify-send "printf '%s\n' \"\$@\" >'$argv'"
+stub notify-send "printf '%s\n' \"\$@\" >'$argv'; echo 7"
 capture haseen notification send "Head" --exec clicked-cmd one
 assert_status "an unanswered notification succeeds" 0 "$STATUS"
 assert_eq "an unanswered notification runs nothing" "" "$OUTPUT"
@@ -111,16 +111,40 @@ capture haseen notification send "Head" --exec "clicked-cmd one"
 assert_status "a quoted command string is refused" 1 "$STATUS"
 assert_contains "the refusal shows the unquoted form" "$OUTPUT" "separate words"
 
-capture haseen notification send -p "Head" --exec clicked-cmd
-assert_status "--print-id with --exec is refused" 1 "$STATUS"
-assert_contains "the refusal says why" "$OUTPUT" "cannot be combined"
+stub notify-send "echo 7; echo exec"
+capture haseen notification send -p "Head" --exec clicked-cmd x
+assert_eq "--print-id with --exec prints the id first, then the command's output" "7
+CLICKED:x" "$OUTPUT"
+
+# Not shown (notify-send prints id 0 and waits, or fails): --exec fails and
+# runs nothing, so a caller relying on the button can fail closed.
+stub notify-send 'echo 0; i=0; while [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done'
+capture haseen notification send "Head" --exec clicked-cmd x
+assert_status "a notification that was not shown fails" 1 "$STATUS"
+assert_not_contains "a notification that was not shown runs nothing" "$OUTPUT" "CLICKED"
+stub notify-send 'exit 1'
+capture haseen notification send "Head" --exec clicked-cmd x
+assert_status "no notification server: --exec fails" 1 "$STATUS"
+
+# Stopped while waiting (review: the battery countdown orphaned notify-send
+# and its Cancel): TERM closes the notification through notify-send's SIGINT.
+closed="$SANDBOX/closed"
+stub notify-send "echo 7; trap 'echo closed >\"$closed\"; exit 0' INT; i=0; while [ \$i -lt 100 ]; do sleep 0.1; i=\$((i+1)); done"
+# A background job starts with SIGINT ignored; Quickshell starts it with the default.
+env --default-signal=INT haseen notification send "Head" --exec clicked-cmd x >/dev/null 2>&1 &
+sender=$!
+sleep 0.5
+kill -TERM "$sender"
+wait "$sender" 2>/dev/null || true
+sleep 0.5
+assert_eq "TERM closes the notification" "closed" "$(cat "$closed" 2>/dev/null)"
 
 rm -f "$argv"
 capture haseen notification send --dry-run -u low "Head" "Body" --exec clicked-cmd a
 assert_status "send dry run succeeds" 0 "$STATUS"
 assert_dry_pure "send dry run" "$OUTPUT"
 assert_contains "send dry run prints the whole call" "$OUTPUT" \
-    "DRYRUN: notify-send -a haseen -u low -A exec=Open -- Head Body"
+    "DRYRUN: notify-send -a haseen -u low -p -A exec=Open -- Head Body"
 assert_contains "send dry run names the click command" "$OUTPUT" "DRYRUN: on click: clicked-cmd a"
 assert_eq "send dry run sends nothing" no "$([[ -e $argv ]] && echo yes || echo no)"
 

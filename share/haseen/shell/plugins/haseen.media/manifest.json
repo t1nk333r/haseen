@@ -2,13 +2,15 @@
   "schemaVersion": 1,
   "id": "haseen.media",
   "name": "Media",
-  "version": "1.0.0",
-  "description": "Now playing (MPRIS): click play/pause, scroll for next/previous; hidden without a player",
+  "version": "1.1.0",
+  "description": "Now playing (MPRIS): click play/pause, scroll for next/previous, right or middle click for a panel with cover art, seek, shuffle, repeat, player volume and a player switcher; hidden without a player",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "panel"
   ],
   "entry": {
-    "bar-widget": "Widget.qml"
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
   },
   "settings": {
     "maxLength": {
@@ -20,7 +22,14 @@
       "type": "boolean",
       "default": true,
       "description": "Prefix the title with the artist"
+    },
+    "remoteArt": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show a player's https cover art in the panel. Off by default: the fetch tells the art server what you play, when, and your IP; local art always shows"
     }
   },
-  "permissions": []
+  "permissions": [
+    "network"
+  ]
 }

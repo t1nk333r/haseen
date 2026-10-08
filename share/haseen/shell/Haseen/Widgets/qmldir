@@ -3,3 +3,5 @@ BarButton 1.0 BarButton.qml
 Glyph 1.0 Glyph.qml
 PanelSurface 1.0 PanelSurface.qml
 BrandImage 1.0 BrandImage.qml
+Pill 1.0 Pill.qml
+TrackBar 1.0 TrackBar.qml

@@ -20,6 +20,7 @@ Scope {
                     title: e.preview.replace(/\s+/g, " ").trim(),
                     subtitle: e.image ? "Image" : "Clipboard",
                     icon: e.image ? "image-x-generic" : "edit-paste",
+                    glyph: e.image ? "\uf03e" : "\uf0ea",
                     exec: () => history.copy(e)
                 }));
     }

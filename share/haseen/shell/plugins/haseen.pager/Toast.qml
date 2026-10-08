@@ -663,11 +663,15 @@ Item {
 
                 // The space under the body does one job at a time: the action
                 // row (under the pointer in an open deck), the More list, the
-                // middle-click menu, or the reply field.
+                // middle-click menu, or the reply field. A critical card on
+                // show keeps its row up without the pointer: its action can
+                // be the only way to stop what it announces (the battery's
+                // Cancel), so it must never hide behind a hover.
                 Item {
                     id: deedArea
 
-                    readonly property string mode: card.replying ? "reply" : card.menuOpen ? "menu" : card.deedsOpen ? "list" : (card.hovered && card.expanded && card.allDeeds.length > 0) ? "row" : ""
+                    readonly property bool rowShown: card.allDeeds.length > 0 && ((card.hovered && card.expanded) || (card.critical && card.showsContent))
+                    readonly property string mode: card.replying ? "reply" : card.menuOpen ? "menu" : card.deedsOpen ? "list" : rowShown ? "row" : ""
                     readonly property real contentHeight: mode === "reply" ? replyBox.height : mode === "menu" ? menuColumn.implicitHeight : mode === "list" ? deedColumn.implicitHeight : mode === "row" ? deedRow.implicitHeight : 0
                     readonly property real wanted: mode === "" ? 0 : contentHeight + 7
 

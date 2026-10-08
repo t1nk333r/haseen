@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Services.Mpris
 import qs.Haseen
 import qs.Haseen.Widgets
@@ -6,7 +7,8 @@ import "Media.js" as Media
 
 // Now playing over MPRIS (Quickshell.Services.Mpris, D-Bus signals only).
 // Shows the playing player, else a paused one; takes no room without a
-// player. Click toggles play/pause, wheel up/down = previous/next. In a
+// player. Left click toggles play/pause, a right or middle click opens the
+// haseen.media panel (plan 078), wheel up/down = previous/next. In a
 // vertical bar only the play/pause glyph shows.
 BarButton {
     id: root
@@ -32,8 +34,12 @@ BarButton {
     implicitWidth: player ? contentWidth : 0
 
     onClicked: button => {
-        if (player && button === Qt.LeftButton && player.canTogglePlaying)
-            player.togglePlaying();
+        if (button === Qt.LeftButton) {
+            if (player && player.canTogglePlaying)
+                player.togglePlaying();
+            return;
+        }
+        Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId]);
     }
     onScrolled: steps => {
         if (!player)

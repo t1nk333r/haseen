@@ -5,3 +5,7 @@
 *.jsc
 .qmlls.ini
 /share/haseen/sidecar/haseen-sidecar
+/tools/vptr/vptr
+/tools/vptr/wlr-virtual-pointer-unstable-v1-client-protocol.h
+/tools/vptr/wlr-virtual-pointer-unstable-v1-protocol.c
+tools/__pycache__/

@@ -2,20 +2,28 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Services.UPower
 import Quickshell.Wayland
 import qs.Haseen
 import "IdleLogic.js" as Logic
 
-// haseen.idle: up to three ext-idle-notify monitors, so the compositor does
+// haseen.idle: up to four ext-idle-notify monitors, so the compositor does
 // the counting and the shell holds no timer.
 //   screensaverAfter: start the `screensaver` role (haseen.screensaver);
 //                     input dismisses it again.
 //   lockAfter:        call the `lock` role (haseen.lock or any provider).
 //   dpmsAfter:        turn the displays off, back on at the next input.
+//   suspendAfter:     `haseen system suspend`, the menu's System > Suspend
+//                     (0 = never, the default; plan 082).
 // With respectInhibitors, an idle inhibitor (mpv, a browser playing video)
-// keeps all three from firing. The `idle-off` flag (`haseen toggle idle`,
-// Stay Awake) removes every monitor; `screensaver-off` removes only the
-// screensaver one. The decisions live in IdleLogic.js (unit-tested).
+// keeps the monitors from firing; the suspend monitor honours inhibitors
+// even when respectInhibitors is false. The `idle-off` flag (`haseen toggle
+// idle`, Stay Awake, the game and present contexts) removes every monitor;
+// `screensaver-off` removes only the screensaver one. settings.onBattery
+// ({ screensaverAfter, lockAfter, dpmsAfter, suspendAfter }) replaces those
+// values while UPower reports onBattery, an event-driven D-Bus property:
+// plugging in or out recreates only the monitors whose timeout changed.
+// The decisions live in IdleLogic.js (unit-tested).
 //
 // Each monitor is its own object, created with its final timeout and
 // destroyed when that changes, never reconfigured in place. Quickshell
@@ -35,9 +43,20 @@ Scope {
     readonly property bool haveScreensaver: Plugins.roles.screensaver !== undefined
     readonly property var timeouts: Logic.timeouts(settings, {
         idleOff: Flags.idleOff,
-        screensaverOff: Flags.screensaverOff
+        screensaverOff: Flags.screensaverOff,
+        onBattery: UPower.onBattery
     }, haveScreensaver)
+    // DPMS bookkeeping: true only from the moment the dpms monitor turned the
+    // displays off until it turned them back on. Input after idle sends
+    // dpms.on only when this is set, so displays someone else turned off
+    // are left alone; a monitor removed while idle (Stay Awake, idle-off)
+    // turns them on through its destruction hook. One replaced by a new
+    // timeout (a plug event, a settings change) leaves them off: nobody
+    // came back, and Hyprland wakes the displays on input itself.
     property bool _dpmsOff: false
+    readonly property string binDir: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin"
+    // Suspends requested this session, for the debug hook.
+    property int _suspends: 0
     // name -> isIdle of the live monitors, for the debug hook.
     property var _idle: ({})
     readonly property bool screensaverStartedThisCycle: _idle.screensaver === true
@@ -52,7 +71,10 @@ Scope {
         const idle = Object.assign({}, _idle);
         idle[monitor] = isIdle;
         _idle = idle;
-        for (const action of Logic.actions(monitor, isIdle, { dpmsOff: _dpmsOff })) {
+        for (const action of Logic.actions(monitor, isIdle, {
+                dpmsOff: _dpmsOff,
+                idleOff: Flags.idleOff
+            })) {
             switch (action) {
             case "screensaver.start":
                 Plugins.callRole("screensaver", "start", []);
@@ -71,6 +93,12 @@ Scope {
             case "dpms.on":
                 _dpmsOff = false;
                 _dpms(true);
+                break;
+            case "suspend":
+                // The menu's System > Suspend, by absolute path like the
+                // battery plugin's critical action.
+                _suspends++;
+                Quickshell.execDetached([binDir + "/haseen-system", "suspend"]);
                 break;
             }
         }
@@ -91,9 +119,10 @@ Scope {
             respectInhibitors: spec.respectInhibitors
             onIsIdleChanged: root._run(spec.name, isIdle)
             // Removed while idle (Stay Awake turned on during the
-            // screensaver): undo what its idle state did.
+            // screensaver): undo what its idle state did. Replaced by the
+            // same monitor with a new timeout: keep it (Logic.replaced).
             Component.onDestruction: {
-                if (isIdle)
+                if (isIdle && !Logic.replaced(modelData, Logic.monitors(root.timeouts, root.respectInhibitors)))
                     root._run(spec.name, false);
             }
         }
@@ -111,7 +140,9 @@ Scope {
                 haveScreensaver: root.haveScreensaver,
                 monitors: Logic.monitors(root.timeouts, root.respectInhibitors),
                 idle: root._idle,
-                dpmsOff: root._dpmsOff
+                dpmsOff: root._dpmsOff,
+                onBattery: UPower.onBattery,
+                suspends: root._suspends
             });
         }
     }

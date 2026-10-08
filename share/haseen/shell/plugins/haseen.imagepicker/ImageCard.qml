@@ -40,8 +40,12 @@ Item {
             anchors.margins: frame.border.width
             source: card.path !== "" ? Paths.fileUrl(card.path) : ""
             // Decoded at the card's size, never at the file's: a 4K wallpaper
-            // costs the same as a thumbnail here.
+            // costs the same as a thumbnail here. Both sides, so the crop
+            // fills the frame from pixels decoded for it: a wide picture
+            // decoded to the width alone came out short and was scaled up
+            // (plan 083).
             sourceSize.width: Math.round(card.width * card.pixelRatio)
+            sourceSize.height: Math.round(card.previewHeight * card.pixelRatio)
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: false

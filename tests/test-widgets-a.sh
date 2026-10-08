@@ -21,7 +21,9 @@ assert_status "widgets-a validate" 0 "$STATUS"
 for id in "${WIDGETS_A[@]}"; do
     assert_contains "$id ok" "$OUTPUT" "ok: $id (builtin:"
 done
-assert_not_contains "widgets-a request no network" "$OUTPUT" "warning:"
+# Only haseen.media may fetch, and only its opt-in remote cover art (plan 078).
+assert_eq "widgets-a request no network but media's opt-in art" "1" "$(grep -c 'warning:' <<<"$OUTPUT")"
+assert_contains "the network warning is media's" "$(grep -B2 'warning:' <<<"$OUTPUT")" "ok: haseen.media (builtin:"
 assert_eq "sysusage is a bar widget with a panel" "bar-widget panel" "$(jq -r '.kinds | join(" ")' "$PLUGINS/haseen.sysusage/manifest.json")"
 assert_eq "calendar is a panel" "panel" "$(jq -r '.kinds | join(" ")' "$PLUGINS/haseen.calendar/manifest.json")"
 assert_eq "calendar debug hook is off by default" "false" "$(jq -r '.settings.debugIpc.default' "$PLUGINS/haseen.calendar/manifest.json")"
@@ -59,7 +61,9 @@ timers="$(find "${dirs[@]}" -name '*.qml' -exec awk '
     }
     { prev = $0 }' {} +)"
 assert_not_contains "no fast or ungated Timer" "$timers" ":bad"
-assert_eq "no widget has a Timer any more" "" "$(cut -d: -f1 <<<"$timers" | sort -u)"
+# The one Timer: the media panel's seek clock, a re-armed single-shot that
+# lives only while the panel is open (plan 078).
+assert_eq "only the media panel has a Timer" "$PLUGINS/haseen.media/Panel.qml" "$(cut -d: -f1 <<<"$timers" | sort -u)"
 sampler="$(cat "$PLUGINS/haseen.sysusage/Sampler.qml")"
 assert_not_contains "the sampler has no timer" "$sampler" "Timer"
 assert_not_contains "the sampler reads no files" "$sampler" "FileView"
@@ -69,8 +73,8 @@ assert_contains "it unsubscribes when it is not shown" "$sampler" "Sidecar.drop(
 assert_contains "the feature is gated on the capability" "$sampler" 'Sidecar.has("sysusage")'
 assert_contains "the widget hides without the daemon" "$(cat "$PLUGINS/haseen.sysusage/Widget.qml")" "sampler.available"
 assert_contains "widget samples only while its window shows" "$(cat "$PLUGINS/haseen.sysusage/Widget.qml")" "QsWindow.window.visible"
-assert_eq "privacy, media, workspaces, calendar never poll (no Timer/SystemClock ticks)" "" \
-    "$(grep -lE 'Timer \{' "$PLUGINS"/haseen.{privacy,media,workspaces,calendar}/*.qml || true)"
+assert_eq "privacy, media's bar label, workspaces, calendar never poll (no Timer/SystemClock ticks)" "" \
+    "$(grep -lE 'Timer \{' "$PLUGINS"/haseen.{privacy,workspaces,calendar}/*.qml "$PLUGINS/haseen.media/Widget.qml" || true)"
 assert_eq "flags come from qs.Haseen Flags, never an own watcher" "" \
     "$(grep -rn 'flags/' "${dirs[@]}" --include='*.qml' || true)"
 assert_contains "privacy red dot reads Flags.recording" "$(cat "$PLUGINS/haseen.privacy/Widget.qml")" "Flags.recording"

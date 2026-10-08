@@ -4,15 +4,17 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Services.Pipewire
-import Quickshell.Wayland
 import qs.Haseen
-import qs.Haseen.Widgets
+import "Osd.js" as Osd
 
 // haseen.osd: a small card near the bottom of the focused screen when the
-// default sink's volume/mute or the backlight changes. Both sources are
-// events (PipeWire signals, an inotify watch on sysfs); the only timer is the
-// single-shot 1.5 s hide. The window exists only while the card is shown and
-// takes no input, so clicks pass through.
+// default sink's or source's volume/mute, the backlight, the keyboard layout
+// or a lock key changes. Every source is an event: PipeWire signals, an
+// inotify watch on sysfs, Hyprland's `activelayout` (through the Keyboard
+// singleton), and for Caps/Num Lock a non-consuming Hyprland bind that calls
+// `haseen shell ipc osd lockkeys`, which reads `hyprctl -j devices` once
+// (plan 079). The only timer is the single-shot 1.5 s hide. The window exists
+// only while the card is shown and takes no input, so clicks pass through.
 //
 // Brightness watches actual_brightness, not brightness: the backlight class
 // calls sysfs_notify() on actual_brightness for every change, including
@@ -25,20 +27,25 @@ Scope {
     property var settings: ({})
     property var screen: null
 
-    readonly property bool volumeEnabled: settings.volume !== false
-    readonly property bool brightnessEnabled: settings.brightness !== false
+    readonly property var kinds: Osd.kinds(settings)
+    readonly property bool volumeEnabled: kinds.volume
+    readonly property bool brightnessEnabled: kinds.brightness
+    readonly property bool micEnabled: kinds.mic
+    readonly property bool layoutEnabled: kinds.layout
+    readonly property bool lockKeysEnabled: kinds.lockKeys
 
     property bool shown: false
-    property string glyph: ""
-    property real value: 0
-    property bool dim: false
+    // The card on screen (Osd.js): a level bar, or one line of text.
+    property var card: Osd.levelCard("", 0, false)
 
-    function show(g: string, v: real, muted: bool): void {
-        glyph = g;
-        value = Math.max(0, Math.min(1, v));
-        dim = muted;
+    function showCard(c: var): void {
+        card = c;
         shown = true;
         hideTimer.restart();
+    }
+
+    function show(g: string, v: real, muted: bool): void {
+        showCard(Osd.levelCard(g, v, muted));
     }
 
     function focusedScreen(): var {
@@ -50,56 +57,71 @@ Scope {
         return screens.length > 0 ? screens[0] : null;
     }
 
-    // --- volume -------------------------------------------------------------
-    readonly property PwNode sink: Pipewire.defaultAudioSink
-    // The first reading of a sink only seeds the baseline: startup and a
-    // default-sink switch must not flash the OSD.
-    property var _seenSink: null
-    property real _lastVolume: 0
-    property bool _lastMuted: false
+    // --- volume and microphone ------------------------------------------------
+    // One tracker per default node. The first reading of a node only seeds
+    // the baseline: startup and a default-device switch must not flash the OSD.
+    component AudioWatch: QtObject {
+        id: watch
 
-    function volumeGlyph(v: real, muted: bool): string {
-        return muted || v <= 0 ? "\ueee8" : v >= 0.67 ? "\uf028" : v >= 0.34 ? "\uf027" : "\uf026";
+        property PwNode node
+        property bool enabled
+        property var seen: null
+        property real lastVolume: 0
+        property bool lastMuted: false
+
+        signal moved(real volume, bool muted)
+
+        function read(): void {
+            const n = node;
+            if (!n || !n.ready || !n.audio)
+                return;
+            const v = n.audio.volume, m = n.audio.muted;
+            if (seen !== n) {
+                seen = n;
+                lastVolume = v;
+                lastMuted = m;
+                return;
+            }
+            if (Math.abs(v - lastVolume) < 0.0005 && m === lastMuted)
+                return;
+            lastVolume = v;
+            lastMuted = m;
+            if (enabled)
+                moved(v, m);
+        }
+
+        property PwObjectTracker tracker: PwObjectTracker {
+            objects: [watch.node]
+        }
+
+        property Connections nodeConnections: Connections {
+            target: watch.node
+            function onReadyChanged() {
+                watch.read();
+            }
+        }
+
+        property Connections audioConnections: Connections {
+            target: watch.node && watch.node.audio ? watch.node.audio : null
+            function onVolumeChanged() {
+                watch.read();
+            }
+            function onMutedChanged() {
+                watch.read();
+            }
+        }
     }
 
-    function _audioChanged(): void {
-        const s = sink;
-        if (!s || !s.ready || !s.audio)
-            return;
-        const v = s.audio.volume, m = s.audio.muted;
-        if (_seenSink !== s) {
-            _seenSink = s;
-            _lastVolume = v;
-            _lastMuted = m;
-            return;
-        }
-        if (Math.abs(v - _lastVolume) < 0.0005 && m === _lastMuted)
-            return;
-        _lastVolume = v;
-        _lastMuted = m;
-        if (volumeEnabled)
-            show(volumeGlyph(v, m), v, m);
+    AudioWatch {
+        node: Pipewire.defaultAudioSink
+        enabled: root.volumeEnabled
+        onMoved: (v, m) => root.show(Osd.volumeGlyph(v, m), v, m)
     }
 
-    PwObjectTracker {
-        objects: [root.sink]
-    }
-
-    Connections {
-        target: root.sink
-        function onReadyChanged() {
-            root._audioChanged();
-        }
-    }
-
-    Connections {
-        target: root.sink && root.sink.audio ? root.sink.audio : null
-        function onVolumeChanged() {
-            root._audioChanged();
-        }
-        function onMutedChanged() {
-            root._audioChanged();
-        }
+    AudioWatch {
+        node: root.micEnabled ? Pipewire.defaultAudioSource : null
+        enabled: root.micEnabled
+        onMoved: (v, m) => root.show(Osd.micGlyph(m), v, m)
     }
 
     // --- brightness ---------------------------------------------------------
@@ -155,6 +177,121 @@ Scope {
         onLoaded: root._brightnessRead(text())
     }
 
+    // --- keyboard layout --------------------------------------------------------
+    // Keyboard.switched fires for a keyboard that moved to another layout,
+    // never for the `activelayout` burst of a config reload. Keyboard is
+    // touched only while the kind is on, so with it off nothing reads devices.
+    Connections {
+        target: root.layoutEnabled ? Keyboard : null
+
+        function onSwitched(layout: string): void {
+            root.showCard(Osd.layoutCard(layout, Keyboard.code));
+        }
+    }
+
+    // --- Caps and Num Lock --------------------------------------------------------
+    // Hyprland sends no event for a lock key, and the kernel's LED class does
+    // not notify its `brightness` file. The default binds.lua has a
+    // non-consuming release bind on the Caps Lock and Num Lock keys that calls
+    // `lockkeys()`; each call reads the main keyboard once. The first read
+    // when the kind turns on is the baseline, so only a change shows.
+    property var _locks: null
+    property bool _lockAgain: false
+    property bool _lockSeed: false
+    // A seed asked for while a read runs: that read and its re-run are seeds
+    // too, so turning the kind on during a read never shows a card.
+    property bool _lockAgainSeed: false
+
+    // `haseen shell ipc osd lockkeys`. With the kind off the call returns at
+    // once and starts nothing.
+    function lockKeys(): void {
+        if (lockKeysEnabled)
+            readLocks(false);
+    }
+
+    function readLocks(seed: bool): void {
+        if (lockProc.running) {
+            _lockAgain = true;
+            if (seed) {
+                _lockSeed = true;
+                _lockAgainSeed = true;
+            }
+            return;
+        }
+        _lockSeed = seed;
+        lockProc.running = true;
+    }
+
+    function locksRead(text: string): void {
+        const now = Keyboard.lockState(text);
+        if (!now)
+            return;
+        const changes = _lockSeed ? [] : Osd.lockChanges(_locks, now);
+        _locks = now;
+        if (changes.length > 0)
+            showCard(Osd.lockCard(changes[0]));
+    }
+
+    // The binds call `lockkeys` only while this flag exists (binds.lua), so
+    // with the kind off a Caps or Num Lock press starts no IPC client. One
+    // process per setting change and at start and exit; never per key.
+    readonly property string lockFlag: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/haseen/osd-lockkeys"
+
+    function flagLockKeys(on: bool): void {
+        Quickshell.execDetached(on ? ["sh", "-c", "mkdir -p -- \"${1%/*}\" && : >\"$1\"", "sh", lockFlag] : ["rm", "-f", "--", lockFlag]);
+    }
+
+    onLockKeysEnabledChanged: {
+        _locks = null;
+        flagLockKeys(lockKeysEnabled);
+        if (lockKeysEnabled)
+            readLocks(true);
+    }
+    Component.onCompleted: {
+        flagLockKeys(lockKeysEnabled);
+        if (lockKeysEnabled)
+            readLocks(true);
+    }
+    Component.onDestruction: {
+        if (lockKeysEnabled)
+            flagLockKeys(false);
+    }
+
+    Process {
+        id: lockProc
+
+        command: ["hyprctl", "-j", "devices"]
+        stdout: StdioCollector {
+            onStreamFinished: root.locksRead(text)
+        }
+        onExited: {
+            if (root._lockAgain) {
+                root._lockAgain = false;
+                root._lockSeed = root._lockAgainSeed;
+                root._lockAgainSeed = false;
+                running = true;
+            }
+        }
+    }
+
+    // Architecture 5.5.
+    IpcHandler {
+        target: "osd"
+
+        function lockkeys(): void {
+            root.lockKeys();
+        }
+
+        function state(): string {
+            return JSON.stringify({
+                shown: root.shown,
+                card: root.card,
+                kinds: root.kinds,
+                locks: root._locks
+            });
+        }
+    }
+
     // --- surface ------------------------------------------------------------
     // haseen:ui-timeout
     Timer {
@@ -167,70 +304,8 @@ Scope {
 
     LazyLoader {
         active: root.shown
-
-        PanelWindow {
-            screen: root.focusedScreen()
-            anchors.bottom: true
-            margins.bottom: Theme.gap * 12
-            exclusionMode: ExclusionMode.Ignore
-            implicitWidth: card.implicitWidth
-            implicitHeight: card.implicitHeight
-            color: "transparent"
-            mask: Region {}
-            WlrLayershell.namespace: "haseen-osd"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-
-            Rectangle {
-                id: card
-
-                implicitWidth: row.implicitWidth + Theme.gap * 4
-                implicitHeight: row.implicitHeight + Theme.gap * 3
-                color: Theme.surface
-                radius: Theme.radius
-                border.color: Theme.border
-                border.width: Theme.borderWidth
-
-                Row {
-                    id: row
-
-                    anchors.centerIn: parent
-                    spacing: Theme.gap * 2
-
-                    Glyph {
-                        width: Theme.fontSize * 2
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: root.glyph
-                        color: root.dim ? Theme.muted : Theme.foreground
-                        font.pixelSize: Theme.fontSize * 1.6
-                    }
-
-                    Rectangle {
-                        width: Theme.fontSize * 12
-                        height: Math.max(Theme.gap, 4)
-                        anchors.verticalCenter: parent.verticalCenter
-                        radius: height / 2
-                        color: Theme.surfaceAlt
-
-                        Rectangle {
-                            width: parent.width * root.value
-                            height: parent.height
-                            radius: parent.radius
-                            color: root.dim ? Theme.muted : Theme.accent
-                        }
-                    }
-
-                    Text {
-                        width: Theme.fontSize * 3
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Math.round(root.value * 100) + "%"
-                        color: root.dim ? Theme.muted : Theme.foreground
-                        horizontalAlignment: Text.AlignRight
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
-                    }
-                }
-            }
-        }
+        source: Qt.resolvedUrl("CardWindow.qml")
+        onItemChanged: if (item)
+            item.service = root
     }
 }

@@ -260,7 +260,9 @@ Item {
         out("more", [W.hasMore(p1.page, p1.lastPage), W.hasMore(2, 2), W.hasMore(0, 0)]);
         out("next", W.searchArgv("/b/haseen", "mountains", "toplist", p1.page + 1, ""));
         const p2 = W.parseSearch(D.page2);
-        out("appended", W.append(p1.items, p2.items.concat([p1.items[0]])).map(i => i.id).join(" "));
+        const seen = {};
+        W.fresh(seen, p1.items);
+        out("appended", W.fresh(seen, p2.items.concat([p1.items[0]])).map(i => i.id).join(" "));
         out("random", W.searchArgv("/b/haseen", "", "random", 2, "abc123"));
         out("broken", [W.parseSearch("").ok, W.parseSearch("{}").error, W.parseSearch('{"results":[{"id":"../x"}]}').items.length]);
         // select -> get
@@ -285,7 +287,7 @@ EOF
     assert_eq "model: reads the CLI's page" '[true,1,2,5,"3q797y lygg6r 216y9y","3840x2160",true]' "$(r page1)"
     assert_eq "model: more pages while page < last" '[true,false,false]' "$(r more)"
     assert_eq "model: the next page" '["/b/haseen","wallhaven","search","--query","mountains","--sort","toplist","--page","2","--json"]' "$(r next)"
-    assert_eq "model: pages append without repeats" "3q797y lygg6r 216y9y 216zzg" "$(r appended | jq -r .)"
+    assert_eq "model: a later page appends only unseen ids" "216zzg" "$(r appended | jq -r .)"
     assert_eq "model: random pages pass the seed" '["/b/haseen","wallhaven","search","--sort","random","--page","2","--seed","abc123","--json"]' "$(r random)"
     assert_eq "model: bad output is no results" '[false,"no results",0]' "$(r broken)"
     assert_eq "model: selecting downloads" '["/b/haseen","wallhaven","get","3q797y"]' "$(r get)"

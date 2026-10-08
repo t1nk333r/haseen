@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.kblayout",
+  "name": "Keyboard layout",
+  "version": "1.0.0",
+  "description": "The active keyboard layout as a short code (EN, AR) from Hyprland's activelayout event; takes no room with one layout. A click switches to the next layout, a right click lists them when there are more than two",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {},
+  "permissions": [
+    "exec"
+  ]
+}

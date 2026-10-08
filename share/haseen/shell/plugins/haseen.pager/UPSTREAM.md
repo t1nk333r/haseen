@@ -24,7 +24,7 @@
 | `Security.js` | same | `parseOmarchyExecArgv` and `safeLocalFilePath` removed (Omarchy-only click actions) |
 | `Store.js` | same | `execArgv` / `omarchy-action` dropped; the Python store's writer queue replaced by pure disk-store rules (`forDisk`, `closeInto`, `trimHistory`, `newest`, `forgetHeld`, `putLive`, `parseFile`) |
 | `Service.qml` | `Service.qml` | rewritten against `qs.Haseen` (below) |
-| `Toast.qml`, `DeedButton.qml` | same | Theme tokens instead of Omarchy's Style/Color/Border/Button; no `MultiEffect`; single-shot expiry |
+| `Toast.qml`, `DeedButton.qml` | same | Theme tokens instead of Omarchy's Style/Color/Border/Button; no `MultiEffect`; single-shot expiry; a critical card on show keeps its action row up without hover (plan 075: the battery countdown's Cancel) |
 | `PagerButton.qml`, `SectionHeader.qml`, `TextCard.qml` | parts of `Toast.qml`/`Widget.qml` | haseen has no shared kit control, so the small pieces are their own files |
 | `IconDir.qml` | (new) | lists the icon override and cache directories, so only existing files are tried |
 | `Widget.qml` | bar half of `Widget.qml` | a `BarButton`; text in `Theme.barForeground` |

@@ -2,20 +2,46 @@
   "schemaVersion": 1,
   "id": "haseen.battery",
   "name": "Battery",
-  "version": "1.0.0",
-  "description": "Battery level via UPower; hidden without a battery",
+  "version": "2.0.0",
+  "description": "Battery level via UPower (hidden without a battery), low and critical battery notifications with an optional critical action, and a power panel: charge, time left, power draw, health, power profile and charge limit",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "service",
+    "panel"
   ],
   "entry": {
-    "bar-widget": "Widget.qml"
+    "bar-widget": "Widget.qml",
+    "service": "Service.qml",
+    "panel": "Panel.qml"
   },
   "settings": {
     "low": {
       "type": "number",
       "default": 15,
-      "description": "Percentage at which the level turns urgent"
+      "description": "Percentage at which the bar level turns urgent"
+    },
+    "warnAt": {
+      "type": "integer",
+      "default": 20,
+      "description": "Percentage at which one low-battery notification is sent while discharging (1-100)"
+    },
+    "criticalAt": {
+      "type": "integer",
+      "default": 10,
+      "description": "Percentage at which one critical notification is sent (0 = never; at most warnAt)"
+    },
+    "criticalAction": {
+      "type": "string",
+      "default": "none",
+      "description": "At criticalAt: none, suspend, hibernate or poweroff, run through haseen system 60 s after the critical notification unless its Cancel is pressed or a charger is plugged in"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.battery (state, cancel) from the service"
     }
   },
-  "permissions": []
+  "permissions": [
+    "exec"
+  ]
 }
