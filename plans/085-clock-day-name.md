@@ -7,7 +7,7 @@
 - **Risk**: LOW (one optional boolean setting; live UI and user-config write)
 - **Depends on**: 021, 027, 076
 - **Planned at**: 2026-10-08, owner request
-- **State**: DONE 2026-10-08 (`tests/test-clock-dayname.sh` (9 checks, 15 Qt JS cases) and `tests/test-widgets-a.sh` (64 checks)); nested UI screenshots not verified (see below)
+- **State**: DONE 2026-10-08 (`tests/test-clock-dayname.sh` (9 checks, 15 Qt JS cases) and `tests/test-widgets-a.sh` (64 checks)); nested screenshots captured and inspected
 
 ## Change
 
@@ -28,7 +28,16 @@
 
 ## Nested proof
 
-Not run. The executor environment had no `HYPRLAND_INSTANCE_SIGNATURE`, `XDG_RUNTIME_DIR` or `WAYLAND_DISPLAY`; `tools/nest-launch.sh` requires the owner's compositor signature to start the nested session on workspace 5. No live-shell IPC or compositor commands were attempted. The panel and clock screenshots requested for nested proof were not captured or inspected.
+Ran nested proof under `flock ~/.cache/haseen-wt/nest.lock` with `tools/nest-launch.sh`. Used the NEST signature to disable `WAYLAND-1` and confirmed only the headless `IO` output remained before capturing frames.
+
+Captured and visually inspected:
+
+- `bar-day-on.png`: the bar shows `Thursday 12:18`.
+- `panel-day-on.png`: the calendar panel shows the `Day name` toggle On and the day name in the bar.
+- `panel-day-off.png`: the toggle is Off and the bar shows only `12:18`.
+- `bar-day-off.png`: the bar shows only `12:18`.
+
+Stopped the nested processes and removed the runtime/config scratch; only these requested images remain under `~/.cache/haseen-wt/scratch-clock-dayname/shots/`.
 
 ## Rejected
 
