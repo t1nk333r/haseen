@@ -1,17 +1,26 @@
+pragma Singleton
+
 import QtQuick
 import Quickshell
 import Quickshell.Io
+
 import qs.Haseen
 
-// Apply immediately in the shell, then persist through the plugin settings CLI.
-// Queue writes so quick successive clicks cannot overwrite one another.
-QtObject {
+// The calendar is a transient panel, so accepted writes belong to the shell.
+// Keep the latest requested value live while queued CLI writes reload Config.
+Singleton {
     id: root
 
     property var writes: []
     property var writing: null
+    property var pendingDayName: null
+
+    function effectiveSetting(savedValue: var): var {
+        return pendingDayName !== null ? pendingDayName : savedValue;
+    }
 
     function setDayName(enabled: bool): void {
+        pendingDayName = enabled;
         Config.setRuntime(["plugins", "haseen.clock", "settings", "showDayName"], enabled);
         writes = writes.concat([enabled]);
         startWrite();
@@ -43,7 +52,7 @@ QtObject {
             Qt.callLater(() => {
                 if (root.writing === null || writer.running)
                     return;
-                console.warn("haseen.calendar: cannot start clock settings persistence");
+                console.warn("haseen.clock: cannot start clock settings persistence");
                 root.writing = null;
                 writer.stdinEnabled = true;
                 root.startWrite();
@@ -52,8 +61,15 @@ QtObject {
         onExited: function(code) {
             if (root.writing === null)
                 return;
-            if (code !== 0)
-                console.warn("haseen.calendar: clock settings persistence failed:", errors.text);
+            if (code !== 0) {
+                console.warn("haseen.clock: clock settings persistence failed:", errors.text);
+            } else if (root.writes.length === 0 && root.pendingDayName !== null) {
+                // A user-file reload may have cleared Config.runtime before the
+                // newest write completed. Reassert the confirmed value before
+                // releasing the live override.
+                Config.setRuntime(["plugins", "haseen.clock", "settings", "showDayName"], root.pendingDayName);
+                root.pendingDayName = null;
+            }
             root.writing = null;
             stdinEnabled = true;
             Qt.callLater(() => root.startWrite());

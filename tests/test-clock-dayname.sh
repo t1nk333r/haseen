@@ -46,6 +46,21 @@ Window {
             eq("off preserves quoted day letters", "'ddd' HH:mm", DayName.effectiveFormat("'ddd' HH:mm", false, false));
             eq("unset visibility follows an existing day token", true, DayName.isShown("ddd HH:mm", undefined));
             eq("explicit off overrides a day token", false, DayName.isShown("dddd HH:mm", false));
+            eq("five d characters include a day-name token", true, DayName.hasDayName("ddddd HH:mm"));
+            eq("on does not duplicate the five-d Qt token", "ddddd HH:mm", DayName.effectiveFormat("ddddd HH:mm", true, false));
+            eq("off preserves the numeric day in a five-d token", "d HH:mm", DayName.effectiveFormat("ddddd HH:mm", false, false));
+            eq("six d characters include a day-name token", true, DayName.hasDayName("dddddd HH:mm"));
+            eq("on does not duplicate the six-d Qt token", "dddddd HH:mm", DayName.effectiveFormat("dddddd HH:mm", true, false));
+            eq("off preserves the numeric day in a six-d token", "dd HH:mm", DayName.effectiveFormat("dddddd HH:mm", false, false));
+            eq("off preserves time-only trailing punctuation", "HH:mm -", DayName.effectiveFormat("HH:mm -", false, false));
+            eq("off strips an Arabic comma separator", "HH:mm", DayName.effectiveFormat("dddd، HH:mm", false, false));
+            eq("an escaped apostrophe does not hide a day token", true, DayName.hasDayName("\x27\x27dddd HH:mm"));
+            eq("off preserves quoted text and numeric dates", "\x27dddd\x27 dd/MM/yyyy HH:mm", DayName.effectiveFormat("dddd, \x27dddd\x27 dd/MM/yyyy HH:mm", false, false));
+            eq("Qt decomposes five d characters as long name plus numeric day", "Thursday8 12:18", Qt.formatDateTime(new Date(2026, 9, 8, 12, 18), "ddddd HH:mm"));
+            eq("Qt decomposes six d characters as long name plus padded numeric day", "Thursday08 12:18", Qt.formatDateTime(new Date(2026, 9, 8, 12, 18), "dddddd HH:mm"));
+            eq("Arabic localized day token", new Date(2026, 9, 8, 12, 18).toLocaleString(Qt.locale("ar_EG"), "dddd HH:mm"), new Date(2026, 9, 8, 12, 18).toLocaleString(Qt.locale("ar_EG"), DayName.effectiveFormat("HH:mm", true, false)));
+            console.warn("QT-FORMAT five-d=" + Qt.formatDateTime(new Date(2026, 9, 8, 12, 18), "ddddd HH:mm"));
+            console.warn("QT-FORMAT six-d=" + Qt.formatDateTime(new Date(2026, 9, 8, 12, 18), "dddddd HH:mm"));
         } catch (e) {
             failures++;
             console.warn("DAYNAME-FAIL exception " + e);
@@ -57,7 +72,7 @@ EOF
     capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
         QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML_BIN" "$units"
     assert_status "day-name formatter runs in Qt's JS engine" 0 "$STATUS"
-    assert_eq "all formatter cases pass" 15 "$(grep -c 'DAYNAME-PASS' <<<"$OUTPUT" || true)"
+    assert_eq "all formatter cases pass" 28 "$(grep -c 'DAYNAME-PASS' <<<"$OUTPUT" || true)"
     assert_not_contains "formatter cases have no mismatches" "$OUTPUT" "DAYNAME-FAIL"
 fi
 
@@ -72,7 +87,12 @@ else
     FAKE="$SANDBOX/fake"
     mkdir -p "$FAKE/share/haseen" "$FAKE/bin"
     for entry in "$HASEEN_PATH"/*; do ln -s "$entry" "$FAKE/share/haseen/${entry##*/}"; done
-    ln -s "$REPO/bin/haseen-plugin-settings" "$FAKE/bin/haseen-plugin-settings"
+    cat >"$FAKE/bin/haseen-plugin-settings" <<EOF
+#!/usr/bin/env bash
+sleep 1
+exec "$REPO/bin/haseen-plugin-settings" "\$@"
+EOF
+    chmod +x "$FAKE/bin/haseen-plugin-settings"
 
     harness="$SANDBOX/shell"
     mkdir -p "$harness"
@@ -91,6 +111,7 @@ import QtTest
 
 ShellRoot {
     id: shell
+    property var panel: calendarLoader.item
     function find(item, name) {
         if (item.objectName === name)
             return item;
@@ -120,10 +141,12 @@ ShellRoot {
         visible: true
         Component.onCompleted: requestActivate()
 
-        Calendar.Panel {
-            id: panel
-            pluginId: "haseen.calendar"
-            settings: ({ debugIpc: true })
+        Loader {
+            id: calendarLoader
+            sourceComponent: Calendar.Panel {
+                pluginId: "haseen.calendar"
+                settings: ({ debugIpc: true })
+            }
         }
 
         Item {
@@ -132,7 +155,6 @@ ShellRoot {
             }
         }
     }
-
     Window {
         width: 240
         height: 40
@@ -142,6 +164,7 @@ ShellRoot {
             id: clock
             pluginId: "haseen.clock"
             settings: Plugins.settingsFor("haseen.clock")
+            vertical: Config.barVertical
         }
 
     }
@@ -152,13 +175,16 @@ ShellRoot {
             const config = Plugins.settingsFor("haseen.clock");
             const toggle = find(panel, "clockDayNameToggle");
             return JSON.stringify({
-                dayNameShown: panel.dayNameShown,
+                dayNameShown: panel ? panel.dayNameShown : null,
                 setting: config.showDayName,
                 format: clock.format,
                 toggle: toggle ? toggle.text : "missing",
                 focused: toggle ? toggle.activeFocus : false
             });
         }
+        function closePanel(): bool { calendarLoader.active = false; return true; }
+        function openPanel(): bool { calendarLoader.active = true; return true; }
+        function vertical(): bool { Config.setRuntime(["bar", "position"], "left"); return true; }
 
         function click(): bool {
             return clickDayName();
@@ -225,6 +251,27 @@ QML
     until_state "turning the pill on updates the live bar format" \
         '.dayNameShown == true and .setting == true and .format == "dddd HH:mm" and .toggle == "On" and .focused == true'
     until_saved "turning the pill on persists showDayName=true" true
+    ipc dayNameTest click >/dev/null
+    ipc dayNameTest click >/dev/null
+    until_saved "first queued Off value reaches disk" false
+    sleep 0.2
+    current="$(state)"
+    assert_eq "queued latest On remains live while earlier Off reloads" true "$(jq -r .dayNameShown <<<"$current")"
+    assert_eq "toggle remains On while newest value is pending" "On" "$(jq -r .toggle <<<"$current")"
+    until_saved "latest queued On value eventually persists" true
+
+    ipc dayNameTest vertical >/dev/null
+    until_state "vertical clock gains separate day line" '.dayNameShown == true and .format == "dddd\nHH\nmm"'
+    ipc dayNameTest click >/dev/null
+    until_state "vertical toggle removes day line live" '.dayNameShown == false and .format == "HH\nmm"'
+    until_saved "vertical Off persists" false
+
+    ipc dayNameTest click >/dev/null
+    ipc dayNameTest closePanel >/dev/null
+    assert_eq "panel closes before delayed preference write" false "$(jq -r '.plugins["haseen.clock"].settings.showDayName' "$cfg")"
+    until_saved "closing panel preserves the accepted setting write" true
+    ipc dayNameTest openPanel >/dev/null
+    until_state "reopened panel reflects the persisted day name" '.dayNameShown == true and .setting == true and .toggle == "On"'
 
     cleanup_clock_dayname
     trap - EXIT

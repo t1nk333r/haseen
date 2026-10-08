@@ -33,11 +33,8 @@ Column {
         const fallback = Config.barVertical ? "HH\nmm" : "HH:mm";
         return typeof clockSettings[key] === "string" && clockSettings[key] !== "" ? clockSettings[key] : fallback;
     }
-    readonly property bool dayNameShown: ClockDayName.isShown(clockFormat, clockSettings.showDayName)
+    readonly property bool dayNameShown: ClockDayName.isShown(clockFormat, ClockSettings.effectiveSetting(clockSettings.showDayName))
 
-    ClockSettings {
-        id: clockSettingsWriter
-    }
 
     function shift(delta: int): void {
         const m = Cal.shiftMonth(year, month, delta);
@@ -268,7 +265,7 @@ Column {
             text: root.dayNameShown ? "On" : "Off"
             activeFocusOnTab: true
             active: root.dayNameShown
-            onClicked: clockSettingsWriter.setDayName(!root.dayNameShown)
+            onClicked: ClockSettings.setDayName(!root.dayNameShown)
             Keys.onPressed: event => {
                 if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
                     return;
