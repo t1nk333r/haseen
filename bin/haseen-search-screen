@@ -21,7 +21,11 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/com
 # is what the endpoint was verified with (2026-10-05) and what it answers 200 +
 # Location to.
 BROWSER_UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
-CAPTURE_DIR="${HASEEN_SEARCH_TMP:-${XDG_RUNTIME_DIR:-/tmp}/haseen-search-screen}"
+# Captures live only in $XDG_RUNTIME_DIR/haseen-search-screen. There is no
+# /tmp fallback: a shared, predictable directory lets another account plant
+# it, or a link inside it, and read or redirect a picture of the screen.
+CAPTURE_DIR=""
+[[ ${XDG_RUNTIME_DIR:-} == /* ]] && CAPTURE_DIR="$XDG_RUNTIME_DIR/haseen-search-screen"
 
 usage() {
     cat <<EOF
@@ -56,11 +60,21 @@ notify() { haseen-notification-send "$@" >/dev/null 2>&1 || true; }
 
 # --- private capture storage -------------------------------------------------
 
+# private_dir DIR — a real directory of ours that nobody else can enter.
+private_dir() { [[ -d $1 && ! -L $1 && -O $1 && $(stat -c %a -- "$1") == 700 ]]; }
+
+# capture_dir — establish CAPTURE_DIR as private before anything is swept or
+# written into it, or stop. The runtime dir must be private too, so nobody
+# else can swap the capture dir under us. A capture dir that is a link, not
+# ours, or open to others is refused untouched (its mode is never changed).
 capture_dir() {
-    # shellcheck disable=SC2174  # -m applies to the deepest dir, which is the point
-    mkdir -p -m 700 "$CAPTURE_DIR"
-    chmod 700 "$CAPTURE_DIR" 2>/dev/null || true
-    printf '%s' "$CAPTURE_DIR"
+    [[ -n $CAPTURE_DIR ]] ||
+        die "image mode needs XDG_RUNTIME_DIR: a picture of the screen is never kept in a shared /tmp directory"
+    private_dir "$XDG_RUNTIME_DIR" ||
+        die "$XDG_RUNTIME_DIR is not a private directory (yours, mode 0700); nothing was captured"
+    [[ -e $CAPTURE_DIR || -L $CAPTURE_DIR ]] || (umask 077 && mkdir -m 700 -- "$CAPTURE_DIR") 2>/dev/null || true
+    private_dir "$CAPTURE_DIR" ||
+        die "$CAPTURE_DIR is not a private directory (yours, mode 0700); nothing was captured"
 }
 
 # Captures older than ten minutes are orphans of a killed run.
@@ -195,7 +209,7 @@ if $DRY_RUN; then
         $SEARCH && echo "DRYRUN: xdg-open $(provider_text_url "$PROVIDER" '<the recognised text>' || echo "($PROVIDER has no text search)")"
         ;;
     image)
-        echo "DRYRUN: $src > $CAPTURE_DIR/capture-XXXXXXXX.png (mode 0700 dir, deleted on exit)"
+        echo "DRYRUN: $src > ${CAPTURE_DIR:-\$XDG_RUNTIME_DIR/haseen-search-screen}/capture-XXXXXXXX.png (private 0700 dir, deleted on exit)"
         if $UPLOAD; then
             echo "DRYRUN: confirm: this uploads the capture to Google"
             echo "DRYRUN: curl -X POST -F encoded_image=@<capture> https://lens.google.com/v3/upload"
@@ -213,6 +227,13 @@ fi
 
 trap cleanup EXIT
 trap 'exit 143' TERM INT HUP
+
+# Image storage is settled before the screen is frozen, so a refused
+# directory costs no selection, and nothing is swept until it is ours.
+if [[ $MODE == image ]]; then
+    capture_dir
+    sweep_captures
+fi
 
 if [[ -z $IMAGE && -z $GEOMETRY ]]; then
     require_cmds hyprpicker slurp grim
@@ -256,9 +277,7 @@ fi
 
 # image mode
 require_cmds grim
-sweep_captures
-CAPTURE="$(mktemp -p "$(capture_dir)" capture-XXXXXXXX.png)"
-chmod 600 "$CAPTURE"
+CAPTURE="$(mktemp -p "$CAPTURE_DIR" capture-XXXXXXXX.png)" # mode 0600
 if [[ -n $IMAGE ]]; then
     cp -- "$IMAGE" "$CAPTURE"
 else
