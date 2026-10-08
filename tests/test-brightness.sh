@@ -368,10 +368,20 @@ recorder() {
     : >"$SANDBOX/sudo.log"
     stub sudo "printf '%s\n' \"\$*\" >>'$SANDBOX/sudo.log'; case \"\$1\" in tee) cat >/dev/null ;; esac; exit 0"
 }
+# machine NAME — an Arch sysroot (os-release, pacman's local db); the NixOS
+# ones copy tests/fixtures/nixos's os-release instead.
 machine() {
     local root="$SANDBOX/setup-$1"
     rm -rf "$root"
-    mkdir -p "$root/var/lib/pacman/local" "$root/sys/module" "$root/dev"
+    mkdir -p "$root/etc" "$root/var/lib/pacman/local" "$root/sys/module" "$root/dev"
+    printf 'NAME="Arch Linux"\nID=arch\n' >"$root/etc/os-release"
+    printf '%s\n' "$root"
+}
+nixos_machine() {
+    local root="$SANDBOX/setup-$1"
+    rm -rf "$root"
+    mkdir -p "$root/etc" "$root/sys/module" "$root/dev"
+    cp "$REPO/tests/fixtures/nixos/etc/os-release" "$root/etc/os-release"
     printf '%s\n' "$root"
 }
 SROOT="$(machine empty)"
@@ -422,6 +432,30 @@ capture haseen setup ddc status
 assert_contains "status: not installed" "$OUTPUT" "installed: no"
 capture haseen setup ddc sideways
 assert_status "an unknown verb is a usage error" 2 "$STATUS"
+
+# NixOS: the flake owns DDC (haseen.ddc.enable). on and off refuse with that
+# hint and run nothing; status reads the command, not pacman's database.
+HASEEN_SYSROOT="$(nixos_machine nixos)"
+export HASEEN_SYSROOT
+for verb in on off; do
+    recorder
+    capture haseen setup ddc "$verb" --yes
+    assert_status "NixOS: setup ddc $verb refuses" 1 "$STATUS"
+    assert_contains "NixOS: $verb points at haseen.ddc.enable" "$OUTPUT" "set haseen.ddc.enable = true"
+    assert_not_contains "NixOS: $verb says nothing of pacman" "$OUTPUT" "pacman"
+    assert_eq "NixOS: $verb runs nothing privileged" "" "$(cat "$SANDBOX/sudo.log")"
+    capture haseen setup ddc "$verb" --dry-run
+    assert_status "NixOS: $verb --dry-run refuses too" 1 "$STATUS"
+done
+mkdir -p "$HASEEN_SYSROOT/sys/module/i2c_dev"
+touch "$HASEEN_SYSROOT/dev/i2c-9"
+capture haseen setup ddc status
+assert_status "NixOS: status works" 0 "$STATUS"
+assert_contains "NixOS: ddcutil on PATH counts as installed (no pacman database)" "$OUTPUT" "installed: yes"
+assert_contains "NixOS: status finds the monitors" "$OUTPUT" "monitors:  ddc:DP-1  LG ULTRAGEAR (DP-1)"
+assert_contains "NixOS: status names the option" "$OUTPUT" "NixOS:     haseen.ddc.enable"
+capture haseen setup ddc --help
+assert_contains "--help names the NixOS option" "$OUTPUT" "On NixOS set haseen.ddc.enable = true"
 unset HASEEN_INLINE
 
 # --- manifest and default ---------------------------------------------------------------------

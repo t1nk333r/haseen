@@ -27,7 +27,8 @@
     and monitors; a backlight never goes below raw 2 (the old `-n2`). An unchanged value writes nothing.
   - One change at a time (`flock` on `$XDG_RUNTIME_DIR/haseen-brightness.lock`), so a held key cannot
     interleave DDC read-modify-writes; `up`/`down` on DDC monitors drop a repeat while one runs.
-  - `--dry-run` prints the brightnessctl/ddcutil call through `run` and changes nothing.
+  - `--dry-run` prints the brightnessctl/ddcutil call through `run` and changes nothing, the DDC bus
+    cache included: a dry run that has to detect keeps the map in memory.
 - `share/haseen/default/hypr/binds.lua`: `XF86MonBrightnessUp/Down` run `haseen brightness up|down`
   (the backlight, or every DDC monitor on a machine without one); new `XF86KbdBrightnessUp/Down` run
   `haseen brightness up|down kbd`. The haseen.osd backlight OSD is unchanged: it watches
@@ -40,7 +41,8 @@
   `/usr/lib/modules-load.d/ddcutil.conf` (i2c-dev at boot) and `60-ddcutil-i2c.rules` (`uaccess` for
   display adapters' buses), so no group membership is needed. `off` removes the package
   (`haseen remove package ddcutil`) and the bus cache. Menu: Setup › Monitor Brightness (DDC/CI).
-  NixOS: `haseen.ddc.enable` (`hardware.i2c.enable` + ddcutil; the user joins `i2c`).
+  NixOS: `haseen.ddc.enable` (`hardware.i2c.enable` + ddcutil; the user joins `i2c`). There `on` and `off`
+  refuse with that hint (`preflight_distro`), and `status` counts ddcutil on PATH as installed.
 - Built-in panel `haseen.display` (off by default: `plugins."haseen.display".enabled` false in
   `share/haseen/default/shell.json`): one slider per backlight, keyboard backlight and DDC monitor, and a
   Night light row (the `nightlight` flag) when haseen.nightlight runs.
@@ -96,6 +98,21 @@ Nest from `tools/nest-launch.sh`, scratch shell with `HASEEN_SYSROOT` pointing a
 - **Cache lines without a connector.** Read with `IFS=$'\t' read`, an empty connector field merged into the
   model (`ddc:DELL U2415`); the fields are now split by hand, so such a monitor is `ddc:i2c-N`.
 - Evidence: `tests/test-brightness.sh` 142 checks; 26 of the new ones fail on 2981fb3.
+
+## Final review fixes (2026-10-08)
+
+- **A dry run writes no cache.** `ddc_rescan` ran `mkdir`, `mktemp` and `mv` in a dry run too, so `set`,
+  `up`, `down` or `list --rescan` with `--dry-run` created or replaced `ddc-displays.tsv` when the map was
+  missing or stale. In a dry run the detect now goes to `DDC_DETECTED` and `ddc_map` answers from it. The
+  real write stays a local mktemp + `mv` rather than `write_user_file`, which writes in place and would let
+  a key press racing a rescan read half a map.
+- **`haseen setup ddc` on NixOS.** `on` ran `pacman -S` and `off` reported "already off" from pacman's
+  database. On NixOS both now refuse (exit 1, nothing run) with the `haseen.ddc.enable` hint; `status`
+  reads the command there and prints a line naming the option; `--help` and the skill say so. The menu's
+  Turn On/Off run the command in a held terminal, so the hint is what a NixOS user sees there.
+- Evidence: `tests/test-brightness.sh` 172/172. Before the fixes: the three cache checks (no map, `list
+  --rescan`, a map for another signature) fail on 685f212's parent (154/157), the eleven NixOS checks on
+  the previous `bin/haseen-setup-ddc` (161/172).
 
 ## Not verified
 

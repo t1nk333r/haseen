@@ -7,12 +7,15 @@
 # rest needs: /usr/lib/modules-load.d/ddcutil.conf (i2c-dev at boot) and
 # /usr/lib/udev/rules.d/60-ddcutil-i2c.rules (TAG+="uaccess" on the i2c
 # devices of display adapters, so the seat user needs no i2c group). This
-# step installs it and loads the module now.
+# step installs it and loads the module now. On NixOS the flake does it
+# (haseen.ddc.enable): on and off refuse there with that hint.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 # shellcheck source=../share/haseen/lib/packages.sh
 source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../share/haseen/lib/preflight.sh
+source "$HASEEN_PATH/lib/preflight.sh"
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "$HASEEN_PATH/lib/terminal.sh"
 
@@ -30,20 +33,34 @@ Usage: haseen setup ddc [on|off|status] [--dry-run] [--yes]
   status  installed, i2c-dev loaded and the monitors found (default).
 
 Off by default. Laptop panels and keyboard backlights need none of this.
+On NixOS set haseen.ddc.enable = true (nixosModules.haseen) instead of 'on'.
 EOF
+}
+
+NIXOS_HINT="on NixOS, DDC belongs to the flake: set haseen.ddc.enable = true (nixosModules.haseen; it installs ddcutil and loads i2c-dev), add your user to the i2c group and run nixos-rebuild switch"
+
+# installed — ddcutil is there. On NixOS that is the command (the flake puts
+# it on PATH); elsewhere the package, which is what on and off manage.
+installed() {
+    if [[ $HASEEN_DISTRO == nixos ]]; then
+        have ddcutil
+    else
+        pkg_installed ddcutil
+    fi
 }
 
 module_loaded() { [[ -d $(sysroot_path /sys/module/i2c_dev) ]]; }
 
 status() {
     local installed=no loaded=no monitors=-
-    pkg_installed ddcutil && installed=yes
+    installed && installed=yes
     module_loaded && loaded=yes
     if [[ $installed == yes && $loaded == yes ]] && have ddcutil; then
         monitors="$(haseen-brightness list --kind ddc | cut -f1,6 | sed 's/\t/  /' || true)"
         [[ -n $monitors ]] || monitors="none answer over DDC/CI"
     fi
     printf 'installed: %s\ni2c-dev:   %s\nmonitors:  %s\n' "$installed" "$loaded" "${monitors//$'\n'/$'\n'           }"
+    [[ $HASEEN_DISTRO != nixos ]] || printf 'NixOS:     haseen.ddc.enable turns it on or off\n'
 }
 
 on() {
@@ -87,12 +104,18 @@ parse_common_flags "$@"
     usage >&2
     exit 2
 }
+preflight_distro
 verb="${REST[0]:-status}"
 case "$verb" in
 status) status ;;
 on | off)
     in_floating_terminal "$@"
     require_not_root
+    case "$HASEEN_DISTRO" in
+    cachyos | arch | omarchy) ;;
+    nixos) die "$NIXOS_HINT" ;;
+    *) die "unsupported distro: $HASEEN_DISTRO (haseen setup ddc installs ddcutil with pacman)" ;;
+    esac
     "$verb"
     ;;
 *)
