@@ -42,6 +42,7 @@ Read `handoff.md` first.
 | 034 | Wallpaper palettes: aether's extractor, seed cache, colors.toml themes | P2 | M | 004 032 | DONE 2026-10-05 (24 tests + Go tests; 0.55 s cold, 0.11 s cached) |
 | 035 | Plugin registry and lockfile (install, pin, reproduce, update) | P1 | M | 005 011 | DONE 2026-10-05 (48 tests; live install from the DMS registry) |
 | 036 | Login: Plymouth splash, the greeter shell, autologin after the disk password | P1 | L | 003 005 033 | DONE 2026-10-05 (72 tests + nested-compositor smoke; real boot is an owner step) |
+| 038 | Shell rc layer: tools, aliases, functions, `mise activate` | P2 | M | 001 017 023 | DONE 2026-10-05 (100 tests; live compress/ga/gd round trips; zsh unverified) |
 | 047 | Fonts, Arabic rendering, Qt theming and the seed registry | P1 | M | 004 033 | DONE 2026-10-05 (live `fc-match`: Arabic→Naskh, Urdu→Nastaliq, Omarchy's system assign defeated) |
 | 048 | Omarchy parity on io: quiet boot handover, `*` splash, Omarchy import, three menus, gestures, lock-screen fixes | P1 | L | 016 019 031 036 | DONE 2026-10-06 (owner checks the boot and swipes) |
 | 049 | io round 3: popups under their icon, frame/bar seam, compat icon font, pickers, lock fingerprint, Omarchy tray, hover highlight | P1 | L | 015 036 048 | DONE 2026-10-06 (real finger and click are owner checks) |

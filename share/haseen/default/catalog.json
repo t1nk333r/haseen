@@ -96,6 +96,13 @@
     { "id": "mysql", "category": "development", "label": "MySQL (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mysql8", "image": "mysql:8.4", "port": 3306, "env": ["MYSQL_ALLOW_EMPTY_PASSWORD=true"] } },
     { "id": "mariadb", "category": "development", "label": "MariaDB (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mariadb11", "image": "mariadb:11.8", "port": 3306, "env": ["MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true"] } },
     { "id": "redis", "category": "development", "label": "Redis (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "redis", "image": "redis:7", "port": 6379, "env": [] } },
-    { "id": "mongodb", "category": "development", "label": "MongoDB (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mongodb", "image": "mongo:noble", "port": 27017, "env": [] } }
+    { "id": "mongodb", "category": "development", "label": "MongoDB (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mongodb", "image": "mongo:noble", "port": 27017, "env": [] } },
+
+    { "id": "gh", "category": "development", "label": "GitHub CLI", "icon": "󰵮", "source": "pacman", "ref": "github-cli" },
+    { "id": "lazygit", "category": "development", "label": "lazygit", "icon": "󰆏", "source": "pacman", "ref": "lazygit" },
+    { "id": "mise", "category": "development", "label": "mise (runtime manager)", "icon": "", "source": "pacman", "ref": "mise" },
+    { "id": "dua", "category": "development", "label": "dua (disk usage)", "icon": "", "source": "pacman", "ref": "dua-cli" },
+    { "id": "tealdeer", "category": "development", "label": "tealdeer (tldr pages)", "icon": "", "source": "pacman", "ref": "tealdeer" },
+    { "id": "yt-dlp", "category": "development", "label": "yt-dlp (video downloader)", "icon": "", "source": "pacman", "ref": "yt-dlp" }
   ]
 }

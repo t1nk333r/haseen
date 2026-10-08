@@ -14,3 +14,6 @@ unzip           # theme and plugin archives arrive as .zip
 noto-fonts      # one font family covering Latin, Arabic and most scripts
 ufw             # host firewall; layer_apply enables it with deny-incoming
 pacman-contrib  # paccache.timer keeps /var/cache/pacman bounded (pacman hygiene without touching pacman.conf)
+zoxide          # `cd` that remembers where you have been; init'd by default/shell/init.sh
+eza             # ls with git state and a tree mode; backs the ls/lsa/lt/lta aliases
+bat             # cat with highlighting; also haseen's man pager and the ff preview

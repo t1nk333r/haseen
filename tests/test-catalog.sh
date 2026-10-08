@@ -40,7 +40,13 @@ assert_eq "catalog: no web apps" "" "$(jq -r '.entries[] | select((.id + " " + .
 assert_eq "catalog: flatpak refs are app ids" "" "$(jq -r '.entries[] | select(.source == "flatpak") | .ref' "$CATALOG" | grep -Ev '^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$' || true)"
 assert_eq "catalog: package refs are package names" "" "$(jq -r '.entries[] | select(.source == "pacman" or .source == "aur") | .ref | split(" ")[]' "$CATALOG" | grep -Ev '^[a-z0-9@._+][a-z0-9@._+-]*$' || true)"
 assert_eq "catalog: fonts carry a family" "" "$(jq -r '.entries[] | select(.category == "font" and (.family // "") == "") | .id' "$CATALOG")"
-assert_eq "catalog: dev toolchains use mise or docker" "" "$(jq -r '.entries[] | select(.category == "development" and .source != "mise" and (.ref | test("docker") | not)) | .id' "$CATALOG")"
+# The development category holds language toolchains (mise), the Docker
+# databases and, since plan 038, the command-line tools that are not in the
+# base layer (gh, lazygit, mise, dua, tealdeer, yt-dlp). What still has to
+# hold: a versioned "tool@version" ref is a mise entry, and a container entry
+# is run by the docker package.
+assert_eq "catalog: versioned dev refs go through mise" "" "$(jq -r '.entries[] | select(.category == "development" and (.ref | test("@")) and .source != "mise") | .id' "$CATALOG")"
+assert_eq "catalog: dev databases run in docker" "" "$(jq -r '.entries[] | select(.container != null and .ref != "docker") | .id' "$CATALOG")"
 assert_contains "catalog: Flathub verification date" "$(jq -r .flathubVerified "$CATALOG")" "2026-"
 assert_contains "catalog: browsers are Flatpaks" "$(jq -r '[.entries[] | select(.category == "browser") | .source] | unique | join(",")' "$CATALOG")" "flatpak"
 # Helium is not on Flathub (plan 070): helium-browser-bin from Chaotic-AUR.

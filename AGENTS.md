@@ -13,7 +13,9 @@ between parts. The engineering record is `plans/`, indexed by
 - **Read system state through `sysroot_path`.** Tests run against fixture trees
   in `tests/fixtures/`, never against the live machine.
 - **Never edit the user's files after seeding them.** Behaviour that haseen owns
-  lives in `share/haseen/default/`, and user files include it.
+  lives in `share/haseen/default/`, and user files include it. One exception
+  (owner, 2026-10-08, plan 038): `haseen seed user` appends one include line for
+  `share/haseen/default/shell/init.sh` to an existing `~/.bashrc` (and `~/.zshrc`), once.
 - **Never remove the owner's plugins.** `~/.config/omarchy/plugins/` and
   `~/.config/DankMaterialShell/plugins/` are read-only sources. No command,
   layer, migration or cleanup may delete, move or rewrite anything in them.

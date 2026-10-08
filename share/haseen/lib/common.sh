@@ -108,6 +108,20 @@ write_user_file() {
     fi
 }
 
+# append_user_file DEST — append stdin to unprivileged file DEST, creating it
+# and its parents if needed. The caller decides whether appending is right:
+# this helper never looks at what is already there.
+append_user_file() {
+    local dest="$1"
+    if $DRY_RUN; then
+        echo "DRYRUN: append to $dest:"
+        sed 's/^/    | /'
+    else
+        mkdir -p "$(dirname "$dest")"
+        cat >>"$dest"
+    fi
+}
+
 # seed_user_file SRC DEST — copy SRC to DEST only if DEST does not exist.
 # User files are seeded once and then belong to the user; re-runs never
 # overwrite them.
