@@ -9,3 +9,4 @@ singleton Branding 1.0 Branding.qml
 singleton BorderWipe 1.0 BorderWipe.qml
 singleton Apps 1.0 Apps.qml
 singleton Keyboard 1.0 Keyboard.qml
+singleton ClockDayName 1.0 ClockDayName.qml

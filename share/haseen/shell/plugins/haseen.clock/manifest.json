@@ -3,7 +3,7 @@
   "id": "haseen.clock",
   "name": "Clock",
   "version": "1.1.0",
-  "description": "Time and date in the bar; click for the calendar",
+  "description": "Time and date in the bar; click for the calendar and its day-name toggle",
   "kinds": [
     "bar-widget"
   ],
@@ -20,6 +20,10 @@
       "type": "string",
       "default": "HH\nmm",
       "description": "Qt date format in a left/right bar"
+    },
+    "showDayName": {
+      "type": "boolean",
+      "description": "Show or hide the day name; unset follows the date format"
     },
     "calendar": {
       "type": "string",

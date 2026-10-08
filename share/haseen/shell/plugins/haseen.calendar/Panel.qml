@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Calendar.js" as Cal
 import "Moon.js" as Moon
 
@@ -26,6 +27,17 @@ Column {
     readonly property var cells: Cal.monthGrid(year, month, first)
     readonly property var weeks: Cal.rowWeeks(cells)
     readonly property int cell: Math.round(Theme.fontSize * 2.2)
+    readonly property var clockSettings: Plugins.settingsFor("haseen.clock")
+    readonly property string clockFormat: {
+        const key = Config.barVertical ? "verticalFormat" : "format";
+        const fallback = Config.barVertical ? "HH\nmm" : "HH:mm";
+        return typeof clockSettings[key] === "string" && clockSettings[key] !== "" ? clockSettings[key] : fallback;
+    }
+    readonly property bool dayNameShown: ClockDayName.isShown(clockFormat, clockSettings.showDayName)
+
+    ClockSettings {
+        id: clockSettingsWriter
+    }
 
     function shift(delta: int): void {
         const m = Cal.shiftMonth(year, month, delta);
@@ -231,6 +243,38 @@ Column {
             const steps = Math.round(event.angleDelta.y / 120);
             if (steps !== 0)
                 root.shift(-steps);
+        }
+    }
+
+    Row {
+        id: dayNameRow
+
+        width: body.implicitWidth
+        spacing: Theme.gap
+
+        Text {
+            width: Math.max(0, dayNameRow.width - dayNameToggle.implicitWidth - dayNameRow.spacing)
+            text: "Day name"
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Pill {
+            id: dayNameToggle
+
+            objectName: "clockDayNameToggle"
+            text: root.dayNameShown ? "On" : "Off"
+            activeFocusOnTab: true
+            active: root.dayNameShown
+            onClicked: clockSettingsWriter.setDayName(!root.dayNameShown)
+            Keys.onPressed: event => {
+                if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+                    return;
+                dayNameToggle.clicked();
+                event.accepted = true;
+            }
         }
     }
 

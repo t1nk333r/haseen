@@ -16,7 +16,9 @@ BarButton {
 
     readonly property string format: {
         const key = vertical ? "verticalFormat" : "format";
-        return typeof settings[key] === "string" && settings[key] !== "" ? settings[key] : vertical ? "HH\nmm" : "HH:mm";
+        const fallback = vertical ? "HH\nmm" : "HH:mm";
+        const source = typeof settings[key] === "string" && settings[key] !== "" ? settings[key] : fallback;
+        return ClockDayName.effectiveFormat(source, settings.showDayName, vertical);
     }
     readonly property string calendar: typeof settings.calendar === "string" ? settings.calendar : "haseen.calendar"
 

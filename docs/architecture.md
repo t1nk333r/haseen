@@ -143,6 +143,7 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `BorderWipe`: holds the `borderwipe` subscription while the theme asks for a wipe (§5.6, §7).
   - `Apps`: starts user apps outside the shell's cgroup (§5, plan 074).
   - `Keyboard`: the keyboard layout from one `hyprctl -j devices` read plus Hyprland's `activelayout` event, and the lock-key reader (plans 079, 080).
+  - `ClockDayName`: pure date-format handling shared by the `haseen.clock` widget and calendar panel.
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
@@ -157,7 +158,10 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   "description": "Time and date in the bar",
   "kinds": ["bar-widget"],
   "entry": { "bar-widget": "Widget.qml" },
-  "settings": { "format": { "type": "string", "default": "HH:mm", "description": "Qt date format" } },
+  "settings": {
+    "format": { "type": "string", "default": "HH:mm", "description": "Qt date format" },
+    "showDayName": { "type": "boolean", "description": "Unset follows the date format" }
+  },
   "permissions": []
 }
 ```
