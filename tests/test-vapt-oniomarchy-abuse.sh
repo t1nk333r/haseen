@@ -3,8 +3,32 @@
 # Independent hostile-input and ordering probes. All managers/network/keys use
 # existing sysroot fixtures; FIFO barriers make concurrency deterministic.
 source "$FIXTURES/vapt-lib.sh"
+
+# Status and snapshot parse the signed cache through the production libarchive
+# reader. In particular, the blank checkpoint line and enormous version probes
+# require a usable reader; without one, "unverified"/an absent row are correct
+# fail-closed outcomes, not evidence about either hostile-input assertion.
+# gpg/curl/pacman/sudo remain stubs; bsdtar and openssl are not prerequisites.
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "  (note: python3 is not installed; private-source abuse regressions were skipped)"
+    return 0
+fi
+if ! PYTHONPATH="$VAPT_LAYER${PYTHONPATH:+:$PYTHONPATH}" python3 -c 'import metadata; metadata.libarchive()' >/dev/null 2>&1; then
+    echo "  (note: libarchive reader is unavailable; private-source abuse regressions were skipped, including checkpoint-newline and enormous-version cases)"
+    return 0
+fi
+
+ABUSE_SANDBOX=''
+abuse_cleanup() {
+    [[ -z $ABUSE_SANDBOX ]] || rm -rf -- "$ABUSE_SANDBOX"
+}
+trap abuse_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 ABUSE_CONF=$'[options]\nArchitecture = auto\nDownloadUser = alpm\nSigLevel = Required DatabaseOptional\n\n[core]\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n\n[extra]\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
 abuse_case() {
+    abuse_cleanup
+    ABUSE_SANDBOX="$OUT/vapt-abuse-$1"
     vapt_sandbox "vapt-abuse-$1"
     vapt_root
     printf '%s\n' "$ABUSE_CONF" >"$ROOT/etc/pacman.conf"
@@ -19,6 +43,39 @@ abuse_case() {
 }
 abuse_meta() { python3 "$VAPT_META" "$@" --root "$ROOT"; }
 abuse_json() { python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert r["schemaVersion"]==1; print(r["repositories"][0][sys.argv[2]])' "$OUTPUT" "$1"; }
+
+# Exercise the supervisor's failure paths, not just the successful race.
+# Tiny test deadlines keep a broken partner from stalling these regressions.
+abuse_cleanup
+ABUSE_SANDBOX="$OUT/vapt-abuse-supervisor"
+vapt_sandbox vapt-abuse-supervisor
+cat >"$SANDBOX/fault-runner.sh" <<'SH'
+case "$VAPT_ABUSE_FAULT:$1" in
+    early:repo-enable) exit 7 ;;
+    no-ready:repo-enable) sleep 60; exit 0 ;;
+    challenger:repo-disable) sleep 60; exit 0 ;;
+esac
+if [ "$1" = repo-enable ]; then
+    printf 'ready\n' >"$VAPT_SANDBOX/ready"
+    read -r token <"$VAPT_SANDBOX/release"
+    [ "$VAPT_ABUSE_FAULT" != post-release ] || sleep 60
+fi
+exit 0
+SH
+for fault in early no-ready challenger post-release; do
+    case "$fault" in
+        early) reason='partner exited before readiness handshake (exit 7)' ;;
+        no-ready) reason='readiness handshake timed out' ;;
+        challenger) reason='challenger timed out' ;;
+        post-release) reason='first timed out' ;;
+    esac
+    capture env VAPT_ABUSE_FAULT="$fault" python3 "$FIXTURES/vapt-abuse-race.py" \
+        "$SANDBOX" "$SANDBOX/fault-runner.sh" repo-disable \
+        --handshake-timeout 0.3 --process-timeout 0.3
+    assert_status "$fault: supervisor fails rather than hanging" 1 "$STATUS"
+    assert_contains "$fault: supervisor explains failure" "$OUTPUT" "$reason"
+    assert_eq "$fault: FIFOs cleaned on failure" '' "$(find "$SANDBOX" -maxdepth 1 -type p -print)"
+done
 
 # Corrupted retained state must never acquire new trust or repair itself.
 for file in oniomarchy.conf oniomarchy.authority oniomarchy.database sync/oniomarchy.db sync/oniomarchy.db.sig; do
@@ -160,18 +217,19 @@ for operation in repo-disable repo-enable; do
     abuse_case "race-$operation"
     # Gate the first fetch only, delegating later calls without a barrier.
     mv "$SANDBOX/stubs/curl" "$SANDBOX/stubs/curl.delegate"
-    mkfifo "$SANDBOX/ready" "$SANDBOX/release"
+    # The supervisor owns nonblocking FIFO opens, deadlines, process groups,
+    # file-backed stdio, reaping and FIFO cleanup (also on errors/signals).
     printf '#!/bin/sh\nif [ ! -f "%s/gated" ]; then\n touch "%s/gated"\n printf "ready\\n" >"%s/ready"\n read -r token <"%s/release"\nfi\nexec "%s/stubs/curl.delegate" "$@"\n' "$SANDBOX" "$SANDBOX" "$SANDBOX" "$SANDBOX" "$SANDBOX" >"$SANDBOX/stubs/curl"
     chmod +x "$SANDBOX/stubs/curl"
-    bash "$FIXTURES/vapt-runner.sh" repo-enable --yes >"$SANDBOX/first.out" 2>&1 &
-    first=$!
-    read -r -t 20 _ <"$SANDBOX/ready"
-    vapt_api "$operation" --yes
-    assert_status "$operation during approval: rejected under mutex" 1 "$STATUS"
+    capture python3 "$FIXTURES/vapt-abuse-race.py" "$SANDBOX" "$FIXTURES/vapt-runner.sh" "$operation"
+    if [[ $STATUS != 0 ]]; then
+        _fail "$operation race: barrier/partner failed" "$OUTPUT"
+        return 1
+    fi
+    OUTPUT="$(cat "$SANDBOX/challenger.out")"
+    assert_status "$operation during approval: rejected under mutex" 1 "$(cat "$SANDBOX/challenger.status")"
     assert_contains "$operation during approval: truthful busy reason" "$OUTPUT" busy
-    printf 'release\n' >"$SANDBOX/release"
-    first_status=0; wait "$first" || first_status=$?
-    assert_status "$operation race: original completes" 0 "$first_status"
+    assert_status "$operation race: original completes" 0 "$(cat "$SANDBOX/first.status")"
     vapt_api repo-disable --yes
     assert_status "$operation race: leftover lock inode does not block later disable" 0 "$STATUS"
 done
