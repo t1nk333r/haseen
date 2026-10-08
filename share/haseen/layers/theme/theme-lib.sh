@@ -459,19 +459,45 @@ theme_template_files() {
     shopt -u nullglob
 }
 
-# _theme_window_radius DIR — THEME_COLORS[window_radius]: the window rounding
-# Hyprland draws under this theme (decoration.rounding of the theme's own
-# hyprland.lua, else haseen's default looknfeel.lua, else radius). Shell.json's
-# windowRadius: the menu rounds like the windows, as Omarchy's menu follows
-# decoration:rounding (plan 068).
+# _theme_window_radius — THEME_COLORS[window_radius]: the one corner radius
+# windows and the menu share (plans 046, 068): the inner radius of the shell's
+# screen frame, by the rule Config.qml's frameRadius applies. shell.json's
+# frame.radius (the user's file over the shipped default) when it is a number
+# from 0 to 64, rounded; else twice the theme's radius token. Read with jq
+# (base layer); a file jq cannot read counts as absent, as the shell skips it.
 _theme_window_radius() {
-    local f r=""
-    for f in "$1/hyprland.lua" "$HASEEN_PATH/default/hypr/looknfeel.lua"; do
-        [[ -f $f ]] || continue
-        r="$(sed -n 's/^[[:space:]]*rounding[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$f" | head -n1)"
-        [[ -n $r ]] && break
-    done
-    THEME_COLORS[window_radius]="${r:-${THEME_COLORS[radius]:-${THEME_TOKEN_DEFAULTS[radius]}}}"
+    local f raw r=""
+    if have jq; then
+        for f in "$HASEEN_USER_CONFIG/shell.json" "$HASEEN_PATH/default/shell.json"; do
+            [[ -r $f ]] || continue
+            raw="$(jq -c '.frame.radius // empty' "$f" 2>/dev/null)" || continue
+            [[ -n $raw ]] || continue
+            r="$(jq -r 'if type == "number" and . >= 0 and . <= 64 then (. + 0.5 | floor) else empty end' <<<"$raw")"
+            break
+        done
+    fi
+    if [[ -z $r ]]; then
+        r="${THEME_COLORS[radius]:-}"
+        [[ $r =~ ^[0-9]+$ ]] || r="${THEME_TOKEN_DEFAULTS[radius]}"
+        r=$((r * 2))
+    fi
+    THEME_COLORS[window_radius]="$r"
+}
+
+# _theme_window_rounding DIR — end DIR/hyprland.lua, rendered or the theme's
+# own, with window_radius as Hyprland's decoration.rounding. It is the last
+# word of the theme file, so a theme's own rounding never splits the windows
+# from the frame and the menu; the user's files load after it and still win.
+# The file is rewritten, never appended through: a user theme may link it.
+_theme_window_rounding() {
+    local f="$1/hyprland.lua" body=""
+    if [[ -e $f ]]; then
+        body="$(<"$f")"$'\n\n'
+        rm -f -- "$f"
+    fi
+    printf '%s%s\nhl.config({ decoration = { rounding = %s } })\n' "$body" \
+        "-- haseen: window corners follow the shell's frame (plan 046)." \
+        "${THEME_COLORS[window_radius]}" >"$f"
 }
 
 # theme_render_templates DIR — render every template into DIR from
@@ -482,7 +508,7 @@ theme_render_templates() {
     local -a templates pairs=()
     local -A seen=()
     theme_colors_load "$dir/colors.toml" || return 1
-    _theme_window_radius "$dir"
+    _theme_window_radius
     local font=""
     theme_font_override && font="$REPLY" && THEME_COLORS[font_mono]="$font"
     mapfile -t templates < <(theme_template_files)
@@ -687,7 +713,8 @@ theme_stage() {
         warn "theme '$name' has no usable colors.toml (needs hex background and foreground)"
         return 1
     fi
-    theme_render_templates "$THEME_NEXT_PATH"
+    theme_render_templates "$THEME_NEXT_PATH" || return 1
+    _theme_window_rounding "$THEME_NEXT_PATH"
 }
 
 # theme_swap NAME — move the staged theme into place and record its name. The

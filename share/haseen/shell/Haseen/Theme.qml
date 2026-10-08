@@ -37,7 +37,7 @@ Singleton {
             radius: 6,
             gap: 6,
             borderWidth: 1,
-            windowRadius: 4
+            windowRadius: 12
         })
 
     readonly property var _numeric: ["fontSize", "radius", "gap", "borderWidth", "windowRadius"]
@@ -71,8 +71,8 @@ Singleton {
     readonly property int radius: token("radius")
     readonly property int gap: token("gap")
     readonly property int borderWidth: token("borderWidth")
-    // Hyprland's window rounding under this theme (decoration.rounding), for
-    // surfaces that round like the windows: the menu, as Omarchy's does.
+    // The window corner radius: the frame's inner radius, which haseen theme
+    // set also gives Hyprland (plan 046). The menu rounds like the windows.
     readonly property int windowRadius: token("windowRadius")
 
     // Normal-state text and glyphs of bar widgets. It is the foreground, or

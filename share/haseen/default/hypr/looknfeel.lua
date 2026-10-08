@@ -20,7 +20,9 @@ hl.config({
   },
 
   decoration = {
-    rounding = 4,
+    -- Twice the default radius token, the frame's inner radius: the rendered
+    -- theme replaces it with the shared window radius (plan 046).
+    rounding = 12,
     shadow = { enabled = false },
     blur = { enabled = false },
   },
