@@ -225,8 +225,8 @@ native text editing. No GUI fingerprint entry duplicates terminal authorization.
   `tests/test-vapt-workflow.sh:1`; fail-if-executed inventory and owned-entry
   stubs, real pacman local-DB fixtures, native metadata, ambiguity, foreign
   ownership/symlinks, data-only roots, single-object JSON, no automatic launch.
-- Shared local policy: `share/haseen/layers/vapt/workflow_support.py:71`
-  (`validate_endpoint`) and `:159` (`inspect_certificate_data`). Helpers validate
+- Shared local policy: `share/haseen/layers/vapt/workflow_support.py:72`
+  (`validate_endpoint`) and `:182` (`inspect_certificate_data`). Helpers validate
   literal IP/1024–65535 ports, explicit owned files and confinement; certificate
   inspection parses one current CA via absolute OpenSSL only on explicit
   request and returns nonsecret fingerprint/validity metadata. It never trusts.
@@ -238,11 +238,11 @@ native text editing. No GUI fingerprint entry duplicates terminal authorization.
   `share/haseen/layers/vapt/workflow_actions.sh:17`, `:42`, `:110`
   (`vapt_service_action`, `vapt_endpoint_action`, `vapt_ca_action`).
 - Descriptor confinement and approved-inode checks:
-  `share/haseen/layers/vapt/workflow_actions.py:188`, `:251`, `:272`
+  `share/haseen/layers/vapt/workflow_actions.py:188`, `:252`, `:273`
   (`ConfinedHandler`, `open_selected`, `serve`).
 - Immutable CA input and fingerprint binding:
-  `share/haseen/layers/vapt/workflow_support.py:211` (`read_certificate_bytes`)
-  and `share/haseen/layers/vapt/workflow_actions.py:309` (`certificate_payload`).
+  `share/haseen/layers/vapt/workflow_support.py:235` (`read_certificate_bytes`)
+  and `share/haseen/layers/vapt/workflow_actions.py:312` (`certificate_payload`).
 - Root-only unchanged-anchor journal:
   `share/haseen/layers/vapt/workflow_ca.py:104`, `:146` (`ca_status`, `mutate`).
 - Behavioural action suites: `tests/test-vapt-services.sh:1` and
@@ -268,16 +268,23 @@ The optional panel's final data contract preserves the CLI shapes above.
 Shared endpoint validation performs no DNS/bind/probe. Every non-loopback bind
 requires the local-action CLI's terminal confirmation; the panel is not consent.
 Directory selection must be explicit. Serving holds an opened root descriptor;
-every child component is opened without following links, and only regular file
-bytes are returned. No listing, CGI, upload or directory escape is supported.
-Single-file selection requires unique installed-package ownership and pins the
-opened inode; only `/file` exists, never a directory or guessed script path.
+every child component is opened without following links; regular single-link
+file bytes only are returned. The opened descriptor's link count is checked on
+every request, so links added after startup refuse with HTTP 404. No listing,
+CGI, upload or directory escape is supported. Single-file selection requires
+unique installed-package ownership and a single-link regular file, pins the
+opened inode, and rechecks its link count at startup and every `/file` request.
+No parent directory or guessed script path is exposed.
 Local address discovery uses fixture state or libc getifaddrs;
 only explicit help with `showLocalAddresses:true` or an explicit local-address
 request reads it. Addresses are transient, never report data.
 
 CA inspection is read-only, no privilege/trust change, no certificate/private-key
 contents in output, no bundles, and no non-CA/expired material admitted.
+CA classification uses OpenSSL's native typed `basicConstraints` decoding, not
+rendered text. Only documented `X509_check_ca == 1` admits proper X509v3 CA
+constraints; absent/false/malformed and legacy-only CA evidence refuse.
+Inspection, immutable payload admission and privileged trust share the classifier.
 The shared result is `{schemaVersion,state:valid|invalid|refused,reason,
 certificate:null|{subject,issuer,sha256,notBefore,notAfter,isCa,
 containsPrivateKey}}`; fingerprints are uppercase SHA-256, dates UTC ISO-8601.
@@ -287,6 +294,37 @@ and installs one fingerprint-owned system anchor through the root gateway.
 Removal only accepts that unchanged recorded anchor. Foreign/modified anchors
 and incomplete journals are refusals; updater failure never claims completed
 trust. No trust decision follows from a panel launch or inspection.
+
+### Security finding fixes F1/F2
+
+- **F1 (Medium), fixed:** whole-output `CA:TRUE` matching could admit a non-CA
+  through subject/issuer text. `inspect_certificate_data` delegates CA authority
+  to OpenSSL's typed extension classifier, accepting only
+  [the documented X509v3 result 1](https://docs.openssl.org/3.5/man3/X509_check_ca/).
+  Text-only extension output is also unsafe: malformed DER containing printable
+  `CA:TRUE` is rendered as apparent extension text. The native decoder avoids
+  that fallback, with no custom certificate parser or native struct layout.
+  Evidence: `share/haseen/layers/vapt/workflow_support.py:160`
+  (`_basic_constraints_ca`), `:182` (shared inspection),
+  `share/haseen/layers/vapt/workflow_actions.py:312` (payload reuse),
+  `share/haseen/layers/vapt/workflow_ca.py:157` (privileged reuse).
+  Actual certificate fixtures cover genuine critical/noncritical CAs and
+  self-signed subject/issuer `CA:TRUE` spoofing with absent, false and malformed
+  constraints, including critical/noncritical printable malformed DER.
+  PEM/DER inspection, payload and privileged paths agree; rejected trust
+  creates no state. Native OpenSSL certificate decoding is invoked only on
+  explicit inspection; discovery/doctor never classify certificates.
+- **F2 (Medium), fixed:** no-follow pathname traversal alone admitted hardlinks.
+  The request handler now requires `st_nlink == 1` on the opened regular leaf
+  before sending bytes, for both directory and single-file modes. Selection
+  and startup also refuse multiply-linked selected files. Evidence:
+  `share/haseen/layers/vapt/workflow_actions.py:230` (every request), `:293`
+  (single-file startup), `share/haseen/layers/vapt/workflow_support.py:141`
+  (owned-file selection). Real ephemeral loopback fixtures serve a normal file,
+  refuse an inside hardlink to outside bytes, refuse a second link added after
+  startup, and refuse multiply-linked `/file` bytes. The CA anchor/state path
+  already enforced the same descriptor-time single-link rule at
+  `share/haseen/layers/vapt/workflow_ca.py:53`; it was not changed.
 
 
 ## Rejected options
@@ -347,3 +385,10 @@ are not established by those engine assertions. No owner's desktop is used.
 - `tools/check-docs.sh` after panel/menu/CLI documentation updates: **check-docs OK**.
 - `tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh` with the UI and displayed-snapshot checks included: **4,953/4,953 passed**, 29 suites, 1,534.49 seconds with a 3,600-second deadline.
 
+
+### Security fix batch F1/F2 checks
+
+- `QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt-net.sh tests/test-vapt-workflow.sh`: **183/183 passed**, two suites, including genuine critical/noncritical CAs, printable malformed extension spoofing, admission-path agreement and link-count fixtures.
+- `SHELLCHECK=$(command -v shellcheck) tools/lint.sh`: **lint OK**, 397 shell, 33 Lua, 180 JSON, 255 QML and 41 Go files. An initial fixture-array SC2054 diagnostic was corrected by quoting the single extension operand.
+- `QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh tests/test-vapt-security-ui.sh`: **5,070/5,070 passed**, 30 suite executions (29 unique; the requested explicit UI suite also matches the glob), 1,607.96 seconds with a 3,600-second deadline. An intermediate run was cancelled before final native-classifier fixtures landed; it is not counted as verification.
+- `tools/check-docs.sh`: **check-docs OK** after the finding, scope and evidence documentation updates.

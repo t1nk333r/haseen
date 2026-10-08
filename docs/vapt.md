@@ -714,14 +714,16 @@ commands require explicit user requests; all dry-runs are offline/write-free.
   The default is loopback; every non-loopback bind requires terminal consent.
 - `haseen vapt net-http-server [--bind ADDRESS] DIR PORT`: explicitly selected
   directory, byte-only foreground HTTP. Opened descriptors confine requests;
-  traversal and symlinks are refused. No listing, CGI, upload, firewall changes,
-  background daemon or fetched content.
+  traversal, symlinks and multiply-linked leaves are refused. Each request
+  checks the opened file's link count, including links added after startup.
+  No listing, CGI, upload, firewall changes, background daemon or fetched content.
 - `haseen vapt net-file-server [--file FILE] [--bind ADDRESS] [PORT]`: one
-  explicitly selected package-owned regular file, served only at `/file`.
+  explicitly selected package-owned single-link regular file, served only at `/file`.
   It may use the user's `enumerationScript` setting or prompt when unset; it
   never guesses a script, exposes its parent directory, runs or fetches it.
   The doctor capability id `enumeration-host` maps to fixed command
   `net-file-server`; there is no alias. Every foreground server requires consent.
+  File selection, startup and every request refuse a multiply-linked file.
 - `haseen vapt net-remmina`: launch only the verified owned client with no target,
   connection, credentials or backend; dry-run previews ownership without launch.
   The panel uses its normal `Apps.launch` boundary, not a shell command string.
@@ -739,13 +741,20 @@ foreign, modified or unknown/incomplete anchor state. `inspect CERT --json`
 reads one bounded regular public PEM/DER CA and reports subject, issuer,
 uppercase SHA-256 fingerprint, validity and CA/private-key flags; it rejects
 bundles, private keys, non-CAs and expired material without printing certificate
-contents or changing trust.
+contents or changing trust. CA classification comes only from the actual
+`basicConstraints` extension decoded by OpenSSL, never rendered text. Only the
+documented proper X509v3 CA result is admitted; subject/issuer text, printable
+malformed extension bytes and legacy-only CA evidence cannot confer CA status.
+Absent, false or malformed constraints are refused. Inspection, trust payload
+and privileged validation share this same classifier.
 
 `trust CERT` requires typing the full displayed fingerprint, including with
 `--yes`. It rechecks immutable certificate bytes and owned updater evidence,
 then uses the root gateway to install one fingerprint-owned system anchor and
 update trust. No browser/proxy is launched or configured. `remove FINGERPRINT`
 removes only the unchanged recorded anchor; foreign or modified files survive.
+Anchor/state reads already require a regular single-link file on the opened
+descriptor; a multiply-linked anchor is not accepted as unchanged owned trust.
 Dry-run never requests privilege, writes an anchor or claims hypothetical trust.
 Failed updater transactions retain an explicit incomplete ownership journal;
 status refuses to describe them as completed success.

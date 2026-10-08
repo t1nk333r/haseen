@@ -190,6 +190,7 @@ class ConfinedHandler(http.server.BaseHTTPRequestHandler):
 
     No directory listings, CGI, uploads, redirects to outside roots or symlink
     traversal. The selected root fd remains bound even if its name is replaced.
+    Every response requires a regular single-link leaf on its opened descriptor.
     """
     def __init__(self, *args, root_fd, file_fd=None, **kwargs):
         self.root_fd, self.file_fd = root_fd, file_fd
@@ -226,7 +227,7 @@ class ConfinedHandler(http.server.BaseHTTPRequestHandler):
                 finally:
                     os.close(parent)
             info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode):
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 raise FileNotFoundError()
             self.send_response(200)
             self.send_header('Content-Type', 'application/octet-stream')
@@ -289,6 +290,8 @@ def serve(kind, address, port, path, expected):
             if not checked.is_file() or (os.fstat(file_fd).st_dev, os.fstat(file_fd).st_ino) != (checked.stat().st_dev, checked.stat().st_ino):
                 raise ValueError('selected file changed during open')
         bound = os.fstat(root_fd if root_fd is not None else file_fd)
+        if file_fd is not None and (not stat.S_ISREG(bound.st_mode) or bound.st_nlink != 1):
+            raise ValueError('selected file is not exclusively linked')
         if {'device': bound.st_dev, 'inode': bound.st_ino} != plan['selectionIdentity']:
             raise ValueError('selected inode changed before serving')
         family = socket.AF_INET6 if endpoint['family'] == 'ipv6' else socket.AF_INET

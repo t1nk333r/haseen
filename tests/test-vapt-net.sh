@@ -46,6 +46,10 @@ assert_status 'single-file refuses directory' 1 "$STATUS"
 ln -s /etc/passwd "$ROOT/usr/share/wordlists/escape"
 capture haseen-vapt-net-file-server --file /usr/share/wordlists/escape 8080 --dry-run
 assert_status 'single-file refuses unowned symlink escape' 1 "$STATUS"
+ln "$ROOT/usr/share/wordlists/sample.txt" "$ROOT/linked-sample"
+capture haseen-vapt-net-file-server --file /usr/share/wordlists/sample.txt 8080 --dry-run
+assert_status 'single-file selection refuses multiple links' 1 "$STATUS"
+rm "$ROOT/linked-sample"
 capture haseen-vapt-net-remmina --dry-run
 assert_status 'client UI preview' 0 "$STATUS"
 assert_contains 'verified client path not target' "$OUTPUT" '/usr/bin/remmina (no connection or credentials)'
@@ -62,6 +66,8 @@ import functools,http.client,http.server,os,pathlib,sys,threading
 sys.path.insert(0,sys.argv[1]);from workflow_actions import ConfinedHandler
 root=pathlib.Path(sys.argv[2]);directory=root/'usr/share/doc/nmap'
 (directory/'outside').symlink_to(root/'usr/share/wordlists/sample.txt')
+(root/'external-secret.txt').write_bytes(b'outside selected directory\n')
+os.link(root/'external-secret.txt',directory/'hardlink')
 rootfd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY)
 server=http.server.HTTPServer(('127.0.0.1',0),functools.partial(ConfinedHandler,root_fd=rootfd))
 thread=threading.Thread(target=server.serve_forever);thread.start()
@@ -70,8 +76,12 @@ def request(path):
     connection.request('GET',path);response=connection.getresponse();status=response.status;data=response.read();connection.close();return status,data
 try:
     assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
-    for path in ['/outside','/../wordlists/sample.txt','/%2e%2e/wordlists/sample.txt','/']:
+    for path in ['/outside','/hardlink','/../wordlists/sample.txt','/%2e%2e/wordlists/sample.txt','/']:
         assert request(path)[0]==404,path
+    os.link(directory/'scan-two.txt',root/'late-link')
+    assert request('/scan-two.txt')[0]==404
+    (root/'late-link').unlink()
+    assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
 finally:
     server.shutdown();thread.join();server.server_close();os.close(rootfd)
 filefd=os.open(root/'usr/share/wordlists/sample.txt',os.O_RDONLY)
@@ -80,6 +90,10 @@ thread=threading.Thread(target=server.serve_forever);thread.start()
 try:
     assert request('/file')==(200,b'data\n')
     assert request('/sample.txt')[0]==404
+    os.link(root/'usr/share/wordlists/sample.txt',root/'single-extra')
+    assert request('/file')[0]==404
+    (root/'single-extra').unlink()
+    assert request('/file')==(200,b'data\n')
 finally:
     server.shutdown();thread.join();server.server_close();os.close(filefd)
 print('confined directory and fixed single-file endpoint passed')
@@ -91,6 +105,7 @@ mkdir -p "$ROOT/certificates"
 capture haseen-vapt-net-proxy-ca inspect /certificates/ca.pem --json --dry-run
 assert_status 'read-only CA inspection' 0 "$STATUS"
 assert_eq 'CA classification' valid "$(jq -r '.state' <<<"$OUTPUT")"
+assert_eq 'genuine extension establishes CA' true "$(jq '.certificate.isCa' <<<"$OUTPUT")"
 fingerprint="$(jq -r '.certificate.sha256' <<<"$OUTPUT")"
 assert_eq 'full SHA-256 fingerprint length' 64 "${#fingerprint}"
 assert_not_contains 'no PEM content in JSON' "$OUTPUT" 'BEGIN CERTIFICATE'
@@ -105,6 +120,51 @@ assert_status 'bundle refusal' 1 "$STATUS"
 capture haseen-vapt-net-proxy-ca inspect /certificates/non-ca.pem --json
 assert_status 'non-CA refusal' 1 "$STATUS"
 assert_eq 'non-CA classified without admitting trust' false "$(jq '.certificate.isCa' <<<"$OUTPUT")"
+# Names are attacker-controlled text, never the basicConstraints authority.
+for variant in absent false malformed malformed-critical; do
+    extension=()
+    case "$variant" in
+    false) extension=(-addext 'basicConstraints=critical,CA:FALSE') ;;
+    malformed) extension=(-addext basicConstraints=DER:43:41:3A:54:52:55:45) ;;
+    malformed-critical) extension=(-addext 'basicConstraints=critical,DER:43:41:3A:54:52:55:45') ;;
+    esac
+    /usr/bin/openssl req -new -x509 -key "$ROOT/certificates/key.pem" -config /dev/null \
+        -subj /CN=CA:TRUE -days 1 "${extension[@]}" -out "$ROOT/certificates/spoof-$variant.pem" >/dev/null 2>&1
+    capture haseen-vapt-net-proxy-ca inspect "/certificates/spoof-$variant.pem" --json
+    assert_status "$variant extension rejects name spoofing" 1 "$STATUS"
+    assert_eq "$variant extension not a CA" false "$(jq '.certificate.isCa' <<<"$OUTPUT")"
+    assert_eq "$variant extension explicit refusal" refused "$(jq -r '.state' <<<"$OUTPUT")"
+    assert_contains "$variant spoof present in subject" "$(jq -r '.certificate.subject' <<<"$OUTPUT")" 'CA:TRUE'
+    assert_contains "$variant spoof present in issuer" "$(jq -r '.certificate.issuer' <<<"$OUTPUT")" 'CA:TRUE'
+done
+/usr/bin/openssl req -new -x509 -key "$ROOT/certificates/key.pem" -config /dev/null \
+    -subj /CN=noncritical-fixture -days 1 -addext basicConstraints=CA:TRUE -out "$ROOT/certificates/noncritical-ca.pem" >/dev/null 2>&1
+capture haseen-vapt-net-proxy-ca inspect /certificates/noncritical-ca.pem --json
+assert_status 'genuine noncritical CA inspection' 0 "$STATUS"
+assert_eq 'genuine noncritical CA classification' valid "$(jq -r '.state' <<<"$OUTPUT")"
+assert_eq 'genuine noncritical extension establishes CA' true "$(jq '.certificate.isCa' <<<"$OUTPUT")"
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import hashlib,pathlib,ssl,sys
+sys.path.insert(0,sys.argv[1])
+from workflow_actions import certificate_payload
+from workflow_ca import mutate
+from workflow_support import inspect_certificate_data
+root=pathlib.Path(sys.argv[2])
+for variant in ('absent','false','malformed','malformed-critical'):
+    path='/certificates/spoof-'+variant+'.pem';pem=(root/path.lstrip('/')).read_bytes()
+    der=ssl.PEM_cert_to_DER_cert(pem.decode('ascii'));fingerprint=hashlib.sha256(der).hexdigest().upper()
+    assert inspect_certificate_data(der)['state']=='refused'
+    try:certificate_payload(path,fingerprint)
+    except ValueError:pass
+    else:raise AssertionError('payload admitted spoofed CA '+variant)
+    target=root/('rejected-'+variant)
+    try:mutate('trust',fingerprint,der,root=str(target),updater=lambda:(_ for _ in ()).throw(AssertionError('updater invoked')))
+    except ValueError:pass
+    else:raise AssertionError('privileged validation admitted spoofed CA '+variant)
+    assert not target.exists(),'rejected trust wrote state'
+print('inspection, payload and privileged classifier agree')
+PY
+assert_status 'all CA admission paths reject adversarial extension fixtures' 0 "$STATUS"
 before="$(net_manifest)"
 capture haseen-vapt-service-list --json --dry-run
 capture haseen-vapt-net-addresses --json --dry-run

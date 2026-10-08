@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import ssl
 
 def local_addresses(root=''):
     """Read assigned local interface state only; no DNS or network probes."""
@@ -137,8 +138,8 @@ def selected_owned_file(path, records, root, resolve):
     trace = []
     target = resolve(Path(root + path), root, trace)
     boundary = Path(root or '/')
-    if not target.is_file() or owners.get('/' + str(target.relative_to(boundary))) != expected:
-        raise ValueError('selected file is not an owned regular file')
+    if not target.is_file() or target.stat().st_nlink != 1 or owners.get('/' + str(target.relative_to(boundary))) != expected:
+        raise ValueError('selected file is not an exclusively linked owned regular file')
     if any(p.is_symlink() and owners.get('/' + str(p.relative_to(boundary))) != expected for p in trace):
         raise ValueError('selected file symlink crosses ownership')
     return target
@@ -154,6 +155,28 @@ def _der_complete(data):
     if not 1 <= count <= 4 or len(data) < 2 + count:
         return False
     return len(data) == int.from_bytes(data[2:2 + count], 'big') + 2 + count
+
+
+def _basic_constraints_ca(der):
+    """Decode the actual extension, not OpenSSL's raw malformed-text fallback."""
+    crypto = ctypes.CDLL('/usr/lib/libcrypto.so.3')
+    octets = ctypes.POINTER(ctypes.c_ubyte)
+    crypto.d2i_X509.argtypes = [ctypes.c_void_p, ctypes.POINTER(octets), ctypes.c_long]
+    crypto.d2i_X509.restype = ctypes.c_void_p
+    crypto.X509_check_ca.argtypes = [ctypes.c_void_p]
+    crypto.X509_check_ca.restype = ctypes.c_int
+    crypto.X509_free.argtypes = [ctypes.c_void_p]
+    crypto.X509_free.restype = None
+    source = ctypes.cast(ctypes.c_char_p(der), octets)
+    certificate = crypto.d2i_X509(None, ctypes.byref(source), len(der))
+    if not certificate:
+        raise ValueError('invalid DER certificate')
+    try:
+        # Exactly 1 means proper X509v3 basicConstraints CA:TRUE.
+        # Legacy v1/keyUsage/Netscape CA results (3/4/5) are not accepted.
+        return crypto.X509_check_ca(certificate) == 1
+    finally:
+        crypto.X509_free(certificate)
 
 
 def inspect_certificate_data(data, openssl='/usr/bin/openssl'):
@@ -180,7 +203,7 @@ def inspect_certificate_data(data, openssl='/usr/bin/openssl'):
         env = {key: os.environ[key] for key in ('HOME',) if key in os.environ}
         env.update(PATH='/usr/bin:/bin', LC_ALL='C', OPENSSL_CONF='/dev/null')
         parsed = subprocess.run([openssl, 'x509', '-inform', 'PEM' if pem else 'DER', '-noout', '-subject', '-issuer',
-                                 '-dates', '-fingerprint', '-sha256', '-ext', 'basicConstraints'], input=data,
+                                 '-dates', '-fingerprint', '-sha256'], input=data,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, check=False)
         if parsed.returncode:
             raise ValueError('invalid certificate')
@@ -192,7 +215,8 @@ def inspect_certificate_data(data, openssl='/usr/bin/openssl'):
         def date(key):
             return datetime.datetime.strptime(fields[key], '%b %d %H:%M:%S %Y GMT').replace(tzinfo=datetime.timezone.utc)
         before, after = date('notBefore'), date('notAfter')
-        is_ca = bool(re.search(r'\bCA:TRUE\b', text))
+        der = ssl.PEM_cert_to_DER_cert(data.decode('ascii')) if pem else data
+        is_ca = _basic_constraints_ca(der)
         sanitize = lambda s: ''.join(c for c in s if c >= ' ' and not '\x7f' <= c <= '\x9f')
         result['certificate'] = {'subject': sanitize(fields['subject']), 'issuer': sanitize(fields['issuer']),
                                  'sha256': fingerprint.upper(), 'notBefore': before.isoformat().replace('+00:00', 'Z'),
