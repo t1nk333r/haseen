@@ -14,7 +14,7 @@ IMGUR_ID="imgur-fixture-id-0000"
 cap_sandbox() {
     sandbox "$1"
     export XDG_RUNTIME_DIR="$SANDBOX/run"
-    mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+    mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
     CALLS="$SANDBOX/calls"
     CALLS_STDIN="$SANDBOX/calls.stdin"
     : >"$CALLS"
