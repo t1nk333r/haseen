@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# haseen:summary Show every setting, its value, where it is stored and what changes it
+# haseen:args [--json]
+#
+# haseen keeps settings in six stores on purpose (see share/haseen/lib/
+# settings.sh for why each one is where it is). This command is the index over
+# all of them, so "what is my desktop set to" is one question again instead of
+# six kinds of file and 130 commands.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/settings.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/settings.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen settings list [--json]
+
+Prints every setting as: key, value, store, and the command that changes it.
+--json prints the same rows as a JSON array (key, value, store, path, setter,
+takes: what \`settings set\` accepts, one of value, on-off, inverted, none).
+
+Stores:
+  shell.json   ~/.config/haseen/shell.json, your file, watched by the shell
+               (plugin settings fall back to the plugin's manifest)
+  config       other ~/.config/haseen files a command owns (the mono font)
+  flag         ~/.local/state/haseen/flags/<name>, session state
+  hypr-toggle  ~/.local/state/haseen/toggles/hypr/<name>.lua, read by Hyprland
+  state        other ~/.local/state/haseen files (theme, active shell)
+  env          ~/.config/uwsm/env.d/60-haseen-defaults, read at next login
+
+Change one with: haseen settings set <key> [value]
+EOF
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+json=false
+case "${1:-}" in
+--json)
+    json=true
+    shift
+    ;;
+esac
+(($# == 0)) || {
+    usage >&2
+    exit 2
+}
+
+if $json; then
+    # jq -R/-s builds the array from the tab-separated rows, so no value is
+    # ever concatenated into JSON by hand.
+    settings_rows | jq -R -s 'split("\n") | map(select(length > 0) | split("\t"))
+        | map({key: .[0], store: .[1], path: .[2], value: .[3], setter: .[4], takes: .[5]})'
+    exit 0
+fi
+
+printf '%-30s %-26s %-12s %s\n' KEY VALUE STORE CHANGE-WITH
+while IFS=$'\t' read -r key store _ value setter _; do
+    printf '%-30s %-26s %-12s %s\n' "$key" "$value" "$store" "$setter"
+done < <(settings_rows)

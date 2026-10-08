@@ -8,7 +8,7 @@
 - **Depends on**: 003 004 005 002
 - **Category**: nix
 - **Planned at**: 2026-10-04, initial architecture (docs/architecture.md)
-- **State**: DONE 2026-10-04. Evaluated and built, but not booted.
+- **State**: DROPPED 2026-10-05 (owner decision, Nix support removed). Was DONE 2026-10-04: evaluated and built, but not booted.
 
 ## Why this matters
 
@@ -26,6 +26,22 @@ Requirement 7. NixOS gets the same desktop, with lanzaboote handling Secure Boot
 - A NixOS VM configuration evaluates, i.e. `nix eval` of `config.system.build.toplevel.drvPath` succeeds.
 
 ## Execution record
+
+### Dropped (2026-10-05)
+
+The owner removed NixOS/Nix support from haseen; the supported targets are
+CachyOS and Arch, and requirement 7 in `docs/architecture.md` no longer names
+NixOS. `flake.nix`, `flake.lock`, `nix/`, `tests/test-nix.sh` and the `nix`
+CI job were deleted. `preflight_distro` still recognises NixOS, and both
+`install.sh` and `haseen secureboot setup` refuse it as unsupported (covered
+by `tests/test-core.sh` and `tests/test-secureboot.sh`). The record below is
+the history of what was built and verified before the drop.
+
+Finished 2026-10-08, after plans 075 and 077 had added more Nix: the NixOS
+branch of `bin/haseen-setup-ddc` (`haseen.ddc.enable`) now refuses NixOS like
+the installer (`tests/test-brightness.sh`), the skill's DDC line and the
+themegen comment lost their NixOS clauses, plans 075 and 077 carry a dated
+note, and `AGENTS.md` lists the four required CI checks without `nix`.
 
 ### What changed
 

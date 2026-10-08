@@ -9,7 +9,12 @@
     { "id": "gaming", "label": "Gaming", "icon": "" },
     { "id": "service", "label": "Service", "icon": "" },
     { "id": "font", "label": "Font", "icon": "" },
-    { "id": "development", "label": "Development", "icon": "󰵮" }
+    { "id": "development", "label": "Development", "icon": "󰵮" },
+    { "id": "files", "label": "Files", "icon": "" },
+    { "id": "media", "label": "Media", "icon": "" },
+    { "id": "document", "label": "Document", "icon": "󰴑" },
+    { "id": "utility", "label": "Utility", "icon": "" },
+    { "id": "mobile", "label": "Mobile", "icon": "󰆽" }
   ],
   "entries": [
     { "id": "zen", "category": "browser", "label": "Zen", "icon": "󰖟", "source": "flatpak", "ref": "app.zen_browser.zen" },
@@ -96,6 +101,44 @@
     { "id": "mysql", "category": "development", "label": "MySQL (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mysql8", "image": "mysql:8.4", "port": 3306, "env": ["MYSQL_ALLOW_EMPTY_PASSWORD=true"] } },
     { "id": "mariadb", "category": "development", "label": "MariaDB (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mariadb11", "image": "mariadb:11.8", "port": 3306, "env": ["MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true"] } },
     { "id": "redis", "category": "development", "label": "Redis (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "redis", "image": "redis:7", "port": 6379, "env": [] } },
-    { "id": "mongodb", "category": "development", "label": "MongoDB (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mongodb", "image": "mongo:noble", "port": 27017, "env": [] } }
+    { "id": "mongodb", "category": "development", "label": "MongoDB (Docker)", "icon": "", "source": "pacman", "ref": "docker", "container": { "name": "mongodb", "image": "mongo:noble", "port": 27017, "env": [] } },
+
+    { "id": "gh", "category": "development", "label": "GitHub CLI", "icon": "󰵮", "source": "pacman", "ref": "github-cli" },
+    { "id": "lazygit", "category": "development", "label": "lazygit", "icon": "󰆏", "source": "pacman", "ref": "lazygit" },
+    { "id": "mise", "category": "development", "label": "mise (runtime manager)", "icon": "", "source": "pacman", "ref": "mise" },
+    { "id": "dua", "category": "development", "label": "dua (disk usage)", "icon": "", "source": "pacman", "ref": "dua-cli" },
+    { "id": "tealdeer", "category": "development", "label": "tealdeer (tldr pages)", "icon": "", "source": "pacman", "ref": "tealdeer" },
+    { "id": "lazydocker", "category": "development", "label": "lazydocker", "icon": "󰡨", "source": "pacman", "ref": "lazydocker" },
+    { "id": "tmux", "category": "development", "label": "tmux", "icon": "", "source": "pacman", "ref": "tmux" },
+    { "id": "herdr", "category": "development", "label": "herdr (multiplexer)", "icon": "", "source": "aur", "ref": "herdr" },
+
+    { "id": "yazi", "category": "files", "label": "Yazi (terminal file manager)", "icon": "", "source": "pacman", "ref": "yazi" },
+    { "id": "flea", "category": "files", "label": "flea (GUI file manager)", "icon": "", "source": "aur", "ref": "flea", "pullsOmarchy": true, "note": "owner-approved PKG_DENY exception (2026-10-05, confirmed 2026-10-08): pulls omarchy and omarchy-settings in as dependencies, only after catalog_confirm_omarchy prints the closure and asks" },
+
+    { "id": "imv", "category": "media", "label": "imv (image viewer)", "icon": "", "source": "pacman", "ref": "imv" },
+    { "id": "loupe", "category": "media", "label": "Loupe (image viewer)", "icon": "", "source": "pacman", "ref": "loupe" },
+    { "id": "mpv", "category": "media", "label": "mpv (video player)", "icon": "", "source": "pacman", "ref": "mpv" },
+    { "id": "celluloid", "category": "media", "label": "Celluloid (mpv, GTK)", "icon": "", "source": "pacman", "ref": "celluloid" },
+    { "id": "yt-dlp", "category": "media", "label": "yt-dlp (video downloader)", "icon": "", "source": "pacman", "ref": "yt-dlp" },
+    { "id": "pinta", "category": "media", "label": "Pinta (image editor)", "icon": "", "source": "pacman", "ref": "pinta" },
+    { "id": "snapshot", "category": "media", "label": "Snapshot (camera)", "icon": "", "source": "pacman", "ref": "snapshot" },
+
+    { "id": "papers", "category": "document", "label": "Papers (PDF viewer)", "icon": "󰴑", "source": "pacman", "ref": "papers" },
+    { "id": "zathura", "category": "document", "label": "Zathura (keyboard PDF viewer)", "icon": "󰴑", "source": "pacman", "ref": "zathura zathura-pdf-mupdf" },
+    { "id": "xournalpp", "category": "document", "label": "Xournal++ (annotate, handwrite)", "icon": "", "source": "pacman", "ref": "xournalpp" },
+    { "id": "pdfarranger", "category": "document", "label": "PDF Arranger (merge, split, rotate)", "icon": "", "source": "pacman", "ref": "pdfarranger" },
+
+    { "id": "qalculate-gtk", "category": "utility", "label": "Qalculate! (calculator)", "icon": "", "source": "pacman", "ref": "qalculate-gtk" },
+    { "id": "omacalc", "category": "utility", "label": "omacalc (terminal calculator)", "icon": "", "source": "aur", "ref": "omacalc" },
+    { "id": "file-roller", "category": "utility", "label": "File Roller (archives)", "icon": "󰣇", "source": "pacman", "ref": "file-roller" },
+    { "id": "gnome-disk-utility", "category": "utility", "label": "Disks (partitions, images, SMART)", "icon": "󰋊", "source": "pacman", "ref": "gnome-disk-utility" },
+    { "id": "localsend", "category": "utility", "label": "LocalSend (files over the LAN)", "icon": "󰥦", "source": "aur", "ref": "localsend" },
+    { "id": "hyprmod", "category": "utility", "label": "hyprmod (Hyprland settings GUI)", "icon": "", "source": "aur", "ref": "hyprmod" },
+
+    { "id": "kdeconnect", "category": "mobile", "label": "KDE Connect (phone pairing)", "icon": "󰆽", "source": "pacman", "ref": "kdeconnect" },
+    { "id": "scrcpy", "category": "mobile", "label": "scrcpy (mirror an Android screen)", "icon": "󰍹", "source": "pacman", "ref": "scrcpy" },
+    { "id": "android-tools", "category": "mobile", "label": "Android tools (adb, fastboot)", "icon": "", "source": "pacman", "ref": "android-tools" },
+    { "id": "waydroid", "category": "mobile", "label": "Waydroid (Android container)", "icon": "󰆽", "source": "pacman", "ref": "waydroid" },
+    { "id": "libimobiledevice", "category": "mobile", "label": "libimobiledevice (iPhone, iPad)", "icon": "󰆽", "source": "pacman", "ref": "libimobiledevice" }
   ]
 }

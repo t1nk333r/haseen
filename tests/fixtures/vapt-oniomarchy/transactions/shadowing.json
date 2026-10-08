@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "comment": "Opted-in planning over an approved, verified private source. extra rows are repo|name|version|url; exclude drops private records; expect is the selected source and an attempted_tiers substring.",
+  "cases": [
+    {"name": "earlier exact package wins", "group": "sdr", "logical": "cubicsdr", "extra": ["extra|cubicsdr|0.2.7-1|https://cubicsdr.com"], "exclude": [], "source": "extra", "tiers": "extra"},
+    {"name": "private package resolves when nothing earlier publishes it", "group": "sdr", "logical": "cubicsdr", "extra": [], "exclude": [], "source": "oniomarchy", "tiers": ",oniomarchy"},
+    {"name": "reviewed alias keeps the published suffix", "group": "sdr", "logical": "chirp", "extra": [], "exclude": [], "source": "oniomarchy", "tiers": ",oniomarchy"},
+    {"name": "earlier homonym with another identity refuses the private package", "group": "osint", "logical": "recon-ng", "extra": ["extra|recon-ng|5.1.2-1|https://example.org/recon-ng"], "exclude": [], "source": "none", "tiers": "oniomarchy:identity-rejected"},
+    {"name": "private Provides never stands in for an item", "group": "sdr", "logical": "cubicsdr", "extra": [], "exclude": ["cubicsdr"], "source": "none", "tiers": "oniomarchy:unavailable"},
+    {"name": "wrong-architecture record is not admitted", "group": "wireless", "logical": "airgeddon", "extra": [], "exclude": [], "source": "none", "tiers": "oniomarchy:unavailable"}
+  ]
+}

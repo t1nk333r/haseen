@@ -1,0 +1,5 @@
+# Logical items whose identity limits resolution beyond identities.tsv.
+# blocked: never resolved from any source; exact-name: no Provides substitute.
+# logical	policy	reason
+metasploit-mcp	blocked	upstream project identity not established by package inventory facts
+wordlists	exact-name	distinct data collection; seclists or a Provides declaration cannot substitute

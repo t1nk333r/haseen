@@ -1,0 +1,4 @@
+# Additional tool-name inventory from oniomarchy category facts; independently resolved by haseen; no upstream installer code copied.
+keepassxc
+mat2
+veracrypt

@@ -82,10 +82,12 @@ picker_load() {
         layers)
             _picker_toml_list "$value" list || continue
             for x in "${list[@]}"; do
-                if layer_exists "$x"; then
-                    PICK_LAYERS+=("$x")
-                else
+                if ! layer_exists "$x"; then
                     warn "$file: unknown layer '$x', dropped"
+                elif ! _picker_pickable "$x"; then
+                    warn "$file: layer '$x' needs its own arguments and is not picked here, dropped (see ./install.sh --help)"
+                else
+                    PICK_LAYERS+=("$x")
                 fi
             done
             ;;
@@ -183,7 +185,7 @@ _picker_toggle() {
             [[ -n $i ]] && on[$i]=1
         done <<<"$out"
     else
-        local opts=() PS3
+        local opts=() PS3 k
         n=${#_items[@]}
         PS3="Toggle a number, or $((n + 1)) to continue: "
         printf '%s\n' "$title" >&2
@@ -202,7 +204,12 @@ _picker_toggle() {
             # select only leaves with an empty REPLY at end of input.
             [[ -z $REPLY || $choice == continue ]] && break
             [[ -z $choice ]] && continue
-            i="${_items[REPLY - 1]}"
+            # The item comes from the option select chose, not from REPLY:
+            # select reads "08" as 8, bash arithmetic as a bad octal number.
+            for ((k = 0; k < n; k++)); do
+                [[ ${opts[k]} == "$choice" ]] && break
+            done
+            i="${_items[k]}"
             if [[ -n ${on[$i]:-} ]]; then unset 'on[$i]'; else on[$i]=1; fi
         done
     fi
@@ -212,13 +219,18 @@ _picker_toggle() {
     done
 }
 
+# A layer that needs its own arguments (LAYER_PICKABLE=false, e.g. vapt's
+# explicit groups) is never offered: applied bare it would refuse and abort
+# the install after earlier layers applied. Its installer flags are the route.
+_picker_pickable() { [[ $(layer_field "$1" LAYER_PICKABLE) != false ]]; }
+
 # picker_run CORE_LAYER... — the guided choice into PICK_*. A saved choice is
 # offered for reuse first; declining it starts the picker from that choice.
 # Without one, the CORE layers start ticked and everything optional starts off.
 picker_run() {
     local core=("$@") optional=() all=() n url
     for n in $(layer_names); do
-        _picker_has "$n" "${core[@]}" || optional+=("$n")
+        _picker_has "$n" "${core[@]}" || ! _picker_pickable "$n" || optional+=("$n")
     done
     # shellcheck disable=SC2034  # read by name in _picker_toggle
     all=("${core[@]}" "${optional[@]}")

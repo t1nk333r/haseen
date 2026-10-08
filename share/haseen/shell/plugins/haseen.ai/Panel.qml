@@ -22,8 +22,8 @@ Item {
     property var settings: ({})
     property var screen: null
 
-    // bin/haseen next to share/haseen: true for the checkout, /usr/local,
-    // /usr and the Nix package alike.
+    // bin/haseen next to share/haseen: true for the checkout, /usr/local
+    // and /usr alike.
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property string endpointSetting: typeof settings.endpoint === "string" ? settings.endpoint : ""
 

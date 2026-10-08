@@ -1,0 +1,8 @@
+# Owner tool-name inventory from waydots/packages/security/forensics.txt.
+radare2
+gdb
+binwalk
+foremost
+sleuthkit
+yara
+strace

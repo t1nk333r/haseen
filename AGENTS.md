@@ -13,7 +13,9 @@ between parts. The engineering record is `plans/`, indexed by
 - **Read system state through `sysroot_path`.** Tests run against fixture trees
   in `tests/fixtures/`, never against the live machine.
 - **Never edit the user's files after seeding them.** Behaviour that haseen owns
-  lives in `share/haseen/default/`, and user files include it.
+  lives in `share/haseen/default/`, and user files include it. One exception
+  (owner, 2026-10-08, plan 038): `haseen seed user` appends one include line for
+  `share/haseen/default/shell/init.sh` to an existing `~/.bashrc` (and `~/.zshrc`), once.
 - **Never remove the owner's plugins.** `~/.config/omarchy/plugins/` and
   `~/.config/DankMaterialShell/plugins/` are read-only sources. No command,
   layer, migration or cleanup may delete, move or rewrite anything in them.
@@ -26,7 +28,11 @@ between parts. The engineering record is `plans/`, indexed by
   `pkg_install` for repo packages and `pkg_install_aur` for everything else,
   which applies the order. Prefer a repo, Chaotic-AUR or `[omarchy]` package
   over an AUR one when choosing a dependency. Never add `omarchy` or
-  `omarchy-settings` (`PKG_DENY`).
+  `omarchy-settings` (`PKG_DENY`). One owner-approved exception (2026-10-05,
+  confirmed 2026-10-08, plan 037): the catalogue's `flea` entry
+  (`"pullsOmarchy": true`) may let pacman pull both in as dependencies, and
+  only after `catalog_confirm_omarchy` prints the closure and asks. No other
+  entry may set `pullsOmarchy`.
 - **License: MIT.** You may adapt Omarchy and DMS code (MIT): keep the upstream
   notice in the file header and add a row to `NOTICE.md`. end-4 and caelestia
   are GPL-3.0 and are reference only. Never paste their code.
@@ -48,6 +54,20 @@ between parts. The engineering record is `plans/`, indexed by
   - Installed with the shell layer (owner, 2026-10-07, plan 073): the Helium
     browser (`helium-browser-bin`) and its Cairn extension, downloaded from
     Cairn's releases (AGPL-3.0, never vendored).
+  - Installed with the desktop layer (owner, 2026-10-08): the default file
+    handlers `yazi`, `imv`, `mpv`, `papers` and `xdg-terminal-exec` (plan 037),
+    and the capture tools `satty` and `tesseract-data-ara` (plan 041).
+  - Default packages (owner, 2026-10-08): `zoxide`, `eza`, `bat` (plan 038)
+    and `tmux` (plan 044) with the base layer, and the `herdr` multiplexer
+    with the desktop layer (plan 044). herdr and `xdg-terminal-exec` come
+    only from Omarchy's `[omarchy]` repo (`omarchy:` manifest entries): without
+    the `omarchy-repo` layer the desktop layer skips them with a warning.
+  - Default keybinds (owner, 2026-10-08, plan 043): the owner's waydots layout
+    in `share/haseen/default/hypr/binds.lua` is everyone's default (SUPER + F1
+    sheet, ALT + V clipboard, vim focus and move, a silent SUPER + SHIFT + n,
+    the HYPER snap layer); Omarchy's arrows and SUPER + W stay bound.
+  - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
+    plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
@@ -63,7 +83,7 @@ tools/secrets.sh   # before every push: gitleaks (history) + privacy patterns
 ```
 
 `main` on GitHub is protected:
-- The CI checks `lint`, `test`, `docs`, `secrets` and `nix` must pass on an up-to-date branch.
+- The CI checks `lint`, `test`, `docs` and `secrets` must pass on an up-to-date branch.
 - History stays linear: no force pushes and no deletion.
 - Admins are included.
 

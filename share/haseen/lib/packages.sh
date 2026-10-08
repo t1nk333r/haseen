@@ -4,6 +4,9 @@
 # Manifest format (layers/<name>/packages.txt and friends):
 #   pkgname            # official repos (CachyOS repos first on CachyOS)
 #   aur:pkgname        # not in the official repos; see pkg_install_aur
+#   omarchy:pkgname    # taken prebuilt from Omarchy's [omarchy] repo only,
+#                      # skipped with a warning without it; see
+#                      # pkg_install_omarchy
 #   # comment          # whole-line or trailing comments; blank lines ignored
 # A package name must match pacman's charset; anything else is a manifest
 # error, not something to pass to a shell.
@@ -18,20 +21,26 @@ HASEEN_PACKAGES_SH=1
 # shellcheck source=common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-PKG_NAME_RE='^[a-z0-9@._+][a-z0-9@._+-]*$'
+# Spelled out, not [a-z]: a bracket range follows the caller's locale
+# collation (a UTF-8 locale can admit "á"), a literal list never does. The
+# same ASCII set as metadata.py's NAME.
+PKG_NAME_RE='^[abcdefghijklmnopqrstuvwxyz0123456789@._+][abcdefghijklmnopqrstuvwxyz0123456789@._+-]*$'
+# Manifest whitespace, ASCII only for the same reason ([[:space:]] admits
+# Unicode spaces under a UTF-8 locale).
+PKG_SPACE=$' \t\r\n\v\f'
 
-# manifest_entries FILE KIND — print package names of KIND (repo|aur).
+# manifest_entries FILE KIND — print package names of KIND (repo|aur|omarchy).
 manifest_entries() {
     local file="$1" kind="$2" line name
     [[ -r $file ]] || die "manifest not readable: $file"
     while IFS= read -r line || [[ -n $line ]]; do
         line="${line%%#*}"
-        line="${line//[[:space:]]/}"
+        line="${line//[$PKG_SPACE]/}"
         [[ -n $line ]] || continue
         case "$line" in
-        aur:*)
-            [[ $kind == aur ]] || continue
-            name="${line#aur:}"
+        aur:* | omarchy:*)
+            [[ $kind == "${line%%:*}" ]] || continue
+            name="${line#*:}"
             ;;
         *:*) die "$file: unknown source prefix in '$line'" ;;
         *)
@@ -145,7 +154,16 @@ pkg_source() {
 # repos. Each one comes from the first source that has it: an enabled repo,
 # Chaotic-AUR, the [omarchy] repo, then the AUR as the last resort (built as
 # the invoking user).
-pkg_install_aur() {
+pkg_install_aur() { _pkg_install_sourced aur "$@"; }
+
+# _pkg_install_sourced LAST NAME... — the shared source order. LAST is what
+# happens to a package no enabled binary repo carries (or whose lookup
+# failed): "aur" builds it, "skip" leaves it out with a warning. The source of
+# each package is resolved once, so a lookup that fails cannot route it
+# differently between the decision and the install.
+_pkg_install_sourced() {
+    local last=$1
+    shift
     local missing=() p src helper repo_pkgs=() chaotic_pkgs=() omarchy_pkgs=() aur_pkgs=()
     pkg_refuse_denied "$@"
     for p in "$@"; do
@@ -168,6 +186,10 @@ pkg_install_aur() {
     ((${#omarchy_pkgs[@]} == 0)) || run_root pacman -S "${flags[@]}" "${omarchy_pkgs[@]}"
     ((${#aur_pkgs[@]} > 0)) || return 0
 
+    if [[ $last == skip ]]; then
+        warn "skipping ${aur_pkgs[*]}: haseen installs them only prebuilt, and no enabled repository ([omarchy] included) carries them; they are never built from the AUR"
+        return 0
+    fi
     if chaotic_enabled; then
         warn "not in the official repos, Chaotic-AUR or [omarchy], building from the AUR (last resort): ${aur_pkgs[*]}"
     else
@@ -186,15 +208,58 @@ pkg_install_aur() {
     run "$helper" -S "${flags[@]}" "${aur_pkgs[@]}"
 }
 
+# _omarchy_repo_applied_before — this `haseen layer apply` run applies the
+# omarchy-repo layer before the current one (HASEEN_APPLY_LAYERS, the apply
+# order haseen-layer-apply exports).
+_omarchy_repo_applied_before() {
+    local n
+    for n in ${HASEEN_APPLY_LAYERS:-}; do
+        [[ $n == omarchy-repo ]] && return 0
+        [[ $n == "${LAYER_NAME:-}" ]] && return 1
+    done
+    return 1
+}
+
+# pkg_install_omarchy NAME... — omarchy: entries: packages haseen takes only
+# prebuilt from Omarchy's [omarchy] repo (owner, 2026-10-08), such as herdr,
+# whose AUR build differs in licence and once hung for 44 minutes (plan 014).
+# With the repo enabled they go through the binary part of pkg_install_aur's
+# source order; one that no enabled repo carries, or whose lookup fails, is
+# skipped with a warning, never built from the AUR. Without the repo they are
+# skipped with a warning too. A dry run that applies omarchy-repo earlier
+# plans them from the repo, which the real run will have enabled by then.
+pkg_install_omarchy() {
+    local p missing=()
+    pkg_refuse_denied "$@"
+    if omarchy_repo_enabled; then
+        _pkg_install_sourced skip "$@"
+        return
+    fi
+    for p in "$@"; do
+        pkg_installed "$p" || missing+=("$p")
+    done
+    ((${#missing[@]} > 0)) || return 0
+    if $DRY_RUN && _omarchy_repo_applied_before; then
+        local flags=(--needed)
+        $ASSUME_YES && flags+=(--noconfirm)
+        run_root pacman -S "${flags[@]}" "${missing[@]/#/omarchy/}"
+        return 0
+    fi
+    warn "skipping ${missing[*]}: haseen installs them only from Omarchy's [omarchy] repo, which is not enabled. To add them: haseen layer apply omarchy-repo ${LAYER_NAME:-desktop}"
+}
+
 # pkg_install_manifest FILE — install every entry of a manifest. Entries are
 # read through command substitution (not process substitution) so a manifest
 # error aborts the caller instead of dying in a subshell.
 pkg_install_manifest() {
-    local file="$1" out repo=() aur=()
+    local file="$1" out repo=() aur=() omarchy=()
     out="$(manifest_entries "$file" repo)" || return 1
     [[ -z $out ]] || mapfile -t repo <<<"$out"
     out="$(manifest_entries "$file" aur)" || return 1
     [[ -z $out ]] || mapfile -t aur <<<"$out"
+    out="$(manifest_entries "$file" omarchy)" || return 1
+    [[ -z $out ]] || mapfile -t omarchy <<<"$out"
     ((${#repo[@]} == 0)) || pkg_install "${repo[@]}"
     ((${#aur[@]} == 0)) || pkg_install_aur "${aur[@]}"
+    ((${#omarchy[@]} == 0)) || pkg_install_omarchy "${omarchy[@]}"
 }

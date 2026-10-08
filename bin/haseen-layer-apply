@@ -37,6 +37,9 @@ check_conflicts "${order[@]}"
 
 last="${layers[-1]}"
 info "apply order: ${order[*]}"
+# Read by pkg_install_omarchy: a dry run plans omarchy: entries from a repo an
+# earlier layer of this run would have enabled.
+export HASEEN_APPLY_LAYERS="${order[*]}"
 for n in "${order[@]}"; do
     if [[ $n != "$last" ]] && layer_is_applied "$n" && [[ ! " ${layers[*]} " == *" $n "* ]]; then
         info "layer $n already applied; skipping (re-apply explicitly to refresh)"

@@ -40,7 +40,19 @@ assert_eq "catalog: no web apps" "" "$(jq -r '.entries[] | select((.id + " " + .
 assert_eq "catalog: flatpak refs are app ids" "" "$(jq -r '.entries[] | select(.source == "flatpak") | .ref' "$CATALOG" | grep -Ev '^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$' || true)"
 assert_eq "catalog: package refs are package names" "" "$(jq -r '.entries[] | select(.source == "pacman" or .source == "aur") | .ref | split(" ")[]' "$CATALOG" | grep -Ev '^[a-z0-9@._+][a-z0-9@._+-]*$' || true)"
 assert_eq "catalog: fonts carry a family" "" "$(jq -r '.entries[] | select(.category == "font" and (.family // "") == "") | .id' "$CATALOG")"
-assert_eq "catalog: dev toolchains use mise or docker" "" "$(jq -r '.entries[] | select(.category == "development" and .source != "mise" and (.ref | test("docker") | not)) | .id' "$CATALOG")"
+# The development category holds language toolchains (mise), the Docker
+# databases and plain CLI tools (gh, lazygit, mise, dua, tealdeer: plan 038;
+# tmux, herdr: plan 044).
+# What still has to hold: a versioned "tool@version" ref is a mise entry, and a
+# container entry is run by the docker package.
+assert_eq "catalog: versioned dev refs go through mise" "" "$(jq -r '.entries[] | select(.category == "development" and (.ref | test("@")) and .source != "mise") | .id' "$CATALOG")"
+assert_eq "catalog: dev databases run in docker" "" "$(jq -r '.entries[] | select(.container != null and .ref != "docker") | .id' "$CATALOG")"
+# An entry that drags `omarchy` in as a dependency has to say so, and only
+# those may: everything else is refused by PKG_DENY (lib/packages.sh).
+assert_eq "catalog: only flea pulls omarchy" "flea" "$(jq -r '.entries[] | select(.pullsOmarchy == true) | .id' "$CATALOG")"
+assert_eq "catalog: an omarchy puller comes from a repo, not Flathub" "aur" "$(jq -r '.entries[] | select(.pullsOmarchy == true) | .source' "$CATALOG")"
+# The vendor mimeapps.list names these, so the catalogue has to carry them.
+assert_eq "catalog: every default handler app is listed" "" "$(for id in yazi flea imv mpv papers; do jq -e --arg i "$id" 'any(.entries[]; .id == $i)' "$CATALOG" >/dev/null || echo "$id"; done)"
 assert_contains "catalog: Flathub verification date" "$(jq -r .flathubVerified "$CATALOG")" "2026-"
 assert_contains "catalog: browsers are Flatpaks" "$(jq -r '[.entries[] | select(.category == "browser") | .source] | unique | join(",")' "$CATALOG")" "flatpak"
 # Helium is not on Flathub (plan 070): helium-browser-bin from Chaotic-AUR.
@@ -355,3 +367,79 @@ capture env -u HASEEN_INLINE TERMINAL=kitty bash -c 'haseen password user </dev/
 assert_contains "terminal: \$TERMINAL honoured" "$OUTPUT" "KITTY --class=haseen.floating"
 capture env -u HASEEN_INLINE bash -c 'haseen install app --installed </dev/null'
 assert_not_contains "terminal: read-only queries stay inline" "$OUTPUT" "FOOT"
+
+# --- flea: the one entry allowed to pull `omarchy` in ------------------------
+# `omarchy` and `omarchy-settings` stay refused as install targets. flea is a
+# leaf app in the [omarchy] repo that depends on `omarchy`, so pacman pulls the
+# pair in; the owner accepted that for flea alone. The guard has to say what is
+# coming before it happens.
+sandbox catalog-flea
+cat_root
+printf '\n[omarchy]\nInclude = /etc/pacman.d/omarchy-mirrorlist\n' >>"$ROOT/etc/pacman.conf"
+mkdir -p "$ROOT/var/lib/pacman/sync"
+printf 'flea\nlocalsend\nomacalc\nherdr\nxdg-terminal-exec\n' >"$ROOT/var/lib/pacman/sync/omarchy.pkgs"
+
+capture haseen install app flea --dry-run
+assert_status "flea: exit" 0 "$STATUS"
+assert_dry_pure "flea" "$OUTPUT"
+assert_contains "flea: names the dependency it drags in" "$OUTPUT" "depends on the 'omarchy' package"
+assert_contains "flea: prints the whole closure" "$OUTPUT" \
+    "omarchy omarchy-keyring omarchy-settings=4.0.4 hyprland quickshell uwsm sddm"
+assert_contains "flea: the closure reaches the boot pieces" "$OUTPUT" "limine-snapper-sync snapper"
+assert_contains "flea: the closure says when it was read" "$OUTPUT" "as read on 2026-10-05, omarchy 4.0.4-1"
+for f in /etc/fonts/conf.d/50-omarchy.conf /etc/limine-entry-tool.d/omarchy-uki.conf \
+    /etc/mkinitcpio.conf.d/omarchy_hooks.conf /etc/sddm.conf.d/10-wayland.conf \
+    /usr/share/applications/mimeapps.list; do
+    assert_contains "flea: collision $f" "$OUTPUT" "$f"
+done
+assert_contains "flea: says which subsystem each file lands on" "$OUTPUT" "haseen uses greetd + tuigreet"
+assert_contains "flea: comes from the [omarchy] repo, not the AUR" "$OUTPUT" "DRYRUN: sudo pacman -S --needed omarchy/flea"
+assert_not_contains "flea: nothing is built from the AUR" "$OUTPUT" "paru -S --needed flea"
+
+# The confirmation is real: a refusal installs nothing, --yes answers it.
+capture env HASEEN_INLINE=1 bash -c 'echo n | haseen install app flea'
+assert_status "flea: a refusal stops it" 1 "$STATUS"
+assert_contains "flea: refusal message" "$OUTPUT" "not confirmed; nothing was installed"
+assert_not_contains "flea: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
+capture env HASEEN_INLINE=1 bash -c 'haseen install app flea --yes </dev/null'
+assert_contains "flea: --yes answers the prompt" "$OUTPUT" "STUB-CALLED: sudo pacman -S --needed --noconfirm omarchy/flea"
+
+# The bare routes name the package directly; they get the same confirmation.
+# (A repo-qualified name such as omarchy/flea is not a package name there.)
+for route in package aur; do
+    capture haseen install "$route" flea --dry-run
+    assert_contains "install $route flea: shows the omarchy closure" "$OUTPUT" "depends on the 'omarchy' package"
+    assert_dry_pure "install $route flea" "$OUTPUT"
+    capture env HASEEN_INLINE=1 bash -c 'echo n | haseen install "$1" flea' _ "$route"
+    assert_status "install $route flea: a refusal stops it" 1 "$STATUS"
+    assert_contains "install $route flea: refusal message" "$OUTPUT" "not confirmed; nothing was installed"
+    assert_not_contains "install $route flea: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
+    capture haseen install "$route" omarchy/flea --dry-run
+    assert_status "install $route omarchy/flea: refused" 1 "$STATUS"
+    assert_not_contains "install $route omarchy/flea: nothing planned" "$OUTPUT" "DRYRUN: "
+done
+capture haseen install package localsend --dry-run
+assert_not_contains "install package localsend: no omarchy warning" "$OUTPUT" "depends on the 'omarchy' package"
+
+# Everything else in the [omarchy] repo is an ordinary leaf package: no guard.
+capture haseen install app localsend --dry-run
+assert_contains "localsend: straight from the [omarchy] repo" "$OUTPUT" "DRYRUN: sudo pacman -S --needed omarchy/localsend"
+assert_not_contains "localsend: no omarchy warning" "$OUTPUT" "depends on the 'omarchy' package"
+
+# The denial itself is unchanged: omarchy is still refused as a target.
+capture haseen install package omarchy --dry-run
+assert_status "omarchy: still refused directly" 1 "$STATUS"
+assert_contains "omarchy: refusal names the decision" "$OUTPUT" "haseen never installs 'omarchy'"
+capture haseen install aur omarchy-settings --dry-run
+assert_status "omarchy-settings: still refused directly" 1 "$STATUS"
+
+# The new catalogue categories reach the CLI.
+capture haseen install app --list media
+assert_contains "list: media" "$OUTPUT" $'mpv\tpacman\tmpv (video player)'
+assert_not_contains "list: category filter" "$OUTPUT" "firefox"
+capture haseen install app --list mobile
+assert_contains "list: mobile" "$OUTPUT" "scrcpy"
+capture haseen install app zathura --dry-run
+assert_contains "zathura: the PDF backend comes with it" "$OUTPUT" "DRYRUN: sudo pacman -S --needed zathura zathura-pdf-mupdf"
+capture haseen install app hyprmod --dry-run
+assert_contains "hyprmod: the one AUR build in this batch" "$OUTPUT" "DRYRUN: paru -S --needed hyprmod"

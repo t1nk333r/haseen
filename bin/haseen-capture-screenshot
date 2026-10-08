@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Screenshot a region, window or output to the clipboard and ~/Pictures
-# haseen:args [region|window|output|screen] [--geometry "X,Y WxH"] [--output NAME] [--file PATH] [--format png|jpg|ppm] [--quality N] [--cursor] [--edit] [--stdout] [--no-save] [--no-copy] [--no-notify] [--dry-run]
+# haseen:args [region|window|output|screen] [--geometry "X,Y WxH"] [--output NAME] [--file PATH] [--format png|jpg|ppm] [--quality N] [--cursor] [--edit] [--upload] [--stdout] [--no-save] [--no-copy] [--no-notify] [--dry-run]
 #
 # Adapted from Omarchy bin/omarchy-capture-screenshot and omarchy-capture-region
 # (MIT, Copyright (c) David Heinemeier Hansson): region picking with slurp,
@@ -28,11 +28,16 @@ Options:
   --quality N           JPEG quality 1-100 (default 90)
   --cursor              include the pointer
   --edit                open the shot in satty or swappy, whichever is installed
+  --upload              upload the result and copy the link (haseen upload)
+  --upload-to BACKEND   upload with this backend (implies --upload)
   --stdout              write the image to stdout; nothing is saved, copied or announced
   --no-save             clipboard only
   --no-copy             file only
   --no-notify           no desktop notification
   --dry-run             print the plan
+
+--edit --upload is the annotate-then-share path: annotate, save, upload, and
+the link lands on the clipboard.
 
 Files go to \$HASEEN_SCREENSHOT_DIR or \$(xdg-user-dir PICTURES).
 EOF
@@ -51,6 +56,7 @@ parse_common_flags "$@"
 set -- "${REST[@]}"
 mode=region geometry="" output="" file="" format=png quality=90
 cursor=false edit=false stdout=false save=true copy=true announce=true
+upload=false upload_backend=""
 set_option() {
     case $1 in
     geometry) geometry=$2 ;;
@@ -74,6 +80,13 @@ while (($#)); do
         ;;
     --cursor) cursor=true ;;
     --edit) edit=true ;;
+    --upload) upload=true ;;
+    --upload-to)
+        (($# > 1)) || { usage >&2; exit 2; }
+        upload=true upload_backend=$2
+        shift
+        ;;
+    --upload-to=*) upload=true upload_backend=${1#*=} ;;
     --stdout) stdout=true ;;
     --no-save) save=false ;;
     --no-copy) copy=false ;;
@@ -97,13 +110,13 @@ if [[ ! $quality =~ ^[0-9]+$ ]] || ((quality < 1 || quality > 100)); then
     exit 2
 fi
 if $stdout; then
-    if $edit; then
-        echo "Error: --stdout and --edit together: pipe stdout into the editor instead" >&2
+    if $edit || $upload; then
+        echo "Error: --stdout with --edit or --upload: pipe stdout into the next step instead" >&2
         exit 2
     fi
     save=false copy=false announce=false
 fi
-$stdout || $save || $copy || $edit || die "--no-save and --no-copy together leave nothing to do"
+$stdout || $save || $copy || $edit || $upload || die "--no-save and --no-copy together leave nothing to do"
 if [[ -n $geometry && ! $geometry =~ ^-?[0-9]+,-?[0-9]+\ [0-9]+x[0-9]+$ ]]; then
     echo "Error: --geometry wants \"X,Y WxH\", got: $geometry" >&2
     exit 2
@@ -178,6 +191,7 @@ if $DRY_RUN; then
     [[ $editor == satty ]] && echo "DRYRUN: satty --filename $file --output-filename $file --early-exit --copy-command wl-copy"
     [[ $editor == swappy ]] && echo "DRYRUN: swappy -f $file -o $file"
     $copy && echo "DRYRUN: wl-copy -t $mime < $file"
+    $upload && echo "DRYRUN: haseen-upload $file${upload_backend:+ --backend $upload_backend} (the link replaces the image on the clipboard)"
     $save || echo "DRYRUN: rm $file (clipboard only)"
     $announce || echo "DRYRUN: no notification"
     exit 0
@@ -194,10 +208,34 @@ swappy) swappy -f "$file" -o "$file" ;;
 esac
 
 $copy && wl-copy -t "$mime" <"$file"
+
+# Upload last, so the link is what ends up on the clipboard: once a shot is
+# shared, the link is what you paste. This is the ShareX annotate-then-upload
+# path in one keystroke: --edit --upload.
+link=""
+if $upload; then
+    up=(haseen-upload "$file" --quiet)
+    [[ -z $upload_backend ]] || up+=(--backend "$upload_backend")
+    link="$("${up[@]}")" || die "the upload failed"
+fi
+
 if $save; then
     printf '%s\n' "$file"
-    if $announce; then notify -i "$file" "Screenshot saved" "${file/#"$HOME"/\~}"; fi
+    if ! $announce; then
+        :
+    elif [[ -n $link ]]; then
+        notify -i "$file" "Screenshot uploaded" "$link"
+    else
+        notify -i "$file" "Screenshot saved" "${file/#"$HOME"/\~}"
+    fi
 else
     rm -f "$file"
-    if $announce; then notify "Screenshot copied to clipboard"; fi
+    if ! $announce; then
+        :
+    elif [[ -n $link ]]; then
+        notify "Screenshot uploaded" "$link"
+    else
+        notify "Screenshot copied to clipboard"
+    fi
 fi
+[[ -z $link ]] || printf '%s\n' "$link"

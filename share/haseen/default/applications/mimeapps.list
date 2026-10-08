@@ -1,0 +1,92 @@
+# haseen's vendor default handlers.
+#
+# MIME-type coverage adapted from Omarchy default/applications/mimeapps.list
+# (MIT, Copyright (c) David Heinemeier Hansson). That list is the proven set —
+# it is what a working Omarchy desktop actually opens files with — so haseen
+# keeps the same types and only swaps in its own apps. Two deliberate
+# differences: the image block is widened to every image type imv declares in
+# its own .desktop (imv 5.0.1 MimeType=), and Omarchy's
+# x-scheme-handler/mailto=HEY.desktop is dropped (haseen ships no mail app).
+#
+# This file is the *vendor* default, the lowest precedence XDG knows. The
+# installer puts it in $PREFIX/share/applications/mimeapps.list, which is read
+# only after $XDG_CONFIG_HOME/mimeapps.list and every $XDG_CONFIG_DIRS entry,
+# so anything the user chooses wins. `haseen setup default <kind> <app>` writes
+# that user file through xdg-mime; this one is only the fallback for a fresh
+# install where the user has chosen nothing yet.
+#
+# Every app named here is installed by a default layer (desktop, and shell for
+# Helium), except the editor: neovim is in the catalogue, not a layer, so the
+# text block names nvim.desktop for when it is installed. The desktop ids
+# were read from the packages themselves (pacman -Ql / -Fl).
+
+[Default Applications]
+# File manager: yazi is the portable default (a TUI, Terminal=true, so it opens
+# through xdg-terminal-exec — see ../xdg-terminal-exec/). `haseen setup default
+# files flea` switches to the GUI one at user precedence.
+inode/directory=yazi.desktop
+
+# Images: imv.
+image/png=imv.desktop
+image/x-png=imv.desktop
+image/jpeg=imv.desktop
+image/jpg=imv.desktop
+image/pjpeg=imv.desktop
+image/gif=imv.desktop
+image/bmp=imv.desktop
+image/x-bmp=imv.desktop
+image/tiff=imv.desktop
+image/tiff-fx=imv.desktop
+image/webp=imv.desktop
+image/heif=imv.desktop
+image/avif=imv.desktop
+image/jxl=imv.desktop
+image/qoi=imv.desktop
+image/x-farbfeld=imv.desktop
+image/svg+xml=imv.desktop
+
+# Documents: papers (GNOME's Evince successor).
+application/pdf=org.gnome.Papers.desktop
+
+# Video and containers: mpv.
+video/mp4=mpv.desktop
+video/x-msvideo=mpv.desktop
+video/x-matroska=mpv.desktop
+video/x-flv=mpv.desktop
+video/x-ms-wmv=mpv.desktop
+video/mpeg=mpv.desktop
+video/ogg=mpv.desktop
+video/webm=mpv.desktop
+video/quicktime=mpv.desktop
+video/3gpp=mpv.desktop
+video/3gpp2=mpv.desktop
+video/x-ms-asf=mpv.desktop
+video/x-ogm+ogg=mpv.desktop
+video/x-theora+ogg=mpv.desktop
+application/ogg=mpv.desktop
+
+# Plain text and source code: the editor. nvim ships nvim.desktop
+# (Terminal=true), so this also goes through xdg-terminal-exec.
+text/plain=nvim.desktop
+text/english=nvim.desktop
+text/x-makefile=nvim.desktop
+text/x-c++hdr=nvim.desktop
+text/x-c++src=nvim.desktop
+text/x-chdr=nvim.desktop
+text/x-csrc=nvim.desktop
+text/x-java=nvim.desktop
+text/x-moc=nvim.desktop
+text/x-pascal=nvim.desktop
+text/x-tcl=nvim.desktop
+text/x-tex=nvim.desktop
+application/x-shellscript=nvim.desktop
+text/x-c=nvim.desktop
+text/x-c++=nvim.desktop
+application/xml=nvim.desktop
+text/xml=nvim.desktop
+
+# Web links: Helium, the browser the shell layer installs (plan 070). `haseen
+# setup default browser` writes another choice into ~/.config/mimeapps.list
+# and xdg-settings.
+x-scheme-handler/http=helium.desktop
+x-scheme-handler/https=helium.desktop

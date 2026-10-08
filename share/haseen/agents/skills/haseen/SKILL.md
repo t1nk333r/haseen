@@ -2,7 +2,7 @@
 name: haseen
 description: >
   REQUIRED for end-user customisation of a haseen desktop (Hyprland Lua +
-  the haseen Quickshell shell on CachyOS, Arch or NixOS). Use when editing
+  the haseen Quickshell shell on CachyOS or Arch). Use when editing
   ~/.config/hypr/*.lua, ~/.config/haseen/ (shell.json, ai.json, plugins/,
   themes/, themed/, hooks/), writing or changing a shell plugin (bar widget,
   panel, service, launcher provider, overlay), changing keybindings, monitors,
@@ -17,8 +17,8 @@ MIT License, Copyright (c) David Heinemeier Hansson. Content rewritten for hasee
 
 # haseen
 
-haseen is a small desktop layered onto CachyOS or Arch (NixOS through the
-flake): Hyprland with a Lua config, plus its own Quickshell shell (one thin
+haseen is a small desktop layered onto CachyOS or Arch: Hyprland with a Lua
+config, plus its own Quickshell shell (one thin
 bar; everything else is a panel opened on demand). This skill lets you change
 it for the user without breaking updates.
 
@@ -29,6 +29,7 @@ it for the user without breaking updates.
 - Keybindings, monitors, window rules, gaps, borders, animations.
 - Themes, colours, fonts, the shell's look.
 - The local AI endpoint (`~/.config/haseen/ai.json`).
+- Optional security tooling (`haseen vapt …`).
 - Running `haseen …` commands for the user.
 
 **About to edit a file under `~/.config/` on this machine? Read this skill
@@ -42,12 +43,13 @@ Read the matching guide before you start:
 - [`hyprland.md`](hyprland.md): keybindings, monitors, window rules, look and feel in Lua.
 - [`theming.md`](theming.md): themes, colours, fonts, templates, hooks.
 - [`ai.md`](ai.md): the local AI endpoint, `ai.json`, the `local` policy, the AI panel.
+- [`vapt.md`](vapt.md): the optional VAPT tool groups, previews, status and what provisioning never does.
 
 ## The one hard rule: never edit `$HASEEN_PATH`
 
 `$HASEEN_PATH` is the installed haseen tree: `/usr/local/share/haseen`
-(installer), `/usr/share/haseen` (package) or a `/nix/store/…/share/haseen`
-path (NixOS). Updates replace it. **Never write there**, never `sudo` into it.
+(installer) or `/usr/share/haseen` (package). Updates replace it. **Never
+write there**, never `sudo` into it.
 Reading it is safe and useful: it holds the defaults you build on.
 
 ```
@@ -91,7 +93,7 @@ takes `--dry-run`, which prints the plan and touches nothing.
 haseen commands             # every command with its arguments and summary
 haseen commands plugin      # one group
 haseen plugin new --help    # help for one command (does not run it)
-cat "$(command -v haseen-plugin-new)"   # read the source (on NixOS the real script is in libexec/haseen/)
+cat "$(command -v haseen-plugin-new)"   # read the source
 ```
 
 | Group | For | Example |
@@ -102,6 +104,7 @@ cat "$(command -v haseen-plugin-new)"   # read the source (on NixOS the real scr
 | `haseen hook` | event scripts | `haseen hook install theme-set ./notify.sh` |
 | `haseen ai` | local AI | `haseen ai status`, `haseen ai models`, `haseen ai chat "hi"` |
 | `haseen layer` | optional features (packages + config) | `haseen layer list`, `haseen layer apply ai --dry-run` |
+| `haseen vapt` | optional security tool groups and the opt-in oniomarchy source (see `vapt.md`) | `haseen vapt install --groups sdr --dry-run`, `haseen vapt status`, `haseen vapt repo-status` |
 | `haseen doctor` | what haseen detects, layer health, shell RSS | `haseen doctor` |
 
 Prefer `--dry-run` first for anything that installs packages or touches
@@ -176,8 +179,7 @@ plugin and offers to disable it, safe mode, the last good `shell.json`
    always-visible bar widget (haseen avoids clutter); follow `plugins.md`.
 4. Colours or fonts? `theming.md`; a custom theme, never a patched stock one.
 5. Automation on theme change, boot or update? `haseen hook install`.
-6. Packages? Ask first; on CachyOS/Arch `sudo pacman -S …` in a terminal, on
-   NixOS add them to the user's flake/configuration instead.
+6. Packages? Ask first; `sudo pacman -S …` in a terminal.
 
 ## Example requests
 
@@ -185,7 +187,7 @@ plugin and offers to disable it, safe mode, the last good `shell.json`
 - "Move the clock to the right" → copy `bar.center`/`bar.right` from `haseen shell ipc shell plugins` or `$HASEEN_PATH/default/shell.json` into `~/.config/haseen/shell.json` and move `haseen.clock` (arrays replace, so write the whole section).
 - "Use 24-hour time with seconds" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.clock": {"settings": {"format": "HH:mm:ss"}}}`.
 - "Hide the battery" → `haseen plugin disable haseen.battery`.
-- "Dim the screen" / "keyboard light off" / "monitor brightness" → `haseen brightness set 30%`, `haseen brightness set kbd 0%`, `haseen brightness list` (ids; `ddc:DP-1` for a monitor). External monitors need `haseen setup ddc on` once (on NixOS: `haseen.ddc.enable = true` in the system configuration, the user in the `i2c` group; `haseen setup ddc on` refuses there). Sliders: `haseen plugin enable haseen.display`, then `haseen shell ipc panel toggle haseen.display` or Setup › Display.
+- "Dim the screen" / "keyboard light off" / "monitor brightness" → `haseen brightness set 30%`, `haseen brightness set kbd 0%`, `haseen brightness list` (ids; `ddc:DP-1` for a monitor). External monitors need `haseen setup ddc on` once. Sliders: `haseen plugin enable haseen.display`, then `haseen shell ipc panel toggle haseen.display` or Setup › Display.
 - "Warn me earlier" / "suspend at 5%" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.battery": {"settings": {"warnAt": 30, "criticalAt": 5, "criticalAction": "suspend"}}}` (`none` by default; `suspend`, `hibernate`, `poweroff` run 60 s after a critical notification with Cancel). The power panel (charge, profile, charge limit): click the bar battery or `haseen shell ipc panel toggle haseen.battery`.
 - "Show the keyboard layout in the bar" → `haseen plugin enable haseen.kblayout` (EN/AR; no room with one layout; click switches). "Show Caps Lock on screen" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.osd": {"settings": {"lockKeys": true}}}` (the default binds already call `haseen shell ipc osd lockkeys`); `mic` and `layout` OSD cards are on, set them to false to hide.
 - "Show the player" / "skip this song" / "switch to Spotify" → right or middle click the bar's now-playing label, or `haseen shell ipc panel toggle haseen.media` (left click plays/pauses). "Show Spotify's album art" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.media": {"settings": {"remoteArt": true}}}`; off by default because the https fetch tells the art server what is playing.

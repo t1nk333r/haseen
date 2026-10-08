@@ -1,0 +1,549 @@
+#!/usr/bin/env bash
+# haseen:summary Upload a file to a share host and copy the link
+# haseen:args [FILE] [--backend NAME] [--expires HOURS] [--list] [--no-copy] [--dry-run]
+#
+# One command, several backends. Credentials come from
+# ~/.config/haseen/upload.toml or the environment, never from this file, and
+# they are handed to curl through a config file on stdin (`curl --config -`),
+# so no token ever reaches argv, /proc/<pid>/cmdline, `ps`, a dry-run plan or a
+# notification.
+#
+# Backend status, verified 2026-10-05 (plan evidence in the research report,
+# §10 "Upload targets"); each backend's endpoint comment carries its line:
+#
+#   xbackbone  self-hosted, the owner's target. Primary when configured.
+#   catbox     anonymous, live, 200 MB, kept while accessed. Default fallback.
+#   uguu       anonymous, live, 128 MiB, expires after 3 h.
+#   temp.sh    anonymous, live, 4 GB, expires after 3 days.
+#   rclone     your own S3/R2 bucket; what the ShareX maintainers recommend.
+#   0x0        uploads are DISABLED upstream (HTTP 503). Kept, not default.
+#   imgur      client registration is CLOSED and /3/image answers 429 here.
+#              Usable only with a pre-existing client id. Never the default.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+CONFIG_FILE=${HASEEN_UPLOAD_CONFIG:-$HASEEN_USER_CONFIG/upload.toml}
+UA="haseen-upload/$(cat "$HASEEN_PATH/VERSION" 2>/dev/null || echo dev)"
+
+usage() {
+    cat <<EOF
+Usage: haseen upload FILE [options]
+
+Options:
+  --backend NAME   upload with this backend (default: $(default_backend_label))
+  --expires HOURS  hosts that take a lifetime (0x0) use this one
+  --list           show the backends and their status, then exit
+  --no-copy        do not put the link on the clipboard
+  --quiet          print the link only (no notification)
+  --dry-run        print the plan; nothing is sent
+  --yes            answer prompts with yes
+
+Backends:
+  xbackbone  your own XBackBone instance; the primary target once configured
+  catbox     catbox.moe, anonymous, 200 MB, no expiry while it is fetched
+  uguu       uguu.se, anonymous, 128 MiB, expires after 3 hours
+  temp.sh    temp.sh, anonymous, 4 GB, expires after 3 days
+  rclone     an rclone remote (S3, Cloudflare R2, …) plus 'rclone link'
+  0x0        0x0.st — upstream has DISABLED uploads (HTTP 503); kept for when
+             it returns, and for the self-hosted copies of the same software
+  imgur      needs a client id you already own: imgur closed new client
+             registration (addclient 301s to the homepage) and answers 429 to
+             POST /3/image from many networks. Never used unless you ask
+
+Credentials live in $CONFIG_FILE (keep it mode 0600):
+
+  default = "xbackbone"
+
+  [xbackbone]
+  url = "https://share.example.com"   # https:// (plain http only to localhost)
+  token = "…"          # Profile → Tokens
+  api = "auto"         # auto | form (≤3.8.2) | bearer (next-gen)
+
+  [imgur]
+  client_id = "…"
+
+  [rclone]
+  remote = "r2:bucket/screenshots"
+  link_expire = "1d"   # optional, passed to 'rclone link --expire'
+
+The environment overrides the file: HASEEN_UPLOAD_BACKEND,
+HASEEN_XBACKBONE_URL / HASEEN_XBACKBONE_TOKEN (XBB_URL / XBB_TOKEN, the names
+XBackBone's own CLI uses, are read too), HASEEN_IMGUR_CLIENT_ID,
+HASEEN_RCLONE_REMOTE.
+
+A delete token (0x0, imgur) is never printed: it is kept, mode 0600, in
+\$XDG_RUNTIME_DIR/haseen-upload.delete-token when that directory is private,
+otherwise in $HASEEN_USER_STATE/upload/.
+EOF
+}
+
+# --- configuration -----------------------------------------------------------
+
+# cfg SECTION KEY — one value out of the TOML. upload.toml is a flat file of
+# `key = "value"` lines under `[section]` headers, so a reader is cheaper and
+# has fewer dependencies than pulling in a TOML parser. Top-level keys are
+# section "".
+cfg() {
+    [[ -r $CONFIG_FILE ]] || return 0
+    awk -v want_s="$1" -v want_k="$2" '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*\[/ { s=$0; sub(/^[[:space:]]*\[/,"",s); sub(/\][[:space:]]*$/,"",s); next }
+        {
+            line=$0; sub(/^[[:space:]]+/,"",line)
+            i=index(line,"="); if (i==0) next
+            k=substr(line,1,i-1); v=substr(line,i+1)
+            sub(/[[:space:]]+$/,"",k)
+            sub(/^[[:space:]]+/,"",v); sub(/[[:space:]]+$/,"",v)
+            if (v ~ /^".*"$/) { v=substr(v,2,length(v)-2) }
+            else if (v ~ /^'"'"'.*'"'"'$/) { v=substr(v,2,length(v)-2) }
+            if (s==want_s && k==want_k) { print v; exit }
+        }' "$CONFIG_FILE"
+}
+
+xbb_url() { printf '%s' "${HASEEN_XBACKBONE_URL:-${XBB_URL:-$(cfg xbackbone url)}}"; }
+xbb_token() { printf '%s' "${HASEEN_XBACKBONE_TOKEN:-${XBB_TOKEN:-$(cfg xbackbone token)}}"; }
+imgur_client() { printf '%s' "${HASEEN_IMGUR_CLIENT_ID:-$(cfg imgur client_id)}"; }
+rclone_remote() { printf '%s' "${HASEEN_RCLONE_REMOTE:-$(cfg rclone remote)}"; }
+
+# The owner's own instance wins as soon as it is configured; otherwise the one
+# anonymous host that was live and keyless on the verification date.
+default_backend() {
+    local b=${HASEEN_UPLOAD_BACKEND:-$(cfg "" default)}
+    if [[ -z $b ]]; then
+        if [[ -n $(xbb_url) ]]; then b=xbackbone; else b=catbox; fi
+    fi
+    printf '%s' "$b"
+}
+default_backend_label() { default_backend; }
+
+# --- transport ---------------------------------------------------------------
+
+# Secrets for the next curl call, in curl config syntax ("header = …" /
+# "form-string = …"), fed on stdin. Never echoed, never put in a plan.
+CURL_SECRETS=""
+SECRET_PLAN=""
+
+add_secret() { # LINE PLAN-DESCRIPTION
+    CURL_SECRETS+="$1"$'\n'
+    SECRET_PLAN="$2"
+}
+
+# curl quotes with backslash escapes inside a config file.
+curl_quote() {
+    local v=${1//\\/\\\\}
+    printf '"%s"' "${v//\"/\\\"}"
+}
+
+# form_file FIELD PATH — the one encoder for every `-F` file part. Unquoted,
+# curl reads `@a,b` as two files and `;` as the start of type=/filename=, so a
+# file literally named `shot.png,.env` would upload .env too. curl's own
+# quoted form (`@"…"` with `"` and `\` backslash-escaped) names exactly PATH.
+form_file() { printf '%s=@%s' "$1" "$(curl_quote "$2")"; }
+
+# loopback_http URL — plain http:// to this machine only (localhost,
+# 127.0.0.0/8, [::1]).
+loopback_http() {
+    [[ $1 =~ ^http://(localhost|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|\[::1\])(:[0-9]+)?(/[^[:space:]]*)?$ ]]
+}
+
+# secure_endpoint URL — https://, or plain http:// only to this machine. A
+# token or a management token must not cross a network in the clear, and a
+# scheme-less URL would default to http.
+secure_endpoint() { [[ $1 =~ ^https://[^/?#[:space:]]+ ]] || loopback_http "$1"; }
+
+# curl_transport URL — the transport every curl call here gets, set in
+# TRANSPORT. The URL check above is only half of it; curl itself must not
+# widen it. -q (first, in curl_run) skips ~/.curlrc, so no `location`,
+# `proxy` or `insecure` there applies, and no -L is ever passed, so a
+# redirect is never followed with the form, token or file; --proto-redir
+# also pins one to https should that change. https:// is the only protocol
+# curl may speak, except for a loopback endpoint, which gets plain http
+# and no proxy at all: an inherited http_proxy would otherwise carry the
+# cleartext request, token included, off the machine.
+TRANSPORT=()
+curl_transport() {
+    if loopback_http "$1"; then
+        TRANSPORT=(--proto '=http' --proto-redir '=https' --noproxy '*')
+    else
+        TRANSPORT=(--proto '=https' --proto-redir '=https')
+    fi
+}
+
+# curl_run URL ARGS… — curl with the transport for URL. -q only works as the
+# very first argument.
+curl_run() {
+    curl_transport "$1"
+    shift
+    curl -q "${TRANSPORT[@]}" "$@"
+}
+
+# http POST-ARGS… URL — run curl with the shared options. Prints the response
+# body. Backends read it inside a command substitution, so the response
+# headers go to a file (a variable set in that subshell would be lost on
+# return).
+HTTP_HEADER_FILE=""
+http() {
+    local rc=0 body
+    # --config - keeps every credential out of the command line.
+    body="$(printf '%s' "$CURL_SECRETS" |
+        curl_run "${!#}" --config - -sS --fail-with-body --max-time 120 -A "$UA" \
+            -D "$HTTP_HEADER_FILE" "$@")" || rc=$?
+    printf '%s' "$body"
+    return "$rc"
+}
+
+# response_header NAME — one header out of the last http call, case-insensitive.
+response_header() {
+    [[ -r $HTTP_HEADER_FILE ]] || return 0
+    grep -i "^$1:" "$HTTP_HEADER_FILE" | head -n1 | cut -d: -f2- |
+        sed 's/^[[:space:]]*//' | tr -d '\r'
+}
+
+plan() { # DESCRIPTION ARGS…
+    local what=$1
+    shift
+    echo "DRYRUN: $what"
+    echo "DRYRUN:   curl -A $UA $*"
+    [[ -z $SECRET_PLAN ]] || echo "DRYRUN:   + $SECRET_PLAN, read from $CONFIG_FILE and passed on stdin (never shown)"
+}
+
+# json FILTER BODY — a field out of a JSON response, empty when it is not JSON.
+json() { printf '%s' "$2" | jq -r "$1 // empty" 2>/dev/null || true; }
+
+is_url() { [[ $1 =~ ^https?://[^[:space:]]+$ ]]; }
+
+# private_dir DIR — a real directory of ours that nobody else can enter.
+private_dir() { [[ -d $1 && ! -L $1 && -O $1 && $(stat -c %a -- "$1") == 700 ]]; }
+
+# save_delete_token TOKEN — the host's management/delete credential, kept at
+# mode 0600 in $XDG_RUNTIME_DIR when that is a private directory of ours,
+# otherwise in $HASEEN_USER_STATE/upload (created 0700). Never a shared /tmp
+# path. Written to a fresh mktemp file and renamed over the name, so a link
+# planted there is replaced, not followed. Not saved (with a warning) when
+# no private directory can be established; the upload itself stands.
+save_delete_token() {
+    local dir=${XDG_RUNTIME_DIR:-} tmp
+    if [[ -z $dir ]] || ! private_dir "$dir"; then
+        dir="$HASEEN_USER_STATE/upload"
+        (umask 077 && mkdir -p -- "$dir") 2>/dev/null || true
+        private_dir "$dir" || {
+            warn "delete token not saved: $dir is not a private directory (yours, mode 0700)"
+            return 0
+        }
+    fi
+    if tmp="$(mktemp -- "$dir/.haseen-upload.delete-token.XXXXXX")" &&
+        printf '%s\n' "$1" >"$tmp" && mv -fT -- "$tmp" "$dir/haseen-upload.delete-token"; then
+        return 0
+    fi
+    [[ -z ${tmp:-} ]] || rm -f -- "$tmp"
+    warn "delete token not saved in $dir"
+}
+
+# --- backends ----------------------------------------------------------------
+# Every backend sets URL (and DELETE_TOKEN where the host has one).
+
+URL=""
+DELETE_TOKEN=""
+
+# catbox.moe — POST https://catbox.moe/user/api.php, multipart, no auth.
+# reqtype=fileupload + fileToUpload=@file; the body is the bare URL.
+# Evidence: curl -X POST https://catbox.moe/user/api.php -F reqtype=fileupload
+#           -> HTTP 412 "No files given." (live, anonymous, 2026-10-05)
+backend_catbox() {
+    local args=(-X POST -F reqtype=fileupload -F "$(form_file fileToUpload "$FILE")" https://catbox.moe/user/api.php)
+    $DRY_RUN && {
+        plan "upload $FILE to catbox.moe" "${args[@]}"
+        return 0
+    }
+    URL="$(http "${args[@]}")" || die "catbox refused the upload: $URL"
+}
+
+# uguu.se — POST https://uguu.se/upload?output=text, multipart files[]=@file.
+# With output=text the body is the URL itself; files expire after 3 hours.
+# Evidence: curl -F 'files[]=@probe.png' 'https://uguu.se/upload?output=text'
+#           -> https://d.uguu.se/bTPPlbJd.png (live, 2026-10-05)
+backend_uguu() {
+    local args=(-X POST -F "$(form_file 'files[]' "$FILE")" 'https://uguu.se/upload?output=text')
+    $DRY_RUN && {
+        plan "upload $FILE to uguu.se (expires in 3 h)" "${args[@]}"
+        return 0
+    }
+    URL="$(http "${args[@]}")" || die "uguu refused the upload: $URL"
+}
+
+# temp.sh — POST https://temp.sh/upload, multipart file=@file; body is the URL.
+# 4 GB cap, files expire after 3 days.
+# Evidence: curl -X POST https://temp.sh/upload -> HTTP 400 (endpoint live,
+#           2026-10-05); transfer.sh, its inspiration, is dead (HTTP 000).
+backend_temp_sh() {
+    local args=(-X POST -F "$(form_file file "$FILE")" https://temp.sh/upload)
+    $DRY_RUN && {
+        plan "upload $FILE to temp.sh (expires in 3 days)" "${args[@]}"
+        return 0
+    }
+    URL="$(http "${args[@]}")" || die "temp.sh refused the upload: $URL"
+}
+
+# 0x0.st — POST https://0x0.st, multipart file=@file, optional expires=<hours>.
+# The body is the URL, the X-Token response header is the management token.
+# Evidence: curl -X POST https://0x0.st -> HTTP 503 "uploads disabled because
+#           it's been almost nothing but AI botnet spam …" (2026-10-05).
+# Kept because the same software is self-hosted elsewhere and the notice says
+# the service will come back; it is never selected on its own.
+backend_0x0() {
+    local target=${HASEEN_0X0_URL:-$(cfg 0x0 url)}
+    target=${target:-https://0x0.st}
+    # The answer carries a management token (X-Token): never over plain http.
+    secure_endpoint "$target" || die "refusing to upload to $target: use an https:// URL (plain http only to localhost, 127.0.0.0/8 or [::1])"
+    local args=(-X POST -F "$(form_file file "$FILE")")
+    [[ -z $EXPIRES ]] || args+=(-F "expires=$EXPIRES")
+    args+=("$target")
+    $DRY_RUN && {
+        plan "upload $FILE to $target (uploads are disabled upstream)" "${args[@]}"
+        return 0
+    }
+    URL="$(http "${args[@]}")" || die "0x0 refused the upload: $URL"
+    URL="$(printf '%s' "$URL" | tail -n1 | tr -d '\r')"
+    DELETE_TOKEN="$(response_header x-token)"
+}
+
+# XBackBone, tagged releases up to 3.8.2 — POST <instance>/upload, multipart.
+# The token is a FORM FIELD, not a header; the controller takes the first
+# uploaded file whatever the part is called (ShareX's config calls it "upload").
+# Evidence: SergiX44/XBackBone tag 3.8.2, app/routes.php + UploadController.php
+#           (array_values($request->getUploadedFiles())[0]).
+backend_xbackbone_form() {
+    local base=$1
+    local args=(-X POST -F "$(form_file upload "$FILE")" "$base/upload")
+    # form-string: a token beginning with @ or < is sent as is, never read as a file.
+    add_secret "form-string = $(curl_quote "token=$(xbb_token)")" "the XBackBone token as the 'token' form field"
+    $DRY_RUN && {
+        plan "upload $FILE to $base/upload (XBackBone <= 3.8.2)" "${args[@]}"
+        return 0
+    }
+    local body
+    body="$(http "${args[@]}")" || die "XBackBone refused the upload (HTTP error)"
+    URL="$(json '.url' "$body")"
+    [[ -n $URL ]] || URL="$(json '.data.url' "$body")"
+    # Older instances answer with the bare URL rather than JSON.
+    [[ -n $URL ]] || { is_url "$(printf '%s' "$body" | tail -n1)" && URL="$(printf '%s' "$body" | tail -n1)"; }
+    [[ -n $URL ]] || die "XBackBone answered without a url field"
+}
+
+# XBackBone next-gen (master, Laravel rewrite; no tag yet) —
+# POST <instance>/api/v1/upload with Authorization: Bearer and a file= part.
+# The direct link is data.raw_url, the share page data.preview_ext_url.
+# Evidence: SergiX44/XBackBone docs/clients/api.md (abilities resource:upload /
+#           resource:delete; DELETE /api/v1/resources/{code}).
+backend_xbackbone_bearer() {
+    local base=$1
+    local args=(-X POST -H 'Accept: application/json' -F "$(form_file file "$FILE")" "$base/api/v1/upload")
+    add_secret "header = $(curl_quote "Authorization: Bearer $(xbb_token)")" "the XBackBone token as an Authorization: Bearer header"
+    $DRY_RUN && {
+        plan "upload $FILE to $base/api/v1/upload (XBackBone next-gen)" "${args[@]}"
+        return 0
+    }
+    local body
+    body="$(http "${args[@]}")" || die "XBackBone refused the upload (HTTP error)"
+    URL="$(json '.data.raw_url' "$body")"
+    [[ -n $URL ]] || URL="$(json '.data.preview_ext_url' "$body")"
+    [[ -n $URL ]] || die "XBackBone answered without data.raw_url"
+}
+
+# Which shape the instance speaks. `api = form|bearer` skips the probe; `auto`
+# asks for the next-gen route with GET: the Laravel route exists but only
+# accepts POST, so it answers 405/401/422, while a tagged 3.8.2 instance has no
+# such route and answers 404.
+backend_xbackbone() {
+    local base api code
+    base="$(xbb_url)"
+    [[ -n $base ]] || die "no XBackBone instance configured (set [xbackbone] url in $CONFIG_FILE or HASEEN_XBACKBONE_URL)"
+    base=${base%/}
+    secure_endpoint "$base" || die "refusing to send the XBackBone token to $base: use an https:// URL (plain http only to localhost, 127.0.0.0/8 or [::1])"
+    [[ -n $(xbb_token) ]] || die "no XBackBone token configured (set [xbackbone] token in $CONFIG_FILE or HASEEN_XBACKBONE_TOKEN)"
+    api=$(cfg xbackbone api)
+    api=${HASEEN_XBACKBONE_API:-${api:-auto}}
+    case $api in
+    form | bearer) ;;
+    auto)
+        if $DRY_RUN; then
+            echo "DRYRUN: curl -o /dev/null -w %{http_code} $base/api/v1/upload (404 = tagged release, otherwise next-gen)"
+            api=form
+        else
+            # curl prints 000 itself when it cannot connect; anything that is
+            # not three digits counts as no answer.
+            code="$(curl_run "$base" -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 20 "$base/api/v1/upload")" || true
+            [[ $code =~ ^[0-9]{3}$ ]] || code=000
+            case $code in
+            404 | 000) api=form ;;
+            *) api=bearer ;;
+            esac
+        fi
+        ;;
+    *) die "unknown [xbackbone] api: $api (use auto, form or bearer)" ;;
+    esac
+    "backend_xbackbone_$api" "$base"
+}
+
+# imgur — POST https://api.imgur.com/3/image, Authorization: Client-ID <id>,
+# multipart image=@file; the link is data.link.
+# Evidence: new client registration is closed (GET /oauth2/addclient -> HTTP 301
+#           to imgur.com) and POST /3/image answered HTTP 429 from this network
+#           on 2026-10-05, so only a client id you already have can work.
+backend_imgur() {
+    local id
+    id="$(imgur_client)"
+    [[ -n $id ]] || die "imgur needs a client id you already own: set [imgur] client_id in $CONFIG_FILE.
+New client registration is closed upstream, so there is no way to obtain one today."
+    local args=(-X POST -F "$(form_file image "$FILE")" https://api.imgur.com/3/image)
+    add_secret "header = $(curl_quote "Authorization: Client-ID $id")" "the imgur client id as an Authorization: Client-ID header"
+    $DRY_RUN && {
+        plan "upload $FILE to imgur" "${args[@]}"
+        return 0
+    }
+    local body
+    body="$(http "${args[@]}")" || die "imgur refused the upload (it answers 429 to most networks now)"
+    URL="$(json '.data.link' "$body")"
+    DELETE_TOKEN="$(json '.data.deletehash' "$body")"
+    [[ -n $URL ]] || die "imgur answered without data.link"
+}
+
+# rclone — copy into a configured remote and ask rclone for the link. There is
+# no endpoint and no header here: the credentials are rclone's own config.
+# Evidence: extra/rclone 1.75.1-1; 'rclone link' prints the link on its last
+#           stdout line, --expire makes it temporary. This is the path the
+#           ShareX maintainers themselves recommend (R2/S3) now that imgur is
+#           closed.
+backend_rclone() {
+    local remote expire out
+    remote="$(rclone_remote)"
+    [[ -n $remote ]] || die "no rclone remote configured (set [rclone] remote in $CONFIG_FILE or HASEEN_RCLONE_REMOTE)"
+    expire=${HASEEN_RCLONE_LINK_EXPIRE:-$(cfg rclone link_expire)}
+    local dest
+    dest="${remote%/}/$(basename "$FILE")"
+    local link=(rclone link "$dest")
+    [[ -z $expire ]] || link+=(--expire "$expire")
+    if $DRY_RUN; then
+        echo "DRYRUN: rclone copyto $FILE $dest"
+        echo "DRYRUN: ${link[*]}"
+        return 0
+    fi
+    require_cmds rclone
+    rclone copyto "$FILE" "$dest" || die "rclone could not copy $FILE to $dest"
+    out="$("${link[@]}")" || die "rclone could not make a link for $dest"
+    URL="$(printf '%s' "$out" | tail -n1 | tr -d '\r')"
+}
+
+backends() {
+    cat <<'EOF'
+xbackbone|your own instance|configured in upload.toml; primary once it is
+catbox|catbox.moe|anonymous, 200 MB, kept while it is fetched
+uguu|uguu.se|anonymous, 128 MiB, expires after 3 hours
+temp.sh|temp.sh|anonymous, 4 GB, expires after 3 days
+rclone|your S3/R2 bucket|needs an rclone remote
+0x0|0x0.st|uploads DISABLED upstream (HTTP 503)
+imgur|api.imgur.com|CLOSED to new client ids; 429 from many networks
+EOF
+}
+
+run_backend() {
+    case $1 in
+    xbackbone) backend_xbackbone ;;
+    catbox) backend_catbox ;;
+    uguu) backend_uguu ;;
+    temp.sh | tempsh | temp) backend_temp_sh ;;
+    0x0 | 0x0.st) backend_0x0 ;;
+    imgur) backend_imgur ;;
+    rclone) backend_rclone ;;
+    *) die "unknown backend: $1 (try --list)" ;;
+    esac
+}
+
+# --- command line ------------------------------------------------------------
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+FILE="" BACKEND="" EXPIRES="" copy=true quiet=false list=false
+while (($#)); do
+    case "$1" in
+    --backend | --expires)
+        (($# > 1)) || {
+            usage >&2
+            exit 2
+        }
+        case $1 in --backend) BACKEND=$2 ;; --expires) EXPIRES=$2 ;; esac
+        shift
+        ;;
+    --backend=*) BACKEND=${1#*=} ;;
+    --expires=*) EXPIRES=${1#*=} ;;
+    --list) list=true ;;
+    --no-copy) copy=false ;;
+    --quiet) quiet=true ;;
+    -*)
+        usage >&2
+        exit 2
+        ;;
+    *)
+        [[ -z $FILE ]] || {
+            usage >&2
+            exit 2
+        }
+        FILE=$1
+        ;;
+    esac
+    shift
+done
+
+if $list; then
+    printf '%-10s %-22s %s\n' BACKEND HOST STATUS
+    while IFS='|' read -r id host note; do
+        printf '%-10s %-22s %s%s\n' "$id" "$host" "$note" \
+            "$([[ $id == "$(default_backend)" ]] && echo '  [default]' || true)"
+    done < <(backends)
+    exit 0
+fi
+
+[[ -n $FILE ]] || {
+    usage >&2
+    exit 2
+}
+[[ -r $FILE ]] || die "cannot read $FILE"
+if [[ -n $EXPIRES && ! $EXPIRES =~ ^[0-9]+$ ]]; then
+    echo "Error: --expires takes whole hours, got: $EXPIRES" >&2
+    exit 2
+fi
+
+BACKEND=${BACKEND:-$(default_backend)}
+$DRY_RUN || require_cmds curl
+
+# A credentials file other users can read is a finding, not a style issue.
+if [[ -r $CONFIG_FILE ]]; then
+    perm="$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null || echo 600)"
+    [[ ${perm: -2} == 00 ]] || warn "$CONFIG_FILE is readable by others (mode $perm); chmod 600 it"
+fi
+
+# The header file outlives each backend's command substitution; nothing
+# sensitive is in it, but it is still a private temporary.
+if ! $DRY_RUN; then
+    HTTP_HEADER_FILE="$(mktemp)"
+    trap 'rm -f "$HTTP_HEADER_FILE"' EXIT
+fi
+
+run_backend "$BACKEND"
+
+if $DRY_RUN; then
+    $copy && echo "DRYRUN: wl-copy <the returned link>"
+    $quiet || echo "DRYRUN: haseen-notification-send 'Uploaded to $BACKEND' <the returned link>"
+    exit 0
+fi
+
+URL="$(printf '%s' "$URL" | tr -d '\r' | tail -n1)"
+is_url "$URL" || die "$BACKEND did not return a link"
+
+printf '%s\n' "$URL"
+$copy && printf '%s' "$URL" | wl-copy
+# A delete token is a credential: keep it out of stdout and out of the toast.
+[[ -z $DELETE_TOKEN ]] || save_delete_token "$DELETE_TOKEN"
+$quiet || haseen-notification-send -u low "Uploaded to $BACKEND" "$URL" || true

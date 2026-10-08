@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — put haseen on an existing CachyOS (or Arch) install.
 #
-# 1. Preflight: refuse NixOS (use the flake) and unknown distros.
+# 1. Preflight: refuse NixOS and unknown distros.
 # 2. Install the tree: bin/ -> PREFIX/bin, share/haseen -> PREFIX/share/haseen,
 #    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
 #    PREFIX/share/applications, the app icon (`-i haseen`) ->
@@ -32,20 +32,23 @@ PREFIX=/usr/local
 LAYERS=()
 TREE_ONLY=false
 UNINSTALL=false
+VAPT_GROUPS=''
 PICK=false
 
 usage() {
     cat <<EOF
 Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
-                    [--tree-only] [--uninstall-tree]
+                    [--vapt-groups GROUP,...|all] [--tree-only] [--uninstall-tree]
 
   --layers      layers to apply (default: ${DEFAULT_LAYERS[*]})
-                optional: secureboot ai dms gaming flatpak (haseen layer list)
+                optional: secureboot ai dms gaming flatpak mobile (haseen layer list)
   --pick        choose the layers and optional setup steps (keyd, fingerprint,
                 geoclue, dotfiles) from a list, even when stdin is not a
                 terminal; at a terminal this is the default unless --layers or
                 --yes is given. The choice is saved to
                 ~/.config/haseen/install.toml and offered again next time.
+  --vapt-groups explicitly provision optional VAPT groups after the layers;
+                use 'all' for all 25 groups. No VAPT tools are selected by default.
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user
@@ -60,6 +63,7 @@ while (($# > 0)); do
     --yes | -y) ASSUME_YES=true ;;
     --prefix) PREFIX="${2:?--prefix needs a directory}"; shift ;;
     --layers) IFS=, read -r -a LAYERS <<<"${2:?--layers needs a list}"; shift ;;
+    --vapt-groups) VAPT_GROUPS="${2:?--vapt-groups needs groups or all}"; shift ;;
     --tree-only) TREE_ONLY=true ;;
     --pick) PICK=true ;;
     --uninstall-tree) UNINSTALL=true ;;
@@ -70,10 +74,35 @@ while (($# > 0)); do
 done
 LAYERS_GIVEN=false
 ((${#LAYERS[@]} == 0)) || LAYERS_GIVEN=true
-if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL; }; then
-    die "--pick chooses interactively; it does not combine with --layers, --yes, --tree-only or --uninstall-tree"
+if $PICK && { $LAYERS_GIVEN || $ASSUME_YES || $TREE_ONLY || $UNINSTALL || [[ -n $VAPT_GROUPS ]]; }; then
+    die "--pick chooses interactively; it does not combine with --layers, --yes, --vapt-groups, --tree-only or --uninstall-tree"
 fi
 $LAYERS_GIVEN || LAYERS=("${DEFAULT_LAYERS[@]}")
+if [[ -n $VAPT_GROUPS ]] && { $TREE_ONLY || $UNINSTALL; }; then
+    die "--vapt-groups cannot be combined with --tree-only or --uninstall-tree"
+fi
+ordinary_layers=()
+for layer in "${LAYERS[@]}"; do
+    if [[ $layer == vapt ]]; then
+        [[ -n $VAPT_GROUPS ]] || die "--layers vapt requires explicit --vapt-groups GROUP,...|all"
+    else
+        layer_exists "$layer" || die "unknown layer: '$layer' (see: haseen layer list); nothing was installed"
+        ordinary_layers+=("$layer")
+    fi
+done
+LAYERS=("${ordinary_layers[@]}")
+VAPT_ONLY=false
+if [[ -n $VAPT_GROUPS ]] && ((${#LAYERS[@]} == 0)); then VAPT_ONLY=true; fi
+# Validate optional selection before any tree or workstation mutation.
+if [[ -n $VAPT_GROUPS ]]; then
+    (
+        LAYER_DIR="$HASEEN_PATH/layers/vapt"
+        source "$LAYER_DIR/layer.sh"
+        if [[ $VAPT_GROUPS == all ]]; then layer_precheck --all
+        else layer_precheck --groups "$VAPT_GROUPS"
+        fi
+    )
+fi
 require_not_root
 
 UNIT_DIR="$PREFIX/lib/systemd/user"
@@ -85,6 +114,19 @@ APP_DIR="$PREFIX/share/applications"
 # the symbolic one in currentColor, which GTK recolours.
 ICON_DIR="$PREFIX/share/icons/hicolor"
 
+# Defaults that have to sit where XDG looks for them, not inside share/haseen:
+# "<path under PREFIX/share>" is also the path under share/haseen/default/.
+#
+# $PREFIX/share is /usr/local/share by default, and the XDG basedir default for
+# XDG_DATA_DIRS is "/usr/local/share:/usr/share" — earlier entries win, so these
+# outrank anything /usr/share carries. That is deliberate on a machine migrated
+# from Omarchy: omarchy-settings owns /usr/share/applications/mimeapps.list and
+# /usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list (pacman -Ql
+# omarchy-settings), and haseen's answers must win without touching a file
+# pacman owns. Both stay below the user's own ~/.config, which `haseen setup
+# default` writes.
+VENDOR_FILES=(applications/mimeapps.list xdg-terminal-exec/hyprland-xdg-terminals.list)
+
 uninstall_tree() {
     local f
     for f in "$REPO"/bin/haseen*; do
@@ -92,6 +134,9 @@ uninstall_tree() {
     done
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
+    done
+    for f in "${VENDOR_FILES[@]}"; do
+        run_root rm -f "$PREFIX/share/$f"
     done
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && run_root rm -f "$APP_DIR/${f##*/}"
@@ -106,10 +151,12 @@ install_tree() {
     # The sampling daemon is compiled into the tree before it is copied. With no
     # Go toolchain the build script says so and the tree ships without it: the
     # shell then finds no capability and hides what needs it (plan 032).
-    if $DRY_RUN; then
-        echo "DRYRUN: tools/build-sidecar.sh"
-    else
-        "$REPO/tools/build-sidecar.sh"
+    if ! $VAPT_ONLY; then
+        if $DRY_RUN; then
+            echo "DRYRUN: tools/build-sidecar.sh"
+        else
+            "$REPO/tools/build-sidecar.sh"
+        fi
     fi
     # Replace share/haseen atomically: copy beside, then swap.
     run_root rm -rf "$PREFIX/share/haseen.new" "$PREFIX/share/haseen.old"
@@ -128,6 +175,9 @@ install_tree() {
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && install_root_file "$f" "$UNIT_DIR/${f##*/}" 0644
     done
+    for f in "${VENDOR_FILES[@]}"; do
+        install_root_file "$REPO/share/haseen/default/$f" "$PREFIX/share/$f" 0644
+    done
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && install_root_file "$f" "$APP_DIR/${f##*/}" 0644
     done
@@ -145,8 +195,8 @@ omarchy)
     warn "read docs/decisions/0001-haseen-replaces-omarchy.md before continuing."
     confirm "Continue on an Omarchy host?" || exit 1
     ;;
-nixos) die "NixOS is configured through the flake (nix/README.md), not this installer." ;;
-*) die "unsupported distro '${DISTRO_PRETTY:-unknown}'. haseen targets CachyOS, Arch and NixOS." ;;
+nixos) die "NixOS is not supported. haseen targets CachyOS and Arch." ;;
+*) die "unsupported distro '${DISTRO_PRETTY:-unknown}'. haseen targets CachyOS and Arch." ;;
 esac
 
 if $UNINSTALL; then
@@ -158,13 +208,15 @@ fi
 # The guided choice: asked for (--pick) or at a terminal with nothing decided
 # on the command line. Piped or --yes runs keep the defaults and ask nothing.
 PICKED=false
-if ! $LAYERS_GIVEN && ! $ASSUME_YES && ! $TREE_ONLY && { $PICK || [[ -t 0 ]]; }; then
+if ! $LAYERS_GIVEN && ! $ASSUME_YES && ! $TREE_ONLY && [[ -z $VAPT_GROUPS ]] && { $PICK || [[ -t 0 ]]; }; then
     picker_run "${DEFAULT_LAYERS[@]}"
     LAYERS=("${PICK_LAYERS[@]}")
     PICKED=true
 fi
 
-confirm "Install haseen into $PREFIX and apply: ${LAYERS[*]}${PICK_SETUP[*]:+, then setup: ${PICK_SETUP[*]}}?" || exit 1
+selection="${LAYERS[*]}"
+[[ -z $VAPT_GROUPS ]] || selection+="${selection:+; }vapt groups=$VAPT_GROUPS"
+confirm "Install haseen into $PREFIX and apply: $selection${PICK_SETUP[*]:+, then setup: ${PICK_SETUP[*]}}?" || exit 1
 if $PICKED; then picker_save; fi
 install_tree
 $TREE_ONLY && exit 0
@@ -172,6 +224,9 @@ $TREE_ONLY && exit 0
 # Under --dry-run nothing was copied, so plan the layers from the checkout.
 haseen_bin="$PREFIX/bin/haseen"
 $DRY_RUN && haseen_bin="$REPO/bin/haseen"
+# Normalize the checkout path as well as the installed path; the installed tree
+# is absent during --dry-run.
+installed_haseen_path="$(readlink -f -- "$(dirname "$haseen_bin")/../share/haseen")"
 flags=()
 $DRY_RUN && flags+=(--dry-run)
 $ASSUME_YES && flags+=(--yes)
@@ -182,23 +237,42 @@ fresh_home=true
 if [[ -d $HASEEN_USER_STATE/migrations || -e $HASEEN_USER_CONFIG/shell.json || -e $HASEEN_USER_STATE/current/theme.name ]]; then
     fresh_home=false
 fi
-HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" layer apply "${LAYERS[@]}" "${flags[@]}"
+if ((${#LAYERS[@]})); then
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" layer apply "${LAYERS[@]}" "${flags[@]}"
+fi
+installer_rc=0
+if [[ -n $VAPT_GROUPS ]]; then
+    if [[ $VAPT_GROUPS == all ]]; then vapt_args=(--all)
+    else vapt_args=(--groups "$VAPT_GROUPS")
+    fi
+    HASEEN_PATH="$installed_haseen_path" HASEEN_INSTALL_PATH="$PREFIX/share/haseen" "$haseen_bin" layer apply vapt "${flags[@]}" -- "${vapt_args[@]}" || installer_rc=$?
+fi
+# Tooling-only opt-in does not apply hardware quirks or unrelated migrations.
+$VAPT_ONLY && exit "$installer_rc"
 
 # A fresh HOME has nothing to upgrade, so its migrations are recorded as
 # sealed; an existing haseen user gets what is genuinely pending run.
 if ! $fresh_home; then
-    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate "${flags[@]}"
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" migrate "${flags[@]}"
 else
-    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" migrate --seal "${flags[@]}"
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" migrate --seal "${flags[@]}"
     # A first install also seeds haseen.nvim when ~/.config/nvim is absent
     # (plan 065). An existing config is left alone, and later runs never seed.
-    HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
+    HASEEN_PATH="$installed_haseen_path" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
         warn "haseen.nvim was not seeded; run: haseen setup nvim"
 fi
 
+# The user-level defaults (fontconfig, the shell rc include, mux, yazi,
+# capture, handlers): every run, fresh or upgrade. A seed writes only what is
+# missing, so a file the user has made their own is never touched; a seed
+# that fails is named, and the others are still in place.
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" seed user "${flags[@]}" ||
+    warn "some seeds failed (named above); fix them and run: haseen seed user"
+
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.
-HASEEN_PATH="$(dirname "$haseen_bin")/../share/haseen" "$haseen_bin" hw apply "${flags[@]}"
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" hw apply "${flags[@]}"
 
 # The optional setup steps the picker chose; none otherwise.
 picker_run_setup "$haseen_bin" "${flags[@]}"
+exit "$installer_rc"

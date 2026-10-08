@@ -1,8 +1,8 @@
 # haseen architecture
 
 حصين (*haseen*): fortified, hard to breach. A clean, low-resource desktop
-layered onto an existing **CachyOS** install (Arch also works; NixOS goes through
-the flake). It runs on Hyprland (Lua config) with its own Quickshell shell, and
+layered onto an existing **CachyOS** install (Arch also works; NixOS is not
+supported). It runs on Hyprland (Lua config) with its own Quickshell shell, and
 it can load DankMaterialShell and Omarchy add-ons without depending on either
 project.
 
@@ -19,10 +19,11 @@ file changes in the same commit.
 | 4 | DMS and Omarchy add-ons | `layers/dms` (run DMS in place of the haseen shell), the compat adapters in `shell/Compat/`, and the Omarchy `colors.toml` theme format |
 | 5 | not a resource hog | §6 resource rules |
 | 6 | local AI | `layers/ai` (Ollama/llama.cpp bound to loopback only) + the `haseen.ai` panel plugin |
-| 7 | Arch / CachyOS / NixOS | installer (CachyOS, Arch) + `flake.nix` (NixOS) |
+| 7 | Arch / CachyOS | installer (CachyOS, Arch); NixOS is detected and refused |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
 | 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
 | 10 | Brightness (plan 077) | `haseen brightness`: backlights and `*::kbd_backlight` via brightnessctl (logind), DDC/CI monitors via ddcutil (bus map cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`); `haseen setup ddc on` (opt-in) installs ddcutil and loads i2c-dev; the `haseen.display` panel (off) slides each device |
+| 11 | optional VAPT workstation environment, no AUR or tool execution | `layers/vapt`, 25 explicit group manifests and owned native environments (plans 007, 087) |
 
 ## 2. Filesystem
 
@@ -37,6 +38,9 @@ file changes in the same commit.
 | `share/haseen/themed/*.tpl` | theme templates | theme |
 | `share/haseen/shell/` | Quickshell config root (§5) | shell |
 | `share/haseen/systemd/user/*` | user units → `PREFIX/lib/systemd/user` | per slice |
+| `share/haseen/seeds/NN-<name>.sh` | one user-config seed each: defines `seed_main`, declares `# haseen:seed <path>\|<description>`; `bin/haseen-seed-user` runs them in name order | per slice |
+| `share/haseen/default/applications/mimeapps.list` | vendor default handlers → `PREFIX/share/applications/mimeapps.list` (lowest XDG precedence, so the user always wins) | desktop |
+| `share/haseen/default/xdg-terminal-exec/` | terminal preference → `PREFIX/share/xdg-terminal-exec/` | desktop |
 | `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
@@ -54,14 +58,16 @@ becomes `/usr`. Code never hard-codes either one: resolve `$HASEEN_PATH`, or use
 The contract is the header of `share/haseen/lib/layers.sh`. In short:
 `layer.sh` sets `LAYER_SUMMARY`, `LAYER_REQUIRES`, `LAYER_CONFLICTS` and
 `LAYER_DISTROS`, and defines `layer_status`, `layer_apply` and optionally
-`layer_remove`. An optional `packages.txt` installs first. Preflight globals are
-already set when the layer runs.
+`layer_remove`. A layer that needs its own arguments sets `LAYER_PICKABLE=false`
+so the install picker never offers it (`vapt`: its groups come from
+`./install.sh --vapt-groups`). An optional `packages.txt` installs first.
+Preflight globals are already set when the layer runs.
 
 | Layer | Requires | Summary |
 |---|---|---|
 | `base` | — | essentials, firewall, snapper sanity, pacman hygiene on CachyOS |
 | `chaotic` | base | Chaotic-AUR (pinned key `EF925EA6…87B78AEB`), so `aur:` entries install prebuilt |
-| `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt; `omarchy`/`omarchy-settings` refused (ADR 0001) |
+| `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt, and the only source of `omarchy:` entries (herdr, xdg-terminal-exec); `omarchy`/`omarchy-settings` refused (ADR 0001) |
 | `desktop` | base chaotic | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
 | `theme` | base | theme pipeline, the 22 Omarchy stock themes plus haseen's own `haseen` (the default), pinned background fetch, `haseen-background.service` (swaybg) |
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service`; Helium (`aur:helium-browser-bin`) with the Cairn extension, its release `.crx` fetched at a pinned SHA-256 and handed over as a per-user external extension (`lib/cairn.sh`, `haseen setup cairn`, plan 073) |
@@ -70,15 +76,17 @@ already set when the layer runs.
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
+| `mobile` | desktop | phones: KDE Connect (with its ufw ports), scrcpy, adb, MTP, and the iOS stack (usbmuxd, libimobiledevice, gvfs-afc/gphoto2); `ifuse` refused while the repos ship the data-corrupting 1.2.0 (plan 040) |
+| `vapt` | — | explicit owner tool groups (plus the oniomarchy-category groups of plan 087), checked binary/native sources (the private oniomarchy source only per operation, last), passive PATH and the optional shared COAE Python environment; dependency-only packages are never roots; no assessment execution or service activation (plans 007, 087) |
 
 Rules every layer follows:
 
 - **Idempotent.** A re-apply converges and never duplicates anything.
 - **Dry-run pure.** Every mutation goes through `run`, `run_root`, `write_root_file`, `append_root_file`, `install_root_file`, `write_user_file` or `seed_user_file`.
 - **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file.
-- **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). There are two exceptions:
+- **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). These exceptions are necessary:
   - `ENABLE_ENROLL_LIMINE_CONFIG=yes` has to be appended to `/etc/default/limine`, because limine-entry-tool resets that key after it reads the drop-ins (`limine-common-functions:143-144`, plan 002).
-  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024).
+  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024). The optional VAPT layer appends a reviewed BlackArch stanza the same way, and only after its reviewed upgrade commits (plan 007).
 - **Package sources, in order** (owner decision 2026-10-04, `lib/packages.sh`):
   1. official and CachyOS repositories;
   2. Chaotic-AUR;
@@ -86,6 +94,21 @@ Rules every layer follows:
   4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
+  An `omarchy:` manifest entry (desktop's herdr and xdg-terminal-exec, owner 2026-10-08) goes through the same order only while `[omarchy]` is enabled; without it `pkg_install_omarchy` skips it with a warning and never builds it (plan 024 amendment).
+  VAPT is an explicit exception preserving the owner's security-tool policy:
+  its explicit repository pins precede BlackArch, pinned native adapters,
+  already-enabled Chaotic-AUR, CachyOS, and Arch. Reviewed aliases and
+  canonical upstream identities decide which package may stand for a tool.
+  Its dedicated transaction path
+  excludes AUR/Omarchy dependencies, reports unavailable items, and never runs
+  the tools it installs. oniomarchy's repository is an opt-in, per-operation,
+  x86_64-only last tier (`--with-oniomarchy`, `haseen vapt repo-*`) whose
+  stanza stays in haseen's root state and VAPT's own configuration, never
+  `/etc/pacman.conf`; it keeps `Required DatabaseRequired`, admits only 52
+  reviewed names, is never a base vendor, and its key import into the shared
+  pacman keyring is global (plan 087). See `docs/vapt.md` for its trust, environment, and
+  limited owned-link removal contracts. It does not require the desktop or
+  default layers.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions
@@ -199,7 +222,13 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
 ```
 
 `share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
-to `Theme.radius * 2`. Double-clicking the bar toggles `bar.transparent`: on
+to `Theme.radius * 2`. Windows and the menu round to the same radius (plan 046).
+The menu binds `Config.frameRadius`, the frame's own rule, so it follows a
+`frame.radius` edit at once. `haseen theme set` resolves the same rule and
+writes it as Hyprland's `decoration.rounding` in `current/theme/rounding.lua`,
+which `init.lua` loads with the defaults: toggles, hyprmod and the user's files
+still override it, and the theme's own `rounding` is dropped. A change to
+`frame.radius` reaches the windows at the next `haseen theme set`. Double-clicking the bar toggles `bar.transparent`: on
 empty space and, as in Omarchy's bar, on a widget too (a passive `PointHandler`
 over the bar, so the widget still gets both clicks), but not on the overflow
 chevron or in arrange mode. The text colour then comes from
@@ -282,6 +311,22 @@ them only through the `qs.Haseen.Flags` singleton. `gestures` is written by the
 `gestures` hardware quirk on a machine with a touchpad; the `haseen.gestures`
 widget is listed in the default `bar.right` and takes no room without it, so
 enabling it never rewrites the user's `shell.json`.
+
+Settings live in **six** stores, and `share/haseen/lib/settings.sh` is the map
+over all of them (`haseen settings list`, `haseen settings set <key> [value]`,
+plan 045). The split is deliberate and the index does not change it:
+`shell.json` is the user's hand-edited document (a plugin's settings fall back
+to its manifest's defaults); other one-value files under `~/.config/haseen`
+(the mono font) are each owned by one command; `flags/` is session state a
+command must be able to flip several times an hour without rewriting a config
+file; `~/.local/state/haseen/toggles/hypr/*.lua` is Lua because Hyprland reads
+Lua; other `~/.local/state/haseen` files hold the theme name, the active shell
+and the remembered power profile; `~/.config/uwsm/env.d/60-haseen-defaults` is
+read by uwsm before anything could read `shell.json`. `haseen settings set`
+owns no state: it `exec`s the command that already owns the key. Each row says
+what that command takes, so on/off always mean the setting as listed (`gaps
+off` runs `haseen toggle gaps on`, the no-gaps mode), and a key an editor owns
+takes no value.
 
 Runtime contexts (plan 062): `haseen context normal|focus|game|present`
 switches several of those flags as one. Entering from normal records them in
@@ -388,7 +433,7 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python in the shell path.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
 - The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 12 MiB RSS.
-- Measure before claiming. `haseen doctor` prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
+- Measure before claiming. `haseen doctor` matches the shell by canonicalizing absolute `qs -p` paths and resolving relative ones against that process's working directory; equivalent path spellings are recognized. It also prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
   - bare `qs` with an empty config: 122 MiB RSS
   - haseen default bar on the software backend: 178 MiB RSS / 126 MiB PSS, 0.01 s CPU per 60 s
   - omarchy-shell beside it: 630 MiB RSS / 554 MiB PSS
@@ -404,8 +449,8 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 - **Neovim:** in a LazyVim or haseen.nvim config, `haseen theme set` links `~/.config/nvim/lua/plugins/theme.lua` to `current/theme/neovim.lua` when it is missing or links to an Omarchy or haseen theme (a file of the user's stays), plus `haseen-theme-hotreload.lua` and `haseen-all-themes.lua` from `share/haseen/default/nvim/`. lazy.nvim's change detection sees the new spec and fires `User LazyReload`, and the hot-reload applies its colourscheme in running nvims. While Omarchy's `omarchy-theme-hotreload.lua`/`all-themes.lua` are there, haseen's twins are not added; `haseen import omarchy` moves them to `<file>.bak-<timestamp>` (plan 058).
 - **haseen.nvim:** haseen's Neovim config is the owner's plain lazy.nvim config, fetched rather than shipped. `haseen setup nvim` (`bin/haseen-setup-nvim`) clones it at a pinned commit (`NVIM_REPO_URL`, `NVIM_COMMIT`) into `~/.config/nvim` and links `share/haseen/default/nvim/haseen-colorscheme.lua` into its `lua/plugins/`. That bridge disables the theme spec's `LazyVim/LazyVim` entry and applies its colourscheme on `User LazyDone`; its presence is what makes `haseen theme set` link a config that is not LazyVim. A first install runs it with `--if-absent`; an existing config is replaced only with `--replace`, after it moves to `~/.config/nvim.bak-<timestamp>` (plan 065).
 - **Shell tokens:** `current/theme/shell.json` uses these keys:
-  `mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth windowRadius`.
-  `windowRadius` is Hyprland's window rounding under the theme (its `hyprland.lua`, else `default/hypr/looknfeel.lua`), so the menu rounds like the windows, as Omarchy's does (plan 068).
+  `mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth`.
+  The window corner radius is not a token: it is the frame's inner radius (`frame.radius`, else twice `radius`), which the menu reads from `Config.frameRadius` and `haseen theme set` gives Hyprland as `decoration.rounding`, so the menu rounds like the windows, as Omarchy's does (plans 068, 046).
   `Theme.qml` falls back to built-in values for any key that is missing; they are the `haseen` theme's rendered `shell.json`, so a missing file still looks like the default.
 - **Hooks:** `~/.config/haseen/hooks/<event>` and `<event>.d/*`, run by `haseen hook run <event> [args]`. Events: `theme-set`, `post-update`, `post-boot`, `layer-applied`.
 - **Generated themes:** two commands turn an image into an ordinary user theme (`~/.config/haseen/themes/<name>/colors.toml` plus the image as its background), on demand only. `haseen theme wallpaper` uses haseen's own extractor (`haseen-palette`, plan 034). `haseen theme generate` runs matugen (Material You, an optional package called as a program with `--json hex --dry-run` and haseen's `share/haseen/layers/theme/matugen.toml`). It maps the Material roles onto `colors.toml` keys and takes the ANSI hues from matugen custom colours. Foreground, accent and selection are held to plan 064's contrast floors, and a theme of the user's own is never overwritten. Its panel `haseen.themegen` (image strip, scheme, dark/light, swatches and a mock desktop, Save/Apply; menu Style › Theme Generator) is off by default (plan 067).
@@ -424,7 +469,7 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 
 ## 8. Secure Boot model
 
-- **Keys:** sbctl (version 0.17 or newer, which ships the Microsoft 2023 CAs next to the 2011 ones that expired in June 2026; sbctl commit 6df94e4) creates our own PK/KEK/db and enrolls them **together with the Microsoft and firmware-builtin keys**, so Windows, Microsoft-signed GPU option ROMs and anti-cheat (which require Secure Boot to be on) keep working.
+- **Keys:** sbctl (version 0.17 or newer, which ships the Microsoft 2023 CAs next to the 2011 ones that expired in June 2026; sbctl commit 6df94e4) creates our own PK/KEK/db and enrolls them **together with the Microsoft keys, always, and the firmware's built-in keys when the firmware has them**, so Windows, Microsoft-signed GPU option ROMs and anti-cheat (which require Secure Boot to be on) keep working. `--firmware-builtin` is passed only when the `dbDefault` and `KEKDefault` efivars exist: sbctl aborts the whole enrollment when either is missing (plan 002, decision 7). Without them, setup warns and runs `sbctl enroll-keys --microsoft`.
 - **Limine:** the Limine EFI binary is signed. `limine-enroll-config` embeds the hash of `limine.conf`, and every path in the config carries `#blake2b`. The fallback `EFI/BOOT/BOOTX64.EFI` is a **copy of the enrolled, signed binary**, never a separately signed raw one: Limine treats Secure Boot as inactive when no config hash is enrolled, so a signed raw fallback would boot unhashed kernels. A pacman hook (`zz-haseen-secureboot.hook`, sorted after Limine's and Omarchy's hooks and before `zz-sbctl.hook`) re-signs and re-enrolls whenever Limine, a kernel or the config changes.
 - **systemd-boot / GRUB:** UKIs and the loader are signed by the sbctl pacman hook. GRUB needs `--disable-shim-lock` plus its modules embedded, which is documented as the weakest path.
 - **Safety:** enrollment needs Setup Mode and a typed confirmation, and refuses if any boot file sbctl tracks is unsigned. When Windows is on the ESP, the layer prints the BitLocker warning before enrolling: changing `db` changes PCR 7, so BitLocker will ask for its recovery key once.

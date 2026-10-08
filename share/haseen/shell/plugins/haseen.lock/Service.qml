@@ -11,7 +11,7 @@ import qs.Haseen
 // checked by PAM. The surfaces exist only while locked.
 //
 // PAM: the `login` service by default, as hyprlock and swaylock do. It
-// exists on Arch, CachyOS and NixOS, and its auth stack (system-auth:
+// exists on Arch and CachyOS, and its auth stack (system-auth:
 // faillock, pam_unix, systemd-homed) is what a lock screen needs, so nothing
 // has to be installed into /etc/pam.d. pamConfig/pamConfigDirectory point it
 // at another service, e.g. a stub (pam_permit/pam_deny) in a scratch

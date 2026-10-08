@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Create keys, sign the boot chain, enroll with Microsoft + firmware keys
+# haseen:summary Create keys, sign the boot chain, enroll with Microsoft's (and the firmware's built-in) keys
 # haseen:args    [--dry-run] [--yes]
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
@@ -24,12 +24,15 @@ Setup Mode; otherwise it prints the firmware steps and exits 1.
                      and the kernels (the weakest path)
   3. sbctl verify: enrollment stops unless every boot-chain file is signed
   4. sbctl enroll-keys --microsoft --firmware-builtin, after you type ENROLL.
-     Microsoft's and the firmware's keys are always enrolled: Windows, GPU
-     option ROMs and anti-cheat depend on them.
+     Microsoft's keys are always enrolled: Windows, GPU option ROMs and
+     anti-cheat depend on them. The firmware's built-in keys are enrolled too
+     when the firmware exposes both dbDefault and KEKDefault; otherwise setup
+     warns and runs sbctl enroll-keys --microsoft.
 
 --yes answers the first question only. It never answers the typed ENROLL
 confirmation. Run as a normal user: the command reruns itself as root when the
-ESP is readable only by root.
+ESP is readable only by root. With HASEEN_SYSROOT set, only --dry-run runs:
+the sysroot redirects reads, but sbctl would still sign and enroll this machine.
 EOF
 }
 parse_common_flags "$@"
@@ -42,7 +45,7 @@ preflight_all
 [[ $FIRMWARE == uefi ]] || die "Secure Boot needs UEFI firmware; this machine booted in legacy BIOS mode. Nothing to do."
 case "$HASEEN_DISTRO" in
 cachyos | arch | omarchy) ;;
-nixos) die "on NixOS, Secure Boot belongs to the flake (lanzaboote), not to this command" ;;
+nixos) die "NixOS is not supported. haseen targets CachyOS and Arch." ;;
 *) die "unsupported distro: $HASEEN_DISTRO" ;;
 esac
 if [[ $SECUREBOOT_STATE != setup ]]; then
@@ -64,11 +67,28 @@ limine)
 systemd-boot | grub) ;;
 *) die "could not detect the bootloader on the ESP (see: haseen doctor)" ;;
 esac
+# HASEEN_SYSROOT redirects reads only; sudo, sbctl and the firmware they write
+# are this machine's. A real run would sign and enroll the live firmware from a
+# fixture's facts (its dbDefault/KEKDefault among them), so it is refused, as is
+# any real run as root, where sb_root bypasses sudo. tests/test-secureboot.sh
+# sets HASEEN_TEST_STUBBED_SUDO when sudo is its recorder.
+if in_sysroot && ! $DRY_RUN && { [[ ${HASEEN_TEST_STUBBED_SUDO:-} != 1 ]] || ((EUID == 0)); }; then
+    die "HASEEN_SYSROOT=$HASEEN_SYSROOT describes another system, but setup would sign and enroll this machine's firmware: use --dry-run with HASEEN_SYSROOT, or unset it"
+fi
 sb_reexec_as_root "$(readlink -f "$0")" "$@"
 
 KEYDIR="$(sb_keydir)"
 HAVE_KEYS=false
 sb_keys_exist && HAVE_KEYS=true
+
+# sbctl aborts --firmware-builtin when either default key variable is missing,
+# so the flag is passed only when both exist (all or nothing: plan 002, decision 7).
+ENROLL=(sbctl enroll-keys --microsoft)
+FW_KEYS=false
+if sb_firmware_has_builtin_keys; then
+    ENROLL+=(--firmware-builtin)
+    FW_KEYS=true
+fi
 
 # --- plan --------------------------------------------------------------------
 echo "Secure Boot setup: $BOOTLOADER on $ESP_PATH ($HASEEN_DISTRO)"
@@ -79,7 +99,12 @@ if $HAVE_KEYS; then
 else
     echo "  keys:       created in $KEYDIR"
 fi
-echo "  enrollment: your keys + Microsoft's (2011 and 2023 CAs) + the firmware's built-in keys"
+if $FW_KEYS; then
+    echo "  enrollment: your keys + Microsoft's (2011 and 2023 CAs) + the firmware's built-in keys (${ENROLL[*]})"
+else
+    echo "  enrollment: your keys + Microsoft's (2011 and 2023 CAs); dbDefault and KEKDefault are not both available (${ENROLL[*]})"
+    warn "the firmware does not expose both dbDefault and KEKDefault, which --firmware-builtin needs: enrolling your keys + Microsoft's, without --firmware-builtin."
+fi
 $WINDOWS_ON_ESP && echo "  windows:    Boot Manager on the ESP; have the BitLocker recovery key ready ($SB_RECOVERY_URL)"
 sb_esp_readable || echo "  note:       the ESP is readable only by root; this dry-run cannot list its files"
 if [[ $BOOTLOADER == grub ]]; then
@@ -190,14 +215,19 @@ if $WINDOWS_ON_ESP || sb_bitlocker_present; then
     sb_warn_bitlocker
 fi
 sb_warn_tpm
-cat <<'EOF'
+if $FW_KEYS; then
+    what="your keys, Microsoft's and the firmware's built-in keys"
+else
+    what="your keys and Microsoft's"
+fi
+cat <<EOF
 
-Enrolling writes your keys, Microsoft's and the firmware's built-in keys into
+Enrolling writes $what into
 the firmware (PK, KEK, db) and ends Setup Mode. Only the firmware menu can undo it.
 EOF
 confirm_typed "Enroll the keys now?" ENROLL ||
     die "not confirmed: the keys were NOT enrolled. The boot chain stays signed; run haseen secureboot setup again when ready."
-sb_root sbctl enroll-keys --microsoft --firmware-builtin
+sb_root "${ENROLL[@]}"
 
 if $DRY_RUN; then
     printf '\nAfter enrollment Secure Boot is still off; turn it on in the firmware:\n'

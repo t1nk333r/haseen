@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "comment": "Offline canary scenarios over an approved, verified fixture source: the mutation each applies and the state repo-status and an opted-in dry-run must report. None may be silently repaired.",
+  "cases": [
+    {"name": "approved and verified", "mutation": "none", "state": "usable"},
+    {"name": "no descriptor", "mutation": "remove-descriptor", "state": "absent"},
+    {"name": "changed descriptor", "mutation": "weaken-descriptor", "state": "broken"},
+    {"name": "symlinked descriptor", "mutation": "symlink-descriptor", "state": "broken"},
+    {"name": "host stanza declared", "mutation": "host-stanza", "state": "broken"},
+    {"name": "cached database changed", "mutation": "tamper-database", "state": "unverified"},
+    {"name": "cached signature missing", "mutation": "remove-signature", "state": "unverified"},
+    {"name": "database without keyring record", "mutation": "no-keyring-record", "state": "unverified"},
+    {"name": "retained keyring file changed", "mutation": "tamper-keyring-file", "state": "unverified"},
+    {"name": "retained keyring file redirected", "mutation": "symlink-keyring-file", "state": "unverified"},
+    {"name": "installed keyring version drifted", "mutation": "drift-keyring-version", "state": "unverified"},
+    {"name": "authority record missing", "mutation": "remove-authority", "state": "unverified"},
+    {"name": "unsupported architecture", "mutation": "arch-aarch64", "state": "unsupported-architecture"}
+  ]
+}

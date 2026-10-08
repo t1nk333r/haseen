@@ -1,0 +1,11 @@
+# Reviewed non-identical package names: logical tool -> concrete package in
+# one repository. A row makes that repository's lookup exact (no Provides).
+# logical	repository	package
+chirp	oniomarchy	chirp-next
+armitage	oniomarchy	armitage-git
+beef	oniomarchy	beef-xss
+dump1090	oniomarchy	dump1090-git
+fern-wifi-cracker	oniomarchy	fern-wifi-cracker-git
+theharvester	oniomarchy	theharvester-git
+java17-openjfx	oniomarchy	java17-openjfx-bin
+social-engineer-toolkit	blackarch	set

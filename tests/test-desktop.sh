@@ -238,8 +238,8 @@ EOF
     rebind_line="$(grep -n '^BIND SUPER + B -> uwsm-app -- firefox$' <<<"$OUTPUT" | cut -d: -f1)"
     assert_eq "lua: user bindings after defaults" "true" "$([[ -n $unbind_line && -n $rebind_line && $unbind_line -lt $rebind_line ]] && echo true || echo false)"
 
-    # init.lua finds share/haseen from its own location (Nix store paths have
-    # no HASEEN_PATH at first login).
+    # init.lua finds share/haseen from its own location (a first login can
+    # have no HASEEN_PATH yet).
     capture env -u HASEEN_PATH lua -e "dofile('$stub_lua')" -e "dofile('$HASEEN_PATH/default/hypr/init.lua'); print('PATH ' .. haseen.path)"
     assert_contains "lua: own location wins" "$OUTPUT" "PATH $HASEEN_PATH"
 fi
@@ -289,3 +289,56 @@ assert_not_contains "base: bluetooth only on request" "$OUTPUT" "bluez"
 desktop_dry "$FIXTURES/desk-cachyos-amd" base -- --nope
 assert_status "base: unknown option" 1 "$STATUS"
 assert_contains "base: unknown option named" "$OUTPUT" "unknown option '--nope'"
+
+# --- herdr and xdg-terminal-exec need [omarchy] (owner, 2026-10-08) -----------
+# Without the omarchy-repo layer they are skipped with a warning, never built;
+# with it they install from the repo as before.
+sandbox desk-omarchy
+fx="$SANDBOX/fx"
+cp -a "$FIXTURES/desk-cachyos-amd/." "$fx/"
+desktop_dry "$fx"
+assert_status "no [omarchy]: the desktop still applies" 0 "$STATUS"
+assert_dry_pure "no [omarchy]" "$OUTPUT"
+assert_contains "no [omarchy]: a clear warning names both" "$OUTPUT" \
+    "skipping xdg-terminal-exec herdr: haseen installs them only from Omarchy's [omarchy] repo, which is not enabled. To add them: haseen layer apply omarchy-repo desktop"
+assert_eq "no [omarchy]: neither is installed from any source" "" \
+    "$(grep -E '^DRYRUN: .*(pacman|paru|yay) .*(herdr|xdg-terminal-exec)' <<<"$OUTPUT" || true)"
+assert_contains "no [omarchy]: the rest of the AUR row still installs" "$OUTPUT" "ttfx"
+assert_contains "no [omarchy]: and the layer completes" "$OUTPUT" "layer desktop applied"
+
+# Selected in the same run, before desktop: the dry run plans them from the repo.
+capture env HASEEN_SYSROOT="$fx" haseen layer apply omarchy-repo desktop --dry-run
+assert_status "omarchy-repo selected: exit" 0 "$STATUS"
+assert_contains "omarchy-repo selected: both from [omarchy]" "$OUTPUT" \
+    "DRYRUN: sudo pacman -S --needed omarchy/xdg-terminal-exec omarchy/herdr"
+assert_not_contains "omarchy-repo selected: no skip warning" "$OUTPUT" "skipping xdg-terminal-exec"
+# Selected after desktop: the real run would reach desktop without the repo.
+capture env HASEEN_SYSROOT="$fx" haseen layer apply desktop omarchy-repo --dry-run
+assert_contains "omarchy-repo after desktop: still skipped, with the warning" "$OUTPUT" "skipping xdg-terminal-exec herdr"
+
+# The repo already enabled: they install from it, as before.
+mkdir -p "$fx/var/lib/pacman/sync"
+printf '[omarchy]\nSigLevel = Required DatabaseOptional\nServer = x\n' >>"$fx/etc/pacman.conf"
+printf 'omarchy-keyring\nherdr\nxdg-terminal-exec\nttfx\n' >"$fx/var/lib/pacman/sync/omarchy.pkgs"
+desktop_dry "$fx"
+assert_status "[omarchy] enabled: exit" 0 "$STATUS"
+assert_contains "[omarchy] enabled: both from the repo" "$OUTPUT" \
+    "DRYRUN: sudo pacman -S --needed omarchy/xdg-terminal-exec omarchy/herdr"
+assert_not_contains "[omarchy] enabled: no skip warning" "$OUTPUT" "skipping xdg-terminal-exec"
+
+# [omarchy] enabled but not carrying them, or its database unreadable (a
+# failed lookup): still skipped with the warning, never built from the AUR,
+# even with an AUR helper at hand.
+stub paru 'exit 0'
+for lookup in absent failed; do
+    printf 'omarchy-keyring\nttfx\n' >"$fx/var/lib/pacman/sync/omarchy.pkgs"
+    [[ $lookup == absent ]] || chmod 000 "$fx/var/lib/pacman/sync/omarchy.pkgs"
+    desktop_dry "$fx"
+    chmod 644 "$fx/var/lib/pacman/sync/omarchy.pkgs"
+    assert_status "[omarchy] enabled, lookup $lookup: the desktop still applies" 0 "$STATUS"
+    assert_contains "[omarchy] enabled, lookup $lookup: a warning names both" "$OUTPUT" \
+        "skipping xdg-terminal-exec herdr: haseen installs them only prebuilt, and no enabled repository ([omarchy] included) carries them; they are never built from the AUR"
+    assert_eq "[omarchy] enabled, lookup $lookup: neither is installed from any source" "" \
+        "$(grep -E '^DRYRUN: .*(pacman|paru|yay) .*(herdr|xdg-terminal-exec)' <<<"$OUTPUT" || true)"
+    assert_contains "[omarchy] enabled, lookup $lookup: the layer completes" "$OUTPUT" "layer desktop applied"
+done

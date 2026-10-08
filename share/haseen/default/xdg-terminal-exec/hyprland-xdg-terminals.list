@@ -1,0 +1,20 @@
+# haseen's vendor terminal preference for xdg-terminal-exec, the tool every
+# desktop entry with Terminal=true goes through (yazi, nvim), plus GTK's
+# "Open in Terminal" and flea's terminal action.
+#
+# Adapted from Omarchy default/xdg-terminal-exec/hyprland-xdg-terminals.list
+# (MIT, Copyright (c) David Heinemeier Hansson).
+#
+# The file name matters: xdg-terminal-exec looks for
+# "<lowercased $XDG_CURRENT_DESKTOP>-xdg-terminals.list" before the plain
+# "xdg-terminals.list" in each $XDG_DATA_DIRS/xdg-terminal-exec/ directory
+# (/usr/bin/xdg-terminal-exec:156-162). Under uwsm + Hyprland
+# XDG_CURRENT_DESKTOP is "Hyprland", hence hyprland-.
+#
+# This is the vendor fallback. The user's own choice lives in
+# $XDG_CONFIG_HOME/xdg-terminals.list, which is read first; the 50-handlers
+# seed creates it from $TERMINAL and `haseen setup default terminal` rewrites
+# it.
+#
+# The first entry that exists and is valid wins.
+foot.desktop

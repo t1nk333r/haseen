@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# haseen:summary Mirror and control an Android phone with scrcpy
+# haseen:args [--serial ID] [--v4l2[=/dev/videoN]] [-- scrcpy args]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/mobile/mobile.sh
+source "$HASEEN_PATH/layers/mobile/mobile.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen mobile mirror [--serial ID] [--v4l2[=/dev/videoN]] [--dry-run]
+                            [--yes] [-- scrcpy args...]
+
+Mirrors an Android phone's screen on the desktop and lets you drive it with
+the keyboard and mouse (scrcpy, over USB or over `adb connect`). Audio comes
+across by default on Android 11 and newer.
+
+  --serial ID   which device, when adb lists more than one
+  --v4l2[=DEV]  also publish the stream as a V4L2 webcam, so browsers and
+                video calls can use the phone as a camera. This needs the
+                v4l2loopback-dkms package: the command checks for it and for a
+                loopback node, and loads the module if the package is there.
+                Without DEV it uses the first loopback node, creating one if
+                none exists.
+  --            everything after it goes to scrcpy unchanged
+
+iOS has no equivalent: Apple exposes no screen-control protocol. AirPlay
+mirroring to the desktop (uxplay) is display-only and is not part of this
+layer.
+
+Exit: 0 ok, 1 failure, 2 usage error.
+EOF
+}
+
+parse_common_flags "$@"
+
+serial=""
+v4l2=false
+v4l2_dev=""
+scrcpy_args=()
+i=0
+while ((i < ${#REST[@]})); do
+    arg="${REST[i]}"
+    case "$arg" in
+    --serial)
+        i=$((i + 1))
+        ((i < ${#REST[@]})) || {
+            usage >&2
+            exit 2
+        }
+        serial="${REST[i]}"
+        ;;
+    --serial=*) serial="${arg#--serial=}" ;;
+    --v4l2) v4l2=true ;;
+    --v4l2=*)
+        v4l2=true
+        v4l2_dev="${arg#--v4l2=}"
+        ;;
+    --)
+        scrcpy_args+=("${REST[@]:i+1}")
+        break
+        ;;
+    *)
+        echo "haseen mobile mirror: unexpected argument '$arg'" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+    i=$((i + 1))
+done
+
+have scrcpy || die "scrcpy is not installed. Run: haseen layer apply mobile"
+have adb || die "android-tools is not installed. Run: haseen layer apply mobile"
+
+# Device check first: scrcpy's own failure here is a wall of adb text.
+devices="$(adb devices 2>/dev/null | sed -n '2,$p' | awk '$2 == "device" { print $1 }' || true)"
+if [[ -z $devices ]]; then
+    unauthorized="$(adb devices 2>/dev/null | sed -n '2,$p' | awk '$2 == "unauthorized" { print $1 }' || true)"
+    if [[ -n $unauthorized ]]; then
+        die "the phone ($unauthorized) has not authorised this computer: unlock it and accept the USB debugging prompt"
+    fi
+    die "no Android device: plug the phone in, unlock it and turn on USB debugging (check with: adb devices)"
+fi
+if [[ -z $serial ]] && (($(wc -l <<<"$devices") > 1)); then
+    die "more than one device ($(tr '\n' ' ' <<<"$devices")); pick one with --serial ID"
+fi
+if [[ -n $serial ]] && ! grep -qxF "$serial" <<<"$devices"; then
+    die "device '$serial' is not in adb's list ($(tr '\n' ' ' <<<"$devices"))"
+fi
+
+cmd=(scrcpy)
+[[ -z $serial ]] || cmd+=(--serial "$serial")
+
+if $v4l2; then
+    pkg_installed v4l2loopback-dkms ||
+        die "--v4l2 needs the v4l2loopback-dkms package, which this layer does not install by default. Run: haseen layer apply mobile -- --v4l2"
+    if [[ -z $v4l2_dev ]]; then
+        v4l2_dev="$(mobile_v4l2_first_loopback_node)"
+    elif [[ ! -c $v4l2_dev ]] && ! $DRY_RUN; then
+        die "$v4l2_dev is not a character device"
+    fi
+    if [[ -z $v4l2_dev ]]; then
+        # The package is installed but the module is not loaded. With no
+        # video_nr= the module takes the lowest free index.
+        v4l2_dev="/dev/video$(mobile_v4l2_next_index)"
+        info "no v4l2loopback node yet; loading the module (it will become $v4l2_dev)"
+        run_root modprobe v4l2loopback exclusive_caps=1 card_label=haseen-phone
+        if ! $DRY_RUN; then
+            # udev creates /dev/videoN after the module returns; wait for it.
+            have udevadm && udevadm settle --timeout=10 || true
+            v4l2_dev="$(mobile_v4l2_first_loopback_node)"
+            [[ -n $v4l2_dev ]] || die "v4l2loopback loaded but no loopback video node appeared"
+            [[ -c $v4l2_dev ]] || die "v4l2loopback loaded but $v4l2_dev is not a character device yet; run the command again"
+        fi
+    fi
+    info "webcam sink: $v4l2_dev"
+    # The mirroring window stays: this command is `mirror`. Pass
+    # `-- --no-playback` to use the phone purely as a camera.
+    cmd+=("--v4l2-sink=$v4l2_dev")
+fi
+
+((${#scrcpy_args[@]} == 0)) || cmd+=("${scrcpy_args[@]}")
+run "${cmd[@]}"

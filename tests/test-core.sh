@@ -83,14 +83,15 @@ assert_status "install tree dry-run" 0 "$STATUS"
 assert_dry_pure "install.sh" "$OUTPUT"
 assert_contains "installs router" "$OUTPUT" "install -Dm0755 $REPO/bin/haseen /usr/local/bin/haseen"
 capture env HASEEN_SYSROOT="$FIXTURES/nixos" "$REPO/install.sh" --dry-run
-assert_contains "nixos refused" "$OUTPUT" "flake"
+assert_status "nixos refused" 1 "$STATUS"
+assert_contains "nixos refused as unsupported" "$OUTPUT" "NixOS is not supported"
 
 # --- the owner's Omarchy/DMS plugins are read-only (AGENTS.md) ---------------
 # Static: no line naming those dirs (literally or via the variables that hold
 # them) may also delete, move or write.
 assert_eq "no destructive op on ~/.config/omarchy|DankMaterialShell/plugins" "" \
     "$(grep -rnE '(omarchy|DankMaterialShell)/plugins|PLUGIN_(OMARCHY|DMS)_DIR|omarchyPlugins|dmsPlugins' \
-        "$REPO/bin" "$REPO/share" "$REPO/install.sh" "$REPO/nix" |
+        "$REPO/bin" "$REPO/share" "$REPO/install.sh" |
         grep -E '(\brm\b|\bmv\b|rmdir|unlink|ln -s|>[^&|=]*(plugins|_DIR)|write_user_file|seed_user_file|removeFile|\.remove\()' || true)"
 # Behaviour: every plugin command run against an Omarchy and a DMS plugin
 # leaves both source trees byte-identical.
@@ -180,6 +181,19 @@ printf '[omarchy]\nServer = x\n' >>"$fx/etc/pacman.conf"
 capture env HASEEN_SYSROOT="$fx" haseen layer status omarchy-repo
 assert_status "omarchy-repo: status ok once enabled" 0 "$STATUS"
 assert_not_contains "omarchy-repo: last in pacman.conf, no shadow warning" "$OUTPUT" "not the last repo"
+
+# --- write_root_file under a restrictive umask ------------------------------
+# sudo keeps the caller's umask, so a 077 owner would create shared root state
+# directories (/var/lib/haseen) the services cannot traverse. A sudo that just
+# runs its argv shows the parents the helper really creates.
+sandbox root-umask
+stub sudo 'exec "$@"'
+dest="$SANDBOX/root/var/lib/haseen/state"
+capture bash -c 'umask 077; source "$HASEEN_PATH/lib/common.sh"; DRY_RUN=false; echo x | write_root_file "$1" 0600' _ "$dest"
+assert_status "write_root_file under umask 077" 0 "$STATUS"
+assert_eq "new parent directories stay traversable under umask 077" "755 755 755" \
+    "$(stat -c %a "$SANDBOX/root/var" "$SANDBOX/root/var/lib" "$SANDBOX/root/var/lib/haseen" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "the file keeps the mode it was given" "600" "$(stat -c %a "$dest")"
 
 # A test file run by hand, without tests/run.sh, has no sandbox: it must stop
 # before its fixtures reach the real ~/.config (it once overwrote an owner's

@@ -31,7 +31,6 @@ The owner's other repos:
 | Shell core and plugin CLI | `share/haseen/shell/`, `bin/haseen-shell-*`, `bin/haseen-plugin-*` | 005 |
 | Local AI | `share/haseen/layers/ai/`, `bin/haseen-ai-*` | 006 |
 | DMS swap-in | `share/haseen/layers/dms/`, `bin/haseen-shell-use` | 008 |
-| NixOS | `flake.nix`, `nix/` | 009 |
 | Notifications, OSD, launcher, lock, idle, polkit, session | `share/haseen/shell/plugins/haseen.*` | 010 |
 | Omarchy and DMS plugin compat | `share/haseen/shell/Compat/` + 6 root symlinks | 011 |
 | Extended luna-plugin compatibility | `share/haseen/shell/Compat/Omarchy/`, `share/haseen/shell/Compat/Runtime.qml`, `share/haseen/shell/Compat/ShellApi.qml`, `bin/haseen-plugin-settings` | 027 |
@@ -62,7 +61,15 @@ The owner's other repos:
 | Hibernation | `bin/haseen-hibernation-*`, `share/haseen/lib/hibernate.sh` | 033 |
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
+| Fonts and Arabic rendering, Qt platform theme, seed modules | `share/haseen/themed/fonts.conf.tpl`, `share/haseen/default/fontconfig/`, `share/haseen/seeds/`, `bin/haseen-seed-user` | 047 |
+| Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |
+| Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
+| Phones (Android and iOS) | `share/haseen/layers/mobile/`, `bin/haseen-mobile-*` | 040 |
+| Upload, annotation, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `share/haseen/default/satty/`, `share/haseen/themed/satty.css.tpl` | 041 |
+| Multiplexer, yazi, the VM rig | `share/haseen/default/{herdr,tmux,yazi}/`, `share/haseen/themed/yazi.toml.tpl`, `tools/lab.sh` | 044 |
+| Settings index | `share/haseen/lib/settings.sh`, `bin/haseen-settings-*` | 045 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
+| Optional VAPT workstation provisioning | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `docs/vapt.md` | 007, 087 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |
@@ -70,7 +77,10 @@ The owner's other repos:
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
-tooling) was dropped by the owner and is out of scope.
+tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
+the optional `vapt` layer; plan 087 extends its inventory and adds the opt-in
+private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
+`bin/haseen-vapt-repo-status`; independent review outstanding).
 
 ## Decisions
 
@@ -117,9 +127,10 @@ tools/secrets.sh                          # before every push
 ```
 
 `core/go.mod` needs Go ≥ 1.26; pass a mise-installed Go as `GO=` when the
-system one is older. nix is used through nix-portable (plan 009). Tests are
-behavioural only and run only through `tests/run.sh`; since plan 074
-`tests/lib.sh` `sandbox()` cuts every test off the live session.
+system one is older. Tests are behavioural only and run only through
+`tests/run.sh`; since plan 074 `tests/lib.sh` `sandbox()` cuts every test off
+the live session. Supported targets are CachyOS and Arch. NixOS support was
+dropped by owner decision on 2026-10-05 (plan 009); the installer refuses it.
 
 Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
 `plans/README.md`: keep every row, in number order. A PR that is BEHIND gets
@@ -161,33 +172,57 @@ Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
 
 Build tree = checkout files (`git ls-files -co --exclude-standard`, so WIP is
 included) plus `git diff <last-installed-main> origin/main` for code paths
-(not docs, plans, nix, NOTICE, AGENTS, handoff, README) applied with
+(not docs, plans, NOTICE, AGENTS, handoff, README) applied with
 `patch -p1`. Then `./install.sh --tree-only --yes` with Go on `PATH`,
 `systemctl --user daemon-reload`, `hyprctl reload`, `haseen migrate`, and
-re-apply the theme.
+re-apply the theme. `--tree-only` runs no seeds; `haseen migrate` runs
+`haseen seed user` once (migration `1791466288-seed-user.sh`); run it by
+hand after a later tree-only install that adds a seed.
 
 ## Release gates (open)
 
-- **Plan 032 (sidecar).** The Nix package does not build `haseen-sidecar`
-  (it would need `buildGoModule` and a vendor hash), so a NixOS install has no
-  `sysusage` capability and the widget hides. The NVIDIA branch of the daemon
+- **Plan 032 (sidecar).** The NVIDIA branch of the daemon
   (`nvidia-smi -l` stream) has no hardware here and is unverified; the amdgpu,
   i915 and xe branches were exercised against fixtures, i915 also live. There is
   no `strace` on the author's machine, so "who does the work" was measured with
   `/proc/<pid>/io` read counters.
-- **Plan 014.** No end-to-end run on a real CachyOS machine or VM yet. The
-  author's session has no qemu, no passwordless sudo and no docker group.
-  Everything was fixture-tested, and only the user-level parts were run live.
-  Still unproven:
-  - greetd login
-  - the uwsm session
-  - Secure Boot enrollment on real firmware (the author's laptop is in Setup Mode, so it is the natural first target, with the owner at the keyboard)
-  - the polkit dialog
-  - the real session lock
-  - display power-off
-  - Ollama on hardware
-  - the live DMS switch
+- **Plan 014.** Run in a CachyOS lab VM on 2026-10-06 (`tools/lab.sh`, a separate
+  copy of the lab at `~/.cache/haseen/lab`, `LAB_SECUREBOOT=on`):
+  - Install exited 0, greetd/tuigreet login reached the haseen desktop, and Secure
+    Boot was enrolled and enforced (`haseen secureboot status` all ok).
+  - Fixed along the way:
+    - `--firmware-builtin` now applies only when the firmware has default keys;
+    - doctor's shell detection (un-normalised `HASEEN_PATH` from `install.sh`).
+  - Open:
+    - without `omarchy-repo` the AUR fallback for ttfx fails on `rustup`
+      (herdr and xdg-terminal-exec are now skipped with a warning instead,
+      owner 2026-10-08, plan 024 amendment);
+    - a fresh install has no background and the hint points at an impossible
+      fetch;
+    - whether doctor's root-only "not checked" warnings block "all green";
+    - shell RSS reached 204 MiB, over the 200 MiB budget, after about 30
+      minutes with two reinstalls (188 MiB at login); not yet measured under
+      controlled conditions.
+  - Still unproven:
+    - the polkit dialog;
+    - the real session lock;
+    - display power-off;
+    - Ollama on hardware;
+    - the live DMS switch;
+    - Secure Boot on real firmware: the author's laptop is in Setup Mode, so it
+      is the natural target, with the owner at the keyboard.
+  - Details: `plans/014-vm-acceptance.md`.
 - **Plan 013.** PKGBUILDs are a later phase.
+- **flea pulls Omarchy in, by owner decision (plan 037).** `flea` hard-depends
+  on the `omarchy` package, which depends on `omarchy-settings`. `PKG_DENY`
+  still refuses both as direct install targets, but `haseen install app flea`
+  is allowed to let pacman pull them as dependencies after printing the
+  closure and the files that collide with haseen subsystems:
+  `/etc/fonts/conf.d/50-omarchy.conf` (plan 047 defeats it at the user level),
+  `/etc/limine-entry-tool.d/omarchy-*.conf` (plan 002),
+  `/etc/mkinitcpio.conf.d/omarchy_hooks.conf` (plan 033) and `/etc/sddm.conf.d/*`
+  (haseen uses greetd). Nothing else in the catalogue does this: `yazi` is the
+  default `inode/directory` handler and has no such dependency.
 - **Resolved: portal crash notifications.** The "Process crashed:
   xdg-desktop-portal-hyprland" notifications came from scratch shells run
   under `dbus-run-session`. qs activated the portal and xdph on the private

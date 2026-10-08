@@ -22,6 +22,8 @@ assert_contains "the fcitx5 addon configs are planned" "$OUTPUT" "DRYRUN: seed $
 assert_contains "the input-method environment is planned" "$OUTPUT" \
     "DRYRUN: seed $CONFIG/environment.d/10-haseen-fcitx.conf"
 assert_contains "XCompose is planned with its content" "$OUTPUT" "DRYRUN: write $HOME/.XCompose"
+assert_contains "fontconfig is planned with its content" "$OUTPUT" \
+    "DRYRUN: write $CONFIG/fontconfig/fonts.conf"
 assert_contains "the XCompose plan includes haseen's sequences" "$OUTPUT" \
     "include \"$REPO/share/haseen/default/xcompose/compose\""
 assert_eq "the dry run wrote nothing" "" "$(find "$HOME" -type f -o -type l | sort | tr '\n' ' ')"
@@ -63,6 +65,40 @@ assert_contains "XCompose includes haseen's file" "$compose" \
 assert_contains "haseen's sequences carry Arabic punctuation" \
     "$(cat "$REPO/share/haseen/default/xcompose/compose")" "<Multi_key> <a> <question>"
 
+# --- fontconfig --------------------------------------------------------------
+# The order of the two includes is the whole point: the theme render assigns
+# the generic families (assign replaces the list), the static file then adds
+# the language rules, which test lang and still fire.
+fonts="$(cat "$CONFIG/fontconfig/fonts.conf")"
+assert_contains "the theme render is included first" "$fonts" \
+    "<include ignore_missing=\"yes\">$HOME/.local/state/haseen/current/theme/fonts.conf</include>"
+assert_contains "haseen's Arabic rules are included after it" "$fonts" \
+    "<include ignore_missing=\"yes\">$REPO/share/haseen/default/fontconfig/arabic.conf</include>"
+assert_eq "the theme render comes before the Arabic rules" "theme arabic" \
+    "$(sed -n 's/.*current\/theme\/fonts\.conf.*/theme/p; s/.*fontconfig\/arabic\.conf.*/arabic/p' \
+        "$CONFIG/fontconfig/fonts.conf" | tr '\n' ' ' | sed 's/ $//')"
+# What fontconfig makes of the seeded file: fc-pattern -c applies the pattern
+# rules, needing no installed font. A stand-in theme render assigns the
+# monospace family the way themed/fonts.conf.tpl does.
+mkdir -p "$HOME/.local/state/haseen/current/theme"
+cat >"$HOME/.local/state/haseen/current/theme/fonts.conf" <<'EOF'
+<?xml version="1.0"?>
+<fontconfig>
+  <match target="pattern">
+    <test name="family"><string>monospace</string></test>
+    <edit name="family" mode="assign" binding="strong"><string>Theme Mono</string></edit>
+  </match>
+</fontconfig>
+EOF
+families() { FONTCONFIG_FILE="$CONFIG/fontconfig/fonts.conf" fc-pattern -c "$1" family | sed -n 's/^\tfamily: //p'; }
+assert_eq "Arabic text keeps the theme face and gets a Naskh fallback" \
+    '"Theme Mono"(s) "Noto Naskh Arabic"(w)' "$(families 'monospace:lang=ar')"
+assert_eq "Urdu puts Nastaliq first" '"Noto Nastaliq Urdu"(s) "Theme Mono"(s)' "$(families 'monospace:lang=ur')"
+assert_eq "Latin text is untouched by the Arabic rules" '"Theme Mono"(s)' "$(families 'monospace:lang=en')"
+rm "$HOME/.local/state/haseen/current/theme/fonts.conf"
+assert_eq "without a theme render the Arabic rules still apply" \
+    '"monospace"(s) "Noto Naskh Arabic"(w)' "$(families 'monospace:lang=ar')"
+
 # --- a seeded file belongs to the user --------------------------------------
 echo "# mine" >"$CONFIG/btop/btop.conf"
 echo "# mine too" >"$HOME/.XCompose"
@@ -78,6 +114,46 @@ assert_status "an unexpected argument is rejected" 2 "$STATUS"
 capture haseen seed user --help
 assert_status "--help exits 0" 0 "$STATUS"
 assert_contains "--help names the files" "$OUTPUT" ".XCompose"
+
+# --- a broken user file stops only its own seed -----------------------------
+# A dangling link (a dotfiles checkout not cloned yet) is the user's file: it
+# is never followed to create its target. A read-only rc fails the shell seed
+# only; the seeds after it still run, and the run reports the failure.
+DOTS="$SANDBOX/dotfiles-not-cloned"
+mkdir -p "$DOTS"
+rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf" \
+    "$CONFIG/tmux/tmux.conf" "$CONFIG/yazi/yazi.toml" "$HOME/.bashrc"
+ln -s "$DOTS/fonts.conf" "$CONFIG/fontconfig/fonts.conf"
+ln -s "$DOTS/xdg-terminals.list" "$CONFIG/xdg-terminals.list"
+ln -s "$DOTS/btop.conf" "$CONFIG/btop/btop.conf"
+printf '# read-only rc\n' >"$HOME/.bashrc"
+chmod 444 "$HOME/.bashrc"
+capture haseen seed user
+chmod 644 "$HOME/.bashrc"
+assert_status "a failing seed fails the run" 1 "$STATUS"
+assert_contains "the failing seed is named" "$OUTPUT" "60-shell.sh"
+assert_eq "the seeds after it still ran (tmux)" "yes" "$([[ -f $CONFIG/tmux/tmux.conf ]] && echo yes)"
+assert_eq "the seeds after it still ran (yazi)" "yes" "$([[ -f $CONFIG/yazi/yazi.toml ]] && echo yes)"
+assert_eq "no dangling link was written through" "" "$(ls -A "$DOTS" 2>/dev/null)"
+assert_eq "the dangling links are left as they were" "3" \
+    "$(find "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf" -type l | wc -l)"
+rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf"
+
+# An rc that already includes the fragment from another tree (the checkout,
+# then /usr/local) is not given a second include: init.sh would run twice.
+printf '[ -r "/usr/local/share/haseen/default/shell/init.sh" ] && . "/usr/local/share/haseen/default/shell/init.sh"\n' \
+    >"$HOME/.bashrc"
+capture haseen seed user
+assert_status "seeding over another tree's include succeeds" 0 "$STATUS"
+assert_eq "one include, whichever tree wrote it" "1" "$(grep -c 'default/shell/init.sh' "$HOME/.bashrc")"
+# A dangling rc link is skipped with a warning, not written through.
+rm -f "$HOME/.bashrc"
+ln -s "$DOTS/bashrc" "$HOME/.bashrc"
+capture haseen seed user
+assert_status "a dangling rc link is not an error" 0 "$STATUS"
+assert_contains "and is reported" "$OUTPUT" "$HOME/.bashrc is a dangling link"
+assert_eq "and is not followed" "" "$(ls -A "$DOTS" 2>/dev/null)"
+rm -f "$HOME/.bashrc"
 
 # --- system seeds: a Framework laptop on btrfs -------------------------------
 export HASEEN_SYSROOT="$FIXTURES/seeds-framework"

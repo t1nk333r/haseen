@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+# haseen:summary Circle to search: read or reverse-image-search a screen region
+# haseen:args [text|image] [--geometry "X,Y WxH"] [--image FILE] [--lang LANGS] [--provider NAME] [--search] [--upload] [--dry-run]
+#
+# Adapted from the owner's own Omarchy plugin t1nk33r.screen-search (MIT,
+# Copyright (c) t1nk33r): the freeze/picker lifecycle with SIGKILL escalation
+# (hyprpicker detaches into its own process group and does not reliably exit on
+# SIGTERM), captures kept in a private runtime directory and swept, the
+# clipboard hand-off as the default visual mode, and the rule that nothing is
+# ever uploaded without consent given for that one capture.
+#
+# Default is local: tesseract reads the region and the text goes to the
+# clipboard. Nothing leaves the machine. The image paths are opt-in, and the
+# one that uploads says so before it does it.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+# Google Lens serves its upload endpoint to browsers; a desktop Chrome string
+# is what the endpoint was verified with (2026-10-05) and what it answers 200 +
+# Location to.
+BROWSER_UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+# Captures live only in $XDG_RUNTIME_DIR/haseen-search-screen. There is no
+# /tmp fallback: a shared, predictable directory lets another account plant
+# it, or a link inside it, and read or redirect a picture of the screen.
+CAPTURE_DIR=""
+[[ ${XDG_RUNTIME_DIR:-} == /* ]] && CAPTURE_DIR="$XDG_RUNTIME_DIR/haseen-search-screen"
+
+usage() {
+    cat <<EOF
+Usage: haseen search screen [text|image] [options]
+
+Freeze the screen, box a region, and act on it.
+
+Modes:
+  text    (default) recognise the text with tesseract, locally, and copy it
+  image   act on the picture itself
+
+Options:
+  --geometry "X,Y WxH"  use this rectangle instead of picking one
+  --image FILE          act on an existing image instead of the screen
+  --lang LANGS          tesseract languages (default: \$HASEEN_OCR_LANGS or ara+eng)
+  --print               also write the recognised text to stdout
+  --search              text mode: open a web search for the recognised text
+  --provider NAME       google (default), bing, yandex or tineye
+  --upload              image mode: send the crop to Google Lens and open the
+                        results. This uploads a picture of your screen to
+                        Google. It is never done without this flag
+  --yes                 answer the upload confirmation with yes
+  --dry-run             print the plan
+
+Without --upload, image mode uploads nothing: the crop goes to the clipboard
+marked sensitive and the provider's own upload page opens, so the picture
+leaves your machine only when you paste it there.
+EOF
+}
+
+notify() { haseen-notification-send "$@" >/dev/null 2>&1 || true; }
+
+# --- private capture storage -------------------------------------------------
+
+# private_dir DIR — a real directory of ours that nobody else can enter.
+private_dir() { [[ -d $1 && ! -L $1 && -O $1 && $(stat -c %a -- "$1") == 700 ]]; }
+
+# capture_dir — establish CAPTURE_DIR as private before anything is swept or
+# written into it, or stop. The runtime dir must be private too, so nobody
+# else can swap the capture dir under us. A capture dir that is a link, not
+# ours, or open to others is refused untouched (its mode is never changed).
+capture_dir() {
+    [[ -n $CAPTURE_DIR ]] ||
+        die "image mode needs XDG_RUNTIME_DIR: a picture of the screen is never kept in a shared /tmp directory"
+    private_dir "$XDG_RUNTIME_DIR" ||
+        die "$XDG_RUNTIME_DIR is not a private directory (yours, mode 0700); nothing was captured"
+    [[ -e $CAPTURE_DIR || -L $CAPTURE_DIR ]] || (umask 077 && mkdir -m 700 -- "$CAPTURE_DIR") 2>/dev/null || true
+    private_dir "$CAPTURE_DIR" ||
+        die "$CAPTURE_DIR is not a private directory (yours, mode 0700); nothing was captured"
+}
+
+# Captures older than ten minutes are orphans of a killed run.
+sweep_captures() {
+    [[ -d $CAPTURE_DIR ]] || return 0
+    find "$CAPTURE_DIR" -maxdepth 1 -type f -name 'capture-*' \( -mmin +10 -o -empty \) -delete 2>/dev/null || true
+}
+
+# Only files inside CAPTURE_DIR are ever deleted, and never through a symlink.
+discard_capture() {
+    local f=${1:-} real dir
+    [[ -n $f && -f $f && ! -L $f ]] || return 0
+    real="$(realpath -m -- "$f" 2>/dev/null)" || return 0
+    dir="$(realpath -m -- "$CAPTURE_DIR" 2>/dev/null)" || return 0
+    [[ $real == "$dir"/* && $real != *".."* ]] || return 0
+    rm -f -- "$real"
+}
+
+FREEZE_PID=""
+CAPTURE=""
+kill_hard() {
+    local pid=${1:-}
+    [[ -n $pid ]] || return 0
+    kill -TERM "$pid" 2>/dev/null || return 0
+    local n=0
+    while ((n++ < 3)); do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.05
+    done
+    kill -KILL "$pid" 2>/dev/null || true
+}
+# CAPTURE is always the command's own file (with --image, a copy of IMAGE),
+# so it goes on every exit; IMAGE itself is never deleted.
+cleanup() {
+    kill_hard "$FREEZE_PID"
+    discard_capture "$CAPTURE"
+    return 0
+}
+
+# --- providers ---------------------------------------------------------------
+# The clipboard hand-off page per provider: where the user pastes the crop.
+# ImgOps is the one page that accepts a pasted image and forwards it to Google
+# and Bing, which is why the owner's plugin routes both through it.
+provider_page() {
+    case $1 in
+    google | bing) printf 'https://imgops.com/' ;;
+    yandex) printf 'https://yandex.com/images/' ;;
+    tineye) printf 'https://tineye.com/' ;;
+    *) return 1 ;;
+    esac
+}
+
+provider_text_url() {
+    local q
+    q="$(jq -rn --arg q "$2" '$q|@uri')"
+    case $1 in
+    google) printf 'https://www.google.com/search?q=%s' "$q" ;;
+    bing) printf 'https://www.bing.com/search?q=%s' "$q" ;;
+    yandex) printf 'https://yandex.com/search/?text=%s' "$q" ;;
+    tineye) return 1 ;;
+    *) return 1 ;;
+    esac
+}
+
+# --- command line ------------------------------------------------------------
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+MODE=text GEOMETRY="" IMAGE="" LANG_LIST=${HASEEN_OCR_LANGS:-ara+eng}
+PROVIDER=google PRINT=false SEARCH=false UPLOAD=false
+while (($#)); do
+    case "$1" in
+    text | image) MODE=$1 ;;
+    --geometry | --image | --lang | --provider)
+        (($# > 1)) || {
+            usage >&2
+            exit 2
+        }
+        case $1 in
+        --geometry) GEOMETRY=$2 ;;
+        --image) IMAGE=$2 ;;
+        --lang) LANG_LIST=$2 ;;
+        --provider) PROVIDER=$2 ;;
+        esac
+        shift
+        ;;
+    --geometry=*) GEOMETRY=${1#*=} ;;
+    --image=*) IMAGE=${1#*=} ;;
+    --lang=*) LANG_LIST=${1#*=} ;;
+    --provider=*) PROVIDER=${1#*=} ;;
+    --print) PRINT=true ;;
+    --search) SEARCH=true ;;
+    --upload) UPLOAD=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    shift
+done
+provider_page "$PROVIDER" >/dev/null || {
+    echo "Error: unknown provider: $PROVIDER (google, bing, yandex, tineye)" >&2
+    exit 2
+}
+[[ -z $IMAGE || -r $IMAGE ]] || die "cannot read $IMAGE"
+if [[ -n $GEOMETRY && ! $GEOMETRY =~ ^-?[0-9]+,-?[0-9]+\ [0-9]+x[0-9]+$ ]]; then
+    echo "Error: --geometry wants \"X,Y WxH\", got: $GEOMETRY" >&2
+    exit 2
+fi
+$UPLOAD && [[ $MODE != image ]] && {
+    echo "Error: --upload only applies to image mode" >&2
+    exit 2
+}
+
+# The exact OCR argv, in one place, so the plan and the real run cannot drift.
+# --oem 1 is mandatory (the Arabic model has no legacy engine at all), -l
+# ara+eng is mandatory for the mixed text Arabic UIs actually contain, and
+# Omarchy's --dpi 300 is deliberately absent: it merged words in the
+# verification run.
+ocr_argv() { printf '%s\n' "$1" stdout --oem 1 --psm 6 -l "$LANG_LIST" -c preserve_interword_spaces=1; }
+
+# --- plans -------------------------------------------------------------------
+
+if $DRY_RUN; then
+    src="grim -g ${GEOMETRY:-<slurp selection>} -"
+    [[ -n $IMAGE ]] && src="cat $IMAGE"
+    [[ -n $IMAGE || -n $GEOMETRY ]] || echo "DRYRUN: hyprpicker -r -z (freeze the screen)"
+    case $MODE in
+    text)
+        mapfile -t argv < <(ocr_argv "$([[ -n $IMAGE ]] && printf '%s' "$IMAGE" || printf 'stdin')")
+        echo "DRYRUN: $src | tesseract ${argv[*]} | wl-copy"
+        $SEARCH && echo "DRYRUN: xdg-open $(provider_text_url "$PROVIDER" '<the recognised text>' || echo "($PROVIDER has no text search)")"
+        ;;
+    image)
+        echo "DRYRUN: $src > ${CAPTURE_DIR:-\$XDG_RUNTIME_DIR/haseen-search-screen}/capture-XXXXXXXX.png (private 0700 dir, deleted on exit)"
+        if $UPLOAD; then
+            echo "DRYRUN: confirm: this uploads the capture to Google"
+            echo "DRYRUN: curl -X POST -F encoded_image=@<capture> https://lens.google.com/v3/upload"
+            echo "DRYRUN: xdg-open <the Location: header>"
+        else
+            echo "DRYRUN: wl-copy --type image/png --sensitive < <capture> (nothing is uploaded)"
+            echo "DRYRUN: xdg-open $(provider_page "$PROVIDER")"
+        fi
+        ;;
+    esac
+    exit 0
+fi
+
+# --- capture -----------------------------------------------------------------
+
+trap cleanup EXIT
+trap 'exit 143' TERM INT HUP
+
+# Image storage is settled before the screen is frozen, so a refused
+# directory costs no selection, and nothing is swept until it is ours.
+if [[ $MODE == image ]]; then
+    capture_dir
+    sweep_captures
+fi
+
+if [[ -z $IMAGE && -z $GEOMETRY ]]; then
+    require_cmds hyprpicker slurp grim
+    # Freeze first, so the crop is what the user saw while selecting.
+    hyprpicker -r -z >/dev/null 2>&1 &
+    FREEZE_PID=$!
+    sleep 0.1
+    GEOMETRY="$(slurp 2>/dev/null)" || exit 0
+    [[ -n $GEOMETRY ]] || exit 0 # cancelled
+fi
+
+if [[ $MODE == text ]]; then
+    require_cmds tesseract
+    mapfile -t argv < <(ocr_argv "$([[ -n $IMAGE ]] && printf '%s' "$IMAGE" || printf 'stdin')")
+    if [[ -n $IMAGE ]]; then
+        text="$(tesseract "${argv[@]}" 2>/dev/null)" || die "OCR failed"
+    else
+        text="$(grim -g "$GEOMETRY" - | tesseract "${argv[@]}" 2>/dev/null)" || die "OCR failed"
+    fi
+    kill_hard "$FREEZE_PID"
+    FREEZE_PID=""
+    if [[ -z ${text//[[:space:]]/} ]]; then
+        notify -u critical "No text found" "Select a region with text in it"
+        exit 1
+    fi
+    printf '%s' "$text" | wl-copy
+    $PRINT && printf '%s\n' "$text"
+    if $SEARCH; then
+        url="$(provider_text_url "$PROVIDER" "$text")" || die "$PROVIDER has no text search"
+        # Synchronous, like the reference plugin's open_in_browser: a browser
+        # that refuses to start is a failure the user should hear about.
+        xdg-open "$url" >/dev/null 2>&1 || die "could not open a browser"
+        notify "Searching the selection" "$PROVIDER"
+    else
+        # The recognised text is never put in a notification: it is the user's
+        # screen content and a toast is a log everyone can read.
+        notify "Copied the text in the selection"
+    fi
+    exit 0
+fi
+
+# image mode
+require_cmds grim
+CAPTURE="$(mktemp -p "$CAPTURE_DIR" capture-XXXXXXXX.png)" # mode 0600
+if [[ -n $IMAGE ]]; then
+    cp -- "$IMAGE" "$CAPTURE"
+else
+    grim -g "$GEOMETRY" "$CAPTURE" || die "grim could not capture $GEOMETRY"
+fi
+kill_hard "$FREEZE_PID"
+FREEZE_PID=""
+
+if ! $UPLOAD; then
+    # Marked sensitive so clipboard history skips a picture of the screen.
+    # Nothing is uploaded here: the user pastes it on the provider's own page,
+    # which is the moment of consent. haseen never types for the user (no
+    # wtype/ydotool), so the paste is theirs to make.
+    wl-copy --type image/png --sensitive <"$CAPTURE"
+    page="$(provider_page "$PROVIDER")"
+    xdg-open "$page" >/dev/null 2>&1 || die "could not open a browser"
+    notify "Capture copied" "Paste it into $page"
+    exit 0
+fi
+
+require_cmds curl xdg-open
+cat >&2 <<EOF
+This sends the captured picture of your screen to Google (lens.google.com).
+Google receives the image and your IP address. Nothing has been sent yet.
+EOF
+confirm "Upload this capture to Google Lens?" || {
+    echo "Nothing was uploaded." >&2
+    exit 0
+}
+
+# Google Lens — POST https://lens.google.com/v3/upload, multipart, field
+# encoded_image, no key and no account. The answer is a redirect; the results
+# live at the Location: URL, which survives a cookie-free session but renders
+# only in a real browser, so it is opened rather than fetched.
+# Evidence: POST with -F encoded_image=@file returned HTTP 200 and
+#   Location: https://www.google.com/search?vsrid=…&udm=26&lns_mode=un…
+#   and re-fetching that URL clean returned HTTP 200 (verified 2026-10-05).
+location="$(curl -sS -o /dev/null -D - --max-time 60 -A "$BROWSER_UA" \
+    -F "encoded_image=@$CAPTURE" https://lens.google.com/v3/upload |
+    sed -n 's/^[Ll]ocation:[[:space:]]*//p' | tr -d '\r' | head -n1)" ||
+    die "the upload to Google Lens failed"
+[[ -n $location ]] || die "Google Lens answered without a results URL"
+xdg-open "$location" >/dev/null 2>&1 || die "could not open a browser"
+notify "Searching the capture" "Google Lens"

@@ -94,9 +94,8 @@ formatting, `gpu-probe.sh` removed), `bin/haseen-sidecar`,
 `tools/build-sidecar.sh`, the build step in `install.sh`, the Go section of
 `tools/lint.sh`, `go`/`socat` in CI, and `tests/test-sidecar.sh`.
 
-Known gap: the Nix package does not build the daemon (it would need
-`buildGoModule` and a vendor hash), so a NixOS install has no `sysusage`
-capability and the widget hides. Recorded in `handoff.md`.
+The earlier known gap (the Nix package did not build the daemon) closed on
+2026-10-05, when Nix support was dropped (plan 009).
 
 ## Addition 2026-10-07: system stats for the DMS compat layer
 

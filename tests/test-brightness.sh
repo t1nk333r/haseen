@@ -380,7 +380,7 @@ recorder() {
     stub sudo "printf '%s\n' \"\$*\" >>'$SANDBOX/sudo.log'; case \"\$1\" in tee) cat >/dev/null ;; esac; exit 0"
 }
 # machine NAME — an Arch sysroot (os-release, pacman's local db); the NixOS
-# ones copy tests/fixtures/nixos's os-release instead.
+# one copies tests/fixtures/nixos's os-release instead.
 machine() {
     local root="$SANDBOX/setup-$1"
     rm -rf "$root"
@@ -444,45 +444,21 @@ assert_contains "status: not installed" "$OUTPUT" "installed: no"
 capture haseen setup ddc sideways
 assert_status "an unknown verb is a usage error" 2 "$STATUS"
 
-# NixOS: the flake owns DDC. on and off refuse with verb-specific guidance
-# and run nothing; status reads the command, not pacman's database.
+# NixOS is not supported (plan 009): on and off refuse by name and run nothing.
 HASEEN_SYSROOT="$(nixos_machine nixos)"
 export HASEEN_SYSROOT
 for verb in on off; do
     recorder
     capture haseen setup ddc "$verb" --yes
     assert_status "NixOS: setup ddc $verb refuses" 1 "$STATUS"
-    if [[ $verb == on ]]; then
-        assert_contains "NixOS: on enables the DDC option" "$OUTPUT" "set haseen.ddc.enable = true"
-        assert_contains "NixOS: on names the i2c prerequisite" "$OUTPUT" "hardware.i2c.enable = true"
-        assert_contains "NixOS: on names the user's i2c group" "$OUTPUT" "add your user to the i2c group"
-    else
-        assert_contains "NixOS: off disables the DDC option" "$OUTPUT" "set haseen.ddc.enable = false"
-        assert_contains "NixOS: off rebuilds the system" "$OUTPUT" "nixos-rebuild switch"
-        assert_not_contains "NixOS: off does not enable DDC" "$OUTPUT" "haseen.ddc.enable = true"
-    fi
-    assert_not_contains "NixOS: $verb says nothing of pacman" "$OUTPUT" "pacman"
+    assert_contains "NixOS: $verb says it is unsupported" "$OUTPUT" "NixOS is not supported"
     assert_eq "NixOS: $verb runs nothing privileged" "" "$(cat "$SANDBOX/sudo.log")"
     capture haseen setup ddc "$verb" --dry-run
     assert_status "NixOS: $verb --dry-run refuses too" 1 "$STATUS"
-    if [[ $verb == on ]]; then
-        assert_contains "NixOS: on --dry-run keeps its option hint" "$OUTPUT" "haseen.ddc.enable = true"
-    else
-        assert_contains "NixOS: off --dry-run keeps its option hint" "$OUTPUT" "haseen.ddc.enable = false"
-    fi
+    assert_not_contains "NixOS: $verb --dry-run plans nothing" "$OUTPUT" "DRYRUN:"
 done
-mkdir -p "$HASEEN_SYSROOT/sys/module/i2c_dev"
-touch "$HASEEN_SYSROOT/dev/i2c-9"
-capture haseen setup ddc status
-assert_status "NixOS: status works" 0 "$STATUS"
-assert_contains "NixOS: ddcutil on PATH counts as installed (no pacman database)" "$OUTPUT" "installed: yes"
-assert_contains "NixOS: status finds the monitors" "$OUTPUT" "monitors:  ddc:DP-1  LG ULTRAGEAR (DP-1)"
-assert_contains "NixOS: status names the option" "$OUTPUT" "NixOS:     haseen.ddc.enable"
 capture haseen setup ddc --help
-assert_contains "--help explains enabling DDC on NixOS" "$OUTPUT" "on:  set haseen.ddc.enable = true"
-assert_contains "--help explains the i2c prerequisite" "$OUTPUT" "hardware.i2c.enable = true"
-assert_contains "--help explains disabling DDC on NixOS" "$OUTPUT" "off: set haseen.ddc.enable = false"
-assert_contains "--help explains rebuilding after changing DDC" "$OUTPUT" "nixos-rebuild switch"
+assert_not_contains "--help no longer describes a NixOS option" "$OUTPUT" "haseen.ddc.enable"
 unset HASEEN_INLINE
 
 # --- manifest and default ---------------------------------------------------------------------
