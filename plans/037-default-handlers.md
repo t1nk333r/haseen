@@ -33,7 +33,10 @@ collides with `PKG_DENY`.
    `omarchy-settings`' copy. Coverage: `inode/directory` → `yazi.desktop`, 17
    image types → `imv.desktop`, `application/pdf` → `org.gnome.Papers.desktop`,
    15 video types + `application/ogg` → `mpv.desktop`, 17 text/source types →
-   `nvim.desktop`, http/https → `firefox.desktop`. The MIME *coverage* is
+   `nvim.desktop`, http/https → `helium.desktop` (the browser the shell layer
+   installs, plan 070; the first draft named `firefox.desktop`, which no layer
+   installs). `nvim.desktop` is the one id no default layer provides: neovim is
+   in the catalogue. The MIME *coverage* is
    Omarchy's proven list, with two deliberate deltas: the image block is widened
    to everything `imv` declares, and Omarchy's `mailto=HEY.desktop` is dropped
    (it is the owner's paid web app, not a desktop default).

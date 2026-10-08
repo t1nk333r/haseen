@@ -34,7 +34,22 @@ assert_contains "vendor list: default section" "$(cat "$MIMEAPPS")" "[Default Ap
 assert_contains "vendor list: credits Omarchy's coverage" "$(cat "$MIMEAPPS")" "Omarchy default/applications/mimeapps.list"
 assert_eq "vendor list: directories open in the file manager" "inode/directory" "$(vendor_mimes yazi.desktop)"
 assert_eq "vendor list: PDFs open in papers" "application/pdf" "$(vendor_mimes org.gnome.Papers.desktop)"
-assert_contains "vendor list: links open in a browser" "$(vendor_mimes firefox.desktop)" "x-scheme-handler/https"
+assert_eq "vendor list: links open in Helium" "x-scheme-handler/http"$'\n'"x-scheme-handler/https" "$(vendor_mimes helium.desktop)"
+# Every desktop id the vendor list names comes from a package a default layer
+# installs, except nvim.desktop: neovim is catalogue-only, said in the header.
+declare -A VENDOR_PKG=([yazi.desktop]=yazi [imv.desktop]=imv [mpv.desktop]=mpv
+    [org.gnome.Papers.desktop]=papers [helium.desktop]=aur:helium-browser-bin)
+default_pkgs="$(for l in base chaotic omarchy-repo desktop theme shell; do
+    f="$REPO/share/haseen/layers/$l/packages.txt"
+    if [[ -r $f ]]; then sed 's/#.*//' "$f" | tr -s ' \t' '\n' | sed '/^$/d'; fi
+done | sort -u)"
+dangling=""
+while IFS= read -r id; do
+    [[ $id == nvim.desktop ]] && continue
+    pkg="${VENDOR_PKG[$id]:-}"
+    if [[ -z $pkg ]] || ! grep -qxF -- "$pkg" <<<"$default_pkgs"; then dangling+="$id "; fi
+done < <(grep -E '^[^#=]+=' "$MIMEAPPS" | cut -d= -f2 | sort -u)
+assert_eq "vendor list: every app is installed by a default layer (nvim aside)" "" "$dangling"
 # Omarchy's set is the proven one, so every type it covers is still covered.
 omarchy_types="$(grep -oE '^[a-z-]+/[A-Za-z0-9.+-]+' /usr/share/omarchy/default/applications/mimeapps.list 2>/dev/null | sort -u || true)"
 if [[ -n $omarchy_types ]]; then
