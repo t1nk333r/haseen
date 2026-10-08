@@ -60,7 +60,11 @@ never applied; it also broke a theme file ending in `return` and wrote
 through a dangling link.
 
 A `frame.radius` edit reaches the frame at once and the windows and menu at
-the next `haseen theme set`. The settings index notes it.
+the next `haseen theme set`. The settings index notes it. An existing HOME
+gets the new render from migration `1791466289-theme-rounding.sh`: when
+`current/theme` has no `rounding.lua`, it runs `haseen theme set` on the
+current theme once (no theme, or a render that already has the file: nothing
+to do; a theme that cannot render warns and keeps the old render).
 
 ## Rejected
 
@@ -93,6 +97,10 @@ the next `haseen theme set`. The settings index notes it.
   two staged files.
 - `tests/test-theme-haseen.sh`: the default theme's menu radius is 12, and
   `Theme.qml`'s fallbacks equal the rendered `haseen` tokens.
+- `tests/test-migrate-defaults.sh`: the migration gives an old render (no
+  `rounding.lua`, the theme's own rounding unprefixed) both files; a re-run
+  leaves the render byte-identical; no theme writes nothing; a current theme
+  that no longer exists warns, keeps the old render and exits 0.
 
 ## Open
 
@@ -109,4 +117,5 @@ include), `bin/haseen-theme-set` (dry-run plan),
 `share/haseen/themes/haseen/hyprland.lua`, `share/haseen/shell/Haseen/Theme.qml`,
 `share/haseen/lib/settings.sh`, `docs/architecture.md`,
 `share/haseen/agents/skills/haseen/theming.md`, `tests/test-theme.sh`,
-`tests/test-theme-haseen.sh`.
+`tests/test-theme-haseen.sh`, `share/haseen/migrations/1791466289-theme-rounding.sh`,
+`tests/test-migrate-defaults.sh`.

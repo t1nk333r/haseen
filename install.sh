@@ -261,6 +261,13 @@ else
         warn "haseen.nvim was not seeded; run: haseen setup nvim"
 fi
 
+# The user-level defaults (fontconfig, the shell rc include, mux, yazi,
+# capture, handlers): every run, fresh or upgrade. A seed writes only what is
+# missing, so a file the user has made their own is never touched; a seed
+# that fails is named, and the others are still in place.
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" seed user "${flags[@]}" ||
+    warn "some seeds failed (named above); fix them and run: haseen seed user"
+
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.
 HASEEN_PATH="$installed_haseen_path" "$haseen_bin" hw apply "${flags[@]}"
