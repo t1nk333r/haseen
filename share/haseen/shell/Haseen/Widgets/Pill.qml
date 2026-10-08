@@ -41,7 +41,7 @@ Item {
         anchors.fill: parent
         radius: Theme.radius
         color: root.active ? Theme.accent : root.containsMouse ? Theme.surfaceAlt : "transparent"
-        border.color: root.active || root.pending || root.containsMouse ? Theme.accent : Theme.border
+        border.color: root.active || root.pending || root.containsMouse || root.activeFocus ? Theme.accent : Theme.border
         border.width: Theme.borderWidth
     }
 
