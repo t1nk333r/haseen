@@ -71,6 +71,24 @@ printf '%s\0' qs -p "$prefix/bin/../share/haseen/shell with spaces" >"$cmdline"
 capture doctor_shell_cmdline_matches "$spaced_shell_dir" "$prefix" "$cmdline"
 assert_status "doctor preserves spaces in a single -p argv value" 0 "$STATUS"
 
+# Quickshell's other spellings of the project, and its client subcommands.
+touch "$shell_dir/shell.qml"
+matches() { # LABEL EXPECTED ARGV...
+    local label="$1" expected="$2"
+    shift 2
+    printf '%s\0' "$@" >"$cmdline"
+    capture doctor_shell_cmdline_matches "$shell_dir" "$prefix" "$cmdline"
+    assert_status "$label" "$expected" "$STATUS"
+}
+matches "doctor matches --path DIR" 0 qs --path "$shell_dir"
+matches "doctor matches -p=DIR" 0 qs "-p=$shell_dir"
+matches "doctor matches --path=DIR" 0 quickshell "--path=$shell_dir"
+matches "doctor matches -p DIR/shell.qml" 0 qs -p "$shell_dir/shell.qml"
+matches "doctor skips qs ipc -p DIR" 1 qs ipc -p "$shell_dir" call bar toggle
+matches "doctor skips qs -p DIR ipc" 1 qs -p "$shell_dir" ipc call bar toggle
+matches "doctor skips qs kill -p DIR" 1 qs kill -p "$shell_dir"
+matches "argv0 alone is not a project" 1 "$shell_dir"
+
 # Relative -p paths belong to the candidate process, not the doctor's cwd.
 mkdir -p "$SANDBOX/doctor" "$SANDBOX/other-project/share/haseen/shell"
 process_cwd="$SANDBOX/proc-cwd"
