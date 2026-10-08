@@ -63,7 +63,7 @@ THEME_FONT_FILE="$HASEEN_USER_CONFIG/font"
 # choosing into every application's font configuration.
 THEME_INSTALLED_DENIED=(alacritty.toml foot.ini fonts.conf ghostty.conf kitty.conf vscode.json)
 # Template outputs reviewed as pure data (colours, sizes, font names).
-THEME_COLOUR_ONLY=(btop.theme gtk.css satty.css shell.json)
+THEME_COLOUR_ONLY=(btop.theme gtk.css satty.css shell.json yazi.toml)
 
 # Defaults for the non-colour shell tokens. A theme may set any of these in its
 # colors.toml; the value then wins, like every other key.

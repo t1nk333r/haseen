@@ -1,0 +1,25 @@
+# ~/.config/yazi/keymap.toml — your yazi keymap.
+# Seeded once by `haseen seed user`; haseen never rewrites it.
+#
+# Derived from the owner's own keymap (waydots, his private dotfiles,
+# relicensed MIT). The binds
+# that call a yazi plugin (smart-enter, lazygit, fzf) or a personal script are
+# not here: a bind that runs a plugin yazi does not have is a dead key with an
+# error popup, and haseen installs no yazi plugins. `prepend_keymap` leaves
+# every default bind in place, so this file only adds.
+
+[mgr]
+prepend_keymap = [
+  # Vim's `n`/`N` are "find next/previous", which yazi already binds; the
+  # owner's keymap takes them for create instead, with <C-n> as the dir form
+  # that works in both habits.
+  { on = "n", run = "create", desc = "Create file" },
+  { on = "N", run = "create --dir", desc = "Create directory" },
+  { on = "<C-n>", run = "create --dir", desc = "Create directory" },
+
+  { on = "z", run = "hidden toggle", desc = "Toggle hidden files" },
+  { on = "t", run = "tab_create --current", desc = "Create tab in current directory" },
+  { on = "B", run = "rename", desc = "Bulk rename selected files" },
+  { on = "<C-l>", run = "escape --select", desc = "Clear selection" },
+  { on = "W", run = 'shell "$SHELL" --block', desc = "Open shell here" },
+]

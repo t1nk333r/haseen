@@ -17,3 +17,4 @@ pacman-contrib  # paccache.timer keeps /var/cache/pacman bounded (pacman hygiene
 zoxide          # `cd` that remembers where you have been; init'd by default/shell/init.sh
 eza             # ls with git state and a tree mode; backs the ls/lsa/lt/lta aliases
 bat             # cat with highlighting; also haseen's man pager and the ff preview
+tmux            # the portable multiplexer; haseen seeds ~/.config/tmux/tmux.conf (herdr is the default, tmux is the fallback that exists everywhere)

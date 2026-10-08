@@ -6,7 +6,7 @@
 # architecture §7 tokens, helpers match Omarchy's output, user templates win,
 # installed themes go through the denylist, hooks run, dry runs write nothing.
 
-THEME_OUTPUTS=(hyprland.lua foot.ini kitty.conf ghostty.conf alacritty.toml btop.theme neovim.lua gtk.css fonts.conf satty.css shell.json colors.toml)
+THEME_OUTPUTS=(hyprland.lua foot.ini kitty.conf ghostty.conf alacritty.toml btop.theme neovim.lua gtk.css fonts.conf yazi.toml satty.css shell.json colors.toml)
 SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth windowRadius"
 SHELL_COLOUR_KEYS="background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection"
 
