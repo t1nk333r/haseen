@@ -36,7 +36,8 @@
   where `haseen battery status` finds a battery).
 - `haseen toggle idle --help` and its summary say Stay Awake also holds off suspend.
 - Spec naming: the gap text's `{dimAfter, lockAfter, screenOffAfter, suspendAfter}` maps to haseen's
-  existing names (`screensaverAfter`, `lockAfter`, `dpmsAfter`); haseen has no dim step.
+  existing names (`screensaverAfter`, `lockAfter`, `dpmsAfter`); haseen has no dim step. The owner approved
+  this scope change on 2026-10-08 (see Owner decisions).
 
 ### Review fixes (2026-10-08)
 
@@ -102,6 +103,11 @@ practical case holds; a shell-side inhibitor would have to sit on a window.
 - **Audio playing**: haseen does not hold off idle for audio alone (nor did it for the lock or screensaver).
   Browsers and mpv inhibit while video plays; music in a player without an inhibitor would not stop a
   suspend. Adding an MPRIS "playing" gate is a separate change.
+- **onBattery vocabulary** (approved 2026-10-08): `onBattery` takes `{screensaverAfter, lockAfter,
+  dpmsAfter, suspendAfter}`, the names the AC settings already use, instead of the spec's `{dimAfter,
+  lockAfter, screenOffAfter, suspendAfter}`. `screenOffAfter` is `dpmsAfter`; there is no dim step and
+  no `dimAfter`, the screensaver stands in that place. This is a scope change from the gap text, accepted
+  by the owner.
 
 ## Rejected
 
