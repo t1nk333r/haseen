@@ -8,8 +8,9 @@ import "Cliphist.js" as Cliphist
 // Clipboard history (cliphist), newest first. Type to search, arrows move,
 // Enter or a click copies the entry back (`cliphist decode | wl-copy`) and
 // closes, Delete or the trash button removes it. Image entries show a
-// thumbnail decoded on demand into $XDG_RUNTIME_DIR/haseen-clipboard/, which
-// is removed when the panel closes. Open with
+// thumbnail decoded on demand into $XDG_RUNTIME_DIR/haseen-clipboard/, a
+// private (0700) cache removed when the panel closes; without
+// XDG_RUNTIME_DIR no image is decoded (Cliphist.imageCommand). Open with
 // `haseen shell ipc panel toggle haseen.clipboard`.
 //
 // Ctrl+P (or the eye button) toggles the preview pane, which shows the
@@ -32,7 +33,7 @@ Column {
         return entry && entry.id === root.pluginId ? entry.instance : null;
     }
     readonly property bool recording: service !== null && service.available
-    readonly property string thumbDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/haseen-clipboard"
+    readonly property string thumbDir: Cliphist.cacheDir(Quickshell.env("XDG_RUNTIME_DIR"))
     readonly property int maxRows: typeof settings.maxRows === "number" && settings.maxRows >= 3 ? Math.round(settings.maxRows) : 10
     readonly property int rowHeight: Math.round(Theme.fontSize * 2.2)
     readonly property int imageHeight: Theme.fontSize * 6
@@ -43,8 +44,8 @@ Column {
     // truncated one-line previews, which is the gap this plugin had.
     readonly property bool previewOn: settings.preview !== false
     readonly property int previewHeight: typeof settings.previewHeight === "number" && settings.previewHeight >= 80 ? Math.round(settings.previewHeight) : 220
-    readonly property int maxBytes: typeof settings.previewMaxBytes === "number" && settings.previewMaxBytes > 0 ? Math.round(settings.previewMaxBytes) : 8388608
-    readonly property int maxPixels: typeof settings.previewMaxPixels === "number" && settings.previewMaxPixels > 0 ? Math.round(settings.previewMaxPixels) : 12000000
+    readonly property int maxBytes: Cliphist.limit(settings.previewMaxBytes, 8388608)
+    readonly property int maxPixels: Cliphist.limit(settings.previewMaxPixels, 12000000)
     readonly property string settingsCli: Paths.haseenPath + "/../../bin/haseen-plugin-settings"
 
     function close(): void {
@@ -101,7 +102,10 @@ Column {
     spacing: Theme.gap
 
     Component.onCompleted: input.forceActiveFocus()
-    Component.onDestruction: Quickshell.execDetached(["rm", "-rf", "--", root.thumbDir])
+    Component.onDestruction: {
+        if (root.thumbDir !== "")
+            Quickshell.execDetached(Cliphist.cleanupCommand(root.thumbDir));
+    }
 
     History {
         id: history
@@ -167,6 +171,10 @@ Column {
                     truncated: pane ? pane.truncated : false,
                     notice: pane ? pane.notice : "",
                     head: pane ? pane.body.slice(0, 160) : ""
+                },
+                limits: {
+                    bytes: root.maxBytes,
+                    pixels: root.maxPixels
                 },
                 results: root.results.slice(0, 20).map(e => ({
                             id: e.id,
@@ -306,8 +314,9 @@ Column {
             required property int index
             readonly property bool current: ListView.isCurrentItem
             // An image past the preview bounds stays a text line: decoding it
-            // for a thumbnail would cost the same pixmap as the pane.
-            readonly property bool showImage: modelData.image && Cliphist.tooLarge(modelData, root.maxBytes, root.maxPixels) === ""
+            // for a thumbnail would cost the same pixmap as the pane. So does
+            // every image when there is no private cache to decode it into.
+            readonly property bool showImage: modelData.image && root.thumbDir !== "" && Cliphist.tooLarge(modelData, root.maxBytes, root.maxPixels) === ""
             readonly property string thumb: showImage ? root.thumbDir + "/" + modelData.id + "." + modelData.ext : ""
             property bool thumbReady: false
 
@@ -331,11 +340,10 @@ Column {
 
             // Decoded once per id while the panel is open; ListView only
             // creates delegates for visible rows, so only those decode. The
-            // temporary file keeps this and the preview pane, which share the
-            // path, from reading a half-written image.
+            // pane shares this path and this decode (Cliphist.imageCommand).
             Process {
                 running: row.showImage
-                command: ["sh", "-c", "mkdir -p \"${2%/*}\" && { [ -s \"$2\" ] || { cliphist decode \"$1\" > \"$2.part.$$\" && mv -f \"$2.part.$$\" \"$2\"; }; }", "sh", row.modelData.id, row.thumb]
+                command: Cliphist.imageCommand(row.modelData.id, row.thumb)
                 onExited: code => row.thumbReady = code === 0
             }
 
