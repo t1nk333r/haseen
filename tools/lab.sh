@@ -2,11 +2,10 @@
 # tools/lab.sh — run this checkout end to end inside a disposable CachyOS VM.
 #
 # haseen's own gates are hermetic: tests/run.sh reads tests/fixtures/ through
-# HASEEN_SYSROOT and every mutation is stubbed out. Nothing in this repo has
-# ever executed a real pkg_install, a real seed into a real $HOME, or a real
-# Hyprland reload — that is exactly why plan 014 is blocked ("no end-to-end run
-# on a real CachyOS machine or VM yet", handoff.md). This wrapper is the rig
-# for it.
+# HASEEN_SYSROOT and every mutation is stubbed out, so the suite alone never
+# executes a real pkg_install, a real seed into a real $HOME, or a real
+# Hyprland reload. Plan 014 (end-to-end acceptance on a real CachyOS guest)
+# needs exactly that; this wrapper is the rig for it.
 #
 # It drives the owner's own t1nk33r-lab (github.com/t1nk333r/t1nk33r-lab, MIT):
 # a disposable VM with a golden snapshot, `reset` in seconds and a non-
@@ -44,6 +43,8 @@ LAB_SSH_PORT=${LAB_SSH_PORT:-2242}
 # That is a conscious step down from the lab's default; the README spells out
 # what it re-exposes.
 LAB_NET=${LAB_NET:-internet}
+# The KVM device the guest needs; tests point it at a stand-in.
+KVM_DEV=${KVM_DEV:-/dev/kvm}
 
 GUEST_DIR=${GUEST_DIR:-haseen}
 
@@ -108,7 +109,7 @@ report() {
         check_warn "lab checkout       absent; would clone $LAB_REPO_URL into $HASEEN_LAB_DIR"
     fi
 
-    if [[ -c /dev/kvm && -w /dev/kvm ]]; then
+    if [[ -c $KVM_DEV && -w $KVM_DEV ]]; then
         check_ok "/dev/kvm           writable by $(id -un)"
     else
         check_bad "/dev/kvm           not present or not writable by $(id -un)" \
@@ -135,15 +136,37 @@ report() {
         check_bad "host tools         ${missing[*]}" "install: ${missing[*]}"
     fi
 
-    local avail
-    avail="$(df --output=avail -BG "$(dirname "$HASEEN_LAB_DIR")" 2>/dev/null | tail -1 | tr -dc 0-9)"
+    # df on the nearest directory that exists: on a fresh host the lab's
+    # parent (~/.cache/haseen) is not there yet, and df on it would fail.
+    local avail where
+    where="$(dirname "$HASEEN_LAB_DIR")"
+    while [[ ! -d $where ]]; do where="$(dirname "$where")"; done
+    avail="$(df --output=avail -BG "$where" 2>/dev/null | tail -1 | tr -dc 0-9)" || avail=""
     avail=${avail:-0}
     if ((avail >= 70)); then
-        check_ok "disk               ${avail}G free under $(dirname "$HASEEN_LAB_DIR")"
+        check_ok "disk               ${avail}G free under $where"
     else
-        check_warn "disk               only ${avail}G free under $(dirname "$HASEEN_LAB_DIR"); the ISO plus the golden and overlay disks want ~70G"
+        check_warn "disk               only ${avail}G free under $where; the ISO plus the golden and overlay disks want ~70G"
     fi
 
+    # The lab's own features can only be read from its checkout; with none
+    # yet, plan() clones it first and checks them then.
+    if [[ -d $HASEEN_LAB_DIR/.git ]]; then
+        lab_features
+    else
+        check_warn "guest mode         checked after the clone (LAB_DISTRO=cachyos, LAB_SECUREBOOT)"
+    fi
+
+    echo
+    echo "Guest it would build:"
+    printf '  %-18s %s\n' "image" "CachyOS desktop ISO $CACHYOS_DATE"
+    printf '  %-18s %s\n' "checkout" "$REPO -> ~/$GUEST_DIR in the guest"
+    printf '  %-18s %s\n' "name/port/net" "$LAB_NAME / $LAB_SSH_PORT / $LAB_NET"
+    echo
+}
+
+# lab_features — the two lab knobs this run needs, read from its checkout.
+lab_features() {
     if [[ -r $HASEEN_LAB_DIR/lab ]] && grep -qE '^[[:space:]]*cachyos\)' "$HASEEN_LAB_DIR/lab"; then
         check_ok "guest mode         LAB_DISTRO=cachyos is supported by the lab"
     else
@@ -156,13 +179,16 @@ report() {
         check_bad "firmware           the lab checkout has no LAB_SECUREBOOT knob" \
             "update $HASEEN_LAB_DIR from $LAB_REPO_URL"
     fi
+}
 
+# blocked — print BLOCKERS and stop.
+blocked() {
+    printf 'Blocked:\n'
+    printf '  - %s\n' "${BLOCKERS[@]}"
     echo
-    echo "Guest it would build:"
-    printf '  %-18s %s\n' "image" "CachyOS desktop ISO $CACHYOS_DATE"
-    printf '  %-18s %s\n' "checkout" "$REPO -> ~/$GUEST_DIR in the guest"
-    printf '  %-18s %s\n' "name/port/net" "$LAB_NAME / $LAB_SSH_PORT / $LAB_NET"
-    echo
+    have_qemu ||
+        die "qemu is unavailable: the lab runs it inside a container and docker is unreachable here, and there is no qemu-system-x86_64 on this host either, so no guest can be started."
+    die "the prerequisites above are not met; nothing was run"
 }
 
 # --- the run ----------------------------------------------------------------
@@ -172,8 +198,14 @@ lab() { run env -C "$HASEEN_LAB_DIR" \
     ./lab "$@"; }
 
 plan() {
-    [[ -d $HASEEN_LAB_DIR/.git ]] ||
+    if [[ ! -d $HASEEN_LAB_DIR/.git ]]; then
         run git clone --depth 1 "$LAB_REPO_URL" "$HASEEN_LAB_DIR"
+        # A dry run cloned nothing, so there is nothing to read yet.
+        if ! $DRY_RUN; then
+            lab_features
+            ((${#BLOCKERS[@]} == 0)) || blocked
+        fi
+    fi
 
     # bootstrap builds the runner, fetches and verifies the ISO and seals a
     # golden; reset is the cheap path once that exists.
@@ -216,14 +248,7 @@ main() {
     $ASSUME_YES || DRY_RUN=true
 
     report
-    if ((${#BLOCKERS[@]})); then
-        printf 'Blocked:\n'
-        printf '  - %s\n' "${BLOCKERS[@]}"
-        echo
-        have_qemu ||
-            die "qemu is unavailable: the lab runs it inside a container and docker is unreachable here, and there is no qemu-system-x86_64 on this host either, so no guest can be started."
-        die "the prerequisites above are not met; nothing was run"
-    fi
+    ((${#BLOCKERS[@]} == 0)) || blocked
 
     echo "Plan:"
     plan
