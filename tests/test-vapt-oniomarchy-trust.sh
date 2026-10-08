@@ -58,7 +58,9 @@ assert_eq 'the fetch order is key, database, signature, keyring, signature' \
     "curl https://pkgs.oniomarchy.com/oniomarchy.gpg|curl https://pkgs.oniomarchy.com/x86_64/oniomarchy.db|curl https://pkgs.oniomarchy.com/x86_64/oniomarchy.db.sig|gpg-verify oniomarchy.db|curl https://pkgs.oniomarchy.com/x86_64/oniomarchy-keyring-20260906-1-any.pkg.tar.gz|curl https://pkgs.oniomarchy.com/x86_64/oniomarchy-keyring-20260906-1-any.pkg.tar.gz.sig|gpg-verify oniomarchy-keyring-20260906-1-any.pkg.tar.gz" \
     "$(paste -sd'|' "$CALLS/order")"
 assert_contains 'only the pinned primary is locally signed' "$(trust_ops)" "pacman-key --lsign-key $PIN"
-assert_contains 'the audited keyring is populated explicitly' "$(trust_ops)" 'pacman-key --populate oniomarchy'
+assert_not_contains 'pacman-key --populate is never run' "$(trust_ops)" '--populate'
+assert_not_contains 'no publisher ownertrust is imported' "$(trust_ops)" 'ownertrust'
+assert_eq 'the initial approval lsigns exactly the pin' "pacman-key --lsign-key $PIN" "$(grep -o 'pacman-key --lsign-key [A-F0-9]*' <<<"$(trust_ops)")"
 assert_contains 'the keyring is installed without scriptlets' "$(vapt_calls sudo)" '-U --noscriptlet'
 assert_not_contains 'the keyring commit config names no repository' "$(vapt_calls commit-config)" '[oniomarchy]'
 assert_contains 'the authority accepts the pin' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'accepted\t'"$PIN"
@@ -130,7 +132,7 @@ done
 trust_case vapt-onio-trust-scriptlet variant=scriptlet
 vapt_api repo-enable --yes
 assert_status 'the population-only scriptlet is accepted' 0 "$STATUS"
-assert_contains 'its population runs as an explicit step' "$(trust_ops)" 'pacman-key --populate oniomarchy'
+assert_not_contains 'its population scriptlet never runs; nor does --populate' "$(trust_ops)" '--populate'
 
 # --- unsafe ancestry and redirected retained files ----------------------------
 trust_case vapt-onio-trust-ancestry
@@ -150,28 +152,30 @@ assert_contains 'it needs manual review' "$OUTPUT" 'manual review'
 assert_eq 'redirected keyring file: no trust change' '' "$(trust_ops)"
 
 # --- rotation -----------------------------------------------------------------
-while IFS=$'\t' read -r name itrusted irevoked via version trusted revoked signed expect; do
+while IFS=$'\t' read -r name itrusted irevoked via version trusted revoked signed dbsigned expect; do
     [[ $irevoked != - ]] || irevoked=''
     [[ $revoked != - ]] || revoked=''
     trust_case vapt-onio-rotation "trusted=$itrusted" "revoked=$irevoked"
     vapt_api repo-enable --yes
     assert_status "$name: initial approval" 0 "$STATUS"
     if [[ $via != - ]]; then
-        # An accepted intermediate keyring (VERSION/TRUSTED/REVOKED/SIGNED) first.
-        IFS=/ read -r vversion vtrusted vrevoked vsigned <<<"$via"
+        # An accepted intermediate keyring (VERSION/TRUSTED/REVOKED/SIGNED/DBSIGNED) first.
+        IFS=/ read -r vversion vtrusted vrevoked vsigned vdbsigned <<<"$via"
         [[ $vrevoked != - ]] || vrevoked=''
-        vapt_onio_serve "keyring=$vversion" "trusted=$vtrusted" "revoked=$vrevoked" "pkgstatus=$vsigned"
+        vapt_onio_serve "keyring=$vversion" "trusted=$vtrusted" "revoked=$vrevoked" "pkgstatus=$vsigned" "dbstatus=$vdbsigned"
         vapt_api repo-enable --yes
         assert_status "$name: intermediate keyring accepted" 0 "$STATUS"
     fi
-    vapt_onio_serve "keyring=$version" "trusted=$trusted" "revoked=$revoked" "pkgstatus=$signed"
+    vapt_onio_serve "keyring=$version" "trusted=$trusted" "revoked=$revoked" "pkgstatus=$signed" "dbstatus=$dbsigned"
     authority_before="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
     : >"$CALLS/sudo"
     vapt_api repo-enable --yes
     if [[ $expect == accepted ]]; then
         assert_status "$name: accepted" 0 "$STATUS"
         assert_contains "$name: new accepted set" "$(cat "$ROOT$SOURCES/oniomarchy.authority")" "$ROT"
-        assert_not_contains "$name: no second pin import" "$(trust_ops)" '--lsign-key'
+        assert_not_contains "$name: no second pin import" "$(trust_ops)" "--lsign-key $PIN"
+        assert_contains "$name: the new signer is lsigned explicitly" "$(trust_ops)" "pacman-key --lsign-key $ROT"
+        assert_not_contains "$name: never --populate" "$(trust_ops)" '--populate'
         case "$signed" in pinned) signer_fpr="$PIN" ;; rotated) signer_fpr="$ROT" ;; old) signer_fpr="C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0" ;; esac
         assert_contains "$name: the archive's signer is recorded as observed" \
             "$(awk -F'\t' '$1 == "observed" { print $2 }' "$ROOT$SOURCES/oniomarchy.authority")" "$signer_fpr"
@@ -187,8 +191,8 @@ import json, sys
 for c in json.load(open(sys.argv[1]))["cases"]:
     j = lambda v: ",".join(v) or "-"
     v = c.get("via")
-    via = "/".join((v["version"], j(v["trusted"]), j(v["revoked"]), v["signedBy"])) if v else "-"
-    print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), via, c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c["expect"], sep="\t")
+    via = "/".join((v["version"], j(v["trusted"]), j(v["revoked"]), v["signedBy"], v.get("dbSignedBy", "pinned"))) if v else "-"
+    print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), via, c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c.get("dbSignedBy", "pinned"), c["expect"], sep="\t")
 ' "$ONIO_FX/trust/rotation.json")
 
 # Raw-key replacement: after approval, a new key file and a database signed by

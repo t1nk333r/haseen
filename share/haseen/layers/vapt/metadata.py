@@ -3994,8 +3994,9 @@ def pinned_signers():
 
 
 def oniomarchy_population_script(text):
-    """Only the literal keyring population operation is accepted (it is then
-    performed explicitly, never by running the scriptlet)."""
+    """Only the literal keyring population operation is accepted. It never
+    runs (--noscriptlet), and haseen does not run --populate either: it adds
+    and lsigns the accepted primaries itself, without publisher ownertrust."""
     allowed = {'post_install() {', 'post_upgrade() {', 'post_install()', 'post_upgrade()', '{', '}',
                'pacman-key --populate oniomarchy', '/usr/bin/pacman-key --populate oniomarchy'}
     lines = [' '.join(line.split()) for line in text.splitlines()]
@@ -4261,25 +4262,28 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
         raise ValueError('database signer is not a currently accepted primary')
     if not previous_revoked <= revoked:
         raise ValueError('keyring package withdraws a recorded revocation')
-    # `pacman-key --populate oniomarchy` applies the revoked list to the
-    # shared keyring, so the package may revoke only keys this source has
-    # actually used: the pin, earlier revocations, and observed signers (the
-    # primaries whose VALIDSIG verified this source's database or keyring
-    # archive, recorded across approvals). A fingerprint merely listed in a
-    # trusted list, now or in any earlier archive, is never revocable: else
-    # trusted={PIN,ARCH} then revoked={ARCH} would disable an unrelated key.
-    observed = (previous['observed'] if previous else set()) | {pin, signer}
-    if database_signer:
-        observed.add(database_signer)
+    # The revoked list reaches the shared keyring (haseen deletes those keys
+    # from it), so the package may revoke only keys this source had actually
+    # used BEFORE this approval: the pin, earlier revocations, and signers
+    # observed earlier (primaries whose VALIDSIG verified this source's
+    # database or keyring archive at an earlier approval, or the database
+    # signer recorded at the end of the last approval or refresh while that
+    # record still verifies). A fingerprint merely listed in a trusted list,
+    # now or in any earlier archive, is never revocable (else trusted=
+    # {PIN,ARCH} then revoked={ARCH} would disable an unrelated key), and this
+    # approval's own signers become observed only for later approvals: a
+    # signer cannot revoke itself in the archive that introduces it.
+    observed_before = (previous['observed'] if previous else set()) | {pin}
     recorded = oniomarchy_recorded_database_signer(root)
     if recorded:
-        observed.add(recorded)
-    authority = previous_revoked | observed
+        observed_before.add(recorded)
+    authority = previous_revoked | observed_before
     foreign = revoked - authority
     if foreign:
         raise ValueError('keyring package revokes primaries this source never used (' + ','.join(sorted(foreign))
-                         + '); a revocation may name only the pin, an earlier revocation or a primary that has signed '
-                         + "this source's database or keyring; manual review required")
+                         + '); a revocation may name only the pin, an earlier revocation or a primary that signed '
+                         + "this source's database or keyring at an earlier approval or refresh; manual review required")
+    observed = observed_before | {signer} | ({database_signer} if database_signer else set())
     accepted = trusted - revoked
     if not accepted:
         raise ValueError('keyring package leaves no accepted primary')
@@ -4340,11 +4344,47 @@ def oniomarchy_status(root, as_json):
         print(key, row[key], sep='\t')
 
 
+def key_primaries(text):
+    """Every primary fingerprint of a gpg --with-colons show-only listing,
+    sorted; a primary without its fingerprint record fails closed."""
+    primaries, pending = [], False
+    for line in text.splitlines():
+        fields = line.split(':')
+        if fields[0] == 'pub':
+            if pending:
+                raise ValueError('primary key without fingerprint')
+            pending = True
+        elif fields[0] == 'fpr' and pending:
+            if len(fields) < 10 or not FINGERPRINT.fullmatch(fields[9]):
+                raise ValueError('malformed primary fingerprint')
+            primaries.append(fields[9])
+            pending = False
+        elif fields[0] in ('sub', 'ssb', 'sec'):
+            if pending:
+                raise ValueError('primary key without fingerprint')
+    if pending:
+        raise ValueError('primary key without fingerprint')
+    return sorted(set(primaries))
+
+
+def keyring_gpg(archive, out):
+    """The key file of the sealed, audited keyring archive, written to OUT
+    (a new file in the caller's stage). Nothing else of the package, and
+    never its ownertrust list, is used to populate the shared keyring."""
+    _, contents = read_archive(metadata_bytes(Path(archive), 64 * 1024 * 1024), contents=True)
+    data = contents.get(ONIOMARCHY_KEYRING_FILES[0])
+    if data is None:
+        raise ValueError('keyring archive has no oniomarchy.gpg')
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(data)
+
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions',
-                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'file-digest', 'install-reason'])
+                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'key-primaries', 'keyring-gpg', 'file-digest', 'install-reason'])
     parser.add_argument('args', nargs='*')
     parser.add_argument('--root', default='')
     parser.add_argument('--offline', action='store_true')
@@ -4373,6 +4413,9 @@ def main():
         elif options.operation == 'oniomarchy-status': oniomarchy_status(options.root, options.json)
         elif options.operation == 'oniomarchy-signers': print('\n'.join(oniomarchy_signers(options.root)))
         elif options.operation == 'key-primary': print(key_primary(metadata_bytes(Path(args[0]), 1024 * 1024).decode('utf-8', 'replace')))
+        elif options.operation == 'key-primaries':
+            print('\n'.join(key_primaries(metadata_bytes(Path(args[0]), 1024 * 1024).decode('utf-8', 'replace'))))
+        elif options.operation == 'keyring-gpg': keyring_gpg(args[0], args[1])
         elif options.operation == 'file-digest': print(hashlib.sha256(metadata_bytes(Path(args[0]), 512 * 1024 * 1024)).hexdigest())
         elif options.operation == 'install-reason':
             match = [r for r in installed(options.root) if r.get('name') == args[0]]

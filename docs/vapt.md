@@ -383,11 +383,19 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   full-upgrade source). `/etc/pacman.conf` is never changed. A host
   `[oniomarchy]` section is reported and the private source is refused while
   it exists; a changed descriptor is preserved and reported, never repaired.
-- **What stays global.** Approval imports and locally signs the pinned key and
-  installs the `oniomarchy-keyring` package, which populates the shared pacman
-  keyring. That trust is machine-wide, not isolated to VAPT, and it is kept
-  when the source is disabled; revoking it is a separate `pacman-key`
-  decision.
+- **What stays global.** Approval imports and locally signs the pinned key,
+  installs the `oniomarchy-keyring` package with its scriptlet suppressed,
+  and then populates the shared pacman keyring itself. haseen never runs
+  `pacman-key --populate oniomarchy`, which would apply the publisher's
+  ownertrust column and revoked list as given. Instead, only the newly
+  accepted primaries are exported from the audited package's own key file
+  (checked to hold exactly those primaries), added with `pacman-key --add`
+  and locally signed one by one with `pacman-key --lsign-key`. Newly revoked
+  keys are deleted from the keyring. No publisher-declared ownertrust is ever
+  imported, so a trusted-list entry such as `KEY:128:` or `KEY:3:` cannot
+  disable or distrust an unrelated key. That trust is machine-wide, not
+  isolated to VAPT, and it is kept when the source is disabled; revoking it
+  is a separate `pacman-key` decision.
 - **Trust anchor.** The key comes only from
   `https://pkgs.oniomarchy.com/oniomarchy.gpg` (HTTPS, no redirect, never a
   keyserver, no bootstrap script) and must have exactly one primary, the
@@ -422,18 +430,19 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   any full upgrade, so a full upgrade never carries it: a full upgrade under
   the private scope is refused, and no recovery record names the source (a
   record that does is refused and preserved for review).
-- **Revocations only of keys this source has used.** `pacman-key --populate
-  oniomarchy` applies the keyring's revoked list to the shared keyring. An
-  audited keyring may therefore revoke only the pin, an earlier revocation,
-  or an *observed signer*: a primary whose signature actually verified this
-  source's database or keyring archive. Observed signers are recorded in
-  root-owned state across approvals. A fingerprint merely listed as trusted,
-  in this keyring or any earlier one, is never revocable. A keyring that
-  first lists an Arch/CachyOS or administrator key and later revokes it is
-  therefore refused before any trust change, with the offending fingerprints
-  named. A retiring signer may still revoke itself while it hands over to a
-  new one. The recorded authority must equal what the retained keyring lists
-  declare.
+- **Revocations only of keys this source has used.** The keyring's revoked
+  list removes keys from the shared keyring. An audited keyring may
+  therefore revoke only the pin, an earlier revocation, or a signer observed
+  *before* this approval: a primary whose signature verified this source's
+  database or keyring archive at an earlier approval or refresh. Observed
+  signers are recorded in root-owned state across approvals. A fingerprint
+  merely listed as trusted, in this keyring or any earlier one, is never
+  revocable. A keyring that first lists an Arch/CachyOS or administrator key
+  and later revokes it is therefore refused before any trust change, with the
+  offending fingerprints named. A signer cannot revoke itself in the archive
+  that introduces it; a retiring signer that has signed before may revoke
+  itself while it hands over to a new one. The recorded authority must equal
+  what the retained keyring lists declare.
 - **Trust changes are reported as such.** Once the pinned key is imported (or
   an audited keyring update reached the shared keyring), any later refusal is
   a mutation failure saying the trust changed but the source is not approved;

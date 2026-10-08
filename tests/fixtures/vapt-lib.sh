@@ -465,16 +465,17 @@ EOF
     cat >"$SANDBOX/stubs/gpg" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >>'$CALLS/gpg'
-status='' verify=false showonly=false output='' last='' previous=''
+status='' verify=false showonly=false export=false output='' last='' previous='' exported=''
 while [ \$# -gt 0 ]; do
     case "\$1" in
     --status-file) status="\$2"; shift ;;
     --verify) verify=true ;;
     --import-options) [ "\$2" != show-only ] || showonly=true; shift ;;
     --output) output="\$2"; shift ;;
-    --homedir | --export) shift ;;
+    --homedir) shift ;;
+    --export) export=true ;;
     -*) ;;
-    *) previous="\$last"; last="\$1" ;;
+    *) previous="\$last"; last="\$1"; ! \$export || exported="\$exported \$1" ;;
     esac
     shift
 done
@@ -488,8 +489,22 @@ if \$verify; then
     printf '[GNUPG:] BADSIG 0000000000000000 fixture\n' >"\$status"
     exit 1
 fi
-if \$showonly; then cat '$onio/key.colons'; exit 0; fi
-[ -z "\$output" ] || printf 'fixture exported key\n' >"\$output"
+# An exported key file names the primaries it holds (VAPT_GPG_EXPORT_DROP
+# models a key the archive's key file lacks); show-only lists exactly those.
+if \$showonly; then
+    if read -r first <"\$last" && [ "\${first#fixture exported key}" != "\$first" ]; then
+        for fpr in \${first#fixture exported key}; do
+            printf 'pub:-:255:22:%s:1700000000:::-:::scESC::::::23::0:\nfpr:::::::::%s:\n' "\$fpr" "\$fpr"
+        done
+        exit 0
+    fi
+    cat '$onio/key.colons'; exit 0
+fi
+if [ -n "\$output" ]; then
+    kept=''
+    for fpr in \$exported; do [ "\$fpr" = "\${VAPT_GPG_EXPORT_DROP:-}" ] || kept="\$kept \$fpr"; done
+    printf 'fixture exported key%s\n' "\$kept" >"\$output"
+fi
 exit 0
 EOF
     chmod +x "$SANDBOX/stubs/curl" "$SANDBOX/stubs/gpg"

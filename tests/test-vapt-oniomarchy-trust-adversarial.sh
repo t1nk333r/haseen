@@ -165,6 +165,39 @@ assert_contains 'two-stage: the reason names the never-used key' "$OUTPUT" 'revo
 assert_eq 'two-stage: no trust change (no populate)' '' "$(adv_trust_ops)"
 assert_eq 'two-stage: no authority write' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
 
+# --- publisher-declared ownertrust never reaches the shared keyring -----------
+# A pin-signed keyring whose trusted list gives an unrelated key ownertrust
+# 128 (disabled) and another 3 (never trust) revokes nothing, so the audit
+# admits it. haseen populates the keyring itself: no --populate, no
+# ownertrust import, only explicit --add of the exported accepted primaries
+# and --lsign-key for each.
+adv_case vapt-adv-trust-ownertrust
+vapt_api repo-enable --yes
+assert_status 'ownertrust: initial approval' 0 "$STATUS"
+vapt_onio_serve keyring=20261015-1 trusted=PIN:4,ROT:3,ARCH:128 revoked=
+: >"$CALLS/sudo"; : >"$CALLS/gpg"
+vapt_api repo-enable --yes
+assert_status 'ownertrust: the keyring (nothing revoked) is admitted' 0 "$STATUS"
+assert_not_contains 'ownertrust: pacman-key --populate is never run' "$(adv_trust_ops)" '--populate'
+assert_not_contains 'ownertrust: no ownertrust is imported (pacman-key)' "$(vapt_calls sudo)" 'import-ownertrust'
+assert_not_contains 'ownertrust: no ownertrust is imported (gpg)' "$(vapt_calls gpg)" 'import-ownertrust'
+assert_contains 'ownertrust: only exported accepted primaries are added' "$(adv_trust_ops)" 'pacman-key --add'
+assert_eq 'ownertrust: exactly the newly accepted primaries are lsigned' \
+    "$(printf 'pacman-key --lsign-key %s\n' "$ROT" D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0 | LC_ALL=C sort)" \
+    "$(grep -o 'pacman-key --lsign-key [A-F0-9]*' <<<"$(adv_trust_ops)" | LC_ALL=C sort)"
+assert_not_contains 'ownertrust: no key is deleted or disabled' "$(adv_trust_ops)" '--delete'
+# The archive's key file must hold exactly the newly accepted primaries.
+adv_case vapt-adv-trust-key-file-short
+vapt_api repo-enable --yes
+vapt_onio_serve keyring=20261015-1 trusted=PIN,ROT revoked=
+authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+: >"$CALLS/sudo"
+VAPT_GPG_EXPORT_DROP="$ROT" vapt_api repo-enable --yes
+assert_status 'a key file lacking an accepted primary is refused' 1 "$STATUS"
+assert_contains 'and says so' "$OUTPUT" 'does not hold exactly the newly accepted primaries'
+assert_eq 'key file short: no trust change' '' "$(adv_trust_ops)"
+assert_eq 'key file short: no authority write' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+
 # --- repeated approval of an unchanged keyring changes no trust --------------
 adv_case vapt-adv-trust-reapprove
 vapt_api repo-enable --yes

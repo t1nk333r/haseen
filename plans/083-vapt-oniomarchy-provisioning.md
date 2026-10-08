@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–D landed. Batch D: a keyring may revoke only keys this source has actually used (the pin, earlier revocations, observed signers recorded in the authority), never a fingerprint merely listed as trusted. Batch C: a new private dependency never beats an earlier repository provider; the layer only seeds its owned link and never edits user rc files (a divergence from the earlier implementation on this branch); `--pick --vapt-groups` is refused. The batch C whole-suite run passed except two host-dependent ydotool checks that fail identically on `main`; the batch D oniomarchy and `test-vapt.sh` suites, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–E landed. Batch E: haseen populates the shared keyring itself (explicit `--add`/`--lsign-key` of the newly accepted primaries, exported from the audited key file, with newly revoked keys deleted) and never runs `pacman-key --populate` or imports publisher ownertrust; a signer cannot revoke itself in the archive that introduces it. Batch D: revocations only of keys this source has used (observed signers), never of a merely listed fingerprint. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch E VAPT suites and the picker, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
 
 ## Goal
 
@@ -219,26 +219,45 @@ provenance.
   revoked primaries, observed signers, retained file digests),
   `sync/oniomarchy.db{,.sig}` and `oniomarchy.database` (exactly which bytes
   were verified and by whom).
+- **Population (batch E; deviation from the earlier `--populate` design).**
+  haseen never runs `pacman-key --populate oniomarchy`. On the host, populate
+  lsigns every trusted ID and runs `gpg --import-ownertrust` on the raw
+  trusted file. A pin-signed keyring that revokes nothing could therefore
+  still disable an unrelated key (`KEY:128:`) or mark Arch masters never-trust
+  (`KEY:3:`). Instead, after `-U --noscriptlet`, haseen adds only the newly
+  accepted primaries (`trusted − revoked`, minus those already accepted):
+  they are exported from the audited archive's own `oniomarchy.gpg`
+  (`keyring-gpg`), and the export must hold exactly those primaries
+  (`key-primaries`) before any trust change. haseen then runs
+  `pacman-key --add` and `pacman-key --lsign-key FPR` for each, and deletes
+  newly revoked keys with `pacman-key --delete`. The ownertrust column is
+  ignored and never imported (rather than refused): no step of haseen reads
+  it, and refusing would also refuse the conventional `:4:`. The accepted-signer set and the
+  authority rule are unchanged.
 - **Rotation.** Accepted only from a keyring signed by a currently accepted,
   non-revoked primary; revocations never shrink, the version never goes down,
-  the first keyring must trust the pin. **Invariant (batch D):** a revocation
-  may name only a key this source has actually used, `revoked ⊆ previous
-  revoked ∪ {pin} ∪ observed signers`. Observed signers are the primaries whose
-  VALIDSIG verified this source's artefacts: the keyring archive being
-  audited, the database fetched for this approval (`--db-signer`), the
-  database signer recorded at the last verified refresh, and every signer
-  observed by earlier approvals. They are recorded in the authority's
-  `observed` line and never derived from a declared list. A fingerprint
-  merely listed in an incoming or earlier `trusted` list is admitted as
-  accepted but is never revocable, however many approvals it survives. Batch
-  C's rule (`previous accepted ∪ previous revoked ∪ {pin}`) still let a
-  two-stage path through: stage 1 lists ARCH, stage 2 revokes it. A
-  legitimate rotation keeps working: an archive signed by OLD may revoke OLD
-  and trust ROT, and ROT becomes revocable once it has signed the database or
-  a keyring. Sealed private packages are verified by pacman, not by this
-  status parser, so their signers are not recorded. Records written before
-  batch D lack the `observed` line and read as a mismatch (manual review);
-  no such record exists outside this unreleased branch. Applied only by an approval:
+  the first keyring must trust the pin. **Invariant (batches D, E):** a
+  revocation may name only a key this source had actually used before this
+  approval, `revoked ⊆ previous revoked ∪ {pin} ∪ observed-before`.
+  Observed-before is every signer observed by earlier approvals, plus the
+  signer recorded in `oniomarchy.database` while that record still verifies.
+  That note is written at the end of every approval and every refresh, so
+  it names the signer of the cached database those steps verified. This
+  approval's own keyring-archive signer and database signer (`--db-signer`)
+  become observed only for later approvals, so a signer cannot revoke itself
+  in the archive that introduces it (batch E). Observed signers are recorded
+  in the authority's `observed` line and never derived from a declared list.
+  A fingerprint merely listed in an incoming or earlier `trusted` list is
+  admitted as accepted but is never revocable, however many approvals it
+  survives. Batch C's rule (`previous accepted ∪ previous revoked ∪ {pin}`)
+  still let a two-stage path through: stage 1 lists ARCH, stage 2 revokes it.
+  A legitimate rotation keeps working: once OLD has signed something, an
+  archive signed by OLD may revoke OLD and trust ROT, and ROT becomes
+  revocable after it has signed the database or a keyring. Sealed private
+  packages are verified by pacman, not by this status parser, so their
+  signers are not recorded. Records written before batch D lack the
+  `observed` line and read as a mismatch (manual review); no such record
+  exists outside this unreleased branch. Applied only by an approval:
   `repo-enable`, or the approval a `--with-oniomarchy` run asks for (with the
   same confirmation) when the source is not approved, e.g. after
   `repo-disable`. The refresh of an approved source never changes trust.
@@ -444,11 +463,19 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   two-stage attack (stage 1 lists ARCH, stage 2 revokes it) refused with no
   `pacman-key` call and no authority write (trust-adversarial and
   `rotation.json`); a foreign key merely listed as trusted is still admitted
-  and never recorded as observed; the retiring signer OLD signs the archive
-  that revokes it and trusts ROT (accepted, OLD recorded as observed); a
-  pin-signed revocation of a listed-only OLD is refused. The intermediate
-  `via` step names its signer, and `trust/old.status` provides an OLD
-  signature.
+  and never recorded as observed; a pin-signed revocation of a listed-only
+  OLD is refused. Batch E changed the retiring-signer case: OLD must first
+  sign an intermediate keyring, and only then may it sign the archive that
+  revokes it. A first-time signer revoking itself is now refused. A
+  trusted list with hostile ownertrust columns (`ROT:3`, `ARCH:128`) is
+  admitted (nothing is revoked), but no `--populate` and no
+  `import-ownertrust` call happens, and exactly ROT and ARCH are lsigned
+  through explicit `--add`/`--lsign-key`. A key file that lacks an accepted
+  primary is refused before any trust change (`VAPT_GPG_EXPORT_DROP`). The
+  initial approval lsigns exactly the pin. The rollback case now revokes the
+  pin through an intermediate keyring (ROT-signed database). The
+  intermediate `via` step names its keyring and database signers, and
+  `trust/old.status` provides an OLD signature.
 - `tests/test-vapt.sh`: the install picker never offers `vapt`; a saved
   `vapt` choice is dropped with a reason instead of aborting the installer;
   `--pick --vapt-groups` is refused before the tree or any layer (batch C).
@@ -464,13 +491,21 @@ tests/run.sh` on each oniomarchy suite — consent 96/96, trust-adversarial
 
 ## Evidence
 
-Batch D (observed-signer revocation authority), fixtures only:
+Batch E (explicit population, no publisher ownertrust, no first-appearance
+self-revocation), fixtures only:
 
 ```sh
-QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt-oniomarchy-*.sh tests/test-vapt-oniomarchy.sh tests/test-vapt.sh   # 10 files, 1594/1594
+QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh   # 24 files, 4547/4547
 SHELLCHECK=$(command -v shellcheck) tools/lint.sh     # lint OK
 tools/check-docs.sh                                   # check-docs OK
 ```
+
+Batch E changed only the oniomarchy approval steps, the keyring audit and
+their fixtures, so the whole suite was not re-run.
+
+Historical, batch D (observed-signer revocation authority):
+`tests/run.sh tests/test-vapt-oniomarchy-*.sh tests/test-vapt-oniomarchy.sh
+tests/test-vapt.sh`, 10 files, 1594/1594; lint and check-docs OK.
 
 Batch D changed only the keyring audit, the authority record format, the
 approval call and their fixtures, so the whole suite was not re-run.
@@ -510,12 +545,16 @@ public repository during independent review, not by haseen's code):
 - `.INSTALL` is a population-only scriptlet calling
   `pacman-key --populate oniomarchy`.
 
-The real first keyring's revoked list is empty, so the stricter
-revocation-authority rule (batch C: `revoked ⊆ previous accepted ∪ previous
-revoked ∪ {pin}`) admits it today. These are the published file's contents
-only. Its signature was not verified, and haseen's `oniomarchy-keyring` audit
-was not run on it. A future keyring release could differ; that case is what
-the authority rule exists for.
+The real first keyring's revoked list is empty, so it is admitted under
+every revocation rule this plan has had: batch C's, and the current one
+from batches D and E (`revoked ⊆ previous revoked ∪ {pin} ∪
+observed-before`). Its population is unaffected by batch E, which adds and
+lsigns the accepted primaries explicitly; a first approval accepts only the
+pin, which the anchor already lsigns. Its scriptlet (and `--populate`) never
+runs. These are the published file's contents only. Its signature was not
+verified, and haseen's `oniomarchy-keyring` audit was not run on it. A future
+keyring release could differ; that case is what the authority rule exists
+for.
 
 Not verified: any live package installation, any fetch by haseen's code from
 the oniomarchy host, and the real published key, database and keyring
@@ -528,4 +567,11 @@ untested. Also unverified:
   and earlier-provider rules (a real package that breaks one is now refused);
 - the activation line in a real interactive bash/zsh session;
 - the gum picker UI (only the plain `select` path is driven);
-- `tools/secrets.sh`.
+- `tools/secrets.sh`;
+- real `pacman-key --add`/`--lsign-key`/`--delete` and `gpg --export`
+  behaviour (both are stubbed; the explicit population is exercised against
+  fixtures only);
+- the BlackArch keyring (plan 007): it still runs its reviewed population as
+  `pacman-key --populate blackarch`, so that publisher's ownertrust column
+  would still be imported. That source is outside batch E and needs its own
+  review.

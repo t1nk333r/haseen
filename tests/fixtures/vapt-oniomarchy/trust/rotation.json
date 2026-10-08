@@ -1,18 +1,257 @@
 {
   "schemaVersion": 1,
-  "comment": "Keyring authority rotation. Each case starts from an approved source whose authority came from an initial keyring (initialTrusted/initialRevoked, signed by the reviewed pin), optionally applies an accepted intermediate keyring (via: version, trusted, revoked, signedBy), then republishes the keyring. PIN, ROT and OLD stand for the fingerprints below; ARCH stands for an unrelated global signing key (an Arch/CachyOS or administrator key). pacman-key --populate applies the revoked list to the shared keyring, so a revocation may name only a key this source has actually used: the pin, an earlier revocation, or an observed signer (a primary whose VALIDSIG verified this source's database or keyring archive). A fingerprint merely listed in a trusted list, now or in an earlier archive, is never revocable. signedBy: pinned (PIN), rotated (ROT), old (OLD).",
-  "fingerprints": {"PIN": "0F5F9214F312B067ECBF1DF125E2C00AA6340BD0", "ROT": "B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0", "OLD": "C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0", "ARCH": "D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0"},
+  "comment": "Keyring authority rotation. Each case starts from an approved source whose authority came from an initial keyring (initialTrusted/initialRevoked, signed by the reviewed pin), optionally applies an accepted intermediate keyring (via: version, trusted, revoked, signedBy, dbSignedBy), then republishes the keyring. PIN, ROT and OLD stand for the fingerprints below; ARCH stands for an unrelated global signing key (an Arch/CachyOS or administrator key). pacman-key --populate applies the revoked list to the shared keyring, so a revocation may name only a key this source has actually used: the pin, an earlier revocation, or an observed signer (a primary whose VALIDSIG verified this source's database or keyring archive). Only signers observed before an approval count: a signer cannot revoke itself in the archive that introduces it. A fingerprint merely listed in a trusted list, now or in an earlier archive, is never revocable. signedBy: pinned (PIN), rotated (ROT), old (OLD). dbSignedBy (default pinned) signs the final database. A trusted entry may carry an ownertrust column (NAME:VALUE); haseen never imports it.",
+  "fingerprints": {
+    "PIN": "0F5F9214F312B067ECBF1DF125E2C00AA6340BD0",
+    "ROT": "B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0B0",
+    "OLD": "C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0",
+    "ARCH": "D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0"
+  },
   "cases": [
-    {"name": "rotation signed by the retiring signer", "initialTrusted": ["PIN", "OLD"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["OLD"], "signedBy": "old", "expect": "accepted"},
-    {"name": "revocation of a listed signer that never signed", "initialTrusted": ["PIN", "OLD"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["OLD"], "signedBy": "pinned", "expect": "refused"},
-    {"name": "foreign key merely listed as trusted is admitted", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT", "ARCH"], "revoked": [], "signedBy": "pinned", "expect": "accepted"},
-    {"name": "two-stage revocation of a merely listed foreign key", "initialTrusted": ["PIN"], "initialRevoked": [], "via": {"version": "20261015-1", "trusted": ["PIN", "ARCH"], "revoked": [], "signedBy": "pinned"}, "version": "20261101-1", "trusted": ["PIN", "ROT", "ARCH"], "revoked": ["ARCH"], "signedBy": "pinned", "expect": "refused"},
-    {"name": "self-authorized new signer", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["ROT"], "revoked": [], "signedBy": "rotated", "expect": "refused"},
-    {"name": "revocation rollback", "initialTrusted": ["PIN", "OLD"], "initialRevoked": [], "via": {"version": "20261015-1", "trusted": ["PIN"], "revoked": ["OLD"], "signedBy": "old"}, "version": "20261101-1", "trusted": ["PIN"], "revoked": [], "signedBy": "pinned", "expect": "refused"},
-    {"name": "keyring version rollback", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20250101-1", "trusted": ["PIN"], "revoked": [], "signedBy": "pinned", "expect": "refused"},
-    {"name": "no accepted primary left", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN"], "revoked": ["PIN"], "signedBy": "pinned", "expect": "refused"},
-    {"name": "revocation of a key outside the oniomarchy authority", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["ARCH"], "signedBy": "pinned", "expect": "refused"},
-    {"name": "foreign revocation laundered through the trusted list", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ARCH"], "revoked": ["ARCH"], "signedBy": "pinned", "expect": "refused"},
-    {"name": "new signer revoked in the archive that introduces it", "initialTrusted": ["PIN"], "initialRevoked": [], "version": "20261101-1", "trusted": ["PIN", "ROT"], "revoked": ["ROT"], "signedBy": "pinned", "expect": "refused"}
+    {
+      "name": "rotation signed by the retiring signer",
+      "initialTrusted": [
+        "PIN",
+        "OLD"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT"
+      ],
+      "revoked": [
+        "OLD"
+      ],
+      "signedBy": "old",
+      "expect": "accepted",
+      "via": {
+        "version": "20261015-1",
+        "trusted": [
+          "PIN",
+          "OLD"
+        ],
+        "revoked": [],
+        "signedBy": "old"
+      }
+    },
+    {
+      "name": "a first-time signer cannot revoke itself",
+      "initialTrusted": [
+        "PIN",
+        "OLD"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT"
+      ],
+      "revoked": [
+        "OLD"
+      ],
+      "signedBy": "old",
+      "expect": "refused"
+    },
+    {
+      "name": "hostile ownertrust columns are never imported",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT",
+        "ARCH:128"
+      ],
+      "revoked": [],
+      "signedBy": "pinned",
+      "expect": "accepted"
+    },
+    {
+      "name": "revocation of a listed signer that never signed",
+      "initialTrusted": [
+        "PIN",
+        "OLD"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT"
+      ],
+      "revoked": [
+        "OLD"
+      ],
+      "signedBy": "pinned",
+      "expect": "refused"
+    },
+    {
+      "name": "foreign key merely listed as trusted is admitted",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT",
+        "ARCH"
+      ],
+      "revoked": [],
+      "signedBy": "pinned",
+      "expect": "accepted"
+    },
+    {
+      "name": "two-stage revocation of a merely listed foreign key",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "via": {
+        "version": "20261015-1",
+        "trusted": [
+          "PIN",
+          "ARCH"
+        ],
+        "revoked": [],
+        "signedBy": "pinned"
+      },
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT",
+        "ARCH"
+      ],
+      "revoked": [
+        "ARCH"
+      ],
+      "signedBy": "pinned",
+      "expect": "refused"
+    },
+    {
+      "name": "self-authorized new signer",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "ROT"
+      ],
+      "revoked": [],
+      "signedBy": "rotated",
+      "expect": "refused"
+    },
+    {
+      "name": "revocation rollback",
+      "initialTrusted": [
+        "PIN",
+        "ROT"
+      ],
+      "initialRevoked": [],
+      "via": {
+        "version": "20261015-1",
+        "trusted": [
+          "ROT"
+        ],
+        "revoked": [
+          "PIN"
+        ],
+        "signedBy": "pinned",
+        "dbSignedBy": "rotated"
+      },
+      "version": "20261101-1",
+      "trusted": [
+        "ROT",
+        "PIN"
+      ],
+      "revoked": [],
+      "signedBy": "rotated",
+      "expect": "refused",
+      "dbSignedBy": "rotated"
+    },
+    {
+      "name": "keyring version rollback",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20250101-1",
+      "trusted": [
+        "PIN"
+      ],
+      "revoked": [],
+      "signedBy": "pinned",
+      "expect": "refused"
+    },
+    {
+      "name": "no accepted primary left",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN"
+      ],
+      "revoked": [
+        "PIN"
+      ],
+      "signedBy": "pinned",
+      "expect": "refused"
+    },
+    {
+      "name": "revocation of a key outside the oniomarchy authority",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT"
+      ],
+      "revoked": [
+        "ARCH"
+      ],
+      "signedBy": "pinned",
+      "expect": "refused"
+    },
+    {
+      "name": "foreign revocation laundered through the trusted list",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ARCH"
+      ],
+      "revoked": [
+        "ARCH"
+      ],
+      "signedBy": "pinned",
+      "expect": "refused"
+    },
+    {
+      "name": "new signer revoked in the archive that introduces it",
+      "initialTrusted": [
+        "PIN"
+      ],
+      "initialRevoked": [],
+      "version": "20261101-1",
+      "trusted": [
+        "PIN",
+        "ROT"
+      ],
+      "revoked": [
+        "ROT"
+      ],
+      "signedBy": "pinned",
+      "expect": "refused"
+    }
   ]
 }

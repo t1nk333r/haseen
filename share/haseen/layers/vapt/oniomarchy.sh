@@ -52,7 +52,7 @@ vapt_oniomarchy_plan() {
         info "vapt: would fetch $VAPT_ONIOMARCHY_REPO_URL/oniomarchy.db and its detached .sig and require exactly one primary the recorded authority accepts"
         info 'vapt: would fetch the oniomarchy-keyring archive the database names (<filename-unknown-until-then>) and its .sig, sealed against the database digest'
         info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks, signer, revocations) before any trust change'
-        info 'vapt: an unchanged audited keyring changes no trust; a changed one would be installed with --noscriptlet, then pacman-key --populate oniomarchy'
+        info 'vapt: an unchanged audited keyring changes no trust; a changed one would be installed with --noscriptlet, its newly accepted primaries added from its own key file and lsigned (pacman-key --add/--lsign-key), newly revoked ones deleted; never pacman-key --populate, never publisher ownertrust'
         info "vapt: would record the verified database and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
         printf '[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch\n' | sed 's/^/    | /'
         return 0
@@ -63,7 +63,7 @@ vapt_oniomarchy_plan() {
     info 'vapt: would require exactly one accepted primary on the database signature before reading any filename from it'
     info 'vapt: would fetch the oniomarchy-keyring archive the database names (<filename-unknown-until-then>) and its .sig, sealed against the database digest'
     info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks, revocations) before any trust change'
-    info 'vapt: would run sudo pacman-key --add/--lsign-key for the pinned primary only, install the sealed keyring with --noscriptlet, then pacman-key --populate oniomarchy'
+    info 'vapt: would run sudo pacman-key --add/--lsign-key for the pinned primary, install the sealed keyring with --noscriptlet, then add and lsign only its other accepted primaries from its own key file; never pacman-key --populate, never publisher ownertrust'
     info "vapt: would record the keyring authority and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
     printf '[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch\n' | sed 's/^/    | /'
     info "vapt: $VAPT_ONIOMARCHY_DISCLOSURE"
@@ -157,6 +157,16 @@ vapt_oniomarchy_recheck() {
     fi
 }
 
+# vapt_oniomarchy_authority_set ARRAY RECORD FIELD — the fingerprints of an
+# authority record's accepted/revoked line into ARRAY ('-' is none).
+vapt_oniomarchy_authority_set() {
+    local -n _set="$1"
+    local value
+    value="$(awk -F'\t' -v k="$3" '$1 == k { print $2 }' <<<"$2")"
+    _set=()
+    [[ -z $value || $value == - ]] || IFS=, read -r -a _set <<<"$value"
+}
+
 # vapt_oniomarchy_bootstrap_steps — approve (or re-approve) the private
 # source: trust anchor, verified database, audited keyring, authority record,
 # cached database and finally the private descriptor. Returns 0 approved,
@@ -203,13 +213,46 @@ vapt_oniomarchy_bootstrap_steps() {
     fi
     # An unchanged authority (same audited keyring) needs no trust operation.
     if [[ $current != "$authority" ]]; then
-        local config flags=()
+        local config flags=() fpr
+        local -a accepted=() revoked=() before_accepted=() before_revoked=() added=() dropped=()
         $ASSUME_YES && flags+=(--noconfirm)
+        vapt_oniomarchy_authority_set accepted "$authority" accepted
+        vapt_oniomarchy_authority_set revoked "$authority" revoked
+        if [[ -n $current ]]; then
+            vapt_oniomarchy_authority_set before_accepted "$current" accepted
+            vapt_oniomarchy_authority_set before_revoked "$current" revoked
+        else
+            before_accepted=("$VAPT_ONIO_PRIMARY") # the anchor below imports and lsigns it
+        fi
+        for fpr in "${accepted[@]}"; do [[ " ${before_accepted[*]} " == *" $fpr "* ]] || added+=("$fpr"); done
+        for fpr in "${revoked[@]}"; do [[ " ${before_revoked[*]} " == *" $fpr "* ]] || dropped+=("$fpr"); done
+        # haseen populates the shared keyring itself, never through
+        # `pacman-key --populate`: that would apply the publisher's ownertrust
+        # column (--import-ownertrust) and disable whatever the lists name.
+        # Newly accepted keys come only from the audited archive's own key
+        # file, exported for exactly those primaries and checked before any
+        # trust change; no ownertrust is ever imported.
+        if ((${#added[@]})); then
+            vapt_meta keyring-gpg "$sealed" "$stage/keyring.gpg" || {
+                VAPT_ONIOMARCHY_REASON='keyring archive key file unreadable; manual review required'; return 2;
+            }
+            run install -d -m 0700 "$stage/populate" || return 1
+            run gpg --homedir "$stage/populate" --batch --import "$stage/keyring.gpg" >/dev/null 2>&1 &&
+                run gpg --homedir "$stage/populate" --batch --output "$stage/accepted.gpg" --export "${added[@]}" &&
+                run gpg --homedir "$stage/populate" --batch --with-colons --import-options show-only --import "$stage/accepted.gpg" \
+                    >"$stage/accepted.colons" 2>/dev/null || {
+                VAPT_ONIOMARCHY_REASON='keyring archive key file could not be read for the accepted primaries; manual review required'; return 2;
+            }
+            if [[ "$(vapt_meta key-primaries "$stage/accepted.colons" 2>/dev/null)" != "$(printf '%s\n' "${added[@]}" | LC_ALL=C sort -u)" ]]; then
+                VAPT_ONIOMARCHY_REASON='keyring archive key file does not hold exactly the newly accepted primaries; manual review required'
+                return 2
+            fi
+        fi
         config="$(vapt_meta config --local)" || return 2
         printf '%s\n' "$config" | write_user_file "$stage/commit.conf" || return 1
         if [[ ${VAPT_ONIO[keyringAuthorityState]:-} != ok ]]; then
-            # The initial anchor: only the pinned primary is imported and
-            # locally signed; the audited keyring then populates the rest.
+            # The initial anchor: only the pinned primary, from the fetched
+            # key, is imported and locally signed.
             run gpg --homedir "$keys" --batch --output "$stage/signer.gpg" --export "$VAPT_ONIO_PRIMARY" || return 1
             vapt_root_exec /usr/bin/pacman-key --init || return 1
             VAPT_ONIO_TRUST_CHANGED='the pinned oniomarchy key is imported into the shared pacman keyring (global trust changed)'
@@ -217,12 +260,21 @@ vapt_oniomarchy_bootstrap_steps() {
             vapt_root_exec /usr/bin/pacman-key --lsign-key "$VAPT_ONIO_PRIMARY" || return 1
         fi
         vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || { VAPT_ONIOMARCHY_REASON="$VAPT_APPLY_REASON"; return 2; }
-        # The reviewed population-only scriptlet is replaced by the explicit
-        # pacman-key action below; nothing else from the package runs.
+        # The package's population scriptlet never runs (--noscriptlet).
         [[ -n $VAPT_ONIO_TRUST_CHANGED ]] ||
             VAPT_ONIO_TRUST_CHANGED='the audited oniomarchy keyring update reached the shared pacman keyring (global trust changed)'
         vapt_root_pacman --config "$stage/commit.conf" -U --noscriptlet "${flags[@]}" -- "$VAPT_CACHE/sealed/$filename" || return 1
-        vapt_root_exec /usr/bin/pacman-key --populate oniomarchy || return 1
+        if ((${#added[@]})); then
+            vapt_root_exec /usr/bin/pacman-key --add "$stage/accepted.gpg" || return 1
+            for fpr in "${added[@]}"; do vapt_root_exec /usr/bin/pacman-key --lsign-key "$fpr" || return 1; done
+        fi
+        # Newly revoked keys (only ones this source used, per the audit)
+        # leave the shared keyring, so pacman stops accepting them too.
+        for fpr in "${dropped[@]}"; do
+            if vapt_root_exec /usr/bin/pacman-key --list-keys "$fpr" >/dev/null 2>&1; then
+                vapt_root_exec /usr/bin/pacman-key --delete "$fpr" || return 1
+            fi
+        done
         printf '%s\n' "$authority" |
             vapt_root_meta state-write "$(vapt_read_path "$VAPT_ONIOMARCHY_SOURCES/oniomarchy.authority")" || return 1
     fi
