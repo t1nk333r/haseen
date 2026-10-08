@@ -1,0 +1,13 @@
+# Dependency-only packages: never a manifest root, never selected or launched.
+# A selected package's own declared Depends brings one in, marked as a
+# dependency; consumer * names no assumed consumer. For oniomarchy/ rows the
+# closure enforces both columns (metadata.py oniomarchy_consumer_ok): the row
+# is admitted only as that package, only in its consumer's closure.
+# dependency	consumer	repository/package	install-reason
+powershell-bin	*	oniomarchy/powershell-bin	dependency
+xorg-xhost	*	extra/xorg-xhost	dependency
+jdk17-openjdk	autopsy	extra/jdk17-openjdk	dependency
+java17-openjfx	autopsy	oniomarchy/java17-openjfx-bin	dependency
+sleuthkit-java	autopsy	oniomarchy/sleuthkit-java	dependency
+jdk-openjdk	ghidra	extra/jdk-openjdk	dependency
+python-wxpython	wfuzz	extra/python-wxpython	dependency

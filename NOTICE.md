@@ -66,6 +66,13 @@ same commit that adds the code.
 | [AvengeMedia/DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell), [AvengeMedia/dank-qml-common](https://github.com/AvengeMedia/dank-qml-common) | MIT | 2025-2026 Avenge Media LLC | DMS desktop widgets (`DesktopPluginComponent`, the desktop-widget window rules and `DesktopWidgetGeometry` sizing/anchoring, the `desktopWidgetInstances` shape), the `startupCheck` gate (`runStartupGate`/`_normalizeStartupError`), `Ref`, `CavaService` (cava configuration), the `DgopService`, `MprisController`, `WeatherService` and `DMSNetworkService` property names, `DankActionButton`/`DankCircularImage`/`WindowBlur` properties, Theme state-layer tokens | `share/haseen/shell/Compat/{DmsDesktopHost,DmsDesktopWindow,DmsStartupGate}.qml`, `share/haseen/shell/Compat/Dms/` |
 | [t1nk333r/omacachy](https://github.com/t1nk333r/omacachy) | own | t1nk33r | dry-run helper contract, ESP bootloader detection, GPU dispatch | listed per file header |
 | [gitlab.com/t1nk33r/waydots](https://gitlab.com/t1nk33r/waydots) | own | t1nk33r | package-source rules | listed per file header |
+| [gitlab.com/t1nk33r/waydots](https://gitlab.com/t1nk33r/waydots) | own requirements | t1nk33r | factual VAPT tool memberships, native/version pins, source priority, and shared COAE runtime requirements; installer implementation and prose reexpressed, no assessment workflows copied | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `docs/vapt.md` |
+
+## Factual inputs (**no code or prose copied**)
+
+| Source | License | What was used | Where |
+|---|---|---|---|
+| oniomarchy package source, [pkgs.oniomarchy.com](https://pkgs.oniomarchy.com/) | not stated here; none of its code or text is included | facts only: its tool category memberships, its published package names (including `-git`/`-bin` names and dependency packages), its repository stanza and signing-key fingerprint. haseen's groups, aliases, dependency roles, admission table and opt-in private-source trust policy are implemented independently (plan 087); no upstream installer, bootstrap script or prose is copied | `share/haseen/layers/vapt/packages/`, `share/haseen/layers/vapt/oniomarchy.sh`, `share/haseen/layers/vapt/files/oniomarchy-signers.txt`, `docs/vapt.md`, `plans/087-vapt-oniomarchy-provisioning.md` |
 
 ## Reference only (GPL-3.0, **no code copied**)
 

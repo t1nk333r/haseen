@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# haseen:summary Remove owned unchanged VAPT links; retain packages and environments
+# haseen:args [--dry-run] [--yes]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+usage() { echo "Usage: haseen vapt remove [--dry-run] [--yes]"; }
+parse_common_flags "$@"
+require_not_root
+((${#REST[@]} == 0)) || { usage >&2; exit 2; }
+confirm "Remove layer vapt?" || exit 1
+layer_run_remove vapt

@@ -1,0 +1,20 @@
+# Owner tool-name inventory from waydots/packages/security/htb-coae.txt.
+# Microsoft PyRIT is forced native pyrit==1.1.0; BlackArch pyrit is unrelated.
+# Shared Python 3.12 libraries are provisioned by the separate COAE environment.
+garak
+pyrit
+promptfoo
+cleverhans
+adversarial-robustness-toolbox
+python-pytorch
+python-numpy
+python-scikit-learn
+python-pandas
+python-matplotlib
+python-requests
+ipython
+jupyter-notebook
+jq
+git
+nodejs
+npm
