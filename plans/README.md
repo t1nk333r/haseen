@@ -19,7 +19,7 @@ Read `handoff.md` first.
 | 011 | Omarchy and DMS plugin compat adapters | P2 | L | 005 | DONE 2026-10-04 (live: 6 Omarchy + 6 DMS widgets render; 7 out-of-scope fail in isolation) |
 | 012 | AI panel plugin and the haseen agent skill | P2 | M | 005 006 | DONE 2026-10-04 (75 tests; live streamed chat over IPC; skill followed end to end) |
 | 013 | PKGBUILDs for the stable layers | P3 | M | 001-012 | PLANNED (later phase, owner decision 2026-10-04) |
-| 014 | End-to-end acceptance on a real CachyOS guest | P1 | M | 001-012 | BLOCKED: no qemu, no sudo and no docker access on the author's laptop session (2026-10-04) |
+| 014 | End-to-end acceptance on a real CachyOS guest | P1 | M | 001-012 | IN PROGRESS 2026-10-06 (lab VM: install, greetd login, Secure Boot enforced; doctor-green open; 2 defects fixed, 4 findings open) |
 | 015 | Screen frame, adaptive transparent bar, hover tray | P1 | L | 005 010 011 | DONE 2026-10-04 (127 tests; frame zones live; double-click/hover need pointer = unverified) |
 | 016 | Omarchy-style menu with the owner's item selection | P1 | L | 005 010 011 | DONE 2026-10-04 (199 tests; live navigation over IPC) |
 | 017 | Install/Remove (Flatpak-first) and Update | P1 | L | 005 010 011 | DONE 2026-10-04 (125 tests; 30/30 Flathub refs verified) |
