@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# haseen:summary Phones seen right now: USB, adb, iOS pairing, KDE Connect
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/layers/mobile/mobile.sh
+source "$HASEEN_PATH/layers/mobile/mobile.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen mobile status
+
+What is plugged in and what is paired. Four sections:
+
+  usb          phones on the USB bus, read from /sys/bus/usb/devices: Apple by
+               vendor id 05ac, Android by its ADB or MTP interface
+  android      `adb devices` and `kdeconnect-cli -a`
+  ios          `idevice_id -l`, the device name and whether the pairing record
+               is still valid
+  limits       what this stack cannot do, with the reason
+
+No phone attached is a normal answer, not an error.
+`adb devices` starts the local adb server when one is not already running;
+that is adb's own behaviour, and the only side effect this command has.
+
+This is a report, not a health check: it exits 0 whenever it could run.
+`haseen layer status mobile` is the health check.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+echo "== usb"
+usb="$(mobile_usb_devices)"
+if [[ -z $usb ]]; then
+    echo "(no phone on the USB bus)"
+else
+    while IFS=$'\t' read -r kind id name; do
+        printf '%-12s %-10s %s\n' "$kind" "$id" "$name"
+    done <<<"$usb"
+fi
+
+echo "== android"
+if have adb; then
+    # `adb devices` lists USB and `adb connect` network devices alike.
+    devices="$(adb devices 2>/dev/null | sed -n '2,$p' | grep -v '^[[:space:]]*$' || true)"
+    if [[ -z $devices ]]; then
+        echo "adb: no device (plug in, unlock, and allow USB debugging on the phone)"
+    else
+        printf 'adb: %s\n' "$devices"
+    fi
+else
+    echo "adb: android-tools not installed (haseen layer apply mobile)"
+fi
+if have kdeconnect-cli; then
+    paired="$(kdeconnect-cli --list-devices --id-name-only 2>/dev/null || true)"
+    if [[ -z $paired ]]; then
+        echo "kdeconnect: no paired device (pair from the phone app, or: kdeconnect-cli --pair --name <device>)"
+    else
+        printf 'kdeconnect: %s\n' "$paired"
+    fi
+    reachable="$(kdeconnect-cli -a --id-name-only 2>/dev/null || true)"
+    [[ -z $reachable ]] || printf 'kdeconnect reachable: %s\n' "$reachable"
+else
+    echo "kdeconnect: not installed (haseen layer apply mobile)"
+fi
+
+echo "== ios"
+if have idevice_id; then
+    udids="$(idevice_id -l 2>/dev/null || true)"
+    if [[ -z $udids ]]; then
+        echo "idevice: no device (plug in an unlocked iPhone or iPad; usbmuxd starts from its udev rule)"
+    else
+        while read -r udid; do
+            [[ -n $udid ]] || continue
+            name="$(idevicename -u "$udid" 2>/dev/null || true)"
+            if idevicepair -u "$udid" validate &>/dev/null; then
+                trust="paired"
+            else
+                trust="not paired (unlock it, tap Trust, then: idevicepair pair)"
+            fi
+            printf 'idevice: %s %s — %s\n' "$udid" "${name:-unnamed}" "$trust"
+        done <<<"$udids"
+    fi
+else
+    echo "idevice: libimobiledevice not installed (haseen layer apply mobile)"
+fi
+
+echo "== limits"
+mobile_limits

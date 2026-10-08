@@ -11,7 +11,8 @@ export HASEEN_SYSROOT="$FIXTURES/cachyos-grub-plain"
 TOML="$HOME/.config/haseen/install.toml"
 DEFAULT_ORDER="[*] apply order: base chaotic omarchy-repo desktop theme shell"
 # The plain picker's numbers: the six default layers, then the optional ones
-# sorted (7 ai, 8 dms, 9 flatpak, 10 gaming, 11 secureboot), 12 continues.
+# sorted (7 ai, 8 dms, 9 flatpak, 10 gaming, 11 mobile, 12 secureboot), 13
+# continues.
 # Setup steps: 1 keyd, 2 fingerprint, 3 geoclue, 4 dotfiles, 5 continues.
 
 install_with() { # STDIN ARG... — run install.sh with STDIN as its input
@@ -66,7 +67,7 @@ assert_not_contains "no setup step runs" "$OUTPUT" "setup step:"
 assert_eq "dry-run writes no install.toml" "absent" "$([[ -e $TOML ]] && echo present || echo absent)"
 
 # --- a scripted pick: drop omarchy-repo, add flatpak, tick keyd and geoclue ----
-install_with $'3\n9\n12\n1\n3\n5' --pick --dry-run
+install_with $'3\n9\n13\n1\n3\n5' --pick --dry-run
 assert_status "scripted pick succeeds" 0 "$STATUS"
 assert_dry_pure "scripted pick" "$OUTPUT"
 assert_contains "the picked layers are applied" "$OUTPUT" "[*] apply order: base chaotic desktop theme shell flatpak"$'\n'
@@ -97,7 +98,7 @@ assert_not_contains "a reused choice is not rewritten" "$OUTPUT" "DRYRUN: write 
 install_with "" --pick --dry-run
 assert_contains "end of input reuses" "$OUTPUT" "[*] apply order: base chaotic desktop theme shell flatpak"$'\n'
 
-install_with $'n\n12\n2\n5' --pick --dry-run
+install_with $'n\n13\n2\n5' --pick --dry-run
 assert_contains "declining opens the picker from the last choice" "$OUTPUT" "[x] flatpak"
 assert_contains "and keeps the last setup ticked" "$OUTPUT" "[x] geoclue"
 assert_contains "the new pick is saved" "$OUTPUT" '| setup = ["fingerprint", "geoclue"]'
@@ -112,23 +113,23 @@ assert_contains "the rest is reused" "$OUTPUT" "[*] apply order: base"$'\n'
 assert_contains "with its known step" "$OUTPUT" "[*] setup step: haseen setup keyd on"
 
 saved 'setup = ["keyd"]'
-install_with $'12\n5' --pick --dry-run
+install_with $'13\n5' --pick --dry-run
 assert_not_contains "a choice without layers is not offered" "$OUTPUT" "last install choices"
 assert_contains "the picker starts from the defaults" "$OUTPUT" "$DEFAULT_ORDER"$'\n'
 rm -f "$TOML"
 
 # --- dotfiles needs its URL ------------------------------------------------------
-install_with $'12\n4\n5\n' --pick --dry-run
+install_with $'13\n4\n5\n' --pick --dry-run
 assert_contains "an empty dotfiles URL skips the step" "$OUTPUT" "skipping the dotfiles step"
 assert_contains "and it is not saved" "$OUTPUT" '| setup = []'
 
 # git answers like an unreachable remote: the step fails, the install does not.
 stub git 'echo "fatal: unreachable in tests" >&2; exit 128'
-install_with $'12\n4\n5\nhttps://example.invalid/dots.git' --pick --dry-run
+install_with $'13\n4\n5\nhttps://example.invalid/dots.git' --pick --dry-run
 assert_status "a failing setup step does not fail the install" 0 "$STATUS"
 assert_contains "the URL is saved" "$OUTPUT" '| dotfiles_url = "https://example.invalid/dots.git"'
 assert_contains "dotfiles runs with it" "$OUTPUT" "[*] setup step: haseen setup dotfiles https://example.invalid/dots.git"
 assert_contains "its failure is reported" "$OUTPUT" "haseen setup dotfiles https://example.invalid/dots.git failed"
 
-install_with $'12\n4\n5\nhttps://example.invalid/my dots.git' --pick --dry-run
+install_with $'13\n4\n5\nhttps://example.invalid/my dots.git' --pick --dry-run
 assert_contains "a URL with a space is refused" "$OUTPUT" "skipping the dotfiles step"

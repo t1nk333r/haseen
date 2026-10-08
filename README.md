@@ -38,7 +38,7 @@ haseen secureboot setup         # interactive; firmware must be in Setup Mode
 ```
 
 At a terminal the installer first offers a picker: the default layers start
-ticked, while the optional layers (secureboot, ai, dms, gaming, flatpak) and setup
+ticked, while the optional layers (secureboot, ai, dms, gaming, flatpak, mobile) and setup
 steps (keyd, fingerprint, geoclue, dotfiles) start off. It uses gum when
 installed, else a numbered list. The choice is saved to
 `~/.config/haseen/install.toml`, and the next run offers to reuse it. Piped,
@@ -66,6 +66,7 @@ translate, and lists what has no haseen equivalent; run it without
 | `ai` | Ollama (GPU-matched) or llama.cpp on loopback; `haseen ai chat/models/pull` |
 | `dms` | DankMaterialShell, available to swap in with `haseen shell use dms` |
 | `gaming` | CachyOS gaming packages (Steam, gamemode, MangoHud, Proton) |
+| `mobile` | phones: KDE Connect, scrcpy, adb, MTP and the iOS stack; `haseen mobile status/mirror/backup` |
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.

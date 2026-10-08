@@ -73,6 +73,7 @@ already set when the layer runs.
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
+| `mobile` | desktop | phones: KDE Connect (with its ufw ports), scrcpy, adb, MTP, and the iOS stack (usbmuxd, libimobiledevice, gvfs-afc/gphoto2); `ifuse` refused while the repos ship the data-corrupting 1.2.0 (plan 040) |
 
 Rules every layer follows:
 

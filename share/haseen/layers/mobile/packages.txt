@@ -1,0 +1,26 @@
+# mobile — phones over USB and over the LAN. Everything here is in the
+# official repositories (verified with `pacman -Si`, 2026-10-05), so no entry
+# needs the AUR.
+#
+# Deliberately absent:
+#   ifuse      extra ships 1.2.0-1, the exact version upstream calls
+#              data-corrupting; `--ifuse` refuses it (layer.sh, mobile.sh).
+#   waydroid   a full LXC Android container and a kernel question of its own;
+#              install it on purpose, not as a side effect of this layer.
+#   gsconnect  a GNOME Shell extension; it cannot load under Hyprland.
+#   jmtpfs     upstream dead since 2013; android-file-transfer replaces it.
+#   v4l2loopback-dkms  only with `--v4l2`: a DKMS module is not free.
+
+# --- Android ---
+android-tools          # adb and fastboot
+android-udev           # udev rules: reach the phone without root
+scrcpy                 # mirroring and full remote control; --v4l2-sink webcam
+kdeconnect             # standalone kdeconnectd + kdeconnect-indicator, no Plasma
+gvfs-mtp               # MTP browsing in GTK file managers
+android-file-transfer  # aft-mtp-mount: FUSE MTP, the one that survives big copies
+
+# --- iOS ---
+usbmuxd                # udev-activated USB multiplex daemon; everything iOS needs it
+libimobiledevice       # idevice_id, idevicepair, idevicebackup2, idevicesyslog
+gvfs-afc               # app document-sharing folders
+gvfs-gphoto2           # photos and videos (PTP); the import path that works

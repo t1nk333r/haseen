@@ -40,7 +40,7 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
                     [--tree-only] [--uninstall-tree]
 
   --layers      layers to apply (default: ${DEFAULT_LAYERS[*]})
-                optional: secureboot ai dms gaming flatpak (haseen layer list)
+                optional: secureboot ai dms gaming flatpak mobile (haseen layer list)
   --pick        choose the layers and optional setup steps (keyd, fingerprint,
                 geoclue, dotfiles) from a list, even when stdin is not a
                 terminal; at a terminal this is the default unless --layers or
