@@ -14,10 +14,12 @@ https://wiki.hypr.land/Configuring/Start/
 | `~/.config/hypr/bindings.lua` | user (create it) | key bindings |
 | `~/.config/hypr/local.lua` | user (create it) | everything else: look and feel, input, rules, env, autostart |
 
-Load order (later wins): defaults → theme → `monitors.lua` → `bindings.lua`
-→ `local.lua`. Put changes in the three optional files rather than in
-`hyprland.lua`, and never in `$HASEEN_PATH`. A user file that throws is
-caught: Hyprland shows the error as a notification and keeps loading.
+Load order (later wins): defaults → `haseen toggle`/`haseen hw` state →
+hyprmod's `~/.config/hypr/hyprland-gui.lua`, when that GUI settings app is
+installed → theme → `monitors.lua` → `bindings.lua` → `local.lua`. Put changes
+in the three optional files rather than in `hyprland.lua`, and never in
+`$HASEEN_PATH`. A user file that throws is caught: Hyprland shows the error as
+a notification and keeps loading.
 
 ## Helpers the defaults define (global table `haseen`)
 

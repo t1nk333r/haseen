@@ -6,7 +6,7 @@ import qs.Haseen
 
 // haseen.keybinds: the key bindings this session actually has, grouped by the
 // section they were written under. Type to search, Escape or a click outside
-// closes. Open with `haseen shell ipc keybinds toggle` (SUPER + SLASH).
+// closes. Open with `haseen shell ipc keybinds toggle` (SUPER + F1).
 //
 // Sheet shape (search over every bind, grouped columns, modal overlay) adapted
 // from DankMaterialShell quickshell/Modals/KeybindsModal.qml and

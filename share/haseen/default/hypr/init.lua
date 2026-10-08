@@ -2,9 +2,11 @@
 -- dofile()s. Never edited by users; overrides go in ~/.config/hypr/*.lua.
 --
 -- Load order (each later step may override the earlier ones):
---   1. this file and its siblings (input, looknfeel, binds, windowrules, autostart)
---   2. the theme:  ~/.local/state/haseen/current/theme/hyprland.lua  (user file)
---   3. the user:   ~/.config/hypr/{monitors,bindings,local}.lua      (user file)
+--   1. defaults: this file and its siblings (input, looknfeel, binds, …)
+--   2. toggles:  $XDG_STATE_HOME/haseen/toggles/hypr/*.lua       (runtime)
+--   3. hyprmod:  ~/.config/hypr/hyprland-gui.lua                 (GUI app)
+--   4. theme:    ~/.local/state/haseen/current/theme/hyprland.lua (user file)
+--   5. user:     ~/.config/hypr/{monitors,bindings,local}.lua    (user file)
 --
 -- Modules are run with dofile(), not require(): Hyprland keeps one Lua VM
 -- across config reloads, so require() would serve cached modules and a reload
@@ -134,3 +136,12 @@ if listing then
   end
   listing:close()
 end
+
+-- hyprmod (AUR, GPL-3.0) is the optional GTK4 settings app for Hyprland. It
+-- writes only this one file and never touches haseen's. It loads last of
+-- haseen's includes, so the GUI wins: every monitor, workspace, animation,
+-- env, exec, windowrule and layerrule key hyprmod holds overrides what
+-- `haseen toggle …` and `haseen hw …` wrote just above. Turn a setting off in
+-- hyprmod (or uninstall it and delete the file) to get haseen's value back.
+-- The user's own ~/.config/hypr/*.lua files still load after this one.
+haseen.include_optional(haseen.paths.config_home .. "/hypr/hyprland-gui.lua")

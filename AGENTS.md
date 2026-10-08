@@ -57,6 +57,10 @@ between parts. The engineering record is `plans/`, indexed by
   - Installed with the desktop layer (owner, 2026-10-08): the default file
     handlers `yazi`, `imv`, `mpv`, `papers` and `xdg-terminal-exec` (plan 037),
     and the capture tools `satty` and `tesseract-data-ara` (plan 041).
+  - Default keybinds (owner, 2026-10-08, plan 043): the owner's waydots layout
+    in `share/haseen/default/hypr/binds.lua` is everyone's default (SUPER + F1
+    sheet, ALT + V clipboard, vim focus and move, a silent SUPER + SHIFT + n,
+    the HYPER snap layer); Omarchy's arrows and SUPER + W stay bound.
   - A new built-in plugin is off until the owner adds it to this list.
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
