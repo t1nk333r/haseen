@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# haseen:summary Start an explicitly selected installed service after exposure confirmation
+# haseen:args [--dry-run] [--yes] SERVICE
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+usage() { echo "Usage: haseen vapt service-start [--dry-run] [--yes] SERVICE"; }
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || { usage >&2; exit 2; }
+vapt_service_action start "${REST[0]}"

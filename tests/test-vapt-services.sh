@@ -1,0 +1,63 @@
+# shellcheck shell=bash
+source "$FIXTURES/vapt-actions-lib.sh"
+actions_fixture vapt-services
+capture haseen-vapt-service-list --json --dry-run
+assert_status 'service read succeeds' 0 "$STATUS"
+assert_eq 'single versioned service object' 1 "$(jq -s 'length' <<<"$OUTPUT")"
+assert_eq 'five service ids' 5 "$(jq '.services | length' <<<"$OUTPUT")"
+assert_eq 'actual owned unit not package-name guess' owned-secure-login.service "$(jq -r '.services[] | select(.id=="ssh") | .unit' <<<"$OUTPUT")"
+assert_eq 'FragmentPath ownership verified' verified "$(jq -r '.services[] | select(.id=="ssh") | .ownership' <<<"$OUTPUT")"
+assert_eq 'inactive manager state' stopped "$(jq -r '.services[] | select(.id=="ssh") | .state' <<<"$OUTPUT")"
+assert_eq 'exposure never assumed loopback' unknown "$(jq -r '.services[] | select(.id=="ssh") | .exposure' <<<"$OUTPUT")"
+assert_eq 'BeEF missing is honest' false "$(jq '.services[] | select(.id=="beef") | .installed' <<<"$OUTPUT")"
+for verb in start stop restart; do
+    capture "haseen-vapt-service-$verb" ssh --dry-run
+    assert_status "$verb dry-run" 0 "$STATUS"
+    assert_contains "$verb dry plan" "$OUTPUT" 'never enable'
+    capture "haseen-vapt-service-$verb" --yes ssh
+    assert_status "$verb refuses fixture live action" 1 "$STATUS"
+done
+capture haseen-vapt-service-start nonexistent --dry-run
+assert_status 'unknown service usage' 2 "$STATUS"
+capture haseen-vapt-service-stop ssh extra --dry-run
+assert_status 'extra service operand usage' 2 "$STATUS"
+actions_api service start ssh
+assert_status 'start confirmation decline fails' 1 "$STATUS"
+assert_eq 'decline no root command' '' "$(vapt_calls action-root)"
+assert_contains 'start confirms exposure' "$(vapt_calls confirm)" 'exposure uncertainty'
+VAPT_CONFIRM=yes actions_api service restart ssh
+assert_status 'confirmed restart reaches fixture gateway' 0 "$STATUS"
+assert_contains 'only restart no enable' "$(vapt_calls action-root)" '/usr/bin/systemctl restart -- owned-secure-login.service'
+rm -f "$CALLS/confirm" "$CALLS/action-root"
+actions_api service stop ssh
+assert_status 'stop reaches gateway without confirmation' 0 "$STATUS"
+assert_eq 'stop has no confirmation' '' "$(vapt_calls confirm)"
+assert_contains 'stop exact owned unit' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- owned-secure-login.service'
+rm -f "$CALLS/action-root"
+VAPT_CONFIRM=yes VAPT_CHANGE_FRAGMENT=true actions_api service start ssh
+assert_status 'changed FragmentPath refused after confirmation' 1 "$STATUS"
+assert_eq 'changed FragmentPath no root call' '' "$(vapt_calls action-root)"
+capture haseen-vapt-service-list --json
+assert_eq 'foreign FragmentPath read refusal' refused "$(jq -r '.services[] | select(.id=="ssh") | .ownership' <<<"$OUTPUT")"
+python3 - "$ROOT/var/lib/haseen/vapt/services.json" <<'PY'
+import json,sys
+p=sys.argv[1];r=json.load(open(p));r['owned-secure-login.service']['FragmentPath']='/usr/lib/systemd/system/owned-secure-login.service'
+r['owned-secure-login.service']['ActiveState']='activating';r['owned-secure-login.service']['SubState']='start'
+r['owned-database.service']['ActiveState']='failed';r['owned-http.service']['ActiveState']='unrecognized'
+with open(p,'w') as f:json.dump(r,f)
+PY
+capture haseen-vapt-service-list --json
+assert_eq 'transition state retained' transitioning "$(jq -r '.services[] | select(.id=="ssh") | .state' <<<"$OUTPUT")"
+assert_eq 'failure state retained' failed "$(jq -r '.services[] | select(.id=="postgresql") | .state' <<<"$OUTPUT")"
+assert_eq 'unknown state retained' unknown "$(jq -r '.services[] | select(.id=="apache") | .state' <<<"$OUTPUT")"
+assert_eq 'raw manager substate retained' start "$(jq -r '.services[] | select(.id=="ssh") | .subState' <<<"$OUTPUT")"
+python3 - "$ROOT/var/lib/haseen/vapt/installed.json" <<'PY'
+import json,sys
+p=sys.argv[1];r=json.load(open(p));next(x for x in r if x['name']=='nginx')['url']='https://foreign.invalid/'
+with open(p,'w') as f:json.dump(r,f)
+PY
+capture haseen-vapt-service-list --json
+assert_eq 'installed but unverified package retained diagnostic' true "$(jq '.services[] | select(.id=="nginx") | .installed' <<<"$OUTPUT")"
+assert_eq 'unverified unit cannot control' refused "$(jq -r '.services[] | select(.id=="nginx") | .ownership' <<<"$OUTPUT")"
+assert_not_contains 'never enable via gateway' "$(vapt_calls action-root)" ' enable '
+actions_untouched service

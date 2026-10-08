@@ -112,6 +112,13 @@ Rules every layer follows:
   shell, never the selected tool. The optional Security surface requires literal
   merged `enabled: true`, without bar/service insertion. Feature workflow
   defaults are seeded once on explicit provisioning, never by observation.
+  Explicit service actions separately require owned units and current
+  `FragmentPath`, rechecking at the root gateway; no enable/preset/init path.
+  Local helpers use reviewed owned adapters, loopback defaults and terminal
+  exposure gates. HTTP pins descriptors and serves bytes only; the file helper
+  serves one owned file. CA trust requires a typed fingerprint, immutable
+  public bytes, an owned updater and an unchanged-anchor journal; observation
+  never changes trust or launches a proxy/browser.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions

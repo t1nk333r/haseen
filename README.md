@@ -77,6 +77,9 @@ entrypoints, including data-only packages. `vapt tool-help` displays owned usage
 only on request; `vapt tool-run` then opens an ordinary shell, not the tool.
 `vapt status --json`, `vapt doctor --json`, and `vapt menu --enabled` are
 read-only, offline surfaces ([workflow contract](docs/vapt.md#installed-inventory-and-explicit-usage-plan-088)).
+Separate explicit `vapt service-*` and `vapt net-*` helpers never run as
+provisioning hooks: owned-unit controls, consent-gated foreground local servers,
+and typed-fingerprint CA trust ([local action contract](docs/vapt.md#explicit-services-and-local-helpers-plan-088)).
 
 ## NixOS
 

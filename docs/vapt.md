@@ -686,9 +686,64 @@ It does not enable the optional surface, add a bar widget or start a service.
 
 Explicit provisioning seeds `~/.config/haseen/vapt/workflow.json` once from
 the shipped feature defaults. Existing user settings remain untouched.
-Defaults for later explicit local helpers are `showLocalAddresses: false`,
-`enumerationScript: null`, and `bindAddress: "127.0.0.1"`. Inventory does not
-discover/store addresses. Service control, local network helpers, proxy CA
-trust and the optional panel are separate phase-2 slices; these commands do
-not implement or implicitly invoke them.
+Defaults are `showLocalAddresses: false`, `enumerationScript: null`, and
+`bindAddress: "127.0.0.1"`. Inventory does not discover/store addresses.
+The optional panel is a separate opt-in surface, never authorization for an action.
+
+## Explicit services and local helpers (plan 088)
+
+Provisioning still starts, enables and configures nothing. These separate
+commands require explicit user requests; all dry-runs are offline/write-free.
+
+- `haseen vapt service-list --json`: the five known ids `ssh`, `postgresql`,
+  `apache`, `nginx`, `beef`; installed package/unit ownership, current
+  `FragmentPath`, raw manager states and exposure `unknown`. Units come from
+  installed files, never package-name guesses. Missing/ambiguous/current-foreign
+  fragments refuse action. `service-start ID` and `service-restart ID` require
+  terminal confirmation (or explicit `--yes` acceptance of unknown exposure);
+  `service-stop ID` does not. All recheck ownership immediately before the root
+  gateway. None enables, presets, initializes or installs a service.
+- `haseen vapt net-addresses --json`: ephemeral local interface addresses,
+  no DNS/network probe, storage or logging. IPv4/IPv6 endpoints accept literal
+  addresses only and ports 1024–65535; missing real-action ports prompt locally.
+- `haseen vapt net-listener [--bind ADDRESS] [PORT]`: an owned reviewed neutral
+  foreground listener adapter, no received-data execution or payload features.
+  The default is loopback; every non-loopback bind requires terminal consent.
+- `haseen vapt net-http-server [--bind ADDRESS] DIR PORT`: explicitly selected
+  directory, byte-only foreground HTTP. Opened descriptors confine requests;
+  traversal and symlinks are refused. No listing, CGI, upload, firewall changes,
+  background daemon or fetched content.
+- `haseen vapt net-file-server [--file FILE] [--bind ADDRESS] [PORT]`: one
+  explicitly selected package-owned regular file, served only at `/file`.
+  It may use the user's `enumerationScript` setting or prompt when unset; it
+  never guesses a script, exposes its parent directory, runs or fetches it.
+  The doctor capability id `enumeration-host` maps to fixed command
+  `net-file-server`; there is no alias. Every foreground server requires consent.
+- `haseen vapt net-remmina`: launch only the verified owned client with no target,
+  connection, credentials or backend; dry-run previews ownership without launch.
+  The panel uses its normal `Apps.launch` boundary, not a shell command string.
+
+These foreground commands have no JSON mode. `service-list`, `net-addresses`
+and doctor emit one `schemaVersion: 1` object with diagnostics on stderr.
+Doctor readiness uses actual adapter/source/selection evidence, not package-name
+presence alone. Capability records include fixed `command` leaf verbs; consumers
+must whitelist them before building argv.
+
+### Proxy CA ownership, not implicit browser configuration
+
+`haseen vapt net-proxy-ca status --json` is read-only and reports none, owned,
+foreign, modified or unknown/incomplete anchor state. `inspect CERT --json`
+reads one bounded regular public PEM/DER CA and reports subject, issuer,
+uppercase SHA-256 fingerprint, validity and CA/private-key flags; it rejects
+bundles, private keys, non-CAs and expired material without printing certificate
+contents or changing trust.
+
+`trust CERT` requires typing the full displayed fingerprint, including with
+`--yes`. It rechecks immutable certificate bytes and owned updater evidence,
+then uses the root gateway to install one fingerprint-owned system anchor and
+update trust. No browser/proxy is launched or configured. `remove FINGERPRINT`
+removes only the unchanged recorded anchor; foreign or modified files survive.
+Dry-run never requests privilege, writes an anchor or claims hypothetical trust.
+Failed updater transactions retain an explicit incomplete ownership journal;
+status refuses to describe them as completed success.
 

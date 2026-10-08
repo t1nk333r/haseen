@@ -156,7 +156,7 @@ def _der_complete(data):
     return len(data) == int.from_bytes(data[2:2 + count], 'big') + 2 + count
 
 
-def inspect_certificate(path, openssl='/usr/bin/openssl'):
+def inspect_certificate_data(data, openssl='/usr/bin/openssl'):
     """Read one CA certificate and return only nonsecret metadata.
 
     OpenSSL is an absolute trusted workstation parser, not a discovered tool,
@@ -164,12 +164,8 @@ def inspect_certificate(path, openssl='/usr/bin/openssl'):
     """
     result = {'schemaVersion': 1, 'state': 'invalid', 'reason': '', 'certificate': None}
     try:
-        target = Path(path)
-        if not target.is_file():
-            raise ValueError('certificate selection must be a regular file')
-        if target.stat().st_size > 1024 * 1024:
+        if not isinstance(data, bytes) or len(data) > 1024 * 1024:
             raise ValueError('certificate input exceeds size limit')
-        data = target.read_bytes()
         if b'PRIVATE KEY' in data:
             result.update(state='refused', reason='private-key input refused')
             return result
@@ -211,3 +207,32 @@ def inspect_certificate(path, openssl='/usr/bin/openssl'):
     except (OSError, ValueError, KeyError, UnicodeError):
         result.update(state='invalid', reason='invalid, unreadable or unsupported single certificate input')
     return result
+
+def read_certificate_bytes(path):
+    """Read bounded immutable input without following the final link."""
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        import stat
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
+            raise ValueError('certificate must be one bounded regular file')
+        data = bytearray()
+        while len(data) <= 1024 * 1024:
+            chunk = os.read(fd, min(65536, 1024 * 1024 + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > 1024 * 1024:
+            raise ValueError('certificate exceeds read limit')
+        return bytes(data)
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+def inspect_certificate(path, openssl='/usr/bin/openssl'):
+    """Inspect immutable selected bytes, not a second read of a mutable path."""
+    try:
+        return inspect_certificate_data(read_certificate_bytes(path), openssl)
+    except (OSError, ValueError):
+        return {'schemaVersion': 1, 'state': 'invalid', 'reason': 'certificate selection unreadable, redirected or not one bounded regular file', 'certificate': None}

@@ -305,34 +305,9 @@ def menu():
 
 
 def capabilities(result):
-    """Fixed local action prerequisites, without executing adapters.
-
-    Action adapters belong to the local-action slice; unsupported or absent
-    adapters remain explicit unavailable records rather than guessed commands.
-    """
-    config, repos, _ = source_snapshot()
-    records = meta.installed(ROOT)
-    installed = {r.get('name') for r in records if package_sources(r, config, repos)}
-    requirements = [('listener', ['openbsd-netcat']), ('http-server', ['python']),
-                    ('enumeration-host', ['python']), ('proxy-ca', ['openssl', 'ca-certificates-utils']),
-                    ('remmina', ['remmina'])]
-    settings_valid = True
-    try:
-        validate_settings(result['workflow']['settings'])
-    except (ValueError, KeyError, TypeError):
-        settings_valid = False
-    values = []
-    for name, packages in requirements:
-        present = all(p in installed for p in packages)
-        state = 'unknown' if present else 'missing'
-        reason = 'installed prerequisites; supported action adapter not established' if present else 'verified prerequisite package missing'
-        if not settings_valid:
-            state, reason = 'refused', 'effective workflow settings invalid'
-        elif present and name == 'enumeration-host' and not result['workflow']['settings']['enumerationScript']:
-            state, reason = 'selection-required', 'select one verified package-owned regular file'
-        values.append({'id': name, 'installed': present, 'available': False, 'state': state,
-                       'prerequisitePackages': packages, 'reason': reason})
-    return values
+    """The action slice shares installed ownership policy with actual actions."""
+    from workflow_actions import local_capabilities
+    return local_capabilities(result['workflow']['settings'])
 
 
 def selected(tool_id, entry_id):

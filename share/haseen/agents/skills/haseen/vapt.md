@@ -41,9 +41,10 @@ haseen vapt remove --dry-run                           # only owned activation l
   that approval imports a signing key into the shared pacman keyring, which
   stays after `haseen vapt repo-disable oniomarchy`. Never add `[oniomarchy]`
   to `/etc/pacman.conf`: haseen then refuses the private source.
-- **Services stay off.** `services` installs openssh and remmina; `anonymity`
-  installs macchanger and tor. Starting sshd or Tor, or changing a MAC address,
-  is the user's explicit decision, done by them, not part of provisioning.
+- **Provisioning leaves services off.** `services` installs openssh and remmina;
+  `anonymity` installs macchanger and tor. Explicit owned-unit service controls
+  are separate user requests, not installation hooks. Never enable/init them,
+  change a MAC address or launch Tor as a provisioning side effect.
 - **Dependencies are not tools.** powershell-bin, xorg-xhost and the Java and
   wxPython runtimes come in only as a selected tool's dependencies.
 - **Removal keeps things.** `haseen vapt remove` reverses only haseen's own
@@ -75,3 +76,22 @@ doctor/menu never run installed tools, refresh sources or seed settings.
 Provisioning seeds VAPT workflow defaults once; never edit that user file for
 the user or publish local addresses/selected paths as evidence.
 
+
+## Explicit local actions
+
+`service-list --json` is observation; start/restart require terminal consent and
+revalidated owned `FragmentPath`, stop does not require consent. Exposure remains
+unknown; never infer loopback safety from service defaults or enable/preset/init.
+`net-listener`, `net-http-server`, `net-file-server` stay foreground. Bind only
+literal addresses and unprivileged ports; non-loopback exposure requires consent.
+Servers require consent and serve bytes only: no CGI, listing, uploads or fetched
+content. The file helper selects one package-owned regular file at `/file`,
+never guesses or runs an enumeration script. Doctor capability `enumeration-host`
+maps to fixed command `net-file-server`; whitelist capability command verbs.
+
+`net-proxy-ca status/inspect` never changes trust. Trust requires the full typed
+fingerprint even with `--yes`; removal preserves foreign/modified anchors.
+Never bypass a refusal, configure a browser/proxy, expose private certificate
+contents or claim an incomplete updater transaction succeeded. `net-remmina`
+launches only the verified client without connection/target/credentials.
+Dry-run stays offline and write-free; none of these helpers is an installer hook.

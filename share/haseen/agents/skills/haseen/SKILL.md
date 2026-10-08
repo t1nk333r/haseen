@@ -104,7 +104,7 @@ cat "$(command -v haseen-plugin-new)"   # read the source (on NixOS the real scr
 | `haseen hook` | event scripts | `haseen hook install theme-set ./notify.sh` |
 | `haseen ai` | local AI | `haseen ai status`, `haseen ai models`, `haseen ai chat "hi"` |
 | `haseen layer` | optional features (packages + config) | `haseen layer list`, `haseen layer apply ai --dry-run` |
-| `haseen vapt` | optional security provisioning and owned installed inventory (see `vapt.md`) | `haseen vapt install --groups sdr --dry-run`, `haseen vapt tool-list --json`, `haseen vapt doctor --json`, `haseen vapt menu --enabled` |
+| `haseen vapt` | optional security provisioning, owned inventory and explicit local actions (see `vapt.md`) | `haseen vapt install --groups sdr --dry-run`, `haseen vapt tool-list --json`, `haseen vapt doctor --json`, `haseen vapt service-list --json`, `haseen vapt net-proxy-ca status --json` |
 | `haseen doctor` | what haseen detects, layer health, shell RSS | `haseen doctor` |
 
 Prefer `--dry-run` first for anything that installs packages or touches
