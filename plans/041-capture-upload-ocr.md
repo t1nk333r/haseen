@@ -169,3 +169,25 @@ is Google's.
   so a grim that wrote late got `SIGPIPE` and the `pipefail` OCR reported
   failure. The stub now drains stdin when its input is `stdin`; a
   `GRIM_DELAY` case makes the race deterministic (failed before).
+
+## CI hang 2026-10-08 (PR #38)
+
+- **Cause.** The RV-1 foreign-dir case probed with
+  `unshare --map-auto --map-root-user … 2>/dev/null`. util-linux unshare forks
+  a helper for `--map-auto` that blocks reading an eventfd until the parent
+  has unshared; in the CI container `unshare(2)` is refused, the parent exits
+  and the helper is orphaned for good, holding the suite's stdout. tests/run.sh
+  read each file through `$(…)`, which waits for EOF, so after the skip line
+  the job hung until it was cancelled (run 37798664013, 2h11m; b067f04 passed
+  the file in 10s). Reproduced with
+  `bwrap --unshare-user --disable-userns -- env -i … tests/run.sh tests/test-capture-upload.sh`:
+  hung before, 316/316 in 2.9s after.
+- **Fix.** The probe first tries a helper-free `unshare --user --map-root-user`
+  and runs the `--map-auto` step under `timeout` with no descriptor of the
+  suite. tests/run.sh collects each file's output in a file (it waits for the
+  file's subshell, not for every process holding its stdout) and gives tests
+  `/dev/null` as stdin, since the scripted curl drains stdin and hung on an
+  open pipe. The loopback receivers write to their own logs, time out idle
+  connections (the TLS handshake included) and exit after 300s on their own;
+  the receiver cases skip without python3. tests/test-run-harness.sh fails
+  against the old runner (timed out, 0/2) and passes after.
