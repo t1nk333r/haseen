@@ -21,18 +21,18 @@ import "../haseen.imagepicker/Images.js" as Images
 // preview keeps its place while it is made, so the centred panel never
 // changes size under the pointer. The header names the active stage's keys
 // on a line of their own; notes and errors sit beside the title.
-// Keys (plan 083) go in three stages, the active one framed in the accent.
-// The search field: type to filter (to search, on Wallhaven); Enter
-// (searching first on Wallhaven) or Down moves to the pictures. The
-// pictures: h/j/k/l or the arrows move (by a row up and down), Enter picks
-// (downloads, on Wallhaven) and moves to the palette. The palette: h/j/k/l
-// or the arrows change the scheme, Enter
-// applies once the preview is of the picture picked. Tab flips dark/light,
-// Ctrl+S saves, `/` goes back to the field and Backspace back one stage;
-// Escape closes (the panel host handles it). The panel opens in the middle
-// of the screen (`placement` "center"). Open with
-// `haseen shell ipc panel toggle haseen.themegen` or menu Style › Theme
-// Generator.
+// Keys (plans 083, 086) go in three stages, the active one framed in the accent.
+// The search field: type to filter (to search, on Wallhaven); Enter (searching
+// first on Wallhaven) or Down moves to the pictures. The pictures: h/j/k/l or
+// the arrows move, Enter picks (downloads, on Wallhaven), and Space opens Quick
+// Look. It shows the local file, or Wallhaven's cached thumbs.small; Space or
+// Escape closes it, Enter picks, and h/j/k/l or the arrows browse. The palette:
+// h/j/k/l or the arrows change the scheme, Enter applies once the preview is of
+// the picture picked. Tab flips dark/light, Ctrl+S saves, `/` goes back to the
+// field and Backspace back one stage. Escape closes only Quick Look when it is
+// open; otherwise the panel host closes the panel. The panel opens in the
+// middle of the screen (`placement` "center"). Open with `haseen shell ipc
+// panel toggle haseen.themegen` or menu Style › Theme Generator.
 //
 // Every colour comes from the CLI's --json preview: the mapping and the
 // readability clamp live in bin/haseen-theme-generate only. Nothing runs
@@ -96,6 +96,14 @@ Column {
     // "images" (the strip or the Wallhaven grid) or "palette" (the scheme
     // chips); in the last two the panel itself has the focus.
     property string stage: "search"
+    property bool quickLookOpen: false
+    readonly property int quickLookWidth: Math.max(1, Math.floor(screenWidth * 0.85))
+    readonly property int quickLookHeight: Math.max(1, Math.floor(screenHeight * 0.68))
+    readonly property string quickLookPath: {
+        if (source === "wallhaven")
+            return wallhaven.item ? wallhaven.item.previewPath : "";
+        return image;
+    }
     readonly property bool downloading: wallhaven.item !== null && wallhaven.item.fetching
     // Save and Apply only for the picture on show: never while its download
     // or a preview run is still to land, so Enter cannot apply a half-loaded
@@ -103,11 +111,73 @@ Column {
     // and a failed download leaves none, so Enter never applies an older one.
     readonly property bool ready: image !== "" && previewImage === image && preview.ok && !previewProc.running && !previewQueued && !downloading && !writing && Model.validName(name) && Model.canWrite(preview.target)
     readonly property string hint: {
+        if (quickLookOpen)
+            return "Space or Esc closes · h/j/k/l or arrows browse · Enter picks";
         if (stage === "images")
-            return "h j k l or arrows move · Enter " + (source === "wallhaven" ? "downloads" : "picks") + " · / search · Esc closes";
+            return "h j k l or arrows move · Enter " + (source === "wallhaven" ? "downloads" : "picks") + " · Space quick look · / search · Esc closes";
         if (stage === "palette")
             return "h j k l or arrows: scheme · Tab dark/light · " + (ready ? "Enter applies" : "Enter applies once ready") + " · Ctrl+S saves · Backspace: pictures";
         return source === "wallhaven" ? "Enter searches · Down: pictures · Esc closes" : "Enter or Down: pictures · Esc closes";
+    }
+
+    function closeQuickLook(): void {
+        if (!quickLookOpen)
+            return;
+        quickLookOpen = false;
+        Qt.callLater(() => root.forceActiveFocus());
+    }
+
+    function openQuickLook(): void {
+        if (source === "wallhaven") {
+            if (!wallhaven.item || wallhaven.item.currentIndex < 0)
+                return;
+        } else if (results.length === 0 || strip.currentIndex < 0) {
+            return;
+        }
+        quickLookOpen = true;
+    }
+
+    function quickLookMove(delta: int): void {
+        if (source === "wallhaven") {
+            if (wallhaven.item)
+                wallhaven.item.move(delta, 0);
+        } else if (results.length > 0) {
+            strip.currentIndex = Math.max(0, Math.min(results.length - 1, strip.currentIndex + delta));
+        }
+    }
+
+    function pickQuickLook(): void {
+        closeQuickLook();
+        choose();
+    }
+
+    function handleQuickLookKey(key: int, modifiers: int): bool {
+        if (!quickLookOpen || (modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
+            return false;
+        switch (key) {
+        case Qt.Key_Space:
+        case Qt.Key_Escape:
+            closeQuickLook();
+            return true;
+        case Qt.Key_Return:
+        case Qt.Key_Enter:
+            pickQuickLook();
+            return true;
+        case Qt.Key_Left:
+        case Qt.Key_Up:
+        case Qt.Key_H:
+        case Qt.Key_K:
+            quickLookMove(-1);
+            return true;
+        case Qt.Key_Right:
+        case Qt.Key_Down:
+        case Qt.Key_J:
+        case Qt.Key_L:
+            quickLookMove(1);
+            return true;
+        default:
+            return false;
+        }
     }
 
     function close(): void {
@@ -188,9 +258,11 @@ Column {
             say("still downloading: Enter applies once the preview shows", false);
     }
 
-    // The pictures and palette stages' keys; false leaves the key alone.
+    // The panel-stage keys; false leaves a key for the field or the host.
     // Ctrl, Alt and Super chords are the shortcuts'.
     function handleKey(key: int, modifiers: int): bool {
+        if (quickLookOpen)
+            return handleQuickLookKey(key, modifiers);
         if (stage === "search" || !root.activeFocus || (modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
             return false;
         let dx = 0;
@@ -219,6 +291,12 @@ Column {
             else
                 confirm();
             return true;
+        case Qt.Key_Space:
+            if (stage === "images") {
+                openQuickLook();
+                return true;
+            }
+            return false;
         case Qt.Key_Backspace:
             setStage(stage === "palette" ? "images" : "search");
             return true;
@@ -325,7 +403,7 @@ Column {
             pick(0);
     }
 
-    width: columns * cellWidth + Theme.gap
+    width: quickLookOpen ? quickLookWidth : columns * cellWidth + Theme.gap
     spacing: Theme.gap
     focus: true
     Keys.onPressed: event => event.accepted = root.handleKey(event.key, event.modifiers)
@@ -407,6 +485,7 @@ Column {
             return JSON.stringify({
                 count: root.images.length,
                 shown: root.results.length,
+                source: root.source,
                 image: root.image,
                 scheme: root.scheme,
                 mode: root.mode,
@@ -415,8 +494,10 @@ Column {
                 ready: root.ready,
                 preview: root.preview,
                 notice: root.notice,
-                source: root.source,
                 stage: root.stage,
+                quickLook: root.quickLookOpen,
+                quickLookPath: root.quickLookPath,
+                hint: root.hint,
                 query: input.text,
                 strip: strip.currentIndex,
                 wallhaven: wallhaven.item ? {
@@ -522,7 +603,7 @@ Column {
         Text {
             id: title
 
-            text: "Theme generator"
+            text: root.quickLookOpen ? "Quick Look" : "Theme generator"
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -556,6 +637,7 @@ Column {
     }
 
     Row {
+        visible: !root.quickLookOpen
         spacing: Math.round(Theme.gap / 2)
 
         Repeater {
@@ -581,6 +663,7 @@ Column {
     }
 
     Rectangle {
+        visible: !root.quickLookOpen
         width: parent.width
         height: Theme.fontSize * 2.4
         radius: Theme.radius
@@ -630,7 +713,7 @@ Column {
 
         Item {
             width: parent.width
-            height: root.imagesHeight
+            height: root.quickLookOpen ? root.quickLookHeight : root.imagesHeight
 
             GridView {
                 id: strip
@@ -642,7 +725,7 @@ Column {
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 highlightMoveDuration: 0
-                visible: root.source === "local"
+                visible: root.source === "local" && !root.quickLookOpen
                 model: root.results
                 onCurrentIndexChanged: {
                     positionViewAtIndex(currentIndex, GridView.Contain);
@@ -674,7 +757,7 @@ Column {
 
                 width: parent.width
                 active: root.wallhavenUsed
-                visible: root.source === "wallhaven"
+                visible: root.source === "wallhaven" && !root.quickLookOpen
 
                 sourceComponent: WallhavenGrid {
                     cli: root.cli
@@ -688,6 +771,13 @@ Column {
                     Component.onCompleted: search("")
                 }
             }
+            QuickLook {
+                anchors.fill: parent
+                visible: root.quickLookOpen
+                z: 1
+                imagePath: root.quickLookPath
+                pixelRatio: root.pixelRatio
+            }
         }
     }
 
@@ -695,6 +785,7 @@ Column {
         x: -pad
         width: parent.width + pad * 2
         active: root.stage === "palette"
+        visible: !root.quickLookOpen
 
         Flow {
             width: parent.width
@@ -781,6 +872,7 @@ Column {
     // Built from a complete preview only: the mock never draws half a palette.
     // Its place is kept while there is none, so the panel keeps its height.
     Loader {
+        visible: !root.quickLookOpen
         width: parent.width
         height: Math.round(root.mockWidth / 2)
         active: root.preview.ok
@@ -825,4 +917,5 @@ Column {
             }
         }
     }
+
 }

@@ -179,6 +179,7 @@ Column {
         }
 
         Grid {
+            id: calendarGrid
             columns: 7
 
             Repeater {
@@ -243,19 +244,28 @@ Column {
         }
     }
 
+
     Row {
         id: dayNameRow
 
-        width: body.implicitWidth
+        // Align to the seven date columns, not the optional week numbers.
+        x: body.x + calendarGrid.x
+        width: calendarGrid.width
+        height: dayNameToggle.implicitHeight
         spacing: Theme.gap
 
-        Text {
+        Item {
             width: Math.max(0, dayNameRow.width - dayNameToggle.implicitWidth - dayNameRow.spacing)
-            text: "Day name"
-            color: Theme.foreground
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            verticalAlignment: Text.AlignVCenter
+            height: dayNameRow.height
+
+            Text {
+                anchors.fill: parent
+                text: "Day name"
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize
+                verticalAlignment: Text.AlignVCenter
+            }
         }
 
         Pill {
@@ -274,7 +284,6 @@ Column {
             }
         }
     }
-
     // Test hook (settings.debugIpc): change and read the shown month without
     // a keyboard or pointer.
     IpcHandler {
