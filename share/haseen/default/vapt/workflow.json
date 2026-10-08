@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "showLocalAddresses": false,
+  "enumerationScript": null,
+  "bindAddress": "127.0.0.1"
+}

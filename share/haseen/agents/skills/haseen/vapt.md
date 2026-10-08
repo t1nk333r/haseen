@@ -52,3 +52,26 @@ haseen vapt remove --dry-run                           # only owned activation l
   is a separate, deliberate `pacman -R` the user runs.
 - **Never edit `$HASEEN_PATH/layers/vapt/`** to add a tool. A missing tool is
   a change for the haseen repository, reviewed there.
+
+## Installed inventory and explicit usage
+
+`haseen vapt tool-list --json` reports verified installed roots and owned
+entrypoints; `--all` adds missing/unknown inventory diagnostics. Never infer
+an executable from a package name. Data-only packages have no run action;
+multiple entries require explicit `--entry` selection.
+
+Use `haseen vapt tool-help TOOL --entry ENTRY_ID --dry-run` to inspect usage
+evidence. Without dry-run it displays a unique owned matching document, or only
+a reviewed help-only binding. Missing/ambiguous evidence is a deliberate
+refusal: do not work around it by guessing `--help`. `tool-run` displays that
+same evidence then opens an ordinary interactive shell, never the selected
+program; it has no JSON mode and never prefills a command or starts a backend.
+
+`haseen vapt status --json` preserves 0/1/2 provisioning health.
+`haseen vapt doctor --json --dry-run` is observation only, not repair.
+`haseen vapt menu --enabled --json` checks the literal merged enable flag of
+the optional `haseen.security` surface; it does not enable it. List/status/
+doctor/menu never run installed tools, refresh sources or seed settings.
+Provisioning seeds VAPT workflow defaults once; never edit that user file for
+the user or publish local addresses/selected paths as evidence.
+

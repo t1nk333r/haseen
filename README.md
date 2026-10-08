@@ -72,6 +72,11 @@ translate, and lists what has no haseen equivalent; run it without
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.
+`haseen vapt tool-list --json` lists verified installed inventory and actual owned
+entrypoints, including data-only packages. `vapt tool-help` displays owned usage
+only on request; `vapt tool-run` then opens an ordinary shell, not the tool.
+`vapt status --json`, `vapt doctor --json`, and `vapt menu --enabled` are
+read-only, offline surfaces ([workflow contract](docs/vapt.md#installed-inventory-and-explicit-usage-plan-088)).
 
 ## NixOS
 

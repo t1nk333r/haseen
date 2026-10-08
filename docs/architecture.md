@@ -104,6 +104,14 @@ Rules every layer follows:
   pacman keyring is global (plan 087). See `docs/vapt.md` for its trust, environment, and
   limited owned-link removal contracts. It does not require the desktop or
   default layers.
+  Plan 088 adds a separate read-only installed workflow: `workflow.py` reuses
+  phase-1 metadata for provenance/native state and discovers actual owned files,
+  not guessed commands. `vapt tool-list`, JSON status/doctor and `vapt menu`
+  execute no listed tool. Explicit `tool-help` needs owned documentation or a
+  reviewed help-only argv; `tool-run` shows that usage then opens an ordinary
+  shell, never the selected tool. The optional Security surface requires literal
+  merged `enabled: true`, without bar/service insertion. Feature workflow
+  defaults are seeded once on explicit provisioning, never by observation.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions

@@ -632,3 +632,63 @@ uninstaller.
 The engineering record and exercised checks are in
 [`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md) and
 [`plans/087-vapt-oniomarchy-provisioning.md`](../plans/087-vapt-oniomarchy-provisioning.md).
+
+## Installed inventory and explicit usage (plan 088)
+
+Provisioning still never runs its tools. The separate workflow commands inspect
+installed ownership offline, or display documentation only on explicit request:
+
+```sh
+haseen vapt tool-list --json
+haseen vapt tool-list --all --group network --dry-run
+haseen vapt tool-help TOOL --entry /absolute/owned/entry --dry-run
+haseen vapt tool-run TOOL --entry /absolute/owned/entry --dry-run
+haseen vapt status --json
+haseen vapt doctor --json --dry-run
+haseen vapt menu --enabled --json
+```
+
+`tool-list` normally includes verified installed inventory roots; `--all` adds
+missing/unknown items. Entrypoints come from installed package file inventories
+and executable mode, or verified pinned native distribution RECORD files.
+Several entries are preserved; data packages legitimately have no executable.
+Owned desktop metadata is read as data, never executed. No package-name guesses,
+PATH search, previous successful report, installed module import or presence
+probe is used. Ownership proves metadata association, not unchanged file bytes.
+
+`tool-help` requires one entry (choose `--entry` when there are several). It
+prefers a unique owned basename-matching man page, then matching help document,
+and prints the document directly without a pager/man helper. Man pages appear
+as plain roff source. Otherwise it requires a reviewed package/entry-specific
+help-only argv binding, rechecked against current ownership. The shipped registry
+is deliberately empty: no arbitrary `--help` guesses. Missing or ambiguous
+evidence is a refusal, not a speculative execution. Dry-run reports the exact
+evidence and intended argv without invoking anything.
+
+`tool-run` follows that same documentation path and then opens only the user's
+installed executable login shell (`-i`, checked against `/etc/shells`, with
+independently present bash fallback). Non-TTY sessions use the existing floating
+terminal helper, after validation. It never runs the selected tool, prefills an
+assessment, elevates or starts a backend. It has no `--json`. Fixture sysroots
+cannot execute a help binding or start a workstation shell.
+
+List, status, doctor and menu execute zero listed programs, refresh nothing and
+write nothing, including in dry-run. JSON is exactly one `schemaVersion: 1`
+object; diagnostics are on stderr. Status retains 0 healthy / 1 missing /
+2 degraded. Doctor maps missing/degraded to ordinary failure (1), usage to 2;
+it reports sources, package provenance, owned entries and workflow readiness,
+never repairs anything. See [plan 088](../plans/088-vapt-security-workflow.md)
+for the complete versioned schema.
+
+`menu` reads the effective deep-merged default/user shell configuration and
+returns enabled only for literal `plugins.haseen.security.enabled: true`.
+It does not enable the optional surface, add a bar widget or start a service.
+
+Explicit provisioning seeds `~/.config/haseen/vapt/workflow.json` once from
+the shipped feature defaults. Existing user settings remain untouched.
+Defaults for later explicit local helpers are `showLocalAddresses: false`,
+`enumerationScript: null`, and `bindAddress: "127.0.0.1"`. Inventory does not
+discover/store addresses. Service control, local network helpers, proxy CA
+trust and the optional panel are separate phase-2 slices; these commands do
+not implement or implicitly invoke them.
+
