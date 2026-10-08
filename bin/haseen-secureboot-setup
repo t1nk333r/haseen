@@ -45,7 +45,7 @@ preflight_all
 [[ $FIRMWARE == uefi ]] || die "Secure Boot needs UEFI firmware; this machine booted in legacy BIOS mode. Nothing to do."
 case "$HASEEN_DISTRO" in
 cachyos | arch | omarchy) ;;
-nixos) die "on NixOS, Secure Boot belongs to the flake (lanzaboote), not to this command" ;;
+nixos) die "NixOS is not supported. haseen targets CachyOS and Arch." ;;
 *) die "unsupported distro: $HASEEN_DISTRO" ;;
 esac
 if [[ $SECUREBOOT_STATE != setup ]]; then

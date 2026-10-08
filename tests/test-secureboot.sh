@@ -3,7 +3,7 @@
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Secure Boot layer (plan 002): setup decisions per bootloader fixture, the
-# refusals (BIOS, outside Setup Mode, old sbctl, unready boot chain), the typed
+# refusals (BIOS, NixOS, outside Setup Mode, old sbctl, unready boot chain), the typed
 # ENROLL confirmation that --yes cannot answer, BitLocker and TPM2 warnings,
 # the Limine config/hash handling, the pacman hook, idempotency and dry-run
 # purity. Every fixture is checksummed before and after: nothing may write it.
@@ -247,6 +247,15 @@ assert_dry_pure "BIOS setup" "$OUTPUT"
 capture env HASEEN_SYSROOT="$FIXTURES/arch-bios" haseen secureboot setup
 assert_status "BIOS refused without dry-run too" 1 "$STATUS"
 assert_not_contains "BIOS: nothing ran" "$OUTPUT" "STUB-CALLED"
+# NixOS is not supported: refused by name on UEFI in Setup Mode, before
+# anything is planned or run.
+root="$(scratch sb-nixos "$FX_SDTPM")"
+cp "$FIXTURES/nixos/etc/os-release" "$root/etc/os-release"
+capture env HASEEN_SYSROOT="$root" haseen secureboot setup --yes <<<"ENROLL"
+assert_status "NixOS refused" 1 "$STATUS"
+assert_contains "NixOS reason" "$OUTPUT" "NixOS is not supported"
+assert_not_contains "NixOS: nothing ran" "$OUTPUT" "STUB-CALLED"
+assert_not_contains "NixOS: nothing planned" "$OUTPUT" "DRYRUN:"
 
 for fx in cachyos-grub-plain sb-sdboot-enabled; do
     capture env HASEEN_SYSROOT="$FIXTURES/$fx" haseen secureboot setup --yes

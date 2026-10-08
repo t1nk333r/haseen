@@ -29,7 +29,7 @@ Column {
     property var settings: ({})
     property var screen: null
 
-    // bin/haseen next to share/haseen (checkout, /usr/local, /usr, Nix).
+    // bin/haseen next to share/haseen (checkout, /usr/local, /usr).
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property int columns: typeof settings.columns === "number" && settings.columns >= 1 ? Math.round(settings.columns) : 3
     readonly property int rows: typeof settings.rows === "number" && settings.rows >= 1 ? Math.round(settings.rows) : 2

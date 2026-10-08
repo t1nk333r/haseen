@@ -27,7 +27,8 @@ os_release_field() {
 # preflight_distro — sets HASEEN_DISTRO to cachyos | arch | omarchy | nixos |
 # unsupported, and DISTRO_PRETTY. CachyOS is the primary target; plain Arch is
 # supported; an Omarchy host is supported with a warning (haseen replaces it,
-# see docs/decisions/0001); NixOS is served by the flake, not the installer.
+# see docs/decisions/0001). NixOS is recognised only so that callers can refuse
+# it by name: it is not supported.
 preflight_distro() {
     local id like
     id="$(os_release_field ID)"

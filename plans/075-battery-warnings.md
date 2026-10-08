@@ -42,6 +42,7 @@
   migration; `haseen migrate --pending` lists them); `nix/README.md` says so. Running migrations from the
   activation was rejected: an existing Nix user's ledger is empty, so every older migration would run
   unattended, including the one that puts `haseen.logo` back into a bar the user may have trimmed.
+  Moot since 2026-10-05: Nix support was dropped (plan 009), and `nix/README.md` was removed with it.
 - `Compat/Dms/Services/BatteryService.qml` no longer claims that haseen covers DMS's battery alerts.
   haseen.battery's service now provides the alerts. DMS's sounds stay unprovided.
 - `tools/fake-upower.py` is a fake UPower and power-profiles-daemon on a private bus

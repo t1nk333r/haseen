@@ -133,3 +133,10 @@ Nest from `tools/nest-launch.sh`, scratch shell with `HASEEN_SYSROOT` pointing a
 - Polling DDC from the panel: each read is ~50 ms of i2c traffic per monitor; read on open only.
 - An i2c group or a shipped udev rule: Arch's ddcutil already ships the `uaccess` rule.
 - Turning `haseen.display` on: a new built-in stays off until the owner approves it (AGENTS.md).
+
+## Addendum 2026-10-08: NixOS dropped
+
+Nix support was dropped by owner decision on 2026-10-05 (plan 009), so the NixOS parts above are moot:
+`nix/nixos.nix` and the `haseen.ddc.enable` option are gone. `bin/haseen-setup-ddc` now refuses `on` and
+`off` on NixOS with "NixOS is not supported" (the installer's wording), `status` reads only pacman's
+database, and `--help` no longer describes a flake option. `tests/test-brightness.sh` checks the refusal.

@@ -136,7 +136,7 @@ the stock set is now exactly Omarchy's 22 (`tests/test-themes2.sh` pins the list
 - swaybg itself (not installed here; no installs): `haseen-background.service` and `bg run` were only
   exercised as dry runs. WebP via swaybg relies on gdk-pixbuf2 2.44 loading through glycin
   [INFERENCE]; glycin decoded the tokyo-night WebP here (`glycin-thumbnailer` → 256x144 PNG).
-- The NixOS side (home-manager unit, `pkgs.swaybg`).
+- The NixOS side (home-manager unit, `pkgs.swaybg`). Moot since 2026-10-05: Nix support was dropped (plan 009).
 - The first two scratch launches ran under a plain `dbus-run-session` (before the
   `tools/smoke-session.conf` rule); xdg-desktop-portal-hyprland crash notifications were on screen
   around then and may have come from them.

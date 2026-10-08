@@ -3,7 +3,7 @@
 [![ci](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml/badge.svg)](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml)
 
 حصين (*haseen*, "fortified"): a clean, low-resource desktop that installs on
-top of **CachyOS** (plain Arch works too; NixOS uses the flake). It is built on
+top of **CachyOS** (plain Arch works too). It is built on
 Hyprland (Lua config) and a small Quickshell shell of its own, and it can load
 add-ons made for Omarchy and DankMaterialShell.
 
@@ -88,10 +88,7 @@ CA trust change; Stop and the remote desktop client have no prompt. The panel
 never claims success or runs anything during discovery
 ([panel guide](docs/vapt.md#optional-security-workstation-panel-plan-088)).
 
-## NixOS
-
-See [`nix/README.md`](nix/README.md): `nixosModules.haseen` (with lanzaboote
-for Secure Boot) and `homeManagerModules.haseen`.
+NixOS is not supported: the installer refuses it.
 
 ## Docs
 
@@ -105,7 +102,6 @@ for Secure Boot) and `homeManagerModules.haseen`.
 0.1.0-dev. Covered so far:
 - Fixture-tested.
 - The shell was run live next to an existing session.
-- The flake was evaluated and built.
 
 Not run yet: a real install on a CachyOS machine, Secure Boot enrollment on real firmware, and greetd login (plan 014).
 
