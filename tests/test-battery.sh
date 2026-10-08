@@ -291,6 +291,9 @@ QML
     # scenario NAME SETTINGS RUN_MS INITIAL STEPS — a private system bus with
     # the fake on it, the harness on a session bus of its own; sets RESULT
     # (the service's state at the end) and CALLS (the recorded commands).
+    # The steps start when the shell has read the display device (the fake's
+    # `client` gate), not when the fake is up: a shell slow to start (a busy
+    # machine, the full suite) would otherwise miss the early steps.
     scenario() {
         : >"$LOG"
         local bus pid fake
@@ -298,7 +301,7 @@ QML
         dbus-daemon --config-file="$REPO/tools/smoke-session.conf" --fork \
             --address="unix:path=$bus/system" --print-pid=3 3>"$bus/pid"
         pid="$(cat "$bus/pid")"
-        printf '%s\n' "${@:5}" | DBUS_SYSTEM_BUS_ADDRESS="unix:path=$bus/system" \
+        printf '%s\n' client "${@:5}" | DBUS_SYSTEM_BUS_ADDRESS="unix:path=$bus/system" \
             timeout 60 python3 "$REPO/tools/fake-upower.py" $4 >"$SANDBOX/fake.log" 2>&1 &
         fake=$!
         for _ in $(seq 50); do grep -q ready "$SANDBOX/fake.log" && break; sleep 0.1; done

@@ -12,9 +12,12 @@ usage: fake-upower.py [KEY=VALUE ...] < commands
 Each stdin line is a set of KEY=VALUE pairs applied at once; the change goes
 out as one PropertiesChanged per object. `OnBattery=true` sets the daemon's
 property, `ActiveProfile=balanced` the power profile, `sleep=SECONDS`
-pauses before the rest of the line. At EOF the fake keeps serving until it
-is killed. State: 1 charging, 2 discharging, 4 fully charged, 5 pending
-charge (plugged in, not charging).
+pauses before the rest of the line, and a line `client` holds the rest of
+the script until a client has read the display device (GetAll), so a script
+times its changes from when the shell under test is up, not from when the
+fake started. At EOF the fake keeps serving until it is killed. State:
+1 charging, 2 discharging, 4 fully charged, 5 pending charge (plugged in,
+not charging).
 """
 
 import os
@@ -68,6 +71,8 @@ class PropertyObject(dbus.service.Object):
         super().__init__(bus, path)
         self.iface = iface
         self.props = props
+        # Called after each GetAll (the display device's `client` gate).
+        self.on_read = None
 
     @dbus.service.method(PROPS, in_signature="ss", out_signature="v")
     def Get(self, iface, name):
@@ -75,6 +80,10 @@ class PropertyObject(dbus.service.Object):
 
     @dbus.service.method(PROPS, in_signature="s", out_signature="a{sv}")
     def GetAll(self, iface):
+        if self.on_read:
+            # After the reply is on the wire: the reader has the values the
+            # script then changes.
+            GLib.idle_add(self.on_read)
         return dbus.Dictionary(self.props if iface == self.iface else {}, signature="sv")
 
     @dbus.service.method(PROPS, in_signature="ssv")
@@ -199,6 +208,18 @@ def main():
 
     pending = []
     sleeping = [False]
+    # The display device has been read / a `client` line is waiting for it.
+    read = [False]
+    gated = [False]
+
+    def on_read():
+        read[0] = True
+        if gated[0]:
+            gated[0] = False
+            drain()
+        return False
+
+    display.on_read = on_read
 
     def apply(line):
         device, root, profile = {}, {}, {}
@@ -224,6 +245,12 @@ def main():
         while pending:
             line = pending.pop(0)
             words = line.split()
+            if words == ["client"]:
+                if not read[0]:
+                    gated[0] = True
+                    print("fake-upower: waiting for a client", flush=True)
+                    return False
+                continue
             if words and words[0].startswith("sleep="):
                 rest = " ".join(words[1:])
                 if rest:
@@ -240,7 +267,7 @@ def main():
         if not line:
             return False
         pending.append(line.strip())
-        if not sleeping[0]:
+        if not sleeping[0] and not gated[0]:
             drain()
         return True
 
