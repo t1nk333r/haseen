@@ -286,6 +286,19 @@ them only through the `qs.Haseen.Flags` singleton. `gestures` is written by the
 widget is listed in the default `bar.right` and takes no room without it, so
 enabling it never rewrites the user's `shell.json`.
 
+Settings live in **six** stores, and `share/haseen/lib/settings.sh` is the map
+over all of them (`haseen settings list`, `haseen settings set <key> [value]`,
+plan 045). The split is deliberate and the index does not change it:
+`shell.json` is the user's hand-edited document (a plugin's settings fall back
+to its manifest's defaults); other one-value files under `~/.config/haseen`
+(the mono font) are each owned by one command; `flags/` is session state a
+command must be able to flip several times an hour without rewriting a config
+file; `~/.local/state/haseen/toggles/hypr/*.lua` is Lua because Hyprland reads
+Lua; other `~/.local/state/haseen` files hold the theme name, the active shell
+and the remembered power profile; `~/.config/uwsm/env.d/60-haseen-defaults` is
+read by uwsm before anything could read `shell.json`. `haseen settings set`
+owns no state: it `exec`s the command that already owns the key.
+
 Runtime contexts (plan 062): `haseen context normal|focus|game|present`
 switches several of those flags as one. Entering from normal records them in
 `~/.local/state/haseen/context/saved`; leaving sets every one back to that

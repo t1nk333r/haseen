@@ -66,6 +66,7 @@ The owner's other repos:
 | Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
 | Upload, annotation, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `share/haseen/default/satty/`, `share/haseen/themed/satty.css.tpl` | 041 |
 | Multiplexer, yazi, the VM rig | `share/haseen/default/{herdr,tmux,yazi}/`, `share/haseen/themed/yazi.toml.tpl`, `tools/lab.sh` | 044 |
+| Settings index | `share/haseen/lib/settings.sh`, `bin/haseen-settings-*` | 045 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
