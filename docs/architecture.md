@@ -38,6 +38,8 @@ file changes in the same commit.
 | `share/haseen/shell/` | Quickshell config root (§5) | shell |
 | `share/haseen/systemd/user/*` | user units → `PREFIX/lib/systemd/user` | per slice |
 | `share/haseen/seeds/NN-<name>.sh` | one user-config seed each: defines `seed_main`, declares `# haseen:seed <path>\|<description>`; `bin/haseen-seed-user` runs them in name order | per slice |
+| `share/haseen/default/applications/mimeapps.list` | vendor default handlers → `PREFIX/share/applications/mimeapps.list` (lowest XDG precedence, so the user always wins) | desktop |
+| `share/haseen/default/xdg-terminal-exec/` | terminal preference → `PREFIX/share/xdg-terminal-exec/` | desktop |
 | `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |

@@ -85,6 +85,19 @@ APP_DIR="$PREFIX/share/applications"
 # the symbolic one in currentColor, which GTK recolours.
 ICON_DIR="$PREFIX/share/icons/hicolor"
 
+# Defaults that have to sit where XDG looks for them, not inside share/haseen:
+# "<path under PREFIX/share>" is also the path under share/haseen/default/.
+#
+# $PREFIX/share is /usr/local/share by default, and the XDG basedir default for
+# XDG_DATA_DIRS is "/usr/local/share:/usr/share" — earlier entries win, so these
+# outrank anything /usr/share carries. That is deliberate on a machine migrated
+# from Omarchy: omarchy-settings owns /usr/share/applications/mimeapps.list and
+# /usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list (pacman -Ql
+# omarchy-settings), and haseen's answers must win without touching a file
+# pacman owns. Both stay below the user's own ~/.config, which `haseen setup
+# default` writes.
+VENDOR_FILES=(applications/mimeapps.list xdg-terminal-exec/hyprland-xdg-terminals.list)
+
 uninstall_tree() {
     local f
     for f in "$REPO"/bin/haseen*; do
@@ -92,6 +105,9 @@ uninstall_tree() {
     done
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
+    done
+    for f in "${VENDOR_FILES[@]}"; do
+        run_root rm -f "$PREFIX/share/$f"
     done
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && run_root rm -f "$APP_DIR/${f##*/}"
@@ -127,6 +143,9 @@ install_tree() {
     done
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && install_root_file "$f" "$UNIT_DIR/${f##*/}" 0644
+    done
+    for f in "${VENDOR_FILES[@]}"; do
+        install_root_file "$REPO/share/haseen/default/$f" "$PREFIX/share/$f" 0644
     done
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && install_root_file "$f" "$APP_DIR/${f##*/}" 0644

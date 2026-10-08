@@ -19,6 +19,15 @@ hyprpicker                   # colour picker bind
 polkit                       # privilege prompts; the shell's haseen.polkit service is the agent
 gnome-keyring                # Secret Service for browsers/apps, unlocked by PAM at login (keepassxc is a GUI app, not a session service)
 xdg-utils                    # xdg-open / xdg-settings: the browser bind opens the default browser
+# The default handlers in default/applications/mimeapps.list name these, so
+# they ship with the session: a vendor default that points at a missing app is
+# worse than none. xdg-terminal-exec is how a Terminal=true entry (yazi, nvim)
+# and GTK's "Open in Terminal" reach $TERMINAL.
+aur:xdg-terminal-exec        # only in [omarchy]; flea depends on it too
+yazi                         # default inode/directory handler (TUI, Terminal=true)
+imv                          # default image/* handler (pulls libheif for HEIC/AVIF)
+mpv                          # default video/* and application/ogg handler
+papers                       # default application/pdf handler
 qt6-wayland                  # native Wayland for Qt 6 apps (Quickshell included)
 inter-font                   # shell UI font (theme token fontFamily)
 ttf-jetbrains-mono-nerd      # terminal and shell mono font with icon glyphs (fontMono)
