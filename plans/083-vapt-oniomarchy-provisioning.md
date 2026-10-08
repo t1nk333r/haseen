@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A, B and C landed. Batch C: a keyring may revoke only primaries the source already owned (its own trusted list no longer launders revocations); a new private dependency never beats an earlier repository provider; the layer no longer edits user rc files and only seeds its owned link (a deliberate divergence, recorded below); `--pick --vapt-groups` is refused; the docs match the final code. The whole suite passes except two host-dependent ydotool checks that fail identically on `main`. Lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–D landed. Batch D: a keyring may revoke only keys this source has actually used (the pin, earlier revocations, observed signers recorded in the authority), never a fingerprint merely listed as trusted. Batch C: a new private dependency never beats an earlier repository provider; the layer only seeds its owned link and never edits user rc files (a divergence from the earlier implementation on this branch); `--pick --vapt-groups` is refused. The batch C whole-suite run passed except two host-dependent ydotool checks that fail identically on `main`; the batch D oniomarchy and `test-vapt.sh` suites, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation). Independent security/audit review of both slices is outstanding.
 
 ## Goal
 
@@ -216,17 +216,29 @@ provenance.
   dependencies, population-only scriptlet, then the generic `audit_archives`
   with a per-package population exemption). Root state:
   `oniomarchy.authority` (keyring version, digest, signer, accepted and
-  revoked primaries, retained file digests), `sync/oniomarchy.db{,.sig}` and
-  `oniomarchy.database` (exactly which bytes were verified and by whom).
+  revoked primaries, observed signers, retained file digests),
+  `sync/oniomarchy.db{,.sig}` and `oniomarchy.database` (exactly which bytes
+  were verified and by whom).
 - **Rotation.** Accepted only from a keyring signed by a currently accepted,
   non-revoked primary; revocations never shrink, the version never goes down,
-  the first keyring must trust the pin. A revocation may name only a primary
-  the source already owned: `revoked ⊆ previous accepted ∪ previous revoked ∪
-  {pin}`. The archive's own trusted list grants no revocation authority, so a
-  new signer is not revocable in the archive that introduces it, and
-  `trusted={PIN,ARCH}`/`revoked={ARCH}` is refused before `pacman-key
-  --populate` could revoke an unrelated global key. Batch C closed this; the
-  earlier rule also counted the incoming trusted list. Applied only by an approval:
+  the first keyring must trust the pin. **Invariant (batch D):** a revocation
+  may name only a key this source has actually used, `revoked ⊆ previous
+  revoked ∪ {pin} ∪ observed signers`. Observed signers are the primaries whose
+  VALIDSIG verified this source's artefacts: the keyring archive being
+  audited, the database fetched for this approval (`--db-signer`), the
+  database signer recorded at the last verified refresh, and every signer
+  observed by earlier approvals. They are recorded in the authority's
+  `observed` line and never derived from a declared list. A fingerprint
+  merely listed in an incoming or earlier `trusted` list is admitted as
+  accepted but is never revocable, however many approvals it survives. Batch
+  C's rule (`previous accepted ∪ previous revoked ∪ {pin}`) still let a
+  two-stage path through: stage 1 lists ARCH, stage 2 revokes it. A
+  legitimate rotation keeps working: an archive signed by OLD may revoke OLD
+  and trust ROT, and ROT becomes revocable once it has signed the database or
+  a keyring. Sealed private packages are verified by pacman, not by this
+  status parser, so their signers are not recorded. Records written before
+  batch D lack the `observed` line and read as a mismatch (manual review);
+  no such record exists outside this unreleased branch. Applied only by an approval:
   `repo-enable`, or the approval a `--with-oniomarchy` run asks for (with the
   same confirmation) when the source is not approved, e.g. after
   `repo-disable`. The refresh of an approved source never changes trust.
@@ -428,7 +440,15 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   longer revoke a non-pin signer. Also added: an earlier repository
   providing a private dependency under another name (versioned `Provides`)
   is preferred offline and refused for the private package in a transaction,
-  while too old a provider does not block it (admission).
+  while too old a provider does not block it (admission). Batch D added: the
+  two-stage attack (stage 1 lists ARCH, stage 2 revokes it) refused with no
+  `pacman-key` call and no authority write (trust-adversarial and
+  `rotation.json`); a foreign key merely listed as trusted is still admitted
+  and never recorded as observed; the retiring signer OLD signs the archive
+  that revokes it and trusts ROT (accepted, OLD recorded as observed); a
+  pin-signed revocation of a listed-only OLD is refused. The intermediate
+  `via` step names its signer, and `trust/old.status` provides an OLD
+  signature.
 - `tests/test-vapt.sh`: the install picker never offers `vapt`; a saved
   `vapt` choice is dropped with a reason instead of aborting the installer;
   `--pick --vapt-groups` is refused before the tree or any layer (batch C).
@@ -444,7 +464,18 @@ tests/run.sh` on each oniomarchy suite — consent 96/96, trust-adversarial
 
 ## Evidence
 
-Batch C, on the final tree (fixtures only; no live fetch, key, package or
+Batch D (observed-signer revocation authority), fixtures only:
+
+```sh
+QT_QPA_PLATFORM=offscreen tests/run.sh tests/test-vapt-oniomarchy-*.sh tests/test-vapt-oniomarchy.sh tests/test-vapt.sh   # 10 files, 1594/1594
+SHELLCHECK=$(command -v shellcheck) tools/lint.sh     # lint OK
+tools/check-docs.sh                                   # check-docs OK
+```
+
+Batch D changed only the keyring audit, the authority record format, the
+approval call and their fixtures, so the whole suite was not re-run.
+
+Batch C, on that tree (fixtures only; no live fetch, key, package or
 service operation):
 
 ```sh

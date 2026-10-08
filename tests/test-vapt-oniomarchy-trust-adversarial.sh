@@ -140,9 +140,30 @@ adv_case vapt-adv-trust-revocation-launder
 vapt_onio_serve trusted=PIN,ARCH revoked=ARCH
 vapt_api repo-enable --yes
 assert_status 'revocation launder: refused' 1 "$STATUS"
-assert_contains 'revocation launder: the foreign key is named' "$OUTPUT" 'outside the oniomarchy authority'
+assert_contains 'revocation launder: the foreign key is named' "$OUTPUT" 'revokes primaries this source never used (D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0)'
 assert_eq 'revocation launder: no trust change (no populate)' '' "$(adv_trust_ops)"
 assert_eq 'revocation launder: not approved' no "$(adv_exists "$ROOT$SOURCES/oniomarchy.conf")"
+
+# --- a merely listed key never becomes revocable (two-stage) ------------------
+# Stage 1 lists ARCH as trusted (admitted: listing is not use); stage 2 revokes
+# it. ARCH never signed anything of this source, so stage 2 is refused before
+# pacman-key --populate could disable the unrelated global key.
+adv_case vapt-adv-trust-revocation-two-stage
+vapt_api repo-enable --yes
+assert_status 'two-stage: initial approval' 0 "$STATUS"
+vapt_onio_serve keyring=20261015-1 trusted=PIN,ARCH revoked=
+vapt_api repo-enable --yes
+assert_status 'two-stage: a foreign key merely listed as trusted is admitted' 0 "$STATUS"
+assert_not_contains 'two-stage: a listed key is not recorded as observed' \
+    "$(awk -F'\t' '$1 == "observed" { print $2 }' "$ROOT$SOURCES/oniomarchy.authority")" D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0
+authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+vapt_onio_serve keyring=20261101-1 trusted=PIN,ARCH revoked=ARCH
+: >"$CALLS/sudo"
+vapt_api repo-enable --yes
+assert_status 'two-stage: revoking the listed foreign key is refused' 1 "$STATUS"
+assert_contains 'two-stage: the reason names the never-used key' "$OUTPUT" 'revokes primaries this source never used'
+assert_eq 'two-stage: no trust change (no populate)' '' "$(adv_trust_ops)"
+assert_eq 'two-stage: no authority write' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
 
 # --- repeated approval of an unchanged keyring changes no trust --------------
 adv_case vapt-adv-trust-reapprove

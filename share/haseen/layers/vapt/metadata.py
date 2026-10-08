@@ -4052,7 +4052,7 @@ def parse_authority(text):
     if lines[-1] != '':
         raise ValueError('malformed keyring authority record')
     lines = lines[:-1]
-    keys = ('package', 'version', 'sha256', 'signer', 'accepted', 'revoked')
+    keys = ('package', 'version', 'sha256', 'signer', 'accepted', 'revoked', 'observed')
     if len(lines) != 1 + len(keys) + len(ONIOMARCHY_KEYRING_FILES) or lines[0] != AUTHORITY_HEADER:
         raise ValueError('malformed keyring authority record')
     record = {}
@@ -4069,19 +4069,22 @@ def parse_authority(text):
         record['files'][path] = fields[2]
     accepted = set(record['accepted'].split(','))
     revoked = set() if record['revoked'] == '-' else set(record['revoked'].split(','))
+    observed = set(record['observed'].split(','))
     if (record['package'] != 'oniomarchy-keyring' or not re.fullmatch('[0-9a-f]{64}', record['sha256'])
             or not FINGERPRINT.fullmatch(record['signer']) or not accepted
-            or not all(FINGERPRINT.fullmatch(f) for f in accepted | revoked) or accepted & revoked
+            or not all(FINGERPRINT.fullmatch(f) for f in accepted | revoked | observed) or accepted & revoked
+            or pinned_signers() not in observed or record['signer'] not in observed
             or not re.fullmatch(r'[A-Za-z0-9.+:_~-]+', record['version'])):
         raise ValueError('malformed keyring authority record')
-    record['accepted'], record['revoked'] = accepted, revoked
+    record['accepted'], record['revoked'], record['observed'] = accepted, revoked, observed
     return record
 
 
 def render_authority(record):
     lines = [AUTHORITY_HEADER, 'package\toniomarchy-keyring', 'version\t' + record['version'], 'sha256\t' + record['sha256'],
              'signer\t' + record['signer'], 'accepted\t' + ','.join(sorted(record['accepted'])),
-             'revoked\t' + (','.join(sorted(record['revoked'])) or '-')]
+             'revoked\t' + (','.join(sorted(record['revoked'])) or '-'),
+             'observed\t' + ','.join(sorted(record['observed']))]
     lines += ['file\t' + path + '\t' + record['files'][path] for path in ONIOMARCHY_KEYRING_FILES]
     return '\n'.join(lines) + '\n'
 
@@ -4208,7 +4211,7 @@ def oniomarchy_canary(root):
     return row
 
 
-def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path, authority_facts_path):
+def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path, authority_facts_path, database_signer=None):
     """Audit the sealed keyring archive before any trust operation and print
     the authority record it establishes. Rotation is accepted only from a
     package signed by a currently accepted, non-revoked primary; revocations
@@ -4254,19 +4257,29 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
     previous_revoked = previous['revoked'] if previous else set()
     if signer not in previous_accepted:
         raise ValueError('keyring package is not signed by a currently accepted primary')
+    if database_signer is not None and (not FINGERPRINT.fullmatch(database_signer) or database_signer not in previous_accepted):
+        raise ValueError('database signer is not a currently accepted primary')
     if not previous_revoked <= revoked:
         raise ValueError('keyring package withdraws a recorded revocation')
     # `pacman-key --populate oniomarchy` applies the revoked list to the
-    # shared keyring: the package may revoke only primaries this source
-    # already owned (previously accepted or revoked, or the pin), never an
-    # Arch/CachyOS or administrator key. Its own trusted list grants no
-    # revocation authority: a signer it introduces is not revocable in the
-    # same archive, or {PIN,ARCH}/revoked={ARCH} would launder ARCH's revocation.
-    authority = (previous['accepted'] | previous_revoked if previous else set()) | {pin}
+    # shared keyring, so the package may revoke only keys this source has
+    # actually used: the pin, earlier revocations, and observed signers (the
+    # primaries whose VALIDSIG verified this source's database or keyring
+    # archive, recorded across approvals). A fingerprint merely listed in a
+    # trusted list, now or in any earlier archive, is never revocable: else
+    # trusted={PIN,ARCH} then revoked={ARCH} would disable an unrelated key.
+    observed = (previous['observed'] if previous else set()) | {pin, signer}
+    if database_signer:
+        observed.add(database_signer)
+    recorded = oniomarchy_recorded_database_signer(root)
+    if recorded:
+        observed.add(recorded)
+    authority = previous_revoked | observed
     foreign = revoked - authority
     if foreign:
-        raise ValueError('keyring package revokes primaries outside the oniomarchy authority (' + ','.join(sorted(foreign))
-                         + '); a revocation may name only a previously accepted or revoked, or the pinned primary')
+        raise ValueError('keyring package revokes primaries this source never used (' + ','.join(sorted(foreign))
+                         + '); a revocation may name only the pin, an earlier revocation or a primary that has signed '
+                         + "this source's database or keyring; manual review required")
     accepted = trusted - revoked
     if not accepted:
         raise ValueError('keyring package leaves no accepted primary')
@@ -4299,7 +4312,20 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
                        authority_facts_path=authority_facts_path)
     files = {path: hashlib.sha256(contents[path]).hexdigest() for path in ONIOMARCHY_KEYRING_FILES}
     return render_authority({'version': version, 'sha256': digest, 'signer': signer, 'accepted': accepted,
-                             'revoked': revoked, 'files': files})
+                             'revoked': revoked, 'observed': observed, 'files': files})
+
+
+def oniomarchy_recorded_database_signer(root):
+    """The primary recorded for the cached database when that record still
+    verifies (oniomarchy_database); '' otherwise."""
+    if oniomarchy_database(root)[0] != 'verified':
+        return ''
+    try:
+        note = oniomarchy_state_bytes(root, 'oniomarchy.database', 4096).decode('ascii')
+    except (OSError, ValueError, UnicodeDecodeError, AttributeError):
+        return ''
+    signer = note.rstrip('\n').rsplit('\nsigner\t', 1)[-1]
+    return signer if FINGERPRINT.fullmatch(signer) else ''
 
 
 def oniomarchy_status(root, as_json):
@@ -4335,6 +4361,7 @@ def main():
     parser.add_argument('--with-oniomarchy', action='store_true')
     parser.add_argument('--db')
     parser.add_argument('--signer')
+    parser.add_argument('--db-signer')
     parser.add_argument('--json', action='store_true')
     options = parser.parse_args()
     args = options.args
@@ -4354,7 +4381,7 @@ def main():
             print('absent' if not match else 'depend' if reason in ('depend', ['1']) else 'explicit')
         elif options.operation == 'oniomarchy-keyring':
             print(oniomarchy_keyring_audit(options.root, args[0], options.db, options.signer, options.sudo_plugins,
-                                           options.authority_facts), end='')
+                                           options.authority_facts, database_signer=options.db_signer), end='')
         elif options.operation in ('oniomarchy-approve', 'oniomarchy-withdraw'):
             # Root-only: exactly the canonical private descriptor (fixture: under --root).
             canonical = options.root.rstrip('/') + ONIOMARCHY_STATE + '/oniomarchy.conf'

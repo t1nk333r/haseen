@@ -157,10 +157,10 @@ while IFS=$'\t' read -r name itrusted irevoked via version trusted revoked signe
     vapt_api repo-enable --yes
     assert_status "$name: initial approval" 0 "$STATUS"
     if [[ $via != - ]]; then
-        # An accepted intermediate keyring (VERSION/TRUSTED/REVOKED) first.
-        IFS=/ read -r vversion vtrusted vrevoked <<<"$via"
+        # An accepted intermediate keyring (VERSION/TRUSTED/REVOKED/SIGNED) first.
+        IFS=/ read -r vversion vtrusted vrevoked vsigned <<<"$via"
         [[ $vrevoked != - ]] || vrevoked=''
-        vapt_onio_serve "keyring=$vversion" "trusted=$vtrusted" "revoked=$vrevoked" pkgstatus=pinned
+        vapt_onio_serve "keyring=$vversion" "trusted=$vtrusted" "revoked=$vrevoked" "pkgstatus=$vsigned"
         vapt_api repo-enable --yes
         assert_status "$name: intermediate keyring accepted" 0 "$STATUS"
     fi
@@ -172,6 +172,11 @@ while IFS=$'\t' read -r name itrusted irevoked via version trusted revoked signe
         assert_status "$name: accepted" 0 "$STATUS"
         assert_contains "$name: new accepted set" "$(cat "$ROOT$SOURCES/oniomarchy.authority")" "$ROT"
         assert_not_contains "$name: no second pin import" "$(trust_ops)" '--lsign-key'
+        case "$signed" in pinned) signer_fpr="$PIN" ;; rotated) signer_fpr="$ROT" ;; old) signer_fpr="C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0C0" ;; esac
+        assert_contains "$name: the archive's signer is recorded as observed" \
+            "$(awk -F'\t' '$1 == "observed" { print $2 }' "$ROOT$SOURCES/oniomarchy.authority")" "$signer_fpr"
+        assert_not_contains "$name: a merely listed key is never observed" \
+            "$(awk -F'\t' '$1 == "observed" { print $2 }' "$ROOT$SOURCES/oniomarchy.authority")" "D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0"
     else
         assert_status "$name: refused" 1 "$STATUS"
         assert_eq "$name: authority unchanged" "$authority_before" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
@@ -182,7 +187,7 @@ import json, sys
 for c in json.load(open(sys.argv[1]))["cases"]:
     j = lambda v: ",".join(v) or "-"
     v = c.get("via")
-    via = "/".join((v["version"], j(v["trusted"]), j(v["revoked"]))) if v else "-"
+    via = "/".join((v["version"], j(v["trusted"]), j(v["revoked"]), v["signedBy"])) if v else "-"
     print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), via, c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c["expect"], sep="\t")
 ' "$ONIO_FX/trust/rotation.json")
 

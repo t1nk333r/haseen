@@ -194,7 +194,7 @@ vapt_oniomarchy_bootstrap_steps() {
     }
     vapt_root_facts || { VAPT_ONIOMARCHY_REASON="$VAPT_APPLY_REASON"; return 2; }
     authority="$(vapt_meta oniomarchy-keyring "$sealed" --db "$(vapt_read_path "$VAPT_ONIO_DB")" \
-        --signer "$VAPT_ONIO_KEYRING_SIGNER" --sudo-plugins "$(vapt_read_path "$VAPT_CACHE/sudo-plugins")" \
+        --signer "$VAPT_ONIO_KEYRING_SIGNER" --db-signer "$VAPT_ONIO_SIGNER" --sudo-plugins "$(vapt_read_path "$VAPT_CACHE/sudo-plugins")" \
         --authority-facts "$(vapt_read_path "$VAPT_CACHE/authority-facts")" 2>&1)" || {
         VAPT_ONIOMARCHY_REASON="keyring package audit rejected: ${authority//$'\n'/ }"; return 2;
     }

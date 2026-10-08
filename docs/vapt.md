@@ -422,15 +422,17 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   any full upgrade, so a full upgrade never carries it: a full upgrade under
   the private scope is refused, and no recovery record names the source (a
   record that does is refused and preserved for review).
-- **Revocations stay inside the source's authority.** `pacman-key --populate
+- **Revocations only of keys this source has used.** `pacman-key --populate
   oniomarchy` applies the keyring's revoked list to the shared keyring. An
-  audited keyring may therefore revoke only a primary this source already
-  owned: one previously accepted or revoked, or the pin. Its own trusted list
-  grants no revocation authority, so a signer it introduces cannot be revoked
-  in the same archive, and `trusted={PIN,ARCH}`/`revoked={ARCH}` cannot launder
-  a revocation of an unrelated key. Any other revocation (an Arch/CachyOS or
-  administrator key) refuses the keyring with the offending fingerprints
-  named. The recorded authority must equal what the retained keyring lists
+  audited keyring may therefore revoke only the pin, an earlier revocation,
+  or an *observed signer*: a primary whose signature actually verified this
+  source's database or keyring archive. Observed signers are recorded in
+  root-owned state across approvals. A fingerprint merely listed as trusted,
+  in this keyring or any earlier one, is never revocable. A keyring that
+  first lists an Arch/CachyOS or administrator key and later revokes it is
+  therefore refused before any trust change, with the offending fingerprints
+  named. A retiring signer may still revoke itself while it hands over to a
+  new one. The recorded authority must equal what the retained keyring lists
   declare.
 - **Trust changes are reported as such.** Once the pinned key is imported (or
   an audited keyring update reached the shared keyring), any later refusal is

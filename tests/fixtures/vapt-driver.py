@@ -951,9 +951,10 @@ def onio_seed(options):
     fingerprints = lambda text, suffix: sorted({line.split(':')[0] for line in text.splitlines() if line.strip()})
     trusted = set(fingerprints(files[ONIO_KEYRINGS + 'oniomarchy-trusted'].decode(), ':'))
     revoked = set(fingerprints(files[ONIO_KEYRINGS + 'oniomarchy-revoked'].decode(), ''))
+    observed = {ONIO_FPR['PIN'], meta['databaseSigner'] or ONIO_FPR['PIN']}
     lines = ['haseen-vapt-oniomarchy-authority-v1', 'package\toniomarchy-keyring', 'version\t' + meta['version'],
              'sha256\t' + meta['sha256'], 'signer\t' + ONIO_FPR['PIN'], 'accepted\t' + ','.join(sorted(trusted - revoked)),
-             'revoked\t' + (','.join(sorted(revoked)) or '-')]
+             'revoked\t' + (','.join(sorted(revoked)) or '-'), 'observed\t' + ','.join(sorted(observed))]
     lines += ['file\t' + name + '\t' + hashlib.sha256(files[name]).hexdigest()
               for name in (ONIO_KEYRINGS + 'oniomarchy.gpg', ONIO_KEYRINGS + 'oniomarchy-trusted', ONIO_KEYRINGS + 'oniomarchy-revoked')]
     (sources / 'oniomarchy.authority').write_text('\n'.join(lines) + '\n')
