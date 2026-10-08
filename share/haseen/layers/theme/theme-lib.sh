@@ -58,7 +58,10 @@ THEME_FONT_FILE="$HASEEN_USER_CONFIG/font"
 # Adding a template for another terminal, or another editor that loads code,
 # means adding it here or to THEME_COLOUR_ONLY below; tests/test-theme.sh fails
 # on a template output that is in neither list.
-THEME_INSTALLED_DENIED=(alacritty.toml foot.ini ghostty.conf kitty.conf vscode.json)
+# fonts.conf is here rather than in the colour-only list: fontconfig's
+# <include> reads any path, so a stranger's theme could pull a file of its own
+# choosing into every application's font configuration.
+THEME_INSTALLED_DENIED=(alacritty.toml foot.ini fonts.conf ghostty.conf kitty.conf vscode.json)
 # Template outputs reviewed as pure data (colours, sizes, font names).
 THEME_COLOUR_ONLY=(btop.theme gtk.css shell.json)
 

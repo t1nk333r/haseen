@@ -1,21 +1,51 @@
 #!/usr/bin/env bash
-# haseen:summary Seed the btop, fcitx5, input-method and XCompose configs into your home
+# haseen:summary Seed haseen's config defaults into your home, once each
 # haseen:args [--dry-run]
-#
-# Config seeds adapted from Omarchy (MIT, Copyright (c) David Heinemeier
-# Hansson): config/btop/btop.conf, config/fcitx5/conf/{xcb,clipboard}.conf,
-# default/environment.d/10-omarchy-fcitx.conf, default/xcompose and
-# install/user/xcompose.sh.
 #
 # Seeds are copied once. A file the user has edited is never touched again,
 # so running this after every upgrade is safe and nearly always a no-op.
+#
+# Each seed is one file in share/haseen/seeds/*.sh. It defines seed_main and
+# declares what it writes with `# haseen:seed <path>|<description>` lines,
+# which is where --help gets its list. Files run in name order, so a seed that
+# depends on an earlier one is numbered after it. A slice adds a seed by adding
+# a file; this command never changes.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 
+# Every seed module may use these.
 DEFAULTS="$HASEEN_PATH/default"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 COMPOSE="$HOME/.XCompose"
+SEEDS="$HASEEN_PATH/seeds"
+
+# seed_modules — the module files, in run order.
+seed_modules() {
+    local f
+    shopt -s nullglob
+    for f in "$SEEDS"/*.sh; do printf '%s\n' "$f"; done
+    shopt -u nullglob
+}
+
+# seed_declared — "path|description" for every `# haseen:seed` line, with the
+# module's own variables expanded, so --help shows real paths.
+seed_declared() {
+    local f line path desc
+    while IFS= read -r f; do
+        while IFS= read -r line; do
+            line="${line#*haseen:seed }"
+            path="${line%%|*}"
+            desc="${line#*|}"
+            # Only the four names a module may use; eval-free expansion.
+            path="${path//\$CONFIG/$CONFIG}"
+            path="${path//\$COMPOSE/$COMPOSE}"
+            path="${path//\$DEFAULTS/$DEFAULTS}"
+            path="${path//\$HOME/$HOME}"
+            printf '%s|%s\n' "$path" "$desc"
+        done < <(grep -o '# haseen:seed .*' "$f" || true)
+    done < <(seed_modules)
+}
 
 usage() {
     cat <<EOF
@@ -23,12 +53,7 @@ Usage: haseen seed user [--dry-run]
 
 Copies haseen's defaults into \$HOME, once each:
 
-  $CONFIG/btop/btop.conf          resource monitor settings
-  $CONFIG/btop/themes/current.theme  link to the theme pipeline's colours
-  $CONFIG/fcitx5/{config,profile}    English <-> Arabic on Control+space
-  $CONFIG/fcitx5/conf/*.conf         fcitx5 addon settings
-  $CONFIG/environment.d/10-haseen-fcitx.conf  QT_IM_MODULE and friends
-  $COMPOSE                           includes haseen's compose sequences
+$(seed_declared | while IFS='|' read -r p d; do printf '  %-50s %s\n' "$p" "$d"; done)
 
 Files that already exist are left alone: they are yours after the first seed.
 EOF
@@ -42,52 +67,12 @@ set -- "${REST[@]}"
 }
 require_not_root
 
-# --- btop -------------------------------------------------------------------
-# The colours belong to the theme pipeline: `haseen theme set` renders
-# share/haseen/themed/btop.theme.tpl to current/theme/btop.theme. The seed adds
-# only what that does not cover — btop's own settings, and the themes link that
-# makes `color_theme = "current"` resolve to the rendered file.
-seed_btop() {
-    seed_user_file "$DEFAULTS/btop/btop.conf" "$CONFIG/btop/btop.conf"
-    local link="$CONFIG/btop/themes/current.theme"
-    local target="$HASEEN_USER_STATE/current/theme/btop.theme"
-    # -L too: a dangling link is still the user's (no theme applied yet).
-    if [[ -e $link || -L $link ]]; then
-        return 0
-    fi
-    run mkdir -p "$CONFIG/btop/themes"
-    run ln -snf "$target" "$link"
-}
-
-# --- fcitx5 -----------------------------------------------------------------
-seed_fcitx5() {
-    local f
-    for f in config profile conf/xcb.conf conf/clipboard.conf; do
-        seed_user_file "$DEFAULTS/fcitx5/$f" "$CONFIG/fcitx5/$f"
-    done
-    seed_user_file "$DEFAULTS/environment.d/10-haseen-fcitx.conf" \
-        "$CONFIG/environment.d/10-haseen-fcitx.conf"
-}
-
-# --- XCompose ---------------------------------------------------------------
-# Generated rather than copied: it carries the absolute path of the installed
-# tree, which differs between the checkout, /usr/local and /usr.
-seed_xcompose() {
-    [[ -e $COMPOSE ]] && return 0
-    write_user_file "$COMPOSE" <<EOF
-# Your compose sequences. haseen writes this file once and never again.
-# The Compose key is CapsLock (hypr input option compose:caps).
-
-# The sequences of your locale.
-include "%L"
-
-# haseen's emoji, Arabic punctuation and typography sequences.
-include "$DEFAULTS/xcompose/compose"
-EOF
-}
-
-seed_btop
-seed_fcitx5
-seed_xcompose
+while IFS= read -r module; do
+    # shellcheck disable=SC1090  # module list is this tree's own seeds/
+    source "$module"
+    declare -F seed_main >/dev/null || die "${module##*/}: no seed_main"
+    seed_main
+    unset -f seed_main
+done < <(seed_modules)
 
 info "seeds are in place; log out and back in for the input method to load"

@@ -22,6 +22,8 @@ assert_contains "the fcitx5 addon configs are planned" "$OUTPUT" "DRYRUN: seed $
 assert_contains "the input-method environment is planned" "$OUTPUT" \
     "DRYRUN: seed $CONFIG/environment.d/10-haseen-fcitx.conf"
 assert_contains "XCompose is planned with its content" "$OUTPUT" "DRYRUN: write $HOME/.XCompose"
+assert_contains "fontconfig is planned with its content" "$OUTPUT" \
+    "DRYRUN: write $CONFIG/fontconfig/fonts.conf"
 assert_contains "the XCompose plan includes haseen's sequences" "$OUTPUT" \
     "include \"$REPO/share/haseen/default/xcompose/compose\""
 assert_eq "the dry run wrote nothing" "" "$(find "$HOME" -type f -o -type l | sort | tr '\n' ' ')"
@@ -62,6 +64,40 @@ assert_contains "XCompose includes haseen's file" "$compose" \
     "include \"$REPO/share/haseen/default/xcompose/compose\""
 assert_contains "haseen's sequences carry Arabic punctuation" \
     "$(cat "$REPO/share/haseen/default/xcompose/compose")" "<Multi_key> <a> <question>"
+
+# --- fontconfig --------------------------------------------------------------
+# The order of the two includes is the whole point: the theme render assigns
+# the generic families (assign replaces the list), the static file then adds
+# the language rules, which test lang and still fire.
+fonts="$(cat "$CONFIG/fontconfig/fonts.conf")"
+assert_contains "the theme render is included first" "$fonts" \
+    "<include ignore_missing=\"yes\">$HOME/.local/state/haseen/current/theme/fonts.conf</include>"
+assert_contains "haseen's Arabic rules are included after it" "$fonts" \
+    "<include ignore_missing=\"yes\">$REPO/share/haseen/default/fontconfig/arabic.conf</include>"
+assert_eq "the theme render comes before the Arabic rules" "theme arabic" \
+    "$(sed -n 's/.*current\/theme\/fonts\.conf.*/theme/p; s/.*fontconfig\/arabic\.conf.*/arabic/p' \
+        "$CONFIG/fontconfig/fonts.conf" | tr '\n' ' ' | sed 's/ $//')"
+# What fontconfig makes of the seeded file: fc-pattern -c applies the pattern
+# rules, needing no installed font. A stand-in theme render assigns the
+# monospace family the way themed/fonts.conf.tpl does.
+mkdir -p "$HOME/.local/state/haseen/current/theme"
+cat >"$HOME/.local/state/haseen/current/theme/fonts.conf" <<'EOF'
+<?xml version="1.0"?>
+<fontconfig>
+  <match target="pattern">
+    <test name="family"><string>monospace</string></test>
+    <edit name="family" mode="assign" binding="strong"><string>Theme Mono</string></edit>
+  </match>
+</fontconfig>
+EOF
+families() { FONTCONFIG_FILE="$CONFIG/fontconfig/fonts.conf" fc-pattern -c "$1" family | sed -n 's/^\tfamily: //p'; }
+assert_eq "Arabic text keeps the theme face and gets a Naskh fallback" \
+    '"Theme Mono"(s) "Noto Naskh Arabic"(w)' "$(families 'monospace:lang=ar')"
+assert_eq "Urdu puts Nastaliq first" '"Noto Nastaliq Urdu"(s) "Theme Mono"(s)' "$(families 'monospace:lang=ur')"
+assert_eq "Latin text is untouched by the Arabic rules" '"Theme Mono"(s)' "$(families 'monospace:lang=en')"
+rm "$HOME/.local/state/haseen/current/theme/fonts.conf"
+assert_eq "without a theme render the Arabic rules still apply" \
+    '"monospace"(s) "Noto Naskh Arabic"(w)' "$(families 'monospace:lang=ar')"
 
 # --- a seeded file belongs to the user --------------------------------------
 echo "# mine" >"$CONFIG/btop/btop.conf"
