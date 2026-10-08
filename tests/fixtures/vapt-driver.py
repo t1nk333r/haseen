@@ -1076,15 +1076,36 @@ else:
     if mode == 'root' and os.environ.get('VAPT_FAKE_TRUST') == '1' and command == 'pacman-key':
         # Records the trust request; no keyring is initialised or modified.
         # VAPT_PACMAN_KEY_FAIL=<option> models an operational failure of that
-        # option (an unreadable keyring, a failed deletion); --list-keys
-        # lists every fixture primary as present.
+        # option (a failed deletion).
         option = argv[0] if argv else ''
         if os.environ.get('VAPT_PACMAN_KEY_FAIL') and option == '--' + os.environ['VAPT_PACMAN_KEY_FAIL']:
             print('pacman-key: fixture ' + option + ' failure', file=sys.stderr)
             sys.exit(2)
-        if option == '--list-keys':
+        sys.exit(0)
+    if (mode == 'root' and os.environ.get('VAPT_FAKE_TRUST') == '1' and command == 'gpg'
+            and '--list-keys' in argv and '--with-colons' in argv and '--homedir' in argv):
+        # The shared pacman keyring listing. VAPT_KEYRING_LISTING: colons (every
+        # fixture primary present, machine-readable), human (an alternative
+        # human presentation without colon records), empty, malformed (a
+        # primary without its fpr record), fail (an operational error).
+        listing = os.environ.get('VAPT_KEYRING_LISTING', 'colons')
+        if listing == 'fail':
+            print('gpg: keyblock resource: fixture failure', file=sys.stderr)
+            sys.exit(2)
+        if listing in ('colons', 'colons-no-pin'):
+            print('tru::1:1700000000:0:3:1:5')
+            for name, fpr in ONIO_FPR.items():
+                if listing == 'colons-no-pin' and name == 'PIN':
+                    continue
+                print('pub:-:255:22:' + fpr[-16:] + ':1700000000:::-:::scESC::::::23::0:\nfpr:::::::::' + fpr
+                      + ':\nuid:-::::1700000000::0000::fixture::::::::::0:')
+        elif listing == 'human':
             for fpr in ONIO_FPR.values():
-                print('pub   ed25519 2026-01-01 [SC]\n      ' + fpr + '\nuid           [ full ] fixture\n')
+                print('pub   ed25519/0x' + fpr[-16:] + ' 2026-01-01 [SC]\nuid   [ full ] fixture\n')
+        elif listing == 'malformed':
+            print('pub:-:255:22:' + ONIO_FPR['PIN'][-16:] + ':1700000000:::-:::scESC::::::23::0:')
+        elif listing != 'empty':
+            sys.exit(97)
         sys.exit(0)
     if mode == 'root' and os.environ.get('VAPT_FAKE_TRUST') == '1' and command == 'tee' and len(argv) in (1, 2):
         # Global repository activation (tee -a) and the layer's applied record

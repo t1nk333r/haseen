@@ -1216,6 +1216,15 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         if source:
             archive_rows[package] = (source, fields['pkgver'][0], filename)
         newfiles = {name for name in names if name and not name.startswith('.')}
+        # A private-source package may place nothing in pacman's keyrings
+        # directory: a later manual `pacman-key --populate` would apply any
+        # list or ownertrust found there (the source's own keyring package is
+        # audited separately and never installed).
+        if source == ONIOMARCHY and any(
+                Path(name).parts[:4] == ('usr', 'share', 'pacman', 'keyrings')
+                and (len(Path(name).parts) > 4 or not names[name].endswith('/')) for name in newfiles):
+            raise ValueError('oniomarchy package ' + package + ' places files under /usr/share/pacman/keyrings, '
+                             'where pacman-key --populate would apply them; refused')
         package_paths = {name + ('/' if names[name].endswith('/') else '') for name in newfiles}
         if '.MTREE' in names and '.MTREE' not in contents:
             raise ValueError('opaque .MTREE requires manual review ' + package)
@@ -4363,6 +4372,34 @@ def oniomarchy_recorded_database_signer(root):
     return signer if FINGERPRINT.fullmatch(signer) else ''
 
 
+COLON_RECORDS = {'tru', 'pub', 'sub', 'sec', 'ssb', 'crt', 'crs', 'fpr', 'fp2', 'grp', 'uid', 'uat', 'sig', 'rev',
+                  'rvs', 'rvk', 'spk', 'cfg', 'pkd', 'tfs'}
+
+
+def keyring_listing(text):
+    """The primary fingerprints of a successful `gpg --with-colons
+    --list-keys` of the shared pacman keyring. Every line must be a colon
+    record of a known type and every primary must carry its fingerprint
+    record; an empty listing (no primary at all) or anything else is not an
+    answer haseen can interpret, never proof that a key is absent."""
+    lines = [line for line in text.splitlines() if line]
+    if any(':' not in line or line.split(':', 1)[0] not in COLON_RECORDS for line in lines):
+        raise ValueError('shared keyring listing is not the machine-readable colon format')
+    primaries = key_primaries(text)
+    if not primaries:
+        raise ValueError('shared keyring listing holds no primary key; not interpretable')
+    return primaries
+
+
+def pacman_gpgdir(root):
+    """pacman's keyring directory: GPGDir from pacman.conf, else the default."""
+    values = [line.split('=', 1)[1].strip(' \t\r\v\f') for line in read_config(root).get('options', [])
+              if line.split('=', 1)[0].strip(' \t\r\v\f') == 'GPGDir' and '=' in line]
+    if len(values) > 1 or (values and not values[0].startswith('/')):
+        raise ValueError('ambiguous or relative GPGDir')
+    return values[0] if values else '/etc/pacman.d/gnupg'
+
+
 def oniomarchy_status(root, as_json):
     row = oniomarchy_canary(root)
     if as_json:
@@ -4415,7 +4452,7 @@ def keyring_gpg(archive, out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions',
-                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'key-primaries', 'keyring-gpg', 'file-digest', 'install-reason'])
+                                             'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'key-primaries', 'keyring-gpg', 'keyring-listing', 'pacman-gpgdir', 'file-digest', 'install-reason'])
     parser.add_argument('args', nargs='*')
     parser.add_argument('--root', default='')
     parser.add_argument('--offline', action='store_true')
@@ -4447,6 +4484,9 @@ def main():
         elif options.operation == 'key-primaries':
             print('\n'.join(key_primaries(metadata_bytes(Path(args[0]), 1024 * 1024).decode('utf-8', 'replace'))))
         elif options.operation == 'keyring-gpg': keyring_gpg(args[0], args[1])
+        elif options.operation == 'keyring-listing':
+            print('\n'.join(keyring_listing(metadata_bytes(Path(args[0]), 16 * 1024 * 1024).decode('utf-8', 'replace'))))
+        elif options.operation == 'pacman-gpgdir': print(pacman_gpgdir(options.root))
         elif options.operation == 'file-digest': print(hashlib.sha256(metadata_bytes(Path(args[0]), 512 * 1024 * 1024)).hexdigest())
         elif options.operation == 'install-reason':
             match = [r for r in installed(options.root) if r.get('name') == args[0]]

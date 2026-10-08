@@ -100,6 +100,21 @@ assert_contains 'the commit used a repository-free configuration' "$(vapt_calls 
 assert_eq 'pacman.conf is never changed by a private install' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
 vapt_tools_untouched 'private install'
 
+# --- a private package may place nothing in pacman's keyrings directory -------
+# A later manual pacman-key --populate would apply any list found there.
+tx_case vapt-onio-tx-keyring-payload
+mkdir -p "$SANDBOX/packages/can-utils/usr/share/pacman/keyrings"
+printf 'D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0:128:\n' >"$SANDBOX/packages/can-utils/usr/share/pacman/keyrings/evil-trusted"
+vapt_package can-utils 2025.01-1
+vapt_onio_serve
+vapt_onio_seed
+printf 'oniomarchy\tcan-utils\t2025.01-1\thttps://pkgs.oniomarchy.com/x86_64/can-utils-2025.01-1-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
+vapt_api install --yes --with-oniomarchy --groups automotive
+assert_eq 'a private package with a keyrings payload still resolves' oniomarchy/can-utils "$(vapt_field can-utils 4)"
+assert_not_contains 'but it is never installed' "$(vapt_field can-utils 6)" installed
+assert_contains 'the audit names the keyrings directory' "$(vapt_field can-utils 7)" 'places files under /usr/share/pacman/keyrings'
+assert_eq 'nothing lands in the keyrings directory' '' "$(compgen -G "$ROOT/usr/share/pacman/keyrings/*" || true)"
+
 # --- a full upgrade never carries the private source ---------------------------
 # The source's Usage excludes Upgrade and its prelude runs after any full
 # upgrade, so an approved source is never reviewed, frozen or recorded.

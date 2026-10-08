@@ -199,28 +199,49 @@ assert_contains 'and says so' "$OUTPUT" 'does not hold exactly the newly accepte
 assert_eq 'key file short: no trust change' '' "$(adv_trust_ops)"
 assert_eq 'key file short: no authority write' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
 
-# --- revoked-key removal: absence only from a listing that succeeded ---------
+# --- revoked-key removal: presence only from a parsed machine listing --------
 # A rotation that revokes the pin (ROT already accepted, ROT-signed database).
-# A failed keyring lookup or deletion fails the approval before the authority
-# is written, so the revocation stays pending; a retry then completes it.
-for failing in list-keys delete; do
-    adv_case "vapt-adv-trust-revoke-$failing"
+# The shared keyring is listed in gpg's colon format and parsed. A failed
+# lookup, a listing in a human presentation, an empty or malformed listing,
+# or a failed deletion fails the approval before the archive and authority
+# are written, so the revocation stays pending; a retry then completes it.
+revoke_case() { # NAME — approved PIN,ROT source; the next keyring revokes PIN
+    adv_case "vapt-adv-trust-revoke-$1"
     vapt_onio_serve trusted=PIN,ROT
     vapt_api repo-enable --yes
-    assert_status "revoke $failing: initial approval" 0 "$STATUS"
+    assert_status "revoke $1: initial approval" 0 "$STATUS"
     vapt_onio_serve keyring=20261015-1 trusted=ROT revoked=PIN pkgstatus=pinned dbstatus=rotated
     authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+    archive="$(sha256sum "$ROOT$SOURCES/oniomarchy-keyring.pkg")"
     : >"$CALLS/sudo"
-    VAPT_PACMAN_KEY_FAIL="$failing" vapt_api repo-enable --yes
-    assert_status "revoke $failing: an operational failure fails the approval" 1 "$STATUS"
-    assert_contains "revoke $failing: and says the trust change is incomplete" "$OUTPUT" 'retry the approval'
+}
+while IFS='|' read -r failing listing keyfail reason; do
+    revoke_case "$failing"
+    VAPT_KEYRING_LISTING="$listing" VAPT_PACMAN_KEY_FAIL="$keyfail" vapt_api repo-enable --yes
+    assert_status "revoke $failing: the approval fails" 1 "$STATUS"
+    assert_contains "revoke $failing: with the retry reason" "$OUTPUT" "$reason"
     assert_eq "revoke $failing: the revocation is not recorded as completed" "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+    assert_eq "revoke $failing: the stored archive is unchanged" "$archive" "$(sha256sum "$ROOT$SOURCES/oniomarchy-keyring.pkg")"
+    [[ $failing == delete ]] || assert_not_contains "revoke $failing: nothing is deleted on an uninterpretable answer" "$(adv_trust_ops)" '--delete'
     : >"$CALLS/sudo"
     vapt_api repo-enable --yes
     assert_status "revoke $failing: a retry after recovery completes" 0 "$STATUS"
     assert_contains "revoke $failing: the retry removes the revoked key" "$(adv_trust_ops)" "pacman-key --delete $PIN"
     assert_contains "revoke $failing: and records the revocation" "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'revoked\t'"$PIN"
-done
+done <<'EOF'
+lookup-error|fail||shared pacman keyring lookup failed
+human-listing|human||listing could not be interpreted
+empty-listing|empty||listing could not be interpreted
+malformed-listing|malformed||listing could not be interpreted
+delete|colons|delete|could not be removed from the shared pacman keyring
+EOF
+# A parseable listing without the revoked key is positive absence: nothing to
+# delete, and the revocation is recorded.
+revoke_case absent
+VAPT_KEYRING_LISTING=colons-no-pin vapt_api repo-enable --yes
+assert_status 'revoke absent: a parsed listing without the key completes' 0 "$STATUS"
+assert_not_contains 'revoke absent: nothing is deleted' "$(adv_trust_ops)" '--delete'
+assert_contains 'revoke absent: the revocation is recorded' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'revoked\t'"$PIN"
 
 # --- an installed oniomarchy keyring package is never left in place ----------
 # Its files are where a manual pacman-key --populate would apply them.

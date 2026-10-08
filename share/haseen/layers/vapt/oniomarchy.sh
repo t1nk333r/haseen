@@ -271,16 +271,29 @@ vapt_oniomarchy_bootstrap_steps() {
             for fpr in "${added[@]}"; do vapt_root_exec /usr/bin/pacman-key --lsign-key "$fpr" || return 1; done
         fi
         # Newly revoked keys (only ones this source used, per the audit)
-        # leave the shared keyring. Absence is established only by a listing
-        # that succeeded; a failed lookup or deletion aborts before the
-        # authority is written, so the revocation stays pending and a retry
-        # repeats it.
+        # leave the shared keyring. Presence is decided only from gpg's
+        # machine-readable colon listing of pacman's keyring, positively
+        # parsed (keyring-listing: every line a known colon record, every
+        # primary with its fpr record, at least one primary). A failed or
+        # uninterpretable listing, or a failed deletion, aborts before the
+        # archive and authority are written, so the revocation stays pending
+        # and a retry repeats it; nothing is ever concluded absent from a
+        # human-readable layout.
         if ((${#dropped[@]})); then
-            listing="$(vapt_root_exec /usr/bin/pacman-key --list-keys 2>/dev/null)" || {
+            local gpgdir present
+            gpgdir="$(vapt_meta pacman-gpgdir 2>/dev/null)" || {
+                VAPT_ONIOMARCHY_REASON='pacman GPGDir unreadable; revoked keys not removed; retry the approval'; return 1;
+            }
+            listing="$(vapt_root_exec /usr/bin/gpg --homedir "$gpgdir" --batch --no-permission-warning \
+                --no-auto-check-trustdb --with-colons --list-keys 2>/dev/null)" || {
                 VAPT_ONIOMARCHY_REASON='shared pacman keyring lookup failed; revoked keys not removed; retry the approval'; return 1;
             }
+            printf '%s\n' "$listing" | write_user_file "$stage/keyring.colons" || return 1
+            present="$(vapt_meta keyring-listing "$stage/keyring.colons" 2>/dev/null)" || {
+                VAPT_ONIOMARCHY_REASON='shared pacman keyring listing could not be interpreted; revoked keys not removed; retry the approval'; return 1;
+            }
             for fpr in "${dropped[@]}"; do
-                [[ $listing == *"$fpr"* ]] || continue
+                [[ $'\n'"$present"$'\n' == *$'\n'"$fpr"$'\n'* ]] || continue
                 vapt_root_exec /usr/bin/pacman-key --delete "$fpr" >/dev/null || {
                     VAPT_ONIOMARCHY_REASON="revoked key $fpr could not be removed from the shared pacman keyring; retry the approval"; return 1;
                 }

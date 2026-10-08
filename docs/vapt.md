@@ -401,9 +401,15 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   newly accepted primaries are exported from that archive's key file
   (checked to hold exactly those primaries), added with `pacman-key --add`
   and locally signed one by one with `pacman-key --lsign-key`. Newly revoked
-  keys are deleted from the keyring, but only after a keyring listing that
-  succeeded: a failed lookup or deletion fails the approval and leaves the
-  revocation pending for a retry. An approval refuses while an
+  keys are deleted from the keyring only when presence is positively
+  established: pacman's keyring is listed with `gpg --with-colons
+  --list-keys` and parsed strictly (known colon records only, a fingerprint
+  record for every primary, at least one primary). A failed, empty, malformed
+  or human-format listing, or a failed deletion, fails the approval before
+  anything is recorded. The revocation stays pending for a retry; a key is
+  concluded absent only from a parsed listing that lacks it. A private-source
+  package that would place any file under `/usr/share/pacman/keyrings/` is
+  refused by the transaction audit. An approval refuses while an
   `oniomarchy-keyring` package or any `oniomarchy*` file from an earlier
   install remains there (remove it with `pacman -R oniomarchy-keyring`).
   The added keys are machine-wide trust, not isolated to VAPT. `repo-disable`
