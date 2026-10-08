@@ -14,14 +14,38 @@ vapt_json_field() {
     /usr/bin/python3 -B -c 'import json,sys; v=json.load(sys.stdin); print(v[sys.argv[1]])' "$1"
 }
 
+vapt_service_cli() {
+    local verb="$1" service='' expected_unit='' expected_fragment='' arg
+    shift
+    while (($#)); do
+        arg="$1"; shift
+        case "$arg" in
+        --expect-unit)
+            [[ -z $expected_unit && $# -gt 0 && -n $1 ]] || return 2
+            expected_unit="$1"; shift ;;
+        --expect-fragment)
+            [[ -z $expected_fragment && $# -gt 0 && $1 == /* ]] || return 2
+            expected_fragment="$1"; shift ;;
+        --*) return 2 ;;
+        *) [[ -z $service ]] || return 2; service="$arg" ;;
+        esac
+    done
+    [[ -n $service ]] || return 2
+    vapt_service_action "$verb" "$service" "$expected_unit" "$expected_fragment"
+}
+
 vapt_service_action() {
-    local verb="$1" service="$2" first second unit
+    local verb="$1" service="$2" expected_unit="${3-}" expected_fragment="${4-}" first second unit fragment
     case "$verb" in start|stop|restart) ;; *) warn 'unsupported service operation'; return 2 ;; esac
     case "$service" in ssh|postgresql|apache|nginx|beef) ;; *) warn 'unknown service id'; return 2 ;; esac
     first="$(vapt_actions service-plan "$service")" || return 1
     unit="$(printf '%s' "$first" | vapt_json_field unit)" || return 1
+    fragment="$(printf '%s' "$first" | vapt_json_field fragmentPath)" || return 1
+    [[ -z $expected_unit || $unit == "$expected_unit" ]] || { warn 'service unit changed since displayed snapshot; no operation'; return 1; }
+    [[ -z $expected_fragment || $fragment == "$expected_fragment" ]] || { warn 'service FragmentPath changed since displayed snapshot; no operation'; return 1; }
     printf '%s %s: unit %s; exposure unknown (local configuration may bind ports).\n' "$verb" "$service" "$unit"
     if $DRY_RUN; then
+        [[ -z $expected_unit && -z $expected_fragment ]] || printf 'DRYRUN: displayed snapshot expectation matched: unit %s; FragmentPath %s\n' "$unit" "$fragment"
         [[ $verb == stop ]] || echo 'DRYRUN: start/restart requires explicit exposure confirmation'
         echo "DRYRUN: revalidate FragmentPath/ownership immediately before systemctl $verb; never enable"
         return 0
@@ -29,6 +53,8 @@ vapt_service_action() {
     vapt_action_refuse_fixture || return 1
     source "$HASEEN_PATH/lib/terminal.sh"
     local terminal_args=("$service")
+    [[ -z $expected_unit ]] || terminal_args+=(--expect-unit "$expected_unit")
+    [[ -z $expected_fragment ]] || terminal_args+=(--expect-fragment "$expected_fragment")
     $ASSUME_YES && terminal_args+=(--yes)
     in_floating_terminal "${terminal_args[@]}"
     if [[ $verb != stop ]]; then

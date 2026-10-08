@@ -43,7 +43,7 @@ Read the matching guide before you start:
 - [`hyprland.md`](hyprland.md): keybindings, monitors, window rules, look and feel in Lua.
 - [`theming.md`](theming.md): themes, colours, fonts, templates, hooks.
 - [`ai.md`](ai.md): the local AI endpoint, `ai.json`, the `local` policy, the AI panel.
-- [`vapt.md`](vapt.md): optional VAPT groups, source opt-in, owned inventory, explicit usage/shell, JSON status/doctor and optional surface enablement.
+- [`vapt.md`](vapt.md): optional VAPT groups, source opt-in, owned inventory, explicit usage/shell/local actions and the off-by-default Security workstation panel (terminal confirmation, never optimistic success).
 
 ## The one hard rule: never edit `$HASEEN_PATH`
 

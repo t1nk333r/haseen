@@ -17,10 +17,32 @@ for verb in start stop restart; do
     capture "haseen-vapt-service-$verb" --yes ssh
     assert_status "$verb refuses fixture live action" 1 "$STATUS"
 done
+for verb in start stop restart; do
+    capture "haseen-vapt-service-$verb" ssh --expect-unit owned-secure-login.service --expect-fragment /usr/lib/systemd/system/owned-secure-login.service --dry-run
+    assert_status "$verb matching displayed snapshot" 0 "$STATUS"
+    assert_contains "$verb previews snapshot check" "$OUTPUT" 'displayed snapshot expectation matched'
+    capture "haseen-vapt-service-$verb" ssh --expect-unit old.service --dry-run
+    assert_status "$verb changed displayed unit refused" 1 "$STATUS"
+    assert_contains "$verb unit mismatch reason" "$OUTPUT" 'unit changed'
+    capture "haseen-vapt-service-$verb" ssh --expect-fragment /old/fragment.service --dry-run
+    assert_status "$verb changed displayed FragmentPath refused" 1 "$STATUS"
+    assert_contains "$verb fragment mismatch reason" "$OUTPUT" 'FragmentPath changed'
+done
+assert_eq 'expectation refusals have no root call' '' "$(vapt_calls action-root)"
 capture haseen-vapt-service-start nonexistent --dry-run
 assert_status 'unknown service usage' 2 "$STATUS"
 capture haseen-vapt-service-stop ssh extra --dry-run
 assert_status 'extra service operand usage' 2 "$STATUS"
+actions_api service stop ssh owned-secure-login.service /usr/lib/systemd/system/owned-secure-login.service
+assert_status 'matching expectation reaches fixture root gateway' 0 "$STATUS"
+assert_contains 'matching expectation exact unit' "$(vapt_calls action-root)" 'stop -- owned-secure-login.service'
+rm -f "$CALLS/action-root"
+actions_api service stop ssh old.service /usr/lib/systemd/system/owned-secure-login.service
+assert_status 'changed displayed unit refuses actual operation' 1 "$STATUS"
+assert_eq 'changed displayed unit no privilege' '' "$(vapt_calls action-root)"
+actions_api service stop ssh owned-secure-login.service /old/fragment.service
+assert_status 'changed displayed fragment refuses actual operation' 1 "$STATUS"
+assert_eq 'changed displayed fragment no privilege' '' "$(vapt_calls action-root)"
 actions_api service start ssh
 assert_status 'start confirmation decline fails' 1 "$STATUS"
 assert_eq 'decline no root command' '' "$(vapt_calls action-root)"

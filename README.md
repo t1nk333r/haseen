@@ -80,6 +80,12 @@ read-only, offline surfaces ([workflow contract](docs/vapt.md#installed-inventor
 Separate explicit `vapt service-*` and `vapt net-*` helpers never run as
 provisioning hooks: owned-unit controls, consent-gated foreground local servers,
 and typed-fingerprint CA trust ([local action contract](docs/vapt.md#explicit-services-and-local-helpers-plan-088)).
+The built-in `haseen.security` panel is **off by default**. Deliberately enable
+it with `haseen plugin enable haseen.security`; Setup › Security › VAPT
+workstation then shows installed tools/services, local prerequisites and source
+status. Rows inspect first, previews make no changes, and the terminal confirms
+actions. The panel never asserts success or runs anything during discovery
+([panel guide](docs/vapt.md#optional-security-workstation-panel-plan-088)).
 
 ## NixOS
 

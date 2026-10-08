@@ -95,3 +95,23 @@ Never bypass a refusal, configure a browser/proxy, expose private certificate
 contents or claim an incomplete updater transaction succeeded. `net-remmina`
 launches only the verified client without connection/target/credentials.
 Dry-run stays offline and write-free; none of these helpers is an installer hook.
+
+## Optional Security workstation panel
+
+`haseen.security` ships explicitly disabled, panel-only, without bar/service
+insertion. Only enable it on the user's explicit request with
+`haseen plugin enable haseen.security`; open with
+`haseen shell ipc panel toggle haseen.security` or Setup → Security → VAPT
+workstation. It shows Overview, Tools, Services and Local actions. Discovery
+runs no action. Entry selection inspects; multiple entries require an explicit
+choice. Missing usage evidence is refusal, not permission to guess a command.
+
+The panel uses fixed whitelisted capability verbs and argv, never package/path
+shell interpolation. Service actions pass displayed unit/FragmentPath
+expectations; either mismatch refuses before privilege. The terminal remains
+the confirmation authority and no panel launch passes `--yes`. CA trust still
+requires the full typed fingerprint. A launch is only a request, not success;
+status changes require explicit Refresh or reopen, never polling or retries.
+Preview is the real pure dry-run capture. Forms/paths/addresses/certificates
+stay in memory and user defaults are never rewritten. Do not publish them.
+

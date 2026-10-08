@@ -6,6 +6,7 @@ import qs.Haseen
 import qs.Haseen.Widgets
 import "MenuModel.js" as Model
 import "MenuStyle.js" as Style
+import "../haseen.security/Model.js" as Security
 
 // haseen.menu: the command menu, a port of Omarchy's menu in look and
 // behaviour on haseen's data. A JSONC tree (default/menu.jsonc merged key by
@@ -518,6 +519,12 @@ Item {
         const e = items[r.itemId];
         if (!e)
             return;
+        if (r.kind === "security-route") {
+            const route = Model.securityRoute(e);
+            if (route && Security.route(route.page, route.itemId))
+                run(Model.SECURITY_ACTION);
+            return;
+        }
         if (r.kind === "menu" || r.kind === "link") {
             setActiveMenu(r.target || r.itemId, true, fromPointer, r.itemId);
         } else if (r.kind === "app") {
@@ -711,6 +718,18 @@ Item {
 
     // Shell providers: bash prints rows, parse(text) turns them into items.
     readonly property var providers: ({
+            "security-tools": {
+                script: "haseen vapt tool-list --json",
+                parse: (id, text) => Model.securityRows("tools", id, Security.parse("tools", text))
+            },
+            "security-services": {
+                script: "haseen vapt service-list --json",
+                parse: (id, text) => Model.securityRows("services", id, Security.parse("services", text))
+            },
+            "security-local": {
+                script: "haseen vapt doctor --json",
+                parse: (id, text) => Model.securityRows("local", id, Security.parse("doctor", text))
+            },
             "fonts": {
                 script: "cur=$(haseen font current 2>/dev/null); haseen font list 2>/dev/null | while IFS= read -r f; do [ -n \"$f\" ] && printf '%s\\t%s\\n' \"$f\" \"$cur\"; done",
                 parse: (id, text) => tabRows(id, text, f => ({
@@ -814,6 +833,10 @@ Item {
             Plugins.warnOnce("menu-provider:" + e.provider, "menu: unknown provider '" + e.provider + "' on " + id);
             return;
         }
+        if (e.provider.startsWith("security-")) {
+            const cached = (Model.memory.providerRows[id] || []).filter(r => r.kind === "security-route").map(r => Object.assign({}, r, {disabledNow: true, description: "Previous snapshot — refreshing installed evidence"}));
+            applyRows(id, cached.concat(Model.securityInfo(id, "loading", "Nothing runs during discovery.")), false);
+        }
         if (providerQueue.indexOf(id) < 0)
             providerQueue = providerQueue.concat([id]);
         startProvider();
@@ -912,13 +935,18 @@ Item {
         property string menuId
         property string kind
 
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const spec = root.providers[providerProc.kind];
-                if (spec && root.items[providerProc.menuId])
-                    root.applyRows(providerProc.menuId, spec.parse(providerProc.menuId, text), true);
-                Qt.callLater(root.startProvider);
+        stdout: StdioCollector { id: providerOut }
+        stderr: StdioCollector { id: providerErr }
+        onExited: code => {
+            const spec = root.providers[kind];
+            if (spec && root.items[menuId]) {
+                const security = kind.startsWith("security-");
+                const rows = security && code !== 0 && kind !== "security-local"
+                    ? Model.securityInfo(menuId, "error", Security.text(providerErr.text))
+                    : spec.parse(menuId, providerOut.text);
+                root.applyRows(menuId, rows, true);
             }
+            Qt.callLater(root.startProvider);
         }
     }
 

@@ -214,6 +214,18 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `pluginId: string`
   - `settings: var` (manifest defaults merged with `shell.json` → `plugins.<id>.settings`)
   - `screen: var` (the `ShellScreen` for bar widgets and panels)
+- `haseen.security` (plan 088) is explicitly off in shipped `shell.json`,
+  panel-only and lazy. Its read-only `Read.qml` processes consume the CLI's
+  versioned evidence; `Model.js` validates schemas and fixed verb/argv shapes,
+  not a second ownership or privilege policy. `haseen.menu` keeps its static
+  provider map: Security rows use fixed enable/package guards and one exact
+  panel-toggle action. Internal typed page/item roles transfer one consumed
+  in-memory selection, never shell source or a dynamic contribution registry.
+  Every action goes through `Apps.launch`; previews use Process argv only.
+  Service argv includes the displayed unit/FragmentPath expectations; the CLI
+  checks them before terminal consent and revalidates again before the root
+  gateway. Detached launch has no completion contract: Refresh/reopen only,
+  no polling, optimistic success, persisted addresses/drafts or settings writer.
 - Safe mode (plan 061): while `~/.local/state/haseen/safe-mode` exists (JSON `{reason, since}`; `haseen shell recover safe-mode on|off`), `Plugins.held(id)` is true for every plugin whose origin is not `builtin` (user, user:omarchy, user:dms, omarchy, dms). A held plugin has no `entryUrl` and `Config.isEnabled` is false for it, so the running shell unloads it without a restart. A user copy of a built-in id gives way to the built-in. `shell plugins` over IPC reports `held` per plugin and a `safeMode` object. `haseen shell run` creates the state directory, because a `FileView` watch needs its parent to exist.
 
 ### 5.3 `shell.json`

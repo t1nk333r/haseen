@@ -703,6 +703,9 @@ commands require explicit user requests; all dry-runs are offline/write-free.
   terminal confirmation (or explicit `--yes` acceptance of unknown exposure);
   `service-stop ID` does not. All recheck ownership immediately before the root
   gateway. None enables, presets, initializes or installs a service.
+  Optional `--expect-unit UNIT --expect-fragment PATH` binds a displayed
+  snapshot: either mismatch refuses before any privileged operation. Without
+  expectations, direct CLI behaviour is unchanged; dry-run reports the check.
 - `haseen vapt net-addresses --json`: ephemeral local interface addresses,
   no DNS/network probe, storage or logging. IPv4/IPv6 endpoints accept literal
   addresses only and ports 1024–65535; missing real-action ports prompt locally.
@@ -746,4 +749,46 @@ removes only the unchanged recorded anchor; foreign or modified files survive.
 Dry-run never requests privilege, writes an anchor or claims hypothetical trust.
 Failed updater transactions retain an explicit incomplete ownership journal;
 status refuses to describe them as completed success.
+
+## Optional Security workstation panel (plan 088)
+
+`haseen.security` is a built-in **panel only**, explicitly **off by default**.
+Enable it deliberately with `haseen plugin enable haseen.security`, then open
+Setup → Security → VAPT workstation → Open panel, or
+`haseen shell ipc panel toggle haseen.security`. No bar widget, startup service,
+polling, installation or repository approval is added. Existing user menu and
+shell files are not rewritten.
+
+The four pages are Overview (provisioning and source uncertainty), Tools
+(installed inventory, search/group filter and optional missing diagnostics),
+Services (actual owned units and manager state), and Local actions (including
+unavailable prerequisites). Enter inspects a row, not a program. Multiple owned
+entrypoints require an explicit picker choice; undocumented/ambiguous entries
+have no usage/shell action. “No verified executable entrypoint” describes
+data-only or unavailable entry evidence without claiming no executable bytes
+exist. Recorded resolutions are not current installation evidence.
+
+All terminals and the verified client use `Apps.launch` with fixed whitelisted
+verbs and separate argv operands. Local helper verbs come from the capability
+record, including `enumeration-host` → `net-file-server`. The panel passes the
+actual displayed service unit/fragment as expectations and never passes `--yes`.
+Review explains scope, but **the foreground terminal confirms and revalidates**:
+start/restart and exposure gates remain there, stop does not prompt, and CA
+trust requires the full typed fingerprint. A launch says “completion has not
+been checked”, never success. Refusal/cancellation/errors after launch are
+reported by that terminal; the panel does not invent a result channel.
+
+Reopen or explicit Refresh reads a new authoritative snapshot; launch never
+refreshes or polls. Preview captures only the real `--dry-run` output and exit
+code, without an app/terminal/helper launch. Addresses are read only by the
+explicit chooser. Certificate inspection reads only the selected file. Paths,
+addresses, fingerprints, drafts and handoff selection live only in memory and
+are discarded with the panel; feature defaults remain seed-once and user-owned.
+All reads are offline-safe, with no connectivity probe.
+
+Tab visits controls; arrows/jk move list selection, Enter/Right/l inspect,
+Left/h goes back outside editors, and Esc unwinds nested views, clears search,
+then closes. Review initially focuses Cancel. Fingerprint and preview text are
+selectable. The single scrolling card adapts to compact viewports without
+shrinking type or truncating safety text.
 
