@@ -72,6 +72,12 @@ DRY_RUN=true mobile_layer "$SANDBOX/firewalld" apply
 assert_contains "firewalld service added" "$OUTPUT" "DRYRUN: sudo firewall-cmd --permanent --zone=home --add-service=kdeconnect"
 assert_contains "firewalld reloaded" "$OUTPUT" "DRYRUN: sudo firewall-cmd --reload"
 assert_not_contains "firewalld host does not get ufw rules" "$OUTPUT" "ufw allow"
+assert_contains "a public default zone is warned about, not silently useless" "$OUTPUT" \
+    "firewalld's default zone is 'public', not 'home'"
+mkdir -p "$SANDBOX/firewalld/etc/firewalld"
+printf 'DefaultZone=home\n' >"$SANDBOX/firewalld/etc/firewalld/firewalld.conf"
+DRY_RUN=true mobile_layer "$SANDBOX/firewalld" apply
+assert_not_contains "a home default zone needs no warning" "$OUTPUT" "default zone"
 
 # No firewall at all: say so rather than pretending a hole was opened.
 cp -a "$PLAIN" "$SANDBOX/nofw"
@@ -299,13 +305,27 @@ assert_contains "mirror --v4l2 finds the loopback node" "$OUTPUT" "webcam sink: 
 assert_contains "mirror --v4l2 sinks to it" "$OUTPUT" "DRYRUN: scrcpy --v4l2-sink=/dev/video2"
 assert_not_contains "mirror --v4l2 does not reload a loaded module" "$OUTPUT" "modprobe"
 
-# Several loopback nodes (cameras with no hardware behind them): the first is
-# the sink, and listing the rest must not kill the command (SIGPIPE).
+# Several loopback nodes (cameras with no hardware behind them): haseen's own
+# (name haseen-phone, video2) wins over earlier ones, and listing the rest
+# must not kill the command (SIGPIPE).
 cp -a "$APPLIED" "$SANDBOX/many-loopback"
 rm -rf "$SANDBOX/many-loopback/sys/class/video4linux/"video{0,1}/device
 capture env HASEEN_SYSROOT="$SANDBOX/many-loopback" haseen mobile mirror --v4l2 --dry-run
 assert_status "mirror --v4l2 with three loopback nodes" 0 "$STATUS"
-assert_contains "mirror --v4l2 takes the first loopback node" "$OUTPUT" "webcam sink: /dev/video0"
+assert_contains "mirror --v4l2 takes haseen's own loopback node" "$OUTPUT" "webcam sink: /dev/video2"
+
+# Another program's virtual cameras only (OBS at video10 and video2): never
+# lexical order (video10 sorts first); the lowest-numbered node.
+cp -a "$APPLIED" "$SANDBOX/obs-loopback"
+mv "$SANDBOX/obs-loopback/sys/class/video4linux/video2" "$SANDBOX/obs-loopback/sys/class/video4linux/video10"
+mkdir -p "$SANDBOX/obs-loopback/sys/class/video4linux/video2"
+printf 'OBS Virtual Camera\n' >"$SANDBOX/obs-loopback/sys/class/video4linux/video2/name"
+printf 'OBS Virtual Camera\n' >"$SANDBOX/obs-loopback/sys/class/video4linux/video10/name"
+capture env HASEEN_SYSROOT="$SANDBOX/obs-loopback" haseen mobile mirror --v4l2 --dry-run
+assert_contains "mirror --v4l2 orders nodes numerically" "$OUTPUT" "webcam sink: /dev/video2"
+printf 'haseen-phone\n' >"$SANDBOX/obs-loopback/sys/class/video4linux/video10/name"
+capture env HASEEN_SYSROOT="$SANDBOX/obs-loopback" haseen mobile mirror --v4l2 --dry-run
+assert_contains "mirror --v4l2 prefers haseen-phone over OBS's lower node" "$OUTPUT" "webcam sink: /dev/video10"
 
 # Package present, module not loaded: load it, and predict the index it takes.
 cp -a "$APPLIED" "$SANDBOX/no-loopback"
@@ -357,7 +377,7 @@ stub idevicename 'echo "Owner iPhone"'
 capture haseen mobile backup --dry-run
 assert_status "backup dry-run" 0 "$STATUS"
 assert_dry_pure "backup dry-run" "$OUTPUT"
-assert_contains "backup default destination" "$OUTPUT" "DRYRUN: mkdir -p $HOME/Backups/ios"
+assert_contains "backup default destination is created private" "$OUTPUT" "DRYRUN: mkdir -p -m 700 $HOME/Backups/ios"
 assert_contains "backup runs idevicebackup2 --full" "$OUTPUT" \
     "DRYRUN: idevicebackup2 --udid 00008110-001234567890ABCD backup --full $HOME/Backups/ios"
 assert_contains "backup prints the restore command" "$OUTPUT" "Restore with: idevicebackup2 --udid"
@@ -373,6 +393,41 @@ assert_contains "backup honours --udid" "$OUTPUT" "--udid 00008120-00FEDCBA09876
 capture haseen mobile backup --udid nope --dry-run
 assert_status "backup checks the udid" 1 "$STATUS"
 assert_contains "backup names the unknown udid" "$OUTPUT" "device 'nope' is not attached"
+
+# A phone backup is private on disk, whatever the caller's umask; the
+# encryption state is the phone's and is reported, never changed.
+stub idevice_id 'echo 00008110-001234567890ABCD'
+stub idevicebackup2 'echo "idevicebackup2 $*" >>"'"$SANDBOX"'/calls"
+for d; do :; done
+mkdir -p "$d/00008110-001234567890ABCD" && echo manifest >"$d/00008110-001234567890ABCD/Manifest.db"'
+stub ideviceinfo 'echo "ideviceinfo $*" >>"'"$SANDBOX"'/calls"; echo "${WILL_ENCRYPT-false}"'
+: >"$SANDBOX/calls"
+saved_umask="$(umask)"
+umask 022
+capture haseen mobile backup "$SANDBOX/ios" --yes
+umask "$saved_umask"
+assert_status "backup to a new directory succeeds" 0 "$STATUS"
+assert_eq "the backup directory is 0700" 700 "$(stat -c %a "$SANDBOX/ios")"
+assert_eq "directories idevicebackup2 makes are private" 700 "$(stat -c %a "$SANDBOX/ios/00008110-001234567890ABCD")"
+assert_eq "files idevicebackup2 writes are private" 600 \
+    "$(stat -c %a "$SANDBOX/ios/00008110-001234567890ABCD/Manifest.db")"
+assert_contains "a plaintext backup is reported as such" "$OUTPUT" "backup encryption: OFF"
+assert_contains "and how to encrypt it is named" "$OUTPUT" "idevicebackup2 -u 00008110-001234567890ABCD encryption on"
+assert_not_contains "the phone's encryption setting is never changed" "$(cat "$SANDBOX/calls")" "encryption"
+WILL_ENCRYPT=true capture haseen mobile backup "$SANDBOX/ios" --yes
+assert_contains "an encrypting phone is reported" "$OUTPUT" "backup encryption: on"
+WILL_ENCRYPT='' capture haseen mobile backup "$SANDBOX/ios" --yes
+assert_contains "an unreadable setting is not claimed either way" "$OUTPUT" "backup encryption: unknown"
+mkdir -p "$SANDBOX/shared"
+chmod 755 "$SANDBOX/shared"
+: >"$SANDBOX/calls"
+capture haseen mobile backup "$SANDBOX/shared" --yes
+assert_status "an existing group/world-readable destination is refused" 1 "$STATUS"
+assert_contains "the refusal says how to fix it" "$OUTPUT" "chmod 700"
+assert_not_contains "nothing is backed up into it" "$(cat "$SANDBOX/calls")" "idevicebackup2"
+assert_eq "and its mode is left alone" 755 "$(stat -c %a "$SANDBOX/shared")"
+capture haseen mobile backup "$SANDBOX/shared" --dry-run
+assert_status "the dry run refuses it too" 1 "$STATUS"
 
 # --- the router sees all three ------------------------------------------------
 capture haseen mobile

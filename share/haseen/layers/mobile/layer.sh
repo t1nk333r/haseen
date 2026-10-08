@@ -67,9 +67,14 @@ mobile_apply_firewall() {
     if mobile_firewalld_active; then
         # firewalld is in charge (base/layer.sh defers to it too) and ships a
         # kdeconnect service definition, so use that rather than raw ports.
+        # Only the home zone: a network firewalld treats as public stays shut.
         info "firewall: firewalld, adding its kdeconnect service to the home zone"
         run_root firewall-cmd --permanent --zone=home --add-service=kdeconnect
         run_root firewall-cmd --reload
+        local zone
+        zone="$(mobile_firewalld_default_zone)"
+        [[ $zone == home ]] ||
+            warn "firewalld's default zone is '$zone', not 'home': KDE Connect pairs only on a network in the home zone. Put your trusted connection there, e.g. nmcli connection modify <connection> connection.zone home"
         return 0
     fi
     if ! mobile_ufw_enabled; then

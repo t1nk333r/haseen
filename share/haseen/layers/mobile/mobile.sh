@@ -122,29 +122,36 @@ mobile_usb_devices() {
 
 # --- V4L2 loopback ---------------------------------------------------------
 
-# mobile_v4l2_loopback_nodes — /dev/videoN nodes backed by no hardware. A real
-# capture device has a `device` link to its PCI/USB parent in sysfs; a
-# v4l2loopback device, being virtual, has none.
+# mobile_v4l2_loopback_nodes — /dev/videoN nodes backed by no hardware, in
+# numeric order (video2 before video10). A real capture device has a `device`
+# link to its PCI/USB parent in sysfs; a v4l2loopback device, being virtual,
+# has none.
 mobile_v4l2_loopback_nodes() {
     local base d
     base="$(sysroot_path /sys/class/video4linux)"
     [[ -d $base ]] || return 0
     for d in "$base"/video*; do
-        [[ -d $d ]] || continue
-        [[ -e $d/device ]] && continue
-        printf '/dev/%s\n' "$(basename "$d")"
-    done
+        [[ -d $d && ! -e $d/device && ${d##*/video} =~ ^[0-9]+$ ]] || continue
+        printf '%s\n' "${d##*/video}"
+    done | sort -n | sed 's|^|/dev/video|'
 }
 
-# mobile_v4l2_first_loopback_node — the first of those, or nothing. Not
-# `| head -n1`: with several nodes the lister would die of SIGPIPE, and under
-# pipefail the caller's assignment would fail with it.
+# mobile_v4l2_first_loopback_node — haseen's own node (card_label
+# haseen-phone, its sysfs `name`) when there is one, so another program's
+# virtual camera (OBS) is never taken over; otherwise the lowest-numbered
+# loopback node; otherwise nothing. The list is read whole rather than with
+# `| head -n1`, which would die of SIGPIPE under pipefail.
 mobile_v4l2_first_loopback_node() {
-    local node
+    local node first="" base
+    base="$(sysroot_path /sys/class/video4linux)"
     while IFS= read -r node; do
-        printf '%s\n' "$node"
-        return 0
+        [[ -n $first ]] || first=$node
+        if [[ -r $base/${node#/dev/}/name && $(<"$base/${node#/dev/}/name") == haseen-phone ]]; then
+            printf '%s\n' "$node"
+            return 0
+        fi
     done < <(mobile_v4l2_loopback_nodes)
+    [[ -z $first ]] || printf '%s\n' "$first"
 }
 
 # mobile_v4l2_next_index — the index v4l2loopback would take when loaded with
@@ -177,6 +184,15 @@ mobile_ufw_rule_present() {
 }
 
 mobile_firewalld_active() { unit_enabled firewalld.service; }
+
+# mobile_firewalld_default_zone — DefaultZone from the world-readable
+# /etc/firewalld/firewalld.conf; firewalld's own default, public, otherwise.
+mobile_firewalld_default_zone() {
+    local conf zone=""
+    conf="$(sysroot_path /etc/firewalld/firewalld.conf)"
+    [[ -r $conf ]] && zone="$(sed -n 's/^[[:space:]]*DefaultZone[[:space:]]*=[[:space:]]*\([^[:space:]]*\).*/\1/p' "$conf" | tail -n1)"
+    printf '%s\n' "${zone:-public}"
+}
 
 # --- portals ---------------------------------------------------------------
 
