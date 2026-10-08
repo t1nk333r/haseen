@@ -459,9 +459,10 @@ theme_template_files() {
     shopt -u nullglob
 }
 
-# _theme_window_radius — THEME_COLORS[window_radius]: the one corner radius
-# windows and the menu share (plans 046, 068): the inner radius of the shell's
-# screen frame, by the rule Config.qml's frameRadius applies. shell.json's
+# _theme_window_radius — THEME_COLORS[window_radius]: Hyprland's share of the
+# one corner radius (plans 046, 068): the inner radius of the shell's screen
+# frame, by the rule Config.qml's frameRadius applies (the frame and the menu
+# read Config.frameRadius live). shell.json's
 # frame.radius (the user's file over the shipped default) when it is a number
 # from 0 to 64, rounded; else twice the theme's radius token. Read with jq
 # (base layer); a file jq cannot read counts as absent, as the shell skips it.
