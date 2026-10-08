@@ -106,3 +106,24 @@ against fixtures and refusal paths only.
 `share/haseen/layers/mobile/{layer.sh,mobile.sh,packages.txt}`,
 `bin/haseen-mobile-{status,mirror,backup}`, `tests/test-mobile.sh`,
 `tests/fixtures/mobile-{plain,applied}/`.
+
+## Review fixes 2026-10-08 (PR #38)
+
+- **SEC-3, private iOS backups.** `haseen mobile backup` creates DIR mode
+  0700 and runs `idevicebackup2` under umask 077 (upstream makes its
+  directories 0755 and opens files with the default mode). An existing DIR
+  that is not ours or is open to group/others is refused, dry run included,
+  with the `chmod 700` fix; its mode is never changed for the user. The help
+  no longer says "encryption and all": encryption is the phone's
+  `WillEncrypt` setting, which the command reads with `ideviceinfo` and
+  reports (on / OFF with the `idevicebackup2 -u UDID encryption on` hint /
+  unknown) before asking, and never changes.
+- **v4l2 node choice.** Loopback nodes are ordered numerically (video2 before
+  video10), and the node named `haseen-phone` (our `card_label`) wins over
+  another program's virtual camera (OBS). After `modprobe`, the command waits
+  for `udevadm settle` and requires a character device.
+- **firewalld zone.** The kdeconnect service still goes to the home zone only;
+  when `DefaultZone` (world-readable `/etc/firewalld/firewalld.conf`, default
+  `public`) is not `home`, apply warns that pairing works only on a network in
+  the home zone and how to move a connection there. The ufw rule stays open
+  from any source, as decided above.

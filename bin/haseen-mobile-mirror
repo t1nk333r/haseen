@@ -106,9 +106,12 @@ if $v4l2; then
         v4l2_dev="/dev/video$(mobile_v4l2_next_index)"
         info "no v4l2loopback node yet; loading the module (it will become $v4l2_dev)"
         run_root modprobe v4l2loopback exclusive_caps=1 card_label=haseen-phone
-        if ! $DRY_RUN && [[ ! -c $v4l2_dev ]]; then
+        if ! $DRY_RUN; then
+            # udev creates /dev/videoN after the module returns; wait for it.
+            have udevadm && udevadm settle --timeout=10 || true
             v4l2_dev="$(mobile_v4l2_first_loopback_node)"
             [[ -n $v4l2_dev ]] || die "v4l2loopback loaded but no loopback video node appeared"
+            [[ -c $v4l2_dev ]] || die "v4l2loopback loaded but $v4l2_dev is not a character device yet; run the command again"
         fi
     fi
     info "webcam sink: $v4l2_dev"
