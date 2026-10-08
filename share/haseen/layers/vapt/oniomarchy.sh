@@ -193,9 +193,15 @@ vapt_oniomarchy_bootstrap_steps() {
         VAPT_ONIOMARCHY_REASON='keyring package signature rejected: no single accepted primary'; return 2;
     }
     vapt_root_facts || { VAPT_ONIOMARCHY_REASON="$VAPT_APPLY_REASON"; return 2; }
+    # The shared keyring as root sees it: the audit refuses a package that
+    # adopts or revokes a primary trust already rests on outside oniomarchy.
+    vapt_root_meta keyring-primaries --out "$VAPT_CACHE/keyring-primaries" || {
+        VAPT_ONIOMARCHY_REASON='shared pacman keyring unreadable; manual review required'; return 2;
+    }
     authority="$(vapt_meta oniomarchy-keyring "$sealed" --db "$(vapt_read_path "$VAPT_ONIO_DB")" \
         --signer "$VAPT_ONIO_KEYRING_SIGNER" --sudo-plugins "$(vapt_read_path "$VAPT_CACHE/sudo-plugins")" \
-        --authority-facts "$(vapt_read_path "$VAPT_CACHE/authority-facts")" 2>&1)" || {
+        --authority-facts "$(vapt_read_path "$VAPT_CACHE/authority-facts")" \
+        --keyring-facts "$(vapt_read_path "$VAPT_CACHE/keyring-primaries")" 2>&1)" || {
         VAPT_ONIOMARCHY_REASON="keyring package audit rejected: ${authority//$'\n'/ }"; return 2;
     }
     if [[ ${VAPT_ONIO[keyringAuthorityState]:-} == ok ]]; then

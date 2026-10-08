@@ -3546,6 +3546,56 @@ def read_authority_facts(path, root):
     return rows
 
 
+# gpg --with-colons validity of a key pacman relies on: a revocation or an
+# adoption by another keyring changes trust only for these.
+TRUST_CONFERRING = frozenset('mfu')
+
+
+def write_keyring_primaries(root, out):
+    """Root producer: every primary in the shared pacman keyring with its gpg
+    validity (FPR<TAB>validity), read-only (no trustdb check). A missing
+    keyring (pacman-key never initialised) holds nothing. A fixture sysroot
+    declares its keyring explicitly as FPR:validity lines."""
+    rows = {}
+    if root:
+        path = observed_resolve(Path(str(root) + '/var/lib/haseen/vapt/fixture-shared-keyring'), root)
+        for line in (path.read_text().splitlines() if path.is_file() else []):
+            if line.strip():
+                fingerprint, _, validity = line.strip().partition(':')
+                rows[fingerprint] = validity
+    elif Path('/etc/pacman.d/gnupg').is_dir():
+        output = subprocess.run(['/usr/bin/gpg', '--homedir', '/etc/pacman.d/gnupg', '--batch', '--no-auto-check-trustdb',
+                                 '--with-colons', '--fixed-list-mode', '--list-keys'],
+                                capture_output=True, text=True, check=True).stdout
+        primary = None
+        for line in output.splitlines():
+            fields = line.split(':')
+            if fields[0] == 'pub':
+                primary = fields[1]
+            elif fields[0] == 'fpr' and primary is not None:
+                rows[fields[9]] = primary
+                primary = None
+            elif fields[0] in ('sub', 'uid'):
+                primary = None
+    data = '# shared-keyring v1\n' + ''.join(f + '\t' + v + '\n' for f, v in sorted(rows.items()))
+    write_root_facts(root, out, 'keyring-primaries', data.encode(), 'shared keyring facts')
+
+
+def read_keyring_primaries(path, root):
+    """{fingerprint: validity} from the root-produced shared keyring facts;
+    absent, replaceable or malformed facts refuse."""
+    lines = read_root_facts(path, root, 'shared pacman keyring facts').splitlines()
+    if not lines or lines[0] != '# shared-keyring v1':
+        raise ValueError('shared pacman keyring facts malformed; manual review required')
+    rows = {}
+    for line in lines[1:]:
+        fields = line.split('\t')
+        if len(fields) != 2 or not FINGERPRINT.fullmatch(fields[0]) or len(fields[1]) > 1 or fields[0] in rows:
+            raise ValueError('invalid shared pacman keyring fact ' + line)
+        rows[fields[0]] = fields[1]
+    return rows
+
+
 def activate_blackarch(path):
     """Append the reviewed [blackarch] stanza to PATH (pacman.conf) atomically:
     a complete new file is written beside it and renamed over it, keeping its
@@ -4192,11 +4242,14 @@ def oniomarchy_canary(root):
     return row
 
 
-def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path, authority_facts_path):
+def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path, authority_facts_path,
+                             keyring_facts_path):
     """Audit the sealed keyring archive before any trust operation and print
     the authority record it establishes. Rotation is accepted only from a
     package signed by a currently accepted, non-revoked primary; revocations
-    never roll back and a package never authorizes its own signer."""
+    never roll back and a package never authorizes its own signer. The
+    package never adopts or revokes a primary another keyring or the
+    administrator relies on (KEYRING_FACTS_PATH: root's shared keyring)."""
     records = [r for r in oniomarchy_records(database) if r['name'] == 'oniomarchy-keyring']
     if len(records) != 1:
         raise ValueError('authenticated database has no single oniomarchy-keyring record')
@@ -4240,14 +4293,25 @@ def oniomarchy_keyring_audit(root, archive, database, signer, sudo_plugins_path,
         raise ValueError('keyring package is not signed by a currently accepted primary')
     if not previous_revoked <= revoked:
         raise ValueError('keyring package withdraws a recorded revocation')
-    # `pacman-key --populate oniomarchy` applies the revoked list to the
-    # shared keyring: the package may revoke only primaries within its own
-    # authority, never an Arch/CachyOS or administrator key.
-    authority = (previous['accepted'] | previous_revoked if previous else set()) | {pin} | trusted
-    foreign = revoked - authority
-    if foreign:
-        raise ValueError('keyring package revokes primaries outside the oniomarchy authority (' + ','.join(sorted(foreign))
-                         + '); a revocation may name only a previously accepted or revoked, pinned or trusted primary')
+    # `pacman-key --populate oniomarchy` lsigns the trusted list and disables
+    # the revoked list in the shared keyring. Revocation authority is only
+    # what this source held before this package (recorded accepted/revoked
+    # primaries, or the reviewed pin), never the package's own trusted list.
+    # Neither list may name a primary trust already rests on elsewhere: a
+    # base vendor (Arch/CachyOS) key, or a shared-keyring key that confers
+    # trust (validity m/f/u) outside the recorded authority. Refusing the
+    # adoption also closes adopt-now-revoke-later.
+    own = (previous['accepted'] | previous_revoked if previous else set()) | {pin}
+    held = {f for f, validity in read_keyring_primaries(keyring_facts_path, root).items() if validity in TRUST_CONFERRING}
+    foreign = base_signers(root) | (held - own)
+    adopted = trusted & foreign
+    if adopted:
+        raise ValueError('keyring package trusts primaries another keyring or the administrator already relies on ('
+                         + ','.join(sorted(adopted)) + '); manual review required')
+    outside = (revoked - own) | (revoked & foreign)
+    if outside:
+        raise ValueError('keyring package revokes primaries outside the oniomarchy authority (' + ','.join(sorted(outside))
+                         + '); a revocation may name only a primary this source already accepted or revoked, or the pin')
     accepted = trusted - revoked
     if not accepted:
         raise ValueError('keyring package leaves no accepted primary')
@@ -4298,7 +4362,7 @@ def oniomarchy_status(root, as_json):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions',
+    parser.add_argument('operation', choices=['snapshot', 'config', 'closure', 'native', 'native-interpreter', 'native-link', 'interpreter', 'coae-interpreter', 'coae-interpreter-observe', 'dist-state', 'includes', 'verify', 'discover', 'keyring', 'audit', 'reference-missing', 'artifact-digest', 'seal', 'sealed-safe', 'activate-blackarch', 'activation-preflight', 'sudo-plugins', 'authority-facts', 'keyring-primaries', 'state-repair', 'recovery-record', 'installed', 'absent', 'blackarch-stanza', 'state-read', 'state-safe', 'state-write', 'state-clear', 'lock-prepare', 'shared-lock-prepare', 'lock-fd', 'report-requires', 'report-merge', 'cache-permissions',
                                              'oniomarchy-status', 'oniomarchy-signers', 'oniomarchy-keyring', 'oniomarchy-approve', 'oniomarchy-withdraw', 'key-primary', 'file-digest', 'install-reason'])
     parser.add_argument('args', nargs='*')
     parser.add_argument('--root', default='')
@@ -4311,6 +4375,7 @@ def main():
     parser.add_argument('--reference')
     parser.add_argument('--sudo-plugins')
     parser.add_argument('--authority-facts')
+    parser.add_argument('--keyring-facts')
     parser.add_argument('--base-dbpath')
     parser.add_argument('--out')
     parser.add_argument('--with-oniomarchy', action='store_true')
@@ -4335,7 +4400,7 @@ def main():
             print('absent' if not match else 'depend' if reason in ('depend', ['1']) else 'explicit')
         elif options.operation == 'oniomarchy-keyring':
             print(oniomarchy_keyring_audit(options.root, args[0], options.db, options.signer, options.sudo_plugins,
-                                           options.authority_facts), end='')
+                                           options.authority_facts, options.keyring_facts), end='')
         elif options.operation in ('oniomarchy-approve', 'oniomarchy-withdraw'):
             # Root-only: exactly the canonical private descriptor (fixture: under --root).
             canonical = options.root.rstrip('/') + ONIOMARCHY_STATE + '/oniomarchy.conf'
@@ -4483,6 +4548,8 @@ def main():
             write_sudo_plugins(options.root, options.out)
         elif options.operation == 'authority-facts':
             write_authority_facts(options.root, options.out)
+        elif options.operation == 'keyring-primaries':
+            write_keyring_primaries(options.root, options.out)
         elif options.operation == 'reference-missing':
             # Owners whose authenticated base reference the audit would need
             # but cannot find locally. A policy refusal ends the walk early;

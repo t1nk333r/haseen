@@ -150,13 +150,26 @@ assert_contains 'it needs manual review' "$OUTPUT" 'manual review'
 assert_eq 'redirected keyring file: no trust change' '' "$(trust_ops)"
 
 # --- rotation -----------------------------------------------------------------
-while IFS=$'\t' read -r name itrusted irevoked version trusted revoked signed expect; do
+# hostKeys/vendor model what the second approval observes: the shared pacman
+# keyring (FPR:gpg-validity lines, the fixture stand-in for root's listing)
+# and the base vendor keyrings. The initial approval sees neither, like a key
+# adopted before the guard existed. An initial revocation is reached the only
+# way it can be: a first approval, then a pin-signed keyring revoking a
+# primary that approval accepted.
+while IFS=$'\t' read -r name itrusted irevoked version trusted revoked signed expect host vendor; do
     [[ $irevoked != - ]] || irevoked=''
     [[ $revoked != - ]] || revoked=''
-    trust_case vapt-onio-rotation "trusted=$itrusted" "revoked=$irevoked"
+    trust_case vapt-onio-rotation "trusted=$itrusted" revoked=
     vapt_api repo-enable --yes
     assert_status "$name: initial approval" 0 "$STATUS"
+    if [[ -n $irevoked ]]; then
+        vapt_onio_serve "trusted=$itrusted" "revoked=$irevoked"
+        vapt_api repo-enable --yes
+        assert_status "$name: initial revocation" 0 "$STATUS"
+    fi
     vapt_onio_serve "keyring=$version" "trusted=$trusted" "revoked=$revoked" "pkgstatus=$signed"
+    [[ $host == - ]] || tr ',' '\n' <<<"$host" >"$ROOT/var/lib/haseen/vapt/fixture-shared-keyring"
+    [[ $vendor == - ]] || tr ',' '\n' <<<"$vendor" >>"$ROOT/var/lib/haseen/vapt/fixture-base-signers"
     authority_before="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
     : >"$CALLS/sudo"
     vapt_api repo-enable --yes
@@ -173,7 +186,10 @@ done < <(python3 -c '
 import json, sys
 for c in json.load(open(sys.argv[1]))["cases"]:
     j = lambda v: ",".join(v) or "-"
-    print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c["expect"], sep="\t")
+    f = json.load(open(sys.argv[1]))["fingerprints"]
+    host = ",".join(f[k] + "\t" + v for k, v in c.get("hostKeys", {}).items()).replace("\t", ":") or "-"
+    print(c["name"], j(c["initialTrusted"]), j(c["initialRevoked"]), c["version"], j(c["trusted"]), j(c["revoked"]), c["signedBy"], c["expect"],
+          host, j([f[k] for k in c.get("vendor", [])]), sep="\t")
 ' "$ONIO_FX/trust/rotation.json")
 
 # Raw-key replacement: after approval, a new key file and a database signed by

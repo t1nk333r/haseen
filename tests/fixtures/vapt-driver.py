@@ -1106,7 +1106,8 @@ else:
             # Simulate alpm write access without needing a real alpm uid/group.
             Path(observed(argv[2])).chmod(0o775)
         elif argv[1] in ('state-write', 'state-clear', 'seal', 'shared-lock-prepare', 'activate-blackarch', 'sudo-plugins',
-                         'state-repair', 'authority-facts', 'oniomarchy-approve', 'oniomarchy-withdraw'):
+                         'state-repair', 'authority-facts', 'keyring-primaries', 'oniomarchy-approve',
+                         'oniomarchy-withdraw'):
             # The production module's own no-follow writers, confined to the
             # fixture sysroot (seal: the digest-verified root copy). Every
             # absolute argument is mapped into the sysroot; one that would

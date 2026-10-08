@@ -425,11 +425,16 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   the private scope is refused, and no recovery record names the source (a
   record that does is refused and preserved for review).
 - **Revocations stay inside the source's authority.** `pacman-key --populate
-  oniomarchy` applies the keyring's revoked list to the shared keyring, so an
-  audited keyring may revoke only a previously accepted or revoked, pinned or
-  trusted primary; any other revocation (an Arch/CachyOS or administrator key)
-  refuses the keyring with the offending fingerprints named. The recorded
-  authority must equal what the retained keyring lists declare.
+  oniomarchy` lsigns the keyring's trusted list and disables its revoked list
+  in the shared keyring. An audited keyring may revoke only a primary the
+  source already accepted or revoked before it (or the reviewed pin), never
+  one the same package newly lists as trusted. Neither list may name a key
+  trust already rests on elsewhere: a base vendor (Arch/CachyOS) primary, or a
+  shared-keyring primary root lists with full, marginal or ultimate validity
+  outside the recorded authority (an administrator key). Refusing that
+  adoption closes adopt-now-revoke-later. The keyring is refused with the
+  offending fingerprints named. The recorded authority must equal what the
+  retained keyring lists declare.
 - **Trust changes are reported as such.** Once the pinned key is imported (or
   an audited keyring update reached the shared keyring), any later refusal is
   a mutation failure saying the trust changed but the source is not approved;

@@ -227,6 +227,16 @@ provenance.
   approval can apply a rotation only while the database is still signed by an
   accepted primary; a database already moved to an unaccepted key stays
   refused for manual review.
+- **Revocation authority (PR #38 review, SEC-1).** A keyring may revoke only a
+  primary the source accepted or revoked before it, or the pin; the package's
+  own trusted list never grants revocation authority. Root lists the shared
+  pacman keyring (`keyring-primaries` root fact, read-only, no trustdb check)
+  before the audit; a trusted or revoked entry naming a base vendor primary,
+  or a shared-keyring primary with m/f/u validity outside the recorded
+  authority, refuses the keyring (closes the simultaneous trusted+revoked and
+  the staged adopt-then-revoke paths). `tests/test-vapt-oniomarchy-trust.sh`
+  rotation cases cover both, plus a pre-published untrusted key that may still
+  be adopted.
 - **Canary.** `oniomarchy_canary`: unsupported-architecture, broken (host
   stanza, changed or redirected descriptor), absent, unverified (authority
   mismatch, cached database or signature not the verified bytes, no keyring
