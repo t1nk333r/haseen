@@ -124,10 +124,11 @@ append_user_file() {
 
 # seed_user_file SRC DEST — copy SRC to DEST only if DEST does not exist.
 # User files are seeded once and then belong to the user; re-runs never
-# overwrite them.
+# overwrite them. A dangling link counts as existing: it is the user's (a
+# dotfiles checkout not cloned yet), and following it would create its target.
 seed_user_file() {
     local src="$1" dest="$2"
-    [[ -e $dest ]] && return 0
+    [[ -e $dest || -L $dest ]] && return 0
     if $DRY_RUN; then
         echo "DRYRUN: seed $dest from $src"
     else

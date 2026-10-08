@@ -13,7 +13,8 @@
 # fontconfig, and `fc-match` keeps working.
 seed_main() {
     local f="$CONFIG/fontconfig/fonts.conf"
-    [[ -e $f ]] && return 0
+    # -L too: a dangling link is the user's, never written through.
+    [[ -e $f || -L $f ]] && return 0
     write_user_file "$f" <<EOF
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
