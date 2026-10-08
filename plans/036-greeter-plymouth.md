@@ -155,12 +155,57 @@ still draws the password prompt and registers no message function. Plymouth's
 script engine runs only inside `plymouthd`, so the scanner itself is seen only
 on a real boot, which stays the owner's check.
 
+### The caret (owner decision, 2026-10-08)
+
+Audit finding F9: before the first key the prompt showed nothing at all. The
+owner asked for a small blinking caret where the asterisks appear, still with
+no text, inspired by both Knight Rider's KITT and Person of Interest. KITT
+gives the colour and the pulse, PoI the surveillance frame and the Machine's
+block cursor:
+
+- Four thin corner brackets, 2 px arms 12 px long, in the accent at 0.6
+  opacity, frame the field. The field takes the hidden scanner's place: as
+  wide as its track and centred on it. It widens only when a long passphrase
+  needs the room.
+- A block caret (`█`) in the scanner's accent sits where the next asterisk
+  goes. The asterisks start at the left padding and the caret follows the
+  last one, both in `Monospace 14`. If the initramfs carries no monospace
+  font, the label plugin uses its fallback font.
+- The caret blinks at 1 Hz: the script plugin refreshes 50 times a second
+  (`FRAMES_PER_SECOND`, `src/plugins/splash/script/plugin.c`), so it is lit
+  for 25 frames, then fades for 25 along the scanner's ghost falloff, like a
+  KITT segment dying away. Each key press restarts the cycle lit.
+- On the normal display and on quit the caret, the brackets and the asterisks
+  hide. Every colour comes from the splash's colour variables, and no image
+  is shipped: the arms are the block glyph stretched.
+
+Verification: `tests/test-plymouth.sh` runs the rendered script under
+`tests/fixtures/plymouth-harness.js`, a fake Plymouth in node. It has a
+recording Window, Image, Sprite and Plymouth, and Plymouth's local-variable
+scoping. The harness drives the refresh, password, normal and quit callbacks
+as plymouthd does. 25 assertions cover the following: the caret is lit before
+the first key, inside eight bracket arms, in the scanner's colour, with the
+scanner hidden; the field is 480 px, centred, on a 1920 px screen; the caret
+is lit 25 of every 50 frames and fades out between; after three keys it sits
+right after the asterisks and is lit again; 120 keys widen the field; normal
+and quit hide all of it. Against the previous script, 39/58 passed, and the
+harness itself ran clean on it. After the change, 58/58 passed.
+
+`tools/plymouth-mock.sh OUT.png` draws a labelled mock of that layout with
+ImageMagick, before the first key and after three. It uses the haseen theme,
+the fontconfig monospace, and rectangles for the block glyph. It is not a
+Plymouth render. Whether the real label plugin draws `█` and the font as
+expected is seen only on a real boot, which stays the owner's check. The mock
+made for this change is `~/.cache/hw/ff-mock/plymouth-luks-prompt-mock.png` on
+the author's machine, and it is not committed.
+
 ## Execution record
 
 `share/haseen/lib/{greeter,plymouth,boot}.sh`,
 `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`,
 `share/haseen/shell/greeter/`, `share/haseen/default/plymouth/`,
-`tools/smoke-greeter.sh`, `tests/test-{greeter,plymouth}.sh`.
+`tools/smoke-greeter.sh`, `tests/test-{greeter,plymouth}.sh`; the caret:
+`tests/fixtures/plymouth-harness.js`, `tools/plymouth-mock.sh`.
 
 `lib/boot.sh` is new shared ground, not a new abstraction: the kernel command
 line and the initramfs rebuild were already written once inside
