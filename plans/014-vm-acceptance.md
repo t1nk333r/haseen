@@ -90,6 +90,8 @@ The scope originally named `--layers base,desktop,theme,shell,secureboot`. That 
    - rustup has no toolchain, so ttfx's `prepare()` fails (`rustup could not choose a version of cargo to run`).
 
    Options for the owner: make desktop require `omarchy-repo`, or have `pkg_install_aur` make sure a working `cargo` exists before building.
+
+   Owner decision 2026-10-08 (plan 024 amendment): desktop still does not require the layer. Without it, herdr and xdg-terminal-exec are skipped with a warning instead of built. ttfx is unchanged and still falls back to the AUR, so its cargo provider problem stays open.
 4. **Open: a fresh install has no background.** The default theme `greek-noir-akane` is the owner's own and has no images to fetch (`theme-lib.sh:29-32`), so `current/background` does not exist and swaybg shows nothing. That is by design, but two things are wrong:
    - `haseen theme bg next` tells the user to run `haseen theme fetch greek-noir-akane`, which refuses: "not an Omarchy stock theme".
    - The `theme` row in architecture §3 credits the layer with a "pinned background fetch" that the layer does not perform.

@@ -194,8 +194,9 @@ hand after a later tree-only install that adds a seed.
     - `--firmware-builtin` now applies only when the firmware has default keys;
     - doctor's shell detection (un-normalised `HASEEN_PATH` from `install.sh`).
   - Open:
-    - `desktop` silently needs `omarchy-repo`; without it the AUR fallback for
-      ttfx fails on `rustup`;
+    - without `omarchy-repo` the AUR fallback for ttfx fails on `rustup`
+      (herdr and xdg-terminal-exec are now skipped with a warning instead,
+      owner 2026-10-08, plan 024 amendment);
     - a fresh install has no background and the hint points at an impossible
       fetch;
     - whether doctor's root-only "not checked" warnings block "all green";

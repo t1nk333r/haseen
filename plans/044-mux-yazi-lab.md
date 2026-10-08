@@ -112,7 +112,9 @@ reports none.
 - `herdr` needs a package row in a layer that applies *after* `omarchy-repo`
   (the `base` layer runs before it, so a base row would fall through to the AUR
   build — version 0.9.0+, AGPL-3.0-or-later, a different licence on the same
-  name). It is in `share/haseen/layers/desktop/packages.txt`.
+  name). It is in `share/haseen/layers/desktop/packages.txt` as `omarchy:herdr`:
+  without `[omarchy]` it is skipped with a warning (owner, 2026-10-08; plan 024
+  amendment).
 
 ## Execution record
 

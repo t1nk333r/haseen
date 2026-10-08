@@ -67,7 +67,7 @@ Preflight globals are already set when the layer runs.
 |---|---|---|
 | `base` | — | essentials, firewall, snapper sanity, pacman hygiene on CachyOS |
 | `chaotic` | base | Chaotic-AUR (pinned key `EF925EA6…87B78AEB`), so `aur:` entries install prebuilt |
-| `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt; `omarchy`/`omarchy-settings` refused (ADR 0001) |
+| `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt, and the only source of `omarchy:` entries (herdr, xdg-terminal-exec); `omarchy`/`omarchy-settings` refused (ADR 0001) |
 | `desktop` | base chaotic | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
 | `theme` | base | theme pipeline, the 22 Omarchy stock themes plus haseen's own `haseen` (the default), pinned background fetch, `haseen-background.service` (swaybg) |
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service`; Helium (`aur:helium-browser-bin`) with the Cairn extension, its release `.crx` fetched at a pinned SHA-256 and handed over as a per-user external extension (`lib/cairn.sh`, `haseen setup cairn`, plan 073) |
@@ -94,6 +94,7 @@ Rules every layer follows:
   4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
+  An `omarchy:` manifest entry (desktop's herdr and xdg-terminal-exec, owner 2026-10-08) goes through the same order only while `[omarchy]` is enabled; without it `pkg_install_omarchy` skips it with a warning and never builds it (plan 024 amendment).
   VAPT is an explicit exception preserving the owner's security-tool policy:
   its explicit repository pins precede BlackArch, pinned native adapters,
   already-enabled Chaotic-AUR, CachyOS, and Arch. Reviewed aliases and

@@ -59,7 +59,7 @@ translate, and lists what has no haseen equivalent; run it without
 |---|---|
 | `base` | essentials, ufw, snapper check |
 | `chaotic` | Chaotic-AUR. Packages come from the official/CachyOS repos first, then Chaotic-AUR, then Omarchy's repo (all prebuilt); the AUR is the last resort |
-| `omarchy-repo` | Omarchy's repo, last in pacman.conf, as a source for leaf packages like ttfx. Omarchy itself (`omarchy`, `omarchy-settings`) is never installed |
+| `omarchy-repo` | Omarchy's repo, last in pacman.conf, as a source for leaf packages like ttfx, and the only source of herdr and xdg-terminal-exec (without it the desktop layer skips those two with a warning). Omarchy itself (`omarchy`, `omarchy-settings`) is never installed |
 | `desktop` | Hyprland (Lua) + uwsm, greetd/tuigreet (only if no display manager is enabled), portals, fonts, GPU session env |
 | `theme` | theme pipeline, the 22 Omarchy themes plus haseen's own (the default), background fetch + `haseen-background.service`, `haseen theme set/install/bg` |
 | `flatpak` | Flathub (per user); `haseen install app …` is Flatpak-first |
