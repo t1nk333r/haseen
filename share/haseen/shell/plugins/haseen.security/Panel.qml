@@ -135,9 +135,10 @@ Item {
     function launch(): void {
         if (refreshing || intentArgv.length === 0) return;
         // No detached result exists. The foreground CLI is confirmation authority.
-        const direct = selectedId === "remmina" || intentArgv[2] === "service-stop";
+        const direct = selectedId === "remmina";
         Apps.launch(direct ? intentArgv : Model.terminal(cli, intentArgv), {desktopId: "haseen-security"});
         notice = direct ? "Launch requested — completion has not been checked." : "Opened in terminal — completion has not been checked. Helpers run until stopped with Ctrl+C.";
+        Accessible.announce(notice, Accessible.Polite);
         intentArgv = [];
         view = returnView;
     }

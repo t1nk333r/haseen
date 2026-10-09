@@ -805,10 +805,11 @@ verbs and separate argv operands. Local helper verbs come from the capability
 record, including `enumeration-host` → `net-file-server`. The panel passes the
 actual displayed service unit/fragment as expectations and never passes `--yes`.
 Review explains scope, but **the foreground terminal confirms and revalidates**:
-start/restart and exposure gates remain there; Stop launches directly without
-a terminal or Review/confirmation, retaining the unit/fragment expectations.
-CA trust requires the full typed fingerprint. A launch says “completion has not
-been checked”, never success. The panel does not invent a detached result channel;
+start/restart and exposure gates remain there. The panel presents Stop in a
+foreground terminal without Review/confirmation, retaining unit/fragment
+expectations; direct CLI stop still works without requiring a terminal.
+CA trust requires the full typed fingerprint. A launch displays and announces
+“completion has not been checked”, never success. The panel invents no detached result channel;
 terminal operations report their post-launch refusals/errors in that terminal.
 
 Reopen or explicit Refresh reads a new authoritative snapshot; launch never

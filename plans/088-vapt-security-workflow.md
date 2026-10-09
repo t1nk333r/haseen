@@ -139,7 +139,7 @@ Component boundaries, one file each:
 - `ToolRow.qml`, `ToolDetail.qml`, `EntryPicker.qml`: inventory, usage refusal,
   selected owned entry, documentation/shell handoff and explicit picker.
 - `ServiceRow.qml`, `ServiceDetail.qml`: owned actual unit/activity/refusal,
-  start/restart review and direct stop handoff.
+  start/restart review and immediate stop terminal handoff without Review.
 - `QuickActions.qml`, `EndpointForm.qml`, `CertificateForm.qml`: fixed
   prerequisites, transient explicit selection, syntax/CLI validation and review.
 - `Review.qml`, `Preview.qml`, `StateMessage.qml`: Cancel-focused intent review,
@@ -538,11 +538,11 @@ and persistent offline-safe copy remain the approved simplified treatments.
     Actual AT-SPI roles/names/state, screen-reader order and announcement
     delivery are **not verified**. No live owner session was accessed.
 
-- **TEST-01 panel half:** `Panel.launch` uses direct `Apps.launch` argv for
-  `service-stop`, without terminal or Review/confirmation, while preserving
-  `--expect-unit/--expect-fragment`. Start/restart retain terminal Review and
-  CLI confirmation. The tester's unchanged direct-stop adversarial assertion
-  passes; no detached launch claims success or refreshes automatically.
+- **TEST-01 panel presentation — corrected in batch L:** `Panel.launch` presents
+  `service-stop` in a foreground terminal without Review/confirmation, preserving
+  `--expect-unit/--expect-fragment`. CLI stop does not require a terminal; the
+  panel deliberately chooses terminal presentation. Start/restart retain Review
+  and terminal confirmation. See the corrected assertion and evidence below.
 - **Disabled providers:** `MenuModel.providerAllowed` gates only the three
   fixed Security providers on literal resolved enablement. `loadProvider`,
   queued dispatch and response application use that gate. The real offscreen
@@ -559,3 +559,29 @@ and persistent offline-safe copy remain the approved simplified treatments.
 - `tools/check-docs.sh`: **check-docs OK** after the panel behavior, scoped-address
   and agent-skill documentation updates.
 - `QT_QPA_PLATFORM=offscreen TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`: **5,591/5,591 passed**, 34 suites, 1,583.76 seconds. This includes both unchanged tester adversarial suites, the direct-stop consumer, real disabled/enabled menu providers and the complete panel conformance matrix.
+
+### Batch L: retained terminal presentation and launch announcement
+
+- **L1 — corrected design requirement, not a weakened assertion:** the tester's
+  original direct-stop assertion encoded an interpretation that conflated
+  “Stop has no confirmation” with “Stop has no terminal presentation.” The
+  retained design requires foreground terminal presentation for explicit panel
+  Stop. The corrected adversarial assertion checks the exact
+  `haseen config terminal -- haseen vapt service-stop ssh` argv, followed by the
+  unchanged displayed-unit/fragment expectations. A companion assertion checks
+  that Stop skips Review and returns to service detail; the existing no-`--yes`
+  and unchecked-completion assertions remain. The CLI's independent no-terminal
+  capability is unchanged, as are start/restart confirmation gates.
+- **L2 — one-time launch announcement:** `Panel.launch` explicitly announces its
+  completion-unchecked notice once for each actual launch request, including
+  repeated requests with identical notice text. It does not reintroduce a
+  broad notice-change announcement that would duplicate the existing one-time
+  inspection/read/preview refusal announcements. All announcements use
+  supported Item accessibility attachments. Actual screen-reader delivery
+  remains subject to the batch-K offscreen AT-SPI limitation.
+- The rest of batch K, including disabled-provider gating, scoped operands,
+  keyboard/layout behavior and the approved simplified presentation, is unchanged.
+- `TMPDIR=~/.cache/haseen-wt/ktmp SHELLCHECK=$(command -v shellcheck) tools/lint.sh`: **lint OK**, 402 shell, 33 Lua, 180 JSON, 256 QML (qmllint included) and 41 Go files.
+- `tools/check-docs.sh`: **check-docs OK** after the corrected terminal-presentation
+  and one-time launch-announcement documentation updates.
+- `QT_QPA_PLATFORM=offscreen TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`: **5,604/5,604 passed**, 34 suites, 1,551.69 seconds. The corrected terminal argv, skipped Stop Review, preserved expectations/no-`--yes`, unchecked completion and all batch-K regressions pass.

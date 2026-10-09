@@ -108,10 +108,12 @@ choice. Missing usage evidence is refusal, not permission to guess a command.
 
 The panel uses fixed whitelisted capability verbs and argv, never package/path
 shell interpolation. Service actions pass displayed unit/FragmentPath
-expectations; either mismatch refuses before privilege. Stop launches directly
-without a terminal or Review/confirmation. Start/restart and other confirmation
+expectations; either mismatch refuses before privilege. The panel presents Stop
+in a foreground terminal without Review/confirmation; direct CLI stop still
+works without requiring a terminal. Start/restart and other confirmation
 gates remain terminal-authoritative, and no panel launch passes `--yes`. CA trust
-still requires the full typed fingerprint. A launch is only a request, not success;
+still requires the full typed fingerprint. A launch displays and announces only
+a request with completion unchecked, not success;
 status changes require explicit Refresh or reopen, never polling or retries.
 Preview is the real pure dry-run capture. Forms/paths/addresses/certificates
 stay in memory and user defaults are never rewritten. Do not publish them.

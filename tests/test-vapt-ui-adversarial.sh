@@ -71,7 +71,8 @@ Window {
             eq("real service control rendered",true,!!detail);
             if (!detail) { Qt.exit(1);return; }
             detail.requested("service-stop",false);
-            eq("stop consumer launches directly without requiring terminal",["/fixture/bin/haseen","vapt","service-stop","ssh","--expect-unit","owned-login.service","--expect-fragment","/usr/lib/systemd/system/owned-login.service"],Apps.launches[0]);
+            eq("stop consumer presents terminal with displayed expectations",["/fixture/bin/haseen","config","terminal","--","/fixture/bin/haseen","vapt","service-stop","ssh","--expect-unit","owned-login.service","--expect-fragment","/usr/lib/systemd/system/owned-login.service"],Apps.launches[0]);
+            eq("stop skips Review and returns to service detail","service",panel.view);
             eq("launch never claims completed service operation",true,panel.notice.indexOf("completion has not been checked")>=0);
             eq("launch never auto-confirms exposure",false,Apps.launches[0].indexOf("--yes")>=0);
             panel.prepare(M.serviceArgv(cli,FixtureState.service,"service-start"),"service",false);
