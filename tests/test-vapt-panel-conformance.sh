@@ -1,6 +1,13 @@
 # shellcheck shell=bash
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Reuse the fixture boundary, but send real Qt keyboard events to production controls.
 source "$REPO/tests/test-vapt-security-ui.sh"
+if [[ $VAPT_QML_READY != true ]]; then
+    echo '  skip: Security keyboard/render conformance (all four named tests) not run; baseline engine prerequisites unavailable' >&2
+    return 0
+fi
+QML_TEST_BIN=${QML_TEST_BIN:-/usr/lib/qt6/bin/qmltestrunner}
+vapt_qml_available 'Security keyboard/render conformance (all four named tests)' "$QML_TEST_BIN" || return 0
 # Render only into fixture directories; no theme activation, hooks or session access.
 (
     source "$HASEEN_PATH/lib/common.sh"
@@ -37,6 +44,24 @@ Item {
         function applyPalette(p) {
             for (const key of ["background","surface","surfaceAlt","foreground","border","accent","selection","fontFamily","fontMono"]) Theme[key] = p[key];
         }
+        function settle() {
+            tryCompare(FixtureState, "pending", 0);
+            // A clean offscreen Window need not schedule another frame.
+            // Geometry checks below still poll their actual bounds for 5 s.
+            wait(0); waitForRendering(panel, 100);
+        }
+        function revealed(item, flick) {
+            const top = item.mapToItem(flick.contentItem,0,0).y;
+            const ring = item.background.border.width;
+            if (item.height <= flick.height)
+                return top >= flick.contentY - ring && top + item.height <= flick.contentY + flick.height + ring;
+            // Reveal the beginning, not an arbitrary absolute contentY: ScrollView
+            // may add focus margins. Require the first text line to be readable.
+            const label = find(item.contentItem, i => i.visible && i.text !== undefined && i.lineCount !== undefined);
+            if (!label || !label.lineCount) return false;
+            const beginning = item.topPadding + label.implicitHeight / label.lineCount;
+            return top >= flick.contentY - ring && top + beginning <= flick.contentY + flick.height + ring;
+        }
         function exerciseList(list, name) {
             const original = list.rows;
             list.rows = Array.from({length:12}, (_, i) => Object.assign({}, original[0], {id:name + "-" + i, label:"Wrapped choice identity " + i, reason:"Refusal reason " + i}));
@@ -47,12 +72,10 @@ Item {
             keyClick(Qt.Key_Home); compare(list.current, 0);
             keyClick(Qt.Key_PageDown); verify(list.current > 0 && list.current < 11, name + " page-down current=" + list.current + " viewport=" + list.viewportHeight);
             const down = list.current; keyClick(Qt.Key_PageUp); verify(list.current < down, name + " page-up");
-            keyClick(Qt.Key_End); wait(0);
+            keyClick(Qt.Key_End); settle();
             const focused = win.activeFocusItem;
             const flick = find(panel, i => i.contentY !== undefined && i.contentHeight !== undefined);
-            const top = focused.mapToItem(flick.contentItem,0,0).y;
-            if (focused.height > flick.height) verify(Math.abs(top - flick.contentY) < 2, name + " oversized row beginning revealed");
-            else verify(top >= flick.contentY - 2 && top + focused.height <= flick.contentY + flick.height + 2, name + " focused row fully revealed");
+            tryVerify(() => revealed(focused, flick), 5000, name + " focused row fully revealed, or oversized beginning readable");
             verify(Ink.ratio(Theme.foreground, focused.background.color) >= 4.5, name + " text contrast");
             verify(Ink.ratio(focused.background.border.color, focused.background.color) >= 3, name + " focus contrast");
             compare(focused.background.border.width, 2);
@@ -84,7 +107,8 @@ Item {
         }
         function test_anchor_and_certificate_submission() {
             tryCompare(panel, "refreshing", false);
-            panel.choosePage(3); panel.inspect("proxy-ca"); wait(0);
+            panel.anchor = null;
+            panel.choosePage(3); panel.inspect("proxy-ca"); settle();
             const form = find(panel, i => typeof i.inspectPath === "function");
             panel.anchor = {schemaVersion:1,state:"owned",reason:"unchanged fixture anchor",anchor:{sha256:"B".repeat(64),unchanged:true}};
             panel.inspection = {state:"valid",reason:"fixture certificate",certificate:{sha256:"A".repeat(64),subject:"fixture",issuer:"fixture",notBefore:"fixture",notAfter:"fixture"}};
@@ -97,13 +121,13 @@ Item {
             const launches = Apps.launches.length;
             panel.draft = {path:"/fixture/certificate.pem"};
             const file = find(form, i => i.label === "Absolute certificate path");
-            file.focusInput(); keyClick(Qt.Key_Return); wait(0);
+            file.focusInput(); keyClick(Qt.Key_Return); settle();
             compare(Apps.launches.length, launches);
             compare(panel.inspection.state, "refused");
             const read = FixtureState.reads[FixtureState.reads.length - 1];
             compare(read.slice(2,5), ["net-proxy-ca","inspect","/fixture/certificate.pem"]);
             verify(!!find(form, i => i.readOnly === true && i.text.indexOf("private key input refused") >= 0));
-            form.requested("remove",false); wait(0);
+            form.requested("remove",false); settle();
             compare(panel.view, "review"); compare(win.activeFocusItem.text, "Cancel");
             verify(panel.intentCopy.indexOf(M.fingerprint("B".repeat(64))) >= 0);
             verify(panel.intentCopy.indexOf("Machine-wide") >= 0);
@@ -174,18 +198,17 @@ Item {
                     panel.choosePage(3); wait(0);
                     const list = find(panel, i => typeof i.focusIndex === "function");
                     list.rows = Array.from({length:12}, (_, i) => ({id:"long-"+i,label:("Long wrapped identity and refusal reason ".repeat(i === 11 ? 200 : 5))}));
-                    wait(0); list.focusIndex(11); wait(0);
+                    settle(); list.focusIndex(11); settle();
                     const focused = win.activeFocusItem;
-                    verify(focused.height >= focused.contentItem.implicitHeight + 24 * focused.scale);
+                    const rounding = Number.EPSILON * Math.max(1, focused.height) * 4;
+                    verify(focused.height + rounding >= focused.contentItem.implicitHeight + focused.topPadding + focused.bottomPadding);
                     const flick = find(panel, i => i.contentY !== undefined && i.contentHeight !== undefined);
                     verify(!!flick);
-                    const top = focused.mapToItem(flick.contentItem,0,0).y;
-                    verify(Math.abs(flick.contentY - top) < 2, "oversized row reveals beginning: y=" + flick.contentY + " top=" + top + " row=" + focused.height + " viewport=" + flick.height);
-                    list.focusIndex(0); wait(0);
+                    tryVerify(() => revealed(focused, flick), 5000, "oversized row beginning and first line readable");
+                    list.focusIndex(0); settle();
                     const first = win.activeFocusItem;
-                    const firstTop = first.mapToItem(flick.contentItem,0,0).y;
-                    verify(Math.abs(flick.contentY - firstTop) < 2);
-                    waitForRendering(panel);
+                    tryVerify(() => revealed(first, flick), 5000, "first row fully visible, or oversized beginning readable");
+                    waitForRendering(panel, 100);
                     const image = grabImage(panel);
                     verify(image.width > 0 && image.height > 0);
                     image.save("$H/panel-" + p.mode + "-" + size[0] + "-" + fontSize + ".png");
@@ -197,7 +220,9 @@ Item {
     }
 }
 EOF
-capture env QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic QML_IMPORT_PATH="$H/imports" QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 /usr/lib/qt6/bin/qmltestrunner -input "$H/Conformance.qml"
+capture env QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic QML_IMPORT_PATH="$H/imports" QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML_TEST_BIN" -input "$H/Conformance.qml"
 assert_status 'real Qt keyboard and conformance runner exits' 0 "$STATUS"
-assert_contains 'keyboard conformance exercised' "$OUTPUT" 'Totals: 6 passed, 0 failed'
+for case_name in test_all_list_surfaces test_anchor_and_certificate_submission test_contracts test_keyboard_and_wrapping; do
+    assert_contains "keyboard conformance completes $case_name" "$OUTPUT" "PASS   : qmltestrunner::PanelConformance::$case_name()"
+done
 assert_eq 'conformance has no runtime errors or unsupported accessibility attachments' '' "$(grep -E 'TypeError:|ReferenceError:|Binding loop|Accessible attached property' <<<"$OUTPUT" || true)"

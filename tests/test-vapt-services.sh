@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 source "$FIXTURES/vapt-actions-lib.sh"
 actions_fixture vapt-services
 capture haseen-vapt-service-list --json --dry-run

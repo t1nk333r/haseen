@@ -1,7 +1,12 @@
 # shellcheck shell=bash
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Reuse the established hermetic Qt module/transport fixtures and its existing
 # behavioural baseline. No live Quickshell session or installed tool is started.
 source "$REPO/tests/test-vapt-security-ui.sh"
+if [[ $VAPT_QML_READY != true ]]; then
+    echo '  skip: Security adversarial identity/stop/certificate engine scenarios not run; baseline engine prerequisites unavailable' >&2
+    return 0
+fi
 cat >"$H/Adversarial.qml" <<EOF
 import QtQuick
 import qs.Haseen
@@ -9,6 +14,7 @@ import "file://$SEC" as SecurityUI
 import "file://$SEC/Model.js" as M
 import "file://$MENU/MenuModel.js" as Menu
 Window {
+    id: win
     width: 720; height: 640; visible: true
     property int failures: 0
     property int step: 0
@@ -22,10 +28,11 @@ Window {
         if (item.children) for (const child of item.children) { const found = find(child, predicate); if (found) return found; }
         return null;
     }
-    function next() { step++; Qt.callLater(run); }
-    Component.onCompleted: Qt.callLater(run)
+    Timer { id: advance; interval: 1; onTriggered: win.run() }
+    function next() { step++; advance.start(); }
+    Component.onCompleted: advance.start()
     function run() {
-        if (panel.refreshing) { Qt.callLater(run); return; }
+        if (panel.refreshing || FixtureState.pending > 0) { advance.start(); return; }
         try { execute(); } catch(e) { console.warn("ATTACK-FAIL exception " + e); Qt.exit(1); }
     }
     function execute() {

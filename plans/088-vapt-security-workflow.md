@@ -363,6 +363,30 @@ Pixel measurements across all stock themes/text scales, Nerd Font coverage,
 actual Wayland/AT-SPI screen-reader exposure and independent DESIGNER:VERIFY
 are not established by those engine assertions. No owner's desktop is used.
 
+Security engine suites use the same complete desktop-engine qualification as
+the battery/media suites, not merely the presence of a `qml` executable:
+executable `QS_BIN` (default `/usr/bin/qs`), `dbus-daemon`, `dbus-run-session`,
+and `python3` importing both `dbus` and `gi`. All four Security engine suites
+also require executable `QML_BIN` (default `/usr/lib/qt6/bin/qml`) and a
+successful isolated offscreen QtQuick/QtQuick.Controls import probe. The
+keyboard/render suite additionally requires executable `QML_TEST_BIN`
+(default `/usr/lib/qt6/bin/qmltestrunner`) and the QtTest import. Missing
+prerequisites produce named skips, not successful engine-case claims; the
+manifest/CLI enablement checks still run. Dependent adversarial and conformance
+sections name their own skipped scenarios. A framework-only probe cannot
+convert production-component or behavioural failures into skips.
+
+Qt versions and font metrics are not pinned or treated as automatic skips.
+Qualified engines must run the full cases: fit rows must be fully revealed;
+oversized rows must expose their beginning and a readable first line, without
+requiring one absolute scroll offset. Geometry and padding assertions derive
+from rendered controls and allow only floating-point roundoff. Test fixtures
+deliberately delay responses across an event-loop boundary and wait for all
+read/inspection/preview completions and rendering before comparing submissions,
+focus or fingerprints. Named scenario completion replaces fixed pass totals.
+The Qt 6.12.0 CI environment needs a fresh run of these corrected fixtures;
+local Qt 6.11.2 evidence cannot establish Qt 6.12.0 or real AT-SPI conformance.
+
 ## Exercised checks
 
 ### Slice 2A-i baseline
@@ -585,3 +609,57 @@ and persistent offline-safe copy remain the approved simplified treatments.
 - `tools/check-docs.sh`: **check-docs OK** after the corrected terminal-presentation
   and one-time launch-announcement documentation updates.
 - `QT_QPA_PLATFORM=offscreen TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`: **5,604/5,604 passed**, 34 suites, 1,551.69 seconds. The corrected terminal argv, skipped Stop Review, preserved expectations/no-`--yes`, unchecked completion and all batch-K regressions pass.
+
+### CI hygiene and portable Security engine fixtures
+
+- All eight newly introduced suites that lacked the standard direct-run guard
+  now refuse with status 2 before sourcing helpers or creating fixtures:
+  confinement-adversarial, discovery, net, panel-conformance, services,
+  ui-adversarial, workflow-adversarial and workflow. The provider suite uses the
+  same standard diagnostic. The existing core hygiene assertions remain intact.
+- `fixtures/vapt-qml-lib.sh` centralizes the named prerequisite gates documented
+  above. Missing stack/framework prerequisites retain CLI checks, name omitted
+  engine sections and do not manufacture engine pass totals. The Qt import
+  probe enables stderr logging like the actual runners; a silent console is
+  not mistaken for an unavailable framework.
+- The mock transport deliberately replies after a timer boundary and maintains
+  an outstanding-response count. Baseline and adversarial sequencing waits for
+  all replies; certificate and removal checks additionally settle rendering
+  before injecting/checking independent anchor and certificate records.
+  A clean offscreen window may produce no new frame, so optional frame waits
+  are bounded while actual geometry checks retain their five-second polling.
+- Geometry uses the rendered row, viewport, native text-line height and padding.
+  A fitting row still has to be completely revealed. An oversized row still has
+  to reveal its beginning and a readable first line, but need not align with one
+  hardcoded scroll offset when Qt adds focus margins. Wrapped height permits
+  only a few floating-point ulps, not a physical clipping allowance.
+- All six CI behavioural assertions are retained: authoritative endpoint Review,
+  scope explanation, selectable refusal Preview, actual refusal exit, actual
+  refusal text, and exactly one disablement close. Anchor-removal Review and
+  certificate-path Enter checks are retained too. No production panel/menu or
+  CLI contract is changed and no failing behavioural case is converted to a
+  skip. Scenario completion and each named QtTest function are checked instead
+  of demanding a fixed total of engine passes.
+- `TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt-panel-conformance.sh`:
+  **97/97 passed**, including all four named QtTest functions, baseline model/UI
+  cases, six-list light/dark/size/font matrix and rendered keyboard/wrapping
+  assertions, on Qt 6.11.2. This is not Qt 6.12.0 or AT-SPI evidence.
+- `TMPDIR=~/.cache/haseen-wt/ktmp SHELLCHECK=/usr/bin/shellcheck tools/lint.sh`:
+  **lint OK**, 402 shell, 33 Lua, 180 JSON, 256 QML and 41 Go files.
+- `/usr/bin/shellcheck --severity=warning -x --source-path=tests --source-path=tests/fixtures tests/test-vapt-panel-conformance.sh tests/test-vapt-ui-adversarial.sh tests/test-vapt-menu-providers.sh && bash -n tests/fixtures/vapt-qml-lib.sh`:
+  **passed**; checks the shared helper through its actual consumers as well as
+  its shell syntax, since the project lint glob does not enumerate fixture
+  helper scripts separately.
+- `QT_QPA_PLATFORM=offscreen TMPDIR=~/.cache/haseen-wt/ktmp tests/run.sh tests/test-vapt*.sh tests/test-install-picker.sh`:
+  **5,607/5,607 passed**, 34 suites, 1,578.24 seconds. All qualified engine cases
+  ran; no prerequisite skips were reported.
+- `TMPDIR=~/.cache/haseen-wt/ktmp QS_BIN=/nonexistent tests/run.sh tests/test-core.sh tests/test-vapt-security-ui.sh tests/test-vapt-panel-conformance.sh tests/test-vapt-ui-adversarial.sh tests/test-vapt-menu-providers.sh`:
+  **94/94 passed**. Core proves every direct-run refusal and an untouched direct
+  HOME; CLI/manifest checks pass while every omitted engine section is named.
+- `TMPDIR=~/.cache/haseen-wt/ktmp QML_BIN=/usr/bin/false tests/run.sh tests/test-vapt-security-ui.sh tests/test-vapt-panel-conformance.sh tests/test-vapt-ui-adversarial.sh tests/test-vapt-menu-providers.sh`:
+  **21/21 passed**. An executable but non-working Qt prerequisite is rejected
+  by the framework-only probe; no engine pass is claimed.
+- `TMPDIR=~/.cache/haseen-wt/ktmp QML_TEST_BIN=/nonexistent tests/run.sh tests/test-vapt-panel-conformance.sh`:
+  **91/91 passed**. The full baseline runs; only the explicitly named four
+  keyboard/render tests are skipped for the missing QtTest runner.
+- Documentation gate: `tools/check-docs.sh`.

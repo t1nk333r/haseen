@@ -1,7 +1,9 @@
 # shellcheck shell=bash
-[[ -v TESTS_RUN ]] || { echo "run through tests/run.sh" >&2; return 2 2>/dev/null || exit 2; }
+[[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 sandbox vapt-menu-providers
 QS_BIN=${QS_BIN:-/usr/bin/qs}
+source "$FIXTURES/vapt-qml-lib.sh"
+vapt_qml_available 'Security disabled/enabled menu provider engine scenarios' || return 0
 FAKE="$SANDBOX/fake"
 mkdir -p "$FAKE/share/haseen" "$FAKE/bin" "$SANDBOX/shell"
 for entry in "$HASEEN_PATH"/*; do ln -s "$entry" "$FAKE/share/haseen/${entry##*/}"; done

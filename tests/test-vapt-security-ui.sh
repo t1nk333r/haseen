@@ -19,6 +19,8 @@ assert_status 'only explicit enablement exposes menu' 0 "$STATUS"
 printf '{"plugins":{"haseen.security":{"enabled":"true"}}}\n' >"$XDG_CONFIG_HOME/haseen/shell.json"
 capture haseen vapt menu --enabled
 assert_status 'string true is not consent' 1 "$STATUS"
+source "$FIXTURES/vapt-qml-lib.sh"
+vapt_qml_available 'Security UI model/preview/service/certificate/disablement scenarios' || return 0
 H="$SANDBOX/qml"
 mkdir -p "$H/imports/qs/Haseen/Widgets" "$H/imports/Quickshell/Io"
 printf 'module qs.Haseen.Widgets\nGlyph 1.0 Glyph.qml\n' >"$H/imports/qs/Haseen/Widgets/qmldir"
@@ -104,13 +106,21 @@ QtObject {
     property QtObject stdout
     property QtObject stderr
     signal exited(int code, int status)
-    onRunningChanged: if (running) Qt.callLater(function() {
+    // Deliberately cross an event-loop boundary: tests must await responses,
+    // not assume one callLater or one layout pass completes every read.
+    property Timer reply: Timer { interval: 7; onTriggered: root.completeRead() }
+    onRunningChanged: if (running) {
+        FixtureState.pending++;
+        reply.start();
+    }
+    function completeRead() {
         const r = FixtureState.read(root.command);
         if (root.stdout) root.stdout.text = r.text;
         if (root.stderr) root.stderr.text = r.error || "";
         root.running = false;
         root.exited(r.code || 0, 0);
-    })
+        FixtureState.pending--;
+    }
 }
 EOF
 cat >"$H/imports/qs/Haseen/State.qml" <<'EOF'
@@ -118,6 +128,7 @@ pragma Singleton
 import QtQuick
 QtObject {
     property var reads: []
+    property int pending: 0
     property bool empty: false
     property bool malformed: false
     property bool previewRefused: false
@@ -182,18 +193,19 @@ Window {
         if (item.text !== undefined && String(item.text).indexOf(needle) >= 0) return true;
         return item.children ? Array.from(item.children).some(c => rendered(c, needle)) : false;
     }
-    function next() { step++; Qt.callLater(run); }
+    Timer { id: advance; interval: 1; onTriggered: win.run() }
+    function next() { step++; advance.start(); }
     function find(item, predicate) {
         if (predicate(item)) return item;
         if (item.children) for (const child of item.children) { const result = find(child, predicate); if (result) return result; }
         return null;
     }
-    Component.onCompleted: Qt.callLater(run)
+    Component.onCompleted: advance.start()
     function run() {
         try { execute(); } catch (e) { failures++; console.warn("UNIT-FAIL exception " + e); Qt.exit(1); }
     }
     function execute() {
-        if (panel.refreshing) { Qt.callLater(run); return; }
+        if (panel.refreshing || FixtureState.pending > 0) { advance.start(); return; }
         const cli = "/fixture/bin/haseen";
         if (step === 0) {
             eq("six independent reads on open", 6, FixtureState.reads.length);
@@ -340,6 +352,7 @@ Window {
             Config.merged = {plugins: {"haseen.security": {enabled: false}}};
             eq("disabled while open requests close", 1, QsWindow.window.closes);
             console.warn("UNIT-COUNT " + passes);
+            console.warn("UNIT-DONE all named Security UI scenarios");
             Qt.exit(failures ? 1 : 0);
         }
     }
@@ -358,4 +371,4 @@ while IFS= read -r line; do
 done < <(grep 'UNIT-FAIL' <<<"$units" || true)
 if [[ $rc != 0 ]]; then printf '%s\n' "$units"; fi
 assert_eq 'Security has no QML runtime errors' '' "$(grep -E 'TypeError:|ReferenceError:|Error:|Binding loop' <<<"$units" || true)"
-assert_eq 'Security QML behavioural cases execute' 81 "$(grep -c 'UNIT-PASS' <<<"$units" || true)"
+assert_contains 'Security QML named scenarios complete' "$units" 'UNIT-DONE all named Security UI scenarios'
