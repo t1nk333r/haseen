@@ -72,6 +72,20 @@ translate, and lists what has no haseen equivalent; run it without
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.
+`haseen vapt tool-list --json` lists verified installed inventory and actual owned
+entrypoints, including data-only packages. `vapt tool-help` displays owned usage
+only on request; `vapt tool-run` then opens an ordinary shell, not the tool.
+`vapt status --json`, `vapt doctor --json`, and `vapt menu --enabled` are
+read-only, offline surfaces ([workflow contract](docs/vapt.md#installed-inventory-and-explicit-usage-plan-088)).
+Separate explicit `vapt service-*` and `vapt net-*` helpers never run as
+provisioning hooks: owned-unit controls, consent-gated foreground local servers,
+and typed-fingerprint CA trust ([local action contract](docs/vapt.md#explicit-services-and-local-helpers-plan-088)).
+The built-in `haseen.security` panel is **off by default**. Deliberately enable
+it with `haseen plugin enable haseen.security`; Setup › Security › VAPT
+workstation then shows installed tools/services, local prerequisites and source
+status. Rows inspect first, previews make no changes, and the terminal confirms
+actions. The panel never asserts success or runs anything during discovery
+([panel guide](docs/vapt.md#optional-security-workstation-panel-plan-088)).
 
 ## NixOS
 

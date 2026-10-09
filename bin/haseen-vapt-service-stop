@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# haseen:summary Stop an explicitly selected installed service
+# haseen:args [--dry-run] [--yes] [--expect-unit UNIT] [--expect-fragment PATH] SERVICE
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+usage() { echo "Usage: haseen vapt service-stop [--dry-run] [--yes] [--expect-unit UNIT] [--expect-fragment PATH] SERVICE"; }
+parse_common_flags "$@"
+vapt_service_cli stop "${REST[@]}"

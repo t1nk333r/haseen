@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# haseen:summary Open the verified installed remote desktop client without connecting automatically
+# haseen:args [--dry-run]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+usage() { echo "Usage: haseen vapt net-remmina [--dry-run]"; }
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || { usage >&2; exit 2; }
+client="$(vapt_actions adapter remmina)" || exit 1
+if $DRY_RUN; then
+    printf 'DRYRUN: open verified client UI only: %s (no connection or credentials)\n' "$client"
+    exit 0
+fi
+vapt_action_refuse_fixture || exit 1
+[[ $client == "$(vapt_actions adapter remmina)" ]] || die 'client ownership changed; no launch'
+# Panel launches this haseen command through Apps.launch; direct CLI stays in
+# the caller's application scope. Never pass a target or saved connection.
+run "$client"

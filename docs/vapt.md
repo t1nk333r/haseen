@@ -632,3 +632,230 @@ uninstaller.
 The engineering record and exercised checks are in
 [`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md) and
 [`plans/087-vapt-oniomarchy-provisioning.md`](../plans/087-vapt-oniomarchy-provisioning.md).
+
+## Installed inventory and explicit usage (plan 088)
+
+Provisioning still never runs its tools. The separate workflow commands inspect
+installed ownership offline, or display documentation only on explicit request:
+
+```sh
+haseen vapt tool-list --json
+haseen vapt tool-list --all --group network --dry-run
+haseen vapt tool-help TOOL --entry /absolute/owned/entry --dry-run
+haseen vapt tool-run TOOL --entry /absolute/owned/entry --dry-run
+haseen vapt status --json
+haseen vapt doctor --json --dry-run
+haseen vapt menu --enabled --json
+```
+
+`tool-list` normally includes verified installed inventory roots; `--all` adds
+missing/unknown items. Entrypoints come from installed package file inventories
+and executable mode, or verified pinned native distribution RECORD files.
+Several entries are preserved; data packages legitimately have no executable.
+Owned desktop metadata is read as data, never executed. No package-name guesses,
+PATH search, previous successful report, installed module import or presence
+probe is used. Ownership proves metadata association, not unchanged file bytes.
+
+`tool-help` requires one entry (choose `--entry` when there are several). It
+prefers a unique owned basename-matching man page, then matching help document,
+and prints the document directly without a pager/man helper. A confined
+descriptor open must establish readability before documentation is ready;
+owned file inventory/installed identity remains separate. Execution reopens the
+document and revalidates ownership and inode before reading. Man pages appear
+as plain roff source. Otherwise it requires a reviewed package/entry-specific
+help-only argv binding, rechecked against current ownership. The shipped registry
+is deliberately empty: no arbitrary `--help` guesses. Missing or ambiguous
+evidence is a refusal, not a speculative execution. Dry-run reports the exact
+evidence and intended argv without invoking anything.
+
+`tool-run` follows that same documentation path and then opens only the user's
+installed executable login shell (`-i`, checked against `/etc/shells`, with
+independently present bash fallback). Non-TTY sessions use the existing floating
+terminal helper, after validation. It never runs the selected tool, prefills an
+assessment, elevates or starts a backend. It has no `--json`. Fixture sysroots
+cannot execute a help binding or start a workstation shell.
+
+List, status, doctor and menu execute zero listed programs, refresh nothing and
+write nothing, including in dry-run. JSON is exactly one `schemaVersion: 1`
+object; diagnostics are on stderr. Status retains 0 healthy / 1 missing /
+2 degraded. Doctor maps missing/degraded to ordinary failure (1), usage to 2;
+it reports sources, package provenance, owned entries and workflow readiness,
+never repairs anything. See [plan 088](../plans/088-vapt-security-workflow.md)
+for the complete versioned schema.
+
+`menu` reads the effective deep-merged default/user shell configuration and
+returns enabled only for literal `plugins.haseen.security.enabled: true`.
+It does not enable the optional surface, add a bar widget or start a service.
+
+Explicit provisioning seeds `~/.config/haseen/vapt/workflow.json` once from
+the shipped feature defaults. Existing user settings remain untouched.
+Defaults are `showLocalAddresses: false`, `enumerationScript: null`, and
+`bindAddress: "127.0.0.1"`. Inventory does not discover/store addresses.
+The optional panel is a separate opt-in surface, never authorization for an action.
+
+## Explicit services and local helpers (plan 088)
+
+Provisioning still starts, enables and configures nothing. These separate
+commands require explicit user requests; all dry-runs are offline/write-free.
+
+- `haseen vapt service-list --json`: the five known ids `ssh`, `postgresql`,
+  `apache`, `nginx`, `beef`; installed package/unit ownership, current
+  `FragmentPath`, raw manager states and exposure `unknown`. Units come from
+  installed files, never package-name guesses. Missing/ambiguous/current-foreign
+  fragments refuse action. `service-start ID` and `service-restart ID` require
+  terminal confirmation (or explicit `--yes` acceptance of unknown exposure);
+  `service-stop ID` requires neither confirmation nor a terminal; normal root
+  authorization is still required. All recheck ownership immediately before the
+  root gateway. None enables, presets, initializes or installs a service.
+  Optional `--expect-unit UNIT --expect-fragment PATH` binds a displayed
+  snapshot: either mismatch refuses before any privileged operation. Without
+  expectations, direct CLI behaviour is unchanged; dry-run reports the check.
+  A wrong-shaped manager snapshot emits one refused JSON object with exit 1;
+  malformed row fields report unknown current evidence, never verified ownership
+  or guessed activity. Diagnostic failures remain on stderr.
+- `haseen vapt net-addresses --json`: ephemeral local interface addresses,
+  no DNS/network probe, storage or logging. IPv4/IPv6 endpoints accept literal
+  addresses only and ports 1024–65535; missing real-action ports prompt locally.
+  IPv6 may include one `%SCOPE`, with scope matching `[A-Za-z0-9_.-]{1,64}`,
+  for example `fe80::1%enp5s0`, `fe80::1%wlan0` or `fe80::1%lo`. The reader emits the
+  complete scoped literal; consumers must preserve it unchanged, never append
+  another scope. Validate the literal and scope separately; the CLI is
+  authoritative. Preview does not resolve interface presence or promise a bind.
+- `haseen vapt net-listener [--bind ADDRESS] [PORT]`: an owned reviewed neutral
+  foreground listener adapter, no received-data execution or payload features.
+  The default is loopback; every non-loopback bind requires terminal consent.
+- `haseen vapt net-http-server [--bind ADDRESS] DIR PORT`: explicitly selected
+  directory, byte-only foreground HTTP. Opened descriptors confine requests;
+  traversal, symlinks and multiply-linked leaves are refused. Each request
+  checks the opened file's link count, including links added after startup.
+  No listing, CGI, upload, firewall changes, background daemon or fetched content.
+  Startup uses the literal endpoint without reverse DNS. Serving remains serial,
+  with five-second accepted-client idle waits and a thirty-second absolute
+  connection deadline, including slow-drip requests and clients that stop
+  reading. There is no unbounded thread pool.
+- `haseen vapt net-file-server [--file FILE] [--bind ADDRESS] [PORT]`: one
+  explicitly selected package-owned single-link regular file, served only at `/file`.
+  It may use the user's `enumerationScript` setting or prompt when unset; it
+  never guesses a script, exposes its parent directory, runs or fetches it.
+  The doctor capability id `enumeration-host` maps to fixed command
+  `net-file-server`; there is no alias. Every foreground server requires consent.
+  File selection, startup and every request refuse a multiply-linked file.
+  After validation/consent, listener/server wrappers hand their process over
+  through the common foreground gateway; wrapper signals cannot orphan a helper
+  holding the bound endpoint or selected descriptors.
+- `haseen vapt net-remmina`: launch only the verified owned client with no target,
+  connection, credentials or backend; dry-run previews ownership without launch.
+  The panel uses its normal `Apps.launch` boundary, not a shell command string.
+
+These foreground commands have no JSON mode. `service-list`, `net-addresses`
+and doctor emit one `schemaVersion: 1` object with diagnostics on stderr.
+Doctor readiness uses actual adapter/source/selection evidence, not package-name
+presence alone. Capability records include fixed `command` leaf verbs; consumers
+must whitelist them before building argv.
+
+### Proxy CA ownership, not implicit browser configuration
+
+`haseen vapt net-proxy-ca status --json` is read-only and reports none, owned,
+foreign, modified or unknown/incomplete anchor state. `inspect CERT --json`
+reads one bounded regular public PEM/DER CA and reports subject, issuer,
+uppercase SHA-256 fingerprint, validity and CA/private-key flags; it rejects
+bundles, private keys, non-CAs and expired material without printing certificate
+contents or changing trust. CA classification comes only from the actual
+`basicConstraints` extension decoded by OpenSSL, never rendered text. Only the
+documented proper X509v3 CA result is admitted; subject/issuer text, printable
+malformed extension bytes and legacy-only CA evidence cannot confer CA status.
+Absent, false or malformed constraints are refused. Inspection, trust payload
+and privileged validation share this same classifier.
+Malformed CA ownership containers or consumed fields report explicit unknown
+state; doctor refuses that readiness. Inspection of malformed JSON as a
+certificate remains explicit invalid input. JSON commands emit exactly one
+versioned object without traceback text; diagnostic failures use stderr.
+
+`trust CERT` requires typing the full displayed fingerprint, including with
+`--yes`. It rechecks immutable certificate bytes and owned updater evidence,
+then uses the root gateway to install one fingerprint-owned system anchor and
+update trust. No browser/proxy is launched or configured. `remove FINGERPRINT`
+removes only the unchanged recorded anchor; foreign or modified files survive.
+Anchor/state reads already require a regular single-link file on the opened
+descriptor; a multiply-linked anchor is not accepted as unchanged owned trust.
+Dry-run never requests privilege, writes an anchor or claims hypothetical trust.
+Failed updater transactions retain an explicit incomplete ownership journal;
+status refuses to describe them as completed success.
+
+## Optional Security workstation panel (plan 088)
+
+`haseen.security` is a built-in **panel only**, explicitly **off by default**.
+Enable it deliberately with `haseen plugin enable haseen.security`, then open
+Setup → Security → VAPT workstation → Open panel, or
+`haseen shell ipc panel toggle haseen.security`. No bar widget, startup service,
+polling, installation or repository approval is added. Existing user menu and
+shell files are not rewritten.
+
+The four pages are Overview (provisioning and source uncertainty), Tools
+(installed inventory, search/group filter and optional missing diagnostics),
+Services (actual owned units and manager state), and Local actions (including
+unavailable prerequisites). Enter inspects a row, not a program. Multiple owned
+entrypoints require an explicit picker choice; undocumented/ambiguous entries
+have no usage/shell action. “No verified executable entrypoint” describes
+data-only or unavailable entry evidence without claiming no executable bytes
+exist. Recorded resolutions are not current installation evidence.
+
+All terminals and the verified client use `Apps.launch` with fixed whitelisted
+verbs and separate argv operands. Local helper verbs come from the capability
+record, including `enumeration-host` → `net-file-server`. The panel passes the
+actual displayed service unit/fragment as expectations and never passes `--yes`.
+Review explains scope, but **the foreground terminal confirms and revalidates**:
+start/restart and exposure gates remain there. The panel presents Stop in a
+foreground terminal without Review/confirmation, retaining unit/fragment
+expectations; direct CLI stop still works without requiring a terminal.
+CA trust requires the full typed fingerprint. A launch displays and announces
+“completion has not been checked”, never success. The panel invents no detached result channel;
+terminal operations report their post-launch refusals/errors in that terminal.
+
+Reopen or explicit Refresh reads a new authoritative snapshot; launch never
+refreshes or polls. Preview captures only the real `--dry-run` output and exit
+code, without an app/terminal/helper launch. Addresses are read only by the
+explicit chooser. Certificate inspection reads only the selected file. Paths,
+addresses, fingerprints, drafts and handoff selection live only in memory and
+are discarded with the panel; feature defaults remain seed-once and user-owned.
+All reads are offline-safe, with no connectivity probe.
+
+Tab visits controls; arrows/jk move list focus without wrapping, Home/End move
+to the first/last item, and PageUp/PageDown move by the visible body viewport.
+The same rules apply to tools, services, entrypoints, quick actions and both
+endpoint choice lists. Tabs also accept Home/End. Enter/Right/l inspect or
+explicitly select, never execute. Left/h goes back outside editors; native
+text-editing keys stay native. Detail/picker headings receive named entry focus,
+then normal Tab reaches the first control; focusing never selects an entry.
+Review initially focuses Cancel. Every Tab stop has a visible focus indication.
+The single scrolling card reveals focused rows fully when they fit; an oversized
+wrapped row starts at its beginning and remains normally scrollable.
+
+Enter in endpoint fields validates the draft and prepares Review through the
+authoritative dry-run, never launches. Enter in the certificate-path field
+performs Inspect, never trust. Syntax errors are shown with the relevant field
+and its accessible description, and submission focuses the first invalid field.
+CLI refusals remain on selectable Preview with Back preserving the draft.
+The address chooser has an explicit open state: its first Escape hides only
+the choices; another Escape unwinds the form. Selection closes the choices and
+preserves the CLI's scoped literal byte-for-byte. Unscoped link-local IPv6
+requires a local interface scope, rather than guessing one.
+
+Repository-source read failures remain independently labelled with diagnostics
+and Retry/Refresh, without clearing successful tool/service/provisioning reads.
+The existing anchor's labelled, full selectable SHA-256 and ownership are
+independent of the inspected certificate; removal Review repeats that anchor
+fingerprint and the machine-wide consequence. Inspection/read/preview refusals
+receive one immediate accessibility announcement per response. Detail paths,
+units/FragmentPath, fingerprints and dry-run output are copyable. Row height
+follows wrapped text without line caps, shrinking type or truncating safety text.
+Security menu discovery providers read nothing while the resolved plugin flag
+is disabled, including during ordinary root search; fixed row guards remain.
+
+The production components have offscreen keyboard/scroll/render checks at
+360×480, 560×640 and 720×640, stock Flexoki Light/Everforest tokens and enlarged
+text. These fixtures measure text/focus contrast and never touch a live desktop.
+The isolated offscreen accessibility bridge did not expose the QML application;
+actual AT-SPI screen-reader order, names/state and announcement delivery remain
+unverified, not implied by source declarations or engine counts.
+

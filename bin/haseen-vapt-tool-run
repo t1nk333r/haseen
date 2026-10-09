@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# haseen:summary Show verified tool usage and open an ordinary interactive workstation shell
+# haseen:args [--dry-run] TOOL [--entry ENTRY_ID]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow.sh"
+usage() { echo "Usage: haseen vapt tool-run [--dry-run] TOOL [--entry ENTRY_ID]"; }
+parse_common_flags "$@"
+if in_sysroot && ! $DRY_RUN; then
+    die 'workstation session refused with HASEEN_SYSROOT; use --dry-run'
+fi
+# Validate usage and ownership before opening any terminal.
+vapt_workflow tool-run --dry-run "${REST[@]}" >/dev/null || exit $?
+source "$HASEEN_PATH/lib/terminal.sh"
+in_floating_terminal "$@"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+vapt_workflow tool-run "${flags[@]}" "${REST[@]}"
