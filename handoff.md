@@ -117,8 +117,9 @@ evidence and remaining visual/accessibility limits are recorded in plan 088.
   Owner decision 2026-10-08: `onBattery` keeps haseen's names
   (`screensaverAfter`, `lockAfter`, `dpmsAfter`, `suspendAfter`) instead of
   the spec's `dimAfter`/`screenOffAfter`; there is no dim step (plan 082).
-  The next free plan number is 089 (087 covers VAPT provisioning; 088 covers
-  installed discovery and explicit Security workstation workflow).
+  Plan 089 repairs desktop test isolation. The next free plan number is 090
+  (087 covers VAPT provisioning; 088 covers installed discovery and explicit
+  Security workstation workflow).
 
 ## Gates
 

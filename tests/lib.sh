@@ -49,7 +49,9 @@ sandbox() {
     export DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
     export XDG_RUNTIME_DIR="$SANDBOX/run"
     mkdir "$XDG_RUNTIME_DIR" && chmod 0700 "$XDG_RUNTIME_DIR"
-    unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK NIRI_SOCKET
+    # A sandbox has no uwsm session; launch scenarios opt into one explicitly.
+    unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK NIRI_SOCKET \
+        UWSM_FINALIZE_VARNAMES UWSM_WAIT_VARNAMES
     # The session's platform theme (gtk3) needs a display and aborts without one.
     unset QT_QPA_PLATFORMTHEME
 }

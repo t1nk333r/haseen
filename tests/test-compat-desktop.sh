@@ -40,14 +40,22 @@ assert_contains "--dry-run shows the dispatch it would send" "$OUTPUT" "send_key
 capture "$shim" key 30:2
 assert_status "a state other than 0/1 is refused" 2 "$STATUS"
 
+# Only the interpreter and path helpers accompany the passthrough fixture.
+# System PATH entries would select an installed ydotool before our fake.
+shim_tools="$SANDBOX/shim-tools"
+mkdir -p "$shim_tools"
+for tool in bash dirname readlink; do
+    ln -s "$(command -v "$tool")" "$shim_tools/$tool"
+done
 mkdir -p "$SANDBOX/real"
 printf '#!/bin/sh\necho "real ydotool: $*"\n' >"$SANDBOX/real/ydotool"
 chmod +x "$SANDBOX/real/ydotool"
-capture env PATH="$HASEEN_PATH/shell/Compat/bin:$PATH:$SANDBOX/real" ydotool mousemove -x 5 -y 6
+capture env PATH="$HASEEN_PATH/shell/Compat/bin:$SANDBOX/real:$shim_tools" ydotool mousemove -x 5 -y 6
 assert_status "a non-key command reaches the real ydotool" 0 "$STATUS"
 assert_eq "with its arguments untouched" "real ydotool: mousemove -x 5 -y 6" "$OUTPUT"
-capture env PATH="$HASEEN_PATH/shell/Compat/bin:$PATH" ydotool mousemove -x 5
+capture env PATH="$HASEEN_PATH/shell/Compat/bin:$shim_tools" ydotool mousemove -x 5
 assert_status "without a real ydotool a non-key command fails" 2 "$STATUS"
+assert_contains "missing passthrough reports its own refusal" "$OUTPUT" "only 'ydotool key' is provided under haseen"
 
 # --- manifest: a DMS desktop surface is an overlay ---------------------------
 sandbox compat-desktop-manifest

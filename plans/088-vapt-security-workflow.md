@@ -716,8 +716,8 @@ removed and no production checks were weakened.
   select the installed program ahead of the fixture stub. The baseline runs
   of clock/compat IPC/compat desktop and greeter/launcher providers/menu back
   report **45/48** and **124/138** respectively. No new failure was introduced
-  by this follow-up; the local whole-suite gate remains failed for these
-  baseline limitations.
+  by this follow-up; the local whole-suite gate at `4577c27` failed for these
+  baseline limitations, repaired by plan 089 below.
 - `SHELLCHECK=/usr/bin/shellcheck GO=<installed Go 1.27.1> tools/lint.sh`:
   **lint OK**, 402 shell, 33 Lua, 180 JSON, 256 QML and 41 Go files.
 - `tools/check-docs.sh`: **check-docs OK**.
@@ -728,3 +728,20 @@ removed and no production checks were weakened.
   processes were stopped; no compositor screenshot or AT-SPI proof is claimed.
 - The owner explicitly keeps the review from another model family pending.
   This follow-up does not approve or merge either PR in the stack.
+
+### Local gate follow-up: desktop fixture isolation
+
+The owner requested repairs for all 17 local baseline failure counts. Plan
+089 records the reproduced failures and controlled probes. Clock/greeter
+runtime directories now honor `TMPDIR`; ydotool passthrough tests isolate
+their lookup PATH; `sandbox()` clears inherited uwsm launch markers. The
+launcher failures were caused by those markers selecting the uwsm branch
+instead of the systemd scope branch expected by this fixture.
+
+The four original failing suites, core isolation regressions and Apps launch
+matrix pass **279/279** with inherited markers deliberately present. All
+original behavioral assertions remain active. The complete final run passes
+**12,545/12,545**, 123 suites, exit 0; all 33 VAPT suites ran without
+prerequisite skips. Lint, docs and secrets gates pass. Plan 089 records the
+commands and evidence. Runtime VAPT contracts and the pending review from
+another model family are unchanged.

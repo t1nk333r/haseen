@@ -4,6 +4,12 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Core: preflight detection, CLI router, layer runner, installer dry-run.
 
+# --- inherited session state never selects a live launch path -----------------
+export UWSM_FINALIZE_VARNAMES=fixture-finalize UWSM_WAIT_VARNAMES=fixture-wait
+sandbox session-isolation
+assert_eq "sandbox clears inherited uwsm finalize markers" "" "${UWSM_FINALIZE_VARNAMES+set}"
+assert_eq "sandbox clears inherited uwsm wait markers" "" "${UWSM_WAIT_VARNAMES+set}"
+
 # --- preflight against every fixture ---------------------------------------
 for fx in "$FIXTURES"/*/; do
     fx="${fx%/}"

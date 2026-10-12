@@ -205,7 +205,7 @@ ShellRoot {
 }
 QML
 
-    qs_runtime="$(mktemp -d /tmp/clock-dayname.XXXXXX)"
+    qs_runtime="$(mktemp -d "${TMPDIR:-/tmp}/clock-dayname.XXXXXX")"
     chmod 0700 "$qs_runtime"
     setsid env -u WAYLAND_DISPLAY XDG_RUNTIME_DIR="$qs_runtime" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software \
         QT_NO_XDG_DESKTOP_PORTAL=1 HASEEN_PATH="$FAKE/share/haseen" \
