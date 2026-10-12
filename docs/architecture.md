@@ -104,6 +104,25 @@ Rules every layer follows:
   pacman keyring is global (plan 087). See `docs/vapt.md` for its trust, environment, and
   limited owned-link removal contracts. It does not require the desktop or
   default layers.
+  Plan 088 adds a separate read-only installed workflow: `workflow.py` reuses
+  phase-1 metadata for provenance/native state and discovers actual owned files,
+  not guessed commands. `vapt tool-list`, JSON status/doctor and `vapt menu`
+  execute no listed tool. Explicit `tool-help` needs owned documentation or a
+  reviewed help-only argv; `tool-run` shows that usage then opens an ordinary
+  shell, never the selected tool. The optional Security surface requires literal
+  merged `enabled: true`, without bar/service insertion. Feature workflow
+  defaults are seeded once on explicit provisioning, never by observation.
+  Explicit service actions select only reviewed package/unit bindings and
+  separately require unique package provenance, owned non-template units and current
+  `FragmentPath`, rechecking at the root gateway; no enable/preset/init path.
+  Local helpers use reviewed owned adapters, loopback defaults and terminal
+  exposure gates. HTTP pins descriptors and serves bytes only; the file helper
+  serves one owned file. CA trust requires a typed fingerprint, immutable
+  public bytes, an owned updater and an unchanged-anchor journal. Failed updates
+  expose `anchor.transaction` and `unknown` state. Explicit retry/removal of safe
+  pending/removing transactions revalidates under the root lock; foreign or
+  modified anchors remain refusals, and only updater success completes recovery. Observation
+  never changes trust or launches a proxy/browser.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions
@@ -199,6 +218,21 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `pluginId: string`
   - `settings: var` (manifest defaults merged with `shell.json` → `plugins.<id>.settings`)
   - `screen: var` (the `ShellScreen` for bar widgets and panels)
+- `haseen.security` (plan 088) is explicitly off in shipped `shell.json`,
+  panel-only and lazy. Its read-only `Read.qml` processes consume the CLI's
+  versioned evidence; `Model.js` validates schemas and fixed verb/argv shapes,
+  not a second ownership or privilege policy. `haseen.menu` keeps its static
+  provider map: Security rows use fixed enable/package guards and one exact
+  panel-toggle action. Internal typed page/item roles transfer one consumed
+  in-memory selection, never shell source or a dynamic contribution registry.
+  Every action goes through `Apps.launch`; previews use Process argv only.
+  Service argv includes the displayed unit/FragmentPath expectations; the CLI
+  checks them before terminal consent and revalidates again before the root
+  gateway. Detached launch has no completion contract: Refresh/reopen only,
+  no polling, optimistic success, persisted addresses/drafts or settings writer.
+  Identical menu guard expressions share one result per finite batch. The
+  Security enablement CLI reads configuration without loading provisioning or
+  local-action modules; disabled Security providers still read no inventory.
 - Safe mode (plan 061): while `~/.local/state/haseen/safe-mode` exists (JSON `{reason, since}`; `haseen shell recover safe-mode on|off`), `Plugins.held(id)` is true for every plugin whose origin is not `builtin` (user, user:omarchy, user:dms, omarchy, dms). A held plugin has no `entryUrl` and `Config.isEnabled` is false for it, so the running shell unloads it without a restart. A user copy of a built-in id gives way to the built-in. `shell plugins` over IPC reports `held` per plugin and a `safeMode` object. `haseen shell run` creates the state directory, because a `FileView` watch needs its parent to exist.
 
 ### 5.3 `shell.json`
@@ -403,7 +437,7 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 - Every `Timer` is marked on the line above it, and `tests/test-shell.sh` enforces both kinds. Prefer events: Hyprland IPC, PipeWire, UPower and NetworkManager D-Bus, `FileView` watches.
   - `// haseen:ui-timeout`: a single-shot UI timeout. One is re-armed as a clock: the `haseen.media` panel's seek bar emits `positionChanged()` once a second while the panel is open and the player plays (plan 078); the panel is freed on close, and a tick makes no D-Bus call.
   - `// haseen:sample`: a repeating sampler with an interval of 2 s or more and a `running:` binding gated on visibility or enablement.
-- No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python in the shell path.
+- No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python for shell startup or polling. The optional Security panel invokes its Python workflow only for finite, explicit reads and actions (§3), never as a background sampler.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
 - The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 12 MiB RSS.
 - Measure before claiming. `haseen doctor` prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):

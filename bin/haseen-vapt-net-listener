@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# haseen:summary Open a foreground local TCP listener without executing received data
+# haseen:args [--dry-run] [--yes] [--bind ADDRESS] [PORT]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+usage() { echo "Usage: haseen vapt net-listener [--dry-run] [--yes] [--bind ADDRESS] [PORT]"; }
+parse_common_flags "$@"
+vapt_endpoint_action listener "${REST[@]}"

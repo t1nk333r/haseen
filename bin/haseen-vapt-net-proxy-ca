@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# haseen:summary Inspect or explicitly manage one fingerprint-bound system proxy CA anchor
+# haseen:args status [--json] | inspect CERT [--json] [--dry-run] | trust CERT [--dry-run] [--yes] | remove FINGERPRINT [--dry-run] [--yes]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+usage() { echo "Usage: haseen vapt net-proxy-ca status [--json] | inspect CERT [--json] [--dry-run] | trust CERT [--dry-run] [--yes] | remove FINGERPRINT [--dry-run] [--yes]"; }
+parse_common_flags "$@"
+((${#REST[@]})) || { usage >&2; exit 2; }
+verb="${REST[0]}"
+CA_FLAGS=()
+$DRY_RUN && CA_FLAGS+=(--dry-run)
+operands=()
+json=false
+for arg in "${REST[@]:1}"; do
+    if [[ $arg == --json ]]; then
+        ! $json || { usage >&2; exit 2; }; json=true; CA_FLAGS+=(--json)
+    elif [[ $arg == --* ]]; then usage >&2; exit 2
+    else operands+=("$arg")
+    fi
+done
+case "$verb" in
+status) ((${#operands[@]} == 0)) || { usage >&2; exit 2; } ;;
+inspect) ((${#operands[@]} == 1)) || { usage >&2; exit 2; } ;;
+trust|remove) ! $json && ((${#operands[@]} == 1)) || { usage >&2; exit 2; } ;;
+*) usage >&2; exit 2 ;;
+esac
+vapt_ca_action "$verb" "${operands[0]:-}"

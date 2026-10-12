@@ -41,9 +41,10 @@ haseen vapt remove --dry-run                           # only owned activation l
   that approval imports a signing key into the shared pacman keyring, which
   stays after `haseen vapt repo-disable oniomarchy`. Never add `[oniomarchy]`
   to `/etc/pacman.conf`: haseen then refuses the private source.
-- **Services stay off.** `services` installs openssh and remmina; `anonymity`
-  installs macchanger and tor. Starting sshd or Tor, or changing a MAC address,
-  is the user's explicit decision, done by them, not part of provisioning.
+- **Provisioning leaves services off.** `services` installs openssh and remmina;
+  `anonymity` installs macchanger and tor. Explicit owned-unit service controls
+  are separate user requests, not installation hooks. Never enable/init them,
+  change a MAC address or launch Tor as a provisioning side effect.
 - **Dependencies are not tools.** powershell-bin, xorg-xhost and the Java and
   wxPython runtimes come in only as a selected tool's dependencies.
 - **Removal keeps things.** `haseen vapt remove` reverses only haseen's own
@@ -52,3 +53,82 @@ haseen vapt remove --dry-run                           # only owned activation l
   is a separate, deliberate `pacman -R` the user runs.
 - **Never edit `$HASEEN_PATH/layers/vapt/`** to add a tool. A missing tool is
   a change for the haseen repository, reviewed there.
+
+## Installed inventory and explicit usage
+
+`haseen vapt tool-list --json` reports verified installed roots and owned
+entrypoints; `--all` adds missing/unknown inventory diagnostics. Never infer
+an executable from a package name. Data-only packages have no run action;
+multiple entries require explicit `--entry` selection.
+
+Use `haseen vapt tool-help TOOL --entry ENTRY_ID --dry-run` to inspect usage
+evidence. Without dry-run it displays a unique owned matching document, or only
+a reviewed help-only binding. Missing/ambiguous evidence is a deliberate
+refusal: do not work around it by guessing `--help`. `tool-run` displays that
+same evidence then opens an ordinary interactive shell, never the selected
+program; it has no JSON mode and never prefills a command or starts a backend.
+
+`haseen vapt status --json` preserves 0/1/2 provisioning health.
+`haseen vapt doctor --json --dry-run` is observation only, not repair.
+`haseen vapt menu --enabled --json` checks the literal merged enable flag of
+the optional `haseen.security` surface; it does not enable it. List/status/
+doctor/menu never run installed tools, refresh sources or seed settings.
+Provisioning seeds VAPT workflow defaults once; never edit that user file for
+the user or publish local addresses/selected paths as evidence.
+
+
+## Explicit local actions
+
+`service-list --json` is observation; start/restart require terminal consent and
+revalidated owned `FragmentPath`, stop does not require consent. Exposure remains
+unknown; never infer loopback safety from service defaults or enable/preset/init.
+`net-listener`, `net-http-server`, `net-file-server` stay foreground. Bind only
+literal addresses and unprivileged ports; non-loopback exposure requires consent.
+Servers require consent and serve bytes only: no CGI, listing, uploads or fetched
+content. The file helper selects one package-owned regular file at `/file`,
+never guesses or runs an enumeration script. Doctor capability `enumeration-host`
+maps to fixed command `net-file-server`; whitelist capability command verbs.
+
+`net-proxy-ca status/inspect` never changes trust. Trust requires the full typed
+fingerprint even with `--yes`; removal preserves foreign/modified anchors.
+Never bypass a refusal, configure a browser/proxy, expose private certificate
+contents or claim an incomplete updater transaction succeeded. `net-remmina`
+launches only the verified client without connection/target/credentials.
+Dry-run stays offline and write-free; none of these helpers is an installer hook.
+
+## Optional Security workstation panel
+
+`haseen.security` ships explicitly disabled, panel-only, without bar/service
+insertion. Only enable it on the user's explicit request with
+`haseen plugin enable haseen.security`; open with
+`haseen shell ipc panel toggle haseen.security` or Setup → Security → VAPT
+workstation. It shows Overview, Tools, Services and Local actions. Discovery
+runs no action. Entry selection inspects; multiple entries require an explicit
+choice. Missing usage evidence is refusal, not permission to guess a command.
+
+The panel uses fixed whitelisted capability verbs and argv, never package/path
+shell interpolation. Service actions pass displayed unit/FragmentPath
+expectations; either mismatch refuses before privilege. The panel presents Stop
+in a foreground terminal without Review/confirmation; direct CLI stop still
+works without requiring a terminal. Start/restart and other confirmation
+gates remain terminal-authoritative, and no panel launch passes `--yes`. CA trust
+still requires the full typed fingerprint. A launch displays and announces only
+a request with completion unchecked, not success;
+status changes require explicit Refresh or reopen, never polling or retries.
+Preview is the real pure dry-run capture. Forms/paths/addresses/certificates
+stay in memory and user defaults are never rewritten. Do not publish them.
+
+List focus never wraps; Home/End and viewport PageUp/PageDown work in every
+inventory/choice list, while editing keys stay native. Heading entry focus
+announces the nested view, Tab reaches its first control and Review focuses Cancel.
+Endpoint Enter safely validates/prepares Review; certificate-path Enter only
+inspects. Errors preserve the draft and identify/focus the invalid field.
+The first Escape closes an open address chooser only. Preserve the reader's
+complete scoped IPv6 address as one unchanged argv operand: at most one
+`%SCOPE` matching `[A-Za-z0-9_.-]{1,64}`, with separate numeric literal validation.
+Unscoped link-local addresses require explicit interface selection, never DNS.
+Source read errors retain successful sections. Existing-anchor ownership and
+the full selectable fingerprint are independent of inspected certificate data
+and repeated in removal Review. Disabled Security providers perform no reads,
+even during ordinary menu search; do not bypass enablement or a CLI refusal.
+Offscreen fixtures are not actual AT-SPI screen-reader verification.

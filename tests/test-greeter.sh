@@ -242,8 +242,8 @@ threading.Thread(target=serve, daemon=True).start()
 print("ready", flush=True)
 threading.Event().wait(60)
 PY
-    # Unix socket paths stop at ~108 bytes, and $SANDBOX is already long.
-    run_dir="$(mktemp -d /tmp/haseen-greeter.XXXXXX)"
+    # Keep socket paths short while allowing a disk-backed TMPDIR on small tmpfs.
+    run_dir="$(mktemp -d "${TMPDIR:-/tmp}/haseen-greeter.XXXXXX")"
     sock="$run_dir/greetd.sock"
     record="$SANDBOX/greetd.log"
     : >"$record"

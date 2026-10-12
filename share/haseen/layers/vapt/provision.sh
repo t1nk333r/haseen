@@ -488,6 +488,14 @@ vapt_provision() (
     # A partially successful activation must not remain hidden behind a
     # previous removal marker, even if another provisioning item fails.
     vapt_state_clear "$HASEEN_USER_STATE/vapt/removed" || return 1
+    # Feature settings are seeded only on explicit provisioning, never by
+    # discovery/status/help. Existing user bytes (including links) are retained.
+    local workflow_settings="$HASEEN_USER_CONFIG/vapt/workflow.json"
+    if vapt_path_ancestors_safe "$workflow_settings" && [[ ! -L $(vapt_read_path "$workflow_settings") ]]; then
+        seed_user_file "$HASEEN_PATH/default/vapt/workflow.json" "$(vapt_read_path "$workflow_settings")" || VAPT_MUTATION_FAILED=1
+    else
+        warn 'VAPT workflow settings path redirected; preserved, not seeded'
+    fi
     rc=0; vapt_environment_apply "${VAPT_SELECTED[@]}" || rc=$?
     if ((rc == 0)); then VAPT_ENV_STATUS=ok
     else

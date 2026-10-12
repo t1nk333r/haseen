@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# haseen:summary Read the effective optional Security surface configuration
+# haseen:args [--enabled] [--json] [--dry-run]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow.sh"
+usage() { echo "Usage: haseen vapt menu [--enabled] [--json] [--dry-run]"; }
+parse_common_flags "$@"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+vapt_workflow menu "${flags[@]}" "${REST[@]}"

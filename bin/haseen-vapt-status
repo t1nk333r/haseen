@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # haseen:summary Show VAPT provisioning metadata and unavailable items
-# haseen:args 
+# haseen:args [--json] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
-usage() { echo "Usage: haseen vapt status "; }
+source "$HASEEN_PATH/layers/vapt/workflow.sh"
+usage() { echo "Usage: haseen vapt status [--json] [--dry-run]"; }
 parse_common_flags "$@"
-((${#REST[@]} == 0)) || { usage >&2; exit 2; }
-layer_run_status vapt
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+if ((${#REST[@]} == 0)); then
+    layer_run_status vapt
+elif ((${#REST[@]} == 1)) && [[ ${REST[0]} == --json ]]; then
+    vapt_workflow_status status --json "${flags[@]}"
+else
+    usage >&2
+    exit 2
+fi

@@ -1,6 +1,6 @@
 # Handoff — haseen
 
-Orientation for whoever picks this up next, human or agent. Updated 2026-10-08.
+Orientation for whoever picks this up next, human or agent. Updated 2026-10-12.
 
 ## What this repo is
 
@@ -63,7 +63,8 @@ The owner's other repos:
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
-| Optional VAPT workstation provisioning | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `docs/vapt.md` | 007, 087 |
+| Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088 |
+| Optional Security panel and menu | `share/haseen/shell/plugins/haseen.security/`, `share/haseen/shell/plugins/haseen.menu/`, `tests/test-vapt-security-ui.sh` | 088 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |
@@ -84,7 +85,36 @@ private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
 - 0003: own shell, DMS swap-in, plugin compat
 - 0004: installer now, PKGBUILDs later
 
-## State and queue (2026-10-08)
+## State and queue (2026-10-12)
+
+PR #40's independent final review returned REQUEST CHANGES at `60be005`.
+The plan 088 follow-up addresses R1-R8 with indexed discovery, reviewed Arch
+service bindings, locked CA transaction recovery, suite-specific Security engine
+prerequisites required in CI, bounded document expansion, shared menu guards,
+signal-test diagnostics and test-only historical path helpers. Plan 088 records
+the exact measurements and gates. `metadata.py` and phase-1 provenance rules
+are unchanged. Security remains off by default and lazy.
+The follow-up's full local gate passes 12,698/12,698 across 123 suites, with
+all 33 VAPT suites and all four Security engines running without prerequisite
+skips. Lint, docs and checksum-verified gitleaks 8.30.1 gates pass. The only
+full-suite skip is the installed-ttfx missing-program scenario.
+CI run 38236524175 at 0cb9a9c executed all four engines on Qt 6.12 but failed
+29 assertions. The follow-up normalizes validated signal snapshots to JSON and
+makes header/navigation/footer share the body scroll viewport. The original
+geometry matrix is also repeated with private empty fonts. Current-head CI
+must pass these engines, not merely reuse the previous green skipped check.
+PR #39 must land first; PR #40 then needs rebase and verification, followed by
+the owner's final approval. No merge or approval is authorized here. Rendered
+compositor and AT-SPI proof remain outstanding.
+
+Plan 088 slice 2B adds `share/haseen/shell/plugins/haseen.security/`, the fixed Security
+menu providers and `tests/test-vapt-security-ui.sh`. The panel is explicitly
+off by default and lazy; no bar/service entry or discovery action exists.
+CLI ownership/confirmation remains authoritative, displayed service snapshots
+are bound by optional expectation operands, and detached launch never implies
+success. Read status again only on reopen/Refresh. Real-engine hermetic UI
+evidence and remaining visual/accessibility limits are recorded in plan 088.
+
 
 - `main` = 96193cf: plans up to 074 are merged (PRs #13–#34).
 - Branch luna/gaps (one PR) implements the 8 gaps from
@@ -107,8 +137,9 @@ private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
   Owner decision 2026-10-08: `onBattery` keeps haseen's names
   (`screensaverAfter`, `lockAfter`, `dpmsAfter`, `suspendAfter`) instead of
   the spec's `dimAfter`/`screenOffAfter`; there is no dim step (plan 082).
-  The next free plan number is 088 (085 and 086 landed on main after this
-  queue; 087 is the VAPT inventory and private oniomarchy source).
+  Plan 089 repairs desktop test isolation. The next free plan number is 090
+  (087 covers VAPT provisioning; 088 covers installed discovery and explicit
+  Security workstation workflow).
 
 ## Gates
 

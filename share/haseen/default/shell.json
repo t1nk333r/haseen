@@ -32,6 +32,7 @@
     "haseen.windows": { "enabled": false },
     "haseen.emojisearch": { "enabled": false },
     "haseen.commands": { "enabled": false },
+    "haseen.security": { "enabled": false },
     "haseen.websearch": { "enabled": false }
   },
   "services": [

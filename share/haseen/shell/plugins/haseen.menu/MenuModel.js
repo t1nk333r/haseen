@@ -191,6 +191,56 @@ function providerRow(menuId, key, fields) {
     return row;
 }
 
+var SECURITY_ACTION = "haseen shell ipc panel toggle haseen.security";
+var SECURITY_GUARD = "haseen vapt menu --enabled";
+function providerAllowed(provider, securityEnabled) {
+    return ["security-tools", "security-services", "security-local"].indexOf(provider) < 0 || securityEnabled === true;
+}
+var SERVICE_GUARDS = {
+    ssh: SECURITY_GUARD + " && haseen-pkg-present openssh",
+    postgresql: SECURITY_GUARD + " && haseen-pkg-present postgresql",
+    apache: SECURITY_GUARD + " && haseen-pkg-present apache",
+    nginx: SECURITY_GUARD + " && haseen-pkg-present nginx",
+    beef: SECURITY_GUARD + " && ( haseen-pkg-present beef || haseen-pkg-present beef-xss )"
+};
+function securityText(value) {
+    return String(value || "").replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "");
+}
+function securityInfo(menuId, state, reason) {
+    var r = providerRow(menuId, state, {label: state === "empty" ? "No installed items" : state === "loading" ? "Reading installed evidence…" : "Could not read local status", description: securityText(reason), disabledNow: true});
+    r.when = SECURITY_GUARD;
+    return [r];
+}
+// data has passed Security Model's schema validation in the provider adapter.
+// Only closed guard/action strings enter the existing Bash menu boundary.
+function securityRows(kind, menuId, data) {
+    if (!data) return securityInfo(menuId, "error", "Unsupported or unreadable local status data");
+    var page = kind === "tools" ? "tools" : kind === "services" ? "services" : "local";
+    var records = kind === "tools" ? data.tools.filter(function(t) { return t.state === "installed"; }) : kind === "services" ? data.services.filter(function(s) { return s.installed; }) : data.workflow.capabilities.filter(function(c) { return c.installed; });
+    var rows = records.map(function(record) {
+        var key = record.id;
+        if (kind === "tools") {
+            var bytes = unescape(encodeURIComponent(key));
+            key = "t-";
+            for (var i = 0; i < bytes.length; i++) key += bytes.charCodeAt(i).toString(16).padStart(2, "0");
+        }
+        var refused = kind === "local" && ["missing", "unknown", "refused"].indexOf(record.state) >= 0;
+        var row = providerRow(menuId, key, {label: record.id, description: securityText(record.reason), action: SECURITY_ACTION, disabledNow: refused});
+        row.id = menuId + "." + key;
+        row.kind = "security-route";
+        row.securityPage = page;
+        row.securityItemId = record.id;
+        row.when = kind === "services" ? SERVICE_GUARDS[record.id] : record.id === "remmina" && kind === "local" ? SECURITY_GUARD + " && haseen-pkg-present remmina" : SECURITY_GUARD;
+        return row;
+    });
+    return rows.length ? rows : securityInfo(menuId, "empty", "Discovery starts nothing. Open the panel for missing/refused prerequisites.");
+}
+function securityRoute(entry) {
+    if (!entry || entry.kind !== "security-route" || entry.disabledNow || entry.action !== SECURITY_ACTION || !/^[a-z0-9][a-z0-9+_.-]*$/.test(entry.securityItemId || "")) return null;
+    var parents = {tools: "setup.security.vapt.tools", services: "setup.security.vapt.services", local: "setup.security.vapt.local"};
+    return entry.parent === parents[entry.securityPage] && entry.providerMenu === entry.parent ? {page: entry.securityPage, itemId: entry.securityItemId} : null;
+}
+
 function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'";
 }
@@ -450,6 +500,8 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
         detail: detail || "",
         path: pathFor(items, entry.id),
         action: entry.action || "",
+        securityPage: entry.securityPage || "",
+        securityItemId: entry.securityItemId || "",
         childCount: (entry.kind === "menu" || entry.kind === "link") ? childCount(items, itemOrder, target) : 0,
         disabled: isDisabled(disabledResults, entry),
         section: section || ""
@@ -471,7 +523,7 @@ function selectionAfter(rows, keepId, index) {
     return at >= 0 ? at : Math.max(0, Math.min(index, rows.length - 1));
 }
 
-var ROLES = ["itemId", "kind", "icon", "appIcon", "appId", "label", "target", "detail", "path", "action", "childCount", "disabled", "section"];
+var ROLES = ["itemId", "kind", "icon", "appIcon", "appId", "label", "target", "detail", "path", "action", "childCount", "disabled", "section", "securityPage", "securityItemId"];
 
 // Brings a ListModel to `rows` in place, keyed by itemId: a row that is still
 // wanted keeps its model entry (and so its delegate), moved into place if
@@ -557,24 +609,26 @@ function substituteGuardReaders(expression) {
     return expression;
 }
 
-function guardLine(id, tag, expression) {
-    return "if { " + substituteGuardReaders(expression) + "; } >/dev/null 2>&1 </dev/null; then echo " + id + ":" + tag + ":1; else echo " + id + ":" + tag + ":0; fi\n";
-}
-
 // One bash script for every `when:`, `checked:` and `disabled:`, printing
 // `<id>:<w|c|d>:<0|1>` per line. Empty when nothing asks.
 function guardScript(items) {
     var guards = "";
+    var expressions = [];
     for (var id in items) {
         var entry = items[id];
         if (!entry)
             continue;
-        if (entry.when)
-            guards += guardLine(id, "w", entry.when);
-        if (entry.checked)
-            guards += guardLine(id, "c", entry.checked);
-        if (entry.disabled)
-            guards += guardLine(id, "d", entry.disabled);
+        ["when", "checked", "disabled"].forEach(function(key, index) {
+            var expression = entry[key];
+            if (!expression) return;
+            var slot = expressions.indexOf(expression);
+            if (slot < 0) {
+                slot = expressions.length;
+                expressions.push(expression);
+                guards += "if { " + substituteGuardReaders(expression) + "; } >/dev/null 2>&1 </dev/null; then __haseen_guard_" + slot + "=1; else __haseen_guard_" + slot + "=0; fi\n";
+            }
+            guards += "echo " + id + ":" + ["w", "c", "d"][index] + ":${__haseen_guard_" + slot + "}\n";
+        });
     }
     if (!guards)
         return "";
@@ -641,6 +695,8 @@ function pickRows(options, query) {
             detail: detail,
             path: "",
             action: detail ? label + "\t" + detail : label,
+            securityPage: "",
+            securityItemId: "",
             childCount: 0,
             disabled: false,
             section: ""

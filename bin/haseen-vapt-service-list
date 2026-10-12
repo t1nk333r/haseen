@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# haseen:summary List owned installed service units and current state
+# haseen:args [--json] [--dry-run]
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+usage() { echo "Usage: haseen vapt service-list [--json] [--dry-run]"; }
+parse_common_flags "$@"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+if ((${#REST[@]} == 1)) && [[ ${REST[0]} == --json ]]; then flags+=(--json)
+elif ((${#REST[@]} != 0)); then usage >&2; exit 2
+fi
+vapt_actions service-list "${flags[@]}"

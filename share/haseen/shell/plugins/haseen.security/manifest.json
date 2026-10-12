@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.security",
+  "name": "Security workstation",
+  "version": "1.0.0",
+  "description": "Installed status and explicit local actions; nothing runs on entry",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "placement": {
+      "type": "string",
+      "default": "overlay",
+      "description": "On-demand overlay placement"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}
