@@ -1,0 +1,7 @@
+# Owner tool-name inventory from waydots/packages/security/cloud.txt.
+podman
+trivy
+syft
+grype
+kubectl
+helm

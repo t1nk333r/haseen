@@ -8,6 +8,9 @@
 #                    LAYER_REQUIRES=(other layers applied first)
 #                    LAYER_CONFLICTS=(layers that must not be applied with it)
 #                    LAYER_DISTROS=(cachyos arch omarchy)   # installer targets
+#                    LAYER_PICKABLE=false  optional; the layer needs its own
+#                                   arguments, so the install picker never
+#                                   offers it (default: offered)
 #                    layer_status   read-only; prints "ok: …" / "missing: …" /
 #                                   "warn: …" lines; returns 0 applied and
 #                                   healthy, 1 not applied, 2 degraded
@@ -144,6 +147,18 @@ layer_run_status() {
     (
         _layer_env "$1"
         layer_status
+    )
+}
+
+# layer_run_function NAME FUNCTION [ARGS...] — a layer's own command (one the
+# layer defines beyond status/apply/remove), in the same layer subshell.
+layer_run_function() {
+    local name="$1" function="$2"
+    shift 2
+    (
+        _layer_env "$name"
+        declare -F "$function" >/dev/null || die "layer $name has no $function"
+        "$function" "$@"
     )
 }
 

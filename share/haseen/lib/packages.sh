@@ -18,7 +18,13 @@ HASEEN_PACKAGES_SH=1
 # shellcheck source=common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-PKG_NAME_RE='^[a-z0-9@._+][a-z0-9@._+-]*$'
+# Spelled out, not [a-z]: a bracket range follows the caller's locale
+# collation (a UTF-8 locale can admit "á"), a literal list never does. The
+# same ASCII set as metadata.py's NAME.
+PKG_NAME_RE='^[abcdefghijklmnopqrstuvwxyz0123456789@._+][abcdefghijklmnopqrstuvwxyz0123456789@._+-]*$'
+# Manifest whitespace, ASCII only for the same reason ([[:space:]] admits
+# Unicode spaces under a UTF-8 locale).
+PKG_SPACE=$' \t\r\n\v\f'
 
 # manifest_entries FILE KIND — print package names of KIND (repo|aur).
 manifest_entries() {
@@ -26,7 +32,7 @@ manifest_entries() {
     [[ -r $file ]] || die "manifest not readable: $file"
     while IFS= read -r line || [[ -n $line ]]; do
         line="${line%%#*}"
-        line="${line//[[:space:]]/}"
+        line="${line//[$PKG_SPACE]/}"
         [[ -n $line ]] || continue
         case "$line" in
         aur:*)

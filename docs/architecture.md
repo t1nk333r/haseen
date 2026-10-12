@@ -23,6 +23,7 @@ file changes in the same commit.
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
 | 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
 | 10 | Brightness (plan 077) | `haseen brightness`: backlights and `*::kbd_backlight` via brightnessctl (logind), DDC/CI monitors via ddcutil (bus map cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`); `haseen setup ddc on` (opt-in) installs ddcutil and loads i2c-dev; the `haseen.display` panel (off) slides each device |
+| 11 | optional VAPT workstation environment, no AUR or tool execution | `layers/vapt`, 25 explicit group manifests and owned native environments (plans 007, 087) |
 
 ## 2. Filesystem
 
@@ -54,8 +55,10 @@ becomes `/usr`. Code never hard-codes either one: resolve `$HASEEN_PATH`, or use
 The contract is the header of `share/haseen/lib/layers.sh`. In short:
 `layer.sh` sets `LAYER_SUMMARY`, `LAYER_REQUIRES`, `LAYER_CONFLICTS` and
 `LAYER_DISTROS`, and defines `layer_status`, `layer_apply` and optionally
-`layer_remove`. An optional `packages.txt` installs first. Preflight globals are
-already set when the layer runs.
+`layer_remove`. A layer that needs its own arguments sets `LAYER_PICKABLE=false`
+so the install picker never offers it (`vapt`: its groups come from
+`./install.sh --vapt-groups`). An optional `packages.txt` installs first.
+Preflight globals are already set when the layer runs.
 
 | Layer | Requires | Summary |
 |---|---|---|
@@ -70,15 +73,16 @@ already set when the layer runs.
 | `ai` | base | Ollama (or llama.cpp) on 127.0.0.1, GPU-matched backend |
 | `dms` | desktop | DankMaterialShell, installed so it can be switched in for the haseen shell |
 | `gaming` | desktop | Steam, gamemode, MangoHud, Proton (CachyOS gaming packages) |
+| `vapt` | — | explicit owner tool groups (plus the oniomarchy-category groups of plan 087), checked binary/native sources (the private oniomarchy source only per operation, last), passive PATH and the optional shared COAE Python environment; dependency-only packages are never roots; no assessment execution or service activation (plans 007, 087) |
 
 Rules every layer follows:
 
 - **Idempotent.** A re-apply converges and never duplicates anything.
 - **Dry-run pure.** Every mutation goes through `run`, `run_root`, `write_root_file`, `append_root_file`, `install_root_file`, `write_user_file` or `seed_user_file`.
-- **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file.
-- **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). There are two exceptions:
+- **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file. No layer appends to or edits a user file after seeding. The optional VAPT layer seeds only its owned link `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc`/`~/.zshrc`. When no rc sources the link, it prints the line the user may add (plan 087).
+- **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). These exceptions are necessary:
   - `ENABLE_ENROLL_LIMINE_CONFIG=yes` has to be appended to `/etc/default/limine`, because limine-entry-tool resets that key after it reads the drop-ins (`limine-common-functions:143-144`, plan 002).
-  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024).
+  - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024). The optional VAPT layer appends a reviewed BlackArch stanza the same way, and only after its reviewed upgrade commits (plan 007).
 - **Package sources, in order** (owner decision 2026-10-04, `lib/packages.sh`):
   1. official and CachyOS repositories;
   2. Chaotic-AUR;
@@ -86,6 +90,20 @@ Rules every layer follows:
   4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
+  VAPT is an explicit exception preserving the owner's security-tool policy:
+  its explicit repository pins precede BlackArch, pinned native adapters,
+  already-enabled Chaotic-AUR, CachyOS, and Arch. Reviewed aliases and
+  canonical upstream identities decide which package may stand for a tool.
+  Its dedicated transaction path
+  excludes AUR/Omarchy dependencies, reports unavailable items, and never runs
+  the tools it installs. oniomarchy's repository is an opt-in, per-operation,
+  x86_64-only last tier (`--with-oniomarchy`, `haseen vapt repo-*`) whose
+  stanza stays in haseen's root state and VAPT's own configuration, never
+  `/etc/pacman.conf`; it keeps `Required DatabaseRequired`, admits only 52
+  reviewed names, is never a base vendor, and its key import into the shared
+  pacman keyring is global (plan 087). See `docs/vapt.md` for its trust, environment, and
+  limited owned-link removal contracts. It does not require the desktop or
+  default layers.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions

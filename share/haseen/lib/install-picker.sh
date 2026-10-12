@@ -82,10 +82,12 @@ picker_load() {
         layers)
             _picker_toml_list "$value" list || continue
             for x in "${list[@]}"; do
-                if layer_exists "$x"; then
-                    PICK_LAYERS+=("$x")
-                else
+                if ! layer_exists "$x"; then
                     warn "$file: unknown layer '$x', dropped"
+                elif ! _picker_pickable "$x"; then
+                    warn "$file: layer '$x' needs its own arguments and is not picked here, dropped (see ./install.sh --help)"
+                else
+                    PICK_LAYERS+=("$x")
                 fi
             done
             ;;
@@ -212,13 +214,18 @@ _picker_toggle() {
     done
 }
 
+# A layer that needs its own arguments (LAYER_PICKABLE=false, e.g. vapt's
+# explicit groups) is never offered: applied bare it would refuse and abort
+# the install after earlier layers applied. Its installer flags are the route.
+_picker_pickable() { [[ $(layer_field "$1" LAYER_PICKABLE) != false ]]; }
+
 # picker_run CORE_LAYER... — the guided choice into PICK_*. A saved choice is
 # offered for reuse first; declining it starts the picker from that choice.
 # Without one, the CORE layers start ticked and everything optional starts off.
 picker_run() {
     local core=("$@") optional=() all=() n url
     for n in $(layer_names); do
-        _picker_has "$n" "${core[@]}" || optional+=("$n")
+        _picker_has "$n" "${core[@]}" || ! _picker_pickable "$n" || optional+=("$n")
     done
     # shellcheck disable=SC2034  # read by name in _picker_toggle
     all=("${core[@]}" "${optional[@]}")

@@ -1,0 +1,8 @@
+# Owner tool-name inventory from waydots/packages/security/ad.txt.
+samba
+smbclient
+responder
+kerbrute
+evil-winrm
+bloodhound
+bloodhound-python

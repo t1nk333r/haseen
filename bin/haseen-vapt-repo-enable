@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# haseen:summary Approve the pinned oniomarchy source for dedicated VAPT transactions
+# haseen:args [--dry-run] [--yes] oniomarchy
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+usage() {
+    echo "Usage: haseen vapt repo-enable [--dry-run] [--yes] oniomarchy"
+    echo "  Imports the reviewed signing key into the shared pacman keyring; the stanza stays private"
+    echo "  to haseen VAPT transactions and /etc/pacman.conf is not changed. Installs no tool."
+}
+parse_common_flags "$@"
+[[ ${#REST[@]} == 1 && ${REST[0]} == oniomarchy ]] || { usage >&2; exit 2; }
+require_not_root
+layer_run_function vapt vapt_repo enable

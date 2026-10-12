@@ -43,6 +43,8 @@ steps (keyd, fingerprint, geoclue, dotfiles) start off. It uses gum when
 installed, else a numbered list. The choice is saved to
 `~/.config/haseen/install.toml`, and the next run offers to reuse it. Piped,
 `--yes` and `--layers a,b,c` runs ask nothing; `--pick` forces the picker.
+The picker never offers `vapt`, which needs explicit groups
+(`./install.sh --vapt-groups GROUP,...`, see [docs/vapt.md](docs/vapt.md)).
 
 The installer copies the tree to `/usr/local` (`bin/haseen*`, `share/haseen/`)
 and applies layers through `haseen layer apply`. Every command that changes the
@@ -66,6 +68,7 @@ translate, and lists what has no haseen equivalent; run it without
 | `ai` | Ollama (GPU-matched) or llama.cpp on loopback; `haseen ai chat/models/pull` |
 | `dms` | DankMaterialShell, available to swap in with `haseen shell use dms` |
 | `gaming` | CachyOS gaming packages (Steam, gamemode, MangoHud, Proton) |
+| `vapt` | optional security tool inventory in 25 explicit groups (the owner's lists plus oniomarchy's tool categories) and native/COAE environments; an opt-in, per-run, signature-required private oniomarchy source (`--with-oniomarchy`) that never touches `/etc/pacman.conf`; no AUR or Omarchy dependency, no assessment execution, no service started ([details](docs/vapt.md)) |
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.

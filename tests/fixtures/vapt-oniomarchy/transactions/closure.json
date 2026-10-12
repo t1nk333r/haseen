@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "comment": "metadata.py closure over a private DBPATH holding the signed oniomarchy database (repositories.json records) plus the listed extra rows. plan rows are repo/name/version; an empty plan is the offline (no transaction) closure.",
+  "cases": [
+    {"name": "admitted candidate with its admitted dependency", "target": "oniomarchy/supersdr", "plan": [["oniomarchy", "supersdr", "1.0-1"], ["oniomarchy", "python-yattag", "1.16-1"]], "extra": [], "expect": "safe"},
+    {"name": "keyring is never a transaction package", "target": "oniomarchy/supersdr", "plan": [["oniomarchy", "supersdr", "1.0-1"], ["oniomarchy", "python-yattag", "1.16-1"], ["oniomarchy", "oniomarchy-keyring", "20260906-1"]], "extra": [], "expect": "outside the admitted role set"},
+    {"name": "dependency-only package as the requested target", "target": "oniomarchy/powershell-bin", "plan": [["oniomarchy", "powershell-bin", "7.5.3-1"]], "extra": [], "expect": "outside the admitted role set"},
+    {"name": "unadmitted 53rd published name", "target": "oniomarchy/evil-tool", "plan": [["oniomarchy", "evil-tool", "1-1"]], "extra": [], "expect": "transaction differs from inspected metadata"},
+    {"name": "private package shadowing an earlier source", "target": "oniomarchy/supersdr", "plan": [["oniomarchy", "supersdr", "1.0-1"], ["oniomarchy", "python-yattag", "1.16-1"]], "extra": ["extra|python-yattag|1.16-1|https://www.yattag.org"], "expect": "shadows a package of an earlier source"},
+    {"name": "private Provides never satisfies a dependency", "target": "extra/sdrconsumer", "plan": [], "extra": ["extra|sdrconsumer|1-1|https://example.org/sdrconsumer||libsdrvirtual"], "expect": "unresolvable dependency libsdrvirtual"},
+    {"name": "private replacement declaration", "target": "oniomarchy/responder", "plan": [["oniomarchy", "responder", "3.1.5-1"]], "extra": [], "expect": "declares a replacement/conflict"},
+    {"name": "Omarchy dependency from the private source", "target": "oniomarchy/sliver", "plan": [["oniomarchy", "sliver", "1.5.43-1"]], "extra": [], "expect": "forbidden"},
+    {"name": "inventory identity enforced in closure", "target": "extra/maltego", "plan": [["extra", "maltego", "4.8-1"]], "extra": ["extra|maltego|4.8-1|https://maltego.example.org"], "expect": "package identity does not match"}
+  ]
+}

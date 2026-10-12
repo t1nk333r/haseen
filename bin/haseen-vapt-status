@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# haseen:summary Show VAPT provisioning metadata and unavailable items
+# haseen:args 
+set -Eeuo pipefail
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+usage() { echo "Usage: haseen vapt status "; }
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || { usage >&2; exit 2; }
+layer_run_status vapt

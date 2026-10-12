@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "comment": "Host architecture cases (fixture-architecture file) and the state an opted-in operation must report before any fetch or trust change.",
+  "cases": {"x86_64": "usable", "aarch64": "unsupported-architecture", "i686": "unsupported-architecture", "unknown": "unsupported-architecture"}
+}

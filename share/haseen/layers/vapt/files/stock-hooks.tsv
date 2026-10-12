@@ -1,0 +1,41 @@
+# Reviewed stock Arch/CachyOS maintenance hooks (plan 007, review F1).
+# basename<TAB>owning package<TAB>exact Exec (libalpm words)<TAB>bindings
+# A relevant hook is trusted without static helper interpretation only when it
+# is /usr/share/libalpm/hooks/<basename>, its Exec equals the reviewed words,
+# and the hook file plus every bound program are proven against the owning
+# base-vendor package (core/extra/multilib/cachyos*, never BlackArch/Chaotic):
+# retained bytes equal to the owner's authenticated base reference artifact
+# (reviewed DB digest + base keyring signer), incoming bytes only from that
+# owner's authenticated artifact. Approved programs seed the runtime closure
+# (interpreter, libraries, gconv/NSS selections), which is proven the same way.
+# Bindings:
+#   elf:/path=pkg          canonical native program owned by pkg
+#   script:/path=pkg@sha   helper owned by pkg whose bytes are a reviewed revision
+#   path:name=pkg          /usr/bin/name owned by pkg (root commits run PATH=/usr/bin)
+#   shell:/bin/sh          bash interpreter chain to bash's native /usr/bin/bash
+#   data:sysusers          incoming sysusers.d data limited to account entries
+# Effects: update touches /usr (ConditionNeedsUpdate); catalog/hwdb compile
+# journal catalog and hwdb databases; sysusers creates declared system
+# accounts/groups; locale-gen regenerates /etc/locale.gen locales; ldconfig,
+# iconvconfig, fc-cache, update-desktop-database, update-mime-database and
+# glib-compile-schemas rebuild caches/databases; 40-fontconfig-config links
+# packaged default fontconfig snippets; texinfo-install updates the info dir.
+# Not listed, so audited by the static model and refused when opaque:
+# systemd-hook tmpfiles (L/L+ can create .wants links), daemon-reload-system/
+# -user (runs generators), udev-reload (replays device events),
+# enqueue-marked/reload/restart (service restarts), sysctl and binfmt; module
+# loaders (gio-querymodules, gdk-pixbuf-query-loaders, gtk immodules);
+# update-ca-trust; kernel/initramfs/dkms/bootloader and snapshot hooks.
+35-systemd-update.hook	systemd	/usr/share/libalpm/scripts/systemd-hook update	script:/usr/share/libalpm/scripts/systemd-hook=systemd@90e00dd01359565be85a8cdd93b424b4c1c89563300d16eaf0e7eedc349bf9fc path:touch=coreutils
+25-systemd-catalog.hook	systemd	/usr/share/libalpm/scripts/systemd-hook catalog	script:/usr/share/libalpm/scripts/systemd-hook=systemd@90e00dd01359565be85a8cdd93b424b4c1c89563300d16eaf0e7eedc349bf9fc elf:/usr/bin/journalctl=systemd
+25-systemd-hwdb.hook	systemd	/usr/share/libalpm/scripts/systemd-hook hwdb	script:/usr/share/libalpm/scripts/systemd-hook=systemd@90e00dd01359565be85a8cdd93b424b4c1c89563300d16eaf0e7eedc349bf9fc elf:/usr/bin/systemd-hwdb=systemd
+20-systemd-sysusers.hook	systemd	/usr/share/libalpm/scripts/systemd-hook sysusers	script:/usr/share/libalpm/scripts/systemd-hook=systemd@90e00dd01359565be85a8cdd93b424b4c1c89563300d16eaf0e7eedc349bf9fc elf:/usr/bin/systemd-sysusers=systemd data:sysusers
+10-glibc-locale-gen.hook	glibc	/usr/bin/locale-gen	script:/usr/bin/locale-gen=glibc@6932c404fcba3e6ded66a459201b6f8eb94c964fd27ea9e0fcafd0433dcc34a8 path:rm=coreutils path:localedef=glibc
+11-glibc-ldconfig.hook	glibc	/usr/bin/ldconfig -r .	elf:/usr/bin/ldconfig=glibc
+12-glibc-iconvconfig.hook	glibc	/usr/bin/iconvconfig	elf:/usr/bin/iconvconfig=glibc
+fontconfig.hook	fontconfig	/usr/bin/fc-cache -s	elf:/usr/bin/fc-cache=fontconfig
+40-fontconfig-config.hook	fontconfig	/usr/share/libalpm/scripts/40-fontconfig-config /etc/fonts/conf.d	script:/usr/share/libalpm/scripts/40-fontconfig-config=fontconfig@7a9d50bccc709eb15db6ba8e13f69bc9d79b0bf354f1d17c1a5b2748edff3c33 path:ln=coreutils path:rm=coreutils
+update-desktop-database.hook	desktop-file-utils	/usr/bin/update-desktop-database --quiet	elf:/usr/bin/update-desktop-database=desktop-file-utils
+30-update-mime-database.hook	shared-mime-info	/usr/bin/env PKGSYSTEM_ENABLE_FSYNC=0 /usr/bin/update-mime-database /usr/share/mime	elf:/usr/bin/env=coreutils elf:/usr/bin/update-mime-database=shared-mime-info
+glib-compile-schemas.hook	glib2	/usr/bin/glib-compile-schemas /usr/share/glib-2.0/schemas	elf:/usr/bin/glib-compile-schemas=glib2
+texinfo-install.hook	texinfo	/bin/sh -c 'while read -r f; do if test -f "$f"; then install-info "$f" /usr/share/info/dir 2> /dev/null; fi; done'	shell:/bin/sh path:install-info=texinfo

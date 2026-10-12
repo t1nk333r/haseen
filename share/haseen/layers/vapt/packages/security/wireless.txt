@@ -1,0 +1,12 @@
+# Additional tool-name inventory from oniomarchy category facts; independently resolved by haseen; no upstream installer code copied.
+airgeddon
+bully
+cowpatty
+fern-wifi-cracker
+hcxdumptool
+hcxtools
+hostapd
+kismet
+pixiewps
+reaver
+wifite

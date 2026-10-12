@@ -1,0 +1,10 @@
+# Owner tool-name inventory from waydots/packages/security/core.txt.
+nmap
+wireshark-cli
+tcpdump
+openbsd-netcat
+socat
+proxychains-ng
+chisel
+ligolo-ng
+metasploit

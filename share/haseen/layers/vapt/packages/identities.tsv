@@ -1,0 +1,12 @@
+# logical	required-source	required-target	upstream-identity	reason
+pyrit	native	pyrit==1.1.0	https://github.com/microsoft/PyRIT	BlackArch pyrit is an unrelated WPA cracker
+httpx	repository	*	https://github.com/projectdiscovery/httpx	ProjectDiscovery CLI not Python httpx
+katana-pd	repository	*	https://github.com/projectdiscovery/katana	ProjectDiscovery CLI not katana-framework
+can-utils	repository	*	https://github.com/linux-can/can-utils	Linux-CAN suite, not any generic CAN utility provider
+social-engineer-toolkit	repository	*	https://github.com/trustedsec/social-engineer-toolkit	TrustedSec toolkit; BlackArch packages it as set
+maltego	repository	*	https://www.maltego.com	Maltego application identity
+armitage	repository	*	http://www.fastandeasyhacking.com	Armitage GUI; the URL is identity metadata, never a download location
+beef	repository	*	https://github.com/beefproject/beef	BeEF browser exploitation framework
+recon-ng	repository	*	https://github.com/lanmaster53/recon-ng	Recon-ng framework
+theharvester	repository	*	https://github.com/laramies/theHarvester	theHarvester OSINT collector
+hexstrike-ai	repository	*	https://github.com/0x4m4/hexstrike-ai	no reviewed package source yet; identity any future source must match

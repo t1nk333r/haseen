@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "comment": "Synthetic records of the private oniomarchy database for the hermetic suites. Names come from the admitted set except evil-tool (a 53rd published name) and the wrong-architecture airgeddon row. URLs are publisher-style metadata only.",
+  "keyring": {
+    "name": "oniomarchy-keyring",
+    "version": "20260906-1",
+    "arch": "any",
+    "url": "https://pkgs.oniomarchy.com"
+  },
+  "records": [
+    {
+      "name": "supersdr",
+      "version": "1.0-1",
+      "arch": "x86_64",
+      "url": "https://github.com/ka7oei/supersdr",
+      "depends": [
+        "python-yattag"
+      ]
+    },
+    {
+      "name": "chirp-next",
+      "version": "20261001-1",
+      "arch": "any",
+      "url": "https://chirpmyradio.com"
+    },
+    {
+      "name": "python-yattag",
+      "version": "1.16-1",
+      "arch": "any",
+      "url": "https://www.yattag.org"
+    },
+    {
+      "name": "recon-ng",
+      "version": "5.1.2-1",
+      "arch": "any",
+      "url": "https://github.com/lanmaster53/recon-ng"
+    },
+    {
+      "name": "cubicsdr",
+      "version": "0.2.7-9",
+      "arch": "x86_64",
+      "url": "https://cubicsdr.com"
+    },
+    {
+      "name": "can-utils",
+      "version": "2025.01-1",
+      "arch": "x86_64",
+      "url": "https://github.com/linux-can/can-utils"
+    },
+    {
+      "name": "powershell-bin",
+      "version": "7.5.3-1",
+      "arch": "x86_64",
+      "url": "https://github.com/PowerShell/PowerShell"
+    },
+    {
+      "name": "maltego",
+      "version": "4.8-1",
+      "arch": "x86_64",
+      "url": "https://www.maltego.com"
+    },
+    {
+      "name": "evil-tool",
+      "version": "1-1",
+      "arch": "x86_64",
+      "url": "https://example.invalid/evil"
+    },
+    {
+      "name": "airgeddon",
+      "version": "11.50-1",
+      "arch": "aarch64",
+      "url": "https://github.com/v1s1t0r1sh3r3/airgeddon"
+    },
+    {
+      "name": "dump1090-git",
+      "version": "1-1",
+      "arch": "x86_64",
+      "url": "https://github.com/flightaware/dump1090",
+      "provides": [
+        "cubicsdr",
+        "libsdrvirtual"
+      ]
+    },
+    {
+      "name": "responder",
+      "version": "3.1.5-1",
+      "arch": "any",
+      "url": "https://github.com/lgandx/Responder",
+      "replaces": [
+        "responder-legacy"
+      ]
+    },
+    {
+      "name": "sliver",
+      "version": "1.5.43-1",
+      "arch": "x86_64",
+      "url": "https://github.com/BishopFox/sliver",
+      "depends": [
+        "omarchy-base"
+      ]
+    }
+  ]
+}

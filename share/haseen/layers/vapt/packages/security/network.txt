@@ -1,0 +1,8 @@
+# Owner tool-name inventory from waydots/packages/security/network.txt.
+masscan
+aircrack-ng
+ettercap
+bettercap
+bind
+whois
+traceroute

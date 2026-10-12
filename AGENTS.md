@@ -62,6 +62,12 @@ tools/check-docs.sh
 tools/secrets.sh   # before every push: gitleaks (history) + privacy patterns
 ```
 
+VAPT suites create unique scratch sysroots under `${TMPDIR:-/tmp}` and remove
+them on exit. Their real ancestry/ownership checks remain enabled: putting
+mutable fixture state inside the checkout is unsafe when a CI mount prefix
+belongs to another account. Set `TMPDIR` to a sufficiently large, safely owned
+real-filesystem directory if `/tmp` is a capacity-limited tmpfs.
+
 `main` on GitHub is protected:
 - The CI checks `lint`, `test`, `docs`, `secrets` and `nix` must pass on an up-to-date branch.
 - History stays linear: no force pushes and no deletion.
