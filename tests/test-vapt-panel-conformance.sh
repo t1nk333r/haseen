@@ -62,6 +62,11 @@ Item {
             const beginning = item.topPadding + label.implicitHeight / label.lineCount;
             return top >= flick.contentY - ring && top + beginning <= flick.contentY + flick.height + ring;
         }
+        function bounds(item, flick) {
+            return JSON.stringify({width:win.width,height:win.height,fontSize:Theme.fontSize,
+                top:item.mapToItem(flick.contentItem,0,0).y,rowHeight:item.height,
+                contentY:flick.contentY,viewport:flick.height,contentHeight:flick.contentHeight});
+        }
         function exerciseList(list, name) {
             const original = list.rows;
             list.rows = Array.from({length:12}, (_, i) => Object.assign({}, original[0], {id:name + "-" + i, label:"Wrapped choice identity " + i, reason:"Refusal reason " + i}));
@@ -75,7 +80,7 @@ Item {
             keyClick(Qt.Key_End); settle();
             const focused = win.activeFocusItem;
             const flick = find(panel, i => i.contentY !== undefined && i.contentHeight !== undefined);
-            tryVerify(() => revealed(focused, flick), 5000, name + " focused row fully revealed, or oversized beginning readable");
+            tryVerify(() => revealed(focused, flick), 5000, name + " focused row fully revealed, or oversized beginning readable " + bounds(focused, flick));
             verify(Ink.ratio(Theme.foreground, focused.background.color) >= 4.5, name + " text contrast");
             verify(Ink.ratio(focused.background.border.color, focused.background.color) >= 3, name + " focus contrast");
             compare(focused.background.border.width, 2);
@@ -204,10 +209,10 @@ Item {
                     verify(focused.height + rounding >= focused.contentItem.implicitHeight + focused.topPadding + focused.bottomPadding);
                     const flick = find(panel, i => i.contentY !== undefined && i.contentHeight !== undefined);
                     verify(!!flick);
-                    tryVerify(() => revealed(focused, flick), 5000, "oversized row beginning and first line readable");
+                    tryVerify(() => revealed(focused, flick), 5000, "oversized row beginning and first line readable " + bounds(focused, flick));
                     list.focusIndex(0); settle();
                     const first = win.activeFocusItem;
-                    tryVerify(() => revealed(first, flick), 5000, "first row fully visible, or oversized beginning readable");
+                    tryVerify(() => revealed(first, flick), 5000, "first row fully visible, or oversized beginning readable " + bounds(first, flick));
                     waitForRendering(panel, 100);
                     const image = grabImage(panel);
                     verify(image.width > 0 && image.height > 0);
@@ -226,3 +231,18 @@ for case_name in test_all_list_surfaces test_anchor_and_certificate_submission t
     assert_contains "keyboard conformance completes $case_name" "$OUTPUT" "PASS   : qmltestrunner::PanelConformance::$case_name()"
 done
 assert_eq 'conformance has no runtime errors or unsupported accessibility attachments' '' "$(grep -E 'TypeError:|ReferenceError:|Binding loop|Accessible attached property' <<<"$OUTPUT" || true)"
+
+# CI has no font packages. Exercise fallback metrics without reading host font directories.
+mkdir -p "$H/empty-fonts" "$H/font-cache"
+cat >"$H/fontconfig.xml" <<EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig><dir>$H/empty-fonts</dir><cachedir>$H/font-cache</cachedir></fontconfig>
+EOF
+printf '  engine: Security fontless keyboard/render conformance (all four named tests) executing\n'
+capture env FONTCONFIG_FILE="$H/fontconfig.xml" QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic QML_IMPORT_PATH="$H/imports" QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML_TEST_BIN" -input "$H/Conformance.qml"
+assert_status 'fontless Qt keyboard and conformance runner exits' 0 "$STATUS"
+for case_name in test_all_list_surfaces test_anchor_and_certificate_submission test_contracts test_keyboard_and_wrapping; do
+    assert_contains "fontless conformance completes $case_name" "$OUTPUT" "PASS   : qmltestrunner::PanelConformance::$case_name()"
+done
+assert_eq 'fontless conformance has no runtime errors or unsupported accessibility attachments' '' "$(grep -E 'TypeError:|ReferenceError:|Binding loop|Accessible attached property' <<<"$OUTPUT" || true)"

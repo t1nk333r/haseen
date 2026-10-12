@@ -96,6 +96,9 @@ Item {
     }
     function apply(kind: string, gen: int, data: var, error: string): void {
         if (gen !== generation) return;
+        // Qt may marshal signal payload arrays as QVariantList sequences.
+        // Retain the already-validated transport as plain JSON for the model.
+        data = data === null ? null : JSON.parse(JSON.stringify(data));
         const nextErrors = Object.assign({}, errors);
         nextErrors[kind] = error; errors = nextErrors;
         if (error !== "") Accessible.announce(error, Accessible.Assertive);
@@ -239,21 +242,22 @@ Item {
         Accessible.role: Accessible.Pane
         Accessible.name: "Security workstation"
         MouseArea { anchors.fill: parent; onClicked: {} }
-        Column {
+        // Header, navigation and footer share the viewport with the body so
+        // narrow windows and fallback fonts cannot collapse it to one pixel.
+        Controls.ScrollView {
+            id: scroll
             anchors.fill: parent
             anchors.margins: Theme.gap * 2
-            spacing: Theme.gap
-            Header { width: parent.width; nested: root.view !== ""; refreshing: root.refreshing; backPage: ["Overview", "Tools", "Services", "Local actions"][root.page]; onBack: root.back(); onRefresh: root.refresh(); onClose: root.close() }
-            Navigation { id: nav; width: parent.width; selected: root.page; onChosen: index => root.choosePage(index) }
-            Controls.ScrollView {
-                id: scroll
-                width: parent.width
-                height: Math.max(1, parent.height - y - footer.height - parent.spacing)
-                clip: true
-                contentWidth: availableWidth
-                Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+            clip: true
+            contentWidth: availableWidth
+            Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+            Column {
+                width: scroll.availableWidth
+                spacing: Theme.gap
+                Header { width: parent.width; nested: root.view !== ""; refreshing: root.refreshing; backPage: ["Overview", "Tools", "Services", "Local actions"][root.page]; onBack: root.back(); onRefresh: root.refresh(); onClose: root.close() }
+                Navigation { id: nav; width: parent.width; selected: root.page; onChosen: index => root.choosePage(index) }
                 Column {
-                    width: scroll.availableWidth
+                    width: parent.width
                     spacing: Theme.gap * 2
                     StateMessage { width: parent.width; visible: root.errors[root.section] !== undefined && root.errors[root.section] !== ""; state: "error"; message: "Could not read " + root.section; description: root.errors[root.section] || ""; action: "Retry"; onActivated: root.refresh() }
                     StateMessage { width: parent.width; visible: root.errors.sources !== undefined && root.errors.sources !== ""; state: "error"; message: "Could not read repository sources (repo-status)"; description: root.errors.sources || ""; action: "Retry source read / Refresh"; onActivated: root.refresh() }
@@ -269,13 +273,13 @@ Item {
                         }
                     }
                 }
-            }
-            Column {
-                id: footer
-                width: parent.width
-                spacing: Theme.gap
-                Label { width: parent.width; text: "Local status • no network access" }
-                ActionButton { visible: root.notice !== ""; text: "Refresh status"; enabled: !root.refreshing; onClicked: root.refresh() }
+                Column {
+                    id: footer
+                    width: parent.width
+                    spacing: Theme.gap
+                    Label { width: parent.width; text: "Local status • no network access" }
+                    ActionButton { visible: root.notice !== ""; text: "Refresh status"; enabled: !root.refreshing; onClicked: root.refresh() }
+                }
             }
         }
     }

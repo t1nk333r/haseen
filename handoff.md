@@ -85,7 +85,7 @@ private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
 - 0003: own shell, DMS swap-in, plugin compat
 - 0004: installer now, PKGBUILDs later
 
-## State and queue (2026-10-08)
+## State and queue (2026-10-12)
 
 PR #40's independent final review returned REQUEST CHANGES at `60be005`.
 The plan 088 follow-up addresses R1-R8 with indexed discovery, reviewed Arch
@@ -94,12 +94,15 @@ prerequisites required in CI, bounded document expansion, shared menu guards,
 signal-test diagnostics and test-only historical path helpers. Plan 088 records
 the exact measurements and gates. `metadata.py` and phase-1 provenance rules
 are unchanged. Security remains off by default and lazy.
-The follow-up's full local gate passes 12,689/12,689 across 123 suites, with
+The follow-up's full local gate passes 12,698/12,698 across 123 suites, with
 all 33 VAPT suites and all four Security engines running without prerequisite
 skips. Lint, docs and checksum-verified gitleaks 8.30.1 gates pass. The only
-full-suite skip is the installed-ttfx missing-program scenario. Current-head CI
-must additionally show the four Security engines executing, not merely green
-checks from the previous head.
+full-suite skip is the installed-ttfx missing-program scenario.
+CI run 38236524175 at 0cb9a9c executed all four engines on Qt 6.12 but failed
+29 assertions. The follow-up normalizes validated signal snapshots to JSON and
+makes header/navigation/footer share the body scroll viewport. The original
+geometry matrix is also repeated with private empty fonts. Current-head CI
+must pass these engines, not merely reuse the previous green skipped check.
 PR #39 must land first; PR #40 then needs rebase and verification, followed by
 the owner's final approval. No merge or approval is authorized here. Rendered
 compositor and AT-SPI proof remain outstanding.

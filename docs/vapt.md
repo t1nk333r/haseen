@@ -859,7 +859,7 @@ are discarded with the panel; feature defaults remain seed-once and user-owned.
 All reads are offline-safe, with no connectivity probe.
 
 Tab visits controls; arrows/jk move list focus without wrapping, Home/End move
-to the first/last item, and PageUp/PageDown move by the visible body viewport.
+to the first/last item, and PageUp/PageDown move by the visible scroll viewport.
 The same rules apply to tools, services, entrypoints, quick actions and both
 endpoint choice lists. Tabs also accept Home/End. Enter/Right/l inspect or
 explicitly select, never execute. Left/h goes back outside editors; native
@@ -868,6 +868,8 @@ then normal Tab reaches the first control; focusing never selects an entry.
 Review initially focuses Cancel. Every Tab stop has a visible focus indication.
 The single scrolling card reveals focused rows fully when they fit; an oversized
 wrapped row starts at its beginning and remains normally scrollable.
+Header, page navigation and footer share this viewport, so enlarged text and
+fallback font metrics cannot leave the body with no readable line.
 
 Enter in endpoint fields validates the draft and prepares Review through the
 authoritative dry-run, never launches. Enter in the certificate-path field
@@ -893,6 +895,7 @@ is disabled, including during ordinary root search; fixed row guards remain.
 The production components have offscreen keyboard/scroll/render checks at
 360×480, 560×640 and 720×640, stock Flexoki Light/Everforest tokens and enlarged
 text. These fixtures measure text/focus contrast and never touch a live desktop.
+The conformance matrix also runs with an empty private font configuration.
 The isolated offscreen accessibility bridge did not expose the QML application;
 actual AT-SPI screen-reader order, names/state and announcement delivery remain
 unverified, not implied by source declarations or engine counts.

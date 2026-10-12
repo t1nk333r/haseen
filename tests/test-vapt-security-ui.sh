@@ -212,6 +212,7 @@ Window {
             eq("no discovery launch", 0, Apps.launches.length);
             eq("discovery only approved reads", true, FixtureState.reads.every(a => ["menu", "status", "doctor", "tool-list", "service-list", "repo-status"].indexOf(a[2]) >= 0));
             eq("semantic missing status retained", "missing", panel.snapshots.status.provisioning.state);
+            eq("signal snapshot keeps plain JSON package arrays", true, panel.snapshots.doctor.workflow.capabilities.every(c => Array.isArray(c.prerequisitePackages)));
             eq("unsupported schema refuses", null, M.parse("tools", '{"schemaVersion":2}'));
             eq("malformed JSON refuses", null, M.parse("tools", "{"));
             const duplicate = FixtureState.listing(); duplicate.tools.push(FixtureState.tool);

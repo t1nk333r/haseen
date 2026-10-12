@@ -490,7 +490,7 @@ The three action suites pass **424/424**; the four Security engine suites pass
 **417/417**. Rejected: optimistic completion, --yes authorization, deleting
 foreign/changed anchors or suppressing failure journals.
 
-### R4: Security engines required on CI, fixed in workflow
+### R4: Security engines required on CI, fixed
 
 The shared prerequisite gate incorrectly borrowed battery/media's Python
 dbus/gi and Quickshell requirements for QML-only tests. CI lacked those Python
@@ -513,6 +513,38 @@ required mode exits 1 with **0/1**. These are deliberate negative probes, not
 skips in the full gate. Rejected: installing unused
 Python modules, converting engine differences into skips, relaxing geometry
 assertions or treating the framework probe as production conformance.
+
+The first actual CI execution at `0cb9a9c` (run
+[38236524175](https://github.com/t1nk333r/haseen/actions/runs/38236524175))
+used Qt **6.12.0** and exposed **29 failed assertions**, giving
+**12,527/12,556**. Lint, docs, secrets and nix passed. All four Security engines
+executed rather than skipped. This failed test job is recorded as failure,
+not accepted evidence of completed conformance.
+
+Two production causes were reproduced with task-owned extracted Arch Qt 6.12
+libraries, without installing packages or contacting the desktop:
+
+- Signal delivery marshalled JSON package arrays into QVariantList sequences.
+  The strict `Array.isArray` model check then refused valid capabilities at
+  Review. `Panel.qml:101` converts the already-validated snapshot to plain JSON
+  at the receiving boundary. No parser/model assertion is relaxed.
+  `tests/test-vapt-security-ui.sh:215` asserts plain package arrays after
+  actual signal delivery. Existing Review, CA recovery and close-count cases
+  exercise the resulting behavior.
+- CI has no font packages. A private empty fontconfig reproduced a **1 px**
+  body viewport at **360x480 / font size 17**: wrapped fixed chrome consumed
+  the available height. `Panel.qml:247` puts header, navigation, body and footer
+  in one scroll viewport. Focus reveal now applies to those controls too.
+  `tests/test-vapt-panel-conformance.sh:242` repeats every original conformance
+  case with a private empty font directory and adds bounds to failure messages.
+  Every visibility, oversized-first-line, keyboard, contrast and render
+  assertion remains. Stacking only the header was tried and rejected because
+  it still left **12.09 px**, too little for the first line.
+
+The correction passes the three QML suites on Qt 6.12, including the fontless
+matrix. Final local totals and the current-head CI result are recorded below
+and in the delivery report. No fonts or unrelated Python modules are added to
+CI, and no engine failure is turned into a skip.
 
 ### R5: bounded document reads and expansion, fixed
 
@@ -580,6 +612,9 @@ verification, then the owner gives final approval.
 
 ### Follow-up verification
 
+These results produced the first review-fix commit `0cb9a9c`. The subsequent
+Qt 6.12 correction is verified separately below.
+
 The canonical isolated worktree is `~/.cache/haseen-wt/f40`, with disk-backed
 `TMPDIR=~/.cache/hf40/tmp`. The first full run was stopped after Themegen's
 private IPC pathname reached Linux's 108-byte Unix socket limit. A symlink
@@ -618,6 +653,36 @@ attempt is counted as a passing full gate.
 The pushed head's five CI checks and the actual Security engine log lines must
 be verified separately. The earlier green test check skipped these engines and
 is not evidence for R4. The delivery report records the current run's results.
+
+### Qt 6.12 correction verification
+
+- Three QML suites on task-owned Qt **6.12.0** pass **421/421**, including
+  the complete private-empty-font conformance matrix and the actual signal
+  snapshot assertion. Four Security suites on installed Qt **6.11.2** pass
+  **426/426**. No prerequisite skips occur in either focused run.
+- The final complete offscreen gate passes **12,698/12,698**, **123 suites**,
+  exit 0. All **33 VAPT suites** run without prerequisite skips. Every Security
+  engine executes, including the named fontless conformance run. The sole
+  skip line is `skip: ttfx is installed system-wide; the missing-ttfx message
+  is not exercised`.
+- The large discovery fixture measures **0.091 s** during this full gate,
+  with **2,103 installed / 30,003 repository records** against the unchanged
+  **20 s** bound. The original implementation exceeded that bound at 20.019 s.
+- Lint passes with **402 shell, 33 Lua, 180 JSON, 256 QML and 41 Go files**,
+  using `/usr/bin/shellcheck` and Go **1.27.1**. Docs pass. Gitleaks **8.30.1**
+  passes with **223 commits** scanned before the correction commit; a fresh
+  committed-history scan is required before its push. The downloaded archive's
+  pinned SHA-256 and the active extracted binary were re-compared and match.
+- The source diff from `60be005` adds no `sudo ` occurrences and leaves
+  `metadata.py` unchanged. A repository-wide literal grep is not empty:
+  inherited comments/help text and `layers/chaotic/layer.sh:48`'s fingerprint
+  read already exist at the reviewed head. This follow-up does not claim that
+  broad textual check is empty or alter unrelated Chaotic provisioning.
+
+The correction does not change the CLI/JSON beyond R3's additive
+`anchor.transaction` and explicit recovery availability. The final delivery
+report supplies the new head's five CI checks and exact engine log lines.
+Rendered compositor and AT-SPI proof remain outstanding.
 
 ## Exercised checks
 
