@@ -6,6 +6,29 @@ capture haseen-vapt-net-addresses --json --dry-run
 assert_status 'local address read' 0 "$STATUS"
 assert_eq 'one address JSON object' 1 "$(jq -s 'length' <<<"$OUTPUT")"
 assert_eq 'fixture loopback assigned address' 127.0.0.1 "$(jq -r '.addresses[0].address' <<<"$OUTPUT")"
+# Address fixtures must not borrow metadata from outside their sysroot, even
+# when either the final file or its containing directory is a symlink.
+addresses_fixture="$ROOT/var/lib/haseen/vapt/addresses.json"
+outside_addresses="$ROOT/../outside-addresses.json"
+printf '[{"interface":"fixtureoutside","address":"192.0.2.9","prefixLength":24}]\n' >"$outside_addresses"
+mv "$addresses_fixture" "$addresses_fixture.saved"
+ln -s ../../../../../outside-addresses.json "$addresses_fixture"
+capture haseen-vapt-net-addresses --json --dry-run
+assert_status 'address fixture file escape refused' 1 "$STATUS"
+assert_not_contains 'external file address not returned' "$OUTPUT" '192.0.2.9'
+rm "$addresses_fixture"
+mv "$addresses_fixture.saved" "$addresses_fixture"
+mv "$ROOT/var/lib/haseen/vapt" "$ROOT/var/lib/haseen/vapt.saved"
+mkdir "$ROOT/../outside-vapt"
+cp "$outside_addresses" "$ROOT/../outside-vapt/addresses.json"
+ln -s ../../../../outside-vapt "$ROOT/var/lib/haseen/vapt"
+capture haseen-vapt-net-addresses --json --dry-run
+assert_status 'address fixture ancestor escape refused' 1 "$STATUS"
+assert_not_contains 'external ancestor address not returned' "$OUTPUT" '192.0.2.9'
+rm "$ROOT/var/lib/haseen/vapt"
+mv "$ROOT/var/lib/haseen/vapt.saved" "$ROOT/var/lib/haseen/vapt"
+rm "$ROOT/../outside-vapt/addresses.json" "$outside_addresses"
+rmdir "$ROOT/../outside-vapt"
 for bad in 'example.org' '127.0.0.1;bad'; do
     capture haseen-vapt-net-listener --bind "$bad" 8080 --dry-run
     assert_status 'literal addresses only' 1 "$STATUS"

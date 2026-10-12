@@ -8,7 +8,7 @@
 - **Depends on**: 087
 - **Category**: vapt, CLI, shell
 - **Planned at**: 2026-10-08
-- **State**: Slices 2A-i, 2A-ii and 2B implemented: installed inventory, explicit usage/session commands, JSON health/readiness, owned service controls, foreground local helpers, fingerprint-bound CA actions and the optional off-by-default Security menu/panel. Independent rendered accessibility/theme review is not implied by hermetic engine evidence.
+- **State**: Slices 2A-i, 2A-ii and 2B implemented: installed inventory, explicit usage/session commands, JSON health/readiness, owned service controls, foreground local helpers, fingerprint-bound CA actions and the optional off-by-default Security menu/panel. Final review from another model family and independent rendered accessibility/theme proof remain pending.
 
 ## Contract
 
@@ -663,3 +663,68 @@ and persistent offline-safe copy remain the approved simplified treatments.
   **91/91 passed**. The full baseline runs; only the explicitly named four
   keyboard/render tests are skipped for the missing QtTest runner.
 - Documentation gate: `tools/check-docs.sh`.
+
+### Additional review: fixture addresses and initial panel consent
+
+The 2026-10-12 review compares phase 2 at `ee07ac6` with phase 1 at
+`8e0c067`. Separate Standards and Spec passes found one concrete issue each.
+Both passes used Sol, so they add evidence without satisfying the outstanding
+request for a final reviewer from another model family.
+
+- **Standards:** `share/haseen/layers/vapt/workflow_support.py:15` followed fixture address-file and
+  ancestor symlinks outside `HASEEN_SYSROOT`. The reader now reuses
+  `metadata.observed_resolve` and the bounded, descriptor-based
+  `metadata.metadata_read`. Missing address metadata still returns an empty
+  list. The two external-fixture regressions in `tests/test-vapt-net.sh`
+  failed all four new assertions before the fix (**178/182**) and passed
+  afterward (**182/182**). They use only disposable synthetic metadata.
+- **Spec:** the generic panel host accepts every enablement value except
+  literal false, while this optional surface requires literal true.
+  `share/haseen/shell/plugins/haseen.security/Panel.qml:172` now refuses construction before any read when
+  its merged entry does not contain `enabled: true`. The real-engine
+  `OptIn.qml` scenarios in `tests/test-vapt-security-ui.sh` construct the
+  production component with false, string true, null, a null entry and an
+  empty entry. Every case requires zero reads, zero pending requests and
+  exactly one close. All five formerly started six reads; the suite was
+  **93/95** before the fix and **95/95** afterward. Existing literal-true
+  scenarios retain the positive discovery control.
+- The blanket Python wording in architecture §6 conflicted with the explicit
+  on-demand workflow contract in §3. It now distinguishes shell startup and
+  polling from the finite reads/actions already implemented by this optional
+  panel. No new sampler, timer or default is introduced.
+- A fresh read-only check of both fixes found no residual issue. The initial
+  ten-suite workflow/panel regression run passed **990/990** before adding the
+  new regressions. The complete gate results below describe the final tree.
+
+Rejected changes: altering generic `Config.isEnabled` would change the
+existing opt-out behavior of unrelated plugins; a second address resolver
+would duplicate the established fixture-confinement policy. Neither is needed.
+
+Final verification uses the short isolated worktree and disk-backed
+`TMPDIR=~/.cache/hv12`. Longer worktree/runtime paths can exceed Unix socket
+limits; the hard-coded `/tmp` paths in the clock and greeter harnesses still
+encounter this account's existing quota. No unrelated temporary files were
+removed and no production checks were weakened.
+
+- Focused regressions through `tests/run.sh`: **182/182** for
+  `tests/test-vapt-net.sh` and **95/95** for `tests/test-vapt-security-ui.sh`.
+- Complete `QT_QPA_PLATFORM=offscreen GO=<installed Go 1.27.1> tests/run.sh`:
+  **12,494/12,511 passed**, 123 suites, exit 1. All VAPT suites passed. The
+  17 failure counts reproduce on unchanged `main` at `da73029`: the aborted
+  clock harness counts once, greeter has ten failures from its `/tmp` logging
+  and IPC quota, launcher providers has four failures, and two ydotool checks
+  select the installed program ahead of the fixture stub. The baseline runs
+  of clock/compat IPC/compat desktop and greeter/launcher providers/menu back
+  report **45/48** and **124/138** respectively. No new failure was introduced
+  by this follow-up; the local whole-suite gate remains failed for these
+  baseline limitations.
+- `SHELLCHECK=/usr/bin/shellcheck GO=<installed Go 1.27.1> tools/lint.sh`:
+  **lint OK**, 402 shell, 33 Lua, 180 JSON, 256 QML and 41 Go files.
+- `tools/check-docs.sh`: **check-docs OK**.
+- `GITLEAKS=<verified upstream 8.30.1> tools/secrets.sh`: **secrets OK**,
+  no leaks found. The release archive's SHA-256 matched its upstream checksum.
+- A nested compositor with the inert Security fixture reached `RENDER-READY`,
+  but `grim -o IO` did not complete. The recorded compositor and capture
+  processes were stopped; no compositor screenshot or AT-SPI proof is claimed.
+- The owner explicitly keeps the review from another model family pending.
+  This follow-up does not approve or merge either PR in the stack.

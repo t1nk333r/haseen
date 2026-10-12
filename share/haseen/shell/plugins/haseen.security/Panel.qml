@@ -170,6 +170,12 @@ Item {
     }
 
     Component.onCompleted: {
+        // The generic panel host accepts unset/malformed enablement. This
+        // optional surface needs literal consent before starting any reads.
+        if (Config.pluginEntry("haseen.security").enabled !== true) {
+            Qt.callLater(root.close);
+            return;
+        }
         menuRoute = Model.consume();
         if (menuRoute) page = Model.pages.indexOf(menuRoute.page);
         refresh();

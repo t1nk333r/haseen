@@ -372,3 +372,47 @@ done < <(grep 'UNIT-FAIL' <<<"$units" || true)
 if [[ $rc != 0 ]]; then printf '%s\n' "$units"; fi
 assert_eq 'Security has no QML runtime errors' '' "$(grep -E 'TypeError:|ReferenceError:|Error:|Binding loop' <<<"$units" || true)"
 assert_contains 'Security QML named scenarios complete' "$units" 'UNIT-DONE all named Security UI scenarios'
+
+cat >"$H/OptIn.qml" <<EOF
+import QtQuick
+import qs.Haseen
+import Quickshell
+import "file://$SEC" as SecurityUI
+Window {
+    id: win
+    width: 720; height: 640; visible: true
+    property int index: 0
+    property int failures: 0
+    property var panel: null
+    property var entries: [{enabled: false}, {enabled: "true"}, {enabled: null}, null, {}]
+    Component { id: factory; SecurityUI.Panel { pluginId: "haseen.security"; width: win.width; height: win.height } }
+    function begin() {
+        Config.merged = {plugins: {"haseen.security": entries[index]}};
+        FixtureState.reads = []; QsWindow.window.closes = 0;
+        panel = factory.createObject(win);
+        settle.start();
+    }
+    Timer {
+        id: settle; interval: 30
+        onTriggered: {
+            const clean = FixtureState.pending === 0 && FixtureState.reads.length === 0 && QsWindow.window.closes === 1;
+            if (clean) console.warn("OPTIN-PASS rejected entry " + JSON.stringify(win.entries[win.index]));
+            else { win.failures++; console.warn("OPTIN-FAIL rejected entry " + JSON.stringify(win.entries[win.index]) + " reads " + FixtureState.reads.length + " pending " + FixtureState.pending + " closes " + QsWindow.window.closes); }
+            win.panel.destroy(); win.panel = null;
+            win.index++;
+            if (win.index < win.entries.length) Qt.callLater(win.begin);
+            else { console.warn("OPTIN-DONE no discovery without literal consent"); Qt.exit(win.failures ? 1 : 0); }
+        }
+    }
+    Component.onCompleted: begin()
+}
+EOF
+set +e
+optin="$(QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic QML_IMPORT_PATH="$H/imports" QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 15 "$QML_BIN" "$H/OptIn.qml" 2>&1)"
+rc=$?
+set -e
+assert_status 'Security refuses construction without literal opt-in' 0 "$rc"
+assert_eq 'every disabled or malformed entry starts zero discovery' 5 "$(grep -c 'OPTIN-PASS' <<<"$optin" || true)"
+assert_eq 'opt-in guard has no QML runtime errors' '' "$(grep -E 'TypeError:|ReferenceError:|Error:|Binding loop' <<<"$optin" || true)"
+assert_contains 'opt-in construction scenarios complete' "$optin" 'OPTIN-DONE no discovery without literal consent'
+if [[ $rc != 0 ]]; then printf '%s\n' "$optin"; fi

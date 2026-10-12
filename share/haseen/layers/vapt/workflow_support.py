@@ -13,8 +13,12 @@ import ssl
 def local_addresses(root=''):
     """Read assigned local interface state only; no DNS or network probes."""
     if root:
-        path = Path(root + '/var/lib/haseen/vapt/addresses.json')
-        rows = json.loads(path.read_text()) if path.is_file() else []
+        from metadata import metadata_read, observed_resolve
+        path = observed_resolve(Path(root + '/var/lib/haseen/vapt/addresses.json'), root)
+        try:
+            rows = json.loads(metadata_read(path))
+        except FileNotFoundError:
+            rows = []
         valid = []
         for row in rows:
             address = ipaddress.ip_address(row['address'])
