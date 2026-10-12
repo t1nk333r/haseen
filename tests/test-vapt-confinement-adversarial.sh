@@ -126,7 +126,12 @@ with patch.object(support.subprocess,'run',parser):
         try:ca.mutate('remove',fp,root=str(target),updater=updater_failure)
         except ValueError as e:assert 'no complete success' in str(e)
         else:raise AssertionError('remove updater failure returned success')
-        assert ca.ca_status(str(target))['state']!='none','failed updater falsely reported trust removed'
+        status=ca.ca_status(str(target))
+        eq(status['state'],'unknown')
+        eq(status['reason'],'removal transaction incomplete; anchor absent; system trust may still contain CA')
+        eq(status['anchor']['transaction'],'removing')
+        eq(status['anchor']['unchanged'],False)
+        assert not (target/ca.ANCHORS.lstrip('/')/ca.anchor_name(fp)).exists()
     check('failed removal updater cannot claim absent trust',failed_remove)
     check('removal retry resolves retained transaction',lambda:ca.mutate('remove',fp,root=str(target),updater=lambda:None))
     check('completed removal observable none',lambda:eq(ca.ca_status(str(target))['state'],'none'))

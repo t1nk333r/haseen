@@ -103,8 +103,48 @@ Window {
             eq("changed certificate cannot reuse prior fingerprint",1,Apps.launches.length);
             panel.refresh();next();return;
         }
-        eq("refresh reads never start actions",true,FixtureState.reads.every(a=>["menu","status","doctor","tool-list","service-list","repo-status","net-proxy-ca"].indexOf(a[2])>=0));
-        eq("refresh never adds launches",1,Apps.launches.length);
+        if (step === 3) {
+            eq("refresh reads never start actions",true,FixtureState.reads.every(a=>["menu","status","doctor","tool-list","service-list","repo-status","net-proxy-ca"].indexOf(a[2])>=0));
+            eq("refresh never adds launches",1,Apps.launches.length);
+            panel.view="certificate";panel.draft={path:"/fixture/cert.pem"};
+            panel.inspection={state:"valid",certificate:{sha256:"A".repeat(64)}};
+            panel.anchor={schemaVersion:1,state:"unknown",reason:"pending trust fixture",anchor:{sha256:"A".repeat(64),unchanged:true,transaction:"pending"}};
+            next();return;
+        }
+        if (step === 4) {
+            eq("pending transaction renders explicitly",true,!!find(panel,item=>item.text==="Anchor transaction: pending"));
+            const retry=find(panel,item=>item.text==="Review trust retry in terminal");
+            eq("pending matching certificate exposes retry",true,!!retry && retry.enabled);
+            eq("pending unchanged anchor exposes removal",true,!!find(panel,item=>item.text==="Review removal of owned anchor" && item.visible));
+            panel.certificate("trust",false);
+            eq("pending trust retry retains Review","review",panel.view);
+            eq("pending trust retry keeps selected path operand","/fixture/cert.pem",panel.intentArgv[4]);
+            panel.launch();
+            eq("trust retry launches through foreground terminal",2,Apps.launches.length);
+            eq("trust retry never supplies yes",false,Apps.launches[1].indexOf("--yes")>=0);
+            panel.anchor={schemaVersion:1,state:"unknown",reason:"removal incomplete fixture",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"removing"}};
+            next();return;
+        }
+        if (step === 5) {
+            eq("removing transaction renders explicitly",true,!!find(panel,item=>item.text==="Anchor transaction: removing"));
+            eq("absent removing anchor exposes removal retry",true,!!find(panel,item=>item.text==="Review removal retry" && item.visible && item.enabled));
+            eq("removing transaction disables trust",true,!!find(panel,item=>item.text==="Review trust in terminal" && !item.enabled));
+            panel.certificate("trust",false);
+            eq("removing transaction cannot prepare trust",[],panel.intentArgv);
+            panel.certificate("remove",false);
+            eq("removal retry retains Review","review",panel.view);
+            eq("removal retry retains full fingerprint operand","A".repeat(64),panel.intentArgv[4]);
+            eq("removal retry review states transaction",true,panel.intentCopy.indexOf("Transaction: removing")>=0);
+            panel.launch();
+            eq("removal retry uses terminal gateway",3,Apps.launches.length);
+            panel.anchor={schemaVersion:1,state:"modified",reason:"modified pending fixture",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"pending"}};
+            next();return;
+        }
+        eq("modified pending transaction hides removal",false,!!find(panel,item=>item.text==="Review removal of owned anchor" && item.visible));
+        eq("modified pending transaction disables retry",true,!!find(panel,item=>item.text==="Review trust retry in terminal" && !item.enabled));
+        panel.certificate("remove",false);panel.certificate("trust",false);
+        eq("modified transaction cannot prepare either action",[],panel.intentArgv);
+        eq("recovery requests perform no automatic discovery",3,Apps.launches.length);
         Qt.exit(failures ? 1 : 0);
     }
 }

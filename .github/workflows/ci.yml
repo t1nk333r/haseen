@@ -67,7 +67,7 @@ jobs:
           chown -R ci:ci "$GITHUB_WORKSPACE"
       - name: tests/run.sh
         # runuser keeps the working directory (the checkout).
-        run: runuser -u ci -- env QT_QPA_PLATFORM=offscreen HOME=/home/ci tests/run.sh
+        run: runuser -u ci -- env QT_QPA_PLATFORM=offscreen HASEEN_REQUIRE_ENGINE=1 HOME=/home/ci tests/run.sh
 
   docs:
     runs-on: ubuntu-latest

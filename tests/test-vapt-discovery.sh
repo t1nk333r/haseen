@@ -65,3 +65,75 @@ assert_eq 'native pinned ownership exact' exact "$(jq -r '.tools[] | select(.id 
 assert_eq 'native RECORD console entry' native "$(jq -r '.tools[] | select(.id == "frida-tools") | .entrypoints[0].kind' <<<"$OUTPUT")"
 assert_eq 'native console path evidence' "$XDG_DATA_HOME/haseen/vapt/pipx/venvs/frida-tools/bin/frida" "$(jq -r '.tools[] | select(.id == "frida-tools") | .entrypoints[0].path' <<<"$OUTPUT")"
 workflow_no_calls native-discovery
+
+# Characterize the reviewed linear predicate before optimizing its search set.
+workflow_fixture vapt-index-equivalence
+capture python3 -B - "$VAPT_LAYER" "$ROOT" "$FIXTURES" <<'PY'
+import copy,json,pathlib,sys
+sys.path.insert(0,sys.argv[1]);import workflow as wf;import metadata as meta
+def linear(record,config,repos):
+    if not meta.allowed_local(record,config,repos):return []
+    return [s for s in config if meta.repository_safe(s,config) and meta.ALLOWED.fullmatch(s)
+            and meta.closure_identity_ok(s,record)
+            and any(p.get('name')==record['name'] and p.get('version')==record.get('version')
+                    and p.get('url','').rstrip('/')==record.get('url','').rstrip('/')
+                    and not p.get('metadata_unknown') and not meta.forbidden(p) for p in repos.get(s,[]))]
+config,repos,_=wf.source_snapshot();records=meta.installed(sys.argv[2]);checked=0
+fixtures=list(pathlib.Path(sys.argv[3]).rglob('repositories.json'))
+snapshots=[repos]
+for path in fixtures:
+    fixture=json.loads(path.read_text())
+    snapshots.append({'oniomarchy':fixture['records']} if 'records' in fixture else fixture)
+for snapshot in snapshots:
+    index=wf.index_repositories(snapshot)
+    candidates=records+[p for rows in snapshot.values() for p in rows]
+    for selected_config in (config,dict(config,oniomarchy=[meta.ONIOMARCHY_POLICY,'Server = '+meta.ONIOMARCHY_SERVER]),
+                            dict(config,extra=['Server = http://unreviewed.invalid'],omarchy=['Server = https://example.org'])):
+        for record in candidates:
+            for change in ({},{'version':'mismatch'},{'url':'https://unreviewed.invalid'},
+                           {'url':record.get('url','').rstrip('/')+'/'},{'version':''},{'url':''},
+                           {'metadata_unknown':True},{'depends':['omarchy']}):
+                row=dict(record,**change)
+                assert wf.package_sources(row,selected_config,index)==linear(row,selected_config,snapshot),(row,snapshot)
+                checked+=1
+# Exercise duplicate records and all rejection predicates in repository data.
+for field,value in [('version','wrong'),('url','https://wrong.invalid'),('metadata_unknown',True),('depends',['omarchy'])]:
+    snapshot=copy.deepcopy(repos)
+    snapshot['extra'][0][field]=value
+    snapshot['core']=[dict(snapshot['extra'][0]),dict(records[0])]
+    index=wf.index_repositories(snapshot)
+    for record in records:
+        assert wf.package_sources(record,config,index)==linear(record,config,snapshot)
+        checked+=1
+print('indexed/linear source equivalence:',checked,'comparisons;',len(snapshots),'fixture snapshots')
+PY
+assert_status 'indexed source results equal reviewed linear predicates' 0 "$STATUS"
+printf '%s\n' "$OUTPUT"
+
+# 20 seconds allows slow CI/container disks. The old 204 x installed x repository
+# scan exceeded this bound even at 203 installed / 17,300 repository records.
+workflow_fixture vapt-discovery-scale
+python3 -B - "$ROOT" <<'PY'
+import json,pathlib,sys
+base=pathlib.Path(sys.argv[1])/'var/lib/haseen/vapt'
+repos=json.loads((base/'repositories.json').read_text());installed=json.loads((base/'installed.json').read_text())
+for source in ('core','extra','blackarch'):
+    rows=[{'name':source+'-fixture-'+str(i),'version':'1-1','url':'https://example.org/'+source+'/'+str(i)} for i in range(10000)]
+    repos.setdefault(source,[]).extend(rows)
+    installed.extend(dict(row,files=['usr/share/'+row['name']+'/data']) for row in rows[:700])
+(base/'repositories.json').write_text(json.dumps(repos));(base/'installed.json').write_text(json.dumps(installed))
+PY
+capture python3 -B - <<'PY'
+import json,subprocess,time
+start=time.monotonic()
+result=subprocess.run(['haseen-vapt-tool-list','--json'],capture_output=True,text=True,timeout=20)
+elapsed=time.monotonic()-start
+assert result.returncode==0,result.stderr
+data=json.loads(result.stdout)
+assert len(data['tools'])==3,data['tools']
+assert sum(s['cachedPackages'] for s in data['sources'])>=30000
+print('scale tool-list: 2,103 installed; 30,003 repository records;',format(elapsed,'.3f'),'seconds; bound 20 seconds')
+PY
+assert_status 'large installed/repository fixture discovery within bound' 0 "$STATUS"
+printf '%s\n' "$OUTPUT"
+workflow_no_calls scale-discovery

@@ -609,24 +609,26 @@ function substituteGuardReaders(expression) {
     return expression;
 }
 
-function guardLine(id, tag, expression) {
-    return "if { " + substituteGuardReaders(expression) + "; } >/dev/null 2>&1 </dev/null; then echo " + id + ":" + tag + ":1; else echo " + id + ":" + tag + ":0; fi\n";
-}
-
 // One bash script for every `when:`, `checked:` and `disabled:`, printing
 // `<id>:<w|c|d>:<0|1>` per line. Empty when nothing asks.
 function guardScript(items) {
     var guards = "";
+    var expressions = [];
     for (var id in items) {
         var entry = items[id];
         if (!entry)
             continue;
-        if (entry.when)
-            guards += guardLine(id, "w", entry.when);
-        if (entry.checked)
-            guards += guardLine(id, "c", entry.checked);
-        if (entry.disabled)
-            guards += guardLine(id, "d", entry.disabled);
+        ["when", "checked", "disabled"].forEach(function(key, index) {
+            var expression = entry[key];
+            if (!expression) return;
+            var slot = expressions.indexOf(expression);
+            if (slot < 0) {
+                slot = expressions.length;
+                expressions.push(expression);
+                guards += "if { " + substituteGuardReaders(expression) + "; } >/dev/null 2>&1 </dev/null; then __haseen_guard_" + slot + "=1; else __haseen_guard_" + slot + "=0; fi\n";
+            }
+            guards += "echo " + id + ":" + ["w", "c", "d"][index] + ":${__haseen_guard_" + slot + "}\n";
+        });
     }
     if (!guards)
         return "";

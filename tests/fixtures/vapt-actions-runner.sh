@@ -7,6 +7,23 @@ source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
 vapt_action_refuse_fixture() { :; }
 vapt_root_exec() {
     printf '%s\n' "$*" >>"$VAPT_CALLS/action-root"
+    if [[ ${VAPT_CA_MUTATE:-false} == true && ${5-} == "$HASEEN_PATH/layers/vapt/workflow_ca.py" ]]; then
+        /usr/bin/python3 -B -c '
+import base64,os,pathlib,subprocess,sys
+sys.path.insert(0,sys.argv[1]);import workflow_ca as ca
+def updater():
+    if os.environ.get("VAPT_CA_UPDATER_FAIL")=="true":raise subprocess.CalledProcessError(7,["fixture-updater"])
+try:
+    if os.environ.get("VAPT_CA_CHANGE_BEFORE_ROOT")=="true":
+        p=pathlib.Path(os.environ["HASEEN_SYSROOT"]+ca.ANCHORS)/ca.anchor_name(sys.argv[3]);p.write_bytes(b"changed before root lock")
+    der=base64.b64decode(sys.stdin.buffer.read(),validate=True) if sys.argv[2]=="trust" else None
+    ca.mutate(sys.argv[2],sys.argv[3],der,root=os.environ["HASEEN_SYSROOT"],updater=updater)
+    print("Fixture owned proxy CA "+sys.argv[2]+" completed; updater succeeded")
+except (OSError,ValueError) as e:
+    print("fixture: "+str(e),file=sys.stderr);sys.exit(1)
+' "$HASEEN_PATH/layers/vapt" "$6" "$7"
+        return $?
+    fi
     [[ $* != *'workflow_ca.py trust '* ]] || cat >/dev/null
 }
 run() {
@@ -19,7 +36,7 @@ confirm() {
     if [[ ${VAPT_CHANGE_FRAGMENT:-false} == true ]]; then
         /usr/bin/python3 - "$HASEEN_SYSROOT/var/lib/haseen/vapt/services.json" <<'PY'
 import json,sys
-p=sys.argv[1];r=json.load(open(p));r['owned-secure-login.service']['FragmentPath']='/etc/systemd/system/foreign.service'
+p=sys.argv[1];r=json.load(open(p));r['sshd.service']['FragmentPath']='/etc/systemd/system/foreign.service'
 with open(p,'w') as f:json.dump(r,f)
 PY
     fi
@@ -40,7 +57,7 @@ vapt_actions() {
         if [[ -e $VAPT_CALLS/service-first-read ]]; then
             /usr/bin/python3 - "$HASEEN_SYSROOT/var/lib/haseen/vapt/services.json" <<'PY'
 import json,sys
-p=sys.argv[1];r=json.load(open(p));r['owned-secure-login.service']['FragmentPath']='/etc/systemd/system/foreign.service'
+p=sys.argv[1];r=json.load(open(p));r['sshd.service']['FragmentPath']='/etc/systemd/system/foreign.service'
 with open(p,'w') as f:json.dump(r,f)
 PY
         else

@@ -1,6 +1,6 @@
 # Handoff — haseen
 
-Orientation for whoever picks this up next, human or agent. Updated 2026-10-08.
+Orientation for whoever picks this up next, human or agent. Updated 2026-10-12.
 
 ## What this repo is
 
@@ -63,7 +63,7 @@ The owner's other repos:
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
-| Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088 |
+| Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088 |
 | Optional Security panel and menu | `share/haseen/shell/plugins/haseen.security/`, `share/haseen/shell/plugins/haseen.menu/`, `tests/test-vapt-security-ui.sh` | 088 |
 | Omarchy import, gestures, lock recovery, crash watch | `bin/haseen-{import-omarchy,gestures-apply,lock-release,crash-watch}`, `share/haseen/lib/{omarchy-import,gestures}.sh`, `share/haseen/shell/plugins/haseen.gestures/` | 048 |
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
@@ -86,6 +86,23 @@ private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
 - 0004: installer now, PKGBUILDs later
 
 ## State and queue (2026-10-08)
+
+PR #40's independent final review returned REQUEST CHANGES at `60be005`.
+The plan 088 follow-up addresses R1-R8 with indexed discovery, reviewed Arch
+service bindings, locked CA transaction recovery, suite-specific Security engine
+prerequisites required in CI, bounded document expansion, shared menu guards,
+signal-test diagnostics and test-only historical path helpers. Plan 088 records
+the exact measurements and gates. `metadata.py` and phase-1 provenance rules
+are unchanged. Security remains off by default and lazy.
+The follow-up's full local gate passes 12,689/12,689 across 123 suites, with
+all 33 VAPT suites and all four Security engines running without prerequisite
+skips. Lint, docs and checksum-verified gitleaks 8.30.1 gates pass. The only
+full-suite skip is the installed-ttfx missing-program scenario. Current-head CI
+must additionally show the four Security engines executing, not merely green
+checks from the previous head.
+PR #39 must land first; PR #40 then needs rebase and verification, followed by
+the owner's final approval. No merge or approval is authorized here. Rendered
+compositor and AT-SPI proof remain outstanding.
 
 Plan 088 slice 2B adds `share/haseen/shell/plugins/haseen.security/`, the fixed Security
 menu providers and `tests/test-vapt-security-ui.sh`. The panel is explicitly

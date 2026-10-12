@@ -68,7 +68,7 @@ function parse(kind, raw) {
     } else if (kind === "anchor") {
         if (!member(d.state, ["none", "owned", "foreign", "modified", "unknown", "refused"]) || !string(d.reason)) return null;
         if (d.state === "refused" && d.anchor === undefined) d.anchor = null;
-        if (d.anchor !== null && (!d.anchor || !/^[A-F0-9]{64}$/.test(d.anchor.sha256) || typeof d.anchor.unchanged !== "boolean")) return null;
+        if (d.anchor !== null && (!d.anchor || !/^[A-F0-9]{64}$/.test(d.anchor.sha256) || typeof d.anchor.unchanged !== "boolean" || (d.anchor.transaction !== undefined && !member(d.anchor.transaction, ["pending", "removing", "created"])))) return null;
     } else return null;
     return d;
 }
@@ -149,6 +149,15 @@ function localArgv(cli, c, draft, operation) {
 function dryRun(argv) { return argv.length ? argv.slice(0,3).concat(["--dry-run"], argv.slice(3)) : []; }
 function terminal(cli, argv) { return path(cli) && argv.length && argv[0] === cli ? [cli, "config", "terminal", "--"].concat(argv) : []; }
 function fingerprint(value) { return (String(value || "").match(/.{1,2}/g) || []).join(":"); }
+function anchorRemoval(a) {
+    return !!(a && a.anchor && ((a.state === "owned" && a.anchor.unchanged) ||
+        (a.state === "unknown" && (a.anchor.transaction === "removing" || (a.anchor.transaction === "pending" && a.anchor.unchanged)))));
+}
+function anchorTrust(a, inspection) {
+    if (!a || !inspection || inspection.state !== "valid" || !inspection.certificate) return false;
+    return a.state === "none" || !!(a.anchor && a.anchor.unchanged && a.anchor.sha256 === inspection.certificate.sha256 &&
+        (a.state === "owned" || (a.state === "unknown" && a.anchor.transaction === "pending")));
+}
 function groups(tools) {
     var out = [];
     tools.forEach(function(t) { t.groups.forEach(function(g) { if (out.indexOf(g) < 0) out.push(g); }); });

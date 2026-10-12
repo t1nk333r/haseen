@@ -134,10 +134,12 @@ def ca_status(root=''):
             data = None
         unchanged = data is not None and hashlib.sha256(data).hexdigest() == row['contentSha256']
         result['anchor'] = {'sha256': row['sha256'], 'subject': row['subject'], 'issuer': row['issuer'],
-                            'path': ANCHORS + '/' + name, 'unchanged': unchanged}
+                            'path': ANCHORS + '/' + name, 'unchanged': unchanged, 'transaction': row['state']}
         result.update(state='owned' if unchanged else 'modified', reason='unchanged fingerprint-bound owned anchor' if unchanged else 'owned anchor missing or modified; preserved')
-        if unchanged and row['state'] != 'created':
-            result.update(state='unknown', reason='owned anchor transaction incomplete; no success assumed')
+        if unchanged and row['state'] == 'pending':
+            result.update(state='unknown', reason='trust transaction pending; owned anchor unchanged; system trust update incomplete')
+        elif row['state'] == 'removing' and (unchanged or data is None):
+            result.update(state='unknown', reason='removal transaction incomplete; anchor ' + ('unchanged' if unchanged else 'absent') + '; system trust may still contain CA')
     except (OSError, ValueError):
         result.update(state='unknown', reason='CA ownership state unsafe or unreadable; preserved')
     finally:
@@ -146,6 +148,20 @@ def ca_status(root=''):
         if anchor_fd is not None:
             os.close(anchor_fd)
     return result
+
+
+def trust_allowed(status, fingerprint):
+    anchor = status.get('anchor')
+    return status['state'] == 'none' or bool(anchor and anchor['sha256'] == fingerprint and anchor['unchanged']
+            and (status['state'] == 'owned' or (status['state'] == 'unknown' and anchor['transaction'] == 'pending')))
+
+
+def remove_allowed(status, fingerprint):
+    anchor = status.get('anchor')
+    return bool(anchor and anchor['sha256'] == fingerprint
+                and ((status['state'] == 'owned' and anchor['unchanged'])
+                     or (status['state'] == 'unknown' and (anchor['transaction'] == 'removing'
+                         or (anchor['transaction'] == 'pending' and anchor['unchanged'])))))
 
 
 def mutate(action, fingerprint, der=None, root='', updater=None):
@@ -181,6 +197,8 @@ def mutate(action, fingerprint, der=None, root='', updater=None):
             old = None
         if row is None and old is not None:
             raise ValueError('foreign anchor preserved')
+        if action == 'trust' and row and row['state'] == 'removing':
+            raise ValueError('removal transaction incomplete; retry removal before trusting a CA')
         if row and (old is None or hashlib.sha256(old).hexdigest() != row['contentSha256']) and not (action == 'remove' and row['state'] == 'removing' and old is None):
             raise ValueError('modified or missing owned anchor preserved')
         if action == 'trust':

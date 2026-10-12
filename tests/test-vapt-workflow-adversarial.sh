@@ -50,7 +50,7 @@ for verb in start stop restart; do
         case "$expectation" in
             unit) args=(--expect-unit '--no-block') ;;
             fragment) args=(--expect-fragment '/etc/systemd/system/foreign.service') ;;
-            match) args=(--expect-unit owned-secure-login.service --expect-fragment /usr/lib/systemd/system/owned-secure-login.service) ;;
+            match) args=(--expect-unit sshd.service --expect-fragment /usr/lib/systemd/system/sshd.service) ;;
         esac
         capture "haseen-vapt-service-$verb" ssh "${args[@]}" --dry-run
         expected=0; [[ $expectation != unit && $expectation != fragment ]] || expected=1
@@ -58,26 +58,26 @@ for verb in start stop restart; do
     done
 done
 assert_eq 'expectation refusals never invoke privileged gateway' '' "$(vapt_calls action-root)"
-actions_api service stop ssh old.service /usr/lib/systemd/system/owned-secure-login.service
+actions_api service stop ssh old.service /usr/lib/systemd/system/sshd.service
 assert_status 'live changed-unit expectation refuses' 1 "$STATUS"
 assert_eq 'live changed-unit expectation refuses before privilege' '' "$(vapt_calls action-root)"
-actions_api service stop ssh owned-secure-login.service /foreign/fragment.service
+actions_api service stop ssh sshd.service /foreign/fragment.service
 assert_status 'live changed-fragment expectation refuses' 1 "$STATUS"
 assert_eq 'live changed-fragment expectation refuses before privilege' '' "$(vapt_calls action-root)"
-actions_api service stop ssh owned-secure-login.service /usr/lib/systemd/system/owned-secure-login.service
+actions_api service stop ssh sshd.service /usr/lib/systemd/system/sshd.service
 assert_status 'live matching expectations authorize exact selected unit' 0 "$STATUS"
-assert_contains 'matching expectations reach only stop argv' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- owned-secure-login.service'
+assert_contains 'matching expectations reach only stop argv' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- sshd.service'
 rm -f "$CALLS/action-root"
 actions_api service stop ssh
 assert_status 'absent expectations still require current verified ownership' 0 "$STATUS"
-assert_contains 'absent expectations do not change selected unit' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- owned-secure-login.service'
+assert_contains 'absent expectations do not change selected unit' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- sshd.service'
 rm -f "$CALLS/action-root"
 VAPT_CONFIRM=yes VAPT_CHANGE_FRAGMENT=true actions_api service start ssh
 assert_status 'fragment swapped during review refuses before privilege' 1 "$STATUS"
 assert_eq 'review race has zero privileged calls' '' "$(vapt_calls action-root)"
 python3 -B - "$ROOT/var/lib/haseen/vapt/services.json" <<'PY'
 import json,sys
-p=sys.argv[1];r=json.load(open(p));r['owned-secure-login.service']['FragmentPath']='/usr/lib/systemd/system/owned-secure-login.service';open(p,'w').write(json.dumps(r))
+p=sys.argv[1];r=json.load(open(p));r['sshd.service']['FragmentPath']='/usr/lib/systemd/system/sshd.service';open(p,'w').write(json.dumps(r))
 PY
 # Substitute only the launch/privilege boundary: no terminal or systemctl runs.
 # A missing terminal must block start/restart, but must NOT block stop.
@@ -96,7 +96,7 @@ vapt_service_action "$1" ssh
 SH
     if [[ $verb == stop ]]; then
         assert_status 'stop remains usable when terminal unavailable' 0 "$STATUS"
-        assert_contains 'stop reaches exact root argv without terminal' "$OUTPUT" 'ROOT-ARGV </usr/bin/systemctl> <stop> <--> <owned-secure-login.service>'
+        assert_contains 'stop reaches exact root argv without terminal' "$OUTPUT" 'ROOT-ARGV </usr/bin/systemctl> <stop> <--> <sshd.service>'
         assert_not_contains 'stop never asks for a terminal' "$OUTPUT" 'TERMINAL-UNAVAILABLE'
     else
         assert_status "$verb fails when terminal unavailable" 19 "$STATUS"
@@ -186,3 +186,42 @@ assert_not_contains 'service wrong-shape manager has no traceback diagnostic' "$
 assert_eq 'read and preview never execute package-name candidate' '' "$(vapt_calls unowned-package-name)"
 assert_eq 'read and preview never open session shell' '' "$(vapt_calls adversarial-shell)"
 actions_untouched adversarial-workflow
+
+# Preserve the independent review's nearby-sysroot escape controls. Every
+# outside file is still inside this sandbox, never in the owner's HOME.
+actions_fixture vapt-nearby-observation
+outside="$ROOT/../outside"
+mkdir -p "$outside"
+services="$ROOT/var/lib/haseen/vapt/services.json"
+cp "$services" "$outside/services.json"
+python3 - "$outside/services.json" <<'PY'
+import json,sys
+p=sys.argv[1];rows=json.load(open(p));rows['sshd.service']['ActiveState']='active'
+with open(p,'w') as output:json.dump(rows,output)
+PY
+mv "$services" "$services.saved"
+for link in "$(realpath --relative-to="${services%/*}" "$outside/services.json")" "$outside/services.json"; do
+    ln -s "$link" "$services"
+    capture haseen-vapt-service-list --json
+    assert_status 'outside manager snapshot cannot supply service authority' 1 "$STATUS"
+    assert_contains 'outside manager snapshot reports observation escape' "$OUTPUT" 'symlink escapes observation root'
+    rm "$services"
+done
+mv "$services.saved" "$services"
+config="$ROOT$XDG_CONFIG_HOME/haseen"
+mkdir -p "$outside/vapt"
+printf '{"bindAddress":"192.0.2.77"}\n' >"$outside/vapt/workflow.json"
+rm -rf "$config/vapt"
+ln -s "$(realpath --relative-to="$config" "$outside/vapt")" "$config/vapt"
+capture haseen-vapt-doctor --json
+assert_status 'outside workflow settings ancestor is refused' 1 "$STATUS"
+assert_contains 'outside workflow settings report observation escape' "$OUTPUT" 'symlink escapes observation root'
+assert_not_contains 'outside workflow bind is never borrowed' "$OUTPUT" '192.0.2.77'
+rm "$config/vapt"
+report="$ROOT$XDG_STATE_HOME/haseen/vapt/report.tsv"
+printf 'nmap\tnetwork\textra\textra/nmap\tresolved\tinstalled\tLEAKED-OUTSIDE\textra\n' >"$outside/report.tsv"
+ln -sf "$(realpath --relative-to="${report%/*}" "$outside/report.tsv")" "$report"
+capture haseen-vapt-tool-list --all --json
+assert_status 'outside recorded resolutions are refused' 1 "$STATUS"
+assert_not_contains 'outside recorded resolution diagnostic is never borrowed' "$OUTPUT" 'LEAKED-OUTSIDE'
+actions_untouched nearby-observation

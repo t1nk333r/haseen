@@ -8,7 +8,7 @@
 - **Depends on**: 087
 - **Category**: vapt, CLI, shell
 - **Planned at**: 2026-10-08
-- **State**: Slices 2A-i, 2A-ii and 2B implemented: installed inventory, explicit usage/session commands, JSON health/readiness, owned service controls, foreground local helpers, fingerprint-bound CA actions and the optional off-by-default Security menu/panel. Final review from another model family and independent rendered accessibility/theme proof remain pending.
+- **State**: Slices 2A-i, 2A-ii and 2B implemented. The independent final review from another model family returned REQUEST CHANGES at `60be005`; its R1-R8 corrections are recorded below. Owner approval, landing PR #39 first, rebasing/re-verifying PR #40, and rendered compositor/AT-SPI proof remain outstanding.
 
 ## Contract
 
@@ -74,7 +74,8 @@ All JSON stdout is one `schemaVersion: 1` object. Diagnostics use stderr.
   family:"ipv4"|"ipv6",scope:"loopback"|"link"|"global",prefixLength}]}`.
   Only explicit address requests read this ephemeral state.
 - `net-proxy-ca status`: `{schemaVersion:1,state:"none"|"owned"|"foreign"|
-  "modified"|"unknown",reason,anchor:null|{sha256,subject,issuer,path,unchanged}}`.
+  "modified"|"unknown",reason,anchor:null|{sha256,subject,issuer,path,unchanged,
+  transaction:"pending"|"removing"|"created"}}`.
   Inspection uses the CA object below; operational JSON refusals include
   `schemaVersion:1,state:"refused",reason` (inspection also `certificate:null`).
   Interactive service/network/client/trust/remove actions have no JSON mode.
@@ -294,9 +295,12 @@ containsPrivateKey}}`; fingerprints are uppercase SHA-256, dates UTC ISO-8601.
 `net-proxy-ca inspect` implements this read-only result. Trust requires the full
 typed fingerprint even with `--yes`, rechecks immutable public certificate bytes,
 and installs one fingerprint-owned system anchor through the root gateway.
-Removal only accepts that unchanged recorded anchor. Foreign/modified anchors
-and incomplete journals are refusals; updater failure never claims completed
-trust. No trust decision follows from a panel launch or inspection.
+Removal accepts that unchanged recorded anchor or a safe incomplete removal
+transaction. An unchanged pending trust permits matching-certificate trust
+retry or removal; a removing journal with its anchor absent permits removal
+retry only. These checks repeat under the root lock. Foreign/modified or unsafe
+journals remain refusals; updater failure never claims completed trust.
+No trust decision follows from a panel launch or inspection.
 
 ### Security finding fixes F1/F2
 
@@ -342,8 +346,9 @@ trust. No trust decision follows from a panel launch or inspection.
   default-on Security UI: outside the approved explicit-workstation boundary.
 - A second source/identity verifier: phase-1 metadata is the single policy.
 - Editing settings on read/reapply: user configuration remains owner-controlled.
-- Guessed service unit names or choosing among multiple owned non-template
-  services: ambiguity is a refusal, not authorization to choose a backend.
+- Guessed service unit names or choosing an unreviewed unit among package-owned
+  services: ownership alone cannot select a backend. The R2 reviewed table below
+  replaces the earlier blanket multiple-unit refusal with explicit bindings.
 - Payload-enabled listeners, directory listing/CGI, guessed enumeration paths,
   external script fetching or detached daemons: not neutral local helpers.
 - Generic CA trust, `--yes` bypass of typed fingerprint, removal of foreign or
@@ -363,18 +368,14 @@ Pixel measurements across all stock themes/text scales, Nerd Font coverage,
 actual Wayland/AT-SPI screen-reader exposure and independent DESIGNER:VERIFY
 are not established by those engine assertions. No owner's desktop is used.
 
-Security engine suites use the same complete desktop-engine qualification as
-the battery/media suites, not merely the presence of a `qml` executable:
-executable `QS_BIN` (default `/usr/bin/qs`), `dbus-daemon`, `dbus-run-session`,
-and `python3` importing both `dbus` and `gi`. All four Security engine suites
-also require executable `QML_BIN` (default `/usr/lib/qt6/bin/qml`) and a
-successful isolated offscreen QtQuick/QtQuick.Controls import probe. The
-keyboard/render suite additionally requires executable `QML_TEST_BIN`
-(default `/usr/lib/qt6/bin/qmltestrunner`) and the QtTest import. Missing
-prerequisites produce named skips, not successful engine-case claims; the
-manifest/CLI enablement checks still run. Dependent adversarial and conformance
-sections name their own skipped scenarios. A framework-only probe cannot
-convert production-component or behavioural failures into skips.
+Security UI/adversarial suites require executable `QML_BIN` and a framework-only
+offscreen QtQuick/Controls probe. Keyboard/render conformance additionally
+requires `QML_TEST_BIN` and QtTest. The menu-provider suite uses executable
+`QS_BIN`, `dbus-run-session` and its own isolated Quickshell framework probe.
+None requires Python dbus/gi modules. Missing prerequisites retain named skips
+and CLI checks, without manufactured engine passes. `HASEEN_REQUIRE_ENGINE=1`
+makes every such omission a counted failure; CI sets it. A framework-only probe
+cannot convert production-component or behavioral failures into skips.
 
 Qt versions and font metrics are not pinned or treated as automatic skips.
 Qualified engines must run the full cases: fit rows must be fully revealed;
@@ -386,6 +387,237 @@ read/inspection/preview completions and rendering before comparing submissions,
 focus or fingerprints. Named scenario completion replaces fixed pass totals.
 The Qt 6.12.0 CI environment needs a fresh run of these corrected fixtures;
 local Qt 6.11.2 evidence cannot establish Qt 6.12.0 or real AT-SPI conformance.
+
+## Independent final review (other model family)
+
+The supplied independent review returned REQUEST CHANGES for PR #40 at
+`60be0053f3302030ef8a510904688e40b5b617ce`, based on PR #39 at `8e0c067`.
+The remote head still matched at the start of this follow-up. All edits use a
+fresh worktree, synthetic HOME/sysroot, stub PATH and private offscreen engines.
+No live service, trust store, owner session or external assessment target is used.
+
+### R1: indexed installed discovery, fixed
+
+The old loop called the linear source predicate for every one of 204 tools
+and every installed record before filtering the name. Each call scanned all
+safe repository records again through `allowed_local` and `package_sources`.
+`workflow.py:85` indexes repository records by exact name without dropping
+duplicates, forbidden rows or unknown metadata. `:95` passes only same-name
+candidate lists through the unchanged phase-1 predicates. `:258` computes
+sources once per installed record, then visits only exact names and verified
+reviewed aliases per tool. `workflow_actions.py:41` uses the same index.
+Version, URL/trailing-slash, metadata_unknown, forbidden, repository_safe,
+ALLOWED and closure_identity_ok checks remain unchanged. `metadata.py` has
+no diff from the reviewed head.
+
+`tests/test-vapt-discovery.sh:69` compares the frozen linear source algorithm
+against the index on both existing fixture snapshots and policy variations:
+**540 comparisons**, including private-source aliases, unsafe sources, URL/
+version drift, unknown/forbidden rows and duplicate repository records.
+`:115` executes the public CLI with **2,103 installed packages and 30,003
+repository records** across core/extra/blackarch. The bound is **20 seconds**,
+deliberately generous for CI and disk-backed fixture reads.
+On the review's smaller **203 / 17,300** fixture, before was **30.352 s** and
+after was **0.106 s**. The larger original implementation exceeded the bound
+and was terminated at **20.019 s**; the fixed regression measured **0.146 s**
+in the focused CLI run. These are measured durations, not desktop extrapolations.
+Rejected: caching only filtered tools, trusting reports, changing provenance
+policy, or altering phase-1 predicate semantics to gain speed.
+
+### R2: reviewed package/unit bindings, fixed
+
+The previous candidate scan counted every owned non-template service, so SSH's
+key-generation helper made its daemon ambiguous. `workflow_actions.py:30`
+binds openssh to sshd.service, postgresql to postgresql.service, apache to
+httpd.service and nginx to nginx.service. `:87` still requires one supported
+package owner, verified provenance, a non-template owned unit, LoadState loaded,
+an owned current FragmentPath resolving to that exact path, every expectation
+operand and the existing second read. Unlisted bindings remain refusals.
+
+Public Arch file lists read during this follow-up provide the reviewed evidence:
+[openssh 10.6p1-1](https://archlinux.org/packages/core/x86_64/openssh/files/)
+lists sshd.service, sshd@.service and sshdgenkeys.service;
+[apache 2.4.69-1](https://archlinux.org/packages/extra/x86_64/apache/files/)
+lists **httpd.service only**, not htcacheclean.service;
+[postgresql 18.6-2](https://archlinux.org/packages/extra/x86_64/postgresql/files/)
+and [nginx 1.30.5-1](https://archlinux.org/packages/extra/x86_64/nginx/files/)
+list their corresponding bindings. The review separately supplied local
+openssh-10.5p1-1 evidence with the same three units.
+[BlackArch's beef recipe](https://github.com/BlackArch/blackarch/blob/master/packages/beef/PKGBUILD)
+contains no unit installation. No BeEF/beef-xss binding is invented.
+
+`tests/fixtures/vapt-actions-lib.sh:9` now contains the actual Arch unit sets.
+`tests/test-vapt-services.sh:135` adds unreviewed SSH and auxiliary Apache units,
+checks unchanged selection, exercises all four families, refuses an unreviewed
+BeEF unit and duplicate package owners. Existing expectation/foreign-fragment/
+confirmation/second-read assertions retain their gates and use the reviewed
+unit names. The old synthetic "any single owned unit works" requirement was
+incorrect: ownership establishes file association, not which daemon the owner
+authorized. A reviewed exact binding is supported by package evidence and still
+must be present and owned; it is not the rejected inferred package-basename guess.
+
+### R3: honest and recoverable CA transactions, fixed
+
+An updater failure retained a pending/removing journal, but CLI guards accepted
+only complete owned state. The missing anchor after failed removal was also
+misclassified as modified. `workflow_ca.py:109` now reports safe incomplete
+transactions as unknown and adds `anchor.transaction` without changing the enum
+or schema version. Failed trust reason is exactly `trust transaction pending;
+owned anchor unchanged; system trust update incomplete`. Failed removal reason
+is exactly `removal transaction incomplete; anchor absent; system trust may
+still contain CA`. Actual changed or foreign anchors remain refusals.
+
+`workflow_ca.py:153`/`:159` admit only matching safe retry/removal evidence;
+`:167` repeats fingerprint, hash, ownership, foreign-file and transaction checks
+under the root lock. Removing state never authorizes trust. CLI guards at
+`workflow_actions.py:401` and `workflow_actions.sh:136` use these predicates
+before consent and again before the root gateway. Doctor exposes explicit safe
+recovery, never completed-trust success. `Model.js:152`, `CertificateForm.qml:31`
+and `Panel.qml:165` display the transaction and limit actions to matching
+pending trust retry/removal or removal retry. The new transaction label exists
+to distinguish incomplete trust from absent/modified evidence. Review and full
+terminal typed-fingerprint authorization remain, including with --yes.
+
+`tests/test-vapt-net.sh:276` exercises failing/successful CLI fixture updaters,
+exact JSON state/reason/transaction, --yes refusal without typing, pending
+removal and a changed anchor at the root lock. The fixture gateway calls the
+real mutation library with its library-only root/updater seams, never the host
+updater. `tests/test-vapt-confinement-adversarial.sh:125` strengthens failed_remove
+to require unknown, the exact reason, removing, unchanged false and absent
+anchor. `tests/test-vapt-ui-adversarial.sh:106` exercises real form visibility,
+retry Review, separate fingerprint/path operands and foreign/modified refusal.
+The three action suites pass **424/424**; the four Security engine suites pass
+**417/417**. Rejected: optimistic completion, --yes authorization, deleting
+foreign/changed anchors or suppressing failure journals.
+
+### R4: Security engines required on CI, fixed in workflow
+
+The shared prerequisite gate incorrectly borrowed battery/media's Python
+dbus/gi and Quickshell requirements for QML-only tests. CI lacked those Python
+modules and skipped all four Security suites. `tests/fixtures/vapt-qml-lib.sh:9`
+now requires only each caller's engine/framework prerequisites. Its framework
+probe remains separate from production assertions. `:3` retains named skips
+but records a failure when HASEEN_REQUIRE_ENGINE=1; `.github/workflows/ci.yml:70`
+sets that switch in the required test job. No CI packages are added for battery
+or media. `tests/test-vapt-menu-providers.sh:4` creates a short private runtime
+directory to keep Quickshell's Unix socket under Linux's path limit. Its probe
+defers Qt.quit until configuration loading finishes, with no added timer.
+
+The final three QML suites also ran with QS_BIN=/nonexistent and required-engine
+mode and passed **412/412**, proving the unrelated prerequisite was removed.
+The final four-suite focused run passes **417/417** with every named engine
+section executing. Missing QML retains the named skip and **7/7** static checks
+in optional mode, but required mode exits 1 with **7/8**. Missing Quickshell
+affects only the provider suite: optional mode is **0/0** with its named skip,
+required mode exits 1 with **0/1**. These are deliberate negative probes, not
+skips in the full gate. Rejected: installing unused
+Python modules, converting engine differences into skips, relaxing geometry
+assertions or treating the framework probe as production conformance.
+
+### R5: bounded document reads and expansion, fixed
+
+Whole-file read and gzip.decompress allocated unbounded input/output.
+`workflow.py:428` now reads 64 KiB chunks with a **4 MiB input and expanded
+output cap**, using zlib.decompressobj(wbits=31) and max_length. All gzip
+members share the cap; malformed/truncated data or overflow refuses before
+printing document bytes. `tests/test-vapt-workflow.sh:34` expands a
+**1,043,669-byte owned gzip to 1 GiB**, runs help under a **128 MiB address-space
+limit**, and requires clean exit 1, the expanded-limit diagnostic and no
+Traceback/MemoryError. Concatenated-member, truncated-stream and uncompressed
+input-limit controls retain positive/negative behavior. The supplied p3 probe
+also returns exit 1 with `owned document exceeds 4 MiB expanded limit; refused`.
+Rejected: catching MemoryError after allocation, trusting compressed size alone
+or rendering partial output as if it were complete usage.
+
+### R6: one guard observation and lean enablement reader, fixed
+
+Six identical static enablement guards imported provisioning code six times
+per menu open. `MenuModel.js:614` shares each expression's boolean across row
+ids and when/checked/disabled tags within one batch, observing again next batch.
+`workflow.sh:6` dispatches the enablement command to `workflow_menu.py:43`,
+which imports only the standard library. Deep merge, literal boolean true,
+single-object JSON and fixture symlink semantics remain unchanged.
+The small unprivileged resolver matches phase-1's observation behavior; it
+does not add a privileged metadata import or alter that auditor's trust graph.
+
+`tests/test-menu.sh:193` counts shared observations and checks all row/tag outputs,
+literal true and fresh-batch re-observation. `tests/test-vapt-workflow.sh:94`
+checks absence of metadata/workflow_support imports and relative/absolute/
+escaped configuration links against the existing resolver. The disabled/enabled
+real provider harness retains zero-read and literal-consent assertions.
+Five samples of the actual six-row disabled guard batch measured median wall
+**0.584977 s before / 0.040268 s after**, child CPU **0.57 s / 0.04 s**.
+Rejected: removing descendant guards, caching across menu opens, changing generic
+plugin consent or extracting an unguarded dependency into the root auditor.
+
+### R7: signal handoff deadline and diagnostics, fixed
+
+The readiness deadline assumed an adapter would start within three seconds
+under any host load. `tests/test-vapt-net.sh:374` allows **15 seconds** and
+`:380` captures/prints stdout, stderr, kind, signal and exit status on failure.
+All existing PID handoff, signal exit and reclaimed-loopback-endpoint assertions
+remain. The changed suite passes in the **424/424** focused action run and in
+the complete gate below. No production timer, polling or signal behavior changes.
+Rejected: skipping the signal case or accepting a surviving wrapper/helper.
+
+### R8: unused path helpers confined to test reference, fixed
+
+`confined_path` and selected_directory resolved symlinks but had no production
+caller. They are removed from `workflow_support.py`, and workflow.py no longer
+imports the former. `tests/fixtures/vapt_reference_paths.py:1` retains their
+historical pathname checks as test reference only; `tests/test-vapt-workflow.sh:186`
+retains those assertions with an explicit fixture import. Actual serving still
+uses descriptor traversal at `workflow_actions.py:266`, refusing symlink/hardlink
+escapes in the unchanged confinement cases. Production helper definitions/imports
+now number **zero**; no assertion was discarded. Rejected: promoting the old
+path resolver to serving authority or deleting its checks to hide the difference.
+
+The informational limits are now explicit in docs/vapt.md: unit ownership does
+not inspect systemd drop-ins, and nc writes raw peer bytes to the terminal.
+Rendered compositor and actual AT-SPI proof remain outstanding. This follow-up
+does not approve or merge either PR; PR #39 must land before PR #40's rebase and
+verification, then the owner gives final approval.
+
+### Follow-up verification
+
+The canonical isolated worktree is `~/.cache/haseen-wt/f40`, with disk-backed
+`TMPDIR=~/.cache/hf40/tmp`. The first full run was stopped after Themegen's
+private IPC pathname reached Linux's 108-byte Unix socket limit. A symlink
+alias shortened the runtime path but conflicted with existing canonical-path
+assertions. Moving only this task's worktree to the shorter canonical name
+resolves both constraints. Every assertion remains active. Neither aborted
+attempt is counted as a passing full gate.
+
+- Five changed CLI/menu suites pass **733/733**, including **540** source
+  equivalence comparisons and the large discovery fixture at **0.132 s**.
+  `tests/test-vapt-workflow-adversarial.sh:192` also makes the review's nearby
+  sysroot probes permanent: relative/absolute outside manager snapshots,
+  escaped workflow ancestry and outside report records all refuse without
+  borrowing evidence. The supplied p7 probe agrees after adapting only its
+  old synthetic SSH unit name to the reviewed Arch binding.
+- Six CA/network/confinement/Security suites pass **706/706**. All four
+  Security engine suites execute, with their **417/417** checks included.
+- The three QML-only suites also pass **412/412** with `QS_BIN=/nonexistent`
+  and `HASEEN_REQUIRE_ENGINE=1`; deliberate missing-engine controls are
+  documented under R4 above.
+- Complete `QT_QPA_PLATFORM=offscreen HASEEN_REQUIRE_ENGINE=1
+  TMPDIR=<short disk-backed directory> GO=<installed Go 1.27.1> tests/run.sh`:
+  **12,689/12,689 passed**, 123 suites, exit 0. All 33 VAPT suites execute
+  without prerequisite skips, including all four Security engines. The only
+  skip line is `skip: ttfx is installed system-wide; the missing-ttfx message
+  is not exercised`. The large discovery fixture measures **0.171 s** during
+  this complete run against its 20-second bound.
+- `SHELLCHECK=/usr/bin/shellcheck GO=<installed Go 1.27.1> tools/lint.sh`:
+  **lint OK**, 402 shell, 33 Lua, 180 JSON, 256 QML and 41 Go files.
+- `tools/check-docs.sh`: **check-docs OK**.
+- `GITLEAKS=<checksum-verified 8.30.1> tools/secrets.sh`: **secrets OK**,
+  222 commits scanned before the fix commit, no leaks. The release archive SHA-256 is
+  `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`,
+  matching the upstream checksum pinned in CI.
+
+The pushed head's five CI checks and the actual Security engine log lines must
+be verified separately. The earlier green test check skipped these engines and
+is not evidence for R4. The delivery report records the current run's results.
 
 ## Exercised checks
 

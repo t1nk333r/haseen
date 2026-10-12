@@ -256,9 +256,72 @@ try:mutate('trust',fingerprint,der,root=str(failure),updater=failed_updater)
 except ValueError as error:assert 'no complete success' in str(error)
 else:raise AssertionError('updater failure called success')
 assert ca_status(str(failure))['state']=='unknown'
+status=ca_status(str(failure))
+assert status['reason']=='trust transaction pending; owned anchor unchanged; system trust update incomplete',status
+assert status['anchor']['transaction']=='pending' and status['anchor']['unchanged'],status
+mutate('trust',fingerprint,der,root=str(failure),updater=lambda:None)
+assert ca_status(str(failure))['anchor']['transaction']=='created'
+try:mutate('remove',fingerprint,root=str(failure),updater=failed_updater)
+except ValueError as error:assert 'no complete success' in str(error)
+else:raise AssertionError('remove updater failure called success')
+status=ca_status(str(failure))
+assert status['state']=='unknown',status
+assert status['reason']=='removal transaction incomplete; anchor absent; system trust may still contain CA',status
+assert status['anchor']['transaction']=='removing' and not status['anchor']['unchanged'],status
 print('owned trust/removal and modified-anchor preservation passed')
 PY
 assert_status 'fingerprint ownership transaction fixture' 0 "$STATUS"
+
+# The public orchestration crosses only the fixture gateway, whose updater is
+# injected. Failure/retry behavior is exercised end to end without live trust.
+VAPT_CA_MUTATE=true VAPT_CA_UPDATER_FAIL=true VAPT_YES=true VAPT_TYPED="$fingerprint" actions_api ca trust /certificates/ca.pem
+assert_status 'CLI failed trust reports failure' 1 "$STATUS"
+assert_contains 'CLI failed trust says no success' "$OUTPUT" 'no complete success'
+capture haseen-vapt-net-proxy-ca status --json
+assert_status 'pending transaction status remains nonzero' 1 "$STATUS"
+assert_eq 'CLI failed trust exact state' unknown "$(jq -r '.state' <<<"$OUTPUT")"
+assert_eq 'CLI failed trust exact reason' 'trust transaction pending; owned anchor unchanged; system trust update incomplete' "$(jq -r '.reason' <<<"$OUTPUT")"
+assert_eq 'CLI failed trust exact transaction' pending "$(jq -r '.anchor.transaction' <<<"$OUTPUT")"
+capture haseen-vapt-doctor --json
+assert_eq 'doctor makes owned pending recovery available' true "$(jq '.workflow.capabilities[] | select(.id=="proxy-ca") | .available' <<<"$OUTPUT")"
+VAPT_CA_MUTATE=true VAPT_YES=true actions_api ca trust /certificates/ca.pem
+assert_status 'pending retry still requires typed fingerprint with --yes' 1 "$STATUS"
+VAPT_CA_MUTATE=true VAPT_YES=true VAPT_TYPED="$fingerprint" actions_api ca trust /certificates/ca.pem
+assert_status 'CLI pending trust retry completes through fixture gateway' 0 "$STATUS"
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'successful retry reports owned' owned "$(jq -r '.state' <<<"$OUTPUT")"
+assert_eq 'successful retry transaction created' created "$(jq -r '.anchor.transaction' <<<"$OUTPUT")"
+VAPT_CA_MUTATE=true VAPT_CA_UPDATER_FAIL=true VAPT_CONFIRM=yes actions_api ca remove "$fingerprint"
+assert_status 'CLI failed removal reports failure' 1 "$STATUS"
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'CLI failed removal exact state' unknown "$(jq -r '.state' <<<"$OUTPUT")"
+assert_eq 'CLI failed removal exact reason' 'removal transaction incomplete; anchor absent; system trust may still contain CA' "$(jq -r '.reason' <<<"$OUTPUT")"
+assert_eq 'CLI failed removal exact transaction' removing "$(jq -r '.anchor.transaction' <<<"$OUTPUT")"
+capture haseen-vapt-net-proxy-ca trust /certificates/ca.pem --dry-run
+assert_status 'removing transaction permits only removal retry' 1 "$STATUS"
+VAPT_CA_MUTATE=true VAPT_CONFIRM=yes actions_api ca remove "$fingerprint"
+assert_status 'CLI removal retry completes through fixture gateway' 0 "$STATUS"
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'successful removal retry reports none' none "$(jq -r '.state' <<<"$OUTPUT")"
+VAPT_CA_MUTATE=true VAPT_CA_UPDATER_FAIL=true VAPT_YES=true VAPT_TYPED="$fingerprint" actions_api ca trust /certificates/ca.pem
+VAPT_CA_MUTATE=true VAPT_CONFIRM=yes actions_api ca remove "$fingerprint"
+assert_status 'CLI removes unchanged pending anchor without trusting it' 0 "$STATUS"
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'pending removal completes to none' none "$(jq -r '.state' <<<"$OUTPUT")"
+VAPT_CA_MUTATE=true VAPT_CA_UPDATER_FAIL=true VAPT_YES=true VAPT_TYPED="$fingerprint" actions_api ca trust /certificates/ca.pem
+VAPT_CA_MUTATE=true VAPT_CA_CHANGE_BEFORE_ROOT=true VAPT_CONFIRM=yes actions_api ca remove "$fingerprint"
+assert_status 'root lock recheck refuses changed pending anchor' 1 "$STATUS"
+assert_contains 'root lock keeps changed anchor' "$OUTPUT" 'modified or missing owned anchor preserved'
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'changed pending anchor remains modified' modified "$(jq -r '.state' <<<"$OUTPUT")"
+for operation in trust remove; do
+    operand=/certificates/ca.pem
+    [[ $operation == trust ]] || operand=$fingerprint
+    capture haseen-vapt-net-proxy-ca "$operation" "$operand" --dry-run
+    assert_status "modified pending $operation refused" 1 "$STATUS"
+done
+# Remove only the fixture transaction created by this scenario.
+rm "$ROOT/etc/ca-certificates/trust-source/anchors/haseen-vapt-$fingerprint.crt" "$ROOT/var/lib/haseen/vapt/proxy-ca.json"
 for cmd in service-list service-start service-stop service-restart net-addresses net-listener net-http-server net-file-server net-proxy-ca net-remmina; do
     capture "haseen-vapt-$cmd" --help
     assert_status "$cmd help" 0 "$STATUS"
@@ -306,14 +369,19 @@ adapter.chmod(0o755)
 for kind,args in [('listener',['8080']),('http-server',['/explicit-fixture','8080'])]:
     for stop in (signal.SIGTERM,signal.SIGHUP):
         ready=calls/('ready-'+kind+'-'+str(stop));env=dict(os.environ,VAPT_REAL_FOREGROUND='true',VAPT_ENDPOINT_ADAPTER=str(adapter),VAPT_FOREGROUND_READY=str(ready),VAPT_CONFIRM='yes')
-        process=subprocess.Popen(['/usr/bin/bash',str(fixtures/'vapt-actions-runner.sh'),'endpoint',kind,*args],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        process=subprocess.Popen(['/usr/bin/bash',str(fixtures/'vapt-actions-runner.sh'),'endpoint',kind,*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         try:
-            deadline=time.monotonic()+3
+            deadline=time.monotonic()+15
             while not ready.exists() and process.poll() is None and time.monotonic()<deadline:time.sleep(.01)
-            assert ready.exists(),process.communicate(timeout=1)
+            assert ready.exists(),'adapter readiness deadline exceeded'
             data=json.loads(ready.read_text());assert data['pid']==process.pid,'wrapper did not hand off its pid'
             process.send_signal(stop);assert process.wait(timeout=2)==-stop,'signal/exit code not propagated'
             with socket.socket() as probe:probe.bind(('127.0.0.1',data['port']))
+        except BaseException:
+            if process.poll() is None:process.kill()
+            output,diagnostic=process.communicate(timeout=5)
+            print('signal handoff failure:',kind,stop,'exit',process.returncode,'stdout:',output.decode(errors='replace'),'stderr:',diagnostic.decode(errors='replace'),file=sys.stderr)
+            raise
         finally:
             if process.poll() is None:process.kill();process.wait(timeout=2)
 print('SIGTERM/SIGHUP handoff reclaims literal loopback endpoints')

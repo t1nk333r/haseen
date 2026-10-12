@@ -1,9 +1,14 @@
 # shellcheck shell=bash
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 sandbox vapt-menu-providers
+# Quickshell's IPC socket must fit Linux's pathname limit even in a long worktree.
+export XDG_RUNTIME_DIR
+XDG_RUNTIME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/vmp.XXXXXX")
+chmod 0700 "$XDG_RUNTIME_DIR"
+trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 QS_BIN=${QS_BIN:-/usr/bin/qs}
 source "$FIXTURES/vapt-qml-lib.sh"
-vapt_qml_available 'Security disabled/enabled menu provider engine scenarios' || return 0
+vapt_qml_available 'Security disabled/enabled menu provider engine scenarios' '' qs || return 0
 FAKE="$SANDBOX/fake"
 mkdir -p "$FAKE/share/haseen" "$FAKE/bin" "$SANDBOX/shell"
 for entry in "$HASEEN_PATH"/*; do ln -s "$entry" "$FAKE/share/haseen/${entry##*/}"; done

@@ -112,12 +112,16 @@ Rules every layer follows:
   shell, never the selected tool. The optional Security surface requires literal
   merged `enabled: true`, without bar/service insertion. Feature workflow
   defaults are seeded once on explicit provisioning, never by observation.
-  Explicit service actions separately require owned units and current
+  Explicit service actions select only reviewed package/unit bindings and
+  separately require unique package provenance, owned non-template units and current
   `FragmentPath`, rechecking at the root gateway; no enable/preset/init path.
   Local helpers use reviewed owned adapters, loopback defaults and terminal
   exposure gates. HTTP pins descriptors and serves bytes only; the file helper
   serves one owned file. CA trust requires a typed fingerprint, immutable
-  public bytes, an owned updater and an unchanged-anchor journal; observation
+  public bytes, an owned updater and an unchanged-anchor journal. Failed updates
+  expose `anchor.transaction` and `unknown` state. Explicit retry/removal of safe
+  pending/removing transactions revalidates under the root lock; foreign or
+  modified anchors remain refusals, and only updater success completes recovery. Observation
   never changes trust or launches a proxy/browser.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
@@ -226,6 +230,9 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   checks them before terminal consent and revalidates again before the root
   gateway. Detached launch has no completion contract: Refresh/reopen only,
   no polling, optimistic success, persisted addresses/drafts or settings writer.
+  Identical menu guard expressions share one result per finite batch. The
+  Security enablement CLI reads configuration without loading provisioning or
+  local-action modules; disabled Security providers still read no inventory.
 - Safe mode (plan 061): while `~/.local/state/haseen/safe-mode` exists (JSON `{reason, since}`; `haseen shell recover safe-mode on|off`), `Plugins.held(id)` is true for every plugin whose origin is not `builtin` (user, user:omarchy, user:dms, omarchy, dms). A held plugin has no `entryUrl` and `Config.isEnabled` is false for it, so the running shell unloads it without a restart. A user copy of a built-in id gives way to the built-in. `shell plugins` over IPC reports `held` per plugin and a `safeMode` object. `haseen shell run` creates the state directory, because a `FileView` watch needs its parent to exist.
 
 ### 5.3 `shell.json`

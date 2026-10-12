@@ -219,6 +219,22 @@ Window {
             const hostile = JSON.parse(JSON.stringify(FixtureState.listing())); hostile.tools[0].id = "nmap;touch /tmp/unsafe";
             eq("hostile inventory identity refuses", null, M.parse("tools", JSON.stringify(hostile)));
             eq("control characters removed", "unsafe", M.text("un\\u001bsa\\u0000fe"));
+            const inspected = {state:"valid",certificate:{sha256:"A".repeat(64)}};
+            const pendingAnchor = {schemaVersion:1,state:"unknown",reason:"pending fixture",anchor:{sha256:"A".repeat(64),unchanged:true,transaction:"pending"}};
+            const removingAnchor = {schemaVersion:1,state:"unknown",reason:"removing fixture",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"removing"}};
+            eq("pending anchor schema admitted", true, !!M.parse("anchor",JSON.stringify(pendingAnchor)));
+            eq("pending owned transaction permits matching trust retry", true, M.anchorTrust(pendingAnchor,inspected));
+            eq("pending owned transaction permits removal", true, M.anchorRemoval(pendingAnchor));
+            eq("pending trust retry refuses different fingerprint", false, M.anchorTrust(pendingAnchor,{state:"valid",certificate:{sha256:"B".repeat(64)}}));
+            eq("removing absent anchor permits removal retry", true, M.anchorRemoval(removingAnchor));
+            eq("removing transaction cannot trust", false, M.anchorTrust(removingAnchor,inspected));
+            for (const state of ["foreign","modified","refused"]) {
+                const changed = Object.assign({},pendingAnchor,{state:state});
+                eq(state + " anchor refuses retry trust",false,M.anchorTrust(changed,inspected));
+                eq(state + " anchor refuses removal",false,M.anchorRemoval(changed));
+            }
+            const malformedAnchor = JSON.parse(JSON.stringify(pendingAnchor));malformedAnchor.anchor.transaction="other";
+            eq("unknown anchor transaction refuses schema",null,M.parse("anchor",JSON.stringify(malformedAnchor)));
             eq("terminal output keeps line breaks", "one\\ntwo", M.output("one\\ntwo"));
             for (let i = 0; i < 5; i++) {
                 const c = FixtureState.capabilities[i];

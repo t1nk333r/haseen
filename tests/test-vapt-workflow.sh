@@ -31,6 +31,45 @@ PY
 capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one --dry-run
 assert_status 'ambiguous matching documents refused' 1 "$STATUS"
 rm "$ROOT/usr/share/man/man1/scan-one.1.gz"
+python3 - "$ROOT" <<'PY'
+import gzip,json,pathlib,sys
+root=pathlib.Path(sys.argv[1]);man=root/'usr/share/man/man1/scan-one.1';man.unlink()
+with gzip.open(str(man)+'.gz','wb',compresslevel=9) as out:
+    for _ in range(1024):out.write(b'A'*(1024*1024))
+p=root/'var/lib/haseen/vapt/installed.json';rows=json.loads(p.read_text())
+rows[0]['files']=[f for f in rows[0]['files'] if f!='usr/share/man/man1/scan-one.1']
+p.write_text(json.dumps(rows))
+PY
+capture prlimit --as=134217728 haseen-vapt-tool-help nmap --entry /usr/bin/scan-one
+assert_status 'one GiB expanded document bomb cleanly refused within 128 MiB' 1 "$STATUS"
+assert_contains 'document overflow explains bounded expansion' "$OUTPUT" 'exceeds 4 MiB expanded limit'
+assert_not_contains 'document bomb no traceback' "$OUTPUT" Traceback
+assert_not_contains 'document bomb no MemoryError' "$OUTPUT" MemoryError
+python3 - "$ROOT" <<'PY'
+import gzip,pathlib,sys
+path=pathlib.Path(sys.argv[1])/'usr/share/man/man1/scan-one.1.gz'
+path.write_bytes(gzip.compress(b'First bounded member.\n')+gzip.compress(b'Second bounded member.\n'))
+PY
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one
+assert_status 'bounded concatenated gzip documents still work' 0 "$STATUS"
+assert_contains 'all bounded gzip members printed' "$OUTPUT" 'Second bounded member.'
+python3 - "$ROOT" <<'PY'
+import pathlib,sys
+path=pathlib.Path(sys.argv[1])/'usr/share/man/man1/scan-one.1.gz'
+path.write_bytes(path.read_bytes()[:-4])
+PY
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one
+assert_status 'truncated gzip is a clean refusal' 1 "$STATUS"
+assert_not_contains 'truncated gzip no traceback' "$OUTPUT" Traceback
+python3 - "$ROOT" <<'PY'
+import pathlib,sys
+path=pathlib.Path(sys.argv[1])/'usr/share/doc/nmap/scan-two.txt'
+path.write_bytes(b'A'*(4*1024*1024+1))
+PY
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-two
+assert_status 'uncompressed document input bounded' 1 "$STATUS"
+assert_contains 'uncompressed input limit diagnostic' "$OUTPUT" 'exceeds 4 MiB input limit'
+printf 'Second owned usage.\n' >"$ROOT/usr/share/doc/nmap/scan-two.txt"
 mkdir -p "$ROOT/etc"
 printf '/usr/bin/bash\n' >"$ROOT/etc/shells"
 _vapt_stub_log "$ROOT/usr/bin/bash" workstation-shell
@@ -52,6 +91,37 @@ assert_eq 'merged explicit enable true' true "$(jq '.enabled' <<<"$OUTPUT")"
 printf '{"plugins":{"haseen.security":{"enabled":"true"}}}\n' >"$ROOT$XDG_CONFIG_HOME/haseen/shell.json"
 capture haseen-vapt-menu --json
 assert_eq 'string truthiness never enables surface' false "$(jq '.enabled' <<<"$OUTPUT")"
+capture python3 -B - "$VAPT_LAYER" <<'PY'
+import sys
+sys.path.insert(0,sys.argv[1]);import workflow_menu
+assert 'metadata' not in sys.modules and 'workflow_support' not in sys.modules
+assert workflow_menu.menu()['enabled'] is False
+assert 'metadata' not in sys.modules and 'workflow_support' not in sys.modules
+print('menu configuration read without provisioning/support imports')
+PY
+assert_status 'menu guard avoids unrelated heavy modules' 0 "$STATUS"
+capture python3 -B - "$VAPT_LAYER" "$ROOT" "$XDG_CONFIG_HOME" <<'PY'
+import os,pathlib,sys
+sys.path.insert(0,sys.argv[1]);import metadata as meta;import workflow_menu as menu
+root=pathlib.Path(sys.argv[2]);config=root/sys.argv[3].lstrip('/')/'haseen';path=config/'shell.json'
+path.unlink();inside=config/'inside.json';inside.write_text('{"plugins":{"haseen.security":{"enabled":true}}}')
+outside=root.parent/'outside-shell.json';outside.write_text(inside.read_text())
+for target in ('inside.json',str(inside),str(outside),os.path.relpath(outside,config)):
+    path.symlink_to(target)
+    try:
+        expected=meta.observed_resolve(path,str(root))
+    except ValueError:
+        try:menu.menu()
+        except ValueError:pass
+        else:raise AssertionError('menu borrowed escaped fixture configuration')
+    else:
+        assert menu.observed_resolve(path,str(root))==expected
+        assert menu.menu()['enabled'] is expected.exists()
+    path.unlink()
+inside.unlink();outside.unlink();path.write_text('{"plugins":{"haseen.security":{"enabled":"true"}}}')
+print('lightweight menu resolver agrees on relative/absolute/escaped fixture links')
+PY
+assert_status 'menu confinement retains fixture symlink semantics' 0 "$STATUS"
 for cmd in status doctor; do
     capture "haseen-vapt-$cmd" --json --dry-run
     assert_status "$cmd missing provisioning exit" 1 "$STATUS"
@@ -100,11 +170,12 @@ assert_contains 'operational diagnostic only stderr' "$(<"$SANDBOX/json-err")" '
 
 # Shared endpoint/confinement/CA inspection is exercised without a live bind,
 # trust mutation, live desktop or installed fixture program execution.
-capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+capture python3 -B - "$VAPT_LAYER" "$ROOT" "$FIXTURES" <<'PY'
 import pathlib, sys
 sys.path.insert(0, sys.argv[1])
 import metadata
-from workflow_support import validate_endpoint, confined_path, selected_owned_file
+from workflow_support import validate_endpoint, selected_owned_file
+sys.path.insert(0,sys.argv[3]);from vapt_reference_paths import confined_path
 assert validate_endpoint('127.0.0.1', 1024)['loopback']
 assert validate_endpoint('::1', 65535)['loopback']
 assert validate_endpoint('0.0.0.0', 8080)['requiresConfirmation']

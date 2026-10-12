@@ -8,7 +8,7 @@ import argparse
 import configparser
 import contextlib
 import csv
-import gzip
+import zlib
 import io
 import json
 import os
@@ -19,7 +19,8 @@ import stat
 import sys
 
 import metadata as meta
-from workflow_support import validate_endpoint, inspect_certificate, confined_path, selected_owned_file, local_addresses, open_selected
+from workflow_menu import menu
+from workflow_support import validate_endpoint, local_addresses, open_selected
 
 LAYER = Path(__file__).resolve().parent
 ROOT = os.environ.get('HASEEN_SYSROOT', '').rstrip('/')
@@ -81,7 +82,20 @@ def source_snapshot():
     return config, repos, private
 
 
-def package_sources(record, config, repos):
+def index_repositories(repos):
+    """Keep every same-name record, including unknown/forbidden evidence."""
+    result = {}
+    for source, records in repos.items():
+        names = result.setdefault(source, {})
+        for record in records:
+            names.setdefault(record.get('name'), []).append(record)
+    return result
+
+
+def package_sources(record, config, repo_index):
+    # Restrict only by exact name. The phase-1 predicates still decide version,
+    # URL, unknown metadata, forbidden records, source policy and identity.
+    repos = {source: names.get(record.get('name'), []) for source, names in repo_index.items()}
     if not meta.allowed_local(record, config, repos):
         return []
     return [source for source in config if meta.repository_safe(source, config) and meta.ALLOWED.fullmatch(source)
@@ -241,15 +255,25 @@ def discover():
     owners = file_owners(records)
     _, policies, aliases, _ = meta.vapt_tables()
     resolution = report_resolution()
+    repo_index = index_repositories(repos)
+    sources_by_record = [package_sources(record, config, repo_index) for record in records]
+    candidates = {}
+    for index, record in enumerate(records):
+        names = {record.get('name', '')}
+        names.update(aliases.get((source, record.get('name', '')), record.get('name', ''))
+                     for source in sources_by_record[index])
+        for name in names:
+            candidates.setdefault(name, []).append(index)
     # Exact logical name plus reviewed repository aliases only. Never Provides
     # or suffix stripping; the transaction report is not installation evidence.
     tools = []
     for name, groups in sorted(items.items()):
         tool = {'id': name, 'groups': sorted(groups), 'state': 'missing', 'reason': 'no installed package identity',
                 'packages': [], 'entrypoints': [], 'desktopEntries': [], 'native': None}
-        for index, record in enumerate(records):
+        for index in candidates.get(name, []):
+            record = records[index]
             pkg = record.get('name', '')
-            sources = package_sources(record, config, repos)
+            sources = sources_by_record[index]
             mapped = [s for s in sources if aliases.get((s, pkg), pkg) == name]
             if pkg != name and not mapped:
                 continue
@@ -311,23 +335,6 @@ def validate_settings(values):
         raise ValueError('enumerationScript must be a control-free string or null')
     if not isinstance(values['showLocalAddresses'], bool):
         raise ValueError('showLocalAddresses must be boolean')
-
-
-def merged(base, user):
-    result = dict(base)
-    for key, value in user.items():
-        result[key] = merged(result[key], value) if isinstance(result.get(key), dict) and isinstance(value, dict) else value
-    return result
-
-
-def menu():
-    base = json.loads((LAYER.parent.parent / 'default/shell.json').read_text())
-    user = read_json(CONFIG + '/shell.json', {})
-    if not isinstance(user, dict):
-        raise ValueError('shell configuration must be an object')
-    plugins = merged(base, user).get('plugins', {})
-    entry = plugins.get('haseen.security', {}) if isinstance(plugins, dict) else {}
-    return {'schemaVersion': 1, 'plugin': 'haseen.security', 'enabled': isinstance(entry, dict) and entry.get('enabled') is True}
 
 
 def capabilities(result):
@@ -403,9 +410,7 @@ def show_help(args):
             if usage_evidence(*selected(args.tool, args.entry)) != evidence:
                 raise ValueError('owned document evidence changed before presentation')
             validate_document_fd(document.fileno(), evidence['path'])
-            data = document.read()
-        if evidence['path'].endswith('.gz'):
-            data = gzip.decompress(data)
+            data = document_bytes(document, evidence['path'].endswith('.gz'))
         # Print document bytes as text: no man macros, pager, terminal or
         # helper execution. Keep line breaks, remove terminal control bytes.
         print('\n'.join(clean(line) for line in data.decode('utf-8', errors='replace').splitlines()))
@@ -415,6 +420,40 @@ def show_help(args):
     if shell:
         os.execv(shell, [shell, '-i'])
     return 0
+
+
+DOCUMENT_LIMIT = 4 * 1024 * 1024
+
+
+def document_bytes(document, compressed):
+    """Bound both retained input and expanded output before printing anything."""
+    data = bytearray()
+    consumed = 0
+    inflater = zlib.decompressobj(wbits=31) if compressed else None
+    try:
+        while True:
+            chunk = document.read(min(65536, DOCUMENT_LIMIT + 1 - consumed))
+            consumed += len(chunk)
+            if consumed > DOCUMENT_LIMIT:
+                raise ValueError('owned document exceeds 4 MiB input limit; refused')
+            if not chunk:
+                break
+            if inflater:
+                while chunk:
+                    if inflater.eof:
+                        inflater = zlib.decompressobj(wbits=31)
+                    data.extend(inflater.decompress(chunk, DOCUMENT_LIMIT + 1 - len(data)))
+                    if len(data) > DOCUMENT_LIMIT:
+                        raise ValueError('owned document exceeds 4 MiB expanded limit; refused')
+                    # gzip supports concatenated members; all share one cap.
+                    chunk = inflater.unused_data if inflater.eof else inflater.unconsumed_tail
+            else:
+                data.extend(chunk)
+        if compressed and not inflater.eof:
+            raise ValueError('owned document gzip stream incomplete; refused')
+    except zlib.error as error:
+        raise ValueError('owned document gzip stream invalid; refused') from error
+    return bytes(data)
 
 
 def main():

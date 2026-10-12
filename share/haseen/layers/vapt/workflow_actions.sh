@@ -160,19 +160,18 @@ vapt_ca_action() {
         printf '%s' "$payload" | vapt_root_exec /usr/bin/python3 -I -S -B "$HASEEN_PATH/layers/vapt/workflow_ca.py" trust "$fingerprint" ;;
     remove)
         [[ $operand =~ ^[A-F0-9]{64}$ ]] || { usage >&2; return 2; }
-        result="$(vapt_actions ca-status --json)" || { printf '%s\n' "$result"; return 1; }
-        fingerprint="$(printf '%s' "$result" | /usr/bin/python3 -B -c 'import json,sys; r=json.load(sys.stdin); assert r["state"]=="owned" and r["anchor"]["unchanged"]; print(r["anchor"]["sha256"])')" || return 1
-        [[ $operand == "$fingerprint" ]] || { warn 'fingerprint does not match unchanged owned anchor'; return 1; }
+        result="$(vapt_actions ca-remove-check "$operand")" || { printf '%s\n' "$result"; return 1; }
+        fingerprint="$operand"
         printf '%s\n' "$result"
         vapt_actions ca-updater || return 1
-        if $DRY_RUN; then echo 'DRYRUN: revalidate unchanged owned anchor; remove only this anchor and update system trust'; return 0; fi
+        if $DRY_RUN; then echo 'DRYRUN: revalidate owned anchor/transaction under root lock; remove only this anchor or retry incomplete removal and update system trust'; return 0; fi
         vapt_action_refuse_fixture || return 1
         source "$HASEEN_PATH/lib/terminal.sh"
         local terminal_args=(remove "$operand")
         $ASSUME_YES && terminal_args+=(--yes)
         in_floating_terminal "${terminal_args[@]}"
-        confirm 'Remove this unchanged haseen-owned system CA anchor?' || { warn 'cancelled; no trust change'; return 1; }
-        vapt_actions ca-updater || return 1
+        confirm 'Remove this haseen-owned system CA anchor or complete its pending removal?' || { warn 'cancelled; no trust change'; return 1; }
+        vapt_actions ca-remove-check "$fingerprint" >/dev/null || return 1
         vapt_root_exec /usr/bin/python3 -I -S -B "$HASEEN_PATH/layers/vapt/workflow_ca.py" remove "$fingerprint" ;;
     *) usage >&2; return 2 ;;
     esac

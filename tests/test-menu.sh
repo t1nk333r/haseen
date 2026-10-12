@@ -190,6 +190,20 @@ console.log([vis('a'), vis('b'), vis('c'), before, labelFor(m.items.c, r.c, r.d)
 " "$guard_out")"
     assert_eq "guards: when/checked from one batch" "true|false|true|false|C ✓" "$out"
 
+    # Identical guards share one observation within a batch, including tags.
+    script="$(model '
+const expr = "echo observed >> \"$HOME/guard-observations\"; false";
+process.stdout.write(guardScript({a:{when:expr},b:{when:expr,checked:expr,disabled:expr},c:{when:"true"}}));')"
+    guard_out="$(bash -c "$script")"
+    assert_eq 'identical guard expressions execute once per batch' 1 "$(wc -l <"$HOME/guard-observations")"
+    assert_contains 'shared false guard retains first row result' "$guard_out" a:w:0
+    assert_contains 'shared false guard retains second row result' "$guard_out" b:w:0
+    assert_contains 'shared checked result retained' "$guard_out" b:c:0
+    assert_contains 'shared disabled result retained' "$guard_out" b:d:0
+    assert_contains 'literal true guard retains behavior' "$guard_out" c:w:1
+    bash -c "$script" >/dev/null
+    assert_eq 'new guard batch re-observes once' 2 "$(wc -l <"$HOME/guard-observations")"
+
     # Catalog rows (Catalog's catalog.json shape).
     out="$(model "
 const cat = {categories: [{id: 'browser', label: 'Browser'}, {id: 'gaming', label: 'Gaming'}],

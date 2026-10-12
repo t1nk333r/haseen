@@ -3,6 +3,10 @@
 vapt_workflow() {
     local command="$1"
     shift
+    if [[ $command == menu ]]; then
+        /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow_menu.py" "$@"
+        return $?
+    fi
     /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow.py" "$command" "$@"
 }
 

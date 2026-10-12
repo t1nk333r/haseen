@@ -6,10 +6,10 @@ actions_fixture() {
 import json, pathlib, sys
 root=pathlib.Path(sys.argv[1]); base=root/'var/lib/haseen/vapt'
 repos=json.loads((base/'repositories.json').read_text()); records=json.loads((base/'installed.json').read_text())
-rows=[('openssh','https://www.openssh.com/',['usr/lib/systemd/system/owned-secure-login.service']),
-      ('postgresql','https://www.postgresql.org/',['usr/lib/systemd/system/owned-database.service']),
-      ('apache','https://httpd.apache.org/',['usr/lib/systemd/system/owned-http.service']),
-      ('nginx','https://nginx.org/',['usr/lib/systemd/system/owned-nginx.service']),
+rows=[('openssh','https://www.openssh.com/',['usr/lib/systemd/system/sshd.service','usr/lib/systemd/system/sshd@.service','usr/lib/systemd/system/sshdgenkeys.service']),
+      ('postgresql','https://www.postgresql.org/',['usr/lib/systemd/system/postgresql.service']),
+      ('apache','https://httpd.apache.org/',['usr/lib/systemd/system/httpd.service']),
+      ('nginx','https://nginx.org/',['usr/lib/systemd/system/nginx.service']),
       ('openbsd-netcat','https://www.openbsd.org/',['usr/bin/nc']),
       ('python','https://www.python.org/',['usr/bin/python','usr/bin/python3.14','usr/include/python3.14/Python.h']),
       ('openssl','https://www.openssl.org/',['usr/bin/openssl']),

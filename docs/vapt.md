@@ -662,7 +662,10 @@ and prints the document directly without a pager/man helper. A confined
 descriptor open must establish readability before documentation is ready;
 owned file inventory/installed identity remains separate. Execution reopens the
 document and revalidates ownership and inode before reading. Man pages appear
-as plain roff source. Otherwise it requires a reviewed package/entry-specific
+as plain roff source. Both retained input and expanded gzip output are capped
+at 4 MiB. Oversized, invalid or incomplete gzip documents refuse with exit 1
+and a diagnostic, without partial document output or a traceback.
+Otherwise it requires a reviewed package/entry-specific
 help-only argv binding, rechecked against current ownership. The shipped registry
 is deliberately empty: no arbitrary `--help` guesses. Missing or ambiguous
 evidence is a refusal, not a speculative execution. Dry-run reports the exact
@@ -686,6 +689,11 @@ for the complete versioned schema.
 `menu` reads the effective deep-merged default/user shell configuration and
 returns enabled only for literal `plugins.haseen.security.enabled: true`.
 It does not enable the optional surface, add a bar widget or start a service.
+Its configuration-only reader imports no inventory/provisioning metadata or
+local-action support. A menu guard batch evaluates each identical expression
+once and distributes that result to every requesting row; a new batch observes
+again. Disabled providers still perform no discovery, and literal `true` guards
+retain their normal meaning.
 
 Explicit provisioning seeds `~/.config/haseen/vapt/workflow.json` once from
 the shipped feature defaults. Existing user settings remain untouched.
@@ -700,8 +708,13 @@ commands require explicit user requests; all dry-runs are offline/write-free.
 
 - `haseen vapt service-list --json`: the five known ids `ssh`, `postgresql`,
   `apache`, `nginx`, `beef`; installed package/unit ownership, current
-  `FragmentPath`, raw manager states and exposure `unknown`. Units come from
-  installed files, never package-name guesses. Missing/ambiguous/current-foreign
+  `FragmentPath`, raw manager states and exposure `unknown`. Reviewed bindings
+  select `openssh/sshd.service`, `postgresql/postgresql.service`,
+  `apache/httpd.service` and `nginx/nginx.service`. Each exact non-template unit
+  must appear in that package's installed files with unique ownership and
+  verified provenance. Auxiliary units and templates do not change selection.
+  BeEF has no reviewed package/unit binding and remains refused when installed.
+  Missing/ambiguous/current-foreign
   fragments refuse action. `service-start ID` and `service-restart ID` require
   terminal confirmation (or explicit `--yes` acceptance of unknown exposure);
   `service-stop ID` requires neither confirmation nor a terminal; normal root
@@ -713,6 +726,8 @@ commands require explicit user requests; all dry-runs are offline/write-free.
   A wrong-shaped manager snapshot emits one refused JSON object with exit 1;
   malformed row fields report unknown current evidence, never verified ownership
   or guessed activity. Diagnostic failures remain on stderr.
+  Ownership verification covers the loaded fragment, not systemd drop-ins or
+  the service's effective behavior. Exposure remains unknown.
 - `haseen vapt net-addresses --json`: ephemeral local interface addresses,
   no DNS/network probe, storage or logging. IPv4/IPv6 endpoints accept literal
   addresses only and ports 1024–65535; missing real-action ports prompt locally.
@@ -724,6 +739,8 @@ commands require explicit user requests; all dry-runs are offline/write-free.
 - `haseen vapt net-listener [--bind ADDRESS] [PORT]`: an owned reviewed neutral
   foreground listener adapter, no received-data execution or payload features.
   The default is loopback; every non-loopback bind requires terminal consent.
+  The `nc` adapter writes raw peer bytes to the terminal, including any terminal
+  control sequences the peer sends.
 - `haseen vapt net-http-server [--bind ADDRESS] DIR PORT`: explicitly selected
   directory, byte-only foreground HTTP. Opened descriptors confine requests;
   traversal, symlinks and multiply-linked leaves are refused. Each request
@@ -779,8 +796,24 @@ removes only the unchanged recorded anchor; foreign or modified files survive.
 Anchor/state reads already require a regular single-link file on the opened
 descriptor; a multiply-linked anchor is not accepted as unchanged owned trust.
 Dry-run never requests privilege, writes an anchor or claims hypothetical trust.
-Failed updater transactions retain an explicit incomplete ownership journal;
-status refuses to describe them as completed success.
+Anchor JSON adds `anchor.transaction: pending|removing|created`; the state enum
+and schema version remain unchanged. A failed trust update reports `unknown`
+with reason `trust transaction pending; owned anchor unchanged; system trust
+update incomplete`. A failed removal reports `unknown` with reason `removal
+transaction incomplete; anchor absent; system trust may still contain CA`.
+It does not report a deliberately removed anchor as modified.
+
+An unchanged `pending` anchor permits `trust CERT` retry for the same fingerprint
+and bytes, or `remove FINGERPRINT`. Trust retry still requires the full typed
+fingerprint even with `--yes`. A `removing` journal with its anchor absent permits
+only removal retry; it cannot authorize trust. If removal was interrupted before
+unlinking the unchanged anchor, removal can also continue. The root helper
+rechecks journal, fingerprint, anchor bytes and foreign files under its lock.
+Foreign, modified, unsafe or mismatched state stays a refusal. Doctor may report
+the proxy-CA capability available for explicit recovery; this does not mean
+trust completed. Every retry reports success only after the updater succeeds.
+Until then, extracted system trust may still contain a removed CA, and a later
+system trust update could activate an unchanged pending anchor.
 
 ## Optional Security workstation panel (plan 088)
 
@@ -811,6 +844,11 @@ expectations; direct CLI stop still works without requiring a terminal.
 CA trust requires the full typed fingerprint. A launch displays and announces
 “completion has not been checked”, never success. The panel invents no detached result channel;
 terminal operations report their post-launch refusals/errors in that terminal.
+The certificate form displays the anchor transaction separately. An unchanged
+pending transaction offers matching-certificate trust retry and removal; an
+incomplete removal offers only removal retry. Every recovery keeps Review and
+the terminal's confirmation and revalidation flow. Foreign or modified anchors
+offer neither action.
 
 Reopen or explicit Refresh reads a new authoritative snapshot; launch never
 refreshes or polls. Preview captures only the real `--dry-run` output and exit

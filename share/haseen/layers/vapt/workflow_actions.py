@@ -25,6 +25,10 @@ from workflow_support import validate_endpoint, selected_owned_file, local_addre
 
 FAMILIES = [('ssh', ['openssh']), ('postgresql', ['postgresql']), ('apache', ['apache']),
             ('nginx', ['nginx']), ('beef', ['beef', 'beef-xss'])]
+# Reviewed Arch package file lists, recorded in plan 088. Other owned units
+# (key generation, templates, auxiliary daemons) do not authorize selection.
+SERVICE_BINDINGS = {'ssh': {'openssh': 'sshd.service'}, 'postgresql': {'postgresql': 'postgresql.service'},
+                    'apache': {'apache': 'httpd.service'}, 'nginx': {'nginx': 'nginx.service'}}
 # Reviewed concrete adapter bindings, never package-basename inference.
 ADAPTERS = {'listener': ('openbsd-netcat', '/usr/bin/nc'), 'http-server': ('python', '/usr/bin/python'),
             'enumeration-host': ('python', '/usr/bin/python'), 'proxy-ca': ('openssl', '/usr/bin/openssl'),
@@ -37,7 +41,7 @@ UNIT = re.compile(r'[A-Za-z0-9_.:-]+\.service')
 def snapshot():
     config, repos, _ = wf.source_snapshot()
     records = meta.installed(wf.ROOT)
-    return records, wf.file_owners(records), config, repos
+    return records, wf.file_owners(records), config, wf.index_repositories(repos)
 
 
 def adapter(name):
@@ -92,16 +96,18 @@ def service_list():
             row['package'] = wf.clean(matches[0][1]['name'])
             candidates = []
             for index, record in matches:
+                unit = SERVICE_BINDINGS.get(name, {}).get(record['name'])
+                if not unit or not UNIT.fullmatch(unit) or '@' in unit:
+                    continue
                 if not wf.package_sources(record, config, repos):
                     continue
-                for path in owners:
-                    if path.startswith('/usr/lib/systemd/system/') and UNIT.fullmatch(Path(path).name):
-                        if wf.owned_file(path, index, owners) is not None:
-                            candidates.append((path, index))
-            if not candidates:
-                row.update(ownership='refused', reason='no verified package-owned non-template service unit; exposure unknown')
-            elif len(candidates) != 1:
-                row.update(ownership='ambiguous', reason='several owned units; no implicit selection; exposure unknown')
+                path = '/usr/lib/systemd/system/' + unit
+                if wf.owned_file(path, index, owners) is not None:
+                    candidates.append((path, index))
+            if len(matches) != 1:
+                row.update(ownership='ambiguous', reason='several supported package owners; no implicit selection; exposure unknown')
+            elif not candidates:
+                row.update(ownership='refused', reason='no reviewed verified package-owned non-template service binding; exposure unknown')
             else:
                 path, index = candidates[0]
                 unit = Path(path).name
@@ -160,11 +166,13 @@ def local_capabilities(values):
                 # The system trust updater must also be installed and owned.
                 updater_owned()
                 row['prerequisitePackages'].append('ca-certificates-utils')
-                from workflow_ca import ca_status
+                from workflow_ca import ca_status, remove_allowed
                 current = ca_status(wf.ROOT)
-                if current['state'] not in ('none', 'owned'):
+                if current['state'] not in ('none', 'owned') and not (current['anchor'] and remove_allowed(current, current['anchor']['sha256'])):
                     raise ValueError(current['reason'])
             row.update(available=True, state='available', reason='reviewed installed adapter and prerequisites verified; explicit selection/confirmation still required')
+            if name == 'proxy-ca' and current['state'] == 'unknown':
+                row['reason'] = current['reason'] + '; explicit recovery available; no completed trust assumed'
         except (OSError, ValueError, KeyError, TypeError) as error:
             row.update(state='refused' if installed else 'missing', reason=wf.clean(error))
         result.append(row)
@@ -382,22 +390,25 @@ def certificate_payload(path, fingerprint):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['service-list', 'service-plan', 'adapter', 'endpoint-plan', 'serve', 'addresses', 'inspect', 'ca-payload', 'ca-status', 'selection', 'ca-updater', 'ca-trust-check'])
+    parser.add_argument('command', choices=['service-list', 'service-plan', 'adapter', 'endpoint-plan', 'serve', 'addresses', 'inspect', 'ca-payload', 'ca-status', 'selection', 'ca-updater', 'ca-trust-check', 'ca-remove-check'])
     parser.add_argument('operands', nargs='*')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
-    expected = {'service-list': 0, 'service-plan': 1, 'adapter': 1, 'endpoint-plan': 4, 'serve': 5, 'addresses': 0, 'inspect': 1, 'ca-payload': 2, 'ca-status': 0, 'selection': 0, 'ca-updater': 0, 'ca-trust-check': 1}
+    expected = {'service-list': 0, 'service-plan': 1, 'adapter': 1, 'endpoint-plan': 4, 'serve': 5, 'addresses': 0, 'inspect': 1, 'ca-payload': 2, 'ca-status': 0, 'selection': 0, 'ca-updater': 0, 'ca-trust-check': 1, 'ca-remove-check': 1}
     if len(args.operands) != expected[args.command]:
         parser.error('malformed operands')
     try:
-        if args.command in ('ca-updater', 'ca-trust-check'):
+        if args.command in ('ca-updater', 'ca-trust-check', 'ca-remove-check'):
             updater_owned()
-            if args.command == 'ca-trust-check':
-                from workflow_ca import ca_status
+            if args.command != 'ca-updater':
+                from workflow_ca import ca_status, trust_allowed, remove_allowed
                 current = ca_status(wf.ROOT)
-                if current['state'] not in ('none', 'owned') or (current['anchor'] and current['anchor']['sha256'] != args.operands[0]):
-                    raise ValueError('foreign, modified, incomplete or different CA anchor preserved')
+                allowed = trust_allowed if args.command == 'ca-trust-check' else remove_allowed
+                if not allowed(current, args.operands[0]):
+                    raise ValueError('foreign, modified, unsafe transaction or different CA anchor preserved')
+                if args.command == 'ca-remove-check':
+                    print(json.dumps(current))
             return 0
         if args.command == 'selection':
             values = wf.settings()
