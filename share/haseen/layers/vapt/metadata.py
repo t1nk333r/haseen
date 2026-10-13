@@ -1116,6 +1116,8 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     # Audited solver plan rows name each archive's repository. Provenance is
     # granted later only to bytes equal to that repository's reviewed digest.
     planned_sources, archive_rows, payload_package, payload_kinds = {}, {}, {}, {}
+    # (package, member, is directory) of every private-source payload.
+    private_members = []
     for row in (Path(plan).read_text().splitlines() if plan else []):
         fields = row.split('\t')
         if not row.strip():
@@ -1216,15 +1218,8 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         if source:
             archive_rows[package] = (source, fields['pkgver'][0], filename)
         newfiles = {name for name in names if name and not name.startswith('.')}
-        # A private-source package may place nothing in pacman's keyrings
-        # directory: a later manual `pacman-key --populate` would apply any
-        # list or ownertrust found there (the source's own keyring package is
-        # audited separately and never installed).
-        if source == ONIOMARCHY and any(
-                Path(name).parts[:4] == ('usr', 'share', 'pacman', 'keyrings')
-                and (len(Path(name).parts) > 4 or not names[name].endswith('/')) for name in newfiles):
-            raise ValueError('oniomarchy package ' + package + ' places files under /usr/share/pacman/keyrings, '
-                             'where pacman-key --populate would apply them; refused')
+        if source == ONIOMARCHY:
+            private_members.extend((package, name, names[name].endswith('/')) for name in sorted(newfiles))
         package_paths = {name + ('/' if names[name].endswith('/') else '') for name in newfiles}
         if '.MTREE' in names and '.MTREE' not in contents:
             raise ValueError('opaque .MTREE requires manual review ' + package)
@@ -1331,6 +1326,40 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
                 return None
             return retained_link(root)(candidate)
         return walk_chain(rel, future_link)
+    # --- private-source payloads and pacman's own trust configuration --------
+    # A private-source package may place nothing where pacman reads trust:
+    # the keyrings directory (a manual `pacman-key --populate` applies any
+    # list or ownertrust there), pacman's GPGDir (gpg prefers gpg.conf-2 to
+    # gpg.conf, so one dropped file can name another keyring or a trusted-key
+    # for every repository), the rest of /etc/pacman.d and /etc/pacman.conf*.
+    # Each member is judged where it physically lands in both transaction
+    # views, through retained and incoming links (a symlink member pointing
+    # there counts), case-insensitively. Directory headers of a protected
+    # directory itself and of its ancestors stay allowed.
+    if private_members:
+        gpgdir = os.path.normpath(pacman_gpgdir(root)).strip('/')
+        if not gpgdir:
+            raise ValueError('pacman GPGDir is the root directory; private-source packages refused')
+        views = ('PreTransaction', 'PostTransaction')
+        roots = {'usr/share/pacman/keyrings', 'etc/pacman.d', gpgdir}
+        roots |= {guarded_chain(anchor, view)[-1] for anchor in set(roots) for view in views}
+        roots = {anchor.casefold() for anchor in roots}
+        configs = {guarded_chain('etc/pacman.conf', view)[-1].casefold() for view in views}
+        def pacman_trust_path(path, directory):
+            lowered = path.casefold()
+            parts = lowered.split('/')
+            if directory and lowered in roots:
+                return False
+            return (lowered in configs or (parts[0] == 'etc' and len(parts) > 1 and parts[1].startswith('pacman.conf'))
+                    or any(lowered == anchor or lowered.startswith(anchor + '/') for anchor in roots))
+        for package, name, directory in private_members:
+            for view in views:
+                landed = guarded_chain(name, view)[-1]
+                if pacman_trust_path(landed, directory and landed == name):
+                    raise ValueError('oniomarchy package ' + package + ' places /' + name
+                                     + ('' if landed == name else ' (reaching /' + landed + ')')
+                                     + " inside pacman's trust configuration (keyrings, GPGDir /" + gpgdir
+                                     + ', /etc/pacman.d, /etc/pacman.conf*); refused')
     # --- new directories (physical, future view) -----------------------------
     # A directory the transaction CREATES gets its authority from libalpm's
     # extraction: every explicit header's owner/mode/xattrs (order across
