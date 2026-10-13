@@ -217,7 +217,7 @@ vapt_oniomarchy_bootstrap_steps() {
     fi
     # An unchanged authority (same audited keyring) needs no trust operation.
     if [[ $current != "$authority" ]]; then
-        local fpr listing
+        local fpr gpgdir listing present=''
         local -a accepted=() revoked=() before_accepted=() before_revoked=() added=() dropped=()
         vapt_oniomarchy_authority_set accepted "$authority" accepted
         vapt_oniomarchy_authority_set revoked "$authority" revoked
@@ -231,11 +231,11 @@ vapt_oniomarchy_bootstrap_steps() {
         for fpr in "${revoked[@]}"; do [[ " ${before_revoked[*]} " == *" $fpr "* ]] || dropped+=("$fpr"); done
         # The keyring package is never installed: its trusted/revoked files
         # (with the publisher's ownertrust column) would sit where a manual
-        # `pacman-key --populate` applies them. haseen keeps the audited
-        # archive in its own root state and makes every trust change itself,
-        # never through --populate and never importing ownertrust. Newly
-        # accepted keys come only from that archive's key file, exported for
-        # exactly those primaries and checked before any trust change.
+        # `pacman-key --populate` applies them. haseen makes every trust
+        # change itself, and first reads everything those changes depend on,
+        # so a refusal or an unreadable answer leaves the shared keyring as
+        # it was. Newly accepted keys come only from the archive's own key
+        # file, exported for exactly those primaries.
         if ((${#added[@]})); then
             vapt_meta keyring-gpg "$sealed" "$stage/keyring.gpg" || {
                 VAPT_ONIOMARCHY_REASON='keyring archive key file unreadable; manual review required'; return 2;
@@ -252,6 +252,24 @@ vapt_oniomarchy_bootstrap_steps() {
                 return 2
             fi
         fi
+        # Which newly revoked keys pacman's keyring holds comes only from
+        # gpg's colon listing of it, strictly parsed. A failed or
+        # uninterpretable answer fails the approval with the revocation still
+        # pending for a retry; no key is ever concluded absent from it. Keys
+        # this approval adds are accepted, so never among the revoked ones.
+        if ((${#dropped[@]})); then
+            gpgdir="$(vapt_meta pacman-gpgdir 2>/dev/null)" || {
+                VAPT_ONIOMARCHY_REASON='pacman GPGDir unreadable; no trust changed; retry the approval'; return 1;
+            }
+            listing="$(vapt_root_exec /usr/bin/gpg --homedir "$gpgdir" --batch --no-permission-warning \
+                --no-auto-check-trustdb --with-colons --list-keys 2>/dev/null)" || {
+                VAPT_ONIOMARCHY_REASON='shared pacman keyring lookup failed; no trust changed; retry the approval'; return 1;
+            }
+            printf '%s\n' "$listing" | write_user_file "$stage/keyring.colons" || return 1
+            present="$(vapt_meta keyring-listing "$stage/keyring.colons" 2>/dev/null)" || {
+                VAPT_ONIOMARCHY_REASON='shared pacman keyring listing could not be interpreted; no trust changed; retry the approval'; return 1;
+            }
+        fi
         if [[ ${VAPT_ONIO[keyringAuthorityState]:-} != ok ]]; then
             # The initial anchor: only the pinned primary, from the fetched
             # key, is imported and locally signed.
@@ -262,43 +280,21 @@ vapt_oniomarchy_bootstrap_steps() {
             vapt_root_exec /usr/bin/pacman-key --lsign-key "$VAPT_ONIO_PRIMARY" || return 1
         fi
         vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || { VAPT_ONIOMARCHY_REASON="$VAPT_APPLY_REASON"; return 2; }
-        if ((${#added[@]} || ${#dropped[@]})); then
-            [[ -n $VAPT_ONIO_TRUST_CHANGED ]] ||
-                VAPT_ONIO_TRUST_CHANGED='the audited oniomarchy keyring update reached the shared pacman keyring (global trust changed)'
-        fi
+        local update='the audited oniomarchy keyring update reached the shared pacman keyring (global trust changed)'
         if ((${#added[@]})); then
+            VAPT_ONIO_TRUST_CHANGED="${VAPT_ONIO_TRUST_CHANGED:-$update}"
             vapt_root_exec /usr/bin/pacman-key --add "$stage/accepted.gpg" || return 1
             for fpr in "${added[@]}"; do vapt_root_exec /usr/bin/pacman-key --lsign-key "$fpr" || return 1; done
         fi
-        # Newly revoked keys (only ones this source used, per the audit)
-        # leave the shared keyring. Presence is decided only from gpg's
-        # machine-readable colon listing of pacman's keyring, positively
-        # parsed (keyring-listing: every line a known colon record, every
-        # primary with its fpr record, at least one primary). A failed or
-        # uninterpretable listing, or a failed deletion, aborts before the
-        # archive and authority are written, so the revocation stays pending
-        # and a retry repeats it; nothing is ever concluded absent from a
-        # human-readable layout.
-        if ((${#dropped[@]})); then
-            local gpgdir present
-            gpgdir="$(vapt_meta pacman-gpgdir 2>/dev/null)" || {
-                VAPT_ONIOMARCHY_REASON='pacman GPGDir unreadable; revoked keys not removed; retry the approval'; return 1;
+        # A failed deletion fails the approval before the archive and
+        # authority are written, so a retry repeats it.
+        for fpr in "${dropped[@]}"; do
+            [[ $'\n'"$present"$'\n' == *$'\n'"$fpr"$'\n'* ]] || continue
+            VAPT_ONIO_TRUST_CHANGED="${VAPT_ONIO_TRUST_CHANGED:-$update}"
+            vapt_root_exec /usr/bin/pacman-key --delete "$fpr" >/dev/null || {
+                VAPT_ONIOMARCHY_REASON="revoked key $fpr could not be removed from the shared pacman keyring; retry the approval"; return 1;
             }
-            listing="$(vapt_root_exec /usr/bin/gpg --homedir "$gpgdir" --batch --no-permission-warning \
-                --no-auto-check-trustdb --with-colons --list-keys 2>/dev/null)" || {
-                VAPT_ONIOMARCHY_REASON='shared pacman keyring lookup failed; revoked keys not removed; retry the approval'; return 1;
-            }
-            printf '%s\n' "$listing" | write_user_file "$stage/keyring.colons" || return 1
-            present="$(vapt_meta keyring-listing "$stage/keyring.colons" 2>/dev/null)" || {
-                VAPT_ONIOMARCHY_REASON='shared pacman keyring listing could not be interpreted; revoked keys not removed; retry the approval'; return 1;
-            }
-            for fpr in "${dropped[@]}"; do
-                [[ $'\n'"$present"$'\n' == *$'\n'"$fpr"$'\n'* ]] || continue
-                vapt_root_exec /usr/bin/pacman-key --delete "$fpr" >/dev/null || {
-                    VAPT_ONIOMARCHY_REASON="revoked key $fpr could not be removed from the shared pacman keyring; retry the approval"; return 1;
-                }
-            done
-        fi
+        done
         # The audited archive itself, then the authority bound to it.
         vapt_root_meta state-write "$(vapt_read_path "$VAPT_ONIOMARCHY_SOURCES/oniomarchy-keyring.pkg")" <"$sealed" || return 1
         printf '%s\n' "$authority" |

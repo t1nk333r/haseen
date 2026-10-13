@@ -242,6 +242,27 @@ VAPT_KEYRING_LISTING=colons-no-pin vapt_api repo-enable --yes
 assert_status 'revoke absent: a parsed listing without the key completes' 0 "$STATUS"
 assert_not_contains 'revoke absent: nothing is deleted' "$(adv_trust_ops)" '--delete'
 assert_contains 'revoke absent: the revocation is recorded' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'revoked\t'"$PIN"
+# A keyring that accepts a new key and revokes another is listed before any
+# trust change: an uninterpretable listing fails the approval with the new key
+# not yet added or signed, so nothing is trusted without being recorded.
+adv_case vapt-adv-trust-revoke-listing-first
+vapt_api repo-enable --yes
+assert_status 'listing first: initial approval' 0 "$STATUS"
+vapt_onio_serve keyring=20261015-1 trusted=ROT revoked=PIN pkgstatus=pinned
+authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+: >"$CALLS/sudo"
+VAPT_KEYRING_LISTING=human vapt_api repo-enable --yes
+assert_status 'listing first: the approval fails' 1 "$STATUS"
+assert_contains 'listing first: and says nothing changed' "$OUTPUT" 'listing could not be interpreted; no trust changed'
+assert_eq 'listing first: no key is added, signed or deleted' '' "$(adv_trust_ops)"
+assert_not_contains 'listing first: no trust change is claimed' "$OUTPUT" 'global trust changed'
+assert_eq 'listing first: nothing is recorded' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+: >"$CALLS/sudo"
+vapt_api repo-enable --yes
+assert_contains 'listing first: a retry adds the new key' "$(adv_trust_ops)" "pacman-key --lsign-key $ROT"
+assert_contains 'listing first: removes the revoked one' "$(adv_trust_ops)" "pacman-key --delete $PIN"
+assert_contains 'listing first: and records both' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" \
+    $'accepted\t'"$ROT"$'\nrevoked\t'"$PIN"
 
 # --- an installed oniomarchy keyring package is never left in place ----------
 # Its files are where a manual pacman-key --populate would apply them.
