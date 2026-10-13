@@ -52,8 +52,8 @@ vapt_oniomarchy_plan() {
         info "vapt: would fetch $VAPT_ONIOMARCHY_REPO_URL/oniomarchy.db and its detached .sig and require exactly one primary the recorded authority accepts"
         info 'vapt: would fetch the oniomarchy-keyring archive the database names (<filename-unknown-until-then>) and its .sig, sealed against the database digest'
         info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks, signer, revocations) before any trust change'
-        info 'vapt: an unchanged audited keyring changes no trust; a changed one would be installed with --noscriptlet, its newly accepted primaries added from its own key file and lsigned (pacman-key --add/--lsign-key), newly revoked ones deleted; never pacman-key --populate, never publisher ownertrust'
-        info "vapt: would record the verified database and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
+        info 'vapt: an unchanged audited keyring changes no trust. The keyring package is never installed: a changed keyring has its newly accepted primaries exported from its own key file, added and lsigned (pacman-key --add/--lsign-key), and its newly revoked ones deleted (pacman-key --delete) where a parsed listing of the shared keyring shows them; never pacman-key --populate, never publisher ownertrust'
+        info "vapt: would record the verified database, a changed keyring's audited archive and authority, and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
         printf '[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch\n' | sed 's/^/    | /'
         return 0
     fi
@@ -63,8 +63,8 @@ vapt_oniomarchy_plan() {
     info 'vapt: would require exactly one accepted primary on the database signature before reading any filename from it'
     info 'vapt: would fetch the oniomarchy-keyring archive the database names (<filename-unknown-until-then>) and its .sig, sealed against the database digest'
     info 'vapt: would audit the sealed keyring archive (identity, layout, dependencies, scriptlet, hooks, revocations) before any trust change'
-    info 'vapt: would run sudo pacman-key --add/--lsign-key for the pinned primary, install the sealed keyring with --noscriptlet, then add and lsign only its other accepted primaries from its own key file; never pacman-key --populate, never publisher ownertrust'
-    info "vapt: would record the keyring authority and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
+    info 'vapt: would run sudo pacman-key --init, --add and --lsign-key for the pinned primary, then add and lsign only the keyring'"'"'s other accepted primaries, exported from its own key file. The keyring package is never installed; never pacman-key --populate, never publisher ownertrust'
+    info "vapt: would record the audited keyring archive, its authority, the verified database and this private stanza under $VAPT_ONIOMARCHY_SOURCES:"
     printf '[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch\n' | sed 's/^/    | /'
     info "vapt: $VAPT_ONIOMARCHY_DISCLOSURE"
 }
