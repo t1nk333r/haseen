@@ -107,6 +107,12 @@ home_state() { (cd "$HOME" && find . -printf '%p %y %s %T@\n' | LC_ALL=C sort); 
 # The owners validate before they plan: the font must be installed and the
 # shell's layer applied. Both are answered here, never by the machine.
 stub fc-list 'echo "JetBrainsMono Nerd Font"'
+# Editor-owned keys open their file in $EDITOR inside a floating $TERMINAL.
+# Both are stubs that log, so the sweep never depends on what the machine has
+# installed (CI has neither) and can prove a dry run starts neither.
+stub nvim "echo \"nvim \$*\" >>'$SANDBOX/ran'"
+stub foot "echo \"foot \$*\" >>'$SANDBOX/ran'"
+export EDITOR=nvim TERMINAL=foot
 mkdir -p "$SANDBOX/sysroot/var/lib/haseen/layers"
 touch "$SANDBOX/sysroot/var/lib/haseen/layers/shell" "$SANDBOX/sysroot/var/lib/haseen/layers/dms"
 export HASEEN_SYSROOT="$SANDBOX/sysroot"
@@ -120,6 +126,7 @@ while IFS=$'\t' read -r key takes; do
     assert_dry_pure "settings set $key" "$OUTPUT"
 done <<<"$keys"
 assert_eq "no settings set --dry-run changed anything under HOME" "$before" "$(home_state)"
+assert_eq "no settings set --dry-run started an editor or a terminal" "" "$(cat "$SANDBOX/ran" 2>/dev/null)"
 unset HASEEN_SYSROOT
 
 capture haseen settings set bogus value
