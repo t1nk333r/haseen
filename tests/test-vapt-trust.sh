@@ -57,8 +57,9 @@ for name in "${!VECTOR[@]}"; do
 done
 
 # --- end to end: only an accepted signature reaches keyring trust ------------
-# kr_case NAME VECTOR [SCRIPTLET] — a host without BlackArch; curl serves a
-# fixture keyring database/package, gpg replays detached-signature status.
+# kr_case NAME VECTOR [SCRIPTLET] [REVOKED] — a host without BlackArch; curl
+# serves a fixture keyring database/package (with REVOKED as its
+# blackarch-revoked list), gpg replays detached-signature status.
 kr_case() {
     vapt_sandbox "$1"
     vapt_root
@@ -74,6 +75,7 @@ kr_case() {
     mkdir -p "$kr/db/blackarch-keyring-20251001-1" "$kr/pkg/usr/share/pacman/keyrings"
     printf 'pkgname = blackarch-keyring\npkgver = 20251001-1\narch = any\n' >"$kr/pkg/.PKGINFO"
     printf 'fixture keyring\n' >"$kr/pkg/usr/share/pacman/keyrings/blackarch.gpg"
+    [[ -z ${4:-} ]] || printf '%s\n' "$4" >"$kr/pkg/usr/share/pacman/keyrings/blackarch-revoked"
     local members=(.PKGINFO usr)
     if [[ -n ${3:-} ]]; then
         printf '%s\n' "$3" >"$kr/pkg/.INSTALL"
@@ -152,6 +154,18 @@ for name in approved bad revoked expired-key expired-sig ambiguous unapproved ap
     assert_eq "keyring $name: staging is cleaned up" "" "$(ls -A "$ROOT$XDG_CACHE_HOME/haseen/vapt" 2>/dev/null || true)"
     vapt_tools_untouched "keyring $name"
 done
+# A signed keyring whose revoked list names an Arch/CachyOS keyring key is
+# refused before any trust change (pacman-key --populate would disable that
+# key for every repository), and the report says why.
+if command -v bsdtar >/dev/null 2>&1; then
+    kr_case vapt-keyring-revokes-vendor "${VECTOR[approved]}" '' "$OTHER"
+    printf '%s\n' "$OTHER" >"$ROOT/var/lib/haseen/vapt/fixture-base-signers"
+    vapt_api install --yes --groups api
+    assert_status 'vendor revocation: a refused source is unavailable, not a failed apply' 0 "$STATUS"
+    assert_not_contains 'vendor revocation: no pacman-key trust change' "$(vapt_calls sudo)" 'pacman-key'
+    assert_contains 'vendor revocation: the report names it' "$(grep -F $'# source\t' <<<"$OUTPUT" || true)" \
+        "revokes Arch/CachyOS keyring keys ($OTHER)"
+fi
 
 # The reviewed upstream population script is a narrow keyring-only exception;
 # neither a changed payload nor a relevant host hook inherits that exception.
@@ -200,6 +214,79 @@ vapt_repos 'extra|runtime|1-1|https://example.org/runtime|keyring-runtime'
 vapt_installed 'runtime|1-1|https://example.org/runtime|keyring-runtime'
 capture python3 "$VAPT_META" keyring "$archive" --root "$ROOT"
 assert_status 'reviewed keyring with proven available dependency accepted' 0 "$STATUS"
+
+# --- the lists pacman-key --populate blackarch applies ------------------------
+# populate lsigns every trusted ID, imports the trusted file as ownertrust and
+# disables every revoked ID in the shared keyring, for every repository. So
+# trusted IDs must be reviewed BlackArch signers with at most marginal (4)
+# ownertrust, and revoked IDs reviewed signers or keys the package's own
+# blackarch.gpg publishes, never an Arch/CachyOS keyring key.
+vapt_sandbox vapt-keyring-lists
+vapt_root
+BA_PKG="$SANDBOX/packages/blackarch-keyring"
+mkdir -p "$BA_PKG/usr/share/pacman/keyrings"
+printf 'pkgname = blackarch-keyring\npkgver = 20251001-1\narch = any\n' >"$BA_PKG/.PKGINFO"
+printf '%s\n' "$KEYRING_SCRIPT" >"$BA_PKG/.INSTALL"
+# blackarch.gpg: two v4 public keys (new and old packet format), a user ID and
+# a subkey; their fingerprints computed as gpg does (SHA-1 over 0x99, the
+# two-octet length and the key packet body).
+read -r OWN VENDOR SUBKEY < <(python3 - "$BA_PKG/usr/share/pacman/keyrings/blackarch.gpg" <<'EOF'
+import hashlib, sys
+def key(seed):
+    return b'\x04\x00\x00\x00\x00\x16' + hashlib.sha256(seed).digest()
+def fpr(body):
+    return hashlib.sha1(b'\x99' + len(body).to_bytes(2, 'big') + body).hexdigest().upper()
+own, vendor, subkey = key(b'own'), key(b'vendor'), key(b'subkey')
+data = (bytes([0xc6, len(own)]) + own + bytes([0xcd, 7]) + b'fixture' + bytes([0xce, len(subkey)]) + subkey
+        + bytes([0x98, len(vendor)]) + vendor)
+open(sys.argv[1], 'wb').write(data)
+print(fpr(own), fpr(vendor), fpr(subkey))
+EOF
+)
+# ba_lists TRUSTED REVOKED — audit the keyring with these list files (printf %b).
+ba_lists() {
+    printf '%b' "$1" >"$BA_PKG/usr/share/pacman/keyrings/blackarch-trusted"
+    printf '%b' "$2" >"$BA_PKG/usr/share/pacman/keyrings/blackarch-revoked"
+    tar -czf "$SANDBOX/blackarch-keyring.pkg.tar.gz" -C "$BA_PKG" .PKGINFO .INSTALL usr
+    capture python3 "$VAPT_META" keyring "$SANDBOX/blackarch-keyring.pkg.tar.gz" --root "$ROOT"
+}
+printf '%s\n' "$VENDOR" >"$ROOT/var/lib/haseen/vapt/fixture-base-signers"
+ba_lists "# BlackArch signers\n\n$P:4:\n$Q:4:\n" ''
+assert_status 'lists naming reviewed signers at marginal trust pass (control)' 0 "$STATUS"
+ba_lists "$P:4:\n" "$OWN\n\n$Q\n"
+assert_status 'revoking keys the package publishes or reviewed signers passes (control)' 0 "$STATUS"
+while IFS='|' read -r label trusted revoked reason; do
+    ba_lists "$trusted" "$revoked"
+    assert_status "keyring lists: $label: refused" 1 "$STATUS"
+    assert_contains "keyring lists: $label: reason" "$OUTPUT" "$reason"
+done <<EOF
+a published key that is not a reviewed signer is trusted|$OWN:4:\n||not reviewed BlackArch signers ($OWN)
+an unrelated key is trusted with ownertrust 2|$OTHER:2:\n||not reviewed BlackArch signers ($OTHER)
+a reviewed signer gets full ownertrust|$P:5:\n||ownertrust above marginal (4) to $P
+a reviewed signer gets ultimate ownertrust|$P:6:\n||ownertrust above marginal
+a reviewed signer gets the disabled flag|$P:128:\n||ownertrust above marginal
+a trusted line with leading space| $P:4:\n||malformed BlackArch trusted list line
+a trusted line with a carriage return|$P:4:\r\n||malformed BlackArch trusted list line
+a lowercase trusted fingerprint|${P,,}:4:\n||malformed BlackArch trusted list line
+an Arch/CachyOS key published in blackarch.gpg is revoked|$P:4:\n|$VENDOR\n|revokes Arch/CachyOS keyring keys ($VENDOR)
+a key the package does not publish is revoked|$P:4:\n|$OTHER\n|revokes keys it does not publish ($OTHER)
+the subkey of a published key is revoked|$P:4:\n|$SUBKEY\n|revokes keys it does not publish ($SUBKEY)
+a revoked line naming a user ID|$P:4:\n|archlinux\n|not a primary fingerprint
+a revoked short key ID|$P:4:\n|${P:24}\n|not a primary fingerprint
+a revoked comment line|$P:4:\n|# $OTHER\n|not a primary fingerprint
+EOF
+printf 'not a key file\n' >"$BA_PKG/usr/share/pacman/keyrings/blackarch.gpg"
+ba_lists "$P:4:\n" "$Q\n"
+assert_status 'revoking a reviewed signer needs no key file (control)' 0 "$STATUS"
+ba_lists "$P:4:\n" "$OWN\n"
+assert_status 'any other revocation with an unreadable key file is refused' 1 "$STATUS"
+assert_contains 'an unreadable key file: reason' "$OUTPUT" 'blackarch.gpg is unreadable'
+rm "$BA_PKG/usr/share/pacman/keyrings/blackarch-trusted"
+ln -s /etc/pacman.d/gnupg/trustdb.gpg "$BA_PKG/usr/share/pacman/keyrings/blackarch-trusted"
+tar -czf "$SANDBOX/blackarch-keyring.pkg.tar.gz" -C "$BA_PKG" .PKGINFO .INSTALL usr
+capture python3 "$VAPT_META" keyring "$SANDBOX/blackarch-keyring.pkg.tar.gz" --root "$ROOT"
+assert_status 'a linked trusted list is refused' 1 "$STATUS"
+assert_contains 'a linked trusted list: reason' "$OUTPUT" 'blackarch-trusted is not a plain file'
 
 # --- an interrupted full upgrade blocks every package transaction ------------
 guard_case() {

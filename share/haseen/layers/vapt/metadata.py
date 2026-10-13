@@ -7,6 +7,7 @@ installed.json is a list with the same fields. Package membership .pkgs remains
 usable for resolution, but cannot prove identity/dependency/install safety.
 """
 import argparse
+import base64
 import ctypes
 import email
 import errno
@@ -4646,6 +4647,169 @@ def keyring_gpg(archive, out):
         stream.write(data)
 
 
+# --- BlackArch keyring: the lists pacman-key --populate applies --------------
+BLACKARCH_KEYRINGS = 'usr/share/pacman/keyrings/'
+# Marginal: the level Arch's own keyring gives its master keys. Full or
+# ultimate would let one BlackArch certification make any key valid.
+BLACKARCH_OWNERTRUST_MAX = 4
+
+
+def openpgp_primaries(data):
+    """The v4 primary fingerprints of an OpenPGP key file, binary or ASCII
+    armoured, computed as gpg does: SHA-1 over 0x99, the two-octet body length
+    and the public-key packet body. Subkeys, user IDs and signatures are
+    skipped; other key versions have no 40-hex fingerprint and are left out.
+    Anything that is not a sequence of complete packets fails closed."""
+    if data.lstrip().startswith(b'-----BEGIN PGP PUBLIC KEY BLOCK-----'):
+        body, state = [], 'outside'
+        for line in data.decode('ascii').splitlines():
+            line = line.strip()
+            if state == 'outside':
+                state = 'headers' if line == '-----BEGIN PGP PUBLIC KEY BLOCK-----' else state
+            elif line.startswith('-----END PGP PUBLIC KEY BLOCK-----'):
+                state = 'outside'
+            elif state == 'headers' and (not line or ': ' in line):
+                state = 'body' if not line else state
+            elif not line.startswith('='):  # '=' starts the armour checksum
+                state = 'body'
+                body.append(line)
+        if state != 'outside':
+            raise ValueError('unterminated ASCII-armoured key file')
+        data = base64.b64decode(''.join(body), validate=True)
+    def octets(start, count):
+        if start + count > len(data):
+            raise ValueError('truncated OpenPGP packet in a key file')
+        return data[start:start + count]
+    primaries, offset = set(), 0
+    while offset < len(data):
+        header = data[offset]
+        if not header & 0x80:
+            raise ValueError('not an OpenPGP key file')
+        if header & 0x40:
+            tag, first = header & 0x3f, octets(offset + 1, 1)[0]
+            if first < 192:
+                length, offset = first, offset + 2
+            elif first < 224:
+                length, offset = ((first - 192) << 8) + octets(offset + 2, 1)[0] + 192, offset + 3
+            elif first == 255:
+                length, offset = int.from_bytes(octets(offset + 2, 4), 'big'), offset + 6
+            else:
+                raise ValueError('partial-length OpenPGP packet in a key file')
+        else:
+            tag, size = (header >> 2) & 0x0f, header & 0x03
+            if size == 3:
+                raise ValueError('indeterminate-length OpenPGP packet in a key file')
+            width = (1, 2, 4)[size]
+            length, offset = int.from_bytes(octets(offset + 1, width), 'big'), offset + 1 + width
+        body = octets(offset, length)
+        offset += length
+        if tag == 6 and body[:1] == b'\x04':
+            if length > 0xffff:
+                raise ValueError('oversized OpenPGP public key packet')
+            primaries.add(hashlib.sha1(b'\x99' + length.to_bytes(2, 'big') + body).hexdigest().upper())
+    return primaries
+
+
+def blackarch_keyring_lists(root, entries, contents):
+    """Refuse a BlackArch keyring whose lists reach beyond BlackArch's own
+    keys. `pacman-key --populate blackarch` lsigns every trusted ID, imports
+    the trusted file as ownertrust and disables every revoked ID in the shared
+    keyring, whatever repository those keys serve. Trusted IDs must therefore
+    be reviewed BlackArch signers (files/blackarch-signers.txt) with at most
+    marginal ownertrust, and revoked IDs reviewed signers or primaries of the
+    package's own blackarch.gpg, never an Arch or CachyOS key."""
+    signers_path = Path(os.path.abspath(__file__)).parent / 'files' / 'blackarch-signers.txt'
+    signers = {line.strip() for line in signers_path.read_text().splitlines() if FINGERPRINT.fullmatch(line.strip())}
+    files = {}
+    for name in ('blackarch.gpg', 'blackarch-trusted', 'blackarch-revoked'):
+        member = BLACKARCH_KEYRINGS + name
+        if member in entries and (entries[member][0] != stat.S_IFREG or entries[member][2] is not None
+                                  or member not in contents):
+            raise ValueError('BlackArch keyring member ' + name + ' is not a plain file; manual review required')
+        files[name] = contents.get(member, b'')
+    try:
+        # Lines end at LF only, as pacman-key's `read` and gpg see them.
+        trusted_lines = files['blackarch-trusted'].decode('ascii').split('\n')
+        revoked_lines = files['blackarch-revoked'].decode('ascii').split('\n')
+    except UnicodeDecodeError as error:
+        raise ValueError('BlackArch keyring list is not ASCII; manual review required') from error
+    trusted = {}
+    for line in trusted_lines:
+        if not line or line.startswith('#'):  # both readers skip these
+            continue
+        match = re.fullmatch(r'([A-F0-9]{40})(?::([0-9]+):?)?', line)
+        if not match:
+            raise ValueError('malformed BlackArch trusted list line; manual review required')
+        trusted[match[1]] = max(trusted.get(match[1], 0), int(match[2] or 0))
+    foreign = sorted(set(trusted) - signers)
+    if foreign:
+        raise ValueError('BlackArch keyring trusts keys that are not reviewed BlackArch signers (' + ','.join(foreign)
+                         + '); pacman-key --populate would lsign them for every repository; manual review required')
+    raised = sorted(fpr for fpr, level in trusted.items() if level > BLACKARCH_OWNERTRUST_MAX)
+    if raised:
+        raise ValueError('BlackArch keyring gives ownertrust above marginal (' + str(BLACKARCH_OWNERTRUST_MAX) + ') to '
+                         + ','.join(raised) + '; manual review required')
+    revoked = set()
+    for line in revoked_lines:
+        line = line.strip(' \t')  # pacman-key reads each line with `read -r`
+        if not line:
+            continue
+        if not FINGERPRINT.fullmatch(line):
+            # Anything else reaches gpg --edit-key as a name to match.
+            raise ValueError('BlackArch revoked list line is not a primary fingerprint; manual review required')
+        revoked.add(line)
+    vendor = sorted(revoked & base_signers(root))
+    if vendor:
+        raise ValueError('BlackArch keyring revokes Arch/CachyOS keyring keys (' + ','.join(vendor)
+                         + '); pacman-key --populate would disable them; manual review required')
+    unknown = revoked - signers
+    if unknown:
+        try:
+            unknown -= openpgp_primaries(files['blackarch.gpg'])
+        except ValueError as error:
+            raise ValueError('BlackArch keyring blackarch.gpg is unreadable (' + str(error) + '), so its revocations '
+                             'cannot be checked; manual review required') from error
+    if unknown:
+        raise ValueError('BlackArch keyring revokes keys it does not publish (' + ','.join(sorted(unknown))
+                         + '); pacman-key --populate would disable them; manual review required')
+
+
+def blackarch_keyring_audit(root, archive, sudo_plugins_path, authority_facts_path):
+    """The sealed blackarch-keyring archive before any trust change: its
+    identity, its population lists, dependencies already installed from an
+    allowed source, then the generic archive audit with the reviewed
+    population scriptlet exempted for this package alone."""
+    entries, contents = read_archive(archive, contents=True)
+    if '.PKGINFO' not in contents:
+        raise ValueError('keyring package identity metadata missing')
+    fields = {}
+    for line in contents['.PKGINFO'].decode('utf-8', 'replace').splitlines():
+        if ' = ' in line:
+            key, value = line.split(' = ', 1)
+            fields.setdefault(key, []).append(value)
+    if fields.get('pkgname') != ['blackarch-keyring']:
+        raise ValueError('signed archive is not blackarch-keyring')
+    blackarch_keyring_lists(root, entries, contents)
+    local, seen = installed(root), set()
+    config, repos = read_config(root), repositories(root)
+    def check_dependency(dep):
+        candidates = [record for record in local if satisfies(record, dep)]
+        if not candidates:
+            raise ValueError('keyring bootstrap dependency not already available ' + dep)
+        for record in candidates:
+            name = record['name']
+            if name in seen:
+                continue
+            seen.add(name)
+            if not allowed_local(record, config, repos):
+                raise ValueError('unresolved retained keyring dependency source/identity ' + name)
+            for required in record.get('depends', []):
+                check_dependency(required)
+    for dep in fields.get('depend', []):
+        check_dependency(dep)
+    audit_archives(root, [archive], keyring_population='blackarch-keyring', sudo_plugins_path=sudo_plugins_path,
+                   authority_facts_path=authority_facts_path)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -4807,35 +4971,7 @@ def main():
             # The bootstrap seals exactly these bytes before verify/audit/install.
             print(records[0]['filename'], records[0]['sha256sum'], sep='\t')
         elif options.operation == 'keyring':
-            metadata = [text for name, text in archive_members(args[0]) if name == '.PKGINFO']
-            if len(metadata) != 1:
-                raise ValueError('keyring package identity metadata missing')
-            fields = {}
-            for line in metadata[0].splitlines():
-                if ' = ' in line:
-                    key, value = line.split(' = ', 1)
-                    fields.setdefault(key, []).append(value)
-            if fields.get('pkgname') != ['blackarch-keyring']:
-                raise ValueError('signed archive is not blackarch-keyring')
-            local, seen = installed(options.root), set()
-            config, repos = read_config(options.root), repositories(options.root)
-            def check_dependency(dep):
-                candidates = [record for record in local if satisfies(record, dep)]
-                if not candidates:
-                    raise ValueError('keyring bootstrap dependency not already available ' + dep)
-                for record in candidates:
-                    name = record['name']
-                    if name in seen:
-                        continue
-                    seen.add(name)
-                    if not allowed_local(record, config, repos):
-                        raise ValueError('unresolved retained keyring dependency source/identity ' + name)
-                    for required in record.get('depends', []):
-                        check_dependency(required)
-            for dep in fields.get('depend', []):
-                check_dependency(dep)
-            audit_archives(options.root, args, keyring_population='blackarch-keyring', sudo_plugins_path=options.sudo_plugins,
-                           authority_facts_path=options.authority_facts)
+            blackarch_keyring_audit(options.root, args[0], options.sudo_plugins, options.authority_facts)
         elif options.operation == 'audit':
             audit_archives(options.root, args, plan=options.plan, dbpath=options.dbpath, reference=options.reference,
                            sudo_plugins_path=options.sudo_plugins, base_dbpath=options.base_dbpath,
