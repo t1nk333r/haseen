@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
 # haseen:summary Upload a file to a share host and copy the link
-# haseen:args [FILE] [--backend NAME] [--expires HOURS] [--list] [--no-copy] [--dry-run]
+# haseen:args [FILE] [--backend NAME] [--expires HOURS] [--list] [--no-copy] [--quiet] [--dry-run]
 #
-# One command, several backends. Credentials come from
-# ~/.config/haseen/upload.toml or the environment, never from this file, and
-# they are handed to curl through a config file on stdin (`curl --config -`),
-# so no token ever reaches argv, /proc/<pid>/cmdline, `ps`, a dry-run plan or a
-# notification.
-#
-# Backend status, verified 2026-10-05 (plan evidence in the research report,
-# §10 "Upload targets"); each backend's endpoint comment carries its line:
-#
-#   xbackbone  self-hosted, the owner's target. Primary when configured.
-#   catbox     anonymous, live, 200 MB, kept while accessed. Default fallback.
-#   uguu       anonymous, live, 128 MiB, expires after 3 h.
-#   temp.sh    anonymous, live, 4 GB, expires after 3 days.
-#   rclone     your own S3/R2 bucket; what the ShareX maintainers recommend.
-#   0x0        uploads are DISABLED upstream (HTTP 503). Kept, not default.
-#   imgur      client registration is CLOSED and /3/image answers 429 here.
-#              Usable only with a pre-existing client id. Never the default.
+# One command, several backends (plan 041). Credentials come from
+# ~/.config/haseen/upload.toml or the environment and reach curl as a config
+# file on stdin (`curl --config -`), so no token is ever in argv,
+# /proc/<pid>/cmdline, a dry-run plan, stdout or a notification. Each
+# backend's comment below carries the evidence for its endpoint and status,
+# verified 2026-10-05.
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
@@ -32,13 +21,12 @@ usage() {
 Usage: haseen upload FILE [options]
 
 Options:
-  --backend NAME   upload with this backend (default: $(default_backend_label))
+  --backend NAME   upload with this backend (default: $(default_backend))
   --expires HOURS  hosts that take a lifetime (0x0) use this one
   --list           show the backends and their status, then exit
   --no-copy        do not put the link on the clipboard
   --quiet          print the link only (no notification)
   --dry-run        print the plan; nothing is sent
-  --yes            answer prompts with yes
 
 Backends:
   xbackbone  your own XBackBone instance; the primary target once configured
@@ -70,8 +58,9 @@ Credentials live in $CONFIG_FILE (keep it mode 0600):
 
 The environment overrides the file: HASEEN_UPLOAD_BACKEND,
 HASEEN_XBACKBONE_URL / HASEEN_XBACKBONE_TOKEN (XBB_URL / XBB_TOKEN, the names
-XBackBone's own CLI uses, are read too), HASEEN_IMGUR_CLIENT_ID,
-HASEEN_RCLONE_REMOTE.
+XBackBone's own CLI uses, are read too), HASEEN_XBACKBONE_API,
+HASEEN_IMGUR_CLIENT_ID, HASEEN_RCLONE_REMOTE, HASEEN_RCLONE_LINK_EXPIRE and
+HASEEN_0X0_URL ([0x0] url: a self-hosted copy).
 
 A delete token (0x0, imgur) is never printed: it is kept, mode 0600, in
 \$XDG_RUNTIME_DIR/haseen-upload.delete-token when that directory is private,
@@ -129,7 +118,6 @@ default_backend() {
     fi
     printf '%s' "$b"
 }
-default_backend_label() { default_backend; }
 
 # --- transport ---------------------------------------------------------------
 
@@ -166,15 +154,13 @@ loopback_http() {
 # scheme-less URL would default to http.
 secure_endpoint() { [[ $1 =~ ^https://[^/?#[:space:]]+ ]] || loopback_http "$1"; }
 
-# curl_transport URL — the transport every curl call here gets, set in
-# TRANSPORT. The URL check above is only half of it; curl itself must not
-# widen it. -q (first, in curl_run) skips ~/.curlrc, so no `location`,
-# `proxy` or `insecure` there applies, and no -L is ever passed, so a
-# redirect is never followed with the form, token or file; --proto-redir
-# also pins one to https should that change. https:// is the only protocol
-# curl may speak, except for a loopback endpoint, which gets plain http
-# and no proxy at all: an inherited http_proxy would otherwise carry the
-# cleartext request, token included, off the machine.
+# curl_transport URL — set TRANSPORT, the protocol options for a curl call to
+# URL, so curl cannot widen what secure_endpoint allowed. With -q (first, in
+# curl_run) no ~/.curlrc applies (no `location`, `proxy` or `insecure`); no -L
+# is ever passed, and --proto-redir would pin a followed redirect to https.
+# curl speaks https only, except to a loopback endpoint, which gets plain http
+# and no proxy: an inherited http_proxy would carry the cleartext request,
+# token included, off the machine.
 TRANSPORT=()
 curl_transport() {
     if loopback_http "$1"; then

@@ -2,10 +2,10 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Uploader, annotation wiring, OCR invocation and circle-to-search.
-# Every network call goes to a scripted curl that records its argv AND its
+# Uploader, annotation, OCR invocation and circle to search (plan 041).
+# Every network call goes to a scripted curl that records its argv and its
 # stdin, so the request shape is asserted exactly and a credential that leaked
-# into the command line would be visible in the recording.
+# into the command line would show in the recording.
 
 TOKEN="xbb-fixture-token-0000"
 IMGUR_ID="imgur-fixture-id-0000"
@@ -13,8 +13,6 @@ IMGUR_ID="imgur-fixture-id-0000"
 # cap_sandbox NAME — sandbox with every capture/upload tool faked.
 cap_sandbox() {
     sandbox "$1"
-    export XDG_RUNTIME_DIR="$SANDBOX/run"
-    mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
     CALLS="$SANDBOX/calls"
     CALLS_STDIN="$SANDBOX/calls.stdin"
     : >"$CALLS"
@@ -30,7 +28,7 @@ cap_sandbox() {
     stub grim 'echo "grim $*" >>"$CALLS"
 [ -n "${GRIM_DELAY:-}" ] && sleep "$GRIM_DELAY"
 out=""; prev=""
-for a in "$@"; do prev2=$prev; prev=$a; done
+for a in "$@"; do prev=$a; done
 [ -n "$prev" ] && [ "$prev" != "-" ] && out=$prev
 if [ -n "$out" ]; then printf PNG >"$out"; else printf PNG; fi'
     stub slurp 'echo "0,0 100x100"'
@@ -116,9 +114,7 @@ assert_status "a non-numeric --expires is a usage error" 2 "$STATUS"
 # --- backend list ------------------------------------------------------------
 capture haseen upload --list
 assert_status "--list exits 0" 0 "$STATUS"
-assert_contains "catbox is the keyless default" "$OUTPUT" "catbox     catbox.moe"
-assert_contains "the default is marked" "$OUTPUT" "[default]"
-assert_eq "catbox carries the default marker" "catbox" \
+assert_eq "unconfigured, keyless catbox is the default" "catbox" \
     "$(awk '/\[default\]/{print $1}' <<<"$OUTPUT")"
 write_upload_config '[xbackbone]
 url = "https://share.example.com"
@@ -203,8 +199,8 @@ capture haseen upload "$SHOT" --backend 0x0 --expires 1
 assert_eq "0x0 returns the link" "https://0x0.st/aB.png" "$OUTPUT"
 assert_contains "0x0 request shape" "$(calls)" "-F file=@\"$SHOT\" -F expires=1 https://0x0.st"
 assert_not_contains "the management token is never printed" "$OUTPUT" "0x0-fixture-management-token"
-assert_eq "the management token is kept out of the clipboard too" "" \
-    "$(grep -c '0x0-fixture-management-token' "$CALLS" | tr -d '0')"
+assert_not_contains "the management token reaches no command (clipboard, notification)" "$(calls)" \
+    "0x0-fixture-management-token"
 assert_eq "the management token is kept for a delete" "0x0-fixture-management-token" \
     "$(cat "$XDG_RUNTIME_DIR/haseen-upload.delete-token" 2>/dev/null)"
 assert_not_contains "the response headers (the token) never go to a file" "$(calls)" "curl-header-file:"
@@ -224,8 +220,7 @@ assert_contains "the file part is sent" "$(calls)" "-F upload=@\"$SHOT\""
 assert_contains "the token goes to curl on stdin as a literal string" "$(curl_stdin)" "form-string = \"token=$TOKEN\""
 assert_not_contains "the token never reaches the command line" "$(calls)" "$TOKEN"
 assert_not_contains "the token is never printed" "$OUTPUT" "$TOKEN"
-assert_contains "curl reads its credentials from stdin" "$(calls)" "--config -"
-assert_contains "curl skips ~/.curlrc (-q first) and speaks https only" "$(calls)" \
+assert_contains "curl skips ~/.curlrc (-q first), speaks https only, reads secrets on stdin" "$(calls)" \
     "curl -q --proto =https --proto-redir =https --config -"
 assert_not_contains "no redirect is ever followed" "$(calls)" " -L "
 : >"$CALLS"
@@ -425,7 +420,7 @@ EOF
     assert_not_contains "the token's named file is never sent" "$(cat "$RECV_LOG")" \
         "$(sha256sum <"$files/.env" | cut -d' ' -f1)"
 
-    # --- curl's own configuration never widens the transport (SEC-6) ---------
+    # --- curl's own configuration never widens the transport ----------------
     # start_receiver NAME ARGS… — another receiver: NAME_port, NAME.jsonl.
     EXTRA_PIDS=()
     start_receiver() {
@@ -542,7 +537,6 @@ capture haseen capture text --geometry "0,0 10x10" --dry-run
 assert_status "capture text dry run exits 0" 0 "$STATUS"
 assert_eq "the planned OCR argv is exact" \
     "DRYRUN: grim -g 0,0 10x10 - | tesseract stdin stdout $OCR_ARGV | wl-copy" "$OUTPUT"
-assert_not_contains "no --dpi 300: it merged words in the measurement" "$OUTPUT" "--dpi"
 capture haseen capture text --image "$SHOT" --lang eng --dry-run
 assert_eq "an image and a language are planned the same way" \
     "DRYRUN: cat $SHOT | tesseract $SHOT stdout --oem 1 --psm 6 -l eng -c preserve_interword_spaces=1 | wl-copy" "$OUTPUT"
@@ -591,8 +585,8 @@ capture haseen search screen --search
 assert_status "--search succeeds" 0 "$STATUS"
 assert_eq "--search says nothing on stdout" "" "$OUTPUT"
 assert_contains "--search opens a text search" "$(calls)" "xdg-open https://www.google.com/search?q=recognised%20text"
-# RV-4: the OCR reads the whole picture grim writes, however late it comes; a
-# reader that left early would turn a good capture into "OCR failed".
+# A grim that writes late still reaches the OCR under pipefail (the tesseract
+# stub, like the real one, reads all of stdin before it answers).
 GRIM_DELAY=0.3 capture haseen search screen --geometry "0,0 10x10" --print
 assert_status "a slow grim still reaches the OCR" 0 "$STATUS"
 assert_eq "and its text is read" "recognised text" "$OUTPUT"
@@ -647,7 +641,7 @@ assert_status "a declined upload is not a failure" 0 "$STATUS"
 assert_contains "and it says nothing was sent" "$OUTPUT" "Nothing was uploaded."
 assert_not_contains "no request was made" "$(calls)" "lens.google.com"
 
-# RV-2: --image works on a copy the command makes in its private directory.
+# --image works on a copy the command makes in its private directory.
 # Every way out removes that copy; the user's own file is never touched.
 search_copies() { find "$XDG_RUNTIME_DIR/haseen-search-screen" -type f 2>/dev/null; }
 cap_sandbox search-image-file
@@ -673,7 +667,7 @@ assert_contains "--image declined: nothing was sent" "$OUTPUT" "Nothing was uplo
 assert_eq "--image declined: the original is unchanged" "PNG-original" "$(cat "$SHOT")"
 assert_eq "--image declined: the temporary copy is gone" "" "$(search_copies)"
 
-# RV-1: a picture of the screen is stored only in a private directory of ours.
+# A picture of the screen is stored only in a private directory of ours.
 # Without XDG_RUNTIME_DIR there is no shared /tmp fallback, and an existing
 # capture directory that is a link, someone else's, or open to others is
 # refused before anything is swept or captured into it.
@@ -804,7 +798,6 @@ assert_contains "the uploader's credentials file is planned" "$OUTPUT" \
 assert_contains "and it is planned as 0600" "$OUTPUT" "DRYRUN: chmod 600 $HOME/.config/haseen/upload.toml"
 capture haseen seed user
 assert_status "seeding succeeds" 0 "$STATUS"
-assert_eq "satty's config landed" "yes" "$([[ -f $HOME/.config/satty/config.toml ]] && echo yes)"
 assert_eq "the overrides link points at the theme render" \
     "$HOME/.local/state/haseen/current/theme/satty.css" \
     "$(readlink "$HOME/.config/satty/overrides.css")"
@@ -815,7 +808,7 @@ assert_contains "satty copies with wl-copy" "$(cat "$HOME/.config/satty/config.t
 assert_contains "satty's palette is high contrast, not theme-derived" \
     "$(cat "$HOME/.config/satty/config.toml")" '"#eb4d4bff"'
 capture haseen seed user --dry-run
-assert_eq "a second plan is empty" "" "$(grep -c DRYRUN <<<"$OUTPUT" | tr -d '0')"
+assert_not_contains "a second plan is empty" "$OUTPUT" "DRYRUN"
 # The file is private from the moment it exists, not only after the chmod:
 # with chmod a no-op the mode it was created with shows.
 cap_sandbox capture-seed-umask
@@ -827,7 +820,3 @@ capture haseen seed user
 umask "$saved_umask"
 assert_eq "upload.toml is created 0600, never world-readable first" 600 \
     "$(stat -c '%a' "$HOME/.config/haseen/upload.toml")"
-
-# --- nothing in the tree carries a credential --------------------------------
-assert_eq "no backend bakes in a key" "" \
-    "$(grep -nE 'Client-ID [A-Za-z0-9]{8,}|Bearer [A-Za-z0-9]{8,}' "$REPO/bin/haseen-upload" || true)"

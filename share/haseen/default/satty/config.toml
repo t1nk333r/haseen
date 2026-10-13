@@ -3,16 +3,17 @@
 #
 # Satty is the annotation editor behind `haseen capture screenshot --edit`
 # (extra/satty 0.22.0-1). Colours of the window chrome are not here: satty
-# reads ~/.config/satty/overrides.css for those, and the seed points that at
-# the theme pipeline's render, so a `haseen theme set` restyles the editor too.
+# reads ~/.config/satty/overrides.css for those, and the seed links that to
+# the theme pipeline's render, so `haseen theme set` restyles the editor too.
 #
-# The annotation palette below is deliberately NOT theme-derived. Annotations
-# are drawn on top of a picture of the screen, which usually carries the
-# current theme, so theme-coloured arrows would be the one thing on the shot
-# that cannot be seen. These are high-contrast marker colours instead.
+# The annotation palette is not theme-derived: annotations are drawn on a
+# picture of the themed screen, where theme-coloured arrows would be the one
+# thing you cannot see. These are high-contrast marker colours instead.
 
 [general]
 # Enter copies and leaves; Escape leaves. One keystroke each, like ShareX.
+# `haseen capture screenshot --edit` makes Enter save instead, so what it
+# keeps, copies and uploads is what you annotated; Escape cancels the capture.
 actions-on-enter = ["save-to-clipboard"]
 actions-on-escape = ["exit"]
 early-exit = ["all"]
