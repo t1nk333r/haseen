@@ -43,7 +43,7 @@ alpm_shared() {
     alpm_repack subject
 }
 
-# SEC-R1: the real configuration accepts trailing slash, repeated slash and
+# The real configuration accepts trailing slash, repeated slash and
 # dot-component spellings. All must include newly supplied post-phase hooks.
 # Ship an ordinary unit definition too: it alone does not activate a service.
 for spelling in /etc/pacman.d/hooks /etc/pacman.d/hooks/ /etc//pacman.d/hooks/ /etc/pacman.d/./hooks/; do
@@ -55,7 +55,7 @@ for spelling in /etc/pacman.d/hooks /etc/pacman.d/hooks/ /etc//pacman.d/hooks/ /
     alpm_review "$spelling ordinary socket definition is provisionable" 0
     alpm_hook "$ALPM_PACKAGE/etc/pacman.d/hooks/activate.hook" Install Package PostTransaction subject
     alpm_repack subject
-    alpm_review "SEC-R1 $spelling incoming post hook cannot disappear" 1
+    alpm_review "$spelling incoming post hook cannot disappear" 1
 done
 
 # HookDir is not restricted to a directory literally named "hooks".
@@ -83,7 +83,7 @@ for mask in later earlier different-name; do
     alpm_repack subject
     expected=1
     [[ $mask != later ]] || expected=0
-    alpm_review "SEC-R1 $mask mask obeys effective hook priority" "$expected"
+    alpm_review "$mask mask obeys effective hook priority" "$expected"
 done
 
 # Incoming PreTransaction hooks are not run retroactively. Replacing current
@@ -114,7 +114,7 @@ for phase in PreTransaction PostTransaction; do
     alpm_review "replacement $phase hook cannot confuse current and future bytes" "$expected"
 done
 
-# SEC-R2: NoExtract changes hook operation membership, not necessarily whether
+# NoExtract changes hook operation membership, not necessarily whether
 # the old physical file is deleted. The retained old path is a Remove candidate.
 for operation in Remove Install Upgrade; do
     alpm_case "vapt-alpm-noextract-shared-$operation"
@@ -123,7 +123,7 @@ for operation in Remove Install Upgrade; do
     alpm_hook "$ROOT/usr/share/libalpm/hooks/path.hook" "$operation" Path PostTransaction usr/lib/subject/shared
     expected=0
     [[ $operation != Remove ]] || expected=1
-    alpm_review "SEC-R2 NoExtract shared path has $operation relevance" "$expected"
+    alpm_review "NoExtract shared path has $operation relevance" "$expected"
 done
 
 # The last matching NoExtract exception wins across and within directives.
@@ -190,7 +190,7 @@ for receiver in new existing; do
             alpm_hook "$ROOT/usr/share/libalpm/hooks/path.hook" "$operation" Path PostTransaction usr/lib/subject/shared
             expected=0
             [[ $operation != Upgrade ]] || expected=1
-            alpm_review "SEC-R2 $receiver receiver $order file move has $operation relevance" "$expected" "${archives[@]}"
+            alpm_review "$receiver receiver $order file move has $operation relevance" "$expected" "${archives[@]}"
         done
         # Suppressing the receiving payload changes the same transaction to Remove.
         vapt_conf_add $'[options]\nNoExtract = usr/lib/subject/shared'
@@ -203,7 +203,7 @@ for receiver in new existing; do
     done
 done
 
-# SEC-R3: a later matching positive overrides an earlier exclusion for either
+# A later matching positive overrides an earlier exclusion for either
 # Package or Path; inverse ordering and a negative-only trigger are irrelevant.
 for kind in Package Path; do
     for operation in Install Upgrade; do
@@ -221,7 +221,7 @@ for kind in Package Path; do
             alpm_hook "$ROOT/usr/share/libalpm/hooks/ordered.hook" "$operation" "$kind" PostTransaction "${targets[@]}"
             expected=0
             [[ $variant != positive-last && $variant != later-nonmatch ]] || expected=1
-            alpm_review "SEC-R3 $kind $operation $variant target precedence" "$expected"
+            alpm_review "$kind $operation $variant target precedence" "$expected"
         done
     done
 done

@@ -49,7 +49,7 @@ auth_stock_shell() {
     rm -f "$ROOT"/usr/share/libalpm/hooks/*.hook
 }
 
-# S1/DEEP1: old-only inventory is not proof of physical removal. Retain all
+# Old-only inventory is not proof of physical removal. Retain all
 # parent directories and a sibling so only NoUpgrade's hook protection differs.
 # Last matching exception wins both within a directive and across directives.
 for variant in protected exception-last protection-last exception-directive protection-directive unprotected; do
@@ -70,10 +70,10 @@ for variant in protected exception-last protection-last exception-directive prot
     esac
     vapt_conf_add "[options]"$'\n'"NoUpgrade = $rules"
     authoritative_repack subject
-    authoritative_review "S1 $variant old-only post hook follows NoUpgrade retention" "$expected"
+    authoritative_review "$variant old-only post hook follows NoUpgrade retention" "$expected"
 done
 
-# S2/DEEP5: only a grammar-valid hook can mask a lower-priority basename.
+# Only a grammar-valid hook can mask a lower-priority basename.
 # Invalid future hooks must be validated even when their trigger cannot match,
 # or when they contain no trigger at all. The lower hook runs only post-install.
 for relevance in nonmatching triggerless; do
@@ -103,9 +103,9 @@ for relevance in nonmatching triggerless; do
         authoritative_repack subject
         if [[ $relevance == triggerless && $invalid == missing-exec ]]; then
             # libalpm validates triggerless dummy masks before requiring Exec.
-            authoritative_review 'S2 valid triggerless mask needs no Exec' 0
+            authoritative_review 'valid triggerless mask needs no Exec' 0
         else
-            authoritative_review "S2 $relevance $invalid cannot hide lower activating hook" 1
+            authoritative_review "$relevance $invalid cannot hide lower activating hook" 1
         fi
     done
 done
@@ -115,7 +115,7 @@ authoritative_hook "$ROOT/usr/share/libalpm/hooks/activate.hook" Install Package
 mkdir -p "$AUTH_PACKAGE/etc/pacman.d/hooks"
 printf 'garbage\n' >"$AUTH_PACKAGE/etc/pacman.d/hooks/activate.hook"
 authoritative_repack subject
-authoritative_review 'DEEP5 bare garbage cannot become a basename mask' 1
+authoritative_review 'bare garbage cannot become a basename mask' 1
 for valid in triggerless nonmatching; do
     authoritative_case "vapt-authoritative-mask-valid-$valid"
     authoritative_hook "$ROOT/usr/share/libalpm/hooks/activate.hook" Install Package subject
@@ -129,10 +129,10 @@ for valid in triggerless nonmatching; do
     printf '[Action]\nWhen = PostTransaction\nExec = /usr/bin/subject\n' >>"$high"
     authoritative_helper "$AUTH_PACKAGE/usr/bin/subject" inert
     authoritative_repack subject
-    authoritative_review "S2 valid $valid hook legitimately masks lower activation" 0
+    authoritative_review "valid $valid hook legitimately masks lower activation" 0
 done
 
-# DEEP2: INI comments are leading-only. Inline hashes remain literal path data
+# INI comments are leading-only. Inline hashes remain literal path data
 # for both current and newly shipped hooks; a plain-name payload is a nonmatch.
 for location in existing incoming; do
     for payload in hash plain; do
@@ -149,7 +149,7 @@ for location in existing incoming; do
         authoritative_repack subject
         expected=0
         [[ $payload != hash ]] || expected=1
-        authoritative_review "DEEP2 $location hash target with $payload payload" "$expected"
+        authoritative_review "$location hash target with $payload payload" "$expected"
     done
 done
 # NoExtract's literal hash changes an existing path from Upgrade to Remove.
@@ -167,7 +167,7 @@ for rule in hash plain; do
         authoritative_repack subject
         expected=0
         if [[ $rule == hash && $operation == Remove || $rule == plain && $operation == Upgrade ]]; then expected=1; fi
-        authoritative_review "DEEP2 NoExtract $rule rule yields $operation hash event" "$expected"
+        authoritative_review "NoExtract $rule rule yields $operation hash event" "$expected"
     done
 done
 # Hashes in effective directory values must not discard incoming hooks either.
@@ -175,12 +175,12 @@ authoritative_case vapt-authoritative-hookdir-hash
 vapt_conf_add $'[options]\nHookDir = /opt/site#hooks'
 mkdir -p "$AUTH_PACKAGE/opt/site#hooks"
 authoritative_repack subject
-authoritative_review 'DEEP2 literal hash HookDir without hook is safe' 0
+authoritative_review 'literal hash HookDir without hook is safe' 0
 authoritative_hook "$AUTH_PACKAGE/opt/site#hooks/activate.hook" Install Package subject
 authoritative_repack subject
-authoritative_review 'DEEP2 literal hash HookDir includes incoming activating hook' 1
+authoritative_review 'literal hash HookDir includes incoming activating hook' 1
 
-# S3: receiver depends on subject>=2, so subject's scriptlet runs before the
+# Receiver depends on subject>=2, so subject's scriptlet runs before the
 # receiver upgrade. Archive argument ordering is not package commit ordering.
 # Both differing helper snapshots must be inspected conservatively; identical
 # benign snapshots are the non-vacuous control. No helper is ever executed.
@@ -210,7 +210,7 @@ for phase in pre_upgrade post_upgrade; do
             authoritative_repack receiver
             archives=("$AUTH_ARCHIVE" "$receiver_archive")
             [[ $order != receiver-first ]] || archives=("$receiver_archive" "$AUTH_ARCHIVE")
-            authoritative_review "S3 $phase $order $bytes cross-package snapshots" "$expected" "${archives[@]}"
+            authoritative_review "$phase $order $bytes cross-package snapshots" "$expected" "${archives[@]}"
         done
     done
 done
@@ -229,11 +229,11 @@ for phase in pre_upgrade post_upgrade; do
         authoritative_repack subject
         expected=0
         if [[ $phase == pre_upgrade && $current == activating || $phase == post_upgrade && $current == inert ]]; then expected=1; fi
-        authoritative_review "S3 own-package $phase keeps $current current snapshot semantics" "$expected"
+        authoritative_review "own-package $phase keeps $current current snapshot semantics" "$expected"
     done
 done
 
-# DEEP3: libalpm be_package.c build_filelist_from_mtree uses libarchive's mtree
+# libalpm (be_package.c build_filelist_from_mtree) uses libarchive's mtree
 # reader, strips ./, and replaces the tar-derived filelist after parsing.
 # #mtree, /set, type=dir/file, size and octal mode are real mtree grammar.
 # Construct compressed .MTREE bytes, not a fake bsdtar/metadata output.
@@ -260,7 +260,7 @@ for inventory in extra-event matching-event base; do
     authoritative_repack subject
     expected=1
     [[ $inventory != base ]] || expected=0
-    authoritative_review "DEEP3 $inventory compressed MTREE effective path event" "$expected"
+    authoritative_review "$inventory compressed MTREE effective path event" "$expected"
 done
 # Matching metadata/payload stays provisionable when there is no relevant hook.
 authoritative_case vapt-authoritative-mtree-matching-benign
@@ -269,7 +269,7 @@ mkdir -p "$AUTH_PACKAGE/usr/share/subject"
 authoritative_mtree matching-event
 authoritative_hook "$ROOT/usr/share/libalpm/hooks/mtree.hook" Install Path usr/share/subject/unrelated
 authoritative_repack subject
-authoritative_review 'DEEP3 congruent MTREE and tar with nonmatching hook accepted' 0
+authoritative_review 'congruent MTREE and tar with nonmatching hook accepted' 0
 for malformed in invalid-format invalid-type; do
     authoritative_case "vapt-authoritative-mtree-$malformed"
     if [[ $malformed == invalid-format ]]; then
@@ -278,10 +278,10 @@ for malformed in invalid-format invalid-type; do
         printf '#mtree\n./usr type=not-a-valid-type\n' | gzip -n >"$AUTH_PACKAGE/.MTREE"
     fi
     authoritative_repack subject
-    authoritative_review "DEEP3 $malformed compressed MTREE cannot silently fall back" 1
+    authoritative_review "$malformed compressed MTREE cannot silently fall back" 1
 done
 
-# DEEP4: Hook Exec uses execv from /, not shell builtin/PATH lookup. Literal
+# Hook Exec uses execv from /, not shell builtin/PATH lookup. Literal
 # true and echo therefore name archive /true and /echo, including quoted argv.
 for executable in true echo; do
     for spelling in relative absolute; do
@@ -292,14 +292,14 @@ for executable in true echo; do
         [[ $executable != echo ]] || command+=" 'ordinary message'"
         authoritative_hook "$AUTH_PACKAGE/usr/share/libalpm/hooks/direct.hook" Install Package subject "$command"
         authoritative_repack subject
-        authoritative_review "DEEP4 $spelling $executable hook resolves actual activating program" 1
+        authoritative_review "$spelling $executable hook resolves actual activating program" 1
     done
 done
 authoritative_case vapt-authoritative-directexec-absolute-inert
 authoritative_helper "$AUTH_PACKAGE/usr/lib/subject/setup" inert
 authoritative_hook "$AUTH_PACKAGE/usr/share/libalpm/hooks/direct.hook" Install Package subject /usr/lib/subject/setup
 authoritative_repack subject
-authoritative_review 'DEEP4 absolute inspected inert hook helper is provisionable' 0
+authoritative_review 'absolute inspected inert hook helper is provisionable' 0
 # The same root payloads are irrelevant to actual shell builtins in .INSTALL.
 # Preserve the distinction rather than banning harmless shell provisioning.
 for phase in pre_install post_install; do
@@ -309,7 +309,7 @@ for phase in pre_install post_install; do
     authoritative_helper "$AUTH_PACKAGE/echo" activating
     printf '%s() {\n true\n echo "ordinary message"\n}\n' "$phase" >"$AUTH_PACKAGE/.INSTALL"
     authoritative_repack subject
-    authoritative_review "DEEP4 $phase shell true and echo remain builtins" 0
+    authoritative_review "$phase shell true and echo remain builtins" 0
 done
 # A shell function overrides a builtin; its declaration cannot be discarded
 # as an inactive package phase while a reachable call is treated as harmless.
@@ -319,7 +319,7 @@ for executable in true echo; do
         printf '%s() {\n systemctl start forbidden.service\n}\n%s() {\n %s\n}\n' \
             "$executable" "$phase" "$executable" >"$AUTH_PACKAGE/.INSTALL"
         authoritative_repack subject
-        authoritative_review "DEEP4 $phase activating $executable function is not a builtin" 1
+        authoritative_review "$phase activating $executable function is not a builtin" 1
     done
 done
 
