@@ -33,8 +33,7 @@ b("SUPER + SHIFT + comma", "Clear notifications", ipc("notifications", "clear"))
 b("SUPER + CTRL + comma", "Do not disturb", "haseen toggle dnd")
 b("SUPER + CTRL + ESCAPE", "Close panel", ipc("panel", "close"))
 b("SUPER + ALT + SPACE", "Toggle bar", "haseen bar toggle")
--- SUPER + F1 and ALT + V, not SUPER + SLASH and SUPER + CTRL + V: the owner's
--- layout (waydots ~/.config/hypr/bindings.lua).
+-- SUPER + F1 and ALT + V replace Omarchy's SUPER + SLASH and SUPER + CTRL + V.
 b("SUPER + F1", "Keybindings", ipc("keybinds", "toggle"))
 b("ALT + V", "Clipboard history", ipc("panel", "toggle", "haseen.clipboard"))
 b("SUPER + CTRL + E", "Emoji picker", ipc("panel", "toggle", "haseen.emoji"))
@@ -134,15 +133,14 @@ b("XF86AudioPrev", "Previous track", "playerctl previous", once)
 
 -- Lock keys ----------------------------------------------------------------
 -- Hyprland sends no event when Caps Lock or Num Lock changes, so a bind on
--- the keys themselves tells the OSD to read the state once (plan 079).
--- code:66 and code:77 are the Caps Lock and Num Lock keys whatever they
--- type: under compose:caps Caps is Compose, and the read then finds nothing
--- changed. non_consuming: the key still reaches xkb and the app; release:
--- the lock state has settled; ignore_mods: Shift + Caps Lock too.
--- The kind is off by default, and Caps is a busy key under compose:caps: so
--- the bind is one `test` in the shell Hyprland runs it with, and the IPC
--- call (two scripts and a qs client, ~40 ms) only follows while haseen.osd
--- has lockKeys on and keeps the flag file in $XDG_RUNTIME_DIR/haseen.
+-- the keys tells the OSD to read the state once (plan 079). code:66 and
+-- code:77 are those keys whatever they type (under compose:caps, Caps is
+-- Compose and the read finds nothing changed). non_consuming: the key still
+-- reaches xkb and the app; release: the lock state has settled; ignore_mods:
+-- Shift + Caps Lock too. This OSD is off by default and Caps is a busy key,
+-- so the bind is one `test`; the IPC call (two scripts and a qs client,
+-- ~40 ms) follows only while haseen.osd has lockKeys on, which keeps the flag
+-- file in $XDG_RUNTIME_DIR/haseen.
 local lockkey = { non_consuming = true, release = true, ignore_mods = true }
 local lockkeys = 'test -e "$XDG_RUNTIME_DIR/haseen/osd-lockkeys" && ' .. ipc("osd", "lockkeys")
 b("code:66", "Caps Lock OSD", lockkeys, lockkey)

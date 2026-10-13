@@ -23,9 +23,12 @@
 
 ## Decision
 
-- **Ship both multiplexers, herdr as the default**, on the same keymap. The
+- **Ship both multiplexers, herdr as the default** (owner, 2026-10-08;
+  confirmed 2026-10-13): `tmux` in the base layer, `herdr` in the desktop layer
+  (`share/haseen/layers/base/packages.txt:20`,
+  `share/haseen/layers/desktop/packages.txt:33`), on the same keymap. The
   choice is one bare word in `~/.config/haseen/mux`, seeded once and the user's
-  afterwards — the `~/.config/haseen/font` convention (architecture §7).
+  afterwards, the `~/.config/haseen/font` convention (architecture §7).
   `share/haseen/default/shell/functions.sh` (plan 038) resolves
   `HERDR_PANE_ID` → `TMUX` → that file → herdr installed → tmux installed.
 - **No colour literals in either multiplexer config.** herdr's
@@ -74,9 +77,12 @@
 
 ## Verification
 
-- `tests/test-mux.sh` (96) green; `tests/test-seeds.sh` 75/75 unchanged;
-  `tests/test-theme.sh` + `tests/test-themes2.sh` green with `yazi.toml` added
-  to `THEME_OUTPUTS` and to `THEME_COLOUR_ONLY`.
+- `tests/test-mux.sh` (96 checks): the seeds' plan and result, herdr chosen
+  over tmux and tmux alone, user edits never overwritten, the strings the
+  shipped defaults must not carry (colour literals, tpm, yazi plugin binds,
+  tailnet addresses, home paths, keys), and the lab wrapper's report.
+  `tests/test-theme.sh` and `tests/test-themes2.sh` cover `yazi.toml` in
+  `THEME_OUTPUTS` and `THEME_COLOUR_ONLY`.
 - **herdr 0.9.3**: `herdr config check` → `config: ok`; because that check
   accepts anything, the config was also validated against herdr's canonical key
   reference fetched from the v0.9.3 tag — 50 keys used, 0 unknown, 0 duplicate
@@ -108,7 +114,8 @@ reports none.
 - **No VM was built.** `install.sh` and `tests/run.sh` have still never run
   inside a guest; plan 014 stays blocked, now with a named rig and two named
   prerequisites instead of "no VM".
-- The herdr/tmux layouts from plan 038 were not driven against a live session.
+- The herdr/tmux layouts from plan 038 were not driven against a live session;
+  `tests/test-shelltools.sh` runs them against recording fakes.
 - `herdr` needs a package row in a layer that applies *after* `omarchy-repo`
   (the `base` layer runs before it, so a base row would fall through to the AUR
   build — version 0.9.0+, AGPL-3.0-or-later, a different licence on the same

@@ -2,10 +2,10 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# haseen.menu rounds its card with the frame's radius, live (plan 046, audit
-# finding F5): the menu Panel.qml under the real engine follows a frame.radius
-# edit in ~/.config/haseen/shell.json at once, as the frame does, instead of
-# waiting for the next `haseen theme set`.
+# haseen.menu rounds its card with the frame's radius, live (plan 046): the
+# menu Panel.qml under the real engine follows a frame.radius edit in
+# ~/.config/haseen/shell.json at once, as the frame does, instead of waiting
+# for the next `haseen theme set`.
 
 QS_BIN=${QS_BIN:-/usr/bin/qs}
 

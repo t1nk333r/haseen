@@ -8,13 +8,14 @@
 - **Depends on**: 003 030
 - **Category**: desktop
 - **Planned at**: 2026-10-05, owner request (items 12 and 16)
-- **State**: DONE 2026-10-05
+- **State**: DONE 2026-10-05; the existing-user notice 2026-10-08
 
 ## Problem
 
 haseen's Hyprland defaults were **Omarchy's** layout with haseen commands. The
-owner's instruction is that the keybinds follow his own waydots overlay, which
-is a set of deliberate overrides on top of Omarchy: vim directions, `SUPER+Q`,
+owner's instruction (2026-10-05; everyone's default, owner 2026-10-08,
+`AGENTS.md`) is that the keybinds follow his waydots overlay, a set of
+deliberate overrides on top of Omarchy: vim directions, `SUPER+Q`,
 ALT for split/layout/clipboard, `SUPER+F1` for the sheet, a silent
 `SUPER+SHIFT+<n>` on keycodes (so the number row works under the Arabic
 layout), a CapsLock-HYPER snap layer, and the screen-search keys.
@@ -50,13 +51,13 @@ CLI toggle is worse than no GUI.
   theme and the user's own Lua. The owner's call — the GUI wins over
   `haseen toggle` and `haseen hw`; the user's hand-written Lua still wins over
   the GUI. The consequence is written in the comment, not left to be discovered.
-- **Existing users are told once** (landing review, 2026-10-08). `binds.lua`
-  is loaded from the installed tree, so nothing moves, but SUPER + / and
-  SUPER + CTRL + V stop working and a key a user's `bindings.lua` already
-  binds now fires twice. Migration `1791466290-keybinds-notice.sh` only prints
-  what changed and how to `hl.unbind()` a clash, in `haseen migrate`'s output
-  (the login notice runs it in a terminal that stays open). A fresh install
-  seals it, so a new user sees nothing.
+- **Existing users are told once.** `binds.lua` is loaded from the installed
+  tree, so nothing moves, but SUPER + / and SUPER + CTRL + V stop working and
+  a key a user's `bindings.lua` already binds now fires twice. Migration
+  `1791466290-keybinds-notice.sh` only prints what changed and how to
+  `hl.unbind()` a clash, in `haseen migrate`'s output (the login notice runs
+  it in a terminal that stays open). A fresh install seals it, so a new user
+  sees nothing.
 
 ## Rejected
 
@@ -93,13 +94,15 @@ CLI toggle is worse than no GUI.
   reserved top (usable 1536×840 at y=24) → snap left resizes to {768,840} and
   moves to {0,24}; the same key again unfloats; snap right moves to {768,24};
   snap 80 % centred → {1228,672} at {154,108}.
-- `tests/test-keybinds.sh` (62) loads the **real** `binds.lua` under a stub `hl`
-  that records binds, descriptions and actions and replays key presses, and
-  walks every bound command through `bin/haseen`'s own longest-prefix
-  resolution — a bind to a command that does not exist fails the suite.
-  `tests/test-desktop.sh` 136/136 (its stub `hl.bind` had to learn to render
-  Lua-function binds). Perturbation check: renaming `SUPER+Q` and deleting the
-  hyprmod include each fail exactly one named assertion.
+- `tests/test-keybinds.sh` (120 checks) loads the **real** `binds.lua` under a
+  stub `hl` that records binds, descriptions and actions and replays key
+  presses, and walks every bound command through `bin/haseen`'s own
+  longest-prefix resolution, so a bind to a command that does not exist fails.
+  `tests/test-desktop.sh`'s stub `hl.bind` renders Lua-function binds.
+  Perturbation check: renaming `SUPER+Q` and deleting the hyprmod include each
+  fail exactly one named assertion.
+- `tests/test-migrate-defaults.sh`: the notice writes nothing, and every key it
+  names is bound in `binds.lua`.
 - `luac -p` on all seven Hyprland Lua files.
 
 ## Open
@@ -113,7 +116,6 @@ owner's session is forbidden (handoff.md).
 `share/haseen/default/hypr/{binds,init}.lua`,
 `share/haseen/shell/plugins/haseen.keybinds/Overlay.qml` (one stale comment),
 `share/haseen/agents/skills/haseen/hyprland.md`, `README.md`,
-`tests/test-keybinds.sh`, `tests/test-desktop.sh`;
-landing review: `share/haseen/migrations/1791466290-keybinds-notice.sh`,
-`tests/test-migrate-defaults.sh` (the notice writes nothing, and every key it
-names is bound in `binds.lua`).
+`tests/test-keybinds.sh`, `tests/test-desktop.sh`,
+`share/haseen/migrations/1791466290-keybinds-notice.sh`,
+`tests/test-migrate-defaults.sh`.
