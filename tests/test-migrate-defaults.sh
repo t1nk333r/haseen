@@ -4,9 +4,9 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # The new user-level defaults reach existing users: install.sh seeds on every
 # run (fresh or upgrade, never --tree-only), and three migrations cover a HOME
-# upgraded without it: the seeds, a re-render of the current theme so it gets
-# rounding.lua, and a notice about the new key layout. Each is safe to re-run
-# and a no-op where there is nothing to do.
+# upgraded without it: the seeds, rounding.lua for the current theme render,
+# and a notice about the new key layout. Each is safe to re-run and a no-op
+# where there is nothing to do.
 
 SEED_M=1791466288-seed-user.sh
 ROUND_M=1791466289-theme-rounding.sh
@@ -86,7 +86,7 @@ assert_contains "and how to retry" "$OUTPUT" "run: haseen seed user"
 assert_eq "the other seeds are in place" "yes" "$([[ -e $HOME/.config/yazi/yazi.toml ]] && echo yes || echo no)"
 chmod 0644 "$HOME/.bashrc"
 
-# --- the theme re-render ----------------------------------------------------------
+# --- the rounding migration ------------------------------------------------------
 defaults_sandbox defaults-round-none
 run_one "$ROUND_M"
 assert_status "no theme: nothing to do" 0 "$STATUS"
@@ -100,29 +100,49 @@ old_render() {
     printf 'hl.config({ decoration = { rounding = 4 } })\n' >"$CUR/theme/hyprland.lua"
 }
 
+# The migration adds the two rounding files and changes nothing else: a
+# background the user picked outside the theme stays (theme set would relink
+# it), and no GTK or nvim link is written.
 defaults_sandbox defaults-round-old
 old_render gruvbox
+mkdir -p "$HOME/Pictures"
+: >"$HOME/Pictures/mine.png"
+ln -sfn "$HOME/Pictures/mine.png" "$CUR/background"
+rm -f "$HOME/.config/gtk-3.0/gtk.css" "$HOME/.config/gtk-4.0/gtk.css"
+before_home="$(cd "$HOME" && find . -path ./.local/state/haseen/current -prune -o -print | LC_ALL=C sort)"
 run_one "$ROUND_M"
 assert_status "old render migrated" 0 "$STATUS"
 assert_eq "rounding.lua written" "yes" "$([[ -f $CUR/theme/rounding.lua ]] && echo yes || echo no)"
 assert_contains "the theme's hyprland.lua is prefixed" "$(head -2 "$CUR/theme/hyprland.lua")" "haseen.theme_hl(hl)"
+assert_contains "the theme's own rounding is kept below the prefix" "$(cat "$CUR/theme/hyprland.lua")" "rounding = 4"
 assert_eq "the same theme stays current" "gruvbox" "$(cat "$CUR/theme.name")"
+assert_eq "the user's background survives" "$HOME/Pictures/mine.png" "$(readlink "$CUR/background")"
+assert_eq "nothing else in HOME changed (no gtk.css, no nvim link)" "$before_home" \
+    "$(cd "$HOME" && find . -path ./.local/state/haseen/current -prune -o -print | LC_ALL=C sort)"
 printf 'marker\n' >"$CUR/theme/.unchanged"
 before="$(tree_state "$CUR")"
 run_one "$ROUND_M"
 assert_status "re-run" 0 "$STATUS"
 assert_eq "a render with rounding.lua is left alone" "$before" "$(tree_state "$CUR")"
 
-# A current theme that cannot be rendered again: warned, old render kept, and
-# the migration still succeeds so later ones are not held back.
-defaults_sandbox defaults-round-gone
+# Only the current render is read, so a theme removed since still gets it.
+defaults_sandbox defaults-round-renamed
 old_render gruvbox
 printf 'no-such-theme\n' >"$CUR/theme.name"
+run_one "$ROUND_M"
+assert_status "a theme no longer installed: migrated" 0 "$STATUS"
+assert_eq "a theme no longer installed: rounding.lua written" "yes" "$([[ -f $CUR/theme/rounding.lua ]] && echo yes || echo no)"
+
+# A render without colors.toml: warned, left as it is, and the migration
+# still succeeds so later ones are not held back.
+defaults_sandbox defaults-round-broken
+old_render gruvbox
+rm -f "$CUR/theme/colors.toml"
 before="$(tree_state "$CUR")"
 run_one "$ROUND_M"
-assert_status "a missing theme does not fail the migration" 0 "$STATUS"
-assert_contains "it says the corners stay old" "$OUTPUT" "keep the old corners"
-assert_eq "the old render is untouched" "$before" "$(tree_state "$CUR")"
+assert_status "a broken render does not fail the migration" 0 "$STATUS"
+assert_contains "it says the corners stay" "$OUTPUT" "keep their own corners"
+assert_eq "the broken render is untouched" "$before" "$(tree_state "$CUR")"
 
 # --- the keybinds notice ------------------------------------------------------------
 defaults_sandbox defaults-keys
@@ -150,6 +170,6 @@ for m in "$SEED_M" "$ROUND_M" "$KEYS_M"; do
     assert_contains "$m recorded as applied" "$(cat "$LEDGER/$m" 2>/dev/null)" "applied"
 done
 assert_eq "seeded through migrate" "yes" "$([[ -f $HOME/.config/fontconfig/fonts.conf ]] && echo yes || echo no)"
-assert_eq "re-rendered through migrate" "yes" "$([[ -f $CUR/theme/rounding.lua ]] && echo yes || echo no)"
+assert_eq "rounding added through migrate" "yes" "$([[ -f $CUR/theme/rounding.lua ]] && echo yes || echo no)"
 capture haseen migrate
 assert_contains "a second run has nothing pending" "$OUTPUT" "no pending migrations"
