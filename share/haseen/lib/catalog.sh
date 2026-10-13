@@ -55,8 +55,6 @@ catalog_field() {
         "$HASEEN_CATALOG"
 }
 
-catalog_has() { jq -e --arg id "$1" 'any(.entries[]; .id == $id)' "$HASEEN_CATALOG" >/dev/null; }
-
 # catalog_resolve NAME [CATEGORY] — the entry id NAME refers to: an id, a
 # label or a ref (package or Flatpak id), case-insensitive, optionally limited
 # to one category. Dies when nothing matches.
