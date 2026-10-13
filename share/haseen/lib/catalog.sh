@@ -228,11 +228,15 @@ mise_install_tools() {
     done
     # haseen's shell fragment runs `mise activate` itself
     # (default/shell/init.sh), so there is nothing to advise once the rc
-    # includes it. A hand-wired `mise activate` counts too, and fish is not a
-    # shell haseen seeds, so it keeps the manual answer.
+    # includes a copy that exists here; an include of a path that is gone
+    # activates nothing. A hand-wired `mise activate` counts too, and fish is
+    # not a shell haseen seeds, so it keeps the manual answer.
+    # shellcheck source=share/haseen/lib/shellrc.sh
+    source "$HASEEN_PATH/lib/shellrc.sh"
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"; do
-        grep -qsE 'mise activate|default/shell/init\.sh' "$rc" && return 0
+        grep -qs 'mise activate' "$rc" && return 0
+        [[ $(shellrc_include "$rc") == live ]] && return 0
     done
     info "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
 }

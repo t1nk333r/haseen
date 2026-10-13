@@ -196,8 +196,53 @@ capture env HASEEN_INLINE=1 haseen install dev python --dry-run
 assert_contains "without the include, the advice is to seed, not to hand-edit" "$OUTPUT" \
     "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
 assert_not_contains "no hand-edited rc line is suggested" "$OUTPUT" "add to ~/.bashrc"
+DEAD='[ -r "/nonexistent/share/haseen/default/shell/init.sh" ] && . "/nonexistent/share/haseen/default/shell/init.sh"'
+printf '%s\n' "$DEAD" >"$HOME/.bashrc"
+capture env HASEEN_INLINE=1 haseen install dev python --dry-run
+assert_contains "an include of a path that is gone activates no mise" "$OUTPUT" "run 'haseen seed user'"
 mv "$HOME/.bashrc.mine" "$HOME/.bashrc"
 mv "$HOME/.zshrc.mine" "$HOME/.zshrc"
+
+# --- once: a deleted include stays deleted -----------------------------------
+# install.sh and the seed migration both run the seed; the approval is one
+# line, added once.
+MARKER="$HOME/.local/state/haseen/rc-include"
+assert_eq "both rcs are recorded as done" "$HOME/.bashrc $HOME/.zshrc" "$(tr '\n' ' ' <"$MARKER" | sed 's/ $//')"
+printf '# my own rc\nexport MINE=1\n' >"$HOME/.bashrc"
+capture haseen seed user
+assert_status "seeding after the user deleted the include succeeds" 0 "$STATUS"
+assert_eq "a deleted include is not added again" "# my own rc"$'\n'"export MINE=1" "$(cat "$HOME/.bashrc")"
+
+# A home seeded before the record existed: its live include counts as the one
+# addition, so deleting it afterwards is respected too.
+rm -f "$MARKER"
+printf '[ -r "%s" ] && . "%s"\n# mine\n' "$INCLUDE" "$INCLUDE" >"$HOME/.bashrc"
+capture haseen seed user
+assert_eq "an existing include is not doubled" "1" "$(grep -cF "$INCLUDE" "$HOME/.bashrc")"
+assert_contains "and is recorded" "$(cat "$MARKER")" "$HOME/.bashrc"
+printf '# mine\n' >"$HOME/.bashrc"
+capture haseen seed user
+assert_eq "so deleting it afterwards is respected" "# mine" "$(cat "$HOME/.bashrc")"
+
+# An rc shared with a machine where haseen has another prefix: that include
+# names a path that does not exist here and activates nothing, so this
+# machine's line goes under it, once. The other machine's line is kept.
+rm -f "$MARKER"
+printf '%s\n' "$DEAD" >"$HOME/.bashrc"
+capture haseen seed user
+assert_status "seeding over a dead include succeeds" 0 "$STATUS"
+assert_eq "a dead include gets this tree's include" "1" "$(grep -cF "$INCLUDE" "$HOME/.bashrc")"
+assert_eq "the user's line is kept, first" "$DEAD" "$(head -n1 "$HOME/.bashrc")"
+capture haseen seed user
+assert_eq "and the next run adds nothing" "1" "$(grep -cF "$INCLUDE" "$HOME/.bashrc")"
+# haseen moved after it added its line: the record says the line was added,
+# so the seed only says how to fix it.
+printf '%s\n' "$DEAD" >"$HOME/.bashrc"
+capture haseen seed user
+assert_contains "a dead include haseen added is reported with the fix" "$OUTPUT" \
+    "replace that line with: [ -r \"$INCLUDE\" ] && . \"$INCLUDE\""
+assert_eq "and the rc is not touched" "$DEAD" "$(cat "$HOME/.bashrc")"
+printf '[ -r "%s" ] && . "%s"\n' "$INCLUDE" "$INCLUDE" >"$HOME/.bashrc"
 
 # --- the fragment really works ------------------------------------------------
 WORK="$SANDBOX/work"

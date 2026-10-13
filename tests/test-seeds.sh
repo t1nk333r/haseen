@@ -126,6 +126,8 @@ rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop
 ln -s "$DOTS/fonts.conf" "$CONFIG/fontconfig/fonts.conf"
 ln -s "$DOTS/xdg-terminals.list" "$CONFIG/xdg-terminals.list"
 ln -s "$DOTS/btop.conf" "$CONFIG/btop/btop.conf"
+# The include was added once above; forget that, so the seed tries again.
+rm -f "$HOME/.local/state/haseen/rc-include"
 printf '# read-only rc\n' >"$HOME/.bashrc"
 chmod 444 "$HOME/.bashrc"
 capture haseen seed user
@@ -139,10 +141,14 @@ assert_eq "the dangling links are left as they were" "3" \
     "$(find "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf" -type l | wc -l)"
 rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf"
 
-# An rc that already includes the fragment from another tree (the checkout,
-# then /usr/local) is not given a second include: init.sh would run twice.
-printf '[ -r "/usr/local/share/haseen/default/shell/init.sh" ] && . "/usr/local/share/haseen/default/shell/init.sh"\n' \
-    >"$HOME/.bashrc"
+# An rc that already includes the fragment from another tree on this machine
+# (the checkout, then /usr/local) is not given a second include: init.sh would
+# run twice.
+rm -f "$HOME/.local/state/haseen/rc-include"
+OTHER="$SANDBOX/usr-local/share/haseen/default/shell/init.sh"
+mkdir -p "${OTHER%/*}"
+: >"$OTHER"
+printf '[ -r "%s" ] && . "%s"\n' "$OTHER" "$OTHER" >"$HOME/.bashrc"
 capture haseen seed user
 assert_status "seeding over another tree's include succeeds" 0 "$STATUS"
 assert_eq "one include, whichever tree wrote it" "1" "$(grep -c 'default/shell/init.sh' "$HOME/.bashrc")"

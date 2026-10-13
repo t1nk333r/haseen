@@ -46,7 +46,7 @@ file changes in the same commit.
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `/var/lib/haseen/layers/<name>` | applied-layer marker | core |
 | `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/` | user |
-| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced) | runtime |
+| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line) | runtime |
 | `~/.local/share/haseen/extensions/cairn/<version>/` | Cairn's release `.crx`, downloaded and checked; Helium installs it from `~/.config/net.imput.helium/External Extensions/<id>.json` (plan 073) | shell |
 
 `PREFIX` is `/usr/local` for the installer. When the PKGBUILD phase lands it
@@ -83,7 +83,7 @@ Rules every layer follows:
 
 - **Idempotent.** A re-apply converges and never duplicates anything.
 - **Dry-run pure.** Every mutation goes through `run`, `run_root`, `write_root_file`, `append_root_file`, `install_root_file`, `write_user_file` or `seed_user_file`.
-- **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file. No layer appends to or edits a user file after seeding. The optional VAPT layer seeds only its owned link `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc`/`~/.zshrc`. When no rc sources the link, it prints the line the user may add (plan 087).
+- **User files are seeded once** (`seed_user_file`). After that they belong to the user, and haseen-owned behaviour lives in `share/haseen/default/` and is included from the user file. Nothing appends to or edits a user file after seeding, with one exception (owner, 2026-10-08, plan 038): `haseen seed user` appends one line sourcing `share/haseen/default/shell/init.sh` to `~/.bashrc`, and to `~/.zshrc` if it exists, once per rc. `~/.local/state/haseen/rc-include` records it, so a line the user deletes is never added back; the seed never changes or removes a line. The optional VAPT layer seeds only its owned link `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc`/`~/.zshrc`. When no rc sources the link, it prints the line the user may add (plan 087).
 - **Never clobber system files.** Use drop-ins (`/etc/*.d/`, `pacman.d/hooks`, `limine-entry-tool.d`). These exceptions are necessary:
   - `ENABLE_ENROLL_LIMINE_CONFIG=yes` has to be appended to `/etc/default/limine`, because limine-entry-tool resets that key after it reads the drop-ins (`limine-common-functions:143-144`, plan 002).
   - The `chaotic` and `omarchy-repo` layers append their repository stanzas to `/etc/pacman.conf`, because pacman has no repository drop-ins (plans 023 and 024). The optional VAPT layer appends a reviewed BlackArch stanza the same way, and only after its reviewed upgrade commits (plan 007).
