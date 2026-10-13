@@ -386,6 +386,108 @@ path.unlink()
 print('all consumed CA record fields validate without exception masking')
 PY
 assert_status 'CA consumed field types/enums refuse safely' 0 "$STATUS"
+# Interrupt a real trust under the root lock before the anchor exists, part-way
+# through writing it (ENOSPC), and after it is complete. Each state must be
+# completed by trust and rolled back by remove; bytes that are not haseen's
+# own partial write survive both.
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import errno,hashlib,json,os,pathlib,shutil,ssl,sys
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1]);import workflow_ca as ca
+base=pathlib.Path(sys.argv[2]);der=ssl.PEM_cert_to_DER_cert((base/'certificates/ca.pem').read_text())
+fp=hashlib.sha256(der).hexdigest().upper();pem=ssl.DER_cert_to_PEM_cert(der).encode()
+real_open,real_write,real_run=os.open,os.write,ca.subprocess.run
+def no_space_for_anchor(path,flags,*args,**kwargs):
+    if path==ca.anchor_name(fp) and flags&os.O_CREAT:raise OSError(errno.ENOSPC,'fixture: no space')
+    return real_open(path,flags,*args,**kwargs)
+def half_written(fd,data):
+    if bytes(data[:27])==b'-----BEGIN CERTIFICATE-----':
+        real_write(fd,data[:len(data)//2]);raise OSError(errno.ENOSPC,'fixture: no space')
+    return real_write(fd,data)
+def killed_before_updater(argv,*args,**kwargs):
+    if argv[0].endswith('/usr/bin/update-ca-trust'):raise SystemExit('fixture: killed')
+    return real_run(argv,*args,**kwargs)
+faults={'before-anchor':(ca.os,'open',no_space_for_anchor),'partial-anchor':(ca.os,'write',half_written),
+        'after-anchor':(ca.subprocess,'run',killed_before_updater)}
+def interrupted(label,branch):
+    root=base/('crash-'+label+'-'+branch);(root/'usr/bin').mkdir(parents=True)
+    for program in ('openssl','update-ca-trust'):shutil.copy2(base/'usr/bin'/program,root/'usr/bin'/program)
+    with patch.object(*faults[label]):
+        try:ca.mutate('trust',fp,der,root=str(root))
+        except BaseException:pass
+        else:raise AssertionError(label+': fault did not interrupt the trust')
+    return root,root/ca.ANCHORS.lstrip('/')/ca.anchor_name(fp)
+def pending(root,unchanged):
+    status=ca.ca_status(str(root));anchor=status['anchor']
+    assert status['state']=='unknown' and anchor['transaction']=='pending' and anchor['unchanged'] is unchanged,status
+    assert status['reason']=='trust transaction pending; owned anchor '+('unchanged' if unchanged else 'missing or incomplete')+'; system trust update incomplete',status
+    assert ca.trust_allowed(status,fp) and ca.remove_allowed(status,fp),status
+for label in faults:
+    root,anchor=interrupted(label,'trust')
+    expected={'before-anchor':None,'partial-anchor':pem[:len(pem)//2],'after-anchor':pem}[label]
+    assert (anchor.read_bytes() if anchor.exists() else None)==expected,label
+    pending(root,label=='after-anchor')
+    ca.mutate('trust',fp,der,root=str(root))
+    status=ca.ca_status(str(root))
+    assert status['state']=='owned' and status['anchor']['transaction']=='created' and anchor.read_bytes()==pem,(label,status)
+    root,anchor=interrupted(label,'remove')
+    ca.mutate('remove',fp,root=str(root))
+    assert ca.ca_status(str(root))['state']=='none' and not anchor.exists(),label
+    assert not (root/ca.STATE.lstrip('/')/ca.RECORD).exists(),label
+# A crash can leave zero fill after the bytes already written.
+root,anchor=interrupted('before-anchor','zero-fill');anchor.write_bytes(pem[:100]+b'\0'*60)
+pending(root,False)
+ca.mutate('remove',fp,root=str(root))
+assert ca.ca_status(str(root))['state']=='none' and not anchor.exists()
+# Bytes haseen never wrote are preserved and refused by both actions.
+root,anchor=interrupted('before-anchor','foreign');anchor.write_bytes(b'administrator bytes\n')
+assert ca.ca_status(str(root))['state']=='modified'
+for action,payload in (('trust',der),('remove',None)):
+    try:ca.mutate(action,fp,payload,root=str(root))
+    except ValueError as error:assert 'preserved' in str(error),error
+    else:raise AssertionError('foreign anchor bytes accepted by '+action)
+assert anchor.read_bytes()==b'administrator bytes\n'
+# A journal written before the certificate was recorded cannot prove a partial
+# anchor is haseen's: removal refuses, a trust retry with the certificate completes.
+root,anchor=interrupted('partial-anchor','unrecorded')
+record=root/ca.STATE.lstrip('/')/ca.RECORD;row=json.loads(record.read_text());del row['pem'];record.write_text(json.dumps(row))
+assert ca.ca_status(str(root))['state']=='modified'
+try:ca.mutate('remove',fp,root=str(root))
+except ValueError:pass
+else:raise AssertionError('unverifiable partial anchor removed')
+ca.mutate('trust',fp,der,root=str(root))
+assert ca.ca_status(str(root))['state']=='owned' and anchor.read_bytes()==pem
+print('interrupted trust recovered at every step')
+PY
+assert_status 'interrupted trust is completable and reversible' 0 "$STATUS"
+# The CLI sees the same recoverable state: a trust interrupted before its anchor.
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import errno,hashlib,os,pathlib,ssl,sys
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1]);import workflow_ca as ca
+root=pathlib.Path(sys.argv[2]);der=ssl.PEM_cert_to_DER_cert((root/'certificates/ca.pem').read_text());fp=hashlib.sha256(der).hexdigest().upper()
+real_open=os.open
+def no_space_for_anchor(path,flags,*args,**kwargs):
+    if path==ca.anchor_name(fp) and flags&os.O_CREAT:raise OSError(errno.ENOSPC,'fixture: no space')
+    return real_open(path,flags,*args,**kwargs)
+with patch.object(ca.os,'open',no_space_for_anchor):
+    try:ca.mutate('trust',fp,der,root=str(root))
+    except OSError:print('interrupted before the anchor')
+PY
+assert_contains 'trust interrupted before its anchor' "$OUTPUT" 'interrupted before the anchor'
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'interrupted trust reports a recoverable pending transaction' 'unknown pending false' "$(jq -r '"\(.state) \(.anchor.transaction) \(.anchor.unchanged)"' <<<"$OUTPUT")"
+capture haseen-vapt-net-proxy-ca trust /certificates/ca.pem --dry-run
+assert_status 'interrupted trust may be retried' 0 "$STATUS"
+capture haseen-vapt-net-proxy-ca remove "$fingerprint" --dry-run
+assert_status 'interrupted trust may be removed' 0 "$STATUS"
+capture haseen-vapt-doctor --json
+assert_eq 'doctor offers recovery of an interrupted trust' true "$(jq '.workflow.capabilities[] | select(.id=="proxy-ca") | .available' <<<"$OUTPUT")"
+VAPT_CA_MUTATE=true VAPT_CONFIRM=yes actions_api ca remove "$fingerprint"
+assert_status 'CLI rolls back an interrupted trust' 0 "$STATUS"
+capture haseen-vapt-net-proxy-ca status --json
+assert_eq 'rolled-back trust leaves no owned state' none "$(jq -r '.state' <<<"$OUTPUT")"
+rm -f "$CALLS/owned-update-ca-trust" "$CALLS/owned-openssl"
 # The handed-over adapter sits in the sysroot, as production resolves it.
 capture python3 -B - "$FIXTURES" "$CALLS" "$ROOT" <<'PY'
 import json,os,pathlib,signal,socket,subprocess,sys,time

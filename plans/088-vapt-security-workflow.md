@@ -300,9 +300,10 @@ containsPrivateKey}}`; fingerprints are uppercase SHA-256, dates UTC ISO-8601.
 typed fingerprint even with `--yes`, rechecks immutable public certificate bytes,
 and installs one fingerprint-owned system anchor through the root gateway.
 Removal accepts that unchanged recorded anchor or a safe incomplete removal
-transaction. An unchanged pending trust permits matching-certificate trust
-retry or removal; a removing journal with its anchor absent permits removal
-retry only. These checks repeat under the root lock. Foreign/modified or unsafe
+transaction. A pending trust whose anchor is unchanged, missing or a partial
+write of the certificate the journal records permits matching-certificate
+trust retry or removal; a removing journal with its anchor absent permits
+removal retry only. These checks repeat under the root lock. Foreign/modified or unsafe
 journals remain refusals; updater failure never claims completed trust.
 No trust decision follows from a panel launch or inspection.
 

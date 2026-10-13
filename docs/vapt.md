@@ -799,12 +799,18 @@ Dry-run never requests privilege, writes an anchor or claims hypothetical trust.
 Anchor JSON adds `anchor.transaction: pending|removing|created`; the state enum
 and schema version remain unchanged. A failed trust update reports `unknown`
 with reason `trust transaction pending; owned anchor unchanged; system trust
-update incomplete`. A failed removal reports `unknown` with reason `removal
-transaction incomplete; anchor absent; system trust may still contain CA`.
-It does not report a deliberately removed anchor as modified.
+update incomplete`. A trust interrupted before its anchor was completely
+written reports `unknown` with reason `trust transaction pending; owned anchor
+missing or incomplete; system trust update incomplete`. A failed removal reports
+`unknown` with reason `removal transaction incomplete; anchor absent; system
+trust may still contain CA`. It does not report a deliberately removed anchor as
+modified.
 
-An unchanged `pending` anchor permits `trust CERT` retry for the same fingerprint
-and bytes, or `remove FINGERPRINT`. Trust retry still requires the full typed
+The journal records the certificate and is written before the anchor. A
+`pending` journal whose anchor is unchanged, missing, or a partial write of the
+recorded certificate (a prefix, possibly zero-filled after a crash) permits
+`trust CERT` retry for the same fingerprint and bytes, or `remove FINGERPRINT`;
+either first deletes such a partial write. Trust retry still requires the full typed
 fingerprint even with `--yes`. A `removing` journal with its anchor absent permits
 only removal retry; it cannot authorize trust. If removal was interrupted before
 unlinking the unchanged anchor, removal can also continue. The root helper

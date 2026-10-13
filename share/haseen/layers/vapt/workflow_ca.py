@@ -96,9 +96,35 @@ def record_read(fd, fixture=False):
             or not isinstance(row.get('contentSha256'), str) or not re.fullmatch(r'[a-f0-9]{64}', row['contentSha256'])
             or not isinstance(row.get('state'), str) or row['state'] not in ('pending', 'created', 'removing')
             or any(not isinstance(row.get(key), str) or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in row[key])
-                   for key in ('subject', 'issuer'))):
+                   for key in ('subject', 'issuer'))
+            or ('pem' in row and (not isinstance(row['pem'], str) or not row['pem'].isascii()
+                                  or hashlib.sha256(row['pem'].encode()).hexdigest() != row['contentSha256']))):
         raise ValueError('CA ownership record malformed')
     return row
+
+
+def anchor_condition(old, row, expected):
+    """How the retained anchor bytes OLD relate to the journal ROW.
+
+    'partial' is what an interrupted write of EXPECTED (the recorded
+    certificate) leaves behind: a prefix of it, possibly followed by the zero
+    fill a filesystem can show after a crash. haseen alone writes those bytes
+    under this name, so they may be completed or rolled back; anything else
+    is 'modified' and preserved.
+    """
+    if old is None:
+        return 'absent'
+    if hashlib.sha256(old).hexdigest() == row['contentSha256']:
+        return 'unchanged'
+    if expected is not None and len(old) <= len(expected) and expected.startswith(old.rstrip(b'\0')):
+        return 'partial'
+    return 'modified'
+
+
+def recoverable(row, condition):
+    """An unchanged anchor, or the gap an interrupted transaction leaves."""
+    return (condition == 'unchanged' or (row['state'] == 'pending' and condition in ('absent', 'partial'))
+            or (row['state'] == 'removing' and condition == 'absent'))
 
 
 def anchor_name(fingerprint):
@@ -133,14 +159,20 @@ def ca_status(root=''):
             data = read_owned(anchor_fd, name, bool(root)) if anchor_fd is not None else None
         except FileNotFoundError:
             data = None
-        unchanged = data is not None and hashlib.sha256(data).hexdigest() == row['contentSha256']
+        condition = anchor_condition(data, row, row['pem'].encode() if 'pem' in row else None)
+        unchanged = condition == 'unchanged'
         result['anchor'] = {'sha256': row['sha256'], 'subject': row['subject'], 'issuer': row['issuer'],
                             'path': ANCHORS + '/' + name, 'unchanged': unchanged, 'transaction': row['state']}
-        result.update(state='owned' if unchanged else 'modified', reason='unchanged fingerprint-bound owned anchor' if unchanged else 'owned anchor missing or modified; preserved')
-        if unchanged and row['state'] == 'pending':
-            result.update(state='unknown', reason='trust transaction pending; owned anchor unchanged; system trust update incomplete')
-        elif row['state'] == 'removing' and (unchanged or data is None):
-            result.update(state='unknown', reason='removal transaction incomplete; anchor ' + ('unchanged' if unchanged else 'absent') + '; system trust may still contain CA')
+        if not recoverable(row, condition):
+            result.update(state='modified', reason='owned anchor missing or modified; preserved')
+        elif row['state'] == 'created':
+            result.update(state='owned', reason='unchanged fingerprint-bound owned anchor')
+        elif row['state'] == 'pending':
+            result.update(state='unknown', reason='trust transaction pending; owned anchor ' + ('unchanged' if unchanged else 'missing or incomplete')
+                          + '; system trust update incomplete')
+        else:
+            result.update(state='unknown', reason='removal transaction incomplete; anchor ' + ('unchanged' if unchanged else 'absent')
+                          + '; system trust may still contain CA')
     except (OSError, ValueError):
         result.update(state='unknown', reason='CA ownership state unsafe or unreadable; preserved')
     finally:
@@ -151,26 +183,30 @@ def ca_status(root=''):
     return result
 
 
+# ca_status reports 'unknown' with an anchor only for a recoverable
+# transaction; mutate repeats every check under the root lock.
 def trust_allowed(status, fingerprint):
     anchor = status.get('anchor')
-    return status['state'] == 'none' or bool(anchor and anchor['sha256'] == fingerprint and anchor['unchanged']
-            and (status['state'] == 'owned' or (status['state'] == 'unknown' and anchor['transaction'] == 'pending')))
+    return status['state'] == 'none' or bool(anchor and anchor['sha256'] == fingerprint
+            and ((status['state'] == 'owned' and anchor['unchanged'])
+                 or (status['state'] == 'unknown' and anchor['transaction'] == 'pending')))
 
 
 def remove_allowed(status, fingerprint):
     anchor = status.get('anchor')
     return bool(anchor and anchor['sha256'] == fingerprint
                 and ((status['state'] == 'owned' and anchor['unchanged'])
-                     or (status['state'] == 'unknown' and (anchor['transaction'] == 'removing'
-                         or (anchor['transaction'] == 'pending' and anchor['unchanged'])))))
+                     or (status['state'] == 'unknown' and anchor['transaction'] in ('pending', 'removing'))))
 
 
 def mutate(action, fingerprint, der=None, root=''):
     """FD-bound root transaction. ROOT is a library-only fixture sysroot.
 
     The CLI never accepts a sysroot. Under a fixture, the trust updater is the
-    fixture's own stub (host_program). Pending records retain honest ownership
-    after updater failure; no foreign/modified file is overwritten.
+    fixture's own stub (host_program). The journal, which records the
+    certificate, is written before the anchor, so an interruption at any point
+    leaves a state the next trust or remove completes or rolls back. No
+    foreign or modified file is overwritten or removed.
     """
     name = anchor_name(fingerprint)
     if not root and os.geteuid() != 0:
@@ -201,17 +237,25 @@ def mutate(action, fingerprint, der=None, root=''):
             raise ValueError('foreign anchor preserved')
         if action == 'trust' and row and row['state'] == 'removing':
             raise ValueError('removal transaction incomplete; retry removal before trusting a CA')
-        if row and (old is None or hashlib.sha256(old).hexdigest() != row['contentSha256']) and not (action == 'remove' and row['state'] == 'removing' and old is None):
-            raise ValueError('modified or missing owned anchor preserved')
+        pem = ssl.DER_cert_to_PEM_cert(der).encode('ascii') if action == 'trust' else None
+        if pem and row and row['contentSha256'] != hashlib.sha256(pem).hexdigest():
+            raise ValueError('retained anchor bytes disagree with accepted certificate; preserved')
+        condition = 'absent'
+        if row:
+            condition = anchor_condition(old, row, pem or (row['pem'].encode() if 'pem' in row else None))
+            if not recoverable(row, condition):
+                raise ValueError('modified or missing owned anchor preserved')
+        if condition == 'partial':
+            # Our own interrupted write: roll it back before either action.
+            os.unlink(name, dir_fd=anchor_fd)
+            os.fsync(anchor_fd)
+            condition = 'absent'
         if action == 'trust':
-            pem = ssl.DER_cert_to_PEM_cert(der).encode('ascii')
-            if row and old != pem:
-                raise ValueError('retained anchor bytes disagree with accepted certificate; preserved')
             row = {'schemaVersion': 1, 'state': 'pending', 'sha256': fingerprint,
                    'contentSha256': hashlib.sha256(pem).hexdigest(), 'subject': certificate['certificate']['subject'],
-                   'issuer': certificate['certificate']['issuer']}
+                   'issuer': certificate['certificate']['issuer'], 'pem': pem.decode('ascii')}
             atomic_write(state_fd, RECORD, json.dumps(row).encode())
-            if old is None:
+            if condition == 'absent':
                 out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=anchor_fd)
                 try:
                     view = memoryview(pem)
@@ -226,7 +270,7 @@ def mutate(action, fingerprint, der=None, root=''):
                 raise ValueError('no unchanged owned anchor to remove')
             row['state'] = 'removing'
             atomic_write(state_fd, RECORD, json.dumps(row).encode())
-            if old is not None:
+            if condition == 'unchanged':
                 os.unlink(name, dir_fd=anchor_fd)
                 os.fsync(anchor_fd)
         else:
