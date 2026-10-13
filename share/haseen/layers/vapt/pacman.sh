@@ -347,7 +347,7 @@ vapt_pacman_closure() {
 # whose target is already exact. Names no longer installed are skipped.
 vapt_reasons_repair() {
     $DRY_RUN && return 0
-    local record="$HASEEN_STATE_DIR/vapt/reasons-pending" seen text name target rest absent config row names=() rows=() present=()
+    local record="$HASEEN_STATE_DIR/vapt/reasons-pending" seen text name target rest absent config row names=() rows=() installed=()
     seen="$(vapt_read_path "$record")"
     [[ -e $seen || -L $seen ]] || return 0
     vapt_root_lock || return $?
@@ -364,14 +364,14 @@ vapt_reasons_repair() {
     if ((${#names[@]})); then
         absent="$(vapt_meta absent "${names[@]}")" || { VAPT_APPLY_REASON='installed package metadata unreadable'; return 2; }
         for name in "${names[@]}"; do
-            [[ $'\n'$absent$'\n' == *$'\n'$name$'\n'* ]] || present+=("$name")
+            [[ $'\n'$absent$'\n' == *$'\n'$name$'\n'* ]] || installed+=("$name")
         done
     fi
-    if ((${#present[@]})); then
+    if ((${#installed[@]})); then
         vapt_pacman_stage || return 1
         config="$(vapt_meta config --local)" || { VAPT_APPLY_REASON='unsafe/unreadable pacman configuration'; return 2; }
         printf '%s\n' "$config" | write_user_file "$VAPT_STAGE/reasons.conf" || return 1
-        vapt_root_pacman --config "$VAPT_STAGE/reasons.conf" -D --asdeps -- "${present[@]}" || {
+        vapt_root_pacman --config "$VAPT_STAGE/reasons.conf" -D --asdeps -- "${installed[@]}" || {
             VAPT_APPLY_REASON='install reason bookkeeping failed; the next VAPT transaction retries it'; return 1;
         }
         for row in "${rows[@]}"; do
