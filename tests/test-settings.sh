@@ -78,6 +78,50 @@ capture haseen settings set theme tokyo-night --dry-run
 assert_status "setting the theme succeeds" 0 "$STATUS"
 assert_contains "the value reaches haseen theme set" "$OUTPUT" "tokyo-night"
 
+# --- a dry run of any key changes nothing ------------------------------------
+# settings set passes --dry-run to the owning command, so every owner has to
+# honour it: no stubbed binary (qs for the running shell, hyprctl, systemctl,
+# notify-send) may run, and nothing under $HOME may change.
+sample_value() { # KEY TAKES — a value the key's owner accepts, or "" for none
+    case "$2" in
+    none) return 0 ;;
+    on-off | inverted)
+        echo on
+        return 0
+        ;;
+    esac
+    case "$1" in
+    theme) echo tokyo-night ;;
+    font.mono) echo "JetBrainsMono Nerd Font" ;;
+    shell) echo dms ;;
+    bar.position) echo left ;;
+    haseen.screensaver.style) echo native ;;
+    default.browser) echo chromium ;;
+    default.terminal) echo foot ;;
+    default.editor) echo helix ;;
+    default.agent) echo claude ;;
+    *) echo "?" ;;
+    esac
+}
+home_state() { (cd "$HOME" && find . -printf '%p %y %s %T@\n' | LC_ALL=C sort); }
+# The owners validate before they plan: the font must be installed and the
+# shell's layer applied. Both are answered here, never by the machine.
+stub fc-list 'echo "JetBrainsMono Nerd Font"'
+mkdir -p "$SANDBOX/sysroot/var/lib/haseen/layers"
+touch "$SANDBOX/sysroot/var/lib/haseen/layers/shell" "$SANDBOX/sysroot/var/lib/haseen/layers/dms"
+export HASEEN_SYSROOT="$SANDBOX/sysroot"
+keys="$(haseen settings list --json | jq -r '.[] | [.key, .takes] | @tsv')"
+before="$(home_state)"
+while IFS=$'\t' read -r key takes; do
+    value="$(sample_value "$key" "$takes")"
+    assert_eq "the dry-run sweep knows a value for $key" "" "$([[ $value == "?" ]] && echo missing)"
+    capture haseen settings set "$key" ${value:+"$value"} --dry-run
+    assert_status "settings set $key --dry-run succeeds" 0 "$STATUS"
+    assert_dry_pure "settings set $key" "$OUTPUT"
+done <<<"$keys"
+assert_eq "no settings set --dry-run changed anything under HOME" "$before" "$(home_state)"
+unset HASEEN_SYSROOT
+
 capture haseen settings set bogus value
 assert_status "an unknown key fails" 1 "$STATUS"
 assert_contains "the error names the index" "$OUTPUT" "haseen settings list"
@@ -106,7 +150,7 @@ stub quickshell 'exit 0'
 stub pkill 'exit 0'
 stub systemctl 'exit 0'
 rm -rf "$HOME/.local/state/haseen/flags" "$HOME/.local/state/haseen/toggles"
-for t in dnd idle screensaver nightlight gaps animations one-window-ratio; do
+for t in dnd idle screensaver nightlight gaps animations one-window-ratio bar.transparent; do
     for v in off on off; do
         capture haseen settings set "$t" "$v"
         assert_status "settings set $t $v succeeds" 0 "$STATUS"
@@ -114,6 +158,9 @@ for t in dnd idle screensaver nightlight gaps animations one-window-ratio; do
             "$(haseen settings list --json | jq -r --arg t "$t" '.[] | select(.key == $t) | .value')"
     done
 done
+capture haseen settings set bar.position left
+assert_status "settings set bar.position left succeeds" 0 "$STATUS"
+assert_eq "the bar position lands in shell.json" "left" "$(jq -r .bar.position "$HOME/.config/haseen/shell.json")"
 capture haseen settings set gaps off --dry-run
 assert_contains "gaps off writes the no-gaps toggle" "$OUTPUT" "DRYRUN: write $HOME/.local/state/haseen/toggles/hypr/no-gaps.lua"
 capture haseen settings set gaps maybe --dry-run

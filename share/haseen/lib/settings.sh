@@ -123,12 +123,15 @@ settings_rows() {
     _settings_row shell state "$state/active-shell" \
         "$(_settings_file "$state/active-shell" haseen)" "haseen shell use"
 
-    _settings_row bar.position shell.json "$HASEEN_USER_CONFIG/shell.json" \
-        "$(_settings_json .bar.position top)" "haseen shell ipc bar position"
+    # The bar commands save shell.json and then tell the running shell; with
+    # --dry-run they only print both steps (haseen shell ipc has no dry run).
+    _settings_row bar.position shell.json "$shell_json" \
+        "$(_settings_json .bar.position top)" "haseen bar position"
     _settings_row bar.height shell.json "$shell_json" \
         "$(_settings_json .bar.height 28)" "haseen config edit $shell_json" none
-    _settings_row bar.transparent shell.json "$HASEEN_USER_CONFIG/shell.json" \
-        "$(_settings_json .bar.transparent false)" "haseen shell ipc bar transparent"
+    _settings_row bar.transparent shell.json "$shell_json" \
+        "$([[ $(_settings_json .bar.transparent false) == true ]] && echo on || echo off)" \
+        "haseen bar transparent" on-off
     _settings_row frame.enabled shell.json "$shell_json" \
         "$(_settings_json .frame.enabled true)" "haseen config edit $shell_json" none
     _settings_row frame.thickness shell.json "$shell_json" \
@@ -150,7 +153,7 @@ settings_rows() {
         _settings_row "${plugin_key%%:*}.${plugin_key#*:}" shell.json "$shell_json" \
             "$(_settings_plugin "${plugin_key%%:*}" "${plugin_key#*:}")" "haseen config edit $shell_json" none
     done
-    _settings_row haseen.screensaver.style shell.json "$HASEEN_USER_CONFIG/shell.json" \
+    _settings_row haseen.screensaver.style shell.json "$shell_json" \
         "$(_settings_plugin haseen.screensaver style)" "haseen screensaver style"
 
     _settings_row dnd flag "$state/flags/dnd" "$(_settings_flag dnd)" "haseen toggle dnd" on-off
