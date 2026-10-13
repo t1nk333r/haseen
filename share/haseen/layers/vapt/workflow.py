@@ -19,13 +19,13 @@ import subprocess
 import sys
 import zlib
 
+LAYER = Path(__file__).resolve().parent
 # Run under python3 -I, which leaves the script's own directory off sys.path.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(LAYER))
 import metadata as meta
 from workflow_menu import menu
 from workflow_support import validate_endpoint, local_addresses, open_selected, host_program
 
-LAYER = Path(__file__).resolve().parent
 ROOT = os.environ.get('HASEEN_SYSROOT', '').rstrip('/')
 CONFIG = os.environ.get('HASEEN_USER_CONFIG', os.environ.get('XDG_CONFIG_HOME', os.environ['HOME'] + '/.config') + '/haseen')
 STATE = os.environ.get('HASEEN_USER_STATE', os.environ.get('XDG_STATE_HOME', os.environ['HOME'] + '/.local/state') + '/haseen')
@@ -96,8 +96,9 @@ def index_repositories(repos):
 
 
 def package_sources(record, config, repo_index):
-    # Restrict only by exact name. The phase-1 predicates still decide version,
-    # URL, unknown metadata, forbidden records, source policy and identity.
+    # Restrict only by exact name. The provisioning predicates (metadata.py)
+    # still decide version, URL, unknown metadata, forbidden records, source
+    # policy and identity.
     repos = {source: names.get(record.get('name'), []) for source, names in repo_index.items()}
     if not meta.allowed_local(record, config, repos):
         return []
@@ -269,6 +270,7 @@ def native_evidence(name, spec, probe):
         evidence['entrypoints'] = []
     return evidence
 
+
 def report_resolution():
     """Report attempts for diagnostics only, never installation authority."""
     result = {}
@@ -284,7 +286,6 @@ def report_resolution():
                         'source': source or None, 'target': target or None, 'reason': reason,
                         'evidence': 'provisioning-report-only; not installed-entrypoint evidence'}
     return result
-
 
 
 def discover(only=None):
@@ -379,7 +380,7 @@ def validate_settings(values):
 
 
 def capabilities(result):
-    """The action slice shares installed ownership policy with actual actions."""
+    """Doctor's capability rows use the same ownership checks as the actions."""
     from workflow_actions import local_capabilities
     return local_capabilities(result['workflow']['settings'])
 
@@ -446,8 +447,7 @@ def show_help(args):
     if args.dry_run:
         print(json.dumps({'schemaVersion': 1, 'tool': tool['id'], 'entry': entry['id'], 'evidence': evidence,
                           'shellArgv': [shell, '-i'] if shell else [], 'dryRun': True}))
-        # Address output is explicit usage-only, not inventory/status evidence.
-        # Dry-run does not observe even local interface state.
+        # A preview reads no local interface state.
         return 0
     refuse_fixture_execution(shell, evidence)
     if evidence['kind'] == 'reviewed-argv':
@@ -511,28 +511,23 @@ def document_bytes(document, compressed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['tool-list', 'tool-help', 'tool-run', 'status', 'doctor', 'menu'])
+    # menu is answered by workflow_menu.py, which loads no inventory code.
+    parser.add_argument('command', choices=['tool-list', 'tool-help', 'tool-run', 'status', 'doctor'])
     parser.add_argument('tool', nargs='?')
     parser.add_argument('--entry')
     parser.add_argument('--group')
     parser.add_argument('--all', action='store_true')
     parser.add_argument('--json', action='store_true')
-    parser.add_argument('--enabled', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     args.status_code = int(os.environ.get('VAPT_WORKFLOW_STATUS_CODE', '0'))
     action = args.command in ('tool-help', 'tool-run')
-    if (action != bool(args.tool) or (action and (args.json or args.all or args.group or args.enabled))
-            or (args.entry and not action) or (args.enabled and args.command != 'menu')
-            or ((args.all or args.group) and args.command != 'tool-list')):
+    if (action != bool(args.tool) or (action and (args.json or args.all or args.group))
+            or (args.entry and not action) or ((args.all or args.group) and args.command != 'tool-list')):
         parser.error('unsupported or missing operands')
     try:
         if action:
             return show_help(args)
-        if args.command == 'menu':
-            result = menu()
-            print(json.dumps(result) if args.json else str(result['enabled']).lower())
-            return 0 if not args.enabled or result['enabled'] else 1
         result = discover()
         if args.command == 'tool-list':
             groups = {g for t in result['tools'] for g in t['groups']}

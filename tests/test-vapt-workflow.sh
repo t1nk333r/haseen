@@ -184,7 +184,7 @@ done
 workflow_no_calls workflow
 assert_eq 'no shell executed' '' "$(vapt_calls workstation-shell)"
 assert_eq 'no source refresh' '' "$(vapt_calls curl)$(vapt_calls pacman)$(vapt_calls gpg)"
-# The v2 settings/capability contract stays valid on semantic refusal.
+# Settings and capability records stay valid on semantic refusal.
 capture haseen-vapt-doctor --json --dry-run
 assert_eq 'five fixed doctor capabilities' 5 "$(jq '.workflow.capabilities | length' <<<"$OUTPUT")"
 assert_eq 'unsupported adapters never pretend available' false "$(jq '[.workflow.capabilities[].available] | any' <<<"$OUTPUT")"

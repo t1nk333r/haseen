@@ -89,7 +89,7 @@ assert_eq 'installed but unverified package retained diagnostic' true "$(jq '.se
 assert_eq 'unverified unit cannot control' refused "$(jq -r '.services[] | select(.id=="nginx") | .ownership' <<<"$OUTPUT")"
 assert_not_contains 'never enable via gateway' "$(vapt_calls action-root)" ' enable '
 actions_untouched service
-actions_fixture vapt-services-batch-j
+actions_fixture vapt-services-terminal
 VAPT_TERMINAL_UNAVAILABLE=true actions_api service stop ssh sshd.service /usr/lib/systemd/system/sshd.service
 assert_status 'stop needs no available terminal' 0 "$STATUS"
 assert_eq 'terminal-free stop ran the sysroot service manager' 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
@@ -131,7 +131,7 @@ assert manager_record(record)==record
 print('all consumed manager fields validated')
 PY
 assert_status 'manager consumed field types/enums refuse safely' 0 "$STATUS"
-actions_untouched services-batch-j
+actions_untouched services-terminal
 
 actions_fixture vapt-services-reviewed-bindings
 python3 - "$ROOT" <<'PY'

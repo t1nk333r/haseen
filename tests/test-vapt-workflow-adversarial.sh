@@ -118,7 +118,7 @@ actions_api endpoint listener 8080
 assert_status 'configured implicit public bind still requires confirmation' 1 "$STATUS"
 assert_eq 'implicit public bind decline starts no program' '' "$(vapt_calls action-user)$(vapt_calls owned-nc)"
 printf '{"bindAddress":"127.0.0.1"}\n' >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json"
-# Every public phase-2 command has a pure preview, including refusal branches.
+# Every public workflow command has a pure preview, including refusal branches.
 before="$(net_manifest)"
 for verb in tool-list status doctor menu service-list net-addresses net-remmina; do
     capture "haseen-vapt-$verb" --dry-run --json
@@ -188,8 +188,8 @@ assert_eq 'read and preview never execute package-name candidate' '' "$(vapt_cal
 assert_eq 'read and preview never open session shell' '' "$(vapt_calls adversarial-shell)"
 actions_untouched adversarial-workflow
 
-# Preserve the independent review's nearby-sysroot escape controls. Every
-# outside file is still inside this sandbox, never in the owner's HOME.
+# Metadata reached through a link out of the fixture root never supplies
+# evidence. Every outside file is still inside this sandbox, never in HOME.
 actions_fixture vapt-nearby-observation
 outside="$ROOT/../outside"
 mkdir -p "$outside"

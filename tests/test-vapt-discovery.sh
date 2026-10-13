@@ -66,7 +66,7 @@ assert_eq 'native RECORD console entry' native "$(jq -r '.tools[] | select(.id =
 assert_eq 'native console path evidence' "$XDG_DATA_HOME/haseen/vapt/pipx/venvs/frida-tools/bin/frida" "$(jq -r '.tools[] | select(.id == "frida-tools") | .entrypoints[0].path' <<<"$OUTPUT")"
 workflow_no_calls native-discovery
 
-# Characterize the reviewed linear predicate before optimizing its search set.
+# The indexed source lookup must give the same answer as the linear predicate.
 workflow_fixture vapt-index-equivalence
 capture python3 -B - "$VAPT_LAYER" "$ROOT" "$FIXTURES" <<'PY'
 import copy,json,pathlib,sys

@@ -176,7 +176,6 @@ vapt_ca_action() {
         result="$(vapt_actions inspect "$operand" --json)" || { printf '%s\n' "$result"; return 1; }
         printf '%s\n' "$result"
         fingerprint="$(printf '%s' "$result" | vapt_json_field certificate sha256)" || return 1
-        vapt_actions adapter proxy-ca >/dev/null || return 1
         vapt_actions ca-trust-check "$fingerprint" || return 1
         if $DRY_RUN; then
             echo "DRYRUN: require typed SHA-256 $fingerprint; recheck immutable certificate bytes and owned trust updater; install only fingerprint-bound owned anchor and update system trust"
