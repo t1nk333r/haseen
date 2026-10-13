@@ -278,6 +278,42 @@ printf '[options]\n[extra]\nServer = http://mirror.example/$repo/os/$arch\n' >"$
 capture python3 "$VAPT_META" config --root "$ROOT"
 assert_status "a plain-HTTP mirror refuses the configuration" 1 "$STATUS"
 
+# A host's stricter signature checks survive in every VAPT configuration, per
+# repository and in pacman's split Package/Database forms; VAPT's minimum,
+# Required DatabaseOptional, applies only where the host asks for less.
+# siglevels BODY [OPTION...] — render pacman.conf BODY (printf %b); LEVELS is
+# "[section] SigLevel line;" for each rendered section that states one.
+siglevels() {
+    printf '%b' "$1" >"$ROOT/etc/pacman.conf"
+    shift
+    capture python3 "$VAPT_META" config --root "$ROOT" "$@"
+    LEVELS="$(awk '/^\[/ { s = $0 } /^SigLevel/ { printf "%s %s;", s, $0 }' <<<"$OUTPUT")"
+}
+MIRROR='Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+while IFS='|' read -r label options repo expected; do
+    siglevels "[options]\n$options\n[core]\n$MIRROR\n[extra]\n$repo$MIRROR\n"
+    assert_eq "signature level: $label" "$expected" "$LEVELS"
+done <<'EOF'
+host default (Optional) gets the VAPT minimum|||[options] SigLevel = Required DatabaseOptional;
+global DatabaseRequired is kept for every repository|SigLevel = Required DatabaseRequired||[options] SigLevel = Required DatabaseRequired;
+the split form is understood|SigLevel = PackageRequired DatabaseRequired||[options] SigLevel = Required DatabaseRequired;
+a database-only global level is kept|SigLevel = DatabaseRequired||[options] SigLevel = Required DatabaseRequired;
+a later global line overrides an earlier one|SigLevel = Required DatabaseRequired\nSigLevel = DatabaseOptional||[options] SigLevel = Required DatabaseOptional;
+global Never and TrustAll are raised to the minimum|SigLevel = Never TrustAll||[options] SigLevel = Required DatabaseOptional;
+a repository's own DatabaseRequired is kept|SigLevel = Required DatabaseOptional|SigLevel = DatabaseRequired\n|[options] SigLevel = Required DatabaseOptional;[extra] SigLevel = Required DatabaseRequired;
+a repository's lines combine and keep their halves|SigLevel = Required DatabaseOptional|SigLevel = Optional\nSigLevel = DatabaseRequired\n|[options] SigLevel = Required DatabaseOptional;[extra] SigLevel = Required DatabaseRequired;
+a repository inherits the global half it does not state|SigLevel = Required DatabaseRequired|SigLevel = PackageRequired\n|[options] SigLevel = Required DatabaseRequired;[extra] SigLevel = Required DatabaseRequired;
+a repository the host relaxed keeps the host's own level|SigLevel = Required DatabaseRequired|SigLevel = DatabaseOptional\n|[options] SigLevel = Required DatabaseRequired;[extra] SigLevel = Required DatabaseOptional;
+EOF
+siglevels "[options]\nSigLevel = Required DatabaseRequired\n[extra]\n$MIRROR\n" --local
+assert_eq 'the archive-only configuration keeps the stricter global level' \
+    '[options] SigLevel = Required DatabaseRequired;' "$LEVELS"
+siglevels "[options]\nSigLevel = Required\n[extra]\nSigLevel = DatabaseRequired\n$MIRROR\n" --frozen /var/cache/haseen-vapt.x/reviewed
+assert_contains "the frozen configuration keeps a repository's stricter level" "$OUTPUT" \
+    $'[extra]\nSigLevel = Required DatabaseRequired\nServer = file:///var/cache/haseen-vapt.x/reviewed/extra'
+siglevels "[options]\nSigLevel = Required DatabaseMaybe\n[extra]\n$MIRROR\n"
+assert_status 'a SigLevel value pacman does not know refuses the configuration' 1 "$STATUS"
+
 # --- the solver's plan must be the inspected closure ------------------------
 vapt_sandbox vapt-plan-closure
 vapt_root

@@ -570,6 +570,49 @@ def emit_safe(*fields):
     return not any(CONTROL.search(str(field)) for field in fields)
 
 
+# pacman's SigLevel, one value per half: signature check (never, optional,
+# required) and key trust (trustall, trustedonly). SIGLEVEL_DEFAULT is what
+# pacman uses when [options] declares none (conf.c, config_new).
+SIGLEVEL_DEFAULT = {'package': 'optional', 'database': 'optional',
+                    'package-trust': 'trustedonly', 'database-trust': 'trustedonly'}
+
+
+def siglevel_apply(lines, level):
+    """LEVEL after the SigLevel lines among LINES, in order, as pacman's
+    process_siglevel reads them: values are space-separated, a Package or
+    Database prefix limits a value to that half, no prefix sets both. A
+    repository starts from the global level, so what its own lines leave
+    unsaid stays inherited (merge_siglevel)."""
+    level = dict(level)
+    for line in lines:
+        key, equals, value = line.partition('=')
+        if key.strip(' \t\r\v\f') != 'SigLevel':
+            continue
+        if not equals:
+            raise ValueError('pacman SigLevel without a value')
+        for token in filter(None, value.strip(' \t\r\v\f').split(' ')):
+            halves, setting = ('package', 'database'), token
+            for prefix in ('Package', 'Database'):
+                if token.startswith(prefix):
+                    halves, setting = (prefix.lower(),), token[len(prefix):]
+            if setting in ('Never', 'Optional', 'Required'):
+                level.update({half: setting.lower() for half in halves})
+            elif setting in ('TrustedOnly', 'TrustAll'):
+                level.update({half + '-trust': setting.lower() for half in halves})
+            else:
+                raise ValueError('unknown pacman SigLevel value ' + token)
+    return level
+
+
+def siglevel_line(level):
+    """The SigLevel VAPT transactions use where the host's is LEVEL: VAPT's
+    minimum (package signatures Required from trusted keys, databases at
+    least Optional), raised to DatabaseRequired when LEVEL requires it. The
+    minimum is already the strictest package check and key trust, so the
+    database check is the only half the host can make stricter."""
+    return 'SigLevel = Required Database' + ('Required' if level['database'] == 'required' else 'Optional')
+
+
 def render_config(root, frozen=None, local=False):
     config = read_config(root)
     print('[options]')
@@ -579,7 +622,12 @@ def render_config(root, frozen=None, local=False):
     for line in config.get('options', []):
         if line.split('=', 1)[0].strip() not in blocked:
             print(line)
-    print('SigLevel = Required DatabaseOptional\nLocalFileSigLevel = Required TrustedOnly\nRemoteFileSigLevel = Required TrustedOnly')
+    # Signature checks are never weaker than VAPT's minimum nor than the
+    # host's own: a host that requires database signatures, globally or for
+    # one repository, keeps requiring them in every VAPT transaction.
+    host = siglevel_apply(config.get('options', []), SIGLEVEL_DEFAULT)
+    print(siglevel_line(host))
+    print('LocalFileSigLevel = Required TrustedOnly\nRemoteFileSigLevel = Required TrustedOnly')
     # HookDir paths are retained and audited before transactions, not disabled.
     for line in config.get('options', []):
         if line.startswith('HookDir'):
@@ -592,19 +640,21 @@ def render_config(root, frozen=None, local=False):
         if not repository_policy_safe(repo, lines):
             raise ValueError('insecure repository ' + repo)
         print('[' + repo + ']')
+        signed = False
         for line in lines:
             key = line.split('=', 1)[0].strip()
             if key == 'Server':
                 if not repository_mirror_safe(repo, line.split('=', 1)[1]):
                     raise ValueError(mirror_refusal(repo, line.split('=', 1)[1]) + ' repository mirror ' + repo)
                 print('Server = file://' + frozen + '/' + repo if frozen else line)
-            elif key in ('SigLevel', 'Usage'):
-                if key == 'SigLevel':
-                    # The private source keeps its stricter declared policy in
-                    # sync, frozen and recovery configurations alike.
-                    print(ONIOMARCHY_POLICY if repo == ONIOMARCHY else 'SigLevel = Required DatabaseOptional')
-                else:
-                    print(line)
+            elif key == 'SigLevel' and not signed:
+                # One line for all of the repository's own SigLevel lines; a
+                # repository without one inherits the [options] line above.
+                # The private source keeps its declared policy, the strictest.
+                signed = True
+                print(ONIOMARCHY_POLICY if repo == ONIOMARCHY else siglevel_line(siglevel_apply(lines, host)))
+            elif key == 'Usage':
+                print(line)
 
 def cache_permissions(root, path):
     if not re.fullmatch(r'/var/cache/haseen-vapt\.[A-Za-z0-9]+/packages', path):
