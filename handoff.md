@@ -91,9 +91,9 @@ panel, plan 090 the 2026-10-13 audit fixes.
 - `main` has plans through 089. PRs #39 (VAPT provisioning, plans 007 and
   087) and #40 (VAPT workflow and Security panel, plans 088 and 089) merged
   on 2026-10-12.
-- Open: the VAPT audit-fix branch (plan 090), and a separate PR that
-  re-lands PR #38's desktop work on `main` without its stale copy of the
-  VAPT files; it supersedes #38.
+- Open: the VAPT audit fixes (plan 090), and PR #41, which re-lands PR
+  #38's desktop work on `main` without its stale copy of the VAPT files
+  (#38 is closed in its favour).
 - Still unproven for plan 088: the Security panel on a real compositor and
   through AT-SPI.
 - The next free plan number is 091.
