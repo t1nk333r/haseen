@@ -81,24 +81,37 @@ EOF
 
 # --- configuration -----------------------------------------------------------
 
-# cfg SECTION KEY — one value out of the TOML. upload.toml is a flat file of
-# `key = "value"` lines under `[section]` headers, so a reader is cheaper and
-# has fewer dependencies than pulling in a TOML parser. Top-level keys are
-# section "".
+# cfg SECTION KEY — one value out of the TOML; top-level keys are section "".
+# upload.toml is a flat file of `key = value` lines under `[section]` headers,
+# so a reader is cheaper and has fewer dependencies than a TOML parser. A
+# value is a "basic" string (\" and \\ unescaped, other escapes kept as
+# written), a 'literal' string, or a bare word; a # after it starts a comment,
+# as in the --help example. An unterminated string reads as unset.
 cfg() {
     [[ -r $CONFIG_FILE ]] || return 0
-    awk -v want_s="$1" -v want_k="$2" '
-        /^[[:space:]]*#/ { next }
-        /^[[:space:]]*\[/ { s=$0; sub(/^[[:space:]]*\[/,"",s); sub(/\][[:space:]]*$/,"",s); next }
+    awk -v want_s="$1" -v want_k="$2" -v sq="'" '
+        function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+        function value(v,    q, out, i, c) {
+            q = substr(v, 1, 1)
+            if (q != "\"" && q != sq) { sub(/[[:space:]]*#.*/, "", v); return v }
+            for (i = 2; i <= length(v); i++) {
+                c = substr(v, i, 1)
+                if (c == q) return out
+                if (q == "\"" && c == "\\") {
+                    c = substr(v, ++i, 1)
+                    if (c != "\"" && c != "\\") c = "\\" c
+                }
+                out = out c
+            }
+            return ""
+        }
+        /^[[:space:]]*(#|$)/ { next }
+        /^[[:space:]]*\[/ { s = $0; sub(/^[[:space:]]*\[/, "", s); sub(/\].*/, "", s); s = trim(s); next }
         {
-            line=$0; sub(/^[[:space:]]+/,"",line)
-            i=index(line,"="); if (i==0) next
-            k=substr(line,1,i-1); v=substr(line,i+1)
-            sub(/[[:space:]]+$/,"",k)
-            sub(/^[[:space:]]+/,"",v); sub(/[[:space:]]+$/,"",v)
-            if (v ~ /^".*"$/) { v=substr(v,2,length(v)-2) }
-            else if (v ~ /^'"'"'.*'"'"'$/) { v=substr(v,2,length(v)-2) }
-            if (s==want_s && k==want_k) { print v; exit }
+            i = index($0, "=")
+            if (i == 0 || s != want_s || trim(substr($0, 1, i - 1)) != want_k) next
+            print value(trim(substr($0, i + 1)))
+            exit
         }' "$CONFIG_FILE"
 }
 
@@ -179,26 +192,15 @@ curl_run() {
     curl -q "${TRANSPORT[@]}" "$@"
 }
 
-# http POST-ARGS… URL — run curl with the shared options. Prints the response
-# body. Backends read it inside a command substitution, so the response
-# headers go to a file (a variable set in that subshell would be lost on
-# return).
-HTTP_HEADER_FILE=""
+# http POST-ARGS… URL — run curl with the shared options and print what it
+# prints: the response body, preceded by the headers when ARGS has -D -.
 http() {
     local rc=0 body
     # --config - keeps every credential out of the command line.
     body="$(printf '%s' "$CURL_SECRETS" |
-        curl_run "${!#}" --config - -sS --fail-with-body --max-time 120 -A "$UA" \
-            -D "$HTTP_HEADER_FILE" "$@")" || rc=$?
+        curl_run "${!#}" --config - -sS --fail-with-body --max-time 120 -A "$UA" "$@")" || rc=$?
     printf '%s' "$body"
     return "$rc"
-}
-
-# response_header NAME — one header out of the last http call, case-insensitive.
-response_header() {
-    [[ -r $HTTP_HEADER_FILE ]] || return 0
-    grep -i "^$1:" "$HTTP_HEADER_FILE" | head -n1 | cut -d: -f2- |
-        sed 's/^[[:space:]]*//' | tr -d '\r'
 }
 
 plan() { # DESCRIPTION ARGS…
@@ -297,16 +299,19 @@ backend_0x0() {
     target=${target:-https://0x0.st}
     # The answer carries a management token (X-Token): never over plain http.
     secure_endpoint "$target" || die "refusing to upload to $target: use an https:// URL (plain http only to localhost, 127.0.0.0/8 or [::1])"
-    local args=(-X POST -F "$(form_file file "$FILE")")
+    # -D -: the headers come before the body on stdout, so the token is read
+    # from memory and never written to a file.
+    local args=(-D - -X POST -F "$(form_file file "$FILE")")
     [[ -z $EXPIRES ]] || args+=(-F "expires=$EXPIRES")
     args+=("$target")
     $DRY_RUN && {
         plan "upload $FILE to $target (uploads are disabled upstream)" "${args[@]}"
         return 0
     }
-    URL="$(http "${args[@]}")" || die "0x0 refused the upload: $URL"
-    URL="$(printf '%s' "$URL" | tail -n1 | tr -d '\r')"
-    DELETE_TOKEN="$(response_header x-token)"
+    local answer
+    answer="$(http "${args[@]}")" || die "0x0 refused the upload: $(printf '%s' "$answer" | tail -n1)"
+    URL="$(printf '%s' "$answer" | tail -n1 | tr -d '\r')"
+    DELETE_TOKEN="$(sed -n '/^[Xx]-[Tt][Oo][Kk][Ee][Nn]:/{s/^[^:]*:[[:space:]]*//;s/\r$//;p;q;}' <<<"$answer")"
 }
 
 # XBackBone, tagged releases up to 3.8.2 — POST <instance>/upload, multipart.
@@ -519,16 +524,10 @@ BACKEND=${BACKEND:-$(default_backend)}
 $DRY_RUN || require_cmds curl
 
 # A credentials file other users can read is a finding, not a style issue.
+# -L: a linked config (dotfiles) is judged by its target, not the link's 777.
 if [[ -r $CONFIG_FILE ]]; then
-    perm="$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null || echo 600)"
+    perm="$(stat -L -c '%a' "$CONFIG_FILE" 2>/dev/null || echo 600)"
     [[ ${perm: -2} == 00 ]] || warn "$CONFIG_FILE is readable by others (mode $perm); chmod 600 it"
-fi
-
-# The header file outlives each backend's command substitution; nothing
-# sensitive is in it, but it is still a private temporary.
-if ! $DRY_RUN; then
-    HTTP_HEADER_FILE="$(mktemp)"
-    trap 'rm -f "$HTTP_HEADER_FILE"' EXIT
 fi
 
 run_backend "$BACKEND"

@@ -207,6 +207,7 @@ assert_eq "the management token is kept out of the clipboard too" "" \
     "$(grep -c '0x0-fixture-management-token' "$CALLS" | tr -d '0')"
 assert_eq "the management token is kept for a delete" "0x0-fixture-management-token" \
     "$(cat "$XDG_RUNTIME_DIR/haseen-upload.delete-token" 2>/dev/null)"
+assert_not_contains "the response headers (the token) never go to a file" "$(calls)" "curl-header-file:"
 
 # --- real runs: XBackBone ----------------------------------------------------
 cap_sandbox upload-xbb-form
@@ -308,6 +309,42 @@ export CURL_BODY='{"url":"https://share.example.com/abcd.png"}'
 capture haseen upload "$SHOT"
 assert_contains "a readable credentials file is a warning" "$OUTPUT" "readable by others (mode 644)"
 assert_not_contains "the warning does not quote the token" "$OUTPUT" "$TOKEN"
+# A linked config (dotfiles) is judged by its target's mode.
+mv "$HASEEN_UPLOAD_CONFIG" "$SANDBOX/upload.target.toml"
+ln -s "$SANDBOX/upload.target.toml" "$HASEEN_UPLOAD_CONFIG"
+chmod 600 "$SANDBOX/upload.target.toml"
+capture haseen upload "$SHOT"
+assert_status "a linked private config uploads" 0 "$STATUS"
+assert_not_contains "a linked private config is not a warning" "$OUTPUT" "readable by others"
+chmod 644 "$SANDBOX/upload.target.toml"
+capture haseen upload "$SHOT"
+assert_contains "a linked readable config is, with its target's mode" "$OUTPUT" "readable by others (mode 644)"
+
+# --- the config reader: inline comments, as in the --help example ------------
+cap_sandbox upload-config-example
+capture haseen upload --help
+sed -n '/^  default = /,/^  link_expire = /s/^  //p' <<<"$OUTPUT" |
+    sed "s/^token = \"…\"/token = \"$TOKEN\"/" >"$HASEEN_UPLOAD_CONFIG"
+chmod 600 "$HASEEN_UPLOAD_CONFIG"
+assert_contains "the --help example has inline comments" "$(cat "$HASEEN_UPLOAD_CONFIG")" '"https://share.example.com"   # '
+export CURL_BODY='{"url":"https://share.example.com/abcd.png"}' CURL_PROBE_CODE=404
+capture haseen upload "$SHOT"
+assert_status "the --help example uploads as it is" 0 "$STATUS"
+assert_contains "its url is read without the comment" "$(calls)" "https://share.example.com/upload"
+assert_contains "its api = auto probes" "$(calls)" "-w %{http_code}"
+assert_contains "its token is read without the comment" "$(curl_stdin)" "form-string = \"token=$TOKEN\""
+: >"$CALLS"
+capture haseen upload "$SHOT" --backend rclone
+assert_contains "its rclone expiry is read without the comment" "$(calls)" \
+    "rclone link r2:bucket/screenshots/shot.png --expire 1d"
+write_upload_config '[xbackbone]   # mine
+url = "https://share.example.com"
+token = "a#b\"c\\d"   # a "basic" string: # inside, \" and \\ unescaped
+api = '"'"'form'"'"'   # a literal string'
+: >"$CALLS_STDIN"
+capture haseen upload "$SHOT"
+assert_status "quoted values with # and escapes upload" 0 "$STATUS"
+assert_contains "a # inside quotes is part of the value" "$(curl_stdin)" 'form-string = "token=a#b\"c\\d"'
 
 # --- the real curl against a local receiver: exactly the selected file -------
 # Every file part goes through one encoder. curl's -F grammar splits an
@@ -371,6 +408,11 @@ EOF
             assert_eq "$b sends exactly the bytes of '$name', one file part" "$want" "$(received_file_parts)"
         done
     done
+    # The receiver answers with X-Token; real curl's -D - output carries it.
+    rm -f "$XDG_RUNTIME_DIR/haseen-upload.delete-token"
+    capture haseen upload "$files/shot.png" --backend 0x0 --no-copy --quiet
+    assert_eq "0x0 reads the management token from a real response" fixture-management-token \
+        "$(cat "$XDG_RUNTIME_DIR/haseen-upload.delete-token" 2>/dev/null)"
     unset HASEEN_XBACKBONE_URL HASEEN_XBACKBONE_TOKEN HASEEN_XBACKBONE_API
     # A token is a literal form string: "@path" is never read as a file.
     export HASEEN_XBACKBONE_URL="http://127.0.0.1:$RECV_PORT" HASEEN_XBACKBONE_API=form
