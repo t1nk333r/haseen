@@ -334,11 +334,19 @@ the reviewed full upgrade commits. A rejected review leaves the global config
 unchanged and can be retried. The checked keyring package and populated trust
 may remain installed even when that review is rejected.
 
-Package signatures remain required; database discovery is not described as
+Package signatures remain required, and a host's stricter signature level
+(for example `DatabaseRequired`, globally or for one repository) is kept in
+every VAPT transaction configuration; database discovery is not described as
 authenticated. The signed keyring's reviewed population-only scriptlet is
 suppressed for that package alone; haseen explicitly performs the checked
 keyring-population action. Changed or unknown scriptlets are refused, not given
-a general execution bypass.
+a general execution bypass. That action, `pacman-key --populate blackarch`,
+lsigns every key `blackarch-trusted` lists, imports that file's ownertrust and
+disables every key `blackarch-revoked` lists, in the shared keyring. Before any
+trust change the audit therefore admits trusted entries only for the reviewed
+signers in `blackarch-signers.txt`, at no more than marginal ownertrust (4),
+and revocations only of reviewed signers or of keys the package's own
+`blackarch.gpg` publishes, never of an Arch or CachyOS keyring key.
 
 An interrupted commit or activation leaves an exact recovery record, including
 whether BlackArch was staged. Malformed, unreadable or symlinked records are
@@ -416,14 +424,19 @@ haseen vapt repo-disable oniomarchy                # remove the private descript
   (checked to hold exactly those primaries), added with `pacman-key --add`
   and locally signed one by one with `pacman-key --lsign-key`. Newly revoked
   keys are deleted from the keyring only when presence is positively
-  established: pacman's keyring is listed with `gpg --with-colons
-  --list-keys` and parsed strictly (known colon records only, a fingerprint
-  record for every primary, at least one primary). A failed, empty, malformed
-  or human-format listing, or a failed deletion, fails the approval before
-  anything is recorded. The revocation stays pending for a retry; a key is
-  concluded absent only from a parsed listing that lacks it. A private-source
-  package that would place any file under `/usr/share/pacman/keyrings/` is
-  refused by the transaction audit. An approval refuses while an
+  established: before any trust change, pacman's keyring is listed with
+  `gpg --with-colons --list-keys` and parsed strictly (known colon records
+  only, a fingerprint record for every primary, at least one primary). A
+  failed, empty, malformed or human-format listing fails the approval before
+  any key is added or deleted, and a failed deletion fails it before anything
+  is recorded. The revocation stays pending for a retry; a key is concluded
+  absent only from a parsed listing that lacks it. A private-source package
+  that would place anything in pacman's trust configuration is refused by the
+  transaction audit: `/usr/share/pacman/keyrings/`, pacman's GPGDir (default
+  `/etc/pacman.d/gnupg`; gpg reads a `gpg.conf-2` there before `gpg.conf`),
+  the rest of `/etc/pacman.d/` and `/etc/pacman.conf*`. Each member is judged
+  where it lands through links, case-insensitively; only directory headers of
+  those directories and their parents pass. An approval refuses while an
   `oniomarchy-keyring` package or any `oniomarchy*` file from an earlier
   install remains there (remove it with `pacman -R oniomarchy-keyring`).
   The added keys are machine-wide trust, not isolated to VAPT. `repo-disable`
@@ -641,8 +654,9 @@ uninstaller.
 - The opt-in source's signing keys are added to the **shared** pacman keyring,
   which pacman does not scope per repository. Approving the source therefore
   expands machine-wide trust, and disabling the descriptor keeps it; the
-  separate BlackArch path (`pacman-key --populate blackarch`) still applies that
-  publisher's ownertrust column and needs its own review.
+  separate BlackArch path (`pacman-key --populate blackarch`) still imports
+  that publisher's ownertrust, limited to its reviewed signers at no more than
+  marginal trust (see BlackArch trust).
 
 The engineering record and exercised checks are in
 [`plans/007-vapt-layer.md`](../plans/007-vapt-layer.md) and

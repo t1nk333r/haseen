@@ -8,7 +8,7 @@
 - **Depends on**: 007
 - **Category**: vapt, packages
 - **Planned at**: 2026-10-07, owner request: integrate the tool categories of the oniomarchy distribution into haseen's VAPT layer without depending on Omarchy
-- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–G landed. Batch G: a revoked key's presence is decided only from a strictly parsed `gpg --with-colons` listing of pacman's keyring, and any uninterpretable answer aborts the approval; private-source packages may place nothing under `/usr/share/pacman/keyrings/`. Batch F: the keyring package is never installed; its audited archive is kept in root state, and the authority binds to it. Batch E: haseen makes every keyring change itself (never `--populate`, never publisher ownertrust). Batch D: revocations only of keys this source has used. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch G VAPT suites and the picker, lint and check-docs are green. Every path is exercised only against hermetic fixtures (no live fetch, key or package operation).
+- **State**: IN PROGRESS 2026-10-08. Slice 1A (inventory, aliases, dependency roles, official pins, identity semantics) is implemented with `tests/test-vapt-inventory.sh`. Slice 1B (the opt-in private signed source) is implemented with `tests/test-vapt-oniomarchy*.sh`. Fix batches A–G landed. Batch G: a revoked key's presence is decided only from a strictly parsed `gpg --with-colons` listing of pacman's keyring, and any uninterpretable answer aborts the approval; private-source packages may place nothing under `/usr/share/pacman/keyrings/`. Batch F: the keyring package is never installed; its audited archive is kept in root state, and the authority binds to it. Batch E: haseen makes every keyring change itself (never `--populate`, never publisher ownertrust). Batch D: revocations only of keys this source has used. Batch C: earlier providers beat private dependencies; no user rc edits; `--pick --vapt-groups` is refused. The batch G VAPT suites and the picker, lint and check-docs are green. After the merge (59e5e6d) the private-source payload rule also covers pacman's GPGDir, `/etc/pacman.d` and `/etc/pacman.conf*` through links, the revoked-key listing precedes any trust change, the BlackArch keyring's trusted/revoked lists are audited, and transaction configurations keep a host's stricter SigLevel (Evidence, "Trust fixes"). Every path is exercised only against hermetic fixtures (no live fetch, key or package operation).
 
 - **Review**: the independent phase-1 review at `efaa4e0` returned READY TO MERGE with no blocking item, and the security rechecks closed the shared-trust class for every path haseen runs; the remaining Low hypotheses and the machine-wide trust limits are disclosed in Evidence below. The three disclosed-limit paragraphs in this file and in `docs/vapt.md` were added after that verdict — documentation only, no code changed.
 
@@ -250,8 +250,10 @@ provenance.
   keyring (`GPGDir`, default `/etc/pacman.d/gnupg`) with `gpg --with-colons
   --list-keys` and parses it (`keyring-listing`): every line must be a known
   colon record and every primary must have its `fpr` record. An empty
-  listing counts as no answer. A failed, uninterpretable or human-format
-  listing, or a failed deletion, fails the approval before the archive and
+  listing counts as no answer. The listing is taken and parsed before any
+  trust change (`oniomarchy.sh`, `vapt_oniomarchy_bootstrap_steps`), so a
+  failed, uninterpretable or human-format listing fails the approval with no
+  key added or deleted; a failed deletion fails it before the archive and
   authority are written. The revocation stays pending and the retry repeats
   it; absence is concluded only from a parsed listing without the key. An
   approval refuses while an `oniomarchy-keyring` package or `oniomarchy*`
@@ -325,10 +327,18 @@ provenance.
   G):** the generic audit guards only the base-vendor anchors
   (`VENDOR_ANCHORS`: archlinux and cachyos `.gpg`/`-revoked`). Other files
   under `/usr/share/pacman/keyrings/` were accepted from any package (the
-  landed suite's BlackArch control still is). `audit_archives` now refuses
-  any private-source package (plan row `oniomarchy`) that places a file, a
-  link or a non-directory `keyrings` entry there. The source's own keyring
-  package is audited separately and never installed.
+  landed suite's BlackArch control still is). `audit_archives` refuses any
+  private-source package (plan row `oniomarchy`) that places anything but a
+  directory header of a protected directory or its parents in pacman's trust
+  configuration: the keyrings directory, the configured GPGDir (gpg reads
+  `gpg.conf-2` before `gpg.conf`, so one file there could name another
+  keyring and a `trusted-key` that is then ultimately trusted for every
+  repository), the rest of `/etc/pacman.d` and `/etc/pacman.conf*`. Each
+  member is judged at the path it reaches in both transaction views, through
+  retained and incoming links (a symlink member pointing there counts),
+  case-insensitively (trust fixes after the merge; batch G covered only the
+  keyrings directory, by member name). The source's own keyring package is
+  audited separately and never installed.
 - **Transactions.** The verified cached database is copied into the private
   DBPath of an opted-in install. The source never joins a full upgrade (its
   `Usage` excludes Upgrade; its prelude runs after BlackArch preparation and
@@ -432,6 +442,23 @@ already installed from the source.
   already-exact shortcut of a rerun never reached that code, so the new
   dependencies stayed explicit. A root record written before `-U` lets any
   later transaction finish the bookkeeping.
+- **Refusing only `gpg.conf*` in the GPGDir** (trust fixes): its keyring
+  and trustdb files, and the rest of `/etc/pacman.d` (mirrorlists, hooks),
+  are pacman configuration too, so the whole directories are refused.
+- **BlackArch revocations limited to the pinned signers**: that would refuse
+  a keyring revoking a retired key it still publishes. Revocations may name
+  v4 primaries of the package's own `blackarch.gpg`, never an Arch/CachyOS
+  keyring key. The audit computes those fingerprints itself rather than
+  calling gpg, so fixture and live runs take the same path; its output
+  matched gpg 2.4.9's on binary and armoured exports with subkeys.
+- **BlackArch ownertrust above marginal (4)**: full or ultimate trust would
+  let one BlackArch certification validate any key for every repository.
+  Marginal is the level Arch's own keyring gives its master keys.
+- **`Required DatabaseRequired` for every repository in VAPT's
+  configuration**: the reviewed BlackArch stanza is `Required
+  DatabaseOptional` (`metadata.py:BLACKARCH_STANZA`) and a host's mirrors
+  need not publish database signatures. The host's own level is kept per
+  repository and only raised to `Required DatabaseOptional`.
 
 ## Tests
 
@@ -538,7 +565,18 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   retry deletes the pin and records the revocation. A parsed listing
   without the pin records the revocation with no deletion (batch G). A
   private package carrying a file under `/usr/share/pacman/keyrings/` is
-  refused by the audit (transactions, batch G). The evidence mutations
+  refused by the audit (transactions, batch G). After the merge the
+  transactions suite also refuses `gpg.conf-2` end to end, and through the
+  audit: `gpg.conf`/`gpg.conf-2` in the default GPGDir, a configured one and
+  the physical directory behind a linked one; a mirrorlist and a hook under
+  `/etc/pacman.d`; `/etc/pacman.conf`, `.pacnew` and a `.d` directory;
+  `./`-prefixed, `//`/`/./` and case-changed spellings; absolute and relative
+  links to those places and files written through incoming or retained links.
+  Its controls pass an ordinary `/etc` file and the protected directories'
+  own headers. trust-adversarial: a keyring that accepts ROT and revokes the
+  pin, with an uninterpretable listing, adds and lsigns nothing and records
+  nothing; the retry adds, deletes and records. trust: both dry-run plans say
+  the keyring package is never installed. The evidence mutations
   (tamper, symlink, FIFO, version drift, report "stored keyring archive
   changed") target the stored archive and authority.
 - `tests/test-vapt.sh`: the install picker never offers `vapt`; a saved
@@ -556,6 +594,34 @@ tests/run.sh` on each oniomarchy suite — consent 96/96, trust-adversarial
 213/213, admission 147/148, report 55/57. Both gaps were closed in batch B.
 
 ## Evidence
+
+Trust fixes after the merge (59e5e6d; commits 5dade11, 85d3bd0, 5d20e4d,
+96b8f08, a82bf4c, 0ce5bf0), fixtures only, each file run alone through
+`tests/run.sh`:
+
+- `test-vapt-oniomarchy-transactions.sh` 109/109; with the original
+  `metadata.py` 70/109 (every new pacman-trust path admitted).
+- `test-vapt-trust.sh` 227/227; with the original `metadata.py` and
+  `blackarch.sh` 183/227 (every BlackArch list and SigLevel case fails, the
+  controls pass).
+- `test-vapt-oniomarchy-trust-adversarial.sh` 278/278; with the original
+  `oniomarchy.sh` the listing-first case fails (ROT added and lsigned before
+  the listing).
+- `test-vapt-oniomarchy-trust.sh` 265/265; with the original `oniomarchy.sh`
+  the five dry-run text assertions fail.
+- Unchanged and green: `test-vapt-oniomarchy.sh` 306, `-abuse` 120,
+  `-abuse-boundaries` 19, `-admission-adversarial` 169, `-report-adversarial`
+  73, `test-vapt-stock-hooks.sh` 78, `-stock-adversarial` 86,
+  `-stock-security` 555, `test-vapt-commit.sh` 101, `test-vapt-landed.sh` 782.
+  `-consent-adversarial` failed two assertions once ("included host stanza":
+  dry-run exit 1) and passed 96/96 on a rerun of the same commit, as on
+  59e5e6d; the cause was not found.
+- The audit's v4 fingerprints of `blackarch.gpg` equal gpg 2.4.9's for a
+  binary and an armoured export of an ed25519 key with a subkey and an
+  RSA-2048 key, generated in a throwaway `GNUPGHOME` under `/tmp`.
+- `shellcheck --severity=warning -x` and `bash -n` on every touched shell
+  file, `python3 -I -m py_compile` on `metadata.py` and `vapt-driver.py`,
+  `tools/check-docs.sh`: OK.
 
 Batch G (parsed machine-readable keyring presence; no private keyring
 payloads), fixtures only:
@@ -651,10 +717,15 @@ untested. Also unverified:
   are stubbed, so the explicit population is exercised against fixtures only.
   The colon format is parsed strictly, and any other answer aborts the
   approval.
-- the BlackArch keyring (plan 007): it still runs its reviewed population as
-  `pacman-key --populate blackarch`, so that publisher's ownertrust column
-  would still be imported. That source is outside batch E and needs its own
-  review.
+- the BlackArch keyring (plan 007) against its real lists: it still runs its
+  reviewed population as `pacman-key --populate blackarch`, which imports
+  that publisher's ownertrust. Since the trust fixes the audit admits trusted
+  entries only for the reviewed signers at no more than marginal ownertrust,
+  and revocations only of reviewed signers or v4 primaries of the package's
+  own `blackarch.gpg`, never an Arch/CachyOS keyring key
+  (`metadata.py:blackarch_keyring_lists`). The live `blackarch-trusted` and
+  `blackarch-revoked` were not fetched here; a list outside these bounds
+  refuses BlackArch preparation (fails closed).
 
 Accepted limits of the private source, from the security rechecks of batches
 E–G. None is a known defect; each is a boundary the owner should know about:
@@ -663,11 +734,10 @@ E–G. None is a known defect; each is a boundary the owner should know about:
   was only listed as trusted — is valid machine-wide, and a key dropped from
   the trusted list without being revoked stays locally signed. Disabling the
   descriptor retains that trust, on purpose.
-- The private-package rule that refuses payloads under
-  `usr/share/pacman/keyrings/` matches member names. A package that shipped a
-  symlinked directory at that path could still reach the directory through the
-  link. Unproven, and the same class as the existing libalpm symlink modelling
-  in the audit.
+- The private-package rule covers pacman's keyrings directory, GPGDir,
+  `/etc/pacman.d` and `/etc/pacman.conf*`, through links (the batch G limit,
+  matching member names only, is closed). It does not cover pacman's DBPath
+  (`/var/lib/pacman`) or an `Include` target outside `/etc/pacman.d`.
 - The trust step stages `accepted.gpg`/`signer.gpg` as the invoking user and
   root reads them afterwards, so a local process running as that same user
   could replace them between staging and use. The layer lock and the caller's
