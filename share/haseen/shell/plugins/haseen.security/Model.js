@@ -83,14 +83,17 @@ function localArgv(cli, c, draft, operation) {
 function dryRun(argv) { return argv.length ? argv.slice(0,3).concat(["--dry-run"], argv.slice(3)) : []; }
 function terminal(cli, argv) { return path(cli) && argv.length && argv[0] === cli ? [cli, "config", "terminal", "--"].concat(argv) : []; }
 function fingerprint(value) { return (String(value || "").match(/.{1,2}/g) || []).join(":"); }
+// anchorRemoval and anchorTrust mirror workflow_ca.py remove_allowed and
+// trust_allowed: an interrupted transaction (state unknown) is offered even
+// when its anchor is missing or partial, because the CLI can finish it.
 function anchorRemoval(a) {
     return !!(a && a.anchor && ((a.state === "owned" && a.anchor.unchanged) ||
-        (a.state === "unknown" && (a.anchor.transaction === "removing" || (a.anchor.transaction === "pending" && a.anchor.unchanged)))));
+        (a.state === "unknown" && (a.anchor.transaction === "removing" || a.anchor.transaction === "pending"))));
 }
 function anchorTrust(a, inspection) {
     if (!a || !inspection || inspection.state !== "valid" || !inspection.certificate) return false;
-    return a.state === "none" || !!(a.anchor && a.anchor.unchanged && a.anchor.sha256 === inspection.certificate.sha256 &&
-        (a.state === "owned" || (a.state === "unknown" && a.anchor.transaction === "pending")));
+    return a.state === "none" || !!(a.anchor && a.anchor.sha256 === inspection.certificate.sha256 &&
+        ((a.state === "owned" && a.anchor.unchanged) || (a.state === "unknown" && a.anchor.transaction === "pending")));
 }
 function groups(tools) {
     var out = [];

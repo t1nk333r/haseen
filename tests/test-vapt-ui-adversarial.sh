@@ -140,6 +140,16 @@ Window {
             eq("removal retry review states transaction",true,panel.intentCopy.indexOf("Transaction: removing")>=0);
             panel.launch();
             eq("removal retry uses terminal gateway",3,Apps.launches.length);
+            panel.anchor={schemaVersion:1,state:"unknown",reason:"pending trust, anchor missing",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"pending"}};
+            next();return;
+        }
+        if (step === 6) {
+            const retry=find(panel,item=>item.text==="Review trust retry in terminal");
+            eq("pending trust with a missing anchor exposes retry",true,!!retry && retry.enabled);
+            eq("pending trust with a missing anchor exposes removal",true,!!find(panel,item=>item.text==="Review removal of owned anchor" && item.visible));
+            panel.certificate("remove",false);
+            eq("rolling back an interrupted trust says so",true,panel.intentCopy.indexOf("Roll back the interrupted trust")>=0);
+            panel.back();
             panel.anchor={schemaVersion:1,state:"modified",reason:"modified pending fixture",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"pending"}};
             next();return;
         }

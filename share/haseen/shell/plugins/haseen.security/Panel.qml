@@ -179,7 +179,7 @@ Item {
         if (operation === "trust" && !Model.anchorTrust(anchor, inspection)) return;
         if (operation === "remove" && !Model.anchorRemoval(anchor)) return;
         prepare(Model.localArgv(cli, selectedCapability, {path: draft.path, fingerprint: anchor && anchor.anchor ? anchor.anchor.sha256 : ""}, operation), "certificate", preview);
-        if (operation === "remove") intentCopy += (anchor.anchor.transaction === "removing" ? "\nComplete removal of owned anchor SHA-256: " : "\nRemove existing unchanged owned anchor SHA-256: ") + Model.fingerprint(anchor.anchor.sha256) + "\nTransaction: " + Model.text(anchor.anchor.transaction || "created");
+        if (operation === "remove") intentCopy += (anchor.anchor.transaction === "removing" ? "\nComplete removal of owned anchor SHA-256: " : anchor.anchor.transaction === "pending" ? "\nRoll back the interrupted trust of owned anchor SHA-256: " : "\nRemove existing unchanged owned anchor SHA-256: ") + Model.fingerprint(anchor.anchor.sha256) + "\nTransaction: " + Model.text(anchor.anchor.transaction || "created");
     }
 
     Component.onCompleted: {
