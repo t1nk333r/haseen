@@ -402,21 +402,12 @@ assert_status 'host report cannot turn absent fixture report into applied' 1 "$S
 # apply's aggregate environment annotation. All other rows are exact so their
 # failures cannot conceal a missing environment at the status boundary.
 env_case vapt-env-cumulative-coae
-infra=(
-    'extra|openldap|2.6.10-1|https://www.openldap.org/'
-    'extra|perl-image-exiftool|13.36-1|https://exiftool.org/'
-)
-# osint's plan 087 roots resolve and are installed too, so osint is complete.
 osint_roots=(
     'blackarch|recon-ng|5.1.2-1|https://github.com/lanmaster53/recon-ng'
     'blackarch|theharvester|4.8.0-1|https://github.com/laramies/theHarvester'
 )
-vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "$WHOIS" "${infra[@]}" "${osint_roots[@]}"
-vapt_installed 'whois|5.6.4-1|https://github.com/rfc1036/whois' \
-    'openldap|2.6.10-1|https://www.openldap.org/' \
-    'perl-image-exiftool|13.36-1|https://exiftool.org/' \
-    'python-pipx|1.8.0-1|https://github.com/pypa/pipx' \
-    "${osint_roots[@]#blackarch|}"
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "$WHOIS" "${osint_roots[@]}"
+vapt_installed 'whois|5.6.4-1|https://github.com/rfc1036/whois' "${osint_roots[@]#blackarch|}"
 store="$ROOT$XDG_DATA_HOME/haseen/vapt/pipx"
 sherlock_spec="$(vapt_native_spec sherlock)"
 vapt_native_env "$store" sherlock-project "$sherlock_spec" sherlock "${sherlock_spec#*==}"

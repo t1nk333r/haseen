@@ -486,8 +486,9 @@ vapt_provision() (
     vapt_blackarch_prepare || VAPT_MUTATION_FAILED=1
     # Last: the private source joins only this operation's configuration.
     vapt_oniomarchy_prepare || VAPT_MUTATION_FAILED=1
+    # Prerequisites come only with the step that needs them (pipx with a
+    # selected native adapter, uv with the COAE environment), never up front.
     vapt_resolve_groups "${VAPT_SELECTED[@]}"
-    vapt_install_infra openldap perl-image-exiftool python-pipx || true
     # A partially successful activation must not remain hidden behind a
     # previous removal marker, even if another provisioning item fails.
     vapt_state_clear "$HASEEN_USER_STATE/vapt/removed" || return 1

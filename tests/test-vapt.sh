@@ -337,6 +337,23 @@ capture env HASEEN_SYSROOT="$ROOT" haseen layer apply vapt --dry-run -- --groups
 assert_status "the layer interface takes the same selection" 0 "$STATUS"
 assert_eq "the layer interface resolves the same way" extra/whois "$(vapt_field whois 4)"
 
+# --- prerequisites come only with the selected item that needs them ----------
+vapt_sandbox vapt-prerequisites
+vapt_root
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" 'blackarch|maltego|4.8.0-1|https://www.maltego.com' \
+    'extra|openldap|2.6.10-1|https://www.openldap.org/' 'extra|perl-image-exiftool|13.36-1|https://exiftool.org/'
+vapt_system_python
+vapt_plan 'reporting alone' --groups reporting
+assert_eq 'maltego is planned' yes "$(vapt_planned blackarch/maltego)"
+for name in openldap perl-image-exiftool python-pipx; do
+    assert_eq "maltego alone plans no $name" no "$(vapt_planned "extra/$name")"
+done
+assert_not_contains 'maltego alone records no prerequisite' "$OUTPUT" '# infrastructure'
+vapt_plan 'a native adapter' --groups osint
+assert_eq 'a selected native adapter brings pipx' yes "$(vapt_planned extra/python-pipx)"
+assert_contains 'pipx is recorded as its prerequisite' "$OUTPUT" $'# infrastructure\tpython-pipx\textra/python-pipx\tok'
+assert_eq 'the native adapter brings no openldap' no "$(vapt_planned extra/openldap)"
+
 # --- status: the recorded state, re-verified against metadata ---------------
 vapt_sandbox vapt-status
 vapt_root
