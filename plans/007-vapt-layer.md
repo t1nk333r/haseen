@@ -2,31 +2,25 @@
 
 ## Status
 
-- **Priority**: —
-- **Effort**: —
-- **Risk**: —
+- **Priority**: P2
+- **Effort**: L
+- **Risk**: MEDIUM (root package transactions and shared pacman keyring trust; `docs/vapt.md`)
 - **Depends on**: 001
 - **Category**: vapt (dropped 2026-10-04, reinstated 2026-10-07)
 - **Planned at**: 2026-10-04, initial architecture
-- **State**: DROPPED 2026-10-04 (owner decision); reinstated 2026-10-07 and IN PROGRESS (see "Reinstatement"; the live status is the row in `plans/README.md`)
+- **State**: DROPPED 2026-10-04 (owner decision); reinstated 2026-10-07; DONE 2026-10-12 (merged as PR #39), amended 2026-10-13 (plan 090)
 
-## Decision
+## Decision (2026-10-04)
 
 The owner removed requirement 9 (security-testing tooling) from haseen's
-scope. Nothing from it ships:
-
-- no `vapt` layer;
-- no package lists;
-- no NixOS `haseen.vapt` options;
-- no architecture rows.
-
-Every reference was removed in the same commit that recorded this decision.
+scope: no `vapt` layer, package lists, NixOS `haseen.vapt` options or
+architecture rows. Every reference was removed in the commit that recorded
+this decision.
 
 ## Reinstatement (2026-10-07)
 
-The decision above is kept as it was made. On 2026-10-07 the owner brought
-optional security-tool provisioning back into scope, on the terms that make it
-an optional layer rather than a requirement:
+The owner brought optional security-tool provisioning back as an optional
+layer, not a requirement:
 
 - no tools by default, explicit `--groups`/`--all` selection only;
 - no AUR and no Omarchy package, provider or command dependency;
@@ -34,23 +28,28 @@ an optional layer rather than a requirement:
   and never executes an assessment;
 - dry-run is offline and write-free.
 
-The layer landed as `share/haseen/layers/vapt/` with `docs/vapt.md`,
+It is `share/haseen/layers/vapt/` with `docs/vapt.md`,
 `bin/haseen-vapt-{install,status,remove}` and the `tests/test-vapt*.sh`
-suites. Requirement 11 in `docs/architecture.md` and the `vapt` row in its
-layer table now describe it; the "no architecture rows" line above describes
-the 2026-10-04 state only. The independent phase-1 review returned READY TO MERGE at efaa4e0.
+suites; requirement 11 and the `vapt` row in `docs/architecture.md` describe
+it.
 
-The layer sets `LAYER_PICKABLE=false` (contract in `share/haseen/lib/layers.sh`),
-so the interactive install picker never offers it and drops it from a saved
-choice. Applied without groups it refuses, which once aborted the installer
-after the earlier layers had applied (plan 087 batch B). `./install.sh
---vapt-groups` remains the installer route, and `--pick` with it is refused.
-Shell activation seeds only the owned link `~/.config/haseen/vapt/shell.sh`.
-The layer never edits `~/.bashrc` or `~/.zshrc`; it reuses an rc whose own
-command already sources the link and otherwise prints the exact line to add
-(plan 087 batch C, `docs/vapt.md`).
+Source order (owner decision, 2026-10-13): explicit pins, BlackArch, pinned
+native (pipx) adapters, enabled Chaotic-AUR, CachyOS, Arch. This is an explicit
+exception to haseen's repository-wide order (`AGENTS.md`, plans 023 and 024):
+it keeps the source policy of the owner's waydots security inventory, and it
+has no Omarchy or AUR tier (`docs/architecture.md:93-101`,
+`share/haseen/layers/vapt/provision.sh:277-281`).
 
-Plan 087 extends this layer with ten more tool groups from oniomarchy's
-categories, reviewed package aliases and dependency roles, canonical URL
-identities, and the opt-in private signed oniomarchy package source (slice 1B,
-implemented).
+The layer sets `LAYER_PICKABLE=false` (`share/haseen/layers/vapt/layer.sh:8`,
+contract in `share/haseen/lib/layers.sh`): the install picker never offers it
+and drops it from a saved choice, because applied without groups it refuses.
+`./install.sh --vapt-groups` is the installer route; `--pick` with it is
+refused. Shell activation seeds only the owned link
+`~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc` or `~/.zshrc`;
+an rc whose own command sources the link is reused, otherwise the exact line
+to add is printed (plan 087).
+
+Plan 087 adds ten tool groups from oniomarchy's categories, reviewed aliases
+and dependency roles, canonical URL identities and the opt-in private signed
+oniomarchy source. Plan 088 adds the installed workflow and the optional
+Security panel. Plan 090 records the fixes of the 2026-10-13 audit.
