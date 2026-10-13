@@ -658,7 +658,9 @@ probe is used. Ownership proves metadata association, not unchanged file bytes.
 
 `tool-help` requires one entry (choose `--entry` when there are several). It
 prefers a unique owned basename-matching man page, then matching help document,
-and prints the document directly without a pager/man helper. A confined
+and prints the document directly without a pager/man helper. Translations of a
+man page (`/usr/share/man/<lang>/manN/`) are that one page; the untranslated
+copy wins, otherwise the first translation by path. A confined
 descriptor open must establish readability before documentation is ready;
 owned file inventory/installed identity remains separate. Execution reopens the
 document and revalidates ownership and inode before reading. Man pages appear

@@ -89,7 +89,9 @@ Multiple entrypoints require `--entry` with an owned absolute entry ID. Prefer
 one basename-matching owned man page, then one matching help document. Print
 plain local document text (including roff source), stripping terminal control
 bytes; never invoke man, a pager, installed rendering helpers or a terminal for
-help. Multiple same-priority documents are ambiguous and refused. Otherwise,
+help. Translations of one man page under `/usr/share/man/<lang>/` are that
+page, and the untranslated copy wins. Multiple same-priority documents are
+ambiguous and refused. Otherwise,
 only `files/help-bindings.json` reviewed package/entry/argv bindings qualify.
 The initial registry is empty because no upstream-specific safe help argv was
 established; missing evidence is an explicit refusal, not a universal `--help`.

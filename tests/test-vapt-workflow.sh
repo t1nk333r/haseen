@@ -22,6 +22,27 @@ capture haseen-vapt-tool-help wordlists --dry-run
 assert_status 'data-only cannot run' 1 "$STATUS"
 capture haseen-vapt-tool-help nmap --entry '/usr/bin/scan-one; touch bad' --dry-run
 assert_status 'hostile ID refusal' 1 "$STATUS"
+# nmap ships de, es, fr, ... copies of man1/nmap.1.gz under man/<lang>/man1/:
+# translations of one page are that page, and the untranslated copy wins.
+printf '.TH SCAN-ONE 1\nTranslated usage.\n' >"$SANDBOX/translated.1"
+python3 - "$ROOT" "$SANDBOX/translated.1" <<'PY'
+import json,pathlib,shutil,sys
+root=pathlib.Path(sys.argv[1]);p=root/'var/lib/haseen/vapt/installed.json';rows=json.loads(p.read_text())
+for lang in ('pt_BR','de','zh'):
+    path='usr/share/man/'+lang+'/man1/scan-one.1';(root/path).parent.mkdir(parents=True);shutil.copy(sys.argv[2],root/path)
+    rows[0]['files'].append(path)
+p.write_text(json.dumps(rows))
+PY
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one --dry-run
+assert_status 'translated man pages are one page' 0 "$STATUS"
+assert_eq 'untranslated man page preferred' /usr/share/man/man1/scan-one.1 "$(jq -r '.evidence.path' <<<"$OUTPUT")"
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one
+assert_contains 'untranslated man page displayed' "$OUTPUT" 'Owned usage'
+mv "$ROOT/usr/share/man/man1/scan-one.1" "$SANDBOX/untranslated.1"
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one --dry-run
+assert_eq 'translations alone remain one page' /usr/share/man/de/man1/scan-one.1 "$(jq -r '.evidence.path' <<<"$OUTPUT")"
+mv "$SANDBOX/untranslated.1" "$ROOT/usr/share/man/man1/scan-one.1"
+rm -r "$ROOT/usr/share/man/pt_BR" "$ROOT/usr/share/man/de" "$ROOT/usr/share/man/zh"
 cp "$ROOT/usr/share/man/man1/scan-one.1" "$ROOT/usr/share/man/man1/scan-one.1.gz"
 python3 - "$ROOT/var/lib/haseen/vapt/installed.json" <<'PY'
 import json, sys

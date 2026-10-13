@@ -176,25 +176,36 @@ def documentation_index(paths):
     """One package's usage-document candidates, keyed by entry basename.
 
     Built once per package: matching every entrypoint against every file
-    costs entries x files, minutes for a package the size of metasploit.
+    costs entries x files, minutes for a package the size of metasploit. A man
+    page and its translations (/usr/share/man/<lang>/manN/) share one page.
     """
     index = {}
     for path in paths:
         name = Path(path).name.removesuffix('.gz')
         man = MAN_PAGE.fullmatch(name) if path.startswith('/usr/share/man/') else None
         if man:
-            index.setdefault(man[1], []).append({'path': path, 'kind': 'man'})
+            parts = Path(path).parts[4:]
+            translated = len(parts) == 3 and parts[1].startswith('man')
+            page = parts[-2:] if translated or (len(parts) == 2 and parts[0].startswith('man')) else (path,)
+            index.setdefault(man[1], []).append({'path': path, 'kind': 'man', 'page': page, 'translated': translated})
         elif '/share/doc/' in path:
             for suffix in DOCUMENT_SUFFIXES:
                 if name.endswith(suffix) and len(name) > len(suffix):
-                    index.setdefault(name[:-len(suffix)], []).append({'path': path, 'kind': 'document'})
+                    index.setdefault(name[:-len(suffix)], []).append({'path': path, 'kind': 'document', 'page': (path,), 'translated': False})
     return index
 
 
 def documentation(entry, index, readable):
-    """Readable usage documents for ENTRY, man pages first."""
-    docs = [doc for doc in index.get(Path(entry).name, []) if readable(doc['path'])]
-    return sorted(docs, key=lambda d: (d['kind'] != 'man', d['path']))
+    """Readable usage documents for ENTRY, one per page, man pages first.
+
+    Of a page's copies the untranslated one wins, then the first translation.
+    """
+    pages = {}
+    for doc in index.get(Path(entry).name, []):
+        best = pages.get(doc['page'])
+        if (best is None or (doc['translated'], doc['path']) < (best['translated'], best['path'])) and readable(doc['path']):
+            pages[doc['page']] = doc
+    return sorted(({'path': d['path'], 'kind': d['kind']} for d in pages.values()), key=lambda d: (d['kind'] != 'man', d['path']))
 
 
 def package_entries(record, index, owners):
