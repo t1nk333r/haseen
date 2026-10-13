@@ -50,15 +50,17 @@ capture haseen-vapt-net-listener 8080
 assert_status 'fixture listener live refusal' 1 "$STATUS"
 actions_api endpoint listener --bind 0.0.0.0 8080
 assert_status 'non-loopback confirmation decline' 1 "$STATUS"
-assert_eq 'non-loopback decline no execution' '' "$(vapt_calls action-user)"
+assert_eq 'non-loopback decline runs no adapter' '' "$(vapt_calls owned-nc)"
 VAPT_CONFIRM=yes actions_api endpoint listener --bind 0.0.0.0 8080
-assert_status 'accepted listener reaches fixture argv gateway' 0 "$STATUS"
-assert_contains 'neutral listener exact owned adapter args' "$(vapt_calls action-user)" '/usr/bin/nc -4 -l -n -- 0.0.0.0 8080'
-assert_not_contains 'no listener shell on connection' "$(vapt_calls action-user)" ' -e '
-rm -f "$CALLS/action-user" "$CALLS/confirm"
+assert_status 'accepted listener runs the owned adapter' 0 "$STATUS"
+assert_eq 'neutral listener exact owned adapter args, no -e' '-4 -l -n -- 0.0.0.0 8080' "$(vapt_calls owned-nc)"
+assert_eq 'listener hands over to the sysroot adapter' "exec $ROOT/usr/bin/nc -4 -l -n -- 0.0.0.0 8080" "$(vapt_calls action-user)"
+rm -f "$CALLS/action-user" "$CALLS/confirm" "$CALLS/owned-nc"
 actions_api endpoint listener 8080
 assert_status 'loopback listener no confirmation required' 0 "$STATUS"
 assert_eq 'loopback listener no confirmation' '' "$(vapt_calls confirm)"
+assert_eq 'loopback listener runs the owned adapter' '-4 -l -n -- 127.0.0.1 8080' "$(vapt_calls owned-nc)"
+rm -f "$CALLS/owned-nc"
 capture haseen-vapt-net-http-server /usr/share/doc/nmap 8080 --dry-run
 assert_status 'explicit directory preview' 0 "$STATUS"
 capture haseen-vapt-net-http-server --dry-run
@@ -202,18 +204,20 @@ root=pathlib.Path(sys.argv[2])
 for variant in ('absent','false','malformed','malformed-critical'):
     path='/certificates/spoof-'+variant+'.pem';pem=(root/path.lstrip('/')).read_bytes()
     der=ssl.PEM_cert_to_DER_cert(pem.decode('ascii'));fingerprint=hashlib.sha256(der).hexdigest().upper()
-    assert inspect_certificate_data(der)['state']=='refused'
+    assert inspect_certificate_data(der,str(root))['state']=='refused'
     try:certificate_payload(path,fingerprint)
     except ValueError:pass
     else:raise AssertionError('payload admitted spoofed CA '+variant)
-    target=root/('rejected-'+variant)
-    try:mutate('trust',fingerprint,der,root=str(target),updater=lambda:(_ for _ in ()).throw(AssertionError('updater invoked')))
+    try:mutate('trust',fingerprint,der,root=str(root))
     except ValueError:pass
     else:raise AssertionError('privileged validation admitted spoofed CA '+variant)
-    assert not target.exists(),'rejected trust wrote state'
+    assert not (root/'var/lib/haseen/vapt/proxy-ca.json').exists() and not (root/'etc/ca-certificates').exists(),'rejected trust wrote state'
 print('inspection, payload and privileged classifier agree')
 PY
 assert_status 'all CA admission paths reject adversarial extension fixtures' 0 "$STATUS"
+assert_eq 'rejected trust never ran the updater' '' "$(vapt_calls owned-update-ca-trust)"
+assert_contains 'inspection parses with the sysroot openssl' "$(vapt_calls owned-openssl)" 'x509 -inform PEM -noout'
+rm -f "$CALLS/owned-openssl"
 # These commands are often started from a cloned exploit or loot directory;
 # a json.py planted there must not run, not even during a preview.
 loot="$SANDBOX/loot"
@@ -228,7 +232,7 @@ actions_api endpoint listener 8080
 assert_status 'listener from a directory holding json.py' 0 "$STATUS"
 popd >/dev/null || exit 1
 assert_eq 'planted json.py never imported' '' "$(vapt_calls planted-json)"
-rm -rf "$loot" "$CALLS/action-user"
+rm -rf "$loot" "$CALLS/action-user" "$CALLS/owned-nc" "$CALLS/owned-openssl"
 before="$(net_manifest)"
 capture haseen-vapt-service-list --json --dry-run
 capture haseen-vapt-net-addresses --json --dry-run
@@ -248,35 +252,39 @@ assert_eq 'wrong/missing typed fingerprint no root trust' '' "$(vapt_calls actio
 VAPT_YES=true VAPT_TYPED="$fingerprint" actions_api ca trust /certificates/ca.pem
 assert_status 'typed exact fingerprint reaches fixture gateway' 0 "$STATUS"
 assert_contains 'fingerprint bound root trust' "$(vapt_calls action-root)" "workflow_ca.py trust $fingerprint"
-# Actual root-helper filesystem behaviour is exercised through explicit local
-# library-only test seams; no real trust updater or machine anchor is touched.
-capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
-import hashlib,pathlib,ssl,sys
+# The root helper's transaction runs against the fixture root, where the trust
+# updater is the fixture's recording stub (VAPT_CA_UPDATER_FAIL makes it fail).
+capture python3 -B - "$VAPT_LAYER" "$ROOT" "$CALLS" <<'PY'
+import hashlib,os,pathlib,shutil,ssl,sys
 sys.path.insert(0,sys.argv[1]);from workflow_ca import mutate,ca_status,ANCHORS
-root=pathlib.Path(sys.argv[2]);der=ssl.PEM_cert_to_DER_cert((root/'certificates/ca.pem').read_text());fingerprint=hashlib.sha256(der).hexdigest().upper();updates=[]
-mutate('trust',fingerprint,der,root=str(root),updater=lambda:updates.append('trust'))
-assert ca_status(str(root))['state']=='owned'
+root=pathlib.Path(sys.argv[2]);log=pathlib.Path(sys.argv[3])/'owned-update-ca-trust'
+der=ssl.PEM_cert_to_DER_cert((root/'certificates/ca.pem').read_text());fingerprint=hashlib.sha256(der).hexdigest().upper()
+def updates():return len(log.read_text().splitlines()) if log.exists() else 0
+mutate('trust',fingerprint,der,root=str(root))
+assert ca_status(str(root))['state']=='owned' and updates()==1
 anchor=root/(ANCHORS.lstrip('/')+'/haseen-vapt-'+fingerprint+'.crt');original=anchor.read_bytes();anchor.write_bytes(b'owner modification')
 assert ca_status(str(root))['state']=='modified'
-try:mutate('remove',fingerprint,root=str(root),updater=lambda:updates.append('remove'))
+try:mutate('remove',fingerprint,root=str(root))
 except ValueError:pass
 else:raise AssertionError('modified anchor removed')
-assert anchor.read_bytes()==b'owner modification';anchor.write_bytes(original)
-mutate('remove',fingerprint,root=str(root),updater=lambda:updates.append('remove'))
-assert ca_status(str(root))['state']=='none' and updates==['trust','remove']
-failure=root/'updater-failure'
-import subprocess
-def failed_updater():raise subprocess.CalledProcessError(1,['fixture updater'])
-try:mutate('trust',fingerprint,der,root=str(failure),updater=failed_updater)
+assert anchor.read_bytes()==b'owner modification' and updates()==1;anchor.write_bytes(original)
+mutate('remove',fingerprint,root=str(root))
+assert ca_status(str(root))['state']=='none' and updates()==2
+failure=root/'updater-failure';(failure/'usr/bin').mkdir(parents=True)
+for program in ('openssl','update-ca-trust'):shutil.copy2(root/'usr/bin'/program,failure/'usr/bin'/program)
+os.environ['VAPT_CA_UPDATER_FAIL']='true'
+try:mutate('trust',fingerprint,der,root=str(failure))
 except ValueError as error:assert 'no complete success' in str(error)
 else:raise AssertionError('updater failure called success')
-assert ca_status(str(failure))['state']=='unknown'
 status=ca_status(str(failure))
+assert status['state']=='unknown' and updates()==3,status
 assert status['reason']=='trust transaction pending; owned anchor unchanged; system trust update incomplete',status
 assert status['anchor']['transaction']=='pending' and status['anchor']['unchanged'],status
-mutate('trust',fingerprint,der,root=str(failure),updater=lambda:None)
+del os.environ['VAPT_CA_UPDATER_FAIL']
+mutate('trust',fingerprint,der,root=str(failure))
 assert ca_status(str(failure))['anchor']['transaction']=='created'
-try:mutate('remove',fingerprint,root=str(failure),updater=failed_updater)
+os.environ['VAPT_CA_UPDATER_FAIL']='true'
+try:mutate('remove',fingerprint,root=str(failure))
 except ValueError as error:assert 'no complete success' in str(error)
 else:raise AssertionError('remove updater failure called success')
 status=ca_status(str(failure))
@@ -286,12 +294,14 @@ assert status['anchor']['transaction']=='removing' and not status['anchor']['unc
 print('owned trust/removal and modified-anchor preservation passed')
 PY
 assert_status 'fingerprint ownership transaction fixture' 0 "$STATUS"
+rm -f "$CALLS/owned-update-ca-trust" "$CALLS/owned-openssl"
 
-# The public orchestration crosses only the fixture gateway, whose updater is
-# injected. Failure/retry behavior is exercised end to end without live trust.
+# The public orchestration crosses only the fixture gateway; its updater is
+# the fixture stub. Failure/retry behavior is exercised end to end.
 VAPT_CA_MUTATE=true VAPT_CA_UPDATER_FAIL=true VAPT_YES=true VAPT_TYPED="$fingerprint" actions_api ca trust /certificates/ca.pem
 assert_status 'CLI failed trust reports failure' 1 "$STATUS"
 assert_contains 'CLI failed trust says no success' "$OUTPUT" 'no complete success'
+assert_eq 'CLI trust ran the sysroot updater once' 1 "$(vapt_calls owned-update-ca-trust | wc -l)"
 capture haseen-vapt-net-proxy-ca status --json
 assert_status 'pending transaction status remains nonzero' 1 "$STATUS"
 assert_eq 'CLI failed trust exact state' unknown "$(jq -r '.state' <<<"$OUTPUT")"
@@ -337,11 +347,11 @@ for operation in trust remove; do
 done
 # Remove only the fixture transaction created by this scenario.
 rm "$ROOT/etc/ca-certificates/trust-source/anchors/haseen-vapt-$fingerprint.crt" "$ROOT/var/lib/haseen/vapt/proxy-ca.json"
+rm -f "$CALLS/owned-update-ca-trust" "$CALLS/owned-openssl"
 for cmd in service-list service-start service-stop service-restart net-addresses net-listener net-http-server net-file-server net-proxy-ca net-remmina; do
     capture "haseen-vapt-$cmd" --help
     assert_status "$cmd help" 0 "$STATUS"
 done
-assert_eq 'no real privileged calls' '' "$(vapt_calls sudo)$(vapt_calls systemctl)"
 actions_untouched net
 for content in '[]' null 17 '"wrong"'; do
     printf '%s\n' "$content" >"$ROOT/var/lib/haseen/vapt/proxy-ca.json"
@@ -376,14 +386,15 @@ path.unlink()
 print('all consumed CA record fields validate without exception masking')
 PY
 assert_status 'CA consumed field types/enums refuse safely' 0 "$STATUS"
-capture python3 -B - "$FIXTURES" "$CALLS" <<'PY'
+# The handed-over adapter sits in the sysroot, as production resolves it.
+capture python3 -B - "$FIXTURES" "$CALLS" "$ROOT" <<'PY'
 import json,os,pathlib,signal,socket,subprocess,sys,time
-fixtures=pathlib.Path(sys.argv[1]);calls=pathlib.Path(sys.argv[2]);adapter=calls/'foreground-adapter'
+fixtures=pathlib.Path(sys.argv[1]);calls=pathlib.Path(sys.argv[2]);adapter=pathlib.Path(sys.argv[3])/'usr/bin/foreground-adapter'
 adapter.write_text('#!/usr/bin/python3\nimport json,os,socket,time\ns=socket.socket();s.bind(("127.0.0.1",0));s.listen(1)\nwith open(os.environ["VAPT_FOREGROUND_READY"],"w") as f:json.dump({"pid":os.getpid(),"port":s.getsockname()[1]},f)\nwhile True:time.sleep(1)\n')
 adapter.chmod(0o755)
 for kind,args in [('listener',['8080']),('http-server',['/explicit-fixture','8080'])]:
     for stop in (signal.SIGTERM,signal.SIGHUP):
-        ready=calls/('ready-'+kind+'-'+str(stop));env=dict(os.environ,VAPT_REAL_FOREGROUND='true',VAPT_ENDPOINT_ADAPTER=str(adapter),VAPT_FOREGROUND_READY=str(ready),VAPT_CONFIRM='yes')
+        ready=calls/('ready-'+kind+'-'+str(stop));env=dict(os.environ,VAPT_ENDPOINT_ADAPTER='/usr/bin/foreground-adapter',VAPT_FOREGROUND_READY=str(ready),VAPT_CONFIRM='yes')
         process=subprocess.Popen(['/usr/bin/bash',str(fixtures/'vapt-actions-runner.sh'),'endpoint',kind,*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         try:
             deadline=time.monotonic()+15
@@ -399,6 +410,7 @@ for kind,args in [('listener',['8080']),('http-server',['/explicit-fixture','808
             raise
         finally:
             if process.poll() is None:process.kill();process.wait(timeout=2)
+adapter.unlink()
 print('SIGTERM/SIGHUP handoff reclaims literal loopback endpoints')
 PY
 assert_status 'foreground wrapper signals leave no helper endpoint behind' 0 "$STATUS"

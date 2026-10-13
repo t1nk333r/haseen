@@ -197,21 +197,23 @@ PY
 assert_status 'shared endpoint and file validators' 0 "$STATUS"
 /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout "$SANDBOX/key.pem" -out "$SANDBOX/ca.pem" \
     -subj /CN=local-fixture -days 1 -addext basicConstraints=critical,CA:TRUE >/dev/null 2>&1
-capture python3 -B - "$VAPT_LAYER" "$SANDBOX" <<'PY'
+workflow_openssl
+capture python3 -B - "$VAPT_LAYER" "$SANDBOX" "$ROOT" <<'PY'
 import pathlib, sys
 sys.path.insert(0,sys.argv[1])
 from workflow_support import inspect_certificate
-base=pathlib.Path(sys.argv[2])
-row=inspect_certificate(base/'ca.pem')
+base=pathlib.Path(sys.argv[2]);root=sys.argv[3]
+row=inspect_certificate(base/'ca.pem',root)
 assert row['state']=='valid',row
 assert row['certificate']['isCa'] and len(row['certificate']['sha256'])==64
 assert row['certificate']['notBefore'].endswith('Z')
-assert inspect_certificate(base/'key.pem')['state']=='refused'
+assert inspect_certificate(base/'key.pem',root)['state']=='refused'
 (base/'bundle.pem').write_bytes((base/'ca.pem').read_bytes()*2)
-assert inspect_certificate(base/'bundle.pem')['state']!='valid'
+assert inspect_certificate(base/'bundle.pem',root)['state']!='valid'
 print('certificate inspection checks passed')
 PY
 assert_status 'shared read-only CA inspector' 0 "$STATUS"
+assert_eq 'inspection parsed once with the sysroot openssl' 1 "$(vapt_calls owned-openssl | wc -l)"
 workflow_no_calls shared-support
 # Only explicit provisioning seeds; the helper never edits owner bytes.
 workflow_fixture vapt-workflow-seed

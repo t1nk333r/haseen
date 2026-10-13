@@ -39,30 +39,32 @@ capture haseen-vapt-service-stop ssh extra --dry-run
 assert_status 'extra service operand usage' 2 "$STATUS"
 actions_api service stop ssh sshd.service /usr/lib/systemd/system/sshd.service
 assert_status 'matching expectation reaches fixture root gateway' 0 "$STATUS"
-assert_contains 'matching expectation exact unit' "$(vapt_calls action-root)" 'stop -- sshd.service'
-rm -f "$CALLS/action-root"
+assert_eq 'matching expectation runs the sysroot service manager' 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
+rm -f "$CALLS/action-root" "$CALLS/owned-systemctl"
 actions_api service stop ssh old.service /usr/lib/systemd/system/sshd.service
 assert_status 'changed displayed unit refuses actual operation' 1 "$STATUS"
 assert_eq 'changed displayed unit no privilege' '' "$(vapt_calls action-root)"
 actions_api service stop ssh sshd.service /old/fragment.service
 assert_status 'changed displayed fragment refuses actual operation' 1 "$STATUS"
 assert_eq 'changed displayed fragment no privilege' '' "$(vapt_calls action-root)"
+assert_eq 'changed displayed snapshot runs no service manager' '' "$(vapt_calls owned-systemctl)"
 actions_api service start ssh
 assert_status 'start confirmation decline fails' 1 "$STATUS"
-assert_eq 'decline no root command' '' "$(vapt_calls action-root)"
+assert_eq 'decline no root command' '' "$(vapt_calls action-root)$(vapt_calls owned-systemctl)"
 assert_contains 'start confirms exposure' "$(vapt_calls confirm)" 'exposure uncertainty'
 VAPT_CONFIRM=yes actions_api service restart ssh
 assert_status 'confirmed restart reaches fixture gateway' 0 "$STATUS"
-assert_contains 'only restart no enable' "$(vapt_calls action-root)" '/usr/bin/systemctl restart -- sshd.service'
-rm -f "$CALLS/confirm" "$CALLS/action-root"
+assert_eq 'only restart no enable, through the sysroot seam' "$ROOT/usr/bin/systemctl restart -- sshd.service" "$(vapt_calls action-root)"
+assert_eq 'restart ran the sysroot service manager' 'restart -- sshd.service' "$(vapt_calls owned-systemctl)"
+rm -f "$CALLS/confirm" "$CALLS/action-root" "$CALLS/owned-systemctl"
 actions_api service stop ssh
 assert_status 'stop reaches gateway without confirmation' 0 "$STATUS"
 assert_eq 'stop has no confirmation' '' "$(vapt_calls confirm)"
-assert_contains 'stop exact owned unit' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- sshd.service'
-rm -f "$CALLS/action-root"
+assert_eq 'stop ran the sysroot service manager' 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
+rm -f "$CALLS/action-root" "$CALLS/owned-systemctl"
 VAPT_CONFIRM=yes VAPT_CHANGE_FRAGMENT=true actions_api service start ssh
 assert_status 'changed FragmentPath refused after confirmation' 1 "$STATUS"
-assert_eq 'changed FragmentPath no root call' '' "$(vapt_calls action-root)"
+assert_eq 'changed FragmentPath no root call' '' "$(vapt_calls action-root)$(vapt_calls owned-systemctl)"
 capture haseen-vapt-service-list --json
 assert_eq 'foreign FragmentPath read refusal' refused "$(jq -r '.services[] | select(.id=="ssh") | .ownership' <<<"$OUTPUT")"
 python3 - "$ROOT/var/lib/haseen/vapt/services.json" <<'PY'
@@ -90,8 +92,8 @@ actions_untouched service
 actions_fixture vapt-services-batch-j
 VAPT_TERMINAL_UNAVAILABLE=true actions_api service stop ssh sshd.service /usr/lib/systemd/system/sshd.service
 assert_status 'stop needs no available terminal' 0 "$STATUS"
-assert_contains 'terminal-free stop exact root unit' "$(vapt_calls action-root)" 'stop -- sshd.service'
-rm "$CALLS/action-root"
+assert_eq 'terminal-free stop ran the sysroot service manager' 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
+rm "$CALLS/action-root" "$CALLS/owned-systemctl"
 for verb in start restart; do
     VAPT_TERMINAL_UNAVAILABLE=true VAPT_CONFIRM=yes actions_api service "$verb" ssh
     assert_status "$verb propagates unavailable terminal status" 19 "$STATUS"
@@ -104,7 +106,7 @@ VAPT_TERMINAL_UNAVAILABLE=true actions_api service stop ssh sshd.service /old/fr
 assert_status 'terminal-free stop rejects changed fragment expectation' 1 "$STATUS"
 VAPT_TERMINAL_UNAVAILABLE=true VAPT_CHANGE_BEFORE_SECOND=true actions_api service stop ssh
 assert_status 'terminal-free stop revalidates current fragment before root' 1 "$STATUS"
-assert_eq 'all terminal-free stale refusals no root command' '' "$(vapt_calls action-root)"
+assert_eq 'all terminal-free stale refusals no root command' '' "$(vapt_calls action-root)$(vapt_calls owned-systemctl)"
 for content in '[]' null 17 '"wrong"'; do
     printf '%s\n' "$content" >"$ROOT/var/lib/haseen/vapt/services.json"
     capture bash -c 'haseen-vapt-service-list --json 2>"$1"' bash "$SANDBOX/service-json-err"

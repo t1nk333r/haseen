@@ -15,11 +15,12 @@ import sys
 
 # -I -S disables startup hooks; only this haseen module directory is added.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from workflow_support import inspect_certificate_data
+from workflow_support import host_program, inspect_certificate_data
 
 STATE = '/var/lib/haseen/vapt'
 ANCHORS = '/etc/ca-certificates/trust-source/anchors'
 RECORD = 'proxy-ca.json'
+UPDATER = '/usr/bin/update-ca-trust'
 FINGERPRINT = re.compile(r'[A-F0-9]{64}')
 
 
@@ -164,18 +165,19 @@ def remove_allowed(status, fingerprint):
                          or (anchor['transaction'] == 'pending' and anchor['unchanged'])))))
 
 
-def mutate(action, fingerprint, der=None, root='', updater=None):
-    """FD-bound root transaction. ROOT/updater are library-only test seams.
+def mutate(action, fingerprint, der=None, root=''):
+    """FD-bound root transaction. ROOT is a library-only fixture sysroot.
 
-    CLI never accepts a sysroot or test updater. Pending records retain honest
-    ownership after updater failure; no foreign/modified file is overwritten.
+    The CLI never accepts a sysroot. Under a fixture, the trust updater is the
+    fixture's own stub (host_program). Pending records retain honest ownership
+    after updater failure; no foreign/modified file is overwritten.
     """
     name = anchor_name(fingerprint)
     if not root and os.geteuid() != 0:
         raise ValueError('CA mutation requires the privileged VAPT gateway')
     certificate = None
     if action == 'trust':
-        certificate = inspect_certificate_data(der)
+        certificate = inspect_certificate_data(der, root)
         if certificate['state'] != 'valid' or certificate['certificate']['sha256'] != fingerprint:
             raise ValueError('CA bytes no longer match the accepted valid fingerprint')
     state_fd = directory_fd(root + STATE, create=True, fixture=bool(root))
@@ -230,10 +232,7 @@ def mutate(action, fingerprint, der=None, root='', updater=None):
         else:
             raise ValueError('unsupported CA mutation')
         try:
-            if updater is None:
-                subprocess.run(['/usr/bin/update-ca-trust'], check=True)
-            else:
-                updater()
+            subprocess.run([host_program(UPDATER, root)], check=True)
         except (OSError, subprocess.CalledProcessError) as error:
             raise ValueError('system trust updater failed; anchor changes and ownership journal retained, no complete success claimed') from error
         if action == 'trust':

@@ -62,8 +62,9 @@ try:
     check('single-file path replacement cannot change held bytes',lambda:eq(request('/file',filefd=fd)[:2],(200,b'ONE-OWNED-FILE\n')))
 finally:os.close(fd)
 # Build genuinely signed X509 certificates via the native library, never the
-# openssl executable. Only its textual metadata subprocess is replaced below;
-# admission still executes the production native X509_check_ca classifier.
+# openssl executable. The programs production runs (openssl for textual
+# metadata, the trust updater) are replaced below at the paths the sysroot
+# seam names; admission still executes the native X509_check_ca classifier.
 lib=ctypes.CDLL('/usr/lib/libcrypto.so.3')
 def bind(name,restype,args):
     fn=getattr(lib,name);fn.restype=restype;fn.argtypes=args;return fn
@@ -88,44 +89,55 @@ def certificate(extension,critical=1):
 certificates={name:certificate(ext,critical) for name,ext,critical in [('real-ca',b'\x30\x03\x01\x01\xff',1),('noncritical-ca',b'\x30\x03\x01\x01\xff',0),('no-extension',None,0),('false-ca',b'\x30\x03\x01\x01\x00',1),('malformed',b'CA:TRUE',0),('malformed-critical',b'CA:TRUE',1)]}
 bind('EVP_PKEY_free',None,[P])(key)
 (root/'certificates').mkdir();(root/'certificates/ca.der').write_bytes(certificates['real-ca'])
-def parser(argv,input,**kwargs):
-    assert argv[0]=='/usr/bin/openssl' and argv[1]=='x509',argv
+updater=types.SimpleNamespace(fail=False,runs=0)
+def parser(argv,input=None,check=False,**kwargs):
+    assert argv[0].startswith(str(root)+'/'),'program not chosen through the sysroot seam: '+argv[0]
+    if argv[0].endswith('/usr/bin/update-ca-trust'):
+        updater.runs+=1
+        if updater.fail:raise subprocess.CalledProcessError(7,argv)
+        return types.SimpleNamespace(returncode=0)
+    assert argv[0].endswith('/usr/bin/openssl') and argv[1]=='x509',argv
     der=ssl.PEM_cert_to_DER_cert(input.decode()) if b'BEGIN CERTIFICATE' in input else input
     text='subject=CN=CA:TRUE\nissuer=CN=CA:TRUE\nnotBefore=Jan  1 00:00:00 2020 GMT\nnotAfter=Jan  1 00:00:00 2040 GMT\nsha256 Fingerprint='+hashlib.sha256(der).hexdigest().upper()+'\n'
     return types.SimpleNamespace(returncode=0,stdout=text.encode(),stderr=b'')
 with patch.object(support.subprocess,'run',parser):
     for name,der in certificates.items():
         expected='valid' if name.endswith('ca') and name not in ('false-ca',) else 'refused'
-        check('native signed certificate classification '+name,lambda d=der,e=expected:eq(support.inspect_certificate_data(d)['state'],e))
+        check('native signed certificate classification '+name,lambda d=der,e=expected:eq(support.inspect_certificate_data(d,str(root))['state'],e))
         if expected=='refused':
             target=root/('refused-'+name);fp=hashlib.sha256(der).hexdigest().upper()
             def rejected(d=der,t=target,f=fp):
-                try:ca.mutate('trust',f,d,root=str(t),updater=lambda:(_ for _ in ()).throw(AssertionError('updater must not run')))
+                try:ca.mutate('trust',f,d,root=str(t))
                 except ValueError:pass
                 else:raise AssertionError('non-CA trust admitted')
                 assert not t.exists(),'refused classification wrote files'
+                eq(updater.runs,0)
             check('privileged admission refuses '+name,rejected)
     der=certificates['real-ca'];fp=hashlib.sha256(der).hexdigest().upper()
-    check('bundle rejected before trust',lambda:eq(support.inspect_certificate_data((ssl.DER_cert_to_PEM_cert(der)*2).encode())['state'],'invalid'))
-    check('private key rejected before parser',lambda:eq(support.inspect_certificate_data(b'-----BEGIN ' b'PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----')['state'],'refused'))
+    check('bundle rejected before trust',lambda:eq(support.inspect_certificate_data((ssl.DER_cert_to_PEM_cert(der)*2).encode(),str(root))['state'],'invalid'))
+    check('private key rejected before parser',lambda:eq(support.inspect_certificate_data(b'-----BEGIN ' b'PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----',str(root))['state'],'refused'))
     def expired_parser(argv,input,**kwargs):
         r=parser(argv,input,**kwargs);r.stdout=r.stdout.replace(b'2040 GMT',b'2021 GMT');return r
     with patch.object(support.subprocess,'run',expired_parser):
-        check('expired genuine CA refused',lambda:eq(support.inspect_certificate_data(der)['state'],'refused'))
-    def updater_failure():raise subprocess.CalledProcessError(7,['inert-updater'])
+        check('expired genuine CA refused',lambda:eq(support.inspect_certificate_data(der,str(root))['state'],'refused'))
     target=root/'failed-updater'
     def failed_trust():
-        try:ca.mutate('trust',fp,der,root=str(target),updater=updater_failure)
+        updater.fail=True
+        try:ca.mutate('trust',fp,der,root=str(target))
         except ValueError as e:assert 'no complete success' in str(e)
         else:raise AssertionError('updater failure returned success')
+        finally:updater.fail=False
         eq(ca.ca_status(str(target))['state'],'unknown')
+        eq(updater.runs,1)
     check('failed trust updater cannot claim owned-complete state',failed_trust)
-    check('successful updater recovers pending transaction',lambda:ca.mutate('trust',fp,der,root=str(target),updater=lambda:None))
+    check('successful updater recovers pending transaction',lambda:ca.mutate('trust',fp,der,root=str(target)))
     check('completed trust observable ownership',lambda:eq(ca.ca_status(str(target))['state'],'owned'))
     def failed_remove():
-        try:ca.mutate('remove',fp,root=str(target),updater=updater_failure)
+        updater.fail=True
+        try:ca.mutate('remove',fp,root=str(target))
         except ValueError as e:assert 'no complete success' in str(e)
         else:raise AssertionError('remove updater failure returned success')
+        finally:updater.fail=False
         status=ca.ca_status(str(target))
         eq(status['state'],'unknown')
         eq(status['reason'],'removal transaction incomplete; anchor absent; system trust may still contain CA')
@@ -133,7 +145,7 @@ with patch.object(support.subprocess,'run',parser):
         eq(status['anchor']['unchanged'],False)
         assert not (target/ca.ANCHORS.lstrip('/')/ca.anchor_name(fp)).exists()
     check('failed removal updater cannot claim absent trust',failed_remove)
-    check('removal retry resolves retained transaction',lambda:ca.mutate('remove',fp,root=str(target),updater=lambda:None))
+    check('removal retry resolves retained transaction',lambda:ca.mutate('remove',fp,root=str(target)))
     check('completed removal observable none',lambda:eq(ca.ca_status(str(target))['state'],'none'))
     # Invoke the real command handler, asserting separated JSON/stdout and exit.
     for file,expected in [('ca.der',0),('missing.der',1)]:
@@ -142,7 +154,7 @@ with patch.object(support.subprocess,'run',parser):
         check('inspection JSON exit '+file,lambda r=rc,e=expected:eq(r,e))
         check('inspection one versioned object '+file,lambda s=stdout.getvalue():eq(json.loads(s)['schemaVersion'],1))
     # Retain an owned fixture anchor to exercise the successful remove preview.
-    ca.mutate('trust',fp,der,root=str(root),updater=lambda:None)
+    ca.mutate('trust',fp,der,root=str(root))
     (root/'certificates/fingerprint').write_text(fp)
 print('CASE-TOTAL '+str(len(failures))+' failures')
 PY

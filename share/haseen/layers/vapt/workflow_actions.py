@@ -22,9 +22,10 @@ import urllib.parse
 
 # Run under python3 -I, which leaves the script's own directory off sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import workflow as wf  # noqa: E402
+import workflow as wf
 import metadata as meta
-from workflow_support import validate_endpoint, selected_owned_file, local_addresses, inspect_certificate, inspect_certificate_data, read_certificate_bytes, open_selected
+from workflow_support import (validate_endpoint, selected_owned_file, local_addresses, inspect_certificate,
+                              inspect_certificate_data, read_certificate_bytes, open_selected, host_program)
 
 FAMILIES = [('ssh', ['openssh']), ('postgresql', ['postgresql']), ('apache', ['apache']),
             ('nginx', ['nginx']), ('beef', ['beef', 'beef-xss'])]
@@ -80,7 +81,7 @@ def manager_state(unit):
         if not isinstance(fixture, dict):
             raise ValueError('service manager snapshot must be an object; refused')
         return manager_record(fixture.get(unit))
-    result = subprocess.run(['/usr/bin/systemctl', 'show', '--property=FragmentPath,ActiveState,SubState,LoadState', '--', unit],
+    result = subprocess.run([host_program('/usr/bin/systemctl', wf.ROOT), 'show', '--property=FragmentPath,ActiveState,SubState,LoadState', '--', unit],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     if result.returncode:
         return {}
@@ -381,7 +382,7 @@ def serve(kind, address, port, path, expected):
 def certificate_payload(path, fingerprint):
     target = wf.physical(path)
     data = read_certificate_bytes(target)
-    row = inspect_certificate_data(data)
+    row = inspect_certificate_data(data, wf.ROOT)
     if row['state'] != 'valid' or row['certificate']['sha256'] != fingerprint:
         raise ValueError('certificate changed or no longer valid; no trust operation')
     der = ssl.PEM_cert_to_DER_cert(data.decode('ascii')) if b'-----BEGIN CERTIFICATE-----' in data else data
@@ -433,7 +434,7 @@ def main():
             result = {'schemaVersion': 1, 'addresses': local_addresses(wf.ROOT)}
         elif args.command == 'inspect':
             adapter('proxy-ca')
-            result = inspect_certificate(wf.physical(args.operands[0]))
+            result = inspect_certificate(wf.physical(args.operands[0]), wf.ROOT)
         elif args.command == 'ca-payload':
             print(certificate_payload(*args.operands))
             return 0

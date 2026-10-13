@@ -20,9 +20,9 @@ import zlib
 
 # Run under python3 -I, which leaves the script's own directory off sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import metadata as meta  # noqa: E402
+import metadata as meta
 from workflow_menu import menu
-from workflow_support import validate_endpoint, local_addresses, open_selected
+from workflow_support import validate_endpoint, local_addresses, open_selected, host_program
 
 LAYER = Path(__file__).resolve().parent
 ROOT = os.environ.get('HASEEN_SYSROOT', '').rstrip('/')
@@ -404,7 +404,8 @@ def show_help(args):
         raise ValueError('explicit help/session execution refused with HASEEN_SYSROOT; use --dry-run')
     if evidence['kind'] == 'reviewed-argv':
         env = dict(os.environ, PAGER='cat', MANPAGER='cat', TERM='dumb')
-        result = subprocess.run(evidence['argv'], env=env, check=False)
+        program, *operands = evidence['argv']
+        result = subprocess.run([host_program(program, ROOT), *operands], env=env, check=False)
         if result.returncode:
             return 1
     else:
@@ -420,7 +421,7 @@ def show_help(args):
         for row in local_addresses(ROOT):
             print('Local address: ' + row['interface'] + ' ' + row['address'])
     if shell:
-        os.execv(shell, [shell, '-i'])
+        os.execv(host_program(shell, ROOT), [shell, '-i'])
     return 0
 
 

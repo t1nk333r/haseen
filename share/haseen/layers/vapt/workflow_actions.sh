@@ -7,6 +7,12 @@ source "$HASEEN_PATH/layers/vapt/pacman.sh"
 # cloned exploit or loot directory, and python -c would otherwise import a
 # json.py planted there before the standard library.
 vapt_actions() { /usr/bin/python3 -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" "$@"; }
+# vapt_program PATH — the file to execute for the absolute host program PATH.
+# Every program an action runs is chosen here (workflow_support.host_program
+# is the Python twin): a fixture sysroot provides recording stubs at the same
+# paths, so tests see exactly what ran, and vapt_action_refuse_fixture stops
+# the public commands before anything executes under a fixture.
+vapt_program() { sysroot_path "$1"; }
 vapt_action_refuse_fixture() {
     if in_sysroot && ! $DRY_RUN; then
         warn 'VAPT action refuses HASEEN_SYSROOT; fixture evidence cannot drive live actions; use --dry-run'
@@ -71,7 +77,7 @@ vapt_service_action() {
     fi
     second="$(vapt_actions service-plan "$service")" || return 1
     [[ $first == "$second" ]] || { warn 'service state/FragmentPath changed during review; no operation'; return 1; }
-    vapt_root_exec /usr/bin/systemctl "$verb" -- "$unit"
+    vapt_root_exec "$(vapt_program /usr/bin/systemctl)" "$verb" -- "$unit"
 }
 
 vapt_endpoint_action() {
@@ -137,9 +143,9 @@ vapt_endpoint_action() {
     if [[ $kind == listener ]]; then
         family="$(printf '%s' "$plan" | vapt_json_field endpoint family)"
         [[ $family == ipv4 ]] && family=-4 || family=-6
-        run exec "$adapter" "$family" -l -n -- "$address" "$port"
+        run exec "$(vapt_program "$adapter")" "$family" -l -n -- "$address" "$port"
     else
-        run exec "$adapter" -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
+        run exec "$(vapt_program "$adapter")" -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
     fi
 }
 
