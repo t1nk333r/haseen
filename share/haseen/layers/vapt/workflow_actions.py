@@ -3,23 +3,26 @@
 import argparse
 import base64
 import functools
+import hashlib
 import http.server
+import io
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import socket
+import socketserver
 import ssl
 import stat
 import subprocess
 import sys
-import urllib.parse
-import io
-import socketserver
 import time
+import urllib.parse
 
-import workflow as wf
+# Run under python3 -I, which leaves the script's own directory off sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workflow as wf  # noqa: E402
 import metadata as meta
 from workflow_support import validate_endpoint, selected_owned_file, local_addresses, inspect_certificate, inspect_certificate_data, read_certificate_bytes, open_selected
 
@@ -382,7 +385,6 @@ def certificate_payload(path, fingerprint):
     if row['state'] != 'valid' or row['certificate']['sha256'] != fingerprint:
         raise ValueError('certificate changed or no longer valid; no trust operation')
     der = ssl.PEM_cert_to_DER_cert(data.decode('ascii')) if b'-----BEGIN CERTIFICATE-----' in data else data
-    import hashlib
     if hashlib.sha256(der).hexdigest().upper() != fingerprint:
         raise ValueError('certificate bytes changed during inspection')
     return base64.b64encode(der).decode('ascii')

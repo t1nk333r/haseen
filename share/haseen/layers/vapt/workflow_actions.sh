@@ -3,15 +3,24 @@
 source "$HASEEN_PATH/layers/vapt/workflow.sh"
 source "$HASEEN_PATH/layers/vapt/pacman.sh"
 
-vapt_actions() { /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" "$@"; }
+# Every interpreter runs with -I: these commands are often started from a
+# cloned exploit or loot directory, and python -c would otherwise import a
+# json.py planted there before the standard library.
+vapt_actions() { /usr/bin/python3 -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" "$@"; }
 vapt_action_refuse_fixture() {
     if in_sysroot && ! $DRY_RUN; then
         warn 'VAPT action refuses HASEEN_SYSROOT; fixture evidence cannot drive live actions; use --dry-run'
         return 1
     fi
 }
+# vapt_json_field KEY... — one value of the JSON object on stdin, following
+# nested keys; non-string values print as JSON (true, false, null).
 vapt_json_field() {
-    /usr/bin/python3 -B -c 'import json,sys; v=json.load(sys.stdin); print(v[sys.argv[1]])' "$1"
+    /usr/bin/python3 -I -B -c 'import json, sys
+value = json.load(sys.stdin)
+for key in sys.argv[1:]:
+    value = value[key]
+print(value if isinstance(value, str) else json.dumps(value))' "$@"
 }
 
 vapt_service_cli() {
@@ -118,18 +127,19 @@ vapt_endpoint_action() {
     vapt_action_refuse_fixture || return 1
     source "$HASEEN_PATH/lib/terminal.sh"
     in_floating_terminal "${original[@]}"
-    nonloop="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print("yes" if json.load(sys.stdin)["endpoint"]["requiresConfirmation"] else "no")')"
-    if [[ $kind != listener || $nonloop == yes ]]; then
+    nonloop="$(printf '%s' "$plan" | vapt_json_field endpoint requiresConfirmation)"
+    if [[ $kind != listener || $nonloop == true ]]; then
         confirm 'Accept this explicit byte-serving/listening scope and exposure?' || { warn 'cancelled; no foreground action'; return 1; }
     fi
     [[ $plan == "$(vapt_actions endpoint-plan "$kind" "$address" "$port" "$path")" ]] || { warn 'selected adapter/path changed; no action'; return 1; }
-    address="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print(json.load(sys.stdin)["endpoint"]["address"])')"
+    address="$(printf '%s' "$plan" | vapt_json_field endpoint address)"
     adapter="$(printf '%s' "$plan" | vapt_json_field adapter)"
     if [[ $kind == listener ]]; then
-        family="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print("-4" if json.load(sys.stdin)["endpoint"]["family"] == "ipv4" else "-6")')"
+        family="$(printf '%s' "$plan" | vapt_json_field endpoint family)"
+        [[ $family == ipv4 ]] && family=-4 || family=-6
         run exec "$adapter" "$family" -l -n -- "$address" "$port"
     else
-        run exec "$adapter" -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
+        run exec "$adapter" -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
     fi
 }
 
@@ -141,8 +151,8 @@ vapt_ca_action() {
     trust)
         result="$(vapt_actions inspect "$operand" --json)" || { printf '%s\n' "$result"; return 1; }
         printf '%s\n' "$result"
-        fingerprint="$(printf '%s' "$result" | /usr/bin/python3 -B -c 'import json,sys; print(json.load(sys.stdin)["certificate"]["sha256"])')" || return 1
-        /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" adapter proxy-ca >/dev/null || return 1
+        fingerprint="$(printf '%s' "$result" | vapt_json_field certificate sha256)" || return 1
+        vapt_actions adapter proxy-ca >/dev/null || return 1
         vapt_actions ca-trust-check "$fingerprint" || return 1
         if $DRY_RUN; then
             echo "DRYRUN: require typed SHA-256 $fingerprint; recheck immutable certificate bytes and owned trust updater; install only fingerprint-bound owned anchor and update system trust"

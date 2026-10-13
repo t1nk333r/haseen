@@ -8,17 +8,19 @@ import argparse
 import configparser
 import contextlib
 import csv
-import zlib
 import io
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import stat
+import subprocess
 import sys
+import zlib
 
-import metadata as meta
+# Run under python3 -I, which leaves the script's own directory off sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import metadata as meta  # noqa: E402
 from workflow_menu import menu
 from workflow_support import validate_endpoint, local_addresses, open_selected
 

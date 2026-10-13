@@ -214,6 +214,21 @@ for variant in ('absent','false','malformed','malformed-critical'):
 print('inspection, payload and privileged classifier agree')
 PY
 assert_status 'all CA admission paths reject adversarial extension fixtures' 0 "$STATUS"
+# These commands are often started from a cloned exploit or loot directory;
+# a json.py planted there must not run, not even during a preview.
+loot="$SANDBOX/loot"
+mkdir -p "$loot"
+printf 'import os\nopen(os.environ["VAPT_CALLS"] + "/planted-json", "a").write("imported\\n")\n' >"$loot/json.py"
+pushd "$loot" >/dev/null || exit 1
+capture haseen-vapt-service-start ssh --dry-run
+assert_status 'service preview from a directory holding json.py' 0 "$STATUS"
+capture haseen-vapt-net-proxy-ca trust /certificates/ca.pem --dry-run
+assert_status 'trust preview from a directory holding json.py' 0 "$STATUS"
+actions_api endpoint listener 8080
+assert_status 'listener from a directory holding json.py' 0 "$STATUS"
+popd >/dev/null || exit 1
+assert_eq 'planted json.py never imported' '' "$(vapt_calls planted-json)"
+rm -rf "$loot" "$CALLS/action-user"
 before="$(net_manifest)"
 capture haseen-vapt-service-list --json --dry-run
 capture haseen-vapt-net-addresses --json --dry-run
