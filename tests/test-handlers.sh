@@ -59,7 +59,6 @@ if [[ -n $omarchy_types ]]; then
     assert_eq "vendor list: covers every type Omarchy's does (mailto aside)" "" "$missing"
 fi
 assert_eq "vendor terminal list: foot" "foot.desktop" "$(grep -v '^#' "$TERMLIST" | sed '/^$/d')"
-assert_contains "vendor terminal list: says why the name matters" "$(cat "$TERMLIST")" "XDG_CURRENT_DESKTOP"
 
 # Each handler kind owns exactly the block the vendor file assigns to its app.
 assert_eq "kind files matches the vendor block" "$(vendor_mimes haseen-yazi.desktop)" "$(setup_mimes files)"

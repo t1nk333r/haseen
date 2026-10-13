@@ -484,4 +484,4 @@ assert_contains "list: mobile" "$OUTPUT" "scrcpy"
 capture haseen install app zathura --dry-run
 assert_contains "zathura: the PDF backend comes with it" "$OUTPUT" "DRYRUN: sudo pacman -S --needed zathura zathura-pdf-mupdf"
 capture haseen install app hyprmod --dry-run
-assert_contains "hyprmod: the one AUR build in this batch" "$OUTPUT" "DRYRUN: paru -S --needed hyprmod"
+assert_contains "hyprmod: built from the AUR" "$OUTPUT" "DRYRUN: paru -S --needed hyprmod"
