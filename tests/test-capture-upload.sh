@@ -20,7 +20,7 @@ cap_sandbox() {
     : >"$CALLS"
     : >"$CALLS_STDIN"
     export CALLS CALLS_STDIN
-    export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404 CURL_PROBE_RC=0
+    export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404 CURL_PROBE_RC=0 SATTY_KEY=escape
     stub notify-send 'echo "notify-send $*" >>"$CALLS"'
     stub wl-copy 'printf "wl-copy %s: " "$*" >>"$CALLS"; cat >>"$CALLS"; echo >>"$CALLS"'
     stub xdg-user-dir 'echo "$HOME/$1"'
@@ -35,20 +35,40 @@ for a in "$@"; do prev2=$prev; prev=$a; done
 if [ -n "$out" ]; then printf PNG >"$out"; else printf PNG; fi'
     stub slurp 'echo "0,0 100x100"'
     stub hyprpicker 'echo "hyprpicker $*" >>"$CALLS"; sleep 2'
-    stub satty 'echo "satty $*" >>"$CALLS"'
+    # satty 0.22.0 as far as the capture relies on it: SATTY_KEY=enter runs
+    # --actions-on-enter, else the seeded config's save-to-clipboard, and a
+    # file is written only by save-to-file (or a copy with --save-after-copy)
+    # and only to a .png name. Escape (the default) writes nothing.
+    stub satty 'echo "satty $*" >>"$CALLS"
+in=""; out=""; enter=save-to-clipboard; after_copy=""; save=""; prev=""
+for a in "$@"; do
+  case $prev in --filename) in=$a ;; --output-filename) out=$a ;; --actions-on-enter) enter=$a ;; esac
+  [ "$a" = --save-after-copy ] && after_copy=1
+  prev=$a
+done
+printf "satty-input: %s\n" "$(cat "$in")" >>"$CALLS"
+if [ "${SATTY_KEY:-escape}" = enter ]; then
+  case $enter in *save-to-file*) save=1 ;; *save-to-clipboard*) save=$after_copy ;; esac
+fi
+case $out in *.png) [ -n "$save" ] && printf ANNOTATED >"$out" ;; esac
+exit 0'
     stub rclone 'echo "rclone $*" >>"$CALLS"; [ "$1" = link ] && echo "https://r2.example.com/shot.png"; exit 0'
     # Like the real one, it reads the whole picture before it answers when
     # the picture comes on stdin, so grim never writes into a closed pipe.
     stub tesseract 'echo "tesseract $*" >>"$CALLS"; [ "$1" = stdin ] && cat >/dev/null; printf "%s" "${TESS_TEXT:-recognised text}"'
-    # Records argv and the curl config read on stdin; answers with $CURL_BODY
-    # and $CURL_HEADERS. -w (used only by the XBackBone probe) answers a code.
+    # Records argv, the bytes of each quoted file part (-F name=@"path"), the
+    # path of a header file it is asked to write, and the curl config read on
+    # stdin; answers with $CURL_BODY and $CURL_HEADERS. -w (used only by the
+    # XBackBone probe) answers a code.
     stub curl 'echo "curl $*" >>"$CALLS"
-probe=0; prev=""; dump=""
+probe=0; prev=""; dump=""; q="\""
 for a in "$@"; do
   [ "$prev" = "-D" ] && dump=$a
   [ "$a" = "-w" ] && probe=1
+  case $a in *=@$q*$q) f=${a#*=@$q}; printf "curl-file: %s\n" "$(cat "${f%$q}")" >>"$CALLS" ;; esac
   prev=$a
 done
+[ -n "$dump" ] && [ "$dump" != - ] && echo "curl-header-file: $dump" >>"$CALLS"
 if [ "$probe" = 1 ]; then printf "%s" "${CURL_PROBE_CODE:-404}"; exit "${CURL_PROBE_RC:-0}"; fi
 cat >>"$CALLS_STDIN"
 if [ "$dump" = "-" ]; then printf "%s" "$CURL_HEADERS"
@@ -656,27 +676,56 @@ else
     echo "  skip: no subordinate uid to own a foreign capture dir (unshare --map-auto)" >&2
 fi
 
-# --- annotate then upload ----------------------------------------------------
-cap_sandbox shot-upload
+# --- annotate, then keep, copy and upload exactly what the editor saved ------
+# grim writes "PNG"; the satty stub saves "ANNOTATED" when SATTY_KEY=enter.
+shots() { find "$HOME/PICTURES" -type f 2>/dev/null; }
+cap_sandbox shot-plan
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload --dry-run
 assert_status "the annotate-then-upload plan exits 0" 0 "$STATUS"
 assert_dry_pure "annotate-then-upload plan" "$OUTPUT"
 assert_contains "the editor is planned" "$OUTPUT" "DRYRUN: satty --filename"
-assert_contains "the upload is planned after it" "$OUTPUT" "DRYRUN: haseen-upload"
-assert_contains "and the link replaces the image on the clipboard" "$OUTPUT" "the link replaces the image on the clipboard"
-export CURL_BODY="https://files.catbox.moe/zz.png"
+assert_contains "the saved file is planned for upload" "$OUTPUT" "DRYRUN: haseen-upload $HOME/PICTURES/screenshot-"
+capture haseen capture screenshot --geometry "0,0 10x10" --upload-to uguu --dry-run
+assert_contains "--upload-to passes the backend through" "$OUTPUT" "--backend uguu"
+capture haseen capture screenshot --geometry "0,0 10x10" --edit --format jpg --dry-run
+assert_status "--edit takes no other format than PNG (the editors write PNG only)" 2 "$STATUS"
+
+cap_sandbox shot-enter
+export CURL_BODY="https://files.catbox.moe/zz.png" SATTY_KEY=enter
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload
 assert_status "annotate then upload succeeds" 0 "$STATUS"
-assert_contains "satty edited the file in place" "$(calls)" "satty --filename"
-assert_contains "satty ran before the upload" "$(calls)" "satty"
-assert_contains "the link is returned" "$OUTPUT" "https://files.catbox.moe/zz.png"
-assert_contains "the link ends up on the clipboard" "$(calls)" "wl-copy : https://files.catbox.moe/zz.png"
-assert_eq "the image is copied first, the link last" "image link" \
-    "$(grep -c 'wl-copy -t image/png' "$CALLS" >/dev/null && \
-       awk '/wl-copy -t image\/png/{print "image"} /wl-copy : https/{print "link"}' "$CALLS" | tr '\n' ' ' | sed 's/ $//')"
-capture haseen capture screenshot --geometry "0,0 10x10" --upload-to uguu --dry-run
-assert_contains "--upload-to names the backend" "$OUTPUT" "DRYRUN: haseen-upload $HOME/PICTURES/screenshot-"
-assert_contains "--upload-to passes the backend through" "$OUTPUT" "--backend uguu"
+assert_eq "satty edits the capture" "satty-input: PNG" "$(grep '^satty-input:' "$CALLS")"
+assert_eq "Enter saves the annotated picture" ANNOTATED "$(cat "$(shots)")"
+assert_eq "the upload sends the annotated picture" "curl-file: ANNOTATED" "$(grep '^curl-file:' "$CALLS")"
+assert_eq "the clipboard gets the annotated picture, then the link" \
+    "wl-copy -t image/png: ANNOTATED|wl-copy : https://files.catbox.moe/zz.png" "$(grep '^wl-copy' "$CALLS" | paste -sd'|')"
+assert_eq "the file and then the link are printed" "$(shots)|https://files.catbox.moe/zz.png" "$(paste -sd'|' <<<"$OUTPUT")"
+
+cap_sandbox shot-escape
+export CURL_BODY="https://files.catbox.moe/zz.png"
+capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload
+assert_status "leaving satty without saving is not an error" 0 "$STATUS"
+assert_eq "Escape: nothing is printed" "" "$OUTPUT"
+assert_not_contains "Escape: nothing is uploaded" "$(calls)" "curl"
+assert_eq "Escape: nothing is copied" "" "$(grep '^wl-copy' "$CALLS")"
+assert_eq "Escape: nothing is saved" "" "$(shots)"
+
+# Without --save the shot lives in a private temporary directory, removed on
+# every exit, a failed upload included.
+cap_sandbox shot-temp
+tmp="$SANDBOX/tmp"
+mkdir -p "$tmp"
+export CURL_BODY="https://files.catbox.moe/zz.png"
+TMPDIR=$tmp capture haseen capture screenshot --geometry "0,0 10x10" --no-save --upload
+assert_status "--no-save --upload succeeds" 0 "$STATUS"
+assert_contains "an unsaved shot is uploaded under its own name" "$(calls)" '/screenshot-'
+assert_eq "an upload leaves no temporary file" "" "$(find "$tmp" -mindepth 1)"
+assert_eq "and nothing is saved" "" "$(shots)"
+CURL_RC=22 CURL_BODY=refused TMPDIR=$tmp capture haseen capture screenshot --geometry "0,0 10x10" --no-save --upload
+assert_status "a failed upload fails the capture" 1 "$STATUS"
+assert_eq "a failed upload leaves no temporary file" "" "$(find "$tmp" -mindepth 1)"
+TMPDIR=$tmp capture haseen capture screenshot --geometry "0,0 10x10" --edit --no-save
+assert_eq "a cancelled edit leaves no temporary file" "" "$(find "$tmp" -mindepth 1)"
 
 # --- the seed ----------------------------------------------------------------
 cap_sandbox capture-seed
