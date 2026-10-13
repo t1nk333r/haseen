@@ -125,6 +125,9 @@ def pacman(argv):
         return 0
     if '-D' in argv:
         # Database-only install-reason bookkeeping: no hook or scriptlet runs.
+        # VAPT_PACMAN_FAIL=reason models it failing after the commit.
+        if os.environ.get('VAPT_PACMAN_FAIL') == 'reason':
+            return 97
         reason = 'depend' if '--asdeps' in argv else 'explicit' if '--asexplicit' in argv else None
         names = argv[argv.index('--') + 1:] if '--' in argv else []
         installed = load_installed()

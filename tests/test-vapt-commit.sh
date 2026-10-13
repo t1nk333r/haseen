@@ -2,10 +2,11 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 007 review F2/F3: a per-package commit installs exactly the audited
-# artifacts, and BlackArch repository activation waits for the reviewed full
-# upgrade. Managers, keys and network are deterministic fixture fakes that act
-# only on this test's sysroot; no package, hook, key or tool executes.
+# A per-package commit installs exactly the audited artifacts, with the
+# install reasons `pacman -S` would record, and BlackArch repository
+# activation waits for the reviewed full upgrade. Managers, keys and network
+# are deterministic fixture fakes that act only on this test's sysroot; no
+# package, hook, key or tool executes.
 # shellcheck source=tests/fixtures/vapt-lib.sh
 source "$FIXTURES/vapt-lib.sh"
 
@@ -81,14 +82,40 @@ vapt_package newdep 1-1
 { row whois 5.6.4-1; row libdep 1-1; row newdep 1-1; } >"$VAPT_PLAN"
 cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
 vapt_api pacman --yes extra/whois
-assert_status 'F2 reasons: reviewed upgrade transaction commits' 0 "$STATUS"
-assert_eq 'F2 reasons: requested target becomes explicit' explicit "$(installed_field whois reason)"
-assert_eq 'F2 reasons: upgraded explicit dependency stays explicit' explicit "$(installed_field libdep reason)"
-assert_eq 'F2 reasons: newly installed dependency is a dependency' depend "$(installed_field newdep reason)"
-assert_eq 'F2 reasons: all audited versions installed' '5.6.4-1 1-1 1-1' \
+assert_status 'reasons: reviewed upgrade transaction commits' 0 "$STATUS"
+assert_eq 'reasons: an upgraded target keeps its dependency reason' depend "$(installed_field whois reason)"
+assert_eq 'reasons: upgraded explicit dependency stays explicit' explicit "$(installed_field libdep reason)"
+assert_eq 'reasons: newly installed dependency is a dependency' depend "$(installed_field newdep reason)"
+assert_eq 'reasons: all audited versions installed' '5.6.4-1 1-1 1-1' \
     "$(installed_field whois version) $(installed_field libdep version) $(installed_field newdep version)"
+assert_eq 'reasons: no pending bookkeeping is left behind' no \
+    "$([[ -e $ROOT/var/lib/haseen/vapt/reasons-pending ]] && echo yes || echo no)"
 
-# --- F3: BlackArch activation waits for the reviewed full upgrade ------------
+# A run that stops between the commit and the dependency bookkeeping leaves a
+# root record; the next transaction finishes it, even with the target exact.
+commit_case vapt-commit-reasons-interrupted
+vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL||newdep" 'extra|newdep|1-1|https://example.org/newdep'
+vapt_package whois 5.6.4-1
+vapt_package newdep 1-1
+{ row whois 5.6.4-1; row newdep 1-1; } >"$VAPT_PLAN"
+cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
+export VAPT_PACMAN_FAIL=reason
+vapt_api pacman --yes extra/whois
+assert_status 'interrupted bookkeeping is a mutation failure' 1 "$STATUS"
+assert_eq 'interrupted bookkeeping: the target is explicit' explicit "$(installed_field whois reason)"
+assert_eq 'interrupted bookkeeping: the new dependency is still explicit' explicit "$(installed_field newdep reason)"
+assert_eq 'interrupted bookkeeping: the root record names it' $'newdep\textra/whois' \
+    "$(cat "$ROOT/var/lib/haseen/vapt/reasons-pending" 2>/dev/null)"
+unset VAPT_PACMAN_FAIL
+vapt_api pacman --yes extra/whois
+assert_status 'the rerun succeeds' 0 "$STATUS"
+assert_contains 'the rerun takes the exact shortcut' "$OUTPUT" 'STATE=already-exact'
+assert_eq 'the rerun marks the dependency' depend "$(installed_field newdep reason)"
+assert_eq 'the rerun leaves the target explicit' explicit "$(installed_field whois reason)"
+assert_eq 'the rerun clears the record' no "$([[ -e $ROOT/var/lib/haseen/vapt/reasons-pending ]] && echo yes || echo no)"
+vapt_tools_untouched 'interrupted bookkeeping'
+
+# --- BlackArch activation waits for the reviewed full upgrade ------------
 ba_case() {
     commit_case "$1"
     vapt_repos "${VAPT_BASE[@]}" "extra|whois|5.6.4-1|$WHOIS_URL" "$VAPT_BA_KEYRING"

@@ -415,6 +415,23 @@ already installed from the source.
   it shadow genuine packages outside the VAPT audit.
 - **Relaxing `DatabaseRequired`**, keyserver lookups, or running a bootstrap
   script.
+- **A unique unreviewed `Provides` in any tier** (the resolver's behaviour
+  until 2026-10-13): on the real sync databases it resolved `nodejs` to
+  BlackArch's end-of-life `nodejs-lts-gallium` 16.20.2 (which conflicts with
+  `nodejs`, while the same groups' `extra/npm` needs `nodejs>=20.17.0`) and
+  `chirp` to Chaotic-AUR's `chirp-next` without `--with-oniomarchy`. Providers
+  now need a reviewed upstream identity and come after every tier's name. The
+  inline exception that let BlackArch's `android-sdk-platform-tools` stand
+  for `android-tools` went with it; `android-tools` resolves to Arch's
+  package by name.
+- **Matching the rc text for the link path as a substring**: a comment
+  counted, and the documented `$HOME` form of the line did not.
+- **Marking the requested target `--asexplicit` after every commit**: it
+  turned an upgraded dependency into an explicit package. **Recovering
+  install reasons only by hand** after a failed `-D --asdeps`: the
+  already-exact shortcut of a rerun never reached that code, so the new
+  dependencies stayed explicit. A root record written before `-U` lets any
+  later transaction finish the bookkeeping.
 
 ## Tests
 

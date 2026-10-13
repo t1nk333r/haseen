@@ -155,12 +155,16 @@ Downloads are sealed into a root-owned, nonreplaceable archive/signature set
 before auditing. Every archive's actual package identity and dependency,
 provider, conflict and replacement metadata must match the complete reviewed
 plan. Per-package commits use those exact artifacts in one local `pacman -U`
-transaction, without live repository/provider re-resolution. New dependencies
-are marked as dependencies; requested targets are explicit and existing
-dependency upgrades retain their install reason. A bookkeeping failure after
-installation is a reported mutation failure; its install reasons require manual
-repair rather than silently retrying package installation. Sealed files are
-readable for inspection, not confidential storage.
+transaction, without live repository/provider re-resolution. A newly installed
+target is explicit and its new dependencies are marked as dependencies; an
+upgraded package, the requested target included, keeps its install reason.
+Before the commit, the new dependencies are recorded in root state
+(`/var/lib/haseen/vapt/reasons-pending`), and the record is cleared once they
+are marked. A bookkeeping failure after installation is a reported mutation
+failure; the next VAPT transaction (even one whose target is already installed)
+marks the recorded packages that are still installed, without installing
+anything again. Sealed files are readable for inspection, not confidential
+storage.
 
 Package metadata, hook bodies, delegated helpers and MTREE input are read from
 one immutable libarchive snapshot, with exact member-name lookup. Shell brace,
