@@ -73,17 +73,25 @@ mobile_ifuse_refusal() {
 
 # --- USB -------------------------------------------------------------------
 
-# mobile_usb_kind DIR VENDOR — classify one /sys/bus/usb/devices entry:
-# "ios", "android-adb", "android-mtp" or nothing. Apple is identified by its
-# USB vendor id 05ac; an Android device in debugging mode exposes the ADB
-# interface (class ff, subclass 42, protocol 01, the AOSP values), and an
-# Android device in file-transfer mode exposes an imaging-class interface.
+# mobile_usb_kind DIR VENDOR PRODUCT — classify one /sys/bus/usb/devices
+# entry: "ios", "android-adb", "android-mtp" or nothing. An iPhone, iPad or
+# iPod touch is an Apple device (05ac) with the usbmux interface (class ff,
+# subclass fe, protocol 02), or one in the product range usbmuxd's udev rule
+# matches, 129x-12ax (/usr/lib/udev/rules.d/39-usbmuxd.rules, usbmuxd
+# 1.1.1-4): that rule deactivates the configuration on plug-in, which takes
+# the interfaces out of sysfs until usbmuxd picks one. Any other Apple device
+# (a keyboard, a trackpad) is not a phone. An Android device in debugging mode
+# exposes the ADB interface (class ff, subclass 42, protocol 01, the AOSP
+# values); one in file-transfer mode exposes an imaging-class interface.
 mobile_usb_kind() {
-    local dir="$1" vendor="$2" iface cls sub proto mtp=false
-    [[ ${vendor,,} == 05ac ]] && {
-        echo ios
-        return 0
-    }
+    local dir="$1" vendor="${2,,}" product="${3,,}" iface cls sub proto mtp=false apple=false
+    if [[ $vendor == 05ac ]]; then
+        [[ $product =~ ^12[9a][0-9a-f]$ ]] && {
+            echo ios
+            return 0
+        }
+        apple=true
+    fi
     for iface in "$dir"/*:*; do
         [[ -r $iface/bInterfaceClass ]] || continue
         cls="$(<"$iface/bInterfaceClass")"
@@ -91,11 +99,19 @@ mobile_usb_kind() {
         proto=00
         [[ -r $iface/bInterfaceSubClass ]] && sub="$(<"$iface/bInterfaceSubClass")"
         [[ -r $iface/bInterfaceProtocol ]] && proto="$(<"$iface/bInterfaceProtocol")"
-        if [[ ${cls,,} == ff && ${sub,,} == 42 && ${proto,,} == 01 ]]; then
+        cls="${cls,,}" sub="${sub,,}" proto="${proto,,}"
+        if $apple; then
+            [[ $cls == ff && $sub == fe && $proto == 02 ]] && {
+                echo ios
+                return 0
+            }
+            continue
+        fi
+        if [[ $cls == ff && $sub == 42 && $proto == 01 ]]; then
             echo android-adb
             return 0
         fi
-        [[ ${cls,,} == 06 ]] && mtp=true
+        [[ $cls == 06 ]] && mtp=true
     done
     $mtp && echo android-mtp
     return 0
@@ -111,7 +127,7 @@ mobile_usb_devices() {
         [[ -r $d/idVendor && -r $d/idProduct ]] || continue
         vendor="$(<"$d/idVendor")"
         product="$(<"$d/idProduct")"
-        kind="$(mobile_usb_kind "$d" "$vendor")"
+        kind="$(mobile_usb_kind "$d" "$vendor" "$product")"
         [[ -n $kind ]] || continue
         name=""
         [[ -r $d/manufacturer ]] && name="$(<"$d/manufacturer")"
@@ -136,23 +152,26 @@ mobile_v4l2_loopback_nodes() {
     done | sort -n | sed 's|^|/dev/video|'
 }
 
-# mobile_v4l2_first_loopback_node — haseen's own node (card_label
-# haseen-phone, its sysfs `name`) when there is one, so another program's
-# virtual camera (OBS) is never taken over; otherwise the lowest-numbered
-# loopback node; otherwise nothing. The list is read whole rather than with
-# `| head -n1`, which would die of SIGPIPE under pipefail.
-mobile_v4l2_first_loopback_node() {
-    local node first="" base
+# mobile_v4l2_haseen_node — the loopback node haseen created (card_label
+# haseen-phone, its sysfs `name`), or nothing. A node another program made
+# (OBS's virtual camera) is never chosen: scrcpy would write into it. The
+# list is read whole rather than with `| head -n1`, which would die of
+# SIGPIPE under pipefail.
+mobile_v4l2_haseen_node() {
+    local node base
     base="$(sysroot_path /sys/class/video4linux)"
     while IFS= read -r node; do
-        [[ -n $first ]] || first=$node
         if [[ -r $base/${node#/dev/}/name && $(<"$base/${node#/dev/}/name") == haseen-phone ]]; then
             printf '%s\n' "$node"
             return 0
         fi
     done < <(mobile_v4l2_loopback_nodes)
-    [[ -z $first ]] || printf '%s\n' "$first"
+    return 0
 }
+
+# mobile_v4l2_module_loaded — v4l2loopback is in the kernel. A second
+# modprobe of a loaded module changes nothing, so it cannot add haseen's node.
+mobile_v4l2_module_loaded() { [[ -d $(sysroot_path /sys/module/v4l2loopback) ]]; }
 
 # mobile_v4l2_next_index — the index v4l2loopback would take when loaded with
 # no video_nr=: the lowest free one.

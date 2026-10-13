@@ -226,9 +226,24 @@ assert_contains "status: iPhone seen on usb" "$OUTPUT" "ios          05ac:12a8  
 assert_contains "status: adb-mode Android seen on usb" "$OUTPUT" "android-adb  18d1:4ee7  Google Pixel 8"
 assert_contains "status: mtp-mode Android seen on usb" "$OUTPUT" "android-mtp  2717:ff40  Xiaomi Redmi Note"
 assert_not_contains "status: root hub is not a phone" "$OUTPUT" "1d6b"
+# Apple's vendor id alone is not an iPhone: the fixture's Apple keyboard (HID).
+assert_not_contains "status: an Apple keyboard is not a phone" "$OUTPUT" "05ac:024f"
 assert_contains "status: adb sees nothing" "$OUTPUT" "adb: no device"
 assert_contains "status: kdeconnect unpaired" "$OUTPUT" "kdeconnect: no paired device"
 assert_contains "status: no ios device" "$OUTPUT" "idevice: no device"
+
+# An iPhone outside the product range usbmuxd's rule names is still found by
+# its usbmux interface (class ff, subclass fe, protocol 02).
+cp -a "$APPLIED" "$SANDBOX/usbmux"
+printf '1301\n' >"$SANDBOX/usbmux/sys/bus/usb/devices/1-2/idProduct"
+capture env HASEEN_SYSROOT="$SANDBOX/usbmux" haseen mobile status
+assert_not_contains "status: outside the range, a PTP-only Apple device is not iOS" "$OUTPUT" "05ac:1301"
+mkdir -p "$SANDBOX/usbmux/sys/bus/usb/devices/1-2/1-2:4.1"
+printf 'ff\n' >"$SANDBOX/usbmux/sys/bus/usb/devices/1-2/1-2:4.1/bInterfaceClass"
+printf 'fe\n' >"$SANDBOX/usbmux/sys/bus/usb/devices/1-2/1-2:4.1/bInterfaceSubClass"
+printf '02\n' >"$SANDBOX/usbmux/sys/bus/usb/devices/1-2/1-2:4.1/bInterfaceProtocol"
+capture env HASEEN_SYSROOT="$SANDBOX/usbmux" haseen mobile status
+assert_contains "status: the usbmux interface makes it iOS" "$OUTPUT" "ios          05ac:1301  Apple Inc. iPhone"
 
 # Paired and trusted.
 stub adb 'echo "List of devices attached"; echo "1A2B3C4D	device"'
@@ -314,18 +329,33 @@ capture env HASEEN_SYSROOT="$SANDBOX/many-loopback" haseen mobile mirror --v4l2 
 assert_status "mirror --v4l2 with three loopback nodes" 0 "$STATUS"
 assert_contains "mirror --v4l2 takes haseen's own loopback node" "$OUTPUT" "webcam sink: /dev/video2"
 
-# Another program's virtual cameras only (OBS at video10 and video2): never
-# lexical order (video10 sorts first); the lowest-numbered node.
+# Another program's virtual cameras only (OBS at video2 and video10), the
+# module loaded: never written into, and no modprobe planned that could not
+# add a node. Named explicitly, one is used.
 cp -a "$APPLIED" "$SANDBOX/obs-loopback"
 mv "$SANDBOX/obs-loopback/sys/class/video4linux/video2" "$SANDBOX/obs-loopback/sys/class/video4linux/video10"
-mkdir -p "$SANDBOX/obs-loopback/sys/class/video4linux/video2"
+mkdir -p "$SANDBOX/obs-loopback/sys/class/video4linux/video2" "$SANDBOX/obs-loopback/sys/module/v4l2loopback"
 printf 'OBS Virtual Camera\n' >"$SANDBOX/obs-loopback/sys/class/video4linux/video2/name"
 printf 'OBS Virtual Camera\n' >"$SANDBOX/obs-loopback/sys/class/video4linux/video10/name"
 capture env HASEEN_SYSROOT="$SANDBOX/obs-loopback" haseen mobile mirror --v4l2 --dry-run
-assert_contains "mirror --v4l2 orders nodes numerically" "$OUTPUT" "webcam sink: /dev/video2"
+assert_status "mirror --v4l2 with only OBS's nodes: refused" 1 "$STATUS"
+assert_contains "mirror --v4l2 with only OBS's nodes: says why" "$OUTPUT" "does not write into another program's camera"
+assert_contains "mirror --v4l2 with only OBS's nodes: lists them in order" "$OUTPUT" "(another program's camera: /dev/video2 /dev/video10)"
+assert_not_contains "mirror --v4l2 with only OBS's nodes: no sink" "$OUTPUT" "v4l2-sink"
+assert_not_contains "mirror --v4l2 with only OBS's nodes: no modprobe" "$OUTPUT" "modprobe v4l2loopback"
+capture env HASEEN_SYSROOT="$SANDBOX/obs-loopback" haseen mobile mirror --v4l2=/dev/video2 --dry-run
+assert_contains "mirror --v4l2=DEV: an OBS node the user names" "$OUTPUT" "DRYRUN: scrcpy --v4l2-sink=/dev/video2"
 printf 'haseen-phone\n' >"$SANDBOX/obs-loopback/sys/class/video4linux/video10/name"
 capture env HASEEN_SYSROOT="$SANDBOX/obs-loopback" haseen mobile mirror --v4l2 --dry-run
-assert_contains "mirror --v4l2 prefers haseen-phone over OBS's lower node" "$OUTPUT" "webcam sink: /dev/video10"
+assert_contains "mirror --v4l2 takes haseen-phone over OBS's lower node" "$OUTPUT" "webcam sink: /dev/video10"
+# OBS's node without the v4l2loopback module (another virtual camera driver):
+# loading the module makes haseen's node.
+rm -rf "$SANDBOX/obs-loopback/sys/module/v4l2loopback" "$SANDBOX/obs-loopback/sys/class/video4linux/video10"
+capture env HASEEN_SYSROOT="$SANDBOX/obs-loopback" haseen mobile mirror --v4l2 --dry-run
+assert_status "mirror --v4l2, a foreign node, module not loaded: plans the load" 0 "$STATUS"
+assert_contains "mirror --v4l2, a foreign node, module not loaded: modprobe" "$OUTPUT" \
+    "DRYRUN: sudo modprobe v4l2loopback exclusive_caps=1 card_label=haseen-phone"
+assert_contains "mirror --v4l2, a foreign node, module not loaded: the next index" "$OUTPUT" "webcam sink: /dev/video3"
 
 # Package present, module not loaded: load it, and predict the index it takes.
 cp -a "$APPLIED" "$SANDBOX/no-loopback"

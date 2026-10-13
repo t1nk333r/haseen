@@ -21,8 +21,9 @@ across by default on Android 11 and newer.
                 video calls can use the phone as a camera. This needs the
                 v4l2loopback-dkms package: the command checks for it and for a
                 loopback node, and loads the module if the package is there.
-                Without DEV it uses the first loopback node, creating one if
-                none exists.
+                Without DEV it uses haseen's own node (haseen-phone), loading
+                the module to make one; another program's virtual camera
+                (OBS) is used only when named as DEV.
   --            everything after it goes to scrcpy unchanged
 
 iOS has no equivalent: Apple exposes no screen-control protocol. AirPlay
@@ -96,21 +97,24 @@ if $v4l2; then
     pkg_installed v4l2loopback-dkms ||
         die "--v4l2 needs the v4l2loopback-dkms package, which this layer does not install by default. Run: haseen layer apply mobile -- --v4l2"
     if [[ -z $v4l2_dev ]]; then
-        v4l2_dev="$(mobile_v4l2_first_loopback_node)"
+        v4l2_dev="$(mobile_v4l2_haseen_node)"
     elif [[ ! -c $v4l2_dev ]] && ! $DRY_RUN; then
         die "$v4l2_dev is not a character device"
     fi
     if [[ -z $v4l2_dev ]]; then
-        # The package is installed but the module is not loaded. With no
-        # video_nr= the module takes the lowest free index.
+        # Loaded already (by another program, OBS among them), the module
+        # takes no new card_label, so there is no haseen node to make.
+        mobile_v4l2_module_loaded &&
+            die "v4l2loopback is loaded without a haseen-phone node (another program's camera: $(mobile_v4l2_loopback_nodes | paste -sd' ' -)), and haseen does not write into another program's camera. Name one yourself with --v4l2=/dev/videoN, or close that program, unload the module (sudo modprobe -r v4l2loopback) and run this again"
+        # With no video_nr= the module takes the lowest free index.
         v4l2_dev="/dev/video$(mobile_v4l2_next_index)"
         info "no v4l2loopback node yet; loading the module (it will become $v4l2_dev)"
         run_root modprobe v4l2loopback exclusive_caps=1 card_label=haseen-phone
         if ! $DRY_RUN; then
             # udev creates /dev/videoN after the module returns; wait for it.
             have udevadm && udevadm settle --timeout=10 || true
-            v4l2_dev="$(mobile_v4l2_first_loopback_node)"
-            [[ -n $v4l2_dev ]] || die "v4l2loopback loaded but no loopback video node appeared"
+            v4l2_dev="$(mobile_v4l2_haseen_node)"
+            [[ -n $v4l2_dev ]] || die "v4l2loopback loaded but no haseen-phone video node appeared"
             [[ -c $v4l2_dev ]] || die "v4l2loopback loaded but $v4l2_dev is not a character device yet; run the command again"
         fi
     fi
