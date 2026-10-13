@@ -10,7 +10,8 @@ import "Cliphist.js" as Cliphist
 // closes, Delete or the trash button removes it. Image entries show a
 // thumbnail decoded on demand into $XDG_RUNTIME_DIR/haseen-clipboard/, a
 // private (0700) cache removed when the panel closes; without
-// XDG_RUNTIME_DIR no image is decoded (Cliphist.imageCommand). Open with
+// XDG_RUNTIME_DIR no image is decoded (Cliphist.imageCommand). ALT + V opens
+// it (share/haseen/default/hypr/binds.lua), as does
 // `haseen shell ipc panel toggle haseen.clipboard`.
 //
 // Ctrl+P (or the eye button) toggles the preview pane, which shows the
@@ -40,8 +41,8 @@ Column {
     property string query: ""
     readonly property var results: Cliphist.filter(history.entries, query)
 
-    // Preview pane. Default on: without it the panel shows cliphist's own
-    // truncated one-line previews, which is the gap this plugin had.
+    // Preview pane, on by default (owner, 2026-10-08): the list alone shows
+    // only cliphist's truncated one-line previews.
     readonly property bool previewOn: settings.preview !== false
     readonly property int previewHeight: typeof settings.previewHeight === "number" && settings.previewHeight >= 80 ? Math.round(settings.previewHeight) : 220
     readonly property int maxBytes: Cliphist.limit(settings.previewMaxBytes, 8388608)

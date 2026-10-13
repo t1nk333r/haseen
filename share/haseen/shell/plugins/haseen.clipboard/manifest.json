@@ -3,7 +3,7 @@
   "id": "haseen.clipboard",
   "name": "Clipboard",
   "version": "1.0.0",
-  "description": "Clipboard history with cliphist: a watcher service, a searchable panel (SUPER+CTRL+V) and a `>` launcher provider",
+  "description": "Clipboard history with cliphist: a watcher service, a searchable panel (ALT + V by default) and a `>` launcher provider",
   "kinds": [
     "service",
     "panel",
