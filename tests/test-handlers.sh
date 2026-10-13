@@ -32,12 +32,13 @@ map_rows() { array_body "$1" "declare -A $2=(" | grep -oE '\[[a-z]+\]=[^] )]+' |
 # --- the vendor files ---------------------------------------------------------
 assert_contains "vendor list: default section" "$(cat "$MIMEAPPS")" "[Default Applications]"
 assert_contains "vendor list: credits Omarchy's coverage" "$(cat "$MIMEAPPS")" "Omarchy default/applications/mimeapps.list"
-assert_eq "vendor list: directories open in the file manager" "inode/directory" "$(vendor_mimes yazi.desktop)"
+assert_eq "vendor list: directories open in yazi through haseen's entry" "inode/directory" "$(vendor_mimes haseen-yazi.desktop)"
 assert_eq "vendor list: PDFs open in papers" "application/pdf" "$(vendor_mimes org.gnome.Papers.desktop)"
 assert_eq "vendor list: links open in Helium" "x-scheme-handler/http"$'\n'"x-scheme-handler/https" "$(vendor_mimes helium.desktop)"
 # Every desktop id the vendor list names comes from a package a default layer
-# installs, except nvim.desktop: neovim is catalogue-only, said in the header.
-declare -A VENDOR_PKG=([yazi.desktop]=yazi [imv.desktop]=imv [mpv.desktop]=mpv
+# installs, except haseen-nvim.desktop: neovim is catalogue-only, said in the
+# header.
+declare -A VENDOR_PKG=([haseen-yazi.desktop]=yazi [imv.desktop]=imv [mpv.desktop]=mpv
     [org.gnome.Papers.desktop]=papers [helium.desktop]=aur:helium-browser-bin)
 default_pkgs="$(for l in base chaotic omarchy-repo desktop theme shell; do
     f="$REPO/share/haseen/layers/$l/packages.txt"
@@ -45,7 +46,7 @@ default_pkgs="$(for l in base chaotic omarchy-repo desktop theme shell; do
 done | sort -u)"
 dangling=""
 while IFS= read -r id; do
-    [[ $id == nvim.desktop ]] && continue
+    [[ $id == haseen-nvim.desktop ]] && continue
     pkg="${VENDOR_PKG[$id]:-}"
     if [[ -z $pkg ]] || ! grep -qxF -- "$pkg" <<<"$default_pkgs"; then dangling+="$id "; fi
 done < <(grep -E '^[^#=]+=' "$MIMEAPPS" | cut -d= -f2 | sort -u)
@@ -61,13 +62,29 @@ assert_eq "vendor terminal list: foot" "foot.desktop" "$(grep -v '^#' "$TERMLIST
 assert_contains "vendor terminal list: says why the name matters" "$(cat "$TERMLIST")" "XDG_CURRENT_DESKTOP"
 
 # Each handler kind owns exactly the block the vendor file assigns to its app.
-assert_eq "kind files matches the vendor block" "$(vendor_mimes yazi.desktop)" "$(setup_mimes files)"
+assert_eq "kind files matches the vendor block" "$(vendor_mimes haseen-yazi.desktop)" "$(setup_mimes files)"
 assert_eq "kind image matches the vendor block" "$(vendor_mimes imv.desktop)" "$(setup_mimes image)"
 assert_eq "kind video matches the vendor block" "$(vendor_mimes mpv.desktop)" "$(setup_mimes video)"
 assert_eq "kind pdf matches the vendor block" "$(vendor_mimes org.gnome.Papers.desktop)" "$(setup_mimes pdf)"
-assert_eq "kind text matches the vendor block" "$(vendor_mimes nvim.desktop)" "$(setup_mimes text)"
+assert_eq "kind text matches the vendor block" "$(vendor_mimes haseen-nvim.desktop)" "$(setup_mimes text)"
 assert_contains "kind image covers what imv declares beyond Omarchy" "$(setup_mimes image)" "image/avif"
 assert_contains "kind video keeps Omarchy's ogg container" "$(setup_mimes video)" "application/ogg"
+
+# yazi and nvim ship Terminal=true entries, which need xdg-terminal-exec, and
+# that comes only from [omarchy]. The vendor list names haseen's own entries
+# for them instead: Terminal=false, run through haseen-terminal-run, hidden by
+# TryExec while the program is missing, and claiming the MIME types they get.
+assert_eq "vendor list: never a packaged Terminal=true entry" "" \
+    "$(grep -E '^[^#=]+=(yazi|nvim)\.desktop$' "$MIMEAPPS" || true)"
+for prog in yazi nvim; do
+    entry="$REPO/share/haseen/default/applications/haseen-$prog.desktop"
+    assert_contains "haseen-$prog.desktop: not a terminal entry" "$(cat "$entry")" "Terminal=false"
+    assert_contains "haseen-$prog.desktop: runs in \$TERMINAL" "$(cat "$entry")" "Exec=haseen-terminal-run $prog "
+    assert_contains "haseen-$prog.desktop: hidden without $prog" "$(cat "$entry")" "TryExec=$prog"
+    assert_eq "haseen-$prog.desktop: declares what the vendor list gives it" \
+        "$(vendor_mimes "haseen-$prog.desktop")" \
+        "$(sed -n 's/^MimeType=//p' "$entry" | tr ';' '\n' | sed '/^$/d' | sort)"
+done
 
 # The seed and the command write the same file, so their maps must agree.
 assert_eq "terminal .desktop map: seed == setup default" \
@@ -94,7 +111,11 @@ sandbox handlers-seed
 export HASEEN_SYSROOT="$FIXTURES/seeds-plain"
 CONFIG="$HOME/.config"
 
-capture haseen seed user --dry-run
+# No terminal chosen and $TERMINAL unset (a fresh HOME): foot, and nothing on
+# stderr (an empty key used to make bash print "bad array subscript").
+capture env -u TERMINAL bash -c 'haseen seed user --dry-run 2>&1 >/dev/null'
+assert_eq "no terminal set: the seeds print nothing on stderr" "" "$OUTPUT"
+capture env -u TERMINAL haseen seed user --dry-run
 assert_status "seed dry run succeeds" 0 "$STATUS"
 assert_dry_pure "seed dry run" "$OUTPUT"
 assert_contains "the terminal list is planned" "$OUTPUT" "DRYRUN: write $CONFIG/xdg-terminals.list"
@@ -134,6 +155,11 @@ for kind in files image video pdf text; do
 done
 assert_contains "--help shows an installed app plainly" "$OUTPUT" " imv"
 assert_contains "--help marks a missing app" "$OUTPUT" "loupe(not installed)"
+# An entry whose TryExec program is missing is not installed (GLib hides it).
+printf '[Desktop Entry]\nTryExec=haseen-test-no-such-program\n' >"$HASEEN_SYSROOT/usr/share/applications/org.gnome.Loupe.desktop"
+capture haseen setup default --help
+assert_contains "--help: a TryExec program missing means not installed" "$OUTPUT" "loupe(not installed)"
+rm -f "$HASEEN_SYSROOT/usr/share/applications/org.gnome.Loupe.desktop"
 assert_contains "--help names the user file xdg-mime writes" "$OUTPUT" ".config/mimeapps.list"
 
 capture haseen setup default pdf papers --dry-run
@@ -150,6 +176,16 @@ assert_contains "image: the widened set" "$OUTPUT" "image/jxl"
 capture haseen setup default files flea --dry-run
 all+="$OUTPUT"
 assert_contains "files: flea by desktop id" "$OUTPUT" "DRYRUN: xdg-mime default com.thisisgm.flea.desktop inode/directory"
+# haseen's yazi entry wins over yazi's own once installed.
+mkdir -p "$HASEEN_SYSROOT/usr/local/share/applications"
+: >"$HASEEN_SYSROOT/usr/share/applications/yazi.desktop"
+capture haseen setup default files yazi --dry-run
+assert_contains "files: yazi's own entry while haseen's is absent" "$OUTPUT" "DRYRUN: xdg-mime default yazi.desktop inode/directory"
+cp "$REPO/share/haseen/default/applications/haseen-yazi.desktop" "$HASEEN_SYSROOT/usr/local/share/applications/"
+stub yazi 'exit 0'
+capture haseen setup default files yazi --dry-run
+all+="$OUTPUT"
+assert_contains "files: haseen's yazi entry first" "$OUTPUT" "DRYRUN: xdg-mime default haseen-yazi.desktop inode/directory"
 # A dry run prints no "not installed" warning by convention; the real run does.
 capture haseen setup default video mpv --dry-run
 all+="$OUTPUT"
@@ -197,3 +233,21 @@ assert_contains "editor: no desktop entry, no MIME change" "$OUTPUT" "is not ins
 assert_not_contains "editor: and xdg-mime is not called" "$OUTPUT" "xdg-mime default dev.zed.Zed.desktop"
 capture haseen setup default agent claude --dry-run
 assert_not_contains "agent: unaffected by handlers" "$OUTPUT" "xdg-mime"
+
+# --- haseen terminal run: the launcher those entries use -----------------------
+sandbox handlers-terminal-run
+stub foot 'echo "FOOT $*"'
+stub kitty 'printf "KITTY"; for a; do printf " [%s]" "$a"; done; echo'
+capture env -u TERMINAL haseen terminal run yazi /data
+assert_eq "terminal run: foot when \$TERMINAL is unset" "FOOT -e yazi /data" "$OUTPUT"
+capture env TERMINAL=kitty haseen terminal run nvim 'a b.txt'
+assert_eq "terminal run: \$TERMINAL, the argument kept whole" "KITTY [-e] [nvim] [a b.txt]" "$OUTPUT"
+capture env TERMINAL=haseen-test-no-such-terminal haseen terminal run yazi
+assert_eq "terminal run: foot when \$TERMINAL is not installed" "FOOT -e yazi" "$OUTPUT"
+stub xdg-terminal-exec 'echo "XTE $*"'
+capture env TERMINAL=xdg-terminal-exec haseen terminal run yazi /data
+assert_eq "terminal run: xdg-terminal-exec takes the command without -e" "XTE yazi /data" "$OUTPUT"
+capture env TERMINAL=kitty haseen terminal run --dry-run yazi
+assert_eq "terminal run: --dry-run prints it" "DRYRUN: kitty -e yazi" "$OUTPUT"
+capture haseen terminal run
+assert_status "terminal run: a command is required" 2 "$STATUS"

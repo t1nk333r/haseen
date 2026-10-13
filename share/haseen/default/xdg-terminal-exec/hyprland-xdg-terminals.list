@@ -1,6 +1,7 @@
-# haseen's vendor terminal preference for xdg-terminal-exec, the tool every
-# desktop entry with Terminal=true goes through (yazi, nvim), plus GTK's
-# "Open in Terminal" and flea's terminal action.
+# haseen's vendor terminal preference for xdg-terminal-exec, the tool a
+# desktop entry with Terminal=true, GTK's "Open in Terminal" and flea's
+# terminal action go through when it is installed (it comes only from
+# [omarchy]; haseen's own yazi and nvim handlers do not need it).
 #
 # Adapted from Omarchy default/xdg-terminal-exec/hyprland-xdg-terminals.list
 # (MIT, Copyright (c) David Heinemeier Hansson).

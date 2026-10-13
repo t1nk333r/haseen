@@ -21,12 +21,13 @@ gnome-keyring                # Secret Service for browsers/apps, unlocked by PAM
 xdg-utils                    # xdg-open / xdg-settings: the browser bind opens the default browser
 # The default handlers in default/applications/mimeapps.list name these, so
 # they ship with the session: a vendor default that points at a missing app is
-# worse than none. xdg-terminal-exec is how a Terminal=true entry (yazi, nvim)
-# and GTK's "Open in Terminal" reach $TERMINAL.
+# worse than none. xdg-terminal-exec is how GTK's "Open in Terminal" and other
+# Terminal=true entries reach $TERMINAL; haseen's yazi and nvim handlers run
+# through haseen-terminal-run and work without it.
 # omarchy: entries come only from [omarchy] (the omarchy-repo layer); without
 # it they are skipped with a warning, never built from the AUR (owner, 2026-10-08).
 omarchy:xdg-terminal-exec    # prebuilt in [omarchy]; flea depends on it too
-yazi                         # default inode/directory handler (TUI, Terminal=true)
+yazi                         # default inode/directory handler (haseen-yazi.desktop)
 imv                          # default image/* handler (pulls libheif for HEIC/AVIF)
 mpv                          # default video/* and application/ogg handler
 papers                       # default application/pdf handler

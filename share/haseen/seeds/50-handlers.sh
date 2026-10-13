@@ -3,12 +3,11 @@
 #
 # haseen:seed $CONFIG/xdg-terminals.list|the terminal GTK apps and flea open
 #
-# xdg-terminal-exec is the four-place model's terminal hop: a desktop entry
-# with Terminal=true (yazi, nvim), GTK's "Open in Terminal" and flea's terminal
-# action all run it, and it reads $XDG_CONFIG_HOME/xdg-terminals.list before
-# anything else (/usr/bin/xdg-terminal-exec:148-153). Seeding that file from
-# the terminal the user already chose keeps one answer for "my terminal"
-# instead of two.
+# xdg-terminal-exec, when [omarchy] provides it, is how a desktop entry with
+# Terminal=true, GTK's "Open in Terminal" and flea's terminal action open a
+# terminal, and it reads $XDG_CONFIG_HOME/xdg-terminals.list before anything
+# else (/usr/bin/xdg-terminal-exec:148-153). Seeding that file from the
+# terminal the user already chose keeps one answer for "my terminal".
 #
 # The vendor fallback for a machine that never ran this seed is
 # $PREFIX/share/xdg-terminal-exec/hyprland-xdg-terminals.list, installed by
@@ -34,7 +33,8 @@ seed_terminal_name() {
     [[ -r $env_file ]] && name="$(sed -n 's/^export TERMINAL=//p' "$env_file" | tail -n1 | tr -d "'\"")"
     [[ -n $name ]] || name="${TERMINAL:-}"
     name="${name##*/}"
-    [[ -n ${SEED_TERMINAL_DESKTOPS[$name]:-} ]] || name=foot
+    # An empty key is an error for an associative array, not a miss.
+    [[ -n $name && -n ${SEED_TERMINAL_DESKTOPS[$name]:-} ]] || name=foot
     printf '%s\n' "$name"
 }
 

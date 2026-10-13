@@ -16,15 +16,17 @@
 # install where the user has chosen nothing yet.
 #
 # Every app named here is installed by a default layer (desktop, and shell for
-# Helium), except the editor: neovim is in the catalogue, not a layer, so the
-# text block names nvim.desktop for when it is installed. The desktop ids
-# were read from the packages themselves (pacman -Ql / -Fl).
+# Helium), except the editor: neovim is in the catalogue, not a layer. The
+# package desktop ids were read from the packages themselves (pacman -Ql /
+# -Fl). The two terminal programs, yazi and nvim, are named through haseen's
+# own entries (haseen-yazi.desktop, haseen-nvim.desktop in this directory),
+# which run them in $TERMINAL: their packaged entries are Terminal=true and
+# need xdg-terminal-exec, which a desktop without [omarchy] does not have.
 
 [Default Applications]
-# File manager: yazi is the portable default (a TUI, Terminal=true, so it opens
-# through xdg-terminal-exec — see ../xdg-terminal-exec/). `haseen setup default
-# files flea` switches to the GUI one at user precedence.
-inode/directory=yazi.desktop
+# File manager: yazi. `haseen setup default files flea` switches to the GUI
+# one at user precedence.
+inode/directory=haseen-yazi.desktop
 
 # Images: imv.
 image/png=imv.desktop
@@ -65,25 +67,24 @@ video/x-ogm+ogg=mpv.desktop
 video/x-theora+ogg=mpv.desktop
 application/ogg=mpv.desktop
 
-# Plain text and source code: the editor. nvim ships nvim.desktop
-# (Terminal=true), so this also goes through xdg-terminal-exec.
-text/plain=nvim.desktop
-text/english=nvim.desktop
-text/x-makefile=nvim.desktop
-text/x-c++hdr=nvim.desktop
-text/x-c++src=nvim.desktop
-text/x-chdr=nvim.desktop
-text/x-csrc=nvim.desktop
-text/x-java=nvim.desktop
-text/x-moc=nvim.desktop
-text/x-pascal=nvim.desktop
-text/x-tcl=nvim.desktop
-text/x-tex=nvim.desktop
-application/x-shellscript=nvim.desktop
-text/x-c=nvim.desktop
-text/x-c++=nvim.desktop
-application/xml=nvim.desktop
-text/xml=nvim.desktop
+# Plain text and source code: the editor, nvim.
+text/plain=haseen-nvim.desktop
+text/english=haseen-nvim.desktop
+text/x-makefile=haseen-nvim.desktop
+text/x-c++hdr=haseen-nvim.desktop
+text/x-c++src=haseen-nvim.desktop
+text/x-chdr=haseen-nvim.desktop
+text/x-csrc=haseen-nvim.desktop
+text/x-java=haseen-nvim.desktop
+text/x-moc=haseen-nvim.desktop
+text/x-pascal=haseen-nvim.desktop
+text/x-tcl=haseen-nvim.desktop
+text/x-tex=haseen-nvim.desktop
+application/x-shellscript=haseen-nvim.desktop
+text/x-c=haseen-nvim.desktop
+text/x-c++=haseen-nvim.desktop
+application/xml=haseen-nvim.desktop
+text/xml=haseen-nvim.desktop
 
 # Web links: Helium, the browser the shell layer installs (plan 070). `haseen
 # setup default browser` writes another choice into ~/.config/mimeapps.list

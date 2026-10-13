@@ -34,14 +34,16 @@ declare -A VARS=([browser]=BROWSER [terminal]=TERMINAL [editor]=EDITOR [agent]=H
 #
 # Map values are candidate .desktop ids, best first; the first one installed
 # wins, so the same name works whether the app came from pacman or Flathub.
-# Every id was read from the package that ships it (pacman -Ql / -Fl), never
-# guessed.
-declare -A FILE_MANAGERS=([yazi]=yazi.desktop [flea]=com.thisisgm.flea.desktop)
+# Every package id was read from the package that ships it (pacman -Ql / -Fl),
+# never guessed. yazi and nvim come first as haseen's own entries
+# (default/applications/haseen-{yazi,nvim}.desktop), which open them in
+# $TERMINAL without xdg-terminal-exec (plan 037).
+declare -A FILE_MANAGERS=([yazi]="haseen-yazi.desktop yazi.desktop" [flea]=com.thisisgm.flea.desktop)
 declare -A IMAGE_VIEWERS=([imv]=imv.desktop [loupe]=org.gnome.Loupe.desktop)
 declare -A VIDEO_PLAYERS=([mpv]=mpv.desktop [celluloid]=io.github.celluloid_player.Celluloid.desktop)
 declare -A PDF_VIEWERS=([papers]=org.gnome.Papers.desktop [zathura]=org.pwmt.zathura.desktop
     [xournalpp]=com.github.xournalpp.xournalpp.desktop)
-declare -A TEXT_EDITORS=([nvim]=nvim.desktop [helix]=Helix.desktop [vim]=vim.desktop
+declare -A TEXT_EDITORS=([nvim]="haseen-nvim.desktop nvim.desktop" [helix]=Helix.desktop [vim]=vim.desktop
     [code]="code.desktop com.visualstudio.code.desktop" [zed]=dev.zed.Zed.desktop
     [emacs]="emacs.desktop org.gnu.emacs.desktop")
 declare -A HANDLERS=([files]=FILE_MANAGERS [image]=IMAGE_VIEWERS [video]=VIDEO_PLAYERS
@@ -73,16 +75,20 @@ declare -A TERMINAL_DESKTOPS=([foot]=foot.desktop [alacritty]=Alacritty.desktop
 # XDG_DATA_HOME, XDG_DATA_DIRS and both Flatpak export dirs. An explicit
 # XDG_DATA_DIRS is read as given; its default (/usr/local/share:/usr/share)
 # and the system Flatpak dir go through sysroot_path, so tests see a fixture
-# instead of this machine.
+# instead of this machine. The first entry found decides, and one whose
+# TryExec program is missing counts as absent, as it does for GLib.
 desktop_installed() {
-    local dir dirs=() data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+    local dir dirs=() data_home="${XDG_DATA_HOME:-$HOME/.local/share}" try
     if [[ -n ${XDG_DATA_DIRS:-} ]]; then
         IFS=: read -ra dirs <<<"$XDG_DATA_DIRS"
     else
         dirs=("$(sysroot_path /usr/local/share)" "$(sysroot_path /usr/share)")
     fi
     for dir in "$data_home" "${dirs[@]}" "$data_home/flatpak/exports/share" "$(sysroot_path /var/lib/flatpak/exports/share)"; do
-        [[ -r $dir/applications/$1 ]] && return 0
+        [[ -r $dir/applications/$1 ]] || continue
+        try="$(sed -n 's/^TryExec=//p' "$dir/applications/$1" | head -n1)"
+        [[ -z $try ]] || have "$try"
+        return
     done
     return 1
 }
@@ -253,8 +259,8 @@ set_handler() {
 }
 
 # write_terminals_list NAME — the list xdg-terminal-exec reads first, so a
-# desktop entry with Terminal=true (yazi, nvim), GTK's "Open in Terminal" and
-# flea all open the terminal the user just chose.
+# desktop entry with Terminal=true, GTK's "Open in Terminal" and flea all open
+# the terminal the user just chose.
 write_terminals_list() {
     local desktop="${TERMINAL_DESKTOPS[$1]:-}"
     [[ -n $desktop ]] || return 0

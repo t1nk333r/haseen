@@ -1,0 +1,17 @@
+# The vendor handler for folders: yazi in a window of $TERMINAL. yazi's own
+# yazi.desktop is Terminal=true, which GLib starts only through
+# xdg-terminal-exec or a terminal on its built-in list (GLib 2.88: no foot),
+# and haseen takes xdg-terminal-exec only from [omarchy] (plan 037). TryExec
+# hides the entry while yazi is not installed.
+[Desktop Entry]
+Type=Application
+Name=Yazi
+GenericName=File Manager
+Comment=Browse a folder with yazi in your terminal
+Icon=yazi
+TryExec=yazi
+Exec=haseen-terminal-run yazi %u
+Terminal=false
+NoDisplay=true
+MimeType=inode/directory;
+Categories=System;FileTools;FileManager;
