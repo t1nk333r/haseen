@@ -571,8 +571,8 @@ assert_not_contains "image mode uploads nothing on its own" "$OUTPUT" "lens.goog
 capture haseen search screen image --upload --dry-run
 assert_contains "the upload path asks first" "$OUTPUT" "DRYRUN: confirm: this uploads the capture to Google"
 assert_contains "the upload path posts to Lens" "$OUTPUT" \
-    "DRYRUN: curl -X POST -F encoded_image=@<capture> https://lens.google.com/v3/upload"
-assert_contains "and opens the Location header" "$OUTPUT" "DRYRUN: xdg-open <the Location: header>"
+    "DRYRUN: curl -q --proto =https --proto-redir =https -F encoded_image=@<capture> https://lens.google.com/v3/upload"
+assert_contains "and opens the Location header" "$OUTPUT" "DRYRUN: xdg-open <the Location: header"
 capture haseen search screen --upload --dry-run
 assert_status "--upload outside image mode is a usage error" 2 "$STATUS"
 capture haseen search screen --provider nope --dry-run
@@ -613,13 +613,33 @@ location: https://www.google.com/search?vsrid=FIXTURE&udm=26
 capture haseen search screen image --upload --yes
 assert_status "the consented upload succeeds" 0 "$STATUS"
 assert_contains "it warns before it sends anything" "$OUTPUT" "sends the captured picture of your screen to Google"
-assert_contains "the Lens request shape" "$(calls)" "-F encoded_image=@$XDG_RUNTIME_DIR/haseen-search-screen/capture-"
+assert_contains "the Lens request names the private capture, quoted" "$(calls)" \
+    "-F encoded_image=@\"$XDG_RUNTIME_DIR/haseen-search-screen/capture-"
+assert_eq "the capture's bytes are what is sent" "curl-file: PNG" "$(grep '^curl-file:' "$CALLS")"
+assert_contains "curl skips ~/.curlrc (-q first), speaks https only and follows nothing" "$(calls)" \
+    "curl -q --proto =https --proto-redir =https -sS -o /dev/null -D - "
 assert_contains "it posts to the v3 upload endpoint" "$(calls)" "https://lens.google.com/v3/upload"
-assert_contains "it follows the Location header" "$(calls)" "xdg-open https://www.google.com/search?vsrid=FIXTURE&udm=26"
+assert_contains "it opens the Location header" "$(calls)" "xdg-open https://www.google.com/search?vsrid=FIXTURE&udm=26"
 assert_eq "the capture is deleted after the upload" "" \
     "$(find "$XDG_RUNTIME_DIR/haseen-search-screen" -type f 2>/dev/null)"
 assert_eq "the capture directory is private" "700" \
     "$(stat -c '%a' "$XDG_RUNTIME_DIR/haseen-search-screen")"
+
+# Only an https:// results page on www.google.com or lens.google.com is opened.
+cap_sandbox search-lens-location
+for location in http://www.google.com/search?x https://evil.example/search \
+    https://www.google.com.evil.example/search https://www.google.com@evil.example/ \
+    'https://www.google.com/search?q=a b' ftp://www.google.com/; do
+    : >"$CALLS"
+    CURL_HEADERS=$'HTTP/2 200\r\nlocation: '"$location"$'\r\n' capture haseen search screen image --upload --yes
+    assert_status "Location '$location' is refused" 1 "$STATUS"
+    assert_contains "and it says nothing was opened" "$OUTPUT" "nothing was opened"
+    assert_not_contains "no browser opens '$location'" "$(calls)" "xdg-open"
+done
+CURL_HEADERS=$'HTTP/1.1 200 OK\r\nLocation: https://lens.google.com/search?p=FIXTURE\r\n' \
+    capture haseen search screen image --upload --yes
+assert_contains "lens.google.com results open, from a CRLF HTTP/1.1 answer" "$(calls)" \
+    "xdg-open https://lens.google.com/search?p=FIXTURE"
 
 cap_sandbox search-lens-refused
 capture haseen search screen image --upload </dev/null
@@ -644,7 +664,8 @@ location: https://www.google.com/search?vsrid=FIXTURE&udm=26
 capture haseen search screen image --image "$SHOT" --upload --yes
 assert_status "--image upload succeeds" 0 "$STATUS"
 assert_contains "--image upload: the copy is what is sent" "$(calls)" \
-    "-F encoded_image=@$XDG_RUNTIME_DIR/haseen-search-screen/capture-"
+    "-F encoded_image=@\"$XDG_RUNTIME_DIR/haseen-search-screen/capture-"
+assert_eq "--image upload: with the picture's bytes" "curl-file: PNG-original" "$(grep '^curl-file:' "$CALLS")"
 assert_eq "--image upload: the original is unchanged" "PNG-original" "$(cat "$SHOT")"
 assert_eq "--image upload: the temporary copy is gone" "" "$(search_copies)"
 capture haseen search screen image --image "$SHOT" --upload </dev/null
