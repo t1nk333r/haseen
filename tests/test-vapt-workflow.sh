@@ -210,12 +210,11 @@ assert_contains 'operational diagnostic only stderr' "$(<"$SANDBOX/json-err")" '
 
 # Shared endpoint/confinement/CA inspection is exercised without a live bind,
 # trust mutation, live desktop or installed fixture program execution.
-capture python3 -B - "$VAPT_LAYER" "$ROOT" "$FIXTURES" <<'PY'
-import pathlib, sys
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import os, pathlib, sys
 sys.path.insert(0, sys.argv[1])
 import metadata
-from workflow_support import validate_endpoint, selected_owned_file
-sys.path.insert(0,sys.argv[3]);from vapt_reference_paths import confined_path
+from workflow_support import validate_endpoint, selected_owned_file, open_selected
 assert validate_endpoint('127.0.0.1', 1024)['loopback']
 assert validate_endpoint('::1', 65535)['loopback']
 assert validate_endpoint('0.0.0.0', 8080)['requiresConfirmation']
@@ -224,10 +223,14 @@ for address,port in [('example.org',8080),('127.0.0.1',80),('::1',65536),('::1',
     except ValueError: pass
     else: raise AssertionError('endpoint admitted')
 root=pathlib.Path(sys.argv[2])
-assert confined_path(root/'usr/share/doc/nmap','scan-two.txt').is_file()
-try: confined_path(root/'usr/share/doc/nmap','../../wordlists/sample.txt')
-except ValueError: pass
-else: raise AssertionError('filesystem escape admitted')
+# The no-follow opener behind serving and document reads refuses any
+# symlinked component, so a link cannot lead a selection out of its tree.
+os.close(open_selected(root/'usr/share/doc/nmap/scan-two.txt'))
+(root/'usr/share/doc/nmap/escape').symlink_to(root/'usr/share/wordlists')
+try: open_selected(root/'usr/share/doc/nmap/escape/sample.txt')
+except OSError: pass
+else: raise AssertionError('symlinked component followed')
+finally: (root/'usr/share/doc/nmap/escape').unlink()
 assert selected_owned_file('/usr/share/wordlists/sample.txt',metadata.installed(str(root)),str(root),metadata.observed_resolve).is_file()
 try: selected_owned_file('/usr/share/wordlists',metadata.installed(str(root)),str(root),metadata.observed_resolve)
 except ValueError: pass

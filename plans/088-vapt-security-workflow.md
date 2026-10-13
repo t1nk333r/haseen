@@ -603,9 +603,9 @@ Rejected: skipping the signal case or accepting a surviving wrapper/helper.
 
 `confined_path` and selected_directory resolved symlinks but had no production
 caller. They are removed from `workflow_support.py`, and workflow.py no longer
-imports the former. `tests/fixtures/vapt_reference_paths.py:1` retains their
-historical pathname checks as test reference only; `tests/test-vapt-workflow.sh:186`
-retains those assertions with an explicit fixture import. Actual serving still
+imports the former. A test-only copy, `tests/fixtures/vapt_reference_paths.py`,
+kept their pathname checks until it too was deleted; `tests/test-vapt-workflow.sh`
+now checks the production no-follow opener (`open_selected`). Actual serving still
 uses descriptor traversal at `workflow_actions.py:266`, refusing symlink/hardlink
 escapes in the unchanged confinement cases. Production helper definitions/imports
 now number **zero**; no assertion was discarded. Rejected: promoting the old
