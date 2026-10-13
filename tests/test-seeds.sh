@@ -141,6 +141,14 @@ assert_eq "the dangling links are left as they were" "3" \
     "$(find "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf" -type l | wc -l)"
 rm -f "$CONFIG/fontconfig/fonts.conf" "$CONFIG/xdg-terminals.list" "$CONFIG/btop/btop.conf"
 
+# 80-capture: the uploader's credentials file follows the same rule.
+rm -f "$CONFIG/haseen/upload.toml"
+ln -s "$DOTS/upload.toml" "$CONFIG/haseen/upload.toml"
+capture haseen seed user
+assert_eq "a dangling upload.toml link is not written through" "" "$(ls -A "$DOTS" 2>/dev/null)"
+assert_eq "and is left a link" "$DOTS/upload.toml" "$(readlink "$CONFIG/haseen/upload.toml")"
+rm -f "$CONFIG/haseen/upload.toml"
+
 # An rc that already includes the fragment from another tree on this machine
 # (the checkout, then /usr/local) is not given a second include: init.sh would
 # run twice.
