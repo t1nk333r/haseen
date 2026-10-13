@@ -9,7 +9,7 @@ Column {
     signal preview()
     signal proceed()
     spacing: Theme.gap * 2
-    Label { width: parent.width; heading: true; text: "Review — terminal confirmation remains authoritative" }
+    Label { width: parent.width; heading: true; text: "Review — nothing has run yet" }
     Label { width: parent.width; mono: true; text: root.intent }
     Label { width: parent.width; text: root.consequences }
     Label { width: parent.width; text: "Continuing only opens a terminal or requests the verified client. It does not prove completion. The CLI revalidates and may refuse; no --yes is passed." }

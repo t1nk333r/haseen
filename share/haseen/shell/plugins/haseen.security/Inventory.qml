@@ -1,8 +1,8 @@
 import QtQuick
 import qs.Haseen
-import "../haseen.menu/MenuModel.js" as Menu
 
-// One Tab stop for a list; identity is retained across a read/filter update.
+// One Tab stop for a list. A row keeps its delegate (and focus) across a
+// read or filter update: the model is synced by id, never replaced.
 Column {
     id: root
     property var rows: []
@@ -23,13 +23,7 @@ Column {
             const item = entries.itemAt(i).item;
             if (item && item.activeFocus) hadFocus = true;
         }
-        const mapped = rows.map(r => {
-            const record = {};
-            Menu.ROLES.forEach(role => record[role] = role === "childCount" ? 0 : role === "disabled" ? false : "");
-            record.itemId = r.id;
-            return record;
-        });
-        Menu.syncRows(stable, mapped);
+        syncIds(rows.map(r => r.id));
         const found = rows.findIndex(r => r.id === currentId);
         current = found >= 0 ? found : Math.max(0, Math.min(current, rows.length - 1));
         currentId = rows.length ? rows[current].id : "";
@@ -49,7 +43,17 @@ Column {
         const item = entries.itemAt(current).item;
         if (item) item.forceActiveFocus();
     }
-    function move(delta: int): void { focusIndex(current + delta); }
+    function syncIds(ids: var): void {
+        for (let i = 0; i < ids.length; i++) {
+            let at = -1;
+            for (let j = i; j < stable.count && at < 0; j++)
+                if (stable.get(j).itemId === ids[i]) at = j;
+            if (at < 0) stable.insert(i, {itemId: ids[i]});
+            else if (at > i) stable.move(at, i, 1);
+        }
+        if (stable.count > ids.length) stable.remove(ids.length, stable.count - ids.length);
+    }
+    function moveBy(delta: int): void { focusIndex(current + delta); }
     function pageMove(direction: int): void {
         if (!rows.length) return;
         const origin = entries.itemAt(current);
@@ -96,7 +100,7 @@ Column {
             Component {
                 id: choice
                 ActionButton {
-                    implicitHeight: Math.max(64 * scale, contentItem.implicitHeight + 24 * scale)
+                    implicitHeight: Math.max(64 * textScale, contentItem.implicitHeight + 24 * textScale)
                     text: row.modelData ? row.modelData.label : ""
                     activeFocusOnTab: activeFocus || row.index === root.current
                     Accessible.role: Accessible.ListItem
@@ -110,7 +114,7 @@ Column {
     }
     function key(event: var): void {
         if (event.key === Qt.Key_Up || event.key === Qt.Key_K || event.key === Qt.Key_Down || event.key === Qt.Key_J) {
-            move(event.key === Qt.Key_Up || event.key === Qt.Key_K ? -1 : 1);
+            moveBy(event.key === Qt.Key_Up || event.key === Qt.Key_K ? -1 : 1);
             event.accepted = true;
         } else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
             focusIndex(event.key === Qt.Key_Home ? 0 : rows.length - 1);

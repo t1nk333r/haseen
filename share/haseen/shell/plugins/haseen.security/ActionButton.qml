@@ -9,10 +9,10 @@ Controls.Button {
     property string explanation: ""
     property string glyph: ""
     property bool glyphOnly: false
-    readonly property real scale: Math.max(1 / 11, Theme.fontSize / 11)
-    implicitHeight: Math.max(40 * scale, contentItem.implicitHeight + 24 * scale)
-    implicitWidth: contentItem.implicitWidth + 24 * scale
-    padding: 12 * scale
+    readonly property real textScale: Math.max(1 / 11, Theme.fontSize / 11)
+    implicitHeight: Math.max(40 * textScale, contentItem.implicitHeight + 24 * textScale)
+    implicitWidth: contentItem.implicitWidth + 24 * textScale
+    padding: 12 * textScale
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
     Accessible.name: text
@@ -24,10 +24,10 @@ Controls.Button {
             id: icon
             glyph: control.glyph
             visible: glyph !== ""
-            width: 28 * control.scale
-            height: 24 * control.scale
+            width: 28 * control.textScale
+            height: 24 * control.textScale
             anchors.verticalCenter: parent.verticalCenter
-            font.pixelSize: Math.round(18 * control.scale)
+            font.pixelSize: Math.round(18 * control.textScale)
             Accessible.ignored: true
         }
         Label {

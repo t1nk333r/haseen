@@ -133,8 +133,12 @@ Component boundaries, one file each:
 
 - `Panel.qml`: lazy overlay/navigation, independent reads, ephemeral drafts,
   typed one-shot menu route, explicit refresh, stale/error/terminal-request notice.
-- `Model.js`: pure schema/identity/enum validation, filtering/state copy,
-  fixed verb and separate-operand argv construction; never executes or persists.
+- `Model.js`: filtering/state copy, fixed verb and separate-operand argv
+  construction; never executes or persists.
+- `shell/Haseen/SecurityEvidence.js`: pure schema/identity/enum validation,
+  shared with the menu's providers; `shell/Haseen/SecurityRoute.qml`
+  (`qs.Haseen`): the typed one-shot menu hand-off. Neither plugin imports the
+  other's files.
 - `Header.qml`, `Navigation.qml`: accessible Back/Refresh/Close and roving tabs.
 - `Overview.qml`: provisioning/count/source uncertainty, no installation controls.
 - `ToolRow.qml`, `ToolDetail.qml`, `EntryPicker.qml`: inventory, usage refusal,
@@ -146,7 +150,7 @@ Component boundaries, one file each:
 - `Review.qml`, `Preview.qml`, `StateMessage.qml`: Cancel-focused intent review,
   real dry-run exit/output/refusal/overflow, empty/loading/error/stale copy.
 - `Read.qml`: finite read-only Process transport; no timer or retry loop.
-- `Inventory.qml`: identity-stable menu-model synchronization and roving
+- `Inventory.qml`: identity-stable synchronization by id and roving
   arrows/jk/Enter/Right/l focus with scroll reveal; no activation on replacement.
 - `ActionButton.qml`, `Label.qml`, `Field.qml`, `GroupFilter.qml`,
   `IncludeMissing.qml`: Theme-only readable controls, labelled native editing,

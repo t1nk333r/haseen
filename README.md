@@ -83,8 +83,10 @@ and typed-fingerprint CA trust ([local action contract](docs/vapt.md#explicit-se
 The built-in `haseen.security` panel is **off by default**. Deliberately enable
 it with `haseen plugin enable haseen.security`; Setup › Security › VAPT
 workstation then shows installed tools/services, local prerequisites and source
-status. Rows inspect first, previews make no changes, and the terminal confirms
-actions. The panel never asserts success or runs anything during discovery
+status. Rows inspect first and previews make no changes. The terminal asks
+before a service start or restart, a local server, a non-loopback listener or a
+CA trust change; Stop and the remote desktop client start without a prompt.
+The panel never asserts success or runs anything during discovery
 ([panel guide](docs/vapt.md#optional-security-workstation-panel-plan-088)).
 
 ## NixOS

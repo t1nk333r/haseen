@@ -11,8 +11,8 @@ Item {
     property var settings: ({})
     property var screen: null
     readonly property string cli: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin/haseen"
-    readonly property real scale: Math.max(1 / 11, Theme.fontSize / 11)
-    readonly property int clearance: Math.max(Theme.gap * 2, Math.round(12 * scale))
+    readonly property real textScale: Math.max(1 / 11, Theme.fontSize / 11)
+    readonly property int clearance: Math.max(Theme.gap * 2, Math.round(12 * textScale))
     readonly property int frame: Config.frameEnabled ? Config.frameThickness : 0
     readonly property bool refreshing: menuRead.running || statusRead.running || sourcesRead.running || toolsRead.running || servicesRead.running || doctorRead.running
     property int generation: 0
@@ -31,6 +31,7 @@ Item {
     property var anchor: null
     property var addresses: []
     property var intentArgv: []
+    property string intentSource: ""
     property string intentCopy: ""
     property string returnView: ""
     property string previewOutput: ""
@@ -62,16 +63,22 @@ Item {
     }
 
     function close(): void {
-        Model.consume();
+        SecurityRoute.take();
         const win = QsWindow.window;
         if (win && typeof win.closeRequested === "function") win.closeRequested();
+    }
+    // Back on a list nothing is selected, so a later read that reshapes the
+    // records (Include missing adds `resolution`) is not a changed selection.
+    function setView(next: string): void {
+        view = next;
+        if (next === "") { selectedId = ""; entryId = ""; }
     }
     function back(): void {
         if (view === "endpoint" && body.item && body.item.cancelChoices()) return;
         intentArgv = [];
-        if (view === "preview" || view === "review") view = returnView;
+        if (view === "preview" || view === "review") setView(returnView);
         else if (view === "picker") view = "tool";
-        else if (view !== "") view = "";
+        else if (view !== "") setView("");
         else if (query !== "") query = "";
         else close();
     }
@@ -87,7 +94,7 @@ Item {
         generation++;
         intentArgv = []; inspection = null;
         previewThenReview = false;
-        if (view === "review" || view === "preview") view = returnView;
+        if (view === "review" || view === "preview") setView(returnView);
         for (const read of [menuRead, statusRead, sourcesRead, toolsRead, servicesRead, doctorRead]) {
             read.generation = generation;
             read.running = true;
@@ -137,19 +144,22 @@ Item {
     }
     function launch(): void {
         if (refreshing || intentArgv.length === 0) return;
-        // No detached result exists. The foreground CLI is confirmation authority.
-        const direct = selectedId === "remmina";
+        // A detached launch reports nothing back: the command revalidates in
+        // its terminal and reports refusals there. Only the remote desktop
+        // client starts without one; a tool may share its id.
+        const direct = intentSource === "client";
         Apps.launch(direct ? intentArgv : Model.terminal(cli, intentArgv), {desktopId: "haseen-security"});
         notice = direct ? "Launch requested — completion has not been checked." : "Opened in terminal — completion has not been checked. Helpers run until stopped with Ctrl+C.";
         Accessible.announce(notice, Accessible.Polite);
         intentArgv = [];
-        view = returnView;
+        setView(returnView);
     }
     function prepare(argv: var, source: string, preview: bool): void {
         if (refreshing || argv.length === 0) { notice = "Refused: current verified evidence or explicit selection is unavailable."; return; }
         intentArgv = argv;
+        intentSource = source;
         returnView = source === "client" ? "" : source;
-        intentCopy = source === "service" ? "May expose network ports according to local configuration. haseen does not change bindings or firewall rules and does not enable this service." : source === "certificate" ? "Machine-wide CA trust change. The terminal re-inspects current bytes and requires the full typed SHA-256 fingerprint for trust; foreign/modified removal is refused." : source === "client" ? "Open the installed remote desktop client. No address, saved connection or credentials are passed." : "Runs in a foreground terminal; stop with Ctrl+C. " + (selectedId === "listener" ? "Receives bytes only. It does not execute received data." : selectedId === "http-server" ? "Serves readable files within this selected directory; escapes outside it are refused." : "Serves only this file as bytes at /file; does not execute it or expose its containing directory.") + "\n" + (draft.address === "::1" || /^127\./.test(draft.address) ? "Loopback only — accessible from this workstation." : "Network exposure — other machines may reach this endpoint. The terminal requires exposure confirmation.");
+        intentCopy = source === "service" ? "May expose network ports according to local configuration. haseen does not change bindings or firewall rules and does not enable this service. The terminal asks before it starts or restarts the service." : source === "certificate" ? "Machine-wide CA trust change. The terminal re-inspects current bytes and requires the full typed SHA-256 fingerprint for trust; foreign/modified removal is refused." : source === "client" ? "Open the installed remote desktop client. No address, saved connection or credentials are passed." : "Runs in a foreground terminal; stop with Ctrl+C. " + (selectedId === "listener" ? "Receives bytes only. It does not execute received data." : selectedId === "http-server" ? "Serves readable files within this selected directory; escapes outside it are refused." : "Serves only this file as bytes at /file; does not execute it or expose its containing directory.") + "\n" + (draft.address === "::1" || /^127\./.test(draft.address) ? "Loopback only — accessible from this workstation." : "Network exposure — other machines may reach this endpoint. The terminal requires exposure confirmation.");
         previewThenReview = source === "endpoint" && !preview;
         if (preview || previewThenReview) capturePreview();
         else if (argv[2] !== "service-stop") view = "review";
@@ -179,7 +189,7 @@ Item {
             Qt.callLater(root.close);
             return;
         }
-        menuRoute = Model.consume();
+        menuRoute = SecurityRoute.take();
         if (menuRoute) page = Model.pages.indexOf(menuRoute.page);
         refresh();
         Qt.callLater(nav.focusSelected);
@@ -197,10 +207,6 @@ Item {
         function onContentHeightChanged() { Qt.callLater(root.revealFocused); }
     }
     Keys.onEscapePressed: event => { root.back(); event.accepted = true; }
-    // Text inputs consume their own editing keys before these navigation keys.
-    Keys.onPressed: event => {
-        if (event.key === Qt.Key_H || event.key === Qt.Key_Left) { root.back(); event.accepted = true; }
-    }
 
     Read { id: menuRead; cli: root.cli; kind: "menu"; onReceived: (kind, gen, data, error) => root.apply(kind, gen, data, error) }
     Read { id: statusRead; cli: root.cli; kind: "status"; onReceived: (kind, gen, data, error) => root.apply(kind, gen, data, error) }
@@ -233,8 +239,8 @@ Item {
         anchors.centerIn: parent
         anchors.horizontalCenterOffset: Config.barVertical ? (Config.barPosition === "left" ? 1 : -1) * Config.barThickness / 2 : 0
         anchors.verticalCenterOffset: !Config.barVertical ? (Config.barPosition === "top" ? 1 : -1) * Config.barThickness / 2 : 0
-        width: Math.max(1, Math.min(720 * root.scale, root.width - 2 * (root.clearance + root.frame) - (Config.barVertical ? Config.barThickness : 0)))
-        height: Math.max(1, Math.min(640 * root.scale, root.height - 2 * (root.clearance + root.frame) - (Config.barVertical ? 0 : Config.barThickness)))
+        width: Math.max(1, Math.min(720 * root.textScale, root.width - 2 * (root.clearance + root.frame) - (Config.barVertical ? Config.barThickness : 0)))
+        height: Math.max(1, Math.min(640 * root.textScale, root.height - 2 * (root.clearance + root.frame) - (Config.barVertical ? 0 : Config.barThickness)))
         color: Theme.surface
         radius: Theme.radius
         border.width: Theme.borderWidth
@@ -251,6 +257,15 @@ Item {
             clip: true
             contentWidth: availableWidth
             Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+            // Left and h go back outside a text editor. Handled before the
+            // ScrollView, which would take Left for its hidden horizontal bar.
+            Keys.onPressed: event => {
+                if (event.key !== Qt.Key_H && event.key !== Qt.Key_Left) return;
+                const focused = root.Window.window ? root.Window.window.activeFocusItem : null;
+                if (focused && focused.cursorPosition !== undefined && focused.readOnly === false) return;
+                root.back();
+                event.accepted = true;
+            }
             Column {
                 width: scroll.availableWidth
                 spacing: Theme.gap
@@ -259,9 +274,9 @@ Item {
                 Column {
                     width: parent.width
                     spacing: Theme.gap * 2
-                    StateMessage { width: parent.width; visible: root.errors[root.section] !== undefined && root.errors[root.section] !== ""; state: "error"; message: "Could not read " + root.section; description: root.errors[root.section] || ""; action: "Retry"; onActivated: root.refresh() }
-                    StateMessage { width: parent.width; visible: root.errors.sources !== undefined && root.errors.sources !== ""; state: "error"; message: "Could not read repository sources (repo-status)"; description: root.errors.sources || ""; action: "Retry source read / Refresh"; onActivated: root.refresh() }
-                    StateMessage { width: parent.width; visible: root.sectionLoading; state: root.snapshots[root.section] ? "stale" : "loading"; message: root.snapshots[root.section] ? "Refreshing local snapshot…" : "Reading " + root.section + "…"; description: root.snapshots[root.section] ? "Previous snapshot — actions disabled until refreshed." : "Nothing runs during discovery." }
+                    StateMessage { width: parent.width; visible: root.errors[root.section] !== undefined && root.errors[root.section] !== ""; kind: "error"; message: "Could not read " + root.section; description: root.errors[root.section] || ""; action: "Retry"; onActivated: root.refresh() }
+                    StateMessage { width: parent.width; visible: root.errors.sources !== undefined && root.errors.sources !== ""; kind: "error"; message: "Could not read repository sources (repo-status)"; description: root.errors.sources || ""; action: "Retry source read / Refresh"; onActivated: root.refresh() }
+                    StateMessage { width: parent.width; visible: root.sectionLoading; kind: root.snapshots[root.section] ? "stale" : "loading"; message: root.snapshots[root.section] ? "Refreshing local snapshot…" : "Reading " + root.section + "…"; description: root.snapshots[root.section] ? "Previous snapshot — actions disabled until refreshed." : "Nothing runs during discovery." }
                     SelectableText { width: parent.width; visible: root.notice !== ""; text: root.notice; Accessible.name: "Security request notice or read diagnostics" }
                     Loader {
                         id: body

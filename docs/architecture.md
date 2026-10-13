@@ -181,6 +181,7 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `Apps`: starts user apps outside the shell's cgroup (§5, plan 074).
   - `Keyboard`: the keyboard layout from one `hyprctl -j devices` read plus Hyprland's `activelayout` event, and the lock-key reader (plans 079, 080).
   - `ClockDayName`: pure date-format handling shared by the `haseen.clock` widget and calendar panel.
+  - `SecurityRoute`: the one-shot page/item hand-off from the menu's Security rows to the optional `haseen.security` panel (plan 088); `shell/Haseen/SecurityEvidence.js` validates the VAPT CLI's JSON for both, so neither plugin imports the other's files.
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
 
@@ -220,19 +221,23 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `screen: var` (the `ShellScreen` for bar widgets and panels)
 - `haseen.security` (plan 088) is explicitly off in shipped `shell.json`,
   panel-only and lazy. Its read-only `Read.qml` processes consume the CLI's
-  versioned evidence; `Model.js` validates schemas and fixed verb/argv shapes,
-  not a second ownership or privilege policy. `haseen.menu` keeps its static
+  versioned evidence; `Haseen/SecurityEvidence.js` validates their schemas and
+  `Model.js` builds fixed verb/argv shapes, not a second ownership or
+  privilege policy. `haseen.menu` keeps its static
   provider map: Security rows use fixed enable/package guards and one exact
   panel-toggle action. Internal typed page/item roles transfer one consumed
-  in-memory selection, never shell source or a dynamic contribution registry.
+  in-memory selection through `SecurityRoute`, never shell source or a
+  dynamic contribution registry.
   Every action goes through `Apps.launch`; previews use Process argv only.
   Service argv includes the displayed unit/FragmentPath expectations; the CLI
   checks them before terminal consent and revalidates again before the root
   gateway. Detached launch has no completion contract: Refresh/reopen only,
   no polling, optimistic success, persisted addresses/drafts or settings writer.
   Identical menu guard expressions share one result per finite batch. The
-  Security enablement CLI reads configuration without loading provisioning or
-  local-action modules; disabled Security providers still read no inventory.
+  menu answers the enablement guard `haseen vapt menu --enabled` from the
+  shell's own plugin flag without running it; the CLI itself reads
+  configuration without loading provisioning or local-action modules.
+  Disabled Security providers still read no inventory.
 - Safe mode (plan 061): while `~/.local/state/haseen/safe-mode` exists (JSON `{reason, since}`; `haseen shell recover safe-mode on|off`), `Plugins.held(id)` is true for every plugin whose origin is not `builtin` (user, user:omarchy, user:dms, omarchy, dms). A held plugin has no `entryUrl` and `Config.isEnabled` is false for it, so the running shell unloads it without a restart. A user copy of a built-in id gives way to the built-in. `shell plugins` over IPC reports `held` per plugin and a `safeMode` object. `haseen shell run` creates the state directory, because a `FileView` watch needs its parent to exist.
 
 ### 5.3 `shell.json`
