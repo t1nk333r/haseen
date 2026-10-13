@@ -256,8 +256,9 @@ native text editing. No GUI fingerprint entry duplicates terminal authorization.
 - Root-only unchanged-anchor journal:
   `share/haseen/layers/vapt/workflow_ca.py:109`, `:151` (`ca_status`, `mutate`).
 - Behavioural action suites: `tests/test-vapt-services.sh:1` and
-  `tests/test-vapt-net.sh:1`; owned stubs fail if executed, fixture gateways
-  capture consent/argv, loopback requests prove path confinement, fixture
+  `tests/test-vapt-net.sh:1`; every executed host program is chosen as
+  sysroot + path (`vapt_program`, `host_program`), so the fixture's recording
+  stubs show exactly which program ran; fixture gateways capture consent/argv, loopback requests prove path confinement, fixture
   transactions prove typed fingerprint/modified-anchor preservation and
   failed-updater honesty, and byte manifests prove preview write-freedom.
 - Security UI suite: `tests/test-vapt-security-ui.sh` runs the production
@@ -365,8 +366,8 @@ No trust decision follows from a panel launch or inspection.
 
 Hermetic fixture verification covers service gateways without live control,
 neutral listener argv without a live listener, confined HTTP bytes over local
-ephemeral loopback sockets, and CA filesystem transactions with an injected
-updater. No external target, live desktop, system trust mutation, installed
+ephemeral loopback sockets, and CA filesystem transactions whose updater is
+the fixture root's recording stub. No external target, live desktop, system trust mutation, installed
 security tool or real interactive workstation shell is exercised. Source
 ownership metadata does not attest retained file bytes.
 The panel is exercised in an offscreen Window with production QML and mocked
@@ -488,8 +489,8 @@ terminal typed-fingerprint authorization remain, including with --yes.
 `tests/test-vapt-net.sh:276` exercises failing/successful CLI fixture updaters,
 exact JSON state/reason/transaction, --yes refusal without typing, pending
 removal and a changed anchor at the root lock. The fixture gateway calls the
-real mutation library with its library-only root/updater seams, never the host
-updater. `tests/test-vapt-confinement-adversarial.sh:125` strengthens failed_remove
+real mutation library with its library-only root seam; the updater it runs is
+the fixture root's stub, never the host updater. `tests/test-vapt-confinement-adversarial.sh:125` strengthens failed_remove
 to require unknown, the exact reason, removing, unchanged false and absent
 anchor. `tests/test-vapt-ui-adversarial.sh:106` exercises real form visibility,
 retry Review, separate fingerprint/path operands and foreign/modified refusal.
