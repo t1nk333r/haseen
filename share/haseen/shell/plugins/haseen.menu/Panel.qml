@@ -835,10 +835,8 @@ Item {
             Plugins.warnOnce("menu-provider:" + e.provider, "menu: unknown provider '" + e.provider + "' on " + id);
             return;
         }
-        if (e.provider.startsWith("security-")) {
-            const cached = (Model.memory.providerRows[id] || []).filter(r => r.kind === "security-route").map(r => Object.assign({}, r, {disabledNow: true, description: "Previous snapshot — refreshing installed evidence"}));
-            applyRows(id, cached.concat(Model.securityInfo(id, "loading", "Nothing runs during discovery.")), false);
-        }
+        if (e.provider.startsWith("security-"))
+            applyRows(id, Model.securityRefreshing(id, Model.memory.providerRows[id]), false);
         if (providerQueue.indexOf(id) < 0)
             providerQueue = providerQueue.concat([id]);
         startProvider();
@@ -874,7 +872,7 @@ Item {
             return;
         }
         guardsPending = false;
-        const script = Model.guardScript(items);
+        const script = Model.guardScript(items, Config.pluginEntry("haseen.security").enabled === true);
         if (script === "")
             return;
         guardProc.command = ["bash", "-c", "PATH=\"$1:$PATH\"; eval \"$2\"", "bash", binDir, script];
