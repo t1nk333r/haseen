@@ -2,10 +2,8 @@
 # haseen:summary Show every setting, its value, where it is stored and what changes it
 # haseen:args [--json]
 #
-# haseen keeps settings in six stores on purpose (see share/haseen/lib/
-# settings.sh for why each one is where it is). This command is the index over
-# all of them, so "what is my desktop set to" is one question again instead of
-# six kinds of file and 130 commands.
+# haseen keeps settings in six stores on purpose (share/haseen/lib/settings.sh
+# says why each one is where it is). This command lists all of them.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/settings.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/settings.sh"

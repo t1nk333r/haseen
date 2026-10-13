@@ -1,14 +1,13 @@
 # shellcheck shell=bash
-# btop. Sourced by bin/haseen-seed-user, which defines DEFAULTS, CONFIG and
-# COMPOSE and calls seed_main once.
+# btop. Sourced by bin/haseen-seed-user.
 #
 # haseen:seed $CONFIG/btop/btop.conf|resource monitor settings
 # haseen:seed $CONFIG/btop/themes/current.theme|link to the theme pipeline's colours
 #
 # The colours belong to the theme pipeline: `haseen theme set` renders
 # share/haseen/themed/btop.theme.tpl to current/theme/btop.theme. The seed adds
-# only what that does not cover — btop's own settings, and the themes link that
-# makes `color_theme = "current"` resolve to the rendered file.
+# btop's own settings and the link that makes `color_theme = "current"`
+# resolve to the rendered file.
 seed_main() {
     seed_user_file "$DEFAULTS/btop/btop.conf" "$CONFIG/btop/btop.conf"
     local link="$CONFIG/btop/themes/current.theme"

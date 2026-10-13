@@ -15,6 +15,7 @@ set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 
 # Every seed module may use these.
+# shellcheck disable=SC2034  # read by the modules sourced below
 DEFAULTS="$HASEEN_PATH/default"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 COMPOSE="$HOME/.XCompose"
@@ -37,10 +38,9 @@ seed_declared() {
             line="${line#*haseen:seed }"
             path="${line%%|*}"
             desc="${line#*|}"
-            # Only the four names a module may use; eval-free expansion.
+            # The names declarations use, expanded without eval.
             path="${path//\$CONFIG/$CONFIG}"
             path="${path//\$COMPOSE/$COMPOSE}"
-            path="${path//\$DEFAULTS/$DEFAULTS}"
             path="${path//\$HOME/$HOME}"
             printf '%s|%s\n' "$path" "$desc"
         done < <(grep -o '# haseen:seed .*' "$f" || true)

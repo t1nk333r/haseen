@@ -3,7 +3,7 @@
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Shell tools: the packages, the rc fragment (default/shell/*.sh), the one-line
-# include seed (seeds/60-shell.sh) and the multiplexer resolver.
+# include seed (seeds/60-shell.sh), the multiplexer resolver and the layouts.
 sandbox shelltools
 
 SHELLDIR="$HASEEN_PATH/default/shell"
@@ -57,9 +57,10 @@ source_fragment() {
 
 source_fragment "$BARE" 'declare -F | sed "s/^declare -f //" | sort | tr "\n" " "'
 assert_status "the fragment sources cleanly with no tools installed" 0 "$STATUS"
+# Matched as whole names: ff is inside _haseen_diff_watch, tdl inside tdlm.
 for fn in compress decompress ga gd fip dip lip rsw lsw dsw \
     tdl tds tdlm tsl hdl hds hdlm hsl ff _haseen_mux; do
-    assert_contains "$fn is defined" "$OUTPUT" "$fn"
+    assert_contains "$fn is defined" " $OUTPUT" " $fn "
 done
 
 # --- command -v guards: a missing tool is a no-op -----------------------------
@@ -406,7 +407,7 @@ run_typed() { # DIR LINE
         _ "$1" "$2"
 }
 run_typed "$LAYOUT" "${typed[0]}"
-assert_eq "a quote in a directory name runs nothing" "" "$(ls "$LAYOUT" | grep -x PWNED)"
+assert_eq "a quote in a directory name runs nothing" "" "$([[ -e $LAYOUT/PWNED ]] && echo PWNED)"
 assert_contains "the pane changes into that directory and starts the layout" "$OUTPUT" \
     "LAYOUT dl claude in $LAYOUT/$EVIL"
 run_typed "$LAYOUT/plain" "${typed[1]}"
@@ -431,7 +432,7 @@ mapfile -t typed <"$TYPED"
 assert_eq "one herdr command per subdirectory" "2" "${#typed[@]}"
 rm -f "$LAYOUT/PWNED"
 run_typed "$LAYOUT" "${typed[0]}"
-assert_eq "a quote in a directory name runs nothing under herdr either" "" "$(ls "$LAYOUT" | grep -x PWNED)"
+assert_eq "a quote in a directory name runs nothing under herdr either" "" "$([[ -e $LAYOUT/PWNED ]] && echo PWNED)"
 assert_contains "the herdr pane changes into that directory" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/$EVIL"
 run_typed "$LAYOUT/plain" "${typed[1]}"
 assert_contains "the next directory gets a herdr tab running the layout" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/plain"

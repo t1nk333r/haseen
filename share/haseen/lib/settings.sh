@@ -136,8 +136,9 @@ settings_rows() {
         "$(_settings_json .frame.enabled true)" "haseen config edit $shell_json" none
     _settings_row frame.thickness shell.json "$shell_json" \
         "$(_settings_json .frame.thickness 6)" "haseen config edit $shell_json" none
-    # Unset means twice the theme's radius (qs.Haseen Config.frameRadius).
-    # Windows and the menu share it from the next `haseen theme set` (plan 046).
+    # Unset means twice the theme's radius (qs.Haseen Config.frameRadius). The
+    # frame and the menu follow an edit at once, the windows from the next
+    # `haseen theme set` (plan 046).
     _settings_row frame.radius shell.json "$shell_json" \
         "$(_settings_json .frame.radius "(theme radius x2)")" "haseen config edit $shell_json" none
 

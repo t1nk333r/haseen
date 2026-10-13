@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# haseen's shell fragment — the single entry point. `haseen seed user` appends
-# one line to ~/.bashrc (and ~/.zshrc if it exists) that sources this file.
+# haseen's shell fragment, the single entry point. `haseen seed user` adds one
+# line sourcing this file to ~/.bashrc (and ~/.zshrc if it exists), once.
 # haseen owns everything under default/shell/ and replaces it on upgrade; your
 # rc stays yours.
 #

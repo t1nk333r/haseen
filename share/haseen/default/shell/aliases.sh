@@ -1,7 +1,6 @@
 # shellcheck shell=bash
-# haseen's aliases. Sourced by default/shell/init.sh, which is sourced by one
-# line in ~/.bashrc (and ~/.zshrc). haseen owns this file: it is replaced on
-# upgrade, so put your own aliases in your rc, not here.
+# haseen's aliases, sourced by init.sh. haseen replaces this file on upgrade;
+# your own aliases belong in your rc.
 #
 # Adapted from Omarchy (MIT, Copyright (c) David Heinemeier Hansson):
 # default/bash/aliases. Changes: every alias is behind a `command -v` guard, so
