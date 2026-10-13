@@ -259,8 +259,11 @@ assert_contains "compress without an argument explains itself" "$OUTPUT" "Usage:
 assert_status "and fails" 1 "$STATUS"
 
 # ga/gd against a throwaway repository. git is stubbed in the sandbox PATH, so
-# the real binary is named explicitly for the fixture repo.
+# the real binary is named explicitly for the fixture repo. The sandbox lives
+# inside this checkout: the ceiling keeps git from ever finding the checkout's
+# own repository, where ga and gd would add and delete real branches.
 GIT="$(PATH=/usr/bin:/bin command -v git)"
+CEILING="GIT_CEILING_DIRECTORIES=$SANDBOX/wt"
 REPOD="$SANDBOX/wt/project"
 mkdir -p "$REPOD"
 (
@@ -272,16 +275,32 @@ GITPATH="$SANDBOX/gitpath"
 mkdir -p "$GITPATH"
 cp -a "$BARE"/. "$GITPATH/"
 ln -sf "$GIT" "$GITPATH/git"
-capture env -i HOME="$HOME" PATH="$GITPATH" bash --noprofile --norc -c \
+capture env -i HOME="$HOME" PATH="$GITPATH" "$CEILING" bash --noprofile --norc -c \
     ". '$SHELLDIR/init.sh'; cd '$REPOD' && ga feature >/dev/null && basename \"\$PWD\" && gd -y >/dev/null && basename \"\$PWD\""
 assert_status "ga then gd succeeds" 0 "$STATUS"
 assert_contains "ga lands in the worktree" "$OUTPUT" "project--feature"
 assert_eq "gd leaves no worktree behind" "" "$(ls -d "$SANDBOX/wt/project--feature" 2>/dev/null)"
 assert_eq "gd deleted the branch" "" "$("$GIT" -C "$REPOD" branch --list feature)"
-capture env -i HOME="$HOME" PATH="$GITPATH" bash --noprofile --norc -c \
+capture env -i HOME="$HOME" PATH="$GITPATH" "$CEILING" bash --noprofile --norc -c \
     ". '$SHELLDIR/init.sh'; cd '$REPOD' && gd -y"
 assert_contains "gd refuses outside a worktree" "$OUTPUT" "is not a <repo>--<branch> worktree"
 assert_status "and fails" 1 "$STATUS"
+
+# --- your names win --------------------------------------------------------------
+# haseen's functions never replace a name you already use: a function or alias
+# from your rc, or a program on PATH. haseen's gd removes a worktree and
+# deletes its branch; it must never stand in for yours.
+SHADOW="$SANDBOX/shadow"
+mkdir -p "$SHADOW"
+cp -a "$BARE"/. "$SHADOW/"
+printf '#!/bin/sh\necho NCOMPRESS\n' >"$SHADOW/compress"
+chmod +x "$SHADOW/compress"
+capture env -i HOME="$HOME" PATH="$SHADOW" bash --noprofile --norc -c \
+    "function gd { echo USER-GD; }; . '$SHELLDIR/init.sh'; builtin cd '$WORK' && gd; compress; type -t decompress"
+assert_status "the fragment sources over your own names" 0 "$STATUS"
+assert_contains "your gd function survives the include" "$OUTPUT" "USER-GD"
+assert_contains "a compress program on PATH is not hidden" "$OUTPUT" "NCOMPRESS"
+assert_contains "a name nobody uses is still defined" "$OUTPUT" "function"
 
 # --- an interactive rc with the user's own aliases ----------------------------
 # Interactive bash expands aliases while it parses a sourced file, so the
@@ -305,23 +324,31 @@ cp -a "$GITPATH"/. "$FAKE_EZA/"
 printf '#!/bin/sh\nexit 0\n' >"$FAKE_EZA/eza"
 chmod +x "$FAKE_EZA/eza"
 interactive() { # COMMAND — run it in `bash -i` after the rc above, from $WORK
-    capture env -i HOME="$HOME" PATH="$FAKE_EZA" bash --noprofile --rcfile "$RC" -i -c \
+    capture env -i HOME="$HOME" PATH="$FAKE_EZA" "$CEILING" bash --noprofile --rcfile "$RC" -i -c \
         "builtin cd '$WORK' && $1"
 }
-interactive 'printf "dir=%s\n" "$HASEEN_SHELL_DIR"; for f in decompress ga gd ff tdl _haseen_mux; do declare -F "$f" >/dev/null && printf "%s=function\n" "$f"; done'
+interactive 'printf "dir=%s\n" "$HASEEN_SHELL_DIR"; for f in decompress ga gd ff tdl _haseen_mux; do printf "%s=%s\n" "$f" "$(type -t "$f")"; done'
 assert_status "an aliased rc still sources the fragment" 0 "$STATUS"
 assert_not_contains "no syntax error from an alias named like a function" "$OUTPUT" "syntax error"
 assert_not_contains "no missing sibling file" "$OUTPUT" "No such file"
 assert_not_contains "the user's cd alias never ran" "$OUTPUT" "ZD-JUMPED"
 assert_contains "the fragment finds its own directory" "$OUTPUT" "dir=$(builtin cd "$SHELLDIR" && pwd -P)"
-# The user's alias still wins at the prompt (their rc, their choice); the
-# function is defined underneath it and reachable as \ga.
-for fn in decompress ga gd ff tdl _haseen_mux; do
-    assert_contains "$fn is defined under the user's aliases" "$OUTPUT" "$fn=function"
+for fn in decompress ga gd ff; do
+    assert_contains "the user's $fn alias is left alone, no function under it" "$OUTPUT" "$fn=alias"
+done
+for fn in tdl _haseen_mux; do
+    assert_contains "$fn, a name the rc does not use, is defined" "$OUTPUT" "$fn=function"
 done
 interactive 'alias ls'
 assert_contains "the user's own ls alias wins over haseen's" "$OUTPUT" "ls --my-own-flags"
-interactive "builtin cd '$REPOD' && \\ga feature2 >/dev/null && basename \"\$PWD\" && \\gd -y >/dev/null && basename \"\$PWD\""
+
+# ga and gd move with the real cd, not a user's cd alias.
+cat >"$RC" <<EOF
+zd() { echo "ZD-JUMPED \$*"; }
+alias cd=zd
+[ -r "$INCLUDE" ] && . "$INCLUDE"
+EOF
+interactive "builtin cd '$REPOD' && ga feature2 >/dev/null && basename \"\$PWD\" && gd -y >/dev/null && basename \"\$PWD\""
 assert_status "ga then gd work with cd aliased" 0 "$STATUS"
 assert_contains "ga moves with the real cd, not the alias" "$OUTPUT" "project--feature2"
 assert_not_contains "ga/gd never ran the user's cd alias" "$OUTPUT" "ZD-JUMPED"
@@ -339,3 +366,72 @@ EOF
 interactive 'type -t tdl'
 assert_not_contains "a silent cd alias cannot redirect the sources" "$OUTPUT" "DECOY-SOURCED"
 assert_contains "and the functions still load" "$OUTPUT" "function"
+
+# --- what the layouts type is quoted -------------------------------------------
+# tdlm types `cd <dir> && …` into a pane, whose shell runs it. A directory name
+# is data: one carrying a quote and a command must only be cd'd into.
+LAYOUT="$SANDBOX/layout"
+EVIL="a'; echo pwned >PWNED; '"
+mkdir -p "$LAYOUT/$EVIL" "$LAYOUT/plain"
+TYPED="$SANDBOX/typed"
+LAYOUTPATH="$SANDBOX/layoutpath"
+mkdir -p "$LAYOUTPATH"
+cp -a "$BARE"/. "$LAYOUTPATH/"
+# The fake tmux records the text each send-keys types (C-m is Enter) and
+# answers new-window with a pane id.
+cat >"$LAYOUTPATH/tmux" <<'EOF'
+#!/bin/bash
+case "$1" in
+new-window) echo %9 ;;
+send-keys)
+    shift
+    [ "$1" = -t ] && shift 2
+    [ "$1" = -l ] && shift
+    for a in "$@"; do [ "$a" = C-m ] || printf '%s\n' "$a" >>"$TYPED"; done
+    ;;
+esac
+exit 0
+EOF
+chmod +x "$LAYOUTPATH/tmux"
+capture env -i HOME="$HOME" PATH="$LAYOUTPATH" TYPED="$TYPED" TMUX=/nonexistent,1,0 TMUX_PANE=%1 \
+    bash --noprofile --norc -c ". '$SHELLDIR/init.sh'; builtin cd '$LAYOUT' && tdlm claude"
+assert_status "tdlm drives tmux" 0 "$STATUS"
+assert_eq "one command per subdirectory" "2" "$(wc -l <"$TYPED")"
+# Run each typed line as the pane's shell would, with the layout stubbed: the
+# first pane is the one tdlm ran in ($LAYOUT), the second opens in its dir.
+mapfile -t typed <"$TYPED"
+run_typed() { # DIR LINE
+    capture env -i PATH="$BARE" bash --noprofile --norc -c \
+        'function _haseen_layout { echo "LAYOUT $* in $PWD"; }; function tdl { _haseen_layout dl "$@"; }; builtin cd "$1" && eval "$2"' \
+        _ "$1" "$2"
+}
+run_typed "$LAYOUT" "${typed[0]}"
+assert_eq "a quote in a directory name runs nothing" "" "$(ls "$LAYOUT" | grep -x PWNED)"
+assert_contains "the pane changes into that directory and starts the layout" "$OUTPUT" \
+    "LAYOUT dl claude in $LAYOUT/$EVIL"
+run_typed "$LAYOUT/plain" "${typed[1]}"
+assert_contains "the next directory gets a window running the layout" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/plain"
+
+# herdr gets the same text through `herdr pane run`.
+: >"$TYPED"
+cat >"$LAYOUTPATH/herdr" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+"tab create") echo '{"result":{"root_pane":{"pane_id":"p9"}}}' ;;
+"pane run") printf '%s\n' "$4" >>"$TYPED" ;;
+esac
+exit 0
+EOF
+chmod +x "$LAYOUTPATH/herdr"
+ln -sf "$(PATH=/usr/bin:/bin command -v jq)" "$LAYOUTPATH/jq"
+capture env -i HOME="$HOME" PATH="$LAYOUTPATH" TYPED="$TYPED" HERDR_PANE_ID=p1 HERDR_WORKSPACE_ID=w1 \
+    bash --noprofile --norc -c ". '$SHELLDIR/init.sh'; builtin cd '$LAYOUT' && hdlm claude"
+assert_status "hdlm drives herdr" 0 "$STATUS"
+mapfile -t typed <"$TYPED"
+assert_eq "one herdr command per subdirectory" "2" "${#typed[@]}"
+rm -f "$LAYOUT/PWNED"
+run_typed "$LAYOUT" "${typed[0]}"
+assert_eq "a quote in a directory name runs nothing under herdr either" "" "$(ls "$LAYOUT" | grep -x PWNED)"
+assert_contains "the herdr pane changes into that directory" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/$EVIL"
+run_typed "$LAYOUT/plain" "${typed[1]}"
+assert_contains "the next directory gets a herdr tab running the layout" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/plain"

@@ -1,36 +1,34 @@
 # shellcheck shell=bash
-# haseen's shell functions. Sourced by default/shell/init.sh, which is sourced
-# by one line in ~/.bashrc (and ~/.zshrc). haseen owns this file: it is
-# replaced on upgrade, so put your own functions in your rc, not here.
+# haseen's shell functions, sourced by init.sh. haseen replaces this file on
+# upgrade; your own functions belong in your rc.
 #
 # Adapted from Omarchy (MIT, Copyright (c) David Heinemeier Hansson):
 # default/bash/fns/{compression,worktrees,ssh-port-forwarding,rsyncing,tmux,herdr}.
 #
 # Changes from upstream:
-#   - every function that needs a tool checks for it with `command -v` and says
-#     what is missing instead of failing with "command not found";
-#   - `gd` asks with `read` instead of `gum`, which haseen does not ship;
-#   - the eight layout names dispatch through one resolver (_haseen_mux), so
-#     `tdl` and `hdl` both do the right thing on a machine that has only one of
-#     the two multiplexers, and herdr wins when both are available;
+#   - a name you already use (your alias or function, a program on PATH such
+#     as ncompress's `compress`) stays yours: haseen's function is not defined;
+#   - a function that needs a tool says which one is missing;
+#   - `gd` asks with `read`, not `gum`, which haseen does not ship;
+#   - the eight layout names share one resolver (_haseen_mux), so `tdl` and
+#     `hdl` both work with whichever multiplexer exists, herdr first;
 #   - the layouts take the editor from $EDITOR and the agent from $HASEEN_AGENT
-#     (`haseen setup default agent`) instead of hard-coding nvim and opencode;
-#   - `iso2sd` and `format-drive` are deliberately NOT ported: they run `sudo
-#     dd`/`sgdisk` against a whole disk, and in haseen every privileged
-#     mutation goes through the dry-run helpers in lib/common.sh and gets a
-#     --dry-run. That is `haseen drive select` / `haseen drive info` territory,
-#     not an rc fragment's;
-#   - the `ssh` reconnect wrapper is not ported either: wrapping the ssh binary
-#     in a retry loop for every login shell was not asked for;
-#   - the file is sourced from an interactive rc, where bash expands the
-#     user's aliases while it parses: every function is defined with the
-#     `function name {` form (an alias named `ga` or `ff` would otherwise turn
-#     `ga() {` into a syntax error) and every `cd` is `builtin cd`.
+#     instead of nvim and opencode, and quote what they type into a pane;
+#   - `iso2sd`, `format-drive` and the `ssh` reconnect wrapper are not ported
+#     (plan 038);
+#   - every function uses the `function name {` form and `builtin cd`: bash
+#     expands the user's aliases while it parses a file sourced from an
+#     interactive rc, and an alias named `ga` turns `ga() {` into a syntax
+#     error even where the definition is skipped.
+
+# _haseen_free NAME — true while NAME is not an alias, function, builtin or
+# command. Each public function below is defined only if its name is free.
+function _haseen_free { ! command -v "$1" >/dev/null 2>&1; }
 
 # --- archives ---------------------------------------------------------------
 
 # compress PATH — tar.gz the file or directory, next to it.
-function compress {
+_haseen_free compress && function compress {
     if [ -z "${1:-}" ]; then
         echo "Usage: compress <file|dir>" >&2
         return 1
@@ -40,7 +38,7 @@ function compress {
 
 # decompress ARCHIVE... — expand a tar.gz (a function, not an alias, so it can
 # check its argument).
-function decompress {
+_haseen_free decompress && function decompress {
     if [ -z "${1:-}" ]; then
         echo "Usage: decompress <file.tar.gz>" >&2
         return 1
@@ -54,7 +52,7 @@ function decompress {
 # --- git worktrees ----------------------------------------------------------
 
 # ga BRANCH — new worktree and branch beside this repository; jump into it.
-function ga {
+_haseen_free ga && function ga {
     if [ -z "${1:-}" ]; then
         echo "Usage: ga <branch>" >&2
         return 1
@@ -75,7 +73,7 @@ function ga {
 }
 
 # gd [-y] — remove the worktree you are in, and its branch.
-function gd {
+_haseen_free gd && function gd {
     local assume_yes=0 reply cwd worktree root branch
     case "${1:-}" in
     -y | --yes) assume_yes=1 ;;
@@ -115,7 +113,7 @@ function gd {
 # --- ssh port forwards ------------------------------------------------------
 
 # fip HOST PORT... — forward remote ports to the same local ports.
-function fip {
+_haseen_free fip && function fip {
     if [ "$#" -lt 2 ]; then
         echo "Usage: fip <host> <port> [port...]" >&2
         return 1
@@ -129,7 +127,7 @@ function fip {
 }
 
 # dip PORT... — stop forwarding those ports.
-function dip {
+_haseen_free dip && function dip {
     if [ "$#" -eq 0 ]; then
         echo "Usage: dip <port> [port...]" >&2
         return 1
@@ -145,7 +143,7 @@ function dip {
 }
 
 # lip — list the forwards this shell's user has open.
-function lip {
+_haseen_free lip && function lip {
     pgrep -af "ssh.*-L [0-9]+:localhost:[0-9]+" || echo "No active forwards"
 }
 
@@ -153,7 +151,7 @@ function lip {
 
 # rsw SRC DEST — mirror SRC to DEST now, then on every change. DEST may be
 # remote (rsw ~/Work/app host:Work/app).
-function rsw {
+_haseen_free rsw && function rsw {
     if [ "$#" -ne 2 ]; then
         echo "Usage: rsw <source> <destination>" >&2
         return 1
@@ -179,7 +177,7 @@ function rsw {
 }
 
 # lsw — list the watchers rsw started.
-function lsw {
+_haseen_free lsw && function lsw {
     local pid cmd rest found=0
     while read -r pid cmd; do
         rest="${cmd##*rsw-watch }"
@@ -190,7 +188,7 @@ function lsw {
 }
 
 # dsw — stop every watcher rsw started.
-function dsw {
+_haseen_free dsw && function dsw {
     local pid found=0
     for pid in $(pgrep -f 'rsw-watch '); do
         if kill -- -"$pid" 2>/dev/null; then
@@ -265,14 +263,14 @@ function _haseen_diff_watch {
     fi
 }
 
-function tdl { _haseen_layout dl "$@"; }
-function tds { _haseen_layout ds "$@"; }
-function tdlm { _haseen_layout dlm "$@"; }
-function tsl { _haseen_layout sl "$@"; }
-function hdl { _haseen_layout dl "$@"; }
-function hds { _haseen_layout ds "$@"; }
-function hdlm { _haseen_layout dlm "$@"; }
-function hsl { _haseen_layout sl "$@"; }
+_haseen_free tdl && function tdl { _haseen_layout dl "$@"; }
+_haseen_free tds && function tds { _haseen_layout ds "$@"; }
+_haseen_free tdlm && function tdlm { _haseen_layout dlm "$@"; }
+_haseen_free tsl && function tsl { _haseen_layout sl "$@"; }
+_haseen_free hdl && function hdl { _haseen_layout dl "$@"; }
+_haseen_free hds && function hds { _haseen_layout ds "$@"; }
+_haseen_free hdlm && function hdlm { _haseen_layout dlm "$@"; }
+_haseen_free hsl && function hsl { _haseen_layout sl "$@"; }
 
 # --- tmux layouts -----------------------------------------------------------
 
@@ -321,10 +319,12 @@ function _haseen_tmux_ds {
     tmux select-pane -t "$editor_pane"
 }
 
-# one dl window per subdirectory.
+# One dl window per subdirectory. The pane's shell runs what is typed, so every
+# word is quoted with %q, and the layout is reached by its private name: a tdl
+# of the user's own may stand where haseen's would.
 function _haseen_tmux_dlm {
     _haseen_tmux_ready || return 1
-    local ai ai2 base first dir dirpath pane_id
+    local ai ai2 base first dir dirpath command pane
     ai="$(_haseen_agent "${1:-}")"
     ai2="${2:-}"
     base="$PWD"
@@ -333,13 +333,17 @@ function _haseen_tmux_dlm {
     for dir in "$base"/*/; do
         [ -d "$dir" ] || continue
         dirpath="${dir%/}"
+        printf -v command '_haseen_layout dl %q' "$ai"
+        [ -n "$ai2" ] && printf -v command '%s %q' "$command" "$ai2"
         if [ "$first" -eq 1 ]; then
-            tmux send-keys -t "$TMUX_PANE" "cd '$dirpath' && tdl $ai $ai2" C-m
+            printf -v command 'cd %q && %s' "$dirpath" "$command"
+            pane="$TMUX_PANE"
             first=0
         else
-            pane_id="$(tmux new-window -c "$dirpath" -P -F '#{pane_id}')"
-            tmux send-keys -t "$pane_id" "tdl $ai $ai2" C-m
+            pane="$(tmux new-window -c "$dirpath" -P -F '#{pane_id}')"
         fi
+        tmux send-keys -t "$pane" -l "$command"
+        tmux send-keys -t "$pane" C-m
     done
 }
 
@@ -414,6 +418,7 @@ function _haseen_herdr_ds {
     herdr pane run "$ai_pane" "$(_haseen_agent)" >/dev/null
 }
 
+# One dl tab per subdirectory, typed as _haseen_tmux_dlm types it.
 function _haseen_herdr_dlm {
     _haseen_herdr_ready || return 1
     local ai ai2 base first dir dirpath command pane_id
@@ -425,7 +430,7 @@ function _haseen_herdr_dlm {
     for dir in "$base"/*/; do
         [ -d "$dir" ] || continue
         dirpath="${dir%/}"
-        printf -v command 'hdl %q' "$ai"
+        printf -v command '_haseen_layout dl %q' "$ai"
         [ -n "$ai2" ] && printf -v command '%s %q' "$command" "$ai2"
         if [ "$first" -eq 1 ]; then
             printf -v command 'cd %q && %s' "$dirpath" "$command"
@@ -482,7 +487,7 @@ function _haseen_herdr_sl {
 
 # ff [dir] — pick a file with fzf, previewed with bat. Prints the path, so it
 # composes: $EDITOR "$(ff)".
-function ff {
+_haseen_free ff && function ff {
     if ! command -v fzf >/dev/null 2>&1; then
         echo "ff: needs fzf" >&2
         return 1
@@ -497,3 +502,5 @@ function ff {
         fzf --preview "$preview"
     fi
 }
+
+unset -f _haseen_free
