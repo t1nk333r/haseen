@@ -67,12 +67,23 @@ limine)
 systemd-boot | grub) ;;
 *) die "could not detect the bootloader on the ESP (see: haseen doctor)" ;;
 esac
+# sudo_is_test_stub — the sudo on PATH is a file under this checkout's
+# tests/.out/, where tests/lib.sh writes its stubs (resolved through links). An
+# installed tree has no tests/, and a real sudo is never there.
+sudo_is_test_stub() {
+    local sudo stubs
+    sudo="$(command -v sudo)" && sudo="$(readlink -f -- "$sudo")" || return 1
+    stubs="$(readlink -f -- "$HASEEN_PATH/../../tests/.out")" && [[ -d $stubs ]] || return 1
+    [[ $sudo == "$stubs"/* ]]
+}
+
 # HASEEN_SYSROOT redirects reads only; sudo, sbctl and the firmware they write
 # are this machine's. A real run would sign and enroll the live firmware from a
-# fixture's facts (its dbDefault/KEKDefault among them), so it is refused, as is
-# any real run as root, where sb_root bypasses sudo. tests/test-secureboot.sh
-# sets HASEEN_TEST_STUBBED_SUDO when sudo is its recorder.
-if in_sysroot && ! $DRY_RUN && { [[ ${HASEEN_TEST_STUBBED_SUDO:-} != 1 ]] || ((EUID == 0)); }; then
+# fixture's facts (its dbDefault/KEKDefault among them), so it is refused. The
+# one exception is tests/test-secureboot.sh's recorder: HASEEN_TEST_STUBBED_SUDO=1,
+# not root (sb_root would bypass sudo), and sudo resolving to the test stub.
+if in_sysroot && ! $DRY_RUN &&
+    ! { [[ ${HASEEN_TEST_STUBBED_SUDO:-} == 1 ]] && ((EUID != 0)) && sudo_is_test_stub; }; then
     die "HASEEN_SYSROOT=$HASEEN_SYSROOT describes another system, but setup would sign and enroll this machine's firmware: use --dry-run with HASEEN_SYSROOT, or unset it"
 fi
 sb_reexec_as_root "$(readlink -f "$0")" "$@"

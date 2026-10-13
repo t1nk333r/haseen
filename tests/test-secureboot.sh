@@ -32,15 +32,16 @@ scratch() {
 }
 
 # recorder — sudo that records its argv in $SANDBOX/sudo.log and runs nothing.
-# `sbctl verify --json` answers with $SANDBOX/verify.json; tee drains stdin.
-# HASEEN_TEST_STUBBED_SUDO tells setup that sudo is this recorder, so a
-# non-dry run under HASEEN_SYSROOT may proceed (it refuses otherwise).
+# `sbctl verify --json` answers with $SANDBOX/verify.json; the file writers
+# (tee, and append_root_file's sh -c around tee) drain stdin.
+# With HASEEN_TEST_STUBBED_SUDO set and sudo resolving into tests/.out (the
+# stub dir), setup lets a non-dry run under HASEEN_SYSROOT proceed.
 recorder() {
     : >"$SANDBOX/sudo.log"
     stub sudo "printf '%s\n' \"\$*\" >>'$SANDBOX/sudo.log'
 case \"\$*\" in
 'sbctl verify --json') cat '$SANDBOX/verify.json' ;;
-tee*) cat >/dev/null ;;
+tee* | 'sh -c'*) cat >/dev/null ;;
 esac
 exit 0"
     export HASEEN_TEST_STUBBED_SUDO=1
@@ -327,6 +328,21 @@ assert_status "sysroot without dry-run: refused" 1 "$STATUS"
 assert_contains "sysroot without dry-run: reason" "$OUTPUT" "use --dry-run with HASEEN_SYSROOT"
 assert_eq "sysroot without dry-run: nothing privileged ran" "" "$(<"$SANDBOX/sudo.log")"
 assert_not_contains "sysroot without dry-run: no plan" "$OUTPUT" "enrollment:"
+# The marker alone does not open it: the sudo on PATH has to be the stub under
+# tests/.out. Here a recorder outside it stands in for any other sudo.
+elsewhere="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sb-sudo-XXXX")"
+cp "$SANDBOX/stubs/sudo" "$elsewhere/sudo"
+capture env HASEEN_TEST_STUBBED_SUDO=1 PATH="$elsewhere:$PATH" HASEEN_SYSROOT="$root" haseen secureboot setup --yes <<<"ENROLL"
+assert_status "sysroot, marker, sudo outside the stubs: refused" 1 "$STATUS"
+assert_contains "sysroot, marker, sudo outside the stubs: reason" "$OUTPUT" "use --dry-run with HASEEN_SYSROOT"
+assert_eq "sysroot, marker, sudo outside the stubs: nothing privileged ran" "" "$(<"$SANDBOX/sudo.log")"
+ln -s "$elsewhere/sudo" "$SANDBOX/stubs/sudo-link"
+mv -f "$SANDBOX/stubs/sudo-link" "$SANDBOX/stubs/sudo"
+capture env HASEEN_TEST_STUBBED_SUDO=1 HASEEN_SYSROOT="$root" haseen secureboot setup --yes <<<"ENROLL"
+assert_status "sysroot, marker, a stub that links outside: refused" 1 "$STATUS"
+assert_eq "sysroot, marker, a stub that links outside: nothing privileged ran" "" "$(<"$SANDBOX/sudo.log")"
+rm -f "$SANDBOX/stubs/sudo"
+rm -rf "$elsewhere"
 
 # --- the verify gate: an unsigned boot file blocks enrollment -----------------
 recorder
