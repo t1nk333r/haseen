@@ -3926,6 +3926,125 @@ def lock_fd(path, number, kind='user', root=''):
         os.close(authority)
 
 
+RC_SEPARATORS = {'\n', ';', '&', '&&', '||', '|', '|&', '(', ';;'}
+RC_REDIRECTS = {'<', '>', '>>', '<<', '<<-', '<<<', '<&', '>&', '&>'}
+RC_KEYWORDS = {'then', 'else', 'elif', 'do', 'if', 'while', 'until', '!', '{'}
+RC_ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*=')
+RC_VARIABLE = re.compile(r'\$(?:\{(HOME|XDG_CONFIG_HOME)\}|(HOME|XDG_CONFIG_HOME)(?![A-Za-z0-9_])|\{XDG_CONFIG_HOME:-([^}]*)\})')
+
+
+def rc_tokens(text):
+    """The words and control operators of a POSIX/bash/zsh rc file, as far as
+    finding its `. FILE` and `source FILE` commands needs: comments, quotes,
+    backslashes, line continuations and here-document bodies are honoured. A $
+    or ~ the shell would not expand (quoted or escaped) becomes NUL, so it can
+    never expand into a path. Returns ('word', text) and ('op', operator)."""
+    tokens, word, started, pending, heredocs, i = [], [], False, None, [], 0
+
+    def flush():
+        nonlocal word, started, pending
+        if started:
+            value = ''.join(word)
+            if pending:
+                heredocs.append((pending == '<<-', value.replace('\0', '$')))
+                pending = None
+            tokens.append(('word', value))
+        word, started = [], False
+
+    while i < len(text):
+        char = text[i]
+        if char == '\\' and i + 1 < len(text):
+            if text[i + 1] != '\n':
+                word.append('\0' if text[i + 1] in '$~' else text[i + 1])
+                started = True
+            i += 2
+        elif char == "'":
+            end = text.find("'", i + 1)
+            end = len(text) if end < 0 else end
+            word.append(re.sub('[$~]', '\0', text[i + 1:end]))
+            started, i = True, end + 1
+        elif char == '"':
+            i += 1
+            while i < len(text) and text[i] != '"':
+                if text[i] == '\\' and text[i + 1:i + 2] in ('$', '`', '"', '\\', '\n'):
+                    if text[i + 1] != '\n':
+                        word.append('\0' if text[i + 1] == '$' else text[i + 1])
+                    i += 2
+                else:
+                    word.append('\0' if text[i] == '~' else text[i])
+                    i += 1
+            started, i = True, i + 1
+        elif char == '#' and not started:
+            while i < len(text) and text[i] != '\n':
+                i += 1
+        elif char in ' \t':
+            flush()
+            i += 1
+        elif char in '\n;&|()<>':
+            flush()
+            operator = next((op for op in ('<<<', '<<-', '&&', '||', '|&', ';;', '<<', '>>', '<&', '>&', '&>')
+                             if text.startswith(op, i)), char)
+            i += len(operator)
+            if operator in ('<<', '<<-'):
+                pending = operator
+            tokens.append(('op', operator))
+            if operator == '\n':
+                for strip, delimiter in heredocs:
+                    while i < len(text):
+                        end = text.find('\n', i)
+                        end = len(text) if end < 0 else end
+                        line, i = text[i:end], end + 1
+                        if (line.lstrip('\t') if strip else line) == delimiter:
+                            break
+                heredocs.clear()
+        else:
+            word.append(char)
+            started, i = True, i + 1
+    flush()
+    return tokens
+
+
+def rc_expand(word, home, config_home):
+    """WORD with ~, $HOME and $XDG_CONFIG_HOME (and its :- default) expanded as
+    the shell would, or None when anything else would be expanded."""
+    if word == '~' or word.startswith('~/'):
+        word = home + word[1:]
+
+    def variable(match):
+        if match.group(3) is not None:
+            return config_home or rc_expand(match.group(3), home, config_home) or '\0'
+        return home if (match.group(1) or match.group(2)) == 'HOME' else config_home
+
+    word = RC_VARIABLE.sub(variable, word)
+    return None if '$' in word or '`' in word or '\0' in word else word
+
+
+def rc_sources(text, link, home, config_home=''):
+    """Whether an rc file's own commands source LINK: `. LINK` or `source LINK`
+    at a command position, outside comments, quotes and here-documents. A
+    mention anywhere else (a comment, an echo) does not count."""
+    command, sourcing, redirect = True, False, False
+    want = os.path.normpath(link)
+    for kind, value in rc_tokens(text):
+        if kind == 'op':
+            redirect = value in RC_REDIRECTS
+            command = value in RC_SEPARATORS or (command and redirect)
+            sourcing = False
+        elif redirect:
+            redirect = False
+        elif sourcing:
+            path = rc_expand(value, home, config_home)
+            if path is not None and os.path.normpath(path) == want:
+                return True
+            sourcing = False
+        elif command:
+            if value in ('.', 'source'):
+                sourcing, command = True, False
+            elif value not in RC_KEYWORDS and not RC_ASSIGNMENT.match(value):
+                command = False
+    return False
+
+
 def report_requires(path, group):
     try:
         text = metadata_read(path)
@@ -4536,8 +4655,11 @@ def main():
                     or observed_resolve(Path(args[0]), options.root) != resolved):
                 raise ValueError('redirected native executable')
         elif options.operation == 'includes':
+            # includes RC LINK: RC's own commands source LINK (HOME and
+            # XDG_CONFIG_HOME expand as in the user's shell).
             path = observed_resolve(Path(str(options.root) + args[0]), options.root)
-            if not path.is_file() or not any(include in path.read_text() for include in args[1:]):
+            if not path.is_file() or not rc_sources(path.read_text(errors='replace'), args[1],
+                                                    os.environ.get('HOME', ''), os.environ.get('XDG_CONFIG_HOME', '')):
                 return 1
         elif options.operation == 'interpreter': print(system_python(options.root, compatible=args != ['any'])[1])
         elif options.operation == 'coae-interpreter': coae_interpreter(*args, root=options.root)

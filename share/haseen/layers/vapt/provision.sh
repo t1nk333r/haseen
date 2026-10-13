@@ -436,15 +436,13 @@ vapt_report() {
     # Dependencies a commit installed: annotations, never launcher roots.
     for logical in "${VAPT_DEPENDENCY_ROWS[@]}"; do printf '# dependency\t%s\n' "$logical"; done
 }
-# vapt_shell_active — 0 when ~/.bashrc or ~/.zshrc already sources the owned
-# link, directly or through the optional shell-rc layer's default/shell/init.sh
-# (which loads the same link; that layer may be absent). Read-only: haseen
-# seeds only the owned link and never edits a user rc file (plan 087 batch C).
+# vapt_shell_active — 0 when a command in ~/.bashrc or ~/.zshrc sources the
+# owned link (a comment or other mention does not count). Read-only: user rc
+# files belong to the user, so haseen only reports the line to add.
 vapt_shell_active() {
-    local general="${HASEEN_INSTALL_PATH:-$HASEEN_PATH}/default/shell/init.sh"
-    local include="$HASEEN_USER_CONFIG/vapt/shell.sh" rc
+    local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-        vapt_meta includes "$rc" "$include" "$general" 2>/dev/null && return 0
+        vapt_meta includes "$rc" "$HASEEN_USER_CONFIG/vapt/shell.sh" 2>/dev/null && return 0
     done
     return 1
 }

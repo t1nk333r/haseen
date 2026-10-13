@@ -347,27 +347,36 @@ assert_contains 'explicit user uv bin honored' "$OUTPUT" "$SANDBOX/custom-uv"
 assert_not_contains 'explicit user uv bin replaces default' "$OUTPUT" "$XDG_DATA_HOME/uv/bin"
 vapt_tools_untouched fragment
 
-# Activation is read-only: an rc (even a symlinked one) that already sources
-# the link, or the optional shell-rc layer's init.sh, counts; otherwise the
-# exact line is reported. No rc is ever written or invented.
-for included in yes init no; do
-    env_case "vapt-env-rc-link-$included"
+# Activation is read-only: a command in the rc (even a symlinked one) that
+# sources the link counts, whether it names the absolute path or $HOME. A
+# comment, an echo or the source of another file does not, and then the exact
+# line is reported. No rc is ever written or invented.
+for kind in absolute home comment echo other none; do
+    env_case "vapt-env-rc-$kind"
     printf '# managed elsewhere\n' >"$ROOT/managed.rc"
-    case "$included" in
-    yes) printf '[ -r "%s" ] && . "%s"\n' "$VAPT_LINK" "$VAPT_LINK" >>"$ROOT/managed.rc" ;;
-    init) printf '. "%s"\n' "$VAPT_INCLUDE" >>"$ROOT/managed.rc" ;;
-    esac
+    # shellcheck disable=SC2016  # the rc line itself names $HOME
+    case "$kind" in
+    absolute) printf '[ -r "%s" ] && . "%s"\n' "$VAPT_LINK" "$VAPT_LINK" ;;
+    home) printf '%s\n' '[ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"' ;;
+    comment) printf '# [ -r "%s" ] && . "%s"\n' "$VAPT_LINK" "$VAPT_LINK" ;;
+    echo) printf 'echo ". %s"\n' "$VAPT_LINK" ;;
+    other) printf '. "%s"\n' "$HASEEN_PATH/default/shell/init.sh" ;;
+    esac >>"$ROOT/managed.rc"
     ln -s /managed.rc "$TEST_HOME/.bashrc"
     before="$(cat "$ROOT/managed.rc")"
     env_install
-    assert_status "$included rc include apply" 0 "$STATUS"
-    assert_eq "$included symlinked rc unchanged" "$before" "$(cat "$ROOT/managed.rc")"
-    assert_eq "$included rc still a link" /managed.rc "$(readlink "$TEST_HOME/.bashrc")"
-    assert_contains "$included rc include environment state" "$(report)" $'# environment\tok'
-    if [[ $included == no ]]; then
-        assert_contains 'an unincluded rc gets the line reported' "$OUTPUT" 'add this line yourself'
+    assert_status "$kind rc apply" 0 "$STATUS"
+    assert_eq "$kind symlinked rc unchanged" "$before" "$(cat "$ROOT/managed.rc")"
+    assert_eq "$kind rc still a link" /managed.rc "$(readlink "$TEST_HOME/.bashrc")"
+    assert_contains "$kind rc environment state" "$(report)" $'# environment\tok'
+    applied="$OUTPUT"
+    vapt_api status
+    if [[ $kind == absolute || $kind == home ]]; then
+        assert_not_contains "$kind: an rc that sources the link is reused, nothing reported" "$applied" 'add this line yourself'
+        assert_contains "$kind: status sees the activation" "$OUTPUT" 'ok: an interactive shell rc sources the VAPT link'
     else
-        assert_not_contains "$included: an existing include is reused, nothing reported" "$OUTPUT" 'add this line yourself'
+        assert_contains "$kind: apply reports the line to add" "$applied" 'add this line yourself'
+        assert_contains "$kind: status reports the line to add" "$OUTPUT" 'to activate it, add: [ -r'
     fi
 done
 env_case vapt-env-existing-zsh

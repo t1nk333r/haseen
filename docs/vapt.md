@@ -557,11 +557,12 @@ without launching anything or replacing system Python. It exposes
 `HASEEN_VAPT_COAE_ENV` but does not auto-activate that environment. The layer
 seeds only an owned link to the fragment, `~/.config/haseen/vapt/shell.sh`. It
 never creates, appends to or otherwise edits a user file such as `~/.bashrc` or
-`~/.zshrc`, which belong to you. If an rc already sources the link, or sources
-the optional shell-rc layer's `default/shell/init.sh` (which loads the same
-link), interactive shells pick it up. Otherwise apply and
-`haseen layer status vapt` print the exact line you may add yourself (written
-with the absolute path; the missing line is reported, not counted as degraded):
+`~/.zshrc`, which belong to you. If a command in one of them already sources
+the link (`.` or `source`, with the absolute path, `~`, `$HOME` or
+`$XDG_CONFIG_HOME`; a comment or other mention does not count), interactive
+shells pick it up. Otherwise apply and `haseen layer status vapt` print the
+exact line you may add yourself (written with the absolute path; the missing
+line is reported, not counted as degraded):
 
 ```sh
 [ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"

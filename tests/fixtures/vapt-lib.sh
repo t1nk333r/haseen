@@ -14,7 +14,6 @@ VAPT_FX="$FIXTURES/vapt-host"
 VAPT_LAYER="$HASEEN_PATH/layers/vapt"
 VAPT_FRAGMENT="$HASEEN_PATH/default/vapt/shell.sh"
 VAPT_META="$VAPT_LAYER/metadata.py"
-VAPT_INCLUDE="$HASEEN_PATH/default/shell/init.sh"
 
 # Privileged fixture paths are checked all the way back to /. A CI checkout
 # may sit below a host-runner-owned mount (such as /__w) that the unprivileged

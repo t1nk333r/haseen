@@ -46,9 +46,9 @@ choice. Applied without groups it refuses, which once aborted the installer
 after the earlier layers had applied (plan 087 batch B). `./install.sh
 --vapt-groups` remains the installer route, and `--pick` with it is refused.
 Shell activation seeds only the owned link `~/.config/haseen/vapt/shell.sh`.
-The layer never edits `~/.bashrc` or `~/.zshrc`; it reuses an rc or shell-rc
-include that already sources the link and otherwise prints the exact line to
-add (plan 087 batch C, `docs/vapt.md`).
+The layer never edits `~/.bashrc` or `~/.zshrc`; it reuses an rc whose own
+command already sources the link and otherwise prints the exact line to add
+(plan 087 batch C, `docs/vapt.md`).
 
 Plan 087 extends this layer with ten more tool groups from oniomarchy's
 categories, reviewed package aliases and dependency roles, canonical URL

@@ -364,9 +364,9 @@ provenance.
   requested picker was skipped silently.
 - **Shell activation (batch C).** The layer seeds only the owned link
   `~/.config/haseen/vapt/shell.sh` and never edits `~/.bashrc` or `~/.zshrc`.
-  An rc that already sources the link, or sources the optional shell-rc
-  layer's `default/shell/init.sh` (absent on this branch), is reused. When
-  none does, apply and status print the exact line the user may add,
+  An rc whose own command sources the link (`metadata.py:rc_sources`; a
+  comment or other mention does not count) is reused. When none does, apply
+  and status print the exact line the user may add,
   `[ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"`
   (written with the absolute path). That is reported, not degraded.
   `append_user_file` had no other caller and was removed from `common.sh`.
@@ -528,9 +528,10 @@ hermetic driver; curl/gpg/pacman-key/pacman/sudo are stubs):
   `vapt` choice is dropped with a reason instead of aborting the installer;
   `--pick --vapt-groups` is refused before the tree or any layer (batch C).
 - `tests/test-vapt-env.sh` (batch C): no rc is written or invented. An
-  existing, symlinked or zsh rc stays byte-identical. An rc that sources the
-  link or the shell-rc include is reused silently, and otherwise apply and
-  status print the exact line.
+  existing, symlinked or zsh rc stays byte-identical. An rc whose command
+  sources the link (absolute path or `$HOME`) is reused silently; a comment,
+  an echo or the source of another file is not, and apply and status print
+  the exact line.
 
 Historical, batch A evidence (fixtures only): `QT_QPA_PLATFORM=offscreen
 tests/run.sh` on each oniomarchy suite — consent 96/96, trust-adversarial
