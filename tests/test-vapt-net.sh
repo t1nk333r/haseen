@@ -100,11 +100,19 @@ with patch.object(socket,'getfqdn',side_effect=AssertionError('reverse lookup'))
     server=LiteralHTTPServer(('127.0.0.1',0),functools.partial(ConfinedHandler,root_fd=rootfd))
 server.request_idle_seconds=.1;server.request_total_seconds=.35
 thread=threading.Thread(target=server.serve_forever);thread.start()
-def request(path):
+def request(path,headers={}):
     connection=http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=3)
-    connection.request('GET',path);response=connection.getresponse();status=response.status;data=response.read();connection.close();return status,data
+    connection.request('GET',path,headers=headers);response=connection.getresponse();status=response.status;data=response.read();connection.close();return status,data
 try:
     assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
+    # A DNS-rebinding page reaches the helper under its own name.
+    status,data=request('/scan-two.txt',{'Host':'rebind.attacker.example:'+str(server.server_port)})
+    assert status==421 and b'Second owned usage' not in data,(status,data)
+    assert request('/scan-two.txt',{'Host':'localhost:'+str(server.server_port)})[0]==200
+    assert request('/scan-two.txt',{'Host':'[::1]:'+str(server.server_port)})[0]==421
+    with socket.create_connection(('127.0.0.1',server.server_port),timeout=3) as twice:
+        twice.sendall(b'GET /scan-two.txt HTTP/1.1\r\nHost: localhost\r\nHost: rebind.attacker.example\r\nConnection: close\r\n\r\n')
+        assert twice.makefile('rb').readline().split()[1]==b'421'
     idle=socket.create_connection(('127.0.0.1',server.server_port),timeout=2)
     try:assert request('/scan-two.txt')==(200,b'Second owned usage.\n')
     finally:idle.close()
@@ -147,6 +155,12 @@ try:
     assert request('/file')==(200,b'data\n')
 finally:
     server.shutdown();thread.join();server.server_close();os.close(filefd)
+from workflow_actions import accepted_hosts
+addresses=[{'address':'192.0.2.5','family':'ipv4'},{'address':'fe80::1%enp5s0','family':'ipv6'}]
+with patch('workflow_actions.local_addresses',return_value=addresses):
+    assert accepted_hosts('0.0.0.0')=={'localhost','192.0.2.5'}
+    assert accepted_hosts('::')=={'localhost','192.0.2.5','fe80::1'}
+assert accepted_hosts('192.0.2.7')=={'localhost','192.0.2.7'} and accepted_hosts('fe80::1%lo')=={'localhost','fe80::1'}
 print('confined directory and fixed single-file endpoint passed')
 PY
 assert_status 'actual confined HTTP handler loopback exercise' 0 "$STATUS"

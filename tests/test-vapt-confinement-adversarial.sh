@@ -23,7 +23,7 @@ class Transport:
     def sendall(self,data): self.output.write(data)
 def request(path,rootfd=None,filefd=None,method='GET'):
     sock=Transport((method+' '+path+' HTTP/1.0\r\nHost: localhost\r\n\r\n').encode())
-    actions.ConfinedHandler(sock,('127.0.0.1',1),types.SimpleNamespace(server_name='fixture',server_port=8080,request_idle_seconds=5.0,request_total_seconds=30.0),root_fd=rootfd,file_fd=filefd)
+    actions.ConfinedHandler(sock,('127.0.0.1',1),types.SimpleNamespace(server_name='fixture',server_port=8080,request_idle_seconds=5.0,request_total_seconds=30.0,accepted_hosts=actions.accepted_hosts('127.0.0.1')),root_fd=rootfd,file_fd=filefd)
     raw=sock.output.getvalue();header,body=raw.split(b'\r\n\r\n',1);return int(header.split()[1]),body,header
 selected=root/'selected'; selected.mkdir();(selected/'inside').write_bytes(b'SELECTED\n');(selected/'sub').mkdir();(selected/'sub/leaf').write_bytes(b'INNER\n')
 secret=root/'outside-secret';secret.write_bytes(b'OUTSIDE-SECRET\n');(selected/'sym').symlink_to(secret);os.link(secret,selected/'hard')
