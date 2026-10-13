@@ -47,8 +47,7 @@ assert_eq "catalog: fonts carry a family" "" "$(jq -r '.entries[] | select(.cate
 # container entry is run by the docker package.
 assert_eq "catalog: versioned dev refs go through mise" "" "$(jq -r '.entries[] | select(.category == "development" and (.ref | test("@")) and .source != "mise") | .id' "$CATALOG")"
 assert_eq "catalog: dev databases run in docker" "" "$(jq -r '.entries[] | select(.container != null and .ref != "docker") | .id' "$CATALOG")"
-# An entry that drags `omarchy` in as a dependency has to say so, and only
-# those may: everything else is refused by PKG_DENY (lib/packages.sh).
+# pullsOmarchy lets --yes accept omarchy as a dependency: flea alone (owner).
 assert_eq "catalog: only flea pulls omarchy" "flea" "$(jq -r '.entries[] | select(.pullsOmarchy == true) | .id' "$CATALOG")"
 assert_eq "catalog: an omarchy puller comes from a repo, not Flathub" "aur" "$(jq -r '.entries[] | select(.pullsOmarchy == true) | .source' "$CATALOG")"
 # The vendor mimeapps.list names these, so the catalogue has to carry them.
@@ -368,63 +367,93 @@ assert_contains "terminal: \$TERMINAL honoured" "$OUTPUT" "KITTY --class=haseen.
 capture env -u HASEEN_INLINE bash -c 'haseen install app --installed </dev/null'
 assert_not_contains "terminal: read-only queries stay inline" "$OUTPUT" "FOOT"
 
-# --- flea: the one entry allowed to pull `omarchy` in ------------------------
-# `omarchy` and `omarchy-settings` stay refused as install targets. flea is a
-# leaf app in the [omarchy] repo that depends on `omarchy`, so pacman pulls the
-# pair in; the owner accepted that for flea alone. The guard has to say what is
-# coming before it happens.
+# --- the [omarchy] dependency pull --------------------------------------------
+# omarchy and omarchy-settings stay refused as targets. An install whose
+# closure brings them in prints the closure and asks; --yes answers only for
+# flea, the entry the owner approved ("pullsOmarchy"), and refuses for the
+# rest ([omarchy]'s learn-omarchy and elsewhen also depend on omarchy). The
+# fixture's NAME.deps stands in for pacman -Sp.
 sandbox catalog-flea
 cat_root
 printf '\n[omarchy]\nInclude = /etc/pacman.d/omarchy-mirrorlist\n' >>"$ROOT/etc/pacman.conf"
 mkdir -p "$ROOT/var/lib/pacman/sync"
-printf 'flea\nlocalsend\nomacalc\nherdr\nxdg-terminal-exec\n' >"$ROOT/var/lib/pacman/sync/omarchy.pkgs"
+printf '%s\n' flea localsend omacalc herdr xdg-terminal-exec learn-omarchy elsewhen >"$ROOT/var/lib/pacman/sync/omarchy.pkgs"
+for p in flea learn-omarchy elsewhen; do
+    printf '%s\n' omarchy-keyring omarchy-settings omarchy sddm limine-snapper-sync >"$ROOT/var/lib/pacman/sync/$p.deps"
+done
+printf 'libayatana-appindicator\n' >"$ROOT/var/lib/pacman/sync/localsend.deps"
 
 capture haseen install app flea --dry-run
 assert_status "flea: exit" 0 "$STATUS"
 assert_dry_pure "flea" "$OUTPUT"
-assert_contains "flea: names the dependency it drags in" "$OUTPUT" "depends on the 'omarchy' package"
-assert_contains "flea: prints the whole closure" "$OUTPUT" \
-    "omarchy omarchy-keyring omarchy-settings=4.0.4 hyprland quickshell uwsm sddm"
-assert_contains "flea: the closure reaches the boot pieces" "$OUTPUT" "limine-snapper-sync snapper"
-assert_contains "flea: the closure says when it was read" "$OUTPUT" "as read on 2026-10-05, omarchy 4.0.4-1"
+assert_contains "flea: names what it drags in" "$OUTPUT" "installing flea also installs omarchy omarchy-settings"
+assert_contains "flea: prints the closure pacman resolves" "$OUTPUT" \
+    "pacman would install: flea omarchy-keyring omarchy-settings omarchy sddm limine-snapper-sync"
 for f in /etc/fonts/conf.d/50-omarchy.conf /etc/limine-entry-tool.d/omarchy-uki.conf \
     /etc/mkinitcpio.conf.d/omarchy_hooks.conf /etc/sddm.conf.d/10-wayland.conf \
     /usr/share/applications/mimeapps.list; do
     assert_contains "flea: collision $f" "$OUTPUT" "$f"
 done
 assert_contains "flea: says which subsystem each file lands on" "$OUTPUT" "haseen uses greetd + tuigreet"
+# haseen remove runs pacman -Rns, which takes dependencies nothing else needs.
+assert_contains "flea: removal takes the omarchy packages too" "$OUTPUT" \
+    "removing flea with haseen remove (pacman -Rns) removes omarchy omarchy-settings and their files again"
 assert_contains "flea: comes from the [omarchy] repo, not the AUR" "$OUTPUT" "DRYRUN: sudo pacman -S --needed omarchy/flea"
 assert_not_contains "flea: nothing is built from the AUR" "$OUTPUT" "paru -S --needed flea"
+pkg_fixture flea
+capture haseen remove app flea --dry-run
+assert_contains "flea: removal is pacman -Rns, as the prompt says" "$OUTPUT" "DRYRUN: sudo pacman -Rns flea"
+rm -rf "$ROOT/var/lib/pacman/local/flea-1.0-1"
 
-# The confirmation is real: a refusal installs nothing, --yes answers it.
+# The question is real: a refusal installs nothing, --yes answers it for flea.
 capture env HASEEN_INLINE=1 bash -c 'echo n | haseen install app flea'
 assert_status "flea: a refusal stops it" 1 "$STATUS"
 assert_contains "flea: refusal message" "$OUTPUT" "not confirmed; nothing was installed"
 assert_not_contains "flea: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
 capture env HASEEN_INLINE=1 bash -c 'haseen install app flea --yes </dev/null'
-assert_contains "flea: --yes answers the prompt" "$OUTPUT" "STUB-CALLED: sudo pacman -S --needed --noconfirm omarchy/flea"
+assert_contains "flea: --yes answers the question" "$OUTPUT" "STUB-CALLED: sudo pacman -S --needed --noconfirm omarchy/flea"
 
-# The bare routes name the package directly; they get the same confirmation.
-# (A repo-qualified name such as omarchy/flea is not a package name there.)
+# The bare routes ask the same question, and --yes answers it for flea there too.
 for route in package aur; do
     capture haseen install "$route" flea --dry-run
-    assert_contains "install $route flea: shows the omarchy closure" "$OUTPUT" "depends on the 'omarchy' package"
+    assert_contains "install $route flea: shows the closure" "$OUTPUT" "installing flea also installs omarchy omarchy-settings"
     assert_dry_pure "install $route flea" "$OUTPUT"
     capture env HASEEN_INLINE=1 bash -c 'echo n | haseen install "$1" flea' _ "$route"
     assert_status "install $route flea: a refusal stops it" 1 "$STATUS"
-    assert_contains "install $route flea: refusal message" "$OUTPUT" "not confirmed; nothing was installed"
     assert_not_contains "install $route flea: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
+    capture env HASEEN_INLINE=1 bash -c 'haseen install "$1" flea --yes </dev/null' _ "$route"
+    assert_contains "install $route flea --yes: reaches pacman" "$OUTPUT" "STUB-CALLED: sudo pacman -S --needed --noconfirm"
     capture haseen install "$route" omarchy/flea --dry-run
     assert_status "install $route omarchy/flea: refused" 1 "$STATUS"
     assert_not_contains "install $route omarchy/flea: nothing planned" "$OUTPUT" "DRYRUN: "
 done
-capture haseen install package localsend --dry-run
-assert_not_contains "install package localsend: no omarchy warning" "$OUTPUT" "depends on the 'omarchy' package"
 
-# Everything else in the [omarchy] repo is an ordinary leaf package: no guard.
-capture haseen install app localsend --dry-run
-assert_contains "localsend: straight from the [omarchy] repo" "$OUTPUT" "DRYRUN: sudo pacman -S --needed omarchy/localsend"
-assert_not_contains "localsend: no omarchy warning" "$OUTPUT" "depends on the 'omarchy' package"
+# Any other package that brings omarchy in: asked about, refused under --yes.
+for case in "package learn-omarchy" "aur elsewhen" "package flea learn-omarchy"; do
+    read -ra args <<<"$case"
+    capture env HASEEN_INLINE=1 bash -c 'haseen install "$@" --yes </dev/null' _ "${args[@]}"
+    assert_status "install $case --yes: refused" 1 "$STATUS"
+    assert_contains "install $case --yes: says why" "$OUTPUT" "which --yes never accepts"
+    assert_not_contains "install $case --yes: nothing ran" "$OUTPUT" "STUB-CALLED"
+    capture haseen install "${args[@]}" --dry-run --yes
+    assert_status "install $case --dry-run --yes: refused as the real run would be" 1 "$STATUS"
+done
+capture haseen install package learn-omarchy --dry-run
+assert_status "learn-omarchy dry run: plans after the question" 0 "$STATUS"
+assert_contains "learn-omarchy dry run: shows the closure" "$OUTPUT" "installing learn-omarchy also installs omarchy omarchy-settings"
+capture env HASEEN_INLINE=1 bash -c 'echo n | haseen install package learn-omarchy'
+assert_status "learn-omarchy: a refusal stops it" 1 "$STATUS"
+assert_not_contains "learn-omarchy: nothing ran on refusal" "$OUTPUT" "STUB-CALLED"
+capture env HASEEN_INLINE=1 bash -c 'echo y | haseen install package learn-omarchy'
+assert_contains "learn-omarchy: a typed yes installs it" "$OUTPUT" "STUB-CALLED: sudo pacman -S --needed learn-omarchy"
+
+# A closure without them asks nothing.
+capture haseen install package localsend --dry-run --yes
+assert_status "localsend: exit" 0 "$STATUS"
+assert_not_contains "install package localsend: no omarchy question" "$OUTPUT" "also installs omarchy"
+capture haseen install app localsend --dry-run --yes
+assert_contains "localsend: straight from the [omarchy] repo" "$OUTPUT" "DRYRUN: sudo pacman -S --needed --noconfirm omarchy/localsend"
+assert_not_contains "localsend: no omarchy question" "$OUTPUT" "also installs omarchy"
 
 # The denial itself is unchanged: omarchy is still refused as a target.
 capture haseen install package omarchy --dry-run

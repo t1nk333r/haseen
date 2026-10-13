@@ -113,7 +113,7 @@
     { "id": "herdr", "category": "development", "label": "herdr (multiplexer)", "icon": "", "source": "aur", "ref": "herdr" },
 
     { "id": "yazi", "category": "files", "label": "Yazi (terminal file manager)", "icon": "", "source": "pacman", "ref": "yazi" },
-    { "id": "flea", "category": "files", "label": "flea (GUI file manager)", "icon": "", "source": "aur", "ref": "flea", "pullsOmarchy": true, "note": "owner-approved PKG_DENY exception (2026-10-05, confirmed 2026-10-08): pulls omarchy and omarchy-settings in as dependencies, only after catalog_confirm_omarchy prints the closure and asks" },
+    { "id": "flea", "category": "files", "label": "flea (GUI file manager)", "icon": "", "source": "aur", "ref": "flea", "pullsOmarchy": true, "note": "owner-approved PKG_DENY exception (2026-10-05, confirmed 2026-10-08 and 2026-10-13): pulls omarchy and omarchy-settings in as dependencies; pkg_guard_closure prints the closure and asks, and --yes may answer it for this entry only" },
 
     { "id": "imv", "category": "media", "label": "imv (image viewer)", "icon": "", "source": "pacman", "ref": "imv" },
     { "id": "loupe", "category": "media", "label": "Loupe (image viewer)", "icon": "", "source": "pacman", "ref": "loupe" },

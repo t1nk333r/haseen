@@ -290,9 +290,10 @@ desktop_dry "$FIXTURES/desk-cachyos-amd" base -- --nope
 assert_status "base: unknown option" 1 "$STATUS"
 assert_contains "base: unknown option named" "$OUTPUT" "unknown option '--nope'"
 
-# --- herdr and xdg-terminal-exec need [omarchy] (owner, 2026-10-08) -----------
-# Without the omarchy-repo layer they are skipped with a warning, never built;
-# with it they install from the repo as before.
+# --- herdr and xdg-terminal-exec only from [omarchy] (owner, 2026-10-08) -------
+# Without the omarchy-repo layer they are skipped with a warning; with it they
+# install from [omarchy] and from nothing else: not from an official repo or
+# Chaotic-AUR that carries the same name, and never built from the AUR.
 sandbox desk-omarchy
 fx="$SANDBOX/fx"
 cp -a "$FIXTURES/desk-cachyos-amd/." "$fx/"
@@ -316,19 +317,22 @@ assert_not_contains "omarchy-repo selected: no skip warning" "$OUTPUT" "skipping
 capture env HASEEN_SYSROOT="$fx" haseen layer apply desktop omarchy-repo --dry-run
 assert_contains "omarchy-repo after desktop: still skipped, with the warning" "$OUTPUT" "skipping xdg-terminal-exec herdr"
 
-# The repo already enabled: they install from it, as before.
+# Chaotic-AUR enabled and carrying both, the same names [omarchy] has.
 mkdir -p "$fx/var/lib/pacman/sync"
+printf '[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >>"$fx/etc/pacman.conf"
+printf 'paru\nherdr\nxdg-terminal-exec\nbibata-cursor-theme\n' >"$fx/var/lib/pacman/sync/chaotic-aur.pkgs"
 printf '[omarchy]\nSigLevel = Required DatabaseOptional\nServer = x\n' >>"$fx/etc/pacman.conf"
 printf 'omarchy-keyring\nherdr\nxdg-terminal-exec\nttfx\n' >"$fx/var/lib/pacman/sync/omarchy.pkgs"
 desktop_dry "$fx"
 assert_status "[omarchy] enabled: exit" 0 "$STATUS"
-assert_contains "[omarchy] enabled: both from the repo" "$OUTPUT" \
+assert_contains "[omarchy] enabled: both from [omarchy]" "$OUTPUT" \
     "DRYRUN: sudo pacman -S --needed omarchy/xdg-terminal-exec omarchy/herdr"
+assert_not_contains "[omarchy] enabled: never Chaotic-AUR's build" "$OUTPUT" "chaotic-aur/herdr"
 assert_not_contains "[omarchy] enabled: no skip warning" "$OUTPUT" "skipping xdg-terminal-exec"
 
 # [omarchy] enabled but not carrying them, or its database unreadable (a
-# failed lookup): still skipped with the warning, never built from the AUR,
-# even with an AUR helper at hand.
+# failed lookup): skipped with the warning even though Chaotic-AUR has both
+# and an AUR helper is at hand.
 stub paru 'exit 0'
 for lookup in absent failed; do
     printf 'omarchy-keyring\nttfx\n' >"$fx/var/lib/pacman/sync/omarchy.pkgs"
@@ -337,7 +341,7 @@ for lookup in absent failed; do
     chmod 644 "$fx/var/lib/pacman/sync/omarchy.pkgs"
     assert_status "[omarchy] enabled, lookup $lookup: the desktop still applies" 0 "$STATUS"
     assert_contains "[omarchy] enabled, lookup $lookup: a warning names both" "$OUTPUT" \
-        "skipping xdg-terminal-exec herdr: haseen installs them only prebuilt, and no enabled repository ([omarchy] included) carries them; they are never built from the AUR"
+        "skipping xdg-terminal-exec herdr: haseen installs them only from Omarchy's [omarchy] repo, which does not list them; no other repository is used and nothing is built from the AUR"
     assert_eq "[omarchy] enabled, lookup $lookup: neither is installed from any source" "" \
         "$(grep -E '^DRYRUN: .*(pacman|paru|yay) .*(herdr|xdg-terminal-exec)' <<<"$OUTPUT" || true)"
     assert_contains "[omarchy] enabled, lookup $lookup: the layer completes" "$OUTPUT" "layer desktop applied"
