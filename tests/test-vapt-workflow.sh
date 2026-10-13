@@ -98,6 +98,25 @@ capture env SHELL=/usr/bin/bash haseen-vapt-tool-run nmap --entry /usr/bin/scan-
 assert_status 'session dry-run succeeds with installed shell' 0 "$STATUS"
 assert_eq 'ordinary shell only not selected tool' '/usr/bin/bash -i' "$(jq -r '.shellArgv | join(" ")' <<<"$OUTPUT")"
 assert_eq 'dry-run never opens shell' '' "$(vapt_calls workstation-shell)"
+capture /usr/bin/python3 -I -B "$VAPT_LAYER/workflow.py" tool-run nmap --entry /usr/bin/scan-two
+assert_status 'fixture evidence never starts a session' 1 "$STATUS"
+assert_contains 'fixture session refusal explains itself' "$OUTPUT" 'refused with HASEEN_SYSROOT'
+assert_not_contains 'fixture session refusal prints no document' "$OUTPUT" 'Second owned usage'
+# tool-run prints the document, then replaces itself with the shell. exec
+# keeps no unflushed Python output, so a piped document must be flushed first;
+# the stand-in for execv writes and exits the same way.
+cat >"$SANDBOX/handoff.py" <<'PY'
+import argparse,os,sys
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1]);import workflow as wf
+def execv(path,argv):
+    os.write(1,('SHELL '+path+' '+' '.join(argv)+'\n').encode());os._exit(0)
+args=argparse.Namespace(tool='nmap',entry='/usr/bin/scan-two',command='tool-run',dry_run=False)
+with patch.object(wf,'refuse_fixture_execution',lambda *a:None),patch.object(wf.os,'execv',execv):
+    wf.show_help(args)
+PY
+capture bash -c 'SHELL=/usr/bin/bash /usr/bin/python3 -I -B "$1" "$2" | cat' bash "$SANDBOX/handoff.py" "$VAPT_LAYER"
+assert_eq 'piped document reaches the reader before the shell starts' "Second owned usage."$'\n'"SHELL $ROOT/usr/bin/bash /usr/bin/bash -i" "$OUTPUT"
 capture haseen-vapt-tool-run nmap --json --dry-run
 assert_status 'session JSON rejected' 2 "$STATUS"
 capture haseen-vapt-menu --json

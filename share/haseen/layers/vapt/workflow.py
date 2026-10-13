@@ -431,6 +431,12 @@ def shell_path():
     raise ValueError('no independently installed executable login shell')
 
 
+def refuse_fixture_execution(shell, evidence):
+    """Fixture evidence may preview a session or help binding, never start one."""
+    if ROOT and (shell or evidence['kind'] == 'reviewed-argv'):
+        raise ValueError('explicit help/session execution refused with HASEEN_SYSROOT; use --dry-run')
+
+
 def show_help(args):
     tool, entry = selected(args.tool, args.entry)
     evidence = usage_evidence(tool, entry)
@@ -443,8 +449,7 @@ def show_help(args):
         # Address output is explicit usage-only, not inventory/status evidence.
         # Dry-run does not observe even local interface state.
         return 0
-    if ROOT and (shell or evidence['kind'] == 'reviewed-argv'):
-        raise ValueError('explicit help/session execution refused with HASEEN_SYSROOT; use --dry-run')
+    refuse_fixture_execution(shell, evidence)
     if evidence['kind'] == 'reviewed-argv':
         env = dict(os.environ, PAGER='cat', MANPAGER='cat', TERM='dumb')
         program, *operands = evidence['argv']
@@ -464,6 +469,8 @@ def show_help(args):
         for row in local_addresses(ROOT):
             print('Local address: ' + row['interface'] + ' ' + row['address'])
     if shell:
+        # exec discards Python's buffer: piped output would lose the document.
+        sys.stdout.flush()
         os.execv(host_program(shell, ROOT), [shell, '-i'])
     return 0
 
