@@ -1674,7 +1674,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
             if rel in payloads or rel in new_dirs:
                 return True
         return os.path.lexists(str(root) + '/' + rel)
-    # --- runtime inputs (SEC-STOCK-1) ----------------------------------------
+    # --- runtime inputs -----------------------------------------------------
     # Loader configuration, preload, cache, hwcaps, gconv and NSS inputs decide
     # which code a trusted program executes. Independent of hook relevance:
     # ldconfig/ldconfig.service or the next transaction would consume them.
@@ -1691,7 +1691,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     for name in sorted(set(payloads) | removed):
         if runtime_input(name) and not change_authenticated(name):
             raise ValueError('runtime loader/conversion input from an unauthenticated artifact /' + name)
-    # SEC-HELPER-SELF: haseen runs this very module as root after the commit,
+    # haseen runs this very module as root after the commit,
     # and later audits consume its policy files. Their logical paths as
     # invoked, every link hop and ancestor, and the physical targets (current
     # and future views) may not be replaced, redirected or removed by
@@ -2426,7 +2426,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
                     relevant = True
             if relevant and action['When'] == view and not stock_action(name, action, origin, view):
                 command(action['Exec'], 'relevant hook ' + name, view, direct=True)
-    # SEC-L1: libalpm runs every defined pre_/post_ install/upgrade function
+    # libalpm runs every defined pre_/post_ install/upgrade function
     # through /bin/sh -c. That shell, its link hops and its native closure are
     # base-proven in both snapshots, whatever the function body contains.
     # Any non-exempt .INSTALL may run (libalpm greps its text for the phase).
@@ -2491,7 +2491,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         for start in {str(Path(path).parent) for path in executables + sorted(libraries)}:
             directory = start
             while directory not in ('', '.'):
-                if directory != 'usr':  # the real prefix: the SEC-L2 stdlib guard
+                if directory != 'usr':  # the real prefix: the root stdlib guard below
                     landmarks |= {directory + '/' + name for name in names}
                 directory = str(Path(directory).parent)
         if not usrmerge_lib(view):
@@ -2508,12 +2508,12 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
             return True
         return view == 'PostTransaction' and (path + '/' in physical_newpaths
                                               or any(name.startswith(path + '/') for name in payloads))
-    # The stock stdlib is physical: SEC-L2 guards it by its canonical names,
+    # The stock stdlib is physical: the root stdlib guard keeps it by its canonical names,
     # so a link anywhere on the import roots would let other bytes stand in.
     # The prefix directories and lib-dynload must be real directories, the
     # stdlib zip (if any) a regular file, and every link inside the imported
     # stdlib must resolve within it, never outside or into site-packages
-    # (which -I -S does not import, and which SEC-L2 does not guard). Links
+    # (which -I -S does not import, and which that guard does not cover). Links
     # that start under site-packages are not import roots and are not scanned.
     def unsupported_stdlib(path, why):
         return ValueError('unsupported root Python stdlib layout /' + path + ': ' + why + ' (manual review required)')
@@ -2592,7 +2592,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     # Retained copies are the documented trust boundary (the pre-audit root
     # download already ran them); the transaction may not replace or redirect
     # them, their link hops or their libraries with unauthenticated bytes.
-    # SEC-L2: root metadata runs `/usr/bin/python3 -I -S`; with the stock
+    # Root stdlib guard: root metadata runs `/usr/bin/python3 -I -S`; with the stock
     # startup layout (enforced above) its import path is exactly the stdlib
     # zip, usr/lib/python3.X and its lib-dynload (no
     # site-packages). Unauthenticated additions, replacements or removals
@@ -2643,7 +2643,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     for directory in sorted(stdlib):
         dynload = directory + '/lib-dynload'
         extensions |= {dynload + '/' + name for name in listing(dynload, 'PostTransaction') if name.endswith('.so')}
-    # SEC-PAM1 (A3): the post-commit sudo loads PAM modules (sudo/other
+    # The post-commit sudo loads PAM modules (sudo/other
     # services and their includes), sudo.conf plugins and sudoers
     # group_plugin modules, and PAM may run helper executables. The retained
     # initial configuration is the documented boundary; the transaction may

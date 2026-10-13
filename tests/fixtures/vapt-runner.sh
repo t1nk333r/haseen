@@ -54,7 +54,7 @@ if [[ -n ${VAPT_FAIL_WRITE:-} ]]; then
         printf '%s\n' "$count" >"$VAPT_CALLS/writes"
         [[ $count != "$VAPT_FAIL_WRITE" ]] || { cat >/dev/null; return 1; }
         vapt_state_path_safe "$1" || return 1
-        run python3 "$VAPT_DIR/metadata.py" state-write "$(vapt_read_path "$1")"
+        run python3 -I "$VAPT_DIR/metadata.py" state-write "$(vapt_read_path "$1")"
     }
 fi
 operation="$1"; shift

@@ -8,7 +8,7 @@ vapt_repo_allowed() { [[ $1 =~ ^(core|extra|multilib|blackarch|chaotic-aur|oniom
 # approved private oniomarchy stanza joins VAPT's own configuration only for
 # an operation whose source state is usable (or the exact recorded recovery).
 vapt_meta() {
-    python3 "$VAPT_DIR/metadata.py" "$@" --root "$HASEEN_SYSROOT" ${VAPT_BLACKARCH_STAGED:+--with-blackarch} \
+    python3 -I "$VAPT_DIR/metadata.py" "$@" --root "$HASEEN_SYSROOT" ${VAPT_BLACKARCH_STAGED:+--with-blackarch} \
         ${VAPT_ONIOMARCHY_SCOPE:+--with-oniomarchy}
 }
 vapt_read_path() { if in_sysroot; then sysroot_path "$1"; else printf '%s\n' "$1"; fi; }
@@ -29,13 +29,13 @@ vapt_state_path_safe() {
 vapt_state_write() {
     vapt_state_path_safe "$1" || return 1
     if $DRY_RUN; then write_user_file "$1"
-    else run python3 "$VAPT_DIR/metadata.py" state-write "$(vapt_read_path "$1")"
+    else run python3 -I "$VAPT_DIR/metadata.py" state-write "$(vapt_read_path "$1")"
     fi
 }
 vapt_state_clear() {
     vapt_state_path_safe "$1" || return 1
     if $DRY_RUN; then run rm -f -- "$1"
-    else run python3 "$VAPT_DIR/metadata.py" state-clear "$(vapt_read_path "$1")"
+    else run python3 -I "$VAPT_DIR/metadata.py" state-clear "$(vapt_read_path "$1")"
     fi
 }
 vapt_lifecycle_lock() {
@@ -44,7 +44,7 @@ vapt_lifecycle_lock() {
     $DRY_RUN && return 0
     local path
     path="$(vapt_read_path "$HASEEN_USER_STATE/vapt/lifecycle.lock")" || return 1
-    run python3 "$VAPT_DIR/metadata.py" lock-prepare "$path" || return 1
+    run python3 -I "$VAPT_DIR/metadata.py" lock-prepare "$path" || return 1
     exec {VAPT_LOCK_FD}<"$path" || return 1
     if ! vapt_meta lock-fd "$path" "$VAPT_LOCK_FD"; then
         exec {VAPT_LOCK_FD}<&-
