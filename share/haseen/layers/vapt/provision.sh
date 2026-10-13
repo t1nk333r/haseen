@@ -219,7 +219,7 @@ vapt_snapshot() {
 }
 vapt_identity_ok() {
     local logical="$1" target="$2" scheme host path
-    # Tool-specific mappings must never exempt a forbidden provider.
+    # An Omarchy package never stands for a tool, whatever its URL says.
     [[ ${target##*/} != omarchy* ]] || return 1
     [[ ${VAPT_ID_SOURCE[$logical]:-} != native && ${VAPT_ID_POLICY[$logical]:-} != blocked ]] || return 1
     if [[ ${VAPT_ID_UPSTREAM[$logical]:-} ]]; then
@@ -232,10 +232,6 @@ vapt_identity_ok() {
         [[ $VAPT_URL_HOST == "$host" && ( $VAPT_URL_SCHEME == "$scheme" || $VAPT_URL_SCHEME == https ) ]] || return 1
         [[ $VAPT_URL_PATH == "$path" || $VAPT_URL_PATH == "$path"/* ]] || return 1
     fi
-    case "$logical" in
-    android-tools) [[ $target != blackarch/* || $target == blackarch/android-tools || $target == blackarch/android-sdk-platform-tools ]] ;;
-    *) return 0 ;;
-    esac
 }
 vapt_repo_usable() {
     local repo="$1"
@@ -249,22 +245,28 @@ vapt_repo_usable() {
     *) return 0 ;;
     esac
 }
+# vapt_repo_target REPO LOGICAL [NAME] — REPO's package for LOGICAL by name:
+# the reviewed alias for REPO when there is one, else NAME (BlackArch's name
+# from native.tsv) or LOGICAL itself. Provides never matches here.
 vapt_repo_target() {
-    local repo="$1" logical="$2" mapped="${3:-$2}" key token target='' count=0 exact=false
+    local repo="$1" logical="$2" name="${VAPT_ALIAS[$2/$1]:-${3:-$2}}"
+    vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$repo/$name]:-} ]] && vapt_identity_ok "$logical" "$repo/$name" || return 1
+    printf '%s\n' "$repo/$name"
+}
+# vapt_repo_provider REPO LOGICAL — the one package in REPO that provides
+# LOGICAL and whose URL matches LOGICAL's reviewed upstream identity. An item
+# without such an identity has no provider: an unreviewed Provides line can be
+# any homonym (BlackArch's EOL nodejs-lts-gallium provides nodejs). A reviewed
+# alias or the exact-name policy keeps REPO's lookup to that one name.
+vapt_repo_provider() {
+    local repo="$1" logical="$2" key token target='' count=0 values=()
+    [[ ${VAPT_ID_SOURCE[$logical]:-} == repository && ${VAPT_ID_POLICY[$logical]:-} != exact-name && ! ${VAPT_ALIAS[$logical/$repo]:-} ]] || return 1
     vapt_repo_usable "$repo" || return 1
-    # A reviewed alias names the one concrete package; exact-name policy
-    # keeps any provider from substituting for the item.
-    if [[ ${VAPT_ALIAS[$logical/$repo]:-} ]]; then mapped="${VAPT_ALIAS[$logical/$repo]}"; exact=true; fi
-    [[ ${VAPT_ID_POLICY[$logical]:-} != exact-name ]] || exact=true
-    if [[ ${VAPT_PACKAGE[$repo/$mapped]:-} ]] && vapt_identity_ok "$logical" "$repo/$mapped"; then printf '%s\n' "$repo/$mapped"; return 0; fi
-    ! $exact || return 1
-    local values=()
     for key in "${!VAPT_PACKAGE[@]}"; do
         [[ $key == "$repo/"* ]] || continue
         IFS=, read -r -a values <<<"${VAPT_PROVIDES[$key]:-}"
         for token in "${values[@]}"; do
-            token="${token%%[<>=]*}"
-            [[ $token == "$mapped" ]] || continue
+            [[ ${token%%[<>=]*} == "$logical" ]] || continue
             if vapt_identity_ok "$logical" "$key"; then target="$key"; count=$((count + 1)); fi
             break
         done
@@ -272,8 +274,13 @@ vapt_repo_target() {
     ((count == 1)) || return 1
     printf '%s\n' "$target"
 }
+# vapt_resolve_item LOGICAL — the owner's VAPT source order, an explicit
+# exception to haseen's package order (owner decision, 2026-10-13): pin,
+# BlackArch, pinned native, enabled Chaotic-AUR, CachyOS, Arch, each by name or
+# reviewed alias only; then a reviewed-identity provider in the same order;
+# last, the opted-in private oniomarchy source.
 vapt_resolve_item() {
-    local logical="$1" target='' repo mapped="${VAPT_NATIVE_BA[$1]:-$1}" attempts='' pin_reason=''
+    local logical="$1" target='' repo mapped="${VAPT_NATIVE_BA[$1]:-$1}" attempts='' pin_reason='' how='concrete allowed repository identity'
     VAPT_SOURCE[$logical]=none; VAPT_TARGET[$logical]='-'; VAPT_RESOLUTION[$logical]=unavailable; VAPT_APPLIED[$logical]=skipped
     if [[ $logical == pyrit ]]; then
         VAPT_SOURCE[$logical]=native; VAPT_TARGET[$logical]="${VAPT_NATIVE_SPEC[$logical]}"; VAPT_RESOLUTION[$logical]=resolved
@@ -291,30 +298,26 @@ vapt_resolve_item() {
         pin_reason='pin missing; '
     fi
     attempts+="${attempts:+,}blackarch"
-    if target="$(vapt_repo_target blackarch "$logical" "$mapped")"; then repo=blackarch
+    if target="$(vapt_repo_target blackarch "$logical" "$mapped")"; then :
     elif [[ ${VAPT_NATIVE_SPEC[$logical]:-} ]]; then
         VAPT_SOURCE[$logical]=native; VAPT_TARGET[$logical]="${VAPT_NATIVE_SPEC[$logical]}"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}pinned native fallback"; VAPT_ATTEMPTS[$logical]="$attempts,native"; return 0
     else
-        target=''; attempts+=',native,chaotic-aur'
-        if target="$(vapt_repo_target chaotic-aur "$logical")"; then repo=chaotic-aur
-        else
-            for repo in "${VAPT_REPOS[@]}"; do
-                [[ $repo == cachyos || $repo == cachyos-* ]] || continue
-                attempts+=",$repo"
-                target="$(vapt_repo_target "$repo" "$logical")" && break
-            done
-        fi
+        target=''; attempts+=',native'
+        local tiers=(chaotic-aur)
+        for repo in "${VAPT_REPOS[@]}"; do
+            [[ $repo != cachyos && $repo != cachyos-* ]] || tiers+=("$repo")
+        done
+        tiers+=(core extra multilib)
+        for repo in "${tiers[@]}"; do
+            attempts+=",$repo"
+            target="$(vapt_repo_target "$repo" "$logical")" && break
+        done
+        # Only once no tier has the name, Arch's included: a provider in an
+        # earlier tier must never displace Arch's own package.
         if [[ -z $target ]]; then
-            # Exact-name matches throughout the Arch tier precede providers.
-            local name
-            for repo in core extra multilib; do
-                attempts+=",$repo"
-                name="${VAPT_ALIAS[$logical/$repo]:-$logical}"
-                if vapt_repo_usable "$repo" && [[ ${VAPT_PACKAGE[$repo/$name]:-} ]] && vapt_identity_ok "$logical" "$repo/$name"; then target="$repo/$name"; break; fi
+            for repo in blackarch "${tiers[@]}"; do
+                if target="$(vapt_repo_provider "$repo" "$logical")"; then how='provider matching the reviewed upstream identity'; break; fi
             done
-            if [[ -z $target ]]; then
-                for repo in core extra multilib; do target="$(vapt_repo_target "$repo" "$logical")" && break; done
-            fi
         fi
         if [[ -z $target ]]; then
             local state
@@ -326,7 +329,7 @@ vapt_resolve_item() {
     fi
     VAPT_ATTEMPTS[$logical]="$attempts"
     if [[ -n $target ]]; then
-        VAPT_SOURCE[$logical]="${target%%/*}"; VAPT_TARGET[$logical]="$target"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}concrete allowed repository identity"
+        VAPT_SOURCE[$logical]="${target%%/*}"; VAPT_TARGET[$logical]="$target"; VAPT_RESOLUTION[$logical]=resolved; VAPT_REASON[$logical]="${pin_reason}$how"
         if [[ ${target%%/*} == oniomarchy ]]; then
             VAPT_REASON[$logical]+='; private oniomarchy source (opted in for this operation), exact reviewed mapping; publisher metadata, not independent provenance'
             [[ -z $VAPT_ONIO_UNSEEN ]] ||

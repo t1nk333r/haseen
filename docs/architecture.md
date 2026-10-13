@@ -90,11 +90,15 @@ Rules every layer follows:
   4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
-  VAPT is an explicit exception preserving the owner's security-tool policy:
-  its explicit repository pins precede BlackArch, pinned native adapters,
-  already-enabled Chaotic-AUR, CachyOS, and Arch. Reviewed aliases and
-  canonical upstream identities decide which package may stand for a tool.
-  Its dedicated transaction path
+  VAPT keeps its own order as an explicit exception (owner decision,
+  2026-10-13): explicit repository pins, BlackArch, pinned native adapters,
+  already-enabled Chaotic-AUR, CachyOS, then Arch. It differs because it
+  reproduces the source policy of the owner's waydots security inventory,
+  which consults BlackArch before the general repositories (`docs/vapt.md`),
+  and it has no Omarchy or AUR tier at all. Each tier matches only the
+  tool's name or a reviewed alias, checked against any canonical upstream
+  identity; a Provides line counts only through such a reviewed identity,
+  and only after every tier's name. Its dedicated transaction path
   excludes AUR/Omarchy dependencies, reports unavailable items, and never runs
   the tools it installs. oniomarchy's repository is an opt-in, per-operation,
   x86_64-only last tier (`--with-oniomarchy`, `haseen vapt repo-*`) whose

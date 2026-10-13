@@ -74,18 +74,28 @@ every run, selected or not.
 ## Sources and identity
 
 This layer intentionally does **not** use the general installer's AUR fallback.
-Its source order preserves the waydots security policy:
+Its source order preserves the waydots security policy and is an explicit
+exception to haseen's general package order (owner decision, 2026-10-13):
 
 1. Explicit repository pins (`packages/pins.tsv`): the original `extra` pins
    for `nmap`, `radare2`, `jadx`, `binwalk`, and `dotnet-sdk`; the twelve SDR
    and nine wireless tools Arch publishes, `keepassxc`, `mat2`, `veracrypt`,
    `macchanger`, `tor`, `routersploit` and `remmina` from `extra`;
    `core/openssh`; and `blackarch/set` for the Social-Engineer Toolkit.
-2. BlackArch, with concrete package identity and reviewed providers.
+2. BlackArch.
 3. The pinned native adapter, when one exists.
 4. Already-enabled Chaotic-AUR binary packages.
 5. Enabled CachyOS repositories.
 6. Arch `core`, `extra`, and `multilib`.
+
+Every tier matches only the tool's own name (in BlackArch, the name
+`security/native.tsv` records for a native adapter's tool), or the reviewed
+alias for that repository, and the package must satisfy any upstream identity. A `Provides`
+declaration counts only for an item with a reviewed upstream identity, only
+when no tier publishes the name (Arch's included), and only when the provider's
+URL matches that identity. So BlackArch's end-of-life `nodejs-lts-gallium`,
+which provides `nodejs`, never displaces Arch's `nodejs`, and Chaotic-AUR's
+`chirp-next`, which provides `chirp`, never stands in for `chirp`.
 
 Unavailable pins are reported before the remaining allowed tiers are considered.
 AUR builds, arbitrary repositories, and Omarchy packages/providers are excluded

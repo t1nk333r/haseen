@@ -160,16 +160,21 @@ broken_case 'a dependency with an unknown consumer' sh -c 'printf "libfoo\tnot-a
 broken_case 'a dependency with an explicit install reason' sh -c 'printf "libfoo\t*\textra/libfoo\texplicit\n" >>"$1"' _ "$TREE_VAPT/packages/dependencies.tsv"
 broken_case 'an unknown identity policy' sh -c 'printf "gophish\ttrusted\tno reason\n" >>"$1"' _ "$TREE_VAPT/packages/identity-policy.tsv"
 broken_case 'a pin for a name outside the inventory' sh -c 'printf "xorg-xhost\textra/xorg-xhost\n" >>"$1"' _ "$TREE_VAPT/packages/pins.tsv"
-broken_case 'a pin on a fact-only source' sh -c 'printf "chirp\toniomarchy/chirp-next\n" >>"$1"' _ "$TREE_VAPT/packages/pins.tsv"
+broken_case 'a pin on the private source' sh -c 'printf "chirp\toniomarchy/chirp-next\n" >>"$1"' _ "$TREE_VAPT/packages/pins.tsv"
 broken_case 'a substring identity' sed -i 's#\thttps://github.com/projectdiscovery/httpx\t#\tgithub.com/projectdiscovery/httpx\t#' "$TREE_VAPT/packages/identities.tsv"
 broken_case 'a trailing-slash identity' sed -i 's#\thttps://www.maltego.com\t#\thttps://www.maltego.com/\t#' "$TREE_VAPT/packages/identities.tsv"
 broken_case 'an identity with a port' sed -i 's#\thttps://www.maltego.com\t#\thttps://www.maltego.com:8443\t#' "$TREE_VAPT/packages/identities.tsv"
-broken_case 'a required target on a fact-only source' sed -i 's#^maltego\trepository\t\*\t#maltego\trepository\toniomarchy/maltego\t#' "$TREE_VAPT/packages/identities.tsv"
+broken_case 'a required target on the private source' sed -i 's#^maltego\trepository\t\*\t#maltego\trepository\toniomarchy/maltego\t#' "$TREE_VAPT/packages/identities.tsv"
 
 # --- official pins and the concrete SET mapping -------------------------------
 vapt_sandbox vapt-inventory-pins
 vapt_root
-vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
+# Usable Chaotic-AUR publishing chirp-next, which provides chirp (public sync
+# metadata, 2026-10): no reviewed mapping, so it never stands in for chirp.
+vapt_conf_add $'[chaotic-aur]\nServer = https://cdn-mirror.chaotic.cx/$repo/$arch'
+CHAOTIC_CHIRP=('chaotic-aur|chaotic-keyring|20251028-1|https://aur.chaotic.cx'
+    'chaotic-aur|chirp-next|1:20261009-1|https://chirpmyradio.com/projects/chirp/wiki/Home|chirp')
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "${CHAOTIC_CHIRP[@]}" \
     'extra|gqrx|2.17.6-1|https://gqrx.dk/' 'blackarch|gqrx|2.99-1|https://example.org/another-gqrx' \
     'blackarch|urh|2.9.8-1|https://github.com/jopohl/urh' \
     'core|openssh|10.0p1-1|https://www.openssh.com/portable.html' 'blackarch|openssh|10.1p1-1|https://www.openssh.com/portable.html' \
@@ -182,7 +187,8 @@ assert_eq 'pinned openssh comes from core' core/openssh "$(vapt_field openssh 4)
 assert_eq 'pinned remmina comes from extra' extra/remmina "$(vapt_field remmina 4)"
 assert_eq 'a missing official pin falls through to BlackArch' blackarch/urh "$(vapt_field urh 4)"
 assert_contains 'the missing pin is reported' "$(vapt_field urh 7)" 'pin missing'
-assert_eq 'an item missing everywhere is unavailable' unavailable "$(vapt_field chirp 5)"
+assert_eq 'a Chaotic provider of chirp is no source for it' unavailable "$(vapt_field chirp 5)"
+assert_eq 'chirp-next from Chaotic is not planned' no "$(vapt_planned chaotic-aur/chirp-next)"
 assert_contains 'its attempts are observable' "$(vapt_field chirp 8)" 'blackarch,native,chaotic-aur'
 assert_not_contains 'no service is enabled or started' "$OUTPUT" 'systemctl'
 # Every official pin is the first attempted tier of its item.
@@ -204,15 +210,16 @@ assert_eq 'a set homonym from another upstream is refused' unavailable "$(vapt_f
 assert_eq 'the set homonym is not planned' no "$(vapt_planned blackarch/set)"
 assert_eq 'a BlackArch provider cannot replace the reviewed alias' no "$(vapt_planned blackarch/set-fork)"
 
-# --- fact-only alias targets are never a tier --------------------------------
+# --- without --with-oniomarchy, a host [oniomarchy] stanza is never a tier ----
 vapt_conf_add $'[oniomarchy]\nSigLevel = Required DatabaseRequired\nServer = https://pkgs.oniomarchy.com/$arch'
-vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "${CHAOTIC_CHIRP[@]}" \
     'oniomarchy|chirp-next|0.4.0-1|https://chirpmyradio.com/' 'oniomarchy|supersdr|1-1|https://github.com/ka7oei/supersdr' \
     'oniomarchy|powershell-bin|7.5.3-1|https://github.com/PowerShell/PowerShell'
-vapt_plan 'fact-only source rows' --groups sdr
-assert_eq 'chirp is not resolved from a fact-only source' unavailable "$(vapt_field chirp 5)"
-assert_eq 'supersdr is not resolved from a fact-only source' unavailable "$(vapt_field supersdr 5)"
-assert_not_contains 'nothing is planned from the fact-only source' "$OUTPUT" 'oniomarchy/'
+vapt_plan 'host oniomarchy rows' --groups sdr
+assert_eq 'chirp is resolved from neither the host stanza nor Chaotic' unavailable "$(vapt_field chirp 5)"
+assert_eq 'supersdr is not resolved from the host stanza' unavailable "$(vapt_field supersdr 5)"
+assert_not_contains 'nothing is planned from the host stanza' "$OUTPUT" 'oniomarchy/'
+assert_eq 'nothing is planned from Chaotic for chirp' no "$(vapt_planned chaotic-aur/chirp-next)"
 assert_not_contains 'the host pacman.conf is never rewritten' "$OUTPUT" 'append to /etc/pacman.conf'
 
 # --- canonical URL identities --------------------------------------------------

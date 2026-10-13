@@ -130,8 +130,11 @@ registers nothing with an AI client and starts no MCP server.
 | theharvester | — | BlackArch | `theharvester-git` (alias) | `https://github.com/laramies/theHarvester` |
 | wordlists | — | exact name only | `wordlists` | exact-name policy |
 
-"Usual order" is plan 007's: pins, BlackArch, pinned native, enabled
-Chaotic-AUR, CachyOS, Arch exact then reviewed Provides. (Historical, slice 1A
+"Usual order" is VAPT's own, an explicit exception to haseen's package order
+(owner decision, 2026-10-13; `docs/architecture.md`): pins, BlackArch, pinned
+native, enabled Chaotic-AUR, CachyOS, Arch, each by the item's name or reviewed
+alias only; then, for an item with a reviewed upstream identity, a unique
+provider whose URL matches it, in the same tier order. (Historical, slice 1A
 only: until slice 1B landed, an item whose only publisher is oniomarchy was
 reported unavailable. Slice 1B adds the opt-in private last tier.)
 
@@ -434,8 +437,8 @@ logging stubs (no network, no host state):
   is reported; `social-engineer-toolkit` is `blackarch/set` only with the
   TrustedSec identity, and a BlackArch provider cannot replace the alias.
 - Without `--with-oniomarchy`, rows naming the private source (aliases such as
-  chirp→chirp-next) are never resolved or planned; pins and required targets
-  naming it refuse (the suite's "fact-only" wording predates slice 1B).
+  chirp→chirp-next) are never resolved or planned, and neither is Chaotic-AUR's
+  chirp-next, which provides chirp; pins and required targets naming it refuse.
 - URL identity: case and trailing slash normalised; descendants accepted;
   sibling prefixes, embedded hosts, subdomain tricks, scheme downgrade,
   userinfo, ports, queries, dot segments and a missing URL refused; an http
