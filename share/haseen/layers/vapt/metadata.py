@@ -4203,8 +4203,10 @@ def pinned_signers():
 
 def oniomarchy_population_script(text):
     """Only the literal keyring population operation is accepted. It never
-    runs (--noscriptlet), and haseen does not run --populate either: it adds
-    and lsigns the accepted primaries itself, without publisher ownertrust."""
+    runs, since the package is never installed, and haseen never runs
+    --populate either: it adds and lsigns the accepted primaries itself,
+    without publisher ownertrust. Anything else in the scriptlet is a change
+    worth a manual review."""
     allowed = {'post_install() {', 'post_upgrade() {', 'post_install()', 'post_upgrade()', '{', '}',
                'pacman-key --populate oniomarchy', '/usr/bin/pacman-key --populate oniomarchy'}
     lines = [' '.join(line.split()) for line in text.splitlines()]

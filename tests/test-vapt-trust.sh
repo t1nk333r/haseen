@@ -142,7 +142,11 @@ for name in approved bad revoked expired-key expired-sig ambiguous unapproved ap
     vapt_api install --yes --groups api
     sudo_log="$(vapt_calls sudo)"
     if [[ $name == approved ]]; then
-        assert_status "keyring $name: the pinned keyring is accepted (control)" 0 "$STATUS"
+        # A refused keyring also exits 0 (the source is only unavailable):
+        # acceptance shows in the trust change it leads to.
+        assert_status "keyring $name: the apply completes" 0 "$STATUS"
+        assert_contains "keyring $name: the pinned signer is locally signed (control)" "$sudo_log" "pacman-key --lsign-key $P"
+        assert_contains "keyring $name: the reviewed keyring is populated (control)" "$sudo_log" 'pacman-key --populate blackarch'
     else
         assert_status "keyring $name: a rejected source is unavailable, not a failed apply" 0 "$STATUS"
         assert_not_contains "keyring $name: no pacman-key trust change" "$sudo_log" "pacman-key"
@@ -185,7 +189,8 @@ for variant in reviewed whitespace changed activation hook; do
     fi
     vapt_api install --yes --groups api
     if [[ $variant == reviewed || $variant == whitespace ]]; then
-        assert_status "$variant population script is accepted (control)" 0 "$STATUS"
+        assert_status "$variant population script: the apply completes" 0 "$STATUS"
+        assert_contains "$variant population script is accepted (control)" "$(vapt_calls sudo)" 'pacman-key --populate blackarch'
     else
         assert_status "$variant keyring policy rejection is a source skip" 0 "$STATUS"
         assert_not_contains "$variant rejected before trust mutation" "$(vapt_calls sudo)" 'pacman-key'

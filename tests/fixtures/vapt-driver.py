@@ -161,8 +161,9 @@ def pacman(argv):
                 info = archive.extractfile('.PKGINFO').read().decode()
                 fields = dict(line.split(' = ', 1) for line in info.splitlines() if ' = ' in line)
                 if fields.get('pkgname') == 'oniomarchy-keyring' and '--noscriptlet' in argv:
-                    # The audited keyring's files land like libalpm extracts
-                    # them, so the retained-file authority can be checked.
+                    # Production never commits this package. Should it ever,
+                    # its files land where libalpm would extract them, so
+                    # "nothing reaches the keyrings directory" checks can fail.
                     for member in archive.getmembers():
                         if member.isfile() and member.name.startswith(ONIO_KEYRINGS):
                             target = root / member.name
@@ -175,12 +176,7 @@ def pacman(argv):
             old = next((p for p in installed if p['name'] == name), None)
             record['reason'] = (old or {}).get('reason', 'explicit') if old else (
                 'depend' if '--asdeps' in argv else 'explicit')
-            if name == 'oniomarchy-keyring':
-                # libalpm records the package's file list; an upgrade audit needs it.
-                with tarfile.open(observed(value), 'r:*') as archive:
-                    record['files'] = sorted(m.name + ('/' if m.isdir() else '') for m in archive.getmembers()
-                                             if not m.name.startswith('.'))
-            installed = [p for p in installed if p['name'] != name] + [record]
+            installed =[p for p in installed if p['name'] != name] + [record]
         if '--noscriptlet' not in argv:
             log_helper_path([observed(value) for value in files])
         save_installed(installed)

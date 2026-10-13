@@ -433,7 +433,7 @@ vapt_onio_arch() { printf '%s\n' "$1" >"$ROOT/var/lib/haseen/vapt/fixture-archit
 # vapt_onio_serve [key=value...] — publish the fixture repository the curl stub
 # serves (keyring=VERSION trusted=PIN,ROT revoked=OLD variant=plain|scriptlet|
 # hostile-scriptlet|extra-member|hook|symlink|missing-file exclude=NAME,...
-# dbstatus/pkgstatus=pinned|rotated|wrong|expired|revoked|unknown|multiple|
+# dbstatus/pkgstatus=pinned|rotated|old|wrong|expired|revoked|unknown|multiple|
 # bad|none key=pinned|wrong|extra|revoked|expired pkgdigest=bad). Call after
 # vapt_repos: its records join the fixture JSON production ignores.
 vapt_onio_serve() { python3 "$VAPT_FIXTURE_DRIVER" onio-serve "$@"; }
