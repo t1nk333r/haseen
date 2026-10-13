@@ -110,7 +110,7 @@
     { "id": "tealdeer", "category": "development", "label": "tealdeer (tldr pages)", "icon": "", "source": "pacman", "ref": "tealdeer" },
     { "id": "lazydocker", "category": "development", "label": "lazydocker", "icon": "󰡨", "source": "pacman", "ref": "lazydocker" },
     { "id": "tmux", "category": "development", "label": "tmux", "icon": "", "source": "pacman", "ref": "tmux" },
-    { "id": "herdr", "category": "development", "label": "herdr (multiplexer)", "icon": "", "source": "aur", "ref": "herdr" },
+    { "id": "herdr", "category": "development", "label": "herdr (multiplexer)", "icon": "", "source": "omarchy", "ref": "herdr" },
 
     { "id": "yazi", "category": "files", "label": "Yazi (terminal file manager)", "icon": "", "source": "pacman", "ref": "yazi" },
     { "id": "flea", "category": "files", "label": "flea (GUI file manager)", "icon": "", "source": "aur", "ref": "flea", "pullsOmarchy": true, "note": "owner-approved PKG_DENY exception (2026-10-05, confirmed 2026-10-08 and 2026-10-13): pulls omarchy and omarchy-settings in as dependencies; pkg_guard_closure prints the closure and asks, and --yes may answer it for this entry only" },

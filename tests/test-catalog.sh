@@ -33,12 +33,12 @@ pkg_fixture() { mkdir -p "$ROOT/var/lib/pacman/local/$1-1.0-1"; }
 # --- catalogue validity --------------------------------------------------------
 assert_eq "catalog: valid JSON" 0 "$(jq empty "$CATALOG" >/dev/null 2>&1; echo $?)"
 assert_eq "catalog: unique ids" "" "$(jq -r '[.entries[].id] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$CATALOG")"
-assert_eq "catalog: known sources only" "" "$(jq -r '.entries[] | select(.source | IN("flatpak","pacman","aur","mise") | not) | .id' "$CATALOG")"
+assert_eq "catalog: known sources only" "" "$(jq -r '.entries[] | select(.source | IN("flatpak","pacman","aur","omarchy","mise") | not) | .id' "$CATALOG")"
 assert_eq "catalog: required fields" "" "$(jq -r '.entries[] | select([.id,.label,.icon,.source,.ref,.category] | any(. == null or . == "")) | .id' "$CATALOG")"
 assert_eq "catalog: categories exist" "" "$(jq -r '[.categories[].id] as $c | .entries[] | select(.category | IN($c[]) | not) | .id' "$CATALOG")"
 assert_eq "catalog: no web apps" "" "$(jq -r '.entries[] | select((.id + " " + .label + " " + .ref | ascii_downcase) | test("webapp|web app|https?:|xbox cloud|xbox-cloud")) | .id' "$CATALOG")"
 assert_eq "catalog: flatpak refs are app ids" "" "$(jq -r '.entries[] | select(.source == "flatpak") | .ref' "$CATALOG" | grep -Ev '^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$' || true)"
-assert_eq "catalog: package refs are package names" "" "$(jq -r '.entries[] | select(.source == "pacman" or .source == "aur") | .ref | split(" ")[]' "$CATALOG" | grep -Ev '^[a-z0-9@._+][a-z0-9@._+-]*$' || true)"
+assert_eq "catalog: package refs are package names" "" "$(jq -r '.entries[] | select(.source == "pacman" or .source == "aur" or .source == "omarchy") | .ref | split(" ")[]' "$CATALOG" | grep -Ev '^[a-z0-9@._+][a-z0-9@._+-]*$' || true)"
 assert_eq "catalog: fonts carry a family" "" "$(jq -r '.entries[] | select(.category == "font" and (.family // "") == "") | .id' "$CATALOG")"
 # The development category holds language toolchains (mise), the Docker
 # databases and plain CLI tools (gh, lazygit, mise, dua, tealdeer: plan 038;
@@ -454,6 +454,19 @@ assert_not_contains "install package localsend: no omarchy question" "$OUTPUT" "
 capture haseen install app localsend --dry-run --yes
 assert_contains "localsend: straight from the [omarchy] repo" "$OUTPUT" "DRYRUN: sudo pacman -S --needed --noconfirm omarchy/localsend"
 assert_not_contains "localsend: no omarchy question" "$OUTPUT" "also installs omarchy"
+
+# herdr comes from [omarchy] alone (owner, 2026-10-08), even when Chaotic-AUR
+# carries it, and is skipped with a warning without [omarchy].
+printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >>"$ROOT/etc/pacman.conf"
+printf 'herdr\n' >"$ROOT/var/lib/pacman/sync/chaotic-aur.pkgs"
+capture haseen install app herdr --dry-run
+assert_contains "herdr: from [omarchy]" "$OUTPUT" "DRYRUN: sudo pacman -S --needed omarchy/herdr"
+assert_not_contains "herdr: never Chaotic-AUR's or the AUR's build" "$OUTPUT" "chaotic-aur/herdr"
+sed -i '/^\[omarchy\]/,+1d' "$ROOT/etc/pacman.conf"
+capture haseen install app herdr --dry-run
+assert_contains "herdr: without [omarchy], skipped with the command that adds it" "$OUTPUT" \
+    "skipping herdr: haseen installs them only from Omarchy's [omarchy] repo, which is not enabled. To add them: haseen layer apply omarchy-repo"
+assert_eq "herdr: without [omarchy], nothing installed" "" "$(grep -E '^DRYRUN: .*(pacman|paru) .*herdr' <<<"$OUTPUT" || true)"
 
 # The denial itself is unchanged: omarchy is still refused as a target.
 capture haseen install package omarchy --dry-run

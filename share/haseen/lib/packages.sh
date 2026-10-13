@@ -324,7 +324,7 @@ pkg_install_omarchy() {
     elif $DRY_RUN && _omarchy_repo_applied_before; then
         from_repo=("${missing[@]/#/omarchy/}")
     else
-        warn "skipping ${missing[*]}: haseen installs them only from Omarchy's [omarchy] repo, which is not enabled. To add them: haseen layer apply omarchy-repo ${LAYER_NAME:-desktop}"
+        warn "skipping ${missing[*]}: haseen installs them only from Omarchy's [omarchy] repo, which is not enabled. To add them: haseen layer apply omarchy-repo${LAYER_NAME:+ $LAYER_NAME}"
         return 0
     fi
     ((${#from_repo[@]} > 0)) || return 0

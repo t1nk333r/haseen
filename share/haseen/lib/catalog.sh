@@ -3,7 +3,7 @@
 # never executed.
 #
 # Catalogue: share/haseen/default/catalog.json (plan 017). Every entry has
-# id, category, label, icon, source (flatpak|pacman|aur|mise), ref and an
+# id, category, label, icon, source (flatpak|pacman|aur|omarchy|mise), ref and an
 # optional `when` bash guard. Extras: `family` (fonts), `layer` (installed by
 # applying that haseen layer), `needs` (pacman packages a mise toolchain
 # builds against), `container` (a Docker database; ref is then the docker
@@ -12,7 +12,9 @@
 # `"source": "aur"` means "not in the official repos", not "built from the
 # AUR": it goes through pkg_install_aur, which tries an enabled repo, then
 # Chaotic-AUR, then [omarchy], and builds from the AUR only as the last
-# resort. [omarchy]-repo apps (flea, localsend, omacalc, herdr) use it.
+# resort ([omarchy] leaf apps flea, localsend and omacalc use it).
+# `"source": "omarchy"` takes the package from [omarchy] alone
+# (pkg_install_omarchy): herdr, by owner decision (plan 024).
 #
 # Flatpaks live in the per-user installation (`flatpak --user`): installing,
 # updating and removing apps then needs no root and no polkit prompt, and the
@@ -126,7 +128,7 @@ catalog_installed() {
     for r in $ref; do
         case "$source" in
         flatpak) flatpak_app_installed "$r" || return 1 ;;
-        pacman | aur) catalog_pkg_installed "$r" || return 1 ;;
+        pacman | aur | omarchy) catalog_pkg_installed "$r" || return 1 ;;
         mise) mise_tool_installed "$r" || return 1 ;;
         *) return 1 ;;
         esac
@@ -381,6 +383,10 @@ catalog_install() {
         check_pkg_names "${refs[@]}"
         pkg_install_aur "${refs[@]}"
         ;;
+    omarchy)
+        check_pkg_names "${refs[@]}"
+        pkg_install_omarchy "${refs[@]}"
+        ;;
     mise)
         ((${#needs[@]} == 0)) || pkg_install "${needs[@]}"
         mise_install_tools "${refs[@]}"
@@ -400,7 +406,7 @@ catalog_remove() {
     info "removing $(catalog_field "$id" label) ($source: $ref)"
     case "$source" in
     flatpak) for r in "${refs[@]}"; do flatpak_remove_app "$r"; done ;;
-    pacman | aur)
+    pacman | aur | omarchy)
         if [[ -n $container ]]; then
             container_remove "$id"
         else
