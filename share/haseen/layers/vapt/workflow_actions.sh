@@ -29,6 +29,22 @@ for key in sys.argv[1:]:
 print(value if isinstance(value, str) else json.dumps(value))' "$@"
 }
 
+# vapt_exposure_consent PROMPT — consent to expose a listener or serve files
+# comes only from a person at an interactive terminal: neither --yes nor
+# piped input can give it.
+vapt_exposure_consent() {
+    if $ASSUME_YES; then
+        warn '--yes cannot accept exposing a listener or serving files; run without --yes at a terminal'
+        return 1
+    fi
+    if ! vapt_interactive; then
+        warn 'exposure consent needs an interactive terminal; nothing started'
+        return 1
+    fi
+    confirm "$1" || { warn 'cancelled; no foreground action'; return 1; }
+}
+vapt_interactive() { [[ -t 0 ]]; }
+
 vapt_service_cli() {
     local verb="$1" service='' expected_unit='' expected_fragment='' arg
     shift
@@ -85,7 +101,7 @@ vapt_endpoint_action() {
     shift
     local original=("$@")
     $ASSUME_YES && original+=(--yes)
-    local address='' port='' path='' arg value plan nonloop adapter family
+    local address='' port='' path='' arg value plan exposure consent adapter family
     while (($#)); do
         arg="$1"; shift
         case "$arg" in
@@ -126,17 +142,19 @@ vapt_endpoint_action() {
     fi
     plan="$(vapt_actions endpoint-plan "$kind" "$address" "$port" "$path")" || return 1
     printf '%s\n' "$plan"
+    # Every server and every non-loopback listener exposes something.
+    exposure="$(printf '%s' "$plan" | vapt_json_field endpoint requiresConfirmation)" || return 1
+    consent=true
+    [[ $kind == listener && $exposure == false ]] && consent=false
     if $DRY_RUN; then
+        ! $consent || echo 'DRYRUN: requires consent at an interactive terminal; --yes cannot give it'
         echo 'DRYRUN: validate again before foreground action; no writes, bind, serving or execution performed'
         return 0
     fi
     vapt_action_refuse_fixture || return 1
     source "$HASEEN_PATH/lib/terminal.sh"
     in_floating_terminal "${original[@]}"
-    nonloop="$(printf '%s' "$plan" | vapt_json_field endpoint requiresConfirmation)"
-    if [[ $kind != listener || $nonloop == true ]]; then
-        confirm 'Accept this explicit byte-serving/listening scope and exposure?' || { warn 'cancelled; no foreground action'; return 1; }
-    fi
+    ! $consent || vapt_exposure_consent 'Accept this explicit byte-serving/listening scope and exposure?' || return 1
     [[ $plan == "$(vapt_actions endpoint-plan "$kind" "$address" "$port" "$path")" ]] || { warn 'selected adapter/path changed; no action'; return 1; }
     address="$(printf '%s' "$plan" | vapt_json_field endpoint address)"
     adapter="$(printf '%s' "$plan" | vapt_json_field adapter)"

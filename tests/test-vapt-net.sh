@@ -61,6 +61,29 @@ assert_status 'loopback listener no confirmation required' 0 "$STATUS"
 assert_eq 'loopback listener no confirmation' '' "$(vapt_calls confirm)"
 assert_eq 'loopback listener runs the owned adapter' '-4 -l -n -- 127.0.0.1 8080' "$(vapt_calls owned-nc)"
 rm -f "$CALLS/owned-nc"
+# Exposure consent is interactive only: --yes and a piped terminal cannot give
+# it, while a loopback listener, which exposes nothing, needs none.
+VAPT_YES=true actions_api endpoint listener --bind 0.0.0.0 8080
+assert_status '--yes cannot accept a non-loopback listener' 1 "$STATUS"
+assert_contains '--yes refusal explains itself' "$OUTPUT" '--yes cannot accept exposing'
+VAPT_YES=true actions_api endpoint http-server /usr/share/doc/nmap 8080
+assert_status '--yes cannot accept serving a directory' 1 "$STATUS"
+VAPT_YES=true actions_api endpoint enumeration-host --file /usr/share/wordlists/sample.txt 8080
+assert_status '--yes cannot accept serving a file' 1 "$STATUS"
+VAPT_INTERACTIVE=false VAPT_CONFIRM=yes actions_api endpoint listener --bind 0.0.0.0 8080
+assert_status 'piped answer cannot accept a non-loopback listener' 1 "$STATUS"
+assert_contains 'piped refusal explains itself' "$OUTPUT" 'needs an interactive terminal'
+assert_eq 'refused consent starts no adapter or server' '' "$(vapt_calls owned-nc)$(vapt_calls owned-python)$(vapt_calls confirm)"
+VAPT_YES=true actions_api endpoint listener 8080
+assert_status '--yes loopback listener needs no consent' 0 "$STATUS"
+assert_eq '--yes loopback listener runs the owned adapter' '-4 -l -n -- 127.0.0.1 8080' "$(vapt_calls owned-nc)"
+rm -f "$CALLS/owned-nc" "$CALLS/action-user"
+capture bash -c 'source "$HASEEN_PATH/lib/common.sh"; source "$HASEEN_PATH/layers/vapt/workflow_actions.sh"
+confirm() { echo CONFIRM-ASKED; }; vapt_exposure_consent "Expose?"' </dev/null
+assert_status 'consent without a terminal on stdin is refused' 1 "$STATUS"
+assert_not_contains 'consent without a terminal never prompts' "$OUTPUT" CONFIRM-ASKED
+capture haseen-vapt-net-http-server /usr/share/doc/nmap 8080 --dry-run --yes
+assert_contains 'server preview states interactive consent' "$OUTPUT" 'requires consent at an interactive terminal'
 capture haseen-vapt-net-http-server /usr/share/doc/nmap 8080 --dry-run
 assert_status 'explicit directory preview' 0 "$STATUS"
 capture haseen-vapt-net-http-server --dry-run

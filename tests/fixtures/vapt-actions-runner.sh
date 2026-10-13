@@ -57,11 +57,14 @@ run() {
     fixture_routed "$program" || return
     "$@"
 }
+# The terminal answer is VAPT_CONFIRM; like common.sh, --yes accepts.
 confirm() {
     printf '%s\n' "$*" >>"$VAPT_CALLS/confirm"
-    [[ ${VAPT_CONFIRM:-no} == yes ]] || return 1
+    $ASSUME_YES || [[ ${VAPT_CONFIRM:-no} == yes ]] || return 1
     [[ ${VAPT_CHANGE_FRAGMENT:-false} != true ]] || fixture_foreign_fragment
 }
+# Tests have no terminal; VAPT_INTERACTIVE=false models a piped one.
+vapt_interactive() { [[ ${VAPT_INTERACTIVE:-true} == true ]]; }
 confirm_typed() {
     printf '%s\n' "$*" >>"$VAPT_CALLS/typed"
     [[ ${VAPT_TYPED:-} == "$2" ]]
