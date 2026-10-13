@@ -109,7 +109,7 @@ Rules every layer follows:
   limited owned-link removal contracts. It does not require the desktop or
   default layers.
   Plan 088 adds a separate read-only installed workflow: `workflow.py` reuses
-  phase-1 metadata for provenance/native state and discovers actual owned files,
+  plan 087's metadata for provenance/native state and discovers actual owned files,
   not guessed commands. `vapt tool-list`, JSON status/doctor and `vapt menu`
   execute no listed tool. Explicit `tool-help` needs owned documentation or a
   reviewed help-only argv; `tool-run` shows that usage then opens an ordinary
@@ -119,14 +119,16 @@ Rules every layer follows:
   Explicit service actions select only reviewed package/unit bindings and
   separately require unique package provenance, owned non-template units and current
   `FragmentPath`, rechecking at the root gateway; no enable/preset/init path.
-  Local helpers use reviewed owned adapters, loopback defaults and terminal
-  exposure gates. HTTP pins descriptors and serves bytes only; the file helper
-  serves one owned file. CA trust requires a typed fingerprint, immutable
-  public bytes, an owned updater and an unchanged-anchor journal. Failed updates
-  expose `anchor.transaction` and `unknown` state. Explicit retry/removal of safe
-  pending/removing transactions revalidates under the root lock; foreign or
-  modified anchors remain refusals, and only updater success completes recovery. Observation
-  never changes trust or launches a proxy/browser.
+  Local helpers use reviewed owned adapters and loopback defaults; a server or
+  non-loopback listener needs consent at an interactive terminal (`--yes`
+  cannot give it). HTTP pins descriptors, serves bytes only and answers 421 to
+  a request whose Host is not local; the file helper serves one owned file. CA
+  trust requires a typed fingerprint, immutable public bytes, an owned updater
+  and a journal that records the certificate. Failed or interrupted updates
+  expose `anchor.transaction` and `unknown` state; retry or removal revalidates
+  under the root lock, foreign or modified anchors remain refusals, and only
+  updater success completes recovery (plan 090). Observation never changes
+  trust or launches a proxy/browser.
 - **Commands are `haseen <layer> <verb>`** (`bin/haseen-<layer>-<verb>`) with the `# haseen:summary` header.
 
 ## 4. CLI conventions

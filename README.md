@@ -72,21 +72,20 @@ translate, and lists what has no haseen equivalent; run it without
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.
-`haseen vapt tool-list --json` lists verified installed inventory and actual owned
-entrypoints, including data-only packages. `vapt tool-help` displays owned usage
-only on request; `vapt tool-run` then opens an ordinary shell, not the tool.
-`vapt status --json`, `vapt doctor --json`, and `vapt menu --enabled` are
-read-only, offline surfaces ([workflow contract](docs/vapt.md#installed-inventory-and-explicit-usage-plan-088)).
-Separate explicit `vapt service-*` and `vapt net-*` helpers never run as
-provisioning hooks: owned-unit controls, consent-gated foreground local servers,
-and typed-fingerprint CA trust ([local action contract](docs/vapt.md#explicit-services-and-local-helpers-plan-088)).
-The built-in `haseen.security` panel is **off by default**. Deliberately enable
-it with `haseen plugin enable haseen.security`; Setup › Security › VAPT
-workstation then shows installed tools/services, local prerequisites and source
-status. Rows inspect first and previews make no changes. The terminal asks
+`haseen vapt tool-list --json` lists verified installed tools and their owned
+entrypoints; `vapt tool-help` shows owned usage on request and `vapt tool-run`
+then opens an ordinary shell, not the tool. `vapt status --json`,
+`vapt doctor --json` and `vapt menu --enabled` are read-only and offline
+([workflow contract](docs/vapt.md#installed-inventory-and-explicit-usage-plan-088)).
+The explicit `vapt service-*` and `vapt net-*` helpers are never provisioning
+hooks: owned-unit controls, consent-gated foreground local servers and
+typed-fingerprint CA trust ([local action contract](docs/vapt.md#explicit-services-and-local-helpers-plan-088)).
+The built-in `haseen.security` panel is **off by default**; enable it with
+`haseen plugin enable haseen.security` and open Setup › Security › VAPT
+workstation. Rows inspect first and previews change nothing. The terminal asks
 before a service start or restart, a local server, a non-loopback listener or a
-CA trust change; Stop and the remote desktop client start without a prompt.
-The panel never asserts success or runs anything during discovery
+CA trust change; Stop and the remote desktop client have no prompt. The panel
+never claims success or runs anything during discovery
 ([panel guide](docs/vapt.md#optional-security-workstation-panel-plan-088)).
 
 ## NixOS
