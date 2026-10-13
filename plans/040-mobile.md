@@ -41,7 +41,7 @@ and justified, and three commands.
   activated, `usbmuxd` starts from its udev rule. An enable line would be a
   second source of truth that drifts.
 - **Two claims are probed, not asserted.** The ifuse gate reads the version the
-  repos actually offer, and the KDE Connect Mousepad verdict reads the installed
+  repos offer, and the KDE Connect Mousepad verdict reads the installed
   `.portal` files.
 - **The limits are printed where the user is**, in the layer summary and in
   every command's `--help`, not filed in a plan nobody reads: iPhone
@@ -50,12 +50,37 @@ and justified, and three commands.
   implements `RemoteDesktop` (`/usr/share/xdg-desktop-portal/portals/hyprland.portal`
   lists Screenshot, ScreenCast, GlobalShortcuts, InputCapture — no RemoteDesktop);
   Android has no maintained backup tool, so `haseen mobile backup` is iOS-only.
-- **Commands**: `haseen mobile status` (a report, not a health check: classifies
-  `/sys/bus/usb/devices` through `sysroot_path`, then `adb devices`,
-  `kdeconnect-cli`, `idevice_id -l`, `idevicepair validate`),
-  `haseen mobile mirror` (scrcpy, refusing *before* scrcpy's wall of adb text,
-  with `--v4l2` checking the `v4l2loopback-dkms` prerequisite rather than
-  assuming it), `haseen mobile backup` (`idevicebackup2 backup --full`).
+- **Commands**:
+  - `haseen mobile status` is a report, not a health check. It classifies
+    `/sys/bus/usb/devices` through `sysroot_path`, then asks `adb devices`,
+    `kdeconnect-cli`, `idevice_id -l` and `idevicepair validate`. An Apple
+    device (05ac) counts as iOS only with the usbmux interface (class ff,
+    subclass fe, protocol 02) or a product id in the range usbmuxd's udev rule
+    matches, 129x-12ax (`/usr/lib/udev/rules.d/39-usbmuxd.rules`, usbmuxd
+    1.1.1-4); the range covers a device whose configuration that rule set to
+    0, which takes its interfaces out of sysfs. An Apple keyboard is not a
+    phone.
+  - `haseen mobile mirror` runs scrcpy and refuses *before* scrcpy's wall of
+    adb text. `--v4l2` checks for `v4l2loopback-dkms` rather than assuming it
+    and writes only into the node haseen made (`card_label=haseen-phone`):
+    with none it loads the module (`run_root modprobe v4l2loopback
+    exclusive_caps=1 card_label=haseen-phone`, then `udevadm settle` and a
+    character-device check); with the module already loaded by another
+    program (OBS's virtual camera) it refuses, because a second modprobe adds
+    no node, and names `--v4l2=/dev/videoN` for using that camera on purpose.
+    Nodes are listed in numeric order (video2 before video10).
+  - `haseen mobile backup` runs `idevicebackup2 backup --full` into a DIR it
+    creates mode 0700, under umask 077 (upstream makes its directories 0755
+    and opens files with the default mode). An existing DIR that is not the
+    user's, or is open to group or others, is refused (dry run included) with
+    the `chmod 700` fix; its mode is never changed for the user. Encryption is
+    the phone's `WillEncrypt` setting: the command reads it with `ideviceinfo`
+    and reports on, OFF (with the `idevicebackup2 -u UDID encryption on`
+    hint) or unknown before asking, and never changes it.
+- **firewalld**: the `kdeconnect` service goes to the home zone only. When
+  `DefaultZone` (world-readable `/etc/firewalld/firewalld.conf`, default
+  `public`) is not `home`, apply warns that pairing works only on a network in
+  the home zone and how to move a connection there.
 
 ## Rejected
 
@@ -71,30 +96,33 @@ and justified, and three commands.
 | waydroid **in this layer** | a full LXC container with a kernel precondition this machine does not meet, plus an open Hyprland logout bug | `/proc/config.gz`: `CONFIG_ANDROID_BINDER_IPC` and `_RUST` not set; no `/dev/binder`; waydroid issue #2427 |
 | `systemctl enable kdeconnectd/usbmuxd` | both already start themselves | package file lists |
 | a `90-mobile.sh` seed | nothing to seed: KDE Connect writes its own config on first run | package ships no default to include |
+| any Apple vendor id (05ac) as iOS | an Apple keyboard or trackpad is listed as a phone | `tests/fixtures/mobile-applied` 05ac:024f (HID) |
+| the lowest loopback node when haseen's is missing | with only OBS's virtual camera loaded, scrcpy wrote into it; a second `modprobe` of a loaded module adds no node | `tests/test-mobile.sh` OBS cases |
 | narrowing the ufw rule to one subnet | haseen cannot know the user's subnet and a wrong guess silently breaks pairing; the layer prints the ports it opened so the user can narrow them | KDE UserBase firewall section |
 
 ## Verification
 
-- `tests/test-mobile.sh` (163) over two new fixtures (`mobile-plain`,
-  `mobile-applied`): package set and order, the ufw rules and their
-  idempotency, the firewalld branch, the no-firewall branch, `--no-firewall`,
-  `--v4l2`, unknown flags, the ifuse refusal in three states (1.2.0 / unknown /
-  fixed 1.2.1), status at four health levels, `layer_remove`, the USB classifier
-  against four devices including a root hub that must **not** match, and every
+- `tests/test-mobile.sh` over two fixtures (`mobile-plain`, `mobile-applied`):
+  package set and order, the ufw rules and their idempotency, the firewalld
+  branch and its zone warning, the no-firewall branch, `--no-firewall`,
+  `--v4l2`, unknown flags, the ifuse refusal in three states (1.2.0 / unknown
+  / fixed 1.2.1), status at four health levels, `layer_remove`, and every
   command's `--help` and its behaviour with no device, an unauthorised device
-  and two devices. Dry-run purity asserted on every mutating path.
-- **Live on the reference machine**: `haseen mobile status` exits 0 with no
-  phone attached; `haseen layer status mobile` reports this host as
+  and two devices. Dry-run purity is asserted on every mutating path.
+- The USB classifier: an iPhone in the usbmux range, Android in ADB and MTP
+  mode, a root hub and an Apple keyboard (05ac:024f, HID) that must not
+  match, and an Apple device outside the range that becomes iOS only once it
+  shows the usbmux interface.
+- `mirror --v4l2`: haseen's node among three loopback nodes, haseen's node
+  over a lower OBS node, OBS's nodes alone with the module loaded (refused, no
+  modprobe, no sink), the same nodes without the module (modprobe planned,
+  next index predicted), and an explicit `--v4l2=DEV`. The fixtures' empty
+  sysfs `device` directories, which tell a real camera from a loopback node,
+  hold a `.keep` so git keeps them.
+- Live on the reference machine (2026-10-05): `haseen mobile status` exits 0
+  with no phone attached; `haseen layer status mobile` reports this host as
   half-installed with the ports closed; `haseen layer apply mobile --dry-run`
   plans exactly the four missing packages and the two ufw rules.
-- **At landing on main (2026-10-08)**: the fixtures' empty sysfs `device`
-  directories (what tells a real camera from a loopback node) had not survived
-  git, so every node looked like a loopback one and `mirror --v4l2` died of
-  SIGPIPE in `mobile_v4l2_loopback_nodes | head -n1` under pipefail. Both are
-  fixed: the directories hold a `.keep`, and `mobile_v4l2_first_loopback_node`
-  reads the first node without a pipe; a fixture with three loopback nodes is
-  tested. `tests/test-install-picker.sh` is renumbered for `mobile` (11) in the
-  sorted optional layers.
 
 ## Open
 
@@ -105,25 +133,5 @@ against fixtures and refusal paths only.
 
 `share/haseen/layers/mobile/{layer.sh,mobile.sh,packages.txt}`,
 `bin/haseen-mobile-{status,mirror,backup}`, `tests/test-mobile.sh`,
-`tests/fixtures/mobile-{plain,applied}/`.
-
-## Review fixes 2026-10-08 (PR #38)
-
-- **SEC-3, private iOS backups.** `haseen mobile backup` creates DIR mode
-  0700 and runs `idevicebackup2` under umask 077 (upstream makes its
-  directories 0755 and opens files with the default mode). An existing DIR
-  that is not ours or is open to group/others is refused, dry run included,
-  with the `chmod 700` fix; its mode is never changed for the user. The help
-  no longer says "encryption and all": encryption is the phone's
-  `WillEncrypt` setting, which the command reads with `ideviceinfo` and
-  reports (on / OFF with the `idevicebackup2 -u UDID encryption on` hint /
-  unknown) before asking, and never changes.
-- **v4l2 node choice.** Loopback nodes are ordered numerically (video2 before
-  video10), and the node named `haseen-phone` (our `card_label`) wins over
-  another program's virtual camera (OBS). After `modprobe`, the command waits
-  for `udevadm settle` and requires a character device.
-- **firewalld zone.** The kdeconnect service still goes to the home zone only;
-  when `DefaultZone` (world-readable `/etc/firewalld/firewalld.conf`, default
-  `public`) is not `home`, apply warns that pairing works only on a network in
-  the home zone and how to move a connection there. The ufw rule stays open
-  from any source, as decided above.
+`tests/fixtures/mobile-{plain,applied}/`. `tests/test-install-picker.sh`
+numbers `mobile` 11 among the sorted optional layers.

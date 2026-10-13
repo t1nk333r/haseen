@@ -94,7 +94,8 @@ Rules every layer follows:
   4. the AUR, only as the last resort, with a warning.
 
   Every `aur:` manifest entry, catalogue `"source": "aur"` app and `haseen install aur` goes through `pkg_install_aur`, which applies this order.
-  An `omarchy:` manifest entry (desktop's herdr and xdg-terminal-exec, owner 2026-10-08) goes through the same order only while `[omarchy]` is enabled; without it `pkg_install_omarchy` skips it with a warning and never builds it (plan 024 amendment).
+  An `omarchy:` manifest entry (desktop's herdr and xdg-terminal-exec, owner 2026-10-08), and the catalogue's `"source": "omarchy"` herdr, comes from `[omarchy]` alone; `pkg_install_omarchy` skips it with a warning when that repo is not enabled or does not list it, and never builds it (plan 024 amendment).
+  `PKG_DENY` (`omarchy`, `omarchy-settings`) is refused as a target, and `pkg_guard_closure` asks before any install whose `pacman -Sp` closure brings either in; `--yes` accepts that only for the catalogue's `flea` (plan 037).
   VAPT keeps its own order as an explicit exception (owner decision,
   2026-10-13): explicit repository pins, BlackArch, pinned native adapters,
   already-enabled Chaotic-AUR, CachyOS, then Arch. It differs because it

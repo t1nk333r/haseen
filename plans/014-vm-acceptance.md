@@ -16,9 +16,7 @@ Fixture tests prove the plan logic, not the result. omacachy learned this in its
 
 ## Scope
 
-A CachyOS VM (OVMF with Secure Boot in Setup Mode, and a Windows ESP stub) running `./install.sh` with the default layers plus `secureboot`.
-
-The scope originally named `--layers base,desktop,theme,shell,secureboot`. That list predates `omarchy-repo` (plan 024), and `desktop/packages.txt:31` expects that repo to be applied first: without it, herdr and ttfx are built from the AUR instead of installed prebuilt (finding 3). The run therefore used the default set plus `secureboot`: `base,chaotic,omarchy-repo,desktop,theme,shell,secureboot`.
+A CachyOS VM (OVMF with Secure Boot in Setup Mode, and a Windows ESP stub) running `./install.sh --layers base,chaotic,omarchy-repo,desktop,theme,shell,secureboot`: the default layers plus `secureboot`. The first scope, `base,desktop,theme,shell,secureboot`, predates `omarchy-repo` (plan 024); without that repo herdr and ttfx were built from the AUR, which no default install does (finding 3).
 
 ## Acceptance
 
@@ -38,7 +36,7 @@ The scope originally named `--layers base,desktop,theme,shell,secureboot`. That 
 - `tools/lab.sh` changes:
   - It forwards `LAB_CACHYOS_RELEASE` and `LAB_SECUREBOOT=on`.
   - It reports a lab checkout without the cachyos arm or the knob as a blocker.
-  - It runs `./install.sh` as the guest user, without `sudo`. The previous `sudo ./install.sh` could never work, because `install.sh` calls `require_not_root` (independent review finding).
+  - It runs `./install.sh` as the guest user, without `sudo`: `install.sh` calls `require_not_root`.
   - It installs the default layers plus `secureboot`.
 - Egress: `LAB_NET=internet`, with the owner's consent, for pacman, the AUR and the theme fetch.
 
@@ -76,22 +74,22 @@ The scope originally named `--layers base,desktop,theme,shell,secureboot`. That 
 
 1. **Fixed: `--firmware-builtin` on firmware without default keys** (plan 002, 2026-10-06 section).
    - Cause: sbctl 0.17/0.18 reads `dbDefault` and `KEKDefault` for `--firmware-builtin`, and its missing-variable branch never matches go-uefi's error.
-   - Fix: setup passes the flag only when both variables exist; otherwise it warns and runs `sbctl enroll-keys --microsoft`. Owner decision 2026-10-06.
-   - Security review (security_sol61) required two changes, both made. First, a non-dry-run under `HASEEN_SYSROOT` is refused, so a fixture cannot silently decide a live enrollment; the only way through is the test-only opt-in `HASEEN_TEST_STUBBED_SUDO=1` (never as root), which is not a privilege boundary. Second, the warning states the actual condition.
-   - Regression tests in `tests/test-secureboot.sh`: 218/229 passed before the fix and 239/239 after both changes.
+   - Fix: setup passes the flag only when both variables exist; otherwise it warns, saying which condition failed, and runs `sbctl enroll-keys --microsoft`. Owner decision 2026-10-06.
+   - A non-dry run under `HASEEN_SYSROOT` is refused, so a fixture cannot decide a live enrollment. Only `tests/test-secureboot.sh`'s recorder gets through: `HASEEN_TEST_STUBBED_SUDO=1`, not root, and `sudo` resolving into the checkout's `tests/.out/` (plan 002).
+   - Regression tests in `tests/test-secureboot.sh`: 218/229 passed before the fix, all after it.
 2. **Fixed: doctor reported `shell=not running` while the shell ran.**
    - Cause: `install.sh` handed the installed CLI `HASEEN_PATH=/usr/local/bin/../share/haseen`. The desktop layer wrote that path into `~/.config/uwsm/env.d/10-haseen`, the shell ran as `qs -p /usr/local/bin/../share/haseen/shell`, and doctor compared strings.
    - Fix: `install.sh` normalises the path once. Doctor parses the NUL-separated argv and compares canonical paths (`share/haseen/lib/doctor.sh`).
    - Verified live: after the reinstall, env.d holds `/usr/local/share/haseen` and doctor prints the shell's pid and memory.
    - Tests in `tests/test-paths.sh`: 2/8 passed before the fix and 12/12 after.
-3. **Open: `desktop` silently depends on `omarchy-repo`.** `desktop/packages.txt:31` assumes `[omarchy]` is applied first, but `LAYER_REQUIRES` for desktop is `base chaotic`. With a custom `--layers` list that omits it:
+3. **Open: `desktop` without `omarchy-repo`.** `LAYER_REQUIRES` for desktop is `base chaotic`, and in this run `desktop/packages.txt` assumed `[omarchy]` was applied first. With a custom `--layers` list that omitted it:
    - herdr and ttfx build from the AUR;
    - paru's `--noconfirm` answers the `cargo` provider prompt with its default, which is `rustup` from `cachyos-extra-znver4`;
    - rustup has no toolchain, so ttfx's `prepare()` fails (`rustup could not choose a version of cargo to run`).
 
    Options for the owner: make desktop require `omarchy-repo`, or have `pkg_install_aur` make sure a working `cargo` exists before building.
 
-   Owner decision 2026-10-08 (plan 024 amendment): desktop still does not require the layer. Without it, herdr and xdg-terminal-exec are skipped with a warning instead of built. ttfx is unchanged and still falls back to the AUR, so its cargo provider problem stays open.
+   Owner decision 2026-10-08 (plan 024 amendment): desktop still does not require the layer. herdr and xdg-terminal-exec come only from `[omarchy]` and are skipped with a warning without it; folders and text open without xdg-terminal-exec (plan 037). ttfx still falls back to the AUR, so its cargo provider problem stays open.
 4. **Open: a fresh install has no background.** The default theme `greek-noir-akane` is the owner's own and has no images to fetch (`theme-lib.sh:29-32`), so `current/background` does not exist and swaybg shows nothing. That is by design, but two things are wrong:
    - `haseen theme bg next` tells the user to run `haseen theme fetch greek-noir-akane`, which refuses: "not an Omarchy stock theme".
    - The `theme` row in architecture §3 credits the layer with a "pinned background fetch" that the layer does not perform.

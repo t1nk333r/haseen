@@ -29,19 +29,17 @@ Requirement 7. NixOS gets the same desktop, with lanzaboote handling Secure Boot
 
 ### Dropped (2026-10-05)
 
-The owner removed NixOS/Nix support from haseen; the supported targets are
-CachyOS and Arch, and requirement 7 in `docs/architecture.md` no longer names
-NixOS. `flake.nix`, `flake.lock`, `nix/`, `tests/test-nix.sh` and the `nix`
-CI job were deleted. `preflight_distro` still recognises NixOS, and both
-`install.sh` and `haseen secureboot setup` refuse it as unsupported (covered
-by `tests/test-core.sh` and `tests/test-secureboot.sh`). The record below is
-the history of what was built and verified before the drop.
-
-Finished 2026-10-08, after plans 075 and 077 had added more Nix: the NixOS
-branch of `bin/haseen-setup-ddc` (`haseen.ddc.enable`) now refuses NixOS like
-the installer (`tests/test-brightness.sh`), the skill's DDC line and the
-themegen comment lost their NixOS clauses, plans 075 and 077 carry a dated
-note, and `AGENTS.md` lists the four required CI checks without `nix`.
+The owner removed NixOS support on 2026-10-05 (confirmed 2026-10-08): haseen
+targets CachyOS and Arch, and requirement 7 in `docs/architecture.md` no
+longer names NixOS. Deleted: `flake.nix`, `flake.lock`, `nix/`,
+`tests/test-nix.sh`, the `nix` CI job and its required check, the
+`nix build` outputs in `.gitignore`, the NixOS branch of
+`bin/haseen-setup-ddc` (`haseen.ddc.enable`, added by plan 077 after the
+drop) and the NixOS clauses in the skill's DDC line and the themegen comment.
+`preflight_distro` still recognises NixOS so that `install.sh`, `haseen
+secureboot setup` and `haseen setup ddc` refuse it by name
+(`tests/test-core.sh`, `tests/test-secureboot.sh`, `tests/test-brightness.sh`).
+The record below is what was built and verified before the drop.
 
 ### What changed
 

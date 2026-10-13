@@ -134,70 +134,51 @@ Two more gaps the same machine exposed:
   does not answer, so a broken shell can never stop a suspend), and retaken
   after resume. Tests: `tests/test-sleeplock.sh` (6), `tests/test-shell.sh`.
 
-## Addendum 2026-10-08: the scanner splash
+## Addendum 2026-10-08: the scanner splash and the caret
 
-The owner replaced the breathing bar in `share/haseen/default/plymouth/haseen.script`
-with a KITT-style scanner, and the splash now draws no text (owner decision
-D11, 2026-10-08):
+The owner replaced the breathing bar with a KITT-style scanner, asked that the
+splash draw no text, and asked for a small blinking caret where the asterisks
+appear, after Knight Rider's KITT (colour and pulse) and Person of Interest
+(the surveillance frame, the Machine's block cursor) (owner, 2026-10-08).
+`share/haseen/default/plymouth/haseen.script`:
 
 - A dim accent track, a quarter of the screen wide, with one lit segment (a
-  sixth of the track) sweeping back and forth across it, 45 frames each way,
-  trailed by four fading ghosts at the positions it passed 3, 6, 9 and 12
-  frames earlier. A slow boot still moves, so it still does not look hung.
-- Boot messages are no longer drawn: the theme registers no message
-  function, and the "Password" label is gone. The LUKS prompt is the
-  asterisks alone. While it is up the scanner is hidden; it returns on the
-  normal display and hides on quit.
-- Still no binary assets: each bar is the accent bullet `•`, stretched.
-
-Verification: `tests/test-plymouth.sh` renders the script and checks that it
-still draws the password prompt and registers no message function. Plymouth's
-script engine runs only inside `plymouthd`, so the scanner itself is seen only
-on a real boot, which stays the owner's check.
-
-### The caret (owner decision, 2026-10-08)
-
-Audit finding F9: before the first key the prompt showed nothing at all. The
-owner asked for a small blinking caret where the asterisks appear, still with
-no text, inspired by both Knight Rider's KITT and Person of Interest. KITT
-gives the colour and the pulse, PoI the surveillance frame and the Machine's
-block cursor:
-
-- Four thin corner brackets, 2 px arms 12 px long, in the accent at 0.6
-  opacity, frame the field. The field takes the hidden scanner's place: as
-  wide as its track and centred on it. It widens only when a long passphrase
-  needs the room.
-- A block caret (`█`) in the scanner's accent sits where the next asterisk
-  goes. The asterisks start at the left padding and the caret follows the
-  last one, both in `Monospace 14`. If the initramfs carries no monospace
-  font, the label plugin uses its fallback font.
+  sixth of the track) sweeping back and forth, 45 frames each way, trailed by
+  four fading ghosts at the positions it held 3, 6, 9 and 12 frames earlier.
+  A slow boot still moves, so it does not look hung.
+- No text: the theme registers no message function and draws no "Password"
+  label.
+- The LUKS prompt replaces the scanner with a field as wide as its track,
+  framed by four corner brackets (2 px arms, 12 px long, accent at 0.6
+  opacity). The asterisks start at the left padding and a block caret (`█`)
+  follows the last one, both in `Monospace 14` (the label plugin's fallback
+  font when the initramfs has no monospace). The field widens only for a
+  passphrase that needs the room.
 - The caret blinks at 1 Hz: the script plugin refreshes 50 times a second
-  (`FRAMES_PER_SECOND`, `src/plugins/splash/script/plugin.c`), so it is lit
-  for 25 frames, then fades for 25 along the scanner's ghost falloff, like a
-  KITT segment dying away. Each key press restarts the cycle lit.
-- On the normal display and on quit the caret, the brackets and the asterisks
-  hide. Every colour comes from the splash's colour variables, and no image
-  is shipped: the arms are the block glyph stretched.
+  (`FRAMES_PER_SECOND`, `src/plugins/splash/script/plugin.c`), so it is lit for
+  25 frames, then fades for 25 along the scanner's ghost falloff. A key press
+  restarts the cycle lit.
+- The normal display and quit hide the caret, the brackets and the asterisks.
+  Every colour comes from the splash's colour variables, and no image is
+  shipped: each bar and arm is a stretched glyph.
 
 Verification: `tests/test-plymouth.sh` runs the rendered script under
-`tests/fixtures/plymouth-harness.js`, a fake Plymouth in node. It has a
-recording Window, Image, Sprite and Plymouth, and Plymouth's local-variable
-scoping. The harness drives the refresh, password, normal and quit callbacks
-as plymouthd does. 25 assertions cover the following: the caret is lit before
-the first key, inside eight bracket arms, in the scanner's colour, with the
-scanner hidden; the field is 480 px, centred, on a 1920 px screen; the caret
-is lit 25 of every 50 frames and fades out between; after three keys it sits
-right after the asterisks and is lit again; 120 keys widen the field; normal
-and quit hide all of it. Against the previous script, 39/58 passed, and the
-harness itself ran clean on it. After the change, 58/58 passed.
+`tests/fixtures/plymouth-harness.js`, a fake Plymouth in node with a recording
+Window, Image, Sprite and Plymouth and Plymouth's local-variable scoping, and
+drives the refresh, password, normal and quit callbacks as plymouthd does. It
+checks that no message function is registered, that the caret is lit before
+the first key inside eight bracket arms in the scanner's colour with the
+scanner hidden, the 480 px field centred on a 1920 px screen, 25 lit frames
+of every 50, the caret right after three asterisks and lit again, a field
+widened by 120 keys, and that normal and quit hide all of it. 39 of its 58
+checks passed on the script before the caret.
 
-`tools/plymouth-mock.sh OUT.png` draws a labelled mock of that layout with
-ImageMagick, before the first key and after three. It uses the haseen theme,
-the fontconfig monospace, and rectangles for the block glyph. It is not a
-Plymouth render. Whether the real label plugin draws `█` and the font as
-expected is seen only on a real boot, which stays the owner's check. The mock
-made for this change is `~/.cache/hw/ff-mock/plymouth-luks-prompt-mock.png` on
-the author's machine, and it is not committed.
+`tools/plymouth-mock.sh OUT.png` draws a labelled ImageMagick mock of that
+layout before the first key and after three, in the haseen theme with the
+fontconfig monospace and rectangles for the block glyph. It is not a Plymouth
+render: plymouth's script engine runs only inside `plymouthd`, so the scanner,
+the `█` glyph and the font are seen only on a real boot, which stays the
+owner's check.
 
 ## Execution record
 

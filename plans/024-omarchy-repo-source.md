@@ -68,11 +68,12 @@ minutes in a `zig fetch` (plan 014, finding 3). `desktop` still does not require
 the layer, so a `--layers` list or a picker choice without it must not fail.
 
 - The manifest gains an `omarchy:` prefix (`share/haseen/lib/packages.sh`).
-  `pkg_install_omarchy` sends these entries through the binary part of
-  `pkg_install_aur`'s source order (official/CachyOS, Chaotic-AUR,
-  `[omarchy]`) when `[omarchy]` is enabled. Without it, they are skipped
-  with one warning that names them and the command that adds them:
-  `haseen layer apply omarchy-repo desktop`. They are never built from the AUR.
+  `pkg_install_omarchy` installs these entries from `[omarchy]` alone
+  (`omarchy/NAME`), even when an official repo or Chaotic-AUR carries the
+  same name. One that `[omarchy]` does not list, or whose lookup fails, is
+  skipped with a warning. Without the repo, they are skipped with one warning
+  that names them and the command that adds them: `haseen layer apply
+  omarchy-repo desktop`. They are never built from the AUR.
 - `haseen layer apply` exports its apply order as `HASEEN_APPLY_LAYERS`. A dry
   run in which `omarchy-repo` comes before `desktop` plans the packages from
   the repo (`omarchy/herdr`), because the real run will have enabled it by then.
@@ -89,13 +90,12 @@ omarchy/herdr` and gives no warning. With `desktop omarchy-repo` both are
 skipped. With `[omarchy]` already in `pacman.conf` both install from it.
 Before the change, 146/150 passed; after, 150/150.
 
-Security re-review SEC-7 (2026-10-08): the first version called
-`pkg_install_aur` itself when `[omarchy]` was enabled, so an entry that no
-enabled repo carried, or whose database lookup failed, fell through to
-`paru -S`. Both functions now share `_pkg_install_sourced LAST`, which
-resolves each package's source once; `pkg_install_aur` passes `aur`,
-`pkg_install_omarchy` passes `skip`, which leaves such packages out with a
-warning ("… they are never built from the AUR"). Evidence: the same section,
-with `[omarchy]` enabled, a `paru` on `PATH`, and the fixture database first
-without herdr/xdg-terminal-exec, then unreadable. Before the fix both cases
-planned `paru -S --needed xdg-terminal-exec herdr` (154/158); after, 158/158.
+Two earlier versions broke the decision: the first called `pkg_install_aur`
+when `[omarchy]` was enabled, so an entry the repo did not list fell through
+to `paru -S`; the second used `pkg_install_aur`'s binary order, so
+Chaotic-AUR's build won (a dry run planned `chaotic-aur/herdr`). Evidence for
+the current rule: the same section of `tests/test-desktop.sh`, with
+Chaotic-AUR enabled and carrying both names, `[omarchy]` listing them, then
+not listing them, then unreadable, and a `paru` on `PATH`: the packages come
+from `omarchy/` or are skipped with the warning, never from `chaotic-aur/` or
+paru.

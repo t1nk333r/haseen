@@ -42,9 +42,9 @@ Read `handoff.md` first.
 | 034 | Wallpaper palettes: aether's extractor, seed cache, colors.toml themes | P2 | M | 004 032 | DONE 2026-10-05 (24 tests + Go tests; 0.55 s cold, 0.11 s cached) |
 | 035 | Plugin registry and lockfile (install, pin, reproduce, update) | P1 | M | 005 011 | DONE 2026-10-05 (48 tests; live install from the DMS registry) |
 | 036 | Login: Plymouth splash, the greeter shell, autologin after the disk password | P1 | L | 003 005 033 | DONE 2026-10-05 (72 tests + nested-compositor smoke; real boot is an owner step) |
-| 037 | Default handlers (four places) and the catalogue's missing half | P1 | L | 003 017 023 024 | DONE 2026-10-05 (301 tests; 13 categories, 110 entries at landing; flea's omarchy pull is guarded, owner-approved) |
+| 037 | Default handlers (four places) and the catalogue's missing half | P1 | L | 003 017 023 024 | DONE 2026-10-05, amended 2026-10-13 (13 categories, 110 entries; folders and text open without xdg-terminal-exec; an install that pulls omarchy in asks, and --yes accepts it only for flea, owner-approved) |
 | 038 | Shell rc layer: tools, aliases, functions, `mise activate` | P2 | M | 001 017 023 | DONE 2026-10-05 (148 tests; rc include added once, user names kept; zsh unverified) |
-| 040 | Phones: the Android half that works, the iOS half that exists | P2 | M | 001 003 | DONE 2026-10-05 (163 tests; no phone attached) |
+| 040 | Phones: the Android half that works, the iOS half that exists | P2 | M | 001 003 | DONE 2026-10-05 (`tests/test-mobile.sh`; no phone attached) |
 | 041 | Sharing a capture: uploader, annotation, Arabic OCR, circle to search | P2 | L | 004 018 | DONE 2026-10-05 (188 tests; imgur and 0x0 proven dead, never defaults) |
 | 042 | Clipboard history with a toggleable preview | P2 | M | 022 | DONE 2026-10-05 (84 tests; live panel screenshots; oversized entry never decoded) |
 | 043 | Keybinds follow waydots, and hyprmod's place in the load order | P1 | M | 003 030 | DONE 2026-10-05 (120 tests; `Hyprland --verify-config` ok with two negative controls; 99→122 binds) |
