@@ -106,21 +106,34 @@ for field,value in [('version','wrong'),('url','https://wrong.invalid'),('metada
         assert wf.package_sources(record,config,index)==linear(record,config,snapshot)
         checked+=1
 print('indexed/linear source equivalence:',checked,'comparisons;',len(snapshots),'fixture snapshots')
+# tool-help and tool-run discover only the selected tool; it must be the same record.
+for tool in wf.discover()['tools']:
+    if tool['state']!='missing':assert wf.discover(tool['id'])['tools']==[tool],tool['id']
 PY
 assert_status 'indexed source results equal reviewed linear predicates' 0 "$STATUS"
 printf '%s\n' "$OUTPUT"
 
-# 20 seconds allows slow CI/container disks. The old 204 x installed x repository
-# scan exceeded this bound even at 203 installed / 17,300 repository records.
+# Discovery must stay linear in installed metadata. The fixture holds 2,103
+# installed and 30,003 repository records, and one package with 2,000 owned
+# executables, a man page each and 18,000 more files (metasploit ships 33,061
+# files and 2,653 executables). Matching each entry against every package
+# file took about 70 s for this package alone, and scanning sources per tool
+# exceeded the bound at 203 installed / 17,300 records; 20 s allows slow disks.
 workflow_fixture vapt-discovery-scale
 python3 -B - "$ROOT" <<'PY'
-import json,pathlib,sys
-base=pathlib.Path(sys.argv[1])/'var/lib/haseen/vapt'
+import json,os,pathlib,sys
+root=pathlib.Path(sys.argv[1]);base=root/'var/lib/haseen/vapt'
 repos=json.loads((base/'repositories.json').read_text());installed=json.loads((base/'installed.json').read_text())
 for source in ('core','extra','blackarch'):
     rows=[{'name':source+'-fixture-'+str(i),'version':'1-1','url':'https://example.org/'+source+'/'+str(i)} for i in range(10000)]
     repos.setdefault(source,[]).extend(rows)
     installed.extend(dict(row,files=['usr/share/'+row['name']+'/data']) for row in rows[:700])
+files=['usr/bin/tool-%04d'%i for i in range(2000)]+['usr/share/man/man1/tool-%04d.1.gz'%i for i in range(2000)]
+files+=['usr/share/nmap/data/%02d/item-%05d'%(i%100,i) for i in range(18000)]
+for name in files:
+    path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.touch()
+    if name.startswith('usr/bin/'):path.chmod(0o755)
+next(r for r in installed if r['name']=='nmap')['files'].extend(files)
 (base/'repositories.json').write_text(json.dumps(repos));(base/'installed.json').write_text(json.dumps(installed))
 PY
 capture python3 -B - <<'PY'
@@ -132,8 +145,10 @@ assert result.returncode==0,result.stderr
 data=json.loads(result.stdout)
 assert len(data['tools'])==3,data['tools']
 assert sum(s['cachedPackages'] for s in data['sources'])>=30000
-print('scale tool-list: 2,103 installed; 30,003 repository records;',format(elapsed,'.3f'),'seconds; bound 20 seconds')
+entries=next(t for t in data['tools'] if t['id']=='nmap')['entrypoints']
+assert len(entries)==2002 and all(e['usage']['state']=='ready' for e in entries),len(entries)
+print('scale tool-list: 2,103 installed; 30,003 repository records; 2,002 documented entries in 20,005 files;',format(elapsed,'.3f'),'seconds; bound 20 seconds')
 PY
-assert_status 'large installed/repository fixture discovery within bound' 0 "$STATUS"
+assert_status 'large installed/repository/package fixture discovery within bound' 0 "$STATUS"
 printf '%s\n' "$OUTPUT"
 workflow_no_calls scale-discovery

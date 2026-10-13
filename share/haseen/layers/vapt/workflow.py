@@ -8,6 +8,7 @@ import argparse
 import configparser
 import contextlib
 import csv
+import functools
 import io
 import json
 import os
@@ -107,16 +108,21 @@ def package_sources(record, config, repo_index):
                     and not p.get('metadata_unknown') and not meta.forbidden(p) for p in repos.get(source, []))]
 
 
+def record_paths(record):
+    """The package's own regular-file inventory as absolute paths."""
+    for path in record.get('files', []):
+        if not isinstance(path, str) or path.endswith('/'):
+            continue
+        rel = path.lstrip('/')
+        if rel and '..' not in Path(rel).parts and clean(rel) == rel:
+            yield '/' + rel
+
+
 def file_owners(records):
     owners = {}
     for index, record in enumerate(records):
-        for path in record.get('files', []):
-            if not isinstance(path, str) or path.endswith('/'):
-                continue
-            rel = path.lstrip('/')
-            if not rel or '..' in Path(rel).parts or clean(rel) != rel:
-                continue
-            owners.setdefault('/' + rel, set()).add(index)
+        for path in record_paths(record):
+            owners.setdefault(path, set()).add(index)
     return owners
 
 
@@ -162,21 +168,38 @@ def readable_document(path):
     return True
 
 
-def documentation(entry, paths):
-    basename = Path(entry).name
-    docs = []
+MAN_PAGE = re.compile(r'(.+)\.[1-9][a-z]*')
+DOCUMENT_SUFFIXES = ('.txt', '.md', '.rst', '-help.txt')
+
+
+def documentation_index(paths):
+    """One package's usage-document candidates, keyed by entry basename.
+
+    Built once per package: matching every entrypoint against every file
+    costs entries x files, minutes for a package the size of metasploit.
+    """
+    index = {}
     for path in paths:
         name = Path(path).name.removesuffix('.gz')
-        kind = 'man' if path.startswith('/usr/share/man/') and re.fullmatch(re.escape(basename) + r'\.[1-9][a-z]*', name) else \
-            'document' if '/share/doc/' in path and name in (basename + '.txt', basename + '.md', basename + '.rst', basename + '-help.txt') else None
-        if kind and readable_document(path):
-            docs.append({'path': path, 'kind': kind})
+        man = MAN_PAGE.fullmatch(name) if path.startswith('/usr/share/man/') else None
+        if man:
+            index.setdefault(man[1], []).append({'path': path, 'kind': 'man'})
+        elif '/share/doc/' in path:
+            for suffix in DOCUMENT_SUFFIXES:
+                if name.endswith(suffix) and len(name) > len(suffix):
+                    index.setdefault(name[:-len(suffix)], []).append({'path': path, 'kind': 'document'})
+    return index
+
+
+def documentation(entry, index, readable):
+    """Readable usage documents for ENTRY, man pages first."""
+    docs = [doc for doc in index.get(Path(entry).name, []) if readable(doc['path'])]
     return sorted(docs, key=lambda d: (d['kind'] != 'man', d['path']))
 
 
 def package_entries(record, index, owners):
     files, entries, desktops = [], [], []
-    for path in sorted(p for p, ids in owners.items() if index in ids):
+    for path in sorted(set(record_paths(record))):
         target = owned_file(path, index, owners)
         if target is None:
             continue
@@ -192,8 +215,9 @@ def package_entries(record, index, owners):
                     desktops.append({'path': path, 'name': clean(section.get('Name', '')), 'terminal': section.get('Terminal') == 'true'})
             except (OSError, UnicodeError, configparser.Error, KeyError):
                 pass
+    docs, readable = documentation_index(files), functools.cache(readable_document)
     for entry in entries:
-        entry['documentation'] = documentation(entry['path'], files)
+        entry['documentation'] = documentation(entry['path'], docs, readable)
     return files, entries, desktops
 
 
@@ -223,10 +247,12 @@ def native_evidence(name, spec, probe):
             target = meta.observed_resolve(info.parent / row[0], ROOT)
             if target.is_relative_to(venv) and target.is_file():
                 evidence['files'].append(logical(target))
+        docs = documentation_index(evidence['files'])
         for path in sorted(set(evidence['files'])):
             target = physical(path)
             if target.parent == venv / 'bin' and os.access(target, os.X_OK):
-                evidence['entrypoints'].append({'id': path, 'path': path, 'kind': 'native', 'documentation': documentation(path, evidence['files'])})
+                evidence['entrypoints'].append({'id': path, 'path': path, 'kind': 'native',
+                                                'documentation': documentation(path, docs, readable_document)})
     except (OSError, ValueError):
         evidence['state'] = 'unknown'
         evidence['entrypoints'] = []
@@ -250,7 +276,8 @@ def report_resolution():
 
 
 
-def discover():
+def discover(only=None):
+    """Installed inventory evidence; ONLY limits the work to one inventory id."""
     items, native = inventory()
     config, repos, private = source_snapshot()
     records = meta.installed(ROOT)
@@ -270,6 +297,8 @@ def discover():
     # or suffix stripping; the transaction report is not installation evidence.
     tools = []
     for name, groups in sorted(items.items()):
+        if only is not None and name != only:
+            continue
         tool = {'id': name, 'groups': sorted(groups), 'state': 'missing', 'reason': 'no installed package identity',
                 'packages': [], 'entrypoints': [], 'desktopEntries': [], 'native': None}
         for index in candidates.get(name, []):
@@ -286,7 +315,6 @@ def discover():
             if verified and 'files' in record:
                 tool['entrypoints'].extend(entries)
                 tool['desktopEntries'].extend(desktops)
-            if verified and 'files' in record:
                 tool['state'], tool['reason'] = 'installed', 'installed package identity and file inventory verified'
             elif tool['state'] != 'installed':
                 tool['state'], tool['reason'] = 'unknown', 'package provenance or owned file inventory unavailable'
@@ -346,7 +374,7 @@ def capabilities(result):
 
 
 def selected(tool_id, entry_id):
-    tool = next((t for t in discover()['tools'] if t['id'] == tool_id), None)
+    tool = next(iter(discover(tool_id)['tools']), None)
     if not tool or tool['state'] != 'installed':
         raise ValueError('tool has no verified installed identity')
     entries = tool['entrypoints']
@@ -357,6 +385,11 @@ def selected(tool_id, entry_id):
     return tool, entries[0]
 
 
+@functools.cache
+def help_bindings():
+    return json.loads((LAYER / 'files/help-bindings.json').read_text())['bindings']
+
+
 def usage_evidence(tool, entry):
     docs = entry['documentation']
     if docs:
@@ -364,8 +397,7 @@ def usage_evidence(tool, entry):
         if len(preferred) != 1:
             raise ValueError('ambiguous owned matching documentation')
         return {'kind': preferred[0]['kind'], 'path': preferred[0]['path'], 'argv': []}
-    registry = json.loads((LAYER / 'files/help-bindings.json').read_text())
-    bindings = [b for b in registry['bindings'] if b['tool'] == tool['id'] and b['entry'] == entry['path']
+    bindings = [b for b in help_bindings() if b['tool'] == tool['id'] and b['entry'] == entry['path']
                 and any(p['name'] == b['package'] and p['provenance'] == 'verified' for p in tool['packages'])]
     if len(bindings) != 1:
         raise ValueError('no unique owned documentation or reviewed help-only argv binding; refused')
