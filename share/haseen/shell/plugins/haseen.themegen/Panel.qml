@@ -47,7 +47,7 @@ Column {
     property var settings: ({})
     property var screen: null
 
-    // bin/haseen next to share/haseen (checkout, /usr/local, /usr, Nix).
+    // bin/haseen next to share/haseen (checkout, /usr/local, /usr).
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property var dirs: Images.directories(Array.isArray(settings.directories) && settings.directories.length > 0 ? settings.directories : ["~/Pictures", "~/Pictures/Wallpapers", Paths.userConfig + "/backgrounds"], Paths.home)
     readonly property int depth: typeof settings.depth === "number" && settings.depth >= 1 ? Math.round(settings.depth) : 3

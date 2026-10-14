@@ -19,6 +19,19 @@ hyprpicker                   # colour picker bind
 polkit                       # privilege prompts; the shell's haseen.polkit service is the agent
 gnome-keyring                # Secret Service for browsers/apps, unlocked by PAM at login (keepassxc is a GUI app, not a session service)
 xdg-utils                    # xdg-open / xdg-settings: the browser bind opens the default browser
+# The default handlers in default/applications/mimeapps.list name these, so
+# they ship with the session: a vendor default that points at a missing app is
+# worse than none. xdg-terminal-exec is how GTK's "Open in Terminal" and other
+# Terminal=true entries reach $TERMINAL; haseen's yazi and nvim handlers run
+# through haseen-terminal-run and work without it.
+# omarchy: entries come only from [omarchy] (the omarchy-repo layer); without
+# it they are skipped with a warning, never built from the AUR (owner, 2026-10-08).
+omarchy:xdg-terminal-exec    # prebuilt in [omarchy]; flea depends on it too
+yazi                         # default inode/directory handler (haseen-yazi.desktop)
+imv                          # default image/* handler (pulls libheif for HEIC/AVIF)
+mpv                          # default video/* and application/ogg handler
+papers                       # default application/pdf handler
+omarchy:herdr                # default terminal multiplexer; Apache-2.0 in [omarchy], AGPL-3.0 in the AUR build
 qt6-wayland                  # native Wayland for Qt 6 apps (Quickshell included)
 inter-font                   # shell UI font (theme token fontFamily)
 ttf-jetbrains-mono-nerd      # terminal and shell mono font with icon glyphs (fontMono)
@@ -26,11 +39,13 @@ noto-fonts-emoji             # colour emoji; noto-fonts itself comes from base
 gpu-screen-recorder          # haseen capture screenrecord (drives the red privacy dot)
 tesseract                    # haseen capture text (OCR)
 tesseract-data-eng           # OCR language data
+tesseract-data-ara           # Arabic OCR; -l ara+eng is what mixed screen text needs
 zbar                         # haseen capture qr
 libnotify                    # notify-send for capture/reminder/toggle feedback
 hyprsunset                   # night light (haseen.nightlight)
 aur:ttfx                     # Omarchy's screensaver text effects, Rust port (owner choice over python tte)
 aur:bibata-cursor-theme      # cursor Bibata-Modern-Ice (owner's luna default); prebuilt in Chaotic-AUR
+aur:tensaku                  # annotation editor for haseen capture screenshot --edit; prebuilt in [omarchy] (owner, 2026-10-14)
 power-profiles-daemon        # haseen powerprofile {list,set}: AC vs battery profile
 lsp-plugins-lv2              # lookahead limiter every speaker tuning ends in (haseen audio tuning)
 fcitx5                       # input method: Arabic and English on one key

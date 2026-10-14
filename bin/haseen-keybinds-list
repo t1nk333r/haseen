@@ -7,7 +7,7 @@
 # first, in a 800 × 500 searchable list, and Enter replays the bind's
 # dispatcher. Changes: the rows come from `haseen keybinds --json`, which
 # already resolves code:N keys, mouse buttons and Lua binds (the overlay on
-# SUPER + / reads the same records), the list is `haseen menu select`, and
+# SUPER + F1 reads the same records), the list is `haseen menu select`, and
 # the priorities name haseen's descriptions.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
@@ -53,7 +53,7 @@ records() {
             "^Emoji", "^Colou?r picker$", "^Screenshot", "^Screen recording",
             "^Capture menu$", "^AI panel$", "^Calendar$", "notification|^Do not disturb$",
             "^(Next|Previous) workspace$", "^Workspace [0-9]+$", "^Move window to workspace",
-            "^Move window silently to workspace", "^Swap window", "^Focus", "^Move window$",
+            "^Move window silently to workspace", "^Swap window", "^Move focus", "^Move window$",
             "^Resize window$", "^(Grow|Shrink)", "[Ss]cratchpad", "group", "monitor",
             "^(Night light|Stay awake|Screensaver|Toggle bar)$"
         ] as $order

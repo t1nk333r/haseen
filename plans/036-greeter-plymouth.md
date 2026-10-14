@@ -27,7 +27,7 @@ Behaviour from omarchy `bin/omarchy-plymouth-set`: colour the splash from the
 active theme, make it the default, rebuild the initramfs. What is **not**
 copied is the asset pipeline: Omarchy ships nine PNGs per theme and recolours
 them with ImageMagick on every theme change. haseen's theme is a plymouth
-*script* that draws what it needs — a breathing accent bar, the password
+*script* that draws what it needs — a breathing accent bar (a scanner since the 2026-10-08 addendum), the password
 prompt, the typed bullets — so a theme change substitutes six floats
 (`share/haseen/default/plymouth/haseen.script`) and this repository ships no
 binary assets. The splash draws the LUKS prompt itself, which is the whole
@@ -134,12 +134,59 @@ Two more gaps the same machine exposed:
   does not answer, so a broken shell can never stop a suspend), and retaken
   after resume. Tests: `tests/test-sleeplock.sh` (6), `tests/test-shell.sh`.
 
+## Addendum 2026-10-08: the scanner splash and the caret
+
+The owner replaced the breathing bar with a KITT-style scanner, asked that the
+splash draw no text, and asked for a small blinking caret where the asterisks
+appear, after Knight Rider's KITT (colour and pulse) and Person of Interest
+(the surveillance frame, the Machine's block cursor) (owner, 2026-10-08).
+`share/haseen/default/plymouth/haseen.script`:
+
+- A dim accent track, a quarter of the screen wide, with one lit segment (a
+  sixth of the track) sweeping back and forth, 45 frames each way, trailed by
+  four fading ghosts at the positions it held 3, 6, 9 and 12 frames earlier.
+  A slow boot still moves, so it does not look hung.
+- No text: the theme registers no message function and draws no "Password"
+  label.
+- The LUKS prompt replaces the scanner with a field as wide as its track,
+  framed by four corner brackets (2 px arms, 12 px long, accent at 0.6
+  opacity). The asterisks start at the left padding and a block caret (`█`)
+  follows the last one, both in `Monospace 14` (the label plugin's fallback
+  font when the initramfs has no monospace). The field widens only for a
+  passphrase that needs the room.
+- The caret blinks at 1 Hz: the script plugin refreshes 50 times a second
+  (`FRAMES_PER_SECOND`, `src/plugins/splash/script/plugin.c`), so it is lit for
+  25 frames, then fades for 25 along the scanner's ghost falloff. A key press
+  restarts the cycle lit.
+- The normal display and quit hide the caret, the brackets and the asterisks.
+  Every colour comes from the splash's colour variables, and no image is
+  shipped: each bar and arm is a stretched glyph.
+
+Verification: `tests/test-plymouth.sh` runs the rendered script under
+`tests/fixtures/plymouth-harness.js`, a fake Plymouth in node with a recording
+Window, Image, Sprite and Plymouth and Plymouth's local-variable scoping, and
+drives the refresh, password, normal and quit callbacks as plymouthd does. It
+checks that no message function is registered, that the caret is lit before
+the first key inside eight bracket arms in the scanner's colour with the
+scanner hidden, the 480 px field centred on a 1920 px screen, 25 lit frames
+of every 50, the caret right after three asterisks and lit again, a field
+widened by 120 keys, and that normal and quit hide all of it. 39 of its 58
+checks passed on the script before the caret.
+
+`tools/plymouth-mock.sh OUT.png` draws a labelled ImageMagick mock of that
+layout before the first key and after three, in the haseen theme with the
+fontconfig monospace and rectangles for the block glyph. It is not a Plymouth
+render: plymouth's script engine runs only inside `plymouthd`, so the scanner,
+the `█` glyph and the font are seen only on a real boot, which stays the
+owner's check.
+
 ## Execution record
 
 `share/haseen/lib/{greeter,plymouth,boot}.sh`,
 `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`,
 `share/haseen/shell/greeter/`, `share/haseen/default/plymouth/`,
-`tools/smoke-greeter.sh`, `tests/test-{greeter,plymouth}.sh`.
+`tools/smoke-greeter.sh`, `tests/test-{greeter,plymouth}.sh`; the caret:
+`tests/fixtures/plymouth-harness.js`, `tools/plymouth-mock.sh`.
 
 `lib/boot.sh` is new shared ground, not a new abstraction: the kernel command
 line and the initramfs rebuild were already written once inside

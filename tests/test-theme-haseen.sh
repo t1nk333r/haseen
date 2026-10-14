@@ -45,7 +45,7 @@ capture haseen theme set haseen
 assert_status "set haseen" 0 "$STATUS"
 assert_eq "theme.name" "haseen" "$(cat "$CUR/theme.name")"
 assert_eq "the shell selection stays readable" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
-assert_eq "the menu rounds like haseen's windows" "4" "$(jq -r .windowRadius "$CUR/theme/shell.json")"
+assert_contains "the windows round like the frame: twice haseen's radius" "$(cat "$CUR/theme/rounding.lua")" "rounding = 12 }"
 
 # --- the border wipe (plan 069) ------------------------------------------------
 # hyprland.lua reads border_wipe and border_wipe_seconds from the colors.toml

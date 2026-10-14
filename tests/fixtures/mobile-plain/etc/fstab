@@ -1,0 +1,2 @@
+UUID=1111 /     btrfs rw,noatime,subvol=/@ 0 0
+UUID=AAAA /boot vfat rw 0 2

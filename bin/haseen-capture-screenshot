@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Screenshot a region, window or output to the clipboard and ~/Pictures
-# haseen:args [region|window|output|screen] [--geometry "X,Y WxH"] [--output NAME] [--file PATH] [--format png|jpg|ppm] [--quality N] [--cursor] [--edit] [--stdout] [--no-save] [--no-copy] [--no-notify] [--dry-run]
+# haseen:args [region|window|output|screen] [--geometry "X,Y WxH"] [--output NAME] [--file PATH] [--format png|jpg|ppm] [--quality N] [--cursor] [--edit] [--upload] [--upload-to BACKEND] [--stdout] [--no-save] [--no-copy] [--no-notify] [--dry-run]
 #
 # Adapted from Omarchy bin/omarchy-capture-screenshot and omarchy-capture-region
 # (MIT, Copyright (c) David Heinemeier Hansson): region picking with slurp,
@@ -27,12 +27,20 @@ Options:
   --format FMT          png (default), jpg or ppm
   --quality N           JPEG quality 1-100 (default 90)
   --cursor              include the pointer
-  --edit                open the shot in satty or swappy, whichever is installed
+  --edit                annotate in Tensaku (or swappy) before anything is kept
+  --upload              upload the result and copy the link (haseen upload)
+  --upload-to BACKEND   upload with this backend (implies --upload)
   --stdout              write the image to stdout; nothing is saved, copied or announced
   --no-save             clipboard only
   --no-copy             file only
   --no-notify           no desktop notification
   --dry-run             print the plan
+
+With --edit, what the editor saves is what is kept, copied and uploaded. In
+Tensaku, Enter saves; Escape cancels the capture, and nothing is saved, copied
+or uploaded. swappy saves whenever it closes. --edit keeps PNG only, so it
+takes no other --format. --edit --upload ends with the link on the
+clipboard.
 
 Files go to \$HASEEN_SCREENSHOT_DIR or \$(xdg-user-dir PICTURES).
 EOF
@@ -51,6 +59,7 @@ parse_common_flags "$@"
 set -- "${REST[@]}"
 mode=region geometry="" output="" file="" format=png quality=90
 cursor=false edit=false stdout=false save=true copy=true announce=true
+upload=false upload_backend=""
 set_option() {
     case $1 in
     geometry) geometry=$2 ;;
@@ -74,6 +83,13 @@ while (($#)); do
         ;;
     --cursor) cursor=true ;;
     --edit) edit=true ;;
+    --upload) upload=true ;;
+    --upload-to)
+        (($# > 1)) || { usage >&2; exit 2; }
+        upload=true upload_backend=$2
+        shift
+        ;;
+    --upload-to=*) upload=true upload_backend=${1#*=} ;;
     --stdout) stdout=true ;;
     --no-save) save=false ;;
     --no-copy) copy=false ;;
@@ -96,14 +112,20 @@ if [[ ! $quality =~ ^[0-9]+$ ]] || ((quality < 1 || quality > 100)); then
     echo "Error: --quality wants 1-100, got: $quality" >&2
     exit 2
 fi
+# The editor writes a private edited.png, and swappy writes PNG bytes whatever
+# the name (swappy pixbuf.c), so an edited shot is PNG under either editor.
+if $edit && [[ $format != png ]]; then
+    echo "Error: --edit saves PNG only; drop --format $format" >&2
+    exit 2
+fi
 if $stdout; then
-    if $edit; then
-        echo "Error: --stdout and --edit together: pipe stdout into the editor instead" >&2
+    if $edit || $upload; then
+        echo "Error: --stdout with --edit or --upload: pipe stdout into the next step instead" >&2
         exit 2
     fi
     save=false copy=false announce=false
 fi
-$stdout || $save || $copy || $edit || die "--no-save and --no-copy together leave nothing to do"
+$stdout || $save || $copy || $edit || $upload || die "--no-save and --no-copy together leave nothing to do"
 if [[ -n $geometry && ! $geometry =~ ^-?[0-9]+,-?[0-9]+\ [0-9]+x[0-9]+$ ]]; then
     echo "Error: --geometry wants \"X,Y WxH\", got: $geometry" >&2
     exit 2
@@ -151,14 +173,22 @@ fi
 [[ $grim_type != jpeg ]] || grim_args+=(-q "$quality")
 if $cursor; then grim_args+=(-c); fi
 
+if $stdout; then
+    if $DRY_RUN; then
+        echo "DRYRUN: grim ${grim_args[*]} -"
+        exit 0
+    fi
+    exec grim "${grim_args[@]}" -
+fi
+
 editor=""
 if $edit; then
-    if have satty; then
-        editor=satty
+    if have tensaku; then
+        editor=tensaku
     elif have swappy; then
         editor=swappy
     else
-        warn "neither satty nor swappy is installed; saving without editing"
+        warn "neither tensaku nor swappy is installed; saving without editing"
     fi
 fi
 
@@ -169,35 +199,84 @@ elif [[ $file != */* ]]; then
     file="$dir/$file"
 fi
 
+# Every file but the saved one lives in a private directory (mktemp -d, 0700)
+# that is removed on every exit: a cancelled edit, a failed upload, a signal.
 if $DRY_RUN; then
-    if $stdout; then
-        echo "DRYRUN: grim ${grim_args[*]} -"
-        exit 0
+    work='<private temp dir>'
+else
+    work="$(mktemp -d)"
+    trap 'rm -rf -- "$work"' EXIT
+    trap 'exit 143' TERM INT HUP
+fi
+original="$work/original.png"
+edited="$work/edited.png"
+# Unsaved, the shot keeps the name it would have had: that is the name an
+# upload host, or an rclone bucket, stores it under.
+shot="$work/${file##*/}"
+if $save; then shot=$file; fi
+
+# The editor writes to a second file, so "saved" and "left without saving"
+# differ. Tensaku's own Enter (the seeded save-to-clipboard) copies without
+# writing a file, so Enter is made a save here, and Escape is made an exit:
+# Tensaku's default keeps the window open on Escape, and a user's config may
+# not set it. --early-exit closes the window after the save.
+edit_cmd=()
+case $editor in
+tensaku) edit_cmd=(tensaku --filename "$original" --output-filename "$edited" --actions-on-enter save-to-file --actions-on-escape exit --early-exit --copy-command wl-copy) ;;
+swappy) edit_cmd=(swappy -f "$original" -o "$edited") ;;
+esac
+
+upload_cmd=(haseen-upload "$shot" --quiet)
+[[ -z $upload_backend ]] || upload_cmd+=(--backend "$upload_backend")
+
+if $DRY_RUN; then
+    if [[ -n $editor ]]; then
+        echo "DRYRUN: grim ${grim_args[*]} $original"
+        echo "DRYRUN: ${edit_cmd[*]}"
+        echo "DRYRUN: mv $edited $shot (if the editor saved; otherwise stop: nothing is saved, copied or uploaded)"
+    else
+        echo "DRYRUN: grim ${grim_args[*]} $shot"
     fi
-    echo "DRYRUN: grim ${grim_args[*]} $file"
-    [[ $editor == satty ]] && echo "DRYRUN: satty --filename $file --output-filename $file --early-exit --copy-command wl-copy"
-    [[ $editor == swappy ]] && echo "DRYRUN: swappy -f $file -o $file"
-    $copy && echo "DRYRUN: wl-copy -t $mime < $file"
-    $save || echo "DRYRUN: rm $file (clipboard only)"
+    $copy && echo "DRYRUN: wl-copy -t $mime < $shot"
+    $upload && echo "DRYRUN: ${upload_cmd[*]} (the link replaces the image on the clipboard)"
+    echo "DRYRUN: rm -r $work"
     $announce || echo "DRYRUN: no notification"
     exit 0
 fi
 
-$stdout && exec grim "${grim_args[@]}" -
-$save || file="$(mktemp --suffix=".$format")"
-mkdir -p "$(dirname "$file")"
-grim "${grim_args[@]}" "$file"
+mkdir -p -- "$(dirname -- "$shot")"
+if [[ -n $editor ]]; then
+    grim "${grim_args[@]}" "$original"
+    "${edit_cmd[@]}"
+    [[ -s $edited ]] || exit 0 # left without saving: cancelled
+    mv -fT -- "$edited" "$shot"
+else
+    grim "${grim_args[@]}" "$shot"
+fi
 
-case $editor in
-satty) satty --filename "$file" --output-filename "$file" --early-exit --copy-command wl-copy ;;
-swappy) swappy -f "$file" -o "$file" ;;
-esac
+$copy && wl-copy -t "$mime" <"$shot"
 
-$copy && wl-copy -t "$mime" <"$file"
+# Upload last, so the link is what ends up on the clipboard: once a shot is
+# shared, the link is what you paste.
+link=""
+if $upload; then
+    link="$("${upload_cmd[@]}")" || die "the upload failed"
+fi
+
 if $save; then
     printf '%s\n' "$file"
-    if $announce; then notify -i "$file" "Screenshot saved" "${file/#"$HOME"/\~}"; fi
+    if ! $announce; then
+        :
+    elif [[ -n $link ]]; then
+        notify -i "$file" "Screenshot uploaded" "$link"
+    else
+        notify -i "$file" "Screenshot saved" "${file/#"$HOME"/\~}"
+    fi
+elif ! $announce; then
+    :
+elif [[ -n $link ]]; then
+    notify "Screenshot uploaded" "$link"
 else
-    rm -f "$file"
-    if $announce; then notify "Screenshot copied to clipboard"; fi
+    notify "Screenshot copied to clipboard"
 fi
+[[ -z $link ]] || printf '%s\n' "$link"

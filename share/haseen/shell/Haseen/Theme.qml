@@ -36,11 +36,10 @@ Singleton {
             fontSize: 11,
             radius: 6,
             gap: 6,
-            borderWidth: 1,
-            windowRadius: 4
+            borderWidth: 1
         })
 
-    readonly property var _numeric: ["fontSize", "radius", "gap", "borderWidth", "windowRadius"]
+    readonly property var _numeric: ["fontSize", "radius", "gap", "borderWidth"]
     readonly property var _text: ["mode", "fontFamily", "fontMono"]
 
     function token(key: string): var {
@@ -71,9 +70,6 @@ Singleton {
     readonly property int radius: token("radius")
     readonly property int gap: token("gap")
     readonly property int borderWidth: token("borderWidth")
-    // Hyprland's window rounding under this theme (decoration.rounding), for
-    // surfaces that round like the windows: the menu, as Omarchy's does.
-    readonly property int windowRadius: token("windowRadius")
 
     // Normal-state text and glyphs of bar widgets. It is the foreground, or
     // while the bar is transparent the colour FrameTextColor.qml picks for the

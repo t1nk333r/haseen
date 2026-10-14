@@ -69,7 +69,7 @@ assert_contains "screenrecord merges audio" "$OUTPUT" "-a default_output|default
 assert_contains "screenrecord writes the flag" "$OUTPUT" "touch $FLAG"
 assert_contains "screenrecord into Videos" "$OUTPUT" "-o $HOME/VIDEOS/screenrecording-"
 check_dry "screenrecord fullscreen" "-w focused" haseen capture screenrecord --fullscreen
-check_dry "text" "tesseract stdin stdout -l eng | wl-copy" haseen capture text --geometry "0,0 10x10"
+check_dry "text" "tesseract stdin stdout --oem 1 --psm 6 -l ara+eng -c preserve_interword_spaces=1 | wl-copy" haseen capture text --geometry "0,0 10x10"
 check_dry "qr" "zbarimg -q --raw -Sdisable -Sqrcode.enable - | wl-copy --sensitive" haseen capture qr
 check_dry "color" "hyprpicker -z -f hex" haseen capture color
 check_dry "reminder set" "--on-active=5m --unit=haseen-reminder-5m-" haseen reminder set 5 tea is ready

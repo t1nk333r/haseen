@@ -67,22 +67,27 @@ write_root_file() {
         echo "DRYRUN: write $dest (mode $mode):"
         sed 's/^/    | /'
     else
-        # install -d creates missing parents at 0755 & ~umask, and sudo ORs
-        # the caller's umask in: pin 022 so a 077 owner cannot make shared
-        # root state directories (e.g. /var/lib/haseen) untraversable.
-        (umask 022; sudo install -d -m 0755 "$(dirname "$dest")")
+        sudo install -d -m 0755 "$(dirname "$dest")"
         sudo tee "$dest" >/dev/null
         sudo chmod "$mode" "$dest"
     fi
 }
 
+# append_root_file DEST — append stdin to privileged file DEST; an existing
+# file keeps its mode. sudo keeps the caller's umask, so a DEST that does not
+# exist yet is created under umask 022 (0644): a plain `tee -a` under umask
+# 077 would leave a root config file only root can read. A DEST this user
+# cannot see takes that path too, which still appends.
 append_root_file() {
     local dest="$1"
     if $DRY_RUN; then
         echo "DRYRUN: append to $dest:"
         sed 's/^/    | /'
-    else
+    elif [[ -e $dest ]]; then
         sudo tee -a "$dest" >/dev/null
+    else
+        # shellcheck disable=SC2016  # $1 expands in the root shell
+        sudo sh -c 'umask 022 && exec tee -a -- "$1" >/dev/null' sh "$dest"
     fi
 }
 
@@ -108,12 +113,27 @@ write_user_file() {
     fi
 }
 
+# append_user_file DEST — append stdin to unprivileged file DEST, creating it
+# and its parents if needed. The caller decides whether appending is right:
+# this helper never looks at what is already there.
+append_user_file() {
+    local dest="$1"
+    if $DRY_RUN; then
+        echo "DRYRUN: append to $dest:"
+        sed 's/^/    | /'
+    else
+        mkdir -p "$(dirname "$dest")"
+        cat >>"$dest"
+    fi
+}
+
 # seed_user_file SRC DEST — copy SRC to DEST only if DEST does not exist.
 # User files are seeded once and then belong to the user; re-runs never
-# overwrite them.
+# overwrite them. A dangling link counts as existing: it is the user's (a
+# dotfiles checkout not cloned yet), and following it would create its target.
 seed_user_file() {
     local src="$1" dest="$2"
-    [[ -e $dest ]] && return 0
+    [[ -e $dest || -L $dest ]] && return 0
     if $DRY_RUN; then
         echo "DRYRUN: seed $dest from $src"
     else

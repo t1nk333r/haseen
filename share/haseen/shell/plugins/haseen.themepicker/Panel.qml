@@ -20,7 +20,7 @@ Column {
     property var settings: ({})
     property var screen: null
 
-    // bin/haseen next to share/haseen (checkout, /usr/local, /usr, Nix).
+    // bin/haseen next to share/haseen (checkout, /usr/local, /usr).
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property string userThemes: Paths.userConfig + "/themes"
     readonly property string cacheDir: (Quickshell.env("HASEEN_USER_CACHE") || (Quickshell.env("XDG_CACHE_HOME") || Paths.home + "/.cache") + "/haseen") + "/themes"

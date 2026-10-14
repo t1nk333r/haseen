@@ -3,7 +3,7 @@
 [![ci](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml/badge.svg)](https://github.com/t1nk333r/haseen/actions/workflows/ci.yml)
 
 حصين (*haseen*, "fortified"): a clean, low-resource desktop that installs on
-top of **CachyOS** (plain Arch works too; NixOS uses the flake). It is built on
+top of **CachyOS** (plain Arch works too). It is built on
 Hyprland (Lua config) and a small Quickshell shell of its own, and it can load
 add-ons made for Omarchy and DankMaterialShell.
 
@@ -15,8 +15,8 @@ add-ons made for Omarchy and DankMaterialShell.
 - **Secure Boot for Windows dual boot.** sbctl keys are enrolled **with** Microsoft's (2011 and 2023 CAs) and the firmware's, so Windows and anti-cheat keep working. The Limine config hash is enrolled, and a pacman hook re-signs after updates. `haseen boot list` shows what the firmware can start and the power menu has a row per other system: it sets `BootNext` and reboots, so Windows starts once without touching the boot order.
 - **Omarchy and DMS add-ons.** All 22 Omarchy themes are included; their backgrounds are fetched on first use from a pinned commit. Omarchy's menu, workspaces and ttfx screensaver are ported. The compatibility host supports Omarchy bar widgets, panels, services and overlays while preserving their original directories; DMS bar-widget compatibility is unchanged. Imported plugins are opt-in, not sandboxed, and may require their original helper/config backends. DMS can replace the shell entirely (`haseen shell use dms`).
 - **Everyday tools.** Screenshots, screen recording, OCR, QR, colour picker, emoji, reminders, night light, stay awake, do not disturb, CPU/RAM/GPU usage, iPhone-style privacy dots (green camera, orange mic, red recording/share, blue location), media, weather (off by default), clipboard history, Flatpak-first app installs.
-- **Keys you can see.** `SUPER + /` opens a searchable sheet of the bindings the compositor actually has, grouped by the section they were written under (`haseen keybinds` prints the same in a terminal). Menu Learn › Keybindings lists them Omarchy's way, and Enter runs the one you pick; Learn › Tmux lists tmux's keys with your config.
-- **Upgrades that are not reinstalls.** `haseen migrate` runs one-off upgrade steps once per user and records them in your state dir; a login notice offers to run what is pending.
+- **Keys you can see.** `SUPER + F1` opens a searchable sheet of the bindings the compositor actually has, grouped by the section they were written under (`haseen keybinds` prints the same in a terminal). Menu Learn › Keybindings lists them Omarchy's way, and Enter runs the one you pick; Learn › Tmux lists tmux's keys with your config.
+- **Upgrades that are not reinstalls.** `haseen migrate` runs one-off upgrade steps once per user and records them in your state dir; a login notice offers to run what is pending. `install.sh` also seeds haseen's user defaults (`haseen seed user`) on every run: only files you do not have yet are written.
 - **Knows your machine.** `haseen hw match` reads the firmware's DMI identity and lists the quirks that apply to it, from one table; `haseen hw apply` runs each matched fix once and records it, and a quirk nobody has written yet is reported, not hidden.
 - **Defaults:**
   - Theme: `haseen`, haseen's own theme: HANCORE's Greek Noir with the "akane" border wipe (formerly `greek-noir-akane`, which still works as a name).
@@ -38,7 +38,7 @@ haseen secureboot setup         # interactive; firmware must be in Setup Mode
 ```
 
 At a terminal the installer first offers a picker: the default layers start
-ticked, while the optional layers (secureboot, ai, dms, gaming, flatpak) and setup
+ticked, while the optional layers (secureboot, ai, dms, gaming, flatpak, mobile) and setup
 steps (keyd, fingerprint, geoclue, dotfiles) start off. It uses gum when
 installed, else a numbered list. The choice is saved to
 `~/.config/haseen/install.toml`, and the next run offers to reuse it. Piped,
@@ -59,7 +59,7 @@ translate, and lists what has no haseen equivalent; run it without
 |---|---|
 | `base` | essentials, ufw, snapper check |
 | `chaotic` | Chaotic-AUR. Packages come from the official/CachyOS repos first, then Chaotic-AUR, then Omarchy's repo (all prebuilt); the AUR is the last resort |
-| `omarchy-repo` | Omarchy's repo, last in pacman.conf, as a source for leaf packages like ttfx. Omarchy itself (`omarchy`, `omarchy-settings`) is never installed |
+| `omarchy-repo` | Omarchy's repo, last in pacman.conf, as a source for leaf packages like ttfx, and the only source of herdr and xdg-terminal-exec (without it the desktop layer skips those two with a warning). Omarchy itself (`omarchy`, `omarchy-settings`) is never installed |
 | `desktop` | Hyprland (Lua) + uwsm, greetd/tuigreet (only if no display manager is enabled), portals, fonts, GPU session env |
 | `theme` | theme pipeline, the 22 Omarchy themes plus haseen's own (the default), background fetch + `haseen-background.service`, `haseen theme set/install/bg` |
 | `flatpak` | Flathub (per user); `haseen install app …` is Flatpak-first |
@@ -69,6 +69,7 @@ translate, and lists what has no haseen equivalent; run it without
 | `dms` | DankMaterialShell, available to swap in with `haseen shell use dms` |
 | `gaming` | CachyOS gaming packages (Steam, gamemode, MangoHud, Proton) |
 | `vapt` | optional security tool inventory in 25 explicit groups (the owner's lists plus oniomarchy's tool categories) and native/COAE environments; an opt-in, per-run, signature-required private oniomarchy source (`--with-oniomarchy`) that never touches `/etc/pacman.conf`; no AUR or Omarchy dependency, no assessment execution, no service started ([details](docs/vapt.md)) |
+| `mobile` | phones: KDE Connect, scrcpy, adb, MTP and the iOS stack; `haseen mobile status/mirror/backup` |
 
 `haseen commands` lists everything; `haseen doctor` shows what was detected and
 how each layer is doing.
@@ -88,10 +89,7 @@ CA trust change; Stop and the remote desktop client have no prompt. The panel
 never claims success or runs anything during discovery
 ([panel guide](docs/vapt.md#optional-security-workstation-panel-plan-088)).
 
-## NixOS
-
-See [`nix/README.md`](nix/README.md): `nixosModules.haseen` (with lanzaboote
-for Secure Boot) and `homeManagerModules.haseen`.
+NixOS is not supported: the installer refuses it.
 
 ## Docs
 
@@ -105,7 +103,6 @@ for Secure Boot) and `homeManagerModules.haseen`.
 0.1.0-dev. Covered so far:
 - Fixture-tested.
 - The shell was run live next to an existing session.
-- The flake was evaluated and built.
 
 Not run yet: a real install on a CachyOS machine, Secure Boot enrollment on real firmware, and greetd login (plan 014).
 

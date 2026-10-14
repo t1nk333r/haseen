@@ -1,0 +1,12 @@
+*filter
+:ufw-user-input - [0:0]
+### RULES ###
+
+### tuple ### allow udp 1714:1764 0.0.0.0/0 any 0.0.0.0/0 in
+-A ufw-user-input -p udp --dport 1714:1764 -j ACCEPT
+
+### tuple ### allow tcp 1714:1764 0.0.0.0/0 any 0.0.0.0/0 in
+-A ufw-user-input -p tcp --dport 1714:1764 -j ACCEPT
+
+### END RULES ###
+COMMIT

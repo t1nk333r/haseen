@@ -57,7 +57,7 @@ assert_contains "unknown backend message" "$OUTPUT" "--backend must be ollama or
 assert_dry_pure "unknown backend" "$OUTPUT"
 assert_not_contains "nothing planned before refusal" "$OUTPUT" "DRYRUN:"
 DRY_RUN=true ai_layer "$FIXTURES/nixos" apply
-assert_contains "nixos goes through the flake" "$OUTPUT" "does not support distro 'nixos'"
+assert_contains "nixos refused" "$OUTPUT" "does not support distro 'nixos'"
 
 # --- the loopback drop-in ---------------------------------------------------
 DRY_RUN=true ai_layer "$FIXTURES/cachyos-grub-plain" apply

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — put haseen on an existing CachyOS (or Arch) install.
 #
-# 1. Preflight: refuse NixOS (use the flake) and unknown distros.
+# 1. Preflight: refuse NixOS and unknown distros.
 # 2. Install the tree: bin/ -> PREFIX/bin, share/haseen -> PREFIX/share/haseen,
 #    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
 #    PREFIX/share/applications, the app icon (`-i haseen`) ->
@@ -41,7 +41,7 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
                     [--vapt-groups GROUP,...|all] [--tree-only] [--uninstall-tree]
 
   --layers      layers to apply (default: ${DEFAULT_LAYERS[*]})
-                optional: secureboot ai dms gaming flatpak (haseen layer list)
+                optional: secureboot ai dms gaming flatpak mobile (haseen layer list)
   --pick        choose the layers and optional setup steps (keyd, fingerprint,
                 geoclue, dotfiles) from a list, even when stdin is not a
                 terminal; at a terminal this is the default unless --layers,
@@ -88,6 +88,7 @@ for layer in "${LAYERS[@]}"; do
     if [[ $layer == vapt ]]; then
         [[ -n $VAPT_GROUPS ]] || die "--layers vapt requires explicit --vapt-groups GROUP,...|all"
     else
+        layer_exists "$layer" || die "unknown layer: '$layer' (see: haseen layer list); nothing was installed"
         ordinary_layers+=("$layer")
     fi
 done
@@ -115,6 +116,19 @@ APP_DIR="$PREFIX/share/applications"
 # the symbolic one in currentColor, which GTK recolours.
 ICON_DIR="$PREFIX/share/icons/hicolor"
 
+# Defaults that have to sit where XDG looks for them, not inside share/haseen:
+# "<path under PREFIX/share>" is also the path under share/haseen/default/.
+#
+# $PREFIX/share is /usr/local/share by default, and the XDG basedir default for
+# XDG_DATA_DIRS is "/usr/local/share:/usr/share" — earlier entries win, so these
+# outrank anything /usr/share carries. That is deliberate on a machine migrated
+# from Omarchy: omarchy-settings owns /usr/share/applications/mimeapps.list and
+# /usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list (pacman -Ql
+# omarchy-settings), and haseen's answers must win without touching a file
+# pacman owns. Both stay below the user's own ~/.config, which `haseen setup
+# default` writes.
+VENDOR_FILES=(applications/mimeapps.list xdg-terminal-exec/hyprland-xdg-terminals.list)
+
 uninstall_tree() {
     local f
     for f in "$REPO"/bin/haseen*; do
@@ -122,6 +136,9 @@ uninstall_tree() {
     done
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
+    done
+    for f in "${VENDOR_FILES[@]}"; do
+        run_root rm -f "$PREFIX/share/$f"
     done
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && run_root rm -f "$APP_DIR/${f##*/}"
@@ -160,6 +177,9 @@ install_tree() {
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && install_root_file "$f" "$UNIT_DIR/${f##*/}" 0644
     done
+    for f in "${VENDOR_FILES[@]}"; do
+        install_root_file "$REPO/share/haseen/default/$f" "$PREFIX/share/$f" 0644
+    done
     for f in "$REPO"/share/haseen/default/applications/*.desktop; do
         [[ -e $f ]] && install_root_file "$f" "$APP_DIR/${f##*/}" 0644
     done
@@ -177,8 +197,8 @@ omarchy)
     warn "read docs/decisions/0001-haseen-replaces-omarchy.md before continuing."
     confirm "Continue on an Omarchy host?" || exit 1
     ;;
-nixos) die "NixOS is configured through the flake (nix/README.md), not this installer." ;;
-*) die "unsupported distro '${DISTRO_PRETTY:-unknown}'. haseen targets CachyOS, Arch and NixOS." ;;
+nixos) die "NixOS is not supported. haseen targets CachyOS and Arch." ;;
+*) die "unsupported distro '${DISTRO_PRETTY:-unknown}'. haseen targets CachyOS and Arch." ;;
 esac
 
 if $UNINSTALL; then
@@ -243,6 +263,13 @@ else
     HASEEN_PATH="$installed_haseen_path" "$haseen_bin" setup nvim --if-absent "${flags[@]}" ||
         warn "haseen.nvim was not seeded; run: haseen setup nvim"
 fi
+
+# The user-level defaults (fontconfig, the shell rc include, mux, yazi,
+# capture, handlers): every run, fresh or upgrade. A seed writes only what is
+# missing, so a file the user has made their own is never touched; a seed
+# that fails is named, and the others are still in place.
+HASEEN_PATH="$installed_haseen_path" "$haseen_bin" seed user "${flags[@]}" ||
+    warn "some seeds failed (named above); fix them and run: haseen seed user"
 
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.

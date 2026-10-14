@@ -3,11 +3,18 @@
 # never executed.
 #
 # Catalogue: share/haseen/default/catalog.json (plan 017). Every entry has
-# id, category, label, icon, source (flatpak|pacman|aur|mise), ref and an
+# id, category, label, icon, source (flatpak|pacman|aur|omarchy|mise), ref and an
 # optional `when` bash guard. Extras: `family` (fonts), `layer` (installed by
 # applying that haseen layer), `needs` (pacman packages a mise toolchain
 # builds against), `container` (a Docker database; ref is then the docker
-# package that runs it).
+# package that runs it), `pullsOmarchy` (see the [omarchy] pull below).
+#
+# `"source": "aur"` means "not in the official repos", not "built from the
+# AUR": it goes through pkg_install_aur, which tries an enabled repo, then
+# Chaotic-AUR, then [omarchy], and builds from the AUR only as the last
+# resort ([omarchy] leaf apps flea, localsend and omacalc use it).
+# `"source": "omarchy"` takes the package from [omarchy] alone
+# (pkg_install_omarchy): herdr, by owner decision (plan 024).
 #
 # Flatpaks live in the per-user installation (`flatpak --user`): installing,
 # updating and removing apps then needs no root and no polkit prompt, and the
@@ -47,8 +54,6 @@ catalog_field() {
         '.entries[] | select(.id == $id) | .[$f] // empty | if type == "array" then .[] else . end' \
         "$HASEEN_CATALOG"
 }
-
-catalog_has() { jq -e --arg id "$1" 'any(.entries[]; .id == $id)' "$HASEEN_CATALOG" >/dev/null; }
 
 # catalog_resolve NAME [CATEGORY] — the entry id NAME refers to: an id, a
 # label or a ref (package or Flatpak id), case-insensitive, optionally limited
@@ -121,7 +126,7 @@ catalog_installed() {
     for r in $ref; do
         case "$source" in
         flatpak) flatpak_app_installed "$r" || return 1 ;;
-        pacman | aur) catalog_pkg_installed "$r" || return 1 ;;
+        pacman | aur | omarchy) catalog_pkg_installed "$r" || return 1 ;;
         mise) mise_tool_installed "$r" || return 1 ;;
         *) return 1 ;;
         esac
@@ -221,11 +226,19 @@ mise_install_tools() {
     for spec in "$@"; do
         run mise use --global "$spec"
     done
+    # haseen's shell fragment runs `mise activate` itself
+    # (default/shell/init.sh), so there is nothing to advise once the rc
+    # includes a copy that exists here; an include of a path that is gone
+    # activates nothing. A hand-wired `mise activate` counts too, and fish is
+    # not a shell haseen seeds, so it keeps the manual answer.
+    # shellcheck source=share/haseen/lib/shellrc.sh
+    source "$HASEEN_PATH/lib/shellrc.sh"
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"; do
         grep -qs 'mise activate' "$rc" && return 0
+        [[ $(shellrc_include "$rc") == live ]] && return 0
     done
-    info "mise tools are on PATH once your shell activates mise; add to ~/.bashrc: eval \"\$(mise activate bash)\""
+    info "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
 }
 
 mise_remove_tools() {
@@ -264,6 +277,17 @@ container_remove() {
     have docker || $DRY_RUN || die "docker is not installed"
     run_root docker rm -f "$name"
 }
+
+# --- the [omarchy] dependency pull ------------------------------------------------
+#
+# flea is a leaf app in [omarchy] that hard-depends on `omarchy` (pacman -Si
+# flea), so pacman pulls omarchy and omarchy-settings in with it. The owner
+# approved that for flea alone (2026-10-05, confirmed 2026-10-08 and
+# 2026-10-13): an entry marked "pullsOmarchy": true lets --yes answer
+# pkg_guard_closure (lib/packages.sh) for its packages. Every other install
+# whose closure brings omarchy in is asked about without --yes and refused
+# with it.
+mapfile -t PKG_OMARCHY_APPROVED < <(jq -r '.entries[] | select(.pullsOmarchy == true) | .ref | splits(" +")' "$HASEEN_CATALOG" 2>/dev/null)
 
 # --- per-entry extra steps ---------------------------------------------------------
 
@@ -357,6 +381,10 @@ catalog_install() {
         check_pkg_names "${refs[@]}"
         pkg_install_aur "${refs[@]}"
         ;;
+    omarchy)
+        check_pkg_names "${refs[@]}"
+        pkg_install_omarchy "${refs[@]}"
+        ;;
     mise)
         ((${#needs[@]} == 0)) || pkg_install "${needs[@]}"
         mise_install_tools "${refs[@]}"
@@ -376,7 +404,7 @@ catalog_remove() {
     info "removing $(catalog_field "$id" label) ($source: $ref)"
     case "$source" in
     flatpak) for r in "${refs[@]}"; do flatpak_remove_app "$r"; done ;;
-    pacman | aur)
+    pacman | aur | omarchy)
         if [[ -n $container ]]; then
             container_remove "$id"
         else

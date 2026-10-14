@@ -185,7 +185,7 @@ _picker_toggle() {
             [[ -n $i ]] && on[$i]=1
         done <<<"$out"
     else
-        local opts=() PS3
+        local opts=() PS3 k
         n=${#_items[@]}
         PS3="Toggle a number, or $((n + 1)) to continue: "
         printf '%s\n' "$title" >&2
@@ -204,7 +204,12 @@ _picker_toggle() {
             # select only leaves with an empty REPLY at end of input.
             [[ -z $REPLY || $choice == continue ]] && break
             [[ -z $choice ]] && continue
-            i="${_items[REPLY - 1]}"
+            # The item comes from the option select chose, not from REPLY:
+            # select reads "08" as 8, bash arithmetic as a bad octal number.
+            for ((k = 0; k < n; k++)); do
+                [[ ${opts[k]} == "$choice" ]] && break
+            done
+            i="${_items[k]}"
             if [[ -n ${on[$i]:-} ]]; then unset 'on[$i]'; else on[$i]=1; fi
         done
     fi

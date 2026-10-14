@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # haseen:summary Copy the text in a screen region (OCR with tesseract)
-# haseen:args [--geometry "X,Y WxH" | --image FILE] [--lang LANGS] [--dry-run]
+# haseen:args [--geometry "X,Y WxH" | --image FILE] [--lang LANGS] [--print] [--dry-run]
 #
 # Adapted from Omarchy bin/omarchy-capture-text (MIT, Copyright (c) David
 # Heinemeier Hansson): freeze the screen with hyprpicker while slurp picks,
 # then grim | tesseract into the clipboard.
+#
+# The tesseract invocation is not Omarchy's. Measured on rendered Arabic screen
+# text (2026-10-05): --oem 1 is mandatory, because the Arabic model ships no
+# legacy engine at all ("Tesseract (legacy) engine requested, but components
+# are not present"); -l ara+eng is mandatory, because -l ara alone turns
+# embedded Latin into garbage, and Arabic UI text is almost always mixed; and
+# Omarchy's --dpi 300 is dropped, because it merged words that came out spaced
+# correctly without it. Arabic needs extra/tesseract-data-ara installed.
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
@@ -12,11 +20,12 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/com
 
 usage() {
     cat <<EOF
-Usage: haseen capture text [--geometry "X,Y WxH" | --image FILE] [--lang LANGS] [--dry-run]
+Usage: haseen capture text [--geometry "X,Y WxH" | --image FILE] [--lang LANGS] [--print] [--dry-run]
 
 Pick a region (or pass one), recognise its text with tesseract and copy it.
 --image reads an existing picture instead of the screen. --print also writes
-the text to stdout. LANGS defaults to \$HASEEN_OCR_LANGS or eng.
+the text to stdout. LANGS defaults to \$HASEEN_OCR_LANGS or ara+eng, which is
+what mixed Arabic/English screen text needs.
 EOF
 }
 
@@ -24,7 +33,7 @@ notify() { have notify-send && notify-send -a haseen "$@" || true; }
 
 parse_common_flags "$@"
 set -- "${REST[@]}"
-geometry="" image="" lang=${HASEEN_OCR_LANGS:-eng} print=false
+geometry="" image="" lang=${HASEEN_OCR_LANGS:-ara+eng} print=false
 while (($#)); do
     case "$1" in
     --geometry | --image | --lang)
@@ -39,10 +48,13 @@ while (($#)); do
 done
 [[ -z $image || -r $image ]] || die "cannot read $image"
 
+# One argv, used by the plan and by both real paths, so they cannot drift.
+ocr_argv=("${image:-stdin}" stdout --oem 1 --psm 6 -l "$lang" -c preserve_interword_spaces=1)
+
 if $DRY_RUN; then
     src="grim -g ${geometry:-<slurp selection>} -"
     [[ -n $image ]] && src="cat $image"
-    echo "DRYRUN: $src | tesseract stdin stdout -l $lang | wl-copy"
+    echo "DRYRUN: $src | tesseract ${ocr_argv[*]} | wl-copy"
     exit 0
 fi
 require_cmds tesseract
@@ -58,9 +70,9 @@ if [[ -z $image && -z $geometry ]]; then
 fi
 
 if [[ -n $image ]]; then
-    text="$(tesseract "$image" stdout --oem 1 --psm 6 -l "$lang" -c preserve_interword_spaces=1 2>/dev/null)" || die "OCR failed"
+    text="$(tesseract "${ocr_argv[@]}" 2>/dev/null)" || die "OCR failed"
 else
-    text="$(grim -g "$geometry" - | tesseract stdin stdout --oem 1 --psm 6 -l "$lang" --dpi 300 -c preserve_interword_spaces=1 2>/dev/null)" || die "OCR failed"
+    text="$(grim -g "$geometry" - | tesseract "${ocr_argv[@]}" 2>/dev/null)" || die "OCR failed"
 fi
 if [[ -z ${text//[[:space:]]/} ]]; then
     notify "No text found"

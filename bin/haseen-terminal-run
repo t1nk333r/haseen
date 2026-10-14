@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# haseen:summary Run a terminal program (yazi, nvim) in a window of your terminal
+# haseen:args [--dry-run] <command> [args...]
+#
+# The vendor handlers for folders and text (share/haseen/default/applications)
+# run through this, so they open without xdg-terminal-exec, which haseen takes
+# only from [omarchy] (plan 037).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen terminal run [--dry-run] <command> [args...]
+
+Opens <command> in a new window of \$TERMINAL (foot when unset or not
+installed): foot, alacritty, ghostty and kitty all take -e, and an
+xdg-terminal-exec \$TERMINAL takes the command as it is. The window closes
+when the command ends. Desktop entries with Terminal=false use it to start a
+terminal program without xdg-terminal-exec.
+EOF
+}
+
+# Only flags before the command are ours; everything after belongs to it.
+while (($# > 0)); do
+    case "$1" in
+    --dry-run) DRY_RUN=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --)
+        shift
+        break
+        ;;
+    *) break ;;
+    esac
+    shift
+done
+(($# > 0)) || {
+    usage >&2
+    exit 2
+}
+
+term="${TERMINAL:-foot}"
+have "$term" || term=foot
+have "$term" || $DRY_RUN || die "no terminal found: set \$TERMINAL or install foot"
+argv=("$term" -e "$@")
+[[ ${term##*/} == xdg-terminal-exec ]] && argv=("$term" "$@")
+if $DRY_RUN; then
+    echo "DRYRUN: ${argv[*]}"
+    exit 0
+fi
+exec "${argv[@]}"
