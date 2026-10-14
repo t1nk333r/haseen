@@ -239,25 +239,38 @@ ShellRoot {
     }
 }
 QML
-    # clip_run STEPS [RUNTIME_DIR | -] -> OUTPUT, STATUS; state N FILTER reads
+    # clip_run STEPS [RUNTIME_DIR] -> OUTPUT, STATUS; state N FILTER reads
     # step N's state. Without a RUNTIME_DIR each run gets an empty private one,
-    # so no thumbnail is left over; "-" runs with XDG_RUNTIME_DIR unset. The
-    # shell runs under umask 022, the usual login default, so a file the cache
-    # does not make private on purpose shows up as 644.
+    # so no thumbnail is left over. There is no run without XDG_RUNTIME_DIR:
+    # Quickshell then uses /run/user/<uid>, the live session's directory, or
+    # exits when it cannot create it there (CI). The no-runtime-dir rule is the
+    # cacheDir unit case above. The shell runs under umask 022, the usual login
+    # default, so a file the cache does not make private on purpose shows up
+    # as 644.
     clip_run() {
         : >"$LOG"
         : >"$MODES"
-        local run=${2:-} rt mask
+        local run=${2:-} mask
         if [[ -z $run ]]; then
             run="$(mktemp -d "$SANDBOX/run.XXXXXX")"
             chmod 700 "$run"
         fi
-        if [[ $run == - ]]; then rt=(-u XDG_RUNTIME_DIR); else rt=(XDG_RUNTIME_DIR="$run"); fi
         mask="$(umask)"
         umask 022
-        capture env "${rt[@]}" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
-            CLIP_STEPS="$1" timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+        # Its own process group, its output in a file: timeout signals only
+        # dbus-run-session, and a shell that dies leaves quickshell's crash
+        # helper holding whatever stdout it had. Killing the group after the
+        # run and never reading a pipe makes a stuck run fail this case
+        # instead of hanging the suite.
+        setsid env XDG_RUNTIME_DIR="$run" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+            CLIP_STEPS="$1" timeout -k 5 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness" \
+            >"$SANDBOX/clip.out" 2>&1 &
+        local group=$!
         umask "$mask"
+        STATUS=0
+        wait "$group" || STATUS=$?
+        kill -- -"$group" 2>/dev/null || true
+        OUTPUT="$(cat "$SANDBOX/clip.out")"
         if [[ $STATUS == 0 ]]; then _pass; else _fail "clipboard preview: harness completes in the real engine (exit $STATUS)" "$OUTPUT"; fi
     }
     state() { sed -n "s/^.*STATE $1 //p" <<<"$OUTPUT" | head -1 | jq -r "$2"; }
@@ -360,9 +373,4 @@ gamma" "$(state 0 '"\(.preview.entry)|\(.preview.head)"')"
     clip_run '["wait","select:2"]' "$run"
     assert_eq "cache: a runtime dir open to others is refused" "decode 3" "$(decodes)"
     assert_eq "cache: no cache dir is made in it" "absent" "$([[ -e $run/haseen-clipboard ]] && echo present || echo absent)"
-
-    clip_run '["wait","select:2"]' -
-    assert_eq "cache: no XDG_RUNTIME_DIR, no image decode (no /tmp fallback)" "decode 3" "$(decodes)"
-    assert_contains "cache: the pane says why" "$(state 1 .preview.notice)" "XDG_RUNTIME_DIR"
-    assert_eq "cache: the text pane still works without it" "3" "$(state 0 .preview.entry)"
 fi

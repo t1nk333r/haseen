@@ -87,7 +87,7 @@ All paths are under `share/haseen/shell/plugins/haseen.clipboard/`.
 - `tests/test-widgets-b.sh:122`–`:139`: the `Cliphist.js` parser, filter,
   sizes, metadata line, bounds clamping (`[2147483647,1,7,7,7,8388608]`) and
   the cache path (no `/tmp` fallback).
-- `tests/test-widgets-b.sh:144`–`:368`: the real `Panel.qml` under `qs`,
+- `tests/test-widgets-b.sh:144`–`:376`: the real `Panel.qml` under `qs`,
   offscreen, under umask 022, on a stub cliphist that logs each decode. On by
   default, the newest entry decoded in full; a 70 000-byte text capped at
   64 KiB and decoded once; a 9000×9000 screenshot described and never decoded
@@ -96,9 +96,11 @@ All paths are under `share/haseen/shell/plugins/haseen.clipboard/`.
   octet-stream entry and an unmarked NUL body described with an empty body,
   the marked ones never decoded; bounds of 3000000000 reading back as
   2147483647 with the 64 KiB text cap kept; the cache 0700 with 0600 files;
-  a symlinked cache, an existing 0755 cache, a 0755 runtime dir and an unset
-  `XDG_RUNTIME_DIR` each leaving the small image undecoded, writing nothing
-  through the link and leaving the link and the 0755 dir as they were.
+  a symlinked cache, an existing 0755 cache and a 0755 runtime dir each
+  leaving the small image undecoded, writing nothing through the link and
+  leaving the link and the 0755 dir as they were. Each run is its own process
+  group with its output in a file, killed afterwards, so a shell that dies
+  fails the case instead of hanging the suite.
 - `haseen plugin validate haseen.clipboard` ok; qmllint 0 errors.
 - **Live smoke** in a scratch Quickshell instance (`dbus-run-session` with
   `tools/smoke-session.conf`, only `haseen.clipboard` in `services`, driven
@@ -122,6 +124,13 @@ All paths are under `share/haseen/shell/plugins/haseen.clipboard/`.
 packaged version, while the two `wl-paste` watchers ran against the live
 session and the owner's clipboard was never written. The parser is proven
 against upstream's format, not upstream's binary.
+
+An unset `XDG_RUNTIME_DIR` is covered only by the `cacheDir` unit case
+(`tests/test-widgets-b.sh:139`), not in the real engine: Quickshell then
+uses `/run/user/<uid>` for its own instance directory, which is the live
+session's on a desktop, and exits when it cannot create it. In the CI
+container the shell exited and its crash handler kept the test's output pipe
+open, which hung the suite (PR #41's first two CI runs).
 
 `qs ipc call … search ""` is rejected by qs's argument parser: an empty
 string cannot be passed over IPC.
