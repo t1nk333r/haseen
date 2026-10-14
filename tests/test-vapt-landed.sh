@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 007 landed-security follow-up (SEC-L1..L7). Fixture data only: archives,
+# Audit regressions for the landed layer (plan 007). Fixture data only: archives,
 # ELF metadata and selectors are inert, nothing (hook, scriptlet, interpreter,
 # library, manager or key operation) executes, and every privileged request is
 # recorded by a fake.
@@ -95,48 +95,48 @@ landed_review() { # LABEL EXPECTED ARCHIVE...
 }
 no_stock_hooks() { rm -f "$ROOT"/usr/share/libalpm/hooks/*.hook; }
 
-# --- SEC-L1: a scriptlet runs through libalpm's /bin/sh chain ---------------
+# --- A scriptlet runs through libalpm's /bin/sh chain ---------------
 # No stock hook binds bash here; only the scriptlet's own shell does.
 landed_case vapt-landed-scriptlet-shell
 no_stock_hooks
 landed_archive nmap 7.99-1 $'.INSTALL=post_install() {\n echo installed\n}'
-landed_review 'SEC-L1 builtin-only scriptlet with the retained shell (control)' 0 "$LANDED_ARCHIVE"
+landed_review 'builtin-only scriptlet with the retained shell (control)' 0 "$LANDED_ARCHIVE"
 NMAP_ARCHIVE="$LANDED_ARCHIVE"
 landed_archive bash 5.3.3-3 'usr/bin/bash=@ELF:libc.so.6,' $'.INSTALL=post_upgrade() {\n return 0\n}'
 landed_plan blackarch bash 5.3.3-3
-landed_review 'SEC-L1 non-base replacement shell for a builtin-only scriptlet is refused' 1 "$LANDED_ARCHIVE"
+landed_review 'non-base replacement shell for a builtin-only scriptlet is refused' 1 "$LANDED_ARCHIVE"
 landed_archive bash 5.3.3-3 'usr/bin/bash=@ELF:libc.so.6,'
 landed_plan blackarch bash 5.3.3-3 extra nmap 7.99-1
-landed_review 'SEC-L1 non-base replacement shell beside another package scriptlet is refused' 1 \
+landed_review 'non-base replacement shell beside another package scriptlet is refused' 1 \
     "$LANDED_ARCHIVE" "$NMAP_ARCHIVE"
 unset LANDED_PLAN
 printf '\nlocal edit\n' >>"$ROOT/usr/bin/bash"
-landed_review 'SEC-L1 retained shell not equal to its base reference cannot run a scriptlet' 1 "$NMAP_ARCHIVE"
+landed_review 'retained shell not equal to its base reference cannot run a scriptlet' 1 "$NMAP_ARCHIVE"
 
-# --- SEC-L2: privileged Python startup imports are part of the guard --------
+# --- Privileged Python startup imports are part of the guard --------
 landed_case vapt-landed-python-imports
 no_stock_hooks
 vapt_stock_python
 landed_archive nmap 7.99-1 'usr/lib/python3.14/site-packages/nmapmod/__init__.py=# inert'
-landed_review 'SEC-L2 site-packages addition is outside the isolated import path (control)' 0 "$LANDED_ARCHIVE"
+landed_review 'site-packages addition is outside the isolated import path (control)' 0 "$LANDED_ARCHIVE"
 landed_archive nmap 7.99-1 'usr/lib/python3.14/ctypes/__init__.so=@ELF:libc.so.6,'
-landed_review 'SEC-L2 non-base extension shadowing a stdlib package is refused' 1 "$LANDED_ARCHIVE"
+landed_review 'non-base extension shadowing a stdlib package is refused' 1 "$LANDED_ARCHIVE"
 landed_archive nmap 7.99-1 'usr/lib/python3.14/zz_vapt.py=# inert'
-landed_review 'SEC-L2 non-base addition to the isolated stdlib path is refused' 1 "$LANDED_ARCHIVE"
+landed_review 'non-base addition to the isolated stdlib path is refused' 1 "$LANDED_ARCHIVE"
 landed_archive nmap 7.99-1 'usr/lib/libalt.so.1=@ELF:,libc.so.6'
-landed_review 'SEC-L2 non-base library selected by a stdlib extension dependency is refused' 1 "$LANDED_ARCHIVE"
+landed_review 'non-base library selected by a stdlib extension dependency is refused' 1 "$LANDED_ARCHIVE"
 
-# --- SEC-L3: future ldconfig indexes retained libraries ---------------------
+# --- Future ldconfig indexes retained libraries ---------------------
 for soname in libzz.so.999 libreadline.so.8; do
     landed_case "vapt-landed-retained-soname-$soname"
     vapt_elf "$ROOT/usr/lib/libzz.so.999" "soname=$soname"
     landed_archive nmap 7.99-1
     expected=0
     [[ $soname != libreadline.so.8 ]] || expected=1
-    landed_review "SEC-L3 retained unowned library with SONAME $soname" "$expected" "$LANDED_ARCHIVE"
+    landed_review "retained unowned library with SONAME $soname" "$expected" "$LANDED_ARCHIVE"
 done
 
-# --- SEC-L4: symlinked selector directories are not empty --------------------
+# --- Symlinked selector directories are not empty --------------------
 for selector in loader gconv; do
     landed_case "vapt-landed-symlinked-$selector-selectors"
     mkdir -p "$ROOT/opt/configs"
@@ -152,10 +152,10 @@ for selector in loader gconv; do
         landed_archive nmap 7.99-1 'opt/configs/tool.conf=module TOOL// INTERNAL /opt/tool/lib/tool 1' \
             'opt/tool/lib/tool.so=@ELF:libc.so.6,'
     fi
-    landed_review "SEC-L4 symlinked $selector selector directory is never treated as empty" 1 "$LANDED_ARCHIVE"
+    landed_review "symlinked $selector selector directory is never treated as empty" 1 "$LANDED_ARCHIVE"
 done
 
-# --- SEC-L5: sealed artifacts need non-replaceable ancestry ------------------
+# --- Sealed artifacts need non-replaceable ancestry ------------------
 vapt_sandbox vapt-landed-seal-ancestry
 mkdir -p "$SANDBOX/src" "$SANDBOX/safe/sealed" "$SANDBOX/open/sealed"
 printf 'inert artifact bytes\n' >"$SANDBOX/src/a-1-1-x86_64.pkg.tar.gz"
@@ -163,20 +163,20 @@ digest="$(sha256sum "$SANDBOX/src/a-1-1-x86_64.pkg.tar.gz" | cut -d' ' -f1)"
 chmod 0755 "$SANDBOX/safe" "$SANDBOX/safe/sealed" "$SANDBOX/open/sealed"
 chmod 0777 "$SANDBOX/open"
 capture python3 "$VAPT_META" seal "$SANDBOX/src/a-1-1-x86_64.pkg.tar.gz" "$SANDBOX/safe/sealed/a-1-1-x86_64.pkg.tar.gz" "$digest" --root "$SANDBOX"
-assert_status 'SEC-L5 fixture seal into caller-owned non-replaceable ancestry (control)' 0 "$STATUS"
+assert_status 'fixture seal into caller-owned non-replaceable ancestry (control)' 0 "$STATUS"
 capture python3 "$VAPT_META" seal "$SANDBOX/src/a-1-1-x86_64.pkg.tar.gz" "$SANDBOX/open/sealed/a-1-1-x86_64.pkg.tar.gz" "$digest" --root "$SANDBOX"
-assert_status 'SEC-L5 seal below a world-writable ancestor is refused' 1 "$STATUS"
-assert_eq 'SEC-L5 refused seal leaves no artifact' no "$([[ -e $SANDBOX/open/sealed/a-1-1-x86_64.pkg.tar.gz ]] && echo yes || echo no)"
+assert_status 'seal below a world-writable ancestor is refused' 1 "$STATUS"
+assert_eq 'refused seal leaves no artifact' no "$([[ -e $SANDBOX/open/sealed/a-1-1-x86_64.pkg.tar.gz ]] && echo yes || echo no)"
 chmod 0755 "$SANDBOX/open"
 if [[ $(id -u) != 0 ]]; then
     rm -f "$SANDBOX/safe/sealed/a-1-1-x86_64.pkg.tar.gz"
     capture python3 "$VAPT_META" seal "$SANDBOX/src/a-1-1-x86_64.pkg.tar.gz" "$SANDBOX/safe/sealed/a-1-1-x86_64.pkg.tar.gz" "$digest"
-    assert_status 'SEC-L5 production seal requires root-owned ancestry (no caller ownership)' 1 "$STATUS"
+    assert_status 'production seal requires root-owned ancestry (no caller ownership)' 1 "$STATUS"
 fi
 
-# --- SEC-L6: committed archives equal the complete reviewed plan -------------
+# --- Committed archives equal the complete reviewed plan -------------
 WHOIS_URL=https://github.com/rfc1036/whois
-l6_case() {
+plan_case() {
     vapt_sandbox "$1"
     vapt_root
     printf '[options]\nArchitecture = auto\nDownloadUser = alpm\nSigLevel = Required DatabaseOptional\n[extra]\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n' >"$ROOT/etc/pacman.conf"
@@ -186,8 +186,8 @@ l6_case() {
     printf 'extra\twhois\t5.6.4-1\thttps://geo.mirror.pkgbuild.com/extra/os/x86_64/whois-5.6.4-1-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
     printf 'extra\tlibdep\t1-1\thttps://geo.mirror.pkgbuild.com/extra/os/x86_64/libdep-1-1-x86_64.pkg.tar.gz\n' >>"$VAPT_PLAN"
 }
-# l6_archive FILE-NAME PKGNAME PKGVER DEPENDS — published under FILE-NAME's DB record.
-l6_archive() {
+# plan_archive FILE-NAME PKGNAME PKGVER DEPENDS — published under FILE-NAME's DB record.
+plan_archive() {
     local dir="$SANDBOX/l6/$1"
     mkdir -p "$dir/usr/bin" "$SANDBOX/archives"
     printf 'pkgname = %s\npkgver = %s\narch = x86_64\n' "$2" "$3" >"$dir/.PKGINFO"
@@ -214,43 +214,43 @@ print(next((p['version'] for p in records if p['name'] == sys.argv[2]), 'absent'
 EOF
 }
 for variant in control identity depends; do
-    l6_case "vapt-landed-plan-$variant"
-    l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+    plan_case "vapt-landed-plan-$variant"
+    plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
     case "$variant" in
-    control) l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep ;;
-    identity) l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whoami 5.6.4-1 libdep ;;
-    depends) l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 'unreviewed-runtime' ;;
+    control) plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep ;;
+    identity) plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whoami 5.6.4-1 libdep ;;
+    depends) plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 'unreviewed-runtime' ;;
     esac
     vapt_api pacman --yes extra/whois
     if [[ $variant == control ]]; then
-        assert_status 'SEC-L6 archive identity and dependencies equal the reviewed plan (control)' 0 "$STATUS"
-        assert_eq 'SEC-L6 control installs the reviewed target' 5.6.4-1 "$(installed_version whois)"
+        assert_status 'archive identity and dependencies equal the reviewed plan (control)' 0 "$STATUS"
+        assert_eq 'control installs the reviewed target' 5.6.4-1 "$(installed_version whois)"
     else
-        assert_status "SEC-L6 $variant mismatch between signed archive and reviewed plan is refused" 2 "$STATUS"
-        assert_eq "SEC-L6 $variant mismatch never opens an archive for commit" '' "$(vapt_calls commit-digests)"
-        assert_eq "SEC-L6 $variant mismatch installs nothing" 'absent absent' "$(installed_version whois) $(installed_version whoami)"
+        assert_status "$variant mismatch between signed archive and reviewed plan is refused" 2 "$STATUS"
+        assert_eq "$variant mismatch never opens an archive for commit" '' "$(vapt_calls commit-digests)"
+        assert_eq "$variant mismatch installs nothing" 'absent absent' "$(installed_version whois) $(installed_version whoami)"
     fi
-    vapt_tools_untouched "SEC-L6 $variant"
+    vapt_tools_untouched "$variant"
 done
 
-# --- SEC-L7: public mutating entrypoints never use fixture trust live --------
+# --- Public mutating entrypoints never use fixture trust live --------
 vapt_sandbox vapt-landed-sysroot-mutation
 vapt_root
 vapt_repos "${VAPT_BASE[@]}" "extra|whois|5.6.4-1|$WHOIS_URL"
 vapt_sudo_noop
 for verb in install remove; do
     if [[ $verb == install ]]; then vapt_cli install --yes --groups osint; else vapt_cli remove --yes; fi
-    assert_status "SEC-L7 public $verb with a sysroot refuses to mutate" 2 "$STATUS"
-    assert_eq "SEC-L7 public $verb with a sysroot requests no privileged operation" '' "$(vapt_calls sudo)"
+    assert_status "public $verb with a sysroot refuses to mutate" 2 "$STATUS"
+    assert_eq "public $verb with a sysroot requests no privileged operation" '' "$(vapt_calls sudo)"
 done
 vapt_cli install --dry-run --groups osint
-assert_status 'SEC-L7 sysroot dry-run planning stays available' 0 "$STATUS"
-vapt_tools_untouched 'SEC-L7 sysroot mutation refusal'
+assert_status 'sysroot dry-run planning stays available' 0 "$STATUS"
+vapt_tools_untouched 'sysroot mutation refusal'
 
-# --- Integration H1/H2/M1/M2/G5: real-host state and commit consistency -----
-# Uses the per-package/full-upgrade setup of the SEC-L6 cases above.
+# --- Real-host state and commit consistency -----
+# Uses the per-package/full-upgrade setup of the archive-identity cases above.
 whois_upgrade_case() {
-    l6_case "$1"
+    plan_case "$1"
     vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL" "extra|whois|5.6.5-1|$WHOIS_URL"
     vapt_installed "whois|5.6.3-1|$WHOIS_URL"
     vapt_package whois 5.6.4-1
@@ -259,87 +259,87 @@ whois_upgrade_case() {
 }
 pending_state() { [[ -e $ROOT/var/lib/haseen/vapt/upgrade-pending ]] && echo yes || echo no; }
 
-# H1: a fresh host has no shared lock (or root state directory beyond the
+# A fresh host has no shared lock (or root state directory beyond the
 # fixture's own protocol files): the first transaction creates it.
-l6_case vapt-landed-fresh-state-dir
-l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
-l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
+plan_case vapt-landed-fresh-state-dir
+plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
 rm -f "$ROOT/var/lib/haseen/vapt/transaction.lock"
 vapt_api pacman --yes extra/whois
-assert_status 'H1 first transaction on a host without the shared lock' 0 "$STATUS"
-assert_eq 'H1 first transaction installs the reviewed target' 5.6.4-1 "$(installed_version whois)"
-assert_eq 'H1 first transaction creates the shared lock' yes \
+assert_status 'first transaction on a host without the shared lock' 0 "$STATUS"
+assert_eq 'first transaction installs the reviewed target' 5.6.4-1 "$(installed_version whois)"
+assert_eq 'first transaction creates the shared lock' yes \
     "$([[ -f $ROOT/var/lib/haseen/vapt/transaction.lock ]] && echo yes || echo no)"
 
-# N2: root state lives only at /var/lib/haseen. An environment override is
+# Root state lives only at /var/lib/haseen. An environment override is
 # refused with a reason before any root state operation; nothing is created
 # or chmodded at the other path.
-l6_case vapt-landed-state-dir-override
-l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
-l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
+plan_case vapt-landed-state-dir-override
+plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
 mkdir -p "$ROOT/opt/elsewhere"
 chmod 0700 "$ROOT/opt/elsewhere"
 export HASEEN_STATE_DIR=/opt/elsewhere
 vapt_api pacman --yes extra/whois
 unset HASEEN_STATE_DIR
-assert_status 'N2 HASEEN_STATE_DIR override is refused' 2 "$STATUS"
-assert_contains 'N2 override refusal is reported' "$OUTPUT" 'HASEEN_STATE_DIR'
-assert_eq 'N2 override installs nothing' absent "$(installed_version whois)"
-assert_eq 'N2 override path is never chmodded by root' 700 "$(stat -c %a "$ROOT/opt/elsewhere")"
-assert_eq 'N2 override path gets no lock or state' '' "$(ls -A "$ROOT/opt/elsewhere")"
+assert_status 'HASEEN_STATE_DIR override is refused' 2 "$STATUS"
+assert_contains 'override refusal is reported' "$OUTPUT" 'HASEEN_STATE_DIR'
+assert_eq 'override installs nothing' absent "$(installed_version whois)"
+assert_eq 'override path is never chmodded by root' 700 "$(stat -c %a "$ROOT/opt/elsewhere")"
+assert_eq 'override path gets no lock or state' '' "$(ls -A "$ROOT/opt/elsewhere")"
 # The root metadata operations themselves accept only the canonical paths.
 capture python3 "$VAPT_META" state-repair "$ROOT/opt/elsewhere" --root "$ROOT"
-assert_status 'N2 state-repair refuses a non-canonical directory' 1 "$STATUS"
-assert_eq 'N2 refused state-repair leaves the mode' 700 "$(stat -c %a "$ROOT/opt/elsewhere")"
+assert_status 'state-repair refuses a non-canonical directory' 1 "$STATUS"
+assert_eq 'refused state-repair leaves the mode' 700 "$(stat -c %a "$ROOT/opt/elsewhere")"
 capture python3 "$VAPT_META" shared-lock-prepare "$ROOT/opt/elsewhere/transaction.lock" --root "$ROOT"
-assert_status 'N2 shared-lock-prepare refuses a non-canonical lock' 1 "$STATUS"
-assert_eq 'N2 refused shared-lock-prepare creates no lock' '' "$(ls -A "$ROOT/opt/elsewhere")"
+assert_status 'shared-lock-prepare refuses a non-canonical lock' 1 "$STATUS"
+assert_eq 'refused shared-lock-prepare creates no lock' '' "$(ls -A "$ROOT/opt/elsewhere")"
 capture python3 "$VAPT_META" state-repair "$ROOT/var/lib/haseen" "$ROOT/var/lib/haseen/vapt" --root "$ROOT"
-assert_status 'N2 state-repair of the canonical directories (control)' 0 "$STATUS"
+assert_status 'state-repair of the canonical directories (control)' 0 "$STATUS"
 
-# H2: a restrictive caller umask must not make root-written review/commit
+# A restrictive caller umask must not make root-written review/commit
 # files unreadable to the reviewer or to DownloadUser.
-l6_case vapt-landed-umask-download
-l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
-l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
+plan_case vapt-landed-umask-download
+plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
 mask="$(umask)"
 umask 077
 vapt_api pacman --yes extra/whois
 umask "$mask"
-assert_status 'H2 per-package transaction under umask 077' 0 "$STATUS"
-assert_eq 'H2 downloaded artifacts are world-readable like libalpm under umask 022' '' \
+assert_status 'per-package transaction under umask 077' 0 "$STATUS"
+assert_eq 'downloaded artifacts are world-readable like libalpm under umask 022' '' \
     "$(grep -v ' 0o644$' "$CALLS/download-modes" || true)"
 whois_upgrade_case vapt-landed-umask-frozen
 mask="$(umask)"
 umask 077
 vapt_api upgrade
 umask "$mask"
-assert_status 'H2 full upgrade under umask 077' 0 "$STATUS"
-assert_eq 'H2 frozen reviewed DB, its repository and parent are DownloadUser-readable' 'extra 0o644 0o755 0o755' \
+assert_status 'full upgrade under umask 077' 0 "$STATUS"
+assert_eq 'frozen reviewed DB, its repository and parent are DownloadUser-readable' 'extra 0o644 0o755 0o755' \
     "$(sort -u "$CALLS/frozen-modes")"
 
-# M1: a live DB refreshed after the review must not resolve the commit.
+# A live DB refreshed after the review must not resolve the commit.
 whois_upgrade_case vapt-landed-newer-live-db
 export VAPT_LIVE_PLAN="$SANDBOX/live.tsv"
 printf 'extra\twhois\t5.6.5-1\thttps://geo.mirror.pkgbuild.com/extra/os/x86_64/whois-5.6.5-1-x86_64.pkg.tar.gz\n' >"$VAPT_LIVE_PLAN"
 touch -d '+1 day' "$ROOT/var/lib/pacman/sync/extra.db"
 vapt_api upgrade
-assert_status 'M1 reviewed full upgrade commits' 0 "$STATUS"
-assert_eq 'M1 commit installs the reviewed version, never the newer live DB resolution' 5.6.4-1 "$(installed_version whois)"
-assert_eq 'M1 live DB becomes the reviewed DB' 'reviewed fixture DB extra' "$(cat "$ROOT/var/lib/pacman/sync/extra.db")"
+assert_status 'reviewed full upgrade commits' 0 "$STATUS"
+assert_eq 'commit installs the reviewed version, never the newer live DB resolution' 5.6.4-1 "$(installed_version whois)"
+assert_eq 'live DB becomes the reviewed DB' 'reviewed fixture DB extra' "$(cat "$ROOT/var/lib/pacman/sync/extra.db")"
 
-# M2: another user's recorded full-upgrade commit appearing after this run's
+# Another user's recorded full-upgrade commit appearing after this run's
 # early check still blocks a per-package commit once the lock is held.
-l6_case vapt-landed-marker-after-precheck
-l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
-l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
+plan_case vapt-landed-marker-after-precheck
+plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
 printf 'reviewed-full-upgrade-commit-pending\n' >"$ROOT/var/lib/haseen/vapt/upgrade-pending"
 vapt_api pacman --yes extra/whois
-assert_status 'M2 per-package commit over a recorded incomplete upgrade is refused' 2 "$STATUS"
-assert_eq 'M2 nothing is committed' '' "$(vapt_calls commit-digests)"
-assert_eq 'M2 the recorded commit is preserved' yes "$(pending_state)"
+assert_status 'per-package commit over a recorded incomplete upgrade is refused' 2 "$STATUS"
+assert_eq 'nothing is committed' '' "$(vapt_calls commit-digests)"
+assert_eq 'the recorded commit is preserved' yes "$(pending_state)"
 
-# G5: BlackArch activation and record clearing are each all-or-nothing and
+# BlackArch activation and record clearing are each all-or-nothing and
 # resumable: a failure leaves either the old config or the full stanza, and
 # the recovery record until both are done.
 ba_landed_case() {
@@ -356,23 +356,23 @@ for step in activate-blackarch state-clear; do
     export VAPT_FAIL_ROOT_OP="$step"
     vapt_api blackarch
     unset VAPT_FAIL_ROOT_OP
-    assert_contains "G5 $step failure is a mutation failure" "$OUTPUT" 'MUTATION=1'
-    assert_eq "G5 $step failure keeps the recovery record" yes "$(pending_state)"
+    assert_contains "$step failure is a mutation failure" "$OUTPUT" 'MUTATION=1'
+    assert_eq "$step failure keeps the recovery record" yes "$(pending_state)"
     if [[ $step == activate-blackarch ]]; then
-        assert_eq 'G5 failed activation leaves the previous config byte-identical' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+        assert_eq 'failed activation leaves the previous config byte-identical' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
     else
-        assert_eq 'G5 failed record clear leaves exactly one complete stanza' 1 "$(stanzas)"
-        assert_contains 'G5 failed record clear leaves the stanza usable' "$(cat "$ROOT/etc/pacman.conf")" 'Server = https://blackarch.org/blackarch/$repo/os/$arch'
+        assert_eq 'failed record clear leaves exactly one complete stanza' 1 "$(stanzas)"
+        assert_contains 'failed record clear leaves the stanza usable' "$(cat "$ROOT/etc/pacman.conf")" 'Server = https://blackarch.org/blackarch/$repo/os/$arch'
     fi
     vapt_api recover
-    assert_status "G5 recovery after a $step failure completes" 0 "$STATUS"
-    assert_eq "G5 recovery after a $step failure leaves exactly one stanza" 1 "$(stanzas)"
-    assert_eq "G5 recovery after a $step failure clears the record" no "$(pending_state)"
-    assert_contains "G5 recovery after a $step failure leaves BlackArch usable" "$OUTPUT" 'STATE=usable'
-    vapt_tools_untouched "G5 $step"
+    assert_status "recovery after a $step failure completes" 0 "$STATUS"
+    assert_eq "recovery after a $step failure leaves exactly one stanza" 1 "$(stanzas)"
+    assert_eq "recovery after a $step failure clears the record" no "$(pending_state)"
+    assert_contains "recovery after a $step failure leaves BlackArch usable" "$OUTPUT" 'STATE=usable'
+    vapt_tools_untouched "$step"
 done
 
-# --- SEC-L1b: libalpm runs .INSTALL whenever its text names the phase ------
+# --- libalpm runs .INSTALL whenever its text names the phase ------
 # libalpm decides by grepping the .INSTALL text for the phase name, not by a
 # function-definition shape: any non-exempt scriptlet seeds the shell proof.
 for body in $'echo post_install\n' $'printf "%s" pre_upgrade\n'; do
@@ -380,18 +380,18 @@ for body in $'echo post_install\n' $'printf "%s" pre_upgrade\n'; do
     no_stock_hooks
     printf '\nlocal edit\n' >>"$ROOT/usr/bin/bash"
     landed_archive nmap 7.99-1 ".INSTALL=$body"
-    landed_review "SEC-L1b scriptlet text naming a phase needs a base-proven shell: ${body%%$'\n'*}" 1 "$LANDED_ARCHIVE"
+    landed_review "scriptlet text naming a phase needs a base-proven shell: ${body%%$'\n'*}" 1 "$LANDED_ARCHIVE"
 done
 landed_case vapt-landed-scriptlet-phase-control
 no_stock_hooks
 landed_archive nmap 7.99-1 $'.INSTALL=echo post_install\n'
-landed_review 'SEC-L1b phase text with the base-proven shell (control)' 0 "$LANDED_ARCHIVE"
+landed_review 'phase text with the base-proven shell (control)' 0 "$LANDED_ARCHIVE"
 # The static scriptlet grammar supports only `name() {` openers; a split
 # definition is an unsupported shape and stays a manual-review refusal.
 landed_archive nmap 7.99-1 $'.INSTALL=post_install ()\n{\n return 0\n}'
-landed_review 'SEC-L1b split function definition remains an unsupported shape' 1 "$LANDED_ARCHIVE"
+landed_review 'split function definition remains an unsupported shape' 1 "$LANDED_ARCHIVE"
 
-# --- SEC-L3b: ldconfig indexes library symlinks through their targets ------
+# --- ldconfig indexes library symlinks through their targets ------
 for variant in colliding unrelated; do
     landed_case "vapt-landed-soname-symlink-$variant"
     soname=libnovelalias.so.1
@@ -402,14 +402,14 @@ for variant in colliding unrelated; do
     landed_archive nmap 7.99-1
     expected=0
     [[ $variant == unrelated ]] || expected=1
-    landed_review "SEC-L3b retained library symlink to a $variant-SONAME object outside the search dirs" "$expected" "$LANDED_ARCHIVE"
+    landed_review "retained library symlink to a $variant-SONAME object outside the search dirs" "$expected" "$LANDED_ARCHIVE"
 done
 landed_case vapt-landed-soname-symlink-incoming
 landed_archive nmap 7.99-1 'usr/lib/libnovel-alias.so.1@>../../opt/nmap/payload.bin' \
     'opt/nmap/payload.bin=@ELF:,libreadline.so.8'
-landed_review 'SEC-L3b incoming library symlink to a colliding-SONAME object is refused' 1 "$LANDED_ARCHIVE"
+landed_review 'incoming library symlink to a colliding-SONAME object is refused' 1 "$LANDED_ARCHIVE"
 
-# --- PAM1/SUDO1: post-commit sudo loads PAM and sudo.conf plugins -----------
+# --- Post-commit sudo loads PAM and sudo.conf plugins -----------
 # haseen's own privileged steps after the commit run sudo, which dlopens PAM
 # modules named by /etc/pam.d/sudo (and its includes) and sudo.conf plugins.
 pam_case() {
@@ -422,7 +422,7 @@ pam_case() {
 }
 pam_case vapt-landed-pam-control
 landed_archive nmap 7.99-1
-landed_review 'PAM1 unrelated package with retained PAM/sudo configuration (control)' 0 "$LANDED_ARCHIVE"
+landed_review 'unrelated package with retained PAM/sudo configuration (control)' 0 "$LANDED_ARCHIVE"
 for change in pam-include pam-module sudo-conf sudo-plugin; do
     pam_case "vapt-landed-pam-$change"
     case "$change" in
@@ -431,16 +431,16 @@ for change in pam-include pam-module sudo-conf sudo-plugin; do
     sudo-conf) landed_archive nmap 7.99-1 'etc/sudo.conf=Plugin sudoers_policy /opt/nmap/policy.so' 'opt/nmap/policy.so=@ELF:libc.so.6,' ;;
     sudo-plugin) landed_archive nmap 7.99-1 'usr/lib/sudo/sudoers.so=@ELF:libc.so.6,' ;;
     esac
-    landed_review "PAM1 unauthenticated change to the post-commit sudo $change graph is refused" 1 "$LANDED_ARCHIVE"
+    landed_review "unauthenticated change to the post-commit sudo $change graph is refused" 1 "$LANDED_ARCHIVE"
 done
 
-# --- SEC-FROZEN-1: production-parity sudoers facts --------------------------
+# --- Production-parity sudoers facts --------------------------
 # The unprivileged audit cannot read root-only sudoers: it consumes the root
 # producer's facts file and refuses without it, fixture root or not.
 pam_case vapt-landed-facts-required
 landed_archive nmap 7.99-1
 capture python3 "$VAPT_META" audit "$LANDED_ARCHIVE" --root "$ROOT"
-assert_status 'FROZEN-1 audit without sudoers group_plugin facts is refused' 1 "$STATUS"
+assert_status 'audit without sudoers group_plugin facts is refused' 1 "$STATUS"
 for selected in no yes; do
     pam_case "vapt-landed-group-plugin-$selected"
     mkdir -p "$ROOT/usr/lib/vapt"
@@ -449,10 +449,10 @@ for selected in no yes; do
     landed_archive nmap 7.99-1 'usr/lib/vapt/group_vapt.so=@ELF:libc.so.6,'
     expected=0
     [[ $selected == no ]] || expected=1
-    landed_review "FROZEN-1 unauthenticated replacement of a sudoers group_plugin (selected=$selected)" "$expected" "$LANDED_ARCHIVE"
+    landed_review "unauthenticated replacement of a sudoers group_plugin (selected=$selected)" "$expected" "$LANDED_ARCHIVE"
 done
 
-# --- SEC-FROZEN-3/4/5: the root producer refuses unmodelled sudo selection ---
+# --- The root producer refuses unmodelled sudo selection ---
 # The producer writes only <sysroot>/var/cache/haseen-vapt.<id>/sudo-plugins,
 # into the existing root stage it never creates or chmods.
 PRODUCED=var/cache/haseen-vapt.landed/sudo-plugins
@@ -469,40 +469,40 @@ pam_case vapt-landed-producer
 printf 'root ALL=(ALL:ALL) ALL\nDefaults group_plugin="/usr/lib/vapt/group_vapt.so /etc/group"\n' >"$ROOT/etc/sudoers"
 producer_case 'FROZEN producer literal group_plugin (control)' 0
 assert_eq 'FROZEN producer names the selected module' /usr/lib/vapt/group_vapt.so "$(cat "$ROOT/$PRODUCED" 2>/dev/null)"
-# B2: any other destination is refused before anything is created or chmodded.
+# Any other destination is refused before anything is created or chmodded.
 install -d -m 0750 "$SANDBOX/elsewhere"
 for out in "$SANDBOX/elsewhere/sudo-plugins" "$ROOT/sudo-plugins" \
     "$ROOT/var/cache/haseen-vapt.landed/nested/sudo-plugins" "$ROOT/var/cache/other/sudo-plugins"; do
     capture python3 "$VAPT_META" sudo-plugins --out "$out" --root "$ROOT"
-    assert_status "B2 producer refuses an unconfined destination: ${out#"$SANDBOX"/}" 1 "$STATUS"
-    assert_eq "B2 unconfined destination stays absent: ${out#"$SANDBOX"/}" no \
+    assert_status "producer refuses an unconfined destination: ${out#"$SANDBOX"/}" 1 "$STATUS"
+    assert_eq "unconfined destination stays absent: ${out#"$SANDBOX"/}" no \
         "$([[ -e $out || -e $out.new ]] && echo yes || echo no)"
 done
-assert_eq 'B2 producer creates no unconfined directory' no \
+assert_eq 'producer creates no unconfined directory' no \
     "$([[ -e $ROOT/var/cache/haseen-vapt.landed/nested || -e $ROOT/var/cache/other ]] && echo yes || echo no)"
-assert_eq 'B2 producer never chmods an existing parent' 750 "$(stat -c %a "$SANDBOX/elsewhere")"
+assert_eq 'producer never chmods an existing parent' 750 "$(stat -c %a "$SANDBOX/elsewhere")"
 rm -rf "$ROOT/var/cache/haseen-vapt.landed"
 capture python3 "$VAPT_META" sudo-plugins --out "$ROOT/$PRODUCED" --root "$ROOT"
-assert_status 'B2 producer never creates the root stage itself' 1 "$STATUS"
+assert_status 'producer never creates the root stage itself' 1 "$STATUS"
 mkdir -p "$ROOT/etc/sudoers.d"
 for include in '@include "/etc/sudoers.d/vapt policy"' '@include /etc/sudoers.d/vapt\ policy' '#include "/etc/sudoers.d/vapt"' '@includedir "/etc/sudoers.d"'; do
     printf 'root ALL=(ALL:ALL) ALL\n%s\n' "$include" >"$ROOT/etc/sudoers"
-    producer_case "FROZEN-3 unsupported sudoers include spelling is refused: $include" 1
+    producer_case "unsupported sudoers include spelling is refused: $include" 1
 done
 for override in 'Defaults pam_service=vapt' 'Defaults:alice pam_login_service=vapt' 'Defaults pam_askpass_service=vapt'; do
     printf 'root ALL=(ALL:ALL) ALL\n%s\n' "$override" >"$ROOT/etc/sudoers"
-    producer_case "FROZEN-5 sudoers PAM service override is refused: $override" 1
+    producer_case "sudoers PAM service override is refused: $override" 1
 done
 printf 'root ALL=(ALL:ALL) ALL\n' >"$ROOT/etc/sudoers"
 for conf in 'Plugin sudoers_policy sudoers.so sudoers_file=/etc/vapt-sudoers' 'Plugin sudoers_policy sudoers.so ldap_conf=/etc/vapt-ldap.conf' 'Path plugin_dir /usr/lib/vapt'; do
     printf '%s\n' "$conf" >"$ROOT/etc/sudo.conf"
-    producer_case "FROZEN-4 sudo.conf source/plugin_dir override is refused by the producer: $conf" 1
+    producer_case "sudo.conf source/plugin_dir override is refused by the producer: $conf" 1
     landed_archive nmap 7.99-1
-    landed_review "FROZEN-4 sudo.conf source/plugin_dir override is refused by the audit: $conf" 1 "$LANDED_ARCHIVE"
+    landed_review "sudo.conf source/plugin_dir override is refused by the audit: $conf" 1 "$LANDED_ARCHIVE"
 done
 rm -f "$ROOT/etc/sudo.conf"
 printf 'passwd: files\ngroup: files\nsudoers: files ldap\n' >"$ROOT/etc/nsswitch.conf"
-producer_case 'FROZEN-4 nsswitch sudoers source other than files is refused' 1
+producer_case 'nsswitch sudoers source other than files is refused' 1
 
 # --- RPATH: inherited DT_RPATH search is not modelled ------------------------
 for tag in runpath rpath rpath-origin; do
@@ -519,14 +519,14 @@ for tag in runpath rpath rpath-origin; do
     landed_review "RPATH reached privileged object with $entry" "$expected" "$LANDED_ARCHIVE"
 done
 
-# --- SEC-L1 prerequisite: a scriptlet needs a shell in both snapshots --------
+# --- A scriptlet needs a shell in both snapshots --------
 landed_case vapt-landed-scriptlet-no-shell
 no_stock_hooks
 rm -f "$ROOT/bin/sh" "$ROOT/usr/bin/sh" "$ROOT/usr/bin/bash"
 landed_archive nmap 7.99-1 $'.INSTALL=echo post_install\n'
-landed_review 'SEC-L1 scriptlet without a base-proven shell in a needed snapshot is refused' 1 "$LANDED_ARCHIVE"
+landed_review 'scriptlet without a base-proven shell in a needed snapshot is refused' 1 "$LANDED_ARCHIVE"
 
-# --- Audit H1: the scriptlet shell expands unquoted braces, globs and tildes -
+# --- The scriptlet shell expands unquoted braces, globs and tildes -
 # An audited literal member named like the unexpanded word is not what bash
 # runs. Inert payloads only; nothing executes.
 for word in '/usr/bin/{nmap-helper,nmap-alt}' '/usr/bin/nmap-hel?er' '/usr/bin/nmap-help*' \
@@ -535,32 +535,32 @@ for word in '/usr/bin/{nmap-helper,nmap-alt}' '/usr/bin/nmap-hel?er' '/usr/bin/n
     no_stock_hooks
     landed_archive nmap 7.99-1 "usr/bin/$(basename -- "$word")=#!/bin/sh" 'usr/bin/nmap-helper=#!/bin/sh' \
         ".INSTALL=post_install() {"$'\n'" $word"$'\n}'
-    landed_review "H1 unquoted shell expansion in a scriptlet command word is refused: $word" 1 "$LANDED_ARCHIVE"
+    landed_review "unquoted shell expansion in a scriptlet command word is refused: $word" 1 "$LANDED_ARCHIVE"
 done
 for word in "'{a,b}'" '"*"' "'~'"; do
     landed_case vapt-landed-scriptlet-quoted-literal
     no_stock_hooks
     landed_archive nmap 7.99-1 ".INSTALL=post_install() {"$'\n'" echo $word"$'\n}'
-    landed_review "H1 quoted literal argument stays literal (control): $word" 0 "$LANDED_ARCHIVE"
+    landed_review "quoted literal argument stays literal (control): $word" 0 "$LANDED_ARCHIVE"
 done
 
-# --- Audit L3: helper bytes come from the exact member, not a name pattern ---
+# --- Helper bytes come from the exact member, not a name pattern ---
 # A quoted '/usr/bin/[ab]' runs the literal member usr/bin/[ab]; a pattern
 # lookup would audit usr/bin/a instead. Inert text only; nothing executes.
 landed_case vapt-landed-helper-exact-member
 no_stock_hooks
 landed_archive nmap 7.99-1 $'usr/bin/[ab]=#!/bin/sh\nsystemctl enable evil.socket' $'usr/bin/a=#!/bin/sh\necho ok' \
     $'.INSTALL=post_install() {\n \'/usr/bin/[ab]\'\n}'
-landed_review 'L3 the literal helper member body is the one audited' 1 "$LANDED_ARCHIVE"
+landed_review 'the literal helper member body is the one audited' 1 "$LANDED_ARCHIVE"
 
 # --- INT-CACHE: an artifact already in the host package cache --------------
 # pacman -p prints %l as file://<cachedir>/<file> for cached artifacts; the
 # transaction must still plan, seal and commit the reviewed artifact.
 for kind in per-package full-upgrade; do
     if [[ $kind == per-package ]]; then
-        l6_case vapt-landed-cached-artifact-package
-        l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
-        l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
+        plan_case vapt-landed-cached-artifact-package
+        plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+        plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
     else
         whois_upgrade_case vapt-landed-cached-artifact-upgrade
     fi
@@ -585,7 +585,7 @@ assert_eq 'INT-ACTIVATE symlinked pacman.conf: no recovery record' no "$(pending
 assert_eq 'INT-ACTIVATE symlinked pacman.conf: configuration untouched' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf.real")"
 assert_eq 'INT-ACTIVATE symlinked pacman.conf: link preserved' yes "$([[ -L $ROOT/etc/pacman.conf ]] && echo yes || echo no)"
 
-# --- N1: scriptlet and helper text is split and stripped exactly as bash ----
+# --- Scriptlet and helper text is split and stripped exactly as bash ----
 # bash lines end only at LF and only space/tab are blanks: a VT/FF/FS/NEL or
 # Unicode separator must not turn a command word into an apparent comment.
 # U+2028 and NEL are spelled as their UTF-8 bytes (locale-independent).
@@ -593,12 +593,12 @@ for hidden in $'\v# hidden' $'\f# hidden' $'\x1c# hidden' $'\xe2\x80\xa8# hidden
     landed_case vapt-landed-scriptlet-whitespace
     no_stock_hooks
     landed_archive nmap 7.99-1 ".INSTALL=post_install() {"$'\n'" $hidden"$'\n}'
-    landed_review "N1 control/non-shell whitespace in scriptlet text is refused: $(printf '%q' "$hidden")" 1 "$LANDED_ARCHIVE"
+    landed_review "control/non-shell whitespace in scriptlet text is refused: $(printf '%q' "$hidden")" 1 "$LANDED_ARCHIVE"
 done
 landed_case vapt-landed-scriptlet-tab-control
 no_stock_hooks
 landed_archive nmap 7.99-1 $'.INSTALL=post_install() {\n\t# note\n\techo\tpost_install\n}'
-landed_review 'N1 tab-indented comment and tab-separated words (control)' 0 "$LANDED_ARCHIVE"
+landed_review 'tab-indented comment and tab-separated words (control)' 0 "$LANDED_ARCHIVE"
 # A retained host helper is read as raw bytes: no universal-newline rewrite.
 for body in $'#!/bin/sh\n\r# note\nexit 0\n' $'#!/bin/sh\n\v# note\nexit 0\n' $'#!/bin/sh\n# note\nexit 0\n'; do
     landed_case vapt-landed-host-helper-bytes
@@ -610,10 +610,10 @@ for body in $'#!/bin/sh\n\r# note\nexit 0\n' $'#!/bin/sh\n\v# note\nexit 0\n' $'
     landed_archive nmap 7.99-1
     expected=1
     [[ $body != *$'\r'* && $body != *$'\v'* ]] && expected=0
-    landed_review "N1 retained helper bytes are audited exactly: $(printf '%q' "${body#*$'\n'}")" "$expected" "$LANDED_ARCHIVE"
+    landed_review "retained helper bytes are audited exactly: $(printf '%q' "${body#*$'\n'}")" "$expected" "$LANDED_ARCHIVE"
 done
 
-# --- SEC-HELPER-SELF: the program haseen runs as root, and its policy -------
+# --- The program haseen runs as root, and its policy -------
 # A reviewed copy of this layer installed in the sysroot (owned by a package,
 # reached through a retained symlink) audits a transaction. Its own module,
 # its policy files, their link hops and physical targets may not be replaced,
@@ -680,9 +680,9 @@ done
 # --- Root gateway: the privilege entry itself is not resolved via caller PATH
 # A caller PATH entry shadowing the gateway's interpreter (the fixture's
 # run_root analogue of sudo) never runs a privileged step; it passes through.
-l6_case vapt-landed-root-gateway-path
-l6_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
-l6_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
+plan_case vapt-landed-root-gateway-path
+plan_archive libdep-1-1-x86_64.pkg.tar.gz libdep 1-1 ''
+plan_archive whois-5.6.4-1-x86_64.pkg.tar.gz whois 5.6.4-1 libdep
 mkdir -p "$SANDBOX/shadow"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>%q\nexec /usr/bin/python3 "$@"\n' "$SANDBOX/shadow.log" >"$SANDBOX/shadow/python3"
 chmod +x "$SANDBOX/shadow/python3"
@@ -721,7 +721,6 @@ printf 'fixture-sha256 %s\n' "$(sha256sum "$LANDED_ARCHIVE" | cut -d' ' -f1)" >"
 landed_review 'SELF anchor: a base-signed vendor keyring update (control)' 0 "$LANDED_ARCHIVE"
 
 # --- SELF authority: the consumed policy path and extraction metadata ------
-# SEC-SELF-POLICY-TARGET / SEC-SELF-ACCESS-METADATA consumer cases.
 # Fixture data only: archives are rewritten with Python tarfile header fields
 # (uid/gid/mode/PAX xattr) and never extracted; the audited module copy is the
 # production metadata.py reading inert members. No payload, hook, key,
@@ -804,7 +803,7 @@ auth_review() {
     auth_audit "$label" "$expected" "$meta" --authority-facts "$AUTH_FACTS" "$@"
 }
 
-# --- SEC-SELF-POLICY-TARGET: a FILE-symlinked module consumes its PHYSICAL
+# --- A FILE-symlinked module consumes its PHYSICAL
 # sibling policy. The logical layer is a real directory whose metadata.py is a
 # file symlink to opt/haseen/layers/vapt/metadata.py; both directories carry
 # files/*. Only the physical stock-hooks.tsv is what stock_policy reads.
@@ -891,7 +890,7 @@ for supplier in base companion; do
         "$AUTH_EXPECTED" "$AUTH_META" "$AUTH_BASE" "$LANDED_ARCHIVE"
 done
 
-# --- SEC-SELF-ACCESS-METADATA: identical bytes, changed write authority. ---
+# --- Identical bytes, changed write authority. ---
 # Baseline: retained files are caller-owned 0644; landed_archive members carry
 # the caller's uid/gid and the copied 0644 mode. Only the named header changes.
 AUTH_SELF_REL=opt/haseen/layers/vapt
@@ -1021,7 +1020,7 @@ umask "$AUTH_UMASK"
 unset AUTH_UMASK AUTH_ALT_ID AUTH_META AUTH_KEEP AUTH_BASE AUTH_EXPECTED AUTH_POLICY_CHANGE AUTH_FACTS AUTH_FACTS_ARG
 
 # --- SELF retained ACL/attributes: preserved authority on reinstall ------
-# SEC-SELF-RETAINED-ACL consumer cases (reuse the auth_* helpers above).
+# The cases reuse the auth_* helpers above.
 # Fixture data only: POSIX ACLs are set with os.setxattr on scratch files
 # inside $ROOT; archives are built, never extracted; no payload executes; no
 # host user/group is created (the named group is a bare numeric gid).

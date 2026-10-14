@@ -7,6 +7,7 @@ installed.json is a list with the same fields. Package membership .pkgs remains
 usable for resolution, but cannot prove identity/dependency/install safety.
 """
 import argparse
+import base64
 import ctypes
 import email
 import errno
@@ -570,6 +571,49 @@ def emit_safe(*fields):
     return not any(CONTROL.search(str(field)) for field in fields)
 
 
+# pacman's SigLevel, one value per half: signature check (never, optional,
+# required) and key trust (trustall, trustedonly). SIGLEVEL_DEFAULT is what
+# pacman uses when [options] declares none (conf.c, config_new).
+SIGLEVEL_DEFAULT = {'package': 'optional', 'database': 'optional',
+                    'package-trust': 'trustedonly', 'database-trust': 'trustedonly'}
+
+
+def siglevel_apply(lines, level):
+    """LEVEL after the SigLevel lines among LINES, in order, as pacman's
+    process_siglevel reads them: values are space-separated, a Package or
+    Database prefix limits a value to that half, no prefix sets both. A
+    repository starts from the global level, so what its own lines leave
+    unsaid stays inherited (merge_siglevel)."""
+    level = dict(level)
+    for line in lines:
+        key, equals, value = line.partition('=')
+        if key.strip(' \t\r\v\f') != 'SigLevel':
+            continue
+        if not equals:
+            raise ValueError('pacman SigLevel without a value')
+        for token in filter(None, value.strip(' \t\r\v\f').split(' ')):
+            halves, setting = ('package', 'database'), token
+            for prefix in ('Package', 'Database'):
+                if token.startswith(prefix):
+                    halves, setting = (prefix.lower(),), token[len(prefix):]
+            if setting in ('Never', 'Optional', 'Required'):
+                level.update({half: setting.lower() for half in halves})
+            elif setting in ('TrustedOnly', 'TrustAll'):
+                level.update({half + '-trust': setting.lower() for half in halves})
+            else:
+                raise ValueError('unknown pacman SigLevel value ' + token)
+    return level
+
+
+def siglevel_line(level):
+    """The SigLevel VAPT transactions use where the host's is LEVEL: VAPT's
+    minimum (package signatures Required from trusted keys, databases at
+    least Optional), raised to DatabaseRequired when LEVEL requires it. The
+    minimum is already the strictest package check and key trust, so the
+    database check is the only half the host can make stricter."""
+    return 'SigLevel = Required Database' + ('Required' if level['database'] == 'required' else 'Optional')
+
+
 def render_config(root, frozen=None, local=False):
     config = read_config(root)
     print('[options]')
@@ -579,7 +623,12 @@ def render_config(root, frozen=None, local=False):
     for line in config.get('options', []):
         if line.split('=', 1)[0].strip() not in blocked:
             print(line)
-    print('SigLevel = Required DatabaseOptional\nLocalFileSigLevel = Required TrustedOnly\nRemoteFileSigLevel = Required TrustedOnly')
+    # Signature checks are never weaker than VAPT's minimum nor than the
+    # host's own: a host that requires database signatures, globally or for
+    # one repository, keeps requiring them in every VAPT transaction.
+    host = siglevel_apply(config.get('options', []), SIGLEVEL_DEFAULT)
+    print(siglevel_line(host))
+    print('LocalFileSigLevel = Required TrustedOnly\nRemoteFileSigLevel = Required TrustedOnly')
     # HookDir paths are retained and audited before transactions, not disabled.
     for line in config.get('options', []):
         if line.startswith('HookDir'):
@@ -592,19 +641,21 @@ def render_config(root, frozen=None, local=False):
         if not repository_policy_safe(repo, lines):
             raise ValueError('insecure repository ' + repo)
         print('[' + repo + ']')
+        signed = False
         for line in lines:
             key = line.split('=', 1)[0].strip()
             if key == 'Server':
                 if not repository_mirror_safe(repo, line.split('=', 1)[1]):
                     raise ValueError(mirror_refusal(repo, line.split('=', 1)[1]) + ' repository mirror ' + repo)
                 print('Server = file://' + frozen + '/' + repo if frozen else line)
-            elif key in ('SigLevel', 'Usage'):
-                if key == 'SigLevel':
-                    # The private source keeps its stricter declared policy in
-                    # sync, frozen and recovery configurations alike.
-                    print(ONIOMARCHY_POLICY if repo == ONIOMARCHY else 'SigLevel = Required DatabaseOptional')
-                else:
-                    print(line)
+            elif key == 'SigLevel' and not signed:
+                # One line for all of the repository's own SigLevel lines; a
+                # repository without one inherits the [options] line above.
+                # The private source keeps its declared policy, the strictest.
+                signed = True
+                print(ONIOMARCHY_POLICY if repo == ONIOMARCHY else siglevel_line(siglevel_apply(lines, host)))
+            elif key == 'Usage':
+                print(line)
 
 def cache_permissions(root, path):
     if not re.fullmatch(r'/var/cache/haseen-vapt\.[A-Za-z0-9]+/packages', path):
@@ -1116,6 +1167,8 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     # Audited solver plan rows name each archive's repository. Provenance is
     # granted later only to bytes equal to that repository's reviewed digest.
     planned_sources, archive_rows, payload_package, payload_kinds = {}, {}, {}, {}
+    # (package, member, is directory) of every private-source payload.
+    private_members = []
     for row in (Path(plan).read_text().splitlines() if plan else []):
         fields = row.split('\t')
         if not row.strip():
@@ -1216,15 +1269,8 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         if source:
             archive_rows[package] = (source, fields['pkgver'][0], filename)
         newfiles = {name for name in names if name and not name.startswith('.')}
-        # A private-source package may place nothing in pacman's keyrings
-        # directory: a later manual `pacman-key --populate` would apply any
-        # list or ownertrust found there (the source's own keyring package is
-        # audited separately and never installed).
-        if source == ONIOMARCHY and any(
-                Path(name).parts[:4] == ('usr', 'share', 'pacman', 'keyrings')
-                and (len(Path(name).parts) > 4 or not names[name].endswith('/')) for name in newfiles):
-            raise ValueError('oniomarchy package ' + package + ' places files under /usr/share/pacman/keyrings, '
-                             'where pacman-key --populate would apply them; refused')
+        if source == ONIOMARCHY:
+            private_members.extend((package, name, names[name].endswith('/')) for name in sorted(newfiles))
         package_paths = {name + ('/' if names[name].endswith('/') else '') for name in newfiles}
         if '.MTREE' in names and '.MTREE' not in contents:
             raise ValueError('opaque .MTREE requires manual review ' + package)
@@ -1331,6 +1377,40 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
                 return None
             return retained_link(root)(candidate)
         return walk_chain(rel, future_link)
+    # --- private-source payloads and pacman's own trust configuration --------
+    # A private-source package may place nothing where pacman reads trust:
+    # the keyrings directory (a manual `pacman-key --populate` applies any
+    # list or ownertrust there), pacman's GPGDir (gpg prefers gpg.conf-2 to
+    # gpg.conf, so one dropped file can name another keyring or a trusted-key
+    # for every repository), the rest of /etc/pacman.d and /etc/pacman.conf*.
+    # Each member is judged where it physically lands in both transaction
+    # views, through retained and incoming links (a symlink member pointing
+    # there counts), case-insensitively. Directory headers of a protected
+    # directory itself and of its ancestors stay allowed.
+    if private_members:
+        gpgdir = os.path.normpath(pacman_gpgdir(root)).strip('/')
+        if not gpgdir:
+            raise ValueError('pacman GPGDir is the root directory; private-source packages refused')
+        views = ('PreTransaction', 'PostTransaction')
+        roots = {'usr/share/pacman/keyrings', 'etc/pacman.d', gpgdir}
+        roots |= {guarded_chain(anchor, view)[-1] for anchor in set(roots) for view in views}
+        roots = {anchor.casefold() for anchor in roots}
+        configs = {guarded_chain('etc/pacman.conf', view)[-1].casefold() for view in views}
+        def pacman_trust_path(path, directory):
+            lowered = path.casefold()
+            parts = lowered.split('/')
+            if directory and lowered in roots:
+                return False
+            return (lowered in configs or (parts[0] == 'etc' and len(parts) > 1 and parts[1].startswith('pacman.conf'))
+                    or any(lowered == anchor or lowered.startswith(anchor + '/') for anchor in roots))
+        for package, name, directory in private_members:
+            for view in views:
+                landed = guarded_chain(name, view)[-1]
+                if pacman_trust_path(landed, directory and landed == name):
+                    raise ValueError('oniomarchy package ' + package + ' places /' + name
+                                     + ('' if landed == name else ' (reaching /' + landed + ')')
+                                     + " inside pacman's trust configuration (keyrings, GPGDir /" + gpgdir
+                                     + ', /etc/pacman.d, /etc/pacman.conf*); refused')
     # --- new directories (physical, future view) -----------------------------
     # A directory the transaction CREATES gets its authority from libalpm's
     # extraction: every explicit header's owner/mode/xattrs (order across
@@ -1594,7 +1674,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
             if rel in payloads or rel in new_dirs:
                 return True
         return os.path.lexists(str(root) + '/' + rel)
-    # --- runtime inputs (SEC-STOCK-1) ----------------------------------------
+    # --- runtime inputs -----------------------------------------------------
     # Loader configuration, preload, cache, hwcaps, gconv and NSS inputs decide
     # which code a trusted program executes. Independent of hook relevance:
     # ldconfig/ldconfig.service or the next transaction would consume them.
@@ -1611,7 +1691,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     for name in sorted(set(payloads) | removed):
         if runtime_input(name) and not change_authenticated(name):
             raise ValueError('runtime loader/conversion input from an unauthenticated artifact /' + name)
-    # SEC-HELPER-SELF: haseen runs this very module as root after the commit,
+    # haseen runs this very module as root after the commit,
     # and later audits consume its policy files. Their logical paths as
     # invoked, every link hop and ancestor, and the physical targets (current
     # and future views) may not be replaced, redirected or removed by
@@ -2346,7 +2426,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
                     relevant = True
             if relevant and action['When'] == view and not stock_action(name, action, origin, view):
                 command(action['Exec'], 'relevant hook ' + name, view, direct=True)
-    # SEC-L1: libalpm runs every defined pre_/post_ install/upgrade function
+    # libalpm runs every defined pre_/post_ install/upgrade function
     # through /bin/sh -c. That shell, its link hops and its native closure are
     # base-proven in both snapshots, whatever the function body contains.
     # Any non-exempt .INSTALL may run (libalpm greps its text for the phase).
@@ -2411,7 +2491,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
         for start in {str(Path(path).parent) for path in executables + sorted(libraries)}:
             directory = start
             while directory not in ('', '.'):
-                if directory != 'usr':  # the real prefix: the SEC-L2 stdlib guard
+                if directory != 'usr':  # the real prefix: the root stdlib guard below
                     landmarks |= {directory + '/' + name for name in names}
                 directory = str(Path(directory).parent)
         if not usrmerge_lib(view):
@@ -2428,12 +2508,12 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
             return True
         return view == 'PostTransaction' and (path + '/' in physical_newpaths
                                               or any(name.startswith(path + '/') for name in payloads))
-    # The stock stdlib is physical: SEC-L2 guards it by its canonical names,
+    # The stock stdlib is physical: the root stdlib guard keeps it by its canonical names,
     # so a link anywhere on the import roots would let other bytes stand in.
     # The prefix directories and lib-dynload must be real directories, the
     # stdlib zip (if any) a regular file, and every link inside the imported
     # stdlib must resolve within it, never outside or into site-packages
-    # (which -I -S does not import, and which SEC-L2 does not guard). Links
+    # (which -I -S does not import, and which that guard does not cover). Links
     # that start under site-packages are not import roots and are not scanned.
     def unsupported_stdlib(path, why):
         return ValueError('unsupported root Python stdlib layout /' + path + ': ' + why + ' (manual review required)')
@@ -2512,7 +2592,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     # Retained copies are the documented trust boundary (the pre-audit root
     # download already ran them); the transaction may not replace or redirect
     # them, their link hops or their libraries with unauthenticated bytes.
-    # SEC-L2: root metadata runs `/usr/bin/python3 -I -S`; with the stock
+    # Root stdlib guard: root metadata runs `/usr/bin/python3 -I -S`; with the stock
     # startup layout (enforced above) its import path is exactly the stdlib
     # zip, usr/lib/python3.X and its lib-dynload (no
     # site-packages). Unauthenticated additions, replacements or removals
@@ -2563,7 +2643,7 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     for directory in sorted(stdlib):
         dynload = directory + '/lib-dynload'
         extensions |= {dynload + '/' + name for name in listing(dynload, 'PostTransaction') if name.endswith('.so')}
-    # SEC-PAM1 (A3): the post-commit sudo loads PAM modules (sudo/other
+    # The post-commit sudo loads PAM modules (sudo/other
     # services and their includes), sudo.conf plugins and sudoers
     # group_plugin modules, and PAM may run helper executables. The retained
     # initial configuration is the documented boundary; the transaction may
@@ -3926,6 +4006,125 @@ def lock_fd(path, number, kind='user', root=''):
         os.close(authority)
 
 
+RC_SEPARATORS = {'\n', ';', '&', '&&', '||', '|', '|&', '(', ';;'}
+RC_REDIRECTS = {'<', '>', '>>', '<<', '<<-', '<<<', '<&', '>&', '&>'}
+RC_KEYWORDS = {'then', 'else', 'elif', 'do', 'if', 'while', 'until', '!', '{'}
+RC_ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*=')
+RC_VARIABLE = re.compile(r'\$(?:\{(HOME|XDG_CONFIG_HOME)\}|(HOME|XDG_CONFIG_HOME)(?![A-Za-z0-9_])|\{XDG_CONFIG_HOME:-([^}]*)\})')
+
+
+def rc_tokens(text):
+    """The words and control operators of a POSIX/bash/zsh rc file, as far as
+    finding its `. FILE` and `source FILE` commands needs: comments, quotes,
+    backslashes, line continuations and here-document bodies are honoured. A $
+    or ~ the shell would not expand (quoted or escaped) becomes NUL, so it can
+    never expand into a path. Returns ('word', text) and ('op', operator)."""
+    tokens, word, started, pending, heredocs, i = [], [], False, None, [], 0
+
+    def flush():
+        nonlocal word, started, pending
+        if started:
+            value = ''.join(word)
+            if pending:
+                heredocs.append((pending == '<<-', value.replace('\0', '$')))
+                pending = None
+            tokens.append(('word', value))
+        word, started = [], False
+
+    while i < len(text):
+        char = text[i]
+        if char == '\\' and i + 1 < len(text):
+            if text[i + 1] != '\n':
+                word.append('\0' if text[i + 1] in '$~' else text[i + 1])
+                started = True
+            i += 2
+        elif char == "'":
+            end = text.find("'", i + 1)
+            end = len(text) if end < 0 else end
+            word.append(re.sub('[$~]', '\0', text[i + 1:end]))
+            started, i = True, end + 1
+        elif char == '"':
+            i += 1
+            while i < len(text) and text[i] != '"':
+                if text[i] == '\\' and text[i + 1:i + 2] in ('$', '`', '"', '\\', '\n'):
+                    if text[i + 1] != '\n':
+                        word.append('\0' if text[i + 1] == '$' else text[i + 1])
+                    i += 2
+                else:
+                    word.append('\0' if text[i] == '~' else text[i])
+                    i += 1
+            started, i = True, i + 1
+        elif char == '#' and not started:
+            while i < len(text) and text[i] != '\n':
+                i += 1
+        elif char in ' \t':
+            flush()
+            i += 1
+        elif char in '\n;&|()<>':
+            flush()
+            operator = next((op for op in ('<<<', '<<-', '&&', '||', '|&', ';;', '<<', '>>', '<&', '>&', '&>')
+                             if text.startswith(op, i)), char)
+            i += len(operator)
+            if operator in ('<<', '<<-'):
+                pending = operator
+            tokens.append(('op', operator))
+            if operator == '\n':
+                for strip, delimiter in heredocs:
+                    while i < len(text):
+                        end = text.find('\n', i)
+                        end = len(text) if end < 0 else end
+                        line, i = text[i:end], end + 1
+                        if (line.lstrip('\t') if strip else line) == delimiter:
+                            break
+                heredocs.clear()
+        else:
+            word.append(char)
+            started, i = True, i + 1
+    flush()
+    return tokens
+
+
+def rc_expand(word, home, config_home):
+    """WORD with ~, $HOME and $XDG_CONFIG_HOME (and its :- default) expanded as
+    the shell would, or None when anything else would be expanded."""
+    if word == '~' or word.startswith('~/'):
+        word = home + word[1:]
+
+    def variable(match):
+        if match.group(3) is not None:
+            return config_home or rc_expand(match.group(3), home, config_home) or '\0'
+        return home if (match.group(1) or match.group(2)) == 'HOME' else config_home
+
+    word = RC_VARIABLE.sub(variable, word)
+    return None if '$' in word or '`' in word or '\0' in word else word
+
+
+def rc_sources(text, link, home, config_home=''):
+    """Whether an rc file's own commands source LINK: `. LINK` or `source LINK`
+    at a command position, outside comments, quotes and here-documents. A
+    mention anywhere else (a comment, an echo) does not count."""
+    command, sourcing, redirect = True, False, False
+    want = os.path.normpath(link)
+    for kind, value in rc_tokens(text):
+        if kind == 'op':
+            redirect = value in RC_REDIRECTS
+            command = value in RC_SEPARATORS or (command and redirect)
+            sourcing = False
+        elif redirect:
+            redirect = False
+        elif sourcing:
+            path = rc_expand(value, home, config_home)
+            if path is not None and os.path.normpath(path) == want:
+                return True
+            sourcing = False
+        elif command:
+            if value in ('.', 'source'):
+                sourcing, command = True, False
+            elif value not in RC_KEYWORDS and not RC_ASSIGNMENT.match(value):
+                command = False
+    return False
+
+
 def report_requires(path, group):
     try:
         text = metadata_read(path)
@@ -4004,8 +4203,10 @@ def pinned_signers():
 
 def oniomarchy_population_script(text):
     """Only the literal keyring population operation is accepted. It never
-    runs (--noscriptlet), and haseen does not run --populate either: it adds
-    and lsigns the accepted primaries itself, without publisher ownertrust."""
+    runs, since the package is never installed, and haseen never runs
+    --populate either: it adds and lsigns the accepted primaries itself,
+    without publisher ownertrust. Anything else in the scriptlet is a change
+    worth a manual review."""
     allowed = {'post_install() {', 'post_upgrade() {', 'post_install()', 'post_upgrade()', '{', '}',
                'pacman-key --populate oniomarchy', '/usr/bin/pacman-key --populate oniomarchy'}
     lines = [' '.join(line.split()) for line in text.splitlines()]
@@ -4448,6 +4649,169 @@ def keyring_gpg(archive, out):
         stream.write(data)
 
 
+# --- BlackArch keyring: the lists pacman-key --populate applies --------------
+BLACKARCH_KEYRINGS = 'usr/share/pacman/keyrings/'
+# Marginal: the level Arch's own keyring gives its master keys. Full or
+# ultimate would let one BlackArch certification make any key valid.
+BLACKARCH_OWNERTRUST_MAX = 4
+
+
+def openpgp_primaries(data):
+    """The v4 primary fingerprints of an OpenPGP key file, binary or ASCII
+    armoured, computed as gpg does: SHA-1 over 0x99, the two-octet body length
+    and the public-key packet body. Subkeys, user IDs and signatures are
+    skipped; other key versions have no 40-hex fingerprint and are left out.
+    Anything that is not a sequence of complete packets fails closed."""
+    if data.lstrip().startswith(b'-----BEGIN PGP PUBLIC KEY BLOCK-----'):
+        body, state = [], 'outside'
+        for line in data.decode('ascii').splitlines():
+            line = line.strip()
+            if state == 'outside':
+                state = 'headers' if line == '-----BEGIN PGP PUBLIC KEY BLOCK-----' else state
+            elif line.startswith('-----END PGP PUBLIC KEY BLOCK-----'):
+                state = 'outside'
+            elif state == 'headers' and (not line or ': ' in line):
+                state = 'body' if not line else state
+            elif not line.startswith('='):  # '=' starts the armour checksum
+                state = 'body'
+                body.append(line)
+        if state != 'outside':
+            raise ValueError('unterminated ASCII-armoured key file')
+        data = base64.b64decode(''.join(body), validate=True)
+    def octets(start, count):
+        if start + count > len(data):
+            raise ValueError('truncated OpenPGP packet in a key file')
+        return data[start:start + count]
+    primaries, offset = set(), 0
+    while offset < len(data):
+        header = data[offset]
+        if not header & 0x80:
+            raise ValueError('not an OpenPGP key file')
+        if header & 0x40:
+            tag, first = header & 0x3f, octets(offset + 1, 1)[0]
+            if first < 192:
+                length, offset = first, offset + 2
+            elif first < 224:
+                length, offset = ((first - 192) << 8) + octets(offset + 2, 1)[0] + 192, offset + 3
+            elif first == 255:
+                length, offset = int.from_bytes(octets(offset + 2, 4), 'big'), offset + 6
+            else:
+                raise ValueError('partial-length OpenPGP packet in a key file')
+        else:
+            tag, size = (header >> 2) & 0x0f, header & 0x03
+            if size == 3:
+                raise ValueError('indeterminate-length OpenPGP packet in a key file')
+            width = (1, 2, 4)[size]
+            length, offset = int.from_bytes(octets(offset + 1, width), 'big'), offset + 1 + width
+        body = octets(offset, length)
+        offset += length
+        if tag == 6 and body[:1] == b'\x04':
+            if length > 0xffff:
+                raise ValueError('oversized OpenPGP public key packet')
+            primaries.add(hashlib.sha1(b'\x99' + length.to_bytes(2, 'big') + body).hexdigest().upper())
+    return primaries
+
+
+def blackarch_keyring_lists(root, entries, contents):
+    """Refuse a BlackArch keyring whose lists reach beyond BlackArch's own
+    keys. `pacman-key --populate blackarch` lsigns every trusted ID, imports
+    the trusted file as ownertrust and disables every revoked ID in the shared
+    keyring, whatever repository those keys serve. Trusted IDs must therefore
+    be reviewed BlackArch signers (files/blackarch-signers.txt) with at most
+    marginal ownertrust, and revoked IDs reviewed signers or primaries of the
+    package's own blackarch.gpg, never an Arch or CachyOS key."""
+    signers_path = Path(os.path.abspath(__file__)).parent / 'files' / 'blackarch-signers.txt'
+    signers = {line.strip() for line in signers_path.read_text().splitlines() if FINGERPRINT.fullmatch(line.strip())}
+    files = {}
+    for name in ('blackarch.gpg', 'blackarch-trusted', 'blackarch-revoked'):
+        member = BLACKARCH_KEYRINGS + name
+        if member in entries and (entries[member][0] != stat.S_IFREG or entries[member][2] is not None
+                                  or member not in contents):
+            raise ValueError('BlackArch keyring member ' + name + ' is not a plain file; manual review required')
+        files[name] = contents.get(member, b'')
+    try:
+        # Lines end at LF only, as pacman-key's `read` and gpg see them.
+        trusted_lines = files['blackarch-trusted'].decode('ascii').split('\n')
+        revoked_lines = files['blackarch-revoked'].decode('ascii').split('\n')
+    except UnicodeDecodeError as error:
+        raise ValueError('BlackArch keyring list is not ASCII; manual review required') from error
+    trusted = {}
+    for line in trusted_lines:
+        if not line or line.startswith('#'):  # both readers skip these
+            continue
+        match = re.fullmatch(r'([A-F0-9]{40})(?::([0-9]+):?)?', line)
+        if not match:
+            raise ValueError('malformed BlackArch trusted list line; manual review required')
+        trusted[match[1]] = max(trusted.get(match[1], 0), int(match[2] or 0))
+    foreign = sorted(set(trusted) - signers)
+    if foreign:
+        raise ValueError('BlackArch keyring trusts keys that are not reviewed BlackArch signers (' + ','.join(foreign)
+                         + '); pacman-key --populate would lsign them for every repository; manual review required')
+    raised = sorted(fpr for fpr, level in trusted.items() if level > BLACKARCH_OWNERTRUST_MAX)
+    if raised:
+        raise ValueError('BlackArch keyring gives ownertrust above marginal (' + str(BLACKARCH_OWNERTRUST_MAX) + ') to '
+                         + ','.join(raised) + '; manual review required')
+    revoked = set()
+    for line in revoked_lines:
+        line = line.strip(' \t')  # pacman-key reads each line with `read -r`
+        if not line:
+            continue
+        if not FINGERPRINT.fullmatch(line):
+            # Anything else reaches gpg --edit-key as a name to match.
+            raise ValueError('BlackArch revoked list line is not a primary fingerprint; manual review required')
+        revoked.add(line)
+    vendor = sorted(revoked & base_signers(root))
+    if vendor:
+        raise ValueError('BlackArch keyring revokes Arch/CachyOS keyring keys (' + ','.join(vendor)
+                         + '); pacman-key --populate would disable them; manual review required')
+    unknown = revoked - signers
+    if unknown:
+        try:
+            unknown -= openpgp_primaries(files['blackarch.gpg'])
+        except ValueError as error:
+            raise ValueError('BlackArch keyring blackarch.gpg is unreadable (' + str(error) + '), so its revocations '
+                             'cannot be checked; manual review required') from error
+    if unknown:
+        raise ValueError('BlackArch keyring revokes keys it does not publish (' + ','.join(sorted(unknown))
+                         + '); pacman-key --populate would disable them; manual review required')
+
+
+def blackarch_keyring_audit(root, archive, sudo_plugins_path, authority_facts_path):
+    """The sealed blackarch-keyring archive before any trust change: its
+    identity, its population lists, dependencies already installed from an
+    allowed source, then the generic archive audit with the reviewed
+    population scriptlet exempted for this package alone."""
+    entries, contents = read_archive(archive, contents=True)
+    if '.PKGINFO' not in contents:
+        raise ValueError('keyring package identity metadata missing')
+    fields = {}
+    for line in contents['.PKGINFO'].decode('utf-8', 'replace').splitlines():
+        if ' = ' in line:
+            key, value = line.split(' = ', 1)
+            fields.setdefault(key, []).append(value)
+    if fields.get('pkgname') != ['blackarch-keyring']:
+        raise ValueError('signed archive is not blackarch-keyring')
+    blackarch_keyring_lists(root, entries, contents)
+    local, seen = installed(root), set()
+    config, repos = read_config(root), repositories(root)
+    def check_dependency(dep):
+        candidates = [record for record in local if satisfies(record, dep)]
+        if not candidates:
+            raise ValueError('keyring bootstrap dependency not already available ' + dep)
+        for record in candidates:
+            name = record['name']
+            if name in seen:
+                continue
+            seen.add(name)
+            if not allowed_local(record, config, repos):
+                raise ValueError('unresolved retained keyring dependency source/identity ' + name)
+            for required in record.get('depends', []):
+                check_dependency(required)
+    for dep in fields.get('depend', []):
+        check_dependency(dep)
+    audit_archives(root, [archive], keyring_population='blackarch-keyring', sudo_plugins_path=sudo_plugins_path,
+                   authority_facts_path=authority_facts_path)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -4536,8 +4900,11 @@ def main():
                     or observed_resolve(Path(args[0]), options.root) != resolved):
                 raise ValueError('redirected native executable')
         elif options.operation == 'includes':
+            # includes RC LINK: RC's own commands source LINK (HOME and
+            # XDG_CONFIG_HOME expand as in the user's shell).
             path = observed_resolve(Path(str(options.root) + args[0]), options.root)
-            if not path.is_file() or not any(include in path.read_text() for include in args[1:]):
+            if not path.is_file() or not rc_sources(path.read_text(errors='replace'), args[1],
+                                                    os.environ.get('HOME', ''), os.environ.get('XDG_CONFIG_HOME', '')):
                 return 1
         elif options.operation == 'interpreter': print(system_python(options.root, compatible=args != ['any'])[1])
         elif options.operation == 'coae-interpreter': coae_interpreter(*args, root=options.root)
@@ -4606,35 +4973,7 @@ def main():
             # The bootstrap seals exactly these bytes before verify/audit/install.
             print(records[0]['filename'], records[0]['sha256sum'], sep='\t')
         elif options.operation == 'keyring':
-            metadata = [text for name, text in archive_members(args[0]) if name == '.PKGINFO']
-            if len(metadata) != 1:
-                raise ValueError('keyring package identity metadata missing')
-            fields = {}
-            for line in metadata[0].splitlines():
-                if ' = ' in line:
-                    key, value = line.split(' = ', 1)
-                    fields.setdefault(key, []).append(value)
-            if fields.get('pkgname') != ['blackarch-keyring']:
-                raise ValueError('signed archive is not blackarch-keyring')
-            local, seen = installed(options.root), set()
-            config, repos = read_config(options.root), repositories(options.root)
-            def check_dependency(dep):
-                candidates = [record for record in local if satisfies(record, dep)]
-                if not candidates:
-                    raise ValueError('keyring bootstrap dependency not already available ' + dep)
-                for record in candidates:
-                    name = record['name']
-                    if name in seen:
-                        continue
-                    seen.add(name)
-                    if not allowed_local(record, config, repos):
-                        raise ValueError('unresolved retained keyring dependency source/identity ' + name)
-                    for required in record.get('depends', []):
-                        check_dependency(required)
-            for dep in fields.get('depend', []):
-                check_dependency(dep)
-            audit_archives(options.root, args, keyring_population='blackarch-keyring', sudo_plugins_path=options.sudo_plugins,
-                           authority_facts_path=options.authority_facts)
+            blackarch_keyring_audit(options.root, args[0], options.sudo_plugins, options.authority_facts)
         elif options.operation == 'audit':
             audit_archives(options.root, args, plan=options.plan, dbpath=options.dbpath, reference=options.reference,
                            sudo_plugins_path=options.sudo_plugins, base_dbpath=options.base_dbpath,

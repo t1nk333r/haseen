@@ -8,7 +8,7 @@ vapt_repo_allowed() { [[ $1 =~ ^(core|extra|multilib|blackarch|chaotic-aur|oniom
 # approved private oniomarchy stanza joins VAPT's own configuration only for
 # an operation whose source state is usable (or the exact recorded recovery).
 vapt_meta() {
-    python3 "$VAPT_DIR/metadata.py" "$@" --root "$HASEEN_SYSROOT" ${VAPT_BLACKARCH_STAGED:+--with-blackarch} \
+    python3 -I "$VAPT_DIR/metadata.py" "$@" --root "$HASEEN_SYSROOT" ${VAPT_BLACKARCH_STAGED:+--with-blackarch} \
         ${VAPT_ONIOMARCHY_SCOPE:+--with-oniomarchy}
 }
 vapt_read_path() { if in_sysroot; then sysroot_path "$1"; else printf '%s\n' "$1"; fi; }
@@ -29,13 +29,13 @@ vapt_state_path_safe() {
 vapt_state_write() {
     vapt_state_path_safe "$1" || return 1
     if $DRY_RUN; then write_user_file "$1"
-    else run python3 "$VAPT_DIR/metadata.py" state-write "$(vapt_read_path "$1")"
+    else run python3 -I "$VAPT_DIR/metadata.py" state-write "$(vapt_read_path "$1")"
     fi
 }
 vapt_state_clear() {
     vapt_state_path_safe "$1" || return 1
     if $DRY_RUN; then run rm -f -- "$1"
-    else run python3 "$VAPT_DIR/metadata.py" state-clear "$(vapt_read_path "$1")"
+    else run python3 -I "$VAPT_DIR/metadata.py" state-clear "$(vapt_read_path "$1")"
     fi
 }
 vapt_lifecycle_lock() {
@@ -44,7 +44,7 @@ vapt_lifecycle_lock() {
     $DRY_RUN && return 0
     local path
     path="$(vapt_read_path "$HASEEN_USER_STATE/vapt/lifecycle.lock")" || return 1
-    run python3 "$VAPT_DIR/metadata.py" lock-prepare "$path" || return 1
+    run python3 -I "$VAPT_DIR/metadata.py" lock-prepare "$path" || return 1
     exec {VAPT_LOCK_FD}<"$path" || return 1
     if ! vapt_meta lock-fd "$path" "$VAPT_LOCK_FD"; then
         exec {VAPT_LOCK_FD}<&-
@@ -338,10 +338,53 @@ vapt_pacman_closure() {
     fi
     vapt_transaction_audit "$VAPT_STAGE/transaction.tsv"
 }
+# vapt_reasons_repair — finish the install-reason bookkeeping of a commit that
+# did not get that far. `pacman -U` makes every archive it newly installs
+# explicit, so before it runs the commit records (in root state, as
+# NAME<TAB>TARGET lines) the new dependencies it will then mark --asdeps; the
+# record is cleared only once they are. A run that died in between leaves the
+# record, and the next transaction finishes it before anything else, even one
+# whose target is already exact. Names no longer installed are skipped.
+vapt_reasons_repair() {
+    $DRY_RUN && return 0
+    local record="$HASEEN_STATE_DIR/vapt/reasons-pending" seen text name target rest absent config row names=() rows=() installed=()
+    seen="$(vapt_read_path "$record")"
+    [[ -e $seen || -L $seen ]] || return 0
+    vapt_root_lock || return $?
+    vapt_state_path_safe "$record" && text="$(vapt_meta state-read "$seen")" || {
+        VAPT_APPLY_REASON='pending install-reason record unreadable; preserved, manual review required'; return 2;
+    }
+    while IFS=$'\t' read -r name target rest; do
+        [[ -n $name ]] || continue
+        [[ $name =~ $PKG_NAME_RE && $target == */* && ${target##*/} =~ $PKG_NAME_RE && -z $rest ]] || {
+            VAPT_APPLY_REASON='pending install-reason record malformed; preserved, manual review required'; return 2;
+        }
+        names+=("$name") rows+=("$name"$'\t'"$target")
+    done <<<"$text"
+    if ((${#names[@]})); then
+        absent="$(vapt_meta absent "${names[@]}")" || { VAPT_APPLY_REASON='installed package metadata unreadable'; return 2; }
+        for name in "${names[@]}"; do
+            [[ $'\n'$absent$'\n' == *$'\n'$name$'\n'* ]] || installed+=("$name")
+        done
+    fi
+    if ((${#installed[@]})); then
+        vapt_pacman_stage || return 1
+        config="$(vapt_meta config --local)" || { VAPT_APPLY_REASON='unsafe/unreadable pacman configuration'; return 2; }
+        printf '%s\n' "$config" | write_user_file "$VAPT_STAGE/reasons.conf" || return 1
+        vapt_root_pacman --config "$VAPT_STAGE/reasons.conf" -D --asdeps -- "${installed[@]}" || {
+            VAPT_APPLY_REASON='install reason bookkeeping failed; the next VAPT transaction retries it'; return 1;
+        }
+        for row in "${rows[@]}"; do
+            [[ $'\n'$absent$'\n' == *$'\n'${row%%$'\t'*}$'\n'* ]] || VAPT_DEPENDENCY_ROWS+=("$row"$'\t'dependency)
+        done
+    fi
+    vapt_root_meta state-clear "$seen" || { VAPT_APPLY_REASON='pending install-reason record could not be cleared'; return 1; }
+}
 vapt_pacman_apply_transaction() {
     local target="$1" observed version="${VAPT_VERSION[$1]:--}" url="${VAPT_URL[$1]:--}" flags=() rc=0
     VAPT_APPLY_REASON=''
     [[ ${VAPT_PACMAN_BLOCKED:-0} == 0 ]] || { VAPT_APPLY_REASON='incomplete full upgrade; package transactions blocked'; return 2; }
+    vapt_reasons_repair || return $?
     observed="$(vapt_meta installed "${target%%/*}" "${target##*/}" "$version" "$url")" || observed=unknown
     if [[ $observed == exact ]]; then
         # Exact targets still need allowed identity evidence for retained
@@ -373,22 +416,23 @@ vapt_pacman_apply_transaction() {
     config="$(vapt_meta config --local)" || { VAPT_APPLY_REASON='unsafe/unreadable pacman configuration'; return 2; }
     printf '%s\n' "$config" | write_user_file "$VAPT_STAGE/commit.conf" || return 1
     vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || return $?
-    if ! vapt_root_pacman --config "$VAPT_STAGE/commit.conf" -U "${flags[@]}" -- "${VAPT_COMMIT_ARCHIVES[@]}"; then
-        VAPT_APPLY_REASON='pacman install failed'; return 1
-    fi
-    # -U marks new packages explicit and keeps an upgraded package's reason.
-    # Database-only -D restores sync semantics: new dependencies are
-    # dependencies, the requested target is explicit; no hook or scriptlet runs.
+    # -U installs a new package as explicit and keeps an upgraded package's
+    # install reason, the target's included. What it newly installs besides
+    # the target is a dependency, as `pacman -S` would record it.
     while IFS= read -r name; do
-        [[ -z $name || $name == "${target##*/}" ]] || deps+=("$name")
+        [[ -z $name || $name == "${target##*/}" ]] || deps+=("$name"$'\t'"$target")
     done <<<"$absent"
-    if ((${#deps[@]})) && ! vapt_root_pacman --config "$VAPT_STAGE/commit.conf" -D --asdeps -- "${deps[@]}"; then
-        VAPT_APPLY_REASON='install reason bookkeeping failed'; return 1
+    if ((${#deps[@]})); then
+        vapt_state_path_safe "$HASEEN_STATE_DIR/vapt/reasons-pending" &&
+            printf '%s\n' "${deps[@]}" | vapt_root_meta state-write "$(vapt_read_path "$HASEEN_STATE_DIR/vapt/reasons-pending")" || {
+            VAPT_APPLY_REASON='pending install-reason record could not be written; nothing committed'; return 1;
+        }
     fi
-    for name in "${deps[@]}"; do VAPT_DEPENDENCY_ROWS+=("$name"$'\t'"$target"$'\t'dependency); done
-    if ! vapt_root_pacman --config "$VAPT_STAGE/commit.conf" -D --asexplicit -- "${target##*/}"; then
-        VAPT_APPLY_REASON='install reason bookkeeping failed'; return 1
-    fi
+    rc=0
+    vapt_root_pacman --config "$VAPT_STAGE/commit.conf" -U "${flags[@]}" -- "${VAPT_COMMIT_ARCHIVES[@]}" || rc=1
+    # Also after a failed -U, which may have installed part of the closure.
+    vapt_reasons_repair || return 1
+    ((rc == 0)) || { VAPT_APPLY_REASON='pacman install failed'; return 1; }
     observed="$(vapt_meta installed "${target%%/*}" "${target##*/}" "$version" "$url")" || observed=unknown
     [[ $observed == exact ]] || { VAPT_APPLY_REASON='installed package identity/version metadata unverified'; return 1; }
     VAPT_PACMAN_STATE=installed

@@ -337,6 +337,23 @@ capture env HASEEN_SYSROOT="$ROOT" haseen layer apply vapt --dry-run -- --groups
 assert_status "the layer interface takes the same selection" 0 "$STATUS"
 assert_eq "the layer interface resolves the same way" extra/whois "$(vapt_field whois 4)"
 
+# --- prerequisites come only with the selected item that needs them ----------
+vapt_sandbox vapt-prerequisites
+vapt_root
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" 'blackarch|maltego|4.8.0-1|https://www.maltego.com' \
+    'extra|openldap|2.6.10-1|https://www.openldap.org/' 'extra|perl-image-exiftool|13.36-1|https://exiftool.org/'
+vapt_system_python
+vapt_plan 'reporting alone' --groups reporting
+assert_eq 'maltego is planned' yes "$(vapt_planned blackarch/maltego)"
+for name in openldap perl-image-exiftool python-pipx; do
+    assert_eq "maltego alone plans no $name" no "$(vapt_planned "extra/$name")"
+done
+assert_not_contains 'maltego alone records no prerequisite' "$OUTPUT" '# infrastructure'
+vapt_plan 'a native adapter' --groups osint
+assert_eq 'a selected native adapter brings pipx' yes "$(vapt_planned extra/python-pipx)"
+assert_contains 'pipx is recorded as its prerequisite' "$OUTPUT" $'# infrastructure\tpython-pipx\textra/python-pipx\tok'
+assert_eq 'the native adapter brings no openldap' no "$(vapt_planned extra/openldap)"
+
 # --- status: the recorded state, re-verified against metadata ---------------
 vapt_sandbox vapt-status
 vapt_root
@@ -441,7 +458,8 @@ vapt_cli status
 assert_status "native status: version drift" 2 "$STATUS"
 assert_contains "native status: version drift warned" "$OUTPUT" "warn: sherlock"
 
-# Provider uniqueness and exact-name precedence are consumer resolution rules.
+# A Provides line is no identity: only a reviewed upstream identity
+# (identities.tsv) admits a provider, and only after every tier's own name.
 vapt_sandbox vapt-provider-boundaries
 vapt_root
 vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
@@ -450,14 +468,42 @@ vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
 vapt_plan 'Arch exact beats earlier-tier provider' --groups core
 assert_eq 'extra exact wins over core provider' extra/ligolo-ng "$(vapt_field ligolo-ng 4)"
 vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
-    'extra|ligolo-one|1-1|https://github.com/nicocha30/ligolo-ng|ligolo-ng' \
-    'extra|ligolo-two|1-1|https://github.com/nicocha30/ligolo-ng|ligolo-ng'
-vapt_plan 'ambiguous providers' --groups core
-assert_eq 'two providers never picked arbitrarily' unavailable "$(vapt_field ligolo-ng 5)"
-vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
     'extra|ligolo-one|1-1|https://github.com/nicocha30/ligolo-ng|ligolo-ng'
-vapt_plan 'one provider' --groups core
-assert_eq 'unique binary provider resolves' extra/ligolo-one "$(vapt_field ligolo-ng 4)"
+vapt_plan 'one unreviewed provider' --groups core
+assert_eq 'a unique provider without a reviewed identity is unavailable' unavailable "$(vapt_field ligolo-ng 5)"
+assert_eq 'the unreviewed provider is not planned' no "$(vapt_planned extra/ligolo-one)"
+# Public sync metadata (2026-10): BlackArch's EOL nodejs-lts-gallium provides
+# and conflicts with nodejs; the same groups' npm needs nodejs>=20.17.0.
+NODEJS_ROWS=('blackarch|nodejs-lts-gallium|16.20.2-2|https://nodejs.org/|nodejs=16.20.2'
+    'extra|nodejs|26.8.1-2|https://nodejs.org/'
+    'extra|npm|12.0.2-1|https://www.npmjs.com||nodejs>=20.17.0')
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "${NODEJS_ROWS[@]}"
+vapt_plan 'nodejs' --groups htb-cwee
+assert_eq "Arch's nodejs beats a BlackArch provider" extra/nodejs "$(vapt_field nodejs 4)"
+assert_eq 'the EOL provider is not planned' no "$(vapt_planned blackarch/nodejs-lts-gallium)"
+assert_eq 'npm resolves beside it' extra/npm "$(vapt_field npm 4)"
+# chirp is published only by the private source (aliases.tsv: chirp-next);
+# Chaotic-AUR's chirp-next provides chirp but is no reviewed mapping.
+vapt_conf_add $'[chaotic-aur]\nServer = https://cdn-mirror.chaotic.cx/$repo/$arch'
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" 'chaotic-aur|chaotic-keyring|20251028-1|https://aur.chaotic.cx' \
+    'chaotic-aur|chirp-next|1:20261009-1|https://chirpmyradio.com/projects/chirp/wiki/Home|chirp'
+vapt_plan 'chirp' --groups sdr
+assert_eq 'a Chaotic provider never stands in for chirp' unavailable "$(vapt_field chirp 5)"
+assert_eq 'chirp-next from Chaotic is not planned' no "$(vapt_planned chaotic-aur/chirp-next)"
+assert_contains 'chirp waits for the unselected private source' "$(vapt_field chirp 8)" 'oniomarchy:not-selected'
+# A provider matching a reviewed identity resolves, but never ahead of any
+# tier's own name.
+PD_HTTPX=https://github.com/projectdiscovery/httpx
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "blackarch|httpx-bin|1.7.1-1|$PD_HTTPX|httpx"
+vapt_plan 'reviewed provider' --groups htb-cwes
+assert_eq 'a provider with the reviewed identity resolves' blackarch/httpx-bin "$(vapt_field httpx 4)"
+assert_contains 'its reason says how it matched' "$(vapt_field httpx 7)" 'reviewed upstream identity'
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "blackarch|httpx-bin|1.7.1-1|$PD_HTTPX|httpx" "extra|httpx|1.7.1-1|$PD_HTTPX"
+vapt_plan 'reviewed provider versus Arch name' --groups htb-cwes
+assert_eq "Arch's own name beats an earlier reviewed provider" extra/httpx "$(vapt_field httpx 4)"
+vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" "extra|httpx-one|1-1|$PD_HTTPX|httpx" "extra|httpx-two|1-1|$PD_HTTPX|httpx"
+vapt_plan 'ambiguous reviewed providers' --groups htb-cwes
+assert_eq 'two providers are never picked arbitrarily' unavailable "$(vapt_field httpx 5)"
 vapt_conf_add $'[cachyos-extra-v3]\nServer = https://mirror.cachyos.org/repo/$arch/$repo'
 vapt_repos "${VAPT_BASE[@]}" "$VAPT_BA_KEYRING" \
     'cachyos-extra-v3|ligolo-ng|0.8.2-1|https://github.com/nicocha30/ligolo-ng' \

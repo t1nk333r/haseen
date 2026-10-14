@@ -2,10 +2,11 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 007 review F2/F3: a per-package commit installs exactly the audited
-# artifacts, and BlackArch repository activation waits for the reviewed full
-# upgrade. Managers, keys and network are deterministic fixture fakes that act
-# only on this test's sysroot; no package, hook, key or tool executes.
+# A per-package commit installs exactly the audited artifacts, with the
+# install reasons `pacman -S` would record, and BlackArch repository
+# activation waits for the reviewed full upgrade. Managers, keys and network
+# are deterministic fixture fakes that act only on this test's sysroot; no
+# package, hook, key or tool executes.
 # shellcheck source=tests/fixtures/vapt-lib.sh
 source "$FIXTURES/vapt-lib.sh"
 
@@ -35,7 +36,7 @@ print(records[0].get(sys.argv[3], '') if records else 'absent')
 EOF
 }
 
-# --- F2: sync DB drift and provider choice after the audit -------------------
+# --- Sync DB drift and provider choice after the audit -------------------
 for yes in '' --yes; do
     label="drift${yes:+ $yes}"
     commit_case "vapt-commit-drift${yes:+-yes}"
@@ -47,11 +48,11 @@ for yes in '' --yes; do
     # Another pacman -Sy between audit and commit: live resolution is newer.
     { row whois 5.6.4-1; row libdep 2-1; } >"$VAPT_LIVE_PLAN"
     vapt_api pacman ${yes:+"$yes"} extra/whois
-    assert_status "F2 $label: audited transaction commits" 0 "$STATUS"
-    assert_eq "F2 $label: audited dependency version installed, not the drifted one" 1-1 "$(installed_field libdep version)"
-    assert_eq "F2 $label: requested target is explicit" explicit "$(installed_field whois reason)"
-    assert_eq "F2 $label: new dependency is a dependency" depend "$(installed_field libdep reason)"
-    vapt_tools_untouched "F2 $label"
+    assert_status "$label: audited transaction commits" 0 "$STATUS"
+    assert_eq "$label: audited dependency version installed, not the drifted one" 1-1 "$(installed_field libdep version)"
+    assert_eq "$label: requested target is explicit" explicit "$(installed_field whois reason)"
+    assert_eq "$label: new dependency is a dependency" depend "$(installed_field libdep reason)"
+    vapt_tools_untouched "$label"
 
     label="provider${yes:+ $yes}"
     commit_case "vapt-commit-provider${yes:+-yes}"
@@ -63,13 +64,14 @@ for yes in '' --yes; do
     # Interactive provider selection at commit picks a different provider.
     { row whois 5.6.4-1; row provb 1-1; } >"$VAPT_LIVE_PLAN"
     vapt_api pacman ${yes:+"$yes"} extra/whois
-    assert_status "F2 $label: audited provider commits" 0 "$STATUS"
-    assert_eq "F2 $label: audited provider installed" 1-1 "$(installed_field prova version)"
-    assert_eq "F2 $label: unaudited provider never installed" absent "$(installed_field provb version)"
-    vapt_tools_untouched "F2 $label"
+    assert_status "$label: audited provider commits" 0 "$STATUS"
+    assert_eq "$label: audited provider installed" 1-1 "$(installed_field prova version)"
+    assert_eq "$label: unaudited provider never installed" absent "$(installed_field provb version)"
+    vapt_tools_untouched "$label"
 done
 
-# Existing install reasons are preserved; the requested target is explicit.
+# Existing install reasons are preserved, the requested target's included: an
+# upgrade never turns the user's dependency into an explicit package.
 commit_case vapt-commit-reasons
 vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL||libdep,newdep" 'extra|libdep|1-1|https://example.org/libdep' \
     'extra|newdep|1-1|https://example.org/newdep'
@@ -81,14 +83,40 @@ vapt_package newdep 1-1
 { row whois 5.6.4-1; row libdep 1-1; row newdep 1-1; } >"$VAPT_PLAN"
 cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
 vapt_api pacman --yes extra/whois
-assert_status 'F2 reasons: reviewed upgrade transaction commits' 0 "$STATUS"
-assert_eq 'F2 reasons: requested target becomes explicit' explicit "$(installed_field whois reason)"
-assert_eq 'F2 reasons: upgraded explicit dependency stays explicit' explicit "$(installed_field libdep reason)"
-assert_eq 'F2 reasons: newly installed dependency is a dependency' depend "$(installed_field newdep reason)"
-assert_eq 'F2 reasons: all audited versions installed' '5.6.4-1 1-1 1-1' \
+assert_status 'reasons: reviewed upgrade transaction commits' 0 "$STATUS"
+assert_eq 'reasons: an upgraded target keeps its dependency reason' depend "$(installed_field whois reason)"
+assert_eq 'reasons: upgraded explicit dependency stays explicit' explicit "$(installed_field libdep reason)"
+assert_eq 'reasons: newly installed dependency is a dependency' depend "$(installed_field newdep reason)"
+assert_eq 'reasons: all audited versions installed' '5.6.4-1 1-1 1-1' \
     "$(installed_field whois version) $(installed_field libdep version) $(installed_field newdep version)"
+assert_eq 'reasons: no pending bookkeeping is left behind' no \
+    "$([[ -e $ROOT/var/lib/haseen/vapt/reasons-pending ]] && echo yes || echo no)"
 
-# --- F3: BlackArch activation waits for the reviewed full upgrade ------------
+# A run that stops between the commit and the dependency bookkeeping leaves a
+# root record; the next transaction finishes it, even with the target exact.
+commit_case vapt-commit-reasons-interrupted
+vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL||newdep" 'extra|newdep|1-1|https://example.org/newdep'
+vapt_package whois 5.6.4-1
+vapt_package newdep 1-1
+{ row whois 5.6.4-1; row newdep 1-1; } >"$VAPT_PLAN"
+cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
+export VAPT_PACMAN_FAIL=reason
+vapt_api pacman --yes extra/whois
+assert_status 'interrupted bookkeeping is a mutation failure' 1 "$STATUS"
+assert_eq 'interrupted bookkeeping: the target is explicit' explicit "$(installed_field whois reason)"
+assert_eq 'interrupted bookkeeping: the new dependency is still explicit' explicit "$(installed_field newdep reason)"
+assert_eq 'interrupted bookkeeping: the root record names it' $'newdep\textra/whois' \
+    "$(cat "$ROOT/var/lib/haseen/vapt/reasons-pending" 2>/dev/null)"
+unset VAPT_PACMAN_FAIL
+vapt_api pacman --yes extra/whois
+assert_status 'the rerun succeeds' 0 "$STATUS"
+assert_contains 'the rerun takes the exact shortcut' "$OUTPUT" 'STATE=already-exact'
+assert_eq 'the rerun marks the dependency' depend "$(installed_field newdep reason)"
+assert_eq 'the rerun leaves the target explicit' explicit "$(installed_field whois reason)"
+assert_eq 'the rerun clears the record' no "$([[ -e $ROOT/var/lib/haseen/vapt/reasons-pending ]] && echo yes || echo no)"
+vapt_tools_untouched 'interrupted bookkeeping'
+
+# --- BlackArch activation waits for the reviewed full upgrade ------------
 ba_case() {
     commit_case "$1"
     vapt_repos "${VAPT_BASE[@]}" "extra|whois|5.6.4-1|$WHOIS_URL" "$VAPT_BA_KEYRING"
@@ -103,50 +131,50 @@ pending() { [[ -e $ROOT/var/lib/haseen/vapt/upgrade-pending ]] && echo yes || ec
 ba_case vapt-ba-rejected-upgrade
 vapt_package whois 5.6.4-1 $'post_upgrade() {\n systemctl start whois.socket\n}'
 vapt_api blackarch
-assert_status 'F3 rejected review: not a failed apply' 0 "$STATUS"
-assert_eq 'F3 rejected review leaves the global pacman config unchanged' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
-assert_eq 'F3 rejected review writes no recovery marker' no "$(pending)"
+assert_status 'rejected review: not a failed apply' 0 "$STATUS"
+assert_eq 'rejected review leaves the global pacman config unchanged' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+assert_eq 'rejected review writes no recovery marker' no "$(pending)"
 # Retry after the blocking upgrade content changes: resumable, not foreign.
 vapt_package whois 5.6.4-1
 vapt_api blackarch
-assert_status 'F3 retry after rejection succeeds' 0 "$STATUS"
-assert_not_contains 'F3 retry is never classified as a broken foreign stanza' "$OUTPUT" 'unverified/broken'
-assert_contains 'F3 retry completes the reviewed bootstrap' "$OUTPUT" 'full upgrade completed'
-assert_eq 'F3 activation appends exactly one BlackArch stanza' 1 "$(grep -c '^\[blackarch\]$' "$ROOT/etc/pacman.conf")"
-vapt_tools_untouched 'F3 rejected then retried'
-# B2: the root sudoers-facts producer writes only inside the root stage.
-assert_eq 'B2 bootstrap never writes sudoers facts at the filesystem root' no \
+assert_status 'retry after rejection succeeds' 0 "$STATUS"
+assert_not_contains 'retry is never classified as a broken foreign stanza' "$OUTPUT" 'unverified/broken'
+assert_contains 'retry completes the reviewed bootstrap' "$OUTPUT" 'full upgrade completed'
+assert_eq 'activation appends exactly one BlackArch stanza' 1 "$(grep -c '^\[blackarch\]$' "$ROOT/etc/pacman.conf")"
+vapt_tools_untouched 'rejected then retried'
+# The root sudoers-facts producer writes only inside the root stage.
+assert_eq 'bootstrap never writes sudoers facts at the filesystem root' no \
     "$([[ -e /sudo-plugins || -e /sudo-plugins.new || -e $ROOT/sudo-plugins || -e $ROOT/sudo-plugins.new ]] && echo yes || echo no)"
-# M2: the keyring is installed like any exact archive: from a
+# The keyring is installed like any exact archive: from a
 # repository-free configuration, so nothing can be re-resolved from a repo.
-assert_not_contains 'M2 keyring install configuration names no repository' "$(vapt_calls commit-config)" '[core]'
-assert_not_contains 'M2 keyring install configuration names no BlackArch repository' "$(vapt_calls commit-config)" '[blackarch]'
+assert_not_contains 'keyring install configuration names no repository' "$(vapt_calls commit-config)" '[core]'
+assert_not_contains 'keyring install configuration names no BlackArch repository' "$(vapt_calls commit-config)" '[blackarch]'
 
 ba_case vapt-ba-commit-failed
 vapt_package whois 5.6.4-1
 export VAPT_PACMAN_FAIL=commit
 vapt_api blackarch
-assert_contains 'F3 failed reviewed commit is a mutation failure' "$OUTPUT" 'MUTATION=1'
-assert_eq 'F3 failed reviewed commit records upgrade-pending' yes "$(pending)"
-assert_eq 'F3 failed reviewed commit does not activate BlackArch' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+assert_contains 'failed reviewed commit is a mutation failure' "$OUTPUT" 'MUTATION=1'
+assert_eq 'failed reviewed commit records upgrade-pending' yes "$(pending)"
+assert_eq 'failed reviewed commit does not activate BlackArch' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
 unset VAPT_PACMAN_FAIL
 trust_calls="$(vapt_calls curl)$(vapt_calls gpg)"
 vapt_api install --groups osint
-assert_status 'F3 declined recovery is unavailable, not failed' 0 "$STATUS"
-assert_eq 'F3 pending upgrade still blocks package transactions' skipped "$(vapt_field whois 6)"
-assert_eq 'F3 declined recovery keeps upgrade-pending' yes "$(pending)"
-assert_eq 'F3 declined recovery never contacts upstream or touches signer keys' "$trust_calls" \
+assert_status 'declined recovery is unavailable, not failed' 0 "$STATUS"
+assert_eq 'pending upgrade still blocks package transactions' skipped "$(vapt_field whois 6)"
+assert_eq 'declined recovery keeps upgrade-pending' yes "$(pending)"
+assert_eq 'declined recovery never contacts upstream or touches signer keys' "$trust_calls" \
     "$(vapt_calls curl)$(vapt_calls gpg)"
-assert_eq 'F3 declined recovery leaves BlackArch inactive' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
-vapt_tools_untouched 'F3 failed commit'
+assert_eq 'declined recovery leaves BlackArch inactive' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+vapt_tools_untouched 'failed commit'
 # Accepted recovery remembers the staged repository: it reviews and commits
 # with BlackArch again, then activates it before clearing the record.
 vapt_api recover
-assert_status 'F3 accepted recovery completes' 0 "$STATUS"
-assert_eq 'F3 accepted recovery activates exactly one BlackArch stanza' 1 "$(grep -c '^\[blackarch\]$' "$ROOT/etc/pacman.conf")"
-assert_eq 'F3 accepted recovery clears upgrade-pending' no "$(pending)"
-assert_contains 'F3 recovered BlackArch is usable' "$OUTPUT" 'STATE=usable'
-vapt_tools_untouched 'F3 accepted recovery'
+assert_status 'accepted recovery completes' 0 "$STATUS"
+assert_eq 'accepted recovery activates exactly one BlackArch stanza' 1 "$(grep -c '^\[blackarch\]$' "$ROOT/etc/pacman.conf")"
+assert_eq 'accepted recovery clears upgrade-pending' no "$(pending)"
+assert_contains 'recovered BlackArch is usable' "$OUTPUT" 'STATE=usable'
+vapt_tools_untouched 'accepted recovery'
 
 ba_case vapt-ba-foreign-stanza
 vapt_repos "${VAPT_BASE[@]}" "extra|whois|5.6.4-1|$WHOIS_URL"
@@ -155,11 +183,11 @@ mkdir -p "$ROOT/etc/pacman.d"
 printf 'Server = https://blackarch.org/blackarch/$repo/os/$arch\n' >"$ROOT/etc/pacman.d/blackarch-mirrorlist"
 CONF_BEFORE="$(cat "$ROOT/etc/pacman.conf")"
 vapt_api blackarch
-assert_contains 'F3 foreign unverified stanza preserved, not repaired' "$OUTPUT" 'preserved, not repaired'
-assert_eq 'F3 foreign stanza never re-bootstrapped' '' "$(vapt_calls curl)"
-assert_eq 'F3 foreign stanza config unchanged' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+assert_contains 'foreign unverified stanza preserved, not repaired' "$OUTPUT" 'preserved, not repaired'
+assert_eq 'foreign stanza never re-bootstrapped' '' "$(vapt_calls curl)"
+assert_eq 'foreign stanza config unchanged' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
 
-# --- SEC-ARTIFACT-2: the commit opens only sealed, digest-bound artifacts ----
+# --- The commit opens only sealed, digest-bound artifacts ----
 # swap_package NAME VERSION SCRIPT — a validly signed (mock) but unaudited
 # same-filename archive, built outside $SANDBOX/archives so it is never the
 # repository's published artifact.
@@ -188,9 +216,9 @@ for yes in '' --yes; do
     swap_package whois 5.6.4-1 $'post_install() {\n systemctl enable --now whois.socket\n}'
     export VAPT_SWAP_COMMIT="$SANDBOX/swap"
     vapt_api pacman ${yes:+"$yes"} extra/whois
-    assert_status "SEC-ARTIFACT-2 post-audit swap${yes:+ $yes}: audited artifact still commits" 0 "$STATUS"
-    assert_sealed_commit "SEC-ARTIFACT-2 post-audit swap${yes:+ $yes}" whois-5.6.4-1-x86_64.pkg.tar.gz "$good"
-    vapt_tools_untouched "SEC-ARTIFACT-2 post-audit swap${yes:+ $yes}"
+    assert_status "post-audit swap${yes:+ $yes}: audited artifact still commits" 0 "$STATUS"
+    assert_sealed_commit "post-audit swap${yes:+ $yes}" whois-5.6.4-1-x86_64.pkg.tar.gz "$good"
+    vapt_tools_untouched "post-audit swap${yes:+ $yes}"
 done
 
 commit_case vapt-seal-download-swap
@@ -200,9 +228,9 @@ row whois 5.6.4-1 >"$VAPT_PLAN"
 swap_package whois 5.6.4-1 $'post_install() {\n echo replaced\n}'
 export VAPT_SWAP_DOWNLOAD="$SANDBOX/swap"
 vapt_api pacman --yes extra/whois
-assert_status 'SEC-ARTIFACT-2 pre-seal swap: bytes differing from the reviewed DB digest refused' 2 "$STATUS"
-assert_eq 'SEC-ARTIFACT-2 pre-seal swap: nothing committed' '' "$(vapt_calls commit-digests)"
-assert_eq 'SEC-ARTIFACT-2 pre-seal swap: target not installed' absent "$(installed_field whois version)"
+assert_status 'pre-seal swap: bytes differing from the reviewed DB digest refused' 2 "$STATUS"
+assert_eq 'pre-seal swap: nothing committed' '' "$(vapt_calls commit-digests)"
+assert_eq 'pre-seal swap: target not installed' absent "$(installed_field whois version)"
 
 commit_case vapt-seal-missing-digest
 vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL"
@@ -216,16 +244,16 @@ json.dump(repos, open(sys.argv[1], 'w'))
 PY
 row whois 5.6.4-1 >"$VAPT_PLAN"
 vapt_api pacman --yes extra/whois
-assert_status 'SEC-ARTIFACT-2 artifact without a reviewed DB digest refused' 2 "$STATUS"
-assert_eq 'SEC-ARTIFACT-2 unbound artifact never committed' '' "$(vapt_calls commit-digests)"
+assert_status 'artifact without a reviewed DB digest refused' 2 "$STATUS"
+assert_eq 'unbound artifact never committed' '' "$(vapt_calls commit-digests)"
 
 commit_case vapt-seal-duplicate-plan
 vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL"
 vapt_package whois 5.6.4-1
 { row whois 5.6.4-1; row whois 5.6.4-1; } >"$VAPT_PLAN"
 vapt_api pacman --yes extra/whois
-assert_status 'SEC-PROVENANCE-3 duplicate plan row refused' 2 "$STATUS"
-assert_eq 'SEC-PROVENANCE-3 duplicate plan never commits' '' "$(vapt_calls commit-digests)"
+assert_status 'duplicate plan row refused' 2 "$STATUS"
+assert_eq 'duplicate plan never commits' '' "$(vapt_calls commit-digests)"
 
 commit_case vapt-seal-upgrade-swap
 vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL"
@@ -237,10 +265,10 @@ good="$(sha "$SANDBOX/archives/whois-5.6.4-1-x86_64.pkg.tar.gz")"
 swap_package whois 5.6.4-1 $'post_upgrade() {\n systemctl start whois.socket\n}'
 export VAPT_SWAP_COMMIT="$SANDBOX/swap"
 vapt_api upgrade
-assert_status 'SEC-ARTIFACT-2 full upgrade with post-audit swap commits the audited set' 0 "$STATUS"
-assert_sealed_commit 'SEC-ARTIFACT-2 full upgrade' whois-5.6.4-1-x86_64.pkg.tar.gz "$good"
+assert_status 'full upgrade with post-audit swap commits the audited set' 0 "$STATUS"
+assert_sealed_commit 'full upgrade' whois-5.6.4-1-x86_64.pkg.tar.gz "$good"
 
-# --- SEC-PATH-4: every privileged pacman call runs with PATH=/usr/bin --------
+# --- Every privileged pacman call runs with PATH=/usr/bin --------
 commit_case vapt-path-canonical
 vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL"
 vapt_package whois 5.6.4-1
@@ -251,12 +279,12 @@ printf 'fixture decoy, never executed\n' >"$ROOT/opt/vendor/bin/touch"
 # A host sudo policy whose PATH puts a vendor directory first.
 export VAPT_SUDO_PATH=/opt/vendor/bin:/usr/local/bin:/usr/bin
 vapt_api pacman --yes extra/whois
-assert_status 'SEC-PATH-4 install commits' 0 "$STATUS"
-assert_eq 'SEC-PATH-4 hook helper command resolves from /usr/bin only' 'touch /usr/bin/touch' \
+assert_status 'install commits' 0 "$STATUS"
+assert_eq 'hook helper command resolves from /usr/bin only' 'touch /usr/bin/touch' \
     "$(sort -u "$CALLS/commit-resolutions")"
 unset VAPT_SUDO_PATH
 
-# --- F3: the recovery record is validated, never silently forgotten ----------
+# --- The recovery record is validated, never silently forgotten ----------
 for variant in symlink unknown; do
     ba_case "vapt-ba-marker-$variant"
     vapt_package whois 5.6.4-1
@@ -268,14 +296,14 @@ for variant in symlink unknown; do
     unknown) printf 'reviewed-full-upgrade-commit-pending\tblackarch-stage\n' >"$ROOT/var/lib/haseen/vapt/upgrade-pending" ;;
     esac
     vapt_api recover
-    assert_status "F3 $variant recovery record fails closed" 2 "$STATUS"
-    assert_eq "F3 $variant recovery record: no review or commit" '' "$(vapt_calls review-repos)$(vapt_calls commit-digests)"
-    assert_eq "F3 $variant recovery record retained" yes \
+    assert_status "$variant recovery record fails closed" 2 "$STATUS"
+    assert_eq "$variant recovery record: no review or commit" '' "$(vapt_calls review-repos)$(vapt_calls commit-digests)"
+    assert_eq "$variant recovery record retained" yes \
         "$([[ -L $ROOT/var/lib/haseen/vapt/upgrade-pending || -e $ROOT/var/lib/haseen/vapt/upgrade-pending ]] && echo yes || echo no)"
-    assert_eq "F3 $variant recovery record: BlackArch not activated" "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+    assert_eq "$variant recovery record: BlackArch not activated" "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
 done
 
-# --- G4: one privileged review/commit/recovery across haseen users -----------
+# --- One privileged review/commit/recovery across haseen users -----------
 # Another user's live transaction holds the root-owned shared mutex: neither a
 # recovery nor a fresh review may run, and the recorded commit is preserved.
 lock_case() {
@@ -298,22 +326,22 @@ exec {held}<"$lock"
 python3 -c 'import fcntl, sys; fcntl.flock(int(sys.argv[1]), fcntl.LOCK_EX | fcntl.LOCK_NB)' "$held"
 for operation in recover upgrade; do
     vapt_api "$operation"
-    assert_status "G4 $operation while another haseen transaction holds the mutex" 2 "$STATUS"
-    assert_eq "G4 $operation never commits concurrently" '' "$(vapt_calls commit-digests)"
-    assert_eq "G4 $operation preserves the other user's recovery record" "$MARKER_SHA" "$(sha "$MARKER")"
+    assert_status "$operation while another haseen transaction holds the mutex" 2 "$STATUS"
+    assert_eq "$operation never commits concurrently" '' "$(vapt_calls commit-digests)"
+    assert_eq "$operation preserves the other user's recovery record" "$MARKER_SHA" "$(sha "$MARKER")"
 done
 exec {held}<&-
-assert_eq 'G4 busy mutex leaves BlackArch inactive' 0 "$(grep -c '^\[blackarch\]$' "$ROOT/etc/pacman.conf" || true)"
+assert_eq 'busy mutex leaves BlackArch inactive' 0 "$(grep -c '^\[blackarch\]$' "$ROOT/etc/pacman.conf" || true)"
 
 # Without contention, a fresh review never overwrites or clears a recorded
 # commit; only recovery resumes it.
 lock_case vapt-root-lock-fresh-review
 vapt_api upgrade
-assert_status 'G4 fresh review with a recorded commit is refused' 2 "$STATUS"
-assert_eq 'G4 fresh review never commits' '' "$(vapt_calls commit-digests)"
-assert_eq 'G4 fresh review preserves the recorded commit' "$MARKER_SHA" "$(sha "$MARKER")"
+assert_status 'fresh review with a recorded commit is refused' 2 "$STATUS"
+assert_eq 'fresh review never commits' '' "$(vapt_calls commit-digests)"
+assert_eq 'fresh review preserves the recorded commit' "$MARKER_SHA" "$(sha "$MARKER")"
 
-# --- B3: existing root haseen state created 0700 under a 077 umask ----------
+# --- Existing root haseen state created 0700 under a 077 umask ----------
 # Root repairs its own non-replaceable state directories to 0755 before the
 # user-side state, lock and marker checks need to traverse them.
 commit_case vapt-state-dir-0700
@@ -324,12 +352,12 @@ cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
 mkdir -p "$ROOT/var/lib/haseen/vapt"
 chmod 0700 "$ROOT/var/lib/haseen/vapt" "$ROOT/var/lib/haseen"
 vapt_api pacman --yes extra/whois
-assert_status 'B3 transaction with 0700 root state directories' 0 "$STATUS"
-assert_eq 'B3 state directories are repaired to 0755' '755 755' \
+assert_status 'transaction with 0700 root state directories' 0 "$STATUS"
+assert_eq 'state directories are repaired to 0755' '755 755' \
     "$(stat -c %a "$ROOT/var/lib/haseen") $(stat -c %a "$ROOT/var/lib/haseen/vapt")"
-assert_eq 'B3 reviewed version installed' 5.6.4-1 "$(installed_field whois version)"
+assert_eq 'reviewed version installed' 5.6.4-1 "$(installed_field whois version)"
 
-# --- L1: pacman print-mode diagnostics never become plan rows ---------------
+# --- pacman print-mode diagnostics never become plan rows ---------------
 commit_case vapt-plan-stderr
 vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL"
 vapt_package whois 5.6.4-1
@@ -338,10 +366,10 @@ cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
 export VAPT_PLAN_STDERR='warning: whois-5.6.4-1 is up to date -- reinstalling'
 vapt_api pacman --yes extra/whois
 unset VAPT_PLAN_STDERR
-assert_status 'L1 stderr warning beside a valid plan' 0 "$STATUS"
-assert_eq 'L1 reviewed version installed' 5.6.4-1 "$(installed_field whois version)"
+assert_status 'stderr warning beside a valid plan' 0 "$STATUS"
+assert_eq 'reviewed version installed' 5.6.4-1 "$(installed_field whois version)"
 
-# --- Audit M1: BlackArch preparation rechecks pending state under the lock --
+# --- BlackArch preparation rechecks pending state under the lock --
 # A recovery record that appears before this run holds the shared lock blocks
 # keyring trust changes and the keyring package transaction.
 ba_case vapt-ba-pending-at-lock
@@ -349,8 +377,8 @@ vapt_package whois 5.6.4-1
 export VAPT_PENDING_AT_LOCK=1
 vapt_api blackarch
 unset VAPT_PENDING_AT_LOCK
-assert_eq 'M1 pending at lock: no keyring trust change' '' "$(vapt_calls sudo | grep -F pacman-key || true)"
-assert_eq 'M1 pending at lock: no package transaction' '' "$(vapt_calls commit-config)$(vapt_calls commit-digests)"
-assert_eq 'M1 pending at lock: the other recovery record is preserved' \
+assert_eq 'pending at lock: no keyring trust change' '' "$(vapt_calls sudo | grep -F pacman-key || true)"
+assert_eq 'pending at lock: no package transaction' '' "$(vapt_calls commit-config)$(vapt_calls commit-digests)"
+assert_eq 'pending at lock: the other recovery record is preserved' \
     'reviewed-full-upgrade-commit-pending' "$(cat "$ROOT/var/lib/haseen/vapt/upgrade-pending" 2>/dev/null)"
-assert_eq 'M1 pending at lock: BlackArch stays inactive' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
+assert_eq 'pending at lock: BlackArch stays inactive' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"

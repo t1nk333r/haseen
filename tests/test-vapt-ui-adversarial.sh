@@ -1,12 +1,12 @@
 # shellcheck shell=bash
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Reuse the established hermetic Qt module/transport fixtures and its existing
-# behavioural baseline. No live Quickshell session or installed tool is started.
-source "$REPO/tests/test-vapt-security-ui.sh"
-if [[ $VAPT_QML_READY != true ]]; then
-    echo '  skip: Security adversarial identity/stop/certificate engine scenarios not run; baseline engine prerequisites unavailable' >&2
-    return 0
-fi
+# Hostile metadata and changed evidence against the production panel, on the
+# fixture modules; no live Quickshell session or installed tool is started.
+QML_BIN=${QML_BIN:-/usr/lib/qt6/bin/qml}
+sandbox vapt-ui-adversarial
+source "$FIXTURES/vapt-qml-lib.sh"
+vapt_qml_available 'Security adversarial identity/stop/certificate scenarios' || return 0
+vapt_qml_fixture
 cat >"$H/Adversarial.qml" <<EOF
 import QtQuick
 import qs.Haseen
@@ -38,7 +38,7 @@ Window {
     function execute() {
         const cli = "/fixture/bin/haseen";
         if (step === 0) {
-            eq("opening malicious metadata starts no action", [], Apps.launches);
+            eq("opening the panel starts no action", [], Apps.launches);
             for (const bad of ["--yes", "-h", "nmap;id", "nmap\\n--yes", "nmap\\u0000", "\$(not-executed)"]) {
                 const data = FixtureState.listing(); data.tools = [JSON.parse(JSON.stringify(FixtureState.tool))]; data.tools[0].id = bad;
                 eq("untrusted name refused at JSON consumer " + JSON.stringify(bad), null, M.parse("tools", JSON.stringify(data)));
@@ -91,10 +91,13 @@ Window {
             panel.choosePage(3);panel.inspect("proxy-ca");next();return;
         }
         if (step === 2) {
-            panel.draft={path:"/tmp/private.pem"};panel.inspection={schemaVersion:1,state:"refused",reason:"private key",certificate:null};
+            // With no anchor, trust turns on the inspection alone.
+            panel.anchor={schemaVersion:1,state:"none",reason:"no anchor",anchor:null};
+            const certificate={isCa:true,containsPrivateKey:false,sha256:"A".repeat(64),subject:"fixture",issuer:"fixture",notBefore:"fixture",notAfter:"fixture"};
+            panel.draft={path:"/tmp/expired.pem"};panel.inspection={schemaVersion:1,state:"invalid",reason:"expired",certificate:certificate};
             panel.certificate("trust",false);panel.launch();
-            eq("refused certificate cannot request trust",1,Apps.launches.length);
-            panel.inspection={state:"valid",certificate:{isCa:true,containsPrivateKey:false,sha256:"A".repeat(64)}};
+            eq("an invalid certificate cannot request trust",1,Apps.launches.length);
+            panel.draft={path:"/tmp/ca.pem"};panel.inspection={schemaVersion:1,state:"valid",reason:"fixture",certificate:certificate};
             const form=find(panel,item=>typeof item.pathChangedByUser === "function");
             eq("certificate form rendered",true,!!form);
             form.pathChangedByUser("/tmp/different.pem");
@@ -137,6 +140,16 @@ Window {
             eq("removal retry review states transaction",true,panel.intentCopy.indexOf("Transaction: removing")>=0);
             panel.launch();
             eq("removal retry uses terminal gateway",3,Apps.launches.length);
+            panel.anchor={schemaVersion:1,state:"unknown",reason:"pending trust, anchor missing",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"pending"}};
+            next();return;
+        }
+        if (step === 6) {
+            const retry=find(panel,item=>item.text==="Review trust retry in terminal");
+            eq("pending trust with a missing anchor exposes retry",true,!!retry && retry.enabled);
+            eq("pending trust with a missing anchor exposes removal",true,!!find(panel,item=>item.text==="Review removal of owned anchor" && item.visible));
+            panel.certificate("remove",false);
+            eq("rolling back an interrupted trust says so",true,panel.intentCopy.indexOf("Roll back the interrupted trust")>=0);
+            panel.back();
             panel.anchor={schemaVersion:1,state:"modified",reason:"modified pending fixture",anchor:{sha256:"A".repeat(64),unchanged:false,transaction:"pending"}};
             next();return;
         }
@@ -144,7 +157,7 @@ Window {
         eq("modified pending transaction disables retry",true,!!find(panel,item=>item.text==="Review trust retry in terminal" && !item.enabled));
         panel.certificate("remove",false);panel.certificate("trust",false);
         eq("modified transaction cannot prepare either action",[],panel.intentArgv);
-        eq("recovery requests perform no automatic discovery",3,Apps.launches.length);
+        eq("refused recovery requests launch nothing",3,Apps.launches.length);
         Qt.exit(failures ? 1 : 0);
     }
 }

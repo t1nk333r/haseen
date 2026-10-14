@@ -26,7 +26,6 @@ Column {
         Accessible.description: root.error
         onEditingFinished: root.committed()
         onAccepted: root.submitted()
-        Keys.priority: Keys.AfterItem
         onTextEdited: root.edited(text)
         background: Rectangle {
             color: Theme.surfaceAlt

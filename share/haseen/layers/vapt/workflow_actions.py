@@ -3,25 +3,29 @@
 import argparse
 import base64
 import functools
+import hashlib
 import http.server
+import io
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import socket
+import socketserver
 import ssl
 import stat
 import subprocess
 import sys
-import urllib.parse
-import io
-import socketserver
 import time
+import urllib.parse
 
+# Run under python3 -I, which leaves the script's own directory off sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import workflow as wf
 import metadata as meta
-from workflow_support import validate_endpoint, selected_owned_file, local_addresses, inspect_certificate, inspect_certificate_data, read_certificate_bytes, open_selected
+from workflow_support import (validate_endpoint, selected_owned_file, local_addresses, inspect_certificate,
+                              inspect_certificate_data, read_certificate_bytes, open_selected, host_program)
 
 FAMILIES = [('ssh', ['openssh']), ('postgresql', ['postgresql']), ('apache', ['apache']),
             ('nginx', ['nginx']), ('beef', ['beef', 'beef-xss'])]
@@ -36,6 +40,7 @@ ADAPTERS = {'listener': ('openbsd-netcat', '/usr/bin/nc'), 'http-server': ('pyth
 COMMANDS = {'listener': 'net-listener', 'http-server': 'net-http-server',
             'enumeration-host': 'net-file-server', 'proxy-ca': 'net-proxy-ca', 'remmina': 'net-remmina'}
 UNIT = re.compile(r'[A-Za-z0-9_.:-]+\.service')
+HOST_HEADER = re.compile(r'(?:\[(?P<v6>[0-9a-f:.]+)(?:%25[a-z0-9_.-]+)?\]|(?P<name>[a-z0-9.-]+))(?::[0-9]{1,5})?')
 
 
 def snapshot():
@@ -77,7 +82,7 @@ def manager_state(unit):
         if not isinstance(fixture, dict):
             raise ValueError('service manager snapshot must be an object; refused')
         return manager_record(fixture.get(unit))
-    result = subprocess.run(['/usr/bin/systemctl', 'show', '--property=FragmentPath,ActiveState,SubState,LoadState', '--', unit],
+    result = subprocess.run([host_program('/usr/bin/systemctl', wf.ROOT), 'show', '--property=FragmentPath,ActiveState,SubState,LoadState', '--', unit],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     if result.returncode:
         return {}
@@ -212,6 +217,34 @@ def endpoint_plan(kind, address, port, path):
             'adapter': program, 'selectionIdentity': identity, 'dryRun': True, 'reason': 'preview only; no bind, serving or execution performed'}
 
 
+def accepted_hosts(literal):
+    """Host names a browser sends only when the user addressed this helper.
+
+    A DNS-rebinding page reaches a loopback or LAN helper under a name it
+    controls, and its requests carry that name: never localhost and never
+    one of this machine's own literal addresses for the bind.
+    """
+    bound = ipaddress.ip_address(literal.split('%', 1)[0])
+    if bound.is_unspecified:
+        # A wildcard IPv6 socket also accepts IPv4 clients.
+        literals = {row['address'].split('%', 1)[0] for row in local_addresses('')
+                    if bound.version == 6 or row['family'] == 'ipv4'}
+    else:
+        literals = {str(bound)}
+    return {'localhost'} | {str(ipaddress.ip_address(address)) for address in literals}
+
+
+def host_accepted(value, accepted):
+    match = HOST_HEADER.fullmatch(value.strip().lower())
+    if not match:
+        return False
+    name = match['v6'] or match['name'].removesuffix('.')
+    try:
+        return name == 'localhost' or str(ipaddress.ip_address(name)) in accepted
+    except ValueError:
+        return False
+
+
 class LiteralHTTPServer(http.server.HTTPServer):
     """One client at a time, bounded idle/total waits, no reverse lookup."""
     allow_reuse_address = False
@@ -227,6 +260,7 @@ class LiteralHTTPServer(http.server.HTTPServer):
         socketserver.TCPServer.server_bind(self)
         self.server_name = literal
         self.server_port = self.server_address[1]
+        self.accepted_hosts = accepted_hosts(literal)
 
     def get_request(self):
         connection, address = super().get_request()
@@ -288,9 +322,17 @@ class ConfinedHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self._send(True)
 
+    def addressed_here(self):
+        """An HTTP/1.0 request without Host names nothing a page could choose."""
+        hosts = self.headers.get_all('Host') or []
+        return not hosts or (len(hosts) == 1 and host_accepted(hosts[0], self.server.accepted_hosts))
+
     def _send(self, body):
         fd = None
         try:
+            if not self.addressed_here():
+                self.send_error(421, 'Host is not this local helper')
+                return
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path, errors='strict')
             if self.file_fd is not None:
                 if path != '/file':
@@ -378,11 +420,10 @@ def serve(kind, address, port, path, expected):
 def certificate_payload(path, fingerprint):
     target = wf.physical(path)
     data = read_certificate_bytes(target)
-    row = inspect_certificate_data(data)
+    row = inspect_certificate_data(data, wf.ROOT)
     if row['state'] != 'valid' or row['certificate']['sha256'] != fingerprint:
         raise ValueError('certificate changed or no longer valid; no trust operation')
     der = ssl.PEM_cert_to_DER_cert(data.decode('ascii')) if b'-----BEGIN CERTIFICATE-----' in data else data
-    import hashlib
     if hashlib.sha256(der).hexdigest().upper() != fingerprint:
         raise ValueError('certificate bytes changed during inspection')
     return base64.b64encode(der).decode('ascii')
@@ -431,7 +472,7 @@ def main():
             result = {'schemaVersion': 1, 'addresses': local_addresses(wf.ROOT)}
         elif args.command == 'inspect':
             adapter('proxy-ca')
-            result = inspect_certificate(wf.physical(args.operands[0]))
+            result = inspect_certificate(wf.physical(args.operands[0]), wf.ROOT)
         elif args.command == 'ca-payload':
             print(certificate_payload(*args.operands))
             return 0

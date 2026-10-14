@@ -3,16 +3,47 @@
 source "$HASEEN_PATH/layers/vapt/workflow.sh"
 source "$HASEEN_PATH/layers/vapt/pacman.sh"
 
-vapt_actions() { /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" "$@"; }
+# Every interpreter runs with -I: these commands are often started from a
+# cloned exploit or loot directory, and python -c would otherwise import a
+# json.py planted there before the standard library.
+vapt_actions() { /usr/bin/python3 -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" "$@"; }
+# vapt_program PATH — the file to execute for the absolute host program PATH.
+# Every program an action runs is chosen here (workflow_support.host_program
+# is the Python twin): a fixture sysroot provides recording stubs at the same
+# paths, so tests see exactly what ran, and vapt_action_refuse_fixture stops
+# the public commands before anything executes under a fixture.
+vapt_program() { sysroot_path "$1"; }
 vapt_action_refuse_fixture() {
     if in_sysroot && ! $DRY_RUN; then
         warn 'VAPT action refuses HASEEN_SYSROOT; fixture evidence cannot drive live actions; use --dry-run'
         return 1
     fi
 }
+# vapt_json_field KEY... — one value of the JSON object on stdin, following
+# nested keys; non-string values print as JSON (true, false, null).
 vapt_json_field() {
-    /usr/bin/python3 -B -c 'import json,sys; v=json.load(sys.stdin); print(v[sys.argv[1]])' "$1"
+    /usr/bin/python3 -I -B -c 'import json, sys
+value = json.load(sys.stdin)
+for key in sys.argv[1:]:
+    value = value[key]
+print(value if isinstance(value, str) else json.dumps(value))' "$@"
 }
+
+# vapt_exposure_consent PROMPT — consent to expose a listener or serve files
+# comes only from a person at an interactive terminal: neither --yes nor
+# piped input can give it.
+vapt_exposure_consent() {
+    if $ASSUME_YES; then
+        warn '--yes cannot accept exposing a listener or serving files; run without --yes at a terminal'
+        return 1
+    fi
+    if ! vapt_interactive; then
+        warn 'exposure consent needs an interactive terminal; nothing started'
+        return 1
+    fi
+    confirm "$1" || { warn 'cancelled; no foreground action'; return 1; }
+}
+vapt_interactive() { [[ -t 0 ]]; }
 
 vapt_service_cli() {
     local verb="$1" service='' expected_unit='' expected_fragment='' arg
@@ -62,7 +93,7 @@ vapt_service_action() {
     fi
     second="$(vapt_actions service-plan "$service")" || return 1
     [[ $first == "$second" ]] || { warn 'service state/FragmentPath changed during review; no operation'; return 1; }
-    vapt_root_exec /usr/bin/systemctl "$verb" -- "$unit"
+    vapt_root_exec "$(vapt_program /usr/bin/systemctl)" "$verb" -- "$unit"
 }
 
 vapt_endpoint_action() {
@@ -70,7 +101,7 @@ vapt_endpoint_action() {
     shift
     local original=("$@")
     $ASSUME_YES && original+=(--yes)
-    local address='' port='' path='' arg value plan nonloop adapter family
+    local address='' port='' path='' arg value plan exposure consent adapter family
     while (($#)); do
         arg="$1"; shift
         case "$arg" in
@@ -111,25 +142,28 @@ vapt_endpoint_action() {
     fi
     plan="$(vapt_actions endpoint-plan "$kind" "$address" "$port" "$path")" || return 1
     printf '%s\n' "$plan"
+    # Every server and every non-loopback listener exposes something.
+    exposure="$(printf '%s' "$plan" | vapt_json_field endpoint requiresConfirmation)" || return 1
+    consent=true
+    [[ $kind == listener && $exposure == false ]] && consent=false
     if $DRY_RUN; then
+        ! $consent || echo 'DRYRUN: requires consent at an interactive terminal; --yes cannot give it'
         echo 'DRYRUN: validate again before foreground action; no writes, bind, serving or execution performed'
         return 0
     fi
     vapt_action_refuse_fixture || return 1
     source "$HASEEN_PATH/lib/terminal.sh"
     in_floating_terminal "${original[@]}"
-    nonloop="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print("yes" if json.load(sys.stdin)["endpoint"]["requiresConfirmation"] else "no")')"
-    if [[ $kind != listener || $nonloop == yes ]]; then
-        confirm 'Accept this explicit byte-serving/listening scope and exposure?' || { warn 'cancelled; no foreground action'; return 1; }
-    fi
+    ! $consent || vapt_exposure_consent 'Accept this explicit byte-serving/listening scope and exposure?' || return 1
     [[ $plan == "$(vapt_actions endpoint-plan "$kind" "$address" "$port" "$path")" ]] || { warn 'selected adapter/path changed; no action'; return 1; }
-    address="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print(json.load(sys.stdin)["endpoint"]["address"])')"
+    address="$(printf '%s' "$plan" | vapt_json_field endpoint address)"
     adapter="$(printf '%s' "$plan" | vapt_json_field adapter)"
     if [[ $kind == listener ]]; then
-        family="$(printf '%s' "$plan" | /usr/bin/python3 -B -c 'import json,sys; print("-4" if json.load(sys.stdin)["endpoint"]["family"] == "ipv4" else "-6")')"
-        run exec "$adapter" "$family" -l -n -- "$address" "$port"
+        family="$(printf '%s' "$plan" | vapt_json_field endpoint family)"
+        [[ $family == ipv4 ]] && family=-4 || family=-6
+        run exec "$(vapt_program "$adapter")" "$family" -l -n -- "$address" "$port"
     else
-        run exec "$adapter" -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
+        run exec "$(vapt_program "$adapter")" -I -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" serve "$kind" "$address" "$port" "$path" "$plan"
     fi
 }
 
@@ -141,8 +175,7 @@ vapt_ca_action() {
     trust)
         result="$(vapt_actions inspect "$operand" --json)" || { printf '%s\n' "$result"; return 1; }
         printf '%s\n' "$result"
-        fingerprint="$(printf '%s' "$result" | /usr/bin/python3 -B -c 'import json,sys; print(json.load(sys.stdin)["certificate"]["sha256"])')" || return 1
-        /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow_actions.py" adapter proxy-ca >/dev/null || return 1
+        fingerprint="$(printf '%s' "$result" | vapt_json_field certificate sha256)" || return 1
         vapt_actions ca-trust-check "$fingerprint" || return 1
         if $DRY_RUN; then
             echo "DRYRUN: require typed SHA-256 $fingerprint; recheck immutable certificate bytes and owned trust updater; install only fingerprint-bound owned anchor and update system trust"

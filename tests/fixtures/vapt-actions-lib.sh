@@ -30,18 +30,35 @@ for name,url,files in rows:
 (base/'services.json').write_text(json.dumps(services))
 (base/'addresses.json').write_text(json.dumps([{'interface':'lo','address':'127.0.0.1','prefixLength':8}]))
 PY
+    # Production executes host programs at sysroot paths (vapt_program,
+    # host_program), so these recording stand-ins are exactly what an action
+    # would run: each logs its argv to $CALLS/owned-NAME.
     local name
-    for name in nc python python3.14 openssl update-ca-trust remmina; do
-        _vapt_stub_log "$ROOT/usr/bin/$name" "owned-$name"
+    for name in nc python python3.14 remmina systemctl update-ca-trust; do
+        actions_stub "$ROOT/usr/bin/$name" "owned-$name"
     done
+    printf '[ "${VAPT_CA_UPDATER_FAIL:-}" != true ] || exit 7\n' >>"$ROOT/usr/bin/update-ca-trust"
+    workflow_openssl
     export HASEEN_INLINE=1
+}
+# actions_stub FILE NAME — log argv to $CALLS/NAME, announce it like every
+# fixture stub, and succeed.
+actions_stub() {
+    cat >"$1" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>'$CALLS/$2'
+echo "STUB-CALLED: $2 \$*" >&2
+EOF
+    chmod +x "$1"
 }
 actions_api() {
     capture bash "$FIXTURES/vapt-actions-runner.sh" "$@"
 }
+# actions_untouched LABEL — no host program an action could run was executed.
+# Tests that run one on purpose assert its log and then remove it.
 actions_untouched() {
     local name
-    for name in nc python python3.14 openssl update-ca-trust remmina; do
+    for name in nc python python3.14 remmina systemctl update-ca-trust openssl; do
         assert_eq "$1: owned $name never executed" '' "$(vapt_calls "owned-$name")"
     done
     workflow_no_calls "$1"

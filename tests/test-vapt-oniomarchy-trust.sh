@@ -224,6 +224,16 @@ done
 vapt_cli repo-enable --dry-run oniomarchy
 assert_contains 'enable dry-run shows the exact stanza' "$OUTPUT" '| Server = https://pkgs.oniomarchy.com/$arch'
 assert_contains 'enable dry-run invents no filename' "$OUTPUT" '<filename-unknown-until-then>'
+# The plan describes what an approval does: the keyring package is kept as an
+# audited archive and never installed.
+assert_contains 'enable dry-run: the keyring is never installed' "$OUTPUT" 'The keyring package is never installed'
+assert_contains 'enable dry-run: the archive is kept in root state' "$OUTPUT" 'would record the audited keyring archive'
+assert_not_contains 'enable dry-run claims no package install' "$OUTPUT" 'noscriptlet'
+vapt_onio_seed
+vapt_cli repo-enable --dry-run oniomarchy
+assert_contains 're-approval dry-run follows the recorded authority' "$OUTPUT" 're-approval under the recorded keyring authority'
+assert_contains 're-approval dry-run: the keyring is never installed' "$OUTPUT" 'The keyring package is never installed'
+assert_not_contains 're-approval dry-run claims no package install' "$OUTPUT" 'noscriptlet'
 vapt_cli repo-enable oniomarchy
 assert_status 'a fixture sysroot never drives a live approval' 2 "$STATUS"
 assert_eq 'the refused approval ran nothing' '' "$(ls -A "$CALLS")"

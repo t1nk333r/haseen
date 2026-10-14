@@ -27,3 +27,13 @@ workflow_no_calls() {
     assert_eq "$1: no owned entry ran" '' "$(vapt_calls scan-one)$(vapt_calls scan-two)$(vapt_calls ssh-client)"
     vapt_tools_untouched "$1"
 }
+# workflow_openssl — the sysroot's /usr/bin/openssl: certificate inspection
+# needs a real parser, so it logs to $CALLS/owned-openssl and hands over.
+workflow_openssl() {
+    cat >"$ROOT/usr/bin/openssl" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>'$CALLS/owned-openssl'
+exec /usr/bin/openssl "\$@"
+EOF
+    chmod +x "$ROOT/usr/bin/openssl"
+}

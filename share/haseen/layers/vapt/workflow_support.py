@@ -9,6 +9,21 @@ from pathlib import Path
 import re
 import subprocess
 import ssl
+import stat
+
+
+def host_program(path, root):
+    """The file to execute for the absolute host program PATH.
+
+    Every program a VAPT action runs is chosen here. ROOT is the fixture
+    sysroot ('' on a real host): a fixture provides its own recording stub at
+    the same path, so tests see exactly which programs ran. The public
+    mutating entrypoints refuse a fixture sysroot before executing anything.
+    """
+    if not path.startswith('/'):
+        raise ValueError('host programs are named by absolute path')
+    return root + path
+
 
 def local_addresses(root=''):
     """Read assigned local interface state only; no DNS or network probes."""
@@ -180,11 +195,12 @@ def _basic_constraints_ca(der):
         crypto.X509_free(certificate)
 
 
-def inspect_certificate_data(data, openssl='/usr/bin/openssl'):
+def inspect_certificate_data(data, root):
     """Read one CA certificate and return only nonsecret metadata.
 
-    OpenSSL is an absolute trusted workstation parser, not a discovered tool,
-    invoked only for explicit inspection; discovery/doctor never call this.
+    OpenSSL is the verified workstation parser (the proxy-ca adapter), not a
+    discovered tool, invoked only for explicit inspection; discovery and
+    doctor never call this.
     """
     result = {'schemaVersion': 1, 'state': 'invalid', 'reason': '', 'certificate': None}
     try:
@@ -203,7 +219,7 @@ def inspect_certificate_data(data, openssl='/usr/bin/openssl'):
             raise ValueError('invalid or bundled DER certificate')
         env = {key: os.environ[key] for key in ('HOME',) if key in os.environ}
         env.update(PATH='/usr/bin:/bin', LC_ALL='C', OPENSSL_CONF='/dev/null')
-        parsed = subprocess.run([openssl, 'x509', '-inform', 'PEM' if pem else 'DER', '-noout', '-subject', '-issuer',
+        parsed = subprocess.run([host_program('/usr/bin/openssl', root), 'x509', '-inform', 'PEM' if pem else 'DER', '-noout', '-subject', '-issuer',
                                  '-dates', '-fingerprint', '-sha256'], input=data,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, check=False)
         if parsed.returncode:
@@ -238,7 +254,6 @@ def read_certificate_bytes(path):
     fd = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        import stat
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024:
             raise ValueError('certificate must be one bounded regular file')
@@ -255,9 +270,9 @@ def read_certificate_bytes(path):
         if fd is not None:
             os.close(fd)
 
-def inspect_certificate(path, openssl='/usr/bin/openssl'):
+def inspect_certificate(path, root):
     """Inspect immutable selected bytes, not a second read of a mutable path."""
     try:
-        return inspect_certificate_data(read_certificate_bytes(path), openssl)
+        return inspect_certificate_data(read_certificate_bytes(path), root)
     except (OSError, ValueError):
         return {'schemaVersion': 1, 'state': 'invalid', 'reason': 'certificate selection unreadable, redirected or not one bounded regular file', 'certificate': None}

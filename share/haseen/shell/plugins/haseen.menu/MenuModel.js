@@ -206,13 +206,23 @@ var SERVICE_GUARDS = {
 function securityText(value) {
     return String(value || "").replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "");
 }
+// A disabled information row: what the provider is doing or why it has no
+// rows. It is not an action and carries no ✓.
 function securityInfo(menuId, state, reason) {
     var r = providerRow(menuId, state, {label: state === "empty" ? "No installed items" : state === "loading" ? "Reading installed evidence…" : "Could not read local status", description: securityText(reason), disabledNow: true});
     r.when = SECURITY_GUARD;
     return [r];
 }
-// data has passed Security Model's schema validation in the provider adapter.
-// Only closed guard/action strings enter the existing Bash menu boundary.
+// While a Security provider reads again, its previous rows stay listed but
+// disabled (they may be stale), followed by the loading row.
+function securityRefreshing(menuId, previous) {
+    var cached = (previous || []).filter(function(r) { return r.kind === "security-route"; }).map(function(r) {
+        return Object.assign({}, r, {disabledNow: true, description: "Previous snapshot — refreshing installed evidence"});
+    });
+    return cached.concat(securityInfo(menuId, "loading", "Nothing runs during discovery."));
+}
+// data has passed SecurityEvidence.js's schema validation in the provider
+// adapter. Only closed guard/action strings enter the menu's bash boundary.
 function securityRows(kind, menuId, data) {
     if (!data) return securityInfo(menuId, "error", "Unsupported or unreadable local status data");
     var page = kind === "tools" ? "tools" : kind === "services" ? "services" : "local";
@@ -247,7 +257,7 @@ function shellQuote(value) {
 
 // Install/Remove from Catalog's share/haseen/default/catalog.json: one submenu
 // per category, one row per entry. Install rows of installed entries stay
-// listed but disabled (✓); Remove lists installed entries only.
+// listed, disabled and checked (✓); Remove lists installed entries only.
 function catalogRows(menuId, catalog, installed, mode) {
     var rows = [];
     if (!catalog || !Array.isArray(catalog.entries))
@@ -273,7 +283,8 @@ function catalogRows(menuId, catalog, installed, mode) {
                 icon: entry.icon || cat.icon || "",
                 description: entry.description || "",
                 action: "haseen " + mode + " app " + shellQuote(entry.id),
-                disabledNow: mode === "install" && have[entry.id] === true
+                disabledNow: mode === "install" && have[entry.id] === true,
+                checkedNow: mode === "install" && have[entry.id] === true
             });
             if (entry.when)
                 row.when = entry.when;
@@ -398,11 +409,15 @@ function isChecked(checkedResults, entry) {
     return !!(entry && (entry.checkedNow || (entry.checked && checkedResults && checkedResults[entry.id])));
 }
 
-// A disabled row is software already present: the same ✓ as a checked one.
+// ✓ marks something present: a checked row, or one whose `disabled:` guard
+// answered (menu.jsonc rows use it for software already there). A provider
+// row is disabled for its own reasons (an information row, a refused or
+// stale one), so it gets the mark only when the provider also checks it.
 function labelFor(entry, checkedResults, disabledResults) {
     if (!entry)
         return "";
-    return (isChecked(checkedResults, entry) || isDisabled(disabledResults, entry)) ? entry.label + " ✓" : entry.label;
+    var present = isChecked(checkedResults, entry) || !!(entry.disabled && disabledResults && disabledResults[entry.id]);
+    return present ? entry.label + " ✓" : entry.label;
 }
 
 function searchableToken(value) {
@@ -609,9 +624,18 @@ function substituteGuardReaders(expression) {
     return expression;
 }
 
+// The Security enablement guard as a whole command word. The menu answers it
+// from the plugin flag the shell holds, not by running it: the CLI starts
+// Python, and the menu evaluates its guards on every open.
+var SECURITY_GUARD_WORD = /(^|[\s;&|(!])haseen vapt menu --enabled(?=$|[\s;&|)])/g;
+function answerSecurityGuard(expression, securityEnabled) {
+    return securityEnabled === undefined ? expression : expression.replace(SECURITY_GUARD_WORD, "$1" + (securityEnabled === true ? "true" : "false"));
+}
+
 // One bash script for every `when:`, `checked:` and `disabled:`, printing
-// `<id>:<w|c|d>:<0|1>` per line. Empty when nothing asks.
-function guardScript(items) {
+// `<id>:<w|c|d>:<0|1>` per line. Empty when nothing asks. With
+// securityEnabled given, the Security guard is answered in the script.
+function guardScript(items, securityEnabled) {
     var guards = "";
     var expressions = [];
     for (var id in items) {
@@ -621,6 +645,7 @@ function guardScript(items) {
         ["when", "checked", "disabled"].forEach(function(key, index) {
             var expression = entry[key];
             if (!expression) return;
+            expression = answerSecurityGuard(expression, securityEnabled);
             var slot = expressions.indexOf(expression);
             if (slot < 0) {
                 slot = expressions.length;

@@ -100,20 +100,105 @@ assert_contains 'the commit used a repository-free configuration' "$(vapt_calls 
 assert_eq 'pacman.conf is never changed by a private install' "$CONF_BEFORE" "$(cat "$ROOT/etc/pacman.conf")"
 vapt_tools_untouched 'private install'
 
-# --- a private package may place nothing in pacman's keyrings directory -------
-# A later manual pacman-key --populate would apply any list found there.
-tx_case vapt-onio-tx-keyring-payload
-mkdir -p "$SANDBOX/packages/can-utils/usr/share/pacman/keyrings"
-printf 'D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0:128:\n' >"$SANDBOX/packages/can-utils/usr/share/pacman/keyrings/evil-trusted"
+# --- a private package may place nothing in pacman's trust configuration -------
+# In pacman's GPGDir gpg reads gpg.conf-2 before gpg.conf, so one dropped file
+# can name another keyring and a trusted-key that is then ultimately trusted
+# for every repository. The keyrings directory feeds pacman-key --populate.
+tx_case vapt-onio-tx-gpgdir-payload
 vapt_package can-utils 2025.01-1
+mkdir -p "$SANDBOX/packages/can-utils/etc/pacman.d/gnupg"
+printf 'keyring /usr/share/can-utils/k.gpg\ntrusted-key D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0\n' \
+    >"$SANDBOX/packages/can-utils/etc/pacman.d/gnupg/gpg.conf-2"
+tar -czf "$SANDBOX/archives/can-utils-2025.01-1-x86_64.pkg.tar.gz" -C "$SANDBOX/packages/can-utils" .PKGINFO usr etc
 vapt_onio_serve
 vapt_onio_seed
 printf 'oniomarchy\tcan-utils\t2025.01-1\thttps://pkgs.oniomarchy.com/x86_64/can-utils-2025.01-1-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
 vapt_api install --yes --with-oniomarchy --groups automotive
-assert_eq 'a private package with a keyrings payload still resolves' oniomarchy/can-utils "$(vapt_field can-utils 4)"
+assert_eq 'a private package with a GPGDir payload still resolves' oniomarchy/can-utils "$(vapt_field can-utils 4)"
 assert_not_contains 'but it is never installed' "$(vapt_field can-utils 6)" installed
-assert_contains 'the audit names the keyrings directory' "$(vapt_field can-utils 7)" 'places files under /usr/share/pacman/keyrings'
-assert_eq 'nothing lands in the keyrings directory' '' "$(compgen -G "$ROOT/usr/share/pacman/keyrings/*" || true)"
+assert_contains 'the audit names the payload and why' "$(vapt_field can-utils 7)" \
+    "places /etc/pacman.d/gnupg/gpg.conf-2 inside pacman's trust configuration"
+assert_eq 'nothing lands in the GPGDir' '' "$(compgen -G "$ROOT/etc/pacman.d/gnupg/*" || true)"
+
+# The same rule through the audit directly, for each protected path, however
+# the member is spelt and through links. MEMBER is kind:path[=content|target].
+tx_case vapt-onio-tx-pacman-trust
+vapt_package can-utils 2025.01-1
+vapt_onio_serve
+vapt_onio_seed
+printf 'oniomarchy\tcan-utils\t2025.01-1\n' >"$SANDBOX/trust-plan.tsv"
+private_audit() { # MEMBER... — audit can-utils carrying these extra members
+    python3 - "$SANDBOX/archives/can-utils-2025.01-1-x86_64.pkg.tar.gz" "$@" <<'EOF'
+import io, sys, tarfile
+out, *members = sys.argv[1:]
+with tarfile.open(out, 'w:gz') as archive:
+    def add(name, kind, data=b'', target=''):
+        info = tarfile.TarInfo(name)
+        info.type, info.linkname, info.size = kind, target, len(data)
+        info.mode = 0o755 if kind == tarfile.DIRTYPE else 0o644
+        archive.addfile(info, io.BytesIO(data))
+    add('.PKGINFO', tarfile.REGTYPE, b'pkgname = can-utils\npkgver = 2025.01-1\narch = x86_64\n')
+    add('usr', tarfile.DIRTYPE)
+    add('usr/bin', tarfile.DIRTYPE)
+    add('usr/bin/can-utils', tarfile.REGTYPE, b'#!/bin/sh\nexit 97\n')
+    for member in members:
+        kind, _, rest = member.partition(':')
+        name, _, value = rest.partition('=')
+        if kind == 'dir':
+            add(name, tarfile.DIRTYPE)
+        elif kind == 'link':
+            add(name, tarfile.SYMTYPE, target=value)
+        else:
+            add(name, tarfile.REGTYPE, value.encode())
+EOF
+    capture meta audit "$SANDBOX/archives/can-utils-2025.01-1-x86_64.pkg.tar.gz" --plan "$SANDBOX/trust-plan.tsv" --with-oniomarchy
+}
+refused_payload() { # LABEL MEMBER...
+    local label="$1"
+    shift
+    private_audit "$@"
+    assert_status "$label: refused" 1 "$STATUS"
+    assert_contains "$label: as pacman trust configuration" "$OUTPUT" "inside pacman's trust configuration"
+}
+private_audit
+assert_status 'a plain private package passes the audit (control)' 0 "$STATUS"
+private_audit file:etc/can-utils.conf=x dir:etc dir:etc/pacman.d dir:usr/share/pacman/keyrings
+assert_status 'an ordinary /etc file and headers of the protected directories themselves pass (control)' 0 "$STATUS"
+while IFS='|' read -r label members; do
+    read -r -a list <<<"$members"
+    refused_payload "$label" "${list[@]}"
+done <<'EOF'
+gpg.conf-2 in the default GPGDir|file:etc/pacman.d/gnupg/gpg.conf-2=trusted-key
+gpg.conf in the default GPGDir|file:etc/pacman.d/gnupg/gpg.conf=trusted-key
+a mirrorlist under /etc/pacman.d|file:etc/pacman.d/mirrorlist=x
+a hook under /etc/pacman.d|file:etc/pacman.d/hooks/x.hook=x
+/etc/pacman.conf|file:etc/pacman.conf=x
+/etc/pacman.conf.pacnew|file:etc/pacman.conf.pacnew=x
+a /etc/pacman.conf.d directory|dir:etc/pacman.conf.d
+a keyrings list|file:usr/share/pacman/keyrings/evil-trusted=D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0D0:128:
+a link replacing the keyrings directory|link:usr/share/pacman/keyrings=/tmp
+a ./-prefixed member|file:./etc/pacman.d/gnupg/gpg.conf-2=x
+a member spelt with // and /./|file:etc//pacman.d/./gnupg/gpg.conf-2=x
+a case-changed member|file:ETC/Pacman.D/gnupg/gpg.conf-2=x
+an absolute link to the GPGDir|link:usr/share/can-utils/conf=/etc/pacman.d/gnupg
+a file written through an incoming link|link:usr/share/can-utils/conf=/etc/pacman.d/gnupg file:usr/share/can-utils/conf/gpg.conf-2=x
+a relative link to /etc/pacman.conf|link:usr/share/can-utils/pacman.conf=../../../etc/pacman.conf
+EOF
+mkdir -p "$ROOT/usr/share"
+ln -s /etc/pacman.d "$ROOT/usr/share/can-utils-data"
+refused_payload 'a file written through a retained host link' file:usr/share/can-utils-data/gnupg/gpg.conf-2=x
+rm "$ROOT/usr/share/can-utils-data"
+# A non-default GPGDir is protected wherever pacman.conf puts it.
+private_audit file:var/lib/fixture-gnupg/gpg.conf-2=x
+assert_status 'an unrelated directory passes while GPGDir is the default (control)' 0 "$STATUS"
+sed -i 's|^DownloadUser = alpm$|&\nGPGDir = /var/lib/fixture-gnupg/|' "$ROOT/etc/pacman.conf"
+refused_payload 'gpg.conf-2 in a configured GPGDir' file:var/lib/fixture-gnupg/gpg.conf-2=x
+refused_payload 'a nested member of a configured GPGDir' file:var/lib//fixture-gnupg/sub/x=x
+refused_payload '/etc/pacman.d stays protected with another GPGDir' file:etc/pacman.d/gnupg/gpg.conf-2=x
+sed -i 's|^GPGDir = .*$|GPGDir = /etc/pacman.d/gnupg|' "$ROOT/etc/pacman.conf"
+mkdir -p "$ROOT/etc/pacman.d" "$ROOT/var/lib/real-gnupg"
+ln -s /var/lib/real-gnupg "$ROOT/etc/pacman.d/gnupg"
+refused_payload 'the physical directory behind a linked GPGDir' file:var/lib/real-gnupg/gpg.conf-2=x
 
 # --- a full upgrade never carries the private source ---------------------------
 # The source's Usage excludes Upgrade and its prelude runs after any full

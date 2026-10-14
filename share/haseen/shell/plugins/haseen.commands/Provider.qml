@@ -51,7 +51,7 @@ Scope {
     function askGuards(): void {
         if (asked || guardProc.running)
             return;
-        const script = Model.guardScript(tree.items);
+        const script = Model.guardScript(tree.items, Config.pluginEntry("haseen.security").enabled === true);
         if (script === "")
             return;
         asked = true;

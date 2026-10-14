@@ -14,13 +14,17 @@
   //   parent    puts the entry under another id than its dotted prefix
   //   provider  fills the submenu when entered: apps, fonts,
   //             plugins-enable, plugins-disable, plugins-remove,
-  //             catalog-install, catalog-remove
+  //             catalog-install, catalog-remove, and security-tools,
+  //             security-services, security-local (only while
+  //             haseen.security is enabled)
   //   when      bash guard; the row shows only once it succeeds
   //   checked   bash guard; appends ✓ when it succeeds
   //   disabled  bash guard; row stays listed, dim and unselectable
   //   hidden    true removes the entry (for ~/.config/haseen/menu.jsonc)
   // Guard helpers: haseen-pkg-present PKG…, haseen-cmd-present CMD…,
-  // haseen-flag NAME (~/.local/state/haseen/flags/NAME exists).
+  // haseen-flag NAME (~/.local/state/haseen/flags/NAME exists). The menu
+  // answers `haseen vapt menu --enabled` from the shell's haseen.security
+  // flag instead of running it.
   //
   // Install and Remove list the catalogue (default/catalog.json) by category.
   // The category submenus are declared here so they keep Omarchy's order; the

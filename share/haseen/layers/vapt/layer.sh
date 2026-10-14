@@ -36,7 +36,7 @@ layer_precheck() {
         have "$command" || { warn "VAPT prerequisite missing: $command; install it from signed official Arch/CachyOS packages before provisioning"; return 2; }
     done
     # Archives are read only through libalpm's own libarchive (ctypes).
-    python3 -c 'import argparse,ctypes,email,fnmatch,glob,json,os,pathlib,re,shlex,stat,subprocess,sys; ctypes.CDLL("libarchive.so.13")' || {
+    python3 -I -c 'import argparse,ctypes,email,fnmatch,glob,json,os,pathlib,re,shlex,stat,subprocess,sys; ctypes.CDLL("libarchive.so.13")' || {
         warn 'VAPT requires Python 3 with its standard library and libarchive (pacman dependency)'; return 2;
     }
     source "$LAYER_DIR/provision.sh"

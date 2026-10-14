@@ -6,7 +6,7 @@ import qs.Haseen
 import qs.Haseen.Widgets
 import "MenuModel.js" as Model
 import "MenuStyle.js" as Style
-import "../haseen.security/Model.js" as Security
+import "../../Haseen/SecurityEvidence.js" as SecurityEvidence
 
 // haseen.menu: the command menu, a port of Omarchy's menu in look and
 // behaviour on haseen's data. A JSONC tree (default/menu.jsonc merged key by
@@ -521,7 +521,7 @@ Item {
             return;
         if (r.kind === "security-route") {
             const route = Model.securityRoute(e);
-            if (route && Security.route(route.page, route.itemId))
+            if (route && SecurityRoute.request(route.page, route.itemId))
                 run(Model.SECURITY_ACTION);
             return;
         }
@@ -720,15 +720,15 @@ Item {
     readonly property var providers: ({
             "security-tools": {
                 script: "haseen vapt tool-list --json",
-                parse: (id, text) => Model.securityRows("tools", id, Security.parse("tools", text))
+                parse: (id, text) => Model.securityRows("tools", id, SecurityEvidence.parse("tools", text))
             },
             "security-services": {
                 script: "haseen vapt service-list --json",
-                parse: (id, text) => Model.securityRows("services", id, Security.parse("services", text))
+                parse: (id, text) => Model.securityRows("services", id, SecurityEvidence.parse("services", text))
             },
             "security-local": {
                 script: "haseen vapt doctor --json",
-                parse: (id, text) => Model.securityRows("local", id, Security.parse("doctor", text))
+                parse: (id, text) => Model.securityRows("local", id, SecurityEvidence.parse("doctor", text))
             },
             "fonts": {
                 script: "cur=$(haseen font current 2>/dev/null); haseen font list 2>/dev/null | while IFS= read -r f; do [ -n \"$f\" ] && printf '%s\\t%s\\n' \"$f\" \"$cur\"; done",
@@ -835,10 +835,8 @@ Item {
             Plugins.warnOnce("menu-provider:" + e.provider, "menu: unknown provider '" + e.provider + "' on " + id);
             return;
         }
-        if (e.provider.startsWith("security-")) {
-            const cached = (Model.memory.providerRows[id] || []).filter(r => r.kind === "security-route").map(r => Object.assign({}, r, {disabledNow: true, description: "Previous snapshot — refreshing installed evidence"}));
-            applyRows(id, cached.concat(Model.securityInfo(id, "loading", "Nothing runs during discovery.")), false);
-        }
+        if (e.provider.startsWith("security-"))
+            applyRows(id, Model.securityRefreshing(id, Model.memory.providerRows[id]), false);
         if (providerQueue.indexOf(id) < 0)
             providerQueue = providerQueue.concat([id]);
         startProvider();
@@ -874,7 +872,7 @@ Item {
             return;
         }
         guardsPending = false;
-        const script = Model.guardScript(items);
+        const script = Model.guardScript(items, Config.pluginEntry("haseen.security").enabled === true);
         if (script === "")
             return;
         guardProc.command = ["bash", "-c", "PATH=\"$1:$PATH\"; eval \"$2\"", "bash", binDir, script];
@@ -944,7 +942,7 @@ Item {
             if (spec && root.items[menuId] && Model.providerAllowed(kind, Config.pluginEntry("haseen.security").enabled)) {
                 const security = kind.startsWith("security-");
                 const rows = security && code !== 0 && kind !== "security-local"
-                    ? Model.securityInfo(menuId, "error", Security.text(providerErr.text))
+                    ? Model.securityInfo(menuId, "error", providerErr.text)
                     : spec.parse(menuId, providerOut.text);
                 root.applyRows(menuId, rows, true);
             }

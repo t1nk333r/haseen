@@ -2,8 +2,10 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Independent adversarial regressions for SEC-STOCK-1, SEC-PROVENANCE-3,
-# SEC-ARTIFACT-2, SEC-PATH-4 and recovery/umask boundaries (G1/G2).
+# Adversarial regressions for the stock-maintenance audit: loader and
+# dependency input, provenance beyond identity and self-MTREE, signed cache
+# substitution, the canonical root PATH, the exact recovery-record protocol and
+# permissions that do not depend on the caller umask.
 # Archives contain original inert data and non-executable ELF metadata, mode 0644.
 # No installer, hook, shared object, key, service, scanner or tool executes.
 # Existing fixture helpers are read-only. Observable audit verdicts, installed
@@ -140,7 +142,7 @@ sec_transaction() {
 # Positive control prohibits a blanket ban on all unknown private libraries.
 sec_case vapt-sec-private-library-control
 sec_archive nmap 7.99-1 'usr/lib/nmap/libnmap.so.1=@ELF'
-sec_review 'SEC-STOCK-1 unrelated private library remains allowed' 0 "$SEC_ARCHIVE"
+sec_review 'unrelated private library remains allowed' 0 "$SEC_ARCHIVE"
 
 for route in preload cache conf hwcaps soname redirect; do
     sec_case "vapt-sec-loader-$route"
@@ -152,34 +154,34 @@ for route in preload cache conf hwcaps soname redirect; do
     soname) sec_archive nmap 7.99-1 'usr/lib/libc.so.6=@ELF' ;;
     redirect) sec_archive nmap 7.99-1 'usr/lib/libc.so.6@>../../opt/vendor/lib/libc.so.6' 'opt/vendor/lib/libc.so.6=@ELF' ;;
     esac
-    sec_review "SEC-STOCK-1 $route cannot borrow trusted maintenance execution" 1 "$SEC_ARCHIVE"
+    sec_review "$route cannot borrow trusted maintenance execution" 1 "$SEC_ARCHIVE"
 done
 
 sec_case vapt-sec-fresh-soname
 sec_archive nmap 7.99-1 'usr/lib/libnmap.so.9=@SONAME:libnmap.so.9'
-sec_review 'SEC-STOCK-1 noncolliding loader-directory SONAME remains allowed' 0 "$SEC_ARCHIVE"
+sec_review 'noncolliding loader-directory SONAME remains allowed' 0 "$SEC_ARCHIVE"
 sec_archive nmap 7.99-1 'usr/lib/libnmap.so.9=@SONAME:libreadline.so.8'
-sec_review 'SEC-STOCK-1 bogus SONAME cannot redirect a retained helper dependency under an innocent filename' 1 "$SEC_ARCHIVE"
+sec_review 'bogus SONAME cannot redirect a retained helper dependency under an innocent filename' 1 "$SEC_ARCHIVE"
 sec_archive nmap 7.99-1 'usr/lib/libnmap.so.9=@SONAME-NONE:libnmap.so.9'
-sec_review 'SEC-STOCK-1 structurally bounded but invalid ELF type fails closed in a loader directory' 1 "$SEC_ARCHIVE"
+sec_review 'structurally bounded but invalid ELF type fails closed in a loader directory' 1 "$SEC_ARCHIVE"
 
 sec_case vapt-sec-incoming-loader-directory
 sec_archive nmap 7.99-1 'etc/ld.so.conf.d/nmap.conf=/opt/nmap/lib' \
     'opt/nmap/lib/libnmap.so.9=@SONAME:libnmap.so.9'
-sec_review 'SEC-STOCK-1 new loader directory with a fresh SONAME remains allowed' 0 "$SEC_ARCHIVE"
+sec_review 'new loader directory with a fresh SONAME remains allowed' 0 "$SEC_ARCHIVE"
 sec_archive nmap 7.99-1 'etc/ld.so.conf.d/nmap.conf=/opt/nmap/lib' \
     'opt/nmap/lib/libnmap.so.9=@SONAME:libreadline.so.8'
-sec_review 'SEC-STOCK-1 incoming conf cannot hide a colliding SONAME outside usr/lib' 1 "$SEC_ARCHIVE"
+sec_review 'incoming conf cannot hide a colliding SONAME outside usr/lib' 1 "$SEC_ARCHIVE"
 
 # A retained preload is just as influential as an incoming one. The same
 # ordinary archive must pass before introducing that loader input.
 sec_case vapt-sec-retained-preload
 sec_archive nmap 7.99-1
-sec_review 'SEC-STOCK-1 clean retained runtime control' 0 "$SEC_ARCHIVE"
+sec_review 'clean retained runtime control' 0 "$SEC_ARCHIVE"
 printf '/usr/lib/nmap/preload.so\n' >"$ROOT/etc/ld.so.preload"
 mkdir -p "$ROOT/usr/lib/nmap"
 printf 'inert retained loader dependency, never loaded\n' >"$ROOT/usr/lib/nmap/preload.so"
-sec_review 'SEC-STOCK-1 retained preload cannot bypass future-view checks' 1 "$SEC_ARCHIVE"
+sec_review 'retained preload cannot bypass future-view checks' 1 "$SEC_ARCHIVE"
 
 # --- Identity plus the package's own MTREE cannot authenticate origin. ---
 for owner in glibc bash; do
@@ -193,7 +195,7 @@ for owner in glibc bash; do
         SEC_PATH=usr/bin/bash
         SEC_ENTRY=bash-5.3.3-2
     fi
-    sec_review "SEC-PROVENANCE-3 authentic retained $owner control" 0 "$SEC_ARCHIVE"
+    sec_review "authentic retained $owner control" 0 "$SEC_ARCHIVE"
     python3 - "$ROOT" "$SEC_ENTRY" "$SEC_PATH" <<'PY'
 import gzip, hashlib, sys
 from pathlib import Path
@@ -209,7 +211,7 @@ lines = [('./' + rel + ' type=file mode=644 sha256digest=' + digest)
 with gzip.open(mtree, 'wt') as stream:
     stream.write('\n'.join(lines) + '\n')
 PY
-    sec_review "SEC-PROVENANCE-3 $owner homonym with matching identity and self-MTREE refused" 1 "$SEC_ARCHIVE"
+    sec_review "$owner homonym with matching identity and self-MTREE refused" 1 "$SEC_ARCHIVE"
 done
 
 # Missing/corrupted/non-base references must not fall back to local claims.
@@ -218,11 +220,11 @@ done
 for reference_failure in missing hash signer; do
     sec_case "vapt-sec-reference-$reference_failure"
     sec_archive nmap 7.99-1 'etc/ld.so.conf.d/nmap.conf=/usr/lib/nmap'
-    sec_review "SEC-PROVENANCE-3 intact reference $reference_failure control" 0 "$SEC_ARCHIVE"
+    sec_review "intact reference $reference_failure control" 0 "$SEC_ARCHIVE"
     SEC_REFERENCE="$ROOT/var/cache/pacman/pkg/glibc-2.44-1-x86_64.pkg.tar.gz"
     SEC_SIGNATURES="$ROOT/var/lib/haseen/vapt/fixture-signatures.tsv"
     if [[ ! -f $SEC_REFERENCE || ! -f $SEC_SIGNATURES ]]; then
-        _fail "SEC-PROVENANCE-3 $reference_failure: authenticated reference fixture unavailable"
+        _fail "$reference_failure: authenticated reference fixture unavailable"
         continue
     fi
     case "$reference_failure" in
@@ -239,7 +241,7 @@ path.write_text('\n'.join(digest + '\t' + 'E' * 40 if row.split('\t', 1)[0] == d
 PY
         ;;
     esac
-    sec_review "SEC-PROVENANCE-3 $reference_failure reference never falls back to self-MTREE" 1 "$SEC_ARCHIVE"
+    sec_review "$reference_failure reference never falls back to self-MTREE" 1 "$SEC_ARCHIVE"
 done
 
 sec_case vapt-sec-core-label-wrong-bytes
@@ -247,11 +249,11 @@ sec_archive nmap 7.99-1 'etc/ld.so.conf.d/nmap.conf=/usr/lib/nmap'
 SEC_NMAP="$SEC_ARCHIVE"
 SEC_GENUINE="$(vapt_stock_archive glibc 2.44-2)"
 sec_plan core glibc 2.44-2 extra nmap 7.99-1
-sec_review 'SEC-PROVENANCE-3 exact reviewed core artifact control' 0 "$SEC_GENUINE" "$SEC_NMAP"
+sec_review 'exact reviewed core artifact control' 0 "$SEC_GENUINE" "$SEC_NMAP"
 SEC_FOREIGN="$(python3 "$VAPT_FIXTURE_DRIVER" stock-archive glibc 2.44-2 "$SANDBOX/foreign" usr/bin/ldconfig unregistered)"
-sec_review 'SEC-PROVENANCE-3 legitimate core label never authenticates a different same-identity artifact' 1 "$SEC_FOREIGN" "$SEC_NMAP"
+sec_review 'legitimate core label never authenticates a different same-identity artifact' 1 "$SEC_FOREIGN" "$SEC_NMAP"
 SEC_NONBASE="$(vapt_stock_archive glibc 2.44-2 '' nonbase-signed)"
-sec_review 'SEC-PROVENANCE-3 metadata-matching core artifact signed by a non-base key is refused' 1 "$SEC_NONBASE" "$SEC_NMAP"
+sec_review 'metadata-matching core artifact signed by a non-base key is refused' 1 "$SEC_NONBASE" "$SEC_NMAP"
 
 # --- Both signed alternatives are valid to the mock signature verifier. ---
 # The driver signs downloaded/swapped inert bytes and reopens the actual files
@@ -276,21 +278,21 @@ for timing in download commit; do
     fi
     vapt_api pacman --yes extra/nmap
     if [[ $timing == download ]]; then
-        assert_status 'SEC-ARTIFACT-2 validly signed pre-seal substitution fails metadata binding' 2 "$STATUS"
-        sec_no_commit 'SEC-ARTIFACT-2 pre-seal substitution'
-        assert_eq 'SEC-ARTIFACT-2 pre-seal replacement is never installed' absent "$(sec_installed nmap)"
+        assert_status 'validly signed pre-seal substitution fails metadata binding' 2 "$STATUS"
+        sec_no_commit 'pre-seal substitution'
+        assert_eq 'pre-seal replacement is never installed' absent "$(sec_installed nmap)"
     else
-        assert_status 'SEC-ARTIFACT-2 cache substitution after audit leaves the sealed transaction usable' 0 "$STATUS"
-        assert_eq 'SEC-ARTIFACT-2 committed identity is reviewed' 7.99-1 "$(sec_installed nmap)"
-        assert_eq 'SEC-ARTIFACT-2 root opens reviewed bytes, not the signed replacement' \
+        assert_status 'cache substitution after audit leaves the sealed transaction usable' 0 "$STATUS"
+        assert_eq 'committed identity is reviewed' 7.99-1 "$(sec_installed nmap)"
+        assert_eq 'root opens reviewed bytes, not the signed replacement' \
             "$(basename "$SEC_ARCHIVE") $SEC_GOOD_SHA" "$(vapt_calls commit-digests)"
-        assert_not_contains 'SEC-ARTIFACT-2 replacement digest is never committed' "$(vapt_calls commit-digests)" "$SEC_BAD_SHA"
-        assert_eq 'SEC-ARTIFACT-2 detached signature accompanies the sealed bytes' \
+        assert_not_contains 'replacement digest is never committed' "$(vapt_calls commit-digests)" "$SEC_BAD_SHA"
+        assert_eq 'detached signature accompanies the sealed bytes' \
             "$(basename "$SEC_ARCHIVE") valid" "$(vapt_calls commit-signatures)"
-        assert_not_contains 'SEC-ARTIFACT-2 downloader-writable directory is never committed' "$(vapt_calls commit-dirs)" '/packages '
-        sec_sealed_ancestry 'SEC-ARTIFACT-2 exact sealed artifacts'
+        assert_not_contains 'downloader-writable directory is never committed' "$(vapt_calls commit-dirs)" '/packages '
+        sec_sealed_ancestry 'exact sealed artifacts'
     fi
-    vapt_tools_untouched "SEC-ARTIFACT-2 $timing substitution"
+    vapt_tools_untouched "$timing substitution"
 done
 
 # --- An earlier nonstandard PATH entry must not be the helper consumer. ---
@@ -303,11 +305,11 @@ printf 'inert existing PATH shadow, never executed\n' >"$ROOT/opt/vendor/bin/tou
 # nonexecuted payload directory on the real test process's PATH.
 export VAPT_SUDO_PATH=/opt/vendor/bin:/usr/local/bin:/usr/bin
 vapt_api pacman --yes extra/nmap
-assert_status 'SEC-PATH-4 canonical root PATH permits a benign transaction with irrelevant shadows' 0 "$STATUS"
-assert_eq 'SEC-PATH-4 helper resolves the canonical consumer, never the earlier vendor shadow' \
+assert_status 'canonical root PATH permits a benign transaction with irrelevant shadows' 0 "$STATUS"
+assert_eq 'helper resolves the canonical consumer, never the earlier vendor shadow' \
     'touch /usr/bin/touch' "$(vapt_calls commit-resolutions)"
 unset VAPT_SUDO_PATH
-vapt_tools_untouched 'SEC-PATH-4 canonical helper resolution'
+vapt_tools_untouched 'canonical helper resolution'
 
 # --- Recovery records are an exact protocol, not a substring or best effort. ---
 sec_transaction vapt-sec-recovery-valid-control
@@ -315,10 +317,10 @@ sec_archive nmap 7.99-1
 SEC_MARKER="$ROOT/var/lib/haseen/vapt/upgrade-pending"
 printf 'reviewed-full-upgrade-commit-pending\n' >"$SEC_MARKER"
 vapt_api recover
-assert_status 'G1 exact pending record remains recoverable (positive control)' 0 "$STATUS"
-assert_eq 'G1 valid recovery commits the reviewed archive' 7.99-1 "$(sec_installed nmap)"
-assert_eq 'G1 successful recovery clears only its completed marker' no "$([[ -e $SEC_MARKER ]] && echo yes || echo no)"
-vapt_tools_untouched 'G1 exact pending recovery'
+assert_status 'recovery: exact pending record remains recoverable (positive control)' 0 "$STATUS"
+assert_eq 'recovery: valid recovery commits the reviewed archive' 7.99-1 "$(sec_installed nmap)"
+assert_eq 'recovery: successful recovery clears only its completed marker' no "$([[ -e $SEC_MARKER ]] && echo yes || echo no)"
+vapt_tools_untouched 'recovery: exact pending recovery'
 
 for malformed in empty truncated nonutf8 prefix tag-suffix extra-line nul unreadable; do
     sec_transaction "vapt-sec-recovery-$malformed"
@@ -340,16 +342,16 @@ for malformed in empty truncated nonutf8 prefix tag-suffix extra-line nul unread
     SEC_MARKER_SHA="$(sec_digest "$SEC_SENTINEL")"
     SEC_CONF_BEFORE="$(sec_digest "$ROOT/etc/pacman.conf")"
     vapt_api recover
-    assert_status "G1 $malformed recovery record is refused" 2 "$STATUS"
-    sec_no_commit "G1 $malformed recovery"
+    assert_status "recovery: $malformed recovery record is refused" 2 "$STATUS"
+    sec_no_commit "recovery: $malformed recovery"
     if [[ -f $SEC_SENTINEL ]]; then
-        assert_eq "G1 $malformed preserves exact recovery evidence" "$SEC_MARKER_SHA" "$(sec_digest "$SEC_SENTINEL")"
+        assert_eq "recovery: $malformed preserves exact recovery evidence" "$SEC_MARKER_SHA" "$(sec_digest "$SEC_SENTINEL")"
     else
-        _fail "G1 $malformed recovery evidence was removed"
+        _fail "recovery: $malformed recovery evidence was removed"
     fi
-    assert_eq "G1 $malformed does not activate a repository" "$SEC_CONF_BEFORE" "$(sec_digest "$ROOT/etc/pacman.conf")"
-    assert_eq "G1 $malformed leaves live sync metadata unchanged" 'unchanged live fixture database' "$(cat "$ROOT/var/lib/pacman/sync/extra.db")"
-    vapt_tools_untouched "G1 $malformed recovery"
+    assert_eq "recovery: $malformed does not activate a repository" "$SEC_CONF_BEFORE" "$(sec_digest "$ROOT/etc/pacman.conf")"
+    assert_eq "recovery: $malformed leaves live sync metadata unchanged" 'unchanged live fixture database' "$(cat "$ROOT/var/lib/pacman/sync/extra.db")"
+    vapt_tools_untouched "recovery: $malformed recovery"
 done
 
 # --- Explicit permissions must not accidentally depend on caller umask. ---
@@ -361,13 +363,13 @@ capture python3 "$VAPT_META" state-write "$SEC_STATE" <<'EOF'
 original safe fixture metadata
 EOF
 umask "$SEC_MASK"
-assert_status 'G2 state metadata writes under umask077' 0 "$STATUS"
+assert_status 'umask: state metadata writes under umask077' 0 "$STATUS"
 SEC_EXPECTED_MODE=600
 [[ $(id -u) != 0 ]] || SEC_EXPECTED_MODE=644
-assert_eq 'G2 state metadata has the explicit reader-contract mode' "$SEC_EXPECTED_MODE" "$(stat -c %a "$SEC_STATE")"
+assert_eq 'umask: state metadata has the explicit reader-contract mode' "$SEC_EXPECTED_MODE" "$(stat -c %a "$SEC_STATE")"
 capture python3 "$VAPT_META" state-read "$SEC_STATE"
-assert_status 'G2 safely written metadata remains readable' 0 "$STATUS"
-assert_eq 'G2 metadata read preserves the payload' 'original safe fixture metadata' "$OUTPUT"
+assert_status 'umask: safely written metadata remains readable' 0 "$STATUS"
+assert_eq 'umask: metadata read preserves the payload' 'original safe fixture metadata' "$OUTPUT"
 
 sec_transaction vapt-sec-umask-cache
 sec_archive nmap 7.99-1 'usr/share/nmap/safe.txt=inert cache read control'
@@ -376,14 +378,14 @@ SEC_MASK="$(umask)"
 umask 077
 vapt_api pacman --yes extra/nmap
 umask "$SEC_MASK"
-assert_status 'G2 DownloadUser cache and audited archive remain usable under umask077' 0 "$STATUS"
-assert_eq 'G2 cache read semantics reach the consumer without a live manager' 7.99-1 "$(sec_installed nmap)"
-assert_eq 'G2 restrictive umask never alters committed bytes' \
+assert_status 'umask: DownloadUser cache and audited archive remain usable under umask077' 0 "$STATUS"
+assert_eq 'umask: cache read semantics reach the consumer without a live manager' 7.99-1 "$(sec_installed nmap)"
+assert_eq 'umask: restrictive umask never alters committed bytes' \
     "$(basename "$SEC_ARCHIVE") $(sec_digest "$SEC_ARCHIVE")" "$(vapt_calls commit-digests)"
-sec_sealed_ancestry 'G2 restrictive umask' download-reader
-vapt_tools_untouched 'G2 restrictive umask'
+sec_sealed_ancestry 'umask: restrictive umask' download-reader
+vapt_tools_untouched 'umask: restrictive umask'
 
-# --- A1: consumer-level current/future dependency closure and candidates. ---
+# --- Consumer-level current/future dependency closure and candidates. ---
 # These helpers only alter scratch package metadata and original inert bytes.
 # They never execute the helper, interpreter or library represented by an ELF.
 
@@ -391,7 +393,7 @@ vapt_tools_untouched 'G2 restrictive umask'
 # also installs exactly those bytes/link into the scratch tree and local DB.
 # Publication/signature are re-bound to the rewritten archive, so failures
 # cannot be explained by stale fixture checksums or self-MTREE alone.
-sec_a1_member() {
+sec_member() {
     local archive="$1" owner="$2" version="$3" rel="$4" source="$5" view="$6"
     python3 - "$ROOT" "$archive" "$owner" "$version" "$rel" "$source" "$view" <<'PY'
 import gzip, hashlib, io, os, sys, tarfile
@@ -445,7 +447,7 @@ PY
 
 # Add a genuine lower-tier installed owner, preserving the stock local DB.
 # Both versions remain inspected metadata; only the new one is planned.
-sec_a1_lower_owner() {
+sec_lower_owner() {
     local name="$1" rel="$2" source="$3"
     vapt_conf_add $'[chaotic-aur]\nServer = https://mirror.example/chaotic-aur/$arch'
     python3 - "$ROOT" "$name" "$rel" "$source" <<'PY'
@@ -487,15 +489,15 @@ path.write_text(json.dumps(records))
 PY
 }
 
-sec_a1_bash_reference() {
-    sec_a1_member "$ROOT/var/cache/pacman/pkg/bash-5.3.3-2-x86_64.pkg.tar.gz" \
+sec_bash_reference() {
+    sec_member "$ROOT/var/cache/pacman/pkg/bash-5.3.3-2-x86_64.pkg.tar.gz" \
         bash 5.3.3-2 usr/bin/bash "$1" retained
 }
-sec_a1_base_library() {
-    sec_a1_member "$ROOT/var/cache/pacman/pkg/glibc-2.44-1-x86_64.pkg.tar.gz" \
+sec_base_library() {
+    sec_member "$ROOT/var/cache/pacman/pkg/glibc-2.44-1-x86_64.pkg.tar.gz" \
         glibc 2.44-1 "$1" "$2" retained
 }
-sec_a1_installed_version() {
+sec_installed_version() {
     python3 - "$ROOT" "$1" <<'PY'
 import json, sys
 from pathlib import Path
@@ -516,92 +518,92 @@ else:
 print(next((record['version'] for record in records if record.get('name') == name), 'absent'))
 PY
 }
-sec_a1_verdict() {
+sec_closure_verdict() {
     local name="$1" expected="$2" target="${3:-extra/nmap}" before version
-    before="$(sec_a1_installed_version "${target#*/}")"
+    before="$(sec_installed_version "${target#*/}")"
     case "$target" in
     core/bash) version=5.3.3-3 ;;
     chaotic-aur/vapt-runtime) version=2-1 ;;
     *) version=7.99-1 ;;
     esac
     vapt_api pacman --yes "$target"
-    assert_status "A1 $name: consumer verdict" "$expected" "$STATUS"
+    assert_status "closure $name: consumer verdict" "$expected" "$STATUS"
     if [[ $expected == 0 ]]; then
-        assert_contains "A1 $name: reviewed transaction remains usable" "$OUTPUT" 'STATE=installed'
-        assert_eq "A1 $name: consumer installs the planned version" \
-            "$version" "$(sec_a1_installed_version "${target#*/}")"
-        [[ -n $(vapt_calls commit-digests) ]] || _fail "A1 $name: no archive reached the consumer"
+        assert_contains "closure $name: reviewed transaction remains usable" "$OUTPUT" 'STATE=installed'
+        assert_eq "closure $name: consumer installs the planned version" \
+            "$version" "$(sec_installed_version "${target#*/}")"
+        [[ -n $(vapt_calls commit-digests) ]] || _fail "closure $name: no archive reached the consumer"
     else
-        sec_no_commit "A1 $name"
-        assert_eq "A1 $name: refusal preserves the installed package version" \
-            "$before" "$(sec_a1_installed_version "${target#*/}")"
+        sec_no_commit "closure $name"
+        assert_eq "closure $name: refusal preserves the installed package version" \
+            "$before" "$(sec_installed_version "${target#*/}")"
     fi
-    vapt_tools_untouched "A1 $name"
+    vapt_tools_untouched "closure $name"
 }
-sec_a1_plain() { sec_archive nmap 7.99-1; }
+sec_plain() { sec_archive nmap 7.99-1; }
 
 # Self-upgrade exemptions are legitimate only when the library cannot enter a
 # trusted helper's dependency closure. The two consumers differ only in NEEDED.
 for needed in nonneeded needed; do
-    sec_transaction "vapt-a1-own-library-$needed"
+    sec_transaction "vapt-sec-own-library-$needed"
     vapt_elf "$SANDBOX/library-old" soname=libvaptfix.so.1 tag=old-data
-    sec_a1_lower_owner vapt-runtime usr/lib/libvaptfix.so.1 "$SANDBOX/library-old"
+    sec_lower_owner vapt-runtime usr/lib/libvaptfix.so.1 "$SANDBOX/library-old"
     if [[ $needed == needed ]]; then
         vapt_elf "$SANDBOX/base-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6,libvaptfix.so.1
-        sec_a1_bash_reference "$SANDBOX/base-bash"
+        sec_bash_reference "$SANDBOX/base-bash"
     fi
     sec_archive vapt-runtime 2-1
     vapt_elf "$SANDBOX/library-new" soname=libvaptfix.so.1 tag=new-data
-    sec_a1_member "$SEC_ARCHIVE" vapt-runtime 2-1 usr/lib/libvaptfix.so.1 "$SANDBOX/library-new" incoming
+    sec_member "$SEC_ARCHIVE" vapt-runtime 2-1 usr/lib/libvaptfix.so.1 "$SANDBOX/library-new" incoming
     printf 'chaotic-aur\tvapt-runtime\t2-1\thttps://mirror.example/vapt-runtime-2-1-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
     SEC_EXPECTED=0
     [[ $needed != needed ]] || SEC_EXPECTED=2
-    sec_a1_verdict "own-library-$needed" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
+    sec_closure_verdict "own-library-$needed" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
 done
 
 # An authenticated owner upgrade may introduce a new dependency only when its
 # current/future providers have authenticated base provenance too.
 for provider in lower base; do
-    sec_transaction "vapt-a1-base-upgrade-needed-$provider"
+    sec_transaction "vapt-sec-base-upgrade-needed-$provider"
     vapt_elf "$SANDBOX/new-library" soname=libvaptfix.so.1
     if [[ $provider == lower ]]; then
-        sec_a1_lower_owner vapt-runtime usr/lib/libvaptfix.so.1 "$SANDBOX/new-library"
+        sec_lower_owner vapt-runtime usr/lib/libvaptfix.so.1 "$SANDBOX/new-library"
     else
-        sec_a1_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/new-library"
+        sec_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/new-library"
     fi
     SEC_BASH_ARCHIVE="$(vapt_stock_archive bash 5.3.3-3)"
     vapt_elf "$SANDBOX/new-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
         needed=libreadline.so.8,libc.so.6,libvaptfix.so.1
-    sec_a1_member "$SEC_BASH_ARCHIVE" bash 5.3.3-3 usr/bin/bash "$SANDBOX/new-bash" incoming
+    sec_member "$SEC_BASH_ARCHIVE" bash 5.3.3-3 usr/bin/bash "$SANDBOX/new-bash" incoming
     sec_sync_version core bash 5.3.3-3
     printf 'core\tbash\t5.3.3-3\thttps://mirror.example/bash-5.3.3-3-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
     SEC_EXPECTED=0
     [[ $provider != lower ]] || SEC_EXPECTED=2
-    sec_a1_verdict "base-upgrade-needed-$provider" "$SEC_EXPECTED" core/bash
+    sec_closure_verdict "base-upgrade-needed-$provider" "$SEC_EXPECTED" core/bash
 done
 
 # Multiple local owners are ambiguous even if both claim exactly the same bytes.
-sec_transaction vapt-a1-duplicate-needed-owner
-sec_a1_plain
+sec_transaction vapt-sec-duplicate-needed-owner
+sec_plain
 vapt_elf "$SANDBOX/duplicate-library" soname=libvaptfix.so.1
-sec_a1_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/duplicate-library"
-sec_a1_lower_owner vapt-shadow usr/lib/libvaptfix.so.1 "$SANDBOX/duplicate-library"
+sec_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/duplicate-library"
+sec_lower_owner vapt-shadow usr/lib/libvaptfix.so.1 "$SANDBOX/duplicate-library"
 vapt_elf "$SANDBOX/needed-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
     needed=libreadline.so.8,libc.so.6,libvaptfix.so.1
-sec_a1_bash_reference "$SANDBOX/needed-bash"
-sec_a1_verdict duplicate-needed-owner 2
+sec_bash_reference "$SANDBOX/needed-bash"
+sec_closure_verdict duplicate-needed-owner 2
 
 # Both the needed library's link and its destination require reference proof.
 for link_state in canonical retargeted; do
-    sec_transaction "vapt-a1-needed-link-$link_state"
-    sec_a1_plain
+    sec_transaction "vapt-sec-needed-link-$link_state"
+    sec_plain
     vapt_elf "$SANDBOX/link-library" soname=libvaptfix.so.1
-    sec_a1_base_library usr/lib/libvaptfix-real.so.1 "$SANDBOX/link-library"
-    sec_a1_base_library usr/lib/libvaptfix.so.1 link:libvaptfix-real.so.1
+    sec_base_library usr/lib/libvaptfix-real.so.1 "$SANDBOX/link-library"
+    sec_base_library usr/lib/libvaptfix.so.1 link:libvaptfix-real.so.1
     vapt_elf "$SANDBOX/link-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
         needed=libreadline.so.8,libc.so.6,libvaptfix.so.1
-    sec_a1_bash_reference "$SANDBOX/link-bash"
+    sec_bash_reference "$SANDBOX/link-bash"
     SEC_EXPECTED=0
     if [[ $link_state == retargeted ]]; then
         mkdir -p "$ROOT/opt/vendor/lib"
@@ -610,13 +612,13 @@ for link_state in canonical retargeted; do
         ln -s /opt/vendor/lib/libvaptfix.so.1 "$ROOT/usr/lib/libvaptfix.so.1"
         SEC_EXPECTED=2
     fi
-    sec_a1_verdict "needed-link-$link_state" "$SEC_EXPECTED"
+    sec_closure_verdict "needed-link-$link_state" "$SEC_EXPECTED"
 done
 
 # Authenticated bytes do not make unsupported loader semantics reviewable.
 for unsupported in origin interpreter; do
-    sec_transaction "vapt-a1-unsupported-$unsupported"
-    sec_a1_plain
+    sec_transaction "vapt-sec-unsupported-$unsupported"
+    sec_plain
     if [[ $unsupported == origin ]]; then
         vapt_elf "$SANDBOX/unsupported-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6 'runpath=$ORIGIN/../bad'
@@ -624,20 +626,20 @@ for unsupported in origin interpreter; do
         vapt_elf "$SANDBOX/unsupported-bash" type=2 interp=/opt/vendor/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6
     fi
-    sec_a1_bash_reference "$SANDBOX/unsupported-bash"
-    sec_a1_verdict "unsupported-$unsupported" 2
+    sec_bash_reference "$SANDBOX/unsupported-bash"
+    sec_closure_verdict "unsupported-$unsupported" 2
 done
 
 # A trusted ordinary candidate does not excuse another effective cache
 # candidate with the same needed name, even if its bytes are identical.
 for cache_state in absent unowned; do
-    sec_transaction "vapt-a1-cache-candidate-$cache_state"
-    sec_a1_plain
+    sec_transaction "vapt-sec-cache-candidate-$cache_state"
+    sec_plain
     vapt_elf "$SANDBOX/cache-library" soname=libvaptfix.so.1
-    sec_a1_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/cache-library"
+    sec_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/cache-library"
     vapt_elf "$SANDBOX/cache-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
         needed=libreadline.so.8,libc.so.6,libvaptfix.so.1
-    sec_a1_bash_reference "$SANDBOX/cache-bash"
+    sec_bash_reference "$SANDBOX/cache-bash"
     SEC_EXPECTED=0
     if [[ $cache_state == unowned ]]; then
         mkdir -p "$ROOT/opt/vendor/lib"
@@ -645,40 +647,40 @@ for cache_state in absent unowned; do
         vapt_ldcache "$ROOT/etc/ld.so.cache" libvaptfix.so.1=/opt/vendor/lib/libvaptfix.so.1
         SEC_EXPECTED=2
     fi
-    sec_a1_verdict "cache-candidate-$cache_state" "$SEC_EXPECTED"
+    sec_closure_verdict "cache-candidate-$cache_state" "$SEC_EXPECTED"
 done
 
 # Closure is recursive, and declared FDO dlopen notes are dependencies rather
 # than harmless strings. Both cases use authentic roots and an untrusted leaf.
 for edge in transitive dlopen; do
-    sec_transaction "vapt-a1-$edge-lower-leaf"
-    sec_a1_plain
+    sec_transaction "vapt-sec-$edge-lower-leaf"
+    sec_plain
     vapt_elf "$SANDBOX/lower-leaf" soname=libvaptleaf.so.1
-    sec_a1_lower_owner vapt-runtime usr/lib/libvaptleaf.so.1 "$SANDBOX/lower-leaf"
+    sec_lower_owner vapt-runtime usr/lib/libvaptleaf.so.1 "$SANDBOX/lower-leaf"
     if [[ $edge == transitive ]]; then
         vapt_elf "$SANDBOX/base-middle" soname=libvaptfix.so.1 needed=libvaptleaf.so.1
-        sec_a1_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/base-middle"
+        sec_base_library usr/lib/libvaptfix.so.1 "$SANDBOX/base-middle"
         vapt_elf "$SANDBOX/recursive-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6,libvaptfix.so.1
     else
         vapt_elf "$SANDBOX/recursive-bash" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6 dlopen=libvaptleaf.so.1
     fi
-    sec_a1_bash_reference "$SANDBOX/recursive-bash"
-    sec_a1_verdict "$edge-lower-leaf" 2
+    sec_bash_reference "$SANDBOX/recursive-bash"
+    sec_closure_verdict "$edge-lower-leaf" 2
 done
 
-# --- A2: gconv registry/cache targets, exact ORIGIN, and NSS candidates. ---
+# --- gconv registry/cache targets, exact ORIGIN, and NSS candidates. ---
 # The shared decoder fixture builders write original static cache fields and
 # read-only inert ELF metadata, never iconvconfig output or upstream code.
-sec_a2_lower_request() {
+sec_lower_request() {
     sec_archive vapt-runtime 2-1
-    sec_a1_member "$SEC_ARCHIVE" vapt-runtime 2-1 "$1" "$2" incoming
+    sec_member "$SEC_ARCHIVE" vapt-runtime 2-1 "$1" "$2" incoming
     printf 'chaotic-aur\tvapt-runtime\t2-1\thttps://mirror.example/vapt-runtime-2-1-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
 }
-sec_a2_verdict() {
-    local name="$1" expected="$2" target="${3:-extra/nmap}" tag="${4:-A2}" before version
-    before="$(sec_a1_installed_version "${target#*/}")"
+sec_consumer_verdict() {
+    local name="$1" expected="$2" target="${3:-extra/nmap}" tag="${4:-consumer}" before version
+    before="$(sec_installed_version "${target#*/}")"
     version=7.99-1
     [[ $target != chaotic-aur/vapt-runtime ]] || version=2-1
     vapt_api pacman --yes "$target"
@@ -686,12 +688,12 @@ sec_a2_verdict() {
     if [[ $expected == 0 ]]; then
         assert_contains "$tag $name: reviewed transaction remains usable" "$OUTPUT" 'STATE=installed'
         assert_eq "$tag $name: consumer installs the planned version" \
-            "$version" "$(sec_a1_installed_version "${target#*/}")"
+            "$version" "$(sec_installed_version "${target#*/}")"
         [[ -n $(vapt_calls commit-digests) ]] || _fail "$tag $name: no archive reached the consumer"
     else
         sec_no_commit "$tag $name"
         assert_eq "$tag $name: refusal preserves installed version" \
-            "$before" "$(sec_a1_installed_version "${target#*/}")"
+            "$before" "$(sec_installed_version "${target#*/}")"
     fi
     vapt_tools_untouched "$tag $name"
 }
@@ -699,9 +701,9 @@ sec_a2_verdict() {
 # A retained absolute registration can name an object supplied later, outside
 # the usual loader dirs. Unsupported absolute forms may instead fail closed.
 for future_target in unrelated registered; do
-    sec_transaction "vapt-a2-absolute-registry-$future_target"
+    sec_transaction "vapt-sec-absolute-registry-$future_target"
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     mkdir -p "$ROOT/usr/lib/gconv"
     printf 'module VAPTFIX// INTERNAL vapt_unrelated 1\n' >"$ROOT/usr/lib/gconv/gconv-modules"
     vapt_elf "$SANDBOX/conversion-module" soname=convert.so needed=libc.so.6
@@ -712,17 +714,17 @@ for future_target in unrelated registered; do
         SEC_GCONV_DEST=opt/vendor/convert.so
         SEC_EXPECTED=2
     fi
-    sec_a2_lower_request "$SEC_GCONV_DEST" "$SANDBOX/conversion-module"
-    sec_a2_verdict "absolute-registry-$future_target" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
+    sec_lower_request "$SEC_GCONV_DEST" "$SANDBOX/conversion-module"
+    sec_consumer_verdict "absolute-registry-$future_target" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
 done
 
 # A generated cache takes effect even when the adjacent text is benign.
 # Without that cache the same retained lower-tier object is unrelated.
 for registry_form in text cache; do
-    sec_transaction "vapt-a2-generated-$registry_form-foreign-module"
-    sec_a1_plain
+    sec_transaction "vapt-sec-generated-$registry_form-foreign-module"
+    sec_plain
     vapt_elf "$SANDBOX/foreign-conversion-module" soname=convert.so needed=libc.so.6
-    sec_a1_lower_owner vapt-runtime opt/vendor/convert.so "$SANDBOX/foreign-conversion-module"
+    sec_lower_owner vapt-runtime opt/vendor/convert.so "$SANDBOX/foreign-conversion-module"
     mkdir -p "$ROOT/usr/lib/gconv"
     printf '# original inert alias fixture\nalias VAPTFIX// INTERNAL\n' >"$ROOT/usr/lib/gconv/gconv-modules"
     SEC_EXPECTED=0
@@ -730,23 +732,23 @@ for registry_form in text cache; do
         vapt_gconv_cache "$ROOT/usr/lib/gconv/gconv-modules.cache" /opt/vendor/convert.so
         SEC_EXPECTED=2
     fi
-    sec_a2_verdict "generated-$registry_form-foreign-module" "$SEC_EXPECTED"
+    sec_consumer_verdict "generated-$registry_form-foreign-module" "$SEC_EXPECTED"
 done
 
 # Prove each link and final object, whether discovered in text or in a cache.
 for registration in text cache; do
     for link_state in canonical retargeted; do
-        sec_transaction "vapt-a2-$registration-target-link-$link_state"
-        sec_a1_plain
+        sec_transaction "vapt-sec-$registration-target-link-$link_state"
+        sec_plain
         vapt_elf "$SANDBOX/auth-conversion-module" soname=vapt_convert.so needed=libc.so.6
-        sec_a1_base_library usr/lib/gconv/vapt_real.so "$SANDBOX/auth-conversion-module"
-        sec_a1_base_library usr/lib/gconv/vapt_convert.so link:vapt_real.so
+        sec_base_library usr/lib/gconv/vapt_real.so "$SANDBOX/auth-conversion-module"
+        sec_base_library usr/lib/gconv/vapt_convert.so link:vapt_real.so
         if [[ $registration == text ]]; then
             printf 'module VAPTFIX// INTERNAL vapt_convert 1\n' >"$SANDBOX/auth-registry"
-            sec_a1_base_library usr/lib/gconv/gconv-modules "$SANDBOX/auth-registry"
+            sec_base_library usr/lib/gconv/gconv-modules "$SANDBOX/auth-registry"
         else
             vapt_gconv_cache "$SANDBOX/auth-cache" /usr/lib/gconv/vapt_convert.so
-            sec_a1_base_library usr/lib/gconv/gconv-modules.cache "$SANDBOX/auth-cache"
+            sec_base_library usr/lib/gconv/gconv-modules.cache "$SANDBOX/auth-cache"
         fi
         SEC_EXPECTED=0
         if [[ $link_state == retargeted ]]; then
@@ -756,41 +758,41 @@ for registration in text cache; do
             ln -s /opt/vendor/convert.so "$ROOT/usr/lib/gconv/vapt_convert.so"
             SEC_EXPECTED=2
         fi
-        sec_a2_verdict "$registration-target-link-$link_state" "$SEC_EXPECTED"
+        sec_consumer_verdict "$registration-target-link-$link_state" "$SEC_EXPECTED"
     done
 done
 
 # Exact $ORIGIN is a supported per-object search directory, not a reason to
 # reject all gconv. Its target module AND its origin-local dependency are
 # authenticated, and the registry plus generated cache are ordinary base data.
-sec_transaction vapt-a2-authenticated-gconv-exact-origin
-sec_a1_plain
+sec_transaction vapt-sec-authenticated-gconv-exact-origin
+sec_plain
 vapt_elf "$SANDBOX/origin-helper" soname=libvaptgconvhelper.so.1 needed=libc.so.6
-sec_a1_base_library usr/lib/gconv/libvaptgconvhelper.so.1 "$SANDBOX/origin-helper"
+sec_base_library usr/lib/gconv/libvaptgconvhelper.so.1 "$SANDBOX/origin-helper"
 vapt_elf "$SANDBOX/origin-conversion-module" soname=vapt_convert.so \
     needed=libvaptgconvhelper.so.1 'runpath=$ORIGIN'
-sec_a1_base_library usr/lib/gconv/vapt_convert.so "$SANDBOX/origin-conversion-module"
+sec_base_library usr/lib/gconv/vapt_convert.so "$SANDBOX/origin-conversion-module"
 printf '# original fixture conversion data\nalias VAPTFIX-ALIAS// VAPTFIX//\nmodule VAPTFIX// INTERNAL vapt_convert 1\n' >"$SANDBOX/origin-registry"
-sec_a1_base_library usr/lib/gconv/gconv-modules "$SANDBOX/origin-registry"
+sec_base_library usr/lib/gconv/gconv-modules "$SANDBOX/origin-registry"
 vapt_gconv_cache "$SANDBOX/origin-cache" /usr/lib/gconv/vapt_convert.so
-sec_a1_base_library usr/lib/gconv/gconv-modules.cache "$SANDBOX/origin-cache"
-sec_a2_verdict authenticated-gconv-exact-origin 0
+sec_base_library usr/lib/gconv/gconv-modules.cache "$SANDBOX/origin-cache"
+sec_consumer_verdict authenticated-gconv-exact-origin 0
 
-# Unrelated loader-directory libraries are still allowed; A2 is not a blanket
-# non-base shared-object prohibition.
-sec_transaction vapt-a2-unrelated-shared-object
+# Unrelated loader-directory libraries are still allowed: these checks are not
+# a blanket non-base shared-object prohibition.
+sec_transaction vapt-sec-unrelated-shared-object
 printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
 vapt_elf "$SANDBOX/unrelated-library" soname=libvapt_unrelated.so.1 needed=libc.so.6
-sec_a2_lower_request usr/lib/libvapt_unrelated.so.1 "$SANDBOX/unrelated-library"
-sec_a2_verdict unrelated-shared-object 0 chaotic-aur/vapt-runtime
+sec_lower_request usr/lib/libvapt_unrelated.so.1 "$SANDBOX/unrelated-library"
+sec_consumer_verdict unrelated-shared-object 0 chaotic-aur/vapt-runtime
 
 # The same incoming NSS module is optional data without the retained service,
 # but an executable candidate with it. No NSS call/module is actually made.
 for service in absent configured; do
-    sec_transaction "vapt-a2-nss-service-$service"
+    sec_transaction "vapt-sec-nss-service-$service"
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     printf 'hosts: files\n' >"$ROOT/etc/nsswitch.conf"
     SEC_EXPECTED=0
     if [[ $service == configured ]]; then
@@ -798,8 +800,8 @@ for service in absent configured; do
         SEC_EXPECTED=2
     fi
     vapt_elf "$SANDBOX/nss-module" soname=libnss_vaptfix.so.2 needed=libc.so.6
-    sec_a2_lower_request usr/lib/libnss_vaptfix.so.2 "$SANDBOX/nss-module"
-    sec_a2_verdict "nss-service-$service" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
+    sec_lower_request usr/lib/libnss_vaptfix.so.2 "$SANDBOX/nss-module"
+    sec_consumer_verdict "nss-service-$service" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
 done
 
 # C-locale gconv filenames do not split at Unicode NBSP. The apparent ASCII
@@ -807,13 +809,13 @@ done
 # by the lower tier. Unsupported non-ASCII/absolute syntax must fail closed,
 # never silently audit only the apparent ASCII prefix. Comments are ignored.
 for record in comment active; do
-    sec_transaction "vapt-a2-nbsp-filename-$record"
+    sec_transaction "vapt-sec-nbsp-filename-$record"
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     vapt_elf "$SANDBOX/nbsp-module" soname=vapt_convert.so needed=libc.so.6
-    sec_a1_base_library opt/vapt-module.so "$SANDBOX/nbsp-module"
+    sec_base_library opt/vapt-module.so "$SANDBOX/nbsp-module"
     SEC_NBSP_NAME=$'opt/vapt-module\302\240suffix.so'
-    sec_a2_lower_request "$SEC_NBSP_NAME" "$SANDBOX/nbsp-module"
+    sec_lower_request "$SEC_NBSP_NAME" "$SANDBOX/nbsp-module"
     mkdir -p "$ROOT/usr/lib/gconv"
     SEC_EXPECTED=0
     if [[ $record == active ]]; then
@@ -822,53 +824,53 @@ for record in comment active; do
     else
         printf '# module VAPT// INTERNAL /opt/vapt-module\302\240suffix\n' >"$ROOT/usr/lib/gconv/gconv-modules"
     fi
-    sec_a2_verdict "nbsp-filename-$record" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
+    sec_consumer_verdict "nbsp-filename-$record" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
 done
 
 # Cache names are literal: selecting "convert" must never be changed into the
 # different, safe "convert.so". Both bytesets are inert; only one is proven.
 for provider in base lower; do
-    sec_transaction "vapt-a2-cache-literal-no-suffix-$provider"
+    sec_transaction "vapt-sec-cache-literal-no-suffix-$provider"
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     vapt_elf "$SANDBOX/literal-module" soname=vapt_convert.so needed=libc.so.6
-    sec_a1_base_library opt/vendor/convert.so "$SANDBOX/literal-module"
+    sec_base_library opt/vendor/convert.so "$SANDBOX/literal-module"
     SEC_LITERAL_DEST=opt/vendor/unrelated
     SEC_EXPECTED=0
     if [[ $provider == base ]]; then
-        sec_a1_base_library opt/vendor/convert "$SANDBOX/literal-module"
+        sec_base_library opt/vendor/convert "$SANDBOX/literal-module"
     else
         SEC_LITERAL_DEST=opt/vendor/convert
         SEC_EXPECTED=2
     fi
-    sec_a2_lower_request "$SEC_LITERAL_DEST" "$SANDBOX/literal-module"
+    sec_lower_request "$SEC_LITERAL_DEST" "$SANDBOX/literal-module"
     vapt_gconv_cache "$ROOT/usr/lib/gconv/gconv-modules.cache" /opt/vendor/convert
-    sec_a2_verdict "cache-literal-no-suffix-$provider" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
+    sec_consumer_verdict "cache-literal-no-suffix-$provider" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
 done
 
 # The '[' delimiter belongs to the NSS action syntax even without whitespace.
 # Both forms name the same actual foreign module and must be refused.
 for bracket in spaced adjacent; do
-    sec_transaction "vapt-a2-nss-action-$bracket"
+    sec_transaction "vapt-sec-nss-action-$bracket"
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     vapt_elf "$SANDBOX/action-nss-module" soname=libnss_vaptfix.so.2 needed=libc.so.6
-    sec_a2_lower_request usr/lib/libnss_vaptfix.so.2 "$SANDBOX/action-nss-module"
+    sec_lower_request usr/lib/libnss_vaptfix.so.2 "$SANDBOX/action-nss-module"
     if [[ $bracket == spaced ]]; then
         printf 'hosts: files vaptfix [NOTFOUND=return]\n' >"$ROOT/etc/nsswitch.conf"
     else
         printf 'hosts: files vaptfix[NOTFOUND=return]\n' >"$ROOT/etc/nsswitch.conf"
     fi
-    sec_a2_verdict "nss-action-$bracket" 2 chaotic-aur/vapt-runtime
+    sec_consumer_verdict "nss-action-$bracket" 2 chaotic-aur/vapt-runtime
 done
 
 # Unsupported source names must not disappear from the model. Their comments
 # are inert, but active dotted/slashed tokens cannot be silently skipped.
 for token in dotted slashed; do
     for record in comment active; do
-        sec_transaction "vapt-a2-nss-$token-$record"
+        sec_transaction "vapt-sec-nss-$token-$record"
         printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-        sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+        sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
         vapt_elf "$SANDBOX/unsupported-nss-module" soname=libnss_vaptfix.so.2 needed=libc.so.6
         SEC_NSS_SERVICE=vapt.fix
         SEC_NSS_DEST=usr/lib/libnss_vapt.fix.so.2
@@ -876,7 +878,7 @@ for token in dotted slashed; do
             SEC_NSS_SERVICE=vapt/unsafe
             SEC_NSS_DEST=libnss_vapt/unsafe.so.2
         fi
-        sec_a2_lower_request "$SEC_NSS_DEST" "$SANDBOX/unsupported-nss-module"
+        sec_lower_request "$SEC_NSS_DEST" "$SANDBOX/unsupported-nss-module"
         SEC_EXPECTED=0
         if [[ $record == active ]]; then
             printf 'hosts: files %s\n' "$SEC_NSS_SERVICE" >"$ROOT/etc/nsswitch.conf"
@@ -884,19 +886,19 @@ for token in dotted slashed; do
         else
             printf 'hosts: files # %s\n' "$SEC_NSS_SERVICE" >"$ROOT/etc/nsswitch.conf"
         fi
-        sec_a2_verdict "nss-$token-$record" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
+        sec_consumer_verdict "nss-$token-$record" "$SEC_EXPECTED" chaotic-aur/vapt-runtime
     done
 done
 
 # Absolute text filenames and iconvconfig's dir+filename cache construction
 # can address different objects. Enumerate both or refuse the absolute form.
 for form in relative absolute; do
-    sec_transaction "vapt-a2-text-future-cache-$form"
-    sec_a1_plain
+    sec_transaction "vapt-sec-text-future-cache-$form"
+    sec_plain
     vapt_elf "$SANDBOX/future-cache-module" soname=vapt_convert.so needed=libc.so.6
-    sec_a1_base_library opt/vendor/convert.so "$SANDBOX/future-cache-module"
-    sec_a1_base_library usr/lib/gconv/vapt_safe.so "$SANDBOX/future-cache-module"
-    sec_a1_lower_owner vapt-runtime usr/lib/gconv/opt/vendor/convert.so "$SANDBOX/future-cache-module"
+    sec_base_library opt/vendor/convert.so "$SANDBOX/future-cache-module"
+    sec_base_library usr/lib/gconv/vapt_safe.so "$SANDBOX/future-cache-module"
+    sec_lower_owner vapt-runtime usr/lib/gconv/opt/vendor/convert.so "$SANDBOX/future-cache-module"
     SEC_EXPECTED=0
     if [[ $form == absolute ]]; then
         printf 'module VAPT// INTERNAL /opt/vendor/convert.so 1\n' >"$ROOT/usr/lib/gconv/gconv-modules"
@@ -904,14 +906,14 @@ for form in relative absolute; do
     else
         printf 'module VAPT// INTERNAL vapt_safe 1\n' >"$ROOT/usr/lib/gconv/gconv-modules"
     fi
-    sec_a2_verdict "text-future-cache-$form" "$SEC_EXPECTED"
+    sec_consumer_verdict "text-future-cache-$form" "$SEC_EXPECTED"
 done
 
 # Reachable cache boundaries: INTERNAL is module 0; VAPT// and U// resolve to
 # nonzero modules 1/2. Seven-slot hash first positions are 2/5 respectively
 # under PJW hashing, without a collision. The control selects a genuine extra
 # record through its bias-1 pointer; corrupted records are never executed.
-sec_a2_boundary_cache() {
+sec_boundary_cache() {
     python3 - "$1" "$2" <<'PY'
 import struct, sys
 from pathlib import Path
@@ -965,21 +967,21 @@ destination.chmod(0o644)
 PY
 }
 for cache_boundary in extra-valid hash-hidden-module extra-pointer-eof extra-intermediate-outname extra-unterminated; do
-    sec_transaction "vapt-a2-cache-$cache_boundary"
-    sec_a1_plain
+    sec_transaction "vapt-sec-cache-$cache_boundary"
+    sec_plain
     vapt_elf "$SANDBOX/cache-boundary-module" soname=vapt_convert.so needed=libc.so.6
-    sec_a1_base_library opt/vapt-safe/convert.so "$SANDBOX/cache-boundary-module"
-    sec_a1_lower_owner vapt-runtime opt/vapt-foreign/convert "$SANDBOX/cache-boundary-module"
-    sec_a2_boundary_cache "$ROOT/usr/lib/gconv/gconv-modules.cache" "$cache_boundary"
+    sec_base_library opt/vapt-safe/convert.so "$SANDBOX/cache-boundary-module"
+    sec_lower_owner vapt-runtime opt/vapt-foreign/convert "$SANDBOX/cache-boundary-module"
+    sec_boundary_cache "$ROOT/usr/lib/gconv/gconv-modules.cache" "$cache_boundary"
     SEC_EXPECTED=2
     [[ $cache_boundary != extra-valid ]] || SEC_EXPECTED=0
-    sec_a2_verdict "cache-$cache_boundary" "$SEC_EXPECTED"
+    sec_consumer_verdict "cache-$cache_boundary" "$SEC_EXPECTED"
 done
 
-# --- Independent public-consumer deltas for SEC-L1..L7. ---------------------
+# --- The same boundaries through the public transaction consumer. ---------
 # The owner file covers audit-level cases. These drive the hermetic transaction
 # and its observable package state, without letting a real manager run.
-sec_l_raw_member() {
+sec_raw_member() {
     python3 - "$1" "$2" "$3" <<'PY'
 import io, sys, tarfile
 from pathlib import Path
@@ -997,18 +999,18 @@ PY
 }
 
 for shell in retained nonbase; do
-    sec_transaction "vapt-l1-scriptlet-consumer-$shell"
+    sec_transaction "vapt-sec-scriptlet-consumer-$shell"
     rm -f "$ROOT"/usr/share/libalpm/hooks/*.hook
     if [[ $shell == retained ]]; then
         sec_archive nmap 7.99-1 $'.INSTALL=post_install() {\n echo "original fixture notice"\n return 0\n}'
-        sec_a2_verdict "SEC-L1/scriptlet-consumer-$shell" 0
+        sec_consumer_verdict "scriptlet-consumer-$shell" 0
     else
         SEC_SHELL_ARCHIVE="$(vapt_stock_archive bash 5.3.3-3)"
         vapt_elf "$SANDBOX/nonbase-shell" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6 tag=nonbase-shell-bytes
-        sec_a1_member "$SEC_SHELL_ARCHIVE" bash 5.3.3-3 usr/bin/bash "$SANDBOX/nonbase-shell" incoming
+        sec_member "$SEC_SHELL_ARCHIVE" bash 5.3.3-3 usr/bin/bash "$SANDBOX/nonbase-shell" incoming
         printf 'post_upgrade() {\n return 0\n}\n' >"$SANDBOX/builtin-install"
-        sec_l_raw_member "$SEC_SHELL_ARCHIVE" .INSTALL "$SANDBOX/builtin-install"
+        sec_raw_member "$SEC_SHELL_ARCHIVE" .INSTALL "$SANDBOX/builtin-install"
         vapt_conf_add $'[chaotic-aur]\nServer = https://mirror.example/chaotic-aur/$arch'
         python3 - "$ROOT/var/lib/haseen/vapt/repositories.json" <<'PY'
 import json, sys
@@ -1022,7 +1024,7 @@ path.write_text(json.dumps(repos))
 PY
         python3 "$VAPT_FIXTURE_DRIVER" digests "$VAPT_ARCHIVES"
         printf 'chaotic-aur\tbash\t5.3.3-3\thttps://mirror.example/bash-5.3.3-3-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
-        sec_a2_verdict "SEC-L1/scriptlet-consumer-$shell" 2 chaotic-aur/bash
+        sec_consumer_verdict "scriptlet-consumer-$shell" 2 chaotic-aur/bash
     fi
 done
 
@@ -1030,11 +1032,11 @@ done
 # remains base-proven, while both incoming extensions have the same NON-base
 # origin. None are imported, loaded or executed by the test's manager fake.
 for import_path in site-packages stdlib-abi-init; do
-    sec_transaction "vapt-l2-python-consumer-$import_path"
+    sec_transaction "vapt-sec-python-consumer-$import_path"
     vapt_stock_python
     rm -f "$ROOT"/usr/share/libalpm/hooks/*.hook
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     vapt_elf "$SANDBOX/python-shadow" needed=libc.so.6
     SEC_PYTHON_MEMBER=usr/lib/python3.14/site-packages/ctypes/__init__.cpython-314-x86_64-linux-gnu.so
     SEC_EXPECTED=0
@@ -1042,20 +1044,20 @@ for import_path in site-packages stdlib-abi-init; do
         SEC_PYTHON_MEMBER=usr/lib/python3.14/ctypes/__init__.cpython-314-x86_64-linux-gnu.so
         SEC_EXPECTED=2
     fi
-    sec_a2_lower_request "$SEC_PYTHON_MEMBER" "$SANDBOX/python-shadow"
+    sec_lower_request "$SEC_PYTHON_MEMBER" "$SANDBOX/python-shadow"
     vapt_api upgrade
-    assert_status "SEC-L2 $import_path full-upgrade consumer" "$SEC_EXPECTED" "$STATUS"
+    assert_status "python $import_path full-upgrade consumer" "$SEC_EXPECTED" "$STATUS"
     if [[ $SEC_EXPECTED == 0 ]]; then
-        assert_eq 'SEC-L2 isolated non-base site-packages does not break the reviewed upgrade' 2-1 "$(sec_a1_installed_version vapt-runtime)"
+        assert_eq 'isolated non-base site-packages does not break the reviewed upgrade' 2-1 "$(sec_installed_version vapt-runtime)"
     else
-        sec_no_commit 'SEC-L2 ABI package-extension shadow'
-        assert_eq 'SEC-L2 rejected non-base import shadow preserves the installed package' 1-1 "$(sec_a1_installed_version vapt-runtime)"
+        sec_no_commit 'ABI package-extension shadow'
+        assert_eq 'rejected non-base import shadow preserves the installed package' 1-1 "$(sec_installed_version vapt-runtime)"
     fi
-    vapt_tools_untouched "SEC-L2 $import_path"
+    vapt_tools_untouched "python $import_path"
 done
 
 for retained_name in novel colliding; do
-    sec_transaction "vapt-l3-retained-soname-consumer-$retained_name"
+    sec_transaction "vapt-sec-retained-soname-consumer-$retained_name"
     SEC_SONAME=libvapt_retained.so.99
     SEC_EXPECTED=0
     if [[ $retained_name == colliding ]]; then
@@ -1066,15 +1068,15 @@ for retained_name in novel colliding; do
     sec_archive nmap 7.99-1 'etc/ld.so.conf.d/vapt-trigger.conf=/usr/lib'
     # The stock fixture has no current cache: only future ldconfig enumeration
     # can reveal the retained collider under its different filename.
-    sec_a2_verdict "SEC-L3/retained-soname-$retained_name" "$SEC_EXPECTED"
+    sec_consumer_verdict "retained-soname-$retained_name" "$SEC_EXPECTED"
 done
 
 # The actual include/opendir root follows this absolute selector symlink. The
 # incoming child is at its PHYSICAL target, not at the logical selector path.
 for selector in loader gconv; do
-    sec_transaction "vapt-l4-physical-selector-consumer-$selector"
+    sec_transaction "vapt-sec-physical-selector-consumer-$selector"
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     mkdir -p "$ROOT/opt/selectors"
     if [[ $selector == loader ]]; then
         rm -rf "$ROOT/etc/ld.so.conf.d"
@@ -1090,9 +1092,9 @@ for selector in loader gconv; do
         vapt_elf "$SANDBOX/selector-module" soname=convert.so needed=libc.so.6
         SEC_SELECTOR_MEMBER=opt/vendor/convert.so
     fi
-    sec_a2_lower_request opt/selectors/vapt.conf "$SANDBOX/selector-conf"
-    sec_a1_member "$SEC_ARCHIVE" vapt-runtime 2-1 "$SEC_SELECTOR_MEMBER" "$SANDBOX/selector-module" incoming
-    sec_a2_verdict "SEC-L4/physical-selector-$selector" 2 chaotic-aur/vapt-runtime
+    sec_lower_request opt/selectors/vapt.conf "$SANDBOX/selector-conf"
+    sec_member "$SEC_ARCHIVE" vapt-runtime 2-1 "$SEC_SELECTOR_MEMBER" "$SANDBOX/selector-module" incoming
+    sec_consumer_verdict "physical-selector-$selector" 2 chaotic-aur/vapt-runtime
 done
 
 # Permission changes are real scratch inode modes, not simulated UID claims.
@@ -1101,8 +1103,8 @@ done
 # old reference remains available to the fake downloader, preventing a vacuous
 # "download unavailable" rejection.
 for snapshot in authentic substituted; do
-    sec_transaction "vapt-l5-writable-reference-$snapshot"
-    sec_a1_plain
+    sec_transaction "vapt-sec-writable-reference-$snapshot"
+    sec_plain
     SEC_REFERENCE="$ROOT/var/cache/pacman/pkg/bash-5.3.3-2-x86_64.pkg.tar.gz"
     cp "$SEC_REFERENCE" "$VAPT_ARCHIVES/"
     chmod 0777 "$ROOT/var/cache/pacman/pkg"
@@ -1111,7 +1113,7 @@ for snapshot in authentic substituted; do
     if [[ $snapshot == substituted ]]; then
         vapt_elf "$SANDBOX/substituted-shell" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
             needed=libreadline.so.8,libc.so.6 tag=signed-but-unreviewed-reference
-        sec_l_raw_member "$SEC_REFERENCE" usr/bin/bash "$SANDBOX/substituted-shell"
+        sec_raw_member "$SEC_REFERENCE" usr/bin/bash "$SANDBOX/substituted-shell"
         cp "$SANDBOX/substituted-shell" "$ROOT/usr/bin/bash"
         python3 - "$ROOT" "$SEC_REFERENCE" <<'PY'
 import gzip, hashlib, sys
@@ -1131,20 +1133,20 @@ with gzip.open(mtree, 'wt') as stream:
 PY
         SEC_EXPECTED=2
     fi
-    sec_a2_verdict "SEC-L5/writable-reference-$snapshot" "$SEC_EXPECTED"
+    sec_consumer_verdict "writable-reference-$snapshot" "$SEC_EXPECTED"
     chmod 0755 "$ROOT/var/cache/pacman/pkg"
 done
 
 for ancestry in safe group-writable; do
-    sec_transaction "vapt-l5-sealed-ancestor-$ancestry"
-    sec_a1_plain
+    sec_transaction "vapt-sec-sealed-ancestor-$ancestry"
+    sec_plain
     export VAPT_SEALED_ANCESTOR_MODE=0755
     SEC_EXPECTED=0
     if [[ $ancestry == group-writable ]]; then
         export VAPT_SEALED_ANCESTOR_MODE=0775
         SEC_EXPECTED=2
     fi
-    sec_a2_verdict "SEC-L5/sealed-ancestor-$ancestry" "$SEC_EXPECTED"
+    sec_consumer_verdict "sealed-ancestor-$ancestry" "$SEC_EXPECTED"
     unset VAPT_SEALED_ANCESTOR_MODE
 done
 
@@ -1152,7 +1154,7 @@ done
 # even though the reviewed DB closure is empty. Legitimate matching metadata
 # and unambiguous identity remain usable.
 for metadata in matching-provider forbidden-provider duplicate-version; do
-    sec_transaction "vapt-l6-actual-metadata-$metadata"
+    sec_transaction "vapt-sec-actual-metadata-$metadata"
     sec_archive nmap 7.99-1
     SEC_PROVIDER=vapt-safe-provider
     SEC_DEPENDENCY=vapt-safe-virtual
@@ -1185,9 +1187,9 @@ PY
     else
         printf 'depend = %s\n' "$SEC_DEPENDENCY" >>"$SANDBOX/actual-pkginfo"
     fi
-    sec_l_raw_member "$SEC_ARCHIVE" .PKGINFO "$SANDBOX/actual-pkginfo"
+    sec_raw_member "$SEC_ARCHIVE" .PKGINFO "$SANDBOX/actual-pkginfo"
     # Publish the exact planned filename/hash regardless of the malformed
-    # identity fields. A checksum mismatch must not stand in for L6 review.
+    # identity fields. A checksum mismatch must not stand in for the metadata review.
     python3 - "$ROOT" "$SEC_ARCHIVE" <<'PY'
 import hashlib, json, sys
 from pathlib import Path
@@ -1207,134 +1209,134 @@ table.write_text('\n'.join(rows + [digest + '\t' + fpr]) + '\n')
 PY
     SEC_EXPECTED=2
     [[ $metadata != matching-provider ]] || SEC_EXPECTED=0
-    sec_a2_verdict "SEC-L6/actual-metadata-$metadata" "$SEC_EXPECTED"
+    sec_consumer_verdict "actual-metadata-$metadata" "$SEC_EXPECTED"
 done
 
 # Public entrypoints are NOT the hermetic mutator. A sysroot must be refused
 # before any manager, trust/config action or user state write, not merely before
 # sudo commits. The stubs remain fail-only; no live command can be delegated.
 for public_verb in install remove; do
-    sec_case "vapt-l7-public-$public_verb-no-actions"
+    sec_case "vapt-sec-public-$public_verb-no-actions"
     SEC_TREE_BEFORE="$(vapt_tree)"
     if [[ $public_verb == install ]]; then
         vapt_cli install --yes --groups osint
     else
         vapt_cli remove --yes
     fi
-    assert_status "SEC-L7 public $public_verb refuses sysroot mutation" 2 "$STATUS"
-    assert_eq "SEC-L7 public $public_verb invokes no manager/key/config command" '' "$(find "$CALLS" -type f -printf '%f\n')"
-    assert_eq "SEC-L7 public $public_verb preserves the entire observed state" "$SEC_TREE_BEFORE" "$(vapt_tree)"
+    assert_status "public $public_verb refuses sysroot mutation" 2 "$STATUS"
+    assert_eq "public $public_verb invokes no manager/key/config command" '' "$(find "$CALLS" -type f -printf '%f\n')"
+    assert_eq "public $public_verb preserves the entire observed state" "$SEC_TREE_BEFORE" "$(vapt_tree)"
 done
-sec_case vapt-l7-public-readonly-controls
+sec_case vapt-sec-public-readonly-controls
 SEC_TREE_BEFORE="$(vapt_tree)"
 vapt_cli install --dry-run --groups osint
-assert_status 'SEC-L7 public sysroot dry-run planning remains available' 0 "$STATUS"
+assert_status 'public sysroot dry-run planning remains available' 0 "$STATUS"
 vapt_cli status
-assert_status 'SEC-L7 public sysroot status reports not-applied without a provisioning report' 1 "$STATUS"
-assert_contains 'SEC-L7 not-applied status explains its missing report' "$OUTPUT" 'missing: no per-user VAPT provisioning report'
-assert_eq 'SEC-L7 readonly inspection invokes no manager/key/config command' '' "$(find "$CALLS" -type f -printf '%f\n')"
-assert_eq 'SEC-L7 readonly inspection preserves the observed state' "$SEC_TREE_BEFORE" "$(vapt_tree)"
+assert_status 'public sysroot status reports not-applied without a provisioning report' 1 "$STATUS"
+assert_contains 'not-applied status explains its missing report' "$OUTPUT" 'missing: no per-user VAPT provisioning report'
+assert_eq 'readonly inspection invokes no manager/key/config command' '' "$(find "$CALLS" -type f -printf '%f\n')"
+assert_eq 'readonly inspection preserves the observed state' "$SEC_TREE_BEFORE" "$(vapt_tree)"
 
-# --- A3: post-commit sudo selects PAM/sudo runtime inputs. ------------------
+# --- post-commit sudo selects PAM/sudo runtime inputs. ----------------------
 # Retained PAM/sudo configuration is existing admin state. Every stack, sudoers
 # record, environment file and ELF below is original static text or inert ELF
 # metadata; no PAM module, helper, plugin or sudo is loaded or executed. The
 # selection probes use /usr/lib/vapt/* so only the selector graph, never a
 # blanket PAM/sudo tree rule, can explain a refusal. A lower-tier vapt-runtime
 # (chaotic-aur, non-base signer) is installed in every case.
-sec_a3_case() {
+sec_pam_case() {
     local rel="${2:-usr/share/vapt-runtime/old.txt}" source="${3:-}"
     sec_transaction "$1"
     if [[ -z $source ]]; then
         printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
         source="$SANDBOX/runtime-old"
     fi
-    sec_a1_lower_owner vapt-runtime "$rel" "$source"
+    sec_lower_owner vapt-runtime "$rel" "$source"
     mkdir -p "$ROOT/etc/pam.d" "$ROOT/usr/lib/pam.d" "$ROOT/usr/lib/sudo"
-    sec_a3_pam etc/pam.d/sudo $'auth include system-auth\naccount include system-auth\nsession include system-auth'
-    sec_a3_pam etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
+    sec_pam_file etc/pam.d/sudo $'auth include system-auth\naccount include system-auth\nsession include system-auth'
+    sec_pam_file etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
     vapt_elf "$ROOT/usr/bin/sudo" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 needed=libc.so.6
 }
-# sec_a3_pam REL TEXT — a retained, unowned configuration file in the sysroot.
-sec_a3_pam() {
+# sec_pam_file REL TEXT — a retained, unowned configuration file in the sysroot.
+sec_pam_file() {
     mkdir -p "$ROOT/$(dirname "$1")"
     printf '%s\n' "$2" >"$ROOT/$1"
     chmod 0644 "$ROOT/$1"
 }
-# sec_a3_text NAME TEXT — scratch payload bytes outside the sysroot; prints it.
-sec_a3_text() {
+# sec_pam_text NAME TEXT — scratch payload bytes outside the sysroot; prints it.
+sec_pam_text() {
     printf '%s\n' "$2" >"$SANDBOX/a3-$1"
     printf '%s\n' "$SANDBOX/a3-$1"
 }
-# sec_a3_incoming REL SOURCE [REL SOURCE]... — plan the lower-tier upgrade
+# sec_pam_incoming REL SOURCE [REL SOURCE]... — plan the lower-tier upgrade
 # vapt-runtime 2-1 carrying exactly these members.
-sec_a3_incoming() {
-    sec_a2_lower_request "$1" "$2"
+sec_pam_incoming() {
+    sec_lower_request "$1" "$2"
     shift 2
     while (($# >= 2)); do
-        sec_a1_member "$SEC_ARCHIVE" vapt-runtime 2-1 "$1" "$2" incoming
+        sec_member "$SEC_ARCHIVE" vapt-runtime 2-1 "$1" "$2" incoming
         shift 2
     done
 }
-sec_a3_verdict() { sec_a2_verdict "$1" "$2" "${3:-chaotic-aur/vapt-runtime}" A3; }
+sec_pam_verdict() { sec_consumer_verdict "$1" "$2" "${3:-chaotic-aur/vapt-runtime}" pam; }
 
 # pam_env's conffile=/envfile= arguments select files outside /etc/security.
 # The identical incoming file is inert data while unselected; a selected but
 # absent and unchanged file is not a refusal reason.
 for selection in unselected absent-unchanged conffile envfile; do
-    sec_a3_case "vapt-a3-pam-env-$selection"
+    sec_pam_case "vapt-sec-pam-env-$selection"
     SEC_EXPECTED=0
     case "$selection" in
     unselected) SEC_PAM_ENV='session required pam_env.so' ;;
     absent-unchanged | conffile) SEC_PAM_ENV='session required pam_env.so conffile=/etc/vapt/pam_env.conf' ;;
     envfile) SEC_PAM_ENV='session required pam_env.so readenv=1 envfile=/etc/vapt/environment' ;;
     esac
-    sec_a3_pam etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so\n'"$SEC_PAM_ENV"
+    sec_pam_file etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so\n'"$SEC_PAM_ENV"
     case "$selection" in
-    unselected) sec_a3_incoming etc/vapt/pam_env.conf "$(sec_a3_text env 'VAPT_NOTE DEFAULT=fixture')" ;;
-    absent-unchanged) sec_a3_incoming usr/share/vapt-runtime/new.txt "$(sec_a3_text env 'unrelated inert data')" ;;
-    conffile) sec_a3_incoming etc/vapt/pam_env.conf "$(sec_a3_text env 'VAPT_NOTE DEFAULT=fixture')"; SEC_EXPECTED=2 ;;
-    envfile) sec_a3_incoming etc/vapt/environment "$(sec_a3_text env 'VAPT_NOTE=fixture')"; SEC_EXPECTED=2 ;;
+    unselected) sec_pam_incoming etc/vapt/pam_env.conf "$(sec_pam_text env 'VAPT_NOTE DEFAULT=fixture')" ;;
+    absent-unchanged) sec_pam_incoming usr/share/vapt-runtime/new.txt "$(sec_pam_text env 'unrelated inert data')" ;;
+    conffile) sec_pam_incoming etc/vapt/pam_env.conf "$(sec_pam_text env 'VAPT_NOTE DEFAULT=fixture')"; SEC_EXPECTED=2 ;;
+    envfile) sec_pam_incoming etc/vapt/environment "$(sec_pam_text env 'VAPT_NOTE=fixture')"; SEC_EXPECTED=2 ;;
     esac
-    sec_a3_verdict "pam-env-$selection" "$SEC_EXPECTED"
+    sec_pam_verdict "pam-env-$selection" "$SEC_EXPECTED"
 done
 
 # Loader overrides in current or future pam_env inputs are refused even when
 # the incoming package is base-signed (extra/nmap); benign variables are not.
 # `export` is accepted pam_env syntax and must not hide the variable name.
 for environment in current-benign current-preload future-benign future-pam-env-conf future-export; do
-    sec_a3_case "vapt-a3-loader-environment-$environment"
-    sec_a3_pam etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so\nsession required pam_env.so'
+    sec_pam_case "vapt-sec-loader-environment-$environment"
+    sec_pam_file etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so\nsession required pam_env.so'
     SEC_EXPECTED=2
     case "$environment" in
-    current-benign) sec_a3_pam etc/environment 'EDITOR=nano'; sec_a1_plain; SEC_EXPECTED=0 ;;
-    current-preload) sec_a3_pam etc/environment 'LD_PRELOAD=/usr/lib/libc.so.6'; sec_a1_plain ;;
+    current-benign) sec_pam_file etc/environment 'EDITOR=nano'; sec_plain; SEC_EXPECTED=0 ;;
+    current-preload) sec_pam_file etc/environment 'LD_PRELOAD=/usr/lib/libc.so.6'; sec_plain ;;
     future-benign) sec_archive nmap 7.99-1 'etc/environment=EDITOR=nano'; SEC_EXPECTED=0 ;;
     future-pam-env-conf) sec_archive nmap 7.99-1 'etc/security/pam_env.conf=LD_LIBRARY_PATH DEFAULT=/opt/nmap/lib' ;;
     future-export) sec_archive nmap 7.99-1 'etc/environment=export LD_AUDIT=/opt/nmap/audit.so' ;;
     esac
-    sec_a3_verdict "loader-environment-$environment" "$SEC_EXPECTED" extra/nmap
+    sec_pam_verdict "loader-environment-$environment" "$SEC_EXPECTED" extra/nmap
 done
 
 # pam_exec: an absolute command is a guarded executable (base coreutils touch
 # is proven; a lower-tier incoming command is not). A relative command has no
 # reviewable resolution and must be a manual refusal.
 for command in absolute-base absolute-incoming relative; do
-    sec_a3_case "vapt-a3-pam-exec-$command"
+    sec_pam_case "vapt-sec-pam-exec-$command"
     case "$command" in
     absolute-base) SEC_EXEC=/usr/bin/touch ;;
     absolute-incoming) SEC_EXEC=/usr/lib/vapt/notify ;;
     relative) SEC_EXEC=vapt-notify ;;
     esac
-    sec_a3_pam etc/pam.d/system-auth $'auth optional pam_exec.so quiet '"$SEC_EXEC"$'\nauth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
+    sec_pam_file etc/pam.d/system-auth $'auth optional pam_exec.so quiet '"$SEC_EXEC"$'\nauth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
     if [[ $command == absolute-incoming ]]; then
-        sec_a3_incoming usr/lib/vapt/notify "$(sec_a3_text notify 'inert fixture command, never executed')"
-        sec_a3_verdict "pam-exec-$command" 2
+        sec_pam_incoming usr/lib/vapt/notify "$(sec_pam_text notify 'inert fixture command, never executed')"
+        sec_pam_verdict "pam-exec-$command" 2
     else
-        sec_a1_plain
+        sec_plain
         SEC_EXPECTED=2
         [[ $command != absolute-base ]] || SEC_EXPECTED=0
-        sec_a3_verdict "pam-exec-$command" "$SEC_EXPECTED" extra/nmap
+        sec_pam_verdict "pam-exec-$command" "$SEC_EXPECTED" extra/nmap
     fi
 done
 
@@ -1345,23 +1347,23 @@ done
 # The retained fallback stack, and an incoming module no present file names,
 # are legitimate.
 for vendor in fallback-retained fallback-selected both-present unreferenced; do
-    sec_a3_case "vapt-a3-pam-vendor-$vendor"
-    sec_a3_pam usr/lib/pam.d/sudo $'auth include vapt-auth\naccount include system-auth\nsession include system-auth'
+    sec_pam_case "vapt-sec-pam-vendor-$vendor"
+    sec_pam_file usr/lib/pam.d/sudo $'auth include vapt-auth\naccount include system-auth\nsession include system-auth'
     if [[ $vendor == unreferenced ]]; then
-        sec_a3_pam usr/lib/pam.d/vapt-auth 'auth include system-auth'
+        sec_pam_file usr/lib/pam.d/vapt-auth 'auth include system-auth'
     else
-        sec_a3_pam usr/lib/pam.d/vapt-auth $'auth optional /usr/lib/vapt/pam_x.so\nauth include system-auth'
+        sec_pam_file usr/lib/pam.d/vapt-auth $'auth optional /usr/lib/vapt/pam_x.so\nauth include system-auth'
     fi
     [[ $vendor == both-present || $vendor == unreferenced ]] || rm "$ROOT/etc/pam.d/sudo"
     vapt_elf "$SANDBOX/pam-x" soname=pam_x.so needed=libc.so.6
     if [[ $vendor == fallback-retained ]]; then
-        sec_a1_plain
-        sec_a3_verdict "pam-vendor-$vendor" 0 extra/nmap
+        sec_plain
+        sec_pam_verdict "pam-vendor-$vendor" 0 extra/nmap
     else
-        sec_a3_incoming usr/lib/vapt/pam_x.so "$SANDBOX/pam-x"
+        sec_pam_incoming usr/lib/vapt/pam_x.so "$SANDBOX/pam-x"
         SEC_EXPECTED=2
         [[ $vendor != unreferenced ]] || SEC_EXPECTED=0
-        sec_a3_verdict "pam-vendor-$vendor" "$SEC_EXPECTED"
+        sec_pam_verdict "pam-vendor-$vendor" "$SEC_EXPECTED"
     fi
 done
 
@@ -1369,19 +1371,19 @@ done
 # legitimate. A substack/include cycle must terminate and still guard the
 # dash-type bracket module reached only inside the cycle.
 for graph in diamond cycle; do
-    sec_a3_case "vapt-a3-pam-graph-$graph"
+    sec_pam_case "vapt-sec-pam-graph-$graph"
     vapt_elf "$SANDBOX/pam-x" soname=pam_x.so needed=libc.so.6
     if [[ $graph == diamond ]]; then
-        sec_a3_pam etc/pam.d/sudo $'auth include system-auth\naccount substack vapt-account\nsession include system-auth'
-        sec_a3_pam etc/pam.d/vapt-account $'-account [success=ok new_authtok_reqd=ok default=ignore] pam_permit.so\naccount include system-auth'
-        sec_a3_incoming usr/lib/vapt/pam_other.so "$SANDBOX/pam-x"
-        sec_a3_verdict "pam-graph-$graph" 0
+        sec_pam_file etc/pam.d/sudo $'auth include system-auth\naccount substack vapt-account\nsession include system-auth'
+        sec_pam_file etc/pam.d/vapt-account $'-account [success=ok new_authtok_reqd=ok default=ignore] pam_permit.so\naccount include system-auth'
+        sec_pam_incoming usr/lib/vapt/pam_other.so "$SANDBOX/pam-x"
+        sec_pam_verdict "pam-graph-$graph" 0
     else
-        sec_a3_pam etc/pam.d/sudo $'auth include vapt-loop-a\naccount include system-auth\nsession include system-auth'
-        sec_a3_pam etc/pam.d/vapt-loop-a $'auth substack vapt-loop-b\nauth include system-auth'
-        sec_a3_pam etc/pam.d/vapt-loop-b $'-auth [success=ok default=ignore] /usr/lib/vapt/pam_x.so\nauth include vapt-loop-a'
-        sec_a3_incoming usr/lib/vapt/pam_x.so "$SANDBOX/pam-x"
-        sec_a3_verdict "pam-graph-$graph" 2
+        sec_pam_file etc/pam.d/sudo $'auth include vapt-loop-a\naccount include system-auth\nsession include system-auth'
+        sec_pam_file etc/pam.d/vapt-loop-a $'auth substack vapt-loop-b\nauth include system-auth'
+        sec_pam_file etc/pam.d/vapt-loop-b $'-auth [success=ok default=ignore] /usr/lib/vapt/pam_x.so\nauth include vapt-loop-a'
+        sec_pam_incoming usr/lib/vapt/pam_x.so "$SANDBOX/pam-x"
+        sec_pam_verdict "pam-graph-$graph" 2
     fi
 done
 
@@ -1390,77 +1392,77 @@ done
 # one, is not a refusal reason.
 for removal in kept removed-referenced removed-unreferenced; do
     vapt_elf "$SANDBOX/pam-vapt-$removal" soname=pam_vapt.so needed=libc.so.6
-    sec_a3_case "vapt-a3-pam-removal-$removal" usr/lib/vapt/pam_vapt.so "$SANDBOX/pam-vapt-$removal"
+    sec_pam_case "vapt-sec-pam-removal-$removal" usr/lib/vapt/pam_vapt.so "$SANDBOX/pam-vapt-$removal"
     if [[ $removal != removed-unreferenced ]]; then
-        sec_a3_pam etc/pam.d/system-auth $'-auth [success=1 default=ignore] /usr/lib/vapt/pam_vapt.so\nauth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
+        sec_pam_file etc/pam.d/system-auth $'-auth [success=1 default=ignore] /usr/lib/vapt/pam_vapt.so\nauth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
     fi
     if [[ $removal == kept ]]; then
-        sec_a1_plain
-        sec_a3_verdict "pam-removal-$removal" 0 extra/nmap
+        sec_plain
+        sec_pam_verdict "pam-removal-$removal" 0 extra/nmap
     else
-        sec_a3_incoming usr/share/vapt-runtime/new.txt "$(sec_a3_text removal 'replacement inert data')"
+        sec_pam_incoming usr/share/vapt-runtime/new.txt "$(sec_pam_text removal 'replacement inert data')"
         SEC_EXPECTED=2
         [[ $removal != removed-unreferenced ]] || SEC_EXPECTED=0
-        sec_a3_verdict "pam-removal-$removal" "$SEC_EXPECTED"
+        sec_pam_verdict "pam-removal-$removal" "$SEC_EXPECTED"
     fi
 done
 
 # pam_unix runs its helper; a lower-tier helper executable cannot be added.
-sec_a3_case vapt-a3-pam-unix-helper
-sec_a3_incoming usr/bin/unix_chkpwd "$(sec_a3_text helper 'inert fixture helper, never executed')"
-sec_a3_verdict pam-unix-helper 2
+sec_pam_case vapt-sec-pam-unix-helper
+sec_pam_incoming usr/bin/unix_chkpwd "$(sec_pam_text helper 'inert fixture helper, never executed')"
+sec_pam_verdict pam-unix-helper 2
 
 # Literal RUNPATH /usr/lib/sudo with a base-proven dependency reached through
 # a symlink hop is legitimate; a lower-tier later candidate for the same
 # NEEDED name is still a guarded candidate.
 for candidate in control later; do
-    sec_a3_case "vapt-a3-sudo-runpath-$candidate"
+    sec_pam_case "vapt-sec-sudo-runpath-$candidate"
     vapt_elf "$ROOT/usr/bin/sudo" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 \
         needed=libsudo_util.so.0,libc.so.6 runpath=/usr/lib/sudo
     vapt_elf "$SANDBOX/sudo-util" soname=libsudo_util.so.0 needed=libc.so.6
-    sec_a1_base_library usr/lib/sudo/libsudo_util.so.0.0.0 "$SANDBOX/sudo-util"
-    sec_a1_base_library usr/lib/sudo/libsudo_util.so.0 link:libsudo_util.so.0.0.0
+    sec_base_library usr/lib/sudo/libsudo_util.so.0.0.0 "$SANDBOX/sudo-util"
+    sec_base_library usr/lib/sudo/libsudo_util.so.0 link:libsudo_util.so.0.0.0
     if [[ $candidate == control ]]; then
-        sec_a3_incoming usr/share/vapt-runtime/new.txt "$(sec_a3_text runpath 'unrelated inert data')"
-        sec_a3_verdict "sudo-runpath-$candidate" 0
+        sec_pam_incoming usr/share/vapt-runtime/new.txt "$(sec_pam_text runpath 'unrelated inert data')"
+        sec_pam_verdict "sudo-runpath-$candidate" 0
     else
-        sec_a3_incoming usr/lib/libsudo_util.so.0 "$SANDBOX/sudo-util"
-        sec_a3_verdict "sudo-runpath-$candidate" 2
+        sec_pam_incoming usr/lib/libsudo_util.so.0 "$SANDBOX/sudo-util"
+        sec_pam_verdict "sudo-runpath-$candidate" 2
     fi
 done
 
 # The root-side producer reads sudoers: the same incoming lower-tier object is
 # inert until a group_plugin record selects it.
 for plugin in none selected; do
-    sec_a3_case "vapt-a3-sudoers-group-plugin-$plugin"
+    sec_pam_case "vapt-sec-sudoers-group-plugin-$plugin"
     SEC_SUDOERS='root ALL=(ALL:ALL) ALL'
     [[ $plugin == none ]] || SEC_SUDOERS=$'Defaults group_plugin="/usr/lib/vapt/group_vapt.so /etc/group"\n'"$SEC_SUDOERS"
-    sec_a3_pam etc/sudoers "$SEC_SUDOERS"
+    sec_pam_file etc/sudoers "$SEC_SUDOERS"
     chmod 0440 "$ROOT/etc/sudoers"
     vapt_elf "$SANDBOX/group-plugin" soname=group_vapt.so needed=libc.so.6
-    sec_a3_incoming usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin"
+    sec_pam_incoming usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin"
     SEC_EXPECTED=0
     [[ $plugin == none ]] || SEC_EXPECTED=2
-    sec_a3_verdict "sudoers-group-plugin-$plugin" "$SEC_EXPECTED"
+    sec_pam_verdict "sudoers-group-plugin-$plugin" "$SEC_EXPECTED"
 done
 
 # The producer's facts are consumed, not just a refusal switch: a retained,
 # base-proven selected group_plugin beside an unrelated change is legitimate.
 # Without real root-produced facts reaching the audit, this and the `none`
 # control above cannot pass.
-sec_a3_case vapt-a3-sudoers-group-plugin-selected-unchanged
-sec_a3_pam etc/sudoers $'Defaults group_plugin="/usr/lib/vapt/group_vapt.so /etc/group"\nroot ALL=(ALL:ALL) ALL'
+sec_pam_case vapt-sec-sudoers-group-plugin-selected-unchanged
+sec_pam_file etc/sudoers $'Defaults group_plugin="/usr/lib/vapt/group_vapt.so /etc/group"\nroot ALL=(ALL:ALL) ALL'
 chmod 0440 "$ROOT/etc/sudoers"
 vapt_elf "$SANDBOX/group-plugin" soname=group_vapt.so needed=libc.so.6
-sec_a1_base_library usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin"
-sec_a3_incoming usr/share/vapt-runtime/new.txt "$(sec_a3_text unchanged 'unrelated inert data')"
-sec_a3_verdict sudoers-group-plugin-selected-unchanged 0
+sec_base_library usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin"
+sec_pam_incoming usr/share/vapt-runtime/new.txt "$(sec_pam_text unchanged 'unrelated inert data')"
+sec_pam_verdict sudoers-group-plugin-selected-unchanged 0
 
 # sudoers includes: a literal include is followed. Quoted and backslash-escaped
 # include paths either resolve to the same included file or refuse; they must
 # never silently drop the group_plugin record inside it.
 for include in literal-unselected literal-selected quoted escaped; do
-    sec_a3_case "vapt-a3-sudoers-include-$include"
+    sec_pam_case "vapt-sec-sudoers-include-$include"
     SEC_INCLUDED=/etc/vapt-sudoers
     SEC_INCLUDED_TEXT='Defaults group_plugin="/usr/lib/vapt/group_vapt.so /etc/group"'
     case "$include" in
@@ -1469,87 +1471,87 @@ for include in literal-unselected literal-selected quoted escaped; do
     quoted) SEC_DIRECTIVE='@include "/etc/vapt-sudoers"' ;;
     escaped) SEC_INCLUDED='/etc/vapt sudoers' SEC_DIRECTIVE='@include /etc/vapt\ sudoers' ;;
     esac
-    sec_a3_pam etc/sudoers "$SEC_DIRECTIVE"$'\nroot ALL=(ALL:ALL) ALL'
-    sec_a3_pam "${SEC_INCLUDED#/}" "$SEC_INCLUDED_TEXT"
+    sec_pam_file etc/sudoers "$SEC_DIRECTIVE"$'\nroot ALL=(ALL:ALL) ALL'
+    sec_pam_file "${SEC_INCLUDED#/}" "$SEC_INCLUDED_TEXT"
     chmod 0440 "$ROOT/etc/sudoers" "$ROOT$SEC_INCLUDED"
     vapt_elf "$SANDBOX/group-plugin" soname=group_vapt.so needed=libc.so.6
-    sec_a3_incoming usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin"
+    sec_pam_incoming usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin"
     SEC_EXPECTED=2
     [[ $include != literal-unselected ]] || SEC_EXPECTED=0
-    sec_a3_verdict "sudoers-include-$include" "$SEC_EXPECTED"
+    sec_pam_verdict "sudoers-include-$include" "$SEC_EXPECTED"
 done
 
 # sudoers plugin backend arguments name the policy source the plugin loads.
 # The same lower-tier file is inert without the argument; with it, it is
 # either guarded or a manual refusal, never ignored.
 for argument in none sudoers_file ldap_conf; do
-    sec_a3_case "vapt-a3-sudo-plugin-argument-$argument"
+    sec_pam_case "vapt-sec-sudo-plugin-argument-$argument"
     SEC_PLUGIN='Plugin sudoers_policy sudoers.so'
     [[ $argument == none ]] || SEC_PLUGIN+=" $argument=/etc/vapt/sudo-backend"
-    sec_a3_pam etc/sudo.conf "$SEC_PLUGIN"
-    sec_a3_incoming etc/vapt/sudo-backend "$(sec_a3_text backend 'root ALL=(ALL:ALL) ALL')"
+    sec_pam_file etc/sudo.conf "$SEC_PLUGIN"
+    sec_pam_incoming etc/vapt/sudo-backend "$(sec_pam_text backend 'root ALL=(ALL:ALL) ALL')"
     SEC_EXPECTED=2
     [[ $argument != none ]] || SEC_EXPECTED=0
-    sec_a3_verdict "sudo-plugin-argument-$argument" "$SEC_EXPECTED"
+    sec_pam_verdict "sudo-plugin-argument-$argument" "$SEC_EXPECTED"
 done
 
 # A nondefault sudoers pam_service/pam_login_service selects another stack.
 # An ordinary Defaults line leaves that stack unreachable and its changed
 # module inert.
 for setting in env_reset pam_service pam_login_service; do
-    sec_a3_case "vapt-a3-sudoers-$setting"
+    sec_pam_case "vapt-sec-sudoers-$setting"
     SEC_DEFAULTS="Defaults $setting=vapt-auth"
     [[ $setting != env_reset ]] || SEC_DEFAULTS='Defaults env_reset'
-    sec_a3_pam etc/sudoers "$SEC_DEFAULTS"$'\nroot ALL=(ALL:ALL) ALL'
+    sec_pam_file etc/sudoers "$SEC_DEFAULTS"$'\nroot ALL=(ALL:ALL) ALL'
     chmod 0440 "$ROOT/etc/sudoers"
-    sec_a3_pam etc/pam.d/vapt-auth $'auth optional /usr/lib/vapt/pam_x.so\nauth include system-auth'
+    sec_pam_file etc/pam.d/vapt-auth $'auth optional /usr/lib/vapt/pam_x.so\nauth include system-auth'
     vapt_elf "$SANDBOX/pam-x" soname=pam_x.so needed=libc.so.6
-    sec_a3_incoming usr/lib/vapt/pam_x.so "$SANDBOX/pam-x"
+    sec_pam_incoming usr/lib/vapt/pam_x.so "$SANDBOX/pam-x"
     SEC_EXPECTED=2
     [[ $setting != env_reset ]] || SEC_EXPECTED=0
-    sec_a3_verdict "sudoers-$setting" "$SEC_EXPECTED"
+    sec_pam_verdict "sudoers-$setting" "$SEC_EXPECTED"
 done
 
 # A nondefault sudo.conf plugin_dir moves where the default sudoers.so is
 # loaded from; the same lower-tier object elsewhere is unrelated.
 for plugin_dir in absent nondefault; do
-    sec_a3_case "vapt-a3-sudo-plugin-dir-$plugin_dir"
-    [[ $plugin_dir == absent ]] || sec_a3_pam etc/sudo.conf 'Path plugin_dir /usr/lib/vapt-sudo'
+    sec_pam_case "vapt-sec-sudo-plugin-dir-$plugin_dir"
+    [[ $plugin_dir == absent ]] || sec_pam_file etc/sudo.conf 'Path plugin_dir /usr/lib/vapt-sudo'
     vapt_elf "$SANDBOX/sudoers-plugin" soname=sudoers.so needed=libc.so.6
-    sec_a3_incoming usr/lib/vapt-sudo/sudoers.so "$SANDBOX/sudoers-plugin"
+    sec_pam_incoming usr/lib/vapt-sudo/sudoers.so "$SANDBOX/sudoers-plugin"
     SEC_EXPECTED=2
     [[ $plugin_dir != absent ]] || SEC_EXPECTED=0
-    sec_a3_verdict "sudo-plugin-dir-$plugin_dir" "$SEC_EXPECTED"
+    sec_pam_verdict "sudo-plugin-dir-$plugin_dir" "$SEC_EXPECTED"
 done
 
 # A base-proven PAM module's NEEDED library is in the guarded closure: an
 # incoming lower-tier library under an innocent filename that ldconfig would
 # index as the same SONAME is a candidate; a distinct SONAME is not.
 for alias in unrelated colliding; do
-    sec_a3_case "vapt-a3-pam-dependency-alias-$alias"
+    sec_pam_case "vapt-sec-pam-dependency-alias-$alias"
     vapt_elf "$SANDBOX/pam-dependency" soname=libvaptpam.so.1 needed=libc.so.6
-    sec_a1_base_library usr/lib/libvaptpam.so.1 "$SANDBOX/pam-dependency"
+    sec_base_library usr/lib/libvaptpam.so.1 "$SANDBOX/pam-dependency"
     vapt_elf "$SANDBOX/pam-module" soname=pam_vaptdep.so needed=libvaptpam.so.1,libc.so.6
-    sec_a1_base_library usr/lib/security/pam_vaptdep.so "$SANDBOX/pam-module"
-    sec_a3_pam etc/pam.d/system-auth $'auth optional pam_vaptdep.so\nauth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
+    sec_base_library usr/lib/security/pam_vaptdep.so "$SANDBOX/pam-module"
+    sec_pam_file etc/pam.d/system-auth $'auth optional pam_vaptdep.so\nauth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
     SEC_SONAME=libvaptinnocent.so.1
     [[ $alias == unrelated ]] || SEC_SONAME=libvaptpam.so.1
     vapt_elf "$SANDBOX/alias-library" "soname=$SEC_SONAME" needed=libc.so.6
-    sec_a3_incoming usr/lib/libvaptinnocent.so.1 "$SANDBOX/alias-library"
+    sec_pam_incoming usr/lib/libvaptinnocent.so.1 "$SANDBOX/alias-library"
     SEC_EXPECTED=2
     [[ $alias == colliding ]] || SEC_EXPECTED=0
-    sec_a3_verdict "pam-dependency-alias-$alias" "$SEC_EXPECTED"
+    sec_pam_verdict "pam-dependency-alias-$alias" "$SEC_EXPECTED"
 done
 
 # --sudo-plugins FILE records are root-produced facts, supplied explicitly
 # whenever the sudo graph is active. Under a fixture --root the caller may own
 # the record, but it and every ancestor must be a real, singly-linked, non
 # group/other-writable path holding absolute literal records.
-sec_a3_selector_case() {
+sec_pam_selector_case() {
     sec_case "$1"
     mkdir -p "$ROOT/etc/pam.d"
-    sec_a3_pam etc/pam.d/sudo $'auth include system-auth\naccount include system-auth\nsession include system-auth'
-    sec_a3_pam etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
+    sec_pam_file etc/pam.d/sudo $'auth include system-auth\naccount include system-auth\nsession include system-auth'
+    sec_pam_file etc/pam.d/system-auth $'auth required pam_unix.so\naccount required pam_unix.so\nsession required pam_unix.so'
     vapt_elf "$ROOT/usr/bin/sudo" type=2 interp=/usr/lib64/ld-linux-x86-64.so.2 needed=libc.so.6
     SEC_SELECTORS_DIR="$(cd "$SANDBOX" && pwd -P)/sudo-selectors"
     SEC_SELECTORS="$SEC_SELECTORS_DIR/sudo-plugins"
@@ -1559,30 +1561,30 @@ sec_a3_selector_case() {
     chmod 0644 "$SEC_SELECTORS"
 }
 # A lower-tier archive carrying the selectable object, planned from chaotic-aur.
-sec_a3_selected_archive() {
+sec_pam_selected_archive() {
     printf 'old inert runtime inventory data\n' >"$SANDBOX/runtime-old"
-    sec_a1_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
+    sec_lower_owner vapt-runtime usr/share/vapt-runtime/old.txt "$SANDBOX/runtime-old"
     vapt_elf "$SANDBOX/group-plugin" soname=group_vapt.so needed=libc.so.6
     sec_archive vapt-runtime 2-1
-    sec_a1_member "$SEC_ARCHIVE" vapt-runtime 2-1 usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin" incoming
+    sec_member "$SEC_ARCHIVE" vapt-runtime 2-1 usr/lib/vapt/group_vapt.so "$SANDBOX/group-plugin" incoming
     sec_plan chaotic-aur vapt-runtime 2-1
 }
 
-sec_a3_selector_case vapt-a3-selectors-control
+sec_pam_selector_case vapt-sec-selectors-control
 sec_archive nmap 7.99-1
-sec_review 'A3 safe caller-owned selector record under a fixture root (control)' 0 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTORS"
+sec_review 'pam: safe caller-owned selector record under a fixture root (control)' 0 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTORS"
 
-sec_a3_selector_case vapt-a3-selectors-selected-change
-sec_a3_selected_archive
-sec_review 'A3 selector record makes the lower-tier group_plugin object guarded' 1 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTORS"
+sec_pam_selector_case vapt-sec-selectors-selected-change
+sec_pam_selected_archive
+sec_review 'pam: selector record makes the lower-tier group_plugin object guarded' 1 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTORS"
 
-sec_a3_selector_case vapt-a3-selectors-empty-change ''
+sec_pam_selector_case vapt-sec-selectors-empty-change ''
 : >"$SEC_SELECTORS"
-sec_a3_selected_archive
-sec_review 'A3 empty selector record leaves the same unselected object inert' 0 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTORS"
+sec_pam_selected_archive
+sec_review 'pam: empty selector record leaves the same unselected object inert' 0 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTORS"
 
 for unsafe in group-writable symlink-file symlink-ancestor hardlink absent relative-record dotdot-record; do
-    sec_a3_selector_case "vapt-a3-selectors-$unsafe"
+    sec_pam_selector_case "vapt-sec-selectors-$unsafe"
     SEC_SELECTOR_ARG="$SEC_SELECTORS"
     case "$unsafe" in
     group-writable) chmod 0664 "$SEC_SELECTORS" ;;
@@ -1600,7 +1602,7 @@ for unsafe in group-writable symlink-file symlink-ancestor hardlink absent relat
     dotdot-record) printf '/usr/lib/vapt/../vapt/group_vapt.so\n' >"$SEC_SELECTORS" ;;
     esac
     sec_archive nmap 7.99-1
-    sec_review "A3 unsafe selector record ($unsafe) fails closed" 1 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTOR_ARG"
+    sec_review "pam: unsafe selector record ($unsafe) fails closed" 1 "$SEC_ARCHIVE" --sudo-plugins "$SEC_SELECTOR_ARG"
 done
 
 # Production (empty root) accepts only uid-0 records and ancestry. The same
@@ -1608,7 +1610,7 @@ done
 # metadata of the scratch file's ancestors only; it never audits a host
 # package. Positive uid-0 acceptance needs real root and is not claimed.
 if (($(id -u) != 0)); then
-    sec_a3_selector_case vapt-a3-selectors-production-ownership
+    sec_pam_selector_case vapt-sec-selectors-production-ownership
     capture python3 - "$VAPT_META" "$SEC_SELECTORS" "$ROOT" <<'PY'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('vapt_metadata', sys.argv[1])
@@ -1621,8 +1623,8 @@ for label, root in (('fixture', sys.argv[3]), ('production', '')):
     except ValueError:
         print(label, 'refused')
 PY
-    assert_status 'A3 selector record ownership probe completes' 0 "$STATUS"
-    assert_eq 'A3 caller-owned record: fixture root accepts, production refuses' \
+    assert_status 'pam: selector record ownership probe completes' 0 "$STATUS"
+    assert_eq 'pam: caller-owned record: fixture root accepts, production refuses' \
         $'fixture accepted\nproduction refused' "$OUTPUT"
-    assert_eq 'A3 ownership probe executes no fixture command' '' "$(find "$CALLS" -type f -printf '%f\n')"
+    assert_eq 'pam: ownership probe executes no fixture command' '' "$(find "$CALLS" -type f -printf '%f\n')"
 fi

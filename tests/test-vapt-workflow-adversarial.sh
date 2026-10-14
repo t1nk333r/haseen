@@ -66,15 +66,16 @@ assert_status 'live changed-fragment expectation refuses' 1 "$STATUS"
 assert_eq 'live changed-fragment expectation refuses before privilege' '' "$(vapt_calls action-root)"
 actions_api service stop ssh sshd.service /usr/lib/systemd/system/sshd.service
 assert_status 'live matching expectations authorize exact selected unit' 0 "$STATUS"
-assert_contains 'matching expectations reach only stop argv' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- sshd.service'
-rm -f "$CALLS/action-root"
+assert_eq 'matching expectations reach only stop argv' "$ROOT/usr/bin/systemctl stop -- sshd.service" "$(vapt_calls action-root)"
+assert_eq 'matching expectations run the sysroot service manager' 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
+rm -f "$CALLS/action-root" "$CALLS/owned-systemctl"
 actions_api service stop ssh
 assert_status 'absent expectations still require current verified ownership' 0 "$STATUS"
-assert_contains 'absent expectations do not change selected unit' "$(vapt_calls action-root)" '/usr/bin/systemctl stop -- sshd.service'
-rm -f "$CALLS/action-root"
+assert_eq 'absent expectations do not change selected unit' 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
+rm -f "$CALLS/action-root" "$CALLS/owned-systemctl"
 VAPT_CONFIRM=yes VAPT_CHANGE_FRAGMENT=true actions_api service start ssh
 assert_status 'fragment swapped during review refuses before privilege' 1 "$STATUS"
-assert_eq 'review race has zero privileged calls' '' "$(vapt_calls action-root)"
+assert_eq 'review race has zero privileged calls' '' "$(vapt_calls action-root)$(vapt_calls owned-systemctl)"
 python3 -B - "$ROOT/var/lib/haseen/vapt/services.json" <<'PY'
 import json,sys
 p=sys.argv[1];r=json.load(open(p));r['sshd.service']['FragmentPath']='/usr/lib/systemd/system/sshd.service';open(p,'w').write(json.dumps(r))
@@ -96,7 +97,7 @@ vapt_service_action "$1" ssh
 SH
     if [[ $verb == stop ]]; then
         assert_status 'stop remains usable when terminal unavailable' 0 "$STATUS"
-        assert_contains 'stop reaches exact root argv without terminal' "$OUTPUT" 'ROOT-ARGV </usr/bin/systemctl> <stop> <--> <sshd.service>'
+        assert_contains 'stop reaches exact root argv without terminal' "$OUTPUT" "ROOT-ARGV <$ROOT/usr/bin/systemctl> <stop> <--> <sshd.service>"
         assert_not_contains 'stop never asks for a terminal' "$OUTPUT" 'TERMINAL-UNAVAILABLE'
     else
         assert_status "$verb fails when terminal unavailable" 19 "$STATUS"
@@ -115,9 +116,9 @@ mkdir -p "$ROOT$XDG_CONFIG_HOME/haseen/vapt"
 printf '{"bindAddress":"0.0.0.0"}\n' >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json"
 actions_api endpoint listener 8080
 assert_status 'configured implicit public bind still requires confirmation' 1 "$STATUS"
-assert_eq 'implicit public bind decline starts no program' '' "$(vapt_calls action-user)"
+assert_eq 'implicit public bind decline starts no program' '' "$(vapt_calls action-user)$(vapt_calls owned-nc)"
 printf '{"bindAddress":"127.0.0.1"}\n' >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json"
-# Every public phase-2 command has a pure preview, including refusal branches.
+# Every public workflow command has a pure preview, including refusal branches.
 before="$(net_manifest)"
 for verb in tool-list status doctor menu service-list net-addresses net-remmina; do
     capture "haseen-vapt-$verb" --dry-run --json
@@ -187,8 +188,8 @@ assert_eq 'read and preview never execute package-name candidate' '' "$(vapt_cal
 assert_eq 'read and preview never open session shell' '' "$(vapt_calls adversarial-shell)"
 actions_untouched adversarial-workflow
 
-# Preserve the independent review's nearby-sysroot escape controls. Every
-# outside file is still inside this sandbox, never in the owner's HOME.
+# Metadata reached through a link out of the fixture root never supplies
+# evidence. Every outside file is still inside this sandbox, never in HOME.
 actions_fixture vapt-nearby-observation
 outside="$ROOT/../outside"
 mkdir -p "$outside"

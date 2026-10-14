@@ -81,9 +81,12 @@ vapt_blackarch_bootstrap_steps() {
     run gpg --homedir "$keys" --batch --output "$stage/signer.gpg" --export "$VAPT_KEYRING_SIGNER" || { VAPT_MUTATION_FAILED=1; return 1; }
     if ! $DRY_RUN; then
         vapt_root_facts || { VAPT_SOURCE_REASON="$VAPT_APPLY_REASON"; return 2; }
-        vapt_meta keyring "$sealed" --sudo-plugins "$(vapt_read_path "$VAPT_CACHE/sudo-plugins")" \
-            --authority-facts "$(vapt_read_path "$VAPT_CACHE/authority-facts")" >/dev/null || {
-            VAPT_SOURCE_REASON='keyring identity/dependency/activation policy rejected'; return 2;
+        # Identity, the trusted/revoked lists --populate applies, dependencies
+        # and the archive audit, all before the first pacman-key call below.
+        output="$(vapt_meta keyring "$sealed" --sudo-plugins "$(vapt_read_path "$VAPT_CACHE/sudo-plugins")" \
+            --authority-facts "$(vapt_read_path "$VAPT_CACHE/authority-facts")" 2>&1 >/dev/null)" || {
+            # Archive member names can carry tabs or escapes: report rows stay intact.
+            VAPT_SOURCE_REASON="BlackArch keyring audit rejected: ${output//[[:cntrl:]]/ }"; return 2;
         }
     fi
     # The exact sealed archive under a repository-free configuration

@@ -22,6 +22,27 @@ capture haseen-vapt-tool-help wordlists --dry-run
 assert_status 'data-only cannot run' 1 "$STATUS"
 capture haseen-vapt-tool-help nmap --entry '/usr/bin/scan-one; touch bad' --dry-run
 assert_status 'hostile ID refusal' 1 "$STATUS"
+# nmap ships de, es, fr, ... copies of man1/nmap.1.gz under man/<lang>/man1/:
+# translations of one page are that page, and the untranslated copy wins.
+printf '.TH SCAN-ONE 1\nTranslated usage.\n' >"$SANDBOX/translated.1"
+python3 - "$ROOT" "$SANDBOX/translated.1" <<'PY'
+import json,pathlib,shutil,sys
+root=pathlib.Path(sys.argv[1]);p=root/'var/lib/haseen/vapt/installed.json';rows=json.loads(p.read_text())
+for lang in ('pt_BR','de','zh'):
+    path='usr/share/man/'+lang+'/man1/scan-one.1';(root/path).parent.mkdir(parents=True);shutil.copy(sys.argv[2],root/path)
+    rows[0]['files'].append(path)
+p.write_text(json.dumps(rows))
+PY
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one --dry-run
+assert_status 'translated man pages are one page' 0 "$STATUS"
+assert_eq 'untranslated man page preferred' /usr/share/man/man1/scan-one.1 "$(jq -r '.evidence.path' <<<"$OUTPUT")"
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one
+assert_contains 'untranslated man page displayed' "$OUTPUT" 'Owned usage'
+mv "$ROOT/usr/share/man/man1/scan-one.1" "$SANDBOX/untranslated.1"
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-one --dry-run
+assert_eq 'translations alone remain one page' /usr/share/man/de/man1/scan-one.1 "$(jq -r '.evidence.path' <<<"$OUTPUT")"
+mv "$SANDBOX/untranslated.1" "$ROOT/usr/share/man/man1/scan-one.1"
+rm -r "$ROOT/usr/share/man/pt_BR" "$ROOT/usr/share/man/de" "$ROOT/usr/share/man/zh"
 cp "$ROOT/usr/share/man/man1/scan-one.1" "$ROOT/usr/share/man/man1/scan-one.1.gz"
 python3 - "$ROOT/var/lib/haseen/vapt/installed.json" <<'PY'
 import json, sys
@@ -77,6 +98,25 @@ capture env SHELL=/usr/bin/bash haseen-vapt-tool-run nmap --entry /usr/bin/scan-
 assert_status 'session dry-run succeeds with installed shell' 0 "$STATUS"
 assert_eq 'ordinary shell only not selected tool' '/usr/bin/bash -i' "$(jq -r '.shellArgv | join(" ")' <<<"$OUTPUT")"
 assert_eq 'dry-run never opens shell' '' "$(vapt_calls workstation-shell)"
+capture /usr/bin/python3 -I -B "$VAPT_LAYER/workflow.py" tool-run nmap --entry /usr/bin/scan-two
+assert_status 'fixture evidence never starts a session' 1 "$STATUS"
+assert_contains 'fixture session refusal explains itself' "$OUTPUT" 'refused with HASEEN_SYSROOT'
+assert_not_contains 'fixture session refusal prints no document' "$OUTPUT" 'Second owned usage'
+# tool-run prints the document, then replaces itself with the shell. exec
+# keeps no unflushed Python output, so a piped document must be flushed first;
+# the stand-in for execv writes and exits the same way.
+cat >"$SANDBOX/handoff.py" <<'PY'
+import argparse,os,sys
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1]);import workflow as wf
+def execv(path,argv):
+    os.write(1,('SHELL '+path+' '+' '.join(argv)+'\n').encode());os._exit(0)
+args=argparse.Namespace(tool='nmap',entry='/usr/bin/scan-two',command='tool-run',dry_run=False)
+with patch.object(wf,'refuse_fixture_execution',lambda *a:None),patch.object(wf.os,'execv',execv):
+    wf.show_help(args)
+PY
+capture bash -c 'SHELL=/usr/bin/bash /usr/bin/python3 -I -B "$1" "$2" | cat' bash "$SANDBOX/handoff.py" "$VAPT_LAYER"
+assert_eq 'piped document reaches the reader before the shell starts' "Second owned usage."$'\n'"SHELL $ROOT/usr/bin/bash /usr/bin/bash -i" "$OUTPUT"
 capture haseen-vapt-tool-run nmap --json --dry-run
 assert_status 'session JSON rejected' 2 "$STATUS"
 capture haseen-vapt-menu --json
@@ -144,7 +184,7 @@ done
 workflow_no_calls workflow
 assert_eq 'no shell executed' '' "$(vapt_calls workstation-shell)"
 assert_eq 'no source refresh' '' "$(vapt_calls curl)$(vapt_calls pacman)$(vapt_calls gpg)"
-# The v2 settings/capability contract stays valid on semantic refusal.
+# Settings and capability records stay valid on semantic refusal.
 capture haseen-vapt-doctor --json --dry-run
 assert_eq 'five fixed doctor capabilities' 5 "$(jq '.workflow.capabilities | length' <<<"$OUTPUT")"
 assert_eq 'unsupported adapters never pretend available' false "$(jq '[.workflow.capabilities[].available] | any' <<<"$OUTPUT")"
@@ -170,12 +210,11 @@ assert_contains 'operational diagnostic only stderr' "$(<"$SANDBOX/json-err")" '
 
 # Shared endpoint/confinement/CA inspection is exercised without a live bind,
 # trust mutation, live desktop or installed fixture program execution.
-capture python3 -B - "$VAPT_LAYER" "$ROOT" "$FIXTURES" <<'PY'
-import pathlib, sys
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import os, pathlib, sys
 sys.path.insert(0, sys.argv[1])
 import metadata
-from workflow_support import validate_endpoint, selected_owned_file
-sys.path.insert(0,sys.argv[3]);from vapt_reference_paths import confined_path
+from workflow_support import validate_endpoint, selected_owned_file, open_selected
 assert validate_endpoint('127.0.0.1', 1024)['loopback']
 assert validate_endpoint('::1', 65535)['loopback']
 assert validate_endpoint('0.0.0.0', 8080)['requiresConfirmation']
@@ -184,10 +223,14 @@ for address,port in [('example.org',8080),('127.0.0.1',80),('::1',65536),('::1',
     except ValueError: pass
     else: raise AssertionError('endpoint admitted')
 root=pathlib.Path(sys.argv[2])
-assert confined_path(root/'usr/share/doc/nmap','scan-two.txt').is_file()
-try: confined_path(root/'usr/share/doc/nmap','../../wordlists/sample.txt')
-except ValueError: pass
-else: raise AssertionError('filesystem escape admitted')
+# The no-follow opener behind serving and document reads refuses any
+# symlinked component, so a link cannot lead a selection out of its tree.
+os.close(open_selected(root/'usr/share/doc/nmap/scan-two.txt'))
+(root/'usr/share/doc/nmap/escape').symlink_to(root/'usr/share/wordlists')
+try: open_selected(root/'usr/share/doc/nmap/escape/sample.txt')
+except OSError: pass
+else: raise AssertionError('symlinked component followed')
+finally: (root/'usr/share/doc/nmap/escape').unlink()
 assert selected_owned_file('/usr/share/wordlists/sample.txt',metadata.installed(str(root)),str(root),metadata.observed_resolve).is_file()
 try: selected_owned_file('/usr/share/wordlists',metadata.installed(str(root)),str(root),metadata.observed_resolve)
 except ValueError: pass
@@ -197,21 +240,23 @@ PY
 assert_status 'shared endpoint and file validators' 0 "$STATUS"
 /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout "$SANDBOX/key.pem" -out "$SANDBOX/ca.pem" \
     -subj /CN=local-fixture -days 1 -addext basicConstraints=critical,CA:TRUE >/dev/null 2>&1
-capture python3 -B - "$VAPT_LAYER" "$SANDBOX" <<'PY'
+workflow_openssl
+capture python3 -B - "$VAPT_LAYER" "$SANDBOX" "$ROOT" <<'PY'
 import pathlib, sys
 sys.path.insert(0,sys.argv[1])
 from workflow_support import inspect_certificate
-base=pathlib.Path(sys.argv[2])
-row=inspect_certificate(base/'ca.pem')
+base=pathlib.Path(sys.argv[2]);root=sys.argv[3]
+row=inspect_certificate(base/'ca.pem',root)
 assert row['state']=='valid',row
 assert row['certificate']['isCa'] and len(row['certificate']['sha256'])==64
 assert row['certificate']['notBefore'].endswith('Z')
-assert inspect_certificate(base/'key.pem')['state']=='refused'
+assert inspect_certificate(base/'key.pem',root)['state']=='refused'
 (base/'bundle.pem').write_bytes((base/'ca.pem').read_bytes()*2)
-assert inspect_certificate(base/'bundle.pem')['state']!='valid'
+assert inspect_certificate(base/'bundle.pem',root)['state']!='valid'
 print('certificate inspection checks passed')
 PY
 assert_status 'shared read-only CA inspector' 0 "$STATUS"
+assert_eq 'inspection parsed once with the sysroot openssl' 1 "$(vapt_calls owned-openssl | wc -l)"
 workflow_no_calls shared-support
 # Only explicit provisioning seeds; the helper never edits owner bytes.
 workflow_fixture vapt-workflow-seed

@@ -15,7 +15,10 @@ for entry in "$HASEEN_PATH"/*; do ln -s "$entry" "$FAKE/share/haseen/${entry##*/
 cat >"$FAKE/bin/haseen" <<'SH'
 #!/bin/sh
 case "$*" in
-    'vapt menu --enabled') exit 0 ;; # Even a stale successful guard cannot authorize a disabled provider.
+    'vapt menu --enabled')
+        # The menu answers this guard from Config; a call here is a Python start.
+        printf '%s\n' menu-enabled >>"$PROVIDER_LOG"
+        exit 0 ;;
     'vapt tool-list --json')
         printf '%s\n' tool-list >>"$PROVIDER_LOG"
         printf '%s\n' '{"schemaVersion":1,"tools":[],"sources":[],"privateSource":{"state":"absent","reason":"fixture"}}' ;;
@@ -29,7 +32,12 @@ case "$*" in
 esac
 SH
 chmod +x "$FAKE/bin/haseen"
-for module in Haseen Compat Ui Commons plugins; do ln -s "$HASEEN_PATH/shell/$module" "$SANDBOX/shell/$module"; done
+for module in Haseen Compat Ui Commons; do ln -s "$HASEEN_PATH/shell/$module" "$SANDBOX/shell/$module"; done
+# Every plugin but the optional panel: the menu must not need its files.
+mkdir "$SANDBOX/shell/plugins"
+for plugin in "$HASEEN_PATH"/shell/plugins/*; do
+    [[ ${plugin##*/} == haseen.security ]] || ln -s "$plugin" "$SANDBOX/shell/plugins/${plugin##*/}"
+done
 cat >"$SANDBOX/shell/shell.qml" <<'QML'
 import QtQuick
 import Quickshell
@@ -48,6 +56,11 @@ ShellRoot {
                 if (++ticks > 100) { console.warn("PROVIDER-FAIL timeout"); Qt.quit(); return; }
                 if (!menu.loaded || !Config.defaults.plugins) return;
                 if (step === 0) {
+                    const off = menu.whenResults["setup.security.vapt.tools"];
+                    if (off === undefined) return;
+                    console.warn("PROVIDER-PASS menu loaded and answered its guards");
+                    if (off !== false) console.warn("PROVIDER-FAIL disabled Security guard answered " + off);
+                    else console.warn("PROVIDER-PASS disabled Security guard answered false");
                     Config.setRuntime(["plugins", "haseen.security", "enabled"], false);
                     menu.itemOrder = ids;
                     menu.searchProviders();
@@ -59,9 +72,9 @@ ShellRoot {
                     else console.warn("PROVIDER-PASS disabled search and direct load queue no reads");
                     // Shell checks the log emitted before the marker independently.
                     Config.setRuntime(["plugins", "haseen.security", "enabled"], true);
-                    menu.searchProviders(); step++; return;
+                    menu.searchProviders(); menu.evaluateGuards(); step++; return;
                 }
-                if (ids.some(id => !menu.items[id + ".empty"])) return;
+                if (ids.some(id => !menu.items[id + ".empty"]) || menu.whenResults["setup.security.vapt.tools"] !== true) return;
                 console.warn("PROVIDER-PASS enabled providers produce guarded rows");
                 Qt.quit();
             }
@@ -71,7 +84,10 @@ ShellRoot {
 QML
 capture env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 HASEEN_PATH="$FAKE/share/haseen" PROVIDER_LOG="$SANDBOX/reads" timeout 30 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$SANDBOX/shell"
 assert_status 'real menu provider harness exits' 0 "$STATUS"
+assert_contains 'the menu loads without the haseen.security directory' "$OUTPUT" 'PROVIDER-PASS menu loaded and answered its guards'
+assert_contains 'disabled Security hides its rows without running the CLI' "$OUTPUT" 'PROVIDER-PASS disabled Security guard answered false'
 assert_contains 'disabled root search and direct provider load do not queue' "$OUTPUT" 'PROVIDER-PASS disabled search and direct load queue no reads'
 assert_contains 'enabled providers populate guarded rows' "$OUTPUT" 'PROVIDER-PASS enabled providers produce guarded rows'
 assert_not_contains 'provider harness has no failed case' "$OUTPUT" 'PROVIDER-FAIL'
+# No `menu-enabled` line: the guard never ran the CLI, Security off or on.
 assert_eq 'only the three enabled provider reads execute' $'tool-list\nservice-list\ndoctor' "$(cat "$SANDBOX/reads")"

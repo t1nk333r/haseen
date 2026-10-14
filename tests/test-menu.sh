@@ -216,6 +216,45 @@ console.log([ins.map(r => r.id + (r.disabledNow ? '!' : '')).join(','), ins[1].a
 ")"
     assert_eq "catalog install/remove rows" "install.browser,install.browser.firefox!,install.browser.zen,install.gaming,install.gaming.steam|haseen install app 'firefox'|[[ -e /x ]]|remove.browser,remove.browser.firefox|haseen remove app 'firefox'" "$out"
     assert_eq "panel actions run in-process" "haseen.emoji" "$(model "console.log(panelAction('haseen shell ipc panel toggle haseen.emoji'))")"
+
+    # ✓ marks presence (plan 088): Security information, refused and
+    # previous-snapshot rows are disabled without it; an installed catalogue
+    # entry and a menu.jsonc `disabled:` guard keep it. `!` marks disabled.
+    out="$(model "
+const info = ['empty', 'loading', 'error'].map(s => securityInfo('setup.security.vapt.tools', s, 'r')[0]);
+const doctor = {workflow: {capabilities: [{id: 'listener', installed: true, state: 'refused', reason: 'r'}, {id: 'http-server', installed: true, state: 'available', reason: 'r'}]}};
+const local = securityRows('local', 'setup.security.vapt.local', doctor);
+const ins = catalogRows('install', {categories: [{id: 'browser'}], entries: [{id: 'firefox', label: 'Firefox', category: 'browser'}, {id: 'zen', label: 'Zen', category: 'browser'}]}, ['firefox'], 'install');
+const show = rows => rows.map(r => labelFor(r, {}, {}) + (isDisabled({}, r) ? '!' : '')).join(',');
+console.log(show(info));
+console.log(show(local));
+console.log(show(securityRefreshing('setup.security.vapt.local', local)));
+console.log(show(ins.slice(1)));
+console.log(labelFor({id: 'g', label: 'G', disabled: 'true'}, {}, {g: true}));
+")"
+    assert_eq 'Security information rows: disabled, no ✓' 'No installed items!,Reading installed evidence…!,Could not read local status!' "$(sed -n 1p <<<"$out")"
+    assert_eq 'a refused local action: disabled, no ✓' 'listener!,http-server' "$(sed -n 2p <<<"$out")"
+    assert_eq 'a previous snapshot while refreshing: disabled, no ✓' 'listener!,http-server!,Reading installed evidence…!' "$(sed -n 3p <<<"$out")"
+    assert_eq 'an installed catalogue entry keeps ✓' 'Firefox ✓!,Zen' "$(sed -n 4p <<<"$out")"
+    assert_eq 'a disabled: guard keeps ✓' 'G ✓' "$(sed -n 5p <<<"$out")"
+
+    # The menu answers the Security enablement guard from the flag the shell
+    # holds: its batch never runs `haseen vapt menu --enabled`, which starts
+    # Python. A caller that passes no flag still runs the command.
+    mkdir -p "$SANDBOX/guard-bin"
+    printf '#!/bin/sh\necho "$*" >>"$HOME/haseen-calls"\nexit 0\n' >"$SANDBOX/guard-bin/haseen"
+    chmod +x "$SANDBOX/guard-bin/haseen"
+    for enabled in false true; do
+        script="$(model "process.stdout.write(guardScript({a: {when: SECURITY_GUARD}, b: {when: SERVICE_GUARDS.ssh}, c: {checked: 'haseen vapt menu --enabled-elsewhere'}}, $enabled));")"
+        guard_out="$(PATH="$SANDBOX/guard-bin:$PATH" bash -c "$script")"
+        assert_contains "Security guard answered in-process ($enabled)" "$guard_out" "a:w:$([[ $enabled == true ]] && echo 1 || echo 0)"
+    done
+    assert_contains 'disabled Security short-circuits a service guard' "$guard_out" b:w:
+    assert_eq 'only a different command reaches haseen' 'vapt menu --enabled-elsewhere' "$(sort -u "$HOME/haseen-calls")"
+    rm -f "$HOME/haseen-calls"
+    script="$(model "process.stdout.write(guardScript({a: {when: SECURITY_GUARD}}));")"
+    PATH="$SANDBOX/guard-bin:$PATH" bash -c "$script" >/dev/null
+    assert_eq 'without the flag the guard runs as written' 'vapt menu --enabled' "$(cat "$HOME/haseen-calls")"
 fi
 
 # --- haseen menu / about ---------------------------------------------------------

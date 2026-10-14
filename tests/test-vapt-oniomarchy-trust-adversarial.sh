@@ -102,13 +102,9 @@ vapt_api repo-enable --yes
 assert_status 'rotation: initial approval' 0 "$STATUS"
 vapt_onio_serve keyring=20261101-1 trusted=ROT revoked=PIN pkgstatus=pinned
 vapt_api repo-enable --yes
-rotated_status="$STATUS"
-rotated_output="$OUTPUT"
-if [[ $(adv_state) == usable ]]; then
-    assert_status 'rotation away: approval completes' 0 "$rotated_status"
-else
-    assert_not_contains 'rotation away: no approval claimed while the source is unverified' "$rotated_output" 'approved for dedicated'
-fi
+assert_status 'rotation away: the approval is not claimed' 1 "$STATUS"
+assert_not_contains 'rotation away: no approval message' "$OUTPUT" 'approved for dedicated'
+assert_eq 'rotation away: unverified until a ROT-signed refresh' unverified "$(adv_state)"
 assert_contains 'rotation away: the new authority accepts only ROT' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'accepted\t'"$ROT"
 vapt_onio_serve keyring=20261101-1 trusted=ROT revoked=PIN pkgstatus=rotated dbstatus=pinned
 vapt_sudo_noop
@@ -242,6 +238,27 @@ VAPT_KEYRING_LISTING=colons-no-pin vapt_api repo-enable --yes
 assert_status 'revoke absent: a parsed listing without the key completes' 0 "$STATUS"
 assert_not_contains 'revoke absent: nothing is deleted' "$(adv_trust_ops)" '--delete'
 assert_contains 'revoke absent: the revocation is recorded' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" $'revoked\t'"$PIN"
+# A keyring that accepts a new key and revokes another is listed before any
+# trust change: an uninterpretable listing fails the approval with the new key
+# not yet added or signed, so nothing is trusted without being recorded.
+adv_case vapt-adv-trust-revoke-listing-first
+vapt_api repo-enable --yes
+assert_status 'listing first: initial approval' 0 "$STATUS"
+vapt_onio_serve keyring=20261015-1 trusted=ROT revoked=PIN pkgstatus=pinned
+authority="$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+: >"$CALLS/sudo"
+VAPT_KEYRING_LISTING=human vapt_api repo-enable --yes
+assert_status 'listing first: the approval fails' 1 "$STATUS"
+assert_contains 'listing first: and says nothing changed' "$OUTPUT" 'listing could not be interpreted; no trust changed'
+assert_eq 'listing first: no key is added, signed or deleted' '' "$(adv_trust_ops)"
+assert_not_contains 'listing first: no trust change is claimed' "$OUTPUT" 'global trust changed'
+assert_eq 'listing first: nothing is recorded' "$authority" "$(cat "$ROOT$SOURCES/oniomarchy.authority")"
+: >"$CALLS/sudo"
+vapt_api repo-enable --yes
+assert_contains 'listing first: a retry adds the new key' "$(adv_trust_ops)" "pacman-key --lsign-key $ROT"
+assert_contains 'listing first: removes the revoked one' "$(adv_trust_ops)" "pacman-key --delete $PIN"
+assert_contains 'listing first: and records both' "$(cat "$ROOT$SOURCES/oniomarchy.authority")" \
+    $'accepted\t'"$ROT"$'\nrevoked\t'"$PIN"
 
 # --- an installed oniomarchy keyring package is never left in place ----------
 # Its files are where a manual pacman-key --populate would apply them.
@@ -338,8 +355,10 @@ weak_stanza=$'[oniomarchy]\nSigLevel = Optional TrustAll\nServer = http://pkgs.o
 vapt_conf_add "$weak_stanza"
 conf_before="$(cat "$ROOT/etc/pacman.conf")"
 vapt_api recover
-assert_not_contains 'recovery never renders the host stanza policy' "$(vapt_calls frozen-config)$(vapt_calls commit-config)" 'TrustAll'
-assert_not_contains 'recovery never renders the host stanza mirror' "$(vapt_calls frozen-config)$(vapt_calls commit-config)" 'http://pkgs'
+assert_status 'recovery with a weak host stanza is refused' 2 "$STATUS"
+assert_eq 'recovery with a host stanza: nothing reviewed or committed under it' '' \
+    "$(vapt_calls review-repos)$(vapt_calls commit-config)"
+assert_eq 'recovery with a host stanza: record preserved' yes "$(adv_exists "$ROOT/$MARKER")"
 assert_eq 'recovery with a host stanza leaves pacman.conf' "$conf_before" "$(cat "$ROOT/etc/pacman.conf")"
 recover_case vapt-adv-trust-recover-generic
 printf 'reviewed-full-upgrade-commit-pending\n' >"$ROOT/$MARKER"

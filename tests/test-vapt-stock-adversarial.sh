@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 007 review F1, adversarial: attempts to borrow the reviewed stock
+# Plan 007, adversarial: attempts to borrow the reviewed stock
 # maintenance-hook trust with the wrong hook origin, owner, phase argv,
 # interpreter link, PATH entry, data class or installed-owner state. Every
 # archive is assembled here from original inert fixture bytes (decoy ELF
@@ -244,7 +244,7 @@ adv_archive nmap 7.99-1 'usr/lib/gconv/gconv-modules.d/nmap.conf=module NMAP// I
 adv_review 'incoming gconv module registration via trusted iconvconfig is refused' 1 "$ADV_ARCHIVE"
 vapt_tools_untouched 'adversarial stock audit'
 
-# --- H2: retained bytes are proven against the installed version's record ---
+# --- Retained bytes are proven against the installed version's record ---
 # Fixture DB protocol: $ROOT/var/lib/pacman/sync/repositories.json is the
 # system (pre-refresh) sync DB; var/lib/haseen/vapt/repositories.json is what
 # the mirrors publish now and what a private refresh (-Syuw) fetches. The
@@ -252,9 +252,9 @@ vapt_tools_untouched 'adversarial stock audit'
 # builtin-only .INSTALL, so the PreTransaction shell and libc must be proven
 # against the INSTALLED 5.3.3-2 / 2.44-1 records and their genuine cached
 # references. Inert bytes only; nothing executes.
-H2_MIRROR=var/lib/haseen/vapt/repositories.json
-H2_SYSTEM=var/lib/pacman/sync/repositories.json
-h2_member() { # ARCHIVE REL TEXT — add/replace one regular member
+REF_MIRROR=var/lib/haseen/vapt/repositories.json
+REF_SYSTEM=var/lib/pacman/sync/repositories.json
+ref_member() { # ARCHIVE REL TEXT — add/replace one regular member
     python3 - "$1" "$2" "$3" <<'PY'
 import io, sys, tarfile
 from pathlib import Path
@@ -270,7 +270,7 @@ with tarfile.open(archive, 'r:*') as old, tarfile.open(fileobj=result, mode='w:g
 archive.write_bytes(result.getvalue())
 PY
 }
-h2_only_version() { # FILE REPO NAME VERSION — the DB lists one version of NAME
+ref_only_version() { # FILE REPO NAME VERSION — the DB lists one version of NAME
     python3 - "$ROOT/$1" "$2" "$3" "$4" <<'PY'
 import json, sys
 from pathlib import Path
@@ -280,7 +280,7 @@ records[repo] = [r for r in records[repo] if r['name'] != name or r.get('version
 path.write_text(json.dumps(records))
 PY
 }
-h2_version() { # NAME — installed version: installed.json once a commit wrote
+ref_version() { # NAME — installed version: installed.json once a commit wrote
     # it, otherwise the libalpm-shaped local DB vapt_stock seeds.
     python3 - "$ROOT" "$1" <<'PY'
 import json, sys
@@ -302,7 +302,7 @@ else:
 print(next((p.get('version') for p in records if p.get('name') == name), 'absent'))
 PY
 }
-h2_case() { # NAME [snapshot-after-sync]
+ref_case() { # NAME [snapshot-after-sync]
     vapt_sandbox "$1"
     vapt_root
     export LC_ALL=C
@@ -311,71 +311,71 @@ h2_case() { # NAME [snapshot-after-sync]
     export VAPT_PLAN="$SANDBOX/plan.tsv" VAPT_ARCHIVES="$SANDBOX/archives" VAPT_MOCK_SIGNATURES=1
     vapt_stock
     rm -f "$ROOT"/usr/share/libalpm/hooks/*.hook
-    [[ ${2:-} == snapshot-after-sync ]] || cp "$ROOT/$H2_MIRROR" "$ROOT/$H2_SYSTEM"
-    H2_BASH="$(vapt_stock_archive bash 5.3.3-3 usr/bin/bash)"
-    h2_member "$H2_BASH" .INSTALL $'post_upgrade() {\n return 0\n}\n'
+    [[ ${2:-} == snapshot-after-sync ]] || cp "$ROOT/$REF_MIRROR" "$ROOT/$REF_SYSTEM"
+    REF_BASH="$(vapt_stock_archive bash 5.3.3-3 usr/bin/bash)"
+    ref_member "$REF_BASH" .INSTALL $'post_upgrade() {\n return 0\n}\n'
     vapt_stock_archive glibc 2.44-2 usr/lib/libc.so.6 >/dev/null
     python3 "$VAPT_FIXTURE_DRIVER" digests "$VAPT_ARCHIVES"
-    h2_only_version "$H2_MIRROR" core bash 5.3.3-3
-    h2_only_version "$H2_MIRROR" core glibc 2.44-2
-    [[ ${2:-} != snapshot-after-sync ]] || cp "$ROOT/$H2_MIRROR" "$ROOT/$H2_SYSTEM"
+    ref_only_version "$REF_MIRROR" core bash 5.3.3-3
+    ref_only_version "$REF_MIRROR" core glibc 2.44-2
+    [[ ${2:-} != snapshot-after-sync ]] || cp "$ROOT/$REF_MIRROR" "$ROOT/$REF_SYSTEM"
     printf 'core\tbash\t5.3.3-3\thttps://geo.mirror.pkgbuild.com/core/os/x86_64/bash-5.3.3-3-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
     printf 'core\tglibc\t2.44-2\thttps://geo.mirror.pkgbuild.com/core/os/x86_64/glibc-2.44-2-x86_64.pkg.tar.gz\n' >>"$VAPT_PLAN"
-    H2_OLD="$ROOT/var/cache/pacman/pkg/bash-5.3.3-2-x86_64.pkg.tar.gz"
+    REF_OLD="$ROOT/var/cache/pacman/pkg/bash-5.3.3-2-x86_64.pkg.tar.gz"
 }
-h2_refused() { # LABEL REASON-FRAGMENT
+ref_refused() { # LABEL REASON-FRAGMENT
     local system_before="$1"
     shift
     vapt_api upgrade
-    assert_status "H2 $1" 2 "$STATUS"
-    [[ -z ${2:-} ]] || assert_contains "H2 $1: reason" "$OUTPUT" "$2"
-    assert_eq "H2 $1: installed bash unchanged" 5.3.3-2 "$(h2_version bash)"
-    assert_eq "H2 $1: installed glibc unchanged" 2.44-1 "$(h2_version glibc)"
-    assert_eq "H2 $1: no recovery record" no "$([[ -e $ROOT/var/lib/haseen/vapt/upgrade-pending ]] && echo yes || echo no)"
-    assert_eq "H2 $1: system sync DB unchanged" "$system_before" "$(sha256sum <"$ROOT/$H2_SYSTEM")"
+    assert_status "installed reference: $1" 2 "$STATUS"
+    [[ -z ${2:-} ]] || assert_contains "installed reference: $1: reason" "$OUTPUT" "$2"
+    assert_eq "installed reference: $1: installed bash unchanged" 5.3.3-2 "$(ref_version bash)"
+    assert_eq "installed reference: $1: installed glibc unchanged" 2.44-1 "$(ref_version glibc)"
+    assert_eq "installed reference: $1: no recovery record" no "$([[ -e $ROOT/var/lib/haseen/vapt/upgrade-pending ]] && echo yes || echo no)"
+    assert_eq "installed reference: $1: system sync DB unchanged" "$system_before" "$(sha256sum <"$ROOT/$REF_SYSTEM")"
 }
 
-h2_case vapt-h2-both-refs
+ref_case vapt-ref-both-refs
 vapt_api upgrade
-assert_status 'H2 bash+glibc upgrade with a scriptlet proves old bytes by installed-version references' 0 "$STATUS"
-assert_eq 'H2 reviewed bash installed' 5.3.3-3 "$(h2_version bash)"
-assert_eq 'H2 reviewed glibc installed' 2.44-2 "$(h2_version glibc)"
-assert_eq 'H2 completed upgrade leaves no recovery record' no \
+assert_status 'installed reference: bash+glibc upgrade with a scriptlet proves old bytes by installed-version references' 0 "$STATUS"
+assert_eq 'installed reference: reviewed bash installed' 5.3.3-3 "$(ref_version bash)"
+assert_eq 'installed reference: reviewed glibc installed' 2.44-2 "$(ref_version glibc)"
+assert_eq 'installed reference: completed upgrade leaves no recovery record' no \
     "$([[ -e $ROOT/var/lib/haseen/vapt/upgrade-pending ]] && echo yes || echo no)"
 
-h2_case vapt-h2-no-old-record snapshot-after-sync
-h2_refused "$(sha256sum <"$ROOT/$H2_SYSTEM")" 'pre-refresh DB already lists only the new version' \
+ref_case vapt-ref-no-old-record snapshot-after-sync
+ref_refused "$(sha256sum <"$ROOT/$REF_SYSTEM")" 'pre-refresh DB already lists only the new version' \
     'has no pre-refresh or reviewed repository record'
 
-h2_case vapt-h2-old-ref-uncached
-rm -f "$H2_OLD" "$H2_OLD.sig"
-h2_refused "$(sha256sum <"$ROOT/$H2_SYSTEM")" 'installed-version reference neither cached nor downloadable' \
+ref_case vapt-ref-old-ref-uncached
+rm -f "$REF_OLD" "$REF_OLD.sig"
+ref_refused "$(sha256sum <"$ROOT/$REF_SYSTEM")" 'installed-version reference neither cached nor downloadable' \
     'installed-version reference unavailable: core/bash 5.3.3-2'
 
-h2_case vapt-h2-forged-old-ref
+ref_case vapt-ref-forged-old-ref
 # Same filename and identity, other bytes; its own detached "signature" is
 # valid for those bytes, but the pre-refresh record binds another digest.
-h2_member "$H2_OLD" usr/bin/bash 'forged old shell bytes'
-printf 'fixture-sha256 %s\n' "$(sha256sum "$H2_OLD" | cut -d' ' -f1)" >"$H2_OLD.sig"
-h2_refused "$(sha256sum <"$ROOT/$H2_SYSTEM")" 'forged installed-version reference'
+ref_member "$REF_OLD" usr/bin/bash 'forged old shell bytes'
+printf 'fixture-sha256 %s\n' "$(sha256sum "$REF_OLD" | cut -d' ' -f1)" >"$REF_OLD.sig"
+ref_refused "$(sha256sum <"$ROOT/$REF_SYSTEM")" 'forged installed-version reference'
 
-h2_case vapt-h2-nonbase-old-ref
-python3 - "$ROOT/var/lib/haseen/vapt/fixture-signatures.tsv" "$(sha256sum "$H2_OLD" | cut -d' ' -f1)" <<'PY'
+ref_case vapt-ref-nonbase-old-ref
+python3 - "$ROOT/var/lib/haseen/vapt/fixture-signatures.tsv" "$(sha256sum "$REF_OLD" | cut -d' ' -f1)" <<'PY'
 import sys
 from pathlib import Path
 path, digest = Path(sys.argv[1]), sys.argv[2]
 rows = [line for line in path.read_text().splitlines() if not line.startswith(digest + '\t')]
 path.write_text('\n'.join(rows + [digest + '\tF1C7B4A5E00000000000000000000000000071ED']) + '\n')
 PY
-h2_refused "$(sha256sum <"$ROOT/$H2_SYSTEM")" 'installed-version reference signed by a non-base key'
+ref_refused "$(sha256sum <"$ROOT/$REF_SYSTEM")" 'installed-version reference signed by a non-base key'
 
-h2_case vapt-h2-forged-retained-shell
+ref_case vapt-ref-forged-retained-shell
 printf '\nlocal edit\n' >>"$ROOT/usr/bin/bash"
-h2_refused "$(sha256sum <"$ROOT/$H2_SYSTEM")" 'installed shell differs from its authenticated old reference' \
+ref_refused "$(sha256sum <"$ROOT/$REF_SYSTEM")" 'installed shell differs from its authenticated old reference' \
     'installed bytes not proven'
 
-h2_case vapt-h2-digest-conflict
-python3 - "$ROOT/$H2_MIRROR" "$ROOT/$H2_SYSTEM" <<'PY'
+ref_case vapt-ref-digest-conflict
+python3 - "$ROOT/$REF_MIRROR" "$ROOT/$REF_SYSTEM" <<'PY'
 import json, sys
 from pathlib import Path
 mirror, system = Path(sys.argv[1]), Path(sys.argv[2])
@@ -386,6 +386,6 @@ repos = json.loads(mirror.read_text())
 repos['core'].append(dict(old, sha256sum='0' * 64))
 mirror.write_text(json.dumps(repos))
 PY
-h2_refused "$(sha256sum <"$ROOT/$H2_SYSTEM")" 'repository record digest changed during refresh' \
+ref_refused "$(sha256sum <"$ROOT/$REF_SYSTEM")" 'repository record digest changed during refresh' \
     'changed digest during refresh'
-vapt_tools_untouched 'H2 installed-version references'
+vapt_tools_untouched 'installed reference: installed-version references'

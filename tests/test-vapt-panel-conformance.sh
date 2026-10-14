@@ -1,13 +1,12 @@
 # shellcheck shell=bash
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Reuse the fixture boundary, but send real Qt keyboard events to production controls.
-source "$REPO/tests/test-vapt-security-ui.sh"
-if [[ $VAPT_QML_READY != true ]]; then
-    echo '  skip: Security keyboard/render conformance (all four named tests) not run; baseline engine prerequisites unavailable' >&2
-    return 0
-fi
+# Real Qt keyboard events and rendering against production controls, on the
+# fixture modules.
+sandbox vapt-panel-conformance
+source "$FIXTURES/vapt-qml-lib.sh"
 QML_TEST_BIN=${QML_TEST_BIN:-/usr/lib/qt6/bin/qmltestrunner}
-vapt_qml_available 'Security keyboard/render conformance (all four named tests)' "$QML_TEST_BIN" || return 0
+vapt_qml_available 'Security keyboard/render conformance' "$QML_TEST_BIN" || return 0
+vapt_qml_fixture
 # Render only into fixture directories; no theme activation, hooks or session access.
 (
     source "$HASEEN_PATH/lib/common.sh"
@@ -157,6 +156,22 @@ Item {
             verify(!!find(panel, i => i.text && i.text.indexOf("repo-status: fixture read refused") >= 0));
             panel.errors = {};
         }
+        function test_left_and_h_go_back() {
+            tryCompare(panel, "refreshing", false);
+            panel.choosePage(1); panel.inspect("nmap"); wait(0);
+            compare(win.activeFocusItem.text, "Choose exactly one owned entrypoint");
+            keyClick(Qt.Key_Left); compare(panel.view, "tool");
+            find(panel, i => i.text === "Choose entrypoint").forceActiveFocus();
+            keyClick(Qt.Key_H); compare(panel.view, "");
+            // In an editor both keys stay native, even where Left has
+            // nowhere to move.
+            panel.choosePage(3); panel.inspect("listener"); wait(0);
+            const port = find(panel, i => i.cursorPosition !== undefined && i.readOnly === false && i.text === "");
+            port.forceActiveFocus(); port.cursorPosition = 0;
+            keyClick(Qt.Key_Left); compare(panel.view, "endpoint");
+            keyClick(Qt.Key_H); compare(panel.view, "endpoint"); compare(port.text, "h");
+            panel.back();
+        }
         function test_keyboard_and_wrapping() {
             tryCompare(panel, "refreshing", false);
             panel.choosePage(3); panel.inspect("listener"); wait(0);
@@ -227,7 +242,7 @@ Item {
 EOF
 capture env QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic QML_IMPORT_PATH="$H/imports" QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML_TEST_BIN" -input "$H/Conformance.qml"
 assert_status 'real Qt keyboard and conformance runner exits' 0 "$STATUS"
-for case_name in test_all_list_surfaces test_anchor_and_certificate_submission test_contracts test_keyboard_and_wrapping; do
+for case_name in test_all_list_surfaces test_anchor_and_certificate_submission test_contracts test_left_and_h_go_back test_keyboard_and_wrapping; do
     assert_contains "keyboard conformance completes $case_name" "$OUTPUT" "PASS   : qmltestrunner::PanelConformance::$case_name()"
 done
 assert_eq 'conformance has no runtime errors or unsupported accessibility attachments' '' "$(grep -E 'TypeError:|ReferenceError:|Binding loop|Accessible attached property' <<<"$OUTPUT" || true)"
@@ -239,10 +254,10 @@ cat >"$H/fontconfig.xml" <<EOF
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig><dir>$H/empty-fonts</dir><cachedir>$H/font-cache</cachedir></fontconfig>
 EOF
-printf '  engine: Security fontless keyboard/render conformance (all four named tests) executing\n'
+printf '  engine: Security fontless keyboard/render conformance executing\n'
 capture env FONTCONFIG_FILE="$H/fontconfig.xml" QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic QML_IMPORT_PATH="$H/imports" QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML_TEST_BIN" -input "$H/Conformance.qml"
 assert_status 'fontless Qt keyboard and conformance runner exits' 0 "$STATUS"
-for case_name in test_all_list_surfaces test_anchor_and_certificate_submission test_contracts test_keyboard_and_wrapping; do
+for case_name in test_all_list_surfaces test_anchor_and_certificate_submission test_contracts test_left_and_h_go_back test_keyboard_and_wrapping; do
     assert_contains "fontless conformance completes $case_name" "$OUTPUT" "PASS   : qmltestrunner::PanelConformance::$case_name()"
 done
 assert_eq 'fontless conformance has no runtime errors or unsupported accessibility attachments' '' "$(grep -E 'TypeError:|ReferenceError:|Binding loop|Accessible attached property' <<<"$OUTPUT" || true)"

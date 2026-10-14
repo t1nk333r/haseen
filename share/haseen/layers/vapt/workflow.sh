@@ -1,13 +1,16 @@
 # shellcheck shell=bash
 # Shared read-only workflow adapter. Python observes metadata, not tools.
+# -I keeps the working directory (often a cloned exploit or loot directory),
+# PYTHON* variables and user site-packages out of the interpreter.
 vapt_workflow() {
     local command="$1"
     shift
     if [[ $command == menu ]]; then
-        /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow_menu.py" "$@"
-        return $?
+        # The menu guard reads configuration only and imports no inventory code.
+        /usr/bin/python3 -I -B "$HASEEN_PATH/layers/vapt/workflow_menu.py" "$@"
+    else
+        /usr/bin/python3 -I -B "$HASEEN_PATH/layers/vapt/workflow.py" "$command" "$@"
     fi
-    /usr/bin/python3 -B "$HASEEN_PATH/layers/vapt/workflow.py" "$command" "$@"
 }
 
 vapt_workflow_status() {

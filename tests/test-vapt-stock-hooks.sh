@@ -2,7 +2,7 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# Plan 007 review F1: the read-only transaction audit against a host carrying
+# Plan 007: the read-only transaction audit against a host carrying
 # the stock Arch maintenance hooks (systemd, glibc, fontconfig, desktop-file,
 # mime, glib schemas, texinfo). Fixture data only: hook Trigger/Exec lines
 # restate public package facts, helper scripts are original inert stand-ins,
@@ -74,7 +74,7 @@ EOF
 # Every package archive carries usr/, so 35-systemd-update is always relevant.
 stock_case vapt-stock-plain
 tool nmap 7.99-1
-review 'F1 ordinary tool passes with the stock systemd update hook relevant' 0
+review 'ordinary tool passes with the stock systemd update hook relevant' 0
 
 stock_case vapt-stock-maintenance
 tool nmap 7.99-1 'usr/share/applications/nmap.desktop=[Desktop Entry]' \
@@ -82,7 +82,7 @@ tool nmap 7.99-1 'usr/share/applications/nmap.desktop=[Desktop Entry]' \
     'usr/share/glib-2.0/schemas/org.nmap.gschema.xml=<schemalist/>' 'usr/share/info/nmap.info=info' \
     'usr/lib/sysusers.d/nmap.conf=u nmap - "fixture account"' 'etc/ld.so.conf.d/nmap.conf=/usr/lib/nmap' \
     'usr/share/fontconfig/conf.default/10-nmap.conf=<fontconfig/>'
-review 'F1 reviewed cache/database maintenance hooks allow a benign transaction' 0
+review 'reviewed cache/database maintenance hooks allow a benign transaction' 0
 
 # --- incoming activation, Omarchy and opaque commands stay rejected ----------
 stock_case vapt-stock-incoming-activation
@@ -266,6 +266,6 @@ tool nmap 7.99-1
 export VAPT_PLAN="$SANDBOX/plan.tsv" VAPT_ARCHIVES="$SANDBOX/archives"
 printf 'extra\tnmap\t7.99-1\thttps://geo.mirror.pkgbuild.com/extra/os/x86_64/nmap-7.99-1-x86_64.pkg.tar.gz\n' >"$VAPT_PLAN"
 vapt_api pacman extra/nmap
-assert_status 'F1 consumer: ordinary repository item installs under stock hooks' 0 "$STATUS"
-assert_contains 'F1 consumer: item reaches the reviewed commit' "$OUTPUT" 'STATE=installed'
+assert_status 'consumer: ordinary repository item installs under stock hooks' 0 "$STATUS"
+assert_contains 'consumer: item reaches the reviewed commit' "$OUTPUT" 'STATE=installed'
 vapt_tools_untouched 'stock consumer'
