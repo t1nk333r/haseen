@@ -40,12 +40,12 @@ gpu-screen-recorder          # haseen capture screenrecord (drives the red priva
 tesseract                    # haseen capture text (OCR)
 tesseract-data-eng           # OCR language data
 tesseract-data-ara           # Arabic OCR; -l ara+eng is what mixed screen text needs
-satty                        # annotation editor for haseen capture screenshot --edit
 zbar                         # haseen capture qr
 libnotify                    # notify-send for capture/reminder/toggle feedback
 hyprsunset                   # night light (haseen.nightlight)
 aur:ttfx                     # Omarchy's screensaver text effects, Rust port (owner choice over python tte)
 aur:bibata-cursor-theme      # cursor Bibata-Modern-Ice (owner's luna default); prebuilt in Chaotic-AUR
+aur:tensaku                  # annotation editor for haseen capture screenshot --edit; prebuilt in [omarchy] (owner, 2026-10-14)
 power-profiles-daemon        # haseen powerprofile {list,set}: AC vs battery profile
 lsp-plugins-lv2              # lookahead limiter every speaker tuning ends in (haseen audio tuning)
 fcitx5                       # input method: Arabic and English on one key

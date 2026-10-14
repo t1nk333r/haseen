@@ -1,27 +1,27 @@
 # shellcheck shell=bash
-# Capture: the satty annotation editor and the uploader's credentials file.
+# Capture: the Tensaku annotation editor and the uploader's credentials file.
 # Sourced by bin/haseen-seed-user, which defines DEFAULTS, CONFIG and COMPOSE
 # and calls seed_main once.
 #
-# haseen:seed $CONFIG/satty/config.toml|annotation editor settings
-# haseen:seed $CONFIG/satty/overrides.css|link to the theme pipeline's editor colours
+# haseen:seed $CONFIG/tensaku/config.toml|annotation editor settings
+# haseen:seed $CONFIG/tensaku/overrides.css|link to the theme pipeline's editor colours
 # haseen:seed $CONFIG/haseen/upload.toml|upload backends and their credentials
 #
-# satty's config.toml is TOML and cannot include another file, so the colours
-# cannot live there: satty reads $XDG_CONFIG_HOME/satty/overrides.css as plain
-# CSS instead (Satty 0.22.0 src/main.rs read_css_overrides). The link to the
-# theme render is the same shape 10-btop.sh uses for btop's theme, and it makes
-# `haseen theme set` restyle the editor with everything else. A render that is
-# not there yet leaves a dangling link, which satty treats exactly as "no
-# overrides" and falls back to its built-in CSS.
+# Tensaku's config.toml is TOML and cannot include another file, so the
+# colours cannot live there: Tensaku reads $XDG_CONFIG_HOME/tensaku/overrides.css
+# as plain CSS instead (Tensaku 0.29.0 src/main.rs read_css_overrides). The link
+# to the theme render is the same shape 10-btop.sh uses for btop's theme, and it
+# makes `haseen theme set` restyle the editor with everything else. A render
+# that is not there yet leaves a dangling link, which Tensaku treats exactly as
+# "no overrides" (it checks Path::exists) and falls back to its built-in CSS.
 seed_main() {
-    seed_user_file "$DEFAULTS/satty/config.toml" "$CONFIG/satty/config.toml"
+    seed_user_file "$DEFAULTS/tensaku/config.toml" "$CONFIG/tensaku/config.toml"
 
-    local link="$CONFIG/satty/overrides.css"
-    local target="$HASEEN_USER_STATE/current/theme/satty.css"
+    local link="$CONFIG/tensaku/overrides.css"
+    local target="$HASEEN_USER_STATE/current/theme/tensaku.css"
     # -L too: a dangling link is still the user's (no theme applied yet).
     if [[ ! -e $link && ! -L $link ]]; then
-        run mkdir -p "$CONFIG/satty"
+        run mkdir -p "$CONFIG/tensaku"
         run ln -snf "$target" "$link"
     fi
 

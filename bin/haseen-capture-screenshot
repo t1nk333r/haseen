@@ -27,7 +27,7 @@ Options:
   --format FMT          png (default), jpg or ppm
   --quality N           JPEG quality 1-100 (default 90)
   --cursor              include the pointer
-  --edit                annotate in satty (or swappy) before anything is kept
+  --edit                annotate in Tensaku (or swappy) before anything is kept
   --upload              upload the result and copy the link (haseen upload)
   --upload-to BACKEND   upload with this backend (implies --upload)
   --stdout              write the image to stdout; nothing is saved, copied or announced
@@ -37,9 +37,9 @@ Options:
   --dry-run             print the plan
 
 With --edit, what the editor saves is what is kept, copied and uploaded. In
-satty, Enter saves; Escape cancels the capture, and nothing is saved, copied
-or uploaded. swappy saves whenever it closes. Both editors write PNG only, so
---edit takes no other --format. --edit --upload ends with the link on the
+Tensaku, Enter saves; Escape cancels the capture, and nothing is saved, copied
+or uploaded. swappy saves whenever it closes. --edit keeps PNG only, so it
+takes no other --format. --edit --upload ends with the link on the
 clipboard.
 
 Files go to \$HASEEN_SCREENSHOT_DIR or \$(xdg-user-dir PICTURES).
@@ -112,10 +112,10 @@ if [[ ! $quality =~ ^[0-9]+$ ]] || ((quality < 1 || quality > 100)); then
     echo "Error: --quality wants 1-100, got: $quality" >&2
     exit 2
 fi
-# satty refuses to save under a name not ending in .png and swappy writes PNG
-# bytes whatever the name (Satty 0.22.0 handle_save, swappy pixbuf.c).
+# The editor writes a private edited.png, and swappy writes PNG bytes whatever
+# the name (swappy pixbuf.c), so an edited shot is PNG under either editor.
 if $edit && [[ $format != png ]]; then
-    echo "Error: --edit saves PNG only (satty and swappy write nothing else); drop --format $format" >&2
+    echo "Error: --edit saves PNG only; drop --format $format" >&2
     exit 2
 fi
 if $stdout; then
@@ -183,12 +183,12 @@ fi
 
 editor=""
 if $edit; then
-    if have satty; then
-        editor=satty
+    if have tensaku; then
+        editor=tensaku
     elif have swappy; then
         editor=swappy
     else
-        warn "neither satty nor swappy is installed; saving without editing"
+        warn "neither tensaku nor swappy is installed; saving without editing"
     fi
 fi
 
@@ -216,11 +216,13 @@ shot="$work/${file##*/}"
 if $save; then shot=$file; fi
 
 # The editor writes to a second file, so "saved" and "left without saving"
-# differ. satty's own Enter (the seeded save-to-clipboard) copies without
-# writing a file, so Enter is made a save here; Escape writes nothing.
+# differ. Tensaku's own Enter (the seeded save-to-clipboard) copies without
+# writing a file, so Enter is made a save here, and Escape is made an exit:
+# Tensaku's default keeps the window open on Escape, and a user's config may
+# not set it. --early-exit closes the window after the save.
 edit_cmd=()
 case $editor in
-satty) edit_cmd=(satty --filename "$original" --output-filename "$edited" --actions-on-enter save-to-file --early-exit --copy-command wl-copy) ;;
+tensaku) edit_cmd=(tensaku --filename "$original" --output-filename "$edited" --actions-on-enter save-to-file --actions-on-escape exit --early-exit --copy-command wl-copy) ;;
 swappy) edit_cmd=(swappy -f "$original" -o "$edited") ;;
 esac
 

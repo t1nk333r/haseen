@@ -18,7 +18,7 @@ cap_sandbox() {
     : >"$CALLS"
     : >"$CALLS_STDIN"
     export CALLS CALLS_STDIN
-    export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404 CURL_PROBE_RC=0 SATTY_KEY=escape
+    export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404 CURL_PROBE_RC=0 EDITOR_KEY=escape
     stub notify-send 'echo "notify-send $*" >>"$CALLS"'
     stub wl-copy 'printf "wl-copy %s: " "$*" >>"$CALLS"; cat >>"$CALLS"; echo >>"$CALLS"'
     stub xdg-user-dir 'echo "$HOME/$1"'
@@ -33,22 +33,27 @@ for a in "$@"; do prev=$a; done
 if [ -n "$out" ]; then printf PNG >"$out"; else printf PNG; fi'
     stub slurp 'echo "0,0 100x100"'
     stub hyprpicker 'echo "hyprpicker $*" >>"$CALLS"; sleep 2'
-    # satty 0.22.0 as far as the capture relies on it: SATTY_KEY=enter runs
-    # --actions-on-enter, else the seeded config's save-to-clipboard, and a
-    # file is written only by save-to-file (or a copy with --save-after-copy)
-    # and only to a .png name. Escape (the default) writes nothing.
-    stub satty 'echo "satty $*" >>"$CALLS"
-in=""; out=""; enter=save-to-clipboard; after_copy=""; save=""; prev=""
+    # Tensaku 0.29.0 as far as the capture relies on it (src/sketch_board.rs
+    # handle_save and the Escape/Enter handler): EDITOR_KEY=enter runs
+    # --actions-on-enter, else the seeded config's save-to-clipboard;
+    # EDITOR_KEY=escape (the default) runs --actions-on-escape, which is empty
+    # by default. A file is written only by save-to-file (or a copy with
+    # --save-after-copy). Escape without an exit action leaves the window
+    # open, which the stub records as "still open" before the user closes it.
+    stub tensaku 'echo "tensaku $*" >>"$CALLS"
+in=""; out=""; enter=save-to-clipboard; escape=""; after_copy=""; save=""; prev=""
 for a in "$@"; do
-  case $prev in --filename) in=$a ;; --output-filename) out=$a ;; --actions-on-enter) enter=$a ;; esac
+  case $prev in --filename) in=$a ;; --output-filename) out=$a ;; --actions-on-enter) enter=$a ;; --actions-on-escape) escape=$a ;; esac
   [ "$a" = --save-after-copy ] && after_copy=1
   prev=$a
 done
-printf "satty-input: %s\n" "$(cat "$in")" >>"$CALLS"
-if [ "${SATTY_KEY:-escape}" = enter ]; then
+printf "tensaku-input: %s\n" "$(cat "$in")" >>"$CALLS"
+if [ "${EDITOR_KEY:-escape}" = enter ]; then
   case $enter in *save-to-file*) save=1 ;; *save-to-clipboard*) save=$after_copy ;; esac
+else
+  case $escape in *exit*) ;; *) echo "tensaku: still open after Escape" >>"$CALLS" ;; esac
 fi
-case $out in *.png) [ -n "$save" ] && printf ANNOTATED >"$out" ;; esac
+[ -n "$out" ] && [ -n "$save" ] && printf ANNOTATED >"$out"
 exit 0'
     stub rclone 'echo "rclone $*" >>"$CALLS"; [ "$1" = link ] && echo "https://r2.example.com/shot.png"; exit 0'
     # Like the real one, it reads the whole picture before it answers when
@@ -734,13 +739,13 @@ else
 fi
 
 # --- annotate, then keep, copy and upload exactly what the editor saved ------
-# grim writes "PNG"; the satty stub saves "ANNOTATED" when SATTY_KEY=enter.
+# grim writes "PNG"; the tensaku stub saves "ANNOTATED" when EDITOR_KEY=enter.
 shots() { find "$HOME/PICTURES" -type f 2>/dev/null; }
 cap_sandbox shot-plan
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload --dry-run
 assert_status "the annotate-then-upload plan exits 0" 0 "$STATUS"
 assert_dry_pure "annotate-then-upload plan" "$OUTPUT"
-assert_contains "the editor is planned" "$OUTPUT" "DRYRUN: satty --filename"
+assert_contains "the editor is planned" "$OUTPUT" "DRYRUN: tensaku --filename"
 assert_contains "the saved file is planned for upload" "$OUTPUT" "DRYRUN: haseen-upload $HOME/PICTURES/screenshot-"
 capture haseen capture screenshot --geometry "0,0 10x10" --upload-to uguu --dry-run
 assert_contains "--upload-to passes the backend through" "$OUTPUT" "--backend uguu"
@@ -748,10 +753,10 @@ capture haseen capture screenshot --geometry "0,0 10x10" --edit --format jpg --d
 assert_status "--edit takes no other format than PNG (the editors write PNG only)" 2 "$STATUS"
 
 cap_sandbox shot-enter
-export CURL_BODY="https://files.catbox.moe/zz.png" SATTY_KEY=enter
+export CURL_BODY="https://files.catbox.moe/zz.png" EDITOR_KEY=enter
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload
 assert_status "annotate then upload succeeds" 0 "$STATUS"
-assert_eq "satty edits the capture" "satty-input: PNG" "$(grep '^satty-input:' "$CALLS")"
+assert_eq "Tensaku edits the capture" "tensaku-input: PNG" "$(grep '^tensaku-input:' "$CALLS")"
 assert_eq "Enter saves the annotated picture" ANNOTATED "$(cat "$(shots)")"
 assert_eq "the upload sends the annotated picture" "curl-file: ANNOTATED" "$(grep '^curl-file:' "$CALLS")"
 assert_eq "the clipboard gets the annotated picture, then the link" \
@@ -761,7 +766,8 @@ assert_eq "the file and then the link are printed" "$(shots)|https://files.catbo
 cap_sandbox shot-escape
 export CURL_BODY="https://files.catbox.moe/zz.png"
 capture haseen capture screenshot --geometry "0,0 10x10" --edit --upload
-assert_status "leaving satty without saving is not an error" 0 "$STATUS"
+assert_status "leaving Tensaku without saving is not an error" 0 "$STATUS"
+assert_not_contains "Escape closes Tensaku, whose own default keeps it open" "$(calls)" "still open after Escape"
 assert_eq "Escape: nothing is printed" "" "$OUTPUT"
 assert_not_contains "Escape: nothing is uploaded" "$(calls)" "curl"
 assert_eq "Escape: nothing is copied" "" "$(grep '^wl-copy' "$CALLS")"
@@ -790,23 +796,42 @@ export HASEEN_SYSROOT="$FIXTURES/seeds-plain"
 capture haseen seed user --dry-run
 assert_status "the seed dry run succeeds" 0 "$STATUS"
 assert_dry_pure "capture seed dry run" "$OUTPUT"
-assert_contains "satty's config is planned" "$OUTPUT" "DRYRUN: seed $HOME/.config/satty/config.toml"
-assert_contains "satty's colours are linked to the theme pipeline" "$OUTPUT" \
-    "DRYRUN: ln -snf $HOME/.local/state/haseen/current/theme/satty.css $HOME/.config/satty/overrides.css"
+assert_contains "Tensaku's config is planned" "$OUTPUT" "DRYRUN: seed $HOME/.config/tensaku/config.toml"
+assert_contains "Tensaku's colours are linked to the theme pipeline" "$OUTPUT" \
+    "DRYRUN: ln -snf $HOME/.local/state/haseen/current/theme/tensaku.css $HOME/.config/tensaku/overrides.css"
 assert_contains "the uploader's credentials file is planned" "$OUTPUT" \
     "DRYRUN: write $HOME/.config/haseen/upload.toml"
 assert_contains "and it is planned as 0600" "$OUTPUT" "DRYRUN: chmod 600 $HOME/.config/haseen/upload.toml"
 capture haseen seed user
 assert_status "seeding succeeds" 0 "$STATUS"
 assert_eq "the overrides link points at the theme render" \
-    "$HOME/.local/state/haseen/current/theme/satty.css" \
-    "$(readlink "$HOME/.config/satty/overrides.css")"
+    "$HOME/.local/state/haseen/current/theme/tensaku.css" \
+    "$(readlink "$HOME/.config/tensaku/overrides.css")"
 assert_eq "the credentials file is private" "600" "$(stat -c '%a' "$HOME/.config/haseen/upload.toml")"
 assert_eq "the credentials file holds no credential" "" \
     "$(grep -vE '^[[:space:]]*(#|$)' "$HOME/.config/haseen/upload.toml")"
-assert_contains "satty copies with wl-copy" "$(cat "$HOME/.config/satty/config.toml")" 'copy-command = "wl-copy"'
-assert_contains "satty's palette is high contrast, not theme-derived" \
-    "$(cat "$HOME/.config/satty/config.toml")" '"#eb4d4bff"'
+assert_contains "Tensaku copies with wl-copy" "$(cat "$HOME/.config/tensaku/config.toml")" 'copy-command = "wl-copy"'
+assert_contains "Tensaku's palette is high contrast, not theme-derived" \
+    "$(cat "$HOME/.config/tensaku/config.toml")" '"#eb4d4bff"'
+# Tensaku exits 3 on a config with an unknown key or a wrong type, so the
+# seeded file is loaded by the real binary where it is installed. --doctor
+# reads the config and exits before any window; the environment has no
+# display, no session bus and its own home, so nothing reaches a session.
+if [[ -x /usr/bin/tensaku ]]; then
+    seeded="$HOME/.config/tensaku/config.toml"
+    probe="$SANDBOX/tensaku-probe"
+    mkdir -p "$probe/home/.config/tensaku"
+    mkdir -m 700 "$probe/run"
+    cp "$seeded" "$probe/home/.config/tensaku/config.toml"
+    capture env -i PATH=/usr/bin HOME="$probe/home" XDG_CONFIG_HOME="$probe/home/.config" \
+        XDG_STATE_HOME="$probe/home/.state" XDG_DATA_HOME="$probe/home/.data" XDG_CACHE_HOME="$probe/home/.cache" \
+        XDG_RUNTIME_DIR="$probe/run" DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent \
+        timeout 15 /usr/bin/tensaku --doctor
+    assert_status "the installed Tensaku loads the seeded config" 0 "$STATUS"
+    assert_eq "and leaves it as seeded" "$(cat "$seeded")" "$(cat "$probe/home/.config/tensaku/config.toml")"
+else
+    echo "  skip: tensaku not installed; the seeded config was not loaded by it" >&2
+fi
 capture haseen seed user --dry-run
 assert_not_contains "a second plan is empty" "$OUTPUT" "DRYRUN"
 # The file is private from the moment it exists, not only after the chmod:

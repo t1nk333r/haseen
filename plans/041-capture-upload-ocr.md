@@ -8,7 +8,7 @@
 - **Depends on**: 004 018
 - **Category**: cli
 - **Planned at**: 2026-10-05, owner request (items 18 and 19)
-- **State**: DONE 2026-10-05
+- **State**: DONE 2026-10-05; editor switched from satty to Tensaku 2026-10-14
 
 ## Problem
 
@@ -69,35 +69,58 @@ by default, issue #8014, closed "not planned"), and **0x0.st** returns `503`,
 - **What the editor saves is what is kept, copied and uploaded.** grim writes
   the capture to a private `mktemp -d` directory
   (`bin/haseen-capture-screenshot:207`), and the editor writes the annotated
-  picture to a second file in it: satty runs with
+  picture to a second file in it: Tensaku runs with
   `--output-filename <dir>/edited.png --actions-on-enter save-to-file
-  --early-exit` (`:223`). The seeded config's Enter is `save-to-clipboard`,
-  which copies and exits without writing a file, so without the override the
-  capture would keep, copy and upload the unannotated original.
-- **No saved file means cancelled** (`:249`): after Escape nothing is saved,
+  --actions-on-escape exit --early-exit` (`:225`). The seeded config's Enter is
+  `save-to-clipboard`, which copies and exits without writing a file, so
+  without the override the capture would keep, copy and upload the
+  unannotated original. Tensaku's own Escape default keeps the window open
+  (`close-on-esc` false, `src/sketch_board.rs` Escape handler), so Escape is
+  given the exit action on the command line, whatever the user's config says.
+- **No saved file means cancelled** (`:251`): after Escape nothing is saved,
   copied or uploaded, and the command exits 0, as for an empty selection.
   Ctrl+S saves like Enter. Ctrl+C (copy and leave) and Ctrl+Shift+S (save
   where the user picks) leave no file either, so they also count as
-  cancelled; the user's own copy stays on the clipboard
-  (`/usr/share/doc/satty/README.md`, Shortcuts).
+  cancelled; the user's own copy stays on the clipboard (Tensaku 0.29.0
+  `README.md`, Keyboard shortcuts).
 - **Unsaved shots keep their name.** With `--no-save` the file is uploaded
   under the name it would have been saved as (`:215`), which is the name an
   upload host or an rclone bucket keeps.
 - **The temporary directory goes on every exit** (EXIT trap, `:208`), a
   failed upload included.
-- **PNG only.** satty refuses to save under a name not ending in `.png` and
-  swappy writes PNG bytes whatever the name (Satty 0.22.0 `handle_save`,
-  swappy `src/pixbuf.c` `write_file`), so `--edit` with `--format jpg|ppm` is
+- **PNG only.** Tensaku writes the format the output name's extension names,
+  so `edited.png` is PNG, and swappy writes PNG bytes whatever the name
+  (swappy `src/pixbuf.c` `write_file`), so `--edit` with `--format jpg|ppm` is
   a usage error (`:117`).
 - **Upload last**, so the link replaces the annotated image on the clipboard.
 
+### The editor: Tensaku
+
+Owner decision (owner, 2026-10-14): Tensaku replaces satty, as it did in
+Omarchy (Omarchy migration `1781286586.sh`, "Replace Satty with Tensaku").
+Tensaku is a Satty fork under the same licence (MPL-2.0, its `NOTICE`), with
+the same command-line flags and shortcuts. It is `aur:tensaku` in the desktop
+layer: prebuilt in `[omarchy]` (`omarchy/tensaku 0.29.0-1`), which haseen
+tries before the AUR, where its upstream maintainer publishes `tensaku`.
+
+Its config differs where it matters. Tensaku 0.29.0 rejects an unknown key
+or a wrong type and exits 3 (`src/configuration.rs`, `deny_unknown_fields`
+and `Configuration::load`): haseen's satty config failed with `unknown field
+default-round-caps`. `early-exit` is a boolean there, replaced by
+`close-on-copy`/`close-on-save`; Escape needs an explicit `exit` action; and a
+new spotlight tool takes `g` by default, which haseen's highlight already
+uses, so spotlight is `s` (`share/haseen/default/tensaku/config.toml`).
+
 ### Theming the editor
 
-satty is themed through `~/.config/satty/overrides.css`, linked to the theme
-render (`share/haseen/themed/satty.css.tpl` → `current/theme/satty.css`),
-because satty's `config.toml` is TOML and cannot include another file.
-Satty 0.22.0 reads the CSS if it exists and prints one stderr line
-otherwise, so a dangling link before the first theme is harmless. The
+Tensaku is themed through `~/.config/tensaku/overrides.css`, linked to the
+theme render (`share/haseen/themed/tensaku.css.tpl` →
+`current/theme/tensaku.css`), because its `config.toml` is TOML and cannot
+include another file. Tensaku 0.29.0 reads the CSS only when the path exists
+(`src/main.rs` `read_css_overrides`), so a dangling link before the first
+theme is harmless. The template uses the classes of Tensaku's
+`src/assets/default.css` (`outer_box`, `bottom_row`, `toolbar`, `toast`); the
+selected tool is a checked GTK toggle button. The
 annotation palette stays static and high-contrast: annotations are drawn on a
 picture of the themed screen, so theme-derived arrow colours would be the one
 thing on the shot you cannot see.
@@ -142,8 +165,9 @@ rule the other seeds follow.
 
 ### Owner decision
 
-D6 (owner, 2026-10-08): `satty` and `tesseract-data-ara` are desktop-layer
-defaults, recorded in `AGENTS.md`.
+`tesseract-data-ara` and the annotation editor are desktop-layer defaults
+(owner, 2026-10-08), recorded in `AGENTS.md`; the editor is Tensaku since
+2026-10-14 (owner), satty before.
 
 ## Rejected
 
@@ -154,17 +178,19 @@ defaults, recorded in `AGENTS.md`.
 | litterbox | endpoint and fields `[UNVERIFIED]` (403 from this network; fields came from a third-party crate). uguu (3 h) and temp.sh (3 d) were verified live |
 | Bing / Yandex / TinEye / SauceNAO for the upload path | Bing needs base64 `imageBin`; Yandex and TinEye need a publicly hosted URL or a session; SauceNAO refuses anonymous API use. Lens is the only keyless file upload that works end to end. They stay available through the clipboard hand-off |
 | autopaste into the browser (the owner's reference plugin uses `wtype`) | haseen never injects keystrokes into the live session (handoff.md working rules) |
-| `themed/satty.toml.tpl` | satty would have to be launched with `-c <render>`, bypassing the user's own `config.toml`, which is theirs after seeding |
+| keep satty | Omarchy dropped it for Tensaku (migration `1781286586.sh`); owner decision 2026-10-14 |
+| Omarchy's `tensaku-edit` wrapper | it edits in place (`--filename F --output-filename F`) with Enter as `save-to-clipboard` plus `--save-after-copy`: the two shapes rejected below |
+| `themed/tensaku.toml.tpl` | Tensaku would have to be launched with `-c <render>`, bypassing the user's own `config.toml`, which is theirs after seeding |
 | `--dpi 300` | measured to merge words at native resolution |
-| satty editing the capture in place (`--filename F --output-filename F`) | "saved" and "left" cannot be told apart, satty refuses a non-`.png` name, and it expands strftime `%` in `--output-filename` (Satty 0.22.0 `resolve_output_filename`) |
-| keep satty's Enter (`save-to-clipboard`) and add `--save-after-copy` | a config with `auto-copy` copies, and so saves, on every change: Escape would still leave a file to upload |
+| the editor editing the capture in place (`--filename F --output-filename F`) | "saved" and "left" cannot be told apart, and Tensaku expands strftime `%` in `--output-filename` (`resolve_output_filename`) |
+| keep the editor's Enter (`save-to-clipboard`) and add `--save-after-copy` | a config with `auto-copy` copies, and so saves, on every change (`src/sketch_board.rs` auto-copy and `save_after_copy`): Escape would still leave a file to upload |
 | on Escape, keep the unannotated original (save and copy, no upload) | it is the picture the user was redacting; putting it on the clipboard repeats the leak locally |
 | 0x0 response headers in a file in a private directory | `-D -` keeps them in memory, with nothing to clean up |
 | open any `*.google.com` results URL | the verified answer is `https://www.google.com/search?…`; a narrower set fails closed if Google changes it |
 
 ## Verification
 
-`tests/test-capture-upload.sh` (360 assertions) against stubs; every network
+`tests/test-capture-upload.sh` (363 assertions) against stubs; every network
 call goes to a curl stub that records argv, stdin and the bytes of each file
 part.
 
@@ -185,14 +211,19 @@ part.
   target (failed with "mode 777" before). `upload-0x0` asserts no header file
   is written (failed before: the headers went to `mktemp` in `/tmp`).
 - `shot-plan`: `--edit` with `--format jpg` is a usage error.
-  `shot-enter`: satty is given the capture, and the saved file, the clipboard
-  image and the uploaded bytes are all the annotated picture, the link last on
-  the clipboard. `shot-escape`: nothing printed, copied, uploaded or saved.
-  `shot-temp`: `--no-save --upload` (succeeding and failing) and a cancelled
-  `--edit --no-save` leave nothing in `TMPDIR`. The satty stub models Satty
-  0.22.0: Enter runs `--actions-on-enter` or the seeded `save-to-clipboard`,
-  and a file is written only by `save-to-file` (or a copy with
-  `--save-after-copy`) to a `.png` name. 11 of these failed before.
+  `shot-enter`: Tensaku is given the capture, and the saved file, the
+  clipboard image and the uploaded bytes are all the annotated picture, the
+  link last on the clipboard. `shot-escape`: nothing printed, copied, uploaded
+  or saved, and Escape closes the editor (`:770`; fails when the command drops
+  `--actions-on-escape exit`). `shot-temp`: `--no-save --upload` (succeeding
+  and failing) and a cancelled `--edit --no-save` leave nothing in `TMPDIR`.
+  The stub models Tensaku 0.29.0: Enter runs `--actions-on-enter` or the
+  seeded `save-to-clipboard`, Escape runs only `--actions-on-escape`, and a
+  file is written only by `save-to-file` (or a copy with `--save-after-copy`).
+- `capture-seed` (`:830`): where Tensaku is installed, the seeded config is
+  loaded by the real binary with `tensaku --doctor` in an environment with no
+  display, no session bus and its own home; it must exit 0 and leave the file
+  as seeded. The satty config exits 3 there. CI has no Tensaku and skips it.
 - `search-lens`: the Lens curl starts `curl -q --proto =https --proto-redir
   =https`, sends the capture's bytes, and opens the results URL;
   `search-lens-location` refuses `http://`, other hosts,
@@ -204,7 +235,7 @@ part.
   writing nothing.
 - `tests/test-seeds.sh:143`: a dangling `upload.toml` link is left a link and
   nothing is written through it (failed before).
-- `tests/test-theme.sh` renders `satty.css` with resolved colours and no
+- `tests/test-theme.sh` renders `tensaku.css` with resolved colours and no
   placeholder.
 
 ## Open
@@ -212,13 +243,14 @@ part.
 - The uploader was exercised against stubs and a local receiver, not against
   a real XBackBone instance; the owner has one, haseen does not. The Lens path
   was verified end to end for its request and redirect shape on 2026-10-05.
-- satty is not run by the tests (they never touch the live session); its
-  Enter, save and `.png` rules are taken from the Satty 0.22.0 source and
-  `satty --help`.
+- Tensaku's window is not opened by the tests (they never touch the live
+  session); its Enter, Escape and save rules are taken from the Tensaku 0.29.0
+  source (`src/sketch_board.rs`, `src/configuration.rs`) and `man tensaku`.
+  The themed chrome was not seen on screen.
 - swappy writes its `-o` file whenever it closes, Escape included, so with
   swappy an `--edit` cannot be cancelled.
-- A user config that sets both `auto-copy` and `save-after-copy` makes satty
-  save on every change, so Escape would still leave a file.
+- A user config that sets both `auto-copy` and `save-after-copy` makes
+  Tensaku save on every change, so Escape would still leave a file.
 - The foreign-owned capture dir case needs a subordinate uid
   (`unshare --map-auto`) and is skipped where none is available. util-linux's
   `--map-auto` helper waits forever when `unshare(2)` is refused, so the probe
@@ -229,8 +261,8 @@ part.
 ## Execution record
 
 `bin/haseen-upload`, `bin/haseen-search-screen`, `bin/haseen-capture-text`,
-`bin/haseen-capture-screenshot`, `share/haseen/default/satty/config.toml`,
-`share/haseen/themed/satty.css.tpl`, `share/haseen/seeds/80-capture.sh`,
+`bin/haseen-capture-screenshot`, `share/haseen/default/tensaku/config.toml`,
+`share/haseen/themed/tensaku.css.tpl`, `share/haseen/seeds/80-capture.sh`,
 `share/haseen/layers/desktop/packages.txt`, `tests/test-capture-upload.sh`,
 `tests/test-seeds.sh`, `tests/test-trigger.sh`, `tests/test-theme.sh`,
 `share/haseen/layers/theme/theme-lib.sh`,

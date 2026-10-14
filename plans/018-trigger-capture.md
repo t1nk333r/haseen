@@ -19,7 +19,7 @@ These are the Trigger groups the owner chose. Screen recording also drives the r
 **What changed** (Omarchy MIT adaptations are credited in each file header):
 
 - **Capture.**
-  - `bin/haseen-capture-screenshot`: modes region, window, output and screen. `--geometry "X,Y WxH"` skips slurp. Also takes `--edit` (satty, else swappy), `--no-save` and `--no-copy`. Files go to `$(xdg-user-dir PICTURES)`.
+  - `bin/haseen-capture-screenshot`: modes region, window, output and screen. `--geometry "X,Y WxH"` skips slurp. Also takes `--edit` (satty, else swappy; Tensaku in place of satty since 2026-10-14, plan 041), `--no-save` and `--no-copy`. Files go to `$(xdg-user-dir PICTURES)`.
   - `bin/haseen-capture-screenrecord`: the same command starts and stops.
     - A detached supervisor (`setsid -f "$0" --supervise`) runs gpu-screen-recorder. It writes `flags/recording` and keeps an EXIT trap that removes the flag however the recorder ends.
     - The supervisor uses `set -m`. Without job control, bash starts background jobs with SIGINT ignored, and the stub recorder never saw the stop signal.

@@ -1,9 +1,13 @@
-# haseen's satty defaults. Seeded once to ~/.config/satty/config.toml; after
-# that the file is yours and haseen never touches it again.
+# haseen's Tensaku defaults. Seeded once to ~/.config/tensaku/config.toml;
+# after that the file is yours and haseen never touches it again (Tensaku's own
+# Preferences dialog writes to it too).
 #
-# Satty is the annotation editor behind `haseen capture screenshot --edit`
-# (extra/satty 0.22.0-1). Colours of the window chrome are not here: satty
-# reads ~/.config/satty/overrides.css for those, and the seed links that to
+# Tensaku is the annotation editor behind `haseen capture screenshot --edit`
+# ([omarchy]/tensaku 0.29.0, a Satty fork that replaced Satty in Omarchy). It
+# refuses a config with an unknown key or a wrong type and exits, so only keys
+# of its 0.29.0 parser are used here (src/configuration.rs
+# ConfigurationFileGeneral). Colours of the window chrome are not here: Tensaku
+# reads ~/.config/tensaku/overrides.css for those, and the seed links that to
 # the theme pipeline's render, so `haseen theme set` restyles the editor too.
 #
 # The annotation palette is not theme-derived: annotations are drawn on a
@@ -12,16 +16,18 @@
 
 [general]
 # Enter copies and leaves; Escape leaves. One keystroke each, like ShareX.
-# `haseen capture screenshot --edit` makes Enter save instead, so what it
-# keeps, copies and uploads is what you annotated; Escape cancels the capture.
+# Tensaku's own default keeps the window open on Escape (close-on-esc false),
+# so Escape is given the exit action. `haseen capture screenshot --edit` makes
+# Enter save instead, so what it keeps, copies and uploads is what you
+# annotated; Escape cancels the capture.
 actions-on-enter = ["save-to-clipboard"]
 actions-on-escape = ["exit"]
-early-exit = ["all"]
+close-on-copy = true
+close-on-save = true
 copy-command = "wl-copy"
 # The tool people reach for first on a screenshot is an arrow, not a brush.
 initial-tool = "arrow"
 corner-roundness = 12
-default-round-caps = true
 # CTRL at the start of a highlight gives the freehand one.
 primary-highlighter = "block"
 # haseen already notifies from the capture command; a second toast is clutter.
@@ -44,10 +50,12 @@ text = "t"
 marker = "m"
 blur = "u"
 highlight = "g"
+# Tensaku's default for spotlight is g, which highlight takes above.
+spotlight = "s"
 
 [font]
 # The shell's UI font (desktop layer: inter-font), with the Arabic face the
-# fontconfig rules pick and the emoji font as fallbacks. Satty has no fallback
+# fontconfig rules pick and the emoji font as fallbacks. Tensaku has no fallback
 # chain of its own beyond this list.
 family = "Inter"
 style = "Regular"
