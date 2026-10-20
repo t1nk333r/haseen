@@ -54,7 +54,8 @@ unmodified with their `NOTICE` and `LICENSE-APACHE`.
   them reported an active download or the panel is open; upstream polled them
   every 2 s all the time (architecture 6). A job that starts and ends within
   one regular poll (`pollSeconds`) gets no card, but still its finished or
-  failed notification.
+  failed notification. The regular poll ticks every 5 s towards
+  `pollSeconds`, so a cadence that is not a multiple of 5 rounds up.
 - **Opening.** Services and items open with `xdg-open` through `Apps.launch`,
   outside the shell's cgroup. haseen has no web-app launcher yet, so media
   pages open in the default browser instead of `omarchy-launch-webapp`.

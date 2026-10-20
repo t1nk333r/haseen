@@ -66,6 +66,7 @@ Item {
         id: placeholderDelay
 
         interval: 90
+        repeat: false
         onTriggered: root.showPlaceholder = true
     }
 

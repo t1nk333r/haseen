@@ -40,6 +40,7 @@ Scope {
     readonly property bool debugIpc: settings.debugIpc === true
 
     property bool panelOpen: false
+    property int pollElapsed: 0 // seconds towards the next regular poll
     property bool scanning: false
     property var scanResults: []
     property var credentials: ({})
@@ -1380,14 +1381,21 @@ Scope {
         }
     }
 
-    // The poll at the configured cadence (pollSeconds, at least 5 s).
+    // The poll at the configured cadence (pollSeconds, at least 5 s): a
+    // fixed 5 s tick counts towards it, because the timer rule wants a
+    // literal interval (a cadence that is not a multiple of 5 rounds up).
     // haseen:sample
     Timer {
-        // The 5 s floor first, as a literal the timer check can read.
-        interval: 5000 + (Math.max(5, root.pollSeconds) - 5) * 1000
+        interval: 5000
         running: root.dirsReady
         repeat: true
-        onTriggered: root.forcePoll()
+        onTriggered: {
+            root.pollElapsed += 5;
+            if (root.pollElapsed < Math.max(5, root.pollSeconds))
+                return;
+            root.pollElapsed = 0;
+            root.forcePoll();
+        }
     }
 
     // A faster full poll while the panel is open.
