@@ -266,6 +266,7 @@ Column {
         id: armTimer
 
         interval: 1200
+        repeat: false
         onTriggered: root.disarmDelete()
     }
 

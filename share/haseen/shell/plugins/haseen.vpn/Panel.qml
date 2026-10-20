@@ -151,6 +151,7 @@ Column {
         id: copiedTimer
 
         interval: 1600
+        repeat: false
         onTriggered: root.copiedText = ""
     }
 

@@ -66,6 +66,7 @@ BarButton {
         id: settle
 
         interval: 600
+        repeat: false
         onTriggered: root.probe()
     }
 
