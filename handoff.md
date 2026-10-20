@@ -54,6 +54,7 @@ The owner's other repos:
 | Launcher providers (`@` windows, `:` emoji, `/` commands, `?` web) | `share/haseen/shell/plugins/haseen.{windows,emojisearch,commands,websearch}/`, `tests/test-launcher-providers.sh` | 081 |
 | Idle suspend, AC/battery timeouts | `share/haseen/shell/plugins/haseen.idle/`, `bin/haseen-setup-idle`, `tests/test-idle.sh` | 019 082 |
 | Theme generator keys and Wallhaven paging | `share/haseen/shell/plugins/haseen.themegen/`, `tests/test-themegen-keys.sh` | 083 |
+| Adopted tools, off by default: typist, plugin manager, browser picker, VPN; migration of the old ids | `share/haseen/shell/plugins/haseen.{typist,settings,browser-picker,vpn}/`, `bin/haseen-{typist,browser-picker,browser-scan,vpn-openconnect}`, `share/haseen/migrations/1791560100-adopt-tools-forks.sh`, `tests/test-adopted-tools.sh` | 096 |
 | Screen off / Screen on | `bin/haseen-screen-{off,on}`, menu System rows, the battery panel's Screen row, `tests/test-screen.sh` | 084 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Go) | `core/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh` | 032 |

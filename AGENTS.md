@@ -80,6 +80,11 @@ between parts. The engineering record is `plans/`, indexed by
     - `haseen.power` (was t1nk33r.power);
     - `haseen.updates` (was t1nk33r.updates);
     - `haseen.nook` (was t1nk33r.nook).
+  - Adopted from the owner's forks; these four override "never bundled" below:
+    - haseen.typist: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
+    - haseen.settings: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
+    - haseen.browser-picker: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
+    - haseen.vpn: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
     `haseen plugin install`, and installing does not enable them.

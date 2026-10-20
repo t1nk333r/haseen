@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# haseen:summary Open links in the browser and profile you pick, with learned per-site rules (haseen.browser-picker)
+# haseen:args [--private] [url...] | --default [--dry-run] | --list
+#
+# Adapted from bin/browser-picker of K53N0/omarchy-browser-picker (MIT,
+# Copyright (c) 2026 K53N0), via the owner's fork t1nk33r.browser-picker
+# 1.0.0-t1nk33r.1 (plan 096). It stays a shim: every decision (rules,
+# ranking, learning) is made in the haseen.browser-picker service, and what
+# comes back is a ready-to-run argv, NUL-separated, so no profile name is ever
+# re-parsed as shell input.
+# haseen changes: the request goes over `haseen shell ipc haseen.browser-picker
+# pick` and the answer comes back through a FIFO, as `haseen menu select`
+# does, instead of a 20 ms poll; the wait gives up when the shell dies; the
+# argv starts in its own scope (uwsm-app, else systemd-run, as Apps.launch);
+# --default goes through `haseen setup default browser browser-picker`;
+# --help prints usage (nothing in haseen probes the browser with it).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+SCAN="$BIN_DIR/haseen-browser-scan"
+TARGET="haseen.browser-picker"
+
+usage() {
+    cat <<EOF
+Usage: haseen browser picker [--private] [flag...] [url...]
+       haseen browser picker --default [--dry-run]
+       haseen browser picker --list
+
+Asks which browser and profile should open the URLs, unless a routing rule
+answers for the site, then opens them there. The picker is the
+haseen.browser-picker plugin; while the shell does not answer, fzf in a
+terminal lists the same browsers (no rules, no ranking), and without fzf the
+first browser found opens the link.
+
+  --default   make this the default browser (haseen setup default browser
+              browser-picker; back with: haseen setup default browser helium)
+  --list      print the browsers and profiles it would offer
+  --private   a private window, translated per browser family
+EOF
+}
+
+urls=() flags=() action=""
+for argument in "$@"; do
+    case "$argument" in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run) DRY_RUN=true ;;
+    --default) action=default ;;
+    --list) action=list ;;
+    --private) flags+=("--incognito") ;;
+    -*) flags+=("$argument") ;;
+    *) urls+=("$argument") ;;
+    esac
+done
+
+require_cmds jq
+
+case "$action" in
+list)
+    "$SCAN" | jq -r '.entries[] | .label'
+    exit 0
+    ;;
+default)
+    dry=()
+    $DRY_RUN && dry=(--dry-run)
+    exec "$BIN_DIR/haseen-setup-default" browser browser-picker "${dry[@]+"${dry[@]}"}"
+    ;;
+esac
+
+# launch ARGV... — the chosen browser in its own scope, as Apps.launch starts
+# user apps: this process runs in whatever cgroup opened the link.
+launch() {
+    # exec skips the EXIT trap.
+    rm -rf -- "$dir"
+    if [[ -n ${UWSM_FINALIZE_VARNAMES-}${UWSM_WAIT_VARNAMES-} ]] && have uwsm-app; then
+        run exec uwsm-app -- "$@"
+    elif have systemd-run; then
+        run exec systemd-run --user --scope --slice=app-graphical.slice --collect --quiet -- "$@"
+    else
+        run exec "$@"
+    fi
+    exit 0
+}
+
+# ask_shell — 0 with the argv in $dir/selection (empty: cancelled), 1 when the
+# shell or the plugin does not answer.
+ask_shell() {
+    local shell_pid
+    have mkfifo || return 1
+    mkfifo -m 0600 "$dir/done"
+    # Read-write, so neither side's open blocks.
+    exec 3<>"$dir/done"
+    jq -n --arg selection "$dir/selection" --arg donefile "$dir/done" \
+        --args '{selectionFile: $selection, doneFile: $donefile, urls: $ARGS.positional}' \
+        -- "${urls[@]+"${urls[@]}"}" |
+        jq --args '. + {flags: $ARGS.positional}' -- "${flags[@]+"${flags[@]}"}" >"$dir/request.json"
+    shell_pid="$(timeout 5 "$BIN_DIR/haseen-shell-ipc" "$TARGET" pick "$dir/request.json" 2>/dev/null)" || return 1
+    shell_pid=${shell_pid//[^0-9]/}
+    [[ -n $shell_pid ]] || return 1
+    until read -r -t 2 -u 3 _; do
+        kill -0 "$shell_pid" 2>/dev/null || return 1
+    done
+    return 0
+}
+
+# The default browser is the worst thing to have broken, so a shell that is
+# down still gets every link somewhere: fzf in a terminal, else the first
+# browser found. No ranking, no rules, no learning.
+fallback() {
+    local scan entry id family profile prefix=() argv=() flag term
+    scan="$("$SCAN")" || die "could not list browsers"
+    [[ $(jq '.entries | length' <<<"$scan") -gt 0 ]] || die "no browser found"
+    id="$(jq -r '.entries[0].id' <<<"$scan")"
+    term="${TERMINAL:-foot}"
+    if have fzf && have "$term"; then
+        jq -r '.entries[] | .label' <<<"$scan" >"$dir/labels"
+        # shellcheck disable=SC2016  # expanded by the terminal's sh
+        "$term" -e sh -c 'fzf --prompt="$3 > " --layout=reverse --cycle <"$1" >"$2"' sh \
+            "$dir/labels" "$dir/choice" "${urls[0]:-Open with}" >/dev/null 2>&1 || true
+        [[ -s $dir/choice ]] || exit 0
+        id="$(jq -r --arg l "$(head -n1 "$dir/choice")" '.entries[] | select(.label == $l) | .id' <<<"$scan" | head -n1)"
+        [[ -n $id ]] || exit 0
+    fi
+    entry="$(jq -c --arg id "$id" '.entries[] | select(.id == $id)' <<<"$scan" | head -n1)"
+    family="$(jq -r .family <<<"$entry")"
+    profile="$(jq -r .profile <<<"$entry")"
+    mapfile -t -d '' prefix < <(jq -j '.exec[] | (. + "\u0000")' <<<"$entry")
+    ((${#prefix[@]} > 0)) || die "no launch command for $id"
+    argv=("${prefix[@]}")
+    if [[ -n $profile ]]; then
+        if [[ $family == firefox ]]; then argv+=(-P "$profile"); else argv+=("--profile-directory=$profile"); fi
+    fi
+    for flag in "${flags[@]+"${flags[@]}"}"; do
+        case "$family:$flag" in
+        firefox:--incognito | firefox:--inprivate | firefox:--private) argv+=(--private-window) ;;
+        chromium:--private-window | chromium:--private | chromium:--inprivate) argv+=(--incognito) ;;
+        *:--incognito | *:--inprivate | *:--private-window | *:--private)
+            [[ $family == firefox || $family == chromium ]] && argv+=("$flag")
+            ;;
+        *) argv+=("$flag") ;;
+        esac
+    done
+    launch "${argv[@]}" "${urls[@]+"${urls[@]}"}"
+}
+
+dir="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/haseen-browser.XXXXXX")"
+trap 'rm -rf "$dir"' EXIT
+
+if ask_shell; then
+    argv=()
+    [[ -s $dir/selection ]] && mapfile -t -d '' argv <"$dir/selection"
+    # A cancelled picker writes nothing: a choice, not a failure.
+    ((${#argv[@]} > 0)) && [[ -n ${argv[0]} ]] || exit 0
+    launch "${argv[@]}"
+fi
+fallback

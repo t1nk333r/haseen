@@ -1,0 +1,723 @@
+#!/bin/bash
+# haseen:summary List every installed browser and profile as JSON (haseen.browser-picker)
+# haseen:args [--help]
+#
+# Adapted from bin/browser-picker-scan of K53N0/omarchy-browser-picker (MIT,
+# Copyright (c) 2026 K53N0), via the owner's fork t1nk33r.browser-picker
+# 1.0.0-t1nk33r.1 (plan 096), whose change this keeps: discovery starts from
+# the desktop entries that declare themselves http(s) handlers, the family is
+# decided by what is on disk (`Local State` and `Profile *` for the Chromium
+# family, `profiles.ini` for the Firefox family), and the curated table below
+# only supplies labels, icons, config-dir hints and family overrides.
+# haseen changes: the picker's own entry is haseen-browser-picker (and the
+# fork's browser-picker is skipped too, so neither can be offered as a
+# browser); the test seam is HASEEN_BROWSER_DESKTOP_DIRS; --help.
+#
+#   { "entries": [ { "id", "label", "browser", "family", "bin", "exec",
+#                    "profile", "icon", "generic", "default" }, ... ] }
+#
+# `id` is the stable key used for frecency and routing rules: it is
+# "<browser-key>:<profile-dir>", never the display name, which the user can
+# rename at any time. `bin` is the executable and `exec` the launch prefix as
+# an argv array; they differ only for a Flatpak (`flatpak run --branch=… ID`).
+#
+# Not -e: one unreadable desktop entry or profile store must cost that row,
+# not the list; every probe below checks its own result. jq and bash only.
+set -uo pipefail
+shopt -s nullglob
+
+case "${1:-}" in
+-h | --help)
+  cat <<'USAGE'
+Usage: haseen browser scan
+
+Prints every installed browser and profile as JSON on stdout, for the
+haseen.browser-picker overlay and its fallback. Candidates are the desktop
+entries that handle x-scheme-handler/http(s), in XDG precedence order; the
+picker's own entry is never listed.
+USAGE
+  exit 0
+  ;;
+esac
+
+
+command -v jq >/dev/null || { echo '{"entries":[],"error":"jq is not installed"}'; exit 1; }
+
+# Without `dirname`: this runs with whatever PATH the caller had, and the tests
+# deliberately hand it one holding nothing but jq.
+SELF_DIR=${BASH_SOURCE[0]%/*}
+[[ $SELF_DIR == "${BASH_SOURCE[0]}" ]] && SELF_DIR=.
+HERE="$(cd -- "$SELF_DIR" && pwd)"
+SELF_SHIM="$HERE/haseen-browser-picker"
+SELF_SHIM_REAL="$(cd -- "$SELF_DIR" && pwd -P)/haseen-browser-picker"
+
+entries=()
+
+# JSON string escaping for values that come from disk. A profile named
+# `He said "hi"` is not exotic, and an unescaped quote would produce a payload
+# the QML side silently fails to parse.
+esc() {
+  local s=${1//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\t'/ }
+  s=${s//$'\n'/ }
+  s=${s//$'\r'/}
+  printf '%s' "$s"
+}
+
+json_array() { # tokens... -> ["a","b"]
+  local out="[" first=1 token
+  for token in "$@"; do
+    [[ $first -eq 1 ]] || out+=","
+    out+="\"$(esc "$token")\""
+    first=0
+  done
+  printf '%s]' "$out"
+}
+
+# Two profiles can carry the same name — a person with the same account added
+# to a browser twice ends up with two rows reading identically, and no way to
+# tell which is which. The id stays as it was, so rules and rankings are
+# unaffected; only what is shown gets a counter.
+declare -A LABEL_SEEN
+
+# Writes to UNIQUE_LABEL rather than printing: a command substitution would run
+# this in a subshell, where LABEL_SEEN is updated and then thrown away, and
+# every duplicate would sail through looking unique.
+UNIQUE_LABEL=""
+unique_label() {
+  local label="$1" base="$1" n=1
+  while [[ -n ${LABEL_SEEN[$label]+x} ]]; do
+    n=$((n + 1))
+    label="$base ($n)"
+  done
+  LABEL_SEEN[$label]=1
+  UNIQUE_LABEL="$label"
+}
+
+emit() { # id label browser family bin profile icon generic isdefault exec...
+  local label
+  unique_label "$2"
+  label="$UNIQUE_LABEL"
+  local id=$1 browser=$3 family=$4 bin=$5 profile=$6 icon=$7 generic=${8:-false} isdefault=${9:-false}
+  shift 9
+  entries+=("$(printf '{"id":"%s","label":"%s","browser":"%s","family":"%s","bin":"%s","exec":%s,"profile":"%s","icon":"%s","generic":%s,"default":%s}' \
+    "$(esc "$id")" "$(esc "$label")" "$(esc "$browser")" "$(esc "$family")" \
+    "$(esc "$bin")" "$(json_array "$@")" "$(esc "$profile")" "$(esc "$icon")" \
+    "$generic" "$isdefault")")
+}
+
+# --- The curated table: enrichment, never a gate -----------------------------
+# keys | display name | icon | family override | config-dir hints
+#
+# keys       matched case-insensitively against the identity tokens of a
+#            desktop entry (Exec basename with the usual suffixes stripped,
+#            StartupWMClass, Flatpak app id and its last component, desktop
+#            id). The FIRST key is the canonical one and becomes the entry id
+#            for a native install, which is why they are spelled the way
+#            upstream spelled its binaries: ids stay stable across the fork.
+# family     "" means "work it out from the config dir", which is what happens
+#            for anything not listed here at all.
+# hints      $HOME-relative config dirs, for the browsers whose directory is
+#            not guessable from the name — Firefox keeps profiles in
+#            `.mozilla/firefox`, Helium in `.config/net.imput.helium`. For a
+#            Flatpak the hints are also tried under `.var/app/<app-id>/`.
+CURATED=(
+  "google-chrome-stable,google-chrome,com.google.Chrome|Chrome|🌐|chromium|.config/google-chrome"
+  "chromium,org.chromium.Chromium|Chromium|🧪|chromium|.config/chromium"
+  "ungoogled-chromium|Ungoogled Chromium|🕶|chromium|.config/chromium"
+  "brave,brave-browser,com.brave.Browser|Brave|🦁|chromium|.config/BraveSoftware/Brave-Browser"
+  "vivaldi-stable,vivaldi,com.vivaldi.Vivaldi|Vivaldi|🎻|chromium|.config/vivaldi"
+  "microsoft-edge-stable,microsoft-edge,com.microsoft.Edge|Edge|🌊|chromium|.config/microsoft-edge"
+  "opera,com.opera.Opera|Opera|🎭|chromium|.config/opera"
+  "helium,helium-browser,net.imput.helium|Helium|🎈|chromium|.config/net.imput.helium"
+  "thorium-browser,thorium|Thorium|⚡|chromium|.config/thorium"
+  "firefox,firefox-developer-edition,org.mozilla.firefox|Firefox|🦊|firefox|.mozilla/firefox"
+  "zen-browser,zen,zen-bin,app.zen_browser.zen|Zen|🧘|firefox|.zen,.config/zen"
+  "librewolf,io.gitlab.librewolf-community.librewolf|LibreWolf|🐺|firefox|.librewolf"
+  "floorp,one.ablaze.floorp|Floorp|🏢|firefox|.floorp,.config/floorp"
+  "waterfox,net.waterfox.waterfox|Waterfox|💧|firefox|.waterfox"
+  "tor-browser,org.torproject.torbrowser-launcher|Tor Browser|🧅|firefox|.local/share/torbrowser"
+  "epiphany,org.gnome.Epiphany|GNOME Web|🕸||.var/app/org.gnome.Epiphany/config/epiphany"
+  "falkon,org.kde.falkon|Falkon|🦅||.config/falkon"
+  "qutebrowser,org.qutebrowser.qutebrowser|qutebrowser|⌨||.config/qutebrowser"
+)
+
+GENERIC_ICON="🧭"
+
+# --- Desktop entry parsing ---------------------------------------------------
+# Only the [Desktop Entry] group counts; the Actions groups that follow carry
+# their own Exec lines (Chromium's "New Incognito Window") and reading those
+# would launch the wrong thing. Localized keys (`Name[de]=`) are skipped so a
+# non-English locale does not decide the display name.
+E_NAME="" E_EXEC="" E_TRYEXEC="" E_MIME="" E_NODISPLAY="" E_HIDDEN="" E_WMCLASS="" E_FLATPAK=""
+parse_entry() {
+  E_NAME="" E_EXEC="" E_TRYEXEC="" E_MIME="" E_NODISPLAY="" E_HIDDEN="" E_WMCLASS="" E_FLATPAK=""
+  local line group="" key value
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line%$'\r'}
+    case "$line" in
+      \[*\]) group=${line:1:${#line}-2} ; continue ;;
+      ""|"#"*) continue ;;
+    esac
+    [[ $group == "Desktop Entry" ]] || continue
+    [[ $line == *=* ]] || continue
+    key=${line%%=*}
+    value=${line#*=}
+    # Trailing space before `=` is legal in the spec's grammar.
+    key=${key%"${key##*[![:space:]]}"}
+    case "$key" in
+      Name)            E_NAME=$value ;;
+      Exec)            E_EXEC=$value ;;
+      TryExec)         E_TRYEXEC=$value ;;
+      MimeType)        E_MIME=$value ;;
+      NoDisplay)       E_NODISPLAY=$value ;;
+      Hidden)          E_HIDDEN=$value ;;
+      StartupWMClass)  E_WMCLASS=$value ;;
+      X-Flatpak)       E_FLATPAK=$value ;;
+    esac
+  done <"$1"
+}
+
+# Exec is a quoted, field-code-carrying command line, not an argv. Turning it
+# into one properly matters more here than usual: the Flatpak entries carry
+# both `--file-forwarding` and its `@@u … @@` markers, and a naive `cut -d' '`
+# would either lose the app id or hand the browser a literal "@@u".
+EXEC_ARGV=()
+exec_argv() {
+  EXEC_ARGV=()
+  local s=$1 i c n token="" have=0 quoted=0
+
+  flush_token() {
+    (( have )) || return 0
+    have=0
+    local t=$token
+    token=""
+    case "$t" in
+      # Flatpak's file-forwarding markers, and the field codes that survive as
+      # a whole argument.
+      @@|@@u|@@U|@@f|@@F) return 0 ;;
+    esac
+    # %% is a literal percent; every other %x is a field code the launcher is
+    # supposed to substitute, and we substitute nothing but the URLs, which the
+    # caller appends itself.
+    local cleaned=${t//%%/$'\001'}
+    cleaned=${cleaned//%[a-zA-Z]/}
+    cleaned=${cleaned//$'\001'/%}
+    # A token that was nothing but field codes disappears; one that was never
+    # empty to begin with stays even if it is empty now only because it was
+    # written as "".
+    if [[ -z $cleaned && -n $t ]]; then return 0; fi
+    EXEC_ARGV+=("$cleaned")
+  }
+
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    if (( quoted )); then
+      if [[ $c == '\' ]]; then
+        n=${s:i+1:1}
+        case "$n" in
+          '"'|'\'|'`'|'$') token+=$n ; i=$((i + 1)) ;;
+          *) token+='\' ;;
+        esac
+      elif [[ $c == '"' ]]; then
+        quoted=0
+      else
+        token+=$c
+      fi
+      have=1
+      continue
+    fi
+    case "$c" in
+      '"') quoted=1 ; have=1 ;;
+      ' '|$'\t') flush_token ;;
+      *) token+=$c ; have=1 ;;
+    esac
+  done
+  flush_token
+  unset -f flush_token
+}
+
+runnable() { # a TryExec or Exec program name
+  local program=$1
+  [[ -n $program ]] || return 1
+  if [[ $program == */* ]]; then
+    [[ -x $program ]]
+  else
+    command -v "$program" >/dev/null
+  fi
+}
+
+# --- Family detection --------------------------------------------------------
+# By evidence on disk, not by name: `Local State` or numbered `Profile *` dirs
+# mean the Chromium family, `profiles.ini` means the Firefox family. A browser
+# whose directory carries neither is not rejected — it simply gets no profile
+# rows.
+family_of_dir() {
+  local dir=$1 candidate
+  [[ -d $dir ]] || { printf ''; return 0; }
+  if [[ -e "$dir/profiles.ini" ]]; then printf 'firefox'; return 0; fi
+  if [[ -e "$dir/Local State" ]]; then printf 'chromium'; return 0; fi
+  for candidate in "$dir"/Profile\ *; do
+    [[ -d $candidate ]] && { printf 'chromium'; return 0; }
+  done
+  if [[ -d "$dir/Default" && -e "$dir/Default/Preferences" ]]; then printf 'chromium'; return 0; fi
+  printf ''
+}
+
+# Does a config directory's name plausibly belong to this entry? A reverse-DNS
+# directory (`net.imput.helium`) is matched on its components, which is the
+# whole reason Helium was invisible before: nothing about `helium-browser`
+# spells `net.imput.helium`, but `helium` is in both.
+name_relates() { # dirname ident...
+  local dirname=${1,,} ident parts part
+  shift
+  IFS='.-_' read -r -a parts <<<"$dirname"
+  for ident in "$@"; do
+    ident=${ident,,}
+    [[ -n $ident ]] || continue
+    [[ $dirname == "$ident" ]] && return 0
+    for part in ${parts+"${parts[@]}"}; do
+      [[ -n $part ]] || continue
+      [[ $part == "$ident" ]] && return 0
+    done
+    if (( ${#ident} >= 4 )); then
+      [[ $dirname == *"$ident"* ]] && return 0
+    fi
+    if (( ${#dirname} >= 4 )); then
+      [[ $ident == *"$dirname"* ]] && return 0
+    fi
+  done
+  return 1
+}
+
+# --- One desktop entry -> zero or more rows ---------------------------------
+declare -A KEY_SEEN
+seen_config=""
+
+scan_chromium_profiles() { # config-dir -> dir<TAB>name<TAB>isDefault rows
+  local state="$1/Local State"
+  [[ -r $state ]] || return 0
+  # `profile.last_used` is the directory the browser reopens on its own; the
+  # `Default` directory is what it falls back to on a store that has never
+  # been used. A stale last_used naming a profile that has since been deleted
+  # is not authority for anything, hence the has() check.
+  jq -r --arg fallback Default '
+    def display: if ((.value.name // "") | length) == 0 then .key else .value.name end;
+    (.profile.info_cache // {}) as $cache
+    | ((.profile.last_used // "") | tostring) as $last
+    | (if ($last | length) > 0 and ($cache | has($last)) then $last
+       elif ($cache | has($fallback)) then $fallback
+       else "" end) as $default
+    | $cache
+    | to_entries
+    | sort_by(display | ascii_downcase)
+    | .[]
+    | [.key, display, (.key == $default)]
+    | @tsv
+  ' "$state" 2>/dev/null
+}
+
+# Firefox stores a profile's directory in `Path=`, relative to the store when
+# `IsRelative=1` and absolute otherwise. `Default=` values in `[Install*]` and
+# in installs.ini are written in whichever of the two forms the profile used,
+# so every comparison happens on the resolved path rather than on the string
+# as written. Writes to CANON_PATH: a command substitution per profile per
+# candidate would fork for something this cheap.
+CANON_PATH=""
+firefox_canon_path() { # config-dir path [is-relative]
+  local dir=${1%/} path=$2 relative=${3:-}
+  if [[ -z $path ]]; then CANON_PATH=""
+  elif [[ $path == /* && $relative != 1 ]]; then CANON_PATH=$path
+  else CANON_PATH="$dir/$path"
+  fi
+}
+
+# Which profile a Firefox-family browser actually opens, and under which
+# directory. The legacy `Default=1` flag is last, not first: modern Firefox and
+# Zen resolve the default *per install*, and a store that has both will have
+# `Default=1` sitting on whichever profile was default when the install section
+# was introduced — on this host, a profile the owner never opens.
+#
+# Precedence, first hit wins:
+#   1. `[Install<hash>] Default=<path>` in profiles.ini
+#   2. `Default=<path>` in a section of the sibling installs.ini
+#   3. `Default=1` on a `[ProfileN]` section
+#
+# Only `[Profile<digits>]` is a profile: `~/.config/zen` also holds a
+# `Profile Groups` directory and writes sections that are neither, and the
+# directory listing is never consulted — profiles.ini is the record.
+scan_firefox_profiles() { # config-dir -> path<TAB>name<TAB>isDefault rows
+  local dir=${1%/} ini="$1/profiles.ini" installs="$1/installs.ini"
+  [[ -r $ini ]] || return 0
+
+  local -a paths=() names=() relatives=() legacy=()
+  local line section="" key value install_default="" installs_default=""
+  local last=-1 i default_index=-1 want target
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line%$'\r'}
+    case "$line" in
+      \[*\])
+        section=${line:1:${#line}-2}
+        if [[ $section =~ ^Profile[0-9]+$ ]]; then
+          paths+=("") ; names+=("") ; relatives+=("") ; legacy+=("")
+          last=$(( ${#paths[@]} - 1 ))
+        fi
+        continue ;;
+      ""|"#"*|";"*) continue ;;
+    esac
+    [[ $line == *=* ]] || continue
+    key=${line%%=*}
+    value=${line#*=}
+    key=${key%"${key##*[![:space:]]}"}
+    if [[ $section =~ ^Profile[0-9]+$ ]]; then
+      (( last >= 0 )) || continue
+      case "$key" in
+        Name)       names[last]=$value ;;
+        Path)       paths[last]=$value ;;
+        IsRelative) relatives[last]=$value ;;
+        Default)    [[ $value == 1 ]] && legacy[last]=1 ;;
+      esac
+    elif [[ $section == Install* && $key == Default && -z $install_default ]]; then
+      install_default=$value
+    fi
+  done <"$ini"
+
+  # The sibling file, for the Firefox versions that keep the install mapping
+  # out of profiles.ini. Every section in it is an install hash, so the first
+  # `Default=` is the answer; a store shared by two installs is ambiguous by
+  # construction and profiles.ini's own section already won above.
+  if [[ -r $installs ]]; then
+    section=""
+    while IFS= read -r line || [[ -n $line ]]; do
+      line=${line%$'\r'}
+      case "$line" in
+        \[*\]) section=${line:1:${#line}-2} ; continue ;;
+        ""|"#"*|";"*) continue ;;
+      esac
+      [[ -n $section ]] || continue
+      [[ $line == *=* ]] || continue
+      key=${line%%=*}
+      value=${line#*=}
+      key=${key%"${key##*[![:space:]]}"}
+      [[ $key == Default ]] || continue
+      [[ -n $installs_default ]] || installs_default=$value
+    done <"$installs"
+  fi
+
+  for want in "$install_default" "$installs_default"; do
+    [[ -n $want ]] || continue
+    firefox_canon_path "$dir" "$want"
+    target=$CANON_PATH
+    for ((i = 0; i < ${#paths[@]}; i++)); do
+      [[ -n ${paths[i]} ]] || continue
+      firefox_canon_path "$dir" "${paths[i]}" "${relatives[i]}"
+      [[ $CANON_PATH == "$target" ]] || continue
+      default_index=$i
+      break
+    done
+    (( default_index >= 0 )) && break
+  done
+  if (( default_index < 0 )); then
+    for ((i = 0; i < ${#paths[@]}; i++)); do
+      [[ -n ${paths[i]} && ${legacy[i]} == 1 ]] || continue
+      default_index=$i
+      break
+    done
+  fi
+
+  local path name flag
+  for ((i = 0; i < ${#paths[@]}; i++)); do
+    path=${paths[i]}
+    [[ -n $path ]] || continue
+    name=${names[i]}
+    # A section with a Path and no Name is legal; the directory is a worse
+    # label than a name but a better one than an empty string.
+    [[ -n $name ]] || name=${path##*/}
+    flag=false
+    (( i == default_index )) && flag=true
+    # The protocol downstream is tab-delimited and these came off disk.
+    printf '%s\t%s\t%s\n' "${path//$'\t'/ }" "${name//$'\t'/ }" "$flag"
+  done
+  return 0
+}
+
+add_browser() { # desktop-id
+  local desktop_id=${1%.desktop}
+  local exec_line=$E_EXEC
+
+  [[ -n $exec_line ]] || return 0
+  exec_argv "$exec_line"
+  (( ${#EXEC_ARGV[@]} )) || return 0
+
+  local program=${EXEC_ARGV[0]}
+  runnable "$program" || return 0
+  [[ -z $E_TRYEXEC ]] || runnable "$E_TRYEXEC" || return 0
+
+  local appid=$E_FLATPAK argument
+  # A Flatpak export without X-Flatpak still identifies itself: the app id is
+  # the last argument before the forwarded URLs.
+  if [[ -z $appid && ${program##*/} == flatpak ]]; then
+    for argument in "${EXEC_ARGV[@]}"; do
+      [[ $argument == -* ]] && continue
+      [[ $argument == *.*.* ]] && appid=$argument
+    done
+  fi
+
+  # Identity tokens, most specific first. Suffixes are stripped because a
+  # binary is routinely `<name>-browser`, `<name>-bin` or `<name>-stable` while
+  # everything else about it says `<name>`.
+  local base=${program##*/} idents=()
+  idents+=("$base")
+  local stripped=$base
+  stripped=${stripped%-stable} ; stripped=${stripped%-browser}
+  stripped=${stripped%-bin} ; stripped=${stripped%-esr}
+  [[ $stripped != "$base" ]] && idents+=("$stripped")
+  [[ -n $E_WMCLASS ]] && idents+=("${E_WMCLASS##*.}" "$E_WMCLASS")
+  [[ -n $appid ]] && idents+=("$appid" "${appid##*.}")
+  idents+=("$desktop_id" "${desktop_id##*.}")
+
+  # Curated match: labels, icons, hints, family override, canonical key.
+  local spec keys label icon family hints canonical="" matched=0 key ident
+  label="" icon="" family="" hints=""
+  for spec in "${CURATED[@]}"; do
+    IFS='|' read -r keys label icon family hints <<<"$spec"
+    local key_list=()
+    IFS=',' read -r -a key_list <<<"$keys"
+    for key in "${key_list[@]}"; do
+      for ident in "${idents[@]}"; do
+        if [[ ${ident,,} == "${key,,}" ]]; then matched=1; break; fi
+      done
+      (( matched )) && break
+    done
+    if (( matched )); then canonical=${key_list[0]}; break; fi
+    label="" icon="" family="" hints=""
+  done
+
+  # An unknown browser is named by its own desktop entry and gets a neutral
+  # icon. That is the whole difference between "not curated" and "not listed".
+  [[ -n $label ]] || label=${E_NAME:-$base}
+  [[ -n $icon ]] || icon=$GENERIC_ICON
+
+  local is_flatpak=0
+  [[ -n $appid ]] && is_flatpak=1
+
+  # Config dir attribution. Hints first, then the obvious guesses, then a scan
+  # of the directories that actually look like browser profile stores.
+  local candidates=() hint hint_list=()
+  [[ -n $hints ]] && IFS=',' read -r -a hint_list <<<"$hints"
+  for hint in ${hint_list+"${hint_list[@]}"}; do
+    [[ -n $hint ]] || continue
+    if (( is_flatpak )); then
+      candidates+=("$HOME/.var/app/$appid/${hint#.config/}" "$HOME/.var/app/$appid/config/${hint#.config/}" "$HOME/.var/app/$appid/$hint")
+    else
+      candidates+=("$HOME/$hint")
+    fi
+  done
+  if (( is_flatpak )); then
+    for ident in "${idents[@]}"; do
+      candidates+=("$HOME/.var/app/$appid/config/$ident" "$HOME/.var/app/$appid/.$ident")
+    done
+    candidates+=("$HOME/.var/app/$appid/.mozilla/firefox")
+  else
+    for ident in "${idents[@]}"; do
+      candidates+=("$HOME/.config/$ident" "$HOME/.$ident")
+    done
+  fi
+
+  local config_dir="" detected=""
+  for hint in "${candidates[@]}"; do
+    [[ -d $hint ]] || continue
+    detected=$(family_of_dir "$hint")
+    [[ -n $detected ]] || continue
+    config_dir=$hint
+    break
+  done
+
+  # Nothing guessable: look for a directory that carries the markers and whose
+  # name relates to this entry. `net.imput.helium` is found this way even with
+  # no hint at all, which is what makes the fork robust against the next
+  # browser that names its directory after its bundle id.
+  if [[ -z $config_dir ]]; then
+    local search=() dir
+    if (( is_flatpak )); then
+      search=("$HOME/.var/app/$appid/config"/* "$HOME/.var/app/$appid"/.*)
+    else
+      search=("$HOME/.config"/* "$HOME/.var/app"/*/config/*)
+    fi
+    for dir in ${search+"${search[@]}"}; do
+      [[ -d $dir ]] || continue
+      case "${dir##*/}" in .|..) continue ;; esac
+      name_relates "${dir##*/}" "${idents[@]}" || continue
+      detected=$(family_of_dir "$dir")
+      [[ -n $detected ]] || continue
+      config_dir=$dir
+      break
+    done
+  fi
+
+  [[ -n $family ]] || family=$detected
+  [[ -n $family ]] || family=other
+
+  # Two binaries can share one config dir (brave / brave-browser, chromium /
+  # ungoogled-chromium). Listing both would show every profile twice.
+  if [[ -n $config_dir ]]; then
+    case "$seen_config" in *"|$config_dir|"*) return 0 ;; esac
+    seen_config="$seen_config|$config_dir|"
+  fi
+
+  # The entry key. Canonical for a curated native install, so ids survive the
+  # fork; the app id for a Flatpak, so the sandboxed copy and the native one
+  # are never confused for each other.
+  local entry_key=""
+  if (( is_flatpak )); then entry_key=$appid
+  elif [[ -n $canonical ]]; then entry_key=$canonical
+  else entry_key=$base ; fi
+  if [[ -n ${KEY_SEEN[$entry_key]+x} ]]; then
+    entry_key=$base
+    local n=1
+    while [[ -n ${KEY_SEEN[$entry_key]+x} ]]; do
+      n=$((n + 1))
+      entry_key="$base-$n"
+    done
+  fi
+  KEY_SEEN[$entry_key]=1
+
+  local name=$label
+  (( is_flatpak )) && name="$label (Flatpak)"
+
+  local rows=() row profile_dir profile_name profile_default profile_arg
+  if [[ -n $config_dir ]]; then
+    case "$family" in
+      chromium) mapfile -t rows < <(scan_chromium_profiles "$config_dir") ;;
+      firefox)  mapfile -t rows < <(scan_firefox_profiles "$config_dir") ;;
+    esac
+  fi
+
+  # Counted before emitting, because a browser you can only open one way is
+  # generic: picking "the browser" and picking "its only profile" are the same
+  # act, and it belongs with the plain entries rather than buried among
+  # eighteen named ones.
+  local generic=false
+  (( ${#rows[@]} <= 1 )) && generic=true
+
+  for row in ${rows+"${rows[@]}"}; do
+    [[ -n $row ]] || continue
+    profile_dir="" profile_name="" profile_default=""
+    IFS=$'\t' read -r profile_dir profile_name profile_default <<<"$row"
+    [[ -n $profile_dir ]] || continue
+    [[ $profile_default == true ]] || profile_default=false
+    # The id is keyed on the directory for both families, because that is what
+    # survives a rename. What the browser is *told* differs: Chromium takes the
+    # directory (`--profile-directory=`), the Firefox family takes the name
+    # (`-P`), and its directory never appears in argv.
+    if [[ $family == firefox ]]; then profile_arg=$profile_name
+    else profile_arg=$profile_dir ; fi
+    emit "$entry_key:$profile_dir" "$icon  $name — $profile_name" \
+      "$name" "$family" "$program" "$profile_arg" "$icon" "$generic" \
+      "$profile_default" "${EXEC_ARGV[@]}"
+  done
+
+  # An unreadable or profile-less install still deserves one plain entry:
+  # a browser you cannot launch at all is worse than one without profile names.
+  (( ${#rows[@]} )) || emit "$entry_key:" "$icon  $name" "$name" "$family" \
+    "$program" "" "$icon" true false "${EXEC_ARGV[@]}"
+
+  # FORK (t1nk33r): upstream emitted one more row here — a "manage profiles"
+  # entry per browser, opening the browser's own profile screen. It is gone,
+  # because this picker exists to open a link and with seven browsers installed
+  # that was seven housekeeping rows in among the destinations. Nothing reads a
+  # `manage` field any more, so the scanner does not print one either.
+}
+
+# --- Discovery ---------------------------------------------------------------
+# XDG precedence: the first directory to define a desktop id owns it, and a
+# user-local entry shadows the system one even when it is hidden — that is how
+# hiding a system entry is done.
+desktop_dirs() {
+  local dirs=() dir seen="" data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+  local data_dirs=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+
+  # A test seam, and the only way to ask for a tree that is not this session's:
+  # every path below is derived from the environment, so a fixture run would
+  # otherwise inherit whatever the host has installed.
+  if [[ -n ${HASEEN_BROWSER_DESKTOP_DIRS:-} ]]; then
+    IFS=: read -r -a dirs <<<"$HASEEN_BROWSER_DESKTOP_DIRS"
+  else
+    dirs+=("$data_home/applications")
+    dirs+=("$HOME/.local/share/applications")
+    dirs+=("$data_home/flatpak/exports/share/applications")
+    dirs+=("$HOME/.local/share/flatpak/exports/share/applications")
+    local part
+    while IFS= read -r part; do
+      [[ -n $part ]] || continue
+      dirs+=("${part%/}/applications")
+    done < <(printf '%s\n' "${data_dirs//:/$'\n'}")
+    # Named explicitly because a session that never exported XDG_DATA_DIRS
+    # still has Flatpak apps, and they are browsers as much as any other.
+    dirs+=("/var/lib/flatpak/exports/share/applications")
+    dirs+=("/usr/local/share/applications")
+    dirs+=("/usr/share/applications")
+  fi
+
+  for dir in ${dirs+"${dirs[@]}"}; do
+    [[ -n $dir ]] || continue
+    case "$seen" in *"|$dir|"*) continue ;; esac
+    seen="$seen|$dir|"
+    [[ -d $dir ]] || continue
+    printf '%s\n' "$dir"
+  done
+}
+
+declare -A ID_SEEN
+handles_http() {
+  case ";${E_MIME};" in
+    *";x-scheme-handler/http;"*|*";x-scheme-handler/https;"*) return 0 ;;
+  esac
+  return 1
+}
+
+while IFS= read -r dir; do
+  for file in "$dir"/*.desktop; do
+    [[ -f $file ]] || continue
+    desktop_id=${file##*/}
+    # Shadowed by a more user-local directory: not even looked at, which is
+    # what makes a local `NoDisplay=true` override work.
+    [[ -n ${ID_SEEN[$desktop_id]+x} ]] && continue
+    ID_SEEN[$desktop_id]=1
+
+    parse_entry "$file"
+    handles_http || continue
+    [[ ${E_NODISPLAY,,} == true ]] && continue
+    [[ ${E_HIDDEN,,} == true ]] && continue
+
+    # Never list the picker itself. It is the registered default browser, so it
+    # is guaranteed to be found here, and picking it would hand the link back
+    # to the thing that asked — a loop with no exit.
+    exec_argv "$E_EXEC"
+    if (( ${#EXEC_ARGV[@]} )); then
+      candidate=${EXEC_ARGV[0]}
+      [[ ${candidate##*/} == browser-picker || ${candidate##*/} == haseen-browser-picker ]] && continue
+      [[ $candidate == "$SELF_SHIM" ]] && continue
+      # Same shim reached by another path — a symlink, a `..`, a bind mount.
+      # Resolved with the shell alone: `readlink` is not guaranteed on the PATH
+      # a link-opening session hands us.
+      if [[ $candidate == */* ]]; then
+        candidate_dir=$(cd -- "${candidate%/*}" 2>/dev/null && pwd -P)
+        [[ -n $candidate_dir && "$candidate_dir/${candidate##*/}" == "$SELF_SHIM_REAL" ]] && continue
+      fi
+    fi
+
+    add_browser "$desktop_id"
+  done
+done < <(desktop_dirs)
+
+printf '{"entries":['
+first=1
+for entry in ${entries+"${entries[@]}"}; do
+  [[ $first -eq 1 ]] || printf ','
+  printf '%s' "$entry"
+  first=0
+done
+printf ']}\n'

@@ -17,7 +17,8 @@ declare -A BROWSERS=([zen]="zen.desktop app.zen_browser.zen.desktop"
     [chromium]="chromium.desktop org.chromium.Chromium.desktop" [helium]=helium.desktop
     [firefox]="firefox.desktop org.mozilla.firefox.desktop" [chrome]="google-chrome.desktop com.google.Chrome.desktop"
     [brave]="brave-browser.desktop com.brave.Browser.desktop" [brave-origin]=brave-origin.desktop
-    [edge]="microsoft-edge.desktop com.microsoft.Edge.desktop")
+    [edge]="microsoft-edge.desktop com.microsoft.Edge.desktop"
+    [browser-picker]=haseen-browser-picker.desktop)
 declare -A TERMINALS=([foot]=foot [alacritty]=alacritty [ghostty]=ghostty [kitty]=kitty)
 declare -A EDITORS=([nvim]=nvim [helix]=helix [vim]=vim [code]=code [cursor]=cursor [zed]=zeditor
     [sublime]=sublime_text [emacs]=emacs)
@@ -177,6 +178,7 @@ Without a name, prints the current default.
 Session variables, written to ~/.config/uwsm/env.d/60-haseen-defaults (read by
 the next login) and into the running systemd user manager for apps started now:
   browser   zen chromium helium firefox chrome brave brave-origin edge
+            browser-picker (asks per link: haseen.browser-picker)
             (xdg-settings + http/https MIME)
   terminal  foot alacritty ghostty kitty        (\$TERMINAL; also $TERMINALS_LIST)
   editor    nvim helix vim code zed emacs       (\$EDITOR; also the text/* handlers)
