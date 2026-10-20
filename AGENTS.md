@@ -88,6 +88,10 @@ between parts. The engineering record is `plans/`, indexed by
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
     `haseen plugin install`, and installing does not enable them.
+  - Adopted from the owner's own plugins (owner, 2026-10-20), an exception to
+    the rule above for these only; their MIT notices are kept:
+    - haseen.todoist (was t1nk33r.todoist): Adopted as first-party, off by default (owner, 2026-10-20, plan 097).
+    - haseen.omarr (was t1nk33r.omarr): Adopted as first-party, off by default (owner, 2026-10-20, plan 097).
 
 ## Gates (run both before every commit)
 

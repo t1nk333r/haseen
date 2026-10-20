@@ -61,6 +61,7 @@ The owner's other repos:
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
 | Hibernation | `bin/haseen-hibernation-*`, `share/haseen/lib/hibernate.sh` | 033 |
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
+| Todoist and omARR (adopted from the owner's plugins, off by default): private token and key files, migration from the old ids | `share/haseen/shell/plugins/haseen.{todoist,omarr}/`, `share/haseen/migrations/1791560200-adopt-todoist-omarr.sh`, `tests/test-{todoist,omarr,migrate-097}.sh` | 097 |
 | Plugin registry and lockfile | `share/haseen/shell/lib/registry.sh`, `bin/haseen-plugin-{registry,search,install,update,restore,uninstall,lock}` | 035 |
 | Fonts and Arabic rendering, Qt platform theme, seed modules | `share/haseen/themed/fonts.conf.tpl`, `share/haseen/default/fontconfig/`, `share/haseen/seeds/`, `bin/haseen-seed-user` | 047 |
 | Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |

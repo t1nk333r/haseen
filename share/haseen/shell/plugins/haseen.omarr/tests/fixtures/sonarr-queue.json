@@ -1,0 +1,16 @@
+{
+  "records": [
+    {
+      "id": 9,
+      "title": "Show.S01E01",
+      "status": "downloading",
+      "size": 1000,
+      "sizeleft": 250,
+      "timeleft": "00:10:00",
+      "protocol": "torrent",
+      "downloadId": "abc",
+      "series": { "title": "Show", "id": 3 },
+      "episode": { "seasonNumber": 1, "episodeNumber": 1, "title": "Pilot" }
+    }
+  ]
+}
