@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.settings",
+  "name": "Plugin Settings",
+  "version": "1.1.0",
+  "description": "Every plugin the shell knows in one panel: search and filter, turn plugins on or off, edit the settings their manifests declare, and delete plugins installed under ~/.config/haseen/plugins, one or a selection at a time. Built-ins and the read-only Omarchy and DMS plugin folders are never deleted. Writes go through haseen plugin enable, disable, settings and uninstall. Adopted from t1nk33r.settings (AyushKr2003/shell-settings, MIT); off by default",
+  "kinds": [
+    "panel",
+    "bar-widget"
+  ],
+  "entry": {
+    "panel": "Panel.qml",
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.settings (state, setFilter, setQuery, toggle, form, edit, resetKey, save, select, deleteSelected) while the panel is open"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:write"
+  ]
+}
