@@ -78,6 +78,14 @@ between parts. The engineering record is `plans/`, indexed by
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
     `haseen plugin install`, and installing does not enable them.
+  - Adopted third-party plugins are ported, not bundled; they keep their MIT
+    notices (owner, 2026-10-20):
+    - haseen.monitor-settings (was io.github.juliusmork-sys.monitor-settings-extender):
+      Adopted as first-party, off by default (owner, 2026-10-20, plan 098)
+    - haseen.omaconnect (was omaconnect): Adopted as first-party, off by
+      default (owner, 2026-10-20, plan 098)
+    - haseen.syncthing (was io.github.ilyazar.syncthing): Adopted as
+      first-party, off by default (owner, 2026-10-20, plan 098)
 
 ## Gates (run both before every commit)
 
