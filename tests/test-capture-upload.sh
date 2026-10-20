@@ -725,8 +725,18 @@ assert_eq "a capture dir open to others: its mode and contents are not touched" 
 # forever, holding whatever it inherited open. So a plain --map-root-user
 # (no helper) probes first, and the --map-auto run gets no descriptor of this
 # suite and a time limit.
+# Only that uid, root in a namespace again, can remove the directory: this
+# user cannot read it, so find, du, cp -a and chmod -R on tests/.out fail on
+# it (plan 094). It goes after the check, on a failed or interrupted file
+# through the EXIT trap, and before the sandbox when an older run left one.
+remove_foreign() {
+    [[ -e $1 && ! -O $1 ]] || return 0
+    timeout 10 unshare --map-auto --map-root-user rm -rf -- "$1" </dev/null >/dev/null 2>&1 || true
+}
+foreign="$OUT/search-store-foreign/run/haseen-search-screen"
+remove_foreign "$foreign"
 cap_sandbox search-store-foreign
-foreign="$XDG_RUNTIME_DIR/haseen-search-screen"
+trap 'remove_foreign "$foreign"' EXIT
 if command -v unshare >/dev/null && command -v timeout >/dev/null &&
     timeout 10 unshare --user --map-root-user true </dev/null >/dev/null 2>&1 &&
     timeout 10 unshare --map-auto --map-root-user sh -c 'mkdir -m 700 -- "$1" && chown 1:1 -- "$1"' sh "$foreign" \
@@ -734,9 +744,13 @@ if command -v unshare >/dev/null && command -v timeout >/dev/null &&
     [[ -d $foreign && ! -O $foreign ]]; then
     capture haseen search screen image --geometry "0,0 10x10"
     refused_store "someone else's capture dir"
+    remove_foreign "$foreign"
+    assert_eq "someone else's capture dir: removed after the check" absent \
+        "$([[ -e $foreign ]] && echo present || echo absent)"
 else
     echo "  skip: no subordinate uid to own a foreign capture dir (unshare --map-auto)" >&2
 fi
+trap - EXIT
 
 # --- annotate, then keep, copy and upload exactly what the editor saved ------
 # grim writes "PNG"; the tensaku stub saves "ANNOTATED" when EDITOR_KEY=enter.
