@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+# haseen:summary KDE Connect over D-Bus for the haseen.omaconnect panel: devices, pairing, media, saved addresses, file picker
+# haseen:args devices [--refresh] | pair accept|reject ID | media status|action|player ID [ARG] | address add|remove ADDRESS | pick-file [--dry-run]
+#
+# Plan 098. Adapted from jitendradara12's OmaConnect scripts/discover_devices.sh,
+# media_control.sh, update_custom_address.sh and pick_file.sh (MIT, Copyright
+# (c) 2026 OmaConnect contributors), at the versions of upstream 1.5.0: the
+# daemon's own reachability is trusted (no TCP or ping probe per device), the
+# gdbus variant-with-comma reply is unwrapped, and an address may not start
+# with "-". haseen changes: one command instead of four scripts; media status
+# in bash only (no Python); the file list goes to `haseen menu select`; state
+# changes (pairing answers, the saved address list) go through `run`, so
+# --dry-run prints them.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen kdeconnect <command> [--dry-run]
+
+  devices [--refresh]     one line per device (tab-separated):
+                          DEVICE ID NAME TYPE PAIRED REACHABLE CHARGE CHARGING
+                          PLUGINS NETTYPE NETSTRENGTH PAIRREQUESTED
+                          PAIRREQUESTEDBYPEER VERIFICATIONKEY
+                          then CUSTOM_ADDRESSES_READY and one CUSTOM_ADDRESS
+                          line per saved address. --refresh asks the daemon
+                          to look for devices first.
+  pair accept|reject ID   answer a pairing request from ID
+  media status ID         the phone's player as JSON
+  media action ID ACTION  PlayPause, Next or Previous
+  media player ID NAME    switch the phone's player
+  address add|remove ADDRESS
+                          the addresses KDE Connect tries beyond its own
+                          discovery (a Tailscale or other VPN peer)
+  pick-file               choose a recent file from Downloads, Documents,
+                          Pictures and Videos; prints its path
+
+Exit codes: 0 ok, 2 usage, 64 a bad argument, 69 KDE Connect is not
+answering, 70 an unexpected reply, 127 a command is missing.
+EOF
+}
+
+BASE=/modules/kdeconnect
+DEST=org.kde.kdeconnect
+
+need() {
+    local c
+    for c in "$@"; do
+        have "$c" || exit 127
+    done
+}
+
+daemon_running() {
+    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner "$DEST" 2>/dev/null | grep -q '(true,)'
+}
+
+property() {
+    gdbus call --session --dest "$DEST" --object-path "$1" \
+        --method org.freedesktop.DBus.Properties.Get "$2" "$3" 2>/dev/null || return 69
+}
+
+# value REPLY — the scalar inside gdbus's (<'text'>,) or (<42>,) reply.
+value() {
+    printf '%s' "$1" | sed -E "s/^\((true|false),\)$/\1/; s/^\(<[[:space:]]*'(.*)',[[:space:]]*>,\)$/\1/; s/^\(<('([^']|\\\\')*'|[^>]+)>.*$/\1/; s/^<'(.*)'>,?$/\1/; s/^<([^>]*)>,?$/\1/; s/^'(.*)'$/\1/; s/^'(.*)',$/\1/"
+}
+
+# strings REPLY — the items of an array of strings, one per line.
+strings() {
+    printf '%s' "$1" | sed -E 's/.*\[//; s/\].*//' | tr ',' '\n' |
+        sed -nE "s/^[[:space:]]*['\"]?([^'\"]+)['\"]?[[:space:]]*$/\1/p"
+}
+
+field() {
+    local f=${1//$'\t'/ }
+    printf '%s' "${f//$'\n'/ }"
+}
+
+# quiet CMD... — CMD without its output (gdbus prints "()"); a dry run still
+# shows the call.
+quiet() {
+    if $DRY_RUN; then
+        run "$@"
+    else
+        "$@" >/dev/null
+    fi
+}
+
+valid_id() {
+    [[ -n $1 && $1 =~ ^[A-Za-z0-9_-]+$ ]] || exit 64
+}
+
+cmd_devices() {
+    need gdbus sed grep tr
+    if [[ ${1:-} == --refresh ]]; then
+        if ! daemon_running; then
+            gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+                --method org.freedesktop.DBus.StartServiceByName "$DEST" 0 >/dev/null 2>&1 || true
+            sleep 0.5
+        fi
+        ! have kdeconnect-cli || kdeconnect-cli --refresh >/dev/null 2>&1 || true
+        gdbus call --session --dest "$DEST" --object-path "$BASE" \
+            --method org.kde.kdeconnect.daemon.forceOnNetworkChange >/dev/null 2>&1 || true
+        sleep 1.2
+    elif (($#)); then
+        usage >&2
+        exit 2
+    fi
+    daemon_running || exit 69
+
+    local ids entries custom address
+    ids=$(gdbus call --session --dest "$DEST" --object-path "$BASE" \
+        --method org.kde.kdeconnect.daemon.devices false false) || exit 69
+    entries=$(strings "$ids")
+    [[ -n $entries || $ids =~ ^\((@as[[:space:]]+)?\[[[:space:]]*\],[[:space:]]*\)$ ]] || exit 70
+
+    # KDE Connect keeps the saved addresses itself; listing them here lets
+    # the panel add a Tailscale peer without a second store.
+    if custom=$(property "$BASE" org.kde.kdeconnect.daemon customDevices); then
+        printf 'CUSTOM_ADDRESSES_READY\n'
+        while IFS= read -r address; do
+            [[ -n $address ]] && printf 'CUSTOM_ADDRESS\t%s\n' "$(field "$address")"
+        done <<<"$(strings "$custom")"
+    else
+        printf 'CUSTOM_ADDRESSES_UNAVAILABLE\n'
+    fi
+
+    local entry path id name type paired reachable requested by_peer key supported plugins p
+    local charge charging raw net_type net_strength
+    while IFS= read -r entry; do
+        [[ -n $entry ]] || continue
+        path=$entry
+        [[ $path == /* ]] || path="$BASE/devices/$entry"
+        id=${path##*/}
+        name=$(value "$(property "$path" org.kde.kdeconnect.device name)") || continue
+        type=$(value "$(property "$path" org.kde.kdeconnect.device type)") || continue
+        paired=$(value "$(property "$path" org.kde.kdeconnect.device isPaired)") || continue
+        reachable=$(value "$(property "$path" org.kde.kdeconnect.device isReachable)") || continue
+        requested=$(value "$(property "$path" org.kde.kdeconnect.device isPairRequested)") || requested=false
+        by_peer=$(value "$(property "$path" org.kde.kdeconnect.device isPairRequestedByPeer)") || by_peer=false
+        key=$(value "$(property "$path" org.kde.kdeconnect.device verificationKey)") || key=""
+        [[ $requested == true ]] || requested=false
+        [[ $by_peer == true ]] || by_peer=false
+        supported=$(property "$path" org.kde.kdeconnect.device supportedPlugins) || continue
+        plugins=
+        for p in kdeconnect_battery kdeconnect_ping kdeconnect_share kdeconnect_runcommand kdeconnect_findmyphone \
+            kdeconnect_clipboard kdeconnect_connectivity_report kdeconnect_sms kdeconnect_mprisremote; do
+            [[ $supported == *"'$p'"* || $supported == *"<$p>"* ]] && plugins="${plugins:+$plugins,}$p"
+        done
+        charge=-1 charging=false net_type='' net_strength=-1
+        if [[ $plugins == *kdeconnect_battery* ]]; then
+            raw=$(value "$(property "$path/battery" org.kde.kdeconnect.device.battery charge)") || raw=""
+            [[ $raw =~ ^[0-9]+$ ]] && charge=$raw
+            raw=$(value "$(property "$path/battery" org.kde.kdeconnect.device.battery isCharging)") || raw=false
+            [[ $raw == true ]] && charging=true
+        fi
+        if [[ $plugins == *kdeconnect_connectivity_report* ]]; then
+            raw=$(value "$(property "$path/connectivity_report" org.kde.kdeconnect.device.connectivity_report cellularNetworkType)") || raw=""
+            [[ -n $raw && $raw != null ]] && net_type=$raw
+            raw=$(value "$(property "$path/connectivity_report" org.kde.kdeconnect.device.connectivity_report cellularNetworkStrength)") || raw=""
+            [[ $raw =~ ^[0-9]+$ ]] && net_strength=$raw
+        fi
+        printf 'DEVICE\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$(field "$id")" "$(field "$name")" "$(field "$type")" "$paired" "$reachable" "$charge" "$charging" \
+            "$plugins" "$(field "$net_type")" "$net_strength" "$requested" "$by_peer" "$(field "$key")"
+    done <<<"$entries"
+}
+
+cmd_pair() {
+    (($# == 2)) || { usage >&2; exit 2; }
+    local method
+    case $1 in
+    accept) method=acceptPairing ;;
+    reject) method=cancelPairing ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    valid_id "$2"
+    need gdbus
+    quiet gdbus call --session --dest "$DEST" --object-path "$BASE/devices/$2" \
+        --method "org.kde.kdeconnect.device.$method" || exit 69
+}
+
+# json_string TEXT — TEXT as a JSON string literal.
+json_string() { jq -Rn --arg s "$1" '$s'; }
+
+cmd_media() {
+    (($# >= 2)) || { usage >&2; exit 2; }
+    local op=$1 id=$2 arg=${3:-} base
+    valid_id "$id"
+    need gdbus sed tr jq
+    base="$BASE/devices/$id/mprisremote"
+    case $op in
+    status)
+        (($# == 2)) || { usage >&2; exit 2; }
+        local playing title artist album player art name players=()
+        mp() { value "$(property "$base" org.kde.kdeconnect.device.mprisremote "$1")"; }
+        playing=$(mp isPlaying) || exit 69
+        title=$(mp title) || title=""
+        [[ -n $title ]] || title=$(mp nowPlaying) || title=""
+        artist=$(mp artist) || artist=""
+        album=$(mp album) || album=""
+        player=$(mp player) || player=""
+        art=""
+        for name in localAlbumArtUrl albumArtUrl artUrl; do
+            [[ -n $art ]] || art=$(mp "$name") || art=""
+        done
+        while IFS= read -r name; do
+            [[ -n $name ]] && players+=("$name")
+        done < <(property "$base" org.kde.kdeconnect.device.mprisremote playerList 2>/dev/null |
+            grep -oE "'[^']+'" | tr -d "'" || true)
+        if ((${#players[@]} == 0)); then
+            gdbus call --session --dest "$DEST" --object-path "$base" \
+                --method org.kde.kdeconnect.device.mprisremote.requestPlayerList >/dev/null 2>&1 || true
+        fi
+        [[ $playing == true ]] || playing=false
+        jq -cn --argjson playing "$playing" --arg title "$title" --arg artist "$artist" --arg album "$album" \
+            --arg player "$player" --arg art "$art" --args '{isPlaying: $playing, title: $title, artist: $artist,
+                album: $album, player: $player, albumArt: $art,
+                playerList: ((if $player != "" then [$player] else [] end) + $ARGS.positional
+                    | reduce .[] as $p ([]; if index([$p]) then . else . + [$p] end))}' \
+            "${players[@]}"
+        ;;
+    action)
+        [[ $arg =~ ^(PlayPause|Next|Previous)$ ]] || exit 64
+        quiet gdbus call --session --dest "$DEST" --object-path "$base" \
+            --method org.kde.kdeconnect.device.mprisremote.sendAction "$arg" || exit 69
+        ;;
+    player)
+        [[ -n $arg && $arg != *$'\n'* && $arg != *$'\r'* ]] || exit 64
+        local quoted=${arg//\\/\\\\}
+        quoted=${quoted//\'/\\\'}
+        quiet gdbus call --session --dest "$DEST" --object-path "$base" \
+            --method org.freedesktop.DBus.Properties.Set org.kde.kdeconnect.device.mprisremote player "<'$quoted'>" || exit 69
+        ;;
+    *) usage >&2; exit 2 ;;
+    esac
+}
+
+cmd_address() {
+    (($# == 2)) || { usage >&2; exit 2; }
+    local op=$1 target=$2 raw entries address found=false addresses=()
+    [[ $op == add || $op == remove ]] || { usage >&2; exit 2; }
+    # A literal address only: no option, no path, no space, no control.
+    [[ -n $target && $target != -* && $target =~ ^[0-9A-Fa-f.:]+$ ]] || exit 64
+    need gdbus busctl sed tr
+    raw=$(property "$BASE" org.kde.kdeconnect.daemon customDevices) || exit 69
+    entries=$(strings "$raw")
+    [[ -n $entries || $raw =~ \[[[:space:]]*\] ]] || exit 70
+    while IFS= read -r address; do
+        [[ -n $address ]] || continue
+        if [[ $address == "$target" ]]; then
+            found=true
+            [[ $op == remove ]] && continue
+        fi
+        addresses+=("$address")
+    done <<<"$entries"
+    [[ $op == remove || $found == true ]] || addresses+=("$target")
+    run busctl --user set-property "$DEST" "$BASE" org.kde.kdeconnect.daemon customDevices as \
+        "${#addresses[@]}" "${addresses[@]}"
+}
+
+cmd_pick_file() {
+    (($# == 0)) || { usage >&2; exit 2; }
+    local roots=() root candidates formats=(jpg jpeg png webp gif heic avif mp4 mov m4v mkv webm avi pdf txt zip tar gz iso)
+    for root in "$HOME/Downloads" "$HOME/Documents" "$HOME/Pictures" "$HOME/Videos"; do
+        [[ -d $root ]] && roots+=("$root")
+    done
+    ((${#roots[@]})) || exit 1
+    local args=("${roots[@]}" "(" -type d -name ".*" ! -name "." -prune ")" -o -type f ! -name ".*" "(") i
+    for i in "${!formats[@]}"; do
+        ((i)) && args+=(-o)
+        args+=(-iname "*.${formats[i]}")
+    done
+    args+=(")" -printf '%T@\t%p\n')
+    # The newest 500: the picker lists them all at once.
+    candidates=$(find "${args[@]}" 2>/dev/null | sort -rn | cut -f2- | head -n 500 || true)
+    [[ -n $candidates ]] || exit 1
+    printf '%s\n' "$candidates" | haseen-menu-select "Send a file" --width 800 --height 500
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+verb=${1:-}
+(($#)) && shift
+case $verb in
+devices) cmd_devices "$@" ;;
+pair) cmd_pair "$@" ;;
+media) cmd_media "$@" ;;
+address) cmd_address "$@" ;;
+pick-file) cmd_pick_file "$@" ;;
+*) usage >&2; exit 2 ;;
+esac
