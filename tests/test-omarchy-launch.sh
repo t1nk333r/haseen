@@ -240,9 +240,30 @@ assert_contains "battlenet: the installer runs in the prefix under GE-Proton" "$
 assert_contains "battlenet: the launcher entry runs haseen's launcher" "$OUTPUT" \
     "Exec=\"$OMA/bin/omarchy-launch-battlenet\""
 assert_not_contains "battlenet: no fixed /tmp log" "$OUTPUT" "/tmp/omarchy-battlenet"
+assert_contains "battlenet: the download is HTTPS only, redirects too" "$OUTPUT" \
+    "DRYRUN: curl --proto =https --proto-redir =https --fail"
+assert_contains "battlenet: the dry run says the download is confirmed first" "$OUTPUT" "only after a typed 'run'"
+# A real run: the download is shown with its SHA-256 and runs only on "run".
+stub sudo 'echo "STUB-CALLED: sudo $*" >&2; exit 97'
+stub curl 'while [ $# -gt 0 ]; do [ "$1" = --output ] && { printf "MZ fake\n" >"$2"; exit 0; }; shift; done; exit 1'
+sum="$(printf 'MZ fake\n' | sha256sum | cut -d' ' -f1)"
+capture fake omarchy-install-gaming-battlenet --yes </dev/null
+assert_status "battlenet: --yes alone does not run the download" 1 "$STATUS"
+assert_contains "battlenet: the installer's SHA-256 is shown" "$OUTPUT" "SHA-256: $sum"
+assert_contains "battlenet: the Z: drive risk is spelled out" "$OUTPUT" "Wine's Z: drive is your whole filesystem"
+assert_not_contains "battlenet: nothing launched without the typed run" "$(calls)" "setsid"
+[[ ! -e $HOME/Games/battlenet && ! -e $XDG_DATA_HOME/applications/battlenet.desktop ]] && _pass ||
+    _fail "battlenet: a refused run makes no prefix and no launcher"
+capture fake omarchy-install-gaming-battlenet --yes <<<"run"
+assert_status "battlenet: a typed run" 0 "$STATUS"
+assert_contains "battlenet: then the installer runs" "$(calls)" "setsid [-f] [sh] [-c]"
+[[ -f $XDG_DATA_HOME/applications/battlenet.desktop ]] && _pass || _fail "battlenet: the launcher entry is written"
 mkdir -p "$HOME/Games/battlenet/drive_c"
 capture fake omarchy-install-gaming-battlenet --dry-run
 assert_contains "battlenet: a partial prefix is wiped first" "$OUTPUT" "DRYRUN: rm -rf -- $HOME/Games/battlenet"
+capture fake omarchy-install-gaming-battlenet --yes </dev/null
+assert_status "battlenet: --yes alone does not wipe a partial prefix" 1 "$STATUS"
+[[ -d $HOME/Games/battlenet/drive_c ]] && _pass || _fail "battlenet: the partial prefix stays without the typed wipe"
 mkdir -p "$HOME/Games/battlenet/drive_c/Program Files (x86)/Battle.net"
 : >"$HOME/Games/battlenet/drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe"
 capture fake omarchy-install-gaming-battlenet --dry-run
