@@ -75,6 +75,7 @@ The owner's other repos:
 | Dotfiles (yadm): backup, then the repo wins | `bin/haseen-setup-dotfiles`, `tests/test-dotfiles.sh` | 055 |
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |
 | haseen.nvim: the owner's Neovim config, fetched at a pin; theme bridge | `bin/haseen-setup-nvim`, `share/haseen/default/nvim/`, `tests/test-haseen-nvim.sh` | 065 |
+| Adopted integrations: monitor settings, KDE Connect, Syncthing (off by default) | `share/haseen/shell/plugins/haseen.{monitor-settings,omaconnect,syncthing}/`, `bin/haseen-hardware-monitor`, `bin/haseen-kdeconnect`, `bin/haseen-setup-kdeconnect`, `bin/haseen-syncthing`, `share/haseen/migrations/1791560300-adopt-integrations.sh` | 098 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
