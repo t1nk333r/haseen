@@ -11,9 +11,12 @@ if [[ ! -x $QS_BIN ]]; then
     echo "  skip: Quickshell not installed; service lifecycle scenario not run" >&2
 else
     sandbox compat-runtime
-    XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/haseen-compat-runtime.XXXXXX")"
-    export XDG_RUNTIME_DIR
-    trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
+    # The trap names this directory, not $XDG_RUNTIME_DIR: the panel
+    # scenario's sandbox below moves that, and this one was left in TMPDIR
+    # (plan 094).
+    compat_runtime="$(mktemp -d "${TMPDIR:-/tmp}/haseen-compat-runtime.XXXXXX")"
+    export XDG_RUNTIME_DIR="$compat_runtime"
+    trap 'rm -rf "$compat_runtime"' EXIT
     mkdir -p "$HOME/.config/haseen" "$HOME/.config/omarchy/plugins/me.gauge" "$HOME/.config/haseen/plugins/me.independent"
     chmod 700 "$XDG_RUNTIME_DIR"
     unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE DBUS_SESSION_BUS_ADDRESS

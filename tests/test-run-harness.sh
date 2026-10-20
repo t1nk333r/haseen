@@ -59,3 +59,20 @@ assert_eq "the late writer did write while the second file ran" yes \
 assert_status "the second file's failure fails the run" 1 "$STATUS"
 assert_contains "and it is counted, with no forged passes" "$OUTPUT" "1/2 passed"
 assert_not_contains "the late output never reaches the second file's capture" "$OUTPUT" "LATE-WRITER-OUTPUT"
+
+# A suite started with SIGINT and SIGQUIT ignored (a background job of a
+# non-interactive shell) still gives every test trappable signals. A shell
+# fake cannot trap a signal ignored when it started, so before plan 094 the
+# fake recorder and notify-send never saw the SIGINT that stops them.
+sandbox run-harness-signals
+inner="$SANDBOX/inner-signals.sh"
+cat >"$inner" <<'EOF2'
+# shellcheck shell=bash
+for sig in INT QUIT; do
+    got="$(sh -c 'trap "echo trapped; exit 0" "$1"; kill -s "$1" $$; echo ignored' sh "$sig")"
+    assert_eq "a fake can trap SIG$sig" trapped "$got"
+done
+EOF2
+capture timeout 15 bash -c 'trap "" INT QUIT; exec "$@"' bash "$REPO/tests/run.sh" "$inner"
+assert_status "a run started with SIGINT and SIGQUIT ignored passes" 0 "$STATUS"
+assert_contains "both signals reach a test's fakes" "$OUTPUT" "2/2 passed"
