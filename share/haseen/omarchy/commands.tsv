@@ -413,7 +413,7 @@ omarchy-tui-remove-all	port	-	removes every TUI launcher and icon after a confir
 omarchy-update	shim	haseen-update	updates the system the haseen way
 omarchy-update-analyze-logs	port	-	warns when the last pacman transaction's initramfs build did not report success
 omarchy-update-aur-pkgs	port	-	upgrades installed AUR packages with paru or yay when the AUR answers
-omarchy-update-available	refuse	none: see pending package updates with checkupdates and apply them with haseen update	haseen has no release channel of its own to poll; this asked whether a newer Omarchy release was out.
+omarchy-update-available	refuse	haseen update check (pending package updates), then haseen update	haseen has no release channel of its own to poll; this asked whether a newer Omarchy release was out.
 omarchy-update-confirm	port	-	asks 'Ready to update?' before an update; exit 1 when declined
 omarchy-update-dev	refuse	none: haseen uses no Omarchy dev checkout; update a haseen checkout with git pull	This updated an Omarchy development checkout, which haseen does not use.
 omarchy-update-firmware	shim	haseen-update firmware	updates the firmware with fwupd (signed for Secure Boot when needed)
@@ -425,7 +425,7 @@ omarchy-update-pacman-guard	refuse	haseen update	This is the body of Omarchy's p
 omarchy-update-pkg-prune	port	-	prunes the pacman cache to the two newest versions of each package
 omarchy-update-requires-free-space	port	-	fails when / has under 10 GiB free (HASEEN_UPDATE_FORCE=1 skips it)
 omarchy-update-restart	port	haseen-shell-restart	offers a reboot after a kernel update, restarts haseen's shell
-omarchy-update-status	inert	-	it refreshed the update widget of Omarchy's shell; haseen's shell has no such widget
+omarchy-update-status	inert	-	it refreshed the update widget of Omarchy's shell; haseen's updates widget checks on its own
 omarchy-update-stay-awake	port	haseen-toggle-idle	blocks sleep and turns idle off during an update, undoing only what it set
 omarchy-update-system-pkgs	port	-	upgrades system packages with pacman -Syu as root, without Omarchy's overwrite policy
 omarchy-update-system-pkgs-when-conflicted	refuse	haseen update (resolve the file or package conflict pacman reports by hand)	It moves files of Omarchy's own packages aside to force their upgrade; haseen never rewrites Omarchy's packages.
