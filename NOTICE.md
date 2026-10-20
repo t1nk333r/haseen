@@ -71,6 +71,7 @@ same commit that adds the code.
 | [t1nk333r/omacachy](https://github.com/t1nk333r/omacachy) | own | t1nk33r | dry-run helper contract, ESP bootloader detection, GPU dispatch | listed per file header |
 | waydots, the owner's private dotfiles (relicensed MIT) | own | t1nk33r | package-source rules; the keybind layout (`default/hypr/binds.lua`), the Arabic-aware fontconfig reasoning (`themed/fonts.conf.tpl`, `default/fontconfig/arabic.conf`), the yazi config and the screen-search behaviour | listed per file header |
 | waydots, the owner's private dotfiles | own requirements | t1nk33r | factual VAPT tool memberships, native/version pins, source priority, and shared COAE runtime requirements; installer implementation and prose reexpressed, no assessment workflows copied | `share/haseen/layers/vapt/`, `share/haseen/default/vapt/`, `docs/vapt.md` |
+| [juliusmork-sys/Omarchy-Monitor-Settings-Extender](https://github.com/juliusmork-sys/Omarchy-Monitor-Settings-Extender) | MIT | 2026 Julius Getz Mørk | monitor panel: friendly EDID names, clean-scale rule, refresh rates per resolution, rotation, mirror/extend, the draggable arrangement with edge snapping and overlap push-out, cursor sizes (plan 098) | `share/haseen/shell/plugins/haseen.monitor-settings/`, `bin/haseen-hardware-monitor` |
 
 ## Factual inputs (**no code or prose copied**)
 
