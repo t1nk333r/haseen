@@ -309,7 +309,7 @@ assert_eq "a message is the label" "Tea Tea" "$(jq -r '.reminders[1] | "\(.label
 # The fixture's clock was read before the command's: a loaded machine may
 # tick a few seconds in between.
 rem="$(jq -r '.reminders[1].remaining' <<<"$OUTPUT")"
-[[ $rem =~ ^(10m|9m\ [0-9]+s)$ ]] && _pass || _fail "the time left is in Omarchy's format (10m, less a tick): $rem"
+[[ $rem =~ ^(10m|9m\ 5[0-9]s)$ ]] && _pass || _fail "the time left is in Omarchy's format (10m, less a tick): $rem"
 capture fake omarchy-reminder show --bogus
 assert_status "show takes only --json" 1 "$STATUS"
 sandbox omarchy-menu-reminder-dry
