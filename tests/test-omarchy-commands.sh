@@ -191,6 +191,46 @@ assert_contains "uninstall removes haseen's links" "$OUTPUT" \
 assert_not_contains "uninstall keeps a foreign file" "$OUTPUT" "$prefix/bin/omarchy-theme-set"
 assert_not_contains "uninstall keeps a foreign link" "$OUTPUT" "$prefix/bin/omarchy-menu"
 
+# A real install and uninstall into a scratch PREFIX, the install twice. sudo
+# runs the command as the user (the PREFIX is the sandbox's); a no-op go keeps
+# the sidecar build out of the checkout.
+sandbox omarchy-install-real
+stub sudo 'exec "$@"'
+stub go 'exit 0'
+prefix="$SANDBOX/prefix"
+mkdir -p "$prefix/bin"
+printf 'foreign\n' >"$prefix/bin/omarchy-theme-set"
+ln -s /usr/bin/true "$prefix/bin/omarchy-menu"
+# haseen_links — every haseen omarchy link in PREFIX/bin, with its target.
+haseen_links() {
+    find "$prefix/bin" -maxdepth 1 -lname '../share/haseen/omarchy/bin/*' -printf '%f %l\n' | LC_ALL=C sort
+}
+install_real() {
+    capture env HASEEN_SYSROOT="$FIXTURES/cachyos-grub-plain" "$REPO/install.sh" --tree-only --yes --prefix "$prefix" </dev/null
+}
+install_real
+assert_status "a real tree install succeeds" 0 "$STATUS"
+assert_contains "it warns about the foreign file" "$OUTPUT" "$prefix/bin/omarchy-theme-set is not haseen's and stays"
+assert_contains "and the foreign link" "$OUTPUT" "$prefix/bin/omarchy-menu is not haseen's and stays"
+assert_eq "every other command is linked" "$(($(ls "$OMA/bin" | wc -l) - 2))" "$(haseen_links | wc -l)"
+assert_eq "a link reaches the installed command" "$prefix/share/haseen/omarchy/bin/omarchy-launch-shell" \
+    "$(readlink -f "$prefix/bin/omarchy-launch-shell")"
+capture "$prefix/bin/omarchy-update" --help
+assert_status "and runs from PREFIX/bin" 0 "$STATUS"
+assert_eq "the foreign file is untouched" "foreign" "$(cat "$prefix/bin/omarchy-theme-set")"
+assert_eq "the foreign link is untouched" "/usr/bin/true" "$(readlink "$prefix/bin/omarchy-menu")"
+first="$(haseen_links)"
+install_real
+assert_status "a second install succeeds" 0 "$STATUS"
+assert_eq "and changes no link" "$first" "$(haseen_links)"
+assert_eq "the foreign file is still untouched" "foreign" "$(cat "$prefix/bin/omarchy-theme-set")"
+capture env HASEEN_SYSROOT="$FIXTURES/cachyos-grub-plain" "$REPO/install.sh" --uninstall-tree --yes --prefix "$prefix" </dev/null
+assert_status "a real uninstall succeeds" 0 "$STATUS"
+assert_eq "it removes every haseen link" "" "$(haseen_links)"
+assert_eq "and keeps the foreign file" "foreign" "$(cat "$prefix/bin/omarchy-theme-set")"
+assert_eq "and the foreign link" "/usr/bin/true" "$(readlink "$prefix/bin/omarchy-menu")"
+assert_eq "and removes the tree" "no" "$([[ -e $prefix/share/haseen ]] && echo yes || echo no)"
+
 # --- the shell restart never starts Omarchy's shell -----------------------------
 # IO (plan 093): `omarchy-update` → omarchy-update-restart →
 # omarchy-restart-shell → `hyprctl dispatch exec_cmd omarchy-launch-shell`
