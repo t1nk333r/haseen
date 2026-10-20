@@ -444,7 +444,18 @@ QML
     assert_eq "nook: outside a bar it is inert and hidden" '{"hosted":false,"visible":false}' "$(s 1 .inert)"
     assert_not_contains "no Omarchy updater anywhere" "$CALLS" "omarchy"
 
-    # haseen.power on a fake UPower (tools/fake-upower.py on a private bus).
+fi
+
+# haseen.power on a fake UPower (tools/fake-upower.py on a private bus). The
+# fake needs dbus-daemon and python's dbus and gi; CI, which requires the
+# engine, installs them (python-dbus python-gobject), and a run without them
+# says so instead of reading a missing battery as a failure of the widget.
+if [[ ! -x $QS_BIN ]] || ! command -v dbus-daemon >/dev/null || ! python3 -c 'import dbus, gi' 2>/dev/null; then
+    echo "  skip: qs, dbus-daemon or python3-dbus missing; haseen.power not run on a fake UPower" >&2
+    if [[ ${HASEEN_REQUIRE_ENGINE:-0} == 1 ]]; then
+        assert_eq "power: fake UPower prerequisites (dbus-daemon, python dbus and gi)" available unavailable
+    fi
+else
     sandbox bar-basics-power
     LOG="$SANDBOX/calls.log"
     : >"$LOG"

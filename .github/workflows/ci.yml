@@ -29,6 +29,7 @@ env:
   ARCH_PACKAGES: >-
     git bash jq lua shellcheck curl file python nodejs qt6-declarative
     imagemagick qrencode zbar foot which diffutils quickshell go socat
+    python-dbus python-gobject
 
 jobs:
   lint:

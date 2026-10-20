@@ -249,6 +249,18 @@ other key unchanged, and a second run changed nothing.
 - `tools/lint.sh`: OK (qmllint caught a `state` property shadowing
   `Item.state` in the updates widget and panel; renamed `result`).
 
+- CI (PR #45, head 494d66d) failed the three haseen.power checks: glyph
+  `null`, text empty. CI's `ARCH_PACKAGES` had no `python-dbus` or
+  `python-gobject`, so `tools/fake-upower.py` never started and the widget saw
+  no battery; test-battery.sh and test-media.sh had been skipping their own
+  fake-bus scenarios in CI for the same reason ("skip: qs, dbus-daemon or
+  python3-dbus missing"). Reproduced in `archlinux:latest` with CI's packages
+  (135/138); with the two packages added, test-bar-basics, test-battery and
+  test-media passed 233/233 there. `.github/workflows/ci.yml` installs them,
+  and the power scenario now checks its prerequisites first: it fails as a
+  named prerequisite under `HASEEN_REQUIRE_ENGINE=1` (CI) and says skip
+  elsewhere.
+
 ## Not verified
 
 - No nested Hyprland run: the nook opening the real overflow panel under
