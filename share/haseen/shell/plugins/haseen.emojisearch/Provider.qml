@@ -22,6 +22,9 @@ Scope {
     readonly property string prefix: ":"
     property var emojis: []
     property bool wanted: false
+    // The list could not be read or held no emoji: say so instead of loading
+    // forever.
+    property bool failed: false
     // haseen.emoji's directory: a user copy when one overrides it.
     readonly property string dataDir: {
         const rec = Plugins.registry["haseen.emoji"];
@@ -35,6 +38,16 @@ Scope {
     function query(text: string): var {
         if (!wanted)
             Qt.callLater(() => root.wanted = true);
+        if (emojis.length === 0 && failed)
+            return [
+                {
+                    title: "The emoji list could not be read",
+                    subtitle: root.dataDir + "/emojis.json",
+                    icon: "dialog-warning",
+                    glyph: "\uf071",
+                    exec: () => {}
+                }
+            ];
         if (emojis.length === 0)
             return [
                 {
@@ -66,6 +79,10 @@ Scope {
 
     FileView {
         path: root.wanted ? root.dataDir + "/emojis.json" : ""
-        onLoaded: root.emojis = EmojiSearch.parseEmojis(text())
+        onLoaded: {
+            root.emojis = EmojiSearch.parseEmojis(text());
+            root.failed = root.emojis.length === 0;
+        }
+        onLoadFailed: root.failed = true
     }
 }

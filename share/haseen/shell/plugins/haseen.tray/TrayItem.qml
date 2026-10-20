@@ -78,7 +78,7 @@ Item {
             anchor.margins.bottom: pos === "bottom" ? Theme.gap : 0
             anchor.margins.left: pos === "left" ? Theme.gap : 0
             anchor.margins.right: pos === "right" ? Theme.gap : 0
-            implicitWidth: Math.ceil(label.implicitWidth) + Theme.gap * 2
+            implicitWidth: Math.ceil(label.width) + Theme.gap * 2
             implicitHeight: Math.ceil(label.implicitHeight) + Theme.gap * 2
 
             Rectangle {
@@ -92,6 +92,10 @@ Item {
                     id: label
 
                     anchors.centerIn: parent
+                    // Apps put whole sentences (or a playing track's lyrics)
+                    // in the title; wrap them instead of a screen-wide popup.
+                    width: Math.min(implicitWidth, Theme.fontSize * 30)
+                    wrapMode: Text.Wrap
                     text: root.tooltip
                     textFormat: Text.PlainText
                     color: Theme.foreground

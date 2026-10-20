@@ -18,6 +18,8 @@ Column {
     property var screen: null
 
     readonly property int panelWidth: Theme.fontSize * 28
+    // The bar widget's threshold, so a reading turns the same colour in both.
+    readonly property real warnAt: typeof settings.warnAt === "number" ? settings.warnAt : 80
 
     spacing: Theme.gap
     width: panelWidth
@@ -72,7 +74,7 @@ Column {
                 width: parent.width * Math.max(0, meter.value) / 100
                 height: parent.height
                 radius: parent.radius
-                color: meter.value >= 95 ? Theme.urgent : meter.value >= 80 ? Theme.warning : Theme.accent
+                color: meter.value >= 95 ? Theme.urgent : meter.value >= root.warnAt ? Theme.warning : Theme.accent
             }
         }
     }

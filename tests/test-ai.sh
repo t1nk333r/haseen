@@ -340,6 +340,11 @@ PY
     assert_eq "live: messages file sent as the conversation" "[m3] echo: second" "$OUTPUT"
     capture haseen ai chat --model m3 --messages-file "$SANDBOX/history.json" "third" </dev/null
     assert_eq "live: prompt appended after the history" "[m3] echo: third" "$OUTPUT"
+    # One argument is capped at 128 KiB; the conversation never rides on argv.
+    jq -n '[{role: "user", content: ("x" * 200000)}, {role: "assistant", content: "ok"}, {role: "user", content: "long"}]' >"$SANDBOX/long.json"
+    capture haseen ai chat --model m4 --messages-file "$SANDBOX/long.json" </dev/null
+    assert_status "live: a conversation past 128 KiB is sent" 0 "$STATUS"
+    assert_eq "live: long conversation answered" "[m4] echo: long" "$OUTPUT"
     printf '%s' '[{"role":"tool","content":"x"}]' >"$SANDBOX/bad.json"
     capture haseen ai chat --model m3 --messages-file "$SANDBOX/bad.json" </dev/null
     assert_status "live: invalid messages file refused" 1 "$STATUS"

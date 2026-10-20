@@ -40,8 +40,11 @@ Column {
             height: parent.height
             visible: root.service !== null
 
+            // Theme.foreground, not the bar's colour: on a transparent bar
+            // that one can match the panel.
             BarButton {
                 height: parent.height
+                color: Theme.foreground
                 glyph: root.service && root.service.dnd ? "\uf1f6" : "\uf0f3"
                 highlighted: root.service !== null && root.service.dnd
                 onClicked: root.service.toggleDnd()
@@ -49,6 +52,7 @@ Column {
 
             BarButton {
                 height: parent.height
+                color: Theme.foreground
                 glyph: "\uf1f8"
                 visible: root.items.length > 0
                 onClicked: root.service.clear()

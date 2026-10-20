@@ -200,8 +200,10 @@ Column {
         }
     }
 
+    // A fresh install has no theme yet; that is not worth a log line.
     FileView {
         path: Paths.userState + "/current/theme.name"
+        printErrors: false
         onLoaded: root.currentTheme = text().trim()
     }
 
@@ -221,6 +223,8 @@ Column {
 
         Text {
             anchors.baseline: title.baseline
+            // A width, or the elide below never applies to a long error.
+            width: parent.width - title.width - Theme.gap
             text: root.notice !== "" ? root.notice : "Enter applies · Esc closes"
             color: root.notice !== "" ? Theme.urgent : Theme.muted
             elide: Text.ElideRight

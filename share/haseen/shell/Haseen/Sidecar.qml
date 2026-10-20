@@ -39,6 +39,10 @@ Singleton {
     property var _consumers: ({})
     property int _nextId: 1
     property bool _starting: false
+    // Streams this connection subscribed to. Unsubscribing goes by this, not
+    // by `streams`: a consumer that leaves before the first frame must still
+    // stop the daemon's sampler.
+    property var _subscribed: ({})
 
     function has(capability: string): bool {
         return capabilities.indexOf(capability) >= 0;
@@ -119,21 +123,26 @@ Singleton {
             m.processes = m.processes || params.processes === true;
             m.system = m.system || params.system === true;
         }
+        const subscribed = Object.assign({}, _subscribed);
         for (const stream of ["sysusage", "borderwipe"]) {
-            if (merged[stream] !== undefined)
+            if (merged[stream] !== undefined) {
                 send({
                     id: _nextId++,
                     method: "subscribe",
                     stream: stream,
                     params: merged[stream]
                 });
-            else if (streams[stream] !== undefined)
+                subscribed[stream] = true;
+            } else if (subscribed[stream]) {
                 send({
                     id: _nextId++,
                     method: "unsubscribe",
                     stream: stream
                 });
+                delete subscribed[stream];
+            }
         }
+        _subscribed = subscribed;
     }
 
     function _onLine(line: string): void {
@@ -173,6 +182,7 @@ Singleton {
             root.version = "";
             root.daemonPid = 0;
             root.streams = ({});
+            root._subscribed = ({});
         }
     }
 
@@ -193,5 +203,9 @@ Singleton {
         // A daemon that could not start (missing binary, broken build) leaves
         // no capability behind, which is exactly what a consumer gates on.
         onExited: root._starting = false
+        // A binary that cannot be started emits no `exited`; without this the
+        // next consumer would never try again, even after a rebuild.
+        onRunningChanged: if (!running)
+            root._starting = false
     }
 }

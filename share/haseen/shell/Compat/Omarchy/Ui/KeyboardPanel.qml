@@ -185,15 +185,34 @@ PanelWindow {
     applyMask()
   }
 
-  onMaskChanged: adoptMask()
+  onMaskChanged: {
+    adoptMask()
+    countMaskRegions()
+  }
 
-  Component.onCompleted: adoptMask()
+  Component.onCompleted: {
+    adoptMask()
+    countMaskRegions()
+  }
+
+  // The sub-region count of the mask in force. Region.regions has no change
+  // signal, so a binding that read it would depend on a non-bindable
+  // property (Qt warns, and it would not re-evaluate); childrenChanged says
+  // when it moved.
+  property int maskRegionCount: 0
+  function countMaskRegions() {
+    root.maskRegionCount = root.mask && root.mask.regions ? root.mask.regions.length : 0
+  }
+  Connections {
+    target: root.mask
+    function onChildrenChanged() { root.countMaskRegions() }
+  }
 
   // True while the surface must take no pointer input: the panel is
   // logically closed (the surface outlives it for the fade), or the mask in
   // force is empty because the panel asked for it. The dismissal twins on
   // the other outputs follow this, not `open` alone.
-  readonly property bool pointerInputSuspended: PanelInput.pointerInputSuspended(root.open, root.mask)
+  readonly property bool pointerInputSuspended: PanelInput.pointerInputSuspended(root.open, root.mask, root.maskRegionCount)
 
   // Track every layout change between the bar's contentItem and the
   // anchor item. `transform` updates whenever any item in that chain

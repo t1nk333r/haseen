@@ -61,11 +61,25 @@ for id in "${ids[@]}"; do
         info "$id is already at ${old:0:12}"
         continue
     fi
-    registry_link "$id" "$url" "$path"
-    if ! registry_validate "$id"; then
-        warn "$id does not validate at ${resolved:0:12}; rolling back to ${old:0:12}"
+    # Plugins pinned from one repository share its checkout, so the new commit
+    # reaches every installed one of them, and lockfile_pin moves all their
+    # pins: each must validate, or the repository goes back to where it was.
+    family="$(lockfile_read | jq -c --arg repo "$url" \
+        '.plugins | to_entries[] | select(.value.repo == $repo) | {id: .key, path: (.value.path // "")}')"
+    failed=()
+    while IFS= read -r member; do
+        mid="$(jq -r .id <<<"$member")"
+        # A sibling that is not a link to the checkout is not affected.
+        [[ $mid == "$id" || -L $PLUGIN_USER_DIR/$mid ]] || continue
+        registry_link "$mid" "$url" "$(jq -r .path <<<"$member")"
+        registry_validate "$mid" || failed+=("$mid")
+    done <<<"$family"
+    if ((${#failed[@]} > 0)); then
+        warn "${failed[*]} does not validate at ${resolved:0:12}; rolling back to ${old:0:12}"
         registry_fetch "$url" "$old" >/dev/null
-        registry_link "$id" "$url" "$path"
+        for mid in "${failed[@]}"; do
+            registry_link "$mid" "$url" "$(jq -r --arg id "$mid" 'select(.id == $id) | .path' <<<"$family")"
+        done
         continue
     fi
     $DRY_RUN || lockfile_pin "$id" "$url" "$path" "$resolved"

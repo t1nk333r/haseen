@@ -68,6 +68,18 @@ Scope {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
+            // Escape cancels whatever has focus. A key handler on the field
+            // only ran while polkit wanted a response: the field is disabled
+            // otherwise, and this window holds the keyboard exclusively.
+            Shortcut {
+                sequence: "Escape"
+                context: Qt.WindowShortcut
+                onActivated: {
+                    if (root.flow)
+                        root.flow.cancelAuthenticationRequest();
+                }
+            }
+
             PanelSurface {
                 anchors.centerIn: parent
                 padding: Theme.gap * 3
@@ -154,7 +166,6 @@ Scope {
                                     text = "";
                                 }
                             }
-                            Keys.onEscapePressed: root.flow.cancelAuthenticationRequest()
                             Component.onCompleted: forceActiveFocus()
                             // The field starts disabled until polkit asks for the
                             // response; a disabled item cannot hold focus, so the
@@ -197,15 +208,19 @@ Scope {
                         anchors.right: parent.right
                         spacing: Theme.gap
 
+                        // Theme.foreground, not the bar's colour: on a
+                        // transparent bar that one can match the dialog.
                         BarButton {
                             height: Theme.fontSize * 2.2
                             text: "Cancel"
+                            color: Theme.foreground
                             onClicked: root.flow.cancelAuthenticationRequest()
                         }
 
                         BarButton {
                             height: Theme.fontSize * 2.2
                             text: "Authenticate"
+                            color: Theme.foreground
                             highlighted: true
                             onClicked: input.accepted()
                         }

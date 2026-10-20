@@ -168,7 +168,15 @@ Item {
         configProc.running = true;
         input.forceActiveFocus();
     }
-    Component.onDestruction: stop()
+    // Closing the panel ends the reply; keep what streamed so far, marked
+    // stopped, instead of leaving an unanswered user turn in chat.json.
+    Component.onDestruction: {
+        if (chat.running) {
+            stopping = true;
+            finish(0);
+        }
+        stop();
+    }
 
     ListModel {
         id: messages
@@ -179,6 +187,8 @@ Item {
 
         path: Paths.userState + "/ai/chat.json"
         printErrors: false
+        // Small file; the save on close has to land before the panel is freed.
+        blockWrites: true
         onLoaded: {
             try {
                 const data = JSON.parse(text());
@@ -320,6 +330,7 @@ Item {
                 height: parent.height
                 glyph: "\uf078"
                 text: root.model || "no model"
+                maxTextWidth: root.width * 0.4
                 color: root.model ? Theme.foreground : Theme.muted
                 highlighted: root.picking
                 onClicked: {
@@ -346,6 +357,7 @@ Item {
         anchors.right: parent.right
         visible: root.notice !== ""
         text: root.notice
+        textFormat: Text.PlainText
         color: Theme.warning
         wrapMode: Text.Wrap
         font.family: Theme.fontFamily
@@ -445,6 +457,9 @@ Item {
                     else
                         root.send();
                 }
+                // A TextEdit leaves Escape to the window's close shortcut
+                // unless it claims the override first.
+                Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_Escape && (root.picking || root.busy)
                 Keys.onEscapePressed: event => {
                     if (root.picking)
                         root.picking = false;
@@ -457,6 +472,7 @@ Item {
                 Text {
                     visible: input.text === ""
                     text: root.busy ? "Replying…" : "Message " + (root.model || root.endpoint || "the model")
+                    textFormat: Text.PlainText
                     color: Theme.muted
                     font: input.font
                 }
@@ -482,32 +498,41 @@ Item {
         visible: root.picking
         z: 1
         width: Math.min(root.width, pickList.implicitWidth + Theme.gap * 2)
-        height: pickList.implicitHeight + Theme.gap * 2
+        // An endpoint can list hundreds of models; past half the panel the
+        // list scrolls instead of running off it.
+        height: Math.min(pickList.implicitHeight, root.height / 2) + Theme.gap * 2
         color: Theme.surface
         radius: Theme.radius
         border.color: Theme.border
         border.width: Theme.borderWidth
 
-        Column {
-            id: pickList
+        Flickable {
+            anchors.fill: parent
+            anchors.margins: Theme.gap
+            clip: true
+            contentWidth: width
+            contentHeight: pickList.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
 
-            x: Theme.gap
-            y: Theme.gap
+            Column {
+                id: pickList
 
-            Repeater {
-                model: root.models
+                Repeater {
+                    model: root.models
 
-                BarButton {
-                    required property string modelData
+                    BarButton {
+                        required property string modelData
 
-                    height: Theme.fontSize * 2
-                    text: modelData
-                    highlighted: modelData === root.model
-                    onClicked: {
-                        root.model = modelData;
-                        root.picking = false;
-                        root.save();
-                        input.forceActiveFocus();
+                        height: Theme.fontSize * 2
+                        maxTextWidth: root.width - Theme.gap * 4
+                        text: modelData
+                        highlighted: modelData === root.model
+                        onClicked: {
+                            root.model = modelData;
+                            root.picking = false;
+                            root.save();
+                            input.forceActiveFocus();
+                        }
                     }
                 }
             }

@@ -924,6 +924,35 @@ Scope {
             return;
         delete liveKeys[key];
         held = held.filter(k => k !== key);
+        if (mutedKeys.indexOf(key) >= 0)
+            mutedKeys = mutedKeys.filter(k => k !== key);
+    }
+
+    // A muted notification stays tracked - the newest mutedRetain of them -
+    // so its replaces_id updates mutate the same object and keep its key:
+    // under Do Not Disturb a progress or now-playing notification is one
+    // history row (Store.closeInto), not one per update evicting real ones.
+    readonly property int mutedRetain: 16
+    property var mutedKeys: []
+
+    function retainMuted(key) {
+        const pending = liveKeys[key];
+        pending.row = null;
+        if (pending.held) {
+            pending.held = false;
+            held = held.filter(k => k !== key);
+        }
+        let keys = mutedKeys.filter(k => k !== key).concat([key]);
+        while (keys.length > mutedRetain) {
+            const old = keys.shift();
+            const live = liveKeys[old];
+            // One shown since it was muted belongs to its card now.
+            if (live && !live.row && rowIndexFor(old) < 0) {
+                release(old);
+                releaseLive(old);
+            }
+        }
+        mutedKeys = keys;
     }
 
     // ------------------------------------------------------------- icons
@@ -1376,11 +1405,12 @@ Scope {
         if (muted && notification.urgency !== NotificationUrgency.Critical) {
             storePut(row);
             storeClose(key, muted);
-            release(key);
-            if (rowIndexFor(key) < 0)
-                releaseLive(key);
-            else
+            if (rowIndexFor(key) < 0) {
+                retainMuted(key);
+            } else {
+                release(key);
                 liveKeys[key].row = null;
+            }
             return;
         }
 
@@ -1770,6 +1800,16 @@ Scope {
         Hyprland.dispatch(Hyprland.usingLua ? 'hl.dsp.focus({window = hl.get_window("address:' + win.address + '")})' : "focuswindow address:" + win.address);
     }
 
+    // Every link the pager opens: the one URL policy (Security.js), then
+    // xdg-open in its own scope through Apps.launch (plan 074).
+    function openExternal(raw) {
+        const argv = Security.openArgv(String(raw || ""));
+        if (argv.length > 0)
+            Apps.launch(argv, {
+                desktopId: "xdg-open"
+            });
+    }
+
     function activate(key) {
         const index = rowIndexFor(key);
         const row = index >= 0 ? toasts.get(index) : null;
@@ -1789,13 +1829,16 @@ Scope {
         if (!handled && row) {
             // Source first, link last: a Slack message quoting a link is
             // still a Slack notification. The link has its own button.
+            // Only a web row's source is a site: a native app's source is its
+            // name, and a reverse-DNS one (org.mozilla.Thunderbird) would
+            // pass as a hostname.
             const win = windowForPid(row.senderPid) || windowForSource(row.source);
             if (win)
                 focusWindow(win);
-            else if (Markup.hostname(row.source))
-                Security.openExternalUrl("https://" + Markup.hostname(row.source) + "/");
+            else if (String(row.groupKey || "").indexOf("web:") === 0 && Markup.hostname(row.source))
+                openExternal("https://" + Markup.hostname(row.source) + "/");
             else if (String(row.link || ""))
-                Security.openExternalUrl(String(row.link));
+                openExternal(String(row.link));
         }
         closeToast(key, "activated");
     }
@@ -1988,7 +2031,7 @@ Scope {
         } else if (kind === "phone") {
             copyText(value, false);
         } else {
-            Security.openExternalUrl(value);
+            openExternal(value);
         }
         // A copied code is a finished notification - unless it carried more
         // than one. Long enough after the press for the tick to be seen.

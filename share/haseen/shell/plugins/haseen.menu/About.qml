@@ -42,11 +42,14 @@ Column {
         }
     }
 
-    // Existence check only; the Image below loads the file itself.
+    // Existence check only; the Image below loads the file itself. Not
+    // preloaded: the menu creates this view on every open, and only refresh()
+    // (entering About) needs the answer.
     FileView {
         id: imageCheck
 
         path: root.brandingDir + "/about.png"
+        preload: false
         printErrors: false
         blockLoading: false
         onLoaded: root.hasImage = true

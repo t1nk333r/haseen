@@ -4,7 +4,9 @@ import qs.Haseen
 // Panel control for haseen.prayers, standing in for the Omarchy Ui control
 // of the same role that upstream OmaPrayers used. Theme tokens only.
 // Drag or click; liveValue follows the pointer, released(value) fires once
-// on release so one drag is one shell.json write. The wheel steps it.
+// on release so one drag is one shell.json write. The wheel steps it only
+// while it is held: otherwise it scrolls the panel, so scrolling past a
+// column of sliders changes nothing.
 Item {
     id: root
 
@@ -70,15 +72,19 @@ Item {
         preventStealing: true
         onPressed: event => dragValue = valueAt(event.x)
         onPositionChanged: event => dragValue = valueAt(event.x)
-        onReleased: event => {
-            const v = valueAt(event.x);
+        onReleased: {
+            const v = dragValue;
             if (v !== root.value)
                 root.released(v);
         }
+        // Held, the wheel nudges the value being dragged; release commits it
+        // with the rest of the drag.
         onWheel: event => {
-            const v = root.snap(root.value + (event.angleDelta.y > 0 ? root.step : -root.step));
-            if (v !== root.value)
-                root.released(v);
+            if (!drag.pressed) {
+                event.accepted = false;
+                return;
+            }
+            dragValue = root.snap(dragValue + (event.angleDelta.y > 0 ? root.step : -root.step));
         }
     }
 }

@@ -27,7 +27,9 @@ Singleton {
     readonly property string userPlugins: userConfig + "/plugins"
     readonly property string builtinPlugins: shellDir + "/plugins"
 
+    // Each segment percent-encoded: raw, a # or ? in a name would start the
+    // URL's fragment or query, and a % would read as an escape.
     function fileUrl(path: string): string {
-        return "file://" + path;
+        return "file://" + path.split("/").map(encodeURIComponent).join("/");
     }
 }

@@ -269,12 +269,24 @@ PanelWindow {
     }
 
     // Below the sections: a right click on empty bar space arranges, as one
-    // on the chevron does.
+    // on the chevron does. A widget whose own MouseArea takes only the left
+    // button lets a right click fall through to here, so one over a widget is
+    // ignored (leaving arrange mode still works from anywhere).
     MouseArea {
         anchors.fill: parent
         enabled: !bar.hidden
         acceptedButtons: Qt.RightButton
-        onClicked: bar.setArranging(!bar.arranging)
+        onClicked: mouse => {
+            if (!bar.arranging) {
+                const p = mapToItem(track, mouse.x, mouse.y);
+                const along = bar.vertical ? p.y : p.x;
+                for (const section of [leftSection, centerSection, rightSection])
+                    for (const span of section.spans(track))
+                        if (along >= span.start && along < span.end)
+                            return;
+            }
+            bar.setArranging(!bar.arranging);
+        }
     }
 
     Item {

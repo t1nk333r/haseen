@@ -39,7 +39,10 @@ Item {
             anchors.margins: frame.border.width
             source: card.path !== "" ? Paths.fileUrl(card.path) : ""
             // The grid decodes at card size: a 4K wallpaper costs a thumbnail.
+            // Both sides, so the crop fills the frame from pixels decoded for
+            // it (as ImageCard.qml, plan 083).
             sourceSize.width: Math.round(card.width * card.pixelRatio)
+            sourceSize.height: Math.round(card.previewHeight * card.pixelRatio)
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: false

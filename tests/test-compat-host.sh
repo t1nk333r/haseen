@@ -52,3 +52,72 @@ capture haseen-plugin-settings me.host <<< '{"settings":{"value":0}}'
 assert_status "malformed user config is never overwritten" 1 "$STATUS"
 assert_eq "malformed user's bytes remain" 'owner is currently editing' "$(cat "$config")"
 
+
+# Root declarations (Compat/Host.js propertiesFor): a plugin rooted at a module
+# type with no QML file of that name (Row, MouseArea, RowLayout, ...) declares
+# only its own properties, as for Item; a same-directory base file is still
+# followed, and one that exists but cannot be parsed, or a cycle, still
+# refuses the entry. Real engine, no windows.
+QS_BIN=${QS_BIN:-/usr/bin/qs}
+if [[ ! -x $QS_BIN ]]; then
+    echo "  skip: Quickshell not installed; root declarations not exercised" >&2
+else
+    sandbox compat-host-roots
+    XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/haseen-compat-host.XXXXXX")"
+    export XDG_RUNTIME_DIR
+    trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
+    chmod 700 "$XDG_RUNTIME_DIR"
+    unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE DBUS_SESSION_BUS_ADDRESS
+    roots="$SANDBOX/roots"
+    mkdir -p "$roots"
+    printf 'import QtQuick\nRow { property var bar; readonly property int fixed: 1 }\n' >"$roots/RowRoot.qml"
+    printf 'import QtQuick.Layouts as L\nL.RowLayout { property var settings }\n' >"$roots/Aliased.qml"
+    printf 'import QtQuick\nItem { property string moduleName }\n' >"$roots/Base.qml"
+    printf 'import QtQuick\nBase { property var bar }\n' >"$roots/Derived.qml"
+    printf 'not qml at all\n' >"$roots/Broken.qml"
+    printf 'import QtQuick\nBroken { property var bar }\n' >"$roots/OnBroken.qml"
+    printf 'import QtQuick\nCycleB { property var a }\n' >"$roots/CycleA.qml"
+    printf 'import QtQuick\nCycleA { property var b }\n' >"$roots/CycleB.qml"
+    harness="$SANDBOX/shell"
+    mkdir -p "$harness"
+    # Host.js reads files through a FileView created beside it, so the Compat
+    # directory needs its qs.* modules as in the shell.
+    for module in Haseen Compat Ui Commons; do
+        ln -s "$HASEEN_PATH/shell/$module" "$harness/$module"
+    done
+    ln -s "$HASEEN_PATH/shell/plugins" "$harness/plugins"
+    cat >"$harness/shell.qml" <<QML
+import QtQuick
+import Quickshell
+import "Compat/Host.js" as Host
+ShellRoot {
+    id: probe
+    function declared(name) {
+        try {
+            const props = Host.propertiesFor("file://$roots/" + name + ".qml", null, probe);
+            return Object.keys(props).sort().map(k => k + (props[k].writable ? "" : "!")).join(",");
+        } catch (e) { return "error: " + String(e); }
+    }
+    Component.onCompleted: {
+        const r = {};
+        for (const name of ["RowRoot", "Aliased", "Derived", "OnBroken", "CycleA"]) r[name] = declared(name);
+        console.warn("RESULT " + JSON.stringify(r));
+        Qt.callLater(Qt.quit);
+    }
+}
+QML
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        QT_FORCE_STDERR_LOGGING=1 timeout 30 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+    assert_status "root declarations scenario completes in the real engine" 0 "$STATUS"
+    roots_result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT")"
+    if [[ -n $roots_result ]]; then
+        root_of() { jq -r --arg k "$1" '.[$k]' <<<"$roots_result"; }
+        assert_eq "a Row root declares its own properties" "bar,fixed!" "$(root_of RowRoot)"
+        assert_eq "an aliased module root declares its own properties" settings "$(root_of Aliased)"
+        assert_eq "a same-directory base file is still followed" bar,moduleName "$(root_of Derived)"
+        assert_contains "a base file that cannot be parsed refuses the entry" "$(root_of OnBroken)" "cannot resolve root Broken"
+        assert_contains "a cycle refuses the entry" "$(root_of CycleA)" "cyclic QML root inheritance"
+    else
+        _fail "root declarations scenario produced no result" "$OUTPUT"
+    fi
+fi

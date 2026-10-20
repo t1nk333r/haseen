@@ -75,20 +75,27 @@ Singleton {
     }
 
     // A destroyed QObject's wrapper stays truthy; Qt.isQtObject tells.
-    function _ownerDead(entry) {
-        return entry.owner && !Qt.isQtObject(entry.owner);
+    function _ownerDead(owner) {
+        return owner && !Qt.isQtObject(owner);
     }
 
     function _launchProc(id, isRandomId) {
         const entry = _procDebouncers[id];
         if (!entry || !entry.command)
             return;
-        if (_ownerDead(entry)) {
+        if (_ownerDead(entry.owner)) {
             release(id);
             return;
         }
+        // This run answers the call that launched it. A newer run of the same
+        // id replaces entry.callback, and whichever run finishes first clears
+        // it, so reading the entry at finish would hand an overlapping run's
+        // output to nobody.
+        const command = entry.command;
+        const callback = entry.callback;
+        const owner = entry.owner;
         const proc = procComp.createObject(root, {
-            command: entry.command
+            command: command
         });
         const timeoutTimer = debounceTimerComp.createObject(root);
         let capturedOut = "";
@@ -103,11 +110,12 @@ Singleton {
                 return;
             done = true;
             timeoutTimer.stop();
-            if (entry.callback && typeof entry.callback === "function" && !root._ownerDead(entry)) {
+            // release(id) drops the entry: its in-flight run answers nobody.
+            if (root._procDebouncers[id] === entry && typeof callback === "function" && !root._ownerDead(owner)) {
                 try {
-                    entry.callback(capturedOut, exitCode);
+                    callback(capturedOut, exitCode);
                 } catch (e) {
-                    console.warn("haseen: Proc.runCommand callback failed for", JSON.stringify(entry.command) + ":", e);
+                    console.warn("haseen: Proc.runCommand callback failed for", JSON.stringify(command) + ":", e);
                 }
             }
             proc.destroy();

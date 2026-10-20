@@ -52,7 +52,10 @@ function hostOf(raw) {
   var u=safeHttpUrl(raw), m=u.match(/^https?:\/\/([^/:?#]+)/)
   return m ? m[1] : ''
 }
-function openExternalUrl(raw) {
+// The argv that opens a vetted URL, or [] when it is refused. Callers start
+// it with Apps.launch (plan 074): Qt.openUrlExternally would run xdg-open, and
+// the browser it starts, inside the shell's cgroup, killed on every restart.
+function openArgv(raw) {
   var safe=safeExternalUrl(raw)
-  return safe ? Qt.openUrlExternally(safe) : false
+  return safe ? ['xdg-open', safe] : []
 }

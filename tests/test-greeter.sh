@@ -277,12 +277,29 @@ EOF
     cat >"$SANDBOX/driver/shell.qml" <<EOF
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import "greetersrc" as Greeter
 
 ShellRoot {
     // The login, with no window: a layer surface needs a compositor, and the
     // authentication does not. tools/smoke-greeter.sh draws the real screen.
-    Greeter.GreeterSession {}
+    Greeter.GreeterSession {
+        id: session
+    }
+
+    // What the card's keys do, without the card: Enter answers with the
+    // field's text whether or not greetd has asked yet.
+    IpcHandler {
+        target: "card"
+
+        function start(): void {
+            session.authenticate();
+        }
+
+        function enter(text: string): void {
+            session.answer(text);
+        }
+    }
 }
 EOF
 
@@ -312,6 +329,32 @@ EOF
         sleep 2
         capture env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter state
         assert_contains "a wrong password is reported" "$OUTPUT" "Login incorrect"
+
+        # Another user while greetd is asking the first one: the open session
+        # is dropped, so nothing typed next can answer the first user's prompt.
+        env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call card start >/dev/null 2>&1 || true
+        sleep 1
+        capture env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter state
+        assert_contains "greetd is asking the first user" "$OUTPUT" '"awaiting":true'
+        # Quickshell cancels a failed session itself, so count, not grep.
+        cancels="$(grep -c '"type": "cancel_session"' "$record" || true)"
+        env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter selectUser 1 >/dev/null 2>&1 || true
+        sleep 1
+        capture env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter state
+        assert_contains "switching user leaves no prompt open" "$OUTPUT" '"awaiting":false'
+        assert_eq "the first user's session is cancelled" $((cancels + 1)) \
+            "$(grep -c '"type": "cancel_session"' "$record" || true)"
+
+        # Enter with no prompt open yet (a first login, or a retry after a
+        # failure): the text typed answers the prompt that greetd sends next.
+        env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call card enter "typed once" >/dev/null 2>&1 || true
+        sleep 2
+        sent="$(cat "$record")"
+        assert_contains "the new user gets a session of their own" "$sent" '"username": "zara"'
+        assert_contains "the first Enter answers greetd's prompt" "$sent" '"response": "typed once"'
+        capture env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter state
+        assert_contains "and its failure is reported" "$OUTPUT" "Login incorrect"
+        env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter selectUser 0 >/dev/null 2>&1 || true
 
         env XDG_RUNTIME_DIR="$run_dir" "$QS_BIN" ipc --pid "$pid" call greeter login "correct horse" >/dev/null 2>&1 || true
         sleep 3

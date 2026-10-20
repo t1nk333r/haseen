@@ -71,6 +71,10 @@ Scope {
 
         signal moved(real volume, bool muted)
 
+        // A switch to a node that is already bound (ready) sends no
+        // readyChanged: seed its baseline now, or its first change only seeds.
+        onNodeChanged: read()
+
         function read(): void {
             const n = node;
             if (!n || !n.ready || !n.audio)

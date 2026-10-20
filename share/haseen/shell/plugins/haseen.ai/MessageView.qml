@@ -49,6 +49,7 @@ Item {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.mine ? "You" : (root.modelName || "assistant") + (root.phase === "stopped" ? "  · stopped" : root.phase === "streaming" ? "  ·  …" : "")
+                textFormat: Text.PlainText
                 color: root.mine ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1

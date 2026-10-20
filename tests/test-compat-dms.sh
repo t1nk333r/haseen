@@ -93,6 +93,7 @@ import qs.Compat as Compat
 import qs.Common
 import qs.Services
 import qs.Widgets
+import "Compat/Host.js" as Host
 ShellRoot {
     id: probe
     property var r: ({})
@@ -144,6 +145,13 @@ ShellRoot {
         running: true
         onTriggered: {
             const h = probe.hosts, r = probe.r;
+            // The hosts are gone: what they loaded must be released too.
+            if (probe.step === 10) {
+                if (probe.since() < 300) return;
+                r.released = r.liveBefore - Host.liveComponents();
+                probe.finish();
+                return;
+            }
             if (!h || !h.a.widget || !h.b.widget || !h.c.widget) return;
             const A = h.a.widget, B = h.b.widget, C = h.c.widget;
             switch (probe.step) {
@@ -201,6 +209,12 @@ ShellRoot {
                 r.settingsPage = fakeShell.openPanels.join(",");
                 PopoutService.openSettingsWithTab("keybinds");
                 r.unmappedPage = fakeShell.openPanels.join(",");
+                // A popout whose close() throws still hands over.
+                const thrower = Qt.createQmlObject("import QtQuick; QtObject { property string pluginId: 'dms.thrower'; function close() { throw new Error('boom'); } }", probe);
+                const nextOwner = Qt.createQmlObject("import QtQuick; QtObject { function close() {} }", probe);
+                Compat.Runtime.requestPopout(thrower);
+                r.throwingSwitch = [Compat.Runtime.requestPopout(nextOwner), Compat.Runtime.activePopout === nextOwner];
+                Compat.Runtime.releasePopout(nextOwner);
                 // Proc.runCommand
                 Proc.runCommand("t.out", ["tlp-stat", "-s"], (out, code) => { r.procOut = out.trim(); r.procCode = code; }, 0, 2000);
                 Proc.runCommand("t.guard", ["pkexec", "tlp", "bat"], (out, code) => { r.guardCode = code; }, 0, 2000);
@@ -211,6 +225,11 @@ ShellRoot {
                 const owner = Qt.createQmlObject("import QtQuick; QtObject {}", probe);
                 Proc.runCommand("t.owner", ["true"], () => { r.deadOwnerCalled = true; }, 100, 2000, owner);
                 owner.destroy();
+                // Overlapping runs of one id each answer their own caller.
+                Proc.runCommand("t.overlap", ["sh", "-c", "sleep 0.4; echo first"], out => { r.overlapFirst = out.trim(); }, 0, 3000);
+                // Plugin settings reach shell.json; the session copy then
+                // gives way to it.
+                SettingsData.setPluginSetting("popFixture", "mode", "a");
                 // Plugin state
                 r.stateLoaded = PluginService.loadPluginState("popFixture", "count", 0);
                 r.stateDefault = PluginService.loadPluginState("popFixture", "absent", "dflt");
@@ -224,9 +243,22 @@ ShellRoot {
                 r.list = [list.count, list.boundsBehavior === Flickable.StopAtBounds];
                 probe.next(); break;
             case 8:
+                if (probe.since() < 100) break;
+                Proc.runCommand("t.overlap", ["sh", "-c", "sleep 0.6; echo second"], out => { r.overlapSecond = out.trim(); }, 0, 3000);
+                probe.next(); break;
+            case 9:
                 if (probe.since() < 1500) break;
                 r.stateSignals = probe.stateSignals;
-                probe.finish();
+                r.savedAfterWrite = SettingsData.saved.popFixture || null;
+                r.settingAfterWrite = SettingsData.getPluginSetting("popFixture", "mode", "none");
+                // A later edit of shell.json (its reload sets Config.user).
+                const edited = JSON.parse(JSON.stringify(Config.user));
+                edited.plugins["dms.pop-fixture"].settings.mode = "b";
+                Config.user = edited;
+                r.settingAfterEdit = SettingsData.getPluginSetting("popFixture", "mode", "none");
+                r.liveBefore = Host.liveComponents();
+                loader.active = false;
+                probe.next(); break;
             }
         }
     }
@@ -258,6 +290,8 @@ QML
         assert_eq "pillClickAction wins over the popout, as in DMS" true "$(get .clickActionWins)"
         assert_eq "a DMS network settings page opens haseen's network panel" '"haseen.network"' "$(get .settingsPage)"
         assert_eq "a page without a haseen panel opens nothing" '"haseen.network"' "$(get .unmappedPage)"
+        assert_eq "a popout whose close() throws still hands over to the next" '[true,true]' "$(get .throwingSwitch)"
+        assert_eq "and the throw is reported once" 1 "$(grep -c "close() of 'dms.thrower' threw during close previous popout" <<<"$OUTPUT")"
         assert_eq "Proc.runCommand hands over stdout" '"Power source   = AC"' "$(get .procOut)"
         assert_eq "and the exit code" 0 "$(get .procCode)"
         assert_eq "a plugin's pkexec reaches the stub, not the system" 97 "$(get .guardCode)"
@@ -267,6 +301,13 @@ QML
         assert_eq "a run over its timeout reports 124" 124 "$(get .slowCode)"
         assert_eq "a command that cannot start reports 127 at once" 127 "$(get .missingCode)"
         assert_eq "no callback for a destroyed owner" null "$(get .deadOwnerCalled)"
+        assert_eq "an overlapping run of one id answers the call that launched it" '"first"' "$(get .overlapFirst)"
+        assert_eq "and the newer run still answers its own" '"second"' "$(get .overlapSecond)"
+        assert_eq "a plugin setting reaches haseen's shell.json" '"a"' "$(jq -c '.plugins["dms.pop-fixture"].settings.mode' "$XDG_CONFIG_HOME/haseen/shell.json")"
+        assert_eq "the stored key leaves the session copy" null "$(get .savedAfterWrite)"
+        assert_eq "and still reads back" '"a"' "$(get .settingAfterWrite)"
+        assert_eq "a later shell.json edit shows through" '"b"' "$(get .settingAfterEdit)"
+        assert_eq "destroyed DMS bar hosts release their components" 3 "$(get .released)"
         assert_eq "plugin state is read from its file" 41 "$(get .stateLoaded)"
         assert_eq "a missing key gives the default" '"dflt"' "$(get .stateDefault)"
         assert_eq "every state change is signalled" 2 "$(get .stateSignals)"

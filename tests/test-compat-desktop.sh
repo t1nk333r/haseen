@@ -40,6 +40,27 @@ assert_contains "--dry-run shows the dispatch it would send" "$OUTPUT" "send_key
 capture "$shim" key 30:2
 assert_status "a state other than 0/1 is refused" 2 "$STATUS"
 
+# Codes and delays are decimal even with a leading zero: bash arithmetic
+# would read 010 as octal 8 and refuse 08 outright.
+: >"$log"
+capture "$shim" key -d 0 010:1 08:0
+assert_status "leading-zero codes are accepted" 0 "$STATUS"
+assert_eq "a leading-zero code is decimal: 010 is 10, 08 is 8" \
+    "$(send "" 18 down)"$'\n'"$(send "" 16 up)" "$(cat "$log")"
+: >"$log"
+capture "$shim" key -d 0 042:1 30:1 042:0 30:0
+assert_eq "a leading-zero modifier code is held like 42" \
+    "$(send SHIFT 38 down)"$'\n'"$(send "" 38 up)" "$(cat "$log")"
+# The delay between keys is whole seconds plus milliseconds.
+sleeps="$SANDBOX/sleep.log"
+stub sleep "printf '%s\n' \"\$*\" >>'$sleeps'"
+for delay in 1500 1000 0100 7; do
+    capture "$shim" key -d "$delay" 30:1 30:0
+done
+rm -f "$SANDBOX/stubs/sleep"
+assert_eq "-d sleeps its milliseconds, past one second too" \
+    $'1.500\n1.000\n0.100\n0.007' "$(cat "$sleeps")"
+
 # Only the interpreter and path helpers accompany the passthrough fixture.
 # System PATH entries would select an installed ydotool before our fake.
 shim_tools="$SANDBOX/shim-tools"
@@ -106,6 +127,8 @@ import Quickshell.Io
 QtObject {
   property FileView f: FileView { path: \"$allow\"; blockLoading: true }
   function check(done) { console.log(\"CHECK-RAN retry\"); f.reload(); done(f.text().trim() === \"yes\" ? null : \"not yet\"); } }"
+    plugin Silent silentFixture daemon 'import QtQuick
+QtObject { function check(done) { console.log("CHECK-RAN silent"); } }'
     plugin Placed placedFixture desktop
     plugin Free freeFixture desktop
     printf '%s\n' '{"bar":{"left":[],"center":[],"right":[]},"services":[],"plugins":{"dms.placed-fixture":{"settings":{"desktop":{"x":30,"y":40,"width":200,"height":120}}},"dms.free-fixture":{}}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
@@ -167,12 +190,16 @@ ShellRoot {
                 r.kinds = [Plugins.registry["dms.placed-fixture"].kinds, Plugins.entryUrl("dms.placed-fixture", "overlay").endsWith("/Placed/Main.qml")];
                 r.placed = probe.placeOf("dms.placed-fixture");
                 r.centred = probe.placeOf("dms.free-fixture");
+                // A check that never calls done is refused once its time is up.
+                Compat.DmsStartupGate.checkTimeoutMs = 400;
+                Compat.DmsStartupGate.run("dms.silent-fixture", ok => r.silent = ok);
                 probe.next(); break;
             case 1:
                 if (probe.since() < 1500) break;
                 r.passStarted = [h.pass1.instance !== null, h.pass2.instance !== null];
                 r.failStarted = h.fail.instance !== null;
                 r.errors = Plugins.errors.filter(e => e.id === "dms.fail-fixture").map(e => e.message);
+                r.silentErrors = Plugins.errors.filter(e => e.id === "dms.silent-fixture").map(e => e.message);
                 Compat.DmsStartupGate.run("dms.retry-fixture", ok => r.retry1 = ok);
                 probe.next(); break;
             case 2:
@@ -213,6 +240,8 @@ QML
         assert_eq "a failing check keeps the plugin unloaded" false "$(get .failStarted)"
         assert_eq "the refusal is reported as a plugin error" '["dms: startup check: fixture-tool missing"]' "$(get .errors)"
         assert_contains "and as a notification with its details" "$(cat "$SANDBOX/notify.log" 2>/dev/null)" "fixture-tool missing"$'\n\n'"install it"
+        assert_eq "a check that never calls done is refused after its timeout" false "$(get .silent)"
+        assert_eq "with an error that says so" '["dms: startup check: startupCheck did not call done() within 0.4 s"]' "$(get .silentErrors)"
         assert_eq "settings.desktop places and sizes the widget" '[30,40,200,120]' "$(get .placed)"
         assert_eq "without settings it is centred at the plugin's own size" '[840,460,240,160]' "$(get .centred)"
         assert_eq "a refused check reports false" false "$(get .retry1)"

@@ -46,6 +46,14 @@ TestCase {
         compare(history.length, 1);
         compare(Store.newest(history, 5, true).length, 1);
         compare(Store.forgetHeld(history).length, 0);
+        // A muted notification's replaces_id update keeps its key: one row.
+        history = Store.closeInto(history, Object.assign({}, row, {
+            summary: "Sam again"
+        }), "silenced", 24, 1001);
+        compare(history.length, 1);
+        compare(history[0].summary, "Sam again");
+        compare(JSON.stringify(Security.openArgv("https://example.com")), JSON.stringify(["xdg-open", "https://example.com/"]));
+        compare(Security.openArgv("javascript:alert(1)").length, 0);
         compare(Store.closeInto([], row, "dismissed", 0, 1000).length, 0);
         compare(Store.parseFile("{").length, 0);
     }

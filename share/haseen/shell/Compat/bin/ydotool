@@ -72,6 +72,8 @@ key() {
         shift
     done
     [[ $delay =~ ^[0-9]+$ ]] || fail "key: delay must be milliseconds"
+    # Base 10: bash arithmetic reads a leading zero as octal (010 is 8, 08 fails).
+    delay=$((10#$delay))
     for ev in "${events[@]}"; do
         [[ $ev =~ ^[0-9]+:[01]$ ]] || fail "key: '$ev' is not CODE:STATE"
     done
@@ -94,7 +96,9 @@ key() {
 
     local i=0 state mods out
     for ev in "${events[@]}"; do
-        code=${ev%:*} state=${ev#*:}
+        # Normalised before the modifier and held lookups, which match "42",
+        # not "042", and before the arithmetic below, which would read it as octal.
+        code=$((10#${ev%:*})) state=${ev#*:}
         if modifier "$code" >/dev/null; then
             if ((state)); then held[$code]=1; else unset "held[$code]"; fi
             continue
@@ -103,7 +107,7 @@ key() {
         for code_held in "${!held[@]}"; do
             mods+="$(modifier "$code_held") "
         done
-        ((i++ == 0)) || sleep "$(printf '0.%03d' "$((delay % 1000))")"
+        ((i++ == 0)) || sleep "$(printf '%d.%03d' "$((delay / 1000))" "$((delay % 1000))")"
         # Hyprland takes a number above 9 as an XKB keycode: evdev + 8.
         out="$(run hyprctl dispatch "hl.dsp.send_key_state({ mods = \"${mods% }\", key = \"$((code + 8))\", state = \"$( ((state)) && echo down || echo up)\", window = \"activewindow\" })")"
         if $DRY_RUN; then

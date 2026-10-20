@@ -29,8 +29,8 @@ Scope {
     readonly property var rows: {
         const needle = query.trim().toLowerCase();
         const matched = needle === "" ? binds : binds.filter(b => (b.combo + " " + b.description + " " + b.action + " " + b.category).toLowerCase().indexOf(needle) >= 0);
-        // One flat model with group headers, so a single ListView lays the
-        // sheet out and search never leaves an empty heading behind.
+        // One flat list with group headers (columnRows lays it out), so
+        // search never leaves an empty heading behind.
         const out = [];
         let group = "";
         for (const bind of matched) {
@@ -47,6 +47,33 @@ Scope {
                 combo: bind.combo,
                 text: bind.description || bind.action
             });
+        }
+        return out;
+    }
+
+    // The rows in `columns` columns, read down then across. A section is never
+    // split: each one goes to the column its middle falls in, measured in row
+    // heights, so the columns come out about the same length.
+    readonly property var columnRows: {
+        const sections = [];
+        for (const row of rows) {
+            if (row.header !== "" || sections.length === 0)
+                sections.push({
+                    rows: [],
+                    height: 0
+                });
+            const section = sections[sections.length - 1];
+            section.rows.push(row);
+            section.height += row.header === "" ? 1.7 : 2.4;
+        }
+        const total = sections.reduce((sum, section) => sum + section.height, 0);
+        const out = [[]];
+        let before = 0;
+        for (const section of sections) {
+            if (out[out.length - 1].length > 0 && out.length < columns && before + section.height / 2 > total * out.length / columns)
+                out.push([]);
+            out[out.length - 1] = out[out.length - 1].concat(section.rows);
+            before += section.height;
         }
         return out;
     }
@@ -159,6 +186,12 @@ Scope {
                 border.color: Theme.border
                 border.width: Theme.borderWidth
 
+                // Takes the clicks the card's own items leave, so a click on
+                // its margin does not reach the backdrop and close the sheet.
+                MouseArea {
+                    anchors.fill: parent
+                }
+
                 Column {
                     anchors.fill: parent
                     anchors.margins: Theme.gap * 2
@@ -174,7 +207,6 @@ Scope {
                         focus: true
                         text: root.query
                         onTextChanged: root.query = text
-                        Keys.onEscapePressed: root.hide()
                         Component.onCompleted: forceActiveFocus()
 
                         Text {
@@ -192,61 +224,92 @@ Scope {
                         color: Theme.border
                     }
 
-                    ListView {
+                    Flickable {
                         id: list
 
                         width: parent.width
                         height: parent.height - search.height - Theme.gap * 3
                         clip: true
-                        model: root.rows
+                        contentHeight: sheet.height
                         boundsBehavior: Flickable.StopAtBounds
 
-                        delegate: Item {
-                            required property var modelData
+                        Row {
+                            id: sheet
 
-                            width: list.width
-                            height: Math.round(Theme.fontSize * (modelData.header === "" ? 1.7 : 2.4))
+                            readonly property real columnWidth: (list.width - spacing * (root.columns - 1)) / root.columns
 
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: modelData.header !== ""
-                                text: modelData.header
-                                color: Theme.accent
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize
-                                font.bold: true
-                            }
+                            spacing: Theme.gap * 2
 
-                            Text {
-                                id: combo
+                            Repeater {
+                                model: root.columnRows
 
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: modelData.header === ""
-                                width: Math.round(parent.width * 0.42)
-                                text: modelData.combo
-                                elide: Text.ElideRight
-                                color: Theme.foreground
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontSize
-                            }
+                                delegate: Column {
+                                    id: column
 
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.left: combo.right
-                                anchors.right: parent.right
-                                visible: modelData.header === ""
-                                text: modelData.text
-                                elide: Text.ElideRight
-                                color: Theme.muted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize
+                                    required property var modelData
+
+                                    width: sheet.columnWidth
+
+                                    Repeater {
+                                        model: column.modelData
+
+                                        delegate: Item {
+                                            required property var modelData
+
+                                            width: column.width
+                                            height: Math.round(Theme.fontSize * (modelData.header === "" ? 1.7 : 2.4))
+
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                visible: modelData.header !== ""
+                                                text: modelData.header
+                                                color: Theme.accent
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: Theme.fontSize
+                                                font.bold: true
+                                            }
+
+                                            Text {
+                                                id: combo
+
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                visible: modelData.header === ""
+                                                width: Math.round(parent.width * 0.42)
+                                                text: modelData.combo
+                                                elide: Text.ElideRight
+                                                color: Theme.foreground
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontSize
+                                            }
+
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                anchors.left: combo.right
+                                                anchors.right: parent.right
+                                                visible: modelData.header === ""
+                                                text: modelData.text
+                                                elide: Text.ElideRight
+                                                color: Theme.muted
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: Theme.fontSize
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Keys.onEscapePressed: root.hide()
+            // Escape closes the sheet whatever has focus. Keys cannot attach to
+            // a window (only to an Item), and a window shortcut runs before
+            // the search field sees the key (PanelPopup.qml does the same).
+            Shortcut {
+                sequence: "Escape"
+                context: Qt.WindowShortcut
+                onActivated: root.hide()
+            }
         }
     }
 }

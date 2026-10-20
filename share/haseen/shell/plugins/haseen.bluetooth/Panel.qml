@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Bluetooth
 import Quickshell.Io
 import qs.Haseen
@@ -232,8 +233,13 @@ Column {
         text: "Paired devices"
     }
 
+    // ScriptModel keeps a row per device object: discovery hands out a new
+    // array on every update, and a plain array model rebuilt every row, which
+    // dropped a click that landed mid-rebuild.
     Repeater {
-        model: root.on ? root.paired : []
+        model: ScriptModel {
+            values: root.on ? root.paired : []
+        }
 
         delegate: DeviceRow {
             required property var modelData
@@ -259,7 +265,9 @@ Column {
     }
 
     Repeater {
-        model: root.on ? root.nearby : []
+        model: ScriptModel {
+            values: root.on ? root.nearby : []
+        }
 
         delegate: DeviceRow {
             required property var modelData

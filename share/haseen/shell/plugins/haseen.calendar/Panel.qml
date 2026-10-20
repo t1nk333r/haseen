@@ -61,6 +61,10 @@ Column {
         event.accepted = true;
     }
 
+    // The slot's Loader is a focus scope nobody focuses, so focus: true alone
+    // never reaches this item and the keys above went nowhere.
+    Component.onCompleted: forceActiveFocus()
+
     // The today marker moves at midnight; hourly ticks are enough.
     SystemClock {
         id: clock

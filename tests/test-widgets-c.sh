@@ -113,7 +113,9 @@ assert_eq "its default directories are the user's pictures and backgrounds" \
     "$(jq -r '.settings.directories.default | join(" ")' "$PLUGINS/haseen.imagepicker/manifest.json")"
 assert_eq "an empty command means the default" "0" \
     "$(jq -r '.settings.command.default | length' "$PLUGINS/haseen.imagepicker/manifest.json")"
-assert_contains "arguments are a list, never a shell string" "$ip" "Quickshell.execDetached(applyCommand(image.path))"
+assert_contains "arguments are a list, never a shell string" "$ip" "const argv = applyCommand(image.path);"
+assert_contains "a configured command starts in its own scope" "$ip" "Apps.launch(argv)"
+assert_contains "the default CLI write stays with the shell" "$ip" "Quickshell.execDetached(argv)"
 assert_eq "no shell is spawned to apply a pick" "" \
     "$(grep -nE '"(ba)?sh", *"-c"' "$PLUGINS/haseen.imagepicker"/*.qml || true)"
 assert_contains "imagepicker keeps the Omarchy MIT notice" "$ip" "MIT, Copyright (c) David"

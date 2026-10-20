@@ -308,9 +308,15 @@ ShellRoot {
         height: probe.carrying ? 0 : probe.screenH
     }
     property Region closedMask: Region {}
+    // An empty outer region composed of a sub-region takes input.
+    property Region composedMask: Region { Region { width: 4; height: 4 } }
 
     readonly property var hostMask: PanelInput.effectiveMask(probe.opened, probe.pluginMask, probe.closedMask)
-    readonly property bool suspended: PanelInput.pointerInputSuspended(probe.opened, probe.hostMask)
+    // KeyboardPanel's rule: Region.regions has no change signal, so the
+    // binding takes a sub-region count kept up to date outside it.
+    property int hostRegionCount: 0
+    onHostMaskChanged: probe.hostRegionCount = probe.hostMask && probe.hostMask.regions ? probe.hostMask.regions.length : 0
+    readonly property bool suspended: PanelInput.pointerInputSuspended(probe.opened, probe.hostMask, probe.hostRegionCount)
     readonly property real twinW: PanelInput.twinSpan(probe.suspended, probe.twinScreenW)
 
     property var snaps: []
@@ -360,6 +366,8 @@ ShellRoot {
             else {
                 probe.snap("reopen-carry");
                 console.warn("RESULT " + JSON.stringify({ unmasked: PanelInput.regionIsEmpty(null), snaps: probe.snaps,
+                    composedCounted: PanelInput.regionIsEmpty(probe.composedMask, probe.composedMask.regions.length),
+                    composedRead: PanelInput.regionIsEmpty(probe.composedMask),
                     created: probe.creation.created, completedOnly: probe.creation.completedOnly }));
                 running = false;
                 Qt.quit();
@@ -389,6 +397,8 @@ EOF
         assert_eq "the panel's mask still follows the panel after a reopen" 0 "$(at reopen-carry hostW)"
         assert_eq "an emptied mask suspends the panel after a reopen too" true "$(at reopen-carry suspended)"
         assert_eq "a surface without a mask keeps taking pointer input" false "$(jq -r .unmasked <<<"$panel_result")"
+        assert_eq "a composed mask takes input by the count a binding passes" false "$(jq -r .composedCounted <<<"$panel_result")"
+        assert_eq "a composed mask takes input when the count is read outside a binding" false "$(jq -r .composedRead <<<"$panel_result")"
         created() { jq -r --arg k "$2" ".$1[\$k]" <<<"$panel_result"; }
         assert_eq "a new panel keeps its mask when the binding notifies before completion" true "$(created created keepsPanelMask)"
         assert_eq "a new panel takes pointer input on first open" 1920 "$(created created openW)"
@@ -398,6 +408,7 @@ EOF
     else
         _fail "pointer-input scenario produced no result" "$OUTPUT"
     fi
+    assert_not_contains "the pointer-input binding depends on no non-bindable property" "$OUTPUT" "non-bindable"
     assert_contains "the compat keyboard panel host shares that policy" \
         "$(cat "$SHELL_DIR/Compat/Omarchy/Ui/KeyboardPanel.qml")" "PanelInput.js"
 fi
