@@ -8,7 +8,8 @@
 # minecraft; --dry-run prints the plan (plan 093).
 #
 # Data: Omarchy deletes the worlds without asking; here they are asked about,
-# default no, and --yes deletes them as Omarchy does.
+# default no. --yes keeps them: only a yes at a terminal or --purge deletes
+# them.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -17,17 +18,18 @@ source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-gaming-minecraft [--dry-run] [--yes]
+Usage: omarchy-remove-gaming-minecraft [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: removes minecraft-launcher and the
 com.mojang.Minecraft Flatpak, whichever is installed (haseen remove), then
-asks (default no; --yes deletes, as Omarchy does) before deleting ~/.minecraft
-with its worlds and mods, the launcher's settings and its caches.
+asks (default no; --yes keeps them, --purge deletes them) before deleting
+~/.minecraft with its worlds and mods, the launcher's settings and its caches.
 EOF
 }
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 0)) || {
     usage >&2
     exit 2
@@ -38,7 +40,7 @@ ID=com.mojang.Minecraft
 remove_pkgs minecraft-launcher
 remove_flatpak_app minecraft "$ID"
 data_removed=false
-delete_asked "Also delete Minecraft's worlds, mods, settings and caches" yes \
+delete_asked "Also delete Minecraft's worlds, mods, settings and caches" purge \
     "$HOME/.minecraft" "$HOME/.config/Minecraft Launcher" "$HOME/.local/share/minecraft-launcher" \
     "$HOME/.cache/minecraft" "$HOME/.var/app/$ID" && data_removed=true
 

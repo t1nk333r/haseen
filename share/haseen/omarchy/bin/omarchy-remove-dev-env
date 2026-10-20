@@ -10,8 +10,9 @@
 # installers write; --dry-run prints the plan (plan 093).
 #
 # Data: rustup's self uninstall deletes ~/.cargo with the tools cargo
-# installed, and ocaml deletes ~/.opam: both asked, default no; --yes says
-# yes, as Omarchy does without asking.
+# installed, and ocaml deletes ~/.opam: both asked, default no. Omarchy does
+# both without asking; here --yes keeps them, and only a yes at a terminal or
+# --purge deletes them.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -22,16 +23,19 @@ LANGS="ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-dev-env <$LANGS> [--dry-run] [--yes]
+Usage: omarchy-remove-dev-env <$LANGS> [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: removes the toolchain with
 'haseen remove dev LANG' (mise), or its packages with 'haseen remove package'
-(php, symfony, ocaml's opam), as Omarchy's command does.
+(php, symfony, ocaml's opam), as Omarchy's command does. Rust's rustup
+uninstall (~/.cargo) and OCaml's ~/.opam are asked about first, default no:
+--yes keeps them, --purge deletes them.
 EOF
 }
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 1)) || {
     usage >&2
     exit 1
@@ -80,7 +84,7 @@ rust)
     if compgen -G "$mise_data/installs/rust/*" >/dev/null; then
         haseen_remove dev rust
     elif have rustup; then
-        if ask "rustup self uninstall deletes ~/.rustup and ~/.cargo, with every tool cargo installed. Continue" yes; then
+        if ask "rustup self uninstall deletes ~/.rustup and ~/.cargo, with every tool cargo installed. Continue" purge; then
             quiet rustup self uninstall -y || true
         fi
     else
@@ -110,7 +114,7 @@ symfony)
 ocaml)
     echo "Removing OCaml..."
     have opam && { quiet opam switch remove default -y || true; }
-    delete_asked "Also delete ~/.opam, every opam switch and package" yes "$HOME/.opam" || true
+    delete_asked "Also delete ~/.opam, every opam switch and package" purge "$HOME/.opam" || true
     # Omarchy's installer used opam's own script, which installs here.
     [[ -e $(sysroot_path /usr/local/bin/opam) ]] && run_root rm -f -- /usr/local/bin/opam
     remove_pkgs opam

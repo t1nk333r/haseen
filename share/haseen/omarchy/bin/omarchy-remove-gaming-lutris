@@ -9,8 +9,8 @@
 # or python-protobuf failed Omarchy's whole removal); --dry-run prints the
 # plan (plan 093).
 #
-# Data: Omarchy deletes it all without asking; here it is asked, default no,
-# and --yes deletes it as Omarchy does. ~/.wine is the default Wine prefix,
+# Data: Omarchy deletes it all without asking; here it is asked, default no.
+# --yes keeps it: only a yes at a terminal or --purge deletes it. ~/.wine is the default Wine prefix,
 # which other Windows programs may share: the question names it.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
@@ -20,18 +20,19 @@ source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-gaming-lutris [--dry-run] [--yes]
+Usage: omarchy-remove-gaming-lutris [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: removes lutris, wine-staging, wine-mono,
 wine-gecko, winetricks, python-protobuf and umu-launcher (those installed and
 not needed by another package) and the net.lutris.Lutris Flatpak, then asks
-(default no; --yes deletes, as Omarchy does) before deleting their configs and
-caches and the Wine prefix ~/.wine.
+(default no; --yes keeps them, --purge deletes them) before deleting their
+configs and caches and the Wine prefix ~/.wine.
 EOF
 }
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 0)) || {
     usage >&2
     exit 2
@@ -42,7 +43,7 @@ ID=net.lutris.Lutris
 remove_pkgs lutris wine-staging wine-mono wine-gecko winetricks python-protobuf umu-launcher
 remove_flatpak_app lutris "$ID"
 data_removed=false
-delete_asked "Also delete the Lutris, umu and Wine configs and caches, and the Wine prefix ~/.wine (shared by every Wine program)" yes \
+delete_asked "Also delete the Lutris, umu and Wine configs and caches, and the Wine prefix ~/.wine (shared by every Wine program)" purge \
     "$HOME/.config/lutris" "$HOME/.local/share/lutris" "$HOME/.cache/lutris" \
     "$HOME/.local/share/umu" "$HOME/.cache/umu" "$HOME/.wine" "$HOME/.cache/wine" \
     "$HOME/.cache/winetricks" "$HOME/.var/app/$ID" && data_removed=true

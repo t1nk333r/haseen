@@ -8,7 +8,8 @@
 # gamemode) stay: other games use them.
 #
 # Data: Omarchy deletes the libraries without asking; here they are asked
-# about, default no, and --yes deletes them as Omarchy does.
+# about, default no. --yes keeps them: only a yes at a terminal or --purge
+# deletes them.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -17,17 +18,18 @@ source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-gaming-steam [--dry-run] [--yes]
+Usage: omarchy-remove-gaming-steam [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: removes Steam (haseen remove app
-steam), then asks (default no; --yes deletes, as Omarchy does) before deleting
-~/.steam, ~/.local/share/Steam with the installed games, and Steam's configs
+steam), then asks (default no; --yes keeps them, --purge deletes them) before
+deleting ~/.steam, ~/.local/share/Steam with the installed games, and Steam's configs
 and caches.
 EOF
 }
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 0)) || {
     usage >&2
     exit 2
@@ -40,7 +42,7 @@ else
     info "steam is not installed"
 fi
 data_removed=false
-delete_asked "Also delete Steam's game libraries, configs and caches" yes \
+delete_asked "Also delete Steam's game libraries, configs and caches" purge \
     "$HOME/.steam" "$HOME/.local/share/Steam" "$HOME/.config/steam" "$HOME/.cache/steam" &&
     data_removed=true
 

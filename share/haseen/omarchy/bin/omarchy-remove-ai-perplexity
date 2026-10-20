@@ -8,7 +8,8 @@
 # through common.sh, so --dry-run prints the plan (plan 093).
 #
 # Data: the runtime caches (llama.cpp builds and local models) are asked
-# about, default no; --yes deletes them, as Omarchy does without asking. The
+# about, default no; --yes keeps them (Omarchy deletes them without asking):
+# only a yes at a terminal or --purge deletes them. The
 # logins, settings, secret vault and device identity are asked about, default
 # no; --yes keeps them, as Omarchy keeps them without a terminal.
 set -Eeuo pipefail
@@ -19,17 +20,18 @@ source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-ai-perplexity [--dry-run] [--yes]
+Usage: omarchy-remove-ai-perplexity [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: removes the perplexity package (haseen
 remove package), then asks (default no) before deleting its runtime caches
-(--yes deletes them, as Omarchy does) and before deleting the logins, secret
-vault and device identity (--yes keeps those).
+(--yes keeps them, --purge deletes them) and before deleting the logins, secret
+vault and device identity (only a yes at a terminal deletes those).
 EOF
 }
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 0)) || {
     usage >&2
     exit 2
@@ -40,7 +42,7 @@ remove_pkgs perplexity
 
 # The runtime the app downloads for itself: llama.cpp builds and local models.
 # Of the perplexity-* dirs these are the only ones the desktop app owns.
-delete_asked "Also delete Perplexity's runtime caches and local models" yes \
+delete_asked "Also delete Perplexity's runtime caches and local models" purge \
     "$HOME/.cache/Perplexity" "$HOME/.cache/perplexity-rpc-server" \
     "$HOME/.local/share/perplexity-rpc-server" || true
 

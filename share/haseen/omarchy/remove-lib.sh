@@ -9,9 +9,14 @@
 # the terminal with `ask`:
 #
 #   ask Q          default no; --yes answers no: the data stays. For data
-#                  Omarchy only deletes after asking.
-#   ask Q yes      default no; --yes answers yes. For data Omarchy deletes
-#                  without asking, so a non-interactive run does what it did.
+#                  Omarchy only deletes after asking, and for what only an
+#                  answer at a terminal may delete (keys, worktrees, logins).
+#   ask Q purge    default no; --yes answers no, --purge answers yes. For the
+#                  user's data Omarchy deletes without asking: games, saves,
+#                  toolchains, configs. --yes never deletes them on its own;
+#                  that takes a yes at a terminal or an explicit --purge.
+#   ask Q yes      default no; --yes answers yes. Only for system files that
+#                  are what the command removes, never for the user's data.
 #
 # A dry run prints each question and plans the yes. Without a terminal
 # (stdin at EOF) the answer is no.
@@ -137,16 +142,41 @@ remove_flatpak_app() {
     haseen_remove app "$1"
 }
 
-# ask QUESTION [yes] — see the header.
+PURGE=${PURGE:-false}
+
+# take_purge — after parse_common_flags, move --purge out of REST into PURGE.
+# Only commands that ask `purge` questions call it; the others reject --purge
+# as an unknown argument.
+take_purge() {
+    local rest=() arg
+    for arg in "${REST[@]}"; do
+        if [[ $arg == --purge ]]; then
+            PURGE=true
+        else
+            rest+=("$arg")
+        fi
+    done
+    REST=("${rest[@]}")
+}
+
+# ask QUESTION [yes|purge] — see the header.
 ask() {
-    local reply
+    local reply kind=${2:-no}
     if $DRY_RUN; then
         echo "DRYRUN: ask '$1 [y/N]'; on yes:"
         return 0
     fi
+    if [[ $kind == purge ]] && $PURGE; then
+        info "deleting (--purge): $1"
+        return 0
+    fi
     if $ASSUME_YES; then
-        [[ ${2:-no} == yes ]] && return 0
-        info "not done under --yes (answer at a terminal to do it): $1"
+        [[ $kind == yes ]] && return 0
+        if [[ $kind == purge ]]; then
+            info "kept under --yes (answer yes at a terminal, or add --purge, to delete): $1"
+        else
+            info "not done under --yes (answer at a terminal to do it): $1"
+        fi
         return 1
     fi
     read -r -p "$1 [y/N] " reply || return 1
@@ -166,14 +196,16 @@ present() {
 # size_of PATH... — their total size as du -sh prints it ("" when unknown).
 size_of() { du -shc -- "$@" 2>/dev/null | tail -n1 | cut -f1 || true; }
 
-# delete_asked QUESTION yes|no PATH... — ask about the PATHs that exist, with
-# their size, then rm -rf them on yes. False when nothing was deleted.
+# delete_asked QUESTION purge|no PATH... — ask about the PATHs that exist,
+# with their size, then rm -rf them on yes. False when nothing was deleted.
+# What it deletes is the user's, so --yes alone never answers yes.
 delete_asked() {
-    local question=$1 yes=$2
+    local question=$1 kind=$2
     shift 2
+    [[ $kind == purge || $kind == no ]] || die "delete_asked: '$kind' is not purge or no"
     present "$@"
     ((${#FOUND[@]})) || return 1
-    ask "$question ($(size_of "${FOUND[@]}"): ${FOUND[*]})?" "$yes" || return 1
+    ask "$question ($(size_of "${FOUND[@]}"): ${FOUND[*]})?" "$kind" || return 1
     run rm -rf -- "${FOUND[@]}"
 }
 

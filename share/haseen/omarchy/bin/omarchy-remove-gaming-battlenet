@@ -9,7 +9,8 @@
 # Omarchy install, ~/.cache/omarchy; --dry-run prints the plan (plan 093).
 #
 # Data: the prefix holds the installed games. Omarchy deletes it without
-# asking; here it is asked, default no, and --yes deletes it as Omarchy does.
+# asking; here it is asked, default no. --yes keeps it: only a yes at a
+# terminal or --purge deletes it.
 # umu-launcher and GE-Proton (which Steam games may use too) are asked,
 # default no; --yes keeps them, as Omarchy keeps them without a terminal.
 set -Eeuo pipefail
@@ -20,10 +21,10 @@ source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-gaming-battlenet [--dry-run] [--yes]
+Usage: omarchy-remove-gaming-battlenet [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: stops Battle.net, asks (default no;
---yes deletes) before deleting its Proton prefix ~/Games/battlenet with the
+--yes keeps it, --purge deletes it) before deleting its Proton prefix ~/Games/battlenet with the
 installed games, removes its launcher and cached installer, then asks about
 umu-launcher and the GE-Proton runtimes (--yes keeps those).
 EOF
@@ -31,6 +32,7 @@ EOF
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 0)) || {
     usage >&2
     exit 2
@@ -50,7 +52,7 @@ if [[ -d $PREFIX ]] && ! in_sysroot; then
 fi
 
 prefix_removed=false
-delete_asked "Delete Battle.net's Proton prefix and the games installed in it" yes "$PREFIX" && prefix_removed=true
+delete_asked "Delete Battle.net's Proton prefix and the games installed in it" purge "$PREFIX" && prefix_removed=true
 rm_present "$apps/battlenet.desktop" "$HOME/.cache/haseen/Battle.net-Setup.exe" "$HOME/.cache/omarchy/Battle.net-Setup.exe"
 have update-desktop-database && { silent update-desktop-database "$apps" || true; }
 

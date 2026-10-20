@@ -189,6 +189,47 @@ above).
   `omarchy-update-restart:51`). Omarchy's `restart-*-required` markers are written
   by Omarchy's migrations, which haseen does not run, so they are not read.
 
+### Deleting the user's data: `--yes` never does, `--purge` does
+
+Omarchy's removers `rm -rf` the data of what they remove without asking:
+Battle.net's prefix with the games in it, `~/.wine`, Steam's libraries,
+Heroic's games, Minecraft's worlds, RetroArch's saves, GeForce NOW's sign-in,
+Perplexity's caches, T3 Code's settings, `~/.cargo` (through `rustup self
+uninstall`), `~/.opam` and the browser flags file. haseen's answers ask
+first, default no, through `share/haseen/omarchy/remove-lib.sh`'s `ask`, and
+`--yes` alone never answers yes for the user's data: a non-interactive run
+removes the packages and keeps every file. Deleting takes a yes at a terminal
+or an explicit `--purge` (`ask Q purge`, `take_purge`; `delete_asked` takes
+only `purge` or `no` and dies on anything else, so a new remover cannot slip
+back to `--yes`). `--purge` is in the `--help` of the twelve removers that
+take it: `omarchy-remove-gaming-{battlenet,lutris,steam,heroic,minecraft,retroarch,geforce-now}`,
+`omarchy-remove-ai-{perplexity,t3-code}`, `omarchy-remove-dev-env`,
+`omarchy-remove-browser` and `omarchy-remove-security-fingerprint` (Omarchy's
+`/etc/pam.d/omarchy-lock-fingerprint` may be one the owner edited; while it
+stays, fprintd stays). The others reject `--purge` as an unknown argument.
+A dry run still prints each question and the deletion it would plan, under
+`--yes` too.
+
+Three kinds of data are never deleted by `--purge` either, only by a yes at a
+terminal: the logins, vault and device identity of Perplexity, T3 Code's
+worktrees in `~/.t3` (git checkouts with possibly unpushed work), and the
+registered FIDO2 keys (`ask Q`, or `delete_asked Q no`).
+
+What `--yes` still removes without `--purge` is what the command exists to
+remove and the files Omarchy's installer wrote to `/etc`, each by its exact
+name or content, never the user's data:
+- the pam_fprintd and pam_u2f lines in `/etc/pam.d/{sudo,polkit-1,hyprlock}`
+  (`pam_drop`, `ask ... yes`), shown before they go, and with Omarchy's
+  pam_u2f lines its authfile `/etc/fido2`, which only those lines read
+  (`omarchy-remove-security-fido2:57-63`; kept while a line stays);
+- `omarchy-hibernation-remove`: `/etc/mkinitcpio.conf.d/omarchy_resume.conf`
+  only when it is exactly `HOOKS+=(resume)` (`:114`), and Limine's
+  `/etc/limine-entry-tool.d/resume.conf` only while it is the one `resume=`
+  line Omarchy's setup writes (`:117-122`);
+- `omarchy-remove-browser`: the browser's `omarchy.json` and `color.json`
+  managed policies, by name (`:97`), and `/etc/brave` only when no native
+  Brave build is left (`:106`).
+
 ## Rejected options
 
 - **Shims on the shell's `PATH` only** (plan 057's scope): the IO incident

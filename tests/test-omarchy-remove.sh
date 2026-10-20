@@ -4,8 +4,8 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # haseen's answers to Omarchy's omarchy-remove-* commands (plan 093, group g4b).
 # Removals go through haseen remove, deletions through run, questions through
-# remove-lib.sh's ask: default no; --yes says yes only where Omarchy deletes
-# without asking.
+# remove-lib.sh's ask: default no; --yes never deletes the user's data (games,
+# saves, toolchains, configs): that takes a yes at a terminal or --purge.
 
 OMA="$HASEEN_PATH/omarchy"
 # The commands open a floating terminal without a TTY; tests answer on stdin.
@@ -169,18 +169,25 @@ capture fake omarchy-remove-ai-openclaw --yes
 setup omarchy-remove-perplexity
 mkdir -p "$HOME/.cache/Perplexity" "$HOME/.local/share/perplexity-rpc-server" "$HOME/.config/Perplexity" "$HOME/.local/state/perplexity"
 capture fake omarchy-remove-ai-perplexity --yes
+[[ -d $HOME/.cache/Perplexity && -d $HOME/.local/share/perplexity-rpc-server ]] && _pass ||
+    _fail "perplexity: --yes alone keeps the runtime caches"
+assert_contains "perplexity: --yes says how to delete them" "$OUTPUT" "add --purge"
+capture fake omarchy-remove-ai-perplexity --purge --yes
 [[ ! -e $HOME/.cache/Perplexity && ! -e $HOME/.local/share/perplexity-rpc-server ]] && _pass ||
-    _fail "perplexity: --yes deletes the runtime caches, as Omarchy does"
+    _fail "perplexity: --purge --yes deletes the runtime caches"
 [[ -d $HOME/.config/Perplexity && -d $HOME/.local/state/perplexity ]] && _pass ||
-    _fail "perplexity: --yes keeps the logins and vault"
+    _fail "perplexity: --purge keeps the logins and vault"
 
 setup omarchy-remove-t3code
 mkpkg t3code-bin
 mkdir -p "$HOME/.config/t3code" "$HOME/.t3/worktrees/repo"
 capture fake omarchy-remove-ai-t3-code --yes
 assert_contains "t3-code: the package goes through haseen remove" "$(calls)" "haseen-remove [package] [t3code-bin] [--yes]"
+[[ -d $HOME/.config/t3code && -d $HOME/.t3/worktrees/repo ]] && _pass ||
+    _fail "t3-code: --yes alone keeps the settings and the worktrees"
+capture fake omarchy-remove-ai-t3-code --purge --yes
 [[ ! -e $HOME/.config/t3code && -d $HOME/.t3/worktrees/repo ]] && _pass ||
-    _fail "t3-code: --yes deletes the settings but keeps the worktrees in ~/.t3"
+    _fail "t3-code: --purge deletes the settings but keeps the worktrees in ~/.t3"
 capture fake omarchy-remove-ai-t3-code <<<"y"
 [[ ! -e $HOME/.t3 ]] && _pass || _fail "t3-code: a yes at the terminal deletes ~/.t3"
 
@@ -223,6 +230,18 @@ mkpkg composer
 capture oma omarchy-remove-dev-env php --dry-run
 assert_contains "dev-env: php's packages go" "$OUTPUT" "DRYRUN: sudo pacman -Rns --noconfirm php composer"
 assert_dry_pure "dev-env php" "$OUTPUT"
+mkdir -p "$HOME/.opam/default"
+capture fake omarchy-remove-dev-env ocaml --yes
+[[ -d $HOME/.opam/default ]] && _pass || _fail "dev-env: --yes alone keeps ~/.opam"
+capture oma omarchy-remove-dev-env ocaml --dry-run --yes
+assert_contains "dev-env: a dry run still plans the ~/.opam deletion" "$OUTPUT" "DRYRUN: rm -rf -- $HOME/.opam"
+capture fake omarchy-remove-dev-env ocaml --purge --yes
+[[ ! -e $HOME/.opam ]] && _pass || _fail "dev-env: --purge --yes deletes ~/.opam"
+stub rustup "echo \"rustup \$*\" >>'$LOG'; exit 0"
+capture fake omarchy-remove-dev-env rust --yes
+assert_not_contains "dev-env: --yes alone never runs rustup self uninstall (~/.cargo)" "$(calls)" "rustup self uninstall"
+capture fake omarchy-remove-dev-env rust --yes --purge
+assert_contains "dev-env: --purge runs rustup self uninstall" "$(calls)" "rustup self uninstall -y"
 capture fake omarchy-remove-dev-env cobol
 assert_status "dev-env: an unknown environment fails" 1 "$STATUS"
 
@@ -233,8 +252,10 @@ mkdir -p "$HOME/Games/battlenet/drive_c" "$HOME/.local/share/applications" "$HOM
 printf '[Desktop Entry]\n' >"$HOME/.local/share/applications/battlenet.desktop"
 capture fake omarchy-remove-gaming-battlenet --yes
 assert_status "battlenet --yes" 0 "$STATUS"
-[[ ! -e $HOME/Games/battlenet && ! -e $HOME/.local/share/applications/battlenet.desktop ]] && _pass ||
-    _fail "battlenet: --yes deletes the prefix and launcher, as Omarchy does"
+[[ -d $HOME/Games/battlenet/drive_c && ! -e $HOME/.local/share/applications/battlenet.desktop ]] && _pass ||
+    _fail "battlenet: --yes removes the launcher but keeps the prefix with the games"
+capture fake omarchy-remove-gaming-battlenet --purge --yes
+[[ ! -e $HOME/Games/battlenet ]] && _pass || _fail "battlenet: --purge --yes deletes the prefix"
 [[ -d $HOME/.local/share/Steam/compatibilitytools.d/GE-Proton9 ]] && _pass || _fail "battlenet: --yes keeps GE-Proton"
 assert_not_contains "battlenet: --yes keeps umu-launcher" "$(calls)" "umu-launcher"
 
@@ -245,7 +266,9 @@ assert_contains "geforce-now: the Flatpak goes through haseen remove" "$(calls)"
     "haseen-remove [flatpak] [com.nvidia.geforcenow] [--yes]"
 [[ -d $HOME/.var/app/com.nvidia.geforcenow ]] && _pass || _fail "geforce-now: no answer keeps the data"
 capture fake omarchy-remove-gaming-geforce-now --yes
-[[ ! -e $HOME/.var/app/com.nvidia.geforcenow ]] && _pass || _fail "geforce-now: --yes deletes the data, as Omarchy does"
+[[ -d $HOME/.var/app/com.nvidia.geforcenow ]] && _pass || _fail "geforce-now: --yes alone keeps the data"
+capture fake omarchy-remove-gaming-geforce-now --purge --yes
+[[ ! -e $HOME/.var/app/com.nvidia.geforcenow ]] && _pass || _fail "geforce-now: --purge --yes deletes the data"
 
 setup omarchy-remove-heroic
 mkpkg heroic-games-launcher-bin
@@ -270,8 +293,10 @@ mkpkg libretro-snes9x
 mkdir -p "$HOME/.config/retroarch" "$HOME/Games/roms" "$HOME/Games/bios"
 capture fake omarchy-remove-gaming-retroarch --yes
 assert_contains "retroarch: the installed packages go" "$(calls)" "haseen-remove [package] [retroarch] [libretro-snes9x] [--yes]"
+[[ -d $HOME/.config/retroarch ]] && _pass || _fail "retroarch: --yes alone keeps the config and saves"
+capture fake omarchy-remove-gaming-retroarch --purge --yes
 [[ ! -e $HOME/.config/retroarch && -d $HOME/Games/roms && -d $HOME/Games/bios ]] && _pass ||
-    _fail "retroarch: --yes deletes the config, keeps ROMs and BIOS"
+    _fail "retroarch: --purge --yes deletes the config, keeps ROMs and BIOS"
 
 setup omarchy-remove-steam
 mkpkg steam
@@ -279,9 +304,16 @@ mkdir -p "$HOME/.local/share/Steam/steamapps"
 capture fake omarchy-remove-gaming-steam
 assert_contains "steam: removed through the catalogue entry" "$(calls)" "haseen-remove [app] [steam] [--yes]"
 [[ -d $HOME/.local/share/Steam/steamapps ]] && _pass || _fail "steam: no answer keeps the library"
-capture oma omarchy-remove-gaming-steam --dry-run
+capture fake omarchy-remove-gaming-steam --yes
+[[ -d $HOME/.local/share/Steam/steamapps ]] && _pass || _fail "steam: --yes alone keeps the library"
+capture oma omarchy-remove-gaming-steam --dry-run --yes
 assert_dry_pure "steam" "$OUTPUT"
+assert_contains "steam: a dry run under --yes still plans the deletion" "$OUTPUT" "DRYRUN: rm -rf -- $HOME/.local/share/Steam"
 assert_contains "steam: the dry run plans the package removal" "$OUTPUT" "DRYRUN: sudo pacman -Rns --noconfirm steam"
+capture fake omarchy-remove-gaming-heroic --purge --dry-run
+assert_status "heroic: --purge is one of its options" 0 "$STATUS"
+capture fake omarchy-remove-ai-hermes --purge
+assert_status "hermes: --purge is a usage error (only a terminal answer deletes its data)" 2 "$STATUS"
 
 setup omarchy-remove-xbox-cloud
 apps="$HOME/.local/share/applications"
@@ -390,6 +422,11 @@ assert_not_contains "fingerprint: a gate never outlives the rule it skips" "$tee
 assert_contains "fingerprint: the rest of the stack stays" "$tee_out" "system-auth"
 assert_contains "fingerprint: haseen's lock service goes" "$(calls)" "sudo rm -f -- /etc/pam.d/haseen-lock-fingerprint"
 assert_not_contains "fingerprint: a no keeps Omarchy's lock service" "$(calls)" "omarchy-lock-fingerprint"
+capture oma omarchy-remove-security-fingerprint --yes
+assert_not_contains "fingerprint: --yes alone keeps Omarchy's lock service" "$(calls)" "omarchy-lock-fingerprint"
+capture oma omarchy-remove-security-fingerprint --purge --yes
+assert_contains "fingerprint: --purge --yes deletes Omarchy's lock service" "$(calls)" \
+    "sudo rm -f -- /etc/pam.d/omarchy-lock-fingerprint"
 capture oma omarchy-remove-security-fingerprint --dry-run
 assert_dry_pure "fingerprint" "$OUTPUT"
 
@@ -524,6 +561,7 @@ for name in "${GROUP[@]}"; do
     capture oma "$name" "${args[@]}" --dry-run
     [[ $OUTPUT != *omarchy/plugins* && $OUTPUT != *DankMaterialShell/plugins* ]] || named+="$name "
     capture fake "$name" "${args[@]}" --yes
+    capture fake "$name" "${args[@]}" --purge --yes
     capture fake "$name" "${args[@]}" <"$SANDBOX/yes"
 done
 assert_eq "no remover's plan names the owner's plugin directories" "" "$named"

@@ -9,7 +9,8 @@
 # (plan 093).
 #
 # Data: Omarchy deletes the config and saves without asking; here they are
-# asked about, default no, and --yes deletes them as Omarchy does.
+# asked about, default no. --yes keeps them: only a yes at a terminal or
+# --purge deletes them.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -18,18 +19,19 @@ source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-remove-gaming-retroarch [--dry-run] [--yes]
+Usage: omarchy-remove-gaming-retroarch [--dry-run] [--yes] [--purge]
 
 haseen's answer to Omarchy's command: removes retroarch, its assets and the
 libretro cores Omarchy installs, and the org.libretro.RetroArch Flatpak,
-whichever are installed (haseen remove), then asks (default no; --yes deletes,
-as Omarchy does) before deleting RetroArch's config, saves and caches. ROMs
+whichever are installed (haseen remove), then asks (default no; --yes keeps
+them, --purge deletes them) before deleting RetroArch's config, saves and caches. ROMs
 and BIOS files in ~/Games/roms and ~/Games/bios are left in place.
 EOF
 }
 
 in_floating_terminal "$@"
 parse_common_flags "$@"
+take_purge
 ((${#REST[@]} == 0)) || {
     usage >&2
     exit 2
@@ -63,7 +65,7 @@ PKGS=(
 
 remove_pkgs "${PKGS[@]}"
 remove_flatpak_app retroarch "$ID"
-delete_asked "Also delete RetroArch's config, saves and caches (ROMs and BIOS files stay)" yes \
+delete_asked "Also delete RetroArch's config, saves and caches (ROMs and BIOS files stay)" purge \
     "$HOME/.config/retroarch" "$HOME/.local/share/retroarch" "$HOME/.cache/retroarch" \
     "$HOME/.var/app/$ID" || true
 
