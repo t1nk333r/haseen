@@ -253,6 +253,11 @@ migration or a theme set, and each is guarded:
 | `omarchy-install-dev-env` | `~/.gemrc` | written only when absent (`:89`); `omarchy-remove-dev-env` deletes it only while it is that one line |
 | `omarchy-mise-install` | `~/.local/bin/<command>` | the wrapper the command is asked to write; an existing file of that name is removed first, as Omarchy does, so a link's target is never written through (`:66-67`) |
 | `omarchy-install-openclaw-cli` | `~/.local/bin/openclaw` | a link to the runtime it installed (`:439`), as Omarchy's installer makes it |
+| `omarchy-voxtype-install` | `~/.config/voxtype/config.toml` | seeded only when neither a file nor a link is there (`:47-48`) |
+| `omarchy-windows-vm` | `~/.config/windows/krb5.conf` | written only when absent (`:1512-1514`): a realm-less Kerberos config for FreeRDP, in the directory the VM's own files live in |
+| `omarchy-toggle-crash-capture` | `~/.config/systemd/user/<unit>.d/50-omarchy-crash-capture-off.conf` | the command's own drop-in, named for it and marked as written by it (`:32`, `:45`); turning capture back on removes only that file (`:52`) |
+| `omarchy-theme-set-obsidian` | `<vault>/.obsidian/themes/haseen/` | only in vaults Obsidian lists whose `.obsidian` exists (`:50`), and only haseen's theme directory: `manifest.json` when absent (`:52-53`) and `theme.css` (`:64`); the vault's `appearance.json` is never changed |
+| `omarchy-theme-set-t3code` | `themes/haseen.json` under T3 Code's `userdata` | only when that directory exists (`:49-50`); choosing the theme is left to T3 Code |
 
 Rejected: refusing these commands. The owner asked for every non-Apple
 command, and each writes only what its name says, after the user runs it.
