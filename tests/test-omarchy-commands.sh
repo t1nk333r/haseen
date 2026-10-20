@@ -80,8 +80,9 @@ sandbox omarchy-refuse
 bad=""
 for name in $(rows refuse); do
     capture "$OMA/bin/$name"
-    [[ $STATUS == 1 && $OUTPUT == *"$name: not available under haseen: "* &&
-        $OUTPUT == *"The haseen way: "* && $OUTPUT != *STUB-CALLED* ]] || bad+="$name($STATUS) "
+    [[ $STATUS == 1 && $OUTPUT == *"$name: not available under haseen."* &&
+        $(wc -l <<<"$OUTPUT") -ge 3 && $OUTPUT != *STUB-CALLED* &&
+        ($OUTPUT == *"The haseen way: "* || $OUTPUT == *"No haseen equivalent: "*) ]] || bad+="$name($STATUS) "
 done
 assert_eq "every refused command says why and the haseen way, and fails" "" "$bad"
 bad=""

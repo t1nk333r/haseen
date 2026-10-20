@@ -436,7 +436,7 @@ Nothing appears on screen for them.
   - `shim`: `bin/<name>` links to `dispatch`, which `exec`s the haseen command in `target` (`omarchy-update` → `haseen update`);
   - `translate`: a script mapping Omarchy's arguments, verbs or output onto a haseen command (`omarchy-notification-send`, `omarchy-menu`, `omarchy-toggle-idle`, `omarchy-shell` onto `haseen shell ipc`);
   - `port`: Omarchy's script adapted under MIT, its state, paths and branding haseen's (hardware probes, window helpers, `omarchy-launch-shell`);
-  - `refuse`: a link to `dispatch`, which prints `<name>: not available under haseen: <note>` and `The haseen way: <target>` and exits 1: Omarchy's behaviour would break a haseen rule (ADR 0001's `pacman.conf`, mirrorlist, HOOKS, Limine and SDDM; `PKG_DENY`; the package order) or belongs to Omarchy's own install, release or development machinery;
+  - `refuse`: a link to `dispatch`, which prints `<name>: not available under haseen.`, the note (why) and `The haseen way: <target>` (`No haseen equivalent: …` for a target of `none: …`) and exits 1: Omarchy's behaviour would break a haseen rule (ADR 0001's `pacman.conf`, mirrorlist, HOOKS, Limine and SDDM; `PKG_DENY`; the package order) or belongs to Omarchy's own install, release or development machinery;
   - `inert`: nothing to do under haseen; one line on stderr, exit 0;
   - `apple`: recorded, not provided.
 

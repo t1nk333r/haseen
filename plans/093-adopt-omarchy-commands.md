@@ -26,6 +26,11 @@ The path, in Omarchy 4.0.6 (`/usr/share/omarchy/bin` on IO):
    `:83` runs `hyprctl dispatch 'hl.dsp.exec_cmd("omarchy-launch-shell")'`;
 4. `omarchy-launch-shell:19` starts `quickshell -n -p "$OMARCHY_PATH/shell"`.
 
+Line numbers here and in the inventory are Omarchy's `v4.0.6` tag
+(github.com/basecamp/omarchy), whose `bin/` holds the same 446 commands as
+`ls /usr/share/omarchy/bin` on IO, plus `omarchy-debug`, `omarchy-debug-idle`
+and `omarchy-upload-log`, which the 4.0.6-1 package does not ship.
+
 haseen answered 11 Omarchy names (`share/haseen/shell/Compat/bin/omarchy-*`,
 plans 052, 057, 060), and only on the shell's own `PATH` (`bin/haseen-shell-run`):
 a terminal, a Hyprland bind or `hyprctl dispatch exec_cmd` still found
@@ -44,7 +49,7 @@ things, recorded per command in `share/haseen/omarchy/commands.tsv`:
 | `shim` | `exec` the haseen command that does the same job, the caller's arguments after any fixed ones |
 | `translate` | a script of its own: Omarchy's arguments, verbs or output mapped onto a haseen command |
 | `port` | a script of its own: Omarchy's script adapted under MIT (upstream notice kept, NOTICE.md row), with Omarchy's paths, state, branding and calls to other `omarchy-*` commands replaced by haseen's |
-| `refuse` | doing what Omarchy's does would break a haseen rule (ADR 0001: `pacman.conf`, mirrorlist, HOOKS, Limine, SDDM; `PKG_DENY`; the AUR order) or only makes sense for Omarchy's own install, release or development machinery. It prints `<name>: not available under haseen: <why>` and `The haseen way: <command>`, and exits 1: never a silent success |
+| `refuse` | doing what Omarchy's does would break a haseen rule (ADR 0001: `pacman.conf`, mirrorlist, HOOKS, Limine, SDDM; `PKG_DENY`; the AUR order) or only makes sense for Omarchy's own install, release or development machinery. It prints `<name>: not available under haseen.`, the reason as a sentence and `The haseen way: <command>` (`No haseen equivalent: <what to do>` when there is none), and exits 1: never a silent success |
 | `inert` | nothing to do under haseen (an Omarchy-only cache or UI state haseen does not have): one line on stderr saying so, exit 0 |
 
 The sixth kind, `apple`, is recorded so the inventory stays complete; no
@@ -68,6 +73,20 @@ command of that name exists.
   environment; `HASEEN_PATH` still wins when set, as everywhere else.
   It sources `lib/common.sh`, so every state change goes through `run`,
   `run_root` or `write_user_file` and honours `--dry-run` and `DRY_RUN`.
+- Omarchy's scripts `source` three of its commands (`omarchy-restart-gum`,
+  `omarchy-shell-config`, `omarchy-sudo-keepalive`). A link to the dispatcher
+  would read the sourcing script's `$0`, so these three are scripts of their
+  own whatever their kind, safe to source: `omarchy-restart-gum` returns
+  quietly, `omarchy-shell-config` refuses and stops the sourcing script
+  before it edits Omarchy's `shell.json`, and `omarchy-sudo-keepalive` asks
+  for the password through `run_root` in subshells, so nothing of haseen's
+  leaks into the caller but Omarchy's `SUDO_KEEPALIVE_PID` and its EXIT trap.
+- `omarchy` is Omarchy's router (`bin/omarchy`, MIT) over this directory:
+  `omarchy a b` runs the longest matching `omarchy-a-b`, Omarchy's aliases
+  (`screenshot`, `screenrecord`, `logout`, `reboot`, `shutdown`,
+  `background`) are kept, `omarchy commands [--all]` lists the table, a
+  group prints its commands, and an unknown command exits 127 as Omarchy's
+  does (`omarchy:1062-1068`).
 - The 11 earlier shims moved from `shell/Compat/bin/` into
   `share/haseen/omarchy/bin/` (5 became table rows); `dms` and `ydotool`
   stay in `Compat/bin`.
@@ -102,7 +121,10 @@ on `PATH` and whether an Omarchy shell is running.
   is under `$OMARCHY_PATH/shell/` (`qs list -a -j`, then `qs kill --pid`),
   then makes sure the desktop shell haseen uses runs: `dms.service` after
   `haseen shell use dms`; else `haseen-shell.service` (nothing to do when it
-  is active); else, without a unit, a running `qs -p $HASEEN_PATH/shell`
+  is active, and nothing yet while `graphical-session.target` is down:
+  the target starts the unit, and a start before the session's Wayland
+  environment exists fails and counts toward plan 061's recovery offer);
+  else, without a unit, a running `qs -p $HASEEN_PATH/shell`
   counts, and otherwise `haseen shell run` runs in the foreground, as
   Omarchy's launcher keeps its own shell.
 - `omarchy-restart-shell` (translate): the same stop, then `haseen shell
@@ -138,6 +160,47 @@ on `PATH` and whether an Omarchy shell is running.
 ## Inventory
 
 (Filled from `share/haseen/omarchy/commands.tsv`.)
+
+## Apple hardware
+
+Two commands drive Apple hardware only and have no haseen answer (their
+rows are `apple`; `omarchy commands --all` lists them, nothing else does):
+
+- `omarchy-brightness-display-apple`: Apple Studio Display and Pro Display
+  XDR brightness through `asdcontrol` (`omarchy-brightness-display-apple:3`);
+- `omarchy-hyprland-monitor-focused-apple`: true only when the focused
+  monitor is one of those (`.make == "Apple Computer Inc"`,
+  `omarchy-hyprland-monitor-focused-apple:11`).
+
+Apple-only branches dropped from commands that are adopted:
+
+- `omarchy-brightness-display:38-40,47-49,79-84`: the Apple-display path
+  through the two commands above;
+- `omarchy-hw-display:10-14`: the T2 Touch Bar's `appletb_backlight`
+  exclusion and `gmux_backlight` as the first candidate;
+- `omarchy-setup-direct-boot:23-26`: the refusal on Apple firmware;
+- `omarchy-menu-keybindings:427`: the "Apple Display" sort priority (the
+  command is haseen's keybind sheet);
+- `omarchy-upgrade-to-quattro:684,786-799`: `asdcontrol-git` for Apple
+  displays (the command is refused as a whole).
+
+`apple-touch-icon` in `omarchy-webapp-install:90-104` and
+`omarchy-install-ai-openclaw:17` is a web icon convention, not hardware,
+and stays.
+
+## Findings outside this plan
+
+Found while classifying the commands and left for their own plans:
+
+- `bin/haseen-agent-crash:96` passes `--prompt` to every agent; Omarchy's
+  `omarchy-agent` maps each agent's own prompt syntax.
+- `bin/haseen-webapp-install:126` takes the first word of the default
+  browser's `Exec=`, which is `/usr/bin/flatpak` for a Flathub browser.
+- `share/haseen/lib/catalog.sh:304-328` (`catalog_post_install`) has no step
+  for the `once` entry (`share/haseen/default/catalog.json:76`); Omarchy's
+  `omarchy-install-service-once:11` enables `once-background.service`.
+- `bin/haseen-restart:46-49` (`wifi`) unblocks the radio but never runs
+  `nmcli networking on`, which Omarchy's `omarchy-restart-wifi:8` does.
 
 ## Tests
 

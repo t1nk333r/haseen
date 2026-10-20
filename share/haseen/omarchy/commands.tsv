@@ -72,7 +72,7 @@ omarchy-setup-security-fingerprint	shim	haseen-setup-fingerprint	sets up fingerp
 omarchy-setup-security-sshd	translate	haseen-setup-sshd	authorizes an SSH key, then sets up haseen's SSH server
 omarchy-setup-security-sudoless-docker	port	-	adds you to the docker group after a warning that it is root-equivalent
 omarchy-shell	translate	haseen-shell-ipc	Omarchy's shell IPC verbs on haseen's shell
-omarchy-shell-config	refuse	haseen bar add|move|overflow|position, haseen plugin enable|disable|settings	it edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read
+omarchy-shell-config	refuse	haseen bar add|move|overflow|position, haseen plugin enable|disable|settings	It edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read.
 omarchy-show-done	port	-	says Done! and waits for a key so the terminal stays readable
 omarchy-show-logo	port	-	clears the terminal and prints haseen's logo
 omarchy-snapshot	port	-	creates or restores a snapper snapshot

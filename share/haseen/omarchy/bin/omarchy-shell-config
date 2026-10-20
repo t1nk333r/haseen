@@ -7,7 +7,8 @@
 # bin/omarchy-shell-config (MIT, Copyright (c) David Heinemeier Hansson);
 # plan 093.
 
-_haseen_refusal="omarchy-shell-config: not available under haseen: it edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read
+_haseen_refusal="omarchy-shell-config: not available under haseen.
+It edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read.
 The haseen way: haseen bar add|move|overflow|position, haseen plugin enable|disable|settings"
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

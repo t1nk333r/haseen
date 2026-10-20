@@ -51,12 +51,17 @@ haseen_cmd() {
     "$cmd" "$@"
 }
 
-# omarchy_refuse WAY REASON — the command exists so that nothing falls through
+# omarchy_refuse WAY WHY — the command exists so that nothing falls through
 # to Omarchy's, but doing what Omarchy's does would break a haseen rule or act
-# on Omarchy's own install. Say so and fail; never pretend to succeed.
+# on Omarchy's own install. Say so, why (a sentence) and the haseen way, and
+# fail; never pretend to succeed. A WAY of "none: TEXT" means haseen has
+# nothing in its place; TEXT says what to do instead.
 omarchy_refuse() {
-    printf '%s: not available under haseen: %s\n' "$OMARCHY_NAME" "$2" >&2
-    printf 'The haseen way: %s\n' "$1" >&2
+    printf '%s: not available under haseen.\n%s\n' "$OMARCHY_NAME" "$2" >&2
+    case $1 in
+    "none: "*) printf 'No haseen equivalent: %s\n' "${1#none: }" >&2 ;;
+    *) printf 'The haseen way: %s\n' "$1" >&2 ;;
+    esac
     exit 1
 }
 
