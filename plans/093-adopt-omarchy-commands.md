@@ -1127,7 +1127,16 @@ fixtures; nothing reaches the live session):
   without and with the Apple rows, group listings, unknown commands;
 - the installer: one `ln -sf -t PREFIX/bin` for every name, existing haseen
   links kept, a foreign file or link left alone and named, a retired
-  command's link removed; `--uninstall-tree` removes haseen's links only;
+  command's link removed; `--uninstall-tree` removes haseen's links only.
+  Besides the dry runs, a real `--tree-only` install into a scratch PREFIX,
+  run twice, then uninstalled: the links do not change on the second run,
+  a foreign same-named file and link stay with a warning, and the uninstall
+  leaves them;
+- the session `PATH`: luna's and IO's orders through the doctor's check, the
+  compositor's `PATH` read from a fixture Hyprland lock file and environ, an
+  Omarchy-seeded `~/.config/uwsm/env` followed by the rendered `10-haseen`
+  putting haseen's commands first, the migration rewriting an old fragment
+  once, and the shell init putting them first after an rc's prepend;
 - the restart chain: a fake Omarchy `omarchy-restart-shell` (its last step,
   `omarchy-restart-shell:83`) run by absolute path with haseen's directory
   first on `PATH`, as on IO: Omarchy's launcher never runs, the running
@@ -1135,7 +1144,13 @@ fixtures; nothing reaches the live session):
   `haseen-shell.service` is started; `omarchy-restart-shell` and
   `omarchy-launch-shell` under a running unit, without a unit, and under
   DMS; `omarchy-update-restart` offers a reboot only for a replaced kernel,
-  never without a terminal, and restarts haseen's shell;
+  never without a terminal, and restarts haseen's shell. The `qs` stub
+  rejects `--any-display` beside `list -a` and `kill --pid` (exit 108), as
+  Quickshell 0.3.2 does, and lists an Omarchy instance, haseen's, both,
+  none, or fails: an Omarchy shell is stopped, haseen's never, launch never
+  starts a second haseen shell, and a failed listing is reported (restart
+  goes on, launch refuses). Under haseen's lock screen the restart refuses
+  and the update still finishes;
 - plan 093's inventory names every command;
 - per-command behaviour, one file per family of commands:
   `tests/test-omarchy-system.sh` (agent to drive), `tests/test-omarchy-hw.sh`
