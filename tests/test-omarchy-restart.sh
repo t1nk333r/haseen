@@ -434,6 +434,12 @@ capture "$OMA/omarchy-sudo-passwordless" 30 --dry-run
 assert_contains "MINUTES sets the expiry" "$OUTPUT" "--on-active=30m"
 capture "$OMA/omarchy-sudo-passwordless" soon --dry-run
 assert_status "MINUTES must be a number" 1 "$STATUS"
+stub sudo 'echo "STUB-CALLED: sudo $*" >&2; exit 97'
+capture "$OMA/omarchy-sudo-passwordless" --yes </dev/null
+assert_contains "--yes alone does not enable it" "$OUTPUT" "Aborted. No changes made."
+assert_not_contains "nothing runs as root without the typed enable" "$OUTPUT" "STUB-CALLED"
+capture "$OMA/omarchy-sudo-passwordless" --yes <<<"y"
+assert_contains "a plain y is not the typed enable" "$OUTPUT" "Aborted. No changes made."
 : >"$HASEEN_SYSROOT$nopw"
 capture env TIMER_STATE=0 "$OMA/omarchy-sudo-passwordless" --dry-run
 assert_dry_pure "passwordless off" "$OUTPUT"
