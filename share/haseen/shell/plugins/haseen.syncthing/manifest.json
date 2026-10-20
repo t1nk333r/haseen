@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.syncthing",
+  "name": "Syncthing",
+  "version": "1.0.0",
+  "description": "Syncthing's state in the bar and a panel for folders (rescan, pause, share), devices, invitations, recent file activity and the user service, through its REST API on this machine (haseen syncthing). Adapted from ilyaZar's omarchy-syncthing (MIT). Off by default",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "refreshIntervalSec": {
+      "type": "integer",
+      "default": 60,
+      "description": "While Syncthing is not answering, ask again at most this often (seconds, 60 or more); while it runs, its own events drive every update"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.syncthing (state) from the service"
+    }
+  },
+  "permissions": [
+    "exec",
+    "network:local",
+    "files:read"
+  ],
+  "provides": [
+    "syncthing"
+  ],
+  "requires": {
+    "bins": [
+      "curl",
+      "jq"
+    ]
+  }
+}

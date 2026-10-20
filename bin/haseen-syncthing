@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+# haseen:summary Syncthing over its REST API for the haseen.syncthing panel: status, events, folders, devices, invitations, the user service
+# haseen:args status | events [--since N] [--timeout S] | rescan|pause|resume|remove-folder FOLDER | pause-all|resume-all | add-folder PATH [--label L] [--share DEVICE]... | share FOLDER DEVICE on|off | accept-device ID [NAME] | dismiss-device ID | accept-folder FOLDER DEVICE PATH [LABEL] | dismiss-folder FOLDER DEVICE | service start|stop|restart|status | gui-url [--dry-run]
+#
+# Plan 098. The backend of haseen.syncthing, a port of ilyaZar's
+# omarchy-syncthing (MIT, Copyright (c) 2026 IlyaZar). Upstream talks to
+# Syncthing through a bundled Go binary (syncshell-core) shipped prebuilt in
+# its repository; haseen ships no prebuilt binaries, and everything the panel
+# needs is in Syncthing's own REST API, so this command calls it with curl.
+# The address and API key come from Syncthing's config.xml, found where
+# upstream looks for it (STCONFDIR, STHOMEDIR, $XDG_STATE_HOME/syncthing,
+# $XDG_CONFIG_HOME/syncthing, ~/.local/share/syncthing). The key reaches curl
+# on a file descriptor, never on its argv. Only a loopback GUI address is
+# used. Changes go through `run`, so --dry-run prints them.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen syncthing <command> [--dry-run]
+
+  status                       one JSON object: this device, the web
+                               interface's address, folders (state,
+                               completion, devices), devices (connected),
+                               pending invitations
+  events [--since N] [--timeout S]
+                               wait up to S seconds (default 60) for events
+                               after N and print them as a JSON array
+  rescan FOLDER                scan a folder now
+  pause FOLDER | resume FOLDER
+  pause-all | resume-all       every device
+  add-folder PATH [--label L] [--share DEVICE]...
+                               sync a new folder (its id is made up)
+  share FOLDER DEVICE on|off   share a folder with a device, or stop
+  remove-folder FOLDER         stop syncing it (the files stay)
+  accept-device ID [NAME]      add a device that asked to connect
+  dismiss-device ID
+  accept-folder FOLDER DEVICE PATH [LABEL]
+                               accept a folder a device offers, into PATH
+  dismiss-folder FOLDER DEVICE
+  service start|stop|restart|status
+                               the syncthing.service user unit
+  gui-url                      the web interface's address
+
+Exit codes: 0 ok, 2 usage, 64 a bad argument, 69 Syncthing is not answering
+(or has no readable config), 127 curl is missing.
+EOF
+}
+
+ID_RE='^[A-Za-z0-9._~-]{1,64}$'
+DEVICE_RE='^[A-Z0-9]{7}(-[A-Z0-9]{7}){7}$'
+
+config_file() {
+    local c
+    for c in ${STCONFDIR:+"$STCONFDIR/config.xml"} ${STHOMEDIR:+"$STHOMEDIR/config.xml"} \
+        "${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml" \
+        "${XDG_CONFIG_HOME:-$HOME/.config}/syncthing/config.xml" \
+        "$HOME/.local/share/syncthing/config.xml"; do
+        [[ -r $c ]] && { printf '%s\n' "$c"; return 0; }
+    done
+    return 1
+}
+
+# endpoint — sets BASE_URL, API_KEY and CURL_TLS from the <gui> block.
+endpoint() {
+    local file gui address tls host port
+    file="$(config_file)" || { echo "no readable Syncthing config.xml" >&2; exit 69; }
+    gui="$(sed -n '/<gui[ >]/,/<\/gui>/p' "$file")"
+    address="$(sed -n 's|.*<address>\([^<]*\)</address>.*|\1|p' <<<"$gui" | head -1)"
+    API_KEY="$(sed -n 's|.*<apikey>\([^<]*\)</apikey>.*|\1|p' <<<"$gui" | head -1)"
+    tls="$(sed -n '1s/.*tls="\([a-z]*\)".*/\1/p' <<<"$gui")"
+    [[ -n $address && -n $API_KEY ]] || { echo "config.xml has no GUI address or API key" >&2; exit 69; }
+    address=${address#http://}
+    address=${address#https://}
+    host=${address%:*}
+    port=${address##*:}
+    case $host in
+    127.0.0.1 | localhost | "[::1]") ;;
+    0.0.0.0 | "") host=127.0.0.1 ;;
+    "[::]") host="[::1]" ;;
+    *) echo "the Syncthing GUI listens on $host, not on this machine's loopback; haseen only talks to a local one" >&2; exit 69 ;;
+    esac
+    [[ $port =~ ^[0-9]+$ ]] || { echo "unusual GUI address: $address" >&2; exit 69; }
+    CURL_TLS=()
+    if [[ $tls == true ]]; then
+        BASE_URL="https://$host:$port"
+        # Syncthing's own self-signed certificate, on loopback only.
+        CURL_TLS=(--insecure)
+    else
+        BASE_URL="http://$host:$port"
+    fi
+}
+
+uri() { jq -rn --arg v "$1" '$v | @uri'; }
+
+# api METHOD PATH [BODY] — one request; prints the response body.
+api() {
+    local method=$1 path=$2 body=${3:-} timeout=${API_TIMEOUT:-10}
+    local args=(-fsS --max-time "$timeout" "${CURL_TLS[@]}" -X "$method")
+    [[ -n $body ]] && args+=(-H 'Content-Type: application/json' --data-binary "$body")
+    curl "${args[@]}" -H @<(printf 'X-API-Key: %s\n' "$API_KEY") "$BASE_URL$path"
+}
+
+# change METHOD PATH [BODY] — a request that changes Syncthing; a dry run
+# prints it instead.
+change() {
+    if $DRY_RUN; then
+        echo "DRYRUN: $1 $BASE_URL$2${3:+ $3}"
+        return 0
+    fi
+    api "$@" >/dev/null || exit 69
+}
+
+need_curl() { have curl || exit 127; }
+
+valid() { [[ $2 =~ $1 ]] || { echo "refusing: $2" >&2; exit 64; }; }
+
+cmd_status() {
+    local version status folders devices conns pfolders pdevices f states='{}' st
+    version="$(api GET /rest/system/version)" || exit 69
+    status="$(api GET /rest/system/status)" || exit 69
+    folders="$(api GET /rest/config/folders)" || exit 69
+    devices="$(api GET /rest/config/devices)" || exit 69
+    conns="$(api GET /rest/system/connections)" || conns='{"connections":{}}'
+    pdevices="$(api GET /rest/cluster/pending/devices)" || pdevices='{}'
+    pfolders="$(api GET /rest/cluster/pending/folders)" || pfolders='{}'
+    while IFS= read -r f; do
+        [[ -n $f ]] || continue
+        st="$(api GET "/rest/db/status?folder=$(uri "$f")")" || st='{}'
+        states="$(jq -c --arg f "$f" --argjson s "$st" '. + {($f): $s}' <<<"$states")"
+    done < <(jq -r '.[].id' <<<"$folders")
+    jq -cn --argjson version "$version" --argjson status "$status" --argjson folders "$folders" \
+        --argjson devices "$devices" --argjson conns "$conns" --argjson states "$states" \
+        --argjson pdevices "$pdevices" --argjson pfolders "$pfolders" --arg url "$BASE_URL/" '
+        $status.myID as $me
+        | ($devices | map({(.deviceID): .name}) | add // {}) as $names
+        | {
+            version: $version.version, myID: $me, guiUrl: $url,
+            folders: [ $folders[] | . as $f | ($states[$f.id] // {}) as $s
+                | { id, label: (if (.label // "") == "" then .id else .label end), path, paused: (.paused == true),
+                    type: (.type // "sendreceive"),
+                    state: ($s.state // "unknown"), error: ($s.error // ""),
+                    globalBytes: ($s.globalBytes // 0), needBytes: ($s.needBytes // 0),
+                    needFiles: ($s.needFiles // 0), pullErrors: ($s.pullErrors // 0),
+                    devices: [ .devices[]?.deviceID | select(. != $me) ] } ],
+            devices: [ $devices[] | select(.deviceID != $me)
+                | { id: .deviceID, name: (if (.name // "") == "" then .deviceID[0:7] else .name end), paused: (.paused == true),
+                    connected: ($conns.connections[.deviceID].connected == true) } ],
+            pendingDevices: [ $pdevices | to_entries[] | { id: .key, name: (.value.name // ""), address: (.value.address // "") } ],
+            pendingFolders: [ $pfolders | to_entries[] | .key as $fid | .value.offeredBy // {} | to_entries[]
+                | { id: $fid, device: .key, deviceName: ($names[.key] // .key[0:7]), label: (.value.label // $fid) } ]
+          }'
+}
+
+cmd_events() {
+    local since=0 timeout=60
+    while (($#)); do
+        case $1 in
+        --since) (($# >= 2)) || { usage >&2; exit 2; }; since=$2; shift ;;
+        --timeout) (($# >= 2)) || { usage >&2; exit 2; }; timeout=$2; shift ;;
+        *) usage >&2; exit 2 ;;
+        esac
+        shift
+    done
+    [[ $since =~ ^[0-9]+$ && $timeout =~ ^[0-9]+$ ]] && ((timeout <= 300)) || exit 64
+    local types=StateChanged,FolderSummary,FolderCompletion,FolderErrors,FolderPaused,FolderResumed,DeviceConnected,DeviceDisconnected,DevicePaused,DeviceResumed,PendingDevicesChanged,PendingFoldersChanged,ConfigSaved,ItemFinished
+    API_TIMEOUT=$((timeout + 15)) api GET "/rest/events?since=$since&timeout=$timeout&events=$types" || exit 69
+}
+
+folder_json() { api GET "/rest/config/folders/$(uri "$1")" || { echo "no folder $1" >&2; exit 64; }; }
+
+cmd_add_folder() {
+    local path="" label="" share=() id body
+    while (($#)); do
+        case $1 in
+        --label) (($# >= 2)) || { usage >&2; exit 2; }; label=$2; shift ;;
+        --share) (($# >= 2)) || { usage >&2; exit 2; }; valid "$DEVICE_RE" "$2"; share+=("$2"); shift ;;
+        -*) usage >&2; exit 2 ;;
+        *) [[ -z $path ]] || { usage >&2; exit 2; }; path=$1 ;;
+        esac
+        shift
+    done
+    [[ $path == /* ]] || { echo "PATH must be absolute" >&2; exit 64; }
+    [[ $path != *$'\n'* && $label != *$'\n'* ]] || exit 64
+    [[ -n $label ]] || label=${path##*/}
+    # Syncthing's own id shape: two groups of five letters and digits.
+    local chars=abcdefghijklmnopqrstuvwxyz0123456789 i
+    id=""
+    for i in {1..10}; do
+        ((i == 6)) && id+=-
+        id+=${chars:SRANDOM % 36:1}
+    done
+    body="$(jq -cn --arg id "$id" --arg label "$label" --arg path "$path" --args \
+        '{id: $id, label: $label, path: $path, devices: [$ARGS.positional[] | {deviceID: .}]}' "${share[@]}")"
+    change POST /rest/config/folders "$body"
+    $DRY_RUN || info "folder $label ($id) at $path"
+}
+
+cmd_share() {
+    (($# == 3)) || { usage >&2; exit 2; }
+    valid "$ID_RE" "$1"
+    valid "$DEVICE_RE" "$2"
+    local folder devices
+    folder="$(folder_json "$1")"
+    case $3 in
+    on) devices="$(jq -c --arg d "$2" '.devices | if any(.deviceID == $d) then . else . + [{deviceID: $d}] end' <<<"$folder")" ;;
+    off) devices="$(jq -c --arg d "$2" '.devices | map(select(.deviceID != $d))' <<<"$folder")" ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    change PATCH "/rest/config/folders/$(uri "$1")" "{\"devices\":$devices}"
+}
+
+cmd_accept_folder() {
+    (($# >= 3 && $# <= 4)) || { usage >&2; exit 2; }
+    valid "$ID_RE" "$1"
+    valid "$DEVICE_RE" "$2"
+    local path=$3 label=${4:-$1} existing body
+    [[ $path == /* ]] || { echo "PATH must be absolute" >&2; exit 64; }
+    if existing="$(api GET "/rest/config/folders/$(uri "$1")" 2>/dev/null)"; then
+        # The folder is here already: share it with the device as well.
+        cmd_share "$1" "$2" on
+        return 0
+    fi
+    : "$existing"
+    body="$(jq -cn --arg id "$1" --arg label "$label" --arg path "$path" --arg d "$2" \
+        '{id: $id, label: $label, path: $path, devices: [{deviceID: $d}]}')"
+    change POST /rest/config/folders "$body"
+}
+
+cmd_service() {
+    (($# == 1)) || { usage >&2; exit 2; }
+    case $1 in
+    start | stop | restart) run systemctl --user "$1" syncthing.service ;;
+    status) systemctl --user is-active syncthing.service || true ;;
+    *) usage >&2; exit 2 ;;
+    esac
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+verb=${1:-}
+(($#)) && shift
+case $verb in
+service) cmd_service "$@"; exit 0 ;;
+"" | -*) usage >&2; exit 2 ;;
+esac
+need_curl
+endpoint
+case $verb in
+status) (($# == 0)) || { usage >&2; exit 2; }; cmd_status ;;
+events) cmd_events "$@" ;;
+rescan)
+    (($# == 1)) || { usage >&2; exit 2; }
+    valid "$ID_RE" "$1"
+    change POST "/rest/db/scan?folder=$(uri "$1")"
+    ;;
+pause | resume)
+    (($# == 1)) || { usage >&2; exit 2; }
+    valid "$ID_RE" "$1"
+    change PATCH "/rest/config/folders/$(uri "$1")" "{\"paused\":$([[ $verb == pause ]] && echo true || echo false)}"
+    ;;
+pause-all | resume-all)
+    (($# == 0)) || { usage >&2; exit 2; }
+    change POST "/rest/system/${verb%-all}"
+    ;;
+remove-folder)
+    (($# == 1)) || { usage >&2; exit 2; }
+    valid "$ID_RE" "$1"
+    change DELETE "/rest/config/folders/$(uri "$1")"
+    ;;
+add-folder) cmd_add_folder "$@" ;;
+share) cmd_share "$@" ;;
+accept-device)
+    (($# >= 1 && $# <= 2)) || { usage >&2; exit 2; }
+    valid "$DEVICE_RE" "$1"
+    change POST /rest/config/devices "$(jq -cn --arg id "$1" --arg name "${2:-}" '{deviceID: $id, name: $name}')"
+    ;;
+dismiss-device)
+    (($# == 1)) || { usage >&2; exit 2; }
+    valid "$DEVICE_RE" "$1"
+    change DELETE "/rest/cluster/pending/devices?device=$(uri "$1")"
+    ;;
+accept-folder) cmd_accept_folder "$@" ;;
+dismiss-folder)
+    (($# == 2)) || { usage >&2; exit 2; }
+    valid "$ID_RE" "$1"
+    valid "$DEVICE_RE" "$2"
+    change DELETE "/rest/cluster/pending/folders?folder=$(uri "$1")&device=$(uri "$2")"
+    ;;
+gui-url) (($# == 0)) || { usage >&2; exit 2; }; printf '%s/\n' "$BASE_URL" ;;
+*) usage >&2; exit 2 ;;
+esac
