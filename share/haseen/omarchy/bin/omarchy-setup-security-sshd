@@ -6,8 +6,11 @@
 # ~/.ssh/authorized_keys holds none yet, is authorized before password logins
 # go off, so nobody is locked out. ~/.ssh/authorized_keys is the user's file:
 # a key is only appended, after a confirmation, and an existing file or
-# directory keeps its modes. The server itself, its hardening drop-in and the
-# firewall rule are haseen's (bin/haseen-setup-sshd) (plan 093).
+# directory keeps its modes. A key there opens the account to whoever holds
+# it, so --yes does not answer that confirmation: a yes at the terminal does,
+# or --fingerprint naming the --key's own SHA-256 fingerprint. The server
+# itself, its hardening drop-in and the firewall rule are haseen's
+# (bin/haseen-setup-sshd) (plan 093).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -19,20 +22,27 @@ AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 
 usage() {
     cat <<EOF
-Usage: omarchy-setup-security-sshd [--key=<public-key>] [--dry-run] [--yes]
+Usage: omarchy-setup-security-sshd [--key=<public-key> [--fingerprint=SHA256:...]] [--dry-run] [--yes]
 
 Sets up the OpenSSH server with key-only logins and opens the SSH port in the
 firewall (haseen setup sshd), after authorizing an SSH key: the one passed
 with --key, or, when ~/.ssh/authorized_keys holds no key yet, one fetched
 from GitHub or pasted.
+
+Each key is shown with its fingerprint and added to ~/.ssh/authorized_keys
+only after a yes at the terminal; --yes does not answer it. To add a --key
+without a terminal, also pass --fingerprint with that key's SHA-256
+fingerprint (ssh-keygen -lf KEY.pub).
 EOF
 }
 
 KEY=""
+FINGERPRINT=""
 flags=()
 for arg in "$@"; do
     case "$arg" in
     --key=*) KEY="${arg#--key=}" ;;
+    --fingerprint=*) FINGERPRINT="${arg#--fingerprint=}" ;;
     -h | --help)
         usage
         exit 0
@@ -52,11 +62,36 @@ for arg in "$@"; do
         ;;
     esac
 done
+[[ -z $FINGERPRINT || -n $KEY ]] || {
+    echo "omarchy-setup-security-sshd: --fingerprint names the --key; pass both." >&2
+    exit 2
+}
 in_floating_terminal "$@"
 require_not_root
 
 valid_key() { ssh-keygen -lf /dev/stdin <<<"$1" >/dev/null 2>&1; }
 fingerprint() { ssh-keygen -lf /dev/stdin <<<"$1" 2>/dev/null; }
+# key_hash KEY — its SHA256:... fingerprint alone.
+key_hash() { fingerprint "$1" | awk '{print $2}'; }
+
+# key_confirmed KEY — the user's yes to authorizing KEY: --fingerprint when it
+# is KEY's, else an answer at the terminal (never --yes). A dry run plans the
+# yes.
+key_confirmed() {
+    local key="$1" reply
+    if [[ -n $FINGERPRINT ]]; then
+        [[ $(key_hash "$key") == "$FINGERPRINT" ]] && return 0
+        printf 'The key is %s, not --fingerprint %s: not authorized.\n' "$(key_hash "$key")" "$FINGERPRINT" >&2
+        return 1
+    fi
+    $DRY_RUN && return 0
+    if ! read -r -p "Authorize $(fingerprint "$key") in ${AUTHORIZED_KEYS/#$HOME/\~}? [y/N] " reply; then
+        echo >&2
+        echo "Not authorized: answer at a terminal, or pass --fingerprint=$(key_hash "$key") with --key." >&2
+        return 1
+    fi
+    [[ $reply =~ ^[Yy]$ ]]
+}
 
 # authorize_key KEY — append KEY to authorized_keys unless it is there.
 authorize_key() {
@@ -69,7 +104,7 @@ authorize_key() {
         echo "Key already authorized: $(fingerprint "$key")"
         return 0
     fi
-    confirm "Authorize $(fingerprint "$key") in ${AUTHORIZED_KEYS/#$HOME/\~}?" || return 1
+    key_confirmed "$key" || return 1
     # sshd ignores keys in a directory or file others can write; new ones are
     # made private, existing ones are the user's and keep their modes.
     if [[ ! -e $SSH_DIR ]]; then

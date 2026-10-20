@@ -263,9 +263,23 @@ assert_status "an invalid key fails" 1 "$STATUS"
 assert_contains "an invalid key says so" "$OUTPUT" "Not a valid SSH public key"
 capture "$OMA/omarchy-setup-security-sshd" --bogus
 assert_status "an unknown option is a usage error" 2 "$STATUS"
+capture "$OMA/omarchy-setup-security-sshd" --fingerprint=SHA256:x --dry-run
+assert_status "--fingerprint without --key is a usage error" 2 "$STATUS"
 fake_bin haseen-setup-sshd
-capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$pub" --yes
-assert_status "sshd with a key" 0 "$STATUS"
+capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$pub" --yes </dev/null
+assert_status "--yes alone does not authorize a key" 1 "$STATUS"
+assert_contains "it says how to authorize without a terminal" "$OUTPUT" "--fingerprint=SHA256:"
+[[ ! -e $keys ]] && _pass || _fail "--yes alone wrote authorized_keys"
+assert_eq "nor does it set the server up" "" "$(cat "$SANDBOX/fake.log" 2>/dev/null)"
+capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$pub" --yes <<<"n"
+assert_status "a no at the terminal authorizes nothing" 1 "$STATUS"
+other_fp="$(ssh-keygen -lf "$SANDBOX/k2.pub" | awk '{print $2}')"
+capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$pub" --fingerprint="$other_fp" --yes
+assert_status "another key's fingerprint authorizes nothing" 1 "$STATUS"
+[[ ! -e $keys ]] && _pass || _fail "a wrong --fingerprint wrote authorized_keys"
+fp="$(ssh-keygen -lf "$SANDBOX/k.pub" | awk '{print $2}')"
+capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$pub" --fingerprint="$fp" --yes
+assert_status "sshd with a key and its fingerprint" 0 "$STATUS"
 assert_eq "authorized_keys holds the key" "$pub" "$(cat "$keys")"
 assert_eq "a new ~/.ssh is private" "700" "$(stat -c %a "$HOME/.ssh")"
 assert_eq "a new authorized_keys is private" "600" "$(stat -c %a "$keys")"
@@ -274,7 +288,7 @@ capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" 
 assert_contains "a known key is not added twice" "$OUTPUT" "Key already authorized"
 assert_eq "authorized_keys still holds one key" "1" "$(wc -l <"$keys")"
 chmod 644 "$keys"
-capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$(<"$SANDBOX/k2.pub")" --yes
+capture env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-setup-security-sshd" --key="$(<"$SANDBOX/k2.pub")" --yes <<<"y"
 assert_eq "a second key is appended" "2" "$(wc -l <"$keys")"
 assert_eq "the user's file keeps its mode" "644" "$(stat -c %a "$keys")"
 assert_eq "the first key is untouched" "$pub" "$(head -n1 "$keys")"
