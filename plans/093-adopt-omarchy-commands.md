@@ -230,6 +230,60 @@ name or content, never the user's data:
   managed policies, by name (`:97`), and `/etc/brave` only when no native
   Brave build is left (`:106`).
 
+### User-file writes
+
+CLAUDE.md: haseen never edits the user's files after seeding them. A few
+Omarchy commands exist to write one, and the owner asked for all of them
+(2026-10-20: "adopt all omarchy scripts and no apple hardware scripts"), so
+each port below is an explicit request, run by the user, never by a layer, a
+migration or a theme set, and each is guarded:
+
+| Port | File | Guard |
+|------|------|-------|
+| `omarchy-refresh-tmux`, `omarchy-refresh-herdr` | `~/.config/tmux/tmux.conf`, `~/.config/herdr/config.toml` | asks (`--yes` answers), copies the old file to `<file>.bak.<timestamp>` (`:45`), replaces it (`:47`) and prints the diff: `haseen refresh`'s precedent (`bin/haseen-refresh`) |
+| `omarchy-setup-security-sshd` | `~/.ssh/authorized_keys` | appends one key (`:116`), never rewrites; each key is shown with its fingerprint and needs a yes at the terminal, which `--yes` does not give (`:77-94`); without a terminal only `--key` with a matching `--fingerprint=SHA256:…` adds it; a new file is 0600, an existing one keeps its mode |
+| `omarchy-theme-set-claude`, `-pi` | `settings.json`'s `"theme"` | only with `--activate`; without it only `themes/haseen.json` is written, and only into a config directory that exists |
+| `omarchy-theme-set-vscode` | each editor's `settings.json` (`"workbench.colorTheme"`, edited as text so JSONC survives), `extensions.json` and `.obsolete` | only with `--activate` (`:215`, `:226`); without it only haseen's extension directory `<extensions>/haseen-theme` is written, and an editor that does not list it yet gets a hint |
+| `omarchy-theme-set-hermes` | Hermes' `display.skin` | only with `--activate` or `--wait`, through Hermes' own `hermes config set` (`:181`), and only over the default skin; without it only `skins/haseen.yaml` in existing Hermes homes |
+| `omarchy-install-dev-env` | `~/.gemrc` | written only when absent (`:89`); `omarchy-remove-dev-env` deletes it only while it is that one line |
+| `omarchy-mise-install` | `~/.local/bin/<command>` | the wrapper the command is asked to write; an existing file of that name is removed first, as Omarchy does, so a link's target is never written through (`:66-67`) |
+| `omarchy-install-openclaw-cli` | `~/.local/bin/openclaw` | a link to the runtime it installed (`:439`), as Omarchy's installer makes it |
+
+Rejected: refusing these commands. The owner asked for every non-Apple
+command, and each writes only what its name says, after the user runs it.
+
+### Running a downloaded Windows program: Battle.net
+
+Battle.net has no package. Omarchy's `omarchy-install-gaming-battlenet`
+downloads Blizzard's installer from `downloader.battle.net` (`:10`, `:50`)
+and runs it under umu-launcher and GE-Proton (`:61`). haseen's port keeps
+that, because the owner asked for every non-Apple command (2026-10-20:
+"adopt all omarchy scripts"), and the risk is the owner's to weigh:
+
+- the installer is a Windows program fetched live: haseen cannot pin its
+  hash (Blizzard serves a new build with each release) and does not check
+  its Authenticode signature, so the trust is HTTPS to Blizzard's host;
+- Wine maps the whole filesystem as drive Z:, so the installer, and
+  Battle.net after it, can read every file the user can (SSH keys, browser
+  profiles, tokens under `~`) and change those the user can write. umu and
+  GE-Proton add no sandbox.
+
+What the port does about it: curl takes HTTPS only, redirects included
+(`--proto '=https' --proto-redir '=https'`); the downloaded file's SHA-256 is
+printed with the Z: drive warning; and the installer runs only after a typed
+`run` at the terminal (`confirm_typed`), which `--yes` does not give, so no
+unattended run starts it. A dry run prints the plan and downloads nothing.
+
+To refuse it instead, turn its `commands.tsv` row into a `refuse` row with
+`none: Battle.net runs a downloaded Windows program with access to your
+files` and delete the script; `omarchy-launch-battlenet` and
+`omarchy-remove-gaming-battlenet` keep working for an existing prefix.
+
+The same typed confirmation (`common.sh` `confirm_typed`, which `--yes`
+never answers) guards `omarchy-sudo-passwordless`'s enable path: it lets any
+process of the user run anything as root for the chosen minutes, so the
+user types `enable`.
+
 ## Rejected options
 
 - **Shims on the shell's `PATH` only** (plan 057's scope): the IO incident
@@ -1203,7 +1257,19 @@ fixtures; nothing reaches the live session):
   update, version, webapp). Every state-changing command has a dry-run
   purity check, and the remove and plugin tests compare
   `~/.config/omarchy/plugins` and `~/.config/DankMaterialShell/plugins`
-  before and after real runs.
+  before and after real runs (`--yes`, `--purge --yes`, and a yes to every
+  question);
+- the questions `--yes` does not answer: every remover with data keeps it
+  under `--yes` and deletes it under `--purge --yes` (Steam, Battle.net,
+  GeForce NOW, RetroArch, Perplexity, T3 Code, `~/.opam`, rustup, Omarchy's
+  fingerprint service), a dry run under `--yes` still plans the deletion,
+  and a remover without data questions rejects `--purge`; an SSH key is not
+  authorized under `--yes` without a terminal, nor with another key's
+  `--fingerprint`, and is with its own; Battle.net's download is shown with
+  its SHA-256 and runs only on a typed `run`, and a partial prefix stays
+  without a typed `wipe`; passwordless sudo stays off under `--yes` and on a
+  plain `y`; `omarchy-theme-set-vscode` leaves `extensions.json` and
+  `.obsolete` alone without `--activate`.
 
 ## Not done
 
