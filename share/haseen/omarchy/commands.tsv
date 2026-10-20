@@ -5,10 +5,82 @@
 # do under haseen, exits 0), apple (Apple hardware only, not provided).
 # share/haseen/omarchy/bin/<name> links to ../dispatch for shim, refuse and inert.
 omarchy	port	-	Omarchy's router: omarchy a b runs haseen's omarchy-a-b
+omarchy-agent	port	haseen-terminal-run	starts the default coding agent unattended, in a terminal of its own or inline
+omarchy-agent-crash	shim	haseen-agent-crash	asks the default coding agent to diagnose a crashed process
+omarchy-agent-prompt	port	-	starts the default coding agent with a prompt
+omarchy-agent-usage-claude	port	-	prints the Claude Code usage record as JSON for an agents panel
+omarchy-agent-usage-codex	port	-	prints the Codex usage record as JSON for an agents panel
+omarchy-agent-usage-fireworks	port	-	prints the Fireworks usage record as JSON for an agents panel
+omarchy-agent-usage-update	port	-	runs the usage collectors and stores their records in haseen's state
+omarchy-apply-hardware	refuse	haseen hw apply	It runs Omarchy's installer hardware scripts as root, which also rewrite pacman's configuration.
+omarchy-apply-lock	refuse	haseen setup fingerprint	It writes PAM files for Omarchy's lock screen; haseen's lock uses its own PAM and fingerprint setup.
+omarchy-apply-system	refuse	haseen layer apply <layer>	It finishes an Omarchy install from Omarchy's installer scripts; haseen sets a machine up through its layers.
+omarchy-audio-input-mute	port	-	toggles the default microphone's mute and the mic-mute LED
+omarchy-audio-input-set-default	port	-	makes a source the default input and moves recordings to it
+omarchy-audio-output-set-default	port	-	makes a sink the default output and moves application streams to it
+omarchy-audio-output-sink	port	-	prints the sink that carries an output's loudness, behind a DSP sink
+omarchy-audio-output-switch	port	-	switches to the next available output and names it
+omarchy-audio-output-volume	port	-	raises, lowers or mutes the output that carries the loudness
+omarchy-audio-sink-availability	port	-	prints each sink and whether it can be picked
+omarchy-audio-source-switch	port	-	moves the media keys to the next or previous player
+omarchy-audio-tuning	translate	haseen-audio-tuning	Omarchy's speaker-tuning verbs on haseen audio tuning
+omarchy-bar	translate	-	Omarchy's bar verbs on haseen bar position, transparent, add and move, and plugin settings
+omarchy-bar-text-color	shim	haseen-bar-text-color	prints the bar text colour that reads best on the wallpaper
+omarchy-battery-low	port	haseen-notification-send	warns of a low battery and runs the battery-low hooks
+omarchy-battery-present	port	-	exits 0 when a battery is present
 omarchy-battery-status	shim	haseen-battery-status	prints the battery line or TSV Omarchy's bar plugins read
+omarchy-bluetooth-device	port	-	pairs, connects, disconnects or forgets a Bluetooth device
+omarchy-bluetooth-power	port	-	turns Bluetooth on or off through rfkill; is-on answers by exit code
+omarchy-branding-about	shim	haseen-branding about	sets the text or image of the about screen
+omarchy-branding-screensaver	shim	haseen-branding screensaver	sets the text or image of the screensaver
+omarchy-brightness-display	translate	haseen-brightness	shows or steps the focused display's brightness (backlight or DDC/CI)
 omarchy-brightness-display-apple	apple	-	Apple Studio and Pro Display XDR brightness through asdcontrol
+omarchy-brightness-display-ddc	translate	haseen-brightness	shows or sets a monitor's brightness over DDC/CI
+omarchy-brightness-keyboard	translate	haseen-brightness	steps, cycles, turns off or restores the keyboard backlight
+omarchy-brightness-keyboard-mute	port	-	sets the mic-mute LED on laptops that have one
+omarchy-capture-qr	shim	haseen-capture-qr	reads a QR code from a screen region into the clipboard
+omarchy-capture-region	port	-	picks a screen region over a frozen screen and prints its geometry
 omarchy-capture-screenrecording	translate	haseen-capture-screenrecord	Omarchy's recorder flags on haseen's screen recorder
+omarchy-capture-screenrecording-with-webcam	port	haseen-capture-screenrecord	records the screen with desktop audio, the microphone and a webcam overlay
+omarchy-capture-screenshot	translate	haseen-capture-screenshot	Omarchy's screenshot modes on haseen capture screenshot
+omarchy-capture-text	shim	haseen-capture-text	copies the text of a screen region (OCR) to the clipboard; HASEEN_OCR_LANGS picks languages
 omarchy-capture-webcam-list	port	-	prints each camera that can capture video, device and name
+omarchy-capture-webcam-resize	port	-	resizes the screen recording's webcam overlay
+omarchy-channel-current	refuse	haseen version	It reports Omarchy's package channel; haseen is not released through Omarchy's channels.
+omarchy-channel-set	refuse	haseen update	It switches Omarchy's package channel by rewriting pacman's configuration and installing Omarchy's own packages.
+omarchy-chromium-copy-url-host	port	-	Chromium native-messaging host that copies a page's URL
+omarchy-chromium-ytdlp-host	port	-	Chromium native-messaging host that downloads a video with yt-dlp
+omarchy-clipboard-open	port	-	opens a clipboard-history entry in the image editor, browser or editor
+omarchy-clipboard-paste-file	port	-	puts a file on the clipboard and pastes it
+omarchy-clipboard-paste-text	port	-	puts text on the clipboard and types or pastes it
+omarchy-cmd-browser-handoff	port	-	hands a command line to the running Chromium-family browser
+omarchy-cmd-default-browser	port	-	prints the default browser's desktop entry
+omarchy-cmd-missing	port	-	exits 0 when any named command is missing
+omarchy-cmd-present	port	-	exits 0 when every named command is on PATH
+omarchy-cmd-terminal-cwd	port	-	prints the focused terminal's working directory
+omarchy-crash-watch	shim	haseen-crash-watch	watches for crashes and offers a coding agent's diagnosis
+omarchy-default-agent	translate	haseen-setup-default	prints or sets the default coding agent
+omarchy-default-browser	shim	haseen-setup-default browser	prints or sets the default browser
+omarchy-default-editor	translate	haseen-setup-default	prints or sets the default editor
+omarchy-default-terminal	shim	haseen-setup-default terminal	prints or sets the default terminal
+omarchy-dev-add-migration	refuse	none: add a migration to haseen's repository; haseen migrate runs them	It creates a migration in Omarchy's source tree, which haseen does not use.
+omarchy-dev-benchmark-cli	refuse	none: time haseen's commands with your shell's time builtin	It benchmarks Omarchy's own command router and theme commands from its source tree.
+omarchy-dev-benchmark-theme-switcher	refuse	none: haseen's theme picker panel (haseen.themepicker) replaces Omarchy's switcher	It benchmarks Omarchy's theme switcher and menu image cache, development tools haseen does not ship.
+omarchy-dev-font	refuse	none: haseen's menu uses Nerd Font glyphs	It adds glyphs to Omarchy's own icon font in its source tree.
+omarchy-dev-install-ydoo	refuse	none: haseen types and pastes with wtype	It opens /dev/uinput to ydotool through the input group and a udev rule; haseen gives no process synthetic input devices.
+omarchy-dev-link	refuse	none: run haseen straight from a checkout; bin/haseen finds its own share/haseen	It points Omarchy's install at a source checkout through /etc/omarchy.conf and a sudoers file.
+omarchy-dev-pkg-test	refuse	none: haseen is not built with Omarchy's packaging tools	It builds and installs Omarchy's own packages from a checkout, which haseen never installs.
+omarchy-dev-status	refuse	none: haseen has no dev link; run it from a checkout	It reports Omarchy's dev link, which exists only in Omarchy's development setup.
+omarchy-dev-theme-preview	port	-	previews a theme's palette in the terminal
+omarchy-dev-ui-preview	refuse	none: haseen's shell has no widget gallery	It opens the widget gallery of Omarchy's shell, which haseen's shell does not have.
+omarchy-dev-unlink	refuse	none: haseen has no dev link to undo	It returns Omarchy's install from a source checkout to its package, rewriting /etc/omarchy.conf and sudoers.
+omarchy-disk-speedtest	port	-	measures a disk's live read and write speed
+omarchy-display-text-size	port	-	prints or sets GTK's text size; haseen's shell and terminal follow the theme
+omarchy-dns	translate	haseen-setup-dns	prints or chooses the DNS provider
+omarchy-done	port	-	checks, marks or claims a one-time marker in haseen's state
+omarchy-drive-info	shim	haseen-drive-info	prints a drive's size, model and partitions
+omarchy-drive-password	shim	haseen-drive-password	changes an encrypted drive's password
+omarchy-drive-select	translate	haseen-drive-select	picks a drive and prints its device path
 omarchy-file-select	port	-	opens the desktop file chooser and prints the chosen paths
 omarchy-font-current	translate	haseen-font-current	prints the monospace font family in use
 omarchy-font-list	shim	haseen-font-list	lists the installed monospace fonts

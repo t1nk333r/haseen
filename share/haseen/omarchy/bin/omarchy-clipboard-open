@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# omarchy-clipboard-open — open a clipboard-history entry: an image in Tensaku,
+# text with a link in the browser, other text in the editor. Omarchy's
+# clipboard panel calls it with --history-index N. Omarchy reads its shell's
+# ~/.local/state/omarchy/clipboard-history.json, which haseen never writes;
+# here N is the Nth entry of cliphist, haseen's history (haseen.clipboard),
+# newest first from 0. Adapted from Omarchy bin/omarchy-clipboard-open (MIT,
+# Copyright (c) David Heinemeier Hansson): the link and editor rules are
+# Omarchy's; text opens from ~/.local/state/haseen/clipboard-open, an image
+# is decoded into $XDG_RUNTIME_DIR/haseen first (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-clipboard-open --history-index <index> [--dry-run]
+
+Opens entry INDEX of the clipboard history (cliphist list, 0 = newest):
+images in tensaku-edit, text containing a link in the browser, other text in
+the editor (haseen config edit). Exits 1 when there is no such entry.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+set -- "${REST[@]}"
+history_index=""
+while (($#)); do
+    case $1 in
+    --history-index)
+        history_index=${2:-}
+        shift 2 || shift
+        ;;
+    *)
+        echo "Usage: omarchy-clipboard-open --history-index <index>" >&2
+        exit 1
+        ;;
+    esac
+done
+[[ $history_index =~ ^[0-9]+$ ]] || exit 1
+line="$(cliphist list 2>/dev/null | sed -n "$((10#$history_index + 1))p" || true)"
+[[ -n $line ]] || exit 1
+
+open_image() { # EXT
+    local dir="${XDG_RUNTIME_DIR:-/tmp}/haseen" file
+    if $DRY_RUN; then
+        echo "DRYRUN: cliphist decode > $dir/clipboard-open.XXXXXX.$1"
+        echo "DRYRUN: tensaku-edit $dir/clipboard-open.XXXXXX.$1"
+        exit 0
+    fi
+    mkdir -p "$dir"
+    file="$(mktemp --tmpdir="$dir" "clipboard-open.XXXXXX.$1")"
+    printf '%s\n' "$line" | cliphist decode >"$file" || exit 1
+    exec tensaku-edit "$file"
+}
+
+open_text() {
+    local text=$1 url="" dir="$HASEEN_USER_STATE/clipboard-open" file
+    url=$(grep -Eom1 'https?://[^[:space:]"'\''<>]+' <<<"$text" || true)
+    if [[ -z $url && $text =~ ^[[:space:]]*([[:alnum:]][[:alnum:].-]+\.[[:alpha:]]{2,})(/[^[:space:]]*)?[[:space:]]*$ ]]; then
+        url="https://${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+    fi
+    if [[ -n $url ]]; then
+        if [[ -x $HASEEN_OMARCHY_DIR/bin/omarchy-launch-browser ]]; then
+            $DRY_RUN && exec echo "DRYRUN: $HASEEN_OMARCHY_DIR/bin/omarchy-launch-browser $url"
+            exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-browser" "$url"
+        fi
+        run xdg-open "$url"
+        exit 0
+    fi
+    if $DRY_RUN; then
+        echo "DRYRUN: write the entry to $dir/clipboard.XXXXXX.txt"
+        echo "DRYRUN: $HASEEN_BIN/haseen-config-edit $dir/clipboard.XXXXXX.txt"
+        exit 0
+    fi
+    mkdir -p "$dir"
+    file="$(mktemp --tmpdir="$dir" clipboard.XXXXXX.txt)" || exit 1
+    printf '%s' "$text" >"$file"
+    haseen_exec config-edit "$file"
+}
+
+preview=${line#*$'\t'}
+if [[ $preview =~ ^\[\[\ binary\ data\ .*\ (png|jpeg|jpg|gif|bmp|webp)\  ]]; then
+    ext=${BASH_REMATCH[1]}
+    open_image "$ext"
+elif [[ $preview == "[[ binary data"* ]]; then
+    exit 1
+fi
+text="$(printf '%s\n' "$line" | cliphist decode 2>/dev/null)" || exit 1
+open_text "$text"

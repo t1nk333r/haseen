@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# omarchy-default-editor — print or set the default editor on haseen setup
+# default editor ($EDITOR and the text/* handlers). Omarchy prints the command
+# (zeditor, sublime_text) and nvim when none is set, which its menu compares
+# against; haseen's names are kept on the way in. The names follow Omarchy
+# bin/omarchy-default-editor (MIT, Copyright (c) David Heinemeier Hansson);
+# haseen announces the change on stdout instead of a toast (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-default-editor [code|cursor|zed|sublime_text|helix|vim|emacs|nvim] [--dry-run]
+
+haseen's answer to Omarchy's command (haseen setup default editor): without a
+name, prints the default editor's command (nvim when none is set).
+EOF
+}
+parse_common_flags "$@"
+if ((${#REST[@]} == 0)); then
+    editor="$(haseen_cmd setup-default editor 2>/dev/null || true)"
+    case $editor in
+    "") editor=nvim ;;
+    zed) editor=zeditor ;;
+    sublime) editor=sublime_text ;;
+    esac
+    echo "$editor"
+    exit 0
+fi
+case ${REST[0]} in
+code | cursor | helix | vim | emacs | nvim) name=${REST[0]} ;;
+zed | zeditor) name=zed ;;
+sublime | sublime_text) name=sublime ;;
+*)
+    echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
+    exit 1
+    ;;
+esac
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec setup-default editor "$name" "${flags[@]}"

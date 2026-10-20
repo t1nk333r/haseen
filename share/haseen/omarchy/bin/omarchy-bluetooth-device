@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# omarchy-bluetooth-device — pair, connect, disconnect or forget a Bluetooth
+# device by address. Omarchy's Bluetooth panel calls it; haseen.bluetooth
+# drives BlueZ from QML and has no command. Adapted from Omarchy
+# bin/omarchy-bluetooth-device (MIT, Copyright (c) David Heinemeier Hansson):
+# the bluetoothctl flow and timeouts are Omarchy's; power comes from haseen's
+# omarchy-bluetooth-power; --dry-run prints the steps (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-bluetooth-device [pair|connect|disconnect|forget] <address> [--dry-run]
+
+Powers Bluetooth on when needed (rfkill, kept across reboots), then pairs,
+trusts and connects, connects, disconnects or removes the device.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+
+bad_usage() {
+    echo "Usage: omarchy-bluetooth-device [pair|connect|disconnect|forget] <address>" >&2
+    exit 1
+}
+action=${REST[0]:-}
+address=${REST[1]:-}
+[[ $action == pair || $action == connect || $action == disconnect || $action == forget ]] || bad_usage
+[[ $address =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] || bad_usage
+
+power_on() {
+    [[ $(timeout 2s bluetoothctl show 2>/dev/null) == *"Powered: yes"* ]] && return 0
+    # Not bluetoothctl directly: BlueZ refuses to power an adapter up while an
+    # rfkill soft block is set, and the block is how Bluetooth is turned off.
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-bluetooth-power" on || true
+}
+
+# quiet ARGS... — run a bluetoothctl step, its output discarded; a dry run
+# prints it instead.
+quiet() {
+    if $DRY_RUN; then
+        run "$@"
+    else
+        "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+bt() { # TIMEOUT ARGS...
+    local t=$1
+    shift
+    quiet timeout "$t" bluetoothctl "$@"
+}
+
+trust_device() { quiet bluetoothctl trust "$address"; }
+
+case $action in
+pair)
+    power_on
+    bt 20s pair "$address"
+    trust_device
+    bt 20s connect "$address"
+    ;;
+connect)
+    power_on
+    trust_device
+    bt 20s connect "$address"
+    ;;
+disconnect) bt 10s disconnect "$address" ;;
+forget)
+    power_on
+    bt 10s disconnect "$address"
+    bt 10s remove "$address"
+    ;;
+esac

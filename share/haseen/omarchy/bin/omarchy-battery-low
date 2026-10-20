@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-battery-low — the low-battery warning: a critical haseen notification
+# and the user's battery-low hooks. Omarchy's battery service calls it with
+# the percentage. Adapted from Omarchy bin/omarchy-battery-low (MIT, Copyright
+# (c) David Heinemeier Hansson): the toast is haseen's (no glyph) and the
+# hooks are haseen's (~/.config/haseen/hooks/battery-low, through haseen hook
+# run) (plan 093). haseen.battery warns by itself and never calls this.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-battery-low <percentage> [--dry-run]
+
+Sends haseen's "Time to recharge!" notification and runs the battery-low
+hooks in ~/.config/haseen/hooks with the percentage.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+if ((${#REST[@]} != 1)); then
+    echo "Usage: omarchy-battery-low <percentage>" >&2
+    exit 1
+fi
+level=${REST[0]}
+
+"$HASEEN_BIN/haseen-notification-send" -u critical -i battery-caution -t 30000 \
+    "Time to recharge!" "Battery is down to ${level}%"
+"$HASEEN_BIN/haseen-hook" run battery-low "$level"

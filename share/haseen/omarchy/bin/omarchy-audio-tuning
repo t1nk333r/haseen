@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# omarchy-audio-tuning — Omarchy's speaker-tuning verbs on haseen audio tuning,
+# haseen's adaptation of it (WirePlumber-hosted, sink haseen_speaker_tuning).
+# The verbs follow Omarchy bin/omarchy-audio-tuning (MIT, Copyright (c) David
+# Heinemeier Hansson): on -> apply, off -> remove, status -> show, match ->
+# show --quiet (haseen prints the tuning id where Omarchy printed its
+# directory); fronted-sink prints the physical sink behind an active tuning,
+# else exits 1, as the output switcher and sink list expect (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-tuning <on|off|status|match|fronted-sink> [--force] [--dry-run]
+
+haseen's answer to Omarchy's command (haseen audio tuning):
+  on [--force]   haseen audio tuning apply
+  off            haseen audio tuning remove
+  status         haseen audio tuning show (the default)
+  match          the matched tuning's id; exit 1 when none matches
+  fronted-sink   the speaker sink an active tuning sits in front of; exit 1
+                 when no tuning sink is up
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-status}
+shift || true
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+
+case $action in
+on)
+    [[ ${1:-} != --force ]] || flags+=(--force)
+    haseen_exec audio-tuning apply "${flags[@]}"
+    ;;
+off) haseen_exec audio-tuning remove "${flags[@]}" ;;
+status) haseen_exec audio-tuning show ;;
+match) haseen_exec audio-tuning show --quiet ;;
+fronted-sink)
+    # The tuning sink is up only while the tuning is in place and WirePlumber
+    # has built it; then the speaker sink haseen matched is the fronted one.
+    pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -qx haseen_speaker_tuning || exit 1
+    sink="$(haseen_cmd audio-tuning show 2>/dev/null | sed -n 's/^Speaker sink: //p' | head -n1)"
+    [[ -n $sink && $sink != "none matching "* ]] || exit 1
+    printf '%s\n' "$sink"
+    ;;
+*)
+    echo "Usage: omarchy-audio-tuning <on|off|status|match|fronted-sink> [--force]" >&2
+    exit 1
+    ;;
+esac

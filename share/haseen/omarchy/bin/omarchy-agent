@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# omarchy-agent — start the default coding agent (haseen setup default agent)
+# unattended, in a terminal window of its own or, with --inline, in this one.
+# Omarchy's agent bind and omarchy-agent-prompt start it. Adapted from Omarchy
+# bin/omarchy-agent (MIT, Copyright (c) David Heinemeier Hansson): the
+# per-agent flags and prompt syntax and the ~/Work start directory are
+# Omarchy's; the agent is haseen's default, --pick opens haseen's agent menu,
+# and the window is haseen terminal run (Omarchy's omarchy-launch-tui gave it
+# the app id org.omarchy.agent) (plan 093). --dry-run prints the command.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-agent [--inline] [--pick] [--prompt TEXT] [--dry-run]
+
+Starts the default coding agent (haseen setup default agent <name>) with its
+"don't stop to ask" flags. --pick opens the agent menu when none is set.
+To start it with a prompt: omarchy agent prompt "..."
+EOF
+}
+
+inline=false pick=false prompt=""
+while (($#)); do
+    case $1 in
+    --inline) inline=true ;;
+    --pick) pick=true ;;
+    --dry-run) DRY_RUN=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --prompt)
+        (($# >= 2)) && [[ -n $2 ]] || {
+            echo "--prompt needs a value" >&2
+            exit 1
+        }
+        prompt=$2
+        shift
+        ;;
+    *)
+        echo "Unexpected argument: $1" >&2
+        echo "To pass a prompt: omarchy agent prompt \"$*\"" >&2
+        exit 1
+        ;;
+    esac
+    shift
+done
+export DRY_RUN
+
+# Agents refuse to remember trust for $HOME, so launches from the bind or the
+# menu start in the work directory instead of asking on every session.
+[[ $PWD == "$HOME" && -d $HOME/Work ]] && cd "$HOME/Work"
+
+agent="$("$HASEEN_OMARCHY_DIR/bin/omarchy-default-agent" 2>/dev/null || true)"
+if [[ -z $agent ]]; then
+    $pick && haseen_exec menu setup.default.agent
+    echo "Choose default agent with: haseen setup default agent <name>" >&2
+    exit 1
+fi
+# OpenClaw's launcher sets OpenClaw up itself when its package is installed.
+if ! have "$agent" && ! { [[ $agent == openclaw ]] && pacman -Q openclaw &>/dev/null; }; then
+    echo "$agent is not installed. Choose an installed agent with: haseen setup default agent <name>" >&2
+    exit 1
+fi
+
+# Started from a bind or the menu, an agent runs unattended, so each gets its
+# own spelling of "don't stop to ask". Pi has no approval prompts.
+case $agent in
+opencode)
+    command=(opencode --auto)
+    [[ -n $prompt ]] && command+=(--prompt "$prompt")
+    ;;
+gemini)
+    command=(gemini --yolo)
+    [[ -n $prompt ]] && command+=(--prompt-interactive "$prompt")
+    ;;
+copilot)
+    command=(copilot --allow-all)
+    [[ -n $prompt ]] && command+=(--interactive "$prompt")
+    ;;
+crush)
+    # --yolo belongs to the interactive command only; `crush run` never prompts.
+    if [[ -n $prompt ]]; then command=(crush run "$prompt"); else command=(crush --yolo); fi
+    ;;
+claude)
+    command=(claude --permission-mode auto)
+    [[ -n $prompt ]] && command+=(-- "$prompt")
+    ;;
+grok)
+    command=(grok --permission-mode bypassPermissions)
+    [[ -n $prompt ]] && command+=(-- "$prompt")
+    ;;
+openclaw)
+    # OpenClaw's terminal UI must attach to its running gateway; its launcher
+    # does that, and --message seeds the session.
+    command=("$HASEEN_OMARCHY_DIR/bin/omarchy-launch-openclaw" --tui)
+    [[ -n $prompt ]] && command+=(--message "$prompt")
+    ;;
+codex)
+    command=(codex --approve-for-me)
+    [[ -n $prompt ]] && command+=(-- "$prompt")
+    ;;
+cursor-agent)
+    # --yolo covers commands only; workspace trust has its own flag. The agent
+    # subcommand is named outright so a one-word prompt is never a subcommand.
+    command=(cursor-agent --yolo --trust)
+    [[ -n $prompt ]] && command+=(agent -- "$prompt")
+    ;;
+hermes)
+    if [[ -n $prompt ]]; then
+        command=(env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=$prompt")
+    else
+        command=(hermes --yolo)
+    fi
+    ;;
+muse)
+    # --approval-mode never skips the tool prompts but keeps Muse's sandbox.
+    command=(muse --approval-mode never)
+    [[ -n $prompt ]] && command+=(-- "$prompt")
+    ;;
+omp)
+    command=(omp --auto-approve)
+    [[ -n $prompt ]] && command+=(-- "$prompt")
+    ;;
+pi)
+    command=(pi)
+    [[ -n $prompt ]] && command+=("$prompt")
+    ;;
+*)
+    echo "Unsupported default agent: $agent" >&2
+    exit 1
+    ;;
+esac
+
+if $inline; then
+    if $DRY_RUN; then
+        echo "DRYRUN: ${command[*]}"
+        exit 0
+    fi
+    exec "${command[@]}"
+fi
+haseen_exec terminal-run "${command[@]}"

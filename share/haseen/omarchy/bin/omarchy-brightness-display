@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# omarchy-brightness-display — show or change the brightness of the focused (or
+# named) display through haseen brightness: a laptop panel (eDP, LVDS, DSI)
+# is its backlight, any other monitor is ddc:<name> over DDC/CI. Without a
+# step it prints the bare percent, which Omarchy's monitor panels parse. The
+# argument form follows Omarchy bin/omarchy-brightness-display (MIT,
+# Copyright (c) David Heinemeier Hansson): +5% and 5%- are haseen's up and
+# down steps, +N%, N%- and N% are set; off and on are haseen screen off and
+# on (plan 093). --no-osd is accepted and ignored: haseen's OSD watches the
+# backlight itself and shows no DDC change.
+# Apple branch dropped: Apple Studio/XDR displays through asdcontrol (Omarchy
+# omarchy-brightness-display:38-40,47-49,79-84).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-brightness-display [--no-osd] [--monitor NAME] [+N%|N%-|N%|off|on] [--dry-run]
+
+haseen's answer to Omarchy's command (haseen brightness):
+  (no step)  print the display's brightness percent
+  +5%, 5%-   one step brighter or darker (haseen brightness up/down)
+  +N%, N%-   N % brighter or darker; N% sets it
+  off, on    turn the displays off or on (haseen screen off/on)
+The display is --monitor NAME or the focused one; external monitors need
+DDC/CI ('haseen setup ddc on').
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+set -- "${REST[@]}"
+monitor=""
+while (($#)); do
+    case $1 in
+    --no-osd) shift ;;
+    --monitor)
+        (($# >= 2)) || exit 1
+        monitor=$2
+        shift 2
+        ;;
+    *) break ;;
+    esac
+done
+
+if [[ -z $monitor ]]; then
+    monitor="$(hyprctl monitors -j 2>/dev/null | jq -r 'first(.[] | select(.focused)) | .name // empty' 2>/dev/null || true)"
+fi
+device=""
+if [[ $monitor =~ ^(eDP|LVDS|DSI)- ]]; then
+    device=backlight
+elif [[ -n $monitor ]]; then
+    device="ddc:$monitor"
+fi
+
+brightness() { "$HASEEN_BIN/haseen-brightness" "$@"; }
+
+if (($# == 0)); then
+    line="$(brightness get ${device:+"$device"} 2>/dev/null | head -n1)" || exit 1
+    [[ -n $line ]] || exit 1
+    cut -f3 <<<"$line"
+    exit 0
+fi
+
+step=$1
+case $step in
+off) haseen_exec screen-off --delay 0 ;;
+on)
+    # A redundant DPMS enable right after resume forces another modeset, which
+    # blanks the panel for a beat: skip it when every display is lit.
+    hyprctl monitors -j 2>/dev/null |
+        jq -e '[.[] | select(.disabled == false)] | length > 0 and all(.dpmsStatus)' >/dev/null 2>&1 && exit 0
+    haseen_exec screen-on
+    ;;
++5%) args=(up) ;;
+5%-) args=(down) ;;
++[0-9]*%) args=(set "$step") ;;
+[0-9]*%-) args=(set "-${step%-}") ;;
+[0-9]*%) args=(set "$step") ;;
+*)
+    echo "Usage: omarchy-brightness-display [--no-osd] [--monitor NAME] [+N%|N%-|N%|off|on]" >&2
+    exit 1
+    ;;
+esac
+# set takes [DEVICE] VALUE, up/down take [DEVICE].
+if [[ ${args[0]} == set ]]; then
+    args=(set ${device:+"$device"} "${args[1]}")
+else
+    args+=(${device:+"$device"})
+fi
+# Omarchy prints nothing for a change; a dry run shows the write.
+if $DRY_RUN; then
+    brightness "${args[@]}"
+else
+    brightness "${args[@]}" >/dev/null || exit 1
+fi

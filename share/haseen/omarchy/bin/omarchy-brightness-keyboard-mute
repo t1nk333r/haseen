@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# omarchy-brightness-keyboard-mute — despite its name, sets the mic-mute LED
+# (platform::micmute) on laptops that expose one; a silent no-op elsewhere.
+# omarchy-audio-input-mute drives it. Adapted from Omarchy
+# bin/omarchy-brightness-keyboard-mute (MIT, Copyright (c) David Heinemeier
+# Hansson): the LED node is read through sysroot_path and the write goes
+# through run, so --dry-run prints it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-brightness-keyboard-mute <on|off> [--dry-run]
+
+Turns the mic-mute LED (platform::micmute) on or off with brightnessctl.
+Does nothing on a machine without that LED.
+EOF
+}
+parse_common_flags "$@"
+
+LED=platform::micmute
+# Omarchy checks the LED first: without one, any argument is a silent no-op.
+[[ -e $(sysroot_path "/sys/class/leds/$LED/brightness") ]] || exit 0
+case "${REST[0]:-}" in
+on) value=1 ;;
+off) value=0 ;;
+*)
+    echo "Usage: omarchy-brightness-keyboard-mute <on|off>" >&2
+    exit 1
+    ;;
+esac
+run brightnessctl --device="$LED" set "$value" 2>/dev/null || true

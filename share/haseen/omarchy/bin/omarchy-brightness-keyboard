@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# omarchy-brightness-keyboard — step the keyboard backlight through haseen
+# brightness (device kbd) in 10 % steps; cycle wraps to off, off remembers the
+# level and restore brings it back. Omarchy's lock and wake services and its
+# media keys call it. The verbs follow Omarchy bin/omarchy-brightness-keyboard
+# (MIT, Copyright (c) David Heinemeier Hansson): the saved level lives in
+# $XDG_RUNTIME_DIR/haseen/kbd-brightness instead of brightnessctl's -s file;
+# --no-osd is accepted and ignored, as haseen's OSD watches the LED itself
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-brightness-keyboard [--no-osd] <up|down|cycle|off|restore> [--dry-run]
+
+haseen's answer to Omarchy's command (haseen brightness ... kbd):
+  up, down  one 10 % step (default: up)
+  cycle     one step up, off after the brightest
+  off       remember the level, then turn the backlight off
+  restore   back to the level 'off' remembered
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+set -- "${REST[@]}"
+[[ ${1:-} != --no-osd ]] || shift
+direction=${1:-up}
+SAVED="${XDG_RUNTIME_DIR:-/tmp}/haseen/kbd-brightness"
+
+brightness() {
+    if $DRY_RUN; then
+        "$HASEEN_BIN/haseen-brightness" "$@"
+    else
+        "$HASEEN_BIN/haseen-brightness" "$@" >/dev/null
+    fi
+}
+
+line="$("$HASEEN_BIN/haseen-brightness" get kbd 2>/dev/null | head -n1)" || line=""
+if [[ -z $line ]]; then
+    echo "No keyboard backlight device found" >&2
+    exit 1
+fi
+IFS=$'\t' read -r _ _ _ current max _ <<<"$line"
+
+case $direction in
+off)
+    if $DRY_RUN; then
+        echo "DRYRUN: remember $current in $SAVED"
+    else
+        mkdir -p "${SAVED%/*}"
+        printf '%s\n' "$current" >"$SAVED"
+    fi
+    brightness set kbd 0
+    ;;
+restore)
+    saved=""
+    if [[ -r $SAVED ]]; then read -r saved <"$SAVED" || true; fi
+    [[ $saved =~ ^[0-9]+$ ]] || exit 0
+    brightness set kbd "$saved"
+    ;;
+up) brightness up kbd --step 10 ;;
+down) brightness down kbd --step 10 ;;
+cycle)
+    # Omarchy's step: a tenth of the range, at least one level.
+    step=$((max / 10))
+    ((step >= 1)) || step=1
+    if ((current + step > max)); then
+        brightness set kbd 0
+    else
+        brightness up kbd --step 10
+    fi
+    ;;
+*)
+    echo "Usage: omarchy-brightness-keyboard [--no-osd] <up|down|cycle|off|restore>" >&2
+    exit 1
+    ;;
+esac
