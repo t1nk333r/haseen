@@ -46,6 +46,9 @@ have_engine() { [[ -x $QS_BIN ]] && command -v dbus-run-session >/dev/null; }
 
 # --- manifests, contracts, off by default --------------------------------------
 sandbox adopted-validate
+# haseen.typist requires wl-paste, which a CI image need not have; without it
+# validate reports the plugin unmet and exits 1.
+stub wl-paste 'exit 0'
 capture haseen plugin validate "${IDS[@]}"
 assert_status "the four adopted plugins validate" 0 "$STATUS"
 for id in "${IDS[@]}"; do
@@ -562,6 +565,7 @@ printf '{"version":1,"entries":{"x:":{"count":2,"last":1}},"domains":{}}\n' >"$X
 plugins_before="$(tree_sum "$C/omarchy/plugins")$(tree_sum "$C/haseen/plugins")"
 old_data="$(sha256sum "$C/omarchy/browser-picker.json" "$C/omarchy/t1nk33r.typist.json" "$XDG_STATE_HOME/omarchy/browser-picker.json")"
 user_before="$(cat "$C/haseen/shell.json")"
+home_before="$(tree_sum "$HOME")"
 
 mig DRY_RUN=true
 assert_status "migration dry run" 0 "$STATUS"
@@ -569,7 +573,7 @@ assert_dry_pure "migration" "$OUTPUT"
 assert_contains "dry run shows the shell.json write" "$OUTPUT" "DRYRUN: mv -f -- $C/haseen/shell.json.new $C/haseen/shell.json"
 assert_contains "dry run shows the copied snippets" "$OUTPUT" "DRYRUN: seed $C/haseen/typist.json"
 assert_eq "dry run changed shell.json not at all" "$user_before" "$(cat "$C/haseen/shell.json")"
-assert_eq "dry run wrote no new file" "" "$(find "$C/haseen" "$XDG_STATE_HOME" -name 'typist.json' -o -name 'browser-picker.json' -path '*haseen*' | head -n1)"
+assert_eq "dry run wrote nothing anywhere in HOME" "$home_before" "$(tree_sum "$HOME")"
 
 mig
 assert_status "migration" 0 "$STATUS"
@@ -591,6 +595,7 @@ assert_eq "data: rankings copied" '{"x:":{"count":2,"last":1}}' "$(jq -c .entrie
 assert_eq "the old plugin directories are untouched (Omarchy's and haseen's)" "$plugins_before" "$(tree_sum "$C/omarchy/plugins")$(tree_sum "$C/haseen/plugins")"
 assert_eq "the old data files are copied, not moved or changed" "$old_data" "$(sha256sum "$C/omarchy/browser-picker.json" "$C/omarchy/t1nk33r.typist.json" "$XDG_STATE_HOME/omarchy/browser-picker.json")"
 assert_eq "no staging file left" "" "$(find "$C/haseen" -maxdepth 1 -name 'shell.json.new*' -print)"
+stub wl-paste 'exit 0'
 capture haseen plugin validate "${IDS[@]}"
 assert_status "the new ids the migration wrote resolve" 0 "$STATUS"
 
