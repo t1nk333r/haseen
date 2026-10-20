@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.omarr",
+  "name": "omARR",
+  "version": "1.0.0",
+  "description": "Arr stack for self-hosted services (Sonarr, Radarr, SABnzbd, qBittorrent, Jellyfin, any URL): health, active downloads and outages in the bar; a panel with the fleet, now playing, on deck, recently added, the calendar and the queues, pause and resume; notifications for grabs, imports, finished or failed downloads and services that drop, and a live download card. Off by default. API keys and passwords stay in a private state file, never in shell.json",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "services": {
+      "type": "array",
+      "default": [],
+      "description": "The fleet, edited in the panel's settings: {id, kind (generic, sonarr, radarr, sabnzbd, qbittorrent, jellyfin), name, url, group, order, showQueue, showCalendar, notifyGrab, notifyImport, notifyHealth, notifyDownload}. Keys and passwords are not stored here"
+    },
+    "pollSeconds": {
+      "type": "integer",
+      "default": 30,
+      "description": "Seconds between polls of every service (5-3600). SABnzbd and qBittorrent are polled every 2 s while a download runs or the panel is open"
+    },
+    "pageSize": {
+      "type": "integer",
+      "default": 20,
+      "description": "Rows per queue page (5-50)"
+    },
+    "density": {
+      "type": "string",
+      "default": "comfortable",
+      "description": "Panel row spacing: comfortable or compact"
+    },
+    "showProgressToast": {
+      "type": "boolean",
+      "default": true,
+      "description": "While SABnzbd or qBittorrent downloads, keep a notification with its progress up until the job ends or the notification is closed"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.omarr (state, poll)"
+    }
+  },
+  "permissions": [
+    "exec",
+    "network",
+    "files:write",
+    "notifications"
+  ],
+  "provides": [
+    "omarr"
+  ]
+}
