@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# omarchy-update-lock — run a command while holding the update lock, so two
+# updates never run at once ("held" asks whether this process already holds
+# it). Adapted from Omarchy bin/omarchy-update-lock (MIT,
+# Copyright (c) David Heinemeier Hansson): the flock on a file in
+# $XDG_RUNTIME_DIR, held|run, exit codes 1 (already running) and 2 (usage).
+# Changes: the lock is haseen-update.lock and its descriptor travels as
+# HASEEN_UPDATE_LOCK_FD; a leading --dry-run prints the command instead of
+# running it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-lock [--dry-run] <held|run> [command] [args...]
+
+haseen's answer to Omarchy's command:
+  held               exit 0 when this process already holds the update lock
+  run CMD [ARGS...]  run CMD holding \$XDG_RUNTIME_DIR/haseen-update.lock;
+                     exit 1 when another update holds it
+EOF
+}
+
+# Only flags before the verb are this command's; the rest is the command's.
+while [[ ${1:-} == --dry-run || ${1:-} == -h || ${1:-} == --help ]]; do
+    [[ $1 == --dry-run ]] || {
+        usage
+        exit 0
+    }
+    DRY_RUN=true
+    shift
+done
+
+lock_dir="${XDG_RUNTIME_DIR:-/tmp}"
+lock_path="$lock_dir/haseen-update.lock"
+
+# A descriptor inherited from the update that took the lock, still open on
+# the lock file and still holding it (flock on an fd we hold succeeds).
+lock_is_held() {
+    local fd=${HASEEN_UPDATE_LOCK_FD:-} target
+    [[ $fd =~ ^[0-9]+$ && -e /proc/$$/fd/$fd ]] || return 1
+    target="$(readlink -f "/proc/$$/fd/$fd" 2>/dev/null || true)"
+    [[ $target == "$(readlink -m "$lock_path")" ]] && flock -n "$fd"
+}
+
+case "${1:-}" in
+held) lock_is_held ;;
+run)
+    shift
+    (($# > 0)) || {
+        echo "Usage: omarchy-update-lock run <command> [args...]" >&2
+        exit 2
+    }
+    if $DRY_RUN; then
+        echo "DRYRUN: (holding $lock_path) $*"
+        exit 0
+    fi
+    mkdir -p "$lock_dir" 2>/dev/null || true
+    exec {HASEEN_UPDATE_LOCK_FD}>"$lock_path"
+    if ! flock -n "$HASEEN_UPDATE_LOCK_FD"; then
+        echo "A system update is already running."
+        exit 1
+    fi
+    export HASEEN_UPDATE_LOCK_FD
+    exec "$@"
+    ;;
+*)
+    echo "Usage: omarchy-update-lock <held|run> [command] [args...]" >&2
+    exit 2
+    ;;
+esac

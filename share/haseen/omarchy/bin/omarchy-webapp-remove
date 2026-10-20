@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# omarchy-webapp-remove — remove a web-app launcher and its icon, whichever
+# installer wrote it: haseen webapp install (a chromium --app= Exec), Omarchy
+# (omarchy-launch-webapp or an omarchy-webapp-handler), or
+# omarchy-webapp-install with a custom Exec (X-Haseen-WebApp). haseen webapp
+# remove indexes only its own --app= entries, so the web apps an Omarchy
+# install left on the machine would not be found there. Adapted from Omarchy
+# bin/omarchy-webapp-remove (MIT, Copyright (c) David Heinemeier Hansson):
+# index first and delete the file found, the picker without a name, the icon
+# names, exit 0 for a name that is not installed, OMARCHY_REMOVE_NOTIFY=false.
+# Changes: the picker is haseen's menu, the toast haseen's; an unknown name
+# is said on stderr; every removal goes through run (--dry-run) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-webapp-remove [name] [--dry-run]
+
+haseen's answer to Omarchy's command: removes the web app launcher <name> and
+its icon. Without a name, pick one from the menu.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+require_not_root
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+OLD_ICON_DIR="$DATA_HOME/applications/icons"
+DESKTOP_DIR="$DATA_HOME/applications"
+
+# Always index: a launcher installed before Omarchy's name check can be
+# nested in a subdirectory, which a path rebuilt from the name cannot reach.
+web_apps=()
+web_app_paths=()
+while IFS= read -r -d '' file; do
+    grep -qE '^Exec=.*(--app=|omarchy-launch-webapp|omarchy-webapp-handler)|^X-Haseen-WebApp=' "$file" || continue
+    web_apps+=("$(basename "${file%.desktop}")")
+    web_app_paths+=("$file")
+done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0 2>/dev/null)
+
+path_for_web_app() {
+    local i
+    for i in "${!web_apps[@]}"; do
+        [[ ${web_apps[$i]} == "$1" ]] || continue
+        printf '%s\n' "${web_app_paths[$i]}"
+        return 0
+    done
+    return 1
+}
+
+if (($# == 0)); then
+    if ((${#web_apps[@]} == 0)); then
+        echo "No web apps to remove."
+        exit 1
+    fi
+    mapfile -t sorted < <(printf '%s\n' "${web_apps[@]}" | sort)
+    app_name="$("$HASEEN_BIN/haseen-menu-select" "Select web app to remove" "${sorted[@]}" --width 520 --height 520 || true)"
+else
+    app_name="$*"
+fi
+if [[ -z $app_name ]]; then
+    echo "You must select a web app to remove."
+    exit 1
+fi
+
+desktop_file="$(path_for_web_app "$app_name" || true)"
+if [[ -z $desktop_file ]]; then
+    # Omarchy's callers remove apps that may never have been installed.
+    warn "no web app named '$app_name'; nothing removed"
+    exit 0
+fi
+icon_name="$(printf '%s\n' "$app_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')"
+run rm -f -- "$desktop_file"
+for icon in "$ICON_DIR/$icon_name".* "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"; do
+    [[ -e $icon ]] || continue
+    run rm -f -- "$icon"
+done
+have update-desktop-database && run update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+
+if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != false ]]; then
+    flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    "$HASEEN_BIN/haseen-notification-send" "${flags[@]}" "Web app removed" "$app_name" || true
+fi

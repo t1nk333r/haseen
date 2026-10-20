@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# omarchy-toggle-input-device — Omarchy's input-device switch, answered by
+# haseen hardware touchpad and haseen hardware touchscreen: they find the
+# device, switch it with hl.device and persist the disable in
+# $HASEEN_USER_STATE/toggles/hypr/<kind>-disabled.lua, which haseen's
+# Hyprland config reads (Omarchy's <kind>-disabled-name file is read only by
+# Omarchy's). Arguments and the usage exit 1 follow Omarchy
+# bin/omarchy-toggle-input-device (MIT, Copyright (c) David Heinemeier Hansson)
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen hardware touchpad or haseen
+hardware touchscreen with the same on|off|toggle (default toggle)." "$@"
+
+usage_exit() {
+    echo "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle]" >&2
+    exit 1
+}
+
+kind=${1:-}
+case $kind in touchpad | touchscreen) ;; *) usage_exit ;; esac
+shift
+dry=()
+args=()
+for a in "$@"; do
+    case $a in
+    --dry-run) dry=(--dry-run) ;;
+    on | off | toggle) args+=("$a") ;;
+    *) usage_exit ;;
+    esac
+done
+((${#args[@]} <= 1)) || usage_exit
+haseen_exec "hardware-$kind" "${args[@]:-toggle}" "${dry[@]}"

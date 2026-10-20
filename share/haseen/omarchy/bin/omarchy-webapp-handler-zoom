@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# omarchy-webapp-handler-zoom — open Zoom's web client as a web app; a
+# zoommtg:// or zoomus:// meeting link joins that meeting there. It is the
+# Exec of Omarchy's Zoom.desktop. Adapted from Omarchy
+# bin/omarchy-webapp-handler-zoom (MIT,
+# Copyright (c) David Heinemeier Hansson): the same confno/pwd parsing and
+# URLs, launched by haseen's omarchy-launch-webapp. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-webapp-handler-zoom [url]
+
+haseen's answer to Omarchy's command: opens Zoom's web client as a web app;
+a zoommtg:// or zoomus:// link joins that meeting." "$@"
+
+url=${1:-}
+web_url="https://app.zoom.us/wc/home"
+if [[ $url =~ ^zoom(mtg|us):// ]]; then
+    confno="$(sed -n 's/.*[?&]confno=\([^&]*\).*/\1/p' <<<"$url")"
+    if [[ -n $confno ]]; then
+        pwd="$(sed -n 's/.*[?&]pwd=\([^&]*\).*/\1/p' <<<"$url")"
+        if [[ -n $pwd ]]; then
+            web_url="https://app.zoom.us/wc/join/$confno?pwd=$pwd"
+        else
+            web_url="https://app.zoom.us/wc/join/$confno"
+        fi
+    fi
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$web_url"

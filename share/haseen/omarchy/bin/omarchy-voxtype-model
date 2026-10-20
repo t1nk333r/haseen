@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# omarchy-voxtype-model — choose Voxtype's speech model in a floating
+# terminal. Adapted from Omarchy bin/omarchy-voxtype-model (MIT,
+# Copyright (c) David Heinemeier Hansson): `voxtype setup model` in a floating
+# terminal (haseen config terminal). Omarchy then restarts its shell for its
+# dictation indicator; haseen has none, so nothing restarts. Without voxtype it
+# says how to install it and exits 1 (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-voxtype-model [--dry-run]
+
+haseen's answer to Omarchy's command: runs 'voxtype setup model' in a
+floating terminal (haseen config terminal).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+have voxtype || $DRY_RUN || die "Voxtype is not installed (omarchy-voxtype-install installs it)"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec config-terminal "${flags[@]}" -- voxtype setup model

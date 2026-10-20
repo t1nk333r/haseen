@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# omarchy-update-stay-awake — keep the machine awake while an update runs:
+# "start" takes a logind sleep:idle block inhibitor and turns haseen's idle
+# off (Stay Awake: haseen toggle idle off), "stop" undoes only what start
+# set. Adapted from Omarchy bin/omarchy-update-stay-awake (MIT,
+# Copyright (c) David Heinemeier Hansson): start|stop, usage exit 2, the
+# inhibitor tied to its process start time, the update lock descriptor kept out
+# of the inhibitor. Changes: Stay Awake is haseen's flags/idle-off through
+# haseen-toggle-idle, not Omarchy's indicator file, and start remembers that
+# flag's identity, so stop leaves it alone when the user turned idle off
+# themselves; systemd-inhibit runs as the user (logind lets an active session
+# block sleep and idle) instead of elevating (Omarchy: sudo/pkexec), and is
+# skipped with a warning when logind refuses; --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-stay-awake <start|stop> [--dry-run]
+
+haseen's answer to Omarchy's command:
+  start  block sleep and idle (systemd-inhibit) and turn idle off
+         (haseen toggle idle off) for the length of an update
+  stop   release the inhibitor and turn idle back on, unless it was already
+         off before start
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+
+state_dir="${XDG_RUNTIME_DIR:-/tmp/haseen-$UID}/haseen-update-stay-awake"
+idle_owner_file="$state_dir/idle-owner"
+inhibit_pid_file="$state_dir/inhibit-pid"
+idle_flag="$HASEEN_USER_STATE/flags/idle-off"
+idle="$HASEEN_BIN/haseen-toggle-idle"
+
+# Field 22 of /proc/PID/stat: the start time that tells a PID's reuse apart.
+process_start_time() {
+    local stat fields=()
+    [[ -r /proc/$1/stat ]] || return 1
+    stat="$(</proc/"$1"/stat)"
+    stat="${stat##*) }"
+    read -r -a fields <<<"$stat"
+    ((${#fields[@]} > 19)) || return 1
+    printf '%s\n' "${fields[19]}"
+}
+
+process_state() {
+    local stat
+    [[ -r /proc/$1/stat ]] || return 1
+    stat="$(</proc/"$1"/stat)"
+    stat="${stat##*) }"
+    printf '%s\n' "${stat%% *}"
+}
+
+# The flag file's identity: a flag the user removed and set again is a new
+# file with a new inode and change time.
+flag_identity() { stat -c '%i %.9Z' -- "$idle_flag" 2>/dev/null; }
+
+stop() {
+    local recorded="" pid="" started="" now=""
+    if [[ -s $idle_owner_file ]]; then
+        recorded="$(<"$idle_owner_file")"
+        if [[ -n $recorded && $(flag_identity || true) == "$recorded" ]]; then
+            if $DRY_RUN; then
+                echo "DRYRUN: $idle on"
+            else
+                "$idle" on >/dev/null 2>&1 || true
+            fi
+        fi
+        run rm -f -- "$idle_owner_file"
+    fi
+
+    if [[ -s $inhibit_pid_file ]]; then
+        read -r pid started <"$inhibit_pid_file" || true
+        [[ $pid =~ ^[0-9]+$ ]] && now="$(process_start_time "$pid" 2>/dev/null || true)"
+        if [[ -n $started && $now == "$started" ]]; then
+            run kill "$pid" 2>/dev/null || true
+            if ! $DRY_RUN; then
+                # waitpid (util-linux) sleeps on a pidfd until the exit; no polling.
+                have waitpid && waitpid -e -t 1 "$pid" >/dev/null 2>&1 || true
+                now="$(process_start_time "$pid" 2>/dev/null || true)"
+                if [[ $now == "$started" && $(process_state "$pid" 2>/dev/null || true) != Z ]]; then
+                    echo "Failed to stop the update sleep inhibitor." >&2
+                    return 1
+                fi
+            fi
+        fi
+        run rm -f -- "$inhibit_pid_file"
+    fi
+    $DRY_RUN || rmdir -- "$state_dir" 2>/dev/null || true
+}
+
+start() {
+    local inhibit=(systemd-inhibit --what=sleep:idle --who=haseen-update
+        --why="System update in progress" --mode=block)
+    local pid started
+    stop
+    $DRY_RUN || mkdir -p -- "$state_dir"
+
+    if have systemd-inhibit; then
+        if $DRY_RUN; then
+            echo "DRYRUN: ${inhibit[*]} sleep infinity &"
+        # A quick inhibitor proves logind lets this session block sleep.
+        elif ! "${inhibit[@]}" true >/dev/null 2>&1; then
+            warn "logind did not let this session block sleep; the update runs without a sleep inhibitor"
+        else
+            # The inhibitor must not keep the update lock open after the update.
+            if [[ ${HASEEN_UPDATE_LOCK_FD:-} =~ ^[0-9]+$ ]]; then
+                "${inhibit[@]}" sleep infinity >/dev/null 2>&1 {HASEEN_UPDATE_LOCK_FD}>&- &
+            else
+                "${inhibit[@]}" sleep infinity >/dev/null 2>&1 &
+            fi
+            pid=$!
+            started="$(process_start_time "$pid" 2>/dev/null || true)"
+            [[ -z $started ]] || printf '%s %s\n' "$pid" "$started" | write_user_file "$inhibit_pid_file"
+        fi
+    fi
+
+    # Only an idle that is on is turned off and remembered; one the user
+    # already turned off stays theirs.
+    if [[ $("$idle" status) == on ]]; then
+        if $DRY_RUN; then
+            echo "DRYRUN: $idle off"
+        elif "$idle" off >/dev/null 2>&1; then
+            flag_identity | write_user_file "$idle_owner_file"
+        fi
+    fi
+}
+
+case ${REST[0]} in
+start) start ;;
+stop) stop ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

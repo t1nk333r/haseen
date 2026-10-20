@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# omarchy-tui-install — write an app-launcher entry that opens a terminal
+# program (a TUI) in its own window. Adapted from Omarchy
+# bin/omarchy-tui-install (MIT, Copyright (c) David Heinemeier Hansson): the
+# four arguments and the prompts without them, icon download/copy/name.
+# Changes: the terminal is xdg-terminal-exec when installed (haseen takes it
+# only from [omarchy], plan 037), else haseen-terminal-run, or
+# haseen-config-terminal for a floating window; "float" uses haseen's
+# floating app-id (haseen.floating), since haseen has no TUI.float rule. The
+# entry's values are escaped (Omarchy writes Name and Exec raw), it carries
+# X-Haseen-TUI so omarchy-tui-remove finds it, and it is written through
+# write_user_file (--dry-run) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-tui-install [name command window-style icon-url-or-name] [--dry-run]
+
+haseen's answer to Omarchy's command: writes
+\$XDG_DATA_HOME/applications/<name>.desktop, which runs <command> in a
+terminal window. window-style is float or tile. Without all four arguments
+it asks for them.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+require_not_root
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+DESKTOP_DIR="$DATA_HOME/applications"
+
+safe_icon_name() {
+    printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
+}
+
+icon_name_from_ref() {
+    local name
+    name="$(basename "$1")"
+    if [[ $name == *.* ]]; then safe_icon_name "${name%.*}"; else printf '%s\n' "$name"; fi
+}
+
+# Desktop Entry "string" value (freedesktop spec): a raw newline would start a
+# new key line and let a value inject a second Exec=.
+desktop_string_escape() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//$'\t'/\\t}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\n'/\\n}
+    [[ $value == " "* ]] && value="\\s${value# }"
+    printf '%s' "$value"
+}
+
+download_icon() {
+    curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
+        [[ -s $2 ]] && [[ $(file -b --mime-type "$2") == image/* ]]
+}
+
+# ask PROMPT — one answer, through gum when it is there, as Omarchy asks.
+ask() {
+    local reply
+    if have gum; then
+        gum input --prompt "$1> " || true
+    else
+        read -r -p "$1> " reply || true
+        printf '%s\n' "${reply:-}"
+    fi
+}
+
+interactive=false
+if (($# != 4)); then
+    interactive=true
+    echo "Let's create a TUI shortcut you can start with the app launcher."
+    echo
+    app_name="$(ask Name)"
+    app_exec="$(ask "Launch Command")"
+    if have gum; then
+        window_style="$(gum choose --header "Window style" float tile || true)"
+    else
+        window_style="$(ask "Window style (float|tile)")"
+    fi
+    icon_ref="$(ask "Icon URL/name")"
+else
+    app_name=$1 app_exec=$2 window_style=$3 icon_ref=$4
+fi
+
+if [[ -z $app_name || -z $app_exec || -z $icon_ref ]]; then
+    echo "You must set app name, app command, and icon URL/name!"
+    exit 1
+fi
+# The name becomes a filename: a slash would leave the applications directory.
+[[ $app_name != */* ]] || die "app name cannot contain '/': $app_name"
+[[ $window_style == float ]] || window_style=tile
+
+if [[ $icon_ref =~ ^https?:// ]]; then
+    icon_value="$(safe_icon_name "$app_name")"
+    if $DRY_RUN; then
+        echo "DRYRUN: download $icon_ref -> $ICON_DIR/$icon_value.png"
+    else
+        tmp="$(mktemp -t haseen-tui-icon-XXXXXX)"
+        trap 'rm -f "$tmp"' EXIT
+        download_icon "$icon_ref" "$tmp" || die "failed to download icon: $icon_ref"
+        run install -Dm0644 "$tmp" "$ICON_DIR/$icon_value.png"
+    fi
+    have gtk-update-icon-cache && run gtk-update-icon-cache "$DATA_HOME/icons/hicolor" >/dev/null 2>&1 || true
+elif [[ -f $icon_ref ]]; then
+    icon_value="$(safe_icon_name "$app_name")"
+    ext="${icon_ref##*/}"
+    ext="${ext##*.}"
+    [[ $ext == "${icon_ref##*/}" ]] && ext=png
+    run install -Dm0644 "$icon_ref" "$ICON_DIR/$icon_value.$ext"
+    have gtk-update-icon-cache && run gtk-update-icon-cache "$DATA_HOME/icons/hicolor" >/dev/null 2>&1 || true
+else
+    # An icon an installed theme already ships: "btop" and "btop.png" alike.
+    icon_value="$(icon_name_from_ref "$icon_ref")"
+fi
+
+# The command stays a whole Exec command line, as Omarchy writes it; only the
+# file-level escaping applies.
+if have xdg-terminal-exec; then
+    app_id=TUI.tile
+    [[ $window_style == float ]] && app_id=haseen.floating
+    exec_command="xdg-terminal-exec --app-id=$app_id -e $app_exec"
+elif [[ $window_style == float ]]; then
+    exec_command="haseen-config-terminal -- $app_exec"
+else
+    exec_command="haseen-terminal-run $app_exec"
+fi
+
+write_user_file "$DESKTOP_DIR/$app_name.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$(desktop_string_escape "$app_name")
+Comment=$(desktop_string_escape "$app_name")
+Exec=$(desktop_string_escape "$exec_command")
+Terminal=false
+Type=Application
+Icon=$(desktop_string_escape "$icon_value")
+StartupNotify=true
+X-Haseen-TUI=$window_style
+EOF
+have update-desktop-database && run update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+
+if $interactive && ! $DRY_RUN; then
+    echo "You can now find $app_name using the app launcher (SUPER + SHIFT + SPACE)"
+fi

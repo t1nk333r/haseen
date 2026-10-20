@@ -23,6 +23,61 @@ omarchy-shell	translate	haseen-shell-ipc	Omarchy's shell IPC verbs on haseen's s
 omarchy-shell-config	refuse	haseen bar add|move|overflow|position, haseen plugin enable|disable|settings	it edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read
 omarchy-sudo-keepalive	port	-	keeps sudo fresh for the sourcing script through common.sh
 omarchy-theme-set	shim	haseen-theme-set	sets the haseen theme
+omarchy-toggle	port	-	switches an Omarchy flag: haseen's own flag where one means the same, else haseen's toggle store
+omarchy-toggle-bar	translate	haseen-toggle-bar	hides (on) or shows (off) or flips the running bar, for the session
+omarchy-toggle-crash-capture	port	-	turns crash toasts off/on; the crash watcher keeps running for shell recovery
+omarchy-toggle-enabled	port	-	exit 0 when the flag omarchy-toggle keeps is on, 1 when off
+omarchy-toggle-hybrid-gpu	shim	haseen-hardware-hybrid-gpu toggle	switches the hybrid GPU between integrated and hybrid mode
 omarchy-toggle-idle	translate	haseen-toggle-idle	toggles idle locking the haseen way
+omarchy-toggle-input-device	translate	haseen-hardware-touchpad	switches the touchpad or touchscreen through haseen hardware touchpad/touchscreen
+omarchy-toggle-nightlight	translate	haseen-toggle-nightlight	toggles haseen's night light; --status prints Omarchy's {enabled,temperature} JSON
+omarchy-toggle-notification-silencing	shim	haseen-toggle-dnd toggle	toggles do-not-disturb
+omarchy-toggle-screensaver	shim	haseen-toggle-screensaver toggle	toggles the screensaver before the idle lock
+omarchy-toggle-suspend	refuse	none: haseen's session menu always offers Suspend, and idle never suspends unless you set it with haseen setup idle	haseen has no setting that hides Suspend from its session menu, so this toggle would change nothing you can see.
+omarchy-toggle-touchpad	shim	haseen-hardware-touchpad	enables, disables or toggles the touchpad
+omarchy-toggle-touchscreen	shim	haseen-hardware-touchscreen	enables, disables or toggles the touchscreen
+omarchy-transcode	translate	haseen-transcode	shrinks a picture or video for sharing; asks format and resolution in haseen's menu
+omarchy-transcode-ascii	port	-	renders an SVG or PNG into braille or block text art with ImageMagick
+omarchy-tui-install	port	-	writes a launcher that opens a terminal program in its own (floating) window
+omarchy-tui-remove	port	-	removes a TUI launcher and its icon (picker without a name)
+omarchy-tui-remove-all	port	-	removes every TUI launcher and icon after a confirmation
 omarchy-update	shim	haseen-update	updates the system the haseen way
+omarchy-update-analyze-logs	port	-	warns when the last pacman transaction's initramfs build did not report success
+omarchy-update-aur-pkgs	port	-	upgrades installed AUR packages with paru or yay when the AUR answers
+omarchy-update-available	refuse	none: see pending package updates with checkupdates and apply them with haseen update	haseen has no release channel of its own to poll; this asked whether a newer Omarchy release was out.
+omarchy-update-confirm	port	-	asks 'Ready to update?' before an update; exit 1 when declined
+omarchy-update-dev	refuse	none: haseen uses no Omarchy dev checkout; update a haseen checkout with git pull	This updated an Omarchy development checkout, which haseen does not use.
+omarchy-update-firmware	shim	haseen-update firmware	updates the firmware with fwupd (signed for Secure Boot when needed)
+omarchy-update-keyring	refuse	haseen layer apply omarchy-repo	It imports Omarchy's signing key and runs a partial pacman -Sy; haseen trusts Omarchy's repo only through its omarchy-repo layer.
+omarchy-update-lock	port	-	runs a command holding the update lock so two updates never run at once
+omarchy-update-mise	port	-	upgrades mise-managed tools when mise is installed
+omarchy-update-orphan-pkgs	port	-	lists orphaned packages and removes them as root after a default-no question
+omarchy-update-pacman-guard	refuse	haseen update	This is the body of Omarchy's pacman hook, which calls Omarchy's own copy by path; haseen update already tells that guard the update is sanctioned.
+omarchy-update-pkg-prune	port	-	prunes the pacman cache to the two newest versions of each package
+omarchy-update-requires-free-space	port	-	fails when / has under 10 GiB free (HASEEN_UPDATE_FORCE=1 skips it)
 omarchy-update-restart	port	haseen-shell-restart	offers a reboot after a kernel update, restarts haseen's shell
+omarchy-update-status	inert	-	it refreshed the update widget of Omarchy's shell; haseen's shell has no such widget
+omarchy-update-stay-awake	port	haseen-toggle-idle	blocks sleep and turns idle off during an update, undoing only what it set
+omarchy-update-system-pkgs	port	-	upgrades system packages with pacman -Syu as root, without Omarchy's overwrite policy
+omarchy-update-system-pkgs-when-conflicted	refuse	haseen update (resolve the file or package conflict pacman reports by hand)	It moves files of Omarchy's own packages aside to force their upgrade; haseen never rewrites Omarchy's packages.
+omarchy-update-time	shim	haseen-time sync	resynchronises the clock (NTP)
+omarchy-update-user-notify	shim	haseen-migrate-notify	notifies about pending haseen migrations
+omarchy-upgrade-to-quattro	refuse	none: haseen replaces Omarchy and never installs Omarchy's packages	It rewrites pacman.conf and the mirrorlist, removes Limine configs and installs omarchy and omarchy-settings, which haseen never does.
+omarchy-version	translate	-	prints haseen's version (haseen --version); exit 1 when unknown
+omarchy-version-branch	refuse	none: haseen --version prints haseen's version	This printed the branch of an Omarchy development checkout; haseen has none, so there is no branch to show.
+omarchy-version-channel	refuse	haseen layer status	Release channels are Omarchy's; haseen takes only the stable [omarchy] repo, as a package source, through its omarchy-repo layer.
+omarchy-version-pkgs	port	-	prints when system packages were last upgraded, from pacman's log
+omarchy-voxtype-config	port	haseen-config-terminal	opens 'voxtype configure' in a floating terminal
+omarchy-voxtype-install	port	haseen-install	installs Voxtype dictation (wtype, voxtype-bin), its model and its user service
+omarchy-voxtype-model	port	haseen-config-terminal	opens 'voxtype setup model' in a floating terminal
+omarchy-voxtype-remove	port	haseen-remove	removes Voxtype, its service, config and models after a confirmation
+omarchy-voxtype-status	port	-	streams Voxtype's state as JSON lines; one idle line without Voxtype
+omarchy-weather-icon	shim	haseen-weather-icon	prints the current weather glyph
+omarchy-weather-location	shim	haseen-weather-location	shows, sets or clears the weather location
+omarchy-weather-status	shim	haseen-weather-status	prints 'Place · Temp · Wind' or 'Weather unavailable'
+omarchy-webapp-handler-hey	port	-	opens HEY as a web app; a mailto: link opens a new message
+omarchy-webapp-handler-zoom	port	-	opens Zoom's web client as a web app; a meeting link joins it
+omarchy-webapp-install	translate	haseen-webapp-install	creates a web-app launcher; Omarchy's custom-Exec and MimeType arguments kept
+omarchy-webapp-remove	port	-	removes a web-app launcher and icon, Omarchy's or haseen's (picker without a name)
+omarchy-webapp-remove-all	port	-	removes every web-app launcher and icon after a confirmation
+omarchy-windows-vm	port	haseen-install	installs, launches, stops or removes the Windows VM (Docker + FreeRDP), elevating via polkit

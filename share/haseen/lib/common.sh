@@ -58,6 +58,16 @@ run_root() {
     fi
 }
 
+# run_polkit CMD... — run CMD as root through polkit (pkexec), for a command
+# started from the desktop, where no terminal exists for sudo to ask in.
+run_polkit() {
+    if $DRY_RUN; then
+        echo "DRYRUN: pkexec $*"
+    else
+        pkexec "$@"
+    fi
+}
+
 # write_root_file DEST [MODE] — write stdin as privileged file DEST. Parent
 # directories are created. Dry-run prints the content indented so the plan
 # shows exactly what would land.

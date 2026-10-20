@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# omarchy-update-requires-free-space — fail (exit 1) when / has under 10 GiB
+# free, so an update never fills the disk halfway through. Adapted from
+# Omarchy bin/omarchy-update-requires-free-space (MIT,
+# Copyright (c) David Heinemeier Hansson): the threshold, exit codes and the
+# override, which haseen also takes as HASEEN_UPDATE_FORCE=1; the message names
+# no distribution. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-update-requires-free-space
+
+haseen's answer to Omarchy's command: exits 1 when / has less than 10 GiB
+free, 0 otherwise. HASEEN_UPDATE_FORCE=1 (or OMARCHY_UPDATE_FORCE=1) skips
+the check." "$@"
+
+if [[ ${HASEEN_UPDATE_FORCE:-0} == 1 || ${OMARCHY_UPDATE_FORCE:-0} == 1 ]]; then
+    exit 0
+fi
+# An unreadable df answer is not a reason to stop an update.
+if read -r available < <(df --output=avail --block-size=1 "$(sysroot_path /)" 2>/dev/null | tail -n 1) &&
+    [[ $available =~ ^[0-9]+$ ]] && ((available < 10 * 1024 * 1024 * 1024)); then
+    echo "You need at least 10 GiB free to safely update the system."
+    exit 1
+fi
+exit 0

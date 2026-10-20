@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-tui-remove — remove a TUI launcher and its icon. Adapted from
+# Omarchy bin/omarchy-tui-remove (MIT, Copyright (c) David Heinemeier Hansson):
+# the index of launchers that run a program in $TERMINAL or xdg-terminal-exec,
+# the picker without a name, the icon names and OMARCHY_REMOVE_NOTIFY=false.
+# Changes: entries omarchy-tui-install writes under haseen (X-Haseen-TUI) are
+# found too; a name is removed only when it is such a launcher (Omarchy deletes
+# any entry of that name), a name with '/' is refused; the picker is haseen's
+# menu, the toast haseen's, and every removal goes through run (--dry-run)
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-tui-remove [name] [--dry-run]
+
+haseen's answer to Omarchy's command: removes the TUI launcher <name> and
+its icon. Without a name, pick one from the menu.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+require_not_root
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+OLD_ICON_DIR="$DATA_HOME/applications/icons"
+DESKTOP_DIR="$DATA_HOME/applications"
+
+# is_tui FILE — a launcher that runs a program in a terminal window.
+is_tui() {
+    grep -qE '^Exec=.*(\$TERMINAL|xdg-terminal-exec).*-e' "$1" 2>/dev/null ||
+        grep -q '^X-Haseen-TUI=' "$1" 2>/dev/null
+}
+
+if (($# == 0)); then
+    tuis=()
+    while IFS= read -r -d '' file; do
+        is_tui "$file" && tuis+=("$(basename "${file%.desktop}")")
+    done < <(find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -print0 2>/dev/null)
+    if ((${#tuis[@]} == 0)); then
+        echo "No TUIs to remove."
+        exit 1
+    fi
+    mapfile -t sorted < <(printf '%s\n' "${tuis[@]}" | sort)
+    app_name="$("$HASEEN_BIN/haseen-menu-select" "Select TUI to remove" "${sorted[@]}" --width 520 --height 520 || true)"
+else
+    app_name="$*"
+fi
+
+if [[ -z $app_name ]]; then
+    echo "You must select a TUI to remove."
+    exit 1
+fi
+[[ $app_name != */* ]] || die "not a launcher name: $app_name"
+
+desktop_file="$DESKTOP_DIR/$app_name.desktop"
+if [[ -e $desktop_file ]] && ! is_tui "$desktop_file"; then
+    die "$app_name is not a TUI launcher; nothing removed"
+fi
+icon_name="$(printf '%s\n' "$app_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')"
+run rm -f -- "$desktop_file"
+run rm -f -- "$ICON_DIR/$icon_name.png" "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"
+
+if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != false ]]; then
+    flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    "$HASEEN_BIN/haseen-notification-send" "${flags[@]}" "TUI removed" "$app_name" || true
+fi
