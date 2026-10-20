@@ -119,6 +119,7 @@ Column {
     Timer {
         id: settle
 
+        repeat: false
         interval: 200
         onTriggered: root.refresh()
     }

@@ -361,6 +361,7 @@ Scope {
     Timer {
         id: restartMonitor
 
+        repeat: false
         onTriggered: {
             if (root.discovery !== "missing")
                 monitor.running = true;
@@ -371,6 +372,7 @@ Scope {
     Timer {
         id: scanDebounce
 
+        repeat: false
         interval: 300
         onTriggered: root.refresh(false)
     }
@@ -379,6 +381,7 @@ Scope {
     Timer {
         id: mediaDebounce
 
+        repeat: false
         interval: 300
         onTriggered: root.fetchMedia()
     }
@@ -395,6 +398,7 @@ Scope {
     Timer {
         id: dismiss
 
+        repeat: false
         interval: 4000
         onTriggered: {
             root.message = "";
@@ -406,6 +410,7 @@ Scope {
     Timer {
         id: watchdog
 
+        repeat: false
         interval: 30000
         onTriggered: {
             let waited = false;

@@ -210,6 +210,7 @@ Scope {
     Timer {
         id: repoll
 
+        repeat: false
         interval: 1000
         onTriggered: root.poll()
     }
@@ -218,6 +219,7 @@ Scope {
     Timer {
         id: changed
 
+        repeat: false
         interval: 500
         onTriggered: root.refresh()
     }
@@ -226,6 +228,7 @@ Scope {
     Timer {
         id: retry
 
+        repeat: false
         onTriggered: root.refresh()
     }
 
@@ -233,6 +236,7 @@ Scope {
     Timer {
         id: dismiss
 
+        repeat: false
         interval: 4000
         onTriggered: {
             root.message = "";
