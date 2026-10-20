@@ -24,6 +24,11 @@ import "Overflow.js" as Overflow
 // The fit is recomputed when a widget's size, the bar's length or the
 // overflow settings change: a binding collects them and a deferred call
 // computes it, no timer.
+//
+// haseen.nook (plan 095), when it sits in a section, is that panel's opener
+// instead of the chevron: the panel opens under it, the chevron shows only
+// in arrange mode (as a drop target), and the nook never moves into the
+// panel it opens (Overflow.fit's `never`).
 PanelWindow {
     id: bar
 
@@ -41,12 +46,18 @@ PanelWindow {
 
     // Each id once, the tray first in the right section (Overflow.sections).
     readonly property var layoutIds: Overflow.sections(Config.section("left"), Config.section("center"), Config.section("right"))
+    // The nook opens the overflow panel from where it sits in the bar.
+    readonly property string nookId: "haseen.nook"
+    readonly property bool nookHosted: Config.isEnabled(nookId) && Plugins.componentUrl(nookId, "bar-widget") !== "" && (layoutIds.left.indexOf(nookId) >= 0 || layoutIds.center.indexOf(nookId) >= 0 || layoutIds.right.indexOf(nookId) >= 0)
+    // The nook's widget while it is in this bar (it registers itself).
+    property Item nookItem: null
     readonly property int spacing: Math.round(Theme.gap / 2)
     readonly property var fitSpec: ({
             length: vertical ? track.height : track.width,
             spacing: spacing,
             gap: Theme.gap,
-            button: vertical ? overflowButton.implicitHeight : overflowButton.implicitWidth,
+            button: nookHosted && !arranging ? 0 : vertical ? overflowButton.implicitHeight : overflowButton.implicitWidth,
+            never: [nookId],
             hysteresis: Theme.gap * 2,
             left: entries(leftSection),
             center: entries(centerSection),
@@ -65,6 +76,18 @@ PanelWindow {
     // What the overflow panel shows, in order: for `bar status` too.
     readonly property var overflowShown: fit.shown
     property bool overflowOpen: false
+    // Where along the bar the open panel is centred when an opener other
+    // than the chevron (the nook) opened it; -1 means the chevron.
+    property real overflowCentre: -1
+    // The chevron: it points where the panel opens, and turns round while
+    // it is open. The nook shows the same one.
+    readonly property var overflowGlyphs: ({
+            top: ["\uf078", "\uf077"],
+            bottom: ["\uf077", "\uf078"],
+            left: ["\uf054", "\uf053"],
+            right: ["\uf053", "\uf054"]
+        })
+    readonly property string overflowGlyph: overflowGlyphs[position][overflowOpen ? 1 : 0]
     // Arrange mode: a click on a widget, in the bar or in the panel, moves it
     // to the other one, and a drag moves it where it is dropped (within a
     // section, to another one, into or out of the panel). The panel is open
@@ -200,6 +223,18 @@ PanelWindow {
         Qt.callLater(() => bar.moveRequested(id, d.section, d.before, pin));
     }
 
+    // The nook's click: open (or close) the panel centred under `item`,
+    // measured as reportPress measures a widget.
+    function toggleOverflowFrom(item: Item): void {
+        if (overflowOpen) {
+            overflowOpen = false;
+            return;
+        }
+        const c = item.mapToItem(null, item.width / 2, item.height / 2);
+        overflowCentre = (vertical ? c.y : c.x) - overlap;
+        overflowOpen = true;
+    }
+
     function setArranging(on: bool): void {
         arranging = on;
         overflowOpen = on || (overflowOpen && overflowShown.length > 0);
@@ -232,8 +267,10 @@ PanelWindow {
     }
     onHiddenChanged: overflowOpen = false
     onOverflowOpenChanged: {
-        if (!overflowOpen)
+        if (!overflowOpen) {
             arranging = false;
+            overflowCentre = -1;
+        }
     }
 
     visible: thickness > 0
@@ -385,26 +422,18 @@ PanelWindow {
         }
 
         // The overflow button, at the very end of the bar, only while
-        // something is in overflow. The chevron points where the panel
-        // opens, and turns round while it is open. A right click opens it
-        // in arrange mode.
+        // something is in overflow (with the nook in the bar, only in
+        // arrange mode). A right click opens it in arrange mode.
         BarButton {
             id: overflowButton
-
-            readonly property var glyphs: ({
-                    top: ["\uf078", "\uf077"],
-                    bottom: ["\uf077", "\uf078"],
-                    left: ["\uf054", "\uf053"],
-                    right: ["\uf053", "\uf054"]
-                })
 
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             width: bar.vertical ? parent.width : implicitWidth
             height: bar.vertical ? implicitHeight : parent.height
             vertical: bar.vertical
-            visible: bar.fit.button || bar.overflowOpen
-            glyph: glyphs[bar.position][bar.overflowOpen ? 1 : 0]
+            visible: bar.nookHosted ? bar.arranging : bar.fit.button || bar.overflowOpen
+            glyph: bar.overflowGlyph
             highlighted: bar.overflowOpen || (bar.drop !== null && bar.drop.section === "overflow")
             onClicked: button => {
                 if (button === Qt.LeftButton) {
@@ -416,7 +445,7 @@ PanelWindow {
         }
     }
 
-    // Over everything but the chevron, and only passive: a double click on a
+    // Over everything but the chevron (and the nook), and only passive: a double click on a
     // widget still reaches the widget, and both presses still open or close
     // whatever it opens, as in Omarchy's bar. A PointHandler, as on the
     // slots (BarSection.qml): it only ever takes a passive grab. A TapHandler
@@ -445,8 +474,13 @@ PanelWindow {
                 }
                 lastTime = 0;
                 const b = overflowButton.mapFromItem(null, p.x, p.y);
-                if (!overflowButton.visible || !overflowButton.contains(b))
-                    bar.transparencyToggleRequested();
+                if (overflowButton.visible && overflowButton.contains(b))
+                    return;
+                // Opening and closing the panel from the nook is no double click either.
+                const n = bar.nookItem;
+                if (n && n.visible && n.contains(n.mapFromItem(null, p.x, p.y)))
+                    return;
+                bar.transparencyToggleRequested();
             }
         }
     }
@@ -463,7 +497,7 @@ PanelWindow {
             barWindow: bar
             screen: bar.screen
             ids: bar.overflowShown
-            centre: bar.buttonCentre
+            centre: bar.overflowCentre >= 0 ? bar.overflowCentre : bar.buttonCentre
             arranging: bar.arranging
             dropBefore: bar.drop !== null && bar.drop.section === "overflow" ? bar.drop.before : null
             onArrangeToggled: bar.setArranging(!bar.arranging)

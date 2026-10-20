@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.power",
+  "name": "Power",
+  "version": "1.0.0",
+  "description": "Battery glyph that shows when the charge limit holds the battery, with the percentage (a right click hides or shows it); a left click opens haseen.battery's power panel. Hidden without a battery. Adopted from the owner's t1nk33r.power; off by default, an alternative to the haseen.battery widget",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "showPercentage": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the percentage beside the glyph (a right click on the widget toggles and saves it)"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:write"
+  ]
+}
