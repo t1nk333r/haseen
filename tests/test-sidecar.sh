@@ -13,11 +13,13 @@ if ! command -v "$GO" >/dev/null; then
 fi
 go_bin="$(dirname "$(command -v "$GO")")"
 export PATH="$go_bin:$PATH"
-# The module cache is read-only once written, and the sandbox is wiped with
-# rm -rf on the next run; keep it out of the sandbox.
-export GOPATH="$OUT/gopath" GOFLAGS=-mod=mod
+# Go writes its module cache read-only, so neither rm -rf nor the next
+# sandbox could remove it: -modcacherw writes it removable (plan 094), and a
+# cache an older run left read-only is made removable here.
+export GOPATH="$OUT/gopath" GOFLAGS="-mod=mod -modcacherw"
+[[ ! -d $GOPATH/pkg/mod ]] || chmod -R u+w -- "$GOPATH/pkg/mod"
 
-capture env GOFLAGS=-count=1 bash -c 'cd "$1/core" && exec "$2" test ./...' bash "$REPO" "$GO"
+capture env GOFLAGS="$GOFLAGS -count=1" bash -c 'cd "$1/core" && exec "$2" test ./...' bash "$REPO" "$GO"
 assert_status "go tests pass" 0 "$STATUS"
 assert_not_contains "no go test failures" "$OUTPUT" "FAIL"
 
