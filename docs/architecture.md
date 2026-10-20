@@ -231,6 +231,12 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `pluginId: string`
   - `settings: var` (manifest defaults merged with `shell.json` → `plugins.<id>.settings`)
   - `screen: var` (the `ShellScreen` for bar widgets and panels)
+- Credentials (plan 097): a plugin never keeps a token, API key or password
+  in `shell.json`, which is configuration and may be shared. `haseen.todoist`
+  and `haseen.omarr` keep theirs in a 0600 file in a 0700 directory under
+  `$XDG_STATE_HOME/haseen/<name>/` (or upstream's legacy directory, used in
+  place so stored secrets are never copied), and hand them to curl through a
+  pipe or a 0600 header file, never an argv.
 - `haseen.security` (plan 088) is explicitly off in shipped `shell.json`,
   panel-only and lazy. Its read-only `Read.qml` processes consume the CLI's
   versioned evidence; `Haseen/SecurityEvidence.js` validates their schemas and
