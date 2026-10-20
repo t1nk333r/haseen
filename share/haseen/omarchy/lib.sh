@@ -81,26 +81,65 @@ omarchy_help() {
 # (they never write it). OMARCHY_PATH is Omarchy's session variable.
 OMARCHY_PATH_SYSTEM="${OMARCHY_PATH:-/usr/share/omarchy}"
 
+# qs_instances — every running Quickshell instance, as `qs list -a -j` prints
+# it (a JSON array; -a lists instances on every display, and takes no
+# --any-display: Quickshell 0.3.2 exits 108 on the pair). Fails, with a
+# warning, when Quickshell cannot list them or answers something that is not
+# JSON: a caller must not take that for "no instance runs".
+qs_instances() {
+    local out
+    if ! out="$(qs list -a -j)"; then
+        warn "could not list Quickshell instances (qs list -a -j failed)"
+        return 1
+    fi
+    [[ -n ${out//[[:space:]]/} ]] || out="[]"
+    if ! jq -e 'type == "array"' <<<"$out" >/dev/null 2>&1; then
+        warn "could not list Quickshell instances (qs list -a -j printed no JSON array)"
+        return 1
+    fi
+    printf '%s\n' "$out"
+}
+
 # omarchy_shell_pids — PIDs of running Quickshell instances whose config is
-# Omarchy's shell, one per line. `qs list` only reads instance files under
-# the runtime directory.
+# Omarchy's shell, one per line; haseen's own shell never counts, even if
+# OMARCHY_PATH were a prefix of haseen's tree. Fails as qs_instances does.
 omarchy_shell_pids() {
-    local dir="${OMARCHY_PATH_SYSTEM%/}/shell/"
+    local instances
     have qs || return 0
-    qs list -a -j --any-display 2>/dev/null |
-        jq -r --arg dir "$dir" '.[]? | select((.config_path // "") | startswith($dir)) | .pid' 2>/dev/null || true
+    instances="$(qs_instances)" || return 1
+    jq -r --arg dir "${OMARCHY_PATH_SYSTEM%/}/shell/" \
+        --arg mine "${HASEEN_PATH%/}/shell/" --arg real "$(readlink -f -- "$HASEEN_PATH/shell")/" \
+        '.[] | (.config_path // "") as $p
+            | select(($p | startswith($dir)) and ($p | startswith($mine) | not) and ($p | startswith($real) | not))
+            | .pid' <<<"$instances"
+}
+
+# haseen_shell_instance_running — a Quickshell instance of haseen's shell
+# runs (`qs -p $HASEEN_PATH/shell`, the path as given or resolved). Exit 2
+# when Quickshell cannot tell.
+haseen_shell_instance_running() {
+    local instances
+    instances="$(qs_instances)" || return 2
+    jq -e --arg qml "${HASEEN_PATH%/}/shell/shell.qml" --arg real "$(readlink -f -- "$HASEEN_PATH/shell")/shell.qml" \
+        'any(.[]; .config_path == $qml or .config_path == $real)' <<<"$instances" >/dev/null
 }
 
 # omarchy_shell_stop — stop every running Omarchy shell. Under haseen it is a
 # second bar over haseen's (an Omarchy update used to start it on IO, plan
-# 093), never the desktop's shell.
+# 093), never the desktop's shell. When Quickshell cannot list its instances
+# this says so and goes on: restarting haseen's own shell is still right.
 omarchy_shell_stop() {
-    local pid
-    while read -r pid; do
+    local pids pid
+    if ! pids="$(omarchy_shell_pids)"; then
+        warn "an Omarchy shell, if one runs, was not stopped"
+        return 0
+    fi
+    for pid in $pids; do
         [[ $pid =~ ^[0-9]+$ ]] || continue
         info "stopping Omarchy's shell (pid $pid): haseen's shell is the desktop's"
-        run qs kill --pid "$pid" --any-display || warn "could not stop Omarchy's shell (pid $pid)"
-    done < <(omarchy_shell_pids)
+        # --pid selects the instance; Quickshell rejects --any-display with it.
+        run qs kill --pid "$pid" || warn "could not stop Omarchy's shell (pid $pid)"
+    done
 }
 
 # active_shell — the desktop shell `haseen shell use` chose: haseen or dms.

@@ -51,11 +51,18 @@ if systemctl --user cat haseen-shell.service >/dev/null 2>&1; then
     exit 0
 fi
 # No unit (a checkout, or the shell layer not applied): a qs instance of
-# haseen's shell is the running shell.
-if have qs && qs list -a -j --any-display 2>/dev/null |
-    jq -e --arg qml "$HASEEN_PATH/shell/shell.qml" 'any(.[]?; .config_path == $qml)' >/dev/null 2>&1; then
-    info "the haseen shell is already running (qs -p $HASEEN_PATH/shell)"
-    exit 0
+# haseen's shell is the running shell. When Quickshell cannot say, starting
+# one could make it a second haseen shell: stop instead.
+if have qs; then
+    status=0
+    haseen_shell_instance_running || status=$?
+    case $status in
+    0)
+        info "the haseen shell is already running (qs -p $HASEEN_PATH/shell)"
+        exit 0
+        ;;
+    2) die "cannot tell whether haseen's shell already runs; not starting another (see haseen doctor)" ;;
+    esac
 fi
 if $DRY_RUN; then
     echo "DRYRUN: $HASEEN_BIN/haseen-shell-run"

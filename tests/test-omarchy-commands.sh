@@ -208,12 +208,26 @@ printf '#!/bin/sh\nhyprctl dispatch '\''hl.dsp.exec_cmd("omarchy-launch-shell")'
 chmod +x "$USRBIN"/*
 # Hyprland runs an exec_cmd through its own PATH.
 stub hyprctl 'echo "hyprctl $*" >>"'"$LOG"'"; cmd=$(printf "%s" "$2" | sed -n "s/.*exec_cmd(\"\(.*\)\").*/\1/p"); [ -n "$cmd" ] && exec sh -c "$cmd"; exit 0'
-# One Omarchy shell (pid 4242) beside haseen's.
+# Quickshell 0.3.2's argument rules, as on luna: `qs list -a` and `qs kill
+# --pid` each exit 108 with --any-display. The stub lists the instances in
+# $QS_JSON and logs every kill; QS_FAIL=1 makes the listing fail.
+QS_JSON="$SANDBOX/qs.json"
 stub qs 'case "$1" in
-list) printf "[{\"config_path\":\"/usr/share/omarchy/shell/shell.qml\",\"pid\":4242},{\"config_path\":\"%s/shell/shell.qml\",\"pid\":7}]\n" "$HASEEN_PATH" ;;
-kill) echo "qs $*" >>"'"$LOG"'" ;;
+list)
+    case " $* " in *" --any-display "*) case " $* " in *" -a "*|*" --all "*)
+        echo "[Option Group: Config Selection] excludes --all" >&2; exit 108 ;; esac ;; esac
+    [ -z "$QS_FAIL" ] || { echo "qs: cannot read the instance directory" >&2; exit 1; }
+    cat "'"$QS_JSON"'" ;;
+kill)
+    case " $* " in *" --pid "*) case " $* " in *" --any-display "*|*" -p "*|*" --path "*)
+        echo "[Option Group: Instance Selection] excludes [Option Group: Config Selection]" >&2; exit 108 ;; esac ;; esac
+    echo "qs $*" >>"'"$LOG"'" ;;
 *) echo "STUB-CALLED: qs $*" >&2; exit 97 ;;
 esac'
+omarchy_instance='{"config_path":"/usr/share/omarchy/shell/shell.qml","pid":4242}'
+haseen_instance="{\"config_path\":\"$HASEEN_PATH/shell/shell.qml\",\"pid\":7}"
+# One Omarchy shell (pid 4242) beside haseen's.
+echo "[$omarchy_instance,$haseen_instance]" >"$QS_JSON"
 # haseen-shell.service is installed but not running.
 stub systemctl 'case "$*" in
 "--user is-active --quiet haseen-shell.service") exit 3 ;;
@@ -242,6 +256,15 @@ assert_contains "restart stops Omarchy's shell" "$OUTPUT" "DRYRUN: qs kill --pid
 assert_contains "restart restarts haseen's unit" "$OUTPUT" "DRYRUN: systemctl --user restart haseen-shell.service"
 capture env PATH="$OPATH" omarchy-restart-shell --dry-run
 assert_contains "--dry-run works as the flag too" "$OUTPUT" "DRYRUN: systemctl --user restart haseen-shell.service"
+# A listing failure is reported, and haseen's own shell still restarts.
+capture env PATH="$OPATH" DRY_RUN=true QS_FAIL=1 omarchy-restart-shell
+assert_status "restart goes on when qs cannot list instances" 0 "$STATUS"
+assert_contains "and says an Omarchy shell was not stopped" "$OUTPUT" "an Omarchy shell, if one runs, was not stopped"
+assert_contains "and restarts haseen's unit" "$OUTPUT" "DRYRUN: systemctl --user restart haseen-shell.service"
+# An OMARCHY_PATH that names haseen's own tree never makes haseen's shell
+# "Omarchy's".
+capture env PATH="$OPATH" DRY_RUN=true OMARCHY_PATH="$HASEEN_PATH" omarchy-restart-shell
+assert_not_contains "haseen's shell is never stopped as Omarchy's" "$OUTPUT" "qs kill --pid 7"
 
 # Launch with haseen's unit running: nothing to start.
 capture env PATH="$OPATH" DRY_RUN=true omarchy-launch-shell
@@ -255,10 +278,28 @@ assert_not_contains "launch starts nothing more" "$OUTPUT" "systemctl --user sta
 stub systemctl 'exit 3'
 capture env PATH="$OPATH" DRY_RUN=true omarchy-launch-shell
 assert_contains "launch without a unit sees haseen's qs instance" "$OUTPUT" "already running (qs -p"
-stub qs 'case "$1" in list) echo "[]" ;; *) echo "STUB-CALLED: qs $*" >&2; exit 97 ;; esac'
+assert_contains "and still stops the Omarchy shell beside it" "$OUTPUT" "DRYRUN: qs kill --pid 4242"
+assert_not_contains "and starts no second haseen shell" "$OUTPUT" "haseen-shell-run"
+# Only haseen's instance: nothing to stop, nothing to start.
+echo "[$haseen_instance]" >"$QS_JSON"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-launch-shell
+assert_contains "launch with only haseen's instance sees it" "$OUTPUT" "already running (qs -p"
+assert_not_contains "and stops nothing" "$OUTPUT" "qs kill"
+# Only an Omarchy shell: it is stopped and haseen's runs in its place.
+echo "[$omarchy_instance]" >"$QS_JSON"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-launch-shell
+assert_contains "launch with only Omarchy's shell stops it" "$OUTPUT" "DRYRUN: qs kill --pid 4242"
+assert_contains "and runs haseen's in the foreground" "$OUTPUT" "DRYRUN: $REPO/share/haseen/../../bin/haseen-shell-run"
+echo "[]" >"$QS_JSON"
 capture env PATH="$OPATH" DRY_RUN=true omarchy-launch-shell
 assert_contains "launch without unit or instance runs haseen shell run" "$OUTPUT" "DRYRUN: $REPO/share/haseen/../../bin/haseen-shell-run"
 assert_dry_pure "launch without a unit" "$OUTPUT"
+# Quickshell cannot list its instances: launching could start a second
+# haseen shell, so it stops and says why.
+capture env PATH="$OPATH" DRY_RUN=true QS_FAIL=1 omarchy-launch-shell
+assert_status "launch refuses when qs cannot list instances" 1 "$STATUS"
+assert_contains "and says qs failed" "$OUTPUT" "could not list Quickshell instances"
+assert_not_contains "and starts nothing" "$OUTPUT" "haseen-shell-run"
 
 # DMS chosen with haseen shell use: that is the shell to (re)start.
 mkdir -p "$XDG_STATE_HOME/haseen"
