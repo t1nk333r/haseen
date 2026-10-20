@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-session-lock-stranded — exit 0 when the compositor holds a
+# session lock that no other locker is alive to own, 1 when unlocked, 2 while
+# undetermined. Adapted from Omarchy
+# bin/omarchy-hyprland-session-lock-stranded (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged rule; the process list is read once instead
+# of through a pipe ending in grep -q, which pipefail would misread (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-session-lock-stranded <own-pid>
+
+haseen's answer to Omarchy's command: a lock is stranded only while no
+Quickshell, qs or hyprlock other than <own-pid> runs. Exit 0 stranded, 1
+unlocked, 2 undetermined." "$@"
+
+# Hyprland lets any client take over a held lock, so a shell that recovers a
+# lock it merely sees could take another shell's live lock screen.
+status=0
+"$HASEEN_OMARCHY_DIR/bin/omarchy-hyprland-session-locked" || status=$?
+((status == 0)) || exit "$status"
+
+lockers="$(pgrep -u "$UID" -x 'quickshell|qs|hyprlock' 2>/dev/null || true)"
+if [[ -n $lockers ]] && grep -qvxF -- "${1:-}" <<<"$lockers"; then
+    exit 2
+fi
+exit 0

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# omarchy-hw-asus-zenbook-ux5406aa — exit 0 on an ASUS Zenbook UX5406AA with an Intel Panther Lake GPU. Adapted from Omarchy bin/omarchy-hw-asus-zenbook-ux5406aa (MIT, Copyright (c) David
+# Heinemeier Hansson): the DMI match is haseen hw match (the same
+# case-insensitive product name or family test, read through sysroot_path),
+# the GPU test the adopted omarchy-hw-intel-ptl (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-asus-zenbook-ux5406aa
+
+haseen's answer to Omarchy's command: exit 0 on an ASUS Zenbook UX5406AA with an Intel Panther Lake GPU, 1 otherwise.
+Prints nothing." "$@"
+
+"$HASEEN_BIN/haseen-hw-match" "ux5406aa" && "$HASEEN_OMARCHY_DIR/bin/omarchy-hw-intel-ptl"

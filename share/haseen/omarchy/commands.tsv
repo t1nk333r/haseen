@@ -8,16 +8,72 @@ omarchy	port	-	Omarchy's router: omarchy a b runs haseen's omarchy-a-b
 omarchy-battery-status	shim	haseen-battery-status	prints the battery line or TSV Omarchy's bar plugins read
 omarchy-brightness-display-apple	apple	-	Apple Studio and Pro Display XDR brightness through asdcontrol
 omarchy-capture-screenrecording	translate	haseen-capture-screenrecord	Omarchy's recorder flags on haseen's screen recorder
+omarchy-capture-webcam-list	port	-	prints each camera that can capture video, device and name
+omarchy-file-select	port	-	opens the desktop file chooser and prints the chosen paths
+omarchy-font-current	translate	haseen-font-current	prints the monospace font family in use
+omarchy-font-list	shim	haseen-font-list	lists the installed monospace fonts
+omarchy-font-set	shim	haseen-font-set	sets the monospace font
+omarchy-games-retro-cores	port	-	lists the installed RetroArch cores of the preferred set
+omarchy-games-retro-install	port	-	writes a launcher that starts a game in RetroArch with a chosen core
+omarchy-git-url-check	port	-	exit 0 when a git URL names a repository, 1 for an option or transport helper
+omarchy-hibernation-available	shim	haseen-hibernation-status --quiet	exit 0 when hibernation is set up and usable
+omarchy-hibernation-remove	port	-	removes the swapfile, its subvolume, fstab lines and resume settings, then rebuilds
+omarchy-hibernation-setup	translate	haseen-hibernation-setup	sets up suspend to disk, then offers a reboot
+omarchy-hook	translate	haseen-hook	runs a named user hook from ~/.config/haseen/hooks
+omarchy-hook-install	translate	haseen-hook	installs a hook script for an event haseen fires
+omarchy-hw-asus-expertbook-b9406	port	-	exit 0 on an ASUS ExpertBook B9406 with Panther Lake graphics
+omarchy-hw-asus-rog	port	-	exit 0 on an ASUS ROG machine
+omarchy-hw-asus-zenbook-ux5406aa	port	-	exit 0 on an ASUS Zenbook UX5406AA with Panther Lake graphics
 omarchy-hw-clamshell	port	-	true when the lid is closed while an external monitor is connected
+omarchy-hw-dell-xps-haptic-touchpad	port	-	exit 0 on a Dell XPS with the haptic touchpad
+omarchy-hw-dell-xps-oled	port	-	exit 0 on a Dell XPS with the LG OLED panel and Panther Lake graphics
+omarchy-hw-dell-xps13-dx13260-ptl	port	-	exit 0 on a Dell XPS 13 DX13260 with Panther Lake graphics
+omarchy-hw-display	port	-	prints the backlight device that most likely drives the display
 omarchy-hw-external-monitors	port	-	true when an external monitor is physically connected
+omarchy-hw-fingerprint	port	-	exit 0 when a fingerprint reader is present
+omarchy-hw-framework16	port	-	exit 0 on a Framework Laptop 16
+omarchy-hw-hybrid-gpu	port	-	exit 0 on an active hybrid GPU setup
+omarchy-hw-intel	port	-	exit 0 on an Intel CPU
+omarchy-hw-intel-ptl	port	-	exit 0 when an Intel Panther Lake GPU is present
+omarchy-hw-intel-sof	port	-	exit 0 when an Intel audio DSP is present
+omarchy-hw-laptop	port	-	exit 0 on a laptop
 omarchy-hw-laptop-closed	port	-	true when a laptop lid reads closed
+omarchy-hw-match	shim	haseen-hw-match	exit 0 when a pattern matches the machine's product name or family
+omarchy-hw-nvidia	port	-	exit 0 when an NVIDIA GPU is present
+omarchy-hw-nvidia-display	port	-	exit 0 unless another GPU drives the display while NVIDIA does not
+omarchy-hw-nvidia-gsp	port	-	exit 0 when an NVIDIA GPU with GSP firmware (Turing or newer) is present
+omarchy-hw-nvidia-without-gsp	port	-	exit 0 when a Maxwell, Pascal or Volta NVIDIA GPU is present
+omarchy-hw-recover-internal-monitor	port	-	brings the laptop panel back at login when no external monitor is connected
+omarchy-hw-surface	port	-	exit 0 on a Microsoft Surface
+omarchy-hw-touchpad	port	-	prints Hyprland's touchpad device name
+omarchy-hw-touchscreen	port	-	prints Hyprland's touchscreen or tablet device name
+omarchy-hw-vulkan	port	-	exit 0 when a Vulkan driver is installed
+omarchy-hw-webcam	port	-	exit 0 when a webcam that can capture video is present
+omarchy-hyprland-focus-app	port	-	focuses the most recent window of an app
 omarchy-hyprland-monitor-clamshell	translate	haseen-hardware-laptop-display	turns the laptop display off while the lid is closed on a dock, back on after
 omarchy-hyprland-monitor-external-active	port	-	true when Hyprland has an enabled monitor other than the laptop panel
+omarchy-hyprland-monitor-focused	port	-	prints the focused monitor's name
 omarchy-hyprland-monitor-focused-apple	apple	-	true only when the focused monitor is an Apple Studio or Pro Display XDR
 omarchy-hyprland-monitor-internal	translate	haseen-hardware-laptop-display	turns the laptop display on, off or over, or recovers it
 omarchy-hyprland-monitor-internal-mirror	translate	haseen-hardware-mirror-display	mirrors the laptop display, extends again, or recovers
+omarchy-hyprland-monitor-laptop	port	-	prints the built-in laptop display's name
+omarchy-hyprland-monitor-modeless	port	-	exit 0 when an enabled monitor has no mode (0x0)
+omarchy-hyprland-monitor-scaling	port	-	shows, sets or steps the focused monitor's scale and keeps it
+omarchy-hyprland-monitor-watch	port	-	follows monitor changes and keeps the laptop panel in step with the lid
+omarchy-hyprland-reload-guard	port	-	pauses or resumes Hyprland's config auto-reload during updates
+omarchy-hyprland-session-lock-stranded	port	-	exit 0 when the session is locked with no locker left running
 omarchy-hyprland-session-locked	port	-	true when Hyprland holds a session lock
+omarchy-hyprland-toggle	translate	-	switches no-gaps, aspect ratio, mirroring or the laptop display through haseen
+omarchy-hyprland-toggle-disabled	port	-	exit 0 when the named Hyprland toggle is off
+omarchy-hyprland-toggle-enabled	port	-	exit 0 when the named Hyprland toggle is on
 omarchy-hyprland-window-close-all	port	-	closes every window, then goes to workspace 1
+omarchy-hyprland-window-gaps-toggle	shim	haseen-toggle-gaps toggle	toggles window gaps
+omarchy-hyprland-window-pop	port	-	floats, pins and raises the focused window, or tiles it again
+omarchy-hyprland-window-single-square-aspect-toggle	shim	haseen-toggle-one-window-ratio toggle	toggles the square aspect ratio of a single window
+omarchy-hyprland-window-tiled-fullscreen-toggle	port	-	toggles fullscreen for the focused window while it stays tiled
+omarchy-hyprland-window-transparency-toggle	port	-	toggles the focused window's transparency
+omarchy-hyprland-window-width	port	-	saves or restores the focused window's width for its app
+omarchy-hyprland-workspace-layout-toggle	shim	haseen-toggle-workspace-layout toggle	toggles the workspace layout between dwindle and scrolling
 omarchy-launch-floating-terminal-with-presentation	translate	haseen-config-terminal	runs a command in haseen's floating terminal
 omarchy-launch-shell	port	haseen-shell-run	starts the desktop shell haseen uses, never Omarchy's
 omarchy-menu	translate	haseen-menu	opens haseen's menu at Omarchy's menu name

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# omarchy-hw-dell-xps-oled — exit 0 on a Dell XPS with the LG OLED panel and an
+# Intel Panther Lake GPU. Adapted from Omarchy bin/omarchy-hw-dell-xps-oled
+# (MIT, Copyright (c) David Heinemeier Hansson): haseen hw match for the model,
+# the adopted omarchy-hw-intel-ptl for the GPU, and the same EDID test (bytes
+# 8-9, manufacturer id 30e4: LG Display) read through sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-dell-xps-oled
+
+haseen's answer to Omarchy's command: exit 0 when the product matches XPS, the
+GPU is Intel Panther Lake and the eDP panel's EDID names LG Display (30e4).
+Prints nothing." "$@"
+
+"$HASEEN_BIN/haseen-hw-match" XPS || exit 1
+"$HASEEN_OMARCHY_DIR/bin/omarchy-hw-intel-ptl" || exit 1
+shopt -s nullglob
+edids=("$(sysroot_path /sys/class/drm)"/card*-eDP-*/edid)
+((${#edids[@]})) || exit 1
+[[ $(od -An -tx1 -j8 -N2 "${edids[@]}" 2>/dev/null | tr -d ' \n') == 30e4 ]]

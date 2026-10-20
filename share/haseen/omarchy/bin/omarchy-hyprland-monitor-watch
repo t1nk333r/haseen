@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-watch — follow Hyprland's monitor events: reconcile
+# the clamshell state when a monitor comes or goes, and keep reloading while a
+# monitor came up without a mode. Adapted from Omarchy
+# bin/omarchy-hyprland-monitor-watch (MIT, Copyright (c) David Heinemeier
+# Hansson): the same event loop over Hyprland's socket2 (socat), the same
+# docked 2 s backstop poll and the same backed-off modeless recovery, calling
+# the adopted omarchy-hyprland-monitor-clamshell, -modeless, -reload-guard and
+# omarchy-hw-laptop by path. What changed (plan 093):
+#   - haseen does not start it (Omarchy's autostart does); it runs only when
+#     someone starts it, and only one per Hyprland instance.
+#   - Locks live in $XDG_RUNTIME_DIR/haseen/.
+#   - Its helpers end with it, so a stopped watcher leaves no poll behind.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-monitor-watch [--dry-run]
+
+haseen's answer to Omarchy's command: runs until Hyprland goes away. On every
+monitor added or removed it reconciles the laptop display with the lid
+(omarchy-hyprland-monitor-clamshell), and while a laptop is docked it repeats
+that every 2 s. A monitor left without a mode (0x0) gets a config reload,
+backing off to once a minute. Needs socat. --dry-run passes on to the
+commands it runs.
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+have socat || die "omarchy-hyprland-monitor-watch needs socat to read Hyprland's events: haseen install package socat"
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} && -n ${XDG_RUNTIME_DIR:-} ]] ||
+    die "omarchy-hyprland-monitor-watch: no Hyprland session (HYPRLAND_INSTANCE_SIGNATURE or XDG_RUNTIME_DIR unset)"
+[[ $HYPRLAND_INSTANCE_SIGNATURE =~ ^[A-Za-z0-9_.-]+$ ]] || die "unusual HYPRLAND_INSTANCE_SIGNATURE: $HYPRLAND_INSTANCE_SIGNATURE"
+SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+
+oma="$HASEEN_OMARCHY_DIR/bin"
+locks="$XDG_RUNTIME_DIR/haseen"
+mkdir -p "$locks"
+LOCK="$locks/monitor-clamshell.lock"
+MODELESS_LOCK="$locks/monitor-modeless.lock"
+export DRY_RUN
+
+# One watcher per Hyprland instance: two would race each other's reloads.
+exec 8>"$locks/monitor-watch-$HYPRLAND_INSTANCE_SIGNATURE.lock"
+flock -n 8 || die "omarchy-hyprland-monitor-watch is already running for this Hyprland instance"
+
+# nap SECONDS — a sleep that ends with the subshell running it: TERM breaks
+# the wait, and the trap takes the sleep along.
+nap() {
+    sleep "$1" &
+    wait "$!"
+}
+background() { trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM; }
+
+sync_clamshell() {
+    (
+        flock -n 9 || exit 0
+        "$oma/omarchy-hyprland-monitor-clamshell" || true
+    ) 9>"$LOCK"
+}
+
+# A monitor settles over a few seconds after the event; look again then.
+sync_clamshell_after_monitor_change() {
+    sync_clamshell
+    (
+        background
+        for delay in 1 3 7; do
+            nap "$delay"
+            sync_clamshell
+        done
+    ) &
+}
+
+# Powering a monitor on fires no DRM hotplug and a re-probe needs root, so only
+# a reload re-reads the EDID and only a reload shows whether it worked. Back
+# off: the machine can sit like this all night. The lock keeps one loop across
+# the events that call this; the wait covers an event landing as one exits.
+recover_modeless() {
+    (
+        background
+        flock -w 1 9 || exit 0
+        local delay=3 state reloaded unanswered=0
+        while true; do
+            state=0
+            "$oma/omarchy-hyprland-monitor-modeless" || state=$?
+            # A compositor that stays silent has gone, and the session with it.
+            ((state == 1)) && break
+            ((state == 2)) && ((++unanswered > 20)) && break
+            ((state == 0)) && unanswered=0
+            reloaded=0
+            # Reloading into half-replaced package config is what the guard prevents.
+            if ((state == 0)) && ! "$oma/omarchy-hyprland-reload-guard" paused; then
+                run hyprctl reload >/dev/null 2>&1 || true
+                reloaded=1
+            fi
+            nap "$delay"
+            ((reloaded)) && ((delay = delay * 2 > 60 ? 60 : delay * 2))
+        done
+    ) 9>"$MODELESS_LOCK" &
+}
+
+poll_clamshell_state() {
+    background
+    while true; do
+        nap 2
+        sync_clamshell
+    done
+}
+
+# The panel is only ever disabled while a laptop is docked, so the backstop
+# poll runs only then; lid open/close itself is the clamshell quirk's binds.
+poll_pid=""
+sync_poll_state() {
+    if "$oma/omarchy-hw-laptop" && "$oma/omarchy-hyprland-monitor-external-active"; then
+        if [[ -z $poll_pid ]] || ! kill -0 "$poll_pid" 2>/dev/null; then
+            poll_clamshell_state &
+            poll_pid=$!
+        fi
+    elif [[ -n $poll_pid ]]; then
+        kill "$poll_pid" 2>/dev/null || true
+        poll_pid=""
+    fi
+}
+
+trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+trap 'exit 143' TERM INT HUP
+
+sync_clamshell_after_monitor_change
+sync_poll_state
+recover_modeless
+
+# Process substitution (not a pipe) keeps this loop in the main shell, so
+# sync_poll_state can start and stop the background poll.
+while read -r event; do
+    case "$event" in
+    monitoradded\>\>* | monitoraddedv2\>\>* | monitorremoved\>\>* | monitorremovedv2\>\>*)
+        sync_clamshell_after_monitor_change
+        sync_poll_state
+        recover_modeless
+        ;;
+    # A reload while a monitor is unpowered leaves it at 0x0 with no hotplug.
+    configreloaded\>\>*) recover_modeless ;;
+    esac
+done < <(socat -U - "UNIX-CONNECT:$SOCKET")

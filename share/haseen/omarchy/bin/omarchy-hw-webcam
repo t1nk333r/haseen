@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-hw-webcam — exit 0 when a capture-capable webcam is present. Adapted
+# from Omarchy bin/omarchy-hw-webcam (MIT, Copyright (c) David Heinemeier
+# Hansson): asks the adopted omarchy-capture-webcam-list (v4l2 Video Capture
+# capability), by path, not haseen's hw_probe_webcam, which also counts a
+# camera's metadata nodes (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-webcam
+
+haseen's answer to Omarchy's command: exit 0 when omarchy-capture-webcam-list
+names at least one camera that can capture video, 1 otherwise." "$@"
+
+list="$HASEEN_OMARCHY_DIR/bin/omarchy-capture-webcam-list"
+[[ -x $list ]] || exit 1
+[[ -n $("$list" 2>/dev/null || true) ]]

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-hw-intel — exit 0 on an Intel CPU. Adapted from Omarchy
+# bin/omarchy-hw-intel (MIT, Copyright (c) David Heinemeier Hansson): haseen's
+# hw_cpu reads /proc/cpuinfo through sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-intel
+
+haseen's answer to Omarchy's command: exit 0 when /proc/cpuinfo's vendor_id is
+GenuineIntel, 1 otherwise." "$@"
+
+hw_cpu '^vendor_id[[:space:]]*:[[:space:]]*GenuineIntel[[:space:]]*$'

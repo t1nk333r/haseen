@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-hook-install — install a hook script for an event. Translated to
+# haseen hook install, which follows Omarchy bin/omarchy-hook-install (MIT,
+# Copyright (c) David Heinemeier Hansson): the file is copied, executable, to
+# ~/.config/haseen/hooks/<type>.d/. It replaces a different file of the same
+# name without asking, as Omarchy's does (--yes). Differences: haseen accepts
+# only the events it fires (theme-set, post-update, post-boot, layer-applied;
+# exit 2 for others) and takes --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hook-install <type> <file> [--dry-run]
+
+haseen's answer to Omarchy's command: haseen hook install <type> <file> --yes,
+which copies <file> to $HASEEN_USER_CONFIG/hooks/<type>.d/.
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 2)) || {
+    echo "Usage: omarchy-hook-install <type> <file>" >&2
+    exit 1
+}
+[[ -f ${REST[1]} ]] || {
+    echo "Hook file not found: ${REST[1]}" >&2
+    exit 1
+}
+flags=(--yes)
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec hook install "${REST[0]}" "${REST[1]}" "${flags[@]}"

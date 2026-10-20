@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-toggle-disabled — exit 0 when the named Hyprland toggle is
+# off (its file is missing). Adapted from Omarchy
+# bin/omarchy-hyprland-toggle-disabled (MIT, Copyright (c) David Heinemeier
+# Hansson): haseen keeps its toggles in
+# $HASEEN_USER_STATE/toggles/hypr under its own names, so Omarchy's flag names
+# are mapped: window-no-gaps -> no-gaps.lua, internal-monitor-disable ->
+# laptop-display-off.lua, internal-monitor-mirror -> mirror-display.lua, any
+# other <flag> -> <flag>.lua (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-toggle-disabled <flag-name>
+
+haseen's answer to Omarchy's command: exit 0 when haseen's toggle file for
+<flag-name> is missing from $HASEEN_USER_STATE/toggles/hypr, 1 when it
+exists, 2 for a missing or unusable name." "$@"
+
+flag="${1:-}"
+[[ $flag =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    echo "Usage: omarchy-hyprland-toggle-disabled <flag-name>" >&2
+    exit 2
+}
+case $flag in
+window-no-gaps) file=no-gaps.lua ;;
+internal-monitor-disable) file=laptop-display-off.lua ;;
+internal-monitor-mirror) file=mirror-display.lua ;;
+*) file="$flag.lua" ;;
+esac
+[[ ! -f $HASEEN_USER_STATE/toggles/hypr/$file ]]
