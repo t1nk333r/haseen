@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 // qs.Ui.WidgetButton for Omarchy plugins (architecture 5.4): a text cell
 // sized to its label, with tooltip, click and wheel.
@@ -14,8 +15,8 @@ Item {
     property string text: ""
     property string fontFamily: bar ? bar.fontFamily : Style.font.family
     property real fontSize: Style.font.body
-    property color foreground: bar ? bar.barForeground : Color.foreground
-    property color activeColor: bar ? bar.urgent : Color.urgent
+    property color foreground: bar ? bar.barForeground : Commons.Color.foreground
+    property color activeColor: bar ? bar.urgent : Commons.Color.urgent
     property bool active: false
     property real horizontalMargin: 8.5
     property real verticalPadding: 6

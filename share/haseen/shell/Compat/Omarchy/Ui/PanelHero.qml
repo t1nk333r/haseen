@@ -3,6 +3,7 @@
 // haseen compatibility: palette and geometry follow qs.Haseen theme tokens.
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 Item {
   id: root
@@ -11,7 +12,7 @@ Item {
   property string title: ""
   property string meta: ""
   property string detail: ""
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property string fontFamily: Style.font.family
   property real iconSize: Style.font.display
   property real iconOpacity: 1.0
@@ -74,7 +75,7 @@ Item {
         implicitHeight: detailText.implicitHeight + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
         color: "transparent"
-        borderSpec: Border.controlSpec("normal", root.foreground, Color.accent)
+        borderSpec: Border.controlSpec("normal", root.foreground, Commons.Color.accent)
         radius: Style.cornerRadius
 
         Text {

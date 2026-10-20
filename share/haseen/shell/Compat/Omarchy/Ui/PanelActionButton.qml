@@ -3,6 +3,7 @@
 // haseen compatibility: palette and geometry follow qs.Haseen theme tokens.
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 // Small (22×22 by default) icon button used at the right edge of panel rows
 // for inline actions — forget network, confirm passphrase, unpair device,
@@ -32,7 +33,7 @@ BorderSurface {
 
   property string iconText: ""
   property string tooltipText: ""
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property color hoverColor: foreground
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.icon
@@ -60,7 +61,7 @@ BorderSurface {
     ? Border.controlSpec("focus", hoverColor, hoverColor)
     : (_hot && bordered
       ? Border.controlSpec("hover-cursor", hoverColor, hoverColor)
-      : (bordered ? Border.controlSpec("normal", foreground, Color.accent) : Border.none()))
+      : (bordered ? Border.controlSpec("normal", foreground, Commons.Color.accent) : Border.none()))
 
   color: _showFocusRing
     ? Style.focusFillFor(hoverColor, hoverColor)
