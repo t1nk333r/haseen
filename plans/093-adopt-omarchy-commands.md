@@ -96,29 +96,71 @@ command of that name exists.
   `share/haseen/omarchy/bin/` (5 became table rows); `dms` and `ydotool`
   stay in `Compat/bin`.
 
-### Where they are installed, so that they win
+### Where they are installed, and why they come first
 
 `install.sh` links every `share/haseen/omarchy/bin/<name>` into `PREFIX/bin`
 (`/usr/local/bin`) with one `ln -sf -t`, the link target
-`../share/haseen/omarchy/bin/<name>`. On IO `/usr/local/bin` precedes
-`/usr/bin` everywhere a name is looked up:
+`../share/haseen/omarchy/bin/<name>`. An existing `PREFIX/bin/omarchy*` that
+is not haseen's link is never replaced (a warning names it); a link to a
+command a later haseen drops is removed; `--uninstall-tree` removes haseen's
+links and nothing else.
 
-- the systemd user manager (`systemctl --user show-environment`):
-  `PATH=…:/usr/local/sbin:/usr/local/bin:/usr/bin:…`;
-- Hyprland's own environment (`/proc/<Hyprland pid>/environ`), which
-  `exec_cmd`, binds and `uwsm app` inherit: the same order;
-- login shells: Arch's `/etc/profile:15-17` appends `/usr/local/sbin`,
-  `/usr/local/bin`, then `/usr/bin`.
+Whether `PREFIX/bin` comes first depends on the host. Measured 2026-10-20
+(home directory shown as `~`):
 
-Omarchy's own scripts call each other by name, so even Omarchy's copy of
-`omarchy-restart-shell`, run by absolute path, ends in haseen's
-`omarchy-launch-shell` (step 3 above). `haseen shell run` also puts
-`share/haseen/omarchy/bin` on the shell's `PATH`, so a checkout's shell has
-them without an install. An existing `PREFIX/bin/omarchy*` that is not
-haseen's link is never replaced (a warning names it); a link to a command a
-later haseen drops is removed; `--uninstall-tree` removes haseen's links and
-nothing else. `haseen doctor` says whose `omarchy-launch-shell` comes first
-on `PATH` and whether an Omarchy shell is running.
+- IO, `systemctl --user show-environment` and `/proc/<Hyprland pid>/environ`,
+  the same order:
+  `PATH=~/.local/share/agent-gates/bin:~/.local/share/uv/bin:~/.local/share/pipx/bin:~/.local/share/collie/bin:~/.local/share/webhook/bin:~/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/bin:~/.local/share/mise/shims:~/.local/bin:~/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:~/.local/bin:~/.local/bin/desktop:~/.local/bin/media:~/.local/bin/omarchy:~/.local/bin/system:~/.config/hypr/scripts:~/.local/share/node_modules/bin:~/.local/share/npm/bin`.
+  No Omarchy directory; `/usr/local/bin` (8th) precedes `/usr/bin` (9th),
+  where Omarchy's commands are. IO's committed dotfiles (the owner's yadm
+  branch `haseen`, `.config/uwsm/env:10-17`) only append to `PATH`, and
+  line 159 prepends user directories, none of them Omarchy's. IO's live file
+  is unverified: IO was offline when this was rechecked, and its yadm has
+  unpushed commits.
+- luna, `/proc/<Hyprland pid>/environ`:
+  `/opt/rocm/bin:~/.local/share/agent-gates/bin:~/.local/share/uv/bin:~/.local/share/pipx/bin:~/.local/share/collie/bin:~/.local/share/webhook/bin:~/.local/share/mise/shims:/usr/share/omarchy/bin:~/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/bin:…`.
+  `/usr/share/omarchy/bin` is 8th, `/usr/local/bin` 11th, from luna's
+  Omarchy-seeded `~/.config/uwsm/env:5-6`
+  (`export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"`,
+  `export PATH=$OMARCHY_PATH/bin:$PATH`). There Hyprland's `exec_cmd
+  omarchy-launch-shell` finds Omarchy's launcher, and the two-bars incident
+  repeats. Omarchy 4.0.6's packaged `default/bash/env-bootstrap:18-26`
+  prepends only in dev-link mode, so the prepend comes from older seeded
+  files.
+
+So `PREFIX/bin` holds on IO and fails on luna. What puts haseen's first
+regardless:
+
+- The session: the desktop layer's `~/.config/uwsm/env.d/10-haseen`
+  (haseen's own file, rewritten on every apply, which already exports
+  `HASEEN_PATH`) prepends `$HASEEN_PATH/omarchy/bin`. uwsm's
+  `/usr/lib/uwsm/prepare-env.sh:73-96` sources, in each config directory
+  from lowest to highest priority (`XDG_DATA_DIRS`, `XDG_CONFIG_DIRS`, then
+  `XDG_CONFIG_HOME`), `uwsm/env`, `uwsm/env.d/*`, then `uwsm/env-<desktop>`
+  and its `.d`: `~/.config/uwsm/env.d/10-haseen` follows
+  `~/.config/uwsm/env`. uwsm hands the result to Hyprland and to the systemd
+  user manager, so `exec_cmd`, binds, user units and `uwsm app` all get it.
+  `migrations/1792531693-omarchy-path.sh` rewrites an existing fragment once,
+  from the layer's own generator; it takes effect at the next login.
+- Interactive shells: `default/shell/init.sh`, the include `haseen seed user`
+  appends to `~/.bashrc`, prepends the same directory unless it is already
+  first, after whatever the rc prepended.
+- The shell's children: `haseen shell run` puts `share/haseen/omarchy/bin` on
+  the shell's `PATH`, so a checkout's shell has them without an install.
+- SSH and TTY logins: Arch's `/etc/profile:15-17` appends `/usr/local/sbin`,
+  `/usr/local/bin`, then `/usr/bin`, and Omarchy's `/etc/profile.d/omarchy.sh`
+  is the same bootstrap, which does not prepend.
+
+A later user fragment that prepends Omarchy's bin again
+(`~/.config/uwsm/env.d/` after 10, or `env-hyprland`) still wins. `haseen
+doctor` reads the compositor's `PATH` from `/proc/<pid>/environ`, with the pid
+from Hyprland's own `$XDG_RUNTIME_DIR/hypr/<instance>/hyprland.lock` (both
+through `sysroot_path`), checks the terminal's `PATH` too, and fails with
+exit 1, naming the directory that shadows haseen's. It also reports an
+Omarchy shell running. Omarchy's own scripts call each other by name, so
+once haseen's directory is first even Omarchy's `omarchy-restart-shell`,
+run by absolute path, ends in haseen's `omarchy-launch-shell` (step 3
+above).
 
 ### The restart chain
 
@@ -145,10 +187,24 @@ on `PATH` and whether an Omarchy shell is running.
 - **Shims on the shell's `PATH` only** (plan 057's scope): the IO incident
   ran from a terminal and through `hyprctl dispatch exec_cmd`, neither of
   which sees `bin/haseen-shell-run`'s `PATH`.
-- **Prepending a haseen directory through `~/.config/uwsm/env.d`**: it is a
-  user file (seeded once, CLAUDE.md), reaches neither SSH/TTY logins nor
-  root, and is not needed: `/usr/local/bin` already comes first in all three
-  environments above.
+- **Relying on `PREFIX/bin` alone**: it holds on IO and fails on luna, whose
+  Omarchy-seeded `~/.config/uwsm/env` puts `/usr/share/omarchy/bin` first
+  (above).
+- **A system-wide uwsm fragment** (`/etc/xdg/uwsm/env.d/` or
+  `/usr/share/uwsm/env.d/`, where Omarchy keeps `10-omarchy`): uwsm sources
+  the system directories before `~/.config`
+  (`/usr/lib/uwsm/prepare-env.sh:114-128`), so the prepend in the user's
+  `~/.config/uwsm/env` would still win.
+- **A systemd `environment.d` fragment**: uwsm's preloader builds the session
+  environment by sourcing the uwsm files and exports it into the systemd
+  activation environment afterwards, so `~/.config/uwsm/env`'s prepend
+  overrides it, and Hyprland takes uwsm's environment.
+- **Removing the prepend from `~/.config/uwsm/env`**: a user file after
+  seeding (CLAUDE.md).
+- **`env = PATH` in haseen's Hyprland config** (`default/hypr/init.lua`): it
+  reaches Hyprland and its children only, not the user units uwsm starts,
+  and would be a second place deciding `PATH`. The uwsm fragment haseen
+  already owns reaches all of them.
 - **Pointing `OMARCHY_PATH` at a haseen tree**, so `$OMARCHY_PATH/bin/…` calls
   reach haseen too: Omarchy's still-installed scripts and the owner's Omarchy
   plugins read `$OMARCHY_PATH/default`, `/shell` and `/themes`

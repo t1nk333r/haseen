@@ -406,3 +406,100 @@ capture oshell lock isLocked
 assert_eq "another instance's marker is not this session's lock" "false" "$OUTPUT"
 unset HYPRLAND_INSTANCE_SIGNATURE
 assert_dry_pure "omarchy-shell" "$OUTPUT"
+
+# --- haseen's answers come first on every PATH (plan 093) ------------------------
+# luna's Hyprland PATH (/proc/<Hyprland>/environ, 2026-10-20) has
+# /usr/share/omarchy/bin before /usr/local/bin: its Omarchy-seeded
+# ~/.config/uwsm/env prepends $OMARCHY_PATH/bin. IO's starts
+# /usr/local/sbin:/usr/local/bin:/usr/bin after the user's own dirs.
+sandbox omarchy-path
+ROOT="$SANDBOX/root"
+for d in /usr/share/omarchy/bin /usr/bin /usr/local/share/haseen/omarchy/bin /usr/local/bin "$HASEEN_PATH/omarchy/bin"; do
+    mkdir -p "$ROOT$d"
+done
+for d in /usr/share/omarchy/bin /usr/bin /usr/local/share/haseen/omarchy/bin "$HASEEN_PATH/omarchy/bin"; do
+    printf '#!/bin/sh\n' >"$ROOT$d/omarchy-launch-shell"
+    chmod +x "$ROOT$d/omarchy-launch-shell"
+done
+ln -s ../share/haseen/omarchy/bin/omarchy-launch-shell "$ROOT/usr/local/bin/omarchy-launch-shell"
+# doctor_fn FUNCTION ARGS... — a lib/doctor.sh function against the sysroot.
+doctor_fn() {
+    capture env HASEEN_SYSROOT="$ROOT" bash -c \
+        'source "$HASEEN_PATH/lib/common.sh"; source "$HASEEN_PATH/lib/doctor.sh"; "$@"' _ "$@"
+}
+doctor_fn doctor_omarchy_path compositor "/opt/x:/usr/share/omarchy/bin:/usr/local/sbin:/usr/local/bin:/usr/bin" "fix it"
+assert_status "luna's order fails the doctor" 1 "$STATUS"
+assert_contains "and names Omarchy's directory" "$OUTPUT" "compositor omarchy commands=FAIL: /usr/share/omarchy/bin/omarchy-launch-shell comes before haseen's"
+assert_contains "and how to fix it" "$OUTPUT" "; fix it"
+doctor_fn doctor_omarchy_path compositor "/opt/x:/usr/local/sbin:/usr/local/bin:/usr/bin" "fix it"
+assert_status "IO's order passes" 0 "$STATUS"
+assert_eq "through PREFIX/bin's link" "compositor omarchy commands=haseen's (/usr/local/bin)" "$OUTPUT"
+doctor_fn doctor_omarchy_path terminal "$HASEEN_PATH/omarchy/bin:/usr/share/omarchy/bin:/usr/bin" "fix it"
+assert_eq "haseen's own omarchy/bin first passes" "terminal omarchy commands=haseen's ($HASEEN_PATH/omarchy/bin)" "$OUTPUT"
+doctor_fn doctor_omarchy_path terminal "/opt/x:/opt/y" "fix it"
+assert_eq "no omarchy command anywhere is no failure" "terminal omarchy commands=none on its PATH" "$OUTPUT"
+
+# The compositor's PATH comes from Hyprland's lock file and environ.
+mkdir -p "$ROOT$XDG_RUNTIME_DIR/hypr/old" "$ROOT$XDG_RUNTIME_DIR/hypr/new" "$ROOT/proc/4321"
+printf '1111\nwayland-0\n' >"$ROOT$XDG_RUNTIME_DIR/hypr/old/hyprland.lock"
+touch -d '1 hour ago' "$ROOT$XDG_RUNTIME_DIR/hypr/old/hyprland.lock"
+printf '4321\nwayland-1\n' >"$ROOT$XDG_RUNTIME_DIR/hypr/new/hyprland.lock"
+printf 'HOME=/home/x\0PATH=/usr/share/omarchy/bin:/usr/local/bin:/usr/bin\0SHELL=/bin/bash\0' >"$ROOT/proc/4321/environ"
+doctor_fn doctor_hyprland_pid
+assert_eq "without a signature the newest instance's pid" "4321" "$OUTPUT"
+capture env HASEEN_SYSROOT="$ROOT" HYPRLAND_INSTANCE_SIGNATURE=old bash -c \
+    'source "$HASEEN_PATH/lib/common.sh"; source "$HASEEN_PATH/lib/doctor.sh"; doctor_hyprland_pid'
+assert_eq "this session's instance when the signature names it" "1111" "$OUTPUT"
+doctor_fn doctor_environ_path "$ROOT/proc/4321/environ"
+assert_eq "the PATH from Hyprland's environ" "/usr/share/omarchy/bin:/usr/local/bin:/usr/bin" "$OUTPUT"
+doctor_fn doctor_environ_path "$ROOT/proc/9999/environ"
+assert_status "an unreadable environ fails" 1 "$STATUS"
+rm -r "$ROOT$XDG_RUNTIME_DIR/hypr"
+doctor_fn doctor_hyprland_pid
+assert_status "no Hyprland instance fails" 1 "$STATUS"
+
+# The fix: the desktop layer's uwsm fragment, sourced after an
+# Omarchy-seeded ~/.config/uwsm/env (uwsm's order: env, then env.d/*, in each
+# config directory), puts haseen's commands first for the whole session.
+capture env HASEEN_PATH="$HASEEN_PATH" bash -c \
+    'source "$HASEEN_PATH/lib/common.sh"; source "$HASEEN_PATH/layers/desktop/layer.sh"; desktop_session_env'
+printf '%s\n' "$OUTPUT" >"$SANDBOX/10-haseen"
+printf 'export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"\nexport PATH=$OMARCHY_PATH/bin:$PATH\n' >"$SANDBOX/uwsm-env"
+session_path="$(env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/bin /bin/sh -c ". '$SANDBOX/uwsm-env'; . '$SANDBOX/10-haseen'; printf %s \"\$PATH\"")"
+assert_eq "the session PATH starts with haseen's omarchy/bin" "$HASEEN_PATH/omarchy/bin" "${session_path%%:*}"
+doctor_fn doctor_omarchy_path compositor "$session_path" "fix it"
+assert_status "and passes the doctor" 0 "$STATUS"
+
+# Existing installs get the line through a migration, once.
+MIG=1792531693-omarchy-path.sh
+FRAG="$XDG_CONFIG_HOME/uwsm/env.d/10-haseen"
+run_mig() { capture env HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$MIG" bash -Eeuo pipefail "$HASEEN_PATH/migrations/$MIG"; }
+run_mig
+assert_status "without the fragment the migration has nothing to do" 0 "$STATUS"
+assert_eq "and writes nothing" "" "$(ls -A "$XDG_CONFIG_HOME/uwsm" 2>/dev/null)"
+mkdir -p "$(dirname "$FRAG")"
+printf '# Written by haseen layers/desktop. Rewritten on every apply.\nexport HASEEN_PATH=/old\n' >"$FRAG"
+run_mig
+assert_status "the migration rewrites an old fragment" 0 "$STATUS"
+assert_eq "with the layer's own content" "$(<"$SANDBOX/10-haseen")" "$(<"$FRAG")"
+touch -d '1 hour ago' "$FRAG"
+stamp="$(stat -c %Y "$FRAG")"
+run_mig
+assert_eq "a second run leaves it alone" "$stamp" "$(stat -c %Y "$FRAG")"
+
+# Interactive shells: haseen's shell init puts haseen's commands first after
+# whatever the rc prepended, once.
+BARE="$SANDBOX/bare-bin"
+mkdir -p "$BARE"
+for c in bash sh env dirname pwd basename grep sed awk sort tr cat ls; do
+    ln -s "$(PATH=/usr/bin:/bin command -v "$c")" "$BARE/$c" 2>/dev/null || true
+done
+init_path() {
+    capture env -i HOME="$HOME" PATH="$1" bash --noprofile --norc -c \
+        ". '$HASEEN_PATH/default/shell/init.sh'; printf %s \"\$PATH\""
+}
+ours="$(readlink -f "$HASEEN_PATH/omarchy/bin")"
+init_path "$ROOT/usr/share/omarchy/bin:$BARE"
+assert_eq "shell init puts haseen's omarchy/bin first" "$ours:$ROOT/usr/share/omarchy/bin:$BARE" "$OUTPUT"
+init_path "$ours:$BARE"
+assert_eq "and adds it only once" "$ours:$BARE" "$OUTPUT"

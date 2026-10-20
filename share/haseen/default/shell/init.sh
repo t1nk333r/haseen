@@ -37,6 +37,19 @@ fi
 HASEEN_SHELL_DIR="$(CDPATH='' builtin cd -- "$(dirname -- "$_haseen_self")" >/dev/null && builtin pwd -P)"
 unset _haseen_self
 
+# haseen's answers to Omarchy's commands come first (plan 093), also when an
+# rc line above prepended Omarchy's bin: Omarchy's omarchy-update, typed here,
+# would restart Omarchy's shell beside haseen's. `haseen seed user` appends
+# this file's include after what the rc already had.
+_haseen_omarchy_bin="${HASEEN_SHELL_DIR%/default/shell}/omarchy/bin"
+if [ -d "$_haseen_omarchy_bin" ]; then
+    case "$PATH" in
+    "$_haseen_omarchy_bin":*) ;;
+    *) PATH="$_haseen_omarchy_bin:$PATH" ;;
+    esac
+fi
+unset _haseen_omarchy_bin
+
 # shellcheck source=share/haseen/default/shell/aliases.sh
 \. "$HASEEN_SHELL_DIR/aliases.sh"
 # shellcheck source=share/haseen/default/shell/functions.sh

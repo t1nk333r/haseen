@@ -124,7 +124,10 @@ keybind or habit (`omarchy-update`, `omarchy-restart-shell`,
 `omarchy theme set nord`) reaches haseen, and never starts Omarchy's shell.
 Prefer the `haseen …` command when you write something new; read
 `$HASEEN_PATH/omarchy/commands.tsv` to translate one. `haseen doctor` says
-whether haseen's copies come first on `PATH`.
+whether haseen's copies come first on the terminal's and the compositor's
+`PATH`, and fails when Omarchy's do (an old Omarchy `~/.config/uwsm/env` can
+prepend them; `haseen layer apply desktop` and a new login put haseen's
+first).
 
 ## Shell IPC
 
