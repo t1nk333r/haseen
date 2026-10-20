@@ -3,6 +3,21 @@
 # named on the command line) in its own subshell. Never touches the live
 # system: see tests/lib.sh.
 set -Eeuo pipefail
+
+# The fakes are shell scripts, and a shell cannot trap a signal that was
+# ignored when it started: bash keeps it ignored and says nothing. A suite
+# started as a background job of a non-interactive shell (`tests/run.sh &`,
+# an agent's or wrapper's job) inherits SIGINT and SIGQUIT ignored, so a fake
+# recorder or notify-send never sees the SIGINT a test sends it (plan 094).
+# Start from every signal at its default, as a terminal or CI's container
+# exec does. The marker stops a loop should a signal stay ignored.
+sig_ignored="$(sed -n 's/^SigIgn:[[:space:]]*//p' "/proc/$$/status" 2>/dev/null || true)"
+if [[ -z ${HASEEN_TESTS_SIGDFL:-} && $sig_ignored == *[1-9a-f]* ]] &&
+    env --default-signal true 2>/dev/null; then
+    HASEEN_TESTS_SIGDFL=1 exec env --default-signal "$BASH" "$0" "$@"
+fi
+unset HASEEN_TESTS_SIGDFL sig_ignored
+
 cd "$(dirname "$0")/.."
 
 files=("$@")
