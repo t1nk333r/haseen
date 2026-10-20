@@ -2,8 +2,9 @@
 # omarchy-remove-security-fido2 — take FIDO2 security-key authentication out of
 # sudo and polkit: the pam_u2f line `haseen setup fido2` adds goes without
 # asking; other pam_u2f lines (Omarchy's, with its authfile in /etc/fido2, or
-# the user's) are shown and go after a question. Then Omarchy's /etc/fido2,
-# and pam-u2f and libfido2 when nothing still uses them. Adapted from Omarchy
+# the user's) are shown and go after a question. Then, after its own
+# question, Omarchy's /etc/fido2, and pam-u2f and libfido2 when nothing still
+# uses them. Adapted from Omarchy
 # bin/omarchy-remove-security-fido2 (MIT, Copyright (c) David Heinemeier
 # Hansson): sudo sed -i -> whole-file rewrites through write_root_file (a dry
 # run prints each new file), sudo rm -> run_root, omarchy-pkg-drop -> haseen
@@ -13,7 +14,9 @@
 # Questions: the foreign pam_u2f lines are asked about (default no; --yes
 # removes them, as Omarchy does without asking). haseen's key registrations in
 # ~/.config/Yubico/u2f_keys, pam_u2f's default file that other PAM services
-# can read too, are asked about, default no; --yes keeps them.
+# can read too, are asked about, default no; --yes keeps them. So is
+# Omarchy's /etc/fido2, which holds the keys registered for its pam_u2f line:
+# only a yes at the terminal deletes either.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -31,9 +34,10 @@ Usage: omarchy-remove-security-fido2 [--dry-run] [--yes]
 
 haseen's answer to Omarchy's command: removes "$HASEEN_PAM_LINE"
 (haseen setup fido2) from ${PAM_FILES[*]}, shows any other pam_u2f lines
-and removes them after asking (--yes removes them), deletes Omarchy's
-/etc/fido2, asks (--yes keeps it) before deleting $KEYS, and removes pam-u2f
-and libfido2 when no pam_u2f line is left and no other package needs them.
+and removes them after asking (--yes removes them), asks (--yes keeps them)
+before deleting Omarchy's /etc/fido2 and $KEYS, the registered keys, and
+removes pam-u2f and libfido2 when no pam_u2f line is left and no other
+package needs them.
 EOF
 }
 
@@ -51,14 +55,15 @@ for f in "${PAM_FILES[@]}"; do
     pam_drop "$f" "$HASEEN_PAM_LINE" 'pam_u2f\.so'
 done
 
-# Omarchy's authfile. rm -rf on a symlink removes the link, never its target,
-# so a dangling link cannot carry a later setup's authfile elsewhere. Kept
-# while a kept pam_u2f line may still name it.
+# Omarchy's authfile: the user's key registrations, like $KEYS, so only a yes
+# at the terminal deletes it. rm -rf on a symlink removes the link, never its
+# target, so a dangling link cannot carry a later setup's authfile elsewhere.
+# Kept while a kept pam_u2f line may still name it.
 authdir=/etc/fido2
 if [[ -e $(sysroot_path "$authdir") || -L $(sysroot_path "$authdir") ]]; then
     if $PAM_KEPT; then
         info "kept $authdir: the pam_u2f lines left in place may read it"
-    else
+    elif ask "Also delete Omarchy's $authdir, the security keys registered for its pam_u2f line?"; then
         run_root rm -rf -- "$authdir"
     fi
 fi

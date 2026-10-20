@@ -412,6 +412,16 @@ assert_not_contains "fido2: haseen's own line goes anyway" "$(cat "$LOG.tee")" "
 "
 assert_not_contains "fido2: the authfile stays with its line" "$(calls)" "rm -rf -- /etc/fido2"
 assert_not_contains "fido2: the module stays while a line uses it" "$(calls)" "pacman"
+: >"$LOG"
+: >"$LOG.tee"
+capture oma omarchy-remove-security-fido2 --yes </dev/null
+assert_not_contains "fido2: --yes removes the foreign line" "$(cat "$LOG.tee")" "authfile=/etc/fido2/fido2"
+assert_not_contains "fido2: --yes keeps Omarchy's authfile, the registered keys" "$(calls)" "rm -rf -- /etc/fido2"
+assert_contains "fido2: and says how to delete it" "$OUTPUT" "answer at a terminal"
+capture oma omarchy-remove-security-fido2 --purge --yes </dev/null
+assert_status "fido2: --purge is not an option (only a terminal yes deletes keys)" 2 "$STATUS"
+capture oma omarchy-remove-security-fido2 <<<$'y\ny\ny'
+assert_contains "fido2: a yes at the terminal deletes the authfile" "$(calls)" "sudo rm -rf -- /etc/fido2"
 
 setup omarchy-remove-fingerprint
 printf '#%%PAM-1.0\nauth      [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed\nauth      sufficient pam_fprintd.so\nauth\t\tinclude\t\tsystem-auth\n' \

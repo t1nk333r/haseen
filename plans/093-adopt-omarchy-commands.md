@@ -218,15 +218,15 @@ A dry run still prints each question and the deletion it would plan, under
 Three kinds of data are never deleted by `--purge` either, only by a yes at a
 terminal: the logins, vault and device identity of Perplexity, T3 Code's
 worktrees in `~/.t3` (git checkouts with possibly unpushed work), and the
-registered FIDO2 keys (`ask Q`, or `delete_asked Q no`).
+registered FIDO2 keys, haseen's `~/.config/Yubico/u2f_keys` and Omarchy's
+`/etc/fido2` authfile (`ask Q`, or `delete_asked Q no`;
+`omarchy-remove-security-fido2:58-71`).
 
 What `--yes` still removes without `--purge` is what the command exists to
 remove and the files Omarchy's installer wrote to `/etc`, each by its exact
 name or content, never the user's data:
 - the pam_fprintd and pam_u2f lines in `/etc/pam.d/{sudo,polkit-1,hyprlock}`
-  (`pam_drop`, `ask ... yes`), shown before they go, and with Omarchy's
-  pam_u2f lines its authfile `/etc/fido2`, which only those lines read
-  (`omarchy-remove-security-fido2:57-63`; kept while a line stays);
+  (`pam_drop`, `ask ... yes`), shown before they go;
 - `omarchy-hibernation-remove`: `/etc/mkinitcpio.conf.d/omarchy_resume.conf`
   only when it is exactly `HOOKS+=(resume)` (`:114`), and Limine's
   `/etc/limine-entry-tool.d/resume.conf` only while it is the one `resume=`
@@ -1269,6 +1269,7 @@ fixtures; nothing reaches the live session):
   under `--yes` and deletes it under `--purge --yes` (Steam, Battle.net,
   GeForce NOW, RetroArch, Perplexity, T3 Code, `~/.opam`, rustup, Omarchy's
   fingerprint service), a dry run under `--yes` still plans the deletion,
+  Omarchy's `/etc/fido2` goes only on a yes at the terminal,
   and a remover without data questions rejects `--purge`; an SSH key is not
   authorized under `--yes` without a terminal, nor with another key's
   `--fingerprint`, and is with its own; Battle.net's download is shown with
