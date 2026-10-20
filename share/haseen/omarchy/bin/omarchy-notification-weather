@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-notification-weather — opens or closes haseen's weather forecast panel (haseen.weather). Omarchy's command
+# (Omarchy bin/omarchy-notification-weather, MIT, Copyright (c) David Heinemeier Hansson) toggles
+# its own shell's omarchy.weather; here the same IPC reaches haseen's shell, as
+# haseen's own bind and menu entry do (plan 093). A script of its own, not a
+# table shim, so that --help answers without calling the shell.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-notification-weather
+
+haseen's answer to Omarchy's command: toggles haseen's weather forecast panel
+(haseen shell ipc panel toggle haseen.weather)." "$@"
+# Omarchy's takes no arguments and ignores any it is given.
+haseen_exec shell-ipc panel toggle haseen.weather

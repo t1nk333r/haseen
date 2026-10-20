@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# omarchy-menu-input — asks for one line of text and prints it; exit 1 when
+# cancelled or left empty. Adapted from Omarchy bin/omarchy-menu-input (MIT,
+# Copyright (c) David Heinemeier Hansson), which summons its shell's menu in
+# an input mode. haseen's menu has a list mode only (haseen menu select), so
+# the prompt is a line read in haseen's floating terminal (app-id
+# haseen.floating, lib/terminal.sh), the way haseen asks for passwords and
+# other input: no new shell surface and no extra package. At a terminal the
+# line is read right there; when no terminal emulator is found, zenity
+# --entry is used if installed. The answer comes back through a private file
+# in the runtime directory, never through argv. --width only sizes the
+# zenity dialog (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+omarchy_help "Usage: omarchy-menu-input <prompt> [--width N]
+
+haseen's answer to Omarchy's command: reads one line (in a floating terminal
+when not started from one) and prints it. Exits 1 when cancelled or empty." "$@"
+
+prompt="${1:-Input}"
+(($# == 0)) || shift
+width=""
+while (($#)); do
+    case "$1" in
+    --width)
+        (($# >= 2)) || {
+            echo "omarchy-menu-input: --width requires a value" >&2
+            exit 1
+        }
+        width=$2
+        shift
+        ;;
+    esac
+    shift
+done
+
+# answer TEXT — print it, or fail when empty (Omarchy's empty selection).
+answer() {
+    [[ -n $1 ]] || exit 1
+    printf '%s\n' "$1"
+    exit 0
+}
+
+if [[ -t 0 && -t 2 ]]; then
+    IFS= read -r -e -p "$prompt: " line || exit 1
+    answer "$line"
+fi
+
+# The terminal emulator: the one lib/terminal.sh would open, or none.
+term="${TERMINAL:-foot}"
+have "$term" || term=foot
+if have "$term"; then
+    dir="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/haseen-input.XXXXXX")"
+    trap 'rm -rf "$dir"' EXIT
+    # lib/terminal.sh's launcher waits for Enter after the command; a prompt
+    # must close as soon as it is answered, so only its terminal part is kept.
+    floating_terminal_argv true
+    argv=("${FLOAT_ARGV[@]:0:${#FLOAT_ARGV[@]}-6}")
+    # shellcheck disable=SC2016  # expands in the terminal's bash, not here
+    script='IFS= read -r -e -p "$2: " line && printf "%s" "$line" >"$1"'
+    "${argv[@]}" -e bash -c "$script" bash "$dir/answer" "$prompt" >/dev/null 2>&1 || true
+    line=""
+    [[ -s $dir/answer ]] && line="$(<"$dir/answer")"
+    answer "$line"
+fi
+
+if have zenity; then
+    zargs=(--entry --title haseen --text "$prompt")
+    [[ -n $width ]] && zargs+=(--width "$width")
+    line="$(zenity "${zargs[@]}" 2>/dev/null)" || exit 1
+    answer "$line"
+fi
+die "omarchy-menu-input: no way to ask: no terminal (\$TERMINAL or foot) and no zenity"

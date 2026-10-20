@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# omarchy-plymouth-set — colours haseen's boot splash with BACKGROUND and
+# TEXT and rebuilds the initramfs. Adapted from Omarchy
+# bin/omarchy-plymouth-set (MIT, Copyright (c) David Heinemeier Hansson):
+# the arguments and their checks are Omarchy's. Omarchy writes its own
+# plymouth theme and SDDM theme as root; this installs haseen's script splash
+# with the steps of haseen plymouth set (theme files, the plymouth hook
+# through a mkinitcpio drop-in, 'quiet splash' through the boot drop-ins,
+# rebuild), which takes a theme rather than colours, so they are done here
+# with the given colours; TEXT is also the accent. The logo is checked as
+# Omarchy checks it but the mark stays haseen's (haseen branding mark).
+# --refresh-default is haseen plymouth set; --refresh-sddm-default is
+# refused: haseen logs in with greetd (ADR 0001). Never writes
+# /usr/share/plymouth/themes/omarchy or SDDM (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/plymouth.sh
+source "$HASEEN_PATH/lib/plymouth.sh"
+
+usage() {
+    cat <<'USAGE'
+Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png> [--dry-run]
+       omarchy-plymouth-set --refresh-default [--dry-run]
+
+haseen's answer to Omarchy's command: haseen's boot splash in these colours
+(the text colour is also the accent; the logo stays haseen's mark), then the
+initramfs is rebuilt. --refresh-default: haseen plymouth set.
+USAGE
+}
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+
+if (($# == 1)); then
+    case "$1" in
+    --refresh-default)
+        flags=()
+        $DRY_RUN && flags+=(--dry-run)
+        haseen_exec plymouth-set "${flags[@]}"
+        ;;
+    --refresh-sddm-default)
+        omarchy_refuse "haseen setup greeter" "haseen logs in with greetd, not SDDM, so there is no SDDM theme to refresh"
+        ;;
+    esac
+fi
+(($# == 3)) || {
+    usage >&2
+    exit 1
+}
+if ((EUID == 0)); then
+    echo "Error: run omarchy-plymouth-set as your user, not under sudo." >&2
+    exit 1
+fi
+
+bg_hex="${1#\#}" text_hex="${2#\#}" logo_path="$3"
+[[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]] || {
+    echo "Invalid background color: $1 (expected #RRGGBB)" >&2
+    exit 1
+}
+[[ $text_hex =~ ^[0-9a-fA-F]{6}$ ]] || {
+    echo "Invalid text color: $2 (expected #RRGGBB)" >&2
+    exit 1
+}
+[[ -f $logo_path ]] || {
+    echo "Logo file not found: $logo_path" >&2
+    exit 1
+}
+[[ ! -L $logo_path ]] || {
+    echo "Logo file is a symlink, which is not accepted: $logo_path" >&2
+    exit 1
+}
+info "the logo stays haseen's mark (haseen branding mark); $logo_path is not used"
+
+plymouth_installed || die "plymouth is not installed (haseen install package plymouth)"
+bg="#$bg_hex" fg="#$text_hex"
+info "splash colours: background $bg, text $fg"
+
+# haseen plymouth set's steps, with these colours.
+install_root_file "$PLYMOUTH_SOURCE_DIR/haseen.plymouth" "$PLYMOUTH_THEME_DIR/haseen.plymouth"
+plymouth_script "$bg" "$fg" "$fg" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
+plymouth_install_logo "$fg"
+if ! plymouth_hook_present; then
+    printf '%s\n' \
+        "# Added by haseen plymouth set: the splash needs its hook in the initramfs." \
+        'HOOKS=($(echo "${HOOKS[@]}" | sed -E "s/\b(base udev|systemd)\b/& plymouth/"))' |
+        write_root_file "$PLYMOUTH_HOOK_CONF"
+fi
+run_root plymouth-set-default-theme haseen
+if ! boot_cmdline_has splash; then
+    boot_cmdline_add plymouth "quiet splash" ||
+        warn "add 'quiet splash' yourself, or the splash will not show"
+fi
+boot_initramfs_rebuild
+info "boot splash installed; it shows on the next boot"

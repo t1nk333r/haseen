@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# omarchy-network-qr — prints the active Wi-Fi network's join QR code as rows
+# of 0 and 1, optionally after a "meta" line, for a Wi-Fi sharing panel.
+# Adapted from Omarchy bin/omarchy-network-qr (MIT, Copyright (c) David
+# Heinemeier Hansson): the interface choice, the WIFI: payload with its
+# escaping and WPA/WEP/open/hidden handling, and the output are Omarchy's;
+# /sys is read through haseen's sysroot (plan 093). Read-only.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-network-qr [--meta] [interface]
+
+haseen's answer to Omarchy's command: the Wi-Fi join QR code as rows of 0/1
+(qrencode), after 'meta<TAB>IFACE<TAB>SECURITY<TAB>SSID' with --meta." "$@"
+
+interface="" emit_meta=false
+for arg in "$@"; do
+    case "$arg" in
+    --meta) emit_meta=true ;;
+    *) interface=$arg ;;
+    esac
+done
+require_cmds nmcli qrencode
+
+if [[ -z $interface ]]; then
+    # The default-route device is the connection a panel describes; else the
+    # first connected Wi-Fi device. nmcli localizes state names: pin the locale.
+    route_device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }' || true)
+    if [[ -n $route_device && -d $(sysroot_path "/sys/class/net/$route_device/wireless") ]]; then
+        interface=$route_device
+    else
+        interface=$(LC_ALL=C nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null |
+            awk -F: '$2 == "wifi" && $3 ~ /^connected/ { print $1; exit }' || true)
+    fi
+fi
+[[ -n $interface ]] || {
+    echo "No active Wi-Fi connection" >&2
+    exit 1
+}
+uuid=$(LC_ALL=C nmcli --get-values GENERAL.CON-UUID device show "$interface" 2>/dev/null | head -n 1 || true)
+[[ -n $uuid && $uuid != "--" ]] || {
+    echo "No active Wi-Fi connection" >&2
+    exit 1
+}
+
+mapfile -t fields < <(LC_ALL=C nmcli --show-secrets --escape no --get-values \
+    802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,802-11-wireless.hidden,802-11-wireless-security.wep-key0 \
+    connection show uuid "$uuid")
+ssid=${fields[0]:-}
+key_management=${fields[1]:-}
+password=${fields[2]:-}
+hidden=${fields[3]:-no}
+wep_key=${fields[4]:-}
+
+[[ -n $ssid ]] || {
+    echo "Could not read the Wi-Fi name" >&2
+    exit 1
+}
+[[ $key_management != *eap* && $key_management != *ieee8021x* ]] || {
+    echo "Enterprise Wi-Fi cannot be shared with a password QR code" >&2
+    exit 1
+}
+
+escape_wifi_qr() {
+    local value=$1
+    value=${value//\\/\\\\}
+    value=${value//;/\;}
+    value=${value//,/\\,}
+    value=${value//:/\\:}
+    printf '%s' "$value"
+}
+
+if [[ -n $key_management && $key_management != none ]]; then
+    [[ -n $password ]] || {
+        echo "Could not read the Wi-Fi password" >&2
+        exit 1
+    }
+    security=WPA
+elif [[ -n $wep_key ]]; then
+    # WEP is key-mgmt "none" plus a wep-key; as an open network the code
+    # would fail to join without saying why.
+    password=$wep_key
+    security=WEP
+else
+    security=nopass
+fi
+
+payload="WIFI:T:$security;S:$(escape_wifi_qr "$ssid");P:$(escape_wifi_qr "$password");"
+[[ $hidden == yes ]] && payload+="H:true;"
+payload+=";"
+
+# The SSID goes last so it may contain tabs.
+$emit_meta && printf 'meta\t%s\t%s\t%s\n' "$interface" "$security" "$ssid"
+
+# qrencode's ASCII uses two characters per module: one 0/1 each, margin 4
+# (the spec's quiet zone).
+ascii=$(printf '%s' "$payload" | qrencode --type ASCII --margin 4 --output -)
+while IFS= read -r line; do
+    row=
+    for ((column = 0; column < ${#line}; column += 2)); do
+        if [[ ${line:column:2} == *#* ]]; then row+="1"; else row+="0"; fi
+    done
+    printf '%s\n' "$row"
+done <<<"$ascii"

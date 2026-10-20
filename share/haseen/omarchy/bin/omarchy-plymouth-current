@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# omarchy-plymouth-current — names the theme the boot splash is coloured
+# from: "default" when it follows the current theme (what
+# omarchy-plymouth-reset installs), a theme name when it matches that theme,
+# nothing when haseen's splash is not the one plymouth shows. Adapted from
+# Omarchy bin/omarchy-plymouth-current (MIT, Copyright (c) David Heinemeier
+# Hansson), which compares the installed logo with each theme's unlock.png.
+# haseen's splash is a script with the theme's colours filled in, so the
+# installed script is compared with the script each theme would produce;
+# nothing is recorded, so `haseen plymouth set` run by hand is seen too (plan
+# 093). Read-only.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/plymouth.sh
+source "$HASEEN_PATH/lib/plymouth.sh"
+omarchy_help "Usage: omarchy-plymouth-current
+
+haseen's answer to Omarchy's command: prints default, or the theme whose
+colours the boot splash uses, or nothing when haseen's splash is not set." "$@"
+
+installed="$(sysroot_path "$PLYMOUTH_THEME_DIR/haseen.script")"
+[[ $(plymouth_current_theme) == haseen && -r $installed ]] || exit 0
+
+# matches COLORS_TOML — the installed script is the one these colours make.
+matches() {
+    local bg fg accent
+    [[ -r $1 ]] || return 1
+    read -r bg fg accent <<<"$(plymouth_theme_colors "$1")"
+    cmp -s "$installed" <(plymouth_script "$bg" "$fg" "$accent")
+}
+
+if matches "$HASEEN_USER_STATE/current/theme/colors.toml"; then
+    echo default
+    exit 0
+fi
+while read -r name; do
+    [[ -n $name ]] || continue
+    for colors in "$HASEEN_PATH/themes/$name/colors.toml" "$HASEEN_USER_CONFIG/themes/$name/colors.toml"; do
+        if matches "$colors"; then
+            printf '%s\n' "$name"
+            exit 0
+        fi
+    done
+done < <(haseen_cmd theme-list 2>/dev/null || true)

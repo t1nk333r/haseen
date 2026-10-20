@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# omarchy-menu-plugin — pick a plugin to enable, disable, clone or remove, in
+# haseen's menu. Follows Omarchy bin/omarchy-menu-plugin (MIT, Copyright (c)
+# David Heinemeier Hansson). enable, disable and remove open haseen's own
+# lists (haseen menu setup.plugin.enable|disable|remove); remove lists only
+# your plugins in ~/.config/haseen/plugins, never the read-only
+# ~/.config/omarchy/plugins or DankMaterialShell ones. haseen's menu has no
+# clone list, so clone offers haseen's built-ins in haseen menu select, as
+# Omarchy offers its own, and copies the one picked with omarchy-plugin-clone
+# --edit in a floating terminal (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-menu-plugin <enable|disable|clone|remove> [--dry-run]
+
+haseen's answer to Omarchy's command: enable, disable and remove open haseen
+menu setup.plugin.<verb>; clone picks a haseen built-in to copy into
+~/.config/haseen/plugins and opens the copy in \$EDITOR.
+USAGE
+}
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+
+case "${1:-}" in
+enable | disable | remove | clone) ;;
+*)
+    echo "Usage: omarchy-menu-plugin <enable|disable|clone|remove>" >&2
+    exit 1
+    ;;
+esac
+(($# == 1)) || {
+    usage >&2
+    exit 1
+}
+[[ $1 == clone ]] || haseen_exec menu "setup.plugin.$1" "${dry[@]+"${dry[@]}"}"
+
+# Omarchy's clone filter: a built-in that no copy of yours replaces yet. A
+# copy has the built-in's id and wins, so the catalog no longer lists the
+# built-in as first-party.
+rows="$("$HASEEN_OMARCHY_DIR/bin/omarchy-plugin-catalog" |
+    jq -r --arg icon $'\U000f0431' '.[] | select(.firstParty) | $icon + "\t" + .name + "\t" + .id')"
+if [[ -z $rows ]]; then
+    run "$HASEEN_BIN/haseen-notification-send" "No plugin to clone" || true
+    exit 0
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: $HASEEN_BIN/haseen-menu-select Clone plugin ($(wc -l <<<"$rows") built-ins)"
+    echo "DRYRUN: $HASEEN_BIN/haseen-config-terminal -- $HASEEN_OMARCHY_DIR/bin/omarchy-plugin-clone <picked id> --edit"
+    exit 0
+fi
+
+# The id rides along as the row's detail: it tells same-named plugins apart
+# and comes back with the selection as the key to act on.
+selection="$(printf '%s\n' "$rows" | "$HASEEN_BIN/haseen-menu-select" "Clone plugin")" || exit 0
+id="$(cut -f2 <<<"$selection")"
+[[ -n $id ]] || exit 1
+haseen_exec config-terminal -- "$HASEEN_OMARCHY_DIR/bin/omarchy-plugin-clone" "$id" --edit

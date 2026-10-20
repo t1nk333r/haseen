@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# omarchy-refresh-config — puts the default back for one shipped user config,
+# keeping the old file as a backup. Adapted from Omarchy
+# bin/omarchy-refresh-config (MIT, Copyright (c) David Heinemeier Hansson),
+# which copies $OMARCHY_PATH/config/PATH over ~/.config/PATH. Under haseen the
+# default is haseen's, and the path is translated to the haseen command that
+# owns it: hypr/hyprland.lua is haseen refresh hyprland (the one Hyprland file
+# haseen seeds), hypr/hyprsunset.conf is haseen refresh nightlight,
+# omarchy/shell.json (Omarchy's shell settings) is haseen refresh shell,
+# tmux/tmux.conf and herdr/config.toml are omarchy-refresh-tmux and
+# omarchy-refresh-herdr. Omarchy's other Hyprland files and everything else
+# haseen does not ship: "Not a shipped user config", exit 1, as Omarchy says
+# for a path it has no default for. Backup, confirmation and --dry-run are
+# those commands' (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<'USAGE'
+Usage: omarchy-refresh-config <config-path> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command. CONFIG-PATH is relative to ~/.config:
+  hypr/hyprland.lua    haseen refresh hyprland
+  hypr/hyprsunset.conf haseen refresh nightlight
+  omarchy/shell.json   haseen refresh shell
+  tmux/tmux.conf       omarchy-refresh-tmux (haseen's default tmux.conf)
+  herdr/config.toml    omarchy-refresh-herdr (haseen's default herdr config)
+Your file is kept as <file>.bak.<timestamp>.
+USAGE
+}
+parse_common_flags "$@"
+if ((${#REST[@]} == 0)); then
+    usage
+    exit 1
+fi
+config_file=${REST[0]}
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+
+case "${config_file#./}" in
+hypr/hyprland.lua) haseen_exec refresh hyprland "${flags[@]}" ;;
+hypr/hyprsunset.conf) haseen_exec refresh nightlight "${flags[@]}" ;;
+omarchy/shell.json) haseen_exec refresh shell "${flags[@]}" ;;
+tmux/tmux.conf) exec "$HASEEN_OMARCHY_DIR/bin/omarchy-refresh-tmux" "${flags[@]}" ;;
+herdr/config.toml) exec "$HASEEN_OMARCHY_DIR/bin/omarchy-refresh-herdr" "${flags[@]}" ;;
+hypr/*)
+    echo "Not a shipped user config: $config_file (haseen seeds only hypr/hyprland.lua: haseen refresh hyprland)" >&2
+    exit 1
+    ;;
+*)
+    echo "Not a shipped user config: $config_file" >&2
+    exit 1
+    ;;
+esac

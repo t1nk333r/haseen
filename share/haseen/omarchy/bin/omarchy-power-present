@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# omarchy-power-present — exit 0 when external power (a Mains or USB supply)
+# is online, 1 when not. Adapted from Omarchy bin/omarchy-power-present (MIT,
+# Copyright (c) David Heinemeier Hansson): the same test, reading
+# /sys/class/power_supply through haseen's sysroot; OMARCHY_POWER_SUPPLY_PATH
+# still overrides the directory (plan 093). Read-only.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-power-present
+
+haseen's answer to Omarchy's command: exits 0 when the machine runs on
+external power, 1 when not." "$@"
+
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-$(sysroot_path /sys/class/power_supply)}"
+for supply in "$power_supply_path"/*; do
+    [[ -r $supply/online && -r $supply/type ]] || continue
+    type=$(<"$supply/type")
+    [[ $type == Mains || $type == USB ]] || continue
+    [[ $(<"$supply/online") == 1 ]] && exit 0
+done
+exit 1

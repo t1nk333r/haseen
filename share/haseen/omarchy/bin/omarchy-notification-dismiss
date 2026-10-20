@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-notification-dismiss — takes the toasts whose summary contains
+# SUMMARY off the screen, through haseen notification dismiss (adapted from
+# Omarchy bin/omarchy-notification-dismiss, MIT, Copyright (c) David
+# Heinemeier Hansson). Omarchy's runs `omarchy-shell -q`: quiet, and
+# successful even when no shell answers, so this prints nothing and exits 0
+# the same way; only the missing argument is an error (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-notification-dismiss <summary> [--dry-run]
+
+haseen's answer to Omarchy's command: haseen notification dismiss SUMMARY,
+quietly. Never dismisses everything." "$@"
+parse_common_flags "$@"
+((${#REST[@]} >= 1)) && [[ -n ${REST[0]} ]] || {
+    echo "Usage: omarchy-notification-dismiss <summary>"
+    exit 1
+}
+summary=${REST[0]}
+# haseen's dismiss reads a leading dash as an option (--all would clear every
+# toast), so such a summary cannot be matched there: leave the toasts alone.
+if [[ $summary == -* ]]; then
+    warn "omarchy-notification-dismiss: a summary starting with '-' is not matched under haseen: $summary"
+    exit 0
+fi
+if $DRY_RUN; then
+    haseen_cmd notification-dismiss --dry-run "$summary" || true
+else
+    haseen_cmd notification-dismiss "$summary" >/dev/null 2>&1 || true
+fi
+exit 0

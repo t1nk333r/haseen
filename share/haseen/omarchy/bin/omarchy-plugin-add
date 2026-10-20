@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# omarchy-plugin-add — adds a shell plugin from a git repository, into
+# ~/.config/haseen/plugins, pinned: haseen plugin install. Follows Omarchy
+# bin/omarchy-plugin-add (MIT, Copyright (c) David Heinemeier Hansson): the
+# same [git-url] [--enable] [--yes], the warning that plugins run unsandboxed,
+# the confirmation (refused without a terminal unless --yes) and the offer to
+# enable it. Changes: haseen never writes ~/.config/omarchy/plugins, so the
+# plugin lands in haseen's directory, where an Omarchy manifest loads through
+# the compat adapter; haseen plugin install checks the URL, validates the
+# plugin and records its commit in plugins.lock.json; installing never enables
+# it unless asked. --enable puts a bar widget at the end of bar.right
+# (omarchy-plugin-enable or haseen bar move place it elsewhere) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+fail() {
+    echo "omarchy-plugin-add: $*" >&2
+    exit 1
+}
+
+interactive() {
+    [[ -t 0 && -t 1 ]]
+}
+
+# ask PROMPT — Omarchy's confirm: --yes says yes, a terminal asks, anything
+# else refuses rather than guess.
+ask() {
+    $ASSUME_YES && return 0
+    interactive || fail "refusing to continue without confirmation; pass --yes"
+    confirm "$1"
+}
+
+url=""
+enable_after=""
+while (($# > 0)); do
+    case "$1" in
+    --enable) enable_after=true ;;
+    --yes | -y) ASSUME_YES=true ;;
+    --dry-run) DRY_RUN=true ;;
+    -h | --help)
+        cat <<USAGE
+Usage: omarchy-plugin-add [git-url] [--enable] [--yes] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen plugin install <git-url>
+[--enable]. The plugin goes to ~/.config/haseen/plugins, pinned in
+plugins.lock.json; ~/.config/omarchy/plugins is never written.
+USAGE
+        exit 0
+        ;;
+    -*) fail "unknown add option: $1" ;;
+    *)
+        [[ -z $url ]] || fail "unexpected argument: $1"
+        url="$1"
+        ;;
+    esac
+    shift
+done
+
+if [[ -z $url ]]; then
+    interactive ||
+        fail "a git URL is required (e.g. omarchy-plugin-add https://github.com/acme/omarchy-weather.git)"
+    read -r -p "Git URL of the plugin repo: " url || fail "cancelled"
+    [[ -n $url ]] || fail "a git URL is required"
+fi
+
+if ! $ASSUME_YES && ! $DRY_RUN; then
+    cat >&2 <<WARN
+
+Plugins run as arbitrary, unsandboxed code inside haseen's long-lived shell
+process. Only add repositories you trust, and review the code before you
+enable it.
+
+    URL: $url
+
+WARN
+    ask "Clone and add this plugin?" || fail "aborted"
+fi
+
+if [[ -z $enable_after ]]; then
+    if $ASSUME_YES || $DRY_RUN || ! interactive; then
+        enable_after=false
+    elif confirm "Enable it once it is added?"; then
+        enable_after=true
+    else
+        enable_after=false
+    fi
+fi
+
+args=("$url")
+$enable_after && args+=(--enable)
+$ASSUME_YES && args+=(--yes)
+$DRY_RUN && args+=(--dry-run)
+"$HASEEN_BIN/haseen-plugin-install" "${args[@]}" || fail "could not add $url"
+$enable_after || $DRY_RUN ||
+    echo "Enable it later with: omarchy-plugin-enable <id> (the id haseen named above)"

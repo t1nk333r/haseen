@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# omarchy-osd — Omarchy's on-screen display call, answered by haseen. Adapted
+# from Omarchy bin/omarchy-osd (MIT, Copyright (c) David Heinemeier Hansson):
+# the -i/-m/-p/-d options are Omarchy's. Omarchy's shell draws the payload;
+# haseen's OSD (haseen.osd) takes no message over IPC: it shows volume,
+# microphone and screen brightness changes by itself as they happen. So:
+#   - a volume, microphone or brightness level (-p with such an icon) is
+#     already on screen from haseen.osd: this says so on stderr and succeeds;
+#   - a message (-m), or a level haseen.osd does not watch (keyboard
+#     backlight, a download), becomes a low-urgency haseen notification that
+#     replaces this command's previous one, so repeated calls do not stack;
+#     -d is its timeout.
+# Nothing is drawn in the shell; haseen's notification card replaces
+# Omarchy's OSD card (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<'USAGE'
+Usage: omarchy-osd [-i|--icon <icon>] [-m|--message <text>] [-p|--progress <0-100>] [-d|--duration <ms>] [--dry-run]
+
+haseen's answer to Omarchy's command. haseen's OSD shows volume, microphone
+and brightness changes by itself; a message, or another level, is shown as a
+low-urgency notification.
+USAGE
+}
+
+icon="" message="" progress="" duration=""
+while (($#)); do
+    case $1 in
+    -i | --icon | -m | --message | -p | --progress | -d | --duration)
+        value="${2:-}"
+        case $1 in
+        -i | --icon) icon=$value ;;
+        -m | --message) message=$value ;;
+        -p | --progress) progress=$value ;;
+        *) duration=$value ;;
+        esac
+        shift $(($# >= 2 ? 2 : 1))
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "Unknown OSD option: $1" >&2
+        exit 1
+        ;;
+    esac
+done
+[[ -z $progress || $progress =~ ^[0-9]+$ ]] || die "omarchy-osd: --progress takes 0-100: $progress"
+[[ -z $duration || $duration =~ ^[0-9]+$ ]] || die "omarchy-osd: --duration takes milliseconds: $duration"
+[[ -n $message || -n $progress ]] || {
+    usage >&2
+    exit 1
+}
+
+# What haseen.osd already shows by itself when the level changes.
+if [[ -z $message && $icon =~ ^(volume|microphone|brightness|audio) ]]; then
+    echo "omarchy-osd: haseen's OSD shows this change itself (haseen.osd); nothing more to show" >&2
+    exit 0
+fi
+
+label=$message
+if [[ -z $label ]]; then
+    case $icon in
+    keyboard*) label="Keyboard backlight" ;;
+    *) label="Progress" ;;
+    esac
+fi
+text=$label
+[[ -z $progress ]] || text+=" ${progress}%"
+
+# One card for this command: each call replaces the previous one.
+id_file="${XDG_RUNTIME_DIR:-/tmp}/haseen-omarchy-osd.id"
+flags=(-u low -p)
+[[ -z $duration ]] || flags+=(-t "$duration")
+if [[ -r $id_file ]] && read -r last_id <"$id_file" && [[ $last_id =~ ^[0-9]+$ ]]; then
+    flags+=(-r "$last_id")
+fi
+if $DRY_RUN; then
+    haseen_exec notification-send --dry-run "${flags[@]}" "$text"
+fi
+id="$(haseen_cmd notification-send "${flags[@]}" "$text")" || exit 1
+[[ ! $id =~ ^[0-9]+$ ]] || printf '%s\n' "$id" | write_user_file "$id_file"

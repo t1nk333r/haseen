@@ -77,9 +77,84 @@ omarchy-hyprland-workspace-layout-toggle	shim	haseen-toggle-workspace-layout tog
 omarchy-launch-floating-terminal-with-presentation	translate	haseen-config-terminal	runs a command in haseen's floating terminal
 omarchy-launch-shell	port	haseen-shell-run	starts the desktop shell haseen uses, never Omarchy's
 omarchy-menu	translate	haseen-menu	opens haseen's menu at Omarchy's menu name
+omarchy-menu-clipboard	translate	haseen-shell-ipc	toggles haseen's clipboard panel
+omarchy-menu-emoji	translate	haseen-shell-ipc	toggles haseen's emoji panel
+omarchy-menu-emoji-insert	port	-	copies the emoji to the clipboard; haseen does not type it into the window
+omarchy-menu-file	port	haseen-menu-select	lists matching files, newest first, in haseen's menu and prints the one picked
+omarchy-menu-herdr-keybindings	port	haseen-menu-select	lists herdr's key bindings, its defaults merged with your config, in haseen's menu
+omarchy-menu-images	port	haseen-menu-select	picks an image from directories in haseen's menu and prints its path or name
+omarchy-menu-input	port	-	asks for one line of text in a floating terminal and prints it
+omarchy-menu-keybindings	shim	haseen-keybinds-list	lists the Hyprland key bindings in haseen's menu; Enter runs one
+omarchy-menu-plugin	translate	haseen-menu	picks a plugin to enable, disable or remove in haseen's menu, or a built-in to clone
+omarchy-menu-select	shim	haseen-menu-select	picks one line from a list in haseen's menu and prints it
+omarchy-menu-share	translate	haseen-share-file	shares the clipboard, files or folders with LocalSend through haseen share
+omarchy-menu-timezone	shim	haseen-time timezone	picks a time zone in a floating terminal and sets it
+omarchy-menu-tmux-keybindings	translate	haseen-tmux-keybinds	lists tmux's annotated key bindings in haseen's menu
+omarchy-migrate	shim	haseen-migrate	runs haseen's pending migrations
+omarchy-migrate-notify	shim	haseen-migrate-notify	one toast when haseen migrations are pending; a click runs them
+omarchy-mise-install	port	-	writes a ~/.local/bin wrapper that installs and runs a tool through mise
+omarchy-monitor-state	port	-	prints the monitor panel's state lines from hyprctl
+omarchy-network-band	shim	haseen-network-band	reports or sets the Wi-Fi band (auto, 2.4, 5, 6)
+omarchy-network-password	port	-	prints the active Wi-Fi profile's password, read with nmcli
+omarchy-network-qr	port	-	prints the Wi-Fi network's QR code as a 0/1 matrix for the QR panel
+omarchy-network-speedtest	port	-	streams one download or upload Mbps figure per second
+omarchy-network-status	translate	haseen-network-status	prints connection type, name, signal and band; --verbose is haseen network status
+omarchy-notification-battery	port	haseen-battery-status	shows the battery line as a low-urgency notification
+omarchy-notification-dismiss	translate	haseen-notification-dismiss	dismisses notifications whose summary matches
 omarchy-notification-send	translate	haseen-notification-send	Omarchy's notification arguments on haseen's notifications
+omarchy-notification-time	port	haseen-notification-send	shows the day, time, date and week as a low-urgency notification
+omarchy-notification-wait	translate	haseen-notification-wait	waits for the notification daemon, 10 s by default
+omarchy-notification-weather	translate	haseen-shell-ipc	toggles haseen's weather panel
+omarchy-openclaw-onboard	port	-	runs OpenClaw's quickstart wizard and returns once its gateway service answers
+omarchy-osd	port	haseen-notification-send	shows an OSD message or level as a low-urgency notification
+omarchy-pkg-add	translate	haseen-install	installs repo packages through haseen; fails if any is still missing
+omarchy-pkg-aur-accessible	port	-	exits 0 when the AUR answers an RPC request
+omarchy-pkg-aur-add	translate	haseen-install	installs packages through haseen's source order, the AUR last
+omarchy-pkg-aur-install	shim	haseen-install aur	picks a package to install, the AUR as the last resort
+omarchy-pkg-drop	translate	haseen-remove	removes the named packages that are installed
+omarchy-pkg-install	shim	haseen-install package	picks a repo package to install
+omarchy-pkg-missing	port	-	exits 0 when any named package is not installed
+omarchy-pkg-present	port	-	exits 0 when every named package is installed
+omarchy-pkg-remove	shim	haseen-remove package	picks an installed package to remove
+omarchy-plugin-add	translate	haseen-plugin-install	adds a plugin from git into ~/.config/haseen/plugins, pinned; enables it only when asked
+omarchy-plugin-catalog	port	-	every plugin haseen's shell can load, as Omarchy's catalog JSON
+omarchy-plugin-clone	port	haseen-plugin-enable	copies a haseen built-in into ~/.config/haseen/plugins, where it replaces the built-in
+omarchy-plugin-disable	shim	haseen-plugin-disable	turns a plugin off in haseen's shell.json
+omarchy-plugin-enable	translate	haseen-plugin-enable	turns a plugin on, optionally at a place in the bar (haseen bar add or move)
+omarchy-plugin-list	translate	haseen-plugin-list	lists haseen's plugins; --json in Omarchy's shape
+omarchy-plugin-remove	translate	haseen-plugin-uninstall	removes a plugin of yours from ~/.config/haseen/plugins; refuses Omarchy's and DMS's
+omarchy-plugin-update	translate	haseen-plugin-update	updates pinned plugins; never pulls ~/.config/omarchy/plugins
+omarchy-plugin-validate	port	-	checks a plugin folder against Omarchy's manifest schema
+omarchy-plymouth-current	translate	haseen-plymouth-status	names the theme haseen's boot splash is coloured from
+omarchy-plymouth-list	shim	haseen-theme-list	lists the themes the boot splash can be coloured from
+omarchy-plymouth-preview	refuse	haseen plymouth status	haseen's boot splash is a plymouth script drawn in theme colours; there are no Omarchy splash images to preview.
+omarchy-plymouth-reset	translate	haseen-plymouth-set	restores haseen's splash in the current theme; no SDDM theme, haseen uses greetd
+omarchy-plymouth-set	translate	haseen-plymouth-set	checks Omarchy's colours and logo, then sets haseen's splash
+omarchy-plymouth-set-by-theme	translate	haseen-plymouth-set	colours haseen's boot splash from a haseen theme
+omarchy-plymouth-switcher	port	haseen-menu-select	picks default or a theme for the boot splash and prints it
+omarchy-power-present	port	-	exits 0 when the machine runs on external power
+omarchy-powerprofiles-init	shim	haseen-powerprofile-init	sets the power profile for AC or battery at login
 omarchy-powerprofiles-list	shim	haseen-powerprofile-list	lists the power profiles, weakest first
 omarchy-powerprofiles-set	shim	haseen-powerprofile-set	sets the power profile for AC or battery
+omarchy-provision-first-run	refuse	haseen seed user	It runs Omarchy's first-login installer scripts; haseen seeds your files once instead.
+omarchy-provision-owner	refuse	none: haseen installs onto an existing CachyOS user (./install.sh); there is no deferred-provisioning ISO	It creates the user of an Omarchy ISO install left in deferred provisioning, which is Omarchy's installer.
+omarchy-provision-user	refuse	haseen seed user	It runs Omarchy's user installer and seals Omarchy's migrations, which is Omarchy's install machinery.
+omarchy-refresh-applications	refuse	haseen install app NAME (haseen's own launchers install with haseen)	It copies Omarchy's application launchers into ~/.local/share/applications; haseen's apps bring their own.
+omarchy-refresh-chromium	refuse	none: haseen does not manage chromium-flags.conf; its browser is Helium (haseen setup cairn)	It overwrites ~/.config/chromium-flags.conf with Omarchy's; haseen never rewrites your files after seeding them.
+omarchy-refresh-config	translate	haseen-refresh	replaces a seeded config with haseen's default, keeping a backup
+omarchy-refresh-herdr	port	-	replaces ~/.config/herdr/config.toml with haseen's default, keeping a backup
+omarchy-refresh-hyprland	shim	haseen-refresh hyprland	resets the Hyprland Lua files to haseen's, with backups, and reloads Hyprland
+omarchy-refresh-hyprsunset	shim	haseen-refresh nightlight	resets the night light settings and restarts hyprsunset
+omarchy-refresh-limine	refuse	none: haseen never replaces /boot/limine.conf; entries come from limine-entry-tool drop-ins (haseen layer apply secureboot, haseen boot list)	It replaces /boot/limine.conf with Omarchy's; haseen only adds Limine drop-ins and never overwrites the boot config.
+omarchy-refresh-pacman	refuse	haseen update (repositories: haseen layer apply chaotic / omarchy-repo)	It overwrites /etc/pacman.conf and the mirrorlist with Omarchy's channel; haseen leaves both to CachyOS.
+omarchy-refresh-plymouth	shim	haseen-plymouth-set	restores haseen's boot splash and rebuilds the initramfs
+omarchy-refresh-sddm	refuse	haseen setup greeter (haseen logs in with greetd)	It republishes Omarchy's SDDM theme; haseen logs in with greetd, not SDDM.
+omarchy-refresh-shell	shim	haseen-refresh shell	resets ~/.config/haseen/shell.json from haseen's seed, with a backup
+omarchy-refresh-tmux	port	-	replaces ~/.config/tmux/tmux.conf with haseen's default, keeping a backup
+omarchy-reinstall	refuse	haseen layer apply LAYER... (re-apply converges); haseen refresh hyprland|shell	It reinstalls Omarchy's packages and configs over pacman.conf, Limine and your home; haseen re-applies its layers instead.
+omarchy-reinstall-configs	refuse	haseen refresh hyprland|shell|nightlight (one config at a time, with backups)	It copies /etc/skel over your home and refreshes Limine; haseen never overwrites your files or the boot config.
+omarchy-reinstall-pkgs	refuse	haseen layer apply base desktop shell (idempotent); haseen update	It resets pacman.conf to Omarchy's channel and reinstalls Omarchy's packages; haseen leaves pacman.conf to CachyOS.
+omarchy-reminder	translate	haseen-reminder-set	sets, shows and clears haseen's reminders; show --json in Omarchy's shape
 omarchy-remove-ai-hermes	port	-	removes Hermes, its gateway units and runtime; asks before deleting chats and tokens
 omarchy-remove-ai-openclaw	port	-	removes OpenClaw, its gateway units and launcher; asks before deleting ~/.openclaw
 omarchy-remove-ai-perplexity	port	-	removes Perplexity and its caches; asks before deleting its logins and vault

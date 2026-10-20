@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# omarchy-reminder — sets, shows and clears desktop notification reminders:
+# haseen reminder set|show|clear. Follows Omarchy bin/omarchy-reminder (MIT,
+# Copyright (c) David Heinemeier Hansson): the same arguments, exit codes and
+# `show --json` object ({count, active, tooltip, reminders: [{unit, timer,
+# minutes, message, label, remaining, remainingSeconds, at, atTime}]}), with
+# its format_remaining. Changes: the timers are haseen's (haseen-reminder-*),
+# so Omarchy's own omarchy-reminder-* timers are neither listed nor cleared;
+# haseen allows 1 to 1440 minutes; -i asks for the minutes and message in
+# haseen's menu (omarchy-menu-input), as haseen has no reminders panel;
+# setting and clearing take --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    echo "Usage: omarchy-reminder [-i|--interactive]"
+    echo "       omarchy-reminder <minutes> [message]"
+    echo "       omarchy-reminder show [-j|--json]"
+    echo "       omarchy-reminder clear"
+}
+
+case ${1:-} in
+-h | --help)
+    usage
+    echo
+    echo "haseen's answer to Omarchy's command: haseen reminder set|show|clear."
+    echo "Setting and clearing take --dry-run."
+    exit 0
+    ;;
+esac
+
+args=()
+for arg in "$@"; do
+    case $arg in
+    --dry-run) DRY_RUN=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+set -- "${args[@]+"${args[@]}"}"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+
+format_remaining() {
+    local seconds=$1
+    local minutes=$((seconds / 60))
+    local remainder=$((seconds % 60))
+    if ((minutes > 0 && remainder > 0)); then
+        echo "${minutes}m ${remainder}s"
+    elif ((minutes > 0)); then
+        echo "${minutes}m"
+    else
+        echo "${remainder}s"
+    fi
+}
+
+# show_json — haseen reminder show --json, in Omarchy's shape. haseen keeps
+# the default message ("Your N minutes are up") where Omarchy keeps none and
+# labels the row "N-min reminder"; that message is read back as no message.
+show_json() {
+    local rows unit at message now minutes custom label items="[]" count tooltip="Set Reminder"
+    rows="$("$HASEEN_BIN/haseen-reminder-show" --json)"
+    now=$(date +%s)
+    while IFS=$'\t' read -r unit at message; do
+        [[ -n $unit && $at =~ ^[0-9]+$ ]] || continue
+        minutes=${unit#haseen-reminder-}
+        minutes=${minutes%%m-*}
+        [[ $minutes =~ ^[0-9]+$ ]] || minutes=0
+        custom="$message"
+        [[ $custom == "Your $minutes minutes are up" ]] && custom=""
+        label=${custom:-"${minutes}-min reminder"}
+        items="$(jq -c --arg unit "$unit" --arg timer "$unit.timer" --arg label "$label" \
+            --arg message "$custom" --arg remaining "$(format_remaining $((at - now)))" \
+            --arg atTime "$(date -d "@$at" +%-H:%M)" --argjson minutes "$minutes" \
+            --argjson at "$at" --argjson remainingSeconds "$((at - now))" \
+            '. + [{unit: $unit, timer: $timer, minutes: $minutes, message: $message, label: $label,
+                   remaining: $remaining, remainingSeconds: $remainingSeconds, at: $at, atTime: $atTime}]' \
+            <<<"$items")"
+    done < <(jq -r '.[]? | [.unit, (.at | tostring), .message] | @tsv' <<<"$rows")
+    count="$(jq length <<<"$items")"
+    if ((count == 1)); then
+        tooltip="1 reminder"
+    elif ((count > 1)); then
+        tooltip="$count reminders"
+    fi
+    jq -cn --argjson count "$count" --arg tooltip "$tooltip" --argjson reminders "$items" \
+        '{count: $count, active: ($count > 0), tooltip: $tooltip, reminders: $reminders}'
+}
+
+# interactive — the minutes, then an optional message, typed in haseen's menu.
+interactive() {
+    local answer minutes message
+    answer="$("$HASEEN_OMARCHY_DIR/bin/omarchy-menu-input" "Remind me in (minutes, then a message)")" || exit 0
+    read -r minutes message <<<"$answer"
+    [[ -n ${minutes:-} ]] || exit 0
+    set_reminder "$minutes" "${message:-}"
+}
+
+# set_reminder MINUTES [MESSAGE...] — Omarchy's checks, then haseen's timer.
+set_reminder() {
+    local minutes=${1:-}
+    shift || true
+    if [[ -z $minutes ]] || [[ ! $minutes =~ ^[0-9]+$ ]] || ((10#$minutes == 0)); then
+        usage
+        exit 1
+    fi
+    ((10#$minutes <= 1440)) || die "a reminder is at most 1440 minutes (a day) away under haseen"
+    exec "$HASEEN_BIN/haseen-reminder-set" "$((10#$minutes))" "$@" "${dry[@]+"${dry[@]}"}"
+}
+
+case ${1:-} in
+-i | --interactive)
+    interactive
+    exit 0
+    ;;
+show | list)
+    case ${2:-} in
+    -j | --json) show_json ;;
+    "") "$HASEEN_BIN/haseen-reminder-show" --notify >/dev/null ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    exit 0
+    ;;
+clear)
+    haseen_exec reminder-clear "${dry[@]+"${dry[@]}"}"
+    ;;
+esac
+
+set_reminder "$@"

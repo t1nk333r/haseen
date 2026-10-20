@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# omarchy-monitor-state — the monitor panel's state in Omarchy's line format:
+# the focused monitor's brightness line, the first internal, external and
+# enabled internal monitor, the mirrored monitor, the focused one, the
+# scaling line, then every monitor as JSON. Adapted from Omarchy
+# bin/omarchy-monitor-state (MIT, Copyright (c) David Heinemeier Hansson):
+# hyprctl and the jq are Omarchy's; the brightness and scaling lines come
+# from haseen's omarchy-brightness-display and
+# omarchy-hyprland-monitor-scaling beside this one, an empty line when either
+# is missing or fails (plan 093). Read-only.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-monitor-state
+
+haseen's answer to Omarchy's command: eight lines for a monitor panel, read
+from hyprctl (brightness, internal, external, enabled internal, mirror,
+focused, scaling, monitors JSON)." "$@"
+
+require_cmds hyprctl jq
+monitors_json=$(hyprctl monitors all -j 2>/dev/null || true)
+jq -e 'type == "array"' <<<"$monitors_json" >/dev/null 2>&1 || monitors_json="[]"
+focused_monitor=$(jq -r '[.[] | select(.focused == true)][0].name // ""' <<<"$monitors_json")
+
+# sibling NAME ARGS... — the first line of another adopted command, or "".
+sibling() {
+    local cmd="$HASEEN_OMARCHY_DIR/bin/$1"
+    shift
+    [[ -x $cmd ]] || return 0
+    { "$cmd" "$@" 2>/dev/null || true; } | head -n 1
+}
+
+printf '%s\n' "$(sibling omarchy-brightness-display --monitor "$focused_monitor")"
+jq -r '
+  def internal: test("^(eDP|LVDS|DSI)-");
+  ([.[] | select(.name | internal)][0].name // ""),
+  ([.[] | select((.name | internal) | not)][0].name // ""),
+  ([.[] | select((.name | internal) and .disabled != true)][0].name // ""),
+  ([.[] | select(.mirrorOf != "none") | if (.name | internal) then .mirrorOf else .name end][0] // "")
+' <<<"$monitors_json"
+printf '%s\n' "$focused_monitor"
+printf '%s\n' "$(sibling omarchy-hyprland-monitor-scaling)"
+jq -c '[.[] | {name, enabled: (.disabled != true), focused: (.focused == true), width, height}]' <<<"$monitors_json"
