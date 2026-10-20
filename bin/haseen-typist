@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# haseen:summary Type the clipboard, a snippet or a recent clipboard entry once, keystroke by keystroke (haseen.typist)
+# haseen:args <start|stop|toggle|status|type snippet INDEX MD5|type recent ID|snippets edit> [--dry-run]
+#
+# Adapted from the `typist` launcher of sanjuanjor/typist (MIT, Copyright (c)
+# 2026 sanjuanjor), via the owner's fork t1nk33r.typist 1.1.0 (plan 096).
+# haseen changes: settings come from shell.json `plugins."haseen.typist"`
+# over the manifest defaults (no Omarchy bar or drawer lookups); the recent
+# entries are haseen.clipboard's cliphist store, addressed by cliphist id;
+# snippets live in ~/.config/haseen/typist.json; keys go through haseen's
+# `ydotool key` shim into the session's own Hyprland, so no ydotoold is
+# needed; the worker is a transient user unit started through `run`, so
+# --dry-run prints it; failures go through `haseen notification send`. The
+# right-click settings menu is gone: haseen.settings edits the manifest
+# settings, `haseen plugin settings haseen.typist` writes them.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+
+PLUGIN_ID="haseen.typist"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+PLUGIN_DIR="$HASEEN_PATH/shell/plugins/$PLUGIN_ID"
+WORKER="$PLUGIN_DIR/typist-worker.py"
+KEYS="${HASEEN_TYPIST_KEYS:-$HASEEN_PATH/shell/Compat/bin/ydotool}"
+SNIPPETS_FILE="$HASEEN_USER_CONFIG/typist.json"
+UNIT="haseen-typist"
+
+usage() {
+    cat <<EOF
+Usage: haseen typist <command> [--dry-run]
+
+  start                     type the current clipboard (wl-paste) once
+  stop                      stop a run in progress
+  toggle                    stop a run in progress, else start one
+  status                    {"running": true|false}
+  type snippet INDEX MD5    type snippet INDEX of $SNIPPETS_FILE;
+                            MD5 is the md5 of the text the picker showed
+  type recent ID            type cliphist entry ID (text entries only)
+  snippets edit             open $SNIPPETS_FILE in \$EDITOR
+
+Keys reach the focused window of this session's Hyprland through haseen's
+\`ydotool key\` shim; no ydotoold runs. Timings are the plugin settings
+(delayMs, newlineDelayMs, punctuationDelayMs, startupDelayMs,
+maxClipboardBytes) in shell.json plugins."$PLUGIN_ID".settings.
+EOF
+}
+
+# md5sum of nothing: what an out-of-range index or a vanished entry produces.
+EMPTY_MD5="d41d8cd98f00b204e9800998ecf8427e"
+
+# setting KEY — the merged value: shell.json over the manifest default. Only
+# whole numbers are taken; anything else falls back to the default.
+setting() {
+    local key="$1" value fallback
+    fallback="$(jq -r --arg k "$key" '.settings[$k].default' "$PLUGIN_DIR/manifest.json")"
+    value="$(shell_merged_json | jq -r --arg id "$PLUGIN_ID" --arg k "$key" '.plugins[$id].settings[$k] // empty')"
+    if [[ $value =~ ^[0-9]+$ ]]; then
+        printf '%d\n' "$((10#$value))"
+    else
+        printf '%s\n' "$fallback"
+    fi
+}
+
+is_running() { systemctl --user is-active --quiet "$UNIT.service" 2>/dev/null; }
+
+status_json() {
+    if is_running; then echo '{"running":true}'; else echo '{"running":false}'; fi
+}
+
+notify() {
+    "$BIN_DIR/haseen-notification-send" --app-name "haseen typist" "Typist" "$1" >/dev/null 2>&1 || true
+}
+
+refuse() { # MESSAGE CODE
+    notify "$1"
+    printf '{"running":false,"error":"%s"}\n' "$2"
+    exit 1
+}
+
+# launch PRODUCER... — start the worker unit with PRODUCER's stdout as its
+# stdin. The text is never an argument of any process and never touches the
+# disk; the producer runs inside the unit.
+launch() {
+    local delay newline punct startup max
+    [[ -r $WORKER ]] || die "the typist worker is missing: $WORKER"
+    [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || $DRY_RUN || refuse "Typist needs a Hyprland session." no_session
+    delay="$(setting delayMs)"
+    newline="$(setting newlineDelayMs)"
+    punct="$(setting punctuationDelayMs)"
+    startup="$(setting startupDelayMs)"
+    max="$(setting maxClipboardBytes)"
+    ((max >= 1)) || max=65536
+
+    # A previous run is stopped first, so the unit name is free.
+    if ! $DRY_RUN; then systemctl --user stop "$UNIT.service" >/dev/null 2>&1 || true; fi
+    # The user manager's environment may predate this session, so the unit
+    # gets the Hyprland instance and runtime dir it must type into.
+    # shellcheck disable=SC2016  # $1.. expand inside the unit's bash
+    run systemd-run --user --unit="$UNIT" --description="haseen typist worker" --collect --quiet \
+        --setenv=HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:-}" \
+        --setenv=XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
+        --setenv=HASEEN_PATH="$HASEEN_PATH" \
+        bash -c '"${@:9}" | python3 -I "$1" --keys "$2" --notify "$3" --max-bytes "$4" --startup-delay "$5" --delay "$6" --newline-delay "$7" --punctuation-delay "$8"' \
+        _ "$WORKER" "$KEYS" "$BIN_DIR/haseen-notification-send" "$max" "$startup" "$delay" "$newline" "$punct" "$@" ||
+        refuse "Typist could not start its worker." worker_start_failed
+    $DRY_RUN || status_json
+}
+
+stop_typing() {
+    if $DRY_RUN; then
+        run systemctl --user stop "$UNIT.service"
+    else
+        systemctl --user stop "$UNIT.service" >/dev/null 2>&1 || true
+        echo '{"running":false}'
+    fi
+}
+
+# --- picks -------------------------------------------------------------------
+# A snippet is addressed by its index in the file the picker read plus the md5
+# of the text it showed: the file can change under an open picker, and the
+# hash keeps a stale pick from typing something the user never saw. A recent
+# entry is a cliphist id, which cliphist never reuses.
+
+type_snippet() {
+    local index="${1:-}" md5="${2:-}" filter='.snippets[$i] | select(type == "object") | .text | strings' text_md5
+    [[ $index =~ ^[0-9]+$ && $md5 =~ ^[0-9a-f]{32}$ ]] || {
+        usage >&2
+        exit 2
+    }
+    index=$((10#$index))
+    [[ -r $SNIPPETS_FILE ]] && jq -e . "$SNIPPETS_FILE" >/dev/null 2>&1 ||
+        refuse "Could not read $(basename "$SNIPPETS_FILE")." pick_unreadable
+    # jq -j writes the text verbatim, no newline added: the same bytes the
+    # picker hashed.
+    text_md5="$(jq -j --argjson i "$index" "$filter" "$SNIPPETS_FILE" | md5sum | cut -c1-32)"
+    [[ $text_md5 != "$EMPTY_MD5" && $text_md5 == "$md5" ]] ||
+        refuse "That snippet changed; open the picker again." pick_mismatch
+    launch jq -j --argjson i "$index" "$filter" "$SNIPPETS_FILE"
+}
+
+type_recent() {
+    local id="${1:-}" line
+    [[ $id =~ ^[0-9]+$ ]] || {
+        usage >&2
+        exit 2
+    }
+    have cliphist || refuse "cliphist is not installed." no_cliphist
+    line="$(cliphist list 2>/dev/null | awk -F'\t' -v id="$id" '$1 == id { print; exit }')"
+    [[ -n $line ]] || refuse "That clipboard entry is gone; open the picker again." pick_gone
+    # An image has no text to type.
+    [[ ${line#*$'\t'} != '[[ binary data'* ]] || refuse "That clipboard entry is not text." pick_binary
+    launch sh -c 'printf "%s\t\n" "$1" | cliphist decode' sh "$id"
+}
+
+# The skeleton the picker and the editor start from.
+ensure_snippets() {
+    [[ -e $SNIPPETS_FILE ]] && return 0
+    printf '{\n  "version": 1,\n  "snippets": []\n}\n' | write_user_file "$SNIPPETS_FILE"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+case "${1:-status}" in
+start) launch wl-paste -n ;;
+stop) stop_typing ;;
+toggle) if is_running; then stop_typing; else launch wl-paste -n; fi ;;
+status) status_json ;;
+type)
+    case "${2:-}" in
+    snippet) type_snippet "${3:-}" "${4:-}" ;;
+    recent) type_recent "${3:-}" ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    ;;
+snippets)
+    [[ ${2:-edit} == edit ]] || {
+        usage >&2
+        exit 2
+    }
+    ensure_snippets
+    dry=()
+    $DRY_RUN && dry=(--dry-run)
+    exec "$BIN_DIR/haseen-config-edit" "$SNIPPETS_FILE" "${dry[@]+"${dry[@]}"}"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

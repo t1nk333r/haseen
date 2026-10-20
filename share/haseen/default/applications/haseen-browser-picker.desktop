@@ -1,0 +1,18 @@
+# haseen.browser-picker (plan 096): `haseen setup default browser
+# browser-picker` makes this the default browser, so every link asks which
+# browser and profile opens it (or a learned per-site rule answers). Hidden
+# from launchers: it is a handler, not an app. TryExec keeps it absent from a
+# tree without the command.
+[Desktop Entry]
+Type=Application
+Name=Browser Picker
+GenericName=Web Browser
+Comment=Choose the browser and profile for each link
+Icon=web-browser
+TryExec=haseen-browser-picker
+Exec=haseen-browser-picker %U
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
+Categories=Network;WebBrowser;
+StartupNotify=false

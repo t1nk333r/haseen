@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.typist",
+  "name": "Typist",
+  "version": "1.1.0",
+  "description": "Types the clipboard, a saved snippet or a recent clipboard entry once, keystroke by keystroke, with pauses after line breaks and punctuation: a bar button and a picker panel. Keys go through haseen's ydotool shim into the session's Hyprland (no ydotoold). Adopted from t1nk33r.typist (sanjuanjor/typist, MIT); off by default",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "delayMs": {
+      "type": "integer",
+      "default": 35,
+      "description": "Pause between keystrokes in ms (at least 5)"
+    },
+    "newlineDelayMs": {
+      "type": "integer",
+      "default": 90,
+      "description": "Pause after each line break in ms"
+    },
+    "punctuationDelayMs": {
+      "type": "integer",
+      "default": 60,
+      "description": "Pause after punctuation in ms"
+    },
+    "startupDelayMs": {
+      "type": "integer",
+      "default": 250,
+      "description": "Wait before typing starts, so a held hotkey can be released and the panel can hand focus back"
+    },
+    "maxClipboardBytes": {
+      "type": "integer",
+      "default": 65536,
+      "description": "Text larger than this is refused, not typed"
+    },
+    "recentCount": {
+      "type": "integer",
+      "default": 8,
+      "description": "Recent text entries from haseen.clipboard's history (cliphist) the picker lists; 0 hides the section. Typist stores none of them"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.typist (state, select, activate, filter, pin, remove) while the panel is open"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:write",
+    "notifications"
+  ],
+  "requires": {
+    "bins": [
+      "python3",
+      "wl-paste",
+      "systemd-run"
+    ]
+  }
+}

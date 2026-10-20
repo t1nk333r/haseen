@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.browser-picker",
+  "name": "Browser Picker",
+  "version": "1.0.0",
+  "description": "Choose the browser and profile for every link, with per-site rules that learn from what you pick: a picker card per link (haseen setup default browser browser-picker makes it the default browser), a bar button and a panel with the rules. Every installed browser is found from its desktop entry, Flatpaks included. Adopted from t1nk33r.browser-picker (K53N0/omarchy-browser-picker, MIT); off by default",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "autoOpenRules": {
+      "type": "boolean",
+      "default": true,
+      "description": "Open a link that matches a rule without asking; off keeps rules as ranking hints"
+    },
+    "learnRules": {
+      "type": "boolean",
+      "default": true,
+      "description": "Offer to make a repeated choice a rule (Ctrl+Enter accepts)"
+    },
+    "promptAfter": {
+      "type": "integer",
+      "default": 3,
+      "description": "Times the same site must go to the same profile before the offer (2-20)"
+    },
+    "genericFirst": {
+      "type": "boolean",
+      "default": true,
+      "description": "List browsers without separate profiles first while nothing is typed"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC targets haseen.browser-picker.debug (state, filter, choose, cancel) and haseen.browser-picker.panel"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read",
+    "files:write"
+  ],
+  "provides": [
+    "browser-picker"
+  ]
+}

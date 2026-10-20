@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.vpn",
+  "name": "VPN",
+  "version": "1.4.1",
+  "description": "VPN status in the bar and a panel to connect and switch, across whichever VPN tools are installed: Proton VPN, Mullvad, Windscribe and NordVPN through their CLIs, and NetworkManager's OpenVPN, WireGuard, OpenConnect and VPNC profiles. One tunnel at a time; the public exit address over HTTPS on connection changes only. Adopted from t1nk33r.vpn (jkoestinger/omarchy-vpn with the NordVPN plugin merged in, MIT); off by default",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "refreshIntervalSec": {
+      "type": "integer",
+      "default": 15,
+      "description": "Seconds between status reads of the shown VPN tools (5-600, in steps of 5)"
+    },
+    "preferredBackend": {
+      "type": "string",
+      "default": "Auto",
+      "description": "Tool the panel opens on: Auto (the connected one, else the first found), Proton VPN, Mullvad, Windscribe, NordVPN or NetworkManager"
+    },
+    "favoriteCountries": {
+      "type": "string",
+      "default": "CH,NL,US",
+      "description": "Two-letter codes listed first for Proton VPN, Mullvad and NordVPN; Windscribe matches region names and their leading words"
+    },
+    "hiddenBackends": {
+      "type": "string",
+      "default": "",
+      "description": "Tools the widget ignores (comma separated): proton, mullvad, windscribe, nordvpn, networkmanager; also set from the panel's gear"
+    },
+    "nordvpnAutoConnectCountry": {
+      "type": "string",
+      "default": "",
+      "description": "Two-letter code NordVPN's connect-on-startup uses; empty lets NordVPN pick"
+    }
+  },
+  "permissions": [
+    "exec",
+    "network"
+  ],
+  "provides": [
+    "vpn"
+  ]
+}
