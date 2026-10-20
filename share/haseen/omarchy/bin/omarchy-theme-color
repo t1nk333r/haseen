@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# omarchy-theme-color — resolve colours from a theme's colors.toml, by default
+# the current haseen theme's, for Omarchy's scripts and plugins (the owner's
+# Syncthing plugin reads it). Adapted from Omarchy bin/omarchy-theme-color
+# (MIT, Copyright (c) David Heinemeier Hansson): same flags, output and exit
+# codes; the parser and the alias/derive cascade are haseen's
+# (theme-lib.sh theme_colors_load, itself adapted from this script), so the
+# answers match what `haseen theme set` renders. Differences: --all also
+# lists the keys haseen adds (accent falls back to blue, the shell tokens
+# font_family, font_mono, font_size, radius, gap, border_width and
+# shell_selection) and leaves out keys that resolved to nothing; a missing
+# --file value is a usage error instead of a loop (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+colors_file="$THEME_CURRENT_PATH/colors.toml"
+output=""
+query_key=""
+query_fallback=""
+
+usage() {
+    echo "Usage: omarchy-theme-color [--file <colors.toml>] (--all | --raw | <key> [fallback])"
+}
+
+help() {
+    usage
+    cat <<EOF
+
+haseen's answer to Omarchy's command. The default file is the current haseen
+theme's ($THEME_CURRENT_PATH/colors.toml).
+  --all            every resolved key<TAB>value pair, sorted by key
+  --raw            only the key<TAB>value pairs defined in the file
+  <key> [fallback] one resolved value; the fallback is tried as another key
+                   first, then used verbatim. Exits 1 when nothing resolves.
+EOF
+}
+
+while (($# > 0)); do
+    case "$1" in
+    --file)
+        (($# >= 2)) || {
+            usage >&2
+            exit 1
+        }
+        colors_file="$2"
+        shift 2
+        ;;
+    --all)
+        output=all
+        shift
+        ;;
+    --raw)
+        output=raw
+        shift
+        ;;
+    -h | --help)
+        help
+        exit 0
+        ;;
+    *)
+        if [[ -z $query_key ]]; then
+            query_key="$1"
+        elif [[ -z $query_fallback ]]; then
+            query_fallback="$1"
+        else
+            usage >&2
+            exit 1
+        fi
+        shift
+        ;;
+    esac
+done
+
+if [[ -z $output && -z $query_key ]] || [[ -n $output && -n $query_key ]]; then
+    usage >&2
+    exit 1
+fi
+
+# --raw: the file's own keys in file order, through the same charset rules
+# theme_colors_load applies, so a key it skips is skipped here too.
+if [[ $output == raw ]]; then
+    [[ -f $colors_file ]] || exit 0
+    while IFS='=' read -r key value || [[ -n $key ]]; do
+        key="${key//[\"\' ]/}"
+        [[ -n $key && $key != \#* ]] || continue
+        if [[ $value == *[\"\']* ]]; then
+            value="${value#*[\"\']}"
+            value="${value%%[\"\']*}"
+        else
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+        fi
+        if [[ ! $key =~ $_THEME_KEY_RE ]]; then
+            warn "colors.toml: skipping key with unsupported characters"
+            continue
+        fi
+        if [[ ! $value =~ $_THEME_VALUE_RE ]]; then
+            warn "colors.toml: skipping $key: unsupported characters in value"
+            continue
+        fi
+        printf '%s\t%s\n' "$key" "$value"
+    done <"$colors_file"
+    exit 0
+fi
+
+# Without a file Omarchy still resolves the mode to dark; keep that answer.
+if ! theme_colors_load "$colors_file"; then
+    THEME_COLORS=([mode]=dark [theme_type]=dark)
+fi
+
+if [[ $output == all ]]; then
+    while IFS= read -r key; do
+        printf '%s\t%s\n' "$key" "${THEME_COLORS[$key]}"
+    done < <(printf '%s\n' "${!THEME_COLORS[@]}" | LC_ALL=C sort)
+    exit 0
+fi
+
+value="${THEME_COLORS[$query_key]:-}"
+if [[ -z $value && -n $query_fallback ]]; then
+    value="${THEME_COLORS[$query_fallback]:-$query_fallback}"
+fi
+[[ -n $value ]] || exit 1
+printf '%s\n' "$value"

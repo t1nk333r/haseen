@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# omarchy-theme-colors-from-alacritty — write <theme-dir>/colors.toml from the
+# palette in the theme's alacritty.toml, for themes older than colors.toml.
+# Adapted from Omarchy bin/omarchy-theme-colors-from-alacritty (MIT,
+# Copyright (c) David Heinemeier Hansson): the parser and the output are
+# Omarchy's; the write goes through haseen's write_user_file, so --dry-run
+# prints the file instead. Only hex colours are read from alacritty.toml:
+# nothing in it runs. `haseen theme set` needs a colors.toml and does not call
+# this yet; run it on a legacy theme directory of your own (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-colors-from-alacritty <theme-dir> [--dry-run]
+
+haseen's answer to Omarchy's command: when <theme-dir> has an alacritty.toml
+but no colors.toml, writes <theme-dir>/colors.toml (accent, selection,
+background, foreground, color0-15) from alacritty's [colors.*] tables.
+Does nothing when colors.toml exists, when there is no alacritty.toml, or
+when the eight normal colours are not all there.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+
+theme_source="${1:-}"
+colors_output="$theme_source/colors.toml"
+alacritty_file="$theme_source/alacritty.toml"
+
+if [[ -z $theme_source ]]; then
+    echo "Usage: omarchy-theme-colors-from-alacritty <theme-dir>" >&2
+    exit 1
+fi
+
+# Skip if colors.toml already exists in source theme
+[[ ! -f $colors_output ]] || exit 0
+# Skip if no alacritty.toml to extract from
+[[ -f $alacritty_file ]] || exit 0
+
+# Parse the alacritty TOML in a single awk pass, emitting one
+# "<dotted-path>\t#<hex>" pair per color-valued key. Dotted keys are
+# normalized (`normal.black = ...` under [colors] becomes
+# colors.normal.black, same as `black = ...` under [colors.normal]),
+# with the section form taking precedence and the first valid
+# occurrence of a key winning.
+declare -A colors=()
+while IFS=$'\t' read -r key value; do
+    colors[$key]=$value
+done < <(awk '
+  /^[ \t]*\[/ {
+    line = $0
+    sub(/^[ \t]+/, "", line)
+    if (line ~ /^\[[^]]*\][ \t]*$/) {
+      section = substr(line, 2, index(line, "]") - 2)
+    } else {
+      section = ""
+    }
+    next
+  }
+
+  section != "" {
+    split_pos = index($0, "=")
+    if (split_pos == 0) {
+      next
+    }
+
+    key = substr($0, 1, split_pos - 1)
+    gsub(/^[ \t]+|[ \t]+$/, "", key)
+    if (key == "" || key ~ /^#/) {
+      next
+    }
+
+    value = substr($0, split_pos + 1)
+    gsub(/^[ \t]+|[ \t]+$/, "", value)
+
+    # Accept a lone hex color, optionally 0x- or #-prefixed and quoted,
+    # ignoring any trailing comment. The color always yields the first
+    # run of six hex digits.
+    if (value !~ /^["'\''](0[xX]|#)?[0-9a-fA-F]{6}(["'\'']([ \t]*#.*)?)?$/ &&
+        value !~ /^(0[xX])?[0-9a-fA-F]{6}([ \t]*#.*)?$/) {
+      next
+    }
+    match(value, /[0-9a-fA-F]{6}/)
+    hex = tolower(substr(value, RSTART, RLENGTH))
+
+    path = section "." key
+    if (section == "colors" && index(key, ".") > 0) {
+      if (!(path in dotted)) dotted[path] = hex
+    } else {
+      if (!(path in direct)) direct[path] = hex
+    }
+  }
+
+  END {
+    for (path in direct) print path "\t#" direct[path]
+    for (path in dotted) if (!(path in direct)) print path "\t#" dotted[path]
+  }
+' "$alacritty_file")
+
+names=(black red green yellow blue magenta cyan white)
+declare -a c=()
+
+# Normal colors (color0-7) are required.
+for i in {0..7}; do
+    c[i]="${colors[colors.normal.${names[i]}]:-}"
+    if [[ -z ${c[i]} ]]; then
+        echo "Warning: Cannot extract all normal colors from $alacritty_file, skipping generation" >&2
+        exit 0
+    fi
+done
+# Bright colors (color8-15) fall back to the normal ones.
+for i in {0..7}; do
+    value="${colors[colors.bright.${names[i]}]:-}"
+    c[i + 8]="${value:-${c[i]}}"
+done
+
+background="${colors[colors.primary.background]:-}"
+foreground="${colors[colors.primary.foreground]:-}"
+selection_background="${colors[colors.selection.background]:-}"
+background=${background:-${c[0]}}
+foreground=${foreground:-${c[7]}}
+c[0]=$background
+c[7]=$foreground
+selection_background=${selection_background:-$foreground}
+accent=${c[4]}
+
+{
+    printf 'accent = "%s"\nselection = "%s"\n\n' "$accent" "$selection_background"
+    printf 'background = "%s"\nforeground = "%s"\n\n' "$background" "$foreground"
+    for i in {0..15}; do
+        printf 'color%d = "%s"\n' "$i" "${c[i]}"
+    done
+} | write_user_file "$colors_output"

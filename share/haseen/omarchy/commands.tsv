@@ -358,7 +358,40 @@ omarchy-system-stats	port	-	prints CPU and memory figures for a shell panel
 omarchy-system-wake	shim	haseen-screen-on	turns every display back on
 omarchy-tailscale-receive	port	-	saves incoming Taildrop files to the downloads directory and announces each
 omarchy-tailscale-send	port	-	sends files to a machine on the tailnet with Taildrop
+omarchy-theme-bg-cache	inert	-	it warms thumbnails for Omarchy's own background switcher; haseen's background panel makes its own
+omarchy-theme-bg-current	translate	haseen-theme-bg	prints the current background's name (Blue Hour), or Unknown
+omarchy-theme-bg-install	port	-	creates the current theme's folder in ~/.config/haseen/backgrounds and opens it
+omarchy-theme-bg-next	shim	haseen-theme-bg next	shows the current theme's next background
+omarchy-theme-bg-set	shim	haseen-theme-bg set	shows the given image as the background
+omarchy-theme-bg-switcher	translate	haseen-shell-ipc	opens haseen's background picker, which applies the image you pick
+omarchy-theme-color	port	-	prints a resolved colour of the current haseen theme (--all, --raw, --file)
+omarchy-theme-colors-from-alacritty	port	-	writes a legacy theme's colors.toml from its alacritty.toml
+omarchy-theme-current	translate	haseen-theme-current	prints the current haseen theme's name title-cased, or Unknown
+omarchy-theme-dir	port	-	prints a theme's directory: yours in ~/.config/haseen/themes, else haseen's stock one
+omarchy-theme-extras	port	-	lists the themes in ~/.config/haseen/themes installed from git
+omarchy-theme-install	translate	haseen-theme-install	clones a theme repository into ~/.config/haseen/themes and applies it
+omarchy-theme-list	translate	haseen-theme-list	lists haseen's themes, one title-cased name per line
+omarchy-theme-osc	port	-	prints the escape sequences that put a terminal on a colors.toml palette
+omarchy-theme-refresh	translate	haseen-theme-set	applies the current haseen theme again
+omarchy-theme-remove	port	-	deletes a theme you installed from ~/.config/haseen/themes
 omarchy-theme-set	shim	haseen-theme-set	sets the haseen theme
+omarchy-theme-set-browser	port	-	sets Chromium-family browsers' policy theme colour to the haseen theme's background
+omarchy-theme-set-browser-policy	port	-	writes BrowserThemeColor into the existing Chromium-family managed-policy directories
+omarchy-theme-set-claude	port	-	publishes the haseen theme to Claude Code as custom:haseen
+omarchy-theme-set-foot	port	-	sends the haseen theme's palette to running foot terminals
+omarchy-theme-set-gnome	port	-	sets GNOME's colour scheme, Adwaita variant and icon theme from the haseen theme
+omarchy-theme-set-hermes	port	-	publishes the haseen theme as the Hermes skin haseen
+omarchy-theme-set-keyboard	port	-	sets ASUS ROG and Framework 16 keyboard lighting to the haseen theme
+omarchy-theme-set-keyboard-asus-rog	port	-	sets the asusctl aura colour to the haseen theme's keyboard colour
+omarchy-theme-set-keyboard-f16	port	-	sets the Framework 16 QMK keyboard colour to the haseen theme's
+omarchy-theme-set-obsidian	port	-	publishes the haseen theme to every Obsidian vault as the theme haseen
+omarchy-theme-set-pi	port	-	publishes the haseen theme to the Pi coding agent as the theme haseen
+omarchy-theme-set-t3code	port	-	publishes the haseen theme to T3 Code as the theme haseen
+omarchy-theme-set-templates	inert	-	it renders into Omarchy's staging directory mid theme set; haseen theme set renders its own
+omarchy-theme-set-tmux	port	-	applies the haseen theme to the running tmux server
+omarchy-theme-set-vscode	port	-	publishes the haseen theme to VS Code, VSCodium and Cursor as the theme haseen
+omarchy-theme-switcher	translate	haseen-shell-ipc	opens haseen's theme picker, which applies the theme you pick
+omarchy-theme-update	port	-	git-pulls the themes installed from git and applies the current one again
 omarchy-toggle	port	-	switches an Omarchy flag: haseen's own flag where one means the same, else haseen's toggle store
 omarchy-toggle-bar	translate	haseen-toggle-bar	hides (on) or shows (off) or flips the running bar, for the session
 omarchy-toggle-crash-capture	port	-	turns crash toasts off/on; the crash watcher keeps running for shell recovery

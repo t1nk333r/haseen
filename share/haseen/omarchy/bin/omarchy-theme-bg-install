@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# omarchy-theme-bg-install — open the current theme's own background folder so
+# images can be dropped in (`haseen theme bg list` reads it first). Adapted
+# from Omarchy bin/omarchy-theme-bg-install (MIT, Copyright (c) David
+# Heinemeier Hansson): the folder is ~/.config/haseen/backgrounds/<theme>
+# instead of ~/.config/omarchy/backgrounds/<theme>, and it opens in the
+# folder handler haseen's mimeapps names (xdg-open) instead of nautilus
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-bg-install [--dry-run]
+
+haseen's answer to Omarchy's command: creates $THEME_USER_BACKGROUNDS_DIR/<theme>
+for the current theme and opens it. Images there come first in
+'haseen theme bg list' and 'haseen theme bg next'.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+theme_name="$(theme_current_name)" || die "no theme set (try: haseen theme set $THEME_DEFAULT)"
+dir="$THEME_USER_BACKGROUNDS_DIR/$theme_name"
+run mkdir -p -- "$dir"
+run xdg-open "$dir"

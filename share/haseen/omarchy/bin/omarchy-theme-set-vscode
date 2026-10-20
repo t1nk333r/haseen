@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-vscode — publish the current haseen theme to VS Code, VS
+# Code Insiders, VSCodium and Cursor (native or Flatpak) as the local colour
+# theme extension "haseen". Adapted from Omarchy bin/omarchy-theme-set-vscode
+# (MIT, Copyright (c) David Heinemeier Hansson): haseen renders no
+# vscode-theme.json at theme set, so the theme is current/theme/
+# vscode-theme.json when present, else Omarchy's vscode-theme.json template
+# rendered from the current colors.toml, copied into the extension (Omarchy
+# links it); the extension is local.haseen-theme, labelled haseen; the
+# Flatpak editors haseen's catalogue installs are found too; a render with an
+# unresolved placeholder is not published. An editor's settings.json is the
+# user's: "workbench.colorTheme" is set only with --activate, which also
+# installs the extension a stock theme's vscode.json names (Omarchy does both
+# at every theme set, and drops the setting when the theme has no VS Code
+# colours; haseen never removes it). The skip-<editor>-theme-changes toggles
+# still opt an editor out (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+VSCODE_DESCRIPTOR="$THEME_CURRENT_PATH/vscode.json"
+EXT_NAME="haseen-theme"
+EXT_ID="local.$EXT_NAME"
+EXT_VERSION="1.0.0"
+EXT_LABEL="haseen"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# One editor per row: toggle, command, settings.json, extensions dir, and its
+# Flatpak (id, command, settings.json; "-" when there is none). A Flatpak
+# editor keeps its settings under ~/.var/app/<id> but its extensions in the
+# same home directory as the native one.
+EDITORS=(
+    "skip-vscode-theme-changes|code|$CONFIG_HOME/Code/User/settings.json|$HOME/.vscode/extensions|com.visualstudio.code|code|$HOME/.var/app/com.visualstudio.code/config/Code/User/settings.json"
+    "skip-vscode-insiders-theme-changes|code-insiders|$CONFIG_HOME/Code - Insiders/User/settings.json|$HOME/.vscode-insiders/extensions|-|-|-"
+    "skip-codium-theme-changes|codium|$CONFIG_HOME/VSCodium/User/settings.json|$HOME/.vscode-oss/extensions|com.vscodium.codium|codium|$HOME/.var/app/com.vscodium.codium/config/VSCodium/User/settings.json"
+    "skip-cursor-theme-changes|cursor|$CONFIG_HOME/Cursor/User/settings.json|$HOME/.cursor/extensions|-|-|-"
+)
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-vscode [--activate] [--dry-run]
+
+haseen's answer to Omarchy's command: writes the current haseen theme as the
+local extension "$EXT_LABEL" for every installed VS Code, VS Code Insiders,
+VSCodium and Cursor (native or Flatpak). Choose "$EXT_LABEL" once under
+Preferences: Color Theme, or:
+  --activate  also set "workbench.colorTheme" in each editor's settings.json,
+              to the theme's own VS Code theme when it names one (installing
+              that extension if needed), else to "$EXT_LABEL"
+An editor is left alone while its Omarchy toggle is on
+(skip-vscode-theme-changes, skip-vscode-insiders-theme-changes,
+skip-codium-theme-changes, skip-cursor-theme-changes).
+EOF
+}
+parse_common_flags "$@"
+activate=false
+for arg in "${REST[@]}"; do
+    case "$arg" in
+    --activate) activate=true ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+    esac
+done
+
+# write_if_changed DEST — write stdin to DEST unless DEST already holds it, so
+# a re-run changes nothing and a dry run shows only what would change.
+write_if_changed() {
+    local dest="$1" content
+    content="$(cat)"
+    if [[ -f $dest && $(<"$dest") == "$content" ]]; then return 0; fi
+    printf '%s\n' "$content" | write_user_file "$dest"
+}
+
+# flatpak_installed ID — the Flatpak app ID is installed system-wide or for
+# this user (read from the installation directories, never from flatpak).
+flatpak_installed() {
+    [[ -d $(sysroot_path "/var/lib/flatpak/app/$1") || -d ${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/app/$1 ]]
+}
+
+# extension_installed DIR ID — VS Code unpacks publisher.name as
+# publisher.name-<version> (lower case) in its extensions directory.
+extension_installed() {
+    local dir="$1" id="${2,,}" entry
+    for entry in "$dir"/*; do
+        [[ -d $entry && ${entry##*/} == "$id"-* ]] && return 0
+    done
+    return 1
+}
+
+# register_extension EXT_DIR — list the generated extension in the editor's
+# extensions.json (and take it off .obsolete): VS Code loads only the
+# extensions that file names. Both are the editor's own state, not settings.
+register_extension() {
+    local ext_dir="$1" ext_base extensions_file obsolete_file
+    ext_base="$(dirname -- "$ext_dir")"
+    extensions_file="$ext_base/extensions.json"
+    obsolete_file="$ext_base/.obsolete"
+
+    if [[ -f $obsolete_file ]] && jq -e --arg key "$EXT_ID-$EXT_VERSION" 'has($key)' "$obsolete_file" &>/dev/null; then
+        if [[ $(jq --arg key "$EXT_ID-$EXT_VERSION" 'del(.[$key]) | length' "$obsolete_file") == 0 ]]; then
+            run rm -f -- "$obsolete_file"
+        else
+            omarchy_json_set "$obsolete_file" 'del(.[$key])' --arg key "$EXT_ID-$EXT_VERSION" ||
+                warn "could not update $obsolete_file"
+        fi
+    fi
+
+    if [[ ! -f $extensions_file ]]; then
+        printf '[]\n' | write_user_file "$extensions_file"
+    elif jq -e --arg id "$EXT_ID" --arg path "$ext_dir" \
+        'any(.[]; .identifier.id == $id and .location.fsPath == $path)' "$extensions_file" &>/dev/null; then
+        return 0
+    fi
+    # shellcheck disable=SC2016  # $-names are jq variables
+    omarchy_json_set "$extensions_file" 'map(select(.identifier.id != $id)) + [{
+      identifier: { id: $id },
+      version: $version,
+      location: { "$mid": 1, fsPath: $fs_path, external: $external, path: $fs_path, scheme: "file" },
+      relativeLocation: $relative
+    }]' --arg id "$EXT_ID" --arg version "$EXT_VERSION" --arg fs_path "$ext_dir" \
+        --arg external "file://$ext_dir" --arg relative "${ext_dir##*/}" ||
+        warn "could not register $EXT_ID in $extensions_file (is it valid JSON?)"
+}
+
+# publish_extension EXT_BASE — the generated theme as a local extension: VS
+# Code discovers colour themes only through an extension package.
+publish_extension() {
+    local ext_dir="$1/$EXT_NAME" theme_file ui_theme=vs-dark
+    theme_file="$ext_dir/themes/haseen-color-theme.json"
+    [[ $(jq -r '.type // "dark"' "$generated" 2>/dev/null) == light ]] && ui_theme=vs
+    if [[ ! -f $theme_file ]] || ! cmp -s -- "$generated" "$theme_file"; then
+        omarchy_publish "$generated" "$theme_file"
+    fi
+    write_if_changed "$ext_dir/package.json" <<EOF
+{
+    "name": "$EXT_NAME",
+    "displayName": "$EXT_LABEL",
+    "description": "Follows the colours of the current haseen theme",
+    "publisher": "local",
+    "version": "$EXT_VERSION",
+    "engines": { "vscode": "^1.70.0" },
+    "categories": ["Themes"],
+    "contributes": {
+        "themes": [{
+            "label": "$EXT_LABEL",
+            "uiTheme": "$ui_theme",
+            "path": "./themes/haseen-color-theme.json"
+        }]
+    }
+}
+EOF
+    register_extension "$ext_dir"
+}
+
+# set_color_theme SETTINGS NAME — set "workbench.colorTheme" to NAME in the
+# user's settings.json. It is JSONC (comments and trailing commas are legal
+# and common), so it is edited as text, as Omarchy does, not round-tripped
+# through a strict parser that would reject it or reformat the rest; the
+# result is written whole through write_user_file.
+set_color_theme() {
+    local settings="$1" name="$2" escaped tmp
+    escaped=${name//&/\\&}
+    escaped=${escaped//|/\\|}
+    # A dangling link is the user's (a dotfiles checkout not cloned yet):
+    # writing through it would create its target.
+    if [[ -L $settings && ! -e $settings ]]; then
+        warn "$settings links to nothing: left alone"
+        return 0
+    fi
+    if [[ ! -f $settings ]]; then
+        # NAME holds no quote, backslash or control character (checked when
+        # it was read), so it is a JSON string as it stands.
+        printf '{\n    "workbench.colorTheme": "%s"\n}\n' "$name" | write_user_file "$settings"
+        return
+    fi
+    omarchy_themed_scratch
+    tmp="$REPLY/settings.json"
+    cp -- "$settings" "$tmp"
+    if ! grep -q '"workbench.colorTheme"' "$tmp"; then
+        sed -i -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$tmp"
+    fi
+    sed -i -E "s|(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1$escaped\2|" "$tmp"
+    cmp -s -- "$tmp" "$settings" && return 0
+    write_user_file "$settings" <"$tmp"
+}
+
+# apply EDITOR_CMD SETTINGS EXT_BASE [FLATPAK_ID] — publish to one editor
+# install and, with --activate, select the theme in it.
+apply() {
+    local cmd="$1" settings="$2" ext_base="$3" flatpak_id="${4:-}" name="$EXT_LABEL"
+    local -a editor=("$cmd")
+    [[ -n $flatpak_id ]] && editor=(flatpak run "--command=$cmd" "$flatpak_id")
+
+    publish_extension "$ext_base"
+    $activate || return 0
+
+    if [[ -n $theme_name ]]; then
+        if [[ -z $theme_extension ]] || extension_installed "$ext_base" "$theme_extension"; then
+            name="$theme_name"
+        elif omarchy_run_quiet "${editor[@]}" --install-extension "$theme_extension"; then
+            name="$theme_name"
+        else
+            warn "could not install $theme_extension for $cmd: selecting $EXT_LABEL instead"
+        fi
+    fi
+    set_color_theme "$settings" "$name"
+}
+
+omarchy_theme_file vscode-theme.json || {
+    if $activate; then
+        echo "VS Code theme source missing: no current haseen theme to render it from." >&2
+        echo "Set one first: haseen theme set <name>" >&2
+        exit 1
+    fi
+    exit 0
+}
+generated="$REPLY"
+if omarchy_unresolved "$generated"; then
+    echo "Skipping VS Code theme: vscode-theme.json has unresolved colors." >&2
+    exit 0
+fi
+
+# A theme may name its own VS Code theme. Both fields come from the theme, so
+# neither is trusted as a shell or sed argument: a label that cannot land in
+# settings.json as a JSON string is dropped, and a malformed extension ID is
+# never installed (stock themes only: an installed theme's vscode.json is
+# dropped at staging, theme-lib.sh THEME_INSTALLED_DENIED).
+theme_name="" theme_extension=""
+if [[ -f $VSCODE_DESCRIPTOR ]]; then
+    theme_name="$(jq -r '.name // empty' "$VSCODE_DESCRIPTOR" 2>/dev/null || true)"
+    theme_extension="$(jq -r '.extension // empty' "$VSCODE_DESCRIPTOR" 2>/dev/null || true)"
+    [[ $theme_name =~ ^[^[:cntrl:]\"\\]+$ ]] || theme_name=""
+    [[ $theme_extension =~ ^[a-zA-Z0-9._-]+$ ]] || theme_extension=""
+fi
+
+for row in "${EDITORS[@]}"; do
+    IFS='|' read -r toggle cmd settings ext_base flatpak_id flatpak_cmd flatpak_settings <<<"$row"
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-enabled" "$toggle" && continue
+    if have "$cmd"; then apply "$cmd" "$settings" "$ext_base"; fi
+    if [[ $flatpak_id != - ]] && flatpak_installed "$flatpak_id"; then
+        apply "$flatpak_cmd" "$flatpak_settings" "$ext_base" "$flatpak_id"
+    fi
+done
+exit 0

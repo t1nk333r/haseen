@@ -123,6 +123,25 @@ write_user_file() {
     fi
 }
 
+# replace_user_file DEST — write stdin over unprivileged file DEST atomically:
+# a temporary file beside it, then a rename, so an application reading DEST
+# (an editor's state file) never sees it half written. DEST keeps its mode.
+replace_user_file() {
+    local dest="$1" tmp
+    if $DRY_RUN; then
+        echo "DRYRUN: write $dest:"
+        sed 's/^/    | /'
+        return 0
+    fi
+    mkdir -p "$(dirname "$dest")"
+    tmp="$(mktemp "$dest.XXXXXX")" || return 1
+    [[ ! -e $dest ]] || chmod --reference="$dest" "$tmp"
+    if ! cat >"$tmp" || ! mv -fT -- "$tmp" "$dest"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+}
+
 # append_user_file DEST — append stdin to unprivileged file DEST, creating it
 # and its parents if needed. The caller decides whether appending is right:
 # this helper never looks at what is already there.

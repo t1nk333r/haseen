@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-keyboard-asus-rog — light an ASUS ROG keyboard in the
+# current haseen theme's keyboard colour (its accent) with asusctl, which
+# haseen's asus-rog quirk installs. Adapted from Omarchy
+# bin/omarchy-theme-set-keyboard-asus-rog (MIT, Copyright (c) David
+# Heinemeier Hansson): haseen renders no keyboard.rgb at theme set, so the
+# colour is current/theme/keyboard.rgb when the theme ships one, else
+# Omarchy's keyboard.rgb template rendered from the current colors.toml;
+# asusctl runs through run, so --dry-run prints it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-keyboard-asus-rog [--dry-run]
+
+haseen's answer to Omarchy's command: sets the asusctl aura static colour to
+the current haseen theme's keyboard colour. Does nothing without asusctl or
+without a current theme.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+have asusctl || exit 0
+omarchy_theme_file keyboard.rgb || exit 0
+color="$(sed 's/^#//' "$REPLY")"
+[[ $color =~ ^[0-9A-Fa-f]{6}$ ]] || exit 0
+run asusctl aura effect static -c "$color"

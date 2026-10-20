@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-theme-osc — the OSC sequences that recolour a running terminal
+# (OSC 10/11/12/17/19 and 4;0-15) for a colors.toml, by default the current
+# haseen theme's. Adapted from Omarchy bin/omarchy-theme-osc (MIT, Copyright
+# (c) David Heinemeier Hansson): colours resolve through haseen's colors.toml
+# parser (theme-lib.sh theme_colors_load) instead of omarchy-theme-color
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+omarchy_help "Usage: omarchy-theme-osc [colors.toml]
+
+haseen's answer to Omarchy's command: prints the escape sequences that set a
+terminal's foreground, background, cursor, selection and 16-colour palette
+to those of the file (default: $THEME_CURRENT_PATH/colors.toml). Prints
+nothing when the file does not exist." "$@"
+
+theme="${1:-$THEME_CURRENT_PATH/colors.toml}"
+[[ -f $theme ]] || exit 0
+omarchy_theme_osc "$theme"

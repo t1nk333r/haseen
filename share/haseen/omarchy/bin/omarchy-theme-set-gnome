@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-gnome — GTK's colour scheme, the Adwaita/Adwaita-dark GTK 3
+# theme and the icon theme for the current haseen theme's mode. `haseen theme
+# set` does the same in theme-lib.sh theme_post_set; this serves Omarchy's
+# direct callers. Adapted from Omarchy bin/omarchy-theme-set-gnome (MIT,
+# Copyright (c) David Heinemeier Hansson) with haseen's choices: a GTK theme
+# other than Adwaita is the user's and stays, and the icon theme changes only
+# when icons.theme names one that is installed (no Yaru-blue fallback,
+# Omarchy's :33). Exit 0 without a session bus, as Omarchy (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-gnome [--dry-run]
+
+haseen's answer to Omarchy's command: sets org.gnome.desktop.interface
+color-scheme (prefer-light / prefer-dark), gtk-theme (Adwaita / Adwaita-dark,
+only when it is one of those) and icon-theme (when the theme's icons.theme
+names an installed icon theme).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+# gsettings needs a user DBus session (an installer chroot has none).
+if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} ]] || ! have gsettings; then exit 0; fi
+
+mode=dark
+if theme_colors_load "$THEME_CURRENT_PATH/colors.toml"; then mode="${THEME_COLORS[mode]}"; fi
+[[ $mode == light ]] || mode=dark
+run gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" || warn "gsettings failed"
+
+# GTK 3 ignores color-scheme; Adwaita has a separate dark theme.
+gtk_theme="$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null || true)"
+gtk_theme="${gtk_theme//\'/}"
+if [[ -z $gtk_theme || $gtk_theme == Adwaita || $gtk_theme == Adwaita-dark ]]; then
+    gtk_theme=Adwaita-dark
+    [[ $mode == light ]] && gtk_theme=Adwaita
+    run gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme" || warn "gsettings failed"
+fi
+
+icons=""
+[[ -r $THEME_CURRENT_PATH/icons.theme ]] && icons="$(<"$THEME_CURRENT_PATH/icons.theme")"
+if [[ $icons =~ ^[A-Za-z0-9._+-]+$ && -d $(sysroot_path "/usr/share/icons/$icons") ]]; then
+    run gsettings set org.gnome.desktop.interface icon-theme "$icons" || warn "gsettings failed"
+fi
