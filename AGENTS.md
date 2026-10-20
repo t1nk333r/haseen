@@ -75,6 +75,11 @@ between parts. The engineering record is `plans/`, indexed by
   - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
     plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.
+  - Adopted from the owner's forks; these four override "never bundled" below:
+    - haseen.typist: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
+    - haseen.settings: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
+    - haseen.browser-picker: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
+    - haseen.vpn: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
     `haseen plugin install`, and installing does not enable them.
