@@ -7,7 +7,10 @@
 # hyprctl and the jq are Omarchy's; the brightness and scaling lines come
 # from haseen's omarchy-brightness-display and
 # omarchy-hyprland-monitor-scaling beside this one, an empty line when either
-# is missing or fails (plan 093). Read-only.
+# is missing or fails (plan 093). It changes nothing on the system, but
+# reading an external monitor's brightness goes through haseen brightness,
+# which may refresh its own cache of DDC displays
+# (~/.cache/haseen/ddc-displays.tsv, bin/haseen-brightness:206-212).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"

@@ -8,6 +8,9 @@
 # screen_lua, as haseen.windows does), and a leading `uwsm-app --` in the
 # launch command is dropped outside a uwsm session, where uwsm-app has no
 # manager to talk to (plan 093). DRY_RUN=true prints the launch instead.
+# The launch command is eval'd as shell code, as in Omarchy: callers quote
+# every word they build into it (printf %q), and it never carries untrusted
+# input such as a window title or a URL from a page.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
