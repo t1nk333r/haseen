@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.updates",
+  "name": "Package updates",
+  "version": "1.0.0",
+  "description": "Pending repo and AUR update count from `haseen update check` (checkupdates on a private database, the AUR helper's -Qua), hidden while nothing is pending. A left click runs `haseen update`, a right click lists the packages. Adopted from the owner's t1nk33r.updates; off by default",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "interval": {
+      "type": "integer",
+      "default": 30,
+      "description": "Minutes between checks (2-1440)"
+    },
+    "alwaysShow": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keep the icon in the bar while the system is up to date"
+    },
+    "splitAur": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show repo+AUR (12+3) instead of one total while AUR updates wait"
+    },
+    "listLines": {
+      "type": "integer",
+      "default": 20,
+      "description": "Package lines the panel lists before summing up the rest"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

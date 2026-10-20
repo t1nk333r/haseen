@@ -1,0 +1,9 @@
+{
+  "bar": {
+    "right": ["haseen.tray", "t1nk33r.nook"],
+    "overflow": []
+  },
+  "plugins": {
+    "t1nk33r.nook": { "enabled": false, "settings": { "items": [{ "id": "me.a" }] } }
+  }
+}

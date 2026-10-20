@@ -75,6 +75,11 @@ between parts. The engineering record is `plans/`, indexed by
   - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
     plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.
+  - Adopted as first-party, off by default (owner, 2026-10-20, plan 095):
+    - `haseen.active-window` (was t1nk33r.active-window);
+    - `haseen.power` (was t1nk33r.power);
+    - `haseen.updates` (was t1nk33r.updates);
+    - `haseen.nook` (was t1nk33r.nook).
   - Adopted from the owner's forks; these four override "never bundled" below:
     - haseen.typist: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
     - haseen.settings: adopted as first-party, off by default (owner, 2026-10-20, plan 096).

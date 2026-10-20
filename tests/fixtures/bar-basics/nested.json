@@ -1,0 +1,38 @@
+{
+  "bar": {
+    "position": "top",
+    "left": ["haseen.logo", "t1nk33r.active-window", "me.clock"],
+    "center": ["haseen.clock", "t1nk33r.updates"],
+    "right": ["haseen.tray", "t1nk33r.nook", "me.vpn", "me.after"],
+    "overflow": ["me.o", "t1nk33r.nook", "me.after"],
+    "pinned": ["t1nk33r.updates", "t1nk33r.nook"]
+  },
+  "services": ["haseen.pager", "t1nk33r.nook", "t1nk33r.updates", "me.vpn"],
+  "plugins": {
+    "t1nk33r.active-window": { "enabled": true, "settings": { "maxChars": 25, "junk": 1 } },
+    "t1nk33r.updates": { "settings": { "interval": 15, "splitAur": true, "tooltipLines": 5, "onClick": "some-updater" } },
+    "t1nk33r.power": { "enabled": false, "settings": { "showPercentage": "false" } },
+    "t1nk33r.nook": {
+      "enabled": true,
+      "settings": {
+        "items": [
+          { "id": "me.a", "hidden": "x", "mode": "item" },
+          { "id": "me.left" },
+          { "id": "me.vpn" },
+          "me.b",
+          { "id": "t1nk33r.nook" },
+          { "id": "Not An Id" },
+          { "id": "me.a" }
+        ],
+        "widgetOrigins": {
+          "me.left": { "index": 4, "section": "left" },
+          "me.b": { "index": 2, "section": "bogus" }
+        },
+        "trigger": "click",
+        "duration": 180
+      }
+    },
+    "me.a": { "enabled": true, "settings": { "mode": "mine" } }
+  },
+  "other": { "theme": "keep" }
+}

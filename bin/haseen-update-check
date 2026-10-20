@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# haseen:summary Count pending repo and AUR updates without installing anything (JSON)
+# haseen:args [--force] [--dry-run]
+#
+# Adapted from the owner's t1nk33r.updates widget script (updates.sh, MIT,
+# Copyright (c) t1nk33r), adopted as haseen.updates in plan 095.
+#
+# Repo updates come from checkupdates (pacman-contrib), which syncs a private
+# copy of the sync databases and never touches /var/lib/pacman: no root and
+# no real `pacman -Sy`. AUR updates come from the AUR helper's `-Qua`, which
+# only compares the local database with the AUR RPC.
+#
+# checkupdates races on db.lck when two callers share a database directory, so
+# this command keeps its own one under $XDG_RUNTIME_DIR/haseen and holds a
+# flock around the check. A bar on every monitor and a "Check now" therefore
+# never collide, and a caller arriving right behind another reuses its result
+# from a short-lived cache instead of fetching again.
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen update check [--force] [--dry-run]
+
+Prints one JSON object and exits 0, also when a check fails:
+  {"repo":N,"aur":N,"lines":["pkg old -> new", ...],"errors":["..."],"cached":bool}
+
+AUR lines end in "  (AUR)". A failed check is named in "errors" and its
+count is not trusted; a result without errors is cached for
+\$HASEEN_UPDATES_CACHE_TTL seconds (60).
+
+  --force    ignore the cache and check again
+  --dry-run  print the checks it would run; nothing is checked or cached
+
+'haseen update' installs them.
+EOF
+}
+
+parse_common_flags "$@"
+force=false
+for arg in "${REST[@]}"; do
+    case "$arg" in
+    --force) force=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+require_not_root
+
+run_dir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/haseen"
+db_dir="$run_dir/updates-db"
+lock_file="$run_dir/updates.lock"
+cache_file="$run_dir/updates.json"
+# Long enough to absorb a bar per monitor arriving at once, short enough that
+# only a forced check ever makes anyone wait.
+cache_ttl="${HASEEN_UPDATES_CACHE_TTL:-60}"
+[[ $cache_ttl =~ ^[0-9]+$ ]] || cache_ttl=60
+
+repo_lines=()
+aur_lines=()
+errors=()
+
+# json_list ITEM... — a JSON array of strings ([] for none).
+json_list() {
+    (($# > 0)) || {
+        echo '[]'
+        return
+    }
+    printf '%s\n' "$@" | jq -R . | jq -cs .
+}
+
+emit() { # CACHED
+    jq -cn --argjson repo "$(json_list "${repo_lines[@]}")" --argjson aur "$(json_list "${aur_lines[@]}")" \
+        --argjson errors "$(json_list "${errors[@]}")" --argjson cached "$1" \
+        '{repo: ($repo | length), aur: ($aur | length), lines: ($repo + ($aur | map(. + "  (AUR)"))), errors: $errors, cached: $cached}'
+}
+
+strip_ansi() { sed $'s/\033\\[[0-9;]*m//g'; }
+
+cache_fresh() {
+    local mtime
+    [[ -s $cache_file ]] || return 1
+    mtime="$(stat -c %Y -- "$cache_file" 2>/dev/null)" || return 1
+    (($(date +%s) - mtime < cache_ttl))
+}
+
+collect_repo() {
+    local output status=0 line
+    if ! have checkupdates; then
+        errors+=("checkupdates is not installed (pacman-contrib)")
+        return
+    fi
+    # Once the flock is held a leftover inner lock can only be stale (a
+    # checkupdates killed mid-sync), and the directory is ours.
+    rm -f -- "$db_dir/db.lck"
+    output="$(CHECKUPDATES_DB="$db_dir" checkupdates --nocolor 2>/dev/null)" || status=$?
+    # checkupdates: 0 = updates listed, 2 = none pending, anything else failed.
+    case $status in
+    0)
+        while IFS= read -r line; do
+            [[ -n $line ]] && repo_lines+=("$line")
+        done < <(strip_ansi <<<"$output")
+        ;;
+    2) ;;
+    *) errors+=("repo check failed (checkupdates exit $status)") ;;
+    esac
+}
+
+collect_aur() {
+    local helper output status=0 line
+    helper="$(aur_helper)"
+    [[ -n $helper ]] || return 0
+    output="$("$helper" -Qua 2>&1)" || status=$?
+    # Both helpers exit 1 without output when nothing is pending; a non-zero
+    # status with diagnostics is a real failure (network, RPC).
+    if ((status == 0)); then
+        while IFS= read -r line; do
+            [[ -n $line ]] && aur_lines+=("$line")
+        done < <(strip_ansi <<<"$output")
+    elif ((status != 1)) || [[ -n $output ]]; then
+        errors+=("AUR check failed ($helper exit $status)")
+    fi
+}
+
+if [[ ! -e $(sysroot_path /etc/arch-release) ]]; then
+    errors+=("not an Arch-based system")
+    emit false
+    exit 0
+fi
+
+if $DRY_RUN; then
+    run env CHECKUPDATES_DB="$db_dir" checkupdates --nocolor
+    helper="$(aur_helper)"
+    [[ -z $helper ]] || run "$helper" -Qua
+    exit 0
+fi
+
+if ! $force && cache_fresh; then
+    cat -- "$cache_file"
+    exit 0
+fi
+
+mkdir -p -- "$run_dir"
+exec {lock_fd}>"$lock_file"
+if ! flock -w "${HASEEN_UPDATES_LOCK_TIMEOUT:-90}" "$lock_fd"; then
+    errors+=("timed out waiting for another update check")
+    emit false
+    exit 0
+fi
+# Another caller may have finished the same check while this one waited.
+if ! $force && cache_fresh; then
+    cat -- "$cache_file"
+    exit 0
+fi
+
+collect_repo
+collect_aur
+
+# Only a clean result is worth caching: a failure is retried at the next check.
+if ((${#errors[@]} == 0)); then
+    tmp="$(mktemp -- "$cache_file.XXXXXX")"
+    emit true >"$tmp"
+    mv -f -- "$tmp" "$cache_file"
+fi
+emit false

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.nook",
+  "name": "Nook",
+  "version": "1.0.0",
+  "description": "Opener for the bar's overflow panel, placed where you put it in a bar section instead of at the bar's end: the panel opens under it and it takes no room while the panel would be empty. Put widgets in with arrange mode or `haseen bar overflow add <id>`. After Katsari's Nook, adopted from the owner's t1nk33r.nook; off by default",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {},
+  "permissions": []
+}
