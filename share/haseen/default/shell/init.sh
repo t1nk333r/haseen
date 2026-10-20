@@ -41,11 +41,22 @@ unset _haseen_self
 # rc line above prepended Omarchy's bin: Omarchy's omarchy-update, typed here,
 # would restart Omarchy's shell beside haseen's. `haseen seed user` appends
 # this file's include after what the rc already had.
+# Sourced again after another prepend, it moves the directory back to the
+# front instead of adding a second copy.
 _haseen_omarchy_bin="${HASEEN_SHELL_DIR%/default/shell}/omarchy/bin"
 if [ -d "$_haseen_omarchy_bin" ]; then
     case "$PATH" in
-    "$_haseen_omarchy_bin":*) ;;
-    *) PATH="$_haseen_omarchy_bin:$PATH" ;;
+    "$_haseen_omarchy_bin" | "$_haseen_omarchy_bin":*) ;;
+    *)
+        _haseen_rest=":$PATH:"
+        while case "$_haseen_rest" in *":$_haseen_omarchy_bin:"*) true ;; *) false ;; esac; do
+            _haseen_rest="${_haseen_rest%%:"$_haseen_omarchy_bin":*}:${_haseen_rest#*:"$_haseen_omarchy_bin":}"
+        done
+        _haseen_rest="${_haseen_rest#:}"
+        _haseen_rest="${_haseen_rest%:}"
+        PATH="$_haseen_omarchy_bin${_haseen_rest:+:$_haseen_rest}"
+        unset _haseen_rest
+        ;;
     esac
 fi
 unset _haseen_omarchy_bin

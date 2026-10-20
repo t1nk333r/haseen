@@ -147,8 +147,9 @@ regardless:
   the marker is the user's (replaced or rewritten by hand): it is left alone,
   and the migration says that `haseen doctor` reports the shadowing.
 - Interactive shells: `default/shell/init.sh`, the include `haseen seed user`
-  appends to `~/.bashrc`, prepends the same directory unless it is already
-  first, after whatever the rc prepended.
+  appends to `~/.bashrc`, puts the same directory first, after whatever the
+  rc prepended; sourced again after another prepend, it moves the directory
+  back to the front rather than adding a second copy.
 - The shell's children: `haseen shell run` puts `share/haseen/omarchy/bin` on
   the shell's `PATH`, so a checkout's shell has them without an install.
 - SSH and TTY logins: Arch's `/etc/profile:15-17` appends `/usr/local/sbin`,

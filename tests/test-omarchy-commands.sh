@@ -578,3 +578,6 @@ init_path "$ROOT/usr/share/omarchy/bin:$BARE"
 assert_eq "shell init puts haseen's omarchy/bin first" "$ours:$ROOT/usr/share/omarchy/bin:$BARE" "$OUTPUT"
 init_path "$ours:$BARE"
 assert_eq "and adds it only once" "$ours:$BARE" "$OUTPUT"
+init_path "$ROOT/usr/share/omarchy/bin:$ours:$BARE"
+assert_eq "sourced again after another prepend, it moves back to the front, not twice" \
+    "$ours:$ROOT/usr/share/omarchy/bin:$BARE" "$OUTPUT"
