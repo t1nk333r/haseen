@@ -175,11 +175,18 @@ above).
   counts, and otherwise `haseen shell run` runs in the foreground, as
   Omarchy's launcher keeps its own shell.
 - `omarchy-restart-shell` (translate): the same stop, then `haseen shell
-  restart` (or `systemctl --user restart dms.service`).
+  restart` (or `systemctl --user restart dms.service`). It refuses while
+  haseen's lock screen holds the session (`$XDG_RUNTIME_DIR/haseen-lock-held`
+  reads `1 <instance>`, plan 091), as Omarchy's refuses under a live lock
+  (`omarchy-restart-shell:28-36`): the shell draws the lock, and restarting it
+  would leave Hyprland's "lock client died" screen. Omarchy's
+  restart-and-relock recovery is `haseen lock release`, from a TTY.
 - `omarchy-update` (shim): `haseen update`.
 - `omarchy-update-restart` (port): Omarchy's reboot offers (a replaced kernel
   or Hyprland binary), asked only at a terminal, then haseen's
-  `omarchy-restart-shell`. Omarchy's `restart-*-required` markers are written
+  `omarchy-restart-shell`, whose refusal under the lock does not fail the
+  update (Omarchy's `omarchy-restart-shell || true`,
+  `omarchy-update-restart:51`). Omarchy's `restart-*-required` markers are written
   by Omarchy's migrations, which haseen does not run, so they are not read.
 
 ## Rejected options
@@ -1152,4 +1159,7 @@ fixtures; nothing reaches the live session):
 - The PKGBUILD phase (plan 013, `PREFIX=/usr`) cannot put these names in
   `/usr/bin`: they are the `omarchy` package's files there. It will need a
   directory of its own ahead on `PATH`.
+- `haseen shell restart` itself (`bin/haseen-shell-restart:22-45`) restarts
+  the unit or the qs instance even under the lock screen; only the Omarchy
+  path above checks the lock. It is haseen's own command, outside this plan.
 - Installing on IO and the live `omarchy-update` there are integrator steps.

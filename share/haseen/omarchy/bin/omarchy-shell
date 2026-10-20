@@ -108,14 +108,6 @@ session_locked() {
     [[ -x $probe ]] && "$probe" >/dev/null 2>&1
 }
 
-# lock_requested — haseen.lock holds a lock in this Hyprland instance: it
-# records "1 <instance>" (plan 091).
-lock_requested() {
-    local marker="${XDG_RUNTIME_DIR:-/tmp}/haseen-lock-held" held sig=""
-    [[ -r $marker ]] && read -r held sig <"$marker" && [[ $held == 1 ]] &&
-        [[ -z $sig || $sig == "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]
-}
-
 target=$1 method=$2
 shift 2
 case "$target $method" in
@@ -187,13 +179,13 @@ case "$target $method" in
     ;;
 "lock status")
     requested=false secure=false
-    if lock_requested; then requested=true; fi
+    if haseen_lock_held; then requested=true; fi
     if $requested && session_locked; then secure=true; fi
     say "$(printf '{"locked":%s,"requested":%s,"pending":false,"sessionLocked":%s,"secure":%s}' \
         "$requested" "$requested" "$secure" "$secure")"
     ;;
 "lock isLocked")
-    if lock_requested; then say true; else say false; fi
+    if haseen_lock_held; then say true; else say false; fi
     ;;
 shell\ * | lock\ *) fail "Function not found." ;;
 esac

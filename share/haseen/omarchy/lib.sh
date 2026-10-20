@@ -142,6 +142,23 @@ omarchy_shell_stop() {
     done
 }
 
+# haseen_lock_held — haseen's lock screen holds this session. haseen.lock
+# writes "1 <Hyprland instance>" to $XDG_RUNTIME_DIR/haseen-lock-held while a
+# lock is requested and "0" once it is released (plan 091). From outside the
+# session (no HYPRLAND_INSTANCE_SIGNATURE), a marker whose Hyprland instance
+# still has its runtime directory counts.
+haseen_lock_held() {
+    local runtime="${XDG_RUNTIME_DIR:-/tmp}" held="" sig=""
+    [[ -r $runtime/haseen-lock-held ]] || return 1
+    read -r held sig <"$runtime/haseen-lock-held" || true
+    [[ $held == 1 ]] || return 1
+    if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+        [[ -z $sig || $sig == "$HYPRLAND_INSTANCE_SIGNATURE" ]]
+    else
+        [[ -z $sig || -d $runtime/hypr/$sig ]]
+    fi
+}
+
 # active_shell — the desktop shell `haseen shell use` chose: haseen or dms.
 active_shell() {
     local f="$HASEEN_USER_STATE/active-shell" shell=haseen

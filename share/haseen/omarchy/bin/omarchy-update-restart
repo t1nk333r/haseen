@@ -70,7 +70,9 @@ fi
 
 # An update can replace Quickshell, Qt or a plugin's dependencies under the
 # running shell; restart it, as Omarchy does, through haseen's restart.
+# A restart refused under the lock screen does not fail the update, as
+# Omarchy's `omarchy-restart-shell || true` (omarchy-update-restart:51).
 info "restarting the desktop shell"
 flags=()
 $DRY_RUN && flags+=(--dry-run)
-exec "$HASEEN_OMARCHY_DIR/bin/omarchy-restart-shell" "${flags[@]}"
+"$HASEEN_OMARCHY_DIR/bin/omarchy-restart-shell" "${flags[@]}" || warn "the desktop shell was not restarted; restart it with: haseen shell restart"

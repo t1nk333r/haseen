@@ -26,6 +26,14 @@ parse_common_flags "$@"
     exit 2
 }
 
+# Restarting the shell that draws haseen's lock screen would leave Hyprland's
+# "lock client died" screen; Omarchy's restart refuses under a live lock too
+# (omarchy-restart-shell:28-36). Its restart-and-relock recovery is haseen
+# lock release, run from a TTY.
+if haseen_lock_held; then
+    echo "omarchy-restart-shell: the session is locked; the shell is not restarted under its lock screen. Unlock first (from a TTY, haseen lock release recovers a lock that no longer answers)." >&2
+    exit 1
+fi
 omarchy_shell_stop
 if [[ $(active_shell) == dms ]]; then
     run systemctl --user restart dms.service

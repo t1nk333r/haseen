@@ -369,6 +369,36 @@ capture env PATH="$OPATH" HASEEN_SYSROOT="$ROOT" omarchy-update-restart </dev/nu
 assert_contains "without a terminal the reboot is not asked" "$OUTPUT" "not asked: no terminal"
 assert_not_contains "and not done" "$OUTPUT" "haseen-system"
 
+# Under haseen's lock screen the shell is not restarted (it draws the lock),
+# and the update still finishes, as Omarchy's does.
+stub uname 'echo 6.9.1-test'
+export HYPRLAND_INSTANCE_SIGNATURE=sig-a
+printf '1 sig-a\n' >"$XDG_RUNTIME_DIR/haseen-lock-held"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-restart-shell
+assert_status "restart refuses under the lock screen" 1 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "the session is locked; the shell is not restarted"
+assert_not_contains "and restarts nothing" "$OUTPUT" "systemctl --user restart"
+assert_not_contains "and stops nothing" "$OUTPUT" "qs kill"
+capture env PATH="$OPATH" HASEEN_SYSROOT="$ROOT" omarchy-update-restart --dry-run
+assert_status "the update still finishes" 0 "$STATUS"
+assert_contains "and says the shell was not restarted" "$OUTPUT" "the desktop shell was not restarted"
+printf '1 sig-other\n' >"$XDG_RUNTIME_DIR/haseen-lock-held"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-restart-shell
+assert_contains "another Hyprland instance's lock does not hold this one" "$OUTPUT" "DRYRUN: systemctl --user restart haseen-shell.service"
+printf '0\n' >"$XDG_RUNTIME_DIR/haseen-lock-held"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-restart-shell
+assert_contains "a released lock restarts" "$OUTPUT" "DRYRUN: systemctl --user restart haseen-shell.service"
+# From a TTY (no signature): a marker whose instance still runs holds.
+unset HYPRLAND_INSTANCE_SIGNATURE
+printf '1 sig-a\n' >"$XDG_RUNTIME_DIR/haseen-lock-held"
+mkdir -p "$XDG_RUNTIME_DIR/hypr/sig-a"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-restart-shell
+assert_status "from a TTY a live instance's lock holds" 1 "$STATUS"
+rmdir "$XDG_RUNTIME_DIR/hypr/sig-a"
+capture env PATH="$OPATH" DRY_RUN=true omarchy-restart-shell
+assert_contains "a stale marker from a gone instance does not" "$OUTPUT" "DRYRUN: systemctl --user restart haseen-shell.service"
+rm -f "$XDG_RUNTIME_DIR/haseen-lock-held"
+
 # --- omarchy-shell: Omarchy's IPC verbs on haseen's shell -----------------------
 sandbox omarchy-shell-ipc
 FAKE="$SANDBOX/fake"
