@@ -85,7 +85,7 @@ assert_contains "and says so" "$OUTPUT" "only active display"
 capture haseen hardware monitor set DP-1 --on
 assert_contains "--on brings it back at its preferred mode" "$(tail -1 "$LOG")" 'mode = "preferred", position = "auto", scale = 1, transform = 0, disabled = false'
 
-for bad in "DP-1 --mode 3440x1440" "DP-1 --position 10,20" "DP-1 --scale 9" "DP-1 --transform 8" 'DP;1 --scale 1' "nosuch --scale 1" "DP-1"; do
+for bad in "DP-1 --mode 3440x1440" "DP-1 --position 10,20" "DP-1 --scale 9" "DP-1 --scale 01" "DP-1 --transform 8" 'DP;1 --scale 1' "nosuch --scale 1" "DP-1"; do
     # shellcheck disable=SC2086 # the words are the arguments under test
     capture haseen hardware monitor set $bad
     assert_status "set refuses: $bad" 1 "$STATUS"

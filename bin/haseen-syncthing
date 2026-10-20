@@ -216,14 +216,13 @@ cmd_accept_folder() {
     (($# >= 3 && $# <= 4)) || { usage >&2; exit 2; }
     valid "$ID_RE" "$1"
     valid "$DEVICE_RE" "$2"
-    local path=$3 label=${4:-$1} existing body
+    local path=$3 label=${4:-$1} body
     [[ $path == /* ]] || { echo "PATH must be absolute" >&2; exit 64; }
-    if existing="$(api GET "/rest/config/folders/$(uri "$1")" 2>/dev/null)"; then
+    if api GET "/rest/config/folders/$(uri "$1")" >/dev/null 2>&1; then
         # The folder is here already: share it with the device as well.
         cmd_share "$1" "$2" on
         return 0
     fi
-    : "$existing"
     body="$(jq -cn --arg id "$1" --arg label "$label" --arg path "$path" --arg d "$2" \
         '{id: $id, label: $label, path: $path, devices: [{deviceID: $d}]}')"
     change POST /rest/config/folders "$body"

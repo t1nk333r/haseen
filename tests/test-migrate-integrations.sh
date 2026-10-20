@@ -17,7 +17,7 @@ run_m() {
 CFG() { printf '%s\n' "$XDG_CONFIG_HOME/haseen/shell.json"; }
 write_cfg() { mkdir -p "$XDG_CONFIG_HOME/haseen" && cat >"$(CFG)"; }
 
-assert_eq "the migration sorts after every other one" "$M" "$(find "$HASEEN_PATH/migrations" -name '[0-9]*.sh' -printf '%f\n' | LC_ALL=C sort | tail -1)"
+assert_eq "the migration is the only one in plan 098's timestamp range" "$M" "$(find "$HASEEN_PATH/migrations" -name '17915603[0-9][0-9]-*.sh' -printf '%f\n' | LC_ALL=C sort)"
 
 # --- a HOME like the owner's: the monitor widget in the bar, Syncthing in a
 # --- drawer's items, OmaConnect in the bar under its registry id -----------------

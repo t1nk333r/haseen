@@ -8,7 +8,7 @@
 - **Depends on**: 005 011 027 028 057 074 077
 - **Category**: shell
 - **Planned at**: 2026-10-20, owner decision (below)
-- **State**: DONE 2026-10-20 (focused suites: test-monitor-settings 76/76, test-omaconnect 91/91, test-syncthing 74/74, test-migrate-integrations 30/30; full gate in the PR)
+- **State**: DONE 2026-10-20 (focused suites: test-monitor-settings 77/77, test-omaconnect 91/91, test-syncthing 74/74, test-migrate-integrations 31/31; full gate in the PR)
 
 ## Decision
 
