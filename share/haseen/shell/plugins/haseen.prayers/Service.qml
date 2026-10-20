@@ -228,11 +228,27 @@ Scope {
 
     // Applied to the running shell first (Config's runtime layer), so the
     // panel repaints on the click itself; haseen-prayers-set.sh then writes
-    // the same values to ~/.config/haseen/shell.json.
+    // the same values to ~/.config/haseen/shell.json. The write waits for a
+    // pause and carries each key's last value: a burst of changes is one
+    // writer, not several racing for the file's lock.
+    property var pendingWrites: ({})
+
     function persistSettings(values: var): void {
-        for (const key in values)
+        const next = Object.assign({}, root.pendingWrites);
+        for (const key in values) {
             Config.setRuntime(["plugins", root.pluginId, "settings", key], values[key]);
-        Quickshell.execDetached([root.setScript, JSON.stringify(values)]);
+            next[key] = values[key];
+        }
+        root.pendingWrites = next;
+        settingsWrite.restart();
+    }
+
+    function flushSettings(): void {
+        settingsWrite.stop();
+        const values = root.pendingWrites;
+        root.pendingWrites = {};
+        if (Object.keys(values).length > 0)
+            Quickshell.execDetached([root.setScript, JSON.stringify(values)]);
     }
 
     function setSetting(key: string, value: var): void {
@@ -503,6 +519,8 @@ Scope {
         }
     }
     Component.onCompleted: Qt.callLater(() => root.refresh())
+    // Disabling the plugin must not drop a change still waiting to be written.
+    Component.onDestruction: root.flushSettings()
 
     Process {
         id: zoneProcess
@@ -534,6 +552,12 @@ Scope {
             waitForEnd: true
         }
         onExited: exitCode => {
+            // The field moved on while this ran (cleared, retyped, or a place
+            // committed): its answer is stale. Fetch what is wanted now.
+            if (root.geocodePendingQuery !== root.geocodeActiveQuery) {
+                Qt.callLater(root.startGeocode);
+                return;
+            }
             // Never apply a partial response from a failed or size-limited transfer.
             if (exitCode === 0)
                 root.applyLocationResults(geocodeOutput.text);
@@ -541,8 +565,6 @@ Scope {
                 root.locationChoices = [];
                 root.locationStatus = Model.uiLabel("searchFailed", root.language);
             }
-            if (root.geocodePendingQuery !== root.geocodeActiveQuery)
-                Qt.callLater(root.startGeocode);
         }
     }
 
@@ -572,6 +594,16 @@ Scope {
         interval: 350
         repeat: false
         onTriggered: root.startGeocode()
+    }
+
+    // The pause before persistSettings writes shell.json.
+    // haseen:ui-timeout
+    Timer {
+        id: settingsWrite
+
+        interval: 400
+        repeat: false
+        onTriggered: root.flushSettings()
     }
 
     // Retry a failed notification delivery (at most twice).

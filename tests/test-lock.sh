@@ -230,6 +230,88 @@ QML
     )"
     assert_eq "no enrolled finger: not offered" false "$(jq -r .offered <<<"$RESULT")"
     assert_eq "and the lock stays until a password" true "$(jq -r .shown <<<"$RESULT")"
+
+    # A password check that never answers: Escape cancels the attempt, and
+    # the session stays locked.
+    printf 'auth required pam_exec.so /usr/bin/sleep 20\naccount required pam_permit.so\n' >"$PAM/pw-hang"
+    lock_harness cancel "$(
+        cat <<QML
+import QtQuick
+import Quickshell
+ShellRoot {
+    id: probe
+    property var s: null
+    property int tick: 0
+    Component.onCompleted: {
+        const c = Qt.createComponent("file://$PLUGIN/Service.qml");
+        s = c.createObject(probe, { pluginId: "haseen.lock", settings: { preview: true, fingerprint: false, pamConfigDirectory: "$PAM", pamConfig: "pw-hang" } });
+        s.lock();
+        s.submit("secret");
+    }
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            probe.tick += 1;
+            if (probe.tick === 5) {
+                probe.s.cancelAttempt();
+                console.log("RESULT " + JSON.stringify({ busy: probe.s.busy, message: probe.s.message, shown: probe.s.previewShown }));
+                Qt.quit();
+            }
+        }
+    }
+}
+QML
+    )"
+    assert_eq "a hung password check can be cancelled" '{"busy":false,"message":"Cancelled","shown":true}' "$RESULT"
+
+    # The held-lock marker names its Hyprland instance: a marker left by
+    # another compositor (a crash and a new login, a nested session) must not
+    # lock a fresh shell; one from this instance, or a bare legacy "1", does.
+    held_probe() {
+        printf '%s\n' "$1" >"$SANDBOX/run/haseen-lock-held"
+        local harness="$SANDBOX/held-$2"
+        mkdir -p "$harness"
+        for module in Haseen Compat Ui Commons plugins; do
+            ln -sfn "$HASEEN_PATH/shell/$module" "$harness/$module"
+        done
+        cat >"$harness/shell.qml" <<QML
+import QtQuick
+import Quickshell
+ShellRoot {
+    id: probe
+    property var s: null
+    property int tick: 0
+    Component.onCompleted: {
+        const c = Qt.createComponent("file://$PLUGIN/Service.qml");
+        s = c.createObject(probe, { pluginId: "haseen.lock", settings: { preview: false, fingerprint: false, pamConfigDirectory: "$PAM", pamConfig: "pw-deny" } });
+    }
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            probe.tick += 1;
+            if (probe.tick === 10) {
+                console.log("RESULT " + JSON.stringify({ requested: probe.s.lockRequested }));
+                Qt.quit();
+            }
+        }
+    }
+}
+QML
+        capture env XDG_RUNTIME_DIR="$SANDBOX/run" HYPRLAND_INSTANCE_SIGNATURE=this-instance QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+            timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+        RESULT="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n 1)"
+    }
+    held_probe "1 other-instance" other
+    assert_eq "another instance's marker does not lock" '{"requested":false}' "$RESULT"
+    assert_eq "and is cleared" 0 "$(cat "$SANDBOX/run/haseen-lock-held")"
+    held_probe "1 this-instance" same
+    assert_eq "this instance's marker takes the lock back" '{"requested":true}' "$RESULT"
+    held_probe "1" legacy
+    assert_eq "a legacy marker still takes the lock back" '{"requested":true}' "$RESULT"
 else
     echo "  skip: quickshell or pam_permit not installed; the lock service is not loaded" >&2
 fi

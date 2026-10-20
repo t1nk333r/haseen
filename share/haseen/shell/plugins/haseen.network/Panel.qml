@@ -150,6 +150,13 @@ Column {
         return security === WifiSecurityType.Wpa2Eap || security === WifiSecurityType.WpaEap;
     }
 
+    // 802.1X kinds the identity/password (PEAP) prompt cannot set up: Suite-B
+    // needs EAP-TLS certificates, LEAP and dynamic WEP their own key setup.
+    // A passphrase prompt would only end in NetworkManager refusing it.
+    function needsFullSetup(security: var): bool {
+        return security === WifiSecurityType.Wpa3SuiteB192 || security === WifiSecurityType.Leap || security === WifiSecurityType.DynamicWep;
+    }
+
     // Rows are rebuilt only when something in them changed, so an
     // unrelated NetworkManager signal does not reset an open prompt.
     function syncWifiNetworks(): void {
@@ -340,6 +347,11 @@ Column {
             runNetworkAction("disconnect", network, n => n.disconnect());
             break;
         case "prompt":
+            if (needsFullSetup(row.security)) {
+                failureSsid = row.ssid;
+                failureReason = "Set this network up in nm-connection-editor";
+                break;
+            }
             openPasswordPrompt(row.ssid);
             break;
         case "connect":

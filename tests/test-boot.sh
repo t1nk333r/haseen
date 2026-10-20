@@ -86,6 +86,12 @@ assert_contains "the refusal says what the id is now" "$OUTPUT" "is now 'Windows
 capture haseen boot next 0001 --dry-run --yes
 assert_contains "choosing the running system warns" "$OUTPUT" "this session was started from"
 
+# The session panel runs it through pkexec, which resets PATH to the system
+# directories and drops HASEEN_PATH: the listing helper is found by path.
+capture env -u HASEEN_PATH PATH="$SANDBOX/stubs:/usr/bin:/bin" "$REPO/bin/haseen-boot-next" 0000 --dry-run --yes
+assert_status "boot next runs with only the system PATH" 0 "$STATUS"
+assert_contains "it still lists the entries before the write" "$OUTPUT" "DRYRUN: sudo efibootmgr --bootnext 0000"
+
 # A real run is a single BootNext write; the reboot is opt-in and separate.
 # The sudo stub answers here so the step after the write is reached.
 stub sudo 'echo "STUB-CALLED: sudo $*" >&2; exec "$@"'

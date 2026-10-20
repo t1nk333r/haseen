@@ -89,6 +89,16 @@ Scope {
                 root.run();
             }
         }
+        // A helper that cannot start at all emits no `exited`: same fallback.
+        onRunningChanged: {
+            if (!running)
+                Qt.callLater(() => {
+                    if (!proc.running && !root._answered && root.requested && !root.active) {
+                        Theme.barForeground = Theme.foreground;
+                        root.active = true;
+                    }
+                });
+        }
     }
 
     // A directory watch sees the symlink swaps; watching the image itself

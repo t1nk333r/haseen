@@ -37,6 +37,16 @@ Item {
     readonly property bool available: sampler.available
     visible: available
 
+    // False while a clipping ancestor has no room for it: the bar parks a
+    // widget for the overflow panel in a zero-size clipped cell, where it stays
+    // visible but cannot be seen (as haseen.indicators/Widget.qml reads it).
+    readonly property bool inView: {
+        for (let item = root; item !== null; item = item.parent)
+            if (item.clip && (item.width <= 0 || item.height <= 0))
+                return false;
+        return true;
+    }
+
     // Vertical: the slot is the bar's width anyway; report content width
     // only (depending on the parent's width would loop through BarSection).
     implicitWidth: !available ? 0 : vertical ? grid.implicitWidth : grid.implicitWidth + Theme.gap * 2
@@ -44,8 +54,9 @@ Item {
 
     Sampler {
         id: sampler
-        // Item.visible stays true inside a hidden window, so the window counts too.
-        active: root.visible && (root.QsWindow.window ? root.QsWindow.window.visible : true)
+        // Item.visible stays true inside a hidden window, so the window counts
+        // too, and in a parked overflow cell, so being in view counts as well.
+        active: root.visible && root.inView && (root.QsWindow.window ? root.QsWindow.window.visible : true)
         wantGpu: root.settings.showGpu !== false
         gpuChoice: typeof root.settings.gpu === "string" ? root.settings.gpu : "auto"
     }
@@ -107,6 +118,6 @@ Item {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: Quickshell.execDetached(["qs", "-p", Quickshell.shellDir, "ipc", "call", "panel", "toggle", root.pluginId])
+        onClicked: Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", root.pluginId])
     }
 }

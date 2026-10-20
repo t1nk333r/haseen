@@ -51,7 +51,9 @@ set -- "${REST[@]+"${REST[@]}"}"
 }
 wanted="$1"
 
-listing="$(haseen-boot-list --json)" || {
+# The sibling by path: under pkexec (the session panel's row) PATH is reset to
+# the system directories, which do not hold a /usr/local or checkout install.
+listing="$("$(dirname "$(readlink -f "$0")")/haseen-boot-list" --json)" || {
     status=$?
     echo "$listing" | jq -r '.error' >&2
     exit "$status"

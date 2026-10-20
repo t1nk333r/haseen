@@ -83,9 +83,12 @@ filter='if type != "object" then empty
     elif has("error") then ("error: " + (.error | if type == "object" then (.message // tostring) else tostring end) + "\n" | halt_error(1))
     else (.choices[0].delta.content // empty) end'
 set +e
-jq -n --arg m "$model" --arg p "$prompt" --argjson h "$history" \
+# The conversation goes in on stdin and the prompt through a file descriptor,
+# never on argv: argv is world-readable in /proc and one argument is capped at
+# 128 KiB, which a long chat outgrows.
+jq --arg m "$model" --rawfile p <(printf '%s' "$prompt") \
     '{model: $m, stream: true,
-      messages: ($h + (if ($p | test("\\S")) then [{role: "user", content: $p}] else [] end))}' |
+      messages: (. + (if ($p | test("\\S")) then [{role: "user", content: $p}] else [] end))}' <<<"$history" |
     ai_curl "$EP_KEYREF" -sSN --fail-with-body \
         -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
         --data-binary @- "$EP_URL/chat/completions" |

@@ -78,10 +78,14 @@ Scope {
     // (misc.allow_session_lock_restore, set in default/hypr/looknfeel.lua)
     // and the owner gets a password field instead of the red screen. In the
     // runtime dir, so a reboot forgets it. `haseen lock release` clears it.
+    // The marker names the Hyprland instance that held the lock: the runtime
+    // dir outlives a compositor (a crash and a fresh login, a nested test
+    // session), and a stale "1" made every later shell lock itself at start.
     readonly property string heldMarker: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/haseen-lock-held"
+    readonly property string compositorInstance: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || ""
 
     onLockRequestedChanged: if (!previewMode)
-        heldFile.setText(lockRequested ? "1\n" : "0\n")
+        heldFile.setText(lockRequested ? "1 " + compositorInstance + "\n" : "0\n")
 
     FileView {
         id: heldFile
@@ -92,10 +96,17 @@ Scope {
         blockWrites: true
         atomicWrites: true
         onLoaded: {
-            if (!root.previewMode && text().trim() === "1" && !root.locked) {
-                console.warn(root.pluginId + ": the previous shell died holding the lock; taking it back");
-                root.lock();
+            const held = text().trim().split(/\s+/);
+            if (root.previewMode || held[0] !== "1" || root.locked)
+                return;
+            // A bare "1" predates the instance field; honour it, a lock that
+            // is not needed is safer than a crashed lock left on the red screen.
+            if (held.length > 1 && held[1] !== root.compositorInstance) {
+                setText("0\n");
+                return;
             }
+            console.warn(root.pluginId + ": the previous shell died holding the lock; taking it back");
+            root.lock();
         }
     }
     property bool busy: false
@@ -137,6 +148,17 @@ Scope {
             _reset();
             message = "Authentication could not start";
         }
+    }
+
+    // Escape during "Checking…": a PAM module that never answers would
+    // otherwise hold the field read-only until `haseen lock release` from a
+    // TTY. Cancelling only fails the attempt; the session stays locked.
+    function cancelAttempt(): void {
+        if (!busy)
+            return;
+        if (pam.active)
+            pam.abort();
+        _failed("Cancelled");
     }
 
     function closePreview(): void {
@@ -296,7 +318,12 @@ Scope {
         // and aborted as "Unsupported PAM prompt", so even the right password
         // could never unlock (io, 2026-10-06, plan 048).
         onPamMessage: root._respond()
+        // Only an attempt in flight counts. After a cancel, an unsupported
+        // prompt or an error the attempt is already over, and its late end
+        // must neither unlock nor overwrite the message with "Wrong password".
         onCompleted: result => {
+            if (!root.busy)
+                return;
             if (result === PamResult.Success)
                 root._unlocked();
             else
@@ -424,6 +451,7 @@ Scope {
                 fingerprint: root.fingerprintAvailable
                 fingerprintError: root.fingerprintError
                 onSubmitted: password => root.submit(password)
+                onAttemptCancelled: root.cancelAttempt()
             }
         }
     }

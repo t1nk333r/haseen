@@ -31,6 +31,10 @@ QtObject {
     // An answer is expected: the next Enter responds instead of starting over.
     property bool awaitingResponse: false
     property bool secret: true
+    // What was typed before greetd asked for it: its prompt comes a round trip
+    // after createSession and clears the field, so this answers that prompt
+    // instead of making every login type the password twice.
+    property string queuedAnswer: ""
 
     readonly property var currentUser: users.length > 0 ? users[Math.min(userIndex, users.length - 1)] : null
     readonly property var currentSession: sessions.length > 0 ? sessions[Math.min(sessionIndex, sessions.length - 1)] : null
@@ -42,6 +46,7 @@ QtObject {
             return;
         status = "";
         awaitingResponse = false;
+        queuedAnswer = "";
         if (Greetd.state !== GreetdState.Inactive)
             Greetd.cancelSession();
         Greetd.createSession(currentUser.name);
@@ -50,17 +55,30 @@ QtObject {
     function answer(text: string): void {
         if (!awaitingResponse) {
             authenticate();
+            queuedAnswer = currentUser ? text : "";
             return;
         }
         awaitingResponse = false;
         Greetd.respond(text);
     }
 
-    function cycleUser(delta: int): void {
-        if (users.length > 0) {
-            userIndex = (userIndex + delta + users.length) % users.length;
-            restoreSessionFor(currentUser);
+    // A session open for one user is asking that user's questions: another
+    // user's answer must not go to it.
+    function selectUser(index: int): void {
+        if (index !== userIndex) {
+            if (Greetd.state !== GreetdState.Inactive)
+                Greetd.cancelSession();
+            awaitingResponse = false;
+            queuedAnswer = "";
+            status = "";
         }
+        userIndex = index;
+        restoreSessionFor(currentUser);
+    }
+
+    function cycleUser(delta: int): void {
+        if (users.length > 0)
+            selectUser((userIndex + delta + users.length) % users.length);
     }
 
     function cycleSession(delta: int): void {
@@ -100,6 +118,14 @@ QtObject {
                 return;
             }
             root.secret = !echoResponse;
+            if (root.queuedAnswer !== "") {
+                // Typed before this prompt: answer it, and leave the field as
+                // it is, since nothing more needs typing yet.
+                const text = root.queuedAnswer;
+                root.queuedAnswer = "";
+                Greetd.respond(text);
+                return;
+            }
             root.awaitingResponse = true;
             root.promptChanged();
         }
@@ -107,6 +133,7 @@ QtObject {
         function onAuthFailure(message: string): void {
             root.status = message || "authentication failed";
             root.awaitingResponse = false;
+            root.queuedAnswer = "";
             root.promptChanged();
         }
 
@@ -117,6 +144,7 @@ QtObject {
         function onError(message: string): void {
             root.status = message;
             root.awaitingResponse = false;
+            root.queuedAnswer = "";
         }
     }
 
@@ -202,8 +230,7 @@ QtObject {
         }
 
         function selectUser(index: int): void {
-            root.userIndex = Math.max(0, Math.min(index, root.users.length - 1));
-            root.restoreSessionFor(root.currentUser);
+            root.selectUser(Math.max(0, Math.min(index, root.users.length - 1)));
         }
 
         function selectSession(index: int): void {
@@ -213,12 +240,16 @@ QtObject {
 
     // The prompt arrives a round trip after createSession; this answers it when
     // it does, which is what a human's hands do.
-    property Timer pending: Timer
-    {
+    // haseen:ui-timeout
+    property Timer pending: Timer {
         property string password: ""
 
         interval: 300
         repeat: false
-        onTriggered: root.answer(password)
+        onTriggered: {
+            root.answer(password);
+            // A password does not outlive its answer.
+            password = "";
+        }
     }
 }

@@ -76,11 +76,14 @@ wifi_profile() {
 }
 
 # Sets ssid and freq from one `iw dev DEVICE link`. iw prints the SSID as the
-# rest of its line, so one containing ':' needs no special handling.
+# rest of its line, so one containing ':' needs no special handling. It also
+# escapes non-ASCII bytes, edge spaces and every backslash as \xNN, while
+# nmcli prints the raw name; decode so "Café" or an Arabic SSID still matches.
 read_link() {
     local link
     link="$(iw dev "$1" link 2>/dev/null || true)"
     ssid="$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")"
+    ssid="$(printf '%b' "$ssid")"
     freq="$(awk '/freq:/ { print $2; exit }' <<<"$link")"
 }
 

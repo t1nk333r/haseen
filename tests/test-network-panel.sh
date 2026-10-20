@@ -217,6 +217,17 @@ assert_status "unavailable band refused" 1 "$STATUS"
 assert_contains "refusal names the band" "$OUTPUT" "6 GHz is not available"
 capture haseen-network-band 7
 assert_status "unknown band is a usage error" 2 "$STATUS"
+# iw escapes non-ASCII bytes and edge spaces; nmcli prints the raw name.
+stub iw 'printf "Connected to 02:00:00:00:00:01 (on wlan0)\n\tSSID: \\x20Caf\\xc3\\xa9 \\xd9\\x85\\x5c\n\tfreq: 2437.0\n"'
+stub nmcli 'case "$*" in
+"-e no -g DEVICE,TYPE,STATE device status") printf "wlan0:wifi:connected\n" ;;
+"-e no -g GENERAL.CONNECTION device show wlan0") echo "Cafe profile" ;;
+"-e no -g FREQ,SSID dev wifi list ifname wlan0 --rescan no") printf "5180 MHz: Café م\\\\\n2437 MHz: Café م\\\\\n" ;;
+"-e no -g 802-11-wireless.band connection show Cafe profile") echo "" ;;
+*) echo "STUB-CALLED: nmcli $*" >&2; exit 97 ;;
+esac'
+capture haseen-network-band
+assert_eq "an escaped non-ASCII SSID still finds its bands" $'band\t2.4\navailable\t2.4 5\nselected\tauto' "$OUTPUT"
 stub nmcli 'exit 0'
 capture haseen-network-band
 assert_eq "no Wi-Fi connected prints nothing" "" "$OUTPUT"

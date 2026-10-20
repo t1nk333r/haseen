@@ -21,6 +21,8 @@ BarButton {
 
     glyph: !on ? "\u{F00B2}" : connected.length > 0 ? "\u{F00B1}" : "\u{F00AF}"
     text: settings.showName === true && connected.length > 0 ? (connected[0].name || connected[0].deviceName) : ""
+    // A long device name is elided rather than widening the bar.
+    maxTextWidth: Theme.fontSize * 10
     color: on ? Theme.barForeground : Theme.muted
     implicitWidth: adapter ? contentWidth : 0
 

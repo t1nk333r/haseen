@@ -11,9 +11,13 @@
 // composed region (one with sub-regions) is treated as taking input, because
 // what its parts add up to depends on their intersection modes; the surface
 // then behaves exactly as it did before, which is the safe direction to err.
-function regionIsEmpty(region) {
+// A binding passes `regionCount`, the sub-region count it tracks itself:
+// Region.regions has no change signal, so reading it there would make the
+// binding depend on a non-bindable property.
+function regionIsEmpty(region, regionCount) {
     if (!region) return false
-    if (region.regions && region.regions.length > 0) return false
+    var count = regionCount === undefined ? (region.regions ? region.regions.length : 0) : regionCount
+    if (count > 0) return false
     var item = region.item
     var width = item ? item.width : region.width
     var height = item ? item.height : region.height
@@ -43,8 +47,8 @@ function suppliedMask(current, supplied, closed) {
 // Whether the surface takes no pointer input, either because the panel is
 // closed or because the mask in force is empty (a panel empties its mask
 // while a drag must be droppable into the application underneath).
-function pointerInputSuspended(open, mask) {
-    return !open || regionIsEmpty(mask)
+function pointerInputSuspended(open, mask, regionCount) {
+    return !open || regionIsEmpty(mask, regionCount)
 }
 
 // One side of a dismissal twin's input region. The twins mirror the panel:

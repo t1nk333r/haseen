@@ -126,14 +126,16 @@ lockfile_read() {
 
 # lockfile_check JSON — the invariants upstream enforces: the version, a plugin
 # id that is a single safe path component, a path that cannot climb out, a full
-# commit, and no credentials in a repository URL.
+# commit, and no credentials in a repository URL. A path holding `..` anywhere
+# is refused, as bin/haseen-plugin-install refuses it; a bare `.` is the
+# checkout root under another name.
 lockfile_check() {
     local json="$1" problems
     problems="$(jq -r --arg v "$LOCKFILE_VERSION" '
         [ (if (.version | tostring) != $v then "unsupported lockfile version \(.version)" else empty end),
           (.plugins // {} | to_entries[] |
             (if (.key | test("^[A-Za-z0-9][A-Za-z0-9._-]*$") | not) then "unsafe plugin id \(.key)" else empty end),
-            (if (.value.path // "" | test("(^/)|(^\\.\\.?/)|(/\\.\\./)|(/\\.\\.$)")) then "unsafe path in \(.key)" else empty end),
+            (if (.value.path // "" | test("(^/)|(^\\.$)|(^\\./)|(\\.\\.)")) then "unsafe path in \(.key)" else empty end),
             (if (.value.commit // "" | test("^[0-9a-f]{40}$") | not) then "not a full commit in \(.key)" else empty end)),
           (.repositories // {} | keys[] | select(test("https://[^/]*@")) | "credentials in repository URL \(.)")
         ] | .[]' <<<"$json" 2>/dev/null)"

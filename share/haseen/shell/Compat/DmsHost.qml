@@ -42,7 +42,21 @@ Item {
     property var _life: ({
             gone: false
         })
-    Component.onDestruction: _life.gone = true
+    // Host.load's release handle: the component must outlive the widget's
+    // bindings, and an unreleased one stays counted in Host.liveComponents()
+    // on every bar rebuild.
+    property var _cancelLoad: null
+    Component.onDestruction: {
+        _life.gone = true;
+        // The widget goes first: releasing the component invalidates the
+        // context its functions and bindings were created in.
+        if (widget) {
+            widget.destroy();
+            widget = null;
+        }
+        if (_cancelLoad)
+            _cancelLoad();
+    }
 
     Component.onCompleted: {
         const url = Plugins.entryUrl(pluginId, "bar-widget");
@@ -55,7 +69,7 @@ Item {
     }
 
     function _build(url: string, upstream: string): void {
-        Host.load(url, host, result => {
+        _cancelLoad = Host.load(url, host, result => {
             if (result.error !== "") {
                 // Deferred: see OmarchyHost.
                 const message = "dms: " + result.error;

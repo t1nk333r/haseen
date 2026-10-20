@@ -12,20 +12,33 @@ import qs.Compat as Compat
 // (MIT, Copyright (c) 2025 Avenge Media LLC).
 //
 // A plugin's data is the haseen shell.json `plugins.<id>.settings` object
-// overlaid with what the plugin saved during this session. A save applies at
-// once and is written to shell.json through `haseen plugin settings`
-// (Compat.Runtime.persist, the same writer Omarchy plugins use); the keys a
-// plugin saves in one event loop turn go out as one request.
+// overlaid with what the plugin saved and shell.json does not hold yet. A
+// save applies at once and is written to shell.json through `haseen plugin
+// settings` (Compat.Runtime.persist, the same writer Omarchy plugins use); the
+// keys a plugin saves in one event loop turn go out as one request. Once the
+// writer confirms a request, shell.json is those keys' record again, so a
+// later edit of the file shows through.
 Singleton {
     id: root
 
     readonly property bool reduceMotion: false
     readonly property int firstDayOfWeek: Qt.locale().firstDayOfWeek
 
-    // DMS plugin id -> { key: value } saved this session.
+    // DMS plugin id -> { key: value } saved this session, until shell.json
+    // holds the same value.
     property var saved: ({})
     // Registry id -> { key: value } not yet handed to the writer.
     property var _unwritten: ({})
+    // Registry id -> [{ key: value }] handed to the writer and not answered
+    // yet, oldest first: the writer answers one request at a time, in order.
+    property var _inflight: ({})
+
+    property Connections _written: Connections {
+        target: Compat.Runtime
+        function onSettingsWritten(pluginId: string, success: bool) {
+            root._settled(pluginId, success);
+        }
+    }
 
     signal pluginSettingChanged(string pluginId)
 
@@ -80,10 +93,45 @@ Singleton {
                     path: ["plugins", id, "settings", key],
                     value: unwritten[id][key]
                 });
-            Compat.Runtime.persist(id, {
+            const inflight = Object.assign({}, _inflight);
+            inflight[id] = (inflight[id] || []).concat([unwritten[id]]);
+            _inflight = inflight;
+            if (!Compat.Runtime.persist(id, {
                 changes: changes
-            });
+            }))
+                _settled(id, false);
         }
+    }
+
+    // The writer answered the oldest request of `id`. When it was stored, the
+    // session copy of each key it wrote is dropped once shell.json shows the
+    // same value, so the drop changes nothing the plugin sees; a newer save
+    // of another value, still on its way, keeps its copy.
+    function _settled(id: string, success: bool): void {
+        const queue = _inflight[id];
+        if (!queue || !queue.length)
+            return;
+        const batch = queue[0];
+        const inflight = Object.assign({}, _inflight);
+        inflight[id] = queue.slice(1);
+        if (!inflight[id].length)
+            delete inflight[id];
+        _inflight = inflight;
+        const rec = Haseen.Plugins.registry[id];
+        const upstream = rec ? rec.upstreamId : "";
+        if (!success || !upstream || !saved[upstream])
+            return;
+        const stored = Haseen.Plugins.settingsFor(id);
+        const own = Object.assign({}, saved[upstream]);
+        for (const key in batch)
+            if (key in own && JSON.stringify(own[key]) === JSON.stringify(stored[key]))
+                delete own[key];
+        const all = Object.assign({}, saved);
+        if (Object.keys(own).length)
+            all[upstream] = own;
+        else
+            delete all[upstream];
+        saved = all;
     }
 
     // DMS saves its settings file here; haseen already wrote each key above.

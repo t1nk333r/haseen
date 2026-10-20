@@ -99,14 +99,6 @@ Column {
         }
     }
 
-    // Sets BootNext as root, and reboots only once the firmware took it.
-    Process {
-        id: bootNext
-        onExited: code => {
-            if (code === 0)
-                Quickshell.execDetached(["systemctl", "reboot"]);
-        }
-    }
     property int current: 0
     // Id of the action waiting for its confirming press.
     property string armed: ""
@@ -127,9 +119,11 @@ Column {
         if (id.startsWith("boot:")) {
             const entry = actions.find(a => a.id === id);
             // pkexec authenticates the BootNext write; the reboot that follows
-            // is the user's own, through logind.
-            bootNext.command = ["pkexec", root.cli + "-boot-next", id.slice(5), "--label", entry.bootLabel, "--yes"];
-            bootNext.running = true;
+            // is the user's own, through logind, and only once the firmware
+            // took it. Detached: close() frees this panel, and a Process it
+            // owned would die with it before the reboot. The id and label stay
+            // argv ($0 "$@"), never part of the script.
+            Quickshell.execDetached(["bash", "-c", 'pkexec "$0" "$@" && exec systemctl reboot', root.cli + "-boot-next", id.slice(5), "--label", entry.bootLabel, "--yes"]);
             return;
         }
         switch (id) {

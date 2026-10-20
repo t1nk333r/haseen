@@ -52,7 +52,12 @@ Item {
         readonly property var activePopout: Compat.Runtime.activePopout
         readonly property var layoutConfig: Config.bar
         readonly property var foreignPopoutMarker: ({ foreign: true })
-        property var clickTargets: []
+        // This host's own targets: its slot forwards presses only to these.
+        property var ownClickTargets: []
+        // Every Omarchy target on this host's window, as upstream's one bar
+        // API holds them: an open KeyboardPanel forwards a press on the bar
+        // strip to whichever widget is under it, not only to its own host's.
+        readonly property var clickTargets: Compat.Runtime.clickTargets.filter(t => !!t && targetBelongsToWindow(t, host.QsWindow.window))
         property int tooltipRequest: 0
         property Item tooltipTarget: null
         property string tooltipText: ""
@@ -97,10 +102,12 @@ Item {
             if (!target || tooltipTarget === target || pendingTooltipTarget === target) { tooltipRequest++; clearTooltip(); }
         }
         function registerClickTarget(target) {
-            if (target && clickTargets.indexOf(target) < 0) clickTargets = clickTargets.concat([target]);
+            if (target && ownClickTargets.indexOf(target) < 0) ownClickTargets = ownClickTargets.concat([target]);
+            Compat.Runtime.registerClickTarget(target);
         }
         function unregisterClickTarget(target) {
-            hideTooltip(target); clickTargets = clickTargets.filter(t => t !== target);
+            hideTooltip(target); ownClickTargets = ownClickTargets.filter(t => t !== target);
+            Compat.Runtime.unregisterClickTarget(target);
         }
         function requestPopout(owner) {
             if (!Compat.Runtime.belongsTo(owner, host.widget) && owner !== host.widget) return false;
@@ -116,7 +123,7 @@ Item {
         function moduleWidgets(id) { return Compat.Runtime.moduleWidgets(Compat.Runtime.resolve(id)); }
         function setCenterHoverRevealSuppressed(value) { _centerHoverRevealSuppressed = !!value; }
         function forwardClick(button, x, y) {
-            for (const target of clickTargets) {
+            for (const target of ownClickTargets) {
                 if (!target || !target.visible || target.interactive === false || target.pressable === false) continue;
                 const point = target.mapFromItem(host, x, y);
                 if (point.x < 0 || point.y < 0 || point.x >= target.width || point.y >= target.height) continue;
@@ -200,7 +207,9 @@ Item {
     }
     Component.onDestruction: {
         _destroying = true;
-        api.clearTooltip(); api.clickTargets = [];
+        api.clearTooltip();
+        for (const target of api.ownClickTargets) Compat.Runtime.unregisterClickTarget(target);
+        api.ownClickTargets = [];
         // The instance goes first: releasing the component invalidates the
         // context its functions and bindings were created in.
         if (widget) { Compat.Runtime.unregisterWidget(pluginId, widget); widget.destroy(); widget = null; }

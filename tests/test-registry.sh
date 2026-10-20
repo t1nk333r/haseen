@@ -150,6 +150,24 @@ assert_contains "a second update has nothing to do" "$OUTPUT" "already at"
 capture haseen plugin update not.installed --yes
 assert_status "updating something unpinned is an error" 1 "$STATUS"
 
+# Plugins from one repository share its checkout: an update reaches every one
+# of them, so a sibling that stops validating holds the repository back.
+plugin_files "$repo" alice.load 1.2.0
+rm "$repo/packages/alice.clock/Widget.qml"
+(
+    cd "$repo" || exit 1
+    $GIT add -A
+    $GIT commit -qm "third"
+)
+capture haseen plugin update alice.load --yes
+assert_contains "a sibling that stops validating is caught" "$OUTPUT" "alice.clock does not validate"
+assert_eq "the plugin asked for stays where it was" "1.1.0" \
+    "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
+assert_eq "and so does its pin" "$second_commit" \
+    "$(jq -r '.plugins["alice.load"].commit' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
+capture haseen plugin validate "$XDG_CONFIG_HOME/haseen/plugins/alice.clock"
+assert_status "the sibling is back at the commit that validated" 0 "$STATUS"
+
 # --- a second machine ---------------------------------------------------------
 # Same lockfile, empty plugin directory: restore must produce the same commits.
 lock="$(cat "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
@@ -174,10 +192,35 @@ assert_status "a mismatched id fails the restore" 1 "$STATUS"
 assert_contains "and says which plugin the lockfile claims" "$OUTPUT" "is not the plugin 'alice.wrong'"
 
 printf '%s\n' "$lock" >"$XDG_CONFIG_HOME/haseen/plugins.lock.json"
-mkdir -p "$XDG_CONFIG_HOME/haseen/plugins/stray"
+# The plugin directory is also where `haseen plugin new` scaffolds: a plugin
+# the user wrote is in no lockfile, and --prune leaves it alone. A link into a
+# checkout that the lockfile does not pin is what --prune is for.
+capture haseen plugin new me.mine --kind panel
+assert_status "a plugin of the user's own is scaffolded" 0 "$STATUS"
+ln -s "$(find "$XDG_CONFIG_HOME/haseen/plugins/.repos" -mindepth 1 -maxdepth 1 | head -n1)/packages/alice.clock" \
+    "$XDG_CONFIG_HOME/haseen/plugins/alice.stale"
+capture haseen plugin restore --prune --dry-run
+assert_contains "a --prune dry run plans removing the stale link" "$OUTPUT" \
+    "DRYRUN: rm -f -- $XDG_CONFIG_HOME/haseen/plugins/alice.stale"
+assert_not_contains "and not the user's plugin" "$OUTPUT" "me.mine"
+assert_eq "and removes nothing" 0 \
+    "$([[ -L $XDG_CONFIG_HOME/haseen/plugins/alice.stale ]] && echo 0 || echo 1)"
 capture haseen plugin restore --prune --yes
-assert_eq "--prune removes what the lockfile does not mention" 1 \
-    "$([[ -e $XDG_CONFIG_HOME/haseen/plugins/stray ]] && echo 0 || echo 1)"
+assert_eq "--prune removes a link the lockfile does not mention" 1 \
+    "$([[ -L $XDG_CONFIG_HOME/haseen/plugins/alice.stale ]] && echo 0 || echo 1)"
+assert_eq "but never a plugin the user wrote" 0 \
+    "$([[ -f $XDG_CONFIG_HOME/haseen/plugins/me.mine/manifest.json ]] && echo 0 || echo 1)"
+
+# Nor does restore replace a directory it did not make without asking.
+rm "$XDG_CONFIG_HOME/haseen/plugins/alice.load"
+plugin_files "$XDG_CONFIG_HOME/haseen/plugins/alice.load" alice.load 9.9.9
+capture haseen plugin restore </dev/null
+assert_contains "restore says what it skipped" "$OUTPUT" "skipping alice.load"
+assert_eq "and leaves the directory as it was" "9.9.9" \
+    "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
+capture haseen plugin restore --yes
+assert_eq "--yes replaces it with the pinned plugin" "1.1.0" \
+    "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
 
 # --- lockfile invariants ------------------------------------------------------
 for bad_lock in \
@@ -189,6 +232,15 @@ for bad_lock in \
     printf '%s\n' "$bad_lock" >"$XDG_CONFIG_HOME/haseen/plugins.lock.json"
     capture haseen plugin restore --yes
     assert_status "a lockfile that breaks an invariant is refused" 1 "$STATUS"
+done
+# Refused by the check itself, before anything is cloned: a bare `..` or `.`
+# climbs out of, or stands in for, the checkout as surely as `../x` does.
+for bad_path in .. . a/.. ./x; do
+    jq -n --arg path "$bad_path" --arg commit "$second_commit" \
+        '{version: 1, plugins: {ok: {repo: "https://example.invalid/x.git", path: $path, commit: $commit}}, repositories: {}}' \
+        >"$XDG_CONFIG_HOME/haseen/plugins.lock.json"
+    capture haseen plugin restore --yes
+    assert_contains "a lockfile path of '$bad_path' is refused" "$OUTPUT" "unsafe path in ok"
 done
 
 # --- uninstall ----------------------------------------------------------------

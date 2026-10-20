@@ -37,13 +37,22 @@ function rootDeclarations(text) {
 function source(url, parent) {
     // Quickshell FileView avoids Qt's disabled-by-default local XHR access.
     // Read each small entry once at construction; no watcher/poll survives it.
-    var reader = Qt.createQmlObject('import Quickshell.Io; FileView { blockLoading: true; printErrors: false }', parent, "CompatSourceReader");
-    var text = "";
+    // A blocking read reports a missing file before text() returns.
+    var reader = Qt.createQmlObject('import Quickshell.Io; FileView { blockLoading: true; printErrors: false; '
+        + 'property bool missing: false; onLoadFailed: error => missing = error === FileViewError.FileNotFound }',
+        parent, "CompatSourceReader");
+    var text = "", missing = false;
     try {
         reader.path = decodeURIComponent(String(url).replace(/^file:\/\//, ""));
         text = reader.text();
+        missing = reader.missing;
     } finally { reader.destroy(); }
-    if (!text) throw new Error("cannot read entry declarations");
+    if (!text) {
+        var error = new Error("cannot read entry declarations");
+        // propertiesFor tells a type with no QML file from a broken file.
+        error.missing = missing;
+        throw error;
+    }
     return text;
 }
 
@@ -74,9 +83,13 @@ function propertiesFor(url, seen, parent) {
                 props = Object.assign({}, propertiesFor(String(base), seen, parent));
                 found = true;
                 break;
-            } catch (e) { errors.push(String(e)); }
+            } catch (e) { if (!e.missing) errors.push(String(e)); }
         }
-        if (!found)
+        // No QML file of that name: the root is a module type (Row, MouseArea,
+        // RowLayout, FloatingWindow, LazyLoader, ...), declaring only its own
+        // properties, as for Item. A file that exists but cannot be resolved,
+        // or a cycle, still refuses the entry.
+        if (!found && errors.length)
             throw new Error("cannot resolve root " + root.type + ": " + errors.join("; "));
     }
     for (var k in root.properties) props[k] = root.properties[k];

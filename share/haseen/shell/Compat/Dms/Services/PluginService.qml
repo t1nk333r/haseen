@@ -143,7 +143,7 @@ Singleton {
     }
 
     function _noVariants(pluginId: string): var {
-        console.warn("haseen: plugin", pluginId + ": DMS widget variants are not supported by the compat adapter");
+        Haseen.Plugins.warnOnce("dms-variants:" + pluginId, "plugin " + pluginId + ": DMS widget variants are not supported by the compat adapter");
         return null;
     }
 

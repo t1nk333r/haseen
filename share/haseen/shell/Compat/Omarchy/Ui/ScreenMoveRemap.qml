@@ -42,9 +42,23 @@ Item {
     onTriggered: root.remapping = false
   }
 
+  // The origin last seen. ShellScreen's x and y notify geometryChanged,
+  // which a resize alone also fires; only a moved origin needs the remap.
+  property int originX: 0
+  property int originY: 0
+  function rememberOrigin() {
+    originX = screen ? screen.x : 0
+    originY = screen ? screen.y : 0
+  }
+  onScreenChanged: rememberOrigin()
+  Component.onCompleted: rememberOrigin()
+
   Connections {
     target: root.screen
-    function onXChanged() { settleTimer.restart() }
-    function onYChanged() { settleTimer.restart() }
+    function onGeometryChanged() {
+      if (!root.screen || (root.screen.x === root.originX && root.screen.y === root.originY)) return
+      root.rememberOrigin()
+      settleTimer.restart()
+    }
   }
 }

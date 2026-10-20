@@ -50,7 +50,17 @@ assert_eq "the plugins[] marker is replaced when the layout holds no object entr
     '{"bar":{"layout":{"right":["me.mirror"]}},"plugins":[{"id":"me.mirror","mode":"quickshare"}]}' "$(jq -c 'del(.version)' "$omarchy")"
 assert_eq "later mirrors keep the first backup" "$(jq -c . <<<"$original")" "$(jq -c . "$omarchy.haseen-bak")"
 
+# The entry travels on jq's stdin, not its argv: an entry past the kernel's
+# 128 KiB argument limit still mirrors.
+printf '%s\n' '{"version":1,"plugins":[{"id":"me.mirror"}]}' >"$omarchy"
+blob="$(head -c 200000 /dev/zero | tr '\0' x)"
+request="{\"changes\":[],\"omarchyEntry\":{\"blob\":\"$blob\"}}"
+capture haseen-plugin-settings me.mirror <<<"$request"
+assert_status "an entry larger than one argument is mirrored" 0 "$STATUS"
+assert_eq "all of it reaches Omarchy's shell.json" 200000 "$(jq '.plugins[0].blob | length' "$omarchy")"
+
 # A plugin absent from Omarchy's file gets no entry there.
+request='{"changes":[],"omarchyEntry":{"mode":"quickshare"}}'
 printf '%s\n' '{"version":1,"plugins":[{"id":"someone.else"}]}' >"$omarchy"
 capture haseen-plugin-settings me.mirror <<<"$request"
 assert_eq "an absent entry is never added" '{"version":1,"plugins":[{"id":"someone.else"}]}' "$(jq -c . "$omarchy")"

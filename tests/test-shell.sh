@@ -54,12 +54,15 @@ assert_eq "no unmarked or too-fast Timer in shell QML" "" "$(find "$SHELL_DIR" -
     }
     intimer && /interval:[[:space:]]*[0-9]+/ { match($0, /[0-9]+/); interval = substr($0, RSTART, RLENGTH) + 0 }
     intimer && /running:/ { running = ($0 ~ /running:[[:space:]]*true[[:space:]]*$/) ? "always" : "gated" }
-    /^[[:space:]]*Timer[[:space:]]*\{/ {
+    # `Timer {`, or one bound to a property: `property Timer t: Timer {`
+    /^[[:space:]]*([^"]*:[[:space:]]*)?Timer[[:space:]]*\{/ {
         start = FNR; interval = 0; running = ""; intimer = 1
         if (prev ~ /haseen:ui-timeout/) kind = "ui"
         else if (prev ~ /haseen:sample/) kind = "sample"
         else { report("unmarked Timer"); intimer = 0 }
     }
+    # The brace on the next line would hide a Timer from the check above.
+    /^[[:space:]]*([^"]*:[[:space:]]*)?Timer[[:space:]]*$/ { start = FNR; report("Timer without its { on the same line") }
     { prev = $0 }' {} +)"
 
 # --- validate: built-ins pass ----------------------------------------------
@@ -150,7 +153,8 @@ for kind in bar-widget panel service launcher-provider overlay; do
     assert_contains "new $kind QML uses Theme or is non-visual" "$(cat "$P/me.$kind"/*.qml)" "pluginId"
 done
 assert_eq "no staging dirs left behind" "" "$(find "$P" -mindepth 1 -maxdepth 1 -name '.*' -print)"
-assert_contains "bar-widget scaffold reads Theme" "$(cat "$P/me.bar-widget/Widget.qml")" "Theme.foreground"
+# Bar text keeps BarButton's Theme.barForeground (architecture 5.3).
+assert_not_contains "bar-widget scaffold keeps the bar's text colour" "$(cat "$P/me.bar-widget/Widget.qml")" "Theme.foreground"
 capture haseen plugin new me.multi --kind bar-widget --kind panel --kind panel
 assert_status "multi-kind new" 0 "$STATUS"
 assert_eq "multi-kind manifest kinds (deduplicated)" '["bar-widget","panel"]' "$(jq -c .kinds "$P/me.multi/manifest.json")"

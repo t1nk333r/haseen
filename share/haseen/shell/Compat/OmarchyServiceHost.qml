@@ -79,12 +79,14 @@ Scope {
     }
     Component.onDestruction: {
         _destroying = true;
-        if (_cancelLoad) _cancelLoad();
+        // The instance goes first: releasing the component invalidates the
+        // context its functions and bindings were created in (Host.load).
         if (instance) {
             if (kind === "overlay") Compat.Runtime.unregisterOverlay(pluginId, instance);
             else Compat.Runtime.unregisterService(pluginId, instance);
             instance.destroy(); instance = null;
         }
+        if (_cancelLoad) _cancelLoad();
         if (_claimed) Compat.Runtime.releaseService(registrationKey, host);
         if (_catalogueClaimed) Compat.Runtime.releaseCatalogue(host);
     }

@@ -204,8 +204,10 @@ Column {
         }
     }
 
+    // A fresh install has no theme yet; that is not worth a log line.
     FileView {
         path: Paths.userState + "/current/theme.name"
+        printErrors: false
         onLoaded: root.themeName = text().trim()
     }
 

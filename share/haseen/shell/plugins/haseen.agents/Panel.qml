@@ -89,6 +89,11 @@ Column {
             root.rows = code === 0 ? Agents.parse(scanOut.text, Paths.home) : [];
             root.scanned = true;
         }
+        // A scanner that cannot start never exits; stop saying "Looking…".
+        onRunningChanged: {
+            if (!running)
+                root.scanned = true;
+        }
     }
 
     Row {

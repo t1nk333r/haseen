@@ -13,7 +13,6 @@ BarButton {
     property var screen: null
 
     text: typeof settings.label === "string" ? settings.label : pluginId
-    color: Theme.foreground
 
     onClicked: button => console.info(root.pluginId + ": clicked with button " + button)
 }

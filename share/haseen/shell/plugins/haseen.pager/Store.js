@@ -272,14 +272,21 @@ function trimHistory(entries, hours, nowSeconds) {
   return kept.slice(Math.max(0, kept.length - HISTORY_MAX))
 }
 
-// Append one closed row. Returns the new list (oldest first).
+// Append one closed row. Returns the new list (oldest first). A key that
+// closes again replaces its held row: a muted notification the sender keeps
+// updating (replaces_id, same key) is still one notification.
 function closeInto(entries, row, reason, hours, nowSeconds) {
   if (!row || !retentionHours(hours)) return trimHistory(entries, hours, nowSeconds)
   var entry = {}
   for (var k in row) entry[k] = row[k]
   entry.closed_ts = nowSeconds
   entry.closed_reason = String(reason || "")
-  return trimHistory((entries || []).concat([forDisk(entry)]), hours, nowSeconds)
+  var key = String(row.key || "")
+  var kept = (entries || []).filter(function(e) {
+    return !(key && e && String(e.key || "") === key
+      && HELD_REASONS.indexOf(String(e.closed_reason || "")) >= 0)
+  })
+  return trimHistory(kept.concat([forDisk(entry)]), hours, nowSeconds)
 }
 
 // Newest first, at most `limit`, optionally only what was held back.

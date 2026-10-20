@@ -9,12 +9,15 @@ const bad=['https://paypal.com@evil.example','https://user:pass@example.com','ja
 for (const u of bad) {
  assert.equal(S.safeExternalUrl(u),'',u);
  assert.equal(M.linkable(u),false,u);
- assert.equal(S.openExternalUrl(u),false,u);
+ assert.equal(S.openArgv(u).length,0,u);
  assert.ok(!M.render('<a href="'+u+'">click</a>').includes('<a href='),u);
  for (const detected of D.links(u)) assert.ok(S.safeHttpUrl(detected));
 }
 for (const u of ['https://example.com','http://example.com/path?q=1','https://xn--bcher-kva.example','https://example.com/a%40b','mailto:user@example.com']) assert.ok(S.safeExternalUrl(u),u);
 assert.equal(S.safeHttpUrl('HTTPS://Example.COM.:443/a'),'https://example.com:443/a');
+// Links leave as an xdg-open argv for Apps.launch, never Qt.openUrlExternally.
+assert.equal(JSON.stringify(S.openArgv('HTTPS://Example.COM')),JSON.stringify(['xdg-open','https://example.com/']));
+assert.equal(JSON.stringify(S.openArgv('mailto:user@example.com')),JSON.stringify(['xdg-open','mailto:user@example.com']));
 assert.equal(S.safeMailtoUrl('mailto:user@example.com?attach=/etc/passwd'),'');
 for(const payload of ['<img src="file:///etc/passwd">','<svg><image href="https://example.com"/></svg>','<script>alert(1)</script>','<iframe src="x">','https://example.com/"onmouseover="x']) {
  const rendered=M.render(payload);
@@ -229,6 +232,16 @@ const same = (a, b, m) => assert.equal(JSON.stringify(a), JSON.stringify(b), m);
   same(Store.newest(history, 10, false).map(e => e.key), ['k1', 'k2']);
   same(Store.newest(history, 10, true).map(e => e.key), ['k2'], 'held = snoozed/silenced only');
   same(Store.forgetHeld(history).map(e => e.key), ['k1']);
+  // A muted notification updated in place keeps its key: one held row, the
+  // newest text, moved to the end. Its later close replaces it too; a key
+  // closed for any other reason is never folded.
+  const upd = Store.snapshot({appName:'Player', summary:'Track 1', body:'now playing'}, 'k3', {Normal:1});
+  let quiet = Store.closeInto([], upd, 'silenced', 24, now);
+  quiet = Store.closeInto(quiet, row, 'silenced', 24, now + 1);
+  quiet = Store.closeInto(quiet, Object.assign({}, upd, {summary:'Track 2'}), 'silenced', 24, now + 2);
+  same(quiet.map(e => e.key + ':' + e.summary), ['k1:Sam', 'k3:Track 2'], 'replaced muted notification is one history row');
+  same(Store.closeInto(quiet, upd, 'dismissed', 24, now + 3).map(e => e.key + ':' + e.closed_reason), ['k1:silenced', 'k3:dismissed']);
+  same(Store.closeInto(Store.closeInto([], upd, 'dismissed', 24, now), upd, 'expired', 24, now + 1).length, 2);
   // Retention: 0 keeps nothing; age and the 100-entry cap both bite.
   same(Store.closeInto([], live[1], 'dismissed', 0, now), []);
   assert.equal(Store.retentionHours(5), 24, 'unknown retention falls back to 24');

@@ -27,6 +27,10 @@ Singleton {
     property var _running: ({})
     // Registry id -> true once its check passed.
     property var _passed: ({})
+    // A check(done) that never calls done would keep its plugin waiting with
+    // no error at all; past this it is refused like any failed check. Not
+    // readonly, so a test can shorten it.
+    property int checkTimeoutMs: 30000
 
     function checkUrl(id: string): string {
         const rec = Plugins.registry[id];
@@ -72,11 +76,13 @@ Singleton {
         running[id] = entry;
         _running = running;
 
-        let probe = null, release = null, settled = false;
+        let probe = null, release = null, settled = false, timeout = null;
         const finish = result => {
             if (settled)
                 return;
             settled = true;
+            if (timeout)
+                timeout.destroy();
             if (probe)
                 probe.destroy();
             if (release)
@@ -100,6 +106,11 @@ Singleton {
             for (const waiter of entry.waiters)
                 waiter(err === null);
         };
+        timeout = timeoutComp.createObject(gate, {
+            interval: gate.checkTimeoutMs
+        });
+        timeout.triggered.connect(() => finish("startupCheck did not call done() within " + gate.checkTimeoutMs / 1000 + " s"));
+        timeout.start();
         const cancel = Host.load(url, gate, loaded => {
             if (loaded.error !== "") {
                 finish("startupCheck: " + loaded.error);
@@ -122,5 +133,14 @@ Singleton {
         release = cancel;
         if (settled)
             Qt.callLater(cancel);
+    }
+
+    Component {
+        id: timeoutComp
+
+        // haseen:ui-timeout
+        Timer {
+            repeat: false
+        }
     }
 }

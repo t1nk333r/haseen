@@ -44,10 +44,12 @@ Column {
     property string notice: ""
     readonly property var results: Images.filter(images, query)
 
+    readonly property bool customCommand: Array.isArray(settings.command) && settings.command.length > 0
+
     // The argv a pick runs, with the image appended. Empty settings.command
     // means the background the CLI and swaybg already agree on.
     function applyCommand(path: string): var {
-        const argv = Array.isArray(settings.command) && settings.command.length > 0 ? settings.command.map(a => String(a)) : [cli, "theme", "bg", "set"];
+        const argv = customCommand ? settings.command.map(a => String(a)) : [cli, "theme", "bg", "set"];
         argv.push(path);
         return argv;
     }
@@ -62,7 +64,14 @@ Column {
         const image = results[index];
         if (!image)
             return;
-        Quickshell.execDetached(applyCommand(image.path));
+        const argv = applyCommand(image.path);
+        // A configured command may be an app (a viewer, an editor), so it gets
+        // its own scope like every app the shell starts (Apps.qml); the
+        // default is a haseen CLI write, which stays with the shell.
+        if (customCommand)
+            Apps.launch(argv);
+        else
+            Quickshell.execDetached(argv);
         close();
     }
 

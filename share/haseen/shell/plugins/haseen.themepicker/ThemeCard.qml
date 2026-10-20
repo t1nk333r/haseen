@@ -71,7 +71,7 @@ Item {
 
             anchors.fill: parent
             anchors.margins: frame.border.width
-            source: card.previewPath !== "" ? "file://" + card.previewPath : ""
+            source: card.previewPath !== "" ? Paths.fileUrl(card.previewPath) : ""
             sourceSize.width: Math.round(card.width * card.pixelRatio)
             fillMode: Image.PreserveAspectCrop
             asynchronous: true

@@ -164,6 +164,19 @@ QtObject {
         } else settingsWritten(job.id, success);
     }
 
+    // Plugin code runs in the middle of the coordinator's bookkeeping: a throw
+    // must neither skip the state change after it (requestPopout would keep
+    // no owner and leave native panels open) nor stop the next widget
+    // closing. Reported once per plugin and action.
+    function callPlugin(target, fn, action) {
+        try { target[fn](); return true; }
+        catch (e) {
+            const message = String(e), id = target && target.pluginId ? String(target.pluginId) : "";
+            Plugins.warnOnce("compat-throw:" + action + ":" + (id || message),
+                "compat: " + fn + "() of " + (id ? "'" + id + "'" : "a plugin") + " threw during " + action + ": " + message);
+            return false;
+        }
+    }
     function unsupported(action, id) {
         Plugins.warnOnce("compat:" + action + ":" + id, "compat: " + action + " unavailable for '" + id + "'; enable a haseen provider with the required API");
         return false;
@@ -243,6 +256,19 @@ QtObject {
         widgets = next;
     }
     function moduleWidgets(id) { return (widgets[String(id || "")] || []).map(e => e.item); }
+    // Omarchy bar click targets of every host. Upstream's bar API is one per
+    // bar, so an open KeyboardPanel forwards a press on the bar strip to any
+    // widget under it; haseen's facade is one per host, and each host reads
+    // the targets of its own window from here (OmarchyHost api.clickTargets).
+    property var clickTargets: []
+    function registerClickTarget(target) {
+        if (target && clickTargets.indexOf(target) < 0) clickTargets = clickTargets.concat([target]);
+    }
+    function unregisterClickTarget(target) {
+        // A destroyed target reads as null; it goes too.
+        const next = clickTargets.filter(t => !!t && t !== target);
+        if (next.length !== clickTargets.length) clickTargets = next;
+    }
     function belongsTo(target, ancestor) {
         for (let node = target; node; node = node.parent) if (node === ancestor) return true;
         return false;
@@ -255,7 +281,7 @@ QtObject {
             const close = typeof old.closeForPopoutSwitch === "function" ? "closeForPopoutSwitch" : "close";
             if (typeof old[close] !== "function") return unsupported("close previous popout", "popup");
             activePopout = null;
-            old[close]();
+            callPlugin(old, close, "close previous popout");
         }
         if (nativeShell && nativeShell.openPanels.length) nativeShell.openPanels = [];
         activePopout = owner;
@@ -270,7 +296,7 @@ QtObject {
         const old = activePopout;
         if (!old) return true;
         if (typeof old.close !== "function") return unsupported("close popout", "popup");
-        activePopout = null; old.close(); return true;
+        activePopout = null; callPlugin(old, "close", "close popout"); return true;
     }
     function switchPanelFrom(owner, direction) {
         const entries = [];
@@ -286,7 +312,7 @@ QtObject {
         const item = sameScreen[(index + (Number(direction) < 0 ? -1 : 1) + sameScreen.length) % sameScreen.length].item;
         if (!closePopout()) return false;
         const fn = typeof item.open === "function" ? "open" : typeof item.openPanel === "function" ? "openPanel" : "togglePanel";
-        item[fn](); return true;
+        return callPlugin(item, fn, "open next panel");
     }
     function payload(value) {
         if (value === undefined || value === null || value === "") return {};
@@ -395,11 +421,11 @@ QtObject {
     function hide(id) {
         const resolved = resolve(id);
         let handled = false;
-        for (const w of moduleWidgets(resolved)) if (typeof w.close === "function") { w.close(); handled = true; }
+        for (const w of moduleWidgets(resolved)) if (typeof w.close === "function") { callPlugin(w, "close", "hide"); handled = true; }
         if (nativeShell && nativeShell.openPanels.indexOf(resolved) >= 0) { nativeShell.closePanel(resolved); handled = true; }
         const service = overlayFor(resolved) || serviceFor(resolved);
-        if (service && typeof service.hide === "function") { service.hide(); handled = true; }
-        else if (service && typeof service.close === "function") { service.close(); handled = true; }
+        if (service && typeof service.hide === "function") { callPlugin(service, "hide", "hide"); handled = true; }
+        else if (service && typeof service.close === "function") { callPlugin(service, "close", "hide"); handled = true; }
         else if (service && resolved === Plugins.provider("osd") && "shown" in service) { service.shown = false; handled = true; }
         const next = Object.assign({}, _pendingPanels); delete next[resolved]; _pendingPanels = next;
         return handled || unsupported("hide", id);

@@ -482,7 +482,10 @@ Item {
 
                         visible: card.marks.length > 0
                         anchors.verticalCenter: title.verticalCenter
-                        x: title.x + Math.min(title.implicitWidth, title.width) + 7
+                        // Just right of the text, in the room the title's width
+                        // leaves. An Arabic title aligns right, so its text
+                        // reaches the box's edge however short it is.
+                        x: title.effectiveHorizontalAlignment === Text.AlignRight ? title.x + title.width + 7 : title.x + Math.min(title.implicitWidth, title.width) + 7
                         spacing: 5
 
                         Repeater {
@@ -641,8 +644,15 @@ Item {
                         font.family: Theme.fontFamily
                         font.pixelSize: card.bodySize
                         wrapMode: Text.Wrap
-                        // Second gate on the same rule as Markup.js.
-                        onLinkActivated: url => Security.openExternalUrl(url)
+                        // Second gate on the same rule as Markup.js; the
+                        // browser gets its own scope, not the shell's (plan 074).
+                        onLinkActivated: url => {
+                            const argv = Security.openArgv(url);
+                            if (argv.length > 0)
+                                Apps.launch(argv, {
+                                    desktopId: "xdg-open"
+                                });
+                        }
                     }
 
                     Text {

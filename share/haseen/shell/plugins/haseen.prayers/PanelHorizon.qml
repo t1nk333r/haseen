@@ -23,21 +23,20 @@ Column {
     ? firstSegment.start + host.dayFraction * 1440
     : 0
   readonly property var fajrTiming: Model.timing(host.todayDay, "Fajr")
-  // The next prayer's iqama, wherever that prayer falls: built from its own
-  // clock rather than today's timings, so a "· TOMORROW" prayer is right too.
   // Friday's hour of answered supplication, shown under the Maghrib it
   // precedes (the table row below reads it from the same helper).
   readonly property var istijabah: host.istijabahEnabled
     ? Model.istijabahTime(host.todayDay, host.istijabahLead)
     : null
 
+  // The next prayer's iqama, wherever that prayer falls: built from its own
+  // day rather than today's timings, so a "· TOMORROW" prayer is right too.
+  // iqamaFor, as the table and the bar use it, so a Friday's Dhuhr reads the
+  // Jumu'ah offset and label.
   readonly property var heroIqama: host.nextPrayer
-    ? Model.iqamaValue({ time: host.nextPrayer.time, at: host.nextPrayer.at },
-        (host.iqamaOffsets || {})[host.nextPrayer.name])
+    ? Model.iqamaFor(host.nextPrayer.day, host.nextPrayer.name, host.iqamaOffsets)
     : null
-  readonly property string heroIqamaLabel: host.nextPrayer
-    && host.nextPrayer.name === "Dhuhr" && Model.isFriday({ date: host.nextPrayer.date })
-    ? "jumuah" : "iqama"
+  readonly property string heroIqamaLabel: heroIqama ? heroIqama.label : "iqama"
 
   readonly property real nightNowFraction: {
     if (!firstSegment || host.nightBand === null) return -1

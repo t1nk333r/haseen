@@ -85,12 +85,12 @@ Scope {
         if (!active)
             return;
         active = false;
-        if (style === "ttfx") {
-            if (launcher.running)
-                launcher.running = false;
-            if (_windowCount > 0)
-                Quickshell.execDetached([command, "--stop"]);
-        }
+        // A running launcher is left to finish, not killed: a terminal it
+        // already handed to Hyprland maps anyway, and with the launcher gone
+        // nothing would be watching for it. Each one it waits for is closed
+        // as it maps (_windowEvent), and once more when it exits.
+        if (style === "ttfx" && _windowCount > 0)
+            Quickshell.execDetached([command, "--stop"]);
     }
 
     function _fallBack(reason: string): void {
@@ -164,6 +164,11 @@ Scope {
             id: launcherErr
         }
         onExited: code => {
+            // Dismissed while it ran: close whatever it still opened.
+            if (!root.active && root.style === "ttfx") {
+                Quickshell.execDetached([root.command, "--stop"]);
+                return;
+            }
             if (!root.active || root.style !== "ttfx")
                 return;
             if (code !== 0)

@@ -91,6 +91,17 @@ assert_contains "pager IPC target" "$svc" 'target: "pager"'
 assert_contains "debug hooks gated by settings.debugIpc" "$(cat "$PAGER/Panel.qml")" "enabled: root.settings.debugIpc === true"
 assert_contains "state lives under HASEEN_USER_STATE/pager" "$svc" 'Paths.userState + "/pager"'
 assert_contains "remote icons only when asked" "$svc" 'fetchIcons && web.length'
+# Plan 074: a browser started by qs dies with every shell restart.
+assert_eq "links never open as the shell's child (Qt.openUrlExternally)" "" \
+    "$(grep -rnF 'openUrlExternally(' "$PAGER" --include='*.qml' --include='*.js' || true)"
+for f in Service.qml Toast.qml; do
+    body="$(cat "$PAGER/$f")"
+    assert_contains "$f vets links with Security.openArgv" "$body" "Security.openArgv("
+    assert_contains "$f opens them through Apps.launch" "$body" "Apps.launch(argv, {"
+done
+assert_contains "a card opens its source site only for a web row" "$svc" \
+    'String(row.groupKey || "").indexOf("web:") === 0 && Markup.hostname(row.source)'
+assert_contains "a muted notification stays tracked, so its updates keep one key" "$svc" "retainMuted(key);"
 
 # --- haseen.notifications is the fallback ---------------------------------------------
 fallback="$(cat "$PLUGINS/haseen.notifications/Service.qml")"

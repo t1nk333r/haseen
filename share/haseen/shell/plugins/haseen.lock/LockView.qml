@@ -24,6 +24,7 @@ Rectangle {
 
     signal submitted(string password)
     signal cancelled
+    signal attemptCancelled
 
     color: Theme.background
 
@@ -89,6 +90,8 @@ Rectangle {
                 Keys.onEscapePressed: {
                     if (root.preview)
                         root.cancelled();
+                    else if (root.busy)
+                        root.attemptCancelled();
                     else
                         text = "";
                 }

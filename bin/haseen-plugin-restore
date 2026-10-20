@@ -17,7 +17,8 @@ Usage: haseen plugin restore [--prune] [--dry-run] [--yes]
 
 Reads $PLUGIN_LOCKFILE and installs every plugin in it at the commit it names.
 
-  --prune   also remove installed plugins the lockfile does not mention
+  --prune   also remove installed plugins the lockfile does not mention (a
+            plugin you wrote or copied there is never removed)
 EOF
 }
 
@@ -58,6 +59,13 @@ while IFS= read -r entry; do
     path="$(jq -r .path <<<"$entry")"
     commit="$(jq -r .commit <<<"$entry")"
     [[ -n $id ]] || continue
+    # The plugin directory is also where `haseen plugin new` scaffolds and a
+    # copied plugin lives: only a link to a checkout is restore's to replace.
+    if [[ -e $PLUGIN_USER_DIR/$id && ! -L $PLUGIN_USER_DIR/$id ]] &&
+        ! confirm "$PLUGIN_USER_DIR/$id is not an installed plugin; replace it?"; then
+        warn "skipping $id: $PLUGIN_USER_DIR/$id is left as it is"
+        continue
+    fi
     info "restoring $id at ${commit:0:12}"
     registry_fetch "$url" "$commit" >/dev/null
     registry_link "$id" "$url" "$path"
@@ -70,12 +78,18 @@ while IFS= read -r entry; do
 done < <(jq -c '.plugins | to_entries[] | {id: .key, repo: .value.repo, path: (.value.path // ""), commit: .value.commit}' <<<"$lock")
 
 if $prune; then
+    repos="$(readlink -f "$PLUGIN_REPOS_DIR" 2>/dev/null || true)"
     while IFS= read -r dir; do
         id="${dir##*/}"
         [[ $id == .* ]] && continue
         jq -e --arg id "$id" '.plugins[$id]' <<<"$lock" >/dev/null && continue
+        # Only a link into a checkout is something an install made. A real
+        # directory is a plugin the user wrote or copied, which no lockfile
+        # can mention.
+        [[ -L $dir && -n $repos && $(readlink -f "$dir" 2>/dev/null) == "$repos"/* ]] || continue
+        confirm "remove $id (not in the lockfile)?" || continue
         info "pruning $id (not in the lockfile)"
-        run rm -rf "$dir"
+        run rm -f -- "$dir"
     done < <(find "$PLUGIN_USER_DIR" -mindepth 1 -maxdepth 1 2>/dev/null || true)
 fi
 info "$restored plugin(s) restored"

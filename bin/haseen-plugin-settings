@@ -73,8 +73,10 @@ fi
 # Dry runs do not even create the directory/lock.
 shell_config_lock
 user="$(shell_user_json)"
-updated="$(printf '%s\n%s\n' "$user" "$request" | jq -s --arg id "$id" --arg idle "$idle_provider" '
-    .[0] as $user | .[1] as $request |
+# The idle provider is read from the request on stdin too: unvalidated
+# (it is checked only when an idle change uses it), it is payload, not an id.
+updated="$(printf '%s\n%s\n' "$user" "$request" | jq -s --arg id "$id" '
+    .[0] as $user | .[1] as $request | ($request.idleProvider // "") as $idle |
     if $request | has("settings") then
         $user | .plugins[$id].settings = ((.plugins[$id].settings // {}) * $request.settings)
     else
@@ -112,7 +114,10 @@ mirror_omarchy_entry() {
         warn "$file is not a JSON object; $upstream's entry was not mirrored there"
         return 0
     fi
-    next="$(jq --arg id "$upstream" --argjson entry "$mirror" '
+    # The entry is payload: on stdin with the file, never in jq's argv, where
+    # other users could read it in /proc and a large one would hit E2BIG.
+    next="$(printf '%s\n%s\n' "$current" "$mirror" | jq -s --arg id "$upstream" '
+        .[1] as $entry | .[0] |
         ({id: $id} + ($entry | del(.id))) as $new |
         def swap: if type == "object" and .id == $id then $new else . end;
         def sections: "left", "center", "right";
@@ -121,7 +126,7 @@ mirror_omarchy_entry() {
             reduce sections as $s (.; if (.bar.layout[$s] | type) == "array" then .bar.layout[$s] |= map(swap) else . end)
         elif (.plugins | type) == "array" then .plugins |= map(swap)
         else . end
-    ' <<<"$current")"
+    ')"
     [[ $next != "$current" ]] || return 0
     if [[ ! -e $file.haseen-bak ]]; then
         run cp -p -- "$file" "$file.haseen-bak" || return 1

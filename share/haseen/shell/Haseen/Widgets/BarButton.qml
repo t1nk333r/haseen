@@ -14,6 +14,11 @@ Item {
     property bool highlighted: false
     property int padding: Theme.gap
     property bool vertical: false
+    // A horizontal label wider than this is elided; 0 means never.
+    property real maxTextWidth: 0
+    // Wheel delta not yet worth a step: touchpads and hi-res wheels send
+    // fractions of a notch (QWheelEvent::angleDelta), which add up.
+    property real _wheelDelta: 0
 
     signal clicked(int button)
     signal scrolled(int steps)
@@ -50,8 +55,12 @@ Item {
         }
 
         Text {
-            width: root.vertical ? Math.max(1, root.width - 4) : implicitWidth
+            width: root.vertical ? Math.max(1, root.width - 4) : root.maxTextWidth > 0 ? Math.min(implicitWidth, root.maxTextWidth) : implicitWidth
             text: root.text
+            // Labels carry outside strings (SSIDs, model ids, titles); a tag in
+            // one must not render, let alone load a remote image.
+            textFormat: Text.PlainText
+            elide: !root.vertical && root.maxTextWidth > 0 ? Text.ElideRight : Text.ElideNone
             color: root.color
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize
@@ -69,9 +78,12 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         onClicked: event => root.clicked(event.button)
         onWheel: event => {
-            const steps = Math.round(event.angleDelta.y / 120);
-            if (steps !== 0)
+            root._wheelDelta += event.angleDelta.y;
+            const steps = Math.trunc(root._wheelDelta / 120);
+            if (steps !== 0) {
+                root._wheelDelta -= steps * 120;
                 root.scrolled(steps);
+            }
         }
     }
 }
