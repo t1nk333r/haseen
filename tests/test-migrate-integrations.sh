@@ -66,8 +66,13 @@ assert_eq "a drawer's own items are left as they are" '[{"id":"io.github.ilyazar
 assert_contains "and reported" "$OUTPUT" "t1nk33r.nook still names an old plugin id"
 assert_contains "the change is reported" "$OUTPUT" "omarchy.omaconnect is now haseen.omaconnect"
 assert_eq "the original plugin directories are untouched" "$dirs_before" "$(find "$XDG_CONFIG_HOME/omarchy" "$XDG_CONFIG_HOME/haseen/plugins" -printf '%p %s\n' | sort)"
+# validate enforces each manifest's requires.bins; stub OmaConnect's (KDE
+# Connect is not on every machine, CI's image included) so the check is about
+# the ids, not the host. hyprctl and curl are stubbed by the sandbox already.
+for c in kdeconnect-cli gdbus dbus-monitor; do stub "$c" ":"; done
 capture haseen plugin validate haseen.monitor-settings haseen.omaconnect haseen.syncthing
 assert_status "the migrated config names valid plugins" 0 "$STATUS"
+assert_not_contains "no requirement is unmet" "$OUTPUT" "unmet"
 
 run_m
 assert_status "a second run succeeds" 0 "$STATUS"
