@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.todoist",
+  "name": "Todoist",
+  "version": "1.0.0",
+  "description": "Todoist in the bar: the mark with an optional task count, and a panel with Today, Inbox and All, overdue first, to complete, edit, delete and quick-add tasks (Todoist's own parser: p1, #Project, dates). Off by default. The API token is kept in a private state file, never in shell.json, and only ever sent to api.todoist.com",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: answer state() on IPC target haseen.todoist (refresh, tasks and complete always answer)"
+    }
+  },
+  "permissions": [
+    "exec",
+    "network",
+    "files:write"
+  ],
+  "provides": [
+    "todoist"
+  ]
+}
