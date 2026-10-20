@@ -402,27 +402,24 @@ for base in "${EXT_DIRS[@]}"; do
     ext="$base/haseen-theme"
     [[ $(valid_json "$ext/themes/haseen-color-theme.json") == valid ]] || missing+="$base(theme) "
     [[ $(jq -r '.contributes.themes[0] | "\(.label) \(.uiTheme)"' "$ext/package.json" 2>/dev/null) == "haseen vs-dark" ]] || missing+="$base(package) "
-    [[ $(jq -r --arg p "$ext" '[.[] | select(.identifier.id == "local.haseen-theme" and .location.fsPath == $p)] | length' "$base/extensions.json" 2>/dev/null) == 1 ]] || missing+="$base(registered) "
 done
 assert_eq "every installed editor gets the local haseen extension" "" "$missing"
+assert_eq "no editor's extensions.json is written without --activate" "" "$(find "${EXT_DIRS[@]}" -name extensions.json)"
+assert_contains "it says how to register the extension" "$OUTPUT" "omarchy-theme-set-vscode --activate' once"
 f="$HOME/.vscode/extensions/haseen-theme/themes/haseen-color-theme.json"
 assert_eq "vscode theme: named haseen, dark, fixture background" "haseen dark #16161e" "$(jq -r '"\(.name) \(.type) \(.colors["editor.background"])"' "$f" 2>/dev/null)"
 assert_eq "vscode theme has no placeholder left" "" "$(grep -o '{{[^}]*}}' "$f" 2>/dev/null || true)"
 assert_eq "no settings.json is written without --activate" "" "$(find "$HOME/.config" -name settings.json)"
 assert_eq "no extension is installed without --activate" "" "$(calls)"
-before="$(tree)"
-capture "$OMA/omarchy-theme-set-vscode" --dry-run
-assert_eq "a re-run has nothing to change" "" "$OUTPUT"
-capture "$OMA/omarchy-theme-set-vscode"
-assert_eq "a re-run writes nothing" "$before" "$(tree)"
-assert_eq "a re-run registers the extension once" "1" "$(jq length "$HOME/.vscode/extensions/extensions.json")"
 
-# VS Code's own bookkeeping: an obsolete mark is lifted, other entries stay.
+# VS Code's own bookkeeping is the user's: without --activate an obsolete mark
+# stays as it is.
 printf '{"local.haseen-theme-1.0.0": true, "other.ext-2.0.0": true}\n' >"$HOME/.vscode/extensions/.obsolete"
 printf '{"local.haseen-theme-1.0.0": true}\n' >"$HOME/.cursor/extensions/.obsolete"
 capture "$OMA/omarchy-theme-set-vscode"
-assert_eq ".obsolete keeps other extensions" '{"other.ext-2.0.0":true}' "$(jq -c . "$HOME/.vscode/extensions/.obsolete")"
-assert_eq "an emptied .obsolete is removed" "no" "$([[ -e $HOME/.cursor/extensions/.obsolete ]] && echo yes || echo no)"
+assert_eq ".obsolete is not edited without --activate" '{"local.haseen-theme-1.0.0":true,"other.ext-2.0.0":true}' \
+    "$(jq -c . "$HOME/.vscode/extensions/.obsolete")"
+assert_eq "nor removed" "yes" "$([[ -e $HOME/.cursor/extensions/.obsolete ]] && echo yes || echo no)"
 
 # --activate edits settings.json as text: JSONC comments and commas survive.
 code_settings="$HOME/.config/Code/User/settings.json"
@@ -437,6 +434,20 @@ assert_dry_pure "set-vscode --activate" "$OUTPUT"
 assert_eq "--activate --dry-run writes nothing" "$before" "$(tree)"
 capture "$OMA/omarchy-theme-set-vscode" --activate
 assert_status "set-vscode --activate" 0 "$STATUS"
+missing=""
+for base in "${EXT_DIRS[@]}"; do
+    ext="$base/haseen-theme"
+    [[ $(jq -r --arg p "$ext" '[.[] | select(.identifier.id == "local.haseen-theme" and .location.fsPath == $p)] | length' "$base/extensions.json" 2>/dev/null) == 1 ]] || missing+="$base "
+done
+assert_eq "--activate registers the extension with every editor" "" "$missing"
+assert_eq "--activate lifts the obsolete mark, other entries stay" '{"other.ext-2.0.0":true}' "$(jq -c . "$HOME/.vscode/extensions/.obsolete")"
+assert_eq "an emptied .obsolete is removed" "no" "$([[ -e $HOME/.cursor/extensions/.obsolete ]] && echo yes || echo no)"
+before="$(tree)"
+capture "$OMA/omarchy-theme-set-vscode" --dry-run
+assert_eq "a re-run of a registered extension has nothing to change" "" "$OUTPUT"
+capture "$OMA/omarchy-theme-set-vscode"
+assert_eq "a re-run writes nothing" "$before" "$(tree)"
+assert_eq "the extension is registered once" "1" "$(jq length "$HOME/.vscode/extensions/extensions.json")"
 assert_eq "an added colorTheme keeps the user's comment and keys" \
     $'{ "workbench.colorTheme": "haseen",\n  // my editor\n  "editor.fontSize": 14,\n}' "$(<"$code_settings")"
 assert_eq "an existing colorTheme is replaced in place" \

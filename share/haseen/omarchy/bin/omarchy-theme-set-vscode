@@ -8,12 +8,15 @@
 # rendered from the current colors.toml, copied into the extension (Omarchy
 # links it); the extension is local.haseen-theme, labelled haseen; the
 # Flatpak editors haseen's catalogue installs are found too; a render with an
-# unresolved placeholder is not published. An editor's settings.json is the
-# user's: "workbench.colorTheme" is set only with --activate, which also
-# installs the extension a stock theme's vscode.json names (Omarchy does both
-# at every theme set, and drops the setting when the theme has no VS Code
-# colours; haseen never removes it). The skip-<editor>-theme-changes toggles
-# still opt an editor out (plan 093).
+# unresolved placeholder is not published. An editor's settings.json and
+# its extension bookkeeping (extensions.json, .obsolete) are the user's: only
+# --activate registers the extension there and sets "workbench.colorTheme",
+# and it also installs the extension a stock theme's vscode.json names
+# (Omarchy does all three at every theme set, and drops the setting when the
+# theme has no VS Code colours; haseen never removes it). Without --activate
+# only haseen's own extension directory is written, which an editor that
+# already lists it picks up. The skip-<editor>-theme-changes toggles still
+# opt an editor out (plan 093).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -42,13 +45,15 @@ usage() {
     cat <<EOF
 Usage: omarchy-theme-set-vscode [--activate] [--dry-run]
 
-haseen's answer to Omarchy's command: writes the current haseen theme as the
-local extension "$EXT_LABEL" for every installed VS Code, VS Code Insiders,
-VSCodium and Cursor (native or Flatpak). Choose "$EXT_LABEL" once under
-Preferences: Color Theme, or:
-  --activate  also set "workbench.colorTheme" in each editor's settings.json,
-              to the theme's own VS Code theme when it names one (installing
-              that extension if needed), else to "$EXT_LABEL"
+haseen's answer to Omarchy's command: writes the current haseen theme into
+the local extension "$EXT_LABEL" (its own directory, haseen-theme) for every
+installed VS Code, VS Code Insiders, VSCodium and Cursor (native or Flatpak).
+An editor that lists the extension follows the new colours.
+  --activate  also list the extension in the editor's extensions.json (VS
+              Code loads only what that file lists) and set
+              "workbench.colorTheme" in its settings.json, to the theme's own
+              VS Code theme when it names one (installing that extension if
+              needed), else to "$EXT_LABEL"
 An editor is left alone while its Omarchy toggle is on
 (skip-vscode-theme-changes, skip-vscode-insiders-theme-changes,
 skip-codium-theme-changes, skip-cursor-theme-changes).
@@ -91,9 +96,17 @@ extension_installed() {
     return 1
 }
 
+# extension_registered EXT_DIR — the editor's extensions.json lists the
+# generated extension at EXT_DIR.
+extension_registered() {
+    jq -e --arg id "$EXT_ID" --arg path "$1" \
+        'any(.[]; .identifier.id == $id and .location.fsPath == $path)' "$(dirname -- "$1")/extensions.json" &>/dev/null
+}
+
 # register_extension EXT_DIR — list the generated extension in the editor's
 # extensions.json (and take it off .obsolete): VS Code loads only the
-# extensions that file names. Both are the editor's own state, not settings.
+# extensions that file names. Both are the editor's state, edited only on
+# --activate.
 register_extension() {
     local ext_dir="$1" ext_base extensions_file obsolete_file
     ext_base="$(dirname -- "$ext_dir")"
@@ -111,8 +124,7 @@ register_extension() {
 
     if [[ ! -f $extensions_file ]]; then
         printf '[]\n' | write_user_file "$extensions_file"
-    elif jq -e --arg id "$EXT_ID" --arg path "$ext_dir" \
-        'any(.[]; .identifier.id == $id and .location.fsPath == $path)' "$extensions_file" &>/dev/null; then
+    elif extension_registered "$ext_dir"; then
         return 0
     fi
     # shellcheck disable=SC2016  # $-names are jq variables
@@ -153,7 +165,6 @@ publish_extension() {
     }
 }
 EOF
-    register_extension "$ext_dir"
 }
 
 # set_color_theme SETTINGS NAME — set "workbench.colorTheme" to NAME in the
@@ -196,7 +207,12 @@ apply() {
     [[ -n $flatpak_id ]] && editor=(flatpak run "--command=$cmd" "$flatpak_id")
 
     publish_extension "$ext_base"
-    $activate || return 0
+    if ! $activate; then
+        extension_registered "$ext_base/$EXT_NAME" ||
+            info "$cmd does not list $EXT_LABEL yet: run 'omarchy-theme-set-vscode --activate' once"
+        return 0
+    fi
+    register_extension "$ext_base/$EXT_NAME"
 
     if [[ -n $theme_name ]]; then
         if [[ -z $theme_extension ]] || extension_installed "$ext_base" "$theme_extension"; then
