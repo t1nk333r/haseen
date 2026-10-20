@@ -134,8 +134,8 @@ dropping the file's own flags.
 files (`tests/test-secureboot.sh:182`, `tests/test-desktop.sh:339`), which
 `rm -rf` removes whatever their mode, and both are restored at once.
 
-A full run of `dfbcf66` (the change below without the next fix) passed
-14422/14422 and left one directory in its `TMPDIR`, which the wrapper lists
+A full run of an earlier draft of this change (everything below except the
+`test-compat-runtime.sh` fix) passed 14422/14422 and left one directory in its `TMPDIR`, which the wrapper lists
 before removing it:
 
 ```
@@ -202,11 +202,11 @@ without `finalised`, 0 forced kills, slowest stop 340 ms.
   after), and 39/39 for the sidecar file from an empty `GOPATH`.
 - `tests/test-compat-runtime.sh`: 33/33, nothing left in `TMPDIR`; with the
   old file, 33/33 and `haseen-compat-runtime.*/quickshell` left.
-- Full suite of this change (`8619433`, the same tests before this Evidence
-  was written), from a detached worktree at
+- Full suite of this change (its tests exactly as committed; only this
+  Evidence section was written afterwards), from a detached worktree at
   `/tmp/h94`, under `flock ~/.cache/haseen-wt/suite.lock` and `env
   --default-signal`: 133 files, **14422/14422 passed**, nothing left in the
-  run's `TMPDIR`. The earlier full run of `dfbcf66` (before the
+  run's `TMPDIR`. The earlier draft's full run (before the
   compat-runtime fix) was also 14422/14422 and left the one directory
   above.
 - `tools/lint.sh` (shellcheck `/usr/bin/shellcheck`): lint OK;
