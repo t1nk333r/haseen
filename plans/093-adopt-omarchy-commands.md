@@ -141,7 +141,11 @@ regardless:
   `~/.config/uwsm/env`. uwsm hands the result to Hyprland and to the systemd
   user manager, so `exec_cmd`, binds, user units and `uwsm app` all get it.
   `migrations/1792531693-omarchy-path.sh` rewrites an existing fragment once,
-  from the layer's own generator; it takes effect at the next login.
+  from the layer's own generator, when it carries the layer's
+  `# Written by haseen layers/desktop` marker and no uncommented line with
+  haseen's directory; it takes effect at the next login. A fragment without
+  the marker is the user's (replaced or rewritten by hand): it is left alone,
+  and the migration says that `haseen doctor` reports the shadowing.
 - Interactive shells: `default/shell/init.sh`, the include `haseen seed user`
   appends to `~/.bashrc`, prepends the same directory unless it is already
   first, after whatever the rc prepended.
@@ -1232,7 +1236,8 @@ fixtures; nothing reaches the live session):
   compositor's `PATH` read from a fixture Hyprland lock file and environ, an
   Omarchy-seeded `~/.config/uwsm/env` followed by the rendered `10-haseen`
   putting haseen's commands first, the migration rewriting an old fragment
-  once, and the shell init putting them first after an rc's prepend;
+  once (a commented-out line does not count) and leaving one without the
+  layer's marker alone, and the shell init putting them first after an rc's prepend;
 - the restart chain: a fake Omarchy `omarchy-restart-shell` (its last step,
   `omarchy-restart-shell:83`) run by absolute path with haseen's directory
   first on `PATH`, as on IO: Omarchy's launcher never runs, the running

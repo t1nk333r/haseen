@@ -548,9 +548,14 @@ run_mig
 assert_status "without the fragment the migration has nothing to do" 0 "$STATUS"
 assert_eq "and writes nothing" "" "$(ls -A "$XDG_CONFIG_HOME/uwsm" 2>/dev/null)"
 mkdir -p "$(dirname "$FRAG")"
-printf '# Written by haseen layers/desktop. Rewritten on every apply.\nexport HASEEN_PATH=/old\n' >"$FRAG"
+printf 'export HASEEN_PATH=/mine\n' >"$FRAG"
 run_mig
-assert_status "the migration rewrites an old fragment" 0 "$STATUS"
+assert_status "a fragment without the layer's marker is not an error" 0 "$STATUS"
+assert_eq "it is the user's and left alone" "export HASEEN_PATH=/mine" "$(<"$FRAG")"
+assert_contains "and the user is told why, and of the doctor" "$OUTPUT" "haseen doctor"
+printf '# Written by haseen layers/desktop. Rewritten on every apply.\n#export PATH="$HASEEN_PATH/omarchy/bin:$PATH"\nexport HASEEN_PATH=/old\n' >"$FRAG"
+run_mig
+assert_status "the migration rewrites an old fragment (a commented-out line does not count)" 0 "$STATUS"
 assert_eq "with the layer's own content" "$(<"$SANDBOX/10-haseen")" "$(<"$FRAG")"
 touch -d '1 hour ago' "$FRAG"
 stamp="$(stat -c %Y "$FRAG")"
