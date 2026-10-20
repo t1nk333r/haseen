@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# omarchy-toggle-idle — haseen's answer to Omarchy's command (plan 093; a shell
+# shim since plan 057). Omarchy plugins (hey-im-gaming-here) keep the session
+# awake with this, but Omarchy's marker file is not what haseen's idle reads;
+# haseen toggle idle's is. Omarchy's verbs and outputs are kept: "on" there
+# means stay awake, which is haseen's idle "off". Verbs and the status line
+# follow Omarchy bin/omarchy-toggle-idle (MIT, Copyright (c) David Heinemeier
+# Hansson).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-toggle-idle [toggle|stay-awake|allow-idle|status]
+
+haseen's answer to Omarchy's command: haseen toggle idle, in Omarchy's words
+(stay-awake turns haseen's idle off)." "$@"
+
+idle="$HASEEN_BIN/haseen-toggle-idle"
+
+awake() { [[ $("$idle" status) == off ]]; }
+
+print_idle_state() {
+    if awake; then echo disabled; else echo enabled; fi
+}
+
+case ${1:-toggle} in
+toggle) "$idle" toggle >/dev/null ;;
+stay-awake | awake | on) "$idle" off >/dev/null ;;
+allow-idle | idle | off) "$idle" on >/dev/null ;;
+status | --status)
+    if awake; then
+        printf '{"enabled":true,"class":"enabled","tooltip":"Allow Idle Lock & Screensaver"}\n'
+    else
+        printf '{"enabled":false,"class":"disabled","tooltip":"Stay Awake"}\n'
+    fi
+    exit 0
+    ;;
+*)
+    echo "Usage: omarchy-toggle-idle [toggle|stay-awake|allow-idle|status]" >&2
+    exit 1
+    ;;
+esac
+print_idle_state

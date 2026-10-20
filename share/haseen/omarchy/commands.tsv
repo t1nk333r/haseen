@@ -1,0 +1,28 @@
+# commands.tsv — haseen's answer to every command Omarchy 4.0.6 ships (plan 093).
+# name<TAB>kind<TAB>target<TAB>note. kind: shim (exec target, a haseen bin with
+# fixed args), translate and port (bin/<name> is a script of its own), refuse
+# (prints note as why and target as the haseen way, exits 1), inert (nothing to
+# do under haseen, exits 0), apple (Apple hardware only, not provided).
+# share/haseen/omarchy/bin/<name> links to ../dispatch for shim, refuse and inert.
+omarchy	port	-	Omarchy's router: omarchy a b runs haseen's omarchy-a-b
+omarchy-battery-status	shim	haseen-battery-status	prints the battery line or TSV Omarchy's bar plugins read
+omarchy-brightness-display-apple	apple	-	Apple Studio and Pro Display XDR brightness through asdcontrol
+omarchy-capture-screenrecording	translate	haseen-capture-screenrecord	Omarchy's recorder flags on haseen's screen recorder
+omarchy-hyprland-monitor-external-active	port	-	true when Hyprland has an enabled monitor other than the laptop panel
+omarchy-hyprland-monitor-focused-apple	apple	-	true only when the focused monitor is an Apple Studio or Pro Display XDR
+omarchy-hyprland-monitor-internal-mirror	translate	haseen-hardware-mirror-display	mirrors the laptop display, extends again, or recovers
+omarchy-launch-floating-terminal-with-presentation	translate	haseen-config-terminal	runs a command in haseen's floating terminal
+omarchy-launch-shell	port	haseen-shell-run	starts the desktop shell haseen uses, never Omarchy's
+omarchy-menu	translate	haseen-menu	opens haseen's menu at Omarchy's menu name
+omarchy-notification-send	translate	haseen-notification-send	Omarchy's notification arguments on haseen's notifications
+omarchy-powerprofiles-list	shim	haseen-powerprofile-list	lists the power profiles, weakest first
+omarchy-powerprofiles-set	shim	haseen-powerprofile-set	sets the power profile for AC or battery
+omarchy-restart-gum	inert	-	haseen renders no gum theme, so gum keeps its defaults
+omarchy-restart-shell	translate	haseen-shell-restart	stops an Omarchy shell, restarts haseen's (or DMS)
+omarchy-shell	translate	haseen-shell-ipc	Omarchy's shell IPC verbs on haseen's shell
+omarchy-shell-config	refuse	haseen bar add|move|overflow|position, haseen plugin enable|disable|settings	it edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read
+omarchy-sudo-keepalive	port	-	keeps sudo fresh for the sourcing script through common.sh
+omarchy-theme-set	shim	haseen-theme-set	sets the haseen theme
+omarchy-toggle-idle	translate	haseen-toggle-idle	toggles idle locking the haseen way
+omarchy-update	shim	haseen-update	updates the system the haseen way
+omarchy-update-restart	port	haseen-shell-restart	offers a reboot after a kernel update, restarts haseen's shell

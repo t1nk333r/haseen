@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# omarchy-launch-floating-terminal-with-presentation — haseen's answer to
+# Omarchy's command (plan 093; a shell shim since plan 057). Omarchy runs "$*"
+# as one shell command in its own branded terminal (logo first, title Omarchy);
+# here it runs in haseen's floating terminal (app-id haseen.floating, title
+# haseen), which waits for Enter.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-launch-floating-terminal-with-presentation COMMAND...
+
+haseen's answer to Omarchy's command: runs COMMAND in haseen's floating
+terminal (haseen config terminal), which waits for Enter." "$@"
+haseen_exec "config-terminal" -- bash -c "$*"

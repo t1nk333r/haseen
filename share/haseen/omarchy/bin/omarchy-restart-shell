@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# omarchy-restart-shell — Omarchy plugins, Omarchy's own updater and muscle
+# memory restart "the shell" with this. Under haseen that is the desktop shell
+# haseen runs (haseen's, or DMS after `haseen shell use dms`), and an Omarchy
+# shell found running is stopped rather than restarted: on IO an Omarchy
+# update had started it beside haseen's (plan 093). Omarchy's restart
+# (bin/omarchy-restart-shell, MIT, Copyright (c) David Heinemeier Hansson)
+# kills its shell and has Hyprland exec omarchy-launch-shell, which is
+# haseen's too, so even Omarchy's own copy ends in haseen's shell.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-shell [--dry-run]
+
+haseen's answer to Omarchy's command: stops any running Omarchy shell, then
+restarts the desktop shell haseen uses (haseen shell restart, or dms.service
+after 'haseen shell use dms').
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+omarchy_shell_stop
+if [[ $(active_shell) == dms ]]; then
+    run systemctl --user restart dms.service
+    info "dms.service restarted"
+    exit 0
+fi
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec shell-restart "${flags[@]}"

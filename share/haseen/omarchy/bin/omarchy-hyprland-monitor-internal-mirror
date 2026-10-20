@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-internal-mirror — mirror the laptop display to an
+# external monitor, extend again, toggle, or recover once the external one is
+# gone. Translated to haseen hardware mirror-display, which is adapted from
+# Omarchy bin/omarchy-hyprland-monitor-internal-mirror (MIT, Copyright (c)
+# David Heinemeier Hansson) and keeps its state in
+# toggles/hypr/mirror-display.lua. Omarchy's contract is kept: on and off do
+# nothing when already there, recover acts only when the mirror has nothing
+# left to show on, and outcomes are toasts. haseen picks the first external
+# output Hyprland knows (enabled or not), Omarchy the first active one (plan
+# 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+TOGGLE="$HASEEN_USER_STATE/toggles/hypr/mirror-display.lua"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-monitor-internal-mirror {on|off|toggle|recover} [--dry-run]
+
+haseen's answer to Omarchy's command: haseen hardware mirror-display.
+  on       mirror the laptop display on the first external monitor
+  off      extend again
+  toggle   the other one
+  recover  extend again only when mirroring is on and no external monitor is
+           active (otherwise a no-op)
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 1
+}
+
+notify() {
+    if $DRY_RUN; then
+        echo "DRYRUN: notify: $*"
+    else
+        "$HASEEN_BIN/haseen-notification-send" "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+# mirror_display VERB [quiet] — haseen hardware mirror-display VERB; its result
+# line or its error becomes the toast unless quiet.
+mirror_display() {
+    local out status=0
+    local flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    out="$("$HASEEN_BIN/haseen-hardware-mirror-display" "$1" "${flags[@]}" 2>&1)" || status=$?
+    if $DRY_RUN; then
+        printf '%s\n' "$out"
+        return "$status"
+    fi
+    if [[ ${2:-} != quiet ]]; then
+        out="$(tail -n1 <<<"$out")"
+        out="${out#Error: }"
+        notify "${out^}"
+    fi
+    return "$status"
+}
+
+on() { [[ -f $TOGGLE ]] || mirror_display on; }
+off() { [[ ! -f $TOGGLE ]] || mirror_display off; }
+
+recover() {
+    [[ -f $TOGGLE ]] || return 0
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-hyprland-monitor-external-active" && return 0
+    mirror_display off quiet
+}
+
+case ${REST[0]} in
+on) on ;;
+off) off ;;
+toggle) if [[ -f $TOGGLE ]]; then off; else on; fi ;;
+recover) recover ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac

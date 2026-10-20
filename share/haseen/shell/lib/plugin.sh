@@ -394,9 +394,10 @@ plugin_version_at_least() {
 # counts as met.
 plugin_unmet() {
     local req name min have rc=0
-    # The shell runs plugins with the Compat command shims first on PATH
-    # (bin/haseen-shell-run), so a shimmed command (ydotool, dms) is there.
-    local PATH="$HASEEN_PATH/shell/Compat/bin:$PATH"
+    # The shell runs plugins with the Compat command shims and haseen's
+    # Omarchy commands first on PATH (bin/haseen-shell-run), so a shimmed
+    # command (ydotool, dms, omarchy-*) is there.
+    local PATH="$HASEEN_PATH/shell/Compat/bin:$HASEEN_PATH/omarchy/bin:$PATH"
     req="$(plugin_manifest "$1" | jq -c '.requires // {}')"
     while IFS= read -r name; do
         [[ -n $name ]] || continue

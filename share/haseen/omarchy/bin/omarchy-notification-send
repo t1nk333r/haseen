@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Compat shim (architecture 5.4): Omarchy's sender names every toast
-# "omarchy-action" unless told otherwise and hands click commands to its own
+# omarchy-notification-send — haseen's answer to Omarchy's command (plan 093; a
+# shell shim since plan 057). Omarchy's sender names every toast "omarchy-
+# action" unless told otherwise and hands click commands to its own
 # notification daemon in a private hint; here the toast is haseen's (app name
-# haseen, --exec a real action, as haseen notification send does). The
-# argument shape follows Omarchy bin/omarchy-notification-send (MIT,
-# Copyright (c) David Heinemeier Hansson): options, the headline, the
-# description, more options, then --exec and its argv. Translated: -g/--glyph
-# is dropped (haseen's toasts draw no glyph), --image becomes the icon, and
-# urgency defaults to Omarchy's "low".
+# haseen, --exec a real action, as haseen notification send does). The argument
+# shape follows Omarchy bin/omarchy-notification-send (MIT, Copyright (c) David
+# Heinemeier Hansson): options, the headline, the description, more options,
+# then --exec and its argv. Translated: -g/--glyph is dropped (haseen's toasts
+# draw no glyph), --image becomes the icon, and urgency defaults to Omarchy's
+# "low".
 set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-notification-send [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [-i <icon>] [-t <ms>] [-r <id>] [-p] [--image <path-or-uri>] <headline> [description] [--exec <program> [args...]]
+
+haseen's answer to Omarchy's command: haseen notification send, urgency low
+unless given, --image as the icon, the glyph dropped." "$@"
 
 opts=(-u low) used=0
 
@@ -60,4 +67,4 @@ while (($#)) && [[ $1 != --exec ]]; do
     }
     shift "$used"
 done
-exec "${HASEEN_PATH:?}/../../bin/haseen-notification-send" "${opts[@]}" "${text[@]}" "$@"
+haseen_exec "notification-send" "${opts[@]}" "${text[@]}" "$@"

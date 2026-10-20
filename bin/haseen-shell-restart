@@ -30,7 +30,7 @@ if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
 fi
 
 # A caller the shell started (an Omarchy panel's restart button reaches this
-# through Compat/bin) shares its session and its stdout pipe dies with it right
+# through omarchy-restart-shell) shares its session and its stdout pipe dies with it right
 # after the kill, so the relaunch would never run: finish in a session of our
 # own, writing nowhere the old shell owned.
 if ! $DRY_RUN && [[ -z ${HASEEN_SHELL_RESTART_DETACHED:-} ]]; then

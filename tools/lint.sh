@@ -14,7 +14,7 @@ fail=0
 
 mapfile -t sh_files < <(
     {
-        printf '%s\n' install.sh tools/*.sh tests/*.sh
+        printf '%s\n' install.sh tools/*.sh tests/*.sh share/haseen/omarchy/dispatch
         find bin -type f
         find share/haseen -type f \( -name '*.sh' -o -path '*/bin/*' \)
     } | sort -u | while read -r f; do

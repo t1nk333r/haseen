@@ -33,6 +33,7 @@ The owner's other repos:
 | DMS swap-in | `share/haseen/layers/dms/`, `bin/haseen-shell-use` | 008 |
 | Notifications, OSD, launcher, lock, idle, polkit, session | `share/haseen/shell/plugins/haseen.*` | 010 |
 | Omarchy and DMS plugin compat | `share/haseen/shell/Compat/` + 6 root symlinks | 011 |
+| Omarchy's commands (every `omarchy-*` but Apple's; table, dispatcher, ports, refusals), linked into PREFIX/bin | `share/haseen/omarchy/`, `install.sh`, `tests/test-omarchy-commands.sh` | 093 |
 | Extended luna-plugin compatibility | `share/haseen/shell/Compat/Omarchy/`, `share/haseen/shell/Compat/Runtime.qml`, `share/haseen/shell/Compat/ShellApi.qml`, `bin/haseen-plugin-settings` | 027 |
 | AI panel and agent skill | `share/haseen/shell/plugins/haseen.ai/`, `share/haseen/agents/skills/haseen/` | 012 |
 | Screen frame, transparent bar, tray | `share/haseen/shell/{Frame*,Bar}.qml`, `bin/haseen-bar-*`, `haseen.tray` | 015 |

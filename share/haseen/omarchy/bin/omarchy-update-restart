@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# omarchy-update-restart — the last step of Omarchy's updater: offer a reboot
+# when the kernel or Hyprland was replaced, then restart the shell. Under
+# haseen the shell is haseen's (or DMS), never Omarchy's: on IO this step
+# started Omarchy's shell beside haseen's (plan 093). Adapted from Omarchy
+# bin/omarchy-update-restart (MIT, Copyright (c) David Heinemeier Hansson):
+# the reboot checks are Omarchy's; its restart-*-required markers are
+# written by Omarchy's migrations, which haseen does not run, so they are
+# not read.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-restart [--dry-run]
+
+haseen's answer to Omarchy's command: after an update, offers a reboot when
+the running kernel's modules are gone or the running Hyprland binary was
+replaced, then restarts the desktop shell haseen uses (omarchy-restart-shell).
+A reboot is only offered at a terminal and only done when the answer is yes.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+# offer_reboot QUESTION — ask at a terminal; reboot through haseen on yes.
+offer_reboot() {
+    local reply flags=()
+    if $DRY_RUN; then
+        echo "DRYRUN: ask '$1' and on yes: haseen system reboot"
+        return 0
+    fi
+    [[ -t 0 ]] || {
+        warn "$1 (not asked: no terminal); reboot when convenient"
+        return 0
+    }
+    read -r -p "$1 [y/N] " reply
+    [[ $reply =~ ^[Yy]$ ]] || return 0
+    haseen_exec system reboot "${flags[@]}"
+}
+
+# The kernel was replaced when no package-owned kernel image matches the
+# running one any more (its modules directory went with the old package).
+running_kernel="$(uname -r)"
+kernel_updated=true
+for kernel in "$(sysroot_path /usr/lib/modules)"/*/vmlinuz; do
+    [[ -f $kernel ]] || continue
+    in_sysroot || pacman -Qo "$kernel" &>/dev/null || continue
+    if [[ $(basename "$(dirname "$kernel")") == "$running_kernel" ]]; then
+        kernel_updated=false
+        break
+    fi
+done
+echo
+if $kernel_updated; then
+    offer_reboot "Linux kernel has been updated. Reboot?"
+fi
+
+# A live process table only: a fixture (HASEEN_SYSROOT) has none to ask.
+if ! in_sysroot; then
+    hyprland_pid="$(pgrep -x Hyprland 2>/dev/null | head -n1 || true)"
+    if [[ -n $hyprland_pid && $(readlink "/proc/$hyprland_pid/exe" 2>/dev/null) == *"(deleted)"* ]]; then
+        offer_reboot "Hyprland has been updated. Reboot?"
+    fi
+fi
+
+# An update can replace Quickshell, Qt or a plugin's dependencies under the
+# running shell; restart it, as Omarchy does, through haseen's restart.
+info "restarting the desktop shell"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-restart-shell" "${flags[@]}"
