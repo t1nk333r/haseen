@@ -317,6 +317,13 @@ tests it:
 - Each screen's bar computes its own, again whenever a widget's size, the bar's
   length or these settings change (bindings and a deferred call, no timer).
 
+**Nook** (plan 095). `haseen.nook` (off by default), placed in a bar section,
+is the panel's opener instead of the chevron: the panel opens under it
+(`Bar.toggleOverflowFrom`), the chevron shows only in arrange mode, the nook's
+length replaces the chevron's in the fit, and `Overflow.fit`'s `never` keeps
+it out of the panel, `bar.overflow` included. It takes no room while the panel
+would be empty.
+
 The panel (`BarOverflowPanel.qml`, lazy) slides out under the chevron, placed
 by `PanelPlacement.offset`, and holds the widgets live: each one's bar slot is
 moved into the panel's cell while it is open and back to a zero-size, clipped

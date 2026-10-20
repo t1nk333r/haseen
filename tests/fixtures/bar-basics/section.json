@@ -1,0 +1,10 @@
+{
+  "bar": {
+    "right": ["haseen.tray", "t1nk33r.nook", "me.z"],
+    "overflow": ["me.o"]
+  },
+  "services": ["haseen.pager", "t1nk33r.nook"],
+  "plugins": {
+    "t1nk33r.nook": { "settings": { "items": [{ "id": "me.a" }, "me.b"], "trigger": "hover", "duration": 180 } }
+  }
+}
