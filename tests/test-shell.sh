@@ -37,8 +37,10 @@ while read -r id; do
     assert_eq "default shell.json id $id is a built-in" "yes" "$([[ -r $SHELL_DIR/plugins/$id/manifest.json ]] && echo yes || echo no)"
 done < <(jq -r '[.bar.left, .bar.center, .bar.right, .services] | add | .[]' "$HASEEN_PATH/default/shell.json")
 # Widgets take colours from Theme only.
+# Bundled third-party icon artwork (haseen.omarr's Dashboard Icons) keeps its
+# own colours; the rule is about how widgets are drawn.
 assert_eq "no hex colour literals in built-in plugins/widgets" "" \
-    "$(grep -rnE '"#[0-9a-fA-F]{3,8}"' "$SHELL_DIR/plugins" "$SHELL_DIR/Haseen/Widgets" "$SHELL_DIR/templates" || true)"
+    "$(grep -rnE --exclude='*.svg' '"#[0-9a-fA-F]{3,8}"' "$SHELL_DIR/plugins" "$SHELL_DIR/Haseen/Widgets" "$SHELL_DIR/templates" || true)"
 # No polling timers in the shell (architecture 6). Two kinds of Timer are
 # allowed, each marked on the line directly above:
 #   // haseen:ui-timeout  single-shot UI timeout (OSD hide, notification expiry)
