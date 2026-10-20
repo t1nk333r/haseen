@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# omarchy-install-gaming-battlenet — install Blizzard's Battle.net client
+# standalone in ~/Games/battlenet through umu-launcher and GE-Proton, and add
+# its launcher entry. Adapted from Omarchy
+# bin/omarchy-install-gaming-battlenet (MIT, Copyright (c) David Heinemeier
+# Hansson): the prefix, umu settings, installer URL and messages are
+# Omarchy's. Changes: umu-launcher comes through haseen install aur (repos,
+# Chaotic-AUR, [omarchy], then the AUR), the 32-bit drivers through haseen's
+# omarchy-install-gaming-gpu-lib32; gum confirm -> a terminal question;
+# the installer is cached in ~/.cache/haseen and logs there, not to a fixed
+# /tmp name; battlenet.desktop is written here (Omarchy copies it from
+# $OMARCHY_PATH/default/applications) and runs haseen's
+# omarchy-launch-battlenet; every change goes through common.sh, so
+# --dry-run prints the plan (plan 093).
+#
+# Battle.net has no package: its own Windows installer, downloaded from
+# Blizzard over HTTPS, runs inside the Wine prefix, as in Omarchy.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-gaming-battlenet [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs umu-launcher and the 32-bit
+GPU drivers, runs Blizzard's Battle.net installer in ~/Games/battlenet under
+GE-Proton, and adds Battle.net to the app launcher
+(omarchy-launch-battlenet).
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+in_floating_terminal "${args[@]}"
+require_not_root
+
+PREFIX="$HOME/Games/battlenet"
+LAUNCHER="$PREFIX/drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe"
+INSTALLER_URL="https://downloader.battle.net/download/getInstallerForGame?os=win&gameProgram=BATTLENET_APP&version=Live"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/haseen"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+
+echo "Installing Battle.net..."
+HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" aur umu-launcher "${flags[@]}"
+HASEEN_INLINE=1 "$HASEEN_OMARCHY_DIR/bin/omarchy-install-gaming-gpu-lib32" "${flags[@]}"
+
+# A half-finished prefix from a closed or crashed earlier run: Battle.net's
+# installer cannot resume from it, so it goes before trying again.
+if [[ -d $PREFIX && ! -f $LAUNCHER ]]; then
+    echo
+    echo "Found a partial Battle.net install at $PREFIX (no Launcher.exe)."
+    echo "Battle.net's installer can't resume from this state."
+    if confirm "Wipe the partial prefix and start fresh?"; then
+        run pkill -f "$PREFIX" 2>/dev/null || true
+        $DRY_RUN || sleep 1
+        run rm -rf -- "$PREFIX"
+    else
+        echo "Aborting. Re-run when ready to wipe."
+        exit 1
+    fi
+fi
+
+run mkdir -p "$PREFIX"
+
+if [[ -f $LAUNCHER ]]; then
+    echo "Battle.net is already installed at $PREFIX."
+    launched_installer=0
+else
+    installer="$CACHE_DIR/Battle.net-Setup.exe"
+    log="$CACHE_DIR/battlenet-installer.log"
+    run mkdir -p "$CACHE_DIR"
+    echo
+    echo "Downloading Battle.net installer..."
+    run curl --fail --location --retry 3 "$INSTALLER_URL" --output "$installer"
+
+    cat <<'EOF'
+
+Launching the Battle.net setup wizard. Click through it normally — the
+default install path is fine. When it finishes, Battle.net will be in your
+app launcher.
+
+EOF
+    # shellcheck disable=SC2016  # $1 and $2 expand in the detached sh
+    run env WINEPREFIX="$PREFIX" PROTONPATH=GE-Proton GAMEID=umu-battlenet PROTON_VERB=run \
+        setsid -f sh -c 'exec umu-run "$1" >"$2" 2>&1' sh "$installer" "$log" </dev/null
+    echo "Installer log: $log"
+    launched_installer=1
+fi
+
+# The Exec runs haseen's launcher by its path, which need not be on the
+# session's PATH: one argument, quoted as the desktop-entry spec asks (" ` $ \
+# take a backslash inside the quotes, % doubles), then the file-level escape
+# that doubles every backslash.
+desktop_exec_path() {
+    local v="$1"
+    v=${v//[\\]/\\\\}
+    v=${v//[\"]/\\\"}
+    v=${v//[\`]/\\\`}
+    v=${v//[\$]/\\\$}
+    v=${v//[%]/%%}
+    v="\"$v\""
+    printf '%s' "${v//[\\]/\\\\}"
+}
+write_user_file "$DATA_HOME/applications/battlenet.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Battle.net
+GenericName=Game Launcher
+Comment=Blizzard game launcher (umu-launcher + GE-Proton)
+Exec=$(desktop_exec_path "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-battlenet")
+Icon=battle-net
+Terminal=false
+Categories=Game;
+StartupNotify=true
+StartupWMClass=battle.net.exe
+EOF
+have update-desktop-database && { run update-desktop-database "$DATA_HOME/applications" 2>/dev/null || true; }
+
+if ((launched_installer)); then
+    cat <<EOF
+
+The Battle.net installer is running in the background. After it finishes,
+find Battle.net in your app launcher, or run:
+
+  omarchy-launch-battlenet
+
+EOF
+else
+    cat <<EOF
+
+Battle.net is installed. Find it in your app launcher, or run:
+
+  omarchy-launch-battlenet
+
+EOF
+fi

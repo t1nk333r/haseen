@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# omarchy-install-browser — install one of Omarchy's six browsers. Translates
+# Omarchy bin/omarchy-install-browser (MIT, Copyright (c) David Heinemeier
+# Hansson): the six names are haseen catalogue browsers, installed with
+# haseen install app (Flathub, Brave Origin through haseen's source order).
+# Omarchy also writes /etc browser policy directories, copies its flags file
+# over ~/.config/*-flags.conf, installs its Copy URL and yt-dlp extension
+# hosts, themes the browser and writes an environment.d file: haseen edits no
+# user file after seeding and ships no browser policy or extensions, so all of
+# that is dropped (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-browser <chrome|brave|brave-origin|edge|firefox|zen> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs the browser (haseen install
+app). Make it the default afterwards with: haseen setup default browser NAME
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+case "${1:-}" in
+chrome) label=Chrome ;;
+edge) label=Edge ;;
+brave) label=Brave ;;
+brave-origin) label="Brave Origin" ;;
+firefox) label=Firefox ;;
+zen) label=Zen ;;
+*)
+    echo "Usage: omarchy-install-browser <chrome|brave|brave-origin|edge|firefox|zen>"
+    exit 1
+    ;;
+esac
+in_floating_terminal "${args[@]}"
+
+echo "Installing $label..."
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app "$1" "${flags[@]}" || exit 1
+echo ""
+echo "$label browser installed. Make it the default: haseen setup default browser $1"

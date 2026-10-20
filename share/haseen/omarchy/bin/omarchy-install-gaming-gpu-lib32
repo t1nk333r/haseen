@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# omarchy-install-gaming-gpu-lib32 — install the 32-bit Vulkan/GL drivers for
+# every GPU present, the ones Wine, Proton and Steam games need. Adapted from
+# Omarchy bin/omarchy-install-gaming-gpu-lib32 (MIT, Copyright (c) David
+# Heinemeier Hansson): the package list is haseen's gaming layer
+# (gaming_lib32_drivers), which also adds lib32-mesa and matches NVIDIA's
+# 32-bit package to the installed driver branch instead of Omarchy's GSP
+# probe; omarchy-pkg-add -> pkg_install for repo packages and pkg_install_aur
+# (repos, Chaotic-AUR, [omarchy], then the AUR) for the rest; a missing
+# [multilib] stops with the gaming layer's advice, since haseen never edits
+# pacman.conf; --dry-run (plan 093).
+#
+# Exits 0 when no driver is needed: Omarchy's battlenet installer calls it
+# first.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../../lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../../lib/preflight.sh
+source "$HASEEN_PATH/lib/preflight.sh"
+# shellcheck source=../../layers/gaming/layer.sh
+source "$HASEEN_PATH/layers/gaming/layer.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-gaming-gpu-lib32 [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs the 32-bit Vulkan/GL drivers
+(lib32-mesa, lib32-vulkan-radeon, lib32-vulkan-intel, lib32-nvidia-utils for
+the installed NVIDIA branch) for the GPUs this machine has.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+in_floating_terminal "${args[@]}"
+require_not_root
+
+echo "Installing lib32 graphics drivers..."
+preflight_gpu
+repo=() aur=()
+while read -r p; do
+    case "$p" in
+    aur:*) aur+=("${p#aur:}") ;;
+    ?*) repo+=("$p") ;;
+    esac
+done < <(gaming_lib32_drivers)
+if ((${#repo[@]} + ${#aur[@]} == 0)); then
+    info "no GPU here needs 32-bit drivers"
+    exit 0
+fi
+pacman_repo_enabled multilib ||
+    die "the [multilib] repository is not enabled, and the 32-bit drivers live there; uncomment [multilib] and its Include line in /etc/pacman.conf, refresh with 'pacman -Sy' as root, then run this again."
+((${#repo[@]} == 0)) || pkg_install "${repo[@]}"
+((${#aur[@]} == 0)) || pkg_install_aur "${aur[@]}"

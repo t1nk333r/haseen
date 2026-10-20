@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# omarchy-launch-docker-tui — run lazydocker with access to the Docker daemon,
+# behind a polkit prompt when this session cannot reach the socket itself
+# (the Exec of Omarchy's Docker.desktop; Omarchy binds SUPER + SHIFT + D).
+# Adapted from Omarchy bin/omarchy-launch-docker-tui (MIT, Copyright (c)
+# David Heinemeier Hansson): the socket test of Omarchy's omarchy-sudo-docker
+# is inlined, so haseen's no-docker-group stance (lib/catalog.sh: the group is
+# root-equivalent) gets the same prompt; a missing lazydocker names haseen's
+# install (plan 093). --dry-run (or DRY_RUN=true) prints the command instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: omarchy-launch-docker-tui [--dry-run]
+
+haseen's answer to Omarchy's command: runs lazydocker, through pkexec when
+this session cannot write the Docker socket (haseen adds nobody to the docker
+group).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+have lazydocker || $DRY_RUN || die "lazydocker is not installed: haseen install app lazydocker"
+
+# A socket this process can write is a daemon it can drive without elevating;
+# a missing one needs root to start anyway (Omarchy's omarchy-sudo-docker).
+socket="$(sysroot_path "${OMARCHY_DOCKER_SOCKET:-/var/run/docker.sock}")"
+if [[ -w $socket ]]; then
+    if $DRY_RUN; then
+        echo "DRYRUN: lazydocker"
+        exit 0
+    fi
+    exec lazydocker
+fi
+# pkexec sanitises the environment: carry TERM for the TUI to render.
+run_polkit /usr/bin/env "TERM=${TERM:-xterm-256color}" lazydocker

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# omarchy-install-gaming-geforce-now — install NVIDIA GeForce NOW
+# (com.nvidia.geforcenow) from NVIDIA's official Flatpak repository into the
+# user's Flatpak installation, then open a browser beside it. Adapted from
+# Omarchy bin/omarchy-install-gaming-geforce-now (MIT, Copyright (c) David
+# Heinemeier Hansson). Changes: Omarchy downloads NVIDIA's GeForceNOWSetup.bin
+# to a fixed /tmp name and runs it; haseen runs no downloaded program, and
+# instead takes the same Flatpak from the repository that installer adds
+# (international.download.nvidia.com/GFNLinux/flatpak, a signed .flatpakrepo),
+# with its runtimes from Flathub; omarchy-pkg-add flatpak -> haseen layer
+# apply flatpak; the browser is haseen's omarchy-launch-browser; --dry-run
+# prints the plan (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/catalog.sh
+source "$HASEEN_PATH/lib/catalog.sh"
+
+GFN_APP=com.nvidia.geforcenow
+GFN_REMOTE=GeForceNOW
+GFN_REPO_URL=https://international.download.nvidia.com/GFNLinux/flatpak/geforcenow.flatpakrepo
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-gaming-geforce-now [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs GeForce NOW ($GFN_APP) from
+NVIDIA's Flatpak repository ($GFN_REMOTE) into your Flatpak installation,
+then opens your browser: GeForce NOW tends to hang at login without one.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+in_floating_terminal "${args[@]}"
+require_not_root
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+
+echo "Installing GeForce NOW..."
+have flatpak || HASEEN_INLINE=1 "$HASEEN_BIN/haseen-layer-apply" flatpak "${flags[@]}"
+require_flatpak
+# GeForce NOW's runtimes come from Flathub.
+ensure_flathub_user
+grep -qs "^\[remote \"$GFN_REMOTE\"\]" "$(flatpak_user_dir)/repo/config" ||
+    run flatpak remote-add --user --if-not-exists "$GFN_REMOTE" "$GFN_REPO_URL"
+if flatpak_app_installed "$GFN_APP"; then
+    info "$GFN_APP is already installed"
+else
+    install_flags=(--user)
+    $ASSUME_YES && install_flags+=(-y)
+    run flatpak install "${install_flags[@]}" "$GFN_REMOTE" "$GFN_APP"
+fi
+
+# A browser process GeForce NOW did not start itself: without one it tends to
+# hang on login.
+if $DRY_RUN; then
+    echo "DRYRUN: setsid $HASEEN_OMARCHY_DIR/bin/omarchy-launch-browser"
+else
+    setsid "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-browser" >/dev/null 2>&1 &
+fi
+echo "GeForce NOW is installed. Find it in your app launcher."

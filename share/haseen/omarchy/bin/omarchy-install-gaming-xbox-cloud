@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# omarchy-install-gaming-xbox-cloud — add Xbox Cloud Gaming as a web app and
+# open it. Translates Omarchy bin/omarchy-install-gaming-xbox-cloud (MIT,
+# Copyright (c) David Heinemeier Hansson): the same name, URL and icon go to
+# haseen webapp install, which writes ~/.local/share/applications/Xbox Cloud
+# Gaming.desktop as Omarchy's does; the window opens through haseen's
+# omarchy-launch-webapp. haseen webapp install refuses a Firefox-family
+# default browser (no app mode) and says how to switch, where Omarchy falls
+# back to chromium; --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+APP_NAME="Xbox Cloud Gaming"
+APP_URL="https://www.xbox.com/en-US/play"
+APP_ICON="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/xbox.png"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-gaming-xbox-cloud [--dry-run]
+
+haseen's answer to Omarchy's command: haseen webapp install "$APP_NAME"
+$APP_URL, then opens it.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+
+echo "Installing $APP_NAME..."
+"$HASEEN_BIN/haseen-webapp-install" "$APP_NAME" "$APP_URL" "$APP_ICON" "${flags[@]}"
+
+if $DRY_RUN; then
+    DRY_RUN=true "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$APP_URL"
+else
+    setsid "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$APP_URL" >/dev/null 2>&1 &
+fi

@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# omarchy-launch-openclaw — open the OpenClaw Control UI (or its terminal UI
+# with --tui), setting OpenClaw up, onboarding or starting its gateway first
+# when needed. Ported from Omarchy bin/omarchy-launch-openclaw (MIT, Copyright
+# (c) David Heinemeier Hansson): the arguments, exit codes and gateway
+# recovery are Omarchy's. Changes: omarchy-cmd/pkg-present -> have and
+# pkg_installed; the setup, onboarding, done prompt and web-app launch are
+# haseen's same-name commands, run by their paths; the wizard and setup open
+# in haseen's floating terminal (omarchy-launch-floating-terminal-with-
+# presentation); the gateway wait asks every 2 s for up to a minute, not
+# every second for 30 s; --dry-run (or DRY_RUN=true) prints the gateway steps
+# and the launch instead (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-launch-openclaw [--tui [--message <text>]] [--dry-run]
+
+haseen's answer to Omarchy's command: opens OpenClaw's Control UI as a web
+app, or with --tui its terminal UI (attached to the gateway), after setting
+OpenClaw up, onboarding or starting its gateway when needed.
+EOF
+}
+
+args=()
+for arg in "$@"; do
+    case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+set -- "${args[@]}"
+case "${1:-}" in
+-h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
+tui=false
+message=()
+if [[ ${1:-} == "--tui" ]]; then
+    tui=true
+    shift
+    if [[ ${1:-} == "--message" ]]; then
+        message=(--message "${2:?--message needs a value}")
+        shift 2
+    fi
+fi
+
+self="$HASEEN_OMARCHY_DIR/bin/omarchy-launch-openclaw"
+cli="$HASEEN_OMARCHY_DIR/bin/omarchy-install-openclaw-cli"
+onboard="$HASEEN_OMARCHY_DIR/bin/omarchy-openclaw-onboard"
+floating="$HASEEN_OMARCHY_DIR/bin/omarchy-launch-floating-terminal-with-presentation"
+config="$HOME/.openclaw/openclaw.json"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+
+# floating CMDLINE — run one shell command line in haseen's floating terminal.
+floating() {
+    if $DRY_RUN; then
+        echo "DRYRUN: $floating $1"
+        exit 0
+    fi
+    exec "$floating" "$1"
+}
+
+# With the package installed and no openclaw command, the package became the
+# seed before this user's OpenClaw moved: --now sets it up.
+if ! have openclaw && pkg_installed openclaw; then
+    if [[ $tui == "true" ]]; then
+        # The agent's terminal closes when this exits, so a failure waits to
+        # be read.
+        if ! "$cli" --now "${dry[@]}"; then
+            "$HASEEN_OMARCHY_DIR/bin/omarchy-show-done" 1
+            exit 1
+        fi
+    else
+        floating "$(printf '%q --now && %q' "$cli" "$self")"
+    fi
+fi
+
+# Onboarding is OpenClaw's own interactive wizard, run through
+# omarchy-openclaw-onboard so it stays in the terminal, installs the gateway
+# as a user service, and returns. The config check gates what follows because
+# the wizard's "Skip for now" also exits 0: only inference that passed writes
+# the config, and skipping must not loop back into the wizard.
+if [[ ! -f $config ]]; then
+    if [[ $tui == "true" ]]; then
+        # Already in a terminal, so the wizard runs right here.
+        "$onboard" "${dry[@]}"
+        $DRY_RUN && echo "DRYRUN: then, once $config exists, start the gateway and openclaw tui"
+        $DRY_RUN && exit 0
+        [[ -f $config ]] || exit 1
+    else
+        # Finishing the wizard lands the user in the app. $HOME expands in the
+        # spawned terminal.
+        # shellcheck disable=SC2016
+        floating "$(printf '%q && [[ -f $HOME/.openclaw/openclaw.json ]] && %q' "$onboard" "$self")"
+    fi
+fi
+
+dashboard_url() {
+    # browserUrl carries a single-use browser handoff; url is the shared-auth
+    # fallback for older gateways. The timeout keeps a wedged CLI from hanging
+    # an app-grid launch that has no terminal to ^C.
+    timeout 10 openclaw dashboard --json 2>/dev/null | jq -re '.browserUrl // .url // empty'
+}
+
+# --json never starts the gateway, so an empty answer means it is not
+# running. Recovery goes through the gateway's own service commands;
+# enablement, not the unit file, decides: a unit written but never enabled
+# would otherwise be started once and stay off at every following login,
+# where --force rewrites and enables it.
+if ! url=$(dashboard_url); then
+    if systemctl --user is-enabled --quiet openclaw-gateway.service 2>/dev/null; then
+        run timeout 60 openclaw gateway start >&2 || true
+    else
+        run timeout 120 openclaw gateway install --force >&2 || true
+    fi
+    if $DRY_RUN; then
+        if [[ $tui == "true" ]]; then
+            echo "DRYRUN: then, once the gateway answers: openclaw tui ${message[*]}"
+        else
+            echo "DRYRUN: then, once the gateway answers: open the Control UI web app"
+        fi
+        exit 0
+    fi
+    # A first-ever service install takes materially longer than starting an
+    # installed unit, so the budget is sized for the slow case.
+    for _ in {1..30}; do
+        url=$(dashboard_url) && break
+        sleep 2
+    done
+fi
+
+if [[ -z ${url:-} ]]; then
+    echo "OpenClaw's gateway did not come up. Check it with: openclaw gateway status" >&2
+    echo "If onboarding never finished, rerun it with: omarchy-openclaw-onboard" >&2
+    exit 1
+fi
+
+if [[ $tui == "true" ]]; then
+    # Attach to the gateway rather than `openclaw chat`: chat is the embedded
+    # local runtime, which refuses to start while the gateway owns
+    # ~/.openclaw's state directory.
+    if $DRY_RUN; then
+        echo "DRYRUN: openclaw tui ${message[*]}"
+        exit 0
+    fi
+    exec openclaw tui "${message[@]}"
+fi
+
+# The handoff URL rides in the browser's argv, which uwsm's app daemon echoes
+# into the user journal. Accepted: the token is single-use with a ten-minute
+# expiry against a loopback-only gateway.
+DRY_RUN=$DRY_RUN exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$url"

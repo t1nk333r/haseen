@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# omarchy-launch-signal — focus Signal, else start it, else install it
+# (Omarchy binds SUPER + SHIFT + G to it). Adapted from Omarchy
+# bin/omarchy-launch-signal (MIT, Copyright (c) David Heinemeier Hansson): the
+# focus goes through haseen's omarchy-launch-or-focus; a packaged
+# /usr/bin/signal-desktop still comes first, then haseen's catalogue Signal,
+# the Flathub org.signal.Signal, as `flatpak run`; with neither, `haseen
+# install app signal` (plan 093). DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-signal
+
+haseen's answer to Omarchy's command: focuses Signal's window, else starts
+Signal (the package, else the Flatpak), else installs it (haseen install app
+signal)." "$@"
+
+ref=org.signal.Signal
+if [[ -x $(sysroot_path /usr/bin/signal-desktop) ]]; then
+    launch="uwsm-app -- /usr/bin/signal-desktop"
+elif [[ -d ${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/app/$ref || -d $(sysroot_path /var/lib/flatpak/app)/$ref ]]; then
+    launch="uwsm-app -- flatpak run $ref"
+else
+    printf -v launch '%q app signal' "$HASEEN_BIN/haseen-install"
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-or-focus" signal "$launch"

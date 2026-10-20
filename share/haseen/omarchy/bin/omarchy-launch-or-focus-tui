@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# omarchy-launch-or-focus-tui — focus the terminal window running a program,
+# else open it with omarchy-launch-tui. Omarchy binds (default/hypr/helpers.lua)
+# and bar plugins (`omarchy-launch-or-focus-tui btop`) call it. Adapted from
+# Omarchy bin/omarchy-launch-or-focus-tui (MIT, Copyright (c) David Heinemeier
+# Hansson), delegating to haseen's omarchy-launch-or-focus and
+# omarchy-launch-tui (plan 093).
+#
+# Changes: the app-id is passed to omarchy-launch-tui explicitly, so the window
+# opened and the window looked for always carry the same one; the default is
+# Omarchy's org.omarchy.<command>, which omarchy-launch-tui also uses (haseen
+# has no window scheme for tiled terminal programs, and Omarchy's binds and
+# plugins focus by that id). One argument is a shell command line, as Omarchy's
+# helpers.lua passes it (shell_quote(value.tui)) and Omarchy's eval splits it;
+# several arguments are quoted word by word, where Omarchy's unquoted $@ split
+# an argument holding a space.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-or-focus-tui [--app-id=<app-id>] <command> [args...]
+
+haseen's answer to Omarchy's command: focuses the terminal window with app-id
+<app-id> (default org.omarchy.<command name>), else runs <command> in a new
+one with omarchy-launch-tui. A single argument is read as a shell command line." "$@"
+
+app_id=""
+if [[ ${1:-} == --app-id=* ]]; then
+    app_id="${1#--app-id=}"
+    shift
+fi
+(($# > 0)) || {
+    echo "Usage: omarchy-launch-or-focus-tui [--app-id=<app-id>] <command> [args...]" >&2
+    exit 1
+}
+
+if (($# == 1)); then
+    cmdline=$1
+    read -r first _ <<<"$1"
+    first=${first//[\"\']/}
+else
+    printf -v cmdline '%q ' "$@"
+    cmdline=${cmdline% }
+    first=$1
+fi
+[[ -n $app_id ]] || app_id="org.omarchy.$(basename -- "${first:-tui}")"
+
+printf -v launch '%q %q ' "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-tui" "--app-id=$app_id"
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-or-focus" "$app_id" "$launch$cmdline"

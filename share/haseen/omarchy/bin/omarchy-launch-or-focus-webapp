@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# omarchy-launch-or-focus-webapp — focus the window of a web app, else open it
+# with omarchy-launch-webapp. Omarchy's web-app binds call it
+# (default/hypr/helpers.lua). Adapted from Omarchy
+# bin/omarchy-launch-or-focus-webapp (MIT, Copyright (c) David Heinemeier
+# Hansson), delegating to haseen's omarchy-launch-or-focus and
+# omarchy-launch-webapp; the URL and flags are quoted word by word, where
+# Omarchy's unquoted $@ split a flag holding a space (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-or-focus-webapp <window-pattern> <url> [browser-flags...]
+
+haseen's answer to Omarchy's command: focuses the window matching
+<window-pattern>, else opens <url> as a web app (omarchy-launch-webapp)." "$@"
+
+if (($# == 0)); then
+    echo "Usage: omarchy-launch-or-focus-webapp [window-pattern] [url-and-flags...]"
+    exit 1
+fi
+
+pattern=$1
+shift
+printf -v launch '%q ' "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$@"
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-or-focus" "$pattern" "${launch% }"

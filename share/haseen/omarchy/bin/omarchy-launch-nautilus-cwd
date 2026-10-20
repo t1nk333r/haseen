@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# omarchy-launch-nautilus-cwd — open the focused terminal's working directory
+# in the file manager (Omarchy binds SUPER + ALT + SHIFT + F to it). Adapted
+# from Omarchy bin/omarchy-launch-nautilus-cwd (MIT, Copyright (c) David
+# Heinemeier Hansson): the directory comes from omarchy-cmd-terminal-cwd, as
+# in Omarchy; haseen installs no Nautilus, so the folder opens in the
+# inode/directory handler (haseen setup default files: haseen-yazi.desktop or
+# flea), started through its desktop entry with gtk-launch, and through
+# uwsm-app only in a uwsm session (plan 093). DRY_RUN=true prints the launch
+# instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-nautilus-cwd
+
+haseen's answer to Omarchy's command: opens the focused terminal's working
+directory (your home folder when there is none) in the folder handler
+(haseen setup default files)." "$@"
+
+dir=""
+cwd="$HASEEN_OMARCHY_DIR/bin/omarchy-cmd-terminal-cwd"
+[[ -x $cwd ]] && dir="$("$cwd" 2>/dev/null || true)"
+[[ -d $dir ]] || dir=$HOME
+handler="$(xdg-mime query default inode/directory 2>/dev/null || true)"
+[[ $handler == *.desktop ]] ||
+    die "no folder handler is set: haseen setup default files yazi"
+
+argv=(gtk-launch "$handler" "$dir")
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    argv=(uwsm-app -- "${argv[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${argv[*]}"
+    exit 0
+fi
+exec setsid "${argv[@]}"

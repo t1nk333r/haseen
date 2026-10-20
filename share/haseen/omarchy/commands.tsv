@@ -74,8 +74,70 @@ omarchy-hyprland-window-tiled-fullscreen-toggle	port	-	toggles fullscreen for th
 omarchy-hyprland-window-transparency-toggle	port	-	toggles the focused window's transparency
 omarchy-hyprland-window-width	port	-	saves or restores the focused window's width for its app
 omarchy-hyprland-workspace-layout-toggle	shim	haseen-toggle-workspace-layout toggle	toggles the workspace layout between dwindle and scrolling
+omarchy-install-ai-chatgpt	shim	haseen-install app chatgpt	installs the ChatGPT (Codex) desktop app from haseen's catalogue
+omarchy-install-ai-hermes	port	-	installs Hermes Desktop with its self-updating runtime, then opens it
+omarchy-install-ai-openclaw	port	-	installs OpenClaw and its Control UI web app, then onboards or opens it
+omarchy-install-ai-t3-code	shim	haseen-install app t3-code	installs T3 Code from haseen's catalogue
+omarchy-install-and-launch	translate	haseen-install	installs the packages through haseen install, then starts the app
+omarchy-install-app	translate	haseen-install	installs the packages: catalogue apps by id, the rest through haseen install aur
+omarchy-install-browser	translate	haseen-install	installs the browser from haseen's catalogue
+omarchy-install-chromium-copy-url	refuse	none: install a copy-URL extension from your browser's extension store	It writes native-messaging manifests for Omarchy's Copy URL extension into browser profiles; haseen ships no browser extensions and edits no browser profile.
+omarchy-install-chromium-google-account	refuse	none: add the --oauth2-client-id and --oauth2-client-secret lines to your chromium-flags.conf yourself	It appends Google sign-in flags to your ~/.config/chromium-flags.conf; haseen never edits a file of yours after seeding it.
+omarchy-install-chromium-ytdlp	refuse	none: install yt-dlp (haseen install package yt-dlp) and run it on the page's URL	It writes native-messaging manifests for Omarchy's yt-dlp extension into browser profiles; haseen ships no browser extensions and edits no browser profile.
+omarchy-install-dev-env	translate	haseen-install	installs a language toolchain through haseen install dev (mise) and Omarchy's extras for it
+omarchy-install-docker-dbs	translate	haseen-install	runs the databases in Docker on 127.0.0.1 through haseen install app
+omarchy-install-editor-emacs	shim	haseen-install app emacs	installs Emacs from haseen's catalogue
+omarchy-install-editor-helix	shim	haseen-install app helix	installs Helix from haseen's catalogue
+omarchy-install-editor-vscode	shim	haseen-install app vscode	installs Visual Studio Code from haseen's catalogue
+omarchy-install-editor-zed	shim	haseen-install app zed	installs Zed from haseen's catalogue
+omarchy-install-font	translate	haseen-install	installs the font through haseen install font and switches to it
+omarchy-install-gaming-battlenet	port	haseen-install	installs Battle.net in ~/Games/battlenet under umu-launcher and GE-Proton
+omarchy-install-gaming-geforce-now	port	-	installs GeForce NOW from NVIDIA's Flatpak repository, then opens a browser
+omarchy-install-gaming-gpu-lib32	port	-	installs the 32-bit Vulkan/GL drivers for the GPUs present
+omarchy-install-gaming-heroic	shim	haseen-install app heroic	installs the Heroic Games Launcher from haseen's catalogue
+omarchy-install-gaming-lutris	shim	haseen-install app lutris	installs Lutris from haseen's catalogue
+omarchy-install-gaming-retroarch	shim	haseen-install app retroarch	installs RetroArch from haseen's catalogue
+omarchy-install-gaming-steam	shim	haseen-install app steam	installs Steam with the gaming layer's 32-bit drivers
+omarchy-install-gaming-xbox-cloud	translate	haseen-webapp-install	adds Xbox Cloud Gaming as a web app and opens it
+omarchy-install-gaming-xbox-controllers	shim	haseen-install app xbox-controllers	installs the xpadneo Xbox controller driver
+omarchy-install-hermes-cli	port	-	installs Hermes Desktop's self-updating runtime for the default agent; --check probes it
+omarchy-install-openclaw-cli	port	-	installs OpenClaw as the self-updating copy in ~/.openclaw; --check probes it
+omarchy-install-preinstalls	refuse	haseen install app ID for each app you want (obsidian, xournalpp, pinta, lazydocker, omacalc), or haseen layer apply desktop	It restores Omarchy's own preinstalled app set (aether, omacut, omawrite and more), which haseen does not ship; haseen installs apps one at a time.
+omarchy-install-service-1password	shim	haseen-install app 1password	installs 1Password from haseen's catalogue
+omarchy-install-service-dropbox	shim	haseen-install app dropbox	installs Dropbox from haseen's catalogue
+omarchy-install-service-nordvpn	shim	haseen-install app nordvpn	installs NordVPN and enables its daemon
+omarchy-install-service-once	translate	haseen-install	installs ONCE, enables its background service and starts its TUI
+omarchy-install-service-signal	shim	haseen-install app signal	installs Signal from haseen's catalogue
+omarchy-install-service-spotify	shim	haseen-install app spotify	installs Spotify from haseen's catalogue
+omarchy-install-service-sunshine	port	haseen-install	installs Sunshine, enables its user unit, opens Moonlight's ports in ufw, adds its admin web app
+omarchy-install-service-tailscale	translate	haseen-install	installs Tailscale, enables tailscaled and adds its admin web app
+omarchy-install-terminal	translate	haseen-install	installs the terminal and makes it the default
+omarchy-installed-service-dropbox	port	-	exits 0 when Dropbox is running, else 1
+omarchy-installed-service-tailscale	port	-	exits 0 when Tailscale is up or tailscaled runs, else 1
+omarchy-launch-1password	port	-	opens 1Password at scale 1, or installs it
+omarchy-launch-about	shim	haseen-about	opens haseen's About view
+omarchy-launch-battlenet	port	-	starts the Battle.net client in ~/Games/battlenet through umu-run
+omarchy-launch-browser	port	-	opens the default browser, a private window with --private
+omarchy-launch-config-editor	shim	haseen-config-edit	opens a config file in your editor
+omarchy-launch-discord-community	port	-	opens the Omarchy Discord invite in Discord or as a web app
+omarchy-launch-docker-tui	port	-	runs lazydocker, through polkit when the Docker socket needs root
+omarchy-launch-editor	port	-	opens a file in $EDITOR, in a terminal window for terminal editors
 omarchy-launch-floating-terminal-with-presentation	translate	haseen-config-terminal	runs a command in haseen's floating terminal
+omarchy-launch-nautilus	port	-	opens your home folder in the folder handler
+omarchy-launch-nautilus-cwd	port	-	opens the focused terminal's folder in the folder handler
+omarchy-launch-openclaw	port	-	opens OpenClaw's Control UI or --tui, setting up, onboarding or starting its gateway first
+omarchy-launch-or-focus	port	-	focuses the window matching a pattern, else runs its launch command
+omarchy-launch-or-focus-tui	port	-	focuses a TUI's terminal window by app-id, else opens it
+omarchy-launch-or-focus-webapp	port	-	focuses a web app's window, else opens it
+omarchy-launch-screensaver	translate	haseen-screensaver	starts haseen's screensaver; force overrides the off switch
 omarchy-launch-shell	port	haseen-shell-run	starts the desktop shell haseen uses, never Omarchy's
+omarchy-launch-signal	port	-	focuses Signal, else starts it (the Flatpak too), else installs it
+omarchy-launch-spotify	port	-	focuses Spotify, else starts it (the Flatpak too), else installs it
+omarchy-launch-terminal	port	-	opens a terminal in the focused terminal's folder, optionally running a command
+omarchy-launch-terminal-herdr	port	-	opens a terminal running herdr
+omarchy-launch-terminal-tmux	port	-	opens a terminal attached to tmux's Work session
+omarchy-launch-tui	port	-	runs a TUI in a new terminal window with its own app-id
+omarchy-launch-webapp	port	-	opens a URL as a web app in a chromium-family browser
 omarchy-menu	translate	haseen-menu	opens haseen's menu at Omarchy's menu name
 omarchy-menu-clipboard	translate	haseen-shell-ipc	toggles haseen's clipboard panel
 omarchy-menu-emoji	translate	haseen-shell-ipc	toggles haseen's emoji panel
