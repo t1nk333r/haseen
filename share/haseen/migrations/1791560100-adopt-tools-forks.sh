@@ -59,7 +59,7 @@ used="$(jq -r --argjson map "$map" '
 updated="$(jq --argjson map "$map" '
     def repoint($service_only):
         if type != "array" then .
-        else map(if $map[.] then (if $service_only and ($map[.].service | not) then empty else $map[.].id end) else . end)
+        else map(if type == "string" and $map[.] then (if $service_only and ($map[.].service | not) then empty else $map[.].id end) else . end)
             | reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end)
         end;
     (if .bar then reduce ("left", "center", "right", "overflow", "pinned") as $s (.;

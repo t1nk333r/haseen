@@ -539,7 +539,10 @@ tree_sum() { (cd "$1" && find . -mindepth 1 -printf '%p %y\n' | LC_ALL=C sort &&
 mig() { capture env "$@" HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$MIG" bash -Eeuo pipefail "$HASEEN_PATH/migrations/$MIG"; }
 
 sandbox adopted-migrate
-assert_eq "the migration is in plan 096's range, after every other" "$MIG" "$(cd "$HASEEN_PATH/migrations" && ls ./*.sh | sed 's|^\./||' | sort | tail -n1)"
+# 095's migration moves nook items into the bar under their old ids, so this
+# one must sort after it. Later plans' migrations may sort after this one.
+assert_eq "the migration is in plan 096's range, after plan 095's" "1791560000-adopt-bar-basics.sh $MIG" \
+    "$(cd "$HASEEN_PATH/migrations" && ls 1791560000-adopt-bar-basics.sh 17915601[0-9][0-9]-*.sh | LC_ALL=C sort | paste -sd' ')"
 mig
 assert_status "no shell.json: nothing to do" 0 "$STATUS"
 assert_eq "and nothing written" "" "$(find "$HOME" -mindepth 1 -print -quit)"
@@ -614,6 +617,10 @@ printf '{"bar":{"right":"t1nk33r.vpn"},"services":["t1nk33r.typist"],"plugins":{
 mig
 assert_status "odd shapes do not stop the migration" 0 "$STATUS"
 assert_eq "non-array sections are kept, a non-object entry carries nothing" '{"bar":{"right":"t1nk33r.vpn"},"services":[],"plugins":{"haseen.typist":{}}}' "$(jq -c . "$S")"
+printf '{"bar":{"right":["t1nk33r.vpn",1,null]}}\n' >"$S"
+mig
+assert_status "a non-string bar entry does not stop the migration" 0 "$STATUS"
+assert_eq "it is kept beside the re-pointed id" '{"bar":{"right":["haseen.vpn",1,null]}}' "$(jq -c . "$S")"
 printf '{"services": [' >"$S"
 mig
 assert_status "an unreadable shell.json is refused" 1 "$STATUS"

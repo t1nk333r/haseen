@@ -168,7 +168,7 @@ changes nothing.
 
 ## Tests (1a635a2)
 
-`tests/test-adopted-tools.sh`, 236 checks, all passing with
+`tests/test-adopted-tools.sh`, 238 checks, all passing with
 `HASEEN_REQUIRE_ENGINE=1`:
 
 - manifests validate; off by default; licences, `UPSTREAM.md`, `NOTICE.md`
@@ -188,8 +188,11 @@ changes nothing.
   `nmcli`/`wg`/`curl` stubs (luna has mullvad and nordvpn installed), the
   settings panel against the real CLI;
 - the migration on an IO-shaped fixture: dry-run purity, results, old
-  directories and data untouched, idempotence, no `shell.json`, odd shapes,
-  an unreadable `shell.json` refused.
+  directories and data untouched, idempotence, no `shell.json`, odd shapes
+  (a non-string bar entry is kept, not fatal; review of #47), an unreadable
+  `shell.json` refused. The order check pins only what matters: this
+  migration sorts after plan 095's, whose nook items it re-points; later
+  plans' migrations may sort after it.
 
 ## Rejected options
 
