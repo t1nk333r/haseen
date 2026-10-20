@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-session-locked — exit 0 when the compositor holds a session
+# lock, 1 when it does not, 2 when it cannot tell. Adapted from Omarchy
+# bin/omarchy-hyprland-session-locked (MIT, Copyright (c) David Heinemeier
+# Hansson): unchanged. Hyprland reports no lock state directly, but an active
+# ext-session-lock is a reason a monitor cannot go solitary (LOCK in
+# solitaryBlockedBy), and it stays set when the lock's client dies (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-session-locked
+
+haseen's answer to Omarchy's command: exit 0 locked, 1 unlocked, 2
+undetermined (Hyprland stops at its first reason on a monitor with no
+workspace yet, before it reaches the lock)." "$@"
+
+monitors=$(hyprctl -j monitors 2>/dev/null) || exit 2
+state=$(jq '
+  def blockers: .solitaryBlockedBy // [];
+  def readable: blockers | index("WORKSPACE") | not;
+  if   any(.[]; blockers | index("LOCK")) then 0
+  elif any(.[]; readable)                 then 1
+  else                                         2
+  end
+' <<<"$monitors" 2>/dev/null || true)
+case $state in
+0 | 1) exit "$state" ;;
+*) exit 2 ;;
+esac

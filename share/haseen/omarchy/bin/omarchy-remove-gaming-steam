@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# omarchy-remove-gaming-steam — remove Steam through haseen's catalogue entry
+# (the steam package), then, after asking, its game libraries, configs and
+# caches. Adapted from Omarchy bin/omarchy-remove-gaming-steam (MIT, Copyright
+# (c) David Heinemeier Hansson): the data paths are Omarchy's;
+# omarchy-pkg-drop -> haseen remove app steam; --dry-run prints the plan
+# (plan 093). The gaming layer's other pieces (multilib, 32-bit drivers,
+# gamemode) stay: other games use them.
+#
+# Data: Omarchy deletes the libraries without asking; here they are asked
+# about, default no, and --yes deletes them as Omarchy does.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-gaming-steam [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes Steam (haseen remove app
+steam), then asks (default no; --yes deletes, as Omarchy does) before deleting
+~/.steam, ~/.local/share/Steam with the installed games, and Steam's configs
+and caches.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+if pkg_present steam; then
+    haseen_remove app steam
+else
+    info "steam is not installed"
+fi
+data_removed=false
+delete_asked "Also delete Steam's game libraries, configs and caches" yes \
+    "$HOME/.steam" "$HOME/.local/share/Steam" "$HOME/.config/steam" "$HOME/.cache/steam" &&
+    data_removed=true
+
+echo ""
+if $data_removed && ! $DRY_RUN; then
+    echo "Steam and its data have been removed."
+else
+    echo "Steam has been removed."
+fi

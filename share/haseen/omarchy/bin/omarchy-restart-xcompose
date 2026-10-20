@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# omarchy-restart-xcompose — restart fcitx5 so a changed ~/.XCompose applies
+# (haseen seeds it: bin/haseen-seed-user). Adapted from Omarchy
+# bin/omarchy-restart-xcompose (MIT, Copyright (c) David Heinemeier Hansson):
+# omarchy-fcitx5.service exists only with the omarchy package, so fcitx5 is
+# restarted however it runs here: that unit when it is loaded, else the XDG
+# autostart unit uwsm generates (app-org.fcitx.Fcitx5@autostart.service), else
+# by hand through uwsm-app; each way stops a stray fcitx5 first, as upstream
+# does; --dry-run prints the steps (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-xcompose [--dry-run]
+
+haseen's answer to Omarchy's command: restarts the fcitx5 input method so it
+rereads ~/.XCompose: through its systemd user unit when one runs it, else it
+is stopped and started again in the session.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+have fcitx5 || {
+    warn "fcitx5 is not installed (the desktop layer installs it): nothing to restart"
+    exit 0
+}
+
+# unit_loaded UNIT — systemd knows the unit (installed, generated or running).
+unit_loaded() {
+    [[ $(systemctl --user show -p LoadState --value "$1" 2>/dev/null) == loaded ]]
+}
+
+# A fcitx5 running outside the unit owns org.fcitx.Fcitx5, so the unit's
+# instance would exit on arrival and the stale process would keep serving the
+# old ~/.XCompose (upstream's reason for the pkill).
+for unit in omarchy-fcitx5.service 'app-org.fcitx.Fcitx5@autostart.service'; do
+    unit_loaded "$unit" || continue
+    run systemctl --user stop "$unit"
+    run pkill -x fcitx5 2>/dev/null || true
+    run systemctl --user start "$unit"
+    exit
+done
+
+run pkill -x fcitx5 2>/dev/null || true
+# In its own scope, as every app haseen starts (architecture §5, Spawning).
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    launcher=(uwsm-app --)
+else
+    launcher=()
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: ${launcher[*]+${launcher[*]} }fcitx5 -d"
+    exit 0
+fi
+setsid "${launcher[@]}" fcitx5 -d >/dev/null 2>&1 &

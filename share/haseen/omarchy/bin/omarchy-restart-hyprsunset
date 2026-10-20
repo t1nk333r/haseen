@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-restart-hyprsunset — restart the night light's hyprsunset. Under
+# haseen, haseen.nightlight owns hyprsunset and restarts its own instance on
+# `nightlight refresh` (plugins/haseen.nightlight/Service.qml), as
+# `haseen refresh nightlight` relies on; Omarchy's relaunch through
+# omarchy-restart-app (bin/omarchy-restart-hyprsunset, MIT, Copyright (c) David Heinemeier Hansson)
+# would start a second one beside it. A script of
+# its own rather than a table row, so --help and --dry-run stay ours instead
+# of reaching the IPC call (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-hyprsunset [--dry-run]
+
+haseen's answer to Omarchy's command: asks haseen's shell to restart the
+night light's hyprsunset (haseen shell ipc nightlight refresh).
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+run "$HASEEN_BIN/haseen-shell-ipc" nightlight refresh

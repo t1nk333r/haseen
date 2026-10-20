@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# omarchy-remove-service-tailscale — remove Tailscale: leave the tailnet, stop
+# Omarchy's Taildrop receiver, remove the package with its tailscaled service
+# (haseen remove app tailscale), turn Omarchy's bar plugin off in haseen's
+# shell when the user enabled it there, and remove the Tailscale web app.
+# Adapted from Omarchy bin/omarchy-remove-service-tailscale (MIT, Copyright
+# (c) David Heinemeier Hansson): the steps are Omarchy's; sudo systemctl and
+# omarchy-pkg-drop -> haseen's catalogue removal (which disables tailscaled),
+# omarchy-plugin-disable -> haseen plugin disable; the receiver unit is only
+# disabled, its file is Omarchy's; --dry-run prints the plan (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-service-tailscale [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: runs 'tailscale down', disables
+Omarchy's omarchy-tailscale-receive.service, removes tailscale and disables
+tailscaled (haseen remove app tailscale), turns the omarchy.tailscale bar
+plugin off when haseen's shell.json names it, and removes the "Tailscale" web
+app.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+have tailscale && { quiet tailscale down || true; }
+quiet systemctl --user disable --now omarchy-tailscale-receive.service || true
+if pkg_present tailscale; then
+    haseen_remove app tailscale
+else
+    info "tailscale is not installed"
+fi
+plugin_off omarchy.tailscale
+webapp_remove "Tailscale" || true
+
+echo ""
+echo "Tailscale has been removed."

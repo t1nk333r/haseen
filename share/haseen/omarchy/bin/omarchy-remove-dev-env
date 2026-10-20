@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# omarchy-remove-dev-env — remove a development environment by Omarchy's name,
+# the haseen way: mise toolchains through `haseen remove dev LANG`, packages
+# through `haseen remove package`. Follows Omarchy bin/omarchy-remove-dev-env
+# (MIT, Copyright (c) David Heinemeier Hansson): the names, the usage error and
+# what each removes are Omarchy's. Differences: clojure and scala drop only
+# Omarchy's tools (haseen's catalogue entries also carry java, which stays);
+# rust uses haseen's mise toolchain when that is the installed one, else
+# Omarchy's rustup; ~/.gemrc goes only when it is the one-line file the
+# installers write; --dry-run prints the plan (plan 093).
+#
+# Data: rustup's self uninstall deletes ~/.cargo with the tools cargo
+# installed, and ocaml deletes ~/.opam: both asked, default no; --yes says
+# yes, as Omarchy does without asking.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+LANGS="ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-dev-env <$LANGS> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes the toolchain with
+'haseen remove dev LANG' (mise), or its packages with 'haseen remove package'
+(php, symfony, ocaml's opam), as Omarchy's command does.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 1
+}
+require_not_root
+lang=${REST[0]}
+
+mise_data="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
+
+# mise_unuse TOOL... — Omarchy's `mise uninstall --all` + `mise rm -g`: unuse
+# drops a tool from the global config and prunes its versions, as haseen's
+# catalogue does it.
+mise_unuse() {
+    local tool
+    have mise || $DRY_RUN || die "mise is not installed"
+    for tool in "$@"; do
+        run mise unuse --global "$tool"
+    done
+}
+
+case $lang in
+ruby | node | bun | deno | go | java | dotnet | zig | python | elixir | phoenix)
+    [[ $lang == phoenix ]] && lang=elixir
+    echo "Removing $lang..."
+    haseen_remove dev "$lang"
+    if [[ $lang == ruby && -f $HOME/.gemrc ]]; then
+        if [[ $(<"$HOME/.gemrc") == "gem: --no-document" ]]; then
+            run rm -f -- "$HOME/.gemrc"
+        else
+            info "kept ~/.gemrc: it holds more than the installer's line"
+        fi
+    fi
+    # Omarchy's Python installer used uv's own script, which puts these here.
+    [[ $lang == python ]] && rm_present "$HOME/.local/bin/uv" "$HOME/.local/bin/uvx" "$HOME/.cargo/bin/uv"
+    ;;
+clojure)
+    echo "Removing Clojure..."
+    mise_unuse clojure
+    ;;
+scala)
+    echo "Removing Scala..."
+    mise_unuse scala scala-cli
+    ;;
+rust)
+    echo "Removing Rust..."
+    if compgen -G "$mise_data/installs/rust/*" >/dev/null; then
+        haseen_remove dev rust
+    elif have rustup; then
+        if ask "rustup self uninstall deletes ~/.rustup and ~/.cargo, with every tool cargo installed. Continue" yes; then
+            quiet rustup self uninstall -y || true
+        fi
+    else
+        info "Rust is not installed (no mise toolchain, no rustup)"
+    fi
+    ;;
+php)
+    echo "Removing PHP..."
+    remove_pkgs php composer php-sqlite xdebug
+    # The settings haseen's PHP installer adds; php.ini itself is pacman's.
+    for f in "$(sysroot_path /etc/php/conf.d)"/haseen-*.ini; do
+        [[ -e $f ]] && run_root rm -f -- "${f#"$HASEEN_SYSROOT"}"
+    done
+    ;;
+laravel)
+    echo "Removing Laravel..."
+    if have composer; then
+        quiet composer global remove laravel/installer || true
+    else
+        info "composer is not installed: nothing to remove"
+    fi
+    ;;
+symfony)
+    echo "Removing Symfony CLI..."
+    remove_pkgs symfony-cli
+    ;;
+ocaml)
+    echo "Removing OCaml..."
+    have opam && { quiet opam switch remove default -y || true; }
+    delete_asked "Also delete ~/.opam, every opam switch and package" yes "$HOME/.opam" || true
+    # Omarchy's installer used opam's own script, which installs here.
+    [[ -e $(sysroot_path /usr/local/bin/opam) ]] && run_root rm -f -- /usr/local/bin/opam
+    remove_pkgs opam
+    ;;
+*)
+    echo "Unknown environment: $lang" >&2
+    exit 1
+    ;;
+esac
+
+echo "Done!"

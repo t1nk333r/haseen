@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-screensaver — Omarchy's in-terminal screensaver loop, answered by
+# haseen's screensaver. Omarchy bin/omarchy-screensaver (MIT, Copyright (c) David Heinemeier Hansson)
+# runs ttfx inside a terminal its launcher opened
+# with class org.omarchy.screensaver and quits once that window loses focus.
+# haseen's port of that loop (haseen screensaver --ttfx-run) checks for its
+# own class, org.haseen.screensaver, so run in Omarchy's window it would quit
+# at once. This hands over instead: haseen's shell opens its screensaver
+# (ttfx or native style, haseen's branding text) on every monitor, and the
+# terminal that ran this closes. Its launcher, omarchy-launch-screensaver, is
+# haseen's too, so normally nothing reaches this (plan 093).
+#
+# --force because the loop never read screensaver-off: only its launcher did.
+# Never shows ~/.config/omarchy/branding/screensaver.txt.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-screensaver [--dry-run]
+
+haseen's answer to Omarchy's command: shows haseen's screensaver on every
+monitor now, even when it is turned off (haseen screensaver --force); it ends
+at the next key press, click or pointer motion." "$@"
+
+args=(--force)
+for arg in "$@"; do
+    [[ $arg != --dry-run ]] || DRY_RUN=true
+done
+$DRY_RUN && args+=(--dry-run)
+haseen_exec screensaver "${args[@]}"

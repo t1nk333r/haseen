@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# omarchy-setup-security-sshd — authorize an SSH key, then set up haseen's SSH
+# server (haseen setup sshd: openssh, key-only logins, firewall port).
+# Follows Omarchy bin/omarchy-setup-security-sshd (MIT, Copyright (c) David Heinemeier Hansson):
+# --key=K, or a key fetched from GitHub or pasted when
+# ~/.ssh/authorized_keys holds none yet, is authorized before password logins
+# go off, so nobody is locked out. ~/.ssh/authorized_keys is the user's file:
+# a key is only appended, after a confirmation, and an existing file or
+# directory keeps its modes. The server itself, its hardening drop-in and the
+# firewall rule are haseen's (bin/haseen-setup-sshd) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+SSH_DIR="$HOME/.ssh"
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-setup-security-sshd [--key=<public-key>] [--dry-run] [--yes]
+
+Sets up the OpenSSH server with key-only logins and opens the SSH port in the
+firewall (haseen setup sshd), after authorizing an SSH key: the one passed
+with --key, or, when ~/.ssh/authorized_keys holds no key yet, one fetched
+from GitHub or pasted.
+EOF
+}
+
+KEY=""
+flags=()
+for arg in "$@"; do
+    case "$arg" in
+    --key=*) KEY="${arg#--key=}" ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        flags+=(--dry-run)
+        ;;
+    --yes | -y)
+        # shellcheck disable=SC2034  # read by confirm (common.sh)
+        ASSUME_YES=true
+        flags+=(--yes)
+        ;;
+    *)
+        echo "omarchy-setup-security-sshd: unknown option '$arg'. Try --help." >&2
+        exit 2
+        ;;
+    esac
+done
+in_floating_terminal "$@"
+require_not_root
+
+valid_key() { ssh-keygen -lf /dev/stdin <<<"$1" >/dev/null 2>&1; }
+fingerprint() { ssh-keygen -lf /dev/stdin <<<"$1" 2>/dev/null; }
+
+# authorize_key KEY — append KEY to authorized_keys unless it is there.
+authorize_key() {
+    local key="$1"
+    if ! valid_key "$key"; then
+        printf 'Not a valid SSH public key: %s\n' "$key" >&2
+        return 1
+    fi
+    if [[ -r $AUTHORIZED_KEYS ]] && grep -qxF -- "$key" "$AUTHORIZED_KEYS"; then
+        echo "Key already authorized: $(fingerprint "$key")"
+        return 0
+    fi
+    confirm "Authorize $(fingerprint "$key") in ${AUTHORIZED_KEYS/#$HOME/\~}?" || return 1
+    # sshd ignores keys in a directory or file others can write; new ones are
+    # made private, existing ones are the user's and keep their modes.
+    if [[ ! -e $SSH_DIR ]]; then
+        run mkdir -p -- "$SSH_DIR"
+        run chmod 700 -- "$SSH_DIR"
+    fi
+    local new=false
+    [[ -e $AUTHORIZED_KEYS ]] || new=true
+    printf '%s\n' "$key" | append_user_file "$AUTHORIZED_KEYS"
+    ! $new || run chmod 600 -- "$AUTHORIZED_KEYS"
+    echo "Authorized key: $(fingerprint "$key")"
+}
+
+authorize_keys_from_github() {
+    local username keys key added=0
+    read -r -p "GitHub username> " username || exit 1
+    [[ -n $username ]] || die "no GitHub username given"
+    [[ $username =~ ^[A-Za-z0-9-]{1,39}$ ]] || die "not a GitHub username: $username"
+    echo "Fetching keys from https://github.com/$username.keys..."
+    if ! keys="$(curl -fsSL "https://github.com/$username.keys")" || [[ -z $keys ]]; then
+        die "could not fetch any SSH keys for GitHub user '$username'"
+    fi
+    # An array, not a read loop: each key's confirmation reads stdin.
+    local list=()
+    mapfile -t list <<<"$keys"
+    for key in "${list[@]}"; do
+        [[ -n $key ]] || continue
+        authorize_key "$key" && added=$((added + 1))
+    done
+    ((added > 0)) || die "no SSH key from GitHub user '$username' was authorized"
+}
+
+authorize_pasted_key() {
+    local key
+    read -r -p "Public key> " key || exit 1
+    [[ -n $key ]] || die "no SSH key given"
+    authorize_key "$key" || exit 1
+}
+
+echo "Setting up SSH server access with key-based authentication."
+if [[ -n $KEY ]]; then
+    authorize_key "$KEY" || exit 1
+elif ssh-keygen -lf "$AUTHORIZED_KEYS" >/dev/null 2>&1; then
+    info "${AUTHORIZED_KEYS/#$HOME/\~} already holds a key"
+elif $DRY_RUN; then
+    echo "DRYRUN: ask for a key (from GitHub or pasted) and append it to $AUTHORIZED_KEYS"
+else
+    read -r -p "How would you like to add your SSH key? [g] grab it from GitHub, [p] paste it, [q] quit: " choice || exit 1
+    case $choice in
+    g | G) authorize_keys_from_github ;;
+    p | P) authorize_pasted_key ;;
+    *) exit 1 ;;
+    esac
+fi
+
+haseen_exec setup-sshd "${flags[@]}"

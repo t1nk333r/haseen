@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-restart-tmux — make a running tmux server reread its config.
+# Adapted from Omarchy bin/omarchy-restart-tmux (MIT, Copyright (c) David Heinemeier Hansson):
+# the config is the one tmux itself would read, found as
+# bin/haseen-tmux-keybinds finds it ($TMUX_CONF, ~/.config/tmux/tmux.conf,
+# ~/.tmux.conf) instead of a fixed path; --dry-run prints the source-file
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-tmux [--dry-run]
+
+haseen's answer to Omarchy's command: when a tmux server runs, sources its
+config into it (\$TMUX_CONF, else ~/.config/tmux/tmux.conf, else
+~/.tmux.conf). Nothing to do without a server or a config.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+have tmux || exit 0
+tmux has-session 2>/dev/null || exit 0
+
+config=""
+for candidate in "${TMUX_CONF:-}" "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf" "$HOME/.tmux.conf"; do
+    if [[ -n $candidate && -f $candidate ]]; then
+        config=$candidate
+        break
+    fi
+done
+[[ -n $config ]] || exit 0
+run tmux source-file "$config"

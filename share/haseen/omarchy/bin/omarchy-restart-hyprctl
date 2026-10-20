@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-restart-hyprctl — reload Hyprland's config. Adapted from Omarchy
+# bin/omarchy-restart-hyprctl (MIT, Copyright (c) David Heinemeier Hansson):
+# the same `hyprctl reload`, its reply hidden and its exit status passed on;
+# --dry-run prints it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-hyprctl [--dry-run]
+
+haseen's answer to Omarchy's command: hyprctl reload (Hyprland rereads its
+config, haseen's toggles included). Exits with hyprctl's status.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+if $DRY_RUN; then
+    echo "DRYRUN: hyprctl reload"
+    exit 0
+fi
+hyprctl reload >/dev/null

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-restart-opencode — make a running opencode reload its config
+# (SIGUSR2). Adapted from Omarchy bin/omarchy-restart-opencode (MIT, Copyright (c) David Heinemeier Hansson):
+# `pkill -x` instead of killall (the same exact
+# name match) so the step goes through haseen's run and --dry-run prints it
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-opencode [--dry-run]
+
+haseen's answer to Omarchy's command: sends SIGUSR2 to a running opencode so
+it reloads its config and theme. Nothing to do when it is not running.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+pgrep -x opencode >/dev/null 2>&1 || exit 0
+run pkill -SIGUSR2 -x opencode

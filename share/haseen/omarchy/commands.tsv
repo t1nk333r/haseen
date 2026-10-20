@@ -8,20 +8,91 @@ omarchy	port	-	Omarchy's router: omarchy a b runs haseen's omarchy-a-b
 omarchy-battery-status	shim	haseen-battery-status	prints the battery line or TSV Omarchy's bar plugins read
 omarchy-brightness-display-apple	apple	-	Apple Studio and Pro Display XDR brightness through asdcontrol
 omarchy-capture-screenrecording	translate	haseen-capture-screenrecord	Omarchy's recorder flags on haseen's screen recorder
+omarchy-hw-clamshell	port	-	true when the lid is closed while an external monitor is connected
+omarchy-hw-external-monitors	port	-	true when an external monitor is physically connected
+omarchy-hw-laptop-closed	port	-	true when a laptop lid reads closed
+omarchy-hyprland-monitor-clamshell	translate	haseen-hardware-laptop-display	turns the laptop display off while the lid is closed on a dock, back on after
 omarchy-hyprland-monitor-external-active	port	-	true when Hyprland has an enabled monitor other than the laptop panel
 omarchy-hyprland-monitor-focused-apple	apple	-	true only when the focused monitor is an Apple Studio or Pro Display XDR
+omarchy-hyprland-monitor-internal	translate	haseen-hardware-laptop-display	turns the laptop display on, off or over, or recovers it
 omarchy-hyprland-monitor-internal-mirror	translate	haseen-hardware-mirror-display	mirrors the laptop display, extends again, or recovers
+omarchy-hyprland-session-locked	port	-	true when Hyprland holds a session lock
+omarchy-hyprland-window-close-all	port	-	closes every window, then goes to workspace 1
 omarchy-launch-floating-terminal-with-presentation	translate	haseen-config-terminal	runs a command in haseen's floating terminal
 omarchy-launch-shell	port	haseen-shell-run	starts the desktop shell haseen uses, never Omarchy's
 omarchy-menu	translate	haseen-menu	opens haseen's menu at Omarchy's menu name
 omarchy-notification-send	translate	haseen-notification-send	Omarchy's notification arguments on haseen's notifications
 omarchy-powerprofiles-list	shim	haseen-powerprofile-list	lists the power profiles, weakest first
 omarchy-powerprofiles-set	shim	haseen-powerprofile-set	sets the power profile for AC or battery
+omarchy-remove-ai-hermes	port	-	removes Hermes, its gateway units and runtime; asks before deleting chats and tokens
+omarchy-remove-ai-openclaw	port	-	removes OpenClaw, its gateway units and launcher; asks before deleting ~/.openclaw
+omarchy-remove-ai-perplexity	port	-	removes Perplexity and its caches; asks before deleting its logins and vault
+omarchy-remove-ai-t3-code	port	-	removes T3 Code; asks before deleting its settings and, separately, its worktrees
+omarchy-remove-browser	port	-	removes a browser, moving the default to Helium, and Omarchy's policy and flag files
+omarchy-remove-dev-env	translate	haseen-remove	removes a development environment's toolchains
+omarchy-remove-gaming-battlenet	port	-	removes the Battle.net prefix and launcher; asks about umu-launcher and GE-Proton
+omarchy-remove-gaming-geforce-now	port	-	removes the GeForce NOW Flatpak; asks before deleting its data
+omarchy-remove-gaming-heroic	port	-	removes Heroic; asks before deleting its games, configs and caches
+omarchy-remove-gaming-lutris	port	-	removes Lutris and the Wine packages nothing else needs; asks about ~/.wine and data
+omarchy-remove-gaming-minecraft	port	-	removes Minecraft; asks before deleting its worlds and caches
+omarchy-remove-gaming-retroarch	port	-	removes RetroArch and its cores; asks about configs and saves, keeps ROMs and BIOS
+omarchy-remove-gaming-steam	port	-	removes Steam; asks before deleting its game libraries, configs and caches
+omarchy-remove-gaming-xbox-cloud	translate	haseen-webapp-remove	removes the Xbox Cloud Gaming web app
+omarchy-remove-gaming-xbox-controllers	port	-	removes the Xbox controller driver and its module settings
+omarchy-remove-launcher-entry	port	-	removes a launcher entry, or uninstalls the package or Flatpak that owns it
+omarchy-remove-preinstalls	refuse	haseen remove app NAME, haseen remove package NAME or haseen webapp remove NAME, one at a time	It strips Omarchy's own preinstalled web apps, wrappers and packages in one sweep; haseen did not install them and removes apps one by one.
+omarchy-remove-security-fido2	port	-	turns FIDO2 login off for sudo and polkit and removes pam-u2f
+omarchy-remove-security-fingerprint	port	-	turns fingerprint login off for sudo, polkit and the lock screen and removes fprintd
+omarchy-remove-security-sshd	port	-	turns the SSH server off and closes its firewall port; asks about authorized keys
+omarchy-remove-security-sudoless-docker	port	-	takes you out of the docker group and records that a reboot is needed
+omarchy-remove-service-1password	port	-	removes 1Password and Omarchy's browser extension policy
+omarchy-remove-service-dropbox	port	-	removes Dropbox and turns its bar plugin off
+omarchy-remove-service-sunshine	port	-	removes Sunshine, its unit, web app and firewall rules
+omarchy-remove-service-tailscale	port	-	removes Tailscale and tailscaled, its receiver unit, bar plugin and web app
+omarchy-restart-app	port	-	kills an app by name and starts it again in a scope of its own
+omarchy-restart-audio	shim	haseen-restart audio	restarts PipeWire, PipeWire-Pulse and WirePlumber
+omarchy-restart-bluetooth	shim	haseen-restart bluetooth	unblocks Bluetooth and restarts the Bluetooth service
+omarchy-restart-btop	port	-	makes a running btop reload its config
 omarchy-restart-gum	inert	-	haseen renders no gum theme, so gum keeps its defaults
+omarchy-restart-helix	port	-	makes a running Helix reload its config
+omarchy-restart-herdr	port	-	makes a running herdr server reload its config
+omarchy-restart-hyprctl	port	-	reloads Hyprland's config
+omarchy-restart-hyprsunset	translate	haseen-shell-ipc	restarts the night light's hyprsunset through haseen's shell
+omarchy-restart-opencode	port	-	makes a running opencode reload its config
 omarchy-restart-shell	translate	haseen-shell-restart	stops an Omarchy shell, restarts haseen's (or DMS)
+omarchy-restart-terminal	port	-	makes running Alacritty, Kitty and Ghostty reload their config
+omarchy-restart-tmux	port	-	makes a running tmux server reread its config
+omarchy-restart-trackpad	shim	haseen-restart trackpad	reloads the touchpad driver
+omarchy-restart-wifi	shim	haseen-restart wifi	unblocks Wi-Fi, turns the radio on and rescans
+omarchy-restart-xcompose	port	-	restarts fcitx5 so a changed ~/.XCompose applies
+omarchy-screensaver	translate	haseen-screensaver	starts haseen's screensaver on every monitor
+omarchy-setup-direct-boot	port	-	toggles a UEFI boot entry that starts the kernel image directly
+omarchy-setup-security-fido2	shim	haseen-setup-fido2	sets up a FIDO2 key for sudo and polkit
+omarchy-setup-security-fingerprint	shim	haseen-setup-fingerprint	sets up fingerprint login for sudo, polkit and the lock screen
+omarchy-setup-security-sshd	translate	haseen-setup-sshd	authorizes an SSH key, then sets up haseen's SSH server
+omarchy-setup-security-sudoless-docker	port	-	adds you to the docker group after a warning that it is root-equivalent
 omarchy-shell	translate	haseen-shell-ipc	Omarchy's shell IPC verbs on haseen's shell
 omarchy-shell-config	refuse	haseen bar add|move|overflow|position, haseen plugin enable|disable|settings	it edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read
+omarchy-show-done	port	-	says Done! and waits for a key so the terminal stays readable
+omarchy-show-logo	port	-	clears the terminal and prints haseen's logo
+omarchy-snapshot	port	-	creates or restores a snapper snapshot
+omarchy-state	port	-	sets or clears the markers Omarchy's commands leave for each other
+omarchy-sudo-docker	port	-	exit 0 when Docker needs sudo, 1 when it can be used directly
 omarchy-sudo-keepalive	port	-	keeps sudo fresh for the sourcing script through common.sh
+omarchy-sudo-passwordless	port	-	turns passwordless sudo on for a limited time (15 minutes by default), or off
+omarchy-system-factory-reset	refuse	none: reinstall CachyOS, then haseen	It restores Omarchy's @factory snapshot and rebuilds Omarchy's boot setup; haseen has no factory image to return to.
+omarchy-system-factory-reset-finish	refuse	none: reinstall CachyOS, then haseen	It finishes Omarchy's own factory reset on first boot; haseen has no factory reset to finish.
+omarchy-system-lid-close	translate	haseen-system lock	locks at once when closing the lid will suspend, then reconciles the laptop display
+omarchy-system-lock	translate	haseen-system lock	locks the session, resets the keyboard layout and locks 1Password
+omarchy-system-logout	shim	haseen-system logout	ends the session
+omarchy-system-reboot	translate	haseen-system reboot	clears the reboot markers and reboots
+omarchy-system-shutdown	translate	haseen-system shutdown	clears the reboot markers and powers off
+omarchy-system-sleep-lock	port	-	locks before suspend and waits, within the sleep delay, for a secure lock
+omarchy-system-sleep-monitor	shim	haseen-lock-before-sleep	locks the screen before every suspend
+omarchy-system-stats	port	-	prints CPU and memory figures for a shell panel
+omarchy-system-wake	shim	haseen-screen-on	turns every display back on
+omarchy-tailscale-receive	port	-	saves incoming Taildrop files to the downloads directory and announces each
+omarchy-tailscale-send	port	-	sends files to a machine on the tailnet with Taildrop
 omarchy-theme-set	shim	haseen-theme-set	sets the haseen theme
 omarchy-toggle	port	-	switches an Omarchy flag: haseen's own flag where one means the same, else haseen's toggle store
 omarchy-toggle-bar	translate	haseen-toggle-bar	hides (on) or shows (off) or flips the running bar, for the session

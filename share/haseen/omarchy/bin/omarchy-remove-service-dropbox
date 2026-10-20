@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# omarchy-remove-service-dropbox — remove Dropbox in whichever form is
+# installed (Omarchy's packages, haseen's Flatpak) and turn its Omarchy bar
+# plugin off in haseen's shell when the user enabled it there. Adapted from
+# Omarchy bin/omarchy-remove-service-dropbox (MIT, Copyright (c) David
+# Heinemeier Hansson): omarchy-plugin-disable -> haseen plugin disable (only
+# when shell.json names the plugin), omarchy-pkg-drop -> haseen remove
+# package, which keeps the helper libraries other packages need, and haseen
+# remove app dropbox; --dry-run prints the plan (plan 093). The synced files
+# in ~/Dropbox stay, as in Omarchy.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-service-dropbox [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: stops Dropbox, turns the omarchy.dropbox
+bar plugin off when haseen's shell.json names it, and removes dropbox,
+dropbox-cli, nautilus-dropbox and their helpers libappindicator-gtk3 and
+python-gpgme (those no other package needs), and the com.dropbox.Client
+Flatpak, whichever are installed (haseen remove). ~/Dropbox stays.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+have dropbox-cli && { quiet dropbox-cli stop || true; }
+plugin_off omarchy.dropbox
+remove_pkgs dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
+remove_flatpak_app dropbox com.dropbox.Client
+
+echo ""
+echo "Dropbox has been removed."

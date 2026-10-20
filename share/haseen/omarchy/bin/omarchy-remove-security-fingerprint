@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# omarchy-remove-security-fingerprint — take fingerprint authentication out of
+# sudo, polkit and the lock screen: the pam_fprintd line `haseen setup
+# fingerprint` adds and haseen's lock-screen service go without asking; other
+# pam_fprintd lines and Omarchy's lid-closed gates are shown and go after a
+# question, as does Omarchy's lock-screen service. Then fprintd and libfprint
+# when nothing still uses them. Adapted from Omarchy
+# bin/omarchy-remove-security-fingerprint (MIT, Copyright (c) David Heinemeier
+# Hansson): sudo sed -i -> whole-file rewrites through write_root_file (a dry
+# run prints each new file), sudo rm -> run_root, omarchy-pkg-drop -> haseen
+# remove package; a gate is always removed with the rule it skips, never left
+# to skip the next one; --dry-run prints the plan (plan 093).
+#
+# Questions: the foreign lines and Omarchy's lock service are asked about,
+# default no; --yes removes them, as Omarchy does without asking. Enrolled
+# fingers (fprintd's database) stay, as in Omarchy.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+# What bin/haseen-setup-fingerprint writes.
+HASEEN_PAM_LINE="auth      sufficient pam_fprintd.so"
+HASEEN_LOCK_PAM=/etc/pam.d/haseen-lock-fingerprint
+PAM_FILES=(/etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/hyprlock)
+# What Omarchy's setup writes.
+OMARCHY_GATE='omarchy-hw-laptop-closed'
+OMARCHY_LOCK_PAM=/etc/pam.d/omarchy-lock-fingerprint
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-security-fingerprint [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes "$HASEEN_PAM_LINE"
+(haseen setup fingerprint) from ${PAM_FILES[*]} and deletes
+$HASEEN_LOCK_PAM; shows other pam_fprintd lines and Omarchy's lid-closed
+gates and removes them after asking (--yes removes them), asks the same about
+$OMARCHY_LOCK_PAM, then removes fprintd, libfprint and libfprint-git when no
+pam_fprintd line is left and no other package needs them.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+echo "Removing the fingerprint reader from authentication."
+PAM_KEPT=false
+for f in "${PAM_FILES[@]}"; do
+    pam_drop "$f" "$HASEEN_PAM_LINE" "pam_fprintd\\.so|$OMARCHY_GATE" "$OMARCHY_GATE"
+done
+
+[[ -e $(sysroot_path "$HASEEN_LOCK_PAM") ]] && run_root rm -f -- "$HASEEN_LOCK_PAM"
+if [[ -e $(sysroot_path "$OMARCHY_LOCK_PAM") ]]; then
+    if ask "Also delete Omarchy's lock-screen fingerprint service $OMARCHY_LOCK_PAM" yes; then
+        run_root rm -f -- "$OMARCHY_LOCK_PAM"
+    else
+        PAM_KEPT=true
+    fi
+fi
+
+if $PAM_KEPT; then
+    info "kept fprintd: pam_fprintd is still in use"
+else
+    remove_pkgs fprintd libfprint libfprint-git
+fi
+echo "Fingerprint authentication has been removed."
