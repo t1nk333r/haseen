@@ -125,17 +125,25 @@ write_user_file() {
 
 # replace_user_file DEST — write stdin over unprivileged file DEST atomically:
 # a temporary file beside it, then a rename, so an application reading DEST
-# (an editor's state file) never sees it half written. DEST keeps its mode.
+# (an editor's state file) never sees it half written. A DEST that is a link
+# (a stowed or yadm-managed dotfile) stays one: the file it points to is
+# replaced. That file keeps its mode; a new one gets the umask's, as a plain
+# write would, not mktemp's 0600.
 replace_user_file() {
-    local dest="$1" tmp
+    local dest tmp
     if $DRY_RUN; then
-        echo "DRYRUN: write $dest:"
+        echo "DRYRUN: write $1:"
         sed 's/^/    | /'
         return 0
     fi
+    dest="$(readlink -m -- "$1")"
     mkdir -p "$(dirname "$dest")"
     tmp="$(mktemp "$dest.XXXXXX")" || return 1
-    [[ ! -e $dest ]] || chmod --reference="$dest" "$tmp"
+    if [[ -e $dest ]]; then
+        chmod --reference="$dest" "$tmp"
+    else
+        chmod "$(printf '%04o' $((0666 & ~$(umask))))" "$tmp"
+    fi
     if ! cat >"$tmp" || ! mv -fT -- "$tmp" "$dest"; then
         rm -f -- "$tmp"
         return 1
