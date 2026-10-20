@@ -23,8 +23,8 @@ rows() {
 sandbox omarchy-inventory
 assert_eq "every row has four tab-separated fields" "" \
     "$(awk -F'\t' '!/^#/ && NF != 4 { print NR": "$0 }' "$TABLE")"
-assert_eq "every row is one of Omarchy 4.0.6's commands" "" \
-    "$(comm -23 <(awk -F'\t' '!/^#/ { print $1 }' "$TABLE" | sort) <(sort "$NAMES"))"
+assert_eq "the table lists exactly Omarchy 4.0.6's 446 commands" \
+    "$(sort "$NAMES")" "$(awk -F'\t' '!/^#/ { print $1 }' "$TABLE" | sort)"
 assert_eq "no command is listed twice" "" \
     "$(awk -F'\t' '!/^#/ { print $1 }' "$TABLE" | sort | uniq -d)"
 assert_eq "every kind is one of the six" "" \
@@ -74,6 +74,11 @@ for name in $(rows translate port); do
     grep -q 'omarchy/lib.sh\|/\.\./lib\.sh' "$OMA/bin/$name" || bad+="$name "
 done
 assert_eq "every script finds haseen through omarchy/lib.sh" "" "$bad"
+bad=""
+for name in $(rows shim translate port refuse inert apple); do
+    grep -qF "| \`$name\` |" "$REPO/plans/093-adopt-omarchy-commands.md" || bad+="$name "
+done
+assert_eq "plan 093's inventory lists every command" "" "$bad"
 
 # --- refusals and no-ops --------------------------------------------------------
 sandbox omarchy-refuse
