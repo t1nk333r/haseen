@@ -305,8 +305,11 @@ assert_eq "in Omarchy's shape" "2 true 2 reminders" "$(jq -r '"\(.count) \(.acti
 assert_eq "a default message reads as none, labelled by its minutes" \
     "5 5-min reminder  haseen-reminder-5m-1.timer" \
     "$(jq -r '.reminders[0] | "\(.minutes) \(.label) \(.message) \(.timer)"' <<<"$OUTPUT")"
-assert_eq "a message is the label" "Tea Tea 10m" \
-    "$(jq -r '.reminders[1] | "\(.label) \(.message) \(.remaining)"' <<<"$OUTPUT")"
+assert_eq "a message is the label" "Tea Tea" "$(jq -r '.reminders[1] | "\(.label) \(.message)"' <<<"$OUTPUT")"
+# The fixture's clock was read before the command's: a loaded machine may
+# tick a few seconds in between.
+rem="$(jq -r '.reminders[1].remaining' <<<"$OUTPUT")"
+[[ $rem =~ ^(10m|9m\ [0-9]+s)$ ]] && _pass || _fail "the time left is in Omarchy's format (10m, less a tick): $rem"
 capture fake omarchy-reminder show --bogus
 assert_status "show takes only --json" 1 "$STATUS"
 sandbox omarchy-menu-reminder-dry
