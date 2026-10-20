@@ -276,6 +276,15 @@ fi
 # other outputs take input only while the panel itself does. The policy runs
 # in the real engine against real Region objects; layer-shell surfaces
 # themselves need a compositor and are out of reach here.
+# Qt 6.12 added a QtQuick `Color` singleton (QQuickColor, exported as
+# "QtQuick/Color 6.12"). Every file here imports QtQuick, and QtQuick's Color
+# wins a bare `Color.` whatever the import order, so the compat palette read
+# undefined in every control (plan 092). Omarchy 4.0.6 qualifies it the same
+# way: `import qs.Commons as Commons`, then `Commons.Color.<role>`.
+assert_eq "compat QML reads the palette as Commons.Color, never a bare Color" "" \
+    "$(grep -rnE '(^|[^.A-Za-z_])Color\.[A-Za-z]' "$SHELL_DIR/Compat" --include='*.qml' --include='*.js' |
+        grep -vE '^[^:]+:[0-9]+:[[:space:]]*//')"
+
 QS_BIN=${QS_BIN:-/usr/bin/qs}
 if [[ ! -x $QS_BIN ]]; then
     echo "  skip: Quickshell not installed; panel pointer-input policy not exercised" >&2
@@ -411,4 +420,59 @@ EOF
     assert_not_contains "the pointer-input binding depends on no non-bindable property" "$OUTPUT" "non-bindable"
     assert_contains "the compat keyboard panel host shares that policy" \
         "$(cat "$SHELL_DIR/Compat/Omarchy/Ui/KeyboardPanel.qml")" "PanelInput.js"
+
+    # The Omarchy palette in the real engine (plan 092): a compat control and
+    # the Commons singletons that read Color resolve haseen's Theme tokens.
+    # Under Qt 6.12, QtQuick's own Color singleton wins any bare `Color.` (see
+    # the static check above), and every one of these read undefined.
+    colorProbe="$SANDBOX/color-probe"
+    mkdir -p "$colorProbe"
+    for entry in "$SHELL_DIR"/*; do
+        [[ ${entry##*/} == shell.qml ]] || ln -s "$entry" "$colorProbe/${entry##*/}"
+    done
+    cat >"$colorProbe/shell.qml" <<'EOF'
+import QtQuick
+import Quickshell
+import qs.Commons
+import qs.Commons as Commons
+import qs.Ui
+
+ShellRoot {
+    id: probe
+    property Button button: Button {}
+
+    // Read once the engine runs: Qt.quit() from Component.onCompleted has no
+    // receiver yet, and the scenario would wait out its timeout.
+    Timer {
+        interval: 20
+        running: true
+        onTriggered: {
+            console.warn("RESULT " + JSON.stringify({
+                qualified: String(Commons.Color.tooltip.border),
+                tooltipBorder: String(probe.button.tooltipBorder),
+                foreground: String(probe.button.foreground),
+                borderValue: String(Border.value("tooltip", "border")),
+                styleFallback: String(Style.resolveStateColor("", undefined, undefined, undefined, undefined))
+            }));
+            Qt.quit();
+        }
+    }
+}
+EOF
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        QT_FORCE_STDERR_LOGGING=1 timeout 30 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$colorProbe"
+    assert_status "the compat palette probe completes in the real engine" 0 "$STATUS"
+    color_result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT")"
+    if [[ -n $color_result ]]; then
+        tooltip_border="$(jq -r .qualified <<<"$color_result")"
+        assert_contains "Commons.Color reaches haseen's Theme tokens" "$tooltip_border" "#"
+        assert_eq "a compat Button's tooltip border is the theme border" "$tooltip_border" "$(jq -r .tooltipBorder <<<"$color_result")"
+        assert_contains "a compat Button takes the theme foreground" "$(jq -r .foreground <<<"$color_result")" "#"
+        assert_eq "Border reads the flat palette through Color" "$tooltip_border" "$(jq -r .borderValue <<<"$color_result")"
+        assert_contains "Style falls back to the theme foreground" "$(jq -r .styleFallback <<<"$color_result")" "#"
+    else
+        _fail "compat palette probe produced no result" "$OUTPUT"
+    fi
+    assert_not_contains "no compat control reads an undefined colour" "$OUTPUT" "of undefined"
+    assert_not_contains "no compat control assigns an undefined colour" "$OUTPUT" "Unable to assign [undefined]"
 fi

@@ -1,6 +1,7 @@
 pragma Singleton
 
 import QtQuick
+import qs.Commons as Commons
 import Quickshell
 import qs.Haseen
 
@@ -93,27 +94,27 @@ Singleton {
     }
 
     function resolveStateColor(token, foreground, accent, urgent, fallback) {
-      var fb = fallback || foreground || Color.foreground
+      var fb = fallback || foreground || Commons.Color.foreground
       var s = String(token || "").replace(/^\s+|\s+$/g, "")
       var role = s.toLowerCase()
-      if (role === "foreground" || role === "text") return foreground || Color.foreground
-      if (role === "accent") return accent || Color.accent
-      if (role === "urgent") return urgent || Color.urgent
-      if (role === "background") return Color.background
+      if (role === "foreground" || role === "text") return foreground || Commons.Color.foreground
+      if (role === "accent") return accent || Commons.Color.accent
+      if (role === "urgent") return urgent || Commons.Color.urgent
+      if (role === "background") return Commons.Color.background
       if (role === "transparent") return Qt.rgba(0, 0, 0, 0)
       return colorFromHex(s, fb)
     }
 
     function normalStateColor(foreground, accent, urgent) {
-      return resolveStateColor(normalColorToken, foreground, accent, urgent, foreground || Color.foreground)
+      return resolveStateColor(normalColorToken, foreground, accent, urgent, foreground || Commons.Color.foreground)
     }
 
     function hoverStateColor(foreground, accent, urgent) {
-      return resolveStateColor(hoverColorToken, foreground, accent, urgent, foreground || Color.foreground)
+      return resolveStateColor(hoverColorToken, foreground, accent, urgent, foreground || Commons.Color.foreground)
     }
 
     function selectedStateColor(foreground, accent, urgent) {
-      return resolveStateColor(selectedColorToken, foreground, accent, urgent, foreground || Color.foreground)
+      return resolveStateColor(selectedColorToken, foreground, accent, urgent, foreground || Commons.Color.foreground)
     }
 
     function pressedStateColor(foreground, accent, urgent) {
@@ -128,7 +129,7 @@ Singleton {
     }
 
     function selectionStateColor(foreground, accent, urgent) {
-      return resolveStateColor(selectionColorToken, foreground, accent, urgent, foreground || Color.foreground)
+      return resolveStateColor(selectionColorToken, foreground, accent, urgent, foreground || Commons.Color.foreground)
     }
 
     function normalFillFor(foreground, accent, urgent) { return Util.alpha(normalStateColor(foreground, accent, urgent), normalFillAlpha) }
