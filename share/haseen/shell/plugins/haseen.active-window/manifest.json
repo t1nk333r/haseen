@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.active-window",
+  "name": "Active window",
+  "version": "1.0.0",
+  "description": "Title of the focused window, its head and tail kept around a middle ellipsis; takes no room without one or in a vertical bar. A left click focuses it, a middle or right click closes it. Adopted from the owner's t1nk33r.active-window; off by default",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml"
+  },
+  "settings": {
+    "maxChars": {
+      "type": "integer",
+      "default": 50,
+      "description": "Characters shown at most, the ellipsis included (at least 3)"
+    },
+    "maxWidth": {
+      "type": "integer",
+      "default": 0,
+      "description": "Pixel clamp for a narrow bar, with an end ellipsis (0 = none)"
+    }
+  },
+  "permissions": []
+}

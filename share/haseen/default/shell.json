@@ -33,7 +33,11 @@
     "haseen.emojisearch": { "enabled": false },
     "haseen.commands": { "enabled": false },
     "haseen.security": { "enabled": false },
-    "haseen.websearch": { "enabled": false }
+    "haseen.websearch": { "enabled": false },
+    "haseen.active-window": { "enabled": false },
+    "haseen.power": { "enabled": false },
+    "haseen.updates": { "enabled": false },
+    "haseen.nook": { "enabled": false }
   },
   "services": [
     "haseen.pager",
