@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Haseen
 
+// Written for haseen's port (plan 096); no upstream code.
 // One boolean setting: a label, a detail line and an on/off pill. Clicking
 // anywhere on the row flips it.
 Item {

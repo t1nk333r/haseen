@@ -2,6 +2,7 @@ import QtQuick
 import qs.Haseen
 import qs.Haseen.Widgets
 
+// Written for haseen's port (plan 096); no upstream code.
 // One plugin: name, id · origin · state (and why it does not load), the
 // on/off switch, the settings button when its manifest declares any, and for
 // a plugin installed under ~/.config/haseen/plugins a select box and delete.

@@ -3,6 +3,7 @@ import qs.Haseen
 import qs.Haseen.Widgets
 import "Model.js" as Model
 
+// Written for haseen's port (plan 096); no upstream code.
 // One declared setting: its key, type and description, the effective value
 // (marked when shell.json sets it), and an editor for its type. A boolean
 // flips on click; anything else is typed and staged on Enter or when the
