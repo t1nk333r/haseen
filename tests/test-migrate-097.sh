@@ -17,8 +17,10 @@ put() { mkdir -p "$XDG_CONFIG_HOME/haseen" && printf '%s\n' "$1" >"$(CFG)"; }
 q() { jq -c "$1" "$(CFG)"; }
 
 assert_eq "the migration is shipped" yes "$([[ -r $HASEEN_PATH/migrations/$MIGRATION ]] && echo yes || echo no)"
-assert_eq "the migration sorts after every earlier one" "$MIGRATION" \
-    "$(find "$HASEEN_PATH/migrations" -name '17915602[0-9][0-9]-*.sh' -o -name '1791[0-5][0-9][0-9][0-9][0-9][0-9]-*.sh' | sed 's|.*/||' | sort | tail -n1)"
+# 095's migration moves nook items into the bar under their old ids, so this
+# one must sort after it. Later plans' migrations may sort after this one.
+assert_eq "the migration is in plan 097's range, after plan 095's" "1791560000-adopt-bar-basics.sh $MIGRATION" \
+    "$(cd "$HASEEN_PATH/migrations" && ls 1791560000-adopt-bar-basics.sh 17915602[0-9][0-9]-*.sh | LC_ALL=C sort | paste -sd' ')"
 
 sandbox migrate-097
 # The owner's layout, with fixture values: both widgets in bar.right, todoist

@@ -142,6 +142,9 @@ and never touches the old plugin or state directories. Upstream ids
 - `tests/test-migrate-097.sh`: 31/31 — the owner's layout with fixture values,
   dry run pure, idempotent re-run, defaults written when there is no own
   `services`, merge rules, invalid JSON left alone, old directories untouched.
+  The order check pins only what matters: this migration sorts after plan
+  095's, whose nook items it re-points; later plans' migrations may sort
+  after it (review of #49).
 - `tests/test-migrate.sh` and `tests/test-migrate-defaults.sh`: 92/92;
   `tests/test-shell.sh` together with the two plugin files: 353/353 (its hex
   check now skips the bundled SVG icons, which are artwork, not widget code).
