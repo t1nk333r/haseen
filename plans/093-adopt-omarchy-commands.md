@@ -195,8 +195,9 @@ Omarchy's removers `rm -rf` the data of what they remove without asking:
 Battle.net's prefix with the games in it, `~/.wine`, Steam's libraries,
 Heroic's games, Minecraft's worlds, RetroArch's saves, GeForce NOW's sign-in,
 Perplexity's caches, T3 Code's settings, `~/.cargo` (through `rustup self
-uninstall`), `~/.opam` and the browser flags file. haseen's answers ask
-first, default no, through `share/haseen/omarchy/remove-lib.sh`'s `ask`, and
+uninstall`), opam's default switch with `~/.opam` and the browser flags
+file. haseen's answers ask first, default no, through
+`share/haseen/omarchy/remove-lib.sh`'s `ask`, and
 `--yes` alone never answers yes for the user's data: a non-interactive run
 removes the packages and keeps every file. Deleting takes a yes at a terminal
 or an explicit `--purge` (`ask Q purge`, `take_purge`; `delete_asked` takes

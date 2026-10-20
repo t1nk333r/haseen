@@ -231,12 +231,16 @@ capture oma omarchy-remove-dev-env php --dry-run
 assert_contains "dev-env: php's packages go" "$OUTPUT" "DRYRUN: sudo pacman -Rns --noconfirm php composer"
 assert_dry_pure "dev-env php" "$OUTPUT"
 mkdir -p "$HOME/.opam/default"
+stub opam "echo \"opam \$*\" >>'$LOG'; exit 0"
 capture fake omarchy-remove-dev-env ocaml --yes
 [[ -d $HOME/.opam/default ]] && _pass || _fail "dev-env: --yes alone keeps ~/.opam"
+assert_not_contains "dev-env: --yes alone keeps opam's default switch" "$(calls)" "opam switch remove"
 capture oma omarchy-remove-dev-env ocaml --dry-run --yes
 assert_contains "dev-env: a dry run still plans the ~/.opam deletion" "$OUTPUT" "DRYRUN: rm -rf -- $HOME/.opam"
+assert_contains "dev-env: and the switch removal before it" "$OUTPUT" "DRYRUN: opam switch remove default -y"
 capture fake omarchy-remove-dev-env ocaml --purge --yes
 [[ ! -e $HOME/.opam ]] && _pass || _fail "dev-env: --purge --yes deletes ~/.opam"
+assert_contains "dev-env: --purge --yes removes opam's default switch" "$(calls)" "opam switch remove default -y"
 stub rustup "echo \"rustup \$*\" >>'$LOG'; exit 0"
 capture fake omarchy-remove-dev-env rust --yes
 assert_not_contains "dev-env: --yes alone never runs rustup self uninstall (~/.cargo)" "$(calls)" "rustup self uninstall"
