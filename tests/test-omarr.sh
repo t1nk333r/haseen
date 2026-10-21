@@ -267,13 +267,19 @@ ShellRoot {
             }
             const s = probe.svc;
             if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 2) {
-                // Hold 2 s: long enough for the poll that would have run.
+                // What would queue requests: opening the panel, editing a
+                // service.
+                s.panelOpen = true;
+                s.updateService("svc-1", {});
+                probe.step = 1;
+            } else if (probe.step === 1) {
+                // Hold 2 s: long enough for the polls that would have run.
                 if (++probe.held < 20)
                     return;
                 probe.seen.broken = { credsState: s.credsState, ready: s.ready, queued: s.reqQueue.length };
                 Quickshell.execDetached(["sh", "$repair"]);
-                probe.step = 1;
-            } else if (probe.step === 1 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up") {
+                probe.step = 2;
+            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up") {
                 probe.seen.repaired = { credsState: s.credsState, sonarr: s.snapshots[0].statusText };
                 console.log("RESULT " + JSON.stringify(probe.seen));
                 Qt.quit();
@@ -287,11 +293,12 @@ EOF
     result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n1)"
     [[ -n $result ]] || _fail "omarr credentials engine produced no result" "$OUTPUT"
     assert_eq "engine: no error with broken credentials" "null" "$(r .error)"
-    assert_eq "engine: unreadable credentials stop polling" "error|false|0" "$(r '[.broken.credsState, .broken.ready, .broken.queued] | map(tostring) | join("|")')"
+    assert_eq "engine: unreadable credentials stop polling, even with the panel open and a service edited" "error|false|0" "$(r '[.broken.credsState, .broken.ready, .broken.queued] | map(tostring) | join("|")')"
     assert_contains "engine: and say why" "$OUTPUT" "haseen.omarr: cannot read $legacy/credentials.json - is not a JSON object - not polling until it can be read"
     assert_eq "engine: repaired in place, polling resumes" "ok|Sonarr 4.0.9" "$(r '[.repaired.credsState, .repaired.sonarr] | join("|")')"
     assert_eq "engine: no request went out while the keys were unknown, each later one with the header" "" \
         "$(grep ':8989/' "$LOG" | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
     assert_contains "engine: the repaired key was used" "$(cat "$LOG")" ":8989/api/v3/system/status"
+    assert_contains "engine: the open panel's requests came after the repair" "$(cat "$LOG")" ":8989/api/v3/wanted/missing"
     assert_not_contains "engine: the repaired key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
 fi

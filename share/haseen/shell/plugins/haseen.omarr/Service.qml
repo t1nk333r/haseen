@@ -268,7 +268,12 @@ Scope {
         root.credsState = state;
     }
 
+    // A request is built with the keys of the moment it is queued, so none
+    // is queued while not ready (enqueue), and any left from before a change
+    // of state is dropped: it may carry stale or no keys. Port scans carry
+    // none and stay.
     onReadyChanged: {
+        root.reqQueue = root.reqQueue.filter(req => req && req.kind === "scan");
         if (root.ready)
             root.forcePoll();
     }
@@ -278,6 +283,8 @@ Scope {
     }
 
     function enqueue(req) {
+        if (!root.ready && !(req && req.kind === "scan"))
+            return;
         root.reqQueue = root.reqQueue.concat([req]);
         root.pump();
     }
