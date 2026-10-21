@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# omarchy-n1x-probe — record N1x hardware and boot evidence (kernel, DMI, PCI
+# and ACPI identities, DRM, modules, firmware messages, network, boot files,
+# SSH) on demand. Adapted from Omarchy bin/omarchy-n1x-probe@v4.5.0-rc1 (MIT,
+# Copyright (c) David Heinemeier Hansson): the same sections, printed and saved
+# through run_root tee to /var/log/haseen-n1x-probe.log instead of
+# /var/log/omarchy-n1x-probe.log; --dry-run says what it would record and
+# reads nothing (plan 102). It runs on any machine; only an N1x has much to say.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-n1x-probe [--dry-run]
+
+haseen's answer to Omarchy's command: prints N1x hardware and boot evidence
+and saves it to /var/log/haseen-n1x-probe.log (as root)." "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || die "usage: omarchy-n1x-probe [--dry-run]"
+
+log=/var/log/haseen-n1x-probe.log
+section() {
+    echo
+    echo "===== $* ====="
+}
+probe() {
+    echo "haseen N1x probe (Omarchy's omarchy-n1x-probe)"
+    date --iso-8601=seconds
+    section "kernel"
+    uname -a
+    cat /proc/cmdline
+    section "fastos marker"
+    if [[ -r /etc/fastos-release ]]; then cat /etc/fastos-release; else echo "not present"; fi
+    section "DMI"
+    local field module
+    for field in sys_vendor product_name product_version board_vendor board_name board_version bios_version; do
+        [[ -r /sys/class/dmi/id/$field ]] && printf '%s=%s\n' "$field" "$(cat "/sys/class/dmi/id/$field")"
+    done
+    section "NVIDIA PCI identity"
+    lspci -Dnnk -d 10de: || true
+    section "all PCI devices"
+    lspci -Dnnk || true
+    section "ACPI identities"
+    find /sys/bus/acpi/devices -maxdepth 2 -type f \( -name hid -o -name modalias -o -name status \) \
+        -print -exec cat {} \; 2>/dev/null || true
+    section "DRM"
+    find /sys/class/drm -maxdepth 2 -type f \( -name status -o -name enabled -o -name modes -o -name modalias \) \
+        -print -exec cat {} \; 2>/dev/null || true
+    section "modules"
+    lsmod || true
+    for module in nvidia nvidia_drm nvidia_modeset nvidia_uvm simpledrm; do
+        modinfo "$module" 2>/dev/null | sed -n '1,30p' || true
+    done
+    section "firmware failures"
+    journalctl -b -k --no-pager | grep -Ei 'firmware|nvidia|drm|simpledrm|framebuffer|fbcon|acpi|i2c|hid|r8127|mt79|mlx5' || true
+    section "network"
+    ip -brief link || true
+    ip -brief address || true
+    section "boot files"
+    run_root find /boot -maxdepth 4 -type f -printf '%p %s bytes\n' 2>/dev/null | sort || true
+    section "SSH"
+    echo "sshd: $(systemctl is-enabled sshd.service 2>/dev/null || true), $(systemctl is-active sshd.service 2>/dev/null || true)"
+}
+if $DRY_RUN; then
+    echo "DRYRUN: record kernel, DMI, PCI, ACPI, DRM, modules, firmware messages, network, boot files and SSH to $log (as root)"
+else
+    probe 2>&1 | run_root tee "$log"
+    echo "Probe saved to $log"
+fi

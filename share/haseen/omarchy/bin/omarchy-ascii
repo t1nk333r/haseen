@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-ascii — render text in the FIGlet font Omarchy's logo is drawn in
+# (Delta Corps Priest 1). Translated (4baae6bf2, #8037): the font, by CoSMiC
+# cHiLD, comes with no licence (bin/omarchy-ascii@v4.5.0-rc1, its embedded
+# header), so haseen does not ship a copy: this runs Omarchy's installed
+# omarchy-ascii, which carries it, and refuses where Omarchy is not installed
+# (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-ascii [text...]
+
+haseen's answer to Omarchy's command: renders text in Omarchy's logo font with
+Omarchy's own omarchy-ascii, when Omarchy is installed." "$@"
+omarchy_passthrough "none: figlet renders text in the fonts it ships (pacman -S figlet)" \
+    "Its font, Delta Corps Priest 1, comes without a licence, so haseen does not ship it." "$@"

@@ -2,11 +2,12 @@
 # omarchy-tailscale-receive — save incoming Taildrop files to the downloads
 # directory and announce each one. Adapted from Omarchy
 # bin/omarchy-tailscale-receive (MIT, Copyright (c) David Heinemeier Hansson):
-# the staging directory is .haseen-taildrop (an .omarchy-taildrop
-# left by Omarchy's receiver is drained once); the toast goes through
+# the staging directory is .haseen-taildrop (an .omarchy-taildrop left by
+# Omarchy's receiver is drained once); the toast goes through
 # haseen-notification-send, in the background because its click action keeps
-# it waiting, with the image as its icon and no glyph; --dry-run prints the
-# wait and what is staged. It writes only the download directory (plan 093).
+# it waiting, never with the received file as its image (plan 102); --dry-run
+# prints the wait and what is staged. It writes only the download directory
+# (plan 093).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -94,10 +95,10 @@ claim_path() {
 
 announce() {
     local path="$1" name="${1##*/}" args
+    # A received file comes from any peer on the tailnet: it is never handed
+    # to the notification server's image decoder for a preview (Omarchy 4.5,
+    # dc2b18098; plan 102).
     args=("Received $name" "Saved to ${dir/#$HOME/\~}" -u critical)
-    case "${name,,}" in
-    *.png | *.jpg | *.jpeg | *.gif | *.webp | *.avif | *.bmp | *.tif | *.tiff) args+=(-i "$path") ;;
-    esac
     # Best effort, and in the background: the file is already delivered, and
     # the toast waits for its click.
     "$HASEEN_BIN/haseen-notification-send" "${args[@]}" --exec xdg-open "$path" >/dev/null 2>&1 &

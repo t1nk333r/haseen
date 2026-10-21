@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# omarchy-apply-n1x-gpu-memory — shrink the NVIDIA N1x firmware's GPU memory
+# reservation (62.5 GiB as shipped, idle under Linux) to 4 GiB through the
+# EXPOSED_DISP_FRM EFI variable; it takes effect at the next boot. Adapted from
+# Omarchy bin/omarchy-apply-n1x-gpu-memory@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same predicate guard, layout check and payload; the
+# variable is read through sysroot_path and written through run_root, so
+# --dry-run prints the write (plan 102). On any machine but an N1x it does
+# nothing and succeeds, as Omarchy's does; neither IO nor luna is one.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-apply-n1x-gpu-memory [--dry-run]
+
+haseen's answer to Omarchy's command: on an NVIDIA N1x laptop, sets the
+firmware's GPU memory reservation to 4 GiB (next boot). Elsewhere nothing." "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || die "usage: omarchy-apply-n1x-gpu-memory [--dry-run]"
+
+"$HASEEN_OMARCHY_DIR/bin/omarchy-hw-aarch64-n1x" || exit 0
+
+var="$(sysroot_path /sys/firmware/efi/efivars)/EXPOSED_DISP_FRM-4b086294-0740-4f71-a7b5-85a329c7ec5f"
+# NVIDIA's value: the reservation in MiB in the first four bytes (0x1000 =
+# 4 GiB) and a last byte that has the firmware apply it.
+payload=(00 10 00 00 00 00 00 20 00 00 00 00 00 00 00 00 01 00 00 00 01)
+# What the firmware ships between the size and the last byte.
+layout="00 00 00 20 00 00 00 00 00 00 00 00 01 00 00 00"
+
+[[ -f $var ]] || die "the N1x firmware has no EXPOSED_DISP_FRM variable to size its GPU memory with"
+# An efivarfs file is the variable's 4 attribute bytes followed by its data.
+read -r -a bytes <<<"$(od -An -v -tx1 "$var" | tr '\n' ' ')"
+if [[ ${bytes[*]:4} == "${payload[*]}" ]]; then
+    echo "The N1x GPU memory reservation is already set to 4 GiB"
+    exit 0
+fi
+if ((${#bytes[@]} != 4 + ${#payload[@]})) || [[ ${bytes[*]:8:16} != "$layout" ]]; then
+    die "EXPOSED_DISP_FRM holds ${bytes[*]:4}, not the layout NVIDIA described; leaving it alone"
+fi
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+# Keep the variable's attributes; efivarfs takes them and the data in one write.
+# shellcheck disable=SC2059  # the format is the escaped bytes themselves
+printf "$(printf '\\x%s' "${bytes[@]:0:4}" "${payload[@]}")" >"$tmp"
+# efivarfs marks firmware variables immutable so a stray write can't change them.
+run_root chattr -i "$var"
+if ! run_root dd if="$tmp" of="$var" bs=4096 status=none; then
+    run_root chattr +i "$var"
+    die "the firmware refused the new EXPOSED_DISP_FRM"
+fi
+run_root chattr +i "$var"
+if ! $DRY_RUN && ! cmp -s "$tmp" "$var"; then
+    die "EXPOSED_DISP_FRM did not keep the new value"
+fi
+echo "Set the N1x GPU memory reservation to 4 GiB; it takes effect at the next boot"

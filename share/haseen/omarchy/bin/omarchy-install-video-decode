@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# omarchy-install-video-decode — let mpv and Chromium decode video on a
+# Snapdragon laptop's V4L2 video chip. Adapted from Omarchy
+# bin/omarchy-install-video-decode@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same guard and edits (a fallback hwdec line at the
+# top of ~/.config/mpv/mpv.conf unless a global hwdec is set; in an existing
+# ~/.config/chromium-flags.conf, --use-angle=gles-egl unless one is set and
+# the AcceleratedVideoDecoder feature), through common.sh so --dry-run prints
+# them (plan 102). Every other machine keeps both programs' defaults and
+# nothing happens; neither IO nor luna is a Snapdragon.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-video-decode [--dry-run]
+
+haseen's answer to Omarchy's command: on a Snapdragon machine, sets mpv and
+Chromium up for its video decoder. Elsewhere nothing." "$@"
+parse_common_flags "$@"
+"$HASEEN_OMARCHY_DIR/bin/omarchy-hw-aarch64-qualcomm" || exit 0
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+# has_global_hwdec FILE — options before the first [profile], and after a
+# [default] line, are global.
+has_global_hwdec() {
+    awk '
+        /^[[:space:]]*\[[^]]*\][[:space:]]*(#.*)?$/ { global = ($0 ~ /^[[:space:]]*\[default\][[:space:]]*(#.*)?$/); next }
+        global && /^[[:space:]]*hwdec[[:space:]]*=/ { found = 1 }
+        END { exit !found }
+    ' global=1 "$1"
+}
+setup_mpv() {
+    local conf="$config/mpv/mpv.conf"
+    local comment="# Fall back to the Snapdragon video chip's decoder (Omarchy)"
+    local hwdec='hwdec=auto-safe,v4l2m2m-copy'
+    if [[ ! -s $conf ]]; then
+        printf '%s\n' "$comment" "$hwdec" | write_user_file "$conf"
+    elif ! has_global_hwdec "$conf"; then
+        run sed -i --follow-symlinks "1i $comment\\n$hwdec" "$conf"
+    fi
+}
+setup_chromium() {
+    local conf="$config/chromium-flags.conf" flags=()
+    [[ -f $conf ]] || return 0
+    if ! sed -E 's/(^|[[:space:]])#.*$//' "$conf" | grep -E -- '(^|[[:space:]])--use-angle=' >/dev/null; then
+        if [[ -n $(tail -c1 "$conf") ]]; then
+            printf '\n--use-angle=gles-egl\n' | append_user_file "$conf"
+        else
+            printf -- '--use-angle=gles-egl\n' | append_user_file "$conf"
+        fi
+    fi
+    $DRY_RUN && flags+=(--dry-run)
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-chromium-add-feature" AcceleratedVideoDecoder "${flags[@]}"
+}
+# A config that cannot be written for one program does not hold back the other.
+status=0
+setup_mpv || status=$?
+setup_chromium || status=$?
+exit "$status"

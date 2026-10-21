@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# omarchy-hw-aarch64 — exit 0 when the CPU is aarch64 (every ARM machine).
+# Adapted from Omarchy bin/omarchy-hw-aarch64@v4.5.0-rc1 (MIT, Copyright (c)
+# David Heinemeier Hansson): the same uname test; --help (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-aarch64
+
+haseen's answer to Omarchy's command: exit 0 when the CPU is aarch64." "$@"
+[[ $(uname -m) == "aarch64" ]]

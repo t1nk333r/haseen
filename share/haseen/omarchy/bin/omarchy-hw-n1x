@@ -1,0 +1,18 @@
+#!/bin/bash -p
+# omarchy-hw-n1x — the old name of omarchy-hw-aarch64-n1x, kept while N1x
+# install images call it. Ported from Omarchy bin/omarchy-hw-n1x@v4.5.0-rc1
+# (MIT, Copyright (c) David Heinemeier Hansson): it runs the predicate beside
+# it, refuses a launch without -p and searches no PATH; --help (plan 102).
+if [[ $- != *p* ]]; then
+    echo "Refusing an unsafe Bash startup." >&2
+    exit 126
+fi
+case ${1:-} in
+-h | --help)
+    printf '%s\n' "Usage: omarchy-hw-n1x" "" "haseen's answer to Omarchy's command: the old name of omarchy-hw-aarch64-n1x."
+    exit 0
+    ;;
+esac
+dir=${BASH_SOURCE[0]%/*}
+[[ $dir != "${BASH_SOURCE[0]}" ]] || dir=.
+exec "$dir/omarchy-hw-aarch64-n1x"

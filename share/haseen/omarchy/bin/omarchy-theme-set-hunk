@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-hunk — tell running Hunk sessions to re-read the terminal
+# palette after a theme change: SIGWINCH now and once more a second later,
+# when the terminals have settled. Adapted from Omarchy
+# bin/omarchy-theme-set-hunk@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): the signals go through run, so --dry-run prints them (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-theme-set-hunk [--dry-run]
+
+haseen's answer to Omarchy's command: nudges running hunk sessions to repaint
+in the new terminal colours." "$@"
+parse_common_flags "$@"
+if pgrep -x hunk >/dev/null 2>&1; then
+    run pkill -WINCH -x hunk || true
+    if $DRY_RUN; then
+        echo "DRYRUN: (sleep 1; pkill -WINCH -x hunk) &"
+    else
+        (sleep 1; pkill -WINCH -x hunk) >/dev/null 2>&1 </dev/null &
+    fi
+fi
+exit 0

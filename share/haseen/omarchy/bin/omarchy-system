@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-system — log out, reboot or shut down: Omarchy 4.5's one command
+# for what were omarchy-system-logout, -reboot and -shutdown (4bf51ed1a,
+# #15231). Translated onto haseen's answers to those three names beside it
+# (haseen system logout/reboot/shutdown, the reboot markers cleared as
+# Omarchy's are); Omarchy's internal --execute and --inhibited phases are
+# accepted and dropped, since haseen acts at once rather than through a
+# detached unit; closing the apps first is haseen system's (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-system <logout|reboot|shutdown> [--dry-run]
+
+haseen's answer to Omarchy's command: ends the session, reboots or powers off
+(haseen system logout|reboot|shutdown)." "$@"
+parse_common_flags "$@"
+args=()
+for a in "${REST[@]}"; do
+    case $a in
+    --execute | --inhibited) ;;
+    *) args+=("$a") ;;
+    esac
+done
+if ((${#args[@]} != 1)) || [[ ! ${args[0]} =~ ^(logout|reboot|shutdown)$ ]]; then
+    echo "Usage: omarchy-system <logout|reboot|shutdown>" >&2
+    exit 2
+fi
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-system-${args[0]}" "${flags[@]}"

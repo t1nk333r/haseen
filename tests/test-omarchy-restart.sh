@@ -498,6 +498,43 @@ assert_contains "and says so" "$OUTPUT" "timer updated"
 capture "$OMA/omarchy-sudo-passwordless" --dry-run
 assert_contains "a rule without its timer is stale and removed" "$OUTPUT" "DRYRUN: sudo rm -f -- $nopw"
 assert_contains "then it is offered again" "$OUTPUT" "WARNING"
+# Omarchy 4.5 names its grants by UID, timed or permanent (plan 102): either
+# one counts as on, and turning off removes every name.
+rm -f "$HASEEN_SYSROOT$nopw"
+myuid="$(id -u)"
+uidfiles="/etc/sudoers.d/99-omarchy-nopasswd-tester /etc/sudoers.d/99-omarchy-nopasswd-$myuid /etc/sudoers.d/99-omarchy-permanent-nopasswd-$myuid"
+for f in "99-omarchy-nopasswd-$myuid" "99-omarchy-permanent-nopasswd-$myuid"; do
+    : >"$HASEEN_SYSROOT/etc/sudoers.d/$f"
+    capture "$OMA/omarchy-sudo-passwordless" --dry-run
+    assert_contains "Omarchy 4.5's $f counts as on: the toggle removes it" "$OUTPUT" \
+        "DRYRUN: sudo rm -f -- $nopw $uidfiles"
+    assert_contains "and stops 4.5's timers too" "$OUTPUT" "omarchy-nopasswd-expire-$myuid-*.timer"
+    assert_not_contains "and offers nothing" "$OUTPUT" "WARNING"
+    capture "$OMA/omarchy-sudo-passwordless" --disable --dry-run
+    assert_contains "--disable removes it" "$OUTPUT" "DRYRUN: sudo rm -f -- $nopw $uidfiles"
+    capture "$OMA/omarchy-sudo-passwordless" 20 --dry-run
+    assert_contains "MINUTES puts haseen's timed rule in its place" "$OUTPUT" "--on-active=20m"
+    assert_contains "and then removes Omarchy's" "$OUTPUT" "DRYRUN: sudo rm -f -- $uidfiles"
+    rm -f "$HASEEN_SYSROOT/etc/sudoers.d/$f"
+done
+capture "$OMA/omarchy-sudo-passwordless" --disable --dry-run
+assert_status "--disable with nothing on" 0 "$STATUS"
+assert_contains "says so" "$OUTPUT" "already DISABLED"
+assert_not_contains "and never offers to enable" "$OUTPUT" "WARNING"
+capture "$OMA/omarchy-sudo-passwordless" permanent
+assert_status "permanent is refused" 1 "$STATUS"
+assert_contains "with the haseen way" "$OUTPUT" "The haseen way: haseen setup passwordless-sudo"
+stub sudo 'case "$*" in "-n -l -l -- /usr/bin/true") printf "Sudoers entry: x\n    Options: !authenticate\n" ;; *) exit 1 ;; esac'
+capture "$OMA/omarchy-sudo-passwordless" --active
+assert_status "--active: sudo lists a passwordless entry" 0 "$STATUS"
+assert_eq "and prints nothing" "" "$OUTPUT"
+stub sudo 'case "$*" in "-n -l -l -- /usr/bin/true") printf "Sudoers entry: x\n    Options: setenv\n" ;; *) exit 1 ;; esac'
+capture "$OMA/omarchy-sudo-passwordless" --active
+assert_status "--active: an entry that asks for a password is not active" 1 "$STATUS"
+stub sudo 'exit 1'
+capture "$OMA/omarchy-sudo-passwordless" --active
+assert_status "--active: sudo needs a password to list" 1 "$STATUS"
+stub sudo 'echo "STUB-CALLED: sudo $*" >&2; exit 97'
 unset HASEEN_SYSROOT HASEEN_INLINE
 
 # --- system-stats ------------------------------------------------------------------------
@@ -665,7 +702,9 @@ assert_eq "an existing file is not overwritten" "mine" "$(cat "$DL/b.txt")"
 [[ ! -e $DL/.omarchy-taildrop && -z $(ls -A "$DL/.haseen-taildrop") ]] && _pass || _fail "receive left staged files"
 wait_for "$LOG" "photo.png" || true
 wait_for "$LOG" "b-1.txt" || true
-assert_contains "an image is announced with itself as icon" "$(cat "$LOG")" "-i $DL/photo.png"
+assert_contains "an image is announced by name" "$(cat "$LOG")" "Received photo.png"
+# A tailnet peer's file is never decoded for a preview (plan 102).
+assert_not_contains "and never with itself as its image" "$(cat "$LOG")" "-i $DL/photo.png"
 assert_contains "a delivery is announced by name" "$(cat "$LOG")" "Received b-1.txt"
 stub tailscale 'exit 1'
 capture "$OMA/omarchy-tailscale-receive" --once "$DL"

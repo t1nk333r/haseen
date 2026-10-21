@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# omarchy-hw-elgato-camlink-4k — exit 0 while an Elgato Cam Link 4K is
+# plugged in. Adapted from Omarchy bin/omarchy-hw-elgato-camlink-4k@v4.5.0-rc1
+# (MIT, Copyright (c) David Heinemeier Hansson): USB product names are read
+# through sysroot_path (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-elgato-camlink-4k
+
+haseen's answer to Omarchy's command: exit 0 while an Elgato Cam Link 4K is plugged in." "$@"
+grep -qsx "Cam Link 4K" "$(sysroot_path /sys/bus/usb/devices)"/*/product

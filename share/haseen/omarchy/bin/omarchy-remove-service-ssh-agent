@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# omarchy-remove-service-ssh-agent — turn the gcr-ssh-agent SSH agent off and
+# drop its SSH_AUTH_SOCK export: haseen's (haseen setup ssh-agent writes
+# ~/.config/uwsm/env.d/61-haseen-ssh-agent) and Omarchy's
+# (~/.config/environment.d/90-gcr-ssh-agent.conf). Adapted from Omarchy
+# bin/omarchy-remove-service-ssh-agent@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the files go before the socket is disabled, or the
+# environment generator keeps exporting it; every step through run, so
+# --dry-run prints it (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-service-ssh-agent [--dry-run]
+
+haseen's answer to Omarchy's command: disables gcr-ssh-agent.socket and
+removes the SSH_AUTH_SOCK export haseen setup ssh-agent (or Omarchy's setup)
+wrote. Takes full effect at the next login.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+rm_present "$config/uwsm/env.d/61-haseen-ssh-agent" "$config/environment.d/90-gcr-ssh-agent.conf"
+quiet systemctl --user disable --now gcr-ssh-agent.socket || true
+quiet systemctl --user stop gcr-ssh-agent.service || true
+# The socket exported SSH_AUTH_SOCK to the user manager, which outlives it.
+sock="SSH_AUTH_SOCK=${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/ssh"
+if systemctl --user show-environment 2>/dev/null | grep -Fqx "$sock"; then
+    run systemctl --user unset-environment SSH_AUTH_SOCK
+fi
+echo ""
+echo "SSH agent has been disabled. Log out and back in for it to take full effect."

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-dictation-use — make a dictation backend the one dictation uses,
+# after stopping the previous one. Adapted from Omarchy
+# bin/omarchy-dictation-use@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): the same lock and atomic save, in
+# $HASEEN_USER_STATE/dictation-backend; the previous backend's adapter is the
+# one beside this file; --dry-run (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-dictation-use <backend> [--dry-run]
+
+haseen's answer to Omarchy's command: stops the previous dictation backend and
+saves <backend> as the one to use." "$@"
+parse_common_flags "$@"
+if ((${#REST[@]} != 1)) || [[ ! ${REST[0]} =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "Usage: omarchy-dictation-use <backend>" >&2
+    exit 1
+fi
+backend=${REST[0]}
+config="$HASEEN_USER_STATE/dictation-backend"
+if $DRY_RUN; then
+    echo "DRYRUN: stop the previous dictation backend; write $config: $backend"
+    exit 0
+fi
+mkdir -p "${config%/*}"
+exec 9>"$config.lock"
+flock -w 5 9 || die "Dictation is busy; try again."
+previous=""
+[[ -s $config ]] && read -r previous <"$config"
+adapter="$HASEEN_OMARCHY_DIR/bin/omarchy-dictation-$previous"
+if [[ -n $previous && $previous != "$backend" && -x $adapter ]]; then
+    "$adapter" stop 9>&- || die "Could not stop $previous; keeping the existing dictation backend."
+fi
+printf '%s\n' "$backend" | replace_user_file "$config"

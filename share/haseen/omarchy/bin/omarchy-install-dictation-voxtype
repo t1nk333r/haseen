@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# omarchy-install-dictation-voxtype — install Voxtype and make it the
+# dictation backend: Omarchy 4.5's name for omarchy-voxtype-install
+# (c24889096, #14552), then omarchy-dictation-use voxtype. Translated onto
+# haseen's omarchy-voxtype-install port, whose config seed, model download and
+# user service it keeps; no Hyprland reload, since haseen ships no dictation
+# binds (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-dictation-voxtype [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs Voxtype (omarchy-voxtype-install)
+and makes it the dictation backend." "$@"
+"$HASEEN_OMARCHY_DIR/bin/omarchy-voxtype-install" "$@"
+flags=()
+for a in "$@"; do [[ $a == --dry-run ]] && flags+=(--dry-run); done
+# The installer may have been declined; only an installed Voxtype is chosen.
+if [[ ${#flags[@]} -gt 0 ]] || have voxtype; then
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-dictation-use" voxtype "${flags[@]}"
+fi

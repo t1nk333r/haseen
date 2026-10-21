@@ -18,6 +18,8 @@
 #   - user-side writes go through haseen's helpers and --dry-run prints the
 #     plan (no prompt, no elevation); toasts are haseen's; the launcher entry
 #     runs omarchy-windows-vm itself (no uwsm app wrapper);
+#   - FreeRDP reads its arguments, the password among them, from stdin
+#     (/args-from:stdin), never from argv (Omarchy 4.5, #7902; plan 102);
 #   - Omarchy's shell options are kept (no errexit, nounset or pipefail): the
 #     privileged steps check every status themselves and roll back, and the
 #     readiness scan's `docker logs | grep -q` must not fail on SIGPIPE.
@@ -1528,12 +1530,34 @@ To stop: omarchy-windows-vm stop"
     fi
     # If scale is less than 130%, don't set any scale (use default 100)
 
-    # Connect with RDP in fullscreen (auto-detects resolution)
+    # FreeRDP options carry their own commas (/floatbar:sticky:off,...).
+    # shellcheck disable=SC2054
+    RDP_ARGS=(
+        "/u:$WIN_USER"
+        "/p:$WIN_PASS"
+        /v:127.0.0.1:3389
+        -grab-keyboard
+        /sound
+        /microphone
+        /clipboard
+        /cert:ignore
+        "/title:Windows VM - haseen"
+        /dynamic-resolution
+        /gfx:AVC444
+        /floatbar:sticky:off,default:visible,show:fullscreen
+    )
+    [[ -n $RDP_SCALE ]] && RDP_ARGS+=("$RDP_SCALE")
+
+    # Connect with RDP in fullscreen (auto-detects resolution). The arguments
+    # go in over stdin, never on the command line: /proc/<pid>/cmdline is
+    # world-readable, so /p:"$WIN_PASS" there would show the VM password to
+    # every user for as long as the session is open (Omarchy 4.5, #7902).
+    # /args-from must be FreeRDP's only argument; new flags go in RDP_ARGS.
     # A dry run shows the connection without the password.
     if $DRY_RUN; then
-        echo "DRYRUN: xfreerdp3 /u:$WIN_USER /p:<password> /v:127.0.0.1:3389 ... $RDP_SCALE"
+        echo "DRYRUN: xfreerdp3 /args-from:stdin <<< /u:$WIN_USER /p:<password> /v:127.0.0.1:3389 ... $RDP_SCALE"
     else
-        xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /title:"Windows VM - haseen" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+        printf '%s\n' "${RDP_ARGS[@]}" | xfreerdp3 /args-from:stdin
     fi
 
     # After RDP closes, stop the container unless --keep-alive was specified

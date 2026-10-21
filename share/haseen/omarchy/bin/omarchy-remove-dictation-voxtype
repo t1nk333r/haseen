@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# omarchy-remove-dictation-voxtype — remove Voxtype dictation: Omarchy 4.5's
+# name for omarchy-voxtype-remove (c24889096, #14552), which also forgets
+# Voxtype as the dictation backend. Translated onto haseen's
+# omarchy-voxtype-remove port; the backend file is $HASEEN_USER_STATE's
+# (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-remove-dictation-voxtype [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes Voxtype (omarchy-voxtype-remove)
+and forgets it as the dictation backend." "$@"
+parse_common_flags "$@"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+"$HASEEN_OMARCHY_DIR/bin/omarchy-voxtype-remove" "${REST[@]}" "${flags[@]}" || exit
+config="$HASEEN_USER_STATE/dictation-backend"
+if [[ -f $config && $(<"$config") == voxtype ]]; then
+    run rm -f -- "$config"
+fi

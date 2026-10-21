@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# omarchy-windows-key — print the OEM Windows product key stored in the
+# firmware's ACPI MSDM table. Adapted from Omarchy
+# bin/omarchy-windows-key@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): the table is read through sysroot_path, and through run_root when
+# only root may read it, as Omarchy's sudo read (plan 102). It changes nothing.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-windows-key
+
+haseen's answer to Omarchy's command: prints the Windows product key the
+firmware stores (ACPI MSDM), or says there is none." "$@"
+MSDM="$(sysroot_path /sys/firmware/acpi/tables/MSDM)"
+if [[ ! -e $MSDM ]]; then
+    echo "No Windows license key found in firmware." >&2
+    exit 1
+fi
+read_msdm() {
+    if [[ -r $MSDM ]]; then
+        "$@" "$MSDM"
+    else
+        run_root "$@" "$MSDM"
+    fi
+}
+extract_key() { grep -aoEm1 '[A-Z0-9]{5}(-[A-Z0-9]{5}){4}'; }
+key=""
+if have strings; then
+    key=$(read_msdm strings | extract_key) || true
+fi
+if [[ -z $key ]]; then
+    key=$(read_msdm cat | extract_key) || true
+fi
+if [[ -z $key ]]; then
+    echo "Firmware license table found, but no Windows product key could be extracted." >&2
+    exit 1
+fi
+printf '%s\n' "$key"

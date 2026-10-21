@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# omarchy-theme-bg-intro — enable, disable, toggle or ask about background
+# intro videos. Translated (902fd8aeb, #9639): haseen's shell plays no intro
+# video (a new visual element needs the owner's approval), so status answers
+# "off" (exit 1, as Omarchy's does when intros are off), disable succeeds with
+# nothing to change, and enable, or a toggle that would enable, is refused
+# (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-theme-bg-intro <enable|disable|toggle|status>
+
+haseen's answer to Omarchy's command: intros are always off under haseen;
+status exits 1, disable succeeds, enable is not available." "$@"
+case ${1:-} in
+status) exit 1 ;;
+disable) echo "Background intros are off under haseen." >&2 ;;
+enable | toggle)
+    omarchy_refuse "none: backgrounds are still images under haseen" \
+        "haseen's shell plays no intro videos for backgrounds."
+    ;;
+*)
+    echo "Usage: omarchy-theme-bg-intro <enable|disable|toggle|status>" >&2
+    exit 1
+    ;;
+esac

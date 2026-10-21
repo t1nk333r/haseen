@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-network-wifi-connected — exit 0 when the default route runs over a
+# Wi-Fi device NetworkManager has activated. Adapted from Omarchy
+# bin/omarchy-network-wifi-connected@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same route, sysfs and NetworkManager checks, sysfs
+# read through sysroot_path (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-network-wifi-connected
+
+haseen's answer to Omarchy's command: exit 0 when the default route runs over
+connected Wi-Fi." "$@"
+net_class_path="$(sysroot_path /sys/class/net)"
+route=$(ip route get 1.1.1.1 2>/dev/null) || exit 1
+[[ $route =~ (^|[[:space:]])dev[[:space:]]+([^[:space:]]+) ]] || exit 1
+device=${BASH_REMATCH[2]}
+[[ -d $net_class_path/$device/wireless ]] || exit 1
+# NM_DEVICE_STATE_ACTIVATED is 100.
+device_path=$(busctl --system call org.freedesktop.NetworkManager /org/freedesktop/NetworkManager \
+    org.freedesktop.NetworkManager GetDeviceByIpIface s "$device" 2>/dev/null) || exit 1
+[[ $device_path =~ ^o\ \"(/[^\"]+)\"$ ]] || exit 1
+state=$(busctl --system get-property org.freedesktop.NetworkManager "${BASH_REMATCH[1]}" \
+    org.freedesktop.NetworkManager.Device State 2>/dev/null) || exit 1
+[[ $state == "u 100" ]]

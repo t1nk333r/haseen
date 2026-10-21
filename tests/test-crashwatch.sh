@@ -43,6 +43,15 @@ HASEEN_CRASH_IGNORE='^quickshell$' HASEEN_AGENT=claude capture "$REPO/bin/haseen
 assert_not_contains "an ignored program stays quiet" "$(cat "$log")" "quickshell"
 
 : >"$log"
+# omarchy crash mute (plan 102) leaves a per-program flag the watcher reads.
+mkdir -p "$XDG_STATE_HOME/haseen/toggles/crash-ignore"
+: >"$XDG_STATE_HOME/haseen/toggles/crash-ignore/quickshell"
+HASEEN_AGENT=claude capture "$REPO/bin/haseen-crash-watch"
+assert_not_contains "a muted program stays quiet" "$(cat "$log")" "quickshell"
+assert_contains "and the others still notify" "$(cat "$log")" "verylongprogramname"
+rm "$XDG_STATE_HOME/haseen/toggles/crash-ignore/quickshell"
+
+: >"$log"
 stub haseen-setup-default "exit 0"
 env -u HASEEN_AGENT "$REPO/bin/haseen-crash-watch" >/dev/null 2>&1
 assert_eq "without an agent there is nothing to offer" "" "$(cat "$log")"

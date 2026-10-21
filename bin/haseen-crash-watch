@@ -82,6 +82,8 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
         name=$comm
         [[ $exe == /* ]] && name=${exe##*/}
         [[ -n $ignore_pattern && $name =~ $ignore_pattern ]] && continue
+        # A program muted with `omarchy crash mute <program>` (plan 102).
+        [[ -f $HASEEN_USER_STATE/toggles/crash-ignore/$name ]] && continue
         # Never about our own machinery, or it notifies about itself.
         [[ $name == haseen-crash-* || $name == haseen-agent-* ]] && continue
         now=$EPOCHSECONDS

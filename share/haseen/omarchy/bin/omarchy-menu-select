@@ -1,1 +1,52 @@
-../dispatch
+#!/usr/bin/env bash
+# omarchy-menu-select — pick one option from a menu. Translated onto haseen
+# menu select, which picks one option: Omarchy's `<prompt> [option...] --
+# --width N --height|--maxheight N` passes through; Omarchy 4.5's multi-select
+# (`-- --multiple --selected V --on-change JSON --change-key K`, 0b9dace01,
+# #14433, from default/input-methods/typing_setup.py) and any other unknown
+# flag after `--` fail with exit 2 and say so, instead of becoming option rows
+# the caller never asked for (plan 102). The 4.5 callers of --multiple
+# (Omarchy's setup-input, setup-keyboard and language) are answered by haseen
+# without it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-select <prompt> [option...] [-- --width N --height N]
+
+haseen's answer to Omarchy's command: opens haseen's menu as a list and prints
+the option chosen (haseen menu select). Multiple selection is not available." "$@"
+(($# >= 1)) || {
+    echo "Usage: omarchy-menu-select <prompt> [option...] [-- menu args...]" >&2
+    exit 1
+}
+argv=("$1")
+shift
+while (($#)); do
+    if [[ $1 == -- ]]; then
+        shift
+        while (($#)); do
+            case $1 in
+            --width | --height | --maxheight)
+                (($# >= 2)) || {
+                    echo "omarchy-menu-select: $1 requires a value" >&2
+                    exit 2
+                }
+                argv+=("$1" "$2")
+                shift 2
+                ;;
+            --multiple | --selected | --on-change | --change-key)
+                echo "omarchy-menu-select: $1 is not available under haseen: haseen's menu picks one option." >&2
+                exit 2
+                ;;
+            *)
+                echo "omarchy-menu-select: unknown menu argument: $1" >&2
+                exit 2
+                ;;
+            esac
+        done
+        break
+    fi
+    argv+=("$1")
+    shift
+done
+haseen_exec menu-select "${argv[@]}"

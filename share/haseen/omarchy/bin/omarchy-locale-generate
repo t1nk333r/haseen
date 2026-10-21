@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# omarchy-locale-generate — generate the system locale of one of Omarchy's
+# languages: uncomment (or add) its line in /etc/locale.gen and run
+# locale-gen. Adapted from Omarchy bin/omarchy-locale-generate@v4.5.0-rc1 (MIT,
+# Copyright (c) David Heinemeier Hansson): the locale comes from Omarchy's
+# installed registry by code alone, as Omarchy's; the edit and locale-gen go
+# through run_root, so --dry-run prints them; haseen adds no passwordless rule
+# for it (Omarchy's own sudoers rule names /usr/bin/omarchy-locale-generate,
+# never this copy) (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-locale-generate <code> [--dry-run]
+
+haseen's answer to Omarchy's command: generates the system locale of the
+Omarchy language <code> (as root)." "$@"
+parse_common_flags "$@"
+registry="$(sysroot_path "${OMARCHY_PATH_SYSTEM%/}/default/i18n/locales.json")"
+locale_gen=/etc/locale.gen
+code=${REST[0]:-}
+if ((${#REST[@]} != 1)) || [[ ! $code =~ ^[a-z]{2,3}(-[A-Za-z]{2})?$ ]]; then
+    echo "Usage: omarchy-locale-generate <code>" >&2
+    exit 1
+fi
+# The code only selects a locale; nothing the caller passes reaches locale.gen.
+locale=$(jq -r --arg code "$code" '.[$code].locale // empty' "$registry" 2>/dev/null) || locale=""
+if [[ ! $locale =~ ^[a-z]{2,3}_[A-Z]{2}\.UTF-8$ ]]; then
+    echo "Unknown language code: $code" >&2
+    exit 1
+fi
+# locale.gen spells some entries without the codeset (hi_IN UTF-8).
+base=${locale%.UTF-8}
+gen="$(sysroot_path "$locale_gen")"
+if grep -qE "^#$base(\.UTF-8)? UTF-8" "$gen" 2>/dev/null; then
+    run_root sed -i -E "s/^#($base(\.UTF-8)? UTF-8)/\1/" "$locale_gen"
+elif ! grep -qE "^$base(\.UTF-8)? UTF-8" "$gen" 2>/dev/null; then
+    printf '%s UTF-8\n' "$locale" | append_root_file "$locale_gen"
+fi
+run_root locale-gen "$locale"

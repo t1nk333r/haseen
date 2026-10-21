@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# omarchy — Omarchy's command router, answered by haseen (plan 093).
+# omarchy — Omarchy's command router, answered by haseen (plans 093, 102).
 # `omarchy a b c ARGS` runs the longest existing omarchy-a-b-c, omarchy-a-b or
 # omarchy-a beside this file: haseen's answer to each Omarchy command, never
 # Omarchy's own. The route rule and the aliases (screenshot, screenrecord,
@@ -53,11 +53,13 @@ commands)
     commands "${@:2}"
     exit 0
     ;;
-# Omarchy's route aliases (omarchy:aliases= headers in 4.0.6).
+# Omarchy's route aliases (omarchy:aliases= headers in 4.0.6 and 4.5; 4.5
+# adds `omarchy up`, bin/omarchy-update@v4.5.0-rc1:4).
 screenshot) set -- capture screenshot "${@:2}" ;;
 screenrecord) set -- capture screenrecording "${@:2}" ;;
 logout | reboot | shutdown) set -- system "$@" ;;
 background) set -- theme bg switcher "${@:2}" ;;
+up) set -- update "${@:2}" ;;
 esac
 
 # Longest prefix over the leading words that can be part of a command name.
@@ -66,13 +68,27 @@ for a in "$@"; do
     [[ $a =~ ^[a-z0-9][a-z0-9-]*$ ]] || break
     words+=("$a")
 done
+# A command that takes only flags cannot take a word, so one word after it
+# that starts a group names the group: `omarchy agent account` lists the
+# account commands, `omarchy update aur` the AUR ones, rather than run the
+# shorter command with the word (Omarchy 4.5's dispatch_fast_or_help and
+# command_takes_only_flags, bin/omarchy@v4.5.0-rc1:409-424,1006-1019). The
+# commands are those whose omarchy:args headers in 4.5 list only flags and
+# that head a group (plan 102).
+FLAGS_ONLY=" omarchy-agent omarchy-capture-screenrecording omarchy-update "
 for ((n = ${#words[@]}; n > 0; n--)); do
     name="omarchy-$(
         IFS=-
         echo "${words[*]:0:n}"
     )"
     if [[ -x $BIN_DIR/$name ]]; then
-        exec "$BIN_DIR/$name" "${@:n+1}"
+        rest=("${@:n+1}")
+        if [[ $FLAGS_ONLY == *" $name "* ]] && ((${#rest[@]} == 1 || ${#rest[@]} == 2)) &&
+            [[ ${rest[0]} != -* ]] && { ((${#rest[@]} == 1)) || [[ ${rest[1]} == -h || ${rest[1]} == --help ]]; } &&
+            compgen -G "$BIN_DIR/$name-${rest[0]}-*" >/dev/null; then
+            break
+        fi
+        exec "$BIN_DIR/$name" "${rest[@]}"
     fi
 done
 

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-sleep-disabled — exit 0 when Omarchy turned system sleep off on this
+# machine (/etc/systemd/sleep.conf.d/omarchy-sleep-disabled.conf, written only
+# by Omarchy's GB10 install step). Adapted from Omarchy
+# bin/omarchy-sleep-disabled@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): read through sysroot_path; a guard in Omarchy's hibernation and
+# suspend code, so it answers faithfully (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-sleep-disabled
+
+haseen's answer to Omarchy's command: exit 0 when Omarchy's sleep-disabled
+drop-in is in /etc/systemd/sleep.conf.d." "$@"
+[[ -f $(sysroot_path /etc/systemd/sleep.conf.d/omarchy-sleep-disabled.conf) ]]

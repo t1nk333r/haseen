@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# omarchy-hw-dell-xps13-sidecar-amps — exit 0 on the Dell XPS 13 DX13260 with
+# SKU 0E53, which needs the sidecar amplifier workaround. Adapted from Omarchy
+# bin/omarchy-hw-dell-xps13-sidecar-amps@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the product match is haseen hw match, the SKU is read
+# through sysroot_path (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-dell-xps13-sidecar-amps
+
+haseen's answer to Omarchy's command: exit 0 on a Dell XPS 13 DX13260 with SKU 0E53." "$@"
+"$HASEEN_BIN/haseen-hw-match" DX13260 &&
+    grep -qix "0E53" "$(sysroot_path /sys/class/dmi/id/product_sku)" 2>/dev/null

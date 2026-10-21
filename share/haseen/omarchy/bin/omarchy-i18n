@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# omarchy-i18n — print one of Omarchy's user-facing CLI strings in Omarchy's
+# language. About 95 of Omarchy's own scripts call it by name for their
+# messages, and haseen's answer comes first on PATH, so it answers exactly as
+# Omarchy's does and never refuses (plan 102). Adapted from Omarchy
+# bin/omarchy-i18n@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier Hansson):
+# the catalogs are Omarchy's installed ones ($OMARCHY_PATH/default/i18n,
+# read through sysroot_path, never written), the language Omarchy's own
+# choice (~/.config/omarchy/language, read only); without Omarchy's catalogs
+# the key itself is printed, as Omarchy's last fallback. haseen's own
+# messages do not go through it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-i18n [--count <n>] <key> [args...] | --number <value>
+
+haseen's answer to Omarchy's command: prints Omarchy's CLI string for <key>
+from Omarchy's installed catalogs, in Omarchy's language, with %1-style
+arguments substituted." "$@"
+
+count=null
+number_only=0
+if [[ ${1:-} == "--number" ]]; then
+    if [[ ! ${2:-} =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+        echo "Usage: omarchy-i18n --number <value>" >&2
+        exit 1
+    fi
+    number_only=1
+    set -- __number "$2"
+elif [[ ${1:-} == "--count" ]]; then
+    if [[ ! ${2:-} =~ ^-?[0-9]+$ ]]; then
+        echo "Usage: omarchy-i18n [--count <n>] <key> [args...]" >&2
+        exit 1
+    fi
+    count=$2
+    shift 2
+fi
+key=${1:-}
+if [[ -z $key ]]; then
+    echo "Usage: omarchy-i18n [--count <n>] <key> [args...]" >&2
+    exit 1
+fi
+shift
+
+i18n="$(sysroot_path "${OMARCHY_PATH_SYSTEM%/}/default/i18n")"
+language_file=${OMARCHY_LANGUAGE_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/language}
+language=en
+if [[ -f $language_file ]]; then
+    candidate=$(head -n 1 "$language_file" | tr -d '[:space:]')
+    if [[ $candidate =~ ^[a-z]{2,3}(-[A-Za-z]{2})?$ && -f $i18n/$candidate/cli.json ]]; then
+        language=$candidate
+    fi
+fi
+language_catalog=$i18n/$language/cli.json
+[[ -f $language_catalog ]] || language_catalog=/dev/null
+english_catalog=$i18n/en/cli.json
+[[ -f $english_catalog ]] || english_catalog=/dev/null
+registry=$i18n/locales.json
+[[ -f $registry ]] || registry=/dev/null
+
+# One jq run picks the string and localizes the arguments, NUL-separated so a
+# string may span lines; -- keeps an argument like "-work" from being an option.
+parts=()
+mapfile -d '' parts < <(jq -j -n -L "$i18n" \
+    --arg key "$key" --arg language "$language" --argjson count "$count" \
+    --slurpfile lang "$language_catalog" --slurpfile en "$english_catalog" --slurpfile registry "$registry" '
+  include "plural";
+  def present: . != null and . != "";
+  ($lang[0] // {}) as $l | ($en[0] // {}) as $e | ($registry[0][$language] // {}) as $r
+  | (if ($l[$key] | present) then [$l[$key], $language]
+     elif ($e[$key] | present) then [$e[$key], "en"]
+     else [$key, "en"] end) as [$entry, $from]
+  | (if $count == null then (if ($entry | type) == "object" then $entry.other else $entry end)
+     else ($entry | plural_pick($from; $count)) end) as $string
+  | [$string // $key] + ($ARGS.positional | map(localize_number($r.decimal // "."; $r.zeroDigit // "0")))
+  | map(tostring + "\u0000") | add
+' --args -- "$@" 2>/dev/null) || true
+
+if ((${#parts[@]} == 0)); then
+    parts=("$key" "$@")
+fi
+if ((number_only)); then
+    printf '%s' "${parts[1]}"
+    exit 0
+fi
+string=${parts[0]}
+args=("${parts[@]:1}")
+# Through sentinels, so an argument holding %N is never substituted twice.
+if ((${#args[@]} > 0)); then
+    for ((i = 1; i <= ${#args[@]}; i++)); do
+        string=${string//%$i/$'\001'"$i"$'\002'}
+    done
+    for ((i = 1; i <= ${#args[@]}; i++)); do
+        string=${string//$'\001'"$i"$'\002'/"${args[i - 1]}"}
+    done
+fi
+printf '%s' "$string"

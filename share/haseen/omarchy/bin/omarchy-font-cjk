@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# omarchy-font-cjk — show or set the glyph forms of Chinese, Japanese and
+# Korean text. Translated (c582e1d7f, #15508): the forms Omarchy chose are
+# read from its fontconfig file (~/.config/fontconfig/conf.d/
+# 50-omarchy-input-method.conf), else "default"; choosing them writes that
+# file through Omarchy's Python helper and needs Omarchy's Noto CJK set, which
+# haseen does not install, so setting is refused (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-font-cjk [jp|kr|sc|tc|hk|default]
+
+haseen's answer to Omarchy's command: prints the CJK glyph forms in use
+(default without a choice); choosing them is not available." "$@"
+preference="${XDG_CONFIG_HOME:-$HOME/.config}/fontconfig/conf.d/50-omarchy-input-method.conf"
+case ${1:-} in
+"")
+    variant=""
+    if [[ -f $preference ]]; then
+        variant=$(sed -n 's|.*<family>Noto Sans CJK \([A-Z]*\)</family>.*|\1|p' "$preference" | head -n 1)
+    fi
+    variant=${variant,,}
+    echo "${variant:-default}"
+    ;;
+jp | kr | sc | tc | hk | default)
+    omarchy_refuse "none: install noto-fonts-cjk and set the forms in your own fontconfig" \
+        "Choosing CJK glyph forms rewrites fontconfig through Omarchy's helper for a font set haseen does not install."
+    ;;
+*)
+    echo "Usage: omarchy-font-cjk [jp|kr|sc|tc|hk|default]" >&2
+    exit 1
+    ;;
+esac

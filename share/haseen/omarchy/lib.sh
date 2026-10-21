@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # omarchy/lib.sh — shared by haseen's Omarchy commands. Sourced, never executed.
 #
-# haseen answers every command Omarchy 4.0.6 ships under /usr/bin, except the
-# Apple-hardware ones (plan 093, architecture 5.4). Each lives in
+# haseen answers every command Omarchy 4.0.6 and 4.5 ship under /usr/bin,
+# except the Apple-hardware ones (plans 093 and 102, architecture 5.4). Each lives in
 # share/haseen/omarchy/bin/<name>: a link to ../dispatch when its row in
 # commands.tsv says what to do (shim, refuse, inert), else a script of its own
 # (translate, port). install.sh links them into PREFIX/bin, ahead of
@@ -21,6 +21,14 @@ HASEEN_OMARCHY_LIB=1
 HASEEN_OMARCHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HASEEN_PATH="${HASEEN_PATH:-$(cd "$HASEEN_OMARCHY_DIR/.." && pwd)}"
 export HASEEN_PATH
+# Omarchy's own scripts call these names from root units without User= (its
+# provisioning services, a pacman hook's mkinitcpio), where systemd sets no
+# HOME; common.sh's per-user paths need one, and set -u would stop the command
+# before it answered (plan 102).
+if [[ -z ${HOME:-} ]]; then
+    HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    export HOME="${HOME:-/}"
+fi
 # shellcheck source=../lib/common.sh
 source "$HASEEN_PATH/lib/common.sh"
 
@@ -80,6 +88,41 @@ omarchy_help() {
 # Omarchy's installed tree, for commands that read what Omarchy ships there
 # (they never write it). OMARCHY_PATH is Omarchy's session variable.
 OMARCHY_PATH_SYSTEM="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+# omarchy_installed_copy NAME — the path of Omarchy's own NAME, as its package
+# installs it ($OMARCHY_PATH/bin, then /usr/bin, read through sysroot_path),
+# when it is there and is not one of haseen's; fails otherwise.
+omarchy_installed_copy() {
+    local dir cand real mine
+    mine="$(readlink -f -- "$HASEEN_OMARCHY_DIR")"
+    for dir in "${OMARCHY_PATH_SYSTEM%/}/bin" /usr/bin; do
+        cand="$(sysroot_path "$dir/$1")"
+        [[ -f $cand && -x $cand ]] || continue
+        real="$(readlink -f -- "$cand")" || continue
+        [[ $real == "$mine"/* ]] && continue
+        printf '%s\n' "$cand"
+        return 0
+    done
+    return 1
+}
+
+# omarchy_passthrough WAY WHY ARGS... — run Omarchy's own copy of this command
+# with ARGS, for a feature haseen has no answer of its own for (yet): its state
+# stays where Omarchy keeps it, and its calls to other omarchy-* names reach
+# haseen's answers. A dry run prints the call. Without Omarchy's copy, refuse
+# with WAY and WHY, as omarchy_refuse does (plan 102).
+omarchy_passthrough() {
+    local way="$1" why="$2" copy
+    shift 2
+    if copy="$(omarchy_installed_copy "$OMARCHY_NAME")"; then
+        if $DRY_RUN; then
+            echo "DRYRUN: $copy $*"
+            exit 0
+        fi
+        exec "$copy" "$@"
+    fi
+    omarchy_refuse "$way" "$why"
+}
 
 # qs_instances — every running Quickshell instance, as `qs list -a -j` prints
 # it (a JSON array; -a lists instances on every display, and takes no

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# omarchy-install-chromium-claude — install Anthropic's Claude browser
+# extension for Chromium, Google Chrome and Microsoft Edge (and Brave, which
+# reads Chromium's directory) as an external extension: one JSON file per
+# browser that points at the Chrome Web Store's update URL. Adapted from
+# Omarchy bin/omarchy-install-chromium-claude@v4.5.0-rc1 (MIT, Copyright (c)
+# David Heinemeier Hansson): the same extension id, JSON and directories,
+# written through write_root_file (sudo, mode 0644), checked through
+# sysroot_path; nothing happens when every file is already in place; --dry-run
+# (plan 102). Helium does not read these directories.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-chromium-claude [--dry-run]
+
+haseen's answer to Omarchy's command: seeds the Claude extension into
+Chromium's, Chrome's and Edge's external-extension directories (as root)." "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || die "usage: omarchy-install-chromium-claude [--dry-run]"
+EXTENSION_ID="fcoeoabgfenejglbffodgkkbkcdhcgfn"
+EXTENSION_JSON='{ "external_update_url": "https://clients2.google.com/service/update2/crx" }'
+EXTENSION_DIRS=(/usr/share/chromium/extensions /usr/share/google-chrome/extensions /usr/share/microsoft-edge/extensions)
+for dir in "${EXTENSION_DIRS[@]}"; do
+    file="$(sysroot_path "$dir/$EXTENSION_ID.json")"
+    [[ -f $file && $(<"$file") == "$EXTENSION_JSON" ]] && continue
+    printf '%s\n' "$EXTENSION_JSON" | write_root_file "$dir/$EXTENSION_ID.json" 0644
+done

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# omarchy-language — show Omarchy's language, list the languages, or print a
+# language's locale. Translated (84cfb9395, #15326): the reads are Omarchy's
+# own, from its installed registry ($OMARCHY_PATH/default/i18n/locales.json)
+# and its choice (~/.config/omarchy/language), so they agree with what
+# omarchy-i18n prints for Omarchy's scripts; without the registry only
+# English is known. Setting a language is refused: Omarchy's writes the
+# session LANG into ~/.config/uwsm/env.d and generates the locale as root
+# through a passwordless sudo rule, and haseen's own menus and panels are not
+# translated by it (plan 102; haseen's language comes with plan 109).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-language [list|locale [<code>]]
+
+haseen's answer to Omarchy's command: prints Omarchy's language (en without a
+choice), lists the languages, or prints a language's locale. Setting one is
+not available." "$@"
+locales_json="$(sysroot_path "${OMARCHY_PATH_SYSTEM%/}/default/i18n/locales.json")"
+language_file=${OMARCHY_LANGUAGE_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/language}
+known_language() {
+    [[ $1 == en ]] && return 0
+    jq -e --arg code "$1" 'has($code)' "$locales_json" >/dev/null 2>&1
+}
+current_language() {
+    local code=""
+    [[ -f $language_file ]] && code=$(head -n 1 "$language_file" | tr -d '[:space:]')
+    if [[ -n $code ]] && known_language "$code"; then echo "$code"; else echo en; fi
+}
+locale_for() {
+    local locale
+    locale=$(jq -r --arg code "$1" '.[$code].locale // empty' "$locales_json" 2>/dev/null) || locale=""
+    [[ -z $locale && $1 == en ]] && locale=en_US.UTF-8
+    printf '%s\n' "$locale"
+}
+case ${1:-} in
+"") current_language ;;
+list)
+    if [[ -r $locales_json ]]; then
+        jq -r '
+            to_entries
+            | map({code: .key, name: .value.name, englishName: .value.englishName})
+            | sort_by(if .code == "en" then "" else .englishName end)
+            | .[] | [.name, .code, .englishName] | @tsv' "$locales_json"
+    else
+        printf 'English\ten\tEnglish\n'
+    fi
+    ;;
+locale)
+    code=${2:-$(current_language)}
+    known_language "$code" || {
+        echo "Unknown language code: $code" >&2
+        exit 1
+    }
+    locale_for "$code"
+    ;;
+*)
+    omarchy_refuse "none: set the system language with localectl set-locale LANG=<locale>" \
+        "Omarchy's language switch rewrites the session's LANG and generates the locale as root, and haseen's own menus and panels do not follow it."
+    ;;
+esac

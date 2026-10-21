@@ -462,7 +462,11 @@ services:
       PASSWORD: "s3cret"
 EOF
 capture "$B/omarchy-windows-vm" launch --dry-run
-assert_contains "launch connects with the stored user" "$OUTPUT" "DRYRUN: xfreerdp3 /u:jane /p:<password>"
+assert_contains "launch connects with the stored user" "$OUTPUT" "/u:jane /p:<password>"
+# The password reaches FreeRDP on stdin, never in /proc/<pid>/cmdline (plan 102).
+assert_contains "FreeRDP reads its arguments from stdin" "$OUTPUT" "DRYRUN: xfreerdp3 /args-from:stdin <<<"
+assert_eq "and is never started with any other argument" "" \
+    "$(grep -o 'xfreerdp3 [^ "]*' "$B/omarchy-windows-vm" | grep -v '^xfreerdp3 /args-from:stdin$' | sort -u)"
 assert_not_contains "never showing the password" "$OUTPUT" "s3cret"
 assert_dry_pure "omarchy-windows-vm launch" "$OUTPUT"
 capture "$B/omarchy-windows-vm" stop

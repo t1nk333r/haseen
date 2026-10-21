@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# omarchy-update-pacman — run Omarchy's update-flow pacman transaction as
+# root in a PID 1 scope, so systemd's mid-upgrade reexec cannot kill it with
+# the user session (f5194e3ff). Translated for upgrades only: -Su/-Syu-style
+# arguments (with --noconfirm, --needed or --color) run as
+# `pacman ...` through run_root, in `systemd-run --scope` on a systemd host,
+# LC_ALL passed through as Omarchy does; installing (-S <package>), removing
+# or --overwrite is refused, because haseen installs through haseen install
+# (the repository order and the PKG_DENY guard) and never overwrites another
+# package's files (plan 102). Only Omarchy's own scripts call it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-update-pacman <pacman upgrade arguments> [--dry-run]
+
+haseen's answer to Omarchy's command: runs a pacman system upgrade (-Syu,
+-Su) as root in a systemd scope that survives the session. Installs and
+removals go through haseen install and haseen remove." "$@"
+dry=false
+args=()
+for a in "$@"; do
+    if [[ $a == --dry-run ]]; then dry=true; else args+=("$a"); fi
+done
+DRY_RUN=$dry
+upgrade=false
+for a in "${args[@]}"; do
+    case $a in
+    -S*) [[ $a =~ ^-S[uy]*u[uy]*$ ]] && upgrade=true || upgrade=refuse ;;
+    --noconfirm | --needed | --color=*) ;;
+    *) upgrade=refuse ;;
+    esac
+    [[ $upgrade == refuse ]] && break
+done
+if [[ $upgrade != true ]]; then
+    omarchy_refuse "haseen update (installs: haseen install package NAME; removals: haseen remove package NAME)" \
+        "It runs any pacman transaction as root; haseen runs only system upgrades through it, and installs and removes packages its own way."
+fi
+scope=()
+root_run="$(sysroot_path /run/systemd/system)"
+if [[ -d $root_run && ! -L $root_run ]]; then
+    scope=(systemd-run --scope --quiet --collect)
+fi
+env_args=(HASEEN_UPDATE_PACMAN=1)
+[[ -n ${LC_ALL:-} ]] && env_args+=(LC_ALL="$LC_ALL")
+run_root env "${env_args[@]}" "${scope[@]}" pacman "${args[@]}"
