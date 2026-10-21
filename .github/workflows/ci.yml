@@ -53,9 +53,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container: archlinux:latest
-    # Local suites take 30-40 minutes; allow >2x plus container provisioning.
-    # A future deadlock must fail this job instead of consuming hours.
-    timeout-minutes: 90
+    # The suite took 85-88 minutes here by 2026-10-21 and plan 099's cargo
+    # build pushed main's run past the old 90-minute limit (run 39613979814,
+    # cancelled at 90 min, nothing failed). 150 leaves room to grow; a future
+    # deadlock must still fail this job instead of consuming hours.
+    timeout-minutes: 150
     steps:
       - name: Tools
         run: |

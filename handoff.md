@@ -116,7 +116,7 @@ Run before every PR, all from the repo root:
 
 ```sh
 SHELLCHECK=$(command -v shellcheck) GO=<go ≥ 1.26> tools/lint.sh
-QT_QPA_PLATFORM=offscreen tests/run.sh   # ≈ 14,300 checks; CI's test job takes ~80 of its 90 min: run it in tmux
+QT_QPA_PLATFORM=offscreen tests/run.sh   # ≈ 14,300 checks; CI's test job takes ~85-90 of its 150 min: run it in tmux
 tools/check-docs.sh
 tools/secrets.sh                          # before every push
 ```

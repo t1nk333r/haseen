@@ -238,3 +238,14 @@ without `finalised`, 0 forced kills, slowest stop 340 ms.
   the shell's start; a machine stalled for seconds could still miss a step.
 - A test run with SIGINT ignored and no `env --default-signal` (coreutils
   older than 8.31) keeps the old behaviour.
+
+## Amendment 2026-10-21: the test job's time limit
+
+CI's `test` job ran 67 minutes at 912a682 and 85-88 minutes at 0f6c4d5,
+0fe087d and PR #53's head 51d883b. Main's run for ed84608 (plan 099, which
+adds a cargo build and 49 Rust tests) was cancelled at the job's 90-minute
+`timeout-minutes` while in `test-vapt.sh`, with no failure logged before it
+(run 39613979814). The limit is now 150 minutes
+(`.github/workflows/ci.yml`), and `handoff.md` says so. Splitting the job
+into shards was rejected for now: branch protection requires a check named
+`test`, and a matrix renames it.
