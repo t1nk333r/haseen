@@ -199,24 +199,38 @@ poll had seeded.
 
 **Change.** `Service.qml` keeps `credsState` (`""` until `credentials.json`
 answers, then `ok`, or `error`) and `seenLoaded`. `ready` requires both plus
-`dirsReady`, and `pump()` and the three poll timers wait for it.
-`onReadyChanged` starts the first poll. A missing credentials file is `ok`
+`dirsReady`. `enqueue()` refuses every request but the key-free port scan
+while not `ready`, so no builder (the poll, opening the panel, editing a
+service, detail pages, posters, controls) can queue one with absent keys;
+`pump()` and the three poll timers wait for it too. A change of `ready` drops
+queued requests built before it, and `onReadyChanged` starts the next poll. A missing credentials file is `ok`
 (no keys yet); any other read error, or text that is not a JSON object
 (`Model.credentialsReadable`), is `error`: nothing is polled and the service
-warns once, until a reload reads it. A service with no stored key is still
-polled, as upstream, and shows the server's 401.
+warns once, until a reload reads it. Credential writes are refused while the
+file is not `ok` (`credentialsWritable`): `credentials.json` is rewritten whole
+from the in-memory keys, which are empty then, so one edit after a transient
+read error would have dropped every other key. The bar status reads "Keys
+unreadable" and the settings fleet tab says why. A service with no stored key
+is still polled, as upstream, and shows the server's 401.
 
 **Evidence.**
-- `tests/test-omarr.sh` 42/42 (34 before). New checks: every Sonarr request
-  carries the header file; a corrupt `credentials.json` holds polling for 2 s
-  with an empty queue and the warning; repaired in place, polling resumes with
-  the header and the key in no argv. `tests/Model.test.js` checks
+- `tests/test-omarr.sh` 49/49 (34 before), three runs. New checks: every
+  Sonarr request carries the header file; with a corrupt `credentials.json`,
+  opening the panel and editing a service with a new key queue nothing for
+  2 s, the status says "Keys unreadable", the key is refused and logged and the
+  file keeps its bytes; repaired in place, polling resumes (the open panel's
+  `wanted/missing` included) with the header and the key in no argv; made
+  unreadable (`chmod 000`, "Permission denied") polling holds, and resumes once
+  it is readable again (skipped as root). `tests/Model.test.js` checks
   `credentialsReadable`.
-- With the old `Service.qml` and the new test: 36/42, failing "every Sonarr
-  request carries the header" and the five broken-credentials checks.
-- `tests/test-omarr.sh`, `tests/test-surfaces.sh` and `tests/test-shell.sh`
-  together, twice: 389/389 each time; `tools/lint.sh` and
-  `tools/check-docs.sh` pass.
+- The new test against older `Service.qml` files: the plan 097 one, 36/42 when
+  it had six new checks, failing "every Sonarr request carries the header";
+  the first follow-up commit's, which gated only `pump()` and the timers, 43/49,
+  failing the queue, status, refusal, file, header and permission checks (an
+  independent review of #51 had found the queue gap: seven requests queued
+  with the panel open, all five Sonarr ones sent bare after the repair).
+- `tests/test-surfaces.sh` and `tests/test-shell.sh` together: 347/347;
+  `tools/lint.sh` and `tools/check-docs.sh` pass.
 - The CI order was not reproduced in an `archlinux:latest` container; the
   logging above shows the keyless first poll directly, and the new check
   fails on the old code here.
@@ -230,6 +244,12 @@ polled, as upstream, and shows the server's 401.
   secret is involved.
 - *Bind the path at construction, as the fork did*: the state directory is not
   known until the probe has chosen it.
+- *Gate only `enqueuePoll`/`forcePoll`*: detail pages, posters and controls
+  queue through `enqueue()` too; the gate there covers every builder.
+- *Merge a key edit into the unreadable file*: its other keys are unknown, so
+  any rewrite could drop them; the edit waits until the file reads.
+
+## Rejected
 
 - **Keep Todoist's preferences in `shell.json`.** The token and preferences
   share upstream's private file; splitting them would mean two sources and a
