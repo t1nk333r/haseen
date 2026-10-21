@@ -171,3 +171,74 @@ capture haseen plymouth status
 assert_contains "status says plymouth is absent" "$OUTPUT" "not installed"
 capture haseen plymouth set --dry-run
 assert_status "and set refuses" 1 "$STATUS"
+
+# --- HOOKS as mkinitcpio evaluates them (plan 101) -------------------------------
+# hooks_in ROOT — boot_hooks against ROOT, one line.
+hooks_in() {
+    HASEEN_SYSROOT="$1" bash -c 'source "$HASEEN_PATH/lib/boot.sh"; boot_hooks' | paste -sd' '
+}
+omarchy_hooks='base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs'
+# Omarchy's 4.5 baseline asks this detector; on an x86 machine it says x86.
+stub omarchy-hw-platform 'echo x86'
+
+# Omarchy 4.0.6: omarchy_hooks.conf replaces the stock systemd list.
+v406="$SANDBOX/omarchy-4.0.6"
+cp -a "$FIXTURES/mkinitcpio-omarchy-4.0.6" "$v406"
+assert_eq "4.0.6 layout: Omarchy's column-0 HOOKS= wins" "$omarchy_hooks" "$(hooks_in "$v406")"
+
+# Omarchy 4.5: the same list, set inside an indented case chosen by the
+# detector (00-omarchy-hooks.conf), which a line reader never saw.
+v45="$SANDBOX/omarchy-4.5"
+cp -a "$FIXTURES/mkinitcpio-omarchy-4.5" "$v45"
+assert_eq "4.5 layout: the baseline from the case is read" "$omarchy_hooks" "$(hooks_in "$v45")"
+mkdir -p "$v45/usr/bin" "$v45/proc" "$v45/etc/plymouth"
+printf '#!/bin/sh\nexit 0\n' >"$v45/usr/bin/plymouth-set-default-theme"
+chmod +x "$v45/usr/bin/plymouth-set-default-theme"
+printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/mapper/root rw quiet splash\n' >"$v45/proc/cmdline"
+capture env HASEEN_SYSROOT="$v45" haseen plymouth status
+assert_contains "4.5 layout: status sees the hook" "$OUTPUT" "plymouth is in HOOKS"
+capture env HASEEN_SYSROOT="$v45" haseen plymouth set --dry-run
+assert_status "4.5 layout: set plans" 0 "$STATUS"
+assert_not_contains "4.5 layout: no duplicate plymouth drop-in" "$OUTPUT" "haseen-plymouth.conf"
+
+# The detector picks the systemd baseline on Apple Silicon, and a detector
+# that cannot place the machine stops mkinitcpio, so it stops haseen too.
+stub omarchy-hw-platform 'echo aarch64-apple'
+assert_eq "4.5 layout: an Apple machine gets the systemd baseline" \
+    "base systemd plymouth autodetect microcode modconf kms keyboard sd-vconsole block filesystems fsck" "$(hooks_in "$v45")"
+stub omarchy-hw-platform 'exit 1'
+capture env HASEEN_SYSROOT="$v45" bash -c 'source "$HASEEN_PATH/lib/boot.sh"; boot_hooks'
+assert_status "a configuration that does not source is a failure" 1 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "does not evaluate; mkinitcpio would not build with it either"
+capture env HASEEN_SYSROOT="$v45" haseen plymouth set --dry-run
+assert_status "plymouth set refuses to guess" 1 "$STATUS"
+assert_not_contains "and plans no hook drop-in" "$OUTPUT" "haseen-plymouth.conf"
+stub omarchy-hw-platform 'echo x86'
+
+# haseen's own drop-in edits the list with sed; evaluated, it puts plymouth
+# after `base udev`.
+plain="$SANDBOX/plain"
+mkdir -p "$plain/etc/mkinitcpio.conf.d"
+printf 'HOOKS=(base udev autodetect block encrypt filesystems fsck)\n' >"$plain/etc/mkinitcpio.conf"
+printf '%s\n' "# Added by haseen plymouth set: the splash needs its hook in the initramfs." \
+    'HOOKS=($(echo "${HOOKS[@]}" | sed -E "s/\b(base udev|systemd)\b/& plymouth/"))' \
+    >"$plain/etc/mkinitcpio.conf.d/haseen-plymouth.conf"
+assert_eq "haseen's sed drop-in is evaluated, not read as words" \
+    "base udev plymouth autodetect block encrypt filesystems fsck" "$(hooks_in "$plain")"
+# mkinitcpio orders drop-ins with sort -V: 9- before 10-.
+rm "$plain/etc/mkinitcpio.conf.d/haseen-plymouth.conf"
+printf 'HOOKS=(nine)\n' >"$plain/etc/mkinitcpio.conf.d/9-a.conf"
+printf 'HOOKS=(ten)\n' >"$plain/etc/mkinitcpio.conf.d/10-b.conf"
+assert_eq "drop-ins are version-sorted, as mkinitcpio sorts them" "ten" "$(hooks_in "$plain")"
+rm "$plain/etc/mkinitcpio.conf.d/9-a.conf" "$plain/etc/mkinitcpio.conf.d/10-b.conf"
+# The old string form is split into words; a link to a regular file counts;
+# a directory named *.conf does not.
+printf 'HOOKS="base udev autodetect"\n' >"$plain/etc/mkinitcpio.conf"
+printf 'HOOKS="$HOOKS linked"\n' >"$SANDBOX/linked.conf"
+ln -s "$SANDBOX/linked.conf" "$plain/etc/mkinitcpio.conf.d/50-linked.conf"
+mkdir "$plain/etc/mkinitcpio.conf.d/60-dir.conf"
+assert_eq "a HOOKS string, extended by a linked drop-in, is split into words" \
+    "base udev autodetect linked" "$(hooks_in "$plain")"
+# Nothing a drop-in sets reaches the caller.
+assert_eq "HOOKS does not leak into the calling shell" "unset" \
+    "$(HASEEN_SYSROOT="$plain" bash -c 'source "$HASEEN_PATH/lib/boot.sh"; boot_hooks >/dev/null; echo "${HOOKS-unset}"')"

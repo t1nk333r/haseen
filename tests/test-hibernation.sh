@@ -134,3 +134,21 @@ HASEEN_SYSROOT="$sdroot" capture haseen hibernation setup --yes
 assert_status "a configured machine needs no work" 0 "$STATUS"
 assert_contains "and says so" "$OUTPUT" "already set up"
 assert_dry_pure "no-op setup" "$OUTPUT"
+
+# --- HOOKS on Omarchy's own layouts (plan 101) -----------------------------------
+# A resume drop-in appends to whatever list is in force when it is sourced.
+# Under Omarchy 4.0.6, omarchy_hooks.conf sorts after haseen-resume.conf and
+# replaces HOOKS, so the append is lost, which mkinitcpio does too; under 4.5
+# the baseline sorts first (00-omarchy-hooks.conf) and the append counts.
+stub omarchy-hw-platform 'echo x86'
+for v in 4.0.6 4.5; do
+    root="$SANDBOX/omarchy-$v"
+    cp -a "$FIXTURES/mkinitcpio-omarchy-$v" "$root"
+    printf 'HOOKS+=(resume)\n' >"$root/etc/mkinitcpio.conf.d/haseen-resume.conf"
+done
+resume_in() {
+    HASEEN_SYSROOT="$1" bash -c 'source "$HASEEN_PATH/lib/hibernate.sh"; hibernate_initramfs_style; hibernate_resume_hook_present && echo resume || echo no-resume' | paste -sd' '
+}
+assert_eq "4.0.6 layout: busybox, and Omarchy's list replaces the resume append" "busybox no-resume" \
+    "$(resume_in "$SANDBOX/omarchy-4.0.6")"
+assert_eq "4.5 layout: busybox, and the resume append takes effect" "busybox resume" "$(resume_in "$SANDBOX/omarchy-4.5")"

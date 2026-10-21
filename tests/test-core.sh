@@ -182,7 +182,11 @@ assert_contains "omarchy-repo: fingerprint checked" "$OUTPUT" "verify the key fi
 assert_contains "omarchy-repo: signed packages required" "$OUTPUT" "    | SigLevel = Required DatabaseOptional"
 assert_contains "omarchy-repo: stable channel" "$OUTPUT" '    | Server = https://pkgs.omarchy.org/stable/$arch'
 assert_contains "omarchy-repo: keyring from the repo" "$OUTPUT" "pacman -S --needed omarchy/omarchy-keyring"
-assert_not_contains "omarchy-repo: never Omarchy itself" "$OUTPUT" "omarchy-settings"
+# The base layer applied first prints its Omarchy package guard hook, which
+# names omarchy-settings as a trigger (plan 101); what must never name it is a
+# package command or the omarchy-repo layer's own steps.
+assert_not_contains "omarchy-repo: never Omarchy itself" \
+    "$(grep -E '(pacman|paru|yay) ' <<<"$OUTPUT"; sed -n '/layer omarchy-repo:/,$p' <<<"$OUTPUT")" "omarchy-settings"
 printf '[omarchy]\nServer = x\n' >>"$fx/etc/pacman.conf"
 capture env HASEEN_SYSROOT="$fx" haseen layer status omarchy-repo
 assert_status "omarchy-repo: status ok once enabled" 0 "$STATUS"

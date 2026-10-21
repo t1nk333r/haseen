@@ -70,3 +70,13 @@ request='{"changes":[],"omarchyEntry":{"x":1}}'
 capture haseen-plugin-settings me.native <<<"$request"
 assert_status "a native plugin's omarchyEntry is refused" 1 "$STATUS"
 assert_eq "the refused request leaves Omarchy's shell.json alone" '{"version":1,"plugins":[{"id":"someone.else"}]}' "$(jq -c . "$omarchy")"
+
+# Omarchy 4.5's sections (plan 101): an entry in centerEnd or in the tray
+# drawer is mirrored where it is.
+for section in centerEnd tray; do
+    printf '%s\n' "{\"version\":1,\"bar\":{\"layout\":{\"center\":[\"x\"],\"$section\":[{\"id\":\"me.mirror\",\"mode\":\"old\"}]}},\"plugins\":[]}" >"$omarchy"
+    request='{"changes":[],"omarchyEntry":{"mode":"new"}}'
+    capture haseen-plugin-settings me.mirror <<<"$request"
+    assert_status "a $section entry mirrors" 0 "$STATUS"
+    assert_eq "it is replaced in $section" '{"id":"me.mirror","mode":"new"}' "$(jq -c ".bar.layout.${section}[0]" "$omarchy")"
+done

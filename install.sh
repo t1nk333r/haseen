@@ -6,7 +6,8 @@
 #    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
 #    PREFIX/share/applications, the app icon (`-i haseen`) ->
 #    PREFIX/share/icons/hicolor, and haseen's answers to Omarchy's commands
-#    as links in PREFIX/bin (plan 093). PREFIX defaults to
+#    as links in PREFIX/bin (plan 093), and the drop-in that silences
+#    Omarchy's migration notice (plan 101). PREFIX defaults to
 #    /usr/local because these files are not owned by a package (yet; see
 #    plans/README.md, PKGBUILD phase).
 # 3. Apply the default layers through the installed `haseen layer apply`.
@@ -27,6 +28,8 @@ source "$HASEEN_PATH/lib/preflight.sh"
 source "$HASEEN_PATH/lib/branding.sh"
 # shellcheck source=share/haseen/lib/install-picker.sh
 source "$HASEEN_PATH/lib/install-picker.sh"
+# shellcheck source=share/haseen/lib/omarchy-guard.sh
+source "$HASEEN_PATH/lib/omarchy-guard.sh"
 
 DEFAULT_LAYERS=(base chaotic omarchy-repo desktop theme shell)
 PREFIX=/usr/local
@@ -173,6 +176,23 @@ install_omarchy_links() {
     ((${#stale[@]} == 0)) || run_root rm -f "${stale[@]}"
 }
 
+# The drop-in that silences Omarchy's own pending-migration notice (plan 101,
+# share/haseen/lib/omarchy-guard.sh). Like the user units, it sits under
+# PREFIX; it does nothing where Omarchy's unit does not exist. The pacman hook
+# that seals Omarchy's migrations is a system file and comes with the base
+# layer instead.
+install_omarchy_notify_dropin() {
+    install_root_file "$(omarchy_notify_dropin_src)" "$(omarchy_notify_dropin "$PREFIX")" 0644
+}
+
+uninstall_omarchy_notify_dropin() {
+    local dropin
+    dropin="$(omarchy_notify_dropin "$PREFIX")"
+    [[ -e $dropin ]] || return 0
+    run_root rm -f "$dropin"
+    run_root rmdir --ignore-fail-on-non-empty "$(dirname "$dropin")"
+}
+
 uninstall_tree() {
     local f links=()
     for f in "$REPO"/bin/haseen*; do
@@ -183,6 +203,7 @@ uninstall_tree() {
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
     done
+    uninstall_omarchy_notify_dropin
     for f in "${VENDOR_FILES[@]}"; do
         run_root rm -f "$PREFIX/share/$f"
     done
@@ -224,6 +245,7 @@ install_tree() {
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && install_root_file "$f" "$UNIT_DIR/${f##*/}" 0644
     done
+    install_omarchy_notify_dropin
     for f in "${VENDOR_FILES[@]}"; do
         install_root_file "$REPO/share/haseen/default/$f" "$PREFIX/share/$f" 0644
     done

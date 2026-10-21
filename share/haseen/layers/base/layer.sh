@@ -5,13 +5,15 @@
 # It never touches pacman.conf, the CachyOS repos or the mirror list: pacman
 # has no drop-in directory, so there is nothing haseen may own there.
 
-LAYER_SUMMARY="essentials, ufw deny-incoming, NetworkManager, snapper sanity, paccache"
+LAYER_SUMMARY="essentials, ufw deny-incoming, NetworkManager, snapper sanity, paccache, Omarchy package guard"
 LAYER_REQUIRES=()
 LAYER_CONFLICTS=()
 LAYER_DISTROS=(cachyos arch omarchy)
 
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=../../lib/omarchy-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/omarchy-guard.sh"
 
 # Network services that already own the network. When one of them is enabled
 # haseen leaves networking alone instead of adding a second manager.
@@ -89,6 +91,20 @@ base_bluetooth() {
     unit_enabled bluetooth.service || run_root systemctl enable --now bluetooth.service
 }
 
+# The pacman hook that keeps Omarchy's own packages from undoing haseen
+# (plan 101, lib/omarchy-guard.sh). It fires only when omarchy or
+# omarchy-settings is installed or upgraded, so it goes on every machine: an
+# Omarchy package that arrives later (flea pulls it in, plan 037) is guarded
+# from its first transaction.
+base_omarchy_guard() {
+    if omarchy_guard_hook_current; then
+        info "Omarchy package guard: pacman hook in place"
+        return 0
+    fi
+    info "Omarchy package guard: pacman hook $OMARCHY_GUARD_HOOK"
+    omarchy_guard_hook_render | write_root_file "$OMARCHY_GUARD_HOOK" 0644
+}
+
 # Snapper is the CachyOS installer's job (snapper + btrfs-assistant when the
 # root is btrfs). haseen only points out a missing root config.
 base_snapper_check() {
@@ -133,6 +149,16 @@ layer_status() {
         echo "warn: btrfs root without a snapper 'root' config"
         ((rc == 0)) && rc=2
     fi
+    # Missing matters only where Omarchy's packages are installed.
+    if omarchy_guard_hook_current; then
+        echo "ok: Omarchy package guard ($OMARCHY_GUARD_HOOK)"
+    elif [[ -e $(sysroot_path "$OMARCHY_GUARD_HOOK") ]]; then
+        echo "warn: $OMARCHY_GUARD_HOOK differs from the shipped one (haseen layer apply base)"
+        ((rc == 0)) && rc=2
+    elif pkg_installed omarchy || pkg_installed omarchy-settings; then
+        echo "missing: Omarchy package guard $OMARCHY_GUARD_HOOK (haseen layer apply base)"
+        rc=1
+    fi
     return "$rc"
 }
 
@@ -147,6 +173,7 @@ layer_apply() {
     base_network
     base_firewall
     base_paccache
+    base_omarchy_guard
     if $bluetooth; then base_bluetooth; fi
     base_snapper_check
 }

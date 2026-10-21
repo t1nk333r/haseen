@@ -1,0 +1,29 @@
+# haseen: keep Omarchy's packages from undoing haseen (plan 101).
+# Installed by `haseen layer apply base` (the Exec names the haseen it was
+# installed from), like the secureboot layer's hook.
+# Fires only when Omarchy's own packages are installed or upgraded, so it does
+# nothing on a machine without them.
+#
+#   - omarchy ships Omarchy's migrations: every one is recorded as done for
+#     each user haseen runs for, before /usr/bin/omarchy-migrate (or Omarchy's
+#     own /usr/bin/omarchy-update, which runs it right after pacman) could
+#     run them;
+#   - omarchy-settings' install scriptlet copies Theme=omarchy over
+#     /etc/plymouth/plymouthd.conf: haseen's splash is named again.
+#
+# pacman runs PostTransaction hooks sorted by file name; 50 sorts before the
+# initramfs and Limine hooks (80-limine-efi-deploy, 90-mkinitcpio-install), so
+# an initramfs built in the same transaction embeds haseen's splash: plymouth's
+# mkinitcpio hook reads the theme from plymouthd.conf when it builds.
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = omarchy
+Target = omarchy-settings
+
+[Action]
+Description = haseen: sealing Omarchy's migrations and keeping haseen's boot splash...
+When = PostTransaction
+Exec = @HASEEN_BIN@ omarchy guard --hook

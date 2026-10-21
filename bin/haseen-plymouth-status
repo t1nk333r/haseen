@@ -13,7 +13,10 @@ if ! plymouth_installed; then
     exit 0
 fi
 
-printf 'theme:     %s\n' "$(plymouth_current_theme || echo "(none)")"
+theme_note=""
+plymouth_reset_by_omarchy &&
+    theme_note=" (Omarchy's omarchy-settings package put it back over haseen's: sudo haseen omarchy guard)"
+printf 'theme:     %s%s\n' "$(plymouth_current_theme || echo "(none)")" "$theme_note"
 printf 'installed: %s\n' \
     "$([[ -r $(sysroot_path "$PLYMOUTH_THEME_DIR/haseen.script") ]] && echo "$PLYMOUTH_THEME_DIR" || echo "haseen's theme is not installed")"
 printf 'hook:      %s\n' "$(plymouth_hook_present && echo "plymouth is in HOOKS" || echo "missing from HOOKS (no splash)")"
