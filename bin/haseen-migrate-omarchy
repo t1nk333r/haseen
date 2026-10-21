@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# haseen:summary Record Omarchy's own migrations as done, so Omarchy's runner never runs them here
+# haseen:args [--pending] [--dry-run]
+#
+# The ledger rule is Omarchy bin/omarchy-migrate's (MIT, Copyright (c) David
+# Heinemeier Hansson); see share/haseen/lib/omarchy-guard.sh.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/omarchy-guard.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/omarchy-guard.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen migrate omarchy [--pending] [--dry-run]
+
+Records every migration Omarchy's package ships ($(omarchy_migrations_dir))
+as already done in your Omarchy ledger ($(omarchy_ledger_dir)), without
+running any of them. /usr/bin/omarchy-migrate, and Omarchy's own
+/usr/bin/omarchy-update, then have nothing to run: Omarchy's migrations edit
+the boot configuration, plugins and packages haseen manages. The pacman hook
+haseen installs does this for every user whenever Omarchy's package changes;
+haseen doctor says when something is left.
+
+  --pending   list what Omarchy's runner would run for you; exit 1 when
+              nothing would run
+EOF
+}
+
+mode=seal
+REST=()
+for arg in "$@"; do
+    case "$arg" in
+    --pending | --check) mode=pending ;;
+    *) REST+=("$arg") ;;
+    esac
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+if [[ $mode == pending ]]; then
+    pending="$(omarchy_migrations_unsealed)"
+    [[ -n $pending ]] || exit 1
+    printf '%s\n' "$pending"
+    exit 0
+fi
+
+if [[ ! -d $(omarchy_migrations_dir) ]]; then
+    info "Omarchy's migrations are not installed ($(omarchy_migrations_dir)); nothing to seal"
+    exit 0
+fi
+omarchy_seal_migrations

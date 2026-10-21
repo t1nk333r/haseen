@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# haseen:summary Undo what installing or upgrading Omarchy's packages does to haseen (run by a pacman hook)
+# haseen:args [--hook] [--dry-run]
+#
+# Run as root by /etc/pacman.d/hooks/50-haseen-omarchy.hook after a pacman
+# transaction installs or upgrades `omarchy` or `omarchy-settings`
+# (share/haseen/lib/omarchy-guard.sh says why each step is needed):
+#   1. Omarchy's migrations are sealed for every user haseen runs for, as that
+#      user (runuser), so root never writes into a home;
+#   2. haseen's boot splash is named again in plymouthd.conf when
+#      omarchy-settings' scriptlet replaced it with Omarchy's. The hook sorts
+#      before the initramfs hooks, so an initramfs built in the same
+#      transaction already embeds haseen's splash.
+set -Eeuo pipefail
+
+# Under pacman a failed hook aborts nothing after the transaction and only
+# prints an error, so with --hook every path ends in status 0: a bad argument,
+# a library that does not load, a die. What failed is still reported.
+HOOK=false
+for arg in "$@"; do
+    [[ $arg == --hook ]] && HOOK=true
+done
+if $HOOK; then
+    trap 'exit 0' EXIT
+fi
+
+# As root the tree is the router's (bin/haseen) and lib/common.sh's own,
+# never an inherited HASEEN_PATH; the pacman hook starts at the router.
+# shellcheck source=../share/haseen/lib/omarchy-guard.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/omarchy-guard.sh"
+# shellcheck source=../share/haseen/lib/plymouth.sh
+source "$HASEEN_PATH/lib/plymouth.sh"
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: sudo haseen omarchy guard [--hook] [--dry-run]
+
+Run by the pacman hook $OMARCHY_GUARD_HOOK whenever Omarchy's
+omarchy or omarchy-settings package is installed or upgraded:
+
+  - records Omarchy's migrations as done for every user with haseen state
+    (haseen migrate omarchy, run as that user), so /usr/bin/omarchy-migrate
+    and Omarchy's own updater run none of them;
+  - when omarchy-settings put Theme=omarchy back into
+    /etc/plymouth/plymouthd.conf over haseen's installed splash, sets
+    haseen's again (no initramfs rebuild: the next one embeds it).
+
+  --hook   as run by pacman: a step that fails is reported and the others
+           still run, and the exit status is always 0
+EOF
+}
+
+REST=()
+for arg in "$@"; do
+    [[ $arg == --hook ]] || REST+=("$arg")
+done
+parse_common_flags "${REST[@]+"${REST[@]}"}"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+((EUID == 0)) || $DRY_RUN || die "run it as root: sudo haseen omarchy guard (the pacman hook already does)"
+
+# guard_root CMD... — a privileged step: the hook already runs as root and
+# must work without sudo(8); a non-root dry run plans it through run_root.
+guard_root() {
+    if ((EUID == 0)); then
+        run "$@"
+    else
+        run_root "$@"
+    fi
+}
+
+# haseen_users — "name<TAB>home" for every login account haseen has state
+# for. Root cannot know a user's XDG_STATE_HOME, so this is haseen's default
+# under the home from passwd; a user with another one is still sealed by the
+# migration that runs at their next `haseen migrate`.
+haseen_users() {
+    local name uid home shell
+    while IFS=: read -r name _ uid _ _ home shell; do
+        [[ $uid =~ ^[0-9]+$ ]] && ((uid >= 1000 && uid != 65534)) || continue
+        case "$shell" in */nologin | */false | "") continue ;; esac
+        [[ $home == /* && -d $(sysroot_path "$home")/.local/state/haseen ]] || continue
+        printf '%s\t%s\n' "$name" "$home"
+    done <"$(sysroot_path /etc/passwd)"
+}
+
+status=0
+step_failed() {
+    warn "$1"
+    status=1
+}
+
+if [[ -d $(omarchy_migrations_dir) ]]; then
+    seal_flags=()
+    $DRY_RUN && seal_flags+=(--dry-run)
+    sealed_any=false
+    while IFS=$'\t' read -r user home; do
+        [[ -n $user ]] || continue
+        sealed_any=true
+        info "sealing Omarchy's migrations for $user"
+        # A clean environment: nothing of root's, the user's own HOME (inside
+        # the inspected root under a test sysroot) and haseen's tree.
+        if ! guard_root runuser -u "$user" -- env -i HOME="$(sysroot_path "$home")" USER="$user" LOGNAME="$user" \
+            PATH="$PATH" HASEEN_PATH="$HASEEN_PATH" HASEEN_SYSROOT="$HASEEN_SYSROOT" \
+            "$BIN_DIR/haseen-migrate-omarchy" "${seal_flags[@]+"${seal_flags[@]}"}"; then
+            step_failed "Omarchy's migrations were not sealed for $user: run haseen migrate omarchy as $user"
+        fi
+    done < <(haseen_users)
+    $sealed_any || info "no user has haseen state; nothing to seal"
+fi
+
+if plymouth_reset_by_omarchy; then
+    info "omarchy-settings set Omarchy's boot splash; setting haseen's again"
+    guard_root plymouth-set-default-theme haseen ||
+        step_failed "haseen's splash was not restored: haseen plymouth set"
+fi
+
+exit "$status"

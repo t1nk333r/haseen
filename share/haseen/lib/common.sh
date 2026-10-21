@@ -20,8 +20,14 @@ DRY_RUN=${DRY_RUN:-false}
 ASSUME_YES=${ASSUME_YES:-false}
 
 # Where the installed tree lives: share/haseen next to bin/. Works for the repo
-# checkout, /usr/local (installer) and /usr (package) alike.
-if [[ -z ${HASEEN_PATH:-} ]]; then
+# checkout, /usr/local (installer) and /usr (package) alike. As root it is
+# always the tree this file was sourced from, whatever HASEEN_PATH says, so a
+# root command never sources a library from a tree an inherited variable
+# names (plan 101; bin/haseen does the same before it runs a command). A
+# command started directly with a hostile HASEEN_PATH has already sourced
+# this file from it: only the router, sudo's env_reset and pacman's clean
+# hook environment close that, and the pacman hooks start at the router.
+if ((EUID == 0)) || [[ -z ${HASEEN_PATH:-} ]]; then
     HASEEN_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 export HASEEN_PATH
@@ -41,6 +47,159 @@ sysroot_path() { printf '%s%s\n' "$HASEEN_SYSROOT" "$1"; }
 # True when we are inspecting a fixture rather than the live machine. Probes
 # that need a live kernel/firmware (bootctl, lsblk, sbctl) must skip then.
 in_sysroot() { [[ -n $HASEEN_SYSROOT ]]; }
+
+# root_node_stat PATH... — "uid mode type<TAB>path", NUL-terminated, one per
+# PATH that exists, in one stat(1) call. The root-only checks below read
+# ownership and mode only through it (tests/test-omarchy-guard.sh stands in a
+# stat that answers as root would).
+root_node_stat() { LC_ALL=C stat --printf '%u %a %F\t%n\0' -- "$@" 2>/dev/null; }
+
+# root_only_record LABEL RECORD — RECORD (root_node_stat's) is owned by root
+# and writable by neither its group nor others; prints why not, about LABEL.
+root_only_record() {
+    local uid mode
+    read -r uid mode _ <<<"${2%%$'\t'*}"
+    ((uid == 0)) || {
+        echo "$1 is owned by uid $uid, not root"
+        return 1
+    }
+    if ((8#$mode & 8#022)); then
+        echo "$1 is writable by its group or by others"
+        return 1
+    fi
+}
+
+# root_only_node PATH — PATH (as the inspected system sees it) is owned by
+# root and writable by neither its group nor others; prints why not.
+root_only_node() {
+    local rec
+    rec="$(root_node_stat "${HASEEN_SYSROOT%/}$1" | tr -d '\0')" || rec=""
+    [[ -n $rec ]] || {
+        echo "$1 does not exist"
+        return 1
+    }
+    root_only_record "$1" "$rec"
+}
+
+# root_trusted_resolve PATH — resolves PATH one directory entry at a time, as
+# namei(1) walks it, following every symbolic link (inside HASEEN_SYSROOT
+# when set; `..` after a link is the parent of its target): every directory
+# an entry is read from, and what PATH resolves to, must pass root_only_node.
+# Prints the resolved path, or why not with status 1. Whoever can write a
+# directory on the way decides what the entry in it is: a link kept in one a
+# user can write can be pointed elsewhere later, whatever it points at now.
+root_trusted_resolve() {
+    local path="$1" rest comp cur="" target hops=0
+    [[ $path == /* ]] || {
+        echo "$path is not an absolute path"
+        return 1
+    }
+    rest="$path"
+    while [[ -n $rest ]]; do
+        rest="${rest#/}"
+        comp="${rest%%/*}"
+        if [[ $rest == */* ]]; then rest="${rest#*/}"; else rest=""; fi
+        case "$comp" in
+        "" | .) continue ;;
+        ..)
+            cur="${cur%/*}"
+            continue
+            ;;
+        esac
+        root_only_node "${cur:-/}" || return 1
+        if [[ -L ${HASEEN_SYSROOT%/}$cur/$comp ]]; then
+            ((++hops <= 40)) || {
+                echo "$path: too many levels of symbolic links"
+                return 1
+            }
+            target="$(readlink -- "${HASEEN_SYSROOT%/}$cur/$comp")"
+            [[ $target == /* ]] && cur=""
+            rest="$target${rest:+/$rest}"
+            continue
+        fi
+        cur="$cur/$comp"
+    done
+    root_only_node "${cur:-/}" || return 1
+    printf '%s\n' "${cur:-/}"
+}
+
+# root_trusted_exec PATH... — every PATH resolves (root_trusted_resolve) to a
+# regular file only root can change. A pacman hook runs its Exec as root, so
+# an Exec a user could replace, or point somewhere else, is root for that
+# user: a haseen run from a checkout fails at the checkout's first directory.
+# Prints why not, with the path as the inspected system sees it.
+root_trusted_exec() {
+    local path real
+    for path in "$@"; do
+        real="$(root_trusted_resolve "$path")" || {
+            printf '%s\n' "$real"
+            return 1
+        }
+        [[ -f ${HASEEN_SYSROOT%/}$real ]] || {
+            echo "$real is not a regular file"
+            return 1
+        }
+    done
+}
+
+# root_trusted_dir DIR... — every DIR resolves to a directory only root can
+# change, and so does every entry directly in it (a link is resolved the same
+# way): a file root sources from it can be neither replaced nor edited by
+# anyone else. Prints why not.
+root_trusted_dir() {
+    local dir real top="${HASEEN_SYSROOT%/}" rec name why dir_nodes=()
+    for dir in "$@"; do
+        real="$(root_trusted_resolve "$dir")" || {
+            printf '%s\n' "$real"
+            return 1
+        }
+        [[ -d $top$real ]] || {
+            echo "$real is not a directory"
+            return 1
+        }
+        mapfile -d '' dir_nodes < <(find "$top$real" -mindepth 1 -maxdepth 1 -print0)
+        ((${#dir_nodes[@]})) || continue
+        while IFS= read -r -d '' rec; do
+            name="${rec#*$'\t'}"
+            name="${name#"$top"}"
+            if [[ ${rec%%$'\t'*} == *' symbolic link' ]]; then
+                why="$(root_trusted_resolve "$name")" || {
+                    printf '%s\n' "$why"
+                    return 1
+                }
+            else
+                root_only_record "$name" "$rec" || return 1
+            fi
+        done < <(root_node_stat "${dir_nodes[@]}")
+    done
+}
+
+# root_trusted_haseen ROUTER ROUTE [DIR...] — what a pacman hook whose Exec is
+# ROUTER (a haseen bin/haseen) with ROUTE's words runs as root is root's
+# alone, checked along the router's own resolution (bin/haseen:14-19) so the
+# check and what runs are the same files: the router; the command it
+# executes, haseen-ROUTE next to the router's readlink -f; the tree it sets as
+# HASEEN_PATH, ../share/haseen from there, with every entry in it; and each
+# DIR of that tree the command sources from (lib holds common.sh and the
+# libraries), with every entry in it. Prints why not.
+root_trusted_haseen() {
+    local router="$1" route="$2" real bin dir
+    shift 2
+    real="$(root_trusted_resolve "$router")" || {
+        printf '%s\n' "$real"
+        return 1
+    }
+    [[ -f ${HASEEN_SYSROOT%/}$real ]] || {
+        echo "$real is not a regular file"
+        return 1
+    }
+    bin="${real%/*}"
+    root_trusted_exec "$bin/haseen-$route" || return 1
+    root_trusted_dir "$bin/../share/haseen" || return 1
+    for dir in "$@"; do
+        root_trusted_dir "$bin/../share/haseen/$dir" || return 1
+    done
+}
 
 run() {
     if $DRY_RUN; then

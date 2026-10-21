@@ -29,7 +29,10 @@ layer_precheck() {
 }
 
 layer_apply() {
-    if sb_hook_current; then
+    local why
+    if ! why="$(sb_hook_exec_trusted)"; then
+        warn "pacman hook not written: $(sb_hook_untrusted_note "$why")"
+    elif sb_hook_current; then
         info "pacman hook up to date: $SB_HOOK_DEST"
     else
         sb_hook_render | write_root_file "$SB_HOOK_DEST" 0644

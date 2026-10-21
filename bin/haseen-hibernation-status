@@ -41,7 +41,7 @@ done
 mem_kib="$(hibernate_mem_kib)"
 image_kib="$(hibernate_image_kib)"
 swap_kib="$(hibernate_swap_kib)"
-style="$(hibernate_initramfs_style)"
+style="$(hibernate_initramfs_style)" || true
 human() { awk -v k="${1:-0}" 'BEGIN { printf "%.1f GiB", k / 1048576 }'; }
 
 if ! $quiet; then
@@ -50,8 +50,12 @@ if ! $quiet; then
     printf 'swap:      %s%s\n' "$(human "$swap_kib")" \
         "$(hibernate_swapfile_active && echo " ($SWAP_FILE)" || echo " (not haseen's swapfile)")"
     printf 'image:     up to %s (/sys/power/image_size)\n' "$(human "$image_kib")"
-    printf 'initramfs: %s hooks, resume hook %s\n' "$style" \
-        "$(hibernate_resume_hook_present && echo present || echo absent)$([[ $style == systemd ]] && echo " (not needed)")"
+    if [[ $style == unknown ]]; then
+        printf "initramfs: unknown (mkinitcpio's configuration does not evaluate)\n"
+    else
+        printf 'initramfs: %s hooks, resume hook %s\n' "$style" \
+            "$(hibernate_resume_hook_present && echo present || echo absent)$([[ $style == systemd ]] && echo " (not needed)")"
+    fi
     if hibernate_cmdline_has_resume; then
         printf 'cmdline:   resume set, offset %s\n' "$(hibernate_cmdline_resume_offset)"
     else

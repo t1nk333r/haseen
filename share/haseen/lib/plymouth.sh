@@ -40,7 +40,27 @@ plymouth_current_theme() {
     sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' "$f" | tail -n1
 }
 
-plymouth_hook_present() { boot_hooks | grep -qx plymouth; }
+# plymouth_hook_present — `plymouth` is in the effective HOOKS; status 2 when
+# they cannot be read (boot_hooks says why).
+plymouth_hook_present() {
+    local hooks
+    hooks="$(boot_hooks)" || return 2
+    grep -qx plymouth <<<"$hooks"
+}
+
+# plymouth_reset_by_omarchy — Omarchy's omarchy-settings package undid
+# haseen's splash. Its install scriptlet copies its own plymouthd.conf
+# ([Daemon] Theme=omarchy) over /etc/plymouth/plymouthd.conf on every install
+# and upgrade (omarchy-pkgs pkgbuilds/omarchy-settings/omarchy-settings.install
+# `_etc_overrides_apply`, the same in 4.0.6-1 as installed on luna), so the
+# next initramfs would embed Omarchy's splash. True only when haseen's theme
+# is installed (`haseen plymouth set` ran) and plymouthd.conf names exactly the
+# theme that scriptlet writes; any other choice is the owner's and stays.
+plymouth_reset_by_omarchy() {
+    plymouth_installed || return 1
+    [[ -r $(sysroot_path "$PLYMOUTH_THEME_DIR/haseen.plymouth") ]] || return 1
+    [[ $(plymouth_current_theme) == omarchy ]]
+}
 
 # plymouth_theme_colors FILE — "background foreground accent" as #rrggbb, from
 # a theme's colors.toml. Missing keys fall back to the shipped defaults, so a

@@ -51,6 +51,9 @@ while (($# > 0)); do
 done
 
 plymouth_installed || die "plymouth is not installed (pacman -S plymouth)"
+# Whether the hook is missing is read from HOOKS; an unreadable configuration
+# must not read as "missing" (plan 101).
+boot_hooks_known
 
 # The colours: the named theme's shipped file, or what `haseen theme set`
 # rendered into the current theme.
