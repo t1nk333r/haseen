@@ -287,7 +287,9 @@ sections.
 ## Review round 1 (Sonnet 5.5 at 301cf4d, 2026-10-21)
 
 The reviewer accepted the seal, the per-user write path, `boot_hooks` and the
-bar mapping, and asked for six changes, made in a new commit:
+bar mapping, and asked for six changes, made in a new commit (7c53682;
+file:line references in this section are at that commit, and round 2 moved
+some of them):
 
 1. **Blocker: the hook's `Exec` could name files a user can write.** The
    hook runs it as root, and `omarchy_guard_prefix` derives it from the tree
@@ -344,6 +346,70 @@ Rejected for item 1:
 - Making the base layer fail when the check fails: the hook is one step of a
   layer whose other steps are still right; a warning with the fix, a `warn`
   status and a failing doctor say it without stopping the rest.
+
+## Review round 2 (Sonnet 5.5 at 7c53682, 2026-10-22)
+
+The round 1 fixes held; four more changes, made in a new commit:
+
+1. **A check that depended on where the checkout is.** The real-filesystem
+   refusal of this checkout asserted "is owned by uid N"; under `/tmp` the
+   first rejected component is `/tmp` itself ("writable by its group or by
+   others"). CI run 39656450369 on 7c53682 failed on exactly that check, one
+   of 17443. It now asserts the refusal and either reason
+   (`tests/test-omarchy-guard.sh`); every other refusal is checked inside a
+   fixture sysroot, where `/` is deterministic.
+2. **What root sources, not only what pacman starts.** Root sourced
+   `share/haseen/lib/*.sh` unchecked, so a root-owned `bin/` beside a
+   writable or linked `share/haseen` still handed root a user's code.
+   `root_trusted_haseen ROUTER ROUTE [DIR...]`
+   (`share/haseen/lib/common.sh:185`) follows the router's own resolution
+   (`bin/haseen:14`): the router as `readlink -f` resolves it, the
+   `haseen-ROUTE` beside that target, the `share/haseen` tree there and every
+   entry in it (`root_trusted_dir:149`), and every entry of each named
+   directory, all through `root_trusted_resolve:91` (the round 1 walk, now
+   shared). The guard hook names `lib` (`share/haseen/lib/omarchy-guard.sh:121`);
+   the Secure Boot hook names `lib` and `layers/secureboot`, which holds
+   `secureboot.sh` and `limine-hash-assets.sh`, run as root
+   (`share/haseen/layers/secureboot/secureboot.sh:44`).
+3. **One place for "ignore `HASEEN_PATH` as root".** `bin/haseen:18-21` and
+   `share/haseen/lib/common.sh:30-32` set `HASEEN_PATH` to their own tree when
+   `EUID` is 0, whatever the environment says, so every command started at the
+   router as root, and any root code that sources `common.sh` from the
+   installed tree, uses the installed tree; `bin/haseen-omarchy-guard` no
+   longer carries its own copy. `haseen secureboot sign` is covered the same
+   way. No test set `HASEEN_PATH` for a root-run command to anything but this
+   tree (`tests/lib.sh:16` exports `$REPO/share/haseen`, which is also the
+   tree the router and `common.sh` compute), so no override scoping was
+   needed. A command started directly, not through the router, with a hostile
+   `HASEEN_PATH` has sourced that tree's `common.sh` before any check can run;
+   sudo's `env_reset` and pacman's clean hook environment close that, both
+   hooks start at the router, and `docs/architecture.md` §4 says to start root
+   commands there.
+4. **Acceptance that runs in CI.** All ownership is read through one
+   function, `root_node_stat` (`common.sh:55`, one `stat --printf '%u %a %F'`
+   call). The tests stand in a `stat` that answers uid 0 for that format only,
+   modes kept (`root_stat` in `tests/test-omarchy-guard.sh` and
+   `tests/test-secureboot.sh`), so accepting a root-owned tree, a
+   group-writable ancestor, a library others can write, a linked tree or
+   command in a directory others can write, a linked router, a link loop,
+   `..` after a link, a missing command, a non-file and a relative path all
+   run without user namespaces, as do the base and Secure Boot layers writing
+   their hooks from a root-owned tree. The user-namespace checks remain, with
+   the real `stat`, where the kernel allows them.
+
+Rejected for round 2:
+
+- Checking every file under `share/haseen`: it holds the QML shell, themes
+  and data root never runs; the guard sources only `lib/`, and the Secure
+  Boot command `lib/` and its layer. A new library directory a hook command
+  sources must be added to its list.
+- Changing the first `source` line of all 200-odd `bin/haseen-*` commands to
+  ignore `HASEEN_PATH` as root: a change across files other plans own, for a
+  path (a root shell that set `HASEEN_PATH` and starts a command directly)
+  that already runs as root.
+- A test-only switch that trusts another uid: production code would carry a
+  way to disable the check. The `stat` stand-in lives only in the tests'
+  `PATH`.
 
 ## Evidence
 

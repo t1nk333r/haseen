@@ -44,13 +44,34 @@ omarchy_would_run() {
 # where files it owns are owned by root (CI's container may not).
 userns() { unshare --map-root-user true 2>/dev/null; }
 
-# plant_tree ROOT — this tree's router and guard at their own paths inside
-# ROOT, with nothing in ROOT writable by group or others: what an installed
-# tree looks like once a user namespace maps this user to root.
+# plant_tree ROOT — this tree's router, guard and libraries at their own
+# paths inside ROOT, with nothing in ROOT writable by group or others: what an
+# installed tree looks like to root (root_stat on, or a user namespace).
 plant_tree() {
-    mkdir -p "$1$REPO/bin"
+    mkdir -p "$1$REPO/bin" "$1$REPO/share/haseen/lib"
     cp "$REPO/bin/haseen" "$REPO/bin/haseen-omarchy-guard" "$1$REPO/bin/"
+    cp "$REPO/share/haseen/VERSION" "$1$REPO/share/haseen/"
+    cp "$REPO/share/haseen/lib/"* "$1$REPO/share/haseen/lib/"
     chmod -R go-w "$1"
+}
+
+# root_stat on|off — stat(1) answers root_node_stat (lib/common.sh) as if
+# root owned every file, modes kept: the ownership decisions run where user
+# namespaces do not (CI's container). Every other stat call is the real one.
+REAL_STAT="$(command -v stat)"
+root_stat() {
+    if [[ $1 == off ]]; then
+        rm -f "$SANDBOX/stubs/stat"
+        return 0
+    fi
+    stub stat "$(sed "s|@STAT@|$REAL_STAT|g" <<'EOF'
+if [ "$1" = --printf ] && [ "$2" = '%u %a %F\t%n\0' ]; then
+    shift 2
+    exec @STAT@ --printf '0 %a %F\t%n\0' "$@"
+fi
+exec @STAT@ "$@"
+EOF
+)"
 }
 
 # --- haseen migrate omarchy -------------------------------------------------------
@@ -209,12 +230,21 @@ exec unshare --map-user=1000 --map-group=1000 -- "$@"'
     assert_contains "the seal ran with a clean environment" "$(cat "$GUARD_LOG")" "env -i HOME=$ROOT/users/alice USER=alice"
     assert_contains "haseen's splash is named again" "$(cat "$ROOT/etc/plymouth/plymouthd.conf")" "Theme=haseen"
     assert_eq "no Omarchy migration ran" "absent" "$([[ -e $ROOT/users/alice/omarchy-migrations-ran ]] && echo present || echo absent)"
-    # As root the guard runs its own tree's code, whatever HASEEN_PATH says.
-    mkdir -p "$SANDBOX/elsewhere/lib"
-    printf 'touch "%s/elsewhere-ran"\n' "$SANDBOX" >"$SANDBOX/elsewhere/lib/omarchy-guard.sh"
+    # As root every haseen command runs its own tree's code, whatever
+    # HASEEN_PATH says: bin/haseen and lib/common.sh both ignore it.
+    mkdir -p "$SANDBOX/elsewhere/lib" "$SANDBOX/elsewhere/layers/secureboot"
+    for f in lib/omarchy-guard.sh lib/common.sh layers/secureboot/secureboot.sh; do
+        printf 'touch "%s/elsewhere-ran"\n' "$SANDBOX" >"$SANDBOX/elsewhere/$f"
+    done
     capture env HASEEN_PATH="$SANDBOX/elsewhere" unshare --map-root-user "$REPO/bin/haseen" omarchy guard
-    assert_status "an inherited HASEEN_PATH does not stop it" 0 "$STATUS"
+    assert_status "an inherited HASEEN_PATH does not stop the guard" 0 "$STATUS"
     assert_eq "and none of its code ran as root" "absent" "$([[ -e $SANDBOX/elsewhere-ran ]] && echo present || echo absent)"
+    capture env HASEEN_PATH="$SANDBOX/elsewhere" unshare --map-root-user "$REPO/bin/haseen" secureboot sign --hook
+    assert_status "nor the Secure Boot hook's command" 0 "$STATUS"
+    assert_eq "which runs none of it either" "absent" "$([[ -e $SANDBOX/elsewhere-ran ]] && echo present || echo absent)"
+    capture env HASEEN_PATH="$SANDBOX/elsewhere" unshare --map-root-user \
+        bash -c 'source "$1/lib/common.sh"; printf "%s\n" "$HASEEN_PATH"' _ "$REPO/share/haseen"
+    assert_eq "common.sh sourced as root names its own tree" "$REPO/share/haseen" "$OUTPUT"
     # A seal that fails: --hook reports it and still exits 0 (a pacman hook's
     # failure aborts nothing PostTransaction, and the splash step still runs);
     # without --hook the command fails.
@@ -243,11 +273,14 @@ assert_eq "it sorts before the Limine and initramfs hooks" \
     "50-haseen-omarchy.hook 80-limine-efi-deploy.hook 90-mkinitcpio-install.hook" \
     "$(printf '%s\n' 90-mkinitcpio-install.hook 50-haseen-omarchy.hook 80-limine-efi-deploy.hook | LC_ALL=C sort | paste -sd' ')"
 
-# The hook runs its Exec as root: it is written only for a haseen that only
-# root can change, along its whole path (root_trusted_exec).
+# The hook runs its Exec as root: it is written only for a haseen tree that
+# only root can change (root_trusted_haseen). This checkout is refused at the
+# first directory on its path that root does not own alone, which depends on
+# where it is checked out (a user's home, /tmp, CI's mount).
 capture env HASEEN_SYSROOT= bash -c 'source "$HASEEN_PATH/lib/common.sh"; root_trusted_exec "$1"' _ "$REPO/bin/haseen"
 assert_status "a haseen in this user's checkout cannot be trusted with root" 1 "$STATUS"
-assert_contains "the reason names the owner" "$OUTPUT" "is owned by uid $(id -u), not root"
+assert_eq "the reason is an owner or a writable directory on its path" "found" \
+    "$(grep -qE '^/.* (is owned by uid [0-9]+, not root|is writable by its group or by others)$' <<<"$OUTPUT" && echo found || echo "$OUTPUT")"
 fx="$SANDBOX/root"
 cp -a "$FIXTURES/desk-cachyos-amd" "$fx"
 capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
@@ -256,32 +289,36 @@ assert_dry_pure "base with the guard" "$OUTPUT"
 assert_not_contains "from a tree root does not own, the hook is not written" "$OUTPUT" "50-haseen-omarchy.hook (mode"
 assert_contains "and the layer says why and what to do" "$OUTPUT" \
     "Omarchy package guard: pacman hook not written: the hook's $REPO/bin/haseen runs as root, but / is owned by uid $(id -u), not root; install haseen as root (./install.sh)"
+# The same tree as root owns it: written. root_stat makes this run anywhere;
+# the user-namespace check below repeats it with the real stat.
+plant_tree "$fx"
+root_stat on
+capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
+assert_contains "from a root-owned tree the base layer writes the hook" "$OUTPUT" \
+    "DRYRUN: write /etc/pacman.d/hooks/50-haseen-omarchy.hook (mode 0644):"
+assert_contains "with that tree's haseen" "$OUTPUT" "    | Exec = $REPO/bin/haseen omarchy guard --hook"
+chmod g+w "$fx$(dirname "$REPO")"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
+assert_not_contains "an ancestor its group can write: not written" "$OUTPUT" "50-haseen-omarchy.hook (mode"
+assert_contains "and named" "$OUTPUT" "but $(dirname "$REPO") is writable by its group or by others"
+chmod g-w "$fx$(dirname "$REPO")"
+chmod g+w "$fx$REPO/share/haseen/lib/plymouth.sh"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
+assert_not_contains "a library the guard sources that its group can write: not written" "$OUTPUT" "50-haseen-omarchy.hook (mode"
+assert_contains "and the library is named" "$OUTPUT" "but $REPO/share/haseen/lib/plymouth.sh is writable by its group or by others"
+chmod g-w "$fx$REPO/share/haseen/lib/plymouth.sh"
+root_stat off
 base_guard() { capture env DRY_RUN=true HASEEN_SYSROOT="$fx" unshare --map-root-user bash -c 'source "$HASEEN_PATH/lib/layers.sh"; _layer_env base; base_omarchy_guard'; }
 if userns; then
-    plant_tree "$fx"
     base_guard
-    assert_status "the guard step from a root-owned tree" 0 "$STATUS"
-    assert_contains "writes the hook" "$OUTPUT" "DRYRUN: write /etc/pacman.d/hooks/50-haseen-omarchy.hook (mode 0644):"
-    assert_contains "with that tree's haseen" "$OUTPUT" "    | Exec = $REPO/bin/haseen omarchy guard --hook"
-    chmod g+w "$fx$(dirname "$REPO")"
+    assert_status "with the real stat, as root, the guard step" 0 "$STATUS"
+    assert_contains "writes the hook from a root-owned tree" "$OUTPUT" "DRYRUN: write /etc/pacman.d/hooks/50-haseen-omarchy.hook (mode 0644):"
+    chmod o+w "$fx$REPO/share/haseen"
     base_guard
-    assert_not_contains "an ancestor its group can write: not written" "$OUTPUT" "50-haseen-omarchy.hook (mode"
-    assert_contains "and named" "$OUTPUT" "but $(dirname "$REPO") is writable by its group or by others"
-    chmod g-w "$fx$(dirname "$REPO")"
-    # The guard as a link elsewhere: every directory on the link's way counts.
-    rm "$fx$REPO/bin/haseen-omarchy-guard"
-    mkdir -p "$fx$SANDBOX"
-    cp "$REPO/bin/haseen-omarchy-guard" "$fx$SANDBOX/real-guard"
-    ln -s "$SANDBOX/real-guard" "$fx$REPO/bin/haseen-omarchy-guard"
-    chmod -R go-w "$fx"
-    base_guard
-    assert_contains "a link to a root-owned file is followed" "$OUTPUT" "DRYRUN: write /etc/pacman.d/hooks/50-haseen-omarchy.hook"
-    chmod o+w "$fx$SANDBOX"
-    base_guard
-    assert_contains "into a directory others can write: refused" "$OUTPUT" "but $SANDBOX is writable by its group or by others"
-    chmod o-w "$fx$SANDBOX"
+    assert_contains "and refuses a tree others can write" "$OUTPUT" "but $REPO/share/haseen is writable by its group or by others"
+    chmod o-w "$fx$REPO/share/haseen"
 else
-    echo "  SKIP root-owned tree checks: user namespaces are not available here" >&2
+    echo "  SKIP real-stat root-owned tree checks: user namespaces are not available here" >&2
 fi
 capture env HASEEN_SYSROOT="$fx" haseen layer status base
 assert_not_contains "without Omarchy's packages a missing hook is no fault" "$OUTPUT" "Omarchy package guard"
@@ -294,13 +331,109 @@ HASEEN_PATH="$REPO/share/haseen" bash -c 'source "$HASEEN_PATH/lib/omarchy-guard
 capture env HASEEN_SYSROOT="$fx" haseen layer status base
 assert_contains "a hook that runs a tree a user owns is a warning" "$OUTPUT" \
     "warn: Omarchy package guard: the hook's $REPO/bin/haseen runs as root, but / is owned by uid $(id -u)"
-if userns; then
-    capture env HASEEN_SYSROOT="$fx" unshare --map-root-user bash -c 'source "$HASEEN_PATH/lib/layers.sh"; layer_run_status base'
-    assert_contains "an installed hook from a root-owned tree is reported" "$OUTPUT" "ok: Omarchy package guard"
-    base_guard
-    assert_contains "and not written again" "$OUTPUT" "Omarchy package guard: pacman hook in place"
-    assert_not_contains "never twice" "$OUTPUT" "write /etc/pacman.d/hooks/50-haseen-omarchy.hook"
-fi
+chmod -R go-w "$fx"
+root_stat on
+capture env HASEEN_SYSROOT="$fx" haseen layer status base
+assert_contains "an installed hook from a root-owned tree is reported" "$OUTPUT" "ok: Omarchy package guard"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
+assert_contains "and not written again" "$OUTPUT" "Omarchy package guard: pacman hook in place"
+assert_not_contains "never twice" "$OUTPUT" "write /etc/pacman.d/hooks/50-haseen-omarchy.hook"
+root_stat off
+
+# --- what root may run: root_trusted_haseen's decisions ---------------------------
+# A small installed tree, its ownership answered by root_stat, so every
+# decision runs in CI too.
+sandbox omarchy-guard-trust
+tree="$SANDBOX/tree"
+mkdir -p "$tree/usr/local/bin" "$tree/usr/local/share/haseen/lib" "$tree/srv" "$tree/opt" "$tree/var/drop"
+cp "$REPO/bin/haseen" "$REPO/bin/haseen-omarchy-guard" "$tree/usr/local/bin/"
+cp "$REPO/share/haseen/VERSION" "$tree/usr/local/share/haseen/"
+cp "$REPO/share/haseen/lib/common.sh" "$REPO/share/haseen/lib/omarchy-guard.sh" "$tree/usr/local/share/haseen/lib/"
+chmod -R go-w "$tree"
+trusted() { capture env HASEEN_SYSROOT="$tree" bash -c 'source "$HASEEN_PATH/lib/common.sh"; "$@"' _ "$@"; }
+guard_tree() { trusted root_trusted_haseen "${1:-/usr/local/bin/haseen}" omarchy-guard lib; }
+root_stat on
+guard_tree
+assert_status "an installed tree only root can change is trusted" 0 "$STATUS"
+assert_eq "without a word" "" "$OUTPUT"
+chmod g+w "$tree/usr/local"
+guard_tree
+assert_status "an ancestor its group can write is refused" 1 "$STATUS"
+assert_eq "and named" "/usr/local is writable by its group or by others" "$OUTPUT"
+chmod g-w "$tree/usr/local"
+# What the command sources counts, not only what pacman starts.
+chmod o+w "$tree/usr/local/share/haseen/lib/common.sh"
+guard_tree
+assert_eq "a library others can write is refused" "/usr/local/share/haseen/lib/common.sh is writable by its group or by others" "$OUTPUT"
+chmod o-w "$tree/usr/local/share/haseen/lib/common.sh"
+chmod g+w "$tree/usr/local/share/haseen"
+guard_tree
+assert_eq "so is a tree its group can add files to" "/usr/local/share/haseen is writable by its group or by others" "$OUTPUT"
+chmod g-w "$tree/usr/local/share/haseen"
+: >"$tree/usr/local/share/haseen/lib/later.sh"
+chmod g+w "$tree/usr/local/share/haseen/lib/later.sh"
+guard_tree
+assert_eq "and any library beside them" "/usr/local/share/haseen/lib/later.sh is writable by its group or by others" "$OUTPUT"
+rm "$tree/usr/local/share/haseen/lib/later.sh"
+# share/haseen as a link: followed, and where it lands counts.
+mv "$tree/usr/local/share/haseen" "$tree/srv/haseen"
+ln -s /srv/haseen "$tree/usr/local/share/haseen"
+guard_tree
+assert_status "a linked tree in a root-only directory is trusted" 0 "$STATUS"
+chmod o+w "$tree/srv"
+guard_tree
+assert_eq "a linked tree in a directory others can write is not" "/srv is writable by its group or by others" "$OUTPUT"
+chmod o-w "$tree/srv"
+rm "$tree/usr/local/share/haseen"
+mv "$tree/srv/haseen" "$tree/usr/local/share/haseen"
+# The router as a link: the command and tree beside its target are the ones
+# it runs, so they are the ones checked (there is no /usr/bin/haseen-omarchy-guard).
+mkdir -p "$tree/usr/bin"
+ln -s /usr/local/bin/haseen "$tree/usr/bin/haseen"
+guard_tree /usr/bin/haseen
+assert_status "a linked router is checked where it resolves" 0 "$STATUS"
+chmod g+w "$tree/usr/local/bin/haseen-omarchy-guard"
+guard_tree /usr/bin/haseen
+assert_eq "including the command beside its target" "/usr/local/bin/haseen-omarchy-guard is writable by its group or by others" "$OUTPUT"
+chmod g-w "$tree/usr/local/bin/haseen-omarchy-guard"
+# A command linked into a directory others can write.
+mv "$tree/usr/local/bin/haseen-omarchy-guard" "$tree/var/drop/guard"
+ln -s /var/drop/guard "$tree/usr/local/bin/haseen-omarchy-guard"
+guard_tree
+assert_status "a command linked into a root-only directory is trusted" 0 "$STATUS"
+chmod o+w "$tree/var/drop"
+guard_tree
+assert_eq "linked into one others can write it is not" "/var/drop is writable by its group or by others" "$OUTPUT"
+chmod o-w "$tree/var/drop"
+rm "$tree/usr/local/bin/haseen-omarchy-guard"
+mv "$tree/var/drop/guard" "$tree/usr/local/bin/haseen-omarchy-guard"
+# Links that loop, `..` after a link, what is missing or not a file.
+ln -s /opt/loop-b "$tree/opt/loop-a"
+ln -s loop-a "$tree/opt/loop-b"
+trusted root_trusted_exec /opt/loop-a
+assert_eq "a link loop is refused" "/opt/loop-a: too many levels of symbolic links" "$OUTPUT"
+ln -s /usr/local/bin "$tree/opt/bin"
+trusted root_trusted_resolve /opt/bin/../share/haseen
+assert_eq "\`..\` after a link is the parent of its target, as the kernel resolves it" "/usr/local/share/haseen" "$OUTPUT"
+trusted root_trusted_exec /usr/local/bin/../bin/haseen
+assert_status "\`..\` inside root-only directories is fine" 0 "$STATUS"
+trusted root_trusted_exec /usr/local/bin/haseen-gone
+assert_eq "a missing command is refused" "/usr/local/bin/haseen-gone does not exist" "$OUTPUT"
+trusted root_trusted_haseen /usr/local/bin/haseen secureboot-sign lib
+assert_eq "so is a route with no command" "/usr/local/bin/haseen-secureboot-sign does not exist" "$OUTPUT"
+trusted root_trusted_exec /usr/local/bin
+assert_eq "a directory is not a command" "/usr/local/bin is not a regular file" "$OUTPUT"
+trusted root_trusted_dir /usr/local/bin/haseen
+assert_eq "nor a file a tree" "/usr/local/bin/haseen is not a directory" "$OUTPUT"
+trusted root_trusted_exec usr/local/bin/haseen
+assert_eq "a relative path is refused" "usr/local/bin/haseen is not an absolute path" "$OUTPUT"
+root_stat off
+trusted root_trusted_exec /usr/local/bin/haseen
+assert_eq "with the real stat this user's files are not root's" "/ is owned by uid $(id -u), not root" "$OUTPUT"
+# HASEEN_PATH: kept for an unprivileged command (tests and checkouts rely on
+# it); the root case is checked in the user namespace above.
+capture env HASEEN_PATH="$SANDBOX/elsewhere" bash -c 'source "$1/lib/common.sh"; printf "%s\n" "$HASEEN_PATH"' _ "$REPO/share/haseen"
+assert_eq "an unprivileged command keeps an inherited HASEEN_PATH" "$SANDBOX/elsewhere" "$OUTPUT"
 
 # --- the drop-in for Omarchy's login notice --------------------------------------
 dropin="$REPO/share/haseen/default/omarchy-guard/omarchy-migrate-notify.conf"
@@ -339,12 +472,12 @@ assert_status "a hook that runs a tree a user owns fails the check" 1 "$STATUS"
 assert_contains "and says why" "$OUTPUT" \
     "omarchy pacman hook=unsafe: the hook's $REPO/bin/haseen runs as root, but / is owned by uid $(id -u), not root"
 assert_contains "the seal is reported" "$OUTPUT" "omarchy migrations=sealed (3)"
-if userns; then
-    plant_tree "$ROOT"
-    capture unshare --map-root-user bash -c 'source "$HASEEN_PATH/lib/omarchy-guard.sh"; omarchy_guard_doctor'
-    assert_status "sealed and hooked from a root-owned tree: the check passes" 0 "$STATUS"
-    assert_contains "and the hook is reported" "$OUTPUT" "omarchy pacman hook=installed (/etc/pacman.d/hooks/50-haseen-omarchy.hook)"
-fi
+plant_tree "$ROOT"
+root_stat on
+doctor
+assert_status "sealed and hooked from a root-owned tree: the check passes" 0 "$STATUS"
+assert_contains "and the hook is reported" "$OUTPUT" "omarchy pacman hook=installed (/etc/pacman.d/hooks/50-haseen-omarchy.hook)"
+root_stat off
 assert_contains "an enabled owed is listed with what to do" "$OUTPUT" \
     "omarchy user unit=owed.service enabled (graphical-session.target): a second wallpaper daemon beside haseen-background.service"
 assert_contains "a globally enabled one is listed" "$OUTPUT" "omarchy user unit=bt-agent.service enabled (default.target)"

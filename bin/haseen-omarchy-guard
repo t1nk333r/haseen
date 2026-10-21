@@ -24,12 +24,8 @@ if $HOOK; then
     trap 'exit 0' EXIT
 fi
 
-# As root (the pacman hook) the code is this file's own tree, never an
-# inherited HASEEN_PATH: whoever set that would choose what root sources.
-if ((EUID == 0)); then
-    HASEEN_PATH="$(cd "$(dirname "$(readlink -f "$0")")/../share/haseen" && pwd)"
-    export HASEEN_PATH
-fi
+# As root the tree is the router's (bin/haseen) and lib/common.sh's own,
+# never an inherited HASEEN_PATH; the pacman hook starts at the router.
 # shellcheck source=../share/haseen/lib/omarchy-guard.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/omarchy-guard.sh"
 # shellcheck source=../share/haseen/lib/plymouth.sh

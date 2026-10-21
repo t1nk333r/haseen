@@ -33,12 +33,33 @@ sb_layer_root() {
 }
 userns() { unshare --map-root-user true 2>/dev/null; }
 
-# plant_tree ROOT — this tree's router and sign command at their own paths
-# inside ROOT, nothing in ROOT writable by group or others.
+# plant_tree ROOT — this tree's router, sign command, libraries and layer at
+# their own paths inside ROOT, nothing in ROOT writable by group or others.
 plant_tree() {
-    mkdir -p "$1$REPO/bin"
+    mkdir -p "$1$REPO/bin" "$1$REPO/share/haseen/lib" "$1$REPO/share/haseen/layers"
     cp "$REPO/bin/haseen" "$REPO/bin/haseen-secureboot-sign" "$1$REPO/bin/"
+    cp "$REPO/share/haseen/lib/"* "$1$REPO/share/haseen/lib/"
+    cp -R "$REPO/share/haseen/layers/secureboot" "$1$REPO/share/haseen/layers/"
     chmod -R go-w "$1"
+}
+
+# root_stat on|off — stat(1) answers root_node_stat (lib/common.sh) as if
+# root owned every file, modes kept, so the hook's ownership decisions run
+# where user namespaces do not (CI's container). Every other call is real.
+REAL_STAT="$(command -v stat)"
+root_stat() {
+    if [[ $1 == off ]]; then
+        rm -f "$SANDBOX/stubs/stat"
+        return 0
+    fi
+    stub stat "$(sed "s|@STAT@|$REAL_STAT|g" <<'EOF'
+if [ "$1" = --printf ] && [ "$2" = '%u %a %F\t%n\0' ]; then
+    shift 2
+    exec @STAT@ --printf '0 %a %F\t%n\0' "$@"
+fi
+exec @STAT@ "$@"
+EOF
+)"
 }
 
 # scratch NAME FIXTURE — a writable copy of FIXTURE as $SANDBOX/NAME.
@@ -602,28 +623,42 @@ assert_contains "apply prints the next step" "$OUTPUT" "next: haseen secureboot 
 assert_not_contains "apply never creates keys" "$OUTPUT" "create-keys"
 assert_not_contains "apply never enrolls" "$OUTPUT" "enroll-keys"
 assert_contains "apply marks the layer" "$OUTPUT" "write /var/lib/haseen/layers/secureboot"
+plant_tree "$root"
+root_stat on
+DRY_RUN=true sb_layer "$root" apply
+assert_status "apply exit from a root-owned tree" 0 "$STATUS"
+assert_contains "apply installs the hook" "$OUTPUT" \
+    "DRYRUN: write /etc/pacman.d/hooks/zz-haseen-secureboot.hook (mode 0644):"
+assert_contains "installed hook Exec points at that tree" "$OUTPUT" "| Exec = $REPO/bin/haseen secureboot sign --hook"
+chmod g+w "$root$REPO/bin"
+DRY_RUN=true sb_layer "$root" apply
+assert_not_contains "a bin directory its group can write: no hook" "$OUTPUT" "zz-haseen-secureboot.hook (mode"
+assert_contains "and the reason" "$OUTPUT" "but $REPO/bin is writable by its group or by others"
+chmod g-w "$root$REPO/bin"
+# What the sign command sources and runs as root counts too.
+for f in lib/preflight.sh layers/secureboot/secureboot.sh layers/secureboot/limine-hash-assets.sh; do
+    chmod o+w "$root$REPO/share/haseen/$f"
+    DRY_RUN=true sb_layer "$root" apply
+    assert_not_contains "$f others can write: no hook" "$OUTPUT" "zz-haseen-secureboot.hook (mode"
+    assert_contains "$f is named" "$OUTPUT" "but $REPO/share/haseen/$f is writable by its group or by others"
+    chmod o-w "$root$REPO/share/haseen/$f"
+done
+sed "s|@HASEEN_BIN@|$REPO/bin/haseen|" "$SB_LIB/files/zz-haseen-secureboot.hook" | install -Dm644 /dev/stdin "$root/etc/pacman.d/hooks/zz-haseen-secureboot.hook"
+chmod -R go-w "$root"
+DRY_RUN=true sb_layer "$root" apply
+assert_contains "re-apply: hook up to date" "$OUTPUT" "pacman hook up to date"
+assert_not_contains "re-apply: no reinstall" "$OUTPUT" "write /etc/pacman.d/hooks/zz-haseen-secureboot.hook"
+printf '# edited\n' >>"$root/etc/pacman.d/hooks/zz-haseen-secureboot.hook"
+DRY_RUN=true sb_layer "$root" apply
+assert_contains "drifted hook reinstalled" "$OUTPUT" "write /etc/pacman.d/hooks/zz-haseen-secureboot.hook"
+root_stat off
+# The same with the real stat, as root, where user namespaces are available.
 if userns; then
-    plant_tree "$root"
     DRY_RUN=true sb_layer_root "$root" apply
-    assert_status "apply exit from a root-owned tree" 0 "$STATUS"
-    assert_contains "apply installs the hook" "$OUTPUT" \
+    assert_contains "real stat, as root: the hook is reinstalled from the root-owned tree" "$OUTPUT" \
         "DRYRUN: write /etc/pacman.d/hooks/zz-haseen-secureboot.hook (mode 0644):"
-    assert_contains "installed hook Exec points at that tree" "$OUTPUT" "| Exec = $REPO/bin/haseen secureboot sign --hook"
-    chmod g+w "$root$REPO/bin"
-    DRY_RUN=true sb_layer_root "$root" apply
-    assert_not_contains "a bin directory its group can write: no hook" "$OUTPUT" "zz-haseen-secureboot.hook (mode"
-    assert_contains "and the reason" "$OUTPUT" "but $REPO/bin is writable by its group or by others"
-    chmod g-w "$root$REPO/bin"
-    sed "s|@HASEEN_BIN@|$REPO/bin/haseen|" "$SB_LIB/files/zz-haseen-secureboot.hook" | install -Dm644 /dev/stdin "$root/etc/pacman.d/hooks/zz-haseen-secureboot.hook"
-    chmod -R go-w "$root"
-    DRY_RUN=true sb_layer_root "$root" apply
-    assert_contains "re-apply: hook up to date" "$OUTPUT" "pacman hook up to date"
-    assert_not_contains "re-apply: no reinstall" "$OUTPUT" "write /etc/pacman.d/hooks/zz-haseen-secureboot.hook"
-    printf '# edited\n' >>"$root/etc/pacman.d/hooks/zz-haseen-secureboot.hook"
-    DRY_RUN=true sb_layer_root "$root" apply
-    assert_contains "drifted hook reinstalled" "$OUTPUT" "write /etc/pacman.d/hooks/zz-haseen-secureboot.hook"
 else
-    echo "  SKIP root-owned tree checks: user namespaces are not available here" >&2
+    echo "  SKIP real-stat root-owned tree check: user namespaces are not available here" >&2
 fi
 DRY_RUN=true sb_layer "$FIXTURES/arch-bios" apply
 assert_status "apply on BIOS refused" 1 "$STATUS"
@@ -638,6 +673,11 @@ sb_layer "$root" status
 assert_status "layer status: installed, signatures unverified = degraded" 2 "$STATUS"
 assert_contains "a hook that runs a tree a user owns is a warning" "$OUTPUT" \
     "warn: pacman hook: the hook's $REPO/bin/haseen runs as root, but / is owned by uid $(id -u)"
+plant_tree "$root"
+root_stat on
+sb_layer "$root" status
+assert_contains "from a root-owned tree it is reported in place" "$OUTPUT" "ok: pacman hook: /etc/pacman.d/hooks/zz-haseen-secureboot.hook"
+root_stat off
 
 DRY_RUN=true sb_layer "$FX_SDON" remove
 assert_status "remove exit" 0 "$STATUS"

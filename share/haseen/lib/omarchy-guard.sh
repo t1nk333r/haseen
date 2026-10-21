@@ -111,15 +111,15 @@ omarchy_guard_hook_current() {
     cmp -s <(omarchy_guard_hook_render) "$(sysroot_path "$OMARCHY_GUARD_HOOK")"
 }
 
-# omarchy_guard_exec_trusted — the hook's Exec runs as root: this tree's haseen
-# and the command it routes to must be files only root can change
-# (root_trusted_exec), so a hook is never written for a checkout or any other
-# tree a user owns. install.sh copies the tree as root (install.sh:233-235).
-# Prints why not.
+# omarchy_guard_exec_trusted — the hook's Exec runs as root: the haseen it
+# names, the command that routes to, and the libraries that command sources
+# (lib/: omarchy-guard.sh, common.sh, plymouth.sh and theirs) must be files
+# only root can change, along the router's own resolution
+# (root_trusted_haseen), so a hook is never written for a checkout or any
+# other tree a user owns. install.sh copies the tree as root
+# (install.sh:233-235). Prints why not.
 omarchy_guard_exec_trusted() {
-    local bin
-    bin="$(omarchy_guard_prefix)/bin"
-    root_trusted_exec "$bin/haseen" "$bin/haseen-omarchy-guard"
+    root_trusted_haseen "$(omarchy_guard_prefix)/bin/haseen" omarchy-guard lib
 }
 
 # omarchy_guard_untrusted_note WHY — what to do about it.
