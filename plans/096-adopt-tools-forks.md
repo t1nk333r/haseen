@@ -168,7 +168,7 @@ changes nothing.
 
 ## Tests (1a635a2)
 
-`tests/test-adopted-tools.sh`, 238 checks, all passing with
+`tests/test-adopted-tools.sh`, 239 checks, all passing with
 `HASEEN_REQUIRE_ENGINE=1`:
 
 - manifests validate; off by default; licences, `UPSTREAM.md`, `NOTICE.md`

@@ -59,6 +59,11 @@ done
 assert_eq "only haseen.vpn requests network" "1" "$(grep -c '^warning:' <<<"$OUTPUT")"
 assert_eq "haseen.vpn declares network" "exec network" "$(jq -r '.permissions | join(" ")' "$PLUGINS/haseen.vpn/manifest.json")"
 DEFAULT="$HASEEN_PATH/default/shell.json"
+# CLAUDE.md's adopted list wraps; read it with the line breaks folded.
+ADOPTED=$(tr -s ' \n' ' ' <"$REPO/CLAUDE.md")
+assert_contains "CLAUDE.md records the adoption as first-party, off by default" "$ADOPTED" \
+    "Adopted as first-party plugins, off by default (owner, 2026-10-20)."
+ADOPTED_096=$(grep -o 'plan 096, [^;]*;' <<<"$ADOPTED")
 for id in "${IDS[@]}"; do
     dir="$PLUGINS/$id"
     assert_eq "$id is off by default (in no default section or service)" "false" \
@@ -66,7 +71,7 @@ for id in "${IDS[@]}"; do
     assert_eq "$id keeps the upstream licence" "MIT License" "$(head -n1 "$dir/LICENSE")"
     assert_contains "$id records its upstream" "$(cat "$dir/UPSTREAM.md")" "plan \`plans/096-adopt-tools-forks.md\`"
     assert_contains "NOTICE.md lists $id" "$(cat "$REPO/NOTICE.md")" "share/haseen/shell/plugins/$id/"
-    assert_contains "CLAUDE.md records the owner's adoption of $id" "$(cat "$REPO/CLAUDE.md")" "$id: adopted as first-party, off by default (owner, 2026-10-20, plan 096)"
+    assert_contains "CLAUDE.md records the owner's adoption of $id" "$ADOPTED_096" "$id"
     for f in "$dir"/*.qml; do
         # An adapted file names its upstream and licence; a file written for
         # the port says it holds no upstream code.
