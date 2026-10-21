@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.wooting",
+  "name": "Wooting",
+  "version": "1.0.0",
+  "description": "The connected Wooting keyboard's active profile in the bar; a click lists the profiles stored on it, switches with one more click, and draws the board with live key travel and the learned Fn layer. Talks only to wootingd (haseen setup wooting), which runs while a Wooting is plugged in. Adopted from the owner's t1nk33r.wooting; off by default",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "showName": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the active profile's name next to the icon"
+    },
+    "hideWhenAbsent": {
+      "type": "boolean",
+      "default": true,
+      "description": "Take no room in the bar while no Wooting keyboard is connected"
+    },
+    "nameMaxChars": {
+      "type": "integer",
+      "default": 12,
+      "description": "Longest profile name shown in the bar, in characters"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

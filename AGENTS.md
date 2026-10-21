@@ -88,6 +88,8 @@ between parts. The engineering record is `plans/`, indexed by
     - plan 097, the owner's forks: haseen.todoist, haseen.omarr;
     - plan 098, third-party ports: haseen.monitor-settings, haseen.omaconnect,
       haseen.syncthing.
+    - plan 099, the owner's plugin (owner, 2026-10-21): haseen.wooting,
+      with its vendored Rust daemon wootingd.
 
 ## Gates (run both before every commit)
 

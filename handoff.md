@@ -79,6 +79,7 @@ The owner's other repos:
 | Shell recovery and safe mode | `bin/haseen-shell-recover`, `share/haseen/systemd/user/haseen-shell-recover.service`, `share/haseen/shell/Haseen/Plugins.qml` (`held`) | 061 |
 | haseen.nvim: the owner's Neovim config, fetched at a pin; theme bridge | `bin/haseen-setup-nvim`, `share/haseen/default/nvim/`, `tests/test-haseen-nvim.sh` | 065 |
 | Adopted integrations: monitor settings, KDE Connect, Syncthing (off by default) | `share/haseen/shell/plugins/haseen.{monitor-settings,omaconnect,syncthing}/`, `bin/haseen-hardware-monitor`, `bin/haseen-kdeconnect`, `bin/haseen-setup-kdeconnect`, `bin/haseen-syncthing`, `share/haseen/migrations/1791560300-adopt-integrations.sh` | 098 |
+| Wooting keyboards (adopted from the owner's t1nk33r.wooting, off by default): bar widget and panel, the vendored Rust daemon wootingd, its CLI, doctor and device-gated setup, migration of the old id | `share/haseen/shell/plugins/haseen.wooting/`, `core/wootingd/`, `bin/haseen-wooting`, `bin/haseen-wooting-doctor`, `bin/haseen-setup-wooting`, `share/haseen/lib/wooting.sh`, `share/haseen/migrations/1792577102-adopt-wooting.sh`, `tests/test-wooting.sh`, `tests/test-wootingd.sh` | 099 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security

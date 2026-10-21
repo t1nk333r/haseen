@@ -192,11 +192,13 @@ assert_not_contains "uninstall keeps a foreign file" "$OUTPUT" "$prefix/bin/omar
 assert_not_contains "uninstall keeps a foreign link" "$OUTPUT" "$prefix/bin/omarchy-menu"
 
 # A real install and uninstall into a scratch PREFIX, the install twice. sudo
-# runs the command as the user (the PREFIX is the sandbox's); a no-op go keeps
-# the sidecar build out of the checkout.
+# runs the command as the user (the PREFIX is the sandbox's); a no-op go and a
+# cargo that does not run keep the sidecar and wootingd builds out of the
+# checkout.
 sandbox omarchy-install-real
 stub sudo 'exec "$@"'
 stub go 'exit 0'
+stub cargo 'exit 1'
 prefix="$SANDBOX/prefix"
 mkdir -p "$prefix/bin"
 printf 'foreign\n' >"$prefix/bin/omarchy-theme-set"

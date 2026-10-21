@@ -43,6 +43,7 @@ file changes in the same commit.
 | `share/haseen/default/applications/mimeapps.list` | vendor default handlers → `PREFIX/share/applications/mimeapps.list` (lowest XDG precedence, so the user always wins) | desktop |
 | `share/haseen/default/xdg-terminal-exec/` | terminal preference → `PREFIX/share/xdg-terminal-exec/` | desktop |
 | `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
+| `share/haseen/sidecar/` | compiled helpers built into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` and `haseen-palette` (Go, `core/`), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `/var/lib/haseen/layers/<name>` | applied-layer marker | core |
@@ -493,6 +494,54 @@ The border wipe loop (`core/internal/borderwipe`) is a port of the owner's `hypr
 - `running`.
 
 A reload that hands the border back (a theme without the wipe, or one that `borderangle` turns) after frames went out gets one more `reload`, so that a late frame cannot keep the old gradient.
+
+### 5.7 wootingd (plan 099)
+
+haseen has two compiled languages: Go for `core/` (§5.6) and Rust for
+`core/wootingd/`, the daemon the owner wrote for the t1nk33r.wooting plugin,
+vendored by owner decision (2026-10-21) with its behaviour unchanged.
+`tools/build-sidecar.sh` builds it with `cargo build --release --locked`
+in a target directory outside the tree (`$CARGO_TARGET_DIR`, else
+`$XDG_CACHE_HOME/haseen/wootingd-target`) and installs the binary as
+`share/haseen/sidecar/wootingd`. Without a working cargo, or when the build
+fails, it says so and skips it, like the Go part without go: the daemon
+serves one off-by-default plugin and never stops an install.
+`HASEEN_REQUIRE_CARGO=1` makes that an error. Its
+one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
+`rust` and runs its 49 unit tests (`tests/test-wootingd.sh`).
+
+- **One owner.** Only one process may hold a Wooting keyboard's vendor
+  command interface (HID usage page 0xFF55; 0x1337 on standard firmware).
+  wootingd is that process; everything else asks it over
+  `$WOOTINGD_SOCKET`, else `$XDG_RUNTIME_DIR/wootingd.sock`, one verb line in
+  and one JSON line back (`share/haseen/lib/wooting.sh`). It refuses to start
+  beside a live socket.
+- **Device-gated.** `haseen setup wooting on` installs
+  `/etc/udev/rules.d/70-wootingd.rules` (`share/haseen/default/udev/`) and
+  `~/.config/systemd/user/wootingd.service` with `ExecStart` set to the
+  installed daemon (`share/haseen/default/systemd/`). The rule tags the
+  keyboard (vendor 31e3) `uaccess` and `systemd` and pulls the unit in with
+  `SYSTEMD_USER_WANTS`; the unit `BindsTo=` the keyboard's device unit and is
+  never enabled. So wootingd runs only while a Wooting is attached, reads the
+  active profile every 1.5 s (one HID round trip) and the profile list every
+  30 s while it runs, and removes its socket on SIGTERM.
+- **Coexistence.** The owner's t1nk33r.wooting plugin installs the same two
+  names. haseen keeps them and takes them over: one rule wants one unit name,
+  the name resolves to one file, and the user's unit directory outranks the
+  system ones, so the keyboard starts one daemon. `on` saves the plugin's
+  copies to `~/.local/state/haseen/wooting/replaced-<time>/` first, removes
+  its old always-on `default.target.wants` link, and restarts the one unit;
+  it refuses a file of either name that is neither haseen's nor the
+  plugin's. `off` removes only haseen's copies.
+- **The shell side.** `haseen.wooting` (off by default) has no HID code and
+  no timer but a bounded 2 s connect retry: it watches the socket file
+  through `FileView` (inotify), so with no keyboard it takes no room and does
+  nothing. The panel lists the stored profiles; its keyboard drawing opens
+  the analog stream (at most 60 frames a second, coalesced by the daemon)
+  only while it is shown.
+- **Commands.** `haseen wooting` (status, get, list, set, analog, fn) and
+  `haseen wooting doctor` use exit codes beyond §4's: 3 daemon not
+  reachable, 4 no keyboard, 5 dependency missing.
 
 ## 6. Resource rules (enforced in review)
 

@@ -1,0 +1,22 @@
+[package]
+name = "wootingd"
+version = "0.1.0"
+edition = "2021"
+description = "Sole owner of the Wooting vendor HID command interface; serves line-delimited JSON over a unix socket"
+license = "MIT"
+
+# Deliberately dependency-light: the entire protocol is one HIDIOCSFEATURE
+# ioctl plus read(2), and the IPC is std's UnixListener. No Wooting SDK crate is
+# linked -- wooting-rgb-sdk-bin is orphaned and out of date.
+[dependencies]
+parking_lot = "0.12"
+
+[[bin]]
+name = "wootingd"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true

@@ -14,3 +14,12 @@ e101d4c	salemsayed/omaprayers v2.5.0, plan 026
 780cc23	waydots commit that retired the waybar config (clock-moon.sh), plan 048
 e6ef714	t1nk333r/nvim commit haseen.nvim is pinned to, plan 065
 29d07b1a8f474c77bf02aece948373f40abed105	bjarneo/aether main, read for plan 072 (wallhaven defaults)
+184f6fabf7f9b54c9bd48870cfd64596f086cfc7	t1nk333r/haseen-wooting, the t1nk33r.wooting tree ported by plan 099
+184f6fa	short form of the plan 099 source commit
+2a3f69916c4ffad2001ecde171e76070cf982cf3	WootingKb/wooting-rgb-sdk, wootingd's citation pin (plan 099)
+451f40dc056e0edefccdaba7807a72b694520e92	WootingKb/wooting-rgb-sdk main at the time of plan 099's check
+be35a629bd79967012da4dcb731fa9e5a6d3c132	WootingKb/wooting-analog-sdk develop, wootingd's citation pin (plan 099)
+de754a6b36148a9f54074a060b62070146e7d57b	ShayBox/Wooting-Profile-Switcher master, wootingd's citation pin (plan 099)
+8101eaad68a9ca3a4d162683d7e53b7827374476	ShayBox/Wooting-Profile-Switcher, the earlier commit with the same cited lines (plan 099)
+47e20f287a204d610d6adc3c340cec28c29498a4	ApeironTsuka/wooting-sdk master, wootingd's citation pin (plan 099)
+247a784869e30bb6cb89406fa9726db63f899ebf	clemenscodes/wootswitch main, read for facts only by plan 099
