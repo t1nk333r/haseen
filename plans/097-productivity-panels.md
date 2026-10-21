@@ -39,7 +39,10 @@ slots and setting names they use; no value from it is in this repository.
 
 ## Change
 
-### haseen.todoist (`4747ed1`)
+The branch's commits landed squashed as `f9d6959` (#49); its branch
+commits are not cited, because they leave the repository with the branch.
+
+### haseen.todoist
 
 `share/haseen/shell/plugins/haseen.todoist/`: kinds `service`, `bar-widget`,
 `panel`, role `todoist`.
@@ -60,7 +63,7 @@ slots and setting names they use; no value from it is in this repository.
 - Polling: every 20 min while the panel is closed, every 2 min while it is
   open (`// haseen:sample`, architecture §6).
 
-### haseen.omarr (`48ebf7a`, `28f7bf0`)
+### haseen.omarr
 
 `share/haseen/shell/plugins/haseen.omarr/`: kinds `service`, `bar-widget`,
 `panel`, role `omarr`.
@@ -75,7 +78,7 @@ slots and setting names they use; no value from it is in this repository.
   (`setPanelOpen`) for the faster poll and art fetches.
 - Download clients are polled every 2 s only while one reports an active
   download or the panel is open; upstream polled them every 2 s always.
-- The regular poll counts fixed 5 s ticks towards `pollSeconds` (`28f7bf0`):
+- The regular poll counts fixed 5 s ticks towards `pollSeconds`:
   the timer rule in `tests/test-surfaces.sh` reads only a literal interval,
   so a cadence that is not a multiple of 5 rounds up.
 
@@ -106,7 +109,7 @@ slots and setting names they use; no value from it is in this repository.
 
 Each plugin's `UPSTREAM.md` lists every change and drop in detail.
 
-### Migration (`26d35b8`)
+### Migration
 
 `share/haseen/migrations/1791560200-adopt-todoist-omarr.sh` renames
 `t1nk33r.todoist` → `haseen.todoist` and `t1nk33r.omarr` → `haseen.omarr`:
@@ -154,7 +157,7 @@ and never touches the old plugin or state directories. Upstream ids
   failures:
   - `tests/test-surfaces.sh`, "no Timer under 2000 ms except marked
     single-shot UI timeouts": omARR's poll timer had a computed interval and
-    its placeholder delay lacked `repeat: false`. Fixed in `28f7bf0`;
+    its placeholder delay lacked `repeat: false`. Fixed before merge;
     `tests/test-surfaces.sh` 89/89, `tests/test-omarr.sh` 34/34 after it.
   - `tests/test-vapt-net.sh`, "foreground wrapper signals leave no helper
     endpoint behind": passes alone on the same tree (`tests/test-surfaces.sh`,
@@ -162,10 +165,71 @@ and never touches the old plugin or state directories. Upstream ids
     618/618); this plan touches nothing it covers.
 - The omARR fixture credential in `tests/test-omarr.sh` is named `FIXTURE`,
   not `KEY`: gitleaks' generic-api-key rule flagged the first name, and the
-  `secrets` gate scans all history, so it was renamed inside `48ebf7a`.
+  `secrets` gate scans all history, so it was renamed in the commit that added it.
 - `tools/lint.sh` and `tools/check-docs.sh` pass.
 
-## Rejected
+## Follow-up 2026-10-21: no request before the keys are read
+
+**Problem.** On #50's CI (run 39511424739, Arch container, merge of main
+`f9d6959`), `tests/test-omarr.sh` failed "engine: the key travels in the
+private header file". The logged curl calls show all four Sonarr requests
+(`/api/v3/system/status`, `queue`, `calendar`, `history`) without any
+`-H @…/header.txt`, while SABnzbd's form posts did use `body.txt`. A header
+that could not be written does not do this: on a failed private write the
+writer calls `handleFailure()` and drops the request
+(`share/haseen/shell/plugins/haseen.omarr/Service.qml`, `secretProc`
+`onExited`). The requests were built without a key.
+
+**Cause.** A race in this port, not in the test library or the atomic writer.
+`credsFile`'s path is bound to `dirsReady`, because the state directory is
+chosen by a probe; the handler that set `dirsReady` called `forcePoll()` in
+the same turn, assuming the bound FileView loads synchronously. It does not: a
+probe shell that sets a FileView's path (with `blockLoading: true`) and reads
+the `onLoaded` result at once and one turn later saw "none" both times, three
+runs out of three (Quickshell 0.3, 2026-10-21). With logging in `forcePoll`
+and `enqueueArr`, `tests/test-omarr.sh` on this laptop printed `forcePoll
+services=2 creds=0`, `enqueueArr key=no`, then `creds loaded`, then a second
+poll with `key=yes`. So the first poll goes out without keys everywhere. The
+laptop's run still passed because a keyed poll followed before the probe
+finished; in CI the probe finished first. The owner's fork set the path at
+construction, so its keys were loaded long before the first poll
+(`~/.config/omarchy/plugins/t1nk33r.omarr/Service.qml`, `credsFile`; read
+only). `seen.json` had the same race: a late load overwrote the ids the first
+poll had seeded.
+
+**Change.** `Service.qml` keeps `credsState` (`""` until `credentials.json`
+answers, then `ok`, or `error`) and `seenLoaded`. `ready` requires both plus
+`dirsReady`, and `pump()` and the three poll timers wait for it.
+`onReadyChanged` starts the first poll. A missing credentials file is `ok`
+(no keys yet); any other read error, or text that is not a JSON object
+(`Model.credentialsReadable`), is `error`: nothing is polled and the service
+warns once, until a reload reads it. A service with no stored key is still
+polled, as upstream, and shows the server's 401.
+
+**Evidence.**
+- `tests/test-omarr.sh` 42/42 (34 before). New checks: every Sonarr request
+  carries the header file; a corrupt `credentials.json` holds polling for 2 s
+  with an empty queue and the warning; repaired in place, polling resumes with
+  the header and the key in no argv. `tests/Model.test.js` checks
+  `credentialsReadable`.
+- With the old `Service.qml` and the new test: 36/42, failing "every Sonarr
+  request carries the header" and the five broken-credentials checks.
+- `tests/test-omarr.sh`, `tests/test-surfaces.sh` and `tests/test-shell.sh`
+  together, twice: 389/389 each time; `tools/lint.sh` and
+  `tools/check-docs.sh` pass.
+- The CI order was not reproduced in an `archlinux:latest` container; the
+  logging above shows the keyless first poll directly, and the new check
+  fails on the old code here.
+
+**Rejected.**
+- *Read the file at the first poll* (`credsFile.text()` blocks with
+  `blockLoading`): it still reads an unreadable or corrupt file as "no keys"
+  and sends the requests bare.
+- *Skip every \*arr request without a key*: a service with no key stored is the
+  owner's configuration, not a failure; its 401 is what tells them so, and no
+  secret is involved.
+- *Bind the path at construction, as the fork did*: the state directory is not
+  known until the probe has chosen it.
 
 - **Keep Todoist's preferences in `shell.json`.** The token and preferences
   share upstream's private file; splitting them would mean two sources and a

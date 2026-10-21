@@ -64,6 +64,13 @@ Scope {
     property bool badgeUrgent: false
     property bool seeding: true
     property bool dirsReady: false
+    // credentials.json: "" until its first read answers, then "ok" (read, or
+    // no file yet) or "error" (unreadable or not JSON). Requests wait for
+    // "ok" and for seen.json: one built before the keys were read, or after a
+    // read failed, would go out without its key (plan 097).
+    property string credsState: ""
+    property bool seenLoaded: false
+    readonly property bool ready: dirsReady && credsState === "ok" && seenLoaded
     property var writeQueue: []
     property string pendingWriteText: ""
     property string pendingWriteThen: ""
@@ -253,6 +260,19 @@ Scope {
         root.openUrl(Model.itemOpenUrl(snap, item));
     }
 
+    // An unreadable credentials file stops polling instead of sending the
+    // requests without their keys; a readable one starts it again.
+    function setCredsState(state, why) {
+        if (state === "error" && root.credsState !== "error")
+            console.warn("haseen.omarr: cannot read", root.credsPath, "-", why, "- not polling until it can be read");
+        root.credsState = state;
+    }
+
+    onReadyChanged: {
+        if (root.ready)
+            root.forcePoll();
+    }
+
     function cred(id) {
         return Model.credentialFor(root.credentials, id);
     }
@@ -263,7 +283,7 @@ Scope {
     }
 
     function pump() {
-        if (!root.dirsReady || apiProc.running || secretProc.running || root.writeQueue.length)
+        if (!root.ready || apiProc.running || secretProc.running || root.writeQueue.length)
             return;
         if (!root.reqQueue.length) {
             root.refreshDerived();
@@ -1224,14 +1244,21 @@ Scope {
     FileView {
         id: credsFile
 
-        // Read synchronously when the path appears, so the first poll (started
-        // in the same handler that sets dirsReady) already has the keys.
+        // Loaded after its path appears, not in the same turn: nothing polls
+        // until it answered (credsState).
         path: root.dirsReady ? root.credsPath : ""
         blockLoading: true
         watchChanges: true
         printErrors: false
-        onLoaded: root.credentials = Model.parseCredentials(text())
-        onLoadFailed: root.credentials = ({})
+        onLoaded: {
+            const raw = text();
+            root.credentials = Model.parseCredentials(raw);
+            root.setCredsState(Model.credentialsReadable(raw) ? "ok" : "error", "is not a JSON object");
+        }
+        onLoadFailed: error => {
+            root.credentials = ({});
+            root.setCredsState(error === FileViewError.FileNotFound ? "ok" : "error", FileViewError.toString(error));
+        }
         onFileChanged: reload()
     }
 
@@ -1242,8 +1269,14 @@ Scope {
         blockLoading: true
         watchChanges: false
         printErrors: false
-        onLoaded: root.seenIds = Model.parseSeenFile(text())
-        onLoadFailed: root.seenIds = []
+        onLoaded: {
+            root.seenIds = Model.parseSeenFile(text());
+            root.seenLoaded = true;
+        }
+        onLoadFailed: {
+            root.seenIds = [];
+            root.seenLoaded = true;
+        }
     }
 
     // Which state directory this HOME uses (Model.chooseStateDir), then the
@@ -1295,7 +1328,6 @@ Scope {
             root.artReady = ready;
             root.dirsReady = true;
             root.rebuildSnapshots();
-            root.forcePoll();
         }
     }
 
@@ -1387,7 +1419,7 @@ Scope {
     // haseen:sample
     Timer {
         interval: 5000
-        running: root.dirsReady
+        running: root.ready
         repeat: true
         onTriggered: {
             root.pollElapsed += 5;
@@ -1402,7 +1434,7 @@ Scope {
     // haseen:sample
     Timer {
         interval: 8000
-        running: root.panelOpen && root.dirsReady
+        running: root.panelOpen && root.ready
         repeat: true
         onTriggered: {
             if (!root.reqQueue.length && !apiProc.running)
@@ -1415,7 +1447,7 @@ Scope {
     // haseen:sample
     Timer {
         interval: 2000
-        running: root.dirsReady && (root.downloadsActive || root.panelOpen)
+        running: root.ready && (root.downloadsActive || root.panelOpen)
         repeat: true
         onTriggered: root.forceDownloaderPoll()
     }
@@ -1445,6 +1477,7 @@ Scope {
                 stateDir: root.stateDir,
                 cacheDir: root.cacheDir,
                 dirsReady: root.dirsReady,
+                credsState: root.credsState,
                 configured: root.configured,
                 services: root.services.length,
                 badgeCount: root.badgeCount,

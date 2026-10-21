@@ -467,6 +467,20 @@ function parseCredentials(raw) {
   }
 }
 
+// Whether a credentials file's text can be trusted: empty (no keys yet) or
+// a JSON object. Anything else means the keys are unknown, not absent.
+function credentialsReadable(raw) {
+  var text = String(raw || "").trim()
+  if (!text)
+    return true
+  try {
+    var data = JSON.parse(text)
+    return !!data && typeof data === "object" && !Array.isArray(data)
+  } catch (e) {
+    return false
+  }
+}
+
 function serializeCredentials(obj) {
   var data = obj && typeof obj === "object" ? obj : {}
   return JSON.stringify(data, null, 2) + "\n"
@@ -2323,6 +2337,7 @@ if (typeof module !== "undefined" && module.exports) {
     groupedCalendar: groupedCalendar,
     applyServiceMeta: applyServiceMeta,
     parseCredentials: parseCredentials,
+    credentialsReadable: credentialsReadable,
     serializeCredentials: serializeCredentials,
     credentialFor: credentialFor,
     setCredential: setCredential,

@@ -214,6 +214,84 @@ EOF
     assert_not_contains "engine: the API key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
     assert_not_contains "engine: nor shell.json" "$(cat "$XDG_CONFIG_HOME/haseen/shell.json")" "$FIXTURE"
     assert_contains "engine: the key travels in the private header file" "$(cat "$LOG")" "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt"
+    # The first poll waits for credentials.json: none of Sonarr's requests
+    # goes out without its key (CI once saw all four of them bare).
+    assert_eq "engine: every Sonarr request carries the header" "" "$(grep ':8989/' "$LOG" | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
     assert_eq "engine: the cache directory is private" "700" "$(stat -c %a "$XDG_CACHE_HOME/haseen/omarr")"
     assert_eq "engine: no QML warnings" "" "$(grep -E 'ReferenceError|TypeError|is not defined|Cannot read property|Unable to assign|Binding loop|haseen.omarr/.*(error|warning)' <<<"$OUTPUT" || true)"
+
+    # Fail closed: a credentials file that cannot be read stops polling
+    # instead of sending the requests without their keys; repairing it in
+    # place starts polling again, with the header.
+    printf 'not json\n' >"$legacy/credentials.json"
+    : >"$LOG"
+    # Run by the probe to repair the file in place (the key stays in env).
+    repair="$SANDBOX/repair-creds.sh"
+    printf '%s\n' "printf '{\"svc-1\":{\"apiKey\":\"%s\"}}\\n' \"\$FIXTURE\" >'$legacy/credentials.json'" >"$repair"
+    harness2="$SANDBOX/shell-creds"
+    mkdir -p "$harness2"
+    for module in Haseen Compat Ui Commons plugins; do
+        ln -s "$harness/$module" "$harness2/$module"
+    done
+    cat >"$harness2/shell.qml" <<EOF
+import QtQuick
+import Quickshell
+import qs.Haseen
+
+ShellRoot {
+    id: probe
+
+    property var svc: null
+    property int step: 0
+    property int ticks: 0
+    property int held: 0
+    property var seen: ({})
+
+    // haseen:ui-timeout
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            if (++probe.ticks > 300) {
+                console.log("RESULT " + JSON.stringify({ error: "timeout at step " + probe.step, seen: probe.seen }));
+                Qt.quit();
+                return;
+            }
+            if (!probe.svc) {
+                if (!Plugins.registry["haseen.omarr"])
+                    return;
+                const c = Qt.createComponent("file://$P/Service.qml");
+                probe.svc = c.createObject(probe, { pluginId: "haseen.omarr", settings: Qt.binding(() => Plugins.settingsFor("haseen.omarr")) });
+                return;
+            }
+            const s = probe.svc;
+            if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 2) {
+                // Hold 2 s: long enough for the poll that would have run.
+                if (++probe.held < 20)
+                    return;
+                probe.seen.broken = { credsState: s.credsState, ready: s.ready, queued: s.reqQueue.length };
+                Quickshell.execDetached(["sh", "$repair"]);
+                probe.step = 1;
+            } else if (probe.step === 1 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up") {
+                probe.seen.repaired = { credsState: s.credsState, sonarr: s.snapshots[0].statusText };
+                console.log("RESULT " + JSON.stringify(probe.seen));
+                Qt.quit();
+            }
+        }
+    }
+}
+EOF
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness2"
+    result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n1)"
+    [[ -n $result ]] || _fail "omarr credentials engine produced no result" "$OUTPUT"
+    assert_eq "engine: no error with broken credentials" "null" "$(r .error)"
+    assert_eq "engine: unreadable credentials stop polling" "error|false|0" "$(r '[.broken.credsState, .broken.ready, .broken.queued] | map(tostring) | join("|")')"
+    assert_contains "engine: and say why" "$OUTPUT" "haseen.omarr: cannot read $legacy/credentials.json - is not a JSON object - not polling until it can be read"
+    assert_eq "engine: repaired in place, polling resumes" "ok|Sonarr 4.0.9" "$(r '[.repaired.credsState, .repaired.sonarr] | join("|")')"
+    assert_eq "engine: no request went out while the keys were unknown, each later one with the header" "" \
+        "$(grep ':8989/' "$LOG" | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
+    assert_contains "engine: the repaired key was used" "$(cat "$LOG")" ":8989/api/v3/system/status"
+    assert_not_contains "engine: the repaired key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
 fi
