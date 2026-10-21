@@ -115,7 +115,7 @@ omarchy_installed_copy() {
 # Omarchy's copy, refuse with WAY and WHY, as omarchy_refuse does (plan 102).
 omarchy_passthrough() {
     local way="$1" why="$2" copy a ended=false
-    local -a args=()
+    local -a passed=()
     shift 2
     for a in "$@"; do
         if ! $ended && [[ $a == --dry-run ]]; then
@@ -123,14 +123,14 @@ omarchy_passthrough() {
             continue
         fi
         [[ $a == -- ]] && ended=true
-        args+=("$a")
+        passed+=("$a")
     done
     if copy="$(omarchy_installed_copy "$OMARCHY_NAME")"; then
         if $DRY_RUN; then
-            echo "DRYRUN: $copy ${args[*]}"
+            echo "DRYRUN: $copy ${passed[*]}"
             exit 0
         fi
-        exec "$copy" "${args[@]}"
+        exec "$copy" "${passed[@]}"
     fi
     omarchy_refuse "$way" "$why"
 }
