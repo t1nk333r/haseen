@@ -23,7 +23,13 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push to a pull request cancels its older run. A running suite on
+  # main is never cancelled: each merge's full run is the safety net for pull
+  # requests that ran only their affected tests (plan 100). GitHub keeps one
+  # pending run per group and cancels an older pending one, so of several
+  # merges queued behind a running suite the newest still gets a full run,
+  # and it carries every earlier merge.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
@@ -45,6 +51,13 @@ jobs:
           read -ra pkgs <<<"$ARCH_PACKAGES"
           pacman -Syu --noconfirm --needed "${pkgs[@]}"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Trust the checkout
+        # actions/checkout trusts the workspace only in its own step's
+        # temporary git config. The steps after it run as root on a checkout
+        # another uid owns, and git refuses that ("dubious ownership", PR #56's
+        # run 39647712605); tools/lint.sh runs git through
+        # tools/affected-tests.sh --check.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Versions
         run: |
           bash --version | head -1
@@ -71,6 +84,8 @@ jobs:
           # The pull request's merge base must be in the clone (plan 100).
           fetch-depth: 0
       - name: Unprivileged user
+        # The tests, and the git in tests/run.sh --affected, run as ci, who owns
+        # the checkout after this: git needs no safe.directory here.
         run: |
           useradd -m ci
           chown -R ci:ci "$GITHUB_WORKSPACE"

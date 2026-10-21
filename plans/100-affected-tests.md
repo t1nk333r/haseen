@@ -96,6 +96,10 @@ does not list itself or the global set.
   `git diff --name-only --no-renames HEAD` (staged and unstaged) and
   `git ls-files --others --exclude-standard` (untracked, not ignored): the
   local mode for a pre-commit run. CI passes `--committed`.
+- Paths are read NUL-separated (`-z`). A name with a control character (a
+  tab, a newline) cannot travel in the selector's own line and tab formats,
+  so it selects every test and is never matched against a glob (review round
+  1 below).
 - Each changed path, in order:
   1. matches GLOBAL: every test (`all`);
   2. is a `tests/test-*.sh` that exists: that test;
@@ -148,7 +152,14 @@ nothing.
 - a covers glob, or a GLOBAL or EXEMPT entry, that matches no file (a stale
   declaration);
 - a malformed glob;
-- a test file with no covers line.
+- a test file with no covers line;
+- a file name with a control character.
+
+Both modes first make sure git reads this checkout as its own repository:
+when git refuses it (a checkout another user owns, without `safe.directory`)
+or resolves a parent repository, or when it lists no file at all, the
+selector stops with status 2 and says so. It never answers with an empty,
+passing result (review round 1 below).
 
 It runs in `tools/lint.sh`, not `tools/check-docs.sh`: it checks the tests'
 own metadata against the tree, which is static code checking, and lint already
@@ -180,7 +191,24 @@ protection requires `lint`, `test`, `docs` and `secrets`):
 - on `push` (to `main`) and `workflow_dispatch` it runs `tests/run.sh`, the
   full suite, as before;
 - `HASEEN_REQUIRE_ENGINE=1`, the unprivileged `ci` user, the container and
-  the packages are unchanged.
+  the packages are unchanged. The tests and their git run as `ci`, who owns
+  the checkout after the job's `chown`, so this job needs no
+  `safe.directory`.
+
+Two more workflow changes came from review round 1:
+
+- the `lint` job trusts its checkout
+  (`git config --global --add safe.directory "$GITHUB_WORKSPACE"` right
+  after `actions/checkout`): its steps run as root in the container on a
+  checkout another uid owns, and `--check` is the first git command lint
+  runs;
+- `concurrency` cancels an in-progress run only for pull requests
+  (`cancel-in-progress: ${{ github.event_name == 'pull_request' }}`). A
+  running suite on `main` always finishes. GitHub keeps one pending run per
+  concurrency group and cancels an older pending one when a newer run
+  arrives, so of several merges queued behind a running suite only the newest
+  waits, and it runs the full suite on a tree that contains every earlier
+  merge: the latest `main` always gets a full run.
 
 The workflow triggers on every `pull_request` without path filters, so the
 job always runs and always reports; a docs-only PR selects nothing, and the
@@ -262,7 +290,7 @@ and `tests/run.sh` with no arguments still runs everything.
 
 ## Evidence
 
-- `tests/test-affected.sh` (57 checks), against a scratch repository it builds
+- `tests/test-affected.sh` (75 checks), against a scratch repository it builds
   with copies of `tests/run.sh`, `tests/lib.sh` and the selector and the
   fixture `tests/fixtures/affected/`: `**` at depth and zero depth, `*` within
   a directory, `{a,b}`, several covers lines in one file, a rename (both
@@ -273,11 +301,13 @@ and `tests/run.sh` with no arguments still runs everything.
   base, `--check` on an uncovered file, a stale glob, a missing header and a
   malformed glob, a marker after the first command, and `tests/run.sh
   --affected` with an empty selection, one file, `all` and a failing
-  selector, with `tests/run.sh` and `tests/run.sh FILE` unchanged. Three
-  mutations of the selector each fail it: `**/` matching exactly one
-  directory (53/57), covers read past the first command (`--check` then
-  fails on the scratch tree and every later check with it), and git's rename
-  detection in place of `--no-renames` (56/57, the rename case).
+  selector, with `tests/run.sh` and `tests/run.sh FILE` unchanged; since
+  review round 1 also tab and newline names and a git that cannot read the
+  checkout (below). Three mutations of the selector each failed its first 57
+  checks: `**/` matching exactly one directory (53/57), covers read past the
+  first command (`--check` then fails on the scratch tree and every later
+  check with it), and git's rename detection in place of `--no-renames`
+  (56/57, the rename case).
 - `tools/affected-tests.sh --check` on this tree: `affected-tests: 2472 files,
   154 tests, 1777 covers globs: every file is covered, global or exempt`.
 - What a change to one path selects now (the selector on that path alone):
@@ -384,13 +414,13 @@ and `tests/run.sh` with no arguments still runs everything.
   `test-omarchy-commands.sh` installs the tree into a prefix. Their covers name
   what the copy is used for, not every file copied; a change that broke only
   the copying itself would show on `main`.
-- **`main` runs can be cancelled by a newer merge.** The workflow's
-  `concurrency` group cancels an in-progress run when a newer push arrives
-  (`cancel-in-progress: true`, unchanged here), so of two quick merges only
-  the second's full run completes. It includes the first merge's changes, so a
-  miss still turns `main` red, one run later. Not changed here: the brief kept
-  the rest of the workflow as it was; queueing `main` runs instead
-  (`cancel-in-progress` only for pull requests) is an option for the owner.
+- **Not every merge gets a run of its own.** A running suite on `main` is
+  no longer cancelled, but a merge that queues behind it is replaced by a
+  newer one, as above. The newest run covers every queued merge, so a miss
+  still turns `main` red; the commit that caused it is then one of those
+  merges, not necessarily the one the red run names.
+- **A file name with a tab, a newline or another control character** selects
+  every test on a pull request and fails `--check` (so lint) until renamed.
 - **The local mode reads the working tree.** `tests/run.sh --affected` without
   `--committed` adds staged, unstaged and untracked files, so scratch files in
   the checkout can widen the selection (an unclaimed one selects `all`); CI
@@ -398,3 +428,66 @@ and `tests/run.sh` with no arguments still runs everything.
 - **The base must be fetched.** Locally the default base is `origin/main` as
   last fetched: a stale `origin/main` widens the selection to everything
   merged since, never narrows it.
+
+## Review round 1 (2026-10-21, at `d107e3b`)
+
+The reviewer's findings and CI's first run of this plan's pull request, and
+what changed:
+
+1. **CI `lint` failed: git refused the checkout.** Run 39647712605, job
+   119387579445: `fatal: detected dubious ownership in repository at
+   '/__w/haseen/haseen'` after `go: 41 files`. `actions/checkout` v7 adds
+   `safe.directory` only to a temporary git config for its own step; the
+   later steps run as root in the `archlinux:latest` container on a checkout
+   another uid owns, and `tools/affected-tests.sh --check` is the first git
+   command `tools/lint.sh` runs. Fix: a "Trust the checkout" step in `lint`
+   right after the checkout. `test` runs its git as `ci` after `chown -R`, and
+   `docs` and `secrets` are not container jobs, so none of them needs it.
+   Reproduced in `archlinux:latest` with the checkout owned by uid 1001: as
+   root, `--check` exits 2 without the step and passes with it; as `ci` after
+   the `chown`, `--check` and the selection pass without it.
+
+   Guard: the selector now checks `git rev-parse --show-toplevel` first and
+   stops with status 2 and its own message ("git cannot read this
+   repository", or "git's repository is …, not this checkout") instead of
+   leaving git's text to explain it; `git ls-files` and `git diff` write to
+   files whose status is checked, and an empty file list stops `--check`
+   ("git listed no files"). `tests/test-affected.sh` covers all three: git's
+   own `GIT_TEST_ASSUME_DIFFERENT_OWNER` knob stands in for the other owner
+   (the test first asserts git itself refuses), a copy of the selector
+   outside its checkout, and a repository whose files are all ignored.
+   `tests/run.sh --affected` then fails with status 2 and runs nothing.
+2. **Tabs in file names.** The classification read tab-separated fields, so
+   a root file `lib<TAB>E<TAB>x.c` was read as `lib`, exempt, and selected
+   nothing; a tab-named file under `bin/` did the same. Newlines could not
+   shift fields but split a name in two (`docs/a<NL>README.md` became two
+   exempt halves). Now every path is read NUL-separated; a name with any
+   control character is set aside before any format that cannot carry it,
+   selects every test with the reason, printed with `%q`, and fails
+   `--check`. Four new cases in `tests/test-affected.sh` (root tab name,
+   `bin/` tab name, newline name, `--check` on a tab name); against the
+   selector at `d107e3b` they and the guard cases fail (64/75), now 75/75.
+3. **`main`'s full run must not be cancelled.** The owner chose the full
+   suite after each merge, but `cancel-in-progress: true` cancels a running
+   suite on `main` when the next run in its group starts: run 39613318574
+   for `ed84608` was cancelled at 14:07 UTC, five minutes in, when run
+   39613979814 started. Cancelling now applies to pull requests only (CI,
+   above; Limitations).
+4. **Libraries a covered command sources.** A static scan of every covered
+   `bin/haseen-*` for `share/haseen/lib/*` it sources found undeclared
+   libraries in four tests: `test-aipanel.sh` (21 libraries, via
+   `bin/haseen-*`), `test-menu.sh` (15, via `bin/haseen-*`),
+   `test-omarchy-commands.sh` (5, via `bin/haseen-*`) and
+   `test-bar-basics.sh` (3, via `bin/haseen-update`). None is exercised, so
+   none was added: each test ran in a copy whose flagged libraries print a
+   marker and exit 99 at their first line (Lua: `error()`), and each passed
+   unchanged (aipanel 77/77, menu 306/306, omarchy-commands 171/171,
+   bar-basics 138/138); poisoning a library they do declare fails them
+   (menu with `branding.sh` 285/306, omarchy-commands with `layers.sh`
+   155/171). The `bin/haseen-*` globs are existence checks (every command
+   the skill, the menu or a shim names must exist), and `bar-basics` only
+   asserts the updates panel launches `haseen-update` (`haseen update check`
+   runs `bin/haseen-update-check`). In their traced runs none of the flagged
+   commands opened, except in `test-omarchy-commands.sh`, where the opens
+   come from its tree install. No `--check` warning was added: the same scan
+   flags 143 such edges in those four tests, every one a false alarm.

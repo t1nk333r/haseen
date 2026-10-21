@@ -11,12 +11,17 @@
 #   tools/affected-tests.sh --check
 #       Fails, listing them, on a file that is neither global, exempt nor
 #       covered by a test, on a covers glob or a GLOBAL/EXEMPT entry that matches
-#       no file, on a malformed glob and on a test without a covers line.
+#       no file, on a malformed glob, on a test without a covers line and on a
+#       file name with a control character.
+# Both stop with status 2 when git cannot read this checkout (another user's,
+# without safe.directory) or lists no file: never an empty, passing answer.
 #
 # Each tests/test-*.sh names what it exercises in its leading comment block
 # (the lines before its first command), one or more lines of
 #   # haseen:covers GLOB [GLOB...]
 # A changed path selects, in this order:
+#   0. every test, if its name has a control character (a tab, a newline):
+#      the formats below cannot carry it, so it is never matched, nor skipped;
 #   1. every test, if it matches GLOBAL;
 #   2. itself, if it is a tests/test-*.sh;
 #   3. every test whose covers match it;
@@ -68,7 +73,7 @@ EXEMPT=(
     'tools/vptr/**'              # developer tool: a virtual pointer for nest proofs
 )
 
-usage() { sed -n '2,15s/^# \{0,1\}//p' "$0"; }
+usage() { sed -n '2,18s/^# \{0,1\}//p' "$0"; }
 
 # glob_regex GLOB — sets REGEX to the anchored POSIX ERE for GLOB; fails on
 # bad syntax. (A variable, not output: no subshell per glob.)
@@ -177,6 +182,40 @@ match() {
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
 
+# require_git — git must read this checkout as its own repository. It refuses
+# one another user owns ("dubious ownership", until safe.directory names it),
+# and a copy outside any checkout would be read as its parent's. Either way no
+# file list can be trusted, so stop instead of selecting or checking nothing.
+require_git() {
+    local top err
+    if ! top="$(git rev-parse --show-toplevel 2>"$tmp/git.err")"; then
+        err="$(<"$tmp/git.err")"
+        echo "affected-tests: git cannot read this repository, so nothing can be selected or checked:" >&2
+        printf '  %s\n' "${err//$'\n'/$'\n'  }" >&2
+        echo "  (a checkout another user owns needs: git config --global --add safe.directory \"$PWD\")" >&2
+        exit 2
+    fi
+    if [[ $top != "$(pwd -P)" ]]; then
+        echo "affected-tests: git's repository is $top, not this checkout ($(pwd -P)); refusing to guess" >&2
+        exit 2
+    fi
+}
+
+# nul_paths FILE — FILE's NUL-separated paths as lines. A name with a control
+# character (a tab or a newline among them) cannot travel in the line and
+# tab formats below, so it goes to $tmp/unsafe instead, printed with %q.
+nul_paths() {
+    local f
+    while IFS= read -r -d '' f; do
+        [[ -n $f ]] || continue
+        if [[ $f == *[[:cntrl:]]* ]]; then
+            printf '%q\n' "$f" >>"$tmp/unsafe"
+        else
+            printf '%s\n' "$f"
+        fi
+    done <"$1"
+}
+
 check() {
     local fail=0 f
     if ! rules "$tmp/rules" >"$tmp/bad"; then
@@ -185,9 +224,22 @@ check() {
         fail=1
     fi
     # Every file a commit would carry: tracked and new, minus deleted ones.
-    while IFS= read -r -d '' f; do
+    require_git
+    git ls-files -z --cached --others --exclude-standard >"$tmp/ls" ||
+        { echo "affected-tests: git ls-files failed" >&2; return 2; }
+    : >"$tmp/unsafe"
+    nul_paths "$tmp/ls" | while IFS= read -r f; do
         [[ -e $f || -L $f ]] && printf '%s\n' "$f"
-    done < <(git ls-files -z --cached --others --exclude-standard) | sort -u >"$tmp/paths"
+    done | sort -u >"$tmp/paths"
+    if [[ ! -s $tmp/paths ]]; then
+        echo "affected-tests: git listed no files; an empty tree is not a covered one" >&2
+        return 2
+    fi
+    if [[ -s $tmp/unsafe ]]; then
+        echo "affected-tests: file names with a control character (tab, newline, ...) cannot be matched; rename them:" >&2
+        sed 's/^/  /' "$tmp/unsafe" >&2
+        fail=1
+    fi
     match "$tmp/paths" "$tmp/rules" >"$tmp/match"
 
     grep -E '^tests/test-[^/]*\.sh$' "$tmp/paths" | sort >"$tmp/tests"
@@ -222,17 +274,20 @@ check() {
 
 select_tests() {
     local committed=$1 quiet=$2 base=$3 mb f
+    require_git
     git rev-parse --verify --quiet "$base^{commit}" >/dev/null ||
         { echo "affected-tests: unknown base '$base' (fetch it, or name a commit)" >&2; return 2; }
     mb="$(git merge-base "$base" HEAD)" ||
         { echo "affected-tests: '$base' and HEAD share no history" >&2; return 2; }
-    {
-        git diff -z --name-only --no-renames "$mb" HEAD
-        if ((committed == 0)); then
-            git diff -z --name-only --no-renames HEAD
-            git ls-files -z --others --exclude-standard
-        fi
-    } | tr '\0' '\n' | sed '/^$/d' | sort -u >"$tmp/changed"
+    git diff -z --name-only --no-renames "$mb" HEAD >"$tmp/diff" ||
+        { echo "affected-tests: git diff $mb HEAD failed" >&2; return 2; }
+    if ((committed == 0)); then
+        { git diff -z --name-only --no-renames HEAD && git ls-files -z --others --exclude-standard; } \
+            >>"$tmp/diff" || { echo "affected-tests: reading the working tree failed" >&2; return 2; }
+    fi
+    : >"$tmp/unsafe"
+    nul_paths "$tmp/diff" | sort -u >"$tmp/changed"
+    sort -u -o "$tmp/unsafe" "$tmp/unsafe"
     rules "$tmp/rules" >"$tmp/bad" || {
         echo "affected-tests: malformed globs; run tools/affected-tests.sh --check" >&2
         cat "$tmp/bad" >&2
@@ -255,6 +310,10 @@ select_tests() {
 
     local -A selected=()
     local all=0 why=() t global exempt cov tests
+    while IFS= read -r f; do
+        all=1
+        why+=("$f: a control character in the name, which no glob can be matched against, every test")
+    done <"$tmp/unsafe"
     while IFS=$'\t' read -r f global exempt cov; do
         if [[ $global == G ]]; then
             all=1
@@ -280,7 +339,7 @@ select_tests() {
     if ((quiet == 0)); then
         {
             printf 'affected-tests: %s changed path(s) since %s (merge base of %s and HEAD)%s\n' \
-                "$(wc -l <"$tmp/changed")" "$(git rev-parse --short "$mb")" "$base" \
+                "$(($(wc -l <"$tmp/changed") + $(wc -l <"$tmp/unsafe")))" "$(git rev-parse --short "$mb")" "$base" \
                 "$( ((committed)) && echo ', commits only' || echo ', commits and working tree')"
             ((${#why[@]} == 0)) || printf '  %s\n' "${why[@]}"
         } >&2

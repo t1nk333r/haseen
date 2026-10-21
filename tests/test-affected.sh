@@ -187,3 +187,53 @@ assert_contains "naming a file still runs just that file" "$OUTPUT" "1/1 passed"
 capture env PATH="$GIT_PATH:$PATH" "$S/tests/run.sh"
 assert_contains "no argument still runs every file" "$OUTPUT" "3/3 passed"
 
+
+# --- names no glob can match: a tab or a newline selects every test --------------
+# The selector reads paths NUL-separated and its own formats are lines of tab-
+# separated fields; a name with a control character would split a field (a
+# root "lib<TAB>E<TAB>x.c" once read as "lib", exempt, and selected nothing).
+tab=$'\t'
+change put "lib${tab}E${tab}x.c" "x"
+assert_eq "a root name with tabs selects every test" "all" "$(picked main)"
+sel main
+assert_contains "and says why" "$OUTPUT" "\$'lib\\tE\\tx.c': a control character in the name"
+change put "bin/a${tab}b" "x"
+assert_eq "a tab-named command selects every test" "all" "$(picked main)"
+change put "docs/a"$'\n'"README.md" "x"
+assert_eq "a newline in a name selects every test, even between exempt halves" "all" "$(picked main)"
+change put "lib${tab}E${tab}x.c" "x"
+sel --check
+assert_status "--check refuses a tab-named file" 1 "$STATUS"
+assert_contains "and names it" "$OUTPUT" "  \$'lib\\tE\\tx.c'"
+
+# --- when git cannot read the checkout, nothing passes ------------------------------
+# Git refuses a checkout another user owns (CI's lint container, PR #56's run
+# 39647712605); its own test knob stands in for the other owner here.
+change put src/alpha/a.txt "a4"
+capture env PATH="$GIT_PATH" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 git -C "$S" status
+assert_status "git itself refuses a checkout another user owns" 128 "$STATUS"
+capture env PATH="$GIT_PATH" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 "$S/tools/affected-tests.sh" --check
+assert_status "--check stops" 2 "$STATUS"
+assert_contains "and says git cannot read the checkout" "$OUTPUT" "git cannot read this repository"
+assert_not_contains "and never reports it covered" "$OUTPUT" "every file is covered"
+capture env PATH="$GIT_PATH" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 "$S/tools/affected-tests.sh" main
+assert_status "the selection stops too" 2 "$STATUS"
+assert_eq "and selects nothing on stdout" "" "$(env PATH="$GIT_PATH" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 "$S/tools/affected-tests.sh" main 2>/dev/null)"
+capture env PATH="$GIT_PATH:$PATH" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 "$S/tests/run.sh" --affected main
+assert_status "tests/run.sh --affected fails with it" 2 "$STATUS"
+assert_not_contains "without running a test" "$OUTPUT" "passed"
+# A copy outside its own checkout would be read as whatever repository holds it.
+mkdir -p "$SANDBOX/loose/tools" "$SANDBOX/loose/tests"
+cp "$S/tools/affected-tests.sh" "$SANDBOX/loose/tools/"
+cp "$S/tests/test-alpha.sh" "$SANDBOX/loose/tests/"
+capture env PATH="$GIT_PATH" "$SANDBOX/loose/tools/affected-tests.sh" --check
+assert_status "a copy outside a checkout stops" 2 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "affected-tests: git"
+# A repository whose files git lists none of (all ignored) is not a covered one.
+mkdir -p "$SANDBOX/empty"
+cp -R "$SANDBOX/loose/." "$SANDBOX/empty/"
+printf '*\n' >"$SANDBOX/empty/.gitignore"
+env PATH="$GIT_PATH" git init -q "$SANDBOX/empty"
+capture env PATH="$GIT_PATH" "$SANDBOX/empty/tools/affected-tests.sh" --check
+assert_status "an empty file list stops --check" 2 "$STATUS"
+assert_contains "and says so" "$OUTPUT" "git listed no files"
