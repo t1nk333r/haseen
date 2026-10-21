@@ -147,7 +147,7 @@ root_trusted_exec() {
 # way): a file root sources from it can be neither replaced nor edited by
 # anyone else. Prints why not.
 root_trusted_dir() {
-    local dir real top="${HASEEN_SYSROOT%/}" rec name why entries=()
+    local dir real top="${HASEEN_SYSROOT%/}" rec name why dir_nodes=()
     for dir in "$@"; do
         real="$(root_trusted_resolve "$dir")" || {
             printf '%s\n' "$real"
@@ -157,8 +157,8 @@ root_trusted_dir() {
             echo "$real is not a directory"
             return 1
         }
-        mapfile -d '' entries < <(find "$top$real" -mindepth 1 -maxdepth 1 -print0)
-        ((${#entries[@]})) || continue
+        mapfile -d '' dir_nodes < <(find "$top$real" -mindepth 1 -maxdepth 1 -print0)
+        ((${#dir_nodes[@]})) || continue
         while IFS= read -r -d '' rec; do
             name="${rec#*$'\t'}"
             name="${name#"$top"}"
@@ -170,7 +170,7 @@ root_trusted_dir() {
             else
                 root_only_record "$name" "$rec" || return 1
             fi
-        done < <(root_node_stat "${entries[@]}")
+        done < <(root_node_stat "${dir_nodes[@]}")
     done
 }
 
