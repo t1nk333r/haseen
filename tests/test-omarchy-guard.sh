@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{migrate,migrate-omarchy,omarchy-guard,plymouth-status} install.sh
+# haseen:covers bin/haseen-layer-{apply,status} bin/haseen-secureboot-sign share/haseen/VERSION
+# haseen:covers share/haseen/default/omarchy-guard/** share/haseen/layers/{base,secureboot}/**
+# haseen:covers share/haseen/lib/{boot,branding,layers,migrate,omarchy-guard,packages,plymouth,preflight}.sh
+# haseen:covers share/haseen/migrations/1792605416-seal-omarchy-migrations.sh
+# haseen:covers share/haseen/migrations/1792605417-polkit-faillock.sh tests/fixtures/desk-cachyos-amd/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
