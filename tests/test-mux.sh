@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-seed-user
+# haseen:covers share/haseen/default/{btop,environment.d,fcitx5,fontconfig,herdr,shell,tensaku}/**
+# haseen:covers share/haseen/default/{tmux,xcompose,yazi}/** share/haseen/lib/shellrc.sh
+# haseen:covers share/haseen/seeds/** tests/fixtures/seeds-plain/** tools/lab.sh tools/secrets.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

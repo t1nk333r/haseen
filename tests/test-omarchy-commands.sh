@@ -1,4 +1,17 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-* share/haseen/VERSION share/haseen/branding/**
+# haseen:covers share/haseen/default/applications/** share/haseen/default/shell.json
+# haseen:covers share/haseen/default/shell/init.sh share/haseen/default/xdg-terminal-exec/**
+# haseen:covers share/haseen/layers/{base,chaotic,desktop,omarchy-repo,shell,theme}/layer.sh
+# haseen:covers share/haseen/layers/base/lib.sh share/haseen/layers/gaming/layer.sh
+# haseen:covers share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/lib/{boot,branding,cairn,catalog,doctor,greeter,hardware,hibernate}.sh
+# haseen:covers share/haseen/lib/{install-picker,layers,ledger,migrate,omarchy-import,packages}.sh
+# haseen:covers share/haseen/lib/{plymouth,preflight,screen,shellrc,terminal}.sh
+# haseen:covers share/haseen/migrations/1792531693-omarchy-path.sh share/haseen/omarchy/**
+# haseen:covers share/haseen/shell/lib/{plugin,registry}.sh share/haseen/systemd/user/**
+# haseen:covers tests/fixtures/{cachyos-grub-plain,omarchy-4.0.6}/** tools/build-sidecar.sh
+# haseen:covers install.sh plans/093-adopt-omarchy-commands.md
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers share/haseen/default/shell.json share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/shell/Haseen/** share/haseen/shell/plugins/haseen.menu/**
+# haseen:covers share/haseen/shell/plugins/haseen.security/** share/haseen/themed/**
+# haseen:covers share/haseen/themes/{everforest,flexoki-light}/** tests/fixtures/vapt-qml-lib.sh
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Real Qt keyboard events and rendering against production controls, on the
 # fixture modules.

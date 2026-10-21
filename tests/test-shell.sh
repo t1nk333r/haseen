@@ -1,4 +1,13 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-bar-{position,transparent} bin/haseen-hardware-mirror-display
+# haseen:covers bin/haseen-notification-send
+# haseen:covers bin/haseen-plugin-{disable,enable,info,list,new,settings,validate}
+# haseen:covers bin/haseen-shell-{ipc,restart,run} bin/haseen-toggle-idle share/haseen/VERSION
+# haseen:covers share/haseen/default/shell.json share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/layers/shell/** share/haseen/lib/{cairn,layers,packages,preflight}.sh
+# haseen:covers share/haseen/omarchy/** share/haseen/shell/**
+# haseen:covers tests/fixtures/cachyos-limine-luks-dualboot/**
+# haseen:covers tests/fixtures/shell-quickshell-installed/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

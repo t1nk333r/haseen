@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers share/haseen/VERSION share/haseen/branding/** share/haseen/default/catalog.json
+# haseen:covers share/haseen/default/menu.jsonc share/haseen/default/shell.json
+# haseen:covers share/haseen/shell/Compat/** share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/plugins/*/manifest.json share/haseen/shell/plugins/haseen.menu/**
+# haseen:covers tests/fixtures/vapt-qml-lib.sh tools/smoke-session.conf
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 sandbox vapt-menu-providers
 # Quickshell's IPC socket must fit Linux's pathname limit even in a long worktree.

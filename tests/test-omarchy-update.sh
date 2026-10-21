@@ -1,4 +1,28 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{agent-crash,config-terminal,crash-watch,hardware-touchpad,install}
+# haseen:covers bin/haseen-{layer-apply,notification-send,notification-wait,plugin-disable,remove}
+# haseen:covers bin/haseen-{setup-default,shell-ipc,shell-recover,terminal-run,toggle-bar}
+# haseen:covers bin/haseen-{toggle-idle,toggle-nightlight,toggle-screensaver,transcode,update}
+# haseen:covers bin/haseen-webapp-install bin/haseen-browser-* share/haseen/VERSION
+# haseen:covers share/haseen/branding/** share/haseen/default/catalog.json
+# haseen:covers share/haseen/layers/base/lib.sh share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/lib/{branding,catalog,layers,packages,preflight,screen,shellrc}.sh
+# haseen:covers share/haseen/lib/terminal.sh share/haseen/omarchy/bin/omarchy-tui-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-voxtype-* share/haseen/omarchy/bin/omarchy-webapp-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{cmd-browser-handoff,cmd-default-browser}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{hyprland-focus-app,install-openclaw-cli}
+# haseen:covers share/haseen/omarchy/bin/omarchy-launch-browser
+# haseen:covers share/haseen/omarchy/bin/omarchy-launch-floating-terminal-with-presentation
+# haseen:covers share/haseen/omarchy/bin/omarchy-{launch-openclaw,launch-webapp,openclaw-onboard}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{show-done,toggle,toggle-bar,toggle-crash-capture}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{toggle-enabled,toggle-input-device}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{toggle-nightlight,transcode,transcode-ascii}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{update-analyze-logs,update-aur-pkgs}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{update-confirm,update-lock,update-mise}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{update-orphan-pkgs,update-pkg-prune}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{update-requires-free-space,update-stay-awake}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{update-system-pkgs,version,version-pkgs}
+# haseen:covers share/haseen/omarchy/bin/omarchy-windows-vm share/haseen/omarchy/lib.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

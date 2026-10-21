@@ -1,4 +1,15 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{hook,install,layer-apply,menu-select,notification-send,shell-ipc}
+# haseen:covers bin/haseen-{theme-bg,theme-current,theme-fetch,theme-install,theme-list,theme-set}
+# haseen:covers bin/haseen-{toggle-bar,toggle-screensaver,update} share/haseen/VERSION
+# haseen:covers share/haseen/default/nvim/** share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/base/lib.sh share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/layers/theme/**
+# haseen:covers share/haseen/lib/{branding,cairn,catalog,layers,packages,preflight,shellrc}.sh
+# haseen:covers share/haseen/lib/terminal.sh share/haseen/omarchy/bin/omarchy-theme-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-hermes-cli,toggle,toggle-bar}
+# haseen:covers share/haseen/omarchy/bin/omarchy-toggle-enabled share/haseen/omarchy/lib.sh
+# haseen:covers share/haseen/omarchy/themed/** share/haseen/themed/** share/haseen/themes/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

@@ -1,4 +1,9 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-vapt-install share/haseen/VERSION share/haseen/default/vapt/**
+# haseen:covers share/haseen/layers/vapt/** share/haseen/lib/layers.sh share/haseen/lib/packages.sh
+# haseen:covers share/haseen/lib/preflight.sh tests/fixtures/vapt-host/**
+# haseen:covers tests/fixtures/vapt-oniomarchy/inventory.json tests/fixtures/vapt-driver.py
+# haseen:covers tests/fixtures/vapt-lib.sh tests/fixtures/vapt-runner.sh docs/vapt.md
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

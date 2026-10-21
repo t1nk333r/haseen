@@ -1,4 +1,17 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-bar-{position,transparent} bin/haseen-capture-screenrecord
+# haseen:covers bin/haseen-config-edit bin/haseen-font-set bin/haseen-hook
+# haseen:covers bin/haseen-screensaver-style bin/haseen-settings-{list,set} bin/haseen-setup-default
+# haseen:covers bin/haseen-shell-ipc bin/haseen-shell-use bin/haseen-theme-set
+# haseen:covers bin/haseen-toggle-{animations,dnd,gaps,idle,nightlight,one-window-ratio,screensaver}
+# haseen:covers share/haseen/default/nvim/** share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/{dms,shell}/layer.sh share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/layers/theme/{omarchy-assets.txt,theme-lib.sh}
+# haseen:covers share/haseen/lib/{layers,packages,preflight,settings,terminal}.sh
+# haseen:covers share/haseen/shell/lib/plugin.sh
+# haseen:covers share/haseen/shell/plugins/haseen.{battery,clipboard,clock,idle,osd}/manifest.json
+# haseen:covers share/haseen/shell/plugins/haseen.screensaver/manifest.json share/haseen/themed/**
+# haseen:covers share/haseen/themes/tokyo-night/** bin/haseen-theme-current
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

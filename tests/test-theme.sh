@@ -1,4 +1,11 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-hook bin/haseen-theme-current bin/haseen-theme-install
+# haseen:covers bin/haseen-theme-list bin/haseen-theme-set bin/haseen-toggle-gaps
+# haseen:covers share/haseen/VERSION share/haseen/default/hypr/** share/haseen/default/nvim/**
+# haseen:covers share/haseen/default/shell.json share/haseen/layers/theme/**
+# haseen:covers share/haseen/lib/layers.sh share/haseen/lib/packages.sh
+# haseen:covers share/haseen/lib/preflight.sh share/haseen/themed/** share/haseen/themes/**
+# haseen:covers tests/fixtures/cachyos-limine-luks-dualboot/** tests/fixtures/theme-omarchy-nord/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

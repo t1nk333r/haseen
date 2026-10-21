@@ -94,11 +94,20 @@ between parts. The engineering record is `plans/`, indexed by
 ## Gates (run both before every commit)
 
 ```sh
-tools/lint.sh      # bash -n, shellcheck -x --severity=warning, luac -p, jq, qmllint
-tests/run.sh       # hermetic; stub PATH; fixtures
+tools/lint.sh             # bash -n, shellcheck -x --severity=warning, luac -p, jq, qmllint, coverage
+tests/run.sh --affected   # hermetic; stub PATH; fixtures; the tests your change affects
 tools/check-docs.sh
-tools/secrets.sh   # before every push: gitleaks (history) + privacy patterns
+tools/secrets.sh          # before every push: gitleaks (history) + privacy patterns
 ```
+
+`tests/run.sh --affected [BASE]` runs only the test files whose
+`# haseen:covers` globs match a path changed since the merge base with BASE
+(default origin/main), staged, unstaged and untracked files included;
+`tools/affected-tests.sh` prints why each path selects what it does. Pull
+requests run the same selection in CI. Every push to `main` runs the full suite
+after the merge, and `tests/run.sh` with no arguments still runs every test. A
+new test declares what it exercises in its leading comments, and lint fails on
+a file no test covers that is neither global nor exempt (plan 100).
 
 VAPT suites create unique scratch sysroots under `${TMPDIR:-/tmp}` and remove
 them on exit. Their real ancestry/ownership checks remain enabled: putting

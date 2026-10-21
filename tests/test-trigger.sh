@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-capture-*
+# haseen:covers bin/haseen-hardware-{hybrid-gpu,laptop-display,mirror-display,touchpad,touchscreen}
+# haseen:covers bin/haseen-reminder-* bin/haseen-share-* bin/haseen-shell-ipc bin/haseen-test-*
+# haseen:covers bin/haseen-toggle-{animations,bar,gaps,one-window-ratio,workspace-layout}
+# haseen:covers bin/haseen-transcode bin/haseen-upload share/haseen/VERSION
+# haseen:covers share/haseen/lib/terminal.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# tools/lint.sh — the static gate. Run before every commit, with tests/run.sh.
+# tools/lint.sh — the static gate. Run before every commit, with
+# tests/run.sh --affected (plan 100).
 #   bash -n + shellcheck --severity=warning -x  over every shell file
 #   luac -p                                     over every Lua file (Hyprland)
 #   qmllint (if present)                        over the Quickshell shell
 #   jq empty                                    over every JSON file
+#   tools/affected-tests.sh --check             every file covered by a test,
+#                                               global or exempt (plan 100)
 # SHELLCHECK / QMLLINT env vars override the binaries (CI pins versions).
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
@@ -70,6 +73,11 @@ if command -v "$GO" >/dev/null && [[ -f core/go.mod ]]; then
     (cd core && "$GO" vet ./...) || fail=1
     echo "go: $(find core -name '*.go' | wc -l) files"
 fi
+
+# Every file is claimed by a test's `# haseen:covers` glob, or is global or
+# exempt, and every glob still matches a file: otherwise a pull request could
+# skip a test it breaks, or run everything for a file nobody claimed (plan 100).
+tools/affected-tests.sh --check || fail=1
 
 ((fail == 0)) && echo "lint OK"
 exit "$fail"

@@ -1,4 +1,14 @@
 # shellcheck shell=bash
+# haseen:covers share/haseen/VERSION share/haseen/branding/** share/haseen/default/catalog.json
+# haseen:covers share/haseen/default/menu.jsonc share/haseen/default/shell.json
+# haseen:covers share/haseen/shell/Compat/** share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/plugins/*/manifest.json share/haseen/shell/plugins/haseen.menu/**
+# haseen:covers bin/haseen-battery-status bin/haseen-branding bin/haseen-context
+# haseen:covers bin/haseen-screensaver-style bin/haseen-setup-default bin/haseen-setup-dns
+# haseen:covers bin/haseen-system share/haseen/lib/boot.sh share/haseen/lib/branding.sh
+# haseen:covers share/haseen/lib/hibernate.sh share/haseen/lib/preflight.sh
+# haseen:covers share/haseen/lib/terminal.sh share/haseen/shell/lib/plugin.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

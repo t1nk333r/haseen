@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tests/run.sh — hermetic test suite. Runs every tests/test-*.sh (or the ones
-# named on the command line) in its own subshell. Never touches the live
-# system: see tests/lib.sh.
+# named on the command line, or with --affected [--committed] [BASE] the ones
+# a change affects) in its own subshell. Never touches the live system: see
+# tests/lib.sh.
 set -Eeuo pipefail
 
 # The fakes are shell scripts, and a shell cannot trap a signal that was
@@ -21,6 +22,21 @@ unset HASEEN_TESTS_SIGDFL sig_ignored
 cd "$(dirname "$0")/.."
 
 files=("$@")
+# --affected [--committed] [BASE]: only the test files the change since BASE
+# affects, as tools/affected-tests.sh chooses them (plan 100). Pull requests
+# and pre-commit runs use it; main runs everything after each merge.
+if [[ ${1:-} == --affected ]]; then
+    shift
+    selection="$(tools/affected-tests.sh "$@")" || exit
+    if [[ -z $selection ]]; then
+        echo "no test is affected by this change; nothing to run"
+        exit 0
+    fi
+    files=(tests/test-*.sh)
+    total_files=${#files[@]}
+    [[ $selection == all ]] || mapfile -t files <<<"$selection"
+    echo "affected: ${#files[@]} of $total_files test files"
+fi
 ((${#files[@]} > 0)) || files=(tests/test-*.sh)
 
 total=0

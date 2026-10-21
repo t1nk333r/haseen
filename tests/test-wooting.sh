@@ -1,4 +1,15 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-plugin-validate bin/haseen-setup-wooting bin/haseen-wooting
+# haseen:covers bin/haseen-wooting-doctor core/wootingd/LICENSE share/haseen/VERSION
+# haseen:covers share/haseen/default/shell.json share/haseen/default/systemd/wootingd.service
+# haseen:covers share/haseen/default/udev/70-wootingd.rules share/haseen/lib/{terminal,wooting}.sh
+# haseen:covers share/haseen/migrations/{1792531693-omarchy-path,1792577102-adopt-wooting}.sh
+# haseen:covers share/haseen/shell/Compat/** share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
+# haseen:covers share/haseen/shell/plugins/haseen.wooting/** tools/fake-wootingd.py
+# haseen:covers tools/smoke-session.conf CLAUDE.md NOTICE.md
+# haseen:covers share/haseen/shell/plugins/*/manifest.json AGENTS.md
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

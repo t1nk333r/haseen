@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-audio-tuning share/haseen/VERSION share/haseen/audio/tunings/**
+# haseen:covers share/haseen/default/wireplumber/wireplumber.conf.d/50-haseen-alsa-soft-mixer.conf
+# haseen:covers share/haseen/lib/{hardware,ledger}.sh tests/fixtures/audio-dell-xps/**
+# haseen:covers tests/fixtures/hw-asus-rog/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

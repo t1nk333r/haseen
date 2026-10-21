@@ -96,7 +96,8 @@ NixOS is not supported: the installer refuses it.
 - [`docs/architecture.md`](docs/architecture.md): the contract between parts
 - [`docs/decisions/`](docs/decisions/): ADRs
 - [`plans/README.md`](plans/README.md): the engineering record and its status
-- [`AGENTS.md`](AGENTS.md): conventions and gates (`tools/lint.sh`, `tests/run.sh`, `tools/check-docs.sh`)
+- [`AGENTS.md`](AGENTS.md): conventions and gates (`tools/lint.sh`, `tests/run.sh --affected` before a
+  commit, `tools/check-docs.sh`); `main` runs the full `tests/run.sh` after each merge
 
 ## Status
 

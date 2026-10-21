@@ -1,4 +1,13 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-agent-crash bin/haseen-crash-watch bin/haseen-notification-{send,wait}
+# haseen:covers bin/haseen-plugin-disable bin/haseen-setup-default bin/haseen-shell-recover
+# haseen:covers share/haseen/VERSION share/haseen/default/shell.json share/haseen/lib/terminal.sh
+# haseen:covers share/haseen/shell/Compat/** share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/ServiceHost.qml share/haseen/shell/lib/plugin.sh
+# haseen:covers share/haseen/shell/plugins/*/manifest.json
+# haseen:covers share/haseen/shell/plugins/haseen.{clock,tray,workspaces}/**
+# haseen:covers tests/fixtures/recovery/** tools/smoke-session.conf
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

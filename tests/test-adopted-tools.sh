@@ -1,4 +1,19 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-browser-{picker,scan} bin/haseen-config-edit bin/haseen-notification-send
+# haseen:covers bin/haseen-plugin-{disable,enable,settings,uninstall,validate}
+# haseen:covers bin/haseen-setup-default bin/haseen-shell-ipc bin/haseen-typist
+# haseen:covers bin/haseen-vpn-openconnect share/haseen/VERSION
+# haseen:covers share/haseen/default/applications/haseen-browser-picker.desktop
+# haseen:covers share/haseen/default/applications/mimeapps.list share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/dms/ipc-translate share/haseen/lib/terminal.sh
+# haseen:covers share/haseen/migrations/1791560000-adopt-bar-basics.sh
+# haseen:covers share/haseen/migrations/17915601??-*.sh share/haseen/shell/Compat/**
+# haseen:covers share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/lib/{plugin,registry}.sh share/haseen/shell/plugin.schema.json
+# haseen:covers share/haseen/shell/plugins/*/manifest.json
+# haseen:covers share/haseen/shell/plugins/haseen.{typist,settings,browser-picker,vpn}/**
+# haseen:covers tools/smoke-session.conf CLAUDE.md NOTICE.md AGENTS.md
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

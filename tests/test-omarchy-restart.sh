@@ -1,4 +1,33 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{bar-add,bar-move,bar-transparent,branding,config-edit}
+# haseen:covers bin/haseen-{hardware-laptop-display,hardware-mirror-display,hook,install}
+# haseen:covers bin/haseen-{layer-apply,plugin-enable,plugin-validate,plymouth-set,screensaver}
+# haseen:covers bin/haseen-{seed-system,setup-passwordless-sudo,setup-sshd,shell-ipc,shell-use}
+# haseen:covers bin/haseen-{system,theme-list,theme-set,toggle-screensaver} bin/haseen-hibernation-*
+# haseen:covers share/haseen/VERSION share/haseen/branding/** share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/base/lib.sh share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/lib/{boot,branding,catalog,hardware,hibernate,layers,ledger}.sh
+# haseen:covers share/haseen/lib/{packages,plymouth,preflight,screen,shellrc,terminal}.sh
+# haseen:covers share/haseen/omarchy/bin/omarchy-show-* share/haseen/omarchy/bin/omarchy-tailscale-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{file-select,hw-clamshell,hw-external-monitors}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{hw-laptop-closed,hyprland-monitor-clamshell}
+# haseen:covers share/haseen/omarchy/bin/omarchy-hyprland-monitor-external-active
+# haseen:covers share/haseen/omarchy/bin/omarchy-hyprland-monitor-internal
+# haseen:covers share/haseen/omarchy/bin/omarchy-hyprland-monitor-internal-mirror
+# haseen:covers share/haseen/omarchy/bin/omarchy-{hyprland-session-locked,hyprland-window-close-all}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{remove-security-sudoless-docker,restart-app}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{restart-btop,restart-helix,restart-herdr}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{restart-hyprctl,restart-hyprsunset}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{restart-opencode,restart-terminal,restart-tmux}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{restart-xcompose,screensaver,setup-direct-boot}
+# haseen:covers share/haseen/omarchy/bin/omarchy-setup-security-sshd
+# haseen:covers share/haseen/omarchy/bin/omarchy-{setup-security-sudoless-docker,shell,snapshot}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{state,sudo-docker,sudo-passwordless}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{system-lid-close,system-lock,system-reboot}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{system-shutdown,system-sleep-lock,system-stats}
+# haseen:covers share/haseen/omarchy/lib.sh share/haseen/omarchy/remove-lib.sh
+# haseen:covers share/haseen/shell/lib/plugin.sh bin/haseen-notification-send
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

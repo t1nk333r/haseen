@@ -1,4 +1,9 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-plugin-{disable,enable,install,lock,new,registry,restore,search}
+# haseen:covers bin/haseen-plugin-{uninstall,update,validate} share/haseen/VERSION
+# haseen:covers share/haseen/default/shell.json share/haseen/omarchy/bin/omarchy
+# haseen:covers share/haseen/shell/Compat/Manifest.js share/haseen/shell/lib/{plugin,registry}.sh
+# haseen:covers share/haseen/shell/plugin.schema.json share/haseen/shell/templates/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
