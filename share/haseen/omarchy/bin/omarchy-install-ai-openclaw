@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# omarchy-install-ai-openclaw — install OpenClaw (the self-updating copy under
+# ~/.openclaw) and its Control UI web app, then onboard or open it. Adapted
+# from Omarchy bin/omarchy-install-ai-openclaw (MIT, Copyright (c) David
+# Heinemeier Hansson): the steps, icon and URL are Omarchy's. Changes: the
+# install is haseen's omarchy-install-openclaw-cli --now; the web app is
+# written by haseen's omarchy-webapp-install with a custom Exec that runs
+# haseen's omarchy-launch-openclaw by its path (haseen webapp install can only
+# write a browser Exec); onboarding is haseen's omarchy-openclaw-onboard;
+# --dry-run and --yes reach every step (plan 093).
+#
+# Apple branch dropped: none: the apple-touch-icon fallback
+# (omarchy-install-ai-openclaw:17) is a web icon OpenClaw's package ships,
+# not Apple hardware, and is kept.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-ai-openclaw [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: omarchy-install-openclaw-cli --now, the
+OpenClaw web app (its Control UI at http://127.0.0.1:18789, opened through
+omarchy-launch-openclaw), then onboarding or the app.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+config="$HOME/.openclaw/openclaw.json"
+
+# The same self-updating install the default agent gets.
+"$HASEEN_OMARCHY_DIR/bin/omarchy-install-openclaw-cli" --now "${flags[@]}"
+
+# The desktop app is OpenClaw's Control UI, a web app served by its own
+# gateway. The launcher goes through omarchy-launch-openclaw, which onboards or
+# starts that gateway before opening the window. The icon ships inside the
+# package, so nothing is fetched; a package from before the seed kept it
+# inside OpenClaw itself.
+icon="$(sysroot_path /usr/share/openclaw/openclaw.png)"
+[[ -r $icon ]] || icon="$(sysroot_path /usr/lib/node_modules/openclaw/dist/control-ui/apple-touch-icon.png)"
+# One Exec argument, quoted as the desktop-entry spec asks.
+launcher="$HASEEN_OMARCHY_DIR/bin/omarchy-launch-openclaw"
+quoted="$launcher"
+quoted=${quoted//[\\]/\\\\}
+quoted=${quoted//[\"]/\\\"}
+quoted=${quoted//[\`]/\\\`}
+quoted=${quoted//[\$]/\\\$}
+quoted=${quoted//[%]/%%}
+echo "Installing the OpenClaw web app..."
+"$HASEEN_OMARCHY_DIR/bin/omarchy-webapp-install" OpenClaw "http://127.0.0.1:18789" "$icon" "\"$quoted\"" "${flags[@]}"
+
+open_app() {
+    echo "Opening OpenClaw..."
+    local launch=(gtk-launch OpenClaw)
+    have uwsm-app && launch=(uwsm-app -- "${launch[@]}")
+    if $DRY_RUN; then
+        echo "DRYRUN: setsid ${launch[*]}"
+    else
+        setsid "${launch[@]}" >/dev/null 2>&1 &
+    fi
+}
+
+# A first install runs onboarding right here: launching the app instead would
+# open a second floating terminal for the wizard. A machine that is already
+# onboarded goes straight to the app.
+if [[ -f $config ]]; then
+    open_app
+elif $DRY_RUN; then
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-openclaw-onboard" --dry-run
+    echo "DRYRUN: then, once $config exists, open OpenClaw"
+elif "$HASEEN_OMARCHY_DIR/bin/omarchy-openclaw-onboard" && [[ -f $config ]]; then
+    open_app
+fi
+
+echo ""
+echo "OpenClaw has been installed."
+echo "If you skipped onboarding, launching OpenClaw from the app grid resumes it."

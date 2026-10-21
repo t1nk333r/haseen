@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# omarchy-theme-list — the themes `haseen theme set` takes, title-cased as
+# Omarchy's menus and plugins expect ("Tokyo Night"). The names round-trip:
+# haseen theme set (and omarchy-theme-set) turns "Tokyo Night" back into
+# tokyo-night. Follows Omarchy bin/omarchy-theme-list (MIT, Copyright (c)
+# David Heinemeier Hansson): stock themes are haseen's, user themes live in
+# ~/.config/haseen/themes (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-theme-list
+
+haseen's answer to Omarchy's command: lists haseen's stock themes and the
+user's themes in ~/.config/haseen/themes, one title-cased name per line,
+sorted (haseen theme list prints the raw names)." "$@"
+
+{ haseen_cmd theme-list 2>/dev/null || true; } | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-foot — recolour running foot terminals to the current
+# haseen theme: foot does not reload its config, so the palette goes to each
+# terminal's tty as OSC sequences. `haseen theme set` already does this
+# (theme-lib.sh theme_retint_foot); this serves Omarchy's direct callers.
+# Adapted from Omarchy bin/omarchy-theme-set-foot (MIT, Copyright (c) David
+# Heinemeier Hansson): haseen's current/theme/colors.toml, and --dry-run names
+# the terminals instead of writing to them (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-foot [--dry-run]
+
+haseen's answer to Omarchy's command: sends the current haseen theme's
+palette to every running foot terminal. Does nothing without a current
+theme or without foot running.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+colors_toml="$THEME_CURRENT_PATH/colors.toml"
+# A fixture (HASEEN_SYSROOT) has no process table to ask.
+if [[ ! -f $colors_toml ]] || in_sysroot; then exit 0; fi
+pgrep -x foot >/dev/null 2>&1 || exit 0
+
+foot_osc="$(omarchy_theme_osc "$colors_toml")"
+[[ -n $foot_osc ]] || exit 0
+
+for foot_pid in $(pgrep -x foot); do
+    for child_pid in $(pgrep -P "$foot_pid"); do
+        tty="$(readlink "/proc/$child_pid/fd/1" 2>/dev/null || true)"
+        [[ $tty == /dev/pts/* ]] || continue
+        omarchy_tty_write "$tty" "$foot_osc"
+    done
+done

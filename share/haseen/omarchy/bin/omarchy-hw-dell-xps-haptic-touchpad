@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-hw-dell-xps-haptic-touchpad — exit 0 on a Dell XPS with the
+# Synaptics haptic touchpad. Adapted from Omarchy
+# bin/omarchy-hw-dell-xps-haptic-touchpad (MIT, Copyright (c) David Heinemeier
+# Hansson): haseen hw match for the model, the I2C device read through
+# sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-dell-xps-haptic-touchpad
+
+haseen's answer to Omarchy's command: exit 0 when the product matches XPS and
+the I2C device i2c-VEN_06CB:00 exists. Prints nothing." "$@"
+
+"$HASEEN_BIN/haseen-hw-match" XPS && [[ -e $(sysroot_path /sys/bus/i2c/devices/i2c-VEN_06CB:00) ]]

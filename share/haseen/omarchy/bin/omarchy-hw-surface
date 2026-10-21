@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-hw-surface — exit 0 on a Microsoft Surface. Adapted from Omarchy
+# bin/omarchy-hw-surface (MIT, Copyright (c) David Heinemeier Hansson): the
+# vendor through haseen's hw_dmi, the model through haseen hw match, both read
+# through sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-surface
+
+haseen's answer to Omarchy's command: exit 0 when the DMI vendor is
+\"Microsoft Corporation\" and the product name or family matches Surface.
+Prints nothing." "$@"
+
+[[ $(hw_dmi sys_vendor) == "Microsoft Corporation" ]] && "$HASEEN_BIN/haseen-hw-match" Surface

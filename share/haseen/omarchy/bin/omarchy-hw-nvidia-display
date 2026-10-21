@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-hw-nvidia-display — exit 0 when NVIDIA drives the display rather than
+# a hybrid laptop's integrated GPU. Adapted from Omarchy
+# bin/omarchy-hw-nvidia-display (MIT, Copyright (c) David Heinemeier Hansson):
+# the same boot_vga rule, read through sysroot_path; with no device claiming
+# boot_vga it still answers yes, as Omarchy's does (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-nvidia-display
+
+haseen's answer to Omarchy's command: exit 1 only when another display GPU
+owns boot_vga and no NVIDIA GPU does; exit 0 otherwise (including when no
+device claims it)." "$@"
+
+shopt -s nullglob
+nvidia_boot=0
+other_boot=0
+for device in "$(sysroot_path /sys/bus/pci/devices)"/*; do
+    [[ -r $device/class && -r $device/vendor ]] || continue
+    [[ $(<"$device/class") == 0x03* ]] || continue
+    boot_vga=0
+    [[ -r $device/boot_vga ]] && boot_vga=$(<"$device/boot_vga")
+    [[ $boot_vga == 1 ]] || continue
+    if [[ $(<"$device/vendor") == 0x10de ]]; then
+        nvidia_boot=1
+    else
+        other_boot=1
+    fi
+done
+! ((other_boot == 1 && nvidia_boot == 0))

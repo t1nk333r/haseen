@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# omarchy-network-status — the active connection for a panel: one line of
+# type, name, signal and frequency, or with --verbose haseen network status's
+# key<TAB>value report. Adapted from Omarchy bin/omarchy-network-status (MIT,
+# Copyright (c) David Heinemeier Hansson): the bare form is Omarchy's
+# print_status, reading /sys through haseen's sysroot; --verbose is haseen's
+# report, which is Omarchy's without the router_ping_ms line (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-network-status [--verbose]
+
+haseen's answer to Omarchy's command. Without arguments one line,
+TAB-separated: disconnected, ethernet DEVICE, or wifi SSID SIGNAL% FREQ.
+--verbose: haseen network status (key<TAB>value lines)." "$@"
+
+internet_probe=1.1.1.1
+
+case "${1:-}" in
+"") ;;
+--verbose) haseen_exec network-status ;;
+*)
+    echo "Usage: omarchy-network-status [--verbose]" >&2
+    exit 2
+    ;;
+esac
+
+device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }' || true)
+if [[ -z $device ]]; then
+    printf 'disconnected\t\t\t\n'
+    exit 0
+fi
+if [[ ! -d $(sysroot_path "/sys/class/net/$device/wireless") ]]; then
+    printf 'ethernet\t%s\t\t\n' "$device"
+    exit 0
+fi
+if ! have nmcli; then
+    printf 'wifi\t%s\t\t\n' "$device"
+    exit 0
+fi
+# nmcli localizes state names; GENERAL.STATE starts with its number.
+nm=$(LC_ALL=C nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION dev show "$device" 2>/dev/null || true)
+state=$(awk -F: '$1 == "GENERAL.STATE" { print $2; exit }' <<<"$nm")
+ssid=$(awk -F: '$1 == "GENERAL.CONNECTION" { print $2; exit }' <<<"$nm")
+if [[ $state != 100* ]]; then
+    printf 'disconnected\t\t\t\n'
+    exit 0
+fi
+signal=$(LC_ALL=C nmcli -t -f IN-USE,SIGNAL dev wifi list ifname "$device" --rescan no 2>/dev/null | awk -F: '$1 == "*" { print $2; exit }' || true)
+freq=$(iw dev "$device" link 2>/dev/null | awk '/freq:/ { print $2; exit }' || true)
+printf 'wifi\t%s\t%s\t%s\n' "${ssid:-$device}" "$signal" "$freq"

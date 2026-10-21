@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# omarchy-install-dev-env — install a development environment by name.
+# Translates Omarchy bin/omarchy-install-dev-env (MIT, Copyright (c) David
+# Heinemeier Hansson): the languages haseen's catalogue has install as its
+# mise toolchains (haseen install dev: Python brings uv and Rust comes through
+# mise, so nothing is piped from curl into a shell); Omarchy's extra steps
+# stay (Rails, Hex/Rebar/Phoenix, rlwrap, Laravel's installer, the Symfony
+# CLI, opam's tools). PHP's extensions and Xdebug are enabled in a drop-in,
+# /etc/php/conf.d/haseen-dev.ini, instead of sed over php.ini and xdebug.ini;
+# Omarchy's ~/.bashrc PATH line for Composer is printed as advice instead
+# (haseen edits no rc after seeding), and so is opam's environment (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+LANGS="ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala"
+PHP_DROPIN=/etc/php/conf.d/haseen-dev.ini
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-dev-env <$LANGS> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs the toolchain (haseen install
+dev LANG, through mise) and Omarchy's extras for it.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if [[ -z ${1:-} ]]; then
+    echo "Usage: omarchy-install-dev-env <$LANGS>" >&2
+    exit 1
+fi
+case "|$LANGS|" in
+*"|$1|"*) ;;
+*)
+    echo "Usage: omarchy-install-dev-env <$LANGS>" >&2
+    exit 1
+    ;;
+esac
+in_floating_terminal "${args[@]}"
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+haseen_install() { HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" "$@" "${flags[@]}"; }
+
+install_php() {
+    haseen_install package php composer php-sqlite xdebug
+    # Only extensions php.ini ships commented out, as Omarchy's sed uncomments
+    # only those; without a php.ini yet (a dry run) all of them are planned.
+    local ini ext lines=()
+    ini="$(sysroot_path /etc/php/php.ini)"
+    for ext in bcmath intl iconv openssl pdo_sqlite pdo_mysql; do
+        if [[ ! -r $ini ]] || grep -q "^;extension=$ext\$" "$ini"; then
+            lines+=("extension=$ext")
+        fi
+    done
+    if ! grep -qs '^zend_extension=xdebug.so' "$(sysroot_path /etc/php/conf.d/xdebug.ini)"; then
+        lines+=("zend_extension=xdebug.so" "xdebug.mode=debug")
+    fi
+    { echo "; Written by omarchy-install-dev-env (haseen)."; printf '%s\n' "${lines[@]}"; } |
+        write_root_file "$PHP_DROPIN"
+    if [[ :$PATH: != *":$HOME/.config/composer/vendor/bin:"* ]]; then
+        info "Composer's global tools land in ~/.config/composer/vendor/bin; add it to PATH in your shell rc"
+    fi
+}
+
+case "$1" in
+node | bun | deno | go | python | rust | java | zig | dotnet | scala)
+    echo -e "Installing $1...\n"
+    haseen_install dev "$1"
+    ;;
+clojure)
+    echo -e "Installing Clojure...\n"
+    haseen_install package rlwrap
+    haseen_install dev clojure
+    ;;
+ruby)
+    echo -e "Installing Ruby on Rails...\n"
+    haseen_install package libyaml
+    have mise || haseen_install app mise
+    # Precompiled rubies, and .ruby-version files honoured.
+    run mise settings add ruby.compile false
+    run mise settings add idiomatic_version_file_enable_tools ruby
+    haseen_install dev ruby
+    [[ -e $HOME/.gemrc ]] || echo "gem: --no-document" | write_user_file "$HOME/.gemrc"
+    run mise x ruby -- gem install rails --no-document
+    echo -e "\nYou can now run: rails new myproject"
+    ;;
+elixir)
+    echo -e "Installing Elixir...\n"
+    haseen_install dev elixir
+    run mise x elixir -- mix local.hex --force
+    ;;
+phoenix)
+    echo -e "Installing Phoenix Framework...\n"
+    haseen_install dev elixir
+    run mise x elixir -- mix local.hex --force
+    run mise x elixir -- mix local.rebar --force
+    run mise x elixir -- mix archive.install hex phx_new --force
+    echo -e "\nYou can now run: mix phx.new my_app"
+    ;;
+php)
+    echo -e "Installing PHP...\n"
+    install_php
+    ;;
+laravel)
+    echo -e "Installing PHP and Laravel...\n"
+    install_php
+    haseen_install dev node
+    run composer global require laravel/installer
+    echo -e "\nYou can now run: laravel new myproject"
+    ;;
+symfony)
+    echo -e "Installing PHP and Symfony...\n"
+    install_php
+    haseen_install aur symfony-cli
+    echo -e "\nYou can now run: symfony new --webapp myproject"
+    ;;
+ocaml)
+    echo -e "Installing OCaml...\n"
+    haseen_install package opam
+    # --no-setup: opam would otherwise offer to edit the shell rc.
+    run opam init --yes --no-setup
+    run opam install ocaml-lsp-server odoc ocamlformat utop --yes
+    info "opam's tools reach PATH with: eval \"\$(opam env)\" (add it to your shell rc)"
+    ;;
+esac

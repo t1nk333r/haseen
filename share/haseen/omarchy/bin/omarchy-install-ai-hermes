@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# omarchy-install-ai-hermes — install Hermes Desktop with its self-updating
+# runtime, the same install the default agent gets, and open its window.
+# Adapted from Omarchy bin/omarchy-install-ai-hermes (MIT, Copyright (c) David
+# Heinemeier Hansson): the EUID refusal and the steps are Omarchy's; the
+# install is haseen's omarchy-install-hermes-cli --now (haseen install app
+# hermes, then the package's own runtime installer), which also takes
+# --dry-run and --yes (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-ai-hermes [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: omarchy-install-hermes-cli --now
+(Hermes Desktop and its runtime under ~/.hermes), then opens Hermes Desktop.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+if ((EUID == 0)); then
+    echo "Run this command as your desktop user, without sudo." >&2
+    exit 1
+fi
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+
+# The same install the default agent gets, plus opening the window.
+"$HASEEN_OMARCHY_DIR/bin/omarchy-install-hermes-cli" --now "${flags[@]}"
+
+echo "Opening Hermes Desktop..."
+launch=(/usr/bin/hermes-desktop)
+have uwsm-app && launch=(uwsm-app -- "${launch[@]}")
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${launch[*]}"
+else
+    setsid "${launch[@]}" >/dev/null 2>&1 &
+fi
+
+echo ""
+echo "Hermes Desktop has been installed."

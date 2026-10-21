@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-launch-shell — the end of Omarchy's shell restart:
+# omarchy-restart-shell runs `hyprctl dispatch exec_cmd omarchy-launch-shell`,
+# and Hyprland finds this name ahead of Omarchy's on its PATH. Under haseen it
+# must never start Omarchy's shell (on IO an Omarchy update did, and two bars
+# ran, plan 093). It makes sure the desktop shell haseen uses runs instead,
+# and stops an Omarchy shell it finds. Omarchy's launcher (bin/omarchy-launch-shell,
+# MIT, Copyright (c) David Heinemeier Hansson) keeps its shell in the
+# foreground; so does this one when there is no user unit to start.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-launch-shell [--dry-run]
+
+haseen's answer to Omarchy's command: stops any running Omarchy shell, then
+starts the desktop shell haseen uses when it is not running:
+  dms.service after 'haseen shell use dms';
+  else haseen-shell.service when it is installed;
+  else 'haseen shell run' in the foreground.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+omarchy_shell_stop
+if [[ $(active_shell) == dms ]]; then
+    run systemctl --user start dms.service
+    exit 0
+fi
+# Read-only probes: is-active and cat fail for a unit that is not running or
+# not installed.
+if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
+    info "the haseen shell is already running (haseen-shell.service)"
+    exit 0
+fi
+if systemctl --user cat haseen-shell.service >/dev/null 2>&1; then
+    # The unit is WantedBy graphical-session.target; started before the
+    # session's Wayland environment exists it fails, and four quick failures
+    # bring up the shell-recovery offer (plan 061). The target starts it.
+    if ! systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+        info "the graphical session is not up yet; haseen-shell.service starts with it"
+        exit 0
+    fi
+    run systemctl --user start haseen-shell.service
+    exit 0
+fi
+# No unit (a checkout, or the shell layer not applied): a qs instance of
+# haseen's shell is the running shell. When Quickshell cannot say, starting
+# one could make it a second haseen shell: stop instead.
+if have qs; then
+    status=0
+    haseen_shell_instance_running || status=$?
+    case $status in
+    0)
+        info "the haseen shell is already running (qs -p $HASEEN_PATH/shell)"
+        exit 0
+        ;;
+    2) die "cannot tell whether haseen's shell already runs; not starting another (see haseen doctor)" ;;
+    esac
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: $HASEEN_BIN/haseen-shell-run"
+    exit 0
+fi
+haseen_exec shell-run

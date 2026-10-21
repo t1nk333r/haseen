@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# omarchy-chromium-ytdlp-host — Chromium native-messaging host for the yt-dlp
+# extension: acknowledge the framed {"url": ...} message, then download the
+# video with yt-dlp in a detached worker, showing progress in one haseen
+# notification that is replaced in place, and end with a toast that plays the
+# file in mpv when clicked. Adapted from Omarchy bin/omarchy-chromium-ytdlp-host
+# (MIT, Copyright (c) David Heinemeier Hansson): yt-dlp's no-exec flags and
+# the checks that keep a forged record from reaching the click command are
+# Omarchy's; haseen is found through this file's own path instead of
+# OMARCHY_PATH, OMARCHY_YTDLP_DIR is HASEEN_YTDLP_DIR (default ~/Videos), and
+# Omarchy's OSD progress bar is the replaced notification, at most one update
+# a second (plan 093). The browser runs the path its manifest names, which
+# the extension's installer writes.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-chromium-ytdlp-host
+
+A Chromium native-messaging host: the browser starts it with one framed JSON
+message ({\"url\": ...}) on stdin and it downloads the video into
+\${HASEEN_YTDLP_DIR:-~/Videos}. Not for running by hand." "$@"
+
+SELF="$(readlink -f "$0")"
+# The browser starts hosts without the session's PATH.
+export PATH="$PATH:/usr/local/bin:/usr/bin"
+DOWNLOAD_DIR="${HASEEN_YTDLP_DIR:-$HOME/Videos}"
+notify() { "$HASEEN_BIN/haseen-notification-send" "$@"; }
+
+parse_url() { jq -r '.url // empty' 2>/dev/null <<<"$1" || true; }
+valid_url() { [[ $1 =~ ^https?:// ]]; }
+
+# A printed path is only usable if it is a regular file inside DOWNLOAD_DIR.
+# Forged records (leading-dash mpv options, paths with control characters, or
+# anything that escaped the download directory) must not reach the click
+# command.
+resolve_download_file() {
+    local candidate=$1 file_real dir_real
+    [[ -n $candidate ]] || return 1
+    [[ $candidate != *$'\n'* && $candidate != *$'\r'* && $candidate != *$'\t'* ]] || return 1
+    [[ -f $candidate ]] || return 1
+    # Read to a NUL: command substitution strips trailing newlines, which would
+    # resolve a name ending in one to a different file that may well exist.
+    IFS= read -r -d '' file_real < <(realpath -ze -- "$candidate") || return 1
+    IFS= read -r -d '' dir_real < <(realpath -ze -- "$DOWNLOAD_DIR") || return 1
+    [[ $file_real != *$'\n'* && $file_real != *$'\r'* && $file_real != *$'\t'* ]] || return 1
+    # Trim the slash so a download directory of "/" still leaves a prefix.
+    [[ $file_real == "${dir_real%/}"/* ]] || return 1
+    printf '%s' "$file_real"
+}
+
+# yt-dlp prints the title JSON-encoded, so a newline or tab in page metadata is
+# an escape, not a record boundary. Toast text, never a command.
+decode_title() {
+    local decoded
+    decoded=$(jq -r 'if type == "string" then . else empty end' <<<"$1" 2>/dev/null) || return 1
+    decoded=${decoded%%[[:cntrl:]]*}
+    [[ -n $decoded && $decoded != -* ]] || return 1
+    printf '%s' "$decoded"
+}
+
+title_from_file() {
+    local name=${1##*/}
+    name=${name%.*}
+    name=${name//[$'\n\r\t']/}
+    if [[ -z $name || $name == -* ]]; then printf '%s' Video; else printf '%s' "$name"; fi
+}
+
+download_url() {
+    local url=$1 line pct intpct last="" er nowms lastms=0 title="" filepath="" resolved id=""
+    mkdir -p "$DOWNLOAD_DIR"
+
+    # Show nothing until yt-dlp confirms there is a video to grab.
+    if ! yt-dlp --no-playlist --simulate --quiet --no-warnings --no-exec --no-exec-before-download -- "$url" >/dev/null 2>&1; then
+        notify -u critical "No video found for download" "$url" || true
+        exit 0
+    fi
+    id="$(notify -p -t 0 "Downloading video" "0%" 2>/dev/null || true)"
+    [[ $id =~ ^[0-9]+$ ]] || id=""
+
+    # HASEEN_PROG carries the percent, HASEEN_FILE and HASEEN_TITLE (printed
+    # only after a successful move) the path and the JSON-encoded title, so
+    # metadata cannot forge a record.
+    while IFS= read -r line; do
+        case $line in
+        HASEEN_PROG*)
+            pct=${line#HASEEN_PROG$'\t'}
+            intpct=${pct%%.*}
+            intpct=${intpct//[^0-9]/}
+            [[ -n $intpct && $intpct != "$last" && -n $id ]] || continue
+            er=$EPOCHREALTIME
+            nowms=$((${er%[.,]*} * 1000 + 10#${er##*[.,]} / 1000))
+            ((nowms - lastms >= 1000)) || continue
+            last=$intpct
+            lastms=$nowms
+            notify -r "$id" -t 0 "Downloading video" "${intpct}%" >/dev/null 2>&1 || true
+            ;;
+        HASEEN_FILE*)
+            resolved=$(resolve_download_file "${line#HASEEN_FILE$'\t'}") || continue
+            filepath=$resolved
+            ;;
+        HASEEN_TITLE*)
+            title=$(decode_title "${line#HASEEN_TITLE$'\t'}") || title=""
+            ;;
+        esac
+    done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --no-simulate \
+        --quiet --no-warnings --no-exec --no-exec-before-download --progress --newline \
+        --progress-template $'download:HASEEN_PROG\t%(progress._percent_str)s' \
+        --paths "$DOWNLOAD_DIR" -o '%(title)s.%(ext)s' \
+        --print $'after_move:HASEEN_FILE\t%(filepath)s' \
+        --print $'after_move:HASEEN_TITLE\t%(title)j' \
+        -- "$url" 2>&1 || true)
+
+    local replace=()
+    [[ -z $id ]] || replace=(-r "$id")
+    # after_move only prints after a successful download and move.
+    if [[ -n $filepath ]]; then
+        [[ -n $title ]] || title=$(title_from_file "$filepath")
+        ((${#title} > 50)) && title="${title:0:50}…"
+        # A square, centre-cropped thumbnail, so the preview is not stretched.
+        local preview
+        preview="$(mktemp --suffix=.jpg)"
+        ffmpeg -y -i "$filepath" -ss 00:00:00.1 -vframes 1 \
+            -vf "crop='min(iw,ih)':'min(iw,ih)',scale=256:256" -q:v 2 \
+            "$preview" -loglevel quiet 2>/dev/null || true
+        [[ -s $preview ]] || preview=""
+        # The daemon reads the thumbnail when the toast appears; the toast
+        # below waits for its click, so the cleanup is scheduled first.
+        (
+            sleep 5
+            [[ -z $preview ]] || rm -f "$preview"
+        ) &
+        # `--` keeps mpv from taking a dash-leading name as an option.
+        notify "${replace[@]}" -t 10000 -i "${preview:-$filepath}" "Download complete" "$title" \
+            --exec mpv -- "$filepath" || true
+    else
+        notify "${replace[@]}" -u critical "Download failed" "$url" || true
+    fi
+    exit 0
+}
+
+# Detached worker: this is what runs yt-dlp and sends the notifications.
+if [[ ${1:-} == --download ]]; then
+    download_url "${2:-}"
+fi
+
+# Native messaging frame: 4-byte little-endian length, then UTF-8 JSON.
+length=$(head -c4 | od -An -v -tu4 --endian=little | tr -d ' ')
+[[ -n ${length:-} ]] && ((length > 0)) || exit 0
+payload=$(head -c "$length")
+# Ack with an empty message so the extension's callback resolves cleanly.
+printf '\x02\x00\x00\x00{}'
+url=$(parse_url "$payload")
+[[ -n $url ]] && valid_url "$url" || exit 0
+# Detach the download so this host exits at once and frees the browser's port.
+setsid -f "$SELF" --download "$url" </dev/null >/dev/null 2>&1

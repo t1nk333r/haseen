@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# omarchy-install-service-tailscale — install Tailscale, bring it up, let the
+# desktop user manage it, and add a web app for its admin console. Translates
+# Omarchy bin/omarchy-install-service-tailscale (MIT, Copyright (c) David
+# Heinemeier Hansson): haseen install app tailscale installs it and enables
+# tailscaled; `tailscale up --accept-routes` and `tailscale set --operator`
+# are Omarchy's. Omarchy's omarchy-tailscale-receive.service (its own unit;
+# haseen receives files with LocalSend) and its omarchy.tailscale bar plugin
+# (haseen never enables a third-party plugin) are dropped. The web app needs
+# a chromium-based default browser; without one it is skipped with a warning
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-service-tailscale [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs Tailscale (haseen install app
+tailscale), runs 'tailscale up --accept-routes', makes you its operator and
+adds a Tailscale admin web app (haseen webapp install).
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+in_floating_terminal "${args[@]}"
+
+echo -e "\nInstalling Tailscale..."
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app tailscale "${flags[@]}"
+
+echo -e "\nStarting Tailscale..."
+run_root tailscale up --accept-routes
+
+user="${USER:-$(id -un)}"
+echo -e "\nAllowing $user to manage Tailscale..."
+run_root tailscale set --operator="$user"
+
+dry=()
+$DRY_RUN && dry+=(--dry-run)
+"$HASEEN_BIN/haseen-webapp-install" "Tailscale" "https://login.tailscale.com/admin/machines" \
+    https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png "${dry[@]}" ||
+    warn "the Tailscale web app was not added (see above); the admin console is https://login.tailscale.com/admin/machines"

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# dispatch — the Omarchy commands haseen answers from one table row
+# (share/haseen/omarchy/commands.tsv, plan 093). share/haseen/omarchy/bin/<name>
+# links here; the row named by $0 says what to do:
+#
+#   shim     exec the haseen command in the target column, the caller's
+#            arguments after its fixed ones
+#   refuse   say why Omarchy's behaviour is not available and what the haseen
+#            way is; exit 1, so no caller mistakes it for success
+#   inert    nothing to do under haseen: say why on stderr, exit 0
+#
+# Commands with a script of their own (translate, port) are not links here.
+set -Eeuo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "$(readlink -f "$0")")/lib.sh"
+
+row="$(omarchy_row "$OMARCHY_NAME")" ||
+    die "$OMARCHY_NAME is not an Omarchy command haseen knows (see: omarchy commands)"
+IFS=$'\t' read -r _ kind target note <<<"$row"
+
+case $kind in
+shim)
+    read -ra argv <<<"$target"
+    haseen_exec "${argv[0]#haseen-}" "${argv[@]:1}" "$@"
+    ;;
+refuse)
+    omarchy_help "$OMARCHY_NAME: not available under haseen: $note
+The haseen way: $target" "$@"
+    omarchy_refuse "$target" "$note"
+    ;;
+inert)
+    omarchy_help "$OMARCHY_NAME: $note (nothing to do under haseen)" "$@"
+    printf '%s: %s (nothing to do under haseen)\n' "$OMARCHY_NAME" "$note" >&2
+    exit 0
+    ;;
+*)
+    die "$OMARCHY_NAME: its row is '$kind', which has its own script, not this dispatcher"
+    ;;
+esac

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# omarchy-remove-security-sshd — turn the SSH server off: disable sshd, remove
+# haseen's sshd drop-in and the standard SSH firewall rules, and offer to
+# delete the authorized keys. openssh stays: it is also the ssh client.
+# Adapted from Omarchy bin/omarchy-remove-security-sshd (MIT, Copyright (c)
+# David Heinemeier Hansson): the systemctl step and the ufw rules are
+# Omarchy's, through run_root and each allowed to fail (Omarchy's set -e
+# stopped at the first rule ufw did not have); `haseen setup sshd` writes the
+# drop-in and its 22/tcp rule, and adds them back; --dry-run prints the plan
+# (plan 093).
+#
+# Data: ~/.ssh/authorized_keys is asked about, default no; --yes keeps it, as
+# Omarchy keeps it without a terminal.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+DROPIN=/etc/ssh/sshd_config.d/90-haseen.conf
+AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-security-sshd [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: stops and disables sshd.service,
+deletes $DROPIN (haseen setup sshd), removes the
+standard SSH rules from ufw, and asks (default no; --yes keeps it) before
+deleting ~/.ssh/authorized_keys. The openssh package stays.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+echo "Removing SSH server access."
+echo "Stopping and disabling the OpenSSH server..."
+run_root systemctl disable --now sshd.service || true
+[[ -e $(sysroot_path "$DROPIN") ]] && run_root rm -f -- "$DROPIN"
+
+if [[ -x $(sysroot_path /usr/bin/ufw) ]]; then
+    echo "Removing standard SSH firewall rules..."
+    for rule in "limit 22/tcp" "allow 22/tcp" "allow ssh" "limit ssh" \
+        "allow to any app SSH" "limit to any app SSH"; do
+        read -ra words <<<"$rule"
+        if $DRY_RUN; then
+            run_root ufw --force delete "${words[@]}"
+        else
+            run_root ufw --force delete "${words[@]}" >/dev/null 2>&1 || true
+        fi
+    done
+    if $DRY_RUN; then
+        run_root ufw reload
+    else
+        run_root ufw reload >/dev/null || true
+    fi
+    echo "Standard SSH firewall rules removed. Review custom firewall rules separately."
+fi
+
+if [[ -s $AUTHORIZED_KEYS ]]; then
+    echo
+    if ask "Also remove all authorized SSH keys ($AUTHORIZED_KEYS)?"; then
+        run rm -f -- "$AUTHORIZED_KEYS"
+    else
+        echo "Keeping authorized keys."
+    fi
+fi
+
+echo
+echo "The SSH server has been disabled."
+echo "The openssh package remains installed since it also provides the ssh client."

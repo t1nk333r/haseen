@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# omarchy-toggle — Omarchy's flag switch, kept in haseen's state. A name that
+# means the same thing as a haseen flag switches that flag (screensaver-off is
+# haseen's flags/screensaver-off; bar-off is the running bar's hidden state);
+# any other name is kept for Omarchy callers in
+# $HASEEN_USER_STATE/toggles/omarchy/<name>, read back by omarchy-toggle-enabled.
+# Adapted from Omarchy bin/omarchy-toggle (MIT,
+# Copyright (c) David Heinemeier Hansson): same arguments and usage exit 1; the
+# store moves out of ~/.local/state/omarchy/toggles, names that would leave the
+# store (a '/', a leading '.') are refused, and --dry-run prints the change
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-toggle <flag-name> [toggle|on|off] [--dry-run]
+
+haseen's answer to Omarchy's command: switches a flag ("on" creates it).
+  screensaver-off  haseen's own flag (haseen toggle screensaver)
+  bar-off          hides or shows the running bar (omarchy-toggle-bar)
+  any other name   kept in \$HASEEN_USER_STATE/toggles/omarchy/<name> for
+                   Omarchy callers (omarchy-toggle-enabled reads it)
+EOF
+}
+
+bad_usage() {
+    echo "Usage: omarchy-toggle <flag-name> [toggle|on|off]" >&2
+    exit 1
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# >= 1 && $# <= 2)) || bad_usage
+name=$1
+action=${2:-toggle}
+[[ -n $name && $name != */* && $name != .* ]] || die "omarchy-toggle: not a flag name: '$name'"
+case $action in toggle | on | off) ;; *) bad_usage ;; esac
+
+if [[ $name == bar-off ]]; then
+    flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    exec "$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-bar" "$action" "${flags[@]}"
+fi
+
+# omarchy_flag_path NAME — where NAME lives (omarchy-toggle-enabled reads the
+# same map).
+case $name in
+screensaver-off) flag="$HASEEN_USER_STATE/flags/$name" ;;
+*) flag="$HASEEN_USER_STATE/toggles/omarchy/$name" ;;
+esac
+
+if [[ $action == toggle ]]; then
+    if [[ -e $flag ]]; then action=off; else action=on; fi
+fi
+if [[ $action == on ]]; then
+    [[ -e $flag ]] || write_user_file "$flag" </dev/null
+else
+    run rm -f -- "$flag"
+fi

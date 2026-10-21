@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# omarchy-install-docker-dbs — run development databases in Docker containers
+# bound to 127.0.0.1. Translates Omarchy bin/omarchy-install-docker-dbs (MIT,
+# Copyright (c) David Heinemeier Hansson): MySQL, PostgreSQL, Redis, MongoDB
+# and MariaDB are haseen catalogue entries with Omarchy's images and ports
+# (haseen install app, which enables docker.socket and runs the container as
+# root; haseen adds nobody to the docker group). MSSQL has no catalogue entry
+# and runs here the same way, with an SA password generated for this install
+# and printed once instead of Omarchy's fixed one. No arguments opens an fzf
+# picker (gum is not a haseen dependency); Esc installs nothing and exits 0,
+# where Omarchy's called an undefined function (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+options=(MySQL PostgreSQL Redis MongoDB MariaDB MSSQL)
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-docker-dbs [${options[*]}...] [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: runs each database in a Docker
+container on 127.0.0.1 (haseen install app mysql, ...). No name opens a
+picker. MSSQL's SA password is generated and printed once.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+in_floating_terminal "${args[@]}"
+
+if (($# == 0)); then
+    if $DRY_RUN; then
+        echo "DRYRUN: pick databases (${options[*]}) with fzf, then install each"
+        exit 0
+    fi
+    require_cmds fzf
+    mapfile -t choices < <(printf '%s\n' "${options[@]}" |
+        fzf --multi --header "Select databases (tab to select, return to install, esc to cancel)" || true)
+else
+    choices=("$@")
+fi
+if ((${#choices[@]} == 0)); then
+    echo "No databases selected for installation."
+    exit 0
+fi
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+for db in "${choices[@]}"; do
+    case ${db,,} in
+    mysql | postgresql | redis | mongodb | mariadb)
+        echo "Installing $db..."
+        HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app "${db,,}" "${flags[@]}"
+        ;;
+    mssql)
+        echo "Installing $db..."
+        # Docker itself through the catalogue, as the other databases get it.
+        HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app docker "${flags[@]}"
+        # SQL Server refuses a weak SA password: upper, lower, digit and symbol.
+        if $DRY_RUN; then
+            password="<generated>"
+        else
+            password="Hs$(od -An -N15 -tx1 /dev/urandom | tr -d ' \n')1!"
+        fi
+        run_root docker run -d --restart unless-stopped -p "127.0.0.1:1433:1433" --name mssql \
+            -e MSSQL_PID=Developer -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=$password" \
+            mcr.microsoft.com/mssql/server:2022-CU12-ubuntu-22.04
+        info "mssql listens on 127.0.0.1:1433; user sa, password: $password (shown only now)"
+        ;;
+    *) warn "unknown database '$db' (one of: ${options[*]})" ;;
+    esac
+done

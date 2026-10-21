@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-reload-guard — pause or resume Hyprland's config auto-reload
+# (and its error banner) in every running Hyprland around a package
+# transaction, so it never reloads half-replaced config. Run as root from a
+# pacman hook. Adapted from Omarchy bin/omarchy-hyprland-reload-guard (MIT,
+# Copyright (c) David Heinemeier Hansson): unchanged logic; the saved settings
+# live in /run/haseen/hyprland-reload-guard and every write goes through
+# haseen's root helpers. `paused` also reports Omarchy's
+# /run/omarchy/hyprland-reload-guard (read only), because Omarchy's own pacman
+# hooks pause through /usr/bin/omarchy-hyprland-reload-guard by path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+STATE_DIR=/run/haseen/hyprland-reload-guard
+OMARCHY_STATE_DIR=/run/omarchy/hyprland-reload-guard
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-reload-guard pause|resume|paused [--dry-run]
+
+haseen's answer to Omarchy's command:
+  pause   save each running Hyprland's misc.disable_autoreload and
+          debug.suppress_errors (in $STATE_DIR), then turn auto-reload off
+          and errors silent
+  resume  reload each paused Hyprland once and put both settings back
+  paused  exit 0 while a pause is in effect (haseen's or Omarchy's)
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 1
+}
+command="${REST[0]}"
+case $command in
+pause | resume | paused) ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac
+
+hyprctl_bin="${HYPRCTL:-$(command -v hyprctl || echo /usr/bin/hyprctl)}"
+
+hyprctl_instance() {
+    local runtime_dir="$1" signature="$2"
+    shift 2
+    XDG_RUNTIME_DIR="$runtime_dir" "$hyprctl_bin" --instance "$signature" "$@"
+}
+
+# A changing call: printed under a dry run, its output and failure ignored
+# (a Hyprland that went away has nothing left to pause).
+hyprctl_change() {
+    local runtime_dir="$1" signature="$2"
+    shift 2
+    if $DRY_RUN; then
+        echo "DRYRUN: XDG_RUNTIME_DIR=$runtime_dir hyprctl --instance $signature $*"
+    else
+        hyprctl_instance "$runtime_dir" "$signature" "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+option_bool() {
+    # A dead instance prints "Couldn't connect ..." on stdout, so jq's failure
+    # is what skips it. Not jq -e: that also fails on the value false, which
+    # is Hyprland's default for both options.
+    hyprctl_instance "$1" "$2" -j getoption "$3" 2>/dev/null | jq -r '.bool' 2>/dev/null
+}
+
+# instances — "runtime-dir<TAB>signature" for every Hyprland under /run/user.
+instances() {
+    local instance_dir signature hypr_dir runtime_dir
+    shopt -s nullglob
+    for instance_dir in "$(sysroot_path /run/user)"/*/hypr/*; do
+        [[ -d $instance_dir ]] || continue
+        signature="${instance_dir##*/}"
+        hypr_dir="${instance_dir%/*}"
+        runtime_dir="${hypr_dir%/*}"
+        [[ ${runtime_dir##*/} =~ ^[0-9]+$ && $signature =~ ^[A-Za-z0-9_.-]+$ ]] || continue
+        printf '%s\t%s\n' "$runtime_dir" "$signature"
+    done
+}
+
+pause_instance() {
+    local runtime_dir="$1" signature="$2" disable_autoreload suppress_errors
+    if [[ ! -f $(sysroot_path "$STATE_DIR/$signature") ]]; then
+        disable_autoreload=$(option_bool "$runtime_dir" "$signature" misc.disable_autoreload) || return 0
+        suppress_errors=$(option_bool "$runtime_dir" "$signature" debug.suppress_errors) || return 0
+        [[ $disable_autoreload =~ ^(true|false)$ && $suppress_errors =~ ^(true|false)$ ]] || return 0
+        printf '%s\t%s\t%s\n' "$runtime_dir" "$disable_autoreload" "$suppress_errors" |
+            write_root_file "$STATE_DIR/$signature" 0600
+    fi
+    hyprctl_change "$runtime_dir" "$signature" eval \
+        'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })'
+}
+
+resume_instance() {
+    local state_file="$1" signature="${1##*/}" runtime_dir disable_autoreload suppress_errors
+    IFS=$'\t' read -r runtime_dir disable_autoreload suppress_errors <"$state_file" || true
+    # The values go back into a Lua expression: only the booleans saved above.
+    if [[ -d $runtime_dir && $disable_autoreload =~ ^(true|false)$ && $suppress_errors =~ ^(true|false)$ ]]; then
+        hyprctl_change "$runtime_dir" "$signature" eval "hl.config({ debug = { suppress_errors = $suppress_errors } })"
+        hyprctl_change "$runtime_dir" "$signature" reload
+        hyprctl_change "$runtime_dir" "$signature" eval \
+            "hl.config({ misc = { disable_autoreload = $disable_autoreload }, debug = { suppress_errors = $suppress_errors } })"
+    fi
+    run_root rm -f "$STATE_DIR/$signature"
+}
+
+case $command in
+paused)
+    shopt -s nullglob
+    held=("$(sysroot_path "$STATE_DIR")"/* "$(sysroot_path "$OMARCHY_STATE_DIR")"/*)
+    ((${#held[@]} > 0))
+    ;;
+pause)
+    while IFS=$'\t' read -r runtime_dir signature; do
+        pause_instance "$runtime_dir" "$signature"
+    done < <(instances)
+    ;;
+resume)
+    state_dir="$(sysroot_path "$STATE_DIR")"
+    [[ -d $state_dir ]] || exit 0
+    shopt -s nullglob
+    for state_file in "$state_dir"/*; do
+        [[ -f $state_file ]] && resume_instance "$state_file"
+    done
+    run_root rmdir --ignore-fail-on-non-empty "$STATE_DIR" || true
+    ;;
+esac

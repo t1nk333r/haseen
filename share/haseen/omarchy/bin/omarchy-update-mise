@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# omarchy-update-mise — upgrade the tools mise manages, when mise is
+# installed. Adapted from Omarchy bin/omarchy-update-mise (MIT,
+# Copyright (c) David Heinemeier Hansson): mise up with its release-age
+# cooldown off, since running an update is asking for current versions now;
+# --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-mise [--dry-run]
+
+haseen's answer to Omarchy's command: MISE_MINIMUM_RELEASE_AGE=0 mise up, when
+mise is installed.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+have mise || exit 0
+printf '\e[32m\nUpdate mise tools\e[0m\n'
+run env MISE_MINIMUM_RELEASE_AGE=0 mise up

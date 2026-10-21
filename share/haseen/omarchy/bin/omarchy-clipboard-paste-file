@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# omarchy-clipboard-paste-file — put a file on the clipboard with its MIME type
+# and paste it (Shift+Insert through wtype). Adapted from Omarchy
+# bin/omarchy-clipboard-paste-file (MIT, Copyright (c) David Heinemeier
+# Hansson): unchanged but for --dry-run, which prints the copy and the key
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-clipboard-paste-file [--copy-only] <mime-type> <path> [--dry-run]
+
+Copies the file to the clipboard as MIME-TYPE, then pastes it with
+Shift+Insert (wtype) unless --copy-only.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+copy_only=false
+if [[ ${1:-} == --copy-only ]]; then
+    copy_only=true
+    shift
+fi
+mime=${1:-}
+path=${2:-}
+if [[ -z $mime || -z $path ]]; then
+    echo "Usage: omarchy-clipboard-paste-file [--copy-only] <mime-type> <path>" >&2
+    exit 1
+fi
+[[ -r $path ]] || exit 1
+
+run wl-copy --type "$mime" <"$path"
+$copy_only && exit 0
+$DRY_RUN || sleep 0.15
+run wtype -M shift -k Insert -m shift 2>/dev/null || true

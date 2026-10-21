@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-cmd-missing — exit 0 when any named command is not on PATH, else 1.
+# Omarchy scripts and its menu use it to offer an install. Adapted from Omarchy
+# bin/omarchy-cmd-missing (MIT, Copyright (c) David Heinemeier Hansson):
+# unchanged but for the help text (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-cmd-missing <command>...
+
+Exits 0 when any command is missing from PATH, 1 when all are there. Prints
+nothing." "$@"
+
+for cmd in "$@"; do
+    command -v -- "$cmd" &>/dev/null || exit 0
+done
+exit 1

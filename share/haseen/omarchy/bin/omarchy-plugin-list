@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# omarchy-plugin-list — haseen's plugins: haseen plugin list's table, or with
+# --json the array Omarchy's callers read. Follows Omarchy
+# bin/omarchy-plugin-list (MIT, Copyright (c) David Heinemeier Hansson). The
+# table is haseen's (ID ORIGIN STATE KINDS NAME). The JSON keeps Omarchy's
+# fields (id, name, kinds, enabled, active, canDisable, firstParty,
+# clonedFrom) and adds origin and compat; it is read from shell.json and the
+# plugin directories (omarchy-plugin-catalog), so it answers without a running
+# shell, where Omarchy's asks its shell. As in Omarchy, a bar widget or a
+# service is enabled when it has a place in the bar or the services, anything
+# else when it is not turned off. haseen has no whole-bar plugins, so active
+# is always false and every plugin can be disabled. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+omarchy_help "Usage: omarchy-plugin-list [--json]
+
+haseen's answer to Omarchy's command: haseen plugin list, or with --json the
+plugins as a JSON array in Omarchy's shape." "$@"
+
+json=false
+while (($# > 0)); do
+    case "$1" in
+    --json) json=true ;;
+    *)
+        echo "omarchy-plugin-list: unknown option: $1" >&2
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+$json || haseen_exec plugin-list
+
+catalog="$("$HASEEN_OMARCHY_DIR/bin/omarchy-plugin-catalog")"
+merged="$(shell_merged_json)"
+jq -c --argjson m "$merged" '
+    def ids: if type == "array" then map(select(type == "string")) else [] end;
+    ([($m.bar.left | ids), ($m.bar.center | ids), ($m.bar.right | ids), ($m.services | ids)] | add) as $listed
+    | map(.id as $id
+        | ($m.plugins[$id].enabled == false) as $off
+        | {id, name, kinds,
+           enabled: (if (.kinds | index("bar-widget")) or (.kinds | index("service"))
+                     then ($off | not) and ($listed | index($id) != null)
+                     else ($off | not) end),
+           active: false, canDisable: true, firstParty, clonedFrom, origin, compat})
+    | sort_by([.name, .id])' <<<"$catalog"

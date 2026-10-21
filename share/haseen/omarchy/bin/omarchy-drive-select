@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-drive-select — pick a drive and print its device path. Omarchy's
+# callers pass the candidates as one newline-separated string (its
+# omarchy-drive-password and bash drive helpers); haseen drive select takes
+# them as separate arguments, so every argument is split into words. The
+# argument form follows Omarchy bin/omarchy-drive-select (MIT, Copyright (c)
+# David Heinemeier Hansson); haseen skips the picker for a single drive and
+# uses fzf where Omarchy used gum (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-drive-select [drives]
+
+haseen's answer to Omarchy's command: haseen drive select with the drives
+(newline- or space-separated) as separate arguments. Prints the device path
+chosen; exits 1 when the pick is cancelled." "$@"
+
+devices=()
+for arg in "$@"; do
+    read -r -d '' -a words <<<"$arg" || true
+    devices+=("${words[@]}")
+done
+haseen_exec drive-select "${devices[@]}"

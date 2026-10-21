@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-shell-config — Omarchy's scripts (omarchy-bar) source this for
+# helpers that rewrite Omarchy's ~/.config/omarchy/shell.json, which haseen's
+# shell does not read. haseen refuses it: whether run or sourced, it says why
+# and the haseen way and exits 1, which also stops the sourcing script before
+# it edits Omarchy's file. Name and sourcing contract from Omarchy
+# bin/omarchy-shell-config (MIT, Copyright (c) David Heinemeier Hansson);
+# plan 093.
+
+_haseen_refusal="omarchy-shell-config: not available under haseen.
+It edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read.
+The haseen way: haseen bar add|move|overflow|position, haseen plugin enable|disable|settings"
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    case "${1:-}" in
+    -h | --help)
+        printf '%s\n' "$_haseen_refusal"
+        exit 0
+        ;;
+    esac
+fi
+printf '%s\n' "$_haseen_refusal" >&2
+exit 1

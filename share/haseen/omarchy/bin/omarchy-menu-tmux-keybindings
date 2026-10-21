@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-menu-tmux-keybindings — tmux's annotated key bindings in haseen's
+# menu list: haseen tmux keybinds, which is adapted from Omarchy
+# bin/omarchy-menu-tmux-keybindings (MIT, Copyright (c) David Heinemeier
+# Hansson). Omarchy's arguments are translated: --print/-p and --config PATH
+# as they are, a bare PATH as --config PATH. haseen has no fallback to
+# Omarchy's shipped tmux.conf: without a config it lists tmux's own bindings
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-tmux-keybindings [--print|-p] [--config <path>]
+
+haseen's answer to Omarchy's command: haseen tmux keybinds. The config is
+\$TMUX_CONF, ~/.config/tmux/tmux.conf or ~/.tmux.conf unless given." "$@"
+
+args=()
+while (($#)); do
+    case "$1" in
+    --print | -p) args+=(--print) ;;
+    --config)
+        (($# >= 2)) || die "--config needs a path"
+        args+=(--config "$2")
+        shift
+        ;;
+    *) args+=(--config "$1") ;;
+    esac
+    shift
+done
+haseen_exec tmux-keybinds "${args[@]}"

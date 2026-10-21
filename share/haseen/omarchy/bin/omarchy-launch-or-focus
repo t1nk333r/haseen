@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-launch-or-focus — focus the Hyprland window whose class or title
+# matches a pattern, else run a launch command. Omarchy's binds, plugins and
+# its other launchers call it. Adapted from Omarchy bin/omarchy-launch-or-focus
+# (MIT, Copyright (c) David Heinemeier Hansson): the arguments, the \b-bounded
+# case-insensitive match and the eval'd launch string are Omarchy's; the focus
+# uses the dispatcher syntax of the running Hyprland (lib/screen.sh
+# screen_lua, as haseen.windows does), and a leading `uwsm-app --` in the
+# launch command is dropped outside a uwsm session, where uwsm-app has no
+# manager to talk to (plan 093). DRY_RUN=true prints the launch instead.
+# The launch command is eval'd as shell code, as in Omarchy: callers quote
+# every word they build into it (printf %q), and it never carries untrusted
+# input such as a window title or a URL from a page.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+omarchy_help "Usage: omarchy-launch-or-focus <window-pattern> [launch-command]
+
+haseen's answer to Omarchy's command: focuses the first Hyprland window whose
+class or title matches <window-pattern> (a case-insensitive regex between
+word boundaries), else runs <launch-command>, a shell command line (default:
+'uwsm-app -- <window-pattern>'). Outside a uwsm session a leading
+'uwsm-app --' is dropped and the command runs directly." "$@"
+
+if (($# == 0)); then
+    echo "Usage: omarchy-launch-or-focus [window-pattern] [launch-command]"
+    exit 1
+fi
+
+pattern=$1
+command=${2:-"uwsm-app -- $pattern"}
+
+# uwsm runs the session when it exports these (Haseen/Apps.qml asks the same).
+if [[ -z ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] || ! have uwsm-app; then
+    if [[ $command =~ ^[[:space:]]*uwsm(-app|[[:space:]]+app)[[:space:]]+--[[:space:]]+(.*)$ ]]; then
+        command=${BASH_REMATCH[2]}
+    fi
+fi
+
+# A window to focus exists only in a running Hyprland.
+address=""
+if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    address="$(hyprctl clients -j 2>/dev/null | jq -r --arg p "$pattern" '
+        .[]? | select(((.class // "") | test("\\b" + $p + "\\b"; "i")) or ((.title // "") | test("\\b" + $p + "\\b"; "i")))
+        | .address' 2>/dev/null | head -n1 || true)"
+fi
+
+if [[ $address =~ ^0x[0-9a-fA-F]+$ ]]; then
+    if screen_lua; then
+        focus=(dispatch "hl.dsp.focus({window = hl.get_window(\"address:$address\")})")
+    else
+        focus=(dispatch focuswindow "address:$address")
+    fi
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl ${focus[*]}"
+    else
+        hyprctl "${focus[@]}" >/dev/null
+    fi
+    exit 0
+fi
+
+if $DRY_RUN; then
+    echo "DRYRUN: setsid $command"
+    exit 0
+fi
+# The launch command is a shell command line by Omarchy's contract: callers
+# quote their words for it (Omarchy default/hypr/helpers.lua shell_quote).
+eval "exec setsid $command"

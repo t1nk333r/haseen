@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# omarchy-font-current — print the monospace font family in use. Translated to
+# haseen font current, which prints the family set with haseen font set and
+# nothing while the theme's font is in use; then, as Omarchy
+# bin/omarchy-font-current (MIT, Copyright (c) David Heinemeier Hansson)
+# always does, the family fontconfig resolves for monospace (haseen's
+# fonts.conf points that at the theme's font), first alias only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-font-current
+
+haseen's answer to Omarchy's command: prints the monospace family in use, one
+name: the one chosen with haseen font set, else what fontconfig resolves for
+monospace." "$@"
+
+family="$("$HASEEN_BIN/haseen-font-current" 2>/dev/null || true)"
+if [[ -z $family ]] && have fc-match; then
+    family="$(fc-match monospace -f '%{family}\n' 2>/dev/null | head -n1 | cut -d, -f1 || true)"
+fi
+[[ -z $family ]] || printf '%s\n' "$family"

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-theme-switcher — Omarchy's theme picker, answered by haseen's: opens
+# the haseen.themepicker panel, which applies the picked theme itself.
+# Omarchy's picker printed the chosen name for its caller to set
+# (`theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set
+# "$theme"`); this one prints nothing, so such a caller has nothing left to
+# do. --preload (Omarchy's theme set warming its picker's cache) does nothing:
+# haseen's panels load when opened. Interface of Omarchy
+# bin/omarchy-theme-switcher (MIT, Copyright (c) David Heinemeier Hansson)
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-theme-switcher [--preload]
+
+haseen's answer to Omarchy's command: opens haseen's theme picker (the
+haseen.themepicker panel), which applies the theme you pick. Nothing is
+printed: the panel sets the theme itself. --preload does nothing (haseen's
+panels load when they open). Fails when haseen's shell does not answer." "$@"
+
+[[ ${1:-} == --preload ]] && exit 0
+"$HASEEN_BIN/haseen-shell-ipc" panel toggle haseen.themepicker >/dev/null

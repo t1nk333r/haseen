@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-audio-input-set-default — make a source the default audio input and
+# move every recording stream to it. Omarchy's audio panel calls it with
+# <node-id> <source-name>; haseen.audio sets the default in QML. Adapted from
+# Omarchy bin/omarchy-audio-input-set-default (MIT, Copyright (c) David
+# Heinemeier Hansson): the changes go through run, so --dry-run prints them
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-input-set-default <node-id> <source-name> [--dry-run]
+
+Sets the default source (wpctl and pactl) and moves every source output to it.
+EOF
+}
+parse_common_flags "$@"
+node_id=${REST[0]:-}
+source_name=${REST[1]:-}
+if [[ -z $node_id || -z $source_name ]]; then
+    echo "Usage: omarchy-audio-input-set-default <node-id> <source-name>" >&2
+    exit 1
+fi
+
+run wpctl set-default "$node_id" 2>/dev/null || true
+run pactl set-default-source "$source_name" 2>/dev/null || true
+while read -r output; do
+    [[ -n $output ]] || continue
+    run pactl move-source-output "$output" "$source_name" 2>/dev/null || true
+done < <(pactl list short source-outputs 2>/dev/null | awk '{ print $1 }')

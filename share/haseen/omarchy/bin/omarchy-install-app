@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# omarchy-install-app — install a packaged app for Omarchy's menu, showing the
+# install in a floating terminal. Translates Omarchy bin/omarchy-install-app
+# (MIT, Copyright (c) David Heinemeier Hansson): each package word that is a
+# catalogue id or package ref installs as that catalogue entry (haseen install
+# app: Flathub first, haseen's source order); the rest go to haseen install
+# aur, which tries the repositories, Chaotic-AUR and [omarchy] before the AUR,
+# so a variant the menu chose (ollama-cuda, lmstudio-bin) is kept. Words are
+# never matched by display name. The terminal is haseen's floating one
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-app <display-name> <packages> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs <packages> (one or more words)
+in haseen's floating terminal. A word that names a catalogue app (its id or
+package) installs as 'haseen install app ID'; any other goes to
+'haseen install aur', which prefers a repository package over the AUR.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+name="${1-}"
+packages="${2-}"
+if [[ -z $name || -z $packages ]]; then
+    echo "Usage: omarchy-install-app <display-name> <packages>" >&2
+    exit 1
+fi
+in_floating_terminal "${args[@]}"
+
+CATALOG="${HASEEN_CATALOG:-$HASEEN_PATH/default/catalog.json}"
+# catalog_id WORD — the entry whose id or package ref is WORD, case-insensitive.
+catalog_id() {
+    jq -r --arg n "${1,,}" '[.entries[] | select((.id | ascii_downcase) == $n
+        or ((.ref | ascii_downcase) | split(" ") | index($n)))][0].id // empty' "$CATALOG"
+}
+
+echo "Installing $name..."
+words=()
+read -r -d '' -a words <<<"$packages" || true
+ids=()
+raw=()
+for word in "${words[@]}"; do
+    id="$(catalog_id "$word")"
+    if [[ -z $id ]]; then
+        raw+=("$word")
+    elif [[ " ${ids[*]} " != *" $id "* ]]; then
+        ids+=("$id")
+    fi
+done
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+for id in "${ids[@]}"; do
+    HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app "$id" "${flags[@]}"
+done
+((${#raw[@]} == 0)) || HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" aur "${raw[@]}" "${flags[@]}"

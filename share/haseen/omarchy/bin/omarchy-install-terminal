@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# omarchy-install-terminal — install one of the four terminals and make it the
+# default (SUPER + RETURN, $TERMINAL, xdg-terminal-exec's list). Translates
+# Omarchy bin/omarchy-install-terminal (MIT, Copyright (c) David Heinemeier
+# Hansson): haseen install app NAME, then haseen setup default terminal NAME,
+# which writes $TERMINAL and ~/.config/xdg-terminals.list as Omarchy does.
+# Omarchy's copies of its desktop entries and of ~/.config/NAME defaults are
+# dropped: haseen's theme layer renders the terminal configs. A failed install
+# exits 1, where Omarchy's printed the failure and exited 0 (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-terminal <alacritty|foot|ghostty|kitty> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs the terminal (haseen install
+app) and makes it the default (haseen setup default terminal).
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+if (($# == 0)); then
+    echo "Usage: omarchy-install-terminal [alacritty|foot|ghostty|kitty]"
+    exit 1
+fi
+package="$1"
+case "$package" in
+alacritty | foot | ghostty | kitty) ;;
+*)
+    echo "Unknown terminal: $package"
+    exit 1
+    ;;
+esac
+in_floating_terminal "${args[@]}"
+
+echo "Installing $package..."
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+if ! HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app "$package" "${flags[@]}"; then
+    echo "Failed to install $package"
+    exit 1
+fi
+dry=()
+$DRY_RUN && dry+=(--dry-run)
+"$HASEEN_BIN/haseen-setup-default" terminal "$package" "${dry[@]}"

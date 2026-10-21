@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-hw-nvidia-without-gsp — exit 0 when an NVIDIA GPU of the Maxwell,
+# Pascal or Volta generations (device id 0x1340 up to 0x1e00) is present.
+# Adapted from Omarchy bin/omarchy-hw-nvidia-without-gsp (MIT, Copyright (c)
+# David Heinemeier Hansson): the same two-sided bound, read through
+# sysroot_path. haseen's own nvidia-no-gsp probe is broader (Kepler too); the
+# callers install the 580xx driver, which covers exactly this span (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-nvidia-without-gsp
+
+haseen's answer to Omarchy's command: exit 0 when an NVIDIA GPU with device id
+in 0x1340..0x1dff (Maxwell, Pascal, Volta: no GSP firmware) is present." "$@"
+
+shopt -s nullglob
+for device in "$(sysroot_path /sys/bus/pci/devices)"/*; do
+    [[ -r $device/vendor && -r $device/class && -r $device/device ]] || continue
+    [[ $(<"$device/vendor") == 0x10de ]] || continue
+    [[ $(<"$device/class") == 0x03* ]] || continue
+    id=$(<"$device/device")
+    [[ $id =~ ^0x[0-9a-fA-F]+$ ]] || continue
+    ((id >= 0x1340 && id < 0x1e00)) && exit 0
+done
+exit 1

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# omarchy-menu-images — picks an image from directories and prints its path
+# (or, with --print-name, its file name without the extension); nothing, exit
+# 0, when cancelled. Adapted from Omarchy bin/omarchy-menu-images (MIT,
+# Copyright (c) David Heinemeier Hansson): the arguments, the image search and
+# the output are Omarchy's. Omarchy hands the rows to its own shell's image
+# selector and blocks on the pick; haseen's image picker is a panel with no
+# such request, so the images are listed by name in haseen's menu (haseen
+# menu select), without thumbnails: no ~/.cache/omarchy, no vipsthumbnail.
+# --selected moves that image to the top of the list, where Enter takes it.
+# --preload, --cache-only and --prepare-only only warmed Omarchy's thumbnail
+# cache and exit 0 here; --show-labels, --filterable and --lazy-thumbnails
+# change nothing, haseen's list always shows names and filters (plan 093).
+# Read-only.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
+}
+case "${1:-}" in
+-h | --help)
+    usage
+    printf '\n%s\n' "haseen's answer to Omarchy's command: lists the images by name in haseen's menu, without thumbnails, and prints the one chosen."
+    exit 0
+    ;;
+esac
+
+selected_image="" print_name=false prepare_only=false image_dirs=()
+while (($# > 0)); do
+    case "$1" in
+    --selected)
+        (($# >= 2)) || {
+            usage >&2
+            exit 1
+        }
+        selected_image=$2
+        shift
+        ;;
+    --print-name) print_name=true ;;
+    --show-labels | --filterable | --lazy-thumbnails) ;;
+    --prepare-only | --preload | --cache-only) prepare_only=true ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) image_dirs+=("$1") ;;
+    esac
+    shift
+done
+((${#image_dirs[@]} > 0)) || {
+    usage >&2
+    exit 1
+}
+# Nothing to warm: haseen's list draws no thumbnails.
+$prepare_only && exit 0
+
+images=()
+for dir in "${image_dirs[@]}"; do
+    [[ -d $dir ]] || continue
+    while IFS= read -r -d '' image; do
+        # A tab or newline would split the row it is listed on.
+        [[ $image != *$'\t'* && $image != *$'\n'* ]] && images+=("$image")
+    done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
+done
+((${#images[@]} > 0)) || exit 0
+
+# The selected image, as the path listed or another name for the same file.
+current=""
+if [[ -n $selected_image && -e $selected_image ]]; then
+    for image in "${images[@]}"; do
+        if [[ $image == "$selected_image" || $image -ef $selected_image ]]; then
+            current=$image
+            break
+        fi
+    done
+fi
+
+rows=()
+[[ -z $current ]] || rows+=($'󰋩\t'"$(basename "${current%.*}")"$'\t'"$current")
+for image in "${images[@]}"; do
+    [[ $image == "$current" ]] || rows+=($'󰋩\t'"$(basename "${image%.*}")"$'\t'"$image")
+done
+
+selection="$(printf '%s\n' "${rows[@]}" | haseen_cmd menu-select "Images" --width 800 --height 500)" || exit 0
+path=${selection#*$'\t'}
+[[ -n $path ]] || exit 0
+if $print_name; then
+    path=${path##*/}
+    printf '%s\n' "${path%.*}"
+else
+    printf '%s\n' "$path"
+fi

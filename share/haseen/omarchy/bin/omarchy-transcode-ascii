@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+# omarchy-transcode-ascii — render an SVG or PNG into braille or block text
+# art with ImageMagick and write it to the path the caller names. Adapted from
+# Omarchy bin/omarchy-transcode-ascii (MIT,
+# Copyright (c) David Heinemeier Hansson): the conversion, options and exit
+# codes are Omarchy's; the result is written through haseen's write_user_file,
+# so --dry-run prints it instead (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: omarchy-transcode-ascii <input-image.svg|png> <output-path> [options]
+
+Transcodes an image into ASCII/Unicode art text.
+
+Options:
+  -w, --width <columns>       Maximum output width in terminal columns (default: 80)
+  -H, --height <rows>         Maximum output height in terminal rows (default: 26)
+  -m, --mode <braille|block>  Output style (default: braille)
+  -t, --threshold <percent>   Pixel threshold from 0-100 (default: 50)
+      --invert                Treat light pixels as the logo instead of dark pixels
+      --no-trim               Preserve surrounding whitespace/background
+      --dry-run               Print the art and the path instead of writing it
+      --help                  Show this help
+EOF
+}
+
+width=80
+height=26
+mode=braille
+threshold=50
+invert=false
+trim=true
+image_path=""
+output_path=""
+
+# need_value OPTION VALUE — Omarchy's "Missing value" failure.
+need_value() {
+    [[ -n ${2:-} ]] || {
+        echo "Missing value for $1" >&2
+        exit 1
+    }
+}
+
+while (($# > 0)); do
+    case "$1" in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run) DRY_RUN=true ;;
+    -w | --width)
+        need_value --width "${2:-}"
+        width=$2
+        shift
+        ;;
+    -H | --height)
+        need_value --height "${2:-}"
+        height=$2
+        shift
+        ;;
+    -m | --mode)
+        need_value --mode "${2:-}"
+        mode=$2
+        shift
+        ;;
+    -t | --threshold)
+        need_value --threshold "${2:-}"
+        threshold=$2
+        shift
+        ;;
+    --invert) invert=true ;;
+    --no-trim) trim=false ;;
+    -*)
+        echo "Unknown option: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+    *)
+        if [[ -z $image_path ]]; then
+            image_path=$1
+        elif [[ -z $output_path ]]; then
+            output_path=$1
+        else
+            echo "Unexpected argument: $1" >&2
+            usage >&2
+            exit 1
+        fi
+        ;;
+    esac
+    shift
+done
+
+if [[ -z $image_path || -z $output_path ]]; then
+    usage >&2
+    exit 1
+fi
+if [[ $mode != braille && $mode != block ]]; then
+    echo "Invalid mode: $mode (expected braille or block)" >&2
+    exit 1
+fi
+# The numbers reach magick's geometry and threshold arguments.
+[[ $width =~ ^[0-9]+$ && $height =~ ^[0-9]+$ && $threshold =~ ^[0-9]+$ ]] || {
+    echo "Width, height and threshold must be whole numbers" >&2
+    exit 1
+}
+if [[ ! -f $image_path ]]; then
+    echo "Logo file not found: $image_path" >&2
+    exit 1
+fi
+if ! have magick; then
+    echo "ImageMagick is required to convert logo images" >&2
+    exit 1
+fi
+
+if [[ $mode == braille ]]; then
+    pixel_width=$((width * 2))
+    pixel_height=$((height * 4))
+else
+    pixel_width=$width
+    pixel_height=$((height * 2))
+fi
+
+alpha_range="$(magick -background none "$image_path" -alpha extract -format '%[fx:minima] %[fx:maxima]' info: 2>/dev/null)" || {
+    echo "Unable to read logo image: $image_path" >&2
+    exit 1
+}
+read -r alpha_min alpha_max <<<"$alpha_range"
+
+use_alpha=false
+if awk -v min="$alpha_min" -v max="$alpha_max" 'BEGIN { exit !(min < 0.999 && max > min) }'; then
+    use_alpha=true
+fi
+
+magick_args=(-background none "$image_path" -auto-orient)
+if $use_alpha; then
+    magick_args+=(-alpha extract -alpha off)
+    $invert && magick_args+=(-negate)
+else
+    magick_args+=(-alpha remove -alpha off -colorspace Gray)
+    $invert || magick_args+=(-negate)
+fi
+$trim && magick_args+=(-bordercolor black -border 1 -trim +repage)
+magick_args+=(-resize "${pixel_width}x${pixel_height}" -threshold "${threshold}%" -negate -compress none pbm:-)
+
+tmp_output="$(mktemp)"
+trap 'rm -f "$tmp_output"' EXIT
+
+# The PBM is read as plain tokens: braille packs 2x4 pixels per cell, block
+# packs 1x2 into the half-block characters.
+if ! magick "${magick_args[@]}" | awk -v mode="$mode" '
+  BEGIN {
+    braille_base = 10240
+    dot[0,0] = 1; dot[0,1] = 2; dot[0,2] = 4; dot[1,0] = 8
+    dot[1,1] = 16; dot[1,2] = 32; dot[0,3] = 64; dot[1,3] = 128
+    block["11"] = "█"; block["10"] = "▀"; block["01"] = "▄"; block["00"] = " "
+  }
+  {
+    sub(/#.*/, "")
+    for (i = 1; i <= NF; i++) token[++token_count] = $i
+  }
+  END {
+    if (token[1] != "P1") exit 1
+    width = token[2]; height = token[3]; pixel_offset = 4
+    row_step = (mode == "braille") ? 4 : 2
+    for (y = 0; y < height; y += row_step) {
+      line = ""
+      if (mode == "braille") {
+        for (x = 0; x < width; x += 2) {
+          code = 0
+          for (dy = 0; dy < 4; dy++)
+            for (dx = 0; dx < 2; dx++)
+              if (y + dy < height && x + dx < width && token[pixel_offset + ((y + dy) * width) + x + dx] == 1)
+                code += dot[dx,dy]
+          line = line (code == 0 ? " " : sprintf("%c", braille_base + code))
+        }
+      } else {
+        for (x = 0; x < width; x++) {
+          top = token[pixel_offset + (y * width) + x]
+          bottom = (y + 1 < height) ? token[pixel_offset + ((y + 1) * width) + x] : 0
+          line = line block[top bottom]
+        }
+      }
+      sub(/[ ]+$/, "", line)
+      lines[++line_count] = line
+    }
+    first = 1
+    while (first <= line_count && lines[first] ~ /^[ ]*$/) first++
+    last = line_count
+    while (last >= first && lines[last] ~ /^[ ]*$/) last--
+    for (i = first; i <= last; i++) print lines[i]
+  }
+' >"$tmp_output"; then
+    echo "Unable to convert logo image: $image_path" >&2
+    exit 1
+fi
+
+if [[ ! -s $tmp_output ]]; then
+    echo "No logo pixels found in: $image_path" >&2
+    exit 1
+fi
+
+write_user_file "$output_path" <"$tmp_output"
+$DRY_RUN || echo "Wrote ASCII art to $output_path"

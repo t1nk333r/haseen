@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# omarchy-dns — print or choose the DNS provider on haseen setup dns, which
+# writes one systemd-resolved drop-in (Domains=~.) and never overwrites
+# /etc/systemd/resolved.conf or NetworkManager's settings, as Omarchy's
+# does. The provider names follow Omarchy bin/omarchy-dns (MIT, Copyright (c)
+# David Heinemeier Hansson): Omarchy's network panel and menu compare the
+# capitalised Cloudflare, Google, DHCP and Custom it prints (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom] [--dry-run]
+
+haseen's answer to Omarchy's command (haseen setup dns): without a provider,
+prints the current one; Custom asks for the servers.
+EOF
+}
+parse_common_flags "$@"
+if ((${#REST[@]} == 0)); then
+    case "$(haseen_cmd setup-dns)" in
+    cloudflare) echo Cloudflare ;;
+    google) echo Google ;;
+    custom) echo Custom ;;
+    *) echo DHCP ;;
+    esac
+    exit 0
+fi
+case ${REST[0],,} in
+cloudflare | google | dhcp | custom) choice=${REST[0],,} ;;
+*)
+    echo "Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom]" >&2
+    exit 1
+    ;;
+esac
+((${#REST[@]} == 1)) || {
+    echo "Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom]" >&2
+    exit 1
+}
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec setup-dns "$choice" "${flags[@]}"

@@ -131,6 +131,12 @@ check_toggle nightlight nightlight yes
 check_toggle idle idle-off no
 stub notify-send 'echo "NOTIFY $*" >>"$HOME/notify.log"'
 check_toggle screensaver screensaver-off no
+# The help text names `haseen screensaver --force`; it must not run it.
+stub haseen-screensaver 'echo "STUB-CALLED: haseen-screensaver $*" >&2; exit 97'
+capture haseen toggle screensaver --help
+assert_status "toggle screensaver --help exits 0" 0 "$STATUS"
+assert_contains "toggle screensaver --help names --force" "$OUTPUT" "haseen screensaver --force"
+assert_not_contains "toggle screensaver --help starts no screensaver" "$OUTPUT" "STUB-CALLED"
 assert_contains "screensaver toggle notifies (no other visual cue)" "$(cat "$HOME/notify.log" 2>/dev/null)" "NOTIFY -a haseen -u low Screensaver off"
 # HASEEN_USER_STATE wins over XDG_STATE_HOME, as everywhere else.
 HASEEN_USER_STATE="$SANDBOX/alt-state" capture haseen toggle dnd on

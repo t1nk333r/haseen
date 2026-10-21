@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# omarchy-hw-touchpad — print Hyprland's touchpad or trackpad device name.
+# Adapted from Omarchy bin/omarchy-hw-touchpad (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged query; the name is what Hyprland's per-device
+# config needs, which sysfs presence (haseen's hw_probe_touchpad) cannot give
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-touchpad
+
+haseen's answer to Omarchy's command: prints the first Hyprland pointer whose
+name says touchpad or trackpad; exit 1 and no output when there is none." "$@"
+
+devices="$(hyprctl devices -j 2>/dev/null)" || exit 1
+device="$(jq -r '[.mice[]? | .name | select(test("touchpad|trackpad"; "i"))] | first // empty' <<<"$devices" 2>/dev/null || true)"
+[[ -n $device ]] || exit 1
+printf '%s\n' "$device"

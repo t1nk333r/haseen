@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# omarchy-hw-external-monitors — exit 0 when an external monitor is physically
+# connected. Adapted from Omarchy bin/omarchy-hw-external-monitors (MIT,
+# Copyright (c) David Heinemeier Hansson): the DRM connectors are read through
+# sysroot_path instead of OMARCHY_DRM_PATH (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-external-monitors
+
+haseen's answer to Omarchy's command: exit 0 when a DRM connector other than
+eDP, LVDS or DSI reports connected, 1 otherwise. Asks the kernel, not
+Hyprland, so it answers before the compositor has the output." "$@"
+
+for status in "$(sysroot_path /sys/class/drm)"/card*-*/status; do
+    [[ -e $status ]] || continue
+    [[ $status =~ -(eDP|LVDS|DSI)-[^/]+/status$ ]] && continue
+    [[ $(<"$status") == connected ]] && exit 0
+done
+exit 1

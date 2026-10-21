@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-menu-emoji — opens or closes haseen's emoji picker panel (haseen.emoji). Omarchy's command
+# (Omarchy bin/omarchy-menu-emoji, MIT, Copyright (c) David Heinemeier Hansson) toggles
+# its own shell's omarchy.emojis; here the same IPC reaches haseen's shell, as
+# haseen's own bind and menu entry do (plan 093). A script of its own, not a
+# table shim, so that --help answers without calling the shell.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-emoji
+
+haseen's answer to Omarchy's command: toggles haseen's emoji picker panel
+(haseen shell ipc panel toggle haseen.emoji)." "$@"
+# Omarchy's takes no arguments and ignores any it is given.
+haseen_exec shell-ipc panel toggle haseen.emoji

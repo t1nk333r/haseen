@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# omarchy-audio-output-sink — print the sink whose volume and mute an output
+# really uses: through a DSP sink (haseen's speaker tuning, EasyEffects) to
+# the physical sink it feeds. With no argument, the default output. Omarchy's
+# volume keys, output switcher and audio panel resolve through it. Adapted
+# from Omarchy bin/omarchy-audio-output-sink (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged (plan 093). haseen's tuning sink
+# haseen_speaker_tuning (bin/haseen-audio-tuning) feeds the speakers through
+# a stream named haseen_speaker_tuning_output, which the name-prefix rule
+# below finds.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-audio-output-sink [sink-name]
+
+Prints the sink that carries the loudness of SINK-NAME (default: the default
+output): the physical sink behind a speaker tuning or EasyEffects, else the
+sink itself. Changes nothing." "$@"
+
+sink="${1:-$(pactl get-default-sink 2>/dev/null || true)}"
+if [[ -z $sink || $sink == alsa_output.* ]]; then
+    printf '%s\n' "$sink"
+    exit 0
+fi
+
+# A DSP sink feeds its physical output through a stream of its own; follow
+# that stream down to the sink underneath.
+downstream="$(pactl list sink-inputs 2>/dev/null |
+    awk -v virt="$sink" '
+    BEGIN {
+      output = virt
+      sub(/^effect_input\./, "effect_output.", output)
+    }
+    /^Sink Input #/ {target = ""}
+    /^[[:space:]]*Sink:/ {target = $2}
+    /node\.name = / {
+      name = $0
+      sub(/.*node\.name = "/, "", name)
+      sub(/"$/, "", name)
+      if (target != "" && (name == output || (output == virt && index(name, virt) == 1))) {selected = target; exit}
+      if (target != "" && fallback == "" && index(name, virt) == 1) fallback = target
+    }
+    /application\.name = "EasyEffects"/ {
+      if (virt == "easyeffects_sink" && target != "") {selected = target; exit}
+    }
+    END {
+      if (selected != "") print selected
+      else if (fallback != "") print fallback
+    }' || true)"
+
+if [[ -n $downstream ]]; then
+    name="$(pactl list sinks short 2>/dev/null | awk -v id="$downstream" '$1 == id {print $2; exit}' || true)"
+    if [[ -n $name ]]; then
+        printf '%s\n' "$name"
+        exit 0
+    fi
+fi
+
+# EasyEffects 8 links its output ports straight to the sink's playback ports,
+# with no stream of its own: follow the port links instead.
+if [[ $sink == easyeffects_sink ]]; then
+    linked="$(pw-link -l 2>/dev/null |
+        awk '
+      /^[^ ]/ {src = $0}
+      /^[[:space:]]*\|->/ {
+        if (src ~ /^ee_/ && $2 ~ /^(alsa|bluez)_output\..*:playback_/) {
+          sub(/:playback_.*$/, "", $2); print $2; exit
+        }
+      }' || true)"
+    # Idle, EasyEffects drops those links: use the device it is configured to
+    # feed, when that sink exists.
+    if [[ -z $linked ]]; then
+        configured="$(sed -n 's/^outputDevice=//p' \
+            "${XDG_CONFIG_HOME:-$HOME/.config}/easyeffects/db/easyeffectsrc" 2>/dev/null || true)"
+        if [[ -n $configured ]] && pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -qxF -- "$configured"; then
+            linked="$configured"
+        fi
+    fi
+    if [[ -n $linked ]]; then
+        printf '%s\n' "$linked"
+        exit 0
+    fi
+fi
+
+# Nothing resolvable downstream (the DSP sink may be idle): the sink itself.
+printf '%s\n' "$sink"

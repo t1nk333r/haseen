@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# omarchy-menu-share — shares the clipboard, files or folders with LocalSend
+# through haseen share clipboard|file|folder, which are adapted from Omarchy
+# bin/omarchy-menu-share (MIT, Copyright (c) David Heinemeier Hansson).
+# haseen has one command per mode, takes one folder at a time and refuses a
+# directory as a file, so given paths are sorted out here whatever the mode,
+# as Omarchy sends them all: directories go to haseen share folder one by one,
+# files to haseen share file together. With no
+# path each command opens its own chooser, as Omarchy's does (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-share <clipboard|file|folder> [path...] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen share clipboard, haseen share
+file [FILE...] and haseen share folder [DIR] (once per folder)." "$@"
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+
+(($# > 0)) || {
+    echo "Usage: omarchy-menu-share [clipboard|file|folder]"
+    exit 1
+}
+mode=$1
+shift
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+
+case $mode in
+clipboard) haseen_exec share-clipboard "${flags[@]}" ;;
+file | folder)
+    (($# > 0)) || haseen_exec "share-$mode" "${flags[@]}"
+    files=() dirs=()
+    for path in "$@"; do
+        if [[ -d $path ]]; then dirs+=("$path"); else files+=("$path"); fi
+    done
+    rc=0
+    ((${#files[@]} == 0)) || haseen_cmd share-file "${flags[@]}" "${files[@]}" || rc=$?
+    for dir in "${dirs[@]+"${dirs[@]}"}"; do
+        haseen_cmd share-folder "${flags[@]}" "$dir" || rc=$?
+    done
+    exit "$rc"
+    ;;
+*)
+    echo "Usage: omarchy-menu-share [clipboard|file|folder]"
+    exit 1
+    ;;
+esac

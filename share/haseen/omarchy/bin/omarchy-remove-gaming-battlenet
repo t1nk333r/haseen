@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# omarchy-remove-gaming-battlenet — remove Battle.net: stop what runs from its
+# Proton prefix, delete the prefix, its launcher and the cached installer, then
+# offer to drop umu-launcher and the GE-Proton runtimes umu downloaded.
+# Adapted from Omarchy bin/omarchy-remove-gaming-battlenet (MIT, Copyright (c)
+# David Heinemeier Hansson): the paths and questions are Omarchy's;
+# omarchy-pkg-drop -> haseen remove package; gum confirm -> a terminal
+# question; the installer cache is haseen's (~/.cache/haseen) and, from an
+# Omarchy install, ~/.cache/omarchy; --dry-run prints the plan (plan 093).
+#
+# Data: the prefix holds the installed games. Omarchy deletes it without
+# asking; here it is asked, default no. --yes keeps it: only a yes at a
+# terminal or --purge deletes it.
+# umu-launcher and GE-Proton (which Steam games may use too) are asked,
+# default no; --yes keeps them, as Omarchy keeps them without a terminal.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-gaming-battlenet [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: stops Battle.net, asks (default no;
+--yes keeps it, --purge deletes it) before deleting its Proton prefix ~/Games/battlenet with the
+installed games, removes its launcher and cached installer, then asks about
+umu-launcher and the GE-Proton runtimes (--yes keeps those).
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+PREFIX="$HOME/Games/battlenet"
+apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+PROTON_DIR="$HOME/.local/share/Steam/compatibilitytools.d"
+
+# Stop Battle.net and the Wine processes tied to this prefix (a live process
+# table: not against a fixture tree).
+if [[ -d $PREFIX ]] && ! in_sysroot; then
+    if quiet pkill -f "$PREFIX"; then
+        $DRY_RUN || sleep 1
+    fi
+fi
+
+prefix_removed=false
+delete_asked "Delete Battle.net's Proton prefix and the games installed in it" purge "$PREFIX" && prefix_removed=true
+rm_present "$apps/battlenet.desktop" "$HOME/.cache/haseen/Battle.net-Setup.exe" "$HOME/.cache/omarchy/Battle.net-Setup.exe"
+have update-desktop-database && { silent update-desktop-database "$apps" || true; }
+
+echo
+if $prefix_removed && ! $DRY_RUN; then
+    echo "Battle.net and its Proton prefix at $PREFIX have been removed."
+else
+    echo "Battle.net's launcher has been removed."
+fi
+
+if pkg_present umu-launcher; then
+    echo
+    ask "Also remove umu-launcher? Battle.net was what used it." && remove_pkgs umu-launcher
+fi
+
+if compgen -G "$PROTON_DIR/GE-Proton*" >/dev/null; then
+    echo
+    if ask "Also remove the GE-Proton runtimes umu downloaded (Steam games set to use them stop working)?"; then
+        run rm -rf -- "$PROTON_DIR"/GE-Proton* "$HOME/.local/share/umu"
+    fi
+fi
+exit 0

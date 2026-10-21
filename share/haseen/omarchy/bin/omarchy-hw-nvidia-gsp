@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-hw-nvidia-gsp — exit 0 when an NVIDIA GPU with GSP firmware (Turing
+# or newer, device id 0x1e00 and up) is present. Adapted from Omarchy
+# bin/omarchy-hw-nvidia-gsp (MIT, Copyright (c) David Heinemeier Hansson):
+# haseen's hw_probe_nvidia_gsp is the same sysfs test, read through
+# sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-nvidia-gsp
+
+haseen's answer to Omarchy's command: exit 0 when an NVIDIA GPU with device id
+0x1e00 or above (Turing and newer, GSP firmware) is present." "$@"
+
+hw_probe_nvidia_gsp

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# omarchy-menu-file — picks a file from directories, newest first, in
+# haseen's menu list and prints its path. Adapted from Omarchy
+# bin/omarchy-menu-file (MIT, Copyright (c) David Heinemeier Hansson): the
+# arguments and the find are Omarchy's; the list is haseen menu select, 800 x
+# 500 px unless the caller's --width/--height/--maxheight say otherwise
+# (other menu arguments are dropped: haseen's list has no others). Prints
+# the chosen path; exit 1 when nothing is chosen or nothing matches (plan
+# 093). Read-only.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-file <label> <paths> <formats> [menu args...]
+
+haseen's answer to Omarchy's command: lists the files under PATHS
+(colon-separated) with one of FORMATS (space-separated extensions), newest
+first, in haseen's menu, and prints the one chosen." "$@"
+
+usage_fail() {
+    echo "Usage: omarchy-menu-file <label> <paths> <formats> [menu args...]" >&2
+    exit 1
+}
+(($# >= 3)) || usage_fail
+label="$1"
+IFS=: read -r -a paths <<<"$2"
+read -r -a formats <<<"$3"
+shift 3
+((${#paths[@]} > 0 && ${#formats[@]} > 0)) || usage_fail
+
+for path in "${paths[@]}"; do
+    [[ -e $path ]] || {
+        echo "Path not found: $path" >&2
+        exit 1
+    }
+done
+
+# The caller's size wins over the default; haseen's list takes no other
+# menu options.
+width=800 height=500
+while (($#)); do
+    case "$1" in
+    --width | --height | --maxheight)
+        if (($# >= 2)) && [[ $2 =~ ^[0-9]+$ ]]; then
+            if [[ $1 == --width ]]; then width=$2; else height=$2; fi
+            shift
+        fi
+        ;;
+    esac
+    shift
+done
+
+find_args=("${paths[@]}" "(" -type d -name ".*" ! -name "." -prune ")" -o -type f ! -name ".*" "(")
+first=true
+for format in "${formats[@]}"; do
+    $first || find_args+=(-o)
+    first=false
+    find_args+=(-iname "*.${format#.}")
+done
+find_args+=(")" -printf '%T@\t%p\n')
+
+mapfile -t files < <(find "${find_args[@]}" 2>/dev/null | sort -rn | cut -f2-)
+((${#files[@]} > 0)) || {
+    echo "No matching files" >&2
+    exit 1
+}
+printf '%s\n' "${files[@]}" | haseen_exec menu-select "$label" --width "$width" --height "$height"

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# omarchy-notification-wait — blocks until a notification daemon owns the bus
+# name, through haseen notification wait (adapted from Omarchy
+# bin/omarchy-notification-wait, MIT, Copyright (c) David Heinemeier Hansson).
+# Omarchy's bare [timeout-seconds] becomes --timeout N; the `omarchy-shell
+# notifications ping` half is dropped because haseen.pager is the daemon that
+# owns the name (plan 093). Exit 0 when ready, 1 on timeout, as Omarchy's.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-notification-wait [timeout-seconds]
+
+haseen's answer to Omarchy's command: haseen notification wait --timeout N
+(default 10 seconds); exit 0 when the notification daemon is up, 1 when not." "$@"
+
+timeout=${1:-10}
+# Omarchy's multiplies the value by ten in bash arithmetic, so anything else
+# was never a working timeout there either.
+[[ $timeout =~ ^[0-9]+$ ]] || {
+    echo "Usage: omarchy-notification-wait [timeout-seconds]" >&2
+    exit 1
+}
+haseen_exec notification-wait --timeout "$timeout"

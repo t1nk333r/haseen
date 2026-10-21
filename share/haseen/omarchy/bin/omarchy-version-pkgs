@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# omarchy-version-pkgs — print when system packages were last upgraded, from
+# the last "upgraded" line of /var/log/pacman.log. Adapted from Omarchy
+# bin/omarchy-version-pkgs (MIT, Copyright (c) David Heinemeier Hansson): the
+# same date format; a log without an upgrade is an error with a clear line
+# rather than date's complaint about an empty string. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-version-pkgs
+
+haseen's answer to Omarchy's command: prints the date of the last package
+upgrade in /var/log/pacman.log, e.g. Monday, October 20 2026 at 17:16." "$@"
+
+log="$(sysroot_path /var/log/pacman.log)"
+stamp="$(grep upgraded "$log" 2>/dev/null | tail -n 1 | sed -nE 's/^\[([^]]+)\].*/\1/p' || true)"
+[[ -n $stamp ]] || die "no package upgrade recorded in /var/log/pacman.log"
+date -d "$stamp" "+%A, %B %d %Y at %H:%M"

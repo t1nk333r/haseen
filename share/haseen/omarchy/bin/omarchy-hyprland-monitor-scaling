@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-scaling — show, set, or step the focused monitor's
+# scale. Adapted from Omarchy bin/omarchy-hyprland-monitor-scaling (MIT,
+# Copyright (c) David Heinemeier Hansson): the clean-scale rounding, the
+# up/down presets and the audit log are Omarchy's. What changed (plan 093):
+#   - Omarchy persists the scale by editing ~/.config/hypr/monitors.lua with
+#     sed. haseen never edits a file it seeded, so the scale is kept in
+#     $HASEEN_USER_STATE/toggles/hypr/monitor-scale-<output>.lua (hl.monitor
+#     for that output, and GDK_SCALE). share/haseen/default/hypr/init.lua loads
+#     toggles/hypr/*.lua after haseen's defaults and before hyprmod's
+#     hyprland-gui.lua and the user's own files, so a rule for that output in
+#     monitors.lua (or hyprmod) still wins over it; a catch-all rule
+#     (output = "") does not, since Hyprland prefers the named output.
+#   - The audit log is $HASEEN_USER_STATE/monitor-scaling.log.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+SCALES=(1 1.25 1.6 2 3 4)
+SCALE_LOG="$HASEEN_USER_STATE/monitor-scaling.log"
+TOGGLES="$HASEEN_USER_STATE/toggles/hypr"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-monitor-scaling [up|down|SCALE] [--dry-run]
+
+haseen's answer to Omarchy's command. Without an argument, prints the focused
+monitor's scale. up/down step through ${SCALES[*]}; SCALE is any value from 1
+to 4. The scale is rounded up to one Hyprland accepts for the mode, applied
+live and kept in $TOGGLES/monitor-scale-<output>.lua.
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 1
+}
+
+focused_monitor() {
+    hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)'
+}
+
+normalize_scale() {
+    awk 'NR == 1 { printf "%g\n", $0 }'
+}
+
+cmdline_for_pid() {
+    [[ -r /proc/$1/cmdline ]] || return 0
+    tr '\0\t\n' '   ' <"/proc/$1/cmdline" | sed -E 's/[[:space:]]+/ /g; s/[[:space:]]+$//'
+}
+
+# audit_scale_change REQUESTED MONITOR CURRENT NEW — who asked for which scale:
+# a scale that changes by itself is the bug report this log answers.
+audit_scale_change() {
+    local parent_pid="$PPID" grandparent_pid
+    grandparent_pid=$(ps -o ppid= -p "$parent_pid" 2>/dev/null | tr -d ' ' || true)
+    printf 'at=%s\trequested=%s\tcurrent=%s\tnew=%s\tmonitor=%s\tpid=%s\tppid=%s\tparent=%s\tgppid=%s\tgrandparent=%s\n' \
+        "$(date --iso-8601=seconds)" "$1" "$3" "$4" "$2" "$$" "$parent_pid" \
+        "$(cmdline_for_pid "$parent_pid")" "$grandparent_pid" "$(cmdline_for_pid "$grandparent_pid")" |
+        append_user_file "$SCALE_LOG"
+}
+
+# Hyprland only accepts scales where the mode divides into whole logical
+# pixels (in 1/120 steps), so clean scales are divisors of gcd(w*120, h*120).
+# Round the requested scale up to the nearest clean value.
+clean_scale() {
+    awk -v scale="$1" -v width="$2" -v height="$3" '
+    function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
+    BEGIN {
+      g = gcd(width * 120, height * 120)
+      k = int(scale * 120 + 0.5)
+      if (k > g) k = g
+      while (g % k != 0) k++
+      printf "%g\n", k / 120
+    }'
+}
+
+# scale_from_current next|previous WIDTH HEIGHT — the preset after or before
+# the current scale (read on stdin), several presets that collapse to one
+# clean scale counting once.
+scale_from_current() {
+    awk -v direction="$1" -v list="${SCALES[*]}" -v width="$2" -v height="$3" '
+    function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
+    function clean(scale,    g, k) {
+      g = gcd(width * 120, height * 120)
+      k = int(scale * 120 + 0.5)
+      if (k > g) k = g
+      while (g % k != 0) k++
+      return k / 120
+    }
+    NR == 1 { scale = $0; found = 1 }
+    END {
+      if (!found) exit 1
+      preset_count = split(list, presets, " ")
+      for (i = 1; i <= preset_count; i++) {
+        effective = clean(presets[i])
+        key = sprintf("%.8f", effective)
+        distance = presets[i] - effective
+        if (distance < 0) distance = -distance
+        if (!(key in effective_index)) {
+          effective_index[key] = ++n
+          effective_scales[n] = effective
+          scales[n] = presets[i]
+          distances[n] = distance
+        } else {
+          idx = effective_index[key]
+          if (distance < distances[idx]) {
+            scales[idx] = presets[i]
+            distances[idx] = distance
+          }
+        }
+      }
+      # Snap to the nearest effective scale first: Hyprland reports floats.
+      best = 1; best_diff = 1e9
+      for (i = 1; i <= n; i++) {
+        diff = scale - effective_scales[i]; if (diff < 0) diff = -diff
+        if (diff < best_diff) { best_diff = diff; best = i }
+      }
+      if (direction == "next") print scales[(best < n ? best + 1 : n)]
+      else if (direction == "previous") print scales[(best > 1 ? best - 1 : 1)]
+      else print scales[best]
+    }'
+}
+
+set_scale() {
+    local requested_scale="$1" requested="$2" info name current width height refresh new gdk lua
+    info="$(focused_monitor)"
+    name="$(jq -r '.name' <<<"$info")"
+    current="$(jq -r '.scale' <<<"$info")"
+    width="$(jq -r '.width' <<<"$info")"
+    height="$(jq -r '.height' <<<"$info")"
+    refresh="$(jq -r '.refreshRate' <<<"$info")"
+
+    # The name goes into a Lua expression and a file name: only a plain
+    # connector name may pass.
+    [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "refusing unsafe monitor name: $name"
+    [[ $width =~ ^[0-9]+$ && $height =~ ^[0-9]+$ && $refresh =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+        die "Hyprland reported no usable mode for $name"
+
+    new="$(clean_scale "$requested_scale" "$width" "$height")"
+    # GTK only honours integer GDK_SCALE values: keep the nearest whole factor.
+    gdk="$(awk -v scale="$new" 'BEGIN { printf "%d", int(scale + 0.5) }')"
+    lua="hl.monitor({ output = \"$name\", mode = \"${width}x${height}@${refresh}\", position = \"auto\", scale = $new })"
+
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl eval $lua"
+    else
+        hyprctl eval "$lua" >/dev/null
+    fi
+    audit_scale_change "$requested" "$name" "$current" "$new"
+    {
+        printf -- '-- Written by omarchy-hyprland-monitor-scaling: %s at scale %s.\n' "$name" "$new"
+        printf -- '-- Delete this file and reload Hyprland to go back to the configured scale.\n'
+        printf '%s\n' "$lua"
+        printf 'hl.env("GDK_SCALE", "%s")\n' "$gdk"
+    } | write_user_file "$TOGGLES/monitor-scale-$name.lua"
+}
+
+step() {
+    local info
+    info="$(focused_monitor)"
+    set_scale "$(jq -r '.scale' <<<"$info" | scale_from_current "$1" \
+        "$(jq -r '.width' <<<"$info")" "$(jq -r '.height' <<<"$info")")" "$2"
+}
+
+case "${REST[0]:-}" in
+"") hyprctl monitors -j | jq -er '.[] | select(.focused == true) | .scale' | normalize_scale ;;
+up) step next up ;;
+down) step previous down ;;
+1 | 1.25 | 1.6 | 2 | 3 | 4) set_scale "${REST[0]}" "${REST[0]}" ;;
+*)
+    if [[ ${REST[0]} =~ ^[0-9]+([.][0-9]+)?$ ]] &&
+        awk -v scale="${REST[0]}" 'BEGIN { exit !(scale >= 1 && scale <= 4) }'; then
+        set_scale "${REST[0]}" "${REST[0]}"
+    else
+        usage >&2
+        exit 1
+    fi
+    ;;
+esac

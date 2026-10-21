@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# omarchy-plugin-update — moves installed plugins to their repository's newest
+# commit: haseen plugin update. Follows Omarchy bin/omarchy-plugin-update
+# (MIT, Copyright (c) David Heinemeier Hansson): the same [id] [--yes]; with
+# no id every plugin is updated. Changes: haseen updates the plugins it pinned
+# in ~/.config/haseen/plugins (haseen plugin install), validates each new
+# commit and rolls back one that fails, and writes the new commit to
+# plugins.lock.json. A git checkout in ~/.config/omarchy/plugins is never
+# pulled: haseen reads that directory and never writes it, so that is said,
+# with the git command, and refused (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../shell/lib/registry.sh
+source "$HASEEN_PATH/shell/lib/registry.sh"
+
+fail() {
+    echo "omarchy-plugin-update: $*" >&2
+    exit 1
+}
+
+id=""
+while (($# > 0)); do
+    case "$1" in
+    --yes | -y) ASSUME_YES=true ;;
+    --dry-run) DRY_RUN=true ;;
+    -h | --help)
+        cat <<USAGE
+Usage: omarchy-plugin-update [id] [--yes] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen plugin update <id>, or every
+pinned plugin (haseen plugin update --all) without an id. Plugins in
+~/.config/omarchy/plugins are never pulled by haseen.
+USAGE
+        exit 0
+        ;;
+    -*) fail "unknown update option: $1" ;;
+    *)
+        [[ -z $id ]] || fail "unexpected argument: $1"
+        id="$1"
+        ;;
+    esac
+    shift
+done
+
+flags=()
+$ASSUME_YES && flags+=(--yes)
+$DRY_RUN && flags+=(--dry-run)
+
+# omarchy_checkouts — git checkouts in Omarchy's directory, one per line.
+omarchy_checkouts() {
+    local d
+    for d in "$PLUGIN_OMARCHY_DIR"/*/; do
+        [[ -d $d.git ]] && basename "$d"
+    done
+    return 0
+}
+
+if [[ -z $id ]]; then
+    left="$(omarchy_checkouts)"
+    [[ -z $left ]] ||
+        info "left alone (haseen never pulls ~/.config/omarchy/plugins): ${left//$'\n'/, }"
+    haseen_exec plugin-update --all "${flags[@]+"${flags[@]}"}"
+fi
+
+[[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $id != *..* ]] || fail "invalid plugin id '$id'"
+pinned() { [[ -n $(lockfile_entry "$1") ]]; }
+
+name=""
+if pinned "$id"; then
+    name="$id"
+elif dir="$(plugin_dir "$id")"; then
+    case "$(dirname "$dir")" in
+    "$PLUGIN_USER_DIR")
+        name="$(basename "$dir")"
+        pinned "$name" || {
+            if [[ -d $dir/.git ]]; then
+                fail "'$name' is not pinned in $PLUGIN_LOCKFILE; pull your checkout yourself: git -C $dir pull --ff-only"
+            fi
+            fail "'$name' is not a pinned plugin, so there is nothing to pull from (haseen plugin install <url> pins one)"
+        }
+        ;;
+    "$PLUGIN_BUILTIN_DIR") fail "'$id' is a haseen built-in; it updates with haseen (haseen update)" ;;
+    "$PLUGIN_OMARCHY_DIR")
+        omarchy_refuse "git -C $dir pull --ff-only" \
+            "$id is in ~/.config/omarchy/plugins, which haseen only reads: it never pulls or rewrites a plugin there."
+        ;;
+    *)
+        omarchy_refuse "git -C $dir pull --ff-only" \
+            "$id is in $(dirname "$dir"), which haseen only reads: it never pulls or rewrites a plugin there."
+        ;;
+    esac
+elif [[ -d $PLUGIN_OMARCHY_DIR/$id ]]; then
+    omarchy_refuse "git -C $PLUGIN_OMARCHY_DIR/$id pull --ff-only" \
+        "$id is in ~/.config/omarchy/plugins, which haseen only reads: it never pulls or rewrites a plugin there."
+else
+    fail "plugin '$id' is not installed"
+fi
+haseen_exec plugin-update "$name" "${flags[@]+"${flags[@]}"}"

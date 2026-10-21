@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# omarchy-restart-helix — make a running Helix reload its config (SIGUSR1).
+# Adapted from Omarchy bin/omarchy-restart-helix (MIT, Copyright (c) David Heinemeier Hansson):
+# the signal goes only to processes named exactly helix
+# (upstream's `pkill -USR1 helix` matched any name containing it, and USR1
+# ends a process that does not handle it); --dry-run prints it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-helix [--dry-run]
+
+haseen's answer to Omarchy's command: sends SIGUSR1 to a running Helix
+(helix) so it reloads its config and theme. Nothing to do when it is not
+running.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+pgrep -x helix >/dev/null 2>&1 || exit 0
+run pkill -USR1 -x helix

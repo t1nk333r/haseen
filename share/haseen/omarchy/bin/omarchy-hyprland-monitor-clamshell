@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-clamshell — reconcile the laptop display with the
+# lid: off while the lid is closed and an external monitor is active, back on
+# when that ends. Translated to haseen hardware laptop-display (adapted from
+# Omarchy bin/omarchy-hyprland-monitor-internal), following Omarchy
+# bin/omarchy-hyprland-monitor-clamshell (MIT, Copyright (c) David Heinemeier
+# Hansson): idempotent, so wake, lid and monitor events may call it again and
+# again; a display the user turned off by hand stays off (plan 093).
+#
+# What it does not do: Omarchy re-derives the panel's scale from
+# ~/.config/hypr/monitors.lua on re-enable; haseen's re-enable reloads the
+# config, so the panel comes back with whatever the user's rules say. The
+# clamshell's own disable is remembered in $HASEEN_USER_STATE/flags/
+# clamshell-display-off, so only that one is undone when the lid opens.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+TOGGLE="$HASEEN_USER_STATE/toggles/hypr/laptop-display-off.lua"
+MIRROR="$HASEEN_USER_STATE/toggles/hypr/mirror-display.lua"
+MARK="$HASEEN_USER_STATE/flags/clamshell-display-off"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-monitor-clamshell [--dry-run]
+
+haseen's answer to Omarchy's command: with the lid closed and an external
+monitor active, turns the laptop display off (haseen hardware laptop-display
+off); once that is no longer so, turns back on a display it turned off.
+Leaves alone a display turned off by hand and does nothing while mirroring.
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+oma="$HASEEN_OMARCHY_DIR/bin"
+
+# laptop_display VERB — haseen hardware laptop-display VERB; quiet unless it
+# fails, or a dry run shows its plan.
+laptop_display() {
+    if $DRY_RUN; then
+        "$HASEEN_BIN/haseen-hardware-laptop-display" "$1" --dry-run
+    else
+        "$HASEEN_BIN/haseen-hardware-laptop-display" "$1" >/dev/null
+    fi
+}
+
+# recover CMD — a display or mirror left over from a monitor that is gone.
+recover() {
+    if $DRY_RUN; then
+        "$oma/$1" recover --dry-run || true
+    else
+        "$oma/$1" recover >/dev/null 2>&1 || true
+    fi
+}
+
+recover omarchy-hyprland-monitor-internal
+recover omarchy-hyprland-monitor-internal-mirror
+
+if "$oma/omarchy-hw-clamshell" && "$oma/omarchy-hyprland-monitor-external-active"; then
+    [[ -f $TOGGLE || -f $MIRROR ]] && exit 0
+    laptop_display off || exit
+    printf 'laptop display turned off by omarchy-hyprland-monitor-clamshell\n' | write_user_file "$MARK"
+elif [[ -f $MARK ]]; then
+    run rm -f "$MARK"
+    [[ -f $TOGGLE ]] || exit 0
+    laptop_display on
+fi

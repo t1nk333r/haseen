@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# omarchy-remove-browser — remove one of the browsers Omarchy's installer
+# offers, in whichever form is installed: its package (Omarchy's) and its
+# Flatpak (haseen's catalogue), plus the flags file and policy files Omarchy's
+# installer left. Adapted from Omarchy bin/omarchy-remove-browser (MIT,
+# Copyright (c) David Heinemeier Hansson): the six names, the cleanup paths
+# and the usage error are Omarchy's; omarchy-pkg-drop -> haseen remove
+# package, plus haseen remove app for the Flatpak; the default-browser
+# fallback is haseen's (helium, chromium, zen: the first installed) through
+# haseen setup default instead of xdg-settings and chromium; sudo rm ->
+# run_root; --dry-run prints the plan (plan 093).
+#
+# Data: the browser's profile is never touched (Omarchy keeps it too). The
+# flags file Omarchy copied into ~/.config is asked about, default no; --yes
+# keeps it (Omarchy deletes it without asking): only a yes at a terminal or
+# --purge deletes it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-browser <chrome|brave|brave-origin|edge|firefox|zen> [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes the browser's package and its
+Flatpak, whichever is installed (haseen remove), Omarchy's policy files for it
+and, after asking, the flags file Omarchy's installer copied (--yes keeps it,
+--purge deletes it). When it was the
+default browser, the first installed of helium, chromium and zen becomes the
+default (haseen setup default browser).
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 1
+}
+require_not_root
+name=${REST[0]}
+
+# name -> Omarchy's package, haseen's Flatpak, the flags file, the policy dir.
+case $name in
+chrome) pkg=google-chrome flatpak=com.google.Chrome flags_file=chrome-flags.conf policy=/etc/opt/chrome/policies/managed ;;
+edge) pkg=microsoft-edge-stable-bin flatpak=com.microsoft.Edge flags_file=microsoft-edge-stable-flags.conf policy=/etc/opt/edge/policies/managed ;;
+brave) pkg=brave-bin flatpak=com.brave.Browser flags_file=brave-flags.conf policy="" ;;
+brave-origin) pkg=brave-origin-bin flatpak="" flags_file=brave-origin-flags.conf policy="" ;;
+firefox) pkg=firefox flatpak=org.mozilla.firefox flags_file="" policy="" ;;
+zen) pkg=zen-browser-bin flatpak=app.zen_browser.zen flags_file="" policy="" ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac
+
+# installed_browser NAME — NAME is installed natively or as its Flatpak.
+installed_browser() {
+    case $1 in
+    helium) pkg_present helium-browser-bin ;;
+    chromium) pkg_present chromium || flatpak_installed org.chromium.Chromium ;;
+    zen) pkg_present zen-browser-bin || flatpak_installed app.zen_browser.zen ;;
+    *) return 1 ;;
+    esac
+}
+
+# set_fallback_default_browser — when the browser going away is the default,
+# hand the default to the first other haseen default browser installed.
+set_fallback_default_browser() {
+    local current fallback flags=()
+    current="$("$HASEEN_BIN/haseen-setup-default" browser 2>/dev/null || true)"
+    [[ $current == "$name" ]] || return 0
+    for fallback in helium chromium zen; do
+        [[ $fallback != "$name" ]] && installed_browser "$fallback" && break
+        fallback=""
+    done
+    if [[ -z $fallback ]]; then
+        warn "$name was the default browser and no other default browser is installed: pick one with 'haseen setup default browser NAME'"
+        return 0
+    fi
+    $DRY_RUN && flags+=(--dry-run)
+    "$HASEEN_BIN/haseen-setup-default" browser "$fallback" "${flags[@]}" || warn "could not make $fallback the default browser"
+}
+
+echo "Removing $name..."
+set_fallback_default_browser
+remove_pkgs "$pkg"
+[[ -z $flatpak ]] || remove_flatpak_app "$name" "$flatpak"
+[[ -z $flags_file ]] || delete_asked "Also delete the browser flags Omarchy copied" purge "$HOME/.config/$flags_file" || true
+
+# The managed policies Omarchy's installer and theme writer put there: its own
+# omarchy.json and the theme colour. The rest of the directory is not ours.
+if [[ -n $policy ]]; then
+    for f in "$policy/color.json" "$policy/omarchy.json"; do
+        [[ -e $(sysroot_path "$f") ]] && run_root rm -f -- "$f"
+    done
+fi
+
+# Both Brave builds read /etc/brave; it goes with the last native one.
+if [[ $name == brave || $name == brave-origin ]]; then
+    other=brave-origin-bin
+    [[ $name == brave-origin ]] && other=brave-bin
+    if ! pkg_present "$other" && [[ -e $(sysroot_path /etc/brave) ]]; then
+        run_root rm -rf -- /etc/brave
+    fi
+fi

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# omarchy-display-text-size — Omarchy's one knob for text size, on the part
+# haseen can own: GTK's text-scaling-factor, set through gsettings with
+# Omarchy's anchor (12 px = 1.0) and its quantisation to a whole GTK point
+# size. The owner's monitor-settings-extender plugin calls it with a size.
+# Adapted from Omarchy bin/omarchy-display-text-size (MIT, Copyright (c)
+# David Heinemeier Hansson) (plan 093). Not done here: Omarchy also writes the
+# shell's base size to ~/.config/omarchy/shell.toml and rewrites the user's
+# terminal configs with sed. haseen's shell and terminal sizes are the
+# theme's font_size, rendered by haseen theme set, and haseen never edits a
+# terminal config the user owns; this says so on stderr and the GTK change
+# still applies (exit 0).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+MIN=9
+MAX=20
+SCHEMA=org.gnome.desktop.interface
+KEY="text-scaling-factor"
+# Omarchy's anchor: a 12 px text size is GTK's factor 1.0.
+DEFAULT_PX=12
+
+usage() {
+    cat <<EOF
+Usage: omarchy-display-text-size [size|reset] [--dry-run]
+
+  (no args)  print the text size, GTK factor and terminal font size
+  <size>     $MIN-$MAX px: sets GTK's text-scaling-factor (12 px = 1.0)
+  reset      returns GTK's factor to its default
+
+haseen's shell and terminal text sizes come from the theme's font_size
+(colors.toml), so they are not set here: copy a theme to
+~/.config/haseen/themes/<name>/, set font_size in its colors.toml and run
+'haseen theme set <name>'.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+
+THEME_DIR="$HASEEN_USER_STATE/current/theme"
+
+# theme_font_size — the applied theme's font_size, as haseen theme set
+# rendered it (the shell's fontSize and the terminals' point size).
+theme_font_size() {
+    local size=""
+    size="$(jq -r '.fontSize // empty' "$THEME_DIR/shell.json" 2>/dev/null || true)"
+    [[ -n $size ]] || size="$(sed -n 's/^[[:space:]]*font_size[[:space:]]*=[[:space:]]*"\{0,1\}\([0-9.]*\).*/\1/p' "$THEME_DIR/colors.toml" 2>/dev/null | head -n1)"
+    printf '%s\n' "${size:-11}"
+}
+
+# The GTK interface font's point size, to quantise the factor; GNOME's 11
+# when unreadable.
+gtk_font_pt() {
+    local name pt
+    name="$(gsettings get "$SCHEMA" font-name 2>/dev/null || true)"
+    pt="${name%\'}"
+    pt="${pt##* }"
+    if [[ $pt =~ ^[0-9]+(\.[0-9]+)?$ ]]; then echo "$pt"; else echo 11; fi
+}
+
+not_here() {
+    echo "omarchy-display-text-size: the shell and terminal text sizes are not set under haseen: they follow the theme's font_size (copy a theme to ~/.config/haseen/themes/<name>/, set font_size, then haseen theme set <name>)" >&2
+}
+
+case ${1:-} in
+"")
+    size="$(theme_font_size)"
+    factor="$(gsettings get "$SCHEMA" "$KEY" 2>/dev/null || true)"
+    printf 'text size: %s px\ngtk text-scaling-factor: %s\nterminal font: %s pt\n' \
+        "$size (theme)" "${factor:-n/a}" "$size"
+    exit 0
+    ;;
+reset | default)
+    run gsettings reset "$SCHEMA" "$KEY" 2>/dev/null || true
+    not_here
+    exit 0
+    ;;
+esac
+
+size=$1
+if [[ ! $size =~ ^[0-9]+$ ]] || ((10#$size < MIN || 10#$size > MAX)); then
+    echo "Size must be an integer between $MIN and $MAX (px)." >&2
+    usage >&2
+    exit 1
+fi
+size=$((10#$size))
+# Quantised so the interface font lands on a whole point size: fractional
+# sizes clip GTK4 menus at the ascenders on scale-1 monitors.
+factor="$(awk -v s="$size" -v b="$DEFAULT_PX" -v f="$(gtk_font_pt)" \
+    'BEGIN { printf "%.4f", int(f * s / b + 0.5) / f }')"
+run gsettings set "$SCHEMA" "$KEY" "$factor" 2>/dev/null || true
+not_here

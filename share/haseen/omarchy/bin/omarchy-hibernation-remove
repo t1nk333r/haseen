@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# omarchy-hibernation-remove — undo a hibernation setup: the swapfile, its swap
+# area, the fstab lines, the resume hook and the resume= kernel parameters.
+# Adapted from Omarchy bin/omarchy-hibernation-remove (MIT, Copyright (c) David
+# Heinemeier Hansson), which undoes Omarchy's own layout only. This undoes
+# haseen hibernation setup's (share/haseen/lib/hibernate.sh): a top-level
+# @swap subvolume mounted at /swap, two "# haseen:" fstab stanzas,
+# haseen-resume.conf, and resume= where the bootloader reads it (a Limine
+# drop-in, or words in /etc/kernel/cmdline for systemd-boot; GRUB's file is
+# the owner's, so the step is printed). An Omarchy-made setup (nested /swap
+# subvolume, omarchy_resume.conf, its resume.conf drop-in) is removed too when
+# present. What changed besides (plan 093):
+#   - every step goes through haseen's root helpers: --dry-run prints the
+#     whole plan, --yes skips the question;
+#   - fstab is rewritten before the swap area goes, so a failure in between
+#     can never leave a boot-time mount of a deleted subvolume;
+#   - a swap subvolume that holds anything besides the swapfile is kept;
+#   - rtc_cmos.use_acpi_alarm=1 (in /etc/kernel/cmdline on systemd-boot),
+#     Omarchy's rtc-alarm.conf and its keyboard-backlight sleep hook are left
+#     in place: harmless without hibernation, and the first may predate setup.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hibernate.sh
+source "$HASEEN_PATH/lib/hibernate.sh" # SWAP_*, RESUME_HOOK_CONF, boot.sh
+
+OMARCHY_HOOK_CONF=/etc/mkinitcpio.conf.d/omarchy_resume.conf
+LIMINE_DROP_IN=/etc/limine-entry-tool.d/haseen-resume.conf
+OMARCHY_LIMINE_DROP_IN=/etc/limine-entry-tool.d/resume.conf
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hibernation-remove [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes what haseen hibernation setup
+(or Omarchy's setup) made: turns the swapfile off and deletes it and its swap
+subvolume, drops its fstab lines (after a dated backup of /etc/fstab), the
+resume hook and the resume= kernel parameters, then rebuilds the initramfs.
+Asks first unless --yes.
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+fstab="$(sysroot_path /etc/fstab)"
+
+# fstab_swap_mount — the fstab line that mounts the swap subvolume, if any.
+fstab_swap_mount() {
+    awk -v m="$SWAP_MOUNT" '!/^[[:space:]]*#/ && $2 == m && $3 == "btrfs" { print; exit }' "$fstab" 2>/dev/null || true
+}
+fstab_has_swapfile() {
+    awk -v f="$SWAP_FILE" '!/^[[:space:]]*#/ && $1 == f && $3 == "swap" { found = 1 } END { exit !found }' "$fstab" 2>/dev/null
+}
+
+# fstab_without_hibernation — /etc/fstab minus the hibernation stanzas: the
+# "# haseen:" comment with the line it introduces, Omarchy's comment, every
+# swap line for the swapfile, and the blank line setup put before a comment.
+fstab_without_hibernation() {
+    awk -v m="$SWAP_MOUNT" -v f="$SWAP_FILE" '
+        { line[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                n = split(line[i], a, /[ \t]+/)
+                if (line[i] ~ /^# haseen: hibernation image area/) {
+                    drop[i] = 1
+                    split(line[i + 1], b, /[ \t]+/)
+                    if (b[2] == m && b[3] == "btrfs") drop[i + 1] = 1
+                } else if (line[i] ~ /^# haseen: hibernation swapfile/ || line[i] == "# Btrfs swapfile for system hibernation") {
+                    drop[i] = 1
+                } else if (a[1] == f && a[3] == "swap") {
+                    drop[i] = 1
+                }
+                if (drop[i] && line[i] ~ /^#/ && i > 1 && line[i - 1] == "") drop[i - 1] = 1
+            }
+            for (i = 1; i <= NR; i++) if (!drop[i]) print line[i]
+        }' "$fstab"
+}
+
+# swap_leftovers — entries in the swap area other than the swapfile; fails
+# when the directory cannot be read (then nothing is deleted).
+swap_leftovers() {
+    local dir
+    dir="$(sysroot_path "$SWAP_MOUNT")"
+    [[ -d $dir && -r $dir && -x $dir ]] || return 1
+    find "$dir" -mindepth 1 -maxdepth 1 ! -name swapfile -printf '%f\n'
+}
+
+# delete_subvolume WHAT PATH — delete the btrfs subvolume at PATH unless it
+# holds more than the swapfile.
+delete_subvolume() {
+    local leftovers
+    if ! leftovers="$(swap_leftovers)"; then
+        warn "cannot read $SWAP_MOUNT; delete the $1 yourself: sudo btrfs subvolume delete $2"
+        return 1
+    fi
+    if [[ -n $leftovers ]]; then
+        warn "$SWAP_MOUNT holds more than the swapfile ($(tr '\n' ' ' <<<"$leftovers")); keeping the $1"
+        return 1
+    fi
+    info "deleting the $1"
+    run_root btrfs subvolume delete "$2"
+}
+
+mount_line="$(fstab_swap_mount)"
+top_level=false
+[[ $mount_line == *"subvol="* ]] && top_level=true
+haseen_hook=false
+[[ -f $(sysroot_path "$RESUME_HOOK_CONF") ]] && haseen_hook=true
+omarchy_hook=false
+grep -qx 'HOOKS+=(resume)' "$(sysroot_path "$OMARCHY_HOOK_CONF")" 2>/dev/null && omarchy_hook=true
+limine_drop_in=false
+[[ -f $(sysroot_path "$LIMINE_DROP_IN") ]] && limine_drop_in=true
+# Omarchy's drop-in counts only while it is the one line its setup writes.
+omarchy_drop_in=false
+f="$(sysroot_path "$OMARCHY_LIMINE_DROP_IN")"
+if [[ -f $f && $(wc -l <"$f") -le 1 ]] && grep -qE '^KERNEL_CMDLINE\[default\]\+=" resume=[^ "]* resume_offset=[0-9]*"$' "$f"; then
+    omarchy_drop_in=true
+fi
+swapfile=false
+[[ -e $(sysroot_path "$SWAP_FILE") ]] && swapfile=true
+swap_entry=false
+fstab_has_swapfile && swap_entry=true
+
+if ! $top_level && ! $swap_entry && ! $swapfile && ! $haseen_hook && ! $omarchy_hook && ! $limine_drop_in; then
+    echo "Hibernation is not set up"
+    exit 0
+fi
+
+confirm "Remove hibernation setup (swapfile, swap subvolume, resume settings)?" || {
+    echo "Hibernation setup kept"
+    exit 0
+}
+
+# 1. The swapfile, while its subvolume is still mounted.
+if hibernate_swapfile_active; then
+    info "turning off swap on $SWAP_FILE"
+    run_root swapoff "$SWAP_FILE"
+fi
+if $swapfile; then
+    info "removing $SWAP_FILE"
+    run_root rm -f "$SWAP_FILE"
+fi
+
+# 2. fstab, before the subvolume goes: a mount line for a deleted subvolume
+# would stop the next boot.
+new_fstab="$(fstab_without_hibernation)"
+if [[ $new_fstab != "$(cat "$fstab" 2>/dev/null)" ]]; then
+    info "removing the hibernation lines from /etc/fstab (backup: /etc/fstab.<date>.back)"
+    run_root cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
+    printf '%s\n' "$new_fstab" | write_root_file /etc/fstab 0644
+fi
+
+# 3. The swap area.
+if $top_level; then
+    read -r spec _ _ options _ <<<"$mount_line"
+    subvol=""
+    IFS=, read -ra opts <<<"$options"
+    for o in "${opts[@]}"; do
+        [[ $o == subvol=* ]] && subvol="${o#subvol=}"
+    done
+    subvol="${subvol#/}"
+    if in_sysroot || findmnt -rno TARGET "$SWAP_MOUNT" >/dev/null 2>&1; then
+        leftovers_ok=true
+        leftovers="$(swap_leftovers)" || leftovers_ok=false
+        info "unmounting $SWAP_MOUNT"
+        run_root umount "$SWAP_MOUNT"
+    else
+        leftovers_ok=false
+    fi
+    if [[ ! $subvol =~ ^@?[A-Za-z0-9._-]+$ || ! $spec =~ ^[A-Za-z0-9=/._:-]+$ ]]; then
+        warn "unexpected $SWAP_MOUNT line in fstab ($mount_line); delete its subvolume yourself"
+    elif ! $leftovers_ok; then
+        warn "could not check what $SWAP_MOUNT holds; delete the subvolume yourself:"
+        warn "  sudo mount -o subvolid=5 $spec /mnt && sudo btrfs subvolume delete /mnt/$subvol && sudo umount /mnt"
+    elif [[ -n $leftovers ]]; then
+        warn "$SWAP_MOUNT held more than the swapfile ($(tr '\n' ' ' <<<"$leftovers")); keeping the $subvol subvolume"
+    else
+        info "deleting the top-level $subvol subvolume"
+        if $DRY_RUN; then top="<a temporary directory>"; else top="$(mktemp -d)"; fi
+        run_root mount -o subvolid=5 "$spec" "$top"
+        run_root btrfs subvolume delete "$top/$subvol" || warn "could not delete $subvol; it is still on the disk"
+        run_root umount "$top"
+        $DRY_RUN || rmdir "$top" 2>/dev/null || true
+    fi
+    run_root rmdir "$SWAP_MOUNT" 2>/dev/null || true
+elif [[ -d $(sysroot_path "$SWAP_MOUNT") ]]; then
+    # Omarchy's layout: /swap is a subvolume nested in the root one.
+    if $DRY_RUN || run_root btrfs subvolume show "$SWAP_MOUNT" >/dev/null 2>&1; then
+        delete_subvolume "nested $SWAP_MOUNT subvolume" "$SWAP_MOUNT" || true
+    fi
+fi
+
+# 4. The initramfs resume hook.
+rebuild=false
+hooks=()
+$haseen_hook && hooks+=("$RESUME_HOOK_CONF")
+$omarchy_hook && hooks+=("$OMARCHY_HOOK_CONF")
+for conf in "${hooks[@]}"; do
+    info "removing the resume hook ($conf)"
+    run_root rm -f "$conf"
+    rebuild=true
+done
+
+# 5. The kernel command line, where this machine's bootloader reads it.
+[[ -n ${BOOTLOADER:-} ]] || preflight_bootloader
+cmdline_changed=false
+if $limine_drop_in; then
+    info "removing resume= from Limine's command line ($LIMINE_DROP_IN)"
+    run_root rm -f "$LIMINE_DROP_IN"
+    cmdline_changed=true
+fi
+if $omarchy_drop_in; then
+    info "removing resume= from Limine's command line ($OMARCHY_LIMINE_DROP_IN, Omarchy's)"
+    run_root rm -f "$OMARCHY_LIMINE_DROP_IN"
+    cmdline_changed=true
+fi
+kernel_cmdline="$(sysroot_path /etc/kernel/cmdline)"
+if [[ -f $kernel_cmdline ]] && grep -qE '(^| )resume(_offset)?=' "$kernel_cmdline"; then
+    new_cmdline=""
+    for word in $(<"$kernel_cmdline"); do
+        [[ $word == resume=* || $word == resume_offset=* ]] && continue
+        new_cmdline="${new_cmdline:+$new_cmdline }$word"
+    done
+    info "removing resume= and resume_offset= from /etc/kernel/cmdline"
+    printf '%s\n' "$new_cmdline" | write_root_file /etc/kernel/cmdline 0644
+    cmdline_changed=true
+fi
+if grep -qE 'resume(_offset)?=' "$(sysroot_path /etc/default/grub)" 2>/dev/null; then
+    warn "remove resume= and resume_offset= from GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then run: sudo grub-mkconfig -o /boot/grub/grub.cfg"
+elif ! $cmdline_changed && grep -qE '(^| )resume=' "$(sysroot_path /proc/cmdline)" 2>/dev/null; then
+    warn "the running kernel was booted with resume=; remove it from your $BOOTLOADER kernel command line yourself"
+fi
+$cmdline_changed && rebuild=true
+
+# 6. The initramfs (and, with limine-mkinitcpio, the boot entries).
+if $rebuild; then
+    info "regenerating the initramfs"
+    boot_initramfs_rebuild
+fi
+if $cmdline_changed; then
+    info "hibernation removed; reboot so the kernel stops looking for the image"
+else
+    info "hibernation removed"
+fi

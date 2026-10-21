@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# omarchy-brightness-display-ddc — show or change a monitor's brightness over
+# DDC/CI through haseen brightness (device ddc:<monitor>) and print the
+# percent. The argument form follows Omarchy
+# bin/omarchy-brightness-display-ddc (MIT, Copyright (c) David Heinemeier
+# Hansson): <monitor> [+N%|N%-|N%]; haseen keeps its own bus cache (plan
+# 093). Needs 'haseen setup ddc on'.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-brightness-display-ddc <monitor> [+N%|N%-|N%] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen brightness on ddc:<monitor>.
+Prints the brightness percent (after the change, with a step). Exits 1 when
+the monitor does not answer over DDC/CI.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+monitor=${REST[0]:-}
+step=${REST[1]:-}
+[[ -n $monitor ]] || exit 1
+device="ddc:$monitor"
+
+percent_of() { # haseen brightness output -> the percent of its first line
+    head -n1 | cut -f3
+}
+
+if [[ -z $step ]]; then
+    out="$("$HASEEN_BIN/haseen-brightness" get "$device" 2>/dev/null)" || exit 1
+    percent_of <<<"$out"
+    exit 0
+fi
+case $step in
++[0-9]*%) value=$step ;;
+[0-9]*%-) value="-${step%-}" ;;
+[0-9]*%) value=$step ;;
+*) exit 1 ;;
+esac
+out="$("$HASEEN_BIN/haseen-brightness" set "$device" "$value" 2>/dev/null)" || exit 1
+if $DRY_RUN; then
+    printf '%s\n' "$out"
+    exit 0
+fi
+# set prints the line with the new value when it changed something; read it
+# back otherwise.
+[[ -n $out ]] || out="$("$HASEEN_BIN/haseen-brightness" get "$device" 2>/dev/null)" || exit 1
+percent_of <<<"$out"

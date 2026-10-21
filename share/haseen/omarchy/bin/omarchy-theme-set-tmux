@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-tmux — bring a running tmux server onto the current haseen
+# theme: COLORFGBG, window style and cursor colour, the palette pushed to
+# every pane's tty, a SIGWINCH so full-screen programs redraw, and a client
+# refresh. Adapted from Omarchy bin/omarchy-theme-set-tmux (MIT, Copyright (c)
+# David Heinemeier Hansson): colours resolve through haseen's colors.toml
+# parser instead of omarchy-theme-color/-osc; every tmux change, tty write and
+# signal goes through run, so --dry-run prints them. Omarchy also copies the
+# GUM_* variables of its rendered gum_env.lua into tmux's environment; haseen
+# renders no gum_env.lua (its session exports no such variables), so that
+# happens only when the theme ships one, which is read as data, never run.
+# Runtime state only: tmux.conf is not touched (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-tmux [--dry-run]
+
+haseen's answer to Omarchy's command: applies the current haseen theme to the
+running tmux server (environment, window style, cursor colour, pane palette).
+Does nothing when tmux is not running.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+gum_env="$THEME_CURRENT_PATH/gum_env.lua"
+colors_toml="$THEME_CURRENT_PATH/colors.toml"
+
+# A fixture (HASEEN_SYSROOT) has no tmux server to ask.
+! in_sysroot || exit 0
+tmux list-sessions >/dev/null 2>&1 || exit 0
+
+set_tmux_environment() {
+    local key="$1" value="$2" session
+    run tmux set-environment -g "$key" "$value" 2>/dev/null || return 0
+    while IFS= read -r session; do
+        [[ -n $session ]] || continue
+        run tmux set-environment -t "$session" "$key" "$value" 2>/dev/null || true
+    done < <(tmux list-sessions -F "#{session_id}" 2>/dev/null)
+}
+
+sync_theme_environment() {
+    local key value
+    [[ -f $gum_env ]] || return 0
+    while IFS=$'\t' read -r key value; do
+        [[ -n $key && -n $value ]] || continue
+        set_tmux_environment "$key" "$value"
+    done < <(awk -F'"' '/hl\.env\("[A-Z0-9_]+", "[^"]+"\)/ { print $2 "\t" $4 }' "$gum_env")
+}
+
+theme_loaded=false
+theme_colors_load "$colors_toml" && theme_loaded=true
+
+sync_colorfgbg() {
+    local colorfgbg="15;0"
+    # The mode resolves from colors.toml, a light.mode marker or the
+    # background's luminance; no theme reads as dark, as in Omarchy.
+    if $theme_loaded && [[ ${THEME_COLORS[mode]} == light ]]; then colorfgbg="0;15"; fi
+    set_tmux_environment COLORFGBG "$colorfgbg"
+}
+
+sync_tmux_window_style() {
+    local background foreground cursor
+    $theme_loaded || return 0
+    foreground="${THEME_COLORS[foreground]:-}"
+    background="${THEME_COLORS[background]:-}"
+    cursor="${THEME_COLORS[cursor]:-}"
+    [[ -n $foreground && -n $background ]] || return 0
+    run tmux set-option -g window-style "fg=$foreground,bg=$background" 2>/dev/null || true
+    run tmux set-option -g window-active-style "fg=$foreground,bg=$background" 2>/dev/null || true
+    # Apps like nvim clear the per-pane cursor colour with OSC 112. Without a
+    # global fallback, tmux then resets the outer terminal's cursor, which in
+    # terminals that can't reload their config (foot) restores the colour from
+    # whatever theme was active when the terminal launched.
+    if [[ -n $cursor ]]; then
+        run tmux set-option -g cursor-colour "$cursor" 2>/dev/null || true
+    fi
+}
+
+pane_ttys() { tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | sort -u; }
+
+sync_tmux_pane_colors() {
+    local pane_tty theme_osc
+    $theme_loaded || return 0
+    theme_osc="$(omarchy_theme_osc "$colors_toml")"
+    [[ -n $theme_osc ]] || return 0
+    while IFS= read -r pane_tty; do
+        [[ $pane_tty == /dev/pts/* ]] || continue
+        omarchy_tty_write "$pane_tty" "$theme_osc"
+    done < <(pane_ttys)
+}
+
+signal_tmux_panes() {
+    local pane_tty tpgid
+    while IFS= read -r pane_tty; do
+        [[ $pane_tty == /dev/pts/* ]] || continue
+        tpgid="$(ps -o tpgid= -t "${pane_tty#/dev/}" 2>/dev/null | awk 'NF && $1 > 0 { print $1; exit }')"
+        [[ -n $tpgid ]] || continue
+        run kill -WINCH -- "-$tpgid" 2>/dev/null || true
+    done < <(pane_ttys)
+}
+
+refresh_tmux_clients() {
+    local client
+    while IFS= read -r client; do
+        [[ -n $client ]] || continue
+        run tmux refresh-client -t "$client" 2>/dev/null || true
+    done < <(tmux list-clients -F "#{client_name}" 2>/dev/null)
+}
+
+sync_theme_environment
+sync_colorfgbg
+sync_tmux_window_style
+sync_tmux_pane_colors
+signal_tmux_panes
+refresh_tmux_clients

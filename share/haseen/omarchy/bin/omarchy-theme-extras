@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# omarchy-theme-extras — the user's themes that came from a git clone, one path
+# per line; exit 1 when there are none, so a caller (Omarchy's menu "when",
+# omarchy-theme-update) can ask without reading the list. Adapted from Omarchy
+# bin/omarchy-theme-extras (MIT, Copyright (c) David Heinemeier Hansson):
+# ~/.config/haseen/themes instead of ~/.config/omarchy/themes, and the rule is
+# haseen's theme_from_repo (no symlink, a .git directory) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+omarchy_help "Usage: omarchy-theme-extras
+
+haseen's answer to Omarchy's command: lists the themes in $THEME_USER_DIR
+installed from a git repository (haseen theme install). A symlinked theme is
+your own working copy and is not listed. Exits 1 when there are none." "$@"
+
+status=1
+for theme in "$THEME_USER_DIR"/*; do
+    theme_from_repo "$theme" || continue
+    echo "$theme"
+    status=0
+done
+exit "$status"

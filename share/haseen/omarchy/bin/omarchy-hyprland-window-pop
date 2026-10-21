@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-window-pop — pop the focused tile out: float it at a size,
+# centre or place it, pin it on top; run again to put it back. Adapted from
+# Omarchy bin/omarchy-hyprland-window-pop (MIT, Copyright (c) David Heinemeier
+# Hansson): the same dispatches, in the form Hyprland's config takes, and the
+# numbers are checked before they reach a Lua expression. The window gets the
+# tag pop as in Omarchy; haseen ships no tag:pop window rule (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+# dispatch LUA LEGACY... — one Hyprland dispatcher: the Lua form when Hyprland
+# reads a Lua config (screen_lua asks it once), else the legacy form. A dry run
+# prints it instead.
+hypr_lua=""
+dispatch() {
+    local lua="$1" args
+    shift
+    if [[ -z $hypr_lua ]]; then
+        if screen_lua; then hypr_lua=yes; else hypr_lua=no; fi
+    fi
+    if [[ $hypr_lua == yes ]]; then args=(dispatch "$lua"); else args=(dispatch "$@"); fi
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl ${args[*]}"
+    else
+        hyprctl "${args[@]}" >/dev/null
+    fi
+}
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-window-pop [width height [x y]] [--dry-run]
+
+haseen's answer to Omarchy's command: floats the focused window at width x
+height (default 1300x900), at x,y or centred, pinned and raised. On a window
+it popped, it unpins and tiles it again.
+USAGE
+}
+parse_common_flags "$@"
+width=${REST[0]:-1300}
+height=${REST[1]:-900}
+x=${REST[2]:-}
+y=${REST[3]:-}
+for n in "$width" "$height" ${x:+"$x"} ${y:+"$y"}; do
+    [[ $n =~ ^-?[0-9]+$ ]] || {
+        usage >&2
+        exit 1
+    }
+done
+
+active="$(hyprctl activewindow -j)"
+pinned="$(jq -r '.pinned // false' <<<"$active")"
+addr="$(jq -r '.address // empty' <<<"$active")"
+[[ $addr =~ ^0x[0-9a-fA-F]+$ ]] || exit 0
+window="address:$addr"
+
+if [[ $pinned == true ]]; then
+    dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+    dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+    dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
+else
+    dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+    dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
+    if [[ -n $x && -n $y ]]; then
+        dispatch "hl.dsp.window.move({ window = \"$window\", x = $x, y = $y })" moveactive "$x" "$y" "$window"
+    else
+        dispatch "hl.dsp.window.center({ window = \"$window\" })" centerwindow "$window"
+    fi
+    dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+    dispatch "hl.dsp.window.alter_zorder({ window = \"$window\", mode = \"top\" })" alterzorder top "$window"
+    dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"+pop\" })" tagwindow +pop "$window"
+fi

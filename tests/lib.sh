@@ -57,6 +57,13 @@ sandbox() {
         UWSM_FINALIZE_VARNAMES UWSM_WAIT_VARNAMES
     # The session's platform theme (gtk3) needs a display and aborts without one.
     unset QT_QPA_PLATFORMTHEME
+    # Coding agents' credentials and config homes: a command under test (the
+    # agent usage collectors, plan 093) must never reach the live account's.
+    unset CLAUDE_CONFIG_DIR CODEX_HOME HERMES_HOME T3CODE_HOME
+    local var
+    for var in $(compgen -e | grep -E '^(ANTHROPIC|OPENAI|FIREWORKS)_' || true); do
+        unset "$var"
+    done
 }
 
 # stub CMD SCRIPT — replace a stub with a scripted fake (e.g. a read-only

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-toggle — switch one of Omarchy's Hyprland toggles on, off or
+# over. Translated to haseen's toggle commands, each of which writes its own
+# file in $HASEEN_USER_STATE/toggles/hypr and applies it live:
+#   window-no-gaps              haseen toggle gaps
+#   single-window-aspect-ratio  haseen toggle one-window-ratio
+#   internal-monitor-mirror     haseen hardware mirror-display
+#   internal-monitor-disable    haseen hardware laptop-display (on = display off)
+# The interface follows Omarchy bin/omarchy-hyprland-toggle (MIT, Copyright (c)
+# David Heinemeier Hansson): <flag> [on|off|toggle], toggle prints the new
+# state (on|off), an unknown flag is "Flag not found" and exit 1 (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-toggle <flag-name> [on|off|toggle] [--dry-run]
+
+haseen's answer to Omarchy's command. Flags: window-no-gaps,
+single-window-aspect-ratio, internal-monitor-mirror, internal-monitor-disable.
+toggle (the default) prints the new state, on or off.
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} >= 1 && ${#REST[@]} <= 2)) || {
+    usage >&2
+    exit 1
+}
+flag="${REST[0]}"
+action="${REST[1]:-toggle}"
+case $action in
+on | off | toggle) ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac
+
+state="$HASEEN_USER_STATE/toggles/hypr"
+inverted=false
+case $flag in
+window-no-gaps) cmd=haseen-toggle-gaps file=no-gaps.lua ;;
+single-window-aspect-ratio) cmd=haseen-toggle-one-window-ratio file=single-window-aspect-ratio.lua ;;
+internal-monitor-mirror) cmd=haseen-hardware-mirror-display file=mirror-display.lua ;;
+# The flag means "the panel is disabled"; the command's on means enabled.
+internal-monitor-disable) cmd=haseen-hardware-laptop-display file=laptop-display-off.lua inverted=true ;;
+*)
+    echo "Flag not found: $flag" >&2
+    exit 1
+    ;;
+esac
+
+new="$action"
+if [[ $action == toggle ]]; then
+    if [[ -f $state/$file ]]; then new=off; else new=on; fi
+fi
+verb="$new"
+if $inverted; then
+    if [[ $new == on ]]; then verb=off; else verb=on; fi
+fi
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+if $DRY_RUN; then
+    "$HASEEN_BIN/$cmd" "$verb" "${flags[@]}"
+else
+    "$HASEEN_BIN/$cmd" "$verb" >/dev/null
+fi
+[[ $action == toggle ]] && echo "$new"
+exit 0

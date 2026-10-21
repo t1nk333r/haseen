@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# omarchy-webapp-remove-all — remove every web-app launcher and its icon:
+# Omarchy's (omarchy-launch-webapp or an omarchy-webapp-handler Exec),
+# haseen webapp install's (a chromium --app= Exec) and custom-Exec ones
+# omarchy-webapp-install wrote (X-Haseen-WebApp). Adapted from Omarchy
+# bin/omarchy-webapp-remove-all (MIT, Copyright (c) David Heinemeier Hansson):
+# the optional APP_DIR, the scan, the icon names and the messages. Changes: the
+# list is shown and confirmed first (--yes answers); removals go through run
+# (--dry-run) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-webapp-remove-all [APP_DIR] [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes every web app launcher in
+APP_DIR (default \$XDG_DATA_HOME/applications) and its icon, after a
+confirmation.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+APP_DIR="${1:-$DATA_HOME/applications}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+OLD_ICON_DIR="$DATA_HOME/applications/icons"
+
+echo "Scanning for web apps in $APP_DIR..."
+files=()
+while IFS= read -r -d '' file; do
+    grep -qE '^Exec=(omarchy-launch-webapp|omarchy-webapp-handler|.*--app=)|^X-Haseen-WebApp=' "$file" 2>/dev/null &&
+        files+=("$file")
+done < <(find "$APP_DIR" -maxdepth 1 -name '*.desktop' -print0 2>/dev/null)
+
+if ((${#files[@]} == 0)); then
+    echo "No web apps found."
+    exit 0
+fi
+printf '  %s\n' "${files[@]##*/}"
+confirm "Remove these ${#files[@]} web app launcher(s)?" || {
+    echo "Nothing removed."
+    exit 1
+}
+
+for file in "${files[@]}"; do
+    app_name="$(basename "$file" .desktop)"
+    icon_name="$(printf '%s\n' "$app_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')"
+    echo "Removing web app: $app_name"
+    run rm -f -- "$file" "$ICON_DIR/$icon_name.png" "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"
+done
+have update-desktop-database && run update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
+echo "Web apps removed successfully."

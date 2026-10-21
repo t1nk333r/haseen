@@ -310,18 +310,23 @@ record qs
 capture haseen shell run
 assert_eq "run execs qs -p HASEEN_PATH/shell" "qs: -p $HASEEN_PATH/shell" "$OUTPUT"
 
-# Processes the shell starts reach haseen through the Compat command shims,
-# never Omarchy's own commands (a stub here stands in for an installed one).
+# Processes the shell starts reach haseen's answers to Omarchy's commands
+# (omarchy/bin, plan 093), never Omarchy's own (a stub here stands in for an
+# installed one). The qs stub is the shell: its child runs the command, and
+# it answers the restart's `qs list` with no Omarchy shell.
 stub omarchy-restart-shell 'echo "STUB-CALLED: omarchy-restart-shell $*" >&2; exit 97'
 stub omarchy-hyprland-monitor-internal-mirror 'echo "STUB-CALLED: omarchy-hyprland-monitor-internal-mirror $*" >&2; exit 97'
 stub systemctl '[ "$2" = is-active ] && exit 0; echo "STUB-CALLED: systemctl $*" >&2; exit 97'
-stub qs 'DRY_RUN=true exec omarchy-restart-shell'
+stub qs '[ "$1" = list ] && { echo "[]"; exit 0; }; DRY_RUN=true exec omarchy-restart-shell'
 capture haseen shell run
 assert_status "shell child: omarchy-restart-shell exits 0" 0 "$STATUS"
 assert_dry_pure "shell child: omarchy-restart-shell" "$OUTPUT"
 assert_contains "shell child: omarchy-restart-shell restarts the haseen unit" "$OUTPUT" \
     "DRYRUN: systemctl --user restart haseen-shell.service"
-stub qs 'DRY_RUN=true exec omarchy-hyprland-monitor-internal-mirror off'
+# Omarchy's off acts only while mirroring is on.
+mkdir -p "$XDG_STATE_HOME/haseen/toggles/hypr"
+: >"$XDG_STATE_HOME/haseen/toggles/hypr/mirror-display.lua"
+stub qs '[ "$1" = list ] && { echo "[]"; exit 0; }; DRY_RUN=true exec omarchy-hyprland-monitor-internal-mirror off'
 capture haseen shell run
 assert_status "shell child: mirror off exits 0" 0 "$STATUS"
 assert_dry_pure "shell child: mirror off" "$OUTPUT"
@@ -329,13 +334,15 @@ assert_contains "shell child: mirror off drops haseen's toggle" "$OUTPUT" \
     "DRYRUN: rm -f $XDG_STATE_HOME/haseen/toggles/hypr/mirror-display.lua"
 assert_contains "shell child: mirror off reloads Hyprland" "$OUTPUT" "DRYRUN: hyprctl reload"
 
-# The debrand shims (plan 057) hand each Omarchy command to its haseen
-# command. A haseen tree whose bin/ holds recording stubs stands in for the
-# targets: each prints its name and every argument in brackets.
+# The debrand shims (plan 057, now in omarchy/bin, plan 093) hand each
+# Omarchy command to its haseen command. A haseen tree whose bin/ holds
+# recording stubs stands in for the targets: each prints its name and every
+# argument in brackets.
 FAKE="$SANDBOX/fake"
 mkdir -p "$FAKE/bin" "$FAKE/share/haseen/shell"
 ln -s "$HASEEN_PATH/lib" "$FAKE/share/haseen/lib"
 ln -s "$HASEEN_PATH/shell/Compat" "$FAKE/share/haseen/shell/Compat"
+ln -s "$HASEEN_PATH/omarchy" "$FAKE/share/haseen/omarchy"
 : >"$FAKE/share/haseen/shell/shell.qml"
 for t in haseen-update haseen-config-terminal haseen-menu haseen-powerprofile-list haseen-powerprofile-set \
     haseen-capture-screenrecord haseen-notification-send haseen-battery-status; do

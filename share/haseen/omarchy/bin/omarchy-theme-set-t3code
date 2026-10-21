@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-t3code — publish the current haseen theme to T3 Code as
+# the theme "haseen" ($T3CODE_HOME/userdata/themes/haseen.json, which T3 Code
+# watches; every connected client retints). Only an existing T3 Code state
+# directory is followed: none is created. Adapted from Omarchy
+# bin/omarchy-theme-set-t3code (MIT, Copyright (c) David Heinemeier Hansson):
+# haseen renders no t3code.json at theme set, so the theme file is
+# current/theme/t3code.json when the theme ships one, else Omarchy's
+# t3code.json template rendered from the current colors.toml; the theme id
+# is haseen, not omarchy (select it once in T3 Code) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+T3CODE_HOME="${T3CODE_HOME:-$HOME/.t3}"
+T3CODE_STATE_DIR="$T3CODE_HOME/userdata"
+# The filename is the theme id T3 Code shows and `t3 theme set` accepts, and
+# it stays stable while the colors change underneath on every theme switch.
+T3CODE_THEME_PATH="$T3CODE_STATE_DIR/themes/haseen.json"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-t3code [--dry-run]
+
+haseen's answer to Omarchy's command: writes the current haseen theme to
+$T3CODE_THEME_PATH when $T3CODE_STATE_DIR exists.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+omarchy_theme_file t3code.json || exit 0
+source_path="$REPLY"
+
+# A theme without an accent or a background leaves its placeholder unresolved.
+# Publishing that would only make T3 Code reject the file, so skip instead and
+# leave the previous palette in place.
+if omarchy_unresolved "$source_path"; then
+    echo "Skipping T3 Code theme: t3code.json has unresolved colors." >&2
+    exit 0
+fi
+
+# Only follow an install that already exists.
+[[ -d $T3CODE_STATE_DIR ]] || exit 0
+omarchy_publish "$source_path" "$T3CODE_THEME_PATH"

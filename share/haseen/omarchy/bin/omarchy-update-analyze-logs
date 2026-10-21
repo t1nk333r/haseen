@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-update-analyze-logs — warn when the last package transaction
+# rebuilt the initramfs with mkinitcpio and did not report success, so a
+# broken image is caught before a reboot. Adapted from Omarchy
+# bin/omarchy-update-analyze-logs (MIT,
+# Copyright (c) David Heinemeier Hansson): the same check and red warning, read
+# from pacman's own log (/var/log/pacman.log, which records hook output)
+# instead of Omarchy's update transcript /tmp/omarchy-update.log, which haseen
+# update does not write. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-update-analyze-logs
+
+haseen's answer to Omarchy's command: reads the last transaction in
+/var/log/pacman.log and warns when an mkinitcpio initramfs build in it did
+not report success. Prints nothing when there is nothing to report." "$@"
+
+log="$(sysroot_path /var/log/pacman.log)"
+[[ -r $log ]] || exit 0
+
+# The last transaction: everything after the last "transaction started".
+last="$(awk '/\[ALPM\] transaction started/ { buf = "" } { buf = buf $0 "\n" } END { printf "%s", buf }' "$log")"
+
+# mkinitcpio's hook announces its builds and ends each with a success line;
+# dracut and booster print neither, so their builds are not judged here.
+if grep -qE "Updating linux initcpios|mkinitcpio-install\.hook|Building image from preset" <<<"$last"; then
+    if ! grep -qE "(Initcpio i|I)mage generation successful" <<<"$last"; then
+        printf '\e[31mError: Initramfs generation may have failed. Review /var/log/pacman.log before restart.\e[0m\n'
+        echo
+    fi
+fi

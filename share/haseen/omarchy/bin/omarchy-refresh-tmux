@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# omarchy-refresh-tmux — replaces ~/.config/tmux/tmux.conf with haseen's default
+# (share/haseen/default/tmux/tmux.conf), keeping the old file as a backup, then
+# reloads tmux when it is running. Adapted from Omarchy bin/omarchy-refresh-tmux and
+# omarchy-refresh-config (MIT, Copyright (c) David Heinemeier Hansson): the
+# backup, the copy and the diff are Omarchy's, done the way haseen refresh
+# does them (asks first unless --yes, <file>.bak.<timestamp>, --dry-run); the
+# reload is Omarchy's omarchy-restart-tmux. haseen never replaces a user file
+# unasked: this command is the explicit request (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+src="$HASEEN_PATH/default/tmux/tmux.conf"
+dest="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-refresh-tmux [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: replaces $dest with haseen's
+default ($src), keeping your file as $dest.bak.<timestamp>, then
+reloads tmux if it is running.
+USAGE
+}
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+[[ -r $src ]] || die "default missing: $src"
+
+if [[ -e $dest ]] && cmp -s -- "$src" "$dest"; then
+    info "$dest is already haseen's default"
+else
+    confirm "Replace $dest with haseen's default? (the current file is kept as a backup)" ||
+        die "cancelled; nothing changed"
+    backup=""
+    if [[ -e $dest ]]; then
+        backup="$dest.bak.$(date +%Y%m%d-%H%M%S)"
+        run cp -a -- "$dest" "$backup"
+    fi
+    run install -Dm644 -- "$src" "$dest"
+    if [[ -n $backup ]] && ! $DRY_RUN; then
+        info "replaced $dest with haseen's default (backup: $backup). Changes from your version:"
+        diff -u -- "$backup" "$dest" || true
+    fi
+fi
+
+# A running server reads the new file; without one the next tmux will.
+if have tmux && tmux has-session 2>/dev/null; then
+    run tmux source-file "$dest"
+fi

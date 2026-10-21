@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# omarchy-remove-security-sudoless-docker — turn sudoless Docker off by taking
+# the user out of the docker group, record that a reboot is needed and offer
+# one. Adapted from Omarchy bin/omarchy-remove-security-sudoless-docker (MIT,
+# Copyright (c) David Heinemeier Hansson): the configured-membership test,
+# the marker and the deferred reboot are Omarchy's; the membership is read
+# from the group database (/etc/group through sysroot_path under a fixture);
+# sudo gpasswd -> run_root; the reboot-required marker goes through haseen's
+# omarchy-state; the reboot through omarchy-system-reboot (haseen system
+# reboot); --dry-run prints the plan (plan 093). haseen itself never adds
+# anyone to the docker group: it is root-equivalent.
+#
+# The reboot question defaults to no and --yes does not reboot, as Omarchy
+# does not without a terminal; OMARCHY_DEFER_REBOOT skips it, as in Omarchy.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-security-sudoless-docker [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes you from the docker group
+(gpasswd -d), so Docker asks for sudo or polkit again, records that a reboot
+is needed and offers one (default no).
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+user=${USER:-$(id -un)}
+
+# The configured groups, not this session's: right after enabling, the
+# account is in the group though the running session still needs a prompt.
+docker_members() {
+    local line
+    if in_sysroot; then
+        line="$(grep -E '^docker:' "$(sysroot_path /etc/group)" 2>/dev/null || true)"
+    else
+        line="$(getent group docker 2>/dev/null || true)"
+    fi
+    printf '%s\n' "${line##*:}"
+}
+if [[ ",$(docker_members)," != *",$user,"* ]]; then
+    echo "Sudoless Docker is not enabled: $user is not in the docker group."
+    exit 0
+fi
+
+echo "Removing $user from the docker group..."
+if $DRY_RUN; then
+    run_root gpasswd -d "$user" docker
+else
+    run_root gpasswd -d "$user" docker >/dev/null
+fi
+
+# Group membership is only re-read by a fresh session, and in practice only a
+# reboot reliably applies it. The marker keeps the reminder for later.
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+"$HASEEN_OMARCHY_DIR/bin/omarchy-state" set reboot-required "${flags[@]}" ||
+    warn "could not record that a reboot is needed"
+
+echo ""
+echo "Sudoless Docker DISABLED. Docker access goes through a polkit/sudo prompt"
+echo "again, and the plain 'docker' CLI runs under sudo. It takes effect after a reboot."
+echo ""
+# An update that reuses this command defers the reboot to its own end.
+if [[ -z ${OMARCHY_DEFER_REBOOT:-} ]] && ask "Reboot now to apply?"; then
+    exec "$HASEEN_OMARCHY_DIR/bin/omarchy-system-reboot" "${flags[@]}"
+fi
+exit 0

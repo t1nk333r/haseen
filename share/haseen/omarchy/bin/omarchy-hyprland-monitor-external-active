@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-external-active — exit 0 when Hyprland has an enabled
+# monitor other than the laptop panel. Adapted from Omarchy
+# bin/omarchy-hyprland-monitor-external-active (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged query (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-monitor-external-active
+
+haseen's answer to Omarchy's command: exit 0 when Hyprland reports an enabled
+monitor that is not eDP, LVDS or DSI, 1 otherwise." "$@"
+
+monitors="$(hyprctl monitors all -j 2>/dev/null)" || exit 1
+jq -e 'any(.[]?; (.name | test("^(eDP|LVDS|DSI)-") | not) and .disabled == false)' <<<"$monitors" >/dev/null 2>&1

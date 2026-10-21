@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-window-transparency-toggle — toggle the focused window
+# between opaque and the configured opacity. Adapted from Omarchy
+# bin/omarchy-hyprland-window-transparency-toggle (MIT, Copyright (c) David
+# Heinemeier Hansson): the same opaque property, in the form Hyprland's config
+# takes; nothing is blurred (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+# dispatch LUA LEGACY... — one Hyprland dispatcher: the Lua form when Hyprland
+# reads a Lua config (screen_lua asks it once), else the legacy form. A dry run
+# prints it instead.
+hypr_lua=""
+dispatch() {
+    local lua="$1" args
+    shift
+    if [[ -z $hypr_lua ]]; then
+        if screen_lua; then hypr_lua=yes; else hypr_lua=no; fi
+    fi
+    if [[ $hypr_lua == yes ]]; then args=(dispatch "$lua"); else args=(dispatch "$@"); fi
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl ${args[*]}"
+    else
+        hyprctl "${args[@]}" >/dev/null
+    fi
+}
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-window-transparency-toggle [--dry-run]
+
+haseen's answer to Omarchy's command: toggles the focused window's opaque
+property.
+USAGE
+}
+parse_common_flags "$@"
+
+addr="$(hyprctl activewindow -j | jq -r '.address // empty')"
+[[ $addr =~ ^0x[0-9a-fA-F]+$ ]] || exit 1
+dispatch "hl.dsp.window.set_prop({ window = \"address:$addr\", prop = \"opaque\", value = \"toggle\" })" \
+    setprop "address:$addr" opaque toggle

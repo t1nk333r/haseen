@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-menu-clipboard — opens or closes haseen's clipboard history panel (haseen.clipboard). Omarchy's command
+# (Omarchy bin/omarchy-menu-clipboard, MIT, Copyright (c) David Heinemeier Hansson) toggles
+# its own shell's omarchy.clipboard; here the same IPC reaches haseen's shell, as
+# haseen's own bind and menu entry do (plan 093). A script of its own, not a
+# table shim, so that --help answers without calling the shell.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-clipboard
+
+haseen's answer to Omarchy's command: toggles haseen's clipboard history panel
+(haseen shell ipc panel toggle haseen.clipboard)." "$@"
+# Omarchy's takes no arguments and ignores any it is given.
+haseen_exec shell-ipc panel toggle haseen.clipboard

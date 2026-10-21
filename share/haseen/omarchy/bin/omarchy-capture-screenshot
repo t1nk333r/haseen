@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# omarchy-capture-screenshot — Omarchy's screenshot modes on haseen capture
+# screenshot: smart, region and windows pick with haseen's
+# omarchy-capture-region over a frozen screen, fullscreen takes the focused
+# monitor; slurp (the default) saves, copies and announces, copy only copies,
+# save only saves. A second press while a pick is open cancels it. The
+# arguments follow Omarchy bin/omarchy-capture-screenshot (MIT, Copyright (c)
+# David Heinemeier Hansson): OMARCHY_SCREENSHOT_DIR becomes
+# HASEEN_SCREENSHOT_DIR, and --editor=X is dropped (haseen's toast has no
+# click-to-edit; haseen capture screenshot --edit annotates first) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-capture-screenshot [smart|region|windows|fullscreen] [slurp|copy|save] [--editor=NAME] [--dry-run]
+
+haseen's answer to Omarchy's command (haseen capture screenshot):
+  smart (default), region, windows   pick over a frozen screen
+  fullscreen                         the focused monitor
+  slurp (default)  save to ~/Pictures, copy, notify; prints the path
+  copy             clipboard only
+  save             file only, no notification; prints the path
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+args=()
+for arg in "${REST[@]}"; do
+    [[ $arg == --editor=* ]] || args+=("$arg")
+done
+mode=${args[0]:-smart}
+processing=${args[1]:-slurp}
+[[ -z ${OMARCHY_SCREENSHOT_DIR:-} || -n ${HASEEN_SCREENSHOT_DIR:-} ]] ||
+    export HASEEN_SCREENSHOT_DIR="$OMARCHY_SCREENSHOT_DIR"
+
+case $processing in
+slurp) flags=() ;;
+copy) flags=(--no-save) ;;
+save) flags=(--no-copy --no-notify) ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac
+$DRY_RUN && flags+=(--dry-run)
+
+# A second press while the picker is open cancels it, as in Omarchy.
+if ! in_sysroot && pgrep -x slurp >/dev/null 2>&1; then
+    run pkill -x slurp
+    exit 0
+fi
+
+case $mode in
+fullscreen) haseen_exec capture-screenshot output "${flags[@]}" ;;
+smart | region | windows) ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if $DRY_RUN; then
+    echo "DRYRUN: $HASEEN_OMARCHY_DIR/bin/omarchy-capture-region $mode --keep-freeze (pick the region)"
+    haseen_exec capture-screenshot region "${flags[@]}"
+fi
+
+# The picker leaves its screen freeze up (its PID on the first line), so grim
+# captures the frozen frame rather than content shifting as the overlay goes.
+freeze_pid=""
+selection=""
+cleanup() { [[ -z $freeze_pid ]] || kill "$freeze_pid" 2>/dev/null || true; }
+trap cleanup EXIT
+{
+    read -r freeze_pid || true
+    read -r selection || true
+} < <("$HASEEN_OMARCHY_DIR/bin/omarchy-capture-region" "$mode" --keep-freeze || true)
+[[ -n $selection ]] || exit 0
+"$HASEEN_BIN/haseen-capture-screenshot" --geometry "$selection" "${flags[@]}"

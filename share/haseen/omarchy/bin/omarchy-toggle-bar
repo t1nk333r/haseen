@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# omarchy-toggle-bar — hide or show haseen's bar the way Omarchy's command
+# takes it: "on" sets Omarchy's bar-off flag (hides), "off" shows, "toggle"
+# flips. haseen's bar keeps no flag file: haseen toggle bar flips the running
+# shell's bar over IPC, so on/off read the bar's state first and flip only
+# when it differs. Session-only, unlike Omarchy's persistent flag. Follows
+# Omarchy bin/omarchy-toggle-bar (MIT, Copyright (c) David Heinemeier Hansson)
+# for its arguments (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-toggle-bar [toggle|on|off] [--dry-run]
+
+haseen's answer to Omarchy's command: "on" hides the bar (Omarchy's bar-off
+flag on), "off" shows it, "toggle" (the default) flips it, through
+haseen toggle bar. The change lasts for the session.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 1
+}
+action=${1:-toggle}
+
+case $action in
+toggle) ;;
+on | off)
+    hidden="$("$HASEEN_BIN/haseen-shell-ipc" bar status 2>/dev/null | jq -r 'if has("hidden") then .hidden else empty end' 2>/dev/null || true)"
+    [[ $hidden == true || $hidden == false ]] || die "haseen's shell is not running: the bar's state is unknown"
+    want=false
+    [[ $action == on ]] && want=true
+    [[ $hidden != "$want" ]] || exit 0
+    ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac
+# Omarchy's command prints nothing; haseen's prints hidden|shown. A dry run
+# keeps the printed plan.
+if $DRY_RUN; then
+    "$HASEEN_BIN/haseen-toggle-bar" --dry-run
+else
+    "$HASEEN_BIN/haseen-toggle-bar" >/dev/null
+fi

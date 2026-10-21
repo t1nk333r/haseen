@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# omarchy-installed-service-dropbox — exit 0 when Dropbox is running, else 1;
+# Omarchy's bar decides its defaults by this exit code (omarchy-bar). Adapted
+# from Omarchy bin/omarchy-installed-service-dropbox (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged. haseen's catalogue Dropbox is the Flathub
+# com.dropbox.Client, which has no host dropbox-cli; its daemon still shows
+# up as a dropbox process. The process table is the live machine's: under a
+# fixture sysroot only dropbox-cli is asked (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-installed-service-dropbox
+
+haseen's answer to Omarchy's command: exits 0 when Dropbox is installed and
+running, else 1. Prints nothing." "$@"
+
+if have dropbox-cli && dropbox-cli running >/dev/null 2>&1; then
+    exit 0
+fi
+in_sysroot && exit 1
+pgrep -x dropbox >/dev/null 2>&1

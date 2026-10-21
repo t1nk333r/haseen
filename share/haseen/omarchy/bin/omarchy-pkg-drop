@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-pkg-drop — removes the named packages that are installed and
+# ignores the rest. Adapted from Omarchy bin/omarchy-pkg-drop (MIT, Copyright
+# (c) David Heinemeier Hansson): the removal is haseen remove package --yes
+# (pacman -Rns --noconfirm through haseen's run_root), inline so its exit
+# status reaches the caller. haseen refuses a malformed package name outright
+# where Omarchy just skipped it, so such names are skipped here first, with a
+# warning. No packages: nothing to do (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+omarchy_help "Usage: omarchy-pkg-drop <packages...> [--dry-run]
+
+haseen's answer to Omarchy's command: haseen remove package --yes for the
+named packages that are installed; the others are ignored." "$@"
+parse_common_flags "$@"
+
+installed=()
+declare -A selected=()
+for pkg in "${REST[@]+"${REST[@]}"}"; do
+    if [[ ! $pkg =~ $PKG_NAME_RE ]]; then
+        warn "omarchy-pkg-drop: not a package name, skipped: $pkg"
+        continue
+    fi
+    [[ -z ${selected[$pkg]:-} ]] && pkg_installed "$pkg" || continue
+    installed+=("$pkg")
+    selected[$pkg]=1
+done
+((${#installed[@]} > 0)) || exit 0
+
+flags=(--yes)
+$DRY_RUN && flags+=(--dry-run)
+HASEEN_INLINE=1 haseen_exec remove package "${flags[@]}" "${installed[@]}"

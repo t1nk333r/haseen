@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# omarchy-agent-usage-update — run every agent usage collector beside this file
+# (omarchy-agent-usage-<agent>) and write each one's JSON record atomically to
+# ~/.local/state/haseen/agents/usage/<agent>.json, where an agents panel
+# watches them. Adapted from Omarchy bin/omarchy-agent-usage-update (MIT,
+# Copyright (c) David Heinemeier Hansson): the collectors are haseen's ports,
+# found next to this command instead of in $OMARCHY_PATH/bin, and the records
+# go to haseen's state (HASEEN_AGENT_USAGE_DIR overrides it) instead of
+# ~/.local/state/omarchy; --dry-run lists what would run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+USAGE_DIR="${HASEEN_AGENT_USAGE_DIR:-$HASEEN_USER_STATE/agents/usage}"
+usage() {
+    cat <<EOF
+Usage: omarchy-agent-usage-update [--force] [--limits-only] [--except <agent>] [agent...] [--dry-run]
+
+Runs the usage collectors (claude, codex, fireworks) in parallel and writes
+each record to $USAGE_DIR/<agent>.json.
+Exits 1 when a collector failed. Collectors read local session files and ask
+the agent's own usage endpoint with your credentials.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+flags=()
+only=()
+declare -A excluded=()
+while (($#)); do
+    case $1 in
+    --force | --limits-only) flags+=("$1") ;;
+    --except)
+        (($# >= 2)) || {
+            usage >&2
+            exit 1
+        }
+        excluded[$2]=1
+        shift
+        ;;
+    *) only+=("$1") ;;
+    esac
+    shift
+done
+
+wanted() {
+    local agent=$1 candidate
+    [[ -n ${excluded[$agent]:-} ]] && return 1
+    ((${#only[@]} == 0)) && return 0
+    for candidate in "${only[@]}"; do
+        [[ $candidate == "$agent" ]] && return 0
+    done
+    return 1
+}
+
+collect() {
+    local collector=$1 agent=$2 record tmp
+    if ! record="$("$collector" "${flags[@]}")" || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
+        echo "omarchy-agent-usage-update: $agent collector failed" >&2
+        return 1
+    fi
+    tmp="$(mktemp "$USAGE_DIR/.$agent.XXXXXX")"
+    printf '%s\n' "$record" >"$tmp"
+    mv -f -- "$tmp" "$USAGE_DIR/$agent.json"
+}
+
+$DRY_RUN || mkdir -p "$USAGE_DIR"
+pids=()
+for collector in "$HASEEN_OMARCHY_DIR"/bin/omarchy-agent-usage-*; do
+    [[ -x $collector ]] || continue
+    agent="${collector##*/omarchy-agent-usage-}"
+    [[ $agent == update ]] && continue
+    wanted "$agent" || continue
+    if $DRY_RUN; then
+        echo "DRYRUN: $collector ${flags[*]} > $USAGE_DIR/$agent.json"
+        continue
+    fi
+    collect "$collector" "$agent" &
+    pids+=($!)
+done
+
+status=0
+for pid in "${pids[@]}"; do
+    wait "$pid" || status=1
+done
+exit "$status"

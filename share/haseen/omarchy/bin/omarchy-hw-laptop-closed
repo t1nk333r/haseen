@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-hw-laptop-closed — exit 0 when a laptop lid reads closed. Adapted from
+# Omarchy bin/omarchy-hw-laptop-closed (MIT, Copyright (c) David Heinemeier
+# Hansson): the ACPI lid state is read through sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-laptop-closed
+
+haseen's answer to Omarchy's command: exit 0 when any ACPI lid
+(/proc/acpi/button/lid/*/state) reads closed, 1 otherwise. Prints nothing." "$@"
+
+for state in "$(sysroot_path /proc/acpi/button/lid)"/*/state; do
+    [[ -r $state ]] || continue
+    [[ $(<"$state") == *closed* ]] && exit 0
+done
+exit 1

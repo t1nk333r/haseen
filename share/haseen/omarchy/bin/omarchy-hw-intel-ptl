@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# omarchy-hw-intel-ptl — exit 0 when an Intel Panther Lake GPU is present.
+# Adapted from Omarchy bin/omarchy-hw-intel-ptl (MIT, Copyright (c) David
+# Heinemeier Hansson): the same lspci display-controller name test, read in one
+# awk pass (a grep -q ending a pipeline early would make pipefail report the
+# writer's SIGPIPE as a miss) (plan 093). sysfs carries only ids, and the
+# Panther Lake GPU ids are not settled, so the name stays the test.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-intel-ptl
+
+haseen's answer to Omarchy's command: exit 0 when lspci names a Panther Lake
+VGA, 3D or display controller, 1 otherwise. Prints nothing." "$@"
+
+have lspci || exit 1
+lspci 2>/dev/null | awk '
+    { line = tolower($0) }
+    line ~ /vga|3d|display/ && line ~ /panther lake/ { found = 1 }
+    END { exit !found }
+'

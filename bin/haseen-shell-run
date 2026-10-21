@@ -23,9 +23,11 @@ esac
 
 [[ -r $HASEEN_PATH/shell/shell.qml ]] || die "shell not found: $HASEEN_PATH/shell/shell.qml"
 have qs || die "quickshell (qs) is not installed: haseen layer apply shell"
-# Omarchy plugins call a few Omarchy commands that would act on Omarchy's own
-# shell or config; the shims there hand them to haseen (architecture 5.4).
-export PATH="$HASEEN_PATH/shell/Compat/bin:$PATH"
+# Plugins call DMS's and Omarchy's commands. Compat/bin answers dms and
+# ydotool, omarchy/bin every Omarchy command (architecture 5.4, plan 093);
+# first on PATH, so a checkout's shell reaches them too, not only an
+# installed tree's PREFIX/bin links.
+export PATH="$HASEEN_PATH/shell/Compat/bin:$HASEEN_PATH/omarchy/bin:$PATH"
 # The shell watches $HASEEN_USER_STATE/safe-mode (plan 061); a watch needs
 # the directory to exist when it starts.
 mkdir -p -- "$HASEEN_USER_STATE"

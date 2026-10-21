@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# omarchy-launch-tui — run a terminal program in a new, tiled window of the
+# user's terminal under a window app-id, so a later launch can focus it
+# (omarchy-launch-or-focus-tui). Omarchy's agent, launch-editor and plugins
+# (vigil passes --app-id=org.omarchy.vigil) call it. Adapted from Omarchy
+# bin/omarchy-launch-tui (MIT, Copyright (c) David Heinemeier Hansson): the
+# terminal is ${TERMINAL:-foot}, haseen's default (xdg-terminal-exec comes
+# only from [omarchy]), each with its own app-id flag as in lib/terminal.sh,
+# and the launch goes through uwsm-app only in a uwsm session (plan 093).
+#
+# The default app-id stays Omarchy's org.omarchy.<command>, the same one
+# omarchy-launch-or-focus-tui computes: haseen has no window scheme for tiled
+# terminal programs (haseen.floating floats and centres, which these must
+# not), and Omarchy binds and plugins focus these windows by that id.
+# DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-tui [--app-id=<app-id>] <command> [args...]
+
+haseen's answer to Omarchy's command: runs <command> in a new window of
+\$TERMINAL (foot when unset) with Wayland app-id <app-id>, by default
+org.omarchy.<command name>, as Omarchy's does." "$@"
+
+if [[ ${1:-} == --app-id=* ]]; then
+    app_id="${1#--app-id=}"
+    shift
+else
+    app_id="org.omarchy.$(basename -- "${1:-tui}")"
+fi
+(($# > 0)) || {
+    echo "Usage: omarchy-launch-tui [--app-id=<app-id>] <command> [args...]" >&2
+    exit 1
+}
+
+term="${TERMINAL:-foot}"
+have "$term" || term=foot
+case "${term##*/}" in
+xdg-terminal-exec | foot) argv=("$term" "--app-id=$app_id" -e "$@") ;;
+kitty | ghostty) argv=("$term" "--class=$app_id" -e "$@") ;;
+alacritty) argv=("$term" --class "$app_id" -e "$@") ;;
+wezterm) argv=("$term" start --class "$app_id" -- "$@") ;;
+*) argv=("$term" -e "$@") ;;
+esac
+
+# The terminal starts in a scope of its own, as haseen's binds start apps
+# (default/hypr/init.lua haseen.launch): through uwsm-app when uwsm runs the
+# session (it exports these, as Haseen/Apps.qml checks), else directly.
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    argv=(uwsm-app -- "${argv[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${argv[*]}"
+    exit 0
+fi
+exec setsid "${argv[@]}"

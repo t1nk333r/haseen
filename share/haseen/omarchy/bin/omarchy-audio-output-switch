@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# omarchy-audio-output-switch — make the next available output the default,
+# skipping the physical sink a speaker tuning sits in front of, and say which
+# one it is. Omarchy binds SHIFT+XF86AudioMute to it. Adapted from Omarchy
+# bin/omarchy-audio-output-switch (MIT, Copyright (c) David Heinemeier
+# Hansson): Omarchy's omarchy-osd message is a haseen notification here
+# (replaced in place on the next switch), because haseen's OSD does not show
+# default-device switches; the tuned sink comes from haseen's
+# omarchy-audio-tuning fronted-sink (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-output-switch [--dry-run]
+
+Switches the default audio output to the next available sink, moves the
+application streams to it and shows its name. Exits 1 when there is no sink.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+
+ID_FILE="${XDG_RUNTIME_DIR:-/tmp}/haseen/audio-output-switch.id"
+
+# notify ICON TEXT — one toast, replaced in place by the next switch.
+notify() {
+    local id="" replace=() new
+    if [[ -r $ID_FILE ]]; then read -r id <"$ID_FILE" || true; fi
+    [[ $id =~ ^[0-9]+$ ]] && replace=(-r "$id")
+    new="$("$HASEEN_BIN/haseen-notification-send" -p -t 2000 -i "$1" "${replace[@]}" "$2" 2>/dev/null || true)"
+    if ! $DRY_RUN && [[ $new =~ ^[0-9]+$ ]]; then
+        mkdir -p "${ID_FILE%/*}"
+        printf '%s\n' "$new" >"$ID_FILE"
+    fi
+    if $DRY_RUN; then printf '%s\n' "$new"; fi
+}
+
+fronted="$("$HASEEN_OMARCHY_DIR/bin/omarchy-audio-tuning" fronted-sink 2>/dev/null || true)"
+sinks="$(timeout 2 pactl -f json list sinks 2>/dev/null |
+    jq --arg fronted "$fronted" '[.[]
+    | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))
+    | select($fronted == "" or .name != $fronted)]' 2>/dev/null || echo '[]')"
+sinks_count="$(jq 'length' <<<"$sinks")"
+if ((sinks_count == 0)); then
+    notify audio-volume-muted "No audio devices found"
+    exit 1
+fi
+
+current_sink_name="$(timeout 2 pactl get-default-sink 2>/dev/null || true)"
+current_sink_index="$(jq -r --arg name "$current_sink_name" 'map(.name) | index($name)' <<<"$sinks")"
+if [[ $current_sink_index != null ]]; then
+    next_sink_index=$(((current_sink_index + 1) % sinks_count))
+else
+    next_sink_index=0
+fi
+
+next_sink="$(jq -c ".[$next_sink_index]" <<<"$sinks")"
+next_sink_name="$(jq -r '.name' <<<"$next_sink")"
+next_sink_description="$(jq -r '.description // .properties."device.description" // .name' <<<"$next_sink")"
+# A tuning sink sits at 100 % while the loudness lives on the physical sink
+# beneath it, so the level is read from the sink that carries it.
+next_sink_effective="$("$HASEEN_OMARCHY_DIR/bin/omarchy-audio-output-sink" "$next_sink_name")"
+next_sink_volume="$(timeout 2 pactl get-sink-volume "$next_sink_effective" 2>/dev/null |
+    awk 'NR == 1 {for (i = 1; i <= NF; i++) if ($i ~ /%$/) {sub("%", "", $i); print $i; exit}}' || true)"
+[[ $next_sink_volume =~ ^[0-9]+$ ]] ||
+    next_sink_volume="$(jq -r '.volume | to_entries[0].value.value_percent | sub("%"; "") | tonumber' <<<"$next_sink" 2>/dev/null || echo 0)"
+if [[ $(timeout 2 pactl get-sink-mute "$next_sink_effective" 2>/dev/null || true) == *yes ]] || ((next_sink_volume == 0)); then
+    icon_state=muted
+elif ((next_sink_volume <= 33)); then
+    icon_state=low
+elif ((next_sink_volume <= 66)); then
+    icon_state=medium
+else
+    icon_state=high
+fi
+
+if [[ $next_sink_name != "$current_sink_name" ]]; then
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-audio-output-set-default" "$(jq -r '.index' <<<"$next_sink")" "$next_sink_name"
+fi
+notify "audio-volume-$icon_state" "$next_sink_description"

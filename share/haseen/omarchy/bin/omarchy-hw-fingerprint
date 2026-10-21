@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# omarchy-hw-fingerprint — exit 0 when a fingerprint reader is present.
+# Adapted from Omarchy bin/omarchy-hw-fingerprint (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged rules (a product string naming a reader, or a
+# reader vendor's device with no kernel driver bound except usbfs), with
+# /sys/bus/usb/devices read through sysroot_path instead of
+# OMARCHY_USB_DEVICES_PATH (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-fingerprint
+
+haseen's answer to Omarchy's command: exit 0 when a USB fingerprint reader is
+present, read from sysfs, so it works before fprintd or usbutils are
+installed." "$@"
+
+# Vendors that ship fingerprint readers. Multi-purpose ones (Elan, STMicro,
+# which also make touchscreens) are left out; they still match on the product
+# string below.
+fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e "
+
+# libfprint drives a reader from userspace over libusb, so a real reader has no
+# kernel driver bound; webcam bridges, touchpads and cameras from the same
+# vendors bind one. usbfs is libusb itself holding a claim, which is what a
+# reader in use looks like, so it does not count.
+has_kernel_driver() {
+    local intf driver
+    for intf in "$1"/*:*; do
+        [[ -e $intf/driver ]] || continue
+        driver=$(readlink -f "$intf/driver")
+        [[ ${driver##*/} == usbfs ]] || return 0
+    done
+    return 1
+}
+
+shopt -s nullglob
+for dev in "$(sysroot_path /sys/bus/usb/devices)"/*; do
+    if [[ -r $dev/product ]]; then
+        product=$(<"$dev/product")
+        product=${product,,}
+        # Elan match-on-chip readers say "ELAN:ARM-M4", Fingerprint Cards' ones
+        # start with "FPC ": the family or maker, not the function.
+        [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* || $product == "fpc "* ]] && exit 0
+    fi
+    if [[ -r $dev/idVendor ]]; then
+        vendor=$(<"$dev/idVendor")
+        [[ $fingerprint_vendors == *" $vendor "* ]] && ! has_kernel_driver "$dev" && exit 0
+    fi
+done
+exit 1

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-webapp-handler-hey — open HEY as a web app; a mailto: link opens
+# HEY's compose window for that address. It is the Exec of Omarchy's
+# HEY.desktop (mailto handler). Adapted from Omarchy
+# bin/omarchy-webapp-handler-hey (MIT, Copyright (c) David Heinemeier Hansson):
+# the same URLs, launched by haseen's omarchy-launch-webapp. Changes: only the
+# address of the mailto: goes into to= (Omarchy passed its ?subject=… fields
+# along, which broke the query), with the characters that would end or split a
+# query value encoded (an existing %XX stays as the mailto: URL encoded it).
+# Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-webapp-handler-hey [url]
+
+haseen's answer to Omarchy's command: opens HEY (app.hey.com) as a web app;
+a mailto: URL opens a new message to that address." "$@"
+
+url=${1:-}
+web_url="https://app.hey.com"
+if [[ $url =~ ^mailto: ]]; then
+    to=${url#mailto:}
+    to=${to%%\?*}
+    to=${to//&/%26}
+    to=${to//#/%23}
+    to=${to//+/%2B}
+    to=${to// /%20}
+    web_url="https://app.hey.com/messages/new?to=$to"
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$web_url"

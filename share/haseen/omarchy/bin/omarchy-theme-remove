@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# omarchy-theme-remove — remove one of the user's themes, picking it from a
+# list when no name is given. Adapted from Omarchy bin/omarchy-theme-remove
+# (MIT, Copyright (c) David Heinemeier Hansson): the themes are haseen's
+# (~/.config/haseen/themes), the picker is `haseen menu select`, the toast is
+# `haseen notification send`, and the name is normalised the way `haseen theme
+# set` takes it ("Tokyo Night" -> tokyo-night, nothing that leaves the themes
+# directory). Given a name at a terminal it asks first (--yes skips that);
+# a pick from the list, or a call without a terminal (Omarchy's menu), is
+# the answer. A symlinked theme loses only its link. Removing the current
+# theme leaves the desktop on its rendered copy in current/theme
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-remove [theme-name] [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: deletes $THEME_USER_DIR/<name>.
+Without a name, picks one of your themes in haseen's menu. Stock themes ship
+with haseen and cannot be removed.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 1
+}
+
+picked=false
+if (($# == 0)); then
+    # Real directories only, as Omarchy lists them; dot directories are a
+    # `haseen theme install` still cloning.
+    mapfile -t extra_themes < <(find "$THEME_USER_DIR" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' 2>/dev/null | LC_ALL=C sort)
+    if ((${#extra_themes[@]} == 0)); then
+        echo "No extra themes installed."
+        exit 1
+    fi
+    theme_name="$("$HASEEN_BIN/haseen-menu-select" "Remove extra theme" "${extra_themes[@]}" --width 520 --height 520)" || exit 1
+    picked=true
+else
+    theme_name="$1"
+fi
+
+# The name is joined into the path rm removes: nothing empty, dotted or
+# with a slash.
+theme_normalize_name "$theme_name" || exit 1
+theme_name="$REPLY"
+theme_path="$THEME_USER_DIR/$theme_name"
+
+if [[ ! -d $theme_path ]]; then
+    if [[ -d $THEME_STOCK_DIR/$theme_name ]]; then
+        echo "Error: Theme '$theme_name' is a stock haseen theme, not one you installed."
+    else
+        echo "Error: Theme '$theme_name' not found."
+    fi
+    exit 1
+fi
+
+if ! $picked && [[ -t 0 ]]; then
+    confirm "Remove the theme $theme_path?" || die "aborted"
+fi
+if [[ $(theme_current_name 2>/dev/null || true) == "$theme_name" ]]; then
+    warn "$theme_name is the current theme: the desktop keeps its rendered copy until you set another (haseen theme set <name>)"
+fi
+
+run rm -rf -- "$theme_path"
+run "$HASEEN_BIN/haseen-notification-send" "Theme removed" "$theme_name" || true
+$DRY_RUN || echo "Removed $theme_name"

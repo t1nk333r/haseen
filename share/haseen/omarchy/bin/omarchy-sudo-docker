@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# omarchy-sudo-docker — succeed when Docker needs sudo, fail when it can be
+# used directly. Adapted from Omarchy bin/omarchy-sudo-docker (MIT, Copyright (c) David Heinemeier Hansson):
+# the same inverted exit contract its callers
+# test (`if omarchy-sudo-docker`); the socket may also be named by
+# HASEEN_DOCKER_SOCKET; read-only (plan 093).
+#
+# Two questions, because they have different answers between enabling
+# sudoless Docker and the reboot that applies it (group membership is fixed
+# when the session is created):
+#   (default)     Does Docker need sudo right now? Whether this process can
+#                 write the socket.
+#   --configured  Will it need sudo once the account's groups take effect?
+#                 Whether the account is in the docker group.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-sudo-docker [--configured]
+
+haseen's answer to Omarchy's command: exit 0 when Docker needs sudo, 1 when
+it can be used directly, 2 on a usage error.
+  (default)     this process cannot write the Docker socket
+                (\$HASEEN_DOCKER_SOCKET, \$OMARCHY_DOCKER_SOCKET or /var/run/docker.sock)
+  --configured  the account is not in the docker group" "$@"
+
+DOCKER_SOCKET="${HASEEN_DOCKER_SOCKET:-${OMARCHY_DOCKER_SOCKET:-/var/run/docker.sock}}"
+
+case "${1:-}" in
+--configured)
+    # An account in the docker group will not need sudo after the next login.
+    id -nG "${USER:-$(id -un)}" 2>/dev/null | grep -qw docker && exit 1
+    exit 0
+    ;;
+"")
+    # A socket we can write is a daemon we can drive without elevating. A
+    # missing socket counts as needing sudo: starting it means root anyway.
+    [[ -w $DOCKER_SOCKET ]] && exit 1
+    exit 0
+    ;;
+*)
+    echo "Usage: omarchy-sudo-docker [--configured]" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# omarchy — Omarchy's command router, answered by haseen (plan 093).
+# `omarchy a b c ARGS` runs the longest existing omarchy-a-b-c, omarchy-a-b or
+# omarchy-a beside this file: haseen's answer to each Omarchy command, never
+# Omarchy's own. The route rule and the aliases (screenshot, screenrecord,
+# logout, reboot, shutdown, background) follow Omarchy bin/omarchy (MIT,
+# Copyright (c) David Heinemeier Hansson); the listing comes from haseen's
+# commands.tsv instead of script headers.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+BIN_DIR="$HASEEN_OMARCHY_DIR/bin"
+
+usage() {
+    cat <<'EOF'
+omarchy — Omarchy's commands, answered by haseen
+
+Usage:
+  omarchy <command> [args...]      runs omarchy-<command>, haseen's answer to it
+  omarchy commands [--all]         list them: what each one does under haseen
+
+Under haseen every Omarchy command reaches haseen: some run the haseen
+command that does the same job, some are haseen ports of Omarchy's, and
+some only say why they are not available and what the haseen way is.
+haseen's own commands: haseen commands
+EOF
+}
+
+# commands [--all] — every adopted command with what it does under haseen;
+# --all adds the Apple-hardware commands haseen does not provide.
+commands() {
+    local all=false
+    [[ ${1:-} != --all ]] || all=true
+    awk -F'\t' -v all="$all" '
+        /^#/ || NF < 4 { next }
+        $2 == "apple" && all != "true" { next }
+        { t = $3; if ($2 == "shim" || $2 == "translate") gsub(/^haseen-/, "haseen ", t)
+          printf "  %-52s %-9s %s\n", $1, $2, ($2 == "refuse" || $2 == "inert" || t == "-" ? $4 : t) }
+    ' "$HASEEN_OMARCHY_DIR/commands.tsv"
+}
+
+(($# > 0)) || {
+    usage
+    exit 0
+}
+case $1 in
+-h | --help | help)
+    usage
+    exit 0
+    ;;
+commands)
+    commands "${@:2}"
+    exit 0
+    ;;
+# Omarchy's route aliases (omarchy:aliases= headers in 4.0.6).
+screenshot) set -- capture screenshot "${@:2}" ;;
+screenrecord) set -- capture screenrecording "${@:2}" ;;
+logout | reboot | shutdown) set -- system "$@" ;;
+background) set -- theme bg switcher "${@:2}" ;;
+esac
+
+# Longest prefix over the leading words that can be part of a command name.
+words=()
+for a in "$@"; do
+    [[ $a =~ ^[a-z0-9][a-z0-9-]*$ ]] || break
+    words+=("$a")
+done
+for ((n = ${#words[@]}; n > 0; n--)); do
+    name="omarchy-$(
+        IFS=-
+        echo "${words[*]:0:n}"
+    )"
+    if [[ -x $BIN_DIR/$name ]]; then
+        exec "$BIN_DIR/$name" "${@:n+1}"
+    fi
+done
+
+# `omarchy <group>`: the commands that start with it.
+if ((${#words[@]} > 0)); then
+    prefix="omarchy-$(
+        IFS=-
+        echo "${words[*]}"
+    )"
+    rows="$(commands | awk -v p="$prefix" '$1 == p || index($1, p "-") == 1')"
+    if [[ -n $rows ]]; then
+        echo "omarchy ${words[*]}:"
+        printf '%s\n' "$rows"
+        exit 0
+    fi
+fi
+
+# Omarchy's router answers an unknown command with 127 (bin/omarchy:1062-1068).
+echo "Unknown Omarchy command: omarchy $*" >&2
+echo "Run 'omarchy commands' for the list." >&2
+exit 127

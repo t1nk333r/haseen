@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# omarchy-hw-clamshell — exit 0 in clamshell mode: the lid is closed while an
+# external monitor is connected. Adapted from Omarchy bin/omarchy-hw-clamshell
+# (MIT, Copyright (c) David Heinemeier Hansson): the two adopted sysfs probes,
+# by path, so a fixture (HASEEN_SYSROOT) drives both (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-clamshell
+
+haseen's answer to Omarchy's command: exit 0 when the laptop lid is closed and
+an external monitor is physically connected, 1 otherwise. Prints nothing." "$@"
+
+"$HASEEN_OMARCHY_DIR/bin/omarchy-hw-laptop-closed" && "$HASEEN_OMARCHY_DIR/bin/omarchy-hw-external-monitors"

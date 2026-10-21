@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# omarchy-remove-gaming-xbox-controllers — remove the xpadneo Xbox controller
+# driver and undo its module configuration, haseen's and Omarchy's. Adapted
+# from Omarchy bin/omarchy-remove-gaming-xbox-controllers (MIT, Copyright (c)
+# David Heinemeier Hansson): omarchy-pkg-drop -> haseen remove app
+# xbox-controllers, which also deletes haseen's own modprobe files; Omarchy's
+# two files go with run_root; --dry-run prints the plan (plan 093). The input
+# group membership haseen's install adds stays: other devices use it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-gaming-xbox-controllers [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: removes xpadneo-dkms and haseen's
+/etc/modprobe.d/haseen-xpadneo.conf and /etc/modules-load.d/haseen-xpadneo.conf
+(haseen remove app xbox-controllers), and Omarchy's
+/etc/modprobe.d/blacklist-xpad.conf and /etc/modules-load.d/xpadneo.conf.
+Reboot afterwards to unload xpadneo and bring back xpad.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+# haseen's catalogue entry removes the package and haseen's own two files;
+# without the package installed, haseen's files (if any) go here too.
+files=(/etc/modprobe.d/blacklist-xpad.conf /etc/modules-load.d/xpadneo.conf)
+if pkg_present xpadneo-dkms; then
+    haseen_remove app xbox-controllers
+else
+    files+=(/etc/modprobe.d/haseen-xpadneo.conf /etc/modules-load.d/haseen-xpadneo.conf)
+fi
+for f in "${files[@]}"; do
+    [[ -e $(sysroot_path "$f") ]] && run_root rm -f -- "$f"
+done
+
+echo ""
+echo "Xbox controller support removed. Reboot to fully unload xpadneo and restore xpad."

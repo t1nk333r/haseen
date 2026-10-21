@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# omarchy-audio-source-switch — cycle the media source (the MPRIS player the
+# media keys act on) to the next or previous one; when the current player was
+# playing, start the new one and pause the old. Omarchy binds
+# SHIFT+XF86AudioPlay/Pause to it. Omarchy's command asks its own shell
+# (omarchy-shell media sourceSwitch); haseen.media has no IPC for that, so this
+# does the same job with playerctl, after Omarchy's switchSource
+# (shell/plugins/services/media/Service.qml) (MIT, Copyright (c) David
+# Heinemeier Hansson) (plan 093). The pick is remembered in
+# $XDG_RUNTIME_DIR/haseen/media-source for the next switch; haseen.media's panel
+# keeps choosing its own player, so it follows the playback, not the pick.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-source-switch [next|previous] [--dry-run]
+
+Moves to the next (default) or previous media player (playerctl -l). When
+the current one was playing, playback moves to the new one.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+case "${REST[0]:-next}" in
+next) delta=1 ;;
+previous) delta=-1 ;;
+*)
+    echo "Usage: omarchy-audio-source-switch [next|previous]" >&2
+    exit 1
+    ;;
+esac
+
+PICK_FILE="${XDG_RUNTIME_DIR:-/tmp}/haseen/media-source"
+mapfile -t players < <(playerctl -l 2>/dev/null || true)
+count=${#players[@]}
+((count > 0)) || exit 0
+
+status_of() { playerctl -p "$1" status 2>/dev/null || true; }
+
+# The current source: the remembered pick while it is still there, else the
+# first playing player, else the first.
+current=""
+if [[ -r $PICK_FILE ]]; then read -r current <"$PICK_FILE" || true; fi
+index=-1
+for i in "${!players[@]}"; do
+    [[ ${players[i]} == "$current" ]] && index=$i
+done
+if ((index < 0)); then
+    index=0
+    for i in "${!players[@]}"; do
+        if [[ $(status_of "${players[i]}") == Playing ]]; then
+            index=$i
+            break
+        fi
+    done
+fi
+current=${players[index]}
+next=${players[$(((index + delta + count) % count))]}
+
+if $DRY_RUN; then
+    echo "DRYRUN: remember $next in $PICK_FILE"
+else
+    mkdir -p "${PICK_FILE%/*}"
+    printf '%s\n' "$next" >"$PICK_FILE"
+fi
+
+if [[ $next != "$current" && $(status_of "$current") == Playing ]]; then
+    started=false
+    if [[ $(status_of "$next") == Playing ]] || run playerctl -p "$next" play 2>/dev/null; then
+        started=true
+    fi
+    if $started; then run playerctl -p "$current" pause 2>/dev/null || true; fi
+fi
+
+label="$(playerctl -p "$next" metadata --format '{{ playerName }}: {{ title }}' 2>/dev/null || true)"
+"$HASEEN_BIN/haseen-notification-send" -t 2000 -i multimedia-player "Media source" "${label:-$next}" || true

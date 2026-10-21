@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# omarchy-capture-webcam-list — print "<device>  <name>" for every camera that
+# can capture video (one line each, the first capture node of a camera).
+# Omarchy's screen recorder pickers read it. Adapted from Omarchy
+# bin/omarchy-capture-webcam-list (MIT, Copyright (c) David Heinemeier
+# Hansson): unchanged; needs v4l2-ctl (v4l-utils) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-capture-webcam-list
+
+Prints '<device>  <name>' for each capture-capable camera (v4l2-ctl). Prints
+nothing, and still exits 0, when there is none." "$@"
+
+capture_capable() {
+    v4l2-ctl --device "$1" --info 2>/dev/null | awk '
+    /^[[:space:]]*Device Caps[[:space:]]*:/ { inspect = 1; next }
+    inspect && /^[[:space:]]*Video Capture/ { found = 1 }
+    END { exit !found }
+  '
+}
+
+name=""
+emitted=0
+while IFS= read -r line; do
+    if [[ -n $line && $line != [[:space:]]* ]]; then
+        name="$line"
+        emitted=0
+    elif ((!emitted)); then
+        device="${line#"${line%%[![:space:]]*}"}"
+        if [[ $device == /dev/video* ]] && capture_capable "$device"; then
+            emitted=1
+            printf '%s  %s\n' "$device" "$name"
+        fi
+    fi
+done < <(v4l2-ctl --list-devices 2>/dev/null || true)
+exit 0

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# omarchy-install-service-once — install ONCE, enable its background service
+# and start its TUI. Translates Omarchy bin/omarchy-install-service-once (MIT,
+# Copyright (c) David Heinemeier Hansson): haseen install app once installs
+# once-bin; haseen's catalogue has no service step for it, so this enables
+# once-background.service, and docker.socket, which once-bin's Docker needs
+# and haseen enables only for its own docker entry (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../../layers/base/lib.sh
+source "$HASEEN_PATH/layers/base/lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-service-once [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs ONCE (haseen install app once),
+enables once-background.service and Docker's socket, then starts the ONCE TUI.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+in_floating_terminal "${args[@]}"
+
+echo "Installing ONCE..."
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app once "${flags[@]}"
+
+echo "Enabling ONCE background service..."
+unit_enabled docker.socket || run_root systemctl enable --now docker.socket
+unit_enabled once-background.service || run_root systemctl enable --now once-background.service
+
+echo -e "\nLaunching ONCE..."
+if $DRY_RUN; then
+    echo "DRYRUN: once"
+    exit 0
+fi
+exec once

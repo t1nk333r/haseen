@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-launch-terminal-tmux — open a terminal attached to the Work tmux
+# session, creating it when absent (Omarchy binds SUPER + ALT + RETURN to it;
+# tmux is a haseen base-layer default). Adapted from Omarchy
+# bin/omarchy-launch-terminal-tmux (MIT, Copyright (c) David Heinemeier
+# Hansson): the same command line, through haseen's omarchy-launch-terminal
+# (plan 093). DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-terminal-tmux
+
+haseen's answer to Omarchy's command: opens a terminal attached to the tmux
+session Work, created when it does not exist." "$@"
+
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-terminal" bash -c "tmux attach || tmux new -s Work"

@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+# omarchy-bar — Omarchy's bar verbs on haseen's bar (shell.json):
+# position -> haseen bar position, transparent true|false|toggle -> haseen bar
+# transparent on|off|toggle, put -> haseen bar add (a widget already in the
+# bar or the overflow panel stays where it is), move -> haseen bar move, set
+# -> haseen plugin settings. Follows Omarchy bin/omarchy-bar (MIT, Copyright
+# (c) David Heinemeier Hansson): the same verbs, placement options and
+# messages; ids go through bin/haseen-import-omarchy's map (omarchy.clock ->
+# haseen.clock, omarchy.power -> haseen.battery, ...), --after W and --index
+# N become --before the widget that follows, and a move without a placement
+# goes to the end of the section instead of after Omarchy's anchor widget.
+# haseen draws its own bar: `use` and `reset` accept only the built-in bar,
+# and `defaults` is refused (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+# shellcheck source=../../lib/omarchy-import.sh
+source "$HASEEN_PATH/lib/omarchy-import.sh"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-bar <command> [args...] [--dry-run]
+
+  use <id>                             Use a bar (only haseen's built-in bar)
+  reset                                Return to the built-in bar
+  position <top|bottom|left|right>     Bar position (haseen bar position)
+  transparent <true|false|toggle>      Bar transparency (haseen bar transparent)
+  put <id> [placement]                 Put a widget on the bar, leaving one
+                                       that is already there where it is
+                                       (haseen bar add)
+  move <id> [placement]                Move a widget (haseen bar move)
+  set <id> <key> <value> [--json] [placement]
+                                       Set a per-widget option
+                                       (haseen plugin settings)
+
+Placement:
+  --section <left|center|right>        Target section (also positional)
+  --index <n>                          Target index
+  --before <id>                        Insert before a widget
+  --after <id>                         Insert after a widget
+  --from-section <section>             Source section (move; ids are unique)
+  --from-index <n>                     Source index (move; ids are unique)
+
+Omarchy ids (omarchy.clock) name haseen's own widgets (haseen.clock).
+'defaults' is not available: haseen's default bar is its own; rearrange
+yours with haseen bar add|move|arrange.
+USAGE
+}
+
+fail() {
+    echo "omarchy-bar: $*" >&2
+    exit 1
+}
+
+case "${1:-}" in
+-h | --help | help)
+    usage
+    exit 0
+    ;;
+esac
+
+args=()
+for arg in "$@"; do
+    case $arg in
+    --dry-run) DRY_RUN=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+set -- "${args[@]+"${args[@]}"}"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+
+# say TEXT — Omarchy's confirmation, only once something actually changed.
+say() { $DRY_RUN || echo "$*"; }
+
+# The importer's map of Omarchy built-ins and superseded add-ons onto haseen
+# widgets, read from its jq program so the two never disagree.
+MAP_JQ="$(awk '/^def (builtin_map|superseded): \{/,/^\};/ { print } /^def target\(/ { print }' <<<"$OMARCHY_IMPORT_JQ")"
+
+# haseen_id ID — the haseen widget an Omarchy id names.
+haseen_id() {
+    local id=$1 mapped
+    # A legacy single-segment id is an add-on under omarchy.* (the importer's nsid).
+    [[ $id =~ ^[a-z0-9-]+$ ]] && id="omarchy.$id"
+    mapped="$(jq -rn --arg id "$id" "$MAP_JQ"' target($id) // empty' 2>/dev/null || true)"
+    if [[ -n $mapped ]]; then
+        echo "$mapped"
+    elif ! plugin_dir "$id" >/dev/null && [[ $id == omarchy.* && -d $PLUGIN_BUILTIN_DIR/haseen.${id#omarchy.} ]]; then
+        echo "haseen.${id#omarchy.}"
+    else
+        echo "$id"
+    fi
+}
+
+validate_section() {
+    [[ $1 =~ ^(left|center|right)$ ]] || fail "section must be left, center, or right"
+}
+
+validate_index() {
+    [[ $1 =~ ^[0-9]+$ ]] || fail "index must be a non-negative integer"
+}
+
+SECTION="" INDEX="" BEFORE="" AFTER="" FROM_SECTION="" FROM_INDEX=""
+parse_placement() {
+    while (($# > 0)); do
+        case $1 in
+        --section)
+            [[ -z $SECTION ]] || fail "specify a section positionally or with --section, not both"
+            SECTION="${2:-}"
+            validate_section "$SECTION"
+            ;;
+        --index)
+            INDEX="${2:-}"
+            validate_index "$INDEX"
+            ;;
+        --before)
+            BEFORE="${2:-}"
+            [[ -n $BEFORE ]] || fail "--before requires a widget id"
+            ;;
+        --after)
+            AFTER="${2:-}"
+            [[ -n $AFTER ]] || fail "--after requires a widget id"
+            ;;
+        --from-section)
+            FROM_SECTION="${2:-}"
+            validate_section "$FROM_SECTION"
+            ;;
+        --from-index)
+            FROM_INDEX="${2:-}"
+            validate_index "$FROM_INDEX"
+            ;;
+        *) fail "unknown option: $1" ;;
+        esac
+        shift 2 || fail "$1 requires a value"
+    done
+    [[ -z $BEFORE || -z $AFTER ]] || fail "use only one of --before or --after"
+}
+
+# where HID — the bar section (or overflow) holding HID, empty when none.
+where() {
+    jq -r --arg id "$1" 'first(("left", "center", "right", "overflow") as $s
+        | select((.bar[$s] // []) | index([$id])) | $s) // empty' <<<"$MERGED"
+}
+
+# next_after SECTION HID ANCHOR — the widget that follows ANCHOR in SECTION,
+# leaving HID out; empty at the end.
+next_after() {
+    jq -r --arg s "$1" --arg id "$2" --arg a "$3" '(.bar[$s] // []) | map(select(type == "string" and . != $id))
+        | (index([$a])) as $i | if $i == null then empty else (.[$i + 1] // empty) end' <<<"$MERGED"
+}
+
+# nth SECTION HID N — the Nth widget (from 0) of SECTION without HID.
+nth() {
+    jq -r --arg s "$1" --arg id "$2" --argjson n "$3" \
+        '(.bar[$s] // []) | map(select(type == "string" and . != $id)) | .[$n] // empty' <<<"$MERGED"
+}
+
+# target_before SECTION HID — the --before haseen bar add|move gets for the
+# placement options; empty means the end of SECTION.
+target_before() {
+    local section=$1 hid=$2
+    if [[ -n $BEFORE ]]; then
+        haseen_id "$BEFORE"
+    elif [[ -n $AFTER ]]; then
+        next_after "$section" "$hid" "$(haseen_id "$AFTER")"
+    elif [[ -n $INDEX ]]; then
+        nth "$section" "$hid" "$INDEX"
+    fi
+}
+
+# positional ARGS — a leading left|center|right is the section.
+take_section() {
+    if (($# > 0)) && [[ $1 != --* ]]; then
+        validate_section "$1"
+        SECTION=$1
+        return 0
+    fi
+    return 1
+}
+
+cmd_use() {
+    local id="${1:-}"
+    [[ -n $id ]] || fail "bar option id is required"
+    (($# == 1)) || fail "use takes a single bar option id"
+    case $id in
+    default | built-in | omarchy.bar | haseen.bar)
+        say "Using haseen's bar as the active bar"
+        ;;
+    *) fail "$id is not available: haseen's shell draws its own bar and has no whole-bar plugins" ;;
+    esac
+}
+
+cmd_position() {
+    local position="${1:-}"
+    [[ -n $position ]] || fail "position is required"
+    (($# == 1)) || fail "position takes a single value"
+    [[ $position =~ ^(top|bottom|left|right)$ ]] || fail "position must be top, bottom, left, or right"
+    "$HASEEN_BIN/haseen-bar-position" "$position" "${dry[@]+"${dry[@]}"}"
+    say "Bar position set to $position"
+}
+
+cmd_transparent() {
+    local value="${1:-}" word
+    [[ -n $value ]] || fail "transparent is required"
+    (($# == 1)) || fail "transparent takes a single value"
+    case $value in
+    true) word=on ;;
+    false) word=off ;;
+    toggle) word=toggle ;;
+    *) fail "transparent must be true, false, or toggle" ;;
+    esac
+    "$HASEEN_BIN/haseen-bar-transparent" "$word" "${dry[@]+"${dry[@]}"}"
+    if [[ $value == toggle ]]; then
+        say "Bar transparency toggled"
+    else
+        say "Bar transparency set to $value"
+    fi
+}
+
+cmd_put() {
+    local id="${1:-}" hid dir default before
+    [[ -n $id ]] || fail "put requires a widget id"
+    shift
+    take_section "$@" && shift
+    parse_placement "$@"
+    [[ -z $FROM_SECTION && -z $FROM_INDEX ]] || fail "put does not accept --from-section or --from-index"
+    hid="$(haseen_id "$id")"
+    MERGED="$(shell_merged_json)"
+    # A widget already in the bar (or tucked into the overflow panel) stays
+    # where its owner put it: the same answer either way.
+    if [[ -n $(where "$hid") ]]; then
+        echo "$id is on the bar"
+        return 0
+    fi
+    # Omarchy's fallback: an anchor the bar does not carry is ignored.
+    if [[ -n $BEFORE$AFTER && -z $(where "$(haseen_id "$BEFORE$AFTER")") ]]; then
+        BEFORE="" AFTER=""
+    fi
+    if [[ -z $SECTION && -n $BEFORE$AFTER ]]; then
+        SECTION="$(where "$(haseen_id "$BEFORE$AFTER")")"
+        [[ $SECTION != overflow ]] || SECTION=""
+    fi
+    if [[ -z $SECTION ]]; then
+        # The widget's usual spot, as Omarchy reads it from its manifest.
+        dir="$(plugin_dir "$hid" || true)"
+        default=""
+        [[ -n $dir && -r $dir/manifest.json ]] &&
+            default="$(jq -r '.barWidget.defaultSection? // empty' "$dir/manifest.json" 2>/dev/null || true)"
+        [[ $default =~ ^(left|center|right)$ ]] || default=center
+        SECTION=$default
+    fi
+    before="$(target_before "$SECTION" "$hid")"
+    "$HASEEN_BIN/haseen-bar-add" "$hid" "$SECTION" ${before:+--before "$before"} "${dry[@]+"${dry[@]}"}" ||
+        fail "could not put $id on the bar"
+    say "$id is on the bar"
+}
+
+cmd_move() {
+    local id="${1:-}" hid current anchor="" anchor_section="" before
+    [[ -n $id ]] || fail "move requires a widget id"
+    shift
+    if take_section "$@"; then
+        shift
+        parse_placement "$@"
+        [[ -z $INDEX ]] || fail "specify a section positionally or use --index, not both"
+        [[ -z $BEFORE ]] || fail "specify a section positionally or use --before, not both"
+        [[ -z $AFTER ]] || fail "specify a section positionally or use --after, not both"
+    else
+        parse_placement "$@"
+    fi
+    hid="$(haseen_id "$id")"
+    MERGED="$(shell_merged_json)"
+    current="$(where "$hid")"
+    [[ -n $current ]] || fail "could not find widget $hid"
+    if [[ -n $BEFORE$AFTER ]]; then
+        anchor="$(haseen_id "$BEFORE$AFTER")"
+        anchor_section="$(where "$anchor")"
+        [[ -n $anchor_section && ( -z $SECTION || $SECTION == "$anchor_section" ) ]] ||
+            fail "could not find target widget $anchor"
+    fi
+    SECTION="${SECTION:-${anchor_section:-$current}}"
+    before="$(target_before "$SECTION" "$hid")"
+    "$HASEEN_BIN/haseen-bar-move" "$hid" "$SECTION" ${before:+--before "$before"} "${dry[@]+"${dry[@]}"}" ||
+        fail "could not move $id"
+    say "Moved $id"
+}
+
+cmd_set() {
+    local id="${1:-}" key="${2:-}" value="${3:-}" json=false value_json hid
+    [[ -n $id ]] || fail "set requires a widget id"
+    [[ -n $key ]] || fail "set requires a setting key"
+    (($# >= 3)) || fail "set requires a value"
+    shift 3
+    if (($# > 0)) && [[ $1 == --json ]]; then
+        json=true
+        shift
+    fi
+    # The placement only picks one of several copies in Omarchy's bar; a
+    # haseen widget is in the bar once, so it is checked and not needed.
+    parse_placement "$@"
+    [[ -z $BEFORE && -z $AFTER ]] || fail "set does not accept --before or --after"
+    if $json; then
+        value_json="$(jq -cn --argjson value "$value" '$value' 2>/dev/null)" || fail "invalid JSON value: $value"
+    else
+        value_json="$(jq -cn --arg value "$value" '$value')"
+    fi
+    hid="$(haseen_id "$id")"
+    # The request travels on stdin, as haseen plugin settings requires.
+    jq -cn --arg key "$key" --argjson value "$value_json" '{settings: {($key): $value}}' |
+        "$HASEEN_BIN/haseen-plugin-settings" "$hid" "${dry[@]+"${dry[@]}"}" >/dev/null ||
+        fail "could not set $key on $id"
+    say "Set $key on $id"
+}
+
+command="${1:-}"
+(($# > 0)) && shift
+case $command in
+use) cmd_use "$@" ;;
+reset)
+    (($# == 0)) || fail "reset does not take arguments"
+    cmd_use default
+    ;;
+defaults)
+    fail "defaults is not available under haseen: its default bar is its own; rearrange yours with haseen bar add|move|arrange"
+    ;;
+position) cmd_position "$@" ;;
+transparent) cmd_transparent "$@" ;;
+put) cmd_put "$@" ;;
+move) cmd_move "$@" ;;
+set) cmd_set "$@" ;;
+"")
+    usage
+    ;;
+*) fail "unknown command: $command" ;;
+esac

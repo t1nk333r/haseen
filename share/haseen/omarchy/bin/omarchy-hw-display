@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# omarchy-hw-display — print the backlight device most likely to drive the
+# display. Adapted from Omarchy bin/omarchy-hw-display (MIT, Copyright (c)
+# David Heinemeier Hansson): /sys/class/backlight is read through sysroot_path
+# instead of OMARCHY_BACKLIGHT_PATH; amdgpu_bl*, intel_backlight, acpi_video*
+# are preferred in that order, else the first device (plan 093).
+# Apple branch dropped: the appletb_backlight Touch Bar exclusion (Omarchy omarchy-hw-display:10-11).
+# Apple branch dropped: gmux_backlight as the first candidate (Omarchy omarchy-hw-display:12-14).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-display
+
+haseen's answer to Omarchy's command: prints the likely display backlight
+device (amdgpu_bl*, then intel_backlight, then acpi_video*, else the first
+one). Exit 1 and no output when there is none." "$@"
+
+backlight="$(sysroot_path /sys/class/backlight)"
+shopt -s nullglob
+devices=("$backlight"/*)
+((${#devices[@]} > 0)) || exit 1
+device="${devices[0]##*/}"
+for candidate in "$backlight"/amdgpu_bl* "$backlight"/intel_backlight "$backlight"/acpi_video*; do
+    if [[ -e $candidate ]]; then
+        device="${candidate##*/}"
+        break
+    fi
+done
+printf '%s\n' "$device"

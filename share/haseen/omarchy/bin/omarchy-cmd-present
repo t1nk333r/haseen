@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-cmd-present — exit 0 when every named command is on PATH, else 1.
+# Omarchy scripts, its menu and the owner's t1nk33r.vpn plugin test for tools
+# with it. Adapted from Omarchy bin/omarchy-cmd-present (MIT, Copyright (c)
+# David Heinemeier Hansson): unchanged but for the help text (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-cmd-present <command>...
+
+Exits 0 when every command is on PATH, 1 when one is missing. Prints nothing." "$@"
+
+for cmd in "$@"; do
+    command -v -- "$cmd" &>/dev/null || exit 1
+done
+exit 0

@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# omarchy-remove-service-sunshine — remove the Sunshine game-streaming host:
+# disable its user unit, drop the package, remove the Sunshine Admin web app
+# and close the Moonlight ports Omarchy's installer opened in ufw. Adapted
+# from Omarchy bin/omarchy-remove-service-sunshine (MIT, Copyright (c) David
+# Heinemeier Hansson): the ports, networks and rules are Omarchy's, deleted
+# through run_root; omarchy-pkg-drop -> haseen remove package; the web app
+# goes like haseen's or Omarchy's web-app removal. Omarchy also deletes its
+# autostart line from ~/.config/hypr/autostart.lua with sed; haseen never
+# edits a user file, so it names the line to delete instead (the enabled unit
+# was the autostart anyway). --dry-run prints the plan (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+TCP_PORTS=(47984 47989 48010)
+UDP_PORTS=(5353 47998 47999 48000 48002 48010)
+PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
+SUNSHINE_ADMIN_APP="Sunshine Admin"
+HYPR_AUTOSTART_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/autostart.lua"
+HYPR_AUTOSTART_ENTRY='o.launch_on_start("sunshine")'
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-service-sunshine [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: disables the sunshine user service,
+removes the sunshine package (haseen remove package) and the "$SUNSHINE_ADMIN_APP"
+web app, and deletes the ufw rules that opened the Moonlight streaming ports to
+private networks and tailscale0. A $HYPR_AUTOSTART_ENTRY line in your
+autostart.lua is named for you to delete; haseen does not edit it.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+# delete_ufw_rule RULE... — one ufw rule; a missing one is no error.
+delete_ufw_rule() {
+    if $DRY_RUN; then
+        run_root ufw --force delete "$@"
+    else
+        run_root ufw --force delete "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+close_ufw_ports() {
+    local proto port cidr ports=()
+    [[ -x $(sysroot_path /usr/bin/ufw) ]] || return 0
+    for proto in tcp udp; do
+        if [[ $proto == tcp ]]; then ports=("${TCP_PORTS[@]}"); else ports=("${UDP_PORTS[@]}"); fi
+        for port in "${ports[@]}"; do
+            for cidr in "${PRIVATE_CIDRS[@]}"; do
+                delete_ufw_rule allow in proto "$proto" from "$cidr" to any port "$port"
+            done
+            delete_ufw_rule allow in on tailscale0 to any port "$port" proto "$proto"
+        done
+    done
+    run_root ufw reload || true
+}
+
+quiet systemctl --user disable --now sunshine || true
+remove_pkgs sunshine
+webapp_remove "$SUNSHINE_ADMIN_APP" || true
+if [[ -f $HYPR_AUTOSTART_FILE ]] && grep -qxF "$HYPR_AUTOSTART_ENTRY" "$HYPR_AUTOSTART_FILE"; then
+    info "delete the line $HYPR_AUTOSTART_ENTRY from $HYPR_AUTOSTART_FILE (haseen does not edit your files)"
+fi
+close_ufw_ports
+
+echo ""
+echo "Sunshine has been removed and the Moonlight streaming ports it opened have been closed."

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# omarchy-capture-screenrecording-with-webcam — pick a camera (when there is
+# more than one) and start a screen recording with desktop audio, the
+# microphone and that camera's overlay, through haseen capture screenrecord.
+# Omarchy's menu offers it. Adapted from Omarchy
+# bin/omarchy-capture-screenrecording-with-webcam (MIT, Copyright (c) David
+# Heinemeier Hansson): the list comes from haseen's
+# omarchy-capture-webcam-list, the pick from haseen menu select and the toast
+# is haseen's (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-capture-screenrecording-with-webcam [--dry-run]
+
+Starts haseen capture screenrecord --desktop-audio --microphone with the
+chosen webcam's overlay. Exits 1 when there is no webcam or the pick is
+cancelled.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+
+mapfile -t devices < <("$HASEEN_OMARCHY_DIR/bin/omarchy-capture-webcam-list")
+if ((${#devices[@]} == 0)); then
+    "$HASEEN_BIN/haseen-notification-send" -u critical -t 3000 "No webcam devices found" || true
+    exit 1
+fi
+if ((${#devices[@]} == 1)); then
+    device="${devices[0]%%[[:space:]]*}"
+else
+    selection="$("$HASEEN_BIN/haseen-menu-select" "Select Webcam" "${devices[@]}" --width 520 --height 520)" || exit 1
+    device="${selection%%[[:space:]]*}"
+fi
+haseen_exec capture-screenrecord --desktop-audio --microphone --webcam-device="$device"

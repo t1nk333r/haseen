@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# omarchy-transcode — Omarchy's picture/video transcoder, answered by haseen
+# transcode (the same magick/ffmpeg presets, output beside the input, file URI
+# on the clipboard). A missing format or resolution is asked in haseen's
+# menu, as Omarchy asks in its own, instead of taking haseen's defaults; with
+# no input, haseen's file chooser opens (--path starts it in that directory).
+# Arguments follow Omarchy bin/omarchy-transcode (MIT,
+# Copyright (c) David Heinemeier Hansson) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<'EOF'
+Usage:
+  omarchy-transcode [--path path] [input] [format] [resolution] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen transcode. With no input, pick a
+picture or video (the chooser starts in --path when given). A missing format
+or resolution is asked in the menu.
+
+Formats:
+  Pictures: jpg, png
+  Videos: mp4, gif
+
+Resolutions:
+  Pictures: high, medium, low
+  Videos: 4k, 1080p, 720p
+EOF
+}
+
+search_path=""
+positional=()
+dry=()
+while (($# > 0)); do
+    case $1 in
+    --path)
+        shift
+        (($# > 0)) || {
+            echo "Missing value for --path" >&2
+            exit 2
+        }
+        search_path=$1
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        dry=(--dry-run)
+        ;;
+    --)
+        shift
+        positional+=("$@")
+        break
+        ;;
+    --*)
+        echo "Unknown option: $1" >&2
+        usage >&2
+        exit 2
+        ;;
+    *) positional+=("$1") ;;
+    esac
+    shift
+done
+((${#positional[@]} <= 3)) || {
+    usage >&2
+    exit 2
+}
+input=${positional[0]:-} format=${positional[1]:-} res=${positional[2]:-}
+
+if [[ -z $input ]]; then
+    have zenity || die "no input given and zenity (haseen's file chooser) is not installed"
+    start="${search_path:-$HOME/Pictures}"
+    start="${start%%:*}"
+    input="$(zenity --file-selection --title="Transcode picture or video" --filename="${start%/}/" 2>/dev/null)" || exit 1
+fi
+[[ -n $input ]] || exit 1
+[[ -f $input ]] || die "file not found: $input"
+
+# pick PROMPT OPTION... — one choice from haseen's menu; empty when declined.
+pick() { "$HASEEN_BIN/haseen-menu-select" "$@" 2>/dev/null || true; }
+
+formats=() resolutions=()
+case "$(file -b --mime-type -- "$input")" in
+image/*) formats=(jpg png) resolutions=(high medium low) ;;
+video/*) formats=(mp4 gif) resolutions=(4k 1080p 720p) ;;
+esac
+# An unsupported type goes straight to haseen transcode, which names it. A
+# dry run asks nothing: the plan shows haseen transcode's defaults.
+if ((${#formats[@]} > 0)) && ! $DRY_RUN; then
+    [[ -n $format ]] || format="$(pick "Select format" "${formats[@]}")"
+    [[ -n $format ]] || exit 1
+    [[ -n $res ]] || res="$(pick "Select resolution" "${resolutions[@]}")"
+    # A declined menu stops here, as Omarchy's empty answer fails its transcode.
+    [[ -n $res ]] || exit 1
+fi
+
+haseen_exec transcode "$input" ${format:+"$format"} ${res:+"$res"} "${dry[@]}"

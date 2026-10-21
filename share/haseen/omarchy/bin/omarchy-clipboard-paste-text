@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-clipboard-paste-text — put text on the clipboard and type it (wtype),
+# or paste it with Shift+Insert. Adapted from Omarchy
+# bin/omarchy-clipboard-paste-text (MIT, Copyright (c) David Heinemeier
+# Hansson): the text-argument path is Omarchy's; --history-index N, which
+# Omarchy reads from its shell's clipboard-history.json, takes the Nth text
+# entry of cliphist, haseen's history (haseen.clipboard), newest first from 0;
+# --dry-run prints the copy and the keys (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-clipboard-paste-text [--shift-insert] [--copy-only] [--history-index <index>|<text>] [--dry-run]
+
+Copies TEXT (or clipboard-history entry INDEX, cliphist list, 0 = newest) to
+the clipboard, then types it, or pastes with Shift+Insert (always for a
+history entry), unless --copy-only. Empty text or a missing or non-text
+entry does nothing and exits 1, as Omarchy's does.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+use_shift_insert=false
+copy_only=false
+history_index=""
+text=""
+while (($#)); do
+    case $1 in
+    --shift-insert) use_shift_insert=true ;;
+    --copy-only) copy_only=true ;;
+    --history-index)
+        history_index=${2:-}
+        shift
+        ;;
+    *) break ;;
+    esac
+    shift || true
+done
+
+if [[ -n $history_index ]]; then
+    [[ $history_index =~ ^[0-9]+$ ]] || exit 1
+    line="$(cliphist list 2>/dev/null | sed -n "$((10#$history_index + 1))p" || true)"
+    # Text only, as Omarchy: an image entry is not typed or pasted as text.
+    [[ -n $line && ${line#*$'\t'} != "[[ binary data"* ]] || exit 1
+    if $DRY_RUN; then
+        echo "DRYRUN: cliphist decode (entry $history_index) | wl-copy"
+    else
+        printf '%s\n' "$line" | cliphist decode | wl-copy
+    fi
+    $copy_only || use_shift_insert=true
+else
+    text=${1:-}
+    [[ -n $text ]] || exit 1
+    if $DRY_RUN; then
+        echo "DRYRUN: wl-copy <<< (${#text} characters)"
+    else
+        printf '%s' "$text" | wl-copy
+    fi
+fi
+$copy_only && exit 0
+
+$DRY_RUN || sleep 0.15
+if $use_shift_insert; then
+    run wtype -M shift -k Insert -m shift 2>/dev/null || true
+elif $DRY_RUN; then
+    echo "DRYRUN: wtype (${#text} characters)"
+else
+    wtype "$text" 2>/dev/null || true
+fi

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# omarchy-toggle-crash-capture — turn crash notifications off or on again.
+# haseen's crash watcher (haseen-crash-watch.service) also keeps the last good
+# shell.json for shell recovery (plan 061), so it is never stopped, as
+# Omarchy stops its own: while the flag is on, a drop-in tells the watcher to
+# ignore every program (HASEEN_CRASH_IGNORE, read by bin/haseen-crash-watch)
+# and it is restarted to read it. Adapted from Omarchy
+# bin/omarchy-toggle-crash-capture (MIT,
+# Copyright (c) David Heinemeier Hansson): the crash-capture-off flag through
+# omarchy-toggle, the toast; Omarchy's unit and its ConditionPathExists are not
+# haseen's (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-toggle-crash-capture [--dry-run]
+
+haseen's answer to Omarchy's command: flips the crash-capture-off flag. While
+it is on, haseen-crash-watch.service announces no crash (it keeps running for
+shell recovery); the setting survives logins.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+UNIT=haseen-crash-watch.service
+DROPIN="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT.d/50-omarchy-crash-capture-off.conf"
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+"$HASEEN_OMARCHY_DIR/bin/omarchy-toggle" crash-capture-off toggle "${flags[@]}"
+
+# Under a dry run the flag did not move: plan the change it stands for.
+off=false
+"$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-enabled" crash-capture-off && off=true
+$DRY_RUN && { $off && off=false || off=true; }
+
+if $off; then
+    # Any non-empty name matches '.': every crash is ignored.
+    write_user_file "$DROPIN" <<'EOF'
+# Written by omarchy-toggle-crash-capture (haseen): crash capture is off.
+[Service]
+Environment=HASEEN_CRASH_IGNORE=.
+EOF
+    message="Crash capture disabled"
+else
+    run rm -f -- "$DROPIN"
+    message="Crash capture enabled"
+fi
+run systemctl --user daemon-reload
+# A watcher that is not running reads the drop-in when it next starts.
+if $DRY_RUN || systemctl --user is-active --quiet "$UNIT" 2>/dev/null; then
+    run systemctl --user restart "$UNIT"
+fi
+"$HASEEN_BIN/haseen-notification-send" "${flags[@]}" -u low "$message" || true

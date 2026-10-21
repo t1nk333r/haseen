@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-hw-framework16 — exit 0 on a Framework Laptop 16. Adapted from
+# Omarchy bin/omarchy-hw-framework16 (MIT, Copyright (c) David Heinemeier
+# Hansson): the vendor through haseen's hw_dmi, the model through haseen hw
+# match, both read through sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-framework16
+
+haseen's answer to Omarchy's command: exit 0 when the DMI vendor is Framework
+and the product name or family matches \"Laptop 16\". Prints nothing." "$@"
+
+[[ $(hw_dmi sys_vendor) == Framework ]] && "$HASEEN_BIN/haseen-hw-match" "Laptop 16"

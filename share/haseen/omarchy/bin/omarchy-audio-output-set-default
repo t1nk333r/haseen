@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# omarchy-audio-output-set-default — make a sink the default audio output and
+# move the application streams to it. Called by omarchy-audio-output-switch
+# and Omarchy's audio and Bluetooth panels with <node-id> <sink-name>;
+# haseen.audio sets the default in QML. Adapted from Omarchy
+# bin/omarchy-audio-output-set-default (MIT, Copyright (c) David Heinemeier
+# Hansson): the 2 s timeouts and the application-only stream rule are
+# Omarchy's; the changes go through run, so --dry-run prints them (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-output-set-default <node-id> <sink-name> [--dry-run]
+
+Sets the default sink (wpctl and pactl) and moves the application streams to
+it. A DSP filter-chain's own output stream and EasyEffects' stay where they
+are: moving them would rewire the processing itself.
+EOF
+}
+parse_common_flags "$@"
+node_id=${REST[0]:-}
+sink_name=${REST[1]:-}
+if [[ -z $node_id || -z $sink_name ]]; then
+    echo "Usage: omarchy-audio-output-set-default <node-id> <sink-name>" >&2
+    exit 1
+fi
+
+run timeout 2 wpctl set-default "$node_id" 2>/dev/null || true
+run timeout 2 pactl set-default-sink "$sink_name" 2>/dev/null || true
+
+# Only real application streams: a filter-chain's output carries no
+# application.name, and EasyEffects' output must stay put (a cycle otherwise).
+while read -r input; do
+    [[ -n $input ]] || continue
+    run timeout 2 pactl move-sink-input "$input" "$sink_name" 2>/dev/null || true
+done < <(timeout 2 pactl list sink-inputs 2>/dev/null | awk '
+  /^Sink Input #/ {id = substr($3, 2)}
+  /application\.name = / {
+    app = $0
+    sub(/.*application\.name = "/, "", app)
+    sub(/"$/, "", app)
+    if (app != "EasyEffects") print id
+  }')

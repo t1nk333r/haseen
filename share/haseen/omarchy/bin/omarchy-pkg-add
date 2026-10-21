@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-pkg-add — installs the named repo packages when any is missing and
+# fails when one is still missing afterwards. Adapted from Omarchy
+# bin/omarchy-pkg-add (MIT, Copyright (c) David Heinemeier Hansson): the
+# install goes through haseen install package --yes (pkg_install), so PKG_DENY
+# and the closure guard apply (omarchy and omarchy-settings are refused, even
+# with --yes), and runs inline so its exit status reaches the caller; the
+# check afterwards is Omarchy's. No packages: nothing to do, exit 0 (haseen
+# install package alone would open a picker) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+omarchy_help "Usage: omarchy-pkg-add <packages...> [--dry-run]
+
+haseen's answer to Omarchy's command: haseen install package --yes PACKAGES,
+then exit 1 if any of them is not installed." "$@"
+parse_common_flags "$@"
+((${#REST[@]} > 0)) || exit 0
+
+flags=(--yes)
+$DRY_RUN && flags+=(--dry-run)
+HASEEN_INLINE=1 haseen_cmd install package "${flags[@]}" "${REST[@]}" || exit 1
+# A dry run installed nothing, so there is nothing to check.
+$DRY_RUN && exit 0
+# Secondary check, as Omarchy's: pacman can finish without an error and
+# without the package.
+for pkg in "${REST[@]}"; do
+    if ! pkg_installed "$pkg"; then
+        printf '\033[31mError: Package %s did not install\033[0m\n' "'$pkg'" >&2
+        exit 1
+    fi
+done
+exit 0

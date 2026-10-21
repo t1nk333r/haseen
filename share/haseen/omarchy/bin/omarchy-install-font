@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# omarchy-install-font — install a Nerd Font package and switch to its family
+# (Omarchy's font menu). Translates Omarchy bin/omarchy-install-font (MIT,
+# Copyright (c) David Heinemeier Hansson): a package that is one of haseen's
+# catalogue fonts installs as that entry (haseen install font, which also
+# switches to its family); any other installs with haseen install package
+# and then switches with haseen font set FAMILY. Omarchy's two-second pause
+# before the switch is dropped (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-font <display-name> <package> <family> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs the font <package> and switches
+to <family>: 'haseen install font' for a catalogue font, else 'haseen install
+package <package>' and 'haseen font set <family>'.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+name="${1-}"
+package="${2-}"
+family="${3-}"
+if [[ -z $name || -z $package || -z $family ]]; then
+    echo "Usage: omarchy-install-font <display-name> <package> <family>" >&2
+    exit 1
+fi
+
+CATALOG="${HASEEN_CATALOG:-$HASEEN_PATH/default/catalog.json}"
+id="$(jq -r --arg n "${package,,}" '[.entries[] | select(.category == "font")
+    | select((.id | ascii_downcase) == $n or ((.ref | ascii_downcase) | split(" ") | index($n)))][0].id // empty' "$CATALOG")"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+# haseen install opens its own floating terminal.
+[[ -z $id ]] || exec "$HASEEN_BIN/haseen-install" font "$id" "${flags[@]}"
+
+in_floating_terminal "${args[@]}"
+echo "Installing $name..."
+HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" package "$package" "${flags[@]}"
+# Through run: in a dry run the font is not installed, and `font set` would
+# rightly refuse it (as lib/catalog.sh font_apply notes).
+run "$HASEEN_BIN/haseen-font-set" "$family"
