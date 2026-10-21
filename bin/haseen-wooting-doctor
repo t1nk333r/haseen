@@ -1,0 +1,356 @@
+#!/usr/bin/env bash
+# haseen:summary Diagnose the Wooting setup: tools, udev rule, the keyboard's command interface, access, other owners, wootingd
+# haseen:args [--help]
+#
+# Plan 099. Adapted from the owner's t1nk333r/haseen-wooting bin/wooting-doctor
+# at 184f6fa (MIT, Copyright (c) 2026 t1nk33r): the same checks in the same
+# order, haseen's fixes in the hints, system state read through sysroot_path,
+# and one check more: which wootingd.service the user manager runs.
+#
+# No HID protocol lives here. The device checks read /sys only, and the
+# direct device probe is delegated to `wootingd doctor`, and only when the
+# daemon is NOT running, because the vendor interface has exactly one usable
+# owner and two probes at once break both.
+#
+# Exit codes come from haseen wooting's registry:
+#   0 everything checks out · 1 unexpected failure · 3 daemon not reachable ·
+#   4 no usable keyboard · 5 dependency missing.
+# The first failure in check order wins the exit code.
+#
+# Test seams, each defaulting to the system path under HASEEN_SYSROOT:
+#   WOOTING_UDEV_DIRS    space-separated udev rules directories
+#   WOOTING_SYSFS_HIDRAW hidraw class directory
+#   WOOTING_DEV_DIR      device node directory
+#   WOOTING_PROC         /proc tree scanned for the node's current owners
+#   WOOTINGD_BIN         wootingd binary used for the direct probe
+#
+# No `set -e`: a diagnosis has to survive every probe that fails.
+set -Euo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/wooting.sh
+source "$HASEEN_PATH/lib/wooting.sh"
+
+# Wooting's USB vendor id. The udev rule is a generic vendor match
+# (ATTRS{idVendor}=="31e3" + TAG+="uaccess"), so the vendor id is what is
+# looked for in both the rules files and sysfs.
+VENDOR="31e3"
+# A rule counts only when a *.rules file has the idVendor match on a line that
+# is not a comment: a commented-out rule, a README that mentions 31e3, or a
+# stray 70-wooting.rules.bak grants nothing to udev and must not pass here.
+UDEV_RULE_RE='^[^#]*idVendor\}=="31e3"'
+# The rule that starts the daemon on plug-in.
+UDEV_START_RE='^[^#]*SYSTEMD_USER_WANTS[^#]*wootingd\.service'
+UDEV_DIRS=${WOOTING_UDEV_DIRS:-"$(sysroot_path /usr/lib/udev/rules.d) $(sysroot_path /etc/udev/rules.d)"}
+SYSFS=${WOOTING_SYSFS_HIDRAW:-$(sysroot_path /sys/class/hidraw)}
+DEV_DIR=${WOOTING_DEV_DIR:-$(sysroot_path /dev)}
+PROC=${WOOTING_PROC:-$(sysroot_path /proc)}
+WOOTINGD_BIN=${WOOTINGD_BIN:-${HASEEN_WOOTINGD:-$HASEEN_PATH/sidecar/wootingd}}
+
+# Report descriptor prefixes. hidraw numbering is not stable across replug, so
+# the interfaces are identified by the first three bytes of their report
+# descriptor rather than by node number. The daemon accepts both command
+# interface pages (core/wootingd/src/proto.rs), so the doctor does too:
+#   06 55 ff  Usage Page (0xFF55) — the command interface on ARM firmware
+#   06 37 13  Usage Page (0x1337) — the same interface on standard firmware
+#   06 53 ff  Usage Page (0xFF53) — the read-only analog stream (a decoy)
+DESC_COMMAND_ARM="06 55 ff"
+DESC_COMMAND_STD="06 37 13"
+DESC_ANALOG="06 53 ff"
+
+# Process names for the conflicting-owner check, a fallback behind the /proc
+# holder scan. pgrep without -f matches the kernel's 15-character comm, so
+# `wooting-bg-service` (18 characters) can never match in full and the pattern
+# stops at the 15th character on purpose. The original verified that comm by
+# listing the Background Service AppImage (`usr/bin/wooting-bg-service`,
+# `Exec=wooting-bg-service`). `Wooting.Backgro` covers a launcher that keeps
+# the AppImage's file name as the comm; unverified, kept because it is free.
+CLASH_RE='[Ww]ootility|[Ww]ooting.Backgro|wooting-bg-serv'
+
+rc=0
+step=0
+note_fail() {
+    ((rc == 0)) && rc=$1
+    return 0
+}
+
+head_line() {
+    step=$((step + 1))
+    printf '\n%d. %s\n' "$step" "$*"
+}
+pass() { printf '   \033[1;32mPASS\033[0m  %s\n' "$*"; }
+failed() { printf '   \033[1;31mFAIL\033[0m  %s\n' "$*"; }
+warned() { printf '   \033[1;33mWARN\033[0m  %s\n' "$*"; }
+hint() { printf '         -> %s\n' "$*"; }
+
+case ${1:-} in
+"") ;;
+-h | --help)
+    # The header comment, up to `set`, without the router's metadata lines.
+    sed -n '2,/^set /{/^#/p}' "$0" | sed -e '/^# haseen:/d' -e 's/^# \{0,1\}//' | sed '1{/^$/d}'
+    exit 0
+    ;;
+*)
+    printf 'haseen wooting doctor: unknown argument: %s (try --help)\n' "$1" >&2
+    exit 2
+    ;;
+esac
+
+printf 'haseen wooting doctor\n'
+
+# --- 1. tooling --------------------------------------------------------------
+head_line 'command-line tools'
+missing=()
+for dep in socat jq; do have "$dep" || missing+=("$dep"); done
+if ((${#missing[@]})); then
+    failed "missing: ${missing[*]}"
+    hint "pacman -S ${missing[*]}"
+    note_fail 5
+else
+    pass 'socat and jq are installed'
+fi
+
+# --- 2. udev rule ------------------------------------------------------------
+head_line 'udev rule for vendor 31e3'
+rule=""
+for dir in $UDEV_DIRS; do
+    [[ -d $dir ]] || continue
+    found=$(grep -rilE --include='*.rules' -- "$UDEV_RULE_RE" "$dir" 2>/dev/null | sort | head -n 1)
+    if [[ -n $found ]]; then
+        rule=$found
+        break
+    fi
+done
+if [[ -n $rule ]]; then
+    pass "installed: $rule"
+else
+    failed "no rule for vendor $VENDOR in: $UDEV_DIRS"
+    hint "haseen setup wooting on — installs $WOOTING_RULE"
+    hint '(the AUR wooting-udev package also grants access, but does not start wootingd)'
+    note_fail 5
+fi
+
+# Access alone is not enough: wootingd runs only while a keyboard is
+# attached, and only a rule that pulls in wootingd.service starts it. The AUR
+# wooting-udev rule grants access but starts nothing. Advisory: a daemon
+# started by hand still works.
+head_line 'udev starts wootingd on plug-in'
+starter=""
+for dir in $UDEV_DIRS; do
+    [[ -d $dir ]] || continue
+    found=$(grep -rlE --include='*.rules' -- "$UDEV_START_RE" "$dir" 2>/dev/null | sort | head -n 1)
+    if [[ -n $found ]]; then
+        starter=$found
+        break
+    fi
+done
+if [[ -n $starter ]]; then
+    pass "installed: $starter"
+else
+    warned 'no rule pulls in wootingd.service, so plugging the keyboard in starts nothing'
+    hint "haseen setup wooting on — installs $WOOTING_RULE"
+fi
+
+# The unit the rule pulls in. The user's unit directory outranks every system
+# one, so the file there is the one that runs. Advisory: the owner's
+# t1nk33r.wooting plugin runs its own build under the same name, which works
+# but is not haseen's.
+head_line 'which wootingd.service runs'
+unit="$(wooting_unit_path)"
+case "$(wooting_owner "$unit" unit)" in
+haseen) pass "haseen's: ${unit/#$HOME/\~}" ;;
+plugin)
+    warned "${unit/#$HOME/\~} is the t1nk33r.wooting plugin's, running its own build of wootingd"
+    hint 'haseen setup wooting on — takes the rule and the unit over (the plugin keeps its files)'
+    ;;
+other)
+    warned "${unit/#$HOME/\~} is neither haseen's nor the t1nk33r.wooting plugin's"
+    hint 'check what it runs: systemctl --user cat wootingd'
+    ;;
+missing)
+    warned "no ${unit/#$HOME/\~}, so the rule has no unit to start"
+    hint 'haseen setup wooting on'
+    ;;
+esac
+
+# --- 3. command interface ----------------------------------------------------
+head_line 'Wooting command interface (usage page 0xFF55 or 0x1337)'
+cmd_node=""
+cmd_prefix=""
+analog_node=""
+wooting_nodes=0
+for dir in "$SYSFS"/*; do
+    [[ -r $dir/device/uevent ]] || continue
+    hid_id=$(grep -m1 '^HID_ID=' "$dir/device/uevent" 2>/dev/null)
+    [[ ${hid_id^^} == *:0000${VENDOR^^}:* ]] || continue
+    wooting_nodes=$((wooting_nodes + 1))
+    prefix=$(od -An -tx1 -N3 -- "$dir/device/report_descriptor" 2>/dev/null | tr -s ' \n' ' ')
+    prefix=${prefix# }
+    prefix=${prefix% }
+    case $prefix in
+    "$DESC_COMMAND_ARM" | "$DESC_COMMAND_STD")
+        cmd_node="$DEV_DIR/${dir##*/}"
+        cmd_prefix=$prefix
+        ;;
+    "$DESC_ANALOG") analog_node="$DEV_DIR/${dir##*/}" ;;
+    esac
+done
+if [[ -n $cmd_node ]]; then
+    pass "$cmd_node (report descriptor starts $cmd_prefix)"
+    if [[ -n $analog_node ]]; then
+        pass "$analog_node is the read-only analog stream (0xFF53) — correctly ignored"
+    fi
+elif ((wooting_nodes > 0)); then
+    failed "found $wooting_nodes Wooting hidraw node(s) but none with usage page 0xFF55 or 0x1337"
+    hint 'the command interface is missing — check the firmware, or re-plug the keyboard'
+    note_fail 4
+else
+    failed "no Wooting device (vendor $VENDOR) under $SYSFS"
+    hint 'is the keyboard plugged in? (it must be wired, not on a KVM that hides HID)'
+    note_fail 4
+fi
+
+# --- 4. permissions ----------------------------------------------------------
+head_line 'access to the command interface'
+if [[ -z $cmd_node ]]; then
+    warned 'skipped: no command interface to test'
+elif [[ -r $cmd_node && -w $cmd_node ]]; then
+    pass "$cmd_node is readable and writable by ${USER:-this user}"
+else
+    failed "$cmd_node is not read/write for ${USER:-this user}"
+    hint 'the udev rule tags the device uaccess; haseen setup wooting on installs it and applies it to the attached keyboard'
+    note_fail 4
+fi
+
+# --- 5. conflicting owner ----------------------------------------------------
+# Who actually has the node open, read out of /proc, beats guessing process
+# names. The case that proved it in the original: Wootility Web holds the
+# keyboard from inside the browser, so no name pattern can catch it, and the
+# doctor passed green beside a device that answered nothing.
+head_line 'conflicting owner'
+if [[ -n $cmd_node ]]; then
+    holders=()
+    foreign=0
+    for fddir in "$PROC"/[0-9]*/fd; do
+        [[ -d $fddir ]] || continue
+        pid=${fddir%/fd}
+        pid=${pid##*/}
+        for fd in "$fddir"/*; do
+            # An fd that vanishes mid-scan is normal, and another user's
+            # process gives EACCES — which is why the name check below stays.
+            target=$(readlink "$fd" 2>/dev/null) || continue
+            [[ $target == "$cmd_node" ]] || continue
+            comm=$(cat "$PROC/$pid/comm" 2>/dev/null) || comm='?'
+            holders+=("$pid ($comm)")
+            # wootingd owning the interface is the design, not a conflict.
+            [[ $comm == wootingd ]] || foreign=1
+            break
+        done
+    done
+    if ((${#holders[@]} == 0)); then
+        pass "nothing has $cmd_node open"
+    elif ((foreign == 0)); then
+        pass "$cmd_node is held by wootingd alone: ${holders[*]}"
+    else
+        warned "$cmd_node is open by: ${holders[*]}"
+        hint 'only one process may own usage page 0xFF55 — quit Wootility (a Wootility'
+        hint 'Web tab holds the device through the browser), stop the Wooting Background'
+        hint 'Service, then: systemctl --user restart wootingd'
+    fi
+else
+    warned 'no command interface resolved, so its owner cannot be identified'
+fi
+
+# Name matching stays as a second pass: it catches a Wootility that is running
+# but not holding the node yet, and other users' processes whose fd tables
+# cannot be read. Process names, not command lines: `pgrep -f` would match a
+# checkout path and report the doctor as its own conflict.
+if have pgrep; then
+    clash=$(pgrep "$CLASH_RE" 2>/dev/null)
+    if [[ -n $clash ]]; then
+        warned "a Wooting configuration process is running: pid(s) $(printf '%s' "$clash" | tr '\n' ' ')"
+        hint 'it will take the interface the moment it opens the keyboard'
+    else
+        pass 'no Wootility or Wooting Background Service process is running'
+    fi
+else
+    warned 'pgrep not found — cannot look for a conflicting Wootility process'
+fi
+
+# --- 6. daemon ---------------------------------------------------------------
+head_line 'wootingd'
+sock=$(wooting_socket)
+if [[ -S $sock ]]; then
+    if ! have socat || ! have jq; then
+        failed "socket is at $sock but socat/jq are missing, so it cannot be queried"
+        note_fail 5
+    else
+        reply=$(wooting_send ping 2>/dev/null)
+        if [[ $(jq -r '.pong // false' 2>/dev/null <<<"$reply") == true ]]; then
+            pass "answers ping on $sock"
+            status=$(wooting_send status 2>/dev/null)
+            if [[ $(jq -r '.present // false' 2>/dev/null <<<"$status") == true ]]; then
+                pass "sees the keyboard: firmware v$(jq -r '.firmware' <<<"$status"), $(jq -r '.count' <<<"$status") selectable profile(s), active slot $(jq -r '.active' <<<"$status")"
+            else
+                failed 'running, but it reports no keyboard'
+                hint 'see checks 4-6 above'
+                note_fail 4
+            fi
+        else
+            failed "socket exists at $sock but nothing answered ping"
+            hint 'systemctl --user restart wootingd'
+            note_fail 3
+        fi
+    fi
+else
+    failed "no socket at $sock"
+    hint 'wootingd runs only while a Wooting keyboard is attached; udev starts it on plug-in'
+    hint 'keyboard attached but no daemon: systemctl --user start wootingd'
+    hint 'if it was never set up: haseen setup wooting on'
+    note_fail 3
+
+    # --- 7. direct device probe (only safe with the daemon down) -------------
+    # No socket does not prove no daemon: one may be starting, or bound
+    # elsewhere. `wootingd doctor` opens the device itself, and two owners
+    # break both, so a live wootingd process vetoes the probe.
+    head_line 'direct device probe (wootingd doctor)'
+    if have pgrep && daemon_pid=$(pgrep -x wootingd 2>/dev/null) && [[ -n $daemon_pid ]]; then
+        warned "skipped: wootingd is running (pid $(printf '%s' "$daemon_pid" | tr '\n' ' ')) but has no socket at $sock"
+        hint 'only one process may own the interface — probing now would fight the daemon'
+        hint 'systemctl --user restart wootingd, or check WOOTINGD_SOCKET / XDG_RUNTIME_DIR'
+    elif [[ -x $WOOTINGD_BIN ]]; then
+        out=$("$WOOTINGD_BIN" doctor 2>&1)
+        drc=$?
+        printf '%s\n' "$out" | sed 's/^/         | /'
+        case $drc in
+        0) pass 'the device answers — only the daemon is missing' ;;
+        2)
+            failed 'wootingd could not find the device'
+            note_fail 4
+            ;;
+        3)
+            failed 'wootingd could not open the device (permissions?)'
+            note_fail 4
+            ;;
+        4)
+            failed 'the device did not answer — another owner is probably holding it'
+            note_fail 4
+            ;;
+        *)
+            failed "wootingd doctor exited $drc"
+            note_fail 1
+            ;;
+        esac
+    else
+        warned "no wootingd binary at $WOOTINGD_BIN"
+        hint 'tools/build-sidecar.sh builds it (needs cargo), then reinstall haseen'
+    fi
+fi
+
+printf '\n'
+if ((rc == 0)); then
+    printf 'doctor: everything checks out.\n'
+else
+    printf 'doctor: not healthy — fix the FAIL lines above (exit %d).\n' "$rc" >&2
+fi
+exit "$rc"

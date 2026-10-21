@@ -24,7 +24,8 @@ assert_status "go tests pass" 0 "$STATUS"
 assert_not_contains "no go test failures" "$OUTPUT" "FAIL"
 
 binary="$SANDBOX/haseen-sidecar"
-capture "$REPO/tools/build-sidecar.sh" "$binary"
+# wootingd (Rust) has its own file, tests/test-wootingd.sh.
+capture env HASEEN_BUILD_WOOTINGD=0 "$REPO/tools/build-sidecar.sh" "$binary"
 assert_status "the daemon builds" 0 "$STATUS"
 assert_contains "the build reports where it landed" "$OUTPUT" "$binary"
 

@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# haseen:summary Wooting keyboard profiles through wootingd: status, list, switch, key travel, the Fn layer
+# haseen:args status|get|list|set SLOT|NAME|analog|fn|doctor [--json|--follow] [--dry-run]
+#
+# Plan 099. Adapted from the owner's t1nk333r/haseen-wooting bin/wooting at
+# 184f6fa (MIT, Copyright (c) 2026 t1nk33r): the same subcommands, output and
+# exit codes, under haseen's name, with --dry-run on the one verb that changes
+# anything (`set`).
+#
+# Every device access goes through wootingd over its unix socket
+# (share/haseen/lib/wooting.sh): Quickshell has no HID access, and only one
+# process may own the keyboard's command interface (usage page 0xFF55). This
+# command speaks JSON to the daemon and never hidraw.
+#
+# Exit codes, the registry for haseen wooting, its doctor and the plugin:
+#   0  ok
+#   1  failure
+#   2  bad argument or usage
+#   3  daemon not reachable
+#   4  no keyboard present
+#   5  dependency missing
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/wooting.sh
+source "$HASEEN_PATH/lib/wooting.sh"
+
+usage() {
+    cat <<'EOF'
+Usage: haseen wooting <command> [--json] [--dry-run]
+
+  status [--json]     device and profile summary
+  get                 print the active profile slot, nothing else
+  list [--json]       one line per profile: SLOT<TAB>NAME<TAB>active|-
+  set SLOT|NAME       switch profile (0-based slot, or profile name; a bare
+                      number is always a slot, never a name); --dry-run says
+                      which slot it would ask for and sends nothing
+  analog [--json]     keys under travel, one per line:
+                      ROW<TAB>COL<TAB>CODE<TAB>TRAVEL<TAB>actuated|-
+  analog --follow     stream one JSON line per change until killed
+  fn [--json]         the Fn layer this board reports, as wootingd learned
+                      it: ROW<TAB>COL<TAB>CODE
+  doctor              diagnose a broken setup (haseen wooting doctor --help)
+
+wootingd runs only while a Wooting keyboard is plugged in; 'haseen setup
+wooting on' installs the udev rule and the user unit that start it.
+
+Exit codes
+  0  ok
+  1  failure
+  2  bad argument or usage
+  3  daemon not reachable
+  4  no keyboard present
+  5  dependency missing
+EOF
+}
+
+fail() {
+    printf 'wooting: %s\n' "$1" >&2
+    exit "${2:-1}"
+}
+
+require_deps() {
+    local dep missing=()
+    for dep in socat jq; do have "$dep" || missing+=("$dep"); done
+    if ((${#missing[@]})); then
+        fail "missing dependency: ${missing[*]} (pacman -S ${missing[*]})" 5
+    fi
+}
+
+# call VERB... — one round trip, with the daemon's {"ok":false,…} shapes mapped
+# onto the exit-code registry above. Prints the raw reply line on success.
+call() {
+    local reply err rc=0
+    reply=$(wooting_send "$@") || rc=$?
+    if ((rc != 0)); then
+        if ((rc == 3)); then
+            # The daemon runs only while a keyboard is attached, so this is
+            # usually just "nothing plugged in".
+            printf 'wooting: wootingd runs only while a Wooting keyboard is plugged in — is one attached?\n' >&2
+            printf 'wooting: with one attached and still no daemon: systemctl --user start wootingd (or haseen setup wooting on)\n' >&2
+        fi
+        exit "$rc"
+    fi
+    if [[ $(jq -r '.ok // false' <<<"$reply") != true ]]; then
+        err=$(jq -r '.error // "the daemon reported a failure"' <<<"$reply")
+        case $err in
+        "no keyboard present") fail "$err" 4 ;;
+        *"holds no stored profile"* | *"out of range"* | *"is not a slot number"*) fail "$err" 2 ;;
+        *) fail "$err" 1 ;;
+        esac
+    fi
+    printf '%s\n' "$reply"
+}
+
+# parse_flags SUBCOMMAND ARGS... — sets JSON_MODE and rejects anything that is
+# not a bare `--json`. A plain function, not a command substitution: `fail`
+# has to take the whole process down, not a subshell.
+JSON_MODE=0
+parse_flags() {
+    local cmd=$1
+    shift
+    JSON_MODE=0
+    case ${1:-} in
+    "") ;;
+    --json)
+        JSON_MODE=1
+        shift
+        ;;
+    *) fail "unknown option for $cmd: $1 (try --help)" 2 ;;
+    esac
+    (($# == 0)) || fail "$cmd takes no further arguments (try --help)" 2
+}
+
+cmd_status() {
+    local reply
+    parse_flags status "$@"
+    reply=$(call status) || exit $?
+
+    # --json hands the daemon's own line through untouched, including
+    # present:false: machine consumers read the field and need no exit code
+    # for it. The human view exits 4, because a summary of nothing is not a
+    # success.
+    if ((JSON_MODE)); then
+        printf '%s\n' "$reply"
+        return 0
+    fi
+
+    if [[ $(jq -r '.present' <<<"$reply") != true ]]; then
+        printf '%-15s %s\n' 'keyboard:' 'not present'
+        printf '%-15s %s\n' 'daemon:' "running on $(wooting_socket)"
+        printf 'no Wooting keyboard is connected (see: haseen wooting doctor)\n' >&2
+        exit 4
+    fi
+
+    local slot name named active
+    printf '%-15s %s\n' 'keyboard:' 'present'
+    printf '%-15s v%s\n' 'firmware:' "$(jq -r '.firmware' <<<"$reply")"
+    printf '%-15s %s\n' 'serial:' "$(jq -r '.serial' <<<"$reply")"
+    printf '%-15s %s (%s framing)\n' 'interface:' \
+        "$(jq -r '.node' <<<"$reply")" "$(jq -r '.framing' <<<"$reply")"
+    printf '%-15s %s of %s\n' 'active slot:' \
+        "$(jq -r '.active' <<<"$reply")" "$(jq -r '.count' <<<"$reply")"
+    while IFS=$'\t' read -r slot name named active; do
+        local marker=' ' suffix=''
+        if [[ $active == true ]]; then marker='*'; fi
+        if [[ $named != true ]]; then suffix='  (unnamed slot)'; fi
+        printf '  %s %s  %s%s\n' "$marker" "$slot" "$name" "$suffix"
+    done < <(jq -r '.profiles[] | [(.slot | tostring), .name, (.named | tostring), (.active | tostring)] | @tsv' <<<"$reply")
+}
+
+cmd_get() {
+    (($# == 0)) || fail 'get takes no arguments (try --help)' 2
+    local reply
+    reply=$(call profile get) || exit $?
+    jq -r '.active' <<<"$reply"
+}
+
+cmd_list() {
+    local reply
+    parse_flags list "$@"
+    reply=$(call profile list) || exit $?
+    if ((JSON_MODE)); then
+        printf '%s\n' "$reply"
+        return 0
+    fi
+    [[ $(jq -r '.present' <<<"$reply") == true ]] || fail 'no keyboard present' 4
+    jq -r '.profiles[] | [(.slot | tostring), .name, (if .active then "active" else "-" end)] | @tsv' <<<"$reply"
+}
+
+# analog [--json | --follow] — a snapshot of keys under travel, or a stream.
+# --follow holds a subscription open and passes the daemon's lines through
+# verbatim; it is the feed for anything that wants to draw the keyboard.
+cmd_analog() {
+    local reply
+    case ${1:-} in
+    --follow)
+        (($# == 1)) || fail 'analog --follow takes no further arguments (try --help)' 2
+        local sock
+        sock=$(wooting_socket)
+        wooting_socket_present || fail "wootingd is not running (no socket at $sock)" 3
+        # The daemon drops a subscription on hangup, so this end stays open:
+        # the feeder writes the verb, then lingers until this process is gone.
+        # -d0 keeps socat's errors but drops its "exiting on signal" notice,
+        # and a refused connect is the registry's "daemon not reachable".
+        local rc=0
+        socat -d0 - "UNIX-CONNECT:$sock" \
+            < <(
+                printf 'analog subscribe\n'
+                while kill -0 "$$" 2>/dev/null; do sleep 1; done
+            ) || rc=$?
+        ((rc == 1)) && fail "wootingd is not answering on $sock" 3
+        exit "$rc"
+        ;;
+    esac
+    parse_flags analog "$@"
+    reply=$(call analog get) || exit $?
+    if ((JSON_MODE)); then
+        printf '%s\n' "$reply"
+        return 0
+    fi
+    [[ $(jq -r '.present' <<<"$reply") == true ]] || fail 'no analog interface present' 4
+    jq -r '.keys[] | [(.row | tostring), (.col | tostring), (.code | tostring), (.value | tostring), (if .actuated then "actuated" else "-" end)] | @tsv' <<<"$reply"
+}
+
+# The Fn layer this keyboard reports, learned by the daemon from the analog
+# stream while Fn is held and kept across restarts. Codes are decimal, like
+# `analog` prints them, and unnamed on purpose: naming a usage is the
+# panel's job. Namespace 0 is the HID keyboard page, 3 the consumer page, 4
+# Wooting's own; 1024 (0x400) is "nothing mapped on this board".
+cmd_fn() {
+    local reply
+    parse_flags fn "$@"
+    reply=$(call fn get) || exit $?
+    if ((JSON_MODE)); then
+        printf '%s\n' "$reply"
+        return 0
+    fi
+    jq -r '.keys | to_entries[] | (.key | split(",")) as $pos
+        | [$pos[0], $pos[1], (.value | tostring)] | @tsv' <<<"$reply"
+}
+
+# resolve_name NAME — case-insensitive exact match against the daemon's own
+# profile names. Prints the slot; exits 4 with no keyboard (the numeric path
+# gets the same verdict from the daemon) and 2 when nothing matches.
+resolve_name() {
+    local reply slot
+    reply=$(call profile list) || exit $?
+    [[ $(jq -r '.present' <<<"$reply") == true ]] || fail 'no keyboard present' 4
+    slot=$(jq -r --arg n "$1" '
+        [ .profiles[] | select((.name | ascii_downcase) == ($n | ascii_downcase)) | .slot ]
+        | first // empty' <<<"$reply")
+    [[ -n $slot ]] || fail "no profile named \"$1\" (see: haseen wooting list)" 2
+    printf '%s' "$slot"
+}
+
+cmd_set() {
+    local want=${1:-} slot reply
+    [[ -n $want ]] || fail 'usage: haseen wooting set SLOT|NAME' 2
+    shift
+    (($# == 0)) || fail 'set takes exactly one slot or name (try --help)' 2
+
+    # A bare number is always a slot index, even when a profile is literally
+    # named "1": the numeric form is what the bar sends, and a name that
+    # collides with a digit string is unreachable by name (rename it in
+    # Wootility).
+    if [[ $want =~ ^[0-9]+$ ]]; then
+        slot=$want
+    else
+        slot=$(resolve_name "$want") || exit $?
+    fi
+
+    if $DRY_RUN; then
+        echo "DRYRUN: wootingd profile set $slot"
+        return 0
+    fi
+    reply=$(call profile set "$slot") || exit $?
+    jq -r '.active' <<<"$reply"
+}
+
+# doctor must work where the daemon, the keyboard or even jq is missing:
+# that is exactly when it is wanted, and it reads its own flags.
+[[ ${1:-} != doctor ]] || exec "$(dirname "$(readlink -f "$0")")/haseen-wooting-doctor" "${@:2}"
+parse_common_flags "$@"
+set -- "${REST[@]+"${REST[@]}"}"
+# Everything else needs the tools first.
+cmd=${1:-}
+shift || true
+case $cmd in
+'')
+    usage >&2
+    exit 2
+    ;;
+esac
+
+require_deps
+case $cmd in
+status) cmd_status "$@" ;;
+get) cmd_get "$@" ;;
+list) cmd_list "$@" ;;
+set) cmd_set "$@" ;;
+analog) cmd_analog "$@" ;;
+fn) cmd_fn "$@" ;;
+*) fail "unknown command: $cmd (try --help)" 2 ;;
+esac

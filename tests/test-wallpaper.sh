@@ -21,7 +21,7 @@ export PATH="$go_bin:$PATH"
 export GOPATH="$OUT/gopath" GOFLAGS="-mod=mod -modcacherw"
 [[ ! -d $GOPATH/pkg/mod ]] || chmod -R u+w -- "$GOPATH/pkg/mod"
 
-capture "$REPO/tools/build-sidecar.sh" "$SANDBOX/haseen-sidecar"
+capture env HASEEN_BUILD_WOOTINGD=0 "$REPO/tools/build-sidecar.sh" "$SANDBOX/haseen-sidecar"
 assert_status "the generator builds" 0 "$STATUS"
 export HASEEN_PALETTE_BIN="$SANDBOX/haseen-palette"
 assert_eq "haseen-palette landed beside the sidecar" 0 "$([[ -x $HASEEN_PALETTE_BIN ]] && echo 0 || echo 1)"

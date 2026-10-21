@@ -1,0 +1,29 @@
+# haseen: setup wooting (plan 099)
+#
+# Adapted from the owner's t1nk333r/haseen-wooting udev/70-wootingd.rules at
+# 184f6fa (MIT, Copyright (c) 2026 t1nk33r); the two rules are unchanged.
+# `haseen setup wooting on` installs this as /etc/udev/rules.d/70-wootingd.rules,
+# the same name the plugin's install.sh used, so one file holds the rule and
+# udev can start only one wootingd. Two jobs:
+#
+#   1. Access. TAG+="uaccess" makes logind grant the seated user an ACL on the
+#      node (73-seat-late.rules applies it, so this file must sort before 73).
+#      This is what the AUR `wooting-udev` package's 70-wooting.rules does for
+#      vendor 31e3; the name differs on purpose, because a same-named file in
+#      /etc would mask that package's copy in /usr/lib. Both may be installed.
+#
+#   2. Lifecycle. wootingd runs only while a keyboard is attached: the USB
+#      device (not each of its hidraw interfaces, so one keyboard means one
+#      start) is tagged for systemd, given a stable alias the unit binds to,
+#      and pulls in the user unit. Unplug removes the device unit, and
+#      BindsTo= in wootingd.service stops the daemon with it. A keyboard that
+#      is already attached at login is picked up by the user manager's
+#      coldplug.
+#
+# Vendor 0x31e3 is the only vendor wootingd looks for (core/wootingd/src/proto.rs
+# WOOTING_VID, matched in device.rs scan()). The legacy Atmel-vendor (03eb)
+# Wooting One/Two are not supported by the daemon and are not matched here.
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="31e3", TAG+="uaccess"
+
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="31e3", TAG+="uaccess", TAG+="systemd", ENV{SYSTEMD_ALIAS}+="/sys/subsystem/usb/devices/wooting", ENV{SYSTEMD_USER_WANTS}+="wootingd.service"

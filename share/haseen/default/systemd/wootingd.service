@@ -1,0 +1,26 @@
+# haseen: setup wooting (plan 099)
+# Adapted from the owner's t1nk333r/haseen-wooting wootingd.service at 184f6fa
+# (MIT, Copyright (c) 2026 t1nk33r). `haseen setup wooting on` writes it as
+# ~/.config/systemd/user/wootingd.service with ExecStart set to the installed
+# daemon, PREFIX/share/haseen/sidecar/wootingd (built by tools/build-sidecar.sh).
+[Unit]
+Description=Wooting profile daemon (wootingd, haseen)
+# wootingd MUST be the sole owner of the Wooting vendor command interface
+# (HID usage page 0xFF55). Wootility and wooting-bg-service claim the same
+# interface, and while either of them runs the device stops answering this
+# daemon: do not run them alongside this unit.
+#
+# Runs only while a Wooting keyboard is attached. Nothing enables this unit:
+# the udev rule `haseen setup wooting on` installs tags the keyboard's USB
+# device for systemd, aliases it as the device unit below, and pulls this unit
+# in with SYSTEMD_USER_WANTS, on hot-plug and at login when the keyboard is
+# already attached (the user manager's coldplug). BindsTo= stops it again when
+# the device unit goes away, i.e. on unplug.
+BindsTo=sys-subsystem-usb-devices-wooting.device
+After=sys-subsystem-usb-devices-wooting.device graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@WOOTINGD@
+Restart=on-failure
+RestartSec=2

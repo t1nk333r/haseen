@@ -1,6 +1,7 @@
 # haseen CI: the same gates AGENTS.md asks for before every commit and push.
 #   lint    tools/lint.sh (bash -n, shellcheck, luac, jq, qmllint)
-#   test    tests/run.sh, as a normal user (haseen refuses to run as root)
+#   test    tests/run.sh, as a normal user (haseen refuses to run as root);
+#           rust is in ARCH_PACKAGES for wootingd's cargo tests (plan 099)
 #   docs    tools/check-docs.sh (needs full history: plans cite commits)
 #   secrets gitleaks over every commit + tools/secrets.sh privacy patterns
 # Lint and tests run in an Arch container, the distro haseen targets, so
@@ -29,7 +30,7 @@ env:
   ARCH_PACKAGES: >-
     git bash jq lua shellcheck curl file python nodejs qt6-declarative
     imagemagick qrencode zbar foot which diffutils quickshell go socat
-    python-dbus python-gobject
+    python-dbus python-gobject rust
 
 jobs:
   lint:

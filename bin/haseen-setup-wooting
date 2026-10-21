@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# haseen:summary Wooting keyboards: the udev rule and user unit that run wootingd while one is plugged in (off by default)
+# haseen:args [on|off|status] [--dry-run] [--yes]
+#
+# Plan 099. Adapted from the owner's t1nk333r/haseen-wooting install.sh and
+# uninstall.sh at 184f6fa (MIT, Copyright (c) 2026 t1nk33r), on haseen's
+# dry-run helpers: every change, privileged or not, goes through common.sh.
+#
+# wootingd runs only while a Wooting keyboard is attached. The udev rule
+# (share/haseen/default/udev/70-wootingd.rules → /etc/udev/rules.d) gives the
+# seated user the keyboard's hidraw nodes and pulls in the user unit when the
+# keyboard appears; the unit's BindsTo= stops the daemon on unplug. So the
+# unit is installed but never enabled.
+#
+# One owner. Only one process may hold the keyboard's command interface. The
+# owner's t1nk33r.wooting plugin installs the same two names (its install.sh:
+# /etc/udev/rules.d/70-wootingd.rules and ~/.config/systemd/user/wootingd.service
+# running its own build). haseen keeps those names and takes them over: one
+# rule can want only one unit, the unit name resolves to one file, and the
+# user's unit directory outranks every system one, so after `on` the keyboard
+# starts haseen's wootingd and nothing else. The plugin's copies are saved to
+# ~/.local/state/haseen/wooting/ first; the plugin's own directory is never
+# touched. A file of either name that is neither haseen's nor the plugin's is
+# refused, not replaced. A running daemon of the old unit is restarted as
+# haseen's (one unit, so stop comes before start); wootingd itself refuses to
+# start beside a live socket.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../share/haseen/lib/wooting.sh
+source "$HASEEN_PATH/lib/wooting.sh"
+
+# The daemon tools/build-sidecar.sh builds into the tree; HASEEN_WOOTINGD
+# points tests at a stand-in.
+WOOTINGD_BIN="${HASEEN_WOOTINGD:-$HASEEN_PATH/sidecar/wootingd}"
+RULE_SRC="$HASEEN_PATH/default/udev/70-wootingd.rules"
+UNIT_TEMPLATE="$HASEEN_PATH/default/systemd/wootingd.service"
+UNIT="$(wooting_unit_path)"
+# The always-on start an older plugin install enabled (`systemctl --user
+# enable`); with haseen's unit behind that name it would run at every login.
+WANTS_LINK="$(dirname "$UNIT")/default.target.wants/$WOOTING_UNIT_NAME"
+BACKUP_ROOT="$HASEEN_USER_STATE/wooting"
+# Named, never run or read: off points the owner at it to restore the plugin.
+PLUGIN_INSTALL="$HOME/.config/omarchy/plugins/t1nk33r.wooting/install.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup wooting [on|off|status] [--dry-run] [--yes]
+
+  on      install $WOOTING_RULE (keyboard access, and
+          wootingd started while a Wooting is plugged in) and
+          ${UNIT/#$HOME/\~} running haseen's wootingd. A copy
+          of either left by the t1nk33r.wooting plugin is saved to
+          ${BACKUP_ROOT/#$HOME/\~}/ and replaced, so one daemon owns the keyboard.
+  off     remove haseen's rule and unit, and stop the daemon. A copy that is
+          not haseen's is left alone. Names the plugin's saved copies and its
+          own install.sh, which brings the plugin's daemon back.
+  status  the daemon binary, who installed the rule and the unit, whether a
+          Wooting is attached and wootingd runs (default).
+
+Off by default. The haseen.wooting bar widget and 'haseen wooting' talk to
+the daemon this starts.
+EOF
+}
+
+# The unit with ExecStart set to the daemon, as one double-quoted systemd
+# argument (systemd.service(5), "Command lines"): `\` and `"` are escaped and
+# `%` is doubled so it is not read as a specifier. As in the original.
+render_unit() {
+    local arg=${WOOTINGD_BIN//\\/\\\\} line
+    arg=${arg//\"/\\\"}
+    arg=${arg//%/%%}
+    while IFS= read -r line; do
+        if [[ $line == 'ExecStart=@WOOTINGD@' ]]; then
+            printf 'ExecStart="%s"\n' "$arg"
+        else
+            printf '%s\n' "$line"
+        fi
+    done <"$UNIT_TEMPLATE"
+}
+
+rule_file() { sysroot_path "$WOOTING_RULE"; }
+
+# rule_state / unit_state — current (haseen's, as shipped), haseen (an older
+# haseen copy), plugin, other or missing.
+rule_state() {
+    local owner
+    owner="$(wooting_owner "$(rule_file)" rule)"
+    if [[ $owner == haseen ]] && cmp -s "$(rule_file)" "$RULE_SRC"; then owner=current; fi
+    echo "$owner"
+}
+unit_state() {
+    local owner
+    owner="$(wooting_owner "$UNIT" unit)"
+    if [[ $owner == haseen ]] && cmp -s "$UNIT" <(render_unit); then owner=current; fi
+    echo "$owner"
+}
+
+describe() {
+    case $1 in
+    current) echo "haseen's" ;;
+    haseen) echo "haseen's, from an older version" ;;
+    plugin) echo "the t1nk33r.wooting plugin's" ;;
+    other) echo "someone else's" ;;
+    missing) echo "missing" ;;
+    esac
+}
+
+# attached — the sysfs paths of every Wooting (vendor 31e3) USB device.
+attached() {
+    local dev path
+    for dev in "$(sysroot_path /sys/bus/usb/devices)"/*; do
+        [[ -r $dev/idVendor && $(<"$dev/idVendor") == 31e3 ]] || continue
+        path="$(readlink -f -- "$dev")"
+        printf '%s\n' "${path#"$HASEEN_SYSROOT"}"
+    done
+}
+
+# Live machine only: a sysroot has no user manager.
+service_active() { ! in_sysroot && systemctl --user is-active --quiet "$WOOTING_UNIT_NAME" 2>/dev/null; }
+
+status() {
+    local daemon=missing keyboard="not attached" running=unknown
+    [[ -x $WOOTINGD_BIN ]] && daemon=built
+    [[ -n $(attached) ]] && keyboard=attached
+    if ! in_sysroot; then
+        running=no
+        service_active && running=yes
+    fi
+    printf 'daemon:    %s (%s)\n' "$daemon" "$WOOTINGD_BIN"
+    printf 'rule:      %s (%s)\n' "$(describe "$(rule_state)")" "$WOOTING_RULE"
+    printf 'unit:      %s (%s)\n' "$(describe "$(unit_state)")" "${UNIT/#$HOME/\~}"
+    [[ ! -L $WANTS_LINK ]] || printf 'always-on: %s starts it at every login (haseen setup wooting on removes it)\n' "${WANTS_LINK/#$HOME/\~}"
+    printf 'keyboard:  %s\nrunning:   %s\n' "$keyboard" "$running"
+}
+
+# save_copy FILE NAME — keep what the plugin installed before it is replaced.
+save_copy() {
+    local dir="$BACKUP_ROOT/replaced-$STAMP"
+    write_user_file "$dir/$2" <"$1"
+    info "saved the t1nk33r.wooting plugin's ${2} to ${dir/#$HOME/\~}/$2"
+}
+
+on() {
+    local rule unit rule_changed=false unit_changed=false devs pids
+    rule="$(rule_state)"
+    unit="$(unit_state)"
+    if [[ $rule == current && $unit == current && ! -L $WANTS_LINK ]]; then
+        info "Wooting is already on: the keyboard starts haseen's wootingd"
+        return 0
+    fi
+    if [[ $rule == other ]]; then
+        die "$WOOTING_RULE is not haseen's or the t1nk33r.wooting plugin's: move it aside, then run this again"
+    fi
+    if [[ $unit == other ]]; then
+        die "${UNIT/#$HOME/\~} is not haseen's or the t1nk33r.wooting plugin's: move it aside, then run this again"
+    fi
+    if [[ ! -x $WOOTINGD_BIN ]]; then
+        # A plan can still be printed; a real run would install a unit that
+        # cannot start.
+        $DRY_RUN || die "wootingd is not built ($WOOTINGD_BIN): run tools/build-sidecar.sh from a checkout (it needs cargo: pacman -S rust), then reinstall"
+        warn "wootingd is not built ($WOOTINGD_BIN); a real run stops here"
+    fi
+    confirm "Install the Wooting udev rule (needs root) and the wootingd user unit?" || exit 1
+
+    STAMP="$(date +%Y%m%d-%H%M%S)"
+    [[ $rule != plugin ]] || save_copy "$(rule_file)" 70-wootingd.rules
+    [[ $unit != plugin ]] || save_copy "$UNIT" wootingd.service
+
+    if [[ $rule != current ]]; then
+        install_root_file "$RULE_SRC" "$WOOTING_RULE" 0644
+        run_root udevadm control --reload
+        rule_changed=true
+    fi
+    if [[ $unit != current ]]; then
+        render_unit | replace_user_file "$UNIT"
+        unit_changed=true
+    fi
+    if [[ -L $WANTS_LINK ]]; then
+        run rm -f -- "$WANTS_LINK"
+        info "removed the always-on start ${WANTS_LINK/#$HOME/\~}: the keyboard starts wootingd"
+    fi
+    run systemctl --user daemon-reload || warn "no user manager answered; wootingd starts after your next login"
+
+    devs="$(attached)"
+    if [[ -n $devs ]]; then
+        if $rule_changed; then
+            # Re-run the rules on the attached keyboard and its hidraw nodes,
+            # so access and the device unit apply without a replug. `change`,
+            # not `add`: re-adding its input devices under a running
+            # compositor is not this command's business.
+            local trigger=(udevadm trigger --action=change) dev
+            while IFS= read -r dev; do trigger+=("--parent-match=$dev"); done <<<"$devs"
+            run_root "${trigger[@]}"
+        fi
+        if ! in_sysroot && have pgrep && pids="$(pgrep -x wootingd 2>/dev/null)" && ! service_active; then
+            warn "a wootingd outside systemd holds the keyboard (pid ${pids//$'\n'/ }); haseen's refuses to start beside it. Stop it, then: systemctl --user restart wootingd"
+        fi
+        # One unit, so restart stops a daemon of the old unit before haseen's
+        # starts; with none running it starts one.
+        if $rule_changed || $unit_changed; then
+            run systemctl --user restart "$WOOTING_UNIT_NAME" || warn "wootingd did not start: journalctl --user -u wootingd"
+        fi
+    fi
+    info "Wooting on: wootingd runs while a Wooting is plugged in (haseen wooting status)"
+}
+
+off() {
+    local rule unit
+    rule="$(wooting_owner "$(rule_file)" rule)"
+    unit="$(wooting_owner "$UNIT" unit)"
+    if [[ $rule != haseen && $unit != haseen ]]; then
+        info "Wooting is already off"
+        [[ $rule == missing ]] || info "$WOOTING_RULE is $(describe "$rule"): left alone"
+        [[ $unit == missing ]] || info "${UNIT/#$HOME/\~} is $(describe "$unit"): left alone"
+        return 0
+    fi
+    confirm "Remove the Wooting udev rule and the wootingd user unit?" || exit 1
+    if [[ $unit == haseen ]]; then
+        if $DRY_RUN || service_active; then
+            run systemctl --user stop "$WOOTING_UNIT_NAME" || true
+        fi
+        run rm -f -- "$UNIT"
+        run systemctl --user daemon-reload || warn "no user manager answered"
+    else
+        [[ $unit == missing ]] || info "${UNIT/#$HOME/\~} is $(describe "$unit"): left alone"
+    fi
+    if [[ $rule == haseen ]]; then
+        run_root rm -f -- "$WOOTING_RULE"
+        run_root udevadm control --reload
+    else
+        [[ $rule == missing ]] || info "$WOOTING_RULE is $(describe "$rule"): left alone"
+    fi
+    report_saved
+    info "Wooting off"
+}
+
+# After off, nothing starts a daemon for the keyboard. If `on` replaced the
+# plugin's copies, say exactly where they are and how the plugin's own daemon
+# comes back: its install.sh reinstalls both names (haseen never copies them
+# back, since they belong to the plugin's build).
+report_saved() {
+    local dir file names saved=false
+    for dir in "$BACKUP_ROOT"/replaced-*/; do
+        [[ -d $dir ]] || continue
+        saved=true
+        names=""
+        for file in "$dir"*; do
+            [[ -f $file ]] && names+=" ${file##*/}"
+        done
+        info "the t1nk33r.wooting plugin's copies that 'on' replaced are in ${dir/#$HOME/\~}:${names:- (empty)}"
+    done
+    $saved || return 0
+    info "to run the plugin's own wootingd again, run its installer: ${PLUGIN_INSTALL/#$HOME/\~}"
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-status}"
+case "$verb" in
+status) status ;;
+on | off)
+    in_floating_terminal "$@"
+    require_not_root
+    "$verb"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
