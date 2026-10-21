@@ -106,3 +106,20 @@ default and haseen's own stock theme.
 3. Check: `haseen theme current` prints `haseen` with no notice, and
    `readlink ~/.local/state/haseen/current/background` ends in
    `backgrounds/haseen/1-akane.jpg`.
+
+## Amendment 2026-10-21: the tables stay global
+
+`haseen layer status` on IO printed `theme-lib.sh: line 93: tokyo: unbound
+variable` and `missing: no theme set` with `tokyo-night` set, and luna did
+the same with `haseen` right after its install. The theme layer sources
+`theme-lib.sh` from inside a function (`_theme_layer_lib`,
+`layers/theme/layer.sh:15-18`), so its plain `declare -A` made
+`THEME_ALIASES`, `THEME_TOKEN_DEFAULTS` and `THEME_COLORS` local to that
+function. The include guard (`theme-lib.sh:17`) then kept them from being
+declared again. `theme_resolve_alias` read `${THEME_ALIASES[$1]:-}` from an
+unset name, which bash indexes arithmetically, and under `set -u`
+(`bin/haseen-layer-status:4`) a theme name fails as an unset variable. The
+three tables are now `declare -gA`. `tests/test-theme.sh` runs the layer
+status under `set -Eeuo pipefail` with `gruvbox`, `tokyo-night` and `haseen`,
+and resolves the alias after sourcing the library inside a function: 10
+checks that fail without the fix (875/885) and pass with it (885/885).

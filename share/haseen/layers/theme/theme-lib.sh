@@ -34,7 +34,7 @@ THEME_DEFAULT=haseen
 # Renamed stock themes, old name -> current name. `theme set OLD` and an old
 # theme.name resolve to the current name, and the current name also finds
 # backgrounds under ~/.config/haseen/backgrounds/OLD/.
-declare -A THEME_ALIASES=([greek-noir-akane]=haseen)
+declare -gA THEME_ALIASES=([greek-noir-akane]=haseen)
 # Fetched Omarchy images (never shipped: third-party artwork, 64 MB). Pinned
 # to one commit of omacom/omarchy; omarchy-assets.txt lists every image with
 # its sha256 and size at that commit.
@@ -67,7 +67,7 @@ THEME_COLOUR_ONLY=(btop.theme gtk.css shell.json tensaku.css yazi.toml)
 
 # Defaults for the non-colour shell tokens. A theme may set any of these in its
 # colors.toml; the value then wins, like every other key.
-declare -A THEME_TOKEN_DEFAULTS=(
+declare -gA THEME_TOKEN_DEFAULTS=(
     [font_family]="Inter"
     [font_mono]="JetBrainsMono Nerd Font"
     [font_size]=11
@@ -129,7 +129,7 @@ theme_current_name() {
 
 # --- colors.toml ------------------------------------------------------------
 
-declare -A THEME_COLORS=()
+declare -gA THEME_COLORS=()
 
 # _theme_mix START END AMOUNT — REPLY = blend of two #rrggbb colours. AMOUNT is a
 # fraction (0.35), a percentage (35%) or a bare number over 1 (35). Integer
