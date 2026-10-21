@@ -63,22 +63,61 @@ boot_cmdline_add() {
     esac
 }
 
-# boot_hooks — the mkinitcpio HOOKS this machine actually builds with.
-# mkinitcpio reads mkinitcpio.conf and then every conf.d drop-in in order,
-# where `HOOKS=` replaces and `HOOKS+=` appends, so the answer is not "every
-# HOOKS line in every file": a drop-in that replaces the list is what counts.
+# boot_hooks — the mkinitcpio HOOKS this machine actually builds with, one per
+# line. Evaluated as mkinitcpio itself does (mkinitcpio 42.2,
+# /usr/bin/mkinitcpio:1124-1143 and arrayize_config in
+# /usr/lib/initcpio/functions:521-529): mkinitcpio.conf, then every *.conf in
+# mkinitcpio.conf.d (a regular file or a link to one, names version-sorted),
+# concatenated and sourced as one script; a HOOKS string is split into words.
+# A drop-in is code, not just assignments: Omarchy 4.5 picks its baseline in an
+# indented `case` on its platform detector
+# (etc/mkinitcpio.conf.d/00-omarchy-hooks.conf@v4.5.0-rc1), and haseen's own
+# plymouth drop-in edits the list with sed, so no line-by-line reading can be
+# right. The files are sourced in a subshell, as the calling user, with their
+# output discarded, and nothing they set leaks back. When the configuration
+# does not source (a drop-in returns non-zero, as Omarchy's does for a machine
+# its detector cannot place), or mkinitcpio.conf is missing or unreadable,
+# mkinitcpio refuses to build, and this warns and fails rather than report an
+# empty list.
 boot_hooks() {
-    local file line hooks=""
-    for file in "$(sysroot_path /etc/mkinitcpio.conf)" "$(sysroot_path /etc/mkinitcpio.conf.d)"/*.conf; do
-        [[ -r $file ]] || continue
-        while IFS= read -r line; do
-            case "$line" in
-            HOOKS=*) hooks="$(tr -d '()"' <<<"${line#HOOKS=}")" ;;
-            HOOKS+=*) hooks+=" $(tr -d '()"' <<<"${line#HOOKS+=}")" ;;
-            esac
-        done <"$file"
-    done
-    tr ' ' '\n' <<<"$hooks" | grep -v '^$' || true
+    local conf dir name files=()
+    conf="$(sysroot_path /etc/mkinitcpio.conf)"
+    dir="$conf.d"
+    # mkinitcpio dies without it (/usr/bin/mkinitcpio:1131,1143); so does this,
+    # rather than read the drop-ins alone or no hooks at all.
+    if [[ ! -f $conf || ! -r $conf ]]; then
+        warn "mkinitcpio's configuration $conf is missing or unreadable; mkinitcpio would not build without it"
+        return 1
+    fi
+    files+=("$conf")
+    if [[ -d $dir ]]; then
+        while IFS= read -r -d '' name; do
+            [[ -r $dir/$name ]] && files+=("$dir/$name")
+        done < <(LC_ALL=C.UTF-8 find "$dir" -maxdepth 1 -xtype f -name '*.conf' -printf '%f\0' |
+            LC_ALL=C.UTF-8 sort -zVu)
+    fi
+    if ! (
+        set +Eeu +o pipefail
+        trap - ERR
+        unset HOOKS MODULES BINARIES FILES COMPRESSION COMPRESSION_OPTIONS
+        # shellcheck disable=SC1090  # the machine's own configuration
+        . <(cat -- "${files[@]}") >/dev/null 2>&1 </dev/null || exit 1
+        if [[ ${HOOKS@a} != *a* ]]; then
+            set -f
+            IFS=' ' read -r -a HOOKS <<<"${HOOKS:-}"
+        fi
+        printf '%s\n' "${HOOKS[@]}" | grep -v '^$'
+        exit 0
+    ); then
+        warn "mkinitcpio's configuration ($conf and its drop-ins) does not evaluate; mkinitcpio would not build with it either"
+        return 1
+    fi
+}
+
+# boot_hooks_known — die unless HOOKS can be read: a command about to add a
+# hook must not mistake an unreadable configuration for a missing hook.
+boot_hooks_known() {
+    boot_hooks >/dev/null || die "fix mkinitcpio's configuration first (sudo mkinitcpio -P shows the error)"
 }
 
 # boot_initramfs_rebuild — regenerate every initramfs. limine-mkinitcpio keeps

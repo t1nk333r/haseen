@@ -73,6 +73,14 @@ def unsupported($hid; $k; $v): $hid == "haseen.gestures" and $k == "middleButton
 # (always an add-on) is only namespaced to omarchy.* by haseen.
 def builtin($e): ($e.id | type) == "string" and ($e.id | startswith("omarchy.")) and (known($e.id) | not);
 def note($s): .report += [$s];
+# The tray section of Omarchy 4.5 is the drawer of its tray: shown on demand.
+# The overflow panel behind the haseen chevron is the same idea, and an id in
+# bar.overflow must also sit in a bar section, so the widget goes to the end of
+# the right section and into bar.overflow. haseen.tray itself never overflows.
+def drawer($on; $id):
+    if $on | not then .
+    elif $id == "haseen.tray" then note("bar.tray: haseen.tray anchors the right section and never moves to the overflow panel; it stays in the bar")
+    else .cfg.bar.overflow += [$id] end;
 
 def translate_settings($oid; $hid; $s):
     (setting_map[$hid] // {}) as $m
@@ -84,7 +92,10 @@ def translate_settings($oid; $hid; $s):
         elif $m | has($k) then .settings[$m[$k]] = $s[$k]
         else .report += ["\($oid): setting \($k) has no haseen equivalent, dropped"] end);
 
-def place($sec; $raw):
+# place SEC RAW DRAWER — RAW, an entry of an Omarchy bar section, into the
+# haseen bar section SEC; with DRAWER (the Omarchy tray section), also into
+# bar.overflow.
+def place($sec; $raw; $drawer):
     ($raw | entry) as $e
     | ($e.id | nsid) as $oid
     | ($e | del(.id)) as $s
@@ -95,6 +106,7 @@ def place($sec; $raw):
           else translate_settings($oid; $hid; $s) as $t
             | .seen += [$hid]
             | .cfg.bar[$sec] += [$hid]
+            | drawer($drawer; $hid)
             | .report += $t.report
             | .mapped += ["\($oid) -> \($hid)"]
             | (if ($t.settings | length) > 0 then .cfg.plugins[$hid].settings = ((.cfg.plugins[$hid].settings // {}) + $t.settings) else . end)
@@ -111,6 +123,7 @@ def place($sec; $raw):
       else
         .seen += [$oid]
         | .cfg.bar[$sec] += [$oid]
+        | drawer($drawer; $oid)
         | .cfg.plugins[$oid].enabled = true
         | (if ($s | length) > 0 then .cfg.plugins[$oid].settings = $s else . end)
         | .kept += [$oid]
@@ -148,15 +161,37 @@ def service($raw):
    else note("bar.position \($bar.position | tojson) is not top, bottom, left or right, dropped") end)
 | (if ($bar.transparent | type) == "boolean" then .cfg.bar.transparent = $bar.transparent
    elif $bar.transparent == null then . else note("bar.transparent is not a boolean, dropped") end)
+# Omarchy 4.5 replaced transparent with background (bin/omarchy-bar@v4.5.0-rc1:
+# opaque, glassy or none), and reads background first when both are set.
+| (if $bar.background == null then .
+   elif $bar.background == "none" then .cfg.bar.transparent = true
+   elif $bar.background == "opaque" then .cfg.bar.transparent = false
+   elif $bar.background == "glassy" then
+     .cfg.bar.transparent = false
+     | note("bar.background \"glassy\": haseen draws no blur behind the bar (architecture 6), so it stays opaque")
+   else note("bar.background \($bar.background | tojson) is not opaque, glassy or none, dropped") end)
 | (if ($bar.centerAnchor // "") != "" then
      note("bar.centerAnchor (\($bar.centerAnchor)): haseen centres the centre section as a group, dropped")
    else . end)
-| reduce ($bar | keys_unsorted[] | select(IN("position", "transparent", "centerAnchor", "layout") | not)) as $k (.;
+| reduce ($bar | keys_unsorted[] | select(IN("position", "transparent", "background", "centerAnchor", "layout") | not)) as $k (.;
     note("bar.\($k): no haseen equivalent, dropped"))
-| reduce ("left", "center", "right") as $sec (.;
-    if $layout | has($sec) then
-      .cfg.bar[$sec] = []
-      | reduce (($layout[$sec] | if type == "array" then .[] else empty end)) as $e (.; place($sec; $e))
+# The six sections of Omarchy 4.5 (shell/Commons/Util.qml@v4.5.0-rc1:179) in
+# bar order, onto the three of haseen: centerBegin and centerEnd hang off the
+# centre box, so they join the haseen centre section, which is centred as one
+# group, before and after its widgets; tray (the drawer of the tray) is the
+# overflow panel.
+| reduce (["left", "left"], ["centerBegin", "center"], ["center", "center"], ["centerEnd", "center"],
+          ["right", "right"], ["tray", "right"]) as [$osec, $sec] (.;
+    if $layout | has($osec) then
+      (if (.cfg.bar // {}) | has($sec) then . else .cfg.bar[$sec] = [] end)
+      | (if $osec == "centerBegin" or $osec == "centerEnd" then
+           (if ($layout[$osec] | if type == "array" then length else 0 end) > 0 then
+              note("bar.\($osec): haseen has one centre section, centred as a group; its widgets go \(if $osec == "centerBegin" then "before" else "after" end) the centre ones")
+            else . end)
+         elif $osec == "tray" and ($layout[$osec] | if type == "array" then length else 0 end) > 0 then
+           note("bar.tray: haseen has no tray drawer; its widgets go to the overflow panel behind the chevron at the end of the bar")
+         else . end)
+      | reduce (($layout[$osec] | if type == "array" then .[] else empty end)) as $e (.; place($sec; $e; $osec == "tray"))
     else . end)
 # Omarchy draws notifications itself and its bar always had their state (the
 # Do Not Disturb bell among the indicators). haseen keeps that in the bell of
@@ -210,7 +245,10 @@ omarchy_import_shell() {
 # into the user's section next to the imported neighbour it followed (or
 # preceded). A re-run therefore adds what a newer haseen maps (Omarchy's
 # indicators, the pager bell) to a bar the user arranged after an earlier
-# import; it also brings back an imported widget the user since removed.
+# import; it also brings back an imported widget the user since removed. An
+# imported overflow id (Omarchy 4.5's tray drawer) joins a bar.overflow the
+# user has set only when it is not already in one of the user's sections, so
+# a widget the user keeps in the bar stays there.
 omarchy_import_merge() {
     jq -n --argjson user "$1" --argjson imp "$2" --argjson added "$3" '
         def ids: if type == "array" then map(strings) else [] end;
@@ -227,9 +265,13 @@ omarchy_import_merge() {
                   end);
         ($imp * $user) as $m
         | ([$m.bar.left, $m.bar.center, $m.bar.right] | map(ids) | add) as $present
+        | ([$user.bar.left, $user.bar.center, $user.bar.right] | map(ids) | add) as $mine
         | reduce ("left", "center", "right") as $sec ($m;
             if ($user.bar[$sec] | type) == "array" and ($imp.bar[$sec] | type) == "array"
             then .bar[$sec] |= insert_missing($imp.bar[$sec] | ids; $present) else . end)
+        | if ($user.bar.overflow | type) == "array" and ($imp.bar.overflow | type) == "array"
+          then .bar.overflow = $user.bar.overflow + (($imp.bar.overflow | ids) - $mine - $user.bar.overflow)
+          else . end
         # haseen.tray leads bar.right; nothing is put before it.
         | if (.bar.right | type) == "array" and (.bar.right | index(["haseen.tray"]))
           then .bar.right = (["haseen.tray"] + (.bar.right - ["haseen.tray"])) else . end

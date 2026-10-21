@@ -53,6 +53,9 @@ require_not_root
 require_cmds btrfs findmnt
 
 hibernate_supported || die "this kernel cannot hibernate (no /sys/power/image_size)"
+# Whether a resume hook is needed is read from HOOKS; an unreadable
+# configuration must not read as "missing" (plan 101).
+boot_hooks_known
 preflight_bootloader
 preflight_luks
 

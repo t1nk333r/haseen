@@ -278,3 +278,69 @@ assert_not_contains "the duplicate 3-finger-up hl.gesture is not carried" "$(gre
 assert_contains "its place is marked" "$localf" "haseen import omarchy skipped (haseen.gestures already binds 3-finger up (g3Up = menu))"
 assert_contains "and it is reported" "$OUTPUT" "input.lua: haseen.gestures already binds 3-finger up (g3Up = menu): hl.gesture({"
 assert_contains "the input settings still carry over" "$localf" 'accel_profile = "flat",'
+
+# --- Omarchy 4.5: six bar sections and bar.background (plan 101) -----------------
+# shell/Commons/Util.qml@v4.5.0-rc1:179 has left, centerBegin, center,
+# centerEnd, right and tray (the tray's drawer); background replaced
+# transparent (opaque, glassy or none).
+sandbox omarchy-import-45
+src="$SANDBOX/omarchy45"
+mkdir -p "$src"
+cat >"$src/shell.json" <<'JSON'
+{"version": 1,
+ "bar": {"position": "top", "background": "none",
+   "layout": {
+     "left": [{"id": "omarchy.workspaces"}],
+     "centerBegin": [{"id": "omarchy.indicators"}],
+     "center": [{"id": "omarchy.clock", "format": "HH:mm"}],
+     "centerEnd": [{"id": "omarchy.weather"}, {"id": "t1nk33r.omaprayers", "timezone": "Asia/Riyadh"}],
+     "right": [{"id": "omarchy.tray"}, {"id": "omarchy.audio"}],
+     "tray": [{"id": "t1nk33r.power"}, {"id": "omarchy.bluetooth"}, {"id": "omarchy.keyboard-layout"}]}},
+ "dock": {"position": "bottom"}}
+JSON
+capture "$REPO/bin/haseen-import-omarchy" --from "$src" --state "$SANDBOX/none"
+assert_status "a 4.5 shell.json imports" 0 "$STATUS"
+hc="$XDG_CONFIG_HOME/haseen/shell.json"
+assert_eq "centerBegin and centerEnd join the centre section around its widgets" \
+    '["haseen.indicators","haseen.clock","haseen.weather","t1nk33r.omaprayers"]' "$(jq -c .bar.center "$hc")"
+assert_eq "tray widgets go to the end of the right section" \
+    '["haseen.tray","haseen.pager","haseen.audio","t1nk33r.power","haseen.bluetooth"]' "$(jq -c .bar.right "$hc")"
+assert_eq "and into the overflow panel" '["t1nk33r.power","haseen.bluetooth"]' "$(jq -c .bar.overflow "$hc")"
+assert_eq "settings of a widget in a new section carry over" '"Asia/Riyadh"' \
+    "$(jq -c '.plugins["t1nk33r.omaprayers"].settings.timezone' "$hc")"
+assert_eq "background none is a transparent bar" "true" "$(jq -c .bar.transparent "$hc")"
+for item in "bar.centerBegin: haseen has one centre section" "bar.centerEnd: haseen has one centre section" \
+    "bar.tray: haseen has no tray drawer; its widgets go to the overflow panel" \
+    "omarchy.keyboard-layout: Omarchy built-in with no haseen equivalent, dropped" \
+    "bar.overflow: haseen.bluetooth (in the overflow panel)" "dock: not a setting haseen imports"; do
+    assert_contains "reported: $item" "$OUTPUT" "$item"
+done
+assert_not_contains "background is not called unknown" "$OUTPUT" "bar.background: no haseen equivalent"
+
+# Every widget in any of the six sections is placed or reported; none is
+# dropped without a line.
+placed="$(jq -r '.bar | [.left, .center, .right] | add | .[]' "$hc")"
+for oid in $(jq -r '.bar.layout[][] | .id' "$src/shell.json"); do
+    hid="$(sed -n "s/^.*$oid -> \(.*\)$/\1/p" <<<"$OUTPUT" | head -n1)"
+    if grep -qxF "${hid:-$oid}" <<<"$placed" || [[ $OUTPUT == *"$oid: "* ]]; then
+        assert_eq "$oid is placed or reported" ok ok
+    else
+        assert_eq "$oid is placed or reported" ok missing
+    fi
+done
+
+# A merge into a bar the user set: a drawer widget the user's bar lacks joins
+# the user's overflow list; one the user keeps in the bar stays there.
+printf '%s\n' '{"bar":{"right":["haseen.tray","haseen.bluetooth"],"overflow":["mine.x"]}}' >"$hc"
+capture "$REPO/bin/haseen-import-omarchy" --from "$src" --state "$SANDBOX/none" --merge
+assert_status "a 4.5 merge succeeds" 0 "$STATUS"
+assert_eq "the user's overflow keeps its entries, and the missing drawer widget is added" \
+    '["mine.x","t1nk33r.power"]' "$(jq -c .bar.overflow "$hc")"
+assert_contains "the addition is listed" "$OUTPUT" "bar.overflow: added t1nk33r.power to your overflow panel"
+
+# glassy: haseen draws no blur, so the bar stays opaque, and says so.
+jq '.bar.background = "glassy"' "$src/shell.json" >"$src/glassy.json" && mv "$src/glassy.json" "$src/shell.json"
+rm -f "$hc"
+capture "$REPO/bin/haseen-import-omarchy" --from "$src" --state "$SANDBOX/none"
+assert_eq "glassy is an opaque bar" "false" "$(jq -c .bar.transparent "$hc")"
+assert_contains "and that is reported" "$OUTPUT" 'bar.background "glassy": haseen draws no blur'

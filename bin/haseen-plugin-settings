@@ -120,7 +120,9 @@ mirror_omarchy_entry() {
         .[1] as $entry | .[0] |
         ({id: $id} + ($entry | del(.id))) as $new |
         def swap: if type == "object" and .id == $id then $new else . end;
-        def sections: "left", "center", "right";
+        # Omarchy 4.5 bar sections (shell/Commons/Util.qml@v4.5.0-rc1:179); a
+        # 4.0.6 file has only the first, third and fifth.
+        def sections: "left", "centerBegin", "center", "centerEnd", "right", "tray";
         def in_layout: any(sections as $s | (.bar.layout[$s]? // []) | arrays | .[]; type == "object" and .id == $id);
         if in_layout then
             reduce sections as $s (.; if (.bar.layout[$s] | type) == "array" then .bar.layout[$s] |= map(swap) else . end)

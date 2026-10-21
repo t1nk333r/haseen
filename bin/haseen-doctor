@@ -5,6 +5,8 @@ set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
 # shellcheck source=../share/haseen/lib/doctor.sh
 source "$HASEEN_PATH/lib/doctor.sh"
+# shellcheck source=../share/haseen/lib/omarchy-guard.sh
+source "$HASEEN_PATH/lib/omarchy-guard.sh"
 
 usage() { echo "Usage: haseen doctor"; }
 parse_common_flags "$@"
@@ -56,11 +58,21 @@ else
     echo "compositor omarchy commands=no Hyprland session"
 fi
 
+# Omarchy's own packages, where they are still installed (plan 101): its
+# migrations sealed, the pacman hook that seals the next ones, the splash its
+# omarchy-settings resets, and every Omarchy user unit still enabled.
+guard_ok=true
+omarchy_guard_doctor || guard_ok=false
+
 echo
 status=0
 "$(dirname "$(readlink -f "$0")")/haseen-layer-status" || status=$?
 if ! $omarchy_ok; then
     echo "haseen doctor: Omarchy's commands come before haseen's (see above)" >&2
+    ((status != 0)) || status=1
+fi
+if ! $guard_ok; then
+    echo "haseen doctor: Omarchy's packages can still undo haseen (see above)" >&2
     ((status != 0)) || status=1
 fi
 exit "$status"

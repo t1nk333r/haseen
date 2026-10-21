@@ -12,7 +12,13 @@
 set -Eeuo pipefail
 
 BIN_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-export HASEEN_PATH="${HASEEN_PATH:-$(cd "$BIN_DIR/../share/haseen" && pwd)}"
+# As root (sudo, a pacman hook, a system unit) the tree is always this
+# router's own: an inherited HASEEN_PATH would choose the code root sources.
+# lib/common.sh does the same for code that does not start here (plan 101).
+if ((EUID == 0)) || [[ -z ${HASEEN_PATH:-} ]]; then
+    HASEEN_PATH="$(cd "$BIN_DIR/../share/haseen" && pwd)"
+fi
+export HASEEN_PATH
 export PATH="$BIN_DIR:$PATH"
 
 meta() { sed -n "s/^# haseen:$2[[:space:]]*//p" "$1" | head -n1; }

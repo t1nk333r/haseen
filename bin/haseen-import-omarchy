@@ -190,16 +190,19 @@ import_shell_json() {
         (.kept[] | "bar: \(.) (plugin, settings kept)"),
         (.added[] | "services: \(.)"),
         (.config.plugins["haseen.idle"].settings // {} | to_entries[] | "haseen.idle: \(.key) = \(.value) s"),
-        (.config.bar // {} | to_entries[] | select(.value | type != "array") | "bar.\(.key) = \(.value)")' <<<"$result")
+        (.config.bar // {} | to_entries[] | select(.value | type != "array") | "bar.\(.key) = \(.value)"),
+        (.config.bar.overflow // [] | .[] | "bar.overflow: \(.) (in the overflow panel)")' <<<"$result")
 
     # Read and write under the shell.json lock, like every other writer.
     shell_config_lock
     user="$(shell_user_json)"
     merged="$(omarchy_import_merge "$user" "$imp" "$added")"
     mapfile -t -O "${#IMPORTED[@]}" IMPORTED < <(jq -rn --argjson u "$user" --argjson m "$merged" '
-        "left", "center", "right" | . as $sec
-        | select(($u.bar[$sec] | type) == "array")
-        | ($m.bar[$sec] - $u.bar[$sec])[] | "bar.\($sec): added \(.) to your bar"')
+        ("left", "center", "right" | . as $sec
+         | select(($u.bar[$sec] | type) == "array")
+         | ($m.bar[$sec] - $u.bar[$sec])[] | "bar.\($sec): added \(.) to your bar"),
+        (select(($u.bar.overflow | type) == "array")
+         | ($m.bar.overflow - $u.bar.overflow)[] | "bar.overflow: added \(.) to your overflow panel")')
     GESTURES_G3UP="$(gestures_g3up "$merged")"
     if [[ $(jq -Sc . <<<"$merged") == "$(jq -Sc . <<<"$user")" ]]; then
         info "$SHELL_USER_CONFIG already holds the import"
