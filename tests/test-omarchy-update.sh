@@ -285,6 +285,15 @@ assert_status "run without a command: usage exit 2" 2 "$STATUS"
 
 # Stay Awake: the inhibitor is a stand-in that runs its command; idle is
 # haseen's flag.
+# running PID — the process has not exited. An exited inhibitor stays a zombie
+# where nothing reaps orphans (CI's container runs `tail -f /dev/null` as
+# PID 1), and kill -0 still reaches a zombie.
+running() {
+    local stat
+    stat="$(cat "/proc/$1/stat" 2>/dev/null)" || return 1
+    stat="${stat##*) }"
+    [[ ${stat%% *} != Z ]]
+}
 FLAG="$XDG_STATE_HOME/haseen/flags/idle-off"
 stub systemd-inhibit 'while [ "${1#--}" != "$1" ]; do shift; done; exec "$@"'
 capture "$B/omarchy-update-stay-awake" start --dry-run
@@ -295,11 +304,11 @@ capture "$B/omarchy-update-stay-awake" start
 assert_status "start" 0 "$STATUS"
 assert_eq "idle is off while the update runs" yes "$([[ -e $FLAG ]] && echo yes || echo no)"
 read -r ipid _ <"$XDG_RUNTIME_DIR/haseen-update-stay-awake/inhibit-pid"
-assert_eq "the inhibitor runs" yes "$(kill -0 "$ipid" 2>/dev/null && echo yes || echo no)"
+assert_eq "the inhibitor runs" yes "$(running "$ipid" && echo yes || echo no)"
 capture "$B/omarchy-update-stay-awake" stop
 assert_status "stop" 0 "$STATUS"
 assert_eq "idle is back on" no "$([[ -e $FLAG ]] && echo yes || echo no)"
-assert_eq "the inhibitor is gone" no "$(kill -0 "$ipid" 2>/dev/null && echo yes || echo no)"
+assert_eq "the inhibitor is gone" no "$(running "$ipid" && echo yes || echo no)"
 # The user's own Stay Awake survives the update, also when set again meanwhile.
 mkdir -p "${FLAG%/*}" && : >"$FLAG"
 capture "$B/omarchy-update-stay-awake" start
