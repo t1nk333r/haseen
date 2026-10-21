@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# haseen:summary Monitor mode, refresh rate, scale, rotation, position and on/off, and the cursor size
+# haseen:args list | set OUTPUT [--mode WxH@HZ] [--position XxY] [--scale S] [--transform N] [--on|--off] | reset [OUTPUT] | cursor SIZE [--dry-run]
+#
+# Plan 098: the backend of the haseen.monitor-settings panel, ported from
+# juliusmork-sys's Omarchy Monitor Settings Extender (MIT, Copyright (c) 2026
+# Julius Getz Mørk), which ran `hyprctl eval 'hl.monitor({...})'` itself and so
+# lost every change at the next reload. Here a change is applied live the
+# same way and recorded in $HASEEN_USER_STATE/monitor-settings.json, which is
+# rendered to toggles/hypr/display-layout.lua. That toggle loads before
+# mirror-display.lua and laptop-display-off.lua (so those still win) and
+# before the user's ~/.config/hypr/monitors.lua (so the user's own rules
+# win at the next reload; `list` says when one names an output). A rule is
+# keyed by the monitor's EDID description (`desc:`) when it has a unique one,
+# so a dock that renumbers DP-7 to DP-8 keeps its layout.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen hardware monitor <command> [--dry-run]
+
+  list                    the monitors as JSON: hyprctl's 'monitors all' with
+                          the recorded settings ("persisted") and whether the
+                          user's monitors.lua or hyprland-gui.lua names one
+                          ("userRule"), plus "mirror", "laptopOff" and
+                          "cursorSize"
+  set OUTPUT [options]    apply now and keep across reloads:
+      --mode WxH@HZ       resolution and refresh rate (one hyprctl lists)
+      --position XxY      top-left corner in the layout (logical pixels)
+      --scale S           e.g. 1, 1.25, 1.6
+      --transform N       0 normal, 1 90°, 2 180°, 3 270° (4-7 flipped)
+      --off | --on        turn the monitor off, or on again at its
+                          preferred mode
+  reset [OUTPUT]          forget the recorded settings (all, or OUTPUT's) and
+                          reload Hyprland
+  cursor SIZE             the cursor size in logical pixels (8-256): now
+                          (hyprctl setcursor, gsettings) and at the next login
+
+The built-in panel goes on and off through 'haseen hardware laptop-display',
+and mirroring through 'haseen hardware mirror-display'; while mirroring is
+on, 'set' refuses (the mirror rule would win anyway).
+EOF
+}
+
+STATE_FILE="$HASEEN_USER_STATE/monitor-settings.json"
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/display-layout.lua"
+MIRROR_FILE="$HASEEN_USER_STATE/toggles/hypr/mirror-display.lua"
+LAPTOP_OFF_FILE="$HASEEN_USER_STATE/toggles/hypr/laptop-display-off.lua"
+CURSOR_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/61-haseen-cursor"
+HYPR_USER="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+NAME_RE='^[A-Za-z0-9._-]+$'
+
+monitors_json() {
+    local out
+    out="$(hyprctl monitors all -j 2>/dev/null)" || die "hyprctl did not answer (is Hyprland running?)"
+    jq -e 'type == "array"' <<<"$out" >/dev/null 2>&1 || die "hyprctl monitors all -j did not return a list"
+    printf '%s\n' "$out"
+}
+
+state_json() {
+    if [[ -r $STATE_FILE ]] && jq -e '.outputs | type == "object"' "$STATE_FILE" >/dev/null 2>&1; then
+        jq -c . "$STATE_FILE"
+    else
+        echo '{"outputs":{}}'
+    fi
+}
+
+# rule_key MONITORS NAME — the key a rule for NAME is recorded under: its
+# description as "desc:…" when no other monitor shares it, else the name.
+rule_key() {
+    jq -r --arg n "$2" '
+        (.[] | select(.name == $n) | .description // "") as $d
+        | if $d != "" and ([.[] | select((.description // "") == $d)] | length) == 1
+          then "desc:" + $d else $n end' <<<"$1"
+}
+
+# lua_string TEXT — TEXT as a double-quoted Lua literal.
+lua_string() {
+    local s=$1
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/ }
+    printf '"%s"' "$s"
+}
+
+# lua_rule OUTPUT ENTRY_JSON — one hl.monitor() call for a recorded entry.
+lua_rule() {
+    local output=$1 entry=$2 fields
+    fields="$(jq -r '
+        if .disabled == true then "disabled = true"
+        else [ (if .mode then "mode = \"" + .mode + "\"" else empty end),
+               (if .position then "position = \"" + .position + "\"" else empty end),
+               (if .scale then "scale = " + (.scale | tostring) else empty end),
+               (if .transform != null then "transform = " + (.transform | tostring) else empty end)
+             ] | join(", ") end' <<<"$entry")"
+    [[ -n $fields ]] || return 0
+    printf 'hl.monitor({ output = %s, %s })\n' "$(lua_string "$output")" "$fields"
+}
+
+render() {
+    local state=$1 key
+    {
+        echo "-- Written by haseen hardware monitor (plan 098) from $STATE_FILE."
+        echo "-- Edit with the haseen.monitor-settings panel, or 'haseen hardware monitor reset'."
+        while IFS= read -r key; do
+            [[ -n $key ]] || continue
+            lua_rule "$key" "$(jq -c --arg k "$key" '.outputs[$k]' <<<"$state")"
+        done < <(jq -r '.outputs | keys[]' <<<"$state")
+    }
+}
+
+save() {
+    local state=$1
+    if [[ $(jq '.outputs | length' <<<"$state") == 0 ]]; then
+        run rm -f -- "$STATE_FILE" "$TOGGLE_FILE"
+        return 0
+    fi
+    # Written next to the target and renamed in, so a reload never reads
+    # half a file.
+    jq . <<<"$state" | write_user_file "$STATE_FILE.new"
+    run mv -f -- "$STATE_FILE.new" "$STATE_FILE"
+    render "$state" | write_user_file "$TOGGLE_FILE.new"
+    run mv -f -- "$TOGGLE_FILE.new" "$TOGGLE_FILE"
+}
+
+user_rule() {
+    local name=$1 desc=$2 f
+    for f in "$HYPR_USER/monitors.lua" "$HYPR_USER/hyprland-gui.lua"; do
+        [[ -r $f ]] || continue
+        grep -qF -- "\"$name\"" "$f" && return 0
+        [[ -n $desc ]] && grep -qF -- "desc:$desc" "$f" && return 0
+    done
+    return 1
+}
+
+cmd_list() {
+    local monitors state names=() name desc rules='{}'
+    monitors="$(monitors_json)"
+    state="$(state_json)"
+    while IFS=$'\t' read -r name desc; do
+        names+=("$name")
+        if user_rule "$name" "$desc"; then
+            rules="$(jq -c --arg n "$name" '. + {($n): true}' <<<"$rules")"
+        fi
+    done < <(jq -r '.[] | [.name, (.description // "")] | @tsv' <<<"$monitors")
+    local size
+    size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
+    [[ $size =~ ^[0-9]+$ ]] || size="${XCURSOR_SIZE:-24}"
+    jq -c --argjson state "$state" --argjson rules "$rules" \
+        --argjson mirror "$([[ -f $MIRROR_FILE ]] && echo true || echo false)" \
+        --argjson laptopOff "$([[ -f $LAPTOP_OFF_FILE ]] && echo true || echo false)" \
+        --argjson cursor "$size" '
+        . as $all
+        | { monitors: [ .[] | . as $m
+              | ($m.description // "") as $d
+              | (if $d != "" and ([$all[] | select((.description // "") == $d)] | length) == 1 then "desc:" + $d else $m.name end) as $key
+              | $m + { ruleKey: $key, persisted: ($state.outputs[$key] // null), userRule: ($rules[$m.name] // false) } ],
+            mirror: $mirror, laptopOff: $laptopOff, cursorSize: $cursor }' <<<"$monitors"
+}
+
+cmd_set() {
+    local name="" mode="" position="" scale="" transform="" power=""
+    while (($#)); do
+        case "$1" in
+        --mode | --position | --scale | --transform)
+            (($# >= 2)) || die "$1 needs a value"
+            case "$1" in
+            --mode) mode=$2 ;;
+            --position) position=$2 ;;
+            --scale) scale=$2 ;;
+            --transform) transform=$2 ;;
+            esac
+            shift
+            ;;
+        --on) power=on ;;
+        --off) power=off ;;
+        -*) usage >&2; exit 2 ;;
+        *) [[ -z $name ]] || { usage >&2; exit 2; }; name=$1 ;;
+        esac
+        shift
+    done
+    [[ -n $name ]] || { usage >&2; exit 2; }
+    [[ $name =~ $NAME_RE ]] || die "refusing unusual monitor name: $name"
+    [[ -z $mode || $mode =~ ^[0-9]+x[0-9]+@[0-9]+(\.[0-9]+)?$ ]] || die "--mode is WIDTHxHEIGHT@HZ, e.g. 2560x1440@143.97"
+    [[ -z $position || $position =~ ^-?[0-9]+x-?[0-9]+$ ]] || die "--position is XxY, e.g. 1920x0"
+    [[ -z $scale || $scale =~ ^([1-9][0-9]*|0)(\.[0-9]+)?$ ]] || die "--scale is a number, e.g. 1.25"
+    [[ -z $scale ]] || awk -v s="$scale" 'BEGIN { exit !(s >= 0.25 && s <= 4) }' || die "--scale must be between 0.25 and 4"
+    [[ -z $transform || $transform =~ ^[0-7]$ ]] || die "--transform is 0-7"
+    [[ -n $mode$position$scale$transform$power ]] || die "nothing to set for $name"
+    [[ ! -f $MIRROR_FILE ]] || die "mirroring is on; run: haseen hardware mirror-display off"
+
+    local monitors state key entry live
+    monitors="$(monitors_json)"
+    jq -e --arg n "$name" 'any(.[]; .name == $n)' <<<"$monitors" >/dev/null || die "no monitor named $name (haseen hardware monitor list)"
+    state="$(state_json)"
+    key="$(rule_key "$monitors" "$name")"
+    entry="$(jq -c --arg k "$key" '.outputs[$k] // {}' <<<"$state")"
+
+    if [[ $power == off ]]; then
+        local enabled
+        enabled="$(jq --arg n "$name" '[.[] | select((.disabled | not) and .name != $n)] | length' <<<"$monitors")"
+        ((enabled > 0)) || die "can't turn off the only active display"
+        entry='{"disabled":true}'
+        live="hl.monitor({ output = $(lua_string "$name"), disabled = true })"
+    else
+        # The current mode is the base: hl.monitor() replaces a rule, so a
+        # field left out would fall back to Hyprland's own default.
+        local cur
+        cur="$(jq -c --arg n "$name" '.[] | select(.name == $n)' <<<"$monitors")"
+        if [[ $power == on ]]; then
+            entry="$(jq -c 'del(.disabled)' <<<"$entry")"
+            [[ -n $mode ]] || mode="$(jq -r '.mode // "preferred"' <<<"$entry")"
+            [[ -n $position ]] || position="$(jq -r '.position // "auto"' <<<"$entry")"
+        else
+            [[ -n $mode ]] || mode="$(jq -r '"\(.width)x\(.height)@\(.refreshRate * 100 | round / 100)"' <<<"$cur")"
+            [[ -n $position ]] || position="$(jq -r '"\(.x)x\(.y)"' <<<"$cur")"
+        fi
+        [[ -n $scale ]] || scale="$(jq -r --argjson e "$entry" '$e.scale // .scale' <<<"$cur")"
+        [[ -n $transform ]] || transform="$(jq -r --argjson e "$entry" '$e.transform // .transform' <<<"$cur")"
+        entry="$(jq -c --arg mode "$mode" --arg pos "$position" --argjson scale "$scale" --argjson tr "$transform" \
+            '. + {mode: $mode, position: $pos, scale: $scale, transform: $tr}' <<<"$entry")"
+        local wake=""
+        [[ $power != on ]] || wake=", disabled = false"
+        live="hl.monitor({ output = $(lua_string "$name"), mode = \"$mode\", position = \"$position\", scale = $scale, transform = $transform$wake })"
+    fi
+    state="$(jq -c --arg k "$key" --argjson e "$entry" '.outputs[$k] = $e' <<<"$state")"
+    save "$state"
+    run hyprctl eval "$live"
+    $DRY_RUN || info "$name: $(jq -r 'if .disabled then "off" else "\(.mode) at \(.position), scale \(.scale), transform \(.transform)" end' <<<"$entry")"
+}
+
+cmd_reset() {
+    local state
+    state="$(state_json)"
+    if (($#)); then
+        local monitors key
+        [[ $1 =~ $NAME_RE ]] || die "refusing unusual monitor name: $1"
+        monitors="$(monitors_json)"
+        key="$(rule_key "$monitors" "$1")"
+        state="$(jq -c --arg k "$key" --arg n "$1" 'del(.outputs[$k], .outputs[$n])' <<<"$state")"
+    else
+        state='{"outputs":{}}'
+    fi
+    save "$state"
+    run hyprctl reload
+}
+
+cmd_cursor() {
+    (($# == 1)) || { usage >&2; exit 2; }
+    local size=$1 theme
+    [[ $size =~ ^[0-9]+$ ]] && ((size >= 8 && size <= 256)) || die "cursor SIZE is a number of pixels, 8-256"
+    theme="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'" || true)"
+    [[ -n $theme ]] || theme="${XCURSOR_THEME:-default}"
+    run gsettings set org.gnome.desktop.interface cursor-size "$size" || warn "gsettings did not take the cursor size (GTK apps keep theirs)"
+    run hyprctl setcursor "$theme" "$size"
+    # The session starts with XCURSOR_SIZE from uwsm's env.d (the desktop
+    # layer's 60-haseen-defaults sets 20); this file loads after it.
+    printf '# Written by haseen hardware monitor cursor (plan 098).\nexport XCURSOR_SIZE=%s\n' "$size" | write_user_file "$CURSOR_ENV"
+    $DRY_RUN || info "cursor size $size ($theme)"
+}
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+verb=${1:-}
+(($#)) && shift
+case $verb in
+list) (($# == 0)) || { usage >&2; exit 2; }; cmd_list ;;
+set) cmd_set "$@" ;;
+reset) (($# <= 1)) || { usage >&2; exit 2; }; cmd_reset "$@" ;;
+cursor) cmd_cursor "$@" ;;
+*) usage >&2; exit 2 ;;
+esac

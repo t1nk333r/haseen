@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.monitor-settings",
+  "name": "Monitor Settings",
+  "version": "1.0.0",
+  "description": "Refresh rate, scale, rotation, on/off, mirror/extend, a draggable arrangement and the cursor size for each monitor (haseen hardware monitor), kept across reloads; brightness opens haseen.display. Adapted from juliusmork-sys's Monitor Settings Extender (MIT). Off by default",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.monitor-settings (state, act, drop) from the open panel"
+    }
+  },
+  "permissions": [
+    "exec",
+    "files:write"
+  ],
+  "requires": {
+    "bins": [
+      "hyprctl",
+      "jq"
+    ]
+  }
+}

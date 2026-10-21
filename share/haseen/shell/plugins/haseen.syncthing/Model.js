@@ -1,0 +1,184 @@
+// Model.js: pure logic for haseen.syncthing (plan 098). No QML types here,
+// so tests/test-syncthing.sh runs it under the real Qt JS engine.
+//
+// Adapted from ilyaZar's omarchy-syncthing (MIT, Copyright (c) 2026
+// IlyaZar), its session normalisation (core/internal/session) and status
+// icon rules: a folder's state and completion, the overall state the bar
+// shows (offline, error, syncing, paused, idle), invitations, and the
+// recent file activity from ItemFinished events.
+
+const MAX_ACTIVITY = 20;
+
+function num(v) {
+    const n = Number(v);
+    return isFinite(n) && n >= 0 ? n : 0;
+}
+
+// parseStatus(text): `haseen syncthing status` as a state, or null.
+function parseStatus(text) {
+    let s;
+    try {
+        s = JSON.parse(String(text || ""));
+    } catch (e) {
+        return null;
+    }
+    if (!s || typeof s !== "object" || !Array.isArray(s.folders) || !Array.isArray(s.devices))
+        return null;
+    const str = v => typeof v === "string" ? v : "";
+    return {
+        version: str(s.version),
+        myID: str(s.myID),
+        guiUrl: /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]):[0-9]+\/$/.test(str(s.guiUrl)) ? s.guiUrl : "",
+        folders: s.folders.filter(f => f && typeof f.id === "string").map(f => ({
+            id: f.id,
+            label: str(f.label) || f.id,
+            path: str(f.path),
+            paused: f.paused === true,
+            state: str(f.state) || "unknown",
+            error: str(f.error),
+            globalBytes: num(f.globalBytes),
+            needBytes: num(f.needBytes),
+            needFiles: num(f.needFiles),
+            pullErrors: num(f.pullErrors),
+            devices: Array.isArray(f.devices) ? f.devices.filter(d => typeof d === "string") : []
+        })),
+        devices: s.devices.filter(d => d && typeof d.id === "string").map(d => ({ id: d.id, name: str(d.name) || d.id.slice(0, 7), paused: d.paused === true, connected: d.connected === true })),
+        pendingDevices: (Array.isArray(s.pendingDevices) ? s.pendingDevices : []).filter(d => d && typeof d.id === "string").map(d => ({ id: d.id, name: str(d.name) || d.id.slice(0, 7), address: str(d.address) })),
+        pendingFolders: (Array.isArray(s.pendingFolders) ? s.pendingFolders : []).filter(f => f && typeof f.id === "string" && typeof f.device === "string").map(f => ({ id: f.id, device: f.device, deviceName: str(f.deviceName) || f.device.slice(0, 7), label: str(f.label) || f.id }))
+    };
+}
+
+// completion(folder): percent of the global size this device has.
+function completion(f) {
+    if (!f || f.globalBytes <= 0)
+        return 100;
+    return Math.max(0, Math.min(100, Math.floor(100 * (1 - f.needBytes / f.globalBytes))));
+}
+
+function folderBusy(f) {
+    return !f.paused && /^(syncing|scanning|sync-preparing|scan-waiting|sync-waiting|cleaning)$/.test(f.state);
+}
+
+function folderFailed(f) {
+    return !f.paused && (f.state === "error" || f.error !== "" || f.pullErrors > 0);
+}
+
+// folderText(folder): "Up to date", "Syncing 42%", "Scanning", "Paused"…
+function folderText(f) {
+    if (!f)
+        return "";
+    if (f.paused)
+        return "Paused";
+    if (f.state === "error" || f.error)
+        return "Error: " + (f.error || "stopped");
+    if (f.pullErrors > 0)
+        return f.pullErrors === 1 ? "1 file failed" : f.pullErrors + " files failed";
+    if (f.state === "syncing" || f.state === "sync-preparing")
+        return "Syncing " + completion(f) + "%";
+    if (f.state === "scanning" || f.state === "scan-waiting")
+        return "Scanning";
+    if (f.state === "sync-waiting")
+        return "Waiting to sync";
+    if (f.state === "idle")
+        return f.needFiles > 0 ? "Out of sync (" + f.needFiles + ")" : "Up to date";
+    return f.state.charAt(0).toUpperCase() + f.state.slice(1);
+}
+
+// overall(state, online): what the bar shows: { kind, text }, kind one of
+// offline, error, syncing, invited, paused, idle.
+function overall(s, online) {
+    if (!online || !s)
+        return { kind: "offline", text: "Syncthing is not running" };
+    const failed = s.folders.filter(folderFailed);
+    if (failed.length)
+        return { kind: "error", text: failed.length === 1 ? failed[0].label + ": " + folderText(failed[0]) : failed.length + " folders have errors" };
+    const busy = s.folders.filter(folderBusy);
+    if (busy.length)
+        return { kind: "syncing", text: busy.length === 1 ? busy[0].label + ": " + folderText(busy[0]) : "Syncing " + busy.length + " folders" };
+    const invites = s.pendingDevices.length + s.pendingFolders.length;
+    if (invites)
+        return { kind: "invited", text: invites === 1 ? "1 invitation" : invites + " invitations" };
+    if (s.folders.length && s.folders.every(f => f.paused))
+        return { kind: "paused", text: "Paused" };
+    const up = s.devices.filter(d => d.connected).length;
+    return { kind: "idle", text: s.folders.length ? "Up to date · " + up + " of " + s.devices.length + " devices" : "No folders yet" };
+}
+
+const GLYPHS = { offline: "\u{F04E8}", error: "\u{F04E7}", syncing: "\u{F04E6}", invited: "\u{F04E6}", paused: "\u{F04E6}", idle: "\u{F04E6}" };
+
+function glyph(kind) {
+    return GLYPHS[kind] || GLYPHS.idle;
+}
+
+function formatBytes(n) {
+    const v = num(n);
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0, x = v;
+    while (x >= 1024 && i < units.length - 1) {
+        x /= 1024;
+        i++;
+    }
+    return (i === 0 ? String(Math.round(x)) : x.toFixed(x >= 10 ? 0 : 1)) + " " + units[i];
+}
+
+// parseEvents(text, lastId, activity): a /rest/events reply. Returns
+// { lastId, changed, activity }: the highest id seen, whether anything
+// other than a finished item came (worth a new status), and the newest
+// finished items first, at most MAX_ACTIVITY.
+function parseEvents(text, lastId, activity) {
+    let list;
+    try {
+        list = JSON.parse(String(text || ""));
+    } catch (e) {
+        list = null;
+    }
+    const out = { lastId: num(lastId), changed: false, activity: (activity || []).slice() };
+    if (!Array.isArray(list))
+        return out;
+    for (const e of list) {
+        if (!e || typeof e !== "object")
+            continue;
+        if (num(e.id) > out.lastId)
+            out.lastId = num(e.id);
+        if (e.type === "ItemFinished" && e.data && typeof e.data.item === "string") {
+            out.activity.unshift({
+                folder: typeof e.data.folder === "string" ? e.data.folder : "",
+                item: e.data.item,
+                action: typeof e.data.action === "string" ? e.data.action : "update",
+                error: typeof e.data.error === "string" ? e.data.error : "",
+                time: typeof e.time === "string" ? e.time : ""
+            });
+        } else {
+            out.changed = true;
+        }
+    }
+    out.activity = out.activity.slice(0, MAX_ACTIVITY);
+    return out;
+}
+
+// activityText(entry, folders): "Updated notes.md · Docs".
+function activityText(a, folders) {
+    const f = (folders || []).find(x => x.id === a.folder);
+    const verb = a.error ? "Failed" : a.action === "delete" ? "Deleted" : a.action === "metadata" ? "Changed" : "Updated";
+    return verb + " " + a.item + (f ? " · " + f.label : "");
+}
+
+// expandHome(path, home): a leading ~ means the home directory.
+function expandHome(path, home) {
+    const p = String(path || "").trim();
+    if (p === "~")
+        return home;
+    return p.indexOf("~/") === 0 ? home + p.slice(1) : p;
+}
+
+// shared(folder, deviceId): the folder is shared with that device.
+function shared(f, id) {
+    return !!(f && f.devices.indexOf(id) >= 0);
+}
+
+// backoff(failures): seconds to wait before asking a stopped Syncthing
+// again: 5, 10, 20, 40, then the cap (settings.refreshIntervalSec, ≥ 60).
+function backoff(failures, cap) {
+    const c = Math.max(60, num(cap) || 60);
+    return Math.min(c, 5 * Math.pow(2, Math.max(0, failures)));
+}
