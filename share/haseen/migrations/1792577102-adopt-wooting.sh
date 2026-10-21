@@ -3,8 +3,8 @@
 # haseen.wooting (owner, 2026-10-21). A shell.json that uses the old id is
 # re-pointed at the new one:
 #   - bar sections (left, center, right, overflow, pinned): the old id becomes
-#     the new one in place, or goes when the new one is already there; other
-#     entries, strings or not, stay as they are;
+#     the new one in place, or goes when the new one is already there; every
+#     other entry, string or not, stays exactly as it was, duplicates included;
 #   - services: haseen.wooting has no service (bar widget and panel only), so
 #     an old entry there is dropped;
 #   - plugins.<old>: moves to plugins.<new>, keeping `enabled` and only the
@@ -38,13 +38,17 @@ used="$(jq -r --arg o "$OLD" '
 settings="$(jq -c '(.settings // {}) | keys' "$HASEEN_PATH/shell/plugins/$NEW/manifest.json")"
 
 # repoint KEEP: the old id replaced in place by the new one (dropped when KEEP
-# is false), then duplicates removed, first occurrence kept. A non-string
-# entry (an object a hand edit left) is never looked up as an id.
+# is false), then the new id kept only at its first place. Only that id is
+# de-duplicated: the user's own repeats, and non-string entries (an object a
+# hand edit left), are not this migration's to touch and are never looked up
+# as an id.
 updated="$(jq --arg o "$OLD" --arg n "$NEW" --argjson keys "$settings" '
     def repoint($keep):
         if type != "array" then .
         else map(if type == "string" and . == $o then (if $keep then $n else empty end) else . end)
-            | reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end)
+            | . as $a
+            | ([range(length) | select($a[.] == $n)] | first) as $first
+            | [range(length) as $i | select($a[$i] != $n or $i == $first) | $a[$i]]
         end;
     (if .bar then reduce ("left", "center", "right", "overflow", "pinned") as $s (.;
         if .bar | has($s) then .bar[$s] |= repoint(true) else . end) else . end)

@@ -42,6 +42,8 @@ UNIT="$(wooting_unit_path)"
 # enable`); with haseen's unit behind that name it would run at every login.
 WANTS_LINK="$(dirname "$UNIT")/default.target.wants/$WOOTING_UNIT_NAME"
 BACKUP_ROOT="$HASEEN_USER_STATE/wooting"
+# Named, never run or read: off points the owner at it to restore the plugin.
+PLUGIN_INSTALL="$HOME/.config/omarchy/plugins/t1nk33r.wooting/install.sh"
 
 usage() {
     cat <<EOF
@@ -53,7 +55,8 @@ Usage: haseen setup wooting [on|off|status] [--dry-run] [--yes]
           of either left by the t1nk33r.wooting plugin is saved to
           ${BACKUP_ROOT/#$HOME/\~}/ and replaced, so one daemon owns the keyboard.
   off     remove haseen's rule and unit, and stop the daemon. A copy that is
-          not haseen's is left alone.
+          not haseen's is left alone. Names the plugin's saved copies and its
+          own install.sh, which brings the plugin's daemon back.
   status  the daemon binary, who installed the rule and the unit, whether a
           Wooting is attached and wootingd runs (default).
 
@@ -230,10 +233,27 @@ off() {
     else
         [[ $rule == missing ]] || info "$WOOTING_RULE is $(describe "$rule"): left alone"
     fi
-    if compgen -G "$BACKUP_ROOT/replaced-*" >/dev/null; then
-        info "the plugin's earlier copies are kept in ${BACKUP_ROOT/#$HOME/\~}/"
-    fi
+    report_saved
     info "Wooting off"
+}
+
+# After off, nothing starts a daemon for the keyboard. If `on` replaced the
+# plugin's copies, say exactly where they are and how the plugin's own daemon
+# comes back: its install.sh reinstalls both names (haseen never copies them
+# back, since they belong to the plugin's build).
+report_saved() {
+    local dir file names saved=false
+    for dir in "$BACKUP_ROOT"/replaced-*/; do
+        [[ -d $dir ]] || continue
+        saved=true
+        names=""
+        for file in "$dir"*; do
+            [[ -f $file ]] && names+=" ${file##*/}"
+        done
+        info "the t1nk33r.wooting plugin's copies that 'on' replaced are in ${dir/#$HOME/\~}:${names:- (empty)}"
+    done
+    $saved || return 0
+    info "to run the plugin's own wootingd again, run its installer: ${PLUGIN_INSTALL/#$HOME/\~}"
 }
 
 parse_common_flags "$@"

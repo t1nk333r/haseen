@@ -522,9 +522,27 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
   installed daemon (`share/haseen/default/systemd/`). The rule tags the
   keyboard (vendor 31e3) `uaccess` and `systemd` and pulls the unit in with
   `SYSTEMD_USER_WANTS`; the unit `BindsTo=` the keyboard's device unit and is
-  never enabled. So wootingd runs only while a Wooting is attached, reads the
-  active profile every 1.5 s (one HID round trip) and the profile list every
-  30 s while it runs, and removes its socket on SIGTERM.
+  never enabled. So wootingd runs only while a Wooting is attached, and
+  removes its socket on SIGTERM.
+- **Resource profile: a recorded exception to §6.** The daemon is vendored
+  unchanged (owner, 2026-10-21, plan 099), so §6's 2 s floor does not hold
+  inside it. While it runs:
+  - one thread reads the active profile every 1.5 s, which is one HID round
+    trip, and the profile list every 30 s (`core/wootingd/src/main.rs:50`,
+    `:202`, loop at `:917`);
+  - a second thread owns the analog interface for the daemon's whole life,
+    whether or not anyone subscribed (`main.rs:459`, spawned at `:940`).
+    - It blocks in `poll(2)` for at most 250 ms (`ANALOG_READ_TIMEOUT_MS`,
+      `main.rs:443`), so an idle keyboard wakes it about 4 times a second.
+    - While keys move, every analog report, up to 1 kHz, is decoded and given
+      to the Fn-layer learner (`fnmap.observe`, `main.rs:528`). Broadcasts
+      are coalesced to at most 60 a second, and the learned map is written
+      to disk only on a release that taught it something.
+    - While the interface is absent it retries every 1.5 s (`ANALOG_RETRY`,
+      `main.rs:445`).
+
+  The shell side never polls. The 250 ms read timeout only bounds how fast
+  an unplug is noticed, so the owner could raise it later.
 - **Coexistence.** The owner's t1nk33r.wooting plugin installs the same two
   names. haseen keeps them and takes them over: one rule wants one unit name,
   the name resolves to one file, and the user's unit directory outranks the
@@ -537,8 +555,9 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
   no timer but a bounded 2 s connect retry: it watches the socket file
   through `FileView` (inotify), so with no keyboard it takes no room and does
   nothing. The panel lists the stored profiles; its keyboard drawing opens
-  the analog stream (at most 60 frames a second, coalesced by the daemon)
-  only while it is shown.
+  the shell's analog subscription only while it is shown, and receives at
+  most 60 frames a second, coalesced by the daemon. The daemon reads the
+  analog interface whether or not anyone subscribed (above).
 - **Commands.** `haseen wooting` (status, get, list, set, analog, fn) and
   `haseen wooting doctor` use exit codes beyond §4's: 3 daemon not
   reachable, 4 no keyboard, 5 dependency missing.

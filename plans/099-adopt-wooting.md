@@ -8,7 +8,7 @@
 - **Depends on**: 005 011 028 032 074 095 096 097 098
 - **Category**: shell, plugins, build
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-21 (`tests/test-wooting.sh` 276/276, `tests/test-wootingd.sh` 25/25 with the daemon's 49 cargo tests; affected suites and gates in Evidence)
+- **State**: DONE 2026-10-21 (`tests/test-wooting.sh` 286/286, `tests/test-wootingd.sh` 25/25 with the daemon's 49 cargo tests; affected suites and gates in Evidence)
 
 ## Decision (owner, 2026-10-21)
 
@@ -93,11 +93,21 @@ and outside clicks), the `omarchy` manifest block.
 
 `core/wootingd/` holds the crate as it was: `Cargo.toml` and `Cargo.lock`
 byte-identical (`diff` of both), one dependency `parking_lot`, and `LICENSE`.
-`diff` of each source file with comment lines removed shows two changed
-lines, both messages: the permission hint names `haseen setup wooting on`
-instead of `./install.sh`, and the no-echo error reads "none of 8 reads
-echoed it" (the old wording followed an unlicensed source, below). Comments
-gained a provenance header per file and the citation changes below.
+`diff` of each source file with comment lines removed shows these changes,
+and no other:
+- three messages:
+  - the permission hint names `haseen setup wooting on` instead of
+    `./install.sh`;
+  - the no-echo error reads "none of 8 reads echoed it";
+  - the empty active-profile error reads "active profile (command 11): empty
+    payload".
+
+  The old wordings of the last two followed the unlicensed wootswitch
+  (below).
+- four command constants renamed, with their uses (below).
+
+Comments gained a provenance header per file and the citation changes
+below.
 
 `tools/build-sidecar.sh` builds it after the Go helpers with `cargo build
 --release --locked --quiet` and `CARGO_TARGET_DIR` outside the tree
@@ -177,8 +187,12 @@ today. Chosen: **the same names and a take-over.**
 - wootingd itself refuses to start beside a live socket
   (`core/wootingd/src/main.rs`, "another wootingd is already listening"), and
   `on` warns about a wootingd running outside systemd.
-- The plugin's directory is never read or written; `off` does not restore
-  the saved copies (the plugin's own `install.sh` reinstalls them).
+- The plugin's directory is never read or written. `off` does not restore
+  the saved copies; the plugin's own `install.sh` reinstalls them. After
+  removing haseen's copies, `off` names each saved directory
+  (`~/.local/state/haseen/wooting/replaced-<time>/`) with the files in it,
+  and that installer, `~/.config/omarchy/plugins/t1nk33r.wooting/install.sh`
+  (review round 1).
 
 Rejected: **detection and a refusal** (different names, `on` refusing while
 the plugin's files exist). It leaves two rules able to want two units, so a
@@ -193,7 +207,10 @@ forbids haseen to do itself.
 `1792531693-omarchy-path.sh`, shaped on `1791560100-adopt-tools-forks.sh`:
 under the `shell.json` lock and through `shell_config_write` (atomic,
 `DRY_RUN` honoured), only when the old id appears: bar sections get the new id
-in place (non-string entries untouched), `services` drops it (no service
+in place, and only `haseen.wooting` is then kept once, at its first place.
+Every other entry stays exactly as it was, the user's own repeated strings
+and identical objects included (review round 1: the first version
+de-duplicated whole sections). `services` drops the old id (no service
 kind), `plugins.<old>` moves to `plugins.<new>` with `enabled` and the
 manifest's settings, an existing new entry winning key by key. It never
 touches the plugin's directory, rule or unit, and says `haseen setup wooting
@@ -241,6 +258,29 @@ only):
   in the coordinator's list, found cited in proto.rs): its status-code lines
   were off by one (keyboard.js:22-24 → 23-25) and are corrected; at
   `47e20f287a204d610d6adc3c340cec28c29498a4`.
+- **Command names** (review round 1, Sonnet 5.5 on `3054a2c`): the
+  constants for commands 38, 39, 48 and 55 carried wootswitch's enum names,
+  and proto.rs said so ("The names are that list's"). They are renamed to
+  names haseen chose for what each command answers on the 60HE+ (PROBED):
+  - `CMD_RELOAD_PROFILE` (38) → `CMD_APPLY_PROFILE`;
+  - `CMD_GET_KEYBOARD_PROFILE` (39) → `CMD_SLOT_CONTENT`;
+  - `CMD_GET_MAPPING_PROFILE` (48) → `CMD_SLOT_KEYMAP`;
+  - `CMD_GET_PROFILE_METADATA` (55) → `CMD_SLOT_NAME`.
+
+  Two more wootswitch-only names are gone from comments and one message:
+  `GetDigitalProfilesCount` (9) is now "the profile-count command", and
+  `GetCurrentKeyboardProfileIndex` is now "active profile (command 11)", or
+  `CMD_GET_ACTIVE_PROFILE`.
+
+  The names that stay come from licensed sources:
+  - GetVersion, GetSerial, GetDeviceConfig and ActivateProfile are
+    ApeironTsuka/wooting-sdk keyboard.js:13, 14, 20 and 21;
+  - `CMD_RELOAD_PROFILE_0` (7) follows ShayBox's `RELOAD_PROFILE`
+    (lib.rs:16).
+
+  Ordinals, frames and behaviour are unchanged: `cargo test --locked` still
+  passes 49, and the comment-stripped `diff` against the original shows only
+  the renamed identifiers and the messages above.
 - No Wooting crate became a dependency: wooting-analog-sdk's Rust API (#133)
   is not on crates.io and pulls hidapi, libloading and cmake, against
   wootingd's sole-owner, one-dependency design.
@@ -251,21 +291,37 @@ only):
 
 ## Evidence
 
-- `tests/test-wooting.sh` 276/276: manifest validates, off by default,
-  licence, UPSTREAM.md, NOTICE.md and AGENTS.md rows; no compat import, no
-  Omarchy command, no colour literal, one marked timer; the Model.js suite
-  (269 under node); the socket library, `haseen wooting` and its doctor
-  against `tools/fake-wootingd.py` (the original's fake, plus the daemon's
-  change broadcast and its socket removal on SIGTERM); `haseen setup wooting`
-  in fixture sysroots (dry runs pure, the exact root and user-manager calls,
-  idempotence, the take-over with byte-identical saved copies and an
-  untouched plugin directory, refusals, off leaving what is not haseen's, the
-  missing daemon); the migration (ordering after `1792531693-omarchy-path.sh`
-  by a range check, dry run, re-run, non-string entries, new entry wins,
-  invalid and absent files); the widget and panel in qs offscreen against a
-  daemon that appears 1.5 s after the shell (hidden, then "Typing", a switch
-  from the panel reaching the bar through the daemon, the 61-key 60HE+ with
-  one key under travel, hidden again when the daemon is killed).
+- `tests/test-wooting.sh`: 286/286 at review round 1 (276/276 at
+  `3054a2c`). It covers:
+  - the manifest, which validates and is off by default;
+  - the licence, UPSTREAM.md, NOTICE.md and AGENTS.md rows;
+  - the contracts: no compat import, no Omarchy command, no colour literal,
+    one marked timer;
+  - the Model.js suite (269 under node);
+  - the socket library, `haseen wooting` and its doctor, against
+    `tools/fake-wootingd.py`. That is the original's fake, plus the daemon's
+    change broadcast and its socket removal on SIGTERM.
+  - `haseen setup wooting` in fixture sysroots:
+    - dry runs are pure;
+    - the exact root and user-manager calls;
+    - idempotence;
+    - the take-over, with byte-identical saved copies and an untouched
+      plugin directory;
+    - `off` afterwards, naming the exact saved directory, its files and the
+      plugin's installer;
+    - refusals, `off` leaving what is not haseen's, and the missing daemon.
+  - the migration:
+    - ordering after `1792531693-omarchy-path.sh`, by a range check;
+    - dry run and re-run;
+    - non-string entries, and the new entry winning;
+    - the user's own repeated strings and identical objects kept;
+    - invalid and absent files.
+  - the widget and panel in qs offscreen, against a daemon that appears
+    1.5 s after the shell:
+    - hidden, then "Typing";
+    - a switch from the panel reaching the bar through the daemon;
+    - the 61-key 60HE+ with one key under travel;
+    - hidden again when the daemon is killed.
 - `tests/test-wootingd.sh` 25/25: the build script without cargo and with a
   cargo that does not run (skips, or fails under `HASEEN_REQUIRE_CARGO=1`),
   `cargo test --locked` (49 passed),
@@ -279,6 +335,10 @@ only):
   89/89, test-dms-url 77/77. The full suite is left to CI.
 - `tools/lint.sh` OK (795 shell, 33 Lua, 198 JSON, 334 QML, 41 Go files);
   `tools/check-docs.sh` OK.
+- Review round 1 re-ran test-wooting (286/286), test-wootingd (25/25,
+  `cargo test --locked` 49 passed), test-migrate (30/30) and
+  test-migrate-defaults (62/62), plus `tools/lint.sh` and
+  `tools/check-docs.sh`, both OK.
 
 ## Not verified
 
@@ -294,6 +354,22 @@ only):
   the plugin's `install.sh`) to move the rule and unit to haseen's daemon;
   `haseen migrate` re-points `shell.json`. The plugin's copies are kept in
   `~/.local/state/haseen/wooting/`.
-- wootingd still reads the active profile every 1.5 s while a keyboard is
-  attached (owner's choice to vendor it unchanged); §6's 2 s rule covers the
-  shell, which does not poll.
+- wootingd's resource profile is a recorded exception to architecture §6.
+  This follows the owner's choice to vendor it unchanged. §6's 2 s rule
+  still covers the shell, which does not poll. While a keyboard is attached
+  the daemon:
+  - reads the active profile every 1.5 s (one HID round trip) and the
+    profile list every 30 s (`core/wootingd/src/main.rs:50`, `:202`, loop
+    at `:917`);
+  - runs its analog reader for its whole life, whether or not anyone
+    subscribed (`analog_thread`, `main.rs:459`, spawned at `:940`). The
+    reader:
+    - blocks in `poll(2)` for at most 250 ms (`ANALOG_READ_TIMEOUT_MS`,
+      `main.rs:443`), so an idle keyboard wakes it about 4 times a second;
+    - while keys move, decodes every analog report, up to 1 kHz, and gives
+      it to `fnmap.observe` (`main.rs:528`);
+    - while the analog interface is absent, retries every 1.5 s
+      (`ANALOG_RETRY`, `main.rs:445`).
+
+  Raising the 250 ms read timeout is a later option for the owner: it only
+  bounds how fast an unplug is noticed.

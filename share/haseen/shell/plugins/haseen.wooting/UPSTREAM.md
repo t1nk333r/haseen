@@ -50,7 +50,9 @@ became haseen manifest settings with the same names and defaults.
   (saved to `~/.local/state/haseen/wooting/` first) and points the unit at the
   installed daemon. Packages are not installed and no CLI link is made: the
   commands are on PATH as haseen's.
-- **Daemon.** Only comments and two messages changed (plan 099 lists them):
-  the permission hint names `haseen setup wooting on`, and the no-reply error
-  is reworded; the protocol citations are pinned to commits, and the facts
+- **Daemon.** Only comments, three messages and four command names changed
+  (plan 099 lists them): the permission hint names `haseen setup wooting on`,
+  the no-reply and empty active-profile errors are reworded, and commands 38,
+  39, 48 and 55 are named `CMD_APPLY_PROFILE`, `CMD_SLOT_CONTENT`,
+  `CMD_SLOT_KEYMAP` and `CMD_SLOT_NAME`; the protocol citations are pinned to commits, and the facts
   taken from the unlicensed wootswitch are stated without its text.

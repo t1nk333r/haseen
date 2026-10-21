@@ -607,6 +607,7 @@ assert_status "off succeeds" 0 "$STATUS"
 assert_eq "off removes exactly the rule, as root" "rm -f -- /etc/udev/rules.d/70-wootingd.rules
 udevadm control --reload" "$(cat "$SANDBOX/sudo.log")"
 assert_eq "and the unit" no "$([[ -e $UNIT ]] && echo yes || echo no)"
+assert_not_contains "with nothing taken over, off names no saved copies" "$OUTPUT" "copies that 'on' replaced"
 rm -f "$root/etc/udev/rules.d/70-wootingd.rules"
 capture haseen setup wooting off --yes
 assert_contains "a second off is already off" "$STATUS|$OUTPUT" "0|[*] Wooting is already off"
@@ -642,6 +643,18 @@ assert_eq "the always-on start is gone" no "$([[ -L $WANTS ]] && echo yes || ech
 assert_contains "haseen's rule replaces the plugin's" "$(cat "$SANDBOX/sudo.log")" "install -Dm0644 $RULE_SRC /etc/udev/rules.d/70-wootingd.rules"
 assert_contains "one unit restarts, so the old daemon stops before haseen's starts" "$(cat "$SANDBOX/systemctl.log")" "--user restart wootingd.service"
 assert_eq "the plugin's directory is untouched" "$plugin_dir" "$(find "$XDG_CONFIG_HOME/omarchy" -exec stat -c '%n %s %Y' {} + | sort)"
+# off after the take-over says exactly where the plugin's copies are and how
+# its own daemon comes back; it copies nothing back.
+recorder
+capture haseen setup wooting off --yes
+assert_status "off after the take-over succeeds" 0 "$STATUS"
+assert_contains "off names the exact saved directory and its files" "$OUTPUT" \
+    "the t1nk33r.wooting plugin's copies that 'on' replaced are in ${saved/#$HOME/\~}/: 70-wootingd.rules wootingd.service"
+assert_contains "and the restore step, the plugin's own installer" "$OUTPUT" \
+    "to run the plugin's own wootingd again, run its installer: ~/.config/omarchy/plugins/t1nk33r.wooting/install.sh"
+assert_eq "off removed haseen's unit and wrote nothing back" no "$([[ -e $UNIT ]] && echo yes || echo no)"
+assert_eq "the saved copies stay as they were" "$rule_before|$unit_before" "$(cat "$saved/70-wootingd.rules")|$(cat "$saved/wootingd.service")"
+assert_eq "the plugin's directory is still untouched" "$plugin_dir" "$(find "$XDG_CONFIG_HOME/omarchy" -exec stat -c '%n %s %Y' {} + | sort)"
 
 # off leaves what is not haseen's alone.
 root="$(sysroot leave)"
@@ -725,6 +738,16 @@ put '{"bar":{"left":["haseen.wooting","t1nk33r.wooting"]},"plugins":{"t1nk33r.wo
 run_migration
 assert_eq "an id once, at its first place" '["haseen.wooting"]' "$(q .bar.left)"
 assert_eq "the existing new entry wins key by key" '{"enabled":false,"settings":{"showName":false,"hideWhenAbsent":false}}' "$(q '.plugins["haseen.wooting"]')"
+# Only haseen.wooting is de-duplicated: the user's own repeats, strings and
+# identical objects alike, stay exactly where they were.
+put '{"bar":{"right":["haseen.clock","t1nk33r.wooting",{"id":"x.inline"},"haseen.clock",{"id":"x.inline"},"haseen.wooting","t1nk33r.wooting"]},
+ "services":["haseen.pager","haseen.pager",{"id":"s"},{"id":"s"},"t1nk33r.wooting"]}'
+run_migration
+assert_status "a section with the user's own duplicates migrates" 0 "$STATUS"
+assert_eq "bar: the new id once, every other entry and its repeats kept in order" \
+    '["haseen.clock","haseen.wooting",{"id":"x.inline"},"haseen.clock",{"id":"x.inline"}]' "$(q .bar.right)"
+assert_eq "services: only the old id goes, the user's repeats stay" \
+    '["haseen.pager","haseen.pager",{"id":"s"},{"id":"s"}]' "$(q .services)"
 plugin_unit
 unit_before="$(stat -c '%s %Y' "$UNIT") $(sha256sum <"$UNIT")"
 put '{"bar":{"right":["t1nk33r.wooting"]}}'

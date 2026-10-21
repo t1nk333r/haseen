@@ -1,7 +1,10 @@
 //! Wooting vendor HID protocol.
 //!
 //! Vendored from the owner's t1nk333r/haseen-wooting, daemon/src/proto.rs at
-//! 184f6fa (MIT, Copyright (c) 2026 t1nk33r); plan 099. Only comments differ.
+//! 184f6fa (MIT, Copyright (c) 2026 t1nk33r); plan 099. Comments differ, and
+//! four command constants are renamed (38, 39, 48 and 55, below): their old
+//! names were the unlicensed wootswitch's. Ordinals and wire bytes are as they
+//! were.
 //!
 //! Every constant here is taken from source or from a probe against the real
 //! keyboard. Citations use `<repo>/<path>:<line>`, at these commits:
@@ -144,10 +147,10 @@ const REPORT_ID_ARM: u8 = 1;
 //   [0]=report id 1  [1]=0xD1  [2]=0xDA  [3]=cmd echo  [4]=status
 //   [5]=payload length  [6]=0  [7..]=payload
 // The length byte is unambiguous on this hardware (Ping=1, GetVersion=3,
-// GetSerial=11, GetDeviceConfig=7, GetProfileMetadata=32). This agrees with
+// GetSerial=11, GetDeviceConfig=7, the slot-name read=32). This agrees with
 // WootingProfileSwitcher/src/lib.rs:405-425 (`report_offset 1 + 5 +
 // extra_data_offset 1 = 7`). wootswitch reads a different byte of the
-// GetCurrentKeyboardProfileIndex reply as the active slot on ARM; on this
+// active-slot reply (`CMD_GET_ACTIVE_PROFILE`) as the slot on ARM; on this
 // 60HE+ payload[0] reads back each slot switched to (PROBED).
 //
 // Standard (UNPROBED — no 0x1337 keyboard available; from
@@ -188,11 +191,11 @@ pub const RESPONSE_RETRIES: usize = 8;
 /// ApeironTsuka/wooting-sdk keyboard.js:24 (Success is 136).
 pub const STATUS_SUCCESS: u8 = 0x88;
 /// Status byte of a command the firmware does not implement. PROBED:
-/// GetDigitalProfilesCount (9) answers 0x66 on this ARM 60HE+. Also
+/// the profile-count command (9) answers 0x66 on this ARM 60HE+. Also
 /// ApeironTsuka/wooting-sdk keyboard.js:23 (Unknown is 102).
 pub const STATUS_UNSUPPORTED: u8 = 0x66;
 /// Status byte of a refused argument. PROBED: ActivateProfile on an empty
-/// slot and GetMappingProfile past the last slot answer 0xFF here. Also
+/// slot and the slot-keymap read past the last slot answer 0xFF here. Also
 /// ApeironTsuka/wooting-sdk keyboard.js:25 (Error is 255).
 pub const STATUS_ERROR: u8 = 0xFF;
 
@@ -202,8 +205,9 @@ pub const STATUS_ERROR: u8 = 0xFF;
 // The rest are ordinals of the community's reverse-engineered command list:
 // 3, 7, 11 and 23 as WootingProfileSwitcher/src/lib.rs:15-18 defines them,
 // 1 and 23 as ApeironTsuka/wooting-sdk keyboard.js:13 and :21 do, and 38, 39,
-// 48 and 55 as facts from wootswitch's list (no licence; ordinals only). The
-// names are that list's. What each command answers here is marked PROBED.
+// 48 and 55 as facts from wootswitch's list (no licence; ordinals only).
+// Their names here are haseen's own, chosen for what each answers on this
+// keyboard; none is that list's. What each command answers is marked PROBED.
 /// GetVersion. ApeironTsuka/wooting-sdk keyboard.js:13 (GetVersion is 1).
 /// PROBED: answers a 3-byte payload, the firmware version (2.14.0 here).
 pub const CMD_GET_VERSION: u8 = 1;
@@ -222,32 +226,32 @@ pub const CMD_GET_DEVICE_CONFIG: u8 = 19;
 ///
 /// PROBED, and important: this command validates its argument and refuses
 /// slots that hold no stored profile. On this 60HE+ slot 0 answers 0x88 while
-/// slots 1..=3 answer 0xFF — the same slots whose `GetKeyboardProfile` payload
+/// slots 1..=3 answer 0xFF — the same slots whose `CMD_SLOT_CONTENT` payload
 /// is empty. Bytes 4 AND 5 are both range-checked (parameter2 = 1, i.e. an
 /// index of 256, also answers 0xFF), so the slot argument is a 16-bit value
 /// with parameter3 as its low byte; bytes 6-7 are ignored entirely (an
 /// out-of-range slot placed in parameter0 or parameter1 returns a hollow 0x88
 /// and changes nothing).
 pub const CMD_ACTIVATE_PROFILE: u8 = 23;
-/// ReloadProfile, ordinal 38 in wootswitch's list (a fact; no code taken).
-/// Tried before WootingProfileSwitcher's 7 by `Device::set_profile`, with the
-/// read-back as the arbiter.
-pub const CMD_RELOAD_PROFILE: u8 = 38;
-/// GetMappingProfile, ordinal 48 in wootswitch's list (a fact; no code taken).
-/// PROBED: used as the slot-*range* oracle — addressable slots answer 0x88,
+/// Applies the activated profile: ordinal 38 in wootswitch's list (a fact; no
+/// code taken). Tried before WootingProfileSwitcher's 7 by
+/// `Device::set_profile`, with the read-back as the arbiter.
+pub const CMD_APPLY_PROFILE: u8 = 38;
+/// Reads a slot's key mapping: ordinal 48 in wootswitch's list (a fact; no
+/// code taken). PROBED: used as the slot-*range* oracle — addressable slots answer 0x88,
 /// the first out-of-range slot answers 0xFF. On this 60HE+ slots 0..=3 are
 /// addressable and slot 4 returns 0xFF, matching the 4 onboard profiles in
 /// Wooting's quickstart docs (Fn+O / Fn+P / Fn+[ / Fn+]). Addressable is NOT
 /// the same as activatable — see `CMD_ACTIVATE_PROFILE` and
 /// `Device::profile_stored`.
-pub const CMD_GET_MAPPING_PROFILE: u8 = 48;
-/// GetKeyboardProfile, ordinal 39 in wootswitch's list (a fact; no code
+pub const CMD_SLOT_KEYMAP: u8 = 48;
+/// Reads what a slot holds: ordinal 39 in wootswitch's list (a fact; no code
 /// taken). PROBED: the activatable-slot oracle. Slot 0 returns a 22-byte
 /// payload, slots 1..=3 return a zero-length payload on this device.
-pub const CMD_GET_KEYBOARD_PROFILE: u8 = 39;
-/// GetProfileMetadata, ordinal 55 in wootswitch's list (a fact; no code
-/// taken). PROBED: answers the slot's name as protobuf (`protobuf_bytes`).
-pub const CMD_GET_PROFILE_METADATA: u8 = 55;
+pub const CMD_SLOT_CONTENT: u8 = 39;
+/// Reads a slot's name: ordinal 55 in wootswitch's list (a fact; no code
+/// taken). PROBED: answers the name as protobuf (`protobuf_bytes`).
+pub const CMD_SLOT_NAME: u8 = 55;
 
 /// Upper bound of the slot-range probe (`Device::profile_range`): the range
 /// is probed slot by slot and never past this. wootswitch caps its probe at 8
@@ -329,7 +333,7 @@ impl Reply {
 /// Minimal protobuf field reader: returns the bytes of the first length-delimited
 /// field with the given number.
 ///
-/// PROBED: `GetProfileMetadata` payloads really are protobuf — slot 0 returns
+/// PROBED: `CMD_SLOT_NAME` payloads really are protobuf — slot 0 returns
 /// `0a 10 "1 Typing Profile" 1a 0c "woot:p:black"`, i.e. field 1 (name) and
 /// field 3 (RGB theme), both wire type 2. WootingProfileSwitcher parses the
 /// serial blob the same way (WootingProfileSwitcher/src/lib.rs:99-112).
@@ -412,8 +416,8 @@ mod tests {
     /// nothing.
     #[test]
     fn slot_reaches_byte_four_on_arm() {
-        assert_eq!(frame(true, CMD_GET_PROFILE_METADATA, slot_params(true, 3))[4], 3);
-        assert_eq!(frame(false, CMD_GET_PROFILE_METADATA, slot_params(false, 3))[7], 3);
+        assert_eq!(frame(true, CMD_SLOT_NAME, slot_params(true, 3))[4], 3);
+        assert_eq!(frame(false, CMD_SLOT_NAME, slot_params(false, 3))[7], 3);
     }
 
     fn reply_of(bytes: &[u8]) -> Reply {
@@ -455,7 +459,7 @@ mod tests {
         assert!(!r.truncated());
     }
 
-    /// GetMappingProfile declares 150 bytes but only one 33-byte report
+    /// The slot-keymap read declares 150 bytes but only one 33-byte report
     /// arrives; the payload must clamp to what was actually read instead of
     /// reading past it, and say so.
     #[test]

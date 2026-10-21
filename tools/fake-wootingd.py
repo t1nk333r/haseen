@@ -50,7 +50,7 @@ import time
 # other addressable slots are empty. `--profiles N` pretends N of them are
 # stored (nameless past slot 0), for the name-resolution and cycling tests.
 NAMES = ["1 Typing Profile", None, None, None]
-RANGE = 4  # addressable slots (GetMappingProfile answers 0x88 for 0..=3)
+RANGE = 4  # addressable slots (the slot-keymap read answers 0x88 for 0..=3)
 SERIAL = "A00B0000W00T00000S00H00000"
 NODE = "/dev/hidraw5"
 FIRMWARE = "2.14.0"

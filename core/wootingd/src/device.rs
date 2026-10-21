@@ -2,8 +2,10 @@
 //!
 //! Vendored from the owner's t1nk333r/haseen-wooting, daemon/src/device.rs at
 //! 184f6fa (MIT, Copyright (c) 2026 t1nk33r); plan 099. Comments differ, and
-//! two messages: the permission hint names `haseen setup wooting on`, and the
-//! no-echo error is worded anew. Citations are pinned in proto.rs.
+//! three messages: the permission hint names `haseen setup wooting on`, and
+//! the no-echo and empty active-profile errors are worded anew. The commands
+//! proto.rs renamed are used under their new names. Citations are pinned in
+//! proto.rs.
 //!
 //! Transport rationale — hidapi is not linked. A Wooting command is a HID
 //! *feature* report (wooting-rgb-sdk/src/wooting-usb.c:698
@@ -355,16 +357,17 @@ impl Device {
         let reply = self.exchange_ok(CMD_GET_ACTIVE_PROFILE, [0; 4])?;
         let p = reply.payload();
         if p.is_empty() {
-            return Err(err("GetCurrentKeyboardProfileIndex: empty payload"));
+            return Err(err("active profile (command 11): empty payload"));
         }
         Ok(p[0])
     }
 
     /// Addressable onboard profile-slot range.
     ///
-    /// GetDigitalProfilesCount (cmd 9) cannot be asked: this ARM 60HE+
+    /// The profile-count command (9) cannot be asked: this ARM 60HE+
     /// answers it with status 0x66 (PROBED). So the range is probed instead:
-    /// the first slot whose GetMappingProfile answers 0xFF is out of range.
+    /// the first slot whose `CMD_SLOT_KEYMAP` read answers 0xFF is out of
+    /// range.
     ///
     /// This is the *address space*, NOT the list of usable profiles. On this
     /// 60HE+ it reports 4 while only slot 0 can actually be activated — use
@@ -372,7 +375,7 @@ impl Device {
     pub fn profile_range(&mut self) -> io::Result<u8> {
         for slot in 0..MAX_PROFILES {
             let params = slot_params(self.arm, slot);
-            match self.exchange(CMD_GET_MAPPING_PROFILE, params) {
+            match self.exchange(CMD_SLOT_KEYMAP, params) {
                 Ok(reply) if reply.status() == STATUS_ERROR => return Ok(slot.max(1)),
                 Ok(_) => continue,
                 Err(e) => {
@@ -391,7 +394,7 @@ impl Device {
     ///
     /// PROBED, and the reason this function exists: an addressable slot is not
     /// necessarily an activatable one. On this 60HE+ only slot 0 holds data —
-    /// `GetKeyboardProfile` (39) returns a 22-byte payload for slot 0 and a
+    /// `CMD_SLOT_CONTENT` (39) returns a 22-byte payload for slot 0 and a
     /// zero-length payload for slots 1..=3 — and `ActivateProfile` (23)
     /// answers 0xFF for exactly those empty slots while accepting slot 0.
     /// Reporting the addressable range as the profile list therefore offers
@@ -403,7 +406,7 @@ impl Device {
     /// the daemon's `profile set` error rather than as a silent no-op.
     pub fn profile_stored(&mut self, slot: u8) -> io::Result<bool> {
         let params = slot_params(self.arm, slot);
-        let reply = self.exchange(CMD_GET_KEYBOARD_PROFILE, params)?;
+        let reply = self.exchange(CMD_SLOT_CONTENT, params)?;
         if reply.status() != STATUS_SUCCESS {
             return Ok(false);
         }
@@ -417,7 +420,7 @@ impl Device {
     /// switchable, it just has no name.
     pub fn profile_name(&mut self, slot: u8) -> io::Result<Option<String>> {
         let params = slot_params(self.arm, slot);
-        let reply = self.exchange_ok(CMD_GET_PROFILE_METADATA, params)?;
+        let reply = self.exchange_ok(CMD_SLOT_NAME, params)?;
         let payload = reply.payload();
         // field 1 = name, field 3 = RGB theme id (PROBED: `0a 10 "1 Typing
         // Profile" 1a 0c "woot:p:black"`).
@@ -441,7 +444,7 @@ impl Device {
         self.exchange_ok(CMD_ACTIVATE_PROFILE, params)?;
         thread::sleep(Duration::from_millis(SET_SETTLE_MS));
 
-        for reload in [CMD_RELOAD_PROFILE, CMD_RELOAD_PROFILE_0] {
+        for reload in [CMD_APPLY_PROFILE, CMD_RELOAD_PROFILE_0] {
             // A firmware that does not know this reload id answers 0x66; that is
             // informative, not fatal.
             let _ = self.exchange(reload, params);
