@@ -287,7 +287,11 @@ ShellRoot {
                     status: s.statusText };
                 Quickshell.execDetached(["sh", "$repair"]);
                 probe.step = 2;
-            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up") {
+            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up"
+                && s.reqQueue.length === 0 && s.currentReq === null) {
+                // Only once the repaired poll has drained (the open panel's
+                // wanted/missing is queued last): the permission step below
+                // drops whatever is still queued.
                 probe.seen.repaired = { credsState: s.credsState, sonarr: s.snapshots[0].statusText };
                 if (!$denied) {
                     console.log("RESULT " + JSON.stringify(probe.seen));
