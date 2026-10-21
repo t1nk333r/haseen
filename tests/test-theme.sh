@@ -517,3 +517,18 @@ assert_contains "re-apply keeps the user's choice" "$OUTPUT" "theme already set:
 assert_eq "theme unchanged by re-apply" "gruvbox" "$(cat "$CUR/theme.name")"
 capture layer_cmd layer_status
 assert_status "layer status after" 0 "$STATUS"
+# `haseen layer status` runs under set -Eeuo pipefail, and the layer sources
+# theme-lib.sh from inside a function: its tables must stay global, or the
+# include guard leaves them unset and a theme name such as tokyo-night is read
+# as arithmetic ("tokyo: unbound variable"; seen on IO, 2026-10-21).
+strict_status() { env HASEEN_SYSROOT="$fx" bash -Eeuo pipefail -c 'source "$HASEEN_PATH/lib/layers.sh"; _layer_env theme; layer_status; declare -p THEME_ALIASES THEME_TOKEN_DEFAULTS THEME_COLORS >/dev/null'; }
+for t in gruvbox tokyo-night haseen; do
+    haseen theme set "$t" >/dev/null 2>&1
+    capture strict_status
+    assert_status "layer status under set -u with theme $t" 0 "$STATUS"
+    assert_contains "layer status reports theme $t" "$OUTPUT" "ok: current theme $t"
+    assert_not_contains "layer status with theme $t has no unbound variable" "$OUTPUT" "unbound variable"
+done
+capture env bash -Eeuo pipefail -c 'source "$HASEEN_PATH/lib/common.sh"; f() { source "$HASEEN_PATH/layers/theme/theme-lib.sh"; }; f; theme_resolve_alias greek-noir-akane 2>/dev/null; printf %s "$REPLY"'
+assert_eq "an alias resolves after theme-lib was sourced inside a function" "haseen" "$OUTPUT"
+haseen theme set gruvbox >/dev/null 2>&1
