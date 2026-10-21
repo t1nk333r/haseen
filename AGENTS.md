@@ -92,6 +92,14 @@ between parts. The engineering record is `plans/`, indexed by
     the rule above for these only; their MIT notices are kept:
     - haseen.todoist (was t1nk33r.todoist): Adopted as first-party, off by default (owner, 2026-10-20, plan 097).
     - haseen.omarr (was t1nk33r.omarr): Adopted as first-party, off by default (owner, 2026-10-20, plan 097).
+  - Adopted third-party plugins are ported, not bundled; they keep their MIT
+    notices (owner, 2026-10-20):
+    - haseen.monitor-settings (was io.github.juliusmork-sys.monitor-settings-extender):
+      Adopted as first-party, off by default (owner, 2026-10-20, plan 098)
+    - haseen.omaconnect (was omaconnect): Adopted as first-party, off by
+      default (owner, 2026-10-20, plan 098)
+    - haseen.syncthing (was io.github.ilyazar.syncthing): Adopted as
+      first-party, off by default (owner, 2026-10-20, plan 098)
 
 ## Gates (run both before every commit)
 

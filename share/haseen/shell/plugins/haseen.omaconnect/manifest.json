@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.omaconnect",
+  "name": "OmaConnect",
+  "version": "1.0.0",
+  "description": "KDE Connect in the bar and a panel: pairing, battery and signal, ring, clipboard, files, text, ping, SMS, the phone's media player, remote commands, and Tailscale or saved addresses for devices discovery misses (haseen kdeconnect). Adapted from jitendradara12's OmaConnect (MIT). Off by default",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "bar-widget": "Widget.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "showBatteryStats": { "type": "boolean", "default": true, "description": "Battery percentage and charging state in the panel" },
+    "showBarBattery": { "type": "boolean", "default": false, "description": "Battery percentage next to the glyph in the bar" },
+    "showNetworkStats": { "type": "boolean", "default": true, "description": "Cellular network type and signal strength" },
+    "showTailscale": { "type": "boolean", "default": true, "description": "The Network section: Tailscale peers and saved addresses" },
+    "showDeviceTypeIcons": { "type": "boolean", "default": true, "description": "A glyph per device type (phone, tablet, laptop) instead of a phone for all" },
+    "showMediaPlayer": { "type": "boolean", "default": true, "description": "The phone's media player" },
+    "showRemoteCommands": { "type": "boolean", "default": true, "description": "Commands set up on the device (Run command)" },
+    "showTroubleshooting": { "type": "boolean", "default": true, "description": "Firewall and KDE Connect app buttons while no device is reachable" },
+    "showActionRing": { "type": "boolean", "default": true, "description": "Ring button" },
+    "showActionClipboard": { "type": "boolean", "default": true, "description": "Send clipboard button" },
+    "showActionFile": { "type": "boolean", "default": true, "description": "Send file button" },
+    "showActionSms": { "type": "boolean", "default": true, "description": "SMS button (kdeconnect-sms)" },
+    "showActionPing": { "type": "boolean", "default": false, "description": "Ping button" },
+    "showActionText": { "type": "boolean", "default": true, "description": "Send text or a link button" },
+    "defaultPingMessage": { "type": "string", "default": "", "description": "Text a ping carries when the field is empty" },
+    "debugIpc": { "type": "boolean", "default": false, "description": "Test hook: expose IPC target haseen.omaconnect (state, refresh, call) from the service" }
+  },
+  "permissions": [
+    "exec",
+    "network:local",
+    "files:read",
+    "notifications"
+  ],
+  "provides": [
+    "kdeconnect"
+  ],
+  "requires": {
+    "bins": [
+      "kdeconnect-cli",
+      "gdbus",
+      "dbus-monitor"
+    ]
+  }
+}
