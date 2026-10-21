@@ -159,13 +159,21 @@ scripts for the rest. The table's per-command list is under Inventory below.
   a pacman hook as root, often without `HOME`. A launch without `-p` exits
   126, as Omarchy's guard does; root re-executes in an empty environment with
   a fixed `PATH`. An unprivileged caller's fixture root is `HASEEN_SYSROOT`,
-  in place of Omarchy's three `OMARCHY_*_ROOT` variables.
+  in place of Omarchy's three `OMARCHY_*_ROOT` variables. One addition stays
+  (review of #58): `--help` prints the usage and exits 0, where Omarchy's
+  ignores its arguments (`bin/omarchy-hw-platform@v4.5.0-rc1:42` reads only
+  `--clean-environment`). No caller passes one: the mkinitcpio drop-in runs
+  it bare (`etc/mkinitcpio.conf.d/00-omarchy-hooks.conf@v4.5.0-rc1:12`).
 - The predicates that run it (`omarchy-hw-aarch64-gb10`, `-n1x`, `-qualcomm`,
   `omarchy-hw-n1x`) stand alone too and run the detector beside themselves.
   The other predicates (`omarchy-hw-aarch64`, `-x86`, `-vm`,
   `-match-device-tree`, `-dell-xps13-sidecar-amps`, `-elgato-camlink-4k`,
   `omarchy-sleep-disabled`) source `lib.sh` and read through `sysroot_path`.
-  None is inert or a refusal.
+  None is inert or a refusal. `omarchy-hw-vm` and `omarchy-hw-match-device-tree`
+  clear `HASEEN_SYSROOT` for root, so a fixture root in root's environment
+  never decides what root does, as Omarchy's match-device-tree ignores its
+  fixture variables for root (`bin/omarchy-hw-match-device-tree@v4.5.0-rc1:11-18`)
+  and the detector does.
 - `share/haseen/omarchy/lib.sh` sets `HOME` from the passwd entry when it is
   unset: Omarchy's root units without `User=` call these names, and
   `common.sh`'s per-user paths under `set -u` would stop a command before it
@@ -194,7 +202,7 @@ scripts for the rest. The table's per-command list is under Inventory below.
 | Shared plumbing (`i18n`, `capture-screenrecording-process`, `network-wifi-connected`, `webapp-window-class`, `mise-default-tools`, `crash-mute`, `windows-key`, `boot-direct`, `dev-notification-demo`, `theme-set-hunk`, `theme-set-fcitx5`, `hyprland-corners`, `hyprland-workspace-layout-current`) | ported; state moves to haseen's store (`toggles/crash-ignore`, `toggles/hypr`), and `bin/haseen-crash-watch` skips a muted program |
 | Installers and removers (`install-service-microsoft`, `remove-service-*`, `remove-ai-*`, `install-chromium-claude`, `install-ai-claude`, `install-t3code-app`) | through haseen's helpers: `haseen webapp install/remove`, `haseen install` (the repository order), `haseen remove`, `remove-lib.sh`'s `ask` for user data (kept under `--yes`, deleted with `--purge`); the Chromium extension file through `write_root_file` |
 | Agent usage (`agent-usage-grok`, `agent-usage-kimi`) | ported collectors (Python, run isolated with `-I`), caches in haseen's `~/.cache/haseen/agent-usage`; `omarchy-agent-usage-update` lists them |
-| Agent accounts (`agent-account-*`, owner: multiple accounts, plan 108) | `exec` and `home` ported (above); `add`, `list`, `mode`, `remove`, `rename`, `state`, `use` run Omarchy's installed copy (`omarchy_passthrough`, `lib.sh`), so the state stays in Omarchy's `~/.local/state/omarchy/agents/accounts` until plan 108, and refuse where Omarchy is not installed; `copy` and `transfer` are refused: they send agent logins to another machine over SSH |
+| Agent accounts (`agent-account-*`, owner: multiple accounts, plan 108) | `exec` and `home` ported (above); `add`, `list`, `mode`, `remove`, `rename`, `state`, `use` run Omarchy's installed copy (`omarchy_passthrough`, `lib.sh`), so the state stays in Omarchy's `~/.local/state/omarchy/agents/accounts` until plan 108, and refuse where Omarchy is not installed; `--dry-run` (before any `--`) prints the call and runs nothing, never passed on to Omarchy's copy, which takes none; `copy` and `transfer` are refused: they send agent logins to another machine over SSH |
 | Dictation (`dictation`, `dictation-use`, `dictation-voxtype`, `default-dictation`, `install-`/`remove-dictation-voxtype`) | ported onto the Voxtype rows plan 093 already had; the backend is in `$HASEEN_USER_STATE/dictation-backend`. Superwhisper's three are refused: a proprietary cloud service whose setup writes into `~/.config/omarchy/plugins` |
 | Language and input (`language`, `locale-generate`, `input-method`, `setup-input`, `setup-keyboard`, `font-cjk`) | reads are Omarchy's own (registry, choice, fontconfig); `locale-generate` uncomments and generates a registry locale as root through `run_root`; input goes to fcitx5 (`fcitx5-remote`, `fcitx5-configtool`, engines through `haseen install package`). Setting Omarchy's language, its fcitx5 rewrite (`input-method configure`) and its CJK font choice are refused: they write the user's uwsm environment and fcitx5 and fontconfig files, and haseen's language is plan 109's |
 | Session and update (`system`, `update-pacman`) | `omarchy-system <verb>` goes to the `omarchy-system-<verb>` rows, dropping Omarchy's internal `--execute`/`--inhibited`; `update-pacman` runs upgrades only (`-Su`-style), as root in a `systemd-run --scope`, and refuses `-S <pkg>`, removals and `--overwrite` |
@@ -204,6 +212,28 @@ scripts for the rest. The table's per-command list is under Inventory below.
 | Refused outright | `dock` (no dock), `pkg-defaults` (`haseen layer list`), `provision-hardware` (`haseen hw apply`), `kernel` (`haseen boot list`; haseen never edits Limine's config) |
 | Inert | `lifecycle-dispatch`, `update-boot` (platform boot packages, no-ops on x86), `theme-set-glass` (no blur), `theme-bg-boot-intro` (no intro videos), `hyprland-window-minimize` (no dock) |
 | Apple | `hw-aarch64-apple`, `hw-apple-silicon`: recorded, not provided |
+
+### User-file writes
+
+Under plan 093's user-file rule (`plans/093-adopt-omarchy-commands.md`, "User-file
+writes": each such port is a request the user makes by running it, never a
+layer's, a migration's or a theme set's), three new ports edit a file that may
+already be yours, and only when you run them:
+
+- `omarchy-install-video-decode` and `omarchy-install-camera` change
+  `~/.config/chromium-flags.conf` (and the first `~/.config/mpv/mpv.conf`,
+  written only when absent, its global `hwdec` left when set) only on a
+  Snapdragon; on any other machine they do nothing;
+- `omarchy-chromium-add-feature` adds one feature to `--enable-features` in an
+  existing `~/.config/chromium-flags.conf` when it is run, by you or by those
+  two on a Snapdragon; it never creates the file.
+
+No layer, migration or theme set calls any of them
+(`grep -rln 'omarchy-install-camera\|omarchy-install-video-decode\|omarchy-chromium-add-feature' share bin install.sh`
+lists only `share/haseen/omarchy/`). `omarchy-mise-default-tools disable`
+(one line in `~/.config/mise/miserc.toml`, refusing a list of your own) and
+`omarchy-theme-set-fcitx5 --activate` (fcitx5's theme choice, a theme of your
+own left) are the same kind of request.
 
 Neither IO nor luna is ARM, a Dell XPS 13 DX13260, or has a Cam Link: the
 N1x, GB10, Snapdragon and those two devices' steps run only against fixture
@@ -241,7 +271,12 @@ trees (`tests/test-omarchy-45.sh`).
   `omarchy-nopasswd-expire-<uid>-*.timer`; a timed grant replaces any of them
   with haseen's; `--active` asks sudo itself (`sudo -n -l -l`) whether a
   NOPASSWD rule applies; `permanent` is refused, pointing at
-  `haseen setup passwordless-sudo`. `haseen setup passwordless-sudo --off`
+  `haseen setup passwordless-sudo`. The mode is read before anything else, and
+  only turning the grant on, which asks a typed question, opens a floating
+  terminal: Omarchy's bar indicator runs `--active` and `--disable` with no
+  terminal and reads their exit codes
+  (`shell/plugins/bar/indicators/PasswordlessSudo.qml@v4.5.0-rc1:45,54`), and a
+  terminal's own exit code would stand in for the answer (review of #58). `haseen setup passwordless-sudo --off`
   removes the same five files and three timer patterns.
 
 ### The router
@@ -250,6 +285,24 @@ trees (`tests/test-omarchy-45.sh`).
 match stops at a group that has longer members: `omarchy agent account`
 lists the `omarchy-agent-account-*` commands rather than running
 `omarchy-agent` with `account` as its argument.
+
+### Outside the brief's owned paths
+
+The brief owns `share/haseen/omarchy/**`, `tests/test-omarchy-commands.sh` and
+its fixtures, and `bin/haseen-setup-passwordless-sudo` with its test. This plan
+also touches:
+
+- `bin/haseen-crash-watch`: skips a program muted with `omarchy-crash-mute`,
+  which would otherwise write a flag nothing reads;
+- `tests/test-crashwatch.sh`: the watcher's test of that mute;
+- `tests/test-menu.sh`: `haseen setup passwordless-sudo --off`'s assertions
+  for the UID-named grants (its test, named in the brief);
+- `tests/test-omarchy-restart.sh`: the Taildrop no-preview and the
+  passwordless-sudo UID, permanent, `--active` and no-terminal cases;
+- `tests/test-omarchy-update.sh`: the RDP password on stdin;
+- `docs/architecture.md` §5.4: the command count and the faithful-answer rule,
+  so the contract matches the table;
+- `NOTICE.md`: a row for the Omarchy 4.5 code adapted here (CLAUDE.md's MIT rule).
 
 ## Rejected options
 

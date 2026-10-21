@@ -534,6 +534,34 @@ assert_status "--active: an entry that asks for a password is not active" 1 "$ST
 stub sudo 'exit 1'
 capture "$OMA/omarchy-sudo-passwordless" --active
 assert_status "--active: sudo needs a password to list" 1 "$STATUS"
+# Omarchy's bar indicator runs --active and --disable with no terminal and
+# reads their exit codes (PasswordlessSudo.qml@v4.5.0-rc1:45,54): neither may
+# open a floating terminal, whose exit code would stand in for the answer;
+# only turning it on, which asks, does (plan 102).
+unset HASEEN_INLINE
+termlog="$SANDBOX/terminal.log"
+stub foot "echo \"foot \$*\" >>'$termlog'; exit 99"
+sudolog="$SANDBOX/sudo.log"
+stub sudo "echo \"sudo \$*\" >>'$sudolog'; case \"\$*\" in \"-n -l -l -- /usr/bin/true\") printf 'Sudoers entry: x\\n    Options: !authenticate\\n' ;; esac; exit 0"
+capture env TERMINAL=foot "$OMA/omarchy-sudo-passwordless" --active </dev/null
+assert_status "--active without a terminal gives sudo's answer" 0 "$STATUS"
+stub sudo 'exit 1'
+capture env TERMINAL=foot "$OMA/omarchy-sudo-passwordless" --active </dev/null
+assert_status "and its no" 1 "$STATUS"
+: >"$HASEEN_SYSROOT/etc/sudoers.d/99-omarchy-nopasswd-$myuid"
+stub sudo "echo \"sudo \$*\" >>'$sudolog'; exit 0"
+capture env TERMINAL=foot "$OMA/omarchy-sudo-passwordless" --disable </dev/null
+assert_status "--disable without a terminal removes the grant itself" 0 "$STATUS"
+assert_contains "and says so" "$OUTPUT" "Passwordless sudo has been DISABLED"
+assert_contains "through sudo, inline" "$(cat "$sudolog")" "sudo rm -f -- $nopw $uidfiles"
+rm -f "$HASEEN_SYSROOT/etc/sudoers.d/99-omarchy-nopasswd-$myuid"
+capture env TERMINAL=foot "$OMA/omarchy-sudo-passwordless" --disable </dev/null
+assert_status "--disable with nothing on, without a terminal" 0 "$STATUS"
+assert_contains "answers inline" "$OUTPUT" "already DISABLED"
+assert_eq "neither ever opens a terminal" "no" "$([[ -e $termlog ]] && echo yes || echo no)"
+capture env TERMINAL=foot "$OMA/omarchy-sudo-passwordless" </dev/null
+assert_status "turning it on still opens one, to ask" 99 "$STATUS"
+assert_contains "the floating terminal runs this command" "$(cat "$termlog")" "--app-id=haseen.floating"
 stub sudo 'echo "STUB-CALLED: sudo $*" >&2; exit 97'
 unset HASEEN_SYSROOT HASEEN_INLINE
 

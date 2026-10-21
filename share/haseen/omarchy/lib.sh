@@ -109,17 +109,28 @@ omarchy_installed_copy() {
 # omarchy_passthrough WAY WHY ARGS... — run Omarchy's own copy of this command
 # with ARGS, for a feature haseen has no answer of its own for (yet): its state
 # stays where Omarchy keeps it, and its calls to other omarchy-* names reach
-# haseen's answers. A dry run prints the call. Without Omarchy's copy, refuse
-# with WAY and WHY, as omarchy_refuse does (plan 102).
+# haseen's answers. --dry-run (or DRY_RUN=true) prints the call and runs
+# nothing; Omarchy's copies take no --dry-run, so it is never passed on. An
+# argument after -- is the command's own and passes untouched. Without
+# Omarchy's copy, refuse with WAY and WHY, as omarchy_refuse does (plan 102).
 omarchy_passthrough() {
-    local way="$1" why="$2" copy
+    local way="$1" why="$2" copy a ended=false
+    local -a args=()
     shift 2
+    for a in "$@"; do
+        if ! $ended && [[ $a == --dry-run ]]; then
+            DRY_RUN=true
+            continue
+        fi
+        [[ $a == -- ]] && ended=true
+        args+=("$a")
+    done
     if copy="$(omarchy_installed_copy "$OMARCHY_NAME")"; then
         if $DRY_RUN; then
-            echo "DRYRUN: $copy $*"
+            echo "DRYRUN: $copy ${args[*]}"
             exit 0
         fi
-        exec "$copy" "$@"
+        exec "$copy" "${args[@]}"
     fi
     omarchy_refuse "$way" "$why"
 }
