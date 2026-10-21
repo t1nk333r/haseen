@@ -1,4 +1,12 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-plugin-validate bin/haseen-screensaver bin/haseen-screensaver-style
+# haseen:covers bin/haseen-shell-ipc bin/haseen-toggle-{dnd,idle,nightlight,screensaver}
+# haseen:covers share/haseen/VERSION share/haseen/branding/** share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/dms/ipc-translate share/haseen/lib/branding.sh
+# haseen:covers share/haseen/shell/Compat/Manifest.js share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
+# haseen:covers share/haseen/shell/plugins/*/manifest.json
+# haseen:covers share/haseen/shell/plugins/haseen.{idle,nightlight,notifications,screensaver}/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

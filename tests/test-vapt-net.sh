@@ -1,4 +1,12 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-vapt-doctor bin/haseen-vapt-status bin/haseen-vapt-net-*
+# haseen:covers bin/haseen-vapt-service-* share/haseen/VERSION share/haseen/default/shell.json
+# haseen:covers share/haseen/default/vapt/** share/haseen/layers/vapt/** share/haseen/lib/layers.sh
+# haseen:covers share/haseen/lib/packages.sh share/haseen/lib/preflight.sh
+# haseen:covers share/haseen/lib/terminal.sh tests/fixtures/vapt-host/**
+# haseen:covers tests/fixtures/vapt-actions-lib.sh tests/fixtures/vapt-actions-runner.sh
+# haseen:covers tests/fixtures/vapt-driver.py tests/fixtures/vapt-lib.sh
+# haseen:covers tests/fixtures/vapt-workflow-lib.sh
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 source "$FIXTURES/vapt-actions-lib.sh"
 actions_fixture vapt-net

@@ -82,6 +82,7 @@ The owner's other repos:
 | Adopted integrations: monitor settings, KDE Connect, Syncthing (off by default) | `share/haseen/shell/plugins/haseen.{monitor-settings,omaconnect,syncthing}/`, `bin/haseen-hardware-monitor`, `bin/haseen-kdeconnect`, `bin/haseen-setup-kdeconnect`, `bin/haseen-syncthing`, `share/haseen/migrations/1791560300-adopt-integrations.sh` | 098 |
 | Wooting keyboards (adopted from the owner's t1nk33r.wooting, off by default): bar widget and panel, the vendored Rust daemon wootingd, its CLI, doctor and device-gated setup, migration of the old id | `share/haseen/shell/plugins/haseen.wooting/`, `core/wootingd/`, `bin/haseen-wooting`, `bin/haseen-wooting-doctor`, `bin/haseen-setup-wooting`, `share/haseen/lib/wooting.sh`, `share/haseen/migrations/1792577102-adopt-wooting.sh`, `tests/test-wooting.sh`, `tests/test-wootingd.sh` | 099 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
+| Affected tests: `# haseen:covers` per test, `tests/run.sh --affected` on PRs and before commits, the full suite on `main` after each merge | `tools/affected-tests.sh`, `tests/test-affected.sh` | 100 |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
 tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
@@ -117,15 +118,21 @@ Run before every PR, all from the repo root:
 
 ```sh
 SHELLCHECK=$(command -v shellcheck) GO=<go ≥ 1.26> tools/lint.sh
-QT_QPA_PLATFORM=offscreen tests/run.sh   # ≈ 14,300 checks; CI's test job takes ~85-90 of its 150 min: run it in tmux
+QT_QPA_PLATFORM=offscreen tests/run.sh --affected   # before a commit: only the tests your change affects
 tools/check-docs.sh
 tools/secrets.sh                          # before every push
 ```
 
+The full suite (`QT_QPA_PLATFORM=offscreen tests/run.sh`, no arguments,
+≈ 14,500 checks; run it in tmux) is for when you want it. CI runs the
+selection on every pull request and the full suite on `main` after each
+merge (~85-90 of the job's 150 min), so a test a change broke but its
+`# haseen:covers` did not claim fails there (plan 100).
+
 `core/go.mod` needs Go ≥ 1.26; pass a mise-installed Go as `GO=` when the
 system one is older. Tests are behavioural only and run only through
-`tests/run.sh`; since plan 074 `tests/lib.sh` `sandbox()` cuts every test off
-the live session. Supported targets are CachyOS and Arch. NixOS support was
+`tests/run.sh` (`--affected` for a change, no arguments for all); since plan
+074 `tests/lib.sh` `sandbox()` cuts every test off the live session. Supported targets are CachyOS and Arch. NixOS support was
 dropped by owner decision on 2026-10-05 (plan 009); the installer refuses it.
 
 Every change lands by PR (AGENTS.md). Parallel PRs conflict only in

@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-vapt-net-proxy-ca share/haseen/default/vapt/**
+# haseen:covers share/haseen/layers/vapt/** share/haseen/lib/terminal.sh tests/fixtures/vapt-host/**
+# haseen:covers tests/fixtures/vapt-actions-lib.sh tests/fixtures/vapt-driver.py
+# haseen:covers tests/fixtures/vapt-lib.sh tests/fixtures/vapt-workflow-lib.sh
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 source "$FIXTURES/vapt-actions-lib.sh"
 actions_fixture vapt-confinement-adversarial

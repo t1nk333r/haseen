@@ -1,4 +1,9 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-hook bin/haseen-setup-nvim bin/haseen-theme-set
+# haseen:covers share/haseen/default/nvim/** share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/theme/omarchy-assets.txt share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/themed/** share/haseen/themes/gruvbox/**
+# haseen:covers share/haseen/themes/tokyo-night/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

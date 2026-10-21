@@ -1,4 +1,9 @@
 # shellcheck shell=bash
+# haseen:covers share/haseen/VERSION share/haseen/branding/** share/haseen/default/applications/**
+# haseen:covers share/haseen/default/shell.json share/haseen/default/xdg-terminal-exec/**
+# haseen:covers share/haseen/layers/base/**
+# haseen:covers share/haseen/lib/{branding,doctor,install-picker,layers,packages,preflight}.sh
+# haseen:covers share/haseen/systemd/user/** tests/fixtures/desk-cachyos-amd/** install.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

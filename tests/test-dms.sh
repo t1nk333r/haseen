@@ -1,4 +1,7 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-layer-{apply,remove,status} bin/haseen-shell-use share/haseen/VERSION
+# haseen:covers share/haseen/layers/dms/** share/haseen/lib/{layers,packages,preflight}.sh
+# haseen:covers tests/fixtures/cachyos-grub-plain/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

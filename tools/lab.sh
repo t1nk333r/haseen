@@ -12,7 +12,9 @@
 # interactive interface. This file only
 #   1. reports which of the lab's prerequisites this machine is missing,
 #   2. points the lab at a CachyOS image and at this checkout,
-#   3. installs haseen in the guest and runs tests/run.sh there,
+#   3. installs haseen in the guest and runs the full suite there (tests/run.sh
+#      with no arguments: every test, on purpose; a guest checks a whole
+#      machine, not one change, so it never narrows to --affected),
 # and it is a no-op dry run until you pass --yes.
 #
 # The lab checkout never lands inside this repo (it carries multi-GB images):
@@ -53,7 +55,8 @@ usage() {
 Usage: tools/lab.sh [--dry-run] [--yes] [--help]
 
 Checks the prerequisites for a disposable CachyOS VM, then installs this
-checkout into one and runs tests/run.sh inside it.
+checkout into one and runs the full test suite (tests/run.sh, every test)
+inside it.
 
   --dry-run   print the plan and change nothing (the default)
   --yes       actually do it
@@ -230,6 +233,7 @@ plan() {
     # set plus secureboot: without omarchy-repo, desktop skips herdr and
     # xdg-terminal-exec and builds ttfx from the AUR, which no default install does.
     lab ssh "cd ~/$GUEST_DIR && ./install.sh --yes --layers base,chaotic,omarchy-repo,desktop,theme,shell,secureboot"
+    # The whole suite on purpose, not --affected: the guest is a real machine.
     lab ssh "cd ~/$GUEST_DIR && tests/run.sh"
     # Evidence a machine can read: a green suite says nothing about whether the
     # bar came up.

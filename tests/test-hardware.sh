@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-hw-{apply,list,match} share/haseen/VERSION share/haseen/hardware/**
+# haseen:covers share/haseen/lib/{gestures,hardware,ledger}.sh share/haseen/shell/lib/plugin.sh
+# haseen:covers share/haseen/shell/plugins/haseen.gestures/manifest.json
+# haseen:covers tests/fixtures/{hw-asus-rog,hw-vm-guest}/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

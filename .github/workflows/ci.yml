@@ -1,7 +1,10 @@
 # haseen CI: the same gates AGENTS.md asks for before every commit and push.
 #   lint    tools/lint.sh (bash -n, shellcheck, luac, jq, qmllint)
-#   test    tests/run.sh, as a normal user (haseen refuses to run as root);
-#           rust is in ARCH_PACKAGES for wootingd's cargo tests (plan 099)
+#   test    on a pull request, tests/run.sh --affected: only the tests its
+#           changes affect (tools/affected-tests.sh, plan 100); on a push to
+#           main, the full tests/run.sh, so anything the mapping misses fails
+#           there; as a normal user (haseen refuses to run as root); rust is
+#           in ARCH_PACKAGES for wootingd's cargo tests (plan 099)
 #   docs    tools/check-docs.sh (needs full history: plans cite commits)
 #   secrets gitleaks over every commit + tools/secrets.sh privacy patterns
 # Lint and tests run in an Arch container, the distro haseen targets, so
@@ -20,7 +23,13 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push to a pull request cancels its older run. A running suite on
+  # main is never cancelled: each merge's full run is the safety net for pull
+  # requests that ran only their affected tests (plan 100). GitHub keeps one
+  # pending run per group and cancels an older pending one, so of several
+  # merges queued behind a running suite the newest still gets a full run,
+  # and it carries every earlier merge.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
@@ -42,6 +51,13 @@ jobs:
           read -ra pkgs <<<"$ARCH_PACKAGES"
           pacman -Syu --noconfirm --needed "${pkgs[@]}"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Trust the checkout
+        # actions/checkout trusts the workspace only in its own step's
+        # temporary git config. The steps after it run as root on a checkout
+        # another uid owns, and git refuses that ("dubious ownership", PR #56's
+        # run 39647712605); tools/lint.sh runs git through
+        # tools/affected-tests.sh --check.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Versions
         run: |
           bash --version | head -1
@@ -64,13 +80,29 @@ jobs:
           read -ra pkgs <<<"$ARCH_PACKAGES"
           pacman -Syu --noconfirm --needed "${pkgs[@]}"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pull request's merge base must be in the clone (plan 100).
+          fetch-depth: 0
       - name: Unprivileged user
+        # The tests, and the git in tests/run.sh --affected, run as ci, who owns
+        # the checkout after this: git needs no safe.directory here.
         run: |
           useradd -m ci
           chown -R ci:ci "$GITHUB_WORKSPACE"
       - name: tests/run.sh
-        # runuser keeps the working directory (the checkout).
-        run: runuser -u ci -- env QT_QPA_PLATFORM=offscreen HASEEN_REQUIRE_ENGINE=1 HOME=/home/ci tests/run.sh
+        # A pull request runs the tests its changes affect, measured from the
+        # event's base commit to the checked-out head; a push to main and a
+        # manual run run the full suite. An empty selection passes, so the
+        # required check reports on a docs-only pull request too. runuser
+        # keeps the working directory (the checkout).
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          args=()
+          if [[ $GITHUB_EVENT_NAME == pull_request ]]; then
+              args=(--affected --committed "$BASE_SHA")
+          fi
+          runuser -u ci -- env QT_QPA_PLATFORM=offscreen HASEEN_REQUIRE_ENGINE=1 HOME=/home/ci tests/run.sh "${args[@]}"
 
   docs:
     runs-on: ubuntu-latest

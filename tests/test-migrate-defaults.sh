@@ -1,4 +1,14 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{hook,hw-apply,layer-apply,migrate,seed-user,setup-nvim,theme-set}
+# haseen:covers share/haseen/VERSION share/haseen/branding/** share/haseen/default/**
+# haseen:covers share/haseen/hardware/**
+# haseen:covers share/haseen/layers/{base,chaotic,desktop,omarchy-repo,shell,theme}/**
+# haseen:covers share/haseen/lib/{branding,cairn,greeter,hardware,install-picker,layers,ledger}.sh
+# haseen:covers share/haseen/lib/{migrate,packages,preflight,shellrc,terminal,wooting}.sh
+# haseen:covers share/haseen/migrations/** share/haseen/seeds/** share/haseen/shell/lib/plugin.sh
+# haseen:covers share/haseen/shell/plugins/*/manifest.json share/haseen/systemd/user/**
+# haseen:covers share/haseen/themed/** share/haseen/themes/** tests/fixtures/cachyos-grub-plain/**
+# haseen:covers install.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

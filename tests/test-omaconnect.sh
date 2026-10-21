@@ -1,4 +1,12 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-kdeconnect bin/haseen-menu-select bin/haseen-notification-send
+# haseen:covers bin/haseen-plugin-validate bin/haseen-setup-kdeconnect share/haseen/VERSION
+# haseen:covers share/haseen/default/shell.json share/haseen/lib/{packages,preflight,terminal}.sh
+# haseen:covers share/haseen/shell/Compat/** share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
+# haseen:covers share/haseen/shell/plugins/haseen.omaconnect/** tests/fixtures/kdeconnect-gdbus.sh
+# haseen:covers tools/smoke-session.conf NOTICE.md share/haseen/shell/plugins/*/manifest.json
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-battery-limit bin/haseen-setup-battery-limit
+# haseen:covers share/haseen/layers/base/lib.sh share/haseen/lib/terminal.sh
+# haseen:covers share/haseen/systemd/system-sleep/haseen-charge-limit
+# haseen:covers share/haseen/systemd/system/haseen-charge-limit.service
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

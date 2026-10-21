@@ -1,4 +1,14 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-gestures-apply bin/haseen-hw-{apply,match} bin/haseen-plugin-validate
+# haseen:covers share/haseen/VERSION share/haseen/default/shell.json share/haseen/hardware/**
+# haseen:covers share/haseen/lib/{gestures,hardware,ledger}.sh share/haseen/shell/Compat/**
+# haseen:covers share/haseen/shell/Haseen/**
+# haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
+# haseen:covers share/haseen/shell/plugins/haseen.gestures/**
+# haseen:covers share/haseen/shell/plugins/*/manifest.json
+# haseen:covers tests/fixtures/{hw-desktop,hw-touchpad-laptop,hw-vm-guest}/**
+# haseen:covers tools/smoke-session.conf
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
