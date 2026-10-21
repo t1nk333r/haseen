@@ -247,8 +247,23 @@ unset HASEEN_SYSROOT
 sandbox omarchy-sshd
 export HASEEN_SYSROOT="$SANDBOX/root" HASEEN_INLINE=1
 mkdir -p "$HASEEN_SYSROOT"
-ssh-keygen -q -t ed25519 -N '' -C test@host -f "$SANDBOX/k"
-ssh-keygen -q -t ed25519 -N '' -C other@host -f "$SANDBOX/k2"
+# OpenSSH stand-in (CI's image has none): -lf FILE prints a key's line in
+# ssh-keygen's format, "BITS SHA256:<hash> COMMENT (TYPE)", its hash taken
+# from the key text, and fails on a file with no public key in it.
+stub ssh-keygen "$(cat <<'STUB'
+[ "$1" = -lf ] && [ $# -eq 2 ] || { echo "ssh-keygen stub: only -lf FILE" >&2; exit 2; }
+found=no
+while read -r type blob comment; do
+    case $type in ssh-ed25519 | ssh-rsa | ecdsa-sha2-nistp256) ;; *) continue ;; esac
+    case $blob in '' | *[!A-Za-z0-9+/=]*) continue ;; esac
+    echo "256 SHA256:$(printf %s "$blob" | sha256sum | cut -c1-43) ${comment:-no comment} (ED25519)"
+    found=yes
+done <"$2"
+[ $found = yes ] || { echo "$2 is not a public key file." >&2; exit 255; }
+STUB
+)"
+printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEhhc2VlblRlc3RLZXlPbmVPbmx5Rm9yVGVzdHNBYWFh test@host\n' >"$SANDBOX/k.pub"
+printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEhhc2VlblRlc3RLZXlUd29Pbmx5Rm9yVGVzdHNCYmJi other@host\n' >"$SANDBOX/k2.pub"
 pub="$(<"$SANDBOX/k.pub")"
 keys="$HOME/.ssh/authorized_keys"
 capture "$OMA/omarchy-setup-security-sshd" --key="$pub" --dry-run
