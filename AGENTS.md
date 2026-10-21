@@ -75,31 +75,19 @@ between parts. The engineering record is `plans/`, indexed by
   - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
     plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.
-  - Adopted as first-party, off by default (owner, 2026-10-20, plan 095):
-    - `haseen.active-window` (was t1nk33r.active-window);
-    - `haseen.power` (was t1nk33r.power);
-    - `haseen.updates` (was t1nk33r.updates);
-    - `haseen.nook` (was t1nk33r.nook).
-  - Adopted from the owner's forks; these four override "never bundled" below:
-    - haseen.typist: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
-    - haseen.settings: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
-    - haseen.browser-picker: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
-    - haseen.vpn: adopted as first-party, off by default (owner, 2026-10-20, plan 096).
   - Third-party plugins (Omarchy, DMS, any other) are never bundled and never
     added to haseen's defaults. The owner installs them with
     `haseen plugin install`, and installing does not enable them.
-  - Adopted from the owner's own plugins (owner, 2026-10-20), an exception to
-    the rule above for these only; their MIT notices are kept:
-    - haseen.todoist (was t1nk33r.todoist): Adopted as first-party, off by default (owner, 2026-10-20, plan 097).
-    - haseen.omarr (was t1nk33r.omarr): Adopted as first-party, off by default (owner, 2026-10-20, plan 097).
-  - Adopted third-party plugins are ported, not bundled; they keep their MIT
-    notices (owner, 2026-10-20):
-    - haseen.monitor-settings (was io.github.juliusmork-sys.monitor-settings-extender):
-      Adopted as first-party, off by default (owner, 2026-10-20, plan 098)
-    - haseen.omaconnect (was omaconnect): Adopted as first-party, off by
-      default (owner, 2026-10-20, plan 098)
-    - haseen.syncthing (was io.github.ilyazar.syncthing): Adopted as
-      first-party, off by default (owner, 2026-10-20, plan 098)
+  - Adopted as first-party plugins, off by default (owner, 2026-10-20). The
+    owner's forks and the third-party ports are an exception to the rule
+    above for these plugins only, and keep their MIT notices (`NOTICE.md`):
+    - plan 095, the owner's plugins: haseen.active-window, haseen.power,
+      haseen.updates, haseen.nook;
+    - plan 096, the owner's tools and forks: haseen.typist, haseen.settings,
+      haseen.browser-picker, haseen.vpn;
+    - plan 097, the owner's forks: haseen.todoist, haseen.omarr;
+    - plan 098, third-party ports: haseen.monitor-settings, haseen.omaconnect,
+      haseen.syncthing.
 
 ## Gates (run both before every commit)
 
