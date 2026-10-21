@@ -31,6 +31,8 @@
 # haseen:covers share/haseen/omarchy/bin/omarchy-{webapp-window-class,windows-key}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{system-logout,system-reboot,toggle-bar}
 # haseen:covers share/haseen/omarchy/bin/omarchy-toggle-enabled
+# haseen:covers share/haseen/omarchy/bin/omarchy-plymouth-set
+# haseen:covers tests/fixtures/mkinitcpio-omarchy-4.5/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -702,6 +704,32 @@ assert_contains "and says so" "$OUTPUT" "--multiple is not available under hasee
 assert_eq "and never shows the flags as options" "" "$(calls)"
 capture fk omarchy-menu-select Inputs a -- --bogus
 assert_status "an unknown menu flag" 2 "$STATUS"
+
+# --- the splash and an mkinitcpio configuration that does not evaluate ----------
+# omarchy-plymouth-set reads whether the plymouth hook is missing from HOOKS,
+# so a configuration that does not source (Omarchy 4.5's drop-in returns 1
+# when its detector cannot place the machine) stops it before it writes,
+# instead of reading as "missing" and adding a second drop-in (plan 101's
+# boot_hooks_known, plan 102).
+box omarchy45-plymouth
+cp -a "$FIXTURES/mkinitcpio-omarchy-4.5/." "$ROOT/"
+mkdir -p "$ROOT/usr/bin" "$ROOT/proc" "$ROOT/etc/plymouth"
+printf '#!/bin/sh\nexit 0\n' >"$ROOT/usr/bin/plymouth-set-default-theme"
+chmod +x "$ROOT/usr/bin/plymouth-set-default-theme"
+printf 'BOOT_IMAGE=/vmlinuz-linux root=/dev/mapper/root rw quiet splash\n' >"$ROOT/proc/cmdline"
+logo="$SANDBOX/logo.png"
+: >"$logo"
+stub omarchy-hw-platform 'echo x86'
+capture "$OMA/omarchy-plymouth-set" 1a1b26 c0caf5 "$logo" --dry-run
+assert_status "Omarchy 4.5's layout, placed: the splash is planned" 0 "$STATUS"
+assert_dry_pure "omarchy-plymouth-set" "$OUTPUT"
+assert_not_contains "its HOOKS already hold plymouth: no second drop-in" "$OUTPUT" "haseen-plymouth.conf"
+stub omarchy-hw-platform 'exit 1'
+capture "$OMA/omarchy-plymouth-set" 1a1b26 c0caf5 "$logo" --dry-run
+assert_status "a configuration that does not evaluate stops it" 1 "$STATUS"
+assert_contains "and says what to fix" "$OUTPUT" "fix mkinitcpio's configuration first"
+assert_not_contains "before any drop-in is planned" "$OUTPUT" "haseen-plymouth.conf"
+assert_not_contains "or anything written" "$OUTPUT" "DRYRUN:"
 
 # --- session, update and router ------------------------------------------------------------
 box omarchy45-system

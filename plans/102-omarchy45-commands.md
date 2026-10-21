@@ -9,13 +9,15 @@
   every initramfs build asks `omarchy-hw-platform`, every `claude`, `codex`
   and `grok` run goes through `omarchy-agent-account-exec`. Those answer
   exactly as Omarchy's do; each new answer has a test)
-- **Depends on**: 093 (the command model it extends), 100 (affected tests)
+- **Depends on**: 093 (the command model it extends), 100 (affected tests),
+  101 (`boot_hooks_known`, for the splash guard)
 - **Category**: compat, CLI
 - **Planned at**: 2026-10-21, owner request: "Check omarchy 4.5 and what
   worth adopting"
 - **State**: DONE 2026-10-22 (pull request; the live install on IO and luna is
-  an owner step). The `boot_hooks_known` guard for `omarchy-plymouth-set` waits
-  for plan 101 (#57), see Not done.
+  an owner step). Review of #58 applied; main merged after plan 101 (#57,
+  a4ad91b) landed, and `omarchy-plymouth-set` takes its `boot_hooks_known`
+  guard.
 
 ## Decision (owner)
 
@@ -279,6 +281,19 @@ trees (`tests/test-omarchy-45.sh`).
   terminal's own exit code would stand in for the answer (review of #58). `haseen setup passwordless-sudo --off`
   removes the same five files and three timer patterns.
 
+### The splash guard (from the review of plan 101)
+
+Plan 101 reads HOOKS by sourcing mkinitcpio's configuration as mkinitcpio does
+(`share/haseen/lib/boot.sh` `boot_hooks`) and adds `boot_hooks_known`, which
+`haseen plymouth set` and `haseen hibernation setup` call before they decide a
+hook is missing (`bin/haseen-plymouth-set:56`, `bin/haseen-hibernation-setup:58`).
+`omarchy-plymouth-set` asked `plymouth_hook_present` without it, so a
+configuration that does not evaluate (status 2: Omarchy 4.5's drop-in returns
+1 when its detector cannot place the machine) read as "hook missing" and
+planned a second plymouth drop-in. It now calls `boot_hooks_known` right after
+the plymouth check, before any write, as `haseen plymouth set` does, and stops
+with "fix mkinitcpio's configuration first".
+
 ### The router
 
 `omarchy up` is `omarchy update`, as in 4.5's router. The longest-prefix
@@ -449,8 +464,8 @@ The two rows changed:
 
 ## Tests
 
-Run with the hermetic wrapper of the batch rules, on 2026-10-22, base
-`origin/main` at 56d0cd8:
+Run with the hermetic wrapper of the batch rules, on 2026-10-22. First round,
+base `origin/main` at 56d0cd8 (the pull request as opened):
 
 | Run | Result |
 |---|---|
@@ -459,10 +474,22 @@ Run with the hermetic wrapper of the batch rules, on 2026-10-22, base
 | `tests/test-omarchy-commands.sh` | 179/179 |
 | `tests/test-omarchy-restart.sh` | 277/277 |
 | `tests/test-omarchy-update.sh` | 177/177 |
+| `tests/test-omarchy-system.sh` | 177/177 |
 | `tests/test-menu.sh` | 309/309 |
 | `tests/test-crashwatch.sh` | 14/14 |
 | `tools/affected-tests.sh --check` | 2568 files, 155 tests, 1812 covers globs: every file covered |
 | `tools/lint.sh` (shellcheck 0.11) | lint OK |
+| `tools/check-docs.sh` | check-docs OK |
+
+After the review of #58 and the merge of main at a4ad91b (plan 101):
+
+| Run | Result |
+|---|---|
+| `tests/run.sh --affected origin/main` (36 of 156 test files) | 5152/5152 |
+| `tests/test-omarchy-45.sh` (adds the root, pass-through dry-run and splash-guard cases) | 272/272 |
+| `tests/test-omarchy-restart.sh` (adds the no-terminal `--active`/`--disable` cases) | 287/287 |
+| `tools/affected-tests.sh --check` | 2586 files, 156 tests, 1827 covers globs: every file covered |
+| `tools/lint.sh` | lint OK (a first run after the merge caught `lib.sh`'s pass-through declaring a local `args` array, which shellcheck `-x` carried into every script that sources it and so `omarchy-chromium-add-feature`'s string `args`; renamed) |
 | `tools/check-docs.sh` | check-docs OK |
 
 - `tests/test-omarchy-commands.sh` pins the 540-name union to the three
@@ -498,10 +525,6 @@ Run with the hermetic wrapper of the batch rules, on 2026-10-22, base
 
 ## Not done
 
-- The `boot_hooks_known` guard in `share/haseen/omarchy/bin/omarchy-plymouth-set`
-  (from the review of plan 101, #57): it belongs after #57 adds
-  `boot_hooks_known` to `share/haseen/lib/boot.sh`. #57 had not merged when
-  this plan finished, so it is a follow-up.
 - The 52 argument and behaviour drifts in older ports (survey A.1.4): a later
   re-sync.
 - haseen's own agent accounts (plan 108) and language (plan 109): the
