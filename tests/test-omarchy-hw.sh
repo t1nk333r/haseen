@@ -1,4 +1,17 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{font-list,font-set,hardware-laptop-display,hardware-mirror-display,hook}
+# haseen:covers bin/haseen-{layer-apply,menu-select,notification-send,shell-ipc,system}
+# haseen:covers bin/haseen-{theme-current,theme-list,theme-set,toggle-gaps,toggle-one-window-ratio}
+# haseen:covers bin/haseen-hibernation-* share/haseen/layers/base/lib.sh
+# haseen:covers share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/lib/{boot,catalog,hardware,hibernate,layers,ledger,packages}.sh
+# haseen:covers share/haseen/lib/{preflight,screen,shellrc,terminal}.sh
+# haseen:covers share/haseen/omarchy/bin/omarchy-games-* share/haseen/omarchy/bin/omarchy-hw-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-hyprland-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{capture-webcam-list,file-select,font-current}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{git-url-check,hibernation-remove}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{hibernation-setup,hook,hook-install,menu-file}
+# haseen:covers share/haseen/omarchy/lib.sh bin/haseen-hw-match share/haseen/hardware/quirks.tsv
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

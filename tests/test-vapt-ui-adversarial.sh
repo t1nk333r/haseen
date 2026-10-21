@@ -1,4 +1,6 @@
 # shellcheck shell=bash
+# haseen:covers share/haseen/shell/Haseen/** share/haseen/shell/plugins/haseen.menu/**
+# haseen:covers share/haseen/shell/plugins/haseen.security/** tests/fixtures/vapt-qml-lib.sh
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Hostile metadata and changed evidence against the production panel, on the
 # fixture modules; no live Quickshell session or installed tool is started.

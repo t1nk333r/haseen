@@ -1,4 +1,9 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-plymouth-set bin/haseen-plymouth-status share/haseen/branding/**
+# haseen:covers share/haseen/default/plymouth/** share/haseen/default/shell.json
+# haseen:covers share/haseen/lib/boot.sh share/haseen/lib/branding.sh share/haseen/lib/plymouth.sh
+# haseen:covers share/haseen/lib/preflight.sh share/haseen/themes/kanagawa/colors.toml
+# haseen:covers tests/fixtures/plymouth-harness.js
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-vapt-tool-list share/haseen/default/vapt/** share/haseen/layers/vapt/**
+# haseen:covers tests/fixtures/vapt-host/** tests/fixtures/vapt-oniomarchy/repositories.json
+# haseen:covers tests/fixtures/vapt-driver.py tests/fixtures/vapt-lib.sh
+# haseen:covers tests/fixtures/vapt-workflow-lib.sh
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 source "$FIXTURES/vapt-workflow-lib.sh"
 workflow_fixture vapt-discovery

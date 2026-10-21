@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-ai-* share/haseen/VERSION share/haseen/default/ai.json
+# haseen:covers share/haseen/layers/ai/** share/haseen/lib/layers.sh share/haseen/lib/packages.sh
+# haseen:covers share/haseen/lib/preflight.sh share/haseen/systemd/user/haseen-llama.service
+# haseen:covers tests/fixtures/ai-ollama-applied/** tests/fixtures/arch-bios/**
+# haseen:covers tests/fixtures/arch-sdboot-sb-enabled/** tests/fixtures/cachyos-grub-plain/**
+# haseen:covers tests/fixtures/cachyos-limine-luks-dualboot/** tests/fixtures/nixos/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

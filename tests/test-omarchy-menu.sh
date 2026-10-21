@@ -1,4 +1,33 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{bar-add,bar-move,battery-status,branding,brightness,config-edit}
+# haseen:covers bin/haseen-{config-terminal,hook,install,layer-apply,menu,menu-select}
+# haseen:covers bin/haseen-{network-status,plugin-disable,plugin-enable,plugin-install,plugin-list}
+# haseen:covers bin/haseen-{plugin-registry,plugin-search,plugin-uninstall,plugin-update}
+# haseen:covers bin/haseen-{plugin-validate,plymouth-set,refresh,remove,setup-ddc,setup-greeter}
+# haseen:covers bin/haseen-{shell-ipc,theme-install,theme-list,theme-set,tmux-keybinds,update}
+# haseen:covers bin/haseen-notification-* bin/haseen-reminder-* bin/haseen-screen-*
+# haseen:covers bin/haseen-share-* share/haseen/VERSION share/haseen/branding/**
+# haseen:covers share/haseen/default/hypr/user/** share/haseen/default/plymouth/**
+# haseen:covers share/haseen/default/{herdr/config.toml,menu.jsonc,shell.json,tmux/tmux.conf}
+# haseen:covers share/haseen/layers/base/lib.sh share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/layers/shell/files/shell.json share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/lib/{boot,branding,catalog,greeter,layers,packages,plymouth}.sh
+# haseen:covers share/haseen/lib/{preflight,screen,shellrc,terminal}.sh
+# haseen:covers share/haseen/omarchy/bin/omarchy-menu-* share/haseen/omarchy/bin/omarchy-network-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-notification-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-plugin-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{brightness-display,hyprland-monitor-scaling,menu}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{mise-install,monitor-state,openclaw-onboard,osd}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{pkg-add,pkg-aur-accessible,pkg-aur-add,pkg-drop}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{pkg-missing,pkg-present,plymouth-current}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{plymouth-reset,plymouth-set,plymouth-set-by-theme}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{plymouth-switcher,power-present,refresh-config}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{refresh-herdr,refresh-tmux,reminder}
+# haseen:covers share/haseen/omarchy/lib.sh share/haseen/shell/Compat/Manifest.js
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/lib/registry.sh
+# haseen:covers share/haseen/shell/plugin.schema.json share/haseen/shell/plugins/*/manifest.json
+# haseen:covers share/haseen/shell/plugins/haseen.{battery,calculator,clock,media}/**
+# haseen:covers share/haseen/themes/catppuccin/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

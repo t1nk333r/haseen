@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-vapt-menu share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/vapt/workflow.sh share/haseen/layers/vapt/workflow_menu.py
+# haseen:covers share/haseen/shell/Haseen/** share/haseen/shell/plugins/haseen.menu/**
+# haseen:covers share/haseen/shell/plugins/haseen.security/** tests/fixtures/vapt-qml-lib.sh
 # Production JS and components under the real Qt engine; commands/Apps are
 # replaced at the module boundary, never a live desktop or installed tool.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

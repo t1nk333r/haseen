@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-capture-screenshot bin/haseen-capture-text bin/haseen-notification-send
+# haseen:covers bin/haseen-search-screen bin/haseen-seed-user bin/haseen-upload share/haseen/VERSION
+# haseen:covers share/haseen/default/** share/haseen/lib/shellrc.sh share/haseen/seeds/**
+# haseen:covers tests/fixtures/seeds-plain/** tests/fixtures/multipart-receiver.py
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

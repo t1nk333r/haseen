@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-vapt-repo-* share/haseen/default/vapt/** share/haseen/layers/vapt/**
+# haseen:covers share/haseen/lib/packages.sh share/haseen/lib/layers.sh
+# haseen:covers share/haseen/lib/preflight.sh tests/fixtures/vapt-host/**
+# haseen:covers tests/fixtures/vapt-oniomarchy/** tests/fixtures/vapt-abuse-race.py
+# haseen:covers tests/fixtures/vapt-driver.py tests/fixtures/vapt-lib.sh
+# haseen:covers tests/fixtures/vapt-runner.sh
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Independent hostile-input and ordering probes. All managers/network/keys use
 # existing sysroot fixtures; FIFO barriers make concurrency deterministic.

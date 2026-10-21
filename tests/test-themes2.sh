@@ -1,4 +1,12 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-hook bin/haseen-plugin-validate bin/haseen-theme-bg
+# haseen:covers bin/haseen-theme-bg-run bin/haseen-theme-fetch bin/haseen-theme-set
+# haseen:covers share/haseen/VERSION share/haseen/default/nvim/** share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/theme/** share/haseen/shell/Compat/Manifest.js
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
+# haseen:covers share/haseen/shell/plugins/haseen.themepicker/**
+# haseen:covers share/haseen/systemd/user/haseen-background.service share/haseen/themed/**
+# haseen:covers share/haseen/themes/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

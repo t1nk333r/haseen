@@ -1,4 +1,29 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{config-terminal,font-list,font-set,hook,install,layer-apply}
+# haseen:covers bin/haseen-{notification-send,screensaver,setup-default,shell-ipc,theme-current}
+# haseen:covers bin/haseen-{theme-list,theme-set,toggle-screensaver,update,webapp-install}
+# haseen:covers bin/haseen-browser-* share/haseen/VERSION share/haseen/branding/**
+# haseen:covers share/haseen/default/catalog.json share/haseen/layers/base/lib.sh
+# haseen:covers share/haseen/layers/dms/ipc-translate share/haseen/layers/gaming/**
+# haseen:covers share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/lib/{branding,catalog,layers,packages,preflight,screen,shellrc}.sh
+# haseen:covers share/haseen/lib/terminal.sh share/haseen/omarchy/bin/omarchy-installed-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-launch-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{cmd-browser-handoff,cmd-default-browser}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{cmd-terminal-cwd,hyprland-focus-app}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-ai-hermes,install-ai-openclaw}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-and-launch,install-app,install-browser}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-dev-env,install-docker-dbs,install-font}
+# haseen:covers share/haseen/omarchy/bin/omarchy-install-gaming-battlenet
+# haseen:covers share/haseen/omarchy/bin/omarchy-install-gaming-geforce-now
+# haseen:covers share/haseen/omarchy/bin/omarchy-install-gaming-gpu-lib32
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-gaming-xbox-cloud,install-hermes-cli}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-openclaw-cli,install-service-once}
+# haseen:covers share/haseen/omarchy/bin/omarchy-install-service-sunshine
+# haseen:covers share/haseen/omarchy/bin/omarchy-{install-service-tailscale,install-terminal}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{openclaw-onboard,show-done,theme-set-hermes}
+# haseen:covers share/haseen/omarchy/bin/omarchy-webapp-install share/haseen/omarchy/lib.sh
+# haseen:covers share/haseen/omarchy/themed/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

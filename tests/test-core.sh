@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers bin/** share/**
+# haseen:covers tests/fixtures/{arch-bios,arch-sdboot-sb-enabled,cachyos-grub-plain}/**
+# haseen:covers tests/fixtures/{cachyos-limine-luks-dualboot,nixos,omarchy-limine-host}/**
+# haseen:covers tests/fixtures/{sb-grub-setup,sb-limine-setup-windows,sb-sdboot-enabled}/**
+# haseen:covers tests/fixtures/sb-sdboot-setup-tpm/** tests/fixtures/*/expected.preflight
+# haseen:covers tests/test-*.sh install.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

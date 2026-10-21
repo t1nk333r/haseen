@@ -1,4 +1,10 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-bar-* bin/haseen-shell-ipc share/haseen/default/shell.json
+# haseen:covers share/haseen/layers/dms/ipc-translate
+# haseen:covers share/haseen/shell/{Bar,BarSection,Frame,FrameCorner,FrameCorners,FrameEdge}.qml
+# haseen:covers share/haseen/shell/FrameTextColor.qml share/haseen/shell/Haseen/{Config,Theme}.qml
+# haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugins/haseen.tray/**
+# haseen:covers share/haseen/shell/shell.qml NOTICE.md
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

@@ -1,4 +1,35 @@
 # shellcheck shell=bash
+# haseen:covers bin/haseen-{audio-tuning,bar-add,bar-move,bar-position,bar-transparent,brightness}
+# haseen:covers bin/haseen-{capture-screenrecord,capture-screenshot,config-edit,config-terminal}
+# haseen:covers bin/haseen-{drive-info,drive-select,hook,install,layer-apply,menu,menu-select}
+# haseen:covers bin/haseen-{notification-send,plugin-settings,remove,setup-ddc,setup-default}
+# haseen:covers bin/haseen-{setup-dns,shell-ipc,terminal-run,theme-list,theme-set,upload}
+# haseen:covers bin/haseen-browser-* bin/haseen-screen-* share/haseen/VERSION
+# haseen:covers share/haseen/default/{menu.jsonc,shell.json} share/haseen/layers/base/lib.sh
+# haseen:covers share/haseen/layers/dms/ipc-translate share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/lib/{catalog,hardware,layers,ledger,omarchy-import,packages}.sh
+# haseen:covers share/haseen/lib/{preflight,screen,shellrc,terminal}.sh
+# haseen:covers share/haseen/omarchy/bin/omarchy-agent-* share/haseen/omarchy/bin/omarchy-audio-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-bluetooth-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-brightness-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-chromium-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-clipboard-* share/haseen/omarchy/bin/omarchy-cmd-*
+# haseen:covers share/haseen/omarchy/bin/omarchy-{agent,bar,battery-low,battery-present}
+# haseen:covers share/haseen/omarchy/bin/omarchy-capture-region
+# haseen:covers share/haseen/omarchy/bin/omarchy-capture-screenrecording-with-webcam
+# haseen:covers share/haseen/omarchy/bin/omarchy-{capture-screenshot,capture-webcam-list}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{capture-webcam-resize,default-agent}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{default-editor,dev-theme-preview,disk-speedtest}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{display-text-size,dns,done,drive-select}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{hyprland-focus-app,install-openclaw-cli}
+# haseen:covers share/haseen/omarchy/bin/omarchy-launch-browser
+# haseen:covers share/haseen/omarchy/bin/omarchy-launch-floating-terminal-with-presentation
+# haseen:covers share/haseen/omarchy/bin/omarchy-{launch-openclaw,launch-webapp,openclaw-onboard}
+# haseen:covers share/haseen/omarchy/bin/omarchy-{show-done,theme-color,theme-osc}
+# haseen:covers share/haseen/omarchy/lib.sh share/haseen/omarchy/themed/**
+# haseen:covers share/haseen/shell/Compat/Manifest.js share/haseen/shell/lib/plugin.sh
+# haseen:covers share/haseen/shell/plugin.schema.json share/haseen/shell/plugins/*/manifest.json
+# haseen:covers share/haseen/themes/catppuccin/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
