@@ -353,6 +353,20 @@ Column {
         spacing: Theme.gap
         visible: root.mode === "list" && root.listTab === "fleet"
 
+        // Polling and key changes are held while credentials.json cannot be
+        // read (Service.credsState): say so, instead of failing silently.
+        Text {
+            visible: !!root.service && root.service.credsState === "error"
+            width: parent.width
+            wrapMode: Text.Wrap
+            textFormat: Text.PlainText
+            text: "credentials.json cannot be read" + (root.service && root.service.credsWhy ? " (" + root.service.credsWhy + ")" : "")
+                + ". Nothing is polled and no key is saved until it can be."
+            color: Theme.urgent
+            font.family: Theme.fontFamily
+            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        }
+
         Text {
             visible: root.scanning
             width: parent.width

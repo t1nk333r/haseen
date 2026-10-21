@@ -214,6 +214,124 @@ EOF
     assert_not_contains "engine: the API key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
     assert_not_contains "engine: nor shell.json" "$(cat "$XDG_CONFIG_HOME/haseen/shell.json")" "$FIXTURE"
     assert_contains "engine: the key travels in the private header file" "$(cat "$LOG")" "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt"
+    # The first poll waits for credentials.json: none of Sonarr's requests
+    # goes out without its key (CI once saw all four of them bare).
+    assert_eq "engine: every Sonarr request carries the header" "" "$(grep ':8989/' "$LOG" | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
     assert_eq "engine: the cache directory is private" "700" "$(stat -c %a "$XDG_CACHE_HOME/haseen/omarr")"
     assert_eq "engine: no QML warnings" "" "$(grep -E 'ReferenceError|TypeError|is not defined|Cannot read property|Unable to assign|Binding loop|haseen.omarr/.*(error|warning)' <<<"$OUTPUT" || true)"
+
+    # Fail closed: a credentials file that cannot be read stops polling
+    # instead of sending the requests without their keys; repairing it in
+    # place starts polling again, with the header.
+    printf 'not json\n' >"$legacy/credentials.json"
+    : >"$LOG"
+    # Run by the probe to repair the file in place (the key stays in env),
+    # keeping the bytes it found there.
+    repair="$SANDBOX/repair-creds.sh"
+    printf '%s\n' "cp -- '$legacy/credentials.json' '$SANDBOX/creds-before-repair'" >"$repair"
+    printf '%s\n' "printf '{\"svc-1\":{\"apiKey\":\"%s\"}}\\n' \"\$FIXTURE\" >'$legacy/credentials.json'" >>"$repair"
+    # The permission step needs a reader that permissions stop: not root.
+    denied=true
+    [[ $(id -u) != 0 ]] || { denied=false; echo "  skip: running as root; the unreadable-credentials step is not run" >&2; }
+    harness2="$SANDBOX/shell-creds"
+    mkdir -p "$harness2"
+    for module in Haseen Compat Ui Commons plugins; do
+        ln -s "$harness/$module" "$harness2/$module"
+    done
+    cat >"$harness2/shell.qml" <<EOF
+import QtQuick
+import Quickshell
+import qs.Haseen
+
+ShellRoot {
+    id: probe
+
+    property var svc: null
+    property int step: 0
+    property int ticks: 0
+    property int held: 0
+    property var seen: ({})
+    // A second fixture value, offered while the file cannot be read.
+    readonly property string refused: "fixture-other-0456"
+
+    // haseen:ui-timeout
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            if (++probe.ticks > 300) {
+                console.log("RESULT " + JSON.stringify({ error: "timeout at step " + probe.step, seen: probe.seen }));
+                Qt.quit();
+                return;
+            }
+            if (!probe.svc) {
+                if (!Plugins.registry["haseen.omarr"])
+                    return;
+                const c = Qt.createComponent("file://$P/Service.qml");
+                probe.svc = c.createObject(probe, { pluginId: "haseen.omarr", settings: Qt.binding(() => Plugins.settingsFor("haseen.omarr")) });
+                return;
+            }
+            const s = probe.svc;
+            if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 2) {
+                // What would queue requests and write keys: opening the panel,
+                // editing a service with a new key.
+                s.panelOpen = true;
+                s.updateService("svc-1", {}, { apiKey: probe.refused });
+                probe.step = 1;
+            } else if (probe.step === 1) {
+                // Hold 2 s: long enough for the polls that would have run.
+                if (++probe.held < 20)
+                    return;
+                probe.seen.broken = { credsState: s.credsState, ready: s.ready, queued: s.reqQueue.length,
+                    status: s.statusText };
+                Quickshell.execDetached(["sh", "$repair"]);
+                probe.step = 2;
+            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up"
+                && s.reqQueue.length === 0 && s.currentReq === null) {
+                // Only once the repaired poll has drained (the open panel's
+                // wanted/missing is queued last): the permission step below
+                // drops whatever is still queued.
+                probe.seen.repaired = { credsState: s.credsState, sonarr: s.snapshots[0].statusText };
+                if (!$denied) {
+                    console.log("RESULT " + JSON.stringify(probe.seen));
+                    Qt.quit();
+                    return;
+                }
+                Quickshell.execDetached(["chmod", "000", "$legacy/credentials.json"]);
+                probe.step = 3;
+            } else if (probe.step === 3 && s.credsState === "error") {
+                probe.seen.denied = { why: s.credsWhy, ready: s.ready };
+                Quickshell.execDetached(["chmod", "600", "$legacy/credentials.json"]);
+                probe.step = 4;
+            } else if (probe.step === 4 && s.credsState === "ok") {
+                probe.seen.restored = { ready: s.ready };
+                console.log("RESULT " + JSON.stringify(probe.seen));
+                Qt.quit();
+            }
+        }
+    }
+}
+EOF
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness2"
+    result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n1)"
+    [[ -n $result ]] || _fail "omarr credentials engine produced no result" "$OUTPUT"
+    assert_eq "engine: no error with broken credentials" "null" "$(r .error)"
+    assert_eq "engine: unreadable credentials stop polling, even with the panel open and a service edited" "error|false|0" "$(r '[.broken.credsState, .broken.ready, .broken.queued] | map(tostring) | join("|")')"
+    assert_eq "engine: the panel says the keys are unreadable" "Keys unreadable" "$(r .broken.status)"
+    assert_eq "engine: a new key is not written over an unreadable file" "not json" "$(cat "$SANDBOX/creds-before-repair" 2>/dev/null)"
+    assert_contains "engine: and the refusal is logged" "$OUTPUT" "haseen.omarr: not saving keys: $legacy/credentials.json cannot be read"
+    assert_contains "engine: and say why" "$OUTPUT" "haseen.omarr: cannot read $legacy/credentials.json - is not a JSON object - not polling until it can be read"
+    assert_eq "engine: repaired in place, polling resumes" "ok|Sonarr 4.0.9" "$(r '[.repaired.credsState, .repaired.sonarr] | join("|")')"
+    assert_eq "engine: no request went out while the keys were unknown, each later one with the header" "" \
+        "$(grep ':8989/' "$LOG" | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
+    assert_contains "engine: the repaired key was used" "$(cat "$LOG")" ":8989/api/v3/system/status"
+    assert_contains "engine: the open panel's requests came after the repair" "$(cat "$LOG")" ":8989/api/v3/wanted/missing"
+    assert_eq "engine: the refused key never reached the file" "no" "$(grep -q fixture-other "$legacy/credentials.json" && echo yes || echo no)"
+    if [[ $denied == true ]]; then
+        assert_eq "engine: a credentials file it may not read holds polling" "Permission denied|false" "$(r '[.denied.why, .denied.ready] | map(tostring) | join("|")')"
+        assert_eq "engine: readable again, polling resumes" "true" "$(r .restored.ready)"
+    fi
+    assert_not_contains "engine: the repaired key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
 fi
