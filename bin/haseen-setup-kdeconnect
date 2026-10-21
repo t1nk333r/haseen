@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# haseen:summary KDE Connect for the haseen.omaconnect panel: install kdeconnect and open its ports in the firewall
+# haseen:args [on|off|status] [--dry-run] [--yes]
+#
+# Plan 098. Adapted from jitendradara12's OmaConnect scripts/install_dependencies.sh
+# and setup_firewall.sh (MIT, Copyright (c) 2026 OmaConnect contributors):
+# kdeconnect from the repos, and ports 1714-1764 TCP and UDP through ufw or
+# firewalld, whichever is installed. haseen changes: pkg_install and run_root
+# instead of sudo in the script (so --dry-run prints the plan), and `off`
+# takes the firewall rules away again; the package stays (haseen remove
+# package kdeconnect removes it).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../share/haseen/lib/preflight.sh
+source "$HASEEN_PATH/lib/preflight.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup kdeconnect [on|off|status] [--dry-run] [--yes]
+
+  on      install kdeconnect and open ports 1714-1764 (TCP and UDP) in ufw
+          or firewalld, so phones can find and reach this machine
+  off     close those ports again (kdeconnect stays installed)
+  status  installed, and which firewall manages the ports (default)
+
+Off by default. With no ufw or firewalld nothing is opened: allow the ports
+in your own nftables or iptables rules.
+EOF
+}
+
+firewall() {
+    if have ufw; then
+        echo ufw
+    elif have firewall-cmd; then
+        echo firewalld
+    else
+        echo none
+    fi
+}
+
+status() {
+    local installed=no
+    pkg_installed kdeconnect && installed=yes
+    printf 'installed: %s\nfirewall:  %s (ports 1714-1764 tcp/udp; checking the rules needs root)\n' "$installed" "$(firewall)"
+}
+
+on() {
+    confirm "Install kdeconnect and open ports 1714-1764 for it in the firewall?" || exit 1
+    pkg_install kdeconnect
+    case "$(firewall)" in
+    ufw)
+        run_root ufw allow 1714:1764/tcp comment 'KDE Connect'
+        run_root ufw allow 1714:1764/udp comment 'KDE Connect'
+        run_root ufw reload
+        ;;
+    firewalld)
+        run_root firewall-cmd --permanent --add-service=kdeconnect
+        run_root firewall-cmd --reload
+        ;;
+    *) warn "no ufw or firewalld: allow ports 1714-1764 (tcp and udp) in your own firewall rules" ;;
+    esac
+    info "KDE Connect on: open the haseen.omaconnect panel, or pair from the phone"
+}
+
+off() {
+    confirm "Close ports 1714-1764 (KDE Connect) in the firewall?" || exit 1
+    case "$(firewall)" in
+    ufw)
+        run_root ufw delete allow 1714:1764/tcp
+        run_root ufw delete allow 1714:1764/udp
+        run_root ufw reload
+        ;;
+    firewalld)
+        run_root firewall-cmd --permanent --remove-service=kdeconnect
+        run_root firewall-cmd --reload
+        ;;
+    *) info "no ufw or firewalld: nothing to close" ;;
+    esac
+    info "KDE Connect ports closed (remove the package with: haseen remove package kdeconnect)"
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+preflight_distro
+verb="${REST[0]:-status}"
+case "$verb" in
+status) status ;;
+on | off)
+    in_floating_terminal "$@"
+    require_not_root
+    case "$HASEEN_DISTRO" in
+    cachyos | arch | omarchy) ;;
+    nixos) die "NixOS is not supported. haseen targets CachyOS and Arch." ;;
+    *) die "unsupported distro: $HASEEN_DISTRO (haseen setup kdeconnect installs kdeconnect with pacman)" ;;
+    esac
+    "$verb"
+    ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
