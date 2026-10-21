@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# omarchy-system-shutdown — power off through haseen (haseen system shutdown)
+# after asking every window to close. Follows Omarchy
+# bin/omarchy-system-shutdown (MIT, Copyright (c) David Heinemeier Hansson)
+# in its three stages: started plainly, it hands itself to the user manager
+# (so closing the launching terminal cannot stop it); --inhibit holds a
+# sleep, idle and lid-switch block while --inhibited clears the re*-required
+# markers in haseen's store (omarchy-state), closes the windows
+# (omarchy-hyprland-window-close-all) and powers off. Each stage re-execs
+# this script, never $OMARCHY_PATH/bin's; Omarchy's OSD is not shown; a
+# failure is announced with haseen-notification-send; --dry-run prints the
+# stage's steps (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-system-shutdown [--dry-run]
+
+haseen's answer to Omarchy's command: shuts down (haseen system shutdown)
+after asking every window to close, while sleep and the lid switch are
+blocked. --inhibit and --inhibited are its internal stages.
+EOF
+}
+parse_common_flags "$@"
+oma="$HASEEN_OMARCHY_DIR/bin"
+self="$(readlink -f "$0")"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+
+case "${REST[0]:-}" in
+--inhibited)
+    # Windows close in the background so they cannot delay the power-off.
+    (
+        "$oma/omarchy-state" clear 're*-required' "${flags[@]}" || true
+        "$oma/omarchy-hyprland-window-close-all" "${flags[@]}" || true
+    ) &
+    if $DRY_RUN; then
+        wait
+    else
+        sleep 2 # let apps such as Chromium shut down cleanly
+    fi
+    exec "$HASEEN_BIN/haseen-system" shutdown "${flags[@]}"
+    ;;
+--inhibit)
+    # Lid handling ignores high-level sleep inhibitors: block it explicitly.
+    status=0
+    run systemd-inhibit --what=sleep:idle:handle-lid-switch --who=haseen \
+        --why="Shutdown in progress" --mode=block "$self" --inhibited "${flags[@]}" || status=$?
+    if ((status != 0)); then
+        "$HASEEN_BIN/haseen-notification-send" -u critical "Shutdown failed" \
+            "Could not complete shutdown. Please try again." "${flags[@]}" || true
+        exit "$status"
+    fi
+    ;;
+*)
+    run systemd-run --user --collect --quiet --property=Type=exec --property=RuntimeMaxSec=30s \
+        "$self" --inhibit
+    ;;
+esac

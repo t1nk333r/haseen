@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-update-confirm — the "ready to update?" question before a system
+# update; exit 1 when declined. Adapted from Omarchy bin/omarchy-update-confirm
+# (MIT, Copyright (c) David Heinemeier Hansson): the same reminders and exit
+# code, in haseen's words (no Omarchy release link); gum draws it when
+# installed, else a plain prompt. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-update-confirm
+
+haseen's answer to Omarchy's command: asks before a system update; exits 1
+when the answer is no." "$@"
+
+lines=("Ready to update?" ""
+    "• You cannot stop the update once you start!"
+    "• Make sure you're connected to power or have a full battery")
+
+if have gum; then
+    gum style --border normal --padding "1 2" "${lines[@]}"
+    echo
+    gum confirm "Continue with update?" && exit 0
+else
+    printf '%s\n' "${lines[@]}"
+    echo
+    reply=""
+    read -r -p "Continue with update? [y/N] " reply || true
+    [[ $reply =~ ^[Yy]$ ]] && exit 0
+fi
+echo "Update cancelled"
+exit 1

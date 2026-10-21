@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# omarchy-remove-ai-perplexity — remove the Perplexity desktop app the haseen
+# way: drop the perplexity package through `haseen remove package`, then ask
+# before deleting its runtime caches and, separately, its logins and vault.
+# Adapted from Omarchy bin/omarchy-remove-ai-perplexity (MIT, Copyright (c)
+# David Heinemeier Hansson): the paths are Omarchy's; omarchy-pkg-drop ->
+# haseen remove package; gum confirm -> a terminal question; every change goes
+# through common.sh, so --dry-run prints the plan (plan 093).
+#
+# Data: the runtime caches (llama.cpp builds and local models) are asked
+# about, default no; --yes keeps them (Omarchy deletes them without asking):
+# only a yes at a terminal or --purge deletes them. The
+# logins, settings, secret vault and device identity are asked about, default
+# no; --yes keeps them, as Omarchy keeps them without a terminal.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-ai-perplexity [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes the perplexity package (haseen
+remove package), then asks (default no) before deleting its runtime caches
+(--yes keeps them, --purge deletes them) and before deleting the logins, secret
+vault and device identity (only a yes at a terminal deletes those).
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+remove_pkgs perplexity
+
+# The runtime the app downloads for itself: llama.cpp builds and local models.
+# Of the perplexity-* dirs these are the only ones the desktop app owns.
+delete_asked "Also delete Perplexity's runtime caches and local models" purge \
+    "$HOME/.cache/Perplexity" "$HOME/.cache/perplexity-rpc-server" \
+    "$HOME/.local/share/perplexity-rpc-server" || true
+
+# The user's: logins and session, the secret vault and device identity, the
+# launcher flags.
+data_removed=false
+if delete_asked "Also delete your Perplexity data (logins, settings, secret vault and device identity)" no \
+    "$HOME/.config/Perplexity" "$HOME/.local/state/perplexity" "$HOME/.config/perplexity-flags.conf"; then
+    data_removed=true
+fi
+
+echo ""
+echo "Perplexity has been removed."
+if $data_removed && ! $DRY_RUN; then
+    echo "Its logins, settings, secret vault, and device identity are gone too."
+else
+    echo "Your logins in ~/.config/Perplexity and the secret vault and device"
+    echo "identity in ~/.local/state/perplexity were not touched."
+fi

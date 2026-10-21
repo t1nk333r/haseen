@@ -17,7 +17,7 @@ usage() {
 Usage: haseen toggle screensaver [on|off|toggle|status] [--dry-run]
 
 "off" skips the screensaver: the idle lock still comes at its time.
-`haseen screensaver --force` still shows it.
+\`haseen screensaver --force\` still shows it.
 Without an argument it toggles; "status" prints on or off.
 State: \$HASEEN_USER_STATE/flags/screensaver-off (screensaver off while it exists).
 EOF

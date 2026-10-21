@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-keyboard — light every supported keyboard (ASUS ROG through
+# asusctl, Framework 16 through qmk_hid) in the current haseen theme's
+# keyboard colour. Adapted from Omarchy bin/omarchy-theme-set-keyboard (MIT,
+# Copyright (c) David Heinemeier Hansson): runs haseen's answers to the two
+# helpers, passing --dry-run on (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-keyboard [--dry-run]
+
+haseen's answer to Omarchy's command: runs omarchy-theme-set-keyboard-asus-rog
+and omarchy-theme-set-keyboard-f16, each a no-op without its keyboard tool.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+status=0
+"$HASEEN_OMARCHY_DIR/bin/omarchy-theme-set-keyboard-asus-rog" "${flags[@]}" || status=1
+"$HASEEN_OMARCHY_DIR/bin/omarchy-theme-set-keyboard-f16" "${flags[@]}" || status=1
+exit "$status"

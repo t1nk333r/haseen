@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-launch-nautilus — open your home folder in the file manager
+# (Omarchy binds SUPER + SHIFT + F to it). Adapted from Omarchy
+# bin/omarchy-launch-nautilus (MIT, Copyright (c) David Heinemeier Hansson):
+# haseen installs no Nautilus; its file manager is the inode/directory
+# handler (haseen setup default files: haseen-yazi.desktop or flea), started
+# through its desktop entry with gtk-launch, and through uwsm-app only in a
+# uwsm session; a Nautilus set as that handler works the same way (plan 093).
+# DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-nautilus
+
+haseen's answer to Omarchy's command: opens your home folder in the folder
+handler (haseen setup default files)." "$@"
+
+dir=$HOME
+handler="$(xdg-mime query default inode/directory 2>/dev/null || true)"
+[[ $handler == *.desktop ]] ||
+    die "no folder handler is set: haseen setup default files yazi"
+
+argv=(gtk-launch "$handler" "$dir")
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    argv=(uwsm-app -- "${argv[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${argv[*]}"
+    exit 0
+fi
+exec setsid "${argv[@]}"

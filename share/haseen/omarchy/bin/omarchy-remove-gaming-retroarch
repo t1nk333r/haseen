@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# omarchy-remove-gaming-retroarch — remove RetroArch and its libretro cores in
+# whichever form is installed (Omarchy's packages, haseen's Flatpak), then,
+# after asking, its config and saves. ~/Games/roms and ~/Games/bios stay.
+# Adapted from Omarchy bin/omarchy-remove-gaming-retroarch (MIT, Copyright (c)
+# David Heinemeier Hansson): the package list and data paths are Omarchy's,
+# plus the Flatpak's ~/.var/app directory; omarchy-pkg-drop -> haseen remove
+# package (a core another package needs is kept); --dry-run prints the plan
+# (plan 093).
+#
+# Data: Omarchy deletes the config and saves without asking; here they are
+# asked about, default no. --yes keeps them: only a yes at a terminal or
+# --purge deletes them.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-gaming-retroarch [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes retroarch, its assets and the
+libretro cores Omarchy installs, and the org.libretro.RetroArch Flatpak,
+whichever are installed (haseen remove), then asks (default no; --yes keeps
+them, --purge deletes them) before deleting RetroArch's config, saves and caches. ROMs
+and BIOS files in ~/Games/roms and ~/Games/bios are left in place.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+ID=org.libretro.RetroArch
+PKGS=(
+    retroarch
+    retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb
+    libretro-beetle-pce libretro-beetle-pce-fast libretro-beetle-psx libretro-beetle-psx-hw libretro-beetle-supergrafx
+    libretro-blastem
+    libretro-bsnes libretro-bsnes-hd
+    libretro-core-info
+    libretro-desmume libretro-dolphin libretro-flycast
+    libretro-gambatte libretro-genesis-plus-gx
+    libretro-kronos
+    libretro-mame libretro-melonds libretro-mesen libretro-mesen-s libretro-mgba libretro-mupen64plus-next
+    libretro-nestopia
+    libretro-overlays
+    libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp
+    libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x
+    libretro-yabause
+    libretro-cap32-git libretro-fbneo-git libretro-uae-git
+    libretro-vice-x128-git libretro-vice-x64-git libretro-vice-x64dtv-git libretro-vice-x64sc-git
+    libretro-vice-xcbm2-git libretro-vice-xcbm5x0-git libretro-vice-xpet-git
+    libretro-vice-xplus4-git libretro-vice-xscpu64-git libretro-vice-xvic-git
+    libretro-database-git
+    retroarch-joypad-autoconfig-git
+)
+
+remove_pkgs "${PKGS[@]}"
+remove_flatpak_app retroarch "$ID"
+delete_asked "Also delete RetroArch's config, saves and caches (ROMs and BIOS files stay)" purge \
+    "$HOME/.config/retroarch" "$HOME/.local/share/retroarch" "$HOME/.cache/retroarch" \
+    "$HOME/.var/app/$ID" || true
+
+echo ""
+echo "RetroArch and its cores have been removed."
+echo "ROMs and BIOS files at ~/Games/roms and ~/Games/bios were left in place."

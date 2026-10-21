@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-browser-policy — write the theme colour as a managed
+# browser policy ({"BrowserThemeColor": "#rrggbb", "BrowserColorScheme":
+# "device"} in color.json) into each Chromium-family policy directory that
+# already exists; one is never created, since that would hand a browser a
+# managed-policy root it does not otherwise have. Helium reads Chromium's
+# /etc/chromium/policies (lib/cairn.sh). Adapted from Omarchy
+# bin/omarchy-theme-set-browser-policy (MIT, Copyright (c) David Heinemeier
+# Hansson): the fixed directory list and the six-lowercase-hex check are
+# Omarchy's; the root writes go through haseen's run_root and
+# write_root_file (so --dry-run prints them) instead of a sudo or pkexec
+# re-exec of /usr/bin/omarchy-theme-set-browser-policy. Omarchy's
+# passwordless sudoers rule names that path, not this one, so sudo asks for a
+# password; a colour already in place is not written again, so that happens
+# only when the colour changes. A directory not owned by root or writable by
+# others is skipped: root would follow a link planted in it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+# Enterprise policy trust roots. The list is fixed here rather than taken from
+# the caller: the caller chooses a colour, never a path.
+POLICY_DIRS=(
+    /etc/chromium/policies/managed
+    /etc/opt/chrome/policies/managed
+    /etc/opt/edge/policies/managed
+    /etc/brave/policies/managed
+)
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-browser-policy <rrggbb> [--dry-run]
+
+haseen's answer to Omarchy's command: writes color.json with the colour into
+every existing directory of: ${POLICY_DIRS[*]}
+EOF
+}
+parse_common_flags "$@"
+if ((${#REST[@]} != 1)); then
+    usage >&2
+    exit 1
+fi
+color="${REST[0]}"
+
+# Six lowercase hex digits is the whole of what this accepts; the leading #
+# is added when the JSON is written.
+if [[ ! $color =~ ^[0-9a-f]{6}$ ]]; then
+    echo "omarchy-theme-set-browser-policy: expected six lowercase hex digits, got '$color'" >&2
+    exit 1
+fi
+
+# policy_dir_safe DIR — DIR (as read) is a real directory only root can
+# write. A fixture tree cannot be root's, so only the mode is checked there.
+policy_dir_safe() {
+    local dir="$1" owner mode
+    [[ -d $dir && ! -L $dir ]] || return 1
+    read -r owner mode < <(stat -c '%U %a' -- "$dir") || return 1
+    in_sysroot || [[ $owner == root ]] || return 1
+    (((8#$mode & 8#022) == 0))
+}
+
+content="$(printf '{"BrowserThemeColor": "#%s", "BrowserColorScheme": "device"}' "$color")"
+failed=0
+for policy_dir in "${POLICY_DIRS[@]}"; do
+    seen="$(sysroot_path "$policy_dir")"
+    [[ -d $seen && ! -L $seen ]] || continue
+    if ! policy_dir_safe "$seen"; then
+        echo "omarchy-theme-set-browser-policy: skipping $policy_dir: not a directory only root can write" >&2
+        failed=1
+        continue
+    fi
+    dest="$policy_dir/color.json"
+    if [[ -f $seen/color.json && ! -L $seen/color.json && $(<"$seen/color.json") == "$content" ]]; then
+        continue
+    fi
+    # tee would write through a link, and cannot replace a directory.
+    if [[ -L $seen/color.json || -d $seen/color.json ]]; then
+        run_root rm -rf -- "$dest" || {
+            echo "omarchy-theme-set-browser-policy: cannot replace $dest" >&2
+            failed=1
+            continue
+        }
+    fi
+    printf '%s\n' "$content" | write_root_file "$dest" 0644 || {
+        echo "omarchy-theme-set-browser-policy: cannot write $dest" >&2
+        failed=1
+    }
+done
+exit "$failed"

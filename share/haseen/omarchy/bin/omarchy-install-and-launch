@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# omarchy-install-and-launch — install a packaged app for Omarchy's menu in a
+# floating terminal, then start it. Translates Omarchy
+# bin/omarchy-install-and-launch (MIT, Copyright (c) David Heinemeier
+# Hansson): the package words install as omarchy-install-app installs them (a
+# catalogue id or package ref as that catalogue entry, the rest through
+# haseen install aur, never matched by display name); a catalogue Flatpak
+# then starts as `flatpak run <app-id>`, anything else by its desktop id with
+# gtk-launch, as Omarchy does. The launch is detached and goes through
+# uwsm-app only in a uwsm session (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-and-launch <display-name> <packages> <desktop-id> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs <packages> in haseen's floating
+terminal (as omarchy-install-app does), then starts the app: a catalogue
+Flatpak with 'flatpak run', anything else with 'gtk-launch <desktop-id>'.
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+set -- "${REST[@]}"
+name="${1-}"
+packages="${2-}"
+desktop_id="${3-}"
+if [[ -z $name || -z $packages || -z $desktop_id ]]; then
+    echo "Usage: omarchy-install-and-launch <display-name> <packages> <desktop-id>" >&2
+    exit 1
+fi
+in_floating_terminal "${args[@]}"
+
+CATALOG="${HASEEN_CATALOG:-$HASEEN_PATH/default/catalog.json}"
+# catalog_id WORD — the entry whose id or package ref is WORD, case-insensitive.
+catalog_id() {
+    jq -r --arg n "${1,,}" '[.entries[] | select((.id | ascii_downcase) == $n
+        or ((.ref | ascii_downcase) | split(" ") | index($n)))][0].id // empty' "$CATALOG"
+}
+catalog_field() {
+    jq -r --arg id "$1" --arg f "$2" '.entries[] | select(.id == $id) | .[$f] // empty' "$CATALOG"
+}
+
+echo "Installing $name..."
+words=()
+read -r -d '' -a words <<<"$packages" || true
+ids=()
+raw=()
+for word in "${words[@]}"; do
+    id="$(catalog_id "$word")"
+    if [[ -z $id ]]; then
+        raw+=("$word")
+    elif [[ " ${ids[*]} " != *" $id "* ]]; then
+        ids+=("$id")
+    fi
+done
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+launch=(gtk-launch "$desktop_id")
+for id in "${ids[@]}"; do
+    HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" app "$id" "${flags[@]}"
+    if [[ $(catalog_field "$id" source) == flatpak && ${launch[0]} == gtk-launch ]]; then
+        read -r ref _ <<<"$(catalog_field "$id" ref)"
+        launch=(flatpak run "$ref")
+    fi
+done
+((${#raw[@]} == 0)) || HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" aur "${raw[@]}" "${flags[@]}"
+
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    launch=(uwsm-app -- "${launch[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid -f ${launch[*]}"
+else
+    setsid -f "${launch[@]}" >/dev/null 2>&1 </dev/null
+fi

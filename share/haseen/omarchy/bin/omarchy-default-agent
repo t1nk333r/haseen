@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# omarchy-default-agent — print the default coding agent, or set it and start
+# it, on haseen setup default agent. The names and aliases follow Omarchy
+# bin/omarchy-default-agent (MIT, Copyright (c) David Heinemeier Hansson);
+# haseen stores the choice as $HASEEN_AGENT and installs nothing: where
+# Omarchy installs a missing agent with mise (--install), this says so and
+# exits 1 (plan 093). With no haseen default set, Omarchy's own
+# ~/.config/omarchy/defaults/agent is read, never written.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+NAMES="pi|omp|opencode|claude|codex|grok|gemini|openclaw|hermes|copilot|crush|cursor-agent|muse"
+usage() {
+    cat <<EOF
+Usage: omarchy-default-agent [--install] [$NAMES] [--dry-run]
+
+haseen's answer to Omarchy's command (haseen setup default agent): without a
+name, prints the default agent (nothing when none is set); with one, makes it
+the default and starts it (omarchy-agent).
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+set -- "${REST[@]}"
+installing=false
+if [[ ${1:-} == --install ]]; then
+    installing=true
+    shift
+fi
+
+if (($# == 0)); then
+    agent="$(haseen_cmd setup-default agent 2>/dev/null || true)"
+    legacy="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/defaults/agent"
+    if [[ -z $agent && -r $legacy ]]; then read -r agent <"$legacy" || true; fi
+    # Silent when unset: the menu leaves every entry unchecked until one is set.
+    [[ -n $agent ]] && echo "$agent"
+    exit 0
+fi
+
+case $1 in
+pi) agent=pi ;;
+omp | oh-my-pi) agent=omp ;;
+opencode | open-code) agent=opencode ;;
+claude | claude-code) agent=claude ;;
+codex) agent=codex ;;
+crush) agent=crush ;;
+grok) agent=grok ;;
+gemini | gemini-cli) agent=gemini ;;
+openclaw) agent=openclaw ;;
+hermes) agent=hermes ;;
+copilot | github-copilot) agent=copilot ;;
+muse | muse-code | musecode) agent=muse ;;
+cursor | cursor-agent) agent=cursor-agent ;;
+*)
+    echo "Usage: omarchy-default-agent <$NAMES>"
+    exit 1
+    ;;
+esac
+
+if $installing && ! have "$agent"; then
+    echo "$agent is not installed. haseen installs no coding agent: install it (mise, your package manager or its own installer), then run: omarchy default agent $agent" >&2
+    exit 1
+fi
+haseen_cmd setup-default agent "$agent"
+if ! have "$agent" && ! $DRY_RUN; then
+    echo "$agent is the default agent now, but not installed: install it, then start it with: omarchy agent" >&2
+    exit 1
+fi
+if $installing; then
+    $DRY_RUN || printf '\033[2J\033[3J\033[H'
+    exec "$HASEEN_OMARCHY_DIR/bin/omarchy-agent" --inline
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-agent"

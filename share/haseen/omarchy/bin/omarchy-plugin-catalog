@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# omarchy-plugin-catalog — every plugin haseen's shell can see, as the JSON
+# array Omarchy's plugin commands read. Adapted from Omarchy
+# bin/omarchy-plugin-catalog (MIT, Copyright (c) David Heinemeier Hansson):
+# the fields and their computed paths are Omarchy's. Changes: the plugins come
+# from haseen's search order (~/.config/haseen/plugins, haseen's built-ins,
+# then ~/.config/omarchy/plugins and ~/.config/DankMaterialShell/plugins, read
+# only), one per id as the shell resolves it (shell/lib/plugin.sh). firstParty
+# means a haseen built-in. name, description and kinds are what haseen loads
+# (an Omarchy or DMS manifest through the compat adapter); kinds haseen does
+# not load, such as Omarchy's whole-bar `bar`, are in unsupportedKinds. Each
+# row also says origin (user, user:omarchy, builtin, omarchy, dms), compat and
+# clonedFrom (the built-in a user copy replaces). Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+omarchy_help "Usage: omarchy-plugin-catalog
+
+haseen's answer to Omarchy's command: prints a JSON array with one object per
+plugin haseen's shell can load (id, name, description, kinds,
+unsupportedKinds, firstParty, manifestPath, sourceDir, entryPoints,
+barWidget, bar, barWidgetPath, barPath, origin, compat, clonedFrom)." "$@"
+
+# shellcheck disable=SC2016  # jq program
+row_jq='
+    def str: if type == "string" then . else null end;
+    (if type == "object" then . else {} end) as $raw
+    | (if $a.compat == "" then $raw else ($a.manifest // {}) end) as $m
+    | (if $a.compat == "omarchy" then (if ($raw.entryPoints | type) == "object" then $raw.entryPoints else {} end)
+       else (if ($m.entry | type) == "object" then $m.entry else {} end)
+            | with_entries(.key |= ({"bar-widget": "barWidget", "launcher-provider": "launcherProvider"}[.] // .))
+       end) as $ep
+    | {id: $id, name: (($m.name | str) // $id), description: (($m.description | str) // ""),
+       kinds: (if ($m.kinds | type) == "array" then $m.kinds else [] end),
+       unsupportedKinds: ($a.unsupported // []),
+       firstParty: ($origin == "builtin"), manifestPath: $mpath, sourceDir: $dir, entryPoints: $ep,
+       barWidget: ($raw.barWidget // null), bar: ($raw.bar // null),
+       origin: $origin, compat: $a.compat, clonedFrom: $cloned}
+    | .barWidgetPath = (if (.entryPoints.barWidget | type) == "string" then .sourceDir + "/" + .entryPoints.barWidget else null end)
+    | .barPath = (if (.entryPoints.bar | type) == "string" then .sourceDir + "/" + .entryPoints.bar else null end)'
+
+declare -A seen=()
+rows=()
+while IFS=$'\t' read -r id dir; do
+    # plugin_index is in the shell's search order: the first directory with an
+    # id is the one loaded, later ones are only overridden.
+    [[ -n $id && -z ${seen[$id]:-} ]] || continue
+    seen[$id]=1
+    if [[ -r $dir/manifest.json ]]; then
+        mpath="$dir/manifest.json"
+    elif [[ -r $dir/plugin.json ]]; then
+        mpath="$dir/plugin.json"
+    else
+        continue
+    fi
+    compat="$(plugin_compat "$dir")"
+    adapted='{"compat":"","unsupported":[],"manifest":null}'
+    if [[ -n $compat ]]; then
+        adapted="$(plugin_adapt "$dir" 2>/dev/null)" || continue
+    fi
+    origin="$(plugin_origin "$dir")"
+    cloned=""
+    [[ $origin == user* && -d $PLUGIN_BUILTIN_DIR/$id ]] && cloned="$id"
+    # An unreadable manifest is left out, as Omarchy's catalog leaves out what
+    # its jq cannot read.
+    row="$(jq -c --arg id "$id" --arg dir "$dir" --arg mpath "$mpath" --arg origin "$origin" \
+        --arg cloned "$cloned" --argjson a "$adapted" "$row_jq" "$mpath" 2>/dev/null)" || continue
+    [[ -n $row ]] && rows+=("$row")
+done < <(plugin_index)
+
+if ((${#rows[@]} == 0)); then
+    echo "[]"
+    exit 0
+fi
+printf '%s\n' "${rows[@]}" | jq -s 'sort_by(.id)'

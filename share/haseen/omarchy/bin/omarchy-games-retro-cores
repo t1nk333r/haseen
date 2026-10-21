@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# omarchy-games-retro-cores — list the installed RetroArch cores of a fixed
+# preferred set, one "Label (core)" line each. Adapted from Omarchy
+# bin/omarchy-games-retro-cores (MIT, Copyright (c) David Heinemeier Hansson):
+# the same table and output. Besides the retroarch package's /usr/lib/libretro
+# (read through sysroot_path) it reads the cores of the Flatpak
+# org.libretro.RetroArch, which is how haseen's app catalogue installs
+# RetroArch (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-games-retro-cores
+
+haseen's answer to Omarchy's command: prints 'Label (core)' for each preferred
+RetroArch core installed in /usr/lib/libretro (retroarch package) or
+~/.var/app/org.libretro.RetroArch/config/retroarch/cores (Flatpak). Prints
+nothing, and exits 0, when there is none." "$@"
+
+core_dirs=(
+    "$(sysroot_path /usr/lib/libretro)"
+    "$HOME/.var/app/org.libretro.RetroArch/config/retroarch/cores"
+)
+preferred_cores=(
+    "Amstrad CPC|cap32"
+    "Arcade FBNeo|fbneo"
+    "Arcade MAME|mame"
+    "Commodore Amiga|puae"
+    "Commodore C128|vice_x128"
+    "Commodore C64|vice_x64"
+    "Commodore VIC-20|vice_xvic"
+    "Nintendo DS|desmume"
+    "Nintendo Game Boy / Color|gambatte"
+    "Nintendo Game Boy Advance|mgba"
+    "Nintendo GameCube / Wii|dolphin"
+    "Nintendo NES / Famicom|mesen"
+    "Nintendo 64|parallel_n64"
+    "Nintendo SNES / SFC|snes9x"
+    "NEC PC Engine / TurboGrafx-16|mednafen_pce_fast"
+    "NEC PC Engine CD / TurboGrafx-CD|mednafen_pce"
+    "NEC PC Engine SuperGrafx|mednafen_supergrafx"
+    "Sega Dreamcast|flycast"
+    "Sega Mega Drive / Master System / Game Gear|genesis_plus_gx"
+    "Sega Saturn|kronos"
+    "Sony PlayStation|mednafen_psx_hw"
+    "Sony PlayStation Portable|ppsspp"
+)
+
+for preferred_core in "${preferred_cores[@]}"; do
+    label="${preferred_core%%|*}"
+    core="${preferred_core#*|}"
+    for dir in "${core_dirs[@]}"; do
+        if [[ -f $dir/${core}_libretro.so ]]; then
+            printf '%s (%s)\n' "$label" "$core"
+            break
+        fi
+    done
+done
+exit 0

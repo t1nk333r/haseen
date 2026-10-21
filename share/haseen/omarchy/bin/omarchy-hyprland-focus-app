@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-focus-app — focus the Hyprland window of an application,
+# the most recently focused one when several match. Adapted from Omarchy
+# bin/omarchy-hyprland-focus-app (MIT, Copyright (c) David Heinemeier Hansson):
+# the same class match with the agent-window initialTitle fallback; agent
+# windows still carry Omarchy's class org.omarchy.agent (the adopted
+# omarchy-agent keeps it), and the dispatcher form is chosen by asking
+# Hyprland rather than by trying one and falling back (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+# dispatch LUA LEGACY... — one Hyprland dispatcher: the Lua form when Hyprland
+# reads a Lua config (screen_lua asks it once), else the legacy form. A dry run
+# prints it instead.
+hypr_lua=""
+dispatch() {
+    local lua="$1" args
+    shift
+    if [[ -z $hypr_lua ]]; then
+        if screen_lua; then hypr_lua=yes; else hypr_lua=no; fi
+    fi
+    if [[ $hypr_lua == yes ]]; then args=(dispatch "$lua"); else args=(dispatch "$@"); fi
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl ${args[*]}"
+    else
+        hyprctl "${args[@]}" >/dev/null
+    fi
+}
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-focus-app <app-name> [--dry-run]
+
+haseen's answer to Omarchy's command: focuses the most recently focused window
+whose class matches <app-name> (a case-insensitive regex), or an agent window
+launched as <app-name>. Exit 0 focused, 1 when nothing matches.
+USAGE
+}
+parse_common_flags "$@"
+app="${REST[0]:-}"
+[[ -n $app ]] || {
+    usage >&2
+    exit 1
+}
+
+# Agent terminals notify as kitty/foot/... while their shared window class is
+# org.omarchy.agent, leaving the terminal name only in initialTitle.
+address=$(
+    hyprctl clients -j 2>/dev/null |
+        jq -r --arg pattern "$app" \
+            'def matches($value): ($value // "") | test($pattern; "i");
+             sort_by(.focusHistoryID) |
+             first(
+               (.[] | select(matches(.class))),
+               (.[] | select(.initialClass == "org.omarchy.agent" and matches(.initialTitle)))
+             ).address // empty' 2>/dev/null || true
+)
+[[ $address =~ ^0x[0-9a-fA-F]+$ ]] || exit 1
+dispatch "hl.dsp.focus({ window = \"address:$address\" })" focuswindow "address:$address"

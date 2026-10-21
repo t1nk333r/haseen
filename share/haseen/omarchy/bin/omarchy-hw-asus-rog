@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-hw-asus-rog — exit 0 on an ASUS ROG machine. Adapted from Omarchy
+# bin/omarchy-hw-asus-rog (MIT, Copyright (c) David Heinemeier Hansson): the
+# same DMI vendor and family test, read through haseen's hw_dmi so a fixture
+# (HASEEN_SYSROOT) stands in for the machine (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-asus-rog
+
+haseen's answer to Omarchy's command: exit 0 when the DMI vendor is
+\"ASUSTeK COMPUTER INC.\" and the product family names ROG. Prints nothing." "$@"
+
+[[ $(hw_dmi sys_vendor) == "ASUSTeK COMPUTER INC." && $(hw_dmi product_family) == *ROG* ]]

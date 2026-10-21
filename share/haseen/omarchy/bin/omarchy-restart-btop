@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# omarchy-restart-btop — make a running btop reload its config (SIGUSR2), as
+# haseen's theme switch does (layers/theme/theme-lib.sh theme_post_set).
+# Adapted from Omarchy bin/omarchy-restart-btop (MIT, Copyright (c) David Heinemeier Hansson):
+# guarded by `pgrep -x btop`, so no btop is success
+# (upstream's bare pkill exited 1, and no caller reads it); the signal goes to
+# the process named exactly btop; --dry-run prints it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-btop [--dry-run]
+
+haseen's answer to Omarchy's command: sends SIGUSR2 to a running btop so it
+reloads its config and theme. Nothing to do when btop is not running.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+pgrep -x btop >/dev/null 2>&1 || exit 0
+run pkill -SIGUSR2 -x btop

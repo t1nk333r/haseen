@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# omarchy-update-aur-pkgs — upgrade the installed foreign (AUR) packages, the
+# step haseen update runs after pacman -Syu. Omarchy's own updater calls it by
+# name. Adapted from Omarchy bin/omarchy-update-aur-pkgs (MIT,
+# Copyright (c) David Heinemeier Hansson): the foreign-package gate, the AUR
+# reachability check and the messages. Changes: the helper is haseen's choice
+# (paru, else yay: aur_helper, share/haseen/lib/packages.sh) instead of yay; it
+# only upgrades what is installed, so the source order of new installs is
+# untouched; --noconfirm only with --yes (or Omarchy's unattended -y update);
+# Omarchy's --ignore gcc14,gcc14-libs pin is dropped; --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/packages.sh
+source "$HASEEN_PATH/lib/packages.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-aur-pkgs [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: when foreign packages are installed and
+the AUR answers, upgrades them with paru (or yay): <helper> -Sua.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+# Read-only: is any explicitly installed package foreign?
+pacman -Qem >/dev/null 2>&1 || exit 0
+
+helper="$(aur_helper)"
+if [[ -z $helper ]]; then
+    printf '\e[33m\nForeign packages are installed but neither paru nor yay is (haseen layer apply chaotic provides paru); skipping AUR updates\e[0m\n'
+    exit 0
+fi
+
+# The AUR's RPC answers when the AUR is up; a dry run does not ask it.
+if ! $DRY_RUN && ! curl -sf --connect-timeout 30 --retry 3 --retry-delay 3 -A haseen-update \
+    "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" >/dev/null; then
+    printf '\e[31m\nAUR is unavailable (so skipping updates)\e[0m\n\n'
+    exit 0
+fi
+
+flags=()
+{ $ASSUME_YES || [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; } && flags+=(--noconfirm)
+printf '\e[32m\nUpdate AUR packages\e[0m\n'
+run "$helper" -Sua "${flags[@]}"
+echo

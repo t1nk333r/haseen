@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# omarchy-agent-prompt — start the default coding agent with a prompt, through
+# haseen's omarchy-agent. Adapted from Omarchy bin/omarchy-agent-prompt (MIT,
+# Copyright (c) David Heinemeier Hansson): the agent is haseen's default
+# (haseen setup default agent); a leading --dry-run passes through (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-agent-prompt [--dry-run] [--inline] <prompt...>
+
+Starts the default coding agent (haseen setup default agent) with the prompt,
+in its own terminal window, or in this terminal with --inline.
+EOF
+}
+
+# Only leading options are ours: the prompt may contain anything.
+flags=()
+while (($#)); do
+    case $1 in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run | --inline) flags+=("$1") ;;
+    *) break ;;
+    esac
+    shift
+done
+if (($# == 0)); then
+    echo "Usage: omarchy agent prompt [--inline] <prompt...>" >&2
+    exit 1
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-agent" "${flags[@]}" --prompt "$*"

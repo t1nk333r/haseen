@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-browser — tint Chromium-family browsers (Chromium and
+# Helium, Chrome, Edge, Brave) with the current haseen theme's background
+# through their managed policy, then make the running ones re-read it.
+# Adapted from Omarchy bin/omarchy-theme-set-browser and the colour parser of
+# install/helpers/browser-policy.sh (MIT, Copyright (c) David Heinemeier
+# Hansson): haseen renders no chromium.theme at theme set, so the colour is
+# current/theme/chromium.theme when the theme ships one, else Omarchy's
+# template ({{ background_rgb }}) rendered from the current colors.toml;
+# Helium (haseen's default browser, which reads Chromium's policy
+# directory) is refreshed too; the policy write is haseen's
+# omarchy-theme-set-browser-policy, and every action takes --dry-run
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-browser [--dry-run]
+
+haseen's answer to Omarchy's command: writes the current haseen theme's
+background colour as BrowserThemeColor into the existing Chromium, Chrome,
+Edge and Brave managed-policy directories (needs sudo), then has running
+Chromium, Helium, Chrome, Edge and Brave reload their policy.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+BROWSER_POLICY_DEFAULT_COLOR="#1c2027"
+
+# browser_policy_theme_hex RGB — "r,g,b" (0-255 each; themes are
+# user-installed) as #rrggbb, else the default colour.
+browser_policy_theme_hex() {
+    local theme_rgb=$1
+    if [[ $theme_rgb =~ ^[[:space:]]*([0-9]{1,3})[[:space:]]*,[[:space:]]*([0-9]{1,3})[[:space:]]*,[[:space:]]*([0-9]{1,3})[[:space:]]*$ ]] &&
+        ((10#${BASH_REMATCH[1]} < 256 && 10#${BASH_REMATCH[2]} < 256 && 10#${BASH_REMATCH[3]} < 256)); then
+        printf '#%02x%02x%02x' "$((10#${BASH_REMATCH[1]}))" "$((10#${BASH_REMATCH[2]}))" "$((10#${BASH_REMATCH[3]}))"
+        return
+    fi
+    printf '%s' "$BROWSER_POLICY_DEFAULT_COLOR"
+}
+
+theme_hex_color=$BROWSER_POLICY_DEFAULT_COLOR
+if omarchy_theme_file chromium.theme; then
+    theme_hex_color="$(browser_policy_theme_hex "$(<"$REPLY")")"
+fi
+
+# refresh_running_browser PROCESS COMMAND [PGREP_ARGS] — a running browser
+# re-reads its policy; one that is not running reads it when it starts.
+refresh_running_browser() {
+    local process="$1" command="$2" pgrep_args="${3:--x}"
+    in_sysroot && return 1
+    have "$command" && pgrep "$pgrep_args" "$process" >/dev/null 2>&1 || return 1
+    omarchy_run_quiet "$command" --refresh-platform-policy --no-startup-window || true
+}
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+failed=0
+"$HASEEN_OMARCHY_DIR/bin/omarchy-theme-set-browser-policy" "${flags[@]}" "${theme_hex_color#\#}" || failed=1
+
+refresh_running_browser chromium chromium || true
+refresh_running_browser helium helium-browser || true
+refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome || true
+refresh_running_browser msedge microsoft-edge-stable || true
+refresh_running_browser brave brave || true
+# Match on the binary path: the running process is named plain "brave", and a
+# bare -f brave-origin pattern would also match the installer's own terminal.
+refresh_running_browser /opt/brave-origin-bin/ brave-origin -f || true
+
+exit "$failed"

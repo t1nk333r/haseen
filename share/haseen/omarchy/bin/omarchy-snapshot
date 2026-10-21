@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# omarchy-snapshot — create a snapper snapshot of every configured
+# subvolume, or restore one. Adapted from Omarchy bin/omarchy-snapshot (MIT,
+# Copyright (c) David Heinemeier Hansson): the configs are read from
+# /etc/conf.d/snapper (SNAPPER_CONFIGS, which haseen seed system writes and
+# snapper list-configs reads) so no root is needed to list them; the
+# description is haseen's version; no config points at haseen seed system;
+# restore uses CachyOS's limine-snapper-restore when installed and names the
+# alternatives otherwise; snapper runs through run_root and --dry-run prints
+# it; an unknown command is a usage error (upstream did nothing). Exit 127
+# when snapper is not installed is kept: omarchy-update reads it as "skip the
+# snapshot" (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-snapshot <create|restore> [--dry-run]
+
+haseen's answer to Omarchy's command:
+  create   a numbered snapper snapshot of every snapper config, then snapper's
+           number cleanup (the policy haseen seed system sets)
+  restore  limine-snapper-restore (CachyOS limine-snapper-sync), when installed
+Exits 127 when snapper is not installed.
+EOF
+}
+parse_common_flags "$@"
+COMMAND="${REST[0]:-}"
+if [[ -z $COMMAND ]]; then
+    echo "Usage: omarchy-snapshot <create|restore>" >&2
+    exit 1
+fi
+
+# omarchy-update uses this to skip the snapshot when snapper is not available.
+have snapper || exit 127
+
+case "$COMMAND" in
+create)
+    # The description is only a label: it must never stop the snapshot.
+    desc="haseen $(cat "$HASEEN_PATH/VERSION" 2>/dev/null || echo unknown)"
+    configs=()
+    conf="$(sysroot_path /etc/conf.d/snapper)"
+    if [[ -r $conf ]]; then
+        read -ra configs <<<"$(sed -nE 's/^[[:space:]]*SNAPPER_CONFIGS=["'\'']?([^"'\'']*)["'\'']?.*/\1/p' "$conf" | tail -n1)"
+    fi
+    # Snapper installed but unconfigured snapshots nothing; staying quiet
+    # would read as a successful snapshot, and the next update would look
+    # recoverable when nothing was ever captured.
+    if ((${#configs[@]} == 0)); then
+        warn "no snapper configs found, so no snapshot was created"
+        echo "Set up haseen's snapshot policy with: haseen seed system" >&2
+        exit 1
+    fi
+    echo "Create system snapshot"
+    for config in "${configs[@]}"; do
+        [[ $config =~ ^[A-Za-z0-9._-]+$ ]] || die "unusual snapper config name: $config"
+        run_root snapper -c "$config" create -c number -d "$desc"
+        run_root snapper -c "$config" cleanup number
+    done
+    echo "Snapshots can be selected during boot."
+    ;;
+restore)
+    if have limine-snapper-restore; then
+        run_root limine-snapper-restore
+    else
+        die "limine-snapper-restore is not installed (CachyOS limine-snapper-sync); restore with snapper rollback or btrfs-assistant, or boot a snapshot from the boot menu"
+    fi
+    ;;
+*)
+    echo "Usage: omarchy-snapshot <create|restore>" >&2
+    exit 1
+    ;;
+esac

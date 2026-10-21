@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# omarchy-hibernation-setup — set up suspend to disk. Translated to haseen
+# hibernation setup, whose steps come from Omarchy
+# bin/omarchy-hibernation-setup (MIT, Copyright (c) David Heinemeier Hansson)
+# and whose layout is haseen's (a top-level @swap subvolume, the LUKS mapper as
+# the resume device, the command line wherever this machine's bootloader reads
+# it). Omarchy's flags map: --force skips the question (--yes) and the reboot
+# offer; --no-rebuild stays --no-rebuild; other arguments are ignored, as
+# Omarchy ignores them. A kernel that cannot hibernate is "not supported" and
+# exit 0, as in Omarchy. Differences: a declined question or a failed step
+# exits 1 (Omarchy exits 0 on a decline); Omarchy's keyboard-backlight
+# system-sleep hook has no haseen counterpart (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hibernation-setup [--force] [--no-rebuild] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen hibernation setup.
+  --force       do not ask first, and do not offer a reboot
+  --no-rebuild  do not regenerate the initramfs (and do not offer a reboot)" "$@"
+
+force=false
+no_rebuild=false
+flags=()
+for arg in "$@"; do
+    case $arg in
+    --force) force=true ;;
+    --no-rebuild) no_rebuild=true ;;
+    --dry-run) DRY_RUN=true ;;
+    esac
+done
+
+# shellcheck source=../../lib/hibernate.sh
+source "$HASEEN_PATH/lib/hibernate.sh"
+if ! hibernate_supported; then
+    echo "Hibernation is not supported on your system" >&2
+    exit 0
+fi
+# Already set up: haseen says so and changes nothing, so there is nothing to
+# reboot for either.
+already=false
+hibernate_ready && already=true
+
+$force && flags+=(--yes)
+$no_rebuild && flags+=(--no-rebuild)
+$DRY_RUN && flags+=(--dry-run)
+"$HASEEN_BIN/haseen-hibernation-setup" "${flags[@]}"
+
+# Omarchy offers the reboot that makes the new command line count, unless the
+# caller is an installer (--force) or rebuilds later (--no-rebuild).
+if ! $already && ! $force && ! $no_rebuild; then
+    if $DRY_RUN; then
+        echo "DRYRUN: ask 'Reboot to enable hibernation?' and on yes: haseen system reboot"
+    elif [[ -t 0 ]]; then
+        read -r -p "Reboot to enable hibernation? [y/N] " reply
+        [[ $reply =~ ^[Yy]$ ]] && haseen_exec system reboot
+    fi
+fi
+exit 0

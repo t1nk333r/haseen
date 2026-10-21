@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# omarchy-plugin-enable — turns a plugin on in haseen's shell.json, optionally
+# at a place in the bar. Follows Omarchy bin/omarchy-plugin-enable (MIT,
+# Copyright (c) David Heinemeier Hansson): the same <id> [section|--section S]
+# [--index N] [--before W|--after W] and messages. The work is haseen plugin
+# enable (a bar widget without a place goes to the end of bar.right), then
+# haseen bar add or haseen bar move for a placement: --after W becomes
+# --before the widget after W, --index N --before the Nth widget (from 0) of
+# the section. An Omarchy built-in id (omarchy.X) means haseen's own haseen.X
+# when haseen has one and nothing else answers to omarchy.X. haseen has no
+# whole-bar plugins: a plugin of Omarchy's kind `bar` is refused (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+
+fail() {
+    echo "omarchy-plugin-enable: $*" >&2
+    exit 1
+}
+
+case "${1:-}" in
+-h | --help)
+    cat <<USAGE
+Usage: omarchy-plugin-enable <id> [left|center|right|--section S] [--index N]
+                             [--before W|--after W] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen plugin enable <id>, then
+haseen bar add|move <id> <section> [--before W] for a placement.
+USAGE
+    exit 0
+    ;;
+esac
+
+args=()
+for arg in "$@"; do
+    case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+set -- "${args[@]+"${args[@]}"}"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+
+id="${1:-}"
+[[ -n $id ]] || fail "plugin id is required"
+shift
+
+# omarchy.X names Omarchy's built-in, which haseen replaces with its own.
+if ! plugin_dir "$id" >/dev/null && [[ $id == omarchy.* && -d $PLUGIN_BUILTIN_DIR/haseen.${id#omarchy.} ]]; then
+    id="haseen.${id#omarchy.}"
+fi
+row="$("$HASEEN_OMARCHY_DIR/bin/omarchy-plugin-catalog" | jq -c --arg id "$id" 'map(select(.id == $id))[0] // empty')"
+[[ -n $row ]] || fail "plugin '$id' is not known (haseen plugin list)"
+if jq -e '(.kinds + .unsupportedKinds) | index("bar")' <<<"$row" >/dev/null; then
+    fail "'$id' is a bar; haseen's shell draws its own bar and has no whole-bar plugins"
+fi
+
+section=""
+index=""
+before=""
+after=""
+if (($# > 0)) && [[ $1 != --* ]]; then
+    section="$1"
+    shift
+fi
+while (($# > 0)); do
+    case "$1" in
+    --section)
+        [[ -z $section ]] || fail "specify a section positionally or with --section, not both"
+        section="${2:-}"
+        [[ -n $section ]] || fail "--section requires a section"
+        shift 2
+        ;;
+    --index)
+        index="${2:-}"
+        [[ -n $index ]] || fail "--index requires an index"
+        shift 2
+        ;;
+    --before)
+        before="${2:-}"
+        [[ -n $before ]] || fail "--before requires a widget id"
+        shift 2
+        ;;
+    --after)
+        after="${2:-}"
+        [[ -n $after ]] || fail "--after requires a widget id"
+        shift 2
+        ;;
+    *)
+        fail "unknown placement option: $1"
+        ;;
+    esac
+done
+
+[[ -z $section || $section =~ ^(left|center|right)$ ]] ||
+    fail "section must be left, center, or right"
+[[ -z $index || $index =~ ^[0-9]+$ ]] ||
+    fail "index must be a non-negative integer"
+[[ -z $before || -z $after ]] || fail "use only one of --before or --after"
+
+placed=false
+[[ -n $section$index$before$after ]] && placed=true
+if ! $placed; then
+    "$HASEEN_BIN/haseen-plugin-enable" "$id" "${dry[@]+"${dry[@]}"}" || fail "haseen plugin enable $id failed"
+    echo "Enabled $id"
+    exit 0
+fi
+
+jq -e '.kinds | index("bar-widget")' <<<"$row" >/dev/null ||
+    fail "'$id' is not a bar widget, so it has no place in the bar"
+
+merged="$(shell_merged_json)"
+# Where the widget is now, if anywhere: a placement without a section keeps
+# it there, and a widget not yet in the bar goes to bar.right, where haseen
+# plugin enable would put it.
+current="$(jq -r --arg id "$id" 'first(("left", "center", "right") as $s
+    | select((.bar[$s] // []) | index([$id])) | $s) // empty' <<<"$merged")"
+[[ -n $section ]] || section="${current:-right}"
+
+# The section as it is, without the widget itself: --after and --index name
+# places among the others.
+mapfile -t others < <(jq -r --arg s "$section" --arg id "$id" \
+    '(.bar[$s] // []) | map(select(type == "string" and . != $id))[]' <<<"$merged")
+if [[ -n $after ]]; then
+    before=""
+    for ((i = 0; i < ${#others[@]}; i++)); do
+        if [[ ${others[i]} == "$after" ]]; then
+            before="${others[i + 1]:-}"
+            break
+        fi
+    done
+elif [[ -n $index ]]; then
+    before="${others[index]:-}"
+fi
+
+if [[ -n $current ]]; then
+    "$HASEEN_BIN/haseen-plugin-enable" "$id" "${dry[@]+"${dry[@]}"}" || fail "haseen plugin enable $id failed"
+    "$HASEEN_BIN/haseen-bar-move" "$id" "$section" ${before:+--before "$before"} "${dry[@]+"${dry[@]}"}" ||
+        fail "haseen bar move $id $section failed"
+else
+    # haseen bar add places it and turns it on.
+    "$HASEEN_BIN/haseen-bar-add" "$id" "$section" ${before:+--before "$before"} "${dry[@]+"${dry[@]}"}" ||
+        fail "haseen bar add $id $section failed"
+fi
+echo "Enabled and moved $id"

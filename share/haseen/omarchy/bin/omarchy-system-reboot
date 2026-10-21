@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-system-reboot — reboot through haseen (haseen system reboot) after
+# asking every window to close. Follows Omarchy bin/omarchy-system-reboot
+# (MIT, Copyright (c) David Heinemeier Hansson): the reboot is scheduled first
+# in the user manager, so closing the terminal this runs in cannot cancel it;
+# the re*-required markers are cleared in haseen's store (omarchy-state);
+# then omarchy-hyprland-window-close-all and a second for apps such as
+# Chromium to shut down cleanly. Omarchy's OSD is not shown. Arguments are
+# ignored (callers pass none); --dry-run prints every step (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-system-reboot [--dry-run]
+
+haseen's answer to Omarchy's command: reboots (haseen system reboot) two
+seconds from now, after asking every window to close.
+EOF
+}
+parse_common_flags "$@"
+oma="$HASEEN_OMARCHY_DIR/bin"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+
+run systemd-run --user --collect --quiet --on-active=2s --timer-property=AccuracySec=100ms \
+    "$(readlink -f "$HASEEN_BIN/haseen-system")" reboot || exit 1
+
+"$oma/omarchy-state" clear 're*-required' "${flags[@]}" || true
+"$oma/omarchy-hyprland-window-close-all" "${flags[@]}" || true
+$DRY_RUN || sleep 1

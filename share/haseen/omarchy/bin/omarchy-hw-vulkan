@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-hw-vulkan — exit 0 when a Vulkan driver (an ICD manifest) is
+# installed. Adapted from Omarchy bin/omarchy-hw-vulkan (MIT, Copyright (c)
+# David Heinemeier Hansson): the ICD directory is read through sysroot_path
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-vulkan
+
+haseen's answer to Omarchy's command: exit 0 when /usr/share/vulkan/icd.d holds
+a .json ICD manifest, 1 otherwise." "$@"
+
+shopt -s nullglob
+icds=("$(sysroot_path /usr/share/vulkan/icd.d)"/*.json)
+((${#icds[@]} > 0))

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# omarchy-theme-current — the current theme's name the way Omarchy's menus and
+# plugins read it: title-cased ("Tokyo Night"), "Unknown" when no theme is
+# set, exit 0 either way. The name is `haseen theme current`'s (a renamed
+# theme's old name already resolved). Follows Omarchy
+# bin/omarchy-theme-current (MIT, Copyright (c) David Heinemeier Hansson)
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-theme-current
+
+haseen's answer to Omarchy's command: prints the current haseen theme's name
+title-cased (tokyo-night -> Tokyo Night), or Unknown when none is set." "$@"
+
+if name="$(haseen_cmd theme-current 2>/dev/null)" && [[ -n $name ]]; then
+    sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g' <<<"$name"
+else
+    echo "Unknown"
+fi

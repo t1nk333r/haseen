@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# omarchy-state — set or clear the marker files Omarchy's commands leave for
+# each other (reboot-required, …). Adapted from Omarchy bin/omarchy-state
+# (MIT, Copyright (c) David Heinemeier Hansson): the markers live in
+# $HASEEN_USER_STATE/omarchy-state/, a directory of their own, so a clear
+# pattern such as '*' can never reach haseen's own state (active-shell,
+# current/, flags/), and never in ~/.local/state/omarchy; a name must be one
+# path component; --dry-run prints the change (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+STATE_DIR="$HASEEN_USER_STATE/omarchy-state"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-state <set|clear> <state-name-or-pattern> [--dry-run]
+
+haseen's answer to Omarchy's command: 'set NAME' creates the marker NAME and
+'clear PATTERN' removes the markers matching the shell pattern PATTERN, in
+\$HASEEN_USER_STATE/omarchy-state ($STATE_DIR).
+EOF
+}
+
+args=()
+for arg in "$@"; do
+    case "$arg" in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run) DRY_RUN=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+COMMAND="${args[0]:-}"
+STATE_NAME="${args[1]:-}"
+
+if [[ -z $COMMAND ]]; then
+    echo "Usage: omarchy-state <set|clear> <state-name-or-pattern>"
+    exit 1
+fi
+if [[ -z $STATE_NAME ]]; then
+    echo "Usage: omarchy-state $COMMAND <state-name>"
+    exit 1
+fi
+# A marker is a file in the store, never a path out of it.
+if [[ $STATE_NAME == */* || $STATE_NAME == . || $STATE_NAME == .. ]]; then
+    printf 'omarchy-state: not a state name: %s\n' "$STATE_NAME" >&2
+    exit 1
+fi
+
+case "$COMMAND" in
+set)
+    [[ -d $STATE_DIR ]] || run mkdir -p -- "$STATE_DIR"
+    run touch -- "$STATE_DIR/$STATE_NAME"
+    ;;
+clear)
+    [[ -d $STATE_DIR ]] || exit 0
+    if $DRY_RUN; then
+        find "$STATE_DIR" -maxdepth 1 -type f -name "$STATE_NAME" -printf 'DRYRUN: rm %p\n'
+    else
+        find "$STATE_DIR" -maxdepth 1 -type f -name "$STATE_NAME" -delete
+    fi
+    ;;
+*)
+    # Upstream ignores an unknown command; say so without failing a caller.
+    printf 'omarchy-state: unknown command %s (set or clear)\n' "$COMMAND" >&2
+    ;;
+esac

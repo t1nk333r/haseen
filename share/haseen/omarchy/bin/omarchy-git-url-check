@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# omarchy-git-url-check — exit 0 when a git URL names a repository, 1 when it
+# names a git option or a transport helper. Adapted from Omarchy
+# bin/omarchy-git-url-check (MIT, Copyright (c) David Heinemeier Hansson): the
+# verdict is haseen's theme_git_url_ok, which haseen's theme installer uses, so
+# one list decides; it leaves out ftp and ftps, which Omarchy allows. The
+# messages are Omarchy's (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-git-url-check <git-url>
+
+haseen's answer to Omarchy's command: exit 0 when <git-url> names a
+repository; exit 1 with a message when it is empty, names a git option or a
+<helper>:: transport helper, or uses a scheme other than ssh, git, git+ssh,
+ssh+git, http, https or file." "$@"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+fail() {
+    echo "omarchy-git-url-check: $*" >&2
+    exit 1
+}
+
+url="${1-}"
+[[ -n $url ]] || fail "a git URL is required"
+theme_git_url_ok "$url" && exit 0
+if [[ $url == -* || $url =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*:: ]]; then
+    fail "'$url' names a git option or transport helper, not a repository."
+fi
+scheme="${url%%://*}"
+fail "'$url' names the '$scheme' transport, which haseen does not clone from."

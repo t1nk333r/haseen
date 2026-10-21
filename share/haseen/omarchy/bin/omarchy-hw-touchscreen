@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-hw-touchscreen — print Hyprland's touchscreen or tablet device name.
+# Adapted from Omarchy bin/omarchy-hw-touchscreen (MIT, Copyright (c) David
+# Heinemeier Hansson): unchanged query (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-touchscreen
+
+haseen's answer to Omarchy's command: prints the first Hyprland touch or
+tablet device name; exit 1 and no output when there is none." "$@"
+
+devices="$(hyprctl devices -j 2>/dev/null)" || exit 1
+device="$(jq -r '[.touch[]?.name, .tablets[]?.name] | first // empty' <<<"$devices" 2>/dev/null || true)"
+[[ -n $device ]] || exit 1
+printf '%s\n' "$device"

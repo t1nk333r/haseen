@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# omarchy-chromium-copy-url-host — Chromium native-messaging host for the Copy
+# URL extension: read one length-prefixed JSON message, copy its url to the
+# clipboard, answer {"copied":true|false}. Adapted from Omarchy
+# bin/omarchy-chromium-copy-url-host (MIT, Copyright (c) David Heinemeier
+# Hansson): haseen is found through this file's own path instead of
+# OMARCHY_PATH (the browser starts hosts with no session environment), and the
+# toast is haseen's, without a glyph (plan 093). The browser runs the path its
+# com.omarchy.copy_url.json manifest names, which the extension's installer
+# writes.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-chromium-copy-url-host
+
+A Chromium native-messaging host: the browser starts it with one framed JSON
+message ({\"url\": ...}) on stdin. Not for running by hand." "$@"
+export PATH="$PATH:/usr/local/bin:/usr/bin"
+
+parse_url() { jq -r '.url // empty' 2>/dev/null <<<"$1" || true; }
+
+copy_url() {
+    [[ -n $1 ]] || return 1
+    printf '%s' "$1" | wl-copy --type text/plain
+    "$HASEEN_BIN/haseen-notification-send" "URL copied to clipboard" >/dev/null 2>&1 || true
+}
+
+reply_copied() {
+    if [[ $1 == true ]]; then
+        printf '\x0f\x00\x00\x00{"copied":true}'
+    else
+        printf '\x10\x00\x00\x00{"copied":false}'
+    fi
+}
+
+# Native messaging frame: 4-byte little-endian length, then UTF-8 JSON.
+length=$(head -c4 | od -An -v -tu4 --endian=little | tr -d ' ')
+[[ -n ${length:-} ]] && ((length > 0)) || exit 0
+payload=$(head -c "$length")
+if copy_url "$(parse_url "$payload")"; then
+    reply_copied true
+else
+    reply_copied false
+fi

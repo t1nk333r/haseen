@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# omarchy-hw-hybrid-gpu — exit 0 on an active hybrid GPU setup. Adapted from
+# Omarchy bin/omarchy-hw-hybrid-gpu (MIT, Copyright (c) David Heinemeier
+# Hansson): supergfxctl's Hybrid mode when the daemon answers within the same
+# bounded query, else two or more display GPUs. The GPUs are counted from sysfs
+# (class 0x03, read through sysroot_path) instead of lspci, which wakes a
+# runtime-suspended GPU. supergfxctl asks the live daemon, so a fixture
+# (HASEEN_SYSROOT) is judged by its GPUs alone (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-hybrid-gpu
+
+haseen's answer to Omarchy's command: exit 0 when supergfxctl reports Hybrid
+mode, or (without supergfxctl, or when it does not answer within a second)
+when two or more display GPUs are present." "$@"
+
+multiple_gpus() {
+    local device count=0
+    shopt -s nullglob
+    for device in "$(sysroot_path /sys/bus/pci/devices)"/*; do
+        [[ -r $device/class ]] || continue
+        [[ $(<"$device/class") == 0x03* ]] && count=$((count + 1))
+    done
+    ((count >= 2))
+}
+
+if ! in_sysroot && have supergfxctl; then
+    # A wedged supergfxd blocks its clients forever, and this gate runs while
+    # a menu renders: bound the query, and count GPUs when it cannot answer.
+    status=0
+    modes=$(timeout --kill-after=1s 1s supergfxctl -s 2>/dev/null) || status=$?
+    if ((status == 124 || status == 137)); then
+        multiple_gpus
+    else
+        grep -qw Hybrid <<<"$modes"
+    fi
+else
+    multiple_gpus
+fi

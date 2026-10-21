@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# omarchy-theme-install — install a theme from a git repository and apply it,
+# asking for the URL at a terminal when none is given (Omarchy's menu opens it
+# in a terminal for that). Under haseen the clone lands in
+# ~/.config/haseen/themes and `haseen theme install` does the work: the same
+# URL checks and name rule (an omarchy- or haseen- prefix and a -theme suffix
+# dropped), and an installed theme is held to haseen's denylist when it is
+# applied. Omarchy replaces an installed theme of the same name without
+# asking, so --yes is passed; haseen still refuses to replace a theme you
+# wrote yourself (one with no .git). Interface of Omarchy
+# bin/omarchy-theme-install (MIT, Copyright (c) David Heinemeier Hansson)
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-install [git-repo-url] [--dry-run]
+
+haseen's answer to Omarchy's command: clones the theme into
+~/.config/haseen/themes/<name> and applies it (haseen theme install <url>
+--yes). Without a URL it asks for one at a terminal. Themes in Omarchy's
+colors.toml format work: https://omarchy.org/themes/
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 1)) || {
+    usage >&2
+    exit 1
+}
+
+url="${1:-}"
+if [[ -z $url && -t 0 ]]; then
+    echo "Themes in Omarchy's colors.toml format work: https://omarchy.org/themes/" >&2
+    prompt="Git repo URL (https or git@host:org/repo.git)"
+    if have gum; then
+        url="$(gum input --placeholder="$prompt" --header="")" || url=""
+    else
+        read -r -p "$prompt: " url || url=""
+    fi
+fi
+if [[ -z $url ]]; then
+    echo "omarchy-theme-install: no repository URL given" >&2
+    exit 1
+fi
+
+flags=(--yes)
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec theme-install "$url" "${flags[@]}"

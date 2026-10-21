@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-installed-service-tailscale — exit 0 when Tailscale is installed and
+# running, else 1; Omarchy's bar decides its defaults by this exit code
+# (omarchy-bar). Adapted from Omarchy bin/omarchy-installed-service-tailscale
+# (MIT, Copyright (c) David Heinemeier Hansson): unchanged, except that under
+# a fixture sysroot the enabled-unit link stands in for the live
+# `systemctl is-active` and process table (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-installed-service-tailscale
+
+haseen's answer to Omarchy's command: exits 0 when Tailscale is installed and
+running (tailscale status answers, or tailscaled runs), else 1. Prints
+nothing." "$@"
+
+if have tailscale && tailscale status --json >/dev/null 2>&1; then
+    exit 0
+fi
+if in_sysroot; then
+    compgen -G "$(sysroot_path /etc/systemd/system)/*.wants/tailscaled.service" >/dev/null
+    exit
+fi
+systemctl is-active --quiet tailscaled.service >/dev/null 2>&1 || pgrep -x tailscaled >/dev/null 2>&1

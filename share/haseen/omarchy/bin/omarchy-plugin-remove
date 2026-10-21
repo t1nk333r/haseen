@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# omarchy-plugin-remove — removes one of your plugins from
+# ~/.config/haseen/plugins. Follows Omarchy bin/omarchy-plugin-remove (MIT,
+# Copyright (c) David Heinemeier Hansson): the same [id] [--yes], a pick when
+# no id is given, the confirmation (refused without a terminal unless --yes),
+# and Omarchy's three cases: a link is unlinked, a git checkout deleted, a
+# plain folder (your own work) moved aside as .<id>.bak.<timestamp>. Changes:
+# links and checkouts go through haseen plugin uninstall, which also drops the
+# pin; the plugin is turned off first, except a copy of a built-in, whose
+# removal hands its place back to the built-in. A plugin in
+# ~/.config/omarchy/plugins or ~/.config/DankMaterialShell/plugins is refused:
+# haseen reads those and never deletes, moves or rewrites anything there; turn
+# it off with haseen plugin disable. Built-ins are refused the same way.
+# --dry-run prints every step (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+
+fail() {
+    echo "omarchy-plugin-remove: $*" >&2
+    exit 1
+}
+
+interactive() {
+    [[ -t 0 && -t 1 ]]
+}
+
+# ask PROMPT — Omarchy's confirm: --yes says yes, a terminal asks, anything
+# else refuses rather than guess.
+ask() {
+    $ASSUME_YES && return 0
+    $DRY_RUN && return 0
+    interactive || fail "refusing to continue without confirmation; pass --yes"
+    confirm "$1"
+}
+
+id=""
+while (($# > 0)); do
+    case "$1" in
+    --yes | -y) ASSUME_YES=true ;;
+    --dry-run) DRY_RUN=true ;;
+    -h | --help)
+        cat <<USAGE
+Usage: omarchy-plugin-remove [id] [--yes] [--dry-run]
+
+haseen's answer to Omarchy's command: removes a plugin from
+~/.config/haseen/plugins (haseen plugin uninstall for installed ones). Plugins
+in ~/.config/omarchy/plugins or ~/.config/DankMaterialShell/plugins, and the
+built-ins, are never removed: turn them off with haseen plugin disable <id>.
+USAGE
+        exit 0
+        ;;
+    -*) fail "unknown remove option: $1" ;;
+    *)
+        [[ -z $id ]] || fail "unexpected argument: $1"
+        id="$1"
+        ;;
+    esac
+    shift
+done
+
+# user_names — the plugin directories (and links) in haseen's directory.
+user_names() {
+    [[ -d $PLUGIN_USER_DIR ]] || return 0
+    find "$PLUGIN_USER_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
+}
+
+if [[ -z $id ]]; then
+    interactive || fail "a plugin-id is required"
+    names="$(user_names)"
+    [[ -n $names ]] || fail "no plugins installed in $PLUGIN_USER_DIR"
+    id="$(printf '%s\n' "$names" | "$HASEEN_BIN/haseen-menu-select" "Remove which plugin?")" || fail "cancelled"
+    [[ -n $id ]] || fail "nothing selected"
+fi
+[[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $id != *..* ]] || fail "invalid plugin id '$id'"
+
+# refuse_foreign DIR — DIR is not haseen's to remove: say why and the way.
+refuse_foreign() {
+    local dir="$1" sid
+    sid="$(plugin_id_of "$dir" 2>/dev/null || basename "$dir")"
+    omarchy_refuse "haseen plugin disable $sid" \
+        "$id is in $(dirname "$dir"), which haseen only reads: it never deletes, moves or rewrites anything there."
+}
+
+# The directory: a name in haseen's directory first, then whatever directory
+# the shell loads for that id (an Omarchy manifest's adapted omarchy.X).
+name=""
+if [[ -e $PLUGIN_USER_DIR/$id || -L $PLUGIN_USER_DIR/$id ]]; then
+    name="$id"
+elif dir="$(plugin_dir "$id")"; then
+    case "$(dirname "$dir")" in
+    "$PLUGIN_USER_DIR") name="$(basename "$dir")" ;;
+    "$PLUGIN_BUILTIN_DIR")
+        omarchy_refuse "haseen plugin disable $id" \
+            "$id is one of haseen's built-in plugins, which are part of haseen and are turned off, not removed."
+        ;;
+    *) refuse_foreign "$dir" ;;
+    esac
+else
+    for root in "$PLUGIN_OMARCHY_DIR" "$PLUGIN_DMS_DIR"; do
+        [[ -e $root/$id || -L $root/$id ]] && refuse_foreign "$root/$id"
+    done
+    fail "plugin '$id' is not installed"
+fi
+
+target="$PLUGIN_USER_DIR/$name"
+# A link of yours that points into Omarchy's or DMS's directory is unlinked:
+# rm on the link never follows it, so their copy stays as it is.
+shell_id="$(plugin_id_of "$target" 2>/dev/null || echo "$name")"
+copy_of_builtin=false
+[[ -d $PLUGIN_BUILTIN_DIR/$shell_id ]] && copy_of_builtin=true
+was_enabled=false
+if listing="$("$HASEEN_OMARCHY_DIR/bin/omarchy-plugin-list" --json 2>/dev/null)" &&
+    [[ $(jq -r --arg id "$shell_id" 'map(select(.id == $id))[0].enabled // false' <<<"$listing") == true ]]; then
+    was_enabled=true
+fi
+
+dry=()
+$DRY_RUN && dry=(--dry-run)
+if [[ -L $target ]]; then
+    ask "Unlink '$name' (symlink -> $(readlink "$target"))?" || fail "aborted"
+elif [[ -d $target/.git ]]; then
+    ask "Delete '$name'? Its git repo remains upstream." || fail "aborted"
+else
+    ask "Remove '$name'? The folder will be backed up." || fail "aborted"
+fi
+
+if [[ -L $target ]]; then
+    done_msg="Unlinked $name."
+else
+    done_msg="Removed $name."
+fi
+if [[ -L $target || -d $target/.git ]]; then
+    "$HASEEN_BIN/haseen-plugin-uninstall" "$name" --yes "${dry[@]+"${dry[@]}"}" || fail "could not remove $name"
+    # haseen plugin uninstall turns the id off; a copy of a built-in gives
+    # the id back to the built-in, which was on where the copy was.
+    if $copy_of_builtin && $was_enabled; then
+        "$HASEEN_BIN/haseen-plugin-enable" "$shell_id" "${dry[@]+"${dry[@]}"}" ||
+            warn "could not turn the built-in $shell_id back on (haseen plugin enable $shell_id)"
+    fi
+    echo "$done_msg"
+else
+    if $was_enabled && ! $copy_of_builtin; then
+        "$HASEEN_BIN/haseen-plugin-disable" "$shell_id" "${dry[@]+"${dry[@]}"}" ||
+            warn "could not turn $shell_id off (haseen plugin disable $shell_id)"
+    fi
+    base="$PLUGIN_USER_DIR/.${name}.bak.$(date -u +%Y%m%d%H%M%S)"
+    backup="$base"
+    n=1
+    while [[ -e $backup ]]; do
+        backup="${base}-${n}"
+        n=$((n + 1))
+    done
+    run mv -T -- "$target" "$backup" || fail "failed to move $target to backup"
+    echo "$done_msg Backup at: $backup"
+fi
+
+if $copy_of_builtin && $was_enabled; then
+    echo "Restored $shell_id."
+elif $was_enabled; then
+    echo "Plugin was enabled and was unloaded from haseen's shell."
+fi

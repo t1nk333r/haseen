@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# omarchy-version — print the version of the desktop base, which under haseen
+# is haseen's (share/haseen/VERSION, as `haseen --version` prints it). Omarchy
+# callers read one line (omarchy-snapshot uses it as a snapshot description)
+# and exit 1 means no version is known, as in Omarchy bin/omarchy-version
+# (MIT, Copyright (c) David Heinemeier Hansson). Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-version
+
+haseen's answer to Omarchy's command: prints haseen's version (haseen
+--version); exits 1 when it is unknown." "$@"
+
+version=""
+[[ -r $HASEEN_PATH/VERSION ]] && read -r version <"$HASEEN_PATH/VERSION"
+[[ -n $version ]] || exit 1
+printf '%s\n' "$version"

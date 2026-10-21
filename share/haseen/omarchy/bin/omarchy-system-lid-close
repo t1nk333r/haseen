@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# omarchy-system-lid-close — the lid switch's action: lock at once when the
+# closed lid will suspend the machine, then reconcile the laptop display.
+# Follows Omarchy bin/omarchy-system-lid-close (MIT, Copyright (c) David Heinemeier Hansson)
+# step for step, through haseen's answers to the commands
+# it calls: omarchy-hw-laptop-closed, omarchy-hw-external-monitors,
+# omarchy-system-lock (haseen system lock) and
+# omarchy-hyprland-monitor-clamshell (haseen hardware laptop-display);
+# --dry-run passes through (plan 093).
+#
+# Locking here rather than at PrepareForSleep keeps the lock off the critical
+# path: logind's delay inhibitor expires whether or not the session is secure.
+# A docked lid close does not suspend (HandleLidSwitchDocked defaults to
+# ignore), so it must not lock either: that is clamshell mode, still in use on
+# the external display.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-system-lid-close [--dry-run]
+
+haseen's answer to Omarchy's command: with the lid closed and no external
+monitor connected, locks the session (omarchy-system-lock); then turns the
+laptop display off or back on to match (omarchy-hyprland-monitor-clamshell).
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+oma="$HASEEN_OMARCHY_DIR/bin"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+
+if "$oma/omarchy-hw-laptop-closed" && ! "$oma/omarchy-hw-external-monitors"; then
+    if $DRY_RUN; then
+        "$oma/omarchy-system-lock" --dry-run || true
+    else
+        "$oma/omarchy-system-lock" >/dev/null 2>&1 || true
+    fi
+fi
+
+"$oma/omarchy-hyprland-monitor-clamshell" "${flags[@]}"

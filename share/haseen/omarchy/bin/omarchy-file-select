@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# omarchy-file-select — pick files or a folder with the desktop file chooser
+# and print one path per line. Adapted from Omarchy bin/omarchy-file-select
+# (MIT, Copyright (c) David Heinemeier Hansson), a Python program because the
+# portal answers on the connection that asked and no shell D-Bus client keeps
+# one open across the call and the answer. Its Python runs here unchanged in
+# substance (request token prefix haseen) when python3 with PyGObject is
+# installed. Without it, or when no portal answers the call, zenity is the
+# chooser (as haseen share file uses); with neither, it fails. The callers'
+# contract is Omarchy's: exit 0 with the paths, 1 when nothing was picked
+# (cancelled, or no answer within 600 s), 2 when the chooser failed; messages
+# start "omarchy-file-select:" (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-file-select [--title <title>] [--multiple] [--directory] [--extensions "<ext ext...>"]
+
+haseen's answer to Omarchy's command: opens the desktop file chooser (the
+XDG portal, else zenity) and prints the chosen paths, one per line.
+Exit 0 picked, 1 nothing picked, 2 the chooser failed.
+USAGE
+}
+
+title="Select file"
+multiple=false
+directory=false
+extensions=""
+while (($#)); do
+    case $1 in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --title | --extensions)
+        (($# >= 2)) || {
+            echo "omarchy-file-select: $1 needs a value" >&2
+            exit 2
+        }
+        if [[ $1 == --title ]]; then title=$2; else extensions=$2; fi
+        shift 2
+        ;;
+    --title=*) title=${1#*=} && shift ;;
+    --extensions=*) extensions=${1#*=} && shift ;;
+    --multiple) multiple=true && shift ;;
+    --directory) directory=true && shift ;;
+    *)
+        echo "omarchy-file-select: unknown option $1" >&2
+        exit 2
+        ;;
+    esac
+done
+
+# Exit 3 (internal): the portal itself is not there, so zenity may stand in.
+# The rest of the codes are the command's own.
+# shellcheck disable=SC2016  # Python source, not shell
+PORTAL_PY='
+import sys
+
+try:
+    import gi
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+except (ImportError, ValueError):
+    sys.exit(3)
+
+ANSWER_TIMEOUT_SEC = 600
+EXIT_NOTHING_PICKED = 1
+EXIT_CHOOSER_FAILED = 2
+EXIT_NO_PORTAL = 3
+
+title, multiple, directory, extensions = sys.argv[1], sys.argv[2] == "true", sys.argv[3] == "true", sys.argv[4]
+
+
+def main():
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    except GLib.Error:
+        return EXIT_NO_PORTAL
+    loop = GLib.MainLoop()
+    uris = []
+
+    def on_response(connection, sender, path, interface, signal, params):
+        code, results = params.unpack()
+        if code == 0:
+            uris.extend(results.get("uris", []))
+        loop.quit()
+
+    def subscribe(path):
+        bus.signal_subscribe("org.freedesktop.portal.Desktop", "org.freedesktop.portal.Request",
+                             "Response", path, None, Gio.DBusSignalFlags.NONE, on_response)
+
+    # The request path follows from our bus name and token, so subscribe before
+    # asking: a dialog answered at once would otherwise be missed.
+    import os
+    token = "haseen%d" % os.getpid()
+    sender = bus.get_unique_name()[1:].replace(".", "_")
+    predicted = "/org/freedesktop/portal/desktop/request/%s/%s" % (sender, token)
+    subscribe(predicted)
+
+    options = {"handle_token": GLib.Variant("s", token), "multiple": GLib.Variant("b", multiple)}
+    if directory:
+        options["directory"] = GLib.Variant("b", True)
+    if extensions and not directory:
+        # Glob matching in the chooser is case-sensitive, so cover both cases.
+        exts = [ext.lstrip(".").lower() for ext in extensions.split()]
+        patterns = [(0, "*." + ext) for ext in exts] + [(0, "*." + ext.upper()) for ext in exts]
+        label = " ".join("*." + ext for ext in exts)
+        options["filters"] = GLib.Variant("a(sa(us))", [(label, patterns)])
+        options["current_filter"] = GLib.Variant("(sa(us))", (label, patterns))
+
+    try:
+        handle = bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                               "org.freedesktop.portal.FileChooser", "OpenFile",
+                               GLib.Variant("(ssa{sv})", ("", title, options)),
+                               None, Gio.DBusCallFlags.NONE, -1, None).unpack()[0]
+    except GLib.Error as error:
+        if error.matches(Gio.dbus_error_quark(), Gio.DBusError.SERVICE_UNKNOWN) or \
+                error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD) or \
+                error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_INTERFACE):
+            return EXIT_NO_PORTAL
+        raise
+
+    # Portals predating the token convention answer on a path of their choosing.
+    if handle != predicted:
+        subscribe(handle)
+    GLib.timeout_add_seconds(ANSWER_TIMEOUT_SEC, loop.quit)
+    loop.run()
+    for uri in uris:
+        print(GLib.filename_from_uri(uri)[0])
+    return 0 if uris else EXIT_NOTHING_PICKED
+
+
+try:
+    sys.exit(main())
+except GLib.Error as error:
+    print("omarchy-file-select: %s" % error.message, file=sys.stderr)
+    sys.exit(EXIT_CHOOSER_FAILED)
+'
+
+status=3
+if have python3; then
+    python3 -I -c "$PORTAL_PY" "$title" "$multiple" "$directory" "$extensions" || status=$?
+    ((status == 3)) || exit "$status"
+fi
+
+have zenity || {
+    echo "omarchy-file-select: no file chooser: install python-gobject with xdg-desktop-portal, or zenity" >&2
+    exit 2
+}
+args=(--file-selection --title="$title" --timeout=600)
+$multiple && args+=(--multiple --separator=$'\n')
+$directory && args+=(--directory)
+if [[ -n $extensions ]] && ! $directory; then
+    read -ra exts <<<"$extensions"
+    patterns=()
+    for ext in "${exts[@]}"; do
+        ext="${ext#.}"
+        patterns+=("*.${ext,,}" "*.${ext^^}")
+    done
+    args+=(--file-filter="${patterns[*]}")
+fi
+status=0
+picked="$(zenity "${args[@]}" 2>/dev/null)" || status=$?
+case $status in
+0) ;;
+1 | 5) exit 1 ;; # cancelled, or the 600 s ran out
+*)
+    echo "omarchy-file-select: zenity failed (exit $status)" >&2
+    exit 2
+    ;;
+esac
+[[ -n $picked ]] || exit 1
+printf '%s\n' "$picked"

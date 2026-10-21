@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-battery-present — exit 0 when a battery (a BAT* power supply of type
+# Battery) is present, else 1; prints nothing. Adapted from Omarchy
+# bin/omarchy-battery-present (MIT, Copyright (c) David Heinemeier Hansson):
+# sysfs is read through sysroot_path, so tests use fixtures (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-battery-present
+
+Exits 0 when a battery is present, 1 otherwise. Prints nothing." "$@"
+
+for bat in "$(sysroot_path /sys/class/power_supply)"/BAT*; do
+    [[ -r $bat/present && -r $bat/type ]] || continue
+    [[ $(<"$bat/present") == 1 && $(<"$bat/type") == Battery ]] && exit 0
+done
+exit 1

@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-window-width — save the focused window's width for its app
+# on this workspace, or restore it. Adapted from Omarchy
+# bin/omarchy-hyprland-window-width (MIT, Copyright (c) David Heinemeier
+# Hansson): the same key (class, then initial class, then title), the same
+# probe-then-converge resize, in the form Hyprland's config takes. The widths
+# live in $HASEEN_USER_STATE/windows/ instead of Omarchy's state; the toasts
+# are haseen's and drop Omarchy's Super+Alt+Home / Super+Home hints, which
+# haseen's keybinds leave unbound (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh"
+
+# dispatch LUA LEGACY... — one Hyprland dispatcher: the Lua form when Hyprland
+# reads a Lua config (screen_lua asks it once), else the legacy form. A dry run
+# prints it instead.
+hypr_lua=""
+dispatch() {
+    local lua="$1" args
+    shift
+    if [[ -z $hypr_lua ]]; then
+        if screen_lua; then hypr_lua=yes; else hypr_lua=no; fi
+    fi
+    if [[ $hypr_lua == yes ]]; then args=(dispatch "$lua"); else args=(dispatch "$@"); fi
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl ${args[*]}"
+    else
+        hyprctl "${args[@]}" >/dev/null
+    fi
+}
+
+STATE_DIR="$HASEEN_USER_STATE/windows"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-window-width save|restore [--dry-run]
+
+haseen's answer to Omarchy's command: save keeps the focused window's width
+for its app on this workspace in $STATE_DIR; restore resizes the focused
+window back to it.
+USAGE
+}
+parse_common_flags "$@"
+action="${REST[0]:-}"
+[[ $action == save || $action == restore ]] || {
+    usage >&2
+    exit 1
+}
+
+notify() {
+    if $DRY_RUN; then
+        echo "DRYRUN: notify: $*"
+    else
+        "$HASEEN_BIN/haseen-notification-send" "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+window_width() {
+    hyprctl clients -j | jq -er --arg address "$1" '.[] | select(.address == $address) | .size[0]'
+}
+
+resize_width_by() {
+    dispatch "hl.dsp.window.resize({ window = \"$1\", x = $2, y = 0, relative = true })" resizeactive "$2" 0 "$1"
+}
+
+save_width() {
+    local width
+    width="$(jq -er '.size[0]' <<<"$active")"
+    [[ $width =~ ^[0-9]+$ ]] || exit 1
+    printf '%s\n' "$width" | write_user_file "$state_file"
+    notify "Saved width for $key on workspace $workspace"
+    echo "Saved width for $key on workspace $workspace"
+}
+
+restore_width() {
+    local width address window current_width next_width probe direction="" delta
+    if [[ ! -f $state_file ]]; then
+        notify "No saved width found for $key on workspace $workspace" \
+            "Save one with omarchy-hyprland-window-width save."
+        exit 1
+    fi
+    width="$(<"$state_file")"
+    [[ $width =~ ^[0-9]+$ ]] || exit 1
+    address="$(jq -r '.address // empty' <<<"$active")"
+    [[ $address =~ ^0x[0-9a-fA-F]+$ ]] || exit 1
+    window="address:$address"
+
+    current_width="$(window_width "$address")"
+    ((current_width == width)) && return 0
+    # A dry run cannot watch the window move: plan the whole step at once.
+    if $DRY_RUN; then
+        resize_width_by "$window" $((width - current_width))
+        return 0
+    fi
+    # Which way a positive delta grows the window depends on its neighbours:
+    # nudge it once to find out, then converge.
+    for probe in 10 -10; do
+        resize_width_by "$window" "$probe"
+        next_width="$(window_width "$address")"
+        if ((next_width != current_width)); then
+            if (((next_width - current_width) * probe > 0)); then direction=1; else direction=-1; fi
+            current_width=$next_width
+            break
+        fi
+    done
+    [[ -n $direction ]] || exit 1
+    for _ in 1 2 3 4 5 6; do
+        delta=$((width - current_width))
+        ((delta == 0)) && break
+        resize_width_by "$window" $((delta * direction))
+        next_width="$(window_width "$address")"
+        ((next_width == current_width)) && break
+        current_width=$next_width
+    done
+}
+
+active="$(hyprctl activewindow -j 2>/dev/null || true)"
+key="$(jq -r '[.class, .initialClass, .title] | map(select(. != null and . != "")) | first // empty' <<<"$active" 2>/dev/null || true)"
+[[ -n $key ]] || exit 1
+workspace="$(jq -r '.workspace.id // .workspace.name // empty' <<<"$active" 2>/dev/null || true)"
+[[ -n $workspace ]] || exit 1
+
+# The key and workspace name become one file name: no directory levels and
+# no line breaks.
+filename="workspace-${workspace}-${key}"
+filename="${filename//\//_}"
+filename="${filename//$'\n'/_}"
+state_file="$STATE_DIR/$filename.width"
+
+case $action in
+save) save_width ;;
+restore) restore_width ;;
+esac

@@ -27,6 +27,40 @@ if ! in_sysroot; then
         shell_seen=true
     done
     $shell_seen || echo "shell=not running"
+
+    # An Omarchy shell running beside haseen's is a second bar (plan 093).
+    # shellcheck source=../share/haseen/omarchy/lib.sh
+    if omarchy_pids="$(source "$HASEEN_PATH/omarchy/lib.sh" && omarchy_shell_pids)"; then
+        omarchy_pids="$(paste -sd' ' <<<"$omarchy_pids")"
+        [[ -z $omarchy_pids ]] || echo "omarchy shell=running (pid $omarchy_pids): a second bar beside haseen's; omarchy-restart-shell stops it"
+    else
+        echo "omarchy shell=unknown: Quickshell could not list its instances"
+    fi
 fi
+
+# Omarchy's command names reach haseen's answers only where haseen's come
+# first on PATH (plan 093). The compositor's PATH is the one Hyprland's
+# exec_cmd, binds and units use, which an Omarchy-seeded ~/.config/uwsm/env
+# can order differently from this terminal's.
+omarchy_ok=true
+doctor_omarchy_path terminal "$PATH" \
+    "open a new terminal: haseen's shell init (default/shell/init.sh) puts haseen's first" || omarchy_ok=false
+if hyprland_pid="$(doctor_hyprland_pid)"; then
+    if compositor_path="$(doctor_environ_path "$(sysroot_path "/proc/$hyprland_pid/environ")")"; then
+        doctor_omarchy_path compositor "$compositor_path" \
+            "haseen layer apply desktop puts haseen's first (~/.config/uwsm/env.d/10-haseen); log in again" || omarchy_ok=false
+    else
+        echo "compositor omarchy commands=unknown: cannot read Hyprland's environment (pid $hyprland_pid)"
+    fi
+else
+    echo "compositor omarchy commands=no Hyprland session"
+fi
+
 echo
-exec "$(dirname "$(readlink -f "$0")")/haseen-layer-status"
+status=0
+"$(dirname "$(readlink -f "$0")")/haseen-layer-status" || status=$?
+if ! $omarchy_ok; then
+    echo "haseen doctor: Omarchy's commands come before haseen's (see above)" >&2
+    ((status != 0)) || status=1
+fi
+exit "$status"

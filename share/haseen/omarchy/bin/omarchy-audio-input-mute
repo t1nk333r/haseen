@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# omarchy-audio-input-mute — toggle the default microphone's mute and drive the
+# laptop's mic-mute LED to match. Adapted from Omarchy
+# bin/omarchy-audio-input-mute (MIT, Copyright (c) David Heinemeier Hansson):
+# Omarchy's two omarchy-osd calls are dropped, because haseen's OSD
+# (haseen.osd) shows the default source's mute from PipeWire itself; the LED
+# goes through haseen's omarchy-brightness-keyboard-mute (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-input-mute [--dry-run]
+
+Toggles the mute of the default audio source (wpctl) and sets the mic-mute
+LED, where the laptop has one, to the new state.
+EOF
+}
+parse_common_flags "$@"
+export DRY_RUN
+
+muted() { wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null | grep -q MUTED; }
+
+was_muted=false
+if muted; then was_muted=true; fi
+run wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+# A dry run changed nothing, so the LED follows the state the toggle would give.
+if $DRY_RUN; then
+    if $was_muted; then now=off; else now=on; fi
+elif muted; then
+    now=on
+else
+    now=off
+fi
+"$HASEEN_OMARCHY_DIR/bin/omarchy-brightness-keyboard-mute" "$now"

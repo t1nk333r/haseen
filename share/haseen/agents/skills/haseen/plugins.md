@@ -253,6 +253,13 @@ namespace when testing unknown startup behavior.
 Scoped settings use `haseen plugin settings <id>` with JSON on stdin. They
 preserve unrelated haseen settings and never write back to the original source.
 
+Omarchy commands a plugin runs (`omarchy-notification-send`,
+`omarchy-restart-shell`, `omarchy-menu`, `omarchy-shell <target> <fn>`, …)
+reach haseen's answers to them, first on the shell's `PATH` and in
+`/usr/local/bin` (see "Omarchy's command names" in `SKILL.md`). A plugin that
+calls one by absolute path (`/usr/bin/omarchy-…`, `$OMARCHY_PATH/bin/…`)
+still runs Omarchy's own copy, if one is installed.
+
 
 ## Remove a plugin
 

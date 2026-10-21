@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# omarchy-launch-terminal-herdr — open a terminal attached to the persistent
+# herdr session (Omarchy binds SUPER + CTRL + RETURN to it). Adapted from
+# Omarchy bin/omarchy-launch-terminal-herdr (MIT, Copyright (c) David
+# Heinemeier Hansson): it runs haseen's omarchy-launch-terminal; herdr comes
+# only from Omarchy's [omarchy] repository, so a missing herdr gets a
+# notification naming haseen's way to install it instead of an empty
+# terminal (plan 093). DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-terminal-herdr
+
+haseen's answer to Omarchy's command: opens a terminal running herdr, the
+multiplexer haseen's desktop layer installs from [omarchy]." "$@"
+
+if ! have herdr; then
+    msg="Install it: haseen install app herdr (needs haseen layer apply omarchy-repo)"
+    if $DRY_RUN; then
+        echo "DRYRUN: $HASEEN_BIN/haseen-notification-send 'herdr is not installed' '$msg'"
+    else
+        "$HASEEN_BIN/haseen-notification-send" "herdr is not installed" "$msg" >/dev/null 2>&1 || true
+    fi
+    printf '%s: herdr is not installed. %s\n' "$OMARCHY_NAME" "$msg" >&2
+    exit 1
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-terminal" herdr

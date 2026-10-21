@@ -1,0 +1,1300 @@
+# Plan 093: Adopt Omarchy's commands
+
+## Status
+
+- **Priority**: P1
+- **Effort**: L
+- **Risk**: MEDIUM (a few hundred command names in `/usr/local/bin` now
+  shadow an installed Omarchy's `/usr/bin` ones on every `PATH`; each one is
+  a table row or a script with a test, refusals fail loudly, and
+  `--uninstall-tree` removes exactly haseen's links)
+- **Depends on**: 052 057 061 074
+- **Category**: compat, CLI, installer
+- **Planned at**: 2026-10-20, owner request: "adopt all omarchy scripts and no
+  apple hardware scripts."
+- **State**: DONE 2026-10-20 (live install on IO is an integrator step)
+
+## Problem
+
+On IO (Omarchy 4.0.6 installed, haseen the desktop) the owner ran
+`omarchy-update`, and Omarchy's own shell started beside haseen's: two bars.
+The path, in Omarchy 4.0.6 (`/usr/share/omarchy/bin` on IO):
+
+1. `omarchy-update:63` runs `omarchy-update-restart`;
+2. `omarchy-update-restart:51` runs `omarchy-restart-shell || true`;
+3. `omarchy-restart-shell:69` kills Omarchy's shell instance (none ran) and
+   `:83` runs `hyprctl dispatch 'hl.dsp.exec_cmd("omarchy-launch-shell")'`;
+4. `omarchy-launch-shell:19` starts `quickshell -n -p "$OMARCHY_PATH/shell"`.
+
+Line numbers here and in the inventory are Omarchy's `v4.0.6` tag
+(github.com/basecamp/omarchy), whose `bin/` holds the same 446 commands as
+`ls /usr/share/omarchy/bin` on IO, plus `omarchy-debug`, `omarchy-debug-idle`
+and `omarchy-upload-log`, which the 4.0.6-1 package does not ship.
+
+haseen answered 11 Omarchy names (`share/haseen/shell/Compat/bin/omarchy-*`,
+plans 052, 057, 060), and only on the shell's own `PATH` (`bin/haseen-shell-run`):
+a terminal, a Hyprland bind or `hyprctl dispatch exec_cmd` still found
+Omarchy's `/usr/bin` copies. Plan 057 had left the rest alone because "a
+shim that pretends would be worse than Omarchy's command".
+
+## Decision
+
+The owner's request reads as: every `omarchy-*` command Omarchy 4.0.6 ships,
+and the `omarchy` router, exists under haseen and does the haseen-correct
+thing; none exists for Apple-only hardware. "Haseen-correct" is one of five
+things, recorded per command in `share/haseen/omarchy/commands.tsv`:
+
+| Kind | What the command does |
+|---|---|
+| `shim` | `exec` the haseen command that does the same job, the caller's arguments after any fixed ones |
+| `translate` | a script of its own: Omarchy's arguments, verbs or output mapped onto a haseen command |
+| `port` | a script of its own: Omarchy's script adapted under MIT (upstream notice kept, NOTICE.md row), with Omarchy's paths, state, branding and calls to other `omarchy-*` commands replaced by haseen's |
+| `refuse` | doing what Omarchy's does would break a haseen rule (ADR 0001: `pacman.conf`, mirrorlist, HOOKS, Limine, SDDM; `PKG_DENY`; the AUR order) or only makes sense for Omarchy's own install, release or development machinery. It prints `<name>: not available under haseen.`, the reason as a sentence and `The haseen way: <command>` (`No haseen equivalent: <what to do>` when there is none), and exits 1: never a silent success |
+| `inert` | nothing to do under haseen (an Omarchy-only cache or UI state haseen does not have): one line on stderr saying so, exit 0 |
+
+The sixth kind, `apple`, is recorded so the inventory stays complete; no
+command of that name exists.
+
+## Design
+
+### One table, one dispatcher, scripts where needed
+
+- `share/haseen/omarchy/commands.tsv`: `name<TAB>kind<TAB>target<TAB>note`,
+  one row for each of Omarchy 4.0.6's 446 commands. `target` is the haseen
+  argv (`haseen-toggle-nightlight toggle`) for a shim, the haseen way for a
+  refusal.
+- `share/haseen/omarchy/bin/<name>`: a relative link to `../dispatch` for a
+  `shim`, `refuse` or `inert` row, a script for `translate` and `port`, and
+  nothing for `apple`. `share/haseen/omarchy/dispatch` reads the row named by
+  `$0`.
+- `share/haseen/omarchy/lib.sh`: every script sources it. It finds haseen
+  from the script's own location (`readlink -f "$0"`), because these
+  commands run from `/usr/local/bin` with no `HASEEN_PATH` in the
+  environment; `HASEEN_PATH` still wins when set, as everywhere else.
+  It sources `lib/common.sh`, so every state change goes through `run`,
+  `run_root` or `write_user_file` and honours `--dry-run` and `DRY_RUN`.
+- Omarchy's scripts `source` three of its commands (`omarchy-restart-gum`,
+  `omarchy-shell-config`, `omarchy-sudo-keepalive`). A link to the dispatcher
+  would read the sourcing script's `$0`, so these three are scripts of their
+  own whatever their kind, safe to source: `omarchy-restart-gum` returns
+  quietly, `omarchy-shell-config` refuses and stops the sourcing script
+  before it edits Omarchy's `shell.json`, and `omarchy-sudo-keepalive` asks
+  for the password through `run_root` in subshells, so nothing of haseen's
+  leaks into the caller but Omarchy's `SUDO_KEEPALIVE_PID` and its EXIT trap.
+- `omarchy` is Omarchy's router (`bin/omarchy`, MIT) over this directory:
+  `omarchy a b` runs the longest matching `omarchy-a-b`, Omarchy's aliases
+  (`screenshot`, `screenrecord`, `logout`, `reboot`, `shutdown`,
+  `background`) are kept, `omarchy commands [--all]` lists the table, a
+  group prints its commands, and an unknown command exits 127 as Omarchy's
+  does (`omarchy:1062-1068`).
+- Two helpers join `lib/common.sh`: `run_polkit` (pkexec, for
+  `omarchy-windows-vm` and `omarchy-launch-docker-tui`, which start from the
+  desktop with no terminal for sudo to ask in) and `replace_user_file` (an
+  atomic write that keeps the file's mode, for the application state files
+  the theme publishers change under `--activate`).
+- The 11 earlier shims moved from `shell/Compat/bin/` into
+  `share/haseen/omarchy/bin/` (5 became table rows); `dms` and `ydotool`
+  stay in `Compat/bin`.
+
+### Where they are installed, and why they come first
+
+`install.sh` links every `share/haseen/omarchy/bin/<name>` into `PREFIX/bin`
+(`/usr/local/bin`) with one `ln -sf -t`, the link target
+`../share/haseen/omarchy/bin/<name>`. An existing `PREFIX/bin/omarchy*` that
+is not haseen's link is never replaced (a warning names it); a link to a
+command a later haseen drops is removed; `--uninstall-tree` removes haseen's
+links and nothing else.
+
+Whether `PREFIX/bin` comes first depends on the host. Measured 2026-10-20
+(home directory shown as `~`):
+
+- IO, `systemctl --user show-environment` and `/proc/<Hyprland pid>/environ`,
+  the same order:
+  `PATH=~/.local/share/agent-gates/bin:~/.local/share/uv/bin:~/.local/share/pipx/bin:~/.local/share/collie/bin:~/.local/share/webhook/bin:~/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/bin:~/.local/share/mise/shims:~/.local/bin:~/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:~/.local/bin:~/.local/bin/desktop:~/.local/bin/media:~/.local/bin/omarchy:~/.local/bin/system:~/.config/hypr/scripts:~/.local/share/node_modules/bin:~/.local/share/npm/bin`.
+  No Omarchy directory; `/usr/local/bin` (8th) precedes `/usr/bin` (9th),
+  where Omarchy's commands are. IO's committed dotfiles (the owner's yadm
+  branch `haseen`, `.config/uwsm/env:10-17`) only append to `PATH`, and
+  line 159 prepends user directories, none of them Omarchy's. IO's live file
+  is unverified: IO was offline when this was rechecked, and its yadm has
+  unpushed commits.
+- luna, `/proc/<Hyprland pid>/environ`:
+  `/opt/rocm/bin:~/.local/share/agent-gates/bin:~/.local/share/uv/bin:~/.local/share/pipx/bin:~/.local/share/collie/bin:~/.local/share/webhook/bin:~/.local/share/mise/shims:/usr/share/omarchy/bin:~/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/bin:…`.
+  `/usr/share/omarchy/bin` is 8th, `/usr/local/bin` 11th, from luna's
+  Omarchy-seeded `~/.config/uwsm/env:5-6`
+  (`export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"`,
+  `export PATH=$OMARCHY_PATH/bin:$PATH`). There Hyprland's `exec_cmd
+  omarchy-launch-shell` finds Omarchy's launcher, and the two-bars incident
+  repeats. Omarchy 4.0.6's packaged `default/bash/env-bootstrap:18-26`
+  prepends only in dev-link mode, so the prepend comes from older seeded
+  files.
+
+So `PREFIX/bin` holds on IO and fails on luna. What puts haseen's first
+regardless:
+
+- The session: the desktop layer's `~/.config/uwsm/env.d/10-haseen`
+  (haseen's own file, rewritten on every apply, which already exports
+  `HASEEN_PATH`) prepends `$HASEEN_PATH/omarchy/bin`. uwsm's
+  `/usr/lib/uwsm/prepare-env.sh:73-96` sources, in each config directory
+  from lowest to highest priority (`XDG_DATA_DIRS`, `XDG_CONFIG_DIRS`, then
+  `XDG_CONFIG_HOME`), `uwsm/env`, `uwsm/env.d/*`, then `uwsm/env-<desktop>`
+  and its `.d`: `~/.config/uwsm/env.d/10-haseen` follows
+  `~/.config/uwsm/env`. uwsm hands the result to Hyprland and to the systemd
+  user manager, so `exec_cmd`, binds, user units and `uwsm app` all get it.
+  `migrations/1792531693-omarchy-path.sh` rewrites an existing fragment once,
+  from the layer's own generator, when it carries the layer's
+  `# Written by haseen layers/desktop` marker and no uncommented line with
+  haseen's directory; it takes effect at the next login. A fragment without
+  the marker is the user's (replaced or rewritten by hand): it is left alone,
+  and the migration says that `haseen doctor` reports the shadowing.
+- Interactive shells: `default/shell/init.sh`, the include `haseen seed user`
+  appends to `~/.bashrc`, puts the same directory first, after whatever the
+  rc prepended; sourced again after another prepend, it moves the directory
+  back to the front rather than adding a second copy.
+- The shell's children: `haseen shell run` puts `share/haseen/omarchy/bin` on
+  the shell's `PATH`, so a checkout's shell has them without an install.
+- SSH and TTY logins: Arch's `/etc/profile:15-17` appends `/usr/local/sbin`,
+  `/usr/local/bin`, then `/usr/bin`, and Omarchy's `/etc/profile.d/omarchy.sh`
+  is the same bootstrap, which does not prepend.
+
+A later user fragment that prepends Omarchy's bin again
+(`~/.config/uwsm/env.d/` after 10, or `env-hyprland`) still wins. `haseen
+doctor` reads the compositor's `PATH` from `/proc/<pid>/environ`, with the pid
+from Hyprland's own `$XDG_RUNTIME_DIR/hypr/<instance>/hyprland.lock` (both
+through `sysroot_path`), checks the terminal's `PATH` too, and fails with
+exit 1, naming the directory that shadows haseen's. It also reports an
+Omarchy shell running. Omarchy's own scripts call each other by name, so
+once haseen's directory is first even Omarchy's `omarchy-restart-shell`,
+run by absolute path, ends in haseen's `omarchy-launch-shell` (step 3
+above).
+
+### The restart chain
+
+- `omarchy-launch-shell` (port): stops any Quickshell instance whose config
+  is under `$OMARCHY_PATH/shell/` (`qs list -a -j`, then `qs kill --pid`),
+  then makes sure the desktop shell haseen uses runs: `dms.service` after
+  `haseen shell use dms`; else `haseen-shell.service` (nothing to do when it
+  is active, and nothing yet while `graphical-session.target` is down:
+  the target starts the unit, and a start before the session's Wayland
+  environment exists fails and counts toward plan 061's recovery offer);
+  else, without a unit, a running `qs -p $HASEEN_PATH/shell`
+  counts, and otherwise `haseen shell run` runs in the foreground, as
+  Omarchy's launcher keeps its own shell.
+- `omarchy-restart-shell` (translate): the same stop, then `haseen shell
+  restart` (or `systemctl --user restart dms.service`). It refuses while
+  haseen's lock screen holds the session (`$XDG_RUNTIME_DIR/haseen-lock-held`
+  reads `1 <instance>`, plan 091), as Omarchy's refuses under a live lock
+  (`omarchy-restart-shell:28-36`): the shell draws the lock, and restarting it
+  would leave Hyprland's "lock client died" screen. Omarchy's
+  restart-and-relock recovery is `haseen lock release`, from a TTY.
+- `omarchy-update` (shim): `haseen update`.
+- `omarchy-update-restart` (port): Omarchy's reboot offers (a replaced kernel
+  or Hyprland binary), asked only at a terminal, then haseen's
+  `omarchy-restart-shell`, whose refusal under the lock does not fail the
+  update (Omarchy's `omarchy-restart-shell || true`,
+  `omarchy-update-restart:51`). Omarchy's `restart-*-required` markers are written
+  by Omarchy's migrations, which haseen does not run, so they are not read.
+
+### Deleting the user's data: `--yes` never does, `--purge` does
+
+Omarchy's removers `rm -rf` the data of what they remove without asking:
+Battle.net's prefix with the games in it, `~/.wine`, Steam's libraries,
+Heroic's games, Minecraft's worlds, RetroArch's saves, GeForce NOW's sign-in,
+Perplexity's caches, T3 Code's settings, `~/.cargo` (through `rustup self
+uninstall`), opam's default switch with `~/.opam` and the browser flags
+file. haseen's answers ask first, default no, through
+`share/haseen/omarchy/remove-lib.sh`'s `ask`, and
+`--yes` alone never answers yes for the user's data: a non-interactive run
+removes the packages and keeps every file. Deleting takes a yes at a terminal
+or an explicit `--purge` (`ask Q purge`, `take_purge`; `delete_asked` takes
+only `purge` or `no` and dies on anything else, so a new remover cannot slip
+back to `--yes`). `--purge` is in the `--help` of the twelve removers that
+take it: `omarchy-remove-gaming-{battlenet,lutris,steam,heroic,minecraft,retroarch,geforce-now}`,
+`omarchy-remove-ai-{perplexity,t3-code}`, `omarchy-remove-dev-env`,
+`omarchy-remove-browser` and `omarchy-remove-security-fingerprint` (Omarchy's
+`/etc/pam.d/omarchy-lock-fingerprint` may be one the owner edited; while it
+stays, fprintd stays). The others reject `--purge` as an unknown argument.
+A dry run still prints each question and the deletion it would plan, under
+`--yes` too.
+
+Three kinds of data are never deleted by `--purge` either, only by a yes at a
+terminal: the logins, vault and device identity of Perplexity, T3 Code's
+worktrees in `~/.t3` (git checkouts with possibly unpushed work), and the
+registered FIDO2 keys, haseen's `~/.config/Yubico/u2f_keys` and Omarchy's
+`/etc/fido2` authfile (`ask Q`, or `delete_asked Q no`;
+`omarchy-remove-security-fido2:58-71`).
+
+What `--yes` still removes without `--purge` is what the command exists to
+remove and the files Omarchy's installer wrote to `/etc`, each by its exact
+name or content, never the user's data:
+- the pam_fprintd and pam_u2f lines in `/etc/pam.d/{sudo,polkit-1,hyprlock}`
+  (`pam_drop`, `ask ... yes`), shown before they go;
+- `omarchy-hibernation-remove`: `/etc/mkinitcpio.conf.d/omarchy_resume.conf`
+  only when it is exactly `HOOKS+=(resume)` (`:114`), and Limine's
+  `/etc/limine-entry-tool.d/resume.conf` only while it is the one `resume=`
+  line Omarchy's setup writes (`:117-122`);
+- `omarchy-remove-browser`: the browser's `omarchy.json` and `color.json`
+  managed policies, by name (`:97`), and `/etc/brave` only when no native
+  Brave build is left (`:106`).
+
+### User-file writes
+
+CLAUDE.md: haseen never edits the user's files after seeding them. A few
+Omarchy commands exist to write one, and the owner asked for all of them
+(2026-10-20: "adopt all omarchy scripts and no apple hardware scripts"), so
+each port below is an explicit request, run by the user, never by a layer, a
+migration or a theme set, and each is guarded:
+
+| Port | File | Guard |
+|------|------|-------|
+| `omarchy-refresh-tmux`, `omarchy-refresh-herdr` | `~/.config/tmux/tmux.conf`, `~/.config/herdr/config.toml` | asks (`--yes` answers), copies the old file to `<file>.bak.<timestamp>` (`:45`), replaces it (`:47`) and prints the diff: `haseen refresh`'s precedent (`bin/haseen-refresh`) |
+| `omarchy-setup-security-sshd` | `~/.ssh/authorized_keys` | appends one key (`:116`), never rewrites; each key is shown with its fingerprint and needs a yes at the terminal, which `--yes` does not give (`:77-94`); without a terminal only `--key` with a matching `--fingerprint=SHA256:…` adds it; a new file is 0600, an existing one keeps its mode |
+| `omarchy-theme-set-claude`, `-pi` | `settings.json`'s `"theme"` | only with `--activate`; without it only `themes/haseen.json` is written, and only into a config directory that exists |
+| `omarchy-theme-set-vscode` | each editor's `settings.json` (`"workbench.colorTheme"`, edited as text so JSONC survives), `extensions.json` and `.obsolete` | only with `--activate` (`:215`, `:226`); without it only haseen's extension directory `<extensions>/haseen-theme` is written, and an editor that does not list it yet gets a hint |
+| `omarchy-theme-set-hermes` | Hermes' `display.skin` | only with `--activate` or `--wait`, through Hermes' own `hermes config set` (`:181`), and only over the default skin; without it only `skins/haseen.yaml` in existing Hermes homes |
+| `omarchy-install-dev-env` | `~/.gemrc` | written only when absent (`:89`); `omarchy-remove-dev-env` deletes it only while it is that one line |
+| `omarchy-mise-install` | `~/.local/bin/<command>` | the wrapper the command is asked to write; an existing file of that name is removed first, as Omarchy does, so a link's target is never written through (`:66-67`) |
+| `omarchy-install-openclaw-cli` | `~/.local/bin/openclaw` | a link to the runtime it installed (`:439`), as Omarchy's installer makes it |
+| `omarchy-voxtype-install` | `~/.config/voxtype/config.toml` | seeded only when neither a file nor a link is there (`:47-48`) |
+| `omarchy-windows-vm` | `~/.config/windows/krb5.conf` | written only when absent (`:1512-1514`): a realm-less Kerberos config for FreeRDP, in the directory the VM's own files live in |
+| `omarchy-toggle-crash-capture` | `~/.config/systemd/user/<unit>.d/50-omarchy-crash-capture-off.conf` | the command's own drop-in, named for it and marked as written by it (`:32`, `:45`); turning capture back on removes only that file (`:52`) |
+| `omarchy-theme-set-obsidian` | `<vault>/.obsidian/themes/haseen/` | only in vaults Obsidian lists whose `.obsidian` exists (`:50`), and only haseen's theme directory: `manifest.json` when absent (`:52-53`) and `theme.css` (`:64`); the vault's `appearance.json` is never changed |
+| `omarchy-theme-set-t3code` | `themes/haseen.json` under T3 Code's `userdata` | only when that directory exists (`:49-50`); choosing the theme is left to T3 Code |
+
+Rejected: refusing these commands. The owner asked for every non-Apple
+command, and each writes only what its name says, after the user runs it.
+
+### Running a downloaded Windows program: Battle.net
+
+Battle.net has no package. Omarchy's `omarchy-install-gaming-battlenet`
+downloads Blizzard's installer from `downloader.battle.net` (`:10`, `:50`)
+and runs it under umu-launcher and GE-Proton (`:61`). haseen's port keeps
+that, because the owner asked for every non-Apple command (2026-10-20:
+"adopt all omarchy scripts"), and the risk is the owner's to weigh:
+
+- the installer is a Windows program fetched live: haseen cannot pin its
+  hash (Blizzard serves a new build with each release) and does not check
+  its Authenticode signature, so the trust is HTTPS to Blizzard's host;
+- Wine maps the whole filesystem as drive Z:, so the installer, and
+  Battle.net after it, can read every file the user can (SSH keys, browser
+  profiles, tokens under `~`) and change those the user can write. umu and
+  GE-Proton add no sandbox.
+
+What the port does about it: curl takes HTTPS only, redirects included
+(`--proto '=https' --proto-redir '=https'`); the downloaded file's SHA-256 is
+printed with the Z: drive warning; and the installer runs only after a typed
+`run` at the terminal (`confirm_typed`), which `--yes` does not give, so no
+unattended run starts it. A dry run prints the plan and downloads nothing.
+
+To refuse it instead, turn its `commands.tsv` row into a `refuse` row with
+`none: Battle.net runs a downloaded Windows program with access to your
+files` and delete the script; `omarchy-launch-battlenet` and
+`omarchy-remove-gaming-battlenet` keep working for an existing prefix.
+
+The same typed confirmation (`common.sh` `confirm_typed`, which `--yes`
+never answers) guards `omarchy-sudo-passwordless`'s enable path: it lets any
+process of the user run anything as root for the chosen minutes, so the
+user types `enable`.
+
+## Rejected options
+
+- **Shims on the shell's `PATH` only** (plan 057's scope): the IO incident
+  ran from a terminal and through `hyprctl dispatch exec_cmd`, neither of
+  which sees `bin/haseen-shell-run`'s `PATH`.
+- **Relying on `PREFIX/bin` alone**: it holds on IO and fails on luna, whose
+  Omarchy-seeded `~/.config/uwsm/env` puts `/usr/share/omarchy/bin` first
+  (above).
+- **A system-wide uwsm fragment** (`/etc/xdg/uwsm/env.d/` or
+  `/usr/share/uwsm/env.d/`, where Omarchy keeps `10-omarchy`): uwsm sources
+  the system directories before `~/.config`
+  (`/usr/lib/uwsm/prepare-env.sh:114-128`), so the prepend in the user's
+  `~/.config/uwsm/env` would still win.
+- **A systemd `environment.d` fragment**: uwsm's preloader builds the session
+  environment by sourcing the uwsm files and exports it into the systemd
+  activation environment afterwards, so `~/.config/uwsm/env`'s prepend
+  overrides it, and Hyprland takes uwsm's environment.
+- **Removing the prepend from `~/.config/uwsm/env`**: a user file after
+  seeding (CLAUDE.md).
+- **`env = PATH` in haseen's Hyprland config** (`default/hypr/init.lua`): it
+  reaches Hyprland and its children only, not the user units uwsm starts,
+  and would be a second place deciding `PATH`. The uwsm fragment haseen
+  already owns reaches all of them.
+- **Pointing `OMARCHY_PATH` at a haseen tree**, so `$OMARCHY_PATH/bin/…` calls
+  reach haseen too: Omarchy's still-installed scripts and the owner's Omarchy
+  plugins read `$OMARCHY_PATH/default`, `/shell` and `/themes`
+  (e.g. `omarchy-restart-shell:8-11` takes the shell config from it), and
+  `/usr/bin/omarchy-*` absolute calls would stay Omarchy's anyway.
+- **Replacing or diverting Omarchy's `/usr/bin/omarchy-*`**: pacman owns
+  them (`omarchy` 4.0.6-1 on IO) and the next update restores them; ADR 0001
+  and the "never clobber system files" rule.
+- **One file per command, no table**: about 300 near-identical three-line
+  files, and no single place a test can hold against Omarchy's list.
+- **Removing the `omarchy` package from IO**: the owner's call; ADR 0001
+  names a fresh CachyOS install as the supported migration.
+
+## Inventory
+
+Generated from `share/haseen/omarchy/commands.tsv` (446 rows; `omarchy commands --all` prints the same). For a `refuse` row the haseen column is the way shown to the user and the last column the reason it prints.
+
+| Kind | Commands |
+|---|---|
+| `shim` | 79 |
+| `translate` | 81 |
+| `port` | 236 |
+| `refuse` | 44 |
+| `inert` | 4 |
+| `apple` | 2 |
+| **total** | **446** |
+
+### omarchy
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy` | port |  | Omarchy's router: omarchy a b runs haseen's omarchy-a-b |
+
+### agent
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-agent` | port | `haseen-terminal-run` | starts the default coding agent unattended, in a terminal of its own or inline |
+| `omarchy-agent-crash` | shim | `haseen-agent-crash` | asks the default coding agent to diagnose a crashed process |
+| `omarchy-agent-prompt` | port |  | starts the default coding agent with a prompt |
+| `omarchy-agent-usage-claude` | port |  | prints the Claude Code usage record as JSON for an agents panel |
+| `omarchy-agent-usage-codex` | port |  | prints the Codex usage record as JSON for an agents panel |
+| `omarchy-agent-usage-fireworks` | port |  | prints the Fireworks usage record as JSON for an agents panel |
+| `omarchy-agent-usage-update` | port |  | runs the usage collectors and stores their records in haseen's state |
+
+### apply
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-apply-hardware` | refuse | `haseen hw apply` | It runs Omarchy's installer hardware scripts as root, which also rewrite pacman's configuration. |
+| `omarchy-apply-lock` | refuse | `haseen setup fingerprint` | It writes PAM files for Omarchy's lock screen; haseen's lock uses its own PAM and fingerprint setup. |
+| `omarchy-apply-system` | refuse | `haseen layer apply <layer>` | It finishes an Omarchy install from Omarchy's installer scripts; haseen sets a machine up through its layers. |
+
+### audio
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-audio-input-mute` | port |  | toggles the default microphone's mute and the mic-mute LED |
+| `omarchy-audio-input-set-default` | port |  | makes a source the default input and moves recordings to it |
+| `omarchy-audio-output-set-default` | port |  | makes a sink the default output and moves application streams to it |
+| `omarchy-audio-output-sink` | port |  | prints the sink that carries an output's loudness, behind a DSP sink |
+| `omarchy-audio-output-switch` | port |  | switches to the next available output and names it |
+| `omarchy-audio-output-volume` | port |  | raises, lowers or mutes the output that carries the loudness |
+| `omarchy-audio-sink-availability` | port |  | prints each sink and whether it can be picked |
+| `omarchy-audio-source-switch` | port |  | moves the media keys to the next or previous player |
+| `omarchy-audio-tuning` | translate | `haseen-audio-tuning` | Omarchy's speaker-tuning verbs on haseen audio tuning |
+
+### bar
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-bar` | translate |  | Omarchy's bar verbs on haseen bar position, transparent, add and move, and plugin settings |
+| `omarchy-bar-text-color` | shim | `haseen-bar-text-color` | prints the bar text colour that reads best on the wallpaper |
+
+### battery
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-battery-low` | port | `haseen-notification-send` | warns of a low battery and runs the battery-low hooks |
+| `omarchy-battery-present` | port |  | exits 0 when a battery is present |
+| `omarchy-battery-status` | shim | `haseen-battery-status` | prints the battery line or TSV Omarchy's bar plugins read |
+
+### bluetooth
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-bluetooth-device` | port |  | pairs, connects, disconnects or forgets a Bluetooth device |
+| `omarchy-bluetooth-power` | port |  | turns Bluetooth on or off through rfkill; is-on answers by exit code |
+
+### branding
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-branding-about` | shim | `haseen-branding about` | sets the text or image of the about screen |
+| `omarchy-branding-screensaver` | shim | `haseen-branding screensaver` | sets the text or image of the screensaver |
+
+### brightness
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-brightness-display` | translate | `haseen-brightness` | shows or steps the focused display's brightness (backlight or DDC/CI) |
+| `omarchy-brightness-display-apple` | apple |  | Apple Studio and Pro Display XDR brightness through asdcontrol |
+| `omarchy-brightness-display-ddc` | translate | `haseen-brightness` | shows or sets a monitor's brightness over DDC/CI |
+| `omarchy-brightness-keyboard` | translate | `haseen-brightness` | steps, cycles, turns off or restores the keyboard backlight |
+| `omarchy-brightness-keyboard-mute` | port |  | sets the mic-mute LED on laptops that have one |
+
+### capture
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-capture-qr` | shim | `haseen-capture-qr` | reads a QR code from a screen region into the clipboard |
+| `omarchy-capture-region` | port |  | picks a screen region over a frozen screen and prints its geometry |
+| `omarchy-capture-screenrecording` | translate | `haseen-capture-screenrecord` | Omarchy's recorder flags on haseen's screen recorder |
+| `omarchy-capture-screenrecording-with-webcam` | port | `haseen-capture-screenrecord` | records the screen with desktop audio, the microphone and a webcam overlay |
+| `omarchy-capture-screenshot` | translate | `haseen-capture-screenshot` | Omarchy's screenshot modes on haseen capture screenshot |
+| `omarchy-capture-text` | shim | `haseen-capture-text` | copies the text of a screen region (OCR) to the clipboard; HASEEN_OCR_LANGS picks languages |
+| `omarchy-capture-webcam-list` | port |  | prints each camera that can capture video, device and name |
+| `omarchy-capture-webcam-resize` | port |  | resizes the screen recording's webcam overlay |
+
+### channel
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-channel-current` | refuse | `haseen version` | It reports Omarchy's package channel; haseen is not released through Omarchy's channels. |
+| `omarchy-channel-set` | refuse | `haseen update` | It switches Omarchy's package channel by rewriting pacman's configuration and installing Omarchy's own packages. |
+
+### chromium
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-chromium-copy-url-host` | port |  | Chromium native-messaging host that copies a page's URL |
+| `omarchy-chromium-ytdlp-host` | port |  | Chromium native-messaging host that downloads a video with yt-dlp |
+
+### clipboard
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-clipboard-open` | port |  | opens a clipboard-history entry in the image editor, browser or editor |
+| `omarchy-clipboard-paste-file` | port |  | puts a file on the clipboard and pastes it |
+| `omarchy-clipboard-paste-text` | port |  | puts text on the clipboard and types or pastes it |
+
+### cmd
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-cmd-browser-handoff` | port |  | hands a command line to the running Chromium-family browser |
+| `omarchy-cmd-default-browser` | port |  | prints the default browser's desktop entry |
+| `omarchy-cmd-missing` | port |  | exits 0 when any named command is missing |
+| `omarchy-cmd-present` | port |  | exits 0 when every named command is on PATH |
+| `omarchy-cmd-terminal-cwd` | port |  | prints the focused terminal's working directory |
+
+### crash
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-crash-watch` | shim | `haseen-crash-watch` | watches for crashes and offers a coding agent's diagnosis |
+
+### default
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-default-agent` | translate | `haseen-setup-default` | prints or sets the default coding agent |
+| `omarchy-default-browser` | shim | `haseen-setup-default browser` | prints or sets the default browser |
+| `omarchy-default-editor` | translate | `haseen-setup-default` | prints or sets the default editor |
+| `omarchy-default-terminal` | shim | `haseen-setup-default terminal` | prints or sets the default terminal |
+
+### dev
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-dev-add-migration` | refuse | `none: add a migration to haseen's repository; haseen migrate runs them` | It creates a migration in Omarchy's source tree, which haseen does not use. |
+| `omarchy-dev-benchmark-cli` | refuse | `none: time haseen's commands with your shell's time builtin` | It benchmarks Omarchy's own command router and theme commands from its source tree. |
+| `omarchy-dev-benchmark-theme-switcher` | refuse | `none: haseen's theme picker panel (haseen.themepicker) replaces Omarchy's switcher` | It benchmarks Omarchy's theme switcher and menu image cache, development tools haseen does not ship. |
+| `omarchy-dev-font` | refuse | `none: haseen's menu uses Nerd Font glyphs` | It adds glyphs to Omarchy's own icon font in its source tree. |
+| `omarchy-dev-install-ydoo` | refuse | `none: haseen types and pastes with wtype` | It opens /dev/uinput to ydotool through the input group and a udev rule; haseen gives no process synthetic input devices. |
+| `omarchy-dev-link` | refuse | `none: run haseen straight from a checkout; bin/haseen finds its own share/haseen` | It points Omarchy's install at a source checkout through /etc/omarchy.conf and a sudoers file. |
+| `omarchy-dev-pkg-test` | refuse | `none: haseen is not built with Omarchy's packaging tools` | It builds and installs Omarchy's own packages from a checkout, which haseen never installs. |
+| `omarchy-dev-status` | refuse | `none: haseen has no dev link; run it from a checkout` | It reports Omarchy's dev link, which exists only in Omarchy's development setup. |
+| `omarchy-dev-theme-preview` | port |  | previews a theme's palette in the terminal |
+| `omarchy-dev-ui-preview` | refuse | `none: haseen's shell has no widget gallery` | It opens the widget gallery of Omarchy's shell, which haseen's shell does not have. |
+| `omarchy-dev-unlink` | refuse | `none: haseen has no dev link to undo` | It returns Omarchy's install from a source checkout to its package, rewriting /etc/omarchy.conf and sudoers. |
+
+### disk
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-disk-speedtest` | port |  | measures a disk's live read and write speed |
+
+### display
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-display-text-size` | port |  | prints or sets GTK's text size; haseen's shell and terminal follow the theme |
+
+### dns
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-dns` | translate | `haseen-setup-dns` | prints or chooses the DNS provider |
+
+### done
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-done` | port |  | checks, marks or claims a one-time marker in haseen's state |
+
+### drive
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-drive-info` | shim | `haseen-drive-info` | prints a drive's size, model and partitions |
+| `omarchy-drive-password` | shim | `haseen-drive-password` | changes an encrypted drive's password |
+| `omarchy-drive-select` | translate | `haseen-drive-select` | picks a drive and prints its device path |
+
+### file
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-file-select` | port |  | opens the desktop file chooser and prints the chosen paths |
+
+### font
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-font-current` | translate | `haseen-font-current` | prints the monospace font family in use |
+| `omarchy-font-list` | shim | `haseen-font-list` | lists the installed monospace fonts |
+| `omarchy-font-set` | shim | `haseen-font-set` | sets the monospace font |
+
+### games
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-games-retro-cores` | port |  | lists the installed RetroArch cores of the preferred set |
+| `omarchy-games-retro-install` | port |  | writes a launcher that starts a game in RetroArch with a chosen core |
+
+### git
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-git-url-check` | port |  | exit 0 when a git URL names a repository, 1 for an option or transport helper |
+
+### hibernation
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-hibernation-available` | shim | `haseen-hibernation-status --quiet` | exit 0 when hibernation is set up and usable |
+| `omarchy-hibernation-remove` | port |  | removes the swapfile, its subvolume, fstab lines and resume settings, then rebuilds |
+| `omarchy-hibernation-setup` | translate | `haseen-hibernation-setup` | sets up suspend to disk, then offers a reboot |
+
+### hook
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-hook` | translate | `haseen-hook` | runs a named user hook from ~/.config/haseen/hooks |
+| `omarchy-hook-install` | translate | `haseen-hook` | installs a hook script for an event haseen fires |
+
+### hw
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-hw-asus-expertbook-b9406` | port |  | exit 0 on an ASUS ExpertBook B9406 with Panther Lake graphics |
+| `omarchy-hw-asus-rog` | port |  | exit 0 on an ASUS ROG machine |
+| `omarchy-hw-asus-zenbook-ux5406aa` | port |  | exit 0 on an ASUS Zenbook UX5406AA with Panther Lake graphics |
+| `omarchy-hw-clamshell` | port |  | true when the lid is closed while an external monitor is connected |
+| `omarchy-hw-dell-xps-haptic-touchpad` | port |  | exit 0 on a Dell XPS with the haptic touchpad |
+| `omarchy-hw-dell-xps-oled` | port |  | exit 0 on a Dell XPS with the LG OLED panel and Panther Lake graphics |
+| `omarchy-hw-dell-xps13-dx13260-ptl` | port |  | exit 0 on a Dell XPS 13 DX13260 with Panther Lake graphics |
+| `omarchy-hw-display` | port |  | prints the backlight device that most likely drives the display |
+| `omarchy-hw-external-monitors` | port |  | true when an external monitor is physically connected |
+| `omarchy-hw-fingerprint` | port |  | exit 0 when a fingerprint reader is present |
+| `omarchy-hw-framework16` | port |  | exit 0 on a Framework Laptop 16 |
+| `omarchy-hw-hybrid-gpu` | port |  | exit 0 on an active hybrid GPU setup |
+| `omarchy-hw-intel` | port |  | exit 0 on an Intel CPU |
+| `omarchy-hw-intel-ptl` | port |  | exit 0 when an Intel Panther Lake GPU is present |
+| `omarchy-hw-intel-sof` | port |  | exit 0 when an Intel audio DSP is present |
+| `omarchy-hw-laptop` | port |  | exit 0 on a laptop |
+| `omarchy-hw-laptop-closed` | port |  | true when a laptop lid reads closed |
+| `omarchy-hw-match` | shim | `haseen-hw-match` | exit 0 when a pattern matches the machine's product name or family |
+| `omarchy-hw-nvidia` | port |  | exit 0 when an NVIDIA GPU is present |
+| `omarchy-hw-nvidia-display` | port |  | exit 0 unless another GPU drives the display while NVIDIA does not |
+| `omarchy-hw-nvidia-gsp` | port |  | exit 0 when an NVIDIA GPU with GSP firmware (Turing or newer) is present |
+| `omarchy-hw-nvidia-without-gsp` | port |  | exit 0 when a Maxwell, Pascal or Volta NVIDIA GPU is present |
+| `omarchy-hw-recover-internal-monitor` | port |  | brings the laptop panel back at login when no external monitor is connected |
+| `omarchy-hw-surface` | port |  | exit 0 on a Microsoft Surface |
+| `omarchy-hw-touchpad` | port |  | prints Hyprland's touchpad device name |
+| `omarchy-hw-touchscreen` | port |  | prints Hyprland's touchscreen or tablet device name |
+| `omarchy-hw-vulkan` | port |  | exit 0 when a Vulkan driver is installed |
+| `omarchy-hw-webcam` | port |  | exit 0 when a webcam that can capture video is present |
+
+### hyprland
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-hyprland-focus-app` | port |  | focuses the most recent window of an app |
+| `omarchy-hyprland-monitor-clamshell` | translate | `haseen-hardware-laptop-display` | turns the laptop display off while the lid is closed on a dock, back on after |
+| `omarchy-hyprland-monitor-external-active` | port |  | true when Hyprland has an enabled monitor other than the laptop panel |
+| `omarchy-hyprland-monitor-focused` | port |  | prints the focused monitor's name |
+| `omarchy-hyprland-monitor-focused-apple` | apple |  | true only when the focused monitor is an Apple Studio or Pro Display XDR |
+| `omarchy-hyprland-monitor-internal` | translate | `haseen-hardware-laptop-display` | turns the laptop display on, off or over, or recovers it |
+| `omarchy-hyprland-monitor-internal-mirror` | translate | `haseen-hardware-mirror-display` | mirrors the laptop display, extends again, or recovers |
+| `omarchy-hyprland-monitor-laptop` | port |  | prints the built-in laptop display's name |
+| `omarchy-hyprland-monitor-modeless` | port |  | exit 0 when an enabled monitor has no mode (0x0) |
+| `omarchy-hyprland-monitor-scaling` | port |  | shows, sets or steps the focused monitor's scale and keeps it |
+| `omarchy-hyprland-monitor-watch` | port |  | follows monitor changes and keeps the laptop panel in step with the lid |
+| `omarchy-hyprland-reload-guard` | port |  | pauses or resumes Hyprland's config auto-reload during updates |
+| `omarchy-hyprland-session-lock-stranded` | port |  | exit 0 when the session is locked with no locker left running |
+| `omarchy-hyprland-session-locked` | port |  | true when Hyprland holds a session lock |
+| `omarchy-hyprland-toggle` | translate |  | switches no-gaps, aspect ratio, mirroring or the laptop display through haseen |
+| `omarchy-hyprland-toggle-disabled` | port |  | exit 0 when the named Hyprland toggle is off |
+| `omarchy-hyprland-toggle-enabled` | port |  | exit 0 when the named Hyprland toggle is on |
+| `omarchy-hyprland-window-close-all` | port |  | closes every window, then goes to workspace 1 |
+| `omarchy-hyprland-window-gaps-toggle` | shim | `haseen-toggle-gaps toggle` | toggles window gaps |
+| `omarchy-hyprland-window-pop` | port |  | floats, pins and raises the focused window, or tiles it again |
+| `omarchy-hyprland-window-single-square-aspect-toggle` | shim | `haseen-toggle-one-window-ratio toggle` | toggles the square aspect ratio of a single window |
+| `omarchy-hyprland-window-tiled-fullscreen-toggle` | port |  | toggles fullscreen for the focused window while it stays tiled |
+| `omarchy-hyprland-window-transparency-toggle` | port |  | toggles the focused window's transparency |
+| `omarchy-hyprland-window-width` | port |  | saves or restores the focused window's width for its app |
+| `omarchy-hyprland-workspace-layout-toggle` | shim | `haseen-toggle-workspace-layout toggle` | toggles the workspace layout between dwindle and scrolling |
+
+### install
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-install-ai-chatgpt` | shim | `haseen-install app chatgpt` | installs the ChatGPT (Codex) desktop app from haseen's catalogue |
+| `omarchy-install-ai-hermes` | port |  | installs Hermes Desktop with its self-updating runtime, then opens it |
+| `omarchy-install-ai-openclaw` | port |  | installs OpenClaw and its Control UI web app, then onboards or opens it |
+| `omarchy-install-ai-t3-code` | shim | `haseen-install app t3-code` | installs T3 Code from haseen's catalogue |
+| `omarchy-install-and-launch` | translate | `haseen-install` | installs the packages through haseen install, then starts the app |
+| `omarchy-install-app` | translate | `haseen-install` | installs the packages: catalogue apps by id, the rest through haseen install aur |
+| `omarchy-install-browser` | translate | `haseen-install` | installs the browser from haseen's catalogue |
+| `omarchy-install-chromium-copy-url` | refuse | `none: install a copy-URL extension from your browser's extension store` | It writes native-messaging manifests for Omarchy's Copy URL extension into browser profiles; haseen ships no browser extensions and edits no browser profile. |
+| `omarchy-install-chromium-google-account` | refuse | `none: add the --oauth2-client-id and --oauth2-client-secret lines to your chromium-flags.conf yourself` | It appends Google sign-in flags to your ~/.config/chromium-flags.conf; haseen never edits a file of yours after seeding it. |
+| `omarchy-install-chromium-ytdlp` | refuse | `none: install yt-dlp (haseen install package yt-dlp) and run it on the page's URL` | It writes native-messaging manifests for Omarchy's yt-dlp extension into browser profiles; haseen ships no browser extensions and edits no browser profile. |
+| `omarchy-install-dev-env` | translate | `haseen-install` | installs a language toolchain through haseen install dev (mise) and Omarchy's extras for it |
+| `omarchy-install-docker-dbs` | translate | `haseen-install` | runs the databases in Docker on 127.0.0.1 through haseen install app |
+| `omarchy-install-editor-emacs` | shim | `haseen-install app emacs` | installs Emacs from haseen's catalogue |
+| `omarchy-install-editor-helix` | shim | `haseen-install app helix` | installs Helix from haseen's catalogue |
+| `omarchy-install-editor-vscode` | shim | `haseen-install app vscode` | installs Visual Studio Code from haseen's catalogue |
+| `omarchy-install-editor-zed` | shim | `haseen-install app zed` | installs Zed from haseen's catalogue |
+| `omarchy-install-font` | translate | `haseen-install` | installs the font through haseen install font and switches to it |
+| `omarchy-install-gaming-battlenet` | port | `haseen-install` | installs Battle.net in ~/Games/battlenet under umu-launcher and GE-Proton |
+| `omarchy-install-gaming-geforce-now` | port |  | installs GeForce NOW from NVIDIA's Flatpak repository, then opens a browser |
+| `omarchy-install-gaming-gpu-lib32` | port |  | installs the 32-bit Vulkan/GL drivers for the GPUs present |
+| `omarchy-install-gaming-heroic` | shim | `haseen-install app heroic` | installs the Heroic Games Launcher from haseen's catalogue |
+| `omarchy-install-gaming-lutris` | shim | `haseen-install app lutris` | installs Lutris from haseen's catalogue |
+| `omarchy-install-gaming-retroarch` | shim | `haseen-install app retroarch` | installs RetroArch from haseen's catalogue |
+| `omarchy-install-gaming-steam` | shim | `haseen-install app steam` | installs Steam with the gaming layer's 32-bit drivers |
+| `omarchy-install-gaming-xbox-cloud` | translate | `haseen-webapp-install` | adds Xbox Cloud Gaming as a web app and opens it |
+| `omarchy-install-gaming-xbox-controllers` | shim | `haseen-install app xbox-controllers` | installs the xpadneo Xbox controller driver |
+| `omarchy-install-hermes-cli` | port |  | installs Hermes Desktop's self-updating runtime for the default agent; --check probes it |
+| `omarchy-install-openclaw-cli` | port |  | installs OpenClaw as the self-updating copy in ~/.openclaw; --check probes it |
+| `omarchy-install-preinstalls` | refuse | `haseen install app ID for each app you want (obsidian, xournalpp, pinta, lazydocker, omacalc), or haseen layer apply desktop` | It restores Omarchy's own preinstalled app set (aether, omacut, omawrite and more), which haseen does not ship; haseen installs apps one at a time. |
+| `omarchy-install-service-1password` | shim | `haseen-install app 1password` | installs 1Password from haseen's catalogue |
+| `omarchy-install-service-dropbox` | shim | `haseen-install app dropbox` | installs Dropbox from haseen's catalogue |
+| `omarchy-install-service-nordvpn` | shim | `haseen-install app nordvpn` | installs NordVPN and enables its daemon |
+| `omarchy-install-service-once` | translate | `haseen-install` | installs ONCE, enables its background service and starts its TUI |
+| `omarchy-install-service-signal` | shim | `haseen-install app signal` | installs Signal from haseen's catalogue |
+| `omarchy-install-service-spotify` | shim | `haseen-install app spotify` | installs Spotify from haseen's catalogue |
+| `omarchy-install-service-sunshine` | port | `haseen-install` | installs Sunshine, enables its user unit, opens Moonlight's ports in ufw, adds its admin web app |
+| `omarchy-install-service-tailscale` | translate | `haseen-install` | installs Tailscale, enables tailscaled and adds its admin web app |
+| `omarchy-install-terminal` | translate | `haseen-install` | installs the terminal and makes it the default |
+
+### installed
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-installed-service-dropbox` | port |  | exits 0 when Dropbox is running, else 1 |
+| `omarchy-installed-service-tailscale` | port |  | exits 0 when Tailscale is up or tailscaled runs, else 1 |
+
+### launch
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-launch-1password` | port |  | opens 1Password at scale 1, or installs it |
+| `omarchy-launch-about` | shim | `haseen-about` | opens haseen's About view |
+| `omarchy-launch-battlenet` | port |  | starts the Battle.net client in ~/Games/battlenet through umu-run |
+| `omarchy-launch-browser` | port |  | opens the default browser, a private window with --private |
+| `omarchy-launch-config-editor` | shim | `haseen-config-edit` | opens a config file in your editor |
+| `omarchy-launch-discord-community` | port |  | opens the Omarchy Discord invite in Discord or as a web app |
+| `omarchy-launch-docker-tui` | port |  | runs lazydocker, through polkit when the Docker socket needs root |
+| `omarchy-launch-editor` | port |  | opens a file in $EDITOR, in a terminal window for terminal editors |
+| `omarchy-launch-floating-terminal-with-presentation` | translate | `haseen-config-terminal` | runs a command in haseen's floating terminal |
+| `omarchy-launch-nautilus` | port |  | opens your home folder in the folder handler |
+| `omarchy-launch-nautilus-cwd` | port |  | opens the focused terminal's folder in the folder handler |
+| `omarchy-launch-openclaw` | port |  | opens OpenClaw's Control UI or --tui, setting up, onboarding or starting its gateway first |
+| `omarchy-launch-or-focus` | port |  | focuses the window matching a pattern, else runs its launch command |
+| `omarchy-launch-or-focus-tui` | port |  | focuses a TUI's terminal window by app-id, else opens it |
+| `omarchy-launch-or-focus-webapp` | port |  | focuses a web app's window, else opens it |
+| `omarchy-launch-screensaver` | translate | `haseen-screensaver` | starts haseen's screensaver; force overrides the off switch |
+| `omarchy-launch-shell` | port | `haseen-shell-run` | starts the desktop shell haseen uses, never Omarchy's |
+| `omarchy-launch-signal` | port |  | focuses Signal, else starts it (the Flatpak too), else installs it |
+| `omarchy-launch-spotify` | port |  | focuses Spotify, else starts it (the Flatpak too), else installs it |
+| `omarchy-launch-terminal` | port |  | opens a terminal in the focused terminal's folder, optionally running a command |
+| `omarchy-launch-terminal-herdr` | port |  | opens a terminal running herdr |
+| `omarchy-launch-terminal-tmux` | port |  | opens a terminal attached to tmux's Work session |
+| `omarchy-launch-tui` | port |  | runs a TUI in a new terminal window with its own app-id |
+| `omarchy-launch-webapp` | port |  | opens a URL as a web app in a chromium-family browser |
+
+### menu
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-menu` | translate | `haseen-menu` | opens haseen's menu at Omarchy's menu name |
+| `omarchy-menu-clipboard` | translate | `haseen-shell-ipc` | toggles haseen's clipboard panel |
+| `omarchy-menu-emoji` | translate | `haseen-shell-ipc` | toggles haseen's emoji panel |
+| `omarchy-menu-emoji-insert` | port |  | copies the emoji to the clipboard; haseen does not type it into the window |
+| `omarchy-menu-file` | port | `haseen-menu-select` | lists matching files, newest first, in haseen's menu and prints the one picked |
+| `omarchy-menu-herdr-keybindings` | port | `haseen-menu-select` | lists herdr's key bindings, its defaults merged with your config, in haseen's menu |
+| `omarchy-menu-images` | port | `haseen-menu-select` | picks an image from directories in haseen's menu and prints its path or name |
+| `omarchy-menu-input` | port |  | asks for one line of text in a floating terminal and prints it |
+| `omarchy-menu-keybindings` | shim | `haseen-keybinds-list` | lists the Hyprland key bindings in haseen's menu; Enter runs one |
+| `omarchy-menu-plugin` | translate | `haseen-menu` | picks a plugin to enable, disable or remove in haseen's menu, or a built-in to clone |
+| `omarchy-menu-select` | shim | `haseen-menu-select` | picks one line from a list in haseen's menu and prints it |
+| `omarchy-menu-share` | translate | `haseen-share-file` | shares the clipboard, files or folders with LocalSend through haseen share |
+| `omarchy-menu-timezone` | shim | `haseen-time timezone` | picks a time zone in a floating terminal and sets it |
+| `omarchy-menu-tmux-keybindings` | translate | `haseen-tmux-keybinds` | lists tmux's annotated key bindings in haseen's menu |
+
+### migrate
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-migrate` | shim | `haseen-migrate` | runs haseen's pending migrations |
+| `omarchy-migrate-notify` | shim | `haseen-migrate-notify` | one toast when haseen migrations are pending; a click runs them |
+
+### mise
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-mise-install` | port |  | writes a ~/.local/bin wrapper that installs and runs a tool through mise |
+
+### monitor
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-monitor-state` | port |  | prints the monitor panel's state lines from hyprctl |
+
+### network
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-network-band` | shim | `haseen-network-band` | reports or sets the Wi-Fi band (auto, 2.4, 5, 6) |
+| `omarchy-network-password` | port |  | prints the active Wi-Fi profile's password, read with nmcli |
+| `omarchy-network-qr` | port |  | prints the Wi-Fi network's QR code as a 0/1 matrix for the QR panel |
+| `omarchy-network-speedtest` | port |  | streams one download or upload Mbps figure per second |
+| `omarchy-network-status` | translate | `haseen-network-status` | prints connection type, name, signal and band; --verbose is haseen network status |
+
+### notification
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-notification-battery` | port | `haseen-battery-status` | shows the battery line as a low-urgency notification |
+| `omarchy-notification-dismiss` | translate | `haseen-notification-dismiss` | dismisses notifications whose summary matches |
+| `omarchy-notification-send` | translate | `haseen-notification-send` | Omarchy's notification arguments on haseen's notifications |
+| `omarchy-notification-time` | port | `haseen-notification-send` | shows the day, time, date and week as a low-urgency notification |
+| `omarchy-notification-wait` | translate | `haseen-notification-wait` | waits for the notification daemon, 10 s by default |
+| `omarchy-notification-weather` | translate | `haseen-shell-ipc` | toggles haseen's weather panel |
+
+### openclaw
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-openclaw-onboard` | port |  | runs OpenClaw's quickstart wizard and returns once its gateway service answers |
+
+### osd
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-osd` | port | `haseen-notification-send` | shows an OSD message or level as a low-urgency notification |
+
+### pkg
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-pkg-add` | translate | `haseen-install` | installs repo packages through haseen; fails if any is still missing |
+| `omarchy-pkg-aur-accessible` | port |  | exits 0 when the AUR answers an RPC request |
+| `omarchy-pkg-aur-add` | translate | `haseen-install` | installs packages through haseen's source order, the AUR last |
+| `omarchy-pkg-aur-install` | shim | `haseen-install aur` | picks a package to install, the AUR as the last resort |
+| `omarchy-pkg-drop` | translate | `haseen-remove` | removes the named packages that are installed |
+| `omarchy-pkg-install` | shim | `haseen-install package` | picks a repo package to install |
+| `omarchy-pkg-missing` | port |  | exits 0 when any named package is not installed |
+| `omarchy-pkg-present` | port |  | exits 0 when every named package is installed |
+| `omarchy-pkg-remove` | shim | `haseen-remove package` | picks an installed package to remove |
+
+### plugin
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-plugin-add` | translate | `haseen-plugin-install` | adds a plugin from git into ~/.config/haseen/plugins, pinned; enables it only when asked |
+| `omarchy-plugin-catalog` | port |  | every plugin haseen's shell can load, as Omarchy's catalog JSON |
+| `omarchy-plugin-clone` | port | `haseen-plugin-enable` | copies a haseen built-in into ~/.config/haseen/plugins, where it replaces the built-in |
+| `omarchy-plugin-disable` | shim | `haseen-plugin-disable` | turns a plugin off in haseen's shell.json |
+| `omarchy-plugin-enable` | translate | `haseen-plugin-enable` | turns a plugin on, optionally at a place in the bar (haseen bar add or move) |
+| `omarchy-plugin-list` | translate | `haseen-plugin-list` | lists haseen's plugins; --json in Omarchy's shape |
+| `omarchy-plugin-remove` | translate | `haseen-plugin-uninstall` | removes a plugin of yours from ~/.config/haseen/plugins; refuses Omarchy's and DMS's |
+| `omarchy-plugin-update` | translate | `haseen-plugin-update` | updates pinned plugins; never pulls ~/.config/omarchy/plugins |
+| `omarchy-plugin-validate` | port |  | checks a plugin folder against Omarchy's manifest schema |
+
+### plymouth
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-plymouth-current` | translate | `haseen-plymouth-status` | names the theme haseen's boot splash is coloured from |
+| `omarchy-plymouth-list` | shim | `haseen-theme-list` | lists the themes the boot splash can be coloured from |
+| `omarchy-plymouth-preview` | refuse | `haseen plymouth status` | haseen's boot splash is a plymouth script drawn in theme colours; there are no Omarchy splash images to preview. |
+| `omarchy-plymouth-reset` | translate | `haseen-plymouth-set` | restores haseen's splash in the current theme; no SDDM theme, haseen uses greetd |
+| `omarchy-plymouth-set` | translate | `haseen-plymouth-set` | checks Omarchy's colours and logo, then sets haseen's splash |
+| `omarchy-plymouth-set-by-theme` | translate | `haseen-plymouth-set` | colours haseen's boot splash from a haseen theme |
+| `omarchy-plymouth-switcher` | port | `haseen-menu-select` | picks default or a theme for the boot splash and prints it |
+
+### power
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-power-present` | port |  | exits 0 when the machine runs on external power |
+
+### powerprofiles
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-powerprofiles-init` | shim | `haseen-powerprofile-init` | sets the power profile for AC or battery at login |
+| `omarchy-powerprofiles-list` | shim | `haseen-powerprofile-list` | lists the power profiles, weakest first |
+| `omarchy-powerprofiles-set` | shim | `haseen-powerprofile-set` | sets the power profile for AC or battery |
+
+### provision
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-provision-first-run` | refuse | `haseen seed user` | It runs Omarchy's first-login installer scripts; haseen seeds your files once instead. |
+| `omarchy-provision-owner` | refuse | `none: haseen installs onto an existing CachyOS user (./install.sh); there is no deferred-provisioning ISO` | It creates the user of an Omarchy ISO install left in deferred provisioning, which is Omarchy's installer. |
+| `omarchy-provision-user` | refuse | `haseen seed user` | It runs Omarchy's user installer and seals Omarchy's migrations, which is Omarchy's install machinery. |
+
+### refresh
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-refresh-applications` | refuse | `haseen install app NAME (haseen's own launchers install with haseen)` | It copies Omarchy's application launchers into ~/.local/share/applications; haseen's apps bring their own. |
+| `omarchy-refresh-chromium` | refuse | `none: haseen does not manage chromium-flags.conf; its browser is Helium (haseen setup cairn)` | It overwrites ~/.config/chromium-flags.conf with Omarchy's; haseen never rewrites your files after seeding them. |
+| `omarchy-refresh-config` | translate | `haseen-refresh` | replaces a seeded config with haseen's default, keeping a backup |
+| `omarchy-refresh-herdr` | port |  | replaces ~/.config/herdr/config.toml with haseen's default, keeping a backup |
+| `omarchy-refresh-hyprland` | shim | `haseen-refresh hyprland` | resets the Hyprland Lua files to haseen's, with backups, and reloads Hyprland |
+| `omarchy-refresh-hyprsunset` | shim | `haseen-refresh nightlight` | resets the night light settings and restarts hyprsunset |
+| `omarchy-refresh-limine` | refuse | `none: haseen never replaces /boot/limine.conf; entries come from limine-entry-tool drop-ins (haseen layer apply secureboot, haseen boot list)` | It replaces /boot/limine.conf with Omarchy's; haseen only adds Limine drop-ins and never overwrites the boot config. |
+| `omarchy-refresh-pacman` | refuse | `haseen update (repositories: haseen layer apply chaotic / omarchy-repo)` | It overwrites /etc/pacman.conf and the mirrorlist with Omarchy's channel; haseen leaves both to CachyOS. |
+| `omarchy-refresh-plymouth` | shim | `haseen-plymouth-set` | restores haseen's boot splash and rebuilds the initramfs |
+| `omarchy-refresh-sddm` | refuse | `haseen setup greeter (haseen logs in with greetd)` | It republishes Omarchy's SDDM theme; haseen logs in with greetd, not SDDM. |
+| `omarchy-refresh-shell` | shim | `haseen-refresh shell` | resets ~/.config/haseen/shell.json from haseen's seed, with a backup |
+| `omarchy-refresh-tmux` | port |  | replaces ~/.config/tmux/tmux.conf with haseen's default, keeping a backup |
+
+### reinstall
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-reinstall` | refuse | `haseen layer apply LAYER... (re-apply converges); haseen refresh hyprland\|shell` | It reinstalls Omarchy's packages and configs over pacman.conf, Limine and your home; haseen re-applies its layers instead. |
+| `omarchy-reinstall-configs` | refuse | `haseen refresh hyprland\|shell\|nightlight (one config at a time, with backups)` | It copies /etc/skel over your home and refreshes Limine; haseen never overwrites your files or the boot config. |
+| `omarchy-reinstall-pkgs` | refuse | `haseen layer apply base desktop shell (idempotent); haseen update` | It resets pacman.conf to Omarchy's channel and reinstalls Omarchy's packages; haseen leaves pacman.conf to CachyOS. |
+
+### reminder
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-reminder` | translate | `haseen-reminder-set` | sets, shows and clears haseen's reminders; show --json in Omarchy's shape |
+
+### remove
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-remove-ai-hermes` | port |  | removes Hermes, its gateway units and runtime; asks before deleting chats and tokens |
+| `omarchy-remove-ai-openclaw` | port |  | removes OpenClaw, its gateway units and launcher; asks before deleting ~/.openclaw |
+| `omarchy-remove-ai-perplexity` | port |  | removes Perplexity and its caches; asks before deleting its logins and vault |
+| `omarchy-remove-ai-t3-code` | port |  | removes T3 Code; asks before deleting its settings and, separately, its worktrees |
+| `omarchy-remove-browser` | port |  | removes a browser, moving the default to Helium, and Omarchy's policy and flag files |
+| `omarchy-remove-dev-env` | translate | `haseen-remove` | removes a development environment's toolchains |
+| `omarchy-remove-gaming-battlenet` | port |  | removes the Battle.net prefix and launcher; asks about umu-launcher and GE-Proton |
+| `omarchy-remove-gaming-geforce-now` | port |  | removes the GeForce NOW Flatpak; asks before deleting its data |
+| `omarchy-remove-gaming-heroic` | port |  | removes Heroic; asks before deleting its games, configs and caches |
+| `omarchy-remove-gaming-lutris` | port |  | removes Lutris and the Wine packages nothing else needs; asks about ~/.wine and data |
+| `omarchy-remove-gaming-minecraft` | port |  | removes Minecraft; asks before deleting its worlds and caches |
+| `omarchy-remove-gaming-retroarch` | port |  | removes RetroArch and its cores; asks about configs and saves, keeps ROMs and BIOS |
+| `omarchy-remove-gaming-steam` | port |  | removes Steam; asks before deleting its game libraries, configs and caches |
+| `omarchy-remove-gaming-xbox-cloud` | translate | `haseen-webapp-remove` | removes the Xbox Cloud Gaming web app |
+| `omarchy-remove-gaming-xbox-controllers` | port |  | removes the Xbox controller driver and its module settings |
+| `omarchy-remove-launcher-entry` | port |  | removes a launcher entry, or uninstalls the package or Flatpak that owns it |
+| `omarchy-remove-preinstalls` | refuse | `haseen remove app NAME, haseen remove package NAME or haseen webapp remove NAME, one at a time` | It strips Omarchy's own preinstalled web apps, wrappers and packages in one sweep; haseen did not install them and removes apps one by one. |
+| `omarchy-remove-security-fido2` | port |  | turns FIDO2 login off for sudo and polkit and removes pam-u2f |
+| `omarchy-remove-security-fingerprint` | port |  | turns fingerprint login off for sudo, polkit and the lock screen and removes fprintd |
+| `omarchy-remove-security-sshd` | port |  | turns the SSH server off and closes its firewall port; asks about authorized keys |
+| `omarchy-remove-security-sudoless-docker` | port |  | takes you out of the docker group and records that a reboot is needed |
+| `omarchy-remove-service-1password` | port |  | removes 1Password and Omarchy's browser extension policy |
+| `omarchy-remove-service-dropbox` | port |  | removes Dropbox and turns its bar plugin off |
+| `omarchy-remove-service-sunshine` | port |  | removes Sunshine, its unit, web app and firewall rules |
+| `omarchy-remove-service-tailscale` | port |  | removes Tailscale and tailscaled, its receiver unit, bar plugin and web app |
+
+### restart
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-restart-app` | port |  | kills an app by name and starts it again in a scope of its own |
+| `omarchy-restart-audio` | shim | `haseen-restart audio` | restarts PipeWire, PipeWire-Pulse and WirePlumber |
+| `omarchy-restart-bluetooth` | shim | `haseen-restart bluetooth` | unblocks Bluetooth and restarts the Bluetooth service |
+| `omarchy-restart-btop` | port |  | makes a running btop reload its config |
+| `omarchy-restart-gum` | inert |  | haseen renders no gum theme, so gum keeps its defaults |
+| `omarchy-restart-helix` | port |  | makes a running Helix reload its config |
+| `omarchy-restart-herdr` | port |  | makes a running herdr server reload its config |
+| `omarchy-restart-hyprctl` | port |  | reloads Hyprland's config |
+| `omarchy-restart-hyprsunset` | translate | `haseen-shell-ipc` | restarts the night light's hyprsunset through haseen's shell |
+| `omarchy-restart-opencode` | port |  | makes a running opencode reload its config |
+| `omarchy-restart-shell` | translate | `haseen-shell-restart` | stops an Omarchy shell, restarts haseen's (or DMS) |
+| `omarchy-restart-terminal` | port |  | makes running Alacritty, Kitty and Ghostty reload their config |
+| `omarchy-restart-tmux` | port |  | makes a running tmux server reread its config |
+| `omarchy-restart-trackpad` | shim | `haseen-restart trackpad` | reloads the touchpad driver |
+| `omarchy-restart-wifi` | shim | `haseen-restart wifi` | unblocks Wi-Fi, turns the radio on and rescans |
+| `omarchy-restart-xcompose` | port |  | restarts fcitx5 so a changed ~/.XCompose applies |
+
+### screensaver
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-screensaver` | translate | `haseen-screensaver` | starts haseen's screensaver on every monitor |
+
+### setup
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-setup-direct-boot` | port |  | toggles a UEFI boot entry that starts the kernel image directly |
+| `omarchy-setup-security-fido2` | shim | `haseen-setup-fido2` | sets up a FIDO2 key for sudo and polkit |
+| `omarchy-setup-security-fingerprint` | shim | `haseen-setup-fingerprint` | sets up fingerprint login for sudo, polkit and the lock screen |
+| `omarchy-setup-security-sshd` | translate | `haseen-setup-sshd` | authorizes an SSH key, then sets up haseen's SSH server |
+| `omarchy-setup-security-sudoless-docker` | port |  | adds you to the docker group after a warning that it is root-equivalent |
+
+### shell
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-shell` | translate | `haseen-shell-ipc` | Omarchy's shell IPC verbs on haseen's shell |
+| `omarchy-shell-config` | refuse | `haseen bar add\|move\|overflow\|position, haseen plugin enable\|disable\|settings` | It edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read. |
+
+### show
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-show-done` | port |  | says Done! and waits for a key so the terminal stays readable |
+| `omarchy-show-logo` | port |  | clears the terminal and prints haseen's logo |
+
+### snapshot
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-snapshot` | port |  | creates or restores a snapper snapshot |
+
+### state
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-state` | port |  | sets or clears the markers Omarchy's commands leave for each other |
+
+### sudo
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-sudo-docker` | port |  | exit 0 when Docker needs sudo, 1 when it can be used directly |
+| `omarchy-sudo-keepalive` | port |  | keeps sudo fresh for the sourcing script through common.sh |
+| `omarchy-sudo-passwordless` | port |  | turns passwordless sudo on for a limited time (15 minutes by default), or off |
+
+### system
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-system-factory-reset` | refuse | `none: reinstall CachyOS, then haseen` | It restores Omarchy's @factory snapshot and rebuilds Omarchy's boot setup; haseen has no factory image to return to. |
+| `omarchy-system-factory-reset-finish` | refuse | `none: reinstall CachyOS, then haseen` | It finishes Omarchy's own factory reset on first boot; haseen has no factory reset to finish. |
+| `omarchy-system-lid-close` | translate | `haseen-system lock` | locks at once when closing the lid will suspend, then reconciles the laptop display |
+| `omarchy-system-lock` | translate | `haseen-system lock` | locks the session, resets the keyboard layout and locks 1Password |
+| `omarchy-system-logout` | shim | `haseen-system logout` | ends the session |
+| `omarchy-system-reboot` | translate | `haseen-system reboot` | clears the reboot markers and reboots |
+| `omarchy-system-shutdown` | translate | `haseen-system shutdown` | clears the reboot markers and powers off |
+| `omarchy-system-sleep-lock` | port |  | locks before suspend and waits, within the sleep delay, for a secure lock |
+| `omarchy-system-sleep-monitor` | shim | `haseen-lock-before-sleep` | locks the screen before every suspend |
+| `omarchy-system-stats` | port |  | prints CPU and memory figures for a shell panel |
+| `omarchy-system-wake` | shim | `haseen-screen-on` | turns every display back on |
+
+### tailscale
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-tailscale-receive` | port |  | saves incoming Taildrop files to the downloads directory and announces each |
+| `omarchy-tailscale-send` | port |  | sends files to a machine on the tailnet with Taildrop |
+
+### theme
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-theme-bg-cache` | inert |  | it warms thumbnails for Omarchy's own background switcher; haseen's background panel makes its own |
+| `omarchy-theme-bg-current` | translate | `haseen-theme-bg` | prints the current background's name (Blue Hour), or Unknown |
+| `omarchy-theme-bg-install` | port |  | creates the current theme's folder in ~/.config/haseen/backgrounds and opens it |
+| `omarchy-theme-bg-next` | shim | `haseen-theme-bg next` | shows the current theme's next background |
+| `omarchy-theme-bg-set` | shim | `haseen-theme-bg set` | shows the given image as the background |
+| `omarchy-theme-bg-switcher` | translate | `haseen-shell-ipc` | opens haseen's background picker, which applies the image you pick |
+| `omarchy-theme-color` | port |  | prints a resolved colour of the current haseen theme (--all, --raw, --file) |
+| `omarchy-theme-colors-from-alacritty` | port |  | writes a legacy theme's colors.toml from its alacritty.toml |
+| `omarchy-theme-current` | translate | `haseen-theme-current` | prints the current haseen theme's name title-cased, or Unknown |
+| `omarchy-theme-dir` | port |  | prints a theme's directory: yours in ~/.config/haseen/themes, else haseen's stock one |
+| `omarchy-theme-extras` | port |  | lists the themes in ~/.config/haseen/themes installed from git |
+| `omarchy-theme-install` | translate | `haseen-theme-install` | clones a theme repository into ~/.config/haseen/themes and applies it |
+| `omarchy-theme-list` | translate | `haseen-theme-list` | lists haseen's themes, one title-cased name per line |
+| `omarchy-theme-osc` | port |  | prints the escape sequences that put a terminal on a colors.toml palette |
+| `omarchy-theme-refresh` | translate | `haseen-theme-set` | applies the current haseen theme again |
+| `omarchy-theme-remove` | port |  | deletes a theme you installed from ~/.config/haseen/themes |
+| `omarchy-theme-set` | shim | `haseen-theme-set` | sets the haseen theme |
+| `omarchy-theme-set-browser` | port |  | sets Chromium-family browsers' policy theme colour to the haseen theme's background |
+| `omarchy-theme-set-browser-policy` | port |  | writes BrowserThemeColor into the existing Chromium-family managed-policy directories |
+| `omarchy-theme-set-claude` | port |  | publishes the haseen theme to Claude Code as custom:haseen |
+| `omarchy-theme-set-foot` | port |  | sends the haseen theme's palette to running foot terminals |
+| `omarchy-theme-set-gnome` | port |  | sets GNOME's colour scheme, Adwaita variant and icon theme from the haseen theme |
+| `omarchy-theme-set-hermes` | port |  | publishes the haseen theme as the Hermes skin haseen |
+| `omarchy-theme-set-keyboard` | port |  | sets ASUS ROG and Framework 16 keyboard lighting to the haseen theme |
+| `omarchy-theme-set-keyboard-asus-rog` | port |  | sets the asusctl aura colour to the haseen theme's keyboard colour |
+| `omarchy-theme-set-keyboard-f16` | port |  | sets the Framework 16 QMK keyboard colour to the haseen theme's |
+| `omarchy-theme-set-obsidian` | port |  | publishes the haseen theme to every Obsidian vault as the theme haseen |
+| `omarchy-theme-set-pi` | port |  | publishes the haseen theme to the Pi coding agent as the theme haseen |
+| `omarchy-theme-set-t3code` | port |  | publishes the haseen theme to T3 Code as the theme haseen |
+| `omarchy-theme-set-templates` | inert |  | it renders into Omarchy's staging directory mid theme set; haseen theme set renders its own |
+| `omarchy-theme-set-tmux` | port |  | applies the haseen theme to the running tmux server |
+| `omarchy-theme-set-vscode` | port |  | publishes the haseen theme to VS Code, VSCodium and Cursor as the theme haseen |
+| `omarchy-theme-switcher` | translate | `haseen-shell-ipc` | opens haseen's theme picker, which applies the theme you pick |
+| `omarchy-theme-update` | port |  | git-pulls the themes installed from git and applies the current one again |
+
+### toggle
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-toggle` | port |  | switches an Omarchy flag: haseen's own flag where one means the same, else haseen's toggle store |
+| `omarchy-toggle-bar` | translate | `haseen-toggle-bar` | hides (on) or shows (off) or flips the running bar, for the session |
+| `omarchy-toggle-crash-capture` | port |  | turns crash toasts off/on; the crash watcher keeps running for shell recovery |
+| `omarchy-toggle-enabled` | port |  | exit 0 when the flag omarchy-toggle keeps is on, 1 when off |
+| `omarchy-toggle-hybrid-gpu` | shim | `haseen-hardware-hybrid-gpu toggle` | switches the hybrid GPU between integrated and hybrid mode |
+| `omarchy-toggle-idle` | translate | `haseen-toggle-idle` | toggles idle locking the haseen way |
+| `omarchy-toggle-input-device` | translate | `haseen-hardware-touchpad` | switches the touchpad or touchscreen through haseen hardware touchpad/touchscreen |
+| `omarchy-toggle-nightlight` | translate | `haseen-toggle-nightlight` | toggles haseen's night light; --status prints Omarchy's {enabled,temperature} JSON |
+| `omarchy-toggle-notification-silencing` | shim | `haseen-toggle-dnd toggle` | toggles do-not-disturb |
+| `omarchy-toggle-screensaver` | shim | `haseen-toggle-screensaver toggle` | toggles the screensaver before the idle lock |
+| `omarchy-toggle-suspend` | refuse | `none: haseen's session menu always offers Suspend, and idle never suspends unless you set it with haseen setup idle` | haseen has no setting that hides Suspend from its session menu, so this toggle would change nothing you can see. |
+| `omarchy-toggle-touchpad` | shim | `haseen-hardware-touchpad` | enables, disables or toggles the touchpad |
+| `omarchy-toggle-touchscreen` | shim | `haseen-hardware-touchscreen` | enables, disables or toggles the touchscreen |
+
+### transcode
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-transcode` | translate | `haseen-transcode` | shrinks a picture or video for sharing; asks format and resolution in haseen's menu |
+| `omarchy-transcode-ascii` | port |  | renders an SVG or PNG into braille or block text art with ImageMagick |
+
+### tui
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-tui-install` | port |  | writes a launcher that opens a terminal program in its own (floating) window |
+| `omarchy-tui-remove` | port |  | removes a TUI launcher and its icon (picker without a name) |
+| `omarchy-tui-remove-all` | port |  | removes every TUI launcher and icon after a confirmation |
+
+### update
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-update` | shim | `haseen-update` | updates the system the haseen way |
+| `omarchy-update-analyze-logs` | port |  | warns when the last pacman transaction's initramfs build did not report success |
+| `omarchy-update-aur-pkgs` | port |  | upgrades installed AUR packages with paru or yay when the AUR answers |
+| `omarchy-update-available` | refuse | `haseen update check (pending package updates), then haseen update` | haseen has no release channel of its own to poll; this asked whether a newer Omarchy release was out. |
+| `omarchy-update-confirm` | port |  | asks 'Ready to update?' before an update; exit 1 when declined |
+| `omarchy-update-dev` | refuse | `none: haseen uses no Omarchy dev checkout; update a haseen checkout with git pull` | This updated an Omarchy development checkout, which haseen does not use. |
+| `omarchy-update-firmware` | shim | `haseen-update firmware` | updates the firmware with fwupd (signed for Secure Boot when needed) |
+| `omarchy-update-keyring` | refuse | `haseen layer apply omarchy-repo` | It imports Omarchy's signing key and runs a partial pacman -Sy; haseen trusts Omarchy's repo only through its omarchy-repo layer. |
+| `omarchy-update-lock` | port |  | runs a command holding the update lock so two updates never run at once |
+| `omarchy-update-mise` | port |  | upgrades mise-managed tools when mise is installed |
+| `omarchy-update-orphan-pkgs` | port |  | lists orphaned packages and removes them as root after a default-no question |
+| `omarchy-update-pacman-guard` | refuse | `haseen update` | This is the body of Omarchy's pacman hook, which calls Omarchy's own copy by path; haseen update already tells that guard the update is sanctioned. |
+| `omarchy-update-pkg-prune` | port |  | prunes the pacman cache to the two newest versions of each package |
+| `omarchy-update-requires-free-space` | port |  | fails when / has under 10 GiB free (HASEEN_UPDATE_FORCE=1 skips it) |
+| `omarchy-update-restart` | port | `haseen-shell-restart` | offers a reboot after a kernel update, restarts haseen's shell |
+| `omarchy-update-status` | inert |  | it refreshed the update widget of Omarchy's shell; haseen's updates widget checks on its own |
+| `omarchy-update-stay-awake` | port | `haseen-toggle-idle` | blocks sleep and turns idle off during an update, undoing only what it set |
+| `omarchy-update-system-pkgs` | port |  | upgrades system packages with pacman -Syu as root, without Omarchy's overwrite policy |
+| `omarchy-update-system-pkgs-when-conflicted` | refuse | `haseen update (resolve the file or package conflict pacman reports by hand)` | It moves files of Omarchy's own packages aside to force their upgrade; haseen never rewrites Omarchy's packages. |
+| `omarchy-update-time` | shim | `haseen-time sync` | resynchronises the clock (NTP) |
+| `omarchy-update-user-notify` | shim | `haseen-migrate-notify` | notifies about pending haseen migrations |
+
+### upgrade
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-upgrade-to-quattro` | refuse | `none: haseen replaces Omarchy and never installs Omarchy's packages` | It rewrites pacman.conf and the mirrorlist, removes Limine configs and installs omarchy and omarchy-settings, which haseen never does. |
+
+### version
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-version` | translate |  | prints haseen's version (haseen --version); exit 1 when unknown |
+| `omarchy-version-branch` | refuse | `none: haseen --version prints haseen's version` | This printed the branch of an Omarchy development checkout; haseen has none, so there is no branch to show. |
+| `omarchy-version-channel` | refuse | `haseen layer status` | Release channels are Omarchy's; haseen takes only the stable [omarchy] repo, as a package source, through its omarchy-repo layer. |
+| `omarchy-version-pkgs` | port |  | prints when system packages were last upgraded, from pacman's log |
+
+### voxtype
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-voxtype-config` | port | `haseen-config-terminal` | opens 'voxtype configure' in a floating terminal |
+| `omarchy-voxtype-install` | port | `haseen-install` | installs Voxtype dictation (wtype, voxtype-bin), its model and its user service |
+| `omarchy-voxtype-model` | port | `haseen-config-terminal` | opens 'voxtype setup model' in a floating terminal |
+| `omarchy-voxtype-remove` | port | `haseen-remove` | removes Voxtype, its service, config and models after a confirmation |
+| `omarchy-voxtype-status` | port |  | streams Voxtype's state as JSON lines; one idle line without Voxtype |
+
+### weather
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-weather-icon` | shim | `haseen-weather-icon` | prints the current weather glyph |
+| `omarchy-weather-location` | shim | `haseen-weather-location` | shows, sets or clears the weather location |
+| `omarchy-weather-status` | shim | `haseen-weather-status` | prints 'Place · Temp · Wind' or 'Weather unavailable' |
+
+### webapp
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-webapp-handler-hey` | port |  | opens HEY as a web app; a mailto: link opens a new message |
+| `omarchy-webapp-handler-zoom` | port |  | opens Zoom's web client as a web app; a meeting link joins it |
+| `omarchy-webapp-install` | translate | `haseen-webapp-install` | creates a web-app launcher; Omarchy's custom-Exec and MimeType arguments kept |
+| `omarchy-webapp-remove` | port |  | removes a web-app launcher and icon, Omarchy's or haseen's (picker without a name) |
+| `omarchy-webapp-remove-all` | port |  | removes every web-app launcher and icon after a confirmation |
+
+### windows
+
+| Command | Kind | haseen | Why |
+|---|---|---|---|
+| `omarchy-windows-vm` | port | `haseen-install` | installs, launches, stops or removes the Windows VM (Docker + FreeRDP), elevating via polkit |
+
+## Apple hardware
+
+Two commands drive Apple hardware only and have no haseen answer (their
+rows are `apple`; `omarchy commands --all` lists them, nothing else does):
+
+- `omarchy-brightness-display-apple`: Apple Studio Display and Pro Display
+  XDR brightness through `asdcontrol` (`omarchy-brightness-display-apple:3`);
+- `omarchy-hyprland-monitor-focused-apple`: true only when the focused
+  monitor is one of those (`.make == "Apple Computer Inc"`,
+  `omarchy-hyprland-monitor-focused-apple:11`).
+
+Apple-only branches dropped from commands that are adopted:
+
+- `omarchy-brightness-display:38-40,47-49,79-84`: the Apple-display path
+  through the two commands above;
+- `omarchy-hw-display:10-14`: the T2 Touch Bar's `appletb_backlight`
+  exclusion and `gmux_backlight` as the first candidate;
+- `omarchy-setup-direct-boot:23-26`: the refusal on Apple firmware;
+- `omarchy-menu-keybindings:427`: the "Apple Display" sort priority (the
+  command is haseen's keybind sheet);
+- `omarchy-upgrade-to-quattro:684,786-799`: `asdcontrol-git` for Apple
+  displays (the command is refused as a whole).
+
+`apple-touch-icon` in `omarchy-webapp-install:90-104` and
+`omarchy-install-ai-openclaw:17` is a web icon convention, not hardware,
+and stays.
+
+## Findings outside this plan
+
+Fixed here:
+
+- `bin/haseen-toggle-screensaver:20` printed its usage from an unquoted
+  heredoc naming `haseen screensaver --force` in backticks, so `--help`
+  showed the screensaver (found through `omarchy-toggle-screensaver --help`;
+  `tests/test-ambient.sh` checks it).
+- The first port of `omarchy-hyprland-reload-guard` read Hyprland's settings
+  with `jq -er`, which fails on `false`, so `pause` did nothing; it reads
+  them with `jq -r`, as Omarchy's does.
+
+Left for their own plans:
+
+- `bin/haseen-theme-set` runs none of the `omarchy-theme-set-<app>`
+  publishers (`grep -c omarchy-theme-set- bin/haseen-theme-set`: 0), so
+  Claude, Pi, T3 Code, Hermes, Obsidian and VS Code follow a theme only when
+  one is run by hand.
+- `omarchy-install-gaming-battlenet:45,83` downloads Blizzard's Windows
+  installer and runs it under GE-Proton, as Omarchy's does
+  (`omarchy-install-gaming-battlenet:50`): Battle.net has no package. Whether
+  haseen keeps a downloaded installer here is the owner's call.
+- `omarchy-plugin-validate:133` warns when haseen's shell would not load a
+  plugin Omarchy accepts; whether `haseen plugin install` creates such
+  folders is unchecked.
+
+- `bin/haseen-agent-crash:96` passes `--prompt` to every agent; Omarchy's
+  `omarchy-agent` maps each agent's own prompt syntax.
+- `bin/haseen-webapp-install:126` takes the first word of the default
+  browser's `Exec=`, which is `/usr/bin/flatpak` for a Flathub browser.
+- `share/haseen/lib/catalog.sh:304-328` (`catalog_post_install`) has no step
+  for the `once` entry (`share/haseen/default/catalog.json:76`); Omarchy's
+  `omarchy-install-service-once:11` enables `once-background.service`.
+- `bin/haseen-restart:46-49` (`wifi`) unblocks the radio but never runs
+  `nmcli networking on`, which Omarchy's `omarchy-restart-wifi:8` does.
+
+## Tests
+
+`tests/test-omarchy-commands.sh`, hermetic (sandbox HOME, stub PATH,
+fixtures; nothing reaches the live session):
+
+- the table names exactly Omarchy 4.0.6's 446 commands
+  (`tests/fixtures/omarchy-4.0.6/bin.txt`, from `ls /usr/share/omarchy/bin` on
+  IO), each once, with one of the six kinds; the two Apple commands are the
+  `apple` rows and do not exist; `omarchy/bin` holds every other name and
+  nothing else, table rows as links to the dispatcher, the rest as
+  executable scripts that source `lib.sh`; every shim names an existing
+  haseen command; every port keeps Omarchy's MIT notice;
+- every refusal prints why and the haseen way and exits 1; every `inert`
+  command says so and exits 0; every command answers `--help` with exit 0;
+  none of them runs a stubbed binary;
+- the router: longest-prefix routes, Omarchy's aliases, `omarchy commands`
+  without and with the Apple rows, group listings, unknown commands;
+- the installer: one `ln -sf -t PREFIX/bin` for every name, existing haseen
+  links kept, a foreign file or link left alone and named, a retired
+  command's link removed; `--uninstall-tree` removes haseen's links only.
+  Besides the dry runs, a real `--tree-only` install into a scratch PREFIX,
+  run twice, then uninstalled: the links do not change on the second run,
+  a foreign same-named file and link stay with a warning, and the uninstall
+  leaves them;
+- the session `PATH`: luna's and IO's orders through the doctor's check, the
+  compositor's `PATH` read from a fixture Hyprland lock file and environ, an
+  Omarchy-seeded `~/.config/uwsm/env` followed by the rendered `10-haseen`
+  putting haseen's commands first, the migration rewriting an old fragment
+  once (a commented-out line does not count) and leaving one without the
+  layer's marker alone, and the shell init putting them first after an rc's prepend;
+- the restart chain: a fake Omarchy `omarchy-restart-shell` (its last step,
+  `omarchy-restart-shell:83`) run by absolute path with haseen's directory
+  first on `PATH`, as on IO: Omarchy's launcher never runs, the running
+  Omarchy shell is stopped, haseen's own instance is left alone and
+  `haseen-shell.service` is started; `omarchy-restart-shell` and
+  `omarchy-launch-shell` under a running unit, without a unit, and under
+  DMS; `omarchy-update-restart` offers a reboot only for a replaced kernel,
+  never without a terminal, and restarts haseen's shell. The `qs` stub
+  rejects `--any-display` beside `list -a` and `kill --pid` (exit 108), as
+  Quickshell 0.3.2 does, and lists an Omarchy instance, haseen's, both,
+  none, or fails: an Omarchy shell is stopped, haseen's never, launch never
+  starts a second haseen shell, and a failed listing is reported (restart
+  goes on, launch refuses). Under haseen's lock screen the restart refuses
+  and the update still finishes;
+- plan 093's inventory names every command;
+- per-command behaviour, one file per family of commands:
+  `tests/test-omarchy-system.sh` (agent to drive), `tests/test-omarchy-hw.sh`
+  (hw, hyprland, hibernation, hook, font), `tests/test-omarchy-launch.sh`
+  (install, launch), `tests/test-omarchy-menu.sh` (menu, pkg, plugin,
+  refresh, reinstall), `tests/test-omarchy-remove.sh`,
+  `tests/test-omarchy-restart.sh` (restart, setup, system, sudo),
+  `tests/test-omarchy-theme.sh` and `tests/test-omarchy-update.sh` (toggle,
+  update, version, webapp). Every state-changing command has a dry-run
+  purity check, and the remove and plugin tests compare
+  `~/.config/omarchy/plugins` and `~/.config/DankMaterialShell/plugins`
+  before and after real runs (`--yes`, `--purge --yes`, and a yes to every
+  question);
+- the questions `--yes` does not answer: every remover with data keeps it
+  under `--yes` and deletes it under `--purge --yes` (Steam, Battle.net,
+  GeForce NOW, RetroArch, Perplexity, T3 Code, `~/.opam`, rustup, Omarchy's
+  fingerprint service), a dry run under `--yes` still plans the deletion,
+  Omarchy's `/etc/fido2` goes only on a yes at the terminal,
+  and a remover without data questions rejects `--purge`; an SSH key is not
+  authorized under `--yes` without a terminal, nor with another key's
+  `--fingerprint`, and is with its own; Battle.net's download is shown with
+  its SHA-256 and runs only on a typed `run`, and a partial prefix stays
+  without a typed `wipe`; passwordless sudo stays off under `--yes` and on a
+  plain `y`; `omarchy-theme-set-vscode` leaves `extensions.json` and
+  `.obsolete` alone without `--activate`.
+
+## Not done
+
+- Absolute-path calls still reach Omarchy's own copies:
+  `/usr/bin/omarchy-*`, `$OMARCHY_PATH/bin/omarchy-*` (plan 057 found
+  `t1nk33r.agents` calling `/usr/bin/omarchy-notification-send`), and
+  Omarchy's systemd units (`ExecStart=/usr/bin/omarchy-…` on IO). Their
+  inner calls by name do reach haseen.
+- The PKGBUILD phase (plan 013, `PREFIX=/usr`) cannot put these names in
+  `/usr/bin`: they are the `omarchy` package's files there. It will need a
+  directory of its own ahead on `PATH`.
+- `haseen shell restart` itself (`bin/haseen-shell-restart:22-45`) restarts
+  the unit or the qs instance even under the lock screen; only the Omarchy
+  path above checks the lock. It is haseen's own command, outside this plan.
+- Installing on IO and the live `omarchy-update` there are integrator steps.

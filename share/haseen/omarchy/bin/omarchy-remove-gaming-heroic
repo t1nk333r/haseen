@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# omarchy-remove-gaming-heroic — remove Heroic Games Launcher in whichever form
+# is installed (Omarchy's heroic-games-launcher-bin package, haseen's Flatpak),
+# then, after asking, its configs, caches and game library. Adapted from
+# Omarchy bin/omarchy-remove-gaming-heroic (MIT, Copyright (c) David
+# Heinemeier Hansson): the data paths are Omarchy's, plus the Flatpak's
+# ~/.var/app directory; omarchy-pkg-drop -> haseen remove package and haseen
+# remove app heroic; --dry-run prints the plan (plan 093).
+#
+# Data: Omarchy deletes it all without asking; here it is asked, default no.
+# --yes keeps it: only a yes at a terminal or --purge deletes it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-gaming-heroic [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes heroic-games-launcher-bin and
+the com.heroicgameslauncher.hgl Flatpak, whichever is installed (haseen
+remove), then asks (default no; --yes keeps them, --purge deletes them)
+before deleting Heroic's configs, caches and the games in ~/Games/Heroic.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+ID=com.heroicgameslauncher.hgl
+remove_pkgs heroic-games-launcher-bin
+remove_flatpak_app heroic "$ID"
+data_removed=false
+delete_asked "Also delete Heroic's configs, caches and installed games" purge \
+    "$HOME/.config/heroic" "$HOME/.local/share/heroic" "$HOME/.cache/heroic" \
+    "$HOME/Games/Heroic" "$HOME/.var/app/$ID" && data_removed=true
+
+echo ""
+if $data_removed && ! $DRY_RUN; then
+    echo "Heroic and its data have been removed."
+else
+    echo "Heroic has been removed."
+fi

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# omarchy-restart-gum — Omarchy's scripts source this to export the current
+# theme's gum colours (from Omarchy's rendered gum_env.lua). haseen renders no
+# gum theme, so gum keeps its own defaults: sourced, it changes nothing and
+# says nothing (a sourced helper must not print into its caller's output);
+# run, it says so. Name and sourcing contract from Omarchy
+# bin/omarchy-restart-gum (MIT, Copyright (c) David Heinemeier Hansson);
+# plan 093.
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    case "${1:-}" in
+    -h | --help)
+        echo "omarchy-restart-gum: haseen renders no gum theme, so gum keeps its defaults (nothing to do under haseen)"
+        exit 0
+        ;;
+    esac
+    echo "omarchy-restart-gum: haseen renders no gum theme, so gum keeps its defaults (nothing to do under haseen)" >&2
+    exit 0
+fi
+return 0

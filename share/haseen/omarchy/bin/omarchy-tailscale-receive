@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# omarchy-tailscale-receive — save incoming Taildrop files to the downloads
+# directory and announce each one. Adapted from Omarchy
+# bin/omarchy-tailscale-receive (MIT, Copyright (c) David Heinemeier Hansson):
+# the staging directory is .haseen-taildrop (an .omarchy-taildrop
+# left by Omarchy's receiver is drained once); the toast goes through
+# haseen-notification-send, in the background because its click action keeps
+# it waiting, with the image as its icon and no glyph; --dry-run prints the
+# wait and what is staged. It writes only the download directory (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-tailscale-receive [--once] [directory] [--dry-run]
+
+haseen's answer to Omarchy's command: waits for files sent to this machine
+with Taildrop (tailscale file get), moves each into directory (default
+\$XDG_DOWNLOAD_DIR or ~/Downloads) under a free name, and announces it; a
+click opens it. --once stops after the first delivery.
+EOF
+}
+
+once=false
+args=()
+for arg in "$@"; do
+    case "$arg" in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run) DRY_RUN=true ;;
+    --once) once=true ;;
+    *) args+=("$arg") ;;
+    esac
+done
+((${#args[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+have tailscale || die "tailscale is not installed"
+
+dir="${args[0]:-${XDG_DOWNLOAD_DIR:-$HOME/Downloads}}"
+dir="${dir%/}"
+# Taildrop lands in a staging directory next door rather than straight in the
+# downloads directory: waiting for a delivery can take hours, and everything
+# else that shows up meanwhile is somebody else's file. Same filesystem, so
+# handing the finished file over is a rename.
+staging="$dir/.haseen-taildrop"
+legacy="$dir/.omarchy-taildrop"
+
+if $DRY_RUN; then
+    for d in "$legacy" "$staging"; do
+        [[ -d $d ]] || continue
+        while IFS= read -r staged; do
+            echo "DRYRUN: deliver $staged to $dir"
+        done < <(find "$d" -mindepth 1 -maxdepth 1)
+    done
+    echo "DRYRUN: tailscale file get --wait --conflict=rename $staging"
+    exit 0
+fi
+mkdir -p -- "$staging"
+
+# Take the name by linking to it rather than by looking and then renaming:
+# link(2) refuses an existing name, so nothing can land on the chosen one in
+# between. Prints the name it took.
+claim_path() {
+    local staged="$1" name="${1##*/}" base ext candidate index=0
+    base="${name%.*}"
+    ext="${name#"$base"}"
+    [[ -n $base ]] || {
+        base="$name"
+        ext=""
+    }
+    while ((index < 1000)); do
+        if ((index == 0)); then
+            candidate="$dir/$name"
+        else
+            candidate="$dir/$base-$index$ext"
+        fi
+        if ln -- "$staged" "$candidate" 2>/dev/null; then
+            rm -f -- "$staged"
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        # Only a taken name is worth another spin; anything else failed the
+        # link itself, and the file keeps its place for the next run.
+        [[ -e $candidate ]] || return 1
+        index=$((index + 1))
+    done
+    return 1
+}
+
+announce() {
+    local path="$1" name="${1##*/}" args
+    args=("Received $name" "Saved to ${dir/#$HOME/\~}" -u critical)
+    case "${name,,}" in
+    *.png | *.jpg | *.jpeg | *.gif | *.webp | *.avif | *.bmp | *.tif | *.tiff) args+=(-i "$path") ;;
+    esac
+    # Best effort, and in the background: the file is already delivered, and
+    # the toast waits for its click.
+    "$HASEEN_BIN/haseen-notification-send" "${args[@]}" --exec xdg-open "$path" >/dev/null 2>&1 &
+}
+
+deliver() {
+    local from="$1" staged target
+    [[ -d $from ]] || return 0
+    while IFS= read -r staged; do
+        target="$(claim_path "$staged")" || continue
+        announce "$target"
+    done < <(find "$from" -mindepth 1 -maxdepth 1)
+}
+
+# Anything left staged by an interrupted run (or Omarchy's) still deserves
+# delivering.
+deliver "$legacy"
+[[ ! -d $legacy ]] || rmdir -- "$legacy" 2>/dev/null || true
+deliver "$staging"
+
+while true; do
+    if ! tailscale file get --wait --conflict=rename "$staging"; then
+        $once && exit 1
+        sleep 10
+        continue
+    fi
+    deliver "$staging"
+    $once && exit 0
+done

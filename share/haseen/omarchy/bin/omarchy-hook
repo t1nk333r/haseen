@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# omarchy-hook — run a named user hook. Translated to haseen hook run, which
+# follows Omarchy bin/omarchy-hook (MIT, Copyright (c) David Heinemeier
+# Hansson): ~/.config/haseen/hooks/<name> and then <name>.d/* (sorted, *.sample
+# skipped) run with bash and the arguments, a failing hook reported, never
+# fatal. Differences: Omarchy's ~/.config/omarchy/hooks are not run (haseen
+# import omarchy brings them over); a name with a slash or a leading dash is
+# refused (exit 2); "Hook failed" goes to stderr; and haseen hook reads
+# --dry-run, --yes and -h among the hook's arguments (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hook <name> [args...]
+
+haseen's answer to Omarchy's command: haseen hook run <name> [args...], which
+runs $HASEEN_USER_CONFIG/hooks/<name> and $HASEEN_USER_CONFIG/hooks/<name>.d/*." "$@"
+
+(($# >= 1)) || {
+    echo "Usage: omarchy-hook <name> [args...]" >&2
+    exit 1
+}
+haseen_exec hook run "$@"

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# omarchy-voxtype-remove — remove Voxtype dictation: its user service, the
+# voxtype-bin package, its config and its downloaded models. Adapted from
+# Omarchy bin/omarchy-voxtype-remove (MIT,
+# Copyright (c) David Heinemeier Hansson): the same steps and messages.
+# Changes: deleting the config and the models is confirmed first (--yes
+# answers); the package goes through haseen remove (pacman -Rns as root), every
+# step through run (--dry-run); no hyprctl reload, since haseen ships no
+# Voxtype binds (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-voxtype-remove [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: disables voxtype.service, removes
+voxtype-bin (haseen remove) and deletes ~/.config/voxtype and
+~/.local/share/voxtype, after a confirmation.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+if ! have voxtype; then
+    echo "Voxtype was not installed."
+    exit 0
+fi
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/voxtype"
+data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/voxtype"
+confirm "Remove Voxtype with its config ($config_dir) and models ($data_dir)?" || {
+    echo "Nothing removed."
+    exit 1
+}
+echo "Uninstall Voxtype to remove dictation."
+
+run systemctl --user disable --now voxtype.service 2>/dev/null || true
+run systemctl --user daemon-reload
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+"$HASEEN_BIN/haseen-remove" package voxtype-bin "${flags[@]}"
+run rm -rf -- "$config_dir" "$data_dir"

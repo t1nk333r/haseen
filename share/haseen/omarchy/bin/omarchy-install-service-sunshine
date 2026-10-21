@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# omarchy-install-service-sunshine — install the Sunshine game-streaming host,
+# enable its user service, open the Moonlight ports to private LANs and
+# Tailscale in ufw, and add the "Sunshine Admin" web app. Adapted from Omarchy
+# bin/omarchy-install-service-sunshine (MIT, Copyright (c) David Heinemeier
+# Hansson): the ports, networks, rules and the admin app's Exec (the web app
+# with --ignore-certificate-errors, through omarchy-webapp-install's custom
+# Exec) are Omarchy's. Changes: sunshine comes through haseen install aur
+# (repos, Chaotic-AUR, [omarchy], then the AUR); the ufw rules carry the
+# comment haseen-sunshine and run only when ufw is installed, as haseen setup
+# sshd does; tailscale0 is read from /sys/class/net; Omarchy also appends
+# o.launch_on_start("sunshine") to ~/.config/hypr/autostart.lua, which haseen
+# never edits: the enabled user unit starts Sunshine with the session anyway;
+# every change goes through common.sh, so --dry-run prints the plan
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+TCP_PORTS=(47984 47989 48010)
+UDP_PORTS=(5353 47998 47999 48000 48002 48010)
+PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
+UFW_COMMENT="haseen-sunshine"
+SUNSHINE_ADMIN_APP="Sunshine Admin"
+SUNSHINE_ADMIN_URL="https://localhost:47990"
+SUNSHINE_ICON_SOURCE="$(sysroot_path /usr/share/sunshine/web/images/logo-sunshine-45.png)"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-install-service-sunshine [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs Sunshine (haseen install aur
+sunshine), enables its user service, opens the Moonlight streaming ports to
+private LANs and Tailscale when ufw is installed, and adds the
+"$SUNSHINE_ADMIN_APP" web app ($SUNSHINE_ADMIN_URL).
+EOF
+}
+args=("$@")
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+in_floating_terminal "${args[@]}"
+require_not_root
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+
+# ufw prints a line per rule; a dry run's plan is the output that matters.
+ufw_root() {
+    if $DRY_RUN; then
+        run_root ufw "$@"
+    else
+        run_root ufw "$@" >/dev/null
+    fi
+}
+
+open_ufw_port() {
+    local proto="$1" port="$2" cidr
+    for cidr in "${PRIVATE_CIDRS[@]}"; do
+        ufw_root allow in proto "$proto" from "$cidr" to any port "$port" comment "$UFW_COMMENT"
+    done
+    if [[ -e $(sysroot_path /sys/class/net/tailscale0) ]]; then
+        ufw_root allow in on tailscale0 to any port "$port" proto "$proto" comment "$UFW_COMMENT"
+    fi
+}
+
+open_ufw_ports() {
+    local port
+    if [[ ! -x $(sysroot_path /usr/bin/ufw) ]]; then
+        echo "UFW is not installed; skipping Sunshine firewall rules."
+        return 0
+    fi
+    for port in "${TCP_PORTS[@]}"; do open_ufw_port tcp "$port"; done
+    for port in "${UDP_PORTS[@]}"; do open_ufw_port udp "$port"; done
+    run_root ufw reload
+}
+
+# The Exec omarchy-webapp-install writes runs haseen's web-app launcher by its
+# path, quoted as the desktop-entry spec asks for one argument.
+launcher="$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp"
+quoted="$launcher"
+quoted=${quoted//[\\]/\\\\}
+quoted=${quoted//[\"]/\\\"}
+quoted=${quoted//[\`]/\\\`}
+quoted=${quoted//[\$]/\\\$}
+quoted=${quoted//[%]/%%}
+admin_exec="\"$quoted\" $SUNSHINE_ADMIN_URL --ignore-certificate-errors"
+
+echo "Installing Sunshine..."
+HASEEN_INLINE=1 "$HASEEN_BIN/haseen-install" aur sunshine "${flags[@]}"
+run systemctl --user enable --now sunshine
+
+echo "Opening Sunshine firewall ports..."
+open_ufw_ports
+
+echo "Installing Sunshine admin web app..."
+"$HASEEN_OMARCHY_DIR/bin/omarchy-webapp-install" "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" \
+    "$SUNSHINE_ICON_SOURCE" "$admin_exec" "${flags[@]}"
+if $DRY_RUN; then
+    DRY_RUN=true "$launcher" "$SUNSHINE_ADMIN_URL" --ignore-certificate-errors
+else
+    "$launcher" "$SUNSHINE_ADMIN_URL" --ignore-certificate-errors >/dev/null 2>&1 &
+fi
+
+echo ""
+echo "Sunshine has been installed and its Moonlight streaming ports are open for private LANs and Tailscale."
+echo "Its user service starts it with every session."

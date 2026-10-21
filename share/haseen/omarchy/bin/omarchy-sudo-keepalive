@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# omarchy-sudo-keepalive — sourced by scripts that run several root steps
+# (`source omarchy-sudo-keepalive`): ask for the sudo password once, then keep
+# the credential fresh every 60 s until the sourcing script exits. Adapted
+# from Omarchy bin/omarchy-sudo-keepalive (MIT, Copyright (c) David Heinemeier
+# Hansson): sudo runs through common.sh's run_root, in subshells, so this
+# file defines nothing in the sourcing shell but SUDO_KEEPALIVE_PID and its
+# EXIT trap (as Omarchy's does), and under DRY_RUN it only prints the plan
+# (plan 093).
+
+_haseen_keepalive_common="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib/common.sh"
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    # Run, not sourced: nothing outlives this process to keep alive.
+    case "${1:-}" in
+    -h | --help)
+        cat <<'EOF'
+Usage: source omarchy-sudo-keepalive
+
+haseen's answer to Omarchy's helper: asks for the sudo password once and
+refreshes the credential every 60 s until the script that sourced it exits.
+Run directly, it only validates the credential (sudo -v).
+EOF
+        exit 0
+        ;;
+    esac
+    # shellcheck source=../../lib/common.sh
+    (source "$_haseen_keepalive_common" && run_root -v)
+    exit
+fi
+
+# shellcheck source=../../lib/common.sh
+if (source "$_haseen_keepalive_common" && run_root -v); then
+    if [[ ${DRY_RUN:-false} != true ]]; then
+        # shellcheck source=../../lib/common.sh
+        (source "$_haseen_keepalive_common" && while true; do run_root -n true; sleep 60; done) 2>/dev/null &
+        SUDO_KEEPALIVE_PID=$!
+        # shellcheck disable=SC2064  # the PID is fixed now, as in Omarchy's
+        trap "kill $SUDO_KEEPALIVE_PID 2>/dev/null" EXIT
+    fi
+fi
+unset _haseen_keepalive_common

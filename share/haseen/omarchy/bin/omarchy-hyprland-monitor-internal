@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-internal — turn the laptop display on, off or over,
+# or recover it once no external monitor is left. Translated to haseen
+# hardware laptop-display, which is adapted from Omarchy
+# bin/omarchy-hyprland-monitor-internal (MIT, Copyright (c) David Heinemeier
+# Hansson) and keeps its state in toggles/hypr/laptop-display-off.lua. Omarchy's
+# contract is kept: on and off do nothing when already there (off also while
+# mirroring), recover acts only when it re-enables a display, and outcomes are
+# toasts, since keybinds and menus call it (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+TOGGLE="$HASEEN_USER_STATE/toggles/hypr/laptop-display-off.lua"
+MIRROR="$HASEEN_USER_STATE/toggles/hypr/mirror-display.lua"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-hyprland-monitor-internal {on|off|toggle|recover} [--dry-run]
+
+haseen's answer to Omarchy's command: haseen hardware laptop-display.
+  on       enable the laptop display (and wake the screens)
+  off      disable it while an external monitor is active
+  toggle   the other one
+  recover  enable it again only when it is off and no external monitor is
+           active (the clamshell watcher calls this often: otherwise a no-op)
+USAGE
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 1
+}
+
+notify() {
+    if $DRY_RUN; then
+        echo "DRYRUN: notify: $*"
+    else
+        "$HASEEN_BIN/haseen-notification-send" "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+# laptop_display VERB — haseen hardware laptop-display VERB; its result line
+# or its error becomes the toast. A dry run prints its plan instead.
+laptop_display() {
+    local out status=0
+    local flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    out="$("$HASEEN_BIN/haseen-hardware-laptop-display" "$1" "${flags[@]}" 2>&1)" || status=$?
+    if $DRY_RUN; then
+        printf '%s\n' "$out"
+        return "$status"
+    fi
+    out="$(tail -n1 <<<"$out")"
+    out="${out#Error: }"
+    notify "${out^}"
+    return "$status"
+}
+
+wake() {
+    if $DRY_RUN; then
+        echo "DRYRUN: hyprctl dispatch hl.dsp.dpms({ action = \"enable\" })"
+    else
+        hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || true
+    fi
+}
+
+on() {
+    if [[ -f $TOGGLE ]]; then
+        laptop_display on # wakes the screens too
+    else
+        wake
+    fi
+}
+
+off() {
+    # Already off, or mirroring (the panel is the mirror's source): nothing to do.
+    [[ -f $TOGGLE || -f $MIRROR ]] && return 0
+    laptop_display off
+}
+
+recover() {
+    [[ -f $TOGGLE ]] || return 0
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-hyprland-monitor-external-active" && return 0
+    local flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    "$HASEEN_BIN/haseen-hardware-laptop-display" on "${flags[@]}"
+}
+
+case ${REST[0]} in
+on) on ;;
+off) off ;;
+toggle) if [[ -f $TOGGLE ]]; then on; else off; fi ;;
+recover) recover ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac

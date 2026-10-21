@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-pkg-aur-accessible — exit 0 when the AUR's RPC answers. Adapted
+# from Omarchy bin/omarchy-pkg-aur-accessible (MIT, Copyright (c) David
+# Heinemeier Hansson): the same request, with haseen's user agent. One
+# network request, only when run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-pkg-aur-accessible
+
+haseen's answer to Omarchy's command: exits 0 when aur.archlinux.org answers
+an RPC request, non-zero when it does not." "$@"
+
+exec curl -sf --connect-timeout 30 --retry 3 --retry-delay 3 -A haseen \
+    "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" -o /dev/null

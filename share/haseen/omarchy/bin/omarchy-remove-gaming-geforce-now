@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# omarchy-remove-gaming-geforce-now — remove the GeForce NOW Flatpak and, after
+# asking, its data. Adapted from Omarchy bin/omarchy-remove-gaming-geforce-now
+# (MIT, Copyright (c) David Heinemeier Hansson): `flatpak uninstall -y
+# --delete-data` becomes `haseen remove flatpak` (which keeps ~/.var/app) and
+# an rm of the app's ~/.var/app directory; --dry-run prints the plan (plan
+# 093).
+#
+# Data: Omarchy deletes the app's data (its sign-in and settings) without
+# asking; here it is asked, default no. --yes keeps it: only a yes at a
+# terminal or --purge deletes it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-gaming-geforce-now [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes the com.nvidia.geforcenow
+Flatpak (haseen remove flatpak), then asks (default no; --yes keeps it,
+--purge deletes it) before deleting its data in ~/.var/app/com.nvidia.geforcenow.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+ID=com.nvidia.geforcenow
+if flatpak_installed "$ID"; then
+    haseen_remove flatpak "$ID"
+else
+    info "the GeForce NOW Flatpak is not installed"
+fi
+delete_asked "Also delete GeForce NOW's data (sign-in and settings)" purge "$HOME/.var/app/$ID" || true
+
+echo ""
+echo "GeForce NOW removed."

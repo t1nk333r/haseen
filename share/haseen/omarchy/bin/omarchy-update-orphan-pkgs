@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# omarchy-update-orphan-pkgs — list packages nothing needs any more
+# (pacman -Qtdq) and, at a terminal and only after a yes, remove them.
+# Adapted from Omarchy bin/omarchy-update-orphan-pkgs (MIT,
+# Copyright (c) David Heinemeier Hansson): the list, the report without a
+# terminal, the default-no question. Changes: removal through run_root
+# (haseen's only path to root); an unattended update (Omarchy's -y) only
+# reports, as its -y promises to ask nothing; --yes answers the question;
+# --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-orphan-pkgs [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: lists orphaned packages and asks
+(default no) before removing them with pacman -Rns. Without a terminal it
+only reports them. --yes removes without asking.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+mapfile -t orphans < <(pacman -Qtdq 2>/dev/null || true)
+((${#orphans[@]})) || exit 0
+
+printf '\e[32m\nOrphan system packages\e[0m\n'
+printf '  %s\n' "${orphans[@]}"
+echo
+
+flags=()
+if $DRY_RUN; then
+    :
+elif $ASSUME_YES; then
+    flags=(--noconfirm)
+elif [[ ! -t 0 || ! -t 1 || ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; then
+    echo "${#orphans[@]} orphaned package(s) found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them."
+    echo
+    exit 0
+else
+    answer=false
+    if have gum; then
+        gum confirm --default=false "Remove ${#orphans[@]} orphaned package(s)?" && answer=true
+    else
+        reply=""
+        read -r -p "Remove ${#orphans[@]} orphaned package(s)? [y/N] " reply || true
+        [[ $reply =~ ^[Yy]$ ]] && answer=true
+    fi
+    if ! $answer; then
+        echo "Keeping orphaned packages."
+        echo
+        exit 0
+    fi
+fi
+
+printf '\e[32m\nRemoving orphan system packages\e[0m\n'
+run_root pacman -Rns "${flags[@]}" "${orphans[@]}"
+echo

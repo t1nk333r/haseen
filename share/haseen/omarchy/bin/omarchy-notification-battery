@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# omarchy-notification-battery — the battery line as a low-urgency toast.
+# Adapted from Omarchy bin/omarchy-notification-battery (MIT, Copyright (c)
+# David Heinemeier Hansson): the line comes from haseen battery status (the
+# same shape as Omarchy's omarchy-battery-status) and goes out through haseen
+# notification send; Omarchy's glyph is dropped because haseen's toasts draw
+# none. Without a battery the toast says so instead of being empty (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-notification-battery [--dry-run]
+
+haseen's answer to Omarchy's command: shows haseen battery status as a
+low-urgency notification." "$@"
+parse_common_flags "$@"
+
+status="$(haseen_cmd battery-status 2>/dev/null || true)"
+flags=(-u low)
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec notification-send "${flags[@]}" "${status:-No battery found}"

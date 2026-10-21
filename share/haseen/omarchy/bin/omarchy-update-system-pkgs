@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# omarchy-update-system-pkgs — upgrade the system packages the way haseen
+# update does: pacman -Syu as root, telling Omarchy's pre-transaction guard
+# (00-omarchy-update-guard.hook, on a machine that still has the omarchy
+# package) that this is a sanctioned update (bin/haseen-update). Omarchy's own
+# updater and migrations call it by name. Adapted from Omarchy
+# bin/omarchy-update-system-pkgs (MIT, Copyright (c) David Heinemeier Hansson):
+# the heading and the pacman -Syu. Changes: Omarchy's --overwrite
+# '/usr/share/omarchy/*' package policy is dropped (haseen never lets pacman
+# overwrite files for Omarchy's packages), and so is the conflict hand-off to
+# omarchy-update-system-pkgs-when-conflicted, which moves files of Omarchy's
+# packages aside (refused under haseen): a failed upgrade stops with pacman's
+# own report. --noconfirm only with --yes or Omarchy's unattended -y update;
+# root through run_root; --dry-run (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-update-system-pkgs [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: pacman -Syu as root, the system step of
+haseen update. It never overwrites files for Omarchy's packages; resolve a
+file or package conflict pacman reports by hand.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+flags=()
+{ $ASSUME_YES || [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; } && flags+=(--noconfirm)
+guard=()
+[[ -e $(sysroot_path /usr/share/libalpm/hooks/00-omarchy-update-guard.hook) ]] &&
+    guard=(env OMARCHY_ALLOW_DIRECT_PACMAN=1)
+
+printf '\e[32m\nUpdate system packages\e[0m\n'
+if ! run_root "${guard[@]}" pacman -Syu "${flags[@]}"; then
+    echo "The package upgrade stopped; review pacman's report above, then run: haseen update" >&2
+    exit 1
+fi

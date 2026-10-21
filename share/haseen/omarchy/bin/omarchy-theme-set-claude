@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-claude — publish the current haseen theme to Claude Code
+# as the custom theme "haseen" (~/.claude/themes/haseen.json, which Claude
+# Code hot-reloads, so running sessions retint). Adapted from Omarchy
+# bin/omarchy-theme-set-claude (MIT, Copyright (c) David Heinemeier Hansson):
+# haseen renders no claude.json at theme set, so the theme file is
+# current/theme/claude.json when the theme ships one, else Omarchy's
+# claude.json template rendered from the current colors.toml; the theme is
+# named haseen, not omarchy (an existing "custom:omarchy" setting keeps
+# Omarchy's last file until --activate switches it); a render with an
+# unresolved placeholder is not published. Claude Code's settings.json is
+# changed only with --activate, never by default (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CLAUDE_THEME_PATH="$CLAUDE_CONFIG_DIR/themes/haseen.json"
+CLAUDE_SETTINGS_PATH="$CLAUDE_CONFIG_DIR/settings.json"
+CLAUDE_THEME_SETTING="custom:haseen"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-claude [--activate] [--dry-run]
+
+haseen's answer to Omarchy's command: writes the current haseen theme to
+$CLAUDE_THEME_PATH when Claude Code's config directory exists.
+  --activate  also create the directory if needed and set "theme":
+              "$CLAUDE_THEME_SETTING" in $CLAUDE_SETTINGS_PATH
+EOF
+}
+parse_common_flags "$@"
+activate=false
+for arg in "${REST[@]}"; do
+    case "$arg" in
+    --activate) activate=true ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+    esac
+done
+
+if ! omarchy_theme_file claude.json; then
+    if $activate; then
+        echo "Claude Code theme source missing: no current haseen theme to render it from." >&2
+        echo "Set one first: haseen theme set <name>" >&2
+        exit 1
+    fi
+    exit 0
+fi
+source_path="$REPLY"
+
+$activate || [[ -d $CLAUDE_CONFIG_DIR ]] || exit 0
+
+if omarchy_unresolved "$source_path"; then
+    echo "Skipping Claude Code theme: claude.json has unresolved colors." >&2
+    exit 0
+fi
+
+omarchy_publish "$source_path" "$CLAUDE_THEME_PATH"
+
+$activate || exit 0
+if [[ -f $CLAUDE_SETTINGS_PATH ]]; then
+    omarchy_json_set "$CLAUDE_SETTINGS_PATH" '.theme = $theme' --arg theme "$CLAUDE_THEME_SETTING" ||
+        die "could not update $CLAUDE_SETTINGS_PATH (is it valid JSON?)"
+else
+    printf '{\n  "theme": "%s"\n}\n' "$CLAUDE_THEME_SETTING" | write_user_file "$CLAUDE_SETTINGS_PATH"
+fi

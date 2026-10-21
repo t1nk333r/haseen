@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# omarchy-launch-terminal — open a terminal in the active terminal's working
+# directory, optionally running a command. Omarchy binds SUPER + RETURN to it,
+# and omarchy-launch-terminal-herdr/-tmux run through it. Adapted from Omarchy
+# bin/omarchy-launch-terminal (MIT, Copyright (c) David Heinemeier Hansson):
+# the terminal is ${TERMINAL:-foot} as haseen's own bind uses (xdg-terminal-exec
+# comes only from [omarchy]), each with its own directory flag; the directory
+# comes from omarchy-cmd-terminal-cwd when haseen ships it, else $HOME; the
+# launch goes through uwsm-app only in a uwsm session (plan 093).
+# DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-terminal [command...]
+
+haseen's answer to Omarchy's command: opens \$TERMINAL (foot when unset) in
+the focused terminal's working directory, running <command> when given." "$@"
+
+dir=""
+cwd="$HASEEN_OMARCHY_DIR/bin/omarchy-cmd-terminal-cwd"
+[[ -x $cwd ]] && dir="$("$cwd" 2>/dev/null || true)"
+[[ -d $dir ]] || dir=$HOME
+
+term="${TERMINAL:-foot}"
+have "$term" || term=foot
+case "${term##*/}" in
+xdg-terminal-exec) argv=("$term" "--dir=$dir" "$@") ;;
+foot | ghostty | alacritty) argv=("$term" "--working-directory=$dir") ;;
+kitty) argv=("$term" "--directory=$dir") ;;
+wezterm) argv=("$term" start --cwd "$dir") ;;
+*) argv=("$term") ;;
+esac
+if [[ ${term##*/} != xdg-terminal-exec ]] && (($# > 0)); then
+    if [[ ${term##*/} == wezterm ]]; then argv+=(-- "$@"); else argv+=(-e "$@"); fi
+fi
+
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    argv=(uwsm-app -- "${argv[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${argv[*]}"
+    exit 0
+fi
+exec setsid "${argv[@]}"

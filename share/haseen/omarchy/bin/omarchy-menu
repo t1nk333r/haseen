@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# omarchy-menu — haseen's answer to Omarchy's command (plan 093; a shell shim
+# since plan 057). Omarchy plugins open "the menu" at a route (`omarchy-menu
+# toggle setup.plugin`); Omarchy's menu lives in its own shell, so here it is
+# haseen's menu. Verbs follow Omarchy bin/omarchy-menu (MIT, Copyright (c)
+# David Heinemeier Hansson): toggle and summon open a route ("root" is the top
+# level), the rest belong to Omarchy's menu plugin.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu [toggle|summon] [route]
+
+haseen's answer to Omarchy's command: opens haseen's menu (haseen menu) at
+ROUTE; \"root\" or none is the top level." "$@"
+
+verb=${1:-toggle} route=${2:-root}
+[[ $route != root ]] || route=""
+case $verb in
+toggle | summon) haseen_exec "menu" ${route:+"$route"} ;;
+*)
+    printf 'omarchy-menu (haseen compat): only toggle and summon open haseen menu, not %s\n' "$verb" >&2
+    exit 2
+    ;;
+esac

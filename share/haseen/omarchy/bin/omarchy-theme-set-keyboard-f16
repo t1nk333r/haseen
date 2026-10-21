@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-keyboard-f16 — light a Framework Laptop 16 keyboard in the
+# current haseen theme's keyboard colour (its accent) with qmk_hid; haseen
+# ships the udev rule that lets the user reach it
+# (default/udev/framework-qmk-hid.rules). Adapted from Omarchy
+# bin/omarchy-theme-set-keyboard-f16 (MIT, Copyright (c) David Heinemeier
+# Hansson): the colour is current/theme/keyboard.rgb when the theme ships one,
+# else Omarchy's keyboard.rgb template rendered from the current colors.toml;
+# the hue/saturation conversion is Python's colorsys.rgb_to_hsv done in awk,
+# so python3 is no longer needed; every qmk_hid call (--save writes the
+# keyboard's EEPROM) goes through run, so --dry-run prints them (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-keyboard-f16 [--dry-run]
+
+haseen's answer to Omarchy's command: sets the Framework 16 keyboard's QMK
+RGB effect, hue and saturation to the current haseen theme's keyboard colour
+and saves them. Does nothing without qmk_hid or without a current theme.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+have qmk_hid || exit 0
+omarchy_theme_file keyboard.rgb || exit 0
+hex="$(<"$REPLY")"
+hex="${hex#\#}"
+[[ $hex =~ ^[0-9A-Fa-f]{6}$ ]] || exit 0
+
+# QMK takes hue and saturation on a 0-255 scale: colorsys.rgb_to_hsv, then
+# int(h * 255) and int(s * 255) as Omarchy computes them.
+read -r h s < <(awk -v hex="$hex" '
+    function ch(i) { return index("0123456789abcdef", substr(tolower(hex), i, 1)) - 1 }
+    BEGIN {
+        r = (ch(1) * 16 + ch(2)) / 255; g = (ch(3) * 16 + ch(4)) / 255; b = (ch(5) * 16 + ch(6)) / 255
+        maxc = r; if (g > maxc) maxc = g; if (b > maxc) maxc = b
+        minc = r; if (g < minc) minc = g; if (b < minc) minc = b
+        if (maxc == minc) { print 0, 0; exit }
+        s = (maxc - minc) / maxc
+        rc = (maxc - r) / (maxc - minc); gc = (maxc - g) / (maxc - minc); bc = (maxc - b) / (maxc - minc)
+        if (r == maxc) h = bc - gc
+        else if (g == maxc) h = 2.0 + rc - bc
+        else h = 4.0 + gc - rc
+        h = h / 6.0; h = h - int(h); if (h < 0) h += 1
+        print int(h * 255), int(s * 255)
+    }')
+
+# Omarchy runs them all and ignores failures (no such keyboard attached).
+run qmk_hid via --rgb-effect 1 2>/dev/null || true
+run qmk_hid via --rgb-hue "$h" 2>/dev/null || true
+run qmk_hid via --rgb-saturation "$s" 2>/dev/null || true
+run qmk_hid via --rgb-brightness 100 2>/dev/null || true
+run qmk_hid via --save 2>/dev/null || true

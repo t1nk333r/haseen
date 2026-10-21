@@ -111,6 +111,24 @@ Prefer `--dry-run` first for anything that installs packages or touches
 `/etc` (`haseen layer apply …`, `haseen secureboot …`), show the user the plan,
 and run it for real only when they agree.
 
+### Omarchy's command names
+
+Every Omarchy command (`omarchy …`, `omarchy-*`) except the Apple-hardware
+ones is answered by haseen: the installer links haseen's copies into
+`/usr/local/bin`, ahead of an installed Omarchy's `/usr/bin` ones. Each one
+runs the haseen command that does the same job, a haseen port of Omarchy's
+script, or, when Omarchy's behaviour would break haseen (its pacman, Limine or
+SDDM config, its own release machinery), prints why and the haseen way and
+fails. `omarchy commands` lists what each one does here. So an Omarchy plugin,
+keybind or habit (`omarchy-update`, `omarchy-restart-shell`,
+`omarchy theme set nord`) reaches haseen, and never starts Omarchy's shell.
+Prefer the `haseen …` command when you write something new; read
+`$HASEEN_PATH/omarchy/commands.tsv` to translate one. `haseen doctor` says
+whether haseen's copies come first on the terminal's and the compositor's
+`PATH`, and fails when Omarchy's do (an old Omarchy `~/.config/uwsm/env` can
+prepend them; `haseen layer apply desktop` and a new login put haseen's
+first).
+
 ## Shell IPC
 
 `haseen shell ipc <target> <function> [args]` talks to the running shell (or

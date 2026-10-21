@@ -58,6 +58,16 @@ run_root() {
     fi
 }
 
+# run_polkit CMD... — run CMD as root through polkit (pkexec), for a command
+# started from the desktop, where no terminal exists for sudo to ask in.
+run_polkit() {
+    if $DRY_RUN; then
+        echo "DRYRUN: pkexec $*"
+    else
+        pkexec "$@"
+    fi
+}
+
 # write_root_file DEST [MODE] — write stdin as privileged file DEST. Parent
 # directories are created. Dry-run prints the content indented so the plan
 # shows exactly what would land.
@@ -110,6 +120,33 @@ write_user_file() {
     else
         mkdir -p "$(dirname "$dest")"
         cat >"$dest"
+    fi
+}
+
+# replace_user_file DEST — write stdin over unprivileged file DEST atomically:
+# a temporary file beside it, then a rename, so an application reading DEST
+# (an editor's state file) never sees it half written. A DEST that is a link
+# (a stowed or yadm-managed dotfile) stays one: the file it points to is
+# replaced. That file keeps its mode; a new one gets the umask's, as a plain
+# write would, not mktemp's 0600.
+replace_user_file() {
+    local dest tmp
+    if $DRY_RUN; then
+        echo "DRYRUN: write $1:"
+        sed 's/^/    | /'
+        return 0
+    fi
+    dest="$(readlink -m -- "$1")"
+    mkdir -p "$(dirname "$dest")"
+    tmp="$(mktemp "$dest.XXXXXX")" || return 1
+    if [[ -e $dest ]]; then
+        chmod --reference="$dest" "$tmp"
+    else
+        chmod "$(printf '%04o' $((0666 & ~$(umask))))" "$tmp"
+    fi
+    if ! cat >"$tmp" || ! mv -fT -- "$tmp" "$dest"; then
+        rm -f -- "$tmp"
+        return 1
     fi
 }
 

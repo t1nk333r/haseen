@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# omarchy-system-lock — lock the session through haseen (haseen system lock),
+# then do what Omarchy bin/omarchy-system-lock (MIT, Copyright (c) David Heinemeier Hansson)
+# does around it: reset the keyboard layout to the first
+# one, lock a running 1Password (bounded, in the background, one at a time),
+# and end the screensaver, here haseen's own (haseen screensaver --stop)
+# instead of killing ttfx and Omarchy's screensaver window by name. Always
+# exits 0, as upstream; --dry-run prints every step (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-system-lock [--dry-run]
+
+haseen's answer to Omarchy's command: locks the session (haseen system lock),
+switches every keyboard back to its first layout, locks 1Password when it
+runs, and ends the screensaver.
+EOF
+}
+# Other arguments are ignored, as upstream ignores them.
+parse_common_flags "$@"
+
+if $DRY_RUN; then
+    "$HASEEN_BIN/haseen-system" lock --dry-run || true
+else
+    "$HASEEN_BIN/haseen-system" lock >/dev/null 2>&1 || true
+fi
+
+# Back to the first keyboard layout, so the password goes in as expected.
+if $DRY_RUN; then
+    echo "DRYRUN: hyprctl switchxkblayout all 0"
+else
+    hyprctl switchxkblayout all 0 >/dev/null 2>&1 || true
+fi
+
+# `1password --lock` can leave a whole Electron helper tree behind, so it is
+# bounded, and the lock file keeps two locks from piling up.
+if pgrep -x 1password >/dev/null 2>&1 && have 1password; then
+    if $DRY_RUN; then
+        echo "DRYRUN: timeout --kill-after=1s 3s 1password --lock"
+    else
+        (
+            flock -n 9 || exit 0
+            timeout --kill-after=1s 3s 1password --lock >/dev/null 2>&1 || true
+        ) 9>"${XDG_RUNTIME_DIR:-/tmp}/haseen-1password-lock.lock" &
+    fi
+fi
+
+# No screensaver over the lock screen.
+if $DRY_RUN; then
+    "$HASEEN_BIN/haseen-screensaver" --stop --dry-run || true
+else
+    "$HASEEN_BIN/haseen-screensaver" --stop >/dev/null 2>&1 || true
+fi
+exit 0

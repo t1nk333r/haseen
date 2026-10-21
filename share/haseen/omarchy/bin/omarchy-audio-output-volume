@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# omarchy-audio-output-volume — raise, lower or mute the output that carries
+# the loudness: through a speaker tuning or EasyEffects to the physical sink,
+# clamped to 0-100 %, with mute toggles 250 ms apart. Omarchy's volume keys
+# run it. Adapted from Omarchy bin/omarchy-audio-output-volume (MIT, Copyright
+# (c) David Heinemeier Hansson): Omarchy's omarchy-osd call is dropped, as
+# haseen's OSD (haseen.osd) shows volume changes from PipeWire itself, and the
+# debounce file lives in $XDG_RUNTIME_DIR/haseen (plan 093). haseen.osd
+# follows the default sink: a level moved on the physical sink behind
+# haseen's speaker tuning shows no OSD.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N> [--dry-run]
+
+raise and lower step 5 %; +N and -N step N % (0-100 %). The sink is the one
+that carries the loudness (omarchy-audio-output-sink).
+EOF
+}
+parse_common_flags "$@"
+action=${REST[0]:-}
+if [[ -z $action ]]; then
+    echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
+    exit 1
+fi
+
+sink="$("$HASEEN_OMARCHY_DIR/bin/omarchy-audio-output-sink")"
+if [[ -z $sink ]]; then
+    echo "Could not resolve an audio sink to control." >&2
+    exit 1
+fi
+
+# pactl reports the same percentage scale wpctl does.
+volume_percent() {
+    pactl get-sink-volume "$sink" 2>/dev/null |
+        awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i ~ /%$/) { sub("%", "", $i); print $i; exit } }' || true
+}
+
+case $action in
+raise) action=+5 ;;
+lower) action=-5 ;;
+esac
+
+if [[ $action == mute-toggle ]]; then
+    # Some keyboards send the mute key twice; a second toggle within 250 ms
+    # would undo the first.
+    debounce_file="${XDG_RUNTIME_DIR:-/tmp}/haseen/audio-output-volume-mute-toggle.last"
+    now=$(date +%s%3N)
+    last=0
+    if [[ -r $debounce_file ]]; then read -r last <"$debounce_file" || true; fi
+    [[ $last =~ ^[0-9]+$ ]] || last=0
+    ((now - last < 250)) && exit 0
+    if ! $DRY_RUN; then
+        mkdir -p "${debounce_file%/*}"
+        printf '%s\n' "$now" >"$debounce_file"
+    fi
+    run pactl set-sink-mute "$sink" toggle
+elif [[ $action =~ ^([+-])([0-9]+)$ ]]; then
+    direction="${BASH_REMATCH[1]}"
+    step="${BASH_REMATCH[2]}"
+    current="$(volume_percent)"
+    if [[ -z $current ]]; then
+        echo "Could not read volume for $sink." >&2
+        exit 1
+    fi
+    if [[ $direction == + ]]; then
+        next=$((current + step))
+        ((next <= 100)) || next=100
+    else
+        next=$((current - step))
+        ((next >= 0)) || next=0
+    fi
+    run pactl set-sink-mute "$sink" 0
+    run pactl set-sink-volume "$sink" "${next}%"
+else
+    echo "Unknown volume action: $action"
+    exit 1
+fi

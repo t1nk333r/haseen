@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-plymouth-set-by-theme — colours the boot splash from THEME: haseen
+# plymouth set --theme THEME. Adapted from Omarchy
+# bin/omarchy-plymouth-set-by-theme (MIT, Copyright (c) David Heinemeier
+# Hansson): the background and foreground come from the theme's colors.toml,
+# as Omarchy reads them; the logo is haseen's mark, not the theme's
+# unlock.png. The theme must be one haseen knows (haseen theme list): a theme
+# only in ~/.config/omarchy/themes is not read (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-plymouth-set-by-theme <theme-name> [--dry-run]
+
+haseen's answer to Omarchy's command: haseen plymouth set --theme NAME." "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    echo "Usage: omarchy-plymouth-set-by-theme <theme-name>" >&2
+    exit 1
+}
+theme=${REST[0]}
+# A theme name is a directory name; anything else would be a path.
+[[ $theme =~ ^[A-Za-z0-9._-]+$ && $theme != .* ]] || die "not a theme name: $theme"
+if [[ ! -r $HASEEN_PATH/themes/$theme/colors.toml && ! -r $HASEEN_USER_CONFIG/themes/$theme/colors.toml ]]; then
+    hint=""
+    [[ -d ${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/themes/$theme ]] &&
+        hint=" (it is an Omarchy theme: haseen theme install it first)"
+    die "no haseen theme $theme$hint"
+fi
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec plymouth-set --theme "$theme" "${flags[@]}"

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-monitor-laptop — print the built-in laptop display's name,
+# disabled outputs included. Adapted from Omarchy
+# bin/omarchy-hyprland-monitor-laptop (MIT, Copyright (c) David Heinemeier
+# Hansson): the same query haseen hardware laptop-display runs (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-monitor-laptop
+
+haseen's answer to Omarchy's command: prints the first eDP, LVDS or DSI output
+Hyprland knows (enabled or not), or nothing. Always exits 0." "$@"
+
+monitors="$(hyprctl monitors all -j 2>/dev/null || true)"
+jq -r '[.[]? | select(.name | test("^(eDP|LVDS|DSI)-")) | .name] | first // empty' <<<"$monitors" 2>/dev/null || true

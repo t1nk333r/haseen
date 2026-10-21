@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# omarchy-launch-spotify — focus Spotify, else start it, else install it
+# (Omarchy binds SUPER + SHIFT + M to it). Adapted from Omarchy
+# bin/omarchy-launch-spotify (MIT, Copyright (c) David Heinemeier Hansson): the
+# focus goes through haseen's omarchy-launch-or-focus; a packaged
+# /usr/bin/spotify still comes first, then haseen's catalogue Spotify, the
+# Flathub com.spotify.Client, as `flatpak run`; with neither, `haseen install
+# app spotify` (plan 093). DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-spotify
+
+haseen's answer to Omarchy's command: focuses Spotify's window, else starts
+Spotify (the package, else the Flatpak), else installs it (haseen install app
+spotify)." "$@"
+
+ref=com.spotify.Client
+if [[ -x $(sysroot_path /usr/bin/spotify) ]]; then
+    launch="uwsm-app -- /usr/bin/spotify"
+elif [[ -d ${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/app/$ref || -d $(sysroot_path /var/lib/flatpak/app)/$ref ]]; then
+    launch="uwsm-app -- flatpak run $ref"
+else
+    printf -v launch '%q app spotify' "$HASEEN_BIN/haseen-install"
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-or-focus" spotify "$launch"

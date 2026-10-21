@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# omarchy-shell — Omarchy's IPC client, answered by haseen's shell (plan 093;
+# plan 057 found Omarchy plugins calling it and failing quietly with
+# "omarchy-shell is not running"). Omarchy's `shell` and `lock` verbs become
+# haseen's IPC calls and commands; any other target (an Omarchy plugin's own
+# IpcHandler, loaded by haseen's compat host) passes through to `haseen shell
+# ipc`. The -q mode, the 2-argument minimum, the IPC timeout, the display
+# recovery and the failure lines follow Omarchy bin/omarchy-shell (MIT,
+# Copyright (c) David Heinemeier Hansson).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+QUIET=0
+if [[ ${1:-} == -q ]]; then
+    QUIET=1
+    shift
+fi
+
+fail() {
+    ((QUIET)) && exit 0
+    printf '%s\n' "$1" >&2
+    exit 1
+}
+
+# say TEXT — the answer on stdout, unless quiet.
+say() {
+    ((QUIET)) || [[ -z $1 ]] || printf '%s\n' "$1"
+    exit 0
+}
+
+if (($# == 0)) || [[ $1 == -h || $1 == --help ]]; then
+    cat <<'EOF'
+Usage: omarchy-shell [-q] <target> <method> [args...]
+
+haseen's answer to Omarchy's command: forwards the call to the running haseen
+shell (or DMS after 'haseen shell use dms'). Omarchy's verbs map to haseen's:
+  shell ping                          "ok" once haseen's shell has loaded
+  shell toggle|summon <id> [json]     opens or closes a panel (omarchy.menu:
+                                      haseen's menu at the payload's "menu";
+                                      omarchy.launcher: the launcher;
+                                      omarchy.X: haseen.X when there is one)
+  shell hide <id>                     closes the open panels
+  shell listPlugins                   haseen's plugins in Omarchy's shape
+  shell rescanPlugins                 reloads haseen's shell
+  shell reloadConfig                  "ok" (haseen watches its shell.json)
+  shell setPluginEnabled <id> <bool>  haseen plugin enable|disable
+  shell enablePlugin|putBarWidget <id> [json]   haseen bar add (section, before)
+  shell toggleBarTransparency         haseen bar transparent toggle
+  shell call <target> <fn> [args]     a plugin's own IPC function
+  lock lock | lock status | lock isLocked
+Any other target goes to 'haseen shell ipc' unchanged.
+
+  -q  quiet: no output, and success even when the shell does not answer
+EOF
+    exit 0
+fi
+(($# >= 2)) || fail "Usage: omarchy-shell <target> <method> [args...]"
+
+# qs matches instances by display, and a caller from outside the session
+# (ssh, a TTY) has none: recover it from the compositor socket, as Omarchy does.
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+    socket="$(find "${XDG_RUNTIME_DIR:-/run/user/$UID}" -maxdepth 1 -name 'wayland-[0-9]*' ! -name '*.lock' \
+        -printf '%T@ %f\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-)"
+    [[ -z $socket ]] || export WAYLAND_DISPLAY="$socket"
+fi
+
+# ask ARGS... — one haseen IPC call, its answer on stdout. qs reports
+# IPC-level failures on stdout with exit 0, as Omarchy notes.
+ask() {
+    local out rc=0
+    out="$(timeout --kill-after=1s "${OMARCHY_SHELL_IPC_TIMEOUT:-2s}" \
+        "$HASEEN_BIN/haseen-shell-ipc" "$@" 2>/dev/null)" || rc=$?
+    case $rc in
+    0) ;;
+    124 | 137) fail "haseen's shell is not responding" ;;
+    *) fail "haseen's shell is not running" ;;
+    esac
+    case $out in
+    "Target not found." | "Function not found." | "Too few arguments provided"* | "Too many arguments provided"*)
+        fail "$out"
+        ;;
+    "Not ready to accept queries yet"*) fail "haseen's shell is not ready" ;;
+    esac
+    printf '%s\n' "$out"
+}
+
+# haseen_run CMD ARGS... — a haseen command for a verb; "ok" or its error.
+haseen_run() {
+    local out
+    out="$("$HASEEN_BIN/haseen-$1" "${@:2}" 2>&1)" || fail "${out:-haseen $1 failed}"
+    say ok
+}
+
+# panel_id ID — haseen's own plugin for an Omarchy built-in id, else ID: the
+# compat host resolves Omarchy plugins by their own ids.
+panel_id() {
+    local id=$1
+    if [[ $id == omarchy.* && -d $HASEEN_PATH/shell/plugins/haseen.${id#omarchy.} ]]; then
+        id="haseen.${id#omarchy.}"
+    fi
+    printf '%s\n' "$id"
+}
+
+# session_locked — Hyprland holds a session lock.
+session_locked() {
+    local probe="$HASEEN_OMARCHY_DIR/bin/omarchy-hyprland-session-locked"
+    [[ -x $probe ]] && "$probe" >/dev/null 2>&1
+}
+
+target=$1 method=$2
+shift 2
+case "$target $method" in
+"shell ping")
+    json="$(ask shell plugins)"
+    [[ $(jq -r '.ready // false' <<<"$json" 2>/dev/null) == true ]] || fail "haseen's shell is not ready"
+    say ok
+    ;;
+"shell toggle" | "shell summon")
+    (($# >= 1)) || fail "Too few arguments provided"
+    case $1 in
+    omarchy.menu)
+        payload=${2:-'{}'}
+        route="$(jq -r '.menu // empty' <<<"$payload" 2>/dev/null || true)"
+        [[ $route != root ]] || route=""
+        haseen_run menu ${route:+"$route"}
+        ;;
+    omarchy.launcher) ask launcher toggle >/dev/null ;;
+    *) ask panel toggle "$(panel_id "$1")" >/dev/null ;;
+    esac
+    say ok
+    ;;
+"shell hide")
+    ask panel close >/dev/null
+    say ok
+    ;;
+"shell listPlugins")
+    json="$(ask shell plugins)"
+    say "$(jq -c '[.plugins[]? | {id, name: (.name // .id), kinds: (.kinds // []), enabled,
+        active: false, canDisable: true, firstParty: (.origin == "builtin"), clonedFrom: ""}]
+        | sort_by([.name, .id])' <<<"$json")"
+    ;;
+"shell rescanPlugins")
+    ask shell reload >/dev/null
+    say ""
+    ;;
+"shell reloadConfig") say ok ;;
+"shell setPluginEnabled")
+    (($# >= 2)) || fail "Too few arguments provided"
+    case $2 in
+    true) haseen_run plugin-enable "$1" ;;
+    false) haseen_run plugin-disable "$1" ;;
+    *) fail "setPluginEnabled takes true or false" ;;
+    esac
+    ;;
+"shell enablePlugin" | "shell putBarWidget")
+    (($# >= 1)) || fail "Too few arguments provided"
+    payload=${2:-'{}'}
+    section="$(jq -r '.section // empty' <<<"$payload" 2>/dev/null || true)"
+    before="$(jq -r '.before // empty' <<<"$payload" 2>/dev/null || true)"
+    [[ -n $section ]] || haseen_run plugin-enable "$1"
+    out="$("$HASEEN_BIN/haseen-bar-add" "$1" "$section" ${before:+--before "$before"} 2>&1)" || {
+        # Already in the bar is what Omarchy's call wanted.
+        [[ $out == *"already"* ]] || fail "${out:-haseen bar add failed}"
+    }
+    say ok
+    ;;
+"shell toggleBarTransparency") haseen_run bar-transparent toggle ;;
+"shell call")
+    (($# >= 2)) || fail "Too few arguments provided"
+    # Assigned first: a failing substitution in an argument would not stop
+    # the script.
+    out="$(ask "$@")"
+    say "$out"
+    ;;
+"lock lock")
+    ask lock lock >/dev/null
+    say ok
+    ;;
+"lock status")
+    requested=false secure=false
+    if haseen_lock_held; then requested=true; fi
+    if $requested && session_locked; then secure=true; fi
+    say "$(printf '{"locked":%s,"requested":%s,"pending":false,"sessionLocked":%s,"secure":%s}' \
+        "$requested" "$requested" "$secure" "$secure")"
+    ;;
+"lock isLocked")
+    if haseen_lock_held; then say true; else say false; fi
+    ;;
+shell\ * | lock\ *) fail "Function not found." ;;
+esac
+out="$(ask "$target" "$method" "$@")"
+say "$out"

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# omarchy-menu-emoji-insert — puts EMOJI on the clipboard for pasting.
+# Adapted from Omarchy bin/omarchy-menu-emoji-insert (MIT, Copyright (c)
+# David Heinemeier Hansson), which copies it for a moment and types
+# Shift+Insert with wtype. haseen never types keys for the user (plan 018:
+# the emoji picker only copies), so the emoji stays on the clipboard, as
+# haseen.emoji leaves it, and a short low-urgency toast says to paste it
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-menu-emoji-insert <emoji> [--dry-run]
+
+haseen's answer to Omarchy's command: copies EMOJI to the clipboard (haseen
+does not type it into the window: paste it with Ctrl+V)." "$@"
+parse_common_flags "$@"
+
+emoji="${REST[0]:-}"
+[[ -n $emoji ]] || exit 0
+require_cmds wl-copy
+run wl-copy --type text/plain -- "$emoji"
+flags=(-u low -t 2000)
+$DRY_RUN && flags+=(--dry-run)
+haseen_cmd notification-send "${flags[@]}" "Copied $emoji" "Paste it with Ctrl+V" >/dev/null 2>&1 || true

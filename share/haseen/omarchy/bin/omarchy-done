@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# omarchy-done — check, mark or claim a one-time marker. Markers live in
+# ~/.local/state/haseen/done; Omarchy's own in ~/.local/state/omarchy/done
+# record Omarchy's provisioning and are not carried over. Adapted from Omarchy
+# bin/omarchy-done (MIT, Copyright (c) David Heinemeier Hansson): the name
+# rule and the exit codes are Omarchy's; mark and ensure honour --dry-run
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-done <check|mark|ensure> <name> [--dry-run]
+
+  check   exit 0 when the marker exists, 1 when not
+  mark    create the marker (it may exist already)
+  ensure  create the marker; fail (exit 1) when it already exists
+Markers: $HASEEN_USER_STATE/done/<name>
+EOF
+}
+parse_common_flags "$@"
+if ((${#REST[@]} != 2)); then
+    echo "Usage: omarchy-done <check|mark|ensure> <name>" >&2
+    exit 1
+fi
+action=${REST[0]}
+name=${REST[1]}
+done_dir="$HASEEN_USER_STATE/done"
+marker="$done_dir/$name"
+
+if [[ -z $name || $name == */* || $name == . || $name == .. ]]; then
+    echo "Invalid done marker name: $name" >&2
+    exit 1
+fi
+
+case $action in
+check) [[ -f $marker ]] ;;
+mark)
+    run mkdir -p "$done_dir"
+    run touch "$marker"
+    ;;
+ensure)
+    if $DRY_RUN; then
+        [[ ! -e $marker ]] || exit 1
+        echo "DRYRUN: create $marker (fails if it exists)"
+        exit 0
+    fi
+    mkdir -p "$done_dir"
+    # noclobber makes the create atomic: exactly one caller wins.
+    (
+        set -o noclobber
+        : >"$marker"
+    ) 2>/dev/null
+    ;;
+*)
+    echo "Usage: omarchy-done <check|mark|ensure> <name>" >&2
+    exit 1
+    ;;
+esac

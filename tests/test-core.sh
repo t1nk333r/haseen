@@ -215,3 +215,32 @@ for f in "$REPO"/tests/test-*.sh; do
 done
 assert_eq "every test file refuses to run outside tests/run.sh" "$(ls "$REPO"/tests/test-*.sh | wc -l)" "$refused"
 assert_eq "a test file run directly writes nothing" "" "$(ls -A "$direct")"
+
+# --- replace_user_file and run_polkit (plan 093) --------------------------------
+sandbox common-replace
+f="$SANDBOX/state.json"
+printf '{"a":1}\n' >"$f"
+chmod 0640 "$f"
+capture bash -c 'source "$1"; DRY_RUN=true; printf "{\"a\":2}\n" | replace_user_file "$2"; DRY_RUN=true; run_polkit /usr/bin/true x' _ "$HASEEN_PATH/lib/common.sh" "$f"
+assert_contains "replace_user_file: a dry run prints the new content" "$OUTPUT" "DRYRUN: write $f:"
+assert_contains "replace_user_file: as a quoted block" "$OUTPUT" '    | {"a":2}'
+assert_contains "run_polkit: a dry run prints pkexec" "$OUTPUT" "DRYRUN: pkexec /usr/bin/true x"
+assert_eq "replace_user_file: a dry run leaves the file" '{"a":1}' "$(cat "$f")"
+capture bash -c 'source "$1"; DRY_RUN=false; printf "{\"a\":3}\n" | replace_user_file "$2"' _ "$HASEEN_PATH/lib/common.sh" "$f"
+assert_eq "replace_user_file: writes the new content" '{"a":3}' "$(cat "$f")"
+assert_eq "replace_user_file: keeps the file's mode" "640" "$(stat -c %a "$f")"
+assert_eq "replace_user_file: leaves no temporary file" "state.json" "$(cd "$SANDBOX" && ls state.json*)"
+# A stowed or yadm-managed dotfile is a link: it stays one, and the file it
+# points to gets the new content.
+mkdir -p "$SANDBOX/dotfiles"
+printf '{"a":1}\n' >"$SANDBOX/dotfiles/state.json"
+chmod 0644 "$SANDBOX/dotfiles/state.json"
+ln -s dotfiles/state.json "$SANDBOX/linked.json"
+capture bash -c 'source "$1"; DRY_RUN=false; printf "{\"a\":4}\n" | replace_user_file "$2"' _ "$HASEEN_PATH/lib/common.sh" "$SANDBOX/linked.json"
+assert_eq "replace_user_file: a linked destination stays a link" "dotfiles/state.json" "$(readlink "$SANDBOX/linked.json")"
+assert_eq "replace_user_file: the link's target gets the content" '{"a":4}' "$(cat "$SANDBOX/dotfiles/state.json")"
+assert_eq "replace_user_file: the target keeps its mode" "644" "$(stat -c %a "$SANDBOX/dotfiles/state.json")"
+# A new file gets the umask's mode, as a plain write would.
+capture bash -c 'source "$1"; DRY_RUN=false; umask 027; printf "{}\n" | replace_user_file "$2"' _ "$HASEEN_PATH/lib/common.sh" "$SANDBOX/new/state.json"
+assert_eq "replace_user_file: a new file is written" "{}" "$(cat "$SANDBOX/new/state.json")"
+assert_eq "replace_user_file: with the umask's mode, not 0600" "640" "$(stat -c %a "$SANDBOX/new/state.json")"

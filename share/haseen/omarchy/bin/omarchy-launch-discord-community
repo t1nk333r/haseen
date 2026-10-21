@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-launch-discord-community — open Omarchy's Discord community in
+# Discord, else as a web app. haseen keeps it out of its own menu (plan 068);
+# asked for by name it still opens. Adapted from Omarchy
+# bin/omarchy-launch-discord-community (MIT, Copyright (c) David Heinemeier
+# Hansson): a packaged discord still comes first, then haseen's catalogue
+# Discord, the Flathub com.discordapp.Discord, as `flatpak run`; else haseen's
+# omarchy-launch-webapp. The launch goes through uwsm-app only in a uwsm
+# session (plan 093). DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-discord-community
+
+haseen's answer to Omarchy's command: opens the Omarchy Discord community
+invite in Discord (the package, else the Flatpak), else as a web app." "$@"
+
+invite="https://discord.gg/tXFUdasqhY"
+ref=com.discordapp.Discord
+if have discord; then
+    argv=(discord --url -- "discord://-/invite/${invite##*/}")
+elif [[ -d ${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/app/$ref || -d $(sysroot_path /var/lib/flatpak/app)/$ref ]]; then
+    argv=(flatpak run "$ref" --url -- "discord://-/invite/${invite##*/}")
+else
+    exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-webapp" "$invite"
+fi
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    argv=(uwsm-app -- "${argv[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${argv[*]}"
+    exit 0
+fi
+exec setsid "${argv[@]}"

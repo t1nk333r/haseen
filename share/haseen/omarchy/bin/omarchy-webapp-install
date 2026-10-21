@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# omarchy-webapp-install — Omarchy's web-app installer, answered by haseen
+# webapp install (the site in the default chromium-family browser's app mode,
+# with the site's own icon). Omarchy's interface is kept: <name> <url> [icon]
+# go to haseen's command, without them it asks; a 4th argument (a custom
+# Exec, as Omarchy's sunshine and openclaw installs pass) and a 5th
+# (MimeType) are written here, with the icon resolution, URL checks and
+# desktop-entry escaping of Omarchy bin/omarchy-webapp-install (MIT,
+# Copyright (c) David Heinemeier Hansson). Changes: two arguments install
+# with the fetched icon instead of prompting; an entry with a custom Exec
+# carries X-Haseen-WebApp so omarchy-webapp-remove finds it; --dry-run
+# (plan 093).
+# Apple branch dropped: none: Omarchy's apple-touch-icon lookup
+# (omarchy-webapp-install:90-104) is a website icon, not Apple hardware, and
+# is kept (haseen webapp install does the same).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-webapp-install [name url [icon-url-or-name [custom-exec [mime-types]]]] [--dry-run]
+
+haseen's answer to Omarchy's command: haseen webapp install <name> <url>
+[icon]. Without a name and URL it asks for them. A custom-exec writes a
+launcher that runs that command instead of the browser; mime-types adds a
+MimeType line.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+(($# <= 5)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
+DESKTOP_DIR="$DATA_HOME/applications"
+dry=()
+$DRY_RUN && dry=(--dry-run)
+
+# ask PROMPT — one answer, through gum when it is there, as Omarchy asks.
+ask() {
+    local reply
+    if have gum; then
+        gum input --prompt "$1> " || true
+    else
+        read -r -p "$1> " reply || true
+        printf '%s\n' "${reply:-}"
+    fi
+}
+
+if (($# < 2)); then
+    echo "Let's create a new web app you can start with the app launcher."
+    echo
+    name="$(ask Name)"
+    url="$(ask URL)"
+    icon="$(ask "Icon URL/name (empty: the site's own)")"
+    [[ -n $name && -n $url ]] || {
+        echo "You must set app name and app URL!"
+        exit 1
+    }
+    haseen_exec webapp-install "$name" "$url" ${icon:+"$icon"} "${dry[@]}"
+fi
+
+name=$1 url=$2 icon=${3:-} custom_exec=${4:-} mime_types=${5:-}
+desktop_file="$DESKTOP_DIR/$name.desktop"
+
+# desktop_string_escape VALUE — a Desktop Entry string value (freedesktop
+# spec): a raw newline would start a new key line and let a value inject a
+# second Exec=.
+desktop_string_escape() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//$'\t'/\\t}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\n'/\\n}
+    [[ $value == " "* ]] && value="\\s${value# }"
+    printf '%s' "$value"
+}
+
+if [[ -z $custom_exec ]]; then
+    "$HASEEN_BIN/haseen-webapp-install" "$name" "$url" ${icon:+"$icon"} "${dry[@]}"
+    [[ -z $mime_types ]] ||
+        printf 'MimeType=%s\n' "$(desktop_string_escape "$mime_types")" | append_user_file "$desktop_file"
+    exit 0
+fi
+
+# --- a launcher with its own Exec ------------------------------------------------
+
+[[ $name != */* ]] || die "app name cannot contain '/': $name"
+[[ -n ${name//[[:space:]]/} ]] || die "app name cannot be empty"
+[[ $url =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]] || url="https://$url"
+[[ ! $url =~ [[:space:]] ]] || die "web app URL must not contain whitespace."
+[[ ${url,,} =~ ^https?:// ]] || die "web app URL must be http or https."
+
+safe_icon_name() {
+    printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
+}
+
+download_icon() {
+    curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
+        [[ -s $2 ]] && [[ $(file -b --mime-type "$2") == image/* ]]
+}
+
+# The site's own high-resolution icon (apple-touch-icon), the well-known
+# path, then Google's favicon service.
+fetch_site_icon() {
+    local site_url="$1" dest="$2" origin page icon_url
+    origin="$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")"
+    page="$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')" || true
+    icon_url="$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
+        grep -oiE "href=[\"'][^\"']+" | head -1 | sed -E "s/^href=[\"']//")" || true
+    case "$icon_url" in
+    http://* | https://*) ;;
+    //*) icon_url="https:$icon_url" ;;
+    /*) icon_url="$origin$icon_url" ;;
+    ?*) icon_url="$origin/$icon_url" ;;
+    esac
+    { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
+        download_icon "$origin/apple-touch-icon.png" "$dest" ||
+        download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
+}
+
+if [[ -z $icon || $icon =~ ^https?:// ]]; then
+    icon_value="$(safe_icon_name "$name")"
+    if $DRY_RUN; then
+        echo "DRYRUN: download icon for $name -> $ICON_DIR/$icon_value.png"
+    else
+        tmp="$(mktemp -t haseen-webapp-icon-XXXXXX)"
+        trap 'rm -f "$tmp"' EXIT
+        if [[ -n $icon ]]; then
+            download_icon "$icon" "$tmp" || die "Failed to download icon: $icon"
+        else
+            fetch_site_icon "$url" "$tmp" || die "Failed to download icon."
+        fi
+        run install -Dm0644 "$tmp" "$ICON_DIR/$icon_value.png"
+    fi
+elif [[ -f $icon ]]; then
+    icon_value="$(safe_icon_name "$name")"
+    ext="${icon##*/}"
+    ext="${ext##*.}"
+    [[ $ext == "${icon##*/}" ]] && ext=png
+    run install -Dm0644 "$icon" "$ICON_DIR/$icon_value.$ext"
+else
+    # An icon an installed theme ships: "HEY" and "HEY.png" alike.
+    icon_value="$(basename "$icon")"
+    [[ $icon_value == *.* ]] && icon_value="$(safe_icon_name "${icon_value%.*}")"
+fi
+have gtk-update-icon-cache && run gtk-update-icon-cache "$DATA_HOME/icons/hicolor" >/dev/null 2>&1 || true
+
+# The custom Exec is a whole command line: only the file-level escaping.
+{
+    cat <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$(desktop_string_escape "$name")
+Comment=$(desktop_string_escape "$name")
+Exec=$(desktop_string_escape "$custom_exec")
+Terminal=false
+Type=Application
+Icon=$(desktop_string_escape "$icon_value")
+StartupNotify=true
+X-Haseen-WebApp=$(desktop_string_escape "$url")
+EOF
+    [[ -z $mime_types ]] || printf 'MimeType=%s\n' "$(desktop_string_escape "$mime_types")"
+} | write_user_file "$desktop_file"
+have update-desktop-database && run update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+info "web app installed: $name"

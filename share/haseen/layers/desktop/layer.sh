@@ -172,6 +172,11 @@ $DESKTOP_MARKER. Rewritten on every apply.
 # uwsm sources this before Hyprland starts, so the compositor, every systemd
 # user unit (haseen-shell.service) and every app share these variables.
 export HASEEN_PATH=$(printf '%q' "$HASEEN_PATH")
+# Omarchy's command names reach haseen's answers first (plan 093). uwsm
+# sources ~/.config/uwsm/env before this file, and an Omarchy-seeded one
+# prepends \$OMARCHY_PATH/bin, ahead of PREFIX/bin's links; Hyprland's
+# exec_cmd, its binds and every user unit then got Omarchy's shell restart.
+export PATH="\$HASEEN_PATH/omarchy/bin:\$PATH"
 export TERMINAL=foot
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export QT_QPA_PLATFORM='wayland;xcb'

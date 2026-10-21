@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# omarchy-restart-app — kill an application by name and start it again in a
+# scope of its own. Adapted from Omarchy bin/omarchy-restart-app (MIT,
+# Copyright (c) David Heinemeier Hansson): the relaunch follows haseen's
+# Apps.launch (architecture §5, Spawning): `uwsm-app --` in a uwsm session,
+# else `systemd-run --user --scope` into app-graphical.slice, else the bare
+# command; leading --dry-run prints both steps (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-restart-app [--dry-run] <application-name> [application-args...]
+
+haseen's answer to Omarchy's command: stops every process named exactly
+<application-name> (pkill -x), then starts <application-name> with its
+arguments in its own scope: uwsm-app in a uwsm session, else a systemd
+user scope in app-graphical.slice. Options are read only before the name;
+everything from the name on belongs to the application.
+EOF
+}
+
+# Only leading options are ours: an application's own --dry-run or --help is
+# its argument.
+while (($#)); do
+    case $1 in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --dry-run) DRY_RUN=true ;;
+    --) shift && break ;;
+    *) break ;;
+    esac
+    shift
+done
+(($# >= 1)) || {
+    usage >&2
+    exit 2
+}
+
+# No match is fine: the application may not be running yet.
+run pkill -x -- "$1" || true
+
+# launch ARGV... — start ARGV detached from this process, as Omarchy's
+# `setsid ... &` does, so the caller's terminal closing does not take it along.
+launch() {
+    if $DRY_RUN; then
+        echo "DRYRUN: $*"
+        return 0
+    fi
+    setsid "$@" >/dev/null 2>&1 &
+}
+
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    launch uwsm-app -- "$@"
+elif have systemd-run; then
+    unit_id="${1##*/}"
+    unit_id="${unit_id//[^A-Za-z0-9_.]/_}"
+    launch systemd-run --user --scope --slice=app-graphical.slice --collect --quiet \
+        --unit="app-haseen-${unit_id:-app}-$(printf '%08x' "$((RANDOM * 32768 + RANDOM))").scope" -- "$@"
+else
+    launch "$@"
+fi

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-theme-refresh — re-apply the current theme, re-rendering its
+# templates. Under haseen that is `haseen theme set <current>`, which keeps
+# the current background when it belongs to the theme, as Omarchy's refresh
+# does with OMARCHY_THEME_SKIP_BACKGROUND. Nothing to do without a current
+# theme, as in Omarchy bin/omarchy-theme-refresh (MIT, Copyright (c) David
+# Heinemeier Hansson) (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-refresh [--dry-run]
+
+haseen's answer to Omarchy's command: runs 'haseen theme set' on the current
+theme, which renders its templates again and reloads what is running. Does
+nothing when no theme is set.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+name="$(haseen_cmd theme-current 2>/dev/null)" || exit 0
+[[ -n $name ]] || exit 0
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec theme-set "$name" "${flags[@]}"

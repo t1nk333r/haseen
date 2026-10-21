@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# omarchy-games-retro-install — create a desktop launcher that starts one game
+# in RetroArch with a chosen core. Adapted from Omarchy
+# bin/omarchy-games-retro-install (MIT, Copyright (c) David Heinemeier
+# Hansson): the same arguments, pickers and launcher. What changed (plan 093):
+#   - RetroArch is the retroarch package or the Flatpak org.libretro.RetroArch
+#     (haseen's app catalogue installs the Flatpak); a core name resolves to
+#     the core of the RetroArch that will run it, and the launcher runs that
+#     one (flatpak run for the Flatpak).
+#   - The pickers are haseen's menu (haseen menu select) and the adopted
+#     omarchy-menu-file, or omarchy-file-select without it.
+#   - The launcher is written through haseen's file helpers (--dry-run); the
+#     toasts are haseen's and name haseen's launcher key (Super + Shift +
+#     Space, share/haseen/default/hypr/binds.lua).
+#   - Title case comes from bash, not perl.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+FLATPAK_APP=org.libretro.RetroArch
+SYSTEM_CORES=/usr/lib/libretro
+FLATPAK_CORES="$HOME/.var/app/$FLATPAK_APP/config/retroarch/cores"
+ROM_FORMATS="7z bin ccd chd cue dmg elf fds gb gba gbc iso lha m3u md n64 nds nes pbp sfc smc swc zip z64"
+
+usage() {
+    cat <<USAGE
+Usage: omarchy-games-retro-install [core path-to-game] [--dry-run]
+Example: omarchy-games-retro-install snes9x ~/Games/roms/snes/game.sfc
+
+haseen's answer to Omarchy's command: writes a launcher for the game to
+~/.local/share/applications. CORE is a core name (snes9x) or a core file.
+Without arguments, asks for the core and the game.
+USAGE
+}
+parse_common_flags "$@"
+
+notify() {
+    if $DRY_RUN; then
+        echo "DRYRUN: notify: $*"
+    else
+        "$HASEEN_BIN/haseen-notification-send" "$@" >/dev/null 2>&1 || true
+    fi
+}
+
+native_retroarch() { [[ -x $(sysroot_path /usr/bin/retroarch) ]] || { ! in_sysroot && have retroarch; }; }
+flatpak_retroarch() {
+    [[ -d $(sysroot_path "/var/lib/flatpak/app/$FLATPAK_APP") ||
+        -d ${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/app/$FLATPAK_APP ]]
+}
+
+# pick_game — a game file from ~/Games/roms, newest first.
+pick_game() {
+    local menu_file="$HASEEN_OMARCHY_DIR/bin/omarchy-menu-file"
+    if [[ -x $menu_file ]]; then
+        "$menu_file" "Retro game" "$HOME/Games/roms" "$ROM_FORMATS"
+    else
+        "$HASEEN_OMARCHY_DIR/bin/omarchy-file-select" --title "Retro game" --extensions "$ROM_FORMATS" | head -n1
+    fi
+}
+
+if ((${#REST[@]} == 0)); then
+    mapfile -t cores < <("$HASEEN_OMARCHY_DIR/bin/omarchy-games-retro-cores")
+    if ((${#cores[@]} == 0)); then
+        notify "No RetroArch cores found" "Install some from RetroArch's online updater"
+        exit 1
+    fi
+    core="$("$HASEEN_BIN/haseen-menu-select" "RetroArch core" "${cores[@]}")" || exit 0
+    [[ -n $core ]] || exit 0
+    core="${core##*(}"
+    core="${core%)}"
+    game_path="$(pick_game)" || exit 0
+    [[ -n $game_path ]] || exit 0
+elif ((${#REST[@]} == 2)); then
+    core="${REST[0]}"
+    game_path="${REST[1]}"
+else
+    usage >&2
+    exit 1
+fi
+
+if [[ ! -f $game_path ]]; then
+    echo "Game not found: $game_path" >&2
+    exit 1
+fi
+game_path="$(readlink -f -- "$game_path")"
+
+# The core file, and the RetroArch that can load it: a Flatpak sees its own
+# core directory; the package reads /usr/lib/libretro.
+core_path=""
+runner=""
+if [[ $core == */* ]]; then
+    [[ -f $core ]] && core_path="$(readlink -f -- "$core")"
+    if [[ $core_path == "$FLATPAK_CORES"/* ]] || ! native_retroarch; then runner=flatpak; else runner=native; fi
+elif [[ $core =~ ^[A-Za-z0-9_]+$ ]]; then
+    if native_retroarch && [[ -f $(sysroot_path "$SYSTEM_CORES/${core}_libretro.so") ]]; then
+        core_path="$SYSTEM_CORES/${core}_libretro.so" runner=native
+    elif [[ -f $FLATPAK_CORES/${core}_libretro.so ]]; then
+        core_path="$FLATPAK_CORES/${core}_libretro.so" runner=flatpak
+    elif [[ -f $(sysroot_path "$SYSTEM_CORES/${core}_libretro.so") ]]; then
+        core_path="$SYSTEM_CORES/${core}_libretro.so" runner=native
+    fi
+fi
+if [[ -z $core_path ]]; then
+    echo "Core not found: $core" >&2
+    exit 1
+fi
+if [[ $runner == flatpak ]] && ! flatpak_retroarch; then
+    die "RetroArch is not installed: haseen install app retroarch"
+elif [[ $runner == native ]] && ! native_retroarch; then
+    die "RetroArch is not installed: haseen install app retroarch"
+fi
+# Both paths land in the launcher's Exec line between double quotes.
+for p in "$core_path" "$game_path"; do
+    [[ $p != *[\"\`\$\\]* && $p != *$'\n'* ]] || die "unsupported character in path: $p"
+done
+
+# "Super Mario World (USA).sfc" -> "Super Mario World"
+game_name="$(printf '%s' "${game_path##*/}" |
+    sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+read -ra words <<<"$game_name"
+game_name="${words[*]^}"
+[[ -n $game_name ]] || game_name="Retro game"
+desktop_id="$(printf '%s' "$game_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')"
+[[ -n $desktop_id ]] || desktop_id=retro-game
+desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+desktop_file="$desktop_dir/$desktop_id.desktop"
+
+if [[ $runner == flatpak ]]; then
+    exec_line="flatpak run $FLATPAK_APP -L \"$core_path\" \"$game_path\""
+    icon=$FLATPAK_APP
+else
+    exec_line="retroarch -L \"$core_path\" \"$game_path\""
+    icon=retroarch
+fi
+
+write_user_file "$desktop_file" <<DESKTOP
+[Desktop Entry]
+Version=1.0
+Name=$game_name
+Comment=Play $game_name with RetroArch
+Exec=$exec_line
+Terminal=false
+Type=Application
+Icon=$icon
+StartupNotify=true
+Categories=Game;Emulator;
+DESKTOP
+run chmod +x "$desktop_file"
+if have update-desktop-database; then
+    if $DRY_RUN; then
+        echo "DRYRUN: update-desktop-database $desktop_dir"
+    else
+        update-desktop-database "$desktop_dir" >/dev/null 2>&1 || true
+    fi
+fi
+notify "$game_name installed" "Start it from the launcher (Super + Shift + Space)"

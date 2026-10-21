@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# omarchy-launch-webapp — open a URL as a web app (its own --app= window) in
+# the default browser when it has an app mode, else in Helium or Chromium.
+# Omarchy's web-app launchers, binds and omarchy-launch-or-focus-webapp call
+# it. Adapted from Omarchy bin/omarchy-launch-webapp (MIT, Copyright (c) David
+# Heinemeier Hansson): the chromium-family test and the hand-off to a running
+# browser are Omarchy's; a Flatpak browser (haseen's catalogue installs them
+# from Flathub) runs as `flatpak run <app-id>`, the fallback is haseen's
+# chromium-family browsers, and the launch goes through uwsm-app only in a
+# uwsm session (plan 093). The default browser is never an entry that
+# launches this command or omarchy-launch-browser again (Omarchy's session
+# points $BROWSER and omarchy-browser.desktop back at them).
+# DRY_RUN=true prints the launch instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-webapp <url> [browser-flags...]
+
+haseen's answer to Omarchy's command: opens <url> in its own app window
+(--app=<url>) of the default browser when it is chromium-based, else of
+Helium or Chromium (haseen install app chromium)." "$@"
+
+(($# > 0)) || {
+    echo "Usage: omarchy-launch-webapp <url> [browser-flags...]" >&2
+    exit 1
+}
+
+# desktop_file ID — the entry XDG reads for ID: the first in the data dirs,
+# Flatpak's export dirs included (haseen's browsers are Flatpaks).
+desktop_file() {
+    local dir dirs=() home="${XDG_DATA_HOME:-$HOME/.local/share}"
+    if [[ -n ${XDG_DATA_DIRS:-} ]]; then
+        IFS=: read -ra dirs <<<"$XDG_DATA_DIRS"
+    else
+        dirs=("$(sysroot_path /usr/local/share)" "$(sysroot_path /usr/share)")
+    fi
+    for dir in "$home" "${dirs[@]}" "$home/flatpak/exports/share" "$(sysroot_path /var/lib/flatpak/exports/share)"; do
+        if [[ -r $dir/applications/$1 ]]; then
+            printf '%s\n' "$dir/applications/$1"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# browser_argv ID — BROWSER_ARGV: the command the entry runs, `flatpak run
+# <app-id>` for a Flatpak export (its Exec starts with flatpak).
+browser_argv() {
+    local file words=()
+    file="$(desktop_file "$1")" || return 1
+    read -ra words <<<"$(sed -n 's/^Exec=//p' "$file" | head -n1)"
+    [[ -n ${words[0]:-} ]] || return 1
+    if [[ ${words[0]##*/} == flatpak ]]; then
+        BROWSER_ARGV=(flatpak run "${1%.desktop}")
+    else
+        BROWSER_ARGV=("${words[0]}")
+    fi
+}
+
+# loops ID — the entry only routes back to Omarchy's launchers.
+loops() {
+    local file first
+    [[ $1 == omarchy-browser.desktop ]] && return 0
+    file="$(desktop_file "$1")" || return 1
+    read -r first _ <<<"$(sed -n 's/^Exec=//p' "$file" | head -n1)"
+    [[ ${first##*/} == omarchy-launch-browser || ${first##*/} == omarchy-launch-webapp ]]
+}
+
+# default_browser — the default browser's desktop id: Omarchy's fast
+# mimeapps.list reader when haseen ships it, else xdg-settings, never through
+# $BROWSER.
+default_browser() {
+    local id="" helper="$HASEEN_OMARCHY_DIR/bin/omarchy-cmd-default-browser"
+    [[ -x $helper ]] && id="$("$helper" 2>/dev/null || true)"
+    if [[ -z $id ]] || loops "$id"; then
+        id="$(env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings get default-web-browser 2>/dev/null || true)"
+    fi
+    if [[ -z $id ]] || loops "$id"; then
+        id="$(XDG_CURRENT_DESKTOP='' xdg-mime query default x-scheme-handler/https 2>/dev/null || true)"
+    fi
+    if [[ -n $id ]] && ! loops "$id"; then
+        printf '%s\n' "$id"
+    fi
+}
+
+browser="$(default_browser)"
+case $browser in
+google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium* | chromium* | \
+    org.chromium.Chromium.desktop | com.google.Chrome.desktop | com.brave.Browser.desktop | \
+    com.microsoft.Edge.desktop | com.vivaldi.Vivaldi.desktop | com.opera.Opera.desktop) ;;
+*) browser="" ;;
+esac
+# No app mode in the default (Firefox, Zen): Omarchy falls back to Chromium;
+# haseen also has Helium (its shell layer installs it, plan 073).
+if [[ -z $browser ]] || ! browser_argv "$browser"; then
+    browser=""
+    for candidate in helium.desktop chromium.desktop org.chromium.Chromium.desktop; do
+        if desktop_file "$candidate" >/dev/null && browser_argv "$candidate"; then
+            browser=$candidate
+            break
+        fi
+    done
+fi
+[[ -n $browser ]] || die "no chromium-based browser for web apps: haseen install app chromium"
+
+argv=("${BROWSER_ARGV[@]}" "--app=$1" "${@:2}")
+# A running browser takes the URL over its own socket (omarchy-cmd-browser-handoff);
+# it fails when none acknowledges, and then a new process starts.
+handoff="$HASEEN_OMARCHY_DIR/bin/omarchy-cmd-browser-handoff"
+if ! $DRY_RUN && [[ -x $handoff && ${argv[0]} != flatpak ]] && "$handoff" "${argv[@]}" 2>/dev/null; then
+    exit 0
+fi
+
+if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+    argv=(uwsm-app -- "${argv[@]}")
+fi
+if $DRY_RUN; then
+    echo "DRYRUN: setsid ${argv[*]}"
+    exit 0
+fi
+exec setsid "${argv[@]}"

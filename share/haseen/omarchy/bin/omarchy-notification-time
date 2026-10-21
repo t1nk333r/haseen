@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omarchy-notification-time — today's day, time, date and week as a
+# low-urgency toast. Adapted from Omarchy bin/omarchy-notification-time (MIT,
+# Copyright (c) David Heinemeier Hansson): the same date format, sent through
+# haseen notification send without Omarchy's glyph (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-notification-time [--dry-run]
+
+haseen's answer to Omarchy's command: shows the day, time, date and week
+number as a low-urgency notification." "$@"
+parse_common_flags "$@"
+
+flags=(-u low)
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec notification-send "${flags[@]}" "$(date +'%A %H:%M  ·  %d %B %Y  ·  Week %V')"

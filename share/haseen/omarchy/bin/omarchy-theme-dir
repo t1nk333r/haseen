@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-theme-dir — the directory holding a theme, the user's copy first.
+# Adapted from Omarchy bin/omarchy-theme-dir (MIT, Copyright (c) David
+# Heinemeier Hansson): ~/.config/haseen/themes/<name> when it is a directory,
+# else haseen's stock themes directory (printed even when the theme is not
+# there, as Omarchy does), instead of ~/.config/omarchy/themes and
+# $OMARCHY_PATH/themes. haseen's stock themes carry no unlock or
+# preview-unlock image, and fetched Omarchy images live in
+# ~/.cache/haseen/themes/<name> (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+omarchy_help "Usage: omarchy-theme-dir <theme-name>
+
+haseen's answer to Omarchy's command: prints $THEME_USER_DIR/<name> when
+that directory exists, else $THEME_STOCK_DIR/<name>." "$@"
+
+theme="${1:-}"
+if [[ -z $theme ]]; then
+    echo "Usage: omarchy-theme-dir <theme-name>" >&2
+    exit 1
+fi
+
+if [[ -d $THEME_USER_DIR/$theme ]]; then
+    echo "$THEME_USER_DIR/$theme"
+else
+    echo "$THEME_STOCK_DIR/$theme"
+fi

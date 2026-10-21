@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# omarchy-hw-laptop — exit 0 on a laptop: an ACPI lid, or a laptop DMI chassis
+# type. Adapted from Omarchy bin/omarchy-hw-laptop (MIT, Copyright (c) David
+# Heinemeier Hansson): haseen's hw_probe_laptop is the same test, read through
+# sysroot_path (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-laptop
+
+haseen's answer to Omarchy's command: exit 0 when the machine has a lid switch
+or a laptop chassis type (8, 9, 10, 14, 30, 31, 32), 1 otherwise." "$@"
+
+hw_probe_laptop

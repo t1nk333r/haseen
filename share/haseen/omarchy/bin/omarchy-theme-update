@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# omarchy-theme-update — pull every theme the user installed from git, then
+# re-apply the current theme when its pull brought changes. Adapted from
+# Omarchy bin/omarchy-theme-update (MIT, Copyright (c) David Heinemeier
+# Hansson): the themes are the ones omarchy-theme-extras lists under
+# ~/.config/haseen/themes; the pull is --ff-only, so a theme clone never gets
+# a merge commit; and the re-apply is haseen's (Omarchy left it to the next
+# theme set). `haseen theme set` holds a pulled theme to the same denylist as
+# a fresh install (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../layers/theme/theme-lib.sh
+source "$HASEEN_PATH/layers/theme/theme-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-update [--dry-run]
+
+haseen's answer to Omarchy's command: runs 'git pull --ff-only' in every
+theme under $THEME_USER_DIR that was installed from git, then runs
+'haseen theme set' again when the current theme changed.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+current="$(theme_current_name 2>/dev/null || true)"
+reapply=false
+status=0
+mapfile -t themes < <("$HASEEN_OMARCHY_DIR/bin/omarchy-theme-extras" || true)
+for theme in "${themes[@]}"; do
+    [[ -n $theme ]] || continue
+    name="${theme##*/}"
+    echo "Updating: $name"
+    before="" after=""
+    $DRY_RUN || before="$(git -C "$theme" rev-parse HEAD 2>/dev/null || true)"
+    if ! run git -C "$theme" pull --ff-only; then
+        warn "could not update $name (local changes, or a history that does not fast-forward)"
+        status=1
+        continue
+    fi
+    # A dry run cannot know whether the pull would change anything.
+    $DRY_RUN || after="$(git -C "$theme" rev-parse HEAD 2>/dev/null || true)"
+    if [[ $name == "$current" ]] && { $DRY_RUN || [[ $before != "$after" ]]; }; then reapply=true; fi
+done
+
+if $reapply; then
+    if $DRY_RUN; then
+        echo "DRYRUN: $HASEEN_BIN/haseen-theme-set $current (when the pull changed it)"
+    else
+        haseen_cmd theme-set "$current" || status=1
+    fi
+fi
+exit "$status"

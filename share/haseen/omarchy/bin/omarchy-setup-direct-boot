@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# omarchy-setup-direct-boot — toggle a firmware (UEFI) boot entry that starts
+# the unified kernel image directly, skipping the bootloader menu. Adapted
+# from Omarchy bin/omarchy-setup-direct-boot (MIT, Copyright (c) David Heinemeier Hansson):
+# the entry is labelled haseen and removing it also
+# removes an Omarchy entry left from before; the UKI is Omarchy's when the
+# ESP has one, else the running kernel's (its mkinitcpio preset's
+# default_uki), looked for on the ESP preflight finds instead of a fixed
+# /boot; efibootmgr runs through run_root, gum confirm became confirm, and
+# --dry-run/--yes are taken. Only NVRAM changes: no bootloader config (Limine
+# or other) is read or written (plan 093).
+# Apple branch dropped: refusal of Apple firmware by bios_vendor (Omarchy omarchy-setup-direct-boot:23-26).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/preflight.sh
+source "$HASEEN_PATH/lib/preflight.sh"
+
+LABEL=haseen
+
+usage() {
+    cat <<EOF
+Usage: omarchy-setup-direct-boot [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command. With no direct-boot entry, adds a UEFI
+boot entry "$LABEL" that starts the unified kernel image (UKI) in
+<ESP>/EFI/Linux directly; the firmware boots it first from then on, so
+snapshots are only reachable from the firmware's boot menu. With an entry
+(haseen's, or Omarchy's "Omarchy"), removes it. Asks first; --yes does not ask.
+Needs a UKI: a plain Limine install boots a kernel and initramfs, not a UKI.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+[[ -d $(sysroot_path /sys/firmware/efi) ]] || die "this system was not started in UEFI mode"
+have efibootmgr || die "efibootmgr is not installed (haseen install package efibootmgr)"
+listing="$(efibootmgr 2>/dev/null)" || die "efibootmgr is not functional (no access to the EFI variables?)"
+
+vendor=""
+[[ -r $(sysroot_path /sys/class/dmi/id/bios_vendor) ]] &&
+    vendor="$(tr -d '\0' <"$(sysroot_path /sys/class/dmi/id/bios_vendor)")"
+case "${vendor,,}" in
+*"american megatrends"*) die "American Megatrends firmware may not safely support custom EFI entries" ;;
+esac
+
+# Every direct-boot entry: haseen's, and Omarchy's from before haseen.
+mapfile -t entries < <(sed -nE 's/^Boot([0-9A-Fa-f]{4})\*? (haseen|Omarchy)([[:space:]].*)?$/\1/p' <<<"$listing")
+
+if ((${#entries[@]} > 0)); then
+    confirm "Disable direct boot (remove the EFI entry ${entries[*]})?" || exit 0
+    for num in "${entries[@]}"; do
+        info "removing EFI boot entry $num"
+        if $DRY_RUN; then
+            run_root efibootmgr --bootnum "$num" --delete-bootnum
+        else
+            run_root efibootmgr --bootnum "$num" --delete-bootnum >/dev/null
+        fi
+    done
+    exit 0
+fi
+
+preflight_bootloader
+esp="$(sysroot_path "$ESP_PATH")"
+uki_dir="$esp/EFI/Linux"
+
+# uki_names — the .efi names in EFI/Linux. The ESP is often root-only
+# (0700 /boot), and reading it then needs sudo, as upstream's `sudo find`.
+uki_names() {
+    if [[ -r $uki_dir && -x $uki_dir ]]; then
+        local f
+        for f in "$uki_dir"/*.[eE][fF][iI]; do
+            [[ -f $f ]] && printf '%s\n' "${f##*/}"
+        done
+        return 0
+    fi
+    [[ -d $esp && -r $esp && -x $esp ]] && return 0
+    $DRY_RUN && return 1
+    run_root find "$uki_dir" -maxdepth 1 -type f -iname '*.efi' -printf '%f\n' 2>/dev/null || true
+}
+
+# pick_uki — Omarchy's UKI when there is one (an Omarchy host), else the
+# running kernel's: its package names the mkinitcpio preset, whose
+# default_uki is the image that kernel boots from.
+pick_uki() {
+    local names pkgbase preset uki
+    names="$(uki_names)" || return 2
+    uki="$(grep -m1 '^omarchy.*\.efi$' <<<"$names" || true)"
+    if [[ -z $uki ]]; then
+        pkgbase="$(cat "$(sysroot_path "/usr/lib/modules/$(uname -r)/pkgbase")" 2>/dev/null || true)"
+        preset="$(sysroot_path "/etc/mkinitcpio.d/$pkgbase.preset")"
+        if [[ -n $pkgbase && -r $preset ]]; then
+            uki="$(sed -nE 's/^[[:space:]]*default_uki=["'\'']?([^"'\'']+)["'\'']?.*/\1/p' "$preset" | tail -n1)"
+            uki="${uki##*/}"
+            grep -qxF -- "$uki" <<<"$names" || uki=""
+        fi
+        if [[ -z $uki && -n $pkgbase ]]; then
+            uki="$(grep -F -- "$pkgbase" <<<"$names" | grep -m1 -v fallback || true)"
+        fi
+    fi
+    [[ -n $uki ]] || return 1
+    printf '%s\n' "$uki"
+}
+
+status=0
+uki="$(pick_uki)" || status=$?
+case $status in
+0) ;;
+2)
+    info "$ESP_PATH is readable only by root: the UKI is chosen when this runs without --dry-run"
+    uki="<UKI in $ESP_PATH/EFI/Linux>"
+    ;;
+*) die "no unified kernel image for the running kernel in $ESP_PATH/EFI/Linux: direct boot needs a UKI (a plain Limine or GRUB install boots a kernel and initramfs instead)" ;;
+esac
+# The name lands in an EFI device path: plain file names only.
+((status != 0)) || [[ $uki =~ ^[A-Za-z0-9._+-]+\.[eE][fF][iI]$ ]] || die "refusing unusual UKI name: $uki"
+
+source="$(findmnt -n -o SOURCE --target "$ESP_PATH" 2>/dev/null || true)"
+[[ $source == /dev/* ]] || die "cannot tell which partition holds $ESP_PATH (findmnt: ${source:-nothing})"
+disk="$(sed 's/p\?[0-9]*$//' <<<"$source")"
+part="$(grep -o 'p\?[0-9]*$' <<<"$source" | sed 's/^p//')"
+[[ -n $part ]] || die "cannot tell the partition number of $source"
+
+warn "with direct boot the firmware starts $uki itself: snapshots and other entries are then only reachable from the firmware's boot menu"
+confirm "Set up direct boot of $uki from $source?" || exit 0
+info "creating EFI boot entry $LABEL for $uki"
+run_root efibootmgr --create --disk "$disk" --part "$part" --label "$LABEL" --loader "\\EFI\\Linux\\$uki"

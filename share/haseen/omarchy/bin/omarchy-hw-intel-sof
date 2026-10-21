@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# omarchy-hw-intel-sof — exit 0 when an Intel audio DSP (a candidate for SOF
+# firmware) is present. Adapted from Omarchy bin/omarchy-hw-intel-sof (MIT,
+# Copyright (c) David Heinemeier Hansson), which greps lspci for an Intel
+# "Audio device" or "Multimedia audio controller": here the same two PCI
+# classes (0x0403, 0x0401) from sysfs through haseen's hw_pci, which does not
+# wake a suspended device and reads fixtures (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-intel-sof
+
+haseen's answer to Omarchy's command: exit 0 when an Intel PCI audio device
+(class 0x0403) or multimedia audio controller (0x0401) is present." "$@"
+
+hw_pci 0x8086/0x0403 || hw_pci 0x8086/0x0401

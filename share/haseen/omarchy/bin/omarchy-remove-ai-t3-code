@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# omarchy-remove-ai-t3-code — remove T3 Code the haseen way: drop t3code-bin
+# through `haseen remove package`, then ask before deleting its configuration
+# and, separately, ~/.t3. Adapted from Omarchy bin/omarchy-remove-ai-t3-code
+# (MIT, Copyright (c) David Heinemeier Hansson): the paths are Omarchy's;
+# omarchy-pkg-drop -> haseen remove package; every change goes through
+# common.sh, so --dry-run prints the plan (plan 093).
+#
+# Data: Omarchy deletes ~/.config/t3code, its flags file and ~/.t3 without
+# asking. The configuration is asked about here, default no; --yes keeps it:
+# only a yes at a terminal or --purge deletes it. ~/.t3 holds T3 Code's worktrees, git checkouts that can
+# carry unpushed work: it is asked about with its size, default no, and only
+# a yes at a terminal deletes it, not --purge (a deliberate difference from
+# Omarchy).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-ai-t3-code [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes the t3code-bin package (haseen
+remove package), then asks (default no) before deleting ~/.config/t3code and
+~/.config/t3code-flags.conf (--yes keeps them, --purge deletes them) and before
+deleting ~/.t3, T3 Code's worktrees (only a yes at a terminal deletes those).
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+remove_pkgs t3code-bin
+
+# T3 Code drives agents that keep their own state (~/.claude.json, ~/.grok,
+# ~/.local/share/opencode); those outlive it, so only its own is offered.
+delete_asked "Also delete T3 Code's settings" purge \
+    "$HOME/.config/t3code" "$HOME/.config/t3code-flags.conf" || true
+delete_asked "Also delete ~/.t3, T3 Code's worktrees (check them for unpushed work first)" no \
+    "$HOME/.t3" || true
+
+echo ""
+echo "T3 Code has been removed."
+[[ ! -d $HOME/.t3 ]] || $DRY_RUN || echo "Its worktrees are still in ~/.t3."

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# omarchy-voxtype-install — install Voxtype dictation (an optional tool; not
+# in haseen's defaults) with its speech model and user service. Adapted from
+# Omarchy bin/omarchy-voxtype-install (MIT,
+# Copyright (c) David Heinemeier Hansson) and its default/voxtype/config.toml
+# (the seed below): the question, wtype + voxtype-bin, the seeded config with
+# Voxtype's own hotkey off, the model download, GPU when Vulkan is there, the
+# user unit. Changes: packages through haseen install (voxtype-bin through
+# 'haseen install aur', which tries the repos, Chaotic-AUR and [omarchy] before
+# the AUR); the config is seeded only when there is none; no shell restart and
+# no hyprctl reload, since haseen ships no dictation indicator and no dictation
+# key binds (Omarchy's F9 and SUPER + CTRL + X need the owner's approval to
+# become defaults): the toast says how to start dictating; --dry-run, --yes
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-voxtype-install [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs Voxtype (wtype, voxtype-bin)
+and a speech model (~150MB), seeds ~/.config/voxtype/config.toml when absent
+and enables Voxtype's user service. Start and stop dictation with
+'voxtype record toggle' (bind it to a key in your Hyprland binds).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/voxtype/config.toml"
+
+confirm "Install Voxtype + AI model (~150MB) to enable dictation?" || exit 0
+
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+"$HASEEN_BIN/haseen-install" package wtype "${flags[@]}"
+"$HASEEN_BIN/haseen-install" aur voxtype-bin "${flags[@]}"
+
+# Seeded once: an existing config is the user's.
+if [[ ! -e $CONFIG && ! -L $CONFIG ]]; then
+    write_user_file "$CONFIG" <<'EOF'
+# Voxtype configuration, seeded by haseen (adapted from Omarchy's
+# default/voxtype/config.toml, MIT). All settings can be overridden with CLI
+# flags; see 'voxtype configure'.
+
+# State file read by `voxtype record toggle` and `voxtype status`.
+state_file = "auto"
+
+[hotkey]
+# Off: start and stop dictation with `voxtype record toggle` from a Hyprland
+# bind of your own, which needs no access to /dev/input.
+enabled = false
+
+[audio]
+device = "default"
+sample_rate = 16000
+# Safety limit, in seconds.
+max_duration_secs = 60
+# Pause MPRIS media players while recording.
+pause_media = true
+
+[whisper]
+# tiny, base, small, medium, large-v3, large-v3-turbo; .en models are
+# English-only, faster and more accurate for English.
+model = "base.en"
+language = "en"
+translate = false
+
+[output]
+# "type" types at the cursor (wtype); "clipboard" copies.
+mode = "type"
+fallback_to_clipboard = true
+type_delay_ms = 1
+
+[output.notification]
+on_recording_start = false
+on_recording_stop = false
+on_transcription = false
+EOF
+fi
+
+run voxtype setup --download --no-post-install
+vulkan_icds="$(sysroot_path /usr/share/vulkan/icd.d)"
+if [[ -d $vulkan_icds ]] && find "$vulkan_icds" -maxdepth 1 -name '*.json' -print -quit | grep -q .; then
+    run voxtype setup gpu --enable || true
+fi
+run voxtype setup systemd
+
+"$HASEEN_BIN/haseen-notification-send" "${flags[@]}" -t 10000 "Voxtype dictation ready" \
+    "Run 'voxtype record toggle' to dictate; bind it to a key to make it handy." || true

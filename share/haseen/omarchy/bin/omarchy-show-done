@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# omarchy-show-done — say "Done!" on the terminal and wait for one key, so a
+# terminal opened for a command stays readable. Ported from Omarchy
+# bin/omarchy-show-done (MIT, Copyright (c) David Heinemeier Hansson)
+# unchanged but for --help; read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-show-done
+
+haseen's answer to Omarchy's command: prints 'Done! Press any key to close...'
+on the controlling terminal and waits for one key. Without a terminal it
+exits at once." "$@"
+
+# The device node is there whether or not a terminal is behind it, so opening
+# it is the only test that means anything.
+: 2>/dev/null <>/dev/tty || exit 0
+
+# A spinner's own query replies may still be queued on the tty; drop those or
+# they answer the keypress for the user.
+while read -rsn 1 -t 0.1 _ </dev/tty; do :; done
+
+# Prompt on the terminal rather than stdout, or a caller that redirects us
+# leaves the user waiting on a prompt they were never shown.
+printf '\n\033[32m● \033[0mDone! Press any key to close...' >/dev/tty
+read -rsn 1 _ </dev/tty || true
+echo >/dev/tty

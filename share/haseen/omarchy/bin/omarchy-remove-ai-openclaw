@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# omarchy-remove-ai-openclaw — remove OpenClaw the haseen way: uninstall its
+# gateway and node user units, drop the openclaw package through `haseen
+# remove package`, remove its command link, launcher and icon, then ask before
+# deleting ~/.openclaw. Adapted from Omarchy bin/omarchy-remove-ai-openclaw
+# (MIT, Copyright (c) David Heinemeier Hansson): the unit teardown is
+# Omarchy's; omarchy-pkg-drop -> haseen remove package; gum confirm -> a
+# terminal question; the stopped-services record is haseen's
+# ($HASEEN_USER_STATE/openclaw-stopped), Omarchy's own copy under
+# ~/.local/state/omarchy is left alone; every change goes through common.sh,
+# so --dry-run prints the plan (plan 093).
+#
+# Data: ~/.openclaw (chats, memories, credentials, downloaded plugins) is
+# asked about, default no; --yes keeps it, as Omarchy keeps it without a
+# terminal.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-ai-openclaw [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: uninstalls OpenClaw's gateway and node
+user services, removes the openclaw package (haseen remove package), its
+~/.local/bin/openclaw link, the OpenClaw launcher and icon, then asks (default
+no) before deleting ~/.openclaw. --yes keeps ~/.openclaw.
+EOF
+}
+
+in_floating_terminal "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+# OpenClaw writes its units to $HOME/.config regardless of XDG_CONFIG_HOME.
+unit_dir="$HOME/.config/systemd/user"
+stopped_dir="$HASEEN_USER_STATE/openclaw-stopped"
+data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+# The gateway (from onboarding) and the node host (from pairing with another
+# gateway). Upstream's own teardown knows every piece its install wrote, so it
+# goes first while the binary is installed; by hand otherwise. A service that
+# will not stop aborts: dropping the package would strand it on deleted code.
+for unit_file in "$unit_dir"/openclaw-gateway.service "$unit_dir"/openclaw-node.service; do
+    [[ -f $unit_file ]] || continue
+    unit=${unit_file##*/}
+    role=${unit#openclaw-}
+    role=${role%.service}
+    if { have openclaw && silent openclaw "$role" uninstall; } ||
+        quiet systemctl --user disable --now "$unit" || unit_stopped "$unit"; then
+        # .bak from `gateway install --force`, .reconcile-*.bak from `openclaw update`.
+        run rm -f -- "$unit_file" "$unit_file.bak" "$unit_file".reconcile-*.bak \
+            "$unit_dir/default.target.wants/$unit"
+        quiet systemctl --user daemon-reload || true
+        quiet systemctl --user reset-failed "$unit" || true
+        [[ ! -e $stopped_dir/$role ]] || run rm -f -- "$stopped_dir/$role"
+    else
+        die "could not stop $unit; OpenClaw was not removed"
+    fi
+done
+
+remove_pkgs openclaw
+
+# The command on PATH goes, so nothing answers to openclaw; the OpenClaw it
+# pointed at stays in ~/.openclaw with the state below.
+if [[ -L $HOME/.local/bin/openclaw && $(readlink -- "$HOME/.local/bin/openclaw") == "$HOME/.openclaw/bin/openclaw" ]]; then
+    run rm -f -- "$HOME/.local/bin/openclaw"
+fi
+
+# What haseen's openclaw installer kept of the services it stopped.
+[[ ! -e $stopped_dir ]] || run rm -rf -- "$stopped_dir"
+
+# The launcher and icon the OpenClaw installer wrote.
+rm_present "$data_home/applications/OpenClaw.desktop" "$data_home/icons/hicolor/256x256/apps/openclaw.png"
+have gtk-update-icon-cache && { silent gtk-update-icon-cache "$data_home/icons/hicolor" || true; }
+
+# ~/.openclaw is the user's agent (chats, memories, credentials) and the
+# plugin runtimes OpenClaw downloaded, easily hundreds of megabytes, so the
+# choice is put in front of the user with the size. The snapshots `openclaw
+# update` takes sit beside it and go with it.
+state_removed=false
+if [[ -d $HOME/.openclaw ]] &&
+    ask "Also delete ~/.openclaw ($(size_of "$HOME/.openclaw"): chats, memories, credentials, downloaded plugins, and OpenClaw itself)?"; then
+    run rm -rf -- "$HOME/.openclaw" "$HOME/.openclaw.update-captures"
+    state_removed=true
+fi
+
+echo ""
+echo "OpenClaw has been removed."
+if $state_removed && ! $DRY_RUN; then
+    echo "Its chats, memories, and settings in ~/.openclaw are gone too."
+elif [[ -d $HOME/.openclaw ]]; then
+    echo "Your agent's chats, memories, and settings are still in ~/.openclaw."
+fi

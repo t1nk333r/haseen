@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# omarchy-launch-editor — open files in the default editor: terminal editors
+# in place with --inline or in a new terminal window, GUI editors in their own
+# window. Omarchy's launch-config-editor, clipboard and branding commands call
+# it, and Omarchy's session sets EDITOR='omarchy-launch-editor --inline'.
+# Adapted from Omarchy bin/omarchy-launch-editor (MIT, Copyright (c) David
+# Heinemeier Hansson): the editor is $EDITOR (haseen setup default editor)
+# instead of Omarchy's ~/.local/state/omarchy/defaults/editor, and an $EDITOR
+# that names an omarchy-launch-* command is ignored, else this command (and
+# haseen config edit, which runs $EDITOR) would call itself for ever; the
+# window app-id is omarchy-launch-tui's; GUI editors go through uwsm-app only
+# in a uwsm session (plan 093). DRY_RUN=true prints the command instead.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-editor [--inline] <path>...
+
+haseen's answer to Omarchy's command: opens <path> in \$EDITOR (nvim when it is
+unset, missing, or an omarchy-launch-* command). A terminal editor runs in
+place with --inline, else in a new terminal window; a GUI editor gets its own
+window." "$@"
+
+inline=false
+if [[ ${1:-} == --inline ]]; then
+    inline=true
+    shift
+fi
+
+editor_argv=()
+read -ra editor_argv <<<"${EDITOR:-}"
+case "${editor_argv[0]:-}" in
+"" | omarchy-launch-* | */omarchy-launch-*) editor_argv=(nvim) ;;
+esac
+have "${editor_argv[0]}" || editor_argv=(nvim)
+
+case "${editor_argv[0]##*/}" in
+nvim | vim | vi | nano | micro | hx | helix | fresh)
+    if $inline; then
+        argv=("${editor_argv[@]}" -- "$@")
+    else
+        argv=("$HASEEN_OMARCHY_DIR/bin/omarchy-launch-tui" "${editor_argv[@]}" -- "$@")
+    fi
+    ;;
+*)
+    argv=("${editor_argv[@]}" -- "$@")
+    if [[ -n ${UWSM_FINALIZE_VARNAMES:-}${UWSM_WAIT_VARNAMES:-} ]] && have uwsm-app; then
+        argv=(uwsm-app -- "${argv[@]}")
+    fi
+    argv=(setsid "${argv[@]}")
+    ;;
+esac
+if $DRY_RUN; then
+    echo "DRYRUN: ${argv[*]}"
+    exit 0
+fi
+exec "${argv[@]}"

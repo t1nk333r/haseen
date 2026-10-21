@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# omarchy-remove-launcher-entry — remove or uninstall the app behind a
+# launcher entry: a web app, a TUI launcher or another launcher of the user's
+# is deleted; an entry a package or a Flatpak installed is uninstalled through
+# `haseen remove`. Adapted from Omarchy bin/omarchy-remove-launcher-entry (MIT,
+# Copyright (c) David Heinemeier Hansson): the lookup order, the kinds and the
+# exit codes are Omarchy's. Changes: haseen's web apps (Exec with --app=) and
+# TUI launchers (X-Haseen-TUI) are recognised too; `sudo pacman -Rns` in a
+# floating terminal -> `haseen remove package` (which opens its own terminal
+# and asks before removing), `flatpak uninstall` -> `haseen remove flatpak`;
+# the owning package is read from the local pacman database; nothing outside
+# the user's applications directory is deleted except through haseen remove;
+# --dry-run prints the plan (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-launcher-entry <desktop-id> [name] [--dry-run]
+
+haseen's answer to Omarchy's command: finds the launcher entry <desktop-id>
+in the user's and the system's applications directories, then removes the
+web app or TUI launcher it is, deletes it when it is the user's own, or
+uninstalls the package or Flatpak that installed it (haseen remove, which
+asks first).
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} >= 1 && ${#REST[@]} <= 2)) || {
+    usage >&2
+    exit 1
+}
+require_not_root
+desktop_id=${REST[0]}
+entry_name=${REST[1]:-}
+[[ $desktop_id != */* && -n $desktop_id ]] || die "not a desktop id: $desktop_id"
+
+desktop_file_name=$desktop_id
+[[ $desktop_file_name == *.desktop ]] || desktop_file_name="$desktop_file_name.desktop"
+
+user_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+desktop_dirs=("$user_dir")
+if [[ -n ${XDG_DATA_DIRS:-} ]]; then
+    IFS=: read -ra data_dirs <<<"$XDG_DATA_DIRS"
+    for data_dir in "${data_dirs[@]}"; do
+        [[ -n $data_dir ]] && desktop_dirs+=("$(sysroot_path "$data_dir")/applications")
+    done
+else
+    desktop_dirs+=("$(sysroot_path /usr/local/share)/applications" "$(sysroot_path /usr/share)/applications"
+        "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share/applications"
+        "$(sysroot_path /var/lib/flatpak/exports/share)/applications")
+fi
+
+desktop_file=""
+for dir in "${desktop_dirs[@]}"; do
+    if [[ -f $dir/$desktop_file_name ]]; then
+        desktop_file="$dir/$desktop_file_name"
+        break
+    fi
+done
+[[ -n $desktop_file ]] || {
+    echo "Could not find launcher entry: $desktop_file_name" >&2
+    exit 1
+}
+
+desktop_name=${desktop_file##*/}
+desktop_name=${desktop_name%.desktop}
+display_name=${entry_name:-$desktop_name}
+exec_line="$(sed -n 's/^Exec=//p' "$desktop_file" | head -n1)"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+is_user_file=false
+[[ ${desktop_file%/*} == "$user_dir" ]] && is_user_file=true
+
+# A web app: Omarchy's (omarchy-launch-webapp or a handler) or haseen's
+# (chromium app mode). Both live in the user's directory.
+if $is_user_file && [[ $exec_line =~ omarchy-launch-webapp|omarchy-webapp-handler|--app= ]]; then
+    webapp_remove "$desktop_name"
+    exit
+fi
+
+# A TUI launcher: Omarchy's runs the program with `-e` in $TERMINAL or
+# xdg-terminal-exec; haseen's tui install marks its own.
+if $is_user_file && { [[ $exec_line =~ (^|[[:space:]])(\$TERMINAL|xdg-terminal-exec)[[:space:]].*-e([[:space:]]|$) ]] ||
+    grep -q '^X-Haseen-TUI=' "$desktop_file"; }; then
+    OMARCHY_REMOVE_NOTIFY=false exec "$HASEEN_OMARCHY_DIR/bin/omarchy-tui-remove" "${flags[@]}" "$desktop_name"
+fi
+
+if $is_user_file; then
+    run rm -f -- "$desktop_file"
+    have update-desktop-database && { silent update-desktop-database "$user_dir" || true; }
+    info "launcher removed: $display_name"
+    exit 0
+fi
+
+# owning_package FILE — the installed package whose file list has FILE (the
+# local database's files lists hold paths without the leading slash).
+owning_package() {
+    local rel=$1 hit
+    rel=${rel#"$HASEEN_SYSROOT"}
+    rel=${rel#/}
+    hit="$(grep -lxF -- "$rel" "$(sysroot_path /var/lib/pacman/local)"/*/files 2>/dev/null | head -n1 || true)"
+    [[ -n $hit ]] || return 1
+    hit=${hit%/files}
+    hit=${hit##*/}
+    hit=${hit%-*}
+    printf '%s\n' "${hit%-*}"
+}
+
+if package_name="$(owning_package "$desktop_file")"; then
+    echo "Uninstalling $display_name..."
+    exec "$HASEEN_BIN/haseen-remove" package "$package_name" "${flags[@]}"
+fi
+
+flatpak_id=${desktop_file_name%.desktop}
+if flatpak_installed "$flatpak_id"; then
+    echo "Uninstalling $display_name..."
+    exec "$HASEEN_BIN/haseen-remove" flatpak "$flatpak_id" "${flags[@]}"
+fi
+
+echo "Don't know how to uninstall $desktop_file_name" >&2
+exit 1

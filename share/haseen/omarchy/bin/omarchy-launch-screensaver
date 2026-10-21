@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# omarchy-launch-screensaver — show haseen's screensaver now. Omarchy's menu,
+# branding and idle commands call it; `force` shows it even when it is turned
+# off. haseen-screensaver is haseen's port of this command (bin/haseen-screensaver,
+# from Omarchy bin/omarchy-launch-screensaver, MIT, Copyright (c) David
+# Heinemeier Hansson); this keeps Omarchy's interface: the positional `force`
+# becomes --force, other arguments are ignored as Omarchy ignores them, and a
+# screensaver turned off (haseen toggle screensaver) without `force` exits 1,
+# as Omarchy's does, where haseen-screensaver exits 0 (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+
+omarchy_help "Usage: omarchy-launch-screensaver [force] [--dry-run]
+
+haseen's answer to Omarchy's command: shows haseen's screensaver (haseen
+screensaver). Turned off (haseen toggle screensaver off), it exits 1 unless
+'force' is given." "$@"
+
+force=false
+for arg in "$@"; do
+    case "$arg" in
+    force) force=true ;;
+    --dry-run) DRY_RUN=true ;;
+    esac
+done
+
+if ! $force && [[ -e $HASEEN_USER_STATE/flags/screensaver-off ]]; then
+    printf '%s: the screensaver is off (haseen toggle screensaver on, or: %s force)\n' "$OMARCHY_NAME" "$OMARCHY_NAME" >&2
+    exit 1
+fi
+args=()
+$force && args+=(--force)
+$DRY_RUN && args+=(--dry-run)
+haseen_exec screensaver "${args[@]}"

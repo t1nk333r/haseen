@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-obsidian — publish the current haseen theme to every
+# Obsidian vault as the theme "haseen" (<vault>/.obsidian/themes/haseen).
+# Adapted from Omarchy bin/omarchy-theme-set-obsidian (MIT, Copyright (c)
+# David Heinemeier Hansson): haseen renders no obsidian.css at theme set, so
+# the stylesheet is current/theme/obsidian.css when the theme ships one, else
+# Omarchy's obsidian.css template rendered from the current colors.toml; the
+# vaults come from the native app's obsidian.json and from the Flatpak's
+# (haseen's catalogue installs md.obsidian.Obsidian); the theme folder and
+# its manifest are haseen's, not Omarchy's. A vault's chosen theme
+# (appearance.json) is never changed: pick haseen once in Obsidian
+# (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../themed/lib.sh
+source "$HASEEN_OMARCHY_DIR/themed/lib.sh"
+
+OBSIDIAN_CONFIGS=(
+    "${XDG_CONFIG_HOME:-$HOME/.config}/obsidian/obsidian.json"
+    "$HOME/.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json"
+)
+
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-obsidian [--dry-run]
+
+haseen's answer to Omarchy's command: writes the current haseen theme into
+.obsidian/themes/haseen/ of every vault Obsidian knows (native or Flatpak).
+Select "haseen" once under Settings > Appearance > Themes.
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 1
+}
+
+omarchy_theme_file obsidian.css || exit 0
+source_path="$REPLY"
+
+mapfile -t vaults < <(
+    for config in "${OBSIDIAN_CONFIGS[@]}"; do
+        [[ -f $config ]] || continue
+        jq -r '.vaults | values[].path' "$config" 2>/dev/null || true
+    done | LC_ALL=C sort -u
+)
+
+for vault_path in "${vaults[@]}"; do
+    [[ -n $vault_path && -d $vault_path/.obsidian ]] || continue
+    theme_dir="$vault_path/.obsidian/themes/haseen"
+    if [[ ! -f $theme_dir/manifest.json ]]; then
+        write_user_file "$theme_dir/manifest.json" <<'EOF'
+{
+  "name": "haseen",
+  "version": "1.0.0",
+  "minAppVersion": "0.16.0",
+  "description": "Follows the colours of the current haseen theme",
+  "author": "haseen",
+  "authorUrl": "https://github.com/t1nk333r/haseen"
+}
+EOF
+    fi
+    omarchy_publish "$source_path" "$theme_dir/theme.css"
+done

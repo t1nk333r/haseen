@@ -5,7 +5,8 @@
 # 2. Install the tree: bin/ -> PREFIX/bin, share/haseen -> PREFIX/share/haseen,
 #    systemd user units -> PREFIX/lib/systemd/user, desktop entries ->
 #    PREFIX/share/applications, the app icon (`-i haseen`) ->
-#    PREFIX/share/icons/hicolor. PREFIX defaults to
+#    PREFIX/share/icons/hicolor, and haseen's answers to Omarchy's commands
+#    as links in PREFIX/bin (plan 093). PREFIX defaults to
 #    /usr/local because these files are not owned by a package (yet; see
 #    plans/README.md, PKGBUILD phase).
 # 3. Apply the default layers through the installed `haseen layer apply`.
@@ -53,9 +54,9 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
                 default. Not combined with --pick.
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
-                remove PREFIX/bin/haseen*, PREFIX/share/haseen and the user
-                units; applied layers stay (remove them first with
-                haseen layer remove)
+                remove PREFIX/bin/haseen*, haseen's omarchy* links in
+                PREFIX/bin, PREFIX/share/haseen and the user units; applied
+                layers stay (remove them first with haseen layer remove)
 EOF
 }
 
@@ -129,11 +130,56 @@ ICON_DIR="$PREFIX/share/icons/hicolor"
 # default` writes.
 VENDOR_FILES=(applications/mimeapps.list xdg-terminal-exec/hyprland-xdg-terminals.list)
 
+# haseen answers every Omarchy command (plan 093, architecture 5.4): each
+# share/haseen/omarchy/bin/<name> is linked into PREFIX/bin. /usr/local/bin
+# comes before /usr/bin on the login PATH (Arch's /etc/profile) and in the
+# compositor's and the systemd user manager's environment, so on an Omarchy
+# host the name reaches haseen, not Omarchy's /usr/bin copy; without Omarchy
+# it is simply there. The link is relative, so it follows the
+# tree, and it is how install and uninstall tell haseen's from anything else:
+# a file of that name that is not this link is never replaced or removed.
+OMARCHY_LINK_DIR=../share/haseen/omarchy/bin
+
+omarchy_link_ours() {
+    [[ -L $1 && $(readlink -- "$1") == "$OMARCHY_LINK_DIR/${1##*/}" ]]
+}
+
+# The links haseen put in PREFIX/bin, from this or an earlier version.
+omarchy_links_present() {
+    local dest
+    for dest in "$PREFIX/bin/omarchy" "$PREFIX"/bin/omarchy-*; do
+        omarchy_link_ours "$dest" && printf '%s\n' "$dest"
+    done
+    return 0
+}
+
+install_omarchy_links() {
+    local f name dest targets=() stale=()
+    for f in "$REPO"/share/haseen/omarchy/bin/*; do
+        name="${f##*/}"
+        dest="$PREFIX/bin/$name"
+        omarchy_link_ours "$dest" && continue
+        if [[ -e $dest || -L $dest ]]; then
+            warn "$dest is not haseen's and stays; '$name' there does not reach haseen"
+            continue
+        fi
+        targets+=("$OMARCHY_LINK_DIR/$name")
+    done
+    # One ln for all of them: ln -t names each link after its target.
+    ((${#targets[@]} == 0)) || run_root ln -sf -t "$PREFIX/bin" "${targets[@]}"
+    while read -r dest; do
+        [[ -e $REPO/share/haseen/omarchy/bin/${dest##*/} ]] || stale+=("$dest")
+    done < <(omarchy_links_present)
+    ((${#stale[@]} == 0)) || run_root rm -f "${stale[@]}"
+}
+
 uninstall_tree() {
-    local f
+    local f links=()
     for f in "$REPO"/bin/haseen*; do
         run_root rm -f "$PREFIX/bin/${f##*/}"
     done
+    mapfile -t links < <(omarchy_links_present)
+    ((${#links[@]} == 0)) || run_root rm -f "${links[@]}"
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
     done
@@ -174,6 +220,7 @@ install_tree() {
     for f in "$REPO"/bin/haseen*; do
         install_root_file "$f" "$PREFIX/bin/${f##*/}" 0755
     done
+    install_omarchy_links
     for f in "$REPO"/share/haseen/systemd/user/*; do
         [[ -e $f ]] && install_root_file "$f" "$UNIT_DIR/${f##*/}" 0644
     done

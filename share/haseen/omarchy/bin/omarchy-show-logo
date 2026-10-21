@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-show-logo — clear the terminal and print haseen's logo in green.
+# Adapted from Omarchy bin/omarchy-show-logo (MIT, Copyright (c) David Heinemeier Hansson):
+# the logo is the selected haseen mark's terminal
+# rendering (lib/branding.sh branding_file logo, as haseen update and
+# haseen about show it), never Omarchy's $OMARCHY_PATH/logo.txt; a missing
+# logo prints nothing; read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/branding.sh
+source "$HASEEN_PATH/lib/branding.sh"
+
+omarchy_help "Usage: omarchy-show-logo
+
+haseen's answer to Omarchy's command: clears the terminal and prints haseen's
+logo (the selected mark, haseen branding mark) in green." "$@"
+
+logo="$(branding_file logo)"
+[[ -r $logo ]] || exit 0
+# A clear without a terminal (no TERM) is not worth failing over.
+clear 2>/dev/null || true
+printf '\033[32m\n'
+cat -- "$logo"
+printf '\033[0m\n\n'

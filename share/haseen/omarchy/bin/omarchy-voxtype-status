@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# omarchy-voxtype-status — stream Voxtype's state as JSON lines for a bar
+# indicator (Omarchy's Dictation widget reads it); without voxtype, one idle
+# line. Adapted from Omarchy bin/omarchy-voxtype-status (MIT,
+# Copyright (c) David Heinemeier Hansson): the same output contract, and the
+# follower stays the caller's direct child, dying with it (setpriv
+# --pdeathsig), so a restarted shell leaves no orphan. Read-only (plan 093).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-voxtype-status
+
+haseen's answer to Omarchy's command: follows 'voxtype status' as JSON lines;
+prints one idle line when Voxtype is not installed." "$@"
+
+if ! have voxtype; then
+    echo '{"alt": "", "class": "idle", "tooltip": ""}'
+    exit 0
+fi
+exec setpriv --pdeathsig TERM voxtype status --follow --extended --format json
