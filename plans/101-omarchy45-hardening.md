@@ -13,9 +13,10 @@
 - **Depends on**: 028 033 036 048 093
 - **Category**: compat, boot, migrations, importer
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-21, review round 1 addressed the same day
-  (`tests/test-omarchy-guard.sh` 119/119; the changed suites in Evidence; IO
-  and luna steps in Owner steps)
+- **State**: DONE 2026-10-21; review rounds 1 (2026-10-21) and 2
+  (2026-10-22) addressed (`tests/test-omarchy-guard.sh` 147/147, 129/129
+  without user namespaces; the full affected run in Evidence; IO and luna
+  steps in Owner steps)
 
 ## Decision (owner, 2026-10-21)
 
@@ -463,6 +464,34 @@ every root-owned-tree check ran):
 `tools/lint.sh` (shellcheck 0.11 at `/usr/bin/shellcheck`): lint OK (801
 shell, 33 Lua, 198 JSON, 334 QML, 41 Go files). `tools/check-docs.sh`: OK.
 gitleaks 8.30.1 over the branch range and the privacy patterns: clean.
+
+After review round 2, with main (plan 100, 56d0cd8) merged in:
+
+- `tools/affected-tests.sh --check`: 2490 files, 155 tests, 1790 covers
+  globs, every file covered, global or exempt (test-omarchy-guard.sh got its
+  covers lines; the two mkinitcpio fixture trees are claimed by
+  test-plymouth.sh and test-hibernation.sh).
+- `tests/run.sh --affected origin/main`: the selection is all 155 test files,
+  because this plan changes two GLOBAL paths, `bin/haseen` and
+  `share/haseen/lib/common.sh`. 17543/17548 passed. The five failures, in
+  four files, come from this machine's long paths, not from the change:
+  `test-menu-back.sh` and `test-themegen-keys.sh` could not bind
+  Quickshell's IPC socket under this worktree's long path, and
+  `test-sidecar.sh`'s Go test `TestReconnectsWhenHyprlandComesBack` could not
+  bind its socket under the long `TMPDIR` (it fails the same way, 37/39, on
+  unmodified main at 56d0cd8). Rerun from a short path, the first three pass
+  (`test-nvim-theme.sh`'s one failed check, a count of headless nvim output
+  lines, also passed on main), and `test-sidecar.sh` passes 39/39 with a
+  short `TMPDIR`.
+- `tests/test-omarchy-guard.sh`: 147/147; 129/129 with user namespaces
+  refused (`bwrap --unshare-user --disable-userns`, as in CI's container: the
+  18 root-mode checks skip, every ownership decision still runs through the
+  `stat` stand-in); 147/147 from a checkout bound under `/tmp` (the location
+  that failed CI run 39656450369).
+- `tests/test-secureboot.sh`: 265/265; 264/264 with user namespaces refused.
+- `tools/lint.sh`: lint OK (803 shell, 33 Lua, 198 JSON, 334 QML, 41 Go
+  files), after renaming `root_trusted_dir`'s array: shellcheck follows
+  `common.sh` into commands that use `entries` as a string.
 
 ## Rejected
 
