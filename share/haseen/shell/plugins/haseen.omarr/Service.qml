@@ -71,6 +71,8 @@ Scope {
     property string credsState: ""
     property bool seenLoaded: false
     readonly property bool ready: dirsReady && credsState === "ok" && seenLoaded
+    // Why credentials.json is not usable, for the panel; "" while it is.
+    property string credsWhy: ""
     property var writeQueue: []
     property string pendingWriteText: ""
     property string pendingWriteThen: ""
@@ -175,6 +177,17 @@ Scope {
         Qt.callLater(root.startSettingsWrite);
     }
 
+    // credentials.json is rewritten whole from root.credentials, which is {}
+    // until it was read and after a read failed: writing then would replace
+    // every stored key with this one change. Every credential write comes
+    // through here; it is refused until the file was read.
+    function credentialsWritable() {
+        if (root.credsState === "ok")
+            return true;
+        console.warn("haseen.omarr: not saving keys:", root.credsPath, root.credsState === "error" ? "cannot be read" : "is not read yet");
+        return false;
+    }
+
     function persistCredentials() {
         root.enqueueWrite(root.stateDir, "credentials.json", Model.serializeCredentials(root.credentials), "");
     }
@@ -205,6 +218,8 @@ Scope {
     }
 
     function persistCredential(id, patch) {
+        if (!root.credentialsWritable())
+            return;
         root.credentials = Model.setCredential(root.credentials, id, patch);
         persistCredentials();
     }
@@ -228,6 +243,10 @@ Scope {
 
     function removeService(id) {
         persistSettings(Model.removeService(root.pluginSettings, id));
+        if (!root.credentialsWritable()) {
+            Qt.callLater(root.rebuildSnapshots);
+            return;
+        }
         const creds = {};
         for (const key in root.credentials) {
             if (key === String(id))
@@ -265,7 +284,9 @@ Scope {
     function setCredsState(state, why) {
         if (state === "error" && root.credsState !== "error")
             console.warn("haseen.omarr: cannot read", root.credsPath, "-", why, "- not polling until it can be read");
+        root.credsWhy = state === "error" ? String(why || "") : "";
         root.credsState = state;
+        root.refreshDerived();
     }
 
     // A request is built with the keys of the moment it is queued, so none
@@ -526,7 +547,7 @@ Scope {
         next.recent = root.recentFeed;
         next.calendar = root.calendarFeed;
         root.nowFeed = next;
-        root.statusText = root.configured ? Model.barStatusText(root.snapshots) : "Add a service";
+        root.statusText = root.credsState === "error" ? "Keys unreadable" : root.configured ? Model.barStatusText(root.snapshots) : "Add a service";
         const badge = Model.barBadge(root.snapshots);
         root.badgeCount = badge.count;
         root.badgeUrgent = badge.urgent === true;
