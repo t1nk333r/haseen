@@ -53,9 +53,16 @@ hibernate_swap_kib() {
 }
 
 
-# hibernate_initramfs_style — systemd | busybox, from those effective hooks.
+# hibernate_initramfs_style — systemd | busybox, from those effective hooks;
+# "unknown" and status 1 when they cannot be read (boot_hooks says why), never
+# a guess that would skip or add the resume hook wrongly.
 hibernate_initramfs_style() {
-    if boot_hooks | grep -qx -e systemd -e sd-encrypt; then
+    local hooks
+    if ! hooks="$(boot_hooks)"; then
+        echo unknown
+        return 1
+    fi
+    if grep -qx -e systemd -e sd-encrypt <<<"$hooks"; then
         echo systemd
     else
         echo busybox
@@ -63,8 +70,12 @@ hibernate_initramfs_style() {
 }
 
 # hibernate_resume_hook_present — a `resume` hook is configured (by haseen or
-# by whoever set this machine up before).
-hibernate_resume_hook_present() { boot_hooks | grep -qx resume; }
+# by whoever set this machine up before). Status 2 when HOOKS cannot be read.
+hibernate_resume_hook_present() {
+    local hooks
+    hooks="$(boot_hooks)" || return 2
+    grep -qx resume <<<"$hooks"
+}
 
 # hibernate_cmdline — every kernel command line this machine can boot with:
 # the bootloader's own configuration plus the running one.
@@ -115,10 +126,11 @@ hibernate_image_kib() {
 # needed, and a resume= on the command line.
 hibernate_ready() {
     hibernate_supported || return 1
-    local swap image
+    local swap image style
     swap="$(hibernate_swap_kib)"
     image="$(hibernate_image_kib)"
     ((swap > 0 && swap >= image)) || return 1
-    [[ $(hibernate_initramfs_style) == systemd ]] || hibernate_resume_hook_present || return 1
+    style="$(hibernate_initramfs_style)" || return 1
+    [[ $style == systemd ]] || hibernate_resume_hook_present || return 1
     hibernate_cmdline_has_resume
 }

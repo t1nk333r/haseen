@@ -13,6 +13,23 @@
 #      transaction already embeds haseen's splash.
 set -Eeuo pipefail
 
+# Under pacman a failed hook aborts nothing after the transaction and only
+# prints an error, so with --hook every path ends in status 0: a bad argument,
+# a library that does not load, a die. What failed is still reported.
+HOOK=false
+for arg in "$@"; do
+    [[ $arg == --hook ]] && HOOK=true
+done
+if $HOOK; then
+    trap 'exit 0' EXIT
+fi
+
+# As root (the pacman hook) the code is this file's own tree, never an
+# inherited HASEEN_PATH: whoever set that would choose what root sources.
+if ((EUID == 0)); then
+    HASEEN_PATH="$(cd "$(dirname "$(readlink -f "$0")")/../share/haseen" && pwd)"
+    export HASEEN_PATH
+fi
 # shellcheck source=../share/haseen/lib/omarchy-guard.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/omarchy-guard.sh"
 # shellcheck source=../share/haseen/lib/plymouth.sh
@@ -35,17 +52,13 @@ omarchy or omarchy-settings package is installed or upgraded:
     haseen's again (no initramfs rebuild: the next one embeds it).
 
   --hook   as run by pacman: a step that fails is reported and the others
-           still run, and the exit status is 0
+           still run, and the exit status is always 0
 EOF
 }
 
-HOOK=false
 REST=()
 for arg in "$@"; do
-    case "$arg" in
-    --hook) HOOK=true ;;
-    *) REST+=("$arg") ;;
-    esac
+    [[ $arg == --hook ]] || REST+=("$arg")
 done
 parse_common_flags "${REST[@]+"${REST[@]}"}"
 ((${#REST[@]} == 0)) || {
@@ -109,7 +122,4 @@ if plymouth_reset_by_omarchy; then
         step_failed "haseen's splash was not restored: haseen plymouth set"
 fi
 
-if $HOOK; then
-    exit 0
-fi
 exit "$status"

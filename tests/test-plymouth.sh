@@ -242,3 +242,23 @@ assert_eq "a HOOKS string, extended by a linked drop-in, is split into words" \
 # Nothing a drop-in sets reaches the caller.
 assert_eq "HOOKS does not leak into the calling shell" "unset" \
     "$(HASEEN_SYSROOT="$plain" bash -c 'source "$HASEEN_PATH/lib/boot.sh"; boot_hooks >/dev/null; echo "${HOOKS-unset}"')"
+# Without a readable mkinitcpio.conf mkinitcpio does not build, whatever its
+# drop-ins say: boot_hooks fails, status says unknown, set refuses.
+mv "$plain/etc/mkinitcpio.conf" "$plain/etc/mkinitcpio.conf.away"
+capture env HASEEN_SYSROOT="$plain" bash -c 'source "$HASEEN_PATH/lib/boot.sh"; boot_hooks'
+assert_status "no mkinitcpio.conf: boot_hooks fails" 1 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "/etc/mkinitcpio.conf is missing or unreadable; mkinitcpio would not build without it"
+assert_not_contains "the drop-ins alone are not reported as the hooks" "$OUTPUT" "linked"
+mkdir -p "$plain/usr/bin" "$plain/proc"
+printf '#!/bin/sh
+exit 0
+' >"$plain/usr/bin/plymouth-set-default-theme"
+chmod +x "$plain/usr/bin/plymouth-set-default-theme"
+capture env HASEEN_SYSROOT="$plain" haseen plymouth status
+assert_contains "plymouth status: the hook is unknown, not missing" "$OUTPUT" \
+    "hook:      unknown (mkinitcpio's configuration does not evaluate)"
+assert_contains "and not ready" "$OUTPUT" "ready:     no"
+capture env HASEEN_SYSROOT="$plain" haseen plymouth set --dry-run
+assert_status "plymouth set refuses without it" 1 "$STATUS"
+assert_not_contains "and plans no drop-in" "$OUTPUT" "haseen-plymouth.conf"
+mv "$plain/etc/mkinitcpio.conf.away" "$plain/etc/mkinitcpio.conf"

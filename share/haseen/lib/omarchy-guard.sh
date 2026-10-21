@@ -65,22 +65,35 @@ omarchy_migrations_unsealed() {
 # omarchy_seal_migrations — record every unsealed migration as done in this
 # user's Omarchy ledger, without running it. A marker Omarchy wrote is never
 # touched; haseen's say who wrote them, for a later bug report. Idempotent.
+# One migration that cannot be sealed (its name in the ledger is not a regular
+# file, or the write fails) does not stop the others: all are attempted, every
+# failure is named, and the status is 1.
 omarchy_seal_migrations() {
-    local ledger name n=0 stamp
+    local ledger name n=0 stamp failed=()
     ledger="$(omarchy_ledger_dir)"
     stamp="sealed by haseen $(cat "$HASEEN_PATH/VERSION") on $(date -Is): never run here (plan 101)"
     while IFS= read -r name; do
         [[ -n $name ]] || continue
-        [[ -e $ledger/$name || -L $ledger/$name ]] &&
-            die "$ledger/$name exists but is not a regular file; Omarchy's runner would still run $name"
-        printf '%s\n' "$stamp" | write_user_file "$ledger/$name"
-        n=$((n + 1))
+        if [[ -e $ledger/$name || -L $ledger/$name ]]; then
+            warn "$ledger/$name exists but is not a regular file, so Omarchy's runner would still run $name; remove it and run haseen migrate omarchy again"
+            failed+=("$name")
+        elif printf '%s\n' "$stamp" | write_user_file "$ledger/$name"; then
+            n=$((n + 1))
+        else
+            warn "could not write $ledger/$name"
+            failed+=("$name")
+        fi
     done < <(omarchy_migrations_unsealed)
-    if ((n == 0)); then
+    if ((n > 0)); then
+        info "Omarchy's migrations: sealed $n"
+    elif ((${#failed[@]} == 0)); then
         info "Omarchy's migrations: nothing to seal ($(omarchy_migrations_count) recorded)"
-    else
-        info "Omarchy's migrations: sealed $n, so /usr/bin/omarchy-migrate runs none of them"
     fi
+    if ((${#failed[@]})); then
+        warn "Omarchy's migrations: ${#failed[@]} not sealed, so /usr/bin/omarchy-migrate would still run them: ${failed[*]}"
+        return 1
+    fi
+    ((n == 0)) || info "Omarchy's migrations: /usr/bin/omarchy-migrate runs none of them"
 }
 
 # omarchy_guard_prefix — haseen's PREFIX (/usr/local, or /usr after the
@@ -96,6 +109,23 @@ omarchy_guard_hook_render() {
 
 omarchy_guard_hook_current() {
     cmp -s <(omarchy_guard_hook_render) "$(sysroot_path "$OMARCHY_GUARD_HOOK")"
+}
+
+# omarchy_guard_exec_trusted — the hook's Exec runs as root: this tree's haseen
+# and the command it routes to must be files only root can change
+# (root_trusted_exec), so a hook is never written for a checkout or any other
+# tree a user owns. install.sh copies the tree as root (install.sh:233-235).
+# Prints why not.
+omarchy_guard_exec_trusted() {
+    local bin
+    bin="$(omarchy_guard_prefix)/bin"
+    root_trusted_exec "$bin/haseen" "$bin/haseen-omarchy-guard"
+}
+
+# omarchy_guard_untrusted_note WHY — what to do about it.
+omarchy_guard_untrusted_note() {
+    printf "the hook's %s runs as root, but %s; install haseen as root (./install.sh) and apply the base layer with the installed haseen\n" \
+        "$(omarchy_guard_prefix)/bin/haseen" "$1"
 }
 
 # omarchy_notify_dropin [PREFIX] — the drop-in that silences Omarchy's login
@@ -153,7 +183,7 @@ omarchy_guard_doctor() {
     source "$HASEEN_PATH/lib/packages.sh"
     # shellcheck source=plymouth.sh
     source "$HASEEN_PATH/lib/plymouth.sh"
-    local ok=0 unsealed count unit target note
+    local ok=0 unsealed count unit target note why
     if ! pkg_installed omarchy && ! pkg_installed omarchy-settings && [[ ! -d $(omarchy_migrations_dir) ]]; then
         echo "omarchy package=not installed (nothing to guard)"
         return 0
@@ -169,7 +199,12 @@ omarchy_guard_doctor() {
         fi
     fi
     if omarchy_guard_hook_current; then
-        echo "omarchy pacman hook=installed ($OMARCHY_GUARD_HOOK)"
+        if why="$(omarchy_guard_exec_trusted)"; then
+            echo "omarchy pacman hook=installed ($OMARCHY_GUARD_HOOK)"
+        else
+            echo "omarchy pacman hook=unsafe: $(omarchy_guard_untrusted_note "$why")"
+            ok=1
+        fi
     elif [[ -e $(sysroot_path "$OMARCHY_GUARD_HOOK") ]]; then
         echo "omarchy pacman hook=differs from this tree's: haseen layer apply base"
         ok=1

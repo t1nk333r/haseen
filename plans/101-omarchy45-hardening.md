@@ -13,8 +13,9 @@
 - **Depends on**: 028 033 036 048 093
 - **Category**: compat, boot, migrations, importer
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-21 (`tests/test-omarchy-guard.sh` 93/93; the
-  changed suites in Evidence; IO and luna steps in Owner steps)
+- **State**: DONE 2026-10-21, review round 1 addressed the same day
+  (`tests/test-omarchy-guard.sh` 119/119; the changed suites in Evidence; IO
+  and luna steps in Owner steps)
 
 ## Decision (owner, 2026-10-21)
 
@@ -121,11 +122,13 @@ things go wrong:
 
 `share/haseen/lib/omarchy-guard.sh` holds Omarchy's ledger rule
 (`omarchy_migrations_dir:39`, `omarchy_ledger_dir:43`,
-`omarchy_migrations_unsealed:56`) and `omarchy_seal_migrations:68`, which
+`omarchy_migrations_unsealed:56`) and `omarchy_seal_migrations:71`, which
 writes a marker (content `sealed by haseen <version> on <date>: never run
 here`; Omarchy reads only that it is a regular file) for every unsealed
-script through `write_user_file`, leaves Omarchy's own markers alone, and
-refuses a marker path that is not a regular file. Three callers:
+script through `write_user_file` and leaves Omarchy's own markers alone. A
+marker path that is not a regular file (or a write that fails) is named and
+skipped, the rest are still sealed, and the status is 1 (review round 1).
+Three callers:
 
 - `bin/haseen-migrate-omarchy` (`haseen migrate omarchy [--pending]
   [--dry-run]`): this user, now. Refuses root.
@@ -134,19 +137,22 @@ refuses a marker path that is not a regular file. Three callers:
 - `share/haseen/default/omarchy-guard/50-haseen-omarchy.hook`, installed by
   `haseen layer apply base` (`base_omarchy_guard`,
   `share/haseen/layers/base/layer.sh:99`, Exec rendered from the installed
-  tree like the secureboot hook): after every transaction that installs or
+  tree like the secureboot hook, and written only when that tree is
+  root's: see Review round 1): after every transaction that installs or
   upgrades `omarchy` or `omarchy-settings` it runs `haseen omarchy guard
   --hook` as root (`bin/haseen-omarchy-guard`). For every login account
   (uid ≥ 1000, not 65534, a real shell) with `~/.local/state/haseen`
-  (`haseen_users:71`) it runs `haseen-migrate-omarchy` **as that user**
-  through `runuser -u USER -- env -i HOME=… PATH=… HASEEN_PATH=…` (`:97`), so
+  (`haseen_users:84`) it runs `haseen-migrate-omarchy` **as that user**
+  through `runuser -u USER -- env -i HOME=… PATH=… HASEEN_PATH=…` (`:110`), so
   root never writes in a home. Under `--hook` a failed step is reported and
-  the exit status is 0 (`:112`). Because `omarchy-update` calls
+  every path, a bad argument included, exits 0 (the `EXIT` trap, `:19-25`).
+  Because `omarchy-update` calls
   `omarchy-migrate` only after its pacman transaction has returned
   (`bin/omarchy-update@v4.5.0-rc1:127-129`), 4.5's 84 migrations are sealed
   before Omarchy's own updater could run them.
-- `base`'s `layer_status` reports the hook: `ok`, `warn` when it differs,
-  `missing` (status 1) only where an Omarchy package is installed.
+- `base`'s `layer_status` reports the hook: `ok`, `warn` when it differs or
+  runs a tree a user owns, `missing` (status 1) only where an Omarchy package
+  is installed.
 
 #### Mechanism chosen, and the ones rejected
 
@@ -219,8 +225,9 @@ splash fail doctor; enabled units are listed.
 `*.conf` in `mkinitcpio.conf.d` that is a regular file or a link to one, names
 `sort -V`, concatenated and sourced once in a subshell (`set +eu`, output
 discarded, nothing leaks), a HOOKS string split into words. A source that
-fails (Omarchy's detector `return 1`) is a warning and status 1; mkinitcpio
-would refuse to build too. `boot_hooks_known` (`:113`) stops
+fails (Omarchy's detector `return 1`), or a `mkinitcpio.conf` that is
+missing or unreadable (`:88-91`, review round 1), is a warning and status 1;
+mkinitcpio would refuse to build too. `boot_hooks_known` (`:119`) stops
 `haseen plymouth set` (`bin/haseen-plymouth-set:56`) and
 `haseen hibernation setup` (`bin/haseen-hibernation-setup:58`) before they
 mistake that for "missing". The brief said "each drop-in"; mkinitcpio
@@ -246,11 +253,11 @@ One finding, not changed here: under 4.0.6, `haseen-resume.conf` sorts before
 ### 4. The splash guard
 
 The risk is real (Problem 4), so `plymouth_reset_by_omarchy`
-(`share/haseen/lib/plymouth.sh:53`) is true when haseen's theme is installed
+(`share/haseen/lib/plymouth.sh:59`) is true when haseen's theme is installed
 (`haseen.plymouth`) and `plymouthd.conf` names `omarchy`, the value the
 scriptlet writes; any other theme is the owner's choice and stays. The same
 pacman hook (it triggers on `omarchy-settings` too) runs
-`plymouth-set-default-theme haseen` through the guard (`:108`), without a
+`plymouth-set-default-theme haseen` through the guard (`:121`), without a
 rebuild: the hook sorts as `50-`, before `80-limine-efi-deploy` and
 `90-mkinitcpio-install`, so an initramfs built in the same transaction
 embeds haseen's splash, and a later one does anyway. `haseen plymouth status`
@@ -276,6 +283,67 @@ id to a `bar.overflow` the user set only when the user's sections do not
 already hold it, and the command lists it ("bar.overflow: added …").
 `bin/haseen-plugin-settings:125` mirrors an entry found in any of the six
 sections.
+
+## Review round 1 (Sonnet 5.5 at 301cf4d, 2026-10-21)
+
+The reviewer accepted the seal, the per-user write path, `boot_hooks` and the
+bar mapping, and asked for six changes, made in a new commit:
+
+1. **Blocker: the hook's `Exec` could name files a user can write.** The
+   hook runs it as root, and `omarchy_guard_prefix` derives it from the tree
+   that applied the layer, so applied from a checkout it named
+   `<checkout>/bin/haseen`. `root_trusted_exec` (`share/haseen/lib/common.sh:71`,
+   with `root_only_node:47`) now resolves each path one directory entry at a
+   time, as namei(1) does, following every symbolic link (inside
+   `HASEEN_SYSROOT` in tests), and requires every directory it reads an entry
+   from, and the file, to be owned by root and not writable by group or
+   others. `base_omarchy_guard` (`share/haseen/layers/base/layer.sh:99-104`)
+   warns and writes nothing unless the router and `haseen-omarchy-guard` pass
+   (`omarchy_guard_exec_trusted`, `share/haseen/lib/omarchy-guard.sh:119`);
+   `layer_status` and doctor report an installed hook whose tree fails as
+   `warn` / `unsafe`. The Secure Boot hook gets the same check for the router
+   and `haseen-secureboot-sign` (`share/haseen/layers/secureboot/secureboot.sh:41`,
+   `layer.sh:33`, its status at `secureboot.sh:742`). As root,
+   `bin/haseen-omarchy-guard:29-32` ignores an inherited `HASEEN_PATH` and
+   sources its own tree.
+2. `boot_hooks` fails when `mkinitcpio.conf` is missing or unreadable, as
+   mkinitcpio does (`/usr/bin/mkinitcpio:1131,1143`), instead of reading the
+   drop-ins alone. `hibernate_initramfs_style`
+   (`share/haseen/lib/hibernate.sh:59`) prints `unknown` and fails rather than
+   `busybox`; `hibernate_resume_hook_present` and `plymouth_hook_present`
+   return 2 for unknown; `haseen hibernation status` and `haseen plymouth
+   status` print "unknown (mkinitcpio's configuration does not evaluate)",
+   and `hibernate_ready` is false.
+3. `omarchy_seal_migrations` names every marker path it cannot use, seals
+   the others, and returns 1 (`haseen migrate omarchy` exits 1; the guard
+   reports it and, under `--hook`, still exits 0).
+4. `--hook` is read before anything else, and an `EXIT` trap makes every
+   path in hook mode exit 0: a bad argument, a library that does not load,
+   the non-root refusal.
+5. `tests/test-core.sh`'s "omarchy-repo: never Omarchy itself" now strips
+   only the guard hook's own write and its `    | ` lines, so the rest of the
+   base layer's output is checked again.
+6. `docs/architecture.md` §5.4 says the ledger is Omarchy's own state, not a
+   file haseen seeded, and what haseen does and does not write there; it also
+   records the root-only `Exec` rule.
+
+Rejected for item 1:
+
+- `readlink -f` on the path, then the result's ancestors only: a link kept
+  in a directory a user can write could be re-pointed later while every
+  directory of its current target is root's. The walk checks the directory
+  of every link on the way.
+- Checking every file of `share/haseen`: `install.sh` copies the tree as root
+  (`install.sh:233-235`), and a checkout fails at its first user-owned
+  directory, before any file. The router and the command it runs are what
+  the hook executes.
+- A test-only variable that names another uid as trusted: production code
+  would then carry a switch that disables the check. The tests map this user
+  to root in a user namespace instead (skipped, with a note, where the
+  kernel refuses, as in CI's container).
+- Making the base layer fail when the check fails: the hook is one step of a
+  layer whose other steps are still right; a warning with the fix, a `warn`
+  status and a failing doctor say it without stopping the rest.
 
 ## Evidence
 
@@ -303,9 +371,28 @@ the touched files ran):
 
 The first run of the covering suites had one failure: `test-core.sh`'s
 "omarchy-repo: never Omarchy itself" matched the word `omarchy-settings`
-anywhere in the plan, which now includes the base layer's printed hook. It
-now checks package commands and the omarchy-repo layer's own steps, as it
-meant.
+anywhere in the plan, which then included the base layer's printed hook.
+Review round 1 narrowed it to leave out only that hook's own lines.
+
+After review round 1 (same wrapper; user namespaces available on luna, so
+every root-owned-tree check ran):
+
+| Suite | Checks |
+|---|---|
+| `tests/test-omarchy-guard.sh` | 119/119 |
+| `tests/test-secureboot.sh` | 257/257 |
+| `tests/test-plymouth.sh` | 79/79 |
+| `tests/test-hibernation.sh` | 43/43 |
+| `tests/test-core.sh` | 91/91 |
+| `tests/test-desktop.sh` | 159/159 |
+| `tests/test-install-picker.sh` | 72/72 |
+| `tests/test-menu.sh` | 306/306 |
+| `tests/test-omarchy-commands.sh` | 171/171 |
+| `tests/test-omarchy-hw.sh` | 270/270 |
+| `tests/test-omarchy-restart.sh` | 255/255 |
+| `tests/test-omarchy-import.sh` | 156/156 |
+| `tests/test-compat-mirror.sh` | 23/23 |
+| `tests/test-vapt.sh` | 357/357 |
 
 `tools/lint.sh` (shellcheck 0.11 at `/usr/bin/shellcheck`): lint OK (801
 shell, 33 Lua, 198 JSON, 334 QML, 41 Go files). `tools/check-docs.sh`: OK.
@@ -326,13 +413,22 @@ gitleaks 8.30.1 over the branch range and the privacy patterns: clean.
 On **IO** and on **luna**, from a haseen checkout at this PR's merge:
 
 ```sh
-./install.sh --tree-only --yes      # the tree, the new commands, the notice drop-in
-systemctl --user daemon-reload      # picks up the drop-in now
-haseen layer apply base             # sudo: installs /etc/pacman.d/hooks/50-haseen-omarchy.hook
-haseen migrate                      # runs 1792605416 (seal) and 1792605417 (polkit; sudo only if the old stack is there)
-haseen doctor                       # expect: omarchy migrations=sealed, omarchy pacman hook=installed
-haseen plymouth status              # if it says Omarchy put its splash back: sudo haseen omarchy guard
+./install.sh --tree-only --yes                  # the tree, the new commands, the notice drop-in
+systemctl --user daemon-reload                  # picks up the drop-in now
+/usr/local/bin/haseen layer apply base          # sudo: installs /etc/pacman.d/hooks/50-haseen-omarchy.hook
+haseen migrate                                  # runs 1792605416 (seal) and 1792605417 (polkit; sudo only if the old stack is there)
+haseen doctor                                   # expect: omarchy migrations=sealed, omarchy pacman hook=installed
+haseen plymouth status                          # if it says Omarchy put its splash back: sudo haseen omarchy guard
+/usr/local/bin/haseen layer status secureboot   # only where the secureboot layer is applied
 ```
+
+The layer must be applied with the **installed** haseen: run from the
+checkout (`./bin/haseen`, or a `haseen` that resolves into it), the base layer
+warns "pacman hook not written: the hook's … runs as root, but …" and writes
+nothing (Review round 1). Where `haseen layer status secureboot` warns
+"the hook's … runs as root, but …", the Secure Boot hook was installed from a
+checkout before this check: `/usr/local/bin/haseen layer apply secureboot`
+rewrites it to the installed tree.
 
 After the next `haseen update` that brings Omarchy 4.5, run
 `haseen migrate omarchy --pending` (exit 1, nothing listed, means sealed) and

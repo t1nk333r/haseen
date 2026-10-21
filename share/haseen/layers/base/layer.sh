@@ -97,6 +97,11 @@ base_bluetooth() {
 # Omarchy package that arrives later (flea pulls it in, plan 037) is guarded
 # from its first transaction.
 base_omarchy_guard() {
+    local why
+    if ! why="$(omarchy_guard_exec_trusted)"; then
+        warn "Omarchy package guard: pacman hook not written: $(omarchy_guard_untrusted_note "$why")"
+        return 0
+    fi
     if omarchy_guard_hook_current; then
         info "Omarchy package guard: pacman hook in place"
         return 0
@@ -119,7 +124,7 @@ base_snapper_check() {
 # --- layer contract ----------------------------------------------------------
 
 layer_status() {
-    local rc=0 missing=() p out
+    local rc=0 missing=() p out why
     out="$(manifest_entries "$LAYER_DIR/packages.txt" repo)"
     while read -r p; do
         [[ -n $p ]] || continue
@@ -151,7 +156,12 @@ layer_status() {
     fi
     # Missing matters only where Omarchy's packages are installed.
     if omarchy_guard_hook_current; then
-        echo "ok: Omarchy package guard ($OMARCHY_GUARD_HOOK)"
+        if why="$(omarchy_guard_exec_trusted)"; then
+            echo "ok: Omarchy package guard ($OMARCHY_GUARD_HOOK)"
+        else
+            echo "warn: Omarchy package guard: $(omarchy_guard_untrusted_note "$why")"
+            ((rc == 0)) && rc=2
+        fi
     elif [[ -e $(sysroot_path "$OMARCHY_GUARD_HOOK") ]]; then
         echo "warn: $OMARCHY_GUARD_HOOK differs from the shipped one (haseen layer apply base)"
         ((rc == 0)) && rc=2

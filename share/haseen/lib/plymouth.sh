@@ -40,7 +40,13 @@ plymouth_current_theme() {
     sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' "$f" | tail -n1
 }
 
-plymouth_hook_present() { boot_hooks | grep -qx plymouth; }
+# plymouth_hook_present — `plymouth` is in the effective HOOKS; status 2 when
+# they cannot be read (boot_hooks says why).
+plymouth_hook_present() {
+    local hooks
+    hooks="$(boot_hooks)" || return 2
+    grep -qx plymouth <<<"$hooks"
+}
 
 # plymouth_reset_by_omarchy — Omarchy's omarchy-settings package undid
 # haseen's splash. Its install scriptlet copies its own plymouthd.conf

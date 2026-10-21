@@ -35,6 +35,14 @@ SB_HOOK_DEST=/etc/pacman.d/hooks/zz-haseen-secureboot.hook
 # after the PKGBUILD phase both work without editing the file.
 SB_HASEEN_BIN="$(cd "$SB_DIR/../../../.." && pwd)/bin/haseen"
 sb_hook_render() { sed "s|@HASEEN_BIN@|$SB_HASEEN_BIN|" "$SB_HOOK_SRC"; }
+# The hook runs that haseen as root, so it is written only when it and the
+# command it routes to are files only root can change (root_trusted_exec):
+# never for a checkout or another tree a user owns. Prints why not.
+sb_hook_exec_trusted() { root_trusted_exec "$SB_HASEEN_BIN" "$SB_HASEEN_BIN-secureboot-sign"; }
+sb_hook_untrusted_note() {
+    printf "the hook's %s runs as root, but %s; install haseen as root (./install.sh) and apply the secureboot layer with the installed haseen\n" \
+        "$SB_HASEEN_BIN" "$1"
+}
 SB_SBCTL_HOOK=zz-sbctl.hook
 SB_SBCTL_MIN=0.17
 SB_LIMINE_DEFAULT=/etc/default/limine
@@ -603,7 +611,7 @@ sb_hook_current() { cmp -s <(sb_hook_render) "$(sysroot_path "$SB_HOOK_DEST")"; 
 # signed (and, on Limine, the config is enrolled and fully hashed); 1 otherwise.
 # Also sets SB_HAVE_SBCTL and SB_HAVE_HOOK for layer_status.
 sb_report() {
-    local ready=true ver rc json kind text l
+    local ready=true ver rc json kind text l why
     SB_HAVE_SBCTL=false
     SB_HAVE_HOOK=false
 
@@ -731,7 +739,11 @@ sb_report() {
 
     if sb_hook_current; then
         SB_HAVE_HOOK=true
-        echo "ok: pacman hook: $SB_HOOK_DEST"
+        if why="$(sb_hook_exec_trusted)"; then
+            echo "ok: pacman hook: $SB_HOOK_DEST"
+        else
+            echo "warn: pacman hook: $(sb_hook_untrusted_note "$why")"
+        fi
     elif [[ -e $(sysroot_path "$SB_HOOK_DEST") ]]; then
         SB_HAVE_HOOK=true
         echo "warn: pacman hook: $SB_HOOK_DEST differs from the shipped one (haseen layer apply secureboot)"

@@ -19,11 +19,18 @@ plymouth_reset_by_omarchy &&
 printf 'theme:     %s%s\n' "$(plymouth_current_theme || echo "(none)")" "$theme_note"
 printf 'installed: %s\n' \
     "$([[ -r $(sysroot_path "$PLYMOUTH_THEME_DIR/haseen.script") ]] && echo "$PLYMOUTH_THEME_DIR" || echo "haseen's theme is not installed")"
-printf 'hook:      %s\n' "$(plymouth_hook_present && echo "plymouth is in HOOKS" || echo "missing from HOOKS (no splash)")"
+hook=0
+plymouth_hook_present || hook=$?
+case $hook in
+0) hook_text="plymouth is in HOOKS" ;;
+2) hook_text="unknown (mkinitcpio's configuration does not evaluate)" ;;
+*) hook_text="missing from HOOKS (no splash)" ;;
+esac
+printf 'hook:      %s\n' "$hook_text"
 printf 'cmdline:   %s\n' "$(boot_cmdline_has splash && echo "splash is on the kernel command line" || echo "no 'splash' (the kernel keeps the screen)")"
 
 ready=true
-plymouth_hook_present || ready=false
+((hook == 0)) || ready=false
 boot_cmdline_has splash || ready=false
 [[ $(plymouth_current_theme) == haseen ]] || ready=false
 if $ready; then

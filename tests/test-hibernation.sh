@@ -152,3 +152,16 @@ resume_in() {
 assert_eq "4.0.6 layout: busybox, and Omarchy's list replaces the resume append" "busybox no-resume" \
     "$(resume_in "$SANDBOX/omarchy-4.0.6")"
 assert_eq "4.5 layout: busybox, and the resume append takes effect" "busybox resume" "$(resume_in "$SANDBOX/omarchy-4.5")"
+# HOOKS that cannot be read are unknown, never "busybox without resume".
+rm "$SANDBOX/omarchy-4.5/etc/mkinitcpio.conf"
+capture env HASEEN_SYSROOT="$SANDBOX/omarchy-4.5" bash -c 'source "$HASEEN_PATH/lib/hibernate.sh"; hibernate_initramfs_style'
+assert_status "no mkinitcpio.conf: the initramfs style fails" 1 "$STATUS"
+assert_contains "as unknown" "$OUTPUT" "unknown"
+assert_not_contains "never a guess" "$OUTPUT" "busybox"
+capture env HASEEN_SYSROOT="$SANDBOX/omarchy-4.5" bash -c 'source "$HASEEN_PATH/lib/hibernate.sh"; hibernate_resume_hook_present'
+assert_status "and whether resume is there is unknown too" 2 "$STATUS"
+mv "$plain/etc/mkinitcpio.conf" "$plain/etc/mkinitcpio.conf.away"
+capture env HASEEN_SYSROOT="$plain" haseen hibernation status
+assert_status "hibernation status: not ready" 1 "$STATUS"
+assert_contains "and says the initramfs is unknown" "$OUTPUT" "initramfs: unknown (mkinitcpio's configuration does not evaluate)"
+mv "$plain/etc/mkinitcpio.conf.away" "$plain/etc/mkinitcpio.conf"

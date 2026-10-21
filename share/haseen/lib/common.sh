@@ -42,6 +42,73 @@ sysroot_path() { printf '%s%s\n' "$HASEEN_SYSROOT" "$1"; }
 # that need a live kernel/firmware (bootctl, lsblk, sbctl) must skip then.
 in_sysroot() { [[ -n $HASEEN_SYSROOT ]]; }
 
+# root_only_node PATH — PATH (as the inspected system sees it) is owned by
+# root and writable by neither its group nor others; prints why not.
+root_only_node() {
+    local st
+    st="$(stat -c '%u %a' -- "${HASEEN_SYSROOT%/}$1" 2>/dev/null)" || {
+        echo "$1 does not exist"
+        return 1
+    }
+    ((${st% *} == 0)) || {
+        echo "$1 is owned by uid ${st% *}, not root"
+        return 1
+    }
+    if ((8#${st#* } & 8#022)); then
+        echo "$1 is writable by its group or by others"
+        return 1
+    fi
+}
+
+# root_trusted_exec PATH... — every PATH is a file only root can change. Each
+# is resolved one directory entry at a time, as namei(1) walks it, following
+# every symbolic link (inside HASEEN_SYSROOT when set): every directory an
+# entry is read from, and the file itself, must pass root_only_node. A pacman
+# hook runs its Exec as root, so an Exec that a user could replace, or point
+# somewhere else, is root for that user: a haseen run from a checkout fails at
+# the checkout's first directory. Prints why not, with the path as the
+# inspected system sees it, and returns 1.
+root_trusted_exec() {
+    local path rest comp cur target hops
+    for path in "$@"; do
+        [[ $path == /* ]] || {
+            echo "$path is not an absolute path"
+            return 1
+        }
+        rest="$path" cur="" hops=0
+        while [[ -n $rest ]]; do
+            rest="${rest#/}"
+            comp="${rest%%/*}"
+            if [[ $rest == */* ]]; then rest="${rest#*/}"; else rest=""; fi
+            case "$comp" in
+            "" | .) continue ;;
+            ..)
+                cur="${cur%/*}"
+                continue
+                ;;
+            esac
+            # Whoever can write this directory decides what the entry is.
+            root_only_node "${cur:-/}" || return 1
+            if [[ -L ${HASEEN_SYSROOT%/}$cur/$comp ]]; then
+                ((++hops <= 40)) || {
+                    echo "$path: too many levels of symbolic links"
+                    return 1
+                }
+                target="$(readlink -- "${HASEEN_SYSROOT%/}$cur/$comp")"
+                [[ $target == /* ]] && cur=""
+                rest="$target${rest:+/$rest}"
+                continue
+            fi
+            cur="$cur/$comp"
+        done
+        root_only_node "$cur" || return 1
+        [[ -f ${HASEEN_SYSROOT%/}$cur ]] || {
+            echo "$cur is not a regular file"
+            return 1
+        }
+    done
+}
+
 run() {
     if $DRY_RUN; then
         echo "DRYRUN: $*"

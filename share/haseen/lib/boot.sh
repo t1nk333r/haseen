@@ -76,20 +76,26 @@ boot_cmdline_add() {
 # right. The files are sourced in a subshell, as the calling user, with their
 # output discarded, and nothing they set leaks back. When the configuration
 # does not source (a drop-in returns non-zero, as Omarchy's does for a machine
-# its detector cannot place), mkinitcpio refuses to build, and this warns and
-# fails rather than report an empty list.
+# its detector cannot place), or mkinitcpio.conf is missing or unreadable,
+# mkinitcpio refuses to build, and this warns and fails rather than report an
+# empty list.
 boot_hooks() {
     local conf dir name files=()
     conf="$(sysroot_path /etc/mkinitcpio.conf)"
     dir="$conf.d"
-    [[ -r $conf ]] && files+=("$conf")
+    # mkinitcpio dies without it (/usr/bin/mkinitcpio:1131,1143); so does this,
+    # rather than read the drop-ins alone or no hooks at all.
+    if [[ ! -f $conf || ! -r $conf ]]; then
+        warn "mkinitcpio's configuration $conf is missing or unreadable; mkinitcpio would not build without it"
+        return 1
+    fi
+    files+=("$conf")
     if [[ -d $dir ]]; then
         while IFS= read -r -d '' name; do
             [[ -r $dir/$name ]] && files+=("$dir/$name")
         done < <(LC_ALL=C.UTF-8 find "$dir" -maxdepth 1 -xtype f -name '*.conf' -printf '%f\0' |
             LC_ALL=C.UTF-8 sort -zVu)
     fi
-    ((${#files[@]})) || return 0
     if ! (
         set +Eeu +o pipefail
         trap - ERR
