@@ -282,7 +282,7 @@ after it.
 
 ## Tests
 
-`tests/test-splash-follow.sh` (new, 222 checks), all hermetic, on fixture
+`tests/test-splash-follow.sh` (new, 224/224), all hermetic, on fixture
 sysroots with recording `systemctl` and `notify-send` fakes:
 
 - the request from the current theme and mark; the parser with 16 malformed
@@ -324,8 +324,19 @@ sysroots with recording `systemctl` and `notify-send` fakes:
   on and from a tree root does not own;
 - help texts of `plymouth set`, `plymouth follow`, `theme set`, `branding`.
 
-`tests/run.sh --affected origin/main` with the hermetic wrapper: see the pull
-request for the counts.
+`tests/test-plymouth.sh` is unchanged and passes 79/79.
+
+`tests/run.sh --affected origin/main` with the hermetic wrapper selects 34
+files: 5532/5532 from a short bind mount of this checkout (`bwrap --bind`
+to `/tmp/s110`, as the gate notes advise for T3 worktrees). From the long T3
+worktree path the same run was 5528/5529: `tests/test-nvim-theme.sh` "one
+line per spec" fails there because headless nvim joins its long printed
+lines; it passes 108/108 from the short path, and the same from a `main`
+checkout at a short path. Under bwrap, `tests/test-capture-upload.sh` skips
+its subordinate-uid check (no `unshare --map-auto` inside the mount
+namespace); it ran in the long-path run. `tools/lint.sh` (shellcheck 0.11.0
+at `/usr/bin/shellcheck`) OK; `tools/check-docs.sh` OK; gitleaks 8.30.1
+over the branch range and the privacy patterns: nothing found.
 
 ## Evidence
 
