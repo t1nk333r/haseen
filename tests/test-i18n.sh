@@ -7,8 +7,8 @@
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # The interface language (plan 109): the catalogs are what the code says and
-# every Arabic string is there with its placeholders (tools/i18n.py check);
-# the bash side for
+# every Arabic string is there with its placeholders (tools/i18n.py check,
+# which also refuses bare English in a QML text property); the bash side for
 # notifications; `haseen language`; and, in the real Quickshell engine, the
 # I18n singleton (switching live, Arabic plurals, dates, the menu catalog),
 # the compat host's Commons.I18n and Commons.Translations, a mirrored
@@ -19,7 +19,7 @@ I18N="$HASEEN_PATH/i18n"
 # --- catalogs ------------------------------------------------------------------
 sandbox i18n
 capture python3 "$REPO/tools/i18n.py" check
-assert_status "catalogs: fresh and complete" 0 "$STATUS"
+assert_status "catalogs: fresh, complete, no bare English" 0 "$STATUS"
 [[ $STATUS == 0 ]] || head -40 <<<"$OUTPUT" >&2
 assert_eq "registry: English and Arabic, Arabic right to left" "en ltr|ar rtl" \
     "$(jq -r 'to_entries | map("\(.key) \(.value.direction)") | join("|")' "$I18N/locales.json")"
@@ -54,8 +54,16 @@ printf '%s\n' '{"Bar edge": "حافة الشريط"}' >"$fake/share/haseen/i18n/
 printf '%s\n' '{"a": {"label": "أ", "description": "الأول"}}' >"$fake/share/haseen/i18n/ar/menu.json"
 i18n_fake check
 assert_status "check: passes once complete" 0 "$STATUS"
+printf '%s\n' 'import QtQuick' 'Text { text: "Plain English" }' 'Text { text: "Brand" } // i18n-ignore' >"$fake/share/haseen/shell/plugins/haseen.x/Bare.qml"
 printf '%s\n' 'function N_(t) { return t; }' 'function f(n) { return n ? N_("A new string") : ""; }' >"$fake/share/haseen/shell/plugins/haseen.x/Model.js"
 i18n_fake check
+assert_contains "check: bare English in a text property" "$OUTPUT" "Bare.qml:2: bare English 'Plain English'"
+assert_not_contains "check: // i18n-ignore keeps a literal" "$OUTPUT" "'Brand'"
+printf '%s\n' 'import QtQuick' 'Text { text: I18n.tr(on ? "On" : "Off") }' 'Text { text: I18n.tr(Model.label(x)) }' >"$fake/share/haseen/shell/plugins/haseen.x/Hidden.qml"
+i18n_fake check
+assert_contains "check: a literal hidden in a dynamic tr() argument" "$OUTPUT" "Hidden.qml:2: a literal inside I18n.tr(…) is never collected"
+assert_not_contains "check: a dynamic tr() argument without literals is fine" "$OUTPUT" "Hidden.qml:3"
+rm "$fake/share/haseen/shell/plugins/haseen.x/Hidden.qml"
 assert_contains "check: a new marked string makes the English stale" "$OUTPUT" "en/shell.json is not what the code says"
 i18n_fake extract
 i18n_fake check

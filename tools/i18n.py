@@ -5,7 +5,8 @@
                              (share/haseen/i18n/en/{shell,menu,notify}.json)
                              from the code
   tools/i18n.py check        the catalogs are fresh, every translation is
-                             complete and keeps its placeholders
+                             complete and keeps its placeholders, no QML text
+                             property holds bare English
   tools/i18n.py stats        per language: strings, translated, reviewed
   tools/i18n.py --root DIR … the same over another checkout (the tests' own)
 
@@ -51,6 +52,18 @@ SHELL_SKIP = ("Compat", "greeter", "templates", "Common", "Commons", "Ui", "Widg
 CATALOGS = ("shell", "menu", "notify")
 PLURAL_FORMS = {"en": ["one", "other"], "ar": ["zero", "one", "two", "few", "many", "other"]}
 PLACEHOLDER = re.compile(r"%[1-9]")
+
+# A QML text property assigned bare English: `text: "Cancel"`, also inline
+# (`Text { text: "Cancel" }`) and in a model's object literal. The check
+# fails on it unless the line says `// i18n-ignore` (a product name, a
+# sample, a machine value shown as is). Only a value with a capital or a
+# space counts, so a lower-case machine word ("auto") passes.
+TEXT_PROPS = (
+    "text|label|title|subtitle|placeholderText|description|hint|tooltip|toolTip|"
+    "message|heading|caption|emptyText|summary|body|confirmText|cancelText"
+)
+BARE_TEXT = re.compile(r'(?<![\w.$])(?:%s)\s*:\s*(["\'])((?:\\.|(?!\1).)*)\1(?=\s*(?:$|[,;}\]]|//))' % TEXT_PROPS)
+
 
 class Failure(Exception):
     pass
@@ -454,6 +467,63 @@ def check_catalogs(problems):
                     problems.append("%s/provenance.json: reviewed %s key %r is not in the catalog" % (lang, name, key))
 
 
+def first_argument(text, i):
+    """The source text of the call argument starting at text[i], up to its
+    top-level comma or closing parenthesis."""
+    depth, quote, j = 0, None, i
+    while j < len(text):
+        c = text[j]
+        if quote:
+            if c == "\\":
+                j += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "\"'`":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                break
+            depth -= 1
+        elif c == "," and depth == 0:
+            break
+        j += 1
+    return text[i:j]
+
+
+def check_hidden_literals(problems):
+    """I18n.tr(cond ? "A" : "B") translates at run time, but tools/i18n.py
+    collects only a literal written straight after the parenthesis, so "A"
+    and "B" would never reach the catalogs: translate each branch."""
+    call = re.compile(r"(?<![\w.$])I18n\.(?:tr|tn)\s*\(")
+    literal = re.compile(r"([\"'])(?:\\.|(?!\1).)*[A-Za-z]{2}(?:\\.|(?!\1).)*\1")
+    for path in shell_files():
+        text = strip_comment_lines(open(path, encoding="utf-8").read())
+        for m in call.finditer(text):
+            i = skip_space(text, m.end())
+            if text[i:i + 1] in "\"'":
+                continue
+            if literal.search(first_argument(text, i)):
+                problems.append("%s:%d: a literal inside I18n.tr(…) is never collected: call I18n.tr on each literal" % (rel(path), text.count("\n", 0, m.start()) + 1))
+
+
+def check_bare_text(problems):
+    for path in shell_files():
+        if not path.endswith(".qml"):
+            continue
+        for n, line in enumerate(open(path, encoding="utf-8"), 1):
+            if "i18n-ignore" in line:
+                continue
+            if line.lstrip().startswith("//"):
+                continue
+            for m in BARE_TEXT.finditer(line):
+                value = m.group(2)
+                if re.search(r"[A-Za-z]{2}", value) and re.search(r"[A-Z ]", value):
+                    problems.append("%s:%d: bare English %r: wrap it in I18n.tr() (or mark the line // i18n-ignore)" % (rel(path), n, value))
+
+
 # --- commands ---------------------------------------------------------------
 
 def extract():
@@ -469,6 +539,8 @@ def extract():
 def check():
     problems = []
     check_catalogs(problems)
+    check_bare_text(problems)
+    check_hidden_literals(problems)
     for p in problems:
         print("i18n: " + p, file=sys.stderr)
     if problems:
