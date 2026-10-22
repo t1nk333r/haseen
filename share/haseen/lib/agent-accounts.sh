@@ -23,9 +23,14 @@
 #   (directories 0700, files 0600), and a new account's credential files are
 #   set to 0600 after its login.
 # - Without a haseen registry, Omarchy's (~/.local/state/omarchy/agents/
-#   accounts/<provider>.json, same format) is read, never written: accounts
-#   added under Omarchy keep resolving, and haseen's first change adopts them
-#   into its own registry, leaving their homes where they are.
+#   accounts/<provider>.json, same format) is read: accounts added under
+#   Omarchy 4.5 keep resolving, and haseen's first change adopts them into
+#   its own registry. Omarchy's registry files are never written. An adopted
+#   account's home stays where Omarchy made it and is never deleted, but
+#   using it lays the shared links in it as for any account (mkdir, chmod
+#   700, missing links), and signing it in again lets the CLI write there.
+# - A registry that exists but does not parse is never overwritten: every
+#   change refuses until it is fixed or moved; list shows the main login.
 # - The feature is off until used: with no registry nothing resolves to
 #   anything but the primary home, and nothing here signs in by itself (no
 #   seed, layer, migration or timer runs a login; only `haseen agent account
@@ -106,6 +111,9 @@ acct_shared_files() {
 }
 
 acct_registry() { printf '%s/%s.json\n' "$AGENT_ACCOUNTS_DIR" "$1"; }
+# Account ids name directories: a long label gives a short id, so a login
+# never fails at the rename after it (NAME_MAX).
+AGENT_ACCOUNT_ID_MAX=48
 acct_omarchy_registry() { printf '%s/%s.json\n' "$OMARCHY_AGENT_ACCOUNTS_DIR" "$1"; }
 
 # acct_registry_source P — the registry file to read: haseen's, else
@@ -113,12 +121,30 @@ acct_omarchy_registry() { printf '%s/%s.json\n' "$OMARCHY_AGENT_ACCOUNTS_DIR" "$
 acct_registry_source() {
     local f
     for f in "$(acct_registry "$1")" "$(acct_omarchy_registry "$1")"; do
-        [[ -f $f ]] && {
+        [[ -e $f || -L $f ]] && {
             printf '%s\n' "$f"
             return 0
         }
     done
     return 1
+}
+
+# acct_registry_broken P — the registry to read exists but is not a JSON
+# object (unreadable, truncated, edited by hand): print it and succeed.
+acct_registry_broken() {
+    local src
+    src="$(acct_registry_source "$1")" || return 1
+    jq -e 'type == "object"' "$src" &>/dev/null && return 1
+    printf '%s\n' "$src"
+}
+
+# acct_require_registry P — stop a change while the registry does not parse:
+# loading it would give the main login alone, and saving that would drop
+# every added account.
+acct_require_registry() {
+    local broken
+    broken="$(acct_registry_broken "$1")" || return 0
+    die "the $(acct_name "$1") account registry $broken does not parse; haseen will not overwrite it (fix or move it, then try again)"
 }
 
 # acct_plan_label TIER SUBSCRIPTION — "Max 20x" from default_claude_max_20x,
@@ -240,6 +266,7 @@ acct_lock() {
 # acct_save P REG — write the registry atomically, private.
 acct_save() {
     local file
+    acct_require_registry "$1"
     file="$(acct_registry "$1")"
     run mkdir -p "$AGENT_ACCOUNTS_DIR"
     jq '.' <<<"$2" | replace_user_file "$file"
@@ -250,7 +277,8 @@ acct_save() {
 acct_slug() {
     local s="${1,,}"
     s="$(sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' <<<"$s")"
-    printf '%s\n' "$s"
+    s="${s:0:AGENT_ACCOUNT_ID_MAX}"
+    printf '%s\n' "${s%-}"
 }
 
 # acct_unique_id P REG LABEL [KEEP_ID] — a free id for LABEL: not reserved,
@@ -332,23 +360,34 @@ acct_home_in_use() {
     return 1
 }
 
-# acct_login_refused P — a sign-in for P is refused here: P (or `all`) is a
-# line in $HASEEN_USER_CONFIG/agents/login-refused or, for every user and
-# service on the machine, /etc/haseen/agents/login-refused. haseen never
-# writes either file: an owner whose policy forbids an official sign-in on a
-# host creates it there, and `add` then stops before any login starts.
+# acct_login_refused P — a sign-in for P is refused here, and why ("FILE
+# lists it" or "FILE cannot be read"). P or `all` is listed in
+# $HASEEN_USER_CONFIG/agents/login-refused or, for every user and service on
+# the machine, /etc/haseen/agents/login-refused: any case, separated by
+# commas or white space, `#` starting a comment. haseen never writes either
+# file: an owner whose policy forbids an official sign-in on a host creates
+# it, and `add` then stops before any login starts. The check fails closed:
+# a file that is there (a link included) but cannot be read refuses too.
 acct_login_refused() {
-    local f line
+    local f content line token
+    local -a tokens
     for f in "$HASEEN_USER_CONFIG/agents/login-refused" "$(sysroot_path /etc/haseen/agents/login-refused)"; do
-        [[ -r $f ]] || continue
+        [[ -e $f || -L $f ]] || continue
+        if [[ ! -f $f || ! -r $f ]] || ! content="$(cat -- "$f" 2>/dev/null)"; then
+            printf '%s cannot be read\n' "$f"
+            return 0
+        fi
         while IFS= read -r line || [[ -n $line ]]; do
             line="${line%%#*}"
-            line="${line//[[:space:]]/}"
-            [[ $line == "$1" || $line == all ]] && {
-                printf '%s\n' "$f"
-                return 0
-            }
-        done <"$f"
+            # Any white space, a carriage return included, or a comma.
+            IFS=$' \t\r\v\f,' read -ra tokens <<<"$line"
+            for token in "${tokens[@]}"; do
+                [[ ${token,,} == "$1" || ${token,,} == all ]] && {
+                    printf '%s lists it\n' "$f"
+                    return 0
+                }
+            done
+        done <<<"$content"
     done
     return 1
 }

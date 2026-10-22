@@ -29,6 +29,7 @@ target="${ACCT_ARGS[0]}"
 name="$(acct_name "$PROVIDER")"
 
 acct_lock "$PROVIDER"
+acct_require_registry "$PROVIDER"
 reg="$(acct_load "$PROVIDER")"
 account="$(acct_find "$reg" "$target")" ||
     die "no $name account named $target (see: haseen agent account list $PROVIDER)"

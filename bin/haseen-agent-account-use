@@ -14,9 +14,13 @@ Usage: haseen agent account use [claude|codex|grok] [account|next] [--dry-run]
 
 Makes ACCOUNT (an id from haseen agent account list; main is the login the
 CLI already has) the one new sessions start as; next moves to the following
-account. Running sessions keep theirs. The provider can be left out when it
-is the default agent (haseen setup default agent). Adapted from Omarchy
-bin/omarchy-agent-account-use (MIT, Copyright (c) David Heinemeier Hansson).
+account. Running sessions keep theirs. Sessions started from the agent key
+or menu (omarchy-agent) and haseen agent account exec follow it; a plain
+claude, codex or grok follows it only where Omarchy 4.5's mise wrapper
+(/etc/mise/conf.d/omarchy-agent-accounts.toml) is installed. The provider can
+be left out when it is the default agent (haseen setup default agent).
+Adapted from Omarchy bin/omarchy-agent-account-use (MIT, Copyright (c) David
+Heinemeier Hansson).
 EOF
 }
 parse_common_flags "$@"
@@ -32,6 +36,7 @@ target="${ACCT_ARGS[0]:-next}"
 name="$(acct_name "$PROVIDER")"
 
 acct_lock "$PROVIDER"
+acct_require_registry "$PROVIDER"
 reg="$(acct_load "$PROVIDER")"
 previous="$(acct_find "$reg" "$(jq -r .active <<<"$reg")")"
 if [[ $target == next ]]; then
@@ -54,4 +59,12 @@ if [[ $(jq -r '.primary == true' <<<"$account") != true ]]; then
 fi
 acct_save "$PROVIDER" "$(jq -c --arg id "$id" '.active = $id | .alert = ""' <<<"$reg")"
 plan="$(jq -r '.plan // ""' <<<"$account")"
-$DRY_RUN || echo "New $name sessions now use $label${plan:+ ($plan)}. Running sessions stay on $(jq -r .label <<<"$previous")."
+$DRY_RUN && exit 0
+echo "New $name sessions now use $label${plan:+ ($plan)}. Running sessions stay on $(jq -r .label <<<"$previous")."
+# Which launches follow the choice: Omarchy 4.5's mise wrapper routes plain
+# CLI runs through omarchy-agent-account-exec; without it only haseen's do.
+if [[ -e $(sysroot_path /etc/mise/conf.d/omarchy-agent-accounts.toml) ]]; then
+    echo "The agent key, the menu, haseen agent account exec and plain $PROVIDER (Omarchy's mise wrapper) follow it."
+else
+    echo "The agent key, the menu and haseen agent account exec $PROVIDER follow it; a plain $PROVIDER does not."
+fi

@@ -149,6 +149,8 @@ assert_eq "the registry still has two accounts" "2" "$(jq '.accounts | length' "
 # --- switching ----------------------------------------------------------------
 capture haseen agent account use claude day-job
 assert_contains "use switches new sessions" "$OUTPUT" "New Claude sessions now use Day Job (Max 20x). Running sessions stay on Main."
+assert_contains "and says a plain CLI does not follow it here" "$OUTPUT" \
+    "The agent key, the menu and haseen agent account exec claude follow it; a plain claude does not."
 assert_eq "home names the active account's" "$WORK" "$(haseen agent account home claude)"
 assert_eq "a run selects it" "claude home=$WORK -p" "$(haseen agent account exec claude -p)"
 assert_eq "Omarchy's exec name selects it too" "claude home=$WORK -p" "$("$OMA/omarchy-agent-account-exec" claude -p)"
@@ -229,6 +231,63 @@ assert_contains "and is named" "$OUTPUT" "/etc/haseen/agents/login-refused lists
 assert_eq "no login ran" "" "$(logins)"
 unset HASEEN_SYSROOT
 
+# The file fails closed: any case, commas or white space between names, a
+# carriage return, comments; a file that is there but cannot be read refuses.
+REFUSED="$HOME/.config/haseen/agents/login-refused"
+refused_case() { # LABEL CONTENT — CONTENT (printf format) refuses Claude
+    printf "$2" >"$REFUSED"
+    : >"$LOG"
+    capture haseen agent account add claude
+    assert_status "refused: $1" 1 "$STATUS"
+    assert_contains "refused: $1, naming the file" "$OUTPUT" "$REFUSED lists it"
+    assert_eq "refused: $1, before any login" "" "$(logins)"
+}
+refused_case "padded upper case" '  CLAUDE  \n'
+refused_case "capitalised" 'Claude\n'
+refused_case "two names on a line" 'claude codex\n'
+refused_case "a comma list" 'claude, codex\n'
+refused_case "a comma without a space" 'codex,claude\n'
+refused_case "a tab and a carriage return" 'codex\tclaude\r\n'
+refused_case "after a comment line and a blank line" '# managed by hand\n\n  grok  # not this one\nclaude # this one\n'
+refused_case "ALL" 'ALL\n'
+refused_case "no final newline" 'claude'
+printf '# claude\ngrok # claude\n\n' >"$REFUSED"
+: >"$LOG"
+capture haseen agent account add claude
+assert_status "a name only in comments refuses nothing" 0 "$STATUS"
+assert_contains "and the login runs" "$(logins)" "claude login"
+rm -rf "$HOME/.claude" "$HOME/.claude.json"
+unreadable_case() { # LABEL — REFUSED is in place, unreadable
+    : >"$LOG"
+    capture haseen agent account add claude
+    assert_status "an unreadable file refuses: $1" 1 "$STATUS"
+    assert_contains "and names it: $1" "$OUTPUT" "$REFUSED cannot be read"
+    assert_eq "before any login: $1" "" "$(logins)"
+}
+if ((EUID != 0)); then
+    printf 'codex\n' >"$REFUSED"
+    chmod 000 "$REFUSED"
+    unreadable_case "mode 000"
+    chmod 600 "$REFUSED"
+else
+    echo "  skip: running as root, mode 000 is readable" >&2
+fi
+rm -f "$REFUSED"
+mkdir "$REFUSED"
+unreadable_case "a directory"
+rmdir "$REFUSED"
+ln -s "$SANDBOX/nowhere" "$REFUSED"
+unreadable_case "a dangling link"
+rm -f "$REFUSED"
+export HASEEN_SYSROOT="$SANDBOX/root"
+rm -f "$HASEEN_SYSROOT/etc/haseen/agents/login-refused"
+mkdir "$HASEEN_SYSROOT/etc/haseen/agents/login-refused"
+: >"$LOG"
+capture haseen agent account add claude
+assert_contains "so is the machine's file" "$OUTPUT" "/etc/haseen/agents/login-refused cannot be read"
+assert_eq "no login ran for it" "" "$(logins)"
+unset HASEEN_SYSROOT
+
 # --- a dry run signs in nobody ------------------------------------------------
 acct accounts-dry
 haseen agent account add claude >/dev/null
@@ -239,6 +298,7 @@ assert_contains "it prints the login it would run" "$OUTPUT" "DRYRUN: env -u CLA
 assert_contains "in a pending home" "$OUTPUT" "CLAUDE_CONFIG_DIR=$STATE/claude/.pending/login-XXXXXX"
 assert_eq "no login ran" "" "$(logins)"
 assert_eq "nothing was made" "no" "$([[ -e $STATE ]] && echo yes || echo no)"
+assert_not_contains "and its cleanup deletes nothing" "$OUTPUT" "DRYRUN: rm"
 
 # --- sign in again where an account lives ---------------------------------------
 FAKE_ACCOUNT=uuid-side FAKE_USER=side haseen agent account add claude Side </dev/null >/dev/null
@@ -259,6 +319,41 @@ assert_eq "Grok's from its login and cached settings" "main@example.com SuperGro
     "$(jq -r '.[] | select(.provider == "grok") | .accounts[0] | .email + " " + .plan' <<<"$OUTPUT")"
 never_printed "Codex and Grok list" "$OUTPUT"
 assert_eq "the Codex credential file is private" "600" "$(stat -c %a "$STATE/codex/second/auth.json")"
+
+# --- a registry that does not parse is never overwritten ---------------------------
+acct accounts-broken
+haseen agent account add claude >/dev/null
+FAKE_ACCOUNT=uuid-work FAKE_USER=work haseen agent account add claude Work </dev/null >/dev/null
+printf '{"active": "work", "accounts": [' >"$STATE/claude.json"
+broken_before="$(cat "$STATE/claude.json")"
+for cmd in "use claude main" "rename claude work Job" "remove claude work --yes"; do
+    read -ra argv <<<"$cmd"
+    capture haseen agent account "${argv[@]}"
+    assert_status "${argv[0]} refuses a registry that does not parse" 1 "$STATUS"
+    assert_contains "${argv[0]} names it" "$OUTPUT" "registry $STATE/claude.json does not parse"
+done
+assert_eq "the registry is left as it was" "$broken_before" "$(cat "$STATE/claude.json")"
+assert_eq "and the account's home stays" "yes" "$([[ -d $STATE/claude/work ]] && echo yes || echo no)"
+: >"$LOG"
+capture env FAKE_ACCOUNT=uuid-side FAKE_USER=side haseen agent account add claude Side </dev/null
+assert_status "add refuses it" 1 "$STATUS"
+assert_eq "before the login" "" "$(logins)"
+capture haseen agent account list claude
+assert_status "list still answers" 0 "$STATUS"
+assert_contains "with a warning" "$OUTPUT" "registry $STATE/claude.json does not parse"
+assert_contains "and the main login" "$OUTPUT" "main@example.com"
+assert_eq "a broken registry selects the main login" "" "$(haseen agent account home claude)"
+
+# --- a long label gives a short id ---------------------------------------------------
+acct accounts-long
+haseen agent account add claude >/dev/null
+long="$(printf 'Abcdefghij%.0s' {1..40})"
+capture env FAKE_ACCOUNT=uuid-long FAKE_USER=long haseen agent account add claude "$long" </dev/null
+assert_status "a 400-character label still adds the account" 0 "$STATUS"
+long_id="$(jq -r '.accounts[1].id' "$STATE/claude.json")"
+assert_eq "its id is cut to 48 characters" "48" "${#long_id}"
+assert_eq "its home is named by that id" "yes" "$([[ -d $STATE/claude/$long_id ]] && echo yes || echo no)"
+assert_eq "the label is kept whole" "${#long}" "$(jq -r '.accounts[1].label | length' "$STATE/claude.json")"
 
 # --- Omarchy's registry: read until haseen adopts it, never written ---------------
 acct accounts-omarchy
@@ -322,7 +417,13 @@ done
 acct accounts-launch
 haseen agent account add claude >/dev/null
 FAKE_ACCOUNT=uuid-work FAKE_USER=work haseen agent account add claude Work </dev/null >/dev/null
-haseen agent account use claude work >/dev/null
+export HASEEN_SYSROOT="$SANDBOX/root"
+mkdir -p "$HASEEN_SYSROOT/etc/mise/conf.d"
+: >"$HASEEN_SYSROOT/etc/mise/conf.d/omarchy-agent-accounts.toml"
+capture haseen agent account use claude work
+assert_contains "with Omarchy 4.5's mise wrapper a plain CLI follows too" "$OUTPUT" \
+    "The agent key, the menu, haseen agent account exec and plain claude (Omarchy's mise wrapper) follow it."
+unset HASEEN_SYSROOT
 FAKE="$SANDBOX/fake"
 mkdir -p "$FAKE/bin" "$FAKE/share/haseen"
 for d in lib omarchy; do ln -s "$HASEEN_PATH/$d" "$FAKE/share/haseen/$d"; done

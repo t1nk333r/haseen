@@ -13,7 +13,8 @@
   extends), 100 (affected tests)
 - **Category**: agents, Omarchy compatibility
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-22 (pull request; owner steps below)
+- **State**: DONE 2026-10-22, review round 1 addressed the same day (pull
+  request #64; owner steps below)
 
 ## Decision (owner, 2026-10-21)
 
@@ -102,7 +103,7 @@ A bash and jq rewrite of Omarchy's registry rules, under its MIT notice:
 - The registry is `~/.local/state/haseen/agents/accounts/<provider>.json` in
   Omarchy's format (`active`, `switch`, `threshold`, `alert`, `accounts`),
   so either side can read the other's. Added homes live beside it.
-- Identity (`acct_identity`, `:139`) reads only display-safe fields: Claude's
+- Identity (`acct_identity`, `:165`) reads only display-safe fields: Claude's
   `oauthAccount` (account id, email, organisation) and the plan name from
   `.credentials.json`; Codex's account id, and the email and plan claims
   decoded from the id token's payload; Grok's user id, email and cached plan
@@ -110,22 +111,41 @@ A bash and jq rewrite of Omarchy's registry rules, under its MIT notice:
   shell variable, an argument or any output. The registry holds no token
   (test: "the registry holds no token").
 - Private by construction: the commands run under `umask 077`, `acct_save`
-  (`:241`) writes atomically through `replace_user_file` and sets 0600, and
-  `acct_private_credentials` (`:309`) sets a new account's credential files
+  (`:267`) writes atomically through `replace_user_file` and sets 0600, and
+  `acct_private_credentials` (`:337`) sets a new account's credential files
   to 0600 after its login. Every change goes through `run`,
   `replace_user_file` and `write_user_file` (dry-run contract); a dry run
   creates nothing and takes no lock.
-- One `flock` per provider (`acct_lock`, `:233`) serialises the panel, a
+- One `flock` per provider (`acct_lock`, `:259`) serialises the panel, a
   typed command and an Omarchy caller.
-- Without a haseen registry, Omarchy's is read (`acct_registry_source`,
-  `:113`) and never written: accounts added under Omarchy keep resolving, and
-  haseen's first change adopts them, their homes left where Omarchy made
-  them (test: "Omarchy's registry is never written").
-- `acct_login_refused` (`:340`): a provider (or `all`) listed in
-  `~/.config/haseen/agents/login-refused` or, for every user and service on
-  the machine, `/etc/haseen/agents/login-refused` makes `add` stop before any
-  login starts. haseen never writes either file.
-- `acct_home_in_use` (`:320`): a home a running session selected (its
+- A registry that exists but does not parse (`acct_registry_broken`,
+  `:134`) is never overwritten: loading it gives the main login alone, so
+  `acct_require_registry` (`:144`) stops `add` before its login, and `use`,
+  `rename` and `remove` before any change; `list` shows the main login with
+  a warning (review round 1).
+- Account ids are cut to 48 characters (`acct_slug`, `:277`), so a long
+  label never fails at the rename after a login (review round 1).
+- Without a haseen registry, Omarchy 4.5's is read (`acct_registry_source`,
+  `:121`): accounts added under it keep resolving, and haseen's first change
+  adopts them. haseen never writes Omarchy's registry files (test:
+  "Omarchy's registry is never written"), nor deletes an adopted account's
+  home (remove only forgets it). It does touch those homes as it touches any
+  account's: `use` lays the shared links in the account's home (`mkdir -p`,
+  `chmod 700`, a link for each shared name that is missing; existing files
+  and links are left alone) and creates missing shared directories in the
+  primary home (`~/.claude/projects` and the like), as Omarchy's `use` does
+  (`link_shared`, `bin/omarchy-agent-account-state@v4.5.0-rc1:295`);
+  `add --reauth` lets the CLI's login write in it and sets its credential
+  files to 0600.
+- `acct_login_refused` (`:371`) fails closed (review round 1): Claude, Codex
+  or Grok (or `all`) in `~/.config/haseen/agents/login-refused` or, for
+  every user and service on the machine, `/etc/haseen/agents/login-refused`,
+  in any case, separated by commas or any white space (a carriage return
+  included), `#` starting a comment, makes `add` stop before any login
+  starts; a file that is there but cannot be read (mode 000, a directory, a
+  dangling link) refuses too, naming the file. haseen never writes either
+  file.
+- `acct_home_in_use` (`:348`): a home a running session selected (its
   `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` in `/proc/<pid>/environ`,
   this user's processes only, through `sysroot_path`) is never removed.
 
@@ -200,6 +220,29 @@ Two sections, both off by default (`settings.accounts`, `settings.usage`):
 No Timer, no polling: Omarchy's panel refresh timer (`Main.qml:149`) and its
 30 s clock tick are not ported.
 
+## Review round 1 (2026-10-22)
+
+The reviewer found no credential leak or link escape and asked for six
+changes, all made:
+
+1. The mise-wrapper claim was wrong: IO and luna run Omarchy 4.0.6, whose
+   `/etc/mise/conf.d` holds no account wrapper. The owner steps and the
+   rejected option now say a plain CLI follows the active account only under
+   Omarchy 4.5's wrapper, and `haseen agent account use` prints which
+   launches follow it on the machine (its `--help` says the same).
+2. `login-refused` failed open (`  CLAUDE  `, `Claude`, `claude codex`,
+   `claude, codex`, an unreadable file): it now lowercases, splits on commas
+   and white space, drops comments, and refuses when a file is there but
+   cannot be read.
+3. A registry that does not parse was overwritten with the main login
+   alone on the next change; changes now refuse it.
+4. A long label failed at the rename after the login; ids are cut to 48
+   characters.
+5. What haseen writes in an adopted Omarchy account's home is listed above,
+   and "never written" now says Omarchy's registry files.
+6. The `add` cleanup trap and the two `mktemp` calls go through `run`; the
+   trap does nothing in a dry run, which created nothing.
+
 ## Copying logins to another machine: not built
 
 Omarchy's `omarchy-agent-account-copy` and `-transfer` stay refused. Reasons:
@@ -268,23 +311,33 @@ Omarchy's `omarchy-agent-account-copy` and `-transfer` stay refused. Reasons:
   a command the user may not have. `gemini` stays its own agent; `agy` is
   added beside it.
 - **haseen's own mise wrappers** (`[wrappers]` in a mise config) so plain
-  `claude` follows the account on machines without Omarchy's
+  `claude` follows the account on machines without Omarchy 4.5's
   `/etc/mise/conf.d/omarchy-agent-accounts.toml`: that would edit or add the
-  user's mise configuration. Instead, sessions from the agent key and menu
-  pin the account, `haseen agent account exec claude` runs one directly, and
-  Omarchy's wrappers (on IO and luna) reach haseen's `exec`.
+  user's mise configuration. So a plain `claude`, `codex` or `grok` follows
+  the active account only where Omarchy 4.5's wrapper is installed (it routes
+  every run through `omarchy-agent-account-exec`, which is haseen's answer);
+  everywhere else, including Omarchy 4.0.6 machines, whose
+  `/etc/mise/conf.d` has no such wrapper, only sessions from the agent key
+  and menu (`omarchy-agent`) and `haseen agent account exec claude` follow
+  it. `haseen agent account use` says which applies on the machine.
 - **Notifications on switch** (Omarchy sends one): the CLI prints the result
   and the panel shows it; no new on-screen element.
 - **An allowlisted SSH copy with a deny list**: see above.
 
 ## Tests
 
-`tests/test-agent-accounts.sh` (new, 139 checks): no registry changes
-nothing; first and further sign-ins; private-window login; modes; shared
+`tests/test-agent-accounts.sh` (new, 200 checks after review round 1): no
+registry changes nothing; first and further sign-ins; private-window login; modes; shared
 links; display-safe registry; duplicate and unfinished logins; use, next,
 pins and explicit homes; rename (reserved ids); remove (main, in use through
 a fixture `/proc`, dry run, without yes, adopted homes kept); user and
-machine sign-in refusals before any login; dry-run add; `--reauth`; Codex
+machine sign-in refusals before any login, in every spelling (case,
+padding, commas, tabs, a carriage return, comments) and failing closed on a
+file that cannot be read (mode 000 unless root, a directory, a dangling
+link); a registry that does not parse is refused by every change and kept
+byte for byte; a 400-character label gives a 48-character id; which
+launches follow `use`, with and without Omarchy 4.5's wrapper; dry-run add
+(its cleanup deletes nothing); `--reauth`; Codex
 and Grok identities; Omarchy's registry read and never written; every
 answer; copy and transfer refused before SSH; the launch pin; the usage
 record's account; the new agent names and menu rows.
@@ -305,14 +358,18 @@ branch range and the privacy grep.
    `all`) before anyone uses `haseen agent account add` there.
 2. To try it: `haseen agent account add claude Work`, then `haseen agent
    account use claude work`. New sessions from the agent key or menu start
-   as that account; on IO and luna, Omarchy's mise wrappers also route plain
-   `claude`/`codex`/`grok` through haseen's `exec`.
+   as that account, and so does `haseen agent account exec claude`. A plain
+   `claude`, `codex` or `grok` follows it only where Omarchy 4.5's mise
+   wrapper (`/etc/mise/conf.d/omarchy-agent-accounts.toml`) is installed;
+   IO and luna run Omarchy 4.0.6, which has none, so there use `haseen agent
+   account exec claude` (an alias in your own shell rc if you like).
 3. To see accounts in the agents panel, add to `~/.config/haseen/shell.json`
    under `plugins`: `"haseen.agents": {"settings": {"accounts": true}}` (and
    `"usage": true` for the usage records).
-4. If you added accounts under Omarchy on IO or luna, `haseen agent account
-   list` shows them ("read from Omarchy"); the first `use`, `rename` or
-   `remove` adopts them into haseen's registry.
+4. On a machine where accounts were added under Omarchy 4.5, `haseen agent
+   account list` shows them ("read from Omarchy"); the first `use`, `rename`
+   or `remove` adopts them into haseen's registry (Omarchy 4.0.6 has no
+   account registry, so there is nothing to adopt on IO and luna today).
 
 ## Not done
 

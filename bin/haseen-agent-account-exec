@@ -5,11 +5,12 @@ set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
 
-# The work is omarchy-agent-account-exec's, the name Omarchy's system mise
-# wrappers route every claude, codex and grok run through: an explicit
-# CLAUDE_CONFIG_DIR, CODEX_HOME or GROK_HOME wins, else the active account's
-# home is selected and pinned for the agent's children. This is the same run
-# under haseen's name, for a machine without those wrappers (plan 108).
+# The work is omarchy-agent-account-exec's, the name Omarchy 4.5's system
+# mise wrapper (/etc/mise/conf.d/omarchy-agent-accounts.toml) routes every
+# claude, codex and grok run through: an explicit CLAUDE_CONFIG_DIR,
+# CODEX_HOME or GROK_HOME wins, else the active account's home is selected and
+# pinned for the agent's children. This is the same run under haseen's name,
+# for a machine without that wrapper, Omarchy 4.0.6 included (plan 108).
 case "${1:-}" in
 -h | --help)
     cat <<EOF

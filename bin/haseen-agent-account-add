@@ -75,17 +75,22 @@ pin="OMARCHY_AGENT_${PROVIDER^^}_HOME"
 
 # A host whose policy forbids this sign-in says so before anything starts.
 if policy="$(acct_login_refused "$PROVIDER")"; then
-    die "signing in to $name is refused on this machine ($policy lists it); no login was started"
+    die "signing in to $name is refused on this machine ($policy); no login was started"
 fi
 have "$PROVIDER" ||
     die "$PROVIDER is not installed: haseen installs no coding agent; install it (mise, your package manager or its own installer), then run this again"
+# A registry that does not parse stops the sign-in before it starts, not at
+# the save after it.
+acct_require_registry "$PROVIDER"
 mapfile -t login < <(acct_login_command "$PROVIDER")
 
 browser="" pending=""
 cleanup() {
-    [[ -n $browser ]] && rm -f -- "$browser"
+    # A dry run made nothing; its paths are placeholders.
+    $DRY_RUN && return 0
+    [[ -n $browser ]] && run rm -f -- "$browser"
     # A login that did not become an account leaves no half-made home.
-    [[ -n $pending && $pending == "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/"* ]] && rm -rf -- "$pending"
+    [[ -n $pending && $pending == "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/"* ]] && run rm -rf -- "$pending"
     return 0
 }
 trap cleanup EXIT
@@ -99,7 +104,7 @@ private_browser() {
         echo "DRYRUN: write $browser: exec $launcher --private URL"
         return 0
     fi
-    browser="$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/haseen-account-browser.XXXXXX")"
+    browser="$(run mktemp "${XDG_RUNTIME_DIR:-/tmp}/haseen-account-browser.XXXXXX")"
     printf '#!/usr/bin/env bash\nexec %q --private "$1"\n' "$launcher" | write_user_file "$browser"
     run chmod 700 "$browser"
 }
@@ -155,7 +160,7 @@ run mkdir -p "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending"
 if $DRY_RUN; then
     pending="$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/login-XXXXXX"
 else
-    pending="$(mktemp -d "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/login-XXXXXX")"
+    pending="$(run mktemp -d "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/login-XXXXXX")"
 fi
 acct_link_shared "$PROVIDER" "$pending"
 login_in "$pending" || die "the $name sign-in did not finish, so no account was added"

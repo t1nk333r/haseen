@@ -33,6 +33,9 @@ done
 
 all='[]'
 for p in "${providers[@]}"; do
+    if broken="$(acct_registry_broken "$p")"; then
+        warn "the $(acct_name "$p") account registry $broken does not parse: only the main login is listed, and changes are refused until it is fixed or moved"
+    fi
     summary="$(acct_summary "$p" "$(acct_load "$p")")"
     # Accounts added under Omarchy, read from its registry until a haseen
     # change adopts them.
