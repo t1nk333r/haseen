@@ -7,6 +7,24 @@
 // shows (offline, error, syncing, paused, idle), invitations, and the
 // recent file activity from ItemFinished events.
 
+// Interface strings stay English here and are translated where QML shows
+// them; N_ and N_n mark them for tools/i18n.py (plan 109). The text helpers
+// (folderText, overall, activityText) take an optional last argument `t`
+// with tr() and tn(): QML passes the I18n singleton, so a sentence built
+// around a value comes back in the interface language; without it they
+// write English, which the IPC state and the tests read.
+function N_(text) { return text; }
+function N_n(one, other) { return other; }
+
+function fill(text, args) {
+    return String(text).replace(/%([1-9])/g, (whole, digit) => args[Number(digit) - 1] === undefined ? whole : String(args[Number(digit) - 1]));
+}
+
+const ENGLISH = {
+    tr: (text, ...args) => fill(text, args),
+    tn: (one, other, count, ...args) => fill(count === 1 ? one : other, [count].concat(args))
+};
+
 const MAX_ACTIVITY = 20;
 
 function num(v) {
@@ -63,45 +81,48 @@ function folderFailed(f) {
     return !f.paused && (f.state === "error" || f.error !== "" || f.pullErrors > 0);
 }
 
-// folderText(folder): "Up to date", "Syncing 42%", "Scanning", "Paused"…
-function folderText(f) {
+// folderText(folder, t): "Up to date", "Syncing 42%", "Scanning", "Paused"…
+// A state this list does not know shows as Syncthing names it.
+function folderText(f, t) {
+    const T = t || ENGLISH;
     if (!f)
         return "";
     if (f.paused)
-        return "Paused";
+        return T.tr(N_("Paused"));
     if (f.state === "error" || f.error)
-        return "Error: " + (f.error || "stopped");
+        return T.tr(N_("Error: %1"), f.error || T.tr(N_("stopped")));
     if (f.pullErrors > 0)
-        return f.pullErrors === 1 ? "1 file failed" : f.pullErrors + " files failed";
+        return T.tn("%1 file failed", N_n("%1 file failed", "%1 files failed"), f.pullErrors);
     if (f.state === "syncing" || f.state === "sync-preparing")
-        return "Syncing " + completion(f) + "%";
+        return T.tr(N_("Syncing %1%"), completion(f));
     if (f.state === "scanning" || f.state === "scan-waiting")
-        return "Scanning";
+        return T.tr(N_("Scanning"));
     if (f.state === "sync-waiting")
-        return "Waiting to sync";
+        return T.tr(N_("Waiting to sync"));
     if (f.state === "idle")
-        return f.needFiles > 0 ? "Out of sync (" + f.needFiles + ")" : "Up to date";
+        return f.needFiles > 0 ? T.tr(N_("Out of sync (%1)"), f.needFiles) : T.tr(N_("Up to date"));
     return f.state.charAt(0).toUpperCase() + f.state.slice(1);
 }
 
-// overall(state, online): what the bar shows: { kind, text }, kind one of
+// overall(state, online, t): what the bar shows: { kind, text }, kind one of
 // offline, error, syncing, invited, paused, idle.
-function overall(s, online) {
+function overall(s, online, t) {
+    const T = t || ENGLISH;
     if (!online || !s)
-        return { kind: "offline", text: "Syncthing is not running" };
+        return { kind: "offline", text: T.tr(N_("Syncthing is not running")) };
     const failed = s.folders.filter(folderFailed);
     if (failed.length)
-        return { kind: "error", text: failed.length === 1 ? failed[0].label + ": " + folderText(failed[0]) : failed.length + " folders have errors" };
+        return { kind: "error", text: failed.length === 1 ? T.tr(N_("%1: %2"), failed[0].label, folderText(failed[0], t)) : T.tn("%1 folder has errors", N_n("%1 folder has errors", "%1 folders have errors"), failed.length) };
     const busy = s.folders.filter(folderBusy);
     if (busy.length)
-        return { kind: "syncing", text: busy.length === 1 ? busy[0].label + ": " + folderText(busy[0]) : "Syncing " + busy.length + " folders" };
+        return { kind: "syncing", text: busy.length === 1 ? T.tr(N_("%1: %2"), busy[0].label, folderText(busy[0], t)) : T.tn("Syncing %1 folder", N_n("Syncing %1 folder", "Syncing %1 folders"), busy.length) };
     const invites = s.pendingDevices.length + s.pendingFolders.length;
     if (invites)
-        return { kind: "invited", text: invites === 1 ? "1 invitation" : invites + " invitations" };
+        return { kind: "invited", text: T.tn("%1 invitation", N_n("%1 invitation", "%1 invitations"), invites) };
     if (s.folders.length && s.folders.every(f => f.paused))
-        return { kind: "paused", text: "Paused" };
+        return { kind: "paused", text: T.tr(N_("Paused")) };
     const up = s.devices.filter(d => d.connected).length;
-    return { kind: "idle", text: s.folders.length ? "Up to date · " + up + " of " + s.devices.length + " devices" : "No folders yet" };
+    return { kind: "idle", text: s.folders.length ? T.tr(N_("Up to date · %1 of %2 devices"), up, s.devices.length) : T.tr(N_("No folders yet")) };
 }
 
 const GLYPHS = { offline: "\u{F04E8}", error: "\u{F04E7}", syncing: "\u{F04E6}", invited: "\u{F04E6}", paused: "\u{F04E6}", idle: "\u{F04E6}" };
@@ -156,11 +177,12 @@ function parseEvents(text, lastId, activity) {
     return out;
 }
 
-// activityText(entry, folders): "Updated notes.md · Docs".
-function activityText(a, folders) {
+// activityText(entry, folders, t): "Updated notes.md · Docs".
+function activityText(a, folders, t) {
+    const T = t || ENGLISH;
     const f = (folders || []).find(x => x.id === a.folder);
-    const verb = a.error ? "Failed" : a.action === "delete" ? "Deleted" : a.action === "metadata" ? "Changed" : "Updated";
-    return verb + " " + a.item + (f ? " · " + f.label : "");
+    const line = a.error ? T.tr(N_("Failed %1"), a.item) : a.action === "delete" ? T.tr(N_("Deleted %1"), a.item) : a.action === "metadata" ? T.tr(N_("Changed %1"), a.item) : T.tr(N_("Updated %1"), a.item);
+    return line + (f ? " · " + f.label : "");
 }
 
 // expandHome(path, home): a leading ~ means the home directory.

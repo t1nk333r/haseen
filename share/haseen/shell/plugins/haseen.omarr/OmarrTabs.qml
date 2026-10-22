@@ -2,7 +2,8 @@ import QtQuick
 import qs.Haseen
 
 // Underlined text tabs: the overview's ON DECK / RECENTLY ADDED / CALENDAR
-// and the settings' SETTINGS / FLEET. `model` is [{id, label}].
+// and the settings' SETTINGS / FLEET. `model` is [{id, label}], each label
+// English marked with I18n.mark and shown in the interface language.
 //
 // Adapted from Panel.qml and SettingsView.qml in omARR (MIT, Copyright (c)
 // 2026 luccast), as the owner's fork t1nk33r.omarr 1.0.0; see LICENSE and
@@ -34,7 +35,7 @@ Flow {
                 id: label
 
                 textFormat: Text.PlainText
-                text: chip.modelData.label
+                text: I18n.tr(chip.modelData.label)
                 color: chip.selected || mouse.containsMouse ? Theme.foreground : Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
                 font.pixelSize: Math.max(1, Theme.fontSize - 1)

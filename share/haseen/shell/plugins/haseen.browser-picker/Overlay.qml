@@ -24,7 +24,7 @@ PanelWindow {
     readonly property var rows: !service ? [] : Model.rankEntries(service.entries, service.pickerState, service.config, service.host, filter, Date.now() / 1000)
     readonly property var currentEntry: rows.length > 0 && cursor >= 0 && cursor < rows.length ? rows[cursor] : null
     readonly property bool offersRule: service !== null && currentEntry !== null && Model.shouldOfferRule(service.pickerState, service.config, service.host, currentEntry, service.pickerSettings.promptAfter)
-    readonly property string heading: !service ? "" : service.host || (service.urls.length > 0 ? service.urls[0] : "Open with")
+    readonly property string heading: !service ? "" : service.host || (service.urls.length > 0 ? service.urls[0] : I18n.tr("Open with"))
     readonly property int rowHeight: Math.round(Theme.fontSize * 2.2)
     // The pointer position the card opened under: rows that slide under a
     // still pointer are not a hover, or Enter would open a profile the user
@@ -74,6 +74,10 @@ PanelWindow {
     PanelSurface {
         id: card
 
+        // The card is this window's own content, not a PanelPopup panel, so
+        // it mirrors itself in a right-to-left language.
+        LayoutMirroring.enabled: I18n.rightToLeft
+        LayoutMirroring.childrenInherit: true
         anchors.centerIn: parent
         padding: Theme.gap * 2
 
@@ -139,9 +143,10 @@ PanelWindow {
                     }
 
                     Text {
+                        anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         visible: field.text === ""
-                        text: "Type to filter"
+                        text: I18n.tr("Type to filter")
                         color: Theme.muted
                         font: field.font
                     }
@@ -151,7 +156,7 @@ PanelWindow {
             Text {
                 width: parent.width
                 visible: root.rows.length === 0
-                text: !root.service ? "" : !root.service.scanned ? "Looking for browsers…" : root.service.entries.length === 0 ? "No browser found." : "No profile matches \"" + root.filter + "\""
+                text: !root.service ? "" : !root.service.scanned ? I18n.tr("Looking for browsers…") : root.service.entries.length === 0 ? I18n.tr("No browser found.") : I18n.tr("No profile matches \"%1\"", root.filter)
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: Theme.muted
@@ -192,6 +197,8 @@ PanelWindow {
                     // A hard accent edge on the selected row survives a busy
                     // wallpaper behind a translucent theme.
                     Rectangle {
+                        // The start edge: the right one in a right-to-left card.
+                        anchors.left: parent.left
                         width: Math.max(2, Theme.borderWidth * 3)
                         height: parent.height
                         radius: Theme.radius
@@ -232,7 +239,7 @@ PanelWindow {
 
             Text {
                 width: parent.width
-                text: root.offersRule ? "⏎ open · Ctrl+⏎ always open " + root.service.host + " here" : "⏎ open · ↑↓ move · esc cancel"
+                text: root.offersRule ? I18n.tr("⏎ open · Ctrl+⏎ always open %1 here", root.service.host) : I18n.tr("⏎ open · ↑↓ move · esc cancel")
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: root.offersRule ? Theme.accent : Theme.muted

@@ -14,6 +14,12 @@ import "Model.js" as Model
 Item {
     id: diagram
 
+    // The monitors where they stand, left to right: a map of the desk, not
+    // reading order, and the drag math works in Hyprland's coordinates. A
+    // right-to-left panel does not mirror it.
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
+
     property var monitors: []
     property bool busy: false
 
@@ -61,7 +67,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
-                    text: box.monitor ? box.monitor.label : box.info.name
+                    text: box.monitor ? I18n.tr(box.monitor.label) : box.info.name
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 1

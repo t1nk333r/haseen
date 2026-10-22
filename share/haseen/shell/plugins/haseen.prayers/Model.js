@@ -49,7 +49,11 @@ var ENGLISH_NAMES = {
 // the panel's cycle buttons.
 var PANEL_STYLES = ["Horizon", "Compact"]
 var TIME_FORMATS = ["24-hour", "12-hour"]
-var LANGUAGES = ["English", "Arabic"]
+// Interface follows the shell's interface language (the service resolves it
+// to English or Arabic before any label here is asked for). It leads the ring
+// and Arabic follows it, so the first press from the default switches to
+// Arabic under an English interface, as it did from English before.
+var LANGUAGES = ["Interface", "Arabic", "English"]
 var SCHOOLS = ["Shafi", "Hanafi"]
 var BAR_DISPLAYS = [
   "Strip + countdown", "Icon only", "Name + countdown", "Name + time",
@@ -116,6 +120,7 @@ var OPTION_LABELS = {
   Compact: ["Compact", "مضغوط"],
   "24-hour": ["24h", "24h"],
   "12-hour": ["12h", "12h"],
+  Interface: ["Interface", "الواجهة"],
   English: ["English", "إنجليزي"],
   Arabic: ["Arabic", "عربي"],
   Shafi: ["Shafi", "شافعي"],

@@ -529,7 +529,9 @@ Column {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         options: Model.optionModel(Model.LANGUAGES, displayRoot.host.language)
-        value: displayRoot.host.language
+        // The stored choice (Interface, English or Arabic), not the language
+        // it resolves to: Interface stays the selected chip.
+        value: displayRoot.host.languageSetting
         onChanged: function(next) { displayRoot.host.setSetting("language", next) }
       }
     }

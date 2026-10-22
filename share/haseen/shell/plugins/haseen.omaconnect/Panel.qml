@@ -50,7 +50,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "KDE Connect"
+            text: "KDE Connect" // i18n-ignore
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -60,7 +60,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: root.service !== null
-            text: root.service && root.service.scanning ? "Looking…" : "Refresh"
+            text: root.service && root.service.scanning ? I18n.tr("Looking…") : I18n.tr("Refresh")
             // Not busy while a scan runs: the daemon's signals rescan often,
             // and a button that dims every time reads as broken.
             onClicked: root.service.refresh(true)
@@ -74,16 +74,16 @@ Column {
         textFormat: Text.PlainText
         text: {
             if (!root.service)
-                return "The haseen.omaconnect service is not running: list it in the shell's services.";
+                return I18n.tr("The haseen.omaconnect service is not running: list it in the shell's services.");
             switch (root.service.discovery) {
             case "starting":
-                return "Asking KDE Connect…";
+                return I18n.tr("Asking KDE Connect…");
             case "missing":
-                return "KDE Connect is not installed: haseen setup kdeconnect on";
+                return I18n.tr("KDE Connect is not installed: haseen setup kdeconnect on");
             case "unavailable":
-                return "The KDE Connect daemon is not answering.";
+                return I18n.tr("The KDE Connect daemon is not answering.");
             }
-            return root.service.devices.length === 0 ? "No devices yet. Open KDE Connect on the phone, on the same network or Tailscale." : "";
+            return root.service.devices.length === 0 ? I18n.tr("No devices yet. Open KDE Connect on the phone, on the same network or Tailscale.") : "";
         }
         color: root.subtle
         font.family: Theme.fontFamily
@@ -121,7 +121,9 @@ Column {
         visible: text !== ""
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        text: root.service ? (root.service.error || root.service.message) : ""
+        // The service keeps the line in English; its template and values
+        // translate here.
+        text: root.service && (root.service.error || root.service.message) ? I18n.tr(root.service.noticeTemplate, ...root.service.noticeArgs) : ""
         color: root.service && root.service.error ? Theme.urgent : Theme.accent
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1
@@ -141,12 +143,12 @@ Column {
         spacing: Math.round(Theme.gap / 2)
 
         Pill {
-            text: "Open the firewall…"
+            text: I18n.tr("Open the firewall…")
             onClicked: root.service.setupFirewall()
         }
 
         Pill {
-            text: "KDE Connect app"
+            text: I18n.tr("KDE Connect app")
             onClicked: root.service.openApp()
         }
     }

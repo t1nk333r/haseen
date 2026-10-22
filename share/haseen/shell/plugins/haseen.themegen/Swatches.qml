@@ -5,8 +5,14 @@ import "Themegen.js" as Model
 // The previewed palette as swatch rows: surfaces, text, accent and selection;
 // the six hues; their bright variants. Each swatch is the preview's colour
 // with its key and value under it; the frame and labels are Theme tokens.
+// The rows are the palette's own order, data rather than reading order, so a
+// right-to-left panel does not reverse them; the captions are colors.toml
+// key names (bg, fg, red …) and stay as they are.
 Column {
     id: root
+
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
 
     required property var colors
     property int swatch: Theme.fontSize * 3

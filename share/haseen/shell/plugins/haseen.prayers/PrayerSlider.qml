@@ -6,7 +6,8 @@ import qs.Haseen
 // Drag or click; liveValue follows the pointer, released(value) fires once
 // on release so one drag is one shell.json write. The wheel steps it only
 // while it is held: otherwise it scrolls the panel, so scrolling past a
-// column of sliders changes nothing.
+// column of sliders changes nothing. Under LayoutMirroring (the panel's
+// Arabic layout) it fills from the right, as haseen's TrackBar does.
 Item {
     id: root
 
@@ -16,6 +17,7 @@ Item {
     property bool integer: true
     property real value: 0
     readonly property real liveValue: drag.pressed ? drag.dragValue : value
+    readonly property bool mirrored: LayoutMirroring.enabled
 
     signal released(real next)
 
@@ -40,6 +42,7 @@ Item {
         color: Theme.border
 
         Rectangle {
+            x: root.mirrored ? parent.width - width : 0
             width: parent.width * root.fraction(root.liveValue)
             height: parent.height
             radius: 2
@@ -49,7 +52,7 @@ Item {
 
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter
-        x: (root.width - width) * root.fraction(root.liveValue)
+        x: (root.width - width) * (root.mirrored ? 1 - root.fraction(root.liveValue) : root.fraction(root.liveValue))
         width: Math.round(Theme.fontSize * 0.9)
         height: width
         radius: width / 2
@@ -64,7 +67,8 @@ Item {
         property real dragValue: root.value
 
         function valueAt(x: real): real {
-            return root.snap(root.minimum + Math.max(0, Math.min(1, x / Math.max(1, width))) * (root.maximum - root.minimum));
+            const f = Math.max(0, Math.min(1, x / Math.max(1, width)));
+            return root.snap(root.minimum + (root.mirrored ? 1 - f : f) * (root.maximum - root.minimum));
         }
 
         anchors.fill: parent

@@ -83,7 +83,7 @@ Column {
                 restart = true;
             return;
         }
-        said(next === 1 ? "searching wallhaven…" : "loading page " + next + "…", false);
+        said(next === 1 ? I18n.tr("searching wallhaven…") : I18n.tr("loading page %1…", next), false);
         searchProc.command = Wh.searchArgv(cli, query, sort, next, seed);
         searchProc.running = true;
     }
@@ -130,7 +130,7 @@ Column {
         downloading = id;
         progress = 0;
         getErr.last = "";
-        said("downloading " + id + "…", false);
+        said(I18n.tr("downloading %1…", id), false);
         getProc.command = Wh.getArgv(cli, id);
         getProc.running = true;
     }
@@ -160,7 +160,7 @@ Column {
             const result = code === 0 ? Wh.parseSearch(searchOut.text) : null;
             if (!result || !result.ok) {
                 const lines = searchErr.text.split("\n").filter(l => l.trim() !== "");
-                root.said(lines.length > 0 ? lines[lines.length - 1].replace(/^Error: /, "") : "wallhaven search failed", true);
+                root.said(lines.length > 0 ? lines[lines.length - 1].replace(/^Error: /, "") : I18n.tr("wallhaven search failed"), true);
                 return;
             }
             const first = result.page === 1;
@@ -182,7 +182,7 @@ Column {
                 root.currentIndex = results.count > 0 ? 0 : -1;
                 grid.positionViewAtBeginning();
             }
-            root.said(results.count === 0 ? "nothing found on wallhaven" : results.count + " of " + result.total + " · page " + result.page + " of " + result.lastPage, results.count === 0);
+            root.said(results.count === 0 ? I18n.tr("nothing found on wallhaven") : I18n.tr("%1 of %2 · page %3 of %4", results.count, result.total, result.page, result.lastPage), results.count === 0);
         }
     }
 
@@ -219,7 +219,7 @@ Column {
             }
             root.queued = "";
             if (path === "") {
-                root.said(getErr.last !== "" ? getErr.last : "could not download " + id, true);
+                root.said(getErr.last !== "" ? getErr.last : I18n.tr("could not download %1", id), true);
                 root.failed(id);
                 return;
             }
@@ -238,7 +238,7 @@ Column {
             Pill {
                 required property string modelData
 
-                text: Wh.sortLabel(modelData)
+                text: I18n.tr(Wh.sortLabel(modelData))
                 active: root.sort === modelData
                 onClicked: root.setSort(modelData)
             }
@@ -271,7 +271,7 @@ Column {
 
             width: root.cardWidth
             path: thumb
-            label: root.downloading === wallId ? "downloading…" : caption
+            label: root.downloading === wallId ? I18n.tr("downloading…") : caption
             selected: index === root.currentIndex
             pixelRatio: root.pixelRatio
             onPicked: root.select(index)
@@ -282,7 +282,8 @@ Column {
         }
     }
 
-    // The download's progress; an empty track while none runs.
+    // The download's progress; an empty track while none runs. Anchored to
+    // the start edge, so it fills from the right in a right-to-left panel.
     Rectangle {
         width: parent.width
         height: Math.max(2, Math.round(Theme.gap / 2))
@@ -290,6 +291,7 @@ Column {
         color: Theme.surfaceAlt
 
         Rectangle {
+            anchors.left: parent.left
             width: root.progress > 0 ? parent.width * root.progress / 100 : 0
             height: parent.height
             radius: parent.radius

@@ -18,6 +18,7 @@ Column {
     spacing: Math.round(Theme.gap / 2)
 
     Text {
+        width: row.width
         text: row.title
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily

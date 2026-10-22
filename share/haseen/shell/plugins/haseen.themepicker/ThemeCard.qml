@@ -86,14 +86,18 @@ Item {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Aa"
+                text: "Aa" // i18n-ignore: a sample of the theme's foreground
                 color: card.swatch("foreground") || Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize * 2
                 font.bold: true
             }
 
+            // The palette in its own order (red … foreground): data, so a
+            // right-to-left panel does not reverse it.
             Row {
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 spacing: 2
 
                 Repeater {

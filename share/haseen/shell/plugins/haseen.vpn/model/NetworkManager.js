@@ -4,7 +4,13 @@
 // Adapted from the owner's fork t1nk33r.vpn 1.4.1-t1nk33r.1 of
 // jkoestinger/omarchy-vpn (MIT, Copyright (c) 2026 Justin Köstinger); see
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this directory. Unchanged
-// by the haseen port (plan 096) apart from this notice.
+// by the haseen port (plan 096) apart from this notice; plan 109 marked the
+// interface strings.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). A sentence
+// around a value goes through Shared.compose, so the panel can translate it.
+function N_(text) { return text }
 
 // OpenVPN, WireGuard, OpenConnect and VPNC profiles, via `nmcli`. Parsing and
 // row-building only — the process plumbing lives in NetworkManagerBackend.qml.
@@ -242,13 +248,13 @@ function nmTargets(profiles, authScript) {
       key: "profile:" + profile.uuid,
       label: profile.name,
       detail: profile.active
-        ? "Connected"
+        ? N_("Connected")
         // OpenVPN and VPNC keep identity outside their secrets. WireGuard keeps
         // its keys in the profile, and OpenConnect settles identity with the
         // gateway, so neither has anything for the user to have left out.
         : (!needsUsername(profile) || profile.hasUsername
-            ? nmKindLabel(profile) + " profile"
-            : "No username set"),
+            ? Shared.compose(N_("%1 profile"), nmKindLabel(profile))
+            : N_("No username set")),
       glyph: glyph,
       args: ["connection", "up", "uuid", profile.uuid],
       uuid: profile.uuid,
@@ -271,23 +277,23 @@ function nmSummary(profiles) {
   for (var i = 0; i < profiles.length; i++) {
     if (profiles[i].active) return profiles[i].name
   }
-  return profiles.length === 0 ? "No profiles" : "Not connected"
+  return profiles.length === 0 ? N_("No profiles") : N_("Not connected")
 }
 
 function nmDetails(profiles) {
   var rows = []
   for (var i = 0; i < profiles.length; i++) {
     if (!profiles[i].active) continue
-    rows.push(Shared.detail("Profile", profiles[i].name))
-    rows.push(Shared.detail("Type", nmKindLabel(profiles[i])))
+    rows.push(Shared.detail(N_("Profile"), profiles[i].name))
+    rows.push(Shared.detail(N_("Type"), nmKindLabel(profiles[i])))
     // Which gateway an interactive or concentrator-backed profile reached,
     // since an organisation commonly has several and the profile name rarely
     // says which one.
     if ((isOpenConnect(profiles[i]) || isVpnc(profiles[i])) && profiles[i].gateway) {
-      rows.push(Shared.detail("Gateway", profiles[i].gateway))
+      rows.push(Shared.detail(N_("Gateway"), profiles[i].gateway))
     }
   }
-  if (rows.length > 0) rows.push(Shared.detail("Managed by", "NetworkManager"))
+  if (rows.length > 0) rows.push(Shared.detail(N_("Managed by"), "NetworkManager"))
   return rows
 }
 

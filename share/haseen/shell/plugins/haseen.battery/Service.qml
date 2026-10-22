@@ -63,7 +63,7 @@ Scope {
     }
 
     function _notify(event: string): void {
-        const m = Logic.message(event, _info(), cfg);
+        const m = Logic.message(event, _info(), cfg, I18n.tr);
         if (!m)
             return;
         sent = sent.concat([event + ": " + m.summary + " | " + m.body]);
@@ -77,12 +77,12 @@ Scope {
     // that ends without one never showed a Cancel, so nothing will run.
     // Stopping the sender closes its notification (it traps TERM).
     function _startCountdown(): void {
-        const m = Logic.message("critical", _info(), cfg);
+        const m = Logic.message("critical", _info(), cfg, I18n.tr);
         sent = sent.concat(["critical: " + m.summary + " | " + m.body]);
         countdown.stop();
         _awaitingNote = false;
         countdownNote.running = false;
-        countdownNote.command = [binDir + "/haseen-notification-send", "-u", "critical", "-p", "--action-label", "Cancel", m.summary, m.body, "--exec", "echo", "cancel"];
+        countdownNote.command = [binDir + "/haseen-notification-send", "-u", "critical", "-p", "--action-label", I18n.tr("Cancel"), m.summary, m.body, "--exec", "echo", "cancel"];
         countdownNote.running = true;
     }
 

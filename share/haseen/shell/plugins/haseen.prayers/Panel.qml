@@ -96,7 +96,7 @@ Item {
         visible: !root.host
         width: parent.width
         wrapMode: Text.WordWrap
-        text: "The prayers service is not running (add haseen.prayers to shell.json services)."
+        text: I18n.tr("The prayers service is not running (add haseen.prayers to shell.json services).")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -153,6 +153,10 @@ Item {
 
             width: scroller.width
             height: item ? item.implicitHeight : 0
+            // Set, not inherited: it overrides the interface mirroring that
+            // PanelPopup gives every native panel (plan 109), so the layouts
+            // run right to left exactly when their names are Arabic, and the
+            // x positions they compute (PanelHorizon's place) agree with it.
             LayoutMirroring.enabled: root.host !== null && root.host.isArabic
             LayoutMirroring.childrenInherit: true
         }

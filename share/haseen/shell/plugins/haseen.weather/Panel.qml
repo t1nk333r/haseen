@@ -91,8 +91,9 @@ Column {
         geocodeProc.running = true;
     }
 
+    // Day names in the interface language (plan 109), not the session's.
     function dayName(dateString: string): string {
-        return Model.dayName(dateString, d => Qt.formatDate(d, "dddd"));
+        return Model.dayName(dateString, d => I18n.formatDate(d, "dddd"));
     }
 
     function sourceText(): string {
@@ -100,11 +101,11 @@ Column {
             return "";
         const parts = [];
         if (service.locationSource === "geoclue")
-            parts.push("GeoClue location");
+            parts.push(I18n.tr("GeoClue location"));
         else if (service.locationSource === "ip")
-            parts.push(service.geoclueNote !== "" ? "IP location · " + service.geoclueNote : "IP location");
+            parts.push(service.geoclueNote !== "" ? I18n.tr("IP location · %1", service.geoclueNote) : I18n.tr("IP location"));
         if (service.updated > 0)
-            parts.push("updated " + new Date(service.updated).toLocaleTimeString(Qt.locale(), "HH:mm"));
+            parts.push(I18n.tr("updated %1", I18n.formatDate(new Date(service.updated), "HH:mm")));
         return parts.join(" · ");
     }
 
@@ -133,7 +134,7 @@ Column {
         width: parent.width
         visible: root.service === null
         wrapMode: Text.WordWrap
-        text: "The weather service is not running (enable haseen.weather in shell.json)."
+        text: I18n.tr("The weather service is not running (enable haseen.weather in shell.json).")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -159,9 +160,11 @@ Column {
                 font.pixelSize: Theme.fontSize * 4.5
             }
 
+            // The number and its unit read "21°C" in every language.
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
+                LayoutMirroring.enabled: false
 
                 Text {
                     id: tempBig
@@ -195,7 +198,10 @@ Column {
             width: Math.max(stats.implicitWidth, Theme.fontSize * 14)
             spacing: Theme.gap
 
+            // Anchored to the column's start, so a mirrored panel (plan 109)
+            // lines these rows up on the right.
             Row {
+                anchors.left: parent.left
                 visible: !root.editingLocation
                 spacing: Math.round(Theme.gap / 2)
 
@@ -217,7 +223,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.min(implicitWidth, heroRight.width - Theme.fontSize * 2)
                     textFormat: Text.PlainText
-                    text: root.service && root.service.reportLocation !== "" ? root.service.reportLocation.toUpperCase() : "SET LOCATION"
+                    text: root.service && root.service.reportLocation !== "" ? root.service.reportLocation.toUpperCase() : I18n.tr("SET LOCATION")
                     color: Theme.muted
                     elide: Text.ElideRight
                     font.family: Theme.fontFamily
@@ -227,6 +233,7 @@ Column {
             }
 
             Row {
+                anchors.left: parent.left
                 visible: root.editingLocation
                 spacing: Math.round(Theme.gap / 2)
 
@@ -286,7 +293,7 @@ Column {
                         anchors.leftMargin: locationField.leftPadding
                         verticalAlignment: Text.AlignVCenter
                         visible: locationField.text === ""
-                        text: "Search city (empty = automatic)"
+                        text: I18n.tr("Search city (empty = automatic)")
                         color: Theme.muted
                         elide: Text.ElideRight
                         font: locationField.font
@@ -333,14 +340,15 @@ Column {
             Row {
                 id: stats
 
+                anchors.left: parent.left
                 visible: root.hasCurrent
                 spacing: Theme.gap * 2.5
 
                 Repeater {
                     model: [
-                        { label: "FEELS", value: root.service ? root.service.reportFeels : "" },
-                        { label: "WIND", value: root.service ? root.service.reportWind : "" },
-                        { label: "HUMID", value: root.service ? root.service.reportHumidity : "" }
+                        { label: I18n.mark("FEELS"), value: root.service ? root.service.reportFeels : "" },
+                        { label: I18n.mark("WIND"), value: root.service ? root.service.reportWind : "" },
+                        { label: I18n.mark("HUMID"), value: root.service ? root.service.reportHumidity : "" }
                     ]
 
                     delegate: Column {
@@ -349,7 +357,7 @@ Column {
                         spacing: Math.round(Theme.gap / 3)
 
                         Text {
-                            text: modelData.label
+                            text: I18n.tr(modelData.label)
                             color: Theme.muted
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize - 2
@@ -427,8 +435,9 @@ Column {
     }
 
     Text {
+        width: parent.width
         visible: root.service !== null && !root.hasCurrent
-        text: "Fetching forecast…"
+        text: I18n.tr("Fetching forecast…")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1

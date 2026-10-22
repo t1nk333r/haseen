@@ -81,11 +81,11 @@ ColumnLayout {
         textFormat: Text.PlainText
         text: {
             if (!root.keyboard.connected)
-                return link.hint;
+                return I18n.tr(link.hint);
             if (!root.keyboard.present)
-                return "plug in a Wooting keyboard";
-            const parts = [String(root.device.layout || "unknown").toUpperCase() + " layout", root.device.columns + " columns"];
-            parts.push(root.analogPresent ? "analog live" : "no analog stream");
+                return I18n.tr("plug in a Wooting keyboard");
+            const parts = [I18n.tr("%1 layout", String(root.device.layout || "unknown").toUpperCase()), I18n.tn("%1 column", "%1 columns", root.device.columns)];
+            parts.push(root.analogPresent ? I18n.tr("analog live") : I18n.tr("no analog stream"));
             return (root.device.model || "Wooting") + " · " + parts.join(" · ");
         }
         color: Theme.subtle(Theme.surface)
@@ -95,9 +95,13 @@ ColumnLayout {
 
     // One unit is `root.unit` px; every key is placed from Model.keysFor, so
     // a row's shape is data, not QML.
+    // A key map: the keys keep their physical places in a mirrored panel
+    // (plan 109), down to each key's travel bar.
     Item {
         id: board
 
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
         Layout.preferredWidth: root.grid.w * root.unit
         Layout.preferredHeight: root.grid.h * root.unit
         visible: root.keyboard.present && root.keys.length > 0
@@ -185,7 +189,7 @@ ColumnLayout {
         visible: root.stray.length > 0
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        text: "Unmapped: " + root.stray.map(k => "r" + k.row + "c" + k.col + " " + Model.hidName(k.code) + " " + Math.round(k.value * 100) + "%").join("   ")
+        text: I18n.tr("Unmapped: %1", root.stray.map(k => "r" + k.row + "c" + k.col + " " + Model.hidName(k.code) + " " + Math.round(k.value * 100) + "%").join("   "))
         color: Theme.urgent
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1
@@ -201,12 +205,12 @@ ColumnLayout {
                 // Only names count: an action the firmware will not name
                 // teaches nothing, so it is not advertised.
                 const learned = Model.namedCount(root.learnedFn);
-                const how = root.fnHeld ? "Fn held" : "Fn pinned, click Fn again to leave";
-                return how + " · " + (learned > 0 ? learned + " key" + (learned === 1 ? "" : "s") + " read off your board (accent) · dim = Wooting default · ▪ = unnamed Wooting action · blank = nothing mapped" : "labels are Wooting's documented defaults; hold Fn and press keys to read yours off the firmware");
+                const how = root.fnHeld ? I18n.tr("Fn held") : I18n.tr("Fn pinned, click Fn again to leave");
+                return how + " · " + (learned > 0 ? I18n.tn("%1 key read off your board (accent) · dim = Wooting default · ▪ = unnamed Wooting action · blank = nothing mapped", "%1 keys read off your board (accent) · dim = Wooting default · ▪ = unnamed Wooting action · blank = nothing mapped", learned) : I18n.tr("labels are Wooting's documented defaults; hold Fn and press keys to read yours off the firmware"));
             }
             if (root.pressedCount > 0)
-                return root.pressedCount + " key" + (root.pressedCount === 1 ? "" : "s") + " under travel";
-            return "Press keys to see travel · click Fn for the Fn layer";
+                return I18n.tn("%1 key under travel", "%1 keys under travel", root.pressedCount);
+            return I18n.tr("Press keys to see travel · click Fn for the Fn layer");
         }
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily

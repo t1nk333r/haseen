@@ -88,7 +88,7 @@ Column {
         }
         onExited: code => {
             if (code !== 0 && !root.loaded)
-                root.error = "Hyprland did not list the monitors.";
+                root.error = I18n.tr("Hyprland did not list the monitors.");
             if (again) {
                 again = false;
                 running = true;
@@ -107,7 +107,7 @@ Column {
         onExited: code => {
             if (code !== 0) {
                 const lines = actErr.text.trim().split("\n");
-                root.error = (lines[lines.length - 1] || "The change did not apply.").replace(/^Error: /, "");
+                root.error = (lines[lines.length - 1] || I18n.tr("The change did not apply.")).replace(/^Error: /, "");
             }
             // hyprctl answers before the monitor has settled; read it a
             // moment later, as the original did.
@@ -172,7 +172,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Monitors"
+            text: I18n.tr("Monitors")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -181,7 +181,7 @@ Column {
         Pill {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: "Brightness"
+            text: I18n.tr("Brightness")
             onClicked: Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "toggle", "haseen.display"])
         }
     }
@@ -189,7 +189,7 @@ Column {
     Text {
         width: parent.width
         visible: !root.loaded && root.error === ""
-        text: "Reading the monitors…"
+        text: I18n.tr("Reading the monitors…")
         color: root.subtle
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -206,10 +206,10 @@ Column {
     PillRow {
         width: parent.width
         visible: root.canMirror
-        title: "Laptop display"
+        title: I18n.tr("Laptop display")
         options: [
-            { value: "extend", label: "Extend" },
-            { value: "mirror", label: "Mirror" }
+            { value: "extend", label: I18n.tr("Extend") },
+            { value: "mirror", label: I18n.tr("Mirror") }
         ]
         current: root.info.mirror ? "mirror" : "extend"
         busy: root.busy
@@ -239,7 +239,7 @@ Column {
     PillRow {
         width: parent.width
         visible: root.loaded
-        title: "Cursor size"
+        title: I18n.tr("Cursor size")
         options: root.cursorOptions
         current: root.cursorCurrent
         busy: root.busy

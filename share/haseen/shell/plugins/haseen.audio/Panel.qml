@@ -30,6 +30,12 @@ Column {
     width: Theme.fontSize * 26
     spacing: Theme.gap
 
+    // A device or app name from PipeWire as it is; only the model's own
+    // fallbacks ("Unknown", "Stream") are interface text to translate.
+    function shown(label: string): string {
+        return label === "Unknown" || label === "Stream" ? I18n.tr(label) : label;
+    }
+
     // Binds every listed node so audio, nickname and properties are live.
     PwObjectTracker {
         objects: root.sinks.concat(root.sources, root.streams)
@@ -104,7 +110,7 @@ Column {
             anchors.right: parent.right
             anchors.rightMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            text: Model.nodeLabel(row.node)
+            text: root.shown(Model.nodeLabel(row.node))
             color: Theme.foreground
             elide: Text.ElideRight
             font.family: Theme.fontFamily
@@ -119,7 +125,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Audio"
+            text: I18n.tr("Audio")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -129,7 +135,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: root.sink !== null && root.sink.audio !== null
-            text: visible ? Model.outputVolumeName(root.sink.audio.volume, root.sink.audio.muted) : ""
+            text: visible ? I18n.tr(Model.outputVolumeName(root.sink.audio.volume, root.sink.audio.muted)) : ""
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -140,7 +146,7 @@ Column {
         width: parent.width
         visible: root.sink === null
         wrapMode: Text.WordWrap
-        text: "No audio output (is PipeWire running?)."
+        text: I18n.tr("No audio output (is PipeWire running?).")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -148,7 +154,7 @@ Column {
 
     SectionLabel {
         visible: root.sink !== null
-        text: "Output"
+        text: I18n.tr("Output")
     }
 
     VolumeRow {
@@ -156,7 +162,7 @@ Column {
         visible: root.sink !== null && root.sink.audio !== null
         audio: root.sink ? root.sink.audio : null
         glyph: Model.sinkGlyph(root.sink)
-        label: Model.nodeLabel(root.sink)
+        label: root.shown(Model.nodeLabel(root.sink))
     }
 
     Repeater {
@@ -174,7 +180,7 @@ Column {
 
     SectionLabel {
         visible: root.source !== null
-        text: "Input"
+        text: I18n.tr("Input")
     }
 
     VolumeRow {
@@ -182,7 +188,7 @@ Column {
         visible: root.source !== null && root.source.audio !== null
         audio: root.source ? root.source.audio : null
         glyph: root.source && root.source.audio && root.source.audio.muted ? "\u{F036D}" : Model.sourceGlyph(root.source)
-        label: Model.nodeLabel(root.source)
+        label: root.shown(Model.nodeLabel(root.source))
     }
 
     Repeater {
@@ -200,7 +206,7 @@ Column {
 
     SectionLabel {
         visible: root.streams.length > 0
-        text: "Apps"
+        text: I18n.tr("Apps")
     }
 
     Repeater {
@@ -212,7 +218,7 @@ Column {
             width: root.width
             audio: modelData.audio
             glyph: "\u{F075A}"
-            label: Model.streamLabel(modelData)
+            label: root.shown(Model.streamLabel(modelData))
             detail: Model.streamDetail(modelData)
         }
     }

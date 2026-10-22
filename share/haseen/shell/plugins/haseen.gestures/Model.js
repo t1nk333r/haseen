@@ -11,44 +11,58 @@
 // The values are the tokens `haseen gestures apply` accepts (lib/gestures.sh
 // GESTURES_JQ_VALID); the labels are what a person reads.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
+// %1..%9 filled from the further arguments: the English stand-in for
+// I18n.tr, which the panel passes to summary() for its language.
+function fill(text) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return String(text).replace(/%([1-9])/g, function (whole, digit) {
+        var value = args[Number(digit) - 1];
+        return value === undefined || value === null ? whole : String(value);
+    });
+}
+
 var ACTIONS = [
-    { value: "none", label: "Nothing" },
-    { value: "workspace", label: "Switch workspace" },
-    { value: "special", label: "Scratchpad" },
-    { value: "fullscreen", label: "Fullscreen" },
-    { value: "maximize", label: "Maximize" },
-    { value: "float", label: "Float / tile" },
-    { value: "move_window", label: "Move window" },
-    { value: "resize_window", label: "Resize window" },
-    { value: "close_window", label: "Close window" },
-    { value: "zoom", label: "Zoom screen" },
+    { value: "none", label: N_("Nothing") },
+    { value: "workspace", label: N_("Switch workspace") },
+    { value: "special", label: N_("Scratchpad") },
+    { value: "fullscreen", label: N_("Fullscreen") },
+    { value: "maximize", label: N_("Maximize") },
+    { value: "float", label: N_("Float / tile") },
+    { value: "move_window", label: N_("Move window") },
+    { value: "resize_window", label: N_("Resize window") },
+    { value: "close_window", label: N_("Close window") },
+    { value: "zoom", label: N_("Zoom screen") },
     // Upstream's "Omarchy menu"; haseen's command menu is the same role.
-    { value: "menu", label: "Command menu" }
+    { value: "menu", label: N_("Command menu") }
 ];
 
 var CLICK_METHODS = [
-    { value: "clickfinger", label: "Two fingers = right click" },
-    { value: "buttonareas", label: "Bottom-right = right click" }
+    { value: "clickfinger", label: N_("Two fingers = right click") },
+    { value: "buttonareas", label: N_("Bottom-right = right click") }
 ];
 
 var DRAG_MODES = [
-    { value: "off", label: "Off" },
-    { value: "threefinger", label: "Three fingers" },
-    { value: "fourfinger", label: "Four fingers" }
+    { value: "off", label: N_("Off") },
+    { value: "threefinger", label: N_("Three fingers") },
+    { value: "fourfinger", label: N_("Four fingers") }
 ];
 
 var SWIPE_RANGES = [
-    { value: "numbered", label: "Every workspace" },
-    { value: "existing", label: "Only open ones" }
+    { value: "numbered", label: N_("Every workspace") },
+    { value: "existing", label: N_("Only open ones") }
 ];
 
 // Upstream's "Paste selection" ran `wl-paste --primary` from a bind, which
 // prints the selection to nowhere; it is not offered.
 var MIDDLE_BUTTONS = [
-    { value: "none", label: "Nothing" },
-    { value: "move", label: "Hold & drag to move" },
-    { value: "resize", label: "Hold & drag to resize" },
-    { value: "screenshot", label: "Screenshot region" }
+    { value: "none", label: N_("Nothing") },
+    { value: "move", label: N_("Hold & drag to move") },
+    { value: "resize", label: N_("Hold & drag to resize") },
+    { value: "screenshot", label: N_("Screenshot region") }
 ];
 
 // An axis is the pair of directions the panel edits as one control: the
@@ -120,16 +134,18 @@ function labelFor(options, value) {
 }
 
 // One line for the panel header: what the swipes do, or that they are off.
-function summary(settings) {
+// tr: I18n.tr for the interface's language; English without it.
+function summary(settings, tr) {
+    var t = typeof tr === "function" ? tr : fill;
     if (settings.enabled === false)
-        return "Gestures off";
+        return t(N_("Gestures off"));
     var parts = [];
     for (var f = 3; f <= 4; f++) {
         var h = axisValue(settings, f, "horizontal");
         if (h !== "" && h !== "none")
-            parts.push(f + " fingers: " + labelFor(ACTIONS, h).toLowerCase());
+            parts.push(t(N_("%1 fingers: %2"), f, t(labelFor(ACTIONS, h)).toLowerCase()));
     }
-    return parts.length > 0 ? parts.join(" · ") : "No swipes mapped";
+    return parts.length > 0 ? parts.join(" · ") : t(N_("No swipes mapped"));
 }
 
 function applyCommand(cli, patch) {

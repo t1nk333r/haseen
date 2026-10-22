@@ -60,7 +60,8 @@ Column {
         if (cli.running)
             return;
         busyId = row.id;
-        cli.label = (on ? "enable " : "disable ") + row.id;
+        cli.enabling = on;
+        cli.target = row.id;
         cli.command = [root.bin + "/haseen-plugin-" + (on ? "enable" : "disable"), row.id];
         cli.running = true;
     }
@@ -78,7 +79,7 @@ Column {
         const errs = Object.assign({}, fieldErrors);
         const next = Object.assign({}, edits);
         if (!parsed.ok) {
-            errs[field.key] = "expects " + parsed.error;
+            errs[field.key] = Model.expects(parsed.error);
             delete next[field.key];
         } else {
             delete errs[field.key];
@@ -129,13 +130,13 @@ Column {
         const key = list.slice().sort().join(" ");
         if (confirmDelete !== key) {
             confirmDelete = key;
-            notice = "Press again to delete " + (list.length === 1 ? list[0] : list.length + " plugins") + " from ~/.config/haseen/plugins.";
+            notice = list.length === 1 ? I18n.tr("Press again to delete %1 from ~/.config/haseen/plugins.", list[0]) : I18n.tn("Press again to delete %1 plugin from ~/.config/haseen/plugins.", "Press again to delete %1 plugins from ~/.config/haseen/plugins.", list.length);
             return;
         }
         confirmDelete = "";
         deleter.command = ["sh", "-c", "u=$1; shift; for n do if out=$(\"$u\" \"$n\" --yes 2>&1); then echo \"ok $n\"; else echo \"fail $n $(printf '%s' \"$out\" | tail -n1)\"; fi; done", "sh", root.bin + "/haseen-plugin-uninstall"].concat(list);
         deleter.running = true;
-        notice = "Deleting…";
+        notice = I18n.tr("Deleting…");
     }
 
     width: Theme.fontSize * 34
@@ -146,14 +147,16 @@ Column {
     Process {
         id: cli
 
-        property string label: ""
+        property bool enabling: false
+        property string target: ""
 
         stderr: StdioCollector {
             id: cliErr
         }
         onExited: code => {
             root.busyId = "";
-            root.notice = code === 0 ? "" : "Could not " + label + ": " + cliErr.text.trim().split("\n").pop();
+            const why = cliErr.text.trim().split("\n").pop();
+            root.notice = code === 0 ? "" : enabling ? I18n.tr("Could not enable %1: %2", target, why) : I18n.tr("Could not disable %1: %2", target, why);
         }
     }
 
@@ -166,9 +169,9 @@ Column {
             if (code === 0) {
                 root.edits = {};
                 root.resets = [];
-                root.notice = "Saved to shell.json.";
+                root.notice = I18n.tr("Saved to shell.json.");
             } else {
-                root.notice = "haseen plugin settings refused the change.";
+                root.notice = I18n.tr("haseen plugin settings refused the change.");
             }
         }
     }
@@ -182,7 +185,12 @@ Column {
         onExited: {
             const s = Model.deleteSummary(deleteOut.text);
             root.selected = {};
-            root.notice = (s.ok.length > 0 ? "Deleted " + s.ok.join(", ") + "." : "") + (s.failed.length > 0 ? " Not deleted: " + s.failed.map(f => f.name + " (" + f.reason + ")").join(", ") : "");
+            const parts = [];
+            if (s.ok.length > 0)
+                parts.push(I18n.tr("Deleted %1.", s.ok.join(", ")));
+            if (s.failed.length > 0)
+                parts.push(I18n.tr("Not deleted: %1", s.failed.map(f => f.name + " (" + f.reason + ")").join(", ")));
+            root.notice = parts.join(" ");
         }
     }
 
@@ -266,7 +274,7 @@ Column {
             anchors.left: heroGlyph.right
             anchors.leftMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            text: root.formRecord ? root.formRecord.name + " settings" : "Plugins"
+            text: root.formRecord ? I18n.tr("%1 settings", root.formRecord.name) : I18n.tr("Plugins")
             textFormat: Text.PlainText
             color: Theme.accent
             font.family: Theme.fontFamily
@@ -277,7 +285,7 @@ Column {
             anchors.right: parent.right
             height: parent.height
             visible: root.formId !== ""
-            text: "Back"
+            text: I18n.tr("Back")
             color: Theme.foreground
             onClicked: root.formId = ""
         }
@@ -324,9 +332,10 @@ Column {
             }
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: search.text === ""
-                text: "Search plugins"
+                text: I18n.tr("Search plugins")
                 color: Theme.muted
                 font: search.font
             }
@@ -345,14 +354,7 @@ Column {
                 required property string modelData
 
                 height: Theme.fontSize * 2
-                text: ({
-                        all: "All",
-                        enabled: "On",
-                        builtin: "Built-in",
-                        installed: "Installed",
-                        readonly: "Omarchy/DMS",
-                        configurable: "With settings"
-                    })[modelData] + " " + Model.countFor(root.allRows, modelData)
+                text: I18n.tr(Model.FILTER_LABELS[modelData]) + " " + Model.countFor(root.allRows, modelData)
                 highlighted: root.filter === modelData
                 color: Theme.foreground
                 onClicked: root.filter = modelData
@@ -376,7 +378,7 @@ Column {
 
             width: list.width
             row: modelData
-            stateText: Model.stateLabel(modelData)
+            stateText: I18n.tr(Model.stateLabel(modelData))
             busy: root.busyId === modelData.id
             selected: root.selected[modelData.deleteName] === true
             onToggled: on => root.setEnabled(modelData, on)
@@ -394,7 +396,7 @@ Column {
         BarButton {
             anchors.left: parent.left
             height: parent.height
-            text: "Clear selection"
+            text: I18n.tr("Clear selection")
             color: Theme.muted
             onClicked: {
                 root.selected = {};
@@ -405,7 +407,7 @@ Column {
         BarButton {
             anchors.right: parent.right
             height: parent.height
-            text: deleter.running ? "Deleting…" : "Delete " + root.selectedNames.length
+            text: deleter.running ? I18n.tr("Deleting…") : I18n.tr("Delete %1", root.selectedNames.length)
             color: Theme.urgent
             onClicked: root.requestDelete(root.selectedNames)
         }
@@ -443,16 +445,17 @@ Column {
     Text {
         width: parent.width
         visible: root.formId !== "" && root.formFields.length === 0
-        text: "This plugin declares no settings."
+        text: I18n.tr("This plugin declares no settings.")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
     }
 
     BarButton {
+        anchors.left: parent.left
         visible: root.formId !== ""
         height: Theme.fontSize * 2.2
-        text: saver.running ? "Saving…" : "Save"
+        text: saver.running ? I18n.tr("Saving…") : I18n.tr("Save")
         highlighted: root.formDirty
         color: root.formDirty ? Theme.accent : Theme.muted
         onClicked: root.save()

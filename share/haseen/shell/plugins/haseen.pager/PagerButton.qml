@@ -40,7 +40,9 @@ Rectangle {
     Text {
         id: label
 
-        x: button.leftAlign ? button.horizontalPadding : Math.max(button.horizontalPadding, (button.width - width) / 2)
+        // leftAlign starts the label at the line's start: the right edge in a
+        // mirrored (right-to-left) layout (plan 109).
+        x: button.leftAlign ? (LayoutMirroring.enabled ? button.width - width - button.horizontalPadding : button.horizontalPadding) : Math.max(button.horizontalPadding, (button.width - width) / 2)
         anchors.verticalCenter: parent.verticalCenter
         width: button.wrap ? Math.max(1, button.width - button.horizontalPadding * 2) : implicitWidth
         text: button.text

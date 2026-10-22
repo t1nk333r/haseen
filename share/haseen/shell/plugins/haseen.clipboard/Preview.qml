@@ -39,7 +39,12 @@ Item {
     readonly property string entryId: entry ? entry.id : ""
     readonly property bool isImage: entry !== null && entry.image === true
     readonly property bool isBinary: entry !== null && entry.binary === true && !isImage
-    readonly property string refused: Cliphist.tooLarge(entry, maxBytes, maxPixels)
+    // I18n's translators for Cliphist.js, which stays English on its own.
+    readonly property var tx: ({
+            tr: (text, ...args) => I18n.tr(text, ...args),
+            tn: (singular, plural, count, ...args) => I18n.tn(singular, plural, count, ...args)
+        })
+    readonly property string refused: Cliphist.tooLarge(entry, maxBytes, maxPixels, tx)
     readonly property string imagePath: isImage && refused === "" && thumbDir !== "" ? thumbDir + "/" + entry.id + "." + entry.ext : ""
 
     // Decoded state for the current entry.
@@ -47,7 +52,9 @@ Item {
     property int bytes: -1
     property bool truncated: false
     property bool imageReady: false
+    // An English template, translated where it is shown; %1 is failureCode.
     property string failure: ""
+    property int failureCode: 0
     // Set when the decoded body turns out to be binary (a NUL byte).
     property bool binaryBody: false
 
@@ -55,17 +62,17 @@ Item {
     readonly property string meta: {
         if (!entry)
             return "";
-        const base = Cliphist.summary(entry, isImage ? entry.bytes : bytes, lines);
-        return truncated ? base + " \u00b7 first " + Cliphist.humanSize(textCap) : base;
+        const base = Cliphist.summary(entry, isImage ? entry.bytes : bytes, lines, tx);
+        return truncated ? I18n.tr("%1 \u00b7 first %2", base, Cliphist.humanSize(textCap)) : base;
     }
     readonly property string notice: {
         if (refused !== "")
-            return entry.type + ", " + refused;
+            return I18n.tr("%1, %2", entry.type, refused);
         if (isBinary || binaryBody)
-            return "Binary data, not shown as text.";
+            return I18n.tr("Binary data, not shown as text.");
         if (isImage && thumbDir === "")
-            return "Images are not decoded: XDG_RUNTIME_DIR is not set, and there is no other private place to put them.";
-        return failure;
+            return I18n.tr("Images are not decoded: XDG_RUNTIME_DIR is not set, and there is no other private place to put them.");
+        return failure !== "" ? I18n.tr(failure, failureCode) : "";
     }
 
     // Panel.qml maps PageUp/PageDown here: +1 scrolls a pane down, -1 up.
@@ -94,6 +101,7 @@ Item {
         truncated = false;
         imageReady = false;
         failure = "";
+        failureCode = 0;
         binaryBody = false;
         flick.contentY = 0;
         if (!entry || refused !== "" || isBinary)
@@ -137,11 +145,12 @@ Item {
             if (textDecoder.run !== root._run)
                 return;
             if (code === 127) {
-                root.failure = "cliphist is not installed.";
+                root.failure = I18n.mark("cliphist is not installed.");
                 return;
             }
             if (code !== 0) {
-                root.failure = "cliphist decode failed (exit " + code + ").";
+                root.failureCode = code;
+                root.failure = I18n.mark("cliphist decode failed (exit %1).");
                 return;
             }
             const counts = counted.text.trim().split(/\s+/).map(n => parseInt(n, 10));
@@ -164,12 +173,13 @@ Item {
             if (imageDecoder.run !== root._run)
                 return;
             root.imageReady = code === 0;
+            root.failureCode = code;
             if (code === 127)
-                root.failure = "cliphist is not installed.";
+                root.failure = I18n.mark("cliphist is not installed.");
             else if (code === 3)
-                root.failure = "Images are not decoded: the image cache (or XDG_RUNTIME_DIR) is not a private directory of yours.";
+                root.failure = I18n.mark("Images are not decoded: the image cache (or XDG_RUNTIME_DIR) is not a private directory of yours.");
             else if (code !== 0)
-                root.failure = "cliphist decode failed (exit " + code + ").";
+                root.failure = I18n.mark("cliphist decode failed (exit %1).");
         }
     }
 

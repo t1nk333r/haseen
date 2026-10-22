@@ -32,6 +32,9 @@ Item {
         Text {
             width: parent.width
             textFormat: Text.PlainText
+            // Set rather than implicit: a right-to-left panel then aligns
+            // Latin text and numbers to the right too (plan 109).
+            horizontalAlignment: Text.AlignLeft
             text: root.label
             color: Theme.foreground
             font.family: Theme.fontFamily
@@ -43,6 +46,7 @@ Item {
             width: parent.width
             visible: root.description !== ""
             textFormat: Text.PlainText
+            horizontalAlignment: Text.AlignLeft
             text: root.description
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
@@ -68,7 +72,8 @@ Item {
             height: width
             radius: width / 2
             y: 3
-            x: root.checked ? parent.width - width - 3 : 3
+            // On is the end edge: the left in a right-to-left panel.
+            x: root.checked !== LayoutMirroring.enabled ? parent.width - width - 3 : 3
             color: root.checked ? Theme.accentFg : Theme.foreground
 
             Behavior on x {

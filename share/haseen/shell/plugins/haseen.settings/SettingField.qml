@@ -39,7 +39,7 @@ Item {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - resetButton.width
-                text: root.field.key + "  (" + root.field.type + ")" + (root.field.set && !root.resetting ? "  · set" : "  · default") + (root.hasPending || root.resetting ? "  · unsaved" : "")
+                text: root.field.key + "  (" + root.field.type + ")  · " + (root.field.set && !root.resetting ? I18n.tr("set") : I18n.tr("default")) + (root.hasPending || root.resetting ? "  · " + I18n.tr("unsaved") : "")
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: Theme.foreground
@@ -53,7 +53,7 @@ Item {
                 anchors.right: parent.right
                 height: parent.height
                 visible: root.field.set && !root.resetting
-                text: "Reset"
+                text: I18n.tr("Reset")
                 color: Theme.muted
                 onClicked: root.reset()
             }
@@ -73,7 +73,7 @@ Item {
         BarButton {
             visible: root.field.type === "boolean"
             height: Theme.fontSize * 2
-            text: root.shownValue === true ? "On" : "Off"
+            text: root.shownValue === true ? I18n.tr("On") : I18n.tr("Off")
             highlighted: root.shownValue === true
             color: root.shownValue === true ? Theme.accent : Theme.muted
             onClicked: root.edited(root.shownValue === true ? "false" : "true")
@@ -110,7 +110,7 @@ Item {
         Text {
             width: parent.width
             visible: root.error !== ""
-            text: root.error
+            text: I18n.tr(root.error)
             color: Theme.urgent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1

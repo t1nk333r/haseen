@@ -148,7 +148,7 @@ Item {
                 hoverEnabled: true
                 enabled: row.canForget && !row.panelBusy
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onContainsMouseChanged: row.hint(containsMouse ? "Forget network" : "")
+                onContainsMouseChanged: row.hint(containsMouse ? I18n.tr("Forget network") : "")
                 onClicked: row.forgetRequested()
             }
         }
@@ -188,7 +188,11 @@ Item {
             Keys.onReturnPressed: field.accepted()
             Keys.onEnterPressed: field.accepted()
 
+            // Spans the field so a right-to-left panel starts it where the
+            // cursor sits.
             Text {
+                anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 visible: input.text === ""
                 text: field.placeholder
@@ -226,7 +230,7 @@ Item {
 
                 width: parent.width
                 visible: row.enterprise
-                placeholder: "Identity (user@domain)"
+                placeholder: I18n.tr("Identity (user@domain)")
                 text: row.identityText
                 onEdited: t => {
                     if (t !== row.identityText)
@@ -240,7 +244,7 @@ Item {
 
                 width: parent.width
                 secret: true
-                placeholder: "Passphrase"
+                placeholder: I18n.tr("Passphrase")
                 text: row.passwordText
                 onEdited: t => {
                     if (t !== row.passwordText)
@@ -264,7 +268,7 @@ Item {
             Text {
                 anchors.centerIn: parent
                 textFormat: Text.PlainText
-                text: row.failed ? row.statusText : "Connecting…"
+                text: row.failed ? row.statusText : I18n.tr("Connecting…")
                 color: row.failed ? Theme.urgent : Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1

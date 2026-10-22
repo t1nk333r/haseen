@@ -46,7 +46,7 @@ Column {
 
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Syncthing"
+            text: "Syncthing" // i18n-ignore
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -60,7 +60,9 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            text: root.service ? root.service.summary.text : ""
+            // The service's summary is English (its IPC state reads it); this
+            // one is built in the interface language.
+            text: root.service ? Model.overall(root.service.info, root.service.online, I18n).text : ""
             color: root.service && root.service.summary.kind === "error" ? Theme.urgent : root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -77,13 +79,13 @@ Column {
             Pill {
                 readonly property bool allPaused: root.info !== null && root.info.devices.length > 0 && root.info.devices.every(d => d.paused)
 
-                text: allPaused ? "Resume all" : "Pause all"
+                text: allPaused ? I18n.tr("Resume all") : I18n.tr("Pause all")
                 busy: root.service !== null && root.service.busy
                 onClicked: root.service.setAllPaused(!allPaused)
             }
 
             Pill {
-                text: "Web UI"
+                text: I18n.tr("Web UI")
                 enabled: root.info !== null && root.info.guiUrl !== ""
                 onClicked: root.service.openWebUi()
             }
@@ -100,7 +102,7 @@ Column {
             width: parent.width
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            text: !root.service ? "The haseen.syncthing service is not running: list it in the shell's services." : root.service.problem
+            text: !root.service ? I18n.tr("The haseen.syncthing service is not running: list it in the shell's services.") : I18n.tr(root.service.problem)
             color: root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize
@@ -108,7 +110,7 @@ Column {
 
         Pill {
             visible: root.service !== null
-            text: root.service && root.service.serviceState === "active" ? "Restart Syncthing" : "Start Syncthing"
+            text: root.service && root.service.serviceState === "active" ? I18n.tr("Restart Syncthing") : I18n.tr("Start Syncthing")
             busy: root.service !== null && root.service.busy
             onClicked: root.service.controlService(root.service.serviceState === "active" ? "restart" : "start")
         }
@@ -133,7 +135,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: invite.modelData.name + " (" + invite.modelData.id.slice(0, 7) + ") wants to connect"
+                text: I18n.tr("%1 (%2) wants to connect", invite.modelData.name, invite.modelData.id.slice(0, 7))
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -147,14 +149,14 @@ Column {
                 spacing: Math.round(Theme.gap / 2)
 
                 Pill {
-                    text: "Add"
+                    text: I18n.tr("Add")
                     active: true
                     busy: root.service.busy
                     onClicked: root.service.acceptDevice(invite.modelData.id, invite.modelData.name)
                 }
 
                 Pill {
-                    text: "Dismiss"
+                    text: I18n.tr("Dismiss")
                     busy: root.service.busy
                     onClicked: root.service.dismissDevice(invite.modelData.id)
                 }
@@ -177,7 +179,7 @@ Column {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: offer.modelData.deviceName + " offers the folder " + offer.modelData.label
+                text: I18n.tr("%1 offers the folder %2", offer.modelData.deviceName, offer.modelData.label)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -192,14 +194,14 @@ Column {
 
                     width: parent.width - acceptOffer.width - dismissOffer.width - 2 * parent.spacing
                     text: "~/" + offer.modelData.label.replace(/[\/\x00]/g, "_")
-                    placeholder: "Where to keep it"
+                    placeholder: I18n.tr("Where to keep it")
                     onAccepted: root.service.acceptFolder(offer.modelData, text)
                 }
 
                 Pill {
                     id: acceptOffer
 
-                    text: "Accept"
+                    text: I18n.tr("Accept")
                     active: true
                     busy: root.service.busy
                     onClicked: root.service.acceptFolder(offer.modelData, offerPath.text)
@@ -208,7 +210,7 @@ Column {
                 Pill {
                     id: dismissOffer
 
-                    text: "Dismiss"
+                    text: I18n.tr("Dismiss")
                     busy: root.service.busy
                     onClicked: root.service.dismissFolder(offer.modelData)
                 }
@@ -218,7 +220,7 @@ Column {
 
     Heading {
         visible: root.info !== null
-        text: "Folders"
+        text: I18n.tr("Folders")
     }
 
     Repeater {
@@ -242,7 +244,7 @@ Column {
             id: newFolder
 
             width: parent.width - addFolder.width - parent.spacing
-            placeholder: "Sync another folder, e.g. ~/Documents"
+            placeholder: I18n.tr("Sync another folder, e.g. ~/Documents")
             onAccepted: {
                 if (root.service.addFolder(text))
                     text = "";
@@ -252,7 +254,7 @@ Column {
         Pill {
             id: addFolder
 
-            text: "Add"
+            text: I18n.tr("Add")
             enabled: newFolder.text.trim() !== ""
             busy: root.service !== null && root.service.busy
             onClicked: {
@@ -264,7 +266,7 @@ Column {
 
     Heading {
         visible: root.info !== null && root.info.devices.length > 0
-        text: "Devices"
+        text: I18n.tr("Devices")
     }
 
     Flow {
@@ -279,7 +281,7 @@ Column {
                 required property var modelData
 
                 textFormat: Text.PlainText
-                text: modelData.name + (modelData.paused ? " · paused" : modelData.connected ? " · connected" : " · offline") + "   "
+                text: modelData.name + " · " + (modelData.paused ? I18n.tr("paused") : modelData.connected ? I18n.tr("connected") : I18n.tr("offline")) + "   "
                 color: modelData.connected ? Theme.foreground : root.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
@@ -289,7 +291,7 @@ Column {
 
     Heading {
         visible: root.service !== null && root.service.activity.length > 0
-        text: "Recent activity"
+        text: I18n.tr("Recent activity")
     }
 
     Repeater {
@@ -301,7 +303,7 @@ Column {
             width: root.width
             textFormat: Text.PlainText
             elide: Text.ElideMiddle
-            text: Model.activityText(modelData, root.info ? root.info.folders : [])
+            text: Model.activityText(modelData, root.info ? root.info.folders : [], I18n)
             color: modelData.error ? Theme.urgent : root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -313,7 +315,7 @@ Column {
         visible: text !== ""
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        text: root.service ? (root.service.error || root.service.message) : ""
+        text: root.service ? I18n.tr(root.service.error || root.service.message) : ""
         color: root.service && root.service.error ? Theme.urgent : Theme.accent
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1

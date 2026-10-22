@@ -58,22 +58,22 @@ Item {
             showQueue: false,
             showCalendar: false
         })
-    readonly property var calendarGroups: Model.groupedCalendar(service && service.calendarFeed ? service.calendarFeed : [])
+    readonly property var calendarGroups: Model.groupedCalendar(service && service.calendarFeed ? service.calendarFeed : [], null, I18n)
     readonly property var homeTabModel: {
         const tabs = [
             {
                 id: "ondeck",
-                label: "ON DECK"
+                label: I18n.mark("ON DECK")
             },
             {
                 id: "recent",
-                label: "RECENTLY ADDED"
+                label: I18n.mark("RECENTLY ADDED")
             }
         ];
         if (nowFeed.showCalendar)
             tabs.push({
                 id: "calendar",
-                label: "CALENDAR"
+                label: I18n.mark("CALENDAR")
             });
         return tabs;
     }
@@ -95,7 +95,7 @@ Item {
     readonly property var detailQueueModel: pagedQueue ? service.detailQueue : detailSnap && detailSnap.queue ? detailSnap.queue : []
     readonly property var detailPager: {
         const total = pagedQueue ? service.detailQueueTotal : detailSnap ? (detailSnap.queueTotal || 0) : 0;
-        return Model.listPager(detailQueuePage, detailQueueModel, total, service ? service.pageSize : 0);
+        return Model.listPager(detailQueuePage, detailQueueModel, total, service ? service.pageSize : 0, I18n);
     }
 
     // Height: the header, then the body at its content's height, never
@@ -268,9 +268,11 @@ Item {
             moveCursor(0, 1);
         else if (key === Qt.Key_Up || t === "k")
             moveCursor(0, -1);
-        else if (key === Qt.Key_Right || t === "l")
+        // The arrows follow the mirrored layout: in a right-to-left panel the
+        // detail opens on the left. h and l stay vim's.
+        else if ((key === Qt.Key_Right && !I18n.rightToLeft) || (key === Qt.Key_Left && I18n.rightToLeft) || t === "l")
             moveCursor(1, 0);
-        else if (key === Qt.Key_Left || t === "h")
+        else if (key === Qt.Key_Left || key === Qt.Key_Right || t === "h")
             moveCursor(-1, 0);
         else if (key === Qt.Key_Return || key === Qt.Key_Enter || t === "o" || t === "O")
             openSelected();
@@ -346,7 +348,7 @@ Item {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         textFormat: Text.PlainText
-                        text: "omARR"
+                        text: "omARR" // i18n-ignore: the plugin's name
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize + 5
@@ -362,7 +364,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: text !== ""
                     textFormat: Text.PlainText
-                    text: root.service ? String(root.service.statusText || "").toUpperCase() : ""
+                    text: root.service ? String(root.service.statusLabel || "").toUpperCase() : ""
                     color: root.dim
                     font.family: Theme.fontFamily
                     font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -381,7 +383,7 @@ Item {
 
                     OmarrButton {
                         glyph: "\u{f02dc}"
-                        tooltipText: "Overview"
+                        tooltipText: I18n.tr("Overview")
                         tooltipBelow: true
                         foreground: !root.showSettings && root.detailId === "" ? Theme.accent : Theme.foreground
                         onClicked: {
@@ -392,7 +394,7 @@ Item {
 
                     OmarrButton {
                         glyph: "\u{f0493}"
-                        tooltipText: root.showSettings ? "Back" : "Settings"
+                        tooltipText: root.showSettings ? I18n.tr("Back") : I18n.tr("Settings")
                         tooltipBelow: true
                         foreground: root.showSettings ? Theme.accent : Theme.foreground
                         onClicked: root.showSettings = !root.showSettings
@@ -429,6 +431,8 @@ Item {
                     Loader {
                         id: settingsLoader
 
+                        // The gap is the scroll mark's side, which mirrors.
+                        x: LayoutMirroring.enabled ? Theme.gap : 0
                         width: settingsFlick.width - Theme.gap
                         active: root.showSettings
                         source: "SettingsView.qml"
@@ -462,7 +466,10 @@ Item {
                     Text {
                         width: parent.width
                         textFormat: Text.PlainText
-                        text: "Nothing on the overview yet. Open settings to add Sonarr, Radarr, SABnzbd, qBittorrent, or any local URL, or scan this machine."
+                        // Set rather than implicit: a right-to-left panel then aligns
+                        // Latin text and numbers to the right too (plan 109).
+                        horizontalAlignment: Text.AlignLeft
+                        text: I18n.tr("Nothing on the overview yet. Open settings to add Sonarr, Radarr, SABnzbd, qBittorrent, or any local URL, or scan this machine.")
                         wrapMode: Text.WordWrap
                         color: root.dim
                         font.family: Theme.fontFamily
@@ -470,8 +477,10 @@ Item {
                         font.italic: true
                     }
 
+                    // A Column does not mirror x: the anchor puts it at the start edge.
                     Pill {
-                        text: "Open settings"
+                        anchors.left: parent.left
+                        text: I18n.tr("Open settings")
                         onClicked: root.showSettings = true
                     }
                 }
@@ -507,7 +516,7 @@ Item {
                                 spacing: Math.round(Theme.gap / 2)
 
                                 OmarrSectionHeader {
-                                    text: "FLEET"
+                                    text: I18n.tr("FLEET")
                                 }
 
                                 Repeater {
@@ -528,7 +537,8 @@ Item {
                                             visible: fleetGroup.modelData.group !== ""
                                             width: parent.width
                                             textFormat: Text.PlainText
-                                            text: fleetGroup.modelData.group
+                                            horizontalAlignment: Text.AlignLeft
+                                            text: Model.groupLabel(fleetGroup.modelData.group, I18n)
                                             color: root.dim
                                             font.family: Theme.fontFamily
                                             font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -587,6 +597,7 @@ Item {
                                                         Text {
                                                             width: parent.width
                                                             textFormat: Text.PlainText
+                                                            horizontalAlignment: Text.AlignLeft
                                                             text: fleetRow.modelData.name
                                                             color: Theme.foreground
                                                             font.family: Theme.fontFamily
@@ -598,7 +609,8 @@ Item {
                                                         Text {
                                                             width: parent.width
                                                             textFormat: Text.PlainText
-                                                            text: Model.fleetLine(fleetRow.modelData)
+                                                            horizontalAlignment: Text.AlignLeft
+                                                            text: Model.fleetLine(fleetRow.modelData, I18n)
                                                             color: root.dim
                                                             font.family: Theme.fontFamily
                                                             font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -626,13 +638,13 @@ Item {
 
                             OmarrButton {
                                 glyph: "\u{f0415}"
-                                tooltipText: "Add service"
+                                tooltipText: I18n.tr("Add service")
                                 onClicked: root.openAddService()
                             }
 
                             OmarrButton {
                                 glyph: "\u{f035c}"
-                                tooltipText: "Fleet"
+                                tooltipText: I18n.tr("Fleet")
                                 onClicked: root.openFleetSettings()
                             }
                         }
@@ -653,6 +665,8 @@ Item {
                         Column {
                             id: pane
 
+                            // The gap is the scroll mark's side, which mirrors.
+                            x: LayoutMirroring.enabled ? Theme.gap : 0
                             width: contentFlick.width - Theme.gap
                             topPadding: Math.round(Theme.gap / 2)
                             bottomPadding: Theme.gap

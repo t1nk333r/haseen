@@ -15,7 +15,7 @@ Column {
         onReveal: item => root.reveal(item)
         rows: Model.localIds.map(id => {
             const c = root.capabilities.find(c => c.id === id);
-            return {id: id, label: ["TCP listener", "Directory server", "Selected file server", "Proxy CA anchor", "Remote desktop client"][Model.localIds.indexOf(id)] + "\n" + (c ? Model.text(c.state) + " • " + Model.text(c.reason) : "Prerequisite evidence unavailable")};
+            return {id: id, label: [I18n.tr("TCP listener"), I18n.tr("Directory server"), I18n.tr("Selected file server"), I18n.tr("Proxy CA anchor"), I18n.tr("Remote desktop client")][Model.localIds.indexOf(id)] + "\n" + (c ? Model.text(c.state) + " • " + Model.text(c.reason) : I18n.tr("Prerequisite evidence unavailable"))};
         })
         onInspected: itemId => root.chosen(itemId)
     }

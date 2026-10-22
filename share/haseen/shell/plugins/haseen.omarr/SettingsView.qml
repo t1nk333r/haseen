@@ -32,37 +32,37 @@ Column {
     readonly property var kindOptions: [
         {
             value: "generic",
-            label: "Generic"
+            label: I18n.mark("Generic")
         },
         {
             value: "sonarr",
-            label: "Sonarr"
+            label: "Sonarr" // i18n-ignore: product names are not translated
         },
         {
             value: "radarr",
-            label: "Radarr"
+            label: "Radarr" // i18n-ignore
         },
         {
             value: "jellyfin",
-            label: "Jellyfin"
+            label: "Jellyfin" // i18n-ignore
         },
         {
             value: "sabnzbd",
-            label: "SABnzbd"
+            label: "SABnzbd" // i18n-ignore
         },
         {
             value: "qbittorrent",
-            label: "qBittorrent"
+            label: "qBittorrent" // i18n-ignore
         }
     ]
     readonly property var listTabs: [
         {
             id: "settings",
-            label: "SETTINGS"
+            label: I18n.mark("SETTINGS")
         },
         {
             id: "fleet",
-            label: "FLEET"
+            label: I18n.mark("FLEET")
         }
     ]
 
@@ -227,7 +227,7 @@ Column {
             anchors.right: headerActions.left
             anchors.verticalCenter: parent.verticalCenter
             visible: root.mode === "edit"
-            text: root.editingId ? "EDIT SERVICE" : "ADD SERVICE"
+            text: root.editingId ? I18n.tr("EDIT SERVICE") : I18n.tr("ADD SERVICE")
         }
 
         OmarrTabs {
@@ -253,14 +253,14 @@ Column {
             OmarrButton {
                 visible: root.mode === "list" && root.listTab === "fleet"
                 glyph: "\u{f0415}"
-                tooltipText: "Add service"
+                tooltipText: I18n.tr("Add service")
                 onClicked: root.startAdd()
             }
 
             OmarrButton {
                 visible: root.mode === "list" && root.listTab === "fleet"
                 glyph: "\u{f0349}"
-                tooltipText: root.scanning ? "Scanning…" : "Scan local ports"
+                tooltipText: root.scanning ? I18n.tr("Scanning…") : I18n.tr("Scan local ports")
                 foreground: root.scanning ? Theme.accent : Theme.foreground
                 onClicked: {
                     if (root.service)
@@ -270,7 +270,7 @@ Column {
 
             OmarrButton {
                 glyph: "\u{f0156}"
-                tooltipText: root.mode === "edit" ? "Back" : "Close settings"
+                tooltipText: root.mode === "edit" ? I18n.tr("Back") : I18n.tr("Close settings")
                 onClicked: {
                     if (root.mode === "edit")
                         root.leaveForm();
@@ -287,11 +287,14 @@ Column {
         spacing: Theme.gap * 2
         visible: root.mode === "list" && root.listTab === "settings"
 
+        // Rows span the width, so a right-to-left panel starts them at the
+        // right (a Column does not mirror x).
         Row {
+            width: parent.width
             spacing: Theme.gap * 2
 
             OmarrNumberField {
-                label: "Poll interval (seconds)"
+                label: I18n.tr("Poll interval (seconds)")
                 value: root.service ? root.service.pollSeconds : Model.DEFAULT_POLL_SECONDS
                 from: 5
                 to: 3600
@@ -305,7 +308,7 @@ Column {
             }
 
             OmarrNumberField {
-                label: "Queue page size"
+                label: I18n.tr("Queue page size")
                 value: root.service ? root.service.pageSize : Model.LIST_PAGE_SIZE
                 from: Model.PAGE_SIZE_MIN
                 to: Model.PAGE_SIZE_MAX
@@ -323,8 +326,8 @@ Column {
         }
 
         OmarrToggle {
-            label: "Compact density"
-            description: "Tighter fleet rows"
+            label: I18n.tr("Compact density")
+            description: I18n.tr("Tighter fleet rows")
             checked: root.compact
             onClicked: {
                 if (root.service)
@@ -335,8 +338,8 @@ Column {
         }
 
         OmarrToggle {
-            label: "Download progress"
-            description: "Keep a notification with the progress up while something is downloading"
+            label: I18n.tr("Download progress")
+            description: I18n.tr("Keep a notification with the progress up while something is downloading")
             checked: root.service ? root.service.showProgressToast !== false : true
             onClicked: {
                 if (root.service)
@@ -360,8 +363,10 @@ Column {
             width: parent.width
             wrapMode: Text.Wrap
             textFormat: Text.PlainText
-            text: "credentials.json cannot be read" + (root.service && root.service.credsWhy ? " (" + root.service.credsWhy + ")" : "")
-                + ". Nothing is polled and no key is saved until it can be."
+            // Set rather than implicit: a right-to-left panel then aligns
+            // Latin text and numbers to the right too (plan 109).
+            horizontalAlignment: Text.AlignLeft
+            text: root.service && root.service.credsWhy ? I18n.tr("credentials.json cannot be read (%1). Nothing is polled and no key is saved until it can be.", root.service.credsWhy) : I18n.tr("credentials.json cannot be read. Nothing is polled and no key is saved until it can be.")
             color: Theme.urgent
             font.family: Theme.fontFamily
             font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -371,7 +376,8 @@ Column {
             visible: root.scanning
             width: parent.width
             textFormat: Text.PlainText
-            text: "Pinging common ports on this machine…"
+            horizontalAlignment: Text.AlignLeft
+            text: I18n.tr("Pinging common ports on this machine…")
             color: root.dim
             font.family: Theme.fontFamily
             font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -386,7 +392,8 @@ Column {
             Text {
                 width: parent.width
                 textFormat: Text.PlainText
-                text: "Found on localhost"
+                horizontalAlignment: Text.AlignLeft
+                text: I18n.tr("Found on localhost")
                 color: root.dim
                 font.family: Theme.fontFamily
                 font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -424,6 +431,7 @@ Column {
 
                             width: parent.width - scanIcon.width - parent.spacing
                             textFormat: Text.PlainText
+                            horizontalAlignment: Text.AlignLeft
                             text: scanRow.modelData.name + " · " + scanRow.modelData.url
                             color: Theme.foreground
                             font.family: Theme.fontFamily
@@ -448,7 +456,8 @@ Column {
             visible: root.services.length === 0 && root.scanResults.length === 0 && !root.scanning
             width: parent.width
             textFormat: Text.PlainText
-            text: "No services yet. Add one, or scan this machine for Sonarr, Radarr, and friends."
+            horizontalAlignment: Text.AlignLeft
+            text: I18n.tr("No services yet. Add one, or scan this machine for Sonarr, Radarr, and friends.")
             wrapMode: Text.WordWrap
             color: root.dim
             font.family: Theme.fontFamily
@@ -474,7 +483,8 @@ Column {
                     visible: groupCol.modelData.group !== ""
                     width: parent.width
                     textFormat: Text.PlainText
-                    text: groupCol.modelData.group
+                    horizontalAlignment: Text.AlignLeft
+                    text: Model.groupLabel(groupCol.modelData.group, I18n)
                     color: root.dim
                     font.family: Theme.fontFamily
                     font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -525,6 +535,7 @@ Column {
                                 Text {
                                     width: parent.width
                                     textFormat: Text.PlainText
+                                    horizontalAlignment: Text.AlignLeft
                                     text: svcRow.modelData.name
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
@@ -536,7 +547,8 @@ Column {
                                 Text {
                                     width: parent.width
                                     textFormat: Text.PlainText
-                                    text: root.confirmRemoveId === svcRow.modelData.id ? "Click remove again to delete it and its credentials" : Model.kindLabel(svcRow.modelData.kind) + " · " + (svcRow.modelData.url || "no url")
+                                    horizontalAlignment: Text.AlignLeft
+                                    text: root.confirmRemoveId === svcRow.modelData.id ? I18n.tr("Click remove again to delete it and its credentials") : I18n.tr(Model.kindLabel(svcRow.modelData.kind)) + " · " + (svcRow.modelData.url || I18n.tr("no url"))
                                     color: root.confirmRemoveId === svcRow.modelData.id ? Theme.urgent : root.dim
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -554,7 +566,7 @@ Column {
                                     id: upButton
 
                                     glyph: "\u{f005d}"
-                                    tooltipText: "Move up"
+                                    tooltipText: I18n.tr("Move up")
                                     enabled: svcRow.index > 0
                                     onClicked: {
                                         if (root.service)
@@ -564,7 +576,7 @@ Column {
 
                                 OmarrButton {
                                     glyph: "\u{f0045}"
-                                    tooltipText: "Move down"
+                                    tooltipText: I18n.tr("Move down")
                                     enabled: svcRow.index < groupCol.modelData.services.length - 1
                                     onClicked: {
                                         if (root.service)
@@ -574,7 +586,7 @@ Column {
 
                                 OmarrButton {
                                     glyph: "\u{f01b4}"
-                                    tooltipText: root.confirmRemoveId === svcRow.modelData.id ? "Remove for good" : "Remove"
+                                    tooltipText: root.confirmRemoveId === svcRow.modelData.id ? I18n.tr("Remove for good") : I18n.tr("Remove")
                                     foreground: root.confirmRemoveId === svcRow.modelData.id ? Theme.urgent : Theme.foreground
                                     hoverColor: Theme.urgent
                                     onClicked: root.removeRow(svcRow.modelData.id)
@@ -596,7 +608,8 @@ Column {
         Text {
             width: parent.width
             textFormat: Text.PlainText
-            text: "Kind"
+            horizontalAlignment: Text.AlignLeft
+            text: I18n.tr("Kind")
             color: root.dim
             font.family: Theme.fontFamily
             font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -612,7 +625,7 @@ Column {
                 Pill {
                     required property var modelData
 
-                    text: modelData.label
+                    text: I18n.tr(modelData.label)
                     active: root.formKind === modelData.value
                     onClicked: {
                         if (!active)
@@ -627,7 +640,7 @@ Column {
 
             width: parent.width
             activeFocusOnTab: true
-            placeholderText: "Name"
+            placeholderText: I18n.tr("Name")
             onAccepted: root.saveForm()
         }
 
@@ -636,7 +649,7 @@ Column {
 
             width: parent.width
             activeFocusOnTab: true
-            placeholderText: "http://127.0.0.1:8989"
+            placeholderText: "http://127.0.0.1:8989" // i18n-ignore: a sample URL
             onAccepted: root.saveForm()
         }
 
@@ -645,7 +658,7 @@ Column {
 
             width: parent.width
             activeFocusOnTab: true
-            placeholderText: "Group (optional)"
+            placeholderText: I18n.tr("Group (optional)")
             onAccepted: root.saveForm()
         }
 
@@ -656,7 +669,7 @@ Column {
             visible: root.needsKey
             activeFocusOnTab: visible
             password: true
-            placeholderText: root.formKind === "jellyfin" ? "Jellyfin API key" : "API key"
+            placeholderText: root.formKind === "jellyfin" ? I18n.tr("Jellyfin API key") : I18n.tr("API key")
             onAccepted: root.saveForm()
         }
 
@@ -666,7 +679,7 @@ Column {
             width: parent.width
             visible: root.needsUsername
             activeFocusOnTab: visible
-            placeholderText: root.formKind === "jellyfin" ? "Profile name (optional)" : "Username"
+            placeholderText: root.formKind === "jellyfin" ? I18n.tr("Profile name (optional)") : I18n.tr("Username")
             onAccepted: root.saveForm()
         }
 
@@ -677,69 +690,70 @@ Column {
             visible: root.needsUser
             activeFocusOnTab: visible
             password: true
-            placeholderText: "Password"
+            placeholderText: I18n.tr("Password")
             onAccepted: root.saveForm()
         }
 
         OmarrToggle {
             visible: root.arrKind || root.downloaderKind
-            label: "Show queue on Overview"
+            label: I18n.tr("Show queue on Overview")
             checked: root.formShowQueue
             onClicked: root.formShowQueue = !root.formShowQueue
         }
 
         OmarrToggle {
             visible: root.arrKind
-            label: "Show calendar on Overview"
+            label: I18n.tr("Show calendar on Overview")
             checked: root.formShowCalendar
             onClicked: root.formShowCalendar = !root.formShowCalendar
         }
 
         OmarrToggle {
             visible: root.arrKind || Model.isMediaKind(root.formKind)
-            label: Model.isMediaKind(root.formKind) ? "Notify on newly added" : "Notify on grab"
+            label: Model.isMediaKind(root.formKind) ? I18n.tr("Notify on newly added") : I18n.tr("Notify on grab")
             checked: root.formNotifyGrab
             onClicked: root.formNotifyGrab = !root.formNotifyGrab
         }
 
         OmarrToggle {
             visible: root.arrKind
-            label: "Notify on import"
+            label: I18n.tr("Notify on import")
             checked: root.formNotifyImport
             onClicked: root.formNotifyImport = !root.formNotifyImport
         }
 
         OmarrToggle {
             visible: root.downloaderKind
-            label: "Notify when downloads finish"
+            label: I18n.tr("Notify when downloads finish")
             checked: root.formNotifyDownload
             onClicked: root.formNotifyDownload = !root.formNotifyDownload
         }
 
         OmarrToggle {
             visible: root.arrKind
-            label: "Notify on download fail"
+            label: I18n.tr("Notify on download fail")
             checked: root.formNotifyDownload
             onClicked: root.formNotifyDownload = !root.formNotifyDownload
         }
 
         OmarrToggle {
-            label: "Notify on health changes"
+            label: I18n.tr("Notify on health changes")
             checked: root.formNotifyHealth
             onClicked: root.formNotifyHealth = !root.formNotifyHealth
         }
 
         Row {
+            width: parent.width
             spacing: Theme.gap
 
             Pill {
-                text: "Save"
+                text: I18n.tr("Save")
                 active: true
                 onClicked: root.saveForm()
             }
 
             Pill {
-                text: "Cancel"
+                text: I18n.tr("Cancel")
                 onClicked: root.leaveForm()
             }
         }

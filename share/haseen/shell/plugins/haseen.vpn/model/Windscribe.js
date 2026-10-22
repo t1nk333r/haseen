@@ -4,7 +4,14 @@
 // Adapted from the owner's fork t1nk33r.vpn 1.4.1-t1nk33r.1 of
 // jkoestinger/omarchy-vpn (MIT, Copyright (c) 2026 Justin Köstinger); see
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this directory. Unchanged
-// by the haseen port (plan 096) apart from this notice.
+// by the haseen port (plan 096) apart from this notice; plan 109 marked the
+// interface strings.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). A sentence
+// around a value goes through Shared.compose, so the panel can translate it.
+function N_(text) { return text }
+function N_n(one, other) { return other }
 
 // Windscribe, via `windscribe-cli`. Parsing, row-building, and the CLI queue
 // reducer — the process plumbing lives in WindscribeBackend.qml.
@@ -172,38 +179,38 @@ function windscribeLocation(status) {
 }
 
 function windscribeSummary(status) {
-  if (!status.loaded) return "Checking…"
-  if (!status.loggedIn) return "Not logged in"
+  if (!status.loaded) return N_("Checking…")
+  if (!status.loggedIn) return N_("Not logged in")
 
   if (status.state === "connected") {
     var place = windscribeLocation(status)
-    var line = place !== "" ? place : "Connected"
-    return status.interference ? line + " · network interference" : line
+    var line = place !== "" ? place : N_("Connected")
+    return status.interference ? Shared.compose(N_("%1 · network interference"), line) : line
   }
   if (status.state === "connecting") {
     var target = windscribeLocation(status)
-    return target !== "" ? "Connecting to " + target + "…" : "Connecting…"
+    return target !== "" ? Shared.compose(N_("Connecting to %1…"), target) : N_("Connecting…")
   }
-  if (status.state === "disconnecting") return "Disconnecting…"
+  if (status.state === "disconnecting") return N_("Disconnecting…")
   // The failure itself goes to lastError, which is where the panel puts the
   // things a user has to act on; the summary only says where that leaves them.
-  if (status.state === "error") return status.firewallOn ? "Not connected · traffic blocked" : "Not connected"
-  if (status.state === "disconnected") return status.firewallOn ? "Not connected · traffic blocked" : "Not connected"
-  return "Checking…"
+  if (status.state === "error") return status.firewallOn ? N_("Not connected · traffic blocked") : N_("Not connected")
+  if (status.state === "disconnected") return status.firewallOn ? N_("Not connected · traffic blocked") : N_("Not connected")
+  return N_("Checking…")
 }
 
 function windscribeDetails(status) {
   if (status.state !== "connected") return []
 
-  var rows = [Shared.detail("Server", status.nickname), Shared.detail("Location", status.city)]
+  var rows = [Shared.detail(N_("Server"), status.nickname), Shared.detail(N_("Location"), status.city)]
   if (status.protocol !== "") {
-    rows.push(Shared.detail("Protocol", status.port !== "" ? status.protocol + " · " + status.port : status.protocol))
+    rows.push(Shared.detail(N_("Protocol"), status.port !== "" ? status.protocol + " · " + status.port : status.protocol))
   }
   // Windscribe meters the free plan, and the number is only ever printed here.
   if (status.dataUsed !== "") {
-    rows.push(Shared.detail("Data used", status.dataLimit !== "" ? status.dataUsed + " of " + status.dataLimit : status.dataUsed))
+    rows.push(Shared.detail(N_("Data used"), status.dataLimit !== "" ? Shared.compose(N_("%1 of %2"), status.dataUsed, status.dataLimit) : status.dataUsed))
   }
-  if (status.interference) rows.push(Shared.detail("Network", "Interference detected"))
+  if (status.interference) rows.push(Shared.detail(N_("Network"), N_("Interference detected")))
   return rows.filter(function(row) { return row.value !== "" })
 }
 
@@ -316,10 +323,10 @@ function windscribeRegions(locations) {
 function windscribeRegionDetail(region) {
   var parts = []
   if (region.cities.length > 0) {
-    parts.push(region.cities.length + (region.cities.length === 1 ? " city" : " cities"))
+    parts.push(Shared.composeCount("%1 city", N_n("%1 city", "%1 cities"), region.cities.length))
   }
-  if (region.free === 0) parts.push("Pro only")
-  return parts.join(" · ")
+  if (region.free === 0) parts.push(N_("Pro only"))
+  return parts.length === 2 ? Shared.compose(N_("%1 · %2"), parts[0], parts[1]) : parts.join(" · ")
 }
 
 // Windscribe names its regions and never prints a country code, so the
@@ -343,8 +350,8 @@ function windscribeQuickTargets(bestNickname) {
   return [
     {
       key: "best",
-      label: "Best location",
-      detail: nickname !== "" ? "Currently " + nickname : "Let Windscribe pick",
+      label: N_("Best location"),
+      detail: nickname !== "" ? Shared.compose(N_("Currently %1"), nickname) : N_("Let Windscribe pick"),
       glyph: Shared.GLYPH_BOLT,
       args: ["best"]
     }
@@ -423,10 +430,10 @@ function windscribeToggles(status) {
   if (!status || !status.firewallKnown) return []
 
   return [
-    Shared.toggle("firewall", "Firewall",
+    Shared.toggle("firewall", N_("Firewall"),
       status.firewallAlways
-        ? "Always on — change it in the Windscribe app"
-        : "Block traffic outside the tunnel",
+        ? N_("Always on — change it in the Windscribe app")
+        : N_("Block traffic outside the tunnel"),
       status.firewallOn)
   ]
 }

@@ -4,7 +4,13 @@
 // Adapted from the owner's fork t1nk33r.vpn 1.4.1-t1nk33r.1 of
 // jkoestinger/omarchy-vpn (MIT, Copyright (c) 2026 Justin Köstinger); see
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this directory. Unchanged
-// by the haseen port (plan 096) apart from this notice.
+// by the haseen port (plan 096) apart from this notice; plan 109 marked the
+// interface strings.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). A sentence
+// around a value goes through Shared.compose, so the panel can translate it.
+function N_(text) { return text }
 
 // Proton VPN, via the `protonvpn` CLI. Parsing and row-building only — the
 // process plumbing lives in ProtonBackend.qml.
@@ -145,7 +151,7 @@ function protonAuthRequired(text) {
 }
 
 // Said in the CLI's own vocabulary, because the fix is a command the user runs.
-var PROTON_SIGNIN_HINT = "Signed out of Proton VPN. Sign in with: protonvpn signin"
+var PROTON_SIGNIN_HINT = N_("Signed out of Proton VPN. Sign in with: protonvpn signin")
 
 // `protonvpn countries list` prints a two-column table padded with spaces,
 // preceded by an optional "Server list is outdated, updating..." notice and a
@@ -206,15 +212,15 @@ function protonToggles(config) {
   var killSwitch = String(config.values["kill-switch"] || "off")
 
   return [
-    Shared.toggle("kill-switch", "Kill switch",
+    Shared.toggle("kill-switch", N_("Kill switch"),
       killSwitch !== "off" && killSwitch !== "standard"
-        ? "Mode: " + killSwitch
-        : "Cut traffic if the tunnel drops",
+        ? Shared.compose(N_("Mode: %1"), killSwitch)
+        : N_("Cut traffic if the tunnel drops"),
       killSwitch !== "off"),
     Shared.toggle("netshield", "NetShield",
-      netshield !== "off" ? "Blocking: " + netshield : "Block ads, trackers, malware",
+      netshield !== "off" ? Shared.compose(N_("Blocking: %1"), netshield) : N_("Block ads, trackers, malware"),
       netshield !== "off"),
-    Shared.toggle("port-forwarding", "Port forwarding", "Open an inbound port for P2P",
+    Shared.toggle("port-forwarding", N_("Port forwarding"), N_("Open an inbound port for P2P"),
       String(config.values["port-forwarding"] || "off") === "on")
   ]
 }
@@ -259,21 +265,21 @@ function protonLocation(status) {
 }
 
 function protonSummary(status) {
-  if (!status.connected) return "Not connected"
+  if (!status.connected) return N_("Not connected")
 
   var location = protonLocation(status)
   if (location !== "" && status.server !== "") return status.server + " · " + location
   if (location !== "") return location
   if (status.server !== "") return status.server
-  return "Connected"
+  return N_("Connected")
 }
 
 function protonDetails(status) {
   if (!status.connected) return []
 
-  var rows = [Shared.detail("Server", status.server), Shared.detail("Location", protonLocation(status))]
-  if (status.load !== "") rows.push(Shared.detail("Load", status.load))
-  if (status.protocol !== "") rows.push(Shared.detail("Protocol", status.protocol))
+  var rows = [Shared.detail(N_("Server"), status.server), Shared.detail(N_("Location"), protonLocation(status))]
+  if (status.load !== "") rows.push(Shared.detail(N_("Load"), status.load))
+  if (status.protocol !== "") rows.push(Shared.detail(N_("Protocol"), status.protocol))
   return rows.filter(function(row) { return row.value !== "" })
 }
 
@@ -281,10 +287,10 @@ function protonDetails(status) {
 // `protonvpn connect`.
 function protonQuickTargets() {
   return [
-    { key: "fastest", label: "Fastest server", detail: "Best available worldwide", glyph: Shared.GLYPH_BOLT, args: [] },
-    { key: "p2p", label: "P2P server", detail: "Fastest server that allows P2P", glyph: Shared.GLYPH_SWAP, args: ["--p2p"] },
-    { key: "random", label: "Random server", detail: "Pick any available server", glyph: Shared.GLYPH_DICE, args: ["--random"] },
-    { key: "securecore", label: "Secure Core", detail: "Route through a hardened entry", glyph: Shared.GLYPH_LOCK, args: ["--securecore"] }
+    { key: "fastest", label: N_("Fastest server"), detail: N_("Best available worldwide"), glyph: Shared.GLYPH_BOLT, args: [] },
+    { key: "p2p", label: N_("P2P server"), detail: N_("Fastest server that allows P2P"), glyph: Shared.GLYPH_SWAP, args: ["--p2p"] },
+    { key: "random", label: N_("Random server"), detail: N_("Pick any available server"), glyph: Shared.GLYPH_DICE, args: ["--random"] },
+    { key: "securecore", label: "Secure Core", detail: N_("Route through a hardened entry"), glyph: Shared.GLYPH_LOCK, args: ["--securecore"] }
   ]
 }
 

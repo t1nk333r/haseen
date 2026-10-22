@@ -14,6 +14,9 @@ Column {
     property string subtitle: ""
     property color subtitleColor: Theme.subtle(Theme.surface)
     property real progress: 0
+    // A playback session: its track keeps time running left to right in a
+    // right-to-left panel; a download's fills from the start edge.
+    property bool playback: false
 
     width: parent ? parent.width : implicitWidth
     spacing: Math.max(1, Math.round(Theme.gap / 3))
@@ -21,6 +24,9 @@ Column {
     Text {
         width: parent.width
         textFormat: Text.PlainText
+        // Set rather than implicit: a right-to-left panel then aligns
+        // Latin text and numbers to the right too (plan 109).
+        horizontalAlignment: Text.AlignLeft
         text: root.title
         color: Theme.foreground
         font.family: Theme.fontFamily
@@ -32,6 +38,7 @@ Column {
         width: parent.width
         visible: root.subtitle !== ""
         textFormat: Text.PlainText
+        horizontalAlignment: Text.AlignLeft
         text: root.subtitle
         color: root.subtitleColor
         font.family: Theme.fontFamily
@@ -41,5 +48,7 @@ Column {
 
     OmarrProgress {
         value: root.progress
+        LayoutMirroring.enabled: root.playback ? false : root.LayoutMirroring.enabled
+        LayoutMirroring.childrenInherit: true
     }
 }

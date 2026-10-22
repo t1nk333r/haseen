@@ -38,7 +38,7 @@ Column {
         else
             root.keyboard = Model.applyMessage(root.keyboard, {
                 ok: false,
-                error: link.hint || "not connected"
+                error: link.hint || I18n.mark("not connected")
             });
     }
 
@@ -65,7 +65,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Keyboard profile"
+            text: I18n.tr("Keyboard profile")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -86,7 +86,12 @@ Column {
         width: root.width
         visible: !root.keyboard.present
         wrapMode: Text.WordWrap
-        text: link.connected ? "Plug in a Wooting keyboard." : link.hint.charAt(0).toUpperCase() + link.hint.slice(1) + "."
+        text: {
+            if (link.connected)
+                return I18n.tr("Plug in a Wooting keyboard.");
+            const hint = I18n.tr(link.hint);
+            return hint.charAt(0).toUpperCase() + hint.slice(1) + ".";
+        }
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -110,19 +115,22 @@ Column {
         width: root.width
         visible: root.keyboard.error !== ""
         wrapMode: Text.WordWrap
-        // The daemon's own words (an empty slot, a refused switch).
+        // The daemon's own words (an empty slot, a refused switch); the
+        // model's and the link's own fallbacks are shown translated.
         textFormat: Text.PlainText
-        text: root.keyboard.error
+        text: I18n.tr(root.keyboard.error)
         color: Theme.urgent
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1
     }
 
     Row {
+        // Full width, so a mirrored panel (plan 109) starts the row on the right.
+        width: parent.width
         spacing: Theme.gap
 
         Pill {
-            text: "Keyboard layout"
+            text: I18n.tr("Keyboard layout")
             active: root.showLayout
             onClicked: root.showLayout = !root.showLayout
         }

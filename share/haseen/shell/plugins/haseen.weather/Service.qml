@@ -72,7 +72,7 @@ Scope {
     readonly property string reportFeels: current ? Model.formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC, useImperial) : ""
     readonly property string reportWind: current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
     readonly property string reportHumidity: current ? (current.humidity + "%") : ""
-    readonly property string statusLine: Model.statusLine(reportLocation, reportTempNum === "" ? "" : reportTempNum + tempUnit, reportWind)
+    readonly property string statusLine: Model.statusLine(reportLocation, reportTempNum === "" ? "" : reportTempNum + tempUnit, reportWind, I18n.tr)
 
     // Keep the previous report visible while the new location loads.
     onLocationQueryChanged: {

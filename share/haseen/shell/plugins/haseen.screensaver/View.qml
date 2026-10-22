@@ -21,6 +21,10 @@ Item {
     readonly property var pos: Drift.position(tick, phase, width, height, card.width, card.height, margin, 4)
 
     focus: true
+    // The top item of its own overlay window (plan 109). The card's drift is
+    // an explicit x, which mirroring leaves alone: it only bounces.
+    LayoutMirroring.enabled: I18n.rightToLeft
+    LayoutMirroring.childrenInherit: true
     Keys.onPressed: event => {
         event.accepted = true;
         view.input();

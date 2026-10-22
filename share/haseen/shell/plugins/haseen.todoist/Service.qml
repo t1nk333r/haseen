@@ -49,7 +49,10 @@ Scope {
     // The last list stopped at the page cap: its count is a floor.
     property bool listTruncated: false
     property bool loading: false
-    property string errorText: ""
+    // The last failure the panel shows ({text, args}, Model.failure), or
+    // null; errorText is its line in the interface language.
+    property var failure: null
+    readonly property string errorText: Model.failureText(failure, I18n)
     property bool refreshPending: false
     property real lastSyncedAt: 0
     // A 401/403 from any request: the bar mark dims and its count hides.
@@ -78,15 +81,19 @@ Scope {
                 n++;
         return n;
     }
-    readonly property string barCountModeLabel: barCountMode === "today" ? "today" : barCountMode === "inbox" ? "in Inbox" : barCountMode === "all" ? "total" : ""
     readonly property string tooltipText: {
         if (!hasToken)
-            return "Todoist: not connected";
+            return I18n.tr("Todoist: not connected");
         if (tokenInvalid)
-            return "Todoist: the API token was rejected; paste a current one in the panel's settings";
+            return I18n.tr("Todoist: the API token was rejected; paste a current one in the panel's settings");
         if (barCountMode === "hide")
-            return taskCount > 0 ? "Todoist: " + taskCount + (taskCount === 1 ? " task" : " tasks") : "Todoist: all clear";
-        return "Todoist: " + barCountValue + (barCountTruncated ? "+" : "") + " " + barCountModeLabel;
+            return taskCount > 0 ? I18n.tn("Todoist: %1 task", "Todoist: %1 tasks", taskCount) : I18n.tr("Todoist: all clear");
+        const count = String(barCountValue) + (barCountTruncated ? "+" : "");
+        if (barCountMode === "inbox")
+            return I18n.tr("Todoist: %1 in Inbox", count);
+        if (barCountMode === "all")
+            return I18n.tr("Todoist: %1 total", count);
+        return I18n.tr("Todoist: %1 today", count);
     }
 
     function setPanelOpen(open: bool): void {
@@ -105,21 +112,22 @@ Scope {
         proc.running = true;
     }
 
-    // What a finished request means: "" when it succeeded, else the line the
-    // panel shows. The status curl was asked for is the signal (an error body
-    // arrives with exit 0); status 0 means no HTTP answer, where the exit code
-    // and stderr speak. Keeps tokenInvalid current as a side effect.
-    function responseMessage(response: var, exitCode: int, stderrText: string): string {
+    // What a finished request means: null when it succeeded, else the failure
+    // the panel shows (Model.failure). The status curl was asked for is the
+    // signal (an error body arrives with exit 0); status 0 means no HTTP
+    // answer, where the exit code and stderr speak. Keeps tokenInvalid
+    // current as a side effect.
+    function responseFailure(response: var, exitCode: int, stderrText: string): var {
         if (exitCode === 3 && response.status === 0) {
             root.hasToken = false;
-            return "Add your Todoist API token in Settings.";
+            return Model.failure(I18n.mark("Add your Todoist API token in Settings."));
         }
-        const message = response.status === 0 ? Model.errorMessageForExit(exitCode, stderrText) : Model.statusMessage(response.status, response.body);
+        const failed = response.status === 0 ? Model.exitFailure(exitCode, stderrText) : Model.statusFailure(response.status, response.body);
         if (Model.tokenRejected(response.status))
             root.tokenInvalid = true;
-        else if (message === "")
+        else if (failed === null)
             root.tokenInvalid = false;
-        return message;
+        return failed;
     }
 
     // ---- Settings. One write at a time, in order, each a JSON object of the
@@ -147,7 +155,7 @@ Scope {
             return;
         root.hasToken = true;
         root.tokenInvalid = false;
-        root.errorText = "";
+        root.failure = null;
         root.saveSettings({ apiToken: value });
         // The first request reads the file the write above creates.
         root.refreshAfterWrite = true;
@@ -168,7 +176,7 @@ Scope {
         root.lastSyncedAt = 0;
         root.hasToken = false;
         root.tasks = [];
-        root.errorText = "";
+        root.failure = null;
         root.tokenInvalid = false;
         root.writes = root.writes.concat([{ verb: "clear-token" }]);
         root.startWrite();
@@ -238,7 +246,7 @@ Scope {
         }
         root.refreshPending = false;
         root.loading = true;
-        root.errorText = "";
+        root.failure = null;
         root.listFetch = Model.emptyFetch();
         root.fetchListPage("");
         openRefreshTimer.restart();
@@ -270,16 +278,16 @@ Scope {
             return;
         }
         const response = Model.parseCurlResponse(String(listOut.text || ""));
-        const message = root.responseMessage(response, exitCode, String(listErr.text || ""));
-        if (message !== "") {
-            root.failList(message);
+        const failed = root.responseFailure(response, exitCode, String(listErr.text || ""));
+        if (failed !== null) {
+            root.failList(failed);
             return;
         }
         let page = null;
         try {
             page = Model.parseTaskPage(response.body);
         } catch (e) {
-            root.failList("Couldn't read the response from Todoist.");
+            root.failList(Model.failure(I18n.mark("Couldn't read the response from Todoist.")));
             return;
         }
         root.listFetch = Model.mergeTaskPage(root.listFetch, page);
@@ -287,10 +295,10 @@ Scope {
             root.finishList();
     }
 
-    function failList(message: string): void {
+    function failList(failed: var): void {
         root.loading = false;
         root.listFetch = null;
-        root.errorText = message;
+        root.failure = failed;
     }
 
     function finishList(): void {
@@ -298,7 +306,7 @@ Scope {
         root.tasks = Model.sortedTasks(root.listFetch.tasks);
         root.listTruncated = root.listFetch.truncated === true;
         root.listFetch = null;
-        root.errorText = "";
+        root.failure = null;
         root.lastSyncedAt = Date.now();
         root.refreshBarCount();
     }
@@ -337,7 +345,7 @@ Scope {
         const response = Model.parseCurlResponse(String(barCountOut.text || ""));
         // A failed count keeps the last value, but still feeds the token check:
         // with the panel closed this is the only request that runs.
-        if (root.responseMessage(response, exitCode, String(barCountErr.text || "")) !== "") {
+        if (root.responseFailure(response, exitCode, String(barCountErr.text || "")) !== null) {
             root.barCountFetch = null;
             return;
         }
@@ -365,7 +373,7 @@ Scope {
         if (text === "" || root.quickAddSubmitting || !root.hasToken)
             return;
         root.quickAddSubmitting = true;
-        root.errorText = "";
+        root.failure = null;
         root.api(createProc, "POST", "tasks/quick", { text: text });
     }
 
@@ -442,7 +450,7 @@ Scope {
         }
         onExited: code => {
             if (code !== 0) {
-                root.errorText = "The plugin's state directory could not be found.";
+                root.failure = Model.failure(I18n.mark("The plugin's state directory could not be found."));
                 return;
             }
             root.stateDir = dirOut.text.trim();
@@ -478,7 +486,7 @@ Scope {
         onExited: code => {
             stdinEnabled = true;
             if (code !== 0)
-                root.errorText = "Settings were not saved: " + String(writerErr.text || "").trim();
+                root.failure = Model.failure(I18n.mark("Settings were not saved: %1"), [String(writerErr.text || "").trim()]);
             root.writing = null;
             settingsFile.reload();
             if (root.refreshAfterWrite && root.writes.length === 0) {
@@ -537,9 +545,9 @@ Scope {
         }
         onExited: code => {
             root.quickAddSubmitting = false;
-            const message = root.responseMessage(Model.parseCurlResponse(String(createOut.text || "")), code, String(createErr.text || ""));
-            if (message !== "") {
-                root.errorText = message;
+            const failed = root.responseFailure(Model.parseCurlResponse(String(createOut.text || "")), code, String(createErr.text || ""));
+            if (failed !== null) {
+                root.failure = failed;
                 return;
             }
             root.quickAddDone++;
@@ -562,9 +570,9 @@ Scope {
             waitForEnd: true
         }
         onExited: code => {
-            const message = root.responseMessage(Model.parseCurlResponse(String(actionOut.text || "")), code, String(actionErr.text || ""));
-            if (message !== "") {
-                root.errorText = message;
+            const failed = root.responseFailure(Model.parseCurlResponse(String(actionOut.text || "")), code, String(actionErr.text || ""));
+            if (failed !== null) {
+                root.failure = failed;
                 root.undoCompleting(actionProc.pendingTaskId);
                 root.refresh();
             }
@@ -584,9 +592,9 @@ Scope {
             waitForEnd: true
         }
         onExited: code => {
-            const message = root.responseMessage(Model.parseCurlResponse(String(deleteOut.text || "")), code, String(deleteErr.text || ""));
-            if (message !== "")
-                root.errorText = message;
+            const failed = root.responseFailure(Model.parseCurlResponse(String(deleteOut.text || "")), code, String(deleteErr.text || ""));
+            if (failed !== null)
+                root.failure = failed;
             root.refresh();
         }
     }
@@ -603,9 +611,9 @@ Scope {
             waitForEnd: true
         }
         onExited: code => {
-            const message = root.responseMessage(Model.parseCurlResponse(String(editOut.text || "")), code, String(editErr.text || ""));
-            if (message !== "")
-                root.errorText = message;
+            const failed = root.responseFailure(Model.parseCurlResponse(String(editOut.text || "")), code, String(editErr.text || ""));
+            if (failed !== null)
+                root.failure = failed;
             root.refresh();
         }
     }

@@ -9,6 +9,8 @@ Item {
     property string label: ""
     property string description: ""
     property bool checked: false
+    // A mirrored panel (plan 109) puts the knob's on side on the left.
+    readonly property bool mirrored: LayoutMirroring.enabled
 
     signal toggled
 
@@ -60,7 +62,7 @@ Item {
             height: width
             radius: width / 2
             y: 3
-            x: root.checked ? track.width - width - 3 : 3
+            x: root.checked !== root.mirrored ? track.width - width - 3 : 3
             color: root.checked ? Theme.accentFg : Theme.foreground
         }
 

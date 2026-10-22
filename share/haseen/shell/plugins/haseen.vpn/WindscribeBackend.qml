@@ -3,9 +3,11 @@
 // LICENSE and UPSTREAM.md beside this file.
 // haseen (plan 096): `command -v` instead of omarchy-cmd-present; every
 // Timer marked for architecture 6, the post-command re-reads every 2 s
-// instead of 1.5 s.
+// instead of 1.5 s. Plan 109: the strings it shows are marked and stay
+// English here; the panel translates them.
 import QtQuick
 import Quickshell.Io
+import qs.Haseen
 import "model/Shared.js" as Shared
 import "model/Windscribe.js" as Windscribe
 
@@ -33,12 +35,12 @@ Item {
   property string filter: ""
 
   readonly property string backendId: "windscribe"
-  readonly property string label: "Windscribe"
+  readonly property string label: "Windscribe" // i18n-ignore
   readonly property var installNames: ["Windscribe"]
   readonly property string glyph: Shared.GLYPH_VPN
   readonly property bool supportsFilter: true
   // Cities and server nicknames match too, but the field is only so wide.
-  readonly property string filterPlaceholder: "Filter locations — press / to search"
+  readonly property string filterPlaceholder: I18n.mark("Filter locations — press / to search")
 
   property var status: Windscribe.parseWindscribeStatus("")
   property var locations: []
@@ -63,8 +65,8 @@ Item {
 
   readonly property string setupHint: {
     if (!_present) return ""
-    if (_statusFailed && !_statusSeen) return "Windscribe is installed but its app is not answering. Start Windscribe, then reopen this panel."
-    if (status.loaded && !status.loggedIn) return "Windscribe is installed but not logged in. Log in with: windscribe-cli login"
+    if (_statusFailed && !_statusSeen) return I18n.mark("Windscribe is installed but its app is not answering. Start Windscribe, then reopen this panel.")
+    if (status.loaded && !status.loggedIn) return I18n.mark("Windscribe is installed but not logged in. Log in with: windscribe-cli login")
     return ""
   }
 
@@ -92,7 +94,7 @@ Item {
   readonly property var details: Windscribe.windscribeDetails(status)
   readonly property var regions: Windscribe.windscribeRegions(locations)
   readonly property var favorites: Shared.favoriteCodes(setting("favoriteCountries", "CH,NL,US"))
-  readonly property string emptyText: locationsLoaded ? "No locations match." : "Loading locations…"
+  readonly property string emptyText: locationsLoaded ? I18n.mark("No locations match.") : I18n.mark("Loading locations…")
   readonly property string currentKey: Windscribe.windscribeCurrentKey(status, regions)
   readonly property var targets: filter === ""
     ? Windscribe.windscribeQuickTargets(Windscribe.windscribeBestNickname(locations))
@@ -282,7 +284,7 @@ Item {
     if (!detected || _actionPending || !target) return
     _desired = 1
     lastError = ""
-    actionStatus = "Connecting to " + target.label + "…"
+    actionStatus = Shared.compose(I18n.mark("Connecting to %1…"), target.label)
     forgetPendingToggles()
     enqueue("connect", ["connect", "-n"].concat(target.args || []))
   }
@@ -291,14 +293,14 @@ Item {
     if (!detected || _actionPending) return
     _desired = 0
     lastError = ""
-    actionStatus = "Disconnecting…"
+    actionStatus = I18n.mark("Disconnecting…")
     forgetPendingToggles()
     enqueue("disconnect", ["disconnect", "-n"])
   }
 
   function toggleConnection() {
     if (connected) disconnect()
-    else connectTo({ label: "the best location", args: ["best"] })
+    else connectTo({ label: I18n.mark("the best location"), args: ["best"] })
   }
 
   // ------------------------------------------------------------- the state
@@ -352,7 +354,7 @@ Item {
     onTriggered: {
       if (Object.keys(root._pendingToggles).length === 0) return
       root._pendingToggles = ({})
-      root.lastError = "Windscribe did not apply that setting."
+      root.lastError = I18n.mark("Windscribe did not apply that setting.")
     }
   }
 
@@ -449,8 +451,8 @@ Item {
       // is being blocked.
       root._statusFailed = true
       root.lastError = root._statusSeen
-        ? "Windscribe is not answering — showing the last known state."
-        : Shared.elide(err || out || "Could not read Windscribe status", 140)
+        ? I18n.mark("Windscribe is not answering — showing the last known state.")
+        : Shared.elide(err || out || I18n.mark("Could not read Windscribe status"), 140)
       return
     }
 
@@ -472,7 +474,7 @@ Item {
     root.locations = Windscribe.parseWindscribeLocations(out)
     root.locationsLoaded = true
     if (root.locations.length === 0) {
-      root.lastError = "Could not read the location list. Check: windscribe-cli locations"
+      root.lastError = I18n.mark("Could not read the location list. Check: windscribe-cli locations")
     }
   }
 
@@ -483,7 +485,7 @@ Item {
     // later, which is what the settle timer is watching for.
     if (exitCode !== 0 || root.cliLocked(out, err)) {
       root._desired = -1
-      root.lastError = Shared.elide(err || out || "Windscribe command failed", 140)
+      root.lastError = Shared.elide(err || out || I18n.mark("Windscribe command failed"), 140)
     }
     root.actionStatus = ""
     settleTimer.ticks = 0
@@ -493,7 +495,7 @@ Item {
 
   function finishToggle(exitCode, out, err) {
     if (exitCode !== 0 || root.cliLocked(out, err)) {
-      root.lastError = Shared.elide(err || out || "Windscribe refused that setting", 140)
+      root.lastError = Shared.elide(err || out || I18n.mark("Windscribe refused that setting"), 140)
       root.clearPending(root._toggleKey)
     }
     root._toggleKey = ""

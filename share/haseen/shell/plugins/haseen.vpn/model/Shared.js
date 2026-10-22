@@ -3,7 +3,8 @@
 // Adapted from the owner's fork t1nk33r.vpn 1.4.1-t1nk33r.1 of
 // jkoestinger/omarchy-vpn (MIT, Copyright (c) 2026 Justin Köstinger); see
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this directory. Unchanged
-// by the haseen port (plan 096) apart from this notice.
+// by the haseen port (plan 096) apart from this notice; plan 109 added the
+// translation helpers below.
 
 // Helpers every backend leans on, and the widget's own settings. Anything here
 // is by definition not one tool's problem: a parser or row-builder that only
@@ -29,6 +30,56 @@ var GLYPH_COG = String.fromCodePoint(0xF0493)
 // anywhere. Only the NordVPN backend has one so far, and only for as long as
 // the CLI is refusing it.
 var GLYPH_CLIPBOARD = String.fromCodePoint(0xF018F)
+
+// ------------------------------------------------------------ translation
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text }
+
+// A sentence built around values ("Connecting to %1…", "3 cities") comes
+// back in English, filled in, as it always did: the tests, the IPC status
+// and the settings matching read it. compose() and composeCount() also
+// remember its template and values under that English, so the panel can
+// translate the sentence whole, and its values in turn, when it shows it:
+// composition(text) gives them back, or null for plain text. The memory is
+// bounded; a sentence forgotten shows in English until it is built again.
+var _composed = {}
+var _composedSize = 0
+
+function _remember(text, entry) {
+  if (!Object.prototype.hasOwnProperty.call(_composed, text)) {
+    if (_composedSize >= 4000) {
+      _composed = {}
+      _composedSize = 0
+    }
+    _composedSize += 1
+  }
+  _composed[text] = entry
+  return text
+}
+
+function _fill(template, args) {
+  return String(template).replace(/%([1-9])/g, function(whole, digit) {
+    var value = args[Number(digit) - 1]
+    return value === undefined || value === null ? whole : String(value)
+  })
+}
+
+function compose(template) {
+  var args = Array.prototype.slice.call(arguments, 1)
+  return _remember(_fill(template, args), { template: String(template), args: args })
+}
+
+// `one` and `other` as for I18n.tn: %1 is the count.
+function composeCount(one, other, count) {
+  return _remember(_fill(count === 1 ? one : other, [count]), { one: String(one), other: String(other), count: count })
+}
+
+function composition(text) {
+  var key = String(text)
+  return Object.prototype.hasOwnProperty.call(_composed, key) ? _composed[key] : null
+}
 
 // ----------------------------------------------------------------- shared
 

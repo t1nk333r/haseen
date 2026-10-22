@@ -7,7 +7,21 @@
 // haseen manifest settings schema ({type, default, description}); pure
 // functions, so tests/test-settings-panel.sh runs them in the Qt JS engine.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text }
+
 var FILTERS = ["all", "enabled", "builtin", "installed", "readonly", "configurable"]
+
+// The filter chips' labels.
+var FILTER_LABELS = {
+  all: N_("All"),
+  enabled: N_("On"),
+  builtin: N_("Built-in"),
+  installed: N_("Installed"),
+  readonly: N_("Omarchy/DMS"),
+  configurable: N_("With settings")
+}
 
 function str(v) {
   return v === undefined || v === null ? "" : String(v)
@@ -57,11 +71,11 @@ function rows(registry, state, userPlugins) {
 
 // The state a row shows, in the words `haseen plugin list` uses.
 function stateLabel(row) {
-  if (!row.valid) return "invalid"
-  if (row.unmet.length > 0) return "unmet"
-  if (!row.enabled) return "disabled"
-  if (row.listed) return "enabled"
-  return row.kinds.indexOf("bar-widget") >= 0 || row.kinds.indexOf("service") >= 0 ? "available" : "on demand"
+  if (!row.valid) return N_("invalid")
+  if (row.unmet.length > 0) return N_("unmet")
+  if (!row.enabled) return N_("disabled")
+  if (row.listed) return N_("enabled")
+  return row.kinds.indexOf("bar-widget") >= 0 || row.kinds.indexOf("service") >= 0 ? N_("available") : N_("on demand")
 }
 
 function matchesFilter(row, filter) {
@@ -95,6 +109,19 @@ function formatValue(type, value) {
   if (value === undefined || value === null) return ""
   if (type === "array" || type === "object") return JSON.stringify(value)
   return String(value)
+}
+
+// The error a field shows for a parseValue error.
+var EXPECTS = {
+  "true or false": N_("expects true or false"),
+  "a whole number": N_("expects a whole number"),
+  "a number": N_("expects a number"),
+  "a JSON array": N_("expects a JSON array"),
+  "a JSON object": N_("expects a JSON object")
+}
+
+function expects(error) {
+  return EXPECTS[error] || "expects " + error
 }
 
 // Parses what was typed into a field of a declared type:

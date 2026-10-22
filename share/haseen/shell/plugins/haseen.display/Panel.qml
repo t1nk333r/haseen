@@ -44,7 +44,8 @@ Column {
     // Values each device last took, by id, for a refused write to go back
     // to; the list's value until a write lands.
     property var confirmed: ({})
-    // A refused write's message, by id, until the next write lands.
+    // A refused write's message, by id, until the next write lands. English,
+    // as the debugIpc hook reads it; the row shows its translation (plan 109).
     property var errors: ({})
     // The writes run, for the debugIpc test hook only.
     property var sent: []
@@ -191,7 +192,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Display"
+            text: I18n.tr("Display")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -201,7 +202,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: !root.ddcDone
-            text: "Looking for monitors…"
+            text: I18n.tr("Looking for monitors…")
             color: root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -291,7 +292,7 @@ Column {
                 visible: row.error !== ""
                 wrapMode: Text.WordWrap
                 textFormat: Text.PlainText
-                text: row.error
+                text: row.error !== "" ? I18n.tr("%1 did not accept the change", row.device.label) : ""
                 color: Theme.urgent
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
@@ -303,7 +304,7 @@ Column {
         width: parent.width
         visible: text !== ""
         wrapMode: Text.WordWrap
-        text: Model.emptyText(root.devices.length, root.sysfsDone && root.ddcDone)
+        text: I18n.tr(Model.emptyText(root.devices.length, root.sysfsDone && root.ddcDone))
         color: root.subtle
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -335,7 +336,7 @@ Column {
             anchors.left: nightGlyph.right
             anchors.leftMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            text: "Night light"
+            text: I18n.tr("Night light")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize
@@ -345,7 +346,7 @@ Column {
         Pill {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: Flags.nightlight ? "On" : "Off"
+            text: Flags.nightlight ? I18n.tr("On") : I18n.tr("Off")
             active: Flags.nightlight
         }
 

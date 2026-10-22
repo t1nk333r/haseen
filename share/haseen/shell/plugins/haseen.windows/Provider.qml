@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import qs.Haseen
 import "Windows.js" as Windows
 
 // Launcher provider (plan 081): `@text` lists open windows from
@@ -72,7 +73,7 @@ Scope {
     function rowsFor(windows: var, text: string): var {
         return Windows.rank(windows, text).slice(0, 50).map(w => ({
                     title: w.title || w.wmClass || w.address,
-                    subtitle: Windows.subtitle(w),
+                    subtitle: Windows.subtitle(w, (text, ...args) => I18n.tr(text, ...args)),
                     icon: root.icon(w.wmClass),
                     glyph: "\uf2d0",
                     exec: () => root.focus(w.address)
@@ -86,8 +87,8 @@ Scope {
         if (rows.length === 0)
             return [
                 {
-                    title: text.trim() === "" ? "No open windows" : "No matching window",
-                    subtitle: "Windows: type part of a title or class",
+                    title: text.trim() === "" ? I18n.tr("No open windows") : I18n.tr("No matching window"),
+                    subtitle: I18n.tr("Windows: type part of a title or class"),
                     icon: "preferences-system-windows",
                     glyph: "\uf2d0",
                     exec: () => {}

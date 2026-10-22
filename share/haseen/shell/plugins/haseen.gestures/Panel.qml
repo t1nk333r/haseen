@@ -63,21 +63,21 @@ Column {
         }
         GestureChoice {
             width: column.width
-            label: "Swipe ← →"
+            label: I18n.tr("Swipe ← →")
             options: Model.ACTIONS
             value: Model.axisValue(root.settings, column.fingers, "horizontal")
             onPicked: v => root.save(Model.axisPatch(column.fingers, "horizontal", v))
         }
         GestureChoice {
             width: column.width
-            label: "Swipe ↑ ↓"
+            label: I18n.tr("Swipe ↑ ↓")
             options: Model.ACTIONS
             value: Model.axisValue(root.settings, column.fingers, "vertical")
             onPicked: v => root.save(Model.axisPatch(column.fingers, "vertical", v))
         }
         GestureChoice {
             width: column.width
-            label: "Pinch"
+            label: I18n.tr("Pinch")
             options: Model.ACTIONS
             value: Model.axisValue(root.settings, column.fingers, "pinch")
             onPicked: v => root.save(Model.axisPatch(column.fingers, "pinch", v))
@@ -86,8 +86,8 @@ Column {
 
     GestureSwitch {
         width: root.width
-        label: "Gestures"
-        description: Model.summary(root.settings)
+        label: I18n.tr("Gestures")
+        description: Model.summary(root.settings, I18n.tr)
         checked: root.on
         onToggled: root.save({
             enabled: !root.on
@@ -102,12 +102,12 @@ Column {
         FingerColumn {
             width: (root.width - Theme.gap * 2) / 2
             fingers: 3
-            title: "THREE FINGERS"
+            title: I18n.tr("THREE FINGERS")
         }
         FingerColumn {
             width: (root.width - Theme.gap * 2) / 2
             fingers: 4
-            title: "FOUR FINGERS"
+            title: I18n.tr("FOUR FINGERS")
         }
     }
 
@@ -119,18 +119,18 @@ Column {
         opacity: root.on ? 1 : 0.45
 
         SectionLabel {
-            text: "TWO FINGERS"
+            text: I18n.tr("TWO FINGERS")
         }
         GestureChoice {
             width: (root.width - Theme.gap * 2) / 2
-            label: "Pinch"
+            label: I18n.tr("Pinch")
             options: Model.ACTIONS
             value: Model.axisValue(root.settings, 2, "pinch")
             onPicked: v => root.save(Model.axisPatch(2, "pinch", v))
         }
         Note {
             visible: Model.axisValue(root.settings, 2, "pinch") !== "none"
-            text: "While this is mapped the compositor takes the two-finger pinch first: browsers and image viewers lose their own pinch-to-zoom."
+            text: I18n.tr("While this is mapped the compositor takes the two-finger pinch first: browsers and image viewers lose their own pinch-to-zoom.")
         }
     }
 
@@ -141,11 +141,11 @@ Column {
         visible: Model.workspaceSwipeMapped(root.settings)
 
         SectionLabel {
-            text: "WORKSPACE SWIPE"
+            text: I18n.tr("WORKSPACE SWIPE")
         }
         GestureChoice {
             width: root.width
-            label: "Reaches"
+            label: I18n.tr("Reaches")
             options: Model.SWIPE_RANGES
             value: String(root.settings.swipeRange)
             onPicked: v => root.save({
@@ -154,8 +154,8 @@ Column {
         }
         GestureSwitch {
             width: root.width
-            label: "Keep swiping without lifting"
-            description: "Cross several workspaces in one motion instead of one per swipe."
+            label: I18n.tr("Keep swiping without lifting")
+            description: I18n.tr("Cross several workspaces in one motion instead of one per swipe.")
             checked: root.settings.swipeForever === true
             onToggled: root.save({
                 swipeForever: root.settings.swipeForever !== true
@@ -168,12 +168,12 @@ Column {
         spacing: 2
 
         SectionLabel {
-            text: "TOUCHPAD"
+            text: I18n.tr("TOUCHPAD")
         }
         GestureSwitch {
             width: root.width
-            label: "Natural scrolling"
-            description: "Content follows the fingers, on the touchpad and the mouse."
+            label: I18n.tr("Natural scrolling")
+            description: I18n.tr("Content follows the fingers, on the touchpad and the mouse.")
             checked: root.settings.naturalScroll !== false
             onToggled: root.save({
                 naturalScroll: root.settings.naturalScroll === false
@@ -181,7 +181,7 @@ Column {
         }
         GestureChoice {
             width: root.width
-            label: "Click method"
+            label: I18n.tr("Click method")
             options: Model.CLICK_METHODS
             value: String(root.settings.clickMethod)
             onPicked: v => root.save({
@@ -190,7 +190,7 @@ Column {
         }
         GestureChoice {
             width: root.width
-            label: "Middle click"
+            label: I18n.tr("Middle click")
             options: Model.MIDDLE_BUTTONS
             value: String(root.settings.middleButton)
             onPicked: v => root.save({
@@ -199,7 +199,7 @@ Column {
         }
         GestureChoice {
             width: root.width
-            label: "Multi-finger drag"
+            label: I18n.tr("Multi-finger drag")
             options: Model.DRAG_MODES
             value: String(root.settings.drag)
             onPicked: v => root.save({
@@ -208,11 +208,11 @@ Column {
         }
         Note {
             visible: root.settings.middleButton !== "none"
-            text: "A three-finger click is the middle button, so applications no longer receive middle click: no paste on middle click, no open-link-in-new-tab."
+            text: I18n.tr("A three-finger click is the middle button, so applications no longer receive middle click: no paste on middle click, no open-link-in-new-tab.")
         }
         Note {
             visible: Model.dragShadowed(root.settings)
-            text: "Drag stays off while swipes of the same finger count are mapped: libinput can give those fingers to only one of the two."
+            text: I18n.tr("Drag stays off while swipes of the same finger count are mapped: libinput can give those fingers to only one of the two.")
         }
     }
 }

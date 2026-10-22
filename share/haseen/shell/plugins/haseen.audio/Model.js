@@ -5,6 +5,10 @@
 // Pure helpers for the haseen.audio panel. Nodes are PwNode-shaped objects
 // (name, description, nickname, isSink, isStream, audio, type, properties).
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 function isPlaybackStream(node) {
     if (!node || !node.isStream)
         return false;
@@ -24,23 +28,23 @@ function isAudioSource(node) {
 
 function outputVolumeName(volume, muted) {
     if (muted)
-        return "Muted";
+        return N_("Muted");
     const p = Math.round(volume * 100);
     if (p === 0)
-        return "Silenced";
+        return N_("Silenced");
     if (p >= 100)
-        return "Concert hall";
+        return N_("Concert hall");
     if (p >= 85)
-        return "Party mode";
+        return N_("Party mode");
     if (p >= 70)
-        return "Cranked up";
+        return N_("Cranked up");
     if (p >= 50)
-        return "Steady groove";
+        return N_("Steady groove");
     if (p >= 30)
-        return "Easy listening";
+        return N_("Easy listening");
     if (p >= 15)
-        return "Murmur";
-    return "Whisper";
+        return N_("Murmur");
+    return N_("Whisper");
 }
 
 function friendlyDeviceLabel(text) {
@@ -58,12 +62,12 @@ function nodeProps(node) {
 
 function nodeLabel(node) {
     if (!node)
-        return "Unknown";
+        return N_("Unknown");
     const p = nodeProps(node);
     const nick = friendlyDeviceLabel(node.nickname || p["node.nick"] || p["device.profile.description"] || "");
     if (nick)
         return nick;
-    return friendlyDeviceLabel(node.description || p["node.description"] || node.name || "") || "Unknown";
+    return friendlyDeviceLabel(node.description || p["node.description"] || node.name || "") || N_("Unknown");
 }
 
 function blobOf(node, keys) {
@@ -105,10 +109,10 @@ function sourceGlyph(node) {
 
 function streamLabel(node) {
     if (!node)
-        return "Stream";
+        return N_("Stream");
     const p = nodeProps(node);
     const label = String(p["application.name"] || node.description || p["media.name"] || p["node.name"] || node.name || "").trim();
-    return label.toLowerCase() === "spotify" ? "Spotify" : (label || "Stream");
+    return label.toLowerCase() === "spotify" ? "Spotify" : (label || N_("Stream"));
 }
 
 // What the stream plays (media.name), unless it only repeats the app label.

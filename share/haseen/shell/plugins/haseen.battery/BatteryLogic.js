@@ -5,6 +5,10 @@
 // countdown. No QML or Quickshell types here, so tests/test-battery.sh runs
 // it under the real Qt JS engine with plain objects.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // Seconds between the critical notification and the critical action.
 const COUNTDOWN_SECONDS = 60;
 // A threshold re-arms once the charge climbs this many points above it
@@ -213,30 +217,42 @@ function actionCommand(binDir, verb) {
     return verb ? [binDir + "/haseen-system", verb] : [];
 }
 
-function actionNoun(action) {
-    return { suspend: "Suspending", hibernate: "Hibernating", poweroff: "Shutting down" }[action] || "";
+// The countdown sentence for an action, %1 the seconds left.
+function actionSentence(action) {
+    return {
+        suspend: N_("Suspending in %1 s: plug in or press Cancel."),
+        hibernate: N_("Hibernating in %1 s: plug in or press Cancel."),
+        poweroff: N_("Shutting down in %1 s: plug in or press Cancel.")
+    }[action] || "";
 }
 
 // The notification for one event: { summary, body, urgency }; null for
-// events that notify nothing. info: { percent, timeToEmpty (s) }.
-function message(event, info, cfg) {
+// events that notify nothing. info: { percent, timeToEmpty (s) }. tr: the
+// service passes I18n.tr for the interface's language; English without it.
+// The body is one or two whole sentences, each translated on its own.
+function message(event, info, cfg, tr) {
+    const t = Model.translator(tr);
     const i = info || {};
-    const left = Model.duration(i.timeToEmpty);
-    const level = (i.percent || 0) + "% left" + (left ? ", about " + left : "");
+    const left = Model.duration(i.timeToEmpty, tr);
+    const level = left ? t(N_("%1% left, about %2."), i.percent || 0, left) : t(N_("%1% left."), i.percent || 0);
     switch (event) {
     case "warn":
-        return { summary: "Battery low", body: level + ".", urgency: "normal" };
+        return { summary: t(N_("Battery low")), body: level, urgency: "normal" };
     case "critical":
         if (cfg.criticalAction !== "none")
             return {
-                summary: "Battery critical",
-                body: level + ". " + actionNoun(cfg.criticalAction) + " in " + cfg.countdown + " s: plug in or press Cancel.",
+                summary: t(N_("Battery critical")),
+                body: level + " " + t(actionSentence(cfg.criticalAction), cfg.countdown),
                 urgency: "critical"
             };
-        return { summary: "Battery critical", body: level + ". Plug in now.", urgency: "critical" };
+        return { summary: t(N_("Battery critical")), body: level + " " + t(N_("Plug in now.")), urgency: "critical" };
     case "disarm": {
-        const name = { suspend: "suspend", hibernate: "hibernation", poweroff: "shutdown" }[cfg.criticalAction];
-        return name ? { summary: "Battery", body: "The " + name + " is called off.", urgency: "low" } : null;
+        const body = {
+            suspend: N_("The suspend is called off."),
+            hibernate: N_("The hibernation is called off."),
+            poweroff: N_("The shutdown is called off.")
+        }[cfg.criticalAction];
+        return body ? { summary: t(N_("Battery")), body: t(body), urgency: "low" } : null;
     }
     default:
         return null;

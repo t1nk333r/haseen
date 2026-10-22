@@ -58,6 +58,23 @@ upstream README), so they ship here under the same MIT licence.
   row, whose iqama is null (a TypeError on every open upstream).
 - **Keys.** The single-letter shortcuts stay; Tab switching between Omarchy
   panels is gone.
+- **Interface language (plan 109).** `language` gains `Interface`, the new
+  default: the names follow `haseen language`, Arabic when the interface is
+  Arabic and English otherwise; `English` and `Arabic` still force theirs.
+  `Service.qml` resolves it (`languageSetting` is the stored value,
+  `language` and `isArabic` the result, as bindings). The ring is
+  Interface, Arabic, English. IPC `status()` answers in Arabic only when the
+  setting says Arabic, so the interface language never changes it. The
+  English-only strings (the missing-service line, the zone, schedule and
+  notification errors, and `Engine.js`'s error messages, marked `N_`) go
+  through `I18n.tr`; the plugin's own English/Arabic pairs are unchanged.
+  The location status line now holds a label key and is labelled where it
+  is shown, so a language switch relabels it.
+  The panel loader still sets its mirroring from the names' language,
+  overriding the interface's; `PanelHorizon`'s `place()` reads that
+  mirroring, and under it the sliders and window-length bars fill from the
+  right and the switch knob mirrors. The bar tooltip window mirrors with the
+  names, as the strip does.
 - **Tests.** `tests/Engine.test.js`, `Model.test.js`, `Aladhan.test.js` are
   upstream's pure-JS suites (the `setHostProperty` cases went with the
   function, which only served Omarchy's bar façade). `Riyadh.test.js` is new.

@@ -76,10 +76,8 @@ Column {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: {
-                    const extra = Model.details(card.device, card.settings.showBatteryStats, card.settings.showNetworkStats);
-                    return Model.status(card.device) + (extra ? " · " + extra : "");
-                }
+                // Each part translated, then joined: "Connected · 64% · Charging".
+                text: [I18n.tr(Model.status(card.device))].concat(Model.detailParts(card.device, card.settings.showBatteryStats, card.settings.showNetworkStats).map(part => I18n.tr(part))).join(" · ")
                 color: card.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
@@ -106,7 +104,7 @@ Column {
             width: parent.width
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            text: card.device ? card.device.name + " wants to pair. Accept only if the device shows the same key: " + Model.formatKey(card.device.verificationKey) : ""
+            text: card.device ? I18n.tr("%1 wants to pair. Accept only if the device shows the same key: %2", card.device.name, Model.formatKey(card.device.verificationKey)) : ""
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize
@@ -116,14 +114,14 @@ Column {
             spacing: Math.round(Theme.gap / 2)
 
             Pill {
-                text: "Accept"
+                text: I18n.tr("Accept")
                 active: true
                 busy: card.service.busy
                 onClicked: card.service.answer(card.device.id, true)
             }
 
             Pill {
-                text: "Reject"
+                text: I18n.tr("Reject")
                 busy: card.service.busy
                 onClicked: card.service.answer(card.device.id, false)
             }
@@ -136,7 +134,7 @@ Column {
 
         Pill {
             visible: card.device !== null && !card.device.paired
-            text: card.pending === "requesting" ? "Waiting for the device…" : "Pair"
+            text: card.pending === "requesting" ? I18n.tr("Waiting for the device…") : I18n.tr("Pair")
             pending: card.pending === "requesting"
             busy: card.service.busy || card.pending !== "" || (card.device !== null && !card.device.reachable)
             onClicked: card.service.pair()
@@ -146,7 +144,7 @@ Column {
             visible: card.device !== null && !card.device.paired && card.device.pairRequested && card.device.verificationKey !== ""
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: card.device ? "Key " + Model.formatKey(card.device.verificationKey) : ""
+            text: card.device ? I18n.tr("Key %1", Model.formatKey(card.device.verificationKey)) : ""
             color: card.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1

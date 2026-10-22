@@ -90,7 +90,7 @@ Column {
 
     Component.onCompleted: {
         if (dirs.length === 0)
-            notice = "no directories configured";
+            notice = I18n.tr("no directories configured");
         else
             scanProc.running = true;
         input.forceActiveFocus();
@@ -151,9 +151,9 @@ Column {
             const found = Images.parseList(scanOut.text);
             root.images = found.slice(0, root.limit);
             if (found.length === 0)
-                root.notice = "no images in " + root.dirs.join(", ");
+                root.notice = I18n.tr("no images in %1", root.dirs.join(", "));
             else if (found.length > root.limit)
-                root.notice = "showing " + root.limit + " of " + found.length;
+                root.notice = I18n.tr("showing %1 of %2", root.limit, found.length);
         }
     }
 
@@ -164,7 +164,7 @@ Column {
         Text {
             id: title
 
-            text: "Images"
+            text: I18n.tr("Images")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -174,7 +174,7 @@ Column {
         Text {
             anchors.baseline: title.baseline
             width: parent.width - title.width - Theme.gap
-            text: root.notice !== "" ? root.notice : "Enter applies · Esc closes"
+            text: root.notice !== "" ? root.notice : I18n.tr("Enter applies · Esc closes")
             color: root.notice !== "" ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
@@ -208,15 +208,17 @@ Column {
             Keys.onDownPressed: root.step(root.columns)
             Keys.onTabPressed: root.step(1)
             Keys.onBacktabPressed: root.step(-1)
+            // Left and Right move on screen: in a mirrored (right-to-left)
+            // panel the grid runs from the right, so Left is the next image.
             Keys.onLeftPressed: event => {
                 if (cursorPosition === 0 || text === "")
-                    root.step(-1);
+                    root.step(grid.LayoutMirroring.enabled ? 1 : -1);
                 else
                     event.accepted = false;
             }
             Keys.onRightPressed: event => {
                 if (cursorPosition === text.length)
-                    root.step(1);
+                    root.step(grid.LayoutMirroring.enabled ? -1 : 1);
                 else
                     event.accepted = false;
             }

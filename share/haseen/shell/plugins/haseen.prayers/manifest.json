@@ -92,8 +92,8 @@
     },
     "language": {
       "type": "string",
-      "default": "English",
-      "description": "Prayer names (one of: English, Arabic)"
+      "default": "Interface",
+      "description": "Prayer names (one of: Interface, English, Arabic). Interface follows the interface language (haseen language): Arabic when it is Arabic, English otherwise."
     },
     "arabicFont": {
       "type": "string",

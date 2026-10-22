@@ -8,6 +8,10 @@
 // block revealed on hover. The state comes from haseen's flags instead of
 // Omarchy's services.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // Omarchy's Dictation and Reminder entries are not here: haseen has no
 // dictation, and its reminders are systemd timers with no watchable state
 // (showing them would mean polling systemctl).
@@ -15,32 +19,32 @@ const SPECS = {
     ScreenRecording: {
         flag: "recording",
         glyph: "\u{F0EC2}",
-        activeTip: "Stop recording",
-        inactiveTip: "Screen recording",
+        activeTip: N_("Stop recording"),
+        inactiveTip: N_("Screen recording"),
         on: ["haseen", "capture", "screenrecord"],
         off: ["haseen", "capture", "screenrecord", "--stop"]
     },
     NightLight: {
         flag: "nightlight",
         glyph: "\u{F050E}",
-        activeTip: "Day light",
-        inactiveTip: "Night light",
+        activeTip: N_("Day light"),
+        inactiveTip: N_("Night light"),
         on: ["haseen", "toggle", "nightlight", "on"],
         off: ["haseen", "toggle", "nightlight", "off"]
     },
     Dnd: {
         flag: "dnd",
         glyph: "\u{F009B}",
-        activeTip: "Allow notifications",
-        inactiveTip: "Silence notifications",
+        activeTip: N_("Allow notifications"),
+        inactiveTip: N_("Silence notifications"),
         on: ["haseen", "toggle", "dnd", "on"],
         off: ["haseen", "toggle", "dnd", "off"]
     },
     StayAwake: {
         flag: "idle-off",
         glyph: "\u{F0176}",
-        activeTip: "Allow idle lock & screensaver",
-        inactiveTip: "Stay awake",
+        activeTip: N_("Allow idle lock & screensaver"),
+        inactiveTip: N_("Stay awake"),
         // `haseen toggle idle on` allows idle again; the flag means "off".
         on: ["haseen", "toggle", "idle", "off"],
         off: ["haseen", "toggle", "idle", "on"]
@@ -49,8 +53,8 @@ const SPECS = {
     Screensaver: {
         flag: "screensaver-off",
         glyph: "\u{F1104}",
-        activeTip: "Allow the screensaver",
-        inactiveTip: "Hold the screensaver",
+        activeTip: N_("Allow the screensaver"),
+        inactiveTip: N_("Hold the screensaver"),
         // `haseen toggle screensaver on` allows it; the flag means "off".
         on: ["haseen", "toggle", "screensaver", "off"],
         off: ["haseen", "toggle", "screensaver", "on"]
@@ -63,8 +67,8 @@ const SPECS = {
         flag: "context",
         activeOnly: true,
         glyph: "\u{F0328}",
-        activeTip: "Back to normal",
-        inactiveTip: "Contexts",
+        activeTip: N_("Back to normal"),
+        inactiveTip: N_("Contexts"),
         on: ["haseen", "menu", "trigger.context"],
         off: ["haseen", "context", "normal"]
     }
@@ -73,15 +77,15 @@ const SPECS = {
 const CONTEXTS = {
     focus: {
         glyph: "\u{F08C9}",
-        label: "Focus"
+        tip: N_("Focus context: back to normal")
     },
     game: {
         glyph: "\u{F0297}",
-        label: "Game"
+        tip: N_("Game context: back to normal")
     },
     present: {
         glyph: "\u{F0428}",
-        label: "Present"
+        tip: N_("Present context: back to normal")
     }
 };
 
@@ -159,7 +163,7 @@ function cell(id, active, context) {
     const ctx = spec.flag === "context" && active && CONTEXTS.hasOwnProperty(context) ? CONTEXTS[context] : null;
     return {
         glyph: ctx ? ctx.glyph : spec.glyph,
-        tooltip: ctx ? ctx.label + " context: " + spec.activeTip.toLowerCase() : active ? spec.activeTip : spec.inactiveTip,
+        tooltip: ctx ? ctx.tip : active ? spec.activeTip : spec.inactiveTip,
         command: (active ? spec.off : spec.on).slice()
     };
 }

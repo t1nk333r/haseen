@@ -117,6 +117,9 @@ Item {
                 visible: !row.editing
                 width: parent.width
                 textFormat: Text.PlainText
+                // Set rather than implicit: a right-to-left panel then aligns
+                // Latin text and numbers to the right too (plan 109).
+                horizontalAlignment: Text.AlignLeft
                 text: row.task ? String(row.task.content || "") : ""
                 opacity: row.completing ? 0.5 : 1
                 font.strikeout: row.completing
@@ -138,6 +141,7 @@ Item {
                 visible: row.dueLabel !== "" && !row.editing
                 width: parent.width
                 textFormat: Text.PlainText
+                horizontalAlignment: Text.AlignLeft
                 text: row.dueLabel
                 color: row.overdue ? Theme.urgent : Theme.muted
                 wrapMode: Text.Wrap

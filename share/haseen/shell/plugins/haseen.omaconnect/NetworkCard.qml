@@ -22,7 +22,7 @@ Column {
     spacing: Math.round(Theme.gap / 2)
 
     Pill {
-        text: card.open ? "Hide network discovery" : "Network discovery…"
+        text: card.open ? I18n.tr("Hide network discovery") : I18n.tr("Network discovery…")
         onClicked: {
             card.open = !card.open;
             if (card.open)
@@ -39,7 +39,7 @@ Column {
             width: parent.width
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            text: card.service.tailscaleLoading ? "Asking Tailscale…" : card.service.tailscaleMissing ? "Tailscale is not installed (optional)." : !card.ts ? "Tailscale is not connected." : card.ts.running ? "Tailscale: this machine is " + card.ts.self + ". Add a peer that runs KDE Connect:" : "Tailscale: " + card.ts.backend
+            text: card.service.tailscaleLoading ? I18n.tr("Asking Tailscale…") : card.service.tailscaleMissing ? I18n.tr("Tailscale is not installed (optional).") : !card.ts ? I18n.tr("Tailscale is not connected.") : card.ts.running ? I18n.tr("Tailscale: this machine is %1. Add a peer that runs KDE Connect:", card.ts.self) : I18n.tr("Tailscale: %1", card.ts.backend)
             color: card.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -50,7 +50,7 @@ Column {
 
             width: parent.width
             visible: card.ts !== null && card.ts.peers.length > 6
-            placeholder: "Filter peers"
+            placeholder: I18n.tr("Filter peers")
         }
 
         Repeater {
@@ -72,7 +72,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
-                    text: peer.modelData.name + " · " + peer.modelData.address + (peer.modelData.online ? "" : " · offline")
+                    text: [peer.modelData.name, peer.modelData.address].concat(peer.modelData.online ? [] : [I18n.tr("offline")]).join(" · ")
                     color: peer.modelData.online ? Theme.foreground : card.subtle
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 1
@@ -83,7 +83,7 @@ Column {
 
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: peer.saved ? "Saved" : "Add"
+                    text: peer.saved ? I18n.tr("Saved") : I18n.tr("Add")
                     active: peer.saved
                     enabled: !peer.saved && card.service.addressesReady
                     onClicked: card.service.saveAddress(peer.modelData.address, false)
@@ -99,7 +99,7 @@ Column {
                 id: manual
 
                 width: card.width - addManual.width - parent.spacing
-                placeholder: "Another IPv4 or IPv6 address"
+                placeholder: I18n.tr("Another IPv4 or IPv6 address")
                 onAccepted: {
                     if (card.service.saveAddress(text, false))
                         text = "";
@@ -109,7 +109,7 @@ Column {
             Pill {
                 id: addManual
 
-                text: "Add"
+                text: I18n.tr("Add")
                 enabled: card.service.addressesReady && manual.text.trim() !== ""
                 onClicked: {
                     if (card.service.saveAddress(manual.text, false))
@@ -126,7 +126,7 @@ Column {
             Text {
                 height: Math.round(Theme.fontSize * 2.1)
                 verticalAlignment: Text.AlignVCenter
-                text: "Saved:"
+                text: I18n.tr("Saved:")
                 color: card.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1

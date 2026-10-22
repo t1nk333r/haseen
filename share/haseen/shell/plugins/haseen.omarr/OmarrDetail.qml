@@ -27,7 +27,7 @@ Column {
     readonly property var onDeck: media ? (snap.onDeck || []) : []
     readonly property var recent: media ? (snap.recent || []) : []
     readonly property var history: snap && snap.kind === "sabnzbd" ? (snap.activity || []) : []
-    readonly property var calendarGroups: snap && !media && snap.calendar && snap.calendar.length > 0 ? Model.groupedCalendar(snap.calendar) : []
+    readonly property var calendarGroups: snap && !media && snap.calendar && snap.calendar.length > 0 ? Model.groupedCalendar(snap.calendar, null, I18n) : []
     readonly property color dim: Theme.subtle(Theme.surface)
 
     spacing: Theme.gap * 2.5
@@ -68,7 +68,7 @@ Column {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "\u{f059f}"
-                tooltipText: "Open in browser"
+                tooltipText: I18n.tr("Open in browser")
                 tooltipBelow: true
                 onClicked: root.panel.openService(root.snapId)
             }
@@ -77,7 +77,10 @@ Column {
         Text {
             width: parent.width
             textFormat: Text.PlainText
-            text: root.snap ? (root.snap.statusText || Model.fleetLine(root.snap)) : ""
+            // Set rather than implicit: a right-to-left panel then aligns
+            // Latin text and numbers to the right too (plan 109).
+            horizontalAlignment: Text.AlignLeft
+            text: root.snap ? (Model.statusLabel(root.snap.statusText, I18n) || Model.fleetLine(root.snap, I18n)) : ""
             color: root.dim
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize
@@ -91,7 +94,7 @@ Column {
         visible: root.sessions.length > 0
 
         OmarrSectionHeader {
-            text: "NOW PLAYING"
+            text: I18n.tr("NOW PLAYING")
         }
 
         Repeater {
@@ -101,8 +104,10 @@ Column {
                 required property var modelData
 
                 title: modelData.title || ""
-                subtitle: modelData.subtitle || ""
+                subtitle: Model.sessionSubtitle(modelData.subtitle, I18n)
                 progress: modelData.progress || 0
+                // A playback position: time runs left to right.
+                playback: true
             }
         }
     }
@@ -113,7 +118,7 @@ Column {
         visible: root.onDeck.length > 0
 
         OmarrSectionHeader {
-            text: "ON DECK"
+            text: I18n.tr("ON DECK")
         }
 
         Repeater {
@@ -136,7 +141,7 @@ Column {
         visible: root.recent.length > 0
 
         OmarrSectionHeader {
-            text: "RECENTLY ADDED"
+            text: I18n.tr("RECENTLY ADDED")
         }
 
         Repeater {
@@ -188,7 +193,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - (root.downloader ? queueActions.width + parent.spacing : 0)
                         title: queueRow.modelData.title || ""
-                        subtitle: Model.queueLine(queueRow.modelData)
+                        subtitle: Model.queueLine(queueRow.modelData, I18n)
                         subtitleColor: queueRow.modelData.status === "warning" || queueRow.modelData.status === "error" ? Theme.urgent : root.dim
                         progress: queueRow.modelData.progress || 0
                     }
@@ -202,7 +207,7 @@ Column {
 
                         OmarrButton {
                             glyph: "\u{f03e4}"
-                            tooltipText: "Pause"
+                            tooltipText: I18n.tr("Pause")
                             onClicked: {
                                 if (root.service)
                                     root.service.runControl(root.snapId, "pause-item", queueRow.modelData.id);
@@ -211,7 +216,7 @@ Column {
 
                         OmarrButton {
                             glyph: "\u{f040a}"
-                            tooltipText: "Resume"
+                            tooltipText: I18n.tr("Resume")
                             onClicked: {
                                 if (root.service)
                                     root.service.runControl(root.snapId, "resume-item", queueRow.modelData.id);
@@ -223,12 +228,15 @@ Column {
         }
 
         Row {
+            // Spans the width, so a right-to-left panel starts it at the right.
+            width: parent.width
             visible: root.pager.hasPrev || root.pager.hasNext
             spacing: Theme.gap
 
+            // The page arrows point the way the mirrored row runs.
             OmarrButton {
-                glyph: "\u{f004d}"
-                tooltipText: "Previous page"
+                glyph: I18n.rightToLeft ? "\u{f0054}" : "\u{f004d}"
+                tooltipText: I18n.tr("Previous page")
                 enabled: root.pager.hasPrev
                 onClicked: {
                     if (root.service)
@@ -246,8 +254,8 @@ Column {
             }
 
             OmarrButton {
-                glyph: "\u{f0054}"
-                tooltipText: "Next page"
+                glyph: I18n.rightToLeft ? "\u{f004d}" : "\u{f0054}"
+                tooltipText: I18n.tr("Next page")
                 enabled: root.pager.hasNext
                 onClicked: {
                     if (root.service)
@@ -263,7 +271,7 @@ Column {
         visible: root.history.length > 0
 
         OmarrSectionHeader {
-            text: "HISTORY"
+            text: I18n.tr("HISTORY")
         }
 
         Repeater {
@@ -280,6 +288,7 @@ Column {
                 Text {
                     width: parent.width
                     textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignLeft
                     text: historyRow.modelData.title || ""
                     color: Theme.foreground
                     font.family: Theme.fontFamily
@@ -290,6 +299,7 @@ Column {
                 Text {
                     width: parent.width
                     textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignLeft
                     text: historyRow.modelData.status || ""
                     color: historyRow.modelData.status === "failed" ? Theme.urgent : root.dim
                     font.family: Theme.fontFamily
@@ -320,6 +330,7 @@ Column {
                     visible: day.modelData.heading !== ""
                     width: parent.width
                     textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignLeft
                     text: day.modelData.heading
                     color: root.dim
                     font.family: Theme.fontFamily

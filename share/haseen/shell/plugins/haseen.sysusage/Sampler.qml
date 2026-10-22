@@ -29,7 +29,8 @@ QtObject {
     readonly property var gpus: _data ? _data.gpus : null
     readonly property var gpuInfo: wantGpu && _data ? _data.gpuInfo : null
     readonly property string gpuMethod: gpuInfo ? gpuInfo.method : "none"
-    readonly property string gpuLabel: gpuMethod === "freq" ? "GPU freq" : "GPU"
+    // English; the panel shows it with I18n.tr (plan 109).
+    readonly property string gpuLabel: gpuMethod === "freq" ? I18n.mark("GPU freq") : "GPU"
 
     // One key per instance, so two bars and the panel merge into one sampler in
     // the daemon instead of each reading /proc for itself.

@@ -38,16 +38,17 @@ Column {
             if (errors.address) address.focusInput();
             else if (errors.port) port.focusInput();
             else selection.focusInput();
-            Accessible.announce(root.error, Accessible.Assertive);
+            Accessible.announce(I18n.tr(root.error), Accessible.Assertive);
             return;
         }
         root.requested(value(), preview);
     }
-    Label { id: title; width: parent.width; heading: true; entryHeading: true; text: root.capability ? {listener: "TCP listener", "http-server": "Directory server", "enumeration-host": "Selected file server"}[root.capability.id] : "Unavailable helper" }
-    Label { width: parent.width; text: root.capability ? Model.text(root.capability.reason) : "No capability evidence" }
-    Field { id: address; width: parent.width; label: "Local bind address"; text: root.draft.address; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.addressError(text); } onSubmitted: root.submit(false) }
-    ActionButton { id: chooser; width: parent.width; text: root.showAddresses ? "Hide local interface addresses" : "Choose local interface address"; onClicked: { root.changed(root.value()); root.showAddresses = !root.showAddresses; if (root.showAddresses) root.chooseAddresses(); } }
-    Row { spacing: Theme.gap; ActionButton { text: "127.0.0.1"; onClicked: { address.text = text; root.changed(root.value()); } } ActionButton { text: "::1"; onClicked: { address.text = text; root.changed(root.value()); } } }
+    Label { id: title; width: parent.width; heading: true; entryHeading: true; text: root.capability ? {listener: I18n.tr("TCP listener"), "http-server": I18n.tr("Directory server"), "enumeration-host": I18n.tr("Selected file server")}[root.capability.id] : I18n.tr("Unavailable helper") }
+    Label { width: parent.width; text: root.capability ? Model.text(root.capability.reason) : I18n.tr("No capability evidence") }
+    Field { id: address; width: parent.width; label: I18n.tr("Local bind address"); text: root.draft.address; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.addressError(text); } onSubmitted: root.submit(false) }
+    ActionButton { id: chooser; width: parent.width; text: root.showAddresses ? I18n.tr("Hide local interface addresses") : I18n.tr("Choose local interface address"); onClicked: { root.changed(root.value()); root.showAddresses = !root.showAddresses; if (root.showAddresses) root.chooseAddresses(); } }
+    // At the start of the form: on the right in a mirrored panel.
+    Row { anchors.left: parent.left; spacing: Theme.gap; ActionButton { text: "127.0.0.1"; onClicked: { address.text = text; root.changed(root.value()); } } ActionButton { text: "::1"; onClicked: { address.text = text; root.changed(root.value()); } } }
     Inventory {
         id: addressChoices
         width: parent.width
@@ -59,20 +60,20 @@ Column {
         onEmptyFocused: chooser.forceActiveFocus()
         onInspected: itemId => { const chosen = addressChoices.rows.find(a => a.id === itemId); if (!chosen) return; address.text = chosen.address; root.changed(root.value()); root.showAddresses = false; address.focusInput(); }
     }
-    Field { id: port; width: parent.width; label: "Port (1024–65535)"; text: root.draft.port; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.endpointErrors(root.value(), root.capability.id).port; } onSubmitted: root.submit(false) }
-    Field { id: selection; width: parent.width; visible: root.capability && root.capability.id !== "listener"; label: root.capability && root.capability.id === "http-server" ? "Absolute directory path" : "Absolute installed package-owned file path"; text: root.draft.path; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.endpointErrors(root.value(), root.capability.id).path; } onSubmitted: root.submit(false) }
-    ActionButton { id: fileChooser; width: parent.width; visible: root.capability && root.capability.id === "enumeration-host"; text: root.showFiles ? "Hide verified file choices" : "Show verified file choices"; onClicked: root.showFiles = !root.showFiles }
+    Field { id: port; width: parent.width; label: I18n.tr("Port (1024–65535)"); text: root.draft.port; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.endpointErrors(root.value(), root.capability.id).port; } onSubmitted: root.submit(false) }
+    Field { id: selection; width: parent.width; visible: root.capability && root.capability.id !== "listener"; label: root.capability && root.capability.id === "http-server" ? I18n.tr("Absolute directory path") : I18n.tr("Absolute installed package-owned file path"); text: root.draft.path; onEdited: root.changed(root.value()); onCommitted: { root.changed(root.value()); error = Model.endpointErrors(root.value(), root.capability.id).path; } onSubmitted: root.submit(false) }
+    ActionButton { id: fileChooser; width: parent.width; visible: root.capability && root.capability.id === "enumeration-host"; text: root.showFiles ? I18n.tr("Hide verified file choices") : I18n.tr("Show verified file choices"); onClicked: root.showFiles = !root.showFiles }
     Inventory {
         width: parent.width
         choices: true
         viewportHeight: root.viewportHeight
         onReveal: item => root.reveal(item)
         onEmptyFocused: fileChooser.forceActiveFocus()
-        rows: root.showFiles ? root.files.map(f => ({id: f, label: "Select owned file: " + Model.text(f)})) : []
+        rows: root.showFiles ? root.files.map(f => ({id: f, label: I18n.tr("Select owned file: %1", Model.text(f))})) : []
         onInspected: itemId => { selection.text = itemId; root.changed(root.value()); }
     }
-    Label { width: parent.width; text: root.error }
-    Label { width: parent.width; text: "Only literal local addresses; no DNS or probes. Loopback is local-only. Non-loopback and wildcard exposure requires terminal confirmation. Runs in that terminal until stopped with Ctrl+C." }
-    ActionButton { width: parent.width; text: "Preview"; enabled: root.capability && root.capability.installed && !Model.member(root.capability.state, ["missing", "unknown", "refused"]); onClicked: root.submit(true) }
-    ActionButton { width: parent.width; text: "Review"; enabled: root.capability && root.capability.installed && !Model.member(root.capability.state, ["missing", "unknown", "refused"]); onClicked: root.submit(false) }
+    Label { width: parent.width; text: I18n.tr(root.error) }
+    Label { width: parent.width; text: I18n.tr("Only literal local addresses; no DNS or probes. Loopback is local-only. Non-loopback and wildcard exposure requires terminal confirmation. Runs in that terminal until stopped with Ctrl+C.") }
+    ActionButton { width: parent.width; text: I18n.tr("Preview"); enabled: root.capability && root.capability.installed && !Model.member(root.capability.state, ["missing", "unknown", "refused"]); onClicked: root.submit(true) }
+    ActionButton { width: parent.width; text: I18n.tr("Review"); enabled: root.capability && root.capability.installed && !Model.member(root.capability.state, ["missing", "unknown", "refused"]); onClicked: root.submit(false) }
 }
