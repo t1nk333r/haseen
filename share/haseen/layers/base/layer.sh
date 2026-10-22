@@ -5,7 +5,7 @@
 # It never touches pacman.conf, the CachyOS repos or the mirror list: pacman
 # has no drop-in directory, so there is nothing haseen may own there.
 
-LAYER_SUMMARY="essentials, ufw deny-incoming, NetworkManager, snapper sanity, paccache, Omarchy package guard"
+LAYER_SUMMARY="essentials, ufw deny-incoming, NetworkManager, snapper sanity, paccache, Omarchy package guard, boot drop-ins"
 LAYER_REQUIRES=()
 LAYER_CONFLICTS=()
 LAYER_DISTROS=(cachyos arch omarchy)
@@ -14,6 +14,8 @@ LAYER_DISTROS=(cachyos arch omarchy)
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # shellcheck source=../../lib/omarchy-guard.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/omarchy-guard.sh"
+# shellcheck source=../../lib/boot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/boot.sh" # boot_dropins_*
 
 # Network services that already own the network. When one of them is enabled
 # haseen leaves networking alone instead of adding a second manager.
@@ -110,6 +112,12 @@ base_omarchy_guard() {
     omarchy_guard_hook_render | write_root_file "$OMARCHY_GUARD_HOOK" 0644
 }
 
+# Omarchy 4.5's two boot speed-ups, as systemd drop-ins (plan 104,
+# lib/boot.sh): binfmt_misc mounted before formats register, and a higher
+# mount-event allowance. Where omarchy-settings already installs them, its
+# copies stand and haseen's are not added.
+base_boot_dropins() { boot_dropins_apply; }
+
 # Snapper is the CachyOS installer's job (snapper + btrfs-assistant when the
 # root is btrfs). haseen only points out a missing root config.
 base_snapper_check() {
@@ -169,6 +177,17 @@ layer_status() {
         echo "missing: Omarchy package guard $OMARCHY_GUARD_HOOK (haseen layer apply base)"
         rc=1
     fi
+    local state dest
+    while read -r state dest; do
+        case "$state" in
+        ok) echo "ok: boot drop-in $dest" ;;
+        omarchy) echo "ok: boot drop-in $dest (Omarchy's copy in ${dest%/*} instead)" ;;
+        *)
+            echo "warn: boot drop-in $dest is $state (haseen layer apply base)"
+            ((rc == 0)) && rc=2
+            ;;
+        esac
+    done < <(boot_dropins_status)
     return "$rc"
 }
 
@@ -184,6 +203,7 @@ layer_apply() {
     base_firewall
     base_paccache
     base_omarchy_guard
+    base_boot_dropins
     if $bluetooth; then base_bluetooth; fi
     base_snapper_check
 }

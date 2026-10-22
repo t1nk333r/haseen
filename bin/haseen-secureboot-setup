@@ -67,16 +67,6 @@ limine)
 systemd-boot | grub) ;;
 *) die "could not detect the bootloader on the ESP (see: haseen doctor)" ;;
 esac
-# sudo_is_test_stub — the sudo on PATH is a file under this checkout's
-# tests/.out/, where tests/lib.sh writes its stubs (resolved through links). An
-# installed tree has no tests/, and a real sudo is never there.
-sudo_is_test_stub() {
-    local sudo stubs
-    sudo="$(command -v sudo)" && sudo="$(readlink -f -- "$sudo")" || return 1
-    stubs="$(readlink -f -- "$HASEEN_PATH/../../tests/.out")" && [[ -d $stubs ]] || return 1
-    [[ $sudo == "$stubs"/* ]]
-}
-
 # HASEEN_SYSROOT redirects reads only; sudo, sbctl and the firmware they write
 # are this machine's. A real run would sign and enroll the live firmware from a
 # fixture's facts (its dbDefault/KEKDefault among them), so it is refused. The

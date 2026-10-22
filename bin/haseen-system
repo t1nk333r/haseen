@@ -4,6 +4,8 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/hibernate.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/hibernate.sh"
+# shellcheck source=../share/haseen/lib/screen.sh
+source "$HASEEN_PATH/lib/screen.sh" # screen_lua
 
 usage() {
     cat <<EOF
@@ -17,7 +19,56 @@ hibernate systemctl hibernate; --available exits 0 only when hibernation is
 logout    ends the uwsm session (uwsm stop), else Hyprland's exit dispatcher
 reboot    systemctl reboot
 shutdown  systemctl poweroff
+
+logout, reboot and shutdown first ask every window to close and wait, at most
+2 seconds, for the apps to exit, so a browser saves its session. The terminal
+this runs in stays open until the end.
 EOF
+}
+
+# ancestor_pids — this process and its ancestors, space-separated.
+ancestor_pids() {
+    local pid=$$ stat
+    while ((pid > 1)); do
+        printf '%s ' "$pid"
+        stat="$(cat "/proc/$pid/stat" 2>/dev/null)" || break
+        read -r _ pid _ <<<"${stat##*) }"
+        [[ $pid =~ ^[0-9]+$ ]] || break
+    done
+}
+
+# close_apps — ask every window to close, then wait, 2 s at most, for the
+# processes that own them to exit: a browser writes its session on the way
+# out, and a session that ends first loses it. Adapted from Omarchy
+# bin/omarchy-system and bin/omarchy-hyprland-window-close-all --wait
+# (4bf51ed1a, #15231; MIT, Copyright (c) David Heinemeier Hansson). Omarchy
+# re-runs itself in a transient unit so closing the terminal that asked
+# cannot end it; here a window whose process is one of this command's
+# ancestors stays open instead, and the session's end closes it. Nothing to
+# close without a Hyprland session (a TTY, ssh, tests).
+close_apps() {
+    [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && have hyprctl && have jq || return 0
+    local clients ancestors addr pid pids=() sink=/dev/null lua=false
+    clients="$(hyprctl clients -j 2>/dev/null)" || return 0
+    ancestors=" $(ancestor_pids)"
+    screen_lua && lua=true
+    $DRY_RUN && sink=/dev/stdout
+    while IFS=$'\t' read -r addr pid; do
+        [[ $addr =~ ^0x[0-9a-fA-F]+$ && $pid =~ ^-?[0-9]+$ ]] || continue
+        [[ $ancestors == *" $pid "* ]] && continue
+        if $lua; then
+            run hyprctl dispatch "hl.dsp.window.close({ window = \"address:$addr\" })" >"$sink" || true
+        else
+            run hyprctl dispatch closewindow "address:$addr" >"$sink" || true
+        fi
+        ((pid > 0)) && [[ " ${pids[*]} " != *" $pid "* ]] && pids+=("$pid")
+    done < <(jq -r '.[]? | [.address, (.pid | tostring)] | @tsv' <<<"$clients" 2>/dev/null || true)
+    ((${#pids[@]} > 0)) || return 0
+    # pidwait exits 1 when none is left to wait for, 124 when time ran out.
+    run timeout 2s pidwait --euid "$UID" --pid "$(
+        IFS=,
+        echo "${pids[*]}"
+    )" || true
 }
 
 parse_common_flags "$@"
@@ -66,6 +117,7 @@ hibernate)
     run systemctl hibernate
     ;;
 logout)
+    close_apps
     # uwsm owns the session when it is installed (layers/desktop); stopping it
     # tears Hyprland and every app unit down cleanly.
     if have uwsm; then
@@ -74,6 +126,12 @@ logout)
         run hyprctl dispatch 'hl.dsp.exit()'
     fi
     ;;
-reboot) run systemctl reboot ;;
-shutdown) run systemctl poweroff ;;
+reboot)
+    close_apps
+    run systemctl reboot
+    ;;
+shutdown)
+    close_apps
+    run systemctl poweroff
+    ;;
 esac

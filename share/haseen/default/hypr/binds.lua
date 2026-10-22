@@ -113,7 +113,7 @@ b("SUPER + SHIFT + PRINT", "Search a screen region", "haseen search screen image
 b("SUPER + CTRL + C", "Capture menu", "haseen menu trigger.capture")
 
 -- Session ----------------------------------------------------------------------
-b("SUPER + SHIFT + ESCAPE", "Log out", "uwsm stop")
+b("SUPER + SHIFT + ESCAPE", "Log out", "haseen system logout")
 
 -- Volume, brightness, media (also on the lock screen) ------------------------
 local held = { locked = true, repeating = true }
