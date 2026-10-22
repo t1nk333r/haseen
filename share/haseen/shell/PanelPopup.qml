@@ -91,6 +91,14 @@ PanelWindow {
         id: surface
 
         focus: true
+        // Arabic and any right-to-left language mirror a native panel's
+        // layout (plan 109): rows run from the right, chevrons and sliders
+        // follow. A panel keeps unmirrored what must not flip (media
+        // transport, a seek bar) by setting LayoutMirroring.enabled false on
+        // that item. Omarchy and DMS panels keep the layout they were written
+        // for; one that reads Commons.I18n.rightToLeft can mirror itself.
+        LayoutMirroring.enabled: I18n.rightToLeft && (Plugins.registry[popup.pluginId] || {}).compat === ""
+        LayoutMirroring.childrenInherit: true
 
         PluginSlot {
             id: slot

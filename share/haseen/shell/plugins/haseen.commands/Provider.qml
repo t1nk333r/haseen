@@ -31,7 +31,9 @@ Scope {
     property var guards: null
     property bool asked: false
     readonly property var tree: {
-        const defaults = Model.parseMenuJsonc(defaultText) || [];
+        // The menu catalog relabels the shipped rows by id, as in the menu
+        // (plan 109); the English labels stay searchable.
+        const defaults = Model.applyTranslations(Model.parseMenuJsonc(defaultText) || [], I18n.menuStrings);
         const user = Model.parseMenuJsonc(userText) || [];
         return Model.mergeMenuSources(defaults, user);
     }
@@ -68,15 +70,15 @@ Scope {
         if (ranked.length === 0)
             return [
                 {
-                    title: defaultText === "" ? "Reading the menu…" : "No matching command",
-                    subtitle: "Commands: the menu's actions, e.g. /theme, /screenshot, /update",
+                    title: defaultText === "" ? I18n.tr("Reading the menu…") : I18n.tr("No matching command"),
+                    subtitle: I18n.tr("Commands: the menu's actions, e.g. /theme, /screenshot, /update"),
                     glyph: "\uf120",
                     exec: () => {}
                 }
             ];
         return ranked.map(r => ({
                     title: r.label,
-                    subtitle: r.path || "Menu",
+                    subtitle: r.path || I18n.tr("Menu"),
                     glyph: r.glyph || "\uf120",
                     exec: () => root.run(r.action)
                 }));

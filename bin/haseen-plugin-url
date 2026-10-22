@@ -20,6 +20,8 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -41,7 +43,7 @@ EOF
 # reads the stderr of a scheme handler.
 refuse() {
     if [[ ! -t 0 && ${HASEEN_INLINE:-} != 1 ]] && ! $DRY_RUN && have notify-send; then
-        notify-send -a haseen "Plugin link refused" "$1" || true
+        notify-send -a haseen "$(i18n "Plugin link refused")" "$1" || true
     fi
     die "$1"
 }

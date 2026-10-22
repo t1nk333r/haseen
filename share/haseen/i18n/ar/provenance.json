@@ -1,0 +1,11 @@
+{
+  "translation": "machine",
+  "translator": "Claude Opus 5.5, an AI model (plan 109)",
+  "date": "2026-10-22",
+  "note": "Machine translation into Modern Standard Arabic, not yet reviewed by a native reader. Technical and product names (Wi-Fi, Bluetooth, VPN, DNS, haseen, Hyprland) and unit abbreviations stay Latin; digits stay Western. A key listed under reviewed has been read and approved by the owner; every other string is machine-made. plans/109-i18n-arabic.md lists the strings the translator was unsure of.",
+  "reviewed": {
+    "shell": [],
+    "menu": [],
+    "notify": []
+  }
+}

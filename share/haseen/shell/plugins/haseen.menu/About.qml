@@ -15,6 +15,9 @@ Column {
     required property string binDir
     readonly property string brandingDir: Paths.userConfig + "/branding"
     property var facts: []
+    // The fact names `haseen about --facts` prints (bin/haseen-about), for
+    // the catalog; "haseen" is a name and stays.
+    readonly property var factNames: [I18n.mark("OS"), I18n.mark("Kernel"), I18n.mark("CPU"), I18n.mark("GPU"), I18n.mark("Memory"), I18n.mark("Uptime"), I18n.mark("haseen")]
     property bool hasImage: false
     property string brandText: ""
 
@@ -111,7 +114,9 @@ Column {
 
                 readonly property var fact: root.facts[Math.floor(index / 2)]
 
-                text: index % 2 === 0 ? fact.key : fact.value
+                // The keys are `haseen about --facts`' English names
+                // (factNames), the values the machine's own.
+                text: index % 2 === 0 ? I18n.tr(fact.key) : fact.value
                 color: index % 2 === 0 ? Theme.accent : Theme.foreground
                 width: index % 2 === 0 ? implicitWidth : Math.min(implicitWidth, root.width * 0.7)
                 elide: Text.ElideRight

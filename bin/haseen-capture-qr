@@ -8,6 +8,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -65,9 +67,9 @@ else
     result="$(grim -g "$geometry" - | "${zbar[@]}" - 2>/dev/null || true)"
 fi
 if [[ -z $result ]]; then
-    notify -u critical "No QR code found" "Select a region containing a QR code"
+    notify -u critical "$(i18n "No QR code found")" "$(i18n "Select a region containing a QR code")"
     exit 1
 fi
 printf '%s' "$result" | wl-copy --sensitive
 $print && printf '%s\n' "$result"
-notify "QR code copied to clipboard"
+notify "$(i18n "QR code copied to clipboard")"

@@ -8,7 +8,9 @@ import qs.Haseen
 // false (seeking, a DDC monitor) a drag only moves the knob and `moved` fires
 // once, on release, so a drag is one write, not one per pixel. `steps` > 0
 // snaps the knob to that many even steps (a 3-level keyboard backlight).
-// Read-only without `enabled`.
+// Read-only without `enabled`. Under LayoutMirroring (a right-to-left
+// interface, plan 109) the bar fills from the right; a seek bar that must
+// run with time sets LayoutMirroring.enabled false on itself.
 Item {
     id: bar
 
@@ -20,6 +22,7 @@ Item {
     readonly property bool dragging: mouse.pressed
 
     readonly property real shown: clamp(dragging ? dragValue : value)
+    readonly property bool mirrored: LayoutMirroring.enabled
 
     signal moved(real value)
 
@@ -32,7 +35,8 @@ Item {
     }
 
     function drag(x: real): void {
-        const next = snap(clamp(x / Math.max(1, width)));
+        const fraction = x / Math.max(1, width);
+        const next = snap(clamp(mirrored ? 1 - fraction : fraction));
         const changed = next !== dragValue;
         dragValue = next;
         if (live && (changed || !mouse.moving))
@@ -49,6 +53,7 @@ Item {
         color: Theme.surfaceAlt
 
         Rectangle {
+            x: bar.mirrored ? parent.width - width : 0
             width: parent.width * bar.shown
             height: parent.height
             radius: 2
@@ -59,7 +64,7 @@ Item {
     Rectangle {
         visible: bar.enabled
         anchors.verticalCenter: parent.verticalCenter
-        x: (bar.width - width) * bar.shown
+        x: (bar.width - width) * (bar.mirrored ? 1 - bar.shown : bar.shown)
         width: parent.height
         height: width
         radius: width / 2
