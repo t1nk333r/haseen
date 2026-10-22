@@ -1,0 +1,15 @@
+[Unit]
+Description=haseen: rebuild the boot splash once the theme has settled
+# Plan 110. `haseen plymouth follow on` enables it. `haseen theme set` and
+# `haseen branding mark` restart it, so it fires about 2 minutes after the
+# last change and quick theme flicking rebuilds nothing. Enabled, it also
+# fires 2 minutes after the user manager starts, to catch a change made just
+# before a shutdown; when the splash already matches, that is one comparison.
+
+[Timer]
+OnActiveSec=2min
+AccuracySec=10s
+Unit=haseen-splash-follow.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,39 @@
+// haseen: rebuild the boot splash in the current theme's colours without a
+// password (plan 110). Installed in /etc/polkit-1/rules.d by `haseen plymouth
+// follow on` (and `haseen plymouth set`) after haseen-splash@.service, removed
+// by `haseen plymouth follow off` before it.
+//
+// It allows one thing: a member of wheel starting an instance of that template
+// whose name is three colours of six lowercase hex digits and one of haseen's
+// marks (share/haseen/branding). The unit runs `haseen plymouth apply` as root,
+// which parses the name again.
+//
+// systemd 257 and later pass the same unit and verb details when a client
+// starts a transient unit (systemd-run --unit=NAME), whose command the client
+// chooses. Only the message differs, so this rule requires the message systemd
+// sends for starting a unit from a file ("Authentication is required to start
+// '$(unit)'.", src/core/dbus-unit.c, the same from v254 to v262); before v257 a
+// transient start carried no unit detail at all. And while this rule exists,
+// the template exists, so systemd refuses a transient unit of such a name.
+// A future systemd that words the message differently makes this rule allow
+// nothing, and following reports the failure: closed, not open.
+polkit.addRule(function (action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (action.lookup("verb") !== "start") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (action.lookup("polkit.message") !== "Authentication is required to start '$(unit)'.") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    if (typeof unit !== "string" ||
+        !/^haseen-splash@[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}-(kufic|shield|gate)\.service$/.test(unit)) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (!subject.isInGroup("wheel")) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    return polkit.Result.YES;
+});

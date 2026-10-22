@@ -1,0 +1,13 @@
+[Unit]
+Description=haseen: ask root to rebuild the boot splash in the current theme's colours
+# Plan 110. Started by haseen-splash-follow.timer. Compares the current
+# theme and mark with what the boot image carries; when they differ it starts
+# haseen-splash@<colours>-<mark>.service and waits for it, and notifies only
+# when that fails.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env haseen plymouth follow request
+# The rebuild runs at idle priority and may take minutes on a busy machine.
+TimeoutStartSec=35min
+Slice=background.slice
