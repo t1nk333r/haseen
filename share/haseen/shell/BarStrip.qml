@@ -16,10 +16,11 @@ import "BarDrag.js" as BarDrag
 // keeps for it (BarSection.qml): moving a widget never rebuilds it.
 //
 // Dragging, after Omarchy's bar (shell/plugins/bar/Bar.qml, v4.5.0-rc1,
-// MIT, Copyright (c) David Heinemeier Hansson), without its arrange-free
-// cost: there every press on a widget goes to the bar first; here it goes to
-// the widget, and only a press that travels BarDrag.threshold becomes a
-// drag (BarSlot.qml).
+// MIT, Copyright (c) David Heinemeier Hansson). There the bar takes every
+// press on a widget and hands clicks on; here the widget keeps its press, and
+// only a press that travels BarDrag.threshold becomes a drag (BarSlot.qml).
+// The bar is never mirrored (plan 109), so a drag reads the same in every
+// language.
 // - A widget, dragged, follows the pointer as a ghost (BarDragOverlay.qml)
 //   and leaves a room where it would land: within its section, in another
 //   one, on the chevron (which shows during every drag; the overflow panel's

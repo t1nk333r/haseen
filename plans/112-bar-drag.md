@@ -245,7 +245,12 @@ and `position` now names the drags.
   nothing; right click arranges, arrange mode's click and drag; then every
   drop replayed through `haseen bar move` gives the shell's rule's bar.
 - `tests/test-bar-basics.sh`: its two source checks read `BarStrip.qml` now.
-- Affected selection, lint, docs and secrets: numbers in the pull request.
+- `tests/test-bar-basics.sh`, `tests/test-bar-overflow.sh` and
+  `tests/test-bar-drag.sh` together: 345/345.
+- `tests/run.sh --affected origin/main` (27 test files, after the merge of
+  7ab1b4a): 3833/3833. `tools/lint.sh` OK (shellcheck 913 files, qmllint 340,
+  `tools/i18n.py check`, `affected-tests --check`); `tools/check-docs.sh` OK;
+  gitleaks over the branch's commits and the privacy patterns: nothing.
 
 ## Owner steps
 
