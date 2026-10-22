@@ -23,6 +23,9 @@ cap_sandbox() {
     : >"$CALLS_STDIN"
     export CALLS CALLS_STDIN
     export CURL_BODY="" CURL_HEADERS="" CURL_RC=0 CURL_PROBE_CODE=404 CURL_PROBE_RC=0 EDITOR_KEY=escape
+    # haseen's own capture and Tensaku as the editor, whatever this host has
+    # installed: Omasnap's hand-over and editor are tests/test-omasnap.sh's.
+    export HASEEN_SCREENSHOT_TOOL=grim
     stub notify-send 'echo "notify-send $*" >>"$CALLS"'
     stub wl-copy 'printf "wl-copy %s: " "$*" >>"$CALLS"; cat >>"$CALLS"; echo >>"$CALLS"'
     stub xdg-user-dir 'echo "$HOME/$1"'
@@ -814,42 +817,15 @@ export HASEEN_SYSROOT="$FIXTURES/seeds-plain"
 capture haseen seed user --dry-run
 assert_status "the seed dry run succeeds" 0 "$STATUS"
 assert_dry_pure "capture seed dry run" "$OUTPUT"
-assert_contains "Tensaku's config is planned" "$OUTPUT" "DRYRUN: seed $HOME/.config/tensaku/config.toml"
-assert_contains "Tensaku's colours are linked to the theme pipeline" "$OUTPUT" \
-    "DRYRUN: ln -snf $HOME/.local/state/haseen/current/theme/tensaku.css $HOME/.config/tensaku/overrides.css"
+assert_not_contains "Tensaku is no longer seeded (plan 107)" "$OUTPUT" "tensaku"
 assert_contains "the uploader's credentials file is planned" "$OUTPUT" \
     "DRYRUN: write $HOME/.config/haseen/upload.toml"
 assert_contains "and it is planned as 0600" "$OUTPUT" "DRYRUN: chmod 600 $HOME/.config/haseen/upload.toml"
 capture haseen seed user
 assert_status "seeding succeeds" 0 "$STATUS"
-assert_eq "the overrides link points at the theme render" \
-    "$HOME/.local/state/haseen/current/theme/tensaku.css" \
-    "$(readlink "$HOME/.config/tensaku/overrides.css")"
 assert_eq "the credentials file is private" "600" "$(stat -c '%a' "$HOME/.config/haseen/upload.toml")"
 assert_eq "the credentials file holds no credential" "" \
     "$(grep -vE '^[[:space:]]*(#|$)' "$HOME/.config/haseen/upload.toml")"
-assert_contains "Tensaku copies with wl-copy" "$(cat "$HOME/.config/tensaku/config.toml")" 'copy-command = "wl-copy"'
-assert_contains "Tensaku's palette is high contrast, not theme-derived" \
-    "$(cat "$HOME/.config/tensaku/config.toml")" '"#eb4d4bff"'
-# Tensaku exits 3 on a config with an unknown key or a wrong type, so the
-# seeded file is loaded by the real binary where it is installed. --doctor
-# reads the config and exits before any window; the environment has no
-# display, no session bus and its own home, so nothing reaches a session.
-if [[ -x /usr/bin/tensaku ]]; then
-    seeded="$HOME/.config/tensaku/config.toml"
-    probe="$SANDBOX/tensaku-probe"
-    mkdir -p "$probe/home/.config/tensaku"
-    mkdir -m 700 "$probe/run"
-    cp "$seeded" "$probe/home/.config/tensaku/config.toml"
-    capture env -i PATH=/usr/bin HOME="$probe/home" XDG_CONFIG_HOME="$probe/home/.config" \
-        XDG_STATE_HOME="$probe/home/.state" XDG_DATA_HOME="$probe/home/.data" XDG_CACHE_HOME="$probe/home/.cache" \
-        XDG_RUNTIME_DIR="$probe/run" DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent \
-        timeout 15 /usr/bin/tensaku --doctor
-    assert_status "the installed Tensaku loads the seeded config" 0 "$STATUS"
-    assert_eq "and leaves it as seeded" "$(cat "$seeded")" "$(cat "$probe/home/.config/tensaku/config.toml")"
-else
-    echo "  skip: tensaku not installed; the seeded config was not loaded by it" >&2
-fi
 capture haseen seed user --dry-run
 assert_not_contains "a second plan is empty" "$OUTPUT" "DRYRUN"
 # The file is private from the moment it exists, not only after the chmod:

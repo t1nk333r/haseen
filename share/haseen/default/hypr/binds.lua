@@ -100,7 +100,10 @@ b("SUPER + V", "Universal paste", universal("CTRL", "V", "SHIFT", "Insert"))
 b("SUPER + X", "Universal cut", send_once("CTRL", "X"))
 
 -- Capture ----------------------------------------------------------------------
-b("PRINT", "Screenshot region", "haseen capture screenshot")
+-- PRINT is Omasnap (plan 107): drag a region, click a window or open space,
+-- S for a scrolling region; pressed again it dismisses. The two below stay
+-- one-key captures without a picker.
+b("PRINT", "Screenshot", "haseen capture screenshot")
 b("SHIFT + PRINT", "Screenshot window", "haseen capture screenshot window")
 b("CTRL + PRINT", "Screenshot monitor", "haseen capture screenshot output")
 b("ALT + PRINT", "Screen recording start/stop", "haseen capture screenrecord")

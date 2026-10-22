@@ -94,7 +94,7 @@ REC
     done
     unset CLAUDE_CONFIG_DIR CODEX_HOME FIREWORKS_API_KEY FIREWORKS_ACCOUNT_ID FIREWORKS_AUTH_PATH \
         FIREWORKS_API_BASE_URL HASEEN_AGENT HASEEN_AGENT_USAGE_DIR OMARCHY_SCREENSHOT_DIR \
-        HASEEN_SCREENSHOT_DIR CHROME_USER_DATA_DIR CHROME_CONFIG_HOME BROWSER EDITOR \
+        HASEEN_SCREENSHOT_DIR HASEEN_SCREENSHOT_TOOL CHROME_USER_DATA_DIR CHROME_CONFIG_HOME BROWSER EDITOR \
         XDG_CURRENT_DESKTOP DRY_RUN HASEEN_YTDLP_DIR
     export XDG_CONFIG_DIRS="$SANDBOX/etc-xdg" XDG_DATA_DIRS="$SANDBOX/data-dirs"
 }
@@ -511,7 +511,10 @@ fk omarchy-brightness-keyboard-mute on >/dev/null 2>&1
 assert_eq "the mic-mute LED is set" "brightnessctl --device=platform::micmute set 1" "$(<"$SYS")"
 
 # --- capture -------------------------------------------------------------------
+# Without Omasnap, as on a machine without [omarchy]; the Omasnap answers are
+# tests/test-omasnap.sh's (plan 107).
 box omarchy-system-capture
+export HASEEN_SCREENSHOT_TOOL=grim
 sys hyprctl 'monitors\ -j) cat "$SANDBOX/monitors.json"; exit 0 ;;
 clients\ -j) cat "$SANDBOX/clients.json" 2>/dev/null || echo "[]"; exit 0 ;;'
 echo '[{"id":0,"name":"eDP-1","focused":true,"disabled":false,"x":0,"y":0,"width":1920,"height":1080,"scale":1,"transform":0,"activeWorkspace":{"id":1}}]' >"$SANDBOX/monitors.json"
@@ -587,6 +590,7 @@ assert_contains "no video, a critical toast" "$(<"$CALLS")" "[-u] [critical] [No
 
 # --- clipboard -----------------------------------------------------------------
 box omarchy-system-clipboard
+export HASEEN_SCREENSHOT_TOOL=grim
 stub cliphist 'case $1 in
 list) printf "0\thttps://example.org/page\n1\t[[ binary data 12 KiB png 10x10 ]]\n2\tplain note\n" ;;
 decode) cut -f2- ;;
@@ -598,7 +602,7 @@ capture fk omarchy-clipboard-open --history-index 0 --dry-run
 assert_contains "a link opens in the browser" "$OUTPUT" "https://example.org/page"
 assert_dry_pure "omarchy-clipboard-open link" "$OUTPUT"
 capture fk omarchy-clipboard-open --history-index 1 --dry-run
-assert_contains "an image opens in Tensaku" "$OUTPUT" "DRYRUN: tensaku-edit"
+assert_contains "without Omasnap, an image opens in tensaku-edit" "$OUTPUT" "DRYRUN: tensaku-edit"
 capture fk omarchy-clipboard-open --history-index 2 --dry-run
 assert_contains "other text opens in the editor" "$OUTPUT" "haseen-config-edit"
 assert_eq "a dry open writes no file" "no" "$([[ -e $HOME/.local/state/haseen/clipboard-open ]] && echo yes || echo no)"

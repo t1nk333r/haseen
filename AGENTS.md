@@ -60,9 +60,10 @@ between parts. The engineering record is `plans/`, indexed by
     Cairn's releases (AGPL-3.0, never vendored).
   - Installed with the desktop layer: the default file handlers `yazi`,
     `imv`, `mpv`, `papers` and `xdg-terminal-exec` (owner, 2026-10-08;
-    confirmed 2026-10-13, plan 037), and the capture tools `tensaku` and
-    `tesseract-data-ara` (owner, 2026-10-08, plan 041; Tensaku replaced
-    `satty`, as in Omarchy, owner 2026-10-14).
+    confirmed 2026-10-13, plan 037), and the capture tools `omasnap` (from
+    `[omarchy]` only) and `tesseract-data-ara` (owner, 2026-10-08, plan 041;
+    Omasnap replaced Tensaku, owner 2026-10-21, plan 107; Tensaku had
+    replaced `satty`, owner 2026-10-14).
   - Default packages (owner, 2026-10-08; confirmed 2026-10-13): `zoxide`,
     `eza`, `bat` (plan 038) and `tmux` (plan 044) with the base layer, and the
     `herdr` multiplexer with the desktop layer (plan 044). Without the

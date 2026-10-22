@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-install bin/haseen-seed-user share/haseen/default/catalog.json
-# haseen:covers share/haseen/default/{btop,environment.d,fcitx5,fontconfig,herdr,shell,tensaku}/**
+# haseen:covers share/haseen/default/{btop,environment.d,fcitx5,fontconfig,herdr,shell}/**
 # haseen:covers share/haseen/default/{tmux,xcompose,yazi}/**
 # haseen:covers share/haseen/layers/base/{lib.sh,packages.txt} share/haseen/lib/catalog.sh
 # haseen:covers share/haseen/lib/packages.sh share/haseen/lib/shellrc.sh

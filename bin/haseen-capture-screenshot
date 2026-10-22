@@ -1,24 +1,39 @@
 #!/usr/bin/env bash
-# haseen:summary Screenshot a region, window or output to the clipboard and ~/Pictures
-# haseen:args [region|window|output|screen] [--geometry "X,Y WxH"] [--output NAME] [--file PATH] [--format png|jpg|ppm] [--quality N] [--cursor] [--edit] [--upload] [--upload-to BACKEND] [--stdout] [--no-save] [--no-copy] [--no-notify] [--dry-run]
+# haseen:summary Take a screenshot: Omasnap's picker, or a region, window or output to the clipboard and ~/Pictures
+# haseen:args [smart|region|scroll|window|output|screen] [--geometry "X,Y WxH"] [--output NAME] [--file PATH] [--format png|jpg|ppm] [--quality N] [--cursor] [--edit] [--upload] [--upload-to BACKEND] [--stdout] [--no-save] [--no-copy] [--no-notify] [--dry-run]
 #
 # Adapted from Omarchy bin/omarchy-capture-screenshot and omarchy-capture-region
 # (MIT, Copyright (c) David Heinemeier Hansson): region picking with slurp,
 # window geometry from Hyprland, copy and save in one pass, optional editor.
+# The picks hand over to Omasnap when it is installed, as Omarchy 4.5's
+# omarchy-capture-screenshot does (`exec omasnap`, Omarchy ee8ebf615, #9446),
+# and Omasnap is the editor (owner, 2026-10-21, plan 107).
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/omasnap.sh
+source "$HASEEN_PATH/lib/omasnap.sh"
 
 usage() {
     cat <<EOF
-Usage: haseen capture screenshot [region|window|output|screen] [options]
+Usage: haseen capture screenshot [smart|region|scroll|window|output|screen] [options]
 
-Modes (default region):
-  region   pick a rectangle with slurp
-  window   the focused window
-  output   the focused monitor (or --output NAME)
-  screen   every monitor
+Modes (default smart):
+  smart    drag a region, click a window, or click open space for the whole
+           monitor (Omasnap; without it, pick a rectangle with slurp)
+  region   pick a rectangle (Omasnap's region mode, or slurp)
+  scroll   a region taller or wider than the screen, stitched while it
+           scrolls (Omasnap only)
+  window   the focused window, at once
+  output   the focused monitor (or --output NAME), at once
+  screen   every monitor, at once
+
+With Omasnap installed, smart, region and scroll open it over the frozen
+screen: it saves, copies and shows a preview to pin, edit, copy or drag, and
+the same key pressed again dismisses it. --no-save copies only, --no-copy
+saves only, --edit opens its editor before anything is kept. Any other option
+takes haseen's own capture (slurp and grim), which prints the saved path.
 
 Options:
   --geometry "X,Y WxH"  capture this rectangle (no picker; slurp's format)
@@ -27,7 +42,8 @@ Options:
   --format FMT          png (default), jpg or ppm
   --quality N           JPEG quality 1-100 (default 90)
   --cursor              include the pointer
-  --edit                annotate in Tensaku (or swappy) before anything is kept
+  --edit                annotate before anything is kept: in Omasnap (else
+                        Tensaku, else swappy)
   --upload              upload the result and copy the link (haseen upload)
   --upload-to BACKEND   upload with this backend (implies --upload)
   --stdout              write the image to stdout; nothing is saved, copied or announced
@@ -36,31 +52,31 @@ Options:
   --no-notify           no desktop notification
   --dry-run             print the plan
 
-With --edit, what the editor saves is what is kept, copied and uploaded. In
-Tensaku, Enter saves; Escape cancels the capture, and nothing is saved, copied
-or uploaded. swappy saves whenever it closes. --edit keeps PNG only, so it
-takes no other --format. --edit --upload ends with the link on the
-clipboard.
+With --edit in haseen's own capture, what the editor saves is what is kept,
+copied and uploaded. In Omasnap, Enter saves (and copies), Ctrl+S saves
+without copying, and Escape cancels the capture: nothing is saved, copied or
+uploaded. Tensaku is the same with Enter; swappy saves whenever it closes.
+--edit keeps PNG only, so it takes no other --format. --edit --upload ends
+with the link on the clipboard.
 
-Files go to \$HASEEN_SCREENSHOT_DIR or \$(xdg-user-dir PICTURES).
+Files go to \$HASEEN_SCREENSHOT_DIR or \$(xdg-user-dir PICTURES), Omasnap's too
+unless \$OMASNAP_SCREENSHOT_DIR or its own [output] directory (omasnap.conf)
+names another folder. Omasnap reads text in \$HASEEN_OCR_LANGS
+(default $HASEEN_OCR_DEFAULT). HASEEN_SCREENSHOT_TOOL=grim never starts Omasnap.
 EOF
 }
 
 notify() { have notify-send && notify-send -a haseen "$@" || true; }
 
-pictures_dir() {
-    local d=${HASEEN_SCREENSHOT_DIR:-}
-    [[ -n $d ]] || d="$(xdg-user-dir PICTURES 2>/dev/null || true)"
-    [[ -n $d && $d != "$HOME" ]] || d="$HOME/Pictures"
-    printf '%s\n' "$d"
-}
-
 parse_common_flags "$@"
 set -- "${REST[@]}"
-mode=region geometry="" output="" file="" format=png quality=90
+mode=smart geometry="" output="" file="" format=png quality=90
 cursor=false edit=false stdout=false save=true copy=true announce=true
 upload=false upload_backend=""
+# own: an option only haseen's own capture has, so the pick is not Omasnap's.
+own=false
 set_option() {
+    own=true
     case $1 in
     geometry) geometry=$2 ;;
     output) output=$2 ;;
@@ -71,7 +87,7 @@ set_option() {
 }
 while (($#)); do
     case "$1" in
-    region | window | output | screen) mode=$1 ;;
+    smart | region | scroll | window | output | screen) mode=$1 ;;
     --geometry | --output | --file | --format | --quality)
         (($# > 1)) || { usage >&2; exit 2; }
         set_option "${1#--}" "$2"
@@ -81,19 +97,19 @@ while (($#)); do
         name=${1%%=*}
         set_option "${name#--}" "${1#*=}"
         ;;
-    --cursor) cursor=true ;;
+    --cursor) cursor=true own=true ;;
     --edit) edit=true ;;
-    --upload) upload=true ;;
+    --upload) upload=true own=true ;;
     --upload-to)
         (($# > 1)) || { usage >&2; exit 2; }
-        upload=true upload_backend=$2
+        upload=true upload_backend=$2 own=true
         shift
         ;;
-    --upload-to=*) upload=true upload_backend=${1#*=} ;;
-    --stdout) stdout=true ;;
+    --upload-to=*) upload=true upload_backend=${1#*=} own=true ;;
+    --stdout) stdout=true own=true ;;
     --no-save) save=false ;;
     --no-copy) copy=false ;;
-    --no-notify) announce=false ;;
+    --no-notify) announce=false own=true ;;
     *) usage >&2; exit 2 ;;
     esac
     shift
@@ -130,6 +146,24 @@ if [[ -n $geometry && ! $geometry =~ ^-?[0-9]+,-?[0-9]+\ [0-9]+x[0-9]+$ ]]; then
     echo "Error: --geometry wants \"X,Y WxH\", got: $geometry" >&2
     exit 2
 fi
+
+# A pick goes to Omasnap, which owns the rest: where the file goes (haseen's
+# folder, lib/omasnap.sh), the clipboard, its preview and its notification.
+# It has one switch for the output (--copy, --save or both by default) and
+# --editor to annotate first; the editor then decides the output, so --edit
+# with --no-save or --no-copy stays with haseen's capture.
+if [[ $mode == smart || $mode == region || $mode == scroll ]] && ! $own &&
+    { ! $edit || { $save && $copy; }; } && omasnap_use; then
+    omasnap_args=("$mode")
+    $save || omasnap_args+=(--copy)
+    $copy || omasnap_args+=(--save)
+    if $edit; then omasnap_args+=(--editor "$(omasnap_editor_mode)"); fi
+    omasnap_exec "${omasnap_args[@]}"
+fi
+[[ $mode != scroll ]] ||
+    die "a scrolling screenshot is Omasnap's: it needs Omasnap installed (haseen layer apply omarchy-repo desktop) and HASEEN_SCREENSHOT_TOOL other than grim, and takes only --no-save, --no-copy or --edit"
+# Without Omasnap, smart is a rectangle picked with slurp, as region always was.
+[[ $mode != smart ]] || mode=region
 
 grim_args=()
 if [[ -n $geometry ]]; then
@@ -183,16 +217,18 @@ fi
 
 editor=""
 if $edit; then
-    if have tensaku; then
+    if omasnap_use; then
+        editor=omasnap
+    elif have tensaku; then
         editor=tensaku
     elif have swappy; then
         editor=swappy
     else
-        warn "neither tensaku nor swappy is installed; saving without editing"
+        warn "none of omasnap, tensaku or swappy is installed; saving without editing"
     fi
 fi
 
-dir="$(pictures_dir)"
+dir="$(screenshot_dir)"
 if [[ -z $file ]]; then
     file="$dir/screenshot-$(date +%Y-%m-%d_%H-%M-%S).$format"
 elif [[ $file != */* ]]; then
@@ -201,11 +237,12 @@ fi
 
 # Every file but the saved one lives in a private directory (mktemp -d, 0700)
 # that is removed on every exit: a cancelled edit, a failed upload, a signal.
+edit_dir=""
 if $DRY_RUN; then
     work='<private temp dir>'
 else
     work="$(mktemp -d)"
-    trap 'rm -rf -- "$work"' EXIT
+    trap 'rm -rf -- "$work" ${edit_dir:+"$edit_dir"}' EXIT
     trap 'exit 143' TERM INT HUP
 fi
 original="$work/original.png"
@@ -220,11 +257,41 @@ if $save; then shot=$file; fi
 # writing a file, so Enter is made a save here, and Escape is made an exit:
 # Tensaku's default keeps the window open on Escape, and a user's config may
 # not set it. --early-exit closes the window after the save.
+#
+# Omasnap saves into its screenshot folder under a name of its own
+# (src/capture.cpp@v1.21.0 screenshotTargetPath), so it is given a private
+# folder and what appears there is what it saved; the editor closes after any
+# output (Enter, Ctrl+S, Ctrl+C, P pins) or Escape. It would announce that
+# private file through omarchy-notification-send, by PATH (src/capture.cpp
+# sendCaptureNotification), so that name is a silent stub for it here: haseen
+# announces the kept file. The folder lives in the private runtime directory:
+# a pin made in the editor inherits it and saves there later (its link
+# button), after this run removed it and Omasnap made it again.
 edit_cmd=()
+edit_show=()
 case $editor in
+omasnap)
+    quiet="$work/quiet"
+    if $DRY_RUN; then
+        edit_dir='<private runtime dir>'
+    elif [[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR && -O $XDG_RUNTIME_DIR ]]; then
+        edit_dir="$(mktemp -d -p "$XDG_RUNTIME_DIR" haseen-screenshot.XXXXXX)"
+    else
+        edit_dir="$work/omasnap"
+        mkdir -m 700 -- "$edit_dir"
+    fi
+    omasnap_env
+    edit_env=("OMASNAP_SCREENSHOT_DIR=$edit_dir")
+    for word in "${OMASNAP_ENV[@]}"; do
+        [[ $word == OMASNAP_SCREENSHOT_DIR=* ]] || edit_env+=("$word")
+    done
+    edit_cmd=(env "PATH=$quiet:$PATH" "${edit_env[@]}" omasnap --file "$original")
+    edit_show=(env "PATH=$quiet:\$PATH" "${edit_env[@]}" omasnap --file "$original")
+    ;;
 tensaku) edit_cmd=(tensaku --filename "$original" --output-filename "$edited" --actions-on-enter save-to-file --actions-on-escape exit --early-exit --copy-command wl-copy) ;;
 swappy) edit_cmd=(swappy -f "$original" -o "$edited") ;;
 esac
+((${#edit_show[@]})) || edit_show=("${edit_cmd[@]}")
 
 upload_cmd=(haseen-upload "$shot" --quiet)
 [[ -z $upload_backend ]] || upload_cmd+=(--backend "$upload_backend")
@@ -232,14 +299,19 @@ upload_cmd=(haseen-upload "$shot" --quiet)
 if $DRY_RUN; then
     if [[ -n $editor ]]; then
         echo "DRYRUN: grim ${grim_args[*]} $original"
-        echo "DRYRUN: ${edit_cmd[*]}"
-        echo "DRYRUN: mv $edited $shot (if the editor saved; otherwise stop: nothing is saved, copied or uploaded)"
+        [[ $editor != omasnap ]] || echo "DRYRUN: write $quiet/omarchy-notification-send (exits 0: Omasnap's own notification is not shown)"
+        echo "DRYRUN: ${edit_show[*]}"
+        if [[ $editor == omasnap ]]; then
+            echo "DRYRUN: mv <the PNG Omasnap saved in $edit_dir> $shot (if the editor saved; otherwise stop: nothing is saved, copied or uploaded)"
+        else
+            echo "DRYRUN: mv $edited $shot (if the editor saved; otherwise stop: nothing is saved, copied or uploaded)"
+        fi
     else
         echo "DRYRUN: grim ${grim_args[*]} $shot"
     fi
     $copy && echo "DRYRUN: wl-copy -t $mime < $shot"
     $upload && echo "DRYRUN: ${upload_cmd[*]} (the link replaces the image on the clipboard)"
-    echo "DRYRUN: rm -r $work"
+    echo "DRYRUN: rm -r $work${edit_dir:+ $edit_dir}"
     $announce || echo "DRYRUN: no notification"
     exit 0
 fi
@@ -247,7 +319,21 @@ fi
 mkdir -p -- "$(dirname -- "$shot")"
 if [[ -n $editor ]]; then
     grim "${grim_args[@]}" "$original"
+    if [[ $editor == omasnap ]]; then
+        mkdir -p -- "$quiet"
+        printf '#!/bin/sh\nexit 0\n' >"$quiet/omarchy-notification-send"
+        chmod 700 -- "$quiet/omarchy-notification-send"
+    fi
     "${edit_cmd[@]}"
+    if [[ $editor == omasnap ]]; then
+        saved=""
+        for f in "$edit_dir"/*.png; do
+            [[ -f $f ]] || continue
+            [[ -z $saved || $f -nt $saved ]] && saved=$f
+        done
+        [[ -n $saved ]] || exit 0 # left without saving: cancelled
+        mv -fT -- "$saved" "$edited"
+    fi
     [[ -s $edited ]] || exit 0 # left without saving: cancelled
     mv -fT -- "$edited" "$shot"
 else

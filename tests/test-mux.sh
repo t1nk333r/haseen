@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-seed-user
-# haseen:covers share/haseen/default/{btop,environment.d,fcitx5,fontconfig,herdr,shell,tensaku}/**
+# haseen:covers share/haseen/default/{btop,environment.d,fcitx5,fontconfig,herdr,shell}/**
 # haseen:covers share/haseen/default/{tmux,xcompose,yazi}/** share/haseen/lib/shellrc.sh
 # haseen:covers share/haseen/seeds/** tests/fixtures/seeds-plain/** tools/lab.sh tools/secrets.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
