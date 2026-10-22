@@ -10,6 +10,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -25,11 +27,7 @@ parse_common_flags "$@"
 
 pending="$(haseen-migrate --pending 2>/dev/null)" || exit 0
 count="$(grep -c . <<<"$pending")"
-if ((count == 1)); then
-    message="Click to run 1 pending migration."
-else
-    message="Click to run $count pending migrations."
-fi
+message="$(i18n_n "Click to run %1 pending migration." "Click to run %1 pending migrations." "$count")"
 
 if $DRY_RUN; then
     echo "DRYRUN: notify about $count pending migration(s)"
@@ -52,7 +50,7 @@ fi
 
 # --wait keeps this oneshot alive until the toast is answered or dismissed; the
 # action id is printed on stdout when it is clicked.
-answer="$(notify-send -a haseen -u critical --wait -A run=Run \
-    "Pending haseen migrations" "$message" || true)"
+answer="$(notify-send -a haseen -u critical --wait -A "run=$(i18n "Run")" \
+    "$(i18n "Pending haseen migrations")" "$message" || true)"
 [[ $answer == run ]] || exit 0
 exec haseen-config-terminal -- haseen-migrate

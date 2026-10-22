@@ -22,6 +22,8 @@ HASEEN_GESTURES_SH=1
 
 # shellcheck source=../shell/lib/plugin.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../shell/lib/plugin.sh"
+# shellcheck source=i18n.sh
+source "$(dirname "${BASH_SOURCE[0]}")/i18n.sh"
 
 GESTURES_ID=haseen.gestures
 GESTURES_MANIFEST="$HASEEN_PATH/shell/plugins/$GESTURES_ID/manifest.json"
@@ -311,11 +313,11 @@ gestures_announce() {
     # The way back leads: a toast shows about two lines, and the title
     # already says what happened.
     if [[ $after == off ]]; then
-        title="Touchpad gestures off"
-        body="Turn them back on from the gestures panel in the bar, or with haseen gestures apply --set '{\"enabled\":true}'"
+        title="$(i18n "Touchpad gestures off")"
+        body="$(i18n "Turn them back on from the gestures panel in the bar, or with %1" "haseen gestures apply --set '{\"enabled\":true}'")"
     else
-        title="Touchpad gestures on"
-        body="Swipes and pinches work again."
+        title="$(i18n "Touchpad gestures on")"
+        body="$(i18n "Swipes and pinches work again.")"
     fi
     $DRY_RUN || info "$title. $body"
     if $DRY_RUN; then

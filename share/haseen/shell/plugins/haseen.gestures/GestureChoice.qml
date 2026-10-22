@@ -12,6 +12,9 @@ Column {
     property var options: []
     property string value: ""
     property bool open: false
+    // The list hangs under the box, which a mirrored panel (plan 109) puts on
+    // the left.
+    readonly property bool mirrored: LayoutMirroring.enabled
     readonly property var current: {
         for (let i = 0; i < options.length; i++)
             if (options[i].value === value)
@@ -56,7 +59,7 @@ Column {
                 anchors.leftMargin: Math.round(Theme.gap * 0.75)
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
-                text: root.current ? root.current.label : "Different per direction"
+                text: root.current ? I18n.tr(root.current.label) : I18n.tr("Different per direction")
                 color: root.current ? Theme.foreground : Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
@@ -93,7 +96,7 @@ Column {
 
             required property var modelData
 
-            x: root.width - width
+            x: root.mirrored ? 0 : root.width - width
             width: box.width
             height: Math.round(Theme.fontSize * 1.8)
             radius: Theme.radius
@@ -105,7 +108,7 @@ Column {
                 anchors.leftMargin: Math.round(Theme.gap * 0.75)
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
-                text: row.modelData.label
+                text: I18n.tr(row.modelData.label)
                 color: row.modelData.value === root.value ? Theme.accent : Theme.foreground
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily

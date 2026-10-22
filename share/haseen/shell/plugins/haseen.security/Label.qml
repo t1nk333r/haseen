@@ -21,6 +21,10 @@ Text {
     font.pixelSize: Math.round((heading ? 14 : 12) * Math.max(1 / 11, Theme.fontSize / 11))
     font.bold: heading
     wrapMode: Text.Wrap
+    // Set, not implied: Qt mirrors only an explicit alignment, so in a
+    // mirrored (right-to-left) panel every label, Latin evidence included,
+    // starts on the right instead of following its own script.
+    horizontalAlignment: Text.AlignLeft
     textFormat: Text.PlainText
     Accessible.role: Accessible.StaticText
     Accessible.name: text

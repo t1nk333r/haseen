@@ -58,13 +58,24 @@ function focusOrder(w) {
     return isFinite(f) && f >= 0 ? f : 9999;
 }
 
+// Interface strings stay English here and are translated where QML shows
+// them: the provider passes I18n.tr as `tr`; without it the text is English.
+// N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
+// %1..%9 replaced by args, in one pass.
+function fill(text, ...args) {
+    return String(text).replace(/%([1-9])/g, (whole, digit) => args[digit - 1] === undefined ? whole : String(args[digit - 1]));
+}
+
 // "<class> · workspace <name>"
-function subtitle(w) {
+function subtitle(w, tr) {
+    const t = tr || fill;
     const parts = [];
     if (w.wmClass)
         parts.push(String(w.wmClass));
     if (w.workspace !== undefined && w.workspace !== null && String(w.workspace) !== "")
-        parts.push("workspace " + String(w.workspace));
+        parts.push(t(N_("workspace %1"), String(w.workspace)));
     return parts.join("  ·  ");
 }
 

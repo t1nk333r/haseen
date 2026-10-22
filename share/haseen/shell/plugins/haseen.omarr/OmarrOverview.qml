@@ -34,7 +34,7 @@ Column {
         visible: root.warnings.length > 0
 
         OmarrSectionHeader {
-            text: "WARNINGS"
+            text: I18n.tr("WARNINGS")
             color: Theme.urgent
         }
 
@@ -46,7 +46,10 @@ Column {
 
                 width: parent.width
                 textFormat: Text.PlainText
-                text: modelData.title + " · " + modelData.body
+                // Set rather than implicit: a right-to-left panel then aligns
+                // Latin text and numbers to the right too (plan 109).
+                horizontalAlignment: Text.AlignLeft
+                text: modelData.title + " · " + Model.statusLabel(modelData.body, I18n)
                 color: Theme.urgent
                 font.family: Theme.fontFamily
                 font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -61,7 +64,7 @@ Column {
         visible: root.nowFeed.showQueue === true && root.downloads.length > 0
 
         OmarrSectionHeader {
-            text: "DOWNLOADING"
+            text: I18n.tr("DOWNLOADING")
         }
 
         Repeater {
@@ -72,7 +75,7 @@ Column {
 
                 title: modelData.title || ""
                 subtitle: {
-                    const line = Model.queueLine(modelData);
+                    const line = Model.queueLine(modelData, I18n);
                     return (modelData.serviceName || "") + " · " + Model.formatProgress(modelData.progress) + (line ? " · " + line : "");
                 }
                 subtitleColor: modelData.status === "warning" || modelData.status === "error" ? Theme.urgent : root.dim
@@ -85,7 +88,8 @@ Column {
         visible: root.nowFeed.showQueue === true && root.downloads.length === 0 && root.sessions.length === 0
         width: parent.width
         textFormat: Text.PlainText
-        text: "Queue is quiet."
+        horizontalAlignment: Text.AlignLeft
+        text: I18n.tr("Queue is quiet.")
         color: root.dim
         font.family: Theme.fontFamily
         font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -98,7 +102,7 @@ Column {
         visible: root.sessions.length > 0
 
         OmarrSectionHeader {
-            text: "NOW PLAYING"
+            text: I18n.tr("NOW PLAYING")
         }
 
         Repeater {
@@ -108,8 +112,10 @@ Column {
                 required property var modelData
 
                 title: modelData.title || ""
-                subtitle: modelData.subtitle || ""
+                subtitle: Model.sessionSubtitle(modelData.subtitle, I18n)
                 progress: modelData.progress || 0
+                // A playback position: time runs left to right.
+                playback: true
             }
         }
     }
@@ -153,6 +159,7 @@ Column {
                     visible: day.modelData.heading !== ""
                     width: parent.width
                     textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignLeft
                     text: day.modelData.heading
                     color: root.dim
                     font.family: Theme.fontFamily
@@ -179,7 +186,8 @@ Column {
             visible: (root.tab === "ondeck" && root.onDeck.length === 0) || (root.tab === "recent" && root.recent.length === 0) || (root.tab === "calendar" && root.calendar.length === 0)
             width: parent.width
             textFormat: Text.PlainText
-            text: root.tab === "recent" ? "Nothing recently added." : root.tab === "calendar" ? "Calendar is empty." : "Nothing on deck."
+            horizontalAlignment: Text.AlignLeft
+            text: root.tab === "recent" ? I18n.tr("Nothing recently added.") : root.tab === "calendar" ? I18n.tr("Calendar is empty.") : I18n.tr("Nothing on deck.")
             color: root.dim
             font.family: Theme.fontFamily
             font.pixelSize: Math.max(1, Theme.fontSize - 1)

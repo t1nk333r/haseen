@@ -2,6 +2,10 @@
 
 // Pure helpers for haseen.media; tests run them headless.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // players: [{ isPlaying, stopped }] -> index of the one to show, -1 for none.
 // A playing player wins, then a paused one, then the first.
 function pickIndex(players) {
@@ -130,7 +134,7 @@ function playerLabels(players) {
     return (players || []).map(p => {
         let name = String(p.identity || "").trim();
         if (name === "")
-            name = String(p.dbusName || "").replace(/^org\.mpris\.MediaPlayer2\./, "") || "Player";
+            name = String(p.dbusName || "").replace(/^org\.mpris\.MediaPlayer2\./, "") || N_("Player");
         seen[name] = (seen[name] || 0) + 1;
         return seen[name] > 1 ? name + " " + seen[name] : name;
     });

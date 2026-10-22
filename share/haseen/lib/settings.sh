@@ -10,8 +10,9 @@
 #                a plugin's settings fall back to its manifest's defaults.
 #                User-authored, watched by the shell. Commands avoid rewriting
 #                it so a hand-edited file keeps its shape.
-#   config       other one-value files under ~/.config/haseen (the mono font),
-#                each owned by one command and read by the theme render.
+#   config       other one-value files under ~/.config/haseen, each owned by
+#                one command: the mono font (read by the theme render) and the
+#                interface language (read by the shell and notifications).
 #   flag         ~/.local/state/haseen/flags/<name>: the file existing means on.
 #                Session state (do-not-disturb, recording), not configuration:
 #                it must not survive into a config file the user edits, and the
@@ -120,6 +121,8 @@ settings_rows() {
         "$(_settings_file "$state/current/theme.name" "(none)")" "haseen theme set"
     _settings_row font.mono config "$HASEEN_USER_CONFIG/font" \
         "$(_settings_file "$HASEEN_USER_CONFIG/font" "(theme default)")" "haseen font set"
+    _settings_row language config "$HASEEN_USER_CONFIG/language" \
+        "$(_settings_file "$HASEEN_USER_CONFIG/language" en)" "haseen language"
     _settings_row shell state "$state/active-shell" \
         "$(_settings_file "$state/active-shell" haseen)" "haseen shell use"
 

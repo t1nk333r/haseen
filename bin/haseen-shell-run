@@ -28,7 +28,8 @@ have qs || die "quickshell (qs) is not installed: haseen layer apply shell"
 # first on PATH, so a checkout's shell reaches them too, not only an
 # installed tree's PREFIX/bin links.
 export PATH="$HASEEN_PATH/shell/Compat/bin:$HASEEN_PATH/omarchy/bin:$PATH"
-# The shell watches $HASEEN_USER_STATE/safe-mode (plan 061); a watch needs
-# the directory to exist when it starts.
-mkdir -p -- "$HASEEN_USER_STATE"
+# The shell watches $HASEEN_USER_STATE/safe-mode (plan 061) and
+# $HASEEN_USER_CONFIG/language (plan 109); a watch needs the directory to
+# exist when it starts.
+mkdir -p -- "$HASEEN_USER_STATE" "$HASEEN_USER_CONFIG"
 exec qs -p "$HASEEN_PATH/shell" "$@"

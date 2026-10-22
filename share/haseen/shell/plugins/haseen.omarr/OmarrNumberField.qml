@@ -36,6 +36,9 @@ Column {
     Text {
         width: parent.width
         textFormat: Text.PlainText
+        // Set rather than implicit: a right-to-left panel then aligns
+        // Latin text and numbers to the right too (plan 109).
+        horizontalAlignment: Text.AlignLeft
         text: root.label
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily

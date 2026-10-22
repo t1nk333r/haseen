@@ -47,8 +47,14 @@ Item {
             height: copy.implicitHeight
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.mine ? "You" : (root.modelName || "assistant") + (root.phase === "stopped" ? "  · stopped" : root.phase === "streaming" ? "  ·  …" : "")
+                text: {
+                    if (root.mine)
+                        return I18n.tr("You");
+                    const who = root.modelName || I18n.tr("assistant");
+                    return root.phase === "stopped" ? I18n.tr("%1  · stopped", who) : root.phase === "streaming" ? who + "  ·  …" : who;
+                }
                 textFormat: Text.PlainText
                 color: root.mine ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
@@ -64,7 +70,7 @@ Item {
                 anchors.right: parent.right
                 implicitHeight: Theme.fontSize + Theme.gap * 2
                 glyph: "\uf0c5"
-                text: copied ? "copied" : ""
+                text: copied ? I18n.tr("copied") : ""
                 color: Theme.muted
                 visible: hover.hovered && root.content !== ""
                 onClicked: {

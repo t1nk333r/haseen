@@ -300,11 +300,13 @@ Scope {
       // connect needs the network. Say so up front rather than let it fail as a
       // timeout. The command to undo it is the backend's to name — a backend
       // that offers no hint still gets the warning.
+      // English, composed, like the backends' lines: the panel translates
+      // it (plan 109).
       if (others[i].lockdownMode === true) {
         var undo = String(others[i].lockdownHint || "")
-        setNotice(others[i].label + " blocks all traffic while it is disconnected, "
-          + "so connecting will not get through."
-          + (undo !== "" ? " Turn it off with: " + undo : ""))
+        setNotice(undo !== ""
+          ? Shared.compose(I18n.mark("%1 blocks all traffic while it is disconnected, so connecting will not get through. Turn it off with: %2"), others[i].label, undo)
+          : Shared.compose(I18n.mark("%1 blocks all traffic while it is disconnected, so connecting will not get through."), others[i].label))
       }
       others[i].disconnect()
     }

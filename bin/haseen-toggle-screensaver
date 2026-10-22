@@ -11,6 +11,8 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -57,5 +59,6 @@ fi
 $DRY_RUN && exit 0
 echo "Screensaver $action"
 if [[ ${HASEEN_NO_NOTIFY:-} != 1 ]] && have notify-send; then
-    notify-send -a haseen -u low "Screensaver $action" 2>/dev/null || true
+    if [[ $action == on ]]; then msg="$(i18n "Screensaver on")"; else msg="$(i18n "Screensaver off")"; fi
+    notify-send -a haseen -u low "$msg" 2>/dev/null || true
 fi

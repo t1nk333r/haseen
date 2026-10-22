@@ -15,6 +15,9 @@ PanelWindow {
     property var service: null
     readonly property var card: service ? service.card : ({ glyph: "", text: "", label: "", value: 0, dim: false })
     readonly property bool level: card.label === ""
+    // A lock card's line is interface text (Osd.js N_); a layout card's is
+    // the layout's own name, shown as Hyprland gives it.
+    readonly property bool lockLine: !level && card.text === "" && card.glyph !== "\uf11c"
 
     screen: service ? service.focusedScreen() : null
     anchors.bottom: true
@@ -37,6 +40,10 @@ PanelWindow {
         radius: Theme.radius
         border.color: Theme.border
         border.width: Theme.borderWidth
+        // Its own layer surface: in a right-to-left language the row runs
+        // from the right and the level fills from the right (plan 109).
+        LayoutMirroring.enabled: I18n.rightToLeft
+        LayoutMirroring.childrenInherit: true
 
         Row {
             id: row
@@ -74,6 +81,8 @@ PanelWindow {
                 color: Theme.surfaceAlt
 
                 Rectangle {
+                    // Anchored, not at x 0, so a mirrored card fills from the right.
+                    anchors.left: parent.left
                     width: parent.width * win.card.value
                     height: parent.height
                     radius: parent.radius
@@ -95,7 +104,7 @@ PanelWindow {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !win.level
-                text: win.card.label
+                text: win.lockLine ? I18n.tr(win.card.label) : win.card.label
                 textFormat: Text.PlainText
                 // "Caps Lock off" is the message: it stays in the text colour.
                 color: Theme.foreground

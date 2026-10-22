@@ -7,7 +7,8 @@ import qs.Haseen
 // Bare on/off switch: a track with a sliding knob and no label. The caller
 // owns the value: bind `checked` to real state and flip it in response to
 // toggled(). `busy` swallows clicks while an operation is in flight but keeps
-// hover, so a refresh does not make it flicker.
+// hover, so a refresh does not make it flicker. Under LayoutMirroring (a
+// right-to-left panel, plan 109) on sits at the left, as RTL systems draw it.
 Item {
     id: root
 
@@ -18,6 +19,7 @@ Item {
     readonly property int knobSize: Math.max(6, Math.round(trackHeight * 0.72))
     readonly property int knobInset: Math.max(1, Math.round((trackHeight - knobSize) / 2))
     readonly property alias containsMouse: mouse.containsMouse
+    readonly property bool mirrored: LayoutMirroring.enabled
 
     signal toggled
     signal hovered(bool isHovered)
@@ -44,7 +46,7 @@ Item {
             width: root.knobSize
             height: root.knobSize
             radius: root.rounded ? height / 2 : 0
-            x: root.checked ? track.width - width - root.knobInset : root.knobInset
+            x: root.checked !== root.mirrored ? track.width - width - root.knobInset : root.knobInset
             anchors.verticalCenter: parent.verticalCenter
             color: root.checked ? Theme.accent : Theme.muted
 

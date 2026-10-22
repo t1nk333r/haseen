@@ -7,6 +7,35 @@
 // UPSTREAM.md beside this file. haseen adds the request paths, the settings
 // reader, the priority tones and the state-directory choice at the end.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). The helpers
+// that compose a line take the I18n singleton as an optional last argument
+// (`Model.formatRelativeTime(ms, I18n)`) and fill its translation; without
+// it they return English, which is what tests/ reads.
+function N_(text) { return text }
+// A counted pair, marked for tools/i18n.py: countText() picks the form.
+function N_n(singular, plural) { return [singular, plural] }
+
+// %1..%9 replaced in one pass, as I18n.tr fills them.
+function fillText(text, args) {
+  var list = args || []
+  return String(text).replace(/%([1-9])/g, function(whole, digit) {
+    var value = list[Number(digit) - 1]
+    return value === undefined || value === null ? whole : String(value)
+  })
+}
+
+function trText(i18n, text, args) {
+  var list = args || []
+  return i18n ? i18n.tr.apply(i18n, [text].concat(list)) : fillText(text, list)
+}
+
+function countText(i18n, forms, count, args) {
+  var list = args || []
+  if (i18n) return i18n.tn.apply(i18n, [forms[0], forms[1], count].concat(list))
+  return fillText(Number(count) === 1 ? forms[0] : forms[1], [count].concat(list))
+}
+
 function safeTrim(value) {
   return String(value === undefined || value === null ? "" : value).trim()
 }
@@ -84,16 +113,16 @@ function quickAddHasDueHint(text) {
 
 // Relative time for the header's SYNCED stat. `epochMs` is 0 before the
 // first successful fetch ever lands.
-function formatRelativeTime(epochMs) {
-  if (!epochMs) return "never"
+function formatRelativeTime(epochMs, i18n) {
+  if (!epochMs) return trText(i18n, N_("never"))
   var deltaSec = Math.max(0, Math.round((Date.now() - epochMs) / 1000))
-  if (deltaSec < 45) return "just now"
+  if (deltaSec < 45) return trText(i18n, N_("just now"))
   var deltaMin = Math.round(deltaSec / 60)
-  if (deltaMin < 60) return deltaMin + "m ago"
+  if (deltaMin < 60) return countText(i18n, N_n("%1m ago", "%1m ago"), deltaMin)
   var deltaHour = Math.round(deltaMin / 60)
-  if (deltaHour < 24) return deltaHour + "h ago"
+  if (deltaHour < 24) return countText(i18n, N_n("%1h ago", "%1h ago"), deltaHour)
   var deltaDay = Math.round(deltaHour / 24)
-  return deltaDay + "d ago"
+  return countText(i18n, N_n("%1d ago", "%1d ago"), deltaDay)
 }
 
 // ---- Reading a response. Every request is made with -w "\n%{http_code}", so
@@ -142,33 +171,61 @@ function retryDelaySeconds(json) {
   return isFinite(value) && value > 0 ? Math.ceil(value) : 0
 }
 
-// What a finished request means for the user. "" means it succeeded; anything
-// else is the line the panel shows. Only the statuses these endpoints document
-// get their own wording — 401/403/404 (the spec, per path) and the
-// project-wide 429/500/503 — and the rest still say which code came back and
-// what the body called it. `status` 0 has no message here: that is curl never
-// reaching HTTP, which is errorMessageForExit's case.
-function statusMessage(status, bodyText) {
+// What a finished request means for the user: null when it succeeded, else
+// the failure the panel shows, as an English template and its arguments
+// ({text, args}; failureText() fills it, in the interface language when QML
+// passes I18n). Only the statuses these endpoints document get their own
+// wording — 401/403/404 (the spec, per path) and the project-wide
+// 429/500/503 — and the rest still say which code came back and what the body
+// called it. `status` 0 has no failure here: that is curl never reaching
+// HTTP, which is exitFailure's case.
+function statusFailure(status, bodyText) {
   var code = Number(status) || 0
-  if (code === 0) return ""
-  if (code >= 200 && code < 300) return ""
+  if (code === 0) return null
+  if (code >= 200 && code < 300) return null
 
   var detail = apiErrorText(parseJsonOrNull(bodyText))
-  var suffix = detail === "" ? "" : " (" + detail + ")"
 
   if (code === 401 || code === 403)
-    return "Todoist rejected the API token — check it in Settings." + suffix
+    return detail === ""
+      ? failure(N_("Todoist rejected the API token — check it in Settings."))
+      : failure(N_("Todoist rejected the API token — check it in Settings. (%1)"), [detail])
   if (code === 404)
-    return "That task is gone — it was deleted or completed somewhere else." + suffix
+    return detail === ""
+      ? failure(N_("That task is gone — it was deleted or completed somewhere else."))
+      : failure(N_("That task is gone — it was deleted or completed somewhere else. (%1)"), [detail])
   if (code === 429) {
     var wait = retryDelaySeconds(parseJsonOrNull(bodyText))
     return wait > 0
-      ? ("Todoist is rate limiting this widget — try again in " + wait + "s.")
-      : "Todoist is rate limiting this widget — try again in a moment."
+      ? failure(N_n("Todoist is rate limiting this widget — try again in %1s.", "Todoist is rate limiting this widget — try again in %1s."), [], wait)
+      : failure(N_("Todoist is rate limiting this widget — try again in a moment."))
   }
   if (code >= 500)
-    return "Todoist is failing right now (HTTP " + code + ")." + (detail === "" ? "" : " " + detail)
-  return "Todoist answered HTTP " + code + (detail === "" ? "." : (": " + detail))
+    return detail === ""
+      ? failure(N_("Todoist is failing right now (HTTP %1)."), [code])
+      : failure(N_("Todoist is failing right now (HTTP %1). %2"), [code, detail])
+  return detail === ""
+    ? failure(N_("Todoist answered HTTP %1."), [code])
+    : failure(N_("Todoist answered HTTP %1: %2"), [code, detail])
+}
+
+// A failure for the panel: text is an English template (or, with count, the
+// N_n pair whose form count picks), args fill %1.. (after the count).
+function failure(text, args, count) {
+  var out = { text: text, args: args || [] }
+  if (count !== undefined) out.count = count
+  return out
+}
+
+// The line a failure shows; "" for none.
+function failureText(f, i18n) {
+  if (!f) return ""
+  return f.count !== undefined ? countText(i18n, f.text, f.count, f.args) : trText(i18n, f.text, f.args)
+}
+
+// statusFailure as an English line, "" on success.
+function statusMessage(status, bodyText) {
+  return failureText(statusFailure(status, bodyText))
 }
 
 // The statuses that mean the token itself was refused, as opposed to the
@@ -179,16 +236,23 @@ function tokenRejected(status) {
 }
 
 // curl's own failures: DNS, no route, a timeout, a fetch that got no answer at
-// all. Any response the API did send — success or not — is statusMessage's job
+// all. Any response the API did send — success or not — is statusFailure's job
 // instead.
-function errorMessageForExit(exitCode, stderrText) {
+function exitFailure(exitCode, stderrText) {
   var text = String(stderrText || "")
   if (text.indexOf("Could not resolve host") !== -1 || text.indexOf("Couldn't connect") !== -1
     || text.indexOf("Failed to connect") !== -1 || text.indexOf("Network is unreachable") !== -1)
-    return "Couldn't reach Todoist — check your connection."
-  if (exitCode === 28) return "Todoist took too long to respond."
+    return failure(N_("Couldn't reach Todoist — check your connection."))
+  if (exitCode === 28) return failure(N_("Todoist took too long to respond."))
   var firstLine = text.split("\n")[0]
-  return "Something went wrong talking to Todoist" + (firstLine !== "" ? (": " + firstLine) : ".")
+  return firstLine !== ""
+    ? failure(N_("Something went wrong talking to Todoist: %1"), [firstLine])
+    : failure(N_("Something went wrong talking to Todoist."))
+}
+
+// exitFailure as an English line.
+function errorMessageForExit(exitCode, stderrText) {
+  return failureText(exitFailure(exitCode, stderrText))
 }
 
 // ---- Pagination. GET /tasks and /tasks/filter take `limit` (default 50,
@@ -327,12 +391,13 @@ function priorityTone(priority) {
 // The view's section header over the task list: OVERDUE and TODAY groups on
 // the Today view (tasks come sorted, so each group is contiguous), the view's
 // name elsewhere is shown once above the list instead.
-function sectionTitle(tasks, index, view) {
+function sectionTitle(tasks, index, view, i18n) {
   var list = tasks || []
   if (view !== "today" || index < 0 || index >= list.length) return ""
   var overdue = taskIsOverdue(list[index])
   if (index > 0 && taskIsOverdue(list[index - 1]) === overdue) return ""
   var overdueCount = 0
   for (var i = 0; i < list.length; i++) if (taskIsOverdue(list[i])) overdueCount++
-  return overdue ? "OVERDUE · " + overdueCount : "TODAY · " + (list.length - overdueCount)
+  return overdue ? trText(i18n, N_("OVERDUE · %1"), [overdueCount])
+    : trText(i18n, N_("TODAY · %1"), [list.length - overdueCount])
 }

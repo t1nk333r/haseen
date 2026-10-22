@@ -33,34 +33,39 @@ Column {
     readonly property var bootNoise: /^(USB|PXE|IDER|ATA\b|ATAPI|CD\/DVD|Setup|Boot Menu|Diagnostic|Network|Startup|Rescue|MEBx)/i
     property var bootActions: []
     readonly property var actions: baseActions.concat(bootActions)
+    // label and confirm (the armed row's line) are English, translated where
+    // the row shows them; %1 is a boot entry's own label (plan 109).
     readonly property var baseActions: [
         {
             id: "lock",
-            label: "Lock",
+            label: I18n.mark("Lock"),
             glyph: "\uf023",
             destructive: false
         },
         {
             id: "logout",
-            label: "Log out",
+            label: I18n.mark("Log out"),
+            confirm: I18n.mark("Log out? Press again"),
             glyph: "\uf2f5",
             destructive: true
         },
         {
             id: "suspend",
-            label: "Suspend",
+            label: I18n.mark("Suspend"),
             glyph: "\uf186",
             destructive: false
         },
         {
             id: "reboot",
-            label: "Reboot",
+            label: I18n.mark("Reboot"),
+            confirm: I18n.mark("Reboot? Press again"),
             glyph: "\uf2f9",
             destructive: true
         },
         {
             id: "poweroff",
-            label: "Shut down",
+            label: I18n.mark("Shut down"),
+            confirm: I18n.mark("Shut down? Press again"),
             glyph: "\uf011",
             destructive: true
         }
@@ -90,7 +95,8 @@ Column {
                     return !root.bootNoise.test(entry.label);
                 }).map(entry => ({
                     id: "boot:" + entry.id,
-                    label: "Reboot into " + entry.label,
+                    label: I18n.mark("Reboot into %1"),
+                    confirm: I18n.mark("Reboot into %1? Press again"),
                     bootLabel: entry.label,
                     glyph: "\uf2f9",
                     destructive: true
@@ -199,7 +205,7 @@ Column {
             width: root.width
             height: Theme.fontSize * 2.4
             glyph: modelData.glyph
-            text: isArmed ? modelData.label + "? Press again" : modelData.label
+            text: I18n.tr(isArmed ? modelData.confirm : modelData.label, modelData.bootLabel || "")
             color: isArmed ? Theme.urgent : Theme.foreground
             highlighted: root.current === index
             onClicked: {

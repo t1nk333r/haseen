@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import qs.Haseen
 import "Calc.js" as Calc
 
 // Launcher provider: input that starts with `=` is a calculation. The result
@@ -19,8 +20,8 @@ Scope {
         if (text.trim() === "")
             return [
                 {
-                    title: "Calculator",
-                    subtitle: "Type an expression: 12*(3+4), sqrt(2), 200 + 10%, 2^10",
+                    title: I18n.tr("Calculator"),
+                    subtitle: I18n.tr("Type an expression: 12*(3+4), sqrt(2), 200 + 10%, 2^10"),
                     icon: "accessories-calculator",
                     glyph: "\u{F00EC}",
                     exec: () => {}
@@ -31,7 +32,7 @@ Scope {
             return [
                 {
                     title: text.trim(),
-                    subtitle: r.error,
+                    subtitle: I18n.tr(r.message, ...r.args),
                     icon: "accessories-calculator",
                     glyph: "\u{F00EC}",
                     exec: () => {}
@@ -41,7 +42,7 @@ Scope {
         return [
             {
                 title: shown,
-                subtitle: text.trim() + "  ·  Enter copies",
+                subtitle: I18n.tr("%1  ·  Enter copies", text.trim()),
                 icon: "accessories-calculator",
                 glyph: "\u{F00EC}",
                 exec: () => Quickshell.execDetached(["wl-copy", "--", shown])

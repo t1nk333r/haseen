@@ -85,8 +85,10 @@ Column {
         context: Qt.WindowShortcut
         onActivated: root.apply(grid.currentIndex)
     }
-    Keys.onTabPressed: grid.moveCurrentIndexRight()
-    Keys.onBacktabPressed: grid.moveCurrentIndexLeft()
+    // Tab is the next background, Backtab the previous one: in a mirrored
+    // (right-to-left) panel the grid runs from the right, so next is left.
+    Keys.onTabPressed: grid.LayoutMirroring.enabled ? grid.moveCurrentIndexLeft() : grid.moveCurrentIndexRight()
+    Keys.onBacktabPressed: grid.LayoutMirroring.enabled ? grid.moveCurrentIndexRight() : grid.moveCurrentIndexLeft()
     Keys.onPressed: event => {
         if (event.key === Qt.Key_N) {
             root.next();
@@ -160,12 +162,12 @@ Column {
         }
         onExited: code => {
             if (code !== 0) {
-                root.notice = listErr.text.trim() || "haseen theme bg list failed";
+                root.notice = listErr.text.trim() || I18n.tr("haseen theme bg list failed");
                 return;
             }
             root.backgrounds = listOut.text.split("\n").filter(l => l.trim() !== "");
             if (root.backgrounds.length === 0)
-                root.notice = "no backgrounds yet · haseen theme fetch";
+                root.notice = I18n.tr("no backgrounds yet · haseen theme fetch");
             currentProc.running = true;
         }
     }
@@ -198,7 +200,7 @@ Column {
         }
         onExited: code => {
             if (code !== 0)
-                root.notice = nextErr.text.trim() || "haseen theme bg next failed";
+                root.notice = nextErr.text.trim() || I18n.tr("haseen theme bg next failed");
             else
                 currentProc.running = true;
         }
@@ -218,7 +220,7 @@ Column {
         Text {
             id: title
 
-            text: root.themeName !== "" ? "Background · " + root.themeName : "Background"
+            text: root.themeName !== "" ? I18n.tr("Background · %1", root.themeName) : I18n.tr("Background")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -228,7 +230,7 @@ Column {
         Text {
             anchors.baseline: title.baseline
             width: parent.width - title.width - Theme.gap
-            text: root.notice !== "" ? root.notice : "Enter applies · n next · Esc closes"
+            text: root.notice !== "" ? root.notice : I18n.tr("Enter applies · n next · Esc closes")
             color: root.notice !== "" ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily

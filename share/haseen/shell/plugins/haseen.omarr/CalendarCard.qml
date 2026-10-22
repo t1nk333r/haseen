@@ -200,7 +200,7 @@ Item {
 
                 Text {
                     textFormat: Text.PlainText
-                    text: "Watched"
+                    text: I18n.tr("Watched")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Math.max(1, Theme.fontSize - 1)
@@ -228,6 +228,9 @@ Item {
                     anchors.right: ratingBadge.left
                     anchors.rightMargin: root.ratingLabel !== "" ? Theme.gap : 0
                     textFormat: Text.PlainText
+                    // Set rather than implicit: a right-to-left panel then aligns
+                    // Latin text and numbers to the right too (plan 109).
+                    horizontalAlignment: Text.AlignLeft
                     text: root.item && root.item.title ? String(root.item.title) : ""
                     color: Theme.foreground
                     font.family: Theme.fontFamily
@@ -256,6 +259,7 @@ Item {
                 width: parent.width
                 visible: text !== ""
                 textFormat: Text.PlainText
+                horizontalAlignment: Text.AlignLeft
                 text: root.item && root.item.subtitle ? String(root.item.subtitle) : ""
                 color: Theme.subtle(Theme.background)
                 font.family: Theme.fontFamily
@@ -275,6 +279,9 @@ Item {
             radius: 0
             value: root.progress
             fill: Theme.accent
+            // The resume position: time runs left to right.
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
         }
     }
 

@@ -6,6 +6,10 @@
 // capabilities, battery and network text, the literal IPv4/IPv6 address
 // check, Tailscale peers, remote-command parsing and the verification key.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 const PLUGINS = {
     battery: ["kdeconnect_battery"],
     ping: ["kdeconnect_ping"],
@@ -98,12 +102,12 @@ function batteryGlyph(d) {
 
 function status(d) {
     if (!d)
-        return "No devices";
+        return N_("No devices");
     if (d.pairRequestedByPeer)
-        return "Wants to pair";
+        return N_("Wants to pair");
     if (!d.paired)
-        return d.reachable ? "Not paired" : "Not paired, offline";
-    return d.reachable ? "Connected" : "Paired, offline";
+        return d.reachable ? N_("Not paired") : N_("Not paired, offline");
+    return d.reachable ? N_("Connected") : N_("Paired, offline");
 }
 
 function networkText(d) {
@@ -112,16 +116,22 @@ function networkText(d) {
     return d.networkStrength >= 0 ? d.networkType + " (" + d.networkStrength + "/4)" : d.networkType;
 }
 
-// details(d, showBattery, showNetwork): "64% · Charging · LTE (3/4)".
-function details(d, showBattery, showNetwork) {
+// detailParts(d, showBattery, showNetwork): ["64%", "Charging", "LTE (3/4)"];
+// the panel translates each part before it joins them.
+function detailParts(d, showBattery, showNetwork) {
     if (!d || !d.reachable)
-        return "";
+        return [];
     const out = [];
     if (showBattery !== false && d.caps.battery && d.battery >= 0)
-        out.push(d.battery + "%", d.charging ? "Charging" : d.battery <= 20 ? "Low battery" : "Discharging");
+        out.push(d.battery + "%", d.charging ? N_("Charging") : d.battery <= 20 ? N_("Low battery") : N_("Discharging"));
     if (showNetwork !== false && d.networkType)
         out.push(networkText(d));
-    return out.join(" · ");
+    return out;
+}
+
+// details(d, showBattery, showNetwork): "64% · Charging · LTE (3/4)".
+function details(d, showBattery, showNetwork) {
+    return detailParts(d, showBattery, showNetwork).join(" · ");
 }
 
 function canAct(d) {
@@ -138,12 +148,12 @@ function formatKey(key) {
 function addressError(address) {
     const v = String(address || "").trim();
     if (!v)
-        return "Enter an IP address";
+        return N_("Enter an IP address");
     if (v.charAt(0) === "-" || /[\s\/\[\]%]/.test(v))
-        return "Enter a literal IPv4 or IPv6 address";
+        return N_("Enter a literal IPv4 or IPv6 address");
     const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(v);
     if (v4)
-        return v4.slice(1).every(n => Number(n) <= 255) ? "" : "Invalid IPv4 address";
+        return v4.slice(1).every(n => Number(n) <= 255) ? "" : N_("Invalid IPv4 address");
     const group = g => /^[0-9a-fA-F]{1,4}$/.test(g);
     if (/^[0-9a-fA-F:]+$/.test(v) && v.indexOf(":::") < 0 && v.indexOf(":") >= 0) {
         const halves = v.split("::");
@@ -157,7 +167,7 @@ function addressError(address) {
                 return "";
         }
     }
-    return "Enter a literal IPv4 or IPv6 address";
+    return N_("Enter a literal IPv4 or IPv6 address");
 }
 
 function firstIPv4(list) {
@@ -273,17 +283,32 @@ function hasMedia(m) {
 // mediaLine(m): "Title — Artist".
 function mediaLine(m) {
     if (!m || !m.title)
-        return m && m.player ? m.player + ": nothing playing" : "";
+        return m && m.player ? N_("%1: nothing playing").replace("%1", () => m.player) : "";
     return m.artist ? m.title + " — " + m.artist : m.title;
 }
+
+// What the service calls each action, with its two failure sentences
+// (refused, failed): whole sentences, so each translates on its own.
+const FAILURES = {
+    ring: [N_("That ring was refused"), N_("The ring failed")],
+    clipboard: [N_("That clipboard was refused"), N_("The clipboard failed")],
+    ping: [N_("That ping was refused"), N_("The ping failed")],
+    text: [N_("That text was refused"), N_("The text failed")],
+    "file transfer": [N_("That file transfer was refused"), N_("The file transfer failed")],
+    command: [N_("That command was refused"), N_("The command failed")],
+    pairing: [N_("That pairing was refused"), N_("The pairing failed")],
+    "media control": [N_("That media control was refused"), N_("The media control failed")],
+    address: [N_("That address was refused"), N_("The address failed")]
+};
 
 // failure(code, what): the message for a helper's exit code.
 function failure(code, what) {
     if (code === 127)
-        return "KDE Connect is not installed";
+        return N_("KDE Connect is not installed");
     if (code === 69)
-        return "KDE Connect is not answering";
+        return N_("KDE Connect is not answering");
+    const known = Object.prototype.hasOwnProperty.call(FAILURES, what) ? FAILURES[what] : null;
     if (code === 64)
-        return "That " + what + " was refused";
-    return "The " + what + " failed";
+        return known ? known[0] : "That " + what + " was refused";
+    return known ? known[1] : "The " + what + " failed";
 }

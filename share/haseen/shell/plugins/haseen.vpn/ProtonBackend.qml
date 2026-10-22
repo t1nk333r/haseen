@@ -3,9 +3,11 @@
 // LICENSE and UPSTREAM.md beside this file.
 // haseen (plan 096): `command -v` instead of omarchy-cmd-present; every
 // Timer marked for architecture 6, the post-command re-reads every 2 s
-// instead of 1.5 s.
+// instead of 1.5 s. Plan 109: the strings it shows are marked and stay
+// English here; the panel translates them.
 import QtQuick
 import Quickshell.Io
+import qs.Haseen
 import "model/Shared.js" as Shared
 import "model/Proton.js" as Proton
 
@@ -19,13 +21,13 @@ Item {
   property string filter: ""
 
   readonly property string backendId: "proton"
-  readonly property string label: "Proton VPN"
+  readonly property string label: "Proton VPN" // i18n-ignore
   // What a user would go and install to make this backend useful, which is not
   // always the label: nobody installs "NetworkManager" to get a VPN.
   readonly property var installNames: ["Proton VPN"]
   readonly property string glyph: Shared.GLYPH_VPN
   readonly property bool supportsFilter: true
-  readonly property string filterPlaceholder: "Filter countries — press / to search"
+  readonly property string filterPlaceholder: I18n.mark("Filter countries — press / to search")
 
   property bool detected: false
   property var status: Proton.parseProtonStatus("")
@@ -61,7 +63,7 @@ Item {
   readonly property var favorites: Shared.favoriteCodes(setting("favoriteCountries", "CH,NL,US"))
   readonly property string emptyText: signedOut
     ? Proton.PROTON_SIGNIN_HINT
-    : (countriesLoaded ? "No countries match." : "Loading countries…")
+    : (countriesLoaded ? I18n.mark("No countries match.") : I18n.mark("Loading countries…"))
   // Server names carry their country: "NL#42" is the Netherlands row.
   readonly property string currentKey: {
     if (!connected) return ""
@@ -236,7 +238,7 @@ Item {
     if (!detected || connectProcess.running || !target) return
     _desired = 1
     lastError = ""
-    actionStatus = "Connecting to " + target.label + "…"
+    actionStatus = Shared.compose(I18n.mark("Connecting to %1…"), target.label)
     connectProcess.command = Proton.protonCli(["connect"].concat(target.args || []))
     connectProcess.running = true
   }
@@ -245,14 +247,14 @@ Item {
     if (!detected || connectProcess.running) return
     _desired = 0
     lastError = ""
-    actionStatus = "Disconnecting…"
+    actionStatus = I18n.mark("Disconnecting…")
     connectProcess.command = Proton.protonCli(["disconnect"])
     connectProcess.running = true
   }
 
   function toggleConnection() {
     if (connected) disconnect()
-    else connectTo({ label: "the fastest server", args: [] })
+    else connectTo({ label: I18n.mark("the fastest server"), args: [] })
   }
 
   function applyStatus(raw) {
@@ -274,7 +276,7 @@ Item {
     onTriggered: {
       if (Object.keys(root._pendingToggles).length === 0) return
       root._pendingToggles = ({})
-      root.lastError = "Proton VPN did not apply that setting."
+      root.lastError = I18n.mark("Proton VPN did not apply that setting.")
     }
   }
 
@@ -335,7 +337,7 @@ Item {
         // wipe the one line telling the user why the panel is empty.
         root.lastError = root.signedOut ? Proton.PROTON_SIGNIN_HINT : ""
       } else {
-        root.lastError = Shared.elide(String(statusStderr.text || statusStdout.text || "") || "Could not read Proton VPN status", 140)
+        root.lastError = Shared.elide(String(statusStderr.text || statusStdout.text || "") || I18n.mark("Could not read Proton VPN status"), 140)
       }
       pumpTimer.restart()
     }
@@ -354,7 +356,7 @@ Item {
       if (exitCode !== 0) {
         root._desired = -1
         if (!refused) {
-          root.lastError = Shared.elide(connectErr || connectOut || "Proton VPN command failed", 140)
+          root.lastError = Shared.elide(connectErr || connectOut || I18n.mark("Proton VPN command failed"), 140)
         }
       } else {
         root.lastError = ""
@@ -392,7 +394,7 @@ Item {
     onExited: function(exitCode) {
       if (exitCode !== 0) {
         root.lastError = Shared.elide(
-          String(toggleStderr.text || toggleStdout.text || "") || "Proton VPN refused that setting", 140)
+          String(toggleStderr.text || toggleStdout.text || "") || I18n.mark("Proton VPN refused that setting"), 140)
         root.clearPending(root._toggleKey)
       }
       root._toggleKey = ""
@@ -420,7 +422,7 @@ Item {
         return
       }
 
-      var unreadable = "Could not read the country list. Check: protonvpn countries list"
+      var unreadable = I18n.mark("Could not read the country list. Check: protonvpn countries list")
       root.countriesLoaded = true
       if (exitCode !== 0) {
         root.lastError = Shared.elide(err || out || unreadable, 140)

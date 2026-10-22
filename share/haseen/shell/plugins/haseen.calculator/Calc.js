@@ -13,7 +13,22 @@
 //                ln log (base 10) log2 exp min max
 //   percent      50% → 0.5 ; 200 + 10% → 220 (as most calculators do)
 //
-// evaluate(text) -> {ok: true, value} or {ok: false, error}.
+// evaluate(text) -> {ok: true, value} or {ok: false, error}; a failure also
+// carries the English template of its message and the template's arguments
+// (`message`, `args`) so the launcher can show it in the interface language.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
+// An Error whose message is template with %1 filled in English.
+function fail(template, arg) {
+    const args = arg === undefined ? [] : [String(arg)];
+    const e = new Error(template.replace(/%1/g, () => args.length > 0 ? args[0] : "%1"));
+    e.template = template;
+    e.args = args;
+    return e;
+}
 
 const CONSTANTS = { pi: Math.PI, "π": Math.PI, e: Math.E, tau: 2 * Math.PI };
 const FUNCTIONS = {
@@ -65,7 +80,7 @@ function tokenize(text) {
             i++;
             continue;
         }
-        throw new Error("unexpected '" + c + "'");
+        throw fail(N_("unexpected '%1'"), c);
     }
     return tokens;
 }
@@ -180,7 +195,7 @@ Parser.prototype.peekPercent = function () {
 Parser.prototype.primary = function () {
     const t = this.peek();
     if (!t)
-        throw new Error("expression ends early");
+        throw fail(N_("expression ends early"));
     if (t.type === "num") {
         this.pos++;
         return { value: t.value, percent: false };
@@ -189,7 +204,7 @@ Parser.prototype.primary = function () {
         this.pos++;
         const v = this.expr();
         if (!this.take(")"))
-            throw new Error("missing )");
+            throw fail(N_("missing )"));
         return { value: v.value, percent: false };
     }
     if (t.type === "word") {
@@ -198,22 +213,22 @@ Parser.prototype.primary = function () {
             return { value: CONSTANTS[t.value], percent: false };
         if (Object.prototype.hasOwnProperty.call(FUNCTIONS, t.value)) {
             if (!this.take("("))
-                throw new Error(t.value + " needs (");
+                throw fail(N_("%1 needs ("), t.value);
             const args = [this.expr().value];
             while (this.take(","))
                 args.push(this.expr().value);
             if (!this.take(")"))
-                throw new Error("missing )");
+                throw fail(N_("missing )"));
             return { value: FUNCTIONS[t.value].apply(null, args), percent: false };
         }
-        throw new Error("unknown '" + t.value + "'");
+        throw fail(N_("unknown '%1'"), t.value);
     }
-    throw new Error("unexpected '" + t.value + "'");
+    throw fail(N_("unexpected '%1'"), t.value);
 };
 
 function factorial(n) {
     if (n < 0 || n !== Math.floor(n))
-        throw new Error("factorial needs a whole number");
+        throw fail(N_("factorial needs a whole number"));
     if (n > 170)
         return Infinity;
     let r = 1;
@@ -226,17 +241,22 @@ function evaluate(text) {
     try {
         const tokens = tokenize(text);
         if (tokens.length === 0)
-            return { ok: false, error: "" };
+            return { ok: false, error: "", message: "", args: [] };
         const p = new Parser(tokens);
         const v = p.expr();
         if (p.pos !== tokens.length)
-            throw new Error("unexpected '" + tokens[p.pos].value + "'");
+            throw fail(N_("unexpected '%1'"), tokens[p.pos].value);
         const value = v.value;
         if (typeof value !== "number" || Number.isNaN(value))
-            throw new Error("not a number");
+            throw fail(N_("not a number"));
         return { ok: true, value: value };
     } catch (e) {
-        return { ok: false, error: String(e.message || e) };
+        return {
+            ok: false,
+            error: String(e.message || e),
+            message: typeof e.template === "string" ? e.template : String(e.message || e),
+            args: Array.isArray(e.args) ? e.args : []
+        };
     }
 }
 

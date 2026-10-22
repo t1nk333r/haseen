@@ -106,6 +106,7 @@ sample_value() { # KEY TAKES — a value the key's owner accepts, or "" for none
     case "$1" in
     theme) echo tokyo-night ;;
     font.mono) echo "JetBrainsMono Nerd Font" ;;
+    language) echo ar ;;
     shell) echo dms ;;
     bar.position) echo left ;;
     haseen.screensaver.style) echo native ;;

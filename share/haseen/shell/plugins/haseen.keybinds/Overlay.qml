@@ -26,9 +26,27 @@ Scope {
     property string query: ""
     property var binds: []
 
+    // `haseen keybinds` names a bind outside any section "Other".
+    readonly property string otherSection: I18n.mark("Other")
+
+    // A description from the Lua config in the interface language. The
+    // workspace binds build theirs at run time ("Workspace " .. n), so they
+    // are matched by pattern and translated as one template each.
+    function describe(text: string): string {
+        const patterns = [[/^Workspace (\S+)$/, I18n.tr("Workspace %1", "%1")], [/^Move window silently to workspace (\S+)$/, I18n.tr("Move window silently to workspace %1", "%1")], [/^Move window to workspace (\S+)$/, I18n.tr("Move window to workspace %1", "%1")], [/^Move window to left monitor$/, I18n.tr("Move window to left monitor")], [/^Move window to right monitor$/, I18n.tr("Move window to right monitor")], [/^Move window to up monitor$/, I18n.tr("Move window to the monitor above")], [/^Move window to down monitor$/, I18n.tr("Move window to the monitor below")]];
+        for (const [pattern, template] of patterns) {
+            const m = pattern.exec(text);
+            if (m)
+                return template.replace("%1", m[1] || "");
+        }
+        return I18n.tr(text);
+    }
+
     readonly property var rows: {
         const needle = query.trim().toLowerCase();
-        const matched = needle === "" ? binds : binds.filter(b => (b.combo + " " + b.description + " " + b.action + " " + b.category).toLowerCase().indexOf(needle) >= 0);
+        // The English and the shown (translated) description and section both
+        // match, so a search works in either language (plan 109).
+        const matched = needle === "" ? binds : binds.filter(b => (b.combo + " " + b.description + " " + describe(b.description) + " " + b.action + " " + b.category + " " + I18n.tr(b.category)).toLowerCase().indexOf(needle) >= 0);
         // One flat list with group headers (columnRows lays it out), so
         // search never leaves an empty heading behind.
         const out = [];
@@ -39,13 +57,17 @@ Scope {
                 out.push({
                     header: group,
                     combo: "",
-                    text: ""
+                    text: "",
+                    described: false
                 });
             }
+            // text stays English; a description is translated where it
+            // shows, a bare action (a command) never is.
             out.push({
                 header: "",
                 combo: bind.combo,
-                text: bind.description || bind.action
+                text: bind.description || bind.action,
+                described: !!bind.description
             });
         }
         return out;
@@ -185,6 +207,10 @@ Scope {
                 radius: Theme.radius
                 border.color: Theme.border
                 border.width: Theme.borderWidth
+                // The sheet's own window, not a PanelPopup: mirror it here in
+                // a right-to-left language (plan 109). Key names stay as is.
+                LayoutMirroring.enabled: I18n.rightToLeft
+                LayoutMirroring.childrenInherit: true
 
                 // Takes the clicks the card's own items leave, so a click on
                 // its margin does not reach the backdrop and close the sheet.
@@ -201,6 +227,9 @@ Scope {
                         id: search
 
                         width: parent.width
+                        // Explicit, so a mirrored sheet starts the field and
+                        // its hint at the right like the rest of the sheet.
+                        horizontalAlignment: TextInput.AlignLeft
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize
@@ -212,7 +241,8 @@ Scope {
                         Text {
                             anchors.fill: parent
                             visible: search.text === ""
-                            text: root.binds.length + " bindings — type to search"
+                            text: I18n.tn("%1 binding — type to search", "%1 bindings — type to search", root.binds.length)
+                            horizontalAlignment: Text.AlignLeft
                             color: Theme.muted
                             font: search.font
                         }
@@ -259,10 +289,14 @@ Scope {
                                             width: column.width
                                             height: Math.round(Theme.fontSize * (modelData.header === "" ? 1.7 : 2.4))
 
+                                            // Anchored, not at x 0, so a mirrored sheet
+                                            // starts each row at the right.
                                             Text {
+                                                anchors.left: parent.left
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 visible: modelData.header !== ""
-                                                text: modelData.header
+                                                // A section name from the Lua config.
+                                                text: I18n.tr(modelData.header)
                                                 color: Theme.accent
                                                 font.family: Theme.fontFamily
                                                 font.pixelSize: Theme.fontSize
@@ -272,6 +306,7 @@ Scope {
                                             Text {
                                                 id: combo
 
+                                                anchors.left: parent.left
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 visible: modelData.header === ""
                                                 width: Math.round(parent.width * 0.42)
@@ -287,7 +322,9 @@ Scope {
                                                 anchors.left: combo.right
                                                 anchors.right: parent.right
                                                 visible: modelData.header === ""
-                                                text: modelData.text
+                                                // The description from the Lua config,
+                                                // collected for the catalog (plan 109).
+                                                text: modelData.described ? root.describe(modelData.text) : modelData.text
                                                 elide: Text.ElideRight
                                                 color: Theme.muted
                                                 font.family: Theme.fontFamily

@@ -4,9 +4,15 @@
 // Adapted from the owner's fork t1nk33r.vpn 1.4.1-t1nk33r.1 of
 // jkoestinger/omarchy-vpn (MIT, Copyright (c) 2026 Justin Köstinger); see
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this directory. Unchanged
-// by the haseen port (plan 096) apart from this notice. The NordVPN
-// vocabulary came from guiestrela/omarchy-norvpn-plugin (MIT, Copyright
-// (c) 2026 Guilherme Estrela; LICENSE.nordvpn).
+// by the haseen port (plan 096) apart from this notice; plan 109 marked the
+// interface strings. The NordVPN vocabulary came from
+// guiestrela/omarchy-norvpn-plugin (MIT, Copyright (c) 2026 Guilherme
+// Estrela; LICENSE.nordvpn).
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). A sentence
+// around a value goes through Shared.compose, so the panel can translate it.
+function N_(text) { return text }
 
 // NordVPN, via the `nordvpn` CLI talking to `nordvpnd`. Parsing and
 // row-building only — the process plumbing lives in NordVpnBackend.qml.
@@ -161,16 +167,16 @@ function nordVpnSummary(status, blocked) {
     if (location !== "" && status.server !== "") return status.server + " · " + location
     if (location !== "") return location
     if (status.server !== "") return status.server
-    return "Connected"
+    return N_("Connected")
   }
-  if (status.state === "connecting") return location !== "" ? "Connecting to " + location + "…" : "Connecting…"
-  if (status.state === "disconnecting") return "Disconnecting…"
+  if (status.state === "connecting") return location !== "" ? Shared.compose(N_("Connecting to %1…"), location) : N_("Connecting…")
+  if (status.state === "disconnecting") return N_("Disconnecting…")
   // Installed, refusing, and one group membership away from working. Not down.
-  if (status.state === "denied") return "Permission denied — this user is not in the nordvpn group"
-  if (status.state === "daemon") return "The NordVPN daemon is not answering"
-  if (status.state === "loggedout") return "No NordVPN account on this machine"
-  if (status.state === "disconnected") return blocked === true ? "Not connected · traffic blocked" : "Not connected"
-  return "Checking…"
+  if (status.state === "denied") return N_("Permission denied — this user is not in the nordvpn group")
+  if (status.state === "daemon") return N_("The NordVPN daemon is not answering")
+  if (status.state === "loggedout") return N_("No NordVPN account on this machine")
+  if (status.state === "disconnected") return blocked === true ? N_("Not connected · traffic blocked") : N_("Not connected")
+  return N_("Checking…")
 }
 
 // One line saying what to do about a refusal. `denied` is the only one whose
@@ -178,14 +184,13 @@ function nordVpnSummary(status, blocked) {
 // than trying to fit them into a sentence nobody can select.
 function nordVpnActionHint(status) {
   if (status.state === "denied") {
+    // One literal each, so the sentence pair translates as a whole.
     return status.remedies.length > 0
-      ? "NordVPN refuses every command, reads included, until this user is in the nordvpn group. "
-        + "Run both commands below, then log out and back in."
-      : "NordVPN refuses every command until this user is in the nordvpn group. "
-        + "Add it with usermod, then log out and back in."
+      ? N_("NordVPN refuses every command, reads included, until this user is in the nordvpn group. Run both commands below, then log out and back in.")
+      : N_("NordVPN refuses every command until this user is in the nordvpn group. Add it with usermod, then log out and back in.")
   }
-  if (status.state === "daemon") return "The NordVPN daemon is not answering. Start it with: sudo systemctl start nordvpnd"
-  if (status.state === "loggedout") return "No NordVPN account on this machine. Log in with: nordvpn login"
+  if (status.state === "daemon") return N_("The NordVPN daemon is not answering. Start it with: sudo systemctl start nordvpnd")
+  if (status.state === "loggedout") return N_("No NordVPN account on this machine. Log in with: nordvpn login")
   return ""
 }
 
@@ -200,7 +205,7 @@ function nordVpnRemedyTargets(status) {
     rows.push({
       key: "remedy:" + i,
       label: status.remedies[i],
-      detail: "Click to copy",
+      detail: N_("Click to copy"),
       glyph: Shared.GLYPH_CLIPBOARD,
       copy: status.remedies[i]
     })
@@ -211,15 +216,15 @@ function nordVpnRemedyTargets(status) {
 function nordVpnDetails(status) {
   if (status.state !== "connected") return []
 
-  var rows = [Shared.detail("Server", status.server), Shared.detail("Location", nordVpnLocation(status))]
-  if (status.ip !== "") rows.push(Shared.detail("Exit IP", status.ip))
+  var rows = [Shared.detail(N_("Server"), status.server), Shared.detail(N_("Location"), nordVpnLocation(status))]
+  if (status.ip !== "") rows.push(Shared.detail(N_("Exit IP"), status.ip))
   if (status.technology !== "") {
-    rows.push(Shared.detail("Tunnel", status.protocol !== ""
+    rows.push(Shared.detail(N_("Tunnel"), status.protocol !== ""
       ? status.technology + " · " + status.protocol
       : status.technology))
   }
-  if (status.transfer !== "") rows.push(Shared.detail("Transfer", status.transfer))
-  if (status.uptime !== "") rows.push(Shared.detail("Uptime", status.uptime))
+  if (status.transfer !== "") rows.push(Shared.detail(N_("Transfer"), status.transfer))
+  if (status.uptime !== "") rows.push(Shared.detail(N_("Uptime"), status.uptime))
   return rows.filter(function(row) { return row.value !== "" })
 }
 
@@ -329,7 +334,7 @@ function nordVpnCountryKey(country) {
 // picks the fastest server it can find.
 function nordVpnQuickTargets() {
   return [
-    { key: "quick", label: "Fastest server", detail: "Let NordVPN choose", glyph: Shared.GLYPH_BOLT, args: [] }
+    { key: "quick", label: N_("Fastest server"), detail: N_("Let NordVPN choose"), glyph: Shared.GLYPH_BOLT, args: [] }
   ]
 }
 
@@ -399,20 +404,22 @@ function nordVpnDisconnectArgs() {
 // settings` calls it: the printed key is "Kill Switch", the verb is
 // "killswitch", and "Post-quantum VPN" is set with "post-quantum". Both
 // vocabularies sit side by side here rather than being translated twice.
+// Product and protocol names (Threat Protection Lite, NordLynx, TCP,
+// Meshnet) are shown as they are.
 var NORDVPN_TOGGLE_SPEC = [
-  { key: "firewall", label: "Firewall", detail: "Block traffic that would leave outside the tunnel", verb: "firewall" },
-  { key: "kill-switch", label: "Kill switch", detail: "No traffic at all if the tunnel drops", verb: "killswitch" },
-  { key: "threat-protection-lite", label: "Threat Protection Lite", detail: "Block ads, trackers and malware hosts", verb: "threatprotectionlite" },
-  { key: "auto-connect", label: "Connect on startup", detail: "Up as soon as the daemon starts", verb: "autoconnect" },
-  { key: "technology", label: "NordLynx", detail: "Off runs OpenVPN instead", verb: "technology", on: "NORDLYNX", off: "OPENVPN" },
-  { key: "protocol", label: "TCP", detail: "Off uses UDP, which is faster", verb: "protocol", on: "TCP", off: "UDP" },
-  { key: "meshnet", label: "Meshnet", detail: "Reach your own devices through NordVPN", verb: "meshnet" },
-  { key: "lan-discovery", label: "LAN discovery", detail: "Reach printers and NAS while up", verb: "lan-discovery", onValue: "enable", offValue: "disable" },
-  { key: "routing", label: "Routing", detail: "Send any traffic through the tunnel", verb: "routing" },
-  { key: "virtual-location", label: "Virtual location", detail: "Offer servers hosted outside the country they present", verb: "virtual-location" },
-  { key: "post-quantum-vpn", label: "Post-quantum VPN", detail: "A key exchange that cannot be recorded now and broken later", verb: "post-quantum" },
-  { key: "notify", label: "NordVPN notifications", detail: "The CLI's own connect and disconnect notices", verb: "notify" },
-  { key: "tray", label: "NordVPN tray icon", detail: "The tray applet that ships with the CLI", verb: "tray" }
+  { key: "firewall", label: N_("Firewall"), detail: N_("Block traffic that would leave outside the tunnel"), verb: "firewall" },
+  { key: "kill-switch", label: N_("Kill switch"), detail: N_("No traffic at all if the tunnel drops"), verb: "killswitch" },
+  { key: "threat-protection-lite", label: "Threat Protection Lite", detail: N_("Block ads, trackers and malware hosts"), verb: "threatprotectionlite" },
+  { key: "auto-connect", label: N_("Connect on startup"), detail: N_("Up as soon as the daemon starts"), verb: "autoconnect" },
+  { key: "technology", label: "NordLynx", detail: N_("Off runs OpenVPN instead"), verb: "technology", on: "NORDLYNX", off: "OPENVPN" },
+  { key: "protocol", label: "TCP", detail: N_("Off uses UDP, which is faster"), verb: "protocol", on: "TCP", off: "UDP" },
+  { key: "meshnet", label: "Meshnet", detail: N_("Reach your own devices through NordVPN"), verb: "meshnet" },
+  { key: "lan-discovery", label: N_("LAN discovery"), detail: N_("Reach printers and NAS while up"), verb: "lan-discovery", onValue: "enable", offValue: "disable" },
+  { key: "routing", label: N_("Routing"), detail: N_("Send any traffic through the tunnel"), verb: "routing" },
+  { key: "virtual-location", label: N_("Virtual location"), detail: N_("Offer servers hosted outside the country they present"), verb: "virtual-location" },
+  { key: "post-quantum-vpn", label: N_("Post-quantum VPN"), detail: N_("A key exchange that cannot be recorded now and broken later"), verb: "post-quantum" },
+  { key: "notify", label: N_("NordVPN notifications"), detail: N_("The CLI's own connect and disconnect notices"), verb: "notify" },
+  { key: "tray", label: N_("NordVPN tray icon"), detail: N_("The tray applet that ships with the CLI"), verb: "tray" }
 ]
 
 function nordVpnSpec(key) {
@@ -473,7 +480,7 @@ function nordVpnToggles(settings, autoConnectCountry) {
     if (settings.seen[spec.key] !== true) continue
     var detail = spec.detail
     if (spec.key === "auto-connect" && country !== "") {
-      detail = "Connects to " + country.toUpperCase() + " as soon as the daemon starts"
+      detail = Shared.compose(N_("Connects to %1 as soon as the daemon starts"), country.toUpperCase())
     }
     toggles.push(Shared.toggle(spec.key, spec.label, detail, nordVpnToggleValue(settings, spec)))
   }
@@ -513,10 +520,10 @@ function nordVpnToggleArgs(key, value, autoConnectCountry) {
 function nordVpnExplainError(text) {
   var value = String(text || "").replace(/\s+/g, " ").trim()
   if (/routing is currently used by meshnet/i.test(value)) {
-    return "Routing cannot be changed while Meshnet is on. Turn Meshnet off first."
+    return N_("Routing cannot be changed while Meshnet is on. Turn Meshnet off first.")
   }
   if (/permission denied/i.test(value)) {
-    return "NordVPN refused: this user is not in the nordvpn group."
+    return N_("NordVPN refused: this user is not in the nordvpn group.")
   }
-  return Shared.elide(value || "NordVPN refused that setting", 140)
+  return Shared.elide(value || N_("NordVPN refused that setting"), 140)
 }

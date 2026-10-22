@@ -110,7 +110,13 @@ Scope {
         }
     }
     property bool busy: false
+    // The last failure in English, as IPC and the tests read it.
     property string message: ""
+    // The same failure for the screen: its catalog key and the %1 it fills
+    // (a PAM prompt or error name, shown as PAM gives it), so the view
+    // translates it (plan 109).
+    property string messageKey: ""
+    property string messageArg: ""
     property string _pending: ""
     property bool _responded: false
 
@@ -144,10 +150,8 @@ Scope {
         _responded = false;
         busy = true;
         message = "";
-        if (!pam.start()) {
-            _reset();
-            message = "Authentication could not start";
-        }
+        if (!pam.start())
+            _failed(I18n.mark("Authentication could not start"), "");
     }
 
     // Escape during "Checking…": a PAM module that never answers would
@@ -158,7 +162,7 @@ Scope {
             return;
         if (pam.active)
             pam.abort();
-        _failed("Cancelled");
+        _failed(I18n.mark("Cancelled"), "");
     }
 
     function closePreview(): void {
@@ -174,6 +178,8 @@ Scope {
     function _reset(): void {
         busy = false;
         message = "";
+        messageKey = "";
+        messageArg = "";
         _pending = "";
         _responded = false;
     }
@@ -193,9 +199,12 @@ Scope {
         }
     }
 
-    function _failed(text: string): void {
+    // key is English with an optional %1; arg fills it.
+    function _failed(key: string, arg: string): void {
         _reset();
-        message = text;
+        messageKey = key;
+        messageArg = arg;
+        message = key.replace("%1", () => arg);
     }
 
     // One answer per attempt: a second prompt (e.g. an OTP module) cannot be
@@ -206,7 +215,7 @@ Scope {
         if (_responded) {
             const prompt = pam.message;
             pam.abort();
-            _failed(prompt !== "" ? "Unsupported PAM prompt: " + prompt : "Unsupported PAM prompt");
+            _failed(prompt !== "" ? I18n.mark("Unsupported PAM prompt: %1") : I18n.mark("Unsupported PAM prompt"), prompt);
             return;
         }
         _responded = true;
@@ -327,9 +336,9 @@ Scope {
             if (result === PamResult.Success)
                 root._unlocked();
             else
-                root._failed(result === PamResult.MaxTries ? "Too many attempts" : "Wrong password");
+                root._failed(result === PamResult.MaxTries ? I18n.mark("Too many attempts") : I18n.mark("Wrong password"), "");
         }
-        onError: error => root._failed("Authentication error: " + PamError.toString(error))
+        onError: error => root._failed(I18n.mark("Authentication error: %1"), PamError.toString(error))
     }
 
     PamContext {
@@ -448,6 +457,7 @@ Scope {
                 anchors.fill: parent
                 busy: root.busy
                 message: root.message
+                messageText: I18n.tr(root.messageKey, root.messageArg)
                 fingerprint: root.fingerprintAvailable
                 fingerprintError: root.fingerprintError
                 onSubmitted: password => root.submit(password)

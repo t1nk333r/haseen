@@ -78,8 +78,26 @@ singleton Paths 1.0 Paths.qml
 singleton Apps 1.0 Apps.qml
 singleton FixtureState 1.0 State.qml
 singleton SecurityRoute 1.0 SecurityRoute.qml
+singleton I18n 1.0 I18n.qml
 EOF
-    cp "$HASEEN_PATH/shell/Haseen/SecurityRoute.qml" "$HASEEN_PATH/shell/Haseen/SecurityEvidence.js" "$H/imports/qs/Haseen/"
+    cp "$HASEEN_PATH/shell/Haseen/SecurityRoute.qml" "$HASEEN_PATH/shell/Haseen/SecurityEvidence.js" "$HASEEN_PATH/shell/Haseen/I18nPlural.js" "$H/imports/qs/Haseen/"
+    # English, as the real I18n.qml is with no catalog: the key is the
+    # English, filled by the real I18nPlural.js (plan 109).
+    cat >"$H/imports/qs/Haseen/I18n.qml" <<'EOF'
+pragma Singleton
+import QtQuick
+import "I18nPlural.js" as Plural
+QtObject {
+    property string language: "en"
+    property bool rightToLeft: false
+    function tr(text, ...args) { return text === undefined || text === null ? "" : Plural.fill(String(text), args); }
+    function tn(singular, plural, count, ...args) { return Plural.fill(Plural.category("en", count) === "one" ? String(singular) : String(plural), [String(count)].concat(args)); }
+    function mark(text) { return text; }
+    function formatNumber(value, decimals) { return Plural.formatNumber(value, decimals, ".", "0"); }
+    function formatDate(date, format) { return date ? date.toLocaleString(Qt.locale("en_US"), format) : ""; }
+    function menuEntry(id) { return ({}); }
+}
+EOF
     cat >"$H/imports/qs/Haseen/Theme.qml" <<'EOF'
 pragma Singleton
 import QtQuick

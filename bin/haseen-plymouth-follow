@@ -10,6 +10,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/plymouth.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/plymouth.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "$HASEEN_PATH/lib/terminal.sh"
 
@@ -107,14 +109,14 @@ request() {
         plymouth_follow_record skipped "$want" "$why"
         # Once, not after every theme change.
         [[ $last == skipped\ * ]] ||
-            notify "Boot splash not rebuilt" "$why, so a rebuild must be signed again: $(plymouth_signed_hint)."
+            notify "$(i18n "Boot splash not rebuilt")" "$(i18n "%1, so a rebuild must be signed again: %2." "$why" "$(plymouth_signed_hint)")"
         return 0
     fi
     # An out-of-date unit (an older haseen's) is still tried; a missing one
     # cannot be.
     if [[ $(plymouth_follow_root_state) == missing ]]; then
         plymouth_follow_record failed "$want" "the root service is not installed"
-        notify "Boot splash not rebuilt" "Its root service is not installed: haseen plymouth follow on."
+        notify "$(i18n "Boot splash not rebuilt")" "$(i18n "Its root service is not installed: haseen plymouth follow on.")"
         return 1
     fi
     unit="haseen-splash@$want.service"
@@ -124,7 +126,7 @@ request() {
     if ! err="$(run systemctl start --no-ask-password "$unit" 2>&1)"; then
         err="${err%%$'\n'*}"
         plymouth_follow_record failed "$want"
-        notify "Boot splash not rebuilt" "${err:-$unit failed}. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand."
+        notify "$(i18n "Boot splash not rebuilt")" "$(i18n "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand." "${err:-$unit failed}")"
         return 1
     fi
     plymouth_follow_record ok "$want"

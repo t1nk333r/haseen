@@ -33,6 +33,8 @@ Scope {
     // Why the last status read failed, as `haseen syncthing` said it ("" while
     // Syncthing answers).
     property string problem: ""
+    // English, for the IPC state; the panel builds its own in the interface
+    // language (plan 109), as it does message and error through I18n.tr.
     readonly property var summary: Model.overall(info, online)
     property var activity: []
     property int lastEvent: 0
@@ -60,7 +62,7 @@ Scope {
     // run(args, done): one `haseen syncthing ARGS`; refused while another runs.
     function run(args: var, done: string): bool {
         if (root.acting) {
-            root.say("Wait for the last change to finish", true);
+            root.say(I18n.mark("Wait for the last change to finish"), true);
             return false;
         }
         root.acting = true;
@@ -71,53 +73,58 @@ Scope {
     }
 
     function rescan(id: string): bool {
-        return run(["rescan", id], "Scanning");
+        return run(["rescan", id], I18n.mark("Scanning"));
     }
 
     function setPaused(id: string, paused: bool): bool {
-        return run([paused ? "pause" : "resume", id], paused ? "Paused" : "Resumed");
+        return run([paused ? "pause" : "resume", id], paused ? I18n.mark("Paused") : I18n.mark("Resumed"));
     }
 
     function setAllPaused(paused: bool): bool {
-        return run([paused ? "pause-all" : "resume-all"], paused ? "Every device paused" : "Every device resumed");
+        return run([paused ? "pause-all" : "resume-all"], paused ? I18n.mark("Every device paused") : I18n.mark("Every device resumed"));
     }
 
     function share(folder: string, device: string, on: bool): bool {
-        return run(["share", folder, device, on ? "on" : "off"], on ? "Shared" : "No longer shared");
+        return run(["share", folder, device, on ? "on" : "off"], on ? I18n.mark("Shared") : I18n.mark("No longer shared"));
     }
 
     function addFolder(path: string): bool {
         const p = Model.expandHome(path, Paths.home);
         if (p.charAt(0) !== "/") {
-            root.say("Enter a full path, such as ~/Documents", true);
+            root.say(I18n.mark("Enter a full path, such as ~/Documents"), true);
             return false;
         }
-        return run(["add-folder", p], "Folder added");
+        return run(["add-folder", p], I18n.mark("Folder added"));
     }
 
     function acceptDevice(id: string, name: string): bool {
-        return run(["accept-device", id, name], "Device added");
+        return run(["accept-device", id, name], I18n.mark("Device added"));
     }
 
     function dismissDevice(id: string): bool {
-        return run(["dismiss-device", id], "Dismissed");
+        return run(["dismiss-device", id], I18n.mark("Dismissed"));
     }
 
     function acceptFolder(f: var, path: string): bool {
         const p = Model.expandHome(path, Paths.home);
         if (p.charAt(0) !== "/") {
-            root.say("Enter a full path, such as ~/Sync", true);
+            root.say(I18n.mark("Enter a full path, such as ~/Sync"), true);
             return false;
         }
-        return run(["accept-folder", f.id, f.device, p, f.label], "Folder accepted");
+        return run(["accept-folder", f.id, f.device, p, f.label], I18n.mark("Folder accepted"));
     }
 
     function dismissFolder(f: var): bool {
-        return run(["dismiss-folder", f.id, f.device], "Dismissed");
+        return run(["dismiss-folder", f.id, f.device], I18n.mark("Dismissed"));
     }
 
     function controlService(verb: string): bool {
-        return run(["service", verb], verb === "stop" ? "Syncthing stopped" : "Syncthing " + verb + "ed");
+        const done = {
+            stop: I18n.mark("Syncthing stopped"),
+            start: I18n.mark("Syncthing started"),
+            restart: I18n.mark("Syncthing restarted")
+        };
+        return run(["service", verb], Object.prototype.hasOwnProperty.call(done, verb) ? done[verb] : "Syncthing " + verb + "ed");
     }
 
     function openWebUi(): void {
@@ -150,7 +157,7 @@ Scope {
             root.loaded = true;
             const s = code === 0 ? Model.parseStatus(statusOut.text) : null;
             const why = statusErr.text.trim().split("\n").pop();
-            root.problem = s ? "" : code === 127 ? "curl is not installed" : why || "Syncthing is not answering";
+            root.problem = s ? "" : code === 127 ? I18n.mark("curl is not installed") : why || I18n.mark("Syncthing is not answering");
             if (s) {
                 root.info = s;
                 root.online = true;
@@ -260,7 +267,7 @@ Scope {
                 root.say(done, false);
             } else {
                 const lines = actErr.text.trim().split("\n");
-                root.say((lines[lines.length - 1] || "The change failed").replace(/^(Error|refusing): /, ""), true);
+                root.say((lines[lines.length - 1] || I18n.mark("The change failed")).replace(/^(Error|refusing): /, ""), true);
             }
             if (command.indexOf("service") === 1)
                 serviceProc.running = true;

@@ -56,7 +56,7 @@ Column {
 
     Text {
         width: parent.width
-        text: "Keyboard layout"
+        text: I18n.tr("Keyboard layout")
         color: Theme.accent
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize + 2

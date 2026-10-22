@@ -195,7 +195,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Clipboard"
+            text: I18n.tr("Clipboard")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -209,7 +209,7 @@ Column {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.query === "" ? history.entries.length + " items" : root.results.length + " of " + history.entries.length
+                text: root.query === "" ? I18n.tn("%1 item", "%1 items", history.entries.length) : I18n.tr("%1 of %2", root.results.length, history.entries.length)
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -277,9 +277,10 @@ Column {
             }
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: input.text === ""
-                text: "Search clipboard history"
+                text: I18n.tr("Search clipboard history")
                 color: Theme.muted
                 font: input.font
             }
@@ -290,7 +291,7 @@ Column {
         width: parent.width
         visible: !root.recording || (history.loaded && root.results.length === 0)
         wrapMode: Text.WordWrap
-        text: !history.available ? "cliphist is not installed." : !root.recording ? "History is not being recorded: add haseen.clipboard to shell.json services." : root.query === "" ? "Nothing copied yet." : "No matches."
+        text: !history.available ? I18n.tr("cliphist is not installed.") : !root.recording ? I18n.tr("History is not being recorded: add haseen.clipboard to shell.json services.") : root.query === "" ? I18n.tr("Nothing copied yet.") : I18n.tr("No matches.")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize

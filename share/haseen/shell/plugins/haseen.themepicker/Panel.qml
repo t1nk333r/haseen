@@ -102,8 +102,10 @@ Column {
         context: Qt.WindowShortcut
         onActivated: root.apply(grid.currentIndex)
     }
-    Keys.onTabPressed: grid.moveCurrentIndexRight()
-    Keys.onBacktabPressed: grid.moveCurrentIndexLeft()
+    // Tab is the next theme, Backtab the previous one: in a mirrored
+    // (right-to-left) panel the grid runs from the right, so next is left.
+    Keys.onTabPressed: grid.LayoutMirroring.enabled ? grid.moveCurrentIndexLeft() : grid.moveCurrentIndexRight()
+    Keys.onBacktabPressed: grid.LayoutMirroring.enabled ? grid.moveCurrentIndexRight() : grid.moveCurrentIndexLeft()
 
     Component.onCompleted: {
         scanProc.running = true;
@@ -189,7 +191,7 @@ Column {
         }
         onExited: code => {
             if (code !== 0) {
-                root.notice = listErr.text.trim() || "haseen theme list failed";
+                root.notice = listErr.text.trim() || I18n.tr("haseen theme list failed");
                 return;
             }
             root.themes = listOut.text.split("\n").filter(l => l.trim() !== "");
@@ -214,7 +216,7 @@ Column {
         Text {
             id: title
 
-            text: "Themes"
+            text: I18n.tr("Themes")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -225,7 +227,7 @@ Column {
             anchors.baseline: title.baseline
             // A width, or the elide below never applies to a long error.
             width: parent.width - title.width - Theme.gap
-            text: root.notice !== "" ? root.notice : "Enter applies · Esc closes"
+            text: root.notice !== "" ? root.notice : I18n.tr("Enter applies · Esc closes")
             color: root.notice !== "" ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily

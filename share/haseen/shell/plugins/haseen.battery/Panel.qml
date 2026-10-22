@@ -46,10 +46,10 @@ Column {
     readonly property string activeProfile: Model.profileName(PowerProfiles.profile)
     readonly property int limit: Model.limitEnd(status.threshold)
     readonly property var details: [
-        { label: "Power draw", value: present ? Model.rate(device.changeRate) : "" },
-        { label: "Energy", value: present ? Model.energy(device.energy, device.energyCapacity) : "" },
-        { label: "Health", value: present ? Model.health(device.healthPercentage, device.healthSupported) : "" },
-        { label: "Cycles", value: status.cycles && status.cycles !== "0" ? status.cycles : "" }
+        { label: I18n.mark("Power draw"), value: present ? Model.rate(device.changeRate) : "" },
+        { label: I18n.mark("Energy"), value: present ? Model.energy(device.energy, device.energyCapacity) : "" },
+        { label: I18n.mark("Health"), value: present ? Model.health(device.healthPercentage, device.healthSupported) : "" },
+        { label: I18n.mark("Cycles"), value: status.cycles && status.cycles !== "0" ? status.cycles : "" }
     ].filter(d => d.value !== "")
 
     width: Theme.fontSize * 24
@@ -148,7 +148,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Power and Battery"
+            text: I18n.tr("Power and Battery")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -158,7 +158,7 @@ Column {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: root.present
-            text: Model.stateLabel(root.deviceState, root.status.state === "holding", root.status.threshold || "")
+            text: Model.stateLabel(root.deviceState, root.status.state === "holding", root.status.threshold || "", I18n.tr)
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -169,13 +169,15 @@ Column {
         width: parent.width
         visible: !root.present
         wrapMode: Text.WordWrap
-        text: "No battery (UPower reports none)."
+        text: I18n.tr("No battery (UPower reports none).")
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
     }
 
     Row {
+        // Full width, so a mirrored panel (plan 109) starts the row on the right.
+        width: parent.width
         visible: root.present
         spacing: Theme.gap * 2
 
@@ -190,6 +192,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
+                anchors.left: parent.left
                 text: root.percent + "%"
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -198,8 +201,9 @@ Column {
             }
 
             Text {
+                anchors.left: parent.left
                 visible: text !== ""
-                text: root.present ? Model.timeLine(root.deviceState, root.device.timeToEmpty, root.device.timeToFull) : ""
+                text: root.present ? Model.timeLine(root.deviceState, root.device.timeToEmpty, root.device.timeToFull, I18n.tr) : ""
                 color: Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -219,7 +223,7 @@ Column {
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: parent.modelData.label
+                text: I18n.tr(parent.modelData.label)
                 color: Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -239,10 +243,12 @@ Column {
 
     SectionLabel {
         visible: root.profiles.length > 0
-        text: "Power profile"
+        text: I18n.tr("Power profile")
     }
 
     Row {
+        // Full width, so a mirrored panel (plan 109) starts the row on the right.
+        width: parent.width
         visible: root.profiles.length > 0
         spacing: Theme.gap
 
@@ -252,7 +258,7 @@ Column {
             delegate: Pill {
                 required property string modelData
 
-                text: Model.profileLabel(modelData)
+                text: I18n.tr(Model.profileLabel(modelData))
                 active: modelData === root.activeProfile
                 pending: modelData === root.pendingProfile
                 onClicked: root.setProfile(modelData)
@@ -262,10 +268,12 @@ Column {
 
     SectionLabel {
         visible: root.limit >= 0
-        text: "Charge limit"
+        text: I18n.tr("Charge limit")
     }
 
     Row {
+        // Full width, so a mirrored panel (plan 109) starts the row on the right.
+        width: parent.width
         visible: root.limit >= 0
         spacing: Theme.gap
 
@@ -275,7 +283,7 @@ Column {
             delegate: Pill {
                 required property int modelData
 
-                text: Model.limitLabel(modelData)
+                text: I18n.tr(Model.limitLabel(modelData))
                 active: modelData === root.limit
                 onClicked: root.setLimit(modelData)
             }
@@ -283,21 +291,23 @@ Column {
     }
 
     SectionLabel {
-        text: "Screen"
+        text: I18n.tr("Screen")
     }
 
     Row {
+        // Full width, so a mirrored panel (plan 109) starts the row on the right.
+        width: parent.width
         spacing: Theme.gap
 
         Pill {
             objectName: "screenOff"
-            text: "Screen off"
+            text: I18n.tr("Screen off")
             onClicked: root.screenOff()
         }
 
         Pill {
             objectName: "screenOn"
-            text: "Screen on"
+            text: I18n.tr("Screen on")
             onClicked: root.screenOn()
         }
     }
@@ -326,7 +336,7 @@ Column {
             anchors.left: setupGlyph.right
             anchors.leftMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            text: "Setup"
+            text: I18n.tr("Setup")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize

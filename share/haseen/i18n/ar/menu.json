@@ -1,0 +1,911 @@
+{
+  "about": {
+    "label": "حول"
+  },
+  "apps": {
+    "label": "التطبيقات"
+  },
+  "install": {
+    "label": "تثبيت"
+  },
+  "install.ai": {
+    "label": "الذكاء الاصطناعي"
+  },
+  "install.aur": {
+    "description": "Chaotic-AUR أولًا",
+    "label": "AUR"
+  },
+  "install.browser": {
+    "label": "المتصفح"
+  },
+  "install.development": {
+    "label": "التطوير"
+  },
+  "install.development.laravel": {
+    "label": "Laravel"
+  },
+  "install.development.ocaml": {
+    "description": "ocaml و opam",
+    "label": "OCaml"
+  },
+  "install.development.phoenix": {
+    "label": "Phoenix"
+  },
+  "install.development.php": {
+    "description": "php و composer",
+    "label": "PHP"
+  },
+  "install.development.symfony": {
+    "label": "Symfony"
+  },
+  "install.editor": {
+    "label": "المحرر"
+  },
+  "install.font": {
+    "label": "الخط"
+  },
+  "install.gaming": {
+    "label": "الألعاب"
+  },
+  "install.gaming.xbox-cloud": {
+    "description": "تطبيق ويب",
+    "label": "Xbox Cloud Gaming"
+  },
+  "install.package": {
+    "label": "حزمة"
+  },
+  "install.service": {
+    "label": "خدمة"
+  },
+  "install.style": {
+    "label": "المظهر"
+  },
+  "install.style.background": {
+    "label": "خلفية"
+  },
+  "install.style.theme": {
+    "description": "من مستودع git (بتنسيق سمات Omarchy)",
+    "label": "سمة"
+  },
+  "install.terminal": {
+    "label": "الطرفية"
+  },
+  "install.webapp": {
+    "label": "تطبيق ويب"
+  },
+  "learn": {
+    "label": "تعلّم"
+  },
+  "learn.arch": {
+    "label": "Arch"
+  },
+  "learn.bash": {
+    "label": "Bash"
+  },
+  "learn.haseen": {
+    "label": "haseen"
+  },
+  "learn.herdr-keybindings": {
+    "description": "ملف config.toml الخاص بـ herdr: اختصاراته",
+    "label": "Herdr"
+  },
+  "learn.hyprland": {
+    "label": "Hyprland"
+  },
+  "learn.keybindings": {
+    "label": "اختصارات لوحة المفاتيح"
+  },
+  "learn.neovim": {
+    "label": "Neovim"
+  },
+  "learn.tmux-keybindings": {
+    "label": "Tmux"
+  },
+  "remove": {
+    "label": "إزالة"
+  },
+  "remove.ai": {
+    "label": "الذكاء الاصطناعي",
+    "title": "إزالة"
+  },
+  "remove.browser": {
+    "label": "المتصفح",
+    "title": "إزالة"
+  },
+  "remove.development": {
+    "label": "التطوير",
+    "title": "إزالة"
+  },
+  "remove.development.laravel": {
+    "label": "Laravel"
+  },
+  "remove.development.ocaml": {
+    "label": "OCaml"
+  },
+  "remove.development.phoenix": {
+    "label": "Phoenix"
+  },
+  "remove.development.php": {
+    "label": "PHP"
+  },
+  "remove.development.symfony": {
+    "label": "Symfony"
+  },
+  "remove.gaming": {
+    "label": "الألعاب",
+    "title": "إزالة"
+  },
+  "remove.gaming.xbox-cloud": {
+    "label": "Xbox Cloud Gaming"
+  },
+  "remove.package": {
+    "label": "حزمة"
+  },
+  "remove.service": {
+    "label": "الخدمات",
+    "title": "إزالة"
+  },
+  "remove.webapp": {
+    "label": "تطبيق ويب"
+  },
+  "setup": {
+    "label": "الإعداد"
+  },
+  "setup.ai": {
+    "label": "الذكاء الاصطناعي المحلي"
+  },
+  "setup.ai.chat": {
+    "label": "محادثة"
+  },
+  "setup.ai.pull": {
+    "label": "تنزيل نموذج"
+  },
+  "setup.ai.status": {
+    "label": "الحالة"
+  },
+  "setup.battery-limit": {
+    "label": "حدّ شحن البطارية"
+  },
+  "setup.battery-limit.80": {
+    "label": "الحدّ عند 80%"
+  },
+  "setup.battery-limit.full": {
+    "label": "بلا حدّ (100%)"
+  },
+  "setup.battery-limit.off": {
+    "label": "إيقاف الاستعادة"
+  },
+  "setup.battery-limit.on": {
+    "label": "الاستعادة عند الإقلاع والاستئناف"
+  },
+  "setup.battery-limit.save": {
+    "label": "الإبقاء على الحدّ الحالي"
+  },
+  "setup.battery-limit.status": {
+    "label": "الحالة"
+  },
+  "setup.config": {
+    "label": "الضبط"
+  },
+  "setup.config.hyprland": {
+    "label": "Hyprland"
+  },
+  "setup.config.nightlight": {
+    "description": "الإضاءة الليلية: plugins.haseen.nightlight في shell.json",
+    "label": "Hyprsunset"
+  },
+  "setup.config.xcompose": {
+    "description": "للتطبيقات التي تبدأ بعد التعديل",
+    "label": "XCompose"
+  },
+  "setup.ddc": {
+    "label": "سطوع الشاشة (DDC/CI)"
+  },
+  "setup.ddc.off": {
+    "label": "إيقاف"
+  },
+  "setup.ddc.on": {
+    "label": "تشغيل"
+  },
+  "setup.ddc.status": {
+    "label": "الحالة"
+  },
+  "setup.default": {
+    "label": "الافتراضيات"
+  },
+  "setup.default.agent": {
+    "label": "الوكيل",
+    "title": "الوكيل الافتراضي"
+  },
+  "setup.default.agent.agy": {
+    "label": "Antigravity"
+  },
+  "setup.default.agent.claude": {
+    "label": "Claude"
+  },
+  "setup.default.agent.codex": {
+    "label": "Codex"
+  },
+  "setup.default.agent.copilot": {
+    "label": "Copilot"
+  },
+  "setup.default.agent.crush": {
+    "label": "Crush"
+  },
+  "setup.default.agent.cursor-agent": {
+    "label": "Cursor CLI"
+  },
+  "setup.default.agent.gemini": {
+    "label": "Gemini"
+  },
+  "setup.default.agent.grok": {
+    "label": "Grok"
+  },
+  "setup.default.agent.hermes": {
+    "label": "Hermes"
+  },
+  "setup.default.agent.kimi": {
+    "label": "Kimi"
+  },
+  "setup.default.agent.muse": {
+    "label": "Muse Code"
+  },
+  "setup.default.agent.omp": {
+    "label": "omp"
+  },
+  "setup.default.agent.openclaw": {
+    "label": "OpenClaw"
+  },
+  "setup.default.agent.opencode": {
+    "label": "OpenCode"
+  },
+  "setup.default.agent.ori": {
+    "label": "Ori"
+  },
+  "setup.default.agent.pi": {
+    "label": "Pi"
+  },
+  "setup.default.browser": {
+    "label": "المتصفح",
+    "title": "المتصفح الافتراضي"
+  },
+  "setup.default.browser.brave": {
+    "label": "Brave"
+  },
+  "setup.default.browser.brave-origin": {
+    "label": "Brave Origin"
+  },
+  "setup.default.browser.chrome": {
+    "label": "Chrome"
+  },
+  "setup.default.browser.chromium": {
+    "label": "Chromium"
+  },
+  "setup.default.browser.edge": {
+    "label": "Edge"
+  },
+  "setup.default.browser.firefox": {
+    "label": "Firefox"
+  },
+  "setup.default.browser.helium": {
+    "label": "Helium"
+  },
+  "setup.default.browser.zen": {
+    "label": "Zen"
+  },
+  "setup.default.editor": {
+    "label": "المحرر",
+    "title": "المحرر الافتراضي"
+  },
+  "setup.default.editor.code": {
+    "label": "VSCode"
+  },
+  "setup.default.editor.cursor": {
+    "label": "Cursor"
+  },
+  "setup.default.editor.emacs": {
+    "label": "Emacs"
+  },
+  "setup.default.editor.helix": {
+    "label": "Helix"
+  },
+  "setup.default.editor.nvim": {
+    "label": "Neovim"
+  },
+  "setup.default.editor.sublime": {
+    "label": "Sublime Text"
+  },
+  "setup.default.editor.vim": {
+    "label": "Vim"
+  },
+  "setup.default.editor.zed": {
+    "label": "Zed"
+  },
+  "setup.default.terminal": {
+    "label": "الطرفية",
+    "title": "الطرفية الافتراضية"
+  },
+  "setup.default.terminal.alacritty": {
+    "label": "Alacritty"
+  },
+  "setup.default.terminal.foot": {
+    "label": "Foot"
+  },
+  "setup.default.terminal.ghostty": {
+    "label": "Ghostty"
+  },
+  "setup.default.terminal.kitty": {
+    "label": "Kitty"
+  },
+  "setup.display": {
+    "description": "أشرطة السطوع، الإضاءة الليلية",
+    "label": "الشاشة"
+  },
+  "setup.dotfiles": {
+    "label": "ملفات الإعداد (Dotfiles)"
+  },
+  "setup.dotfiles.clone": {
+    "description": "yadm: يحفظ نسخة احتياطية من الملفات التي يستبدلها",
+    "label": "استنساخ المستودع"
+  },
+  "setup.dotfiles.status": {
+    "label": "الحالة"
+  },
+  "setup.idle": {
+    "description": "مهل شاشة التوقف والقفل وإطفاء الشاشة والسكون",
+    "label": "الخمول والسكون"
+  },
+  "setup.idle.ac": {
+    "description": "بالثواني، 0 = أبدًا؛ السكون أبدًا افتراضيًا",
+    "label": "المهل عند التوصيل بالكهرباء"
+  },
+  "setup.idle.battery": {
+    "description": "تحلّ محل قيم التوصيل بالكهرباء عند الفصل",
+    "label": "المهل على البطارية"
+  },
+  "setup.idle.status": {
+    "label": "الحالة"
+  },
+  "setup.input": {
+    "description": "local.lua: الإدخال وأي شيء آخر",
+    "label": "الإدخال"
+  },
+  "setup.kblayout": {
+    "label": "تخطيط لوحة المفاتيح في الشريط"
+  },
+  "setup.kblayout.off": {
+    "label": "إخفاء"
+  },
+  "setup.kblayout.on": {
+    "label": "إظهار"
+  },
+  "setup.keybindings": {
+    "label": "اختصارات لوحة المفاتيح"
+  },
+  "setup.keyd": {
+    "label": "CapsLock كمفتاح Hyper (keyd)"
+  },
+  "setup.keyd.off": {
+    "label": "إيقاف"
+  },
+  "setup.keyd.on": {
+    "label": "تشغيل"
+  },
+  "setup.keyd.status": {
+    "label": "الحالة"
+  },
+  "setup.language": {
+    "description": "القوائم واللوحات بالإنجليزية أو العربية",
+    "label": "اللغة"
+  },
+  "setup.language.ar": {
+    "label": "العربية"
+  },
+  "setup.language.en": {
+    "label": "English"
+  },
+  "setup.launcher": {
+    "label": "بادئات المُشغِّل",
+    "title": "بادئات المُشغِّل"
+  },
+  "setup.launcher.commands": {
+    "description": "إجراءات القائمة",
+    "label": "/ الأوامر"
+  },
+  "setup.launcher.commands.off": {
+    "label": "إيقاف"
+  },
+  "setup.launcher.commands.on": {
+    "label": "تشغيل"
+  },
+  "setup.launcher.emoji": {
+    "description": "البحث في الرموز التعبيرية، Enter ينسخ",
+    "label": ": الرموز التعبيرية"
+  },
+  "setup.launcher.emoji.off": {
+    "label": "إيقاف"
+  },
+  "setup.launcher.emoji.on": {
+    "label": "تشغيل"
+  },
+  "setup.launcher.web": {
+    "description": "فتح بحث في المتصفح",
+    "label": "? البحث في الويب"
+  },
+  "setup.launcher.web.off": {
+    "label": "إيقاف"
+  },
+  "setup.launcher.web.on": {
+    "label": "تشغيل"
+  },
+  "setup.launcher.windows": {
+    "description": "التبديل إلى نافذة مفتوحة",
+    "label": "@ النوافذ"
+  },
+  "setup.launcher.windows.off": {
+    "label": "إيقاف"
+  },
+  "setup.launcher.windows.on": {
+    "label": "تشغيل"
+  },
+  "setup.monitors": {
+    "label": "الشاشات"
+  },
+  "setup.network": {
+    "label": "الشبكة"
+  },
+  "setup.network.dns": {
+    "label": "DNS"
+  },
+  "setup.network.dns.cloudflare": {
+    "label": "Cloudflare"
+  },
+  "setup.network.dns.custom": {
+    "label": "مخصّص"
+  },
+  "setup.network.dns.dhcp": {
+    "label": "DHCP"
+  },
+  "setup.network.dns.google": {
+    "label": "Google"
+  },
+  "setup.network.qr": {
+    "description": "كلمة مرور Wi-Fi",
+    "label": "رمز QR"
+  },
+  "setup.plugin": {
+    "label": "الإضافات"
+  },
+  "setup.plugin.add": {
+    "label": "إضافة إضافة"
+  },
+  "setup.plugin.disable": {
+    "label": "تعطيل إضافة"
+  },
+  "setup.plugin.enable": {
+    "label": "تفعيل إضافة"
+  },
+  "setup.plugin.remove": {
+    "label": "إزالة إضافة"
+  },
+  "setup.power": {
+    "description": "الشحن، الوقت المتبقي، وضع الطاقة، حدّ الشحن",
+    "label": "الطاقة والبطارية"
+  },
+  "setup.secureboot": {
+    "label": "الإقلاع الآمن (Secure Boot)"
+  },
+  "setup.secureboot.setup": {
+    "label": "إعداد"
+  },
+  "setup.secureboot.status": {
+    "label": "الحالة"
+  },
+  "setup.security": {
+    "label": "الأمان"
+  },
+  "setup.security.fido2": {
+    "label": "Fido2"
+  },
+  "setup.security.fingerprint": {
+    "label": "بصمة الإصبع"
+  },
+  "setup.security.passwordless-sudo": {
+    "label": "sudo بلا كلمة مرور"
+  },
+  "setup.security.ssh-agent": {
+    "label": "وكيل SSH"
+  },
+  "setup.security.sshd": {
+    "label": "SSHD"
+  },
+  "setup.security.vapt": {
+    "description": "الحالة المثبّتة والمساعدات المحلية الصريحة؛ لا يعمل شيء عند الدخول.",
+    "label": "محطة VAPT"
+  },
+  "setup.security.vapt.local": {
+    "label": "الإجراءات المحلية"
+  },
+  "setup.security.vapt.panel": {
+    "label": "فتح اللوحة"
+  },
+  "setup.security.vapt.services": {
+    "label": "الخدمات المثبّتة"
+  },
+  "setup.security.vapt.status": {
+    "label": "الحالة والمصادر"
+  },
+  "setup.security.vapt.tools": {
+    "label": "الأدوات المثبّتة"
+  },
+  "style": {
+    "label": "المظهر"
+  },
+  "style.about": {
+    "label": "حول"
+  },
+  "style.about.default": {
+    "label": "استعادة الافتراضي"
+  },
+  "style.about.image": {
+    "label": "التعيين من صورة"
+  },
+  "style.about.text": {
+    "label": "تحرير النص"
+  },
+  "style.background": {
+    "label": "الخلفية"
+  },
+  "style.bar": {
+    "label": "شريط القوائم"
+  },
+  "style.bar.arrange": {
+    "label": "ترتيب الأدوات"
+  },
+  "style.bar.position": {
+    "label": "الموضع"
+  },
+  "style.bar.position.bottom": {
+    "label": "أسفل"
+  },
+  "style.bar.position.left": {
+    "label": "يسار"
+  },
+  "style.bar.position.right": {
+    "label": "يمين"
+  },
+  "style.bar.position.top": {
+    "label": "أعلى"
+  },
+  "style.bar.transparency": {
+    "label": "الشفافية"
+  },
+  "style.font": {
+    "label": "الخط"
+  },
+  "style.hyprland": {
+    "description": "local.lua: الشكل والإحساس والإدخال وما تبقّى",
+    "label": "Hyprland"
+  },
+  "style.mark": {
+    "label": "الشعار",
+    "title": "شعار haseen"
+  },
+  "style.mark.gate": {
+    "label": "البوابة"
+  },
+  "style.mark.kufic": {
+    "label": "الكوفي"
+  },
+  "style.mark.shield": {
+    "label": "الدرع"
+  },
+  "style.next-background": {
+    "label": "الخلفية التالية"
+  },
+  "style.screensaver": {
+    "label": "شاشة التوقف"
+  },
+  "style.screensaver.default": {
+    "label": "استعادة الافتراضي"
+  },
+  "style.screensaver.image": {
+    "label": "التعيين من صورة"
+  },
+  "style.screensaver.preview": {
+    "label": "معاينة"
+  },
+  "style.screensaver.style-native": {
+    "label": "أصلي"
+  },
+  "style.screensaver.style-ttfx": {
+    "label": "مؤثرات نصية (ttfx)"
+  },
+  "style.screensaver.text": {
+    "label": "تحرير النص"
+  },
+  "style.theme": {
+    "label": "السمة"
+  },
+  "style.theme-generator": {
+    "description": "سمة من صورة (matugen)",
+    "label": "مولّد السمات"
+  },
+  "style.unlock": {
+    "description": "شاشة الإقلاع بألوان السمة الحالية",
+    "label": "فتح القفل"
+  },
+  "system": {
+    "label": "النظام"
+  },
+  "system.hibernate": {
+    "label": "الإسبات"
+  },
+  "system.lock": {
+    "label": "قفل"
+  },
+  "system.logout": {
+    "label": "تسجيل الخروج"
+  },
+  "system.reboot": {
+    "label": "إعادة التشغيل"
+  },
+  "system.screen-off": {
+    "description": "حتى الضغطة أو حركة المؤشر التالية",
+    "label": "إطفاء الشاشة"
+  },
+  "system.screen-on": {
+    "label": "تشغيل الشاشة"
+  },
+  "system.screensaver": {
+    "label": "شاشة التوقف"
+  },
+  "system.shutdown": {
+    "label": "إيقاف التشغيل"
+  },
+  "system.suspend": {
+    "label": "السكون"
+  },
+  "trigger": {
+    "label": "تشغيل سريع"
+  },
+  "trigger.capture": {
+    "label": "الالتقاط"
+  },
+  "trigger.capture.color": {
+    "label": "لون"
+  },
+  "trigger.capture.qr": {
+    "label": "رمز QR"
+  },
+  "trigger.capture.screenrecord": {
+    "label": "تسجيل الشاشة"
+  },
+  "trigger.capture.screenrecord-stop": {
+    "label": "إيقاف تسجيل الشاشة"
+  },
+  "trigger.capture.screenrecord.desktop-audio": {
+    "label": "مع صوت سطح المكتب"
+  },
+  "trigger.capture.screenrecord.microphone": {
+    "label": "مع صوت سطح المكتب والميكروفون"
+  },
+  "trigger.capture.screenrecord.no-audio": {
+    "label": "بلا صوت"
+  },
+  "trigger.capture.screenrecord.webcam": {
+    "label": "مع صوت سطح المكتب والميكروفون والكاميرا"
+  },
+  "trigger.capture.screenshot": {
+    "label": "لقطة شاشة"
+  },
+  "trigger.capture.text": {
+    "label": "نص"
+  },
+  "trigger.context": {
+    "label": "السياق"
+  },
+  "trigger.context.auto-game": {
+    "label": "وضع اللعب لألعاب Steam بملء الشاشة"
+  },
+  "trigger.context.focus": {
+    "label": "التركيز"
+  },
+  "trigger.context.game": {
+    "label": "اللعب"
+  },
+  "trigger.context.normal": {
+    "label": "عادي"
+  },
+  "trigger.context.present": {
+    "label": "العرض التقديمي"
+  },
+  "trigger.emoji": {
+    "label": "الرموز التعبيرية"
+  },
+  "trigger.hardware": {
+    "label": "العتاد"
+  },
+  "trigger.hardware.hybrid-gpu": {
+    "label": "GPU هجين"
+  },
+  "trigger.hardware.laptop-display": {
+    "label": "شاشة الحاسوب المحمول"
+  },
+  "trigger.hardware.mirror-display": {
+    "label": "نسخ الشاشة"
+  },
+  "trigger.hardware.touchpad": {
+    "label": "لوحة اللمس"
+  },
+  "trigger.hardware.touchpad-haptics": {
+    "label": "الاهتزاز اللمسي للوحة اللمس"
+  },
+  "trigger.hardware.touchpad-haptics.high": {
+    "label": "مرتفع"
+  },
+  "trigger.hardware.touchpad-haptics.low": {
+    "label": "منخفض"
+  },
+  "trigger.hardware.touchpad-haptics.mid": {
+    "label": "متوسط"
+  },
+  "trigger.hardware.touchscreen": {
+    "label": "شاشة اللمس"
+  },
+  "trigger.reminder": {
+    "label": "تذكير"
+  },
+  "trigger.reminder.clear": {
+    "label": "مسح الكل"
+  },
+  "trigger.reminder.set": {
+    "label": "ضبط تذكير"
+  },
+  "trigger.reminder.show": {
+    "label": "عرض الكل"
+  },
+  "trigger.share": {
+    "label": "مشاركة"
+  },
+  "trigger.share.clipboard": {
+    "label": "الحافظة"
+  },
+  "trigger.share.file": {
+    "label": "ملف"
+  },
+  "trigger.share.folder": {
+    "label": "مجلد"
+  },
+  "trigger.share.receive": {
+    "label": "استقبال"
+  },
+  "trigger.tests": {
+    "label": "اختبار السرعة"
+  },
+  "trigger.tests.disk": {
+    "label": "اختبار سرعة القرص"
+  },
+  "trigger.tests.network": {
+    "label": "اختبار سرعة الشبكة"
+  },
+  "trigger.toggle": {
+    "label": "تبديل"
+  },
+  "trigger.toggle.animations": {
+    "label": "الحركات"
+  },
+  "trigger.toggle.bar": {
+    "label": "شريط القوائم"
+  },
+  "trigger.toggle.dnd": {
+    "description": "كتمها",
+    "label": "الإشعارات"
+  },
+  "trigger.toggle.gaps": {
+    "label": "فجوات النوافذ"
+  },
+  "trigger.toggle.idle": {
+    "label": "إبقاء الجهاز مستيقظًا"
+  },
+  "trigger.toggle.nightlight": {
+    "label": "الإضاءة الليلية"
+  },
+  "trigger.toggle.one-window-ratio": {
+    "label": "نسبة النافذة الواحدة"
+  },
+  "trigger.toggle.screensaver": {
+    "label": "شاشة التوقف"
+  },
+  "trigger.toggle.workspace-layout": {
+    "label": "تخطيط مساحة العمل"
+  },
+  "trigger.transcode": {
+    "label": "تحويل الصيغة"
+  },
+  "update": {
+    "label": "التحديث"
+  },
+  "update.config": {
+    "label": "الضبط",
+    "title": "إعادة إلى الافتراضي"
+  },
+  "update.config.hyprland": {
+    "label": "Hyprland"
+  },
+  "update.config.nightlight": {
+    "description": "إعدادات الإضاءة الليلية",
+    "label": "Hyprsunset"
+  },
+  "update.config.plymouth": {
+    "label": "Plymouth"
+  },
+  "update.config.shell": {
+    "label": "الواجهة"
+  },
+  "update.firmware": {
+    "label": "البرامج الثابتة"
+  },
+  "update.hardware": {
+    "label": "العتاد",
+    "title": "إعادة التشغيل"
+  },
+  "update.hardware.audio": {
+    "label": "الصوت"
+  },
+  "update.hardware.bluetooth": {
+    "label": "Bluetooth"
+  },
+  "update.hardware.trackpad": {
+    "label": "لوحة اللمس"
+  },
+  "update.hardware.wifi": {
+    "label": "Wi-Fi"
+  },
+  "update.password": {
+    "label": "كلمة المرور"
+  },
+  "update.password.drive": {
+    "label": "تشفير القرص"
+  },
+  "update.password.user": {
+    "label": "المستخدم"
+  },
+  "update.process": {
+    "label": "العملية",
+    "title": "إعادة التشغيل"
+  },
+  "update.process.hyprsunset": {
+    "label": "Hyprsunset"
+  },
+  "update.process.shell": {
+    "label": "الواجهة"
+  },
+  "update.recovery": {
+    "label": "استرداد الواجهة"
+  },
+  "update.recovery.offer": {
+    "label": "خيارات الاسترداد"
+  },
+  "update.recovery.restore": {
+    "description": "ملف shell.json من آخر تشغيل سليم",
+    "label": "آخر إعداد سليم"
+  },
+  "update.recovery.safe-mode": {
+    "description": "الإضافات المدمجة فقط",
+    "label": "الوضع الآمن"
+  },
+  "update.system": {
+    "label": "النظام"
+  },
+  "update.themes": {
+    "description": "تنزيل خلفيات كل سمات Omarchy من جديد",
+    "label": "سمات إضافية"
+  },
+  "update.time": {
+    "label": "الوقت"
+  },
+  "update.timezone": {
+    "label": "المنطقة الزمنية"
+  }
+}

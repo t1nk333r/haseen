@@ -5,6 +5,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -43,4 +45,4 @@ colour="$(hyprpicker -z -f "$format" 2>/dev/null || true)"
 [[ -n $colour ]] || exit 0 # cancelled
 printf '%s' "$colour" | wl-copy
 printf '%s\n' "$colour"
-notify "Colour copied" "$colour"
+notify "$(i18n "Colour copied")" "$colour"

@@ -193,6 +193,10 @@ Scope {
 
                 width: parent.width
                 spacing: Theme.gap
+                // Its own layer surface, not a PanelPopup: mirror the cards
+                // here in a right-to-left language (plan 109).
+                LayoutMirroring.enabled: I18n.rightToLeft
+                LayoutMirroring.childrenInherit: true
 
                 Repeater {
                     // ScriptModel diffs by identity: a new popup does not

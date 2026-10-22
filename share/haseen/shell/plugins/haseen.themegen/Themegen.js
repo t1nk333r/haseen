@@ -6,6 +6,20 @@
 // (tests/test-themegen.sh). The colour work itself is the CLI's: the panel
 // shows what the command would write and never computes a colour.
 
+// Interface strings stay English here and are translated where QML shows
+// them: the panel translates a label with I18n.tr and passes it as `tr`
+// for a note with arguments; without it the text is English. N_ marks the
+// strings for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
+// %1..%9 replaced by the further arguments, in one pass.
+function fill(text) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return String(text).replace(/%([1-9])/g, function (whole, digit) {
+        return args[digit - 1] === undefined ? whole : String(args[digit - 1]);
+    });
+}
+
 // matugen's scheme types, as bin/haseen-theme-generate names them (SCHEMES).
 var SCHEMES = ["tonal-spot", "content", "expressive", "fidelity", "fruit-salad", "monochrome", "neutral", "rainbow", "vibrant"];
 var MODES = ["dark", "light"];
@@ -18,9 +32,27 @@ var HUES = ["red", "yellow", "green", "cyan", "blue", "magenta"];
 var HEX = /^#[0-9a-fA-F]{6}$/;
 var NAME = /^[a-z0-9][a-z0-9._-]*$/;
 
-// "tonal-spot" -> "Tonal spot".
+// The chip labels of the schemes and modes, marked for translation; an
+// unknown scheme is its id made readable ("tonal-spot" -> "Tonal spot").
+var LABELS_OF = {
+    "tonal-spot": N_("Tonal spot"),
+    content: N_("Content"),
+    expressive: N_("Expressive"),
+    fidelity: N_("Fidelity"),
+    "fruit-salad": N_("Fruit salad"),
+    monochrome: N_("Monochrome"),
+    neutral: N_("Neutral"),
+    rainbow: N_("Rainbow"),
+    vibrant: N_("Vibrant"),
+    dark: N_("Dark"),
+    light: N_("Light")
+};
+
 function schemeLabel(scheme) {
-    var s = String(scheme || "").replace(/-/g, " ");
+    var id = String(scheme || "");
+    if (Object.prototype.hasOwnProperty.call(LABELS_OF, id))
+        return LABELS_OF[id];
+    var s = id.replace(/-/g, " ");
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -144,14 +176,15 @@ function swatchLabel(key) {
 }
 
 // What Save would do to the name, before it is pressed.
-function targetNote(target, name) {
+function targetNote(target, name, tr) {
+    var t = tr || fill;
     switch (target) {
     case "generated":
-        return "replaces your generated theme " + name;
+        return t(N_("replaces your generated theme %1"), name);
     case "stock":
-        return name + " is a stock theme: pick another name";
+        return t(N_("%1 is a stock theme: pick another name"), name);
     case "taken":
-        return name + " is a theme of yours: pick another name";
+        return t(N_("%1 is a theme of yours: pick another name"), name);
     default:
         return "";
     }

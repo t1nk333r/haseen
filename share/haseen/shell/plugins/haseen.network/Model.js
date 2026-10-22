@@ -10,6 +10,10 @@
 // Pure helpers for the haseen.network bar widget and panel. Nothing here
 // touches QML types, so tests/test-network-panel.sh runs it headless.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 function wifiIconFor(strength) {
     const icons = ["\u{F092F}", "\u{F091F}", "\u{F0922}", "\u{F0925}", "\u{F0928}"];
     const index = Math.max(0, Math.min(4, Math.ceil(strength / 20) - 1));
@@ -92,10 +96,10 @@ function headerDetail(info) {
 function heroTitle(info, kind) {
     const value = info || {};
     if (value.type === "wifi")
-        return value.ssid || "Wi-Fi";
+        return value.ssid || N_("Wi-Fi");
     if (value.type === "ethernet")
-        return "Ethernet";
-    return value.iface || (kind === "disconnected" ? "Disconnected" : "No connection");
+        return N_("Ethernet");
+    return value.iface || (kind === "disconnected" ? N_("Disconnected") : N_("No connection"));
 }
 
 // The line under the name: what a restricted link needs, else a rotating
@@ -103,19 +107,19 @@ function heroTitle(info, kind) {
 function heroMeta(info, kind, wifiConnected, phrase, connectivity) {
     const type = (info || {}).type;
     if (kind !== "disconnected" && connectivity === "portal")
-        return "SIGN-IN REQUIRED";
+        return N_("SIGN-IN REQUIRED");
     if (kind !== "disconnected" && connectivity === "limited")
-        return "LIMITED INTERNET ACCESS";
+        return N_("LIMITED INTERNET ACCESS");
     if (type === "ethernet" || (type === "wifi" && wifiConnected))
         return String(phrase || "").toUpperCase();
     if (kind === "disconnected")
-        return "NOT CONNECTED";
+        return N_("NOT CONNECTED");
     return "";
 }
 
 function bandLabel(band) {
     if (band === "auto")
-        return "Auto";
+        return N_("Auto");
     if (!band)
         return "";
     return band + "ghz";
@@ -123,21 +127,26 @@ function bandLabel(band) {
 
 // Under Automatic the pills are hidden, so the header carries the live band
 // instead: "WI-FI BAND: 2.4GHZ". Once a band is pinned the pills say it.
-function bandSectionTitle(selected, current) {
+// The panel fills the template itself, so the band rides as %1.
+function bandSectionBand(selected, current) {
     if (selected !== "auto")
-        return "WI-FI BAND";
-    const label = bandLabel(current);
-    if (label === "")
-        return "WI-FI BAND";
-    return "WI-FI BAND: " + label.toUpperCase();
+        return "";
+    return bandLabel(current).toUpperCase();
+}
+
+function bandSectionTitle(selected, current) {
+    const band = bandSectionBand(selected, current);
+    if (band === "")
+        return N_("WI-FI BAND");
+    return N_("WI-FI BAND: %1").replace("%1", band);
 }
 
 function bandTooltip(band) {
     if (band === "auto")
-        return "Let Wi-Fi pick the band";
+        return N_("Let Wi-Fi pick the band");
     if (!band)
         return "";
-    return "Stay on " + bandLabel(band);
+    return N_("Stay on %1").replace("%1", bandLabel(band));
 }
 
 function parseBandStatus(raw) {
@@ -313,7 +322,7 @@ function formatPingLatency(ms, hasSamples) {
         return "--";
     const value = parseFloat(ms);
     if (!isFinite(value) || value < 0)
-        return "Timeout";
+        return N_("Timeout");
     return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " ms";
 }
 
@@ -364,9 +373,9 @@ function wifiSectionTitle(wifiNetworks, index) {
     if (!net)
         return "";
     if (net.known && index === 0)
-        return "KNOWN NETWORKS";
+        return N_("KNOWN NETWORKS");
     if (!net.known && (index === 0 || (networks[index - 1] && networks[index - 1].known)))
-        return "OTHER NETWORKS";
+        return N_("OTHER NETWORKS");
     return "";
 }
 
@@ -402,17 +411,17 @@ function rowStatus(row, action, failure, passwordOpen, connectivity) {
     const fail = failure || {};
     if (act.kind && act.ssid === row.ssid) {
         if (act.kind === "connect")
-            return "Connecting…";
+            return N_("Connecting…");
         if (act.kind === "disconnect")
-            return "Disconnecting…";
-        return "Forgetting…";
+            return N_("Disconnecting…");
+        return N_("Forgetting…");
     }
     if (fail.reason && fail.ssid === row.ssid)
         return fail.reason;
     if (row.connected && connectivity === "portal")
-        return "Sign-in required";
+        return N_("Sign-in required");
     if (row.connected)
-        return "Connected";
+        return N_("Connected");
     return "";
 }
 
@@ -425,16 +434,16 @@ var enterpriseConnectScript = "u=$(uuidgen); IFS= read -r pw;" + " nmcli connect
 function networkFailureReason(reason, needsCredentials, reasons) {
     const r = reasons || {};
     if (needsCredentials && reason === r.NoSecrets)
-        return "Passphrase required";
+        return N_("Passphrase required");
     if (needsCredentials && reason === r.WifiAuthTimeout)
-        return "Wrong password";
+        return N_("Wrong password");
     if (reason === r.WifiNetworkLost)
-        return "Network lost";
+        return N_("Network lost");
     if (reason === r.WifiClientDisconnected)
-        return "Disconnected";
+        return N_("Disconnected");
     if (reason === r.WifiClientFailed)
-        return "Connection failed";
-    return "Failed to connect";
+        return N_("Connection failed");
+    return N_("Failed to connect");
 }
 
 // NoSecrets means credentials are missing; an auth timeout on a secured
@@ -447,27 +456,28 @@ function shouldRepromptPassphrase(reason, needsCredentials, reasons) {
     return reason === r.NoSecrets || reason === r.WifiAuthTimeout;
 }
 
-// `haseen setup dns` names; the panel shows Omarchy's labels.
+// `haseen setup dns` names; the panel shows Omarchy's labels (translated
+// where shown; DHCP and the companies keep their names).
 var dnsProviders = [
     {
         id: "dhcp",
         label: "DHCP",
-        hint: "Use DNS from DHCP"
+        hint: N_("Use DNS from DHCP")
     },
     {
         id: "cloudflare",
         label: "Cloudflare",
-        hint: "Set DNS to Cloudflare"
+        hint: N_("Set DNS to Cloudflare")
     },
     {
         id: "google",
         label: "Google",
-        hint: "Set DNS to Google"
+        hint: N_("Set DNS to Google")
     },
     {
         id: "custom",
-        label: "Custom",
-        hint: "Set custom DNS servers"
+        label: N_("Custom"),
+        hint: N_("Set custom DNS servers")
     }
 ];
 

@@ -197,7 +197,7 @@ Column {
     width: parent.width
     text: locationRoot.host.searchingLocation
       ? Model.uiLabel("searching", locationRoot.host.language)
-      : locationRoot.host.locationStatus
+      : Model.uiLabel(locationRoot.host.locationStatus, locationRoot.host.language)
     color: locationRoot.host.faint
     font.family: locationRoot.host.nameFontFamily
     font.pixelSize: locationRoot.host.fCaption

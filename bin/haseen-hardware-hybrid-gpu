@@ -10,6 +10,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/terminal.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 in_floating_terminal "$@"
 
 usage() {
@@ -49,5 +51,5 @@ run supergfxctl -m "$target"
 $DRY_RUN && exit 0
 echo "GPU mode set to $target; log out to apply"
 if have notify-send; then
-    notify-send -a haseen "GPU mode: $target" "Log out to apply" || true
+    notify-send -a haseen "$(i18n "GPU mode: %1" "$target")" "$(i18n "Log out to apply")" || true
 fi

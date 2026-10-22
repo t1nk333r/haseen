@@ -127,6 +127,10 @@ PopupWindow {
         border.color: Theme.border
         focus: true
         Keys.onEscapePressed: root.closeRequested()
+        // The menu's own popup, not the bar: in a right-to-left language the
+        // rows run from the right and the arrows point the other way (plan 109).
+        LayoutMirroring.enabled: I18n.rightToLeft
+        LayoutMirroring.childrenInherit: true
 
         Column {
             id: layout
@@ -144,7 +148,8 @@ PopupWindow {
                 MenuRow {
                     width: header.width
                     height: root.rowHeight
-                    lead: "\u2039"
+                    // Back: toward the start of the line.
+                    lead: I18n.rightToLeft ? "\u203a" : "\u2039"
                     label: root.currentTitle
                     onActivated: {
                         if (root.settling)
@@ -214,7 +219,7 @@ PopupWindow {
                                 lead: entry.modelData.buttonType !== QsMenuButtonType.None && entry.modelData.checkState === Qt.Checked ? "\uf00c" : ""
                                 icon: String(entry.modelData.icon || "")
                                 label: entry.rowText
-                                trail: entry.modelData.hasChildren ? "\u203a" : ""
+                                trail: entry.modelData.hasChildren ? (I18n.rightToLeft ? "\u2039" : "\u203a") : ""
                                 onActivated: {
                                     if (root.settling)
                                         return;

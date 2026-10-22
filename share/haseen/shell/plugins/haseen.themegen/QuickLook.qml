@@ -40,7 +40,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: root.imagePath === "" ? "Preview unavailable" : picture.status === Image.Error ? "Preview unavailable" : "Loading preview…"
+                    text: root.imagePath === "" || picture.status === Image.Error ? I18n.tr("Preview unavailable") : I18n.tr("Loading preview…")
                     color: Theme.subtle(Theme.surface)
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize
@@ -52,7 +52,7 @@ Item {
                 id: footer
 
                 width: parent.width
-                text: "Space or Esc closes · h/j/k/l or arrows browse · Enter picks"
+                text: I18n.tr("Space or Esc closes · h/j/k/l or arrows browse · Enter picks")
                 color: Theme.subtle(Theme.surface)
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap

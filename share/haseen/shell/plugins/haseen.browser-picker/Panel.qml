@@ -150,7 +150,7 @@ Column {
             anchors.left: heroGlyph.right
             anchors.leftMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            text: "Browser picker"
+            text: I18n.tr("Browser picker")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -160,7 +160,7 @@ Column {
             anchors.right: parent.right
             height: parent.height
             glyph: "\u{f0349}"
-            text: "Open a browser"
+            text: I18n.tr("Open a browser")
             color: Theme.foreground
             onClicked: Apps.launch([root.bin + "/haseen-browser-picker"])
         }
@@ -170,7 +170,7 @@ Column {
         width: parent.width
         wrapMode: Text.WordWrap
         visible: root.service === null
-        text: "The picker is not running: add haseen.browser-picker to shell.json services (haseen plugin enable haseen.browser-picker)."
+        text: I18n.tr("The picker is not running: add haseen.browser-picker to shell.json services (haseen plugin enable haseen.browser-picker).")
         color: Theme.warning
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -184,7 +184,7 @@ Column {
             anchors.left: parent.left
             anchors.right: defaultButton.left
             anchors.verticalCenter: parent.verticalCenter
-            text: root.isDefault ? "Every link asks here (the default browser)" : "Links open in " + (root.defaultBrowser.replace(/\.desktop$/, "") || "another browser")
+            text: root.isDefault ? I18n.tr("Every link asks here (the default browser)") : root.defaultBrowser.replace(/\.desktop$/, "") !== "" ? I18n.tr("Links open in %1", root.defaultBrowser.replace(/\.desktop$/, "")) : I18n.tr("Links open in another browser")
             textFormat: Text.PlainText
             elide: Text.ElideRight
             color: Theme.foreground
@@ -198,7 +198,7 @@ Column {
             anchors.right: parent.right
             height: parent.height
             visible: !root.isDefault
-            text: makeDefault.running ? "Setting…" : "Make default"
+            text: makeDefault.running ? I18n.tr("Setting…") : I18n.tr("Make default")
             color: Theme.accent
             onClicked: if (!makeDefault.running)
                 makeDefault.running = true
@@ -206,28 +206,29 @@ Column {
     }
 
     SettingRow {
-        label: "Open matching rules without asking"
-        detail: "Off: rules only rank the list"
+        label: I18n.tr("Open matching rules without asking")
+        detail: I18n.tr("Off: rules only rank the list")
         checked: root.pickerSettings.autoOpenRules
         onToggled: on => root.setSetting("autoOpenRules", on)
     }
 
     SettingRow {
-        label: "Offer a rule after " + root.pickerSettings.promptAfter + " picks"
-        detail: "the same site to the same profile; Ctrl+Enter accepts"
+        label: I18n.tn("Offer a rule after %1 pick", "Offer a rule after %1 picks", root.pickerSettings.promptAfter)
+        detail: I18n.tr("the same site to the same profile; Ctrl+Enter accepts")
         checked: root.pickerSettings.learnRules
         onToggled: on => root.setSetting("learnRules", on)
     }
 
     SettingRow {
-        label: "Plain browsers first"
-        detail: "browsers without profiles head the unfiltered list"
+        label: I18n.tr("Plain browsers first")
+        detail: I18n.tr("browsers without profiles head the unfiltered list")
         checked: root.pickerSettings.genericFirst
         onToggled: on => root.setSetting("genericFirst", on)
     }
 
     Text {
-        text: root.service ? (root.service.rules.length === 1 ? "1 rule" : root.service.rules.length + " rules") : "Rules"
+        width: parent.width
+        text: root.service ? I18n.tn("%1 rule", "%1 rules", root.service.rules.length) : I18n.tr("Rules")
         color: Theme.accent
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -255,9 +256,10 @@ Column {
             onTextChanged: root.ruleFilter = text
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: filterField.text === ""
-                text: "Filter by site or profile"
+                text: I18n.tr("Filter by site or profile")
                 color: Theme.muted
                 font: filterField.font
             }
@@ -291,7 +293,7 @@ Column {
         width: parent.width
         visible: !root.choosing && root.rules.length === 0
         wrapMode: Text.WordWrap
-        text: root.ruleFilter !== "" ? "No rule matches." : "No rules yet. Pick the same profile for a site a few times and the picker offers one, or add one here."
+        text: root.ruleFilter !== "" ? I18n.tr("No rule matches.") : I18n.tr("No rules yet. Pick the same profile for a site a few times and the picker offers one, or add one here.")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -324,9 +326,10 @@ Column {
             }
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: addField.text === ""
-                text: "Add a rule: type a site (example.com covers its subdomains), then Enter"
+                text: I18n.tr("Add a rule: type a site (example.com covers its subdomains), then Enter")
                 elide: Text.ElideRight
                 width: parent.width - Theme.gap
                 color: Theme.muted
@@ -338,7 +341,7 @@ Column {
     Text {
         width: parent.width
         visible: root.choosing
-        text: "Open " + (root.choosingFor || root.addPattern) + " in:"
+        text: I18n.tr("Open %1 in:", root.choosingFor || root.addPattern)
         textFormat: Text.PlainText
         elide: Text.ElideRight
         color: Theme.accent
@@ -394,8 +397,9 @@ Column {
     }
 
     BarButton {
+        anchors.left: parent.left
         visible: root.choosing
-        text: "Cancel"
+        text: I18n.tr("Cancel")
         color: Theme.muted
         height: Theme.fontSize * 2
         onClicked: {

@@ -5,7 +5,8 @@ import "Model.js" as Model
 
 // The phone's media player in the haseen.omaconnect panel: KDE Connect's
 // downloaded cover (a local file only), title and artist, the players to
-// switch between, and previous / play-pause / next. Read when the panel opens
+// switch between, and previous / play-pause / next (left to right in every
+// language: a transport keeps its order, plan 109). Read when the panel opens
 // and after the daemon's mpris signals. Adapted from OmaConnect's
 // components/MediaPlayerSection.qml (MIT, Copyright (c) 2026 OmaConnect
 // contributors).
@@ -44,7 +45,7 @@ Column {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: card.media.title || "Nothing playing"
+                text: card.media.title || I18n.tr("Nothing playing")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -66,20 +67,22 @@ Column {
     Flow {
         width: card.width
         spacing: Math.round(Theme.gap / 2)
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
 
         Pill {
-            text: "Previous"
+            text: I18n.tr("Previous")
             onClicked: card.service.mediaAction("Previous")
         }
 
         Pill {
-            text: card.media.isPlaying ? "Pause" : "Play"
+            text: card.media.isPlaying ? I18n.tr("Pause") : I18n.tr("Play")
             active: card.media.isPlaying
             onClicked: card.service.mediaAction("PlayPause")
         }
 
         Pill {
-            text: "Next"
+            text: I18n.tr("Next")
             onClicked: card.service.mediaAction("Next")
         }
 

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import qs.Haseen
 import "Model.js" as Model
 
 // One finite read per open/explicit refresh. No sampling, retry or launch.
@@ -18,6 +19,6 @@ Process {
         // Valid semantic degraded/refused objects remain diagnostics, not success.
         const semantic = ["status", "doctor", "certificate", "anchor"].indexOf(kind) >= 0;
         root.received(kind, generation, data && (code === 0 || semantic) ? data : null,
-            data && (code === 0 || semantic) ? "" : "Unsupported or unreadable local status data. " + Model.text(err.text));
+            data && (code === 0 || semantic) ? "" : I18n.tr("Unsupported or unreadable local status data. %1", Model.text(err.text)));
     }
 }

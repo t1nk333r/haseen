@@ -34,13 +34,16 @@ Column {
     }
 
     TodoistSection {
-        text: "ACCOUNT"
+        text: I18n.tr("ACCOUNT")
     }
 
     Text {
         width: parent.width
         textFormat: Text.PlainText
-        text: "Paste your Todoist API token: Todoist › Settings › Integrations › Developer. It is kept in a private file under ~/.local/state, never in shell.json."
+        // Set rather than implicit: a right-to-left panel then aligns
+        // Latin text and numbers to the right too (plan 109).
+        horizontalAlignment: Text.AlignLeft
+        text: I18n.tr("Paste your Todoist API token: Todoist › Settings › Integrations › Developer. It is kept in a private file under ~/.local/state, never in shell.json.")
         wrapMode: Text.Wrap
         color: Theme.muted
         font.family: Theme.fontFamily
@@ -52,34 +55,38 @@ Column {
 
         width: parent.width
         password: true
-        placeholderText: root.hasToken ? "Token saved; paste a new one to replace it" : "API token"
+        placeholderText: root.hasToken ? I18n.tr("Token saved; paste a new one to replace it") : I18n.tr("API token")
         onAccepted: root.saveToken()
     }
 
+    // Rows span the width, so a right-to-left panel starts them at the right
+    // (a Column does not mirror x).
     Row {
+        width: parent.width
         spacing: Theme.gap
 
         Pill {
-            text: "Save token"
+            text: I18n.tr("Save token")
             enabled: tokenField.text.trim() !== ""
             onClicked: root.saveToken()
         }
 
         Pill {
-            text: "Remove token"
+            text: I18n.tr("Remove token")
             visible: root.hasToken
             onClicked: root.service.clearToken()
         }
     }
 
     TodoistSection {
-        text: "CUSTOM FILTER"
+        text: I18n.tr("CUSTOM FILTER")
     }
 
     Text {
         width: parent.width
         textFormat: Text.PlainText
-        text: "Todoist filter syntax (\"today | overdue\", \"#Work & !subtask\"), shown as the custom view."
+        horizontalAlignment: Text.AlignLeft
+        text: I18n.tr("Todoist filter syntax (\"today | overdue\", \"#Work & !subtask\"), shown as the custom view.")
         wrapMode: Text.Wrap
         color: Theme.muted
         font.family: Theme.fontFamily
@@ -103,7 +110,7 @@ Column {
             id: applyButton
 
             anchors.verticalCenter: parent.verticalCenter
-            text: "Apply"
+            text: I18n.tr("Apply")
             enabled: root.hasToken
             onClicked: {
                 root.service.applyFilter(filterField.text);
@@ -113,13 +120,14 @@ Column {
     }
 
     TodoistSection {
-        text: "BAR COUNT"
+        text: I18n.tr("BAR COUNT")
     }
 
     Text {
         width: parent.width
         textFormat: Text.PlainText
-        text: "A count beside the bar mark, whichever tab the panel shows."
+        horizontalAlignment: Text.AlignLeft
+        text: I18n.tr("A count beside the bar mark, whichever tab the panel shows.")
         wrapMode: Text.Wrap
         color: Theme.muted
         font.family: Theme.fontFamily
@@ -127,20 +135,21 @@ Column {
     }
 
     Row {
+        width: parent.width
         spacing: Math.round(Theme.gap / 2)
 
         Repeater {
             model: [
-                { value: "hide", label: "Hide" },
-                { value: "today", label: "Today" },
-                { value: "inbox", label: "Inbox" },
-                { value: "all", label: "All" }
+                { value: "hide", label: I18n.mark("Hide") },
+                { value: "today", label: I18n.mark("Today") },
+                { value: "inbox", label: I18n.mark("Inbox") },
+                { value: "all", label: I18n.mark("All") }
             ]
 
             Pill {
                 required property var modelData
 
-                text: modelData.label
+                text: I18n.tr(modelData.label)
                 active: !!root.service && root.service.barCountMode === modelData.value
                 onClicked: root.service.setBarCountMode(modelData.value)
             }
@@ -148,14 +157,15 @@ Column {
     }
 
     TodoistSection {
-        text: "GENERAL"
+        text: I18n.tr("GENERAL")
     }
 
     Row {
+        width: parent.width
         spacing: Math.round(Theme.gap / 2)
 
         Pill {
-            text: root.service && root.service.loading ? "Refreshing…" : "Refresh now"
+            text: root.service && root.service.loading ? I18n.tr("Refreshing…") : I18n.tr("Refresh now")
             enabled: root.hasToken
             onClicked: {
                 root.service.refresh();
@@ -164,24 +174,24 @@ Column {
         }
 
         Pill {
-            text: "Open Todoist"
+            text: I18n.tr("Open Todoist")
             onClicked: root.service.openTodoist()
         }
 
         Pill {
-            text: "Keys"
+            text: I18n.tr("Keys")
             onClicked: root.showKeys()
         }
     }
 
     TodoistSection {
-        text: "PANEL SIZE"
+        text: I18n.tr("PANEL SIZE")
     }
 
     Repeater {
         model: [
-            { label: "Width", key: "w" },
-            { label: "Height", key: "h" }
+            { label: I18n.mark("Width  %1 px"), key: "w" },
+            { label: I18n.mark("Height  %1 px"), key: "h" }
         ]
 
         Row {
@@ -190,6 +200,7 @@ Column {
             required property var modelData
             readonly property int value: !root.service ? 0 : modelData.key === "w" ? root.service.panelWidth : root.service.panelHeight
 
+            width: root.width
             spacing: Theme.gap
 
             function step(delta: int): void {
@@ -203,7 +214,8 @@ Column {
                 width: Theme.fontSize * 8
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
-                text: sizeRow.modelData.label + "  " + sizeRow.value + " px"
+                horizontalAlignment: Text.AlignLeft
+                text: I18n.tr(sizeRow.modelData.label, sizeRow.value)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize

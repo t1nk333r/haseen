@@ -18,6 +18,9 @@ Item {
 
     readonly property bool muted: audio ? audio.muted : true
     readonly property real volume: audio ? audio.volume : 0
+    // A right-to-left panel (plan 109) fills the bar from the right, like
+    // Haseen/Widgets/TrackBar.
+    readonly property bool mirrored: LayoutMirroring.enabled
 
     function setVolume(v: real): void {
         if (!audio)
@@ -69,7 +72,7 @@ Item {
                 id: pct
 
                 anchors.right: parent.right
-                text: row.muted ? "Muted" : Math.round(row.volume * 100) + "%"
+                text: row.muted ? I18n.tr("Muted") : Math.round(row.volume * 100) + "%"
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
@@ -90,6 +93,7 @@ Item {
                 color: Theme.surfaceAlt
 
                 Rectangle {
+                    x: row.mirrored ? parent.width - width : 0
                     width: parent.width * Math.min(1, row.volume)
                     height: parent.height
                     radius: 2
@@ -99,7 +103,7 @@ Item {
 
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                x: (track.width - width) * Math.min(1, row.volume)
+                x: (track.width - width) * (row.mirrored ? 1 - Math.min(1, row.volume) : Math.min(1, row.volume))
                 width: parent.height
                 height: width
                 radius: width / 2
@@ -112,10 +116,15 @@ Item {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 preventStealing: true
-                onPressed: event => row.setVolume(event.x / Math.max(1, width))
+                function fraction(x: real): real {
+                    const f = x / Math.max(1, width);
+                    return row.mirrored ? 1 - f : f;
+                }
+
+                onPressed: event => row.setVolume(fraction(event.x))
                 onPositionChanged: event => {
                     if (pressed)
-                        row.setVolume(event.x / Math.max(1, width));
+                        row.setVolume(fraction(event.x));
                 }
                 onWheel: event => row.setVolume(row.volume + (event.angleDelta.y > 0 ? 0.05 : -0.05))
             }

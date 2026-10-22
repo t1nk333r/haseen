@@ -2,6 +2,10 @@
 // from `haseen brightness list` lines; no QML types here, so
 // tests/test-brightness.sh runs it under the real Qt JS engine.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 const KINDS = ["backlight", "keyboard", "ddc"];
 
 // Nerd Font glyphs: a sun for the panel (the OSD's), a keyboard, a monitor.
@@ -111,5 +115,5 @@ function enqueue(queue, id, command) {
 function emptyText(count, ddcDone) {
     if (count > 0)
         return "";
-    return ddcDone ? "No backlight and no monitor that answers over DDC/CI. External monitors: haseen setup ddc on." : "";
+    return ddcDone ? N_("No backlight and no monitor that answers over DDC/CI. External monitors: haseen setup ddc on.") : "";
 }

@@ -31,6 +31,7 @@ PanelWindow {
         preview: true
         busy: win.service ? win.service.busy : false
         message: win.service ? win.service.message : ""
+        messageText: win.service ? I18n.tr(win.service.messageKey, win.service.messageArg) : ""
         fingerprint: win.service ? win.service.fingerprintAvailable : false
         fingerprintError: win.service ? win.service.fingerprintError : false
         onSubmitted: password => win.service.submit(password)

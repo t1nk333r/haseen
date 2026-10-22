@@ -410,17 +410,21 @@ Scope {
         return snoozedUntil(globalKey);
     }
 
-    function durationWords(minutes) {
+    // The options' labels are display text only (never compared), so they
+    // are built in the interface language here (plan 109), one whole
+    // sentence per length. From an hour on the length is said in hours to
+    // a tenth ("1.5 hours"); a fraction takes the plural's "other" form.
+    function snoozeForLabel(minutes) {
         if (minutes < 60)
-            return minutes + " minutes";
+            return I18n.tn("Snooze for %1 minute", "Snooze for %1 minutes", minutes);
         const hours = minutes / 60;
         if (hours === 1)
-            return "an hour";
-        return (Math.round(hours * 10) / 10) + " hours";
+            return I18n.tr("Snooze for an hour");
+        return I18n.tn("Snooze for %1 hour", "Snooze for %1 hours", Math.round(hours * 10) / 10);
     }
 
     function shortWords(minutes) {
-        return minutes < 60 ? (minutes + "m") : ((Math.round(minutes / 6) / 10) + "h").replace(".0h", "h");
+        return minutes < 60 ? I18n.tr("%1m", minutes) : I18n.tr("%1h", String(Math.round(minutes / 6) / 10));
     }
 
     // "tomorrow" is a time, not a duration: a different number of seconds at
@@ -432,8 +436,8 @@ Scope {
             wake.setDate(wake.getDate() + 1);
             wake.setHours(wakeHour, 0, 0, 0);
             return {
-                short: "Tomorrow",
-                menuLabel: "Snooze until tomorrow",
+                short: I18n.tr("Tomorrow"),
+                menuLabel: I18n.tr("Snooze until tomorrow"),
                 seconds: Math.max(600, Math.round((wake.getTime() - Date.now()) / 1000))
             };
         }
@@ -442,7 +446,7 @@ Scope {
             return null;
         return {
             short: shortWords(minutes),
-            menuLabel: "Snooze for " + durationWords(minutes),
+            menuLabel: snoozeForLabel(minutes),
             seconds: Math.round(minutes * 60)
         };
     }
@@ -602,7 +606,8 @@ Scope {
             rows.push({
                 key: key,
                 sourceKey: sourceKey,
-                source: String(clean.source || clean.app || "Notification").slice(0, 120),
+                // A placeholder the panel translates where it shows it.
+                source: String(clean.source || clean.app || I18n.mark("Notification")).slice(0, 120),
                 summary: String(clean.summary || "").slice(0, 240),
                 bodyLine: String(clean.bodyLine || "").slice(0, 1000),
                 ts: Number(clean.ts)
@@ -1650,7 +1655,7 @@ Scope {
             if (identifier === "default") {
                 out.push({
                     id: identifier,
-                    text: "Open in app"
+                    text: I18n.tr("Open in app")
                 });
                 continue;
             }
@@ -1878,7 +1883,8 @@ Scope {
                 service.replyingKey = "";
                 service.closeToast(replyKey, "activated");
             } else {
-                service.replyError = "Unable to safely identify reply target";
+                // English; the card translates it where it shows it.
+                service.replyError = I18n.mark("Unable to safely identify reply target");
             }
         }
     }
@@ -2458,6 +2464,12 @@ Scope {
                         x: clipper.motionInset
                         width: service.cardWidth
                         height: service.deckHeight
+                        // The cards' own window, not a PanelPopup: mirror them
+                        // in a right-to-left language (plan 109). Not on the
+                        // clipper, whose right anchor keeps the deck at the
+                        // screen edge; the deck itself sits at an explicit x.
+                        LayoutMirroring.enabled: I18n.rightToLeft
+                        LayoutMirroring.childrenInherit: true
 
                         // One hover region for the whole deck, above the cards:
                         // moving between two cards must not leave and re-enter.

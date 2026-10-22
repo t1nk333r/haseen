@@ -3,9 +3,11 @@
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this file.
 // haseen (plan 096): `command -v` instead of omarchy-cmd-present; every
 // Timer marked for architecture 6, the post-command re-reads every 2 s
-// instead of 1.5 s.
+// instead of 1.5 s. Plan 109: the strings it shows are marked and stay
+// English here; the panel translates them.
 import QtQuick
 import Quickshell.Io
+import qs.Haseen
 import "model/Shared.js" as Shared
 import "model/NordVpn.js" as NordVpn
 
@@ -29,11 +31,11 @@ Item {
   property string filter: ""
 
   readonly property string backendId: "nordvpn"
-  readonly property string label: "NordVPN"
+  readonly property string label: "NordVPN" // i18n-ignore
   readonly property var installNames: ["NordVPN"]
   readonly property string glyph: Shared.GLYPH_SHIELD_LOCK
   readonly property bool supportsFilter: true
-  readonly property string filterPlaceholder: "Filter countries — press / to search"
+  readonly property string filterPlaceholder: I18n.mark("Filter countries — press / to search")
 
   property bool detected: false
   property var status: NordVpn.parseNordVpnStatus("")
@@ -96,10 +98,10 @@ Item {
   }
 
   readonly property string emptyText: {
-    if (status.state === "denied") return "NordVPN answered, but refused: this user is not in the nordvpn group."
-    if (status.state === "daemon") return "The NordVPN daemon is not answering."
-    if (status.state === "loggedout") return "Log in with: nordvpn login"
-    return countriesLoaded ? "No countries match." : "Loading countries…"
+    if (status.state === "denied") return I18n.mark("NordVPN answered, but refused: this user is not in the nordvpn group.")
+    if (status.state === "daemon") return I18n.mark("The NordVPN daemon is not answering.")
+    if (status.state === "loggedout") return I18n.mark("Log in with: nordvpn login")
+    return countriesLoaded ? I18n.mark("No countries match.") : I18n.mark("Loading countries…")
   }
 
   // Which switch is in flight, so a refusal rolls back the right one.
@@ -151,13 +153,13 @@ Item {
 
     var args = NordVpn.nordVpnConnectArgs(target)
     if (args.length === 0) {
-      lastError = "NordVPN would not accept that country."
+      lastError = I18n.mark("NordVPN would not accept that country.")
       return
     }
 
     _desired = 1
     lastError = ""
-    actionStatus = "Connecting to " + target.label + "…"
+    actionStatus = Shared.compose(I18n.mark("Connecting to %1…"), target.label)
     run(args)
   }
 
@@ -167,7 +169,7 @@ Item {
 
     _desired = 0
     lastError = ""
-    actionStatus = "Disconnecting…"
+    actionStatus = I18n.mark("Disconnecting…")
     run(NordVpn.nordVpnDisconnectArgs())
   }
 
@@ -183,7 +185,7 @@ Item {
 
     _desired = 1
     lastError = ""
-    actionStatus = "Connecting…"
+    actionStatus = I18n.mark("Connecting…")
     run(["connect"])
   }
 
@@ -272,7 +274,7 @@ Item {
     onTriggered: {
       if (Object.keys(root._pendingToggles).length === 0) return
       root._pendingToggles = ({})
-      root.lastError = "NordVPN did not apply that setting."
+      root.lastError = I18n.mark("NordVPN did not apply that setting.")
     }
   }
 
@@ -329,7 +331,7 @@ Item {
       }
       // Nothing recognisable and a failure: keep the last reading rather than
       // replacing it with a blank one that would report the tunnel as down.
-      root.lastError = Shared.elide(output.trim() || "Could not read NordVPN status", 140)
+      root.lastError = Shared.elide(output.trim() || I18n.mark("Could not read NordVPN status"), 140)
     }
   }
 

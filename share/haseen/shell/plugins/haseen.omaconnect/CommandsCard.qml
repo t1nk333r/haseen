@@ -18,14 +18,14 @@ Column {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "Commands"
+            text: I18n.tr("Commands")
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }
 
         Pill {
-            text: card.service.commandsLoading ? "Loading…" : card.service.commands.length ? "Reload" : "Show"
+            text: card.service.commandsLoading ? I18n.tr("Loading…") : card.service.commands.length ? I18n.tr("Reload") : I18n.tr("Show")
             busy: card.service.commandsLoading
             onClicked: card.service.fetchCommands()
         }

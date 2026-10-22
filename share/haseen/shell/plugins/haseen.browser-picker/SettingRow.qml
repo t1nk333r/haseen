@@ -69,7 +69,8 @@ Item {
             height: width
             radius: width / 2
             y: 2
-            x: root.checked ? parent.width - width - 2 : 2
+            // On is the end edge: the left one in a right-to-left panel.
+            x: root.checked !== root.LayoutMirroring.enabled ? parent.width - width - 2 : 2
             color: root.checked ? Theme.accentFg : Theme.muted
         }
     }

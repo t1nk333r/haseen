@@ -53,7 +53,7 @@ Column {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: card.monitor.label
+                text: I18n.tr(card.monitor.label)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -63,7 +63,7 @@ Column {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: card.monitor.name + (card.monitor.disabled ? " · off" : " · " + card.monitor.width + " × " + card.monitor.height + " @ " + Model.formatHz(card.monitor.refreshRate))
+                text: card.monitor.disabled ? I18n.tr("%1 · off", card.monitor.name) : card.monitor.name + " · " + card.monitor.width + " × " + card.monitor.height + " @ " + Model.formatHz(card.monitor.refreshRate)
                 color: card.subtle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 1
@@ -75,7 +75,7 @@ Column {
 
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: card.monitor.disabled ? "Turn on" : "Turn off"
+            text: card.monitor.disabled ? I18n.tr("Turn on") : I18n.tr("Turn off")
             busy: card.busy
             enabled: card.monitor.disabled || (card.canTurnOff && !card.mirroring)
             onClicked: {
@@ -92,7 +92,7 @@ Column {
         visible: card.monitor.userRule
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        text: "Your ~/.config/hypr/monitors.lua (or hyprmod) also sets this monitor; that rule wins at the next reload."
+        text: I18n.tr("Your ~/.config/hypr/monitors.lua (or hyprmod) also sets this monitor; that rule wins at the next reload.")
         color: Theme.warning
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1
@@ -101,7 +101,7 @@ Column {
     PillRow {
         width: card.width
         visible: !card.monitor.disabled && !card.mirroring && card.rates.length > 1
-        title: "Refresh rate"
+        title: I18n.tr("Refresh rate")
         options: card.rates.map(r => ({ value: r, label: Model.formatHz(r) }))
         current: Model.nearest(card.rates, card.monitor.refreshRate)
         busy: card.busy
@@ -111,7 +111,7 @@ Column {
     PillRow {
         width: card.width
         visible: !card.monitor.disabled && !card.mirroring && card.scales.length > 0
-        title: "Scale"
+        title: I18n.tr("Scale")
         options: card.scales.map(s => ({ value: s, label: s + "×" }))
         current: Model.nearest(card.scales, card.monitor.scale)
         busy: card.busy
@@ -121,7 +121,7 @@ Column {
     PillRow {
         width: card.width
         visible: !card.monitor.disabled && !card.mirroring
-        title: "Rotation"
+        title: I18n.tr("Rotation")
         options: Model.ROTATIONS
         current: card.monitor.transform
         busy: card.busy

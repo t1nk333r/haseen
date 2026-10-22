@@ -45,6 +45,11 @@ Column {
     property var rows: []
     property bool scanned: false
     property var accounts: []
+    // I18n's translators for Agents.js, which stays English on its own.
+    readonly property var tx: ({
+            tr: (text, ...args) => I18n.tr(text, ...args),
+            tn: (singular, plural, count, ...args) => I18n.tn(singular, plural, count, ...args)
+        })
 
     function refresh(): void {
         if (!scanProc.running)
@@ -147,7 +152,7 @@ Column {
         Text {
             id: title
 
-            text: "Agents"
+            text: I18n.tr("Agents")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -157,7 +162,7 @@ Column {
         Text {
             anchors.baseline: title.baseline
             width: parent.width - title.width - Theme.gap
-            text: Agents.summary(root.rows) + " · r refreshes"
+            text: I18n.tr("%1 · r refreshes", Agents.summary(root.rows, root.tx))
             color: Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
@@ -167,7 +172,7 @@ Column {
 
     Text {
         width: parent.width
-        text: root.scanned ? "No coding agent is running." : "Looking…"
+        text: root.scanned ? I18n.tr("No coding agent is running.") : I18n.tr("Looking…")
         color: Theme.muted
         visible: root.rows.length === 0
         font.family: Theme.fontFamily
@@ -203,7 +208,7 @@ Column {
                 anchors.rightMargin: Theme.gap
                 anchors.top: parent.top
                 anchors.topMargin: Theme.gap / 2
-                text: Agents.duration(modelData.seconds)
+                text: Agents.duration(modelData.seconds, root.tx)
                 color: Theme.muted
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontSize
@@ -230,7 +235,7 @@ Column {
                 anchors.rightMargin: Theme.gap
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Theme.gap / 2
-                text: modelData.where !== "" ? modelData.where + "  pid " + modelData.pid : "pid " + modelData.pid
+                text: modelData.where !== "" ? I18n.tr("%1  pid %2", modelData.where, modelData.pid) : I18n.tr("pid %1", modelData.pid)
                 color: Theme.muted
                 elide: Text.ElideLeft
                 textFormat: Text.PlainText
@@ -250,7 +255,7 @@ Column {
     Text {
         width: parent.width
         visible: root.showAccounts
-        text: root.accounts.length > 0 ? "Accounts · click one to start new sessions as it" : "Accounts · none signed in (haseen agent account add)"
+        text: root.accounts.length > 0 ? I18n.tr("Accounts · click one to start new sessions as it") : I18n.tr("Accounts · none signed in (haseen agent account add)")
         color: Theme.muted
         elide: Text.ElideRight
         font.family: Theme.fontFamily
@@ -274,7 +279,7 @@ Column {
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.gap
                 anchors.verticalCenter: parent.verticalCenter
-                text: (modelData.active ? "● " : "○ ") + modelData.name + " · " + modelData.label + (modelData.plan !== "" ? " · " + modelData.plan : "") + (modelData.signedIn ? "" : " · signed out")
+                text: (modelData.active ? "● " : "○ ") + modelData.name + " · " + modelData.label + (modelData.plan !== "" ? " · " + modelData.plan : "") + (modelData.signedIn ? "" : " · " + I18n.tr("signed out"))
                 color: modelData.active ? Theme.accent : Theme.foreground
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
@@ -295,7 +300,7 @@ Column {
     Text {
         width: parent.width
         visible: root.showUsage
-        text: "Usage · as last collected"
+        text: I18n.tr("Usage · as last collected")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize - 1
@@ -318,7 +323,7 @@ Column {
             FileView {
                 path: root.usageDir + usageRow.modelData + ".json"
                 printErrors: false
-                onLoaded: usageRow.line = Agents.usage(text())
+                onLoaded: usageRow.line = Agents.usage(text(), root.tx)
             }
 
             Text {

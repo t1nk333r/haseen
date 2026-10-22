@@ -4,7 +4,14 @@
 // Adapted from the owner's fork t1nk33r.vpn 1.4.1-t1nk33r.1 of
 // jkoestinger/omarchy-vpn (MIT, Copyright (c) 2026 Justin Köstinger); see
 // LICENSE, LICENSE.nordvpn and UPSTREAM.md beside this directory. Unchanged
-// by the haseen port (plan 096) apart from this notice.
+// by the haseen port (plan 096) apart from this notice; plan 109 marked the
+// interface strings.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). A sentence
+// around a value goes through Shared.compose, so the panel can translate it.
+function N_(text) { return text }
+function N_n(one, other) { return other }
 
 // Mullvad, via the `mullvad` CLI. Parsing and row-building only — the process
 // plumbing lives in MullvadBackend.qml.
@@ -102,15 +109,15 @@ function mullvadSummary(status) {
     if (location !== "" && status.relay !== "") return status.relay + " · " + location
     if (location !== "") return location
     if (status.relay !== "") return status.relay
-    return "Connected"
+    return N_("Connected")
   }
-  if (status.state === "connecting") return location !== "" ? "Connecting to " + location + "…" : "Connecting…"
-  if (status.state === "disconnecting") return "Disconnecting…"
+  if (status.state === "connecting") return location !== "" ? Shared.compose(N_("Connecting to %1…"), location) : N_("Connecting…")
+  if (status.state === "disconnecting") return N_("Disconnecting…")
   // Not a quieter kind of disconnected: nothing is leaving the machine at all.
-  if (status.state === "error") return "Blocked — no traffic is leaving this machine"
-  if (status.state === "disconnected") return status.lockedDown ? "Not connected · traffic blocked" : "Not connected"
+  if (status.state === "error") return N_("Blocked — no traffic is leaving this machine")
+  if (status.state === "disconnected") return status.lockedDown ? N_("Not connected · traffic blocked") : N_("Not connected")
   // No state yet: the first status call has not come back.
-  return "Checking…"
+  return N_("Checking…")
 }
 
 // Lockdown gets no row of its own: the daemon already reports it as a feature
@@ -118,12 +125,12 @@ function mullvadSummary(status) {
 function mullvadDetails(status) {
   if (status.state !== "connected") return []
 
-  var rows = [Shared.detail("Relay", status.relay), Shared.detail("Location", mullvadLocation(status))]
+  var rows = [Shared.detail(N_("Relay"), status.relay), Shared.detail(N_("Location"), mullvadLocation(status))]
   if (status.endpoint !== "") {
-    rows.push(Shared.detail("Endpoint", status.protocol !== "" ? status.endpoint + " · " + status.protocol : status.endpoint))
+    rows.push(Shared.detail(N_("Endpoint"), status.protocol !== "" ? status.endpoint + " · " + status.protocol : status.endpoint))
   }
-  if (status.tunnelInterface !== "") rows.push(Shared.detail("Interface", status.tunnelInterface))
-  if (status.features.length > 0) rows.push(Shared.detail("Features", status.features.join(", ")))
+  if (status.tunnelInterface !== "") rows.push(Shared.detail(N_("Interface"), status.tunnelInterface))
+  if (status.features.length > 0) rows.push(Shared.detail(N_("Features"), status.features.join(", ")))
   return rows.filter(function(row) { return row.value !== "" })
 }
 
@@ -182,7 +189,7 @@ function parseMullvadRelays(raw) {
 // stored — so the quick row is the widest constraint there is.
 function mullvadQuickTargets() {
   return [
-    { key: "any", label: "Any location", detail: "Let Mullvad pick the relay", glyph: Shared.GLYPH_BOLT, args: ["any"] }
+    { key: "any", label: N_("Any location"), detail: N_("Let Mullvad pick the relay"), glyph: Shared.GLYPH_BOLT, args: ["any"] }
   ]
 }
 
@@ -207,7 +214,9 @@ function mullvadCountryTargets(countries, favorites, filter) {
     var target = {
       key: "country:" + country.code,
       label: country.name,
-      detail: cities.length > 0 ? country.code + " · " + cities.length + (cities.length === 1 ? " city" : " cities") : country.code,
+      detail: cities.length > 0
+        ? Shared.compose(N_("%1 · %2"), country.code, Shared.composeCount("%1 city", N_n("%1 city", "%1 cities"), cities.length))
+        : country.code,
       glyph: Shared.GLYPH_VPN,
       args: [country.code.toLowerCase()]
     }
@@ -287,13 +296,13 @@ function mullvadToggles(settings) {
   var seen = settings.seen || {}
   var toggles = []
   if (seen.autoconnect === true) {
-    toggles.push(Shared.toggle("autoconnect", "Connect on startup", "Up as soon as the daemon starts", settings.autoconnect))
+    toggles.push(Shared.toggle("autoconnect", N_("Connect on startup"), N_("Up as soon as the daemon starts"), settings.autoconnect))
   }
   if (seen.lockdown === true) {
-    toggles.push(Shared.toggle("lockdown", "Lockdown mode", "No traffic at all while down", settings.lockdown))
+    toggles.push(Shared.toggle("lockdown", N_("Lockdown mode"), N_("No traffic at all while down"), settings.lockdown))
   }
   if (seen.lan === true) {
-    toggles.push(Shared.toggle("lan", "Allow local network", "Reach printers and NAS while up", settings.lan))
+    toggles.push(Shared.toggle("lan", N_("Allow local network"), N_("Reach printers and NAS while up"), settings.lan))
   }
   return toggles
 }

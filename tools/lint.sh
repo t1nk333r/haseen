@@ -5,6 +5,9 @@
 #   luac -p                                     over every Lua file (Hyprland)
 #   qmllint (if present)                        over the Quickshell shell
 #   jq empty                                    over every JSON file
+#   tools/i18n.py check                         interface catalogs fresh and
+#                                               complete, no bare English
+#                                               (plan 109; also tests/test-i18n.sh)
 #   tools/affected-tests.sh --check             every file covered by a test,
 #                                               global or exempt (plan 100)
 # SHELLCHECK / QMLLINT env vars override the binaries (CI pins versions).
@@ -44,6 +47,12 @@ for f in "${json_files[@]}"; do
     jq empty "$f" 2>/dev/null || { echo "json: $f" >&2; fail=1; }
 done
 echo "json: ${#json_files[@]} files"
+
+# The interface language's catalogs (plan 109): the English one regenerated
+# from the code, every other language complete with the same placeholders,
+# no bare English in a QML text property. tests/test-i18n.sh runs it too;
+# here it fails before any test runs.
+python3 tools/i18n.py check || fail=1
 
 if [[ -x $QMLLINT && -d share/haseen/shell ]]; then
     mapfile -t qml_files < <(find share/haseen/shell -name '*.qml')

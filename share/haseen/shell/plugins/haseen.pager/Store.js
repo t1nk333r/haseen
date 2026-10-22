@@ -15,6 +15,10 @@
 .import "Markup.js" as Markup
 .import "Detect.js" as Detect
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // Everything a card draws and a history entry needs. Read defensively: these
 // come off the bus from arbitrary senders.
 function snapshot(n, key, urgencyEnum) {
@@ -216,8 +220,8 @@ function sanitiseForPersistence(row) {
         .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).length
   if (secret) {
     for (var k in SHAPE) if (typeof SHAPE[k] === "string" && k !== "key") out[k] = ""
-    out.summary = "Verification notification"
-    out.body = "[redacted]"
+    out.summary = N_("Verification notification")
+    out.body = N_("[redacted]")
     out.rawBody = out.body
     out.bodyLine = out.body
     out.bodyRich = out.body

@@ -202,7 +202,7 @@ Column {
             anchors.leftMargin: Theme.gap * 1.5
             anchors.verticalCenter: parent.verticalCenter
             visible: input.text === ""
-            text: "Search applications"
+            text: I18n.tr("Search applications")
             color: root.subtitleColor
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -306,7 +306,7 @@ Column {
     Text {
         width: parent.width
         visible: root.results.length === 0
-        text: "No matches"
+        text: I18n.tr("No matches")
         color: root.subtitleColor
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily

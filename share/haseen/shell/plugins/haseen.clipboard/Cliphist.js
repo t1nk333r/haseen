@@ -11,6 +11,22 @@
 // `-preview-width` runes (100 by default), which is why the preview pane has
 // to decode an entry to show it in full.
 
+// Interface strings stay English here and are translated where QML shows
+// them: the panel passes I18n's tr and tn as `tx` ({tr, tn}); without it the
+// text is English. N_ and N_n mark the strings for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+function N_n(singular, plural) { return plural; }
+
+// %1..%9 replaced by args, in one pass.
+function fill(text, args) {
+    return String(text).replace(/%([1-9])/g, (whole, digit) => args[digit - 1] === undefined ? whole : String(args[digit - 1]));
+}
+
+const ENGLISH = {
+    tr: (text, ...args) => fill(text, args),
+    tn: (singular, plural, count, ...args) => fill(count === 1 ? singular : plural, [count].concat(args))
+};
+
 const IMAGE = /^\[\[ binary data .*?\b(png|jpe?g|gif|bmp|webp)\b.*\]\]$/i;
 const BINARY = /^\[\[ binary data .*\]\]$/;
 const META = /^\[\[ binary data ([0-9.]+) ([KMG]?i?B) (\S+)(?: ([0-9]+)x([0-9]+))? \]\]$/;
@@ -84,17 +100,19 @@ function humanSize(bytes) {
 // The preview pane's metadata line: type, size, then the pixel size of an
 // image or the line count of text. `bytes` is the decoded size once it is
 // known (-1 before that), `lines` the decoded line count (0 for an image).
-function summary(entry, bytes, lines) {
+// The type is cliphist's own word ("png", "image/png"); "text" is ours.
+function summary(entry, bytes, lines, tx) {
     if (!entry)
         return "";
-    const parts = [entry.type || "text"];
+    const t = tx || ENGLISH;
+    const parts = [entry.type && entry.type !== "text" ? entry.type : t.tr(N_("text"))];
     const size = typeof bytes === "number" && bytes >= 0 ? humanSize(bytes) : entry.size;
     if (size !== "")
         parts.push(size);
     if (entry.width > 0 && entry.height > 0)
         parts.push(entry.width + "\u00d7" + entry.height);
     else if (typeof lines === "number" && lines > 0)
-        parts.push(lines + (lines === 1 ? " line" : " lines"));
+        parts.push(t.tn("%1 line", N_n("%1 line", "%1 lines"), lines));
     return parts.join(" \u00b7 ");
 }
 
@@ -104,14 +122,15 @@ function summary(entry, bytes, lines) {
 // and is never read into the process. The pixel guard is the one that bounds
 // RSS: Qt decodes a PNG in full before it scales it down, so 50 MB of PNG
 // would be hundreds of MiB of pixmap.
-function tooLarge(entry, maxBytes, maxPixels) {
+function tooLarge(entry, maxBytes, maxPixels, tx) {
     if (!entry)
         return "";
+    const t = tx || ENGLISH;
     if (maxBytes > 0 && entry.bytes >= 0 && entry.bytes > maxBytes)
-        return (entry.size !== "" ? entry.size : humanSize(entry.bytes)) + ", over the " + humanSize(maxBytes) + " preview limit";
+        return t.tr(N_("%1, over the %2 preview limit"), entry.size !== "" ? entry.size : humanSize(entry.bytes), humanSize(maxBytes));
     const pixels = entry.width * entry.height;
     if (maxPixels > 0 && pixels > maxPixels)
-        return entry.width + "\u00d7" + entry.height + ", over the " + (Math.round(maxPixels / 100000) / 10) + " MP preview limit";
+        return t.tr(N_("%1, over the %2 MP preview limit"), entry.width + "\u00d7" + entry.height, Math.round(maxPixels / 100000) / 10);
     return "";
 }
 
