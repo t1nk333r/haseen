@@ -118,6 +118,9 @@ b("SUPER + PRINT", "Colour picker", "haseen capture color")
 b("SUPER + CTRL + PRINT", "OCR screen region", "haseen search screen text")
 b("SUPER + SHIFT + PRINT", "Search a screen region", "haseen search screen image")
 b("SUPER + CTRL + C", "Capture menu", "haseen menu trigger.capture")
+-- Omarchy 4.5's screenshot chord (0a7beb7d6, #16048), for keyboards without a
+-- PRINT key: the same Omasnap capture.
+b("SUPER + CTRL + ALT + C", "Screenshot", "haseen capture screenshot")
 
 -- Session ----------------------------------------------------------------------
 b("SUPER + SHIFT + ESCAPE", "Log out", "haseen system logout")
@@ -161,6 +164,8 @@ b("SUPER + W", "Close window", hl.dsp.window.close())
 b("SUPER + T", "Toggle floating", hl.dsp.window.float({ action = "toggle" }))
 b("SUPER + F", "Fullscreen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 b("SUPER + ALT + F", "Maximise", hl.dsp.window.fullscreen({ mode = "maximized" }))
+-- The bar hidden and the gaps gone together (Omarchy a7486beb6, #10672).
+b("SUPER + CTRL + ALT + F", "Full-screen desktop", "haseen toggle fullscreen-desktop")
 b("SUPER + P", "Pseudo-tile", hl.dsp.window.pseudo())
 b("SUPER + G", "Toggle group", hl.dsp.group.toggle())
 b("SUPER + ALT + TAB", "Next window in group", hl.dsp.group.next())
@@ -210,6 +215,10 @@ b("SUPER + SHIFT + equal", "Grow height", hl.dsp.window.resize({ x = 0, y = 100,
 --
 -- SUPER + SHIFT moves the window silently (the owner's layout): the window
 -- goes, the view stays. Add ALT to follow it over.
+--
+-- These are Hyprland's global numbers. `haseen toggle monitor-workspaces on`
+-- rebinds the same keys to the focused monitor's own 1..0
+-- (monitor-workspaces.lua).
 for ws = 1, 10 do
   local key = "code:" .. tostring(ws + 9)
   local name = tostring(ws)
@@ -227,9 +236,19 @@ b("SUPER + mouse_up", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
 
 b("SUPER + S", "Scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
 b("SUPER + ALT + S", "Move window to scratchpad", hl.dsp.window.move({ workspace = "special:scratchpad", follow = false }))
+-- The console drops a terminal down from the top (qconsole.lua), which lends
+-- it the dim and the slide while it shows. code:49 is the key left of 1 on
+-- every layout, as the number row is above.
+b("SUPER + code:49", "Console", haseen.console.toggle())
+b("SUPER + SHIFT + code:49", "Move window to console", hl.dsp.window.move({ workspace = "special:console", follow = false }))
 
 b("SUPER + SHIFT + ALT + LEFT", "Move workspace to left monitor", hl.dsp.workspace.move({ monitor = "l" }))
 b("SUPER + SHIFT + ALT + RIGHT", "Move workspace to right monitor", hl.dsp.workspace.move({ monitor = "r" }))
+-- Omarchy 4.5's window-to-monitor keys (f2bd3cef6). With no monitor that way
+-- nothing happens, where the plain dispatcher shows Hyprland's error.
+for _, d in ipairs({ { "LEFT", "l", "left" }, { "RIGHT", "r", "right" }, { "UP", "u", "up" }, { "DOWN", "d", "down" } }) do
+  b("SUPER + SHIFT + CTRL + " .. d[1], "Move window to " .. d[3] .. " monitor", haseen.workspaces.move_window_to_monitor(d[2]))
+end
 
 -- Snap layer -------------------------------------------------------------------
 -- Rectangle-style snapping on HYPER, which is CapsLock remapped to

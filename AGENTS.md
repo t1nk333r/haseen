@@ -72,7 +72,12 @@ between parts. The engineering record is `plans/`, indexed by
   - Default keybinds (owner, 2026-10-08, plan 043): the owner's waydots layout
     in `share/haseen/default/hypr/binds.lua` is everyone's default (SUPER + F1
     sheet, ALT + V clipboard, vim focus and move, a silent SUPER + SHIFT + n,
-    the HYPER snap layer); Omarchy's arrows and SUPER + W stay bound.
+    the HYPER snap layer); Omarchy's arrows and SUPER + W stay bound. Omarchy
+    4.5's keys join them (owner, 2026-10-21, "New binds" and "Quake console",
+    plan 105): SUPER + GRAVE console, SUPER + CTRL + ALT + F full-screen
+    desktop, SUPER + CTRL + ALT + C screenshot, SUPER + SHIFT + CTRL + arrows
+    window to monitor. Per-monitor workspaces on SUPER + 1..0 are off until
+    `haseen toggle monitor-workspaces on` (plan 105).
   - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
     plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.

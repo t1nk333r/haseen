@@ -84,7 +84,7 @@ check_dry "reminder clear" "systemctl --user stop 'haseen-reminder-*.timer'" has
 check_dry "toggle gaps" "hyprctl eval <no-gaps.lua>" haseen toggle gaps
 check_dry "toggle animations" "no-animations.lua" haseen toggle animations off
 check_dry "toggle one-window-ratio" "single_window_aspect_ratio" haseen toggle one-window-ratio on
-check_dry "toggle workspace-layout" 'hl.workspace_rule({ workspace = "3", layout = "scrolling" })' haseen toggle workspace-layout
+check_dry "toggle workspace-layout" 'haseen.workspace_mode({ workspace = "3", mode = "scrolling" })' haseen toggle workspace-layout
 check_dry "toggle bar" "DRYRUN: haseen-shell-ipc bar toggle" haseen toggle bar
 check_dry "touchpad" 'hl.device({ name = "elan0001:00 04f3:3140 touchpad", enabled = false })' haseen hardware touchpad
 check_dry "touchscreen" 'name = "wacom hid 52b5 finger"' haseen hardware touchscreen off
@@ -198,7 +198,7 @@ assert_eq "animations off persists" yes "$([[ -e $T/no-animations.lua ]] && echo
 haseen toggle animations on >/dev/null
 assert_eq "animations on clears" no "$([[ -e $T/no-animations.lua ]] && echo yes || echo no)"
 haseen toggle workspace-layout >/dev/null
-assert_eq "workspace layout persisted" 'hl.workspace_rule({ workspace = "3", layout = "scrolling" })' "$(cat "$T/workspace-layout-3.lua" 2>/dev/null)"
+assert_eq "workspace layout persisted" 'haseen.workspace_mode({ workspace = "3", mode = "scrolling" })' "$(cat "$T/workspace-layout-3.lua" 2>/dev/null)"
 haseen hardware touchpad off >/dev/null
 assert_contains "touchpad off persisted" "$(cat "$T/touchpad-disabled.lua" 2>/dev/null)" "enabled = false"
 haseen hardware touchpad >/dev/null

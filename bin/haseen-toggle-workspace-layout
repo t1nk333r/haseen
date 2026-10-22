@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# haseen:summary Switch the current workspace between dwindle and scrolling layouts
-# haseen:args [dwindle|scrolling|toggle] [--dry-run]
+# haseen:summary Cycle the current workspace through the dwindle, scrolling and floating layouts
+# haseen:args [dwindle|scrolling|floating|toggle|back|current [ID]] [--dry-run]
 #
 # Adapted from Omarchy bin/omarchy-hyprland-workspace-layout-toggle (MIT,
-# Copyright (c) David Heinemeier Hansson): a per-workspace hl.workspace_rule,
-# persisted as a Lua file the Hyprland config includes, applied live.
+# Copyright (c) David Heinemeier Hansson): a per-workspace mode, persisted as a
+# Lua file the Hyprland config includes, applied live. The floating step and
+# its order of apply-then-save come from Omarchy 149871896 (#14482); the mode
+# itself is share/haseen/default/hypr/workspace-modes.lua (plan 105).
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
@@ -12,9 +14,14 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/com
 
 usage() {
     cat <<EOF
-Usage: haseen toggle workspace-layout [dwindle|scrolling|toggle] [--dry-run]
+Usage: haseen toggle workspace-layout [dwindle|scrolling|floating|toggle|back] [--dry-run]
+       haseen toggle workspace-layout current [ID]
 
-Sets the layout of the active workspace and keeps it across reloads in
+Sets the layout of the active workspace: dwindle and scrolling tile, floating
+floats every window on it (those it floated tile again when it leaves).
+"toggle" (the default) steps dwindle -> scrolling -> floating -> dwindle,
+"back" the other way. "current" prints the active workspace's layout, or
+workspace ID's. Kept across reloads in
 \$HASEEN_USER_STATE/toggles/hypr/workspace-layout-<id>.lua.
 EOF
 }
@@ -22,26 +29,72 @@ EOF
 parse_common_flags "$@"
 set -- "${REST[@]}"
 want=${1:-toggle}
-(($# <= 1)) || { usage >&2; exit 2; }
-case $want in dwindle | scrolling | toggle) ;; *) usage >&2; exit 2 ;; esac
+case $want in
+dwindle | scrolling | floating | toggle | back) (($# <= 1)) || { usage >&2; exit 2; } ;;
+current) (($# <= 2)) || { usage >&2; exit 2; } ;;
+*) usage >&2; exit 2 ;;
+esac
+
+layout_file() { printf '%s/toggles/hypr/workspace-layout-%s.lua\n' "$HASEEN_USER_STATE" "$1"; }
+
+# mode_of ID TILED — the saved floating mode wins: Hyprland reports only the
+# tiled layout, and a floating workspace keeps whichever one it had.
+mode_of() {
+    local file
+    file="$(layout_file "$1")"
+    if [[ -f $file ]] && grep -q 'mode = "floating"' "$file"; then
+        echo floating
+    else
+        echo "${2:-dwindle}"
+    fi
+}
+
+if [[ $want == current ]]; then
+    if [[ -n ${2:-} ]]; then
+        tiled="$(hyprctl workspaces -j 2>/dev/null |
+            jq -r --arg id "$2" 'first(.[] | select((.id | tostring) == $id) | .tiledLayout) // empty' 2>/dev/null)" || tiled=""
+        mode_of "$2" "$tiled"
+    else
+        ws_json="$(hyprctl activeworkspace -j 2>/dev/null)" || ws_json='{}'
+        mode_of "$(jq -r '.id // 0' <<<"$ws_json" 2>/dev/null || echo 0)" \
+            "$(jq -r '.tiledLayout // empty' <<<"$ws_json" 2>/dev/null || true)"
+    fi
+    exit 0
+fi
 
 ws_json="$(hyprctl activeworkspace -j)"
 id="$(jq -r '.id' <<<"$ws_json")"
-current="$(jq -r '.tiledLayout // "dwindle"' <<<"$ws_json")"
-[[ $id =~ ^-?[0-9]+$ ]] || die "cannot read the active workspace"
-if [[ $want == toggle ]]; then
-    if [[ $current == dwindle ]]; then want=scrolling; else want=dwindle; fi
-fi
+# Named and special workspaces report a negative id, and Hyprland reads a
+# leading "-" as a selector relative to the current workspace: a rule for one
+# would reconfigure workspace 1 instead (Omarchy 149871896).
+[[ $id =~ ^[1-9][0-9]*$ ]] || die "the active workspace ($id) is a named or special one: its layout cannot be set"
+current="$(mode_of "$id" "$(jq -r '.tiledLayout // "dwindle"' <<<"$ws_json")")"
 
-lua="hl.workspace_rule({ workspace = \"$id\", layout = \"$want\" })"
-file="$HASEEN_USER_STATE/toggles/hypr/workspace-layout-$id.lua"
+case $want in
+toggle)
+    case $current in dwindle) want=scrolling ;; scrolling) want=floating ;; *) want=dwindle ;; esac
+    ;;
+back)
+    case $current in dwindle) want=floating ;; floating) want=scrolling ;; *) want=dwindle ;; esac
+    ;;
+esac
+
+lua="haseen.workspace_mode({ workspace = \"$id\", mode = \"$want\" })"
+file="$(layout_file "$id")"
+# Apply first: a mode saved without reaching the screen would come back at
+# every login while the screen showed another, and the next press would step
+# from the wrong one.
+if $DRY_RUN; then
+    echo "DRYRUN: hyprctl eval $lua"
+elif ! hyprctl eval "$lua" >/dev/null 2>&1; then
+    die "Hyprland did not take the layout (its config may predate haseen.workspace_mode: hyprctl reload)"
+fi
 if [[ $want == dwindle ]]; then
-    # dwindle is the default: drop the rule instead of persisting it.
-    if $DRY_RUN; then echo "DRYRUN: rm -f $file"; else rm -f "$file"; fi
+    # dwindle is the default: drop the saved mode instead of persisting it.
+    run rm -f "$file"
 else
     printf '%s\n' "$lua" | write_user_file "$file"
 fi
-run hyprctl eval "$lua"
 $DRY_RUN && exit 0
 echo "Workspace $id layout: $want"
 if have notify-send; then

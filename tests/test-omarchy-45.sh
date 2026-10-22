@@ -49,7 +49,7 @@ unset OMARCHY_PATH OMARCHY_LANGUAGE_FILE
 # answering x86_64 unless MACHINE says otherwise, and a fake haseen tree
 # whose bin/ holds recorders of the haseen commands named in RECORDERS.
 RECORDERS=(haseen-install haseen-remove haseen-webapp-install haseen-webapp-remove haseen-system
-    haseen-toggle-gaps haseen-toggle-bar haseen-toggle-workspace-layout haseen-menu-select
+    haseen-toggle-gaps haseen-toggle-bar haseen-toggle-workspace-layout haseen-toggle-fullscreen-desktop haseen-menu-select
     haseen-notification-send haseen-update haseen-hw-match haseen-theme-current haseen-setup-ssh-agent)
 box() {
     sandbox "$1"
@@ -686,7 +686,7 @@ assert_eq "SUPER + RETURN's --pid picks the directory and never reaches the term
 assert_eq "a command after it still runs" "setsid [foot] [--working-directory=$(readlink -f "$SANDBOX/work")] [-e] [htop]" "$(calls)"
 : >"$LOG"
 fk omarchy-hyprland-workspace-layout-toggle back
-assert_eq "SUPER + ALT + L's back is the same step" "haseen-toggle-workspace-layout [toggle]" "$(calls)"
+assert_eq "SUPER + ALT + L's back steps back (plan 105: three layouts)" "haseen-toggle-workspace-layout [back]" "$(calls)"
 : >"$LOG"
 fk omarchy-hyprland-workspace-layout-toggle --dry-run
 assert_eq "a plain toggle" "haseen-toggle-workspace-layout [toggle] [--dry-run]" "$(calls)"
@@ -752,8 +752,7 @@ assert_dry_pure "refused transactions" "$OUTPUT"
 printf '#!/bin/sh\necho "{\\"hidden\\":false}"\n' >"$FAKE/bin/haseen-shell-ipc"
 chmod +x "$FAKE/bin/haseen-shell-ipc"
 fk omarchy-toggle-fullscreen-desktop --dry-run >/dev/null
-assert_contains "neither half on: the bar hides" "$(calls)" "haseen-toggle-bar [--dry-run]"
-assert_contains "and the gaps go" "$(calls)" "haseen-toggle-gaps [on] [--dry-run]"
+assert_eq "haseen's own command does it (plan 105)" "haseen-toggle-fullscreen-desktop [toggle] [--dry-run]" "$(calls)"
 capture fk omarchy-toggle-fullscreen-desktop sideways
 assert_status "an unknown action" 1 "$STATUS"
 FAKE_OMA() { env HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy" "$@"; }
@@ -766,7 +765,7 @@ assert_contains "of account commands" "$OUTPUT" "omarchy-agent-account-use"
 assert_not_contains "instead of running omarchy-agent with 'account'" "$OUTPUT" "Unexpected argument"
 : >"$LOG"
 FAKE_OMA hyprland workspace layout toggle back >/dev/null
-assert_eq "a longer command still takes its argument" "haseen-toggle-workspace-layout [toggle]" "$(calls)"
+assert_eq "a longer command still takes its argument" "haseen-toggle-workspace-layout [back]" "$(calls)"
 capture FAKE_OMA update aur
 assert_contains "a word after a flags-only command names its group" "$OUTPUT" "omarchy-update-aur-pkgs"
 capture FAKE_OMA system lid
