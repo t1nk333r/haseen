@@ -3,7 +3,9 @@
 # haseen:args [system|firmware] [--dry-run] [--yes]
 #
 # Firmware steps adapted from omarchy bin/omarchy-update-firmware (MIT,
-# Copyright (c) David Heinemeier Hansson).
+# Copyright (c) David Heinemeier Hansson). The pacman scope and the cold AUR
+# phase are adapted from omarchy bin/omarchy-update-pacman and
+# bin/omarchy-update (MIT, same notice), plan 103.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/catalog.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/catalog.sh"
@@ -21,6 +23,9 @@ Usage: haseen update [system|firmware] [--dry-run] [--yes]
   system     (default) pacman -Syu as root, then AUR packages with paru/yay
              (-Sua), then 'flatpak update' for the user and, when it holds
              apps, the system installation. Runs the post-update hooks.
+             pacman runs in its own systemd scope, so a session that ends
+             mid-upgrade cannot kill it; the AUR builds start with sudo's
+             cached password dropped, and every sudo they run asks again.
   firmware   fwupdmgr refresh + update (installs fwupd first if missing).
              With Secure Boot on and sbctl keys, signs fwupd's EFI helper so
              UEFI capsule updates still boot.
@@ -63,13 +68,32 @@ update_system() {
     local guard=()
     [[ -e $(sysroot_path /usr/share/libalpm/hooks/00-omarchy-update-guard.hook) ]] &&
         guard=(env OMARCHY_ALLOW_DIRECT_PACMAN=1)
-    run_root "${guard[@]}" pacman -Syu "${yes[@]}"
+    # Upgrading systemd re-executes the system manager and every user manager
+    # mid-transaction; a pacman inside the desktop session's cgroup can be
+    # killed by that, or by a logout, halfway through. A scope of PID 1's keeps
+    # it out of the session and survives the manager's own re-exec. The scope
+    # runs pacman as its own child, so the guard's variable still reaches it.
+    local scope=()
+    local systemd
+    systemd="$(sysroot_path /run/systemd/system)"
+    [[ -d $systemd && ! -L $systemd ]] && scope=(systemd-run --scope --quiet --collect)
+    run_root "${guard[@]}" "${scope[@]}" pacman -Syu "${yes[@]}"
 
     local helper
     helper="$(aur_helper)"
     if [[ -n $helper ]]; then
         info "AUR ($helper)"
-        run "$helper" -Sua "${yes[@]}"
+        # A PKGBUILD is code from whoever maintains it, and pacman's step just
+        # left sudo's timestamp warm. run_cold drops it and makes every sudo
+        # the build runs ask afresh; the helper is told to use the `sudo` on
+        # PATH (whatever its config names) and not to keep sudo alive in a
+        # loop, which with nothing cached would only prompt again and again.
+        local cold=(--sudo sudo)
+        case $helper in
+        paru) cold+=(--nosudoloop) ;;
+        yay) cold+=(--sudoloop=false) ;;
+        esac
+        run_cold "$helper" "${cold[@]}" -Sua "${yes[@]}"
     fi
 
     if have flatpak || $DRY_RUN; then

@@ -299,4 +299,40 @@ const same = (a, b, m) => assert.equal(JSON.stringify(a), JSON.stringify(b), m);
   const plain = Store.snapshot({appName:'notify-send', summary:'x', body:'y'}, 'n', {Normal:1});
   assert.equal(plain.groupKey, 'app:notify-send');
 }
+// Plan 103: omapager's fixes since the port, from Omarchy's notifications
+// plugin (the same code; MIT, Copyright (c) David Heinemeier Hansson).
+{ // 3f02f8cfc: an entity beyond the BMP decodes to the whole character.
+  assert.equal(M.oneLine('&#128512; &#x1F600;'), '\u{1F600} \u{1F600}');
+  assert.equal(M.oneLine('&#65; &#x1F44D;'), 'A \u{1F44D}');
+}
+{ // 21bee67a4: only a browser's leading anchor names a site as the sender.
+  const chat = Store.snapshot({appName:'Slack', summary:'Sam', body:'<a href="https://bank.example/">bank.example</a>Your account is locked'}, 'c', {Normal:1});
+  assert.equal(chat.source, 'Slack', 'a chat message cannot dress itself up as a bank');
+  assert.equal(chat.groupKey, 'app:slack');
+  assert.ok(chat.body.startsWith('<a href="https://bank.example/">'), 'the link stays in the message');
+  for (const browser of ['Google Chrome', 'Chromium', 'Helium', 'Firefox', 'Brave Browser']) {
+    const web = Store.snapshot({appName:browser, summary:'Sam', body:'<a href="https://app.slack.com/">app.slack.com</a>hi'}, 'w', {Normal:1});
+    assert.equal(web.groupKey, 'web:app.slack.com', browser);
+  }
+  // The href must be the origin: a label never stands in for one.
+  for (const href of ['javascript:alert(1)', 'data:text/html,x', 'bank.example', 'https://127.0.0.1/']) {
+    const fake = Store.snapshot({appName:'Google Chrome', summary:'x', body:'<a href="' + href + '">bank.example</a>pay'}, 'f', {Normal:1});
+    assert.equal(fake.source, 'Google Chrome', href);
+    assert.equal(fake.groupKey, 'app:google-chrome', href);
+  }
+  // A stored row is regrouped by the same rule.
+  assert.equal(M.regroup({app:'Slack', source:'bank.example'}), 'app:slack');
+  assert.equal(M.regroup({app:'Helium', source:'app.slack.com'}), 'web:app.slack.com');
+  // KDE Connect by its exact names, not a substring.
+  assert.equal(M.forwardedApp('org.kde.kdeconnect.daemon', 'WhatsApp').name, 'WhatsApp');
+  assert.equal(M.forwardedApp('kdeconnect', 'WhatsApp').name, 'WhatsApp');
+  assert.equal(M.forwardedApp('my-kdeconnect-tool', 'WhatsApp').name, '');
+  assert.equal(M.isKdeConnect('KDE Connect'), true);
+  assert.equal(M.isKdeConnect('Not KDE Connect'), false);
+}
+{ // 329fd1a9b: the desktop-entry hint names the icon when the sender gave none; a path there (Chrome's) does not.
+  assert.equal(Store.snapshot({appName:'Slack', desktopEntry:'slack'}, 'd', {Normal:1}).appIcon, 'slack');
+  assert.equal(Store.snapshot({appName:'Slack', appIcon:'slack-tray', desktopEntry:'slack'}, 'd', {Normal:1}).appIcon, 'slack-tray');
+  assert.equal(Store.snapshot({appName:'Google Chrome', desktopEntry:'/tmp/.org.chromium.Chromium.x/google-chrome'}, 'd', {Normal:1}).appIcon, '');
+}
 console.log('security: passed');

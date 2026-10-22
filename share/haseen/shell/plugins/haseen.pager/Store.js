@@ -61,7 +61,10 @@ function snapshot(n, key, urgencyEnum) {
     originalId: n.id || 0,
     senderPid: senderPid,
     app: Security.bounded(n.appName, Security.MAX_APP_NAME),
-    appIcon: Security.bounded(n.appIcon || named, 256),
+    // Else the desktop-entry hint, which names the app's .desktop file and so,
+    // usually, its icon. normalise() drops it when it is a path (Chrome's).
+    // Upstream 329fd1a9b.
+    appIcon: Security.bounded(n.appIcon || named || n.desktopEntry, 256),
     summary: id.summary,
     body: id.body,
     // What the sender actually sent, kept so a replay is faithful: the body

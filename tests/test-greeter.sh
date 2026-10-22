@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-greeter bin/haseen-setup-greeter share/haseen/layers/base/lib.sh
 # haseen:covers share/haseen/lib/{greeter,packages,preflight}.sh share/haseen/shell/greeter/**
-# haseen:covers tools/smoke-session.conf
+# haseen:covers tools/smoke-session.conf share/haseen/default/hypr/input.lua
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -125,6 +125,70 @@ assert_contains "and the greeter starts once, at compositor start" "$OUTPUT" 'hl
 capture haseen greeter
 assert_status "without greetd in the environment it refuses" 1 "$STATUS"
 assert_contains "and says why" "$OUTPUT" "GREETD_SOCK"
+
+# --- the login screen's keyboard layout (plan 103) -------------------------------
+# The greeter types with the layout the desktop types with: the console's
+# (/etc/vconsole.conf, read through the sysroot), with "us" in front of a
+# layout that cannot type Latin letters. For each file, the generated config
+# must give Hyprland exactly what default/hypr/input.lua resolves.
+vc_root="$SANDBOX/vconsole"
+mkdir -p "$vc_root/etc"
+cat >"$SANDBOX/hl-input.lua" <<'EOF'
+-- Prints the kb_* that hl.config receives. VCONSOLE names the file that stands
+-- in for /etc/vconsole.conf; empty means there is none.
+local real_open = io.open
+io.open = function(path, mode)
+  if path ~= "/etc/vconsole.conf" then return real_open(path, mode) end
+  local f = os.getenv("VCONSOLE") or ""
+  if f == "" then return nil end
+  return real_open(f, mode)
+end
+local function proxy() return setmetatable({}, { __index = function() return proxy() end, __call = function() return {} end }) end
+hl = setmetatable({
+  dsp = proxy(),
+  config = function(c)
+    if c.input then print(("[%s] [%s] [%s]"):format(c.input.kb_layout, c.input.kb_variant, c.input.kb_options)) end
+  end,
+}, { __index = function() return function() end end })
+EOF
+# vc_check LABEL [CONTENT] — CONTENT as vconsole.conf (no argument: no file).
+vc_check() {
+    local label="$1" desktop greeter config
+    rm -f "$vc_root/etc/vconsole.conf"
+    (($# > 1)) && printf '%s' "$2" >"$vc_root/etc/vconsole.conf"
+    local vc=""
+    [[ -e $vc_root/etc/vconsole.conf ]] && vc="$vc_root/etc/vconsole.conf"
+    desktop="$(VCONSOLE="$vc" lua -e "dofile('$SANDBOX/hl-input.lua')" "$REPO/share/haseen/default/hypr/input.lua" 2>&1)"
+    config="$(env HASEEN_SYSROOT="$vc_root" haseen greeter --print-config 2>&1)"
+    printf '%s\n' "$config" >"$SANDBOX/greeter-config.lua"
+    greeter="$(lua -e "dofile('$SANDBOX/hl-input.lua')" "$SANDBOX/greeter-config.lua" 2>&1)"
+    assert_eq "greeter layout: $label" "$desktop" "$greeter"
+    VC_GREETER="$greeter"
+}
+vc_check "no vconsole.conf falls back to us"
+assert_eq "and that is plain us" "[us] [] [compose:caps]" "$VC_GREETER"
+vc_check "a Latin layout passes through" $'KEYMAP=de-latin1\nXKBLAYOUT=de\nXKBVARIANT=nodeadkeys\n'
+assert_eq "and keeps its variant" "[de] [nodeadkeys] [compose:caps]" "$VC_GREETER"
+vc_check "Arabic gets us in front" $'XKBLAYOUT=ara\n'
+assert_eq "with both Alts to switch" "[us,ara] [,] [compose:caps,grp:alts_toggle]" "$VC_GREETER"
+vc_check "quoted values" $'XKBLAYOUT="ru"\nXKBVARIANT=\'phonetic\'\n'
+assert_eq "lose their quotes" "[us,ru] [,phonetic] [compose:caps,grp:alts_toggle]" "$VC_GREETER"
+vc_check "a non-Latin first layout of two" $'XKBLAYOUT=ir,us\n'
+vc_check "a Latin first layout of two" $'XKBLAYOUT=us,ara\nXKBVARIANT=,\n'
+vc_check "spaces around the value" $'  XKBLAYOUT = fr  \n'
+vc_check "the last assignment wins" $'XKBLAYOUT=ara\nXKBLAYOUT=gb\n'
+vc_check "a layout set to nothing" $'XKBLAYOUT=\n'
+vc_check "a file with no trailing newline" 'XKBLAYOUT=gr'
+vc_check "a value with a quote and a backslash in it" $'XKBLAYOUT=de"x\\y\n'
+for layout in ara ru gr il ua th jp; do
+    vc_check "non-Latin $layout" "XKBLAYOUT=$layout"$'\n'
+done
+# Every layout input.lua counts as Latin, so the two lists stay one list.
+latin="$(sed -n '/^local latin = {/,/}/p' "$REPO/share/haseen/default/hypr/input.lua" | grep -oE '[a-z]+ = true' | cut -d' ' -f1)"
+assert_eq "input.lua's Latin list is read" true "$( (($(wc -w <<<"$latin") >= 20)) && echo true || echo false)"
+for layout in $latin; do
+    vc_check "Latin $layout" "XKBLAYOUT=$layout"$'\n'
+done
 
 # --- the parsers, under the Qt JS engine ---------------------------------------
 QML=/usr/lib/qt6/bin/qml

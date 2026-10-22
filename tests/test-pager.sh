@@ -140,3 +140,87 @@ if [[ -x $QMLTESTRUNNER && -d /usr/lib/qt6/qml/QtTest ]]; then
 else
     echo "  (qmltestrunner/QtTest not found: tst_security.qml skipped)"
 fi
+
+# --- a replaced notification, in the real engine (plan 103) ---------------------
+# An update (replaces_id) rewrites the card's row in place with a new arrival
+# time. It gets a fresh countdown even when its duration is the old one
+# (upstream 2952b1c00), and its picture is read again from the same path, which
+# a sender's own file is never cached against (773a1fd6c).
+QS_BIN=${QS_BIN:-/usr/bin/qs}
+if [[ -x $QS_BIN ]]; then
+    sandbox pager-toast
+    harness="$SANDBOX/toast"
+    mkdir -p "$harness" "$SANDBOX/run"
+    chmod 700 "$SANDBOX/run"
+    for module in Haseen Compat Ui Commons plugins; do
+        ln -sfn "$HASEEN_PATH/shell/$module" "$harness/$module"
+    done
+    cat >"$harness/shell.qml" <<QML
+import QtQuick
+import Quickshell
+ShellRoot {
+    id: probe
+    property var card: null
+    property var out: ({})
+    property int tick: 0
+    ListModel { id: rows }
+    function find(item, name) {
+        if (item.objectName === name)
+            return item;
+        for (const c of item.children) {
+            const f = find(c, name);
+            if (f)
+                return f;
+        }
+        return null;
+    }
+    Component.onCompleted: {
+        rows.append({ key: "k", ts: 1, duration: 5000, image: "image://icon//tmp/cover.png", app: "Player", source: "Player",
+                      summary: "Song", body: "", bodyRich: "", bodyLine: "", urgency: 1, groupKey: "app:player" });
+        const c = Qt.createComponent("file://$PAGER/Toast.qml");
+        if (c.status !== Component.Ready) {
+            console.log("RESULT " + JSON.stringify({ error: c.errorString() }));
+            Qt.quit();
+            return;
+        }
+        card = c.createObject(probe, { row: rows.get(0) });
+    }
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            probe.tick += 1;
+            if (probe.tick === 4) {
+                probe.out.cached = probe.find(probe.card, "picture").cache;
+                // Bank the time already shown, then replace the notification.
+                probe.card.paused = true;
+                probe.out.banked = probe.card.remaining;
+                probe.card.paused = false;
+                rows.setProperty(0, "ts", 2);
+                probe.out.fresh = probe.card.remaining;
+                probe.out.reloading = probe.card.reloading;
+            } else if (probe.tick === 6) {
+                probe.out.reloaded = !probe.card.reloading;
+                probe.out.source = String(probe.find(probe.card, "picture").source);
+                console.log("RESULT " + JSON.stringify(probe.out));
+                Qt.quit();
+            }
+        }
+    }
+}
+QML
+    capture env XDG_RUNTIME_DIR="$SANDBOX/run" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        timeout 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+    result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n 1)"
+    [[ -n $result ]] || result='{"error":"no result"}'
+    assert_eq "the card loads" "" "$(jq -r '.error // empty' <<<"$result")"
+    assert_eq "the countdown ran before the update" true "$(jq -r '.banked < 5000 and .banked > 0' <<<"$result")"
+    assert_eq "a replaced notification gets its full duration again" 5000 "$(jq -r .fresh <<<"$result")"
+    assert_eq "and its picture is dropped for a turn" true "$(jq -r .reloading <<<"$result")"
+    assert_eq "then read again" true "$(jq -r .reloaded <<<"$result")"
+    assert_eq "from the same path" "image://icon//tmp/cover.png" "$(jq -r .source <<<"$result")"
+    assert_eq "a sender's own file is never served from the cache" false "$(jq -r .cached <<<"$result")"
+else
+    echo "  (qs not found: the replaced-card check is skipped)"
+fi

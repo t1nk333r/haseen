@@ -276,11 +276,20 @@ Item {
     }
 
     onTickingChanged: _bank()
-    onDurationChanged: {
+    // An update (replaces_id) rewrites the row in place with a new arrival
+    // time: it gets a fresh display period of its own duration, even when that
+    // duration is the old one, and its picture is read again, since a sender
+    // may write the new one to the same path (upstream 2952b1c00, 773a1fd6c).
+    readonly property string arrival: String(row.ts) + ":" + String(row.duration)
+    property bool reloading: false
+    onArrivalChanged: {
         remaining = duration;
         _since = ticking ? Date.now() : 0;
         if (expiry.running)
             expiry.restart();
+        thumb.pick = 0;
+        reloading = true;
+        Qt.callLater(() => card.reloading = false);
     }
     Component.onCompleted: _since = ticking ? Date.now() : 0
 
@@ -424,9 +433,10 @@ Item {
                 Image {
                     id: picture
 
+                    objectName: "picture"
                     anchors.fill: parent
                     visible: status === Image.Ready
-                    source: thumb.pick < thumb.candidates.length ? thumb.candidates[thumb.pick] : ""
+                    source: card.reloading ? "" : (thumb.pick < thumb.candidates.length ? thumb.candidates[thumb.pick] : "")
                     // A file or handle that will not draw: try the next one.
                     onStatusChanged: {
                         if (status === Image.Error && thumb.pick < thumb.candidates.length)
@@ -434,7 +444,9 @@ Item {
                     }
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
-                    cache: true
+                    // A sender's own file may be rewritten at the same path
+                    // (cover art), which a cached copy would hide.
+                    cache: String(source).indexOf("image://icon//") !== 0
                     sourceSize.width: 80
                     sourceSize.height: 80
                 }

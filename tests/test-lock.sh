@@ -317,6 +317,48 @@ QML
     assert_eq "this instance's marker takes the lock back" '{"requested":true}' "$RESULT"
     held_probe "1" legacy
     assert_eq "a legacy marker still takes the lock back" '{"requested":true}' "$RESULT"
+
+    # A held key does not type a password (plan 103, Omarchy 6e15d76a6): a
+    # wake from DPMS can deliver a key's release seconds late, and key repeat
+    # would fill the field. Repeats are swallowed, Backspace and Delete keep
+    # clearing, and a first press always reaches the field.
+    lock_harness autorepeat "$(
+        cat <<QML
+import QtQuick
+import Quickshell
+ShellRoot {
+    id: probe
+    Component.onCompleted: {
+        const v = Qt.createComponent("file://$PLUGIN/LockView.qml").createObject(probe, {});
+        const press = (key, repeat) => {
+            const e = { key: key, isAutoRepeat: repeat, accepted: false };
+            return [v.dropsAutoRepeat(e), e.accepted];
+        };
+        const r = {};
+        r.letter = press(Qt.Key_A, true);
+        r.digit = press(Qt.Key_0, true);
+        r.space = press(Qt.Key_Space, true);
+        r.enter = press(Qt.Key_Return, true);
+        r.keypadEnter = press(Qt.Key_Enter, true);
+        r.backspace = press(Qt.Key_Backspace, true);
+        r.del = press(Qt.Key_Delete, true);
+        r.firstPress = press(Qt.Key_A, false);
+        console.log("RESULT " + JSON.stringify(r));
+        Qt.quit();
+    }
+}
+QML
+    )"
+    assert_eq "a repeated letter is swallowed" "[true,true]" "$(jq -c .letter <<<"$RESULT")"
+    assert_eq "a repeated digit is swallowed" "[true,true]" "$(jq -c .digit <<<"$RESULT")"
+    assert_eq "a repeated space is swallowed" "[true,true]" "$(jq -c .space <<<"$RESULT")"
+    assert_eq "a repeated Return does not submit again" "[true,true]" "$(jq -c .enter <<<"$RESULT")"
+    assert_eq "nor the keypad's Enter" "[true,true]" "$(jq -c .keypadEnter <<<"$RESULT")"
+    assert_eq "a held Backspace still clears" "[false,false]" "$(jq -c .backspace <<<"$RESULT")"
+    assert_eq "and a held Delete" "[false,false]" "$(jq -c .del <<<"$RESULT")"
+    assert_eq "a first press reaches the field" "[false,false]" "$(jq -c .firstPress <<<"$RESULT")"
+    assert_contains "the field hands every key press to the filter" "$(cat "$PLUGIN/LockView.qml")" \
+        "Keys.onPressed: event => root.dropsAutoRepeat(event)"
 else
     echo "  skip: quickshell or pam_permit not installed; the lock service is not loaded" >&2
 fi

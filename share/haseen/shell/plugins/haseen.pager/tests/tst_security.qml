@@ -58,6 +58,37 @@ TestCase {
         compare(Store.parseFile("{").length, 0);
     }
 
+    // Plan 103, under the engine that runs it: astral entities decode whole,
+    // and only a browser names a site as the sender.
+    function test_upstream_fixes() {
+        // Built from parts: the plugin's lint reads "#" + hex digits as a colour.
+        const amp = "&" + "#";
+        compare(Markup.oneLine(amp + "128512; " + amp + "x1F600;"), "\u{1F600} \u{1F600}");
+        const chat = Store.snapshot({
+            appName: "Slack",
+            summary: "Sam",
+            body: '<a href="https://bank.example/">bank.example</a>locked'
+        }, "c", {
+            Normal: 1
+        });
+        compare(chat.source, "Slack");
+        compare(chat.groupKey, "app:slack");
+        const web = Store.snapshot({
+            appName: "Helium",
+            summary: "Sam",
+            body: '<a href="https://app.slack.com/">app.slack.com</a>hi'
+        }, "w", {
+            Normal: 1
+        });
+        compare(web.groupKey, "web:app.slack.com");
+        compare(Store.snapshot({
+            appName: "Slack",
+            desktopEntry: "slack"
+        }, "d", {
+            Normal: 1
+        }).appIcon, "slack");
+    }
+
     function test_layout() {
         const out = Layout.compute([
             {
