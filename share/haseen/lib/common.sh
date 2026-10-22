@@ -233,10 +233,16 @@ run_polkit() {
 # a `sudo` first on PATH that adds -N (--no-update): every sudo it runs, its
 # own or a PKGBUILD's, asks and caches nothing, so no build inherits the
 # password the update asked for. A sudo without -N (older, or another
-# implementation), or a temporary directory that cannot run the wrapper
-# (mounted noexec), gets the dropped timestamp only, with a warning. Adapted from
-# Omarchy bin/omarchy-update and default/omarchy/sudo-no-update/sudo (MIT,
-# Copyright (c) David Heinemeier Hansson), plan 103.
+# implementation), or a temporary directory where the wrapper cannot be made
+# or run (full, read-only, mounted noexec), gets the dropped timestamp only,
+# with a warning. Adapted from Omarchy bin/omarchy-update and
+# default/omarchy/sudo-no-update/sudo (MIT, Copyright (c) David Heinemeier
+# Hansson), plan 103.
+#
+# CMD runs in a subshell whose EXIT trap removes the wrapper and drops the
+# timestamp, however it ends (plan 111): a Ctrl+C, a closed terminal or a
+# SIGTERM, to the whole job or to this shell alone, still runs both once CMD
+# has stopped, and the caller's own traps are untouched.
 run_cold() {
     if $DRY_RUN; then
         echo "DRYRUN: sudo -k"
@@ -244,19 +250,61 @@ run_cold() {
         echo "DRYRUN: sudo -k"
         return 0
     fi
-    local real help dir="" status=0 q why=""
+    local real help tmp
     real="$(command -v sudo)" || die "run_cold: no sudo on PATH"
+    # The wrapper's directory goes first on PATH, so it must be absolute and
+    # free of ':': a relative entry would be looked up from whatever directory
+    # CMD is in (a PKGBUILD's), and a ':' would split it into two entries.
+    tmp="${TMPDIR:-/tmp}"
+    if [[ $tmp != /* ]]; then
+        tmp="$(realpath -e -- "$tmp" 2>/dev/null)" || tmp=/tmp
+    fi
+    [[ $tmp != *:* ]] || tmp=/tmp
     sudo -k
     # sudo -h prints its usage lines; -N is in their option brackets when this
     # sudo has it (the long-option list does not always name it).
     help="$(LC_ALL=C "$real" -h 2>&1)" || true
-    if grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' <<<"$help"; then
-        dir="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sudo.XXXXXX")"
-        q="'${real//\'/\'\\\'\'}'"
-        # The timestamp and informational modes stand alone: -N beside them
-        # is an error. --haseen-probe only asks whether the wrapper runs at
-        # all; an argument, so nothing a command inherits can trigger it.
-        cat >"$dir/sudo" <<EOF
+    (
+        dir="" status=0 why=""
+        # shellcheck disable=SC2317  # run by the EXIT trap
+        cold_end() {
+            [[ -z $dir ]] || rm -rf -- "$dir"
+            dir=""
+            sudo -k || true
+        }
+        trap cold_end EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        trap 'exit 129' HUP
+        if ! grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' <<<"$help"; then
+            why="this sudo has no -N (--no-update)"
+        elif ! dir="$(mktemp -d "$tmp/haseen-sudo.XXXXXX")"; then
+            dir=""
+            why="no directory for the wrapper could be made in $tmp"
+        elif ! _cold_sudo_wrapper "$dir/sudo" "$real"; then
+            why="the wrapper could not be written in $tmp"
+        elif ! "$dir/sudo" --haseen-probe 2>/dev/null; then
+            why="$tmp cannot run programs"
+        fi
+        if [[ -n $why ]]; then
+            [[ -z $dir ]] || rm -rf -- "$dir"
+            dir=""
+            warn "$why: $1 runs with the cached authorization dropped, but a password it asks for is cached again"
+            "$@" || status=$?
+        else
+            PATH="$dir:$PATH" "$@" || status=$?
+        fi
+        exit "$status"
+    )
+}
+
+# _cold_sudo_wrapper FILE REAL — write run_cold's sudo, which execs REAL with
+# -N. The timestamp and informational modes stand alone: -N beside them is an
+# error. --haseen-probe only asks whether the wrapper runs at all; an argument,
+# so nothing a command inherits can trigger it.
+_cold_sudo_wrapper() {
+    local q="'${2//\'/\'\\\'\'}'"
+    cat >"$1" <<EOF || return 1
 #!/bin/sh
 if [ \$# -eq 1 ]; then
     case \$1 in
@@ -266,24 +314,7 @@ if [ \$# -eq 1 ]; then
 fi
 exec $q -N "\$@"
 EOF
-        chmod 0755 "$dir/sudo"
-        if ! "$dir/sudo" --haseen-probe 2>/dev/null; then
-            rm -rf -- "$dir"
-            dir=""
-            why="${TMPDIR:-/tmp} cannot run programs"
-        fi
-    else
-        why="this sudo has no -N (--no-update)"
-    fi
-    if [[ -n $dir ]]; then
-        PATH="$dir:$PATH" "$@" || status=$?
-        rm -rf -- "$dir"
-    else
-        warn "$why: $1 runs with the cached authorization dropped, but a password it asks for is cached again"
-        "$@" || status=$?
-    fi
-    sudo -k
-    return "$status"
+    chmod 0755 "$1"
 }
 
 # write_root_file DEST [MODE] — write stdin as privileged file DEST. Parent

@@ -50,14 +50,19 @@ omarchy_would_run() {
 # where files it owns are owned by root (CI's container may not).
 userns() { unshare --map-root-user true 2>/dev/null; }
 
+# skipped FN WHAT WHY — FN's checks were not run: one SKIP line in the log
+# with how many there are, counted from FN itself, and why (plan 111).
+skipped() { echo "  SKIP $(declare -f "$1" | grep -cE '^[[:space:]]*assert_') $2: $3" >&2; }
+
 # plant_tree ROOT — this tree's router, guard and libraries at their own
 # paths inside ROOT, with nothing in ROOT writable by group or others: what an
 # installed tree looks like to root (root_stat on, or a user namespace).
 plant_tree() {
-    mkdir -p "$1$REPO/bin" "$1$REPO/share/haseen/lib"
+    mkdir -p "$1$REPO/bin" "$1$REPO/share/haseen/lib" "$1$REPO/share/haseen/default/omarchy-guard"
     cp "$REPO/bin/haseen" "$REPO/bin/haseen-omarchy-guard" "$1$REPO/bin/"
     cp "$REPO/share/haseen/VERSION" "$1$REPO/share/haseen/"
     cp "$REPO/share/haseen/lib/"* "$1$REPO/share/haseen/lib/"
+    cp "$REPO/share/haseen/default/omarchy-guard/"* "$1$REPO/share/haseen/default/omarchy-guard/"
     chmod -R go-w "$1"
 }
 
@@ -223,7 +228,7 @@ assert_contains "plymouth status says who put Omarchy's splash back" "$OUTPUT" \
 # As root, through user namespaces where the kernel allows them: root maps to
 # this user, and the runuser stand-in drops to an unprivileged id the same
 # way, so the seal itself runs as a non-root user, as it does under pacman.
-if userns && unshare --map-root-user unshare --map-user=1000 --map-group=1000 true 2>/dev/null; then
+guard_as_root() {
     stub runuser 'while [ "$1" != "--" ]; do shift; done; shift
 echo "runuser: $*" >>"$GUARD_LOG"
 exec unshare --map-user=1000 --map-group=1000 -- "$@"'
@@ -263,8 +268,15 @@ exec unshare --map-user=1000 --map-group=1000 -- "$@"'
     assert_contains "the splash step still ran" "$(cat "$ROOT/etc/plymouth/plymouthd.conf")" "Theme=haseen"
     capture unshare --map-root-user "$REPO/bin/haseen" omarchy guard
     assert_status "without --hook the failure is the exit status" 1 "$STATUS"
+}
+if ! userns; then
+    skipped guard_as_root "root-mode checks (the hook's run as root, an inherited HASEEN_PATH ignored as root)" \
+        "user namespaces are not available here"
+elif ! unshare --map-root-user unshare --map-user=1000 --map-group=1000 true 2>/dev/null; then
+    skipped guard_as_root "root-mode checks (the hook's run as root, an inherited HASEEN_PATH ignored as root)" \
+        "a user namespace here cannot map a second, unprivileged uid for the seal"
 else
-    echo "  SKIP root-mode guard checks: user namespaces are not available here" >&2
+    guard_as_root
 fi
 
 # --- the pacman hook and the base layer ---------------------------------------------
@@ -313,9 +325,19 @@ capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
 assert_not_contains "a library the guard sources that its group can write: not written" "$OUTPUT" "50-haseen-omarchy.hook (mode"
 assert_contains "and the library is named" "$OUTPUT" "but $REPO/share/haseen/lib/plymouth.sh is writable by its group or by others"
 chmod g-w "$fx$REPO/share/haseen/lib/plymouth.sh"
+# The template the hook is rendered from decides its Exec: it, and every
+# directory on its path, counts too (plan 111). default/ itself is an entry
+# of share/haseen; default/omarchy-guard/ and the file are not.
+for f in default/omarchy-guard default/omarchy-guard/50-haseen-omarchy.hook; do
+    chmod o+w "$fx$REPO/share/haseen/$f"
+    capture env HASEEN_SYSROOT="$fx" haseen layer apply base --dry-run
+    assert_not_contains "the template's $f others can write: not written" "$OUTPUT" "50-haseen-omarchy.hook (mode"
+    assert_contains "and it is named" "$OUTPUT" "but $REPO/share/haseen/$f is writable by its group or by others"
+    chmod o-w "$fx$REPO/share/haseen/$f"
+done
 root_stat off
 base_guard() { capture env DRY_RUN=true HASEEN_SYSROOT="$fx" unshare --map-root-user bash -c 'source "$HASEEN_PATH/lib/layers.sh"; _layer_env base; base_omarchy_guard'; }
-if userns; then
+guard_real_stat() {
     base_guard
     assert_status "with the real stat, as root, the guard step" 0 "$STATUS"
     assert_contains "writes the hook from a root-owned tree" "$OUTPUT" "DRYRUN: write /etc/pacman.d/hooks/50-haseen-omarchy.hook (mode 0644):"
@@ -323,8 +345,11 @@ if userns; then
     base_guard
     assert_contains "and refuses a tree others can write" "$OUTPUT" "but $REPO/share/haseen is writable by its group or by others"
     chmod o-w "$fx$REPO/share/haseen"
+}
+if userns; then
+    guard_real_stat
 else
-    echo "  SKIP real-stat root-owned tree checks: user namespaces are not available here" >&2
+    skipped guard_real_stat "real-stat root-owned tree checks" "user namespaces are not available here"
 fi
 capture env HASEEN_SYSROOT="$fx" haseen layer status base
 assert_not_contains "without Omarchy's packages a missing hook is no fault" "$OUTPUT" "Omarchy package guard"

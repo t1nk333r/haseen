@@ -520,3 +520,13 @@ touched, each because a change above made it stale or wrong:
 `tests/test-{trigger,omarchy-45,settings}.sh`, and `tests/test-keyboard.sh`
 (its stub of `binds.lua` needs `haseen.workspaces`); plus `AGENTS.md` (the default
 keys line), `docs/architecture.md`, `handoff.md` and `NOTICE.md`.
+
+## Follow-up (plan 111)
+
+Review round 2 of #63 found one case the model missed: the console closed
+(its last window, focus leaving) while its borrow of `specialWorkspaceOut`
+still waited on a user's special-workspace animation, and the borrow then
+landed with nothing showing. `settle()` now ends with `else bump(OUT)`, which
+cancels it; `tests/test-omarchy45-workspaces.sh` has the reviewer's scenario
+(111/111). The `init.lua` recorder comment now says Hyprland may still reject
+a spec the recorder stored (an unknown leaf, bezier or style).

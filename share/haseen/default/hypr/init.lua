@@ -121,8 +121,11 @@ haseen.bind_expressions = setmetatable({}, { __mode = "k" })
 -- the config set: remember the last spec per leaf, from here to the user's
 -- files. A reload resets Hyprland's tree, so the record starts empty on every
 -- load; the wrapper goes on once per Lua state, so a state kept across reloads
--- is not wrapped twice. A spec Hyprland refuses (no leaf, no speed or curve)
--- is not remembered: hl.animation reports it and returns normally.
+-- is not wrapped twice. A spec without a leaf, or without a speed and a curve
+-- while enabled, is not remembered: Hyprland refuses those, reports it and
+-- returns normally. That is a check of the spec's shape only: Hyprland may
+-- still reject a spec the recorder stored (an unknown leaf, bezier or style),
+-- so the record is what the config asked for, not what Hyprland applied.
 haseen.animations = {}
 if not haseen.set_animation then
   haseen.set_animation = hl.animation

@@ -438,3 +438,12 @@ On IO (and luna, where haseen's splash is installed), after deploying with
   background rebuild is serialised only by limine-mkinitcpio's own mutex
   (`mkinitcpio -P` has none), and the record and the image can then disagree
   until the next rebuild; `haseen plymouth set` once more settles both.
+
+## Follow-up (plan 111)
+
+The user-side key check walks the sbctl key directory's parents: a `keydir:`
+under a parent this user cannot enter now counts as "may hold keys"
+(`plymouth_sbctl_hidden`), where `-e` saw nothing. `/run/haseen` stays 0755:
+the user-side `omarchy-hyprland-monitor-watch` lists the reload guard's state
+under it. The `sudo` override checks print a counted SKIP line without user
+namespaces.

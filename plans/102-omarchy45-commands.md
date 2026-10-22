@@ -533,3 +533,10 @@ After the review of #58 and the merge of main at a4ad91b (plan 101):
   `omarchy-theme-set-herdr-machines` does.
 - Claude desktop has no catalogue entry, so the app menu does not list it;
   `omarchy-install-ai-claude` installs it through `haseen install aur`.
+
+## Follow-up (plan 111)
+
+The root-reads checks in `tests/test-omarchy-45.sh` (a fixture's hypervisor
+and device-tree answers ignored for root) print `SKIP 5 …` with their reason
+where user namespaces are refused, as in CI, and `SKIP 1 …` on a host with a
+device tree of its own, instead of a lowercase `skip:` without a count.

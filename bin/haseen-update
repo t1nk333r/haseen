@@ -73,10 +73,13 @@ update_system() {
     # killed by that, or by a logout, halfway through. A scope of PID 1's keeps
     # it out of the session and survives the manager's own re-exec. The scope
     # runs pacman as its own child, so the guard's variable still reaches it.
+    # Both are needed (plan 111): systemd running, and systemd-run on PATH. A
+    # container can see a /run/systemd/system without the systemd package;
+    # there pacman runs unscoped rather than the update stopping before it.
     local scope=()
     local systemd
     systemd="$(sysroot_path /run/systemd/system)"
-    [[ -d $systemd && ! -L $systemd ]] && scope=(systemd-run --scope --quiet --collect)
+    [[ -d $systemd && ! -L $systemd ]] && have systemd-run && scope=(systemd-run --scope --quiet --collect)
     run_root "${guard[@]}" "${scope[@]}" pacman -Syu "${yes[@]}"
 
     local helper

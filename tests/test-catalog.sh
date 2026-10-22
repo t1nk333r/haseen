@@ -234,7 +234,21 @@ capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
 assert_contains "update: pacman runs in its own scope under systemd" "$OUTPUT" \
     "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 systemd-run --scope --quiet --collect pacman -Syu"
 assert_dry_pure "update with a scope" "$OUTPUT"
-rm -rf "$guard_root/run/systemd/system" "$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+# systemd running but no systemd-run to be found (plan 111): pacman runs
+# without the scope rather than not at all. The PATH is this one's, with
+# systemd-run taken out of it.
+nosr="$SANDBOX/no-systemd-run"
+mkdir -p "$nosr/bin"
+cp -as /usr/bin/. "$nosr/bin/"
+rm -f "$nosr/bin/systemd-run"
+mv "$SANDBOX/stubs/systemd-run" "$SANDBOX/systemd-run.off"
+capture env PATH="$SANDBOX/stubs:$REPO/bin:$nosr/bin" HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+mv "$SANDBOX/systemd-run.off" "$SANDBOX/stubs/systemd-run"
+assert_status "update: systemd without systemd-run still updates" 0 "$STATUS"
+assert_contains "update: and pacman runs without the scope" "$OUTPUT" \
+    "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syu"
+assert_not_contains "update: no systemd-run is planned" "$OUTPUT" "systemd-run"
+rm -rf "$nosr" "$guard_root/run/systemd/system" "$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
 mkdir -p "$guard_root/elsewhere"
 ln -s ../../elsewhere "$guard_root/run/systemd/system"
 capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run

@@ -189,10 +189,13 @@ mkdir -p "$ROOT/etc/systemd/sleep.conf.d"
 : >"$ROOT/etc/systemd/sleep.conf.d/omarchy-sleep-disabled.conf"
 capture "$OMA/omarchy-sleep-disabled"
 assert_status "Omarchy's sleep-disabled drop-in" 0 "$STATUS"
+# skipped FN WHAT WHY — FN's checks were not run: one SKIP line in the log
+# with how many there are, counted from FN itself, and why (plan 111).
+skipped() { echo "  SKIP $(declare -f "$1" | grep -cE '^[[:space:]]*assert_') $2: $3" >&2; }
 # Root reads only the live machine: a fixture root in its environment is
 # ignored, as Omarchy's match-device-tree ignores its fixture variables for
 # root (plan 102). Root here is a user namespace's.
-if command -v unshare >/dev/null && timeout 10 unshare --user --map-root-user true </dev/null >/dev/null 2>&1; then
+hw_root_reads() {
     stub systemd-detect-virt "echo \"systemd-detect-virt \$*\" >>'$LOG'; exit 1"
     echo "QEMU" >"$ROOT/sys/class/dmi/id/sys_vendor"
     capture "$OMA/omarchy-hw-vm"
@@ -204,13 +207,17 @@ if command -v unshare >/dev/null && timeout 10 unshare --user --map-root-user tr
     capture "$OMA/omarchy-hw-match-device-tree" qcom,x1e80100
     assert_status "a fixture's device tree answers for a user" 0 "$STATUS"
     if [[ -e /proc/device-tree/compatible || -e /sys/firmware/devicetree/base/compatible ]]; then
-        echo "  skip: this host has a device tree of its own, so root's answer is the host's" >&2
+        echo "  SKIP 1 check (root ignores a fixture's device tree): this host has a device tree of its own, so root's answer is the host's" >&2
     else
         capture timeout 10 unshare --user --map-root-user "$OMA/omarchy-hw-match-device-tree" qcom,x1e80100
         assert_status "for root it is ignored: this host has no device tree" 1 "$STATUS"
     fi
+}
+if command -v unshare >/dev/null && timeout 10 unshare --user --map-root-user true </dev/null >/dev/null 2>&1; then
+    hw_root_reads
 else
-    echo "  skip: no user namespaces here, so the root path of hw-vm and hw-match-device-tree is not exercised" >&2
+    skipped hw_root_reads "checks of root's reads (hw-vm and hw-match-device-tree ignore a fixture for root)" \
+        "user namespaces are not available here"
 fi
 
 # --- non-Apple ARM steps: nothing on x86, the real step on the hardware -------------

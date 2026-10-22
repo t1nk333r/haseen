@@ -7,6 +7,8 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/lay
 source "$HASEEN_PATH/lib/doctor.sh"
 # shellcheck source=../share/haseen/lib/omarchy-guard.sh
 source "$HASEEN_PATH/lib/omarchy-guard.sh"
+# shellcheck source=../share/haseen/lib/boot.sh
+source "$HASEEN_PATH/lib/boot.sh"
 
 usage() { echo "Usage: haseen doctor"; }
 parse_common_flags "$@"
@@ -63,6 +65,11 @@ fi
 # omarchy-settings resets, and every Omarchy user unit still enabled.
 guard_ok=true
 omarchy_guard_doctor || guard_ok=false
+
+# The root= haseen pinned for Limine (plan 104) against the one this boot
+# used: a hint only, since two spellings of one device differ as text
+# (plan 111).
+boot_limine_pin_report
 
 echo
 status=0

@@ -301,6 +301,11 @@ local function settle(opened)
   elseif lent[OUT] then
     -- Nothing shows: the console is retracting on the borrowed leaf.
     after(OUT, runs_ms(SLIDE[OUT]), give_back)
+  else
+    -- Nothing shows and Out was never lent: the console closed while its
+    -- borrow still waited on a special workspace leaving the user's way.
+    -- Cancel it, or it would land with nothing showing.
+    bump(OUT)
   end
 end
 
