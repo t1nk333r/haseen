@@ -171,16 +171,25 @@ Verified, not taken from the survey:
   - without Omasnap, `smart` is slurp's rectangle, as `region` was (`:166`);
     `scroll` fails and says why.
   - `window`, `output` and `screen` stay one-key grim captures.
-  - the editor is Omasnap, then Tensaku, then swappy (`:218-228`). Omasnap
+  - the editor is Omasnap, then Tensaku, then swappy (`:220-230`). Omasnap
     edits the grabbed file (`--file`) and saves under a name of its own, so
     it is given a private folder and what appears there is what it saved
-    (`:258-290`); its own notification, which would name that private file,
-    goes to a silent `omarchy-notification-send` first on its `PATH`
-    (`:322-326`), and haseen announces the kept file. The folder is made in
-    `$XDG_RUNTIME_DIR` (`:278`), because a pin made in the editor inherits it
-    and may save there later, after this run removed it. haseen's `--edit`
-    contract holds: Enter (or Ctrl+S) saves, Escape, a pin or a copy-only
-    keep nothing, `--edit --upload` uploads the edit.
+    (`:263-296`). Its two save notices ("Screenshot saved", "Screenshot saved
+    and copied", `src/editor.cpp@v1.21.0:4013-4019`) would name that private
+    file, so an `omarchy-notification-send` stub first on its `PATH` drops
+    exactly those and passes every other notice to the real command, found
+    on `PATH` without the stub's directory: copied text (OCR,
+    `src/editor.cpp@v1.21.0:873`), a copy only, a failure (the stub is
+    `:329-348`). haseen announces the kept file. When
+    Omasnap exits non-zero (it cannot load or save the image; a load failure
+    only reaches stderr, `src/main.cpp@v1.21.0:344-347`), haseen says so on
+    stderr and in a critical notification, unless `--no-notify`, and exits
+    with its status (`:351-363`). The folder is made in `$XDG_RUNTIME_DIR`
+    (`:283`), because a pin made in the editor inherits it (Not done).
+    haseen's `--edit` contract holds: Enter (or Ctrl+S) saves, Escape, a pin
+    or Ctrl+C (copy only, which Omasnap announces) keep nothing, `--edit
+    --upload` uploads the edit; Enter also copies, even with `--no-copy`
+    (Omasnap's Enter does both), which the help says.
 - **`share/haseen/omarchy/bin/omarchy-capture-screenshot`**: with Omasnap, 4.5's
   mapping (`:40-54`): `copy`/`save` anywhere become `--copy`/`--save`, `slurp`
   is dropped, everything else goes to omasnap as it is, `OMARCHY_SCREENSHOT_DIR`
@@ -254,12 +263,14 @@ an Omarchy bar widget reaches the same answer.
 
 ## Tests
 
-New `tests/test-omasnap.sh` (160 checks), with `# haseen:covers` in its header:
+New `tests/test-omasnap.sh` (176 checks), with `# haseen:covers` in its header:
 the hand-over and its arguments, folder and OCR rules (13 cases), every
 option that keeps haseen's own capture, `HASEEN_SCREENSHOT_TOOL`, Omasnap as
 the editor (Enter keeps, uploads and copies the edit under haseen's name with
-Omasnap's toast silenced; Escape keeps nothing; no private folder is left,
-with and without a runtime dir), the Tensaku and swappy fallbacks, Omarchy's
+Omasnap's save notice dropped; its OCR and copy-only notices still reach the
+real command; a failed Omasnap fails the capture with a notification, none
+with `--no-notify`; Escape keeps nothing; no private folder is left, with and
+without a runtime dir), the Tensaku and swappy fallbacks, Omarchy's
 `omarchy-capture-screenshot` cases from its own `test/shell.d/omasnap-test.sh`,
 clipboard images, the manifest, the migration on fixture sysroots (installs
 from `[omarchy]` only, skips with the layer hint, leaves an installed Omasnap
@@ -270,7 +281,8 @@ opens.
 - `tools/affected-tests.sh --check`: 2596 files, 158 tests, 1845 covers
   globs, every file covered.
 - `./tests/run.sh --affected origin/main` (51 files, from the change's 26
-  paths): 8163/8163, run from a short bind mount of the checkout. From the
+  paths): 8163/8163 in round 1, 8179/8179 after review round 1 (f634f75's
+  fixes), run from a short bind mount of the checkout. From the
   T3 worktree's own long path, test-nvim-theme ("one line per spec") and
   test-themegen-keys (its Quickshell IPC socket path passes the 108-byte
   limit) fail; both pass from a short path, with this change and on
@@ -305,6 +317,13 @@ On IO and luna, after the merge and the usual deploy:
 
 ## Not done
 
+- A pin made in the `--edit` editor inherits the private
+  `OMASNAP_SCREENSHOT_DIR` (`$XDG_RUNTIME_DIR/haseen-screenshot.*`), so its
+  link button later saves the PNG there (`src/pin.cpp@v1.21.0:1190-1201`),
+  into a folder Omasnap makes again after haseen removed it and that is
+  gone at logout; accepted, and said in the code comment above Omasnap's
+  editor command in `bin/haseen-capture-screenshot` ("so that copy lasts
+  until logout").
 - Omasnap's theme: when `[omarchy]` ships a release that follows the theme
   (Omasnap d52b49a), it reads `~/.local/state/omarchy/current/theme/`, which
   haseen does not populate; theming it then means a link or a render there

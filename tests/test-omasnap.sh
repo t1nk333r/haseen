@@ -48,20 +48,28 @@ printf "%s" "https://files.catbox.moe/zz.png"'
     export HASEEN_UPLOAD_CONFIG="$SANDBOX/upload.toml"
     # Omasnap 1.21.0 as far as haseen relies on it (src/main.cpp,
     # src/capture.cpp, src/editor.cpp at v1.21.0): it records the folder and
-    # OCR languages it was given and its arguments. Editing a --file,
-    # EDITOR_KEY=enter saves the edit under a name of its own in
-    # $OMASNAP_SCREENSHOT_DIR and announces it through
-    # omarchy-notification-send; escape (or a pin, or copy only) saves nothing.
+    # OCR languages it was given and its arguments. Editing a --file, it
+    # announces through omarchy-notification-send with its own arguments
+    # (src/capture.cpp:2501-2525): EDITOR_KEY=enter saves the edit under a name
+    # of its own in $OMASNAP_SCREENSHOT_DIR and announces the save
+    # (src/editor.cpp:4013-4019); ocr announces copied text (:873) and copy a
+    # copy, saving nothing; fail cannot load the file (src/main.cpp:344-347:
+    # stderr and exit 1, no notice); escape (or a pin) saves nothing.
     stub omasnap 'echo "omasnap [${OMASNAP_SCREENSHOT_DIR-unset}] [${OMASNAP_OCR_LANGS-unset}] $*" >>"$CALLS"
 in=""; prev=""
 for a in "$@"; do [ "$prev" = --file ] && in=$a; prev=$a; done
 [ -n "$in" ] || exit 0
 printf "omasnap-input: %s\n" "$(cat "$in")" >>"$CALLS"
-if [ "${EDITOR_KEY:-escape}" = enter ]; then
+case ${EDITOR_KEY:-escape} in
+enter)
   mkdir -p "$OMASNAP_SCREENSHOT_DIR"
-  printf ANNOTATED >"$OMASNAP_SCREENSHOT_DIR/screenshot-2026-10-21_10-00-00-firefox.png"
-  omarchy-notification-send "Screenshot saved and copied" "Click to edit" --image "$OMASNAP_SCREENSHOT_DIR/x.png" --exec omasnap x
-fi
+  saved="$OMASNAP_SCREENSHOT_DIR/screenshot-2026-10-21_10-00-00-firefox.png"
+  printf ANNOTATED >"$saved"
+  omarchy-notification-send -g "" --app-name omasnap -t 4500 "Screenshot saved and copied" "Click to edit" --image "$saved" --exec omasnap "file://$saved" ;;
+ocr) omarchy-notification-send -g "" --app-name omasnap -t 4500 "Copied text from screenshot" ;;
+copy) omarchy-notification-send -g "" --app-name omasnap -t 4500 "Screenshot copied to clipboard" ;;
+fail) echo "Could not load image: $in" >&2; exit 1 ;;
+esac
 exit 0'
     # The answer Omasnap's notification would reach on PATH.
     stub omarchy-notification-send 'echo "omarchy-notification-send $*" >>"$CALLS"'
@@ -183,7 +191,7 @@ assert_status "the edit plan exits 0" 0 "$STATUS"
 assert_dry_pure "edit plan" "$OUTPUT"
 assert_contains "Omasnap edits the grabbed file in a private folder" "$OUTPUT" \
     "DRYRUN: env PATH=<private temp dir>/quiet:\$PATH OMASNAP_SCREENSHOT_DIR=<private runtime dir> OMASNAP_OCR_LANGS=ara+eng omasnap --file <private temp dir>/original.png"
-assert_contains "its own notification is silenced" "$OUTPUT" "quiet/omarchy-notification-send (exits 0"
+assert_contains "its save notices are dropped, nothing else" "$OUTPUT" "quiet/omarchy-notification-send (drops Omasnap's \"Screenshot saved\" notices"
 assert_contains "what it saved is kept" "$OUTPUT" "DRYRUN: mv <the PNG Omasnap saved in <private runtime dir>> $PICS/screenshot-"
 assert_contains "and uploaded" "$OUTPUT" "DRYRUN: haseen-upload $PICS/screenshot-"
 assert_contains "both private folders are removed" "$OUTPUT" "DRYRUN: rm -r <private temp dir> <private runtime dir>"
@@ -223,6 +231,49 @@ assert_eq "Escape: nothing is copied" "" "$(grep '^wl-copy' "$CALLS")"
 assert_eq "Escape: nothing is saved" "" "$(shots)"
 assert_eq "Escape: nothing is announced" "" "$(grep -E '^(notify-send|omarchy-notification-send)' "$CALLS")"
 assert_eq "Escape: no private folder is left" "" "$(find "$tmp" "$XDG_RUNTIME_DIR" -mindepth 1)"
+
+# Omasnap's other notices still reach the user: the stub drops only the save
+# notices haseen replaces.
+snap_sandbox p107-edit-notices
+tmp="$SANDBOX/tmp"
+mkdir -p "$tmp"
+export EDITOR_KEY=ocr
+TMPDIR=$tmp capture haseen capture screenshot window --edit
+assert_status "OCR in the editor: exits 0" 0 "$STATUS"
+assert_eq "OCR in the editor: its notice reaches the real command" \
+    "omarchy-notification-send -g  --app-name omasnap -t 4500 Copied text from screenshot" \
+    "$(grep '^omarchy-notification-send' "$CALLS")"
+assert_eq "OCR in the editor: nothing is saved" "" "$(shots)"
+: >"$CALLS"
+export EDITOR_KEY=copy
+TMPDIR=$tmp capture haseen capture screenshot window --edit
+assert_status "copy only: exits 0" 0 "$STATUS"
+assert_eq "copy only: Omasnap's own notice says what happened" \
+    "omarchy-notification-send -g  --app-name omasnap -t 4500 Screenshot copied to clipboard" \
+    "$(grep '^omarchy-notification-send' "$CALLS")"
+assert_eq "copy only: haseen keeps and announces nothing" "" "$(shots)$(grep '^notify-send' "$CALLS")"
+assert_eq "notices: no private folder is left" "" "$(find "$tmp" "$XDG_RUNTIME_DIR" -mindepth 1)"
+
+# A failed Omasnap is reported, not silent: it notifies only from a capture,
+# and a file it cannot load goes to stderr alone.
+snap_sandbox p107-edit-fail
+tmp="$SANDBOX/tmp"
+mkdir -p "$tmp"
+export EDITOR_KEY=fail
+TMPDIR=$tmp capture haseen capture screenshot window --edit --upload
+assert_status "a failed editor fails the capture with its status" 1 "$STATUS"
+assert_contains "and says so" "$OUTPUT" "omasnap failed (exit 1): nothing was saved, copied or uploaded"
+assert_contains "Omasnap's own reason is kept" "$OUTPUT" "Could not load image:"
+assert_eq "and a desktop notification says so" \
+    "notify-send -a haseen -u critical Screenshot not edited Omasnap failed (exit 1): nothing was saved, copied or uploaded" \
+    "$(grep '^notify-send' "$CALLS")"
+assert_not_contains "nothing is uploaded" "$(calls)" "curl"
+assert_eq "nothing is copied or saved" "" "$(grep '^wl-copy' "$CALLS")$(shots)"
+assert_eq "no private folder is left" "" "$(find "$tmp" "$XDG_RUNTIME_DIR" -mindepth 1)"
+: >"$CALLS"
+TMPDIR=$tmp capture haseen capture screenshot window --edit --no-notify
+assert_status "--no-notify: still fails" 1 "$STATUS"
+assert_eq "--no-notify: no desktop notification" "" "$(grep '^notify-send' "$CALLS")"
 
 # Without a private runtime dir, the editor's folder lives in the temp dir.
 snap_sandbox p107-edit-noruntime
