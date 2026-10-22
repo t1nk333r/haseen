@@ -327,8 +327,9 @@ sysroots with recording `systemctl` and `notify-send` fakes:
 `tests/test-plymouth.sh` is unchanged and passes 79/79.
 
 `tests/run.sh --affected origin/main` with the hermetic wrapper selects 34
-files: 5532/5532 from a short bind mount of this checkout (`bwrap --bind`
-to `/tmp/s110`, as the gate notes advise for T3 worktrees). From the long T3
+files: 5503/5503 after rebasing on plan 107's merge (5532/5532 before it),
+from a short bind mount of this checkout (`bwrap --bind` to `/tmp/s110`, as
+the gate notes advise for T3 worktrees). From the long T3
 worktree path the same run was 5528/5529: `tests/test-nvim-theme.sh` "one
 line per spec" fails there because headless nvim joins its long printed
 lines; it passes 108/108 from the short path, and the same from a `main`
