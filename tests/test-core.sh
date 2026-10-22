@@ -227,6 +227,54 @@ done
 assert_eq "every test file refuses to run outside tests/run.sh" "$(ls "$REPO"/tests/test-*.sh | wc -l)" "$refused"
 assert_eq "a test file run directly writes nothing" "" "$(ls -A "$direct")"
 
+# --- run_cold (plan 103) ------------------------------------------------------
+# Code haseen did not write runs with sudo's timestamp dropped around it and a
+# `sudo` first on PATH that adds -N. The command's own status comes back, the
+# wrapper goes away even when the command fails, and a sudo path with a quote
+# and a space in it still reaches the real one.
+sandbox common-cold
+odd="$SANDBOX/it's here"
+mkdir -p "$odd" "$SANDBOX/tmp"
+log="$SANDBOX/cold.log"
+cat >"$odd/sudo" <<EOF
+#!/bin/sh
+echo "SUDO: \$*" >>"$log"
+[ "\$1" = -h ] && echo 'usage: sudo [-ABbEHkNnPS] [-C num]'
+exit 0
+EOF
+chmod +x "$odd/sudo"
+cold() { # STATUS — run_cold on a command that runs sudo twice, then exits STATUS
+    : >"$log"
+    capture env PATH="$odd:$PATH" TMPDIR="$SANDBOX/tmp" bash -c \
+        'source "$1"; DRY_RUN=false; run_cold sh -c "sudo -V; sudo id -u; exit $2"' _ "$HASEEN_PATH/lib/common.sh" "$1"
+}
+cold 0
+assert_status "run_cold: a command that succeeds" 0 "$STATUS"
+assert_eq "run_cold: the timestamp is dropped around it, -N on all but -V" \
+    "SUDO: -k|SUDO: -h|SUDO: -V|SUDO: -N id -u|SUDO: -k" "$(paste -sd'|' "$log")"
+cold 3
+assert_status "run_cold: a failing command's status comes back" 3 "$STATUS"
+assert_eq "run_cold: and the timestamp is still dropped after it" "SUDO: -k" "$(tail -n1 "$log")"
+assert_eq "run_cold: no wrapper is left behind" "" "$(find "$SANDBOX/tmp" -mindepth 1)"
+# A temporary directory that cannot run the wrapper (mounted noexec; here a
+# chmod that does nothing leaves it unexecutable): the command still runs,
+# cold before and after, and the warning says why it had no -N.
+mkdir -p "$SANDBOX/no-chmod"
+printf '#!/bin/sh\nexit 0\n' >"$SANDBOX/no-chmod/chmod"
+chmod +x "$SANDBOX/no-chmod/chmod"
+: >"$log"
+capture env PATH="$SANDBOX/no-chmod:$odd:$PATH" TMPDIR="$SANDBOX/tmp" bash -c \
+    'source "$1"; DRY_RUN=false; run_cold sh -c "sudo id -u"' _ "$HASEEN_PATH/lib/common.sh"
+assert_status "run_cold, wrapper cannot run: the command still runs" 0 "$STATUS"
+assert_eq "run_cold, wrapper cannot run: cold before and after, no -N" \
+    "SUDO: -k|SUDO: -h|SUDO: id -u|SUDO: -k" "$(paste -sd'|' "$log")"
+assert_contains "run_cold, wrapper cannot run: says why" "$OUTPUT" "$SANDBOX/tmp cannot run programs"
+assert_eq "run_cold, wrapper cannot run: nothing left behind" "" "$(find "$SANDBOX/tmp" -mindepth 1)"
+capture bash -c 'source "$1"; DRY_RUN=true; run_cold paru -Sua' _ "$HASEEN_PATH/lib/common.sh"
+assert_eq "run_cold: a dry run prints both drops and the command" \
+    $'DRYRUN: sudo -k\nDRYRUN: paru -Sua (each sudo it runs is sudo -N: it asks, and caches nothing)\nDRYRUN: sudo -k' "$OUTPUT"
+assert_dry_pure "run_cold" "$OUTPUT"
+
 # --- replace_user_file and run_polkit (plan 093) --------------------------------
 sandbox common-replace
 f="$SANDBOX/state.json"

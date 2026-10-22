@@ -233,6 +233,64 @@ else
     _fail "qml runner missing: $QML"
 fi
 
+# --- the month grid where midnight goes missing (plan 103) --------------------
+# Zones that start DST at 00:00 have a day with no local midnight, and Qt's V4
+# engine resolves it backwards onto the day before: a grid of local midnights
+# drew September 2026 in Santiago as "5 5 7", and Samoa's skipped 30 December
+# 2011 as "31 31". The grid is walked in UTC, so under the engine the shell
+# runs, in each of those zones, every month from 2011 to 2027 is 42 dates in a
+# row that start on the first weekday and hold the whole month.
+cat >"$H/Dst.qml" <<EOF
+import QtQuick
+import "file://$PLUGINS/haseen.calendar/Calendar.js" as C
+
+QtObject {
+    Component.onCompleted: {
+        const bad = [];
+        for (let year = 2011; year <= 2027; year++) {
+            for (let month = 0; month < 12; month++) {
+                for (const first of [0, 1, 6]) {
+                    const cells = C.monthGrid(year, month, first);
+                    let inMonth = 0;
+                    for (let i = 0; i < cells.length; i++) {
+                        const c = cells[i];
+                        if (c.inMonth)
+                            inMonth++;
+                        if (c.weekday !== (first + i) % 7)
+                            bad.push(year + "-" + (month + 1) + " cell " + i + " is weekday " + c.weekday);
+                        if (i > 0) {
+                            const p = cells[i - 1];
+                            if (Date.UTC(c.year, c.month, c.day) - Date.UTC(p.year, p.month, p.day) !== 86400000)
+                                bad.push(year + "-" + (month + 1) + " cell " + i + ": " + p.day + " then " + c.day);
+                        }
+                    }
+                    if (inMonth !== new Date(Date.UTC(year, month + 1, 0)).getUTCDate())
+                        bad.push(year + "-" + (month + 1) + " holds " + inMonth + " days of its month");
+                }
+            }
+        }
+        const sep = C.monthGrid(2026, 8, 0).slice(0, 14).map(c => c.day).join(" ");
+        const apia = C.monthGrid(2011, 11, 1).slice(28, 35).map(c => c.day).join(" ");
+        console.warn("DST-RESULT " + JSON.stringify({ bad: bad.slice(0, 5), count: bad.length, sep: sep, apia: apia }));
+        Qt.exit(0);
+    }
+}
+EOF
+if [[ -x $QML ]]; then
+    for tz in America/Santiago America/Havana Asia/Beirut Atlantic/Azores Africa/Cairo Pacific/Apia; do
+        set +e
+        dst="$(TZ="$tz" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML" "$H/Dst.qml" 2>&1)"
+        set -e
+        dst="$(sed -n 's/.*DST-RESULT //p' <<<"$dst" | tail -n 1)"
+        assert_eq "calendar in $tz: every grid is consecutive dates" "0" "$(jq -r '.count // "no result"' <<<"$dst")"
+        assert_eq "calendar in $tz: none wrong" "[]" "$(jq -c '.bad // "no result"' <<<"$dst")"
+        assert_eq "calendar in $tz: September 2026 runs through the Chilean gap" \
+            "30 31 1 2 3 4 5 6 7 8 9 10 11 12" "$(jq -r '.sep // "no result"' <<<"$dst")"
+        assert_eq "calendar in $tz: December 2011 keeps the day Samoa skipped" \
+            "26 27 28 29 30 31 1" "$(jq -r '.apia // "no result"' <<<"$dst")"
+    done
+fi
+
 # --- geoclue-watch.sh with a stub gdbus ---------------------------------------
 watch="$PLUGINS/haseen.privacy/geoclue-watch.sh"
 gdbus_stub() { # ACTIVATABLE_NAME OWNED(true|false) — Get prints STUB-GET on stderr

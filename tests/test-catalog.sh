@@ -210,7 +210,12 @@ all+="$OUTPUT"
 assert_contains "update: opens on haseen's name" "$OUTPUT" "[*] haseen update: system"
 assert_not_contains "update: never Omarchy's" "$OUTPUT" "Omarchy"
 assert_contains "update: repos" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
-assert_contains "update: AUR" "$OUTPUT" "DRYRUN: paru -Sua"
+# Plan 103: the AUR phase runs cold. Its PKGBUILDs never see the timestamp
+# pacman's step left, and paru uses the sudo on PATH, with no sudo loop.
+assert_contains "update: AUR, cold" "$OUTPUT" \
+    $'DRYRUN: sudo -k\nDRYRUN: paru --sudo sudo --nosudoloop -Sua (each sudo it runs is sudo -N: it asks, and caches nothing)\nDRYRUN: sudo -k'
+assert_contains "update: the repositories come before the cold AUR phase" "$OUTPUT" \
+    $'DRYRUN: sudo pacman -Syu\n[*] AUR (paru)\nDRYRUN: sudo -k'
 assert_contains "update: user flatpaks" "$OUTPUT" "DRYRUN: flatpak update --user"
 assert_contains "update: system flatpaks when present" "$OUTPUT" "DRYRUN: flatpak update --system"
 # A machine that still carries the omarchy package has a pacman hook that aborts
@@ -221,6 +226,29 @@ mkdir -p "$guard_root/usr/share/libalpm/hooks"
 capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
 assert_contains "update: passes Omarchy's pacman guard where it is installed" "$OUTPUT" \
     "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syu"
+# Under systemd, pacman runs in a scope of PID 1's, so a logout or systemd's
+# own re-exec mid-upgrade cannot kill the transaction (plan 103). The guard's
+# variable is set outside the scope, which runs pacman as its own child.
+mkdir -p "$guard_root/run/systemd/system"
+capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+assert_contains "update: pacman runs in its own scope under systemd" "$OUTPUT" \
+    "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 systemd-run --scope --quiet --collect pacman -Syu"
+assert_dry_pure "update with a scope" "$OUTPUT"
+rm -rf "$guard_root/run/systemd/system" "$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+mkdir -p "$guard_root/elsewhere"
+ln -s ../../elsewhere "$guard_root/run/systemd/system"
+capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+assert_contains "update: a linked /run/systemd/system is not systemd" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
+assert_not_contains "update: and gets no scope" "$OUTPUT" "systemd-run"
+# yay gets its own spelling of "no sudo loop". Only where no real paru would
+# be found once the sandbox's stub is gone (a dry run executes neither).
+if [[ ! -e /usr/bin/paru && ! -e /bin/paru ]]; then
+    mv "$SANDBOX/stubs/paru" "$SANDBOX/stubs/paru.off"
+    capture haseen update --dry-run
+    assert_contains "update: yay runs cold too" "$OUTPUT" \
+        "DRYRUN: yay --sudo sudo --sudoloop=false -Sua (each sudo it runs is sudo -N: it asks, and caches nothing)"
+    mv "$SANDBOX/stubs/paru.off" "$SANDBOX/stubs/paru"
+fi
 capture haseen update firmware --dry-run --yes
 all+="$OUTPUT"
 assert_contains "firmware: refresh" "$OUTPUT" "DRYRUN: fwupdmgr refresh --force"
@@ -243,7 +271,50 @@ assert_status "update on a TTY: completes" 0 "$STATUS"
 assert_not_contains "update on a TTY: no missing banner file" "$OUTPUT" "No such file"
 assert_contains "update on a TTY: shows the mark's logo" "$OUTPUT" "$(head -n1 "$HASEEN_PATH/branding/logo-kufic.txt")"
 assert_contains "update on a TTY: reaches pacman" "$OUTPUT" "RAN: sudo pacman -Syu"
-assert_contains "update on a TTY: reaches the AUR" "$OUTPUT" "RAN: paru -Sua"
+assert_contains "update on a TTY: reaches the AUR" "$OUTPUT" "RAN: paru --sudo sudo --nosudoloop -Sua"
+# That stub's -h names no -N, as sudo-rs's would not: the AUR phase still
+# drops the timestamp before and after, and says what it could not do.
+tty_out="${OUTPUT//$'\r'/}"
+assert_contains "update without sudo -N: cold before, and says so" "$tty_out" \
+    $'RAN: sudo -k\nWarning: this sudo has no -N (--no-update)'
+assert_contains "update without sudo -N: and cold after" "$tty_out" \
+    $'RAN: paru --sudo sudo --nosudoloop -Sua\nRAN: sudo -k'
+
+# The cold AUR phase for real (plan 103), with a sudo that has -N and a paru
+# that runs sudo the way a helper and a PKGBUILD would: every sudo it runs
+# carries -N but the stand-alone modes, its sudo is the one run_cold put on
+# PATH, the timestamp is dropped around it, and nothing is left behind.
+cold_bin="$SANDBOX/update-cold"
+cold_log="$SANDBOX/update-cold.log"
+cold_tmp="$SANDBOX/update-cold-tmp"
+mkdir -p "$cold_bin" "$cold_tmp"
+: >"$cold_log"
+cat >"$cold_bin/sudo" <<EOF
+#!/bin/sh
+echo "SUDO: \$*" >>"$cold_log"
+if [ "\$1" = -h ]; then
+    echo 'usage: sudo -h | -K | -k | -V'
+    echo 'usage: sudo [-ABbEHkNnPS] [-C num] [-D directory]'
+fi
+EOF
+cat >"$cold_bin/paru" <<EOF
+#!/bin/sh
+echo "PARU: \$*" >>"$cold_log"
+echo "PARU-SUDO: \$(command -v sudo)" >>"$cold_log"
+sudo pacman -U example-1-1-x86_64.pkg.tar.zst
+sudo -n true
+sudo -k
+EOF
+printf '#!/bin/sh\n' >"$cold_bin/flatpak"
+chmod +x "$cold_bin/sudo" "$cold_bin/paru" "$cold_bin/flatpak"
+capture env PATH="$cold_bin:$PATH" TMPDIR="$cold_tmp" script -qec "haseen update" /dev/null
+assert_status "cold AUR phase: the update completes" 0 "$STATUS"
+assert_eq "cold AUR phase: what sudo was asked, in order" \
+    "SUDO: pacman -Syu|SUDO: -k|SUDO: -h|PARU: --sudo sudo --nosudoloop -Sua|SUDO: -N pacman -U example-1-1-x86_64.pkg.tar.zst|SUDO: -N -n true|SUDO: -k|SUDO: -k" \
+    "$(grep -v '^PARU-SUDO' "$cold_log" | paste -sd'|' -)"
+assert_contains "cold AUR phase: paru's sudo is run_cold's" "$(grep '^PARU-SUDO' "$cold_log")" "$cold_tmp/haseen-sudo."
+assert_eq "cold AUR phase: the wrapper is removed after" "" "$(find "$cold_tmp" -mindepth 1)"
+assert_not_contains "cold AUR phase: no warning with -N" "$OUTPUT" "no -N"
 
 capture haseen time sync --dry-run
 all+="$OUTPUT"

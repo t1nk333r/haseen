@@ -6,9 +6,9 @@
 # The dry-run contract: every state-changing command flows through one of the
 # helpers below. In dry-run mode they print the command (and, for file writes,
 # the full content) instead of running it. Review enforces "no sudo outside
-# run_root / write_root_file / append_root_file / install_root_file" with one
-# grep, and tests/run.sh enforces "no state change under --dry-run" with PATH
-# stubs that fail on any privileged binary.
+# run_root / run_cold / write_root_file / append_root_file / install_root_file"
+# with one grep, and tests/run.sh enforces "no state change under --dry-run"
+# with PATH stubs that fail on any privileged binary.
 #
 # Reads of system state go through sysroot_path so the fixture trees under
 # tests/fixtures/<name>/ can stand in for a real machine (HASEEN_SYSROOT).
@@ -225,6 +225,65 @@ run_polkit() {
     else
         pkexec "$@"
     fi
+}
+
+# run_cold CMD... — run CMD, which runs code haseen did not write (an AUR
+# helper building PKGBUILDs), without the sudo authorization an earlier step
+# cached. The timestamp is dropped before CMD and again after it, and CMD finds
+# a `sudo` first on PATH that adds -N (--no-update): every sudo it runs, its
+# own or a PKGBUILD's, asks and caches nothing, so no build inherits the
+# password the update asked for. A sudo without -N (older, or another
+# implementation), or a temporary directory that cannot run the wrapper
+# (mounted noexec), gets the dropped timestamp only, with a warning. Adapted from
+# Omarchy bin/omarchy-update and default/omarchy/sudo-no-update/sudo (MIT,
+# Copyright (c) David Heinemeier Hansson), plan 103.
+run_cold() {
+    if $DRY_RUN; then
+        echo "DRYRUN: sudo -k"
+        echo "DRYRUN: $* (each sudo it runs is sudo -N: it asks, and caches nothing)"
+        echo "DRYRUN: sudo -k"
+        return 0
+    fi
+    local real help dir="" status=0 q why=""
+    real="$(command -v sudo)" || die "run_cold: no sudo on PATH"
+    sudo -k
+    # sudo -h prints its usage lines; -N is in their option brackets when this
+    # sudo has it (the long-option list does not always name it).
+    help="$(LC_ALL=C "$real" -h 2>&1)" || true
+    if grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' <<<"$help"; then
+        dir="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sudo.XXXXXX")"
+        q="'${real//\'/\'\\\'\'}'"
+        # The timestamp and informational modes stand alone: -N beside them
+        # is an error. --haseen-probe only asks whether the wrapper runs at
+        # all; an argument, so nothing a command inherits can trigger it.
+        cat >"$dir/sudo" <<EOF
+#!/bin/sh
+if [ \$# -eq 1 ]; then
+    case \$1 in
+    --haseen-probe) exit 0 ;;
+    -k | --reset-timestamp | -K | --remove-timestamp | -h | --help | -V | --version) exec $q "\$1" ;;
+    esac
+fi
+exec $q -N "\$@"
+EOF
+        chmod 0755 "$dir/sudo"
+        if ! "$dir/sudo" --haseen-probe 2>/dev/null; then
+            rm -rf -- "$dir"
+            dir=""
+            why="${TMPDIR:-/tmp} cannot run programs"
+        fi
+    else
+        why="this sudo has no -N (--no-update)"
+    fi
+    if [[ -n $dir ]]; then
+        PATH="$dir:$PATH" "$@" || status=$?
+        rm -rf -- "$dir"
+    else
+        warn "$why: $1 runs with the cached authorization dropped, but a password it asks for is cached again"
+        "$@" || status=$?
+    fi
+    sudo -k
+    return "$status"
 }
 
 # write_root_file DEST [MODE] — write stdin as privileged file DEST. Parent

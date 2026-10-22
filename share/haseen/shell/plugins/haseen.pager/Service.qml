@@ -493,11 +493,26 @@ Scope {
         return snoozeCount > 0 || globalSnoozeUntil > 0;
     }
 
+    // The longest a snooze may run: anything past a year is a mistake, and an
+    // infinite one would be stored as a null that restores to something else
+    // (upstream 21bee67a4).
+    readonly property int maxSnoozeSeconds: 366 * 86400
+
+    // Minutes from IPC: a finite positive number, capped, else the default.
+    function snoozeMinutes(value, fallback) {
+        const minutes = Number(value);
+        if (!isFinite(minutes) || minutes <= 0)
+            return fallback;
+        return Math.min(minutes, maxSnoozeSeconds / 60);
+    }
+
     // `fromNow` re-snoozes rather than extends: "4 hours" means four hours.
     function snoozeSource(groupKey, label, seconds, fromNow) {
         const key = String(groupKey || "");
-        if (!key || !(seconds > 0))
+        seconds = Number(seconds);
+        if (!key || !isFinite(seconds) || seconds <= 0)
             return 0;
+        seconds = Math.min(seconds, maxSnoozeSeconds);
         // Snoozing everything supersedes silencing it: the same quiet with an
         // end on it, and the end is the point.
         if (key === globalKey)
@@ -1910,7 +1925,7 @@ Scope {
     }
 
     function lookForReply(row) {
-        if (!/kde\s*connect/i.test(String(row.app || "")))
+        if (!Markup.isKdeConnect(row.app))
             return;
         replyQueue = replyQueue.concat([
             {
@@ -2198,7 +2213,7 @@ Scope {
             if (toasts.count === 0)
                 return "nothing";
             const row = toasts.get(0);
-            const mins = Number(minutes) > 0 ? Number(minutes) : 60;
+            const mins = service.snoozeMinutes(minutes, 60);
             const until = service.snoozeSource(String(row.groupKey || ""), String(row.source || row.app || ""), mins * 60);
             return until ? (String(row.source || row.app) + " until " + new Date(until * 1000).toTimeString().slice(0, 5)) : "no source";
         }
@@ -2209,7 +2224,7 @@ Scope {
                 service.unsnooze(service.globalKey);
                 return "awake";
             }
-            const mins = Number(minutes) > 0 ? Number(minutes) : 60;
+            const mins = service.snoozeMinutes(minutes, 60);
             const until = service.snoozeSource(service.globalKey, "Everything", mins * 60, true);
             return until ? ("everything until " + new Date(until * 1000).toTimeString().slice(0, 5)) : "no";
         }

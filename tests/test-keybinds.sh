@@ -507,6 +507,45 @@ assert_eq "no key is bound twice" "" "$(cut -f1 <<<"$shipped" | sort | uniq -d)"
 for k in C V X; do
     assert_eq "SUPER + $k is a universal clipboard key" "lua:function" "$(bound SUPER+$k | cut -f2)"
 done
+# What those chords send (plan 103). A terminal gets CTRL + SHIFT + C / V, the
+# clipboard chord every tagged terminal binds by default; SHIFT + Insert would
+# paste the primary selection and CTRL + Insert copies nothing in foot. The
+# window rule's dynamic tag carries a trailing "*". Timers fire at once here,
+# so each chord is one down and one up.
+cat >"$SANDBOX/hl-chord.lua" <<'EOF'
+local fns, active = {}, nil
+local function proxy(name)
+  return setmetatable({}, {
+    __index = function(_, k) return proxy(name .. "." .. k) end,
+    __call = function(_, ...) return { dsp = name, args = { ... } } end,
+  })
+end
+hl = setmetatable({
+  dsp = setmetatable({
+    send_key_state = function(a) return { chord = a.state .. " " .. a.mods .. " " .. a.key } end,
+  }, { __index = function(_, k) return proxy("dsp." .. k) end }),
+  bind = function(keys, d) if type(d) == "function" then fns[keys] = d end end,
+  dispatch = function(d) if d.chord then print(d.chord) end end,
+  timer = function(f) f() end,
+  get_active_window = function() return active end,
+}, { __index = function() return function() end end })
+function PRESS(keys, window)
+  active = window
+  print("-- " .. keys .. " in " .. (window and window.class or "nothing"))
+  fns[keys]()
+end
+EOF
+capture lua -e "dofile('$SANDBOX/hl-chord.lua')" -e "dofile('$REPO/share/haseen/default/hypr/init.lua')
+local foot = { class = 'foot', tags = { 'terminal*' } }
+local browser = { class = 'helium', tags = {} }
+PRESS('SUPER + C', foot); PRESS('SUPER + V', foot); PRESS('SUPER + X', foot)
+PRESS('SUPER + C', browser); PRESS('SUPER + V', browser)
+PRESS('SUPER + V', nil)"
+assert_status "the clipboard chords run under the stub" 0 "$STATUS"
+assert_eq "terminals copy and paste the clipboard with CTRL + SHIFT, other windows with CTRL" \
+    "-- SUPER + C in foot|down CTRL SHIFT C|up CTRL SHIFT C|-- SUPER + V in foot|down CTRL SHIFT V|up CTRL SHIFT V|-- SUPER + X in foot|down CTRL X|up CTRL X|-- SUPER + C in helium|down CTRL C|up CTRL C|-- SUPER + V in helium|down CTRL V|up CTRL V|-- SUPER + V in nothing|down CTRL V|up CTRL V" \
+    "$(paste -sd'|' <<<"$OUTPUT")"
+assert_not_contains "no chord reaches for Insert" "$OUTPUT" "Insert"
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
 
 # --- a user bind on a key haseen binds replaces it ---------------------------

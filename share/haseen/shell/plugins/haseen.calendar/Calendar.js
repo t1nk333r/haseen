@@ -3,6 +3,10 @@
 // Pure month-grid math for haseen.calendar (no Qt types; tests run it
 // headless). Months are 0-based like JS Date; weekdays 0 = Sunday, which is
 // also Qt's Locale.Sunday, so Qt.locale().firstDayOfWeek passes straight in.
+//
+// monthGrid's UTC walk is adapted from Omarchy
+// shell/plugins/panels/clock/Model.js (MIT, Copyright (c) David Heinemeier
+// Hansson).
 
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
@@ -39,18 +43,25 @@ function shiftMonth(year, month, delta) {
 
 // Six weeks of cells starting on `first` (0-6):
 // [{ year, month, day, inMonth, weekday }] (42 entries).
+//
+// Built in UTC, where every day is 24 hours long. A local midnight has to be
+// resolved by the engine in zones that start DST at 00:00 (Chile every
+// September, Cuba every March), and Qt's V4 resolves the missing midnight
+// backwards onto the day before: September 2026 in Santiago drew 5 twice and
+// no 6. Samoa skipped 30 December 2011 outright. A grid of civil dates never
+// needed a wall clock (Omarchy d74d6ea24, pull request 10476; plan 103).
 function monthGrid(year, month, first) {
-    const start = new Date(year, month, 1);
-    const lead = (start.getDay() - first + 7) % 7;
+    const start = new Date(Date.UTC(year, month, 1));
+    const lead = (start.getUTCDay() - first + 7) % 7;
     const cells = [];
     for (let i = 0; i < 42; i++) {
-        const d = new Date(year, month, 1 - lead + i);
+        const d = new Date(Date.UTC(year, month, 1 - lead + i));
         cells.push({
-            year: d.getFullYear(),
-            month: d.getMonth(),
-            day: d.getDate(),
-            inMonth: d.getMonth() === month,
-            weekday: d.getDay()
+            year: d.getUTCFullYear(),
+            month: d.getUTCMonth(),
+            day: d.getUTCDate(),
+            inMonth: d.getUTCMonth() === month,
+            weekday: d.getUTCDay()
         });
     }
     return cells;

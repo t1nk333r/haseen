@@ -29,6 +29,8 @@ assert_contains "fontconfig is planned with its content" "$OUTPUT" \
     "DRYRUN: write $CONFIG/fontconfig/fonts.conf"
 assert_contains "the XCompose plan includes haseen's sequences" "$OUTPUT" \
     "include \"$REPO/share/haseen/default/xcompose/compose\""
+assert_contains "the portal backends are planned" "$OUTPUT" \
+    "DRYRUN: seed $CONFIG/xdg-desktop-portal/hyprland-portals.conf"
 assert_eq "the dry run wrote nothing" "" "$(find "$HOME" -type f -o -type l | sort | tr '\n' ' ')"
 
 # --- user seeds: applied -----------------------------------------------------
@@ -101,6 +103,31 @@ assert_eq "Latin text is untouched by the Arabic rules" '"Theme Mono"(s)' "$(fam
 rm "$HOME/.local/state/haseen/current/theme/fonts.conf"
 assert_eq "without a theme render the Arabic rules still apply" \
     '"monospace"(s) "Noto Naskh Arabic"(w)' "$(families 'monospace:lang=ar')"
+
+# --- the Secret portal (plan 103) --------------------------------------------
+# Flatpak apps reach gnome-keyring only through the Secret portal, which
+# neither of Hyprland's own backends serves. The seed repeats their order and
+# names the keyring; the portal reads only the first file it finds.
+portals="$(cat "$CONFIG/xdg-desktop-portal/hyprland-portals.conf")"
+assert_contains "the portal file keeps Hyprland's backends in order" "$portals" $'[preferred]\ndefault=hyprland;gtk'
+assert_contains "and serves the Secret portal from gnome-keyring" "$portals" \
+    "org.freedesktop.impl.portal.Secret=gnome-keyring"
+assert_eq "it is the shipped default" "" "$(diff "$REPO/share/haseen/default/xdg-desktop-portal/hyprland-portals.conf" "$CONFIG/xdg-desktop-portal/hyprland-portals.conf")"
+assert_contains "the desktop layer installs the keyring it names" \
+    "$(cat "$REPO/share/haseen/layers/desktop/packages.txt")" "gnome-keyring "
+# A portals.conf of the user's would lose to a desktop-named file in the same
+# directory: having one is a choice already made, so nothing is seeded.
+rm "$CONFIG/xdg-desktop-portal/hyprland-portals.conf"
+echo "[preferred]" >"$CONFIG/xdg-desktop-portal/portals.conf"
+capture haseen seed user --dry-run
+assert_not_contains "a user's portals.conf: no portal seed" "$OUTPUT" "hyprland-portals.conf"
+rm "$CONFIG/xdg-desktop-portal/portals.conf"
+ln -s "$HOME/dotfiles/portals.conf" "$CONFIG/xdg-desktop-portal/portals.conf"
+capture haseen seed user --dry-run
+assert_not_contains "a dangling portals.conf link is the user's too" "$OUTPUT" "hyprland-portals.conf"
+rm "$CONFIG/xdg-desktop-portal/portals.conf"
+capture haseen seed user
+assert_eq "without one, the seed lands again" "yes" "$([[ -f $CONFIG/xdg-desktop-portal/hyprland-portals.conf ]] && echo yes)"
 
 # --- a seeded file belongs to the user --------------------------------------
 echo "# mine" >"$CONFIG/btop/btop.conf"

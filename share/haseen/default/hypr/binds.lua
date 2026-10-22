@@ -60,12 +60,16 @@ b("SUPER + B", "Browser", launch('"$(xdg-settings get default-web-browser)"'))
 
 -- Clipboard --------------------------------------------------------------------
 -- Universal copy, paste and cut: SUPER + C/V/X send the app's own shortcut, so
--- one chord works in browsers, editors and terminals alike (terminals take
--- CTRL+Insert / SHIFT+Insert, as CTRL+C would interrupt). Adapted from Omarchy
--- default/hypr/bindings/clipboard.lua (MIT, Copyright (c) David Heinemeier
--- Hansson). The chord is sent with explicit mods to the focused surface, so the
--- held SUPER never merges into it; down and up are split because Hyprland's
--- send_shortcut can leave a synthetic key stuck (hyprwm/Hyprland discussion 14099).
+-- one chord works in browsers, editors and terminals alike. Terminals take
+-- CTRL + SHIFT + C / V, as CTRL + C would interrupt: that is the clipboard
+-- chord foot, kitty, Alacritty, Ghostty and WezTerm all bind by default,
+-- while SHIFT + Insert pastes the primary selection in every one of them and
+-- CTRL + Insert copies to the clipboard only in Ghostty (plan 103). Adapted
+-- from Omarchy default/hypr/bindings/clipboard.lua (MIT, Copyright (c) David
+-- Heinemeier Hansson). The chord is sent with explicit mods to the focused
+-- surface, so the held SUPER never merges into it; down and up are split
+-- because Hyprland's send_shortcut can leave a synthetic key stuck
+-- (hyprwm/Hyprland discussion 14099).
 local function send_once(mods, key)
   return function()
     hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
@@ -95,8 +99,8 @@ local function universal(mods, key, terminal_mods, terminal_key)
   end
 end
 
-b("SUPER + C", "Universal copy", universal("CTRL", "C", "CTRL", "Insert"))
-b("SUPER + V", "Universal paste", universal("CTRL", "V", "SHIFT", "Insert"))
+b("SUPER + C", "Universal copy", universal("CTRL", "C", "CTRL SHIFT", "C"))
+b("SUPER + V", "Universal paste", universal("CTRL", "V", "CTRL SHIFT", "V"))
 b("SUPER + X", "Universal cut", send_once("CTRL", "X"))
 
 -- Capture ----------------------------------------------------------------------
