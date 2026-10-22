@@ -815,6 +815,18 @@ sb_track_chain() {
     return 0
 }
 
+# sudo_is_test_stub — the sudo on PATH is a file under this checkout's
+# tests/.out/, where tests/lib.sh writes its stubs (resolved through links). An
+# installed tree has no tests/, and a real sudo is never there. haseen
+# secureboot setup and haseen setup boot-menu let a real run under
+# HASEEN_SYSROOT proceed only then, for their tests' recorders.
+sudo_is_test_stub() {
+    local sudo stubs
+    sudo="$(command -v sudo)" && sudo="$(readlink -f -- "$sudo")" || return 1
+    stubs="$(readlink -f -- "$HASEEN_PATH/../../tests/.out")" && [[ -d $stubs ]] || return 1
+    [[ $sudo == "$stubs"/* ]]
+}
+
 # sb_reexec_as_root SELF ARGS... — setup and sign must read the ESP, which is
 # 0700 on CachyOS/Omarchy installs. Rather than escalating read by read, the
 # whole command reruns as root once. Never under a sysroot or a dry-run.

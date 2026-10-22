@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# haseen:summary Limine's boot menu: wait 1 second, quietly (fast), or as before (normal)
+# haseen:args    [fast|normal|status] [--dry-run] [--yes]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/bootmenu.sh
+source "$HASEEN_PATH/lib/bootmenu.sh"
+# shellcheck source=../share/haseen/layers/secureboot/secureboot.sh
+source "$HASEEN_PATH/layers/secureboot/secureboot.sh"
+
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+HELPER="$HASEEN_PATH/lib/limine-header.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen setup boot-menu [fast|normal|status] [--dry-run] [--yes]
+
+  fast    Limine waits 1 second, quietly, before it boots the default entry
+          (timeout: 1 and quiet: yes in limine.conf's header, as Omarchy 4.5
+          ships it). Press any key during that second to see the menu.
+  normal  puts back the timeout: and quiet: lines fast replaced.
+  status  the menu wait now, what normal would put back, and whether the
+          config hash enrolled in Limine matches (default).
+
+Off by default. Limine only. Only those two lines of limine.conf change, and
+only in a layout haseen understands; the file is copied to
+$BOOTMENU_DIR/ first. When Limine has a config hash enrolled (Secure Boot),
+the edited file is enrolled again: haseen secureboot sign with haseen's
+Secure Boot keys, else limine-enroll-config. If that fails, the file is put
+back. Run as a normal user: the command reruns itself as root when the ESP is
+readable only by root.
+EOF
+}
+
+# reenroll_plan — how the config hash enrolled in Limine follows the edit, in
+# REENROLL: "sign" (haseen's Secure Boot keys exist: haseen secureboot sign,
+# which re-enrolls, refreshes the fallback copy, signs and verifies), "enroll"
+# (no keys: limine-enroll-config, what limine-entry-tool runs after every
+# update) or "none" (no hash enrolled, none wanted). Dies, before anything
+# changes, when the edit would leave a stale hash: Limine panics on one under
+# Secure Boot (/usr/share/doc/limine/USAGE.md, "Secure Boot").
+reenroll_plan() {
+    local main enrolled="" want
+    want="$(sb_limine_value ENABLE_ENROLL_LIMINE_CONFIG)"
+    if main="$(sb_limine_main)"; then
+        enrolled="$(sb_limine_enrolled "$(sysroot_path "$main")")"
+    fi
+    if [[ -z $enrolled && $want != yes ]]; then
+        REENROLL=none
+        return 0
+    fi
+    [[ $want == yes ]] ||
+        die "a config hash is enrolled in $main, but ENABLE_ENROLL_LIMINE_CONFIG is not yes in $SB_LIMINE_DEFAULT, so nothing would enroll the edited config and Limine would panic under Secure Boot. haseen secureboot setup sets it."
+    sb_limine_tools ||
+        die "Limine's config is enrolled for Secure Boot, but limine-enroll-config (package limine-mkinitcpio-hook) is missing, so the edited config could not be enrolled again"
+    if pkg_installed sbctl && sb_keys_exist; then
+        REENROLL=sign
+    elif [[ $SECUREBOOT_STATE == disabled || $SECUREBOOT_STATE == setup ]]; then
+        REENROLL=enroll
+    else
+        die "Secure Boot is $SECUREBOOT_STATE and sbctl holds no keys: Limine is signed by keys haseen does not manage, and re-enrolling the config would break that signature. Change the menu wait by hand."
+    fi
+}
+
+# reenroll — carry out REENROLL.
+reenroll() {
+    case "$REENROLL" in
+    sign)
+        local flags=(--yes)
+        $DRY_RUN && flags+=(--dry-run)
+        run "$BIN_DIR/haseen-secureboot-sign" "${flags[@]}"
+        ;;
+    enroll) sb_root limine-enroll-config ;;
+    none) return 0 ;;
+    esac
+}
+
+# enrollment — the enrolled config hash against limine.conf, for status.
+enrollment() {
+    local main h
+    main="$(sb_limine_main)" || {
+        echo "no Limine EFI binary found"
+        return 0
+    }
+    h="$(sb_limine_enrolled "$(sysroot_path "$main")")"
+    if [[ -z $h ]]; then
+        echo "none enrolled ($main)"
+    elif [[ $h == "$(sb_b2sum "$1")" ]]; then
+        echo "enrolled and current ($main)"
+    else
+        echo "enrolled but stale ($main): haseen secureboot sign"
+    fi
+}
+
+status() {
+    local conf problems t q
+    conf="$(sb_limine_conf)"
+    echo "config:  $ESP_PATH/limine.conf"
+    if ! sb_esp_readable; then
+        echo "not checked: $ESP_PATH is readable only by root (sudo haseen setup boot-menu status)"
+        return 0
+    fi
+    [[ -e $conf ]] || {
+        echo "missing: $ESP_PATH/limine.conf"
+        return 0
+    }
+    problems="$(bootmenu_problems "$conf")"
+    if [[ -n $problems ]]; then
+        echo "layout:  not one haseen edits:"
+        sed 's/^/           /' <<<"$problems"
+        return 0
+    fi
+    t="$(bootmenu_value timeout "$conf")"
+    q="$(bootmenu_value quiet "$conf")"
+    echo "timeout: $(bootmenu_describe timeout "$t")"
+    echo "quiet:   $(bootmenu_describe quiet "$q")"
+    echo "mode:    $(bootmenu_mode "$t" "$q")"
+    if t="$(bootmenu_record_value timeout)" && q="$(bootmenu_record_value quiet)"; then
+        echo "haseen:  normal puts back timeout: $t and quiet: $q (- = no line)"
+    else
+        echo "haseen:  has not changed the menu wait"
+    fi
+    echo "hash:    $(enrollment "$conf")"
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-status}"
+case "$verb" in
+status | fast | normal) ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+preflight_all
+[[ $BOOTLOADER == limine ]] ||
+    die "this machine boots with ${BOOTLOADER/unknown/an undetected bootloader}; the boot menu wait is set here for Limine only"
+if [[ $verb == status ]]; then
+    status
+    exit 0
+fi
+
+# HASEEN_SYSROOT redirects reads only; the edit would land in this machine's
+# /boot, decided from another system's files. The one exception is
+# tests/test-omarchy45-boot.sh's recorder, as for haseen secureboot setup:
+# HASEEN_TEST_STUBBED_SUDO=1, not root, and sudo resolving to the test stub.
+if in_sysroot && ! $DRY_RUN &&
+    ! { [[ ${HASEEN_TEST_STUBBED_SUDO:-} == 1 ]] && ((EUID != 0)) && sudo_is_test_stub; }; then
+    die "HASEEN_SYSROOT=$HASEEN_SYSROOT describes another system, but this would edit this machine's limine.conf: use --dry-run with HASEEN_SYSROOT, or unset it"
+fi
+sb_reexec_as_root "$(readlink -f "$0")" "$@"
+
+conf="$(sb_limine_conf)"
+if ! sb_esp_readable; then
+    # Only a dry run as a normal user gets here.
+    echo "    (the ESP $ESP_PATH is readable only by root: the layout is checked, and the config hash enrolled again, when this runs as root)"
+    if [[ $verb == fast ]]; then
+        sb_root "$HELPER" set "$ESP_PATH/limine.conf" "$BOOTMENU_FAST_TIMEOUT" "$BOOTMENU_FAST_QUIET"
+    else
+        echo "    (normal puts back the values recorded in $BOOTMENU_RECORD)"
+    fi
+    exit 0
+fi
+[[ -e $conf ]] || die "$ESP_PATH/limine.conf not found"
+problems="$(bootmenu_problems "$conf")"
+if [[ -n $problems ]]; then
+    sed 's/^/  /' <<<"$problems" >&2
+    die "$ESP_PATH/limine.conf is not a layout haseen edits; set timeout: and quiet: in it by hand"
+fi
+shadows="$(sb_limine_shadows)"
+[[ -z $shadows ]] ||
+    die "Limine reads $(head -n1 <<<"$shadows") before $ESP_PATH/limine.conf (/usr/share/doc/limine/CONFIG.md, \"Location of the config file\"); remove it or edit that one"
+
+cur_t="$(bootmenu_value timeout "$conf")"
+cur_q="$(bootmenu_value quiet "$conf")"
+had_record=false
+bootmenu_record_value timeout >/dev/null && had_record=true
+case "$verb" in
+fast)
+    if [[ $(bootmenu_mode "$cur_t" "$cur_q") == fast ]]; then
+        info "the boot menu already waits 1 second, quietly"
+        exit 0
+    fi
+    new_t="$BOOTMENU_FAST_TIMEOUT"
+    new_q="$BOOTMENU_FAST_QUIET"
+    ;;
+normal)
+    if ! $had_record; then
+        info "haseen has not changed the boot menu's wait ($BOOTMENU_RECORD is absent); nothing to put back"
+        exit 0
+    fi
+    new_t="$(bootmenu_record_value timeout)"
+    new_q="$(bootmenu_record_value quiet)" || new_q=""
+    if ! bootmenu_valid timeout "$new_t" || ! bootmenu_valid quiet "$new_q"; then
+        die "$BOOTMENU_RECORD does not hold a timeout and quiet haseen wrote; set them in limine.conf by hand"
+    fi
+    if [[ $(bootmenu_mode "$cur_t" "$cur_q") != fast ]]; then
+        info "the menu wait was changed after haseen set it (timeout: $cur_t, quiet: $cur_q); leaving it, and forgetting haseen's record"
+        run_root rm -f "$BOOTMENU_RECORD"
+        exit 0
+    fi
+    ;;
+esac
+reenroll_plan
+
+echo "Boot menu: $verb, in $ESP_PATH/limine.conf"
+echo "  timeout: $(bootmenu_describe timeout "$cur_t") -> $(bootmenu_describe timeout "$new_t")"
+echo "  quiet:   $(bootmenu_describe quiet "$cur_q") -> $(bootmenu_describe quiet "$new_q")"
+case "$REENROLL" in
+sign) echo "  then:    haseen secureboot sign (Limine's config hash is enrolled again)" ;;
+enroll) echo "  then:    limine-enroll-config (Limine's config hash is enrolled again)" ;;
+none) echo "  then:    nothing (no config hash is enrolled in Limine)" ;;
+esac
+confirm "Change Limine's menu wait in $ESP_PATH/limine.conf?" || die "cancelled; nothing changed"
+
+backup="$BOOTMENU_DIR/limine.conf.$(date -u +%Y%m%dT%H%M%SZ)"
+install_root_file "$ESP_PATH/limine.conf" "$backup" 0600
+if [[ $verb == fast ]] && ! $had_record; then
+    printf 'timeout=%s\nquiet=%s\n' "$cur_t" "$cur_q" | write_root_file "$BOOTMENU_RECORD" 0600
+fi
+# forget_record — drop the record a first `fast` wrote when it did not happen.
+forget_record() {
+    if [[ $verb == fast ]] && ! $had_record; then
+        run_root rm -f "$BOOTMENU_RECORD"
+    fi
+}
+if ! sb_root "$HELPER" set "$ESP_PATH/limine.conf" "$new_t" "$new_q"; then
+    forget_record
+    die "$ESP_PATH/limine.conf was not changed"
+fi
+if ! reenroll; then
+    warn "the edited config was not enrolled again; putting $ESP_PATH/limine.conf back from $backup"
+    sb_root "$HELPER" restore "$ESP_PATH/limine.conf" "$backup" ||
+        die "$ESP_PATH/limine.conf could not be put back: copy $backup over it and run haseen secureboot sign before you reboot with Secure Boot on"
+    forget_record
+    reenroll || die "the restored config was not enrolled again either: do not reboot with Secure Boot on until haseen secureboot status is all ok"
+    die "the boot menu's wait was not changed"
+fi
+if [[ $verb == normal ]]; then
+    run_root rm -f "$BOOTMENU_RECORD"
+fi
+info "boot menu: $verb (the previous limine.conf is $backup)"
