@@ -120,14 +120,64 @@ plymouth_install_logo() {
     rm -rf "$tmp"
 }
 
+# plymouth_contrast A B — the WCAG 2 contrast ratio of two #rrggbb colours,
+# times 100 (100 for the same colour, 2100 for black on white).
+plymouth_contrast() {
+    awk -v a="${1#\#}" -v b="${2#\#}" '
+        function ch(h,   v) {
+            v = (index("0123456789abcdef", substr(h, 1, 1)) - 1) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 1
+            v /= 255
+            return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ^ 2.4
+        }
+        function lum(h) { h = tolower(h); return 0.2126 * ch(substr(h, 1, 2)) + 0.7152 * ch(substr(h, 3, 2)) + 0.0722 * ch(substr(h, 5, 2)) }
+        BEGIN { x = lum(a); y = lum(b); if (x < y) { t = x; x = y; y = t }; printf "%d\n", int((x + 0.05) / (y + 0.05) * 100) }'
+}
+
+# plymouth_readable BG COLOR — COLOR when it reads at 4.5:1 or more on BG
+# (WCAG AA for text), else white or black, whichever reads better: one of the
+# two always reaches 4.58:1, which near-white and near-black do not on a
+# mid grey. The disk password is typed on this screen, so it has to be
+# readable before it is pretty, whatever a theme (or a wallpaper's palette)
+# chose.
+plymouth_readable() {
+    local bg="$1" color="$2"
+    if (($(plymouth_contrast "$bg" "$color") >= 450)); then
+        printf '%s\n' "$color"
+    elif (($(plymouth_contrast "$bg" "#ffffff") >= $(plymouth_contrast "$bg" "#000000"))); then
+        echo "#ffffff"
+    else
+        echo "#000000"
+    fi
+}
+
+# plymouth_readability_note BG FG ACCENT — one line per colour the splash
+# replaces (plymouth_readable), for `haseen plymouth set`, root's side and
+# status; nothing when the theme's colours read well. The prompt, the
+# scanner and the mark are drawn in the accent.
+plymouth_readability_note() {
+    local bg="$1" name color drawn ratio
+    for name in text accent; do
+        if [[ $name == text ]]; then color="$2"; else color="$3"; fi
+        drawn="$(plymouth_readable "$bg" "$color")"
+        [[ $drawn == "$color" ]] && continue
+        ratio="$(plymouth_contrast "$bg" "$color")"
+        printf "the theme's %s %s reads at %d.%02d:1 on %s, under 4.5:1: drawn in %s\n" \
+            "$name" "$color" $((ratio / 100)) $((ratio % 100)) "$bg" "$drawn"
+    done
+}
+
 # plymouth_install_theme BG FG ACCENT MARK — haseen's splash in these colours
 # and this mark into $PLYMOUTH_THEME_DIR: the descriptor, the script, the mark.
 # What `haseen plymouth set` and the root side of following (`haseen plymouth
-# apply`) both install, so the two paths cannot drift.
+# apply`) both install, so the two paths cannot drift. A text or accent colour
+# that would not read on the background is replaced (plymouth_readable).
 plymouth_install_theme() {
+    local bg="$1" fg accent
+    fg="$(plymouth_readable "$bg" "$2")"
+    accent="$(plymouth_readable "$bg" "$3")"
     install_root_file "$PLYMOUTH_SOURCE_DIR/haseen.plymouth" "$PLYMOUTH_THEME_DIR/haseen.plymouth"
-    plymouth_script "$1" "$2" "$3" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
-    plymouth_install_logo "$3" "$4"
+    plymouth_script "$bg" "$fg" "$accent" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
+    plymouth_install_logo "$accent" "$4"
 }
 
 # plymouth_theme_ours — haseen's splash is installed and is the one plymouthd
@@ -239,6 +289,18 @@ plymouth_signed_boot() {
         echo "sbctl holds Secure Boot keys"
         return 0
     fi
+    # sbctl keeps its keys where only root can look (its key directory is
+    # 0700), so for a user an existing directory it cannot read counts as
+    # keys: the user's side must not ask root for what root will refuse.
+    local dir kd
+    kd="$(sb_keydir)"
+    for dir in "$(sb_sbctl_state_dir)" "$kd" "$kd/db"; do
+        dir="$(sysroot_path "$dir")"
+        if [[ -e $dir ]] && ! [[ -r $dir && -x $dir ]]; then
+            echo "sbctl may hold Secure Boot keys (its key directory is readable only by root)"
+            return 0
+        fi
+    done
     if [[ $(sb_limine_value ENABLE_ENROLL_LIMINE_CONFIG) == yes ]]; then
         echo "Limine's config hash is enrolled"
         return 0
@@ -412,4 +474,25 @@ plymouth_matches() {
 PLYMOUTH_STOPPED=false
 plymouth_guard_stops() {
     trap 'PLYMOUTH_STOPPED=true' TERM INT
+}
+
+# plymouth_as_root — as root (the unit), the root helpers' `sudo` becomes a
+# plain call, so the unit does not depend on sudo's policy; anyone else keeps
+# sudo(8). The same as bin/haseen-battery-limit's unit path.
+plymouth_as_root() {
+    ((EUID == 0)) || return 0
+    sudo() { "$@"; }
+}
+
+# plymouth_lock FILE — hold FILE's lock on descriptor 9, one rebuild at a
+# time. The wait is taken 5 s at a time, so a stop (plymouth_guard_stops)
+# that arrives meanwhile is seen within 5 s: status 1, nothing changed and
+# the lock not taken.
+PLYMOUTH_LOCK_STEP=5
+plymouth_lock() {
+    exec 9>"$1" || return 1
+    until flock -w "$PLYMOUTH_LOCK_STEP" 9; do
+        $PLYMOUTH_STOPPED && return 1
+    done
+    ! $PLYMOUTH_STOPPED
 }

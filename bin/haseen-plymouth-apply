@@ -38,7 +38,10 @@ EOF
 # (the unit's StartLimit* counts per instance).
 RATE_MAX=6
 RATE_FILE=/run/haseen/splash-rebuilds
-LOCK_FILE=/run/lock/haseen-splash.lock
+# In /run/haseen, which only root can write: in the world-writable /run/lock
+# anyone could create the file first, and root could then not open it
+# (fs.protected_regular), or hold its lock.
+LOCK_FILE=/run/haseen/splash.lock
 
 parse_common_flags "$@"
 ((${#REST[@]} == 1)) || {
@@ -49,9 +52,7 @@ request="${REST[0]}"
 ((EUID == 0)) || $DRY_RUN || die "run as root by haseen-splash@.service (haseen plymouth follow); by hand: haseen plymouth set"
 # As root (the unit) the root helpers' sudo is a plain call, and the unit
 # does not depend on sudo's policy.
-if ((EUID == 0)); then
-    sudo() { "$@"; }
-fi
+plymouth_as_root
 # Held from here on: a shutdown waits for a rebuild that has begun.
 plymouth_guard_stops
 
@@ -68,12 +69,17 @@ if why="$(plymouth_signed_boot)"; then
 fi
 boot_hooks_known
 
-# One rebuild at a time, whichever colours each was asked for.
+# One rebuild at a time, whichever colours each was asked for. A stop while
+# another one runs ends the wait with nothing changed.
 if $DRY_RUN; then
     echo "DRYRUN: lock $LOCK_FILE"
 else
-    exec 9>"$LOCK_FILE"
-    flock 9
+    run_root install -d -m 0755 "${LOCK_FILE%/*}"
+    if ! plymouth_lock "$LOCK_FILE"; then
+        $PLYMOUTH_STOPPED || die "cannot lock $LOCK_FILE"
+        info "stopping before the rebuild; nothing that boots has changed"
+        exit 0
+    fi
 fi
 if [[ $(plymouth_built_request) == "$request" ]]; then
     info "the boot image already carries $request"
@@ -104,6 +110,9 @@ if $PLYMOUTH_STOPPED; then
     exit 0
 fi
 info "boot splash: background $bg, text $fg, accent $accent, mark $mark"
+while IFS= read -r line; do
+    [[ -n $line ]] && info "$line"
+done < <(plymouth_readability_note "$bg" "$fg" "$accent")
 plymouth_install_theme "$bg" "$fg" "$accent" "$mark"
 if $PLYMOUTH_STOPPED; then
     info "stopping before the rebuild; the boot image is unchanged and the next request rebuilds it"

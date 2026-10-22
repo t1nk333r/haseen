@@ -77,6 +77,9 @@ fi
 read -r bg fg accent <<<"$(plymouth_theme_colors "$colors")"
 mark="$(branding_mark)"
 info "splash colours: background $bg, text $fg, accent $accent"
+while IFS= read -r line; do
+    [[ -n $line ]] && info "$line"
+done < <(plymouth_readability_note "$bg" "$fg" "$accent")
 
 plymouth_install_theme "$bg" "$fg" "$accent" "$mark"
 

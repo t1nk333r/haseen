@@ -71,14 +71,14 @@ haseen theme set / haseen branding mark
 - **The request** is the instance name: background, text and accent as six
   lowercase hex digits each, then the mark, e.g. `13131a-e4e1ec-96d69a-kufic`
   (`plymouth_request`, `plymouth_request_parse`,
-  `share/haseen/lib/plymouth.sh:174,183`). The parser refuses anything else:
+  `share/haseen/lib/plymouth.sh:224,233`). The parser refuses anything else:
   upper case, other lengths, an unknown mark, extra fields, shell or path
   characters, a newline; it never repairs.
 - **The user's side.** `bin/haseen-theme-set:140` (`:113` under `--dry-run`)
   and `bin/haseen-branding:52-54` call `haseen plymouth follow poke`, which
   restarts `haseen-splash-follow.timer` only when following is on
   (`plymouth_follow_on` reads the enablement link, so with following off a
-  theme change starts no systemctl at all, `:293-303`). Every way a theme
+  theme change starts no systemctl at all, `:355-365`). Every way a theme
   becomes current goes through `bin/haseen-theme-set`: `haseen theme install`,
   `haseen theme wallpaper`, `haseen theme generate`, `haseen font set` and
   Omarchy's `omarchy-theme-set` and `omarchy-theme-refresh` answers
@@ -91,7 +91,7 @@ haseen theme set / haseen branding mark
   Enabled (`WantedBy=timers.target`), it also fires 2 minutes after the user
   manager starts, which catches a change made just before a shutdown at the
   cost of one comparison per login. No process waits during the 2 minutes.
-- **The request** (`bin/haseen-plymouth-follow:95-134`): nothing when
+- **The request** (`bin/haseen-plymouth-follow:95-136`): nothing when
   following is off or haseen's splash is not the one plymouthd shows; the
   record `ok` when `/var/lib/haseen/splash` already holds the request;
   otherwise `systemctl start --no-ask-password haseen-splash@REQUEST.service`,
@@ -99,20 +99,29 @@ haseen theme set / haseen branding mark
   `failed` and sends one critical notification with systemctl's first line.
   When the theme changed while root was rebuilding, the timer's firing found
   this service still running and was lost, so the request restarts the timer
-  afterwards (`:129-133`).
+  afterwards (`:131-135`).
 - **Root's side** (`bin/haseen-plymouth-apply`, hidden from `haseen
-  commands`): refuses unless root or `--dry-run`; holds SIGTERM from the start
-  (`:56`); parses the name without echoing a malformed one back (`:59-62`);
-  requires haseen's splash to be the one plymouthd shows, a machine that does
-  not check its boot files (`:66-68`) and an mkinitcpio configuration that
-  evaluates; takes `/run/lock/haseen-splash.lock`, so concurrent instances
-  of different colours run one after the other (`:71-77`); does nothing when
+  commands`): refuses unless root or `--dry-run`; as root makes the helpers'
+  `sudo` a plain call (`plymouth_as_root`, `:55`, as
+  `bin/haseen-battery-limit:46-48` does for its unit; a test shows it takes
+  effect only at EUID 0); holds SIGTERM from there on (`:57`); parses the name
+  without echoing a malformed one back (`:60-63`); requires haseen's splash to
+  be the one plymouthd shows, a machine that does not check its boot files
+  (`:67-69`) and an mkinitcpio configuration that evaluates; takes
+  `/run/haseen/splash.lock` (`plymouth_lock`, `:72-83`), so concurrent
+  instances of different colours run one after the other; does nothing when
   the image already carries the request; allows 6 rebuilds an hour across all
-  instances, because `StartLimit*` counts per instance (`:83-100`); installs
+  instances, because `StartLimit*` counts per instance (`:89-106`); installs
   through `plymouth_install_theme` exactly what `haseen plymouth set` installs
-  and runs `boot_initramfs_rebuild` (`:107-112`); writes the record only
-  after the rebuild (`:113`). As root, the helpers' `sudo` is a function that
-  runs its arguments, as `bin/haseen-battery-limit:46-48` does for its unit.
+  and runs `boot_initramfs_rebuild` (`:116-121`); writes the record only
+  after the rebuild (`:122`).
+- **The lock** is in `/run/haseen`, which only root can write. It was first
+  in `/run/lock` (review round 1 found the bounded wait below; moving it came
+  with that): that directory is world-writable and sticky, so any user could
+  create the file first, and root could then not open it
+  (`fs.protected_regular`), or open it and hold its lock. The wait is taken
+  5 s at a time (`flock -w`), so a stop that arrives while another rebuild
+  holds the lock ends it within 5 s, unlocked and with nothing changed.
 - **The root unit** (`share/haseen/default/systemd/haseen-splash@.service`,
   rendered with this tree's router and the ESP into
   `/etc/systemd/system/haseen-splash@.service`): `Type=oneshot`, `Nice=19`,
@@ -122,20 +131,20 @@ haseen theme set / haseen branding mark
   `KillMode=mixed`, `TimeoutStopSec=5min`, `RequiresMountsFor=ESP /usr
   /var/lib`, no `[Install]`.
 - **One rebuild path.** `plymouth_install_theme`
-  (`share/haseen/lib/plymouth.sh:127`) is what both `haseen plymouth set` and
+  (`share/haseen/lib/plymouth.sh:174`) is what both `haseen plymouth set` and
   the root side install, `boot_initramfs_rebuild` what both run;
   `plymouth_install_logo` takes the mark as an argument so the root side
   never reads `shell.json`. `haseen plymouth set` now records the request it
-  built (`bin/haseen-plymouth-set:109`).
+  built (`bin/haseen-plymouth-set:112`).
 
 ### Enabling
 
 - `haseen plymouth set` turns following on after it installs the splash
-  (`bin/haseen-plymouth-set:121`). `--no-follow` leaves it as it is;
+  (`bin/haseen-plymouth-set:124`). `--no-follow` leaves it as it is;
   `--theme NAME` does not turn it on and, when following is on, warns that
   NAME's colours last until the next theme change or login.
 - `haseen plymouth follow on|off|status` (`bin/haseen-plymouth-follow`).
-  `plymouth_follow_enable` (`share/haseen/lib/plymouth.sh:310`): refuses (3)
+  `plymouth_follow_enable` (`share/haseen/lib/plymouth.sh:372`): refuses (3)
   on a machine that checks its boot files and (4) for a tree root does not
   own, each said; warns when the user is not in `wheel` (the rule's group);
   writes the rendered unit when it is missing or stale,
@@ -154,7 +163,7 @@ haseen theme set / haseen branding mark
   it says why and completes (it has done what it can; `haseen plymouth follow
   on` is there later). Any other failure fails the migration, which retries.
 - `haseen plymouth status` adds `follows:` and `matches: yes / pending / no
-  (why)` (`plymouth_matches`, `:378`).
+  (why)` (`plymouth_matches`, `:440`).
 
 ### The transient-unit bypass, and how the rule closes it
 
@@ -200,9 +209,17 @@ member without a password.
 ### Secure Boot
 
 Following is never set up, and a request never rebuilds, on a machine that
-checks its boot files (`plymouth_signed_boot`, `:226`): Secure Boot on, or its
+checks its boot files (`plymouth_signed_boot`, `:276`): Secure Boot on, or its
 state unreadable on UEFI; sbctl keys (`sb_keys_exist`); or
-`ENABLE_ENROLL_LIMINE_CONFIG=yes` (`sb_limine_value`). The request records
+`ENABLE_ENROLL_LIMINE_CONFIG=yes` (`sb_limine_value`). sbctl keeps its key
+directory root-only, so `sb_keys_exist`, which looks for `db/db.key`, sees
+nothing as the user (review round 1): there `follow on` would have succeeded,
+and every settled change would have asked root, been refused, and notified.
+So for the user an sbctl state directory, key directory or `db` directory
+that exists but cannot be read counts as keys ("sbctl may hold Secure Boot
+keys"); root reads them directly. `sb_keys_exist`'s own comment
+(`share/haseen/layers/secureboot/secureboot.sh:121-122`) says the
+directories are 0755; it is plan 002's and is not changed here. The request records
 `skipped` and notifies once (not after every theme change); `follow on`
 refuses; root's side refuses again; status says `no (…: run haseen plymouth
 set after a theme change (then haseen secureboot sign, with haseen's Secure
@@ -220,6 +237,29 @@ read. So it could not be shown that a background rebuild leaves the machine
 bootable there, and the brief says to skip it then. `haseen plymouth set`
 itself is unchanged in this respect; the hint names `haseen secureboot sign`
 after it.
+
+### Readable before pretty (review round 1)
+
+The disk password is typed on this screen. The prompt (its brackets, caret
+and asterisks), the scanner and the mark are drawn in the accent
+(`share/haseen/default/plymouth/haseen.script:50,116,207`); the text colour
+is passed in for later use. Nothing stopped a theme, a wallpaper's palette or
+a request from making them unreadable, the background and accent equal
+included. `plymouth_install_theme`, which both `haseen plymouth set` and
+root's side use, now draws a text or accent colour that reads at under 4.5:1
+on the background (WCAG AA for text, `plymouth_contrast`) in white or black,
+whichever reads better (`plymouth_readable`, `:142`). Pure white and black,
+not near-white and near-black: one of the two always reaches 4.58:1, while
+`#f2f2f2` and `#141414` both stay near 4.06:1 on a mid grey; the test checks
+every grey step. `haseen plymouth set` and root's side say which colour was
+replaced and why, and `haseen plymouth status` adds a `readable:` line. The
+record keeps the theme's own colours, so following compares like with like.
+
+Rejected: refusing such a request in root's parser. The colours are a
+legitimate theme's (a low-contrast wallpaper palette), not an attack, so a
+refusal would leave that theme's owner with a failure notification at every
+change and the old splash, and `haseen plymouth set` would still need its own
+answer; adjusting keeps one rule for both paths and a usable prompt.
 
 ### Shutdown and power loss
 
@@ -282,7 +322,8 @@ after it.
 
 ## Tests
 
-`tests/test-splash-follow.sh` (new, 224/224), all hermetic, on fixture
+`tests/test-splash-follow.sh` (new, 272/272; 269/269 with the user-namespace
+check skipped, as in CI), all hermetic, on fixture
 sysroots with recording `systemctl` and `notify-send` fakes:
 
 - the request from the current theme and mark; the parser with 16 malformed
@@ -322,12 +363,27 @@ sysroots with recording `systemctl` and `notify-send` fakes:
 - the migration under `DRY_RUN=true`: enables, idempotent, nothing for
   another splash or without plymouth, completes saying why with Secure Boot
   on and from a tree root does not own;
-- help texts of `plymouth set`, `plymouth follow`, `theme set`, `branding`.
+- help texts of `plymouth set`, `plymouth follow`, `theme set`, `branding`;
+- review round 1: an sbctl key directory, and then sbctl's state directory,
+  that exists but cannot be read (mode 000 for root's 0700; skipped when the
+  test runs as root): `follow on` refuses, a request is skipped and notified
+  once, status says why; `plymouth_contrast` (black on white 21:1, a colour
+  on itself 1:1), the replacement reaching 4.5:1 on every grey step,
+  `plymouth set` and status with background, text and accent all equal
+  (white), a light grey (black, and white text at 4.47:1 replaced too) and a
+  theme that reads well (unchanged), root's side with an unreadable request
+  (applied readable, recorded as asked); `plymouth_as_root` leaves sudo(8)
+  alone for a non-root caller and, in a user namespace as EUID 0 (skipped
+  where there is none, as in CI), makes it a plain call, and `apply` refuses
+  a non-root run before it; a stop while another process holds the lock ends
+  the wait unlocked while that process still holds it, and an unheld lock is
+  taken.
 
 `tests/test-plymouth.sh` is unchanged and passes 79/79.
 
 `tests/run.sh --affected origin/main` with the hermetic wrapper selects 34
-files: 5503/5503 after rebasing on plan 107's merge (5532/5532 before it),
+files: 5551/5551 after review round 1 (5503/5503 after rebasing on plan
+107's merge, 5532/5532 before it),
 from a short bind mount of this checkout (`bwrap --bind` to `/tmp/s110`, as
 the gate notes advise for T3 worktrees). From the long T3
 worktree path the same run was 5528/5529: `tests/test-nvim-theme.sh` "one
@@ -376,3 +432,9 @@ On IO (and luna, where haseen's splash is installed), after deploying with
   manager, `ProtectHome=tmpfs` with limine-mkinitcpio, the stop held across a
   real shutdown, and a real boot of the rebuilt image.
 - Background rebuilds on Secure Boot machines (above).
+- `haseen plymouth set` does not take root's lock: its steps are separate
+  sudo calls, and holding a lock across them would mean a lock file users can
+  open, which any local user could then hold. A manual `set` that overlaps a
+  background rebuild is serialised only by limine-mkinitcpio's own mutex
+  (`mkinitcpio -P` has none), and the record and the image can then disagree
+  until the next rebuild; `haseen plymouth set` once more settles both.

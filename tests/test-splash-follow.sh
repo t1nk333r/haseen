@@ -326,6 +326,43 @@ capture lib plymouth_signed_boot
 assert_status "none of them: not signed" 1 "$STATUS"
 rm -f "$XDG_STATE_HOME/haseen/splash-follow"
 
+# sbctl keeps its keys where only root can look (review round 1): for a user,
+# an sbctl state or key directory it cannot read counts as keys, so following
+# refuses and a request is skipped and notified once instead of asking root
+# for what root refuses. Mode 000 stands in for root's 0700 (CI runs as ci).
+for locked in /var/lib/sbctl/keys /var/lib/sbctl; do
+    mkdir -p "$SYS/var/lib/sbctl/keys/db"
+    : >"$SYS/var/lib/sbctl/keys/db/db.key"
+    chmod 000 "$SYS$locked"
+    if [[ -r $SYS$locked ]]; then
+        echo "  SKIP unreadable sbctl directory: this test runs as root" >&2
+        chmod 755 "$SYS$locked"
+        rm -rf "$SYS/var/lib/sbctl"
+        break
+    fi
+    capture lib plymouth_signed_boot
+    assert_eq "$locked unreadable: sbctl may hold keys" \
+        "sbctl may hold Secure Boot keys (its key directory is readable only by root)" "$OUTPUT"
+    rm -f "$XDG_STATE_HOME/haseen/splash-follow"
+    reset_calls
+    capture haseen plymouth follow request
+    assert_status "$locked unreadable: the request stops" 0 "$STATUS"
+    assert_not_contains "$locked unreadable: root is not asked" "$(calls)" "systemctl start"
+    assert_contains "$locked unreadable: notified" "$(calls)" "Boot splash not rebuilt sbctl may hold Secure Boot keys"
+    reset_calls
+    capture haseen plymouth follow request
+    assert_eq "$locked unreadable: once" "" "$(calls)"
+    capture haseen plymouth status
+    assert_contains "$locked unreadable: status says why" "$OUTPUT" "matches:   no (sbctl may hold Secure Boot keys"
+    capture haseen plymouth follow on --dry-run
+    assert_status "$locked unreadable: follow on refuses" 1 "$STATUS"
+    assert_contains "$locked unreadable: and says why" "$OUTPUT" "the splash does not follow the theme here: sbctl may hold Secure Boot keys"
+    assert_not_contains "$locked unreadable: planning nothing" "$OUTPUT" "DRYRUN"
+    chmod 755 "$SYS$locked"
+    rm -rf "$SYS/var/lib/sbctl"
+done
+rm -f "$XDG_STATE_HOME/haseen/splash-follow"
+
 # --- root's side: haseen plymouth apply ------------------------------------------
 printf '1f1f28-dcd7ba-dcd7ba-kufic\n' >"$SYS/var/lib/haseen/splash"
 # The root unit has HOME=/root and nothing of a user's: the user's mark (gate
@@ -339,7 +376,7 @@ assert_contains "the colours come from the name" "$OUTPUT" "boot splash: backgro
 assert_contains "the mark too, not the user's" "$OUTPUT" "render $HASEEN_PATH/branding/shield/mark.svg in #96d69a -> logo.png (mark: shield)"
 assert_contains "the script is installed" "$OUTPUT" "write /usr/share/plymouth/themes/haseen/haseen.script"
 assert_contains "in those colours (0x13/255)" "$OUTPUT" "bg_r = 0.075"
-assert_contains "one rebuild at a time" "$OUTPUT" "DRYRUN: lock /run/lock/haseen-splash.lock"
+assert_contains "one rebuild at a time, locked where only root can write" "$OUTPUT" "DRYRUN: lock /run/haseen/splash.lock"
 assert_contains "counted against the hourly limit" "$OUTPUT" "count this rebuild in /run/haseen/splash-rebuilds (at most 6 an hour)"
 assert_contains "the initramfs is rebuilt as haseen plymouth set does" "$OUTPUT" "DRYRUN: sudo mkinitcpio -P"
 assert_contains "and recorded" "$OUTPUT" "DRYRUN: write /var/lib/haseen/splash (mode 0644):"$'\n'"    | 13131a-e4e1ec-96d69a-shield"
@@ -373,6 +410,28 @@ apply 13131a-e4e1ec-96d69a-kufic --dry-run
 assert_status "an mkinitcpio configuration that does not evaluate: refused" 1 "$STATUS"
 rm -f "$SYS/etc/mkinitcpio.conf.d/zz-broken.conf"
 rm -f "$XDG_CONFIG_HOME/haseen/shell.json"
+apply 13131a-13131a-13131a-kufic --dry-run
+assert_status "a request whose colours do not read is still applied" 0 "$STATUS"
+assert_contains "with the prompt drawn readable" "$OUTPUT" \
+    "the theme's accent #13131a reads at 1.00:1 on #13131a, under 4.5:1: drawn in #ffffff"
+assert_contains "in white" "$OUTPUT" "accent_r = 1.000"
+assert_contains "and recorded as asked" "$OUTPUT" "    | 13131a-13131a-13131a-kufic"
+
+# The root helpers' sudo becomes a plain call only for root (review round 1).
+assert_eq "apply refuses a non-root run before it changes sudo" 1 \
+    "$(( $(grep -n '^((EUID == 0)) || \$DRY_RUN || die' "$REPO/bin/haseen-plymouth-apply" | cut -d: -f1) < $(grep -n '^plymouth_as_root$' "$REPO/bin/haseen-plymouth-apply" | cut -d: -f1) ))"
+as_root_probe='source "$HASEEN_PATH/lib/plymouth.sh"; plymouth_as_root; type -t sudo; run_root echo ran-directly'
+capture bash -c "$as_root_probe"
+assert_eq "not root: sudo is still the sudo on PATH" file "${OUTPUT%%$'\n'*}"
+assert_contains "and the root helpers go through it" "$OUTPUT" "STUB-CALLED: sudo echo ran-directly"
+if unshare --map-root-user true 2>/dev/null; then
+    capture unshare --map-root-user bash -c "$as_root_probe"
+    assert_eq "as root (EUID 0): sudo is the plain call" function "${OUTPUT%%$'\n'*}"
+    assert_contains "which runs the command itself" "$OUTPUT" $'\nran-directly'
+    assert_not_contains "without sudo(8)" "$OUTPUT" "STUB-CALLED"
+else
+    echo "  SKIP sudo override as root: user namespaces are not available here" >&2
+fi
 assert_contains "apply is hidden from the command list" "$(haseen commands plymouth)" "follow"
 assert_not_contains "apply is hidden from the command list" "$(haseen commands plymouth)" "plymouth apply"
 
@@ -392,6 +451,34 @@ kill -TERM "$gpid"
 wait "$gpid" || true
 assert_eq "a SIGTERM to the main process lets the rebuild finish" written "$(cat "$SANDBOX/guard/image" 2>/dev/null)"
 assert_eq "and is seen afterwards" $'started\nstopped=true' "$(cat "$SANDBOX/guard/state")"
+
+# A stop while another rebuild holds the lock ends the wait, without the lock
+# (review round 1): the wait is taken a step at a time.
+cat >"$SANDBOX/lock.sh" <<'EOF'
+source "$HASEEN_PATH/lib/plymouth.sh"
+plymouth_guard_stops
+PLYMOUTH_LOCK_STEP=1
+echo waiting >"$2/lockstate"
+if plymouth_lock "$1"; then echo locked >>"$2/lockstate"; else echo "gave up stopped=$PLYMOUTH_STOPPED" >>"$2/lockstate"; fi
+EOF
+lockfile="$SANDBOX/guard/splash.lock"
+flock "$lockfile" sleep 4 &
+hpid=$!
+for _ in $(seq 50); do [[ -e $lockfile ]] && break; sleep 0.05; done
+bash "$SANDBOX/lock.sh" "$lockfile" "$SANDBOX/guard" &
+lpid=$!
+for _ in $(seq 50); do [[ -e $SANDBOX/guard/lockstate ]] && break; sleep 0.05; done
+sleep 0.3
+kill -TERM "$lpid"
+wait "$lpid" || true
+held=no
+kill -0 "$hpid" 2>/dev/null && held=yes
+assert_eq "a stop while the lock is held: the wait ends, unlocked" $'waiting\ngave up stopped=true' "$(cat "$SANDBOX/guard/lockstate")"
+assert_eq "while the other rebuild still holds it" yes "$held"
+wait "$hpid" || true
+rm -f "$SANDBOX/guard/lockstate"
+capture bash "$SANDBOX/lock.sh" "$lockfile" "$SANDBOX/guard"
+assert_eq "an unheld lock is taken" $'waiting\nlocked' "$(cat "$SANDBOX/guard/lockstate")"
 
 # --- follow on / off / status ----------------------------------------------------
 follow_off
@@ -494,6 +581,42 @@ capture haseen plymouth set --dry-run --theme kanagawa
 assert_contains "--theme with following on: told the colours will not last" "$OUTPUT" "kanagawa's colours last until the next theme change or login"
 follow_off
 assert_contains "plymouth set --help says it follows" "$(haseen plymouth set --help)" "Then the splash follows the theme"
+
+# Readable before pretty (review round 1): a text or accent colour under
+# 4.5:1 on the background is drawn in white or black, whichever reads better;
+# the record keeps the theme's own colours, so following still compares them.
+assert_eq "contrast: black on white" 2100 "$(lib 'plymouth_contrast "#000000" "#FFFFFF"')"
+assert_eq "contrast: a colour on itself" 100 "$(lib 'plymouth_contrast "#13131a" "#13131a"')"
+worst=2100
+for v in 00 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff; do
+    g="#$v$v$v"
+    r="$(lib "plymouth_contrast '$g' \"\$(plymouth_readable '$g' '$g')\"")"
+    ((r < worst)) && worst=$r
+done
+assert_eq "on every grey, the replacement reads at 4.5:1 or more" 1 "$((worst >= 450))"
+cp "$CUR/colors.toml" "$SANDBOX/colors.keep"
+printf 'accent = "#13131a"\nbackground = "#13131a"\nforeground = "#13131a"\n' >"$CUR/colors.toml"
+capture haseen plymouth set --dry-run --no-follow
+assert_status "plymouth set with unreadable colours" 0 "$STATUS"
+assert_contains "says the text is replaced" "$OUTPUT" "the theme's text #13131a reads at 1.00:1 on #13131a, under 4.5:1: drawn in #ffffff"
+assert_contains "and the accent, which the prompt is drawn in" "$OUTPUT" "the theme's accent #13131a reads at 1.00:1 on #13131a, under 4.5:1: drawn in #ffffff"
+assert_contains "the prompt is white" "$OUTPUT" "accent_r = 1.000"
+assert_contains "the text colour too" "$OUTPUT" "fg_r = 1.000"
+assert_contains "and so is the mark" "$OUTPUT" "in #ffffff -> logo.png"
+assert_contains "the record keeps the theme's colours" "$OUTPUT" "    | 13131a-13131a-13131a-kufic"
+capture haseen plymouth status
+assert_contains "status says so" "$OUTPUT" "readable:  the theme's accent #13131a reads at 1.00:1 on #13131a, under 4.5:1: drawn in #ffffff"
+printf 'accent = "#787878"\nbackground = "#777777"\nforeground = "#ffffff"\n' >"$CUR/colors.toml"
+capture haseen plymouth set --dry-run --no-follow
+assert_contains "on a light grey, black" "$OUTPUT" "the theme's accent #787878 reads at 1.01:1 on #777777, under 4.5:1: drawn in #000000"
+assert_contains "the prompt is black" "$OUTPUT" "accent_r = 0.000"
+assert_contains "white text there reads at 4.47:1, just under: black too" "$OUTPUT" "the theme's text #ffffff reads at 4.47:1 on #777777, under 4.5:1: drawn in #000000"
+cp "$SANDBOX/colors.keep" "$CUR/colors.toml"
+capture haseen plymouth set --dry-run --no-follow
+assert_not_contains "a theme that reads well is drawn as it is" "$OUTPUT" "under 4.5:1"
+assert_contains "in its own accent" "$OUTPUT" "accent_r = 0.588"
+capture haseen plymouth status
+assert_not_contains "and status has nothing to say" "$OUTPUT" "readable:"
 
 # --- the migration ----------------------------------------------------------------
 MIG="$HASEEN_PATH/migrations/1792669390-splash-follows-theme.sh"

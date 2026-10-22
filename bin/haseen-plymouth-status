@@ -46,3 +46,11 @@ else
     echo "follows:   off (haseen plymouth follow on)"
 fi
 echo "matches:   $(plymouth_matches)"
+# A theme colour the splash replaces to keep the password prompt readable.
+colors="$HASEEN_USER_STATE/current/theme/colors.toml"
+if [[ -r $colors ]]; then
+    read -r bg fg accent <<<"$(plymouth_theme_colors "$colors")"
+    while IFS= read -r line; do
+        [[ -n $line ]] && echo "readable:  $line"
+    done < <(plymouth_readability_note "$bg" "$fg" "$accent")
+fi
