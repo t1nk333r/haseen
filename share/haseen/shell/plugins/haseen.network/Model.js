@@ -3,6 +3,9 @@
 // haseen: row list shaping, row status, hero text and DNS choices added;
 // the bar-status parser and frequency label dropped (the bar reads
 // Quickshell.Networking, the band section names the band itself).
+// Captive-portal state (connectivityState, the restricted hero line and row
+// status, ping read as "--" while restricted) from Omarchy 41a40ccc7 (#8859)
+// and 3357f9059 (#16186), plan 106.
 
 // Pure helpers for the haseen.network bar widget and panel. Nothing here
 // touches QML types, so tests/test-network-panel.sh runs it headless.
@@ -20,6 +23,44 @@ function connectionKind(wiredConnected, wifiConnected) {
     if (wifiConnected)
         return "wifi";
     return "disconnected";
+}
+
+// NetworkManager's connectivity as one word: "portal" (a sign-in page answers
+// its check), "limited" (the network answers, the internet does not), "full",
+// "none" or "unknown". Disconnected is "none". With connectivity checking off
+// NetworkManager keeps a stale answer, so it reads "unknown" (Omarchy's rule).
+// `states` maps the NetworkConnectivity names so this stays pure.
+function connectivityState(kind, connectivity, states, checksEnabled) {
+    const s = states || {};
+    if (kind === "disconnected")
+        return "none";
+    if (!checksEnabled)
+        return "unknown";
+    if (connectivity === s.Portal)
+        return "portal";
+    if (connectivity === s.Limited)
+        return "limited";
+    if (connectivity === s.Full)
+        return "full";
+    if (connectivity === s.None)
+        return "none";
+    return "unknown";
+}
+
+// Signing in can lift a portal, and a portal that withholds DNS reads as
+// limited to NetworkManager, so both offer the sign-in row.
+function restricted(connectivity) {
+    return connectivity === "portal" || connectivity === "limited";
+}
+
+// Ping and loss only mean something once the internet answers: behind a
+// portal, on a limited link or offline every probe is lost by design, so the
+// rows read "--" rather than restate it (Omarchy 3357f9059).
+function internetPingReadable(samples, connectivity) {
+    const values = Array.isArray(samples) ? samples : [];
+    if (restricted(connectivity) || connectivity === "none")
+        return false;
+    return values.length > 0;
 }
 
 function connectionIcon(kind, signalStrength) {
@@ -57,10 +98,14 @@ function heroTitle(info, kind) {
     return value.iface || (kind === "disconnected" ? "Disconnected" : "No connection");
 }
 
-// The line under the name: a rotating phrase while connected,
-// NOT CONNECTED without a route, nothing in between.
-function heroMeta(info, kind, wifiConnected, phrase) {
+// The line under the name: what a restricted link needs, else a rotating
+// phrase while connected, NOT CONNECTED without a route, nothing in between.
+function heroMeta(info, kind, wifiConnected, phrase, connectivity) {
     const type = (info || {}).type;
+    if (kind !== "disconnected" && connectivity === "portal")
+        return "SIGN-IN REQUIRED";
+    if (kind !== "disconnected" && connectivity === "limited")
+        return "LIMITED INTERNET ACCESS";
     if (type === "ethernet" || (type === "wifi" && wifiConnected))
         return String(phrase || "").toUpperCase();
     if (kind === "disconnected")
@@ -348,8 +393,9 @@ function rowAction(row, needsCredentials) {
 }
 
 // The second line of a row: the panel's own action in flight, then its
-// failure, then Connected. Empty while the passphrase field is open.
-function rowStatus(row, action, failure, passwordOpen) {
+// failure, then Sign-in required (the connected network behind a portal),
+// then Connected. Empty while the passphrase field is open.
+function rowStatus(row, action, failure, passwordOpen, connectivity) {
     if (!row || passwordOpen)
         return "";
     const act = action || {};
@@ -363,6 +409,8 @@ function rowStatus(row, action, failure, passwordOpen) {
     }
     if (fail.reason && fail.ssid === row.ssid)
         return fail.reason;
+    if (row.connected && connectivity === "portal")
+        return "Sign-in required";
     if (row.connected)
         return "Connected";
     return "";

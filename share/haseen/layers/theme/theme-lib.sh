@@ -27,6 +27,9 @@ THEME_CURRENT_PATH="$THEME_CURRENT_DIR/theme"
 THEME_NEXT_PATH="$THEME_CURRENT_DIR/next-theme"
 THEME_NAME_FILE="$THEME_CURRENT_DIR/theme.name"
 THEME_BACKGROUND_LINK="$THEME_CURRENT_DIR/background"
+# The background last shown with each theme, one file per theme holding its
+# path (plan 106, after Omarchy b63374f38, #7718).
+THEME_BG_MEMORY_DIR="$HASEEN_USER_STATE/theme-backgrounds"
 # haseen's own theme (plan 066): HANCORE's Greek Noir with the owner's "akane"
 # border wipe. Not an Omarchy stock theme, so `theme fetch` has no images for
 # it; backgrounds go in ~/.config/haseen/backgrounds/<name>/.
@@ -35,12 +38,12 @@ THEME_DEFAULT=haseen
 # theme.name resolve to the current name, and the current name also finds
 # backgrounds under ~/.config/haseen/backgrounds/OLD/.
 declare -gA THEME_ALIASES=([greek-noir-akane]=haseen)
-# Fetched Omarchy images (never shipped: third-party artwork, 64 MB). Pinned
-# to one commit of omacom/omarchy; omarchy-assets.txt lists every image with
-# its sha256 and size at that commit.
+# Fetched Omarchy images (never shipped: third-party artwork, 65 MB). Pinned
+# to one commit of omacom/omarchy, v4.5.0-rc1 (plan 106); omarchy-assets.txt
+# lists every image with its sha256 and size at that commit.
 THEME_CACHE_DIR="${HASEEN_USER_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/haseen}/themes"
 THEME_OMARCHY_REPO=omacom/omarchy
-THEME_OMARCHY_COMMIT=5c4da021469517449770579793b37ce26d0a0d48
+THEME_OMARCHY_COMMIT=03ff1eff3812933f7088484533784d2f63eaf19a
 THEME_ASSETS_MANIFEST="$HASEEN_PATH/layers/theme/omarchy-assets.txt"
 # Largest image at the pin is 4.1 MB; anything over this is not one of them.
 THEME_ASSET_MAX_BYTES=$((8 * 1024 * 1024))
@@ -923,12 +926,54 @@ theme_set_background_link() {
     fi
 }
 
-# theme_link_background NAME — keep the current background when it belongs to
-# this theme, else the first candidate; no candidate removes the link (the
-# background service then paints the theme background colour).
+# theme_bg_memory_file NAME — REPLY = the file that remembers NAME's
+# background; 1 for a name that could leave the directory.
+theme_bg_memory_file() {
+    [[ -n $1 && $1 != */* && $1 != . && $1 != .. ]] || return 1
+    REPLY="$THEME_BG_MEMORY_DIR/$1"
+}
+
+# theme_remembered_background NAME — the background last shown with NAME,
+# when that file is still there; prints nothing otherwise.
+theme_remembered_background() {
+    local bg
+    theme_bg_memory_file "$1" && [[ -r $REPLY ]] || return 0
+    IFS= read -r bg <"$REPLY" || true
+    [[ -n $bg && $bg == /* && -f $bg ]] && printf '%s\n' "$bg"
+    return 0
+}
+
+# theme_remember_background — before another theme becomes current, record
+# the image current/background shows under the current theme's name. Any
+# image counts, a file of the user's set by path included: it is what was
+# last chosen for that theme. No link, a missing image or no current theme
+# records nothing; an existing record is kept then. `haseen theme set` calls
+# it, and every way a theme becomes current runs that; theme_swap does not,
+# so a migration that renders the same theme again (1791466289) writes
+# nothing else.
+theme_remember_background() {
+    local name bg
+    name="$(theme_current_name 2>/dev/null)" || return 0
+    bg="$(readlink "$THEME_BACKGROUND_LINK" 2>/dev/null)" || return 0
+    [[ $bg == /* && $bg != *$'\n'* && -f $bg ]] || return 0
+    theme_bg_memory_file "$name" || return 0
+    [[ $(theme_remembered_background "$name") == "$bg" ]] && return 0
+    printf '%s\n' "$bg" | replace_user_file "$REPLY"
+}
+
+# theme_link_background NAME — the background last shown with this theme
+# when it is still there (theme_remember_background), else keep the current
+# one when it belongs to this theme, else the first candidate; no candidate
+# removes the link (the background service then paints the theme background
+# colour).
 theme_link_background() {
-    local current first bg
+    local current first bg remembered
     current="$(readlink "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+    remembered="$(theme_remembered_background "$1")"
+    if [[ -n $remembered ]]; then
+        [[ $remembered == "$current" ]] || theme_set_background_link "$remembered"
+        return 0
+    fi
     first=""
     while IFS= read -r bg; do
         [[ -n $bg ]] || continue

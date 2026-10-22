@@ -20,7 +20,7 @@ usage() {
 Usage: haseen theme fetch [name] [--all] [--quiet] [--dry-run]
 
 Download backgrounds/* and preview.png of an Omarchy stock theme (default: the
-current theme; --all: every one, about 64 MB) into
+current theme; --all: every one, about 65 MB) into
 $THEME_CACHE_DIR/<name>/.
 
 URLs name commit $THEME_OMARCHY_COMMIT,

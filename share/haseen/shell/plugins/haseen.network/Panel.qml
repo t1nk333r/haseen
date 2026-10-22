@@ -1,8 +1,10 @@
 // Adapted from Omarchy shell/plugins/panels/network/Panel.qml.
 // MIT, Copyright (c) David Heinemeier Hansson.
 // haseen: own layout on haseen widgets and theme tokens; haseen commands
-// (network status/band, setup dns, test network); no keyboard cursor, Wi-Fi
-// QR card or router ping; samplers at 2 s or slower.
+// (network status/band, setup dns, test network, network portal); no keyboard
+// cursor, Wi-Fi QR card or router ping; samplers at 2 s or slower. The
+// captive-portal row and its re-check follow Omarchy 41a40ccc7 (#8859) and
+// 3357f9059 (#16186), plan 106.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -15,7 +17,11 @@ import "Model.js" as Model
 // addresses), a speed test and the Wi-Fi switch; the Wi-Fi band and DNS
 // provider; then the Wi-Fi networks in range, saved ones first. Click a
 // network to connect (a secured new one opens its passphrase field), the
-// connected one to disconnect, the bin on a saved one to forget it. Wi-Fi
+// connected one to disconnect, the bin on a saved one to forget it. While
+// NetworkManager reports a captive portal or limited connectivity, a Sign in
+// row opens the browser on a fixed plain-HTTP page the portal can intercept
+// (`haseen network portal`), and the panel asks NetworkManager to check again
+// every 5 s while it is open; at other times nothing re-checks. Wi-Fi
 // state and actions go through Quickshell.Networking (NetworkManager D-Bus);
 // details, band and DNS through haseen commands sampled only while the panel
 // is open, which is the only time it exists (the host loads panels lazily).
@@ -52,7 +58,7 @@ Column {
     property int internetPingPacketLoss: 0
     readonly property int pingHistoryWindow: 24
     readonly property int pingAverageWindow: 5
-    readonly property bool hasInternetPing: internetPingSamples.length > 0
+    readonly property bool hasInternetPing: Model.internetPingReadable(internetPingSamples, connectivity)
     readonly property bool hasTransferStats: info.rx_bytes !== undefined
 
     property int connectionPhraseIndex: 0
@@ -70,6 +76,19 @@ Column {
     readonly property bool wifiOn: Networking.wifiEnabled && Networking.wifiHardwareEnabled
     readonly property string kind: Model.connectionKind(wiredDevice !== null && wiredDevice.connected, connectedWifiNetwork !== null)
     readonly property int signalStrength: connectedWifiNetwork ? Math.round((connectedWifiNetwork.signalStrength || 0) * 100) : -1
+    // NetworkManager runs the HTTP check itself (a redirect or an unexpected
+    // page means a portal); the panel reads its answer and never probes.
+    readonly property bool connectivityChecksEnabled: networkManagerAvailable && Networking.canCheckConnectivity && Networking.connectivityCheckEnabled
+    readonly property string connectivity: Model.connectivityState(kind, Networking.connectivity, {
+        Portal: NetworkConnectivity.Portal,
+        Limited: NetworkConnectivity.Limited,
+        Full: NetworkConnectivity.Full,
+        None: NetworkConnectivity.None
+    }, connectivityChecksEnabled)
+    readonly property bool restricted: Model.restricted(connectivity)
+    // The portal is the active link's: with wired up too, not the Wi-Fi row's.
+    readonly property string wifiConnectivity: kind === "wifi" ? connectivity : ""
+    property bool portalOpening: false
     // The hero reads NetworkManager until the first details sample lands.
     readonly property var heroInfo: info.iface ? info : {
         type: kind === "disconnected" ? "" : kind,
@@ -266,6 +285,24 @@ Column {
         dnsSet.running = true;
     }
 
+    // One check now; NetworkManager's answer arrives as a property change.
+    function checkConnectivity(): void {
+        if (connectivityChecksEnabled && kind !== "disconnected")
+            Networking.checkConnectivity();
+    }
+
+    // Explicit click only. The command opens the fixed sign-in page in the
+    // browser (never a URL the network supplied) and asks NetworkManager to
+    // check again every few seconds until the sign-in goes through, for at
+    // most 5 minutes; it runs in its own scope, so closing the panel keeps it.
+    function signIn(): void {
+        if (!restricted || portalOpening)
+            return;
+        portalOpening = true;
+        Apps.launch([binDir + "/haseen-network-portal"]);
+        Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "close"]);
+    }
+
     function runSpeedTest(): void {
         Apps.launch([binDir + "/haseen-test-network"]);
         Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "close"]);
@@ -386,7 +423,13 @@ Column {
     onWifiNetworkObjectsChanged: syncWifiNetworks()
     onMaxNetworksChanged: syncWifiNetworks()
     onWifiOnChanged: refresh(true)
-    Component.onCompleted: refresh(true)
+    // A restricted answer may be minutes old (NetworkManager backs off to its
+    // 300 s interval): ask again once on open.
+    Component.onCompleted: {
+        refresh(true);
+        if (restricted)
+            Qt.callLater(checkConnectivity);
+    }
     // scannerEnabled lives on the shared device without reference counting;
     // the panel only exists while open, so it releases it here.
     Component.onDestruction: {
@@ -556,8 +599,18 @@ Column {
     Timer {
         interval: 2800
         repeat: true
-        running: root.visible && root.hint === "" && (root.heroInfo.type === "ethernet" || (root.heroInfo.type === "wifi" && root.connectedWifiNetwork !== null))
+        running: root.visible && root.hint === "" && !root.restricted && (root.heroInfo.type === "ethernet" || (root.heroInfo.type === "wifi" && root.connectedWifiNetwork !== null))
         onTriggered: phraseSwap.restart()
+    }
+
+    // Only while the panel is open on a portal or limited link: a sign-in
+    // made elsewhere shows here without waiting for NetworkManager's backoff.
+    // haseen:sample
+    Timer {
+        interval: 5000
+        repeat: true
+        running: root.visible && root.restricted && root.connectivityChecksEnabled
+        onTriggered: root.checkConnectivity()
     }
 
     SequentialAnimation {
@@ -630,6 +683,8 @@ Column {
             return JSON.stringify({
                 backend: root.networkManagerAvailable ? "NetworkManager" : "none",
                 kind: root.kind,
+                connectivity: root.connectivity,
+                signIn: root.restricted,
                 type: root.heroInfo.type || "",
                 hasDetails: !!root.info.iface,
                 wifiEnabled: Networking.wifiEnabled,
@@ -773,7 +828,7 @@ Column {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             glyph: Model.connectionIcon(root.kind, root.signalStrength)
-            color: root.kind === "disconnected" ? Theme.muted : Theme.accent
+            color: root.kind === "disconnected" ? Theme.muted : root.restricted ? Theme.warning : Theme.accent
             opacity: root.networkManagerAvailable ? 1 : 0.5
             font.pixelSize: Math.round(Theme.fontSize * 2.4)
         }
@@ -835,8 +890,8 @@ Column {
                 width: parent.width
                 visible: text !== ""
                 textFormat: Text.PlainText
-                text: root.hint !== "" ? root.hint : Model.heroMeta(root.heroInfo, root.kind, root.connectedWifiNetwork !== null, root.connectionPhrase)
-                color: Theme.muted
+                text: root.hint !== "" ? root.hint : Model.heroMeta(root.heroInfo, root.kind, root.connectedWifiNetwork !== null, root.connectionPhrase, root.connectivity)
+                color: root.hint === "" && root.restricted ? Theme.warning : Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 2
@@ -857,6 +912,17 @@ Column {
         text: "NetworkManager is not running."
     }
 
+    // ---------- Captive portal: only while the link is restricted ----------
+    Pill {
+        width: parent.width
+        visible: root.restricted
+        text: "Sign in to network"
+        pending: true
+        busy: root.portalOpening
+        onHovered: on => root.hint = on ? "Open the network's sign-in page in your browser" : ""
+        onClicked: root.signIn()
+    }
+
     // ---------- Connection details: traffic first, then addresses ----------
     Grid {
         visible: !!root.info.iface
@@ -867,12 +933,12 @@ Column {
         Detail {
             label: "Ping"
             value: Model.formatPingLatency(root.internetPingLatency, root.hasInternetPing)
-            valueColor: root.internetPingPacketLoss > 0 ? Theme.urgent : Theme.foreground
+            valueColor: root.hasInternetPing && root.internetPingPacketLoss > 0 ? Theme.urgent : Theme.foreground
         }
         Detail {
             label: "Packet Loss"
             value: Model.formatPacketLoss(root.internetPingPacketLoss, root.hasInternetPing)
-            valueColor: root.internetPingPacketLoss > 0 ? Theme.urgent : Theme.foreground
+            valueColor: root.hasInternetPing && root.internetPingPacketLoss > 0 ? Theme.urgent : Theme.foreground
         }
         Detail {
             label: "Receiving"
@@ -1068,7 +1134,8 @@ Column {
                 }, {
                     reason: root.failureReason,
                     ssid: root.failureSsid
-                }, passwordOpen)
+                }, passwordOpen, root.wifiConnectivity)
+                warning: entry.modelData.connected && root.wifiConnectivity === "portal"
                 panelBusy: root.busy
                 requiresCredentials: root.requiresCredentials(entry.modelData.security)
                 enterprise: root.isEnterprise(entry.modelData.security)

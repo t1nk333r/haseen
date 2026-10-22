@@ -17,6 +17,8 @@ Item {
     required property var net
     property string statusText: ""
     property bool failed: false
+    // The connected network behind a captive portal (plan 106).
+    property bool warning: false
     property bool busy: false
     property bool panelBusy: false
     property bool requiresCredentials: false
@@ -34,7 +36,7 @@ Item {
     signal hint(string text)
 
     readonly property bool forgetVisible: canForget && (!requiresCredentials || rightMouse.containsMouse)
-    readonly property color statusColor: failed ? Theme.urgent : busy || net.connected ? Theme.foreground : Theme.muted
+    readonly property color statusColor: failed ? Theme.urgent : warning ? Theme.warning : busy || net.connected ? Theme.foreground : Theme.muted
     readonly property bool canSubmit: passwordText.length > 0 && (!enterprise || identityText.length > 0) && !panelBusy
 
     implicitHeight: body.height + (passwordOpen ? prompt.height + Theme.gap : 0)

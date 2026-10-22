@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# haseen:summary Open a captive portal's sign-in page in the browser, then re-check until online
+# haseen:args [--url] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-network-captive-portal (MIT, Copyright (c)
+# David Heinemeier Hansson; 3357f9059, #16186): open a fixed plain-HTTP page,
+# which the portal answers with its sign-in page, then ask NetworkManager to
+# check again until it reads full. haseen opens the default browser through
+# its own omarchy-launch-browser rather than a web-app window, stops asking
+# after 5 minutes, and leaves a Tailscale exit node alone (plan 106).
+set -Eeuo pipefail
+
+HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
+# shellcheck source=../share/haseen/lib/common.sh
+source "$HASEEN_PATH/lib/common.sh"
+
+# NeverSSL is documented as plain HTTP for good ("no encryption, no strong
+# authentication, no HSTS", http://neverssl.com/) so that a captive portal can
+# answer it. NetworkManager's own check page on Arch, ping.archlinux.org, is
+# no use here: archlinux.org is HSTS-preloaded for every subdomain, so the
+# browser forces it to HTTPS and the portal's answer never arrives.
+PORTAL_URL=http://neverssl.com/
+# docs/architecture.md §6: nothing repeats faster than every 2 s.
+CHECK_EVERY=3
+# Then NetworkManager's own schedule takes over (it backs off to 300 s).
+CHECK_FOR=300
+
+usage() {
+    cat <<EOF
+Usage: haseen network portal [--url] [--dry-run]
+
+Opens $PORTAL_URL in the default browser. On a network behind a
+captive portal (a hotel, an airport, a café) the portal shows its sign-in or
+terms page there instead. Then asks NetworkManager to check the connection
+every $CHECK_EVERY s until it reads full, for at most $((CHECK_FOR / 60)) minutes, so the bar and
+the network panel stop warning as soon as the sign-in goes through. A second
+run while one is waiting only opens the page again.
+
+The page is always this one: haseen never opens an address the network
+supplies. The haseen.network panel's "Sign in to network" row runs this.
+
+  --url      print the page's address and exit
+  --dry-run  print what would run
+EOF
+}
+
+print_url=false
+parse_common_flags "$@"
+for a in "${REST[@]}"; do
+    case "$a" in
+    --url) print_url=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+if $print_url; then
+    printf '%s\n' "$PORTAL_URL"
+    exit 0
+fi
+require_not_root
+
+launcher="$HASEEN_PATH/omarchy/bin/omarchy-launch-browser"
+
+# connectivity — NetworkManager's answer after a fresh check, in the C locale
+# because nmcli translates it.
+connectivity() {
+    LC_ALL=C timeout 10 nmcli networking connectivity check 2>/dev/null || true
+}
+
+if $DRY_RUN; then
+    run "$launcher" "$PORTAL_URL"
+    echo "DRYRUN: nmcli networking connectivity check, every ${CHECK_EVERY}s until full, at most ${CHECK_FOR}s"
+    exit 0
+fi
+
+run "$launcher" "$PORTAL_URL" || die "could not open the browser (haseen setup default browser)"
+have nmcli || exit 0
+
+# One waiter: a click while it runs has opened the page again, nothing more.
+lock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/haseen-network-portal.lock"
+exec 9>"$lock"
+flock -n 9 || exit 0
+
+# Bounded twice: by the clock, and by a count, should sleep return early.
+deadline=$((SECONDS + CHECK_FOR))
+for ((i = 0; i < CHECK_FOR / CHECK_EVERY && SECONDS < deadline; i++)); do
+    sleep "$CHECK_EVERY"
+    if [[ $(connectivity) == full ]]; then
+        info "signed in: the internet is reachable"
+        exit 0
+    fi
+done
+info "still not online after $((CHECK_FOR / 60)) minutes; NetworkManager keeps checking on its own"
