@@ -40,6 +40,10 @@ haseen-all-themes.lua (every stock theme's plugin, installed ahead) are
 linked beside it unless Omarchy's omarchy-theme-hotreload.lua /
 all-themes.lua are still there (\`haseen import omarchy\` swaps them).
 
+Each theme gets back the background it last showed (remembered in
+~/.local/state/haseen/theme-backgrounds/<name> as the theme is left); one
+never shown before starts on its first image.
+
 An Omarchy theme whose images are not cached yet starts
 \`haseen theme fetch <name>\` in the background (log:
 ~/.local/state/haseen/theme-fetch.log); its first background is linked when
@@ -101,9 +105,10 @@ if $DRY_RUN; then
         _theme_window_radius
         echo "DRYRUN: write $THEME_NEXT_PATH/rounding.lua: window corners ${THEME_COLORS[window_radius]} (the shell frame's radius; toggles and hyprmod still override it)"
     fi
+    theme_remember_background
     echo "DRYRUN: swap $THEME_NEXT_PATH -> $THEME_CURRENT_PATH"
     echo "DRYRUN: write $THEME_NAME_FILE: $name"
-    echo "DRYRUN: link $THEME_BACKGROUND_LINK to the theme's first background"
+    echo "DRYRUN: link $THEME_BACKGROUND_LINK to the background last shown with $name, else its first"
     theme_link_gtk
     theme_link_nvim
     theme_post_set "$src"
@@ -121,6 +126,7 @@ mkdir -p "$THEME_CURRENT_DIR"
 exec 9>"$THEME_CURRENT_DIR/.theme-set.lock"
 flock 9
 theme_stage "$name" || exit 1
+theme_remember_background
 theme_swap "$name"
 theme_link_background "$name"
 flock -u 9

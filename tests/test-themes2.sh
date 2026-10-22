@@ -17,8 +17,8 @@
 # dry-run purity throughout.
 
 SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
-PIN=5c4da021469517449770579793b37ce26d0a0d48
-OMARCHY_THEMES="catppuccin catppuccin-latte ethereal everforest flexoki-light gruvbox hackerman kanagawa last-horizon lumon lupine matte-black miasma nord osaka-jade retro-82 ristretto rose-pine solitude tokyo-night vantablack white"
+PIN=03ff1eff3812933f7088484533784d2f63eaf19a
+OMARCHY_THEMES="catppuccin catppuccin-latte ethereal everforest flexoki-light gruvbox hackerman kanagawa last-horizon lumon lupine matte-black miasma nord osaka-jade retro-82 ristretto rose-pine solitude starship tokyo-night vantablack white"
 # Stock themes that are not Omarchy's (no fetchable images): haseen's own,
 # the default (plan 066).
 HASEEN_THEMES="haseen"
@@ -49,7 +49,7 @@ assert_eq "stock themes = Omarchy's at $PIN + haseen's own" "$(tr ' ' '\n' <<<"$
 assert_eq "no images shipped" "" "$(find "$HASEEN_PATH/themes" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.webp' \) -print)"
 manifest="$HASEEN_PATH/layers/theme/omarchy-assets.txt"
 assert_eq "manifest names every stock theme" "$(tr ' ' '\n' <<<"$OMARCHY_THEMES")" "$(awk '!/^#/ { sub(/\/.*/, "", $3); print $3 }' "$manifest" | LC_ALL=C sort -u)"
-assert_eq "manifest: one preview per theme" "22" "$(grep -c ' [a-z0-9-]*/preview.png$' "$manifest")"
+assert_eq "manifest: one preview per theme" "23" "$(grep -c ' [a-z0-9-]*/preview.png$' "$manifest")"
 assert_eq "manifest rows are sha256 size path" "" "$(awk '!/^#/ && !($1 ~ /^[0-9a-f]{64}$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[a-z0-9-]+\/(preview\.png|backgrounds\/[^\/]+\.(png|jpg|jpeg|webp))$/)' "$manifest")"
 assert_eq "manifest: largest image under the fetch limit" "yes" "$(awk '!/^#/ && $2 > m { m = $2 } END { print (m <= 8388608 ? "yes" : "no") }' "$manifest")"
 assert_contains "manifest records the pin" "$(head -3 "$manifest")" "$PIN"

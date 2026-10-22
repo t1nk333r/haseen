@@ -1,0 +1,38 @@
+# Starship (plan 106): Omarchy 4.5's stock theme, themes/starship/colors.toml at
+# v4.5.0-rc1 (d38b70c3c, #14705), its values unchanged. MIT, Copyright (c) David
+# Heinemeier Hansson; the palette is adapted from "Starship To Orbit", MIT,
+# Copyright (c) 2026 Erik Johansson (LICENSE beside this file). Its four
+# backgrounds are SpaceX photographs, not covered by either licence: haseen
+# never ships them, `haseen theme fetch starship` downloads them from Omarchy.
+
+mode = "dark"
+
+accent = "#ff9f0a"
+selection = "#3a3a3c"
+muted = "#8e8e93"
+
+background = "#1c1c1e"
+dark_background = "#161618"
+darker_background = "#0e0e10"
+lighter_background = "#2c2c2e"
+
+foreground = "#f5f5f7"
+dark_foreground = "#98989d"
+light_foreground = "#fbfbfd"
+bright_foreground = "#ffffff"
+
+red = "#ff5f4a"
+yellow = "#ffc27a"
+orange = "#ff6a3d"
+green = "#ff9f0a"
+cyan = "#a6dcef"
+blue = "#8fb8de"
+magenta = "#ff8fa3"
+brown = "#b8a99a"
+
+bright_red = "#ff8373"
+bright_yellow = "#ffd8a8"
+bright_green = "#ffb340"
+bright_cyan = "#cdeefa"
+bright_blue = "#b5d0ea"
+bright_magenta = "#ffb3c1"

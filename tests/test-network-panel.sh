@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# haseen:covers bin/haseen-network-band bin/haseen-network-status bin/haseen-plugin-validate
+# haseen:covers bin/haseen-network-band bin/haseen-network-portal bin/haseen-network-status
+# haseen:covers bin/haseen-plugin-validate
 # haseen:covers share/haseen/shell/Compat/Manifest.js share/haseen/shell/lib/plugin.sh
 # haseen:covers share/haseen/shell/plugin.schema.json share/haseen/shell/plugins/haseen.network/**
 # haseen:covers share/haseen/shell/plugins/*/manifest.json
@@ -8,10 +9,12 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # haseen.network panel (port of Omarchy's): the manifest declares the panel,
 # the pure helpers in Model.js (icons, details, ping and traffic, band, row
-# order, sections and status, credentials, failure reasons, DNS names) run
-# headless under the real Qt JS engine (/usr/lib/qt6/bin/qml, offscreen), and
-# the two commands the panel samples read stubbed ip/iw/ping/nmcli and a
-# fixture /sys. Nothing here touches the machine's network.
+# order, sections and status, credentials, failure reasons, DNS names, the
+# captive-portal state of plan 106) run headless under the real Qt JS engine
+# (/usr/lib/qt6/bin/qml, offscreen), the two commands the panel samples read
+# stubbed ip/iw/ping/nmcli and a fixture /sys, and `haseen network portal`
+# opens a stub browser and asks a stub nmcli. Nothing here touches the
+# machine's network.
 
 PLUGIN="$HASEEN_PATH/shell/plugins/haseen.network"
 
@@ -132,6 +135,25 @@ Window {
 
         eq("dns names", ["dhcp", "cloudflare", "google", "custom"], N.dnsProviders.map(p => p.id));
         eq("dns choice", ["google", "dhcp", "dhcp"], [N.dnsChoice("google\n"), N.dnsChoice(""), N.dnsChoice("quad9")]);
+
+        // Captive portal (plan 106): NetworkConnectivity names as numbers.
+        const C = { None: 1, Portal: 2, Limited: 3, Full: 4 };
+        eq("connectivity words", ["portal", "limited", "full", "none", "unknown"], [2, 3, 4, 1, 0].map(c => N.connectivityState("wifi", c, C, true)));
+        eq("disconnected is none whatever NetworkManager kept", "none", N.connectivityState("disconnected", 2, C, true));
+        eq("checking off: a cached portal answer is not trusted", "unknown", N.connectivityState("ethernet", 2, C, false));
+        eq("portal and limited offer the sign-in row", [true, true, false, false, false], ["portal", "limited", "full", "none", "unknown"].map(N.restricted));
+        eq("ping readable once the internet answers", true, N.internetPingReadable([12], "full"));
+        eq("ping reads -- behind a portal, on a limited link, offline", [false, false, false], ["portal", "limited", "none"].map(c => N.internetPingReadable([null, null], c)));
+        eq("no ping before any sample", false, N.internetPingReadable([], "full"));
+        eq("ping with checking off still reads", true, N.internetPingReadable([5], "unknown"));
+        eq("hero says a sign-in is needed", "SIGN-IN REQUIRED", N.heroMeta({ type: "wifi" }, "wifi", true, "Bending light", "portal"));
+        eq("hero says the access is limited", "LIMITED INTERNET ACCESS", N.heroMeta({ type: "ethernet" }, "ethernet", false, "x", "limited"));
+        eq("hero phrase when online", "BENDING LIGHT", N.heroMeta({ type: "ethernet" }, "ethernet", false, "Bending light", "full"));
+        eq("hero offline ignores a stale portal", "NOT CONNECTED", N.heroMeta({}, "disconnected", false, "x", "portal"));
+        eq("connected row behind a portal", "Sign-in required", N.rowStatus(rows[0], idle, ok, false, "portal"));
+        eq("connected row on a limited link stays Connected", "Connected", N.rowStatus(rows[0], idle, ok, false, "limited"));
+        eq("other rows say nothing about the portal", "", N.rowStatus(rows[1], idle, ok, false, "portal"));
+        eq("an action in flight beats the portal line", "Disconnecting…", N.rowStatus(rows[0], { kind: "disconnect", ssid: "Now" }, ok, false, "portal"));
     }
 }
 EOF
@@ -144,10 +166,72 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "52" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "68" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
+
+# --- the panel's portal row and its re-check (plan 106) -------------------------
+panel="$(cat "$PLUGIN/Panel.qml")"
+assert_contains "the sign-in row shows only on a restricted link" "$panel" $'Pill {\n        width: parent.width\n        visible: root.restricted'
+assert_contains "the re-check runs only while open on a restricted link" "$panel" $'// haseen:sample\n    Timer {\n        interval: 5000\n        repeat: true\n        running: root.visible && root.restricted && root.connectivityChecksEnabled'
+assert_contains "signing in runs haseen network portal in its own scope" "$panel" 'Apps.launch([binDir + "/haseen-network-portal"]);'
+assert_eq "the panel never opens a URL itself" "" "$(grep -nE 'xdg-open|launch-browser|openUrlExternally|https?://' "$PLUGIN/Panel.qml" || true)"
+assert_eq "the bar widget never re-checks" "" "$(grep -nE 'checkConnectivity|Timer' "$PLUGIN/Widget.qml" || true)"
+
+# --- haseen network portal: open the page, re-check until online ----------------
+sandbox network-portal
+tree="$SANDBOX/tree"
+mkdir -p "$tree/omarchy/bin"
+cp -r "$REPO/share/haseen/lib" "$tree/lib"
+printf '#!/bin/sh\necho "browser $*" >>"%s/calls.log"\n' "$SANDBOX" >"$tree/omarchy/bin/omarchy-launch-browser"
+chmod +x "$tree/omarchy/bin/omarchy-launch-browser"
+stub sleep "echo \"sleep \$*\" >>'$SANDBOX/calls.log'"
+# nmcli answers portal until its call count reaches FULL_AT.
+stub nmcli "n=\$(cat '$SANDBOX/n' 2>/dev/null || echo 0); n=\$((n + 1)); echo \$n >'$SANDBOX/n'
+echo \"nmcli \$*\" >>'$SANDBOX/calls.log'
+if [ \"\$n\" -ge \"\${FULL_AT:-999}\" ]; then echo full; else echo portal; fi"
+calls() { cat "$SANDBOX/calls.log" 2>/dev/null || true; }
+
+capture haseen-network-portal --url
+assert_eq "the page is fixed and plain HTTP" "http://neverssl.com/" "$OUTPUT"
+capture haseen network portal --help
+assert_contains "help says no URL from the network is opened" "$OUTPUT" "never opens an address the network"
+capture haseen-network-portal extra
+assert_status "no other arguments" 2 "$STATUS"
+capture env HASEEN_PATH="$tree" haseen-network-portal --dry-run
+assert_status "dry run" 0 "$STATUS"
+assert_contains "dry run plans the browser" "$OUTPUT" "DRYRUN: $tree/omarchy/bin/omarchy-launch-browser http://neverssl.com/"
+assert_contains "dry run plans the bounded re-check" "$OUTPUT" "every 3s until full, at most 300s"
+assert_dry_pure "network portal" "$OUTPUT"
+assert_eq "dry run opens and asks nothing" "" "$(calls)"
+
+capture env HASEEN_PATH="$tree" FULL_AT=3 haseen-network-portal
+assert_status "signed in" 0 "$STATUS"
+assert_contains "says when the internet answers" "$OUTPUT" "signed in"
+assert_eq "browser first, then a check every 3 s until full" "browser http://neverssl.com/
+sleep 3
+nmcli networking connectivity check
+sleep 3
+nmcli networking connectivity check
+sleep 3
+nmcli networking connectivity check" "$(calls)"
+
+: >"$SANDBOX/calls.log"
+rm -f "$SANDBOX/n"
+capture env HASEEN_PATH="$tree" haseen-network-portal
+assert_status "never online still ends" 0 "$STATUS"
+assert_contains "and says NetworkManager carries on" "$OUTPUT" "NetworkManager keeps checking on its own"
+assert_eq "at most 300 s of checks, every 3 s" "100" "$(grep -c '^nmcli networking connectivity check$' "$SANDBOX/calls.log")"
+
+# A click while one waits only opens the page again.
+: >"$SANDBOX/calls.log"
+exec 7>"$XDG_RUNTIME_DIR/haseen-network-portal.lock"
+flock -n 7
+capture env HASEEN_PATH="$tree" FULL_AT=1 haseen-network-portal
+exec 7>&-
+assert_status "second waiter" 0 "$STATUS"
+assert_eq "second click: the page only" "browser http://neverssl.com/" "$(calls)"
 
 # --- haseen network status: the active route's details ------------------------
 sandbox network-status

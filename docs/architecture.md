@@ -55,7 +55,7 @@ file changes in the same commit.
 | `/var/lib/haseen/boot-menu/` | `original` (the `timeout:`/`quiet:` values `haseen setup boot-menu fast` replaced) and a copy of `limine.conf` from before each change (§9, plan 104) | boot menu |
 | `PREFIX/lib/systemd/user/omarchy-migrate-notify.service.d/haseen.conf` | silences Omarchy's own pending-migration notice (plan 101) | repo → installed with the user units |
 | `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/` | user |
-| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line), `splash-follow` (the last boot splash request: `ok`, `failed` or `skipped`, plan 110), `toggles/hypr/*.lua` (Hyprland toggles, below), `monitor-workspaces` and `monitor-workspaces-merged` (per-monitor workspaces, below) | runtime |
+| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line), `splash-follow` (the last boot splash request: `ok`, `failed` or `skipped`, plan 110), `theme-backgrounds/<theme>` (the background each theme last showed, one path per file, plan 106), `toggles/hypr/*.lua` (Hyprland toggles, below), `monitor-workspaces` and `monitor-workspaces-merged` (per-monitor workspaces, below) | runtime |
 | `~/.local/share/haseen/extensions/cairn/<version>/` | Cairn's release `.crx`, downloaded and checked; Helium installs it from `~/.config/net.imput.helium/External Extensions/<id>.json` (plan 073) | shell |
 
 `PREFIX` is `/usr/local` for the installer. When the PKGBUILD phase lands it
@@ -78,7 +78,7 @@ Preflight globals are already set when the layer runs.
 | `chaotic` | base | Chaotic-AUR (pinned key `EF925EA6…87B78AEB`), so `aur:` entries install prebuilt |
 | `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt, and the only source of `omarchy:` entries (herdr, xdg-terminal-exec); `omarchy`/`omarchy-settings` refused (ADR 0001) |
 | `desktop` | base chaotic | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
-| `theme` | base | theme pipeline, the 22 Omarchy stock themes plus haseen's own `haseen` (the default), pinned background fetch, `haseen-background.service` (swaybg) |
+| `theme` | base | theme pipeline, the 23 Omarchy stock themes (the 4.5 set) plus haseen's own `haseen` (the default), pinned background fetch, `haseen-background.service` (swaybg) |
 | `shell` | desktop theme | the haseen Quickshell shell as `haseen-shell.service`; Helium (`aur:helium-browser-bin`) with the Cairn extension, its release `.crx` fetched at a pinned SHA-256 and handed over as a per-user external extension (`lib/cairn.sh`, `haseen setup cairn`, plan 073) |
 | `flatpak` | desktop | Flathub remote in the per-user installation; `haseen install` is Flatpak-first for apps (catalogue `share/haseen/default/catalog.json`) |
 | `secureboot` | base | sbctl own keys + Microsoft + firmware keys, signing hooks, Limine config enrollment |
@@ -606,6 +606,7 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
 - Every `Timer` is marked on the line above it, and `tests/test-shell.sh` enforces both kinds. Prefer events: Hyprland IPC, PipeWire, UPower and NetworkManager D-Bus, `FileView` watches.
   - `// haseen:ui-timeout`: a single-shot UI timeout. One is re-armed as a clock: the `haseen.media` panel's seek bar emits `positionChanged()` once a second while the panel is open and the player plays (plan 078); the panel is freed on close, and a tick makes no D-Bus call.
   - `// haseen:sample`: a repeating sampler with an interval of 2 s or more and a `running:` binding gated on visibility or enablement.
+  - A command may repeat only when a click started it and only for a bounded time: the network panel's Sign in row (plan 106) runs `haseen network portal`, which asks NetworkManager to check the connection every 3 s for at most 5 minutes, then leaves it to NetworkManager's own schedule. The panel itself re-checks every 5 s only while it is open on a portal or limited link.
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python for shell startup or polling. The optional Security panel invokes its Python workflow only for finite, explicit reads and actions (§3), never as a background sampler.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
 - The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 12 MiB RSS.
@@ -639,6 +640,8 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
 - **Backgrounds:**
   - Images are never shipped. `haseen theme fetch [NAME|--all]` downloads them from Omarchy at a pinned commit, checked against the hashes in `share/haseen/layers/theme/omarchy-assets.txt`, into `~/.cache/haseen/themes/<name>/`.
   - `haseen theme bg list|set|next` maintains `current/background`, which `haseen-background.service` (swaybg) draws.
+  - Each theme keeps its background (plan 106, after Omarchy's #7718): as a theme is left, `haseen theme set` records the image `current/background` shows in `~/.local/state/haseen/theme-backgrounds/<theme>`, and switching back restores it while the file exists; a theme never shown before starts on its first image. Every way a theme becomes current runs `haseen theme set` (`haseen theme install`, the generated themes, `omarchy-theme-set`).
+  - The pin is Omarchy `v4.5.0-rc1` (plan 106): it adds the Starship theme (colours only; its four SpaceX photographs are fetched like every other image) and puts Liftoff first in Tokyo Night. Migration `1792681032-tokyo-night-liftoff.sh` renames the cached Tokyo Night copies and the picks that name them.
   - Pickers on Omarchy's keys: the panels `haseen.themepicker` (SUPER + CTRL + SHIFT + SPACE, menu Style › Theme) and `haseen.background` (SUPER + CTRL + SPACE, menu Style › Background). `bg next` is SUPER + CTRL + ALT + SPACE and Style › Next background.
   - `~/.config/haseen/font` overrides `fontMono`.
 
