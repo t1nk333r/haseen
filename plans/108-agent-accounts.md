@@ -13,8 +13,8 @@
   extends), 100 (affected tests)
 - **Category**: agents, Omarchy compatibility
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-22, review round 1 addressed the same day (pull
-  request #64; owner steps below)
+- **State**: DONE 2026-10-22, review rounds 1 and 2 addressed the same day
+  (pull request #64; owner steps below)
 
 ## Decision (owner, 2026-10-21)
 
@@ -103,7 +103,7 @@ A bash and jq rewrite of Omarchy's registry rules, under its MIT notice:
 - The registry is `~/.local/state/haseen/agents/accounts/<provider>.json` in
   Omarchy's format (`active`, `switch`, `threshold`, `alert`, `accounts`),
   so either side can read the other's. Added homes live beside it.
-- Identity (`acct_identity`, `:165`) reads only display-safe fields: Claude's
+- Identity (`acct_identity`, `:168`) reads only display-safe fields: Claude's
   `oauthAccount` (account id, email, organisation) and the plan name from
   `.credentials.json`; Codex's account id, and the email and plan claims
   decoded from the id token's payload; Grok's user id, email and cached plan
@@ -111,19 +111,20 @@ A bash and jq rewrite of Omarchy's registry rules, under its MIT notice:
   shell variable, an argument or any output. The registry holds no token
   (test: "the registry holds no token").
 - Private by construction: the commands run under `umask 077`, `acct_save`
-  (`:267`) writes atomically through `replace_user_file` and sets 0600, and
-  `acct_private_credentials` (`:337`) sets a new account's credential files
+  (`:270`) writes atomically through `replace_user_file` and sets 0600, and
+  `acct_private_credentials` (`:340`) sets a new account's credential files
   to 0600 after its login. Every change goes through `run`,
   `replace_user_file` and `write_user_file` (dry-run contract); a dry run
   creates nothing and takes no lock.
-- One `flock` per provider (`acct_lock`, `:259`) serialises the panel, a
+- One `flock` per provider (`acct_lock`, `:262`) serialises the panel, a
   typed command and an Omarchy caller.
-- A registry that exists but does not parse (`acct_registry_broken`,
-  `:134`) is never overwritten: loading it gives the main login alone, so
-  `acct_require_registry` (`:144`) stops `add` before its login, and `use`,
+- A registry that exists but does not parse, or whose accounts are not a
+  list of objects with ids (`acct_registry_broken`, `:136`), is never
+  overwritten: loading it gives the main login alone, so
+  `acct_require_registry` (`:147`) stops `add` before its login, and `use`,
   `rename` and `remove` before any change; `list` shows the main login with
   a warning (review round 1).
-- Account ids are cut to 48 characters (`acct_slug`, `:277`), so a long
+- Account ids are cut to 48 characters (`acct_slug`, `:280`), so a long
   label never fails at the rename after a login (review round 1).
 - Without a haseen registry, Omarchy 4.5's is read (`acct_registry_source`,
   `:121`): accounts added under it keep resolving, and haseen's first change
@@ -137,15 +138,22 @@ A bash and jq rewrite of Omarchy's registry rules, under its MIT notice:
   (`link_shared`, `bin/omarchy-agent-account-state@v4.5.0-rc1:295`);
   `add --reauth` lets the CLI's login write in it and sets its credential
   files to 0600.
-- `acct_login_refused` (`:371`) fails closed (review round 1): Claude, Codex
-  or Grok (or `all`) in `~/.config/haseen/agents/login-refused` or, for
-  every user and service on the machine, `/etc/haseen/agents/login-refused`,
-  in any case, separated by commas or any white space (a carriage return
-  included), `#` starting a comment, makes `add` stop before any login
-  starts; a file that is there but cannot be read (mode 000, a directory, a
-  dangling link) refuses too, naming the file. haseen never writes either
+- `acct_login_refused` (`:380`) fails closed (review rounds 1 and 2):
+  Claude, Codex or Grok (or `all`) in `~/.config/haseen/agents/login-refused`
+  or, for every user and service on the machine,
+  `/etc/haseen/agents/login-refused`, ASCII names in any case, separated by
+  commas or any white space (a carriage return included), `#` starting a
+  comment, a leading UTF-8 byte-order mark ignored, makes `add` stop before
+  any login starts. Every sign-in is refused, naming the file, when the file
+  cannot be judged: it is there but is not a readable regular file (mode
+  000, a directory, a dangling link), is over 64 KiB (refused before it is
+  read), holds a NUL byte (UTF-16, binary), or has an entry that is not
+  exactly one of those four names (other punctuation, quotes, `*`,
+  lookalike or zero-width characters, a no-break space; the entry is
+  printed with `%q`); and when a directory on its path exists but cannot be
+  entered, so whether it is there is unknown. haseen never writes either
   file.
-- `acct_home_in_use` (`:348`): a home a running session selected (its
+- `acct_home_in_use` (`:351`): a home a running session selected (its
   `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` in `/proc/<pid>/environ`,
   this user's processes only, through `sysroot_path`) is never removed.
 
@@ -243,6 +251,29 @@ changes, all made:
 6. The `add` cleanup trap and the two `mktemp` calls go through `run`; the
    trap does nothing in a dry run, which created nothing.
 
+## Review round 2 (2026-10-22)
+
+All six round-1 fixes were confirmed. Four more gaps, all closed:
+
+1. A policy file behind a directory that cannot be entered (a root-owned
+   0700 `/etc/haseen/agents`, a mode-000 `~/.config/haseen/agents`) looked
+   absent; the nearest existing directory on its path is now checked, and
+   one that cannot be entered refuses, naming the file and the directory.
+2. Near-miss entries let a login run (a byte-order mark before `claude`,
+   `claude;codex`, `claude|codex`, quoted names, `claude:`, `claude=true`,
+   `*`, zero-width and fullwidth lookalikes, a no-break space, a UTF-16
+   file). The file is now read byte for byte (`LC_ALL=C`), a leading UTF-8
+   byte-order mark is dropped, and any entry that is not exactly claude,
+   codex, grok or all refuses every sign-in; a NUL byte refuses as not
+   plain text.
+3. A 200 MB file made `add` look hung; a file over 64 KiB is refused before
+   it is read.
+4. `{"accounts":5}`, `{"accounts":"x"}`, `{"accounts":[1,2]}` and an account
+   without an id passed as a registry and were dropped on the next save;
+   they are refused like a registry that does not parse.
+
+The reviewer accepted `use`'s wrapper line as worded.
+
 ## Copying logins to another machine: not built
 
 Omarchy's `omarchy-agent-account-copy` and `-transfer` stay refused. Reasons:
@@ -326,16 +357,20 @@ Omarchy's `omarchy-agent-account-copy` and `-transfer` stay refused. Reasons:
 
 ## Tests
 
-`tests/test-agent-accounts.sh` (new, 200 checks after review round 1): no
+`tests/test-agent-accounts.sh` (new, 274 checks after review round 2): no
 registry changes nothing; first and further sign-ins; private-window login; modes; shared
 links; display-safe registry; duplicate and unfinished logins; use, next,
 pins and explicit homes; rename (reserved ids); remove (main, in use through
 a fixture `/proc`, dry run, without yes, adopted homes kept); user and
 machine sign-in refusals before any login, in every spelling (case,
-padding, commas, tabs, a carriage return, comments) and failing closed on a
-file that cannot be read (mode 000 unless root, a directory, a dangling
-link); a registry that does not parse is refused by every change and kept
-byte for byte; a 400-character label gives a 48-character id; which
+padding, commas, tabs, a carriage return, comments, a byte-order mark) and
+failing closed on a file that cannot be read (mode 000 unless root, a
+directory, a dangling link, a locked directory on its path unless root, over
+64 KiB, UTF-16) or has an entry it does not understand (each near miss the
+review listed, a typo, an escape byte printed escaped), while a valid file
+still allows the other providers; a registry that does not parse, or whose
+accounts are not a list of objects with ids, is refused by every change and
+kept byte for byte; a 400-character label gives a 48-character id; which
 launches follow `use`, with and without Omarchy 4.5's wrapper; dry-run add
 (its cleanup deletes nothing); `--reauth`; Codex
 and Grok identities; Omarchy's registry read and never written; every

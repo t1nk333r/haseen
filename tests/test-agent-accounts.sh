@@ -286,7 +286,86 @@ mkdir "$HASEEN_SYSROOT/etc/haseen/agents/login-refused"
 capture haseen agent account add claude
 assert_contains "so is the machine's file" "$OUTPUT" "/etc/haseen/agents/login-refused cannot be read"
 assert_eq "no login ran for it" "" "$(logins)"
+rmdir "$HASEEN_SYSROOT/etc/haseen/agents/login-refused"
+
+# A directory on the path that cannot be entered may hide the file: refused,
+# naming the file and the directory (review round 2).
+if ((EUID != 0)); then
+    printf 'claude\n' >"$HASEEN_SYSROOT/etc/haseen/agents/login-refused"
+    for locked in "$HASEEN_SYSROOT/etc/haseen/agents" "$HASEEN_SYSROOT/etc/haseen"; do
+        chmod 000 "$locked"
+        : >"$LOG"
+        capture haseen agent account add codex
+        chmod 755 "$locked"
+        assert_status "a locked ${locked#"$HASEEN_SYSROOT"} refuses" 1 "$STATUS"
+        assert_contains "naming the file and the directory: ${locked#"$HASEEN_SYSROOT"}" "$OUTPUT" \
+            "/etc/haseen/agents/login-refused cannot be read ($locked cannot be entered)"
+        assert_eq "before any login: ${locked#"$HASEEN_SYSROOT"}" "" "$(logins)"
+    done
+    rm -f "$HASEEN_SYSROOT/etc/haseen/agents/login-refused"
+    mkdir -p "$(dirname "$REFUSED")"
+    printf 'claude\n' >"$REFUSED"
+    chmod 000 "$(dirname "$REFUSED")"
+    : >"$LOG"
+    capture haseen agent account add claude
+    chmod 700 "$(dirname "$REFUSED")"
+    assert_status "a locked ~/.config/haseen/agents refuses" 1 "$STATUS"
+    assert_contains "and names it" "$OUTPUT" "$REFUSED cannot be read ($(dirname "$REFUSED") cannot be entered)"
+    assert_eq "before any login" "" "$(logins)"
+    rm -f "$REFUSED"
+else
+    echo "  skip: running as root, a mode 000 directory can be entered" >&2
+fi
 unset HASEEN_SYSROOT
+
+# An entry that is not exactly claude, codex, grok or all refuses every
+# sign-in, naming the entry; a leading UTF-8 byte-order mark is not an entry.
+not_understood() { # LABEL CONTENT (printf format) [PROVIDER]
+    printf "$2" >"$REFUSED"
+    : >"$LOG"
+    capture haseen agent account add "${3:-claude}"
+    assert_status "not understood: $1" 1 "$STATUS"
+    assert_contains "not understood: $1, said so" "$OUTPUT" "$REFUSED has an entry it does not understand: "
+    assert_eq "not understood: $1, before any login" "" "$(logins)"
+}
+not_understood "a semicolon" 'claude;codex\n'
+not_understood "a bar" 'claude|codex\n' codex
+not_understood "double quotes" '"claude"\n'
+not_understood "single quotes" "'claude'\\n"
+not_understood "a colon" 'claude:\n'
+not_understood "an assignment" 'claude=true\n'
+not_understood "a star" '*\n' grok
+not_understood "a zero-width space" 'claude\xe2\x80\x8b\n'
+not_understood "fullwidth letters" '\xef\xbd\x83\xef\xbd\x8c\xef\xbd\x81\xef\xbd\x95\xef\xbd\x84\xef\xbd\x85\n'
+not_understood "a no-break space between names" 'claude\xc2\xa0codex\n' codex
+not_understood "a typo beside a good name" 'claude\ncodx\n' grok
+assert_contains "the entry is printed escaped" "$OUTPUT" "does not understand: codx"
+not_understood "an escape in an entry" 'claude\x1b[2J\n'
+assert_not_contains "printed without its control byte" "$OUTPUT" $'\x1b'
+printf '\xef\xbb\xbfclaude\n' >"$REFUSED"
+: >"$LOG"
+capture haseen agent account add claude
+assert_contains "a byte-order mark before claude still lists it" "$OUTPUT" "$REFUSED lists it"
+assert_eq "and no login ran" "" "$(logins)"
+capture haseen agent account add grok
+assert_status "a valid file still allows the others" 0 "$STATUS"
+assert_contains "and grok signs in" "$(logins)" "grok login"
+printf '\xff\xfec\x00l\x00a\x00u\x00d\x00e\x00\n\x00' >"$REFUSED"
+: >"$LOG"
+capture haseen agent account add codex
+assert_status "a UTF-16 file refuses" 1 "$STATUS"
+assert_contains "as not plain text" "$OUTPUT" "$REFUSED cannot be read (not plain text)"
+assert_eq "before any login" "" "$(logins)"
+rm -f "$REFUSED"
+truncate -s 200M "$REFUSED"
+: >"$LOG"
+started=$SECONDS
+capture haseen agent account add codex
+assert_status "a file over 64 KiB refuses" 1 "$STATUS"
+assert_contains "as too large to read" "$OUTPUT" "$REFUSED cannot be read (over 64 KiB)"
+assert_eq "without reading it" "yes" "$( ((SECONDS - started < 10)) && echo yes || echo no)"
+assert_eq "before any login" "" "$(logins)"
+rm -f "$REFUSED"
 
 # --- a dry run signs in nobody ------------------------------------------------
 acct accounts-dry
@@ -343,6 +422,18 @@ assert_status "list still answers" 0 "$STATUS"
 assert_contains "with a warning" "$OUTPUT" "registry $STATE/claude.json does not parse"
 assert_contains "and the main login" "$OUTPUT" "main@example.com"
 assert_eq "a broken registry selects the main login" "" "$(haseen agent account home claude)"
+# Valid JSON whose accounts are not a list of objects with ids is refused the
+# same way: rewriting it would drop them (review round 2).
+for junk in '{"accounts":5}' '{"accounts":"x"}' '{"accounts":[1,2]}' '{"accounts":[{"label":"no id"}]}' '[]'; do
+    printf '%s\n' "$junk" >"$STATE/claude.json"
+    capture haseen agent account use claude main
+    assert_status "use refuses $junk" 1 "$STATUS"
+    assert_contains "naming the registry: $junk" "$OUTPUT" "registry $STATE/claude.json does not parse"
+    assert_eq "and keeps it: $junk" "$junk" "$(cat "$STATE/claude.json")"
+done
+printf '{"active":"main","accounts":[]}\n' >"$STATE/claude.json"
+capture haseen agent account use claude main
+assert_status "an empty account list is a registry" 0 "$STATUS"
 
 # --- a long label gives a short id ---------------------------------------------------
 acct accounts-long

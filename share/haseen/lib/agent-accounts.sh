@@ -129,12 +129,15 @@ acct_registry_source() {
     return 1
 }
 
-# acct_registry_broken P — the registry to read exists but is not a JSON
-# object (unreadable, truncated, edited by hand): print it and succeed.
+# acct_registry_broken P — the registry to read exists but is not one
+# haseen can rewrite without losing an account (unreadable, truncated, edited
+# by hand): not a JSON object, or its accounts not a list of objects with an
+# id. Print it and succeed.
 acct_registry_broken() {
     local src
     src="$(acct_registry_source "$1")" || return 1
-    jq -e 'type == "object"' "$src" &>/dev/null && return 1
+    jq -e 'type == "object" and ((.accounts // []) | type == "array"
+        and all(.[]; type == "object" and (.id | type == "string" and . != "")))' "$src" &>/dev/null && return 1
     printf '%s\n' "$src"
 }
 
@@ -360,32 +363,72 @@ acct_home_in_use() {
     return 1
 }
 
-# acct_login_refused P — a sign-in for P is refused here, and why ("FILE
-# lists it" or "FILE cannot be read"). P or `all` is listed in
-# $HASEEN_USER_CONFIG/agents/login-refused or, for every user and service on
-# the machine, /etc/haseen/agents/login-refused: any case, separated by
-# commas or white space, `#` starting a comment. haseen never writes either
-# file: an owner whose policy forbids an official sign-in on a host creates
-# it, and `add` then stops before any login starts. The check fails closed:
-# a file that is there (a link included) but cannot be read refuses too.
+# acct_login_refused P — a sign-in for P is refused here, and why. P or `all`
+# is listed in $HASEEN_USER_CONFIG/agents/login-refused or, for every user
+# and service on the machine, /etc/haseen/agents/login-refused: ASCII names
+# in any case, separated by commas or white space, `#` starting a comment, a
+# leading UTF-8 byte-order mark ignored. haseen never writes either file: an
+# owner whose policy forbids an official sign-in on a host creates it, and
+# `add` then stops before any login starts.
+#
+# It fails closed, refusing every provider, when a file cannot be judged:
+# one is there but is not a readable regular file, is over 64 KiB, holds a
+# NUL byte (UTF-16, binary), or has an entry other than claude, codex, grok
+# or all (a typo, a lookalike, other punctuation); and when a directory on
+# its path exists but cannot be entered, so whether the file is there is
+# unknown (review rounds 1 and 2).
 acct_login_refused() {
-    local f content line token
+    local LC_ALL=C f dir size content line token
     local -a tokens
     for f in "$HASEEN_USER_CONFIG/agents/login-refused" "$(sysroot_path /etc/haseen/agents/login-refused)"; do
-        [[ -e $f || -L $f ]] || continue
-        if [[ ! -f $f || ! -r $f ]] || ! content="$(cat -- "$f" 2>/dev/null)"; then
+        if [[ ! -e $f && ! -L $f ]]; then
+            # The nearest directory that exists: one that cannot be entered
+            # may hide the file.
+            dir="${f%/*}"
+            while [[ -n $dir && ! -e $dir ]]; do dir="${dir%/*}"; done
+            [[ -n $dir ]] || dir=/
+            if [[ -d $dir && ! -x $dir ]]; then
+                printf '%s cannot be read (%s cannot be entered)\n' "$f" "$dir"
+                return 0
+            fi
+            continue
+        fi
+        if [[ ! -f $f || ! -r $f ]] || ! size="$(stat -L -c %s -- "$f" 2>/dev/null)"; then
             printf '%s cannot be read\n' "$f"
             return 0
         fi
+        if ((size > 65536)); then
+            printf '%s cannot be read (over 64 KiB)\n' "$f"
+            return 0
+        fi
+        if [[ $(tr -d '\000' <"$f" 2>/dev/null | wc -c) != "$size" ]] || ! content="$(cat -- "$f" 2>/dev/null)"; then
+            printf '%s cannot be read (not plain text)\n' "$f"
+            return 0
+        fi
+        content="${content#$'\xef\xbb\xbf'}"
+        # Every entry is understood before any is matched.
         while IFS= read -r line || [[ -n $line ]]; do
             line="${line%%#*}"
             # Any white space, a carriage return included, or a comma.
             IFS=$' \t\r\v\f,' read -ra tokens <<<"$line"
             for token in "${tokens[@]}"; do
-                [[ ${token,,} == "$1" || ${token,,} == all ]] && {
+                case ${token,,} in
+                claude | codex | grok | all) ;;
+                *)
+                    printf '%s has an entry it does not understand: %q\n' "$f" "$token"
+                    return 0
+                    ;;
+                esac
+            done
+        done <<<"$content"
+        while IFS= read -r line || [[ -n $line ]]; do
+            line="${line%%#*}"
+            IFS=$' \t\r\v\f,' read -ra tokens <<<"$line"
+            for token in "${tokens[@]}"; do
+                if [[ ${token,,} == "$1" || ${token,,} == all ]]; then
                     printf '%s lists it\n' "$f"
                     return 0
-                }
+                fi
             done
         done <<<"$content"
     done
