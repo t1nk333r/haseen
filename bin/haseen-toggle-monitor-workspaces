@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# haseen:summary Give every monitor its own workspaces 1-10 on SUPER + 1..0 (off by default)
+# haseen:args [on|off|toggle|status] [--dry-run]
+#
+# Per-monitor workspaces (plan 105), adapted from Omarchy 4.5's
+# default/hypr/monitor-workspaces.lua (MIT, Copyright (c) David Heinemeier
+# Hansson): the Hyprland side is share/haseen/default/hypr/monitor-workspaces.lua.
+# On is a toggle file the Hyprland config loads after the defaults; a reload
+# brings the keys and the monitor events in, or takes them out again.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle monitor-workspaces [on|off|toggle|status] [--dry-run]
+
+"on" gives every monitor its own workspaces 1-10: SUPER + 1..0 and
+SUPER + SHIFT (+ ALT) + 1..0 act on the focused monitor's, each bar shows its
+own, and a monitor gets the same ones back when it is plugged in again.
+"off" (the default) returns to Hyprland's global numbers. "status" prints
+on or off.
+
+Hyprland numbers them in blocks of ten per monitor (the laptop panel 1-10,
+the next monitor 11-20), so on one monitor that was ever second, or after a
+monitor is replaced, the keys reach 11-20 rather than 1-10.
+
+State: \$HASEEN_USER_STATE/toggles/hypr/monitor-workspaces.lua (exists = on);
+the blocks are kept in \$XDG_STATE_HOME/haseen/monitor-workspaces.
+EOF
+}
+
+TOGGLE_FILE="$HASEEN_USER_STATE/toggles/hypr/monitor-workspaces.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in
+on | off) ;;
+toggle) if [[ -f $TOGGLE_FILE ]]; then action=off; else action=on; fi ;;
+status)
+    if [[ -f $TOGGLE_FILE ]]; then echo on; else echo off; fi
+    exit 0
+    ;;
+*) usage >&2; exit 2 ;;
+esac
+
+LUA=$(cat <<'LUA'
+-- haseen toggle: per-monitor workspaces (haseen toggle monitor-workspaces).
+if haseen.workspaces then
+  haseen.workspaces.enable()
+end
+LUA
+)
+
+if [[ $action == on ]]; then
+    printf '%s\n' "$LUA" | write_user_file "$TOGGLE_FILE"
+else
+    run rm -f "$TOGGLE_FILE"
+fi
+# A reload is the one way to swap the keys: Hyprland drops every bind and
+# event subscription and the config makes them again, with or without the
+# file. The reload's config.reloaded event puts each monitor on its own block.
+run hyprctl reload
+$DRY_RUN && exit 0
+echo "Per-monitor workspaces $action"
+if have notify-send; then
+    notify-send -a haseen "Per-monitor workspaces $action" || true
+fi

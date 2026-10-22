@@ -209,6 +209,9 @@ hl = setmetatable({
   end,
 }, { __index = function() return function() end end })
 haseen = { path = os.getenv("HASEEN_PATH") }
+-- init.lua loads monitor-workspaces.lua and qconsole.lua before binds.lua (plan 105).
+haseen.workspaces = { move_window_to_monitor = function() return function() end end }
+haseen.console = { toggle = function() return function() end end }
 EOF
     capture lua -e "dofile('$stub_lua')" -e "
 local function q(v) return \"'\" .. tostring(v):gsub(\"'\", \"'\\\\''\") .. \"'\" end

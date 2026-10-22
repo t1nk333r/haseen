@@ -3,7 +3,7 @@
 # haseen:covers bin/haseen-config-edit bin/haseen-font-set bin/haseen-hook
 # haseen:covers bin/haseen-screensaver-style bin/haseen-settings-{list,set} bin/haseen-setup-default
 # haseen:covers bin/haseen-shell-ipc bin/haseen-shell-use bin/haseen-theme-set
-# haseen:covers bin/haseen-toggle-{animations,dnd,gaps,idle,nightlight,one-window-ratio,screensaver}
+# haseen:covers bin/haseen-toggle-{animations,dnd,gaps,idle,monitor-workspaces,nightlight,one-window-ratio,screensaver}
 # haseen:covers share/haseen/default/nvim/** share/haseen/default/shell.json
 # haseen:covers share/haseen/layers/{dms,shell}/layer.sh share/haseen/layers/dms/ipc-translate
 # haseen:covers share/haseen/layers/theme/{omarchy-assets.txt,theme-lib.sh}
@@ -156,7 +156,7 @@ assert_contains "--help explains the stores" "$OUTPUT" "hypr-toggle"
 
 # --- the index covers what the commands actually mutate ----------------------
 # A toggle that nothing lists is a setting the user cannot discover.
-for t in dnd idle screensaver nightlight gaps animations one-window-ratio; do
+for t in dnd idle screensaver nightlight gaps animations one-window-ratio monitor-workspaces; do
     assert_eq "the index lists the $t toggle" "$t" \
         "$(jq -r --arg t "$t" '.[] | select(.key == $t) | .key' <<<"$rows")"
 done
@@ -172,7 +172,7 @@ stub quickshell 'exit 0'
 stub pkill 'exit 0'
 stub systemctl 'exit 0'
 rm -rf "$HOME/.local/state/haseen/flags" "$HOME/.local/state/haseen/toggles"
-for t in dnd idle screensaver nightlight gaps animations one-window-ratio bar.transparent; do
+for t in dnd idle screensaver nightlight gaps animations one-window-ratio monitor-workspaces bar.transparent; do
     for v in off on off; do
         capture haseen settings set "$t" "$v"
         assert_status "settings set $t $v succeeds" 0 "$STATUS"

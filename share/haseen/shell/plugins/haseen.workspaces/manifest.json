@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.workspaces",
   "name": "Workspaces",
-  "version": "2.0.0",
-  "description": "Hyprland workspaces: persistent 1-5, scratchpads, click to focus, scroll to walk",
+  "version": "2.1.0",
+  "description": "Hyprland workspaces: persistent 1-5, scratchpads, click to focus, scroll to walk; each monitor's own 1-0 with haseen toggle monitor-workspaces",
   "kinds": [
     "bar-widget"
   ],
@@ -14,12 +14,12 @@
     "persistent": {
       "type": "integer",
       "default": 5,
-      "description": "Workspaces 1..N always shown, even when empty (0-10)"
+      "description": "Workspaces 1..N always shown, even when empty (0-10); with per-monitor workspaces, the monitor's own first N"
     },
     "allMonitors": {
       "type": "boolean",
       "default": false,
-      "description": "Show non-persistent workspaces from every monitor, not just this bar's screen"
+      "description": "Show non-persistent workspaces from every monitor, not just this bar's screen (ignored with per-monitor workspaces, where each bar shows its own)"
     }
   },
   "permissions": []

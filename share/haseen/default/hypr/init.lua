@@ -21,6 +21,15 @@
 --   haseen.bind(keys, description, dispatcher_or_command, options)
 --   haseen.ipc(target, fn, ...)        command string for `haseen shell ipc …`
 --   haseen.launch(command)            command string run as a uwsm app unit
+--   haseen.bind_expressions           function -> the Lua expression `hyprctl dispatch`
+--                                     replays it with (the keybind sheet reads it)
+--   haseen.workspaces                 per-monitor workspaces (monitor-workspaces.lua)
+--   haseen.workspace_mode(spec)       a workspace's layout or floating mode
+--                                     (workspace-modes.lua)
+--   haseen.console                    the SUPER + GRAVE console (qconsole.lua)
+--   haseen.animations                 leaf -> the last hl.animation spec the config
+--                                     gave it; haseen.set_animation sets one
+--                                     without recording it
 --
 -- The helper shape (bind/launch/window over hl.*) is adapted from Omarchy
 -- default/hypr/helpers.lua. Omarchy is MIT licensed, Copyright (c) David
@@ -102,6 +111,37 @@ function haseen.ipc(target, fn, ...)
   return table.concat(parts, " ")
 end
 
+-- A bind whose action is a Lua function records here how `hyprctl dispatch`
+-- can run the same thing, so the keybind sheet can replay it. Weak keys: an
+-- entry goes with the function when a reload drops the bind.
+haseen.bind_expressions = setmetatable({}, { __mode = "k" })
+
+-- Hyprland has no getter for an animation leaf, and the console (qconsole.lua)
+-- borrows the special-workspace leaves while it shows and must hand back what
+-- the config set: remember the last spec per leaf, from here to the user's
+-- files. A reload resets Hyprland's tree, so the record starts empty on every
+-- load; the wrapper goes on once per Lua state, so a state kept across reloads
+-- is not wrapped twice. A spec Hyprland refuses (no leaf, no speed or curve)
+-- is not remembered: hl.animation reports it and returns normally.
+haseen.animations = {}
+if not haseen.set_animation then
+  haseen.set_animation = hl.animation
+  hl.animation = function(spec)
+    haseen.set_animation(spec)
+    if type(spec) ~= "table" or type(spec.leaf) ~= "string" then
+      return
+    end
+    if spec.enabled ~= false and not ((tonumber(spec.speed) or 0) > 0 and (spec.bezier or spec.spring)) then
+      return
+    end
+    local copy = {}
+    for key, value in pairs(spec) do
+      copy[key] = value
+    end
+    haseen.animations[spec.leaf] = copy
+  end
+end
+
 function haseen.bind(keys, description, dispatcher, options)
   local opts = options or {}
   if description then
@@ -151,8 +191,10 @@ function haseen.theme_hl(real)
   }, { __index = real })
 end
 
+-- monitor-workspaces, workspace-modes and qconsole define what binds.lua and
+-- the toggles below call; qconsole follows looknfeel, whose curve it uses.
 local here = haseen.path .. "/default/hypr/"
-for _, module in ipairs({ "input", "looknfeel", "binds", "windowrules", "autostart" }) do
+for _, module in ipairs({ "input", "looknfeel", "monitor-workspaces", "workspace-modes", "qconsole", "binds", "windowrules", "autostart" }) do
   dofile(here .. module .. ".lua")
 end
 
@@ -180,3 +222,11 @@ end
 -- hyprmod (or uninstall it and delete the file) to get haseen's value back.
 -- The user's own ~/.config/hypr/*.lua files still load after this one.
 haseen.include_optional(haseen.paths.config_home .. "/hypr/hyprland-gui.lua")
+
+-- Every saved workspace mode has loaded with the toggles: bring the windows in
+-- line with them (workspace-modes.lua). It reads live windows, so a failure is
+-- printed and never takes the rest of the config with it.
+local applied, apply_error = pcall(haseen.workspace_modes.apply)
+if not applied then
+  print("haseen: workspace modes: " .. tostring(apply_error))
+end
