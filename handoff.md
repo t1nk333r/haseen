@@ -68,7 +68,8 @@ The owner's other repos:
 | Default handlers (vendor mimeapps, xdg-terminal-exec) and the grown catalogue | `share/haseen/default/applications/`, `share/haseen/default/xdg-terminal-exec/`, `bin/haseen-setup-default`, `share/haseen/default/catalog.json` | 037 |
 | Shell rc layer: aliases, functions, tool init | `share/haseen/default/shell/`, `share/haseen/seeds/60-shell.sh` | 038 |
 | Phones (Android and iOS) | `share/haseen/layers/mobile/`, `bin/haseen-mobile-*` | 040 |
-| Upload, annotation, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `share/haseen/default/tensaku/`, `share/haseen/themed/tensaku.css.tpl` | 041 |
+| Upload, Arabic OCR, circle to search | `bin/haseen-upload`, `bin/haseen-search-screen`, `bin/haseen-capture-text` | 041 |
+| Screenshots with Omasnap (pick, preview, editor, OCR) and haseen's own grim capture for scripts; Omarchy's screenshot and clipboard answers; the migration that installs Omasnap | `bin/haseen-capture-screenshot`, `share/haseen/lib/omasnap.sh`, `share/haseen/omarchy/bin/omarchy-capture-screenshot`, `share/haseen/migrations/1792634179-omasnap.sh`, `tests/test-omasnap.sh` | 041 107 |
 | Multiplexer, yazi, the VM rig | `share/haseen/default/{herdr,tmux,yazi}/`, `share/haseen/themed/yazi.toml.tpl`, `tools/lab.sh` | 044 |
 | Settings index | `share/haseen/lib/settings.sh`, `bin/haseen-settings-*` | 045 |
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
@@ -108,7 +109,7 @@ panel, plan 090 the 2026-10-13 audit fixes.
 - PR #41 re-lands PR #38's desktop work (plans 009, 036–038, 040–047) on
   `main` without #38's stale copy of the VAPT files; #38 is closed in its
   favour. The screenshot annotator is Tensaku, not satty (owner, 2026-10-14,
-  plan 041).
+  plan 041); Omasnap replaced Tensaku on 2026-10-21 (plan 107).
 - Still unproven for plan 088: the Security panel on a real compositor and
   through AT-SPI.
 - The next free plan number is 091.

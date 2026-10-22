@@ -1,24 +1,30 @@
 #!/usr/bin/env bash
-# omarchy-clipboard-open — open a clipboard-history entry: an image in Tensaku,
-# text with a link in the browser, other text in the editor. Omarchy's
+# omarchy-clipboard-open — open a clipboard-history entry: an image in Omasnap's
+# editor, text with a link in the browser, other text in the editor. Omarchy's
 # clipboard panel calls it with --history-index N. Omarchy reads its shell's
 # ~/.local/state/omarchy/clipboard-history.json, which haseen never writes;
 # here N is the Nth entry of cliphist, haseen's history (haseen.clipboard),
 # newest first from 0. Adapted from Omarchy bin/omarchy-clipboard-open (MIT,
 # Copyright (c) David Heinemeier Hansson): the link and editor rules are
 # Omarchy's; text opens from ~/.local/state/haseen/clipboard-open, an image
-# is decoded into $XDG_RUNTIME_DIR/haseen first (plan 093).
+# is decoded into $XDG_RUNTIME_DIR/haseen first (plan 093). An image opens in
+# Omasnap as in Omarchy 4.5 (bin/omarchy-clipboard-open@v4.5.0-rc1), with
+# haseen's screenshot folder and OCR languages; without Omasnap (or with
+# HASEEN_SCREENSHOT_TOOL=grim) in tensaku-edit, 4.0.6's editor (plan 107).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/omasnap.sh
+source "$HASEEN_PATH/lib/omasnap.sh"
 
 usage() {
     cat <<EOF
 Usage: omarchy-clipboard-open --history-index <index> [--dry-run]
 
 Opens entry INDEX of the clipboard history (cliphist list, 0 = newest):
-images in tensaku-edit, text containing a link in the browser, other text in
-the editor (haseen config edit). Exits 1 when there is no such entry.
+images in Omasnap's editor (tensaku-edit without Omasnap), text containing a
+link in the browser, other text in the editor (haseen config edit). Exits 1
+when there is no such entry.
 EOF
 }
 parse_common_flags "$@"
@@ -42,15 +48,18 @@ line="$(cliphist list 2>/dev/null | sed -n "$((10#$history_index + 1))p" || true
 [[ -n $line ]] || exit 1
 
 open_image() { # EXT
-    local dir="${XDG_RUNTIME_DIR:-/tmp}/haseen" file
+    local dir="${XDG_RUNTIME_DIR:-/tmp}/haseen" file editor=tensaku-edit
+    omasnap_use && editor=omasnap
     if $DRY_RUN; then
         echo "DRYRUN: cliphist decode > $dir/clipboard-open.XXXXXX.$1"
+        [[ $editor == omasnap ]] && omasnap_exec "$dir/clipboard-open.XXXXXX.$1"
         echo "DRYRUN: tensaku-edit $dir/clipboard-open.XXXXXX.$1"
         exit 0
     fi
     mkdir -p "$dir"
     file="$(mktemp --tmpdir="$dir" "clipboard-open.XXXXXX.$1")"
     printf '%s\n' "$line" | cliphist decode >"$file" || exit 1
+    [[ $editor == omasnap ]] && omasnap_exec "$file"
     exec tensaku-edit "$file"
 }
 

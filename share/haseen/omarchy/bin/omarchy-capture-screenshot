@@ -1,37 +1,72 @@
 #!/usr/bin/env bash
-# omarchy-capture-screenshot — Omarchy's screenshot modes on haseen capture
-# screenshot: smart, region and windows pick with haseen's
-# omarchy-capture-region over a frozen screen, fullscreen takes the focused
-# monitor; slurp (the default) saves, copies and announces, copy only copies,
-# save only saves. A second press while a pick is open cancels it. The
-# arguments follow Omarchy bin/omarchy-capture-screenshot (MIT, Copyright (c)
-# David Heinemeier Hansson): OMARCHY_SCREENSHOT_DIR becomes
-# HASEEN_SCREENSHOT_DIR, and --editor=X is dropped (haseen's toast has no
-# click-to-edit; haseen capture screenshot --edit annotates first) (plan 093).
+# omarchy-capture-screenshot — Omarchy 4.5's screenshot command: Omasnap with
+# Omarchy's arguments. copy and save become --copy and --save wherever they
+# stand, slurp (4.0.6's default) is dropped, and everything else (the modes
+# smart, region, windows, fullscreen and scroll, --editor=overlay|window) goes
+# to omasnap as it is; OMARCHY_SCREENSHOT_DIR becomes OMASNAP_SCREENSHOT_DIR.
+# Adapted from Omarchy bin/omarchy-capture-screenshot@v4.5.0-rc1 (MIT,
+# Copyright (c) David Heinemeier Hansson); haseen adds the screenshot folder
+# and OCR languages of haseen capture screenshot (lib/omasnap.sh) and
+# --dry-run (plan 107). Without Omasnap (or with HASEEN_SCREENSHOT_TOOL=grim)
+# it is plan 093's answer on haseen capture screenshot: smart, region and
+# windows pick with haseen's omarchy-capture-region over a frozen screen,
+# fullscreen takes the focused monitor; slurp (the default) saves, copies and
+# announces, copy only copies, save only saves; --editor=X annotates first; a
+# second press while a pick is open cancels it; OMARCHY_SCREENSHOT_DIR becomes
+# HASEEN_SCREENSHOT_DIR. scroll needs Omasnap.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/omasnap.sh
+source "$HASEEN_PATH/lib/omasnap.sh"
 
 usage() {
     cat <<EOF
-Usage: omarchy-capture-screenshot [smart|region|windows|fullscreen] [slurp|copy|save] [--editor=NAME] [--dry-run]
+Usage: omarchy-capture-screenshot [smart|region|windows|fullscreen|scroll] [copy|save] [--editor=overlay|window] [--dry-run]
 
-haseen's answer to Omarchy's command (haseen capture screenshot):
-  smart (default), region, windows   pick over a frozen screen
-  fullscreen                         the focused monitor
-  slurp (default)  save to ~/Pictures, copy, notify; prints the path
-  copy             clipboard only
-  save             file only, no notification; prints the path
+haseen's answer to Omarchy's command: Omasnap, as in Omarchy 4.5.
+  smart (default)   drag a region, click a window or open space
+  region, windows   start in that mode; fullscreen selects the focused monitor
+  scroll            a scrolling region, stitched
+  copy, save        skip the preview: clipboard only, or file only
+  --editor=MODE     annotate before anything is kept
+Without Omasnap, haseen capture screenshot (slurp and grim); scroll needs
+Omasnap.
 EOF
 }
 parse_common_flags "$@"
 export DRY_RUN
-args=()
+
+if omasnap_use; then
+    if [[ -n ${OMARCHY_SCREENSHOT_DIR:-} && -z ${OMASNAP_SCREENSHOT_DIR:-} ]]; then
+        export OMASNAP_SCREENSHOT_DIR="$OMARCHY_SCREENSHOT_DIR"
+    fi
+    omasnap_args=()
+    for arg in "${REST[@]}"; do
+        case $arg in
+        copy) omasnap_args+=(--copy) ;;
+        save) omasnap_args+=(--save) ;;
+        slurp) ;;
+        *) omasnap_args+=("$arg") ;;
+        esac
+    done
+    omasnap_exec "${omasnap_args[@]}"
+fi
+
+mode=smart processing=slurp edit=false
 for arg in "${REST[@]}"; do
-    [[ $arg == --editor=* ]] || args+=("$arg")
+    case $arg in
+    smart | region | windows | fullscreen | scroll) mode=$arg ;;
+    slurp | copy | save) processing=$arg ;;
+    --editor=*) edit=true ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+    esac
 done
-mode=${args[0]:-smart}
-processing=${args[1]:-slurp}
+[[ $mode != scroll ]] ||
+    die "scroll is Omasnap's mode: it needs Omasnap installed (haseen layer apply omarchy-repo desktop) and HASEEN_SCREENSHOT_TOOL other than grim"
 [[ -z ${OMARCHY_SCREENSHOT_DIR:-} || -n ${HASEEN_SCREENSHOT_DIR:-} ]] ||
     export HASEEN_SCREENSHOT_DIR="$OMARCHY_SCREENSHOT_DIR"
 
@@ -39,11 +74,8 @@ case $processing in
 slurp) flags=() ;;
 copy) flags=(--no-save) ;;
 save) flags=(--no-copy --no-notify) ;;
-*)
-    usage >&2
-    exit 1
-    ;;
 esac
+$edit && flags+=(--edit)
 $DRY_RUN && flags+=(--dry-run)
 
 # A second press while the picker is open cancels it, as in Omarchy.
@@ -52,14 +84,7 @@ if ! in_sysroot && pgrep -x slurp >/dev/null 2>&1; then
     exit 0
 fi
 
-case $mode in
-fullscreen) haseen_exec capture-screenshot output "${flags[@]}" ;;
-smart | region | windows) ;;
-*)
-    usage >&2
-    exit 1
-    ;;
-esac
+[[ $mode != fullscreen ]] || haseen_exec capture-screenshot output "${flags[@]}"
 
 if $DRY_RUN; then
     echo "DRYRUN: $HASEEN_OMARCHY_DIR/bin/omarchy-capture-region $mode --keep-freeze (pick the region)"

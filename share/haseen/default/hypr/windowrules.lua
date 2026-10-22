@@ -90,6 +90,18 @@ hl.layer_rule({
   no_anim = true,
 })
 
+-- Omasnap's overlay (plan 107) opens and closes at once, as its README and
+-- Omarchy 4.5 (default/hypr/apps/screenshot-selection.lua) set it. Not
+-- no_screen_share as Omarchy has it: Hyprland then blacks out the whole
+-- overlay in output capture, its transparent live region included, and a
+-- scrolling capture stitches nothing (Omasnap 282b338, issue #128).
+hl.layer_rule({
+  name = "haseen_omasnap_overlay",
+  match = { namespace = "^omasnap$" },
+  no_anim = true,
+  animation = "none",
+})
+
 -- The menu (placement "overlay") pops in and out without the layer fade, as
 -- Omarchy's menu does; mid-fade it showed the windows behind it through.
 hl.layer_rule({

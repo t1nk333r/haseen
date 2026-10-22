@@ -122,7 +122,7 @@ Legend: **H** has · **P** partial · **M** missing · **R** rejected by haseen 
 | Feature | haseen | Omarchy 4 | DMS | end-4 | caelestia | noctalia |
 |---|---|---|---|---|---|---|
 | System monitor depth | P (no temps/disk/net in panel; sidecar has them, `Sidecar.qml:48-49`); no kill | – | H ProcessList with management | H resources | H storage/network | H system-monitor |
-| Screenshot (region/window/output, annotate) | H `haseen capture screenshot` (slurp, Tensaku/swappy) | H | H | H regionSelector | H areapicker | H screenshot widget |
+| Screenshot (region/window/output, annotate) | H `haseen capture screenshot` (Omasnap; slurp and grim for scripts, Tensaku/swappy without Omasnap) | H | H | H regionSelector | H areapicker | H screenshot widget |
 | Recording | H gpu-screen-recorder, webcam | H | – | H overlay recorder | H recordings | – |
 | Colour picker | H CLI `haseen capture color` | – | H ColorPicker module | – | – | – |
 | OCR / reverse-image search | H Arabic+English OCR, `haseen search-screen` | H capture-text | – | H Google Lens | – | – |
