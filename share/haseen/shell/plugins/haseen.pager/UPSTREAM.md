@@ -16,6 +16,22 @@
   the front card.
 - **Ported:** 2026-10-04, haseen plan 025 (`plans/025-haseen-pager.md`).
 
+## Later upstream fixes
+
+omapager's engine became Omarchy's notifications plugin in Omarchy 4.5
+(`shell/plugins/notifications/`, merge 03ff1eff3, #15932; MIT, Copyright (c)
+David Heinemeier Hansson), and fixes now land there. Ported 2026-10-22, haseen
+plan 103 (`plans/103-omarchy45-fixes.md`), each checked against
+`v4.5.0-rc1`:
+
+| upstream commit | what | here |
+|---|---|---|
+| 3f02f8cfc | numeric entities beyond the BMP (an emoji) decode as whole characters: `String.fromCodePoint`, not `fromCharCode` | `Markup.js` `decodeOnce` |
+| 21bee67a4 | only a browser's leading anchor names a site as the sender, and only through an http(s) href that passes the URL policy (the label never stands in); KDE Connect by its exact app names; snoozes are finite, positive and at most 366 days | `Markup.js` `liftSource`, `isBrowser`, `isKdeConnect`, `identify`, `regroup`; `Service.qml` `maxSnoozeSeconds`, `snoozeMinutes`, `snoozeSource`, `lookForReply`. Its NUL check on click argv does not apply: haseen dropped the exec-argv hint |
+| 2952b1c00 | a replaced notification (replaces_id) gets a fresh countdown, even with the same duration | `Toast.qml` `arrival` |
+| 773a1fd6c | a replaced notification's picture is read again from the same path | `Toast.qml` `reloading`; a sender's `image://icon//` file is never cached |
+| 329fd1a9b | the desktop-entry hint names the icon when the sender gave none | `Store.js` `snapshot` |
+
 ## Files
 
 | haseen | upstream | change |
