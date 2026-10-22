@@ -331,45 +331,80 @@ tests it:
 
 **Nook** (plan 095). `haseen.nook` (off by default), placed in a bar section,
 is the panel's opener instead of the chevron: the panel opens under it
-(`Bar.toggleOverflowFrom`), the chevron shows only in arrange mode, the nook's
+(`Bar.toggleOverflowFrom`), the chevron shows only in arrange mode and during
+a drag, the nook's
 length replaces the chevron's in the fit, and `Overflow.fit`'s `never` keeps
 it out of the panel, `bar.overflow` included. It takes no room while the panel
 would be empty.
 
-The panel (`BarOverflowPanel.qml`, lazy) slides out under the chevron, placed
-by `PanelPlacement.offset`, and holds the widgets live: each one's bar slot is
-moved into the panel's cell while it is open and back to a zero-size, clipped
-cell in the bar when it closes, never rebuilt or hidden, so widgets keep their
-state, IPC targets stay single, and a click opens their own popup as in the bar.
+The widgets live in a pool, one slot per shown widget per bar
+(`BarStrip.qml`, `BarSlot.qml`), in an order that does not depend on the
+sections; each section only keeps a cell for each of its ids
+(`BarSection.qml`), and the slot moves into it. The panel
+(`BarOverflowPanel.qml`, lazy) slides out under the chevron, placed by
+`PanelPlacement.offset`, and holds the widgets live: each one's slot is moved
+into the panel's cell while it is open and back to a zero-size, clipped cell in
+the bar when it closes. A widget is never rebuilt or hidden by any of this, nor
+by a move within or between sections (an id leaving the pool goes a moment
+later, so a move written one list at a time keeps it), so widgets keep their
+state, IPC targets stay single, and a click opens their own popup as in the
+bar.
 Its window spans the bar edge from the popups' origin, transparent and without
 input outside the card, so native panels open under the widget and Omarchy
 popups (`Ui/KeyboardPanel`) below the panel; the panel stays open under such a
 popup and closes with it. Escape or a click outside closes it.
 
-**Arrange mode** opens the panel (even with nothing in it) from its footer's
-**Arrange**, a right click on the chevron or on empty bar space,
-`haseen bar arrange` or Style › Bar › Arrange widgets in the menu. Widgets
-then show an outline and take the pointer instead of the widget under it:
+**Dragging** (plan 112, after Omarchy 4.5's bar) needs no mode. A press on a
+widget belongs to the widget: a click, the wheel, the right and middle buttons
+and a double click reach it as if nothing were around it. A `DragHandler` on the
+widget's slot only watches until the pointer has travelled one and a half times
+Qt's drag distance (`BarDrag.threshold`, 15 px by default) with the left button
+held; then it takes the pointer over, the widget's own press is cancelled (no
+click), and the widget moves:
 
-- a click moves a widget between the bar and the panel: `haseen bar overflow
-  add` from the bar, `pin` ("keep in bar") from the panel;
-- a drag moves it where it is dropped, marked by an accent line: within its
-  section, to another section, onto the chevron or the panel (into
-  `bar.overflow`, in front of the cell under the pointer), or out of the panel
-  into the bar (out of `bar.overflow` and into `bar.pinned`). The drop is
-  saved with `haseen bar move <id> <left|center|right|overflow> [--before
-  <id>] [--pin]`; `Overflow.move` and `Overflow.dropTarget` hold the rule,
-  and nothing ever lands in front of the tray. A drag that starts in one
-  window (bar or panel) keeps the pointer until the release, so the bar maps
-  the panel's coordinates onto its own;
-- four edge buttons in the footer move the bar to another screen edge
-  (`haseen bar position`), live, with the panel following.
+- its ghost follows the pointer (`BarDragOverlay.qml`, an overlay window with
+  an empty input mask, only while a drag lasts) and its cell folds away; the
+  section it would land in opens a room of its length there, so the widgets
+  make way as the pointer moves. Where it lands is worked out by
+  `Overflow.dropTarget` from the bar as the drag found it, so the room moving
+  does not move the target: within its section, in another one, onto the
+  chevron (which shows during every drag; the panel's end) or, while the panel
+  is open, in front of the panel cell under the pointer (into
+  `bar.overflow`); out of the panel into the bar it is pinned (out of
+  `bar.overflow`, into `bar.pinned`). A drag that starts in one window (bar or
+  panel) keeps the pointer until the release, so the bar maps the panel's
+  coordinates onto its own;
+- letting go saves it with `haseen bar move <id> <left|center|right|overflow>
+  [--before <id>] [--pin]` (`Overflow.move` holds the rule; a drop where it
+  already was writes nothing). Nothing ever lands in front of the tray, and
+  the tray never moves. Letting go anywhere else, Escape, or a grab the
+  compositor takes away puts it back with nothing saved. For Escape the bar
+  takes the keyboard while a drag lasts, and only then; a drag that hears
+  nothing for 15 s ends;
+- the overflow fit waits while a widget is dragged.
 
-Dragging works only in arrange mode: outside it every press belongs to the
-widget (sliders, drags, its own popups), and a hold-to-drag gesture would have
-to cancel the widget's press after the fact. A modifier gesture cannot do it
-either, because Wayland only tells the client with keyboard focus about Shift,
-and a bar never has it. The same edits from a terminal: `haseen bar overflow
+A widget keeps a drag of its own: a `MouseArea` with `drag.target` or
+`preventStealing`, or a `Slider`, holds the mouse grab from Qt's own, smaller,
+drag distance on, and the bar never takes it over; a native widget can also
+set `barDraggable: false`. Hold empty bar space for 200 ms, or drag it past the
+same threshold, and the bar moves instead: the screen edge nearest the
+pointer, on the screen being dragged on, is previewed as a bar, and letting go
+there saves it like `haseen bar position`. `bar.position` is one for every
+screen, so every bar moves. A short press never moves the bar; a double click
+on empty space still asks for transparency and a right click still arranges.
+
+**Arrange mode** stays for what dragging does not do: it opens the panel (even
+with nothing in it) from its footer's **Arrange**, a right click on the
+chevron or on empty bar space, `haseen bar arrange` or Style › Bar › Arrange
+widgets in the menu. Widgets then show an outline and a click moves a widget
+between the bar and the panel instead of reaching it (`haseen bar overflow
+add` from the bar, `pin`, "keep in bar", from the panel), and four edge
+buttons in the footer move the bar to another screen edge (`haseen bar
+position`), live, with the panel following. A drag works there too.
+
+A modifier gesture could not have done any of this: Wayland only tells the
+client with keyboard focus about Shift, and a bar never has it until a drag
+starts. The same edits from a terminal: `haseen bar overflow
 add|remove|pin|unpin <id>`, `list`, and `haseen bar move`. A widget that is
 in no section yet goes in with `haseen bar add <id> <left|center|right>
 [--before <id>]`, which turns the plugin on when it was off and refuses a

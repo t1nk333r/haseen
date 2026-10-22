@@ -38,6 +38,7 @@ The owner's other repos:
 | AI panel and agent skill | `share/haseen/shell/plugins/haseen.ai/`, `share/haseen/agents/skills/haseen/` | 012 |
 | Several Claude, Codex and Grok accounts (off until used): registry, the add, list, use, rename, remove, home and exec commands, the `omarchy-agent-account-*` answers, the launch's account pin, the agents panel's optional accounts and usage sections | `share/haseen/lib/agent-accounts.sh`, `bin/haseen-agent-account-add`, `share/haseen/omarchy/bin/omarchy-agent-account-state`, `share/haseen/shell/plugins/haseen.agents/`, `tests/test-agent-accounts.sh` | 108 |
 | Screen frame, transparent bar, tray | `share/haseen/shell/{Frame*,Bar}.qml`, `bin/haseen-bar-*`, `haseen.tray` | 015 |
+| Dragging on the bar: widgets anywhere (a pool of slots that moves, never rebuilds; a room where it lands; a ghost), the bar held or dragged to another edge; arrange mode kept for click-to-move and the edge buttons | `share/haseen/shell/{BarStrip,BarSlot,BarSection,BarDragOverlay}.qml`, `share/haseen/shell/BarDrag.js`, `tests/test-bar-drag.sh` | 050 051 112 |
 | Menu (Omarchy 4's tree and look, haseen's commands and rows) | `share/haseen/shell/plugins/haseen.menu/`, `share/haseen/default/menu.jsonc`, `bin/haseen-{menu,about,system,setup-*,font-*,branding,config-*}` | 016 068 |
 | Flatpak-first install/remove, update | `share/haseen/default/catalog.json`, `share/haseen/lib/{catalog,terminal}.sh`, `bin/haseen-{install,remove,update,time,password,restart,refresh}`, `share/haseen/layers/flatpak/` | 017 |
 | Capture, recording, emoji, toggles, hardware, share, tests | `bin/haseen-{capture,reminder,toggle,hardware,share,test}-*`, `haseen.emoji` | 018 |
@@ -241,7 +242,9 @@ hand after a later tree-only install that adds a seed.
   the final integrated smoke left 0 coredumps.
 - **Not verified live (would need pointer events):** double-click
   transparency on the bar (the IPC path was verified), tray hover, workspace and
-  media clicks.
+  media clicks, and plan 112's drags (the gestures run offscreen against real
+  pointer events in `tests/test-bar-drag.sh`; the compositor's grab, the
+  overlay window and Escape need a live session).
 - **Legacy source limits (plan 027):** whole-bar clones require the original
   Omarchy bar host; original direct IpcHandler children can duplicate on
   multiple screens. Nearby Share, Nook and several original helpers read or

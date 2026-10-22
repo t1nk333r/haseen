@@ -11,7 +11,11 @@ usage() {
 Usage: haseen bar position <top|bottom|left|right> [--dry-run]
 
 Sets bar.position in $SHELL_USER_CONFIG, then tells the running shell. The
-screen frame follows the bar to the new edge.
+screen frame follows the bar to the new edge. One position holds for every
+screen.
+
+In the shell, hold empty bar space for a moment (or drag it) and let go
+near another screen edge to do the same.
 
 --no-apply   only save; used by the shell itself, which already applied it
 EOF

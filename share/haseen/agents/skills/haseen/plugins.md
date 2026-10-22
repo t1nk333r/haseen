@@ -15,6 +15,13 @@ kind. User plugins live in `~/.config/haseen/plugins/<id>/`; built-ins in
 
 A plugin may have several kinds (one entry file each).
 
+A bar widget gets every press, click, wheel turn and double click as usual;
+the bar only picks the widget up once a left press has travelled about 15 px,
+and the user drops it where they want it. A widget that drags something itself
+keeps its drag: a `MouseArea` with `drag.target` or `preventStealing`, or a
+`Slider`, is never taken over. Set `readonly property bool barDraggable: false`
+on the widget to keep the bar from picking it up at all.
+
 ## Create a plugin, step by step
 
 Use exactly these steps. `<id>` is `<user>.<name>`: lowercase letters, digits

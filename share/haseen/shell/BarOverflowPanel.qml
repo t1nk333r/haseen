@@ -25,10 +25,11 @@ import "PanelPlacement.js" as Placement
 // panels open in their own popup, whose focus grab closes this one, as one
 // popup at a time does elsewhere.
 //
-// Arrange mode (Bar.arranging) also shows four edge buttons that move the
-// bar (`haseen bar position`), and takes drops: a widget dragged here from
-// the bar (or within the panel) lands in front of the cell under the
-// pointer (`dropBefore`, Bar.dropAt), marked by an accent line.
+// Drops (plan 112): a widget dragged here from the bar, or within the panel,
+// lands in front of the cell under the pointer (`dropBefore`,
+// BarStrip.dropAt), marked by an accent line; Escape during a drag puts it
+// back instead of closing the panel. Arrange mode (Bar.arranging) also shows
+// four edge buttons that move the bar (`haseen bar position`).
 PanelWindow {
     id: panel
 
@@ -132,7 +133,12 @@ PanelWindow {
     Shortcut {
         sequence: "Escape"
         context: Qt.WindowShortcut
-        onActivated: panel.closeRequested()
+        onActivated: {
+            if (panel.barWindow.dragging)
+                panel.barWindow.cancelDrag();
+            else
+                panel.closeRequested();
+        }
     }
 
     Component.onCompleted: reveal = 1
@@ -240,8 +246,9 @@ PanelWindow {
                 }
             }
 
-            // Arrange: clicks and drags move widgets instead of reaching
-            // them (BarSection.qml), so placing them needs no modifier key.
+            // Arrange: a click moves a widget between the bar and here
+            // instead of reaching it (BarSlot.qml); a drag moves one with or
+            // without it.
             Row {
                 spacing: Theme.gap
 

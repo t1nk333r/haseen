@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Arrange the bar: drag widgets, tuck them in the overflow panel, move the bar to another edge
+# haseen:summary Arrange mode: click widgets between the bar and the overflow panel, pick the bar's edge
 # haseen:args [on|off|toggle] [--dry-run]
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
@@ -11,12 +11,16 @@ usage() {
 Usage: haseen bar arrange [on|off|toggle] [--dry-run]
 
 Turns arrange mode on or off (default: toggle) on the focused screen's bar
-(IPC: bar arrange). The overflow panel opens; drag a widget to move it
-within the bar, to another section or into the panel, click one to move it
-between the bar and the panel, and pick the screen edge for the bar. Every
-move is saved in shell.json (\`haseen bar move\`, \`haseen bar overflow\`,
-\`haseen bar position\`). A right click on empty bar space or on the
-chevron does the same as this command.
+(IPC: bar arrange). The overflow panel opens, even with nothing in it; a
+click on a widget moves it between the bar and the panel instead of
+reaching it, and the panel shows the four screen edges for the bar. Every
+move is saved in shell.json (\`haseen bar overflow\`, \`haseen bar
+position\`). A right click on empty bar space or on the chevron does the
+same as this command.
+
+Dragging needs no arrange mode (plan 112): drag a widget to move it within
+the bar, to another section, onto the chevron or the open panel, or out of
+it; hold empty bar space (or drag it) to move the bar to another edge.
 EOF
 }
 

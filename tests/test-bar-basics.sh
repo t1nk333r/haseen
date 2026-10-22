@@ -2,7 +2,7 @@
 # haseen:covers bin/haseen-plugin-settings bin/haseen-plugin-validate bin/haseen-update
 # haseen:covers bin/haseen-update-check share/haseen/VERSION share/haseen/default/shell.json
 # haseen:covers share/haseen/lib/packages.sh share/haseen/migrations/1791560000-adopt-bar-basics.sh
-# haseen:covers share/haseen/omarchy/bin/omarchy share/haseen/shell/Bar.qml
+# haseen:covers share/haseen/omarchy/bin/omarchy share/haseen/shell/{Bar,BarStrip}.qml
 # haseen:covers share/haseen/shell/Overflow.js share/haseen/shell/Compat/**
 # haseen:covers share/haseen/shell/Haseen/**
 # haseen:covers share/haseen/shell/{Common,Commons,Modules,Services,Ui,Widgets}
@@ -81,9 +81,10 @@ assert_eq "haseen.updates has no command setting" "false" "$(jq '.settings | has
 assert_eq "the nook is no second drawer: no window of its own" "" \
     "$(grep -nE 'PanelWindow|PopupWindow|FloatingWindow|WlrLayershell|Repeater' "$PLUGINS/haseen.nook"/*.qml || true)"
 assert_contains "the power button opens haseen.battery's panel" "$(cat "$PLUGINS/haseen.power/Widget.qml")" '"panel", "toggle", "haseen.battery"'
-bar="$(cat "$SHELL_DIR/Bar.qml")"
+# The bar's contents are BarStrip.qml since plan 112.
+bar="$(cat "$SHELL_DIR/BarStrip.qml")"
 assert_contains "the bar keeps the nook out of the panel it opens" "$bar" 'never: [nookId]'
-assert_contains "the bar's chevron gives way to the nook outside arrange mode" "$bar" 'visible: bar.nookHosted ? bar.arranging : bar.fit.button || bar.overflowOpen'
+assert_contains "the bar's chevron gives way to the nook outside arrange mode and drags" "$bar" 'visible: strip.dragArmed || (strip.nookHosted ? strip.arranging : strip.fit.button || strip.overflowOpen)'
 
 # --- pure JS under the real Qt JS engine -----------------------------------------
 QML=/usr/lib/qt6/bin/qml

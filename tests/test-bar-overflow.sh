@@ -169,7 +169,7 @@ Item {
         eq("edit unknown verb", null, O.edit([], [], "toss", "a"));
         eq("edit from missing lists", { overflow: ["a"], pinned: [] }, O.edit(undefined, null, "add", "a"));
 
-        // Drag and drop (Bar.qml arrange mode, haseen bar move).
+        // Drag and drop (a drag on the bar, plan 112; haseen bar move).
         const L = { left: ["l1", "l2"], center: ["c1"], right: ["haseen.tray", "r1", "r2"], overflow: ["r2"], pinned: ["r1"] };
         const lists = r => r === null ? null : [r.left, r.center, r.right, r.overflow, r.pinned];
         eq("move within a section", [["l2", "l1"], ["c1"], ["haseen.tray", "r1", "r2"], ["r2"], ["r1"]],
@@ -349,7 +349,7 @@ capture haseen bar overflow add me.a
 assert_status "invalid shell.json refused" 1 "$STATUS"
 assert_eq "invalid shell.json untouched" '{"bar": ' "$(cat "$(CFG)")"
 
-# --- haseen bar move (a drop in arrange mode) ---------------------------------
+# --- haseen bar move (a drop on the bar) ---------------------------------------
 layout() { jq -c '[.bar.left, .bar.center, .bar.right, .bar.overflow, .bar.pinned]' "$(CFG)"; }
 
 sandbox bar-move-cli
