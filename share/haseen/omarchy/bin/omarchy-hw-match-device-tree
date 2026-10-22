@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# omarchy-hw-match-device-tree — exit 0 when one of the given strings is one
+# of the device tree's top-level compatible strings (whole string, case
+# folded). Adapted from Omarchy bin/omarchy-hw-match-device-tree@v4.5.0-rc1
+# (MIT, Copyright (c) David Heinemeier Hansson): the tree is read through
+# sysroot_path, so tests use fixtures; a machine without a device tree (every
+# x86 one) answers no (plan 102).
+set -Eeuo pipefail
+# Root reads only the live machine: a fixture root in its environment never
+# decides what root does, as Omarchy's match-device-tree ignores its fixture
+# variables for root and omarchy-hw-platform does too (plan 102).
+((EUID != 0)) || HASEEN_SYSROOT=
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-match-device-tree <compatible>...
+
+haseen's answer to Omarchy's command: exit 0 when the device tree's root
+lists one of the compatible strings." "$@"
+
+# Case is folded under C: a Turkish locale turns I into a dotless i.
+LC_ALL=C
+compatible=""
+for source in /proc/device-tree/compatible /sys/firmware/devicetree/base/compatible; do
+    source="$(sysroot_path "$source")"
+    if [[ -z $compatible && -r $source ]]; then
+        compatible=$source
+    fi
+done
+found=0
+if [[ -n $compatible ]]; then
+    mapfile -d '' -t entries <"$compatible"
+    for wanted in "$@"; do
+        for entry in "${entries[@]}"; do
+            [[ ${entry,,} == "${wanted,,}" ]] && found=1
+        done
+    done
+fi
+((found))

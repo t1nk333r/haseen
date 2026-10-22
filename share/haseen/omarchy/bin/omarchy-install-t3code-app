@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-install-t3code-app — install the T3 Code desktop app. Translated
+# (73b14f9c3, #15907): stable is haseen's catalogue entry t3-code (haseen
+# install app t3-code, the AUR's t3code-bin after the repositories,
+# Chaotic-AUR and [omarchy]); Omarchy's self-updating AppImage download, and
+# with it the nightly channel, is refused, because it installs a program
+# outside the package sources haseen tries in order (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-t3code-app <stable|nightly> [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: stable installs T3 Code from haseen's
+catalogue (haseen install app t3-code); nightly is not available." "$@"
+parse_common_flags "$@"
+case ${REST[0]:-} in
+stable)
+    flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    $ASSUME_YES && flags+=(--yes)
+    haseen_exec install app t3-code "${flags[@]}"
+    ;;
+nightly)
+    omarchy_refuse "haseen install app t3-code (the stable release)" \
+        "T3 Code's nightly comes only as a self-updating AppImage download, outside the package sources haseen installs from."
+    ;;
+*)
+    echo "Usage: omarchy-install-t3code-app <stable|nightly>" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# omarchy-input-method — switch or inspect the input method. Translated
+# (0b9dace01, #14433): haseen types through fcitx5 with English and Arabic
+# (share/haseen/seeds/20-fcitx5.sh), so cycle (either way) is fcitx5's switch
+# between the two, `fcitx5-remote -t`, which Control+Space also does; status
+# prints fcitx5's current input method; Omarchy's configure, --seed and
+# --defaults rewrite fcitx5's config through Omarchy's Python helper (its
+# defaults drop the Control+Space switch haseen keeps), so they are refused
+# in favour of fcitx5-configtool (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-input-method <status|cycle [back]>
+
+haseen's answer to Omarchy's command: cycle switches fcitx5 between English
+and Arabic; status prints the current input method." "$@"
+case ${1:-} in
+cycle)
+    if [[ -n ${2:-} && $2 != next && $2 != back ]]; then
+        echo "Usage: omarchy-input-method cycle [back]" >&2
+        exit 1
+    fi
+    have fcitx5-remote || die "fcitx5 is not installed (haseen layer apply desktop)"
+    run fcitx5-remote -t
+    ;;
+status)
+    have fcitx5-remote || die "fcitx5 is not installed (haseen layer apply desktop)"
+    fcitx5-remote -n
+    ;;
+*)
+    omarchy_refuse "fcitx5-configtool" \
+        "It rewrites fcitx5's configuration through Omarchy's own helper; haseen seeds fcitx5 once and leaves the rest to its configuration tool."
+    ;;
+esac

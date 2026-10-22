@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# omarchy-remove-ai-chatgpt — remove the ChatGPT desktop app: its package
+# through haseen remove, then ask before deleting its data. Adapted from
+# Omarchy bin/omarchy-remove-ai-chatgpt@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the packages and paths are Omarchy's; omarchy-pkg-drop
+# -> haseen remove; Omarchy deletes the data without asking, haseen asks
+# (default no; --yes keeps it, --purge or a yes at a terminal deletes it,
+# remove-lib.sh); --dry-run prints the plan (plan 102). Not
+# ~/.cache/codex-runtimes: the Codex CLI, a package of its own, resolves its
+# runtime there.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-ai-chatgpt [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes the ChatGPT desktop app (haseen remove), then
+asks (default no) before deleting its settings and caches; --yes keeps it, --purge deletes it.
+EOF
+}
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+remove_pkgs openai-codex-desktop
+delete_asked "Also delete its settings and caches" purge \
+    "$HOME/.config/Codex" "$HOME/.cache/Codex" || true
+echo ""
+echo "the ChatGPT desktop app has been removed."

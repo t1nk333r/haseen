@@ -1,0 +1,24 @@
+#!/bin/bash -p
+# omarchy-hw-aarch64-qualcomm — exit 0 on a Qualcomm Snapdragon machine, 1
+# otherwise. Ported from Omarchy bin/omarchy-hw-aarch64-qualcomm@v4.5.0-rc1
+# (MIT, Copyright (c) David Heinemeier Hansson): the platform comes from the
+# omarchy-hw-platform beside this file, never from whichever one PATH finds,
+# and -p keeps a root caller's exported functions out, as Omarchy's does.
+# Omarchy's scripts use it as a guard (`omarchy-hw-aarch64-qualcomm || exit
+# 0`), so it answers faithfully and never as a no-op, which would read as
+# "yes"; it sources nothing of haseen's so a root caller without HOME gets its
+# answer; --help (plan 102). Neither IO nor luna is this hardware.
+if [[ $- != *p* ]]; then
+    echo "Refusing an unsafe Bash startup." >&2
+    exit 126
+fi
+case ${1:-} in
+-h | --help)
+    printf '%s\n' "Usage: omarchy-hw-aarch64-qualcomm" "" "haseen's answer to Omarchy's command: exit 0 on a Qualcomm Snapdragon machine, 1 otherwise."
+    exit 0
+    ;;
+esac
+dir=${BASH_SOURCE[0]%/*}
+[[ $dir != "${BASH_SOURCE[0]}" ]] || dir=.
+platform=$("$dir/omarchy-hw-platform") || exit 1
+[[ $platform == "aarch64-qualcomm" ]]

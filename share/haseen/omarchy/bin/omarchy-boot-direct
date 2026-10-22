@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# omarchy-boot-direct — exit 0 when an active direct-boot UEFI entry is set:
+# haseen's ("haseen", from omarchy-setup-direct-boot) or Omarchy's
+# ("Omarchy"); --number prints every such entry's boot number, active or not;
+# exit 2 when efibootmgr cannot be read, so a caller keeps its UKI. Adapted
+# from Omarchy bin/omarchy-boot-direct@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the label also matches haseen's, as haseen's
+# omarchy-setup-direct-boot does (plan 102). It changes nothing.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-boot-direct [--number]
+
+haseen's answer to Omarchy's command: exit 0 when an active haseen or Omarchy
+direct-boot UEFI entry is configured; --number prints their boot numbers." "$@"
+if ! efi_labels=$(efibootmgr | cut -f1); then
+    exit 2
+fi
+if [[ ${1:-} == "--number" ]]; then
+    numbers=$(sed -nE 's/^Boot([0-9A-Fa-f]+)\*?[[:space:]]+(haseen|Omarchy)[[:space:]]*$/\1/p' <<<"$efi_labels")
+    [[ -n $numbers ]] || exit 1
+    printf '%s\n' "$numbers"
+else
+    # An inactive entry (no *) is not booted.
+    grep -Eq '^Boot[0-9A-Fa-f]+\*[[:space:]]+(haseen|Omarchy)[[:space:]]*$' <<<"$efi_labels"
+fi

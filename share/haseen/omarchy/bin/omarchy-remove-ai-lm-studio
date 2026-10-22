@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# omarchy-remove-ai-lm-studio — remove LM Studio, the lmstudio-bin package or
+# haseen's Flatpak (ai.lmstudio.lm-studio, share/haseen/default/catalog.json),
+# then ask before deleting its settings and every model it downloaded.
+# Adapted from Omarchy bin/omarchy-remove-ai-lm-studio@v4.5.0-rc1 (MIT,
+# Copyright (c) David Heinemeier Hansson): the paths are Omarchy's, and the
+# relocatable model home is read from ~/.lmstudio-home-pointer before anything
+# goes; omarchy-pkg-drop -> haseen remove; Omarchy deletes without asking,
+# haseen asks (default no; --yes keeps them, --purge deletes them); --dry-run
+# prints the plan (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../remove-lib.sh
+source "$HASEEN_OMARCHY_DIR/remove-lib.sh"
+usage() {
+    cat <<EOF
+Usage: omarchy-remove-ai-lm-studio [--dry-run] [--yes] [--purge]
+
+haseen's answer to Omarchy's command: removes LM Studio (package or Flatpak),
+then asks (default no) before deleting its settings and models; --yes keeps
+them, --purge deletes them.
+EOF
+}
+in_floating_terminal "$@"
+parse_common_flags "$@"
+take_purge
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+# The pointer is the only record of where the models went: read it first.
+lmstudio_home=""
+if [[ -f $HOME/.lmstudio-home-pointer ]]; then
+    read -r lmstudio_home <"$HOME/.lmstudio-home-pointer" || true
+fi
+remove_pkgs lmstudio-bin
+remove_flatpak_app lm-studio ai.lmstudio.lm-studio
+paths=("$HOME/.config/LM Studio" "$HOME/.config/LM-Studio" "$HOME/.lmstudio" "$HOME/.lmstudio-home-pointer")
+if [[ -n $lmstudio_home && $lmstudio_home == /* && -d $lmstudio_home ]] &&
+    [[ $lmstudio_home != "/" && $lmstudio_home != "$HOME" ]]; then
+    paths+=("$lmstudio_home")
+fi
+delete_asked "Also delete LM Studio's settings and every model it downloaded" purge "${paths[@]}" || true
+echo ""
+echo "LM Studio has been removed."

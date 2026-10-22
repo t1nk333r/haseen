@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# omarchy-install-camera — let Chromium use a Snapdragon laptop's cameras
+# (libcamera through PipeWire, Chromium's WebRtcPipeWireCamera feature).
+# Adapted from Omarchy bin/omarchy-install-camera@v4.5.0-rc1 (MIT, Copyright
+# (c) David Heinemeier Hansson): the same guard, then haseen's
+# omarchy-chromium-add-feature (plan 102). Every other machine keeps Chromium's
+# own V4L2 capture and nothing happens; neither IO nor luna is a Snapdragon.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-camera [--dry-run]
+
+haseen's answer to Omarchy's command: on a Snapdragon machine, turns on
+Chromium's PipeWire camera capture. Elsewhere nothing." "$@"
+parse_common_flags "$@"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+if "$HASEEN_OMARCHY_DIR/bin/omarchy-hw-aarch64-qualcomm"; then
+    "$HASEEN_OMARCHY_DIR/bin/omarchy-chromium-add-feature" WebRtcPipeWireCamera "${flags[@]}"
+fi

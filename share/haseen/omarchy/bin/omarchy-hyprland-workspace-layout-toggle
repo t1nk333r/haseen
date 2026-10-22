@@ -1,1 +1,22 @@
-../dispatch
+#!/usr/bin/env bash
+# omarchy-hyprland-workspace-layout-toggle — switch the active workspace's
+# layout. Translated onto haseen toggle workspace-layout toggle: haseen cycles
+# two layouts (dwindle, scrolling), so Omarchy 4.5's `back` (SUPER + ALT + L,
+# default/hypr/bindings/tiling.lua@v4.5.0-rc1:15) is the same step as forward;
+# without this, `back` reached haseen's command as an extra argument and failed
+# with its usage (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-workspace-layout-toggle [back] [--dry-run]
+
+haseen's answer to Omarchy's command: switches the active workspace between
+dwindle and scrolling (haseen toggle workspace-layout toggle)." "$@"
+parse_common_flags "$@"
+if ((${#REST[@]} > 1)) || [[ ${#REST[@]} -eq 1 && ${REST[0]} != back && ${REST[0]} != next ]]; then
+    echo "Usage: omarchy-hyprland-workspace-layout-toggle [back]" >&2
+    exit 1
+fi
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+haseen_exec toggle-workspace-layout toggle "${flags[@]}"

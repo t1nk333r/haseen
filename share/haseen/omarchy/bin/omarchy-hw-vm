@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# omarchy-hw-vm — exit 0 inside a virtual machine. Adapted from Omarchy
+# bin/omarchy-hw-vm@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier Hansson):
+# haseen's hw_probe_vm is the same `systemd-detect-virt --vm` test, and reads
+# the firmware's hypervisor strings in a fixture tree (plan 102).
+set -Eeuo pipefail
+# Root reads only the live machine: a fixture root in its environment never
+# decides what root does, as Omarchy's match-device-tree ignores its fixture
+# variables for root and omarchy-hw-platform does too (plan 102).
+((EUID != 0)) || HASEEN_SYSROOT=
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-hw-vm
+
+haseen's answer to Omarchy's command: exit 0 inside a virtual machine." "$@"
+hw_probe_vm

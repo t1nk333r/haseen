@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# omarchy-install-ai-claude — install the Claude desktop app and open it.
+# Translated (9d0849f71): claude-desktop through haseen install aur, which
+# tries the repositories, Chaotic-AUR and [omarchy] before the AUR, then
+# launched as Omarchy does; --dry-run (plan 102). haseen's catalogue has no
+# Claude desktop entry yet, so the app menu does not list it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-ai-claude [--dry-run] [--yes]
+
+haseen's answer to Omarchy's command: installs claude-desktop (haseen install
+aur, which tries the repositories first) and opens it." "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || die "usage: omarchy-install-ai-claude [--dry-run] [--yes]"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+$ASSUME_YES && flags+=(--yes)
+echo "Installing Claude..."
+"$HASEEN_BIN/haseen-install" aur claude-desktop "${flags[@]}"
+echo "Opening Claude..."
+if $DRY_RUN; then
+    echo "DRYRUN: setsid uwsm-app -- /usr/bin/claude-desktop"
+else
+    setsid uwsm-app -- /usr/bin/claude-desktop >/dev/null 2>&1 &
+fi
+echo ""
+echo "Claude has been installed."

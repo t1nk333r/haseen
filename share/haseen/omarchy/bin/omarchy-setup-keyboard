@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-setup-keyboard — choose the keyboard layouts to switch between.
+# Translated (0b9dace01, #14433): haseen's layouts are fcitx5's input group,
+# so this opens fcitx5's own configuration tool, which the desktop layer
+# installs, instead of Omarchy's Python picker (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-setup-keyboard [--dry-run]
+
+haseen's answer to Omarchy's command: opens fcitx5-configtool to choose the
+keyboard layouts you switch between." "$@"
+parse_common_flags "$@"
+have fcitx5-configtool || $DRY_RUN || die "fcitx5-configtool is not installed (haseen layer apply desktop)"
+run setsid -f fcitx5-configtool

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# omarchy-capture-screenrecording-process — check, or signal (INT or KILL),
+# this user's gpu-screen-recorder and wf-recorder processes, optionally only
+# the given pids; exit 1 when none is running. Adapted from Omarchy
+# bin/omarchy-capture-screenrecording-process@v4.5.0-rc1 (MIT, Copyright (c)
+# David Heinemeier Hansson): the same pgrep, executable check and pid bounds;
+# /proc is read through sysroot_path; a signal goes through run, so --dry-run
+# prints it (plan 102). haseen records with gpu-screen-recorder
+# (bin/haseen-capture-screenrecord).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-capture-screenrecording-process [--pid <pid>]... [--signal INT|KILL] [--dry-run]
+
+haseen's answer to Omarchy's command: exit 0 while one of your screen
+recorders runs (with --signal, once it was signalled), 1 otherwise." "$@"
+usage() {
+    echo "Usage: omarchy-capture-screenrecording-process [--pid <pid>]... [--signal INT|KILL]" >&2
+    exit 2
+}
+proc_root="$(sysroot_path /proc)"
+wanted=" "
+signal=""
+while (($#)); do
+    case $1 in
+    --pid)
+        # Textually first: bash arithmetic wraps past 64 bits.
+        [[ ${2-} =~ ^0*([0-9]+)$ ]] || usage
+        pid=${BASH_REMATCH[1]}
+        ((${#pid} <= 10 && 10#$pid <= 4194304)) || usage
+        wanted+="$((10#$pid)) "
+        shift 2
+        ;;
+    --signal)
+        [[ ${2-} == "INT" || ${2-} == "KILL" ]] || usage
+        signal=$2
+        shift 2
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    *) usage ;;
+    esac
+done
+# Linux cuts process names at 15 characters (gpu-screen-reco) and a process
+# can rename itself, so the executable confirms each candidate.
+is_recorder() {
+    local exe
+    exe=$(readlink "$proc_root/$1/exe" 2>/dev/null) || return 1
+    exe=${exe% (deleted)}
+    exe=${exe##*/}
+    [[ $exe == "gpu-screen-recorder" || $exe == "wf-recorder" ]]
+}
+matched=()
+while read -r pid; do
+    [[ -n $pid ]] || continue
+    if [[ $wanted == " " || $wanted == *" $pid "* ]] && is_recorder "$pid"; then
+        matched+=("$pid")
+    fi
+done < <(pgrep -u "$UID" -x 'gpu-screen-reco(rder)?|wf-recorder' || true)
+((${#matched[@]} > 0)) || exit 1
+if [[ -n $signal ]]; then
+    delivered=0
+    for pid in "${matched[@]}"; do
+        # A pid can be reused between discovery and kill: check it again.
+        if is_recorder "$pid" && run kill "-$signal" "$pid" 2>/dev/null; then
+            delivered=1
+        fi
+    done
+    ((delivered)) || exit 1
+fi
+exit 0

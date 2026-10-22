@@ -16,7 +16,7 @@ usage() {
     cat <<EOF
 Usage: omarchy-agent-usage-update [--force] [--limits-only] [--except <agent>] [agent...] [--dry-run]
 
-Runs the usage collectors (claude, codex, fireworks) in parallel and writes
+Runs the usage collectors (claude, codex, fireworks, grok, kimi) in parallel and writes
 each record to $USAGE_DIR/<agent>.json.
 Exits 1 when a collector failed. Collectors read local session files and ask
 the agent's own usage endpoint with your credentials.

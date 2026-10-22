@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# omarchy-default-dictation — print the dictation backend, or set it by
+# running its installer in a floating terminal. Adapted from Omarchy
+# bin/omarchy-default-dictation@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): the backend is kept in $HASEEN_USER_STATE/dictation-backend
+# instead of ~/.config/omarchy/defaults/dictation; the installer is the
+# omarchy-install-dictation-<backend> beside this file (Voxtype's; haseen
+# refuses Superwhisper's, a proprietary cloud service whose setup writes into
+# ~/.config/omarchy/plugins) (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-default-dictation [backend]
+
+haseen's answer to Omarchy's command: prints the dictation backend; with one,
+runs its installer (omarchy-install-dictation-<backend>)." "$@"
+if (($# > 1)); then
+    echo "Usage: omarchy default dictation [backend]" >&2
+    exit 1
+fi
+config="$HASEEN_USER_STATE/dictation-backend"
+if (($# == 0)); then
+    if [[ ! -s $config ]]; then
+        echo "No dictation backend configured. Install one with: omarchy install dictation voxtype" >&2
+        exit 1
+    fi
+    read -r backend <"$config"
+else
+    backend=$1
+fi
+if [[ ! $backend =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "Invalid dictation backend: $backend" >&2
+    exit 1
+fi
+if (($# == 0)); then
+    echo "$backend"
+    exit 0
+fi
+installer="$HASEEN_OMARCHY_DIR/bin/omarchy-install-dictation-$backend"
+if [[ ! -x $installer ]]; then
+    echo "No installer available for dictation backend: $backend" >&2
+    exit 1
+fi
+# A refused installer (Superwhisper's) says so here, not in a terminal that
+# closes before it can be read.
+if [[ $(omarchy_row "${installer##*/}" | cut -f2) == refuse ]]; then
+    exec "$installer"
+fi
+exec "$HASEEN_OMARCHY_DIR/bin/omarchy-launch-floating-terminal-with-presentation" "$installer"

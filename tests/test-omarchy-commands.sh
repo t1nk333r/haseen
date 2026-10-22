@@ -10,21 +10,30 @@
 # haseen:covers share/haseen/lib/{plymouth,preflight,screen,shellrc,terminal}.sh
 # haseen:covers share/haseen/migrations/1792531693-omarchy-path.sh share/haseen/omarchy/**
 # haseen:covers share/haseen/shell/lib/{plugin,registry}.sh share/haseen/systemd/user/**
-# haseen:covers tests/fixtures/{cachyos-grub-plain,omarchy-4.0.6}/** tools/build-sidecar.sh
-# haseen:covers install.sh plans/093-adopt-omarchy-commands.md
+# haseen:covers tests/fixtures/{cachyos-grub-plain,omarchy-4.0.6,omarchy-4.5}/** tools/build-sidecar.sh
+# haseen:covers install.sh plans/093-adopt-omarchy-commands.md plans/102-omarchy45-commands.md
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# haseen answers every Omarchy command but the Apple ones (plan 093).
+# haseen answers every Omarchy command but the Apple ones (plans 093, 102).
 
 OMA="$HASEEN_PATH/omarchy"
 TABLE="$OMA/commands.tsv"
-NAMES="$FIXTURES/omarchy-4.0.6/bin.txt"
+# The packaged commands of Omarchy 4.0.6 (446) and 4.5.0-rc1 (533), and the
+# names added on its quattro branch after the tag (omarchy-kernel): haseen
+# answers their union, 540 names.
+NAMES="$FIXTURES/omarchy-4.0.6/bin.txt $FIXTURES/omarchy-4.5/bin.txt $FIXTURES/omarchy-4.5/after-rc1.txt"
 
-# Omarchy's scripts source these three (`source omarchy-sudo-keepalive`), so
-# each is a script that is safe to source whatever its kind, never a link to
-# the dispatcher, which would read the sourcing script's $0.
-SOURCED="omarchy-restart-gum omarchy-shell-config omarchy-sudo-keepalive"
+# Omarchy's scripts source these (`source omarchy-sudo-keepalive`; 4.5's
+# omarchy-launch-about sources omarchy-branding-about-animation; its own
+# security library is sourced beside its callers), so each is a script that
+# is safe to source whatever its kind, never a link to the dispatcher, which
+# would read the sourcing script's $0.
+SOURCED="omarchy-restart-gum omarchy-shell-config omarchy-sudo-keepalive omarchy-branding-about-animation omarchy-security-functions"
+# Ports that stand alone, sourcing nothing of haseen's, as Omarchy's do: the
+# platform detector every initramfs build asks, and the predicates that run it
+# beside themselves (plan 102).
+STANDALONE="omarchy-hw-platform omarchy-hw-aarch64-gb10 omarchy-hw-aarch64-n1x omarchy-hw-aarch64-qualcomm omarchy-hw-n1x"
 
 # rows KIND... — the names of the table rows of those kinds.
 rows() {
@@ -36,14 +45,25 @@ rows() {
 sandbox omarchy-inventory
 assert_eq "every row has four tab-separated fields" "" \
     "$(awk -F'\t' '!/^#/ && NF != 4 { print NR": "$0 }' "$TABLE")"
-assert_eq "the table lists exactly Omarchy 4.0.6's 446 commands" \
-    "$(sort "$NAMES")" "$(awk -F'\t' '!/^#/ { print $1 }' "$TABLE" | sort)"
+# shellcheck disable=SC2086  # NAMES is a list of fixture files
+assert_eq "the table lists exactly the union of Omarchy 4.0.6's and 4.5's commands" \
+    "$(sort -u $NAMES)" "$(awk -F'\t' '!/^#/ { print $1 }' "$TABLE" | sort)"
+assert_eq "446 + 93 added in 4.5 + 1 after its tag" 540 "$(grep -vc '^#' "$TABLE")"
+assert_eq "4.5's package ships 533 of them" 533 "$(wc -l <"$FIXTURES/omarchy-4.5/bin.txt")"
+assert_eq "none of 4.5's commands is new to a row of 4.0.6's but the 93" 93 \
+    "$(comm -13 <(sort "$FIXTURES/omarchy-4.0.6/bin.txt") <(sort "$FIXTURES/omarchy-4.5/bin.txt") | wc -l)"
+assert_eq "the six names 4.5 removed keep their rows" \
+    "omarchy-system-logout omarchy-system-reboot omarchy-system-shutdown omarchy-voxtype-install omarchy-voxtype-remove omarchy-voxtype-status" \
+    "$(comm -23 <(sort "$FIXTURES/omarchy-4.0.6/bin.txt") <(sort "$FIXTURES/omarchy-4.5/bin.txt") |
+        while read -r n; do grep -q "^$n	" "$TABLE" && printf '%s ' "$n"; done | sed 's/ $//')"
 assert_eq "no command is listed twice" "" \
     "$(awk -F'\t' '!/^#/ { print $1 }' "$TABLE" | sort | uniq -d)"
 assert_eq "every kind is one of the six" "" \
     "$(awk -F'\t' '!/^#/ && $2 !~ /^(shim|translate|port|refuse|inert|apple)$/ { print $1": "$2 }' "$TABLE")"
 assert_eq "Apple hardware commands are the excluded ones" \
     "omarchy-brightness-display-apple
+omarchy-hw-aarch64-apple
+omarchy-hw-apple-silicon
 omarchy-hyprland-monitor-focused-apple" "$(rows apple)"
 
 # The directory holds exactly the commands that are not Apple's: a link to
@@ -83,15 +103,28 @@ done
 assert_eq "every port keeps Omarchy's MIT notice" "" "$bad"
 bad=""
 for name in $(rows translate port); do
-    [[ " $SOURCED " == *" $name "* ]] && continue
+    [[ " $SOURCED $STANDALONE " == *" $name "* ]] && continue
     grep -q 'omarchy/lib.sh\|/\.\./lib\.sh' "$OMA/bin/$name" || bad+="$name "
 done
 assert_eq "every script finds haseen through omarchy/lib.sh" "" "$bad"
 bad=""
-for name in $(rows shim translate port refuse inert apple); do
-    grep -qF "| \`$name\` |" "$REPO/plans/093-adopt-omarchy-commands.md" || bad+="$name "
+for name in $STANDALONE; do
+    [[ $(head -n1 "$OMA/bin/$name") == '#!/bin/bash -p' ]] && ! grep -q 'lib\.sh\|common\.sh' "$OMA/bin/$name" ||
+        bad+="$name "
 done
-assert_eq "plan 093's inventory lists every command" "" "$bad"
+assert_eq "the platform detector and its predicates source nothing and refuse a launch without -p" "" "$bad"
+bad=""
+for name in $(rows shim translate port refuse inert apple); do
+    grep -qF "| \`$name\` |" "$REPO/plans/093-adopt-omarchy-commands.md" "$REPO/plans/102-omarchy45-commands.md" ||
+        bad+="$name "
+done
+assert_eq "plan 093's or plan 102's inventory lists every command" "" "$bad"
+bad=""
+while IFS=$'\t' read -r name kind _; do
+    grep -qF "| \`$name\` | $kind |" "$REPO/plans/102-omarchy45-commands.md" || bad+="$name "
+done < <(comm -13 <(sort "$FIXTURES/omarchy-4.0.6/bin.txt") <(sort -u "$FIXTURES/omarchy-4.5/bin.txt" "$FIXTURES/omarchy-4.5/after-rc1.txt") |
+    while read -r n; do grep "^$n	" "$TABLE"; done)
+assert_eq "plan 102 lists each new command with its kind" "" "$bad"
 
 # --- refusals and no-ops --------------------------------------------------------
 sandbox omarchy-refuse

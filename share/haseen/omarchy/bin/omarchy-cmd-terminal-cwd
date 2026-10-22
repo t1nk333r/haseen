@@ -5,16 +5,23 @@
 # (MIT, Copyright (c) David Heinemeier Hansson): a kitty remote-control socket
 # may be named haseen-kitty-<pid> as well as Omarchy's omarchy-kitty-<pid>;
 # /proc and /etc/shells are read through sysroot_path, so tests use fixtures
-# (plan 093).
+# (plan 093). Omarchy 4.5 takes the terminal's pid as an argument
+# (omarchy-launch-terminal --pid) and reads the kernel's child lists instead of
+# scanning /proc with pgrep (25ead28f9, #13423); so does this (plan 102).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
-omarchy_help "Usage: omarchy-cmd-terminal-cwd
+omarchy_help "Usage: omarchy-cmd-terminal-cwd [terminal-pid]
 
-Prints the current directory of the shell in the focused terminal window
-(kitty over its remote-control socket, else /proc), or \$HOME." "$@"
+Prints the current directory of the shell in the terminal with that pid, the
+focused window's when none is given (kitty over its remote-control socket, else
+/proc), or \$HOME." "$@"
 
-terminal_pid="$(hyprctl activewindow 2>/dev/null | awk '/pid:/ {print $2}' || true)"
+if [[ ${1:-} =~ ^[0-9]+$ ]]; then
+    terminal_pid=$1
+else
+    terminal_pid="$(hyprctl activewindow 2>/dev/null | awk '/pid:/ {print $2}' || true)"
+fi
 cwd=""
 socket=""
 if [[ $terminal_pid =~ ^[0-9]+$ ]]; then
@@ -25,22 +32,27 @@ if [[ $terminal_pid =~ ^[0-9]+$ ]]; then
     done
 fi
 
-# children PID — the child processes of PID, the last one last.
-children() {
-    if in_sysroot; then
-        local list
-        list="$(sysroot_path "/proc/$1/task/$1/children")"
-        [[ -r $list ]] && tr ' ' '\n' <"$list" | grep .
-    else
-        pgrep -P "$1"
-    fi
+# newest_child PID — the newest child of PID (the highest pid), from the
+# kernel's per-thread child lists, as pgrep -P | tail -n1 found it.
+newest_child() {
+    local list child newest=""
+    local -a kids
+    for list in "$(sysroot_path "/proc/$1/task")"/*/children; do
+        [[ -r $list ]] || continue
+        read -ra kids <"$list" || true
+        for child in "${kids[@]}"; do
+            [[ $child =~ ^[0-9]+$ ]] || continue
+            ((child > ${newest:-0})) && newest=$child
+        done
+    done
+    [[ -n $newest ]] && printf '%s\n' "$newest"
 }
 
 if [[ -n $socket ]]; then
     cwd="$(kitten @ --to "unix:$socket" ls --match "state:focused" 2>/dev/null |
         jq -r '.[].tabs[].windows[].cwd // empty' 2>/dev/null || true)"
 elif [[ $terminal_pid =~ ^[0-9]+$ ]]; then
-    shell_pid="$(children "$terminal_pid" 2>/dev/null | tail -n1 || true)"
+    shell_pid="$(newest_child "$terminal_pid" || true)"
     if [[ -n $shell_pid ]]; then
         cwd="$(readlink -f "$(sysroot_path "/proc/$shell_pid/cwd")" 2>/dev/null || true)"
         shell="$(readlink -f "$(sysroot_path "/proc/$shell_pid/exe")" 2>/dev/null || true)"

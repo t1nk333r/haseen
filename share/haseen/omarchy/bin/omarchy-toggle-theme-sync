@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# omarchy-toggle-theme-sync — turn mirroring theme changes to your herdr
+# machines on or off (off by default). Adapted from Omarchy
+# bin/omarchy-toggle-theme-sync@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): the flag is herdr-theme-sync in haseen's toggle store
+# (omarchy-toggle), the toast haseen's; --dry-run (plan 102). haseen's own
+# theme set does not run the mirror yet: omarchy-theme-set-herdr-machines does.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-toggle-theme-sync [--dry-run]
+
+haseen's answer to Omarchy's command: flips the herdr-theme-sync flag that
+omarchy-theme-set-herdr-machines reads." "$@"
+parse_common_flags "$@"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+"$HASEEN_OMARCHY_DIR/bin/omarchy-toggle" herdr-theme-sync toggle "${flags[@]}"
+$DRY_RUN && exit 0
+if "$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-enabled" herdr-theme-sync; then
+    "$HASEEN_BIN/haseen-notification-send" "Theme sync to herdr machines on" >/dev/null 2>&1 || true
+else
+    "$HASEEN_BIN/haseen-notification-send" "Theme sync to herdr machines off" >/dev/null 2>&1 || true
+fi

@@ -6,20 +6,31 @@
 # the terminal is ${TERMINAL:-foot} as haseen's own bind uses (xdg-terminal-exec
 # comes only from [omarchy]), each with its own directory flag; the directory
 # comes from omarchy-cmd-terminal-cwd when haseen ships it, else $HOME; the
-# launch goes through uwsm-app only in a uwsm session (plan 093).
+# launch goes through uwsm-app only in a uwsm session (plan 093). Omarchy 4.5
+# binds SUPER + RETURN to `omarchy-launch-terminal --pid=<focused pid>`
+# (default/hypr/helpers.lua@v4.5.0-rc1:174-180): the pid goes to
+# omarchy-cmd-terminal-cwd, never to the terminal (plan 102).
 # DRY_RUN=true prints the launch instead.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
 
-omarchy_help "Usage: omarchy-launch-terminal [command...]
+omarchy_help "Usage: omarchy-launch-terminal [--pid=<terminal-pid>] [command...]
 
 haseen's answer to Omarchy's command: opens \$TERMINAL (foot when unset) in
-the focused terminal's working directory, running <command> when given." "$@"
+the working directory of the terminal with that pid (the focused window when
+none is given), running <command> when given." "$@"
+
+pid=""
+if [[ ${1:-} == --pid=* ]]; then
+    pid=${1#--pid=}
+    shift
+    [[ $pid =~ ^[0-9]+$ ]] || pid=""
+fi
 
 dir=""
 cwd="$HASEEN_OMARCHY_DIR/bin/omarchy-cmd-terminal-cwd"
-[[ -x $cwd ]] && dir="$("$cwd" 2>/dev/null || true)"
+[[ -x $cwd ]] && dir="$("$cwd" ${pid:+"$pid"} 2>/dev/null || true)"
 [[ -d $dir ]] || dir=$HOME
 
 term="${TERMINAL:-foot}"

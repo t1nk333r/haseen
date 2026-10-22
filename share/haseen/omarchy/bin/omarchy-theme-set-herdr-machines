@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-herdr-machines — mirror the current theme to the herdr
+# machines you list (`herdr machine list`, enabled rows) over SSH, when theme
+# sync is on (omarchy-toggle-theme-sync; off by default); --available exits 0
+# when there is a machine to sync to. Adapted from Omarchy
+# bin/omarchy-theme-set-herdr-machines@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same lock, one connection per machine with
+# BatchMode, a 60 s bound and a 10-minute ControlPersist, the theme sent on
+# stdin as a quoted assignment, a theme that arrived from another machine never
+# echoed back. Changes: the theme is haseen's current one and the flag haseen's
+# toggle store; the remote side accepts haseen's flag or Omarchy's, and its
+# `omarchy theme set` is haseen's there too; --dry-run lists the machines
+# (plan 102). Only a theme name travels; nothing else is sent.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-theme-set-herdr-machines [--available] [--dry-run]
+
+haseen's answer to Omarchy's command: with theme sync on, sets your current
+theme on every enabled herdr machine over SSH." "$@"
+parse_common_flags "$@"
+targets=$(herdr machine list 2>/dev/null | awk -F '\t' '$5 == "enabled" { print $3 }') || targets=""
+if [[ ${REST[0]:-} == --available ]]; then
+    [[ -n $targets ]]
+    exit
+fi
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/haseen-theme-set-herdr-machines.lock"
+flock 9
+# Checked under the lock, so turning sync off also stops a queued run.
+if [[ -n ${OMARCHY_THEME_SYNC_FROM:-} ]] || ! "$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-enabled" herdr-theme-sync; then
+    exit 0
+fi
+theme=$("$HASEEN_BIN/haseen-theme-current" 2>/dev/null) || exit 0
+if $DRY_RUN; then
+    for target in $targets; do echo "DRYRUN: ssh $target: omarchy theme set $theme"; done
+    exit 0
+fi
+control_dir="${XDG_RUNTIME_DIR:-/tmp}/haseen-theme-sync"
+mkdir -p "$control_dir"
+chmod 700 "$control_dir"
+# Runs on the remote machine under a login shell; the braces make bash read
+# the whole script before running it.
+read -r -d '' REMOTE_SCRIPT <<'EOF' || true
+{
+  if [[ ! -f ~/.local/state/haseen/toggles/omarchy/herdr-theme-sync && ! -f ~/.local/state/omarchy/toggles/herdr-theme-sync ]]; then
+    echo "theme sync is off"
+    exit
+  fi
+  current=$(cat ~/.local/state/haseen/current/theme.name 2>/dev/null || cat ~/.local/state/omarchy/current/theme.name 2>/dev/null)
+  if [[ $current == "$theme" ]]; then
+    echo "already on $theme"
+    exit
+  fi
+  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  instance=$(hyprctl instances -j 2>/dev/null | jq -r 'max_by(.time) // empty | "\(.instance) \(.wl_socket)"')
+  if [[ -z $instance ]]; then
+    echo "no Hyprland session"
+    exit
+  fi
+  read -r HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY <<<"$instance"
+  export HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  export OMARCHY_THEME_SYNC_FROM="$from"
+  if omarchy theme set "$theme" >/dev/null 2>&1; then
+    echo "set $theme"
+  else
+    echo "failed to set $theme"
+  fi
+} </dev/null
+EOF
+for target in $targets; do
+    result=$(printf 'theme=%q from=%q\n%s\n' "$theme" "$(hostname)" "$REMOTE_SCRIPT" |
+        timeout 60 ssh -o BatchMode=yes -o ConnectTimeout=5 \
+            -o ControlMaster=auto -o ControlPersist=600 -o "ControlPath=$control_dir/%C" \
+            "$target" bash -l -s 2>&1 | tail -n 1) || true
+    echo "$(date '+%F %T') $target: ${result:-unreachable}"
+done

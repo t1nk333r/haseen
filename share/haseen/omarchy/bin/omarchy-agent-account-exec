@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# omarchy-agent-account-exec — run claude, codex or grok as the selected
+# account. Omarchy's settings package wraps every claude, codex and grok run
+# with this name (/etc/mise/conf.d/omarchy-agent-accounts.toml@v4.5.0-rc1:3-13,
+# f9646299b, #14233), and haseen's answer comes first on PATH, so it always
+# passes the run through, never refusing (plan 102). Adapted from Omarchy
+# bin/omarchy-agent-account-exec@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): an explicit CLAUDE_CONFIG_DIR/CODEX_HOME/GROK_HOME wins;
+# else omarchy-agent-account-home beside this file names the home and it is
+# pinned for the agent's children; a CLI that is not installed is installed
+# through mise only when Omarchy's system mise config declares it, which
+# leaves the user's own config alone; otherwise the run fails with how to
+# install it, instead of Omarchy's `mise use -g`, which would write the user's
+# global mise config unasked.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-agent-account-exec <claude|codex|grok> [args...]
+
+haseen's answer to Omarchy's command: runs the agent CLI with the selected
+account's config home." "$@"
+case "${1:-}" in
+claude) account_env=CLAUDE_CONFIG_DIR ;;
+codex) account_env=CODEX_HOME ;;
+grok) account_env=GROK_HOME ;;
+*)
+    echo "Usage: omarchy-agent-account-exec <claude|codex|grok> [args...]" >&2
+    exit 1
+    ;;
+esac
+provider=$1
+shift
+if [[ -z ${!account_env:-} ]]; then
+    account_home=$("$HASEEN_OMARCHY_DIR/bin/omarchy-agent-account-home" "$provider") || account_home=""
+    export "OMARCHY_AGENT_${provider^^}_HOME=$account_home"
+    [[ -n $account_home ]] && export "$account_env=$account_home"
+fi
+# mise takes its wrapper directories off PATH before calling this, so the
+# lookup finds the real CLI; they go back on for the agent's own children.
+if ! agent_binary=$(type -P "$provider"); then
+    if "$HASEEN_OMARCHY_DIR/bin/omarchy-mise-default-tools" declares "$provider"; then
+        MISE_MINIMUM_RELEASE_AGE=0 mise install --quiet "$provider"
+        agent_binary=$(mise which "$provider")
+    else
+        die "$provider is not installed: install it with 'mise use -g $provider' or its own installer"
+    fi
+fi
+export PATH="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/command-wrappers/bin:$PATH"
+exec "$agent_binary" "$@"

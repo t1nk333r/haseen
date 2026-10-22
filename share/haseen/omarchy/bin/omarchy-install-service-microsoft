@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# omarchy-install-service-microsoft — install Microsoft Outlook, Word, Excel,
+# PowerPoint, Teams and OneDrive as web apps. Adapted from Omarchy
+# bin/omarchy-install-service-microsoft@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same six URLs and dashboard icons, each through
+# haseen webapp install; --dry-run (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-install-service-microsoft [--dry-run]
+
+haseen's answer to Omarchy's command: adds Microsoft Outlook, Word, Excel,
+PowerPoint, Teams and OneDrive as web apps (haseen webapp install)." "$@"
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || die "usage: omarchy-install-service-microsoft [--dry-run]"
+ICONS="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png"
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+apps=(
+    "Microsoft Outlook|https://outlook.office.com/mail/|microsoft-outlook"
+    "Microsoft Word|https://word.cloud.microsoft/|microsoft-word"
+    "Microsoft Excel|https://excel.cloud.microsoft/|microsoft-excel"
+    "Microsoft PowerPoint|https://powerpoint.cloud.microsoft/|microsoft-powerpoint"
+    "Microsoft Teams|https://teams.cloud.microsoft/|microsoft-teams"
+    "Microsoft OneDrive|https://www.office.com/launch/onedrive|microsoft-onedrive"
+)
+for app in "${apps[@]}"; do
+    IFS='|' read -r name url icon <<<"$app"
+    echo "Installing $name..."
+    "$HASEEN_BIN/haseen-webapp-install" "$name" "$url" "$ICONS/$icon.png" "${flags[@]}"
+done
+echo ""
+echo "You can now find Microsoft Outlook, Word, Excel, PowerPoint, Teams, and OneDrive in the app launcher."

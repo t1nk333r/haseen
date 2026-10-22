@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# omarchy-security-functions — Omarchy's library of command-scoped sudo
+# hardening for its own update, channel and passwordless-sudo commands, which
+# source it by path beside themselves (bin/omarchy-update@v4.5.0-rc1:14-15),
+# never by name. haseen refuses it: run or sourced, it says why and the haseen
+# way and fails; sourced, it returns 1 so a caller's `source ... || exit 126`
+# fails closed, and defines nothing (plan 102). Name and sourcing contract
+# from Omarchy bin/omarchy-security-functions (MIT, Copyright (c) David
+# Heinemeier Hansson).
+
+_haseen_refusal="omarchy-security-functions: not available under haseen.
+It hardens sudo for Omarchy's own update and release commands, which haseen does not run.
+The haseen way: haseen update"
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    case "${1:-}" in
+    -h | --help)
+        printf '%s\n' "$_haseen_refusal"
+        exit 0
+        ;;
+    esac
+    printf '%s\n' "$_haseen_refusal" >&2
+    exit 1
+fi
+printf '%s\n' "$_haseen_refusal" >&2
+unset _haseen_refusal
+return 1

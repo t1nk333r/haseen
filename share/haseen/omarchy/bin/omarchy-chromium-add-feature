@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# omarchy-chromium-add-feature — add a feature to --enable-features in an
+# existing ~/.config/chromium-flags.conf. Adapted from Omarchy
+# bin/omarchy-chromium-add-feature@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same match and edit, through run and
+# append_user_file so --dry-run prints it; a flags file that does not exist is
+# left absent, as Omarchy leaves it (plan 102). A user-file write the user asks
+# for by running it (plan 093's user-file table); haseen's layers never call it.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-chromium-add-feature <feature> [--dry-run]
+
+haseen's answer to Omarchy's command: adds the feature to --enable-features in
+~/.config/chromium-flags.conf when that file exists." "$@"
+parse_common_flags "$@"
+feature=${REST[0]:-}
+if ((${#REST[@]} != 1)) || [[ ! $feature =~ ^[A-Za-z0-9]+$ ]]; then
+    echo "Usage: omarchy-chromium-add-feature <feature>" >&2
+    exit 1
+fi
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/chromium-flags.conf"
+[[ -f $conf ]] || exit 0
+# The launcher splits each line into arguments, so a switch can share a line
+# or end in a comment: look for switches with comments removed.
+args=$(sed -E 's/(^|[[:space:]])#.*$//' "$conf")
+if grep -E -- "(^|[[:space:]])--enable-features=([^[:space:]]*,)?$feature([,:<[:space:]]|\$)" <<<"$args" >/dev/null; then
+    exit 0
+fi
+if grep -E -- '(^|[[:space:]])--enable-features=' <<<"$args" >/dev/null; then
+    # Extend the list itself, ahead of any neighbouring switch or comment.
+    run sed -i --follow-symlinks -E \
+        -e "s/^(([^#]*[[:space:]])?--enable-features=[^[:space:]#]*)/\\1,$feature/" \
+        -e "s/--enable-features=,$feature/--enable-features=$feature/" "$conf"
+else
+    # A file that does not end in a newline gets one first.
+    if [[ -n $(tail -c1 "$conf") ]]; then
+        printf '\n--enable-features=%s\n' "$feature" | append_user_file "$conf"
+    else
+        printf -- '--enable-features=%s\n' "$feature" | append_user_file "$conf"
+    fi
+fi

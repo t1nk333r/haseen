@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# omarchy-mise-default-tools — list the mise tools Omarchy's settings package
+# declares (/etc/mise/conf.d/omarchy-tools.toml), say whether it declares one,
+# or opt this user out of them or back in. Adapted from Omarchy
+# bin/omarchy-mise-default-tools@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier
+# Hansson): the same file and the one ignored_config_paths line in
+# ~/.config/mise/miserc.toml, added or removed only when asked (plan 093's
+# user-file rule: a write the user runs this command for); the file is read
+# through sysroot_path, writes go through common.sh, so --dry-run prints them
+# (plan 102). Omarchy's own omarchy-agent-account-exec asks it by name.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+usage() {
+    cat <<EOF
+Usage: omarchy-mise-default-tools <list|declares <tool>|disable|enable> [--dry-run]
+
+haseen's answer to Omarchy's command: list prints the tools Omarchy's
+/etc/mise/conf.d/omarchy-tools.toml declares; declares exits 0 when it
+declares <tool> and you have not opted out; disable and enable add or remove
+the one ignored_config_paths line in ~/.config/mise/miserc.toml.
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+
+tools_path=/etc/mise/conf.d/omarchy-tools.toml
+tools_config="$(sysroot_path "$tools_path")"
+miserc="${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"
+ignore_line="ignored_config_paths = [\"$tools_path\"]"
+
+list_tools() {
+    [[ -f $tools_config ]] || return 0
+    awk '
+        /^\[/ { in_tools = ($0 == "[tools]"); next }
+        in_tools && match($0, /^("[^"]+"|[^ =]+) = /) {
+            key = substr($0, RSTART, RLENGTH - 3)
+            gsub(/"/, "", key)
+            print key
+        }
+    ' "$tools_config"
+}
+# The path in a list the user wrote themselves counts too, but not in a comment.
+opted_out() {
+    [[ -f $miserc ]] && grep -v '^[[:space:]]*#' "$miserc" | grep -qF "$tools_path"
+}
+
+case "${1:-}" in
+list) list_tools ;;
+declares)
+    [[ -n ${2:-} ]] && ! opted_out && list_tools | grep -qxF "$2"
+    ;;
+disable)
+    if ! opted_out; then
+        # miserc.toml is flat: a second ignored_config_paths key would be a
+        # duplicate, and merging into the user's own list is left to them.
+        if [[ -f $miserc ]] && grep -q '^[[:space:]]*ignored_config_paths[[:space:]]*=' "$miserc"; then
+            echo "Add \"$tools_path\" to ignored_config_paths in $miserc to opt out of Omarchy's mise tools." >&2
+            exit 1
+        fi
+        if [[ -s $miserc && -n $(tail -c1 "$miserc") ]]; then
+            printf '\n%s\n' "$ignore_line" | append_user_file "$miserc"
+        else
+            printf '%s\n' "$ignore_line" | append_user_file "$miserc"
+        fi
+    fi
+    run mise reshim
+    ;;
+enable)
+    if [[ -f $miserc ]] && grep -qxF "$ignore_line" "$miserc"; then
+        remaining=$(grep -vxF "$ignore_line" "$miserc" || true)
+        if [[ -n ${remaining//[[:space:]]/} ]]; then
+            printf '%s\n' "$remaining" | replace_user_file "$miserc"
+        else
+            run rm -f -- "$miserc"
+        fi
+    fi
+    if ! $DRY_RUN && opted_out; then
+        echo "Remove \"$tools_path\" from ignored_config_paths in $miserc to restore Omarchy's mise tools." >&2
+        exit 1
+    fi
+    run mise reshim --system
+    run mise reshim
+    ;;
+*)
+    echo "Usage: omarchy-mise-default-tools <list|declares <tool>|disable|enable>" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# omarchy-system-lid-inhibit — hold logind's lid-switch inhibitor while an
+# external display logind does not count as docking (a USB or Unknown
+# connector: Apple Silicon's USB-C, nvidia-drm on the N1x) is in use, where
+# logind would ignore a docked lid. Adapted from Omarchy
+# bin/omarchy-system-lid-inhibit@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same checks and transient user unit, named
+# haseen-lid-inhibit.service; DRM and the cgroup are read through
+# sysroot_path; the unit starts and stops through run, so --dry-run prints it
+# (plan 102). An x86 laptop's external displays sit on HDMI or DisplayPort
+# connectors, so on IO and luna it finds nothing and holds nothing.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/hardware.sh
+source "$HASEEN_PATH/lib/hardware.sh"
+omarchy_help "Usage: omarchy-system-lid-inhibit [--dry-run]
+
+haseen's answer to Omarchy's command: keeps logind from suspending on lid
+close while a USB-C or unknown-connector display it misses is in use." "$@"
+parse_common_flags "$@"
+
+UNIT="haseen-lid-inhibit.service"
+drm_path="$(sysroot_path /sys/class/drm)"
+cgroup_path="$(sysroot_path /proc/self/cgroup)"
+
+# The connected connectors of the external types logind does not count, by
+# Hyprland's name for them (card2-USB-2 is USB-2).
+uncounted_outputs() {
+    local status connector
+    for status in "$drm_path"/card*-*/status; do
+        [[ -r $status ]] || continue
+        connector=${status%/status}
+        connector=${connector##*/}
+        case $connector in
+        card*-USB-* | card*-Unknown-* | card*-DVI-A-* | card*-Composite-*) ;;
+        *) continue ;;
+        esac
+        [[ $(<"$status") == "connected" ]] && printf '%s\n' "${connector#card*-}"
+    done
+}
+held() { systemctl --user is-active --quiet "$UNIT"; }
+
+in_use=0
+outputs=$(uncounted_outputs)
+# In use means enabled in Hyprland; a compositor that does not answer (as while
+# it reconfigures outputs around a lid close) changes nothing.
+if [[ -n $outputs ]]; then
+    monitors=$(hyprctl monitors all -j 2>/dev/null) || exit 0
+    [[ -n $monitors ]] || exit 0
+    rc=0
+    jq -e --arg outputs "$outputs" \
+        '($outputs | split("\n")) as $names | any(.[]; .disabled == false and (.name | IN($names[])))' \
+        <<<"$monitors" >/dev/null 2>&1 || rc=$?
+    case $rc in
+    0) in_use=1 ;;
+    1) ;;
+    *) exit 0 ;;
+    esac
+fi
+# Only where logind would ignore a docked lid is there anything to stand in for.
+wanted=0
+if ((in_use)) && hw_probe_laptop; then
+    docked_action=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+        org.freedesktop.login1.Manager HandleLidSwitchDocked 2>/dev/null) || exit 0
+    [[ -n $docked_action ]] || exit 0
+    [[ $docked_action == 's "ignore"' ]] && wanted=1
+fi
+# Bound to the watcher's own user unit, so a watcher that is gone cannot
+# leave the lid inhibited until logout; systemd-run unquotes property values.
+watcher_binding() {
+    local cgroup="" unit
+    read -r cgroup 2>/dev/null <"$cgroup_path" || true
+    unit=${cgroup##*/}
+    if [[ $cgroup == */user@*.service/* && ($unit == *.scope || $unit == *.service) ]]; then
+        unit=${unit//\\/\\\\}
+        printf '%s\n' "--property=BindsTo=$unit" "--property=After=$unit"
+    fi
+}
+if ((wanted)); then
+    if ! held; then
+        mapfile -t bind < <(watcher_binding)
+        run systemd-run --user --quiet --collect --unit="$UNIT" \
+            --description="haseen clamshell lid inhibitor" \
+            --property=PartOf=graphical-session.target "${bind[@]}" \
+            systemd-inhibit --no-ask-password --what=handle-lid-switch --mode=block \
+            --who=haseen --why="External display in use" sleep infinity
+    fi
+elif held; then
+    run systemctl --user stop "$UNIT"
+fi

@@ -1,4 +1,4 @@
-# commands.tsv — haseen's answer to every command Omarchy 4.0.6 ships (plan 093).
+# commands.tsv — haseen's answer to every command Omarchy 4.0.6 and 4.5 ship (plans 093, 102).
 # name<TAB>kind<TAB>target<TAB>note. kind: shim (exec target, a haseen bin with
 # fixed args), translate and port (bin/<name> is a script of its own), refuse
 # (prints note as why and target as the haseen way, exits 1), inert (nothing to
@@ -6,15 +6,30 @@
 # share/haseen/omarchy/bin/<name> links to ../dispatch for shim, refuse and inert.
 omarchy	port	-	Omarchy's router: omarchy a b runs haseen's omarchy-a-b
 omarchy-agent	port	haseen-terminal-run	starts the default coding agent unattended, in a terminal of its own or inline
+omarchy-agent-account-add	translate	-	runs Omarchy's own account sign-in when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-copy	refuse	none: sign in on the other machine with the agent's own CLI	It sends your Claude, Codex and Grok logins to another machine over SSH; haseen never ships agent credentials to another host.
+omarchy-agent-account-exec	port	-	runs claude, codex or grok with the selected account's config home; never refuses
+omarchy-agent-account-home	port	-	prints the active account's config home from Omarchy's registry, nothing for the primary one
+omarchy-agent-account-list	translate	-	runs Omarchy's own account list when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-mode	translate	-	runs Omarchy's own account switching mode when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-remove	translate	-	runs Omarchy's own account removal when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-rename	translate	-	runs Omarchy's own account rename when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-state	translate	-	runs Omarchy's own account registry when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-transfer	refuse	none: sign in on the other machine with the agent's own CLI	It exports and imports agent login credentials for account copy; haseen never ships agent credentials to another host.
+omarchy-agent-account-use	translate	-	runs Omarchy's own account choice when Omarchy is installed (haseen has no agent accounts yet)
 omarchy-agent-crash	shim	haseen-agent-crash	asks the default coding agent to diagnose a crashed process
 omarchy-agent-prompt	port	-	starts the default coding agent with a prompt
 omarchy-agent-usage-claude	port	-	prints the Claude Code usage record as JSON for an agents panel
 omarchy-agent-usage-codex	port	-	prints the Codex usage record as JSON for an agents panel
 omarchy-agent-usage-fireworks	port	-	prints the Fireworks usage record as JSON for an agents panel
+omarchy-agent-usage-grok	port	-	prints the Grok usage record as JSON for an agents panel
+omarchy-agent-usage-kimi	port	-	prints the Kimi usage record as JSON for an agents panel
 omarchy-agent-usage-update	port	-	runs the usage collectors and stores their records in haseen's state
 omarchy-apply-hardware	refuse	haseen hw apply	It runs Omarchy's installer hardware scripts as root, which also rewrite pacman's configuration.
 omarchy-apply-lock	refuse	haseen setup fingerprint	It writes PAM files for Omarchy's lock screen; haseen's lock uses its own PAM and fingerprint setup.
+omarchy-apply-n1x-gpu-memory	port	-	on an NVIDIA N1x, shrinks the firmware's GPU memory reservation to 4 GiB; elsewhere nothing
 omarchy-apply-system	refuse	haseen layer apply <layer>	It finishes an Omarchy install from Omarchy's installer scripts; haseen sets a machine up through its layers.
+omarchy-ascii	translate	-	runs Omarchy's own omarchy-ascii when installed: haseen does not ship its unlicensed logo font
 omarchy-audio-input-mute	port	-	toggles the default microphone's mute and the mic-mute LED
 omarchy-audio-input-set-default	port	-	makes a source the default input and moves recordings to it
 omarchy-audio-output-set-default	port	-	makes a sink the default output and moves application streams to it
@@ -31,7 +46,9 @@ omarchy-battery-present	port	-	exits 0 when a battery is present
 omarchy-battery-status	shim	haseen-battery-status	prints the battery line or TSV Omarchy's bar plugins read
 omarchy-bluetooth-device	port	-	pairs, connects, disconnects or forgets a Bluetooth device
 omarchy-bluetooth-power	port	-	turns Bluetooth on or off through rfkill; is-on answers by exit code
+omarchy-boot-direct	port	-	exit 0 when an active haseen or Omarchy direct-boot UEFI entry is set; --number lists them
 omarchy-branding-about	shim	haseen-branding about	sets the text or image of the about screen
+omarchy-branding-about-animation	port	-	the About sheen's frame helpers, sourced by Omarchy's About
 omarchy-branding-screensaver	shim	haseen-branding screensaver	sets the text or image of the screensaver
 omarchy-brightness-display	translate	haseen-brightness	shows or steps the focused display's brightness (backlight or DDC/CI)
 omarchy-brightness-display-apple	apple	-	Apple Studio and Pro Display XDR brightness through asdcontrol
@@ -41,6 +58,7 @@ omarchy-brightness-keyboard-mute	port	-	sets the mic-mute LED on laptops that ha
 omarchy-capture-qr	shim	haseen-capture-qr	reads a QR code from a screen region into the clipboard
 omarchy-capture-region	port	-	picks a screen region over a frozen screen and prints its geometry
 omarchy-capture-screenrecording	translate	haseen-capture-screenrecord	Omarchy's recorder flags on haseen's screen recorder
+omarchy-capture-screenrecording-process	port	-	checks or signals this user's screen recorders
 omarchy-capture-screenrecording-with-webcam	port	haseen-capture-screenrecord	records the screen with desktop audio, the microphone and a webcam overlay
 omarchy-capture-screenshot	translate	haseen-capture-screenshot	Omarchy's screenshot modes on haseen capture screenshot
 omarchy-capture-text	shim	haseen-capture-text	copies the text of a screen region (OCR) to the clipboard; HASEEN_OCR_LANGS picks languages
@@ -48,6 +66,7 @@ omarchy-capture-webcam-list	port	-	prints each camera that can capture video, de
 omarchy-capture-webcam-resize	port	-	resizes the screen recording's webcam overlay
 omarchy-channel-current	refuse	haseen version	It reports Omarchy's package channel; haseen is not released through Omarchy's channels.
 omarchy-channel-set	refuse	haseen update	It switches Omarchy's package channel by rewriting pacman's configuration and installing Omarchy's own packages.
+omarchy-chromium-add-feature	port	-	adds a feature to --enable-features in an existing chromium-flags.conf
 omarchy-chromium-copy-url-host	port	-	Chromium native-messaging host that copies a page's URL
 omarchy-chromium-ytdlp-host	port	-	Chromium native-messaging host that downloads a video with yt-dlp
 omarchy-clipboard-open	port	-	opens a clipboard-history entry in the image editor, browser or editor
@@ -58,9 +77,11 @@ omarchy-cmd-default-browser	port	-	prints the default browser's desktop entry
 omarchy-cmd-missing	port	-	exits 0 when any named command is missing
 omarchy-cmd-present	port	-	exits 0 when every named command is on PATH
 omarchy-cmd-terminal-cwd	port	-	prints the focused terminal's working directory
+omarchy-crash-mute	port	-	silences one program's crash notifications, or lists the silenced ones
 omarchy-crash-watch	shim	haseen-crash-watch	watches for crashes and offers a coding agent's diagnosis
 omarchy-default-agent	translate	haseen-setup-default	prints or sets the default coding agent
 omarchy-default-browser	shim	haseen-setup-default browser	prints or sets the default browser
+omarchy-default-dictation	port	-	prints the dictation backend, or runs its installer
 omarchy-default-editor	translate	haseen-setup-default	prints or sets the default editor
 omarchy-default-terminal	shim	haseen-setup-default terminal	prints or sets the default terminal
 omarchy-dev-add-migration	refuse	none: add a migration to haseen's repository; haseen migrate runs them	It creates a migration in Omarchy's source tree, which haseen does not use.
@@ -69,19 +90,26 @@ omarchy-dev-benchmark-theme-switcher	refuse	none: haseen's theme picker panel (h
 omarchy-dev-font	refuse	none: haseen's menu uses Nerd Font glyphs	It adds glyphs to Omarchy's own icon font in its source tree.
 omarchy-dev-install-ydoo	refuse	none: haseen types and pastes with wtype	It opens /dev/uinput to ydotool through the input group and a udev rule; haseen gives no process synthetic input devices.
 omarchy-dev-link	refuse	none: run haseen straight from a checkout; bin/haseen finds its own share/haseen	It points Omarchy's install at a source checkout through /etc/omarchy.conf and a sudoers file.
+omarchy-dev-notification-demo	port	-	plays a realistic run of notifications to look at the notification cards
 omarchy-dev-pkg-test	refuse	none: haseen is not built with Omarchy's packaging tools	It builds and installs Omarchy's own packages from a checkout, which haseen never installs.
 omarchy-dev-status	refuse	none: haseen has no dev link; run it from a checkout	It reports Omarchy's dev link, which exists only in Omarchy's development setup.
 omarchy-dev-theme-preview	port	-	previews a theme's palette in the terminal
 omarchy-dev-ui-preview	refuse	none: haseen's shell has no widget gallery	It opens the widget gallery of Omarchy's shell, which haseen's shell does not have.
 omarchy-dev-unlink	refuse	none: haseen has no dev link to undo	It returns Omarchy's install from a source checkout to its package, rewriting /etc/omarchy.conf and sudoers.
+omarchy-dictation	port	-	starts, stops or toggles dictation with the configured backend
+omarchy-dictation-superwhisper	refuse	omarchy-dictation (Voxtype, local)	haseen does not install Superwhisper, a proprietary cloud dictation service, so there is no Superwhisper backend.
+omarchy-dictation-use	port	-	stops the previous dictation backend and saves the new one
+omarchy-dictation-voxtype	port	-	Voxtype's dictation adapter: voxtype record start, stop or toggle
 omarchy-disk-speedtest	port	-	measures a disk's live read and write speed
 omarchy-display-text-size	port	-	prints or sets GTK's text size; haseen's shell and terminal follow the theme
 omarchy-dns	translate	haseen-setup-dns	prints or chooses the DNS provider
+omarchy-dock	refuse	none: haseen has no dock; the launcher and the bar hold the apps	It configures Omarchy's dock, a shell element haseen does not have.
 omarchy-done	port	-	checks, marks or claims a one-time marker in haseen's state
 omarchy-drive-info	shim	haseen-drive-info	prints a drive's size, model and partitions
 omarchy-drive-password	shim	haseen-drive-password	changes an encrypted drive's password
 omarchy-drive-select	translate	haseen-drive-select	picks a drive and prints its device path
 omarchy-file-select	port	-	opens the desktop file chooser and prints the chosen paths
+omarchy-font-cjk	translate	-	prints the CJK glyph forms in use; choosing them is refused
 omarchy-font-current	translate	haseen-font-current	prints the monospace font family in use
 omarchy-font-list	shim	haseen-font-list	lists the installed monospace fonts
 omarchy-font-set	shim	haseen-font-set	sets the monospace font
@@ -93,6 +121,12 @@ omarchy-hibernation-remove	port	-	removes the swapfile, its subvolume, fstab lin
 omarchy-hibernation-setup	translate	haseen-hibernation-setup	sets up suspend to disk, then offers a reboot
 omarchy-hook	translate	haseen-hook	runs a named user hook from ~/.config/haseen/hooks
 omarchy-hook-install	translate	haseen-hook	installs a hook script for an event haseen fires
+omarchy-hw-aarch64	port	-	exit 0 when the CPU is aarch64
+omarchy-hw-aarch64-apple	apple	-	true only on an Apple Silicon Mac (hw-platform aarch64-apple)
+omarchy-hw-aarch64-gb10	port	-	exit 0 on an NVIDIA GB10 desktop
+omarchy-hw-aarch64-n1x	port	-	exit 0 on an NVIDIA N1x laptop
+omarchy-hw-aarch64-qualcomm	port	-	exit 0 on a Qualcomm Snapdragon machine
+omarchy-hw-apple-silicon	apple	-	old name of omarchy-hw-aarch64-apple
 omarchy-hw-asus-expertbook-b9406	port	-	exit 0 on an ASUS ExpertBook B9406 with Panther Lake graphics
 omarchy-hw-asus-rog	port	-	exit 0 on an ASUS ROG machine
 omarchy-hw-asus-zenbook-ux5406aa	port	-	exit 0 on an ASUS Zenbook UX5406AA with Panther Lake graphics
@@ -100,7 +134,9 @@ omarchy-hw-clamshell	port	-	true when the lid is closed while an external monito
 omarchy-hw-dell-xps-haptic-touchpad	port	-	exit 0 on a Dell XPS with the haptic touchpad
 omarchy-hw-dell-xps-oled	port	-	exit 0 on a Dell XPS with the LG OLED panel and Panther Lake graphics
 omarchy-hw-dell-xps13-dx13260-ptl	port	-	exit 0 on a Dell XPS 13 DX13260 with Panther Lake graphics
+omarchy-hw-dell-xps13-sidecar-amps	port	-	exit 0 on the Dell XPS 13 DX13260 with SKU 0E53
 omarchy-hw-display	port	-	prints the backlight device that most likely drives the display
+omarchy-hw-elgato-camlink-4k	port	-	exit 0 while an Elgato Cam Link 4K is plugged in
 omarchy-hw-external-monitors	port	-	true when an external monitor is physically connected
 omarchy-hw-fingerprint	port	-	exit 0 when a fingerprint reader is present
 omarchy-hw-framework16	port	-	exit 0 on a Framework Laptop 16
@@ -111,16 +147,22 @@ omarchy-hw-intel-sof	port	-	exit 0 when an Intel audio DSP is present
 omarchy-hw-laptop	port	-	exit 0 on a laptop
 omarchy-hw-laptop-closed	port	-	true when a laptop lid reads closed
 omarchy-hw-match	shim	haseen-hw-match	exit 0 when a pattern matches the machine's product name or family
+omarchy-hw-match-device-tree	port	-	exit 0 when the device tree's root lists one of the compatible strings
+omarchy-hw-n1x	port	-	old name of omarchy-hw-aarch64-n1x
 omarchy-hw-nvidia	port	-	exit 0 when an NVIDIA GPU is present
 omarchy-hw-nvidia-display	port	-	exit 0 unless another GPU drives the display while NVIDIA does not
 omarchy-hw-nvidia-gsp	port	-	exit 0 when an NVIDIA GPU with GSP firmware (Turing or newer) is present
 omarchy-hw-nvidia-without-gsp	port	-	exit 0 when a Maxwell, Pascal or Volta NVIDIA GPU is present
+omarchy-hw-platform	port	-	prints x86, aarch64 or the ARM family, exactly as Omarchy's detector (every initramfs build asks it)
 omarchy-hw-recover-internal-monitor	port	-	brings the laptop panel back at login when no external monitor is connected
 omarchy-hw-surface	port	-	exit 0 on a Microsoft Surface
 omarchy-hw-touchpad	port	-	prints Hyprland's touchpad device name
 omarchy-hw-touchscreen	port	-	prints Hyprland's touchscreen or tablet device name
+omarchy-hw-vm	port	-	exit 0 inside a virtual machine
 omarchy-hw-vulkan	port	-	exit 0 when a Vulkan driver is installed
 omarchy-hw-webcam	port	-	exit 0 when a webcam that can capture video is present
+omarchy-hw-x86	port	-	exit 0 when the CPU is x86_64
+omarchy-hyprland-corners	port	-	shows or sets window corners: the theme's, sharp or rounded
 omarchy-hyprland-focus-app	port	-	focuses the most recent window of an app
 omarchy-hyprland-monitor-clamshell	translate	haseen-hardware-laptop-display	turns the laptop display off while the lid is closed on a dock, back on after
 omarchy-hyprland-monitor-external-active	port	-	true when Hyprland has an enabled monitor other than the laptop panel
@@ -140,23 +182,34 @@ omarchy-hyprland-toggle-disabled	port	-	exit 0 when the named Hyprland toggle is
 omarchy-hyprland-toggle-enabled	port	-	exit 0 when the named Hyprland toggle is on
 omarchy-hyprland-window-close-all	port	-	closes every window, then goes to workspace 1
 omarchy-hyprland-window-gaps-toggle	shim	haseen-toggle-gaps toggle	toggles window gaps
+omarchy-hyprland-window-minimize	inert	-	it minimizes a window to the dock of a floating workspace, and haseen has neither
 omarchy-hyprland-window-pop	port	-	floats, pins and raises the focused window, or tiles it again
 omarchy-hyprland-window-single-square-aspect-toggle	shim	haseen-toggle-one-window-ratio toggle	toggles the square aspect ratio of a single window
 omarchy-hyprland-window-tiled-fullscreen-toggle	port	-	toggles fullscreen for the focused window while it stays tiled
+omarchy-hyprland-window-transparency	translate	-	prints opaque, haseen's only window look; transparent and glassy are refused
 omarchy-hyprland-window-transparency-toggle	port	-	toggles the focused window's transparency
 omarchy-hyprland-window-width	port	-	saves or restores the focused window's width for its app
-omarchy-hyprland-workspace-layout-toggle	shim	haseen-toggle-workspace-layout toggle	toggles the workspace layout between dwindle and scrolling
+omarchy-hyprland-workspace-layout-current	port	-	prints a workspace's layout, dwindle or scrolling
+omarchy-hyprland-workspace-layout-default	translate	-	prints the default workspace layout; another default is refused (haseen sets layouts per workspace)
+omarchy-hyprland-workspace-layout-toggle	translate	haseen-toggle-workspace-layout toggle	toggles the workspace layout between dwindle and scrolling; back is the same step
+omarchy-i18n	port	-	prints one of Omarchy's CLI strings from its installed catalogs; never refuses
+omarchy-input-method	translate	-	cycle switches fcitx5 between English and Arabic; status prints the input method
 omarchy-install-ai-chatgpt	shim	haseen-install app chatgpt	installs the ChatGPT (Codex) desktop app from haseen's catalogue
+omarchy-install-ai-claude	translate	haseen-install	installs claude-desktop (repositories first, the AUR last) and opens it
 omarchy-install-ai-hermes	port	-	installs Hermes Desktop with its self-updating runtime, then opens it
 omarchy-install-ai-openclaw	port	-	installs OpenClaw and its Control UI web app, then onboards or opens it
 omarchy-install-ai-t3-code	shim	haseen-install app t3-code	installs T3 Code from haseen's catalogue
 omarchy-install-and-launch	translate	haseen-install	installs the packages through haseen install, then starts the app
 omarchy-install-app	translate	haseen-install	installs the packages: catalogue apps by id, the rest through haseen install aur
 omarchy-install-browser	translate	haseen-install	installs the browser from haseen's catalogue
+omarchy-install-camera	port	-	on a Snapdragon, turns on Chromium's PipeWire camera capture; elsewhere nothing
+omarchy-install-chromium-claude	port	-	seeds the Claude extension into Chromium's, Chrome's and Edge's extension directories
 omarchy-install-chromium-copy-url	refuse	none: install a copy-URL extension from your browser's extension store	It writes native-messaging manifests for Omarchy's Copy URL extension into browser profiles; haseen ships no browser extensions and edits no browser profile.
 omarchy-install-chromium-google-account	refuse	none: add the --oauth2-client-id and --oauth2-client-secret lines to your chromium-flags.conf yourself	It appends Google sign-in flags to your ~/.config/chromium-flags.conf; haseen never edits a file of yours after seeding it.
 omarchy-install-chromium-ytdlp	refuse	none: install yt-dlp (haseen install package yt-dlp) and run it on the page's URL	It writes native-messaging manifests for Omarchy's yt-dlp extension into browser profiles; haseen ships no browser extensions and edits no browser profile.
 omarchy-install-dev-env	translate	haseen-install	installs a language toolchain through haseen install dev (mise) and Omarchy's extras for it
+omarchy-install-dictation-superwhisper	refuse	omarchy-install-dictation-voxtype (local dictation)	Superwhisper is a proprietary cloud dictation service whose setup links an Omarchy plugin into ~/.config/omarchy/plugins, which haseen never writes.
+omarchy-install-dictation-voxtype	translate	-	installs Voxtype (omarchy-voxtype-install) and makes it the dictation backend
 omarchy-install-docker-dbs	translate	haseen-install	runs the databases in Docker on 127.0.0.1 through haseen install app
 omarchy-install-editor-emacs	shim	haseen-install app emacs	installs Emacs from haseen's catalogue
 omarchy-install-editor-helix	shim	haseen-install app helix	installs Helix from haseen's catalogue
@@ -177,15 +230,20 @@ omarchy-install-openclaw-cli	port	-	installs OpenClaw as the self-updating copy 
 omarchy-install-preinstalls	refuse	haseen install app ID for each app you want (obsidian, xournalpp, pinta, lazydocker, omacalc), or haseen layer apply desktop	It restores Omarchy's own preinstalled app set (aether, omacut, omawrite and more), which haseen does not ship; haseen installs apps one at a time.
 omarchy-install-service-1password	shim	haseen-install app 1password	installs 1Password from haseen's catalogue
 omarchy-install-service-dropbox	shim	haseen-install app dropbox	installs Dropbox from haseen's catalogue
+omarchy-install-service-microsoft	port	haseen-webapp-install	adds Microsoft Outlook, Word, Excel, PowerPoint, Teams and OneDrive as web apps
 omarchy-install-service-nordvpn	shim	haseen-install app nordvpn	installs NordVPN and enables its daemon
 omarchy-install-service-once	translate	haseen-install	installs ONCE, enables its background service and starts its TUI
 omarchy-install-service-signal	shim	haseen-install app signal	installs Signal from haseen's catalogue
 omarchy-install-service-spotify	shim	haseen-install app spotify	installs Spotify from haseen's catalogue
 omarchy-install-service-sunshine	port	haseen-install	installs Sunshine, enables its user unit, opens Moonlight's ports in ufw, adds its admin web app
 omarchy-install-service-tailscale	translate	haseen-install	installs Tailscale, enables tailscaled and adds its admin web app
+omarchy-install-t3code-app	translate	haseen-install app t3-code	stable installs T3 Code from haseen's catalogue; the nightly AppImage is refused
 omarchy-install-terminal	translate	haseen-install	installs the terminal and makes it the default
+omarchy-install-video-decode	port	-	on a Snapdragon, sets mpv and Chromium up for its video decoder; elsewhere nothing
 omarchy-installed-service-dropbox	port	-	exits 0 when Dropbox is running, else 1
 omarchy-installed-service-tailscale	port	-	exits 0 when Tailscale is up or tailscaled runs, else 1
+omarchy-kernel	refuse	haseen boot list (Limine's entries)	It rewrites BOOT_ORDER in /etc/default/limine and rebuilds the boot entries; haseen never edits Limine's configuration.
+omarchy-language	translate	-	prints Omarchy's language, its list or a locale; setting it is refused
 omarchy-launch-1password	port	-	opens 1Password at scale 1, or installs it
 omarchy-launch-about	shim	haseen-about	opens haseen's About view
 omarchy-launch-battlenet	port	-	starts the Battle.net client in ~/Games/battlenet through umu-run
@@ -210,6 +268,8 @@ omarchy-launch-terminal-herdr	port	-	opens a terminal running herdr
 omarchy-launch-terminal-tmux	port	-	opens a terminal attached to tmux's Work session
 omarchy-launch-tui	port	-	runs a TUI in a new terminal window with its own app-id
 omarchy-launch-webapp	port	-	opens a URL as a web app in a chromium-family browser
+omarchy-lifecycle-dispatch	inert	-	it runs a platform boot package's lifecycle hooks, and on x86 every operation is a no-op
+omarchy-locale-generate	port	-	generates the system locale of one of Omarchy's languages, as root
 omarchy-menu	translate	haseen-menu	opens haseen's menu at Omarchy's menu name
 omarchy-menu-clipboard	translate	haseen-shell-ipc	toggles haseen's clipboard panel
 omarchy-menu-emoji	translate	haseen-shell-ipc	toggles haseen's emoji panel
@@ -220,19 +280,22 @@ omarchy-menu-images	port	haseen-menu-select	picks an image from directories in h
 omarchy-menu-input	port	-	asks for one line of text in a floating terminal and prints it
 omarchy-menu-keybindings	shim	haseen-keybinds-list	lists the Hyprland key bindings in haseen's menu; Enter runs one
 omarchy-menu-plugin	translate	haseen-menu	picks a plugin to enable, disable or remove in haseen's menu, or a built-in to clone
-omarchy-menu-select	shim	haseen-menu-select	picks one line from a list in haseen's menu and prints it
+omarchy-menu-select	translate	haseen-menu-select	opens haseen's menu as a list and prints the chosen option; multiple selection exits 2
 omarchy-menu-share	translate	haseen-share-file	shares the clipboard, files or folders with LocalSend through haseen share
 omarchy-menu-timezone	shim	haseen-time timezone	picks a time zone in a floating terminal and sets it
 omarchy-menu-tmux-keybindings	translate	haseen-tmux-keybinds	lists tmux's annotated key bindings in haseen's menu
 omarchy-migrate	shim	haseen-migrate	runs haseen's pending migrations
 omarchy-migrate-notify	shim	haseen-migrate-notify	one toast when haseen migrations are pending; a click runs them
+omarchy-mise-default-tools	port	-	lists Omarchy's default mise tools, or opts you out of them or back in
 omarchy-mise-install	port	-	writes a ~/.local/bin wrapper that installs and runs a tool through mise
 omarchy-monitor-state	port	-	prints the monitor panel's state lines from hyprctl
+omarchy-n1x-probe	port	-	records N1x hardware and boot evidence to /var/log/haseen-n1x-probe.log
 omarchy-network-band	shim	haseen-network-band	reports or sets the Wi-Fi band (auto, 2.4, 5, 6)
 omarchy-network-password	port	-	prints the active Wi-Fi profile's password, read with nmcli
 omarchy-network-qr	port	-	prints the Wi-Fi network's QR code as a 0/1 matrix for the QR panel
 omarchy-network-speedtest	port	-	streams one download or upload Mbps figure per second
 omarchy-network-status	translate	haseen-network-status	prints connection type, name, signal and band; --verbose is haseen network status
+omarchy-network-wifi-connected	port	-	exit 0 when the default route runs over connected Wi-Fi
 omarchy-notification-battery	port	haseen-battery-status	shows the battery line as a low-urgency notification
 omarchy-notification-dismiss	translate	haseen-notification-dismiss	dismisses notifications whose summary matches
 omarchy-notification-send	translate	haseen-notification-send	Omarchy's notification arguments on haseen's notifications
@@ -245,6 +308,7 @@ omarchy-pkg-add	translate	haseen-install	installs repo packages through haseen; 
 omarchy-pkg-aur-accessible	port	-	exits 0 when the AUR answers an RPC request
 omarchy-pkg-aur-add	translate	haseen-install	installs packages through haseen's source order, the AUR last
 omarchy-pkg-aur-install	shim	haseen-install aur	picks a package to install, the AUR as the last resort
+omarchy-pkg-defaults	refuse	haseen layer list	It prints Omarchy's install package lists for a platform; haseen's packages come from its layers.
 omarchy-pkg-drop	translate	haseen-remove	removes the named packages that are installed
 omarchy-pkg-install	shim	haseen-install package	picks a repo package to install
 omarchy-pkg-missing	port	-	exits 0 when any named package is not installed
@@ -271,6 +335,7 @@ omarchy-powerprofiles-init	shim	haseen-powerprofile-init	sets the power profile 
 omarchy-powerprofiles-list	shim	haseen-powerprofile-list	lists the power profiles, weakest first
 omarchy-powerprofiles-set	shim	haseen-powerprofile-set	sets the power profile for AC or battery
 omarchy-provision-first-run	refuse	haseen seed user	It runs Omarchy's first-login installer scripts; haseen seeds your files once instead.
+omarchy-provision-hardware	refuse	haseen hw apply	It finishes the hardware steps an Omarchy image build deferred to first boot; haseen sets hardware up on the running machine.
 omarchy-provision-owner	refuse	none: haseen installs onto an existing CachyOS user (./install.sh); there is no deferred-provisioning ISO	It creates the user of an Omarchy ISO install left in deferred provisioning, which is Omarchy's installer.
 omarchy-provision-user	refuse	haseen seed user	It runs Omarchy's user installer and seals Omarchy's migrations, which is Omarchy's install machinery.
 omarchy-refresh-applications	refuse	haseen install app NAME (haseen's own launchers install with haseen)	It copies Omarchy's application launchers into ~/.local/share/applications; haseen's apps bring their own.
@@ -289,12 +354,19 @@ omarchy-reinstall	refuse	haseen layer apply LAYER... (re-apply converges); hasee
 omarchy-reinstall-configs	refuse	haseen refresh hyprland|shell|nightlight (one config at a time, with backups)	It copies /etc/skel over your home and refreshes Limine; haseen never overwrites your files or the boot config.
 omarchy-reinstall-pkgs	refuse	haseen layer apply base desktop shell (idempotent); haseen update	It resets pacman.conf to Omarchy's channel and reinstalls Omarchy's packages; haseen leaves pacman.conf to CachyOS.
 omarchy-reminder	translate	haseen-reminder-set	sets, shows and clears haseen's reminders; show --json in Omarchy's shape
+omarchy-remove-ai-chatgpt	port	-	removes the ChatGPT desktop app; asks before deleting its settings and caches
+omarchy-remove-ai-claude	port	-	removes the Claude desktop app; asks before deleting its settings and caches
+omarchy-remove-ai-grok-bot	port	-	removes Grok Bot; asks before deleting its settings and data
 omarchy-remove-ai-hermes	port	-	removes Hermes, its gateway units and runtime; asks before deleting chats and tokens
+omarchy-remove-ai-lm-studio	port	-	removes LM Studio; asks before deleting its settings and models
+omarchy-remove-ai-ollama	port	-	removes Ollama and its service; asks before deleting the pulled models
 omarchy-remove-ai-openclaw	port	-	removes OpenClaw, its gateway units and launcher; asks before deleting ~/.openclaw
 omarchy-remove-ai-perplexity	port	-	removes Perplexity and its caches; asks before deleting its logins and vault
 omarchy-remove-ai-t3-code	port	-	removes T3 Code; asks before deleting its settings and, separately, its worktrees
 omarchy-remove-browser	port	-	removes a browser, moving the default to Helium, and Omarchy's policy and flag files
 omarchy-remove-dev-env	translate	haseen-remove	removes a development environment's toolchains
+omarchy-remove-dictation-superwhisper	refuse	haseen remove package superwhisper-bin	Its cleanup takes a plugin out of ~/.config/omarchy/plugins, which haseen never changes.
+omarchy-remove-dictation-voxtype	translate	-	removes Voxtype (omarchy-voxtype-remove) and forgets it as the dictation backend
 omarchy-remove-gaming-battlenet	port	-	removes the Battle.net prefix and launcher; asks about umu-launcher and GE-Proton
 omarchy-remove-gaming-geforce-now	port	-	removes the GeForce NOW Flatpak; asks before deleting its data
 omarchy-remove-gaming-heroic	port	-	removes Heroic; asks before deleting its games, configs and caches
@@ -312,6 +384,8 @@ omarchy-remove-security-sshd	port	-	turns the SSH server off and closes its fire
 omarchy-remove-security-sudoless-docker	port	-	takes you out of the docker group and records that a reboot is needed
 omarchy-remove-service-1password	port	-	removes 1Password and Omarchy's browser extension policy
 omarchy-remove-service-dropbox	port	-	removes Dropbox and turns its bar plugin off
+omarchy-remove-service-microsoft	port	-	removes the Microsoft web apps that are installed
+omarchy-remove-service-ssh-agent	port	-	turns gcr-ssh-agent off and drops haseen's and Omarchy's SSH_AUTH_SOCK export
 omarchy-remove-service-sunshine	port	-	removes Sunshine, its unit, web app and firewall rules
 omarchy-remove-service-tailscale	port	-	removes Tailscale and tailscaled, its receiver unit, bar plugin and web app
 omarchy-restart-app	port	-	kills an app by name and starts it again in a scope of its own
@@ -331,23 +405,30 @@ omarchy-restart-trackpad	shim	haseen-restart trackpad	reloads the touchpad drive
 omarchy-restart-wifi	shim	haseen-restart wifi	unblocks Wi-Fi, turns the radio on and rescans
 omarchy-restart-xcompose	port	-	restarts fcitx5 so a changed ~/.XCompose applies
 omarchy-screensaver	translate	haseen-screensaver	starts haseen's screensaver on every monitor
+omarchy-security-functions	refuse	haseen update	It hardens sudo for Omarchy's own update and release commands, which haseen does not run.
 omarchy-setup-direct-boot	port	-	toggles a UEFI boot entry that starts the kernel image directly
+omarchy-setup-input	translate	-	installs a CJK input method's fcitx5 engine and opens fcitx5-configtool
+omarchy-setup-keyboard	translate	-	opens fcitx5-configtool to choose the keyboard layouts
 omarchy-setup-security-fido2	shim	haseen-setup-fido2	sets up a FIDO2 key for sudo and polkit
 omarchy-setup-security-fingerprint	shim	haseen-setup-fingerprint	sets up fingerprint login for sudo, polkit and the lock screen
+omarchy-setup-security-ssh-agent	shim	haseen-setup-ssh-agent	turns on the gcr-ssh-agent SSH agent for this user
 omarchy-setup-security-sshd	translate	haseen-setup-sshd	authorizes an SSH key, then sets up haseen's SSH server
 omarchy-setup-security-sudoless-docker	port	-	adds you to the docker group after a warning that it is root-equivalent
 omarchy-shell	translate	haseen-shell-ipc	Omarchy's shell IPC verbs on haseen's shell
 omarchy-shell-config	refuse	haseen bar add|move|overflow|position, haseen plugin enable|disable|settings	It edits Omarchy's ~/.config/omarchy/shell.json, which haseen's shell does not read.
 omarchy-show-done	port	-	says Done! and waits for a key so the terminal stays readable
 omarchy-show-logo	port	-	clears the terminal and prints haseen's logo
+omarchy-sleep-disabled	port	-	exit 0 when Omarchy turned system sleep off on this machine
 omarchy-snapshot	port	-	creates or restores a snapper snapshot
 omarchy-state	port	-	sets or clears the markers Omarchy's commands leave for each other
 omarchy-sudo-docker	port	-	exit 0 when Docker needs sudo, 1 when it can be used directly
 omarchy-sudo-keepalive	port	-	keeps sudo fresh for the sourcing script through common.sh
 omarchy-sudo-passwordless	port	-	turns passwordless sudo on for a limited time (15 minutes by default), or off
+omarchy-system	translate	-	logs out, reboots or shuts down through haseen system
 omarchy-system-factory-reset	refuse	none: reinstall CachyOS, then haseen	It restores Omarchy's @factory snapshot and rebuilds Omarchy's boot setup; haseen has no factory image to return to.
 omarchy-system-factory-reset-finish	refuse	none: reinstall CachyOS, then haseen	It finishes Omarchy's own factory reset on first boot; haseen has no factory reset to finish.
 omarchy-system-lid-close	translate	haseen-system lock	locks at once when closing the lid will suspend, then reconciles the laptop display
+omarchy-system-lid-inhibit	port	-	holds logind's lid inhibitor while a USB-C or unknown-connector display is in use
 omarchy-system-lock	translate	haseen-system lock	locks the session, resets the keyboard layout and locks 1Password
 omarchy-system-logout	shim	haseen-system logout	ends the session
 omarchy-system-reboot	translate	haseen-system reboot	clears the reboot markers and reboots
@@ -358,9 +439,11 @@ omarchy-system-stats	port	-	prints CPU and memory figures for a shell panel
 omarchy-system-wake	shim	haseen-screen-on	turns every display back on
 omarchy-tailscale-receive	port	-	saves incoming Taildrop files to the downloads directory and announces each
 omarchy-tailscale-send	port	-	sends files to a machine on the tailnet with Taildrop
+omarchy-theme-bg-boot-intro	inert	-	it plays a background's intro video, and haseen's shell plays none
 omarchy-theme-bg-cache	inert	-	it warms thumbnails for Omarchy's own background switcher; haseen's background panel makes its own
 omarchy-theme-bg-current	translate	haseen-theme-bg	prints the current background's name (Blue Hour), or Unknown
 omarchy-theme-bg-install	port	-	creates the current theme's folder in ~/.config/haseen/backgrounds and opens it
+omarchy-theme-bg-intro	translate	-	background intros are always off: status exits 1, disable succeeds, enable is refused
 omarchy-theme-bg-next	shim	haseen-theme-bg next	shows the current theme's next background
 omarchy-theme-bg-set	shim	haseen-theme-bg set	shows the given image as the background
 omarchy-theme-bg-switcher	translate	haseen-shell-ipc	opens haseen's background picker, which applies the image you pick
@@ -378,9 +461,13 @@ omarchy-theme-set	shim	haseen-theme-set	sets the haseen theme
 omarchy-theme-set-browser	port	-	sets Chromium-family browsers' policy theme colour to the haseen theme's background
 omarchy-theme-set-browser-policy	port	-	writes BrowserThemeColor into the existing Chromium-family managed-policy directories
 omarchy-theme-set-claude	port	-	publishes the haseen theme to Claude Code as custom:haseen
+omarchy-theme-set-fcitx5	port	-	publishes the theme to fcitx5's candidate window
 omarchy-theme-set-foot	port	-	sends the haseen theme's palette to running foot terminals
+omarchy-theme-set-glass	inert	-	it writes see-through backgrounds for glassy windows, which haseen never turns on (no blur)
 omarchy-theme-set-gnome	port	-	sets GNOME's colour scheme, Adwaita variant and icon theme from the haseen theme
+omarchy-theme-set-herdr-machines	port	-	with theme sync on, sets your theme on your herdr machines over SSH
 omarchy-theme-set-hermes	port	-	publishes the haseen theme as the Hermes skin haseen
+omarchy-theme-set-hunk	port	-	nudges running hunk sessions to repaint in the new colours
 omarchy-theme-set-keyboard	port	-	sets ASUS ROG and Framework 16 keyboard lighting to the haseen theme
 omarchy-theme-set-keyboard-asus-rog	port	-	sets the asusctl aura colour to the haseen theme's keyboard colour
 omarchy-theme-set-keyboard-f16	port	-	sets the Framework 16 QMK keyboard colour to the haseen theme's
@@ -393,9 +480,11 @@ omarchy-theme-set-vscode	port	-	publishes the haseen theme to VS Code, VSCodium 
 omarchy-theme-switcher	translate	haseen-shell-ipc	opens haseen's theme picker, which applies the theme you pick
 omarchy-theme-update	port	-	git-pulls the themes installed from git and applies the current one again
 omarchy-toggle	port	-	switches an Omarchy flag: haseen's own flag where one means the same, else haseen's toggle store
+omarchy-toggle-animations	shim	haseen-toggle-animations	turns Hyprland animations on or off
 omarchy-toggle-bar	translate	haseen-toggle-bar	hides (on) or shows (off) or flips the running bar, for the session
 omarchy-toggle-crash-capture	port	-	turns crash toasts off/on; the crash watcher keeps running for shell recovery
 omarchy-toggle-enabled	port	-	exit 0 when the flag omarchy-toggle keeps is on, 1 when off
+omarchy-toggle-fullscreen-desktop	translate	-	hides the bar and removes the gaps together, or brings both back
 omarchy-toggle-hybrid-gpu	shim	haseen-hardware-hybrid-gpu toggle	switches the hybrid GPU between integrated and hybrid mode
 omarchy-toggle-idle	translate	haseen-toggle-idle	toggles idle locking the haseen way
 omarchy-toggle-input-device	translate	haseen-hardware-touchpad	switches the touchpad or touchscreen through haseen hardware touchpad/touchscreen
@@ -403,6 +492,7 @@ omarchy-toggle-nightlight	translate	haseen-toggle-nightlight	toggles haseen's ni
 omarchy-toggle-notification-silencing	shim	haseen-toggle-dnd toggle	toggles do-not-disturb
 omarchy-toggle-screensaver	shim	haseen-toggle-screensaver toggle	toggles the screensaver before the idle lock
 omarchy-toggle-suspend	refuse	none: haseen's session menu always offers Suspend, and idle never suspends unless you set it with haseen setup idle	haseen has no setting that hides Suspend from its session menu, so this toggle would change nothing you can see.
+omarchy-toggle-theme-sync	port	-	flips theme sync to your herdr machines (off by default)
 omarchy-toggle-touchpad	shim	haseen-hardware-touchpad	enables, disables or toggles the touchpad
 omarchy-toggle-touchscreen	shim	haseen-hardware-touchscreen	enables, disables or toggles the touchscreen
 omarchy-transcode	translate	haseen-transcode	shrinks a picture or video for sharing; asks format and resolution in haseen's menu
@@ -414,6 +504,7 @@ omarchy-update	shim	haseen-update	updates the system the haseen way
 omarchy-update-analyze-logs	port	-	warns when the last pacman transaction's initramfs build did not report success
 omarchy-update-aur-pkgs	port	-	upgrades installed AUR packages with paru or yay when the AUR answers
 omarchy-update-available	refuse	haseen update check (pending package updates), then haseen update	haseen has no release channel of its own to poll; this asked whether a newer Omarchy release was out.
+omarchy-update-boot	inert	-	it verifies a platform boot package's boot chain after an update, a no-op on x86
 omarchy-update-confirm	port	-	asks 'Ready to update?' before an update; exit 1 when declined
 omarchy-update-dev	refuse	none: haseen uses no Omarchy dev checkout; update a haseen checkout with git pull	This updated an Omarchy development checkout, which haseen does not use.
 omarchy-update-firmware	shim	haseen-update firmware	updates the firmware with fwupd (signed for Secure Boot when needed)
@@ -421,6 +512,7 @@ omarchy-update-keyring	refuse	haseen layer apply omarchy-repo	It imports Omarchy
 omarchy-update-lock	port	-	runs a command holding the update lock so two updates never run at once
 omarchy-update-mise	port	-	upgrades mise-managed tools when mise is installed
 omarchy-update-orphan-pkgs	port	-	lists orphaned packages and removes them as root after a default-no question
+omarchy-update-pacman	translate	-	runs pacman system upgrades as root in a scope that survives the session; installs are refused
 omarchy-update-pacman-guard	refuse	haseen update	This is the body of Omarchy's pacman hook, which calls Omarchy's own copy by path; haseen update already tells that guard the update is sanctioned.
 omarchy-update-pkg-prune	port	-	prunes the pacman cache to the two newest versions of each package
 omarchy-update-requires-free-space	port	-	fails when / has under 10 GiB free (HASEEN_UPDATE_FORCE=1 skips it)
@@ -449,4 +541,6 @@ omarchy-webapp-handler-zoom	port	-	opens Zoom's web client as a web app; a meeti
 omarchy-webapp-install	translate	haseen-webapp-install	creates a web-app launcher; Omarchy's custom-Exec and MimeType arguments kept
 omarchy-webapp-remove	port	-	removes a web-app launcher and icon, Omarchy's or haseen's (picker without a name)
 omarchy-webapp-remove-all	port	-	removes every web-app launcher and icon after a confirmation
+omarchy-webapp-window-class	port	-	prints the window class Chromium gives a web app opened at a URL
+omarchy-windows-key	port	-	prints the OEM Windows product key the firmware stores
 omarchy-windows-vm	port	haseen-install	installs, launches, stops or removes the Windows VM (Docker + FreeRDP), elevating via polkit

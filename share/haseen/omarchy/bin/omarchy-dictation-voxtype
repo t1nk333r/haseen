@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# omarchy-dictation-voxtype — Voxtype's dictation adapter: start, stop or
+# toggle a recording. Adapted from Omarchy
+# bin/omarchy-dictation-voxtype@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the same voxtype calls; stop succeeds when Voxtype is
+# absent or idle (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-dictation-voxtype <start|stop|toggle>
+
+haseen's answer to Omarchy's command: voxtype record start, stop or toggle." "$@"
+case "${1:-}" in
+start | toggle) exec voxtype record "$1" ;;
+stop)
+    if ! have voxtype || [[ $(voxtype status 2>/dev/null) == "stopped" ]]; then
+        exit 0
+    fi
+    exec voxtype record stop
+    ;;
+*)
+    echo "Usage: omarchy dictation voxtype <start|stop|toggle>" >&2
+    exit 1
+    ;;
+esac

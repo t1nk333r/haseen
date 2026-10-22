@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# omarchy-theme-set-fcitx5 — publish the current theme to fcitx5's candidate
+# window (haseen ships fcitx5 for Arabic and English typing). Adapted from
+# Omarchy bin/omarchy-theme-set-fcitx5@v4.5.0-rc1 (MIT, Copyright (c) David
+# Heinemeier Hansson): the theme source is haseen's rendered
+# $HASEEN_USER_STATE/current/theme/fcitx5-theme.conf when a template renders
+# one, else Omarchy's; the theme is named haseen; classicui.conf's Theme and
+# DarkTheme are pointed at it only with --activate and only over fcitx5's stock
+# themes, as Omarchy's; writes go through common.sh, so --dry-run prints them
+# (plan 102). haseen's own theme set does not call it yet.
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+usage() {
+    cat <<EOF
+Usage: omarchy-theme-set-fcitx5 [--activate] [--dry-run]
+
+haseen's answer to Omarchy's command: copies the theme's fcitx5-theme.conf to
+fcitx5's theme directory "haseen" (when that directory exists, or with
+--activate) and asks fcitx5 to reload it; --activate also selects it in
+classicui.conf unless you chose a theme of your own.
+EOF
+}
+parse_common_flags "$@"
+ACTIVATE=0
+for arg in "${REST[@]}"; do
+    case $arg in
+    --activate) ACTIVATE=1 ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+    esac
+done
+THEME_SOURCE="$HASEEN_USER_STATE/current/theme/fcitx5-theme.conf"
+[[ -f $THEME_SOURCE ]] || THEME_SOURCE="$HOME/.local/state/omarchy/current/theme/fcitx5-theme.conf"
+THEME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/themes/haseen"
+CLASSICUI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/fcitx5/conf/classicui.conf"
+PACKAGED_THEME="$(sysroot_path /usr/share/fcitx5/themes/default)"
+
+# A configtool save writes Theme=default even when only the font changed, so
+# the stock themes count as unpicked; any other theme is the user's choice.
+select_theme() {
+    local conf original updated key value
+    conf=$(realpath -m "$CLASSICUI_CONF")
+    original=$([[ -f $conf ]] && cat "$conf" || true)
+    updated=$original
+    for key in Theme DarkTheme; do
+        value=$(sed -n "s/^$key=//p" <<<"$updated" | tail -n 1)
+        if [[ -z $value ]]; then
+            updated+="${updated:+$'\n'}$key=haseen"
+        elif [[ $value == "default" || $value == "default-dark" ]]; then
+            updated=$(sed "s/^$key=.*/$key=haseen/" <<<"$updated")
+        fi
+    done
+    # Through a dotfiles symlink rather than replacing it.
+    [[ $updated == "$original" ]] || printf '%s\n' "$updated" | write_user_file "$conf"
+}
+
+# Until activation there is no theme directory, and nothing to keep in step.
+if ((ACTIVATE == 0)) && [[ ! -d $THEME_DIR ]]; then
+    exit 0
+fi
+run mkdir -p -- "$THEME_DIR"
+[[ -f $THEME_SOURCE ]] && replace_user_file "$THEME_DIR/theme.conf" <"$THEME_SOURCE"
+# Image= entries resolve in the theme's own directory; fcitx5's page and menu
+# glyphs are neutral grey and suit every palette.
+for glyph in "$PACKAGED_THEME"/*.svg; do
+    [[ -e $glyph ]] && run ln -sfn -- "$glyph" "$THEME_DIR/${glyph##*/}"
+done
+((ACTIVATE == 1)) && select_theme
+# classicui reads its theme only when its config loads; never start fcitx5
+# just to tell it.
+run busctl --user --auto-start=no call org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1 \
+    ReloadAddonConfig s classicui >/dev/null 2>&1 || true

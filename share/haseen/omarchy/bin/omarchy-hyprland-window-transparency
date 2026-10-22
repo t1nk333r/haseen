@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# omarchy-hyprland-window-transparency — show or set how see-through windows
+# are. Translated (a98e55eb9, #14991): haseen draws app windows opaque and has
+# no global see-through rule, so the answer is "opaque" and setting opaque
+# succeeds with nothing to change; "transparent" has no haseen equivalent (the
+# focused window still turns see-through with
+# omarchy-hyprland-window-transparency-toggle), and "glassy" blurs what is
+# behind a window, which haseen never does (docs/architecture.md §6; plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hyprland-window-transparency [opaque|transparent|glassy]
+
+haseen's answer to Omarchy's command: prints opaque, the only window look
+haseen has; opaque is accepted, transparent and glassy are refused." "$@"
+case ${1:-} in
+"") echo opaque ;;
+opaque) echo "Windows are opaque under haseen." >&2 ;;
+transparent)
+    omarchy_refuse "omarchy-hyprland-window-transparency-toggle (the focused window)" \
+        "haseen draws app windows opaque and has no rule that makes them all see-through."
+    ;;
+glassy)
+    omarchy_refuse "none: haseen keeps windows sharp; opaque is the look it has" \
+        "Glassy windows blur what is behind them, and haseen never uses blur (its resource rules)."
+    ;;
+*)
+    echo "Usage: omarchy-hyprland-window-transparency [opaque|transparent|glassy]" >&2
+    exit 1
+    ;;
+esac

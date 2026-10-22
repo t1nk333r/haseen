@@ -460,6 +460,11 @@ assert_contains "sudoers rule" "$OUTPUT" "$(id -un) ALL=(ALL) NOPASSWD: ALL"
 assert_contains "sudoers mode" "$OUTPUT" "(mode 0440)"
 capture haseen setup passwordless-sudo --off --dry-run
 assert_contains "passwordless off" "$OUTPUT" "DRYRUN: sudo rm -f /etc/sudoers.d/90-haseen-$(id -un)"
+# Off means every grant for this user, Omarchy 4.5's UID-named ones too (plan 102).
+assert_contains "passwordless off removes the timed and Omarchy's grants" "$OUTPUT" \
+    "/etc/sudoers.d/99-haseen-nopasswd-$(id -un) /etc/sudoers.d/99-omarchy-nopasswd-$(id -un) /etc/sudoers.d/99-omarchy-nopasswd-$(id -u) /etc/sudoers.d/99-omarchy-permanent-nopasswd-$(id -u)"
+assert_contains "and stops their timers" "$OUTPUT" "omarchy-nopasswd-expire-$(id -u)-*.timer"
+assert_dry_pure "passwordless off" "$OUTPUT"
 
 # --- haseen font -----------------------------------------------------------------------
 sandbox menu-font

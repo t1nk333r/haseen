@@ -11,7 +11,8 @@
 # Omarchy checks it but the mark stays haseen's (haseen branding mark).
 # --refresh-default is haseen plymouth set; --refresh-sddm-default is
 # refused: haseen logs in with greetd (ADR 0001). Never writes
-# /usr/share/plymouth/themes/omarchy or SDDM (plan 093).
+# /usr/share/plymouth/themes/omarchy or SDDM (plan 093). An mkinitcpio
+# configuration that does not evaluate stops it before it writes (plan 102).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -72,6 +73,11 @@ bg_hex="${1#\#}" text_hex="${2#\#}" logo_path="$3"
 info "the logo stays haseen's mark (haseen branding mark); $logo_path is not used"
 
 plymouth_installed || die "plymouth is not installed (haseen install package plymouth)"
+# Whether the hook is missing is read from HOOKS, as haseen plymouth set reads
+# it: a configuration that does not evaluate (Omarchy 4.5's drop-in returns 1
+# when its detector cannot place the machine) must not read as "missing" and
+# add a second plymouth drop-in (plan 101's guard, plan 102).
+boot_hooks_known
 bg="#$bg_hex" fg="#$text_hex"
 info "splash colours: background $bg, text $fg"
 

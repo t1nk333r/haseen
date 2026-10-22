@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# omarchy-hw-x86 — exit 0 when the CPU is x86_64. Adapted from Omarchy
+# bin/omarchy-hw-x86@v4.5.0-rc1 (MIT, Copyright (c) David Heinemeier Hansson):
+# the same uname test; --help (plan 102).
+set -Eeuo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+omarchy_help "Usage: omarchy-hw-x86
+
+haseen's answer to Omarchy's command: exit 0 when the CPU is x86_64." "$@"
+[[ $(uname -m) == "x86_64" ]]
