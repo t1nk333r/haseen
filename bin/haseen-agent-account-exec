@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# haseen:summary Run claude, codex or grok as the account new sessions use
+# haseen:args <claude|codex|grok> [args...]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+# The work is omarchy-agent-account-exec's, the name Omarchy's system mise
+# wrappers route every claude, codex and grok run through: an explicit
+# CLAUDE_CONFIG_DIR, CODEX_HOME or GROK_HOME wins, else the active account's
+# home is selected and pinned for the agent's children. This is the same run
+# under haseen's name, for a machine without those wrappers (plan 108).
+case "${1:-}" in
+-h | --help)
+    cat <<EOF
+Usage: haseen agent account exec <claude|codex|grok> [args...]
+
+Runs the agent CLI with the active account's home (haseen agent account
+use). Arguments after the provider are the CLI's own and pass untouched.
+EOF
+    exit 0
+    ;;
+esac
+exec "$HASEEN_PATH/omarchy/bin/omarchy-agent-account-exec" "$@"

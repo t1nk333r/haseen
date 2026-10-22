@@ -6,10 +6,15 @@
 # Copyright (c) David Heinemeier Hansson): the collectors are haseen's ports,
 # found next to this command instead of in $OMARCHY_PATH/bin, and the records
 # go to haseen's state (HASEEN_AGENT_USAGE_DIR overrides it) instead of
-# ~/.local/state/omarchy; --dry-run lists what would run (plan 093).
+# ~/.local/state/omarchy; --dry-run lists what would run (plan 093). With
+# several Claude, Codex or Grok accounts (plan 108), a record describes the
+# active one, as in Omarchy 4.5: its collector reads that account's home, and
+# the record names it under "account".
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
+# shellcheck source=../../lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
 
 USAGE_DIR="${HASEEN_AGENT_USAGE_DIR:-$HASEEN_USER_STATE/agents/usage}"
 usage() {
@@ -54,11 +59,19 @@ wanted() {
 }
 
 collect() {
-    local collector=$1 agent=$2 record tmp
-    if ! record="$("$collector" "${flags[@]}")" || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
+    local collector=$1 agent=$2 record tmp home_env home account=""
+    local -a select=()
+    if acct_provider_ok "$agent" && account="$(acct_active_label "$agent")"; then
+        home_env="$(acct_home_env "$agent")"
+        home="$("$HASEEN_OMARCHY_DIR/bin/omarchy-agent-account-home" "$agent")"
+        [[ -z ${!home_env:-} && -n $home ]] && select=("$home_env=$home")
+    fi
+    if ! record="$(env "${select[@]}" "$collector" "${flags[@]}")" || [[ -z $record ]] ||
+        ! jq -e . >/dev/null 2>&1 <<<"$record"; then
         echo "omarchy-agent-usage-update: $agent collector failed" >&2
         return 1
     fi
+    [[ -z $account ]] || record="$(jq -c --argjson a "$account" '. + {account: $a}' <<<"$record")"
     tmp="$(mktemp "$USAGE_DIR/.$agent.XXXXXX")"
     printf '%s\n' "$record" >"$tmp"
     mv -f -- "$tmp" "$USAGE_DIR/$agent.json"

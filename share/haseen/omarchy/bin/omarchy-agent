@@ -6,7 +6,10 @@
 # per-agent flags and prompt syntax and the ~/Work start directory are
 # Omarchy's; the agent is haseen's default, --pick opens haseen's agent menu,
 # and the window is haseen terminal run (Omarchy's omarchy-launch-tui gave it
-# the app id org.omarchy.agent) (plan 093). --dry-run prints the command.
+# the app id org.omarchy.agent) (plan 093). Omarchy 4.5's agents (agy, ori,
+# kimi; 909946139, 1cc5c72e2, ed7bae4ac) and its per-launch account pin
+# (f9646299b, #14233) are plan 108's; gemini stays an agent of its own, since
+# its CLI still exists apart from Antigravity's. --dry-run prints the command.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -76,6 +79,10 @@ gemini)
     command=(gemini --yolo)
     [[ -n $prompt ]] && command+=(--prompt-interactive "$prompt")
     ;;
+agy)
+    command=(agy --dangerously-skip-permissions)
+    [[ -n $prompt ]] && command+=(--prompt-interactive "$prompt")
+    ;;
 copilot)
     command=(copilot --allow-all)
     [[ -n $prompt ]] && command+=(--interactive "$prompt")
@@ -124,15 +131,49 @@ omp)
     command=(omp --auto-approve)
     [[ -n $prompt ]] && command+=(-- "$prompt")
     ;;
+ori)
+    # Ori is a harness launcher; `ori code` is the agent it runs. A prompt
+    # alone is one headless turn, so --interactive keeps the session.
+    command=(ori code)
+    [[ -n $prompt ]] && command+=(--interactive --prompt "$prompt")
+    ;;
 pi)
     command=(pi)
     [[ -n $prompt ]] && command+=("$prompt")
+    ;;
+kimi)
+    # --prompt is print mode only and cannot combine with --yolo.
+    if [[ -n $prompt ]]; then command=(kimi --prompt "$prompt"); else command=(kimi --yolo); fi
     ;;
 *)
     echo "Unsupported default agent: $agent" >&2
     exit 1
     ;;
 esac
+
+# A new session uses the account chosen now (haseen agent account use), not
+# its parent's pin; an explicit home still wins. The pin travels in the
+# command, since a terminal started through uwsm does not inherit this
+# environment.
+case $agent in
+claude) home_env=CLAUDE_CONFIG_DIR ;;
+codex) home_env=CODEX_HOME ;;
+grok) home_env=GROK_HOME ;;
+*) home_env="" ;;
+esac
+if [[ -n $home_env ]]; then
+    account_pin="OMARCHY_AGENT_${agent^^}_HOME"
+    if [[ -v $account_pin && ${!home_env:-} == "${!account_pin}" ]]; then
+        unset "$home_env"
+    fi
+    unset "$account_pin"
+    if [[ -z ${!home_env:-} ]]; then
+        home="$("$HASEEN_OMARCHY_DIR/bin/omarchy-agent-account-home" "$agent")"
+        account_env=(env -u "$home_env" "$account_pin=$home")
+        [[ -n $home ]] && account_env+=("$home_env=$home")
+        command=("${account_env[@]}" "${command[@]}")
+    fi
+fi
 
 if $inline; then
     if $DRY_RUN; then

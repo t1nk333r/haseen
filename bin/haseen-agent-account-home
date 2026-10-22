@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# haseen:summary Print the config home of the active Claude, Codex or Grok account (nothing for the main login)
+# haseen:args <claude|codex|grok>
+# haseen:hidden
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account home <claude|codex|grok>
+
+Prints the home new sessions of the provider use, nothing while the main
+login (~/.claude, ~/.codex, ~/.grok) is active, so a launch sets
+CLAUDE_CONFIG_DIR, CODEX_HOME or GROK_HOME only when there is somewhere else
+to point it. A running session's pin (OMARCHY_AGENT_<PROVIDER>_HOME, also
+empty for the main login) wins. Adapted from Omarchy
+bin/omarchy-agent-account-home (MIT, Copyright (c) David Heinemeier Hansson).
+EOF
+}
+parse_common_flags "$@"
+((${#REST[@]} == 1)) && acct_provider_ok "${REST[0]}" || {
+    usage >&2
+    exit 2
+}
+pin="OMARCHY_AGENT_${REST[0]^^}_HOME"
+if [[ -v $pin ]]; then
+    printf '%s\n' "${!pin}"
+else
+    acct_active_home "${REST[0]}"
+fi

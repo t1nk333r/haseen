@@ -635,28 +635,24 @@ capture "$OMA/omarchy-agent-account-exec" grok --help-me
 assert_status "a CLI that is not installed and not declared fails" 1 "$STATUS"
 assert_contains "with how to install it" "$OUTPUT" "mise use -g grok"
 assert_eq "and never edits the user's mise config" "" "$(calls)"
+# Since plan 108 the account answers are haseen's own (tests/test-agent-accounts.sh);
+# Omarchy's installed copies are never run, even when present.
 capture "$OMA/omarchy-agent-account-list"
-assert_status "without Omarchy's accounts the list is refused" 1 "$STATUS"
-assert_contains "and says so" "$OUTPUT" "No haseen equivalent: haseen keeps one account per agent"
+assert_status "the account list is haseen's" 0 "$STATUS"
+assert_contains "and says nobody is signed in" "$OUTPUT" "No Claude, Codex or Grok account is signed in here."
 mkdir -p "$ROOT/usr/share/omarchy/bin"
-printf '#!/bin/sh\necho "omarchy list $*"\n' >"$ROOT/usr/share/omarchy/bin/omarchy-agent-account-list"
-chmod +x "$ROOT/usr/share/omarchy/bin/omarchy-agent-account-list"
-assert_eq "with Omarchy installed its own copy answers" "omarchy list claude --json" "$("$OMA/omarchy-agent-account-list" claude --json)"
-assert_eq "a dry run prints the call" "DRYRUN: $ROOT/usr/share/omarchy/bin/omarchy-agent-account-list claude" \
-    "$(DRY_RUN=true "$OMA/omarchy-agent-account-list" claude)"
-# --dry-run is haseen's flag: it prints the call and runs nothing, and never
-# reaches Omarchy's copy, which takes none (plan 102).
 ran="$SANDBOX/omarchy-copy-ran"
-printf '#!/bin/sh\necho "$*" >>"%s"\nexit 97\n' "$ran" >"$ROOT/usr/share/omarchy/bin/omarchy-agent-account-remove"
-chmod +x "$ROOT/usr/share/omarchy/bin/omarchy-agent-account-remove"
+for n in list remove use; do
+    printf '#!/bin/sh\necho "$*" >>"%s"\nexit 97\n' "$ran" >"$ROOT/usr/share/omarchy/bin/omarchy-agent-account-$n"
+    chmod +x "$ROOT/usr/share/omarchy/bin/omarchy-agent-account-$n"
+done
+capture "$OMA/omarchy-agent-account-list" claude --json
+assert_eq "with Omarchy installed haseen's list still answers" "claude" "$(jq -r '.[0].provider' <<<"$OUTPUT")"
+capture "$OMA/omarchy-agent-account-use" claude next --dry-run
+assert_status "a dry use succeeds" 0 "$STATUS"
 capture "$OMA/omarchy-agent-account-remove" claude work --dry-run
-assert_status "a pass-through's --dry-run succeeds" 0 "$STATUS"
-assert_eq "and prints the call without the flag" "DRYRUN: $ROOT/usr/share/omarchy/bin/omarchy-agent-account-remove claude work" "$OUTPUT"
+assert_status "removing an unknown account fails" 1 "$STATUS"
 assert_eq "Omarchy's command never runs" "no" "$([[ -e $ran ]] && echo yes || echo no)"
-assert_eq "after --, --dry-run is the command's own" "omarchy list -- --dry-run" "$("$OMA/omarchy-agent-account-list" -- --dry-run)"
-ln -s "$OMA/omarchy-agent-account-use" "$ROOT/usr/share/omarchy/bin/omarchy-agent-account-use"
-capture "$OMA/omarchy-agent-account-use" claude next
-assert_status "haseen's own copy is never taken for Omarchy's" 1 "$STATUS"
 stub ssh 'echo "STUB-CALLED: ssh $*" >&2; exit 97'
 for n in omarchy-agent-account-copy omarchy-agent-account-transfer; do
     capture "$OMA/$n" host.example claude

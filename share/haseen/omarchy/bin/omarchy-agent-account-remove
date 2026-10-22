@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# omarchy-agent-account-remove — forget an added account (deletes its home,
-# never logs out). haseen has no account registry of its own yet (plan 108
-# builds haseen's accounts): this runs Omarchy's installed copy (c05d90196,
-# #13770), whose state stays where Omarchy keeps it
-# (~/.local/state/omarchy/agents/accounts) and whose calls to other omarchy-*
-# names reach haseen's answers, and refuses where Omarchy is not installed; a
-# dry run prints the call (plan 102). Copying accounts to another machine
-# (omarchy-agent-account-copy and -transfer) is refused outright.
+# omarchy-agent-account-remove — forget an added account and delete its home
+# here (never logs out): haseen agent account remove (plan 108). Until plan
+# 108 this ran Omarchy's installed copy (c05d90196, #13770); haseen has
+# accounts of its own now. Omarchy's command asks only on a terminal, so
+# without one haseen's is told --yes.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
 omarchy_help "Usage: omarchy-agent-account-remove [claude|codex|grok] <account>
 
-haseen's answer to Omarchy's command: runs Omarchy's own omarchy-agent-account-remove
-(haseen keeps one account per agent until it has accounts of its own)." "$@"
-omarchy_passthrough "none: haseen keeps one account per agent; sign in with the agent's own CLI" \
-    "haseen has no agent accounts of its own yet, and Omarchy's are not installed here." "$@"
+haseen's answer to Omarchy's command: haseen agent account remove." "$@"
+if [[ -t 0 ]]; then
+    haseen_exec agent-account-remove "$@"
+fi
+haseen_exec agent-account-remove --yes "$@"
