@@ -480,6 +480,7 @@ ShellRoot {
                     if (S.since() > 20000) { r.notReady = S.ids.filter(id => !S.slot(id) || !S.slot(id).shown); S.finish(); }
                     break;
                 }
+                r.rightToLeft = I18n.rightToLeft;
                 r.pool = strip.poolIds;
                 r.threshold = strip.dragThreshold;
                 r.tray = [S.slot("haseen.tray").fixed, S.slot("haseen.tray").draggable];
@@ -713,10 +714,24 @@ ShellRoot {
     }
 }
 QML
-    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
-        QT_FORCE_STDERR_LOGGING=1 BAR_DRAG_START="$(cat "$SANDBOX/shell.json.start")" timeout 90 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
-    assert_status "the drag scenario completes in the real engine" 0 "$STATUS"
-    R="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
+    # scenario LANGUAGE — the scenario from the starting bar, in a display
+    # language (plan 109); its RESULT line ends up in R.
+    scenario() {
+        cp "$SANDBOX/shell.json.start" "$XDG_CONFIG_HOME/haseen/shell.json"
+        printf '%s\n' "$1" >"$XDG_CONFIG_HOME/haseen/language"
+        capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+            QT_FORCE_STDERR_LOGGING=1 BAR_DRAG_START="$(cat "$SANDBOX/shell.json.start")" timeout 90 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+        assert_status "the drag scenario completes in the real engine ($1)" 0 "$STATUS"
+        R="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
+    }
+    # Arabic first: the bar is never mirrored (plan 109), so every drag, drop
+    # and edge must come out exactly as in English.
+    scenario ar
+    RTL="$R"
+    scenario en
+    assert_eq "the Arabic run is right to left" true "$(jq '.rightToLeft' <<<"$RTL")"
+    assert_eq "in Arabic every drag, drop and bar move is the same as in English" \
+        "$(jq -cS 'del(.rightToLeft)' <<<"$R")" "$(jq -cS 'del(.rightToLeft)' <<<"$RTL")"
     if [[ -z $R ]]; then
         _fail "the drag scenario produced no result" "$OUTPUT"
     else
