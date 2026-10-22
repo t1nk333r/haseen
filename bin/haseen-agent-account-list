@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# haseen:summary List the Claude, Codex and Grok subscription accounts and which one new sessions use
+# haseen:args [claude|codex|grok] [--json]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account list [claude|codex|grok] [--json]
+
+Lists each provider's accounts (plan 108): the login the CLI already has
+(main, in ~/.claude, ~/.codex or ~/.grok) and every account added with
+haseen agent account add. * marks the one new sessions start as. --json
+prints the same for the agents panel. Read-only; no credential is read out.
+EOF
+}
+parse_common_flags "$@"
+providers=() json=false
+for arg in "${REST[@]}"; do
+    case $arg in
+    claude | codex | grok) providers=("$arg") ;;
+    --json) json=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+((${#providers[@]} > 0)) || providers=("${AGENT_ACCOUNT_PROVIDERS[@]}")
+
+all='[]'
+for p in "${providers[@]}"; do
+    if broken="$(acct_registry_broken "$p")"; then
+        warn "the $(acct_name "$p") account registry $broken does not parse: only the main login is listed, and changes are refused until it is fixed or moved"
+    fi
+    summary="$(acct_summary "$p" "$(acct_load "$p")")"
+    # Accounts added under Omarchy, read from its registry until a haseen
+    # change adopts them.
+    if src="$(acct_registry_source "$p")" && [[ $src != "$(acct_registry "$p")" ]]; then
+        summary="$(jq -c --arg f "$src" '. + {source: $f}' <<<"$summary")"
+    fi
+    all="$(jq -c --argjson s "$summary" '. + [$s]' <<<"$all")"
+done
+
+if $json; then
+    printf '%s\n' "$all"
+    exit 0
+fi
+# A provider nobody signed in to has nothing to list.
+shown=false
+while IFS= read -r p; do
+    $shown && echo
+    shown=true
+    jq -r '.name + (if .source then " (read from Omarchy: " + .source + ")" else "" end)' <<<"$p"
+    jq -r '.accounts[] | [(if .active then "*" else "-" end), .id, .label, (if .plan == "" then "-" else .plan end),
+        (if .email == "" then "-" else .email end), (if .signedIn then "signed in" else "signed out" end)] | @tsv' <<<"$p" |
+        column -t -s $'\t' | sed 's/^/  /'
+done < <(jq -c '.[] | select(any(.accounts[]; .signedIn) or (.accounts | length) > 1)' <<<"$all")
+if ! $shown; then
+    echo "No Claude, Codex or Grok account is signed in here."
+    echo "Sign in with: haseen agent account add <claude|codex|grok>"
+fi

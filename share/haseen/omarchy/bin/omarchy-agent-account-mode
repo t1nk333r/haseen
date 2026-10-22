@@ -1,18 +1,33 @@
 #!/usr/bin/env bash
-# omarchy-agent-account-mode — switch accounts automatically near a limit, or
-# only notify. haseen has no account registry of its own yet (plan 108 builds
-# haseen's accounts): this runs Omarchy's installed copy (c05d90196, #13770),
-# whose state stays where Omarchy keeps it
-# (~/.local/state/omarchy/agents/accounts) and whose calls to other omarchy-*
-# names reach haseen's answers, and refuses where Omarchy is not installed; a
-# dry run prints the call (plan 102). Copying accounts to another machine
-# (omarchy-agent-account-copy and -transfer) is refused outright.
+# omarchy-agent-account-mode — Omarchy switches accounts automatically near a
+# limit, or notifies with a one-click switch (c05d90196, #13770). haseen's
+# accounts (plan 108) switch only when told (haseen agent account use): the
+# switch needs every account's limits, and haseen's usage collectors read the
+# active account's alone. So this says how haseen switches, accepts manual,
+# and refuses auto; it writes nothing. Translates Omarchy's command of the
+# name (MIT, Copyright (c) David Heinemeier Hansson).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
 omarchy_help "Usage: omarchy-agent-account-mode [claude|codex|grok] [manual|auto] [threshold]
 
-haseen's answer to Omarchy's command: runs Omarchy's own omarchy-agent-account-mode
-(haseen keeps one account per agent until it has accounts of its own)." "$@"
-omarchy_passthrough "none: haseen keeps one account per agent; sign in with the agent's own CLI" \
-    "haseen has no agent accounts of its own yet, and Omarchy's are not installed here." "$@"
+haseen's answer to Omarchy's command: haseen switches accounts only when told
+(haseen agent account use); auto is not available." "$@"
+# shellcheck source=../../lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+acct_parse_provider "$@" || {
+    echo "Usage: omarchy-agent-account-mode [claude|codex|grok] [manual|auto] [threshold]" >&2
+    exit 1
+}
+case "${ACCT_ARGS[0]:-manual}" in
+manual) ;;
+auto)
+    omarchy_refuse "haseen agent account use $PROVIDER <account>" \
+        "Switching automatically near a limit needs every account's limits; haseen's usage collectors read only the active account's (plan 108)."
+    ;;
+*)
+    echo "Usage: omarchy-agent-account-mode [claude|codex|grok] [manual|auto] [threshold]" >&2
+    exit 1
+    ;;
+esac
+echo "$(acct_name "$PROVIDER") switches accounts when you say so: haseen agent account use $PROVIDER <account>"

@@ -138,20 +138,24 @@ assert_eq "omarchy-brightness-display never reaches Omarchy's Apple commands" ""
 
 # --- agents ------------------------------------------------------------------
 box omarchy-system-agent
+unset OMARCHY_AGENT_CLAUDE_HOME
 capture fk omarchy-agent --dry-run
 assert_status "omarchy-agent without a default agent fails" 1 "$STATUS"
 assert_contains "omarchy-agent says how to choose one" "$OUTPUT" "haseen setup default agent <name>"
 ans haseen-setup-default '[ $# -eq 1 ] && echo claude; exit 0'
 stub claude 'echo "STUB-CALLED: claude $*" >&2; exit 97'
 capture fk omarchy-agent --inline --dry-run
-assert_eq "omarchy-agent --inline starts the agent unattended" "DRYRUN: claude --permission-mode auto" "$OUTPUT"
+# The launch pins the account chosen now (plan 108): none here, the main one.
+assert_eq "omarchy-agent --inline starts the agent unattended" \
+    "DRYRUN: env -u CLAUDE_CONFIG_DIR OMARCHY_AGENT_CLAUDE_HOME= claude --permission-mode auto" "$OUTPUT"
 assert_dry_pure "omarchy-agent --inline" "$OUTPUT"
 : >"$CALLS"
 capture fk omarchy-agent --dry-run
 assert_contains "omarchy-agent opens a terminal through haseen" "$(<"$CALLS")" \
-    "haseen-terminal-run [claude] [--permission-mode] [auto] {dry}"
+    "haseen-terminal-run [env] [-u] [CLAUDE_CONFIG_DIR] [OMARCHY_AGENT_CLAUDE_HOME=] [claude] [--permission-mode] [auto] {dry}"
 capture fk omarchy-agent-prompt --dry-run --inline fix the tests
-assert_eq "omarchy-agent-prompt passes the prompt" "DRYRUN: claude --permission-mode auto -- fix the tests" "$OUTPUT"
+assert_eq "omarchy-agent-prompt passes the prompt" \
+    "DRYRUN: env -u CLAUDE_CONFIG_DIR OMARCHY_AGENT_CLAUDE_HOME= claude --permission-mode auto -- fix the tests" "$OUTPUT"
 capture fk omarchy-agent-prompt
 assert_status "omarchy-agent-prompt needs a prompt" 1 "$STATUS"
 capture fk omarchy-default-agent

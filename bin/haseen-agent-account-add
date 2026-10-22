@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# haseen:summary Sign in to another Claude, Codex or Grok subscription, in a home of its own
+# haseen:args [--check] [--reauth <account>] [claude|codex|grok] [label] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+umask 077
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account add [--check] [--reauth <account>] [claude|codex|grok] [label] [--dry-run]
+
+Signs in to a subscription through the CLI's own login (claude auth login,
+codex login, grok login), which writes its credentials where it always does.
+The first sign-in goes to the CLI's own home (~/.claude, ~/.codex, ~/.grok)
+through your browser; each further one gets a home of its own under
+${AGENT_ACCOUNTS_DIR/#"$HOME"/\~}/<provider>/ and signs in through a private
+window, so the browser does not reuse the account you already have. History,
+settings and skills stay shared with the main login. haseen never copies,
+prints or sends a credential anywhere (plan 108).
+
+  --check            print, per provider, whether a sign-in now would be the
+                     first or an additional one
+  --reauth ACCOUNT   sign ACCOUNT (an id, or main) in again where it lives,
+                     after its sign-in lapsed
+
+Refused when the provider (or all) is listed in
+$HASEEN_USER_CONFIG/agents/login-refused or /etc/haseen/agents/login-refused.
+Adapted from Omarchy bin/omarchy-agent-account-add (MIT, Copyright (c) David
+Heinemeier Hansson).
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+check=false reauth=""
+positional=()
+while (($#)); do
+    case $1 in
+    --check) check=true ;;
+    --reauth)
+        [[ -n ${2:-} ]] || {
+            usage >&2
+            exit 2
+        }
+        reauth=$2
+        shift
+        ;;
+    -*)
+        usage >&2
+        exit 2
+        ;;
+    *) positional+=("$1") ;;
+    esac
+    shift
+done
+set -- "${positional[@]}"
+
+if $check; then
+    for p in "${AGENT_ACCOUNT_PROVIDERS[@]}"; do
+        if acct_signed_in "$p" "$(acct_primary_home "$p")"; then echo "$p additional"; else echo "$p first"; fi
+    done
+    exit 0
+fi
+
+acct_parse_provider "$@" && ((${#ACCT_ARGS[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+label="${ACCT_ARGS[0]:-}"
+name="$(acct_name "$PROVIDER")"
+home_env="$(acct_home_env "$PROVIDER")"
+pin="OMARCHY_AGENT_${PROVIDER^^}_HOME"
+
+# A host whose policy forbids this sign-in says so before anything starts.
+if policy="$(acct_login_refused "$PROVIDER")"; then
+    die "signing in to $name is refused on this machine ($policy); no login was started"
+fi
+have "$PROVIDER" ||
+    die "$PROVIDER is not installed: haseen installs no coding agent; install it (mise, your package manager or its own installer), then run this again"
+# A registry that does not parse stops the sign-in before it starts, not at
+# the save after it.
+acct_require_registry "$PROVIDER"
+mapfile -t login < <(acct_login_command "$PROVIDER")
+
+browser="" pending=""
+cleanup() {
+    # A dry run made nothing; its paths are placeholders.
+    $DRY_RUN && return 0
+    [[ -n $browser ]] && run rm -f -- "$browser"
+    # A login that did not become an account leaves no half-made home.
+    [[ -n $pending && $pending == "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/"* ]] && run rm -rf -- "$pending"
+    return 0
+}
+trap cleanup EXIT
+
+# The CLIs open their login page through $BROWSER: point it at a private
+# window, or the browser quietly signs in as whoever it already has.
+private_browser() {
+    local launcher="$HASEEN_PATH/omarchy/bin/omarchy-launch-browser"
+    if $DRY_RUN; then
+        browser="${XDG_RUNTIME_DIR:-/tmp}/haseen-account-browser.XXXXXX"
+        echo "DRYRUN: write $browser: exec $launcher --private URL"
+        return 0
+    fi
+    browser="$(run mktemp "${XDG_RUNTIME_DIR:-/tmp}/haseen-account-browser.XXXXXX")"
+    printf '#!/usr/bin/env bash\nexec %q --private "$1"\n' "$launcher" | write_user_file "$browser"
+    run chmod 700 "$browser"
+}
+
+# The CLI's login in its own home, whatever this shell points it at.
+login_primary() {
+    run env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GROK_HOME "$pin=" "${login[@]}"
+}
+# The CLI's login in HOME, through a private window.
+login_in() {
+    private_browser
+    run env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GROK_HOME BROWSER="$browser" "$home_env=$1" "$pin=$1" "${login[@]}"
+}
+
+if [[ -n $reauth ]]; then
+    if [[ $reauth == main || $reauth == primary ]]; then
+        echo "Sign in to $name again in the browser that opens."
+        login_primary || die "the $name sign-in did not finish"
+    else
+        account="$(acct_find "$(acct_load "$PROVIDER")" "$reauth")" ||
+            die "no $name account named $reauth (see: haseen agent account list $PROVIDER)"
+        home="$(acct_account_home "$PROVIDER" "$account")"
+        echo "Sign in again as $(jq -r .label <<<"$account") in the private window that opens."
+        login_in "$home" || die "the $name sign-in did not finish"
+        acct_private_credentials "$PROVIDER" "$home"
+    fi
+    $DRY_RUN || echo "Signed in to $name again."
+    exit 0
+fi
+
+# The first subscription signs in where the CLI always looks, through the
+# normal browser: nothing is signed in there yet to be mistaken for it.
+if ! acct_signed_in "$PROVIDER" "$(acct_primary_home "$PROVIDER")"; then
+    echo "Sign in to $name in the browser that opens. This login is your main $name account."
+    login_primary || die "the $name sign-in did not finish"
+    $DRY_RUN && exit 0
+    acct_signed_in "$PROVIDER" "$(acct_primary_home "$PROVIDER")" || die "the $name sign-in did not finish"
+    echo "Signed in to $name."
+    exit 0
+fi
+
+if [[ -z $label && -t 0 ]] && ! $DRY_RUN; then
+    read -r -p "Name this $name account: " label || exit 130
+fi
+cat <<EOF
+Sign in as the account you are adding in the private window that opens.
+If a private window was already open, close it first, or it may reuse
+whoever it has signed in. Do not log out of the $name CLI to do this:
+logging out revokes the saved sign-in.
+EOF
+
+run mkdir -p "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending"
+if $DRY_RUN; then
+    pending="$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/login-XXXXXX"
+else
+    pending="$(run mktemp -d "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/login-XXXXXX")"
+fi
+acct_link_shared "$PROVIDER" "$pending"
+login_in "$pending" || die "the $name sign-in did not finish, so no account was added"
+if $DRY_RUN; then
+    echo "DRYRUN: register the login in $pending as a $name account (a dry run signs in nobody)"
+    exit 0
+fi
+acct_signed_in "$PROVIDER" "$pending" || die "the $name sign-in did not finish, so no account was added"
+
+found="$(acct_identity "$PROVIDER" "$pending")"
+acct_lock "$PROVIDER"
+reg="$(acct_load "$PROVIDER")"
+if same="$(jq -ce --arg id "$(jq -r .accountId <<<"$found")" \
+    'first(.accounts[] | select((.accountId // "") == $id))' <<<"$reg")"; then
+    die "that is $(jq -r '.label + (if (.email // "") != "" then " (" + .email + ")" else "" end)' <<<"$same"), already here; try again and sign in as the other account in the private window"
+fi
+[[ -n $label ]] || label="$(jq -r '.email | split("@")[0]' <<<"$found")"
+[[ -n $label ]] || label=Account
+id="$(acct_unique_id "$PROVIDER" "$reg" "$label")"
+home="$AGENT_ACCOUNTS_DIR/$PROVIDER/$id"
+[[ $PROVIDER == claude ]] && acct_carry_settings "$pending"
+acct_private_credentials "$PROVIDER" "$pending"
+run mv -T -- "$pending" "$home"
+pending=""
+entry="$(jq -c --arg id "$id" --arg label "$label" --arg home "$home" \
+    '{id: $id, label: $label, home: $home, primary: false} + .' <<<"$found")"
+acct_save "$PROVIDER" "$(jq -c --argjson e "$entry" '.accounts += [$e]' <<<"$reg")"
+echo "Added $label$(jq -r 'if .email != "" then " (" + .email + ")" else "" end' <<<"$found")."
+echo "Switch to it with: haseen agent account use $PROVIDER $id"

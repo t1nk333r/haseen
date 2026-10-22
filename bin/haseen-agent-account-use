@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# haseen:summary Choose which Claude, Codex or Grok account new sessions use
+# haseen:args [claude|codex|grok] [account|next] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+umask 077
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account use [claude|codex|grok] [account|next] [--dry-run]
+
+Makes ACCOUNT (an id from haseen agent account list; main is the login the
+CLI already has) the one new sessions start as; next moves to the following
+account. Running sessions keep theirs. Sessions started from the agent key
+or menu (omarchy-agent) and haseen agent account exec follow it; a plain
+claude, codex or grok follows it only where Omarchy 4.5's mise wrapper
+(/etc/mise/conf.d/omarchy-agent-accounts.toml) is installed. The provider can
+be left out when it is the default agent (haseen setup default agent).
+Adapted from Omarchy bin/omarchy-agent-account-use (MIT, Copyright (c) David
+Heinemeier Hansson).
+EOF
+}
+parse_common_flags "$@"
+acct_parse_provider "${REST[@]}" || {
+    usage >&2
+    exit 2
+}
+((${#ACCT_ARGS[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+target="${ACCT_ARGS[0]:-next}"
+name="$(acct_name "$PROVIDER")"
+
+acct_lock "$PROVIDER"
+acct_require_registry "$PROVIDER"
+reg="$(acct_load "$PROVIDER")"
+previous="$(acct_find "$reg" "$(jq -r .active <<<"$reg")")"
+if [[ $target == next ]]; then
+    target="$(jq -r '.active as $a | [.accounts[].id] as $ids | ($ids | index($a)) as $i
+        | $ids[(($i // -1) + 1) % ($ids | length)]' <<<"$reg")"
+fi
+account="$(acct_find "$reg" "$target")" ||
+    die "no $name account named $target (see: haseen agent account list $PROVIDER)"
+label="$(jq -r .label <<<"$account")"
+id="$(jq -r .id <<<"$account")"
+
+if [[ $id == "$(jq -r .id <<<"$previous")" ]]; then
+    echo "New $name sessions already use $label."
+    exit 0
+fi
+[[ -n $(jq -r '.accountId // ""' <<<"$account") ]] ||
+    warn "$label is signed out: sign it in again with: haseen agent account add $PROVIDER --reauth $id"
+if [[ $(jq -r '.primary == true' <<<"$account") != true ]]; then
+    acct_link_shared "$PROVIDER" "$(acct_account_home "$PROVIDER" "$account")"
+fi
+acct_save "$PROVIDER" "$(jq -c --arg id "$id" '.active = $id | .alert = ""' <<<"$reg")"
+plan="$(jq -r '.plan // ""' <<<"$account")"
+$DRY_RUN && exit 0
+echo "New $name sessions now use $label${plan:+ ($plan)}. Running sessions stay on $(jq -r .label <<<"$previous")."
+# Which launches follow the choice: Omarchy 4.5's mise wrapper routes plain
+# CLI runs through omarchy-agent-account-exec; without it only haseen's do.
+if [[ -e $(sysroot_path /etc/mise/conf.d/omarchy-agent-accounts.toml) ]]; then
+    echo "The agent key, the menu, haseen agent account exec and plain $PROVIDER (Omarchy's mise wrapper) follow it."
+else
+    echo "The agent key, the menu and haseen agent account exec $PROVIDER follow it; a plain $PROVIDER does not."
+fi

@@ -6,17 +6,17 @@
 # share/haseen/omarchy/bin/<name> links to ../dispatch for shim, refuse and inert.
 omarchy	port	-	Omarchy's router: omarchy a b runs haseen's omarchy-a-b
 omarchy-agent	port	haseen-terminal-run	starts the default coding agent unattended, in a terminal of its own or inline
-omarchy-agent-account-add	translate	-	runs Omarchy's own account sign-in when Omarchy is installed (haseen has no agent accounts yet)
-omarchy-agent-account-copy	refuse	none: sign in on the other machine with the agent's own CLI	It sends your Claude, Codex and Grok logins to another machine over SSH; haseen never ships agent credentials to another host.
+omarchy-agent-account-add	translate	haseen-agent-account-add	signs in to another subscription in a home of its own (haseen agent account add); Omarchy's --events panel protocol is dropped
+omarchy-agent-account-copy	refuse	none: sign in on the other machine with the agent's own CLI (haseen agent account add there)	It sends your Claude, Codex and Grok logins to another machine over SSH, with code that runs there; haseen never ships agent credentials to another host (plan 108).
 omarchy-agent-account-exec	port	-	runs claude, codex or grok with the selected account's config home; never refuses
-omarchy-agent-account-home	port	-	prints the active account's config home from Omarchy's registry, nothing for the primary one
-omarchy-agent-account-list	translate	-	runs Omarchy's own account list when Omarchy is installed (haseen has no agent accounts yet)
-omarchy-agent-account-mode	translate	-	runs Omarchy's own account switching mode when Omarchy is installed (haseen has no agent accounts yet)
-omarchy-agent-account-remove	translate	-	runs Omarchy's own account removal when Omarchy is installed (haseen has no agent accounts yet)
-omarchy-agent-account-rename	translate	-	runs Omarchy's own account rename when Omarchy is installed (haseen has no agent accounts yet)
-omarchy-agent-account-state	translate	-	runs Omarchy's own account registry when Omarchy is installed (haseen has no agent accounts yet)
-omarchy-agent-account-transfer	refuse	none: sign in on the other machine with the agent's own CLI	It exports and imports agent login credentials for account copy; haseen never ships agent credentials to another host.
-omarchy-agent-account-use	translate	-	runs Omarchy's own account choice when Omarchy is installed (haseen has no agent accounts yet)
+omarchy-agent-account-home	port	-	prints the active account's config home from haseen's registry (Omarchy's while haseen has none), nothing for the primary one
+omarchy-agent-account-list	translate	haseen-agent-account-list	lists the accounts (haseen agent account list)
+omarchy-agent-account-mode	translate	-	says how accounts switch: only when told (haseen agent account use); auto is refused, since haseen's usage collectors read one account
+omarchy-agent-account-remove	translate	haseen-agent-account-remove	forgets an added account and deletes its home here, never logging out (haseen agent account remove)
+omarchy-agent-account-rename	translate	haseen-agent-account-rename	renames an account (haseen agent account rename)
+omarchy-agent-account-state	translate	-	answers the registry's read verbs from haseen's registry; its changes and internals are refused
+omarchy-agent-account-transfer	refuse	none: sign in on the other machine with the agent's own CLI (haseen agent account add there)	It exports and imports agent login credentials for account copy; haseen never ships agent credentials to another host (plan 108).
+omarchy-agent-account-use	translate	haseen-agent-account-use	chooses which account new sessions use (haseen agent account use)
 omarchy-agent-crash	shim	haseen-agent-crash	asks the default coding agent to diagnose a crashed process
 omarchy-agent-prompt	port	-	starts the default coding agent with a prompt
 omarchy-agent-usage-claude	port	-	prints the Claude Code usage record as JSON for an agents panel

@@ -36,6 +36,7 @@ The owner's other repos:
 | Omarchy's commands (every `omarchy-*` but Apple's; table, dispatcher, ports, refusals), linked into PREFIX/bin | `share/haseen/omarchy/`, `install.sh`, `tests/test-omarchy-commands.sh` | 093 |
 | Extended luna-plugin compatibility | `share/haseen/shell/Compat/Omarchy/`, `share/haseen/shell/Compat/Runtime.qml`, `share/haseen/shell/Compat/ShellApi.qml`, `bin/haseen-plugin-settings` | 027 |
 | AI panel and agent skill | `share/haseen/shell/plugins/haseen.ai/`, `share/haseen/agents/skills/haseen/` | 012 |
+| Several Claude, Codex and Grok accounts (off until used): registry, the add, list, use, rename, remove, home and exec commands, the `omarchy-agent-account-*` answers, the launch's account pin, the agents panel's optional accounts and usage sections | `share/haseen/lib/agent-accounts.sh`, `bin/haseen-agent-account-add`, `share/haseen/omarchy/bin/omarchy-agent-account-state`, `share/haseen/shell/plugins/haseen.agents/`, `tests/test-agent-accounts.sh` | 108 |
 | Screen frame, transparent bar, tray | `share/haseen/shell/{Frame*,Bar}.qml`, `bin/haseen-bar-*`, `haseen.tray` | 015 |
 | Menu (Omarchy 4's tree and look, haseen's commands and rows) | `share/haseen/shell/plugins/haseen.menu/`, `share/haseen/default/menu.jsonc`, `bin/haseen-{menu,about,system,setup-*,font-*,branding,config-*}` | 016 068 |
 | Flatpak-first install/remove, update | `share/haseen/default/catalog.json`, `share/haseen/lib/{catalog,terminal}.sh`, `bin/haseen-{install,remove,update,time,password,restart,refresh}`, `share/haseen/layers/flatpak/` | 017 |

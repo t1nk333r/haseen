@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.agents",
   "name": "Agents",
-  "version": "1.0.0",
-  "description": "The coding agents running right now: what, where, and for how long; read-only, scanned when the panel opens",
+  "version": "1.1.0",
+  "description": "The coding agents running right now: what, where, and for how long, scanned when the panel opens; optional sections for several Claude, Codex and Grok accounts and their last-collected usage",
   "kinds": [
     "panel"
   ],
@@ -14,12 +14,22 @@
     "commands": {
       "type": "array",
       "default": [],
-      "description": "Agent commands to look for; empty means claude, codex, opencode, aider, goose, crush, gemini and cursor-agent"
+      "description": "Agent commands to look for; empty means claude, codex, grok, opencode, aider, goose, crush, gemini, agy, kimi, ori and cursor-agent"
     },
     "paths": {
       "type": "boolean",
       "default": true,
       "description": "Show each agent's working directory and pid under its name"
+    },
+    "accounts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show the Claude, Codex and Grok accounts (haseen agent account list); clicking one makes new sessions start as it"
+    },
+    "usage": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show the usage records omarchy-agent-usage-update last collected (read as files; the panel never asks a provider)"
     },
     "debugIpc": {
       "type": "boolean",

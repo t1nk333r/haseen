@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# haseen:summary Forget an added Claude, Codex or Grok account and delete its home here
+# haseen:args [claude|codex|grok] <account> [--yes] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+umask 077
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account remove [claude|codex|grok] <account> [--yes] [--dry-run]
+
+Forgets an account added with haseen agent account add and deletes its home
+on this machine, its sign-in with it. It never logs out: logging out would
+revoke the sign-in for every other copy of it too. The main login (the CLI's
+own home) is never removed here, and neither is an account a running session
+uses. Adapted from Omarchy bin/omarchy-agent-account-remove (MIT, Copyright
+(c) David Heinemeier Hansson).
+EOF
+}
+parse_common_flags "$@"
+acct_parse_provider "${REST[@]}" && ((${#ACCT_ARGS[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+target="${ACCT_ARGS[0]}"
+name="$(acct_name "$PROVIDER")"
+
+acct_lock "$PROVIDER"
+acct_require_registry "$PROVIDER"
+reg="$(acct_load "$PROVIDER")"
+account="$(acct_find "$reg" "$target")" ||
+    die "no $name account named $target (see: haseen agent account list $PROVIDER)"
+label="$(jq -r .label <<<"$account")"
+id="$(jq -r .id <<<"$account")"
+home="$(acct_account_home "$PROVIDER" "$account")"
+[[ $(jq -r '.primary == true' <<<"$account") != true ]] ||
+    die "$label is the login in $(acct_primary_home "$PROVIDER"); haseen does not remove it (the CLI's own logout does)"
+! acct_home_in_use "$PROVIDER" "$home" ||
+    die "a running $name session uses $label; quit it first, then remove the account"
+confirm "Forget the $name account $label? Its home and sign-in here are deleted; you would sign in again to add it back." ||
+    die "nothing removed"
+
+# Only a home haseen made goes: one under its own accounts directory. An
+# account adopted from Omarchy's registry keeps its home where Omarchy put it.
+# rm -r removes the links inside a home without following them.
+if [[ $(readlink -m -- "$(dirname "$home")") == "$(readlink -m -- "$AGENT_ACCOUNTS_DIR/$PROVIDER")" ]]; then
+    run rm -rf -- "$home"
+else
+    info "its home stays where it was made: $home"
+fi
+acct_save "$PROVIDER" "$(jq -c --arg id "$id" '.accounts |= map(select(.id != $id))
+    | if .active == $id then .active = .accounts[0].id else . end' <<<"$reg")"
+$DRY_RUN || echo "Forgot $label."
