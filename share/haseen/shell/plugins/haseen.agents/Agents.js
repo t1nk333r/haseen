@@ -70,3 +70,59 @@ function summary(rows) {
     const count = Object.keys(projects).length;
     return list.length + (list.length === 1 ? " agent · " : " agents · ") + count + (count === 1 ? " project" : " projects");
 }
+
+// The accounts section (plan 108): `haseen agent account list --json` turned
+// into one row per account, for the providers someone is signed in to or
+// that have more than one account. Display fields only; the command never
+// prints a credential.
+function accounts(text) {
+    let data = [];
+    try {
+        data = JSON.parse(String(text || "[]"));
+    } catch (e) {
+        return [];
+    }
+    const rows = [];
+    for (const p of Array.isArray(data) ? data : []) {
+        const list = Array.isArray(p && p.accounts) ? p.accounts : [];
+        if (!list.some(a => a && a.signedIn === true) && list.length < 2)
+            continue;
+        for (const a of list) {
+            if (!a || String(a.id || "") === "")
+                continue;
+            rows.push({
+                provider: String(p.provider || ""),
+                name: String(p.name || p.provider || ""),
+                id: String(a.id),
+                label: String(a.label || a.id),
+                plan: String(a.plan || ""),
+                email: String(a.email || ""),
+                active: a.active === true,
+                signedIn: a.signedIn === true
+            });
+        }
+    }
+    return rows;
+}
+
+// One usage record (omarchy-agent-usage-update writes them) as the line the
+// usage section draws, or null when the record says nothing yet.
+function usage(text) {
+    let r;
+    try {
+        r = JSON.parse(String(text || ""));
+    } catch (e) {
+        return null;
+    }
+    if (!r || typeof r !== "object")
+        return null;
+    const limits = (Array.isArray(r.limits) ? r.limits : []).filter(l => l && typeof l.percent === "number").map(l => String(l.label || l.title || "limit") + " " + Math.round(l.percent * 100) + "%");
+    const status = String(r.usageStatusText || "");
+    if (limits.length === 0 && status === "")
+        return null;
+    const account = r.account && r.account.label ? String(r.account.label) : "";
+    return {
+        name: String(r.name || r.id || "") + (account !== "" ? " · " + account : ""),
+        detail: limits.length > 0 ? limits.join(" · ") : status
+    };
+}

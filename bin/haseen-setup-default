@@ -22,9 +22,9 @@ declare -A BROWSERS=([zen]="zen.desktop app.zen_browser.zen.desktop"
 declare -A TERMINALS=([foot]=foot [alacritty]=alacritty [ghostty]=ghostty [kitty]=kitty)
 declare -A EDITORS=([nvim]=nvim [helix]=helix [vim]=vim [code]=code [cursor]=cursor [zed]=zeditor
     [sublime]=sublime_text [emacs]=emacs)
-declare -A AGENTS=([claude]=claude [codex]=codex [copilot]=copilot [crush]=crush [cursor-agent]=cursor-agent
-    [gemini]=gemini [grok]=grok [hermes]=hermes [muse]=muse [omp]=omp [openclaw]=openclaw
-    [opencode]=opencode [pi]=pi)
+declare -A AGENTS=([agy]=agy [claude]=claude [codex]=codex [copilot]=copilot [crush]=crush
+    [cursor-agent]=cursor-agent [gemini]=gemini [grok]=grok [hermes]=hermes [kimi]=kimi [muse]=muse [omp]=omp
+    [openclaw]=openclaw [opencode]=opencode [ori]=ori [pi]=pi)
 declare -A VARS=([browser]=BROWSER [terminal]=TERMINAL [editor]=EDITOR [agent]=HASEEN_AGENT)
 
 # --- file handlers ------------------------------------------------------------
@@ -182,8 +182,8 @@ the next login) and into the running systemd user manager for apps started now:
             (xdg-settings + http/https MIME)
   terminal  foot alacritty ghostty kitty        (\$TERMINAL; also $TERMINALS_LIST)
   editor    nvim helix vim code zed emacs       (\$EDITOR; also the text/* handlers)
-  agent     claude codex copilot crush cursor-agent gemini grok hermes muse
-            omp openclaw opencode pi            (\$HASEEN_AGENT)
+  agent     agy claude codex copilot crush cursor-agent gemini grok hermes
+            kimi muse omp openclaw opencode ori pi  (\$HASEEN_AGENT)
 
 File handlers, written with xdg-mime into ~/.config/mimeapps.list, which
 outranks haseen's vendor defaults in PREFIX/share/applications/mimeapps.list:

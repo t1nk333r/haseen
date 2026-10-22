@@ -3,10 +3,10 @@
 # Codex or Grok account, nothing while the primary one (~/.claude, ~/.codex,
 # ~/.grok) is active. Adapted from Omarchy
 # bin/omarchy-agent-account-home@v4.5.0-rc1 (MIT, Copyright (c) David
-# Heinemeier Hansson): a running session's pin wins; else Omarchy's registry
-# answers through omarchy-agent-account-state (haseen's answer runs Omarchy's,
-# plan 102; plan 108 builds haseen's accounts); without a registry nothing
-# starts, because this runs on every claude and codex launch.
+# Heinemeier Hansson): a running session's pin wins; else haseen's registry
+# answers (plan 108), or Omarchy's while haseen has none of its own, read
+# directly in the format both share, so no Omarchy code runs; without a
+# registry nothing starts, because this runs on every claude and codex launch.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -18,11 +18,12 @@ if [[ ${1:-} != claude && ${1:-} != codex && ${1:-} != grok ]]; then
     echo "Usage: omarchy-agent-account-home <claude|codex|grok>" >&2
     exit 1
 fi
-registry="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/accounts/$1.json"
 # A running session pins its home, an empty value for the primary one.
 account_pin="OMARCHY_AGENT_${1^^}_HOME"
 if [[ -v $account_pin ]]; then
     printf '%s' "${!account_pin}"
-elif [[ -f $registry ]]; then
-    exec "$HASEEN_OMARCHY_DIR/bin/omarchy-agent-account-state" home "$1"
+    exit 0
 fi
+# shellcheck source=../../lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+acct_active_home "$1"

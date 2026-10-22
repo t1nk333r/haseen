@@ -1,18 +1,63 @@
 #!/usr/bin/env bash
-# omarchy-agent-account-state — read and change Omarchy's account registry.
-# haseen has no account registry of its own yet (plan 108 builds haseen's
-# accounts): this runs Omarchy's installed copy (c05d90196, #13770), whose
-# state stays where Omarchy keeps it (~/.local/state/omarchy/agents/accounts)
-# and whose calls to other omarchy-* names reach haseen's answers, and refuses
-# where Omarchy is not installed; a dry run prints the call (plan 102).
-# Copying accounts to another machine (omarchy-agent-account-copy and
-# -transfer) is refused outright.
+# omarchy-agent-account-state — Omarchy's account registry backend
+# (bin/omarchy-agent-account-state@v4.5.0-rc1, c05d90196 #13770; MIT,
+# Copyright (c) David Heinemeier Hansson). Since plan 108 haseen keeps its own
+# registry (share/haseen/lib/agent-accounts.sh, same format), and this
+# answers Omarchy's read verbs from it, in Omarchy's output shapes:
+# registry and list print JSON, home the active home (nothing for the
+# primary), homes "id<TAB>home<TAB>1|0" lines. refresh succeeds with nothing
+# to do (haseen reads identities fresh on every read). The changes are haseen
+# agent account commands, and Omarchy's internals (begin, register, recover,
+# link, autoswitch, mode) have no haseen equivalent.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
-omarchy_help "Usage: omarchy-agent-account-state <registry|home|homes|list|refresh|begin|register|recover|use|rename|remove|mode|link|autoswitch> [provider] [args...]
+omarchy_help "Usage: omarchy-agent-account-state <registry|home|homes|list|refresh> [provider]
 
-haseen's answer to Omarchy's command: runs Omarchy's own omarchy-agent-account-state
-(haseen keeps one account per agent until it has accounts of its own)." "$@"
-omarchy_passthrough "none: haseen keeps one account per agent; sign in with the agent's own CLI" \
-    "haseen has no agent accounts of its own yet, and Omarchy's are not installed here." "$@"
+haseen's answer to Omarchy's command: reads haseen's account registry; changes
+go through haseen agent account add|use|rename|remove." "$@"
+# shellcheck source=../../lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+
+provider_arg() {
+    acct_provider_ok "${1:-}" || {
+        echo "Name a provider: claude, codex, or grok" >&2
+        exit 1
+    }
+}
+verb="${1:-}"
+shift || true
+case $verb in
+registry)
+    provider_arg "${1:-}"
+    acct_summary "$1" "$(acct_load "$1")"
+    ;;
+list)
+    if (($#)); then provider_arg "$1"; fi
+    haseen_exec agent-account-list "$@" --json
+    ;;
+home)
+    provider_arg "${1:-}"
+    acct_active_home "$1"
+    ;;
+homes)
+    provider_arg "${1:-}"
+    reg="$(acct_load "$1")"
+    while IFS= read -r entry; do
+        printf '%s\t%s\t%s\n' "$(jq -r .id <<<"$entry")" "$(acct_account_home "$1" "$entry")" \
+            "$(jq -r --arg a "$(jq -r .active <<<"$reg")" 'if .id == $a then 1 else 0 end' <<<"$entry")"
+    done < <(jq -c '.accounts[]' <<<"$reg")
+    ;;
+refresh) ;;
+use | rename | remove)
+    omarchy_refuse "haseen agent account $verb" "haseen changes its account registry through its own commands."
+    ;;
+begin | register | recover | link | autoswitch | mode)
+    omarchy_refuse "none: haseen agent account add signs in and registers in one step" \
+        "This is Omarchy's internal account step, which haseen's accounts do not have."
+    ;;
+*)
+    echo "Unknown command: $verb" >&2
+    exit 1
+    ;;
+esac

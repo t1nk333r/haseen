@@ -4,13 +4,15 @@
 # bin/omarchy-default-agent (MIT, Copyright (c) David Heinemeier Hansson);
 # haseen stores the choice as $HASEEN_AGENT and installs nothing: where
 # Omarchy installs a missing agent with mise (--install), this says so and
-# exits 1 (plan 093). With no haseen default set, Omarchy's own
+# exits 1 (plan 093). Omarchy 4.5's agy, ori and kimi are plan 108's; gemini
+# stays an agent of its own (4.5 made it an alias of agy), since its CLI still
+# exists apart from Antigravity's. With no haseen default set, Omarchy's own
 # ~/.config/omarchy/defaults/agent is read, never written.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
 
-NAMES="pi|omp|opencode|claude|codex|grok|gemini|openclaw|hermes|copilot|crush|cursor-agent|muse"
+NAMES="pi|omp|opencode|ori|claude|codex|grok|gemini|openclaw|agy|hermes|copilot|crush|cursor-agent|muse|kimi"
 usage() {
     cat <<EOF
 Usage: omarchy-default-agent [--install] [$NAMES] [--dry-run]
@@ -47,6 +49,9 @@ codex) agent=codex ;;
 crush) agent=crush ;;
 grok) agent=grok ;;
 gemini | gemini-cli) agent=gemini ;;
+agy | antigravity | antigravity-cli) agent=agy ;;
+ori | openrouter) agent=ori ;;
+kimi | kimi-code) agent=kimi ;;
 openclaw) agent=openclaw ;;
 hermes) agent=hermes ;;
 copilot | github-copilot) agent=copilot ;;

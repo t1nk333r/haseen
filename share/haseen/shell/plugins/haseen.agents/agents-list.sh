@@ -13,15 +13,16 @@
 #
 # Adapted from Omarchy shell/plugins/agents (MIT, Copyright (c) David
 # Heinemeier Hansson). Upstream draws usage records that
-# `omarchy-agent-usage-update` collects per subscription; haseen ships no
-# collectors and wants nothing installed or signed in, so the panel answers
-# the cheap question instead: which coding agents are running right now,
-# where, and for how long.
+# `omarchy-agent-usage-update` collects per subscription; this scan wants
+# nothing installed or signed in and answers the cheap question instead:
+# which coding agents are running right now, where, and for how long (the
+# panel's optional usage section reads the records, plan 108). The default
+# list has Omarchy 4.5's grok, agy, kimi and ori (plan 108).
 set -uo pipefail
 
 proc="${HASEEN_SYSROOT:-}/proc"
 agents=("$@")
-((${#agents[@]} > 0)) || agents=(claude codex opencode aider goose crush gemini cursor-agent)
+((${#agents[@]} > 0)) || agents=(claude codex grok opencode aider goose crush gemini agy kimi ori cursor-agent)
 
 # A CLI shipped as a script runs under its interpreter: argv[0] is then the
 # interpreter and the first non-flag argument is the agent.

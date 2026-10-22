@@ -124,12 +124,22 @@ assert_eq "no shell is spawned to apply a pick" "" \
     "$(grep -nE '"(ba)?sh", *"-c"' "$PLUGINS/haseen.imagepicker"/*.qml || true)"
 assert_contains "imagepicker keeps the Omarchy MIT notice" "$ip" "MIT, Copyright (c) David"
 
-# --- the agents panel is read-only -----------------------------------------------
+# --- the agents panel: a read-only scan, and two optional sections ---------------
 ag="$(cat "$PLUGINS/haseen.agents/Panel.qml")"
-assert_contains "agents runs only its own scanner" "$ag" "command: [root.script].concat(root.commands)"
+assert_contains "agents runs its own scanner" "$ag" "command: [root.script].concat(root.commands)"
 assert_eq "agents starts, stops and signals nothing" "" \
     "$(grep -nE 'execDetached|Hyprland\.dispatch|kill|pkill|systemctl' "$PLUGINS/haseen.agents"/*.qml || true)"
-assert_eq "exactly one Process in the agents panel" "1" "$(grep -c 'Process {' <<<"$ag")"
+# Plan 108: the scan, the account list and the one change it may make (which
+# account new sessions use), each through haseen's CLI with a fixed argv.
+assert_eq "three Processes in the agents panel" "3" "$(grep -c 'Process {' <<<"$ag")"
+assert_contains "the accounts come from haseen's list" "$ag" 'command: [root.cli, "agent", "account", "list", "--json"]'
+assert_contains "a click switches through haseen's use" "$ag" '[root.cli, "agent", "account", "use", row.provider, row.id]'
+assert_eq "both sections are off by default" "false false" \
+    "$(jq -r '[.settings.accounts.default, .settings.usage.default] | map(tostring) | join(" ")' "$PLUGINS/haseen.agents/manifest.json")"
+assert_contains "the account list runs only when its section is on" "$ag" "if (showAccounts)"
+assert_contains "usage records are read as files, in haseen's state" "$ag" 'Paths.userState + "/agents/usage/"'
+assert_eq "the panel never runs a usage collector" "" \
+    "$(grep -nHE 'agent-usage|omarchy-' "$PLUGINS/haseen.agents"/*.qml | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)"
 assert_contains "r takes a new snapshot" "$ag" "Qt.Key_R"
 assert_contains "agents keeps the Omarchy MIT notice" "$ag" "MIT, Copyright (c) David"
 assert_contains "the scanner keeps the Omarchy MIT notice" "$(cat "$PLUGINS/haseen.agents/agents-list.sh")" "MIT, Copyright (c) David"
@@ -165,6 +175,10 @@ if [[ -x $QML_BIN ]]; then
     printf 'var tsv = %s;\n' \
         "$(printf '1000\tclaude\t10000\t/srv/people/Projects/haseen\n1001\tcodex\t100\t/srv/people/Projects/site\n9\t\t5\t/x\nnot a line\n1006\taider\t5000\t/srv/work\n' | jq -Rs .)" \
         >"$harness/data.js"
+    printf 'var accounts = %s;\nvar usage = %s;\nvar usageEmpty = %s;\n' \
+        "$(jq -Rs . <<<'[{"provider":"claude","name":"Claude","accounts":[{"id":"main","label":"Main","active":false,"signedIn":true},{"id":"work","label":"Work","plan":"Max 20x","active":true,"signedIn":true}]},{"provider":"codex","name":"Codex","accounts":[{"id":"main","label":"Main","active":true,"signedIn":false}]}]')" \
+        "$(jq -Rs . <<<'{"id":"claude","name":"Claude","account":{"id":"work","label":"Work"},"limits":[{"label":"Session","percent":0.42},{"label":"Week","percent":0.1}]}')" \
+        "$(jq -Rs . <<<'{"id":"codex","name":"Codex","limits":[]}')" >>"$harness/data.js"
     cat >"$harness/Harness.qml" <<EOF
 import QtQuick
 import "file://$PLUGINS/haseen.imagepicker/Images.js" as I
@@ -186,6 +200,9 @@ Item {
         out("rows", rows.map(r => r.pid + ":" + r.name + ":" + r.seconds + ":" + r.project + ":" + r.where));
         out("durations", [A.duration(0), A.duration(45), A.duration(90), A.duration(3600), A.duration(11430), A.duration(200000)]);
         out("summary", [A.summary(rows), A.summary([]), A.summary(rows.slice(0, 1))]);
+        out("accounts", A.accounts(D.accounts).map(a => a.provider + ":" + a.id + ":" + a.label + ":" + a.active + ":" + a.signedIn));
+        out("accountsBad", [A.accounts("not json").length, A.accounts("").length]);
+        out("usage", [A.usage(D.usage), A.usage(D.usageEmpty), A.usage("{")]);
         Qt.quit();
     }
 }
@@ -209,6 +226,11 @@ EOF
     assert_eq "Agents: durations" '["0s","45s","1m","1h 00m","3h 10m","2d 7h"]' "$(r durations)"
     assert_eq "Agents: summary counts agents and projects" \
         '["3 agents · 3 projects","nothing running","1 agent · 1 project"]' "$(r summary)"
+    assert_eq "Agents: account rows, signed-out lone providers left out" \
+        '["claude:main:Main:false:true","claude:work:Work:true:true"]' "$(r accounts)"
+    assert_eq "Agents: an unreadable account list draws nothing" '[0,0]' "$(r accountsBad)"
+    assert_eq "Agents: a usage line names the account and its limits" \
+        '[{"name":"Claude · Work","detail":"Session 42% · Week 10%"},null,null]' "$(r usage)"
 else
     echo "  skip: $QML_BIN not installed, Images.js/Agents.js not exercised" >&2
 fi

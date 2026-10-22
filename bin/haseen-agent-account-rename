@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# haseen:summary Rename a Claude, Codex or Grok subscription account
+# haseen:args [claude|codex|grok] <account> <name> [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+umask 077
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account rename [claude|codex|grok] <account> <name> [--dry-run]
+
+Gives ACCOUNT a new name, and the id that follows from it. Its home stays
+where it is: sessions running in it hold that path. Adapted from Omarchy
+bin/omarchy-agent-account-rename (MIT, Copyright (c) David Heinemeier Hansson).
+EOF
+}
+parse_common_flags "$@"
+acct_parse_provider "${REST[@]}" && ((${#ACCT_ARGS[@]} >= 2)) || {
+    usage >&2
+    exit 2
+}
+target="${ACCT_ARGS[0]}"
+label="${ACCT_ARGS[*]:1}"
+label="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<<"$label")"
+[[ -n $label ]] || die "give the account a name"
+name="$(acct_name "$PROVIDER")"
+
+acct_lock "$PROVIDER"
+acct_require_registry "$PROVIDER"
+reg="$(acct_load "$PROVIDER")"
+account="$(acct_find "$reg" "$target")" ||
+    die "no $name account named $target (see: haseen agent account list $PROVIDER)"
+old="$(jq -r .id <<<"$account")"
+new="$(acct_unique_id "$PROVIDER" "$reg" "$label" "$old")"
+reg="$(jq -c --arg old "$old" --arg new "$new" --arg label "$label" \
+    --arg home "$(acct_account_home "$PROVIDER" "$account")" '
+    (if .active == $old then .active = $new else . end) | .alert = ""
+    | .accounts |= map(if .id == $old then
+        .id = $new | .label = $label
+        | (if .primary != true and (.home // "") == "" then .home = $home else . end)
+      else . end)' <<<"$reg")"
+acct_save "$PROVIDER" "$reg"
+$DRY_RUN || echo "Renamed to $label. Switch to it with: haseen agent account use $PROVIDER $new"
