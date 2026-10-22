@@ -17,10 +17,25 @@
 # every literal `i18n "…"` and `i18n_n "…" "…"` into the English catalog, so
 # the text must be one literal with no expansion: pass values as %1..%9.
 
+# i18n_requested FILE — the code a language file asks for: its first line
+# without one leading UTF-8 BOM, one trailing CR (a file saved with CRLF) and
+# surrounding spaces and tabs, in that order; nothing else. Haseen/I18n.qml
+# (requestedCode) does exactly the same, so a hand-edited file means the same
+# language to the shell, to notifications and to `haseen language`.
+i18n_requested() {
+    local line=""
+    [[ -r $1 ]] && IFS= read -r line <"$1" || true
+    line=${line#$'\xef\xbb\xbf'}
+    line=${line%$'\r'}
+    line=${line#"${line%%[!$' \t']*}"}
+    line=${line%"${line##*[!$' \t']}"}
+    printf '%s\n' "$line"
+}
+
 # The interface language code ("en" when none is set or it is unknown).
 i18n_language() {
-    local code=""
-    [[ -r $HASEEN_USER_CONFIG/language ]] && read -r code <"$HASEEN_USER_CONFIG/language" || true
+    local code
+    code="$(i18n_requested "$HASEEN_USER_CONFIG/language")"
     if [[ $code =~ ^[a-z]{2,3}$ && $code != en && -r $HASEEN_PATH/i18n/$code/notify.json ]]; then
         printf '%s\n' "$code"
     else

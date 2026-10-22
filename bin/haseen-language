@@ -49,10 +49,9 @@ known() { jq -e --arg c "$1" 'has($c)' "$REGISTRY" >/dev/null; }
 field() { jq -r --arg c "$1" --arg f "$2" '.[$c][$f] // empty' "$REGISTRY"; }
 
 current() {
-    local code=""
-    # The first line, without surrounding blanks, as the shell and
-    # i18n_language read it.
-    [[ -r $FILE ]] && read -r code <"$FILE" || true
+    local code
+    # Normalised as the shell and i18n_language read it.
+    code="$(i18n_requested "$FILE")"
     if [[ $code =~ ^[a-z]{2,3}$ ]] && known "$code"; then echo "$code"; else echo en; fi
 }
 

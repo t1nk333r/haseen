@@ -83,6 +83,19 @@ Singleton {
         return Plural.pick(entry, code || root.language, count);
     }
 
+    // The code a language file asks for, exactly as bash's i18n_requested
+    // reads it (share/haseen/lib/i18n.sh): the first line without one leading
+    // BOM, one trailing CR and surrounding spaces and tabs; nothing else, so
+    // not String.trim(), which strips more. The BOM is already gone:
+    // FileView's UTF-8 decoding drops one leading BOM (a file with two reads
+    // as one, tests/test-i18n.sh), so dropping another here would drop two.
+    function requestedCode(text): string {
+        let line = String(text).split("\n")[0];
+        if (line.endsWith("\r"))
+            line = line.slice(0, -1);
+        return line.replace(/^[ \t]+/, "").replace(/[ \t]+$/, "");
+    }
+
     // A no-op that marks English kept in QML data (a model's labels) for
     // tools/i18n.py; translate it where it is shown, with tr().
     function mark(text: string): string {
@@ -147,9 +160,7 @@ Singleton {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        // The first line, as bash (i18n_language) and `haseen language`
-        // read it.
-        onLoaded: root.requested = text().split("\n")[0].trim()
+        onLoaded: root.requested = root.requestedCode(text())
         onLoadFailed: root.requested = ""
     }
 

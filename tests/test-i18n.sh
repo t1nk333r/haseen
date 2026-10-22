@@ -111,6 +111,19 @@ printf 'ar\nfoo\n' >"$cfg/language"
 assert_eq "bash: only the first line counts" "ar" "$(i18n_run i18n_language)"
 capture haseen language status
 assert_contains "language status: the first line too" "$OUTPUT" "language: ar"
+# A hand-edited file: one leading BOM, one trailing CR (CRLF) and the
+# surrounding spaces and tabs are dropped, nothing more. The same cases go to
+# the shell's I18n below (engine), which must agree. Alternating results, so
+# each engine state shows that the file was read again.
+lang_cases=(' \357\273\277ar\n=en' 'ar\r\n=ar' 'ar\r\r\n=en' '\357\273\277ar\n=ar'
+    '\357\273\277\357\273\277ar\n=en' '\357\273\277ar\r\n=ar' 'a r\n=en' ' \tar \r\n=ar')
+for case in "${lang_cases[@]}"; do
+    # shellcheck disable=SC2059 # the case is a printf format on purpose
+    printf "${case%=*}" >"$cfg/language"
+    assert_eq "bash: language file '${case%=*}'" "${case##*=}" "$(i18n_run i18n_language)"
+    capture haseen language status
+    assert_contains "language status: '${case%=*}'" "$OUTPUT" "language: ${case##*=} ("
+done
 # A command's notification in Arabic, its terminal line in English.
 echo ar >"$cfg/language"
 stub hyprctl 'exit 0'
@@ -190,6 +203,11 @@ else
     printf '%s\n' '{"panel.title": "Title", "panel.only": "English only"}' >"$SANDBOX/plugin/i18n/en.json"
     printf '%s\n' '{"panel.title": "العنوان"}' >"$SANDBOX/plugin/i18n/ar.json"
     mkdir -p "$XDG_CONFIG_HOME/haseen"
+    # The bash cases above, written raw one a step.
+    lang_steps=""
+    for case in "${lang_cases[@]}"; do
+        lang_steps+=", $(jq -cn --arg f "${case%=*}" --arg file "$XDG_CONFIG_HOME/haseen/language" '["sh", "-c", ("printf " + ($f | @sh) + " >\"$0\""), $file]')"
+    done
     harness="$SANDBOX/shell"
     mkdir -p "$harness"
     for module in Haseen Compat Ui Commons; do
@@ -264,7 +282,7 @@ ShellRoot {
         running: true
         onTriggered: {
             console.warn("STATE " + shell.step + " " + shell.state());
-            const steps = [["haseen", "language", "ar"], ["sh", "-c", "printf 'xx\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"], ["sh", "-c", "printf 'ar\\\\nfoo\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"], ["haseen", "language", "en"]];
+            const steps = [["haseen", "language", "ar"], ["sh", "-c", "printf 'xx\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"], ["sh", "-c", "printf 'ar\\\\nfoo\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"]${lang_steps}, ["haseen", "language", "en"]];
             if (shell.step < steps.length)
                 Quickshell.execDetached(steps[shell.step]);
             else
@@ -313,6 +331,11 @@ QML
     assert_eq "engine: a plugin's Arabic, English underneath" "العنوان|English only|fb" "$(st 1 .plugin)"
     assert_eq "engine: an unknown code is English" "en false" "$(st 2 '"\(.lang) \(.rtl)"')"
     assert_eq "engine: only the file's first line counts, as in bash" "ar" "$(st 3 .lang)"
-    assert_eq "engine: haseen language en returns to English" "en false Bar edge" "$(st 4 '"\(.lang) \(.rtl) \(.tr)"')"
-    [[ $(st 4 .lang) == en ]] || tail -30 <<<"$OUTPUT" >&2
+    step=4
+    for case in "${lang_cases[@]}"; do
+        assert_eq "engine: language file '${case%=*}', as bash reads it" "${case##*=}" "$(st "$step" .lang)"
+        step=$((step + 1))
+    done
+    assert_eq "engine: haseen language en returns to English" "en false Bar edge" "$(st "$step" '"\(.lang) \(.rtl) \(.tr)"')"
+    [[ $(st "$step" .lang) == en ]] || tail -30 <<<"$OUTPUT" >&2
 fi

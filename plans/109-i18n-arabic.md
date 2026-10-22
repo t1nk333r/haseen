@@ -16,7 +16,8 @@
 - **State**: DONE 2026-10-22 in a pull request (counts below), with review
   r1's fixes (jq option values, the menu's brand mark, English parity of
   dates and snooze lengths, the language file's first line, the catalog
-  check in lint); a live Arabic session and the owner's review of the
+  check in lint) and review r2's (a BOM or CRLF language file read alike
+  in bash and the shell); a live Arabic session and the owner's review of the
   Arabic are owner steps
 
 ## Decision (owner, 2026-10-21)
@@ -83,10 +84,14 @@ Omarchy 4.5 added 50 languages (verified against a read-only clone of
 
 ### The singleton and the catalogs
 
-`qs.Haseen.I18n` (`share/haseen/shell/Haseen/I18n.qml`) reads the first
-line of `~/.config/haseen/language` (watched; bash and `haseen language`
-read the same line, so `ar` followed by anything is Arabic everywhere) and,
-for a language other than
+`qs.Haseen.I18n` (`share/haseen/shell/Haseen/I18n.qml`) reads
+`~/.config/haseen/language` (watched) as bash's `i18n_requested` does,
+which `haseen language` and notifications use: the first line without one
+leading UTF-8 BOM, one trailing CR (a file saved with CRLF) and surrounding
+spaces and tabs, nothing more, so a hand-edited file is the same language
+everywhere (review r2; `FileView`'s UTF-8 decoding drops the BOM in QML,
+and eight shared cases in `tests/test-i18n.sh` hold all three to it). It
+then reads, for a language other than
 English, `share/haseen/i18n/<code>/shell.json` and `menu.json`, each read
 whole and reassigned, so every binding that called `tr()` re-renders when the
 language changes, without a restart. Its API:
@@ -101,13 +106,18 @@ language changes, without a restart. Its API:
   the English placeholders and lets no form add one
   (`tools/i18n.py`, `check_value`).
 - `mark(text)`: a no-op that marks English kept in QML data.
-- `formatDate(date, format)` and `locale`: in English exactly what the code
-  used before, `Qt.formatDateTime()` (whose day and month names Qt 6 always
-  gives in English, whatever `LANG` is) and the session's `Qt.locale()`
-  (the calendar's month and weekday names, the weather's update time); in
+- `formatDate(date, format)` and `locale`: in English the same names as
+  the code gave before. `main` named days and months with `Qt.formatDate()`
+  (the lock screen's and the screensaver's date, the weather's day names)
+  and `Qt.formatDateTime()` (the clock, the pager toast's day), both of
+  which Qt 6 writes in English whatever `LANG` is; `formatDate` is
+  `Qt.formatDateTime()` in English, which gives the same text for those
+  formats. The calendar's month and weekday names and the weather's update
+  time used the session's `Qt.locale()`, which `locale` is in English. In
   Arabic both use `ar_AE`, whatever `LANG` is. Checked offscreen under
-  `LANG=de_DE.UTF-8`: `Qt.formatDateTime(d, "dddd")` is "Thursday",
-  `Qt.locale().dayName(4)` "Donnerstag" (review r1).
+  `LANG=de_DE.UTF-8`: `Qt.formatDate(d, "dddd, d MMMM")` and
+  `Qt.formatDateTime(d, "dddd, d MMMM")` are both "Thursday, 22 October",
+  `Qt.locale().dayName(4)` is "Donnerstag" (reviews r1 and r2).
 - `formatNumber`, `rightToLeft`, `locale`, `language`, `languages`,
   `menuEntry(id)`, and `pick(entry, count, code)` for the compat host.
 
@@ -269,9 +279,11 @@ menu rows and 55 notification strings, all in `ar` (machine).
   hardware switches, reminders, transcode, migrations, the plugin URL
   handler, the boot-splash rebuild and the gestures (23 commands and
   `share/haseen/lib/gestures.sh`), plus the shell's own "%1 not loaded".
-- **Dates** with names (lock, screensaver, calendar, clock tooltip, pager,
-  prayers) through `I18n.formatDate`, in Arabic; in English they are as
-  before (below).
+- **Dates** with names: the clock, the lock screen, the screensaver, the
+  pager toast, the weather and omARR through `I18n.formatDate`, the
+  calendar's month and weekday names through `I18n.locale`, in Arabic; in
+  English they are as before (below). The prayers panel names its date in
+  the prayer names' language, as it did.
 - **Plans 105, 106, 108 and 110's strings**: per-monitor workspaces and the
   new binds, the captive-portal sign-in ("Sign in to network",
   "Sign-in required"), the agents' accounts, and the boot-splash
@@ -318,10 +330,12 @@ Kept as on `main` on purpose:
   "an hour"). Arabic uses the same number with the plural's `other` form,
   which CLDR gives a fraction: تأجيل لمدة 1.5 ساعة. Under an hour both say
   minutes.
-- Dates: see `formatDate` above. In English the clock, lock screen,
-  screensaver, pager and prayers keep `Qt.formatDateTime`'s names, and the
-  calendar and the weather keep the session's `Qt.locale()`; only Arabic
-  forces `ar_AE`. The calendar's weekday heads switch to the locale's
+- Dates: see `formatDate` above. In English the lock screen, the
+  screensaver and the weather's day names keep the names `Qt.formatDate`
+  gave, the clock and the pager toast those of `Qt.formatDateTime` (the
+  same English), omARR its English weekday names, and the calendar and the
+  weather's update time the session's `Qt.locale()`; only Arabic forces
+  `ar_AE`. The calendar's weekday heads switch to the locale's
   narrow names only when its two-letter heads collide (all of Arabic's
   start with ال); a session locale whose heads were distinct shows them as
   before.
@@ -543,6 +557,13 @@ private `XDG_RUNTIME_DIR` and `TMPDIR`, `HASEEN_REQUIRE_ENGINE=1`), on
   `test-capture-upload.sh` outside the bind mount: **358/358**;
   `test-i18n.sh` alone **84/84**. `tools/lint.sh`, now with
   `tools/i18n.py check`: lint OK.
+- After review r2, merged with `origin/main` at `bc2f6e1` (#67, plan 111;
+  no conflicts, no new desktop string): the same 97 files against the new
+  main, four short-path chunks 3665/3665, 2205/2205, 2755/2755, 2174/2174,
+  so **10799/10799** (24 more in `test-i18n.sh`, now **108/108**: eight
+  CRLF/BOM/blank cases each for bash, `haseen language status` and the
+  shell; the rest is plan 111's own), `test-capture-upload.sh` outside the
+  bind mount **358/358**, `tools/lint.sh` lint OK.
 - The first commit on its own (core, menu, bash): `test-i18n`,
   `test-settings`, `test-menu`, `test-menu-view`, `test-menu-radius`,
   `test-menu-back`, `test-core`, `test-keybinds`: **880/880**.
@@ -602,6 +623,11 @@ private `XDG_RUNTIME_DIR` and `TMPDIR`, `HASEEN_REQUIRE_ENGINE=1`), on
 
 - Arabic-Indic digits: one value in `locales.json`, not exposed as a
   command; ask if wanted.
+- The menu's Setup › Language checkmark still compares the file's raw
+  first line (`head -n1` in `share/haseen/default/menu.jsonc`), so a
+  hand-edited CRLF or BOM file can tick English while the interface is
+  Arabic; `haseen language` always writes a clean file. Normalising it
+  there means a third copy of `i18n_requested` in a menu guard.
 - haseen.prayers changed its default: its names now follow the interface
   language (setting `language`, default `Interface`); it was `English`
   (`plans/026-haseen-prayers.md`). For an English interface nothing
