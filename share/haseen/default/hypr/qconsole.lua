@@ -1,13 +1,16 @@
 -- The console (plan 105): a terminal on its own special workspace that drops
--- down over whatever workspace you are on, SUPER + GRAVE (binds.lua). The
--- workspace exists only once it is first opened, and its terminal is started
--- then, so nothing runs until the console is wanted.
+-- down over whatever workspace you are on, SUPER + GRAVE (binds.lua, through
+-- haseen.console.toggle). The workspace exists only once it is first opened,
+-- and its terminal is started then, so nothing runs until the console is
+-- wanted.
 --
 -- Adapted from Omarchy default/hypr/qconsole.lua (#7409, #7420, #9140, and
 -- d377569ed; MIT, Copyright (c) David Heinemeier Hansson). Changes: a special
 -- workspace of its own, so SUPER + S's scratchpad keeps the whole screen; the
 -- first open starts $TERMINAL, not an AI agent; a monitor that cannot be read
--- yet (a stub, or one going away) is skipped rather than raised.
+-- yet (a stub, or one going away) is skipped rather than raised; the dim and
+-- the slide are the console's only (owner, 2026-10-22: "Console only"), where
+-- Omarchy sets them for every special workspace.
 
 local CONSOLE = "special:console"
 
@@ -30,15 +33,16 @@ local function list(value)
   return type(value) == "table" and value or {}
 end
 
--- Dimming only applies while a special workspace is open, so the console gets
--- its separation from the workspace underneath without costing anything the
--- rest of the time. Hyprland has one dim for every special workspace, so the
--- scratchpad (SUPER + S) and the screensaver's workspaces get it too.
-hl.config({
-  decoration = {
-    dim_special = 0.6,
-  },
-})
+-- How much the workspace underneath is dimmed while the console shows, and how
+-- the console drops down and retracts. "slide top" names the edge the offset
+-- is measured from, not where the workspace goes: it drops into view, and
+-- "slide bottom" retracts it back up the way a Quake console does.
+local DIM = 0.6
+local IN, OUT = "specialWorkspaceIn", "specialWorkspaceOut"
+local SLIDE = {
+  [IN] = { leaf = IN, enabled = true, speed = 3, bezier = "haseenOut", style = "slide top" },
+  [OUT] = { leaf = OUT, enabled = true, speed = 2, bezier = "haseenOut", style = "slide bottom" },
+}
 
 -- The panel is always flush with the top and always centered, so two numbers
 -- describe it: the gap down each side and the gap underneath.
@@ -161,6 +165,190 @@ hl.on("monitor.focused", function()
   refit()
 end)
 
+-- The dim and the slide ---------------------------------------------------------
+--
+-- Hyprland has one dim (decoration.dim_special) and one pair of animation
+-- leaves (specialWorkspaceIn/Out) for every special workspace: set at load,
+-- the scratchpad (SUPER + S) and the screensaver's workspaces would dim and
+-- slide too. The owner chose the console only (2026-10-22), so the console
+-- borrows them and hands them back, read from Hyprland 0.56.2's source:
+--
+--   * the dim is read once, as a special workspace opens, into the monitor's
+--     fade (Monitor.cpp, setSpecialWorkspaceVisualState): set just before the
+--     console opens, it is the user's again as soon as it has;
+--   * a slide reads its leaf when it starts (the style) and on every frame
+--     until it lands (speed and on/off; hyprutils AnimatedVariable.cpp), so a
+--     leaf goes back only once its animation has run, or at once when another
+--     special workspace shows (it then leaves the way the user set, and the
+--     console stops sliding);
+--   * a reload resets every leaf and setting to the config's (ConfigManager.cpp,
+--     reload), so nothing borrowed outlives one.
+
+local set_animation = haseen.set_animation or hl.animation
+
+-- How long a leaf's animation runs: Hyprland's speed is in tenths of a second
+-- (hyprutils AnimatedVariable.cpp, getPercent), plus a few frames of slack.
+local function runs_ms(spec)
+  if spec.enabled == false then
+    return 0
+  end
+  return math.floor((tonumber(spec.speed) or 0) * 100) + 50
+end
+
+-- What the config gave LEAF, as Hyprland inherits it: its own spec, else its
+-- nearest ancestor's, else Hyprland's own default for global
+-- (AnimationTree.cpp). init.lua records every hl.animation call.
+local PARENT = { [IN] = "specialWorkspace", [OUT] = "specialWorkspace", specialWorkspace = "workspaces", workspaces = "global" }
+
+local function configured(leaf)
+  local seen = type(haseen.animations) == "table" and haseen.animations or {}
+  local node = leaf
+  while node and not seen[node] do
+    node = PARENT[node]
+  end
+  local spec = {}
+  for key, value in pairs(node and seen[node] or { enabled = true, speed = 8, bezier = "default" }) do
+    spec[key] = value
+  end
+  spec.leaf = leaf
+  return spec
+end
+
+-- lent[leaf]: the leaf holds the console's slide. turn[leaf] counts every
+-- change, so a timer set for an earlier one does nothing.
+local lent, turn = {}, {}
+
+local function bump(leaf)
+  turn[leaf] = (turn[leaf] or 0) + 1
+  return turn[leaf]
+end
+
+local function borrow(leaf)
+  bump(leaf)
+  if not lent[leaf] then
+    lent[leaf] = pcall(set_animation, SLIDE[leaf])
+  end
+end
+
+local function give_back(leaf)
+  bump(leaf)
+  if lent[leaf] then
+    lent[leaf] = nil
+    pcall(set_animation, configured(leaf))
+  end
+end
+
+-- Run fn(leaf) once ms have passed, unless the leaf changes first.
+local function after(leaf, ms, fn)
+  local mine = bump(leaf)
+  if ms <= 0 then
+    fn(leaf)
+    return
+  end
+  hl.timer(function()
+    if turn[leaf] == mine then
+      fn(leaf)
+    end
+  end, { timeout = ms, type = "oneshot" })
+end
+
+local function set_dim(value)
+  hl.config({ decoration = { dim_special = value } })
+end
+
+-- Whether the console shows, and whether any other special workspace does.
+local function specials()
+  local shown, other = false, false
+  for _, monitor in ipairs(list(hl.get_monitors())) do
+    local special = monitor.active_special_workspace
+    if special then
+      if special.name == CONSOLE then
+        shown = true
+      else
+        other = true
+      end
+    end
+  end
+  return shown, other
+end
+
+-- Bring the leaves in line with what shows. Hyprland reports every special
+-- workspace that opens or closes, however it came about (a key, focus moving
+-- off it, its last window closing, a workspace switch: Monitor.cpp,
+-- setSpecialWorkspace), after it has started their animations; OPENED is the
+-- one that opened, if any.
+local function settle(opened)
+  local shown, other = specials()
+
+  -- In is lent only for the console's own drop. Another special workspace that
+  -- opened meanwhile gets it back at once, at most a frame into its slide.
+  if not shown or (opened and opened.name ~= CONSOLE) then
+    give_back(IN)
+  end
+
+  if other then
+    -- Another special workspace shows: it closes the way the user set, and the
+    -- console, if it shows too, retracts that way as well.
+    give_back(OUT)
+  elseif shown then
+    -- The console alone: it retracts with its slide however it is closed. A
+    -- special workspace it replaced may still be leaving on the user's leaf.
+    if lent[OUT] then
+      bump(OUT)
+    else
+      after(OUT, runs_ms(configured(OUT)), borrow)
+    end
+  elseif lent[OUT] then
+    -- Nothing shows: the console is retracting on the borrowed leaf.
+    after(OUT, runs_ms(SLIDE[OUT]), give_back)
+  end
+end
+
+-- Bind actions return functions for hl.dispatch, so `hyprctl dispatch
+-- 'haseen.console.toggle()'` runs the same thing as the key; the keybind sheet
+-- (lib/keybinds-scan.lua) reads the expression to replay it.
+local function action(fn, expression)
+  if type(haseen.bind_expressions) == "table" then
+    haseen.bind_expressions[fn] = expression
+  end
+  return fn
+end
+
+local M = {}
+
+-- Show the console on the focused monitor, or hide it there. Opened another
+-- way (`hyprctl dispatch`), it shows with the user's dim and drop and still
+-- retracts with its slide.
+function M.toggle()
+  return action(function()
+    local monitor = hl.get_active_monitor()
+    local open = monitor and monitor.active_special_workspace
+    if open and open.name == CONSOLE then
+      -- A special workspace showing elsewhere could close on the same leaf.
+      local _, other = specials()
+      if not other then
+        borrow(OUT)
+      end
+      hl.dispatch(hl.dsp.workspace.toggle_special("console"))
+      return
+    end
+
+    local dim = hl.get_config("decoration.dim_special")
+    borrow(IN)
+    if type(dim) == "number" then
+      set_dim(DIM)
+    end
+    local ok, err = pcall(hl.dispatch, hl.dsp.workspace.toggle_special("console"))
+    if type(dim) == "number" then
+      set_dim(dim)
+    end
+    after(IN, runs_ms(SLIDE[IN]), give_back)
+    if not ok then
+      error(err, 0)
+    end
+  end, "haseen.console.toggle()")
+end
+
 -- Special workspaces open on the monitor they are toggled on, not on whichever
 -- output last happened to be focused when the rule was written, so these two
 -- take the monitor they are handed rather than looking one up.
@@ -168,12 +356,19 @@ hl.on("workspace.special_active", function(ws, mon)
   if ws and ws.name == CONSOLE then
     refit(mon)
   end
+  settle(ws)
 end)
 
 hl.on("workspace.move_to_monitor", function(ws, mon)
   if ws and ws.name == CONSOLE then
     refit(mon)
   end
+end)
+
+-- A reload has handed every leaf back; a console still showing borrows Out
+-- again, once the user's files have loaded.
+hl.on("config.reloaded", function()
+  settle(nil)
 end)
 
 -- The panel is only centered while the console holds one tiled window, so the
@@ -200,10 +395,5 @@ hl.on("window.destroy", recount)
 hl.on("window.move_to_workspace", recount)
 hl.on("window.update_rules", recount)
 
--- The direction names the edge the offset is measured from, not where the
--- workspace goes: "slide top" drops it down into view, and "slide bottom"
--- retracts it back up the way a Quake console does. Hyprland animates every
--- special workspace from these two leaves, so the scratchpad drops down the
--- same way; regular workspace switches stay instant (looknfeel.lua).
-hl.animation({ leaf = "specialWorkspaceIn", enabled = true, speed = 3, bezier = "haseenOut", style = "slide top" })
-hl.animation({ leaf = "specialWorkspaceOut", enabled = true, speed = 2, bezier = "haseenOut", style = "slide bottom" })
+haseen.console = M
+return M

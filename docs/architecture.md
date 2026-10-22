@@ -424,7 +424,13 @@ and the toggle (FileView watches; the toggle again on `configreloaded`) to
 show its own monitor's block. `monitor-workspaces-merged` remembers, for the
 session, where a workspace that joined another monitor's block came from. A
 bind whose action is a Lua function records the expression `hyprctl dispatch`
-replays in `haseen.bind_expressions`, which the keybind sheet reads.
+replays in `haseen.bind_expressions`, which the keybind sheet reads. Hyprland
+has no getter for animations, so `init.lua` remembers the last `hl.animation`
+spec per leaf in `haseen.animations`, from the defaults to the user's files;
+the SUPER + GRAVE console (`default/hypr/qconsole.lua`) borrows
+`decoration.dim_special` and the `specialWorkspaceIn/Out` leaves while it shows
+and hands back what the config set, so the scratchpad and the screensaver's
+workspaces keep the user's.
 
 Idle (`haseen.idle`, plans 019, 082) runs one ext-idle-notify monitor per
 non-zero timeout: `screensaverAfter`, `lockAfter`, `dpmsAfter` and

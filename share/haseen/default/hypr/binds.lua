@@ -236,9 +236,10 @@ b("SUPER + mouse_up", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }))
 
 b("SUPER + S", "Scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
 b("SUPER + ALT + S", "Move window to scratchpad", hl.dsp.window.move({ workspace = "special:scratchpad", follow = false }))
--- The console drops a terminal down from the top (qconsole.lua). code:49 is
--- the key left of 1 on every layout, as the number row is above.
-b("SUPER + code:49", "Console", hl.dsp.workspace.toggle_special("console"))
+-- The console drops a terminal down from the top (qconsole.lua), which lends
+-- it the dim and the slide while it shows. code:49 is the key left of 1 on
+-- every layout, as the number row is above.
+b("SUPER + code:49", "Console", haseen.console.toggle())
 b("SUPER + SHIFT + code:49", "Move window to console", hl.dsp.window.move({ workspace = "special:console", follow = false }))
 
 b("SUPER + SHIFT + ALT + LEFT", "Move workspace to left monitor", hl.dsp.workspace.move({ monitor = "l" }))

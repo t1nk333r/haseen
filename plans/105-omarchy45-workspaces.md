@@ -48,6 +48,16 @@ This plan is **"Per-monitor workspaces"**, **"Floating layout step"**,
 **"Quake console"** and **"New binds"**: survey Part B.2 rows 8, 14, 23, 24
 and 30, with Part C item 11's window-to-monitor keys.
 
+### The console's dim and slide (owner, 2026-10-22)
+
+The first version set the console's dim and slide at load, which Hyprland
+applies to every special workspace, so SUPER + S's scratchpad and the
+screensaver's workspaces dimmed and slid too. The review raised it, and the
+owner was asked "Console only / Everywhere, like Omarchy / No dim or slide"
+and chose, as relayed by the coordinator, **"Console only"**: haseen switches
+the dim and slide on when the console opens and back off when it closes, so
+the scratchpad and screensaver look exactly as they do on main.
+
 ## Sources
 
 The survey (Part B.2 rows 8, 14, 23, 24, 30; Part C items 5, 6, 11) and its
@@ -220,18 +230,69 @@ send anything.
 ### The console
 
 - **`share/haseen/default/hypr/qconsole.lua`** (new): the port, on a special
-  workspace of its own, `special:console` (`:12`), toggled with **SUPER +
-  GRAVE** and fed with SUPER + SHIFT + GRAVE (`binds.lua:241-242`; `code:49`,
-  the key left of 1, so it works on the Arabic layout as the number row does).
-  The first open starts `$TERMINAL` (foot unset) as SUPER + RETURN does,
-  through an exec rule that pins the workspace (`:26`). Half the usable
-  height, flush with the top, boxed 2:1 while it holds one tiled window and
-  full width with more, refitted on monitor and window events only while it
-  is shown (`:94-201`). `decoration.dim_special = 0.6` (`:39`) and the
-  `specialWorkspaceIn/Out` slide (`:208-209`) are Hyprland settings for every
-  special workspace, so SUPER + S's scratchpad and the screensaver's
-  workspaces dim and slide too; regular workspace switches stay instant. A
-  monitor that cannot be read at load is skipped under `pcall` (`:152`).
+  workspace of its own, `special:console` (`:15`), toggled with **SUPER +
+  GRAVE** through `haseen.console.toggle()` and fed with SUPER + SHIFT +
+  GRAVE (`binds.lua:242-243`; `code:49`, the key left of 1, so it works on the
+  Arabic layout as the number row does). The first open starts `$TERMINAL`
+  (foot unset) as SUPER + RETURN does, through an exec rule that pins the
+  workspace (`:29`). Half the usable height, flush with the top, boxed 2:1
+  while it holds one tiled window and full width with more, refitted on
+  monitor and window events only while it is shown (`:98-158`, `:355-396`). A
+  monitor that cannot be read at load is skipped under `pcall` (`:156`).
+- **The dim and the slide, the console's only** (owner, above). Hyprland has
+  one `decoration.dim_special` and one pair of `specialWorkspaceIn/Out` leaves
+  for every special workspace and no per-workspace style for special ones (a
+  regular workspace's style is passed to its animation, a special workspace's
+  never is: Hyprland v0.56.2 `src/output/Monitor.cpp:1470-1475` against
+  `:1566`, `:1604`, `:1654`). So the console borrows them at runtime. Read
+  from Hyprland v0.56.2's and hyprutils v0.14.2's source (both tags, read in
+  a scratch clone and deleted):
+  - the dim is read once, when a special workspace opens, into the monitor's
+    animated dim (`Monitor.cpp:1537-1550`, `setSpecialWorkspaceVisualState`).
+    `M.toggle` (`qconsole.lua:322-350`) reads the user's value with
+    `hl.get_config`, sets 0.6, dispatches, and sets the user's value back at
+    once (`:339`, `:343`): the console keeps its 0.6 and anything opened next
+    reads the user's. Each write schedules one deferred window-state refresh
+    (`src/config/supplementary/propRefresher/PropRefresher.cpp:29-41, 89-113`),
+    the kind the console's own refit already causes;
+  - a slide reads its leaf's style when it starts
+    (`src/animation/WorkspaceAnimationController.cpp:20-36`) and its speed and
+    on/off on every frame until it lands (hyprutils
+    `src/animation/AnimatedVariable.cpp:53-58, 74-78`; Hyprland
+    `src/animation/AnimationManager.cpp:284`), and `hl.animation` overwrites
+    the leaf in place (hyprutils `src/animation/AnimationConfig.cpp:35-51`).
+    So a leaf handed back too early would make a running slide jump to its
+    end. The toggle lends `specialWorkspaceIn` before it dispatches and takes
+    it back 350 ms later (speed 3 is 300 ms: the speed is in tenths of a
+    second, `AnimatedVariable.cpp:78`). `specialWorkspaceOut` is lent while
+    the console is the only special workspace shown and taken back 250 ms
+    after it closes;
+  - every way a special workspace opens or closes (a key, focus moving off
+    it, its last window closing, a workspace switch, the ext-workspace
+    protocol) goes through `CMonitor::setSpecialWorkspace`, which starts the
+    animations and then emits `workspace.special_active` (`Monitor.cpp:1552-1700`;
+    callers `src/desktop/state/FocusState.cpp:184-185`,
+    `src/desktop/view/Window.cpp:590-593, 730-733`). `settle`
+    (`qconsole.lua:280-305`) runs on it: another special workspace shown
+    anywhere gets both leaves back at once, so it closes the way the user set
+    and, if it opened within the console's 300 ms drop, it lands a frame
+    later rather than sliding; a console shown alone borrows Out, after the
+    user's own Out has run if it replaced an animated special workspace;
+  - the leaf handed back is what the config gave it: Hyprland has no getter
+    for animations, so `init.lua:119-143` wraps `hl.animation` once per Lua
+    state and remembers the last spec per leaf (from haseen's defaults to the
+    user's files), and `configured` (`qconsole.lua:203-215`) walks
+    specialWorkspaceIn/Out → specialWorkspace → workspaces → global as
+    Hyprland inherits them (`src/config/shared/animation/AnimationTree.cpp:14-66`),
+    falling back to Hyprland's own default for global;
+  - a reload resets the animation tree, every setting, the timers and the Lua
+    state before running the config again (`src/config/lua/ConfigManager.cpp:698-735`),
+    so nothing borrowed survives one; `config.reloaded` lets a console still
+    shown borrow Out again (`qconsole.lua:370`).
+  With haseen's defaults (the `workspaces` leaf off, `looknfeel.lua:84`) the
+  scratchpad and the screensaver's workspaces open and close at once, as on
+  main. `qconsole` now loads before `binds` (`init.lua:197`), which binds its
+  toggle.
 
 ### The binds
 
@@ -258,7 +319,8 @@ send anything.
 |---|---|---|
 | Per-monitor workspaces | **off** | The brief: a change to SUPER + 1..0 is the default only if one monitor behaves exactly as before. It does not. A monitor's block is fixed by its identity, so a single monitor that was not the first ever seen keeps a block above 0: the external monitor of a laptop docked with its lid closed (the laptop panel owns 1-10), a desktop monitor replaced by a new one, or the third monitor of an old session used alone (`tests/test-omarchy45-workspaces.sh` "blocks": a monitor alone starts on 21 and SUPER + 1 reaches 21). Its keys then reach 11-20, so window rules, `hyprctl dispatch workspace 3` and scripts that name a number see other ids than the keys. And a reload or monitor event renumbers an occupied workspace above 10 into the monitor's block ("single": workspace 12 becomes 2). On one monitor that has always been the first, SUPER + 1..0 reach the same 1..10 as before, and SUPER + TAB's `m+1` is the same step as `e+1`. |
 | Floating step on ALT + L | on | The owner chose the step; ALT + L already cycles the layout, and a workspace floats only when the user steps it there. A session that never floats subscribes to nothing. |
-| Console on SUPER + GRAVE | on | The owner chose "Quake console" and the key was free; nothing runs until the first press (the workspace and its terminal are created then). The dim and slide reach the scratchpad and screensaver too (above). |
+| Console on SUPER + GRAVE | on | The owner chose "Quake console" and the key was free; nothing runs until the first press (the workspace and its terminal are created then). |
+| The console's dim (0.6) and drop/retract slide | on, the console only | The owner chose "Console only" (2026-10-22): lent while the console shows and handed back, so the scratchpad and the screensaver's workspaces keep the user's dim and animations (none with haseen's defaults), as on main. |
 | SUPER + CTRL + ALT + F, SUPER + CTRL + ALT + C, SUPER + SHIFT + CTRL + arrows | on | "New binds"; free keys; no on-screen element. |
 
 No new on-screen element: the console appears only when pressed, and the bar
@@ -275,9 +337,21 @@ shows the same row of numbers, per monitor when that is on.
 - **The console as the scratchpad, as Omarchy has it**: SUPER + S is the
   owner's scratchpad and holds whatever SUPER + ALT + S sends there; boxing it
   to half the screen and starting a terminal on its first open would change
-  that. A workspace of its own keeps SUPER + S's size; the dim and the slide
-  cannot be scoped to one special workspace in Hyprland 0.56 (one
-  `dim_special`, one pair of `specialWorkspace` animation leaves).
+  that. A workspace of its own keeps SUPER + S's size.
+- **The dim and the slide everywhere, like Omarchy** (the first version of
+  this plan) and **no dim or slide**: the owner's other two answers
+  (2026-10-22); the owner chose the console only.
+- **Handing the leaves back as soon as the console has opened or closed**:
+  a slide reads its speed and on/off on every frame, so the console's drop
+  and retract would jump to their end; they go back once they have run.
+- **Lending Out only on the key that closes the console**: its last window
+  closing, focus moving off it or a workspace switch would make it vanish
+  instead of retracting; Hyprland reports all of them, so `settle` covers
+  them.
+- **Routing SUPER + S through haseen to set the leaves first**: the
+  screensaver and `hyprctl dispatch` open special workspaces without it;
+  handing the leaves back whenever another special workspace shows covers
+  every path.
 - **Seeding the console with the default AI agent** (Omarchy's
   `omarchy-agent`): the brief asks for a terminal; an agent can still be run
   in it.
@@ -297,7 +371,7 @@ shows the same row of numbers, per monitor when that is on.
 
 ## Tests
 
-- `tests/test-omarchy45-workspaces.sh` (new, 101 checks): per-monitor
+- `tests/test-omarchy45-workspaces.sh` (new, 110 checks): per-monitor
   workspaces against a Lua model adapted from Omarchy's test (off subscribes
   and rebinds nothing; enable's events, keys, the silent move and replay
   expressions; blocks across sessions and connectors; reclaim without a swap;
@@ -306,9 +380,18 @@ shows the same row of numbers, per monitor when that is on.
   fake of its `hl` calls (tiled modes subscribe to nothing; only claimed
   windows tile again; dialogs, fullscreen and pinned windows; opening and
   carrying windows; focus on click and the user's value back; a reload's
-  apply; bad specs); the console (its own workspace, the terminal seed, dim and
-  slide, the 2:1 box and full width, no refit while hidden, an unreadable
-  monitor); the real config through the keybind sheet's scan (the new keys,
+  apply; bad specs); the console against a model of Hyprland's special
+  workspaces that records what each open and close reads (its own workspace
+  and terminal seed, nothing set at load, the 0.6 dim and the drop read when
+  it opens and the user's dim back at once, In and Out lent until their
+  slides have run, the scratchpad alone untouched, another special workspace
+  on the same or another monitor taking the leaves back, its last window
+  closing, a replaced animated special workspace finishing first, a reload,
+  pulling it over to another monitor, the 2:1 box and full width, no refit
+  while hidden, an unreadable monitor); the real `init.lua` under a stub for
+  the `hl.animation` record (defaults and user specs kept, refused specs and
+  `haseen.set_animation` not, a fresh record per load, one wrapper per
+  state); the real config through the keybind sheet's scan (the new keys,
   no key twice, the HYPER layer, the toggle's rebinds and the user's bind
   winning, a floating workspace file not hanging the scan); the three
   commands and Omarchy's answers against stubbed hyprctl and qs; the bar's
@@ -316,11 +399,15 @@ shows the same row of numbers, per monitor when that is on.
   real Quickshell engine following the toggle off and on and reading the
   blocks. Five mutations (follow instead of silent, tiling unclaimed windows,
   the console on the scratchpad, the scan's number index, the old id guard)
-  each fail it.
+  each fail it, and so do five on the console's dim and slide (the dim not
+  handed back: 107/110; In handed back at once: 108/110; Out kept while
+  another special workspace shows: 109/110; the dim set at load: 4 failures;
+  `hl.animation` wrapped on every load: 109/110).
 - Updated: `tests/test-trigger.sh` (the saved layout's new form),
   `tests/test-omarchy-45.sh` (`back` passes through; the full-screen answer
   calls haseen's command), `tests/test-settings.sh` (the index lists the new
-  toggle and round-trips it).
+  toggle and round-trips it), `tests/test-keyboard.sh` (its stub of
+  `binds.lua` provides `haseen.workspaces` and `haseen.console`).
 - `tests/run.sh --affected origin/main` and the gates: see Evidence.
 
 ## Evidence
@@ -328,6 +415,22 @@ shows the same row of numbers, per monitor when that is on.
 All runs hermetic (the stub PATH, a private `XDG_RUNTIME_DIR` and `TMPDIR`
 under `/tmp`, offscreen Qt, no Hyprland or session bus), on luna with
 Hyprland 0.56.2-4, Lua 5.5.1 and Quickshell from the system packages.
+
+After the review (the console's dim and slide made the console's only, the
+settings row, origin/main at 4786acb merged in), from a short bind mount of
+the worktree:
+
+- `tests/run.sh tests/test-omarchy45-workspaces.sh`: **110/110**.
+- `tests/run.sh --affected origin/main` (78 of 160 test files): **9287/9287**.
+- Five mutations on the console's dim and slide, each reverted: see Tests.
+- `SHELLCHECK=/usr/bin/shellcheck tools/lint.sh`: lint OK (897 shell, 36 Lua,
+  198 JSON, 334 QML and 41 Go files; 2616 files, 160 tests: every file
+  covered). `tools/check-docs.sh`: OK.
+- Secrets on the branch range (merge base 4786acb): gitleaks "3 commits
+  scanned … no leaks found", and the tailnet/home-path grep over `git log -p`
+  printed nothing.
+
+Before the review:
 
 - `tests/run.sh tests/test-omarchy45-workspaces.sh`: **101/101**.
 - `tests/run.sh --affected origin/main` (77 of 159 test files; the manifest's
@@ -371,6 +474,14 @@ Hyprland 0.56.2-4, Lua 5.5.1 and Quickshell from the system packages.
   the terminal starts through `uwsm-app`, and whether the explicit
   `specialWorkspaceIn/Out` leaves animate while their `workspaces` parent is
   disabled.
+- **The console's borrowed dim and slide on screen.** That `hl.config` and
+  `hl.animation` take effect when called from a key and a timer at runtime,
+  and that the slide lands smoothly before its leaf goes back, rest on
+  reading Hyprland v0.56.2's and hyprutils v0.14.2's source (above) and on the
+  model, not on a session. A special workspace opened within the console's
+  300 ms drop starts on the borrowed slide and lands a frame later; a user who
+  enables special-workspace animations sees one opened in that window take
+  the slide's direction.
 - **Hot-plugging a monitor, a docked laptop with the lid closed, replacing a
   monitor**: modelled, not done.
 - **The widget on a real bar with Hyprland**: it was loaded in the real
@@ -382,9 +493,12 @@ Hyprland 0.56.2-4, Lua 5.5.1 and Quickshell from the system packages.
 On IO and luna, after the pull request merges and the tree is installed:
 
 1. `hyprctl reload` (or log out and in) to load the new Hyprland files. Then
-   try SUPER + GRAVE (a terminal drops down; again to hide), ALT + L three
-   times on a workspace with two windows (dwindle, scrolling, floating, and
-   back to tiled), SUPER + CTRL + ALT + F twice, and SUPER + CTRL + ALT + C.
+   try SUPER + GRAVE (a terminal drops down over a dimmed screen; again to
+   retract it), then SUPER + S: the scratchpad should open and close at once
+   with the light dim it had before, also right after closing the console and
+   while the console is open. Then ALT + L three times on a workspace with
+   two windows (dwindle, scrolling, floating, and back to tiled), SUPER + CTRL
+   + ALT + F twice, and SUPER + CTRL + ALT + C.
 2. On a machine with two monitors, if wanted: `haseen toggle monitor-workspaces on`
    (or `haseen settings set monitor-workspaces on`). Check SUPER + 1..0 on each
    monitor, each bar's numbers, and unplug and replug one monitor. It is off

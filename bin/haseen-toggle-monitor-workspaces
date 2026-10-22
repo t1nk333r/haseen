@@ -19,7 +19,8 @@ Usage: haseen toggle monitor-workspaces [on|off|toggle|status] [--dry-run]
 "on" gives every monitor its own workspaces 1-10: SUPER + 1..0 and
 SUPER + SHIFT (+ ALT) + 1..0 act on the focused monitor's, each bar shows its
 own, and a monitor gets the same ones back when it is plugged in again.
-"off" returns to Hyprland's global numbers. "status" prints on or off.
+"off" (the default) returns to Hyprland's global numbers. "status" prints
+on or off.
 
 Hyprland numbers them in blocks of ten per monitor (the laptop panel 1-10,
 the next monitor 11-20), so on one monitor that was ever second, or after a

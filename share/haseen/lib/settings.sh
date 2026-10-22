@@ -179,6 +179,9 @@ settings_rows() {
         "$([[ $(_settings_toggle no-animations) == on ]] && echo off || echo on)" "haseen toggle animations" on-off
     _settings_row one-window-ratio hypr-toggle "$state/toggles/hypr/single-window-aspect-ratio.lua" \
         "$(_settings_toggle single-window-aspect-ratio)" "haseen toggle one-window-ratio" on-off
+    # Per-monitor workspaces are off by default (plan 105): each monitor owns a
+    # block of ten ids, so on one monitor that was ever second, or after a
+    # monitor is replaced, SUPER + 1..0 reach ids 11-20 rather than 1-10.
     _settings_row monitor-workspaces hypr-toggle "$state/toggles/hypr/monitor-workspaces.lua" \
         "$(_settings_toggle monitor-workspaces)" "haseen toggle monitor-workspaces" on-off
 

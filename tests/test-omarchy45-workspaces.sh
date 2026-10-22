@@ -657,29 +657,114 @@ check(not pcall(haseen.workspace_mode, { workspace = "3", mode = "glassy" }), "a
 '
 
 # --- the console ---------------------------------------------------------------
+# A model of what Hyprland 0.56.2 does with a special workspace (Monitor.cpp,
+# setSpecialWorkspace): opening one reads the dim and the In leaf, closing one
+# the Out leaf, and the special_active event follows. `reads` keeps what each
+# open and close read; timers fire only when a scenario says so.
 sandbox console
 CONSOLE_FAKE="$SANDBOX/console.lua"
 cat >"$CONSOLE_FAKE" <<'LUA'
-world = { rules = {}, config = {}, animations = {}, handlers = {}, refreshes = 0, visible = false, windows = {} }
-local monitor = { width = 1920, height = 1080, scale = 1, transform = 0, reserved = { top = 30, bottom = 0, left = 0, right = 0 } }
-world.monitor = monitor
-haseen = { launch = function(c) return "uwsm-app -- " .. c end }
+world = { rules = {}, handlers = {}, refreshes = 0, windows = {}, dim = 0.2, dim_writes = 0,
+  leaves = {}, sets = 0, timers = {}, reads = {} }
+local function monitor(name)
+  return { name = name, width = 1920, height = 1080, scale = 1, transform = 0,
+    reserved = { top = 30, bottom = 0, left = 0, right = 0 } }
+end
+world.monitor = monitor("A")
+world.other = monitor("B")
+world.monitors = { world.monitor }
+world.focused = world.monitor
+-- What looknfeel.lua leaves recorded: every special workspace inherits the
+-- disabled workspaces leaf.
+haseen = {
+  launch = function(c) return "uwsm-app -- " .. c end,
+  bind_expressions = setmetatable({}, { __mode = "k" }),
+  animations = {
+    global = { leaf = "global", enabled = true, speed = 4, bezier = "haseenOut" },
+    workspaces = { leaf = "workspaces", enabled = false },
+  },
+  set_animation = function(spec)
+    world.sets = world.sets + 1
+    world.leaves[spec.leaf] = spec
+  end,
+}
+local function style(leaf)
+  local spec = world.leaves[leaf]
+  if not spec then return "inherited" end
+  if spec.enabled == false then return "off" end
+  return spec.style or "on"
+end
+function special_on(m) return m.active_special_workspace and m.active_special_workspace.name end
+local function event(ws, m) world.handlers["workspace.special_active"](ws, m) end
+function set_special(m, name)
+  local old = special_on(m)
+  if name then
+    local read = { monitor = m.name, opened = name, dim = world.dim, slide_in = style("specialWorkspaceIn") }
+    if old then read.closed, read.slide_out = old, style("specialWorkspaceOut") end
+    world.reads[#world.reads + 1] = read
+    m.active_special_workspace = { name = name }
+    event({ name = name }, m)
+  else
+    world.reads[#world.reads + 1] = { monitor = m.name, closed = old, slide_out = style("specialWorkspaceOut") }
+    m.active_special_workspace = nil
+    event(nil, m)
+  end
+end
+function toggle(name)
+  local full = "special:" .. name
+  local m = world.focused
+  if special_on(m) == full then
+    set_special(m, nil)
+    return
+  end
+  for _, other in ipairs(world.monitors) do
+    if other ~= m and special_on(other) == full then
+      world.reads[#world.reads + 1] = { monitor = other.name, moved = full, slide_out = style("specialWorkspaceOut") }
+      other.active_special_workspace = nil
+    end
+  end
+  set_special(m, full)
+end
+function fire_timers()
+  local due = world.timers
+  world.timers = {}
+  for _, t in ipairs(due) do t.fn() end
+end
+function last() return world.reads[#world.reads] end
+function leaf(name) return style(name) end
 hl = {
-  config = function(t) if t.decoration then world.config.dim_special = t.decoration.dim_special end end,
+  config = function(t)
+    if t.decoration and t.decoration.dim_special then
+      world.dim = t.decoration.dim_special
+      world.dim_writes = world.dim_writes + 1
+    end
+  end,
+  get_config = function(key) if key == "decoration.dim_special" then return world.dim end end,
   workspace_rule = function(r) world.rule = r; world.rules[#world.rules + 1] = r end,
-  animation = function(a) world.animations[a.leaf] = a end,
+  animation = function() error("the console set an animation through the recorder", 2) end,
   on = function(name, fn) world.handlers[name] = fn end,
-  get_workspace = function(name) return { name = name, visible = world.visible, monitor = world.visible and world.monitor or nil } end,
+  timer = function(fn, opts) world.timers[#world.timers + 1] = { fn = fn, timeout = opts.timeout, type = opts.type } end,
+  get_monitors = function() return world.monitors end,
+  get_active_monitor = function() return world.focused end,
+  get_workspace = function(name)
+    for _, m in ipairs(world.monitors) do
+      if special_on(m) == name then return { name = name, visible = true, monitor = m } end
+    end
+    return { name = name, visible = false }
+  end,
   get_workspace_windows = function() return world.windows end,
-  get_active_monitor = function() return world.monitor end,
   exec_scheduled_prop_refresh_immediately = function() world.refreshes = world.refreshes + 1 end,
+  dispatch = function(d) toggle(d.special) end,
+  dsp = { workspace = { toggle_special = function(name) return { special = name } end } },
 }
 function check(condition, message)
   if not condition then error(message, 2) end
 end
 function load_console()
-  dofile(os.getenv("HASEEN_PATH") .. "/default/hypr/qconsole.lua")
+  return dofile(os.getenv("HASEEN_PATH") .. "/default/hypr/qconsole.lua")
 end
+-- SUPER + GRAVE, as the bind runs it.
+function press() haseen.console.toggle()() end
 LUA
 
 console() {
@@ -688,15 +773,136 @@ console() {
     [[ $STATUS == 0 ]] || printf '    %s\n' "$OUTPUT" >&2
 }
 
-console "its own special workspace, a terminal on first open, dimmed and dropping down" '
+console "its own special workspace, a terminal on first open, nothing global at load" '
 load_console()
 local r = world.rule
 check(r.workspace == "special:console", "the console is special:console, not the scratchpad: " .. r.workspace)
 check(r.on_created_empty == "[workspace special:console silent] uwsm-app -- \"${TERMINAL:-foot}\"", "the first open starts the terminal: " .. r.on_created_empty)
 check(r.no_border and r.gaps_in == 0, "no border, no inner gaps")
-check(world.config.dim_special == 0.6, "the workspace underneath is dimmed")
-check(world.animations.specialWorkspaceIn.style == "slide top", "it drops down")
-check(world.animations.specialWorkspaceOut.style == "slide bottom", "and retracts up")
+check(world.dim == 0.2 and world.dim_writes == 0, "loading leaves the dim alone")
+check(world.sets == 0 and next(world.leaves) == nil, "loading sets no animation leaf")
+check(haseen.bind_expressions[haseen.console.toggle()] == "haseen.console.toggle()", "the keybind sheet can replay the key")
+'
+
+console "SUPER + GRAVE: dimmed and dropping down, the settings handed back" '
+load_console()
+press()
+local open = last()
+check(open.opened == "special:console" and open.dim == 0.6, "the console opens over a 0.6 dim: " .. tostring(open.dim))
+check(open.slide_in == "slide top", "and drops down: " .. open.slide_in)
+check(world.dim == 0.2, "the dim is the user'"'"'s again once Hyprland has read it")
+check(leaf("specialWorkspaceOut") == "slide bottom", "while it shows alone it retracts with its slide")
+check(leaf("specialWorkspaceIn") == "slide top", "the drop keeps its leaf until it lands")
+check(#world.timers == 1 and world.timers[1].timeout == 350 and world.timers[1].type == "oneshot", "In goes back after 300 ms and a little")
+fire_timers()
+check(leaf("specialWorkspaceIn") == "off", "In is the user'"'"'s again: " .. leaf("specialWorkspaceIn"))
+press()
+local close = last()
+check(close.closed == "special:console" and close.slide_out == "slide bottom", "it retracts up")
+check(leaf("specialWorkspaceOut") == "slide bottom", "Out stays lent while the retract runs")
+check(#world.timers == 1 and world.timers[1].timeout == 250, "Out goes back after 200 ms and a little")
+fire_timers()
+check(leaf("specialWorkspaceOut") == "off" and leaf("specialWorkspaceIn") == "off", "closed: both leaves are the user'"'"'s")
+'
+
+console "the scratchpad alone is untouched" '
+load_console()
+toggle("scratchpad")
+check(last().dim == 0.2 and last().slide_in == "inherited", "it opens over the user'"'"'s dim, without the drop")
+toggle("scratchpad")
+check(last().slide_out == "inherited", "and closes without the retract")
+check(world.sets == 0 and world.dim_writes == 0 and #world.timers == 0, "the console changed nothing")
+'
+
+console "another special workspace takes the leaves back" '
+load_console()
+press()
+fire_timers()
+toggle("scratchpad")
+local swap = last()
+check(swap.opened == "special:scratchpad" and swap.dim == 0.2 and swap.slide_in == "off", "SUPER + S over the console: the user'"'"'s dim and drop")
+check(swap.closed == "special:console", "the console is replaced")
+check(leaf("specialWorkspaceOut") == "off", "the scratchpad will close the way the user set")
+toggle("scratchpad")
+check(last().slide_out == "off", "and does: " .. last().slide_out)
+-- Pressed within the drop: the scratchpad starts on the slide, In comes back at once.
+press()
+toggle("scratchpad")
+check(leaf("specialWorkspaceIn") == "off" and leaf("specialWorkspaceOut") == "off", "within the drop: both back at once")
+fire_timers()
+check(leaf("specialWorkspaceIn") == "off", "the drop timer then does nothing")
+'
+
+console "its last window closing, or focus leaving, hands Out back" '
+load_console()
+press()
+fire_timers()
+set_special(world.monitor, nil) -- Hyprland closes it however it was left
+check(last().slide_out == "slide bottom", "it retracts with its slide")
+fire_timers()
+check(leaf("specialWorkspaceOut") == "off", "then Out is the user'"'"'s")
+'
+
+console "a special workspace on another monitor keeps the user's leaves" '
+load_console()
+world.monitors = { world.monitor, world.other }
+world.focused = world.other
+toggle("scratchpad")
+world.focused = world.monitor
+press()
+check(last().slide_in == "slide top" and last().dim == 0.6, "the console still drops, dimmed")
+check(leaf("specialWorkspaceOut") ~= "slide bottom", "but Out stays the user'"'"'s while the scratchpad shows")
+fire_timers()
+world.focused = world.other
+toggle("scratchpad")
+check(last().slide_out ~= "slide bottom", "the scratchpad closes the way the user set")
+check(leaf("specialWorkspaceOut") == "slide bottom", "and the console, alone again, has its retract back")
+world.focused = world.monitor
+press()
+check(last().slide_out == "slide bottom", "it retracts with it")
+'
+
+console "a special workspace the console replaced finishes leaving first" '
+haseen.animations.specialWorkspace = { leaf = "specialWorkspace", enabled = true, speed = 5, bezier = "default", style = "fade" }
+load_console()
+toggle("scratchpad")
+press()
+check(last().closed == "special:scratchpad" and last().slide_out == "inherited", "the scratchpad leaves on the user'"'"'s fade")
+check(leaf("specialWorkspaceOut") == "inherited", "Out is not borrowed while that fade runs")
+local waits = {}
+for _, t in ipairs(world.timers) do waits[#waits + 1] = t.timeout end
+table.sort(waits)
+check(waits[1] == 350 and waits[2] == 550, "Out waits the user'"'"'s 500 ms: " .. table.concat(waits, ","))
+fire_timers()
+check(leaf("specialWorkspaceOut") == "slide bottom", "then the console borrows it")
+check(world.leaves.specialWorkspaceIn.style == "fade" and world.leaves.specialWorkspaceIn.speed == 5, "In came back as the user'"'"'s fade")
+'
+
+console "a reload starts from the config and borrows Out for a console still showing" '
+load_console()
+press()
+fire_timers()
+-- Hyprland resets the tree, the timers and the Lua state, then reruns the config.
+world.leaves, world.timers, world.handlers = {}, {}, {}
+load_console()
+check(world.sets == 3, "loading again sets nothing: " .. world.sets)
+world.handlers["config.reloaded"]()
+check(leaf("specialWorkspaceOut") == "slide bottom", "the console showing retracts with its slide")
+check(leaf("specialWorkspaceIn") == "inherited", "and drops nothing")
+press()
+check(last().slide_out == "slide bottom", "closed after the reload: it retracts")
+'
+
+console "pulled over from another monitor, it is dimmed there" '
+load_console()
+world.monitors = { world.monitor, world.other }
+press()
+fire_timers()
+world.focused = world.other
+press()
+check(last().monitor == "B" and last().opened == "special:console" and last().dim == 0.6, "dimmed on the monitor it moved to")
+check(world.dim == 0.2, "the dim is handed back")
+check(leaf("specialWorkspaceOut") == "slide bottom", "still alone: Out stays lent")
 '
 
 console "half the usable height, boxed 2:1 alone, full width with a second app" '
@@ -705,7 +911,7 @@ load_console()
 local g = world.rule.gaps_out
 check(g.top == 0 and g.bottom == 525 and g.left == 435 and g.right == 435, "alone: " .. g.left .. "/" .. g.bottom)
 world.windows = { { floating = false }, { floating = false } }
-world.visible = true
+world.monitor.active_special_workspace = { name = "special:console" }
 world.handlers["window.open"]()
 g = world.rule.gaps_out
 check(g.left == 0 and g.right == 0 and g.bottom == 525, "two apps get the full width: " .. g.left)
@@ -713,7 +919,7 @@ check(world.refreshes == 1, "the new gaps land in the same pass")
 local before = #world.rules
 world.handlers["monitor.focused"]()
 check(#world.rules == before, "a hop that changes nothing writes no rule")
-world.visible = false
+world.monitor.active_special_workspace = nil
 world.windows = {}
 world.handlers["window.open"]()
 check(#world.rules == before, "a hidden console is not refitted for every window")
@@ -725,6 +931,47 @@ load_console()
 local g = world.rule.gaps_out
 check(g.left == 0 and g.bottom == 0, "the whole work area until a monitor can be read")
 '
+
+# init.lua remembers every hl.animation spec the config gives, so the console
+# can hand back what the config set: run the real init.lua under a stub.
+REC_STUB="$SANDBOX/rec.lua"
+cat >"$REC_STUB" <<'LUA'
+RAW = {}
+local function proxy(name)
+  return setmetatable({}, {
+    __index = function(_, k) return proxy(name .. "." .. k) end,
+    __call = function(_, ...) return { dsp = name, args = { ... } } end,
+  })
+end
+hl = setmetatable({
+  dsp = proxy("dsp"),
+  animation = function(spec) RAW[#RAW + 1] = spec end,
+}, { __index = function() return function() end end })
+function check(condition, message)
+  if not condition then error(message, 2) end
+end
+LUA
+capture lua -e "dofile('$REC_STUB')" -e '
+dofile(os.getenv("HASEEN_PATH") .. "/default/hypr/init.lua")
+local a = haseen.animations
+check(a.workspaces and a.workspaces.enabled == false, "looknfeel.lua'"'"'s workspaces leaf is remembered")
+check(a.global and a.global.speed == 4, "and its global one")
+check(a.specialWorkspaceIn == nil and a.specialWorkspaceOut == nil, "the console sets no leaf at load")
+local raw = #RAW
+hl.animation({ leaf = "windowsMove", enabled = true, speed = 3, bezier = "default" })
+check(#RAW == raw + 1 and a.windowsMove.speed == 3, "a user spec reaches Hyprland and is remembered")
+hl.animation({ leaf = "fade", enabled = true })
+check(#RAW == raw + 2 and a.fade == nil, "a spec Hyprland refuses reaches it but is not remembered")
+haseen.set_animation({ leaf = "zoomFactor", enabled = true, speed = 1, bezier = "default" })
+check(#RAW == raw + 3 and a.zoomFactor == nil, "haseen.set_animation is not remembered")
+dofile(os.getenv("HASEEN_PATH") .. "/default/hypr/init.lua")
+check(next(haseen.animations.windowsMove or {}) == nil, "a second load starts an empty record")
+raw = #RAW
+hl.animation({ leaf = "windowsMove", enabled = false })
+check(#RAW == raw + 1, "a state kept across loads is wrapped once: " .. (#RAW - raw))
+'
+assert_status "init.lua remembers the config's animation specs" 0 "$STATUS"
+[[ $STATUS == 0 ]] || printf '    %s\n' "$OUTPUT" >&2
 
 # --- the keys in the real config ------------------------------------------------
 # The keybind sheet's scan (lib/keybinds-scan.lua) runs the seeded config the
@@ -739,7 +986,7 @@ SUPER=64 SHIFT=1 CTRL=4 ALT=8
 scan
 assert_status "the config scans" 0 "$STATUS"
 assert_eq "no key is bound twice" "" "$(cut -f1,3 <<<"$OUTPUT" | tr '[:lower:]' '[:upper:]' | sort | uniq -d)"
-assert_eq "SUPER + GRAVE opens the console" 'Console|lua|hl.dsp.workspace.toggle_special("console")|Workspaces' \
+assert_eq "SUPER + GRAVE opens the console" 'Console|lua|haseen.console.toggle()|Workspaces' \
     "$(row $SUPER code:49)"
 assert_eq "SUPER + SHIFT + GRAVE sends a window to it" \
     'Move window to console|lua|hl.dsp.window.move({ follow = false, workspace = "special:console" })|Workspaces' \
