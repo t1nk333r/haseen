@@ -403,5 +403,6 @@ touched, each because a change above made it stale or wrong:
 `share/haseen/lib/settings.sh` (one row), plan 102's
 `share/haseen/omarchy/bin/omarchy-hyprland-workspace-layout-{current,default,toggle}`,
 `omarchy-toggle-fullscreen-desktop` and their `commands.tsv` rows, and
-`tests/test-{trigger,omarchy-45,settings}.sh`; plus `AGENTS.md` (the default
+`tests/test-{trigger,omarchy-45,settings}.sh`, and `tests/test-keyboard.sh`
+(its stub of `binds.lua` needs `haseen.workspaces`); plus `AGENTS.md` (the default
 keys line), `docs/architecture.md`, `handoff.md` and `NOTICE.md`.
