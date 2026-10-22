@@ -273,7 +273,9 @@ Scope {
                     View {
                         anchors.fill: parent
                         clock: Qt.formatTime(root.now, root.clockFormat)
-                        date: Qt.formatDate(root.now, "dddd, d MMMM")
+                        // Day and month names in the interface language; the
+                        // format is a catalog string (plan 109).
+                        date: I18n.formatDate(root.now, I18n.tr("dddd, d MMMM"))
                         branding: {
                             const t = userText.loaded ? userText.text() : "";
                             return t.trim() !== "" ? t : (defaultText.loaded ? defaultText.text() : "");

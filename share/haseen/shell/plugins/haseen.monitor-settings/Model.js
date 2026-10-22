@@ -10,6 +10,10 @@
 // function instead of a drag handler, and scales are a fixed list filtered
 // through the clean-scale rule.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // The scales offered; each is snapped to one Hyprland accepts for the mode.
 const SCALES = [1, 1.25, 1.5, 1.6, 1.75, 2, 2.5, 3];
 
@@ -89,13 +93,13 @@ function label(m) {
         return "";
     const name = String(m.name || "");
     if (isInternal(name))
-        return "Built-in display";
+        return N_("Built-in display");
     const make = cleanVendor(m.make);
     const model = String(m.model || "").trim();
     if (!looksLikeRawCode(model))
         return make && make.toLowerCase() !== model.toLowerCase() ? make + " " + model : model;
     const description = String(m.description || "").trim();
-    return description || name || "Unknown display";
+    return description || name || N_("Unknown display");
 }
 
 function num(v, fallback) {

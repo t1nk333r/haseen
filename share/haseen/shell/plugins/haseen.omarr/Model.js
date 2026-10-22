@@ -8,6 +8,36 @@
 // (haseen notification send, xdg-open through Apps.launch), the Jellyfin
 // device name, settings read from the manifest instead of Omarchy's
 // shell.json, and the Omarchy host-write guards dropped with the host.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). The helpers
+// that compose a line take the I18n singleton as an optional last argument
+// (`Model.fleetLine(snap, I18n)`) and fill its translation; without it they
+// return English, which is what tests/ and the feed export read.
+function N_(text) { return text }
+// A counted pair, marked for tools/i18n.py: countText() picks the form.
+function N_n(singular, plural) { return [singular, plural] }
+
+// %1..%9 replaced in one pass, as I18n.tr fills them.
+function fillText(text, args) {
+  var list = args || []
+  return String(text).replace(/%([1-9])/g, function(whole, digit) {
+    var value = list[Number(digit) - 1]
+    return value === undefined || value === null ? whole : String(value)
+  })
+}
+
+function trText(i18n, text, args) {
+  var list = args || []
+  return i18n ? i18n.tr.apply(i18n, [text].concat(list)) : fillText(text, list)
+}
+
+function countText(i18n, forms, count, args) {
+  var list = args || []
+  if (i18n) return i18n.tn.apply(i18n, [forms[0], forms[1], count].concat(list))
+  return fillText(Number(count) === 1 ? forms[0] : forms[1], [count].concat(list))
+}
+
 var PLUGIN_ID = "haseen.omarr"
 var API_MAX_BYTES = 2 * 1024 * 1024
 var IMAGE_MAX_BYTES = 8 * 1024 * 1024
@@ -25,13 +55,15 @@ var PAGE_SIZE_MAX = 50
 // call "Plex" still gets a sensible tile icon; that is not Plex support.
 var KINDS = ["generic", "sonarr", "radarr", "sabnzbd", "qbittorrent", "jellyfin"]
 
+// The default groups are stored as English and shown through groupLabel();
+// a default name is the product's, or "Service" (shown through I18n.tr).
 var KIND_DEFAULTS = {
-  generic: { name: "Service", group: "Other", port: 80 },
-  sonarr: { name: "Sonarr", group: "Media", port: 8989 },
-  radarr: { name: "Radarr", group: "Media", port: 7878 },
-  sabnzbd: { name: "SABnzbd", group: "Downloads", port: 8080 },
-  qbittorrent: { name: "qBittorrent", group: "Downloads", port: 8080 },
-  jellyfin: { name: "Jellyfin", group: "Media", port: 8096 }
+  generic: { name: N_("Service"), group: N_("Other"), port: 80 },
+  sonarr: { name: "Sonarr", group: N_("Media"), port: 8989 },
+  radarr: { name: "Radarr", group: N_("Media"), port: 7878 },
+  sabnzbd: { name: "SABnzbd", group: N_("Downloads"), port: 8080 },
+  qbittorrent: { name: "qBittorrent", group: N_("Downloads"), port: 8080 },
+  jellyfin: { name: "Jellyfin", group: N_("Media"), port: 8096 }
 }
 
 var SCAN_SERVICES = [
@@ -76,6 +108,17 @@ function kindLabel(kind) {
 function kindGroup(kind) {
   var meta = KIND_DEFAULTS[kindOf(kind)]
   return meta ? meta.group : "Other"
+}
+
+// A group as the panel shows it: a default group (KIND_DEFAULTS) in the
+// interface language when QML passes I18n, any other group as typed.
+function groupLabel(group, i18n) {
+  var name = String(group === undefined || group === null ? "" : group)
+  if (!i18n || name === "") return name
+  for (var kind in KIND_DEFAULTS) {
+    if (KIND_DEFAULTS[kind].group === name) return i18n.tr(name)
+  }
+  return name
 }
 
 function normalizeGroup(value, fallback) {
@@ -577,20 +620,22 @@ function calendarDateMeta(value) {
   return parts[2] + "-" + parts[1] + "-" + parts[0].slice(2)
 }
 
-function calendarDayLabel(key, now) {
+function calendarDayLabel(key, now, i18n) {
   var day = calendarDayKey(key)
   if (!day) return ""
   var today = localDayKey(now || new Date())
-  if (day === today) return "Today"
+  if (day === today) return trText(i18n, N_("Today"))
   var todayDate = dateFromDayKey(today)
   var dayDate = dateFromDayKey(day)
   if (!todayDate || !dayDate) return day
   var tomorrow = new Date(todayDate.getTime())
   tomorrow.setDate(tomorrow.getDate() + 1)
-  if (day === localDayKey(tomorrow)) return "Tomorrow"
+  if (day === localDayKey(tomorrow)) return trText(i18n, N_("Tomorrow"))
   var name = WEEKDAYS[dayDate.getDay()] || day
-  if (WEEKDAYS[todayDate.getDay()] === name && day !== today) return "Next " + name
-  return name
+  // The day's name in the interface language (I18n.formatDate), else English.
+  var shown = i18n && WEEKDAYS[dayDate.getDay()] ? i18n.formatDate(dayDate, "dddd") : name
+  if (WEEKDAYS[todayDate.getDay()] === name && day !== today) return trText(i18n, N_("Next %1"), [shown])
+  return shown
 }
 
 function toList(value) {
@@ -601,7 +646,7 @@ function toList(value) {
   return out
 }
 
-function groupedCalendar(events, now) {
+function groupedCalendar(events, now, i18n) {
   var list = toList(events)
   list.sort(function(a, b) {
     var da = calendarDayKey(a && a.airDate)
@@ -616,7 +661,7 @@ function groupedCalendar(events, now) {
     var key = calendarDayKey(ev.airDate)
     var bucket = key || "_"
     if (!map[bucket]) {
-      var label = key ? calendarDayLabel(key, now) : ""
+      var label = key ? calendarDayLabel(key, now, i18n) : ""
       var meta = key ? calendarDateMeta(key) : ""
       map[bucket] = {
         day: label,
@@ -660,7 +705,7 @@ function capList(list, max) {
   return list.slice(0, n)
 }
 
-function listPager(page, count, total, pageSize) {
+function listPager(page, count, total, pageSize, i18n) {
   var p = listPage(page)
   var size = clampPageSize(pageSize)
   var n = Array.isArray(count) ? count.length : (parseInt(count, 10) || 0)
@@ -671,7 +716,7 @@ function listPager(page, count, total, pageSize) {
   var hasPrev = p > 1
   var hasNext = tot > 0 ? to < tot : n >= size
   var label = ""
-  if (from) label = tot ? from + "-" + to + " of " + tot : from + "-" + to
+  if (from) label = tot ? trText(i18n, N_("%1-%2 of %3"), [from, to, tot]) : from + "-" + to
   return { page: p, hasPrev: hasPrev, hasNext: hasNext, from: from, to: to, total: tot, label: label }
 }
 
@@ -1294,7 +1339,7 @@ function pickJellyfinUser(raw, preferredName) {
 
 function applyJellyfinProfileMiss(snapshot, preferredName) {
   var next = snapshot && typeof snapshot === "object" ? snapshot : emptySnapshot({})
-  next.statusText = String(preferredName || "") ? "Profile not found: " + preferredName : "No enabled profile"
+  next.statusText = String(preferredName || "") ? fillText(N_("Profile not found: %1"), [preferredName]) : N_("No enabled profile")
   next.onDeck = []
   next.recent = []
   return next
@@ -1331,7 +1376,7 @@ function parseJellyfinItem(row, session) {
   progress = Math.max(0, Math.min(1, Number(progress) || 0))
   if (sessionRow) {
     var who = [sessionRow.UserName, sessionRow.DeviceName || sessionRow.Client].filter(Boolean).join(" · ")
-    if (sessionRow.PlayState && sessionRow.PlayState.IsPaused) who = who ? who + " · Paused" : "Paused"
+    if (sessionRow.PlayState && sessionRow.PlayState.IsPaused) who = who ? who + " · " + N_("Paused") : N_("Paused")
     if (who) subtitle = subtitle ? subtitle + " · " + who : who
   }
   var art = jellyfinItemImage(item)
@@ -1384,7 +1429,7 @@ function emptySnapshot(service) {
     url: String(svc.url || ""),
     group: String(svc.group || ""),
     health: "unknown",
-    statusText: "Waiting…",
+    statusText: N_("Waiting…"),
     version: "",
     paused: false,
     speed: 0,
@@ -1410,10 +1455,10 @@ function applyHttpHealth(snapshot, statusCode) {
   var code = parseInt(statusCode, 10) || 0
   if (code >= 200 && code < 400) {
     copy.health = "up"
-    copy.statusText = copy.version ? copy.version : "Reachable"
+    copy.statusText = copy.version ? copy.version : N_("Reachable")
   } else {
     copy.health = "down"
-    copy.statusText = code ? "HTTP " + code : "Unreachable"
+    copy.statusText = code ? "HTTP " + code : N_("Unreachable")
   }
   return copy
 }
@@ -1618,7 +1663,7 @@ function mergeNow(snapshots) {
         id: "down-" + snap.id,
         serviceId: snap.id,
         title: snap.name,
-        body: snap.statusText || "Unreachable"
+        body: snap.statusText || N_("Unreachable")
       })
     }
     if (snap.showQueue) {
@@ -1712,29 +1757,58 @@ function mergeNow(snapshots) {
   }
 }
 
-function fleetLine(snapshot) {
+function fleetLine(snapshot, i18n) {
   var snap = snapshot || emptySnapshot({})
-  if (snap.health === "down") return "down"
-  if (snap.health === "unknown") return "waiting"
+  if (snap.health === "down") return trText(i18n, N_("down"))
+  if (snap.health === "unknown") return trText(i18n, N_("waiting"))
   if (isMediaKind(snap.kind)) {
     var watching = Array.isArray(snap.sessions) ? snap.sessions : []
-    if (watching.length === 1) return "Watching " + (watching[0].title || "")
-    if (watching.length > 1) return watching.length + " watching"
+    if (watching.length === 1) return trText(i18n, N_("Watching %1"), [watching[0].title || ""])
+    if (watching.length > 1) return countText(i18n, N_n("%1 watching", "%1 watching"), watching.length)
     var deck = Array.isArray(snap.onDeck) ? snap.onDeck : []
-    if (deck.length === 1) return "1 on deck"
-    if (deck.length > 1) return deck.length + " on deck"
+    if (deck.length > 0) return countText(i18n, N_n("%1 on deck", "%1 on deck"), deck.length)
   }
   var active = 0
   var queue = Array.isArray(snap.queue) ? snap.queue : []
   for (var i = 0; i < queue.length; i++) if (isActiveDownload(queue[i])) active += 1
   if (active > 0) {
     if (snap.speed > 0) return formatSpeed(snap.speed)
-    return active === 1 ? "1 downloading" : active + " downloading"
+    return countText(i18n, N_n("%1 downloading", "%1 downloading"), active)
   }
   var cal = Array.isArray(snap.calendar) ? snap.calendar : []
   if (cal.length && cal[0].airDate) return cal[0].title || cal[0].airDate
   if (snap.version) return snap.version
-  return "idle"
+  return trText(i18n, N_("idle"))
+}
+
+// The status texts this plugin writes into a snapshot's statusText (the
+// rest is the service's own: a version, an app name, a speed, "HTTP 401").
+var STATUS_TEXTS = [N_("Waiting…"), N_("Reachable"), N_("Unreachable"), N_("No enabled profile"),
+  N_("Paused"), N_("Idle"), N_("Back online")]
+
+// A snapshot's statusText (or a notification body) as the panel shows it:
+// this plugin's own wording in the interface language when QML passes I18n,
+// the service's own text as it came.
+function statusLabel(text, i18n) {
+  var value = String(text === undefined || text === null ? "" : text)
+  if (!i18n || value === "") return value
+  if (STATUS_TEXTS.indexOf(value) !== -1) return i18n.tr(value)
+  var missing = value.match(/^Profile not found: ([\s\S]*)$/)
+  if (missing) return i18n.tr(N_("Profile not found: %1"), missing[1])
+  return value
+}
+
+// A Jellyfin session's second line (parseJellyfinItem) with its "Paused" in
+// the interface language; the rest of it is the server's.
+function sessionSubtitle(text, i18n) {
+  var value = String(text === undefined || text === null ? "" : text)
+  var paused = N_("Paused")
+  var tail = " · " + paused
+  if (!i18n) return value
+  if (value === paused) return i18n.tr(paused)
+  if (value.length > tail.length && value.slice(value.length - tail.length) === tail)
+    return value.slice(0, value.length - tail.length) + " · " + i18n.tr(paused)
+  return value
 }
 
 function oneDecimal(n) {
@@ -1758,32 +1832,34 @@ function formatBytes(n) {
   return oneDecimal(v / (1024 * 1024 * 1024)) + " GB"
 }
 
-function formatEta(seconds) {
+function formatEta(seconds, i18n) {
   var s = parseInt(seconds, 10)
   if (!(s > 0) || s > 86400 * 30) return ""
-  if (s < 60) return s + "s"
-  if (s < 3600) return Math.floor(s / 60) + "m"
-  if (s < 86400) return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m"
-  return Math.floor(s / 86400) + "d"
+  if (s < 60) return trText(i18n, N_("%1s"), [s])
+  if (s < 3600) return trText(i18n, N_("%1m"), [Math.floor(s / 60)])
+  if (s < 86400) return trText(i18n, N_("%1h %2m"), [Math.floor(s / 3600), Math.floor((s % 3600) / 60)])
+  return trText(i18n, N_("%1d"), [Math.floor(s / 86400)])
 }
 
-function formatTimeLeft(raw) {
+function formatTimeLeft(raw, i18n) {
   var text = String(raw || "").trim()
   if (!text) return ""
   var match = text.match(/^(\d+):(\d{2}):(\d{2})/)
   if (!match) return text
   var sec = (parseInt(match[1], 10) || 0) * 3600 + (parseInt(match[2], 10) || 0) * 60 + (parseInt(match[3], 10) || 0)
-  return formatEta(sec)
+  return formatEta(sec, i18n)
 }
 
-function queueLine(item) {
+// A queue row's second line: the client's own status and protocol words,
+// then the time left (formatEta, translated when QML passes I18n).
+function queueLine(item, i18n) {
   var row = item || {}
   var parts = []
   var status = String(row.status || "").toLowerCase()
   if (status) parts.push(status)
   var protocol = String(row.protocol || "").toLowerCase()
   if (protocol) parts.push(protocol)
-  var eta = formatTimeLeft(row.timeleft)
+  var eta = formatTimeLeft(row.timeleft, i18n)
   if (eta) parts.push(eta)
   return parts.join(" · ")
 }
@@ -1801,7 +1877,7 @@ function barBadge(snapshots) {
   }
 }
 
-function barStatusText(snapshots) {
+function barStatusText(snapshots, i18n) {
   var list = Array.isArray(snapshots) ? snapshots : []
   if (!list.length) return "omARR"
   var down = []
@@ -1813,9 +1889,10 @@ function barStatusText(snapshots) {
     for (var q = 0; q < queue.length; q++) if (isActiveDownload(queue[q])) downloading += 1
   }
   var parts = []
-  if (downloading) parts.push(downloading + " downloading")
-  if (down.length) parts.push(down.join(", ") + " unreachable")
-  if (!parts.length) parts.push(list.length === 1 ? list[0].name + " idle" : list.length + " services")
+  if (downloading) parts.push(countText(i18n, N_n("%1 downloading", "%1 downloading"), downloading))
+  if (down.length) parts.push(trText(i18n, N_("%1 unreachable"), [down.join(", ")]))
+  if (!parts.length) parts.push(list.length === 1 ? trText(i18n, N_("%1 idle"), [list[0].name])
+    : countText(i18n, N_n("%1 service", "%1 services"), list.length))
   return parts.join(" · ")
 }
 
@@ -1993,7 +2070,7 @@ function eventsFromPoll(prev, next, service) {
       serviceId: after.id,
       serviceName: after.name,
       title: after.name,
-      body: after.statusText || "Unreachable"
+      body: after.statusText || N_("Unreachable")
     })
   }
   if (before.health === "down" && after.health === "up") {
@@ -2003,7 +2080,7 @@ function eventsFromPoll(prev, next, service) {
       serviceId: after.id,
       serviceName: after.name,
       title: after.name,
-      body: "Back online"
+      body: N_("Back online")
     })
   }
   var prevQueue = Array.isArray(before.queue) ? before.queue : []
@@ -2108,24 +2185,30 @@ function shouldNotify(event, service, seen) {
   return true
 }
 
-function toastParts(event) {
+// A poll event's notification: the headline names the service and what
+// happened, the body is the title it happened to (or, for a health change,
+// the service's status). In the interface language when QML passes I18n.
+function toastParts(event, i18n) {
   var row = event || {}
   var type = row.type
   var title = row.serviceName || "omARR"
-  if (type === "service-down") title = row.serviceName + " is down"
-  else if (type === "service-up") title = row.serviceName + " is back"
-  else if (type === "grabbed") title = row.serviceName + " grabbed"
-  else if (type === "library-added") title = row.serviceName + " added"
-  else if (type === "import") title = row.serviceName + " imported"
-  else if (type === "download-finished") title = row.serviceName + " finished"
-  else if (type === "download-failed") title = row.serviceName + " failed"
+  var name = [String(row.serviceName)]
+  if (type === "service-down") title = trText(i18n, N_("%1 is down"), name)
+  else if (type === "service-up") title = trText(i18n, N_("%1 is back"), name)
+  else if (type === "grabbed") title = trText(i18n, N_("%1 grabbed"), name)
+  else if (type === "library-added") title = trText(i18n, N_("%1 added"), name)
+  else if (type === "import") title = trText(i18n, N_("%1 imported"), name)
+  else if (type === "download-finished") title = trText(i18n, N_("%1 finished"), name)
+  else if (type === "download-failed") title = trText(i18n, N_("%1 failed"), name)
   var glyph = "󰕙"
   if (type === "service-down") glyph = "󰀦"
   else if (type === "service-up") glyph = "󰗠"
   else if (type === "grabbed" || type === "library-added") glyph = "󰑓"
   else if (type === "import") glyph = "󰋚"
   else if (type === "download-failed") glyph = "󰅙"
-  return { title: title, body: String(row.body || ""), glyph: glyph }
+  var body = String(row.body || "")
+  if (type === "service-down" || type === "service-up") body = statusLabel(body, i18n)
+  return { title: title, body: body, glyph: glyph }
 }
 
 // haseen notification send reads a dash-led headline or body as an option, and
@@ -2140,32 +2223,32 @@ function notificationText(value) {
 // binDir as app "omARR", the service's bundled icon when there is one, and a
 // click that toggles this plugin's panel. The sender waits for that click, so
 // the caller starts it detached.
-function toastCommand(event, binDir, iconPath) {
+function toastCommand(event, binDir, iconPath, i18n) {
   var row = event || {}
-  var parts = toastParts(row)
+  var parts = toastParts(row, i18n)
   var urgent = row.type === "service-down" || row.type === "download-failed"
   var bin = String(binDir || "")
   var cmd = [bin + "/haseen-notification-send", "--app-name", "omARR", "-u", urgent ? "normal" : "low"]
   if (iconPath) cmd.push("-i", String(iconPath))
   cmd.push(notificationText(parts.title), notificationText(parts.body))
-  return cmd.concat(["--action-label", "Open", "--exec", bin + "/haseen", "shell", "ipc", "panel", "toggle", PLUGIN_ID])
+  return cmd.concat(["--action-label", trText(i18n, N_("Open")), "--exec", bin + "/haseen", "shell", "ipc", "panel", "toggle", PLUGIN_ID])
 }
 
 // The live download card (plan 097): one notification per job, kept by the
 // sender process that waits on it. `-t 0` keeps it up until the job ends, its
 // Hide button or a close dismisses it, and `-p` prints its id first, which the
 // updates replace in place (progressUpdateCommand).
-function progressNoteCommand(job, binDir, iconPath) {
-  var parts = progressNoteParts(job)
+function progressNoteCommand(job, binDir, iconPath, i18n) {
+  var parts = progressNoteParts(job, i18n)
   var bin = String(binDir || "")
   var cmd = [bin + "/haseen-notification-send", "--app-name", "omARR", "-u", "low", "-t", "0", "-p"]
   if (iconPath) cmd.push("-i", String(iconPath))
   return cmd.concat([notificationText(parts.title), notificationText(parts.body),
-    "--action-label", "Hide", "--exec", "echo", "hide"])
+    "--action-label", trText(i18n, N_("Hide")), "--exec", "echo", "hide"])
 }
 
-function progressUpdateCommand(job, binDir, iconPath, id) {
-  var parts = progressNoteParts(job)
+function progressUpdateCommand(job, binDir, iconPath, id, i18n) {
+  var parts = progressNoteParts(job, i18n)
   var bin = String(binDir || "")
   var cmd = [bin + "/haseen-notification-send", "--app-name", "omARR", "-u", "low", "-t", "0", "-r", String(parseInt(id, 10) || 0)]
   if (iconPath) cmd.push("-i", String(iconPath))
@@ -2175,15 +2258,16 @@ function progressUpdateCommand(job, binDir, iconPath, id) {
 // Title and body of the download card for the job progressToast() leads with:
 // its title (and how many more run beside it), then progress, speed, time left
 // and the client, as the panel's queue rows show them.
-function progressNoteParts(job) {
+function progressNoteParts(job, i18n) {
   var row = job && typeof job === "object" ? job : {}
   var more = (parseInt(row.count, 10) || 1) - 1
-  var title = String(row.title || "Downloading") + (more > 0 ? " (+" + more + " more)" : "")
+  var lead = String(row.title || trText(i18n, N_("Downloading")))
+  var title = more > 0 ? countText(i18n, N_n("%2 (+%1 more)", "%2 (+%1 more)"), more, [lead]) : lead
   var bits = [formatProgress(row.progress)]
   var speed = Number(row.speed) || 0
   if (speed > 0) bits.push(formatSpeed(speed))
-  var eta = formatTimeLeft(row.timeleft)
-  if (eta) bits.push(eta + " left")
+  var eta = formatTimeLeft(row.timeleft, i18n)
+  if (eta) bits.push(trText(i18n, N_("%1 left"), [eta]))
   if (row.serviceName) bits.push(String(row.serviceName))
   return { title: title, body: bits.join(" \u00b7 ") }
 }
@@ -2307,6 +2391,7 @@ if (typeof module !== "undefined" && module.exports) {
     kindOf: kindOf,
     kindLabel: kindLabel,
     kindGroup: kindGroup,
+    groupLabel: groupLabel,
     normalizeGroup: normalizeGroup,
     kindNeedsApiKey: kindNeedsApiKey,
     kindNeedsUserPass: kindNeedsUserPass,
@@ -2407,6 +2492,8 @@ if (typeof module !== "undefined" && module.exports) {
     reuseFeedList: reuseFeedList,
     mergeNow: mergeNow,
     fleetLine: fleetLine,
+    statusLabel: statusLabel,
+    sessionSubtitle: sessionSubtitle,
     formatSpeed: formatSpeed,
     formatBytes: formatBytes,
     formatEta: formatEta,

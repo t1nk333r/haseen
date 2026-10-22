@@ -1,0 +1,20 @@
+{
+  "en": {
+    "name": "English",
+    "englishName": "English",
+    "direction": "ltr",
+    "formatLocale": "en_US",
+    "locale": "en_US.UTF-8",
+    "decimal": ".",
+    "zeroDigit": "0"
+  },
+  "ar": {
+    "name": "العربية",
+    "englishName": "Arabic",
+    "direction": "rtl",
+    "formatLocale": "ar_AE",
+    "locale": "ar_AE.UTF-8",
+    "decimal": ".",
+    "zeroDigit": "0"
+  }
+}

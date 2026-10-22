@@ -30,8 +30,8 @@ Scope {
         if (!WebSearch.validTemplate(template))
             return [
                 {
-                    title: "Web search is off: the URL template is not http(s)",
-                    subtitle: "plugins.haseen.websearch.settings.url needs https://…%s",
+                    title: I18n.tr("Web search is off: the URL template is not http(s)"),
+                    subtitle: I18n.tr("plugins.haseen.websearch.settings.url needs https://…%s"),
                     icon: "dialog-warning",
                     glyph: "\uf071",
                     exec: () => {}
@@ -41,8 +41,8 @@ Scope {
         if (target === "")
             return [
                 {
-                    title: "Web search",
-                    subtitle: "Type what to search for on " + WebSearch.host(template),
+                    title: I18n.tr("Web search"),
+                    subtitle: I18n.tr("Type what to search for on %1", WebSearch.host(template)),
                     icon: "web-browser",
                     glyph: "\uf002",
                     exec: () => {}
@@ -50,8 +50,8 @@ Scope {
             ];
         return [
             {
-                title: "Search “" + text.trim() + "”",
-                subtitle: WebSearch.host(template) + "  ·  Enter opens the browser",
+                title: I18n.tr("Search “%1”", text.trim()),
+                subtitle: I18n.tr("%1  ·  Enter opens the browser", WebSearch.host(template)),
                 icon: "web-browser",
                 glyph: "\uf002",
                 exec: () => root.open(target)

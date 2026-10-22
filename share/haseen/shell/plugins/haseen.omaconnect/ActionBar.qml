@@ -27,7 +27,7 @@ Column {
 
         Pill {
             visible: bar.settings.showActionRing !== false && bar.caps.ring === true
-            text: "Ring"
+            text: I18n.tr("Ring")
             busy: bar.service.busy
             enabled: bar.live
             onClicked: bar.service.ring()
@@ -35,7 +35,7 @@ Column {
 
         Pill {
             visible: bar.settings.showActionClipboard !== false && bar.caps.clipboard === true
-            text: "Send clipboard"
+            text: I18n.tr("Send clipboard")
             busy: bar.service.busy
             enabled: bar.live
             onClicked: bar.service.sendClipboard()
@@ -43,7 +43,7 @@ Column {
 
         Pill {
             visible: bar.settings.showActionFile !== false && bar.caps.file === true
-            text: "Send file…"
+            text: I18n.tr("Send file…")
             busy: bar.service.busy
             enabled: bar.live
             onClicked: bar.service.pickFile()
@@ -51,7 +51,7 @@ Column {
 
         Pill {
             visible: bar.settings.showActionSms !== false && bar.caps.sms === true
-            text: "SMS"
+            text: I18n.tr("SMS")
             enabled: bar.live
             onClicked: bar.service.openSms()
         }
@@ -67,7 +67,7 @@ Column {
 
             width: bar.width - (sendText.visible ? sendText.width + parent.spacing : 0) - (sendPing.visible ? sendPing.width + parent.spacing : 0)
             enabled: bar.live
-            placeholder: "Text or a link to send"
+            placeholder: I18n.tr("Text or a link to send")
             onAccepted: {
                 if (sendText.visible && bar.service.shareText(text))
                     text = "";
@@ -78,7 +78,7 @@ Column {
             id: sendText
 
             visible: bar.settings.showActionText !== false && bar.caps.text === true
-            text: "Send"
+            text: I18n.tr("Send")
             busy: bar.service.busy
             enabled: bar.live && draft.text.trim() !== ""
             onClicked: {
@@ -91,7 +91,7 @@ Column {
             id: sendPing
 
             visible: bar.settings.showActionPing === true && bar.caps.ping === true
-            text: "Ping"
+            text: I18n.tr("Ping")
             busy: bar.service.busy
             enabled: bar.live
             onClicked: {

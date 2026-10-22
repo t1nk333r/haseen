@@ -63,36 +63,60 @@ Item {
             })).filter(c => Privacy.interesting(c.plain))
     readonly property var usage: Privacy.classify(captures.map(c => c.plain), ignore)
 
-    readonly property var screenApps: (Flags.recording ? ["Screen recording"] : []).concat(usage.screen)
+    // Stands in for an app name while haseen records; translated where shown.
+    readonly property string recordingApp: I18n.mark("Screen recording")
+    readonly property var screenApps: (Flags.recording ? [recordingApp] : []).concat(usage.screen)
+    // name is the IPC name and what a click checks; inUse and usedBy (%1 the
+    // apps) are the tooltip's English lines, translated where shown (plan 109).
     readonly property var dots: {
         const out = [];
         if (settings.showCamera !== false && usage.camera.length > 0)
             out.push({
                 color: Theme.success,
-                label: "Camera",
+                name: "Camera",
+                inUse: I18n.mark("Camera in use"),
+                usedBy: I18n.mark("Camera: %1"),
                 apps: usage.camera
             });
         if (settings.showMicrophone !== false && usage.mic.length > 0)
             out.push({
                 color: Theme.warning,
-                label: "Microphone",
+                name: "Microphone",
+                inUse: I18n.mark("Microphone in use"),
+                usedBy: I18n.mark("Microphone: %1"),
                 apps: usage.mic
             });
         if (settings.showScreen !== false && screenApps.length > 0)
             out.push({
                 color: Theme.urgent,
-                label: "Screen",
+                name: "Screen",
+                inUse: I18n.mark("Screen in use"),
+                usedBy: I18n.mark("Screen: %1"),
                 apps: screenApps
             });
         if (settings.showLocation !== false && locationInUse)
             out.push({
                 color: Theme.accent,
-                label: "Location",
+                name: "Location",
+                // GeoClue does not say which app asked.
+                inUse: I18n.mark("Location in use"),
+                usedBy: "",
                 apps: []
             });
         return out;
     }
-    readonly property string summary: dots.map(d => d.label + (d.apps.length > 0 ? ": " + d.apps.join(", ") : " in use")).join("\n") + (Flags.recording && settings.showScreen !== false ? "\nClick the red dot to stop recording" : "")
+    // translate(key, arg): English for IPC, the interface language on screen.
+    function _summary(translate: var): string {
+        const lines = dots.map(d => {
+            const apps = d.apps.map(a => a === recordingApp ? translate(a, "") : a);
+            return apps.length > 0 ? translate(d.usedBy, apps.join(", ")) : translate(d.inUse, "");
+        });
+        if (Flags.recording && settings.showScreen !== false)
+            lines.push(translate(I18n.mark("Click the red dot to stop recording"), ""));
+        return lines.join("\n");
+    }
+    readonly property string summary: _summary((key, arg) => key.replace("%1", () => arg))
+    readonly property string summaryText: _summary((key, arg) => I18n.tr(key, arg))
     readonly property int dotSize: Math.max(6, Math.round(Theme.fontSize * 0.55))
 
     // Vertical: the slot is the bar's width anyway; report content width
@@ -122,7 +146,7 @@ Item {
 
         function summary(): string {
             return JSON.stringify({
-                dots: root.dots.map(d => d.label),
+                dots: root.dots.map(d => d.name),
                 usage: root.usage,
                 location: root.locationInUse,
                 recording: Flags.recording,
@@ -172,7 +196,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -Math.round(Theme.gap / 2)
-                    enabled: modelData.label === "Screen" && Flags.recording
+                    enabled: modelData.name === "Screen" && Flags.recording
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: Quickshell.execDetached(["haseen", "capture", "screenrecord", "--stop"])
                 }
@@ -207,11 +231,14 @@ Item {
                 radius: Theme.radius
                 border.width: Theme.borderWidth
                 border.color: Theme.border
+                // The tooltip's own window; the bar itself is never mirrored.
+                LayoutMirroring.enabled: I18n.rightToLeft
+                LayoutMirroring.childrenInherit: true
 
                 Text {
                     id: label
                     anchors.centerIn: parent
-                    text: root.summary
+                    text: root.summaryText
                     textFormat: Text.PlainText
                     color: Theme.foreground
                     font.family: Theme.fontFamily

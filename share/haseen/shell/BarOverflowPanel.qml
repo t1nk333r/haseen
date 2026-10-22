@@ -255,7 +255,7 @@ PanelWindow {
                 Text {
                     width: card.contentWidth - arrangeButton.width - Theme.gap
                     anchors.verticalCenter: parent.verticalCenter
-                    text: panel.arranging ? "Drag a widget to move it, here included; a click moves it between the bar and here" : "Widgets moved off the bar"
+                    text: panel.arranging ? I18n.tr("Drag a widget to move it, here included; a click moves it between the bar and here") : I18n.tr("Widgets moved off the bar")
                     wrapMode: Text.WordWrap
                     color: Theme.barForeground
                     opacity: 0.6
@@ -268,7 +268,7 @@ PanelWindow {
 
                     height: Theme.fontSize * 2
                     glyph: "\uf0ec"
-                    text: panel.arranging ? "Done" : "Arrange"
+                    text: panel.arranging ? I18n.tr("Done") : I18n.tr("Arrange")
                     highlighted: panel.arranging
                     onClicked: button => {
                         if (button === Qt.LeftButton)
@@ -284,7 +284,7 @@ PanelWindow {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Bar edge"
+                    text: I18n.tr("Bar edge")
                     color: Theme.barForeground
                     opacity: 0.6
                     font.family: Theme.fontFamily

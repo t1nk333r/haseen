@@ -17,6 +17,8 @@ Controls.Button {
     Accessible.role: Accessible.Button
     Accessible.name: text
     Accessible.description: explanation
+    // Anchored, not placed by x, so a mirrored (right-to-left) panel puts the
+    // glyph at the row's start on the right.
     contentItem: Item {
         implicitWidth: label.implicitWidth + (icon.visible ? icon.width : 0)
         implicitHeight: Math.max(label.implicitHeight, icon.visible ? icon.height : 0)
@@ -26,14 +28,15 @@ Controls.Button {
             visible: glyph !== ""
             width: 28 * control.textScale
             height: 24 * control.textScale
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             font.pixelSize: Math.round(18 * control.textScale)
             Accessible.ignored: true
         }
         Label {
             id: label
-            x: icon.visible ? icon.width : 0
-            width: parent.width - x
+            anchors.left: icon.visible ? icon.right : parent.left
+            anchors.right: parent.right
             height: implicitHeight
             text: control.text
             font.family: control.glyphOnly ? Theme.fontMono : Theme.fontFamily

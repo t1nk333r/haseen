@@ -28,6 +28,8 @@ Item {
     Text {
         id: leadText
 
+        // Anchored, not at x 0, so a mirrored menu puts it at the right.
+        anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         width: Theme.fontSize + Theme.gap
         horizontalAlignment: Text.AlignHCenter

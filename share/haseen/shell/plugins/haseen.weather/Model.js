@@ -11,6 +11,19 @@
 // GeoClue position instead of Omarchy's weather.json; URL and status-line
 // helpers live here so the service, panel and bar widget share them.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
+// %1..%9 filled from the further arguments: the English stand-in for
+// I18n.tr, which the service passes to statusLine for its language.
+function fill(text, ...args) {
+    return String(text).replace(/%([1-9])/g, (whole, digit) => {
+        const value = args[Number(digit) - 1];
+        return value === undefined || value === null ? whole : String(value);
+    });
+}
+
 const COORDS = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
 
 function trim(value) {
@@ -374,10 +387,15 @@ function iconForCode(code, night) {
 
 // The right-click notification, worded as omarchy-weather-status:
 // "Place  ·  Temp 21°C  ·  Wind 9 km/h"; "Weather unavailable" without data.
-function statusLine(place, temp, wind) {
+// tr: I18n.tr for the interface's language; English without it.
+function statusLine(place, temp, wind, tr) {
+    const t = typeof tr === "function" ? tr : fill;
     if (trim(temp) === "")
-        return "Weather unavailable";
+        return t(N_("Weather unavailable"));
     const name = trim(place);
-    const head = name === "" ? "" : name.charAt(0).toUpperCase() + name.slice(1) + "  ·  ";
-    return head + "Temp " + temp + (trim(wind) === "" ? "" : "  ·  Wind " + wind);
+    const parts = name === "" ? [] : [name.charAt(0).toUpperCase() + name.slice(1)];
+    parts.push(t(N_("Temp %1"), temp));
+    if (trim(wind) !== "")
+        parts.push(t(N_("Wind %1"), wind));
+    return parts.join("  ·  ");
 }

@@ -2,6 +2,26 @@
 // (plan 076). Devices are UPowerDevice-shaped objects; no QML types here, so
 // tests/test-battery.sh runs it under the real Qt JS engine.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
+// %1..%9 filled from the further arguments: the English stand-in for
+// I18n.tr. The formatters that build a sentence take an optional `tr`, so
+// the tests get English and the panel passes I18n.tr for its language.
+function fill(text, ...args) {
+    return String(text).replace(/%([1-9])/g, (whole, digit) => {
+        const value = args[Number(digit) - 1];
+        return value === undefined || value === null ? whole : String(value);
+    });
+}
+
+// The translator to use: `tr` when the caller passed one (a map() index is
+// not one), else English.
+function translator(tr) {
+    return typeof tr === "function" ? tr : fill;
+}
+
 // Battery glyphs (Nerd Font, Material Design): empty to full in tenths, and
 // the charging one.
 const LEVEL_GLYPHS = ["\u{F008E}", "\u{F007A}", "\u{F007B}", "\u{F007C}", "\u{F007D}", "\u{F007E}", "\u{F007F}", "\u{F0080}", "\u{F0081}", "\u{F0082}", "\u{F0079}"];
@@ -26,43 +46,46 @@ function isCharging(state) {
 
 // holding: haseen-battery-status says the charge limit keeps the plugged-in
 // battery from charging; window: its "75-80%".
-function stateLabel(state, holding, window) {
+function stateLabel(state, holding, window, tr) {
+    const t = translator(tr);
     if (holding)
-        return window ? "Plugged in, holding at " + window : "Plugged in, not charging";
-    return {
-        "charging": "Charging",
-        "discharging": "On battery",
-        "empty": "Empty",
-        "full": "Fully charged",
-        "pending-charge": "Plugged in, not charging",
-        "pending-discharge": "On battery",
-        "unknown": "Unknown"
-    }[stateKey(state)];
+        return window ? t(N_("Plugged in, holding at %1"), window) : t(N_("Plugged in, not charging"));
+    return t({
+        "charging": N_("Charging"),
+        "discharging": N_("On battery"),
+        "empty": N_("Empty"),
+        "full": N_("Fully charged"),
+        "pending-charge": N_("Plugged in, not charging"),
+        "pending-discharge": N_("On battery"),
+        "unknown": N_("Unknown")
+    }[stateKey(state)]);
 }
 
 // "1 h 05 min", "12 min", "" for an unknown time (seconds <= 0).
-function duration(seconds) {
+function duration(seconds, tr) {
+    const t = translator(tr);
     const s = Number(seconds);
     if (!isFinite(s) || s <= 0)
         return "";
     const m = Math.max(1, Math.round(s / 60));
     if (m < 60)
-        return m + " min";
+        return t(N_("%1 min"), m);
     const h = Math.floor(m / 60);
     const rest = m % 60;
-    return rest === 0 ? h + " h" : h + " h " + (rest < 10 ? "0" : "") + rest + " min";
+    return rest === 0 ? t(N_("%1 h"), h) : t(N_("%1 h %2 min"), h, (rest < 10 ? "0" : "") + rest);
 }
 
 // "2 h 10 min left" on battery, "45 min to full" while charging, else "".
-function timeLine(state, timeToEmpty, timeToFull) {
+function timeLine(state, timeToEmpty, timeToFull, tr) {
+    const t = translator(tr);
     const k = stateKey(state);
     if (k === "charging") {
-        const d = duration(timeToFull);
-        return d ? d + " to full" : "";
+        const d = duration(timeToFull, tr);
+        return d ? t(N_("%1 to full"), d) : "";
     }
     if (k === "discharging" || k === "pending-discharge") {
-        const d = duration(timeToEmpty);
-        return d ? d + " left" : "";
+        const d = duration(timeToEmpty, tr);
+        return d ? t(N_("%1 left"), d) : "";
     }
     return "";
 }
@@ -98,7 +121,7 @@ function profileName(profile) {
 }
 
 function profileLabel(name) {
-    return { "power-saver": "Power saver", "balanced": "Balanced", "performance": "Performance" }[name] || String(name || "");
+    return { "power-saver": N_("Power saver"), "balanced": N_("Balanced"), "performance": N_("Performance") }[name] || String(name || "");
 }
 
 // `haseen powerprofile list`: one known profile per line, weakest first.
@@ -138,7 +161,7 @@ function limitChoices(end) {
 }
 
 function limitLabel(end) {
-    return end >= 100 ? "Full" : end + "%";
+    return end >= 100 ? N_("Full") : end + "%";
 }
 
 // `haseen battery limit` arguments for a pill.

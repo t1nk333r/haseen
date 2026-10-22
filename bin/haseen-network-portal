@@ -6,8 +6,9 @@
 # David Heinemeier Hansson; 3357f9059, #16186): open a fixed plain-HTTP page,
 # which the portal answers with its sign-in page, then ask NetworkManager to
 # check again until it reads full. haseen opens the default browser through
-# its own omarchy-launch-browser rather than a web-app window, stops asking
-# after 5 minutes, and leaves a Tailscale exit node alone (plan 106).
+# its own omarchy-launch-browser rather than a web-app window and stops asking
+# after 5 minutes (plan 106). It does nothing with Tailscale: Omarchy pauses an
+# exit node meanwhile, haseen neither pauses nor checks one (plan 111).
 set -Eeuo pipefail
 
 HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"

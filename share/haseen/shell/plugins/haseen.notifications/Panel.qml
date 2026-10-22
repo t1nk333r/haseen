@@ -29,7 +29,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: root.service && root.service.dnd ? "Notifications (do not disturb)" : "Notifications"
+            text: root.service && root.service.dnd ? I18n.tr("Notifications (do not disturb)") : I18n.tr("Notifications")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -63,7 +63,7 @@ Column {
     Text {
         width: parent.width
         visible: root.items.length === 0
-        text: root.service ? "No notifications" : "The notification service is not running"
+        text: root.service ? I18n.tr("No notifications") : I18n.tr("The notification service is not running")
         color: Theme.muted
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily

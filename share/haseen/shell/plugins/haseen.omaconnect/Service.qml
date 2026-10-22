@@ -42,9 +42,14 @@ Scope {
     property var addresses: []
     property bool addressesReady: false
 
-    // The last action's outcome, shown under the action bar for 4 s.
+    // The last action's outcome, shown under the action bar for 4 s. Both
+    // stay English (the IPC state reports them); noticeTemplate and
+    // noticeArgs are the same line as its template and values, which the
+    // panel shows in the interface language (plan 109).
     property string message: ""
     property string error: ""
+    property string noticeTemplate: ""
+    property var noticeArgs: []
     // id -> "requesting" | "removing" while a pairing change is in flight.
     property var pairing: ({})
 
@@ -91,9 +96,14 @@ Scope {
             root.fetchMedia();
     }
 
-    function say(text: string, failed: bool): void {
-        root.message = failed ? "" : text;
-        root.error = failed ? text : "";
+    // text is marked English with %1.. for the values in args.
+    function say(text: string, failed: bool, args: var): void {
+        const values = args || [];
+        const filled = text.replace(/%([1-9])/g, (whole, digit) => values[Number(digit) - 1] === undefined ? whole : String(values[Number(digit) - 1]));
+        root.message = failed ? "" : filled;
+        root.error = failed ? filled : "";
+        root.noticeTemplate = text;
+        root.noticeArgs = values;
         dismiss.restart();
     }
 
@@ -119,7 +129,7 @@ Scope {
         for (const d of scan.devices) {
             if ((next[d.id] === "requesting" && d.paired) || (next[d.id] === "removing" && !d.paired)) {
                 if (next[d.id] === "requesting")
-                    root.say(d.name + " paired", false);
+                    root.say(I18n.mark("%1 paired"), false, [d.name]);
                 delete next[d.id];
                 changed = true;
             }
@@ -127,7 +137,7 @@ Scope {
                 const a = Object.assign({}, root.announced);
                 a[d.id] = true;
                 root.announced = a;
-                Quickshell.execDetached([root.binDir + "/haseen-notification-send", "-a", "KDE Connect", "-i", "kdeconnect", d.name + " wants to pair", "Check the key " + Model.formatKey(d.verificationKey) + " in the KDE Connect panel"]);
+                Quickshell.execDetached([root.binDir + "/haseen-notification-send", "-a", "KDE Connect", "-i", "kdeconnect", I18n.tr("%1 wants to pair", d.name), I18n.tr("Check the key %1 in the KDE Connect panel", Model.formatKey(d.verificationKey))]);
             }
         }
         if (changed)
@@ -139,11 +149,11 @@ Scope {
     // selected device; refused while another runs or the device is offline.
     function act(argv: var, done: string, what: string): bool {
         if (root.busy) {
-            root.say("Wait for the last action to finish", true);
+            root.say(I18n.mark("Wait for the last action to finish"), true);
             return false;
         }
         if (!Model.canAct(root.selected)) {
-            root.say("The device must be paired and reachable", true);
+            root.say(I18n.mark("The device must be paired and reachable"), true);
             return false;
         }
         actionProc.done = done;
@@ -161,34 +171,34 @@ Scope {
     }
 
     function ring(): bool {
-        return root.act(root.cliFor(["--ring"]), "Ringing", "ring");
+        return root.act(root.cliFor(["--ring"]), I18n.mark("Ringing"), "ring");
     }
 
     function sendClipboard(): bool {
-        return root.act(root.cliFor(["--send-clipboard"]), "Clipboard sent", "clipboard");
+        return root.act(root.cliFor(["--send-clipboard"]), I18n.mark("Clipboard sent"), "clipboard");
     }
 
     function ping(text: string): bool {
         const t = String(text || "").trim() || String(root.settings.defaultPingMessage || "").trim();
-        return root.act(root.cliFor(t ? ["--ping-msg", t] : ["--ping"]), "Ping sent", "ping");
+        return root.act(root.cliFor(t ? ["--ping-msg", t] : ["--ping"]), I18n.mark("Ping sent"), "ping");
     }
 
     function shareText(text: string): bool {
         const t = String(text || "").trim();
         if (!t) {
-            root.say("Nothing to send", true);
+            root.say(I18n.mark("Nothing to send"), true);
             return false;
         }
-        return root.act(root.cliFor(["--share-text", t]), "Text sent", "text");
+        return root.act(root.cliFor(["--share-text", t]), I18n.mark("Text sent"), "text");
     }
 
     function pickFile(): bool {
         if (root.busy) {
-            root.say("Wait for the last action to finish", true);
+            root.say(I18n.mark("Wait for the last action to finish"), true);
             return false;
         }
         if (!Model.canAct(root.selected)) {
-            root.say("The device must be paired and reachable", true);
+            root.say(I18n.mark("The device must be paired and reachable"), true);
             return false;
         }
         pickProc.deviceId = root.selectedId;
@@ -219,7 +229,7 @@ Scope {
     }
 
     function runCommand(key: string): bool {
-        return root.act(root.cliFor(["--execute-command", key]), "Command sent", "command");
+        return root.act(root.cliFor(["--execute-command", key]), I18n.mark("Command sent"), "command");
     }
 
     function pair(): void {
@@ -229,7 +239,7 @@ Scope {
         pairProc.command = ["kdeconnect-cli", "-d", root.selectedId, "--pair"];
         pairProc.running = true;
         watchdog.restart();
-        root.say("Pair request sent; accept it on " + root.selected.name, false);
+        root.say(I18n.mark("Pair request sent; accept it on %1"), false, [root.selected.name]);
     }
 
     function unpair(): void {
@@ -297,7 +307,7 @@ Scope {
             return false;
         }
         if (!root.addressesReady || addressProc.running) {
-            root.say("KDE Connect's address list is not ready", true);
+            root.say(I18n.mark("KDE Connect's address list is not ready"), true);
             return false;
         }
         if (!remove && root.addresses.indexOf(a) >= 0) {
@@ -420,7 +430,7 @@ Scope {
                     waited = true;
                 }
             if (waited)
-                root.say("Pairing timed out or was rejected", true);
+                root.say(I18n.mark("Pairing timed out or was rejected"), true);
         }
     }
 
@@ -453,10 +463,10 @@ Scope {
         onExited: code => {
             const path = picked.text.trim();
             if (code !== 0 || !path || deviceId !== root.selectedId) {
-                root.say("No file sent", false);
+                root.say(I18n.mark("No file sent"), false);
                 return;
             }
-            Qt.callLater(() => root.act(root.cliFor(["--share", path]), "File sent", "file transfer"));
+            Qt.callLater(() => root.act(root.cliFor(["--share", path]), I18n.mark("File sent"), "file transfer"));
         }
     }
 
@@ -543,7 +553,10 @@ Scope {
         property bool remove: false
 
         onExited: code => {
-            root.say(code === 0 ? (remove ? "Removed " : "Saved ") + address : Model.failure(code, "address"), code !== 0);
+            if (code === 0)
+                root.say(remove ? I18n.mark("Removed %1") : I18n.mark("Saved %1"), false, [address]);
+            else
+                root.say(Model.failure(code, "address"), true);
             root.refresh(code === 0 && !remove);
         }
     }

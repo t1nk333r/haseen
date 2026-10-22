@@ -10,6 +10,11 @@ import "Moon.js" as Moon
 // toggle haseen.calendar`). Arrows or the wheel change month, Page Up/Down
 // too; a click on the title returns to today. Week start follows the locale
 // unless settings.weekStart names a day; ISO week numbers on the left.
+// Month and day names follow the interface language (I18n.locale, plan
+// 109), which in English is the session's LANG as before; the week start
+// stays the session's region (Qt.locale()). In a
+// right-to-left interface the panel is mirrored: the week runs from the
+// right, the arrows and their keys swap with it.
 Column {
     id: root
 
@@ -18,14 +23,23 @@ Column {
     property var settings: ({})
     property var screen: null
 
-    readonly property var locale: Qt.locale()
+    readonly property var locale: I18n.locale
+    readonly property bool mirrored: LayoutMirroring.enabled
     readonly property date today: clock.date
     property int year: today.getFullYear()
     property int month: today.getMonth()
-    readonly property int first: Cal.weekStart(settings.weekStart, locale.firstDayOfWeek)
+    readonly property int first: Cal.weekStart(settings.weekStart, Qt.locale().firstDayOfWeek)
     readonly property bool weekNumbers: settings.weekNumbers !== false
     readonly property var cells: Cal.monthGrid(year, month, first)
     readonly property var weeks: Cal.rowWeeks(cells)
+    // Two-letter weekday heads ("Mo"). A language whose short names share
+    // their first two letters (every Arabic one starts with "ال") uses its
+    // narrow names instead (plan 109).
+    readonly property var dayHeads: {
+        const order = Cal.weekdayOrder(first);
+        const two = order.map(d => locale.dayName(d, Locale.ShortFormat).slice(0, 2));
+        return new Set(two).size === 7 ? two : order.map(d => locale.dayName(d, Locale.NarrowFormat));
+    }
     readonly property int cell: Math.round(Theme.fontSize * 2.2)
     readonly property var clockSettings: Plugins.settingsFor("haseen.clock")
     readonly property string clockFormat: {
@@ -50,9 +64,12 @@ Column {
     spacing: Theme.gap
     focus: true
     Keys.onPressed: event => {
-        if (event.key === Qt.Key_PageUp || event.key === Qt.Key_Left)
+        // Left and Right follow the arrows on screen, which swap when mirrored.
+        const back = root.mirrored ? Qt.Key_Right : Qt.Key_Left;
+        const forward = root.mirrored ? Qt.Key_Left : Qt.Key_Right;
+        if (event.key === Qt.Key_PageUp || event.key === back)
             root.shift(-1);
-        else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_Right)
+        else if (event.key === Qt.Key_PageDown || event.key === forward)
             root.shift(1);
         else if (event.key === Qt.Key_Home)
             root.goToday();
@@ -96,7 +113,8 @@ Column {
         NavButton {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "\uf053"
+            // Back points to where the panel starts: right when mirrored.
+            text: root.mirrored ? "\uf054" : "\uf053"
             onActivated: root.shift(-1)
         }
 
@@ -120,7 +138,7 @@ Column {
         NavButton {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: "\uf054"
+            text: root.mirrored ? "\uf053" : "\uf054"
             onActivated: root.shift(1)
         }
     }
@@ -131,7 +149,7 @@ Column {
         width: body.width
         visible: root.settings.moon !== false
 
-        readonly property var moon: Moon.lines(root.today.getTime())
+        readonly property var moon: Moon.lines(root.today.getTime(), I18n.tr)
 
         Text {
             width: parent.width
@@ -187,14 +205,14 @@ Column {
             columns: 7
 
             Repeater {
-                model: Cal.weekdayOrder(root.first)
+                model: root.dayHeads
 
                 delegate: Text {
-                    required property int modelData
+                    required property string modelData
 
                     width: root.cell
                     height: root.cell
-                    text: root.locale.dayName(modelData, Locale.ShortFormat).slice(0, 2)
+                    text: modelData
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize - 1
@@ -264,7 +282,7 @@ Column {
 
             Text {
                 anchors.fill: parent
-                text: "Day name"
+                text: I18n.tr("Day name")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -276,7 +294,7 @@ Column {
             id: dayNameToggle
 
             objectName: "clockDayNameToggle"
-            text: root.dayNameShown ? "On" : "Off"
+            text: root.dayNameShown ? I18n.tr("On") : I18n.tr("Off")
             activeFocusOnTab: true
             active: root.dayNameShown
             onClicked: ClockSettings.setDayName(!root.dayNameShown)

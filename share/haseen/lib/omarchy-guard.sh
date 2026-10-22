@@ -117,9 +117,11 @@ omarchy_guard_hook_current() {
 # only root can change, along the router's own resolution
 # (root_trusted_haseen), so a hook is never written for a checkout or any
 # other tree a user owns. install.sh copies the tree as root
-# (install.sh:233-235). Prints why not.
+# (install.sh:233-235). So must the template the hook is rendered from, which
+# decides its Exec, and every directory on its path (plan 111). Prints why not.
 omarchy_guard_exec_trusted() {
-    root_trusted_haseen "$(omarchy_guard_prefix)/bin/haseen" omarchy-guard lib
+    root_trusted_haseen "$(omarchy_guard_prefix)/bin/haseen" omarchy-guard lib &&
+        root_trusted_exec "$OMARCHY_GUARD_SRC/50-haseen-omarchy.hook"
 }
 
 # omarchy_guard_untrusted_note WHY — what to do about it.

@@ -3,9 +3,11 @@
 // LICENSE and UPSTREAM.md beside this file.
 // haseen (plan 096): `command -v` instead of omarchy-cmd-present; every
 // Timer marked for architecture 6, the post-command re-reads every 2 s
-// instead of 1.5 s.
+// instead of 1.5 s. Plan 109: the strings it shows are marked and stay
+// English here; the panel translates them.
 import QtQuick
 import Quickshell.Io
+import qs.Haseen
 import "model/Shared.js" as Shared
 import "model/Mullvad.js" as Mullvad
 
@@ -22,12 +24,12 @@ Item {
   property string filter: ""
 
   readonly property string backendId: "mullvad"
-  readonly property string label: "Mullvad"
+  readonly property string label: "Mullvad" // i18n-ignore
   readonly property var installNames: ["Mullvad"]
   readonly property string glyph: Shared.GLYPH_VPN
   readonly property bool supportsFilter: true
   // Cities match too, but the field is only so wide.
-  readonly property string filterPlaceholder: "Filter countries — press / to search"
+  readonly property string filterPlaceholder: I18n.mark("Filter countries — press / to search")
 
   property bool detected: false
   property var status: Mullvad.parseMullvadStatus("")
@@ -63,7 +65,7 @@ Item {
   readonly property string summary: Mullvad.mullvadSummary(status)
   readonly property var details: Mullvad.mullvadDetails(status)
   readonly property var favorites: Shared.favoriteCodes(setting("favoriteCountries", "CH,NL,US"))
-  readonly property string emptyText: relaysLoaded ? "No countries match." : "Loading relays…"
+  readonly property string emptyText: relaysLoaded ? I18n.mark("No countries match.") : I18n.mark("Loading relays…")
   readonly property string currentKey: Mullvad.mullvadCurrentKey(status, relays)
   readonly property var targets: filter === ""
     ? Mullvad.mullvadQuickTargets().concat(Mullvad.mullvadCountryTargets(relays, favorites, ""))
@@ -155,7 +157,7 @@ Item {
     _desired = 1
     _pendingTarget = target
     lastError = ""
-    actionStatus = "Connecting to " + target.label + "…"
+    actionStatus = Shared.compose(I18n.mark("Connecting to %1…"), target.label)
     runStage("location", ["relay", "set", "location"].concat(target.args || []))
   }
 
@@ -163,7 +165,7 @@ Item {
     if (!detected || _working) return
     _desired = 0
     lastError = ""
-    actionStatus = "Disconnecting…"
+    actionStatus = I18n.mark("Disconnecting…")
     runStage("disconnect", ["disconnect"])
   }
 
@@ -179,7 +181,7 @@ Item {
     _desired = 1
     _pendingTarget = null
     lastError = ""
-    actionStatus = "Connecting…"
+    actionStatus = I18n.mark("Connecting…")
     runStage("connect", ["connect"])
   }
 
@@ -199,7 +201,7 @@ Item {
   function describeFailure(output, fallback) {
     var text = String(output || "").trim()
     if (/log ?in|not logged in|no account/i.test(text)) {
-      return "No Mullvad account on this machine. Log in with: mullvad account login"
+      return I18n.mark("No Mullvad account on this machine. Log in with: mullvad account login")
     }
     if (daemonUnreachable(text)) return daemonMessage()
     return Shared.elide(text || fallback, 140)
@@ -210,7 +212,7 @@ Item {
   }
 
   function daemonMessage() {
-    return "The Mullvad daemon is not responding. Start it with: sudo systemctl start mullvad-daemon"
+    return I18n.mark("The Mullvad daemon is not responding. Start it with: sudo systemctl start mullvad-daemon")
   }
 
   // A command that exits clean but does not take — the daemon accepts it and
@@ -225,7 +227,7 @@ Item {
     onTriggered: {
       if (Object.keys(root._pendingToggles).length === 0) return
       root._pendingToggles = ({})
-      root.lastError = "Mullvad did not apply that setting."
+      root.lastError = I18n.mark("Mullvad did not apply that setting.")
     }
   }
 
@@ -289,7 +291,7 @@ Item {
       var output = String(statusStderr.text || statusStdout.text || "")
       root.lastError = root.daemonUnreachable(output)
         ? root.daemonMessage()
-        : Shared.elide(output || "Could not read Mullvad status", 140)
+        : Shared.elide(output || I18n.mark("Could not read Mullvad status"), 140)
     }
   }
 
@@ -319,7 +321,7 @@ Item {
       if (exitCode !== 0) {
         root.lastError = root.describeFailure(
           String(toggleStderr.text || "") + "\n" + String(toggleStdout.text || ""),
-          "Mullvad refused that setting")
+          I18n.mark("Mullvad refused that setting"))
         root.clearPending(root._toggleKey)
       }
       root._toggleKey = ""
@@ -341,7 +343,7 @@ Item {
       // A refusal is an answer too. Returning here without latching left a
       // daemon that was down — or a CLI that wanted an account — re-asked for
       // the largest thing this tool prints on every poll, forever.
-      var unreadable = "Could not read the relay list. Check: mullvad relay list"
+      var unreadable = I18n.mark("Could not read the relay list. Check: mullvad relay list")
       root.relaysLoaded = true
       if (exitCode !== 0) {
         root.lastError = root.describeFailure(
@@ -364,12 +366,12 @@ Item {
 
       if (root._stage === "location") {
         if (exitCode !== 0) {
-          var name = root._pendingTarget ? root._pendingTarget.label : "that location"
+          var name = root._pendingTarget ? root._pendingTarget.label : I18n.mark("that location")
           root._desired = -1
           root._pendingTarget = null
           root._stage = ""
           root.actionStatus = ""
-          root.lastError = root.describeFailure(output, "Mullvad rejected " + name)
+          root.lastError = root.describeFailure(output, Shared.compose(I18n.mark("Mullvad rejected %1"), name))
           return
         }
         root._stage = ""
@@ -379,7 +381,7 @@ Item {
 
       if (exitCode !== 0) {
         root._desired = -1
-        root.lastError = root.describeFailure(output, "Mullvad command failed")
+        root.lastError = root.describeFailure(output, I18n.mark("Mullvad command failed"))
       } else {
         root.lastError = ""
       }

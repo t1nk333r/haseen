@@ -3,7 +3,8 @@
 // LICENSE and UPSTREAM.md beside this file.
 // haseen (plan 096): `command -v` instead of omarchy-cmd-present; every
 // Timer marked for architecture 6, the post-command re-reads every 2 s
-// instead of 1.5 s.
+// instead of 1.5 s. Plan 109: the strings it shows are marked and stay
+// English here; the panel translates them.
 import QtQuick
 import Quickshell.Io
 import qs.Haseen
@@ -23,7 +24,7 @@ Item {
   property string filter: ""
 
   readonly property string backendId: "networkmanager"
-  readonly property string label: "NetworkManager"
+  readonly property string label: "NetworkManager" // i18n-ignore
   // Four names, because this backend is the only way to reach any of the
   // protocols and the label names the manager rather than anything you would
   // install.
@@ -80,7 +81,7 @@ Item {
   readonly property string summary: NetworkManager.nmSummary(profiles)
   readonly property var details: NetworkManager.nmDetails(profiles)
   readonly property var targets: NetworkManager.nmTargets(profiles, root.openconnectAuth)
-  readonly property string emptyText: "No profiles yet. Import one with: nmcli connection import type openvpn file <config.ovpn> — or type wireguard file <config.conf>"
+  readonly property string emptyText: I18n.mark("No profiles yet. Import one with: nmcli connection import type openvpn file <config.ovpn> — or type wireguard file <config.conf>")
   readonly property string currentKey: {
     var profile = NetworkManager.activeNmProfile(profiles)
     return profile ? "profile:" + profile.uuid : ""
@@ -134,8 +135,8 @@ Item {
     // all, and OpenConnect settles identity with the gateway during its own
     // authentication, so this is neither of their problems.
     if (NetworkManager.needsUsername(target) && target.hasUsername === false) {
-      lastError = "\"" + target.label + "\" has no username. Set one with: nmcli connection modify "
-        + "uuid " + target.uuid + " +vpn.data '" + NetworkManager.usernameSetting(target) + "=<user>'"
+      lastError = Shared.compose(I18n.mark("\"%1\" has no username. Set one with: %2"), target.label,
+        "nmcli connection modify uuid " + target.uuid + " +vpn.data '" + NetworkManager.usernameSetting(target) + "=<user>'")
       return
     }
 
@@ -143,7 +144,7 @@ Item {
     // helper is what finds it. Saying so beats an activation that fails with
     // nmcli complaining about secrets nobody could have supplied.
     if (target.kind === "openconnect" && !target.command) {
-      lastError = "\"" + target.label + "\" needs the OpenConnect auth dialog. Install networkmanager-openconnect."
+      lastError = Shared.compose(I18n.mark("\"%1\" needs the OpenConnect auth dialog. Install networkmanager-openconnect."), target.label)
       return
     }
 
@@ -153,8 +154,8 @@ Item {
     // OpenConnect waits on a person at a dialog rather than on the network, and
     // that wait is unbounded — a Duo approval can sit on a phone for a minute.
     actionStatus = target.kind === "openconnect"
-      ? "Authenticating with " + (target.gateway || target.label) + "…"
-      : "Connecting to " + target.label + "…"
+      ? Shared.compose(I18n.mark("Authenticating with %1…"), target.gateway || target.label)
+      : Shared.compose(I18n.mark("Connecting to %1…"), target.label)
 
     // NetworkManager will happily run two tunnels at once, and picking one
     // profile is never a request for both. The controller only enforces this
@@ -202,7 +203,7 @@ Item {
     _desired = 0
     _stage = "final"
     lastError = ""
-    actionStatus = "Disconnecting…"
+    actionStatus = I18n.mark("Disconnecting…")
     connectProcess.command = ["nmcli", "connection", "down", "uuid", active.uuid]
     connectProcess.running = true
   }
@@ -214,8 +215,8 @@ Item {
     }
     // One profile is an unambiguous "the VPN"; several need a pick.
     if (profiles.length === 1) connectTo(targets[0])
-    else if (profiles.length === 0) actionStatus = "Import a profile first"
-    else actionStatus = "Pick a profile below"
+    else if (profiles.length === 0) actionStatus = I18n.mark("Import a profile first")
+    else actionStatus = I18n.mark("Pick a profile below")
     actionStatusTimer.restart()
   }
 
@@ -383,7 +384,7 @@ Item {
           listRetry.restart()
           return
         }
-        root.lastError = Shared.elide(failure || "Could not list NetworkManager connections", 140)
+        root.lastError = Shared.elide(failure || I18n.mark("Could not list NetworkManager connections"), 140)
         return
       }
 
@@ -430,7 +431,7 @@ Item {
       // down — disconnect() refuses to run undetected.
       if (exitCode !== 0) {
         root.lastError = Shared.elide(
-          String(typesStderr.text || "") || "Could not read NetworkManager profile details", 140)
+          String(typesStderr.text || "") || I18n.mark("Could not read NetworkManager profile details"), 140)
         return
       }
 
@@ -507,10 +508,10 @@ Item {
         // checked for being a uuid rather than trusted for having come from a
         // listing.
         if (interactive && root.missingSecrets(output) && Shared.isUuid(target.uuid)) {
-          root.lastError = "This profile needs credentials — opening a terminal to enter them."
+          root.lastError = I18n.mark("This profile needs credentials — opening a terminal to enter them.")
           root.authRequired("nmcli --ask connection up uuid " + target.uuid)
         } else {
-          root.lastError = Shared.elide(output.trim() || "nmcli command failed", 140)
+          root.lastError = Shared.elide(output.trim() || I18n.mark("nmcli command failed"), 140)
         }
       } else {
         root.lastError = ""

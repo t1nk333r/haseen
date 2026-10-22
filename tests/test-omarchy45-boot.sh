@@ -167,6 +167,52 @@ else
 fi
 chmod 644 "$root/etc/limine-entry-tool.d/private.conf"
 
+# haseen doctor's hint (plan 111): the pin is kept once written, so a root
+# device that changed since leaves it naming the old one. The root= the merged
+# config gives the next image is compared with this boot's.
+pin_report() { # ROOT — boot_limine_pin_report under ROOT
+    capture env HASEEN_SYSROOT="$1" bash -c 'source "$HASEEN_PATH/lib/boot.sh"; boot_limine_pin_report'
+}
+PIN=/etc/limine-entry-tool.d/haseen-cmdline.conf
+root="$(limine_root pin-report 'BOOT_IMAGE=/vmlinuz root=UUID=new rw quiet')"
+pin_report "$root"
+assert_eq "doctor, no pin: nothing to say" "" "$OUTPUT"
+printf '# Written by haseen\nKERNEL_CMDLINE[default]+=" root=UUID=new rw quiet"\n' >"$root$PIN"
+pin_report "$root"
+assert_eq "doctor, the pin names this boot's root=" "limine root pin=ok (root=UUID=new, as this boot)" "$OUTPUT"
+printf '# Written by haseen\nKERNEL_CMDLINE[default]+=" root=UUID=old rw quiet"\n' >"$root$PIN"
+pin_report "$root"
+assert_contains "doctor, a stale pin: both named" "$OUTPUT" \
+    "limine root pin=differs: the next boot image gets root=UUID=old ($PIN pins root=UUID=old), but this boot used root=UUID=new."
+assert_contains "doctor, a stale pin: how to refresh it" "$OUTPUT" \
+    "set root=UUID=new in $PIN (sudoedit it), then rebuild (sudo limine-mkinitcpio)"
+assert_contains "doctor, a stale pin: a hint, not a verdict" "$OUTPUT" "if both name the same device, nothing is wrong"
+capture env HASEEN_SYSROOT="$root" haseen doctor
+assert_contains "haseen doctor prints it" "$OUTPUT" "limine root pin=differs: the next boot image gets root=UUID=old"
+# A later layer that states this boot's root= wins over the pin.
+printf 'KERNEL_CMDLINE[default]+=" root=UUID=new"\n' >>"$root/etc/default/limine"
+pin_report "$root"
+assert_eq "doctor, a later layer's root= wins: ok" "limine root pin=ok (root=UUID=new, as this boot)" "$OUTPUT"
+# A later layer that states another one: that layer is the one to change.
+printf 'KERNEL_CMDLINE[default]+=" root=UUID=new"\n' >"$root$PIN"
+printf 'ESP_PATH="/boot"\nKERNEL_CMDLINE[default]+=" root=UUID=other"\n' >"$root/etc/default/limine"
+pin_report "$root"
+assert_contains "doctor, a later layer's stale root=: it is named, not the pin" "$OUTPUT" \
+    "the next boot image gets root=UUID=other ($PIN pins root=UUID=new), but this boot used root=UUID=new. If the root device changed, set root=UUID=new in the layer of Limine's config after the pin"
+printf 'ESP_PATH="/boot"\n' >"$root/etc/default/limine"
+printf 'quiet splash\n' >"$root/proc/cmdline"
+pin_report "$root"
+assert_eq "doctor, this boot states no root=: unknown" "limine root pin=unknown: this boot's command line states no root=" "$OUTPUT"
+printf 'root=UUID=new rw\n' >"$root/proc/cmdline"
+chmod 000 "$root$PIN"
+if [[ -r $root$PIN ]]; then
+    _pass # running as root: nothing is unreadable
+else
+    pin_report "$root"
+    assert_eq "doctor, an unreadable layer: unknown" "limine root pin=unknown: a Limine config layer cannot be read" "$OUTPUT"
+fi
+chmod 644 "$root$PIN"
+
 # A later `=` that states root= replaces the drop-in: written, but status 2
 # and the caller is told to add the words there.
 root="$(limine_root moot 'root=UUID=abc rw')"

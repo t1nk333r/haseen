@@ -33,7 +33,7 @@ Column {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: row.folder.label + "  ·  " + Model.folderText(row.folder)
+                text: row.folder.label + "  ·  " + Model.folderText(row.folder, I18n)
                 color: Model.folderFailed(row.folder) ? Theme.urgent : Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -58,20 +58,20 @@ Column {
             spacing: Math.round(Theme.gap / 2)
 
             Pill {
-                text: "Rescan"
+                text: I18n.tr("Rescan")
                 busy: row.service.busy
                 enabled: !row.folder.paused
                 onClicked: row.service.rescan(row.folder.id)
             }
 
             Pill {
-                text: row.folder.paused ? "Resume" : "Pause"
+                text: row.folder.paused ? I18n.tr("Resume") : I18n.tr("Pause")
                 busy: row.service.busy
                 onClicked: row.service.setPaused(row.folder.id, !row.folder.paused)
             }
 
             Pill {
-                text: "Share"
+                text: I18n.tr("Share")
                 active: row.sharing
                 enabled: row.devices.length > 0
                 onClicked: row.sharing = !row.sharing

@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# haseen:summary Show haseen's menus, panels and notifications in English or Arabic
+# haseen:args [en|ar|status|list] [--dry-run]
+#
+# The interface language (plan 109), after Omarchy 4.5's omarchy-language
+# (MIT, Copyright (c) David Heinemeier Hansson). Only haseen's own interface
+# follows it: the code goes to $HASEEN_USER_CONFIG/language, which the shell
+# watches (share/haseen/shell/Haseen/I18n.qml) and bash notifications read
+# (share/haseen/lib/i18n.sh). The session locale (LANG) is left alone: it
+# needs root to generate and changes every app and terminal, so `status`
+# only says how to change it.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen language [en|ar|status|list] [--dry-run]
+
+  en, ar   show haseen's menus, panels and notifications in that language,
+           at once. Arabic lays panels out right to left; the bar keeps its
+           order. English is the default.
+  status   the interface language (the default action), how its strings were
+           translated, and the session locale
+  list     the languages haseen has
+
+Only haseen's interface changes: apps, terminals and command output keep the
+session locale (LANG). Each language's strings and their provenance are in
+$HASEEN_PATH/i18n/<code>/.
+
+State: \$HASEEN_USER_CONFIG/language (absent = English).
+EOF
+}
+
+REGISTRY="$HASEEN_PATH/i18n/locales.json"
+FILE="$HASEEN_USER_CONFIG/language"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-status}
+(($# <= 1)) || { usage >&2; exit 2; }
+have jq || die "jq is not installed"
+[[ -r $REGISTRY ]] || die "no language registry at $REGISTRY"
+
+known() { jq -e --arg c "$1" 'has($c)' "$REGISTRY" >/dev/null; }
+field() { jq -r --arg c "$1" --arg f "$2" '.[$c][$f] // empty' "$REGISTRY"; }
+
+current() {
+    local code
+    # Normalised as the shell and i18n_language read it.
+    code="$(i18n_requested "$FILE")"
+    if [[ $code =~ ^[a-z]{2,3}$ ]] && known "$code"; then echo "$code"; else echo en; fi
+}
+
+# "<reviewed> of <total>" over a language's catalogs.
+reviewed_count() {
+    local dir="$HASEEN_PATH/i18n/$1"
+    jq -rn --slurpfile p "$dir/provenance.json" \
+        --slurpfile s "$dir/shell.json" --slurpfile m "$dir/menu.json" --slurpfile n "$dir/notify.json" '
+        ([$p[0].reviewed.shell, $p[0].reviewed.menu, $p[0].reviewed.notify] | map(length) | add) as $r
+        | ($s[0] | length) + ($m[0] | length) + ($n[0] | length) as $t
+        | "\($r) of \($t)"' 2>/dev/null || echo "unknown"
+}
+
+case $action in
+list)
+    jq -r 'to_entries[] | "\(.key)\t\(.value.name)\t\(.value.englishName)\t\(.value.direction)"' "$REGISTRY"
+    ;;
+status)
+    code="$(current)"
+    printf 'language: %s (%s, %s)\n' "$code" "$(field "$code" name)" \
+        "$([[ $(field "$code" direction) == rtl ]] && echo "right to left" || echo "left to right")"
+    if [[ $code != en && -r $HASEEN_PATH/i18n/$code/provenance.json ]]; then
+        printf 'translation: %s, by %s (%s); %s strings reviewed\n' \
+            "$(jq -r .translation "$HASEEN_PATH/i18n/$code/provenance.json")" \
+            "$(jq -r .translator "$HASEEN_PATH/i18n/$code/provenance.json")" \
+            "$(jq -r .date "$HASEEN_PATH/i18n/$code/provenance.json")" \
+            "$(reviewed_count "$code")"
+    fi
+    printf 'session locale: %s (apps, terminals and command output)\n' "${LANG:-unset}"
+    want="$(field "$code" locale)"
+    if [[ $code != en && ${LANG:-} != "$want" ]]; then
+        echo "Apps keep the session locale. To run them in $(field "$code" englishName) too, generate"
+        echo "$want in /etc/locale.gen with locale-gen and set LANG=$want in"
+        echo "\${XDG_CONFIG_HOME:-~/.config}/uwsm/env.d/; it applies from the next login. haseen does not do this for you."
+    fi
+    ;;
+*)
+    [[ $action =~ ^[a-z]{2,3}$ ]] && known "$action" || die "unknown language '$action' (haseen language list)"
+    if [[ $action == en ]]; then
+        # English is the default: no file, nothing left behind.
+        [[ -e $FILE ]] && run rm -f "$FILE"
+    else
+        # Atomic: the running shell reads the file the moment it changes.
+        printf '%s\n' "$action" | replace_user_file "$FILE"
+    fi
+    $DRY_RUN && exit 0
+    echo "Interface language: $(field "$action" englishName)"
+    if have notify-send; then
+        notify-send -a haseen "$(i18n "Interface language: %1" "$(field "$action" name)")" || true
+    fi
+    ;;
+esac

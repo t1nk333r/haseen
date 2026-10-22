@@ -46,8 +46,11 @@ Column {
             width: parent.width
             height: labelText.implicitHeight
 
+            // Anchored, not at x 0, so a mirrored panel (plan 109) puts the
+            // label on the right and the reading on the left.
             Text {
                 id: labelText
+                anchors.left: parent.left
                 text: meter.label
                 color: Theme.foreground
                 font.family: Theme.fontFamily
@@ -70,7 +73,9 @@ Column {
             radius: height / 2
             color: Theme.surfaceAlt
 
+            // A level meter: fills from the right in a mirrored panel.
             Rectangle {
+                anchors.left: parent.left
                 width: parent.width * Math.max(0, meter.value) / 100
                 height: parent.height
                 radius: parent.radius
@@ -80,33 +85,34 @@ Column {
     }
 
     Meter {
-        label: "CPU"
+        label: "CPU" // i18n-ignore
         value: sampler.cpu
     }
 
     Meter {
-        label: "Memory"
+        label: I18n.tr("Memory")
         value: sampler.mem ? sampler.mem.percent : -1
         detail: sampler.mem ? Usage.formatKiB(sampler.mem.usedKiB) + " / " + Usage.formatKiB(sampler.mem.totalKiB) : ""
     }
 
     Meter {
         visible: sampler.mem !== null && sampler.mem.swapTotalKiB > 0
-        label: "Swap"
+        label: I18n.tr("Swap")
         value: sampler.mem && sampler.mem.swapTotalKiB > 0 ? 100 * sampler.mem.swapUsedKiB / sampler.mem.swapTotalKiB : -1
         detail: sampler.mem ? Usage.formatKiB(sampler.mem.swapUsedKiB) + " / " + Usage.formatKiB(sampler.mem.swapTotalKiB) : ""
     }
 
     Meter {
         visible: sampler.gpuInfo !== null
-        label: sampler.gpuLabel
+        label: I18n.tr(sampler.gpuLabel)
         value: sampler.gpu
         detail: sampler.gpuInfo ? sampler.gpuInfo.card + " " + sampler.gpuInfo.driver : ""
     }
 
     Text {
+        width: root.panelWidth
         topPadding: Theme.gap
-        text: "Top processes"
+        text: I18n.tr("Top processes")
         color: Theme.foreground
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -114,8 +120,9 @@ Column {
     }
 
     Text {
+        width: root.panelWidth
         visible: sampler.processes.length === 0
-        text: "Sampling…"
+        text: I18n.tr("Sampling…")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -132,6 +139,7 @@ Column {
 
             Text {
                 id: name
+                anchors.left: parent.left
                 width: parent.width - stats.implicitWidth - Theme.gap
                 text: modelData.command
                 elide: Text.ElideRight
@@ -143,7 +151,7 @@ Column {
             Text {
                 id: stats
                 anchors.right: parent.right
-                text: modelData.cpu.toFixed(1).padStart(5) + "% cpu " + modelData.mem.toFixed(1).padStart(4) + "% mem"
+                text: I18n.tr("%1% cpu %2% mem", modelData.cpu.toFixed(1).padStart(5), modelData.mem.toFixed(1).padStart(4))
                 color: Theme.muted
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontSize - 1

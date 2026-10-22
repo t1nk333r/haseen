@@ -49,9 +49,14 @@ Column {
   width: parent ? parent.width : 0
   spacing: horizonRoot.host.sp(9)
 
+  // The layout's own mirroring, set by Panel.qml's loader from the names'
+  // language (it overrides the interface's): read rather than recomputed,
+  // so these x positions always run the way the anchors around them do.
+  readonly property bool mirrored: LayoutMirroring.enabled
+
   // Fraction-based x positions do not inherit LayoutMirroring, so mirror them here.
   function place(fraction, itemWidth) {
-    return host.isArabic ? width - fraction * width - itemWidth : fraction * width
+    return mirrored ? width - fraction * width - itemWidth : fraction * width
   }
 
   function containsNow(segment) {
@@ -504,7 +509,9 @@ Column {
             radius: 2
             color: horizonRoot.host.alpha(host.foreground, 0.13)
 
+            // Anchored, so it fills from the right when the layout is mirrored.
             Rectangle {
+              anchors.left: parent.left
               width: horizonRoot.longestSegment
                 ? parent.width * tableRow.modelData.length / horizonRoot.longestSegment.length
                 : 0

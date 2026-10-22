@@ -166,7 +166,7 @@ Item {
 
     readonly property bool aboutView: activeMenu === ":about"
     readonly property var activeItem: items[activeMenu] || null
-    readonly property string heading: picking ? pickPrompt : aboutView ? "About" : (activeMenu !== "root" && activeItem ? (activeItem.title || activeItem.label) : "Go")
+    readonly property string heading: picking ? pickPrompt : aboutView ? I18n.tr("About") : (activeMenu !== "root" && activeItem ? (activeItem.title || activeItem.label) : I18n.tr("Go"))
 
     implicitWidth: cardWidth
     implicitHeight: cardHeight
@@ -579,7 +579,7 @@ Item {
             console.warn("haseen: menu: unreadable select request -", e);
             return;
         }
-        pickPrompt = String(req.prompt || "Select");
+        pickPrompt = String(req.prompt || I18n.tr("Select"));
         pickOptions = Array.isArray(req.options) ? req.options : [];
         pickWidth = Number(req.width) > 0 ? Number(req.width) : Style.WIDTH;
         pickHeight = Number(req.height) > 0 ? Number(req.height) : 0;
@@ -640,7 +640,7 @@ Item {
                 close();
         } else if (editsFilter(event)) {
             setFilter(editedFilter(event));
-        } else if ((k === Qt.Key_Backspace || k === Qt.Key_Left) && filterText === "") {
+        } else if ((k === Qt.Key_Backspace || k === (I18n.rightToLeft ? Qt.Key_Right : Qt.Key_Left)) && filterText === "") {
             goBack();
         } else if (k === Qt.Key_Up || k === Qt.Key_Backtab) {
             select(-1);
@@ -650,7 +650,7 @@ Item {
             select(-6);
         } else if (k === Qt.Key_PageDown) {
             select(6);
-        } else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Right) {
+        } else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === (I18n.rightToLeft ? Qt.Key_Left : Qt.Key_Right)) {
             if (cursorActive)
                 activateIndex(selectedIndex, false);
             else if (displayModel.count > 0)
@@ -664,7 +664,9 @@ Item {
 
     // ------------------------------------------------------------ data
     function reloadModel(): void {
-        const merged = Model.mergeMenuSources(defaultItems, userItems);
+        // The menu catalog relabels the shipped rows by id (plan 109); the
+        // overlay merges after it, so the user's own words win.
+        const merged = Model.mergeMenuSources(Model.applyTranslations(defaultItems, I18n.menuStrings), userItems);
         let next = {
             items: merged.items,
             itemOrder: merged.itemOrder
@@ -722,15 +724,15 @@ Item {
     readonly property var providers: ({
             "security-tools": {
                 script: "haseen vapt tool-list --json",
-                parse: (id, text) => Model.securityRows("tools", id, SecurityEvidence.parse("tools", text))
+                parse: (id, text) => Model.securityRows("tools", id, SecurityEvidence.parse("tools", text), I18n.tr)
             },
             "security-services": {
                 script: "haseen vapt service-list --json",
-                parse: (id, text) => Model.securityRows("services", id, SecurityEvidence.parse("services", text))
+                parse: (id, text) => Model.securityRows("services", id, SecurityEvidence.parse("services", text), I18n.tr)
             },
             "security-local": {
                 script: "haseen vapt doctor --json",
-                parse: (id, text) => Model.securityRows("local", id, SecurityEvidence.parse("doctor", text))
+                parse: (id, text) => Model.securityRows("local", id, SecurityEvidence.parse("doctor", text), I18n.tr)
             },
             "fonts": {
                 script: "cur=$(haseen font current 2>/dev/null); haseen font list 2>/dev/null | while IFS= read -r f; do [ -n \"$f\" ] && printf '%s\\t%s\\n' \"$f\" \"$cur\"; done",
@@ -801,7 +803,7 @@ Item {
             return [];
         }
         const installed = cut >= 0 ? text.slice(cut + 1).split("\n").map(s => s.trim()).filter(s => s !== "") : [];
-        return Model.catalogRows(menuId, data, installed, mode);
+        return Model.catalogRows(menuId, data, installed, mode, I18n.tr);
     }
 
     function appRows(): var {
@@ -838,7 +840,7 @@ Item {
             return;
         }
         if (e.provider.startsWith("security-"))
-            applyRows(id, Model.securityRefreshing(id, Model.memory.providerRows[id]), false);
+            applyRows(id, Model.securityRefreshing(id, Model.memory.providerRows[id], I18n.tr), false);
         if (providerQueue.indexOf(id) < 0)
             providerQueue = providerQueue.concat([id]);
         startProvider();
@@ -931,6 +933,15 @@ Item {
         }
     }
 
+    // A language switch (haseen language) relabels the rows in place.
+    Connections {
+        target: I18n
+        function onMenuStringsChanged() {
+            if (root.loaded)
+                root.reloadModel();
+        }
+    }
+
     Process {
         id: providerProc
 
@@ -944,7 +955,7 @@ Item {
             if (spec && root.items[menuId] && Model.providerAllowed(kind, Config.pluginEntry("haseen.security").enabled)) {
                 const security = kind.startsWith("security-");
                 const rows = security && code !== 0 && kind !== "security-local"
-                    ? Model.securityInfo(menuId, "error", providerErr.text)
+                    ? Model.securityInfo(menuId, "error", providerErr.text, I18n.tr)
                     : spec.parse(menuId, providerOut.text);
                 root.applyRows(menuId, rows, true);
             }
@@ -1103,8 +1114,11 @@ Item {
                 width: parent.width
                 height: root.headerHeight
 
+                // Anchored, not placed by x: a mirrored (right-to-left)
+                // menu puts it at the right, over the rows' icons.
                 BrandImage {
-                    x: root.space(8) + (root.iconColumn - width) / 2
+                    anchors.left: parent.left
+                    anchors.leftMargin: root.space(8) + (root.iconColumn - width) / 2
                     anchors.verticalCenter: parent.verticalCenter
                     height: root.headingSize
                     path: Branding.symbolicPath
@@ -1236,7 +1250,7 @@ Item {
 
                     Text {
                         width: root.space(320)
-                        text: root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
+                        text: root.filterText ? I18n.tr("No matches for “%1”", root.filterText) : I18n.tr("Nothing here yet")
                         color: root.foreground
                         opacity: Style.EMPTY_TEXT
                         horizontalAlignment: Text.AlignHCenter

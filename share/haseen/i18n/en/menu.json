@@ -1,0 +1,911 @@
+{
+  "about": {
+    "label": "About"
+  },
+  "apps": {
+    "label": "Apps"
+  },
+  "install": {
+    "label": "Install"
+  },
+  "install.ai": {
+    "label": "AI"
+  },
+  "install.aur": {
+    "description": "Chaotic-AUR first",
+    "label": "AUR"
+  },
+  "install.browser": {
+    "label": "Browser"
+  },
+  "install.development": {
+    "label": "Development"
+  },
+  "install.development.laravel": {
+    "label": "Laravel"
+  },
+  "install.development.ocaml": {
+    "description": "ocaml and opam",
+    "label": "OCaml"
+  },
+  "install.development.phoenix": {
+    "label": "Phoenix"
+  },
+  "install.development.php": {
+    "description": "php and composer",
+    "label": "PHP"
+  },
+  "install.development.symfony": {
+    "label": "Symfony"
+  },
+  "install.editor": {
+    "label": "Editor"
+  },
+  "install.font": {
+    "label": "Font"
+  },
+  "install.gaming": {
+    "label": "Gaming"
+  },
+  "install.gaming.xbox-cloud": {
+    "description": "web app",
+    "label": "Xbox Cloud Gaming"
+  },
+  "install.package": {
+    "label": "Package"
+  },
+  "install.service": {
+    "label": "Service"
+  },
+  "install.style": {
+    "label": "Style"
+  },
+  "install.style.background": {
+    "label": "Background"
+  },
+  "install.style.theme": {
+    "description": "from a git repository (Omarchy theme format)",
+    "label": "Theme"
+  },
+  "install.terminal": {
+    "label": "Terminal"
+  },
+  "install.webapp": {
+    "label": "Web App"
+  },
+  "learn": {
+    "label": "Learn"
+  },
+  "learn.arch": {
+    "label": "Arch"
+  },
+  "learn.bash": {
+    "label": "Bash"
+  },
+  "learn.haseen": {
+    "label": "haseen"
+  },
+  "learn.herdr-keybindings": {
+    "description": "herdr's config.toml: its key bindings",
+    "label": "Herdr"
+  },
+  "learn.hyprland": {
+    "label": "Hyprland"
+  },
+  "learn.keybindings": {
+    "label": "Keybindings"
+  },
+  "learn.neovim": {
+    "label": "Neovim"
+  },
+  "learn.tmux-keybindings": {
+    "label": "Tmux"
+  },
+  "remove": {
+    "label": "Remove"
+  },
+  "remove.ai": {
+    "label": "AI",
+    "title": "Remove"
+  },
+  "remove.browser": {
+    "label": "Browser",
+    "title": "Remove"
+  },
+  "remove.development": {
+    "label": "Development",
+    "title": "Remove"
+  },
+  "remove.development.laravel": {
+    "label": "Laravel"
+  },
+  "remove.development.ocaml": {
+    "label": "OCaml"
+  },
+  "remove.development.phoenix": {
+    "label": "Phoenix"
+  },
+  "remove.development.php": {
+    "label": "PHP"
+  },
+  "remove.development.symfony": {
+    "label": "Symfony"
+  },
+  "remove.gaming": {
+    "label": "Gaming",
+    "title": "Remove"
+  },
+  "remove.gaming.xbox-cloud": {
+    "label": "Xbox Cloud Gaming"
+  },
+  "remove.package": {
+    "label": "Package"
+  },
+  "remove.service": {
+    "label": "Services",
+    "title": "Remove"
+  },
+  "remove.webapp": {
+    "label": "Web App"
+  },
+  "setup": {
+    "label": "Setup"
+  },
+  "setup.ai": {
+    "label": "Local AI"
+  },
+  "setup.ai.chat": {
+    "label": "Chat"
+  },
+  "setup.ai.pull": {
+    "label": "Pull Model"
+  },
+  "setup.ai.status": {
+    "label": "Status"
+  },
+  "setup.battery-limit": {
+    "label": "Battery Charge Limit"
+  },
+  "setup.battery-limit.80": {
+    "label": "Limit to 80%"
+  },
+  "setup.battery-limit.full": {
+    "label": "No Limit (100%)"
+  },
+  "setup.battery-limit.off": {
+    "label": "Stop Restoring"
+  },
+  "setup.battery-limit.on": {
+    "label": "Restore at Boot and Resume"
+  },
+  "setup.battery-limit.save": {
+    "label": "Keep the Current Limit"
+  },
+  "setup.battery-limit.status": {
+    "label": "Status"
+  },
+  "setup.config": {
+    "label": "Config"
+  },
+  "setup.config.hyprland": {
+    "label": "Hyprland"
+  },
+  "setup.config.nightlight": {
+    "description": "the nightlight: shell.json plugins.haseen.nightlight",
+    "label": "Hyprsunset"
+  },
+  "setup.config.xcompose": {
+    "description": "for apps started after the edit",
+    "label": "XCompose"
+  },
+  "setup.ddc": {
+    "label": "Monitor Brightness (DDC/CI)"
+  },
+  "setup.ddc.off": {
+    "label": "Turn Off"
+  },
+  "setup.ddc.on": {
+    "label": "Turn On"
+  },
+  "setup.ddc.status": {
+    "label": "Status"
+  },
+  "setup.default": {
+    "label": "Defaults"
+  },
+  "setup.default.agent": {
+    "label": "Agent",
+    "title": "Default Agent"
+  },
+  "setup.default.agent.agy": {
+    "label": "Antigravity"
+  },
+  "setup.default.agent.claude": {
+    "label": "Claude"
+  },
+  "setup.default.agent.codex": {
+    "label": "Codex"
+  },
+  "setup.default.agent.copilot": {
+    "label": "Copilot"
+  },
+  "setup.default.agent.crush": {
+    "label": "Crush"
+  },
+  "setup.default.agent.cursor-agent": {
+    "label": "Cursor CLI"
+  },
+  "setup.default.agent.gemini": {
+    "label": "Gemini"
+  },
+  "setup.default.agent.grok": {
+    "label": "Grok"
+  },
+  "setup.default.agent.hermes": {
+    "label": "Hermes"
+  },
+  "setup.default.agent.kimi": {
+    "label": "Kimi"
+  },
+  "setup.default.agent.muse": {
+    "label": "Muse Code"
+  },
+  "setup.default.agent.omp": {
+    "label": "omp"
+  },
+  "setup.default.agent.openclaw": {
+    "label": "OpenClaw"
+  },
+  "setup.default.agent.opencode": {
+    "label": "OpenCode"
+  },
+  "setup.default.agent.ori": {
+    "label": "Ori"
+  },
+  "setup.default.agent.pi": {
+    "label": "Pi"
+  },
+  "setup.default.browser": {
+    "label": "Browser",
+    "title": "Default Browser"
+  },
+  "setup.default.browser.brave": {
+    "label": "Brave"
+  },
+  "setup.default.browser.brave-origin": {
+    "label": "Brave Origin"
+  },
+  "setup.default.browser.chrome": {
+    "label": "Chrome"
+  },
+  "setup.default.browser.chromium": {
+    "label": "Chromium"
+  },
+  "setup.default.browser.edge": {
+    "label": "Edge"
+  },
+  "setup.default.browser.firefox": {
+    "label": "Firefox"
+  },
+  "setup.default.browser.helium": {
+    "label": "Helium"
+  },
+  "setup.default.browser.zen": {
+    "label": "Zen"
+  },
+  "setup.default.editor": {
+    "label": "Editor",
+    "title": "Default Editor"
+  },
+  "setup.default.editor.code": {
+    "label": "VSCode"
+  },
+  "setup.default.editor.cursor": {
+    "label": "Cursor"
+  },
+  "setup.default.editor.emacs": {
+    "label": "Emacs"
+  },
+  "setup.default.editor.helix": {
+    "label": "Helix"
+  },
+  "setup.default.editor.nvim": {
+    "label": "Neovim"
+  },
+  "setup.default.editor.sublime": {
+    "label": "Sublime Text"
+  },
+  "setup.default.editor.vim": {
+    "label": "Vim"
+  },
+  "setup.default.editor.zed": {
+    "label": "Zed"
+  },
+  "setup.default.terminal": {
+    "label": "Terminal",
+    "title": "Default Terminal"
+  },
+  "setup.default.terminal.alacritty": {
+    "label": "Alacritty"
+  },
+  "setup.default.terminal.foot": {
+    "label": "Foot"
+  },
+  "setup.default.terminal.ghostty": {
+    "label": "Ghostty"
+  },
+  "setup.default.terminal.kitty": {
+    "label": "Kitty"
+  },
+  "setup.display": {
+    "description": "brightness sliders, night light",
+    "label": "Display"
+  },
+  "setup.dotfiles": {
+    "label": "Dotfiles"
+  },
+  "setup.dotfiles.clone": {
+    "description": "yadm: backs up the files it replaces",
+    "label": "Clone Repository"
+  },
+  "setup.dotfiles.status": {
+    "label": "Status"
+  },
+  "setup.idle": {
+    "description": "screensaver, lock, display off and suspend timeouts",
+    "label": "Idle and Suspend"
+  },
+  "setup.idle.ac": {
+    "description": "seconds, 0 = never; suspend is never by default",
+    "label": "Timeouts on AC"
+  },
+  "setup.idle.battery": {
+    "description": "replace the AC values while unplugged",
+    "label": "Timeouts on Battery"
+  },
+  "setup.idle.status": {
+    "label": "Status"
+  },
+  "setup.input": {
+    "description": "local.lua: input and anything else",
+    "label": "Input"
+  },
+  "setup.kblayout": {
+    "label": "Keyboard Layout in the Bar"
+  },
+  "setup.kblayout.off": {
+    "label": "Hide"
+  },
+  "setup.kblayout.on": {
+    "label": "Show"
+  },
+  "setup.keybindings": {
+    "label": "Keybindings"
+  },
+  "setup.keyd": {
+    "label": "CapsLock Hyper (keyd)"
+  },
+  "setup.keyd.off": {
+    "label": "Turn Off"
+  },
+  "setup.keyd.on": {
+    "label": "Turn On"
+  },
+  "setup.keyd.status": {
+    "label": "Status"
+  },
+  "setup.language": {
+    "description": "the menus and panels in English or Arabic",
+    "label": "Language"
+  },
+  "setup.language.ar": {
+    "label": "العربية"
+  },
+  "setup.language.en": {
+    "label": "English"
+  },
+  "setup.launcher": {
+    "label": "Launcher Prefixes",
+    "title": "Launcher Prefixes"
+  },
+  "setup.launcher.commands": {
+    "description": "the menu's actions",
+    "label": "/ Commands"
+  },
+  "setup.launcher.commands.off": {
+    "label": "Off"
+  },
+  "setup.launcher.commands.on": {
+    "label": "On"
+  },
+  "setup.launcher.emoji": {
+    "description": "search emoji, Enter copies",
+    "label": ": Emoji"
+  },
+  "setup.launcher.emoji.off": {
+    "label": "Off"
+  },
+  "setup.launcher.emoji.on": {
+    "label": "On"
+  },
+  "setup.launcher.web": {
+    "description": "open a search in the browser",
+    "label": "? Web Search"
+  },
+  "setup.launcher.web.off": {
+    "label": "Off"
+  },
+  "setup.launcher.web.on": {
+    "label": "On"
+  },
+  "setup.launcher.windows": {
+    "description": "switch to an open window",
+    "label": "@ Windows"
+  },
+  "setup.launcher.windows.off": {
+    "label": "Off"
+  },
+  "setup.launcher.windows.on": {
+    "label": "On"
+  },
+  "setup.monitors": {
+    "label": "Monitors"
+  },
+  "setup.network": {
+    "label": "Network"
+  },
+  "setup.network.dns": {
+    "label": "DNS"
+  },
+  "setup.network.dns.cloudflare": {
+    "label": "Cloudflare"
+  },
+  "setup.network.dns.custom": {
+    "label": "Custom"
+  },
+  "setup.network.dns.dhcp": {
+    "label": "DHCP"
+  },
+  "setup.network.dns.google": {
+    "label": "Google"
+  },
+  "setup.network.qr": {
+    "description": "the Wi-Fi password",
+    "label": "QR Code"
+  },
+  "setup.plugin": {
+    "label": "Plugins"
+  },
+  "setup.plugin.add": {
+    "label": "Add Plugin"
+  },
+  "setup.plugin.disable": {
+    "label": "Disable Plugin"
+  },
+  "setup.plugin.enable": {
+    "label": "Enable Plugin"
+  },
+  "setup.plugin.remove": {
+    "label": "Remove Plugin"
+  },
+  "setup.power": {
+    "description": "charge, time left, power profile, charge limit",
+    "label": "Power and Battery"
+  },
+  "setup.secureboot": {
+    "label": "Secure Boot"
+  },
+  "setup.secureboot.setup": {
+    "label": "Set Up"
+  },
+  "setup.secureboot.status": {
+    "label": "Status"
+  },
+  "setup.security": {
+    "label": "Security"
+  },
+  "setup.security.fido2": {
+    "label": "Fido2"
+  },
+  "setup.security.fingerprint": {
+    "label": "Fingerprint"
+  },
+  "setup.security.passwordless-sudo": {
+    "label": "Passwordless Sudo"
+  },
+  "setup.security.ssh-agent": {
+    "label": "SSH Agent"
+  },
+  "setup.security.sshd": {
+    "label": "SSHD"
+  },
+  "setup.security.vapt": {
+    "description": "Installed status and explicit local helpers; nothing runs on entry.",
+    "label": "VAPT workstation"
+  },
+  "setup.security.vapt.local": {
+    "label": "Local actions"
+  },
+  "setup.security.vapt.panel": {
+    "label": "Open panel"
+  },
+  "setup.security.vapt.services": {
+    "label": "Installed services"
+  },
+  "setup.security.vapt.status": {
+    "label": "Status and sources"
+  },
+  "setup.security.vapt.tools": {
+    "label": "Installed tools"
+  },
+  "style": {
+    "label": "Style"
+  },
+  "style.about": {
+    "label": "About"
+  },
+  "style.about.default": {
+    "label": "Restore Default"
+  },
+  "style.about.image": {
+    "label": "Set From Image"
+  },
+  "style.about.text": {
+    "label": "Edit Text"
+  },
+  "style.background": {
+    "label": "Background"
+  },
+  "style.bar": {
+    "label": "Menu Bar"
+  },
+  "style.bar.arrange": {
+    "label": "Arrange widgets"
+  },
+  "style.bar.position": {
+    "label": "Position"
+  },
+  "style.bar.position.bottom": {
+    "label": "Bottom"
+  },
+  "style.bar.position.left": {
+    "label": "Left"
+  },
+  "style.bar.position.right": {
+    "label": "Right"
+  },
+  "style.bar.position.top": {
+    "label": "Top"
+  },
+  "style.bar.transparency": {
+    "label": "Transparency"
+  },
+  "style.font": {
+    "label": "Font"
+  },
+  "style.hyprland": {
+    "description": "local.lua: look and feel, input and the rest",
+    "label": "Hyprland"
+  },
+  "style.mark": {
+    "label": "Mark",
+    "title": "haseen's Mark"
+  },
+  "style.mark.gate": {
+    "label": "Gate"
+  },
+  "style.mark.kufic": {
+    "label": "Kufic"
+  },
+  "style.mark.shield": {
+    "label": "Shield"
+  },
+  "style.next-background": {
+    "label": "Next background"
+  },
+  "style.screensaver": {
+    "label": "Screensaver"
+  },
+  "style.screensaver.default": {
+    "label": "Restore Default"
+  },
+  "style.screensaver.image": {
+    "label": "Set From Image"
+  },
+  "style.screensaver.preview": {
+    "label": "Preview"
+  },
+  "style.screensaver.style-native": {
+    "label": "Native"
+  },
+  "style.screensaver.style-ttfx": {
+    "label": "Text effects (ttfx)"
+  },
+  "style.screensaver.text": {
+    "label": "Edit Text"
+  },
+  "style.theme": {
+    "label": "Theme"
+  },
+  "style.theme-generator": {
+    "description": "theme from an image (matugen)",
+    "label": "Theme Generator"
+  },
+  "style.unlock": {
+    "description": "boot splash in the current theme's colours",
+    "label": "Unlock"
+  },
+  "system": {
+    "label": "System"
+  },
+  "system.hibernate": {
+    "label": "Hibernate"
+  },
+  "system.lock": {
+    "label": "Lock"
+  },
+  "system.logout": {
+    "label": "Logout"
+  },
+  "system.reboot": {
+    "label": "Reboot"
+  },
+  "system.screen-off": {
+    "description": "until the next key or pointer motion",
+    "label": "Screen off"
+  },
+  "system.screen-on": {
+    "label": "Screen on"
+  },
+  "system.screensaver": {
+    "label": "Screensaver"
+  },
+  "system.shutdown": {
+    "label": "Shutdown"
+  },
+  "system.suspend": {
+    "label": "Suspend"
+  },
+  "trigger": {
+    "label": "Trigger"
+  },
+  "trigger.capture": {
+    "label": "Capture"
+  },
+  "trigger.capture.color": {
+    "label": "Color"
+  },
+  "trigger.capture.qr": {
+    "label": "QR Code"
+  },
+  "trigger.capture.screenrecord": {
+    "label": "Screenrecord"
+  },
+  "trigger.capture.screenrecord-stop": {
+    "label": "Stop Screenrecording"
+  },
+  "trigger.capture.screenrecord.desktop-audio": {
+    "label": "With desktop audio"
+  },
+  "trigger.capture.screenrecord.microphone": {
+    "label": "With desktop + microphone audio"
+  },
+  "trigger.capture.screenrecord.no-audio": {
+    "label": "With no audio"
+  },
+  "trigger.capture.screenrecord.webcam": {
+    "label": "With desktop + microphone audio + webcam"
+  },
+  "trigger.capture.screenshot": {
+    "label": "Screenshot"
+  },
+  "trigger.capture.text": {
+    "label": "Text"
+  },
+  "trigger.context": {
+    "label": "Context"
+  },
+  "trigger.context.auto-game": {
+    "label": "Game for Fullscreen Steam Games"
+  },
+  "trigger.context.focus": {
+    "label": "Focus"
+  },
+  "trigger.context.game": {
+    "label": "Game"
+  },
+  "trigger.context.normal": {
+    "label": "Normal"
+  },
+  "trigger.context.present": {
+    "label": "Present"
+  },
+  "trigger.emoji": {
+    "label": "Emoji"
+  },
+  "trigger.hardware": {
+    "label": "Hardware"
+  },
+  "trigger.hardware.hybrid-gpu": {
+    "label": "Hybrid GPU"
+  },
+  "trigger.hardware.laptop-display": {
+    "label": "Laptop Display"
+  },
+  "trigger.hardware.mirror-display": {
+    "label": "Mirror Display"
+  },
+  "trigger.hardware.touchpad": {
+    "label": "Touchpad"
+  },
+  "trigger.hardware.touchpad-haptics": {
+    "label": "Touchpad Haptics"
+  },
+  "trigger.hardware.touchpad-haptics.high": {
+    "label": "high"
+  },
+  "trigger.hardware.touchpad-haptics.low": {
+    "label": "low"
+  },
+  "trigger.hardware.touchpad-haptics.mid": {
+    "label": "mid"
+  },
+  "trigger.hardware.touchscreen": {
+    "label": "Touchscreen"
+  },
+  "trigger.reminder": {
+    "label": "Reminder"
+  },
+  "trigger.reminder.clear": {
+    "label": "Clear all"
+  },
+  "trigger.reminder.set": {
+    "label": "Set one"
+  },
+  "trigger.reminder.show": {
+    "label": "Show all"
+  },
+  "trigger.share": {
+    "label": "Share"
+  },
+  "trigger.share.clipboard": {
+    "label": "Clipboard"
+  },
+  "trigger.share.file": {
+    "label": "File"
+  },
+  "trigger.share.folder": {
+    "label": "Folder"
+  },
+  "trigger.share.receive": {
+    "label": "Receive"
+  },
+  "trigger.tests": {
+    "label": "Speed Test"
+  },
+  "trigger.tests.disk": {
+    "label": "Disk Speed Test"
+  },
+  "trigger.tests.network": {
+    "label": "Network Speed Test"
+  },
+  "trigger.toggle": {
+    "label": "Toggle"
+  },
+  "trigger.toggle.animations": {
+    "label": "Animations"
+  },
+  "trigger.toggle.bar": {
+    "label": "Menu Bar"
+  },
+  "trigger.toggle.dnd": {
+    "description": "silence them",
+    "label": "Notifications"
+  },
+  "trigger.toggle.gaps": {
+    "label": "Window Gaps"
+  },
+  "trigger.toggle.idle": {
+    "label": "Stay Awake"
+  },
+  "trigger.toggle.nightlight": {
+    "label": "Nightlight"
+  },
+  "trigger.toggle.one-window-ratio": {
+    "label": "1-Window Ratio"
+  },
+  "trigger.toggle.screensaver": {
+    "label": "Screensaver"
+  },
+  "trigger.toggle.workspace-layout": {
+    "label": "Workspace Layout"
+  },
+  "trigger.transcode": {
+    "label": "Transcode"
+  },
+  "update": {
+    "label": "Update"
+  },
+  "update.config": {
+    "label": "Config",
+    "title": "Reset to default"
+  },
+  "update.config.hyprland": {
+    "label": "Hyprland"
+  },
+  "update.config.nightlight": {
+    "description": "the nightlight settings",
+    "label": "Hyprsunset"
+  },
+  "update.config.plymouth": {
+    "label": "Plymouth"
+  },
+  "update.config.shell": {
+    "label": "Shell"
+  },
+  "update.firmware": {
+    "label": "Firmware"
+  },
+  "update.hardware": {
+    "label": "Hardware",
+    "title": "Restart"
+  },
+  "update.hardware.audio": {
+    "label": "Audio"
+  },
+  "update.hardware.bluetooth": {
+    "label": "Bluetooth"
+  },
+  "update.hardware.trackpad": {
+    "label": "Trackpad"
+  },
+  "update.hardware.wifi": {
+    "label": "Wi-Fi"
+  },
+  "update.password": {
+    "label": "Password"
+  },
+  "update.password.drive": {
+    "label": "Drive Encryption"
+  },
+  "update.password.user": {
+    "label": "User"
+  },
+  "update.process": {
+    "label": "Process",
+    "title": "Restart"
+  },
+  "update.process.hyprsunset": {
+    "label": "Hyprsunset"
+  },
+  "update.process.shell": {
+    "label": "Shell"
+  },
+  "update.recovery": {
+    "label": "Shell Recovery"
+  },
+  "update.recovery.offer": {
+    "label": "Recovery Choices"
+  },
+  "update.recovery.restore": {
+    "description": "shell.json from the last healthy run",
+    "label": "Last Good Config"
+  },
+  "update.recovery.safe-mode": {
+    "description": "built-in plugins only",
+    "label": "Safe Mode"
+  },
+  "update.system": {
+    "label": "System"
+  },
+  "update.themes": {
+    "description": "download every Omarchy theme's backgrounds again",
+    "label": "Extra Themes"
+  },
+  "update.time": {
+    "label": "Time"
+  },
+  "update.timezone": {
+    "label": "Timezone"
+  }
+}

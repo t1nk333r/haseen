@@ -62,9 +62,10 @@ Column {
     readonly property bool hasTransferStats: info.rx_bytes !== undefined
 
     property int connectionPhraseIndex: 0
-    readonly property var connectionPhrases: ["Wiring bits", "Handling packets", "Sorting frames", "Hauling bytes", "Routing crumbs", "Counting collisions", "Bending light"]
+    readonly property var connectionPhrases: [I18n.mark("Wiring bits"), I18n.mark("Handling packets"), I18n.mark("Sorting frames"), I18n.mark("Hauling bytes"), I18n.mark("Routing crumbs"), I18n.mark("Counting collisions"), I18n.mark("Bending light")]
     readonly property string connectionPhrase: connectionPhrases[connectionPhraseIndex % connectionPhrases.length]
-    // Hover text for the control under the pointer, shown in the hero.
+    // Hover text for the control under the pointer, shown in the hero;
+    // translated when it is set (it lives only while the pointer stays).
     property string hint: ""
 
     readonly property bool networkManagerAvailable: Networking.backend === NetworkBackendType.NetworkManager
@@ -100,6 +101,8 @@ Column {
 
     property string dnsProvider: ""
     property string pendingDns: ""
+    // The provider a `haseen setup dns` run failed for ("" when none); the
+    // note under the pills names it.
     property string dnsFailure: ""
 
     // Wi-Fi band from haseen-network-band: `bandCurrent` is the band in use,
@@ -108,6 +111,7 @@ Column {
     property string bandSelected: "auto"
     property var bandAvailable: []
     property string pendingBand: ""
+    // The band a pin failed for ("" when none); the note names it.
     property string bandFailure: ""
     readonly property bool bandBusy: pendingBand !== ""
     // While a change is in flight, show what was asked for.
@@ -130,6 +134,8 @@ Column {
     property string identityText: ""
     readonly property bool busy: actionKind !== ""
 
+    // failureReason stays English (Model.js and the marks below) and is
+    // translated where a row shows it.
     // ConnectionFailReason as a plain object so Model.js stays pure.
     readonly property var connectionFailReasons: ({
             NoSecrets: ConnectionFailReason.NoSecrets,
@@ -254,6 +260,13 @@ Column {
         bandCurrent = status.band;
         bandSelected = status.selected;
         bandAvailable = status.available;
+    }
+
+    // The hover text for a band switch or pill.
+    function bandHint(band: string): string {
+        if (band === "auto")
+            return I18n.tr("Let Wi-Fi pick the band");
+        return band ? I18n.tr("Stay on %1", I18n.tr(Model.bandLabel(band))) : "";
     }
 
     // Pinning reassociates; the panel stays open so the rows above show it.
@@ -386,7 +399,7 @@ Column {
         case "prompt":
             if (needsFullSetup(row.security)) {
                 failureSsid = row.ssid;
-                failureReason = "Set this network up in nm-connection-editor";
+                failureReason = I18n.mark("Set this network up in nm-connection-editor");
                 break;
             }
             openPasswordPrompt(row.ssid);
@@ -505,7 +518,7 @@ Column {
             if (exitCode === 0)
                 root.bandSelected = root.pendingBand;
             else
-                root.bandFailure = "Could not switch to " + Model.bandLabel(root.pendingBand);
+                root.bandFailure = root.pendingBand;
             root.pendingBand = "";
             root.refresh(false);
         }
@@ -516,7 +529,7 @@ Column {
 
         onExited: exitCode => {
             if (exitCode !== 0)
-                root.dnsFailure = "DNS unchanged: run haseen setup dns " + root.pendingDns + " in a terminal";
+                root.dnsFailure = root.pendingDns;
             root.pendingDns = "";
             if (!dnsProc.running)
                 dnsProc.running = true;
@@ -538,7 +551,7 @@ Column {
         onExited: exitCode => {
             if (exitCode !== 0 && root.actionKind === "connect") {
                 root.failureSsid = root.actionSsid;
-                root.failureReason = "Connection failed";
+                root.failureReason = I18n.mark("Connection failed");
                 root.actionSsid = "";
                 root.actionKind = "";
                 actionTimeout.stop();
@@ -647,7 +660,7 @@ Column {
             if (!root.actionKind)
                 return;
             root.failureSsid = root.actionSsid;
-            root.failureReason = root.actionKind === "connect" ? "Timed out connecting" : root.actionKind === "disconnect" ? "Timed out disconnecting" : "Timed out forgetting";
+            root.failureReason = root.actionKind === "connect" ? I18n.mark("Timed out connecting") : root.actionKind === "disconnect" ? I18n.mark("Timed out disconnecting") : I18n.mark("Timed out forgetting");
             root.actionSsid = "";
             root.actionKind = "";
             root.refresh(false);
@@ -844,7 +857,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !!root.info.iface
                 glyph: "\u{F04C5}"
-                hintText: "Run a speed test"
+                hintText: I18n.tr("Run a speed test")
                 onClicked: root.runSpeedTest()
             }
 
@@ -854,7 +867,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.networkManagerAvailable && root.wifiStationAvailable
                 checked: Networking.wifiEnabled
-                onHovered: on => root.hint = on ? (!Networking.wifiHardwareEnabled ? "Wi-Fi is blocked (rfkill)" : Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on") : ""
+                onHovered: on => root.hint = on ? (!Networking.wifiHardwareEnabled ? I18n.tr("Wi-Fi is blocked (rfkill)") : Networking.wifiEnabled ? I18n.tr("Turn Wi-Fi off") : I18n.tr("Turn Wi-Fi on")) : ""
                 onToggled: root.toggleWifi()
             }
         }
@@ -871,7 +884,7 @@ Column {
 
             // Link detail rides after the name: "Ethernet (2.5gbit)".
             Text {
-                readonly property string title: Model.heroTitle(root.heroInfo, root.kind)
+                readonly property string title: I18n.tr(Model.heroTitle(root.heroInfo, root.kind))
                 readonly property string detail: Model.headerDetail(root.info)
 
                 width: parent.width
@@ -890,7 +903,9 @@ Column {
                 width: parent.width
                 visible: text !== ""
                 textFormat: Text.PlainText
-                text: root.hint !== "" ? root.hint : Model.heroMeta(root.heroInfo, root.kind, root.connectedWifiNetwork !== null, root.connectionPhrase, root.connectivity)
+                // The phrase goes in translated; the fixed lines come out
+                // English and are translated here.
+                text: root.hint !== "" ? root.hint : I18n.tr(Model.heroMeta(root.heroInfo, root.kind, root.connectedWifiNetwork !== null, I18n.tr(root.connectionPhrase), root.connectivity))
                 color: root.hint === "" && root.restricted ? Theme.warning : Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
@@ -909,17 +924,17 @@ Column {
 
     Note {
         visible: !root.networkManagerAvailable
-        text: "NetworkManager is not running."
+        text: I18n.tr("NetworkManager is not running.")
     }
 
     // ---------- Captive portal: only while the link is restricted ----------
     Pill {
         width: parent.width
         visible: root.restricted
-        text: "Sign in to network"
+        text: I18n.tr("Sign in to network")
         pending: true
         busy: root.portalOpening
-        onHovered: on => root.hint = on ? "Open the network's sign-in page in your browser" : ""
+        onHovered: on => root.hint = on ? I18n.tr("Open the network's sign-in page in your browser") : ""
         onClicked: root.signIn()
     }
 
@@ -931,40 +946,40 @@ Column {
         rowSpacing: 2
 
         Detail {
-            label: "Ping"
-            value: Model.formatPingLatency(root.internetPingLatency, root.hasInternetPing)
+            label: I18n.tr("Ping")
+            value: I18n.tr(Model.formatPingLatency(root.internetPingLatency, root.hasInternetPing))
             valueColor: root.hasInternetPing && root.internetPingPacketLoss > 0 ? Theme.urgent : Theme.foreground
         }
         Detail {
-            label: "Packet Loss"
+            label: I18n.tr("Packet Loss")
             value: Model.formatPacketLoss(root.internetPingPacketLoss, root.hasInternetPing)
             valueColor: root.hasInternetPing && root.internetPingPacketLoss > 0 ? Theme.urgent : Theme.foreground
         }
         Detail {
-            label: "Receiving"
+            label: I18n.tr("Receiving")
             value: root.hasTransferStats ? Model.formatRate(root.downloadRate) : "--"
         }
         Detail {
-            label: "Sending"
+            label: I18n.tr("Sending")
             value: root.hasTransferStats ? Model.formatRate(root.uploadRate) : "--"
         }
         Detail {
-            label: "Downloaded"
+            label: I18n.tr("Downloaded")
             value: root.hasTransferStats ? Model.formatBytes(parseFloat(root.info.rx_bytes || "0")) : "--"
         }
         Detail {
-            label: "Uploaded"
+            label: I18n.tr("Uploaded")
             value: root.hasTransferStats ? Model.formatBytes(parseFloat(root.info.tx_bytes || "0")) : "--"
         }
         Detail {
-            label: "IP Address"
+            label: I18n.tr("IP Address")
             value: root.info.ip || "--"
-            copyHint: "Copy IP"
+            copyHint: I18n.tr("Copy IP")
         }
         Detail {
-            label: "Gateway"
+            label: I18n.tr("Gateway")
             value: root.info.gateway || "--"
-            copyHint: "Copy gateway"
+            copyHint: I18n.tr("Copy gateway")
         }
     }
 
@@ -981,9 +996,14 @@ Column {
         SectionHeader {
             id: bandHeader
 
+            readonly property string band: Model.bandSectionBand(root.bandEffective, root.bandCurrent)
+
+            // Anchored, not left at x 0, so a right-to-left panel puts it
+            // opposite the switch.
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: implicitWidth
-            text: Model.bandSectionTitle(root.bandEffective, root.bandCurrent)
+            text: band === "" ? I18n.tr("WI-FI BAND") : I18n.tr("WI-FI BAND: %1", band)
         }
 
         Row {
@@ -996,7 +1016,7 @@ Column {
             SectionHeader {
                 anchors.verticalCenter: parent.verticalCenter
                 width: implicitWidth
-                text: "AUTOMATIC"
+                text: I18n.tr("AUTOMATIC")
             }
 
             ToggleSwitch {
@@ -1004,7 +1024,7 @@ Column {
                 trackHeight: Math.round(Theme.fontSize * 1.1)
                 checked: !root.bandPinned
                 busy: root.bandBusy
-                onHovered: on => root.hint = on ? Model.bandTooltip(root.bandPinned ? "auto" : root.bandCurrent) : ""
+                onHovered: on => root.hint = on ? root.bandHint(root.bandPinned ? "auto" : root.bandCurrent) : ""
                 onToggled: root.toggleBandAuto()
             }
         }
@@ -1026,11 +1046,11 @@ Column {
                 required property string modelData
 
                 width: (bandRow.width - bandRow.spacing * (bandRow.count - 1)) / bandRow.count
-                text: Model.bandLabel(modelData)
+                text: I18n.tr(Model.bandLabel(modelData))
                 active: root.bandCurrent === modelData
                 selected: root.bandEffective === modelData
                 busy: root.bandBusy
-                onHovered: on => root.hint = on ? Model.bandTooltip(modelData) : ""
+                onHovered: on => root.hint = on ? root.bandHint(modelData) : ""
                 onClicked: root.setBand(modelData)
             }
         }
@@ -1038,7 +1058,7 @@ Column {
 
     Note {
         visible: root.bandFailure !== ""
-        text: root.bandFailure
+        text: I18n.tr("Could not switch to %1", I18n.tr(Model.bandLabel(root.bandFailure)))
         color: Theme.urgent
     }
 
@@ -1046,7 +1066,7 @@ Column {
     Separator {}
 
     SectionHeader {
-        text: "DNS PROVIDER"
+        text: I18n.tr("DNS PROVIDER")
     }
 
     Row {
@@ -1062,11 +1082,11 @@ Column {
                 required property var modelData
 
                 width: (dnsRow.width - dnsRow.spacing * (Model.dnsProviders.length - 1)) / Model.dnsProviders.length
-                text: modelData.label
+                text: I18n.tr(modelData.label)
                 active: root.dnsProvider === modelData.id
                 selected: (root.pendingDns || root.dnsProvider) === modelData.id
                 busy: root.pendingDns !== ""
-                onHovered: on => root.hint = on ? modelData.hint : ""
+                onHovered: on => root.hint = on ? I18n.tr(modelData.hint) : ""
                 onClicked: root.setDns(modelData.id)
             }
         }
@@ -1074,7 +1094,7 @@ Column {
 
     Note {
         visible: root.dnsFailure !== ""
-        text: root.dnsFailure
+        text: I18n.tr("DNS unchanged: run haseen setup dns %1 in a terminal", root.dnsFailure)
         color: Theme.urgent
     }
 
@@ -1085,12 +1105,12 @@ Column {
 
     SectionHeader {
         visible: root.wifiStationAvailable && root.wifiOn && root.scanning
-        text: "SCANNING WI-FI…"
+        text: I18n.tr("SCANNING WI-FI…")
     }
 
     Note {
         visible: root.wifiStationAvailable && (!root.wifiOn || (!root.scanning && root.wifiNetworks.length === 0))
-        text: !Networking.wifiHardwareEnabled ? "Wi-Fi is blocked by a hardware switch or rfkill." : !Networking.wifiEnabled ? "Wi-Fi is off." : "No Wi-Fi networks in range."
+        text: !Networking.wifiHardwareEnabled ? I18n.tr("Wi-Fi is blocked by a hardware switch or rfkill.") : !Networking.wifiEnabled ? I18n.tr("Wi-Fi is off.") : I18n.tr("No Wi-Fi networks in range.")
     }
 
     // Capped so a busy neighbourhood does not push the panel off-screen.
@@ -1119,7 +1139,7 @@ Column {
             SectionHeader {
                 visible: entry.sectionTitle !== ""
                 topPadding: entry.index > 0 ? Theme.gap : 0
-                text: entry.sectionTitle
+                text: I18n.tr(entry.sectionTitle)
             }
 
             NetworkRow {
@@ -1128,13 +1148,13 @@ Column {
                 passwordOpen: root.passwordSsid !== "" && root.passwordSsid === entry.modelData.ssid
                 busy: root.actionKind !== "" && root.actionSsid === entry.modelData.ssid
                 failed: root.failureReason !== "" && root.failureSsid === entry.modelData.ssid
-                statusText: passwordOpen && failed ? root.failureReason : Model.rowStatus(entry.modelData, {
+                statusText: I18n.tr(passwordOpen && failed ? root.failureReason : Model.rowStatus(entry.modelData, {
                     kind: root.actionKind,
                     ssid: root.actionSsid
                 }, {
                     reason: root.failureReason,
                     ssid: root.failureSsid
-                }, passwordOpen, root.wifiConnectivity)
+                }, passwordOpen, root.wifiConnectivity))
                 warning: entry.modelData.connected && root.wifiConnectivity === "portal"
                 panelBusy: root.busy
                 requiresCredentials: root.requiresCredentials(entry.modelData.security)

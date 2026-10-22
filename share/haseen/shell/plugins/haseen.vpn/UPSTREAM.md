@@ -13,7 +13,14 @@ fifth backend, MIT, Copyright (c) 2026 Guilherme Estrela (`LICENSE.nordvpn`).
 
 ## What changed
 
-- **Unchanged:** `model/*.js` and their tests (113 cases), apart from a notice.
+- **Unchanged:** `model/*.js` and their tests (113 cases), apart from a notice
+  and the interface-language marks below.
+- **Interface language (plan 109):** every string the panel shows is marked
+  (`N_` in `model/*.js`, `I18n.mark` in the QML) and stays English in the
+  service and backends, so the IPC status and the settings matching read
+  what they always did. A sentence around a value is built with
+  `Shared.compose`/`composeCount`, which return the same English and remember
+  the template; the panel's `say()` translates it whole.
 - **Backends:** `command -v` instead of `omarchy-cmd-present`; every Timer
   marked; the post-command re-reads every 2 s instead of 1.5 s.
 - **Controller → `Service.qml`** (role `vpn`): one instance for all bars; IPC

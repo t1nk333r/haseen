@@ -218,7 +218,7 @@ Singleton {
         if (_warned["unmet:" + rec.id])
             return;
         warnOnce("unmet:" + rec.id, "plugin '" + rec.id + "' not loaded: " + rec.unmet.join("; "));
-        Quickshell.execDetached(["notify-send", "--app-name=haseen", "--urgency=critical", rec.name + " not loaded", rec.unmet.join("\n") + "\n\nInstall what it needs, then reload the shell (haseen shell ipc shell reload)."]);
+        Quickshell.execDetached(["notify-send", "--app-name=haseen", "--urgency=critical", I18n.tr("%1 not loaded", rec.name), I18n.tr("%1\n\nInstall what it needs, then reload the shell (haseen shell ipc shell reload).", rec.unmet.join("\n"))]);
     }
 
     // A failure every bar reports once per screen is recorded once.

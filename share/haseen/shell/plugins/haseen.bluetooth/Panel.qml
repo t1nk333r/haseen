@@ -55,18 +55,19 @@ Column {
         return "\u{F00AF}";
     }
 
+    // The row's second line, in the interface language.
     function status(d: var): string {
         if (d.pairing)
-            return "Pairing…";
+            return I18n.tr("Pairing…");
         switch (d.state) {
         case BluetoothDeviceState.Connecting:
-            return "Connecting…";
+            return I18n.tr("Connecting…");
         case BluetoothDeviceState.Disconnecting:
-            return "Disconnecting…";
+            return I18n.tr("Disconnecting…");
         case BluetoothDeviceState.Connected:
-            return d.batteryAvailable ? "Connected · " + Math.round(d.battery * 100) + "%" : "Connected";
+            return d.batteryAvailable ? I18n.tr("Connected · %1%", I18n.formatNumber(Math.round(d.battery * 100))) : I18n.tr("Connected");
         }
-        return d.paired ? "Paired" : "";
+        return d.paired ? I18n.tr("Paired") : "";
     }
 
     width: Theme.fontSize * 24
@@ -116,7 +117,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Bluetooth"
+            text: I18n.tr("Bluetooth")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -127,7 +128,7 @@ Column {
             height: parent.height
             visible: root.adapter !== null
             glyph: "\uf011"
-            text: root.on ? "On" : "Off"
+            text: root.on ? I18n.tr("On") : I18n.tr("Off")
             color: root.on ? Theme.foreground : Theme.muted
             highlighted: root.on
             onClicked: root.adapter.enabled = !root.adapter.enabled
@@ -138,7 +139,7 @@ Column {
         width: parent.width
         visible: !root.on
         wrapMode: Text.WordWrap
-        text: root.adapter === null ? "No Bluetooth adapter." : root.adapter.state === BluetoothAdapterState.Blocked ? "Bluetooth is blocked (rfkill)." : "Bluetooth is off."
+        text: root.adapter === null ? I18n.tr("No Bluetooth adapter.") : root.adapter.state === BluetoothAdapterState.Blocked ? I18n.tr("Bluetooth is blocked (rfkill).") : I18n.tr("Bluetooth is off.")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -230,7 +231,7 @@ Column {
 
     SectionLabel {
         visible: root.on && root.paired.length > 0
-        text: "Paired devices"
+        text: I18n.tr("Paired devices")
     }
 
     // ScriptModel keeps a row per device object: discovery hands out a new
@@ -245,20 +246,20 @@ Column {
             required property var modelData
 
             device: modelData
-            action: modelData.connected ? "Disconnect" : "Connect"
+            action: modelData.connected ? I18n.tr("Disconnect") : I18n.tr("Connect")
             onActivated: modelData.connected ? modelData.disconnect() : modelData.connect()
         }
     }
 
     SectionLabel {
         visible: root.on
-        text: root.adapter && root.adapter.discovering ? "Nearby devices (scanning…)" : "Nearby devices"
+        text: root.adapter && root.adapter.discovering ? I18n.tr("Nearby devices (scanning…)") : I18n.tr("Nearby devices")
     }
 
     Text {
         width: parent.width
         visible: root.on && root.nearby.length === 0
-        text: "Nothing found yet."
+        text: I18n.tr("Nothing found yet.")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -273,7 +274,7 @@ Column {
             required property var modelData
 
             device: modelData
-            action: modelData.pairing ? "Cancel" : "Pair"
+            action: modelData.pairing ? I18n.tr("Cancel") : I18n.tr("Pair")
             onActivated: {
                 if (modelData.pairing) {
                     modelData.cancelPair();

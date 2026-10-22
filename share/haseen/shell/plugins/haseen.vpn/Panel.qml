@@ -20,6 +20,11 @@ import "model/Shared.js" as Shared
 // Keys: j/k or arrows move, Enter connects (or copies a copy row), / filters,
 // Tab switches tool, Space flips the master switch, r reads again, Escape
 // closes.
+//
+// The service and the backends keep every line in English (the IPC status
+// and the settings read it); the panel translates what it shows through
+// say() (plan 109). In a right-to-left language the panel host mirrors the
+// layout; nothing here draws by hand.
 Column {
     id: root
 
@@ -45,7 +50,7 @@ Column {
             key: "provider:" + entry.backendId,
             backendId: entry.backendId,
             label: entry.label,
-            detail: hidden ? "Hidden" : (entry.connected ? "Connected" : "Shown"),
+            detail: hidden ? I18n.mark("Hidden") : (entry.connected ? I18n.mark("Connected") : I18n.mark("Shown")),
             glyph: entry.glyph,
             hidden: hidden
         };
@@ -59,20 +64,53 @@ Column {
         for (const b of vpn.backends)
             for (const n of (b.installNames || []))
                 names.push(n);
-        const list = Shared.sentenceList(names);
-        return list === "" ? "" : "Install " + list + " to use this panel.";
+        const list = orList(names);
+        return list === "" ? "" : I18n.tr("Install %1 to use this panel.", list);
     }
     readonly property bool statusIsError: vpn !== null && (vpn.notice !== "" || (backend !== null && backend.lastError !== "" && backend.actionStatus === ""))
     readonly property string statusLine: {
         if (!vpn)
-            return "The VPN service is not running: add haseen.vpn to shell.json services (haseen plugin enable haseen.vpn).";
+            return I18n.tr("The VPN service is not running: add haseen.vpn to shell.json services (haseen plugin enable haseen.vpn).");
         if (providersOpen)
-            return "Tools this panel shows. Hidden ones are not read.";
+            return I18n.tr("Tools this panel shows. Hidden ones are not read.");
         if (vpn.notice !== "")
-            return vpn.notice;
+            return say(vpn.notice);
         if (!backend)
-            return vpn.detectedBackends.length > 0 ? "Every VPN tool is hidden. Show one again with the gear." : (vpn.setupHint !== "" ? vpn.setupHint : installHint);
-        return backend.actionStatus !== "" ? backend.actionStatus : backend.lastError;
+            return vpn.detectedBackends.length > 0 ? I18n.tr("Every VPN tool is hidden. Show one again with the gear.") : (vpn.setupHint !== "" ? say(vpn.setupHint) : installHint);
+        return say(backend.actionStatus !== "" ? backend.actionStatus : backend.lastError);
+    }
+
+    // A line from the service or a backend, in the interface language. A
+    // sentence built around values (Shared.compose) is translated whole and
+    // its values in turn; anything else is looked up as it is, so data (a
+    // server, a country, a tool's own error) shows unchanged.
+    function say(text: var): string {
+        const value = text === undefined || text === null ? "" : String(text);
+        const made = Shared.composition(value);
+        if (made === null)
+            return I18n.tr(value);
+        if (made.other !== undefined)
+            return I18n.tn(made.one, made.other, made.count);
+        return I18n.tr(made.template, ...made.args.map(arg => root.say(arg)));
+    }
+
+    // "a", "a or b", "a, b, or c" in the interface language (Shared.sentenceList
+    // writes the English one).
+    function orList(items: var): string {
+        const parts = [];
+        for (const item of items || []) {
+            const name = String(item || "").trim();
+            if (name !== "" && parts.indexOf(name) === -1)
+                parts.push(name);
+        }
+        if (parts.length < 2)
+            return parts.length === 1 ? parts[0] : "";
+        if (parts.length === 2)
+            return I18n.tr("%1 or %2", parts[0], parts[1]);
+        let head = parts[0];
+        for (let i = 1; i < parts.length - 1; i++)
+            head = I18n.tr("%1, %2", head, parts[i]);
+        return I18n.tr("%1, or %2", head, parts[parts.length - 1]);
     }
 
     function close(): void {
@@ -213,7 +251,7 @@ Column {
 
             Text {
                 width: parent.width
-                text: root.providersOpen ? "VPN tools" : root.backend ? root.backend.label : "VPN"
+                text: root.providersOpen ? I18n.tr("VPN tools") : root.backend ? root.backend.label : I18n.tr("VPN")
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: Theme.accent
@@ -224,7 +262,7 @@ Column {
             Text {
                 width: parent.width
                 visible: !root.providersOpen && root.vpn !== null
-                text: !root.vpn ? "" : (root.backend ? root.backend.summary : "") + (root.vpn.publicIp !== "" ? "  ·  " + root.vpn.publicIp : root.vpn.ipFetching ? "  ·  …" : "")
+                text: !root.vpn ? "" : (root.backend ? root.say(root.backend.summary) : "") + (root.vpn.publicIp !== "" ? "  ·  " + root.vpn.publicIp : root.vpn.ipFetching ? "  ·  …" : "")
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: Theme.muted
@@ -267,7 +305,7 @@ Column {
             BarButton {
                 height: parent.height
                 visible: root.backend !== null && !root.providersOpen
-                text: root.backend && root.backend.connected ? "Disconnect" : "Connect"
+                text: root.backend && root.backend.connected ? I18n.tr("Disconnect") : I18n.tr("Connect")
                 highlighted: root.backend !== null && root.backend.connected
                 color: root.backend && root.backend.connected ? Theme.accent : Theme.foreground
                 onClicked: root.vpn.toggleActive()
@@ -304,7 +342,7 @@ Column {
         width: parent.width
         visible: text !== ""
         wrapMode: Text.WordWrap
-        text: root.copiedText !== "" ? "Copied: " + root.copiedText : root.statusLine
+        text: root.copiedText !== "" ? I18n.tr("Copied: %1", root.copiedText) : root.statusLine
         textFormat: Text.PlainText
         color: root.copiedText === "" && root.statusIsError ? Theme.warning : Theme.muted
         font.family: Theme.fontFamily
@@ -325,7 +363,7 @@ Column {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width * 0.35
-                text: parent.modelData.label
+                text: root.say(parent.modelData.label)
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: Theme.muted
@@ -338,7 +376,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width * 0.62
                 horizontalAlignment: Text.AlignRight
-                text: String(parent.modelData.value)
+                text: root.say(parent.modelData.value)
                 textFormat: Text.PlainText
                 elide: Text.ElideLeft
                 color: Theme.foreground
@@ -353,7 +391,7 @@ Column {
         visible: !root.providersOpen && root.toggles.length > 0
         height: Theme.fontSize * 2
         glyph: root.settingsExpanded ? Shared.GLYPH_CHEVRON_UP : Shared.GLYPH_CHEVRON_DOWN
-        text: (root.backend ? root.backend.label : "") + " settings"
+        text: I18n.tr("%1 settings", root.backend ? root.backend.label : "")
         color: Theme.foreground
         onClicked: root.settingsExpanded = !root.settingsExpanded
     }
@@ -384,7 +422,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: toggle.modelData.label
+                    text: root.say(toggle.modelData.label)
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.foreground
@@ -395,7 +433,7 @@ Column {
                 Text {
                     width: parent.width
                     visible: text !== ""
-                    text: toggle.modelData.detail || ""
+                    text: root.say(toggle.modelData.detail || "")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.muted
@@ -410,7 +448,7 @@ Column {
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.gap
                 anchors.verticalCenter: parent.verticalCenter
-                text: toggle.modelData.busy ? "…" : toggle.modelData.value ? "On" : "Off"
+                text: toggle.modelData.busy ? "…" : toggle.modelData.value ? I18n.tr("On") : I18n.tr("Off")
                 color: toggle.modelData.value ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -462,10 +500,15 @@ Column {
                 keys.forceActiveFocus();
             }
 
+            // Spans the field so a right-to-left panel starts it where the
+            // cursor sits.
             Text {
+                anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 visible: filterField.text === ""
-                text: root.backend && root.backend.filterPlaceholder ? root.backend.filterPlaceholder : "Filter"
+                text: root.backend && root.backend.filterPlaceholder ? root.say(root.backend.filterPlaceholder) : I18n.tr("Filter")
+                elide: Text.ElideRight
                 color: Theme.muted
                 font: filterField.font
             }
@@ -523,7 +566,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: row.modelData.label
+                    text: root.say(row.modelData.label)
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: row.here ? Theme.accent : Theme.foreground
@@ -534,7 +577,7 @@ Column {
                 Text {
                     width: parent.width
                     visible: text !== ""
-                    text: row.modelData.detail || ""
+                    text: root.say(row.modelData.detail || "")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.muted
@@ -560,7 +603,7 @@ Column {
         width: parent.width
         visible: !root.providersOpen && root.backend !== null && root.rows.length === 0 && root.backend.emptyText !== undefined
         wrapMode: Text.WordWrap
-        text: root.backend ? String(root.backend.emptyText || "") : ""
+        text: root.backend ? root.say(root.backend.emptyText || "") : ""
         textFormat: Text.PlainText
         color: Theme.muted
         font.family: Theme.fontFamily
@@ -569,7 +612,7 @@ Column {
 
     Text {
         width: parent.width
-        text: "j/k move · ⏎ connect · tab tool · space switch · r read again · esc close"
+        text: I18n.tr("j/k move · ⏎ connect · tab tool · space switch · r read again · esc close")
         textFormat: Text.PlainText
         elide: Text.ElideRight
         color: Theme.muted

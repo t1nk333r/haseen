@@ -22,8 +22,8 @@ assert_eq "prayers name" "Prayers" "$(jq -r .name "$M")"
 assert_eq "prayers kinds" "service,bar-widget,panel" "$(jq -r '.kinds | join(",")' "$M")"
 assert_eq "prayers provides" "prayers" "$(jq -r '.provides | join(",")' "$M")"
 assert_eq "prayers debugIpc defaults off" "false" "$(jq -r .settings.debugIpc.default "$M")"
-assert_eq "prayers defaults: Riyadh city centre, Umm al-Qura, English" \
-    'Riyadh|الرياض|24.7136|46.6753|Asia/Riyadh|4|English|false' \
+assert_eq "prayers defaults: Riyadh city centre, Umm al-Qura, names follow the interface" \
+    'Riyadh|الرياض|24.7136|46.6753|Asia/Riyadh|4|Interface|false' \
     "$(jq -r '.settings | [.locationLabel, .locationLabelAr, .latitude, .longitude, .timezone, .calculationMethod, .language, .notifications] | map(.default | tostring) | join("|")' "$M")"
 assert_eq "prayers upstream defaults kept" '25|20|20|5|20|25|60|Horizon|Strip + countdown' \
     "$(jq -r '.settings | [.iqamaFajr, .iqamaDhuhr, .iqamaAsr, .iqamaMaghrib, .iqamaIsha, .iqamaJumuah, .notificationSoundVolume, .panelStyle, .barDisplay] | map(.default | tostring) | join("|")' "$M")"

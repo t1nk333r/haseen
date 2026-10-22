@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import qs.Haseen
 import "Cliphist.js" as Cliphist
 
 // Launcher provider: `>text` in the launcher searches clipboard history;
@@ -18,7 +19,7 @@ Scope {
     function query(text: string): var {
         return Cliphist.filter(history.entries, text).slice(0, 50).map(e => ({
                     title: e.preview.replace(/\s+/g, " ").trim(),
-                    subtitle: e.image ? "Image" : "Clipboard",
+                    subtitle: e.image ? I18n.tr("Image") : I18n.tr("Clipboard"),
                     icon: e.image ? "image-x-generic" : "edit-paste",
                     glyph: e.image ? "\uf03e" : "\uf0ea",
                     exec: () => history.copy(e)

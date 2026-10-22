@@ -62,7 +62,7 @@ Item {
         anchors.right: remove.left
         anchors.rightMargin: Theme.gap
         anchors.verticalCenter: parent.verticalCenter
-        text: root.targetLabel !== "" ? root.targetLabel : "missing profile: " + (root.rule.entryId || "")
+        text: root.targetLabel !== "" ? root.targetLabel : I18n.tr("missing profile: %1", root.rule.entryId || "")
         textFormat: Text.PlainText
         elide: Text.ElideRight
         color: root.targetLabel !== "" ? Theme.foreground : Theme.warning

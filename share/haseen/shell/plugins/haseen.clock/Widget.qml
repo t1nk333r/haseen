@@ -22,7 +22,9 @@ BarButton {
     }
     readonly property string calendar: typeof settings.calendar === "string" ? settings.calendar : "haseen.calendar"
 
-    text: Qt.formatDateTime(clock.date, format)
+    // Day and month names in the interface language (plan 109); the format
+    // setting is the owner's and stays as written.
+    text: I18n.formatDate(clock.date, format)
 
     onClicked: button => {
         if (button === Qt.LeftButton && calendar !== "")

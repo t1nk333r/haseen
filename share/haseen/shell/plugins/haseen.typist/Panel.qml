@@ -48,6 +48,8 @@ Column {
     property string filterText: ""
     property string notice: ""
     property bool deleteArmed: false
+    // The dd prompt as shown, so a disarm takes back that notice only.
+    property string armPrompt: ""
     property bool cursorActive: false
     property int cursorIndex: 0
     // The last command handed to haseen typist, for the test hook.
@@ -72,13 +74,13 @@ Column {
     readonly property int snippetRowCount: rows.filter(r => r.kind === "snippet").length
     readonly property var display: {
         const out = [{
-                header: "Clipboard"
+                header: I18n.mark("Clipboard")
             }, {
                 cursor: 0
             }];
         if (snippetRowCount > 0) {
             out.push({
-                header: "Snippets"
+                header: I18n.mark("Snippets")
             });
             for (let i = 1; i <= snippetRowCount; i++)
                 out.push({
@@ -87,12 +89,12 @@ Column {
         }
         if (recentCount > 0) {
             out.push({
-                header: "Recent"
+                header: I18n.mark("Recent")
             });
             const total = rows.length - 1 - snippetRowCount;
             if (total === 0)
                 out.push({
-                    note: !historyAvailable ? "cliphist is not installed: haseen.clipboard keeps the history." : filterText !== "" ? "No recent entry matches the filter." : "No text in the clipboard history yet."
+                    note: !historyAvailable ? I18n.mark("cliphist is not installed: haseen.clipboard keeps the history.") : filterText !== "" ? I18n.mark("No recent entry matches the filter.") : I18n.mark("No text in the clipboard history yet.")
                 });
             for (let j = 0; j < total; j++)
                 out.push({
@@ -136,7 +138,7 @@ Column {
         if (row.kind === "clipboard") {
             runCli([typing ? "stop" : "start"]);
         } else if (row.tooLarge) {
-            notice = "That snippet is over the size limit (" + row.bytes + " bytes).";
+            notice = I18n.tn("That snippet is over the size limit (%1 byte).", "That snippet is over the size limit (%1 bytes).", row.bytes);
             return;
         } else if (row.kind === "snippet") {
             runCli(["type", "snippet", String(row.index), Qt.md5(row.text)]);
@@ -162,7 +164,7 @@ Column {
         // later, and a second pin in between would compute from the old list.
         snippetConfig = next;
         snippetsFile.setText(JSON.stringify(next, null, 2) + "\n");
-        notice = message;
+        notice = I18n.tr(message);
     }
 
     function remove(): void {
@@ -170,10 +172,10 @@ Column {
         if (!row)
             return;
         if (row.kind !== "snippet") {
-            notice = "Only Snippets rows can be deleted.";
+            notice = I18n.tr("Only Snippets rows can be deleted.");
             return;
         }
-        writeSnippets(Picker.removeSnippet(snippetConfig, row.index), "Snippet removed.");
+        writeSnippets(Picker.removeSnippet(snippetConfig, row.index), I18n.mark("Snippet removed."));
     }
 
     // Vim `dd`: the first d arms, a second within 1.2 s deletes. Moving,
@@ -183,7 +185,7 @@ Column {
             return;
         deleteArmed = false;
         armTimer.stop();
-        if (notice.indexOf("dd") === 0)
+        if (armPrompt !== "" && notice === armPrompt)
             notice = "";
     }
 
@@ -194,7 +196,8 @@ Column {
             return;
         }
         deleteArmed = true;
-        notice = "dd: press d again to delete this snippet";
+        armPrompt = I18n.tr("dd: press d again to delete this snippet");
+        notice = armPrompt;
         armTimer.restart();
     }
 
@@ -246,11 +249,11 @@ Column {
         onExited: code => {
             const text = decoded.text;
             if (code !== 0 || text.trim() === "")
-                root.notice = "Could not read that clipboard entry.";
+                root.notice = I18n.tr("Could not read that clipboard entry.");
             else if (Picker.sizeOf(text) > root.maxBytes)
-                root.notice = "That entry is over the size limit.";
+                root.notice = I18n.tr("That entry is over the size limit.");
             else
-                root.writeSnippets(Picker.pinSnippet(root.snippetConfig, text), "Pinned to snippets.");
+                root.writeSnippets(Picker.pinSnippet(root.snippetConfig, text), I18n.mark("Pinned to snippets."));
         }
     }
 
@@ -367,7 +370,7 @@ Column {
                 anchors.left: heroGlyph.right
                 anchors.leftMargin: Theme.gap
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Typist"
+                text: "Typist" // i18n-ignore: the tool's name
                 color: Theme.accent
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize + 2
@@ -378,7 +381,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width / 2
                 horizontalAlignment: Text.AlignRight
-                text: root.notice !== "" ? root.notice : root.typing ? "Typing…" : "Pick a text to type"
+                text: root.notice !== "" ? root.notice : root.typing ? I18n.tr("Typing…") : I18n.tr("Pick a text to type")
                 textFormat: Text.PlainText
                 elide: Text.ElideLeft
                 color: Theme.muted
@@ -430,9 +433,10 @@ Column {
             }
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: filterField.text === ""
-                text: "Filter: press / to type here"
+                text: I18n.tr("Filter: press / to type here")
                 color: Theme.muted
                 font: filterField.font
             }
@@ -469,7 +473,7 @@ Column {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 2
                 visible: entry.row === null
-                text: entry.modelData.header !== undefined ? entry.modelData.header : (entry.modelData.note || "")
+                text: I18n.tr(entry.modelData.header !== undefined ? entry.modelData.header : (entry.modelData.note || ""))
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: entry.modelData.header !== undefined ? Theme.accent : Theme.muted
@@ -509,7 +513,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: !entry.row ? "" : entry.row.kind === "clipboard" ? (root.typing ? "Stop typing" : "Type current clipboard") : entry.row.preview
+                    text: !entry.row ? "" : entry.row.kind === "clipboard" ? (root.typing ? I18n.tr("Stop typing") : I18n.tr("Type current clipboard")) : entry.row.preview
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     maximumLineCount: 1
@@ -520,7 +524,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: !entry.row ? "" : entry.row.kind === "clipboard" ? "wl-paste, typed once" : entry.row.kind === "snippet" ? (entry.row.tooLarge ? "too large to type" : entry.row.bytes + " bytes · dd delete") : "recent · s pin as snippet"
+                    text: !entry.row ? "" : entry.row.kind === "clipboard" ? I18n.tr("wl-paste, typed once") : entry.row.kind === "snippet" ? (entry.row.tooLarge ? I18n.tr("too large to type") : I18n.tn("%1 byte · dd delete", "%1 bytes · dd delete", entry.row.bytes)) : I18n.tr("recent · s pin as snippet")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.muted
@@ -533,7 +537,7 @@ Column {
 
     Text {
         width: parent.width
-        text: "j/k move · l or ⏎ type · / filter · s pin · dd delete · esc close"
+        text: I18n.tr("j/k move · l or ⏎ type · / filter · s pin · dd delete · esc close")
         textFormat: Text.PlainText
         elide: Text.ElideRight
         color: Theme.muted

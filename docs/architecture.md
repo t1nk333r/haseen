@@ -46,6 +46,7 @@ file changes in the same commit.
 | `share/haseen/sidecar/` | compiled helpers built into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` and `haseen-palette` (Go, `core/`), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
+| `share/haseen/i18n/` | interface language catalogs (§5.8, plan 109): `locales.json` (each language's name, direction, date locale, digits), `<code>/{shell,menu,notify}.json`; `en/` is generated from the code by `tools/i18n.py extract`, `ar/provenance.json` says who translated it and what the owner reviewed | shell |
 | `/var/lib/haseen/layers/<name>` | applied-layer marker | core |
 | `/etc/pacman.d/hooks/50-haseen-omarchy.hook` | the Omarchy package guard (§5.4, plan 101), from `share/haseen/default/omarchy-guard/`; fires only when `omarchy` or `omarchy-settings` is installed or upgraded | base |
 | `/etc/systemd/{system/systemd-binfmt.service.d,system/proc-sys-fs-binfmt_misc.mount.d,system.conf.d}/*-haseen-*.conf` | Omarchy 4.5's boot drop-ins (binfmt mounted before formats register, a higher mount-event allowance), from `share/haseen/default/systemd/`; not installed where `omarchy-settings` installs its own copies (plan 104) | base |
@@ -54,7 +55,7 @@ file changes in the same commit.
 | `/var/lib/haseen/splash` | the colours and mark the boot image was last built with (`BG-FG-ACCENT-MARK`, plan 110) | plymouth |
 | `/var/lib/haseen/boot-menu/` | `original` (the `timeout:`/`quiet:` values `haseen setup boot-menu fast` replaced) and a copy of `limine.conf` from before each change (§9, plan 104) | boot menu |
 | `PREFIX/lib/systemd/user/omarchy-migrate-notify.service.d/haseen.conf` | silences Omarchy's own pending-migration notice (plan 101) | repo → installed with the user units |
-| `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/` | user |
+| `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/`, `language` (the interface language's code, written by `haseen language`; absent = English, plan 109) | user |
 | `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line), `splash-follow` (the last boot splash request: `ok`, `failed` or `skipped`, plan 110), `theme-backgrounds/<theme>` (the background each theme last showed, one path per file, plan 106), `toggles/hypr/*.lua` (Hyprland toggles, below), `monitor-workspaces` and `monitor-workspaces-merged` (per-monitor workspaces, below) | runtime |
 | `~/.local/share/haseen/extensions/cairn/<version>/` | Cairn's release `.crx`, downloaded and checked; Helium installs it from `~/.config/net.imput.helium/External Extensions/<id>.json` (plan 073) | shell |
 
@@ -203,6 +204,7 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
   - `Apps`: starts user apps outside the shell's cgroup (§5, plan 074).
   - `Keyboard`: the keyboard layout from one `hyprctl -j devices` read plus Hyprland's `activelayout` event, and the lock-key reader (plans 079, 080).
   - `ClockDayName`: pure date-format handling shared by the `haseen.clock` widget and calendar panel.
+  - `I18n`: the interface language (§5.8): `tr`, `tn`, `mark`, `formatDate`, `formatNumber`, `rightToLeft`, `locale`, `menuEntry`; its catalogs and `~/.config/haseen/language` are watched.
   - `SecurityRoute`: the one-shot page/item hand-off from the menu's Security rows to the optional `haseen.security` panel (plan 088); `shell/Haseen/SecurityEvidence.js` validates the VAPT CLI's JSON for both, so neither plugin imports the other's files.
 - `qs.Haseen.Widgets` — shared primitives (`BarButton`, `Glyph`, `PanelSurface`, `BrandImage`, …).
 - Compat modules: the code lives in `shell/Compat/{Omarchy,Dms}/`. Quickshell 0.3.1 resolves `import qs.X.Y` only to `<shell dir>/X/Y` (`qsintercept.cpp`), so six relative symlinks at the shell root expose the foreign module names: `Commons`, `Ui` (Omarchy) and `Common`, `Services`, `Widgets`, `Modules` (DMS). They are **only** for adapted plugins (§5.4). Native code never imports them, and a test enforces this.
@@ -493,6 +495,7 @@ Nothing appears on screen for them.
 
 - **Omarchy plugins** (`manifest.json` with `kinds` and `entryPoints`): bar widgets, services, panels and overlays are adapted to native registry records. The source directories `~/.config/omarchy/plugins/` and `~/.config/haseen/plugins/` are read without modifying them. Whole-bar replacements still require their original Omarchy bar host; they are not treated as slot widgets.
 - Omarchy imports `qs.Ui` and `qs.Commons` provide the shared panel, keyboard, popup, control, border and theme contracts. A real scoped facade supplies dependencies, popup ownership and settings. Settings writes go atomically to **haseen's** `shell.json`, which stays the record. An accepted asynchronous mutation is not durable until `Runtime.settingsWritten(id, success)` fires.
+- `qs.Commons.I18n` and `qs.Commons.Translations` (plan 109) answer Omarchy 4.5's plugin API (`t`, `tn`, `formatNumber`, `rightToLeft`; a plugin's own `i18n/<code>.json`). The language, direction and digits are haseen's (§5.8); Omarchy's own keys read Omarchy's installed catalogs (`$OMARCHY_PATH`, else `/usr/share/omarchy`, `default/i18n/<code>/shell.json`) when its package is there, else the plugin's fallback. Omarchy and DMS panels are not mirrored for a right-to-left language; a plugin that reads `Commons.I18n.rightToLeft` can mirror itself.
 - Qt 6.12 added a QtQuick `Color` singleton, and it wins every bare `Color.` whatever the import order, even over a real module imported after QtQuick. So compat files read the palette as `Commons.Color.<role>` (`import qs.Commons as Commons`), as Omarchy 4.0.6 does, and `tests/test-compat.sh` holds it statically and in the engine. A plugin's own bare `Color.` reads QtQuick's singleton (undefined roles) under Qt 6.12. haseen cannot redirect it without editing the plugin, so its author must qualify it (plan 092).
 - The one exception: Omarchy plugins may read their settings back from Omarchy's own `~/.config/omarchy/shell.json` (t1nk33r.nearby-share keeps its receiver, mode and device name there), so `updateEntryInline` of an Omarchy plugin also mirrors that plugin's own entry into that file with Omarchy's rule (its object entry in `bar.layout`, in any of Omarchy 4.5's sections `left`, `centerBegin`, `center`, `centerEnd`, `right` and `tray`, else its `plugins[]` marker, becomes `{id, ...entry}`). Only an existing file and an existing entry are touched; the write is atomic and the first one keeps `shell.json.haseen-bak`.
 - A compat `KeyboardPanel` remembers the input mask the panel asked for and presents an empty one only while it is closed (fade-out). Its own empty region is never adopted as the panel's request: the `mask` binding notifies before `Component.onCompleted`, and adopting it there left every open Omarchy panel without pointer input.
@@ -635,6 +638,54 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
 - **Commands.** `haseen wooting` (status, get, list, set, analog, fn) and
   `haseen wooting doctor` use exit codes beyond §4's: 3 daemon not
   reachable, 4 no keyboard, 5 dependency missing.
+
+### 5.8 Interface language (plan 109)
+
+haseen's menus, panels and notifications are in English (the default) or
+Arabic. `haseen language ar|en|status|list` writes the code to
+`~/.config/haseen/language` (English removes it); the shell watches the file
+and re-renders at once. Only haseen's interface follows it: the session
+locale (`LANG`), other apps and terminal output are left alone, and
+`haseen language status` says how to change the locale by hand.
+
+- **Keys are the English.** QML writes `I18n.tr("Sign in to network")`,
+  `I18n.tr("%1 of %2", a, b)` (one-pass `%1..%9`) and
+  `I18n.tn("%1 update", "%1 updates", n)` (the plural is the key; Arabic has
+  six CLDR forms). A string a catalog lacks shows in English, never as a key.
+  JS helpers keep returning English and mark it `N_("…")`; QML translates the
+  result. Data stays as it is: names, titles, paths, command output, IPC
+  replies and console messages are never translated.
+- **Catalogs** (`share/haseen/i18n/<code>/`): `shell.json` (the shell, the
+  catalogue's categories, the keybind sheet's bind descriptions and
+  sections), `menu.json` (by menu id: `label`, `title`, `description`; the
+  user's own `menu.jsonc` rows win, and an English label stays searchable)
+  and `notify.json` (desktop notifications bash commands send, through
+  `share/haseen/lib/i18n.sh`'s `i18n`/`i18n_n`). `en/` is what
+  `tools/i18n.py extract` collects from the code; `tools/i18n.py check`
+  (run by `tests/test-i18n.sh`) fails when it is stale, when another
+  language lacks a string or changes its placeholders, when a QML text
+  property holds bare English, or when a literal sits inside a computed
+  `I18n.tr(…)` argument, where `extract` cannot see it. A new interface
+  string therefore needs its
+  Arabic in the same change, recorded as machine-made until the owner
+  reviews it (`ar/provenance.json`).
+- **Right to left.** For Arabic, `PanelPopup` mirrors every native panel
+  (`LayoutMirroring` on its surface; the menu, launcher and pickers are
+  panels too), and plugins that own a window (toasts, OSD, lock, polkit)
+  mirror their own content. The bar is never mirrored: its sections are the
+  user's layout. Media transport controls, seek bars, time graphs and
+  colour strips opt out; sliders and level meters fill from the right;
+  `TrackBar` follows its `LayoutMirroring`. Left and Right keys follow the
+  screen in the menu and the grids. In Arabic, day and month names come
+  from the language's `formatLocale` (`ar_AE`: Arabic names, Western
+  digits) whatever `LANG` is; in English they are what they were before
+  plan 109 (`I18n.formatDate` is `Qt.formatDateTime`, which names days and
+  months as the `Qt.formatDate` and `Qt.formatDateTime` calls it replaced
+  did; `I18n.locale` is the session's `Qt.locale()`).
+- **Fonts.** The base layer's `noto-fonts` (official repositories) carries
+  Noto Sans Arabic and its UI cut, Naskh and Kufi; the theme's fontconfig
+  lists them after the theme's Latin family (plan 047), so Arabic text in the
+  shell falls back to them.
 
 ## 6. Resource rules (enforced in review)
 

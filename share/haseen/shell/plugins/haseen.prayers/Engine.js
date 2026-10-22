@@ -1,3 +1,7 @@
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text }
+
 var METHODS = [
   {
     id: 3,
@@ -1306,7 +1310,7 @@ function normalizedConfig(config, zone) {
 }
 
 function scheduleError(message) {
-  return { schemaVersion: 2, ok: false, status: "error", error: String(message || "Schedule calculation failed") }
+  return { schemaVersion: 2, ok: false, status: "error", error: String(message || N_("Schedule calculation failed")) }
 }
 
 function scheduleTiming(epochMs, zone) {
@@ -1317,21 +1321,21 @@ function scheduleTiming(epochMs, zone) {
 function buildSchedule(config, zone, nowMs) {
   var normalized = normalizedConfig(config, zone)
   var method = methodById(normalized.method)
-  if (!method) return scheduleError("unknown calculation method")
+  if (!method) return scheduleError(N_("unknown calculation method"))
   if (!isFinite(normalized.latitude) || normalized.latitude < -90 || normalized.latitude > 90)
-    return scheduleError("latitude must be between -90 and 90")
+    return scheduleError(N_("latitude must be between -90 and 90"))
   if (!isFinite(normalized.longitude) || normalized.longitude < -180 || normalized.longitude > 180)
-    return scheduleError("longitude must be between -180 and 180")
+    return scheduleError(N_("longitude must be between -180 and 180"))
   if (!zone || zone.ok !== true || !(zone.days instanceof Array) || zone.days.length < 3)
-    return scheduleError("timezone window is invalid")
+    return scheduleError(N_("timezone window is invalid"))
   if (!(zone.offsets instanceof Array) || !zone.offsets.length)
-    return scheduleError("timezone offsets are invalid")
+    return scheduleError(N_("timezone offsets are invalid"))
 
   var computedAt = Number(nowMs)
   if (!isFinite(computedAt)) computedAt = Date.now()
   var today = localDate(zone, computedAt)
   var tomorrow = nextCivilDateText(today)
-  if (!today || !tomorrow) return scheduleError("could not resolve local date")
+  if (!today || !tomorrow) return scheduleError(N_("could not resolve local date"))
   var timingNames = [
     "Imsak", "Fajr", "Sunrise", "Dhuhr", "Asr", "Sunset", "Maghrib", "Isha",
     "Midnight", "Firstthird", "Lastthird"
@@ -1344,9 +1348,9 @@ function buildSchedule(config, zone, nowMs) {
     var start = Number(zone.days[i].start) * 1000
     var end = Number(zone.days[i + 1].start) * 1000
     if (!date || !isFinite(start) || !isFinite(end) || end <= start)
-      return scheduleError("timezone day window is invalid")
+      return scheduleError(N_("timezone day window is invalid"))
     var hijriDate = hijri(date.year, date.month, date.day, normalized.hijriAdjustment)
-    if (!hijriDate) return scheduleError("could not calculate Hijri date")
+    if (!hijriDate) return scheduleError(N_("could not calculate Hijri date"))
     var chosen = null
     for (var difference = -1; difference <= 1; difference++) {
       var civil = addCivilDays(date.year, date.month, date.day, difference)
@@ -1392,13 +1396,13 @@ function buildSchedule(config, zone, nowMs) {
     if (days[dayIndex].date === today) todayDay = days[dayIndex]
     if (days[dayIndex].date === tomorrow) tomorrowDay = days[dayIndex]
   }
-  if (!todayDay || !tomorrowDay) return scheduleError("timezone window does not cover today and tomorrow")
+  if (!todayDay || !tomorrowDay) return scheduleError(N_("timezone window does not cover today and tomorrow"))
   var mandatory = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
   for (var requiredDay = 0; requiredDay < 2; requiredDay++) {
     var checkDay = requiredDay === 0 ? todayDay : tomorrowDay
     for (var required = 0; required < mandatory.length; required++) {
       if (!checkDay.timings[mandatory[required]].at)
-        return scheduleError("mandatory prayer time is unavailable")
+        return scheduleError(N_("mandatory prayer time is unavailable"))
     }
   }
 
@@ -1409,7 +1413,7 @@ function buildSchedule(config, zone, nowMs) {
       break
     }
   }
-  if (!isFinite(tomorrowStart)) return scheduleError("could not resolve next local midnight")
+  if (!isFinite(tomorrowStart)) return scheduleError(N_("could not resolve next local midnight"))
   var configKey = [
     normalized.locationLabel, normalized.latitude, normalized.longitude, normalized.timezone,
     normalized.method, normalized.school, normalized.latitudeAdjustmentMethod, normalized.midnightMode,

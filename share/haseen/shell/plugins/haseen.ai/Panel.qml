@@ -139,7 +139,7 @@ Item {
         if (stopping) {
             messages.setProperty(last, "phase", "stopped");
         } else if (code !== 0) {
-            const why = errText.trim() || "haseen ai chat exited with " + code;
+            const why = errText.trim() || I18n.tr("haseen ai chat exited with %1", code);
             messages.setProperty(last, "content", content === "" ? why : content + "\n\n" + why);
             messages.setProperty(last, "phase", "error");
         } else {
@@ -223,21 +223,21 @@ Item {
         }
         onExited: code => {
             if (code !== 0) {
-                root.notice = configErr.text.trim() || "haseen ai config failed";
+                root.notice = configErr.text.trim() || I18n.tr("haseen ai config failed");
                 return;
             }
             let cfg = {};
             try {
                 cfg = JSON.parse(configOut.text);
             } catch (e) {
-                root.notice = "haseen ai config: " + e.message;
+                root.notice = I18n.tr("haseen ai config: %1", e.message);
                 return;
             }
             root.policy = cfg.policy || "";
             root.endpoint = root.endpointSetting || cfg.default || "";
             const ep = (cfg.endpoints || {})[root.endpoint];
             if (!ep) {
-                root.notice = "ai.json has no endpoint '" + root.endpoint + "'";
+                root.notice = I18n.tr("ai.json has no endpoint '%1'", root.endpoint);
                 return;
             }
             root.endpointModel = ep.model || "";
@@ -261,7 +261,7 @@ Item {
             const lines = modelsOut.text.split("\n").filter(l => l.trim() !== "");
             root.models = lines.filter(l => !l.startsWith("[*] "));
             const info = lines.filter(l => l.startsWith("[*] ")).map(l => l.slice(4));
-            root.notice = code !== 0 ? (modelsErr.text.trim() || "haseen ai models failed") : info.join("\n");
+            root.notice = code !== 0 ? (modelsErr.text.trim() || I18n.tr("haseen ai models failed")) : info.join("\n");
             root.pickModel();
         }
     }
@@ -305,7 +305,7 @@ Item {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.endpoint || "AI"
+                text: root.endpoint || I18n.tr("AI")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -314,7 +314,7 @@ Item {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.policy === "local" ? "local only" : root.policy === "any" ? "remote allowed" : ""
+                text: root.policy === "local" ? I18n.tr("local only") : root.policy === "any" ? I18n.tr("remote allowed") : ""
                 color: root.policy === "local" ? Theme.success : Theme.warning
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 2
@@ -329,7 +329,7 @@ Item {
             BarButton {
                 height: parent.height
                 glyph: "\uf078"
-                text: root.model || "no model"
+                text: root.model || I18n.tr("no model")
                 maxTextWidth: root.width * 0.4
                 color: root.model ? Theme.foreground : Theme.muted
                 highlighted: root.picking
@@ -390,7 +390,7 @@ Item {
         visible: messages.count === 0
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
-        text: root.policy === "local" ? "Chats stay on this machine: the local policy only allows loopback endpoints." : "Ask anything."
+        text: root.policy === "local" ? I18n.tr("Chats stay on this machine: the local policy only allows loopback endpoints.") : I18n.tr("Ask anything.")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -470,8 +470,9 @@ Item {
                 }
 
                 Text {
+                    anchors.left: parent.left
                     visible: input.text === ""
-                    text: root.busy ? "Replying…" : "Message " + (root.model || root.endpoint || "the model")
+                    text: root.busy ? I18n.tr("Replying…") : root.model || root.endpoint ? I18n.tr("Message %1", root.model || root.endpoint) : I18n.tr("Message the model")
                     textFormat: Text.PlainText
                     color: Theme.muted
                     font: input.font

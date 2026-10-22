@@ -58,7 +58,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Package updates"
+            text: I18n.tr("Package updates")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -67,7 +67,10 @@ Column {
         Text {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: Model.summary(root.result, checkProc.running)
+            text: {
+                const n = Model.total(root.result);
+                return n > 0 ? I18n.tn("%1 update · repo %2 · AUR %3", "%1 updates · repo %2 · AUR %3", n, root.result.repo, root.result.aur) : I18n.tr(Model.summary(root.result, checkProc.running));
+            }
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -75,7 +78,8 @@ Column {
     }
 
     Repeater {
-        model: root.result !== null ? root.result.errors : []
+        // The check's own messages; one haseen knows is shown translated.
+        model: root.result !== null ? root.result.errors.map(e => I18n.tr(e)) : []
 
         delegate: Text {
             required property string modelData
@@ -91,7 +95,7 @@ Column {
     }
 
     Repeater {
-        model: Model.listed(root.result, root.listLines)
+        model: Model.listed(root.result, root.listLines, I18n.tr)
 
         delegate: Text {
             required property string modelData
@@ -107,16 +111,18 @@ Column {
     }
 
     Row {
+        // Full width, so a mirrored panel (plan 109) starts the row on the right.
+        width: parent.width
         spacing: Theme.gap
 
         Pill {
-            text: checkProc.running ? "Checking…" : "Check now"
+            text: checkProc.running ? I18n.tr("Checking…") : I18n.tr("Check now")
             busy: checkProc.running
             onClicked: root.check(true)
         }
 
         Pill {
-            text: "Update"
+            text: I18n.tr("Update")
             active: Model.total(root.result) > 0
             onClicked: root.update()
         }

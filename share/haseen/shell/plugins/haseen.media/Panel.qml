@@ -60,6 +60,12 @@ Column {
     width: Theme.fontSize * 24
     spacing: Theme.gap
 
+    // A player's name as MPRIS gives it; only the model's own fallback
+    // ("Player") is interface text.
+    function shown(label: string): string {
+        return label === "Player" ? I18n.tr("Player") : label;
+    }
+
     function choose(i: int): void {
         if (i >= 0 && i < players.length)
             chosen = players[i].dbusName;
@@ -120,7 +126,7 @@ Column {
         Text {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Media"
+            text: I18n.tr("Media")
             color: Theme.accent
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -133,7 +139,7 @@ Column {
             visible: root.players.length === 1
             elide: Text.ElideRight
             textFormat: Text.PlainText
-            text: root.labels.length > 0 ? root.labels[0] : ""
+            text: root.labels.length > 0 ? root.shown(root.labels[0]) : ""
             color: root.subtle
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
@@ -144,7 +150,7 @@ Column {
         width: parent.width
         visible: root.player === null
         wrapMode: Text.WordWrap
-        text: "Nothing is playing (no MPRIS player on the bus)."
+        text: I18n.tr("Nothing is playing (no MPRIS player on the bus).")
         color: root.subtle
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
@@ -163,7 +169,7 @@ Column {
                 required property int index
                 required property string modelData
 
-                text: modelData
+                text: root.shown(modelData)
                 active: index === root.index
                 onClicked: root.choose(index)
             }
@@ -253,10 +259,14 @@ Column {
         }
     }
 
+    // Time runs left to right in every language (plan 109): the seek bar
+    // and its elapsed / length labels keep their places in a mirrored panel.
     Column {
         width: parent.width
         visible: root.controls.time
         spacing: Math.round(Theme.gap / 2)
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
 
         TrackBar {
             width: parent.width
@@ -290,10 +300,14 @@ Column {
         }
     }
 
+    // The transport keeps previous / play / next in their physical order and
+    // glyphs, as players draw them, in a mirrored panel too (plan 109).
     Item {
         width: parent.width
         height: transport.implicitHeight
         visible: root.player !== null
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
 
         Row {
             id: transport

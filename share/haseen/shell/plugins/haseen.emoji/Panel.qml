@@ -106,15 +106,17 @@ Column {
             font.pixelSize: Theme.fontSize + 2
             onTextChanged: root.query = text
             onAccepted: root.accept(grid.currentIndex)
+            // Left and Right move on screen: in a mirrored (right-to-left)
+            // panel the grid runs from the right, so Left is the next emoji.
             Keys.onLeftPressed: event => {
                 if (cursorPosition === 0 || text === "")
-                    root.move(-1);
+                    root.move(grid.LayoutMirroring.enabled ? 1 : -1);
                 else
                     event.accepted = false;
             }
             Keys.onRightPressed: event => {
                 if (cursorPosition === text.length)
-                    root.move(1);
+                    root.move(grid.LayoutMirroring.enabled ? -1 : 1);
                 else
                     event.accepted = false;
             }
@@ -129,7 +131,7 @@ Column {
             anchors.leftMargin: Theme.gap * 1.5
             anchors.verticalCenter: parent.verticalCenter
             visible: input.text === ""
-            text: "Search emoji"
+            text: I18n.tr("Search emoji")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -181,7 +183,7 @@ Column {
     Text {
         width: parent.width
         visible: root.results.length === 0
-        text: root.emojis.length === 0 ? "Loading…" : "No matches"
+        text: root.emojis.length === 0 ? I18n.tr("Loading…") : I18n.tr("No matches")
         color: Theme.muted
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily

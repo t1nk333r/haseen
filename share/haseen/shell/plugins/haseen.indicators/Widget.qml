@@ -90,7 +90,8 @@ Item {
     property IndicatorCell tipItem: null
     // Kept after the pointer leaves the cell: a tooltip window emptied before
     // it closes is shrunk first, and the compositor fades the old picture
-    // out at the shrunk window's place.
+    // out at the shrunk window's place. English (Indicators.js), translated
+    // where the tooltip shows it.
     property string tipText: ""
 
     implicitWidth: placed.active.length > 0 ? grid.implicitWidth : hoverZone
@@ -237,11 +238,14 @@ Item {
                 radius: Theme.radius
                 border.width: Theme.borderWidth
                 border.color: Theme.border
+                // The tooltip's own window; the bar itself is never mirrored.
+                LayoutMirroring.enabled: I18n.rightToLeft
+                LayoutMirroring.childrenInherit: true
 
                 Text {
                     id: label
                     anchors.centerIn: parent
-                    text: root.tipText
+                    text: I18n.tr(root.tipText)
                     textFormat: Text.PlainText
                     color: Theme.foreground
                     font.family: Theme.fontFamily

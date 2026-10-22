@@ -94,7 +94,8 @@ Rectangle {
         Text {
             width: parent.width
             visible: row.menu.detailShown(row.detail)
-            text: row.detail
+            // A path reads from the right in a right-to-left menu (plan 109).
+            text: I18n.rightToLeft && row.kind !== "pick" ? row.detail.replace(/ › /g, " ‹ ") : row.detail
             color: row.hasCursor ? row.menu.detailOnSelected : row.menu.detailOnCard
             elide: Text.ElideRight
             textFormat: Text.PlainText
@@ -110,7 +111,7 @@ Rectangle {
         anchors.rightMargin: row.menu.space(8)
         y: content.y + labelText.y + (labelText.height - height) / 2
         width: row.menu.space(14)
-        text: row.submenu ? "›" : ""
+        text: row.submenu ? (I18n.rightToLeft ? "‹" : "›") : ""
         color: row.hasCursor ? row.menu.selectedText : row.menu.foreground
         opacity: Style.CHEVRON
         textFormat: Text.PlainText

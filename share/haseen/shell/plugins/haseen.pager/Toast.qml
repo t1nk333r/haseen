@@ -60,15 +60,16 @@ Item {
             return "";
         const s = Math.max(0, (now - ts) / 1000);
         if (s < 50)
-            return "now";
+            return I18n.tr("now");
         if (s < 3600)
-            return Math.round(s / 60) + "m";
+            return I18n.tr("%1m", Math.round(s / 60));
         const then = new Date(ts);
         if (new Date(now).toDateString() === then.toDateString())
             return Qt.formatDateTime(then, "HH:mm");
         if (new Date(now - 86400000).toDateString() === then.toDateString())
-            return "yesterday";
-        return Qt.formatDateTime(then, "ddd");
+            return I18n.tr("yesterday");
+        // The day's name in the interface language (plan 109).
+        return I18n.formatDate(then, "ddd");
     }
 
     readonly property int fade: 150
@@ -92,31 +93,33 @@ Item {
     readonly property var foundCodes: String(row.codes || row.code || "").split(" ").filter(c => !!c)
 
     // Everything this card can do, spelled out: what it found in its own text
-    // first, then what the sender said it supports.
+    // first, then what the sender said it supports. Labels are display text
+    // (kind and value are what a press acts on), so they are translated here;
+    // a sender's own action names are shown as it sent them.
     readonly property var allDeeds: {
         const out = [];
         for (const c of foundCodes)
             out.push({
                 kind: "code",
                 value: c,
-                label: foundCodes.length > 1 ? ("Copy " + c) : "Copy code"
+                label: foundCodes.length > 1 ? I18n.tr("Copy %1", c) : I18n.tr("Copy code")
             });
         if (String(row.link || ""))
             out.push({
                 kind: row.meeting ? "meeting" : "link",
-                label: row.meeting ? "Join" : "Open link",
+                label: row.meeting ? I18n.tr("Join") : I18n.tr("Open link"),
                 value: String(row.link)
             });
         if (String(row.phone || ""))
             out.push({
                 kind: "phone",
-                label: "Copy number",
+                label: I18n.tr("Copy number"),
                 value: String(row.phone)
             });
         if (String(row.replyPath || ""))
             out.push({
                 kind: "reply",
-                label: "Reply",
+                label: I18n.tr("Reply"),
                 value: ""
             });
         for (const a of actions) {
@@ -195,7 +198,7 @@ Item {
                 }));
         out.push({
             kind: "silence",
-            label: "Enable Do Not Disturb",
+            label: I18n.tr("Enable Do Not Disturb"),
             value: 0
         });
         return out;
@@ -496,8 +499,15 @@ Item {
                         anchors.verticalCenter: title.verticalCenter
                         // Just right of the text, in the room the title's width
                         // leaves. An Arabic title aligns right, so its text
-                        // reaches the box's edge however short it is.
-                        x: title.effectiveHorizontalAlignment === Text.AlignRight ? title.x + title.width + 7 : title.x + Math.min(title.implicitWidth, title.width) + 7
+                        // reaches the box's edge however short it is. In a
+                        // mirrored card (plan 109) that room is left of the box,
+                        // and the marks sit left of where the title starts.
+                        x: {
+                            const inset = Math.min(title.implicitWidth, title.width);
+                            if (LayoutMirroring.enabled)
+                                return title.effectiveHorizontalAlignment === Text.AlignRight ? title.x + title.width - inset - 7 - width : title.x - 7 - width;
+                            return title.effectiveHorizontalAlignment === Text.AlignRight ? title.x + title.width + 7 : title.x + inset + 7;
+                        }
                         spacing: 5
 
                         Repeater {
@@ -556,7 +566,7 @@ Item {
                             visible: card.bulkCount > 1
                             enabled: visible
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Clear all " + card.bulkCount
+                            text: I18n.tr("Clear all %1", card.bulkCount)
                             horizontalPadding: 4
                             verticalPadding: 2
                             fontSize: card.captionSize
@@ -724,7 +734,7 @@ Item {
 
                             deed: ({
                                     kind: "more",
-                                    label: "More",
+                                    label: I18n.tr("More"),
                                     value: ""
                                 })
                             toast: card
@@ -762,7 +772,7 @@ Item {
                             visible: card.spare.length > 0
                             deed: ({
                                     kind: "more",
-                                    label: "More",
+                                    label: I18n.tr("More"),
                                     value: ""
                                 })
                             toast: card
@@ -798,7 +808,7 @@ Item {
                                 anchors.fill: replyInput
                                 visible: replyInput.text.length === 0
                                 textFormat: Text.PlainText
-                                text: card.replyError || ("Reply to " + String(card.row.replyTo || card.row.summary || ""))
+                                text: card.replyError ? I18n.tr(card.replyError) : I18n.tr("Reply to %1", String(card.row.replyTo || card.row.summary || ""))
                                 color: card.replyError ? Theme.urgent : Theme.muted
                                 font: replyInput.font
                                 elide: Text.ElideRight
@@ -848,7 +858,7 @@ Item {
                                 x: replyInput.isRtl ? 4 : parent.width - width - 4
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: replyInput.text.length > 0
-                                text: "Send"
+                                text: I18n.tr("Send")
                                 bordered: false
                                 trackHover: true
                                 fontSize: card.bodySize

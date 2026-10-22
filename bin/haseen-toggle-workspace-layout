@@ -11,6 +11,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -98,5 +100,5 @@ fi
 $DRY_RUN && exit 0
 echo "Workspace $id layout: $want"
 if have notify-send; then
-    notify-send -a haseen "Workspace layout set to $want" || true
+    notify-send -a haseen "$(i18n "Workspace layout set to %1" "$want")" || true
 fi

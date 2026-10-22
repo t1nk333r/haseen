@@ -291,21 +291,44 @@ plymouth_signed_boot() {
     fi
     # sbctl keeps its keys where only root can look (its key directory is
     # 0700), so for a user an existing directory it cannot read counts as
-    # keys: the user's side must not ask root for what root will refuse.
-    local dir kd
+    # keys: the user's side must not ask root for what root will refuse. So
+    # does one it cannot reach: a key directory set in sbctl.conf under a
+    # parent this user cannot enter reads as absent to -e, so every directory
+    # on the way down is walked, and the first that exists but cannot be
+    # entered ends the walk as "may hold keys" (plan 111).
+    local kd
     kd="$(sb_keydir)"
-    for dir in "$(sb_sbctl_state_dir)" "$kd" "$kd/db"; do
-        dir="$(sysroot_path "$dir")"
-        if [[ -e $dir ]] && ! [[ -r $dir && -x $dir ]]; then
-            echo "sbctl may hold Secure Boot keys (its key directory is readable only by root)"
-            return 0
-        fi
-    done
+    if plymouth_sbctl_hidden "$(sb_sbctl_state_dir)" || plymouth_sbctl_hidden "$kd" ||
+        plymouth_sbctl_hidden "$kd/db"; then
+        echo "sbctl may hold Secure Boot keys (its key directory is readable only by root)"
+        return 0
+    fi
     if [[ $(sb_limine_value ENABLE_ENROLL_LIMINE_CONFIG) == yes ]]; then
         echo "Limine's config hash is enrolled"
         return 0
     fi
     return 1
+}
+
+# plymouth_sbctl_hidden DIR — DIR (as the inspected system sees it) exists
+# but this user cannot both list and enter it, or a directory on the way to it
+# exists but cannot be entered, so -e can no longer see what is below: either
+# way, what is there may be keys. A path that ends in something absent, under
+# directories this user can enter, is no keys.
+plymouth_sbctl_hidden() {
+    local path="" here="" comp comps=() i
+    IFS=/ read -r -a comps <<<"${1#/}"
+    for ((i = 0; i < ${#comps[@]}; i++)); do
+        comp="${comps[i]}"
+        [[ -n $comp && $comp != . ]] || continue
+        path+="/$comp"
+        here="$(sysroot_path "$path")"
+        [[ -e $here ]] || return 1
+        ((i == ${#comps[@]} - 1)) && break
+        [[ -d $here ]] || return 1
+        [[ -x $here ]] || return 0
+    done
+    [[ -n $path ]] && ! [[ -r $here && -x $here ]]
 }
 
 # plymouth_signed_hint — what to run by hand where following does not.

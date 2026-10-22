@@ -11,6 +11,21 @@
 // request file, not a summon payload.
 .pragma library
 
+// The menu's own words stay English here: a builder that makes rows takes a
+// translator `tr` (I18n.tr from the panel; identity in the tests) and N_
+// marks the English for tools/i18n.py. Row labels from menu.jsonc are
+// translated by id (applyTranslations), never by their English (plan 109).
+function N_(text) {
+    return text;
+}
+function same(text) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return String(text).replace(/%([1-9])/g, function (whole, digit) {
+        var value = args[Number(digit) - 1];
+        return value === undefined ? whole : String(value);
+    });
+}
+
 // Full-line `//` comments and trailing commas. A `//` inside a string value
 // (an URL in an action) is never at the start of a line, so it survives.
 function stripJsonc(raw) {
@@ -95,8 +110,45 @@ function finishItem(p) {
         checked: p.checked || "",
         disabled: p.disabled || "",
         hidden: p.hidden === true,
+        searchTerms: p.searchTerms || [],
         order: 0
     };
+}
+
+// The interface language's label, title and description for each id from
+// its menu catalog ({id: {label, title, description}}, share/haseen/i18n/
+// <code>/menu.json). Applied to the default items before the overlay merges,
+// so the user's own rows and retitles win. The English label stays
+// searchable (searchTerms), so a typed English name still finds its row; an
+// id the catalog lacks stays English. Adapted from Omarchy 4.5's
+// applyTranslations (shell/plugins/menu/MenuModel.js, MIT, Copyright (c)
+// David Heinemeier Hansson), plan 109.
+function applyTranslations(items, catalog) {
+    var source = Array.isArray(items) ? items : [];
+    var strings = catalog && typeof catalog === "object" ? catalog : {};
+    var out = [];
+    for (var i = 0; i < source.length; i++) {
+        var entry = source[i];
+        var translated = entry && strings[entry.id];
+        if (!translated || typeof translated !== "object") {
+            out.push(entry);
+            continue;
+        }
+        var next = {};
+        for (var k in entry)
+            next[k] = entry[k];
+        if (typeof translated.label === "string" && translated.label) {
+            if (entry.label && translated.label !== entry.label)
+                next.searchTerms = (entry.searchTerms || []).concat([entry.label]);
+            next.label = translated.label;
+        }
+        if (typeof translated.title === "string" && translated.title)
+            next.title = translated.title;
+        if (typeof translated.description === "string" && translated.description)
+            next.description = translated.description;
+        out.push(next);
+    }
+    return out;
 }
 
 // Default items, then the overlay merged key by key per item. Overlay-only ids
@@ -208,23 +260,27 @@ function securityText(value) {
 }
 // A disabled information row: what the provider is doing or why it has no
 // rows. It is not an action and carries no ✓.
-function securityInfo(menuId, state, reason) {
-    var r = providerRow(menuId, state, {label: state === "empty" ? "No installed items" : state === "loading" ? "Reading installed evidence…" : "Could not read local status", description: securityText(reason), disabledNow: true});
+// `reason` is the CLI's own text, shown as it is; tr translates haseen's.
+function securityInfo(menuId, state, reason, tr) {
+    var t = tr || same;
+    var r = providerRow(menuId, state, {label: t(state === "empty" ? N_("No installed items") : state === "loading" ? N_("Reading installed evidence…") : N_("Could not read local status")), description: securityText(reason), disabledNow: true});
     r.when = SECURITY_GUARD;
     return [r];
 }
 // While a Security provider reads again, its previous rows stay listed but
 // disabled (they may be stale), followed by the loading row.
-function securityRefreshing(menuId, previous) {
+function securityRefreshing(menuId, previous, tr) {
+    var t = tr || same;
     var cached = (previous || []).filter(function(r) { return r.kind === "security-route"; }).map(function(r) {
-        return Object.assign({}, r, {disabledNow: true, description: "Previous snapshot — refreshing installed evidence"});
+        return Object.assign({}, r, {disabledNow: true, description: t(N_("Previous snapshot — refreshing installed evidence"))});
     });
-    return cached.concat(securityInfo(menuId, "loading", "Nothing runs during discovery."));
+    return cached.concat(securityInfo(menuId, "loading", t(N_("Nothing runs during discovery.")), tr));
 }
 // data has passed SecurityEvidence.js's schema validation in the provider
 // adapter. Only closed guard/action strings enter the menu's bash boundary.
-function securityRows(kind, menuId, data) {
-    if (!data) return securityInfo(menuId, "error", "Unsupported or unreadable local status data");
+function securityRows(kind, menuId, data, tr) {
+    var t = tr || same;
+    if (!data) return securityInfo(menuId, "error", t(N_("Unsupported or unreadable local status data")), tr);
     var page = kind === "tools" ? "tools" : kind === "services" ? "services" : "local";
     var records = kind === "tools" ? data.tools.filter(function(t) { return t.state === "installed"; }) : kind === "services" ? data.services.filter(function(s) { return s.installed; }) : data.workflow.capabilities.filter(function(c) { return c.installed; });
     var rows = records.map(function(record) {
@@ -243,7 +299,7 @@ function securityRows(kind, menuId, data) {
         row.when = kind === "services" ? SERVICE_GUARDS[record.id] : record.id === "remmina" && kind === "local" ? SECURITY_GUARD + " && haseen-pkg-present remmina" : SECURITY_GUARD;
         return row;
     });
-    return rows.length ? rows : securityInfo(menuId, "empty", "Discovery starts nothing. Open the panel for missing/refused prerequisites.");
+    return rows.length ? rows : securityInfo(menuId, "empty", t(N_("Discovery starts nothing. Open the panel for missing/refused prerequisites.")), tr);
 }
 function securityRoute(entry) {
     if (!entry || entry.kind !== "security-route" || entry.disabledNow || entry.action !== SECURITY_ACTION || !/^[a-z0-9][a-z0-9+_.-]*$/.test(entry.securityItemId || "")) return null;
@@ -258,7 +314,11 @@ function shellQuote(value) {
 // Install/Remove from Catalog's share/haseen/default/catalog.json: one submenu
 // per category, one row per entry. Install rows of installed entries stay
 // listed, disabled and checked (✓); Remove lists installed entries only.
-function catalogRows(menuId, catalog, installed, mode) {
+// Entry names and descriptions are the catalogue's, shown as they are; a
+// category's label is translated with tr (tools/i18n.py collects them from
+// catalog.json), unless menu.jsonc declares the submenu, which wins.
+function catalogRows(menuId, catalog, installed, mode, tr) {
+    var t = tr || same;
     var rows = [];
     if (!catalog || !Array.isArray(catalog.entries))
         return rows;
@@ -292,12 +352,13 @@ function catalogRows(menuId, catalog, installed, mode) {
         }
         if (children.length === 0)
             continue;
+        var catLabel = t(cat.label || cat.id);
         var sub = finishItem({
             id: catId,
             parent: menuId,
-            label: cat.label || cat.id,
+            label: catLabel,
             icon: cat.icon || "",
-            title: (mode === "install" ? "Install " : "Remove ") + (cat.label || cat.id)
+            title: mode === "install" ? t(N_("Install %1"), catLabel) : t(N_("Remove %1"), catLabel)
         });
         rows.push(sub);
         rows = rows.concat(children);
@@ -433,7 +494,7 @@ function nameSearchText(entry) {
     var aliases = [];
     for (var i = 0; i < entry.aliases.length; i++)
         aliases.push(searchableToken(entry.aliases[i]));
-    return [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase();
+    return [entry.label, (entry.searchTerms || []).join(" "), searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase();
 }
 
 function termInSearchWords(term, text) {

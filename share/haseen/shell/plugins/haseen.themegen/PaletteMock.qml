@@ -5,9 +5,14 @@ import qs.Haseen
 // workspace and clock, a window framed in the accent, and a terminal in it
 // with a prompt, a selected row, a comment and the six hues. Every colour
 // here is the preview's own (`colors`, from `haseen theme generate --json`);
-// only sizes and fonts come from Theme.
+// only sizes and fonts come from Theme. A picture of the desktop, whose bar
+// and windows a right-to-left interface does not mirror, with a terminal in
+// it: it keeps its left-to-right layout.
 Rectangle {
     id: root
+
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
 
     required property var colors
     // The background image, behind a band of the theme's background.
@@ -141,7 +146,7 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.gap / 2
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "a selected row"
+                    text: I18n.tr("a selected row")
                     color: root.colors.foreground
                     font.family: Theme.fontMono
                     font.pixelSize: Theme.fontSize - 1
@@ -151,7 +156,7 @@ Rectangle {
             Text {
                 height: root.line
                 verticalAlignment: Text.AlignVCenter
-                text: "# muted comment"
+                text: I18n.tr("# muted comment")
                 color: root.colors.dark_foreground
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontSize - 1

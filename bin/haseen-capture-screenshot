@@ -12,6 +12,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 # shellcheck source=../share/haseen/lib/omasnap.sh
 source "$HASEEN_PATH/lib/omasnap.sh"
 
@@ -356,7 +358,7 @@ STUB
     if ((status != 0)); then
         [[ $editor == omasnap ]] || exit "$status"
         if $announce; then
-            notify -u critical "Screenshot not edited" "Omasnap failed (exit $status): nothing was saved, copied or uploaded"
+            notify -u critical "$(i18n "Screenshot not edited")" "$(i18n "Omasnap failed (exit %1): nothing was saved, copied or uploaded" "$status")"
         fi
         warn "omasnap failed (exit $status): nothing was saved, copied or uploaded"
         exit "$status"
@@ -390,15 +392,15 @@ if $save; then
     if ! $announce; then
         :
     elif [[ -n $link ]]; then
-        notify -i "$file" "Screenshot uploaded" "$link"
+        notify -i "$file" "$(i18n "Screenshot uploaded")" "$link"
     else
-        notify -i "$file" "Screenshot saved" "${file/#"$HOME"/\~}"
+        notify -i "$file" "$(i18n "Screenshot saved")" "${file/#"$HOME"/\~}"
     fi
 elif ! $announce; then
     :
 elif [[ -n $link ]]; then
-    notify "Screenshot uploaded" "$link"
+    notify "$(i18n "Screenshot uploaded")" "$link"
 else
-    notify "Screenshot copied to clipboard"
+    notify "$(i18n "Screenshot copied to clipboard")"
 fi
 [[ -z $link ]] || printf '%s\n' "$link"

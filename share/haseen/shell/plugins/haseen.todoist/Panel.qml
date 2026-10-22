@@ -48,9 +48,11 @@ FocusScope {
     property string pendingDeleteContent: ""
 
     readonly property var viewOrder: ["today", "inbox", "all"]
-    readonly property string viewLabel: !ready ? "" : service.quickView === "inbox" ? "INBOX" : service.quickView === "all" ? "ALL TASKS" : service.quickView === "custom" ? "CUSTOM FILTER" : "TODAY & OVERDUE"
-    readonly property string emptyMessage: !ready ? "" : service.quickView === "inbox" ? "Inbox is empty." : service.quickView === "all" ? "No tasks yet." : service.quickView === "custom" ? "No tasks match this filter." : "Nothing due. You're clear."
-    readonly property string headerMeta: !ready ? "" : !hasToken ? "NOT CONNECTED" : settingsView ? "SETTINGS" : service.tokenInvalid ? "TOKEN REJECTED" : service.loading && tasks.length === 0 ? "LOADING…" : viewLabel
+    readonly property string viewLabel: !ready ? "" : service.quickView === "inbox" ? I18n.tr("INBOX") : service.quickView === "all" ? I18n.tr("ALL TASKS") : service.quickView === "custom" ? I18n.tr("CUSTOM FILTER") : I18n.tr("TODAY & OVERDUE")
+    readonly property string emptyMessage: !ready ? "" : service.quickView === "inbox" ? I18n.tr("Inbox is empty.") : service.quickView === "all" ? I18n.tr("No tasks yet.") : service.quickView === "custom" ? I18n.tr("No tasks match this filter.") : I18n.tr("Nothing due. You're clear.")
+    readonly property string headerMeta: !ready ? "" : !hasToken ? I18n.tr("NOT CONNECTED") : settingsView ? I18n.tr("SETTINGS") : service.tokenInvalid ? I18n.tr("TOKEN REJECTED") : service.loading && tasks.length === 0 ? I18n.tr("LOADING…") : viewLabel
+    // The VIEW stat: the tab's short name, as the tabs below say it.
+    readonly property string viewShort: !ready ? "" : service.quickView === "inbox" ? I18n.tr("INBOX") : service.quickView === "all" ? I18n.tr("ALL") : service.quickView === "custom" ? I18n.tr("CUSTOM") : I18n.tr("TODAY")
 
     implicitWidth: ready ? service.panelWidth : Theme.fontSize * 24
     implicitHeight: ready ? service.panelHeight : Theme.fontSize * 30
@@ -248,8 +250,12 @@ FocusScope {
                 spacing: 2
 
                 Text {
+                    width: parent.width
                     textFormat: Text.PlainText
-                    text: "Todoist"
+                    // Set rather than implicit: a right-to-left panel then aligns
+                    // Latin text and numbers to the right too (plan 109).
+                    horizontalAlignment: Text.AlignLeft
+                    text: "Todoist" // i18n-ignore: the product's name
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize + 3
@@ -259,6 +265,7 @@ FocusScope {
                 Text {
                     width: parent.width
                     textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignLeft
                     text: root.headerMeta
                     elide: Text.ElideRight
                     color: root.ready && root.service.tokenInvalid ? Theme.urgent : Theme.muted
@@ -274,7 +281,7 @@ FocusScope {
 
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.settingsView ? "Tasks" : "Settings"
+                text: root.settingsView ? I18n.tr("Tasks") : I18n.tr("Settings")
                 active: root.settingsView
                 onClicked: root.settingsView = !root.settingsView
             }
@@ -292,10 +299,10 @@ FocusScope {
 
             Repeater {
                 model: !root.ready ? [] : [
-                    { label: "TASKS", value: String(root.service.taskCount) + (root.service.listTruncated ? "+" : ""), alert: false },
-                    { label: "OVERDUE", value: String(root.service.overdueCount), alert: root.service.overdueCount > 0 },
-                    { label: "VIEW", value: root.service.quickView.toUpperCase(), alert: false },
-                    { label: "SYNCED", value: Model.formatRelativeTime(root.service.lastSyncedAt), alert: false }
+                    { label: I18n.tr("TASKS"), value: String(root.service.taskCount) + (root.service.listTruncated ? "+" : ""), alert: false },
+                    { label: I18n.tr("OVERDUE"), value: String(root.service.overdueCount), alert: root.service.overdueCount > 0 },
+                    { label: I18n.tr("VIEW"), value: root.viewShort, alert: false },
+                    { label: I18n.tr("SYNCED"), value: Model.formatRelativeTime(root.service.lastSyncedAt, I18n), alert: false }
                 ]
 
                 Column {
@@ -307,6 +314,7 @@ FocusScope {
                     Text {
                         width: parent.width
                         textFormat: Text.PlainText
+                        horizontalAlignment: Text.AlignLeft
                         text: modelData.label
                         elide: Text.ElideRight
                         color: Theme.muted
@@ -317,6 +325,7 @@ FocusScope {
                     Text {
                         width: parent.width
                         textFormat: Text.PlainText
+                        horizontalAlignment: Text.AlignLeft
                         text: modelData.value
                         elide: Text.ElideRight
                         color: modelData.alert ? Theme.urgent : Theme.foreground
@@ -362,22 +371,22 @@ FocusScope {
             spacing: Math.round(Theme.gap / 2)
 
             TodoistSection {
-                text: "KEYS"
+                text: I18n.tr("KEYS")
             }
 
             Repeater {
                 model: [
-                    "j k / ↑ ↓ — move through the list",
-                    "Space — complete the task",
-                    "Enter — open it on todoist.com",
-                    "e — edit it, Enter saves",
-                    "x — delete it (Enter or y confirms, n cancels)",
-                    "q — quick add (p1–p4, #Project, @label, dates)",
-                    "t i a, Tab — Today, Inbox, All",
-                    "r — refresh",
-                    "p — settings",
-                    "? — this list",
-                    "Esc — close"
+                    I18n.mark("j k / ↑ ↓ — move through the list"),
+                    I18n.mark("Space — complete the task"),
+                    I18n.mark("Enter — open it on todoist.com"),
+                    I18n.mark("e — edit it, Enter saves"),
+                    I18n.mark("x — delete it (Enter or y confirms, n cancels)"),
+                    I18n.mark("q — quick add (p1–p4, #Project, @label, dates)"),
+                    I18n.mark("t i a, Tab — Today, Inbox, All"),
+                    I18n.mark("r — refresh"),
+                    I18n.mark("p — settings"),
+                    I18n.mark("? — this list"),
+                    I18n.mark("Esc — close")
                 ]
 
                 Text {
@@ -385,7 +394,8 @@ FocusScope {
 
                     width: parent.width
                     textFormat: Text.PlainText
-                    text: modelData
+                    horizontalAlignment: Text.AlignLeft
+                    text: I18n.tr(modelData)
                     wrapMode: Text.Wrap
                     color: Theme.foreground
                     font.family: Theme.fontFamily
@@ -393,8 +403,10 @@ FocusScope {
                 }
             }
 
+            // A Column does not mirror x: the anchor puts it at the start edge.
             Pill {
-                text: "Back"
+                anchors.left: parent.left
+                text: I18n.tr("Back")
                 onClicked: {
                     root.helpOpen = false;
                     keys.forceActiveFocus();
@@ -413,7 +425,7 @@ FocusScope {
 
                 width: parent.width - addButton.width - parent.spacing
                 anchors.verticalCenter: parent.verticalCenter
-                placeholderText: "Add a task… (p1, #Project, tomorrow)"
+                placeholderText: I18n.tr("Add a task… (p1, #Project, tomorrow)")
                 enabled: root.ready && !root.service.quickAddSubmitting
                 onAccepted: root.service.submitQuickAdd(text)
             }
@@ -422,7 +434,7 @@ FocusScope {
                 id: addButton
 
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.ready && root.service.quickAddSubmitting ? "Adding…" : "Add"
+                text: root.ready && root.service.quickAddSubmitting ? I18n.tr("Adding…") : I18n.tr("Add")
                 busy: root.ready && root.service.quickAddSubmitting
                 onClicked: root.service.submitQuickAdd(quickAdd.text)
             }
@@ -435,15 +447,15 @@ FocusScope {
 
             Repeater {
                 model: [
-                    { value: "today", label: "Today" },
-                    { value: "inbox", label: "Inbox" },
-                    { value: "all", label: "All" }
+                    { value: "today", label: I18n.mark("Today") },
+                    { value: "inbox", label: I18n.mark("Inbox") },
+                    { value: "all", label: I18n.mark("All") }
                 ]
 
                 Pill {
                     required property var modelData
 
-                    text: modelData.label
+                    text: I18n.tr(modelData.label)
                     active: root.ready && root.service.quickView === modelData.value
                     onClicked: root.selectView(modelData.value)
                 }
@@ -454,6 +466,7 @@ FocusScope {
             width: parent.width
             visible: root.hasToken && !root.settingsView && !root.helpOpen && root.service.quickView !== "today"
             textFormat: Text.PlainText
+            horizontalAlignment: Text.AlignLeft
             text: root.viewLabel
             color: Theme.accent
             font.family: Theme.fontFamily
@@ -483,7 +496,8 @@ FocusScope {
                 Text {
                     width: parent.width
                     textFormat: Text.PlainText
-                    text: "Delete “" + root.pendingDeleteContent + "”? This cannot be undone here."
+                    horizontalAlignment: Text.AlignLeft
+                    text: I18n.tr("Delete “%1”? This cannot be undone here.", root.pendingDeleteContent)
                     wrapMode: Text.Wrap
                     color: Theme.foreground
                     font.family: Theme.fontFamily
@@ -491,16 +505,17 @@ FocusScope {
                 }
 
                 Row {
+                    width: parent.width
                     spacing: Theme.gap
 
                     Pill {
-                        text: "Delete"
+                        text: I18n.tr("Delete")
                         active: true
                         onClicked: root.answerDelete(true)
                     }
 
                     Pill {
-                        text: "Cancel"
+                        text: I18n.tr("Cancel")
                         onClicked: root.answerDelete(false)
                     }
                 }
@@ -525,7 +540,7 @@ FocusScope {
                 width: ListView.view.width
                 task: modelData
                 rowIndex: index
-                sectionTitle: Model.sectionTitle(root.tasks, index, root.service.quickView)
+                sectionTitle: Model.sectionTitle(root.tasks, index, root.service.quickView, I18n)
                 selected: root.cursorActive && root.selectedIndex === index
                 completing: root.service.completingTaskIds.indexOf(modelData.id) !== -1
                 editing: root.editingIndex === index
@@ -546,6 +561,7 @@ FocusScope {
             width: parent.width
             visible: text !== "" && !root.helpOpen
             textFormat: Text.PlainText
+            horizontalAlignment: Text.AlignLeft
             text: {
                 if (!root.ready)
                     return "";
@@ -554,7 +570,7 @@ FocusScope {
                 if (root.settingsView || !root.hasToken)
                     return "";
                 if (root.service.loading && root.tasks.length === 0)
-                    return "Loading…";
+                    return I18n.tr("Loading…");
                 return root.tasks.length === 0 && !root.service.loading ? root.emptyMessage : "";
             }
             wrapMode: Text.Wrap

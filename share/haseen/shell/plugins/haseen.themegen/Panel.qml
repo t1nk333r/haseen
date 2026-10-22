@@ -112,12 +112,12 @@ Column {
     readonly property bool ready: image !== "" && previewImage === image && preview.ok && !previewProc.running && !previewQueued && !downloading && !writing && Model.validName(name) && Model.canWrite(preview.target)
     readonly property string hint: {
         if (quickLookOpen)
-            return "Space or Esc closes · h/j/k/l or arrows browse · Enter picks";
+            return I18n.tr("Space or Esc closes · h/j/k/l or arrows browse · Enter picks");
         if (stage === "images")
-            return "h j k l or arrows move · Enter " + (source === "wallhaven" ? "downloads" : "picks") + " · Space quick look · / search · Esc closes";
+            return source === "wallhaven" ? I18n.tr("h j k l or arrows move · Enter downloads · Space quick look · / search · Esc closes") : I18n.tr("h j k l or arrows move · Enter picks · Space quick look · / search · Esc closes");
         if (stage === "palette")
-            return "h j k l or arrows: scheme · Tab dark/light · " + (ready ? "Enter applies" : "Enter applies once ready") + " · Ctrl+S saves · Backspace: pictures";
-        return source === "wallhaven" ? "Enter searches · Down: pictures · Esc closes" : "Enter or Down: pictures · Esc closes";
+            return ready ? I18n.tr("h j k l or arrows: scheme · Tab dark/light · Enter applies · Ctrl+S saves · Backspace: pictures") : I18n.tr("h j k l or arrows: scheme · Tab dark/light · Enter applies once ready · Ctrl+S saves · Backspace: pictures");
+        return source === "wallhaven" ? I18n.tr("Enter searches · Down: pictures · Esc closes") : I18n.tr("Enter or Down: pictures · Esc closes");
     }
 
     function closeQuickLook(): void {
@@ -154,6 +154,9 @@ Column {
     function handleQuickLookKey(key: int, modifiers: int): bool {
         if (!quickLookOpen || (modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
             return false;
+        // Sideways keys move on screen: in a mirrored (right-to-left) panel
+        // the pictures run from the right, so left is the next one.
+        const side = root.LayoutMirroring.enabled ? -1 : 1;
         switch (key) {
         case Qt.Key_Space:
         case Qt.Key_Escape:
@@ -163,17 +166,21 @@ Column {
         case Qt.Key_Enter:
             pickQuickLook();
             return true;
-        case Qt.Key_Left:
         case Qt.Key_Up:
-        case Qt.Key_H:
         case Qt.Key_K:
             quickLookMove(-1);
             return true;
-        case Qt.Key_Right:
+        case Qt.Key_Left:
+        case Qt.Key_H:
+            quickLookMove(-side);
+            return true;
         case Qt.Key_Down:
         case Qt.Key_J:
-        case Qt.Key_L:
             quickLookMove(1);
+            return true;
+        case Qt.Key_Right:
+        case Qt.Key_L:
+            quickLookMove(side);
             return true;
         default:
             return false;
@@ -255,7 +262,7 @@ Column {
         if (ready)
             write(true);
         else if (downloading)
-            say("still downloading: Enter applies once the preview shows", false);
+            say(I18n.tr("still downloading: Enter applies once the preview shows"), false);
     }
 
     // The panel-stage keys; false leaves a key for the field or the host.
@@ -309,6 +316,10 @@ Column {
         default:
             return false;
         }
+        // Sideways keys move on screen: in a mirrored (right-to-left) panel
+        // the pictures and the scheme chips run from the right.
+        if (root.LayoutMirroring.enabled)
+            dx = -dx;
         if (stage === "images")
             move(dx, dy);
         else
@@ -341,7 +352,7 @@ Column {
         if (!ready)
             return;
         writing = true;
-        say(apply ? "applying " + name + "…" : "saving " + name + "…", false);
+        say(apply ? I18n.tr("applying %1…", name) : I18n.tr("saving %1…", name), false);
         writeProc.apply = apply;
         writeProc.command = Model.writeArgv(cli, image, scheme, mode, name, apply);
         writeProc.running = true;
@@ -412,7 +423,7 @@ Column {
 
     Component.onCompleted: {
         if (dirs.length === 0)
-            say("no directories configured", true);
+            say(I18n.tr("no directories configured"), true);
         else
             scanProc.running = true;
         input.forceActiveFocus();
@@ -541,9 +552,9 @@ Column {
             const found = Images.parseList(scanOut.text);
             root.images = found.slice(0, root.limit);
             if (found.length === 0)
-                root.say("no images in " + root.dirs.join(", "), true);
+                root.say(I18n.tr("no images in %1", root.dirs.join(", ")), true);
             else if (found.length > root.limit)
-                root.say("showing " + root.limit + " of " + found.length, false);
+                root.say(I18n.tr("showing %1 of %2", root.limit, found.length), false);
         }
     }
 
@@ -566,7 +577,7 @@ Column {
             root.preview = ok ? Model.parsePreview(previewOut.text) : Model.parsePreview("");
             root.previewImage = ok ? previewProc.image : "";
             if (code !== 0 && root.image !== "")
-                root.say(Model.errorLine(previewErr.text, "haseen theme generate failed"), true);
+                root.say(Model.errorLine(previewErr.text, I18n.tr("haseen theme generate failed")), true);
             if (root.previewQueued) {
                 root.previewQueued = false;
                 root.refresh();
@@ -586,7 +597,7 @@ Column {
         onExited: code => {
             root.writing = false;
             if (code !== 0) {
-                root.say(Model.errorLine(writeErr.text, "haseen theme generate failed"), true);
+                root.say(Model.errorLine(writeErr.text, I18n.tr("haseen theme generate failed")), true);
                 return;
             }
             if (writeProc.apply) {
@@ -595,7 +606,7 @@ Column {
             }
             // The preview again, so the name now reads as ours; then the note.
             root.refresh();
-            root.say("saved " + root.name + " (haseen theme set " + root.name + ")", false);
+            root.say(I18n.tr("saved %1 (haseen theme set %1)", root.name), false);
         }
     }
 
@@ -606,7 +617,8 @@ Column {
         Text {
             id: title
 
-            text: root.quickLookOpen ? "Quick Look" : "Theme generator"
+            anchors.left: parent.left
+            text: root.quickLookOpen ? I18n.tr("Quick Look") : I18n.tr("Theme generator")
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -620,7 +632,7 @@ Column {
             width: Math.min(implicitWidth, parent.width - title.width - Theme.gap * 2)
             horizontalAlignment: Text.AlignRight
             textFormat: Text.PlainText
-            text: root.notice !== "" ? root.notice : previewProc.running ? "generating…" : ""
+            text: root.notice !== "" ? root.notice : previewProc.running ? I18n.tr("generating…") : ""
             color: root.noticeIsError ? Theme.urgent : root.subtle
             elide: Text.ElideRight
             font.family: Theme.fontFamily
@@ -640,6 +652,7 @@ Column {
     }
 
     Row {
+        anchors.left: parent.left
         visible: !root.quickLookOpen
         spacing: Math.round(Theme.gap / 2)
 
@@ -647,18 +660,18 @@ Column {
             model: [
                 {
                     key: "local",
-                    label: "My wallpapers"
+                    label: I18n.mark("My wallpapers")
                 },
                 {
                     key: "wallhaven",
-                    label: "Wallhaven"
+                    label: "Wallhaven" // i18n-ignore: the site's name
                 }
             ]
 
             Pill {
                 required property var modelData
 
-                text: modelData.label
+                text: I18n.tr(modelData.label)
                 active: root.source === modelData.key
                 onClicked: root.setSource(modelData.key)
             }
@@ -700,8 +713,9 @@ Column {
             Keys.onTabPressed: root.setMode(Model.cycle(Model.MODES, root.mode, 1))
 
             Text {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.source === "wallhaven" ? "search wallhaven · Enter searches" : "filter images"
+                text: root.source === "wallhaven" ? I18n.tr("search wallhaven · Enter searches") : I18n.tr("filter images")
                 color: root.subtle
                 visible: input.text === ""
                 font: input.font
@@ -801,7 +815,7 @@ Column {
                 Pill {
                     required property string modelData
 
-                    text: Model.schemeLabel(modelData)
+                    text: I18n.tr(Model.schemeLabel(modelData))
                     active: root.scheme === modelData
                     onClicked: root.setScheme(modelData)
                 }
@@ -809,6 +823,7 @@ Column {
         }
 
         Row {
+            anchors.left: parent.left
             spacing: Math.round(Theme.gap / 2)
 
             Repeater {
@@ -817,7 +832,7 @@ Column {
                 Pill {
                     required property string modelData
 
-                    text: Model.schemeLabel(modelData)
+                    text: I18n.tr(Model.schemeLabel(modelData))
                     active: root.mode === modelData
                     onClicked: root.setMode(modelData)
                 }
@@ -859,13 +874,13 @@ Column {
             }
 
             Pill {
-                text: "Save"
+                text: I18n.tr("Save")
                 enabled: root.ready
                 onClicked: root.write(false)
             }
 
             Pill {
-                text: "Apply"
+                text: I18n.tr("Apply")
                 active: true
                 enabled: root.ready
                 onClicked: root.write(true)
@@ -906,12 +921,12 @@ Column {
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     text: {
-                        const parts = ["source " + root.preview.source];
-                        const note = Model.targetNote(root.preview.target, root.preview.name);
+                        const parts = [I18n.tr("source %1", root.preview.source)];
+                        const note = Model.targetNote(root.preview.target, root.preview.name, (text, ...args) => I18n.tr(text, ...args));
                         if (note !== "")
                             parts.push(note);
                         if (root.preview.clamped.length > 0)
-                            parts.push("clamped: " + root.preview.clamped.join(", "));
+                            parts.push(I18n.tr("clamped: %1", root.preview.clamped.join(", ")));
                         return parts.join(" · ");
                     }
                     color: Model.canWrite(root.preview.target) ? root.subtle : Theme.urgent

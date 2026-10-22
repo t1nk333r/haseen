@@ -3,6 +3,10 @@
 // haseen.osd's kinds and cards (plan 079), apart from the QML so the tests
 // run them in a plain Qt JS engine.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // Each kind is a setting. volume, brightness, mic and layout are on unless
 // set to false; lockKeys is off unless set to true.
 function kinds(settings) {
@@ -47,9 +51,10 @@ function layoutCard(name, code) {
     };
 }
 
+// One whole line per state, so a translation never joins two pieces.
 const LOCKS = {
-    caps: { glyph: "\u{F0632}", name: "Caps Lock" },
-    num: { glyph: "\u{F03A0}", name: "Num Lock" }
+    caps: { glyph: "\u{F0632}", on: N_("Caps Lock on"), off: N_("Caps Lock off") },
+    num: { glyph: "\u{F03A0}", on: N_("Num Lock on"), off: N_("Num Lock off") }
 };
 
 function lockCard(change) {
@@ -58,7 +63,7 @@ function lockCard(change) {
     return {
         glyph: lock.glyph,
         text: "",
-        label: lock.name + (on ? " on" : " off"),
+        label: on ? lock.on : lock.off,
         value: 0,
         dim: !on
     };

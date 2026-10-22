@@ -9,6 +9,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -47,5 +49,6 @@ $DRY_RUN && exit 0
 state=$([[ $action == on ]] && echo enabled || echo disabled)
 echo "Touchscreen $state ($device)"
 if have notify-send; then
-    notify-send -a haseen "Touchscreen $state" || true
+    if [[ $state == enabled ]]; then msg="$(i18n "Touchscreen enabled")"; else msg="$(i18n "Touchscreen disabled")"; fi
+    notify-send -a haseen "$msg" || true
 fi

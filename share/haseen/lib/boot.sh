@@ -185,7 +185,7 @@ BOOT_ROOT_PARAMS=(root rw ro cryptdevice cryptkey rd.luks.name rd.luks.uuid rd.l
 # would otherwise read as missing.
 boot_limine_merge() {
     local -A over=()
-    local f host content line value files=() names=()
+    local f host content files=() names=()
     while (($# >= 2)); do
         over["$1"]="$2"
         shift 2
@@ -221,20 +221,27 @@ boot_limine_merge() {
         else
             continue
         fi
-        while IFS= read -r line || [[ -n $line ]]; do
-            [[ $line =~ ^[[:space:]]*KERNEL_CMDLINE\[default\][[:space:]]*(\+?)=[[:space:]]*(.*)$ ]] || continue
-            value="${BASH_REMATCH[2]}"
-            value="${value%"${value##*[![:space:]]}"}"
-            [[ ${#value} -ge 2 && $value == \"*\" ]] && value="${value:1:${#value}-2}"
-            BOOT_LIMINE_SET=true
-            if [[ -n ${BASH_REMATCH[1]} ]]; then
-                BOOT_LIMINE_CMDLINE+=" $value"
-            else
-                BOOT_LIMINE_CMDLINE="$value"
-                BOOT_LIMINE_REPLACED="$f"
-            fi
-        done <<<"$content"
+        _boot_limine_layer "$f" "$content"
     done
+}
+
+# _boot_limine_layer PATH CONTENT — fold one layer's KERNEL_CMDLINE[default]
+# lines into BOOT_LIMINE_SET, BOOT_LIMINE_CMDLINE and BOOT_LIMINE_REPLACED.
+_boot_limine_layer() {
+    local line value
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ $line =~ ^[[:space:]]*KERNEL_CMDLINE\[default\][[:space:]]*(\+?)=[[:space:]]*(.*)$ ]] || continue
+        value="${BASH_REMATCH[2]}"
+        value="${value%"${value##*[![:space:]]}"}"
+        [[ ${#value} -ge 2 && $value == \"*\" ]] && value="${value:1:${#value}-2}"
+        BOOT_LIMINE_SET=true
+        if [[ -n ${BASH_REMATCH[1]} ]]; then
+            BOOT_LIMINE_CMDLINE+=" $value"
+        else
+            BOOT_LIMINE_CMDLINE="$value"
+            BOOT_LIMINE_REPLACED="$1"
+        fi
+    done <<<"$2"
 }
 
 # boot_limine_fallback — the line limine-entry-tool reads while no layer sets
@@ -304,6 +311,57 @@ boot_limine_keep_root() {
         "# config layer sets KERNEL_CMDLINE[default], and haseen's += drop-ins" \
         "# end that, so the parameters the next boot needs are stated here." \
         "$pinline" | write_root_file "$BOOT_LIMINE_PIN"
+}
+
+# boot_cmdline_value NAME TEXT — the value of the last NAME= word in TEXT,
+# the one the kernel keeps for root= (each root= overwrites the last); fails
+# when there is none.
+boot_cmdline_value() {
+    local w word=""
+    while IFS= read -r w; do
+        [[ $w == "$1="* ]] && word="$w"
+    done < <(boot_cmdline_words "$2")
+    [[ -n $word ]] && printf '%s\n' "${word#*=}"
+}
+
+# boot_limine_pin_report — haseen doctor's line about the root= pin, when there
+# is one (plan 111). The pin is written once and then kept: a root device that
+# changed since (a reinstall, a new disk, a filesystem made again) leaves it
+# naming the old one, and the next image limine-entry-tool builds (any kernel
+# or initramfs update) would boot that. So the root= the merged config gives
+# the next image is compared with the one this boot used. Two spellings of one
+# device (UUID= and /dev/…) read as different: it is a hint, never a failure.
+# Prints nothing without a pin.
+boot_limine_pin_report() {
+    local pin next="" booted pinned="" where
+    pin="$(sysroot_path "$BOOT_LIMINE_PIN")"
+    [[ -e $pin ]] || return 0
+    if ! boot_limine_merge 2>/dev/null; then
+        echo "limine root pin=unknown: a Limine config layer cannot be read"
+        return 0
+    fi
+    if ! booted="$(boot_cmdline_value root "$(boot_cmdline)")"; then
+        echo "limine root pin=unknown: this boot's command line states no root="
+        return 0
+    fi
+    next="$(boot_cmdline_value root "$BOOT_LIMINE_CMDLINE")" || next=""
+    if [[ -n $next && $next == "$booted" ]]; then
+        echo "limine root pin=ok (root=$booted, as this boot)"
+        return 0
+    fi
+    # What the pin alone says, read the way the merge reads every layer.
+    BOOT_LIMINE_CMDLINE=""
+    _boot_limine_layer "$BOOT_LIMINE_PIN" "$(<"$pin")"
+    pinned="$(boot_cmdline_value root "$BOOT_LIMINE_CMDLINE")" || pinned=""
+    if [[ $pinned == "$next" ]]; then
+        where="in $BOOT_LIMINE_PIN (sudoedit it)"
+    else
+        where="in the layer of Limine's config after the pin that states it (/etc/default/limine or a later drop-in in $BOOT_LIMINE_DROPINS)"
+    fi
+    next="${next:+root=$next}"
+    pinned="${pinned:+root=$pinned}"
+    printf 'limine root pin=differs: the next boot image gets %s (%s pins %s), but this boot used root=%s. If the root device changed, set root=%s %s, then rebuild (sudo limine-mkinitcpio); if both name the same device, nothing is wrong\n' \
+        "${next:-no root=}" "$BOOT_LIMINE_PIN" "${pinned:-no root=}" "$booted" "$booted" "$where"
 }
 
 # --- Boot drop-ins (the base layer) -------------------------------------------

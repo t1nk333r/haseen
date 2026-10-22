@@ -85,6 +85,9 @@ Rectangle {
             IconImage {
                 id: appIcon
 
+                // Anchored, not at x 0, so a mirrored card (plan 109) puts it
+                // at the right with the app name after it.
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 implicitSize: Theme.fontSize + 2
                 source: card.iconSource

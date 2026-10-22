@@ -11,7 +11,10 @@ Rectangle {
     id: root
 
     property bool busy: false
+    // message: the failure in English (a change clears the field);
+    // messageText: the same, translated, as the status line shows it.
     property string message: ""
+    property string messageText: message
     property bool preview: false
     // Fingerprint unlock is armed: show the hint. fingerprintError: the last
     // scan did not match, so the hint turns urgent until the next one.
@@ -27,6 +30,10 @@ Rectangle {
     signal attemptCancelled
 
     color: Theme.background
+    // The top item of a lock surface or the preview window, never a
+    // PanelPopup: mirror here in a right-to-left language (plan 109).
+    LayoutMirroring.enabled: I18n.rightToLeft
+    LayoutMirroring.childrenInherit: true
 
     // A failed attempt clears the field for the next one.
     onMessageChanged: {
@@ -69,7 +76,9 @@ Rectangle {
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: Qt.formatDate(clock.date, "dddd, d MMMM")
+            // The format is a catalog string, so a language can use its own
+            // comma; the names come from the interface language (plan 109).
+            text: I18n.formatDate(clock.date, I18n.tr("dddd, d MMMM"))
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
@@ -118,7 +127,7 @@ Rectangle {
             Text {
                 anchors.centerIn: parent
                 visible: input.text === "" && !root.busy
-                text: "Password"
+                text: I18n.tr("Password")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize + 2
@@ -142,7 +151,7 @@ Rectangle {
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: root.busy ? "Checking…" : root.message
+            text: root.busy ? I18n.tr("Checking…") : root.messageText
             visible: text !== ""
             color: root.busy ? Theme.muted : Theme.urgent
             font.family: Theme.fontFamily
@@ -152,7 +161,7 @@ Rectangle {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: root.preview
-            text: "Preview: the session is not locked. Escape closes it."
+            text: I18n.tr("Preview: the session is not locked. Escape closes it.")
             color: Theme.warning
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize

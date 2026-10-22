@@ -83,6 +83,10 @@ Scope {
             PanelSurface {
                 anchors.centerIn: parent
                 padding: Theme.gap * 3
+                // Its own window, not a PanelPopup: mirror the dialog here in
+                // a right-to-left language (plan 109).
+                LayoutMirroring.enabled: I18n.rightToLeft
+                LayoutMirroring.childrenInherit: true
 
                 Column {
                     width: Theme.fontSize * 28
@@ -97,7 +101,7 @@ Scope {
                         }
 
                         Text {
-                            text: "Authentication required"
+                            text: I18n.tr("Authentication required")
                             color: Theme.accent
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize + 2
@@ -120,8 +124,8 @@ Scope {
                         text: {
                             if (!root.flow)
                                 return "";
-                            const many = root.flow.identities.length > 1;
-                            return "As " + root.identityName(root.flow.selectedIdentity) + (many ? "  (click to switch)" : "");
+                            const name = root.identityName(root.flow.selectedIdentity);
+                            return root.flow.identities.length > 1 ? I18n.tr("As %1  (click to switch)", name) : I18n.tr("As %1", name);
                         }
                         color: Theme.muted
                         font.family: Theme.fontFamily
@@ -180,7 +184,7 @@ Scope {
                             anchors.leftMargin: Theme.gap * 1.5
                             anchors.verticalCenter: parent.verticalCenter
                             visible: input.text === ""
-                            text: root.flow && root.flow.inputPrompt !== "" ? root.flow.inputPrompt : "Password"
+                            text: root.flow && root.flow.inputPrompt !== "" ? root.flow.inputPrompt : I18n.tr("Password")
                             color: Theme.muted
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize
@@ -195,7 +199,7 @@ Scope {
                                 return "";
                             if (root.flow.supplementaryMessage !== "")
                                 return root.flow.supplementaryMessage;
-                            return root.flow.failed ? "Authentication failed, try again" : "";
+                            return root.flow.failed ? I18n.tr("Authentication failed, try again") : "";
                         }
                         color: root.flow && (root.flow.supplementaryIsError || root.flow.failed) ? Theme.urgent : Theme.muted
                         wrapMode: Text.Wrap
@@ -212,14 +216,14 @@ Scope {
                         // transparent bar that one can match the dialog.
                         BarButton {
                             height: Theme.fontSize * 2.2
-                            text: "Cancel"
+                            text: I18n.tr("Cancel")
                             color: Theme.foreground
                             onClicked: root.flow.cancelAuthenticationRequest()
                         }
 
                         BarButton {
                             height: Theme.fontSize * 2.2
-                            text: "Authenticate"
+                            text: I18n.tr("Authenticate")
                             color: Theme.foreground
                             highlighted: true
                             onClicked: input.accepted()

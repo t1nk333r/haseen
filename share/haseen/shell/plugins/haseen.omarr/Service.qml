@@ -52,7 +52,10 @@ Scope {
     property int detailQueuePage: 1
     property int detailQueueTotal: 0
     property string detailQueueId: ""
+    // The bar status in English, for feed.json and the test hook; the panel
+    // shows statusLabel, the same line in the interface language.
     property string statusText: "omARR"
+    readonly property string statusLabel: credsState === "error" ? I18n.tr("Keys unreadable") : configured ? Model.barStatusText(snapshots, I18n) : I18n.tr("Add a service")
     property int unreadCount: 0
     property var artReady: ({})
     property var artPending: ({})
@@ -617,7 +620,7 @@ Scope {
         if (!progressNote.running) {
             root.progressNoteId = "";
             root.progressNoteShown = text;
-            progressNote.command = Model.progressNoteCommand(job, root.binDir, icon);
+            progressNote.command = Model.progressNoteCommand(job, root.binDir, icon, I18n);
             progressNote.running = true;
             root.noteSent(progressNote.command);
             return;
@@ -625,7 +628,7 @@ Scope {
         if (root.progressNoteId === "" || text === root.progressNoteShown)
             return;
         root.progressNoteShown = text;
-        const cmd = Model.progressUpdateCommand(job, root.binDir, icon, root.progressNoteId);
+        const cmd = Model.progressUpdateCommand(job, root.binDir, icon, root.progressNoteId, I18n);
         Quickshell.execDetached(cmd);
         root.noteSent(cmd);
     }
@@ -641,7 +644,7 @@ Scope {
     }
 
     function sendToast(event, service) {
-        const cmd = Model.toastCommand(event, root.binDir, root.iconPath(service));
+        const cmd = Model.toastCommand(event, root.binDir, root.iconPath(service), I18n);
         // The sender waits for the notification's click, so it runs detached.
         Quickshell.execDetached(cmd);
         root.noteSent(cmd);

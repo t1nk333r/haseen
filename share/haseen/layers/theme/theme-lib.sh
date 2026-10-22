@@ -30,6 +30,9 @@ THEME_BACKGROUND_LINK="$THEME_CURRENT_DIR/background"
 # The background last shown with each theme, one file per theme holding its
 # path (plan 106, after Omarchy b63374f38, #7718).
 THEME_BG_MEMORY_DIR="$HASEEN_USER_STATE/theme-backgrounds"
+# The names a background candidate may have, in any case: theme_backgrounds
+# lists only these, and a remembered one is honoured only with one (plan 111).
+THEME_BG_EXTS=(jpg jpeg png webp gif bmp)
 # haseen's own theme (plan 066): HANCORE's Greek Noir with the owner's "akane"
 # border wipe. Not an Omarchy stock theme, so `theme fetch` has no images for
 # it; backgrounds go in ~/.config/haseen/backgrounds/<name>/.
@@ -898,18 +901,31 @@ theme_link_nvim() {
 # (shipped by an installed theme), then the fetched cache
 # ~/.cache/haseen/themes/<name>/backgrounds/. Paths are absolute.
 theme_backgrounds() {
-    local dir old dirs=("$THEME_USER_BACKGROUNDS_DIR/$1")
+    local dir old dirs=("$THEME_USER_BACKGROUNDS_DIR/$1") ext names=()
     while IFS= read -r old; do
         if [[ -n $old ]]; then dirs+=("$THEME_USER_BACKGROUNDS_DIR/$old"); fi
     done < <(theme_alias_names "$1")
     dirs+=("$THEME_CURRENT_PATH/backgrounds" "$THEME_CACHE_DIR/$1/backgrounds")
+    for ext in "${THEME_BG_EXTS[@]}"; do
+        ((${#names[@]} == 0)) || names+=(-o)
+        names+=(-iname "*.$ext")
+    done
     for dir in "${dirs[@]}"; do
         [[ -d $dir ]] || continue
-        find -L "$dir/" -maxdepth 1 -type f \
-            \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' \) \
-            ! -name '.*' -print 2>/dev/null | LC_ALL=C sort
+        find -L "$dir/" -maxdepth 1 -type f \( "${names[@]}" \) ! -name '.*' -print 2>/dev/null | LC_ALL=C sort
     done
     return 0
+}
+
+# theme_background_named PATH — PATH's file name ends in one of
+# THEME_BG_EXTS, in any case, as every candidate theme_backgrounds lists does.
+theme_background_named() {
+    local name="${1##*/}" ext
+    name="${name,,}"
+    for ext in "${THEME_BG_EXTS[@]}"; do
+        [[ $name == ?*".$ext" ]] && return 0
+    done
+    return 1
 }
 
 # theme_set_background_link PATH — point current/background at PATH, or remove
@@ -934,12 +950,14 @@ theme_bg_memory_file() {
 }
 
 # theme_remembered_background NAME — the background last shown with NAME,
-# when that file is still there; prints nothing otherwise.
+# when that file is still there and named as an image (theme_background_named;
+# a record pointing anywhere else is ignored, plan 111); prints nothing
+# otherwise, and the theme's own rule chooses.
 theme_remembered_background() {
     local bg
     theme_bg_memory_file "$1" && [[ -r $REPLY ]] || return 0
     IFS= read -r bg <"$REPLY" || true
-    [[ -n $bg && $bg == /* && -f $bg ]] && printf '%s\n' "$bg"
+    [[ -n $bg && $bg == /* && -f $bg ]] && theme_background_named "$bg" && printf '%s\n' "$bg"
     return 0
 }
 

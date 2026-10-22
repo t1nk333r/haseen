@@ -16,7 +16,7 @@ Column {
     signal emptyFocused()
     spacing: Theme.gap
     Accessible.role: Accessible.List
-    Accessible.name: choices ? "Choices" : services ? "Installed services" : "Tool inventory"
+    Accessible.name: choices ? I18n.tr("Choices") : services ? I18n.tr("Installed services") : I18n.tr("Tool inventory")
     onRowsChanged: {
         let hadFocus = false;
         for (let i = 0; i < entries.count; i++) {
@@ -80,7 +80,7 @@ Column {
                 ToolRow {
                     tool: row.modelData
                     activeFocusOnTab: activeFocus || row.index === root.current
-                    explanation: (tool ? tool.reason : "") + ". Item " + (row.index + 1) + " of " + root.rows.length
+                    explanation: (tool ? tool.reason : "") + ". " + I18n.tr("Item %1 of %2", row.index + 1, root.rows.length)
                     onActiveFocusChanged: if (activeFocus) { root.current = row.index; root.currentId = row.itemId; root.reveal(this); }
                     onClicked: { root.current = row.index; root.currentId = row.modelData.id; root.inspected(row.modelData.id); }
                     Keys.onPressed: event => root.key(event)
@@ -91,7 +91,7 @@ Column {
                 ServiceRow {
                     service: row.modelData
                     activeFocusOnTab: activeFocus || row.index === root.current
-                    explanation: (service ? service.ownership + ". " + service.reason : "") + ". Item " + (row.index + 1) + " of " + root.rows.length
+                    explanation: (service ? service.ownership + ". " + service.reason : "") + ". " + I18n.tr("Item %1 of %2", row.index + 1, root.rows.length)
                     onActiveFocusChanged: if (activeFocus) { root.current = row.index; root.currentId = row.itemId; root.reveal(this); }
                     onClicked: { root.current = row.index; root.currentId = row.modelData.id; root.inspected(row.modelData.id); }
                     Keys.onPressed: event => root.key(event)
@@ -104,7 +104,7 @@ Column {
                     text: row.modelData ? row.modelData.label : ""
                     activeFocusOnTab: activeFocus || row.index === root.current
                     Accessible.role: Accessible.ListItem
-                    explanation: "Item " + (row.index + 1) + " of " + root.rows.length
+                    explanation: I18n.tr("Item %1 of %2", row.index + 1, root.rows.length)
                     onActiveFocusChanged: if (activeFocus) { root.current = row.index; root.currentId = row.itemId; root.reveal(this); }
                     onClicked: { root.current = row.index; root.currentId = row.itemId; root.inspected(row.itemId); }
                     Keys.onPressed: event => root.key(event)
@@ -122,7 +122,9 @@ Column {
         } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown) {
             pageMove(event.key === Qt.Key_PageUp ? -1 : 1);
             event.accepted = true;
-        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_L || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (root.LayoutMirroring.enabled ? event.key === Qt.Key_Left || event.key === Qt.Key_H : event.key === Qt.Key_Right || event.key === Qt.Key_L)) {
+            // Right and l open; Left and h in a mirrored (right-to-left)
+            // panel, whose back key is then Right (Panel.qml).
             root.inspected(currentId);
             event.accepted = true;
         }

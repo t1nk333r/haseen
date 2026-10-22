@@ -100,24 +100,39 @@ Column {
         const left = Math.max(0, until - Date.now() / 1000);
         const minutes = Math.max(1, Math.round(left / 60));
         if (minutes < 60)
-            return minutes + "m";
+            return I18n.tr("%1m", minutes);
         if (left < 8 * 3600)
-            return Math.max(1, Math.round(left / 3600)) + "h";
+            return I18n.tr("%1h", Math.max(1, Math.round(left / 3600)));
         return clockTime(when) + dayOffset(when);
     }
 
-    readonly property string stateLine: {
+    // The quiet state in one line: stateText as the panel shows it, in the
+    // interface language, and stateLine in English for the IPC hook (plan 109).
+    function _state(shown: bool): string {
+        const tr = shown ? (text, arg) => I18n.tr(text, arg) : (text, arg) => text.replace("%1", () => arg);
         if (globalSnoozed) {
             const when = new Date(globalUntil * 1000);
-            return "Snoozed until " + clockTime(when) + dayOffset(when);
+            return tr(I18n.mark("Snoozed until %1"), clockTime(when) + dayOffset(when));
         }
         if (silenced)
-            return "Do Not Disturb on";
-        if (snoozed.length === 1)
-            return "1 source snoozed";
-        if (snoozed.length > 1)
-            return snoozed.length + " sources snoozed";
-        return "Notifications enabled";
+            return tr(I18n.mark("Do Not Disturb on"), "");
+        if (snoozed.length > 0) {
+            if (shown)
+                return I18n.tn("%1 source snoozed", "%1 sources snoozed", snoozed.length);
+            return snoozed.length === 1 ? "1 source snoozed" : snoozed.length + " sources snoozed";
+        }
+        return tr(I18n.mark("Notifications enabled"), "");
+    }
+    readonly property string stateLine: _state(false)
+    readonly property string stateText: _state(true)
+
+    // The store's own placeholders (Store.js and Service.qml write them for a
+    // redacted or nameless row) are interface text; everything else in a row
+    // is the sender's and shows as it was sent.
+    readonly property var placeholders: [I18n.mark("Notification"), I18n.mark("Verification notification"), I18n.mark("[redacted]")]
+    function sent(text: var): string {
+        const value = String(text || "");
+        return placeholders.indexOf(value) >= 0 ? I18n.tr(value) : value;
     }
 
     // The switch reads as "notifications are on": turning it back on undoes
@@ -193,6 +208,9 @@ Column {
         Glyph {
             id: heroIcon
 
+            // Anchored, not at x 0, so the mirrored panel (plan 109) puts it
+            // at the right with the text after it.
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.fontSize * 2
             glyph: root.silenced ? root.bellOff : (root.globalSnoozed || root.snoozed.length > 0) ? root.bellSleep : root.bell
@@ -211,7 +229,7 @@ Column {
 
             Text {
                 width: parent.width
-                text: "Notifications"
+                text: I18n.tr("Notifications")
                 color: Theme.accent
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
@@ -221,7 +239,7 @@ Column {
             Text {
                 width: parent.width
                 textFormat: Text.PlainText
-                text: root.service ? root.stateLine : "The notification service is not running"
+                text: root.service ? root.stateText : I18n.tr("The notification service is not running")
                 color: root.dim
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
@@ -289,7 +307,7 @@ Column {
             spacing: 5
 
             Text {
-                text: "Sharing detected"
+                text: I18n.tr("Sharing detected")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize
@@ -297,7 +315,7 @@ Column {
             }
 
             Text {
-                text: "Snooze notifications?"
+                text: I18n.tr("Snooze notifications?")
                 color: root.dim
                 font.family: Theme.fontFamily
                 font.pixelSize: root.small
@@ -309,15 +327,15 @@ Column {
                 Repeater {
                     model: [
                         {
-                            label: "30 min",
+                            label: I18n.mark("30 min"),
                             seconds: 1800
                         },
                         {
-                            label: "1 hour",
+                            label: I18n.mark("1 hour"),
                             seconds: 3600
                         },
                         {
-                            label: "4 hours",
+                            label: I18n.mark("4 hours"),
                             seconds: 14400
                         }
                     ]
@@ -325,7 +343,7 @@ Column {
                     PagerButton {
                         required property var modelData
 
-                        text: modelData.label
+                        text: I18n.tr(modelData.label)
                         trackHover: true
                         fontSize: root.small
                         onClicked: root.service.snoozeSharingOffer(modelData.seconds)
@@ -333,7 +351,7 @@ Column {
                 }
 
                 PagerButton {
-                    text: "Not now"
+                    text: I18n.tr("Not now")
                     trackHover: true
                     fontSize: root.small
                     onClicked: root.service.dismissSharingOffer()
@@ -351,7 +369,7 @@ Column {
         Text {
             visible: root.codesLetThrough
             width: parent.width
-            text: "Verification-code exception enabled."
+            text: I18n.tr("Verification-code exception enabled.")
             color: root.dim
             font.family: Theme.fontFamily
             font.pixelSize: root.small
@@ -396,7 +414,7 @@ Column {
             // ------------------------------------------------------ recent
             SectionHeader {
                 visible: !root.quiet
-                title: "RECENT · " + root.recent.length
+                title: I18n.tr("RECENT · %1", root.recent.length)
                 folded: !root.recentExpanded
                 canClear: root.recent.length > 0
                 onToggled: root.recentExpanded = !root.recentExpanded
@@ -406,7 +424,7 @@ Column {
             Text {
                 visible: !root.quiet && root.recentExpanded && root.recent.length === 0
                 width: parent.width
-                text: "No recent notifications."
+                text: I18n.tr("No recent notifications.")
                 color: root.dim
                 font.family: Theme.fontFamily
                 font.pixelSize: root.small
@@ -421,9 +439,9 @@ Column {
                     required property var modelData
 
                     width: sections.width
-                    meta: modelData.source + " · " + root.clockTime(new Date(modelData.ts * 1000))
-                    summary: modelData.summary
-                    bodyLine: modelData.bodyLine
+                    meta: root.sent(modelData.source) + " · " + root.clockTime(new Date(modelData.ts * 1000))
+                    summary: root.sent(modelData.summary)
+                    bodyLine: root.sent(modelData.bodyLine)
                     closedLines: 2
                     openLines: 12
                     onForget: root.service.forgetRecent(modelData.key)
@@ -432,7 +450,7 @@ Column {
 
             // ------------------------------------------- held / snoozed sources
             SectionHeader {
-                title: root.quiet ? "HELD BACK" : "SNOOZED SOURCES"
+                title: root.quiet ? I18n.tr("HELD BACK") : I18n.tr("SNOOZED SOURCES")
                 foldable: false
                 canClear: root.heldCount > 0
                 onCleared: root.service.clearHeld()
@@ -441,7 +459,7 @@ Column {
             Text {
                 visible: root.sources.length === 0
                 width: parent.width
-                text: root.quiet ? "No held notifications." : "No snoozed sources. Middle-click a notification to snooze its source."
+                text: root.quiet ? I18n.tr("No held notifications.") : I18n.tr("No snoozed sources. Middle-click a notification to snooze its source.")
                 color: root.dim
                 font.family: Theme.fontFamily
                 font.pixelSize: root.small
@@ -476,7 +494,7 @@ Column {
                             Text {
                                 width: parent.width
                                 textFormat: Text.PlainText
-                                text: line.modelData.label
+                                text: root.sent(line.modelData.label)
                                 color: Theme.foreground
                                 elide: Text.ElideRight
                                 font.family: Theme.fontFamily
@@ -489,7 +507,7 @@ Column {
                                 readonly property int count: line.modelData.held.length
                                 visible: line.snoozedByName || count > 0
                                 textFormat: Text.PlainText
-                                text: (line.snoozedByName ? root.hourglass + " " + root.waitingFor(line.modelData.until) : "") + (line.snoozedByName && count > 0 ? " · " : "") + (count > 0 ? count + " held" : "")
+                                text: (line.snoozedByName ? root.hourglass + " " + root.waitingFor(line.modelData.until) : "") + (line.snoozedByName && count > 0 ? " · " : "") + (count > 0 ? I18n.tn("%1 held", "%1 held", count) : "")
                                 color: line.snoozedByName ? Theme.accent : root.dim
                                 elide: Text.ElideRight
                                 font.family: Theme.fontFamily
@@ -557,7 +575,9 @@ Column {
                     // missed, not reading it.
                     Column {
                         visible: line.expanded
-                        x: Theme.gap * 2
+                        // Indented from the line's start: the right in a
+                        // mirrored panel (plan 109).
+                        x: LayoutMirroring.enabled ? 0 : Theme.gap * 2
                         width: parent.width - Theme.gap * 2
                         spacing: 1
 
@@ -571,8 +591,8 @@ Column {
                                 textFormat: Text.PlainText
                                 text: {
                                     const when = Qt.formatDateTime(new Date(Number(modelData.ts) * 1000), "HH:mm");
-                                    const head = String(modelData.summary || "");
-                                    const rest = String(modelData.bodyLine || "");
+                                    const head = root.sent(modelData.summary);
+                                    const rest = root.sent(modelData.bodyLine);
                                     return when + "  " + (head && rest ? head + " · " + rest : (head || rest));
                                 }
                                 color: root.dim
@@ -590,7 +610,7 @@ Column {
             // The disk log (historyHours, at most 100), newest first.
             // Verification codes are stored redacted.
             SectionHeader {
-                title: "HISTORY · " + root.history.length
+                title: I18n.tr("HISTORY · %1", root.history.length)
                 folded: !root.historyExpanded
                 canClear: root.history.length > 0
                 onToggled: root.historyExpanded = !root.historyExpanded
@@ -600,7 +620,7 @@ Column {
             Text {
                 visible: root.historyExpanded && root.history.length === 0
                 width: parent.width
-                text: Number(root.settings.historyHours) === 0 ? "History is off (historyHours is 0)." : "No notification history."
+                text: Number(root.settings.historyHours) === 0 ? I18n.tr("History is off (historyHours is 0).") : I18n.tr("No notification history.")
                 color: root.dim
                 font.family: Theme.fontFamily
                 font.pixelSize: root.small
@@ -614,9 +634,9 @@ Column {
                     required property var modelData
 
                     width: sections.width
-                    meta: String(modelData.source || modelData.app || "") + " · " + root.clockTime(new Date(Number(modelData.ts) * 1000))
-                    summary: String(modelData.summary || "")
-                    bodyLine: String(modelData.bodyLine || "")
+                    meta: root.sent(modelData.source || modelData.app) + " · " + root.clockTime(new Date(Number(modelData.ts) * 1000))
+                    summary: root.sent(modelData.summary)
+                    bodyLine: root.sent(modelData.bodyLine)
                     closedLines: 2
                     openLines: 1000
                     forgettable: false
@@ -628,7 +648,7 @@ Column {
     PagerButton {
         visible: root.service !== null && (root.quiet || root.snoozed.length > 1)
         width: parent.width
-        text: "Resume all notifications"
+        text: I18n.tr("Resume all notifications")
         trackHover: true
         fontSize: root.small
         onClicked: {

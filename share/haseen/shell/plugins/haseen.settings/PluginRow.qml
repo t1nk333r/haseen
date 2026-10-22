@@ -109,7 +109,7 @@ Item {
         BarButton {
             height: parent.height
             visible: root.row.valid
-            text: root.busy ? "…" : root.row.enabled && root.row.listed ? "On" : "Off"
+            text: root.busy ? "…" : root.row.enabled && root.row.listed ? I18n.tr("On") : I18n.tr("Off")
             highlighted: root.row.enabled && root.row.listed
             color: root.row.enabled && root.row.listed ? Theme.accent : Theme.muted
             onClicked: if (!root.busy)

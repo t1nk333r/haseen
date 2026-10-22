@@ -8,6 +8,11 @@
 // The daemon is the only source of truth. This module's whole job is to turn
 // the daemon's JSON lines into the handful of values the bar draws, and to
 // decide nothing that the daemon could decide instead.
+
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text }
+
 // Empty state: what the widget shows before the first line arrives, and after
 // the keyboard goes away.
 function emptyState() {
@@ -50,7 +55,7 @@ function applyMessage(state, message) {
   if (!message) return next
 
   if (message.ok === false) {
-    next.error = typeof message.error === "string" ? message.error : "command failed"
+    next.error = typeof message.error === "string" ? message.error : N_("command failed")
     return next
   }
 
@@ -211,9 +216,9 @@ function linkStep(link, event) {
 function linkHint(link) {
   var l = cloneLink(link)
   if (l.connected) return ""
-  if (!l.socket) return "no Wooting keyboard connected"
-  if (l.retries >= LINK_RETRY_LIMIT && !l.pending) return "wootingd is not answering · journalctl --user -u wootingd"
-  return "connecting to wootingd…"
+  if (!l.socket) return N_("no Wooting keyboard connected")
+  if (l.retries >= LINK_RETRY_LIMIT && !l.pending) return N_("wootingd is not answering · journalctl --user -u wootingd")
+  return N_("connecting to wootingd…")
 }
 
 function activeName(state) {

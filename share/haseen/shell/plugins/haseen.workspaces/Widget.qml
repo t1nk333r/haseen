@@ -198,7 +198,7 @@ Item {
 
                 readonly property string name: Ws.specialName(modelData.name)
 
-                label: "\uf005"
+                label: "\uf005" // i18n-ignore: a glyph
                 tint: modelData.urgent ? Theme.urgent : modelData.name === root.shownSpecial ? Theme.accent : Theme.barForeground
                 opacity: modelData.name === root.shownSpecial ? 1 : 0.5
                 onActivated: root.dispatch(Ws.toggleSpecialCommand(name, Hyprland.usingLua))

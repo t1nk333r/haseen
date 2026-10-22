@@ -5,6 +5,7 @@ Column {
     id: root
     property string label: ""
     property alias text: input.text
+    // English (Model.js marks it N_), translated where shown.
     property string error: ""
     signal committed()
     signal submitted()
@@ -23,7 +24,7 @@ Column {
         selectedTextColor: Theme.foreground
         activeFocusOnTab: true
         Accessible.name: root.label
-        Accessible.description: root.error
+        Accessible.description: I18n.tr(root.error)
         onEditingFinished: root.committed()
         onAccepted: root.submitted()
         onTextEdited: root.edited(text)
@@ -34,5 +35,5 @@ Column {
             border.color: input.activeFocus ? Theme.foreground : Theme.border
         }
     }
-    Label { width: parent.width; visible: root.error !== ""; text: root.error }
+    Label { width: parent.width; visible: root.error !== ""; text: I18n.tr(root.error) }
 }

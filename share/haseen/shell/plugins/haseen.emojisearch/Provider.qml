@@ -41,7 +41,7 @@ Scope {
         if (emojis.length === 0 && failed)
             return [
                 {
-                    title: "The emoji list could not be read",
+                    title: I18n.tr("The emoji list could not be read"),
                     subtitle: root.dataDir + "/emojis.json",
                     icon: "dialog-warning",
                     glyph: "\uf071",
@@ -51,7 +51,7 @@ Scope {
         if (emojis.length === 0)
             return [
                 {
-                    title: "Loading emoji…",
+                    title: I18n.tr("Loading emoji…"),
                     subtitle: "",
                     icon: "face-smile",
                     glyph: "\uf118",
@@ -60,15 +60,15 @@ Scope {
             ];
         const rows = Emoji.rank(emojis, text, 50).map(item => ({
                     title: item.k,
-                    subtitle: "Emoji  ·  Enter copies",
+                    subtitle: I18n.tr("Emoji  ·  Enter copies"),
                     glyph: item.e,
                     exec: () => root.copy(item.e)
                 }));
         if (rows.length === 0)
             return [
                 {
-                    title: "No matching emoji",
-                    subtitle: "Emoji: type a word like heart, smile, cat",
+                    title: I18n.tr("No matching emoji"),
+                    subtitle: I18n.tr("Emoji: type a word like heart, smile, cat"),
                     icon: "face-smile",
                     glyph: "\uf118",
                     exec: () => {}

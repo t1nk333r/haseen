@@ -164,6 +164,11 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
+                // A window of its own, outside the bar: the line is in the
+                // names' language, so it mirrors with them, as the strip does
+                // (plan 109). One centred line, so nothing moves today.
+                LayoutMirroring.enabled: root.ready && root.host.isArabic
+                LayoutMirroring.childrenInherit: true
                 color: Theme.surface
                 radius: Theme.radius
                 border.width: Theme.borderWidth

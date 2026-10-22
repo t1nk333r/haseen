@@ -7,15 +7,19 @@
 // CLI's own --json. The network, the SFW rule, the thumbnail cache and the
 // image checks are the CLI's; the panel only lists and picks.
 
+// Interface strings stay English here and are translated where QML shows
+// them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
+function N_(text) { return text; }
+
 // bin/haseen-wallhaven-search's WH_SORTS, with the chip labels.
 var SORTS = ["toplist", "date_added", "random", "relevance", "views", "favorites"];
 var SORT_LABELS = {
-    toplist: "Top",
-    date_added: "Latest",
-    random: "Random",
-    relevance: "Relevance",
-    views: "Views",
-    favorites: "Favourites"
+    toplist: N_("Top"),
+    date_added: N_("Latest"),
+    random: N_("Random"),
+    relevance: N_("Relevance"),
+    views: N_("Views"),
+    favorites: N_("Favourites")
 };
 var ID = /^[a-z0-9]{1,16}$/;
 var SEED = /^[a-zA-Z0-9]{6}$/;

@@ -17,6 +17,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -75,9 +77,9 @@ else
     text="$(grim -g "$geometry" - | tesseract "${ocr_argv[@]}" 2>/dev/null)" || die "OCR failed"
 fi
 if [[ -z ${text//[[:space:]]/} ]]; then
-    notify "No text found"
+    notify "$(i18n "No text found")"
     exit 1
 fi
 printf '%s' "$text" | wl-copy
 $print && printf '%s\n' "$text"
-notify "Copied text from the selection"
+notify "$(i18n "Copied text from the selection")"

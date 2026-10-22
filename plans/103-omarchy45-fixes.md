@@ -284,3 +284,14 @@ the branch range: no leaks; the privacy pattern over `git log -p`: nothing.
   layer apply` and `haseen install`) still runs the AUR helper with the
   timestamp warm. The survey suggests the same `run_cold` there; it is outside
   this plan's paths and changes many dry-run expectations.
+
+## Follow-up (plan 111)
+
+Two review findings closed in plan 111. `run_cold` now runs its command in a
+subshell whose `EXIT` trap removes the wrapper and drops the timestamp, so a
+SIGINT, SIGHUP or SIGTERM, to the job or to the calling shell alone, no longer
+leaves either behind; a `mktemp` or `chmod` failure runs the command cold with
+the warning instead of ending the update; a relative `TMPDIR` is resolved, and
+one that does not resolve or holds a `:` falls back to `/tmp`. `haseen update`
+scopes pacman only when `systemd-run` is on `PATH` as well as
+`/run/systemd/system` being a directory.

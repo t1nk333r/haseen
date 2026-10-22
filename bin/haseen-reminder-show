@@ -8,6 +8,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<EOF
@@ -56,5 +58,5 @@ fi
 text="$(jq -r 'sort_by(.at)[] | "\(.atTime)  in \((.remainingSeconds / 60 | floor))m  \(.message)"' <<<"$rows")"
 printf '%s\n' "${text:-No reminders}"
 if $notify && have notify-send; then
-    notify-send -a haseen "Upcoming reminders" "${text:-No reminders}" || true
+    notify-send -a haseen "$(i18n "Upcoming reminders")" "${text:-$(i18n "No reminders")}" || true
 fi

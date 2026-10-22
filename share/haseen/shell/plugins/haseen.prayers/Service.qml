@@ -27,7 +27,13 @@ Scope {
 
     property var schedule: null
     property var zone: null
+    // English: IPC status() and state() return it. The panel shows
+    // lastErrorText, the same message in the interface language, built from
+    // the catalog key and arguments setError() keeps beside it.
     property string lastError: ""
+    property string lastErrorKey: ""
+    property var lastErrorArgs: []
+    readonly property string lastErrorText: lastErrorKey !== "" ? I18n.tr(lastErrorKey, ...lastErrorArgs) : lastError
     // Test hook (debugIpc): shifts the clock the schedule is read at.
     property real clockOffset: 0
     property date nowTick: new Date()
@@ -46,6 +52,8 @@ Scope {
     // Location picker state. All session-only: nothing is written until the
     // user picks a row, and then only through commitLocation.
     property var locationChoices: []
+    // A Model.UI_LABELS key, labelled where it is shown, so a language
+    // switch relabels it.
     property string locationStatus: ""
     property string geocodePendingQuery: ""
     property string geocodeActiveQuery: ""
@@ -77,7 +85,15 @@ Scope {
     readonly property string methodSettings: String(setting("customMethodSettings", ""))
     readonly property string panelStyle: String(setting("panelStyle", "Horizon"))
     readonly property string timeFormat: String(setting("timeFormat", "24-hour"))
-    readonly property string language: String(setting("language", "English"))
+    // The setting as stored: Interface, English or Arabic. Interface follows
+    // the shell's interface language (`haseen language`): Arabic exactly when
+    // it is Arabic. `language` is the language the names, labels and
+    // notifications are in, and a binding, so a language switch repaints.
+    readonly property string languageSetting: String(setting("language", "Interface"))
+    readonly property string language: languageSetting === "Interface" ? (I18n.language === "ar" ? "Arabic" : "English") : (languageSetting === "Arabic" ? "Arabic" : "English")
+    // IPC status() is not interface text: it is Arabic only when the setting
+    // says Arabic, so `haseen language` never changes what it returns.
+    readonly property string ipcLanguage: languageSetting === "Arabic" ? "Arabic" : "English"
     readonly property string arabicFont: String(setting("arabicFont", "Noto Naskh Arabic"))
     readonly property string barDisplay: String(setting("barDisplay", "Strip + countdown"))
     readonly property bool isArabic: language === "Arabic"
@@ -175,11 +191,11 @@ Scope {
     readonly property string tooltipText: Model.tooltip(schedule, nextEvent, nowTick, language, timeFormat, displayLocation)
     readonly property string statusMessage: {
         if (lastError !== "")
-            return lastError;
+            return lastErrorText;
         if (todayDay && todayDay.approximate)
             return Model.uiLabel("approximate", language);
         if (notificationWarning !== "")
-            return notificationWarning;
+            return I18n.tr(notificationWarning);
         return "";
     }
 
@@ -208,6 +224,15 @@ Scope {
 
     function alpha(c: color, a: real): color {
         return Qt.rgba(c.r, c.g, c.b, a);
+    }
+
+    // key is English, a catalog key: an I18n.mark() literal, or a message
+    // from the engine (N_) or the zone script. %1.. take args.
+    function setError(key: string, args: var): void {
+        const values = args || [];
+        root.lastErrorKey = key;
+        root.lastErrorArgs = values;
+        root.lastError = values.length === 0 ? key : key.replace(/%([1-9])/g, (match, n) => Number(n) <= values.length ? String(values[Number(n) - 1]) : match);
     }
 
     function latitudeRule(value: string): int {
@@ -308,7 +333,7 @@ Scope {
     function applyLocationResults(raw: string): void {
         const choices = Model.parseLocationResults(raw);
         root.locationChoices = choices;
-        root.locationStatus = choices.length === 0 ? Model.uiLabel("noMatches", root.language) : "";
+        root.locationStatus = choices.length === 0 ? "noMatches" : "";
     }
 
     // The detected place only seeds the search box; it is never committed on
@@ -325,10 +350,10 @@ Scope {
         const query = Model.detectedLocationQuery(raw);
         root.detectingLocation = false;
         if (query === "") {
-            root.locationStatus = Model.uiLabel("detectFailed", root.language);
+            root.locationStatus = "detectFailed";
             return;
         }
-        root.locationStatus = Model.uiLabel("detectHint", root.language);
+        root.locationStatus = "detectHint";
         root.locationDetected(query);
     }
 
@@ -380,11 +405,11 @@ Scope {
     function applyZone(raw: string): void {
         const value = Model.parseEnvelope(raw);
         if (!value) {
-            lastError = "Timezone data was not valid JSON";
+            root.setError(I18n.mark("Timezone data was not valid JSON"));
             return;
         }
         if (value.ok !== true) {
-            lastError = String(value.error || "Timezone data refresh failed");
+            root.setError(String(value.error || I18n.mark("Timezone data refresh failed")));
             return;
         }
         if (String(value.timezone || "") !== root.timezone) {
@@ -392,7 +417,7 @@ Scope {
             return;
         }
         root.zone = value;
-        root.lastError = "";
+        root.setError("");
     }
 
     function recompute(): void {
@@ -401,14 +426,14 @@ Scope {
         const value = Engine.buildSchedule(root.expectedConfig, root.zone, root.now());
         if (!value || value.ok !== true) {
             root.schedule = null;
-            root.lastError = String(value && value.error ? value.error : "Prayer schedule calculation failed");
+            root.setError(String(value && value.error ? value.error : I18n.mark("Prayer schedule calculation failed")));
             root.armZoneRefresh();
             return;
         }
         if (!Model.sameConfig(value.config, root.expectedConfig))
             return;
         root.schedule = value;
-        root.lastError = "";
+        root.setError("");
         root.armZoneRefresh();
     }
 
@@ -436,11 +461,14 @@ Scope {
     }
 
     function statusText(): string {
+        const lang = ipcLanguage;
+        const arabic = lang === "Arabic";
         if (!schedule)
-            return lastError || (isArabic ? "مواقيت الصلاة غير محملة" : "Prayer times are not loaded");
+            return lastError || (arabic ? "مواقيت الصلاة غير محملة" : "Prayer times are not loaded");
         const next = nextEvent;
-        const nextText = next ? Model.label(next.name, language) + (next.kind === "iqama" ? " " + Model.uiLabel(next.label || "iqama", language) : "") + (isArabic ? " بعد " : " in ") + Model.remaining(next, nowTick, language) : (isArabic ? "لا توجد صلاة قادمة" : "No upcoming prayer");
-        return displayLocation + ": " + nextText + " [" + Model.statusLabel(schedule.status, language) + "]";
+        const nextText = next ? Model.label(next.name, lang) + (next.kind === "iqama" ? " " + Model.uiLabel(next.label || "iqama", lang) : "") + (arabic ? " بعد " : " in ") + Model.remaining(next, nowTick, lang) : (arabic ? "لا توجد صلاة قادمة" : "No upcoming prayer");
+        const location = arabic && locationLabelAr !== "" ? locationLabelAr : locationLabel;
+        return location + ": " + nextText + " [" + Model.statusLabel(schedule.status, lang) + "]";
     }
 
     function queueNotifications(events: var): void {
@@ -476,7 +504,7 @@ Scope {
             notificationRetry.restart();
             return;
         }
-        notificationWarning = "Prayer notification delivery failed";
+        notificationWarning = I18n.mark("Prayer notification delivery failed");
         notificationRetryAttempt = 0;
         activeNotification = null;
         if (notificationQueue.length > 0)
@@ -504,7 +532,7 @@ Scope {
     onTimezoneChanged: {
         root.zone = null;
         root.schedule = null;
-        root.lastError = "";
+        root.setError("");
         Qt.callLater(() => root.refresh());
     }
     onZoneChanged: configRefresh.restart()
@@ -531,7 +559,7 @@ Scope {
         }
         onExited: exitCode => {
             if (exitCode !== 0 && root.lastError === "")
-                root.lastError = "Timezone data command failed (exit " + exitCode + ")";
+                root.setError(I18n.mark("Timezone data command failed (exit %1)"), [exitCode]);
             root.armZoneRefresh();
             if (root.zoneRequestedTimezone !== root.timezone)
                 Qt.callLater(() => root.refresh());
@@ -563,7 +591,7 @@ Scope {
                 root.applyLocationResults(geocodeOutput.text);
             else {
                 root.locationChoices = [];
-                root.locationStatus = Model.uiLabel("searchFailed", root.language);
+                root.locationStatus = "searchFailed";
             }
         }
     }
@@ -581,7 +609,7 @@ Scope {
                 root.applyDetectedLocation(detectOutput.text);
             else {
                 root.detectingLocation = false;
-                root.locationStatus = Model.uiLabel("detectFailed", root.language);
+                root.locationStatus = "detectFailed";
             }
         }
     }
