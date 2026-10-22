@@ -189,9 +189,9 @@ omarchy-hyprland-window-tiled-fullscreen-toggle	port	-	toggles fullscreen for th
 omarchy-hyprland-window-transparency	translate	-	prints opaque, haseen's only window look; transparent and glassy are refused
 omarchy-hyprland-window-transparency-toggle	port	-	toggles the focused window's transparency
 omarchy-hyprland-window-width	port	-	saves or restores the focused window's width for its app
-omarchy-hyprland-workspace-layout-current	port	-	prints a workspace's layout, dwindle or scrolling
-omarchy-hyprland-workspace-layout-default	translate	-	prints the default workspace layout; another default is refused (haseen sets layouts per workspace)
-omarchy-hyprland-workspace-layout-toggle	translate	haseen-toggle-workspace-layout toggle	toggles the workspace layout between dwindle and scrolling; back is the same step
+omarchy-hyprland-workspace-layout-current	port	haseen-toggle-workspace-layout current	prints a workspace's layout, dwindle, scrolling or floating
+omarchy-hyprland-workspace-layout-default	translate	-	prints the default workspace layout; another default, floating included, is refused (haseen sets layouts per workspace)
+omarchy-hyprland-workspace-layout-toggle	translate	haseen-toggle-workspace-layout toggle|back	steps the workspace layout through dwindle, scrolling and floating, or back
 omarchy-i18n	port	-	prints one of Omarchy's CLI strings from its installed catalogs; never refuses
 omarchy-input-method	translate	-	cycle switches fcitx5 between English and Arabic; status prints the input method
 omarchy-install-ai-chatgpt	shim	haseen-install app chatgpt	installs the ChatGPT (Codex) desktop app from haseen's catalogue
@@ -484,7 +484,7 @@ omarchy-toggle-animations	shim	haseen-toggle-animations	turns Hyprland animation
 omarchy-toggle-bar	translate	haseen-toggle-bar	hides (on) or shows (off) or flips the running bar, for the session
 omarchy-toggle-crash-capture	port	-	turns crash toasts off/on; the crash watcher keeps running for shell recovery
 omarchy-toggle-enabled	port	-	exit 0 when the flag omarchy-toggle keeps is on, 1 when off
-omarchy-toggle-fullscreen-desktop	translate	-	hides the bar and removes the gaps together, or brings both back
+omarchy-toggle-fullscreen-desktop	translate	haseen-toggle-fullscreen-desktop	hides the bar and removes the gaps together, or brings both back
 omarchy-toggle-hybrid-gpu	shim	haseen-hardware-hybrid-gpu toggle	switches the hybrid GPU between integrated and hybrid mode
 omarchy-toggle-idle	translate	haseen-toggle-idle	toggles idle locking the haseen way
 omarchy-toggle-input-device	translate	haseen-hardware-touchpad	switches the touchpad or touchscreen through haseen hardware touchpad/touchscreen

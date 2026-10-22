@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
 # omarchy-hyprland-workspace-layout-current — print a workspace's layout
-# (dwindle or scrolling; the active workspace's without an id). Adapted from
-# Omarchy bin/omarchy-hyprland-workspace-layout-current@v4.5.0-rc1 (MIT,
-# Copyright (c) David Heinemeier Hansson): haseen keeps a workspace's layout as
-# a workspace rule Hyprland reports in tiledLayout (haseen toggle
-# workspace-layout), so the answer is Hyprland's; haseen has no floating
-# workspace mode or saved default (plan 102).
+# (dwindle, scrolling or floating; the active workspace's without an id).
+# Adapted from Omarchy bin/omarchy-hyprland-workspace-layout-current@v4.5.0-rc1
+# (MIT, Copyright (c) David Heinemeier Hansson): haseen toggle workspace-layout
+# keeps a workspace's mode, and its `current` answers as Omarchy's does, from
+# the saved floating mode or else the tiledLayout Hyprland reports (plans 102,
+# 105). haseen keeps no saved default.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
 omarchy_help "Usage: omarchy-hyprland-workspace-layout-current [workspace-id]
 
-haseen's answer to Omarchy's command: prints the workspace's layout, dwindle
-or scrolling." "$@"
-if [[ -n ${1:-} ]]; then
-    layout=$(hyprctl workspaces -j 2>/dev/null |
-        jq -r --arg id "$1" 'first(.[] | select((.id | tostring) == $id) | .tiledLayout) // empty' 2>/dev/null) || layout=""
-else
-    layout=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.tiledLayout // empty' 2>/dev/null) || layout=""
-fi
-echo "${layout:-dwindle}"
+haseen's answer to Omarchy's command: prints the workspace's layout, dwindle,
+scrolling or floating." "$@"
+haseen_exec toggle-workspace-layout current "$@"

@@ -2,7 +2,9 @@
 -- every described bind as
 --   modmask<TAB>description<TAB>key<TAB>kind<TAB>arg<TAB>section
 -- kind "exec" (arg: the command), "lua" (arg: a `hl.dsp.…(…)` expression
--- `hyprctl dispatch` accepts) or "" (a Lua function: nothing to replay).
+-- `hyprctl dispatch` accepts, or the expression the config recorded for a Lua
+-- function in haseen.bind_expressions, such as haseen.workspaces.focus(3)) or
+-- "" (a Lua function with no such record: nothing to replay).
 -- section is the `-- Name ------` comment above the line that made the bind,
 -- so a bind written in a loop ("Workspace " .. n) still gets its section.
 --
@@ -88,9 +90,16 @@ local function dsp_proxy(path)
   })
 end
 
+-- A number index is nil, so a module that walks what hl.get_windows() and
+-- friends return finds an empty list instead of looping forever.
 local noop
 noop = setmetatable({}, {
-  __index = function() return noop end,
+  __index = function(_, key)
+    if type(key) == "number" then
+      return nil
+    end
+    return noop
+  end,
   __call = function() return noop end,
 })
 
@@ -123,18 +132,27 @@ local function section_at(file, line)
 end
 
 -- The bind's call site: the first main chunk up the stack, past helpers
--- such as haseen.bind; a loop in binds.lua is still its main chunk.
+-- such as haseen.bind; a loop in binds.lua is still its main chunk. When that
+-- chunk has no section there (a toggle file calling haseen.workspaces.enable),
+-- the section above the innermost function that made the bind counts.
 local function caller_section()
+  local inner = ""
   for level = 3, 32 do
     local info = debug.getinfo(level, "Sl")
     if not info then
       break
     end
-    if info.what == "main" and info.source:sub(1, 1) == "@" then
-      return section_at(info.source:sub(2), info.currentline)
+    if info.source:sub(1, 1) == "@" and info.currentline > 0 then
+      local section = section_at(info.source:sub(2), info.currentline)
+      if info.what == "main" then
+        return section ~= "" and section or inner
+      end
+      if inner == "" then
+        inner = section
+      end
     end
   end
-  return ""
+  return inner
 end
 
 local function combo(keys)
@@ -153,6 +171,9 @@ hl = setmetatable({
         kind, arg = d.kind, d.arg
       elseif type(d) == "string" and d ~= "" then
         kind, arg = "exec", d
+      elseif type(d) == "function" and type(haseen) == "table" and type(haseen.bind_expressions) == "table"
+        and type(haseen.bind_expressions[d]) == "string" then
+        kind, arg = "lua", haseen.bind_expressions[d]
       end
       binds[#binds + 1] = { id = id, modmask = modmask, key = key, description = opts.description, kind = kind, arg = arg, section = caller_section() }
     end

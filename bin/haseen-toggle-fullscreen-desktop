@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# haseen:summary Hide the bar and remove the window gaps together, or bring both back
+# haseen:args [on|off|toggle] [--dry-run]
+#
+# Adapted from Omarchy bin/omarchy-toggle-fullscreen-desktop (a7486beb6,
+# #10672; MIT, Copyright (c) David Heinemeier Hansson): the bar is the running
+# shell's (haseen toggle bar, for the session) and the gaps are haseen toggle
+# gaps, whose "on" removes them. toggle leaves the full-screen desktop only
+# when both halves are in it, so a lone hidden bar or a lone gapless layout is
+# pulled into line rather than flipped away.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
+
+usage() {
+    cat <<EOF
+Usage: haseen toggle fullscreen-desktop [on|off|toggle] [--dry-run]
+
+"on" hides the bar and removes the window gaps, borders and rounding; "off"
+brings both back; "toggle" (the default) goes back only when both are off.
+The bar comes back with the next shell start; the gaps stay off until "off"
+(haseen toggle gaps).
+EOF
+}
+
+GAPS_FILE="$HASEEN_USER_STATE/toggles/hypr/no-gaps.lua"
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+action=${1:-toggle}
+(($# <= 1)) || { usage >&2; exit 2; }
+case $action in on | off | toggle) ;; *) usage >&2; exit 2 ;; esac
+
+# The bar keeps no file: its state is the running shell's. Unknown (no shell,
+# or DMS in its place) leaves the bar alone and changes only the gaps.
+hidden="$("$BIN_DIR/haseen-shell-ipc" bar status 2>/dev/null | jq -r 'if has("hidden") then .hidden else empty end' 2>/dev/null || true)"
+case $hidden in true | false) ;; *) hidden="" ;; esac
+
+if [[ $action == toggle ]]; then
+    if [[ $hidden != false && -f $GAPS_FILE ]]; then action=off; else action=on; fi
+fi
+
+# A dry run shows each command's plan; a real run prints one line of its own.
+step() {
+    if $DRY_RUN; then
+        "$@" --dry-run
+    else
+        "$@" >/dev/null
+    fi
+}
+want=false
+[[ $action == on ]] && want=true
+if [[ -z $hidden ]]; then
+    warn "the shell's bar did not answer: only the gaps change"
+elif [[ $hidden != "$want" ]]; then
+    step "$BIN_DIR/haseen-toggle-bar"
+fi
+step "$BIN_DIR/haseen-toggle-gaps" "$action"
+$DRY_RUN && exit 0
+echo "Full-screen desktop $action"

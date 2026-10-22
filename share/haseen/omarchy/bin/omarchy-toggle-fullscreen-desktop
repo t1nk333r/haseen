@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # omarchy-toggle-fullscreen-desktop — hide the bar and remove the window gaps
-# together, or bring both back. Translated (a7486beb6, #10672): the bar is
-# omarchy-toggle-bar beside this file (the running bar, for the session), the
-# gaps haseen toggle gaps (its "on" removes them, as Omarchy's window-no-gaps
-# flag does); toggle leaves full screen only when both halves are in it, as
-# Omarchy's, so a lone hidden bar or lone gapless layout is pulled into line
-# (plan 102).
+# together, or bring both back. Translated (a7486beb6, #10672): haseen toggle
+# fullscreen-desktop, SUPER + CTRL + ALT + F's command since plan 105, does
+# what this did since plan 102: the bar for the session, the gaps through
+# haseen toggle gaps, and toggle leaves full screen only when both halves are
+# in it, as Omarchy's.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -17,15 +16,7 @@ parse_common_flags "$@"
 action=${REST[0]:-toggle}
 ((${#REST[@]} <= 1)) || action=bad
 case $action in
-toggle)
-    if "$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-enabled" bar-off &&
-        [[ -f $HASEEN_USER_STATE/toggles/hypr/no-gaps.lua ]]; then
-        action=off
-    else
-        action=on
-    fi
-    ;;
-on | off) ;;
+toggle | on | off) ;;
 *)
     echo "Usage: omarchy-toggle-fullscreen-desktop [toggle|on|off]" >&2
     exit 1
@@ -33,5 +24,4 @@ on | off) ;;
 esac
 flags=()
 $DRY_RUN && flags+=(--dry-run)
-"$HASEEN_OMARCHY_DIR/bin/omarchy-toggle-bar" "$action" "${flags[@]}"
-"$HASEEN_BIN/haseen-toggle-gaps" "$action" "${flags[@]}"
+haseen_exec toggle-fullscreen-desktop "$action" "${flags[@]}"

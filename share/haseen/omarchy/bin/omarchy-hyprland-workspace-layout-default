@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # omarchy-hyprland-workspace-layout-default — show or set the layout of
 # workspaces without one of their own. Translated (149871896, #14482): haseen
-# keeps a layout per workspace (haseen toggle workspace-layout) over Hyprland's
-# general.layout, so this prints that default and accepts it unchanged; another
-# default, or floating (which needs Omarchy's dock and titlebars), is refused
-# with the haseen way (plan 102).
+# keeps a layout per workspace (haseen toggle workspace-layout, floating
+# included since plan 105) over Hyprland's general.layout, so this prints that
+# default and accepts it unchanged; another default is refused with the haseen
+# way, the active workspace's own layout (plan 102).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -23,8 +23,8 @@ dwindle | scrolling)
         "haseen sets the layout per workspace and keeps Hyprland's default ($current)."
     ;;
 floating)
-    omarchy_refuse "haseen toggle workspace-layout (dwindle or scrolling)" \
-        "Omarchy's floating workspaces come with its dock and window titlebars, which haseen does not have."
+    omarchy_refuse "haseen toggle workspace-layout floating (the active workspace)" \
+        "haseen floats one workspace at a time and keeps Hyprland's tiled default ($current) for the rest."
     ;;
 *)
     echo "Usage: omarchy-hyprland-workspace-layout-default [dwindle|scrolling|floating]" >&2

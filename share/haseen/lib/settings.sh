@@ -179,6 +179,8 @@ settings_rows() {
         "$([[ $(_settings_toggle no-animations) == on ]] && echo off || echo on)" "haseen toggle animations" on-off
     _settings_row one-window-ratio hypr-toggle "$state/toggles/hypr/single-window-aspect-ratio.lua" \
         "$(_settings_toggle single-window-aspect-ratio)" "haseen toggle one-window-ratio" on-off
+    _settings_row monitor-workspaces hypr-toggle "$state/toggles/hypr/monitor-workspaces.lua" \
+        "$(_settings_toggle monitor-workspaces)" "haseen toggle monitor-workspaces" on-off
 
     local kind
     for kind in browser terminal editor agent; do

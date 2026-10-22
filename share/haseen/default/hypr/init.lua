@@ -21,6 +21,11 @@
 --   haseen.bind(keys, description, dispatcher_or_command, options)
 --   haseen.ipc(target, fn, ...)        command string for `haseen shell ipc …`
 --   haseen.launch(command)            command string run as a uwsm app unit
+--   haseen.bind_expressions           function -> the Lua expression `hyprctl dispatch`
+--                                     replays it with (the keybind sheet reads it)
+--   haseen.workspaces                 per-monitor workspaces (monitor-workspaces.lua)
+--   haseen.workspace_mode(spec)       a workspace's layout or floating mode
+--                                     (workspace-modes.lua)
 --
 -- The helper shape (bind/launch/window over hl.*) is adapted from Omarchy
 -- default/hypr/helpers.lua. Omarchy is MIT licensed, Copyright (c) David
@@ -102,6 +107,11 @@ function haseen.ipc(target, fn, ...)
   return table.concat(parts, " ")
 end
 
+-- A bind whose action is a Lua function records here how `hyprctl dispatch`
+-- can run the same thing, so the keybind sheet can replay it. Weak keys: an
+-- entry goes with the function when a reload drops the bind.
+haseen.bind_expressions = setmetatable({}, { __mode = "k" })
+
 function haseen.bind(keys, description, dispatcher, options)
   local opts = options or {}
   if description then
@@ -151,8 +161,10 @@ function haseen.theme_hl(real)
   }, { __index = real })
 end
 
+-- monitor-workspaces and workspace-modes define what binds.lua and the
+-- toggles below call; qconsole follows looknfeel, whose animations it extends.
 local here = haseen.path .. "/default/hypr/"
-for _, module in ipairs({ "input", "looknfeel", "binds", "windowrules", "autostart" }) do
+for _, module in ipairs({ "input", "looknfeel", "monitor-workspaces", "workspace-modes", "binds", "windowrules", "qconsole", "autostart" }) do
   dofile(here .. module .. ".lua")
 end
 
@@ -180,3 +192,11 @@ end
 -- hyprmod (or uninstall it and delete the file) to get haseen's value back.
 -- The user's own ~/.config/hypr/*.lua files still load after this one.
 haseen.include_optional(haseen.paths.config_home .. "/hypr/hyprland-gui.lua")
+
+-- Every saved workspace mode has loaded with the toggles: bring the windows in
+-- line with them (workspace-modes.lua). It reads live windows, so a failure is
+-- printed and never takes the rest of the config with it.
+local applied, apply_error = pcall(haseen.workspace_modes.apply)
+if not applied then
+  print("haseen: workspace modes: " .. tostring(apply_error))
+end

@@ -53,7 +53,7 @@ file changes in the same commit.
 | `/var/lib/haseen/boot-menu/` | `original` (the `timeout:`/`quiet:` values `haseen setup boot-menu fast` replaced) and a copy of `limine.conf` from before each change (§9, plan 104) | boot menu |
 | `PREFIX/lib/systemd/user/omarchy-migrate-notify.service.d/haseen.conf` | silences Omarchy's own pending-migration notice (plan 101) | repo → installed with the user units |
 | `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/` | user |
-| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line) | runtime |
+| `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line), `toggles/hypr/*.lua` (Hyprland toggles, below), `monitor-workspaces` and `monitor-workspaces-merged` (per-monitor workspaces, below) | runtime |
 | `~/.local/share/haseen/extensions/cairn/<version>/` | Cairn's release `.crx`, downloaded and checked; Helium installs it from `~/.config/net.imput.helium/External Extensions/<id>.json` (plan 073) | shell |
 
 `PREFIX` is `/usr/local` for the installer. When the PKGBUILD phase lands it
@@ -405,6 +405,24 @@ flag `context` holds the active name (absent = normal) and is read through
 animations, blur and shadow values it read with `hyprctl getoption`. The
 optional game watcher is the `haseen.indicators` service, listed only by
 `haseen context auto-game on|set`.
+
+Workspaces (plan 105): `toggles/hypr/workspace-layout-<id>.lua` calls
+`haseen.workspace_mode({ workspace, mode })` (`default/hypr/workspace-modes.lua`),
+dwindle and scrolling as Hyprland layouts, floating by floating the
+workspace's windows, tagged `haseen-mode-floated` so only those tile again;
+`haseen toggle workspace-layout` steps through the three and its `current`
+answers for Omarchy's command. Per-monitor workspaces are off until
+`haseen toggle monitor-workspaces on` writes `toggles/hypr/monitor-workspaces.lua`,
+which calls `haseen.workspaces.enable()` (`default/hypr/monitor-workspaces.lua`):
+SUPER + 1..0 then address the focused monitor's block of ten Hyprland ids.
+Hyprland writes the blocks to `monitor-workspaces`, one line per monitor ever
+seen, `block<TAB>connector<TAB>identity` (make, model and serial; no connector
+while it is unplugged), and the haseen.workspaces bar widget reads that file
+and the toggle (FileView watches; the toggle again on `configreloaded`) to
+show its own monitor's block. `monitor-workspaces-merged` remembers, for the
+session, where a workspace that joined another monitor's block came from. A
+bind whose action is a Lua function records the expression `hyprctl dispatch`
+replays in `haseen.bind_expressions`, which the keybind sheet reads.
 
 Idle (`haseen.idle`, plans 019, 082) runs one ext-idle-notify monitor per
 non-zero timeout: `screensaverAfter`, `lockAfter`, `dpmsAfter` and
