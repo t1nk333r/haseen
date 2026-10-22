@@ -2,33 +2,25 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import qs.Haseen
-import qs.Haseen.Widgets
-import "Overflow.js" as Overflow
 
-// One bar per screen, on the edge shell.json `bar.position` names. Three
-// sections of bar-widget plugins (left/center/right, top to bottom when the
-// bar is vertical). With the screen frame on, the bar is the frame's thick
-// edge (Frame.qml draws the rest); without it, a hairline marks the inner edge.
+// One bar per screen, on the edge shell.json `bar.position` names. With the
+// screen frame on, the bar is the frame's thick edge (Frame.qml draws the
+// rest); without it, a hairline marks the inner edge.
+//
+// This file is the bar's window; what is in it, the widgets, the overflow
+// chevron and every gesture on the bar, is BarStrip.qml (plan 112). Here:
+// - the overflow panel (BarOverflowPanel.qml), lazy, opened from the chevron
+//   or the nook (architecture 5.3). Each bar computes its own overflow, from
+//   its own length, so every screen gets its own answer;
+// - what a drag shows (BarDragOverlay.qml), lazy, only while one lasts;
+// - Escape during a drag: the bar takes the keyboard for as long as a drag
+//   lasts, and only then, so Escape puts the widget (or the bar) back.
 //
 // Double-clicking the bar asks for transparency (plan 015, after Omarchy's
 // shell/plugins/bar/Bar.qml toggleTransparency, MIT, Copyright (c) David
-// Heinemeier Hansson): on empty space and, as in Omarchy, on a widget too,
-// since a full bar has little empty space left (the chevron and arrange mode
-// excepted). `transparent` comes from FrameTextColor: it turns true only once
-// a legible text colour for the wallpaper is known.
-//
-// Overflow (architecture 5.3): when the sections do not fit the bar's length,
-// widgets move into a panel behind a chevron at the end of the bar
-// (Overflow.js decides which, BarOverflowPanel.qml shows them). Each bar
-// computes its own, from its own length, so every screen gets its own answer.
-// The fit is recomputed when a widget's size, the bar's length or the
-// overflow settings change: a binding collects them and a deferred call
-// computes it, no timer.
-//
-// haseen.nook (plan 095), when it sits in a section, is that panel's opener
-// instead of the chevron: the panel opens under it, the chevron shows only
-// in arrange mode (as a drop target), and the nook never moves into the
-// panel it opens (Overflow.fit's `never`).
+// Heinemeier Hansson; BarStrip.qml). `transparent` comes from
+// FrameTextColor: it turns true only once a legible text colour for the
+// wallpaper is known.
 PanelWindow {
     id: bar
 
@@ -42,235 +34,51 @@ PanelWindow {
     // of its ends (the seam note in Frame.qml).
     readonly property int overlap: Config.frameEnabled ? 1 : 0
     // The bar's length along its edge, as the popups measure it.
-    readonly property real extent: (vertical ? height : width) - 2 * overlap
-
-    // Each id once, the tray first in the right section (Overflow.sections).
-    readonly property var layoutIds: Overflow.sections(Config.section("left"), Config.section("center"), Config.section("right"))
-    // The nook opens the overflow panel from where it sits in the bar.
-    readonly property string nookId: "haseen.nook"
-    readonly property bool nookHosted: Config.isEnabled(nookId) && Plugins.componentUrl(nookId, "bar-widget") !== "" && (layoutIds.left.indexOf(nookId) >= 0 || layoutIds.center.indexOf(nookId) >= 0 || layoutIds.right.indexOf(nookId) >= 0)
+    readonly property real extent: strip.extent
     // The nook's widget while it is in this bar (it registers itself).
     property Item nookItem: null
-    readonly property int spacing: Math.round(Theme.gap / 2)
-    readonly property var fitSpec: ({
-            length: vertical ? track.height : track.width,
-            spacing: spacing,
-            gap: Theme.gap,
-            button: nookHosted && !arranging ? 0 : vertical ? overflowButton.implicitHeight : overflowButton.implicitWidth,
-            never: [nookId],
-            hysteresis: Theme.gap * 2,
-            left: entries(leftSection),
-            center: entries(centerSection),
-            right: entries(rightSection),
-            overflow: Config.barOverflow,
-            pinned: Config.barPinned
-        })
-    property var fit: ({
-            ids: [],
-            shown: [],
-            autoRight: 0,
-            autoLeft: 0,
-            button: false,
-            fits: true
-        })
-    // What the overflow panel shows, in order: for `bar status` too.
-    readonly property var overflowShown: fit.shown
-    property bool overflowOpen: false
-    // Where along the bar the open panel is centred when an opener other
-    // than the chevron (the nook) opened it; -1 means the chevron.
-    property real overflowCentre: -1
-    // The chevron: it points where the panel opens, and turns round while
-    // it is open. The nook shows the same one.
-    readonly property var overflowGlyphs: ({
-            top: ["\uf078", "\uf077"],
-            bottom: ["\uf077", "\uf078"],
-            left: ["\uf054", "\uf053"],
-            right: ["\uf053", "\uf054"]
-        })
-    readonly property string overflowGlyph: overflowGlyphs[position][overflowOpen ? 1 : 0]
-    // Arrange mode: a click on a widget, in the bar or in the panel, moves it
-    // to the other one, and a drag moves it where it is dropped (within a
-    // section, to another one, into or out of the panel). The panel is open
-    // while arranging, even with nothing in it, to drop widgets into.
-    property bool arranging: false
-    // The widget being dragged while arranging, and where it would land
-    // (Overflow.dropTarget's answer, or { section: "overflow", before }),
-    // or null.
-    property string dragId: ""
-    property var drop: null
-    // The overflow panel's cell for each id while it is open.
-    property var cells: ({})
-    // When a widget inside the overflow panel was last pressed (Date.now()).
-    property real overflowPressTime: 0
-    // The button's centre along the bar, measured like an opener's centre.
-    readonly property real buttonCentre: (vertical ? track.y + overflowButton.y + overflowButton.height / 2 : track.x + overflowButton.x + overflowButton.width / 2) - overlap
+
+    // The strip's state, for shell.qml, the overflow panel and the nook.
+    readonly property var fit: strip.fit
+    readonly property var overflowShown: strip.overflowShown
+    property alias overflowOpen: strip.overflowOpen
+    readonly property bool arranging: strip.arranging
+    readonly property var cells: strip.cells
+    readonly property string overflowGlyph: strip.overflowGlyph
+    readonly property real overflowPressTime: strip.overflowPressTime
+    readonly property bool dragging: strip.dragging
 
     signal transparencyToggleRequested
     // A press on a bar widget, as PanelPlacement.js's opener.
     signal widgetPressed(var opener)
     // A click while arranging: `haseen bar overflow <verb> <id>` (add or pin).
     signal overflowEditRequested(string verb, string id)
-    // A drop while arranging: `haseen bar move <id> <to> --before <before>`.
+    // A drop: `haseen bar move <id> <to> --before <before> [--pin]`.
     signal moveRequested(string id, string to, string before, bool pin)
-    // The panel's edge buttons while arranging: `haseen bar position <pos>`.
+    // The bar let go of over another edge, or the panel's edge buttons:
+    // `haseen bar position <pos>`.
     signal positionRequested(string pos)
 
-    function entries(section: Item): var {
-        return section.shownIds.map(id => ({
-                    id: id,
-                    size: section.lengths[id] || 0
-                }));
-    }
-
-    function refit(): void {
-        fit = Overflow.fit(fitSpec, fit);
-    }
-
     function registerCell(id: string, item: Item): void {
-        const next = Object.assign({}, cells);
-        next[id] = item;
-        cells = next;
+        strip.registerCell(id, item);
     }
 
     function unregisterCell(id: string, item: Item): void {
-        if (cells[id] !== item)
-            return;
-        const next = Object.assign({}, cells);
-        delete next[id];
-        cells = next;
+        strip.unregisterCell(id, item);
     }
 
-    function inTrack(item: Item): bool {
-        for (let n = item; n; n = n.parent)
-            if (n === track)
-                return true;
-        return false;
-    }
-
-    // Where a drag at (x, y) in this window's coordinates would land, or
-    // null: in the bar, the gap Overflow.dropTarget picks (the chevron
-    // means the panel's end); over the open panel's card, in front of the
-    // cell Overflow.panelTarget picks.
-    function dropAt(id: string, x: real, y: real): var {
-        if (x >= 0 && y >= 0 && x < width && y < height) {
-            const b = overflowButton.mapFromItem(null, x, y);
-            if (overflowButton.visible && overflowButton.contains(b))
-                return {
-                    section: "overflow",
-                    before: ""
-                };
-            const t = track.mapFromItem(null, x, y);
-            return Overflow.dropTarget(vertical ? t.y : t.x, {
-                length: vertical ? track.height : track.width,
-                spacing: spacing,
-                left: leftSection.spans(track),
-                center: centerSection.spans(track),
-                right: rightSection.spans(track)
-            }, id);
-        }
-        const panel = overflowLoader.item;
-        if (!panel)
-            return null;
-        const p = panel.fromBar(x, y);
-        if (!panel.cardContains(p.x, p.y))
-            return null;
-        const rects = [];
-        for (const cid of overflowShown) {
-            const holder = cells[cid];
-            if (!holder)
-                continue;
-            const o = holder.mapToItem(null, 0, 0);
-            rects.push({
-                id: cid,
-                x: o.x,
-                y: o.y,
-                w: holder.width,
-                h: holder.height
-            });
-        }
-        return {
-            section: "overflow",
-            before: Overflow.panelTarget(p, rects, id)
-        };
-    }
-
-    // A drag from a slot, in that slot's window: this bar or the panel.
-    function dragUpdate(id: string, slot: Item, x: real, y: real): void {
-        let p = Qt.point(x, y);
-        if (!inTrack(slot)) {
-            const panel = overflowLoader.item;
-            if (!panel) {
-                drop = null;
-                return;
-            }
-            p = panel.toBar(x, y);
-        }
-        dragId = id;
-        drop = dropAt(id, p.x, p.y);
-    }
-
-    // After the release has been handled: the move reparents (or rebuilds)
-    // the very slot whose MouseArea is delivering it.
-    function dragFinish(id: string, dropped: bool): void {
-        const d = drop;
-        dragId = "";
-        drop = null;
-        if (!dropped || !d)
-            return;
-        // Out of the panel means "here, for good": pinned, so the fit does
-        // not send it straight back.
-        const pin = d.section !== "overflow" && fit.ids.indexOf(id) >= 0;
-        Qt.callLater(() => bar.moveRequested(id, d.section, d.before, pin));
-    }
-
-    // The nook's click: open (or close) the panel centred under `item`,
-    // measured as reportPress measures a widget.
     function toggleOverflowFrom(item: Item): void {
-        if (overflowOpen) {
-            overflowOpen = false;
-            return;
-        }
-        const c = item.mapToItem(null, item.width / 2, item.height / 2);
-        overflowCentre = (vertical ? c.y : c.x) - overlap;
-        overflowOpen = true;
+        strip.toggleOverflowFrom(item);
     }
 
     function setArranging(on: bool): void {
-        arranging = on;
-        overflowOpen = on || (overflowOpen && overflowShown.length > 0);
+        strip.setArranging(on);
     }
 
-    // The bar spans its edge and the popups share its origin
-    // (PanelPlacement.place), so the slot's centre in this window's
-    // coordinates, less the overlap, is where along the edge a panel it
-    // opens belongs. The overflow panel's window spans the same edge from
-    // that origin (without the overlap), so a widget in it is measured the
-    // same way and its own panel opens under it.
-    function reportPress(slot: Item): void {
-        const inBar = inTrack(slot);
-        if (!inBar)
-            overflowPressTime = Date.now();
-        const c = slot.mapToItem(null, slot.width / 2, slot.height / 2);
-        bar.widgetPressed({
-            screen: bar.screen,
-            position: bar.position,
-            centre: (bar.vertical ? c.y : c.x) - (inBar ? overlap : 0),
-            extent: bar.extent,
-            time: Date.now()
-        });
-    }
-
-    onFitSpecChanged: Qt.callLater(bar.refit)
-    onOverflowShownChanged: {
-        if (overflowShown.length === 0 && !arranging)
-            overflowOpen = false;
-    }
-    onHiddenChanged: overflowOpen = false
-    onOverflowOpenChanged: {
-        if (!overflowOpen) {
-            arranging = false;
-            overflowCentre = -1;
-        }
+    // Escape, here or in the overflow panel: nothing lands.
+    function cancelDrag(): void {
+        strip.cancelDrag();
+        strip.cancelBarMove();
     }
 
     visible: thickness > 0
@@ -296,6 +104,9 @@ PanelWindow {
     // transparency would then render black. Ask for alpha up front.
     surfaceFormat.opaque: false
     WlrLayershell.layer: WlrLayer.Top
+    // A bar never has the keyboard but while a drag lasts, for Escape; the
+    // strip ends a drag that hears nothing for 15 s, so it is never kept.
+    WlrLayershell.keyboardFocus: strip.dragging ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     // The owner's frame cross-fades with the bar over 420 ms (t1nk33r.screen-frame).
     Behavior on color {
@@ -305,204 +116,59 @@ PanelWindow {
         }
     }
 
-    // Below the sections: a right click on empty bar space arranges, as one
-    // on the chevron does. A widget whose own MouseArea takes only the left
-    // button lets a right click fall through to here, so one over a widget is
-    // ignored (leaving arrange mode still works from anywhere).
-    MouseArea {
-        anchors.fill: parent
-        enabled: !bar.hidden
-        acceptedButtons: Qt.RightButton
-        onClicked: mouse => {
-            if (!bar.arranging) {
-                const p = mapToItem(track, mouse.x, mouse.y);
-                const along = bar.vertical ? p.y : p.x;
-                for (const section of [leftSection, centerSection, rightSection])
-                    for (const span of section.spans(track))
-                        if (along >= span.start && along < span.end)
-                            return;
-            }
-            bar.setArranging(!bar.arranging);
-        }
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        enabled: strip.dragging
+        onActivated: bar.cancelDrag()
     }
 
-    Item {
-        id: track
+    BarStrip {
+        id: strip
 
         anchors.fill: parent
-        anchors.leftMargin: bar.vertical ? 0 : Theme.gap + bar.overlap
-        anchors.rightMargin: bar.vertical ? 0 : Theme.gap + bar.overlap
-        anchors.topMargin: bar.vertical ? Theme.gap + bar.overlap : 0
-        anchors.bottomMargin: bar.vertical ? Theme.gap + bar.overlap : 0
-        visible: !bar.hidden
-
-        // Each section is anchored on both axes, the one across the bar
-        // being a no-op (the section spans it). Anchoring only the axis along
-        // the bar left a section at its old offset after a live switch
-        // between a vertical and a horizontal bar: removing an anchor keeps
-        // the position it set, so the right section sat outside a 28 px bar.
-        BarSection {
-            id: leftSection
-
-            anchors.left: parent.left
-            anchors.top: parent.top
-            width: bar.vertical ? parent.width : implicitWidth
-            height: bar.vertical ? implicitHeight : parent.height
-            vertical: bar.vertical
-            ids: bar.layoutIds.left
-            screen: bar.screen
-            overflowIds: bar.fit.ids
-            cells: bar.cells
-            fixedIds: ["haseen.tray"]
-            arranging: bar.arranging
-            onWidgetPressed: slot => bar.reportPress(slot)
-            onMoveRequested: (id, overflowed) => bar.overflowEditRequested(overflowed ? "pin" : "add", id)
-            dragId: bar.dragId
-            onDragMoved: (id, slot, x, y) => bar.dragUpdate(id, slot, x, y)
-            onDragEnded: (id, dropped) => bar.dragFinish(id, dropped)
-        }
-
-        BarSection {
-            id: centerSection
-
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.verticalCenter: parent.verticalCenter
-            width: bar.vertical ? parent.width : implicitWidth
-            height: bar.vertical ? implicitHeight : parent.height
-            vertical: bar.vertical
-            ids: bar.layoutIds.center
-            screen: bar.screen
-            overflowIds: bar.fit.ids
-            cells: bar.cells
-            fixedIds: ["haseen.tray"]
-            arranging: bar.arranging
-            onWidgetPressed: slot => bar.reportPress(slot)
-            onMoveRequested: (id, overflowed) => bar.overflowEditRequested(overflowed ? "pin" : "add", id)
-            dragId: bar.dragId
-            onDragMoved: (id, slot, x, y) => bar.dragUpdate(id, slot, x, y)
-            onDragEnded: (id, dropped) => bar.dragFinish(id, dropped)
-        }
-
-        // Before the overflow button when it shows (left of it, or above it
-        // in a vertical bar).
-        BarSection {
-            id: rightSection
-
-            anchors.right: bar.vertical || !overflowButton.visible ? parent.right : overflowButton.left
-            anchors.bottom: !bar.vertical || !overflowButton.visible ? parent.bottom : overflowButton.top
-            anchors.rightMargin: !bar.vertical && overflowButton.visible ? bar.spacing : 0
-            anchors.bottomMargin: bar.vertical && overflowButton.visible ? bar.spacing : 0
-            width: bar.vertical ? parent.width : implicitWidth
-            height: bar.vertical ? implicitHeight : parent.height
-            vertical: bar.vertical
-            ids: bar.layoutIds.right
-            screen: bar.screen
-            overflowIds: bar.fit.ids
-            cells: bar.cells
-            fixedIds: ["haseen.tray"]
-            arranging: bar.arranging
-            onWidgetPressed: slot => bar.reportPress(slot)
-            onMoveRequested: (id, overflowed) => bar.overflowEditRequested(overflowed ? "pin" : "add", id)
-            dragId: bar.dragId
-            onDragMoved: (id, slot, x, y) => bar.dragUpdate(id, slot, x, y)
-            onDragEnded: (id, dropped) => bar.dragFinish(id, dropped)
-        }
-
-        // Where a dragged widget would land in the bar.
-        Rectangle {
-            readonly property bool shown: bar.drop !== null && bar.drop.section !== "overflow"
-
-            visible: shown
-            x: !shown ? 0 : bar.vertical ? 2 : Math.round(bar.drop.at - width / 2)
-            y: !shown ? 0 : bar.vertical ? Math.round(bar.drop.at - height / 2) : 2
-            width: bar.vertical ? track.width - 4 : 2
-            height: bar.vertical ? 2 : track.height - 4
-            radius: 1
-            color: Theme.accent
-        }
-
-        // The overflow button, at the very end of the bar, only while
-        // something is in overflow (with the nook in the bar, only in
-        // arrange mode). A right click opens it in arrange mode.
-        BarButton {
-            id: overflowButton
-
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            width: bar.vertical ? parent.width : implicitWidth
-            height: bar.vertical ? implicitHeight : parent.height
-            vertical: bar.vertical
-            visible: bar.nookHosted ? bar.arranging : bar.fit.button || bar.overflowOpen
-            glyph: bar.overflowGlyph
-            highlighted: bar.overflowOpen || (bar.drop !== null && bar.drop.section === "overflow")
-            onClicked: button => {
-                if (button === Qt.LeftButton) {
-                    bar.overflowOpen = !bar.overflowOpen;
-                } else if (button === Qt.RightButton) {
-                    bar.setArranging(!bar.overflowOpen || !bar.arranging);
-                }
-            }
-        }
-    }
-
-    // Over everything but the chevron (and the nook), and only passive: a double click on a
-    // widget still reaches the widget, and both presses still open or close
-    // whatever it opens, as in Omarchy's bar. A PointHandler, as on the
-    // slots (BarSection.qml): it only ever takes a passive grab. A TapHandler
-    // here kept every widget from seeing its clicks (nested Hyprland). Two
-    // presses within the double-click interval and distance make a double
-    // click, as Qt counts them.
-    Item {
-        anchors.fill: parent
-
-        PointHandler {
-            property real lastTime: 0
-            property point lastAt: Qt.point(0, 0)
-
-            enabled: !bar.hidden && !bar.arranging
-            acceptedButtons: Qt.LeftButton
-            onActiveChanged: {
-                if (!active)
-                    return;
-                const p = point.scenePosition;
-                const now = Date.now();
-                const near = Math.abs(p.x - lastAt.x) + Math.abs(p.y - lastAt.y) <= Qt.styleHints.startDragDistance;
-                if (now - lastTime > Qt.styleHints.mouseDoubleClickInterval || !near) {
-                    lastTime = now;
-                    lastAt = p;
-                    return;
-                }
-                lastTime = 0;
-                const b = overflowButton.mapFromItem(null, p.x, p.y);
-                if (overflowButton.visible && overflowButton.contains(b))
-                    return;
-                // Opening and closing the panel from the nook is no double click either.
-                const n = bar.nookItem;
-                if (n && n.visible && n.contains(n.mapFromItem(null, p.x, p.y)))
-                    return;
-                bar.transparencyToggleRequested();
-            }
-        }
+        screen: bar.screen
+        position: bar.position
+        overlap: bar.overlap
+        hidden: bar.hidden
+        panel: overflowLoader.item
+        nookItem: bar.nookItem
+        onTransparencyToggleRequested: bar.transparencyToggleRequested()
+        onWidgetPressed: opener => bar.widgetPressed(opener)
+        onOverflowEditRequested: (verb, id) => bar.overflowEditRequested(verb, id)
+        onMoveRequested: (id, to, before, pin) => bar.moveRequested(id, to, before, pin)
+        onPositionRequested: pos => bar.positionRequested(pos)
     }
 
     // Lazy, like every panel: nothing exists until the button is clicked,
     // and closing it frees the window again (the widgets go back to their
-    // parked cells in the bar first, BarSection.qml).
+    // cells in the bar first, BarSlot.qml).
     LazyLoader {
         id: overflowLoader
 
-        active: bar.overflowOpen && (bar.overflowShown.length > 0 || bar.arranging) && !bar.hidden
+        active: strip.overflowOpen && (strip.overflowShown.length > 0 || strip.arranging) && !bar.hidden
 
         BarOverflowPanel {
             barWindow: bar
             screen: bar.screen
-            ids: bar.overflowShown
-            centre: bar.overflowCentre >= 0 ? bar.overflowCentre : bar.buttonCentre
-            arranging: bar.arranging
-            dropBefore: bar.drop !== null && bar.drop.section === "overflow" ? bar.drop.before : null
-            onArrangeToggled: bar.setArranging(!bar.arranging)
-            onCloseRequested: bar.overflowOpen = false
+            ids: strip.overflowShown
+            centre: strip.overflowCentre >= 0 ? strip.overflowCentre : strip.buttonCentre
+            arranging: strip.arranging
+            dropBefore: strip.drop !== null && strip.drop.section === "overflow" ? strip.drop.before : null
+            onArrangeToggled: strip.setArranging(!strip.arranging)
+            onCloseRequested: strip.overflowOpen = false
             onPositionRequested: pos => bar.positionRequested(pos)
+        }
+    }
+
+    // The ghost of a dragged widget and the edge a moved bar would go to:
+    // a window only while a drag lasts.
+    LazyLoader {
+        active: strip.dragging && !bar.hidden
+
+        BarDragOverlay {
+            screen: bar.screen
+            strip: strip
         }
     }
 

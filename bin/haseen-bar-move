@@ -19,9 +19,10 @@ shell. The tray stays first in the right section and never moves.
 Moving to a section takes the widget out of bar.overflow; --pin also keeps
 it in the bar (bar.pinned), as dragging it out of the panel does.
 
-In the shell, arrange mode (right click on empty bar space or on the
-chevron, "Arrange" in the overflow panel, or \`haseen bar arrange\`) lets you
-drag widgets there instead.
+In the shell, drag a widget on the bar to do the same: a press that
+travels a few pixels picks it up, the widgets make room where it would
+land, and letting go saves it through this command (Escape, or letting go
+off the bar, puts it back).
 
 --no-apply   only save; used by the shell itself, which already applied it
 EOF

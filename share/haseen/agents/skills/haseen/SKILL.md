@@ -202,7 +202,7 @@ plugin and offers to disable it, safe mode, the last good `shell.json`
 ## Example requests
 
 - "Add a bar widget showing uptime" → `plugins.md`: `haseen plugin new <user>.uptime --kind bar-widget`, edit, validate, enable, reload.
-- "Move the clock to the right" → copy `bar.center`/`bar.right` from `haseen shell ipc shell plugins` or `$HASEEN_PATH/default/shell.json` into `~/.config/haseen/shell.json` and move `haseen.clock` (arrays replace, so write the whole section).
+- "Move the clock to the right" → `haseen bar move haseen.clock right [--before <id>]` (saved in `~/.config/haseen/shell.json`); the user can also drag it on the bar, no mode needed. "Put the bar at the bottom" → `haseen bar position bottom`, or hold empty bar space and drag it there.
 - "Use 24-hour time with seconds" → `~/.config/haseen/shell.json`: `"plugins": {"haseen.clock": {"settings": {"format": "HH:mm:ss"}}}`.
 - "Hide the battery" → `haseen plugin disable haseen.battery`.
 - "Dim the screen" / "keyboard light off" / "monitor brightness" → `haseen brightness set 30%`, `haseen brightness set kbd 0%`, `haseen brightness list` (ids; `ddc:DP-1` for a monitor). External monitors need `haseen setup ddc on` once. Sliders: `haseen plugin enable haseen.display`, then `haseen shell ipc panel toggle haseen.display` or Setup › Display.

@@ -191,10 +191,10 @@ function strings(list) {
     return Array.isArray(list) ? list.filter(x => typeof x === "string") : [];
 }
 
-// The bar's lists after one drag-and-drop (Bar.qml's arrange mode), the rule
-// `haseen bar move` applies too. layout: { left, center, right, overflow,
-// pinned } as in shell.json's `bar`. `id` leaves every section and lands in
-// section `to` in front of `before` (an id there; empty, unknown or `id`
+// The bar's lists after one drag-and-drop (a drag on the bar, plan 112),
+// the rule `haseen bar move` applies too. layout: { left, center, right,
+// overflow, pinned } as in shell.json's `bar`. `id` leaves every section and
+// lands in section `to` in front of `before` (an id there; empty, unknown or `id`
 // itself: at the end, or where it already is), and out of bar.overflow;
 // `pin` also puts it in bar.pinned, so a widget dragged out of the panel is
 // not moved straight back. `to` "overflow" keeps the sections as they are
@@ -249,6 +249,16 @@ function move(layout, id, to, before, pin) {
     if (pin && out.pinned.indexOf(id) < 0)
         out.pinned.push(id);
     return out;
+}
+
+// Whether a drop changes anything: a widget let go of where it already was
+// needs no `haseen bar move` (Bar.qml asks only for real moves).
+function changes(layout, id, to, before, pin) {
+    const r = move(layout, id, to, before, pin);
+    if (r === null)
+        return false;
+    const l = layout || {};
+    return ["left", "center", "right", "overflow", "pinned"].some(k => JSON.stringify(r[k]) !== JSON.stringify(strings(l[k])));
 }
 
 // Where a widget dragged along the bar lands. `p` is the pointer's position
