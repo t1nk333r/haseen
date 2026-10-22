@@ -26,7 +26,8 @@ the text. reset removes both. Without either, they show haseen's mark.
 mark: haseen's logo in the menu, the About panel (and \`haseen about --logo\`),
 the screensaver, the bar logo (haseen.logo) and the app icon
 (-i haseen). Saved as branding.mark in shell.json (default kufic); without a
-name it prints the current one. The boot splash takes it at the next
+name it prints the current one. The boot splash takes it about 2 minutes
+later when it follows the theme (haseen plymouth follow), else at the next
 \`haseen plymouth set\`.
 EOF
 }
@@ -46,7 +47,11 @@ set_mark() {
     fi
     branding_svg mark "$(branding_accent)" "$name" | write_user_file "$icons/scalable/apps/haseen.svg"
     write_user_file "$icons/symbolic/apps/haseen-symbolic.svg" <"$(branding_file symbolic "$name")"
-    info "mark: $name (the boot splash follows at the next: haseen plymouth set)"
+    info "mark: $name"
+    # The boot splash follows once the mark settles (plan 110).
+    local poke=(poke)
+    $DRY_RUN && poke+=(--dry-run)
+    haseen plymouth follow "${poke[@]}" || true
 }
 
 parse_common_flags "$@"

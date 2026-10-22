@@ -1,0 +1,36 @@
+# haseen-splash@.service — rebuild the boot splash in the colours its instance
+# name carries: background, text and accent as six lowercase hex digits each,
+# then the mark, e.g. haseen-splash@1f1f28-dcd7ba-dcd7ba-kufic.service
+# (plan 110). Started by the user's haseen-splash-follow.service once a theme
+# has stayed applied about 2 minutes, without a password through
+# /etc/polkit-1/rules.d/50-haseen-splash.rules. Installed as
+# /etc/systemd/system/haseen-splash@.service by `haseen plymouth follow on`,
+# with the router and the ESP filled in.
+[Unit]
+Description=haseen: rebuild the boot splash (%i)
+# The rebuild writes the ESP: a shutdown unmounts it only after this unit
+# has stopped.
+RequiresMountsFor=@ESP@ /usr /var/lib
+# StartLimit* counts per instance (per colour set); `haseen plymouth apply`
+# also keeps a machine-wide count.
+StartLimitIntervalSec=10min
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+# System units get no HOME; haseen's common.sh needs one, and nothing here
+# reads or writes it.
+Environment=HOME=/root
+ExecStart=@HASEEN_BIN@ plymouth apply %i
+Nice=19
+IOSchedulingClass=idle
+# A stop (a shutdown or reboot) signals only the main process, which holds it
+# until a rebuild that has begun is written; the rest is killed only after
+# TimeoutStopSec. A half-written boot image is worse than a late shutdown.
+KillMode=mixed
+TimeoutStopSec=5min
+TimeoutStartSec=30min
+# Nothing in a home is read: /home, /root and /run/user are empty here.
+ProtectHome=tmpfs
+PrivateTmp=yes
+NoNewPrivileges=yes

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# haseen:summary Rebuild the boot splash in the colours a request names (run as root by haseen-splash@.service)
+# haseen:args <BG-FG-ACCENT-MARK> [--dry-run]
+# haseen:hidden
+#
+# The root side of following the theme (plan 110; lib/plymouth.sh says how
+# the two sides meet). Its only input is the instance name of
+# haseen-splash@.service, which wheel members may start without a password,
+# so it is parsed strictly and nothing else is read from anyone's home: the
+# colours come from the name, the mark's drawing and the script from this
+# root-owned tree (plymouth_follow_trusted). It installs exactly what
+# `haseen plymouth set` installs and rebuilds the initramfs the same way.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/plymouth.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/plymouth.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plymouth apply BG-FG-ACCENT-MARK [--dry-run]
+
+Run as root by haseen-splash@BG-FG-ACCENT-MARK.service (haseen plymouth
+follow): installs haseen's splash in those colours (six lowercase hex digits
+each) with that mark ($(
+        IFS='|'
+        echo "${BRANDING_MARKS[*]}"
+    )), rebuilds the initramfs and records it
+in $PLYMOUTH_STAMP. Nothing when the boot image already carries them.
+
+Refused when haseen's splash is not the one plymouthd shows, on a machine
+that checks its boot files (Secure Boot, sbctl keys, an enrolled Limine
+config), and after $RATE_MAX rebuilds within an hour. A stop (shutdown) that
+arrives during the rebuild waits for it.
+EOF
+}
+
+# Rebuilds a wheel member may ask for in an hour, across every colour set
+# (the unit's StartLimit* counts per instance).
+RATE_MAX=6
+RATE_FILE=/run/haseen/splash-rebuilds
+LOCK_FILE=/run/lock/haseen-splash.lock
+
+parse_common_flags "$@"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+request="${REST[0]}"
+((EUID == 0)) || $DRY_RUN || die "run as root by haseen-splash@.service (haseen plymouth follow); by hand: haseen plymouth set"
+# As root (the unit) the root helpers' sudo is a plain call, and the unit
+# does not depend on sudo's policy.
+if ((EUID == 0)); then
+    sudo() { "$@"; }
+fi
+# Held from here on: a shutdown waits for a rebuild that has begun.
+plymouth_guard_stops
+
+# Never echo a malformed request back: it is whatever a caller typed.
+plymouth_request_parse "$request" || {
+    warn "refused: the request is not BG-FG-ACCENT-MARK (six lowercase hex digits each, one of: ${BRANDING_MARKS[*]})"
+    exit 2
+}
+bg="${PLYMOUTH_REQUEST[0]}" fg="${PLYMOUTH_REQUEST[1]}" accent="${PLYMOUTH_REQUEST[2]}" mark="${PLYMOUTH_REQUEST[3]}"
+
+plymouth_theme_ours || die "haseen's splash is not the one plymouthd shows; nothing to follow (haseen plymouth set)"
+if why="$(plymouth_signed_boot)"; then
+    die "$why: a rebuild here must be signed again, which following does not do; $(plymouth_signed_hint)"
+fi
+boot_hooks_known
+
+# One rebuild at a time, whichever colours each was asked for.
+if $DRY_RUN; then
+    echo "DRYRUN: lock $LOCK_FILE"
+else
+    exec 9>"$LOCK_FILE"
+    flock 9
+fi
+if [[ $(plymouth_built_request) == "$request" ]]; then
+    info "the boot image already carries $request"
+    exit 0
+fi
+
+# rate_ok — fewer than RATE_MAX rebuilds in the last hour; records this one.
+rate_ok() {
+    local now kept=() t
+    now="$(date +%s)"
+    if [[ -r $RATE_FILE ]]; then
+        while IFS= read -r t; do
+            [[ $t =~ ^[0-9]{1,12}$ ]] && ((now - t < 3600)) && kept+=("$t")
+        done <"$RATE_FILE"
+    fi
+    ((${#kept[@]} < RATE_MAX)) || return 1
+    kept+=("$now")
+    printf '%s\n' "${kept[@]}" | write_root_file "$RATE_FILE" 0644
+}
+if $DRY_RUN; then
+    echo "DRYRUN: count this rebuild in $RATE_FILE (at most $RATE_MAX an hour)"
+elif ! rate_ok; then
+    die "refused: $RATE_MAX boot splash rebuilds within the last hour already"
+fi
+
+if $PLYMOUTH_STOPPED; then
+    info "stopping before the rebuild; nothing that boots has changed"
+    exit 0
+fi
+info "boot splash: background $bg, text $fg, accent $accent, mark $mark"
+plymouth_install_theme "$bg" "$fg" "$accent" "$mark"
+if $PLYMOUTH_STOPPED; then
+    info "stopping before the rebuild; the boot image is unchanged and the next request rebuilds it"
+    exit 0
+fi
+boot_initramfs_rebuild
+plymouth_record_built "$request"
+$PLYMOUTH_STOPPED && info "a stop arrived during the rebuild; it finished first"
+info "boot splash rebuilt; it shows on the next boot"

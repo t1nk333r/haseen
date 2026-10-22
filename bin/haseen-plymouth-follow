@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# haseen:summary Keep the boot splash in the current theme's colours and mark, rebuilt in the background
+# haseen:args [on|off|status] [--dry-run] [--yes]
+#
+# Plan 110 (owner, 2026-10-22: "In the background"). lib/plymouth.sh says how
+# the user's side and root's side meet. request and poke are this command's
+# own calls from haseen-splash-follow.service, haseen theme set and haseen
+# branding mark.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/plymouth.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/plymouth.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen plymouth follow [on|off|status] [--dry-run] [--yes]
+
+Keeps the boot splash in the current theme's colours and haseen's mark.
+Once a theme or mark has stayed applied about 2 minutes, the boot image is
+rebuilt in the background at idle priority, without a password: quick theme
+flicking rebuilds nothing, a shutdown waits for a rebuild that has begun,
+and only a failure is notified.
+
+  on      install the root service ($PLYMOUTH_FOLLOW_UNIT)
+          and the polkit rule that lets wheel members start it
+          ($PLYMOUTH_FOLLOW_RULE), asking for sudo once,
+          then enable $PLYMOUTH_FOLLOW_TIMER. haseen plymouth set does
+          this too.
+  off     disable the timer, remove the rule and the service.
+  status  following, and whether the boot image matches the current theme
+          (default).
+
+The root side reads nothing in your home: the colours and the mark travel
+in the unit's name (haseen-splash@BG-FG-ACCENT-MARK.service), which it parses
+again. It is not set up from a tree a user can write (install haseen as root),
+nor on a machine that checks its boot files (Secure Boot on, sbctl keys, an
+enrolled Limine config), where a rebuild must be signed again: there, $(plymouth_signed_hint).
+
+  request run by haseen-splash-follow.service when the timer fires
+  poke    run by haseen theme set and haseen branding mark: restart the
+          2-minute wait when following is on
+EOF
+}
+
+# notify TITLE BODY — a desktop notification; following is otherwise silent.
+notify() {
+    info "$1: $2"
+    if have notify-send; then
+        run notify-send -a haseen -u critical -i haseen "$1" "$2" || true
+    fi
+}
+
+status() {
+    local root
+    root="$(plymouth_follow_root_state)"
+    if ! plymouth_installed; then
+        echo "follows:   no (plymouth is not installed)"
+        return 0
+    fi
+    if plymouth_follow_on; then
+        echo "follows:   on (the boot image is rebuilt about 2 minutes after a theme or mark change)"
+    else
+        echo "follows:   off (haseen plymouth follow on)"
+    fi
+    case "$root" in
+    installed) echo "service:   installed" ;;
+    stale) echo "service:   out of date (haseen plymouth follow on)" ;;
+    *) echo "service:   not installed" ;;
+    esac
+    echo "matches:   $(plymouth_matches)"
+}
+
+on() {
+    plymouth_installed || die "plymouth is not installed (pacman -S plymouth)"
+    plymouth_theme_ours || die "install haseen's splash first: haseen plymouth set (it turns following on)"
+    in_floating_terminal on "$@"
+    require_not_root
+    local rc=0
+    plymouth_follow_enable || rc=$?
+    ((rc == 0)) || exit 1
+    info "the boot splash follows the theme: rebuilt about 2 minutes after a theme or mark change"
+}
+
+off() {
+    in_floating_terminal off "$@"
+    require_not_root
+    plymouth_follow_disable || die "following is not fully off (haseen plymouth follow status)"
+    info "the boot splash no longer follows the theme (haseen plymouth set rebuilds it by hand)"
+}
+
+# request — the timer fired: compare, and ask root only when the boot image
+# differs. Silent unless it fails.
+request() {
+    local want have last why unit now err
+    plymouth_follow_on || return 0
+    plymouth_theme_ours || return 0
+    want="$(plymouth_current_request)" || return 0
+    have="$(plymouth_built_request)"
+    if [[ $want == "$have" ]]; then
+        plymouth_follow_record ok "$want"
+        return 0
+    fi
+    if why="$(plymouth_signed_boot)"; then
+        last="$(plymouth_follow_last)"
+        plymouth_follow_record skipped "$want" "$why"
+        # Once, not after every theme change.
+        [[ $last == skipped\ * ]] ||
+            notify "Boot splash not rebuilt" "$why, so a rebuild must be signed again: $(plymouth_signed_hint)."
+        return 0
+    fi
+    # An out-of-date unit (an older haseen's) is still tried; a missing one
+    # cannot be.
+    if [[ $(plymouth_follow_root_state) == missing ]]; then
+        plymouth_follow_record failed "$want" "the root service is not installed"
+        notify "Boot splash not rebuilt" "Its root service is not installed: haseen plymouth follow on."
+        return 1
+    fi
+    unit="haseen-splash@$want.service"
+    info "asking root to rebuild the boot splash: $unit"
+    # Refused (no polkit rule: Access denied), failed or stopped: one message,
+    # with systemctl's own first line.
+    if ! err="$(run systemctl start --no-ask-password "$unit" 2>&1)"; then
+        err="${err%%$'\n'*}"
+        plymouth_follow_record failed "$want"
+        notify "Boot splash not rebuilt" "${err:-$unit failed}. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand."
+        return 1
+    fi
+    plymouth_follow_record ok "$want"
+    # A theme changed while root was rebuilding: the timer's firing then found
+    # this service still running and was lost, so wait again.
+    if now="$(plymouth_current_request)" && [[ $now != "$want" ]]; then
+        plymouth_follow_poke
+    fi
+}
+
+parse_common_flags "$@"
+((${#REST[@]} <= 1)) || {
+    usage >&2
+    exit 2
+}
+verb="${REST[0]:-status}"
+case "$verb" in
+status) status ;;
+on | off)
+    flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    $ASSUME_YES && flags+=(--yes)
+    "$verb" "${flags[@]+"${flags[@]}"}"
+    ;;
+request) request ;;
+poke) plymouth_follow_poke ;;
+*)
+    usage >&2
+    exit 2
+    ;;
+esac

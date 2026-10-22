@@ -46,8 +46,12 @@ An Omarchy theme whose images are not cached yet starts
 the download lands. ~/.config/haseen/font, when present, sets the monospace
 font of the shell and the terminal configs.
 
-HASEEN_THEME_HEADLESS=1 skips the reloads, the fetch and the hook;
-HASEEN_THEME_FETCH=0 skips only the fetch.
+When the boot splash follows the theme (haseen plymouth follow), its
+2-minute wait starts again: the boot image is rebuilt once the theme has
+settled.
+
+HASEEN_THEME_HEADLESS=1 skips the reloads, the fetch, the splash and the
+hook; HASEEN_THEME_FETCH=0 skips only the fetch.
 EOF
 }
 
@@ -106,6 +110,7 @@ if $DRY_RUN; then
     if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
         theme_background_reload
         theme_fetch_in_background "$name"
+        haseen-plymouth-follow poke --dry-run
         run haseen-hook run theme-set "$name"
     fi
     exit 0
@@ -131,6 +136,8 @@ if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
     # Omarchy images arrive in the background; haseen-theme-fetch links the
     # first one when this theme is still current and has none.
     theme_fetch_in_background "$name"
+    # The boot splash follows once the theme settles (plan 110).
+    haseen-plymouth-follow poke || true
     run haseen-hook run theme-set "$name"
 fi
 exit 0

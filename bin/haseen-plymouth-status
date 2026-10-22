@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary What the boot splash is, and whether it will actually show
+# haseen:summary What the boot splash is, whether it will show, and whether it matches the current theme
 # haseen:args
 set -Eeuo pipefail
 
@@ -38,3 +38,11 @@ if $ready; then
 else
     echo "ready:     no (haseen plymouth set)"
 fi
+# Plan 110: whether the boot image carries the current theme's colours and
+# mark, and whether it follows them by itself.
+if plymouth_follow_on; then
+    echo "follows:   on (rebuilt in the background about 2 minutes after a theme or mark change)"
+else
+    echo "follows:   off (haseen plymouth follow on)"
+fi
+echo "matches:   $(plymouth_matches)"
