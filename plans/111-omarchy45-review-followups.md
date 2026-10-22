@@ -306,7 +306,29 @@ mount: see "Full run" below.
 
 ### Full run
 
-Filled in below by the final gate run.
+`tools/affected-tests.sh origin/main` prints `all` (the merge base is
+`6cdaf97`; `common.sh` is global), so `tests/run.sh --affected origin/main`
+ran all 162 test files, once, at commit a2682b2 of this branch:
+
+- From a short bind mount (`bwrap --dev-bind / / --bind <worktree> /tmp/s111
+  --chdir /tmp/s111`, `TMPDIR` a fresh `/tmp/hw.XXXX`), so Quickshell's IPC
+  sockets and headless nvim's lines fit (the long T3 worktree path breaks
+  `test-menu-back`, `test-themegen-keys`, `test-sidecar` and
+  `test-nvim-theme`, as plans 103 and 110 found): **16964/17365**. Every
+  failure is in one of 19 `test-vapt-*.sh` files, the same 401 in the same
+  19 files plan 103 recorded there: inside bwrap's user namespace `/` and
+  `/usr` are owned by uid 65534, so their real ancestry checks refuse. Every
+  other file passed, none aborted.
+- The 32 `test-vapt-*.sh` files and `test-capture-upload.sh` (whose
+  subordinate-uid check skips under bwrap) outside bwrap, from the worktree:
+  **5747/5747**, nothing skipped.
+
+Gates on the same tree: `SHELLCHECK=/usr/bin/shellcheck tools/lint.sh` lint
+OK (909 shell, 36 Lua, 198 JSON, 334 QML and 41 Go files;
+`affected-tests --check`: 2633 files, 162 tests, every file covered);
+`tools/check-docs.sh` OK; gitleaks over the branch range "1 commits scanned
+… no leaks found", and the tailnet/home-path grep over `git log -p` printed
+nothing.
 
 ## Owner steps
 
