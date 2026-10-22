@@ -390,3 +390,12 @@ Each fact this plan rests on, as observed on 2026-10-22:
 - Not done: an answer for `omarchy-network-captive-portal`, which appeared
   after `v4.5.0-rc1` (3357f9059); the command table is plan 102's and covers
   the tag.
+
+## Follow-up (plan 111)
+
+A remembered background is restored only when its file name has one of the
+image extensions `theme_backgrounds` lists (one list, `THEME_BG_EXTS`, now
+serves both); any other record falls back to the theme's first image.
+`bin/haseen-network-portal`'s header no longer says it "leaves a Tailscale
+exit node alone": it does nothing with Tailscale, where Omarchy's command
+pauses an exit node.

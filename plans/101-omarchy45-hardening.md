@@ -537,3 +537,15 @@ reset, and the guard leaves it.
   syntax and order are tested, the guard it runs is tested as root in a user
   namespace.
 - `systemctl --user` loading the drop-in (no user manager in tests).
+
+## Follow-up (plan 111)
+
+Two review findings closed in plan 111. The hook templates
+(`layers/secureboot/files/zz-haseen-secureboot.hook`,
+`default/omarchy-guard/50-haseen-omarchy.hook`) decide the `Exec` root runs,
+but `root_trusted_dir` checks only a directory's direct entries, so neither
+file was checked: `sb_hook_exec_trusted` and `omarchy_guard_exec_trusted` now
+also run `root_trusted_exec` on the template, every directory on its path and
+the file itself. The user-namespace checks in `tests/test-omarchy-guard.sh`
+and `tests/test-secureboot.sh` print one SKIP line each with the number of
+checks skipped (15, 3 and 1), counted from the checks themselves.

@@ -127,6 +127,19 @@ assert_contains "dry run names the rule" "$OUTPUT" "to the background last shown
 assert_dry_pure "set" "$OUTPUT"
 assert_eq "dry run writes nothing" "$before" "$(cd "$HOME" && find . | LC_ALL=C sort)"
 assert_eq "dry run keeps the record" "g2.png" "$(remembered nord)"
+# A record naming a file that is not named as an image (an edited or garbled
+# record, a log) is ignored too, as theme_backgrounds would never list it; one
+# named in another case still counts (plan 111).
+printf 'not an image\n' >"$HOME/notes.txt"
+haseen theme set gruvbox >/dev/null 2>&1
+printf '%s\n' "$HOME/notes.txt" >"$MEM/nord"
+haseen theme set nord >/dev/null 2>&1
+assert_eq "a record naming a non-image file: the first image" "$BGS/nord/a.png" "$(shown)"
+img "$HOME/Pictures/SHOT.PNG"
+haseen theme set gruvbox >/dev/null 2>&1
+printf '%s\n' "$HOME/Pictures/SHOT.PNG" >"$MEM/nord"
+haseen theme set nord >/dev/null 2>&1
+assert_eq "an image name in capitals counts" "$HOME/Pictures/SHOT.PNG" "$(shown)"
 
 # --- migration 1792681032: Tokyo Night renumbered ------------------------------
 # A copy of the tree whose manifest hashes this test's bytes under the new

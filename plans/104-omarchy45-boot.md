@@ -405,3 +405,17 @@ On IO and luna, after this lands and the tree is installed
   is absent; a machine using it gets the seed's parameters once more in its
   UKI (duplicates, not a loss).
 - Old backups in `/var/lib/haseen/boot-menu/` are kept (a few KiB each).
+
+## Follow-up (plan 111)
+
+The pin is kept once written, so a root device that changes later leaves it
+stale. `haseen doctor` now prints `limine root pin=ok|differs|unknown`,
+comparing the `root=` the merged Limine config gives the next image with this
+boot's `/proc/cmdline`, and says how to refresh it (edit the pin, then
+`sudo limine-mkinitcpio`); it is a hint, since two spellings of one device
+differ as text. A `root=` refusal stops `haseen plymouth set` after the theme,
+the hook drop-in and `plymouth-set-default-theme`, and `haseen hibernation
+setup` after the swapfile, its fstab lines and the resume hook drop-in; no
+command-line drop-in is written and nothing is rebuilt. Rerunning either once
+the refusal's cause is fixed is safe: each earlier step checks for what is
+already there. Details in plan 111, item 5.

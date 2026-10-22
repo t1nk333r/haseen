@@ -878,6 +878,30 @@ check(leaf("specialWorkspaceOut") == "slide bottom", "then the console borrows i
 check(world.leaves.specialWorkspaceIn.style == "fade" and world.leaves.specialWorkspaceIn.speed == 5, "In came back as the user'"'"'s fade")
 '
 
+# Review of #63 (plan 111): the console closes within the user's own fade of
+# the scratchpad it replaced, while its borrow of Out still waits on that
+# fade. Closed any way (its last window, focus leaving, the key), Out must end
+# on the user's leaf, not the console's slide.
+console "closed while it waits to borrow Out, the user keeps Out" '
+haseen.animations.specialWorkspace = { leaf = "specialWorkspace", enabled = true, speed = 5, bezier = "default", style = "fade" }
+load_console()
+toggle("scratchpad")
+press()
+check(leaf("specialWorkspaceOut") == "inherited", "Out waits on the scratchpad'"'"'s fade")
+set_special(world.monitor, nil) -- its last window closes, or focus leaves it
+fire_timers()
+check(leaf("specialWorkspaceOut") ~= "slide bottom", "a borrow that was waiting does not land on nothing: " .. leaf("specialWorkspaceOut"))
+toggle("scratchpad")
+toggle("scratchpad")
+check(last().slide_out ~= "slide bottom", "the scratchpad closes the way the user set: " .. last().slide_out)
+-- The same closed with the key: it retracts with its slide, then Out is the user'"'"'s.
+press()
+press()
+check(last().closed == "special:console" and last().slide_out == "slide bottom", "the key retracts it: " .. last().slide_out)
+fire_timers()
+check(leaf("specialWorkspaceOut") == "fade", "then Out is the user'"'"'s fade: " .. leaf("specialWorkspaceOut"))
+'
+
 console "a reload starts from the config and borrows Out for a console still showing" '
 load_console()
 press()

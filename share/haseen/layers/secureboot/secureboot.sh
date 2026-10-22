@@ -40,8 +40,12 @@ sb_hook_render() { sed "s|@HASEEN_BIN@|$SB_HASEEN_BIN|" "$SB_HOOK_SRC"; }
 # layer's directory (secureboot.sh, and limine-hash-assets.sh, which it runs
 # as root) are files only root can change, along the router's own resolution
 # (root_trusted_haseen): never for a checkout or another tree a user owns.
-# Prints why not.
-sb_hook_exec_trusted() { root_trusted_haseen "$SB_HASEEN_BIN" secureboot-sign lib layers/secureboot; }
+# The template the hook is rendered from decides its Exec, so it, and every
+# directory on its path, must be root's alone too (plan 111). Prints why not.
+sb_hook_exec_trusted() {
+    root_trusted_haseen "$SB_HASEEN_BIN" secureboot-sign lib layers/secureboot &&
+        root_trusted_exec "$SB_HOOK_SRC"
+}
 sb_hook_untrusted_note() {
     printf "the hook's %s runs as root, but %s; install haseen as root (./install.sh) and apply the secureboot layer with the installed haseen\n" \
         "$SB_HASEEN_BIN" "$1"
