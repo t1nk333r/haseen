@@ -86,7 +86,7 @@ sudo (`default/omarchy/sudo-no-update/sudo@v4.5.0-rc1:13-20`), checking for
 `--sudo <wrapper> --sudoloop=false` (`bin/omarchy-update-aur-pkgs@v4.5.0-rc1:5-15`).
 
 haseen keeps every sudo in `common.sh`, so the wrapper is generated there:
-`run_cold CMD…` (`share/haseen/lib/common.sh:71-128`) runs `sudo -k`, writes a
+`run_cold CMD…` (`share/haseen/lib/common.sh:230-287`) runs `sudo -k`, writes a
 `sudo` that execs the real one with `-N` (the stand-alone `-k`/`-K`/`-h`/`-V`
 modes alone, as Omarchy's does) into a fresh `mktemp -d`, runs CMD with that
 directory first on `PATH`, removes it, and runs `sudo -k` again; CMD's exit
@@ -209,7 +209,36 @@ Focused suites, each run alone with the brief's hermetic wrapper:
   97/97
 
 `common.sh` is a GLOBAL path (plan 100), so `tests/run.sh --affected
-origin/main` selected every test: RESULT_PLACEHOLDER.
+origin/main` selected every test (154 files): 17444/17448 on this
+branch before the comment fix below. Four files failed:
+
+- `test-surfaces.sh`: the colour-literal check read `#7806` in a
+  `LockView.qml` comment. Fixed ("pull request 7806"); the file then passes.
+- `test-menu-back.sh`, `test-themegen-keys.sh` ("Failed to start IPC
+  server": the socket path under this worktree's `tests/.out` passes 108
+  bytes) and `test-nvim-theme.sh` (with these long absolute paths headless
+  `nvim -l` drops the newline between its first three `print` lines; the same
+  test passes 108/108 on origin/main from a shorter checkout path). All three
+  pass from a short bind mount (`bwrap --bind <worktree>
+  ~/.cache/haseen-wt/s`): 344/344 together with `test-surfaces.sh` and
+  `test-lock.sh`.
+
+After the comment fix, and rebased onto plans 101 and 102 (`a4ad91b`,
+`d3624f0`), the affected set (all 156 files) was run again from the short bind
+mount: 15753/16154. Every non-VAPT file passed. The 401 failures are all in
+19 `test-vapt-*.sh` files, whose real ancestry checks require root-owned
+directories: inside bwrap's unprivileged user namespace `/` and `/usr` show
+uid 65534 (`bwrap --dev-bind / / -- stat -c %u /` prints 65534). All 33 VAPT
+files outside bwrap, from the worktree: 5746/5746.
+
+Rebased once more onto plan 104 (`3fd2c5c`, which changed another line of
+`binds.lua`): the 20 files that cover `binds.lua`, this plan's tests and
+plan 104's `test-omarchy45-boot.sh`, outside bwrap: 3312/3312.
+
+`SHELLCHECK=/usr/bin/shellcheck tools/lint.sh` OK on the final tree (887
+shell, 33 Lua, 198 JSON, 334 QML, 41 Go files; `affected-tests --check`: 2597
+files, 157 tests, every file covered); `tools/check-docs.sh` OK; gitleaks over
+the branch range: no leaks; the privacy pattern over `git log -p`: nothing.
 
 ## Rejected
 

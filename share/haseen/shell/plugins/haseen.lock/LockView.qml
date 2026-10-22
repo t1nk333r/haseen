@@ -40,7 +40,7 @@ Rectangle {
     // typing a password; only holding Backspace or Delete to clear stays
     // useful. Takes a key event, or anything with its key, isAutoRepeat and
     // accepted; true when it swallowed the event. Adapted from Omarchy
-    // shell/plugins/lock/LockView.qml (6e15d76a6, #7806), plan 103.
+    // shell/plugins/lock/LockView.qml (6e15d76a6, pull request 7806), plan 103.
     function dropsAutoRepeat(event: var): bool {
         if (!event.isAutoRepeat || event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete)
             return false;
