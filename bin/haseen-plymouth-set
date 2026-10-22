@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Install the boot splash, coloured by the current theme
-# haseen:args [--theme NAME] [--no-rebuild] [--dry-run]
+# haseen:args [--theme NAME] [--no-rebuild] [--no-follow] [--dry-run]
 #
 # Behaviour from omarchy bin/omarchy-plymouth-set (MIT, David Heinemeier
 # Hansson): colour the splash from the active theme, make it the default, and
@@ -13,15 +13,20 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/ply
 
 usage() {
     cat <<EOF
-Usage: haseen plymouth set [--theme NAME] [--no-rebuild] [--dry-run]
+Usage: haseen plymouth set [--theme NAME] [--no-rebuild] [--no-follow] [--dry-run]
 
 Installs haseen's boot screen into $PLYMOUTH_THEME_DIR, in the colours of the
 current theme (or of NAME) with haseen's mark (haseen branding mark), adds the
 plymouth hook to the initramfs, puts 'quiet splash' on the kernel command line
 and rebuilds the initramfs.
 
-Run it again after a theme or mark change: the splash does not follow them by
-itself, because rewriting files under /usr needs root.
+Then the splash follows the theme (haseen plymouth follow on): once a theme
+or mark has stayed applied about 2 minutes, the boot image is rebuilt in the
+background, without a password. --no-follow leaves following as it is, and
+--theme NAME does not turn it on (NAME's colours would last only until the
+next theme change or login). On a machine that checks its boot files (Secure
+Boot, sbctl keys, an enrolled Limine config) the splash does not follow:
+$(plymouth_signed_hint).
 EOF
 }
 
@@ -29,6 +34,7 @@ parse_common_flags "$@"
 set -- "${REST[@]+"${REST[@]}"}"
 theme=""
 no_rebuild=false
+follow=true
 while (($# > 0)); do
     case "$1" in
     --theme)
@@ -37,6 +43,10 @@ while (($# > 0)); do
         ;;
     --no-rebuild)
         no_rebuild=true
+        shift
+        ;;
+    --no-follow)
+        follow=false
         shift
         ;;
     -h | --help)
@@ -65,11 +75,13 @@ else
 fi
 [[ -r $colors ]] || die "no colors.toml for ${theme:-the current theme} ($colors)"
 read -r bg fg accent <<<"$(plymouth_theme_colors "$colors")"
+mark="$(branding_mark)"
 info "splash colours: background $bg, text $fg, accent $accent"
+while IFS= read -r line; do
+    [[ -n $line ]] && info "$line"
+done < <(plymouth_readability_note "$bg" "$fg" "$accent")
 
-install_root_file "$PLYMOUTH_SOURCE_DIR/haseen.plymouth" "$PLYMOUTH_THEME_DIR/haseen.plymouth"
-plymouth_script "$bg" "$fg" "$accent" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
-plymouth_install_logo "$accent"
+plymouth_install_theme "$bg" "$fg" "$accent" "$mark"
 
 # The initramfs needs the hook, or there is no splash to colour. `plymouth`
 # goes right after `base udev`/`systemd`, before any hook that may ask for a
@@ -92,9 +104,23 @@ if ! boot_cmdline_has splash; then
         warn "add 'quiet splash' yourself, or the splash will not show"
 fi
 
-$no_rebuild && {
+if $no_rebuild; then
     info "initramfs not rebuilt (--no-rebuild); regenerate it yourself before rebooting"
-    exit 0
-}
-boot_initramfs_rebuild
-info "boot splash installed; it shows on the next boot"
+else
+    boot_initramfs_rebuild
+    # What the boot image now carries: following compares against it.
+    plymouth_record_built "$(plymouth_request "$bg" "$fg" "$accent" "$mark")"
+    info "boot splash installed; it shows on the next boot"
+fi
+
+if [[ -n $theme ]]; then
+    plymouth_follow_on &&
+        warn "the splash follows the current theme: $theme's colours last until the next theme change or login (haseen plymouth follow off keeps them)"
+    follow=false
+fi
+if $follow; then
+    # Following not set up (a machine that checks its boot files, a tree root
+    # does not own) is said, and the splash just installed stands.
+    plymouth_follow_enable || true
+fi
+exit 0
