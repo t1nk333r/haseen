@@ -11,7 +11,8 @@ import "Moon.js" as Moon
 // too; a click on the title returns to today. Week start follows the locale
 // unless settings.weekStart names a day; ISO week numbers on the left.
 // Month and day names follow the interface language (I18n.locale, plan
-// 109); the week start stays the session's region (Qt.locale()). In a
+// 109), which in English is the session's LANG as before; the week start
+// stays the session's region (Qt.locale()). In a
 // right-to-left interface the panel is mirrored: the week runs from the
 // right, the arrows and their keys swap with it.
 Column {

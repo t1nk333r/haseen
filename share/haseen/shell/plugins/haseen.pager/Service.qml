@@ -411,16 +411,16 @@ Scope {
     }
 
     // The options' labels are display text only (never compared), so they
-    // are built in the interface language here (plan 109). One whole sentence
-    // per length: a part of an hour is said in minutes, so a count is always
-    // a whole number.
+    // are built in the interface language here (plan 109), one whole
+    // sentence per length. From an hour on the length is said in hours to
+    // a tenth ("1.5 hours"); a fraction takes the plural's "other" form.
     function snoozeForLabel(minutes) {
-        if (minutes < 60 || minutes % 60 !== 0)
+        if (minutes < 60)
             return I18n.tn("Snooze for %1 minute", "Snooze for %1 minutes", minutes);
         const hours = minutes / 60;
         if (hours === 1)
             return I18n.tr("Snooze for an hour");
-        return I18n.tn("Snooze for %1 hour", "Snooze for %1 hours", hours);
+        return I18n.tn("Snooze for %1 hour", "Snooze for %1 hours", Math.round(hours * 10) / 10);
     }
 
     function shortWords(minutes) {

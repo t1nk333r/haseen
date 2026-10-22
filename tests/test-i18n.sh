@@ -92,6 +92,14 @@ assert_eq "bash: English without a language file" "Reminder set for 10:00 %2|3 r
 echo ar >"$cfg/language"
 assert_eq "bash: Arabic, %n filled once" "ضُبط التذكير على 10:00 %2|ar" \
     "$(i18n_run 'printf "%s|" "$(i18n "Reminder set for %1" "10:00 %2")"; i18n_language')"
+# jq reads the values after --args: one that looks like a jq option (-n
+# prints other text, --help prints jq's usage, -e leaves %1 unfilled) must
+# stay a value.
+assert_eq "bash: values that look like jq options stay values" \
+    "ضُبط التذكير على -h|ضُبط التذكير على -n|ضُبط التذكير على --help|ضُبط التذكير على -e|ضُبط التذكير على --|" \
+    "$(i18n_run 'for a in -h -n --help -e --; do printf "%s|" "$(i18n "Reminder set for %1" "$a")"; done')"
+assert_eq "bash: a plural with option-like values" "انقر لتشغيل 3 ترحيلات معلّقة." \
+    "$(i18n_run 'i18n_n "Click to run %1 pending migration." "Click to run %1 pending migrations." 3 --help -n')"
 assert_eq "bash: Arabic plural forms (0 1 2 3 11 100)" \
     "لا توجد ترحيلات معلّقة.|انقر لتشغيل ترحيل معلّق واحد.|انقر لتشغيل ترحيلين معلّقين.|انقر لتشغيل 3 ترحيلات معلّقة.|انقر لتشغيل 11 ترحيلًا معلّقًا.|انقر لتشغيل 100 ترحيل معلّق." \
     "$(i18n_run 'for n in 0 1 2 3 11 100; do i18n_n "Click to run %1 pending migration." "Click to run %1 pending migrations." "$n"; done | paste -sd"|"')"
@@ -99,6 +107,10 @@ assert_eq "bash: a string the catalog lacks stays English" "Not in any catalog x
     "$(i18n_run 'i18n "Not in any catalog %1" x')"
 echo xx >"$cfg/language"
 assert_eq "bash: an unknown code is English" "en" "$(i18n_run i18n_language)"
+printf 'ar\nfoo\n' >"$cfg/language"
+assert_eq "bash: only the first line counts" "ar" "$(i18n_run i18n_language)"
+capture haseen language status
+assert_contains "language status: the first line too" "$OUTPUT" "language: ar"
 # A command's notification in Arabic, its terminal line in English.
 echo ar >"$cfg/language"
 stub hyprctl 'exit 0'
@@ -207,6 +219,8 @@ ShellRoot {
             missing: I18n.tr("No such string %1", "x"),
             plural: [0, 1, 2, 3, 11, 100].map(n => I18n.tn("%1 test file", "%1 test files", n)).join("|"),
             date: I18n.formatDate(new Date(2026, 9, 22, 14, 5), "dddd HH:mm"),
+            session: I18n.locale.dayName(4, Locale.LongFormat),
+            fraction: I18n.tn("%1 test file", "%1 test files", 1.5),
             menu: I18n.menuEntry("setup.language").label || "",
             asArg: [1].map(n => (I18n.tr)("Done"))[0],
             compat: [Commons.I18n.t("common.search", "Search!"), Commons.I18n.t("nope.key", "Fallback"), Commons.I18n.tn("x.files", 3), Commons.I18n.rightToLeft, Commons.I18n.formatNumber(13.14, 1), Commons.I18n.language].join("|"),
@@ -250,7 +264,7 @@ ShellRoot {
         running: true
         onTriggered: {
             console.warn("STATE " + shell.step + " " + shell.state());
-            const steps = [["haseen", "language", "ar"], ["sh", "-c", "printf 'xx\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"], ["haseen", "language", "ar"], ["haseen", "language", "en"]];
+            const steps = [["haseen", "language", "ar"], ["sh", "-c", "printf 'xx\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"], ["sh", "-c", "printf 'ar\\\\nfoo\\\\n' >\"\$0\"", "$XDG_CONFIG_HOME/haseen/language"], ["haseen", "language", "en"]];
             if (shell.step < steps.length)
                 Quickshell.execDetached(steps[shell.step]);
             else
@@ -263,7 +277,9 @@ QML
     stub notify-send 'exit 0'
     run="$(mktemp -d "$SANDBOX/run.XXXXXX")"
     chmod 700 "$run"
-    setsid env XDG_RUNTIME_DIR="$run" HASEEN_PATH="$tree" OMARCHY_PATH="$omarchy" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' \
+    # A German session: English keeps main's names (Qt.formatDateTime is
+    # English, Qt.locale() the session's); Arabic ignores LANG.
+    setsid env LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 XDG_RUNTIME_DIR="$run" HASEEN_PATH="$tree" OMARCHY_PATH="$omarchy" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' \
         QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
         timeout -k 5 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness" \
         >"$SANDBOX/qs.out" 2>&1 &
@@ -276,7 +292,9 @@ QML
     st() { sed -n "s/^.*STATE $1 //p" <<<"$OUTPUT" | head -1 | jq -r "$2" 2>/dev/null; }
     assert_eq "engine: English by default" "en false Bar edge" "$(st 0 '"\(.lang) \(.rtl) \(.tr)"')"
     assert_eq "engine: English plural forms" "0 test files|1 test file|2 test files|3 test files|11 test files|100 test files" "$(st 0 .plural)"
-    assert_eq "engine: English day name" "Thursday 14:05" "$(st 0 .date)"
+    assert_eq "engine: English day name, as Qt.formatDateTime gives it" "Thursday 14:05" "$(st 0 .date)"
+    assert_eq "engine: English keeps the session's locale (LANG)" "Donnerstag" "$(st 0 .session)"
+    assert_eq "engine: an English fraction is plural" "1.5 test files" "$(st 0 .fraction)"
     assert_eq "engine: a missing string stays English, filled" "No such string x" "$(st 0 .missing)"
     assert_eq "engine: no menu catalog in English" "" "$(st 0 .menu)"
     assert_eq "engine: compat English from Omarchy's catalog, else the fallback" "Search|Fallback|%1 files|false|13.1|en" "$(st 0 .compat)"
@@ -287,12 +305,14 @@ QML
     assert_eq "engine: haseen language ar switches live" "ar true $(jq -r '.["Bar edge"]' "$tree/i18n/ar/shell.json")" "$(st 1 '"\(.lang) \(.rtl) \(.tr)"')"
     assert_eq "engine: Arabic's six plural forms" "لا ملفات|ملف واحد|ملفان|3 ملفات|11 ملفًا|100 ملف" "$(st 1 .plural)"
     assert_eq "engine: Arabic day name, Western digits" "الخميس 14:05" "$(st 1 .date)"
+    assert_eq "engine: Arabic's locale whatever LANG is" "الخميس" "$(st 1 .session)"
+    assert_eq "engine: an Arabic fraction takes the other form" "1.5 ملف" "$(st 1 .fraction)"
     assert_eq "engine: the menu catalog follows" "اللغة" "$(st 1 .menu)"
     assert_eq "engine: tr passed as a function value" "$(jq -r '.["Done"]' "$tree/i18n/ar/shell.json")" "$(st 1 .asArg)"
     assert_eq "engine: compat Arabic, plural, direction" "بحث|Fallback|%1 ملفات|true|13.1|ar" "$(st 1 .compat)"
     assert_eq "engine: a plugin's Arabic, English underneath" "العنوان|English only|fb" "$(st 1 .plugin)"
     assert_eq "engine: an unknown code is English" "en false" "$(st 2 '"\(.lang) \(.rtl)"')"
-    assert_eq "engine: Arabic again" "ar" "$(st 3 .lang)"
+    assert_eq "engine: only the file's first line counts, as in bash" "ar" "$(st 3 .lang)"
     assert_eq "engine: haseen language en returns to English" "en false Bar edge" "$(st 4 '"\(.lang) \(.rtl) \(.tr)"')"
     [[ $(st 4 .lang) == en ]] || tail -30 <<<"$OUTPUT" >&2
 fi

@@ -47,7 +47,8 @@ _i18n_fill() {
 }
 
 # _i18n_lookup KEY COUNT ARGS… — the catalog's form for KEY (COUNT empty for
-# a plain string), filled; prints nothing when there is none.
+# a plain string), filled; prints nothing when there is none. `--` ends jq's
+# options, so an argument such as "-n" or "--help" stays a value.
 _i18n_lookup() {
     local key=$1 count=$2 lang
     shift 2
@@ -55,7 +56,8 @@ _i18n_lookup() {
     [[ $lang != en ]] && command -v jq >/dev/null 2>&1 || return 0
     jq -r --arg key "$key" --arg count "$count" --arg lang "$lang" '
         def category($n):
-            if $lang == "ar" then
+            if $n != ($n | floor) then "other"
+            elif $lang == "ar" then
                 if $n <= 2 then ["zero", "one", "two"][$n]
                 elif ($n % 100) >= 3 and ($n % 100) <= 10 then "few"
                 elif ($n % 100) >= 11 then "many"
@@ -63,12 +65,12 @@ _i18n_lookup() {
             elif $n == 1 then "one" else "other" end;
         .[$key] as $value
         | (if ($value | type) == "object" then
-              ($count | tonumber? // 0 | fabs | floor) as $n | ($value[category($n)] // $value.other)
+              ($count | tonumber? // 0 | fabs) as $n | ($value[category($n)] // $value.other)
            else $value end) as $text
         | if ($text | type) == "string" and $text != "" then
               $text | gsub("%(?<d>[1-9])"; (.d | tonumber) as $i | ($ARGS.positional[$i - 1] // ("%" + .d)))
           else empty end
-    ' "$HASEEN_PATH/i18n/$lang/notify.json" --args "$@" 2>/dev/null || true
+    ' "$HASEEN_PATH/i18n/$lang/notify.json" --args -- "$@" 2>/dev/null || true
 }
 
 # i18n TEXT [ARG…] — TEXT in the interface language, %1..%9 filled.

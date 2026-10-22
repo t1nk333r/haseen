@@ -13,8 +13,11 @@
   (whose new strings this routes)
 - **Category**: shell, Omarchy compatibility
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-22 in a pull request (counts below); a live Arabic
-  session and the owner's review of the Arabic are owner steps
+- **State**: DONE 2026-10-22 in a pull request (counts below), with review
+  r1's fixes (jq option values, the menu's brand mark, English parity of
+  dates and snooze lengths, the language file's first line, the catalog
+  check in lint); a live Arabic session and the owner's review of the
+  Arabic are owner steps
 
 ## Decision (owner, 2026-10-21)
 
@@ -80,8 +83,10 @@ Omarchy 4.5 added 50 languages (verified against a read-only clone of
 
 ### The singleton and the catalogs
 
-`qs.Haseen.I18n` (`share/haseen/shell/Haseen/I18n.qml`) reads
-`~/.config/haseen/language` (watched) and, for a language other than
+`qs.Haseen.I18n` (`share/haseen/shell/Haseen/I18n.qml`) reads the first
+line of `~/.config/haseen/language` (watched; bash and `haseen language`
+read the same line, so `ar` followed by anything is Arabic everywhere) and,
+for a language other than
 English, `share/haseen/i18n/<code>/shell.json` and `menu.json`, each read
 whole and reassigned, so every binding that called `tr()` re-renders when the
 language changes, without a restart. Its API:
@@ -89,10 +94,20 @@ language changes, without a restart. Its API:
 - `tr(text, ...args)`: the translation of `text`, with `%1..%9` filled in one
   pass (Qt's chained `.arg()` would expand a `%2` inside the first argument).
 - `tn(singular, plural, count, ...args)`: the counted form; `plural` is the
-  key, `%1` the count in the language's digits.
+  key, `%1` the count in the language's digits. A fraction ("1.5 hours")
+  takes the plural's `other` form in both languages, as CLDR says. A
+  translation's `zero`, `one` or `two` form may leave `%1` out
+  (لا توجد ترحيلات معلّقة); the checker requires the `other` form to keep
+  the English placeholders and lets no form add one
+  (`tools/i18n.py`, `check_value`).
 - `mark(text)`: a no-op that marks English kept in QML data.
-- `formatDate(date, format)`: `toLocaleString` with the language's
-  `formatLocale`, so day and month names follow the interface, not `LANG`.
+- `formatDate(date, format)` and `locale`: in English exactly what the code
+  used before, `Qt.formatDateTime()` (whose day and month names Qt 6 always
+  gives in English, whatever `LANG` is) and the session's `Qt.locale()`
+  (the calendar's month and weekday names, the weather's update time); in
+  Arabic both use `ar_AE`, whatever `LANG` is. Checked offscreen under
+  `LANG=de_DE.UTF-8`: `Qt.formatDateTime(d, "dddd")` is "Thursday",
+  `Qt.locale().dayName(4)` "Donnerstag" (review r1).
 - `formatNumber`, `rightToLeft`, `locale`, `language`, `languages`,
   `menuEntry(id)`, and `pick(entry, count, code)` for the compat host.
 
@@ -194,7 +209,9 @@ The desktop interface is translated; terminal commands stay English. A
 desktop notification is part of the desktop interface even when bash sends
 it, so `share/haseen/lib/i18n.sh` gives bash `i18n "…"` and `i18n_n` (jq over
 `notify.json`, the same English keys and plural rules, English when jq or
-the catalog is missing), and the 30-odd `notify-send` sites in `bin/` and
+the catalog is missing; the values follow `--args --`, so one that looks
+like a jq option, such as `-n` or `--help`, stays a value), and the
+30-odd `notify-send` sites in `bin/` and
 `share/haseen/lib/gestures.sh` use it. Everything a command prints in a
 terminal, its errors and `--help` stay English, because:
 
@@ -253,7 +270,8 @@ menu rows and 55 notification strings, all in `ar` (machine).
   handler, the boot-splash rebuild and the gestures (23 commands and
   `share/haseen/lib/gestures.sh`), plus the shell's own "%1 not loaded".
 - **Dates** with names (lock, screensaver, calendar, clock tooltip, pager,
-  prayers) through `I18n.formatDate`, in the interface language.
+  prayers) through `I18n.formatDate`, in Arabic; in English they are as
+  before (below).
 - **Plans 105, 106, 108 and 110's strings**: per-monitor workspaces and the
   new binds, the captive-portal sign-in ("Sign in to network",
   "Sign-in required"), the agents' accounts, and the boot-splash
@@ -280,6 +298,34 @@ menu rows and 55 notification strings, all in `ar` (machine).
   from a date.
 - Omarchy and DMS plugins' own strings, unless the plugin ships its own
   catalog (`Translations`) or Omarchy's catalogs are installed.
+
+## English changes
+
+The default desktop (no language file) reads as on `main` (review r1),
+except these intended fixes, where a count of one used a fixed plural:
+
+- clipboard "1 item" (was "1 items"); typist "1 byte · dd delete" and "over
+  the size limit (1 byte)"; Wooting "1 column"; keybind sheet "1 binding —
+  type to search"; browser picker "Offer a rule after 1 pick"; security
+  (screen reader only) "Loaded 1 tool", "Loaded 1 installed service family";
+  pager "Snooze for 1 minute", and "Snooze for 1 hour" for a custom length
+  that rounds to one hour (61 or 62 minutes).
+
+Kept as on `main` on purpose:
+
+- The pager's custom snooze lengths from an hour on read in tenths of an
+  hour as before ("Snooze for 1.5 hours", "2.5 hours"; exactly an hour is
+  "an hour"). Arabic uses the same number with the plural's `other` form,
+  which CLDR gives a fraction: تأجيل لمدة 1.5 ساعة. Under an hour both say
+  minutes.
+- Dates: see `formatDate` above. In English the clock, lock screen,
+  screensaver, pager and prayers keep `Qt.formatDateTime`'s names, and the
+  calendar and the weather keep the session's `Qt.locale()`; only Arabic
+  forces `ar_AE`. The calendar's weekday heads switch to the locale's
+  narrow names only when its two-letter heads collide (all of Arabic's
+  start with ال); a session locale whose heads were distinct shows them as
+  before.
+- The prayer names: see "Open".
 
 ## What each plugin mirrors
 
@@ -343,6 +389,39 @@ Not changed on purpose: the bar and its widgets; clock digits (Western in
 (`h/j/k/l`, `Enter`, `Esc`) and the typist's vim keys; text fields holding
 Latin data (passwords, addresses, paths, tokens).
 
+**Every manual `x:` in the plugins, checked** (review r1; `grep -rnE
+'^\s*x:\s|[{;]\s*x:\s' share/haseen/shell/plugins --include=*.qml`, 48
+sites, plus `horizontalCenterOffset`, `mapToItem` and assigned `.x`):
+
+- Fixed: the menu's brand mark (`haseen.menu/Panel.qml`) was at
+  `x: space(8) + …`, so in Arabic it stayed left while the heading and the
+  row icons moved right; it is now anchored (`left` + `leftMargin`) and
+  sits over the icon column on the right.
+- Symmetric insets, right as they are (a child at `x: m` whose parent is
+  exactly `2m` wider, so mirroring would place it the same): the AI
+  message column (`haseen.ai/MessageView.qml`, `x: pad`, width
+  `width - 2·pad`); the background, theme picker and image picker cards
+  (`x: Theme.gap` in a cell `cardWidth + 2·gap` wide); the emoji grid
+  (`x: Theme.gap`, the panel `columns·cell + 2·gap`); the pager's sharing
+  offer and text cards and the notification card's column; themegen's
+  stage frames (`x: -pad`, `width + 2·pad`) and `StageFrame`'s column; the
+  menu card, centred; the browser picker's click guard under its card.
+- Already mirror-aware (they read `LayoutMirroring`): the switches
+  (network, gestures, browser picker, omARR, prayers), `VolumeRow`,
+  `PrayerSlider`, `GestureChoice`, the pager's held-list indent,
+  `PagerButton`, toast title marks, omARR's scroll-mark gap, the security
+  panel's check box and its card offset away from a vertical bar.
+- Follow the text, not the layout, on purpose: the pager's reply field and
+  send button (`isRtl` of what is typed).
+- Positions read back, not set: the calendar's day-name row
+  (`body.x + calendarGrid.x`, the grid's actual mirrored place), the menu
+  row's hover point, `mapToItem` in the pager, tray, browser picker,
+  security and monitor settings.
+- Not mirrored by design: the bar's widgets (indicators, tray,
+  workspaces), the toast deck's clipper (outside the deck's mirroring
+  root), the screensaver's drifting card, the prayers horizon (the names'
+  language), the monitor map, the Wooting board, themegen's desktop mock.
+
 ## Strings for the owner's review
 
 All Arabic is a machine translation. These are the ones the translators were
@@ -363,6 +442,8 @@ it is uncertain.
 - "Wrong password" → كلمة المرور غير صحيحة (two translators differed);
   "Empty" → فارغ; "Scratchpad" → المسودة (the lock screen, the workspace
   widget and the keybind sheet share the key); "%1 left" → المتبقي %1.
+- "Snooze for %1 hours" with a fraction: تأجيل لمدة 1.5 ساعة (the `other`
+  form); minutes (90 دقيقة) would avoid the decimal.
 - Compact units: "%1m"/"%1h"/"%1s"/"%1d" → %1 د/س/ث/ي (pager, agents,
   omARR, sysusage); full words would need plurals and room. ي for يوم is the
   least established.
@@ -451,6 +532,17 @@ private `XDG_RUNTIME_DIR` and `TMPDIR`, `HASEEN_REQUIRE_ENGINE=1`), on
   fake tree, bash `i18n`, `haseen language`, and the real engine: `tr`,
   plurals, dates, the menu catalog, the compat `I18n`/`Translations`, a
   mirrored `TrackBar` and menu row).
+- After review r1, the same selection again (97 files): four short-path
+  chunks 3635/3635, 2205/2205, 2755/2755, 2148/2148, so **10743/10743**
+  (the eight more are `test-i18n.sh`'s new checks: values `-h`, `-n`,
+  `--help`, `-e`, `--` and a plural with option-like values in Arabic
+  notifications; the language file's first line in bash, `haseen language
+  status` and the shell; English dates under `LANG=de_DE.UTF-8`, Qt's
+  English names from `formatDate` and "Donnerstag" from `locale`, Arabic
+  ignoring `LANG`; a fraction's plural form in both languages), and
+  `test-capture-upload.sh` outside the bind mount: **358/358**;
+  `test-i18n.sh` alone **84/84**. `tools/lint.sh`, now with
+  `tools/i18n.py check`: lint OK.
 - The first commit on its own (core, menu, bash): `test-i18n`,
   `test-settings`, `test-menu`, `test-menu-view`, `test-menu-radius`,
   `test-menu-back`, `test-core`, `test-keybinds`: **880/880**.
@@ -483,6 +575,11 @@ private `XDG_RUNTIME_DIR` and `TMPDIR`, `HASEEN_REQUIRE_ENGINE=1`), on
   real compositor, so clipping, Arabic line height in a 28 px bar and the
   mirrored panels' look are unproven.
 - Native-reader quality of the Arabic.
+- The first frame after the shell starts in Arabic (or after a switch) can
+  show English: the catalogs are `FileView`s whose first read completes
+  just after the singleton is created (Quickshell 0.3.2, see "The compat
+  host"), and bindings re-render when it lands. A synchronous read at
+  creation is not available to a lazily created singleton, so this stays.
 
 ## Owner steps
 

@@ -1114,8 +1114,11 @@ Item {
                 width: parent.width
                 height: root.headerHeight
 
+                // Anchored, not placed by x: a mirrored (right-to-left)
+                // menu puts it at the right, over the rows' icons.
                 BrandImage {
-                    x: root.space(8) + (root.iconColumn - width) / 2
+                    anchors.left: parent.left
+                    anchors.leftMargin: root.space(8) + (root.iconColumn - width) / 2
                     anchors.verticalCenter: parent.verticalCenter
                     height: root.headingSize
                     path: Branding.symbolicPath

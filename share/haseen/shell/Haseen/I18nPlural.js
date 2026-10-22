@@ -4,11 +4,14 @@
 // unknown codes fall back to English's; `fill` replaces %1..%9 in one pass
 // (plan 109).
 
-// CLDR cardinal plural category for a whole count: "zero", "one", "two",
-// "few", "many" or "other". A plural catalog entry is an object keyed by
-// these ({"one": "%1 file", "other": "%1 files"}); Arabic reaches all six.
+// CLDR cardinal plural category for a count: "zero", "one", "two", "few",
+// "many" or "other". A plural catalog entry is an object keyed by these
+// ({"one": "%1 file", "other": "%1 files"}); Arabic reaches all six. A
+// fraction ("1.5 hours") is "other" in both languages.
 function category(code, count) {
-    const n = Math.abs(Math.trunc(Number(count) || 0));
+    const n = Math.abs(Number(count) || 0);
+    if (n !== Math.trunc(n))
+        return "other";
     const n100 = n % 100;
     if (String(code || "") === "ar") {
         if (n <= 2)

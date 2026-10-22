@@ -36,10 +36,13 @@ Singleton {
     readonly property string language: /^[a-z]{2,3}$/.test(requested) && registry[requested] ? requested : "en"
     readonly property var entry: registry[language] || ({})
     readonly property bool rightToLeft: entry.direction === "rtl"
-    // Dates and month names follow the interface language, not the session's
-    // LANG: Qt.formatDate() and a bare Qt.locale() read LANG.
+    // Day and month names. In English nothing changes from before plan 109:
+    // `locale` is the session's (LANG), as the bare Qt.locale() that the
+    // calendar and the weather read, and formatDate() is Qt.formatDateTime(),
+    // whose names Qt 6 always gives in English. Another language uses its
+    // own formatLocale (ar_AE) for both, whatever LANG is.
     readonly property string formatLocale: entry.formatLocale || "en_US"
-    readonly property var locale: Qt.locale(formatLocale)
+    readonly property var locale: language === "en" ? Qt.locale() : Qt.locale(formatLocale)
     readonly property string decimal: entry.decimal || "."
     readonly property string zeroDigit: entry.zeroDigit || "0"
     // The registry codes in its order, for a picker.
@@ -90,9 +93,12 @@ Singleton {
         return Plural.formatNumber(value, decimals, root.decimal, root.zeroDigit);
     }
 
-    // Qt.formatDateTime() with the interface language's day and month names.
+    // Qt.formatDateTime() in English; in another language, with its day and
+    // month names.
     function formatDate(date, format: string): string {
-        return date ? date.toLocaleString(root.locale, format) : "";
+        if (!date)
+            return "";
+        return root.language === "en" ? Qt.formatDateTime(date, format) : date.toLocaleString(root.locale, format);
     }
 
     // The menu catalog's fields for a menu id ({label, title, description}),
@@ -141,7 +147,9 @@ Singleton {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: root.requested = text().trim()
+        // The first line, as bash (i18n_language) and `haseen language`
+        // read it.
+        onLoaded: root.requested = text().split("\n")[0].trim()
         onLoadFailed: root.requested = ""
     }
 

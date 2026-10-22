@@ -50,7 +50,9 @@ field() { jq -r --arg c "$1" --arg f "$2" '.[$c][$f] // empty' "$REGISTRY"; }
 
 current() {
     local code=""
-    [[ -r $FILE ]] && IFS= read -r code <"$FILE" || true
+    # The first line, without surrounding blanks, as the shell and
+    # i18n_language read it.
+    [[ -r $FILE ]] && read -r code <"$FILE" || true
     if [[ $code =~ ^[a-z]{2,3}$ ]] && known "$code"; then echo "$code"; else echo en; fi
 }
 

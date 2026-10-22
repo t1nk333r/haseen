@@ -641,9 +641,11 @@ locale (`LANG`), other apps and terminal output are left alone, and
   user's layout. Media transport controls, seek bars, time graphs and
   colour strips opt out; sliders and level meters fill from the right;
   `TrackBar` follows its `LayoutMirroring`. Left and Right keys follow the
-  screen in the menu and the grids. Day and month names come from the
-  language's `formatLocale` (`ar_AE`: Arabic names, Western digits), not
-  from `LANG`.
+  screen in the menu and the grids. In Arabic, day and month names come
+  from the language's `formatLocale` (`ar_AE`: Arabic names, Western
+  digits) whatever `LANG` is; in English they are what they were before
+  plan 109 (`I18n.formatDate` is `Qt.formatDateTime`, `I18n.locale` the
+  session's `Qt.locale()`).
 - **Fonts.** The base layer's `noto-fonts` (official repositories) carries
   Noto Sans Arabic and its UI cut, Naskh and Kufi; the theme's fontconfig
   lists them after the theme's Latin family (plan 047), so Arabic text in the

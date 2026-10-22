@@ -105,7 +105,7 @@ Column {
         else if (service.locationSource === "ip")
             parts.push(service.geoclueNote !== "" ? I18n.tr("IP location · %1", service.geoclueNote) : I18n.tr("IP location"));
         if (service.updated > 0)
-            parts.push(I18n.tr("updated %1", I18n.formatDate(new Date(service.updated), "HH:mm")));
+            parts.push(I18n.tr("updated %1", new Date(service.updated).toLocaleTimeString(I18n.locale, "HH:mm")));
         return parts.join(" · ");
     }
 
