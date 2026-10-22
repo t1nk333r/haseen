@@ -13,7 +13,7 @@
   extends), 100 (affected tests)
 - **Category**: agents, Omarchy compatibility
 - **Planned at**: 2026-10-21, owner decision (below)
-- **State**: DONE 2026-10-22, review rounds 1 and 2 addressed the same day
+- **State**: DONE 2026-10-22, review rounds 1 to 3 addressed the same day
   (pull request #64; owner steps below)
 
 ## Decision (owner, 2026-10-21)
@@ -151,8 +151,17 @@ A bash and jq rewrite of Omarchy's registry rules, under its MIT notice:
   exactly one of those four names (other punctuation, quotes, `*`,
   lookalike or zero-width characters, a no-break space; the entry is
   printed with `%q`); and when a directory on its path exists but cannot be
-  entered, so whether it is there is unknown. haseen never writes either
-  file.
+  entered, so whether it is there is unknown (the search for that directory
+  ends at `/`, or at the working directory for a relative path). haseen
+  never writes either file.
+  It is a guard against an accidental sign-in through haseen, not a
+  boundary against the user: the paths come from the caller's environment
+  (`HASEEN_USER_CONFIG`, `XDG_CONFIG_HOME`, `HASEEN_SYSROOT`), so a caller
+  who overrides them points the check at a tree without the file, and the
+  machine-wide file binds only callers that leave them alone. Such a caller
+  could run `claude auth login` directly anyway; the file keeps haseen's own
+  `add` (and Omarchy's `omarchy-agent-account-add`, which runs it) from
+  starting a login where the owner has said none should start.
 - `acct_home_in_use` (`:351`): a home a running session selected (its
   `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` in `/proc/<pid>/environ`,
   this user's processes only, through `sysroot_path`) is never removed.
@@ -274,6 +283,19 @@ All six round-1 fixes were confirmed. Four more gaps, all closed:
 
 The reviewer accepted `use`'s wrapper line as worded.
 
+## Review round 3 (2026-10-22)
+
+Every round-2 input behaved correctly; one new defect, fixed: the search for
+the nearest existing directory looped for ever on a relative path (a
+relative `HASEEN_USER_CONFIG`, `HASEEN_SYSROOT` or `XDG_CONFIG_HOME`),
+because stripping `/*` from a name with no slash leaves it unchanged. It now
+stops when the parent equals the current value and falls back to the working
+directory, keeping `/` for an absolute path. Tests run each relative case
+under `timeout`, a relative path behind a locked directory (refused, unless
+root) and a relative config that lists the provider (refused). The plan also
+says, at the reviewer's request, that the file is a guard against accidental
+sign-in through haseen, not a boundary against the user (above).
+
 ## Copying logins to another machine: not built
 
 Omarchy's `omarchy-agent-account-copy` and `-transfer` stay refused. Reasons:
@@ -357,7 +379,7 @@ Omarchy's `omarchy-agent-account-copy` and `-transfer` stay refused. Reasons:
 
 ## Tests
 
-`tests/test-agent-accounts.sh` (new, 274 checks after review round 2): no
+`tests/test-agent-accounts.sh` (new, 288 checks after review round 3): no
 registry changes nothing; first and further sign-ins; private-window login; modes; shared
 links; display-safe registry; duplicate and unfinished logins; use, next,
 pins and explicit homes; rename (reserved ids); remove (main, in use through
@@ -366,7 +388,8 @@ machine sign-in refusals before any login, in every spelling (case,
 padding, commas, tabs, a carriage return, comments, a byte-order mark) and
 failing closed on a file that cannot be read (mode 000 unless root, a
 directory, a dangling link, a locked directory on its path unless root, over
-64 KiB, UTF-16) or has an entry it does not understand (each near miss the
+64 KiB, UTF-16), with relative configuration paths under `timeout`, or has
+an entry it does not understand (each near miss the
 review listed, a typo, an escape byte printed escaped), while a valid file
 still allows the other providers; a registry that does not parse, or whose
 accounts are not a list of objects with ids, is refused by every change and

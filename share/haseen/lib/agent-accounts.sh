@@ -378,15 +378,25 @@ acct_home_in_use() {
 # its path exists but cannot be entered, so whether the file is there is
 # unknown (review rounds 1 and 2).
 acct_login_refused() {
-    local LC_ALL=C f dir size content line token
+    local LC_ALL=C f dir parent size content line token
     local -a tokens
     for f in "$HASEEN_USER_CONFIG/agents/login-refused" "$(sysroot_path /etc/haseen/agents/login-refused)"; do
         if [[ ! -e $f && ! -L $f ]]; then
             # The nearest directory that exists: one that cannot be entered
-            # may hide the file.
+            # may hide the file. A path may be relative (a caller's
+            # HASEEN_USER_CONFIG, HASEEN_SYSROOT or XDG_CONFIG_HOME): its
+            # last component has no parent to strip, so the walk ends at the
+            # working directory, and an absolute one at / (review round 3).
             dir="${f%/*}"
-            while [[ -n $dir && ! -e $dir ]]; do dir="${dir%/*}"; done
-            [[ -n $dir ]] || dir=/
+            while [[ ! -e $dir ]]; do
+                parent="${dir%/*}"
+                [[ -n $parent ]] || parent=/
+                if [[ $parent == "$dir" ]]; then
+                    dir=.
+                    break
+                fi
+                dir=$parent
+            done
             if [[ -d $dir && ! -x $dir ]]; then
                 printf '%s cannot be read (%s cannot be entered)\n' "$f" "$dir"
                 return 0

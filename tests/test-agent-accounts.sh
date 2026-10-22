@@ -367,6 +367,38 @@ assert_eq "without reading it" "yes" "$( ((SECONDS - started < 10)) && echo yes 
 assert_eq "before any login" "" "$(logins)"
 rm -f "$REFUSED"
 
+# A relative HASEEN_USER_CONFIG, HASEEN_SYSROOT or XDG_CONFIG_HOME has no
+# parent to strip at its last component: the search for the nearest
+# directory ends at the working directory instead of spinning (review round
+# 3). Each runs under timeout, so a regression fails instead of hanging.
+in_sandbox() { capture timeout 20 bash -c 'cd "$1" && shift && exec "$@"' _ "$SANDBOX" "$@"; }
+n=0
+for spec in "HASEEN_USER_CONFIG=nope|grok" "HASEEN_USER_CONFIG=nope/deeper|codex" \
+    "HASEEN_SYSROOT=nosuchroot|grok" "XDG_CONFIG_HOME=relcfg|codex"; do
+    : >"$LOG"
+    n=$((n + 1))
+    in_sandbox env FAKE_ACCOUNT="uuid-rel-$n" FAKE_USER="rel$n" "${spec%|*}" haseen agent account add "${spec#*|}"
+    assert_status "a relative ${spec%%=*} ends the search (${spec%|*})" 0 "$STATUS"
+    assert_contains "and the login runs (${spec%|*})" "$(logins)" "${spec#*|} login"
+done
+if ((EUID != 0)); then
+    mkdir -p "$SANDBOX/locked"
+    chmod 000 "$SANDBOX/locked"
+    : >"$LOG"
+    in_sandbox env HASEEN_USER_CONFIG=locked/haseen haseen agent account add grok
+    chmod 755 "$SANDBOX/locked"
+    assert_status "a relative path behind a locked directory refuses" 1 "$STATUS"
+    assert_contains "naming it" "$OUTPUT" "locked/haseen/agents/login-refused cannot be read (locked cannot be entered)"
+    assert_eq "before any login" "" "$(logins)"
+fi
+mkdir -p "$SANDBOX/relcfg2/haseen/agents"
+printf 'grok\n' >"$SANDBOX/relcfg2/haseen/agents/login-refused"
+: >"$LOG"
+in_sandbox env -u HASEEN_USER_CONFIG XDG_CONFIG_HOME=relcfg2 haseen agent account add grok
+assert_status "a relative config that lists grok still refuses it" 1 "$STATUS"
+assert_contains "naming the file" "$OUTPUT" "relcfg2/haseen/agents/login-refused lists it"
+assert_eq "before any login" "" "$(logins)"
+
 # --- a dry run signs in nobody ------------------------------------------------
 acct accounts-dry
 haseen agent account add claude >/dev/null
