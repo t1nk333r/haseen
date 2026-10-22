@@ -274,6 +274,87 @@ capture bash -c 'source "$1"; DRY_RUN=true; run_cold paru -Sua' _ "$HASEEN_PATH/
 assert_eq "run_cold: a dry run prints both drops and the command" \
     $'DRYRUN: sudo -k\nDRYRUN: paru -Sua (each sudo it runs is sudo -N: it asks, and caches nothing)\nDRYRUN: sudo -k' "$OUTPUT"
 assert_dry_pure "run_cold" "$OUTPUT"
+# A wrapper that cannot be made (mktemp fails: a full or read-only TMPDIR) or
+# written (chmod fails) is the same as one that cannot run: the command runs
+# cold, with a warning that says why, and nothing is left behind (plan 111).
+# Under errexit, as haseen update runs it: the failure must not end the run.
+for tool in mktemp chmod; do
+    rm -rf "$SANDBOX/broken"
+    mkdir -p "$SANDBOX/broken"
+    printf '#!/bin/sh\nexit 1\n' >"$SANDBOX/broken/$tool"
+    chmod +x "$SANDBOX/broken/$tool"
+    : >"$log"
+    capture env PATH="$SANDBOX/broken:$odd:$PATH" TMPDIR="$SANDBOX/tmp" bash -c \
+        'set -Eeuo pipefail; source "$1"; DRY_RUN=false; run_cold sh -c "sudo id -u; exit 4"' _ "$HASEEN_PATH/lib/common.sh"
+    assert_status "run_cold, $tool fails: the command still runs, its status back" 4 "$STATUS"
+    assert_eq "run_cold, $tool fails: cold before and after, no -N" \
+        "SUDO: -k|SUDO: -h|SUDO: id -u|SUDO: -k" "$(paste -sd'|' "$log")"
+    assert_contains "run_cold, $tool fails: says why" "$OUTPUT" \
+        "$([[ $tool == mktemp ]] && echo "no directory for the wrapper could be made in $SANDBOX/tmp" || echo "the wrapper could not be written in $SANDBOX/tmp")"
+    assert_eq "run_cold, $tool fails: nothing left behind" "" "$(find "$SANDBOX/tmp" -mindepth 1)"
+done
+# The wrapper's directory goes first on PATH: a relative TMPDIR is resolved,
+# so the entry cannot be looked up from the directory a build runs in, and
+# one that does not resolve, or holds a ':' (which would split the entry),
+# falls back to /tmp.
+mkdir -p "$SANDBOX/rel" "$SANDBOX/a:b"
+cold_path() { # TMPDIR — run_cold from $SANDBOX; the command looks sudo up from rel/
+    capture env PATH="$odd:$PATH" TMPDIR="$1" bash -c \
+        'source "$1"; DRY_RUN=false; cd "$2" && run_cold sh -c "cd rel && command -v sudo"' _ "$HASEEN_PATH/lib/common.sh" "$SANDBOX"
+}
+cold_path rel
+assert_eq "run_cold: a relative TMPDIR is resolved first" "$(realpath "$SANDBOX/rel")/haseen-sudo." "${OUTPUT%??????/sudo}"
+assert_eq "run_cold: and the wrapper is gone after" "" "$(find "$SANDBOX/rel" -mindepth 1)"
+cold_path missing
+assert_eq "run_cold: a relative TMPDIR that does not resolve: /tmp" "/tmp/haseen-sudo." "${OUTPUT%??????/sudo}"
+cold_path "$SANDBOX/a:b"
+assert_eq "run_cold: a TMPDIR with a ':': /tmp" "/tmp/haseen-sudo." "${OUTPUT%??????/sudo}"
+assert_eq "run_cold: nothing left in it either" "" "$(find "$SANDBOX/a:b" -mindepth 1)"
+
+# A signal while the command runs (plan 111): Ctrl+C, a closed terminal or a
+# SIGTERM to the whole job, or to the shell that called run_cold alone. Once
+# the command has stopped, the wrapper is removed and the timestamp dropped.
+# The job runs in a session of its own, with the signals' default actions (a
+# background job of a script starts with SIGINT ignored).
+cold_go="$SANDBOX/cold-go" cold_ready="$SANDBOX/cold-ready"
+cat >"$SANDBOX/cold-build" <<'EOF'
+#!/bin/sh
+# A build that runs one sudo, says it has started, then waits to be let go.
+sudo id -u
+: >"$1"
+while [ ! -e "$2" ]; do sleep 0.1; done
+EOF
+chmod +x "$SANDBOX/cold-build"
+for sig in INT TERM HUP; do
+    for target in job caller; do
+        : >"$log"
+        rm -f "$cold_go" "$cold_ready"
+        find "$SANDBOX/tmp" -mindepth 1 -delete
+        # In braces: the shell's own notice of a job a signal ended stays quiet.
+        {
+            setsid env --default-signal=INT,QUIT,TERM,HUP PATH="$odd:$PATH" TMPDIR="$SANDBOX/tmp" bash -c \
+                'source "$1"; DRY_RUN=false; shift; run_cold "$@"' _ "$HASEEN_PATH/lib/common.sh" \
+                "$SANDBOX/cold-build" "$cold_ready" "$cold_go" </dev/null >/dev/null 2>&1 &
+            leader=$!
+            for _ in $(seq 100); do [[ -e $cold_ready ]] && break; sleep 0.1; done
+            if [[ $target == job ]]; then
+                kill "-$sig" -- "-$leader" 2>/dev/null || true
+            else
+                kill "-$sig" "$leader" 2>/dev/null || true
+                : >"$cold_go"
+            fi
+            for _ in $(seq 100); do
+                [[ $(tail -n1 "$log") == "SUDO: -k" && -z $(find "$SANDBOX/tmp" -mindepth 1) ]] && break
+                sleep 0.1
+            done
+            : >"$cold_go"
+            wait "$leader" || true
+        } 2>/dev/null
+        assert_eq "run_cold, SIG$sig to the $target: the timestamp is dropped after" \
+            "SUDO: -k|SUDO: -h|SUDO: -N id -u|SUDO: -k" "$(paste -sd'|' "$log")"
+        assert_eq "run_cold, SIG$sig to the $target: the wrapper is removed" "" "$(find "$SANDBOX/tmp" -mindepth 1)"
+    done
+done
 
 # --- replace_user_file and run_polkit (plan 093) --------------------------------
 sandbox common-replace

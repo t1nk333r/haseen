@@ -38,6 +38,9 @@ sb_layer_root() {
     capture env HASEEN_SYSROOT="$fx" unshare --map-root-user bash -c 'source "$HASEEN_PATH/lib/layers.sh"; "layer_run_$1" secureboot' _ "$verb"
 }
 userns() { unshare --map-root-user true 2>/dev/null; }
+# skipped FN WHAT WHY — FN's checks were not run: one SKIP line in the log
+# with how many there are, counted from FN itself, and why (plan 111).
+skipped() { echo "  SKIP $(declare -f "$1" | grep -cE '^[[:space:]]*assert_') $2: $3" >&2; }
 
 # plant_tree ROOT — this tree's router, sign command, libraries and layer at
 # their own paths inside ROOT, nothing in ROOT writable by group or others.
@@ -649,6 +652,15 @@ for f in lib/preflight.sh layers/secureboot/secureboot.sh layers/secureboot/limi
     assert_contains "$f is named" "$OUTPUT" "but $REPO/share/haseen/$f is writable by its group or by others"
     chmod o-w "$root$REPO/share/haseen/$f"
 done
+# So does the template the hook is rendered from, and every directory on its
+# path: it decides the Exec root runs (plan 111).
+for f in layers/secureboot/files layers/secureboot/files/zz-haseen-secureboot.hook; do
+    chmod g+w "$root$REPO/share/haseen/$f"
+    DRY_RUN=true sb_layer "$root" apply
+    assert_not_contains "the template's $f its group can write: no hook" "$OUTPUT" "zz-haseen-secureboot.hook (mode"
+    assert_contains "and it is named" "$OUTPUT" "but $REPO/share/haseen/$f is writable by its group or by others"
+    chmod g-w "$root$REPO/share/haseen/$f"
+done
 sed "s|@HASEEN_BIN@|$REPO/bin/haseen|" "$SB_LIB/files/zz-haseen-secureboot.hook" | install -Dm644 /dev/stdin "$root/etc/pacman.d/hooks/zz-haseen-secureboot.hook"
 chmod -R go-w "$root"
 DRY_RUN=true sb_layer "$root" apply
@@ -659,12 +671,15 @@ DRY_RUN=true sb_layer "$root" apply
 assert_contains "drifted hook reinstalled" "$OUTPUT" "write /etc/pacman.d/hooks/zz-haseen-secureboot.hook"
 root_stat off
 # The same with the real stat, as root, where user namespaces are available.
-if userns; then
+sb_real_stat() {
     DRY_RUN=true sb_layer_root "$root" apply
     assert_contains "real stat, as root: the hook is reinstalled from the root-owned tree" "$OUTPUT" \
         "DRYRUN: write /etc/pacman.d/hooks/zz-haseen-secureboot.hook (mode 0644):"
+}
+if userns; then
+    sb_real_stat
 else
-    echo "  SKIP real-stat root-owned tree check: user namespaces are not available here" >&2
+    skipped sb_real_stat "real-stat root-owned tree check" "user namespaces are not available here"
 fi
 DRY_RUN=true sb_layer "$FIXTURES/arch-bios" apply
 assert_status "apply on BIOS refused" 1 "$STATUS"

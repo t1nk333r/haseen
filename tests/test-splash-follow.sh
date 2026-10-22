@@ -362,6 +362,34 @@ for locked in /var/lib/sbctl/keys /var/lib/sbctl; do
     rm -rf "$SYS/var/lib/sbctl"
 done
 rm -f "$XDG_STATE_HOME/haseen/splash-follow"
+# A key directory sbctl.conf puts under a parent this user cannot enter: -e
+# sees nothing there, so the walk down to it counts the parent as "keys may
+# exist" (plan 111). A parent it can enter but not list (0711) hides nothing,
+# so it says what is really there.
+mkdir -p "$SYS/etc/sbctl" "$SYS/srv/vault/keys/db"
+printf 'keydir: /srv/vault/keys\n' >"$SYS/etc/sbctl/sbctl.conf"
+: >"$SYS/srv/vault/keys/db/db.key"
+chmod 000 "$SYS/srv/vault"
+if [[ -x $SYS/srv/vault ]]; then
+    echo "  SKIP 4 checks (a key directory under a parent this user cannot enter): this test runs as root" >&2
+else
+    capture lib plymouth_signed_boot
+    assert_eq "a custom key directory under a parent no user can enter: may hold keys" \
+        "sbctl may hold Secure Boot keys (its key directory is readable only by root)" "$OUTPUT"
+    rm -f "$XDG_STATE_HOME/haseen/splash-follow"
+    capture haseen plymouth follow on --dry-run
+    assert_contains "and following refuses, saying why" "$OUTPUT" \
+        "the splash does not follow the theme here: sbctl may hold Secure Boot keys"
+    chmod 711 "$SYS/srv/vault"
+    capture lib plymouth_signed_boot
+    assert_eq "a parent it can enter but not list: the keys are seen" "sbctl holds Secure Boot keys" "$OUTPUT"
+    rm -f "$SYS/srv/vault/keys/db/db.key"
+    capture lib plymouth_signed_boot
+    assert_status "and no keys there are none" 1 "$STATUS"
+fi
+chmod 755 "$SYS/srv/vault"
+rm -rf "$SYS/srv" "$SYS/etc/sbctl"
+rm -f "$XDG_STATE_HOME/haseen/splash-follow"
 
 # --- root's side: haseen plymouth apply ------------------------------------------
 printf '1f1f28-dcd7ba-dcd7ba-kufic\n' >"$SYS/var/lib/haseen/splash"
@@ -424,13 +452,18 @@ as_root_probe='source "$HASEEN_PATH/lib/plymouth.sh"; plymouth_as_root; type -t 
 capture bash -c "$as_root_probe"
 assert_eq "not root: sudo is still the sudo on PATH" file "${OUTPUT%%$'\n'*}"
 assert_contains "and the root helpers go through it" "$OUTPUT" "STUB-CALLED: sudo echo ran-directly"
-if unshare --map-root-user true 2>/dev/null; then
+as_root_override() {
     capture unshare --map-root-user bash -c "$as_root_probe"
     assert_eq "as root (EUID 0): sudo is the plain call" function "${OUTPUT%%$'\n'*}"
     assert_contains "which runs the command itself" "$OUTPUT" $'\nran-directly'
     assert_not_contains "without sudo(8)" "$OUTPUT" "STUB-CALLED"
+}
+if unshare --map-root-user true 2>/dev/null; then
+    as_root_override
 else
-    echo "  SKIP sudo override as root: user namespaces are not available here" >&2
+    # One SKIP line with how many checks it skips, counted from the function
+    # (plan 111).
+    echo "  SKIP $(declare -f as_root_override | grep -cE '^[[:space:]]*assert_') sudo override checks as root: user namespaces are not available here" >&2
 fi
 assert_contains "apply is hidden from the command list" "$(haseen commands plymouth)" "follow"
 assert_not_contains "apply is hidden from the command list" "$(haseen commands plymouth)" "plymouth apply"
