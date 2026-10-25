@@ -18,9 +18,11 @@ import "Fuzzy.js" as Fuzzy
 //
 // Look (plan 117): Omarchy's menu, shell/plugins/menu/Menu.qml:99-110,1199-1330
 // — a plain heading-size query line (the empty one dimmed to 0.58, no input
-// box), rows of max(58 px, body + caption + 2 * row-padding-x) with the
-// `[launcher]` selected fill and selected border over a 36 px icon column,
-// a heading-weight Medium label and a body-small detail line.
+// box), menu rows with the `[launcher]` selected fill and selected border
+// over a 36 px icon column, a heading-weight Medium label and a body-small
+// detail line. The card is the
+// menu's size (plan 122): the width, padding, header, row height and ten rows
+// of `haseen.menu`'s card, so SUPER + D and SUPER + SPACE open the same box.
 Column {
     id: root
 
@@ -29,12 +31,24 @@ Column {
     property var settings: ({})
     property var screen: null
 
-    readonly property int maxResults: typeof settings.maxResults === "number" && settings.maxResults >= 1 ? Math.round(settings.maxResults) : 8
-    // Omarchy's menu rows and header (Menu.qml:101-109): a row that holds a
-    // label and a detail line, and a header tall enough for a heading.
-    readonly property int rowHeight: Math.max(Theme.space(58), Theme.font.body + Theme.font.caption + Theme.spacing.rowPaddingX * 2)
-    readonly property int headerHeight: Math.max(Theme.space(34), Theme.font.title + Theme.spacing.controlPaddingY * 2)
-    readonly property int iconColumn: Theme.space(36)
+    // Ten rows at rest: the default root menu's list (apps, learn, trigger,
+    // style, setup, install, remove, update, about, system), so the launcher
+    // and the menu open at the same height.
+    readonly property int maxResults: typeof settings.maxResults === "number" && settings.maxResults >= 1 ? Math.round(settings.maxResults) : 10
+    // Omarchy's menu geometry, from MenuMetrics so the two cards cannot drift:
+    // a row that holds a label and a detail line, and a header tall enough for
+    // a heading.
+    readonly property int rowHeight: MenuMetrics.baseRowHeight
+    readonly property int headerHeight: MenuMetrics.headerHeight
+    readonly property int iconColumn: MenuMetrics.iconColumn
+    // The menu's card is space(300) wide with contentMargin inside a 2 px
+    // border; a panel card is padded by popup-padding instead. The launcher
+    // takes the difference as its own inset, so the two cards are the same
+    // size and their interiors sit on the same line.
+    readonly property int menuWidth: typeof settings.width === "number" && settings.width >= 260 ? settings.width : 300
+    readonly property int cardWidth: screen ? Math.min(MenuMetrics.space(menuWidth), screen.width - Theme.gapsOut * 2) : MenuMetrics.space(menuWidth)
+    readonly property int cardInset: Math.max(0, MenuMetrics.contentMargin - Theme.spacing.popupPadding)
+    readonly property int contentWidth: Math.max(1, cardWidth - (MenuMetrics.contentMargin + MenuMetrics.borderWidth) * 2)
     // The selected border's width can change with the theme, so reserve it on
     // every row: a selected row must not push its label sideways.
     readonly property real rowReservedBorder: Border.left(Theme.launcher.selectedBorderSpec)
@@ -124,8 +138,12 @@ Column {
 
     onResultsChanged: list.currentIndex = 0
 
-    width: typeof settings.width === "number" && settings.width >= 240 ? settings.width : 520
-    spacing: Theme.spacing.md
+    width: root.contentWidth + root.cardInset * 2
+    leftPadding: root.cardInset
+    rightPadding: root.cardInset
+    topPadding: root.cardInset
+    bottomPadding: root.cardInset
+    spacing: MenuMetrics.contentSpacing
 
     Component.onCompleted: {
         const created = [];
@@ -186,11 +204,15 @@ Column {
 
     // The query line: Omarchy's menu header is a heading-size line of text,
     // dimmed to 0.58 while empty (Menu.qml:1153-1168), not a bordered field.
+    // The enabled providers' prefixes sit at its right edge rather than on a
+    // line of their own, so the card keeps the menu's height.
     Item {
-        width: parent.width
+        width: root.contentWidth
         height: root.headerHeight
 
         Text {
+            id: placeholder
+
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter
             visible: input.text === ""
@@ -198,7 +220,7 @@ Column {
             color: Theme.launcher.text
             opacity: 0.58
             font.family: Theme.font.menuFamily
-            font.pixelSize: Theme.font.heading
+            font.pixelSize: MenuMetrics.headingSize
         }
 
         TextInput {
@@ -211,7 +233,7 @@ Column {
             selectionColor: Theme.selection
             selectedTextColor: Theme.launcher.selectedText
             font.family: Theme.font.menuFamily
-            font.pixelSize: Theme.font.heading
+            font.pixelSize: MenuMetrics.headingSize
             onTextChanged: root.query = text
             onAccepted: root.launch(list.currentIndex)
             Keys.onUpPressed: root.shift(-1)
@@ -219,28 +241,32 @@ Column {
             Keys.onTabPressed: root.shift(1)
             Keys.onBacktabPressed: root.shift(-1)
         }
-    }
 
-    Text {
-        width: parent.width
-        visible: root.query === "" && root.prefixHelp !== ""
-        text: root.prefixHelp
-        color: root.subtitleColor
-        wrapMode: Text.WordWrap
-        textFormat: Text.PlainText
-        font.family: Theme.font.menuFamily
-        font.pixelSize: Theme.font.bodySmall
+        // Hidden when it would not fit beside the query line: the same list
+        // is in the IPC state as `prefixes`.
+        Text {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            leftPadding: MenuMetrics.space(12)
+            visible: input.text === "" && implicitWidth <= parent.width * 0.6
+            text: root.prefixHelp
+            color: root.subtitleColor
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            font.family: Theme.font.menuFamily
+            font.pixelSize: Theme.font.bodySmall
+        }
     }
 
     ListView {
         id: list
 
-        width: parent.width
+        width: root.contentWidth
         height: root.results.length === 0 ? 0 : Math.min(root.results.length, root.maxResults) * root.rowHeight + (Math.min(root.results.length, root.maxResults) - 1) * spacing
         visible: root.results.length > 0
         clip: true
         model: root.results
-        spacing: Theme.spacing.xs
+        spacing: MenuMetrics.rowSpacing
         boundsBehavior: Flickable.StopAtBounds
         highlightMoveDuration: 0
         currentIndex: 0
@@ -252,7 +278,7 @@ Column {
             required property int index
 
             readonly property bool current: ListView.isCurrentItem
-            readonly property real side: root.rowReservedBorder + Theme.space(8)
+            readonly property real side: root.rowReservedBorder + MenuMetrics.space(8)
 
             width: ListView.view.width
             height: root.rowHeight
@@ -278,7 +304,7 @@ Column {
                     id: icon
 
                     anchors.centerIn: parent
-                    implicitSize: Theme.font.iconLarge
+                    implicitSize: MenuMetrics.iconSize
                     source: root.iconSource(row.modelData.icon)
                     visible: source.toString() !== "" && status === Image.Ready
                 }
@@ -288,17 +314,17 @@ Column {
                     visible: !icon.visible
                     glyph: row.modelData.glyph
                     color: row.current ? Theme.launcher.selectedText : root.subtitleColor
-                    font.pixelSize: Theme.font.iconLarge
+                    font.pixelSize: MenuMetrics.iconSize
                 }
             }
 
             Column {
                 anchors.left: iconCell.right
-                anchors.leftMargin: Theme.space(6)
+                anchors.leftMargin: MenuMetrics.space(6)
                 anchors.right: parent.right
                 anchors.rightMargin: row.side
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Theme.space(3)
+                spacing: MenuMetrics.space(3)
 
                 Text {
                     width: parent.width
@@ -307,7 +333,7 @@ Column {
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                     font.family: Theme.font.menuFamily
-                    font.pixelSize: Theme.font.heading
+                    font.pixelSize: MenuMetrics.headingSize
                     font.weight: Font.Medium
                 }
 
@@ -333,12 +359,15 @@ Column {
         }
     }
 
+    // One row tall, as the menu draws its empty state.
     Text {
-        width: parent.width
+        width: root.contentWidth
+        height: root.rowHeight
         visible: root.results.length === 0
         text: I18n.tr("No matches")
         color: root.subtitleColor
         horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
         font.family: Theme.font.menuFamily
         font.pixelSize: Theme.font.body
     }

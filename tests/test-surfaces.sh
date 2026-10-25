@@ -101,13 +101,30 @@ assert_contains "launcher is a panel (toggle via the panel host)" \
 launcher="$PLUGINS/haseen.launcher/Panel.qml"
 assert_contains "the launcher's rows are Omarchy's menu rows" "$(cat "$launcher")" "Theme.launcher.selectedBackground"
 assert_contains "with the selected border reserved on every row" "$(cat "$launcher")" "Theme.launcher.selectedBorderSpec"
-assert_contains "and a heading-size query line, not a boxed input" "$(cat "$launcher")" "font.pixelSize: Theme.font.heading"
+assert_contains "and a heading-size query line, not a boxed input" "$(cat "$launcher")" "font.pixelSize: MenuMetrics.headingSize"
 assert_not_contains "the launcher no longer paints its old input box" "$(cat "$launcher")" "height: Theme.fontSize * 2.8"
 lockview="$PLUGINS/haseen.lock/LockView.qml"
 assert_contains "the lock field is Omarchy's 381 x 67" "$(cat "$lockview")" "readonly property int fieldWidth: 381"
 assert_contains "with its 3 px outline" "$(cat "$lockview")" "readonly property int outlineThickness: 3"
 assert_contains "in [lock]'s active border colour" "$(cat "$lockview")" "Theme.lock.borderActive"
 assert_contains "over the [lock] fill" "$(cat "$lockview")" "Theme.lock.background"
+
+# Plan 122: the launcher opens at the menu's size, so SUPER + D and
+# SUPER + SPACE show the same card.
+menu="$PLUGINS/haseen.menu/Panel.qml"
+metrics="$PLUGINS/../Haseen/MenuMetrics.qml"
+assert_contains "the menu still takes its numbers from MenuStyle.js" "$(cat "$menu")" "Style.WIDTH"
+assert_contains "the launcher's rows are the menu's rows" "$(cat "$launcher")" "readonly property int rowHeight: MenuMetrics.baseRowHeight"
+assert_contains "and its header the menu's" "$(cat "$launcher")" "readonly property int headerHeight: MenuMetrics.headerHeight"
+assert_contains "its card is the menu's width, scaled" "$(cat "$launcher")" "MenuMetrics.space(menuWidth)"
+assert_contains "padded by the difference of the two paddings" "$(cat "$launcher")" "MenuMetrics.contentMargin - Theme.spacing.popupPadding"
+assert_contains "the card's width works out to the menu's" "$(cat "$metrics")" "readonly property int width: space(300)"
+assert_contains "with the menu's 18 px content margin" "$(cat "$metrics")" "readonly property int contentMargin: space(18)"
+assert_contains "and its 50 px row" "$(cat "$metrics")" "readonly property int baseRowHeight: Math.max(space(50)"
+assert_eq "ten rows at rest, the menu's root list" "10" \
+    "$(jq -r '.settings.maxResults.default' "$PLUGINS/haseen.launcher/manifest.json")"
+assert_eq "the launcher's width is the menu's 300" "300" \
+    "$(jq -r '.settings.width.default' "$PLUGINS/haseen.launcher/manifest.json")"
 
 
 # --- default shell.json starts the services ----------------------------------
