@@ -67,7 +67,11 @@ if ! $DRY_RUN && ! migrate_wait_for_pacman; then
     exit 0
 fi
 
-while IFS= read -r name; do
+# The list is read on fd 3, so a migration's own stdin stays this command's: a
+# pacman or confirm prompt inside one asks the user (or reads EOF unattended)
+# instead of swallowing the next migration's name as its answer. --yes reaches
+# the migration as ASSUME_YES, which common.sh reads when it is sourced there.
+while IFS= read -r -u 3 name; do
     if $DRY_RUN; then
         echo "DRYRUN: run migration $name"
         continue
@@ -75,9 +79,9 @@ while IFS= read -r name; do
     info "running migration ${name%.sh}"
     # A migration that fails keeps its marker unwritten, so the next run retries
     # it; later migrations wait rather than running out of order.
-    if ! HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$name" \
-        bash -Eeuo pipefail "$(migrate_dir)/$name"; then
+    if ! HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$name" ASSUME_YES="$ASSUME_YES" \
+        bash -Eeuo pipefail "$(migrate_dir)/$name" 3<&-; then
         die "migration ${name%.sh} failed; nothing after it ran"
     fi
     migrate_record "$name" applied
-done <<<"$pending"
+done 3<<<"$pending"

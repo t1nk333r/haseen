@@ -91,6 +91,35 @@ assert_status "a malformed name aborts" 1 "$STATUS"
 assert_contains "the abort names the file" "$OUTPUT" "malformed migration name: later.sh"
 rm -f "$tree/migrations/later.sh"
 
+# A migration's prompts read this command's stdin, not the list of names, and
+# --yes reaches it (plan 113: on IO, pacman's prompt inside the Omasnap
+# migration took the next migration's name as its answer and the run failed).
+rm -rf "$ledger" "$MIGRATE_LOG"
+rm -f "$tree"/migrations/*
+write_migration 1790000005-asks.sh 'source "$HASEEN_PATH/lib/common.sh"
+IFS= read -r reply || reply=EOF
+printf "asks read=%s yes=%s\n" "$reply" "$ASSUME_YES" >>"$MIGRATE_LOG"
+confirm "go on?" || exit 1'
+write_migration 1790000006-after.sh 'printf "ran %s\n" "$HASEEN_MIGRATION" >>"$MIGRATE_LOG"'
+capture haseen migrate --yes </dev/null
+assert_status "an unattended --yes run passes the prompt" 0 "$STATUS"
+assert_eq "the migration read its own stdin and saw --yes; the next one still ran" "asks read=EOF yes=true
+ran 1790000006-after.sh" "$(cat "$MIGRATE_LOG")"
+
+rm -rf "$ledger" "$MIGRATE_LOG"
+capture haseen migrate <<<$'y\ny'
+assert_status "answered prompts reach the migration" 0 "$STATUS"
+assert_eq "the user's answer, not a migration name, is what the migration read" "asks read=y yes=false
+ran 1790000006-after.sh" "$(cat "$MIGRATE_LOG")"
+
+rm -rf "$ledger" "$MIGRATE_LOG"
+capture haseen migrate </dev/null
+assert_status "without --yes an unanswered prompt declines and stops the run" 1 "$STATUS"
+assert_eq "the declined migration is not recorded and nothing after it ran" "asks read=EOF yes=false" "$(cat "$MIGRATE_LOG")"
+assert_eq "no marker for the declined migration" "" "$(compgen -G "$ledger/*asks*" || true)"
+rm -f "$tree"/migrations/*
+rm -rf "$ledger" "$MIGRATE_LOG"
+
 # The notifier is quiet when nothing is pending and asks once when something is.
 stub notify-send 'echo "NOTIFY: $*"; echo run'
 capture haseen migrate notify
