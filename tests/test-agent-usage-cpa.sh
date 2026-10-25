@@ -84,3 +84,17 @@ done
 capture env -u HASEEN_CPA_USAGE_URL HASEEN_AGENT_USAGE_DIR="$USAGE" "$OMA/omarchy-agent-usage-update" cpa
 assert_status "an unconfigured backbone is a clean run" 0 "$STATUS"
 assert_eq "and the stale row goes away" "gone" "$([[ -e $USAGE/cpa.json ]] && echo here || echo gone)"
+
+# --- the interface language (plan 109) -------------------------------------
+# The row is drawn on the panel, so it follows `haseen language`; numbers,
+# provider names and the endpoint stay as data.
+printf 'ar\n' >"$HOME/.config/haseen/language"
+capture env HASEEN_CPA_USAGE_URL="file://$SANDBOX/metrics.txt" "$CPA"
+assert_status "the Arabic row is written" 0 "$STATUS"
+assert_eq "its status line is translated" \
+    "طلبات: 1.5k · توكن: 1.7M · تكلفة: \$4.75 · 7 أخطاء" \
+    "$(jq -r .usageStatusText <<<"$OUTPUT")"
+capture env HASEEN_CPA_USAGE_URL="file://$SANDBOX/missing.txt" "$CPA"
+assert_contains "and so is the unreachable message" "$OUTPUT" \
+    "تعذّر الوصول إلى المصدّر على file://$SANDBOX/missing.txt"
+rm -f "$HOME/.config/haseen/language"

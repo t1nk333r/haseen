@@ -56,6 +56,12 @@ the panel and for the dashboard alike.
   It lives in `libexec`, not in `omarchy/bin`: that directory is exactly
   Omarchy's command set, asserted by `tests/test-omarchy-commands.sh`, and this
   is haseen's own row for a backbone Omarchy has no collector for.
+  Its words are interface text, so they go through `lib/i18n.sh` like a
+  notification's: the row follows `haseen language` ("طلبات: 1.5k · توكن: 1.7M ·
+  تكلفة: $4.75 · 7 أخطاء"), while numbers, provider names and the endpoint stay
+  as data. `tools/i18n.py` now collects bash strings from `libexec` too, and the
+  four strings (plus the error plural) are in the `notify` catalogs for `en` and
+  `ar`.
 - **`share/haseen/omarchy/bin/omarchy-agent-usage-update`** — runs haseen's own
   collectors from `share/haseen/libexec` (`agent-usage-<agent>`) beside
   Omarchy's (`omarchy/bin/omarchy-agent-usage-<agent>`), with the same agent
@@ -71,13 +77,16 @@ the panel and for the dashboard alike.
 
 ## Evidence
 
-- `tests/test-agent-usage-cpa.sh` -> 24/24: the record's name, summed status
+- `tests/test-agent-usage-cpa.sh` -> 27/27: the record's name, summed status
   and ordered limits from a fixture; the 0.91 fraction the panel would draw as
   91%; an unreachable endpoint (`ready: false`, named); no endpoint configured
   (no output, exit 0); the `usageUrl` setting is read; `--dry-run` reads
   nothing; `omarchy-agent-usage-update cpa` writes `cpa.json` and, with the
   endpoint unset, removes it and exits 0; `--force` and `--limits-only`
-  reach the collector and still write the row.
+  reach the collector and still write the row; the Arabic row and its
+  unreachable message are translated.
+- `tools/i18n.py check` -> catalogs fresh and complete for en, ar;
+  `tests/test-i18n.sh` passes with them.
 - `tests/test-widgets-c.sh` -> 114/114, with the new "stats beside limits"
   assertion.
 - `tests/test-omarchy-commands.sh` -> 179/179 (the new file is outside
@@ -133,3 +142,10 @@ where an exporter is configured.
 - **Changing `Agents.js` to prefer the stats over the limits** (instead of
   joining them): the quota windows are the more urgent fact when they exist,
   so neither may hide the other.
+- **A fourth catalog for panel text from bash**: `notify` already holds every
+  literal a bash command shows the user through `i18n`, and a second set of
+  files would only split the same extraction.
+- **Translating in `Agents.js` from structured counts** instead: the record
+  would have to carry counts *and* the collector's own abbreviations, and the
+  panel would need a second formatting path; `i18n` in the collector keeps one
+  place and reuses the plural rules already shipped for Arabic.

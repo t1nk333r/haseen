@@ -1,4 +1,13 @@
 {
+  "%1 errors": {
+    "zero": "دون أخطاء",
+    "one": "خطأ واحد",
+    "two": "خطآن",
+    "few": "%1 أخطاء",
+    "many": "%1 خطأ",
+    "other": "%1 خطأ"
+  },
+  "%1 requests · %2 tokens · %3": "طلبات: %1 · توكن: %2 · تكلفة: %3",
   "%1, so a rebuild must be signed again: %2.": "%1، لذا يجب توقيع إعادة البناء من جديد: %2.",
   "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand.": "%1. سيعرض الإقلاع التالي شاشة البدء القديمة؛ يشرح الأمر haseen plymouth follow status المزيد، ويعيد الأمر haseen plymouth set بناءها يدويًا.",
   "All reminders cleared": "مُسحت كل التذكيرات",
@@ -15,6 +24,7 @@
   },
   "Colour copied": "نُسخ اللون",
   "Copied text from the selection": "نُسخ النص من التحديد",
+  "Exporter unreachable at %1": "تعذّر الوصول إلى المصدّر على %1",
   "GPU mode: %1": "وضع GPU: %1",
   "Interface language: %1": "لغة الواجهة: %1",
   "Its root service is not installed: haseen plymouth follow on.": "خدمة الجذر الخاصة بها غير مثبّتة: haseen plymouth follow on.",
@@ -30,6 +40,7 @@
   "Per-monitor workspaces on": "مساحات العمل لكل شاشة مُشغّلة",
   "Plugin link refused": "رُفض رابط الإضافة",
   "QR code copied to clipboard": "نُسخ رمز QR إلى الحافظة",
+  "Quota": "الحصة",
   "Reminder": "تذكير",
   "Reminder set for %1": "ضُبط التذكير على %1",
   "Run": "تشغيل",

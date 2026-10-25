@@ -25,6 +25,10 @@
 set -Eeuo pipefail
 # shellcheck source=../lib/common.sh
 source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+# The row is interface text the panel draws, so it follows `haseen language`
+# like a notification does (plan 109); numbers and provider names are data.
+# shellcheck source=../lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 usage() {
     cat <<'TEXT'
@@ -74,10 +78,10 @@ if $DRY_RUN; then
 fi
 
 if ! text="$(curl -fsS -m 10 "$url" 2>/dev/null)"; then
-    jq -nc --arg url "$url" '{
+    jq -nc --arg message "$(i18n "Exporter unreachable at %1" "$url")" '{
         schemaVersion: 1, id: "cpa", name: "CLIProxyAPI", ready: false,
         updatedAt: (now | todate), hasLocalStats: false,
-        usageStatusText: ("Exporter unreachable at " + $url)
+        usageStatusText: $message
     }'
     exit 0
 fi
@@ -101,19 +105,20 @@ human() {
     }'
 }
 
-status="$(human "$requests") requests · $(human "$tokens") tokens · \$$cost"
-((errors == 0)) || status+=" · $errors errors"
+status="$(i18n "%1 requests · %2 tokens · %3" "$(human "$requests")" "$(human "$tokens")" "\$$cost")"
+((errors == 0)) || status+=" · $(i18n_n "%1 error" "%1 errors" "$errors")"
 
 # The provider quota windows the exporter reports as a 0-1 fraction, fullest
 # first: {label, percent} is what the panel draws ("Claude 5-hour 42%").
-limits="$(grep -E '^cpa_quota_used_ratio\{' <<<"$text" | awk '
+quota_label="$(i18n "Quota")"
+limits="$(grep -E '^cpa_quota_used_ratio\{' <<<"$text" | awk -v quota="$quota_label" '
     {
         value = $NF
         provider = ""; window = ""
         if (match($0, /provider="[^"]*"/)) { provider = substr($0, RSTART + 10, RLENGTH - 11) }
         if (match($0, /window="[^"]*"/)) { window = substr($0, RSTART + 8, RLENGTH - 9) }
         if (value !~ /^[0-9.]+$/) next
-        label = (provider == "" ? "Quota" : toupper(substr(provider, 1, 1)) substr(provider, 2))
+        label = (provider == "" ? quota : toupper(substr(provider, 1, 1)) substr(provider, 2))
         if (window != "") label = label " · " window
         printf "%.6f\t%s\n", value, label
     }' | sort -rn | head -3 | jq -Rnc '[inputs | split("\t") | {label: .[1], percent: ((.[0] | tonumber) * 10000 | round / 10000)}]')"
