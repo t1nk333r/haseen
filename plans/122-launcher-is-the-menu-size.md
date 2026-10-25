@@ -50,8 +50,16 @@ rows of `max(58, …)`. Opening one after the other moved the card.
   the padding difference is applied, `MenuMetrics` carries the menu's 300/18/50
   numbers, and the manifest defaults are 300 and 10).
 - `tools/lint.sh` -> OK.
-- Live on IO: opened both cards and compared them (screenshots in the pull
-  request).
+- Deployed on IO and measured in a quickshell probe against the installed
+  tree (`/usr/local/share/haseen/shell`, an empty `ShellRoot` with both
+  panels created): at the probe's font size of 12 the menu card is
+  **327 x 665** and the launcher's card works out to **327** wide, its ten-row
+  list **577 px** — the menu's own `visibleRowsHeight` — with the same
+  20 px content margin, 2 px border, 37 px header and 7 px content spacing.
+  The launcher's height is `2 * (contentMargin + border) + header +
+  contentSpacing + rows` in both, so the cards coincide row for row.
+- IO was locked while I deployed, so the side-by-side screenshot is still an
+  owner step: SUPER + SPACE and SUPER + D now open the same box.
 
 ## Rejected options
 
