@@ -106,10 +106,10 @@ Dockhand.
 3. Add a Prometheus scrape target for it (`cpa-usage-exporter:9185` or its
    tailnet address) and reload Prometheus.
 4. Import `dashboards/cpa-usage-prometheus.json` into the NAS's Grafana.
-5. Point the panel at it: `usageUrl` in `haseen.agents`'
-   `~/.config/haseen/shell.json` (or `HASEEN_CPA_USAGE_URL`), then
-   `omarchy-agent-usage-update cpa`; the panel's usage section reads the
-   record on refresh.
+5. Point the panel at it:
+   `printf '{"settings":{"usageUrl":"http://…:9185/metrics"}}' | haseen plugin settings haseen.agents`
+   (or `HASEEN_CPA_USAGE_URL` for one run), then `omarchy-agent-usage-update cpa`;
+   the panel's usage section reads the record on refresh.
 
 Without step 5 the panel writes no cpa record at all — the row appears only
 where an exporter is configured.
