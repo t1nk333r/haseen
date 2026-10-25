@@ -6,7 +6,9 @@
 # Copyright (c) David Heinemeier Hansson): the collectors are haseen's ports,
 # found next to this command instead of in $OMARCHY_PATH/bin, and the records
 # go to haseen's state (HASEEN_AGENT_USAGE_DIR overrides it) instead of
-# ~/.local/state/omarchy; --dry-run lists what would run (plan 093). With
+# ~/.local/state/omarchy; --dry-run lists what would run (plan 093). A
+# collector with nothing to say (cpa before its exporter is configured, plan
+# 124) prints nothing and succeeds. With
 # several Claude, Codex or Grok accounts (plan 108), a record describes the
 # active one, as in Omarchy 4.5: its collector reads that account's home, and
 # the record names it under "account".
@@ -21,10 +23,11 @@ usage() {
     cat <<EOF
 Usage: omarchy-agent-usage-update [--force] [--limits-only] [--except <agent>] [agent...] [--dry-run]
 
-Runs the usage collectors (claude, codex, fireworks, grok, kimi) in parallel and writes
+Runs the usage collectors (claude, codex, cpa, fireworks, grok, kimi) in parallel and writes
 each record to $USAGE_DIR/<agent>.json.
-Exits 1 when a collector failed. Collectors read local session files and ask
-the agent's own usage endpoint with your credentials.
+Exits 1 when a collector failed. Collectors read local session files, ask the
+agent's own usage endpoint with your credentials, or (cpa) read the metrics of
+the exporter beside CLIProxyAPI.
 EOF
 }
 parse_common_flags "$@"
@@ -66,8 +69,20 @@ collect() {
         home="$("$HASEEN_OMARCHY_DIR/bin/omarchy-agent-account-home" "$agent")"
         [[ -z ${!home_env:-} && -n $home ]] && select=("$home_env=$home")
     fi
-    if ! record="$(env "${select[@]}" "$collector" "${flags[@]}")" || [[ -z $record ]] ||
-        ! jq -e . >/dev/null 2>&1 <<<"$record"; then
+    local status=0
+    record="$(env "${select[@]}" "$collector" "${flags[@]}")" || status=$?
+    if ((status != 0)); then
+        echo "omarchy-agent-usage-update: $agent collector failed" >&2
+        return 1
+    fi
+    # A collector with nothing to report (a backbone that is not configured on
+    # this machine, plan 124) prints nothing and succeeds: no record, and a
+    # record left from when it was configured goes away.
+    if [[ -z $record ]]; then
+        rm -f -- "$USAGE_DIR/$agent.json"
+        return 0
+    fi
+    if ! jq -e . >/dev/null 2>&1 <<<"$record"; then
         echo "omarchy-agent-usage-update: $agent collector failed" >&2
         return 1
     fi
@@ -79,9 +94,16 @@ collect() {
 
 $DRY_RUN || mkdir -p "$USAGE_DIR"
 pids=()
-for collector in "$HASEEN_OMARCHY_DIR"/bin/omarchy-agent-usage-*; do
+# Omarchy's collectors sit beside this command, as in Omarchy; haseen's own
+# (plan 124's cpa row, for a backbone Omarchy has no collector for) in
+# share/haseen/libexec, under the same agent-usage-<agent> suffix.
+for collector in "$HASEEN_OMARCHY_DIR"/bin/omarchy-agent-usage-* \
+    "$HASEEN_PATH"/libexec/agent-usage-*; do
     [[ -x $collector ]] || continue
-    agent="${collector##*/omarchy-agent-usage-}"
+    agent="${collector##*/}"
+    agent="${agent#omarchy-}"
+    agent="${agent#agent-}"
+    agent="${agent#usage-}"
     [[ $agent == update ]] && continue
     wanted "$agent" || continue
     if $DRY_RUN; then

@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# agent-usage-cpa — the CLIProxyAPI backbone as one usage record for the agents
+# panel, read from its exporter's OpenMetrics endpoint.
+#
+#   agent-usage-cpa [--url URL] [--dry-run]
+#
+# CLIProxyAPI backs haseen.agents and several accounts here, and it already
+# knows what it carried; nothing else on this machine counts its traffic.
+# cpa-usage-exporter (github.com/Adrastopoulos/cpa-usage-exporter, MIT) drains
+# the proxy's per-request usage queue and serves the `cpa_` series on :9185 for
+# Prometheus and its Grafana dashboard (plan 124). This sums the counters
+# (requests, errors, tokens, estimated cost) and takes the provider quota
+# windows into the `limits` the panel draws, so the agents row reports what the
+# proxy actually carried instead of only local session files.
+#
+# Nothing is read unless a URL is configured — --url, HASEEN_CPA_USAGE_URL, or
+# haseen.agents' `usageUrl` in shell.json — so a machine without the exporter
+# prints no record and omarchy-agent-usage-update writes none. Read-only: the
+# one output is the record on stdout.
+#
+# It sits in share/haseen/libexec, not beside Omarchy's collectors in
+# omarchy/bin: that directory is exactly Omarchy's command set (`tests/
+# test-omarchy-commands.sh`), and this is haseen's own row for a backbone
+# Omarchy has no collector for. omarchy-agent-usage-update runs it too.
+set -Eeuo pipefail
+# shellcheck source=../lib/common.sh
+source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
+
+usage() {
+    cat <<'TEXT'
+Usage: agent-usage-cpa [--url URL] [--dry-run]
+
+Prints one JSON usage record for the agents panel from cpa-usage-exporter's
+OpenMetrics endpoint. URL: --url, $HASEEN_CPA_USAGE_URL, or the haseen.agents
+`usageUrl` setting; with none, it prints nothing.
+TEXT
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+
+url=""
+while (($#)); do
+    case $1 in
+    --url)
+        (($# >= 2)) || {
+            usage >&2
+            exit 1
+        }
+        url=$2
+        shift
+        ;;
+    *)
+        echo "agent-usage-cpa: unknown argument $1" >&2
+        usage >&2
+        exit 1
+        ;;
+    esac
+    shift
+done
+[[ -n $url ]] || url=${HASEEN_CPA_USAGE_URL:-}
+if [[ -z $url && -r $HASEEN_USER_CONFIG/shell.json ]]; then
+    url="$(jq -r '.plugins["haseen.agents"].settings.usageUrl // ""' "$HASEEN_USER_CONFIG/shell.json" 2>/dev/null || true)"
+fi
+[[ -n $url ]] || exit 0
+
+if $DRY_RUN; then
+    echo "DRYRUN: read $url and write the agents usage record"
+    exit 0
+fi
+
+if ! text="$(curl -fsS -m 10 "$url" 2>/dev/null)"; then
+    jq -nc --arg url "$url" '{
+        schemaVersion: 1, id: "cpa", name: "CLIProxyAPI", ready: false,
+        updatedAt: (now | todate), hasLocalStats: false,
+        usageStatusText: ("Exporter unreachable at " + $url)
+    }'
+    exit 0
+fi
+
+# A counter's total: every sample of the series, whatever its labels.
+sum() {
+    awk -v m="$1" '$0 ~ "^" m "(\\{| )" { v = $NF; if (v ~ /^[0-9.eE+-]+$/) s += v } END { printf "%.0f", s }' <<<"$text"
+}
+requests="$(sum cpa_requests_total)"
+errors="$(sum cpa_request_errors_total)"
+tokens="$(sum cpa_tokens_total)"
+cost="$(awk '$0 ~ "^cpa_estimated_cost_total(\\{| )" { v = $NF; if (v ~ /^[0-9.eE+-]+$/) s += v } END { printf "%.2f", s }' <<<"$text")"
+
+# Short human counts: 950, 12k, 3.4M.
+human() {
+    awk -v n="$1" 'BEGIN {
+        if (n >= 1e9) printf "%.1fG", n / 1e9
+        else if (n >= 1e6) printf "%.1fM", n / 1e6
+        else if (n >= 1e3) printf "%.1fk", n / 1e3
+        else printf "%d", n
+    }'
+}
+
+status="$(human "$requests") requests · $(human "$tokens") tokens · \$$cost"
+((errors == 0)) || status+=" · $errors errors"
+
+# The provider quota windows the exporter reports as a 0-1 fraction, fullest
+# first: {label, percent} is what the panel draws ("Claude 5-hour 42%").
+limits="$(grep -E '^cpa_quota_used_ratio\{' <<<"$text" | awk '
+    {
+        value = $NF
+        provider = ""; window = ""
+        if (match($0, /provider="[^"]*"/)) { provider = substr($0, RSTART + 10, RLENGTH - 11) }
+        if (match($0, /window="[^"]*"/)) { window = substr($0, RSTART + 8, RLENGTH - 9) }
+        if (value !~ /^[0-9.]+$/) next
+        label = (provider == "" ? "Quota" : toupper(substr(provider, 1, 1)) substr(provider, 2))
+        if (window != "") label = label " · " window
+        printf "%.6f\t%s\n", value, label
+    }' | sort -rn | head -3 | jq -Rnc '[inputs | split("\t") | {label: .[1], percent: ((.[0] | tonumber) * 10000 | round / 10000)}]')"
+
+jq -nc --arg status "$status" --argjson limits "$limits" '{
+    schemaVersion: 1, id: "cpa", name: "CLIProxyAPI", ready: true,
+    updatedAt: (now | todate), hasLocalStats: false,
+    usageStatusText: $status,
+    limits: $limits
+}'

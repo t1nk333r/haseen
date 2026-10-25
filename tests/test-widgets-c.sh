@@ -175,10 +175,11 @@ if [[ -x $QML_BIN ]]; then
     printf 'var tsv = %s;\n' \
         "$(printf '1000\tclaude\t10000\t/srv/people/Projects/haseen\n1001\tcodex\t100\t/srv/people/Projects/site\n9\t\t5\t/x\nnot a line\n1006\taider\t5000\t/srv/work\n' | jq -Rs .)" \
         >"$harness/data.js"
-    printf 'var accounts = %s;\nvar usage = %s;\nvar usageEmpty = %s;\n' \
+    printf 'var accounts = %s;\nvar usage = %s;\nvar usageEmpty = %s;\nvar usageBoth = %s;\n' \
         "$(jq -Rs . <<<'[{"provider":"claude","name":"Claude","accounts":[{"id":"main","label":"Main","active":false,"signedIn":true},{"id":"work","label":"Work","plan":"Max 20x","active":true,"signedIn":true}]},{"provider":"codex","name":"Codex","accounts":[{"id":"main","label":"Main","active":true,"signedIn":false}]}]')" \
         "$(jq -Rs . <<<'{"id":"claude","name":"Claude","account":{"id":"work","label":"Work"},"limits":[{"label":"Session","percent":0.42},{"label":"Week","percent":0.1}]}')" \
-        "$(jq -Rs . <<<'{"id":"codex","name":"Codex","limits":[]}')" >>"$harness/data.js"
+        "$(jq -Rs . <<<'{"id":"codex","name":"Codex","limits":[]}')" \
+        "$(jq -Rs . <<<'{"id":"cpa","name":"CLIProxyAPI","usageStatusText":"1.5k requests · $4.75","limits":[{"label":"Codex · 7d","percent":0.91}]}')" >>"$harness/data.js"
     cat >"$harness/Harness.qml" <<EOF
 import QtQuick
 import "file://$PLUGINS/haseen.imagepicker/Images.js" as I
@@ -203,6 +204,7 @@ Item {
         out("accounts", A.accounts(D.accounts).map(a => a.provider + ":" + a.id + ":" + a.label + ":" + a.active + ":" + a.signedIn));
         out("accountsBad", [A.accounts("not json").length, A.accounts("").length]);
         out("usage", [A.usage(D.usage), A.usage(D.usageEmpty), A.usage("{")]);
+        out("usageBoth", A.usage(D.usageBoth));
         Qt.quit();
     }
 }
@@ -231,6 +233,8 @@ EOF
     assert_eq "Agents: an unreadable account list draws nothing" '[0,0]' "$(r accountsBad)"
     assert_eq "Agents: a usage line names the account and its limits" \
         '[{"name":"Claude · Work","detail":"Session 42% · Week 10%"},null,null]' "$(r usage)"
+    assert_eq "Agents: a usage line keeps the stats beside the limits" \
+        '{"name":"CLIProxyAPI","detail":"Codex · 7d 91% · 1.5k requests · $4.75"}' "$(r usageBoth)"
 else
     echo "  skip: $QML_BIN not installed, Images.js/Agents.js not exercised" >&2
 fi
