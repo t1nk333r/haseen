@@ -36,12 +36,14 @@ end
 -- How much the workspace underneath is dimmed while the console shows, and how
 -- the console drops down and retracts. "slide top" names the edge the offset
 -- is measured from, not where the workspace goes: it drops into view, and
--- "slide bottom" retracts it back up the way a Quake console does.
+-- "slide bottom" retracts it back up the way a Quake console does. The
+-- slides are Omarchy's (default/hypr/qconsole.lua@v4.5.0-rc1:195-196), on
+-- the curves looknfeel.lua defines.
 local DIM = 0.6
 local IN, OUT = "specialWorkspaceIn", "specialWorkspaceOut"
 local SLIDE = {
-  [IN] = { leaf = IN, enabled = true, speed = 3, bezier = "haseenOut", style = "slide top" },
-  [OUT] = { leaf = OUT, enabled = true, speed = 2, bezier = "haseenOut", style = "slide bottom" },
+  [IN] = { leaf = IN, enabled = true, speed = 3, bezier = "easeOutQuint", style = "slide top" },
+  [OUT] = { leaf = OUT, enabled = true, speed = 2, bezier = "easeInOutCubic", style = "slide bottom" },
 }
 
 -- The panel is always flush with the top and always centered, so two numbers

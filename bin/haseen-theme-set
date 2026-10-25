@@ -101,10 +101,7 @@ if $DRY_RUN; then
             echo "DRYRUN: render $tpl -> $THEME_NEXT_PATH/$out"
         fi
     done < <(theme_template_files)
-    if theme_colors_load "$src/colors.toml"; then
-        _theme_window_radius
-        echo "DRYRUN: write $THEME_NEXT_PATH/rounding.lua: window corners ${THEME_COLORS[window_radius]} (the shell frame's radius; toggles and hyprmod still override it)"
-    fi
+    echo "DRYRUN: prefix $THEME_NEXT_PATH/hyprland.lua: the theme yields to haseen toggle and hyprmod"
     theme_remember_background
     echo "DRYRUN: swap $THEME_NEXT_PATH -> $THEME_CURRENT_PATH"
     echo "DRYRUN: write $THEME_NAME_FILE: $name"

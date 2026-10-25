@@ -2,12 +2,11 @@
 -- dofile()s. Never edited by users; overrides go in ~/.config/hypr/*.lua.
 --
 -- Load order (each later step may override the earlier ones):
---   1. defaults: this file and its siblings (input, looknfeel, binds, …),
---                then the theme's shared window radius (current/theme/rounding.lua)
+--   1. defaults: this file and its siblings (input, looknfeel, binds, …)
 --   2. toggles:  $XDG_STATE_HOME/haseen/toggles/hypr/*.lua       (runtime)
 --   3. hyprmod:  ~/.config/hypr/hyprland-gui.lua                 (GUI app)
 --   4. theme:    ~/.local/state/haseen/current/theme/hyprland.lua (user file;
---                its own decoration.rounding is dropped, see haseen.theme_hl)
+--                it yields to the toggles and hyprmod, see haseen.theme_hl)
 --   5. user:     ~/.config/hypr/{monitors,bindings,local}.lua    (user file)
 --
 -- Modules are run with dofile(), not require(): Hyprland keeps one Lua VM
@@ -27,9 +26,13 @@
 --   haseen.workspace_mode(spec)       a workspace's layout or floating mode
 --                                     (workspace-modes.lua)
 --   haseen.console                    the SUPER + GRAVE console (qconsole.lua)
+--   haseen.transparent_window(match, opacity)  Omarchy's window transparency
+--                                     (windowrules.lua)
 --   haseen.animations                 leaf -> the last hl.animation spec the config
 --                                     gave it; haseen.set_animation sets one
 --                                     without recording it
+--   haseen.held                       "section.key" and "animation:<leaf>" ->
+--                                     true for what a toggle or hyprmod set
 --
 -- The helper shape (bind/launch/window over hl.*) is adapted from Omarchy
 -- default/hypr/helpers.lua. Omarchy is MIT licensed, Copyright (c) David
@@ -165,45 +168,99 @@ function haseen.rebind(keys, description, dispatcher, options)
   return haseen.bind(keys, description, dispatcher, options)
 end
 
+-- A setting a toggle or hyprmod made, by its path in hl.config's tables
+-- ("decoration.rounding") or its animation leaf ("animation:border"). A
+-- gradient ({ colors = …, angle = … }) and a list ({ 875, 600 }) are one
+-- value, not a section. The record starts empty on every load.
+haseen.held = {}
+
+local function is_value(v)
+  return type(v) ~= "table" or v.colors ~= nil or v[1] ~= nil
+end
+
+local function hold_keys(t, prefix)
+  if type(t) ~= "table" then
+    return
+  end
+  for k, v in pairs(t) do
+    local key = prefix .. tostring(k)
+    if is_value(v) then
+      haseen.held[key] = true
+    else
+      hold_keys(v, key .. ".")
+    end
+  end
+end
+
+-- include_held(path) — haseen.include_optional, recording what the file sets
+-- in haseen.held.
+local function include_held(path)
+  local config, animation = hl.config, hl.animation
+  hl.config = function(t, ...)
+    hold_keys(t, "")
+    return config(t, ...)
+  end
+  hl.animation = function(spec, ...)
+    if type(spec) == "table" and type(spec.leaf) == "string" then
+      haseen.held["animation:" .. spec.leaf] = true
+    end
+    return animation(spec, ...)
+  end
+  local ok = haseen.include_optional(path)
+  hl.config, hl.animation = config, animation
+  return ok
+end
+
 -- haseen.theme_hl(hl) — the `hl` the current theme's hyprland.lua sees
--- (haseen theme set prefixes it with `local hl = haseen.theme_hl(hl)`):
--- everything passes through except decoration.rounding. The window radius
--- is one rule shared with the shell's frame and menu (plan 046), set with
--- the defaults below, so a toggle, hyprmod or the user's files can still
--- change it and a theme cannot split it from the frame.
+-- (haseen theme set prefixes it with `local hl = haseen.theme_hl(hl)`). The
+-- theme owns the window look, as an Omarchy theme does, its corners included
+-- (decoration.rounding, plan 114), but it loads after the toggles and
+-- hyprmod: a key or animation leaf either of them set is dropped from the
+-- theme's calls, so `haseen toggle gaps` and the GUI still win over it. The
+-- user's own files load after the theme and win over all three.
 function haseen.theme_hl(real)
-  local function without_rounding(t)
-    if type(t) ~= "table" or type(t.decoration) ~= "table" or t.decoration.rounding == nil then
-      return t
-    end
-    local copy, decoration = {}, {}
+  local function without_held(t, prefix)
+    local copy, kept = {}, false
     for k, v in pairs(t) do
-      copy[k] = v
+      local key = prefix .. tostring(k)
+      if not haseen.held[key] then
+        if is_value(v) then
+          copy[k], kept = v, true
+        else
+          local sub = without_held(v, key .. ".")
+          if sub then
+            copy[k], kept = sub, true
+          end
+        end
+      end
     end
-    for k, v in pairs(t.decoration) do
-      decoration[k] = v
-    end
-    decoration.rounding = nil
-    copy.decoration = next(decoration) ~= nil and decoration or nil
-    return copy
+    return kept and copy or nil
   end
   return setmetatable({
     config = function(t, ...)
-      return real.config(without_rounding(t), ...)
+      if type(t) ~= "table" then
+        return real.config(t, ...)
+      end
+      local kept = without_held(t, "")
+      if kept then
+        return real.config(kept, ...)
+      end
+    end,
+    animation = function(spec, ...)
+      if type(spec) == "table" and type(spec.leaf) == "string" and haseen.held["animation:" .. spec.leaf] then
+        return
+      end
+      return real.animation(spec, ...)
     end,
   }, { __index = real })
 end
 
 -- monitor-workspaces, workspace-modes and qconsole define what binds.lua and
--- the toggles below call; qconsole follows looknfeel, whose curve it uses.
+-- the toggles below call; qconsole follows looknfeel, whose curves it uses.
 local here = haseen.path .. "/default/hypr/"
 for _, module in ipairs({ "input", "looknfeel", "monitor-workspaces", "workspace-modes", "qconsole", "binds", "windowrules", "autostart" }) do
   dofile(here .. module .. ".lua")
 end
-
--- The shared window radius, rendered by `haseen theme set` from the shell's
--- frame radius. A default: the toggles, hyprmod and user files below win.
-haseen.include_optional(haseen.paths.state_home .. "/haseen/current/theme/rounding.lua")
 
 -- Toggles that `haseen toggle …` / `haseen hardware …` persist (gaps,
 -- animations, workspace layout, displays, touchpad). They load after the
@@ -212,7 +269,7 @@ local toggles = haseen.paths.state_home .. "/haseen/toggles/hypr"
 local listing = io.popen('ls -1 "' .. toggles .. '"/*.lua 2>/dev/null')
 if listing then
   for file in listing:lines() do
-    haseen.include_optional(file)
+    include_held(file)
   end
   listing:close()
 end
@@ -221,10 +278,11 @@ end
 -- writes only this one file and never touches haseen's. It loads last of
 -- haseen's includes, so the GUI wins: every monitor, workspace, animation,
 -- env, exec, windowrule and layerrule key hyprmod holds overrides what
--- `haseen toggle …` and `haseen hw …` wrote just above. Turn a setting off in
--- hyprmod (or uninstall it and delete the file) to get haseen's value back.
--- The user's own ~/.config/hypr/*.lua files still load after this one.
-haseen.include_optional(haseen.paths.config_home .. "/hypr/hyprland-gui.lua")
+-- `haseen toggle …` and `haseen hw …` wrote just above, and over the theme's
+-- (haseen.theme_hl). Turn a setting off in hyprmod (or uninstall it and delete
+-- the file) to get haseen's value back. The user's own ~/.config/hypr/*.lua
+-- files still load after this one.
+include_held(haseen.paths.config_home .. "/hypr/hyprland-gui.lua")
 
 -- Every saved workspace mode has loaded with the toggles: bring the windows in
 -- line with them (workspace-modes.lua). It reads live windows, so a failure is

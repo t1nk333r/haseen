@@ -130,3 +130,28 @@ include), `bin/haseen-theme-set` (dry-run plan),
 `share/haseen/agents/skills/haseen/theming.md`, `tests/test-theme.sh`,
 `tests/test-theme-haseen.sh`, `share/haseen/migrations/1791466289-theme-rounding.sh`,
 `tests/test-migrate-defaults.sh`.
+
+## Follow-up (plan 114)
+
+Reversed on 2026-10-25 by the owner's "Restyle to Omarchy" decision
+(`plans/114-windows-like-omarchy.md`). Omarchy runs the radius the other way
+round: a theme's own `hyprland.lua` owns `decoration.rounding`
+(`themes/solitude/hyprland.lua@v4.5.0-rc1:18-19`; 0 elsewhere,
+`default/hypr/looknfeel.lua@v4.5.0-rc1:25`) and the shell mirrors it
+(`shell/Commons/Style.qml@v4.5.0-rc1:13-33`). So, since plan 114:
+
+- `haseen theme set` no longer writes `current/theme/rounding.lua` and
+  `init.lua` no longer loads it; `_theme_window_radius` and
+  `_theme_window_rounding` are gone (`theme-lib.sh`'s `_theme_hyprland_prefix`
+  keeps the prefix). A stale `rounding.lua` in an older render is ignored and
+  goes at the next `haseen theme set`.
+- `haseen.theme_hl` no longer drops the theme's rounding: it drops whatever a
+  toggle or hyprmod set (`haseen.held`), so `haseen toggle gaps`,
+  `omarchy-hyprland-corners` and hyprmod still win over the theme, and the
+  user's own files still win over all three.
+- `looknfeel.lua`'s fallback is Omarchy's 0; `solitude` keeps Omarchy's 6, and
+  `haseen` has its own 4 back (its `UPSTREAM.md`).
+- The migration `1791466289-theme-rounding.sh` now only adds the prefix to a
+  render that lacks it.
+- The menu and the frame still follow `Config.frameRadius`; making the shell
+  read Hyprland's rounding is plan 115's.

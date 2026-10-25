@@ -62,13 +62,10 @@ border_width = 1
 
 These become `Theme.fontFamily`, `fontMono`, `fontSize`, `radius`, `gap`,
 `borderWidth` in the shell (numbers must be numbers). The window corner
-radius is not a colors.toml key: it is the frame's inner radius (shell.json
-`frame.radius`, else twice `radius`, `Config.frameRadius` in the shell), which
-the frame and the menu use and which `haseen theme set` also writes as
-Hyprland's `rounding` in
-`current/theme/rounding.lua`, loaded with the defaults so `haseen toggle
-gaps`, hyprmod and your own files still override it; a theme's own
-`rounding` is ignored (plan 046). The colour tokens the
+radius is not a colors.toml key: as in Omarchy, it is the theme's own
+Hyprland `decoration.rounding`, set in the theme's `hyprland.lua` (0, square,
+when it sets none), and the shell reads it back from Hyprland. `haseen toggle
+gaps`, hyprmod and your own files still override it (plan 114). The colour tokens the
 shell gets are derived in `$HASEEN_PATH/themed/shell.json.tpl`
 (`surface` = background mixed 6 % toward foreground, `urgent` = red,
 `warning` = yellow, `success` = green, …).

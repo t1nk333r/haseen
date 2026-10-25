@@ -680,7 +680,7 @@ haseen = {
   launch = function(c) return "uwsm-app -- " .. c end,
   bind_expressions = setmetatable({}, { __mode = "k" }),
   animations = {
-    global = { leaf = "global", enabled = true, speed = 4, bezier = "haseenOut" },
+    global = { leaf = "global", enabled = true, speed = 10, bezier = "default" },
     workspaces = { leaf = "workspaces", enabled = false },
   },
   set_animation = function(spec)
@@ -793,6 +793,9 @@ check(open.slide_in == "slide top", "and drops down: " .. open.slide_in)
 check(world.dim == 0.2, "the dim is the user'"'"'s again once Hyprland has read it")
 check(leaf("specialWorkspaceOut") == "slide bottom", "while it shows alone it retracts with its slide")
 check(leaf("specialWorkspaceIn") == "slide top", "the drop keeps its leaf until it lands")
+-- Omarchy'"'"'s curves (default/hypr/qconsole.lua@v4.5.0-rc1:195-196, plan 114).
+check(world.leaves.specialWorkspaceIn.bezier == "easeOutQuint", "it drops on easeOutQuint: " .. tostring(world.leaves.specialWorkspaceIn.bezier))
+check(world.leaves.specialWorkspaceOut.bezier == "easeInOutCubic", "and retracts on easeInOutCubic: " .. tostring(world.leaves.specialWorkspaceOut.bezier))
 check(#world.timers == 1 and world.timers[1].timeout == 350 and world.timers[1].type == "oneshot", "In goes back after 300 ms and a little")
 fire_timers()
 check(leaf("specialWorkspaceIn") == "off", "In is the user'"'"'s again: " .. leaf("specialWorkspaceIn"))
@@ -967,9 +970,11 @@ local function proxy(name)
     __call = function(_, ...) return { dsp = name, args = { ... } } end,
   })
 end
+CURVES = {}
 hl = setmetatable({
   dsp = proxy("dsp"),
   animation = function(spec) RAW[#RAW + 1] = spec end,
+  curve = function(name) CURVES[name] = true end,
 }, { __index = function() return function() end end })
 function check(condition, message)
   if not condition then error(message, 2) end
@@ -979,13 +984,18 @@ capture lua -e "dofile('$REC_STUB')" -e '
 dofile(os.getenv("HASEEN_PATH") .. "/default/hypr/init.lua")
 local a = haseen.animations
 check(a.workspaces and a.workspaces.enabled == false, "looknfeel.lua'"'"'s workspaces leaf is remembered")
-check(a.global and a.global.speed == 4, "and its global one")
+check(a.global and a.global.speed == 10 and a.global.bezier == "default", "and its global one")
 check(a.specialWorkspaceIn == nil and a.specialWorkspaceOut == nil, "the console sets no leaf at load")
+check(CURVES.easeOutQuint and CURVES.easeInOutCubic, "looknfeel.lua defines the console'"'"'s curves")
+for leaf, spec in pairs(a) do
+  local curve = spec.bezier
+  check(curve == nil or curve == "default" or curve == "linear" or CURVES[curve], leaf .. " names a defined curve: " .. tostring(curve))
+end
 local raw = #RAW
 hl.animation({ leaf = "windowsMove", enabled = true, speed = 3, bezier = "default" })
 check(#RAW == raw + 1 and a.windowsMove.speed == 3, "a user spec reaches Hyprland and is remembered")
-hl.animation({ leaf = "fade", enabled = true })
-check(#RAW == raw + 2 and a.fade == nil, "a spec Hyprland refuses reaches it but is not remembered")
+hl.animation({ leaf = "fadeDim", enabled = true })
+check(#RAW == raw + 2 and a.fadeDim == nil, "a spec Hyprland refuses reaches it but is not remembered")
 haseen.set_animation({ leaf = "zoomFactor", enabled = true, speed = 1, bezier = "default" })
 check(#RAW == raw + 3 and a.zoomFactor == nil, "haseen.set_animation is not remembered")
 dofile(os.getenv("HASEEN_PATH") .. "/default/hypr/init.lua")

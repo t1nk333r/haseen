@@ -9,12 +9,16 @@
 --   - up to 10 s a turn, Hyprland's own `borderangle` animation turns it, in
 --     `loop` style, one turn per `speed` deciseconds. Hyprland refuses a speed
 --     above 100, so 10 s is as slow as it goes. borderangle sits under
---     `global` beside `border`, not under it, so looknfeel.lua disabling
---     `border` (the colour fade) leaves it running; "linear" is built in;
+--     `global` beside `border` (the colour fade), not under it, so the two
+--     are set apart; "linear" is built in;
 --   - slower than that (36 s, the pace the owner runs on luna), borderangle
 --     stays off and haseen-sidecar pushes the angle over Hyprland's socket,
 --     one degree a frame. It stands aside whenever borderangle loops, so the
---     two never run together.
+--     two never run together. Each push is a new active border, and
+--     Hyprland 0.56.2 restarts the `border` fade on every change
+--     (src/desktop/view/Window.cpp:1901-1908): with Omarchy's fade on, the
+--     border would redraw at the full refresh rate for as long as the wipe
+--     turns, not ten times a second, so this path turns the fade off.
 local MAX_NATIVE_SECONDS = 10
 
 -- colors.toml is flat `key = value` lines; only the two wipe keys are read.
@@ -54,6 +58,9 @@ if #wipe_colors > 1 and wipe_seconds and wipe_seconds > 0 and wipe_seconds <= MA
   hl.animation({ leaf = "borderangle", enabled = true, speed = wipe_seconds * 10, bezier = "linear", style = "loop" })
 else
   hl.animation({ leaf = "borderangle", enabled = false })
+  if #wipe_colors > 1 and wipe_seconds and wipe_seconds > MAX_NATIVE_SECONDS then
+    hl.animation({ leaf = "border", enabled = false })
+  end
 end
 
 hl.config({
@@ -81,6 +88,9 @@ hl.config({
     },
   },
   decoration = {
+    -- The theme's own corners (UPSTREAM.md), which Hyprland applies since
+    -- plan 114, as Omarchy applies its themes'.
+    rounding = 4,
     rounding_power = 3,
     shadow = {
       enabled = true,

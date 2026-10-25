@@ -465,59 +465,28 @@ theme_template_files() {
     shopt -u nullglob
 }
 
-# _theme_window_radius — THEME_COLORS[window_radius]: Hyprland's share of the
-# one corner radius (plans 046, 068): the inner radius of the shell's screen
-# frame, by the rule Config.qml's frameRadius applies (the frame and the menu
-# read Config.frameRadius live). shell.json's
-# frame.radius (the user's file over the shipped default) when it is a number
-# from 0 to 64, rounded; else twice the theme's radius token. Read with jq
-# (base layer); a file jq cannot read counts as absent, as the shell skips it.
-_theme_window_radius() {
-    local f raw r=""
-    if have jq; then
-        for f in "$HASEEN_USER_CONFIG/shell.json" "$HASEEN_PATH/default/shell.json"; do
-            [[ -r $f ]] || continue
-            raw="$(jq -c '.frame.radius // empty' "$f" 2>/dev/null)" || continue
-            [[ -n $raw ]] || continue
-            r="$(jq -r 'if type == "number" and . >= 0 and . <= 64 then (. + 0.5 | floor) else empty end' <<<"$raw")"
-            break
-        done
-    fi
-    if [[ -z $r ]]; then
-        # Theme.qml holds the token in an int property, which truncates a
-        # fraction (6.5 -> 6); the same here, so the rule cannot drift.
-        r="${THEME_COLORS[radius]:-}"
-        if [[ $r =~ ^([0-9]+)(\.[0-9]*)?$ ]]; then
-            r="${BASH_REMATCH[1]}"
-        else
-            r="${THEME_TOKEN_DEFAULTS[radius]}"
-        fi
-        r=$((10#$r * 2))
-    fi
-    THEME_COLORS[window_radius]="$r"
-}
+# THEME_HL_PREFIX — the line _theme_hyprland_prefix puts first in a staged
+# hyprland.lua; the migration 1791466289-theme-rounding.sh looks for it.
+THEME_HL_PREFIX="local hl = haseen and haseen.theme_hl and haseen.theme_hl(hl) or hl"
 
-# _theme_window_rounding DIR — the shared radius for Hyprland (plans 046, 068).
-# DIR/rounding.lua carries window_radius as decoration.rounding; init.lua loads
-# it with the defaults, so `haseen toggle gaps`, hyprmod and the user's files
-# still override it. DIR/hyprland.lua (rendered or the theme's own) loads
-# later, so it is prefixed with a local `hl` (init.lua's haseen.theme_hl) that
-# drops decoration.rounding from its hl.config calls: a theme's own rounding
-# never splits the windows from the frame and the menu. A prefix, not a
-# suffix, so a file that ends in `return` still parses. The file is
-# rewritten, never written through: a user theme may link it.
-_theme_window_rounding() {
-    local dir="$1" f="$1/hyprland.lua" body=""
+# _theme_hyprland_prefix DIR — the theme owns the window look, its corners
+# included: Hyprland's decoration.rounding is the theme's own (0 when it sets
+# none), as in Omarchy, and the shell reads it back (plan 114; until then it
+# was the shell frame's radius, plan 046). DIR/hyprland.lua (rendered or the
+# theme's own) loads after `haseen toggle …` and hyprmod, so it is prefixed
+# with a local `hl` (init.lua's haseen.theme_hl) that drops what either of
+# them set from its calls: they still win over the theme, and the user's own
+# files load after it. A prefix, not a suffix, so a file that ends in
+# `return` still parses. The file is rewritten, never written through: a user
+# theme may link it.
+_theme_hyprland_prefix() {
+    local f="$1/hyprland.lua" body=""
     [[ -e $f ]] && body="$(<"$f")"
     [[ -e $f || -L $f ]] && rm -f -- "$f"
     printf '%s\n%s\n\n%s\n' \
-        "-- haseen: decoration.rounding is the shared window radius in rounding.lua (plan 046)." \
-        "local hl = haseen and haseen.theme_hl and haseen.theme_hl(hl) or hl" \
+        "-- haseen: the theme yields to haseen toggle and hyprmod (plan 114)." \
+        "$THEME_HL_PREFIX" \
         "$body" >"$f"
-    rm -f -- "$dir/rounding.lua"
-    printf '%s\nhl.config({ decoration = { rounding = %s } })\n' \
-        "-- haseen: window corners follow the shell's frame (plan 046); written by haseen theme set." \
-        "${THEME_COLORS[window_radius]}" >"$dir/rounding.lua"
 }
 
 # theme_render_templates DIR — render every template into DIR from
@@ -528,7 +497,6 @@ theme_render_templates() {
     local -a templates pairs=()
     local -A seen=()
     theme_colors_load "$dir/colors.toml" || return 1
-    _theme_window_radius
     local font=""
     theme_font_override && font="$REPLY" && THEME_COLORS[font_mono]="$font"
     mapfile -t templates < <(theme_template_files)
@@ -739,7 +707,7 @@ theme_stage() {
         return 1
     fi
     theme_render_templates "$THEME_NEXT_PATH" || return 1
-    _theme_window_rounding "$THEME_NEXT_PATH"
+    _theme_hyprland_prefix "$THEME_NEXT_PATH"
 }
 
 # theme_swap NAME — move the staged theme into place and record its name. The

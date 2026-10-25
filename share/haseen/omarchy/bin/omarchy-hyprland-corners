@@ -4,9 +4,10 @@
 # Copyright (c) David Heinemeier Hansson) and its
 # default/hypr/toggles/corners-{sharp,rounded}.lua: sharp and rounded are
 # toggle files in $HASEEN_USER_STATE/toggles/hypr, which haseen's Hyprland
-# config loads after the theme's shared window radius, so they win; "theme"
-# removes both; writes go through common.sh, so --dry-run prints them (plan
-# 102).
+# config loads after its defaults and the theme's hyprland.lua yields to
+# (haseen.theme_hl, plan 114), so they win over the theme's own corners;
+# "theme" removes both; writes go through common.sh, so --dry-run prints them
+# (plan 102).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"

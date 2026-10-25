@@ -182,15 +182,43 @@ local function proxy(name)
     __call = function(_, ...) return { dsp = name, args = { ... } } end,
   })
 end
+local function value(v)
+  if type(v) ~= "table" then return tostring(v) end
+  if v.colors then return "gradient(" .. table.concat(v.colors, ",") .. "@" .. tostring(v.angle) .. ")" end
+  local parts = {}
+  for _, item in ipairs(v) do parts[#parts + 1] = tostring(item) end
+  return "{" .. table.concat(parts, ",") .. "}"
+end
 local function flat(prefix, t)
   for k, v in pairs(t) do
     local key = prefix == "" and k or (prefix .. "." .. k)
-    if type(v) == "table" and not v.colors then flat(key, v) else print("CONFIG " .. key .. "=" .. tostring(v)) end
+    if type(v) == "table" and not v.colors and v[1] == nil then flat(key, v) else print("CONFIG " .. key .. "=" .. value(v)) end
   end
+end
+-- One line per call, its fields sorted, so a test can pin a whole spec.
+local function fields(t)
+  local keys, parts = {}, {}
+  for k in pairs(t) do keys[#keys + 1] = tostring(k) end
+  table.sort(keys)
+  for _, k in ipairs(keys) do
+    if type(t[k]) == "table" and t[k][1] == nil and not t[k].colors then
+      parts[#parts + 1] = k .. "=[" .. fields(t[k]) .. "]"
+    else
+      parts[#parts + 1] = k .. "=" .. value(t[k])
+    end
+  end
+  return table.concat(parts, " ")
 end
 hl = setmetatable({
   dsp = proxy("dsp"),
   config = function(t) flat("", t) end,
+  animation = function(t) print("ANIM " .. fields(t)) end,
+  curve = function(name, t)
+    local a, b = t.points[1], t.points[2]
+    print(("CURVE %s %s %g,%g %g,%g"):format(name, t.type, a[1], a[2], b[1], b[2]))
+  end,
+  window_rule = function(t) print("RULE " .. fields(t)) end,
+  layer_rule = function(t) print("LAYER " .. fields(t)) end,
   bind = function(keys, d, _)
     -- A Lua function is a valid dispatcher (Hyprland runs it on the key).
     local what = type(d) == "function" and "lua:function" or (d.dsp == "dsp.exec_cmd" and d.args[1] or d.dsp)
@@ -219,6 +247,63 @@ EOF
     assert_contains "lua: workspace binds" "$OUTPUT" "BIND SUPER + code:19 -> dsp.focus"
     assert_contains "lua: autostart on hyprland.start only" "$OUTPUT" "ON hyprland.start"
     assert_contains "lua: no blur" "$OUTPUT" "CONFIG decoration.blur.enabled=false"
+
+    # Omarchy 4.5's window look, value for value (plan 114):
+    # default/hypr/looknfeel.lua@v4.5.0-rc1, the line each value is on.
+    for want in general.gaps_in=5:8 general.gaps_out=10:9 general.border_size=2:10 \
+        "general.col.active_border=gradient(rgba(33ccffee),rgba(00ff99ee)@45):3" \
+        general.col.inactive_border=rgba\(595959aa\):4 general.resize_on_border=true:17 \
+        general.extend_border_grab_area=8:18 general.hover_icon_on_border=true:19 \
+        general.allow_tearing=false:20 general.layout=dwindle:21 decoration.rounding=0:25 \
+        decoration.shadow.enabled=false:28 group.groupbar.font_size=12:43 \
+        group.groupbar.font_family=monospace:44 group.groupbar.font_weight_active=ultraheavy:45 \
+        group.groupbar.font_weight_inactive=normal:46 group.groupbar.indicator_height=1:47 \
+        group.groupbar.indicator_gap=5:48 group.groupbar.height=22:49 group.groupbar.gaps_in=5:50 \
+        group.groupbar.gaps_out=0:51 "group.groupbar.text_color=rgb(ffffff):52" \
+        "group.groupbar.text_color_inactive=rgba(ffffff90):53" "group.groupbar.col.active=rgba(00000040):55" \
+        "group.groupbar.col.inactive=rgba(00000020):56" group.groupbar.gradients=true:58 \
+        group.groupbar.gradient_rounding=0:59 group.groupbar.gradient_round_only_edges=false:60 \
+        animations.enabled=true:65 dwindle.preserve_split=true:94 dwindle.force_split=2:95 \
+        scrolling.column_width=0.49:99 master.new_status=master:103 \
+        misc.disable_hyprland_logo=true:107 misc.disable_splash_rendering=true:108 \
+        "misc.background_color=rgb(000000):109" misc.disable_scale_notification=true:110 \
+        misc.focus_on_activate=true:111 misc.anr_missed_pings=3:112 \
+        misc.on_focus_under_fullscreen=1:113 misc.initial_workspace_tracking=0:114 \
+        misc.allow_session_lock_restore=true:117 cursor.hide_on_key_press=true:121 \
+        cursor.warp_on_change_workspace=1:122 binds.hide_special_on_workspace_change=true:126; do
+        assert_contains "lua: Omarchy's ${want%%=*} (looknfeel.lua:${want##*:})" "$OUTPUT" "CONFIG ${want%:*}"$'\n'
+    done
+    for want in "easeOutQuint bezier 0.23,1 0.32,1:70" "easeInOutCubic bezier 0.65,0.05 0.36,1:71" \
+        "linear bezier 0,0 1,1:72" "almostLinear bezier 0.5,0.5 0.75,1:73" "quick bezier 0.15,0 0.1,1:74"; do
+        assert_contains "lua: Omarchy's curve ${want%% *} (looknfeel.lua:${want##*:})" "$OUTPUT" "CURVE ${want%:*}"$'\n'
+    done
+    for want in \
+        "bezier=default enabled=true leaf=global speed=10:76" \
+        "bezier=easeOutQuint enabled=true leaf=border speed=5.39:77" \
+        "bezier=easeOutQuint enabled=true leaf=windows speed=3.79:78" \
+        "bezier=easeOutQuint enabled=true leaf=windowsIn speed=4.1 style=popin 87%:79" \
+        "bezier=linear enabled=true leaf=windowsOut speed=1.49 style=popin 87%:80" \
+        "bezier=almostLinear enabled=true leaf=fadeIn speed=1.73:81" \
+        "bezier=almostLinear enabled=true leaf=fadeOut speed=1.46:82" \
+        "bezier=quick enabled=true leaf=fade speed=3.03:83" \
+        "enabled=false leaf=fadeSwitch:84" \
+        "bezier=easeOutQuint enabled=true leaf=layers speed=3.81:85" \
+        "bezier=easeOutQuint enabled=true leaf=layersIn speed=4 style=fade:86" \
+        "bezier=linear enabled=true leaf=layersOut speed=1.5 style=fade:87" \
+        "bezier=almostLinear enabled=true leaf=fadeLayersIn speed=1.79:88" \
+        "bezier=almostLinear enabled=true leaf=fadeLayersOut speed=1.39:89" \
+        "enabled=false leaf=workspaces:90"; do
+        assert_contains "lua: Omarchy's animation ${want%%:*} (looknfeel.lua:${want##*:})" "$OUTPUT" "ANIM ${want%:*}"$'\n'
+    done
+    assert_eq "lua: Omarchy's fifteen animation calls and no others at load" 15 "$(grep -c '^ANIM ' <<<"$OUTPUT")"
+    # Omarchy's window rules for the look (default/hypr/windows.lua:22-23,
+    # apps/pip.lua, apps/system.lua): see-through terminals, the PiP corner.
+    assert_contains "lua: terminals are see-through" "$OUTPUT" 'RULE match=[tag=terminal] opacity=0.985 0.96 tag=+transparent-window'
+    assert_contains "lua: PiP is borderless in the top-right corner" "$OUTPUT" \
+        'RULE border_size=0 float=true keep_aspect_ratio=true match=[tag=pip] move={(monitor_w-window_w-40),(monitor_h*0.04)} name=haseen_pip pin=true size={600,338}'
+    assert_contains "lua: viewers and dialogs float at 875 x 600" "$OUTPUT" \
+        'RULE center=true float=true match=[tag=floating-window] name=haseen_floating_window size={875,600}'
+    assert_contains "lua: the bar layer is never animated" "$OUTPUT" 'LAYER animation=none match=[namespace=^haseen-bar$] name=haseen_bar_layer no_anim=true'
     assert_not_contains "lua: no bar launched" "$OUTPUT" "qs -p"
 
     # Toggles persisted by `haseen toggle …` load after the defaults.
@@ -238,7 +323,7 @@ EOF
     assert_status "lua: broken local.lua is not fatal" 0 "$STATUS"
     assert_contains "lua: broken local.lua reported" "$OUTPUT" "local.lua failed to load"
     theme_line="$(grep -n 'active_border=rgb(THEME)' <<<"$OUTPUT" | cut -d: -f1)"
-    default_line="$(grep -n 'active_border=rgb(7aa2f7)' <<<"$OUTPUT" | cut -d: -f1)"
+    default_line="$(grep -n 'general.col.active_border=gradient(rgba(33ccffee),rgba(00ff99ee)@45)' <<<"$OUTPUT" | cut -d: -f1)"
     assert_eq "lua: theme overrides default border" "true" "$([[ -n $theme_line && -n $default_line && $theme_line -gt $default_line ]] && echo true || echo false)"
     unbind_line="$(grep -n '^UNBIND SUPER + B$' <<<"$OUTPUT" | cut -d: -f1)"
     rebind_line="$(grep -n '^BIND SUPER + B -> uwsm-app -- firefox$' <<<"$OUTPUT" | cut -d: -f1)"
