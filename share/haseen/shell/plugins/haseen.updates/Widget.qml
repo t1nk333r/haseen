@@ -51,6 +51,19 @@ BarButton {
     text: Model.countLabel(result, settings.splitAur === true)
     color: failed ? Theme.urgent : Theme.barForeground
 
+    // The tooltip the Omarchy widget had and the port dropped: the summary
+    // and the first `listLines` packages (plan 119).
+    readonly property int tooltipLines: {
+        const n = Number(settings.listLines);
+        return Number.isFinite(n) && n > 0 ? Math.min(100, Math.floor(n)) : 20;
+    }
+    readonly property string barTooltip: {
+        if (result === null)
+            return "";
+        return [I18n.tr(Model.summary(result, checkProc.running))]
+            .concat(Model.listed(result, tooltipLines, I18n.tr)).join("\n");
+    }
+
     function check(force: bool): void {
         idleMinutes = 0;
         if (checkProc.running)

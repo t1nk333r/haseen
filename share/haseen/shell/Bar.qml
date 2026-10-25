@@ -13,8 +13,11 @@ import qs.Haseen
 //   or the nook (architecture 5.3). Each bar computes its own overflow, from
 //   its own length, so every screen gets its own answer;
 // - what a drag shows (BarDragOverlay.qml), lazy, only while one lasts;
-// - Escape during a drag: the bar takes the keyboard for as long as a drag
-//   lasts, and only then, so Escape puts the widget (or the bar) back.
+// - Escape during a drag from the overflow panel: that panel has the keyboard
+//   and puts the widget (or the bar) back. The bar itself never takes it: a
+//   layer surface that switches to exclusive keyboard focus mid-gesture loses
+//   the pointer grab on Hyprland, which ended every bar drag at once
+//   (measured on io, 2026-10-25, plan 120).
 //
 // Double-clicking the bar asks for transparency (plan 015, after Omarchy's
 // shell/plugins/bar/Bar.qml toggleTransparency, MIT, Copyright (c) David
@@ -104,9 +107,10 @@ PanelWindow {
     // transparency would then render black. Ask for alpha up front.
     surfaceFormat.opaque: false
     WlrLayershell.layer: WlrLayer.Top
-    // A bar never has the keyboard but while a drag lasts, for Escape; the
-    // strip ends a drag that hears nothing for 15 s, so it is never kept.
-    WlrLayershell.keyboardFocus: strip.dragging ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    // Never the keyboard: asking for exclusive focus while a drag lasts made
+    // Hyprland drop the pointer grab the moment the ghost appeared (plan 120).
+    // The strip's 15 s watchdog ends a drag nothing finishes.
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     // The owner's frame cross-fades with the bar over 420 ms (t1nk33r.screen-frame).
     Behavior on color {
@@ -114,13 +118,6 @@ PanelWindow {
             duration: 420
             easing.type: Easing.InOutCubic
         }
-    }
-
-    Shortcut {
-        sequence: "Escape"
-        context: Qt.WindowShortcut
-        enabled: strip.dragging
-        onActivated: bar.cancelDrag()
     }
 
     BarStrip {
@@ -168,7 +165,7 @@ PanelWindow {
 
         BarDragOverlay {
             screen: bar.screen
-            strip: strip
+            stripItem: strip
         }
     }
 

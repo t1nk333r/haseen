@@ -127,18 +127,22 @@ fi
 
 # --- Bar.qml's window: read from the source -----------------------------------
 bar="$(cat "$SHELL_DIR/Bar.qml")"
-assert_contains "the bar takes the keyboard only while a drag lasts" "$bar" \
-    "WlrLayershell.keyboardFocus: strip.dragging ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None"
-assert_contains "Escape during a drag cancels it" "$bar" $'enabled: strip.dragging\n        onActivated: bar.cancelDrag()'
+assert_contains "the bar never takes the keyboard: a drag keeps its pointer grab" "$bar" \
+    "WlrLayershell.keyboardFocus: WlrKeyboardFocus.None"
+assert_not_contains "no keyboard focus is asked for mid-drag" "$bar" "WlrKeyboardFocus.Exclusive"
 assert_contains "the drag's window exists only while a drag lasts" "$bar" $'active: strip.dragging && !bar.hidden\n\n        BarDragOverlay {'
 assert_contains "the bar's contents are the strip under test here" "$bar" "BarStrip {"
 assert_contains "the bar's cross-axis size comes from the theme" "$(cat "$SHELL_DIR/Haseen/Config.qml")" "Theme.barMetrics.sizeHorizontal"
 assert_not_contains "no hairline of its own" "$bar" "Hairline on the inner edge"
+assert_contains "the drag's window is handed the strip" "$bar" $'BarDragOverlay {\n            screen: bar.screen\n            stripItem: strip'
 overlay="$(cat "$SHELL_DIR/BarDragOverlay.qml")"
 assert_contains "the drag's window takes no input" "$overlay" "mask: Region {}"
 assert_contains "the drag's window is over everything" "$overlay" "WlrLayershell.layer: WlrLayer.Overlay"
 assert_contains "the drag's window never takes the keyboard" "$overlay" "WlrLayershell.keyboardFocus: WlrKeyboardFocus.None"
 assert_contains "the drag's window reserves no room" "$overlay" "exclusionMode: ExclusionMode.Ignore"
+# A property named `strip` here would shadow Bar.qml's id of that name and
+# bind to itself: the overlay then reads every member of undefined (plan 118).
+assert_contains "the overlay's strip is not shadowed by its own name" "$overlay" "required property var stripItem"
 assert_contains "Escape in the overflow panel cancels a drag before it closes the panel" \
     "$(cat "$SHELL_DIR/BarOverflowPanel.qml")" $'if (panel.barWindow.dragging)\n                panel.barWindow.cancelDrag();'
 strip="$(cat "$SHELL_DIR/BarStrip.qml")"
