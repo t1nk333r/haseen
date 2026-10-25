@@ -221,8 +221,7 @@ esac'
         ln -s "$RUNTIME/hypr" "$RUNTIME/run/hypr"
         setsid python3 -I "$RUNTIME/hypr.py" "$RUNTIME/hypr/$sig" "$1" >/dev/null 2>&1 &
         pid=$!
-        local i
-        for i in $(seq 50); do [[ -S $RUNTIME/hypr/$sig/.socket2.sock ]] && break; sleep 0.1; done
+        for _ in $(seq 50); do [[ -S $RUNTIME/hypr/$sig/.socket2.sock ]] && break; sleep 0.1; done
         setsid env XDG_RUNTIME_DIR="$RUNTIME/run" HYPRLAND_INSTANCE_SIGNATURE="$sig" HYPR_VALUES="$HYPR_VALUES" \
             QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software \
             timeout -k 5 40 "$QS_BIN" -p "$H" >"$SANDBOX/qs.out" 2>&1 &

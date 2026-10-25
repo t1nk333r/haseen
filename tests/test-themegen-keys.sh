@@ -27,6 +27,15 @@ QS_BIN=${QS_BIN:-/usr/bin/qs}
 
 sandbox themegen-keys
 
+# Quickshell's IPC socket lives under XDG_RUNTIME_DIR. Inside the sandbox a
+# deep repo path (a worktree, CI) pushes it past the 108-byte sun_path limit
+# and qs cannot start its IPC server, so the harness gets a short one of its
+# own, as test-shell-tokens.sh does.
+RUNTIME="$(mktemp -d "${TMPDIR:-/tmp}/hst.XXXXXX")"
+chmod 700 "$RUNTIME"
+export XDG_RUNTIME_DIR="$RUNTIME"
+trap 'rm -rf "$RUNTIME"' EXIT
+
 # --- the manifest ------------------------------------------------------------------------
 # The plugin requires matugen; a stub that answers with the recorded scheme.
 stub matugen "kind=\$1 mode=dark

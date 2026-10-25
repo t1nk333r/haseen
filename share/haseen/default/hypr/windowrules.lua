@@ -260,8 +260,10 @@ hl.layer_rule({
   no_anim = true,
 })
 
--- Omarchy: the bar stays put, and the OSD and the keyboard panel pop, with no
--- layer animation (apps/omarchy-shell.lua:5,12), on haseen's namespaces.
+-- Omarchy: the bar stays put, and the OSD, haseen's panels and the keyboard
+-- panel pop, with no layer animation (apps/omarchy-shell.lua:5,12), on
+-- haseen's namespaces. The panels fade themselves in QML (plan 115), so the
+-- compositor must not fade them a second time.
 hl.layer_rule({
   name = "haseen_bar_layer",
   match = { namespace = "^haseen-bar$" },
@@ -270,7 +272,7 @@ hl.layer_rule({
 })
 hl.layer_rule({
   name = "haseen_popped_layers",
-  match = { namespace = "^(haseen-osd|omarchy-keyboard-panel)$" },
+  match = { namespace = "^(haseen-osd|haseen-panel|omarchy-keyboard-panel)$" },
   no_anim = true,
   animation = "none",
 })

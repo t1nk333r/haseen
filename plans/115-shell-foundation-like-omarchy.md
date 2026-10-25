@@ -259,8 +259,9 @@ user's `frame.enabled: true` and `frame.radius` win.
   screen's (plan 117).
 - Compositor fade: Omarchy turns off Hyprland's layer animation for its
   keyboard panels (`apps/omarchy-shell.lua:12`); haseen's `haseen-panel`
-  namespace is in `share/haseen/default/hypr/windowrules.lua` (plan 114's
-  path), so it is a follow-up there, not changed here.
+  namespace joins `haseen_popped_layers` in
+  `share/haseen/default/hypr/windowrules.lua` (added in this plan's rebase
+  onto plan 114), so the QML fade is the only one.
 
 ## Coordination with plan 114
 
@@ -344,6 +345,26 @@ Renders and their scripts stay out of the repo (paths in the pull request).
 - Counts: in the pull request description (affected set, lint, docs,
   secrets).
 
+## Rebased onto plans 113 and 114 (2026-10-25)
+
+- `Theme.qml`'s `frameRadius` fallback is `Theme.radius` (this plan), and
+  plan 114 makes `Theme.radius` mirror Hyprland's `decoration:rounding`, so
+  the frame defaults to the windows' radius without a second multiplier
+  (`share/haseen/shell/Haseen/Config.qml:40-43`).
+- `current/theme/rounding.lua` stays retired (plan 114): `haseen theme set`
+  writes neither it nor a frame-derived radius. `test-theme-haseen.sh` keeps
+  114's assertions (`rounding = 4,` in the theme's `hyprland.lua`, no
+  `rounding.lua`) beside this plan's `selection` (`#383838`, the 18 % fill;
+  plan 114's readable orange `shell_selection` is no longer the shell's
+  `selection` token).
+- The `haseen-panel` namespace joins `haseen_popped_layers` in
+  `share/haseen/default/hypr/windowrules.lua`, closing this plan's follow-up:
+  the QML fade is the only one.
+- `tests/test-themegen-keys.sh` puts its `XDG_RUNTIME_DIR` in a short
+  `mktemp` dir: Quickshell's IPC socket under a deep worktree path passes the
+  108-byte `sun_path` limit (the suite failed with
+  `QLocalSocket::ServerNotFoundError`; the same suite passes at a short path).
+
 ## Rejected options
 
 - **Render a real `shell.toml` and parse TOML in the shell**, as Omarchy does.
@@ -366,8 +387,6 @@ Renders and their scripts stay out of the repo (paths in the pull request).
 
 ## Follow-ups
 
-- Plan 114 or later: add `haseen-panel` to the no-animation layer rule so the
-  QML fade is the only one, as Omarchy's keyboard panels.
 - Plan 116: the bar's size (`Theme.barMetrics`), layout and hairline.
 - Plan 117: panel contents on the new controls (`PanelButton`, `PanelSwitch`,
   `CursorSurface`, `PanelSectionHeader`, `PanelSeparator`), notifications,
