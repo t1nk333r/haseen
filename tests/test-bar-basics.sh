@@ -77,6 +77,8 @@ assert_eq "the panel shows outside text as plain text" "2 2" \
 up="$(cat "$PLUGINS/haseen.updates/Widget.qml" "$PLUGINS/haseen.updates/Panel.qml")"
 assert_contains "the updater runs through Apps.launch" "$up" 'Apps.launch([root.binDir + "/haseen-update"])'
 assert_contains "the count comes from haseen update check" "$up" '"/haseen-update-check"'
+assert_contains "haseen.updates explains itself on hover" "$up" "barTooltip"
+assert_contains "the bar shows a native widget's tooltip" "$(cat "$SHELL_DIR/BarSlot.qml")" $'Compat.Tooltip {\n        target: hover.hovered'
 assert_eq "haseen.updates has no command setting" "false" "$(jq '.settings | has("onClick")' "$PLUGINS/haseen.updates/manifest.json")"
 assert_eq "the nook is no second drawer: no window of its own" "" \
     "$(grep -nE 'PanelWindow|PopupWindow|FloatingWindow|WlrLayershell|Repeater' "$PLUGINS/haseen.nook"/*.qml || true)"

@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Haseen
+import qs.Compat as Compat
 
 // One bar widget on one bar (plan 112): its plugin slot, its hover
 // highlight, and what a press on it can start. Each bar keeps one of these
@@ -83,6 +84,15 @@ PluginSlot {
     // HoverHandler there takes the hover from the widget's own MouseArea.
     HoverHandler {
         id: hover
+    }
+
+    // A widget of haseen's own asks for Omarchy's hover tooltip by setting
+    // `barTooltip` (plan 119); adapted widgets keep their own via the compat
+    // host. Same window, delay and placement as the adapted ones.
+    readonly property string tooltipText: item && typeof item.barTooltip === "string" ? item.barTooltip : ""
+    Compat.Tooltip {
+        target: hover.hovered && slot.tooltipText !== "" ? slot : null
+        text: slot.tooltipText
     }
 
     Rectangle {
