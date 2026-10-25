@@ -61,6 +61,25 @@
   `mise` config-trust error in this shell, `test-plymouth` and
   `test-nvim-theme` need a short path and 17 nvim specs.
 
+## Live check on IO (2026-10-25)
+
+Deployed with the cherry-picked commit in `~/.cache/haseen-deploy-115`
+(`./install.sh --yes`, `systemctl --user daemon-reload`, restart of
+`haseen-shell.service`), then read back with `grim`:
+
+- the bar is one strip at Omarchy's 26 px with no inner hairline;
+- `haseen shell ipc launcher toggle` shows Omarchy's menu: the dimmed
+  heading-size query line, the prefix line, and 58 px rows with icons, a
+  Medium heading label, a body-small detail and the `[launcher]` selected
+  fill and border on the cursor row;
+- `haseen notification send` draws the card with the 2 px `[notifications]`
+  border and 12/10 px padding.
+
+The lock's `LockView` is instantiated offscreen by `tests/test-lock.sh`'s
+quickshell harness (it finds the fingerprint hint and toggles its
+visibility), so its bindings resolve; the lock itself is an owner step —
+locking IO over SSH would need the owner's password to unlock.
+
 ## Rejected options
 
 - **Adopting Omarchy's panel bodies wholesale** (its audio panel is 1249 lines
