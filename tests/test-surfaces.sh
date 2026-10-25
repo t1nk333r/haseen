@@ -126,6 +126,11 @@ assert_eq "ten rows at rest, the menu's root list" "10" \
 assert_eq "the launcher's width is the menu's 300" "300" \
     "$(jq -r '.settings.width.default' "$PLUGINS/haseen.launcher/manifest.json")"
 
+# Neither launcher dims the desktop behind it (owner, 2026-10-25).
+assert_not_contains "the menu paints no scrim behind its card" "$(cat "$menu")" "color: root.scrim"
+assert_not_contains "and keeps no scrim token" "$(cat "$PLUGINS/haseen.menu/MenuStyle.js")" "SCRIM"
+assert_not_contains "the launcher paints no scrim either" "$(cat "$launcher")" "scrim"
+
 
 # --- default shell.json starts the services ----------------------------------
 for id in "${SERVICES[@]}"; do
