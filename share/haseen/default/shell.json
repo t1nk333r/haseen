@@ -22,7 +22,7 @@
     "overflow": [],
     "pinned": []
   },
-  "frame": { "enabled": true, "thickness": 6 },
+  "frame": { "enabled": false, "thickness": 6 },
   "branding": { "mark": "kufic" },
   "plugins": {
     "haseen.weather": { "enabled": false, "settings": { "location": "" } },

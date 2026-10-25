@@ -33,10 +33,14 @@ Singleton {
     readonly property var barOverflow: _ids(bar.overflow)
     readonly property var barPinned: _ids(bar.pinned)
     readonly property var frame: _object(merged.frame)
-    readonly property bool frameEnabled: frame.enabled !== false
+    // The screen frame (plan 015) is off unless shell.json turns it on: no
+    // frame by default, as in Omarchy (owner, 2026-10-25, plan 115).
+    readonly property bool frameEnabled: frame.enabled === true
     readonly property int frameThickness: _int(frame.thickness, 1, 64, 6)
-    // Inner corner radius: twice the theme radius unless frame.radius is set.
-    readonly property int frameRadius: _int(frame.radius, 0, 64, Theme.radius * 2)
+    // Inner corner radius: the windows' (Theme.radius, Hyprland's
+    // decoration:rounding, plan 115) unless frame.radius is set, so an
+    // enabled frame rounds like the windows inside it.
+    readonly property int frameRadius: _int(frame.radius, 0, 64, Theme.radius)
     readonly property var services: _ids(merged.services)
 
     function _int(v: var, min: int, max: int, fallback: int): int {

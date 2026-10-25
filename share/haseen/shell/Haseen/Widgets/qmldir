@@ -5,3 +5,9 @@ PanelSurface 1.0 PanelSurface.qml
 BrandImage 1.0 BrandImage.qml
 Pill 1.0 Pill.qml
 TrackBar 1.0 TrackBar.qml
+BorderRing 1.0 BorderRing.qml
+PanelButton 1.0 PanelButton.qml
+PanelSwitch 1.0 PanelSwitch.qml
+PanelSectionHeader 1.0 PanelSectionHeader.qml
+PanelSeparator 1.0 PanelSeparator.qml
+CursorSurface 1.0 CursorSurface.qml

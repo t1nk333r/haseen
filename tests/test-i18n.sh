@@ -243,7 +243,7 @@ ShellRoot {
             asArg: [1].map(n => (I18n.tr)("Done"))[0],
             compat: [Commons.I18n.t("common.search", "Search!"), Commons.I18n.t("nope.key", "Fallback"), Commons.I18n.tn("x.files", 3), Commons.I18n.rightToLeft, Commons.I18n.formatNumber(13.14, 1), Commons.I18n.language].join("|"),
             plugin: [strings.t("panel.title"), strings.t("panel.only"), strings.t("panel.none", "fb")].join("|"),
-            track: [Math.round(fill.x), Math.round(fill.width), Math.round(knob.x - (track.width - knob.width) * 0.75)].join(" "),
+            track: [Math.round(fill.x), Math.round(fill.width), Math.round(knob.x - (track.width * 0.75 - knob.width / 2))].join(" "),
             menuRow: [items.apps.label, items.apps.description, items.apps.searchTerms.join(","), items.learn.label, Menu.matchesQuery(items.apps, "apps")].join("|")
         });
     }

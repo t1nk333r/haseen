@@ -166,9 +166,18 @@ missing piece, `haseen shell ipc shell reload` checks again.
   slot back (the battery widget does this without a battery).
 - **Theme tokens only**, never colour literals like `"#ff0000"`:
   `Theme.background surface surfaceAlt foreground muted accent accentFg urgent
-  warning success border selection` (colours), `Theme.fontFamily fontMono`
-  (fonts), `Theme.fontSize radius gap borderWidth` (numbers), `Theme.mode`
-  (`"dark"`/`"light"`). They follow `haseen theme set` live.
+  warning success border selection separator` (colours), `Theme.fontFamily
+  fontMono` (fonts: both the user's monospace, a Nerd Font, so icons and text
+  share them), `Theme.fontSize radius gap borderWidth gapsOut` (numbers),
+  `Theme.mode` (`"dark"`/`"light"`). They follow `haseen theme set` live, and
+  `radius`/`gapsOut` follow Hyprland's rounding and half its gaps_out.
+  Omarchy's own vocabulary is there too: `Theme.font.caption … displayLarge`,
+  `Theme.spacing.md … popupPadding`, `Theme.space(px)`, the state fills and
+  borders (`Theme.hoverFill`, `Theme.selectedFillFor(fg, accent)`, …), the
+  surfaces (`Theme.popups.background`, `Theme.menu.selectedBackground`, …) and
+  `Theme.duration(ms)`. `qs.Haseen.Widgets` has Omarchy's controls on them:
+  `PanelButton`, `PanelSwitch`, `PanelSectionHeader`, `PanelSeparator`,
+  `CursorSurface`, `Pill`, `TrackBar` (architecture §7).
 - **Panels** size themselves: give the root `implicitWidth`/`implicitHeight`.
   The host draws the card, closes it on Escape or an outside click, and
   destroys the panel when it closes, so state that must survive goes in a file

@@ -6,8 +6,8 @@ import qs.Haseen
 import qs.Haseen.Widgets
 import "PanelPlacement.js" as Placement
 
-// The popup window for one open panel plugin: a PanelSurface on the bar
-// edge, centred under (or beside) the bar widget whose click opened it, or
+// The popup window for one open panel plugin: a PanelSurface (Omarchy's
+// panel card, plan 115) on the bar edge, centred under (or beside) the bar widget whose click opened it, or
 // centred on the bar edge when a key or the CLI opened it, or centred on the
 // screen when the panel's `placement` setting is "center" (PanelPlacement.js). Escape or a click outside closes it.
 //
@@ -24,7 +24,9 @@ PanelWindow {
     // The bar press that opened the panel (PanelPlacement.opener), or null.
     property var opener: null
     readonly property bool overlay: Plugins.settingsFor(pluginId).placement === "overlay"
-    readonly property var placement: Placement.place(Config.barPosition, opener, implicitWidth, implicitHeight, Theme.gap, Plugins.settingsFor(pluginId).placement)
+    // Omarchy's panels sit gapsOut off the bar and off the screen's edges
+    // (KeyboardPanel.qml:44,51): half of Hyprland's gaps_out (Theme.gapsOut).
+    readonly property var placement: Placement.place(Config.barPosition, opener, implicitWidth, implicitHeight, Theme.gapsOut, Plugins.settingsFor(pluginId).placement)
 
     signal closeRequested
 
@@ -91,6 +93,19 @@ PanelWindow {
         id: surface
 
         focus: true
+        // Omarchy's panel card fades in over 140 ms (KeyboardPanel.qml:400-403),
+        // none while Hyprland's animations are off. The popup is destroyed on
+        // close, so there is no fade out. An overlay panel draws its own card.
+        opacity: popup.overlay ? 1 : 0
+        Component.onCompleted: if (!popup.overlay) opacity = 1
+
+        Behavior on opacity {
+            enabled: !popup.overlay
+            NumberAnimation {
+                duration: Theme.duration(140)
+                easing.type: Easing.OutCubic
+            }
+        }
         // Arabic and any right-to-left language mirror a native panel's
         // layout (plan 109): rows run from the right, chevrons and sliders
         // follow. A panel keeps unmirrored what must not flip (media
@@ -136,8 +151,8 @@ PanelWindow {
     }
     Binding {
         target: surface
-        property: "border.width"
-        value: 0
+        property: "bordered"
+        value: false
         when: popup.overlay
     }
 }
