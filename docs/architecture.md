@@ -379,10 +379,12 @@ click), and the widget moves:
 - letting go saves it with `haseen bar move <id> <left|center|right|overflow>
   [--before <id>] [--pin]` (`Overflow.move` holds the rule; a drop where it
   already was writes nothing). Nothing ever lands in front of the tray, and
-  the tray never moves. Letting go anywhere else, Escape, or a grab the
-  compositor takes away puts it back with nothing saved. For Escape the bar
-  takes the keyboard while a drag lasts, and only then; a drag that hears
-  nothing for 15 s ends;
+  the tray never moves. Letting go anywhere else, Escape in the overflow
+  panel, or a grab the compositor takes away puts it back with nothing saved.
+  The bar never takes the keyboard: exclusive focus requested mid-drag made
+  Hyprland drop the pointer grab the moment the ghost appeared (plan 120), so
+  Escape cancels only from the overflow panel, which already has it; a drag
+  that hears nothing for 15 s also ends;
 - the overflow fit waits while a widget is dragged.
 
 A widget keeps a drag of its own: a `MouseArea` with `drag.target` or

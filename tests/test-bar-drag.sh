@@ -127,9 +127,9 @@ fi
 
 # --- Bar.qml's window: read from the source -----------------------------------
 bar="$(cat "$SHELL_DIR/Bar.qml")"
-assert_contains "the bar takes the keyboard only while a drag lasts" "$bar" \
-    "WlrLayershell.keyboardFocus: strip.dragging ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None"
-assert_contains "Escape during a drag cancels it" "$bar" $'enabled: strip.dragging\n        onActivated: bar.cancelDrag()'
+assert_contains "the bar never takes the keyboard: a drag keeps its pointer grab" "$bar" \
+    "WlrLayershell.keyboardFocus: WlrKeyboardFocus.None"
+assert_not_contains "no keyboard focus is asked for mid-drag" "$bar" "WlrKeyboardFocus.Exclusive"
 assert_contains "the drag's window exists only while a drag lasts" "$bar" $'active: strip.dragging && !bar.hidden\n\n        BarDragOverlay {'
 assert_contains "the bar's contents are the strip under test here" "$bar" "BarStrip {"
 assert_contains "the bar's cross-axis size comes from the theme" "$(cat "$SHELL_DIR/Haseen/Config.qml")" "Theme.barMetrics.sizeHorizontal"
