@@ -55,7 +55,10 @@ capture haseen theme set haseen
 assert_status "set haseen" 0 "$STATUS"
 assert_eq "theme.name" "haseen" "$(cat "$CUR/theme.name")"
 assert_eq "the shell selection stays readable" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
-assert_contains "the windows round like the frame: twice haseen's radius" "$(cat "$CUR/theme/rounding.lua")" "rounding = 12 }"
+# The windows round at the theme's own corners, 4 (UPSTREAM.md), as an
+# Omarchy theme's do; the shell frame's radius no longer reaches them (plan 114).
+assert_contains "the windows round at haseen's own corners" "$(cat "$CUR/theme/hyprland.lua")" "rounding = 4,"
+assert_eq "no rounding.lua is written" "no" "$([[ -e $CUR/theme/rounding.lua ]] && echo yes || echo no)"
 
 # --- the border wipe (plan 069) ------------------------------------------------
 # hyprland.lua reads border_wipe and border_wipe_seconds from the colors.toml
@@ -67,8 +70,8 @@ wipe_hl() { # — what the installed hyprland.lua asks of Hyprland
 local out = {}
 hl = {
   animation = function(t)
-    if t.leaf == "borderangle" then
-      out[#out + 1] = ("borderangle enabled=%s speed=%s style=%s"):format(tostring(t.enabled), tostring(t.speed), tostring(t.style))
+    if t.leaf == "borderangle" or t.leaf == "border" then
+      out[#out + 1] = ("%s enabled=%s speed=%s style=%s"):format(t.leaf, tostring(t.enabled), tostring(t.speed), tostring(t.style))
     end
   end,
   config = function(t)
@@ -93,6 +96,9 @@ if command -v lua >/dev/null; then
     assert_contains "colors.toml declares the owner's pace" "$(cat "$CUR/theme/colors.toml")" "border_wipe_seconds = 36"
     capture wipe_hl
     assert_contains "36 s a turn: borderangle stays off, the sidecar turns it" "$OUTPUT" "borderangle enabled=false speed=nil"
+    # Each sidecar frame is a new border; Hyprland 0.56.2 restarts the border
+    # fade on every one (Window.cpp:1901-1908), so the fade goes off.
+    assert_contains "36 s a turn: the border fade is off" "$OUTPUT" "border enabled=false"
     assert_contains "the gradient is colors.toml's" "$OUTPUT" \
         "active_border rgba(F25623ff) rgba(F25623cc) rgba(F2562311) rgba(F25623cc)"
     assert_contains "and the group border's too" "$OUTPUT" \
@@ -100,12 +106,14 @@ if command -v lua >/dev/null; then
     wipe_toml 's/^border_wipe_seconds = .*/border_wipe_seconds = 10/'
     capture wipe_hl
     assert_contains "10 s a turn: Hyprland's own loop, at its slowest" "$OUTPUT" "borderangle enabled=true speed=100 style=loop"
+    assert_eq "10 s a turn: no border leaf of its own" "" "$(grep '^border ' <<<"$OUTPUT")"
     wipe_toml 's/^border_wipe_seconds = .*/border_wipe_seconds = 4/'
     capture wipe_hl
     assert_contains "4 s a turn: speed 40" "$OUTPUT" "borderangle enabled=true speed=40 style=loop"
     wipe_toml '/^border_wipe/d'
     capture wipe_hl
     assert_contains "no declaration: no turning" "$OUTPUT" "borderangle enabled=false"
+    assert_eq "no declaration: the border fade is looknfeel's" "" "$(grep '^border ' <<<"$OUTPUT")"
     assert_contains "and the accent stands still" "$OUTPUT" "active_border rgba(F25623ff)"$'\n'
 else
     echo "  skip: lua missing; the haseen theme's border wipe is not exercised" >&2

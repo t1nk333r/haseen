@@ -14,5 +14,5 @@ hl.config({
   },
 })
 
--- Omarchy also raised terminal opacity here through its o.window helper and
--- "terminal" tag; haseen has neither and keeps terminals opaque, so it is dropped.
+-- Kanagawa backdrop is too strong for default opacity.
+haseen.transparent_window({ tag = "terminal" }, "0.99 0.985")

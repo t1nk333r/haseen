@@ -140,8 +140,8 @@ settings_rows() {
     _settings_row frame.thickness shell.json "$shell_json" \
         "$(_settings_json .frame.thickness 6)" "haseen config edit $shell_json" none
     # Unset means twice the theme's radius (qs.Haseen Config.frameRadius). The
-    # frame and the menu follow an edit at once, the windows from the next
-    # `haseen theme set` (plan 046).
+    # frame and the menu follow an edit at once; window corners are the
+    # theme's own Hyprland rounding since plan 114, not this.
     _settings_row frame.radius shell.json "$shell_json" \
         "$(_settings_json .frame.radius "(theme radius x2)")" "haseen config edit $shell_json" none
 

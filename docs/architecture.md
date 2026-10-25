@@ -286,13 +286,14 @@ shell's own helpers: `qs ipc`, `wl-copy`, `haseen` CLI writes, probes.
 ```
 
 `share/haseen/default/shell.json` holds the full default. `frame.radius` defaults
-to `Theme.radius * 2`. Windows and the menu round to the same radius (plan 046).
-The menu binds `Config.frameRadius`, the frame's own rule, so it follows a
-`frame.radius` edit at once. `haseen theme set` resolves the same rule and
-writes it as Hyprland's `decoration.rounding` in `current/theme/rounding.lua`,
-which `init.lua` loads with the defaults: toggles, hyprmod and the user's files
-still override it, and the theme's own `rounding` is dropped. A change to
-`frame.radius` reaches the windows at the next `haseen theme set`. Double-clicking the bar toggles `bar.transparent`: on
+to `Theme.radius * 2`. The menu binds `Config.frameRadius`, the frame's own
+rule, so it follows a `frame.radius` edit at once. Window corners are no longer
+the frame's (plan 114, reversing plan 046's direction): Hyprland's
+`decoration.rounding` is the theme's own, as in Omarchy, where `looknfeel.lua`
+leaves it at 0 and a theme's `hyprland.lua` may set it (`solitude` 6,
+`haseen` 4); the shell reads Hyprland's value back, as Omarchy's
+`Style.cornerRadius` does. `haseen theme set` no longer writes
+`current/theme/rounding.lua`. Double-clicking the bar toggles `bar.transparent`: on
 empty space and, as in Omarchy's bar, on a widget too (a passive `PointHandler`
 over the bar, so the widget still gets both clicks), but not on the overflow
 chevron or in arrange mode. The text colour then comes from
@@ -713,7 +714,7 @@ locale (`LANG`), other apps and terminal output are left alone, and
 - **haseen.nvim:** haseen's Neovim config is the owner's plain lazy.nvim config, fetched rather than shipped. `haseen setup nvim` (`bin/haseen-setup-nvim`) clones it at a pinned commit (`NVIM_REPO_URL`, `NVIM_COMMIT`) into `~/.config/nvim` and links `share/haseen/default/nvim/haseen-colorscheme.lua` into its `lua/plugins/`. That bridge disables the theme spec's `LazyVim/LazyVim` entry and applies its colourscheme on `User LazyDone`; its presence is what makes `haseen theme set` link a config that is not LazyVim. A first install runs it with `--if-absent`; an existing config is replaced only with `--replace`, after it moves to `~/.config/nvim.bak-<timestamp>` (plan 065).
 - **Shell tokens:** `current/theme/shell.json` uses these keys:
   `mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth`.
-  The window corner radius is not a token: it is the frame's inner radius (`frame.radius`, else twice `radius`), which the menu reads from `Config.frameRadius` and `haseen theme set` gives Hyprland as `decoration.rounding`, so the menu rounds like the windows, as Omarchy's does (plans 068, 046).
+  The window corner radius is not a token: it is the theme's own Hyprland `decoration.rounding` (0 unless its `hyprland.lua` sets one), which the shell reads back from Hyprland, as Omarchy's `Style.cornerRadius` mirrors it (plan 114; plan 046 had it the other way round, from the frame's radius).
   `Theme.qml` falls back to built-in values for any key that is missing; they are the `haseen` theme's rendered `shell.json`, so a missing file still looks like the default.
 - **Hooks:** `~/.config/haseen/hooks/<event>` and `<event>.d/*`, run by `haseen hook run <event> [args]`. Events: `theme-set`, `post-update`, `post-boot`, `layer-applied`.
 - **Generated themes:** two commands turn an image into an ordinary user theme (`~/.config/haseen/themes/<name>/colors.toml` plus the image as its background), on demand only. `haseen theme wallpaper` uses haseen's own extractor (`haseen-palette`, plan 034). `haseen theme generate` runs matugen (Material You, an optional package called as a program with `--json hex --dry-run` and haseen's `share/haseen/layers/theme/matugen.toml`). It maps the Material roles onto `colors.toml` keys and takes the ANSI hues from matugen custom colours. Foreground, accent and selection are held to plan 064's contrast floors, and a theme of the user's own is never overwritten. Its panel `haseen.themegen` (image strip, scheme, dark/light, swatches and a mock desktop, Save/Apply; menu Style › Theme Generator) is off by default (plan 067).
