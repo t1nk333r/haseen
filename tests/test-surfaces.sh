@@ -88,8 +88,27 @@ svc="$PLUGINS/haseen.notifications/Service.qml"
 assert_contains "notifications.clear()" "$(cat "$svc")" "function clear(): void"
 assert_contains "notifications.toggleDnd()" "$(cat "$svc")" "function toggleDnd(): void"
 assert_contains "lock.lock()" "$(cat "$PLUGINS/haseen.lock/Service.qml")" "function lock(): void"
+card="$PLUGINS/haseen.notifications/NotificationCard.qml"
+assert_contains "the notification card is Omarchy's [notifications] surface" "$(cat "$card")" "Theme.notifications.background"
+assert_contains "and uses its 12 px side padding" "$(cat "$card")" "Theme.space(12)"
+osd="$PLUGINS/haseen.osd/CardWindow.qml"
+assert_contains "the OSD sits 67 px above the screen edge" "$(cat "$osd")" "Theme.space(67)"
+assert_contains "the OSD card is the [popups] surface" "$(cat "$osd")" "Theme.popups.border"
 assert_contains "launcher is a panel (toggle via the panel host)" \
     "$(jq -r '.kinds | join(" ")' "$PLUGINS/haseen.launcher/manifest.json")" "panel"
+# Plan 117: the popups that are not panel cards follow their own Omarchy
+# surface group rather than Theme.surface.
+launcher="$PLUGINS/haseen.launcher/Panel.qml"
+assert_contains "the launcher's rows are Omarchy's menu rows" "$(cat "$launcher")" "Theme.launcher.selectedBackground"
+assert_contains "with the selected border reserved on every row" "$(cat "$launcher")" "Theme.launcher.selectedBorderSpec"
+assert_contains "and a heading-size query line, not a boxed input" "$(cat "$launcher")" "font.pixelSize: Theme.font.heading"
+assert_not_contains "the launcher no longer paints its old input box" "$(cat "$launcher")" "height: Theme.fontSize * 2.8"
+lockview="$PLUGINS/haseen.lock/LockView.qml"
+assert_contains "the lock field is Omarchy's 381 x 67" "$(cat "$lockview")" "readonly property int fieldWidth: 381"
+assert_contains "with its 3 px outline" "$(cat "$lockview")" "readonly property int outlineThickness: 3"
+assert_contains "in [lock]'s active border colour" "$(cat "$lockview")" "Theme.lock.borderActive"
+assert_contains "over the [lock] fill" "$(cat "$lockview")" "Theme.lock.background"
+
 
 # --- default shell.json starts the services ----------------------------------
 for id in "${SERVICES[@]}"; do

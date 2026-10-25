@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Haseen
+import qs.Haseen.Widgets
 import "Model.js" as Model
 
 // Gestures panel: what each swipe and pinch does, the workspace swipe's reach
@@ -32,12 +33,10 @@ Column {
         pluginId: root.pluginId
     }
 
-    component SectionLabel: Text {
+    // Omarchy's panel section caption, Ui/PanelSectionHeader.qml (plan 117):
+    // bold, caption size, the foreground darkened 1.4 times.
+    component SectionLabel: PanelSectionHeader {
         width: root.width
-        color: Theme.muted
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
-        font.bold: true
     }
 
     component Note: Text {

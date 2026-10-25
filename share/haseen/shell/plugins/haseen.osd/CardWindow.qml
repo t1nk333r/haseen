@@ -21,7 +21,8 @@ PanelWindow {
 
     screen: service ? service.focusedScreen() : null
     anchors.bottom: true
-    margins.bottom: Theme.gap * 12
+    // Omarchy's OSD: 67 px above the screen edge (Style.space(67)).
+    margins.bottom: Theme.space(67)
     exclusionMode: ExclusionMode.Ignore
     implicitWidth: cardBox.implicitWidth
     implicitHeight: cardBox.implicitHeight
@@ -34,12 +35,15 @@ PanelWindow {
     Rectangle {
         id: cardBox
 
-        implicitWidth: row.implicitWidth + Theme.gap * 4
-        implicitHeight: row.implicitHeight + Theme.gap * 3
-        color: Theme.surface
+        // Omarchy's card: 16 px padding and the display-large line height,
+        // the [popups] surface and its 2 px border.
+        readonly property int padding: Theme.space(16)
+        implicitWidth: row.implicitWidth + padding * 2
+        implicitHeight: Math.max(row.implicitHeight, Theme.font.displayLarge) + padding * 2
+        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.97)
         radius: Theme.radius
-        border.color: Theme.border
-        border.width: Theme.borderWidth
+        border.color: Theme.popups.border
+        border.width: Math.max(1, Theme.space(2))
         // Its own layer surface: in a right-to-left language the row runs
         // from the right and the level fills from the right (plan 109).
         LayoutMirroring.enabled: I18n.rightToLeft

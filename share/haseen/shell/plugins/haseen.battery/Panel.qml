@@ -133,12 +133,10 @@ Column {
         }
     }
 
-    component SectionLabel: Text {
+    // Omarchy's panel section caption, Ui/PanelSectionHeader.qml (plan 117):
+    // bold, caption size, the foreground darkened 1.4 times.
+    component SectionLabel: PanelSectionHeader {
         width: root.width
-        topPadding: Theme.gap
-        color: Theme.subtle(Theme.surface)
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
     }
 
     Item {

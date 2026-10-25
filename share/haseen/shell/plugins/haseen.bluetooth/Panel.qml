@@ -145,11 +145,10 @@ Column {
         font.pixelSize: Theme.fontSize
     }
 
-    component SectionLabel: Text {
+    // Omarchy's panel section caption, Ui/PanelSectionHeader.qml (plan 117):
+    // bold, caption size, the foreground darkened 1.4 times.
+    component SectionLabel: PanelSectionHeader {
         width: root.width
-        color: Theme.muted
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
     }
 
     component DeviceRow: Item {
@@ -227,6 +226,16 @@ Column {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
         }
+    }
+
+    PanelSeparator {
+        visible: root.on && root.paired.length > 0
+        foreground: Theme.foreground
+    }
+
+    PanelSeparator {
+        visible: root.on
+        foreground: Theme.foreground
     }
 
     SectionLabel {

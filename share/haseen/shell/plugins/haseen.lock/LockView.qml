@@ -2,17 +2,22 @@ import QtQuick
 import Quickshell
 import qs.Haseen
 
-// The lock screen itself: clock, date, password field and a status line.
+// The lock screen itself: clock, date, password field and a preview banner.
 // Shared by the session-lock surfaces and the preview window. When the
 // fingerprint reader is armed, a fingerprint glyph sits inside the field's
 // right edge, as in Omarchy's lock (shell/plugins/lock/LockView.qml, MIT,
 // Copyright (c) David Heinemeier Hansson) and hyprlock.
+//
+// The field is Omarchy's (LockView.qml:23-30,120-218, plan 117): 381 x 67 px,
+// a 3 px outline in `[lock]`'s border-active / border / border-error colour,
+// the `[lock]` fill, a heading*1.125 label, and password dots at heading*1.33
+// with heading*0.19 letter spacing, shrunk to fit rather than clipped.
 Rectangle {
     id: root
 
     property bool busy: false
     // message: the failure in English (a change clears the field);
-    // messageText: the same, translated, as the status line shows it.
+    // messageText: the same, translated, as the field shows it.
     property string message: ""
     property string messageText: message
     property bool preview: false
@@ -21,9 +26,25 @@ Rectangle {
     property bool fingerprint: false
     property bool fingerprintError: false
 
+    readonly property int fieldWidth: 381
+    readonly property int fieldHeight: 67
+    readonly property int outlineThickness: 3
+    readonly property int fieldFontSize: Math.round(Theme.font.heading * 1.125)
+    readonly property int passwordDotFontSize: Math.round(Theme.font.heading * 1.33)
+    readonly property int passwordDotLetterSpacing: Math.round(Theme.font.heading * 0.19)
+    // Room inside the outline between it and the field's text.
+    readonly property int fieldInset: 18
+    readonly property bool errorState: !root.busy && root.message !== ""
+    readonly property color fieldBorder: root.errorState ? Theme.lock.borderError : input.activeFocus ? Theme.lock.borderActive : Theme.lock.border
+    readonly property string fieldText: root.busy ? I18n.tr("Checking…") : root.errorState ? root.messageText : I18n.tr("Password")
+    // Shrink the dots to fit once the password outgrows the field, so every
+    // keystroke stays visible — otherwise long passwords clip with no
+    // feedback (LockView.qml:29-31,153-154).
+    readonly property real passwordDotScale: dotMetrics.advanceWidth > 0 ? Math.min(1, (input.width - 4) / dotMetrics.advanceWidth) : 1
+
     // Room kept clear on both sides for the hint, so the centred dots stay
     // centred and never run under it.
-    readonly property real fingerprintReserve: fingerprint ? Math.ceil(fingerprintHint.implicitWidth + Theme.gap) : 0
+    readonly property real fingerprintReserve: fingerprint ? Math.ceil(fingerprintHint.implicitWidth + Theme.space(12)) : 0
 
     signal submitted(string password)
     signal cancelled
@@ -62,6 +83,17 @@ Rectangle {
         enabled: root.visible
     }
 
+    // Measures the masked password at full size; passwordDotScale compares
+    // this against the field width to decide how far the dots must shrink.
+    TextMetrics {
+        id: dotMetrics
+
+        font.family: Theme.fontFamily
+        font.pixelSize: root.passwordDotFontSize
+        font.letterSpacing: root.passwordDotLetterSpacing
+        text: "●".repeat(input.text.length)
+    }
+
     Column {
         anchors.centerIn: parent
         spacing: Theme.gap * 2
@@ -69,7 +101,7 @@ Rectangle {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatTime(clock.date, "HH:mm")
-            color: Theme.foreground
+            color: Theme.lock.text
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize * 6
         }
@@ -79,36 +111,43 @@ Rectangle {
             // The format is a catalog string, so a language can use its own
             // comma; the names come from the interface language (plan 109).
             text: I18n.formatDate(clock.date, I18n.tr("dddd, d MMMM"))
-            color: Theme.muted
+            color: Theme.lock.placeholder
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize + 2
         }
 
         Rectangle {
+            id: field
+
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Theme.fontSize * 22
-            height: Theme.fontSize * 3
+            width: root.fieldWidth
+            height: root.fieldHeight
             radius: Theme.radius
-            color: Theme.surface
-            border.color: input.activeFocus ? Theme.accent : Theme.border
-            border.width: Theme.borderWidth
+            color: Theme.lock.background
+            border.color: root.fieldBorder
+            border.width: root.outlineThickness
+            clip: true
 
             TextInput {
                 id: input
 
                 anchors.fill: parent
-                anchors.leftMargin: Theme.gap * 2 + root.fingerprintReserve
-                anchors.rightMargin: Theme.gap * 2 + root.fingerprintReserve
+                anchors.leftMargin: field.border.width + root.fieldInset + root.fingerprintReserve
+                anchors.rightMargin: field.border.width + root.fieldInset + root.fingerprintReserve
                 verticalAlignment: TextInput.AlignVCenter
                 horizontalAlignment: TextInput.AlignHCenter
                 echoMode: TextInput.Password
-                passwordCharacter: "\u2022"
+                passwordCharacter: "\u25CF"
+                passwordMaskDelay: 0
                 readOnly: root.busy
                 focus: true
-                color: Theme.foreground
-                selectionColor: Theme.selection
+                clip: true
+                color: Theme.lock.text
+                selectionColor: Theme.lock.selection
+                selectedTextColor: Theme.lock.text
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
+                font.pixelSize: text.length > 0 ? Math.max(1, Math.floor(root.passwordDotFontSize * root.passwordDotScale)) : root.fieldFontSize
+                font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing * root.passwordDotScale : 0
                 onAccepted: root.submitted(text)
                 // Keys handles a key before the field does: a repeat dropped
                 // here never types, submits or clears anything.
@@ -125,12 +164,16 @@ Rectangle {
             }
 
             Text {
-                anchors.centerIn: parent
-                visible: input.text === "" && !root.busy
-                text: I18n.tr("Password")
-                color: Theme.muted
+                anchors.fill: input
+                visible: input.text === ""
+                text: root.fieldText
+                color: root.busy ? Theme.lock.text : root.errorState ? Theme.lock.textError : Theme.lock.placeholder
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
+                font.pixelSize: root.fieldFontSize
+                font.italic: root.errorState
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
             }
 
             Text {
@@ -138,24 +181,15 @@ Rectangle {
 
                 objectName: "fingerprintHint"
                 anchors.right: parent.right
-                anchors.rightMargin: Theme.gap * 2
+                anchors.rightMargin: field.border.width + root.fieldInset
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.fingerprint
                 // nf-md-fingerprint
                 text: "󰈷"
-                color: root.fingerprintError ? Theme.urgent : Theme.muted
+                color: root.fingerprintError ? Theme.urgent : Theme.lock.placeholder
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize + 6
+                font.pixelSize: Math.round(root.fieldFontSize * 1.1)
             }
-        }
-
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: root.busy ? I18n.tr("Checking…") : root.messageText
-            visible: text !== ""
-            color: root.busy ? Theme.muted : Theme.urgent
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
         }
 
         Text {

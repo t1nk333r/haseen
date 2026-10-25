@@ -172,13 +172,4 @@ PanelWindow {
         }
     }
 
-    // Hairline on the inner edge, only when no frame continues the bar.
-    Rectangle {
-        visible: !Config.frameEnabled && !bar.transparent && !bar.hidden
-        x: bar.position === "left" ? parent.width - width : 0
-        y: bar.position === "top" ? parent.height - height : 0
-        width: bar.vertical ? Theme.borderWidth : parent.width
-        height: bar.vertical ? parent.height : Theme.borderWidth
-        color: Theme.border
-    }
 }

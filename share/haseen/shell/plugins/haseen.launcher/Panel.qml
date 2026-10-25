@@ -2,6 +2,8 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
+import qs.Commons
+import qs.Ui
 import qs.Haseen
 import qs.Haseen.Widgets
 import "Fuzzy.js" as Fuzzy
@@ -13,6 +15,12 @@ import "Fuzzy.js" as Fuzzy
 // launcher opens and destroyed with it, so they cost nothing while closed;
 // their prefixes are listed under the empty input (plan 081).
 // Opened by `haseen shell ipc launcher toggle` (the `launcher` role).
+//
+// Look (plan 117): Omarchy's menu, shell/plugins/menu/Menu.qml:99-110,1199-1330
+// — a plain heading-size query line (the empty one dimmed to 0.58, no input
+// box), rows of max(58 px, body + caption + 2 * row-padding-x) with the
+// `[launcher]` selected fill and selected border over a 36 px icon column,
+// a heading-weight Medium label and a body-small detail line.
 Column {
     id: root
 
@@ -22,13 +30,20 @@ Column {
     property var screen: null
 
     readonly property int maxResults: typeof settings.maxResults === "number" && settings.maxResults >= 1 ? Math.round(settings.maxResults) : 8
-    readonly property int rowHeight: Theme.fontSize * 3
+    // Omarchy's menu rows and header (Menu.qml:101-109): a row that holds a
+    // label and a detail line, and a header tall enough for a heading.
+    readonly property int rowHeight: Math.max(Theme.space(58), Theme.font.body + Theme.font.caption + Theme.spacing.rowPaddingX * 2)
+    readonly property int headerHeight: Math.max(Theme.space(34), Theme.font.title + Theme.spacing.controlPaddingY * 2)
+    readonly property int iconColumn: Theme.space(36)
+    // The selected border's width can change with the theme, so reserve it on
+    // every row: a selected row must not push its label sideways.
+    readonly property real rowReservedBorder: Border.left(Theme.launcher.selectedBorderSpec)
     property var providers: []
     // Subtitles: the foreground at Omarchy's description alpha, raised to read
     // at 3:1 on the panel and on the selection (Theme.subtle). Theme.muted
     // was below 2:1 on the panel and near 1:1 on the selection in most themes.
-    readonly property color subtitleColor: Theme.subtle(Theme.surface)
-    readonly property color selectedSubtitleColor: Theme.subtle(Theme.selection)
+    readonly property color subtitleColor: Theme.subtle(Theme.popups.background)
+    readonly property color selectedSubtitleColor: subtitleColor
     property string query: ""
     // The enabled providers' prefixes, shown under the empty input:
     // "= Calculator    > Clipboard    : Emoji search".
@@ -110,7 +125,7 @@ Column {
     onResultsChanged: list.currentIndex = 0
 
     width: typeof settings.width === "number" && settings.width >= 240 ? settings.width : 520
-    spacing: Theme.gap
+    spacing: Theme.spacing.md
 
     Component.onCompleted: {
         const created = [];
@@ -169,26 +184,34 @@ Column {
         }
     }
 
-    Rectangle {
+    // The query line: Omarchy's menu header is a heading-size line of text,
+    // dimmed to 0.58 while empty (Menu.qml:1153-1168), not a bordered field.
+    Item {
         width: parent.width
-        height: Theme.fontSize * 2.8
-        radius: Theme.radius
-        color: Theme.surfaceAlt
-        border.color: Theme.accent
-        border.width: Theme.borderWidth
+        height: root.headerHeight
+
+        Text {
+            anchors.fill: parent
+            verticalAlignment: Text.AlignVCenter
+            visible: input.text === ""
+            text: I18n.tr("Search applications") + "…"
+            color: Theme.launcher.text
+            opacity: 0.58
+            font.family: Theme.font.menuFamily
+            font.pixelSize: Theme.font.heading
+        }
 
         TextInput {
             id: input
 
             anchors.fill: parent
-            anchors.leftMargin: Theme.gap * 1.5
-            anchors.rightMargin: Theme.gap * 1.5
             verticalAlignment: TextInput.AlignVCenter
             focus: true
-            color: Theme.foreground
+            color: Theme.launcher.text
             selectionColor: Theme.selection
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            selectedTextColor: Theme.launcher.selectedText
+            font.family: Theme.font.menuFamily
+            font.pixelSize: Theme.font.heading
             onTextChanged: root.query = text
             onAccepted: root.launch(list.currentIndex)
             Keys.onUpPressed: root.shift(-1)
@@ -196,107 +219,114 @@ Column {
             Keys.onTabPressed: root.shift(1)
             Keys.onBacktabPressed: root.shift(-1)
         }
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: Theme.gap * 1.5
-            anchors.verticalCenter: parent.verticalCenter
-            visible: input.text === ""
-            text: I18n.tr("Search applications")
-            color: root.subtitleColor
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
-        }
     }
 
     Text {
         width: parent.width
-        leftPadding: Theme.gap * 1.5
-        rightPadding: Theme.gap * 1.5
         visible: root.query === "" && root.prefixHelp !== ""
         text: root.prefixHelp
         color: root.subtitleColor
         wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 2
+        font.family: Theme.font.menuFamily
+        font.pixelSize: Theme.font.bodySmall
     }
 
     ListView {
         id: list
 
         width: parent.width
-        height: Math.min(root.results.length, root.maxResults) * root.rowHeight
+        height: root.results.length === 0 ? 0 : Math.min(root.results.length, root.maxResults) * root.rowHeight + (Math.min(root.results.length, root.maxResults) - 1) * spacing
         visible: root.results.length > 0
         clip: true
         model: root.results
+        spacing: Theme.spacing.xs
         boundsBehavior: Flickable.StopAtBounds
         highlightMoveDuration: 0
         currentIndex: 0
 
-        delegate: Rectangle {
+        delegate: BorderSurface {
             id: row
 
             required property var modelData
             required property int index
 
+            readonly property bool current: ListView.isCurrentItem
+            readonly property real side: root.rowReservedBorder + Theme.space(8)
+
             width: ListView.view.width
             height: root.rowHeight
             radius: Theme.radius
-            color: ListView.isCurrentItem ? Theme.selection : "transparent"
-
-            IconImage {
-                id: icon
-
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.gap
-                anchors.verticalCenter: parent.verticalCenter
-                implicitSize: Theme.fontSize * 2
-                source: root.iconSource(row.modelData.icon)
-                visible: source.toString() !== "" && status === Image.Ready
+            color: row.current ? Theme.launcher.selectedBackground : "transparent"
+            borderSpec: row.current ? Theme.launcher.selectedBorderSpec : Border.none()
+            Behavior on color {
+                ColorAnimation {
+                    duration: Theme.duration(120)
+                }
             }
 
-            Glyph {
-                anchors.horizontalCenter: icon.horizontalCenter
+            Item {
+                id: iconCell
+
+                anchors.left: parent.left
+                anchors.leftMargin: row.side
                 anchors.verticalCenter: parent.verticalCenter
-                visible: !icon.visible
-                glyph: row.modelData.glyph
-                color: row.ListView.isCurrentItem ? Theme.foreground : root.subtitleColor
-                font.pixelSize: Math.round(Theme.fontSize * 1.6)
+                width: root.iconColumn
+                height: root.iconColumn
+
+                IconImage {
+                    id: icon
+
+                    anchors.centerIn: parent
+                    implicitSize: Theme.font.iconLarge
+                    source: root.iconSource(row.modelData.icon)
+                    visible: source.toString() !== "" && status === Image.Ready
+                }
+
+                Glyph {
+                    anchors.centerIn: parent
+                    visible: !icon.visible
+                    glyph: row.modelData.glyph
+                    color: row.current ? Theme.launcher.selectedText : root.subtitleColor
+                    font.pixelSize: Theme.font.iconLarge
+                }
             }
 
             Column {
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.gap * 2 + Theme.fontSize * 2
+                anchors.left: iconCell.right
+                anchors.leftMargin: Theme.space(6)
                 anchors.right: parent.right
-                anchors.rightMargin: Theme.gap
+                anchors.rightMargin: row.side
                 anchors.verticalCenter: parent.verticalCenter
+                spacing: Theme.space(3)
 
                 Text {
                     width: parent.width
                     text: row.modelData.title
-                    color: Theme.foreground
+                    color: row.current ? Theme.launcher.selectedText : Theme.launcher.text
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.family: Theme.font.menuFamily
+                    font.pixelSize: Theme.font.heading
+                    font.weight: Font.Medium
                 }
 
                 Text {
                     width: parent.width
                     text: row.modelData.subtitle
                     visible: text !== ""
-                    color: row.ListView.isCurrentItem ? root.selectedSubtitleColor : root.subtitleColor
+                    color: root.selectedSubtitleColor
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                    font.family: Theme.font.menuFamily
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
 
             MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onEntered: list.currentIndex = row.index
                 onClicked: root.launch(row.index)
             }
@@ -309,7 +339,7 @@ Column {
         text: I18n.tr("No matches")
         color: root.subtitleColor
         horizontalAlignment: Text.AlignHCenter
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.family: Theme.font.menuFamily
+        font.pixelSize: Theme.font.body
     }
 }

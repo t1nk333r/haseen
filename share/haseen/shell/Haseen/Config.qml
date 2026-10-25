@@ -24,9 +24,13 @@ Singleton {
     readonly property var bar: _object(merged.bar)
     readonly property string barPosition: ["top", "bottom", "left", "right"].indexOf(bar.position) >= 0 ? bar.position : "top"
     readonly property bool barVertical: barPosition === "left" || barPosition === "right"
-    readonly property int barHeight: (typeof bar.height === "number" && bar.height >= 16) ? bar.height : 28
-    // Size across the bar. A vertical bar needs room for a short label.
-    readonly property int barThickness: barVertical ? Math.max(barHeight, Theme.fontSize * 3) : barHeight
+    // Omarchy's bar size: [bar] size-horizontal is a top/bottom bar's height,
+    // size-vertical a left/right bar's width, both scaled by [bar]
+    // scale-with-font (Theme.barToken). shell.json's bar.height overrides it.
+    readonly property int barHeight: (typeof bar.height === "number" && bar.height >= 16)
+        ? bar.height
+        : (barVertical ? Theme.barMetrics.sizeVertical : Theme.barMetrics.sizeHorizontal)
+    readonly property int barThickness: barHeight
     readonly property bool barTransparent: bar.transparent === true
     // Overflow panel (Bar.qml): ids always in it, and ids never moved there
     // automatically.
