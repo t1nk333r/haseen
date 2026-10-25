@@ -168,7 +168,7 @@ PanelWindow {
 
         BarDragOverlay {
             screen: bar.screen
-            strip: strip
+            stripItem: strip
         }
     }
 

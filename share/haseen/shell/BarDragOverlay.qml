@@ -13,9 +13,13 @@ import qs.Haseen
 PanelWindow {
     id: overlay
 
-    // The bar's strip (BarStrip.qml): the drag's state.
-    required property var strip
-    readonly property bool ghostShown: strip.dragId !== "" && strip.dragSlot !== null
+    // The bar's strip (BarStrip.qml): the drag's state. Not named `strip`:
+    // inside Bar.qml's `BarDragOverlay { stripItem: strip }` a property of
+    // that name would shadow the strip's id and bind to itself, leaving the
+    // overlay with no state (measured on io: every read threw
+    // "Cannot read property 'dragId' of undefined").
+    required property var stripItem
+    readonly property bool ghostShown: stripItem.dragId !== "" && stripItem.dragSlot !== null
 
     anchors {
         top: true
@@ -35,10 +39,10 @@ PanelWindow {
     // taken, and if it never is.
     Item {
         visible: overlay.ghostShown
-        x: Math.round(overlay.strip.dragScreenAt.x - overlay.strip.dragGrip.x)
-        y: Math.round(overlay.strip.dragScreenAt.y - overlay.strip.dragGrip.y)
-        width: overlay.strip.dragSlot ? overlay.strip.dragSlot.width : 0
-        height: overlay.strip.dragSlot ? overlay.strip.dragSlot.height : 0
+        x: Math.round(overlay.stripItem.dragScreenAt.x - overlay.stripItem.dragGrip.x)
+        y: Math.round(overlay.stripItem.dragScreenAt.y - overlay.stripItem.dragGrip.y)
+        width: overlay.stripItem.dragSlot ? overlay.stripItem.dragSlot.width : 0
+        height: overlay.stripItem.dragSlot ? overlay.stripItem.dragSlot.height : 0
 
         Rectangle {
             anchors.fill: parent
@@ -50,7 +54,7 @@ PanelWindow {
 
         Image {
             anchors.fill: parent
-            source: overlay.strip.ghostUrl
+            source: overlay.stripItem.ghostUrl
             fillMode: Image.Stretch
             opacity: 0.9
         }
@@ -66,7 +70,7 @@ PanelWindow {
             // As thick as the bar would be there (Config.barThickness).
             readonly property int thickness: side ? Math.max(Config.barHeight, Theme.fontSize * 3) : Config.barHeight
 
-            visible: overlay.strip.barMoving && overlay.strip.barEdge === modelData
+            visible: overlay.stripItem.barMoving && overlay.stripItem.barEdge === modelData
             x: modelData === "right" ? overlay.width - width : 0
             y: modelData === "bottom" ? overlay.height - height : 0
             width: side ? thickness : overlay.width

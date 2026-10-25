@@ -134,11 +134,15 @@ assert_contains "the drag's window exists only while a drag lasts" "$bar" $'acti
 assert_contains "the bar's contents are the strip under test here" "$bar" "BarStrip {"
 assert_contains "the bar's cross-axis size comes from the theme" "$(cat "$SHELL_DIR/Haseen/Config.qml")" "Theme.barMetrics.sizeHorizontal"
 assert_not_contains "no hairline of its own" "$bar" "Hairline on the inner edge"
+assert_contains "the drag's window is handed the strip" "$bar" $'BarDragOverlay {\n            screen: bar.screen\n            stripItem: strip'
 overlay="$(cat "$SHELL_DIR/BarDragOverlay.qml")"
 assert_contains "the drag's window takes no input" "$overlay" "mask: Region {}"
 assert_contains "the drag's window is over everything" "$overlay" "WlrLayershell.layer: WlrLayer.Overlay"
 assert_contains "the drag's window never takes the keyboard" "$overlay" "WlrLayershell.keyboardFocus: WlrKeyboardFocus.None"
 assert_contains "the drag's window reserves no room" "$overlay" "exclusionMode: ExclusionMode.Ignore"
+# A property named `strip` here would shadow Bar.qml's id of that name and
+# bind to itself: the overlay then reads every member of undefined (plan 118).
+assert_contains "the overlay's strip is not shadowed by its own name" "$overlay" "required property var stripItem"
 assert_contains "Escape in the overflow panel cancels a drag before it closes the panel" \
     "$(cat "$SHELL_DIR/BarOverflowPanel.qml")" $'if (panel.barWindow.dragging)\n                panel.barWindow.cancelDrag();'
 strip="$(cat "$SHELL_DIR/BarStrip.qml")"
