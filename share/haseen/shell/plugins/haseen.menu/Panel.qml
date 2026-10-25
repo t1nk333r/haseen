@@ -66,7 +66,6 @@ Item {
     // ------------------------------------------------------------ look
     readonly property color background: Theme.background
     readonly property color foreground: Theme.foreground
-    readonly property color scrim: Qt.alpha(Theme.background, Style.SCRIM)
     readonly property color selectedBackground: Qt.alpha(Theme.foreground, Style.SELECTED_FILL)
     readonly property color selectedText: Theme.accent
     // Row descriptions: Omarchy's 0.52 foreground, raised where a theme needs
@@ -1065,12 +1064,10 @@ Item {
     }
 
     // ------------------------------------------------------------ view
-    Rectangle {
-        anchors.fill: parent
-        visible: root.overlay
-        color: root.scrim
-    }
-
+    // No dim behind the card (owner, 2026-10-25): the menu opens over the
+    // desktop exactly as the app launcher does, so moving between SUPER +
+    // SPACE and SUPER + D never washes the screen dark. Omarchy dims here;
+    // this is deliberate. The click-catcher stays, full screen.
     MouseArea {
         anchors.fill: parent
         enabled: root.overlay

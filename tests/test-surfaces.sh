@@ -88,8 +88,49 @@ svc="$PLUGINS/haseen.notifications/Service.qml"
 assert_contains "notifications.clear()" "$(cat "$svc")" "function clear(): void"
 assert_contains "notifications.toggleDnd()" "$(cat "$svc")" "function toggleDnd(): void"
 assert_contains "lock.lock()" "$(cat "$PLUGINS/haseen.lock/Service.qml")" "function lock(): void"
+card="$PLUGINS/haseen.notifications/NotificationCard.qml"
+assert_contains "the notification card is Omarchy's [notifications] surface" "$(cat "$card")" "Theme.notifications.background"
+assert_contains "and uses its 12 px side padding" "$(cat "$card")" "Theme.space(12)"
+osd="$PLUGINS/haseen.osd/CardWindow.qml"
+assert_contains "the OSD sits 67 px above the screen edge" "$(cat "$osd")" "Theme.space(67)"
+assert_contains "the OSD card is the [popups] surface" "$(cat "$osd")" "Theme.popups.border"
 assert_contains "launcher is a panel (toggle via the panel host)" \
     "$(jq -r '.kinds | join(" ")' "$PLUGINS/haseen.launcher/manifest.json")" "panel"
+# Plan 117: the popups that are not panel cards follow their own Omarchy
+# surface group rather than Theme.surface.
+launcher="$PLUGINS/haseen.launcher/Panel.qml"
+assert_contains "the launcher's rows are Omarchy's menu rows" "$(cat "$launcher")" "Theme.launcher.selectedBackground"
+assert_contains "with the selected border reserved on every row" "$(cat "$launcher")" "Theme.launcher.selectedBorderSpec"
+assert_contains "and a heading-size query line, not a boxed input" "$(cat "$launcher")" "font.pixelSize: MenuMetrics.headingSize"
+assert_not_contains "the launcher no longer paints its old input box" "$(cat "$launcher")" "height: Theme.fontSize * 2.8"
+lockview="$PLUGINS/haseen.lock/LockView.qml"
+assert_contains "the lock field is Omarchy's 381 x 67" "$(cat "$lockview")" "readonly property int fieldWidth: 381"
+assert_contains "with its 3 px outline" "$(cat "$lockview")" "readonly property int outlineThickness: 3"
+assert_contains "in [lock]'s active border colour" "$(cat "$lockview")" "Theme.lock.borderActive"
+assert_contains "over the [lock] fill" "$(cat "$lockview")" "Theme.lock.background"
+
+# Plan 122: the launcher opens at the menu's size, so SUPER + D and
+# SUPER + SPACE show the same card.
+menu="$PLUGINS/haseen.menu/Panel.qml"
+metrics="$PLUGINS/../Haseen/MenuMetrics.qml"
+assert_contains "the menu still takes its numbers from MenuStyle.js" "$(cat "$menu")" "Style.WIDTH"
+assert_contains "the launcher's rows are the menu's rows" "$(cat "$launcher")" "readonly property int rowHeight: MenuMetrics.baseRowHeight"
+assert_contains "and its header the menu's" "$(cat "$launcher")" "readonly property int headerHeight: MenuMetrics.headerHeight"
+assert_contains "its card is the menu's width, scaled" "$(cat "$launcher")" "MenuMetrics.space(menuWidth)"
+assert_contains "padded by the difference of the two paddings" "$(cat "$launcher")" "MenuMetrics.contentMargin - Theme.spacing.popupPadding"
+assert_contains "the card's width works out to the menu's" "$(cat "$metrics")" "readonly property int width: space(300)"
+assert_contains "with the menu's 18 px content margin" "$(cat "$metrics")" "readonly property int contentMargin: space(18)"
+assert_contains "and its 50 px row" "$(cat "$metrics")" "readonly property int baseRowHeight: Math.max(space(50)"
+assert_eq "ten rows at rest, the menu's root list" "10" \
+    "$(jq -r '.settings.maxResults.default' "$PLUGINS/haseen.launcher/manifest.json")"
+assert_eq "the launcher's width is the menu's 300" "300" \
+    "$(jq -r '.settings.width.default' "$PLUGINS/haseen.launcher/manifest.json")"
+
+# Neither launcher dims the desktop behind it (owner, 2026-10-25).
+assert_not_contains "the menu paints no scrim behind its card" "$(cat "$menu")" "color: root.scrim"
+assert_not_contains "and keeps no scrim token" "$(cat "$PLUGINS/haseen.menu/MenuStyle.js")" "SCRIM"
+assert_not_contains "the launcher paints no scrim either" "$(cat "$launcher")" "scrim"
+
 
 # --- default shell.json starts the services ----------------------------------
 for id in "${SERVICES[@]}"; do

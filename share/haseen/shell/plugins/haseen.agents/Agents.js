@@ -137,11 +137,15 @@ function usage(text, tx) {
         return null;
     const limits = (Array.isArray(r.limits) ? r.limits : []).filter(l => l && typeof l.percent === "number").map(l => String(l.label || l.title || t.tr(N_("limit"))) + " " + Math.round(l.percent * 100) + "%");
     const status = String(r.usageStatusText || "");
-    if (limits.length === 0 && status === "")
+    // Both are facts about the same account ("1.5k requests · 9.4M tokens ·
+    // $4.75" beside its fullest quota windows), so neither hides the other;
+    // the row elides what does not fit.
+    const detail = limits.concat(status === "" ? [] : [status]).join(" · ");
+    if (detail === "")
         return null;
     const account = r.account && r.account.label ? String(r.account.label) : "";
     return {
         name: String(r.name || r.id || "") + (account !== "" ? " · " + account : ""),
-        detail: limits.length > 0 ? limits.join(" · ") : status
+        detail: detail
     };
 }

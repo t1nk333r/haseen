@@ -132,6 +132,8 @@ assert_contains "the bar takes the keyboard only while a drag lasts" "$bar" \
 assert_contains "Escape during a drag cancels it" "$bar" $'enabled: strip.dragging\n        onActivated: bar.cancelDrag()'
 assert_contains "the drag's window exists only while a drag lasts" "$bar" $'active: strip.dragging && !bar.hidden\n\n        BarDragOverlay {'
 assert_contains "the bar's contents are the strip under test here" "$bar" "BarStrip {"
+assert_contains "the bar's cross-axis size comes from the theme" "$(cat "$SHELL_DIR/Haseen/Config.qml")" "Theme.barMetrics.sizeHorizontal"
+assert_not_contains "no hairline of its own" "$bar" "Hairline on the inner edge"
 overlay="$(cat "$SHELL_DIR/BarDragOverlay.qml")"
 assert_contains "the drag's window takes no input" "$overlay" "mask: Region {}"
 assert_contains "the drag's window is over everything" "$overlay" "WlrLayershell.layer: WlrLayer.Overlay"

@@ -272,8 +272,9 @@ def collect_extra(catalog, origins):
 
 
 def bash_files():
-    roots = [os.path.join(ROOT, "bin"), os.path.join(SHARE, "lib"), os.path.join(SHARE, "omarchy"),
-             os.path.join(SHARE, "layers"), os.path.join(SHELL, "plugins")]
+    roots = [os.path.join(ROOT, "bin"), os.path.join(SHARE, "lib"), os.path.join(SHARE, "libexec"),
+             os.path.join(SHARE, "omarchy"), os.path.join(SHARE, "layers"),
+             os.path.join(SHELL, "plugins")]
     for top in roots:
         if not os.path.isdir(top):
             continue

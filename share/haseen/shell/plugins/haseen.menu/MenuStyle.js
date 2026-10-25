@@ -2,7 +2,7 @@
 // [menu] section of default/themed/shell.toml.tpl) as numbers, so Panel.qml
 // and tests/test-menu.sh read the same ones. Colours map Omarchy's tokens
 // onto haseen's Theme: menu.background = background, menu.text and the
-// border = foreground, scrim = background at SCRIM, selected-background =
+// border = foreground, selected-background =
 // foreground at SELECTED_FILL, selected-text = accent. Sizes are Omarchy's
 // pixels at its default base size of 12, which haseen's default fontSize of
 // 11 stands for (scale()).
@@ -10,7 +10,6 @@
 // Adapted from Omarchy (MIT, Copyright (c) David Heinemeier Hansson).
 .pragma library
 
-var SCRIM = 0.5;
 var SELECTED_FILL = 0.08;
 var HEADER = 0.58;
 var CHEVRON = 0.36;

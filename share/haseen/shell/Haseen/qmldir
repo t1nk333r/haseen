@@ -1,6 +1,7 @@
 module qs.Haseen
 singleton Paths 1.0 Paths.qml
 singleton Theme 1.0 Theme.qml
+singleton MenuMetrics 1.0 MenuMetrics.qml
 singleton Config 1.0 Config.qml
 singleton Plugins 1.0 Plugins.qml
 singleton Flags 1.0 Flags.qml

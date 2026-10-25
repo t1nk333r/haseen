@@ -58,12 +58,10 @@ Column {
         }
     }
 
-    component SectionLabel: Text {
+    // Omarchy's panel section caption, Ui/PanelSectionHeader.qml (plan 117):
+    // bold, caption size, the foreground darkened 1.4 times.
+    component SectionLabel: PanelSectionHeader {
         width: root.width
-        topPadding: Theme.gap
-        color: Theme.muted
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
     }
 
     component DeviceRow: Item {
@@ -152,6 +150,11 @@ Column {
         font.pixelSize: Theme.fontSize
     }
 
+    PanelSeparator {
+        visible: root.sink !== null
+        foreground: Theme.foreground
+    }
+
     SectionLabel {
         visible: root.sink !== null
         text: I18n.tr("Output")
@@ -178,6 +181,11 @@ Column {
         }
     }
 
+    PanelSeparator {
+        visible: root.source !== null
+        foreground: Theme.foreground
+    }
+
     SectionLabel {
         visible: root.source !== null
         text: I18n.tr("Input")
@@ -202,6 +210,11 @@ Column {
             current: modelData === root.source
             onActivated: Pipewire.preferredDefaultAudioSource = modelData
         }
+    }
+
+    PanelSeparator {
+        visible: root.streams.length > 0
+        foreground: Theme.foreground
     }
 
     SectionLabel {

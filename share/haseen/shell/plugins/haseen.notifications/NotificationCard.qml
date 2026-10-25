@@ -27,11 +27,15 @@ Rectangle {
         return icon.startsWith("/") || icon.indexOf("://") >= 0 ? icon : Quickshell.iconPath(icon, true);
     }
 
-    implicitHeight: content.implicitHeight + Theme.gap * 3
-    color: Theme.surface
+    // Omarchy's notification card (shell/plugins/notifications): 12 px sides,
+    // 10 px top and bottom, the [notifications] surface and its 2 px border.
+    readonly property int paddingX: Theme.space(12)
+    readonly property int paddingY: Theme.space(10)
+    implicitHeight: content.implicitHeight + paddingY * 2
+    color: Theme.notifications.background
     radius: Theme.radius
-    border.color: critical ? Theme.urgent : Theme.border
-    border.width: Theme.borderWidth
+    border.color: critical ? Theme.urgent : Theme.notifications.border
+    border.width: Math.max(1, Theme.space(2))
 
     // A replaced notification (same id, new text) gets its full time again.
     // restart() only when running: the panel copy has no timer to start.
@@ -73,10 +77,10 @@ Rectangle {
     Column {
         id: content
 
-        x: Theme.gap * 1.5
-        y: Theme.gap * 1.5
-        width: card.width - Theme.gap * 3
-        spacing: Math.round(Theme.gap / 2)
+        x: card.paddingX
+        y: card.paddingY
+        width: card.width - card.paddingX * 2
+        spacing: Theme.space(4)
 
         Item {
             width: parent.width

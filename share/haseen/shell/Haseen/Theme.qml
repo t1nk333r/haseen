@@ -401,6 +401,9 @@ Singleton {
         readonly property color selectedText: root.flatColor(root.pick("launcher.selected-text", root.accent), root.accent)
         readonly property color selectedBorder: root.composed("launcher.selected-border", "launcher.selected-border-alpha", root.foreground, 0.25)
         readonly property var borderSpec: root.surfaceSpec("launcher", "border", root.foreground, Math.max(1, root.space(2)))
+        // The selected row's border, Omarchy's menu selected-border
+        // (Style.qml:96, Menu.qml:96): width 0 unless the theme asks for one.
+        readonly property var selectedBorderSpec: root.surfaceSpec("launcher", "selected-border", selectedBorder, 0)
     }
     readonly property QtObject polkit: QtObject {
         readonly property color background: root.composed("polkit.background", "polkit.background-alpha", root.background, 1.0)

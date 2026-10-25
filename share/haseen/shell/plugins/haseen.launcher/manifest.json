@@ -13,13 +13,13 @@
   "settings": {
     "maxResults": {
       "type": "integer",
-      "default": 8,
-      "description": "Rows shown at once"
+      "default": 10,
+      "description": "Rows shown at once; ten is the menu's root list, so both cards open the same height"
     },
     "width": {
       "type": "integer",
-      "default": 520,
-      "description": "Panel width in px"
+      "default": 300,
+      "description": "Card width in px at the default font size (Omarchy's menu: 300), scaled with the font like the menu's"
     },
     "debugIpc": {
       "type": "boolean",

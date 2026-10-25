@@ -1,4 +1,9 @@
 {
+  "%1 errors": {
+    "one": "%1 error",
+    "other": "%1 errors"
+  },
+  "%1 requests · %2 tokens · %3": "%1 requests · %2 tokens · %3",
   "%1, so a rebuild must be signed again: %2.": "%1, so a rebuild must be signed again: %2.",
   "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand.": "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand.",
   "All reminders cleared": "All reminders cleared",
@@ -11,6 +16,7 @@
   },
   "Colour copied": "Colour copied",
   "Copied text from the selection": "Copied text from the selection",
+  "Exporter unreachable at %1": "Exporter unreachable at %1",
   "GPU mode: %1": "GPU mode: %1",
   "Interface language: %1": "Interface language: %1",
   "Its root service is not installed: haseen plymouth follow on.": "Its root service is not installed: haseen plymouth follow on.",
@@ -26,6 +32,7 @@
   "Per-monitor workspaces on": "Per-monitor workspaces on",
   "Plugin link refused": "Plugin link refused",
   "QR code copied to clipboard": "QR code copied to clipboard",
+  "Quota": "Quota",
   "Reminder": "Reminder",
   "Reminder set for %1": "Reminder set for %1",
   "Run": "Run",

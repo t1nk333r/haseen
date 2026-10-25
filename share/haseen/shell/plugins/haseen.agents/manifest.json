@@ -35,6 +35,11 @@
       "type": "boolean",
       "default": false,
       "description": "Test hook: expose IPC target haseen.agents to read the open panel without a keyboard"
+    },
+    "usageUrl": {
+      "type": "string",
+      "default": "",
+      "description": "cpa-usage-exporter's OpenMetrics URL (e.g. http://127.0.0.1:9185/metrics); the CLIProxyAPI row is read from it, and nothing is read while it is empty"
     }
   },
   "permissions": [
