@@ -2,7 +2,7 @@
 # agent-usage-cpa — the CLIProxyAPI backbone as one usage record for the agents
 # panel, read from its exporter's OpenMetrics endpoint.
 #
-#   agent-usage-cpa [--url URL] [--dry-run]
+#   agent-usage-cpa [--url URL] [--force] [--limits-only] [--dry-run]
 #
 # CLIProxyAPI backs haseen.agents and several accounts here, and it already
 # knows what it carried; nothing else on this machine counts its traffic.
@@ -28,7 +28,7 @@ source "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
 usage() {
     cat <<'TEXT'
-Usage: agent-usage-cpa [--url URL] [--dry-run]
+Usage: agent-usage-cpa [--url URL] [--force] [--limits-only] [--dry-run]
 
 Prints one JSON usage record for the agents panel from cpa-usage-exporter's
 OpenMetrics endpoint. URL: --url, $HASEEN_CPA_USAGE_URL, or the haseen.agents
@@ -48,6 +48,11 @@ while (($#)); do
         }
         url=$2
         shift
+        ;;
+    --force | --limits-only)
+        # Every collector takes these (omarchy-agent-usage-update passes them
+        # to all of them); the exporter is summed fresh each time, so there is
+        # no cache to bypass and no cheaper limits-only path.
         ;;
     *)
         echo "agent-usage-cpa: unknown argument $1" >&2

@@ -50,7 +50,9 @@ the panel and for the dashboard alike.
   fullest `cpa_quota_used_ratio` windows as `limits` (`{label, percent}`,
   labelled `Codex · 7d`, a 0-1 fraction as the panel expects). An exporter
   that does not answer is not a collector failure: the record says
-  `ready: false` and names the endpoint.
+  `ready: false` and names the endpoint. `--force` and `--limits-only` are
+  accepted and change nothing (the update passes them to every collector, and
+  there is no cache to bypass), so they must not fail it.
   It lives in `libexec`, not in `omarchy/bin`: that directory is exactly
   Omarchy's command set, asserted by `tests/test-omarchy-commands.sh`, and this
   is haseen's own row for a backbone Omarchy has no collector for.
@@ -69,12 +71,13 @@ the panel and for the dashboard alike.
 
 ## Evidence
 
-- `tests/test-agent-usage-cpa.sh` -> 20/20: the record's name, summed status
+- `tests/test-agent-usage-cpa.sh` -> 24/24: the record's name, summed status
   and ordered limits from a fixture; the 0.91 fraction the panel would draw as
   91%; an unreachable endpoint (`ready: false`, named); no endpoint configured
   (no output, exit 0); the `usageUrl` setting is read; `--dry-run` reads
   nothing; `omarchy-agent-usage-update cpa` writes `cpa.json` and, with the
-  endpoint unset, removes it and exits 0.
+  endpoint unset, removes it and exits 0; `--force` and `--limits-only`
+  reach the collector and still write the row.
 - `tests/test-widgets-c.sh` -> 114/114, with the new "stats beside limits"
   assertion.
 - `tests/test-omarchy-commands.sh` -> 179/179 (the new file is outside

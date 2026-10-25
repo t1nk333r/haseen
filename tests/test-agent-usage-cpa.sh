@@ -73,6 +73,14 @@ capture env HASEEN_CPA_USAGE_URL="file://$SANDBOX/metrics.txt" HASEEN_AGENT_USAG
 assert_status "the update succeeds" 0 "$STATUS"
 assert_eq "the panel gets its row" "CLIProxyAPI" "$(jq -r .name "$USAGE/cpa.json")"
 
+# The update passes its own flags to every collector, so cpa must accept them.
+for flag in --force --limits-only; do
+    capture env HASEEN_CPA_USAGE_URL="file://$SANDBOX/metrics.txt" HASEEN_AGENT_USAGE_DIR="$USAGE" \
+        "$OMA/omarchy-agent-usage-update" "$flag" cpa
+    assert_status "$flag reaches the collector without failing" 0 "$STATUS"
+    assert_eq "and the row is still written" "CLIProxyAPI" "$(jq -r .name "$USAGE/cpa.json")"
+done
+
 capture env -u HASEEN_CPA_USAGE_URL HASEEN_AGENT_USAGE_DIR="$USAGE" "$OMA/omarchy-agent-usage-update" cpa
 assert_status "an unconfigured backbone is a clean run" 0 "$STATUS"
 assert_eq "and the stale row goes away" "gone" "$([[ -e $USAGE/cpa.json ]] && echo here || echo gone)"
