@@ -459,7 +459,7 @@ ShellRoot {
                 qualified: String(Commons.Color.tooltip.border),
                 tooltipBorder: String(probe.button.tooltipBorder),
                 foreground: String(probe.button.foreground),
-                borderValue: String(Border.value("tooltip", "border")),
+                borderValue: String(Border.surfaceSpec("tooltip", "border", Commons.Color.tooltip.border, 1).color),
                 styleFallback: String(Style.resolveStateColor("", undefined, undefined, undefined, undefined))
             }));
             Qt.quit();

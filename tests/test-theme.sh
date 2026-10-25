@@ -14,7 +14,7 @@
 # installed themes go through the denylist, hooks run, dry runs write nothing.
 
 THEME_OUTPUTS=(hyprland.lua foot.ini kitty.conf ghostty.conf alacritty.toml btop.theme neovim.lua gtk.css fonts.conf yazi.toml shell.json colors.toml)
-SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth"
+SHELL_KEYS="mode background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection fontFamily fontMono fontSize radius gap borderWidth shellValues"
 SHELL_COLOUR_KEYS="background surface surfaceAlt foreground muted accent accentFg urgent warning success border selection"
 
 # theme_sandbox NAME — sandbox plus fakes for the probes theme set uses to find
@@ -125,6 +125,7 @@ for dir in "$HASEEN_PATH"/themes/*/; do
         bad="$(jq -r --arg k "$SHELL_COLOUR_KEYS" '($k | split(" ")) as $ks | to_entries[] | select(.key as $x | $ks | index($x)) | select(.value | test("^#[0-9a-fA-F]{6}$") | not) | .key' "$sj")"
         assert_eq "$t shell.json colours are #rrggbb" "" "$bad"
         assert_eq "$t shell.json numbers" "number number number number" "$(jq -r '[.fontSize, .radius, .gap, .borderWidth] | map(type) | join(" ")' "$sj")"
+        assert_eq "$t shellValues are strings (Omarchy's shell.toml values)" "100 string" "$(jq -r '.shellValues | [length, (map_values(type) | [.[]] | unique | join(","))] | join(" ")' "$sj")"
         assert_eq "$t mode follows colors.toml" "$(sed -n 's/^mode *= *"\(.*\)"/\1/p' "$dir/colors.toml")" "$(jq -r .mode "$sj")"
         # The windows round at the theme's own corners (plan 114), not the
         # frame's radius (plan 046's rounding.lua is no longer written).
@@ -286,21 +287,23 @@ if command -v lua >/dev/null; then
 fi
 hypr_verify "a generated theme"
 
-# --- shell selection stays readable under foreground text -------------------
-# haseen's selection_background is a bright orange (2.3:1 under its
-# light grey text); the shell token is darkened until the text reads (4.5:1).
+# --- the shell's selection is Omarchy's selected fill (plan 115) ------------
+# Not the terminal's selection_background (haseen's is a bright orange): the
+# foreground at Omarchy's selected-fill-alpha 0.18 over the card, opaque.
 theme_sandbox theme-selection
 haseen theme set haseen >/dev/null 2>&1
-assert_eq "bright selection darkened for the shell" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
+assert_eq "selection = mix background foreground 18%" "#383838" "$(jq -r .selection "$CUR/theme/shell.json")"
 
 # --- shell.json mapping and idempotency (tokyo-night) -----------------------
 theme_sandbox theme-tokens
 haseen theme set tokyo-night >/dev/null 2>&1
 first="$(cd "$CUR/theme" && cat -- *)"
-assert_eq "surface = mix background foreground 6%" "#232431" "$(jq -r .surface "$CUR/theme/shell.json")"
-assert_eq "border = mix background foreground 20%" "#373949" "$(jq -r .border "$CUR/theme/shell.json")"
+# Plan 115: Omarchy's [popups] background and its control alphas over it.
+assert_eq "surface = background (popups.background)" "#1a1b26" "$(jq -r .surface "$CUR/theme/shell.json")"
+assert_eq "surfaceAlt = mix background foreground 8% (hover-cursor fill)" "#252734" "$(jq -r .surfaceAlt "$CUR/theme/shell.json")"
+assert_eq "border = mix background foreground 40% (normal border)" "#53576c" "$(jq -r .border "$CUR/theme/shell.json")"
 assert_eq "accentFg = background" "#1a1b26" "$(jq -r .accentFg "$CUR/theme/shell.json")"
-assert_eq "a readable selection is kept" "#292e42" "$(jq -r .selection "$CUR/theme/shell.json")"
+assert_eq "selection = mix background foreground 18% (selected fill)" "#343646" "$(jq -r .selection "$CUR/theme/shell.json")"
 assert_eq "hyprland.lua active border" 'local active_border_color = "#7aa2f7"' "$(grep -m1 '^local active_border_color' "$CUR/theme/hyprland.lua")"
 capture haseen theme set "Tokyo Night"
 assert_status "display name normalizes" 0 "$STATUS"

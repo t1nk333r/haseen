@@ -49,26 +49,40 @@ brown` with `bright_` variants. Colours are `#rrggbb`.
 
 ## Fonts, radius, spacing (the shell's look)
 
-The same `colors.toml` may set the shell's non-colour tokens:
+The shell looks like Omarchy 4.5's (plan 115). Its sizes, spacing, state
+fills and surface roles are Omarchy's, rendered from `colors.toml` into
+`current/theme/shell.json` (`$HASEEN_PATH/themed/shell.json.tpl`): panels are
+the theme's background with a 2 px border in the Hyprland active-border colour
+(its gradient where the theme has one, `hyprland_active_border`), hover and
+selection are the foreground at Omarchy's alphas.
 
-```toml
-font_family = "Inter"
-font_mono = "JetBrainsMono Nerd Font"
-font_size = 11
-radius = 6
-gap = 6
-border_width = 1
-```
+- **Font**: the shell's text and icons use your monospace font, a Nerd Font:
+  `haseen font set "<family>"` (see `haseen font list`), else the theme's
+  `font_mono` (JetBrainsMono Nerd Font). Arabic falls back to Noto. A theme's
+  `font_family` sets fontconfig's sans-serif for apps, not the shell. The base
+  size is Omarchy's 12 px.
+- **Corner radius and edge gap** follow Hyprland: the shell reads
+  `decoration:rounding` and half of `general:gaps_out` when it starts and
+  whenever Hyprland reloads its config, so whatever Hyprland applies (the
+  rounding `haseen theme set` gives it, `haseen toggle gaps`, your own
+  `~/.config/hypr/local.lua`) reaches the panels too.
+- The same `colors.toml` may still set `radius` (the shell's radius until
+  Hyprland answers), `gap` (a spacing step), `border_width`, `font_mono`
+  and `font_size` (the terminal size `haseen font set` writes); numbers must
+  be numbers.
 
 These become `Theme.fontFamily`, `fontMono`, `fontSize`, `radius`, `gap`,
 `borderWidth` in the shell (numbers must be numbers). The window corner
 radius is not a colors.toml key: as in Omarchy, it is the theme's own
 Hyprland `decoration.rounding`, set in the theme's `hyprland.lua` (0, square,
 when it sets none), and the shell reads it back from Hyprland. `haseen toggle
-gaps`, hyprmod and your own files still override it (plan 114). The colour tokens the
-shell gets are derived in `$HASEEN_PATH/themed/shell.json.tpl`
-(`surface` = background mixed 6 % toward foreground, `urgent` = red,
-`warning` = yellow, `success` = green, …).
+gaps`, hyprmod and your own files still override it (plan 114). The screen
+frame is off by default; `"frame": { "enabled": true }` in
+`~/.config/haseen/shell.json` turns it on. Its inner radius is the windows'
+unless `frame.radius` is set. The colour tokens the shell gets are derived in
+`$HASEEN_PATH/themed/shell.json.tpl` (`surface` = background, `surfaceAlt` =
+foreground 8 % over it, `border` 40 %, `selection` 18 %, `urgent` = red, …),
+with Omarchy's `shellValues` beside them (plan 115).
 
 ## Theme another app
 

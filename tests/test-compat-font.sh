@@ -9,12 +9,14 @@
 # Omarchy plugins draw Nerd Font codepoints as plain text in the bar font
 # (t1nk33r.omaprayers: "\ueed3" through WidgetButton). Omarchy's family is
 # the fontconfig `monospace` alias, so the compat Style and bar facade must
-# hand out Theme.fontMono, never the sans Theme.fontFamily.
+# hand out the monospace. Since plan 115 Theme's own text family is the user's
+# monospace too (owner, 2026-10-25), and compat Style takes Theme.font's.
 style="$HASEEN_PATH/shell/Compat/Omarchy/Commons/Style.qml"
 host="$HASEEN_PATH/shell/Compat/OmarchyHost.qml"
-for prop in fontFamily resolvedFontFamily menuFontFamily; do
-    assert_contains "compat Style.$prop is the monospace token" "$(cat "$style")" "property string $prop: Theme.fontMono"
-done
+assert_contains "compat Style.fontFamily is Theme.font.family" "$(cat "$style")" "property string fontFamily: Theme.font.family"
+assert_contains "compat Style.resolvedFontFamily is Theme.font.resolvedFamily" "$(cat "$style")" "property string resolvedFontFamily: Theme.font.resolvedFamily"
+assert_contains "compat Style.menuFontFamily is Theme.font.menuFamily" "$(cat "$style")" "property string menuFontFamily: Theme.font.menuFamily"
+assert_contains "Theme's text family is the monospace token" "$(cat "$HASEEN_PATH/shell/Haseen/Theme.qml")" "readonly property string fontFamily: fontMono"
 assert_contains "bar facade fontFamily is the monospace token" "$(cat "$host")" "property string fontFamily: Theme.fontMono"
 assert_not_contains "no compat family falls back to the sans token" "$(cat "$style" "$host")" "Family: Theme.fontFamily"
 
@@ -58,7 +60,7 @@ QML
     if [[ -n $result ]]; then
         assert_eq "engine: Style.font.family follows Theme.fontMono" true "$(jq '.style == .mono' <<<"$result")"
         assert_eq "engine: WidgetButton without a bar uses the monospace family" true "$(jq '.button == .mono' <<<"$result")"
-        assert_eq "engine: monospace differs from sans default" true "$(jq '.mono != .sans' <<<"$result")"
+        assert_eq "engine: the text family is the monospace (plan 115)" true "$(jq '.mono == .sans' <<<"$result")"
     else
         _fail "font probe result not produced" "$OUTPUT"
     fi

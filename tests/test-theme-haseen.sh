@@ -54,7 +54,7 @@ haseen_sandbox theme-haseen-set
 capture haseen theme set haseen
 assert_status "set haseen" 0 "$STATUS"
 assert_eq "theme.name" "haseen" "$(cat "$CUR/theme.name")"
-assert_eq "the shell selection stays readable" "#864313" "$(jq -r .selection "$CUR/theme/shell.json")"
+assert_eq "the shell selection is the selected fill (plan 115)" "#383838" "$(jq -r .selection "$CUR/theme/shell.json")"
 # The windows round at the theme's own corners, 4 (UPSTREAM.md), as an
 # Omarchy theme's do; the shell frame's radius no longer reaches them (plan 114).
 assert_contains "the windows round at haseen's own corners" "$(cat "$CUR/theme/hyprland.lua")" "rounding = 4,"
@@ -140,7 +140,7 @@ while IFS=$'\t' read -r key value; do
     else
         assert_contains "Theme.qml fallback $key = haseen's $value" "$(cat "$qml")" "            $key: \"$value\""
     fi
-done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$CUR/theme/shell.json")
+done < <(jq -r 'to_entries[] | select(.value | type != "object") | "\(.key)\t\(.value)"' "$CUR/theme/shell.json")
 
 # --- the old name is an alias -------------------------------------------------
 haseen_sandbox theme-haseen-alias

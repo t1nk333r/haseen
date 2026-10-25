@@ -136,14 +136,14 @@ settings_rows() {
         "$([[ $(_settings_json .bar.transparent false) == true ]] && echo on || echo off)" \
         "haseen bar transparent" on-off
     _settings_row frame.enabled shell.json "$shell_json" \
-        "$(_settings_json .frame.enabled true)" "haseen config edit $shell_json" none
+        "$(_settings_json .frame.enabled false)" "haseen config edit $shell_json" none
     _settings_row frame.thickness shell.json "$shell_json" \
         "$(_settings_json .frame.thickness 6)" "haseen config edit $shell_json" none
-    # Unset means twice the theme's radius (qs.Haseen Config.frameRadius). The
-    # frame and the menu follow an edit at once; window corners are the
+    # Unset means Theme.radius, Hyprland's decoration:rounding (plan 115).
+    # The frame and the menu follow an edit at once; window corners are the
     # theme's own Hyprland rounding since plan 114, not this.
     _settings_row frame.radius shell.json "$shell_json" \
-        "$(_settings_json .frame.radius "(theme radius x2)")" "haseen config edit $shell_json" none
+        "$(_settings_json .frame.radius "(window rounding)")" "haseen config edit $shell_json" none
 
     # Plugin settings a user is likely to look for: the battery warnings
     # (plan 075), the lock-key OSD (079), idle suspend (082), the clock's day
