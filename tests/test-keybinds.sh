@@ -197,7 +197,9 @@ LUA
         [[ -n $command ]] || continue
         read -r -a words <<<"$command"
         if [[ ${words[0]} != haseen ]]; then
-            [[ $external == *" ${words[0]} "* ]] || missing+="$command"$'\n'
+            # haseen's own omarchy answers count as present: the desktop layer
+            # puts share/haseen/omarchy/bin on PATH.
+            [[ $external == *" ${words[0]} "* || -x $REPO/share/haseen/omarchy/bin/${words[0]} ]] || missing+="$command"$'\n'
             continue
         fi
         route=()
@@ -220,6 +222,8 @@ LUA
     # The owner's layout (waydots ~/.config/hypr/bindings.lua).
     assert_eq "SUPER + Q closes the window" "dsp.window.close()" "$(action_of 'SUPER + Q')"
     assert_eq "Omarchy's SUPER + W still closes too" "dsp.window.close()" "$(action_of 'SUPER + W')"
+    assert_eq "Omarchy's pop-out is on SUPER + O" "omarchy-hyprland-window-pop" "$(action_of 'SUPER + O')"
+    assert_eq "SUPER + T stays the plain floating toggle" "dsp.window.float({action=toggle})" "$(action_of 'SUPER + T')"
     assert_eq "the split toggle moved to ALT + J" "dsp.layout(togglesplit)" "$(action_of 'ALT + J')"
     assert_eq "the workspace layout toggle is on ALT + L" "haseen toggle workspace-layout" "$(action_of 'ALT + L')"
     assert_eq "the clipboard moved to ALT + V" "haseen shell ipc panel toggle 'haseen.clipboard'" "$(action_of 'ALT + V')"

@@ -162,6 +162,11 @@ b("code:77", "Num Lock OSD", lockkeys, lockkey)
 b("SUPER + Q", "Close window", hl.dsp.window.close())
 b("SUPER + W", "Close window", hl.dsp.window.close())
 b("SUPER + T", "Toggle floating", hl.dsp.window.float({ action = "toggle" }))
+-- Omarchy's pop-out (its default/hypr/bindings/tiling.lua:11): float, size,
+-- centre and pin, so the window stays on top and follows you across
+-- workspaces; the key again unpins and tiles it back. The command is one of
+-- the omarchy answers haseen ships; SUPER + T stays the plain toggle.
+b("SUPER + O", "Pop window out (float & pin)", "omarchy-hyprland-window-pop")
 b("SUPER + F", "Fullscreen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 b("SUPER + ALT + F", "Maximise", hl.dsp.window.fullscreen({ mode = "maximized" }))
 -- The bar hidden and the gaps gone together (Omarchy a7486beb6, #10672).
