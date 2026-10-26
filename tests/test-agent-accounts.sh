@@ -149,8 +149,8 @@ assert_eq "the registry still has two accounts" "2" "$(jq '.accounts | length' "
 # --- switching ----------------------------------------------------------------
 capture haseen agent account use claude day-job
 assert_contains "use switches new sessions" "$OUTPUT" "New Claude sessions now use Day Job (Max 20x). Running sessions stay on Main."
-assert_contains "and says a plain CLI does not follow it here" "$OUTPUT" \
-    "The agent key, the menu and haseen agent account exec claude follow it; a plain claude does not."
+assert_contains "and says where a plain CLI follows it" "$OUTPUT" \
+    "The agent key, the menu, haseen agent account exec and plain claude in a haseen shell follow it; elsewhere (a script, a GUI launch) use haseen agent account exec."
 assert_eq "home names the active account's" "$WORK" "$(haseen agent account home claude)"
 assert_eq "a run selects it" "claude home=$WORK -p" "$(haseen agent account exec claude -p)"
 assert_eq "Omarchy's exec name selects it too" "claude home=$WORK -p" "$("$OMA/omarchy-agent-account-exec" claude -p)"
@@ -544,8 +544,8 @@ export HASEEN_SYSROOT="$SANDBOX/root"
 mkdir -p "$HASEEN_SYSROOT/etc/mise/conf.d"
 : >"$HASEEN_SYSROOT/etc/mise/conf.d/omarchy-agent-accounts.toml"
 capture haseen agent account use claude work
-assert_contains "with Omarchy 4.5's mise wrapper a plain CLI follows too" "$OUTPUT" \
-    "The agent key, the menu, haseen agent account exec and plain claude (Omarchy's mise wrapper) follow it."
+assert_contains "with Omarchy 4.5's mise wrapper a plain CLI follows everywhere" "$OUTPUT" \
+    "The agent key, the menu, haseen agent account exec and plain claude follow it (a haseen shell, and every mise shim)."
 unset HASEEN_SYSROOT
 FAKE="$SANDBOX/fake"
 mkdir -p "$FAKE/bin" "$FAKE/share/haseen"

@@ -504,3 +504,36 @@ _haseen_free ff && function ff {
 }
 
 unset -f _haseen_free
+
+# --- several agent accounts ---------------------------------------------------
+#
+# A plain `claude`, `codex` or `grok` follows the account `haseen agent account
+# use` picked (plan 108). Omarchy 4.5 gets that from a system mise wrapper
+# (/etc/mise/conf.d/omarchy-agent-accounts.toml); the file is Omarchy's
+# package's, and a haseen machine need not have mise at all, so the same
+# indirection is a function here. It resolves the account when the command
+# runs — the way the wrapper does — so a switch reaches the very next command
+# in a terminal that was already open, instead of only terminals opened
+# afterwards.
+#
+# Unlike the functions above, these wrap a program that is on PATH, on
+# purpose. They exist only where an account registry does (nothing changes on
+# a machine that never added an account), only when haseen's exec answer is
+# installed, and only for a CLI that is actually there. `command claude`
+# still reaches the CLI directly.
+# Either registry: haseen's, or the one Omarchy 4.5 wrote, which haseen's
+# account answers read when its own is absent (plan 108).
+_haseen_state="${XDG_STATE_HOME:-$HOME/.local/state}"
+_haseen_accounts="${HASEEN_USER_STATE:-$_haseen_state/haseen}/agents/accounts"
+if [ -d "$_haseen_accounts" ] || [ -d "$_haseen_state/omarchy/agents/accounts" ]; then
+    _haseen_account_exec="${HASEEN_SHELL_DIR%/default/shell}/omarchy/bin/omarchy-agent-account-exec"
+    if [ -x "$_haseen_account_exec" ]; then
+        for _haseen_provider in claude codex grok; do
+            command -v "$_haseen_provider" >/dev/null 2>&1 &&
+                eval "function $_haseen_provider { command '$_haseen_account_exec' $_haseen_provider \"\$@\"; }"
+        done
+        unset _haseen_provider
+    fi
+    unset _haseen_account_exec
+fi
+unset _haseen_accounts _haseen_state
