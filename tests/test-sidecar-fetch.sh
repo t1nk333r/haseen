@@ -62,6 +62,18 @@ assert_status "a go that does not run is not a toolchain" 0 "$STATUS"
 assert_contains "so the release is fetched" "$OUTPUT" "fetched linux-$arch"
 assert_eq "and installed" "fake-sidecar" "$("$SANDBOX/out5/haseen-sidecar")"
 
+# --- a failed download is not reported as a missing asset -------------------
+# IO's link took 2m6s for the palette; the old 120 s limit made the install say
+# the asset was not in the release (plan 131).
+partial="$SANDBOX/release-partial"
+mkdir -p "$partial"
+cp "$rel/haseen-sidecar-linux-$arch" "$partial/"
+(cd "$partial" && sha256sum "haseen-sidecar-linux-$arch" >SHA256SUMS)
+capture env GO="$SANDBOX/no-go" HASEEN_SIDECAR_URL="file://$partial" HASEEN_BUILD_WOOTINGD=0 "$BUILD" "$SANDBOX/out6/haseen-sidecar"
+assert_status "a download that fails is not an error" 0 "$STATUS"
+assert_contains "and says the link, not the release" "$OUTPUT" "haseen-palette-linux-$arch did not download"
+assert_eq "with nothing installed" "no" "$([[ -e $SANDBOX/out6/haseen-sidecar ]] && echo yes || echo no)"
+
 # --- the download can be turned off ----------------------------------------
 assets
 capture env GO="$SANDBOX/no-go" HASEEN_FETCH_SIDECAR=0 HASEEN_SIDECAR_URL="file://$rel" HASEEN_BUILD_WOOTINGD=0 "$BUILD" "$SANDBOX/out3/haseen-sidecar"
