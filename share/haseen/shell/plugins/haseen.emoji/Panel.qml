@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 import "EmojiSearch.js" as EmojiSearch
 
 // haseen.emoji: type to filter, arrows move, Enter (or a click) copies the
@@ -153,7 +154,7 @@ Column {
         highlightMoveDuration: 0
         currentIndex: 0
 
-        delegate: Rectangle {
+        delegate: CursorSurface {
             id: tile
 
             required property var modelData
@@ -161,8 +162,8 @@ Column {
 
             width: root.cell
             height: root.cell
-            radius: Theme.radius
-            color: GridView.isCurrentItem ? Theme.selection : "transparent"
+            current: GridView.isCurrentItem
+            hasCursor: tileMouse.containsMouse
 
             Text {
                 anchors.centerIn: parent
@@ -172,6 +173,8 @@ Column {
             }
 
             MouseArea {
+                id: tileMouse
+
                 anchors.fill: parent
                 hoverEnabled: true
                 onEntered: grid.currentIndex = tile.index
