@@ -990,6 +990,7 @@
   "Plugged in, not charging": "موصول بالشاحن، لا يشحن",
   "Plugins": "الإضافات",
   "Poll interval (seconds)": "فاصل الاستطلاع (بالثواني)",
+  "Pop window out (float & pin)": "أخرج النافذة (عائم ومثبَّت)",
   "Port (1024–65535)": "المنفذ (من 1024 إلى 65535)",
   "Port forwarding": "إعادة توجيه المنافذ",
   "Post-quantum VPN": "VPN ما بعد الكم",
