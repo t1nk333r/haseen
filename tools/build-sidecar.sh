@@ -55,15 +55,27 @@ fetch_go() {
         return 0
     fi
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sidecar.XXXXXX")"
+    # A slow link is not a missing release: IO took 2m6s for the palette on
+    # 2026-10-26, past the 120 s this used to allow, and the install said the
+    # asset was not in the release. HASEEN_SIDECAR_TIMEOUT moves the limit.
+    local limit="${HASEEN_SIDECAR_TIMEOUT:-300}" status=0
     if ! curl -fsSL -m 60 -o "$tmp/SHA256SUMS" "$SIDECAR_URL/SHA256SUMS"; then
         rm -rf -- "$tmp"
         echo "build-sidecar: no go toolchain and $SIDECAR_URL/SHA256SUMS is not reachable; haseen-sidecar not installed" >&2
         return 0
     fi
     for name in haseen-sidecar "haseen-palette"; do
-        if ! curl -fsSL -m 120 -o "$tmp/$name-linux-$arch" "$SIDECAR_URL/$name-linux-$arch"; then
+        status=0
+        curl -fsSL -m "$limit" -o "$tmp/$name-linux-$arch" "$SIDECAR_URL/$name-linux-$arch" || status=$?
+        if ((status != 0)); then
             rm -rf -- "$tmp"
-            echo "build-sidecar: $name-linux-$arch is not in the release; haseen-sidecar not installed" >&2
+            # 22 is curl's "HTTP error", the only one that means the asset is
+            # not there; anything else is the link, and says so.
+            if ((status == 22)); then
+                echo "build-sidecar: $name-linux-$arch is not in the release; haseen-sidecar not installed" >&2
+            else
+                echo "build-sidecar: $name-linux-$arch did not download (curl exit $status, ${limit}s limit); haseen-sidecar not installed" >&2
+            fi
             return 0
         fi
     done
