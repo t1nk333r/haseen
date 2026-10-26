@@ -11,9 +11,11 @@ import "Fuzzy.js" as Fuzzy
 // haseen.launcher: type to fuzzy-filter DesktopEntries.applications, arrows
 // (or Tab) to move, Enter to launch, Escape to close (the panel host handles
 // Escape). Input that starts with an enabled launcher-provider's prefix is
-// sent to that provider's query() instead. Providers are created when the
-// launcher opens and destroyed with it, so they cost nothing while closed;
-// their prefixes are listed under the empty input (plan 081).
+// sent to that provider's query() instead; a provider with no prefix is asked
+// beside the apps on every non-empty query (plan 132), so a word the owner
+// types finds it without a prefix. Providers are created when the launcher
+// opens and destroyed with it, so they cost nothing while closed; their
+// prefixes are listed under the empty input (plan 081).
 // Opened by `haseen shell ipc launcher toggle` (the `launcher` role).
 //
 // Look (plan 117): Omarchy's menu, shell/plugins/menu/Menu.qml:99-110,1199-1330
@@ -86,13 +88,25 @@ Column {
                         s: Fuzzy.entryScore(q, e)
                     })).filter(x => x.s >= 0).sort((a, b) => b.s - a.s || a.e.name.localeCompare(b.e.name)).map(x => x.e);
         }
-        return ranked.map(e => ({
+        const appRows = ranked.map(e => ({
                     title: e.name,
                     subtitle: e.genericName || e.comment || "",
                     icon: e.icon,
                     glyph: "\u{f003b}",
                     run: () => Apps.launchEntry(e)
                 }));
+        // A provider with no prefix is searched beside the apps (plan 132):
+        // typing `account` finds the agent accounts, and the owner never has
+        // to remember a prefix for the words they mean. Only on a query — at
+        // rest the launcher stays the menu's ten app rows (plan 122, 125).
+        if (q === "")
+            return appRows;
+        const beside = [];
+        for (const p of providers) {
+            if (typeof p.prefix === "string" && p.prefix === "")
+                beside.push(...providerRows(p, text));
+        }
+        return beside.concat(appRows);
     }
 
     function providerRows(provider: var, text: string): var {

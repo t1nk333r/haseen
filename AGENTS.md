@@ -53,6 +53,8 @@ between parts. The engineering record is `plans/`, indexed by
       keybinds, battery (low-battery warnings; owner, 2026-10-07, plan 075;
       `criticalAction` stays `none`);
     - also: calculator, indicators, calendar, emoji, ai, agents and the pickers;
+    - also: the launcher's agent accounts, no prefix: type `account` (owner,
+      2026-10-26, plan 132);
     - the desktop itself, never optional: launcher, menu, notifications,
       session, background.
   - Installed with the shell layer (owner, 2026-10-07, plan 073): the Helium

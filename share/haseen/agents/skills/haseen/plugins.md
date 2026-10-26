@@ -10,7 +10,7 @@ kind. User plugins live in `~/.config/haseen/plugins/<id>/`; built-ins in
 | `bar-widget` | an item in a bar section | `BarButton` or any `Item` | its id is in `shell.json` `bar.left/center/right` |
 | `panel` | a popup card under the bar widget that opened it (centred on the bar edge when a key opened it) | any `Item` with an implicit size | `haseen shell ipc panel toggle <id>` (bind a key) |
 | `service` | a non-visual object created at startup | `Scope` / `QtObject` | its id is in `shell.json` `services` |
-| `launcher-provider` | search results for the launcher | `QtObject` with `prefix` and `query(text)` | the launcher asks it |
+| `launcher-provider` | search results for the launcher; with `prefix: ""` it is asked beside the apps on every non-empty query | `QtObject` with `prefix` and `query(text)` | the launcher asks it |
 | `overlay` | a full-screen layer surface it owns (OSD, lock) | `Scope` with a `PanelWindow` | the plugin decides; keep it hidden at idle |
 
 A plugin may have several kinds (one entry file each).
