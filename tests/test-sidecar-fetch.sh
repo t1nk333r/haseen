@@ -51,6 +51,17 @@ assert_status "sums that name neither asset fail" 1 "$STATUS"
 assert_contains "and say so" "$OUTPUT" "SHA256SUMS does not name haseen-sidecar-linux-$arch"
 assert_eq "with nothing installed" "no" "$([[ -e $SANDBOX/out4/haseen-sidecar ]] && echo yes || echo no)"
 
+# --- a go that is on PATH but does not run counts as none -------------------
+# A mise shim with no version set is a `go` that exists and then fails; the
+# install has to fetch, not stop (IO, 2026-10-26; plan 130).
+printf '#!/bin/sh\necho "mise ERROR No version is set for shim: go" >&2\nexit 1\n' >"$SANDBOX/broken-go"
+chmod +x "$SANDBOX/broken-go"
+assets
+capture env GO="$SANDBOX/broken-go" HASEEN_SIDECAR_URL="file://$rel" HASEEN_BUILD_WOOTINGD=0 "$BUILD" "$SANDBOX/out5/haseen-sidecar"
+assert_status "a go that does not run is not a toolchain" 0 "$STATUS"
+assert_contains "so the release is fetched" "$OUTPUT" "fetched linux-$arch"
+assert_eq "and installed" "fake-sidecar" "$("$SANDBOX/out5/haseen-sidecar")"
+
 # --- the download can be turned off ----------------------------------------
 assets
 capture env GO="$SANDBOX/no-go" HASEEN_FETCH_SIDECAR=0 HASEEN_SIDECAR_URL="file://$rel" HASEEN_BUILD_WOOTINGD=0 "$BUILD" "$SANDBOX/out3/haseen-sidecar"
