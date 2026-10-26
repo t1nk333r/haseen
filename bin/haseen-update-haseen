@@ -223,8 +223,12 @@ reload_desktop() {
         fi
     fi
     if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
-        run systemctl --user restart haseen-shell.service
-        info "haseen-shell.service restarted"
+        if $DRY_RUN; then
+            echo "DRYRUN: systemctl --user restart haseen-shell.service"
+        else
+            systemctl --user restart haseen-shell.service
+            info "haseen-shell.service restarted"
+        fi
     elif [[ $(cat "$HASEEN_USER_STATE/active-shell" 2>/dev/null) == dms ]]; then
         info "DMS is the active shell; haseen-shell.service stays stopped"
     else
