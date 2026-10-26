@@ -48,6 +48,13 @@ for f in "${json_files[@]}"; do
 done
 echo "json: ${#json_files[@]} files"
 
+# share/haseen/VERSION is data no test depends on (tools/affected-tests.sh
+# NOWIDEN, plan 135), so its format is checked here rather than by a test that
+# would have to run for every bump: three numbers, an optional suffix.
+version="$(cat share/haseen/VERSION 2>/dev/null || true)"
+[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+    { echo "version: share/haseen/VERSION is not x.y.z[-suffix]: '${version}'" >&2; fail=1; }
+
 # The interface language's catalogs (plan 109): the English one regenerated
 # from the code, every other language complete with the same placeholders,
 # no bare English in a QML text property. tests/test-i18n.sh runs it too;
