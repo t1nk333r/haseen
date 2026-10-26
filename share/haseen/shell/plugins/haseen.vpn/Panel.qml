@@ -407,11 +407,9 @@ Column {
             width: root.width
             height: Theme.fontSize * 2.8
 
-            Rectangle {
+            CursorSurface {
                 anchors.fill: parent
-                radius: Theme.radius
-                color: Theme.surfaceAlt
-                visible: toggleMouse.containsMouse
+                hasCursor: toggleMouse.containsMouse
             }
 
             Column {
@@ -540,11 +538,10 @@ Column {
             width: list.width
             height: Math.round(Theme.fontSize * 2.8)
 
-            Rectangle {
+            CursorSurface {
                 anchors.fill: parent
-                radius: Theme.radius
-                color: row.current ? Theme.selection : Theme.surfaceAlt
-                visible: row.current || rowMouse.containsMouse
+                current: row.current
+                hasCursor: rowMouse.containsMouse
             }
 
             Glyph {

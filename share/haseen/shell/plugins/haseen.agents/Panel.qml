@@ -182,13 +182,12 @@ Column {
     Repeater {
         model: root.rows
 
-        delegate: Rectangle {
+        delegate: CursorSurface {
             required property var modelData
 
             width: root.width
             height: root.rowHeight
-            radius: Theme.radius
-            color: hover.containsMouse ? Theme.surfaceAlt : "transparent"
+            hasCursor: hover.containsMouse
 
             Glyph {
                 id: mark
@@ -265,13 +264,12 @@ Column {
     Repeater {
         model: root.showAccounts ? root.accounts : []
 
-        delegate: Rectangle {
+        delegate: CursorSurface {
             required property var modelData
 
             width: root.width
             height: Theme.fontSize * 2.2
-            radius: Theme.radius
-            color: accountHover.containsMouse && !modelData.active ? Theme.surfaceAlt : "transparent"
+            hasCursor: accountHover.containsMouse && !modelData.active
 
             Text {
                 anchors.left: parent.left

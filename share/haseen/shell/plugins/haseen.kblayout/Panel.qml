@@ -72,15 +72,15 @@ Column {
             required property int index
             readonly property bool active: index === Keyboard.index
             readonly property bool cursor: index === root.current
-            readonly property color fill: cursor ? Theme.selection : rowMouse.containsMouse ? Theme.surfaceAlt : Theme.surface
 
             width: root.width
             height: Math.round(Theme.fontSize * 2.1)
 
-            Rectangle {
+            CursorSurface {
                 anchors.fill: parent
-                radius: Theme.radius
-                color: row.fill
+                current: row.cursor
+                hasCursor: rowMouse.containsMouse
+                background: Theme.surface
             }
 
             Text {

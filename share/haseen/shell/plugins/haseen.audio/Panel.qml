@@ -76,11 +76,10 @@ Column {
         width: root.width
         height: Math.round(Theme.fontSize * 2.2)
 
-        Rectangle {
+        CursorSurface {
             anchors.fill: parent
-            radius: Theme.radius
-            color: row.current ? Theme.selection : Theme.surfaceAlt
-            visible: row.current || mouse.containsMouse
+            current: row.current
+            hasCursor: mouse.containsMouse
         }
 
         MouseArea {

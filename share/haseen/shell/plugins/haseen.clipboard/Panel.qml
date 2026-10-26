@@ -325,11 +325,10 @@ Column {
             width: list.width
             height: showImage ? root.imageHeight : root.rowHeight
 
-            Rectangle {
+            CursorSurface {
                 anchors.fill: parent
-                radius: Theme.radius
-                color: row.current ? Theme.selection : Theme.surfaceAlt
-                visible: row.current || hover.containsMouse
+                current: row.current
+                hasCursor: hover.containsMouse
             }
 
             MouseArea {

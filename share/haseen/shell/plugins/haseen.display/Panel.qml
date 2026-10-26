@@ -315,11 +315,9 @@ Column {
         height: Math.round(Theme.fontSize * 2.4)
         visible: root.nightlightShown
 
-        Rectangle {
+        CursorSurface {
             anchors.fill: parent
-            radius: Theme.radius
-            color: Theme.surfaceAlt
-            visible: nightMouse.containsMouse
+            hasCursor: nightMouse.containsMouse
         }
 
         Glyph {
