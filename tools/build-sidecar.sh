@@ -5,13 +5,20 @@
 #
 # DEST defaults to share/haseen/sidecar/haseen-sidecar, which is where the
 # installed tree keeps it and where qs.Haseen.Sidecar looks; the other two
-# land beside it. Without a Go toolchain the Go part says so and is skipped:
-# the shell then finds no daemon, the capability is absent, and the features
-# that need it hide (plan 032). Without a working cargo (none, or a rustup
-# with no toolchain) or when its build fails, wootingd is skipped the same way,
-# with a message naming what then does not work (haseen.wooting, `haseen setup
-# wooting`): it serves one off-by-default plugin, so it never stops an install.
-# HASEEN_REQUIRE_CARGO=1 makes that an error instead.
+# land beside it. With a Go toolchain the daemon and the palette are built
+# from core/. Without one they are **downloaded** from the sidecar release
+# (plan 127): `sidecar-v$VERSION` on GitHub, assets named
+# haseen-sidecar-linux-<arch> and haseen-palette-linux-<arch>, checked against
+# the release's SHA256SUMS before anything is installed. A machine with
+# neither a toolchain nor a reachable release ships without the daemon: the
+# shell then finds no capability and hides what needs it (plan 032).
+# HASEEN_FETCH_SIDECAR=0 turns the download off; HASEEN_SIDECAR_URL points it
+# at another base (a mirror, or a file:// directory in tests).
+# Without a working cargo (none, or a rustup with no toolchain) or when its
+# build fails, wootingd is skipped, with a message naming what then does not
+# work (haseen.wooting, `haseen setup wooting`): it serves one off-by-default
+# plugin, so it never stops an install. HASEEN_REQUIRE_CARGO=1 makes that an
+# error instead.
 # HASEEN_BUILD_SIDECAR=0 or HASEEN_BUILD_WOOTINGD=0 leaves one part out.
 set -Eeuo pipefail
 
@@ -19,9 +26,74 @@ REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 DEST="${1:-$REPO/share/haseen/sidecar/haseen-sidecar}"
 VERSION="$(cat "$REPO/share/haseen/VERSION")"
 OUT_DIR="$(dirname "$DEST")"
+# GO overrides the toolchain, as tools/lint.sh and the tests do; a value that
+# does not run is the same as none.
+GO="${GO:-go}"
+SIDECAR_URL="${HASEEN_SIDECAR_URL:-https://github.com/t1nk333r/haseen/releases/download/sidecar-v$VERSION}"
+
+# release_arch — the asset suffix for this machine, or nothing.
+release_arch() {
+    case "$(uname -m)" in
+    x86_64 | amd64) echo amd64 ;;
+    aarch64 | arm64) echo arm64 ;;
+    *) return 1 ;;
+    esac
+}
+
+# fetch_go — the prebuilt daemon and palette for the release of this version.
+# Nothing is installed unless SHA256SUMS names it and the hash matches.
+fetch_go() {
+    local arch tmp name
+    if ! arch="$(release_arch)"; then
+        echo "build-sidecar: no go toolchain, and no release asset for $(uname -m); haseen-sidecar not installed" >&2
+        return 0
+    fi
+    if ! command -v curl >/dev/null; then
+        echo "build-sidecar: no go toolchain and no curl; haseen-sidecar not installed" >&2
+        return 0
+    fi
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sidecar.XXXXXX")"
+    if ! curl -fsSL -m 60 -o "$tmp/SHA256SUMS" "$SIDECAR_URL/SHA256SUMS"; then
+        rm -rf -- "$tmp"
+        echo "build-sidecar: no go toolchain and $SIDECAR_URL/SHA256SUMS is not reachable; haseen-sidecar not installed" >&2
+        return 0
+    fi
+    for name in haseen-sidecar "haseen-palette"; do
+        if ! curl -fsSL -m 120 -o "$tmp/$name-linux-$arch" "$SIDECAR_URL/$name-linux-$arch"; then
+            rm -rf -- "$tmp"
+            echo "build-sidecar: $name-linux-$arch is not in the release; haseen-sidecar not installed" >&2
+            return 0
+        fi
+    done
+    # --ignore-missing lets the sums file name the other architecture, so a
+    # release that names neither asset must be refused before the check: it
+    # would otherwise pass with nothing verified.
+    for name in haseen-sidecar haseen-palette; do
+        if ! grep -qE "^[0-9a-f]{64} [ *]$name-linux-$arch\$" "$tmp/SHA256SUMS"; then
+            rm -rf -- "$tmp"
+            echo "build-sidecar: SHA256SUMS does not name $name-linux-$arch; haseen-sidecar not installed" >&2
+            return 1
+        fi
+    done
+    # The sums file names the assets, so check them where they were saved.
+    if ! (cd "$tmp" && sha256sum --ignore-missing -c SHA256SUMS >/dev/null); then
+        rm -rf -- "$tmp"
+        echo "build-sidecar: $SIDECAR_URL does not match its SHA256SUMS; nothing installed" >&2
+        return 1
+    fi
+    mkdir -p "$OUT_DIR"
+    install -m 0755 "$tmp/haseen-sidecar-linux-$arch" "$DEST"
+    install -m 0755 "$tmp/haseen-palette-linux-$arch" "$OUT_DIR/haseen-palette"
+    rm -rf -- "$tmp"
+    echo "build-sidecar: $DEST ($VERSION, fetched linux-$arch)"
+}
 
 build_go() {
-    if ! command -v go >/dev/null; then
+    if ! command -v "$GO" >/dev/null; then
+        if [[ ${HASEEN_FETCH_SIDECAR:-1} != 0 ]]; then
+            fetch_go
+            return
+        fi
         echo "build-sidecar: no go toolchain; haseen-sidecar not built" >&2
         return 0
     fi
@@ -31,8 +103,8 @@ build_go() {
     # stale binary is visible in `haseen sidecar status`.
     (
         cd "$REPO/core"
-        go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$DEST" ./cmd/haseen-sidecar
-        go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$OUT_DIR/haseen-palette" ./cmd/haseen-palette
+        "$GO" build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$DEST" ./cmd/haseen-sidecar
+        "$GO" build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$OUT_DIR/haseen-palette" ./cmd/haseen-palette
     )
     echo "build-sidecar: $DEST ($VERSION)"
 }

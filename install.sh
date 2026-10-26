@@ -217,9 +217,11 @@ uninstall_tree() {
 
 install_tree() {
     local f
-    # The sampling daemon is compiled into the tree before it is copied. With no
-    # Go toolchain the build script says so and the tree ships without it: the
-    # shell then finds no capability and hides what needs it (plan 032).
+    # The sampling daemon is compiled into the tree before it is copied, or,
+    # when this machine has no Go toolchain, fetched from the sidecar release
+    # and checked against its SHA256SUMS (plan 127). If neither is possible the
+    # tree ships without it: the shell then finds no capability and hides what
+    # needs it (plan 032).
     if ! $VAPT_ONLY; then
         if $DRY_RUN; then
             echo "DRYRUN: tools/build-sidecar.sh"

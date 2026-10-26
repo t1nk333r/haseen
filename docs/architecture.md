@@ -43,7 +43,7 @@ file changes in the same commit.
 | `share/haseen/default/applications/mimeapps.list` | vendor default handlers → `PREFIX/share/applications/mimeapps.list` (lowest XDG precedence, so the user always wins) | desktop |
 | `share/haseen/default/xdg-terminal-exec/` | terminal preference → `PREFIX/share/xdg-terminal-exec/` | desktop |
 | `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
-| `share/haseen/sidecar/` | compiled helpers built into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` and `haseen-palette` (Go, `core/`), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
+| `share/haseen/sidecar/` | compiled helpers put into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` and `haseen-palette` (Go, `core/`, or the `sidecar-v<version>` release when there is no Go toolchain, plan 127), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `share/haseen/i18n/` | interface language catalogs (§5.8, plan 109): `locales.json` (each language's name, direction, date locale, digits), `<code>/{shell,menu,notify}.json`; `en/` is generated from the code by `tools/i18n.py extract`, `ar/provenance.json` says who translated it and what the owner reviewed | shell |
@@ -558,7 +558,7 @@ Smoke tests drive the UI through these, never through injected input.
 
 ### 5.6 haseen-sidecar
 
-`core/` builds `haseen-sidecar` into `share/haseen/sidecar/` (`tools/build-sidecar.sh`). `qs.Haseen.Sidecar` (`shell/Haseen/Sidecar.qml`) starts it on demand and talks JSON lines over `$XDG_RUNTIME_DIR/haseen/sidecar.sock` (`core/internal/proto`). The daemon greets with its capabilities, runs a stream only while some client subscribes to it, and exits 5 minutes after its last client leaves. `haseen sidecar status` (`bin/haseen-sidecar`) shows the binary, the socket and the border wipe's state.
+`core/` builds `haseen-sidecar` into `share/haseen/sidecar/` (`tools/build-sidecar.sh`); a machine without a Go toolchain fetches the same two binaries from the `sidecar-v<share/haseen/VERSION>` release, checked against its `SHA256SUMS` (plan 127), so an install needs no toolchain — `tools/release-sidecar.sh` publishes them for `linux/amd64` and `linux/arm64`. `qs.Haseen.Sidecar` (`shell/Haseen/Sidecar.qml`) starts it on demand and talks JSON lines over `$XDG_RUNTIME_DIR/haseen/sidecar.sock` (`core/internal/proto`). The daemon greets with its capabilities, runs a stream only while some client subscribes to it, and exits 5 minutes after its last client leaves. `haseen sidecar status` (`bin/haseen-sidecar`) shows the binary, the socket and the border wipe's state.
 
 | stream | what | subscriber |
 |---|---|---|
