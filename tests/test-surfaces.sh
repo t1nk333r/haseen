@@ -126,6 +126,13 @@ assert_eq "ten rows at rest, the menu's root list" "10" \
 assert_eq "the launcher's width is the menu's 300" "300" \
     "$(jq -r '.settings.width.default' "$PLUGINS/haseen.launcher/manifest.json")"
 
+# The launcher opens where the menu's card sits: the middle of the screen,
+# not under the bar (owner, 2026-10-26, "still in the sky move down").
+assert_eq "the launcher opens centred like the menu" "center" \
+    "$(jq -r '.settings.placement.default' "$PLUGINS/haseen.launcher/manifest.json")"
+assert_eq "and the menu still opens as its overlay card" "overlay" \
+    "$(jq -r '.settings.placement.default' "$PLUGINS/haseen.menu/manifest.json")"
+
 # Neither launcher dims the desktop behind it (owner, 2026-10-25).
 assert_not_contains "the menu paints no scrim behind its card" "$(cat "$menu")" "color: root.scrim"
 assert_not_contains "and keeps no scrim token" "$(cat "$PLUGINS/haseen.menu/MenuStyle.js")" "SCRIM"
