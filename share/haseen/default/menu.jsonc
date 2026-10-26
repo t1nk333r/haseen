@@ -308,6 +308,7 @@
 
   // Update
   "update.system": {"icon":"","label":"System","aliases":["update.omarchy"],"action":"haseen update system"},
+  "update.haseen": {"icon":"","label":"haseen","description":"pull its checkout, install, reload Hyprland and the shell","action":"haseen update haseen"},
   "update.config": {"icon":"","label":"Config","title":"Reset to default"},
   "update.config.hyprland": {"icon":"","label":"Hyprland","action":"haseen refresh hyprland"},
   "update.config.nightlight": {"icon":"","label":"Hyprsunset","aliases":["update.config.hyprsunset"],"description":"the nightlight settings","action":"haseen refresh nightlight"},

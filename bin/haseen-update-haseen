@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+# haseen:summary Install the latest haseen from its source checkout and reload the desktop
+# haseen:args [--source DIR] [--check] [--tree-only] [--no-reload] [--force] [--dry-run]
+#
+# `haseen update haseen` (plan 134): pulling the checkout changes nothing on
+# screen — the compositor and the shell read the installed tree — so this does
+# the whole step at once: fetch and fast-forward the checkout, run the
+# checkout's install.sh, then reload Hyprland (binds, rules, look) and restart
+# the shell. It is what the owner did by hand for SUPER + O on 2026-10-26,
+# turned into one command.
+#
+# The checkout is --source, $HASEEN_SOURCE or one line in
+# ~/.config/haseen/source — the same rule `haseen bar edit` follows. Without
+# one this refuses instead of guessing: installing some other tree is worse
+# than saying where to point it.
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/terminal.sh
+source "$HASEEN_PATH/lib/terminal.sh"
+# shellcheck source=../share/haseen/lib/install-stamp.sh
+source "$HASEEN_PATH/lib/install-stamp.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen update haseen [--source DIR] [--check] [--tree-only]
+                            [--no-reload] [--force] [--dry-run]
+
+Brings the running desktop to the latest commit of a haseen checkout: fetch
+and fast-forward the checkout, run its install.sh --yes, then reload
+Hyprland and restart the shell. Nothing is pulled over uncommitted changes.
+
+  --source DIR   the checkout to install (default: \$HASEEN_SOURCE, else one
+                 line in $HASEEN_USER_CONFIG/source)
+  --prefix DIR   the install prefix (default: the running tree's own, else
+                 the prefix an install stamp names, else /usr/local)
+  --check        report the checkout's commit, the installed one and whether
+                 an update is available; change nothing
+  --tree-only    install bin/ and share/ only: no layers, no migrations, no
+                 package work — a fast refresh for shell and keybind changes
+  --no-reload    install and stop; the next session picks up the new tree
+  --force        install even when the installed stamp already names this
+                 commit
+
+It needs sudo for the install, so started without a terminal (the menu) it
+opens a floating one first.
+EOF
+}
+
+# --check is a report: it opens no terminal.
+open_terminal=true
+for a in "$@"; do
+    if [[ $a == --check ]]; then
+        open_terminal=false
+    fi
+done
+if $open_terminal; then
+    in_floating_terminal "$@"
+fi
+parse_common_flags "$@"
+set -- "${REST[@]}"
+
+want_source="" want_prefix="" check=false tree_only=false do_reload=true force=false
+while (($#)); do
+    case $1 in
+    --source)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        want_source=$2
+        shift
+        ;;
+    --prefix)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        want_prefix=$2
+        shift
+        ;;
+    --check) check=true ;;
+    --tree-only) tree_only=true ;;
+    --no-reload) do_reload=false ;;
+    --force) force=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    shift
+done
+require_not_root
+require_cmds git
+
+# source_root — the checkout to install: --source, $HASEEN_SOURCE, else one
+# line in the user config (the rule `haseen bar edit` uses).
+source_root() {
+    local root="${HASEEN_SOURCE:-}" file="$HASEEN_USER_CONFIG/source" line=""
+    if [[ -n $want_source ]]; then
+        printf '%s\n' "${want_source%/}"
+        return 0
+    fi
+    if [[ -z $root && -r $file ]]; then
+        IFS= read -r line <"$file" || true
+        root=${line#"${line%%[![:space:]]*}"}
+        root=${root%"${root##*[![:space:]]}"}
+    fi
+    [[ -n $root ]] || return 1
+    printf '%s\n' "${root%/}"
+}
+
+src="$(source_root)" ||
+    die "no haseen checkout to install from: pass --source DIR, set \$HASEEN_SOURCE, or write one path in $HASEEN_USER_CONFIG/source"
+[[ -d $src ]] || die "not a directory: $src"
+[[ -x $src/install.sh && -f $src/share/haseen/VERSION ]] ||
+    die "not a haseen checkout: $src (install.sh and share/haseen/VERSION are required)"
+git -C "$src" rev-parse --git-dir >/dev/null 2>&1 ||
+    die "$src is not a git checkout; haseen update pulls from one"
+upstream="$(git -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+[[ -n $upstream ]] ||
+    die "$src has no upstream branch: set one with: git -C $src branch --set-upstream-to=origin/main"
+remote="${upstream%%/*}"
+
+# Uncommitted work is the owner's: a fast-forward over it would either fail
+# halfway or, worse, look like it worked.
+dirty="$(git -C "$src" status --porcelain --untracked-files=no)"
+[[ -z $dirty ]] ||
+    die "the checkout has uncommitted changes; commit or stash them first (first: $(head -n1 <<<"$dirty"))"
+
+# The prefix to install into, and so the stamp to trust: the running tree's
+# own parent when it is an installed tree, else the prefix of an existing
+# stamp, else install.sh's default (/usr/local). A checkout run by hand has
+# HASEEN_PATH inside git, so its directory is never mistaken for a prefix.
+prefix_of_tree() {
+    local tree="${HASEEN_PATH%/share/haseen}"
+    [[ $tree != "$HASEEN_PATH" ]] || return 1
+    # A checkout run by hand keeps its own git; that directory is the source,
+    # never the prefix an install writes into.
+    if git -C "$tree" rev-parse --git-dir >/dev/null 2>&1; then
+        return 1
+    fi
+    printf '%s\n' "$tree"
+}
+prefix="${want_prefix%/}"
+if [[ -z $prefix ]]; then
+    prefix="$(prefix_of_tree || true)"
+    if [[ -z $prefix ]]; then
+        for p in /usr/local /usr; do
+            [[ -r $(install_stamp_path "$p") ]] || continue
+            prefix=$p
+            break
+        done
+    fi
+fi
+[[ -n $prefix ]] || prefix=/usr/local
+
+run git -C "$src" fetch --quiet "$remote"
+checkout_commit="$(git -C "$src" rev-parse --short HEAD)"
+upstream_commit="$(git -C "$src" rev-parse --short "$upstream")"
+behind="$(git -C "$src" rev-list --count "HEAD..$upstream")"
+installed_commit="$(install_stamp_get "$prefix" commit || true)"
+installed_version="$(install_stamp_get "$prefix" version || true)"
+
+if $check; then
+    printf 'source     %s\n' "$src"
+    printf 'branch     %s, %s commit(s) to pull\n' "$upstream" "$behind"
+    printf 'checkout   %s (%s)\n' "$checkout_commit" "$(cat "$src/share/haseen/VERSION")"
+    if [[ -n $installed_commit ]]; then
+        printf 'installed  %s (%s)\n' "$installed_commit" "${installed_version:-unknown}"
+    else
+        printf 'installed  unknown: no install stamp under %s\n' "$prefix"
+    fi
+    if ((behind > 0)); then
+        printf 'update     available: %s commit(s) to pull, then install\n' "$behind"
+    elif [[ $installed_commit == "$upstream_commit" ]]; then
+        printf 'update     none: the installed tree is this commit\n'
+    else
+        printf 'update     the checkout is current; the installed tree is not (%s --force to install it)\n' \
+            "haseen update haseen"
+    fi
+    exit 0
+fi
+
+if ((behind > 0)); then
+    info "pulling $behind commit(s) into $src"
+    run git -C "$src" merge --ff-only --quiet "$upstream"
+else
+    info "the checkout is already at $upstream_commit"
+fi
+commit="$(git -C "$src" rev-parse --short HEAD)"
+version="$(cat "$src/share/haseen/VERSION")"
+
+# The stamp is what the last install wrote; a tree installed before haseen
+# knew about stamps has none, and that is never taken as current.
+installed=false
+if ! $force && [[ -n $installed_commit && $installed_commit == "$commit" ]]; then
+    installed=true
+    info "haseen $version ($commit) is already installed under $prefix"
+fi
+
+if ! $installed; then
+    install_args=(--yes --prefix "$prefix")
+    if $tree_only; then
+        install_args+=(--tree-only)
+    fi
+    info "installing $src ($version, $commit) under $prefix"
+    if $DRY_RUN; then
+        echo "DRYRUN: (cd $src && ./install.sh ${install_args[*]})"
+    else
+        (cd "$src" && ./install.sh "${install_args[@]}")
+    fi
+fi
+
+# Reload what reads the tree: the compositor's binds, rules and look, then the
+# shell (the user unit; DMS and a hand-started shell are left alone).
+reload_desktop() {
+    if have hyprctl; then
+        if $DRY_RUN; then
+            echo "DRYRUN: hyprctl reload"
+        else
+            hyprctl reload >/dev/null || warn "hyprctl reload did not answer; the next session loads the new binds"
+        fi
+    fi
+    if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
+        run systemctl --user restart haseen-shell.service
+        info "haseen-shell.service restarted"
+    elif [[ $(cat "$HASEEN_USER_STATE/active-shell" 2>/dev/null) == dms ]]; then
+        info "DMS is the active shell; haseen-shell.service stays stopped"
+    else
+        warn "haseen-shell.service is not running: the next shell start uses the new tree"
+    fi
+}
+
+if $installed; then
+    exit 0
+fi
+if ! $do_reload; then
+    info "not reloading (--no-reload): the next session picks up the new tree"
+    exit 0
+fi
+reload_desktop

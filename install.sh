@@ -30,6 +30,8 @@ source "$HASEEN_PATH/lib/branding.sh"
 source "$HASEEN_PATH/lib/install-picker.sh"
 # shellcheck source=share/haseen/lib/omarchy-guard.sh
 source "$HASEEN_PATH/lib/omarchy-guard.sh"
+# shellcheck source=share/haseen/lib/install-stamp.sh
+source "$HASEEN_PATH/lib/install-stamp.sh"
 
 DEFAULT_LAYERS=(base chaotic omarchy-repo desktop theme shell)
 PREFIX=/usr/local
@@ -256,6 +258,12 @@ install_tree() {
     done
     branding_svg mark "$(branding_accent)" | write_root_file "$ICON_DIR/scalable/apps/haseen.svg"
     install_root_file "$(branding_file symbolic)" "$ICON_DIR/symbolic/apps/haseen-symbolic.svg" 0644
+    # What this install put here, for `haseen update haseen` (plan 134): the
+    # checkout's commit, so a later run over the same tree says so instead of
+    # reinstalling it. A checkout without git records "unknown", which never
+    # counts as current.
+    install_stamp_write "$PREFIX" "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+        "$(cat "$REPO/share/haseen/VERSION")"
     info "haseen $(cat "$REPO/share/haseen/VERSION") installed under $PREFIX"
 }
 

@@ -872,6 +872,10 @@
   "update.hardware.wifi": {
     "label": "Wi-Fi"
   },
+  "update.haseen": {
+    "description": "اسحب مستودعه، ثبّت، ثم أعد تحميل Hyprland والواجهة",
+    "label": "haseen"
+  },
   "update.password": {
     "label": "كلمة المرور"
   },
