@@ -367,11 +367,9 @@ Column {
             width: targets.width
             height: Math.round(Theme.fontSize * 2.2)
 
-            Rectangle {
+            CursorSurface {
                 anchors.fill: parent
-                radius: Theme.radius
-                color: Theme.surfaceAlt
-                visible: hover.containsMouse
+                hasCursor: hover.containsMouse
             }
 
             Text {

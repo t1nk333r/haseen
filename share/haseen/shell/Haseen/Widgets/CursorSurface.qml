@@ -16,9 +16,12 @@ Rectangle {
     property bool bordered: false
     property color foreground: Theme.foreground
     property color accent: Theme.accent
+    // The row's colour at rest: transparent on a plain card, or a panel's
+    // surface where its rows sat on one before (kblayout).
+    property color background: "transparent"
 
     radius: Theme.radius
-    color: hasCursor ? Theme.hoverFillFor(foreground, accent) : current ? Theme.selectedFillFor(foreground, accent) : "transparent"
+    color: hasCursor ? Theme.hoverFillFor(foreground, accent) : current ? Theme.selectedFillFor(foreground, accent) : background
     border.color: hasCursor ? Theme.hoverBorderFor(foreground, accent) : current ? Theme.selectedBorderFor(foreground, accent) : bordered ? Theme.normalBorderFor(foreground, accent) : "transparent"
     border.width: hasCursor ? Theme.hoverBorderWidth : current ? Theme.selectedBorderWidth : bordered ? Theme.normalBorderWidth : 0
 

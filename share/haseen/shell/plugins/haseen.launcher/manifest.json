@@ -21,6 +21,11 @@
       "default": 300,
       "description": "Card width in px at the default font size (Omarchy's menu: 300), scaled with the font like the menu's"
     },
+    "placement": {
+      "type": "string",
+      "default": "center",
+      "description": "Where the launcher opens: center (the middle of the screen, where SUPER + SPACE's menu opens) or bar (a panel under the bar, where it opened before plan 125)"
+    },
     "debugIpc": {
       "type": "boolean",
       "default": false,

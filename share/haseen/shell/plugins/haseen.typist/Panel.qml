@@ -481,11 +481,11 @@ Column {
                 font.pixelSize: Theme.fontSize - (entry.modelData.header !== undefined ? 0 : 1)
             }
 
-            Rectangle {
+            CursorSurface {
                 anchors.fill: parent
-                visible: entry.row !== null && (entry.current || hover.containsMouse)
-                radius: Theme.radius
-                color: entry.current ? Theme.selection : Theme.surfaceAlt
+                visible: entry.row !== null
+                current: entry.current
+                hasCursor: hover.containsMouse
             }
 
             MouseArea {

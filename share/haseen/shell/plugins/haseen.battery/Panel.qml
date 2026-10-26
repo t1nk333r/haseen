@@ -314,11 +314,9 @@ Column {
         width: parent.width
         height: Math.round(Theme.fontSize * 2.4)
 
-        Rectangle {
+        CursorSurface {
             anchors.fill: parent
-            radius: Theme.radius
-            color: Theme.surfaceAlt
-            visible: setupMouse.containsMouse
+            hasCursor: setupMouse.containsMouse
         }
 
         Glyph {
