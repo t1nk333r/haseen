@@ -221,7 +221,11 @@ stop)
     ;;
 esac
 
-if ! $force && [[ -e $HASEEN_USER_STATE/flags/screensaver-off ]]; then
+# Omarchy's toggle counts as off as well: a plugin that claimed it (the koi)
+# is the screensaver now, and haseen's would only flash underneath it before
+# a focus change closed it again (plan 128).
+OMARCHY_FLAG="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/screensaver-off"
+if ! $force && { [[ -e $HASEEN_USER_STATE/flags/screensaver-off ]] || [[ -e $OMARCHY_FLAG ]]; }; then
     info "the screensaver is off (haseen toggle screensaver on, or --force)"
     exit 0
 fi

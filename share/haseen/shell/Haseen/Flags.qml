@@ -16,11 +16,18 @@ Singleton {
     id: root
 
     readonly property string dir: Paths.userState + "/flags"
+    // Omarchy's toggle store, read for the screensaver (plan 128).
+    readonly property string omarchyToggles: Paths.omarchyState + "/toggles"
     readonly property var names: ["dnd", "idle-off", "screensaver-off", "nightlight", "recording", "gestures"]
 
     readonly property bool dnd: dndFile.on
     readonly property bool idleOff: idleOffFile.on
-    readonly property bool screensaverOff: screensaverOffFile.on
+    // Either store: haseen's own flag, or Omarchy's, which a third-party
+    // screensaver plugin touches while it holds the screensaver slot. Reading
+    // only haseen's would start haseen's screensaver underneath the plugin's,
+    // and haseen's ttfx quits on the focus change that follows — a flash and
+    // nothing (plan 128).
+    readonly property bool screensaverOff: screensaverOffFile.on || omarchyScreensaverOff.on
     readonly property bool nightlight: nightlightFile.on
     readonly property bool recording: recordingFile.on
     // Set by the `gestures` hardware quirk on a machine with a touchpad: the
@@ -52,18 +59,21 @@ Singleton {
     }
 
     Process {
-        command: ["mkdir", "-p", "--", root.dir]
+        command: ["mkdir", "-p", "--", root.dir, root.omarchyToggles]
         running: true
         onExited: root._dirReady = true
     }
 
     component FlagFile: FileView {
         required property string name
+        // haseen's own flags live in one directory; Omarchy's toggles live in
+        // theirs and are read, never written, from here (plan 128).
+        property string dir: root.dir
         property bool on: false
         // The file's first line, for a flag that names something.
         property string value: ""
 
-        path: root._dirReady ? root.path(name) : ""
+        path: root._dirReady ? dir + "/" + name : ""
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
@@ -101,5 +111,14 @@ Singleton {
     FlagFile {
         id: contextFile
         name: "context"
+    }
+
+    // Omarchy's screensaver toggle: a third-party screensaver plugin (the
+    // koi) creates it while it is the screensaver, and removes it when it
+    // steps aside (plan 128).
+    FlagFile {
+        id: omarchyScreensaverOff
+        name: "screensaver-off"
+        dir: root.omarchyToggles
     }
 }

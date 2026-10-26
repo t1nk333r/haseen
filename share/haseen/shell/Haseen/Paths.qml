@@ -18,6 +18,9 @@ Singleton {
 
     readonly property string userConfig: Quickshell.env("HASEEN_USER_CONFIG") || configHome + "/haseen"
     readonly property string userState: Quickshell.env("HASEEN_USER_STATE") || stateHome + "/haseen"
+    // Omarchy's own state, which third-party plugins write to directly: the
+    // toggles directory holds the screensaver claim a plugin makes (plan 128).
+    readonly property string omarchyState: stateHome + "/omarchy"
 
     readonly property string defaultShellConfig: haseenPath + "/default/shell.json"
     readonly property string userShellConfig: userConfig + "/shell.json"

@@ -25,7 +25,10 @@ for arg in "$@"; do
     esac
 done
 
-if ! $force && [[ -e $HASEEN_USER_STATE/flags/screensaver-off ]]; then
+# Omarchy's own toggle counts too (plan 128): a plugin holding it is the
+# screensaver now.
+omarchy_flag="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/screensaver-off"
+if ! $force && { [[ -e $HASEEN_USER_STATE/flags/screensaver-off ]] || [[ -e $omarchy_flag ]]; }; then
     printf '%s: the screensaver is off (haseen toggle screensaver on, or: %s force)\n' "$OMARCHY_NAME" "$OMARCHY_NAME" >&2
     exit 1
 fi
