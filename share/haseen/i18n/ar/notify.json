@@ -14,6 +14,7 @@
   "Animations disabled": "الحركات مُعطّلة",
   "Animations enabled": "الحركات مُفعّلة",
   "Boot splash not rebuilt": "لم يُعَد بناء شاشة الإقلاع",
+  "Choose one with: haseen setup default agent <name>": "اختر وكيلًا بالأمر: haseen setup default agent <name>",
   "Click to run %1 pending migrations.": {
     "zero": "لا توجد ترحيلات معلّقة.",
     "one": "انقر لتشغيل ترحيل معلّق واحد.",
@@ -23,6 +24,7 @@
     "other": "انقر لتشغيل %1 ترحيل معلّق."
   },
   "Colour copied": "نُسخ اللون",
+  "Copied %1 so an agent can edit it": "نُسخ %1 ليتمكّن الوكيل من تعديله",
   "Copied text from the selection": "نُسخ النص من التحديد",
   "Exporter unreachable at %1": "تعذّر الوصول إلى المصدّر على %1",
   "GPU mode: %1": "وضع GPU: %1",
@@ -30,6 +32,7 @@
   "Its root service is not installed: haseen plymouth follow on.": "خدمة الجذر الخاصة بها غير مثبّتة: haseen plymouth follow on.",
   "Log out to apply": "سجّل الخروج للتطبيق",
   "No QR code found": "لم يُعثر على رمز QR",
+  "No agent started": "لم يبدأ أي وكيل",
   "No reminders": "لا تذكيرات",
   "No text found": "لم يُعثر على نص",
   "No-gaps mode off": "وضع إلغاء الفجوات متوقف",
@@ -60,6 +63,7 @@
   "Single-window square ratio off": "النسبة المربعة للنافذة الواحدة متوقفة",
   "Single-window square ratio on": "النسبة المربعة للنافذة الواحدة مُشغّلة",
   "Swipes and pinches work again.": "عادت إيماءات السحب والقرص للعمل.",
+  "The copy in %1 now wins over haseen's updates.": "النسخة في %1 أصبحت تتقدّم على تحديثات haseen.",
   "The recorder had to be killed; the video may be damaged": "اضطُرّ إلى إنهاء المسجّل قسرًا؛ قد يكون الفيديو تالفًا",
   "Touchpad disabled": "لوحة اللمس مُعطّلة",
   "Touchpad enabled": "لوحة اللمس مُفعّلة",
