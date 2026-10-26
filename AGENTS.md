@@ -106,6 +106,15 @@ tools/check-docs.sh
 tools/secrets.sh          # before every push: gitleaks (history) + privacy patterns
 ```
 
+**Test the affected code, not the whole suite.** The local gate is
+`tests/run.sh --affected`; while iterating, run the one file you are changing
+(`tests/run.sh tests/test-<name>.sh`). Do not run every test to check one
+change, and do not wait for the full suite before a commit: the full run is
+CI's job on every push to `main` (and a release), and it is the only place
+that pays for it. If a change touches shared infrastructure (`share/haseen/lib/`,
+`tests/lib.sh`, the install flow), say so and let the affected selection widen
+— do not fall back to the whole suite by hand.
+
 `tests/run.sh --affected [BASE]` runs only the test files whose
 `# haseen:covers` globs match a path changed since the merge base with BASE
 (default origin/main), staged, unstaged and untracked files included;
