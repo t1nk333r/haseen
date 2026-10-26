@@ -408,6 +408,16 @@
     "label": "بادئات المُشغِّل",
     "title": "بادئات المُشغِّل"
   },
+  "setup.launcher.accounts": {
+    "description": "بلا بادئة: اكتب account في المُشغِّل",
+    "label": "حسابات الوكلاء"
+  },
+  "setup.launcher.accounts.off": {
+    "label": "إيقاف"
+  },
+  "setup.launcher.accounts.on": {
+    "label": "تشغيل"
+  },
   "setup.launcher.commands": {
     "description": "إجراءات القائمة",
     "label": "/ الأوامر"

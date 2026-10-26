@@ -408,6 +408,16 @@
     "label": "Launcher Prefixes",
     "title": "Launcher Prefixes"
   },
+  "setup.launcher.accounts": {
+    "description": "no prefix: type account in the launcher",
+    "label": "Agent Accounts"
+  },
+  "setup.launcher.accounts.off": {
+    "label": "Off"
+  },
+  "setup.launcher.accounts.on": {
+    "label": "On"
+  },
   "setup.launcher.commands": {
     "description": "the menu's actions",
     "label": "/ Commands"

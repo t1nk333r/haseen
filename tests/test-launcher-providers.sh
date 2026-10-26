@@ -6,7 +6,7 @@
 # haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
 # haseen:covers share/haseen/shell/plugins/*/manifest.json
 # haseen:covers share/haseen/shell/plugins/haseen.{calculator,clipboard,commands,emoji}/**
-# haseen:covers share/haseen/shell/plugins/haseen.{emojisearch,launcher,menu,websearch,windows}/**
+# haseen:covers share/haseen/shell/plugins/haseen.{accounts,emojisearch,launcher,menu,websearch,windows}/**
 # haseen:covers bin/haseen-battery-status bin/haseen-branding bin/haseen-context
 # haseen:covers bin/haseen-screensaver-style bin/haseen-setup-default bin/haseen-setup-dns
 # haseen:covers bin/haseen-system share/haseen/lib/boot.sh share/haseen/lib/branding.sh
@@ -21,6 +21,9 @@
 # ranking models run in the Qt JS engine; the launcher with all four enabled
 # runs in the real Quickshell engine, where every action goes to a stub that
 # records its argv (hyprctl, wl-copy, systemd-run for Apps.launch, qs).
+# haseen.accounts (plan 132) is the fifth, on unless turned off: it has no
+# prefix, so the launcher asks it beside the apps, and its rows are the agent
+# account workflow (add, use, list) run in a floating terminal.
 
 PLUGINS="$HASEEN_PATH/shell/plugins"
 IDS=(haseen.windows haseen.emojisearch haseen.commands haseen.websearch)
@@ -44,6 +47,24 @@ assert_eq "haseen plugin disable turns one off again" "false" \
 assert_eq "the web search template defaults to DuckDuckGo" "https://duckduckgo.com/?q=%s" \
     "$(jq -r '.settings.url.default' "$PLUGINS/haseen.websearch/manifest.json")"
 
+# haseen.accounts (plan 132): the agent account workflow, no prefix, on
+# unless turned off — the owner asked for the commands they type to be in the
+# launcher.
+capture haseen plugin validate haseen.accounts
+assert_status "haseen.accounts validates" 0 "$STATUS"
+assert_eq "haseen.accounts is a launcher provider" "launcher-provider" \
+    "$(jq -r '.kinds | join(" ")' "$PLUGINS/haseen.accounts/manifest.json")"
+assert_eq "haseen.accounts is on unless turned off" "null" \
+    "$(jq -r '.plugins["haseen.accounts"].enabled' "$HASEEN_PATH/default/shell.json")"
+assert_eq "haseen.accounts declares no prefix, so the launcher searches it beside the apps" "" \
+    "$(sed -n 's/^ *readonly property string prefix: "\(.*\)"$/\1/p' "$PLUGINS/haseen.accounts/Provider.qml")"
+capture haseen plugin disable haseen.accounts
+assert_status "haseen plugin disable haseen.accounts" 0 "$STATUS"
+assert_eq "haseen plugin disable turns the accounts provider off" "false" \
+    "$(jq -r '.plugins["haseen.accounts"].enabled' "$XDG_CONFIG_HOME/haseen/shell.json")"
+capture haseen plugin enable haseen.accounts
+assert_status "haseen plugin enable haseen.accounts" 0 "$STATUS"
+
 # --- the models in the Qt JS engine ---------------------------------------------
 QML=/usr/lib/qt6/bin/qml
 H="$SANDBOX/js"
@@ -59,6 +80,7 @@ import "file://$PLUGINS/haseen.emojisearch/Emoji.js" as E
 import "file://$PLUGINS/haseen.commands/Commands.js" as C
 import "file://$PLUGINS/haseen.menu/MenuModel.js" as M
 import "file://$PLUGINS/haseen.websearch/WebSearch.js" as S
+import "file://$PLUGINS/haseen.accounts/Accounts.js" as A
 import "Data.js" as D
 
 Window {
@@ -201,6 +223,45 @@ Window {
             eq("web: the host is shown", ["duckduckgo.com", "www.google.com"], [S.host(ddg), S.host("https://www.google.com/search?q=%s")]);
             eq("web: xdg-open opens the URL", ["xdg-open", "https://duckduckgo.com/?q=x"], S.openArgv("https://duckduckgo.com/?q=x"));
             eq("web: nothing to open, nothing runs", [], S.openArgv(""));
+
+            // Agent accounts (plan 132): what exists comes from the CLI's
+            // own list; the rows are the three commands, in a terminal.
+            eq("accounts: a list that is not JSON leaves the add rows standing", [], A.parse("not json"));
+            const listed = [
+                { provider: "claude", name: "Claude", active: "work", accounts: [
+                    { id: "main", label: "Main", email: "me@home.test", plan: "Max 20x", active: false, signedIn: true },
+                    { id: "work", label: "work", email: "me@work.test", plan: "Pro", active: true, signedIn: true },
+                    { id: "old", label: "old", active: false, signedIn: false } ] },
+                { provider: "codex", name: "Codex", active: "main", accounts: [
+                    { id: "main", label: "Main", active: true, signedIn: false } ] },
+                { provider: "grok", name: "Grok", active: "main", accounts: [
+                    { id: "main", label: "Main", active: true, signedIn: true } ] }
+            ];
+            eq("accounts: a provider with one signed-out login is not a switch", ["claude:work", "claude:main", "claude:old", "grok:main"],
+               A.entries(listed).map(a => a.provider + ":" + a.id));
+            eq("accounts: the account in use comes first", "claude:work", A.entries(listed)[0].provider + ":" + A.entries(listed)[0].id);
+            eq("accounts: an empty query adds nothing at rest", [], A.rows(listed, ""));
+            eq("accounts: a whitespace query is at rest too", [], A.rows(listed, "   "));
+            eq("accounts: nothing signed in still offers the three adds and the list",
+               ["Add a Claude account\u2026", "Add a Codex account\u2026", "Add a Grok account\u2026", "Agent accounts"],
+               A.rows([], "account").map(r => r.title));
+            eq("accounts: the accounts come before the adds",
+               ["work", "Main", "old", "Main", "Add a Claude account\u2026", "Add a Codex account\u2026", "Add a Grok account\u2026", "Agent accounts"],
+               A.rows(listed, "account").map(r => r.title));
+            eq("accounts: the detail line names the provider, address, plan and state",
+               "Claude account  \u00b7  me@work.test  \u00b7  Pro  \u00b7  in use", A.rows(listed, "account")[0].subtitle);
+            eq("accounts: a signed-out account says so", "signed out", A.rows(listed, "old")[0].subtitle.split("  \u00b7  ").pop());
+            eq("accounts: the provider name finds its rows", ["work", "Main", "old", "Add a Claude account\u2026"],
+               A.rows(listed, "claude").map(r => r.title));
+            eq("accounts: the account's name finds it", ["work"], A.rows(listed, "work").map(r => r.title));
+            eq("accounts: every word has to match", [], A.rows(listed, "claude grok"));
+            eq("accounts: Enter switches through the CLI", ["agent", "account", "use", "claude", "work"], A.command(A.rows(listed, "work")[0]));
+            eq("accounts: an add row runs the CLI's add", ["agent", "account", "add", "grok"], A.command(A.rows(listed, "add grok")[0]));
+            eq("accounts: the list row runs the CLI's list", ["agent", "account", "list"], A.command(A.rows(listed, "agent accounts")[0]));
+            eq("accounts: an unknown kind runs nothing", [], A.command({ kind: "nope" }));
+            eq("accounts: the rows are translated where QML shows them",
+               ["ADD A CLAUDE ACCOUNT\u2026"],
+               A.rows(listed, "add claude", { tr: (text, ...args) => text.replace("%1", args[0] || "").toUpperCase() }).map(r => r.title));
         } catch (e) {
             failures++;
             console.warn("UNIT-FAIL exception " + e + " " + e.stack);
@@ -216,7 +277,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         _fail "js: ${line#*UNIT-FAIL }"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "provider model unit count" "59" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "provider model unit count" "76" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -326,13 +387,33 @@ ShellRoot {
                 // Nothing read for emoji until a `:` query asks.
                 probe.put("emojiUnread", probe.provider("haseen.emojisearch").emojis.length === 0 && !probe.provider("haseen.emojisearch").wanted);
                 probe.launcher.query = ":";
+                // The accounts provider (plan 132): its first query starts the
+                // one list it reads; until that answers, it shows no row on a
+                // guess.
+                probe.launcher.query = "account";
+                probe.put("accountPending", probe.titles());
                 probe.step = 1;
-            } else if (probe.step === 1 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
+            } else if (probe.step === 1 && probe.provider("haseen.accounts").listed) {
+                // No account is signed in under the test's HOME, so the query
+                // offers the three sign-ins and the list, before any app row.
+                probe.put("accountRows", probe.titles().slice(0, 4));
+                const accounts = JSON.stringify([
+                    { provider: "claude", name: "Claude", active: "work", accounts: [
+                        { id: "main", label: "Main", active: false, signedIn: true },
+                        { id: "work", label: "work", email: "me@work.test", plan: "Pro", active: true, signedIn: true } ] }
+                ]);
+                const rows = probe.provider("haseen.accounts").rowsFor(accounts, "account");
+                probe.put("accountFixture", rows.map(r => r.title + " | " + r.subtitle));
+                probe.put("accountGlyphs", rows.every(r => r.glyph !== "" && r.icon === ""));
+                // Enter on an account: the CLI's use in a floating terminal.
+                probe.provider("haseen.accounts").rowsFor(accounts, "work")[0].exec();
+                probe.step = 2;
+            } else if (probe.step === 2 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
                 // The first `/` query: no guard has answered yet.
                 probe.launcher.query = "/fixture";
                 probe.put("commandsBefore", probe.titles());
-                probe.step = 2;
-            } else if (probe.step === 2 && probe.provider("haseen.emojisearch").emojis.length > 0 && probe.provider("haseen.commands").guards) {
+                probe.step = 3;
+            } else if (probe.step === 3 && probe.provider("haseen.emojisearch").emojis.length > 0 && probe.provider("haseen.commands").guards) {
                 probe.put("commandsAfter", probe.titles());
                 probe.put("commandsSubtitle", probe.launcher.results[0].subtitle);
                 probe.put("commandsGlyphs", probe.launcher.results.map(r => r.icon === "" && r.glyph !== ""));
@@ -348,11 +429,11 @@ ShellRoot {
                 // on them before its own batch answers.
                 probe.launcher.destroy();
                 probe.launcher = launcherComponent.createObject(null, { settings: Plugins.settingsFor("haseen.launcher") });
-                probe.step = 3;
-            } else if (probe.step === 3 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
+                probe.step = 4;
+            } else if (probe.step === 4 && probe.provider("haseen.commands").defaultText !== "" && probe.provider("haseen.commands").userText !== "") {
                 probe.launcher.query = "/fixture";
                 probe.put("commandsReopen", probe.titles());
-                probe.step = 4;
+                probe.step = 5;
                 quit.start();
             }
         }
@@ -374,8 +455,8 @@ QML
     RESULT="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
     ARGV="$(cat "$LOG" 2>/dev/null || true)"
     r() { jq -c "$1" <<<"${RESULT:-null}"; }
-    assert_eq "the four providers load with their prefixes beside the default ones" \
-        '["haseen.calculator==","haseen.clipboard=>","haseen.commands=/","haseen.emojisearch=:","haseen.websearch=?","haseen.windows=@"]' "$(r .providers)"
+    assert_eq "the five providers load, the accounts one with no prefix" \
+        '["haseen.accounts=","haseen.calculator==","haseen.clipboard=>","haseen.commands=/","haseen.emojisearch=:","haseen.websearch=?","haseen.windows=@"]' "$(r .providers)"
     for want in "@ Windows" ": Emoji search" "/ Commands" "? Web search"; do
         assert_contains "the empty launcher lists the prefix $want" "$(r .help)" "$want"
     done
@@ -406,5 +487,13 @@ QML
     assert_eq "emoji: :red heart lists the red heart first, the emoji in the icon column" '"❤️"' "$(r .emojiGlyph)"
     assert_eq "emoji: its title is its words, without the emoji" '"red heart heart love"' "$(r '.emoji[0]')"
     assert_contains "emoji: Enter copies it with wl-copy" "$ARGV" "wl-copy|--|❤️"
+    assert_eq "accounts: no row is shown before the one list answers" "[]" "$(r .accountPending)"
+    assert_eq "accounts: account finds the three sign-ins and the list, before any app row" \
+        "$(jq -c . <<<'["Add a Claude account…","Add a Codex account…","Add a Grok account…","Agent accounts"]')" "$(r .accountRows)"
+    assert_eq "accounts: a listed account is a row, in use first, its provider and state on the detail line" \
+        "$(jq -c . <<<'["work | Claude account  ·  me@work.test  ·  Pro  ·  in use","Main | Claude account  ·  signed in","Add a Claude account… | sign in through a browser, in a home of its own","Add a Codex account… | sign in through a browser, in a home of its own","Add a Grok account… | sign in through a browser, in a home of its own","Agent accounts | list them: which account new sessions use; running ones stay"]')" "$(r .accountFixture)"
+    assert_eq "accounts: every row has a glyph and no icon-theme name" "true" "$(r .accountGlyphs)"
+    assert_contains "accounts: Enter runs the CLI's use in a floating terminal, through Apps.launch" "$ARGV" \
+        "|--|$REPO/bin/haseen|config|terminal|--|$REPO/bin/haseen|agent|account|use|claude|work"
     assert_not_contains "nothing reached a stubbed binary" "$OUTPUT" "STUB-CALLED"
 fi

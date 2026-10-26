@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.accounts",
+  "name": "Agent accounts",
+  "version": "1.0.0",
+  "description": "Type account in the launcher (no prefix): switch which Claude, Codex or Grok account new sessions use, sign in another, or list them",
+  "kinds": ["launcher-provider"],
+  "entry": {
+    "launcher-provider": "Provider.qml"
+  },
+  "settings": {},
+  "permissions": ["exec"]
+}
