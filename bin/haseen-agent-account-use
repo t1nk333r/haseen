@@ -15,10 +15,12 @@ Usage: haseen agent account use [claude|codex|grok] [account|next] [--dry-run]
 Makes ACCOUNT (an id from haseen agent account list; main is the login the
 CLI already has) the one new sessions start as; next moves to the following
 account. Running sessions keep theirs. Sessions started from the agent key
-or menu (omarchy-agent) and haseen agent account exec follow it; a plain
-claude, codex or grok follows it only where Omarchy 4.5's mise wrapper
-(/etc/mise/conf.d/omarchy-agent-accounts.toml) is installed. The provider can
-be left out when it is the default agent (haseen setup default agent).
+or menu (omarchy-agent) and haseen agent account exec follow it, and so does a
+plain claude, codex or grok in a shell that sources haseen's fragment: the
+function there resolves the account when the command runs. With Omarchy 4.5's
+mise wrapper (/etc/mise/conf.d/omarchy-agent-accounts.toml) installed it
+follows everywhere a mise shim runs. The provider can be left out when it is
+the default agent (haseen setup default agent).
 Adapted from Omarchy bin/omarchy-agent-account-use (MIT, Copyright (c) David
 Heinemeier Hansson).
 EOF
@@ -61,10 +63,11 @@ acct_save "$PROVIDER" "$(jq -c --arg id "$id" '.active = $id | .alert = ""' <<<"
 plan="$(jq -r '.plan // ""' <<<"$account")"
 $DRY_RUN && exit 0
 echo "New $name sessions now use $label${plan:+ ($plan)}. Running sessions stay on $(jq -r .label <<<"$previous")."
-# Which launches follow the choice: Omarchy 4.5's mise wrapper routes plain
-# CLI runs through omarchy-agent-account-exec; without it only haseen's do.
+# Which launches follow the choice: a plain CLI run picks it up in a shell
+# that sources haseen's fragment (functions.sh), and everywhere a mise shim
+# runs once Omarchy 4.5's wrapper is installed.
 if [[ -e $(sysroot_path /etc/mise/conf.d/omarchy-agent-accounts.toml) ]]; then
-    echo "The agent key, the menu, haseen agent account exec and plain $PROVIDER (Omarchy's mise wrapper) follow it."
+    echo "The agent key, the menu, haseen agent account exec and plain $PROVIDER follow it (a haseen shell, and every mise shim)."
 else
-    echo "The agent key, the menu and haseen agent account exec $PROVIDER follow it; a plain $PROVIDER does not."
+    echo "The agent key, the menu, haseen agent account exec and plain $PROVIDER in a haseen shell follow it; elsewhere (a script, a GUI launch) use haseen agent account exec."
 fi

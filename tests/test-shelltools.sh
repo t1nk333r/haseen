@@ -442,3 +442,30 @@ assert_eq "a quote in a directory name runs nothing under herdr either" "" "$([[
 assert_contains "the herdr pane changes into that directory" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/$EVIL"
 run_typed "$LAYOUT/plain" "${typed[1]}"
 assert_contains "the next directory gets a herdr tab running the layout" "$OUTPUT" "LAYOUT dl claude in $LAYOUT/plain"
+
+# --- several agent accounts: a plain claude follows the switch (plan 129) ----
+# Omarchy 4.5 routes claude/codex/grok through a system mise wrapper; haseen
+# defines the same indirection as a function, and only where an account
+# registry exists, so a machine with one account sees nothing new.
+stub claude 'echo "CLAUDE $*"'
+fragment() { env -i HOME="$HOME" PATH="$PATH" HASEEN_SHELL_DIR="$SHELLDIR" HASEEN_USER_STATE="$1" \
+    bash --noprofile --norc -c '. "$HASEEN_SHELL_DIR/functions.sh"; '"$2"; }
+capture fragment "$SANDBOX/no-registry" 'type -t claude'
+assert_eq "no account registry: claude stays the program" "file" "$OUTPUT"
+capture fragment "$SANDBOX/no-registry" 'claude hello'
+assert_eq "and runs untouched" "CLAUDE hello" "$OUTPUT"
+mkdir -p "$SANDBOX/accounts/agents/accounts"
+capture fragment "$SANDBOX/accounts" 'type -t claude'
+assert_eq "a registry wraps claude" "function" "$OUTPUT"
+capture fragment "$SANDBOX/accounts" 'claude hello'
+assert_eq "the wrapper runs the CLI through the account" "CLAUDE hello" "$OUTPUT"
+capture fragment "$SANDBOX/accounts" 'type -t grok'
+assert_eq "a CLI that is not installed is not wrapped" "" "$OUTPUT"
+capture fragment "$SANDBOX/accounts" 'type -P claude'
+assert_contains "the program is still reachable, not only the wrapper" "$OUTPUT" "/stubs/claude"
+# A machine that used Omarchy 4.5 keeps its registry there; haseen's account
+# answers read it, so the wrapper has to be there as well.
+mkdir -p "$SANDBOX/omarchy-registry/omarchy/agents/accounts"
+capture env -i HOME="$HOME" PATH="$PATH" HASEEN_SHELL_DIR="$SHELLDIR" XDG_STATE_HOME="$SANDBOX/omarchy-registry" \
+    bash --noprofile --norc -c '. "$HASEEN_SHELL_DIR/functions.sh"; type -t claude'
+assert_eq "Omarchy's registry wraps it too" "function" "$OUTPUT"
