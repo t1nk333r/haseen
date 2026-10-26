@@ -138,16 +138,45 @@ PluginSlot {
     // that handles no events itself only takes a passive grab on a press, so
     // the press goes on to the widget as if it were not here. One in the slot
     // itself would never see a press the widget accepts.
+    // A left press held still on a widget asks the bar to edit it with the
+    // default coding agent (plan 126), the gesture omalauncher gives a
+    // home-screen widget; the command starts the agent on the widget's files.
+    // The pointer must stay within a few pixels: a drag, a slider or a scroll
+    // never fires it, and a release stops the timer. The widget's own click
+    // still comes on release (this handler only ever takes a passive grab),
+    // so a hold on a widget that opens a panel also opens it once.
+    // haseen:ui-timeout
+    Timer {
+        id: hold
+
+        interval: 700
+        repeat: false
+        onTriggered: {
+            // Still where it was pressed: a drag, a slide or a scroll has
+            // moved the pointer by now and must not open an agent.
+            const p = press.point;
+            if (Math.abs(p.position.x - p.pressPosition.x) + Math.abs(p.position.y - p.pressPosition.y) <= 3)
+                slot.host.editWidget(slot.modelData);
+        }
+    }
+
     Item {
         anchors.fill: parent
         z: 2
 
         PointHandler {
+            id: press
+
             acceptedButtons: Qt.AllButtons
             enabled: !slot.host.arranging
             onActiveChanged: {
-                if (active)
+                if (active) {
                     slot.host.reportPress(slot);
+                    if (centroid.pressedButtons & Qt.LeftButton)
+                        hold.restart();
+                } else {
+                    hold.stop();
+                }
             }
         }
     }
@@ -168,10 +197,12 @@ PluginSlot {
         enabled: slot.draggable && !slot.host.hidden
         cursorShape: Qt.ClosedHandCursor
         onActiveChanged: {
-            if (active)
+            if (active) {
+                hold.stop();
                 slot.host.beginDrag(slot.modelData, slot, centroid.pressPosition, centroid.scenePosition);
-            else
+            } else {
                 slot.host.releaseDrag(slot.modelData);
+            }
         }
         onCentroidChanged: {
             if (active)

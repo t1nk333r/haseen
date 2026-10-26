@@ -398,6 +398,16 @@ Item {
         };
     }
 
+    // A widget held on the bar (BarSlot.qml, 700 ms without moving) asks to
+    // be edited with the default coding agent (plan 126): `haseen bar edit`
+    // starts it in the widget's directory, copying a built-in widget into the
+    // user's plugins first when the installed tree is not writable.
+    function editWidget(id: string): void {
+        if (id === "")
+            return;
+        Quickshell.execDetached(["haseen", "bar", "edit", id]);
+    }
+
     // A widget's drag passed the threshold (BarSlot.qml). `grip` is where in
     // the slot it was pressed, `at` the pointer in the slot's window.
     function beginDrag(id: string, slot: Item, grip: point, at: point): void {

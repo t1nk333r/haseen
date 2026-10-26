@@ -147,6 +147,14 @@ assert_contains "Escape in the overflow panel cancels a drag before it closes th
     "$(cat "$SHELL_DIR/BarOverflowPanel.qml")" $'if (panel.barWindow.dragging)\n                panel.barWindow.cancelDrag();'
 strip="$(cat "$SHELL_DIR/BarStrip.qml")"
 assert_contains "a silent drag ends on a marked single-shot timeout" "$strip" $'// haseen:ui-timeout\n    Timer {\n        id: watchdog'
+
+# Plan 126: a press held still on a widget starts the coding agent on it.
+slot="$(cat "$SHELL_DIR/BarSlot.qml")"
+assert_contains "a held widget asks the bar to edit it" "$slot" "slot.host.editWidget(slot.modelData)"
+assert_contains "after 700 ms" "$slot" "interval: 700"
+assert_contains "only for the left button" "$slot" "centroid.pressedButtons & Qt.LeftButton"
+assert_contains "and travel cancels the hold" "$slot" "p.position.x - p.pressPosition.x"
+assert_contains "the strip runs haseen bar edit" "$strip" 'Quickshell.execDetached(["haseen", "bar", "edit", id])'
 assert_eq "no colour literals in the drag's files" "" \
     "$(grep -nE '"#[0-9a-fA-F]{3,8}"' "$SHELL_DIR"/{Bar,BarStrip,BarSlot,BarSection,BarDragOverlay}.qml || true)"
 assert_eq "no blur or shader in the drag's files" "" \

@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# haseen:summary Start the default coding agent on a bar widget's files so it can change it with you
+# haseen:args <id> [--dir DIR] [--prompt TEXT] [--dry-run]
+#
+# A bar widget is a plugin: a directory with manifest.json and the QML it
+# names. Held on the bar, a widget asks for this command (plan 126); it is
+# the gesture omalauncher gives a home-screen widget on a long press, with
+# "edit" starting the agent on the widget's file.
+#
+# Where the agent works: --dir, else the checkout named by $HASEEN_SOURCE or
+# ~/.config/haseen/source (one line, so a developer edits the real source),
+# else the plugin's own directory when it is a user plugin, else a copy of
+# the built-in into ~/.config/haseen/plugins: the installed tree belongs to
+# root, and a copy there would not be writable (and would win over haseen's
+# updates from then on, which the notification says).
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/shell/lib/plugin.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen bar edit <id> [--dir DIR] [--prompt TEXT] [--dry-run]
+
+Starts the default coding agent (\`haseen setup default agent\`) on a bar
+widget, in the widget's directory, so you can describe what to change.
+
+In the shell, hold a bar widget (700 ms) to do the same: it never fires
+while the pointer moves, so a drag still moves the widget and a slider
+still slides.
+
+--dir DIR      edit this directory (a plugin directory with manifest.json)
+--prompt TEXT  the words to start with, instead of the built-in request
+--dry-run      print the copy (if any) and the agent command, start nothing
+EOF
+}
+
+want_dir=""
+want_prompt=""
+args=()
+while (($#)); do
+    case $1 in
+    --dir)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        want_dir=$2
+        shift
+        ;;
+    --prompt)
+        (($# >= 2)) || {
+            usage >&2
+            exit 2
+        }
+        want_prompt=$2
+        shift
+        ;;
+    *) args+=("$1") ;;
+    esac
+    shift
+done
+parse_common_flags "${args[@]+"${args[@]}"}"
+((${#REST[@]} == 1)) || {
+    usage >&2
+    exit 2
+}
+id="${REST[0]}"
+[[ $id =~ $PLUGIN_ID_RE ]] || die "not a plugin id: $id"
+
+# source_root — the checkout a developer edits instead of the installed tree.
+source_root() {
+    local root="${HASEEN_SOURCE:-}" file="$HASEEN_USER_CONFIG/source" line=""
+    if [[ -z $root && -r $file ]]; then
+        IFS= read -r line <"$file" || true
+        root=${line#"${line%%[![:space:]]*}"}
+        root=${root%"${root##*[![:space:]]}"}
+    fi
+    [[ -n $root ]] && printf '%s\n' "${root%/}"
+}
+
+# resolve_dir — the directory the agent edits for ID.
+resolve_dir() {
+    local dir root dest
+    if [[ -n $want_dir ]]; then
+        [[ -f $want_dir/manifest.json ]] || die "no manifest.json in $want_dir"
+        (cd "$want_dir" && pwd)
+        return 0
+    fi
+    root="$(source_root)"
+    if [[ -n $root && -d $root/share/haseen/shell/plugins/$id ]]; then
+        (cd "$root/share/haseen/shell/plugins/$id" && pwd)
+        return 0
+    fi
+    dir="$(plugin_dir "$id")" || die "unknown plugin: $id"
+    # A user plugin is already the copy the shell loads.
+    if [[ $(dirname "$dir") == "$PLUGIN_USER_DIR" ]]; then
+        printf '%s\n' "$dir"
+        return 0
+    fi
+    dest="$PLUGIN_USER_DIR/$id"
+    if [[ ! -d $dest ]]; then
+        if $DRY_RUN; then
+            # To stderr: the caller reads the directory from this function's stdout.
+            printf 'DRYRUN: mkdir -p %q\nDRYRUN: cp -R %q %q\n' \
+                "$PLUGIN_USER_DIR" "$dir" "$dest" >&2
+        else
+            mkdir -p "$PLUGIN_USER_DIR"
+            cp -R "$dir" "$dest"
+            have notify-send && notify-send -a haseen \
+                "$(i18n "Copied %1 so an agent can edit it" "$id")" \
+                "$(i18n "The copy in %1 now wins over haseen's updates." "$dest")" || true
+        fi
+    fi
+    printf '%s\n' "$dest"
+}
+
+dir="$(resolve_dir)"
+prompt=${want_prompt:-"I want to change the haseen bar widget \"$id\" in $dir. Read its manifest.json and the QML it names, and share/haseen/agents/skills/haseen/ for the plugin contract. \`haseen plugin validate $id\` checks it, and the running shell reloads the widget when its files change. Ask me what to change."}
+
+agent="$HASEEN_PATH/omarchy/bin/omarchy-agent"
+if $DRY_RUN; then
+    printf "DRYRUN: cd '%s' && '%s' --prompt '%s'\n" "$dir" "$agent" "$prompt"
+    exit 0
+fi
+
+if ! (cd "$dir" && "$agent" --prompt "$prompt"); then
+    have notify-send && notify-send -a haseen \
+        "$(i18n "No agent started")" \
+        "$(i18n "Choose one with: haseen setup default agent <name>")" || true
+    exit 1
+fi
