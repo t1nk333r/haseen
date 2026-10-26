@@ -6,7 +6,9 @@
 # DEST defaults to share/haseen/sidecar/haseen-sidecar, which is where the
 # installed tree keeps it and where qs.Haseen.Sidecar looks; the other two
 # land beside it. With a Go toolchain the daemon and the palette are built
-# from core/. Without one they are **downloaded** from the sidecar release
+# from core/; a `go` that is on PATH but does not run — a mise shim with no
+# version set — counts as no toolchain. Without one they are **downloaded**
+# from the sidecar release
 # (plan 127): `sidecar-v$VERSION` on GitHub, assets named
 # haseen-sidecar-linux-<arch> and haseen-palette-linux-<arch>, checked against
 # the release's SHA256SUMS before anything is installed. A machine with
@@ -89,7 +91,11 @@ fetch_go() {
 }
 
 build_go() {
-    if ! command -v "$GO" >/dev/null; then
+    # `go version`, not only `command -v`: a mise shim is on PATH with no
+    # version set and then fails ("mise ERROR No version is set for shim: go",
+    # IO, 2026-10-26), which used to stop the install instead of fetching the
+    # release — the same trap `cargo --version` below avoids (plan 130).
+    if ! "$GO" version >/dev/null 2>&1; then
         if [[ ${HASEEN_FETCH_SIDECAR:-1} != 0 ]]; then
             fetch_go
             return
