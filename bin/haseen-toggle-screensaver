@@ -26,6 +26,9 @@ EOF
 }
 
 FLAG="$HASEEN_USER_STATE/flags/screensaver-off"
+# Kept in step: a plugin that claims Omarchy's file (the koi) steps aside
+# while the screensaver is off, and comes back when it is on (plan 128).
+OMARCHY_FLAG="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/screensaver-off"
 
 parse_common_flags "$@"
 set -- "${REST[@]}"
@@ -53,8 +56,9 @@ esac
 
 if [[ $action == off ]]; then
     write_user_file "$FLAG" </dev/null
+    write_user_file "$OMARCHY_FLAG" </dev/null
 else
-    run rm -f -- "$FLAG"
+    run rm -f -- "$FLAG" "$OMARCHY_FLAG"
 fi
 $DRY_RUN && exit 0
 echo "Screensaver $action"

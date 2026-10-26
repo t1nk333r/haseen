@@ -73,6 +73,13 @@ assert_contains "Flags is a qs.Haseen singleton" "$(cat "$SHELL_DIR/Haseen/qmldi
 for name in dnd idle-off screensaver-off nightlight recording; do
     assert_contains "Flags watches $name" "$(cat "$SHELL_DIR/Haseen/Flags.qml")" "name: \"$name\""
 done
+# The screensaver is off when either store says so: haseen's flag, or the
+# Omarchy toggle a third-party screensaver plugin claims while it is the
+# screensaver (plan 128).
+assert_contains "Flags reads Omarchy's screensaver toggle" "$(cat "$SHELL_DIR/Haseen/Flags.qml")" \
+    "screensaverOff: screensaverOffFile.on || omarchyScreensaverOff.on"
+assert_contains "Flags watches Omarchy's toggles" "$(cat "$SHELL_DIR/Haseen/Flags.qml")" \
+    "dir: root.omarchyToggles"
 assert_contains "notifications dnd mirrors the flag" "$(cat "$PLUGINS/haseen.notifications/Service.qml")" "readonly property bool dnd: Flags.dnd"
 assert_contains "toggleDnd writes the flag" "$(cat "$PLUGINS/haseen.notifications/Service.qml")" 'Flags.set("dnd", !dnd)'
 
@@ -146,6 +153,23 @@ assert_status "toggle screensaver --help exits 0" 0 "$STATUS"
 assert_contains "toggle screensaver --help names --force" "$OUTPUT" "haseen screensaver --force"
 assert_not_contains "toggle screensaver --help starts no screensaver" "$OUTPUT" "STUB-CALLED"
 assert_contains "screensaver toggle notifies (no other visual cue)" "$(cat "$HOME/notify.log" 2>/dev/null)" "NOTIFY -a haseen -u low Screensaver off"
+# Omarchy's toggle file is kept in step, so a plugin that claims it (the koi
+# screensaver) steps aside while the screensaver is off and comes back when
+# it is on (plan 128). check_toggle left the screensaver off.
+OMARCHY_SS="$XDG_STATE_HOME/omarchy/toggles/screensaver-off"
+assert_eq "screensaver off mirrors Omarchy's toggle" "present" "$([[ -e $OMARCHY_SS ]] && echo present || echo absent)"
+capture haseen screensaver --dry-run
+assert_contains "Omarchy's toggle alone turns the screensaver off" "$OUTPUT" "the screensaver is off"
+capture haseen toggle screensaver on
+assert_eq "screensaver on clears Omarchy's toggle" "absent" "$([[ -e $OMARCHY_SS ]] && echo present || echo absent)"
+# A plugin's claim on its own counts too: no haseen flag, and still off.
+mkdir -p "$(dirname "$OMARCHY_SS")"
+: >"$OMARCHY_SS"
+capture haseen screensaver --dry-run
+assert_contains "a plugin's claim alone turns it off" "$OUTPUT" "the screensaver is off"
+capture haseen screensaver --force --dry-run
+assert_contains "and --force still shows it" "$OUTPUT" "DRYRUN: haseen shell ipc screensaver start default"
+rm -f "$OMARCHY_SS"
 # HASEEN_USER_STATE wins over XDG_STATE_HOME, as everywhere else.
 HASEEN_USER_STATE="$SANDBOX/alt-state" capture haseen toggle dnd on
 assert_eq "toggles honour HASEEN_USER_STATE" "yes" "$([[ -e $SANDBOX/alt-state/flags/dnd ]] && echo yes || echo no)"
