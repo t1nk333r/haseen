@@ -66,42 +66,146 @@ Item {
         // A plug event replacing an idle dpms monitor is not a removal.
         const plug = [Idle.monitors(Idle.timeouts(ac, { onBattery: false }, true), true), Idle.monitors(Idle.timeouts(ac, { onBattery: true }, true), true)];
         out("replaced", [Idle.replaced("dpms:330:1", plug[1]), Idle.replaced("screensaver:150:1", plug[1]), Idle.replaced("dpms:330:1", []), Idle.replaced("dpms:330:1", ["dpms:330:1"])]);
-        // Manual screen off/on (plan 084) against haseen.idle. The model:
-        // Hyprland's DPMS state, written by haseen screen off|on, by the
-        // service's dispatches and by input (key_press_enables_dpms and
-        // mouse_move_enables_dpms wake the displays before any monitor
-        // reports activity). The service part is Service.qml _run: dpms.off
-        // sets _dpmsOff and sends off, dpms.on clears it and sends on.
-        // "stay-awake" removes every monitor; an idle one runs its
-        // non-idle edge (the delegate's Component.onDestruction).
-        const sim = events => {
-            const st = { screen: true, dpmsOff: false, idle: {}, sent: [] };
-            const apply = (m, isIdle) => {
+        // Manual screen off/on (plan 084) and the screensaver cycle (plan
+        // 140) against haseen.idle. The model: Hyprland's DPMS state,
+        // written by haseen screen off|on, by the service's dispatches and
+        // by input (key_press_enables_dpms and mouse_move_enables_dpms wake
+        // the displays before any monitor reports activity). The service
+        // part is Service.qml: _run and _do (dpms.off sets _dpmsOff and sends
+        // off, dpms.on clears it and sends on, cycle.start takes the cycle's
+        // timeouts, cycle.end ends it through Qt.callLater), onTimeoutsChanged
+        // (a cycle without a screensaver monitor ends without input), the
+        // monitors are Idle.monitors' keys, and a key that changes replaces
+        // its monitor with a fresh, active one. As the service harness below
+        // measures: a removed monitor's Component.onDestruction runs at once,
+        // when its key goes, and sees the new keys; onTimeoutsChanged runs
+        // before the keys change; Qt.callLater runs after the event. "map" is Hyprland
+        // re-checking idle inhibitors (a window maps, takes focus or goes
+        // fullscreen: the screensaver's own terminal does all three); every
+        // idle monitor that respects inhibitors goes active, and nothing
+        // else. "input" makes every idle monitor active. { set: {...} }
+        // changes the timeouts (a settings change, a plug event);
+        // "stay-awake" sets them all to 0, as idle-off does.
+        const sim = (events, tt) => {
+            const t = Object.assign({ screensaver: 150, lock: 300, dpms: 330, suspend: 0 }, tt || {});
+            const st = { screen: true, dpmsOff: false, cycle: false, snap: null, idle: {}, sent: [] };
+            let keys = Idle.monitors(t, true, null);
+            const posted = [];
+            const apply = (m, isIdle, removed) => {
                 st.idle[m] = isIdle;
-                for (const a of Idle.actions(m, isIdle, { dpmsOff: st.dpmsOff, idleOff: false })) {
+                doAll(Idle.actions(m, isIdle, { dpmsOff: st.dpmsOff, idleOff: false, cycle: st.cycle, removed: removed === true }));
+            };
+            const destroyed = k => {
+                const m = Idle.parseMonitor(k).name;
+                if (!st.idle[m]) return;
+                if (Idle.replaced(k, keys)) st.idle[m] = false;
+                else apply(m, false, true);
+            };
+            const rekey = () => {
+                const next = Idle.monitors(t, true, st.cycle ? st.snap : null);
+                const gone = keys.filter(k => next.indexOf(k) < 0);
+                keys = next;
+                for (const k of gone) destroyed(k);
+            };
+            const endCycle = input => {
+                if (!st.cycle) return;
+                st.cycle = false;
+                st.snap = null;
+                rekey();
+                doAll(Idle.cycleEnd({ dpmsOff: st.dpmsOff, input: input }));
+            };
+            const doAll = acts => {
+                for (const a of acts) {
                     st.sent.push(a);
                     if (a === "dpms.off") { st.dpmsOff = true; st.screen = false; }
                     if (a === "dpms.on") { st.dpmsOff = false; st.screen = true; }
+                    if (a === "cycle.start" && !st.cycle) { st.snap = Object.assign({}, t); st.cycle = true; rekey(); }
+                    if (a === "cycle.end") posted.push(() => endCycle(true));
                 }
             };
-            const wake = () => { for (const m of Object.keys(st.idle)) if (st.idle[m]) apply(m, false); };
+            const respects = m => keys.some(k => { const p = Idle.parseMonitor(k); return p.name === m && p.respectInhibitors; });
             for (const e of events) {
                 if (e === "manual-off") st.screen = false;
                 else if (e === "manual-on") st.screen = true;
-                else if (e === "input") { st.screen = true; wake(); }
-                else if (e === "stay-awake") { wake(); st.idle = {}; }
-                else apply(e.replace(/^idle:/, ""), true);
+                else if (e === "input") { st.screen = true; for (const m of Object.keys(st.idle)) if (st.idle[m]) apply(m, false); }
+                else if (e === "map") { for (const m of Object.keys(st.idle)) if (st.idle[m] && respects(m)) apply(m, false); }
+                else if (e === "stay-awake" || typeof e === "object") {
+                    Object.assign(t, e === "stay-awake" ? { screensaver: 0, lock: 0, dpms: 0, suspend: 0 } : e.set);
+                    // onTimeoutsChanged, then the monitorKeys binding.
+                    if (st.cycle && t.screensaver === 0) endCycle(false);
+                    rekey();
+                } else {
+                    const m = e.replace(/^idle:/, "");
+                    if (keys.some(k => Idle.parseMonitor(k).name === m)) apply(m, true);
+                    else st.sent.push("no monitor " + m);
+                }
+                while (posted.length) posted.shift()();
             }
-            return { screen: st.screen, dpmsOff: st.dpmsOff, sent: st.sent };
+            return { screen: st.screen, dpmsOff: st.dpmsOff, cycle: st.cycle, sent: st.sent, keys: keys };
         };
-        out("s-off-input", sim(["manual-off", "input"]));
-        out("s-off-stays", sim(["manual-off", "idle:screensaver"]));
-        out("s-off-stay-awake", sim(["manual-off", "idle:screensaver", "stay-awake"]));
-        out("s-off-lock-dpms", sim(["manual-off", "idle:screensaver", "idle:lock", "idle:dpms"]));
-        out("s-off-lock-dpms-input", sim(["manual-off", "idle:screensaver", "idle:lock", "idle:dpms", "input"]));
-        out("s-idle-off-manual-on", sim(["idle:dpms", "manual-on", "input", "idle:dpms"]));
-        out("s-idle-off-manual-on-cycle", sim(["idle:dpms", "manual-on", "input", "idle:dpms", "input"]));
-        out("s-on-awake", sim(["manual-on"]));
+        // The sequences alone, for the cases that are not about keys.
+        const run = (events, tt) => { const o = sim(events, tt); delete o.keys; return o; };
+        out("s-off-input", run(["manual-off", "input"]));
+        out("s-off-stays", run(["manual-off", "idle:screensaver"]));
+        out("s-off-stay-awake", run(["manual-off", "idle:screensaver", "stay-awake"]));
+        out("s-off-lock-dpms", run(["manual-off", "idle:screensaver", "idle:lock", "idle:dpms"]));
+        out("s-off-lock-dpms-input", run(["manual-off", "idle:screensaver", "idle:presence", "idle:lock", "idle:dpms", "input"]));
+        out("s-idle-off-manual-on", run(["idle:dpms", "manual-on", "input", "idle:dpms"]));
+        out("s-idle-off-manual-on-cycle", run(["idle:dpms", "manual-on", "input", "idle:dpms", "input"]));
+        out("s-on-awake", run(["manual-on"]));
+        // The screensaver cycle (plan 140).
+        out("s-map-keeps", run(["idle:screensaver", "map"]));
+        out("s-map-lock-dpms", run(["idle:screensaver", "map", "idle:presence", "idle:lock", "map", "idle:dpms"]));
+        out("s-map-back", run(["idle:screensaver", "map", "idle:presence", "input"]));
+        out("s-map-back-after-dpms", run(["idle:screensaver", "map", "idle:presence", "idle:lock", "map", "idle:dpms", "input", "idle:screensaver"]));
+        out("s-dpms-first-map", run(["idle:dpms", "idle:screensaver", "map"], { screensaver: 150, lock: 300, dpms: 100, suspend: 0 }));
+        out("s-dpms-first-back", run(["idle:dpms", "idle:screensaver", "map", "idle:presence", "input"], { screensaver: 150, lock: 300, dpms: 100, suspend: 0 }));
+        out("s-map-stay-awake", run(["idle:screensaver", "map", "idle:presence", "idle:lock", "idle:dpms", "stay-awake"]));
+        out("s-again", run(["idle:screensaver", "idle:screensaver"]));
+        // A plug event or a settings change during the cycle: the lock and
+        // dpms keys stay, so their counts go on; turning one off removes it.
+        out("s-set-screensaver", sim(["idle:screensaver", "map", "idle:presence", { set: { screensaver: 30 } }]));
+        out("s-set-lock", sim(["idle:screensaver", "map", { set: { lock: 600 } }]));
+        out("s-set-lock-off", sim(["idle:screensaver", "map", { set: { lock: 0 } }]));
+        out("s-set-again", sim(["idle:screensaver", "map", { set: { screensaver: 30 } }, "idle:screensaver"]));
+        // The screensaver monitor dropped in a dark room (a plug event whose
+        // lockAfter is at or before screensaverAfter): nobody came back.
+        out("s-dropped-dark", sim(["idle:screensaver", "map", "idle:presence", "idle:lock", "idle:dpms", { set: { screensaver: 0 } }]));
+        // dpmsAfter equal to screensaverAfter: input only, 1 s after the start.
+        out("s-dpms-equal", sim(["idle:dpms", "idle:screensaver", "idle:dpms", "map"], { dpms: 150 }));
+        out("a-cycle", [
+            Idle.actions("presence", true, { cycle: true }),
+            Idle.actions("presence", false, { cycle: true }),
+            Idle.actions("dpms", false, { cycle: true, dpmsOff: true }),
+            Idle.actions("dpms", false, { cycle: true, dpmsOff: true, removed: true }),
+            Idle.actions("screensaver", false, { cycle: true, removed: true }),
+            Idle.actions("screensaver", false, { removed: true }),
+            Idle.actions("lock", true, { cycle: true }),
+            Idle.actions("suspend", true, { cycle: true }),
+            Idle.actions("screensaver", true, { cycle: true }),
+            Idle.actions("presence", false, { cycle: true, removed: true })
+        ]);
+        out("cycle-end", [Idle.cycleEnd({}), Idle.cycleEnd({ dpmsOff: true }), Idle.cycleEnd({ dpmsOff: true, input: true }), Idle.cycleEnd({ input: true })]);
+        out("m-cycle", [
+            Idle.monitors(Idle.timeouts({}, {}, true), true, true),
+            Idle.monitors(Idle.timeouts({ suspendAfter: 600 }, {}, true), false, true),
+            Idle.monitors({ screensaver: 150, lock: 300, dpms: 100, suspend: 0 }, true, true),
+            Idle.monitors(Idle.timeouts({}, { screensaverOff: true }, true), true, true),
+            Idle.monitors(Idle.timeouts({}, { idleOff: true }, true), true, true),
+            Idle.monitors({ screensaver: 150, lock: 0, dpms: 0, suspend: 0 }, true, true),
+            Idle.monitors({ screensaver: 150, lock: 300, dpms: 150, suspend: 0 }, true, true)
+        ]);
+        const c0 = Idle.timeouts({}, {}, true);
+        out("m-cycle-snapshot", [
+            Idle.monitors({ screensaver: 30, lock: 300, dpms: 330, suspend: 0 }, true, c0),
+            Idle.monitors({ screensaver: 150, lock: 600, dpms: 400, suspend: 0 }, true, c0),
+            Idle.monitors({ screensaver: 150, lock: 0, dpms: 330, suspend: 0 }, true, c0),
+            Idle.monitors({ screensaver: 150, lock: 300, dpms: 330, suspend: 0 }, true, { screensaver: 150, lock: 0, dpms: 330, suspend: 0 }),
+            Idle.monitors({ screensaver: 0, lock: 300, dpms: 330, suspend: 0 }, true, c0),
+            Idle.monitors(c0, true, null)
+        ]);
+        out("m-cycle-parse", Idle.parseMonitor("presence:1:0"));
+        out("m-cycle-replaced", [Idle.replaced("lock:300:1", Idle.monitors(Idle.timeouts({}, {}, true), true, true)), Idle.replaced("presence:1:0", Idle.monitors(Idle.timeouts({}, {}, true), true, false))]);
         Qt.quit();
     }
 }
@@ -145,21 +249,152 @@ EOF
         '[true,false,false,false]' "$(r replaced)"
     # Manual screen off/on against the service (plan 084, the model above).
     assert_eq "manual off, then input: the input wakes the displays; the service sends nothing" \
-        '{"screen":true,"dpmsOff":false,"sent":[]}' "$(r s-off-input)"
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":[]}' "$(r s-off-input)"
     assert_eq "manual off, the screensaver monitor fires: the displays stay off" \
-        '{"screen":false,"dpmsOff":false,"sent":["screensaver.start"]}' "$(r s-off-stays)"
-    assert_eq "manual off, then Stay Awake removes an idle monitor: no dpms.on, the displays stay off" \
-        '{"screen":false,"dpmsOff":false,"sent":["screensaver.start","screensaver.dismiss"]}' "$(r s-off-stay-awake)"
+        '{"screen":false,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start"]}' "$(r s-off-stays)"
+    assert_eq "manual off, then Stay Awake ends the cycle and removes the idle screensaver monitor: no dpms.on, the displays stay off" \
+        '{"screen":false,"dpmsOff":false,"cycle":false,"sent":["screensaver.start","cycle.start","screensaver.dismiss","screensaver.dismiss"]}' "$(r s-off-stay-awake)"
     assert_eq "manual off: the lock still comes at lockAfter, then the service's own dpms off" \
-        '{"screen":false,"dpmsOff":true,"sent":["screensaver.start","screensaver.dismiss","lock","dpms.off"]}' "$(r s-off-lock-dpms)"
+        '{"screen":false,"dpmsOff":true,"cycle":true,"sent":["screensaver.start","cycle.start","screensaver.dismiss","lock","dpms.off"]}' "$(r s-off-lock-dpms)"
     assert_eq "manual off, an idle cycle, input: the service turns on only what it turned off" \
-        '{"screen":true,"dpmsOff":false,"sent":["screensaver.start","screensaver.dismiss","lock","dpms.off","screensaver.dismiss","dpms.on"]}' "$(r s-off-lock-dpms-input)"
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":["screensaver.start","cycle.start","screensaver.dismiss","lock","dpms.off","cycle.end","screensaver.dismiss","dpms.on"]}' "$(r s-off-lock-dpms-input)"
     assert_eq "manual on while the service holds the displays off: its next cycle still turns them off" \
-        '{"screen":false,"dpmsOff":true,"sent":["dpms.off","dpms.on","dpms.off"]}' "$(r s-idle-off-manual-on)"
+        '{"screen":false,"dpmsOff":true,"cycle":false,"sent":["dpms.off","dpms.on","dpms.off"]}' "$(r s-idle-off-manual-on)"
     assert_eq "manual on, input, a second cycle: off and on as before" \
-        '{"screen":true,"dpmsOff":false,"sent":["dpms.off","dpms.on","dpms.off","dpms.on"]}' "$(r s-idle-off-manual-on-cycle)"
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":["dpms.off","dpms.on","dpms.off","dpms.on"]}' "$(r s-idle-off-manual-on-cycle)"
     assert_eq "manual on with the displays on: nothing for the service" \
-        '{"screen":true,"dpmsOff":false,"sent":[]}' "$(r s-on-awake)"
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":[]}' "$(r s-on-awake)"
+    # The screensaver cycle (plan 140): Hyprland's inhibitor re-check when the
+    # screensaver's window maps is not input.
+    assert_eq "the screensaver's own window mapping does not dismiss it" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start"]}' "$(r s-map-keeps)"
+    assert_eq "under the screensaver the lock and the displays still go at their time, through every re-check" \
+        '{"screen":false,"dpmsOff":true,"cycle":true,"sent":["screensaver.start","cycle.start","screensaver.dismiss","lock","dpms.off"]}' "$(r s-map-lock-dpms)"
+    assert_eq "input under the screensaver ends the cycle and dismisses it" \
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":["screensaver.start","cycle.start","cycle.end","screensaver.dismiss"]}' "$(r s-map-back)"
+    assert_eq "back after the lock and the displays went: one dpms on, then a new cycle from scratch" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start","screensaver.dismiss","lock","dpms.off","cycle.end","screensaver.dismiss","dpms.on","screensaver.start","cycle.start"]}' "$(r s-map-back-after-dpms)"
+    assert_eq "displays already off before the screensaver: its window mapping does not wake them" \
+        '{"screen":false,"dpmsOff":true,"cycle":true,"sent":["dpms.off","screensaver.start","cycle.start"]}' "$(r s-dpms-first-map)"
+    assert_eq "displays off before the screensaver, then input: the cycle's end wakes them once" \
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":["dpms.off","screensaver.start","cycle.start","cycle.end","screensaver.dismiss","dpms.on"]}' "$(r s-dpms-first-back)"
+    assert_eq "Stay Awake during a cycle with the displays off: the cycle ends, the dpms monitor's removal turns them on" \
+        '{"screen":true,"dpmsOff":false,"cycle":false,"sent":["screensaver.start","cycle.start","screensaver.dismiss","lock","dpms.off","dpms.on","screensaver.dismiss"]}' "$(r s-map-stay-awake)"
+    assert_eq "the screensaver monitor firing again inside a cycle starts no second one" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start","screensaver.start"]}' "$(r s-again)"
+    assert_eq "a new screensaverAfter during the cycle: the lock and dpms keys stay, so their counts go on" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start"],"keys":["screensaver:30:1","lock:150:0","dpms:180:0","presence:1:0"]}' "$(r s-set-screensaver)"
+    assert_eq "a new lockAfter during the cycle: the lock key keeps the cycle's time; the new value applies after it" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start"],"keys":["screensaver:150:1","lock:150:0","dpms:180:0","presence:1:0"]}' "$(r s-set-lock)"
+    assert_eq "lockAfter turned off during the cycle removes the lock monitor" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start"],"keys":["screensaver:150:1","dpms:180:0","presence:1:0"]}' "$(r s-set-lock-off)"
+    assert_eq "the replaced screensaver monitor firing again keeps the cycle and its keys" \
+        '{"screen":true,"dpmsOff":false,"cycle":true,"sent":["screensaver.start","cycle.start","screensaver.start"],"keys":["screensaver:30:1","lock:150:0","dpms:180:0","presence:1:0"]}' "$(r s-set-again)"
+    assert_eq "the screensaver monitor dropped while nobody is there: the screensaver goes, the displays stay off" \
+        '{"screen":false,"dpmsOff":true,"cycle":false,"sent":["screensaver.start","cycle.start","screensaver.dismiss","lock","dpms.off","screensaver.dismiss"],"keys":["lock:300:1","dpms:330:1"]}' "$(r s-dropped-dark)"
+    assert_eq "dpmsAfter equal to screensaverAfter: an input-only 1 s dpms monitor in the cycle, which a re-check does not restart" \
+        '{"screen":false,"dpmsOff":true,"cycle":true,"sent":["dpms.off","screensaver.start","cycle.start","dpms.off"],"keys":["screensaver:150:1","lock:150:0","dpms:1:0","presence:1:0"]}' "$(r s-dpms-equal)"
+    assert_eq "cycle actions: presence idle arms, active ends, removed does nothing; inhibitor-aware resumes do nothing; removal still undoes; the screensaver firing in a cycle starts none" \
+        '[[],["cycle.end"],[],["dpms.on"],[],["screensaver.dismiss"],["screensaver.dismiss","lock"],["suspend"],["screensaver.start"],[]]' "$(r a-cycle)"
+    assert_eq "the cycle's end dismisses the screensaver, and wakes displays it turned off only on input" \
+        '[["screensaver.dismiss"],["screensaver.dismiss"],["screensaver.dismiss","dpms.on"],["screensaver.dismiss"]]' "$(r cycle-end)"
+    assert_eq "cycle monitors: lock and dpms count the rest on input only (at least 1 s), a 1 s presence monitor; suspend and earlier monitors keep their key" \
+        '[["screensaver:150:1","lock:150:0","dpms:180:0","presence:1:0"],["screensaver:150:0","lock:150:0","dpms:180:0","suspend:600:1","presence:1:0"],["screensaver:150:1","lock:150:0","dpms:100:1","presence:1:0"],["lock:300:1","dpms:330:1"],[],["screensaver:150:1","presence:1:0"],["screensaver:150:1","lock:150:0","dpms:1:0","presence:1:0"]]' "$(r m-cycle)"
+    assert_eq "cycle keys come from the cycle's timeouts: current values only remove (0) or add a monitor, which then counts on input only; no screensaver, no cycle keys" \
+        '[["screensaver:30:1","lock:150:0","dpms:180:0","presence:1:0"],["screensaver:150:1","lock:150:0","dpms:180:0","presence:1:0"],["screensaver:150:1","dpms:180:0","presence:1:0"],["screensaver:150:1","lock:300:0","dpms:180:0","presence:1:0"],["lock:300:1","dpms:330:1"],["screensaver:150:1","lock:300:1","dpms:330:1"]]' "$(r m-cycle-snapshot)"
+    assert_eq "presence keys parse back as input-only" '{"name":"presence","timeout":1,"respectInhibitors":false}' "$(r m-cycle-parse)"
+    assert_eq "a cycle key replaces its monitor (no undo); presence is removed at the end" '[true,false]' "$(r m-cycle-replaced)"
+
+    # The service itself (plan 140): Service.qml on stand-ins for Quickshell
+    # and qs.Haseen. IdleMonitor is a settable isIdle, ScriptModel keeps the
+    # rows whose value stays (as Quickshell's does), and every role call and
+    # Hyprland dispatch goes to one log, in order. A Timer step lets Qt run
+    # its posted events (Qt.callLater) between the steps.
+    svc="$SANDBOX/service"
+    mkdir -p "$svc"/imports/{Quickshell/{Hyprland,Io,Wayland,Services/UPower},qs/Haseen}
+    printf 'module Quickshell\nScope 1.0 Scope.qml\nScriptModel 1.0 ScriptModel.qml\nsingleton Quickshell 1.0 QuickshellStub.qml\n' >"$svc/imports/Quickshell/qmldir"
+    printf 'import QtQuick\nQtObject { default property list<QtObject> data }\n' >"$svc/imports/Quickshell/Scope.qml"
+    cat >"$svc/imports/Quickshell/ScriptModel.qml" <<'EOF'
+import QtQuick
+ListModel {
+    id: m
+    property var values: []
+    function sync() {
+        for (let i = 0; i < m.count;) {
+            if (values.indexOf(m.get(i).modelData) < 0) m.remove(i);
+            else i++;
+        }
+        for (let i = 0; i < values.length; i++) {
+            let found = false;
+            for (let j = 0; j < m.count; j++) if (m.get(j).modelData === values[i]) found = true;
+            if (!found) m.insert(i, { modelData: values[i] });
+        }
+    }
+    onValuesChanged: sync()
+    Component.onCompleted: sync()
+}
+EOF
+    printf 'pragma Singleton\nimport QtQuick\nimport qs.Haseen\nQtObject { function execDetached(argv) { Log.push("exec " + argv.join(" ")); } }\n' >"$svc/imports/Quickshell/QuickshellStub.qml"
+    printf 'module Quickshell.Hyprland\nsingleton Hyprland 1.0 Hyprland.qml\n' >"$svc/imports/Quickshell/Hyprland/qmldir"
+    printf 'pragma Singleton\nimport QtQuick\nimport qs.Haseen\nQtObject { property bool usingLua: false; function dispatch(s) { Log.push(s); } }\n' >"$svc/imports/Quickshell/Hyprland/Hyprland.qml"
+    printf 'module Quickshell.Io\nIpcHandler 1.0 IpcHandler.qml\n' >"$svc/imports/Quickshell/Io/qmldir"
+    printf 'import QtQuick\nQtObject { property string target; property bool enabled }\n' >"$svc/imports/Quickshell/Io/IpcHandler.qml"
+    printf 'module Quickshell.Wayland\nIdleMonitor 1.0 IdleMonitor.qml\n' >"$svc/imports/Quickshell/Wayland/qmldir"
+    printf 'import QtQuick\nQtObject { property real timeout; property bool respectInhibitors: true; property bool isIdle: false; property bool enabled: true }\n' >"$svc/imports/Quickshell/Wayland/IdleMonitor.qml"
+    printf 'module Quickshell.Services.UPower\nsingleton UPower 1.0 UPower.qml\n' >"$svc/imports/Quickshell/Services/UPower/qmldir"
+    printf 'pragma Singleton\nimport QtQuick\nQtObject { property bool onBattery: false }\n' >"$svc/imports/Quickshell/Services/UPower/UPower.qml"
+    printf 'module qs.Haseen\nsingleton Plugins 1.0 Plugins.qml\nsingleton Flags 1.0 Flags.qml\nsingleton Paths 1.0 Paths.qml\nsingleton Log 1.0 Log.qml\n' >"$svc/imports/qs/Haseen/qmldir"
+    printf 'pragma Singleton\nimport QtQuick\nQtObject { property var lines: []; function push(s) { lines = lines.concat([s]); } function take() { const l = lines; lines = []; return l; } }\n' >"$svc/imports/qs/Haseen/Log.qml"
+    printf 'pragma Singleton\nimport QtQuick\nQtObject { property var roles: ({ screensaver: {}, lock: {} }); function callRole(role, fn, args) { Log.push(role + "." + fn); return true; } function warnOnce(k, m) {} }\n' >"$svc/imports/qs/Haseen/Plugins.qml"
+    printf 'pragma Singleton\nimport QtQuick\nQtObject { property bool idleOff: false; property bool screensaverOff: false }\n' >"$svc/imports/qs/Haseen/Flags.qml"
+    printf 'pragma Singleton\nimport QtQuick\nQtObject { property string haseenPath: "/fixture/share/haseen" }\n' >"$svc/imports/qs/Haseen/Paths.qml"
+    cat >"$svc/Harness.qml" <<EOF
+import QtQuick
+import qs.Haseen
+import "file://$PLUGINS/haseen.idle" as Idle
+Item {
+    id: top
+    property var svc: null
+    property var out: ({})
+    property var refs: ({})
+    Component { id: comp; Idle.Service { pluginId: "haseen.idle" } }
+    function inst() { for (const o of svc.data) if (o.objectAt !== undefined) return o; return null; }
+    function mon(name) { const i = inst(); for (let k = 0; k < i.count; k++) { const o = i.objectAt(k); if (o && o.spec.name === name) return o; } return null; }
+    function note(label) { out[label] = { keys: svc.monitorKeys, cycle: svc._cycle, started: svc.screensaverStartedThisCycle, sent: Log.take() }; }
+    function idle(name, v) { const m = mon(name); if (m) m.isIdle = v; else Log.push("no monitor " + name); }
+    property var steps: [
+        () => { svc = comp.createObject(top, { settings: {} }); note("start"); },
+        () => { idle("screensaver", true); note("cycle"); },
+        () => { idle("screensaver", false); idle("presence", true); note("map"); refs.lock = mon("lock"); refs.dpms = mon("dpms"); },
+        () => { svc.settings = { screensaverAfter: 30 }; out.same = [mon("lock") === refs.lock, mon("dpms") === refs.dpms]; note("set"); },
+        () => { idle("lock", true); idle("dpms", true); note("lock-dpms"); },
+        () => { Flags.screensaverOff = true; note("dropped"); },
+        () => { Flags.screensaverOff = false; svc.settings = {}; Log.take(); idle("screensaver", true); idle("presence", true); idle("dpms", true); note("cycle2"); },
+        () => { for (const n of ["screensaver", "lock", "dpms", "presence"]) idle(n, false); note("input"); },
+        () => { note("input-later"); },
+        () => { idle("screensaver", true); idle("presence", true); idle("lock", true); idle("dpms", true); Log.take(); Flags.idleOff = true; note("stay-awake"); },
+        () => { Flags.idleOff = false; Log.take(); idle("screensaver", true); idle("presence", true); Log.take(); svc.destroy(); },
+        () => { out.teardown = Log.take(); console.warn("RESULT " + JSON.stringify(out)); Qt.quit(); }
+    ]
+    property int at: 0
+    Timer { interval: 10; repeat: true; running: true; onTriggered: top.steps[top.at++]() }
+}
+EOF
+    svc_log="$(cd "$svc" && QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" -I imports Harness.qml 2>&1)"
+    svc_out="$(sed -n 's/^.*RESULT //p' <<<"$svc_log")"
+    sv() { jq -c "$1" <<<"${svc_out:-null}"; }
+    assert_eq "service: the default monitors" '{"keys":["screensaver:150:1","lock:300:1","dpms:330:1"],"cycle":false,"started":false,"sent":[]}' "$(sv .start)"
+    assert_eq "service: the screensaver monitor starts a cycle" '{"keys":["screensaver:150:1","lock:150:0","dpms:180:0","presence:1:0"],"cycle":true,"started":true,"sent":["screensaver.start"]}' "$(sv .cycle)"
+    assert_eq "service: the re-check when its window maps does not dismiss it" '{"keys":["screensaver:150:1","lock:150:0","dpms:180:0","presence:1:0"],"cycle":true,"started":true,"sent":[]}' "$(sv .map)"
+    assert_eq "service: a settings change during the cycle keeps the same lock and dpms monitors, counting" '[true,true]' "$(sv .same)"
+    assert_eq "service: ... and only the screensaver key changes" '["screensaver:30:1","lock:150:0","dpms:180:0","presence:1:0"]' "$(sv .set.keys)"
+    assert_eq "service: the lock and the displays at their time; screensaverStartedThisCycle ends with the lock" '{"keys":["screensaver:30:1","lock:150:0","dpms:180:0","presence:1:0"],"cycle":true,"started":false,"sent":["screensaver.dismiss","lock.lock","dpms off"]}' "$(sv '.["lock-dpms"]')"
+    assert_eq "service: the screensaver monitor dropped without input: the cycle ends, the displays stay off" '{"keys":["lock:300:1","dpms:330:1"],"cycle":false,"started":false,"sent":["screensaver.dismiss"]}' "$(sv .dropped)"
+    assert_eq "service: input ends the cycle after the handler returns" '{"keys":["screensaver:150:1","lock:150:0","dpms:180:0","presence:1:0"],"cycle":true,"started":true,"sent":[]}' "$(sv .input)"
+    assert_eq "service: ... then dismisses the screensaver and wakes the displays it turned off" '{"keys":["screensaver:150:1","lock:300:1","dpms:330:1"],"cycle":false,"started":false,"sent":["screensaver.dismiss","dpms on"]}' "$(sv '.["input-later"]')"
+    assert_eq "service: Stay Awake mid-cycle: onTimeoutsChanged ends it first, then the removed monitors undo their idle state" '{"keys":[],"cycle":false,"started":false,"sent":["screensaver.dismiss","dpms on","screensaver.dismiss"]}' "$(sv '.["stay-awake"]')"
+    assert_eq "service: unloaded mid-cycle, it sends nothing" '[]' "$(sv .teardown)"
+    assert_eq "service: no QML warnings or errors" "" "$(grep -v 'RESULT ' <<<"$svc_log" || true)"
 else
     echo "  skip: $QML_BIN not installed, IdleLogic not exercised" >&2
 fi
