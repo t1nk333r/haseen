@@ -12,8 +12,9 @@
   battery timeouts), 084 (manual screen off), 128 (one screensaver at a time)
 - **Category**: shell
 - **Planned at**: 2026-10-27
-- **State**: DONE 2026-10-27 (`tests/test-idle.sh` 108/108,
-  `tests/test-ambient.sh` 252/252)
+- **State**: DONE 2026-10-27 (`tests/test-idle.sh` 127/127,
+  `tests/test-ambient.sh` 252/252). Round 1 of the review (DeepSeek V4.1
+  Flash) asked for changes; they are in "Review" below.
 
 ## Problem
 
@@ -42,9 +43,10 @@ machine, as soon as the screensaver's terminal maps:
   (`src/managers/input/IdleInhibitor.cpp:35`, v0.56.2, efb5099) always ends
   in `PROTO::idle->setInhibit(true|false)`.
 - `CIdleNotifyProtocol::setInhibit` (`src/protocols/IdleNotify.cpp:118`)
-  calls `update()` on every notification that obeys inhibitors, whether the
-  state changed or not. `update(0)` (`IdleNotify.cpp:38`) then sends
-  `resumed` and restarts the count, also when nothing inhibits.
+  calls `update()` on every notification that obeys inhibitors (`:121`),
+  whether the state changed or not. `update()` (`:53`) is `update(0)`
+  (`:38`), which sends `resumed` (`reset()`, `:65`) and re-arms the full
+  timeout (`:46-48`), also when nothing inhibits.
 - The re-check runs:
   - on every window map and unmap (`src/desktop/view/Window.cpp:2494`,
     `:2704`);
@@ -91,40 +93,62 @@ A **screensaver cycle** in haseen.idle, from the screensaver monitor going
 idle until the next input (`share/haseen/shell/plugins/haseen.idle/`):
 
 - **`IdleLogic.actions`**:
-  - The screensaver monitor going idle now also returns `cycle.start`.
+  - The screensaver monitor going idle now also returns `cycle.start`,
+    outside a cycle only. In one (its monitor replaced by a new
+    `screensaverAfter`), a second start would take the cycle's timeouts
+    again and restart the lock's count.
   - Its going active returns nothing. The screensaver ends itself on input:
     keys and clicks, its 1 s input-only monitor, and in ttfx a focus change.
   - In a cycle, no monitor's going active does anything, unless that monitor
     is being removed.
-  - The new `presence` monitor going active returns `cycle.end`.
-- **`IdleLogic.cycleEnd`**: dismisses the screensaver, and sends `dpms.on`
-  for displays the service turned off. The monitors' own active edges were
-  dropped during the cycle, so this does what they would have done.
-- **`IdleLogic.monitors(t, respect, cycle)`**: in a cycle, each lock and dpms
-  monitor still counting gets an input-only key for the time it has left
-  (`lock:150:0`, `dpms:180:0` with the defaults). A 1 s input-only
-  `presence:1:0` is added.
-  - Input-only notifications ignore `setInhibit` (`IdleNotify.cpp:121`).
-    The lock and dpms still go at `lockAfter` and `dpmsAfter`, through the
-    map, and through the unmap when the lock closes the screensaver.
+  - The new `presence` monitor going active returns `cycle.end`. Removed
+    (the cycle ended without input, the plugin unloading), it returns
+    nothing: that is nobody coming back.
+- **`IdleLogic.cycleEnd`**: dismisses the screensaver. When input ended the
+  cycle it also sends `dpms.on` for displays the service turned off. The
+  monitors' own active edges were dropped during the cycle, so this does
+  what they would have done. A cycle that ends without input (the
+  screensaver monitor dropped: screensaver-off, the role gone, a plug event
+  whose `lockAfter` is at or before `screensaverAfter`) leaves the displays
+  off, as plan 082 does for a replaced monitor. idle-off removes the dpms
+  monitor, and that removal still turns them on.
+- **`IdleLogic.monitors(t, respect, cycle)`**: `cycle` is the timeouts in
+  force when the cycle started. In a cycle, each lock and dpms monitor still
+  counting then gets an input-only key for the time it had left
+  (`lock:150:0`, `dpms:180:0` with the defaults; at least 1 s, so a
+  `dpmsAfter` equal to `screensaverAfter` gives `dpms:1:0`). A 1 s
+  input-only `presence:1:0` is added.
+  - Input-only notifications are created with `obeyInhibitors` false
+    (`get_input_idle_notification`, `IdleNotify.cpp:89`) and skipped by
+    `setInhibit` (`:121`). The lock and dpms still go at `lockAfter` and
+    `dpmsAfter`, through the map, and through the unmap when the lock
+    closes the screensaver.
+  - The time left comes from the cycle's timeouts, not the current ones. A
+    settings change or a plug event during the cycle leaves those keys, so
+    the monitors keep counting. A current value of 0 still removes a
+    monitor, and one turned on during the cycle counts its full time on
+    input only.
   - The keys change, so each monitor is replaced by a new one (plan 019's
     rule: never reconfigure in place), and its idle state is not undone.
   - A monitor already past the screensaver keeps its key, for example
     `dpmsAfter` below `screensaverAfter`. Suspend keeps its key and keeps
     honouring inhibitors.
 - **`Service.qml`**:
-  - `_cycle` holds the cycle, and `monitorKeys` passes it to the model.
+  - `_cycle` holds the cycle, `_cycleTimeouts` a copy of the timeouts taken
+    when it started, and `monitorKeys` passes that copy to the model.
   - `cycle.end` runs through `Qt.callLater`, because ending the cycle
-    destroys the presence monitor whose signal is being handled.
-  - The cycle also ends when the timeouts lose their screensaver (idle-off,
-    screensaver-off, the role gone).
+    destroys the presence monitor whose signal is being handled; it ends the
+    cycle as input (`_endCycle(true)`).
+  - The cycle also ends, without input, when the timeouts lose their
+    screensaver (idle-off, screensaver-off, the role gone, a plug event).
   - A replaced idle monitor's entry in `_idle` is cleared.
   - `screensaverStartedThisCycle`, which Omarchy plugins read through
     `Compat/Runtime.qml`, is now "a cycle is running and the lock has not
     come". It was the screensaver monitor's own state, which Hyprland resets
     at once.
 
-Measured on IO with this `Service.qml` and `IdleLogic.js`, against stub
+Measured on IO with round 1's `Service.qml` and `IdleLogic.js` (c41bb5f;
+the review's fixes do not change this path), against stub
 `Plugins`/`Flags`/`Paths` singletons. Their screensaver "start" maps a 2 s
 window on a hidden special workspace; their lock only logs; dpms is off
 (`screensaverAfter` 3, `lockAfter` 8, `dpmsAfter` 0):
@@ -146,6 +170,11 @@ CYCLE 1793096777826 lock.lock
 
 ## What this does not do
 
+- **A new `lockAfter` or `dpmsAfter` during a cycle** applies from the next
+  one. The running cycle keeps the times it started with, so a lowered
+  `lockAfter` (unplugging, with a shorter one on battery) does not lock
+  sooner, and a raised one does not lock later. Before this plan, the new
+  value counted again from the change, which could be later than either.
 - **A video that starts during the screensaver** does not hold off the lock
   or the dpms off. Their counts are input-only for that stretch. Omarchy's
   timers do the same. A video already playing still keeps the screensaver
@@ -190,8 +219,13 @@ CYCLE 1793096777826 lock.lock
 - **`cycleEnd`** with and without displays off.
 - **Cycle keys** with the defaults, with `respectInhibitors` off and a
   suspend, with dpms before the screensaver, with screensaver-off, with
-  idle-off, and without lock or dpms. `presence` parses back as input-only.
-  A cycle key replaces its monitor; presence is removed.
+  idle-off, without lock or dpms, and with `dpmsAfter` equal to
+  `screensaverAfter`. `presence` parses back as input-only. A cycle key
+  replaces its monitor; presence is removed.
+- **The cycle's timeouts**: a new `screensaverAfter`, `lockAfter` or
+  `dpmsAfter` leaves the lock and dpms keys; 0 removes a monitor; one turned
+  on during the cycle counts on input only; without a screensaver there is
+  no cycle.
 - **The service model**, extended with Hyprland's re-check (`map`: every
   idle monitor that respects inhibitors goes active):
   - the screensaver's own map dismisses nothing;
@@ -201,9 +235,62 @@ CYCLE 1793096777826 lock.lock
     idle starts a new cycle;
   - displays already off stay off through the map, then wake on input;
   - Stay Awake during a cycle wakes them and drops the screensaver;
-  - a second screensaver idle in a cycle starts no second cycle.
+  - a second screensaver idle in a cycle starts no second cycle;
+  - a settings change mid-cycle keeps the lock and dpms keys;
+  - the screensaver monitor dropped with the displays off leaves them off;
+  - `dpmsAfter` equal to `screensaverAfter` gives a 1 s input-only dpms
+    monitor that a map does not restart.
+
+  The model follows the service's order, which the next block measures: a
+  removed monitor's `Component.onDestruction` runs at once with the new
+  keys, `onTimeoutsChanged` runs before the keys change, and `Qt.callLater`
+  runs after the event.
+- **The service itself**: `Service.qml` under Qt's `qml`, on stand-ins for
+  Quickshell (`IdleMonitor` with a settable `isIdle`, a `ScriptModel` that
+  keeps unchanged rows) and `qs.Haseen`, with every role call and dispatch
+  in one log. It covers:
+  - a cycle and its keys;
+  - the map;
+  - a settings change mid-cycle (the same lock and dpms monitor objects
+    afterwards);
+  - the lock and dpms, and `screensaverStartedThisCycle` ending with the
+    lock;
+  - screensaver-off mid-cycle (no `dpms on`);
+  - input (the end comes after the handler, then `dpms on`);
+  - Stay Awake;
+  - unloading mid-cycle (nothing sent);
+  - no QML warnings.
+
+  Against the round-1 `IdleLogic.js` and `Service.qml`, four of these fail:
+  the same monitors, the keys after the change, the lock that follows, and
+  the drop without input.
 - **Plan 084's manual screen off/on cases**, rerun through the new model
   with their expected sequences updated for the cycle.
 
 `tests/test-ambient.sh`: the screensaver monitor going idle starts the
 cycle; going active alone dismisses nothing.
+
+## Review
+
+Round 1 (DeepSeek V4.1 Flash, head c41bb5f, REQUEST_CHANGES):
+
+1. **A timeout change in a cycle re-based the lock and dpms counts.** The
+   keys were `lockAfter - screensaverAfter` from the current values, so a
+   plug event or a settings change recreated the monitors from that moment.
+   For example, with a battery `screensaverAfter` of 30, the lock came 269 s
+   after `lockAfter`. Fixed: the keys come from the timeouts taken when the
+   cycle started (`_cycleTimeouts`).
+2. **A cycle ending without input woke the displays.** For example, a plug
+   event dropping the screensaver in a dark room. Fixed: `cycleEnd` sends
+   `dpms.on` only for input.
+3. **A `dpmsAfter` equal to `screensaverAfter` kept an inhibitor-aware
+   key.** Fixed: `>=`, and the key is at least 1 s.
+4. **The model ended the cycle after the removals, so its pinned sequences
+   were artefacts.** Fixed: the order is measured on the real service,
+   which the model now follows, and the service harness checks it.
+5. **Citations.** `IdleNotify.cpp:121` is the `inhibitorsAreObeyed()`
+   check in v0.56.2, not a closing brace, so it stays. `update(0)` is now
+   cited as `update()` at `:53` calling `update(uint32_t)` at `:38`, and the
+   input-only creation is cited at `:89`.
+6. **Unloading mid-cycle could queue `_endCycle`.** Fixed: a removed
+   presence monitor returns nothing, and the harness shows nothing is sent.

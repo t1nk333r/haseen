@@ -30,8 +30,9 @@ import "IdleLogic.js" as Logic
 // a window maps, takes focus or goes fullscreen, and the screensaver's
 // terminal does all three: the monitors report "active" with nobody there.
 // During the cycle those reports do nothing, the lock and dpms monitors
-// count the rest of their time on input only, and a 1 s input-only presence
-// monitor ends the cycle (IdleLogic.monitors, actions, cycleEnd).
+// count the rest of their time on input only, from the timeouts in force
+// when it started, and a 1 s input-only presence monitor ends the cycle
+// (IdleLogic.monitors, actions, cycleEnd).
 //
 // Each monitor is its own object, created with its final timeout and
 // destroyed when that changes, never reconfigured in place. Quickshell
@@ -51,6 +52,10 @@ Scope {
     readonly property bool haveScreensaver: Plugins.roles.screensaver !== undefined
     // A screensaver cycle is running (IdleLogic.monitors).
     property bool _cycle: false
+    // The timeouts when the cycle started: the lock and dpms keys of a cycle
+    // come from these, so a settings change or a plug event during it does
+    // not restart their counts.
+    property var _cycleTimeouts: null
     readonly property var timeouts: Logic.timeouts(settings, {
         idleOff: Flags.idleOff,
         screensaverOff: Flags.screensaverOff,
@@ -74,13 +79,14 @@ Scope {
     // monitor's own state: Hyprland sets that back to active as soon as the
     // screensaver's window maps (plan 140).
     readonly property bool screensaverStartedThisCycle: _cycle && _idle.lock !== true
-    readonly property var monitorKeys: Logic.monitors(timeouts, respectInhibitors, _cycle)
+    readonly property var monitorKeys: Logic.monitors(timeouts, respectInhibitors, _cycle ? _cycleTimeouts : null)
 
     // Without a screensaver monitor (idle-off, screensaver-off, the role
     // gone) there is no cycle; its monitors' removal undoes their idle state.
+    // Nobody came back: the displays stay as they are.
     onTimeoutsChanged: {
         if (_cycle && timeouts.screensaver === 0)
-            _endCycle();
+            _endCycle(false);
     }
 
     function _dpms(on: bool): void {
@@ -110,12 +116,15 @@ Scope {
         _idle = idle;
     }
 
-    function _endCycle(): void {
+    // input: the presence monitor saw someone come back.
+    function _endCycle(input: bool): void {
         if (!_cycle)
             return;
         _cycle = false;
+        _cycleTimeouts = null;
         for (const action of Logic.cycleEnd({
-                dpmsOff: _dpmsOff
+                dpmsOff: _dpmsOff,
+                input: input
             }))
             _do(action);
     }
@@ -123,12 +132,15 @@ Scope {
     function _do(action: string): void {
         switch (action) {
         case "cycle.start":
-            _cycle = true;
+            if (!_cycle) {
+                _cycleTimeouts = Object.assign({}, timeouts);
+                _cycle = true;
+            }
             break;
         case "cycle.end":
             // Ending the cycle destroys the presence monitor whose
             // signal is being handled: end it after the handler returns.
-            Qt.callLater(root._endCycle);
+            Qt.callLater(root._endCycle, true);
             break;
         case "screensaver.start":
             Plugins.callRole("screensaver", "start", []);
@@ -197,6 +209,7 @@ Scope {
                 haveScreensaver: root.haveScreensaver,
                 monitors: root.monitorKeys,
                 cycle: root._cycle,
+                cycleTimeouts: root._cycleTimeouts,
                 idle: root._idle,
                 dpmsOff: root._dpmsOff,
                 onBattery: UPower.onBattery,

@@ -499,9 +499,13 @@ honours inhibitors report activity, even when nothing inhibits, and the
 screensaver's own terminal sets that off. During a cycle, therefore:
 - a monitor reporting activity does nothing;
 - the lock and dpms monitors still counting are replaced by input-only ones
-  for their remaining time, so they fire at `lockAfter` and `dpmsAfter`;
+  for the time they had left when it started, so they fire at the
+  `lockAfter` and `dpmsAfter` in force then; a settings change or a plug
+  event during the cycle does not restart them;
 - a 1 s input-only presence monitor ends the cycle; ending it dismisses the
-  screensaver and turns back on only the displays the service turned off.
+  screensaver and turns back on only the displays the service turned off. A
+  cycle that ends without input (its screensaver monitor dropped) leaves the
+  displays as they are.
 
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
