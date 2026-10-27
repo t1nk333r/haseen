@@ -203,3 +203,29 @@ assert_status "a checkout without git still installs" 0 "$STATUS"
 assert_contains "the rest of the banner is unchanged" "$OUTPUT" "    distro="
 assert_not_contains "no git names no checkout" "$OUTPUT" "checkout="
 assert_not_contains "no git claims nothing about being behind" "$OUTPUT" "behind="
+
+# --- the banner says when the remote last reached the checkout -------------------
+# `behind` is only as fresh as the refs git holds: on IO both HEAD and origin/main
+# were 90d9c2c, so nothing compared unequal and the tree was silently days old
+# (plan 137). The fetch date is the fact that does not lie.
+mkdir -p "$SANDBOX/gitdir"
+touch -d '2026-10-24 09:12' "$SANDBOX/gitdir/FETCH_HEAD"
+stub git "case \"\$*\" in
+*\"rev-parse --short HEAD\") echo abc1234 ;;
+*\"log -1 --format=%cd --date=short\") echo 2026-10-24 ;;
+*\"rev-parse --absolute-git-dir\") echo \"$SANDBOX/gitdir\" ;;
+*\"rev-parse --abbrev-ref --symbolic-full-name @{u}\") echo origin/main ;;
+*\"rev-list --count HEAD..origin/main\") echo 0 ;;
+esac
+exit 0"
+capture "$REPO/install.sh" --dry-run </dev/null
+assert_contains "the banner says when the remote last reached the checkout" "$OUTPUT" "    refs-fetched=2026-10-24"$'\n'
+assert_contains "beside the commit it belongs to" "$OUTPUT" "    checkout=abc1234 (2026-10-24)"$'\n'
+assert_dry_pure "a dated fetch" "$OUTPUT"
+
+# No FETCH_HEAD (a tree that was never fetched, or a git that cannot say) is
+# not an error and prints no date.
+rm -f "$SANDBOX/gitdir/FETCH_HEAD"
+capture "$REPO/install.sh" --dry-run </dev/null
+assert_status "a checkout with no fetch still installs" 0 "$STATUS"
+assert_not_contains "no FETCH_HEAD prints no date" "$OUTPUT" "refs-fetched="
