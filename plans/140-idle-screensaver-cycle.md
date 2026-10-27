@@ -14,8 +14,8 @@
 - **Planned at**: 2026-10-27
 - **State**: DONE 2026-10-27 (`tests/test-idle.sh` 127/127,
   `tests/test-ambient.sh` 252/252). Round 1 of the review (DeepSeek V4.1
-  Flash) asked for changes and round 2 approved; both are in "Review"
-  below.
+  Flash) asked for changes, and rounds 2 and 3 approved; all three are in
+  "Review" below.
 
 ## Problem
 
@@ -176,16 +176,21 @@ CYCLE 1793096777826 lock.lock
   times it started with, so a lowered `lockAfter` (unplugging, with a
   shorter one on battery) does not lock sooner, and a raised one does not
   lock later. Before this plan, the new value counted again from the change,
-  which could be later than either. A monitor turned on during the cycle
-  (from 0) counts its full current time from that moment, so a value that
-  goes to 0 and back mid-cycle restarts that count.
-- **A cycle that ends without input with the displays off** leaves a dpms
-  monitor that was never idle. The input that turns the displays back on
-  does not reach it, so the service still counts them as off. If a window
-  re-check then finds that monitor idle, it sends `dpms.on` with nobody
-  back, which can undo a `haseen screen off` (plan 084) given in between.
-  Waking the displays at the cycle's end instead would turn them on for a
-  plug event in an empty room, which is worse.
+  which could be later than either. A monitor that was 0 when the cycle
+  started and is turned on during it counts its full current time from
+  then. One set to 0 and back during the cycle starts again from the
+  change, with its cycle key's time (`lockAfter` 300 to 0 and back, at the
+  defaults, counts 150 s from the change).
+- **A cycle that ends without input with the displays off** replaces the
+  dpms monitor with one that was never idle. The input that brings someone
+  back turns the displays on through Hyprland (`key_press_enables_dpms`,
+  `share/haseen/default/hypr/input.lua:64-65`), but no monitor reports it,
+  so the service still counts them as off. The only effect is a redundant
+  `dpms.on` when a later cycle ends with input, while the displays are on:
+  the service sends `dpms.on` otherwise only for a dpms monitor that went
+  idle first, and that edge sets the flag itself. Waking the displays at
+  the cycle's end instead would turn them on for a plug event in an empty
+  room, which is worse.
 - **A video that starts during the screensaver** does not hold off the lock
   or the dpms off. Their counts are input-only for that stretch. Omarchy's
   timers do the same. A video already playing still keeps the screensaver
@@ -312,15 +317,22 @@ Round 1 (DeepSeek V4.1 Flash, head c41bb5f, REQUEST_CHANGES):
    presence monitor returns nothing, and the harness shows nothing is sent.
 
 Round 2 (DeepSeek V4.1 Flash, head 9b808e2, APPROVE): every round-1
-finding fixed, checked by running (1020/1020 on the affected selection, the
-round-1 code failing exactly the four service asserts), and five nits, all
-taken:
+finding fixed or, for item 5, withdrawn, checked by running (1020/1020 on
+the affected selection; the round-1 code ran 106/127, with exactly the four
+service asserts among the failures), and five nits, all taken:
 
 1. The index row still said 108/108; it says 127/127.
 2. "A new value applies from the next cycle" did not hold for a monitor
    turned on mid-cycle; "What this does not do" now says both.
 3. The `cycleEnd` test line listed two of its four cases.
 4. The measured Qt order is not a documented guarantee; "Tests" says so.
-5. A cycle ending without input with the displays off can later send
-   `dpms.on` with nobody back; recorded under "What this does not do", with
-   why waking the displays at the end is worse.
+5. A cycle ending without input with the displays off leaves the service
+   counting them as off; recorded under "What this does not do", with why
+   waking the displays at the end is worse.
+
+Round 3 (DeepSeek V4.1 Flash, head 969edac, APPROVE), three nits, all
+taken: the stale off flag can cause only a redundant `dpms.on` (round 2 had
+it undoing a `haseen screen off`, but that needs a monitor that went idle,
+which sets the flag itself); a flap of a monitor already counting restarts
+at its cycle key's time, not its full time; and round 2's summary now gives
+the 106/127.
