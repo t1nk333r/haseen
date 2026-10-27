@@ -14,7 +14,7 @@
 - **Planned at**: 2026-10-27
 - **State**: DONE 2026-10-27 (`tests/test-idle.sh` 127/127,
   `tests/test-ambient.sh` 252/252). Round 1 of the review (DeepSeek V4.1
-  Flash) asked for changes, and rounds 2 and 3 approved; all three are in
+  Flash) asked for changes, and rounds 2 to 4 approved; all four are in
   "Review" below.
 
 ## Problem
@@ -185,12 +185,17 @@ CYCLE 1793096777826 lock.lock
   dpms monitor with one that was never idle. The input that brings someone
   back turns the displays on through Hyprland (`key_press_enables_dpms`,
   `share/haseen/default/hypr/input.lua:64-65`), but no monitor reports it,
-  so the service still counts them as off. The only effect is a redundant
-  `dpms.on` when a later cycle ends with input, while the displays are on:
-  the service sends `dpms.on` otherwise only for a dpms monitor that went
-  idle first, and that edge sets the flag itself. Waking the displays at
-  the cycle's end instead would turn them on for a plug event in an empty
-  room, which is worse.
+  so the service still counts them as off. The effect is a `dpms.on` when
+  a later cycle ends with input. That is normally redundant, because
+  Hyprland has just turned the displays on for the same input. If
+  something else had them off at that moment (`haseen screen off --delay
+  0`, or a `dpms off` from outside haseen), it turns them on, against
+  plan 084's rule that the service undoes only its own off. haseen's own
+  entry points (the menu's Screen off, the battery panel) use the 1 s
+  default delay, so their off lands after that `dpms.on`. Every other
+  `dpms.on` needs a dpms monitor that went idle first, and that edge sets
+  the flag itself. Waking the displays at the cycle's end instead would
+  turn them on for a plug event in an empty room, which is worse.
 - **A video that starts during the screensaver** does not hold off the lock
   or the dpms off. Their counts are input-only for that stretch. Omarchy's
   timers do the same. A video already playing still keeps the screensaver
@@ -331,8 +336,13 @@ service asserts among the failures), and five nits, all taken:
    waking the displays at the end is worse.
 
 Round 3 (DeepSeek V4.1 Flash, head 969edac, APPROVE), three nits, all
-taken: the stale off flag can cause only a redundant `dpms.on` (round 2 had
-it undoing a `haseen screen off`, but that needs a monitor that went idle,
-which sets the flag itself); a flap of a monitor already counting restarts
-at its cycle key's time, not its full time; and round 2's summary now gives
-the 106/127.
+taken: the stale off flag's only path to `dpms.on` is a later cycle's end
+with input (round 2 had a window re-check undoing a `haseen screen off`, but
+that needs a monitor that went idle, which sets the flag itself); a flap of
+a monitor already counting restarts at its cycle key's time, not its full
+time; and round 2's summary now gives the 106/127.
+
+Round 4 (DeepSeek V4.1 Flash, head dcb781c, APPROVE), one nit, taken: that
+`dpms.on` is redundant only when nothing else turned the displays off, so a
+`haseen screen off --delay 0` or an outside `dpms off` just before input
+ends a cycle is undone. "What this does not do" says so.
