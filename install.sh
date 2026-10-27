@@ -267,18 +267,27 @@ install_tree() {
     info "haseen $(cat "$REPO/share/haseen/VERSION") installed under $PREFIX"
 }
 
-# The checkout this tree is built from, and whether git already knows of newer
-# commits. A stale tree installs old code silently: IO (owner, 2026-10-27) ran
+# The checkout this tree is built from, whether git already knows of newer
+# commits, and when the remote last reached it. A stale tree installs old code silently: IO (owner, 2026-10-27) ran
 # `git switch main` without a fetch, so the installer built 90d9c2c and met the
 # mise/go trap plan 130 had closed two commits later. Read-only and offline — it
 # compares local refs only, so it costs nothing and cannot be wrong about what
 # is on disk. No git, no line.
 report_checkout() {
-    local commit day upstream behind
+    local commit day gitdir fetched upstream behind
     commit="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)" || return 0
     [[ -n $commit ]] || return 0
     day="$(git -C "$REPO" log -1 --format=%cd --date=short 2>/dev/null)" || day=unknown
     printf '    checkout=%s (%s)\n' "$commit" "${day:-unknown}"
+    # What the remote last told this checkout. `behind` can only be as fresh as
+    # that: on IO both HEAD and origin/main were 90d9c2c, so a fetched date
+    # besides the commit date is the fact that would have shown the tree was
+    # days old (plan 137).
+    gitdir="$(git -C "$REPO" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+    if [[ -n $gitdir && -r $gitdir/FETCH_HEAD ]]; then
+        fetched="$(date -r "$gitdir/FETCH_HEAD" +%Y-%m-%d 2>/dev/null)" || fetched=''
+        [[ -z $fetched ]] || printf '    refs-fetched=%s\n' "$fetched"
+    fi
     upstream="$(git -C "$REPO" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || return 0
     [[ -n $upstream ]] || return 0
     behind="$(git -C "$REPO" rev-list --count "HEAD..$upstream" 2>/dev/null)" || return 0
