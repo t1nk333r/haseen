@@ -42,7 +42,7 @@ while read -r entry; do
     f="${f//\*\*/x}"
     f="${f//\*/x}"
     [[ -e $S/$f ]] || put "$f"
-done < <(sed -n '/^\(GLOBAL\|EXEMPT\)=(/,/^)/{/^    /s/^    \([^ ]*\).*/\1/p}' "$REPO/tools/affected-tests.sh")
+done < <(sed -n '/^\(GLOBAL\|EXEMPT\|NOWIDEN\)=(/,/^)/{/^    /s/^    \([^ ]*\).*/\1/p}' "$REPO/tools/affected-tests.sh")
 put docs/other.md
 put plans/001-x.md
 put README.md
@@ -109,6 +109,13 @@ change put docs/alpha.md "asserted"
 assert_eq "a document a test covers selects that test" "tests/test-alpha.sh" "$(picked main)"
 change put NOTICE.md "a notice the gamma test asserts on"
 assert_eq "a covered top-level document beats the exempt *.md" "tests/test-gamma.sh" "$(picked main)"
+
+# --- read by many tests, depended on by none --------------------------------------
+change put share/haseen/VERSION "9.9.9-dev"
+assert_eq "the version string selects no test" "" "$(picked main)"
+sel main
+assert_contains "and the report says why" "$OUTPUT" \
+    "share/haseen/VERSION: read by many tests, depended on by none, no test"
 
 # --- a changed test selects itself; a deleted one runs nothing ---------------------
 change sed -i 's/assert_eq "beta runs" yes yes/assert_eq "beta runs" yes "yes"/' "$S/tests/test-beta.sh"

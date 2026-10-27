@@ -24,9 +24,10 @@
 #      the formats below cannot carry it, so it is never matched, nor skipped;
 #   1. every test, if it matches GLOBAL;
 #   2. itself, if it is a tests/test-*.sh;
-#   3. every test whose covers match it;
-#   4. nothing, if it matches EXEMPT;
-#   5. every test otherwise: a file no test claims is never skipped silently.
+#   3. nothing, if it matches NOWIDEN: many tests read it, none depends on it;
+#   4. every test whose covers match it;
+#   5. nothing, if it matches EXEMPT;
+#   6. every test otherwise: a file no test claims is never skipped silently.
 # The full suite still runs on every push to main (.github/workflows/ci.yml), so
 # a declaration that misses something shows up red there.
 #
@@ -71,6 +72,15 @@ EXEMPT=(
     tools/plymouth-mock.sh       # developer tool: previews the boot splash
     tools/smoke-greeter.sh       # developer tool: the login screen under a headless Hyprland
     'tools/vptr/**'              # developer tool: a virtual pointer for nest proofs
+)
+
+# Paths many tests read but whose content never changes what they do. Listed
+# in a test's covers they cost that test nothing, and the version string is
+# named in a hundred of them: bumping it ran most of the suite for a release
+# (plan 135). A change here alone runs no test — nothing is asserted on it,
+# and tools/lint.sh checks its format. Not for anything a test does assert.
+NOWIDEN=(
+    share/haseen/VERSION         # the version string: read, printed, never pinned
 )
 
 usage() { sed -n '2,18s/^# \{0,1\}//p' "$0"; }
@@ -157,6 +167,10 @@ rules() {
         for g in "${EXEMPT[@]}"; do
             glob_regex "$g" || { echo "  EXEMPT: malformed glob: $g" >&3; bad=1; continue; }
             printf 'exempt\t-\t%s\t%s\n' "$g" "$REGEX"
+        done
+        for g in "${NOWIDEN[@]}"; do
+            glob_regex "$g" || { echo "  NOWIDEN: malformed glob: $g" >&3; bad=1; continue; }
+            printf 'nowiden\t-\t%s\t%s\n' "$g" "$REGEX"
         done
         while IFS=$'\t' read -r test g; do
             glob_regex "$g" || { echo "  $test: malformed glob: $g" >&3; bad=1; continue; }
@@ -262,7 +276,7 @@ check() {
     { awk -F'\t' '$1 == "M" { print $2 }' "$tmp/match"; cat "$tmp/tests"; } | sort -u >"$tmp/claimed"
     comm -23 "$tmp/paths" "$tmp/claimed" >"$tmp/uncovered"
     if [[ -s $tmp/uncovered ]]; then
-        echo "affected-tests: files no test covers and neither GLOBAL nor EXEMPT lists" >&2
+        echo "affected-tests: files no test covers and none of GLOBAL, EXEMPT or NOWIDEN lists" >&2
         echo "  (add a '# haseen:covers' glob to the tests that exercise them):" >&2
         sed 's/^/  /' "$tmp/uncovered" >&2
         fail=1
@@ -299,25 +313,30 @@ select_tests() {
         FILENAME == ARGV[1] { ch[++n] = $0; next }
         $1 == "M" && $3 == "global" { g[$2] = "G" }
         $1 == "M" && $3 == "exempt" { e[$2] = "E" }
+        $1 == "M" && $3 == "nowiden" { w[$2] = "N" }
         $1 == "M" && $3 == "covers" { c[$2] = c[$2] " " $4 }
         END {
             for (i = 1; i <= n; i++) {
                 p = ch[i]
-                print p "\t" (p in g ? "G" : "-") "\t" (p in e ? "E" : "-") "\t" (p in c ? c[p] : "-")
+                print p "\t" (p in g ? "G" : "-") "\t" (p in e ? "E" : "-") "\t" (p in c ? c[p] : "-") "\t" (p in w ? "N" : "-")
             }
         }
     ' "$tmp/changed" - >"$tmp/classified"
 
     local -A selected=()
-    local all=0 why=() t global exempt cov tests
+    local all=0 why=() t global exempt cov nowiden tests
     while IFS= read -r f; do
         all=1
         why+=("$f: a control character in the name, which no glob can be matched against, every test")
     done <"$tmp/unsafe"
-    while IFS=$'\t' read -r f global exempt cov; do
+    while IFS=$'\t' read -r f global exempt cov nowiden; do
         if [[ $global == G ]]; then
             all=1
             why+=("$f: global, every test")
+            continue
+        fi
+        if [[ $nowiden == N ]]; then
+            why+=("$f: read by many tests, depended on by none, no test")
             continue
         fi
         tests=()
