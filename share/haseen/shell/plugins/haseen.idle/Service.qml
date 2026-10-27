@@ -9,8 +9,8 @@ import "IdleLogic.js" as Logic
 
 // haseen.idle: up to four ext-idle-notify monitors, so the compositor does
 // the counting and the shell holds no timer.
-//   screensaverAfter: start the `screensaver` role (haseen.screensaver);
-//                     input dismisses it again.
+//   screensaverAfter: start the `screensaver` role (haseen.screensaver)
+//                     and a screensaver cycle; input dismisses it again.
 //   lockAfter:        call the `lock` role (haseen.lock or any provider).
 //   dpmsAfter:        turn the displays off, back on at the next input.
 //   suspendAfter:     `haseen system suspend`, the menu's System > Suspend
@@ -24,6 +24,14 @@ import "IdleLogic.js" as Logic
 // values while UPower reports onBattery, an event-driven D-Bus property:
 // plugging in or out recreates only the monitors whose timeout changed.
 // The decisions live in IdleLogic.js (unit-tested).
+//
+// The screensaver cycle (plan 140) runs from the screensaver monitor going
+// idle until input. Hyprland 0.56 restarts every inhibitor-aware count when
+// a window maps, takes focus or goes fullscreen, and the screensaver's
+// terminal does all three: the monitors report "active" with nobody there.
+// During the cycle those reports do nothing, the lock and dpms monitors
+// count the rest of their time on input only, and a 1 s input-only presence
+// monitor ends the cycle (IdleLogic.monitors, actions, cycleEnd).
 //
 // Each monitor is its own object, created with its final timeout and
 // destroyed when that changes, never reconfigured in place. Quickshell
@@ -41,6 +49,8 @@ Scope {
 
     readonly property bool respectInhibitors: settings.respectInhibitors !== false
     readonly property bool haveScreensaver: Plugins.roles.screensaver !== undefined
+    // A screensaver cycle is running (IdleLogic.monitors).
+    property bool _cycle: false
     readonly property var timeouts: Logic.timeouts(settings, {
         idleOff: Flags.idleOff,
         screensaverOff: Flags.screensaverOff,
@@ -59,7 +69,19 @@ Scope {
     property int _suspends: 0
     // name -> isIdle of the live monitors, for the debug hook.
     property var _idle: ({})
-    readonly property bool screensaverStartedThisCycle: _idle.screensaver === true
+    // Omarchy's flag (Compat/Runtime.qml legacyIdle): the idle path started
+    // the screensaver and the lock has not come yet. Not the screensaver
+    // monitor's own state: Hyprland sets that back to active as soon as the
+    // screensaver's window maps (plan 140).
+    readonly property bool screensaverStartedThisCycle: _cycle && _idle.lock !== true
+    readonly property var monitorKeys: Logic.monitors(timeouts, respectInhibitors, _cycle)
+
+    // Without a screensaver monitor (idle-off, screensaver-off, the role
+    // gone) there is no cycle; its monitors' removal undoes their idle state.
+    onTimeoutsChanged: {
+        if (_cycle && timeouts.screensaver === 0)
+            _endCycle();
+    }
 
     function _dpms(on: bool): void {
         // Hyprland 0.56 in Lua mode takes Lua dispatcher expressions.
@@ -67,40 +89,71 @@ Scope {
         Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.dpms({ action = \"" + action + "\" })" : "dpms " + (on ? "on" : "off"));
     }
 
-    function _run(monitor: string, isIdle: bool): void {
+    function _run(monitor: string, isIdle: bool, removed: bool): void {
         const idle = Object.assign({}, _idle);
         idle[monitor] = isIdle;
         _idle = idle;
         for (const action of Logic.actions(monitor, isIdle, {
                 dpmsOff: _dpmsOff,
-                idleOff: Flags.idleOff
-            })) {
-            switch (action) {
-            case "screensaver.start":
-                Plugins.callRole("screensaver", "start", []);
-                break;
-            case "screensaver.dismiss":
-                Plugins.callRole("screensaver", "dismiss", []);
-                break;
-            case "lock":
-                if (!Plugins.callRole("lock", "lock", []))
-                    Plugins.warnOnce(pluginId + ":nolock", "haseen.idle: no plugin provides 'lock'; idle lock skipped");
-                break;
-            case "dpms.off":
-                _dpmsOff = true;
-                _dpms(false);
-                break;
-            case "dpms.on":
-                _dpmsOff = false;
-                _dpms(true);
-                break;
-            case "suspend":
-                // The menu's System > Suspend, by absolute path like the
-                // battery plugin's critical action.
-                _suspends++;
-                Quickshell.execDetached([binDir + "/haseen-system", "suspend"]);
-                break;
-            }
+                idleOff: Flags.idleOff,
+                cycle: _cycle,
+                removed: removed
+            }))
+            _do(action);
+    }
+
+    // A monitor destroyed while idle and replaced by a new key: the new one
+    // starts active.
+    function _forget(monitor: string): void {
+        const idle = Object.assign({}, _idle);
+        idle[monitor] = false;
+        _idle = idle;
+    }
+
+    function _endCycle(): void {
+        if (!_cycle)
+            return;
+        _cycle = false;
+        for (const action of Logic.cycleEnd({
+                dpmsOff: _dpmsOff
+            }))
+            _do(action);
+    }
+
+    function _do(action: string): void {
+        switch (action) {
+        case "cycle.start":
+            _cycle = true;
+            break;
+        case "cycle.end":
+            // Ending the cycle destroys the presence monitor whose
+            // signal is being handled: end it after the handler returns.
+            Qt.callLater(root._endCycle);
+            break;
+        case "screensaver.start":
+            Plugins.callRole("screensaver", "start", []);
+            break;
+        case "screensaver.dismiss":
+            Plugins.callRole("screensaver", "dismiss", []);
+            break;
+        case "lock":
+            if (!Plugins.callRole("lock", "lock", []))
+                Plugins.warnOnce(pluginId + ":nolock", "haseen.idle: no plugin provides 'lock'; idle lock skipped");
+            break;
+        case "dpms.off":
+            _dpmsOff = true;
+            _dpms(false);
+            break;
+        case "dpms.on":
+            _dpmsOff = false;
+            _dpms(true);
+            break;
+        case "suspend":
+            // The menu's System > Suspend, by absolute path like the
+            // battery plugin's critical action.
+            _suspends++;
+            Quickshell.execDetached([binDir + "/haseen-system", "suspend"]);
+            break;
         }
     }
 
@@ -108,7 +161,7 @@ Scope {
     // value, so an unchanged monitor keeps its countdown.
     Instantiator {
         model: ScriptModel {
-            values: Logic.monitors(root.timeouts, root.respectInhibitors)
+            values: root.monitorKeys
         }
 
         delegate: IdleMonitor {
@@ -117,13 +170,17 @@ Scope {
 
             timeout: spec.timeout
             respectInhibitors: spec.respectInhibitors
-            onIsIdleChanged: root._run(spec.name, isIdle)
+            onIsIdleChanged: root._run(spec.name, isIdle, false)
             // Removed while idle (Stay Awake turned on during the
             // screensaver): undo what its idle state did. Replaced by the
             // same monitor with a new timeout: keep it (Logic.replaced).
             Component.onDestruction: {
-                if (isIdle && !Logic.replaced(modelData, Logic.monitors(root.timeouts, root.respectInhibitors)))
-                    root._run(spec.name, false);
+                if (!isIdle)
+                    return;
+                if (Logic.replaced(modelData, root.monitorKeys))
+                    root._forget(spec.name);
+                else
+                    root._run(spec.name, false, true);
             }
         }
     }
@@ -138,7 +195,8 @@ Scope {
             return JSON.stringify({
                 timeouts: root.timeouts,
                 haveScreensaver: root.haveScreensaver,
-                monitors: Logic.monitors(root.timeouts, root.respectInhibitors),
+                monitors: root.monitorKeys,
+                cycle: root._cycle,
                 idle: root._idle,
                 dpmsOff: root._dpmsOff,
                 onBattery: UPower.onBattery,

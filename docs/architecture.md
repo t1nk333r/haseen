@@ -492,6 +492,17 @@ releasing click or key cannot wake the displays. haseen.idle sends `dpms.on`
 only for an off it made itself (`_dpmsOff`), so it never undoes a manual off;
 its lock and dpms monitors keep counting from the last input.
 
+The screensaver starts a **screensaver cycle** (plan 140), which lasts until
+the next input. Hyprland 0.56 re-checks idle inhibitors on every window map,
+focus change and fullscreen change. Each re-check makes every monitor that
+honours inhibitors report activity, even when nothing inhibits, and the
+screensaver's own terminal sets that off. During a cycle, therefore:
+- a monitor reporting activity does nothing;
+- the lock and dpms monitors still counting are replaced by input-only ones
+  for their remaining time, so they fire at `lockAfter` and `dpmsAfter`;
+- a 1 s input-only presence monitor ends the cycle; ending it dismisses the
+  screensaver and turns back on only the displays the service turned off.
+
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
 Nothing appears on screen for them.
