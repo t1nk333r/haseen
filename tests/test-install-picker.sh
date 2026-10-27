@@ -165,3 +165,41 @@ assert_contains "its failure is reported" "$OUTPUT" "haseen setup dotfiles https
 
 install_with $'13\n4\n5\nhttps://example.invalid/my dots.git' --pick --dry-run
 assert_contains "a URL with a space is refused" "$OUTPUT" "skipping the dotfiles step"
+
+# --- the banner names the checkout ----------------------------------------------
+# The installer builds whatever is checked out, so a tree that never fetched
+# installs old code in silence: IO ran 90d9c2c on 2026-10-27 and met the mise/go
+# trap plan 130 had already closed (plan 136). git is still stubbed, so these
+# runs answer the two read-only questions the banner asks.
+stub git 'case "$*" in
+*"rev-parse --short HEAD") echo abc1234 ;;
+*"log -1 --format=%cd --date=short") echo 2026-10-24 ;;
+*"rev-parse --abbrev-ref --symbolic-full-name @{u}") echo origin/main ;;
+*"rev-list --count HEAD..origin/main") echo 12 ;;
+esac
+exit 0'
+capture "$REPO/install.sh" --dry-run </dev/null
+assert_status "a named checkout still installs" 0 "$STATUS"
+assert_contains "the banner names the commit and its date" "$OUTPUT" "    checkout=abc1234 (2026-10-24)"$'\n'
+assert_contains "a checkout behind its upstream says so" "$OUTPUT" "    behind=origin/main by 12 commit(s); run: git fetch && git pull --ff-only"$'\n'
+assert_dry_pure "a stale checkout" "$OUTPUT"
+
+stub git 'case "$*" in
+*"rev-parse --short HEAD") echo abc1234 ;;
+*"log -1 --format=%cd --date=short") echo 2026-10-24 ;;
+*"rev-parse --abbrev-ref --symbolic-full-name @{u}") echo origin/main ;;
+*"rev-list --count HEAD..origin/main") echo 0 ;;
+esac
+exit 0'
+capture "$REPO/install.sh" --dry-run </dev/null
+assert_contains "a checkout that is current still names itself" "$OUTPUT" "    checkout=abc1234 (2026-10-24)"$'\n'
+assert_not_contains "and says nothing about being behind" "$OUTPUT" "behind="
+
+# A checkout git cannot read (a tarball, a stubbed git) says nothing at all
+# rather than guessing.
+stub git 'exit 1'
+capture "$REPO/install.sh" --dry-run </dev/null
+assert_status "a checkout without git still installs" 0 "$STATUS"
+assert_contains "the rest of the banner is unchanged" "$OUTPUT" "    distro="
+assert_not_contains "no git names no checkout" "$OUTPUT" "checkout="
+assert_not_contains "no git claims nothing about being behind" "$OUTPUT" "behind="
