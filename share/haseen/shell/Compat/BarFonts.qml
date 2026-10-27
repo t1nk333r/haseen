@@ -74,6 +74,9 @@ QtObject {
             } else if (item instanceof Text && !(item.parent && item.parent.fontSize !== undefined)) {
                 bind(item);
             }
+            // An item can leave the tree and come back; it keeps the one
+            // connection it had (disconnecting one it lacks is a no-op).
+            item.childrenChanged.disconnect(root.schedule);
             item.childrenChanged.connect(root.schedule);
         }
         for (const child of item.children)

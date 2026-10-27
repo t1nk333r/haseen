@@ -13,7 +13,7 @@
 - **Category**: shell
 - **Planned at**: 2026-10-27
 - **State**: DONE 2026-10-27. Test results:
-  - `tests/test-shell.sh` 277/277;
+  - `tests/test-shell.sh` 283/283;
   - `tests/test-compat-font.sh` 28/28;
   - `tools/fonts.py check`: 264 files, one family, one scale;
   - `tests/run.sh --affected`: 68 files, 6115/6115. The security suites
@@ -170,23 +170,30 @@ fails when any of these is true:
   token. The checker follows property references through:
   - the singleton a qualified reference names (`MenuMetrics.iconSize`);
   - otherwise the same file, the same directory, then anywhere;
-- an assignment in JavaScript (`label.font.pixelSize = …`) does not resolve
-  to a token, or is compound (`+=`), which is relative by nature;
+- an assignment in JavaScript (`label.font.pixelSize = …`, or a logical
+  one such as `??=`) does not resolve to a token, or is arithmetic (`+=`,
+  `++`), which is relative by nature;
 - `font.pointSize` is used.
 
 Before it looks, the checker blanks comments and masks strings and regex
-literals, keeping every offset. A regex is told from a division by what
-precedes the `/` (an operator, a bracket or a keyword such as `return`), and
-a single or double quote left open ends at its line, so one stray quote
-cannot hide the rest of a file.
+literals, keeping every offset and newline. A regex is told from a division
+by what precedes the `/` (an operator, a bracket or a keyword such as
+`return`), and it ends at its line, as a regex cannot hold a newline. A QML
+string may span lines (`Haseen/Apps.qml:26-35` holds a shell script), so a
+string runs to its closing quote; a quote that nothing closes before the end
+of the file is not a string and ends at its line, so one stray quote cannot
+hide the rest of a file.
 
 `tools/lint.sh` runs it after `i18n.py`, and `tests/test-shell.sh` asserts it
 passes over the tree. The same test checks a fixture of known breaches:
 arithmetic on the base size, a missing family, a literal family,
 `pointSize`, a missing pixel size, breaches after a regex that holds a
-quote, and sizes assigned in JavaScript. It also checks that a token-holding
-property, a condition between tokens, an exempt definition, `font:
-other.font` and a theme family assigned in JavaScript pass.
+quote, after a regex line that ends in a backslash and after a quote that
+never closes, and sizes assigned in JavaScript, including `++` and `||=`. It
+also checks that a token-holding property, a condition between tokens, an
+exempt definition, `font: other.font`, a theme family assigned in
+JavaScript (with `=` or `??=`) and text inside a string over several lines
+pass.
 
 ### Third-party bar widgets, `Compat/BarFonts.qml`
 
@@ -227,7 +234,9 @@ Children that appear later (a Loader's item, a Repeater's delegate) are
 walked when `childrenChanged` reports them, through `Qt.callLater`. There is
 no timer (architecture 6). Each walk rebuilds the set of items it adopted,
 so one no longer in the tree (a delegate a Repeater dropped) is forgotten
-and the set does not grow with a churning model.
+and the set does not grow with a churning model. An item that leaves and
+comes back is adopted again with a single `childrenChanged` connection: it
+is disconnected before it is connected.
 
 The engine scenario in `tests/test-compat-font.sh` builds such a widget in
 Quickshell. It checks that:
@@ -348,3 +357,25 @@ temperature 54 and 48 to 24, battery and media 36 to 24, network 29 to 24,
 omarr and omaconnect 18 to 24, the forecast icon 24 to 14, and the OSD 19
 to 16. All follow the role table above. They are Omarchy's `display` size,
 and the owner can ask for a larger hero role.
+
+Round 2 (DeepSeek V4.1 Flash, head 13ca856, APPROVE), checked by running
+(6115/6115 on the affected selection; a breach appended to each of the 264
+files, and after every line holding a `/`, was reported everywhere but under
+`fonts-ignore`), with four nits, all taken:
+
+1. **A QML string may span lines**, and `Haseen/Apps.qml:26-35` does, so
+   ending a quote at its line parsed that script as code, and the docstring
+   and this plan said otherwise. A string now runs to its closing quote;
+   only a quote that nothing closes ends at its line.
+2. **A backslash at a regex line's end** carried the regex onto the next
+   line. A regex now ends at a newline, escaped or not.
+3. **An item that left the tree and came back connected `childrenChanged`
+   again.** `Qt.callLater` collapsed the extra calls, so nothing showed;
+   the item is now disconnected first, which a probe showed is a no-op when
+   it was not connected.
+4. **`++`, `--`, `||=`, `&&=` and `??=` were not matched.** The first two
+   are reported as relative; a logical assignment's value is checked like
+   `=`, since it either keeps a value already checked or assigns this one.
+
+`tests/test-shell.sh`'s `Edges.qml` covers 1, 2 and 4; the round-2 checker
+fails five of its asserts.

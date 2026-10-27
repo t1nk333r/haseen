@@ -23,11 +23,12 @@ Rules:
      choose between them (`vertical ? Theme.font.caption : Theme.font.body`);
      arithmetic, Math.* and Theme.fontSize may not make one up.
   4. font.pointSize is never used.
-  5. An assignment in JavaScript (`label.font.pixelSize = …`) follows 2 to 4;
-     a compound one (`+=`) is never a token.
+  5. An assignment in JavaScript (`label.font.pixelSize = …`, or `??=`)
+     follows 2 to 4; an arithmetic one (`+=`, `++`) is never a token.
 
 Strings, comments and regex literals are masked first, so a brace, colon or
-quote inside them changes nothing; a quote left open ends at its line.
+quote inside them changes nothing. A string may span lines; a quote that no
+other closes before the end of the file ends at its line.
 
 A line, or the line above it, marked `// fonts-ignore: <why>` is exempt: the
 lock and the screensaver are full-screen and scale with it, and Arabic script
@@ -60,9 +61,11 @@ IGNORE = "fonts-ignore:"
 ELEMENT = re.compile(r"(?<![\w.])(?:\w+\.)?(" + "|".join(TEXT_TYPES) + r")\s*\{")
 REF = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
 ASSIGN = re.compile(r"(?<![\w.])font\.(family|pixelSize)\s*:(?!:)")
-# An assignment in JavaScript, `label.font.pixelSize = …`; "op" is set for a
-# compound one (+=), which is relative to a size and never a token.
-IMPERATIVE = re.compile(r"(?<![\w$])font\.(family|pixelSize|pointSize)\s*(?P<op>[-+*/]?)=(?!=)")
+# An assignment in JavaScript, `label.font.pixelSize = …`. An arithmetic one
+# (+=, ++) is relative to a size and never a token; a logical one (??=)
+# assigns its value or keeps one already checked.
+IMPERATIVE = re.compile(r"(?<![\w$])font\.(family|pixelSize|pointSize)\s*(?P<op>\+\+|--|[-+*/]=|(?:\|\||&&|\?\?)?=(?!=))")
+RELATIVE = {"++", "--", "+=", "-=", "*=", "/="}
 PROPERTY = re.compile(r"\b(?:readonly\s+)?(?:required\s+)?property\s+\w+\s+(\w+)\s*:")
 
 
@@ -107,9 +110,9 @@ def regex_starts(out, i):
 def mask(text):
     """The text with comments blanked and the contents of strings and regex
     literals replaced, so braces, colons and quotes inside them do not count;
-    offsets stay the same. A quote that is not closed on its line ends there
-    (JavaScript strings cannot span lines; template literals can), so one
-    stray quote cannot hide the rest of a file."""
+    offsets and newlines stay the same. A QML string may span lines; a quote
+    with no closing one before the end of the file is not a string and ends
+    at its line, so one stray quote cannot hide the rest of a file."""
     out = list(text)
     i, n = 0, len(text)
     while i < n:
@@ -128,6 +131,9 @@ def mask(text):
             j, in_class = i + 1, False
             while j < n and text[j] != "\n":
                 if text[j] == "\\":
+                    # A regex cannot hold a newline, escaped or not.
+                    if j + 1 < n and text[j + 1] == "\n":
+                        break
                     j += 2
                     continue
                 if text[j] == "[":
@@ -144,8 +150,11 @@ def mask(text):
                 i += 1
         elif c in "\"'`":
             j = i + 1
-            while j < n and text[j] != c and (c == "`" or text[j] != "\n"):
+            while j < n and text[j] != c:
                 j += 2 if text[j] == "\\" else 1
+            if j >= n and c != "`":
+                j = text.find("\n", i)
+                j = n if j < 0 else j
             j = min(j, n)
             out[i + 1:j] = [ch if ch == "\n" else "_" for ch in text[i + 1:j]]
             i = j + 1 if j < n and text[j] == c else j
@@ -314,8 +323,8 @@ class Checker:
                 line = self.line(text, m.start())
                 if m.group(1) == "pointSize":
                     self.report(path, line, "font.pointSize; use a Theme.font pixel size")
-                elif m.group("op"):
-                    self.report(path, line, f"font.{m.group(1)} {m.group('op')}= is relative; assign a theme token")
+                elif m.group("op") in RELATIVE:
+                    self.report(path, line, f"font.{m.group(1)} {m.group('op')} is relative; assign a theme token")
                 else:
                     expr, _ = expression(text, masked, m.end())
                     self.value(path, line, m.group(1), expr)

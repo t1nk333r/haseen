@@ -109,6 +109,21 @@ Item {
     function grow(t) { t.font.pixelSize = 30; t.font.pixelSize += 2; t.font.pointSize = 9; t.font.family = Theme.fontMono; }
 }
 QML
+# A QML string may span lines; a regex ends at a line's end even after a
+# backslash; ++ is relative and ??= checks its value; a quote that never
+# closes ends at its line.
+cat >"$fonts/Edges.qml" <<'QML'
+Item {
+    property string script: 'echo {
+Text { font.pixelSize: 31 }
+}'
+    property var r: /abc\
+    Text { font.family: "Inter"; font.pixelSize: width / 2 }
+    function f(t) { t.font.pixelSize++; t.font.pixelSize ||= 30; t.font.family ??= Theme.fontMono; }
+    property int x: 2 '
+    Text { font.family: "Mono"; font.pixelSize: Theme.font.body }
+}
+QML
 capture python3 -I "$REPO/tools/fonts.py" --root "$SANDBOX/fonts" check
 assert_status "the checker fails on breaches" 1 "$STATUS"
 assert_contains "arithmetic on the base size is not a token" "$OUTPUT" "Widget.qml:5: size 'Theme.fontSize - 1' is not a theme token"
@@ -126,7 +141,13 @@ assert_contains "a size assigned in JavaScript is checked" "$OUTPUT" "Regex.qml:
 assert_contains "a compound assignment is reported" "$OUTPUT" "Regex.qml:4: font.pixelSize += is relative"
 assert_contains "a pointSize assigned in JavaScript is reported" "$OUTPUT" "Regex.qml:4: font.pointSize"
 assert_not_contains "a theme family assigned in JavaScript passes" "$OUTPUT" "Regex.qml:4: family"
-assert_contains "and counts them" "$OUTPUT" "fonts: 10 problem(s)"
+assert_not_contains "text inside a string over several lines is not code" "$OUTPUT" "Edges.qml:3:"
+assert_contains "a regex stops at its line even after a backslash" "$OUTPUT" "Edges.qml:6: family '\"Inter\"' is not a theme token"
+assert_contains "an increment is relative" "$OUTPUT" "Edges.qml:7: font.pixelSize ++ is relative"
+assert_contains "a logical assignment's value is checked" "$OUTPUT" "Edges.qml:7: size '30' is not a theme token"
+assert_not_contains "... and passes with a token" "$OUTPUT" "Edges.qml:7: family"
+assert_contains "after a quote that never closes, the next line is seen" "$OUTPUT" "Edges.qml:9: family '\"Mono\"' is not a theme token"
+assert_contains "and counts them" "$OUTPUT" "fonts: 15 problem(s)"
 
 # --- validate: built-ins pass ----------------------------------------------
 sandbox shell-validate
