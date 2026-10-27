@@ -96,6 +96,17 @@ Item {
     Text { font.family: Theme.fontMono; font.pixelSize: vertical ? Theme.font.caption : Theme.font.body }
     Text { font.family: Theme.fontMono; font.pixelSize: screenSize }
     Text { font.family: Theme.fontMono; font.pointSize: 9 }
+    Text { font: other.font }
+}
+QML
+# A quote inside a regex literal once opened a string to the end of the file
+# and hid everything after it (plan 141's review); assignments in JavaScript
+# follow the same rules.
+cat >"$fonts/Regex.qml" <<'QML'
+Item {
+    function parse(s) { return /^["']?x$/.test(s) ? s / 2 : s; }
+    Text { font.family: "Inter"; font.pixelSize: 31 }
+    function grow(t) { t.font.pixelSize = 30; t.font.pixelSize += 2; t.font.pointSize = 9; t.font.family = Theme.fontMono; }
 }
 QML
 capture python3 -I "$REPO/tools/fonts.py" --root "$SANDBOX/fonts" check
@@ -108,7 +119,14 @@ assert_contains "and a pixel size is still required" "$OUTPUT" "Widget.qml:10: T
 assert_not_contains "a size property holding a token passes" "$OUTPUT" "Widget.qml:7: size"
 assert_not_contains "a condition choosing between tokens passes" "$OUTPUT" "Widget.qml:8:"
 assert_not_contains "a property exempt at its definition passes" "$OUTPUT" "Widget.qml:9:"
-assert_contains "and counts them" "$OUTPUT" "fonts: 5 problem(s)"
+assert_not_contains "a text that takes another's font passes" "$OUTPUT" "Widget.qml:11:"
+assert_contains "after a regex holding a quote, a literal family is still seen" "$OUTPUT" "Regex.qml:3: family '\"Inter\"' is not a theme token"
+assert_contains "... and a literal size" "$OUTPUT" "Regex.qml:3: size '31' is not a theme token"
+assert_contains "a size assigned in JavaScript is checked" "$OUTPUT" "Regex.qml:4: size '30' is not a theme token"
+assert_contains "a compound assignment is reported" "$OUTPUT" "Regex.qml:4: font.pixelSize += is relative"
+assert_contains "a pointSize assigned in JavaScript is reported" "$OUTPUT" "Regex.qml:4: font.pointSize"
+assert_not_contains "a theme family assigned in JavaScript passes" "$OUTPUT" "Regex.qml:4: family"
+assert_contains "and counts them" "$OUTPUT" "fonts: 10 problem(s)"
 
 # --- validate: built-ins pass ----------------------------------------------
 sandbox shell-validate

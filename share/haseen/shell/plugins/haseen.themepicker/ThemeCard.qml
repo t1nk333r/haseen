@@ -89,7 +89,7 @@ Item {
                 text: "Aa" // i18n-ignore: a sample of the theme's foreground
                 color: card.swatch("foreground") || Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize * 2
+                font.pixelSize: Theme.font.display
                 font.bold: true
             }
 
@@ -141,7 +141,7 @@ Item {
             elide: Text.ElideRight
             textFormat: Text.PlainText
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             font.bold: card.selected
         }
     }

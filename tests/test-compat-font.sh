@@ -103,7 +103,7 @@ ShellRoot {
         id: widget
         property Text detached: Text { text: "panel"; font.pixelSize: 7 }
         WidgetButton { id: cell; bar: fakeBar; text: "42%"; fontSize: Style.font.caption; fontFamily: "Serif" }
-        WidgetButton { id: iconCell; bar: fakeBar; text: ""; fontSize: Style.font.title }
+        WidgetButton { id: iconCell; bar: fakeBar; text: "\uf011"; fontSize: Style.font.title }
         WidgetButton { id: helper; text: "x"; fontSize: cell.fontSize * 0.5 }
         Item {
             id: squeezed
@@ -111,15 +111,18 @@ ShellRoot {
             Text { id: squeezedText; text: "1h 05m"; font.family: Theme.fontMono; font.pixelSize: squeezed.fontSize }
         }
         Text { id: small; text: "12:30"; font.family: "Serif"; font.pixelSize: Style.font.caption }
-        Text { id: glyph; text: "󰈷"; font.family: "Symbols Nerd Font"; font.pixelSize: 20 }
+        Text { id: glyph; text: "\udb80\ude37"; font.family: "Symbols Nerd Font"; font.pixelSize: 20 }
         Text { id: arabic; text: "الفجر"; font.family: "Noto Naskh Arabic"; font.pixelSize: Style.font.bodySmall }
         Loader { id: late; active: false; sourceComponent: Text { text: "late"; font.pixelSize: 6 } }
         TextMetrics { id: metrics; font.pixelSize: cell.fontSize; text: "100%" }
+        Repeater { id: rep; model: 3; Text { text: "r" + index; font.family: "Serif"; font.pixelSize: 6 } }
     }
+    // How many items BarFonts holds before the Repeater drops two delegates.
+    property int seenBefore: -1
     Compat.BarFonts { id: fonts; target: widget }
     function report() {
         const before = small.font.pixelSize, beforeFamily = small.font.family;
-        small.text = "";
+        small.text = "\uf011";
         console.log("RESULT " + JSON.stringify({
             body: Theme.font.body, icon: Theme.barMetrics.iconFont, mono: Theme.fontMono,
             cell: cell.fontSize, cellFamily: cell.fontFamily, iconCell: iconCell.fontSize,
@@ -127,13 +130,19 @@ ShellRoot {
             glyph: glyph.font.pixelSize, glyphFamily: glyph.font.family,
             arabic: arabic.font.pixelSize, arabicFamily: arabic.font.family,
             late: late.item ? late.item.font.pixelSize : -1, metrics: metrics.font.pixelSize,
-            detached: widget.detached.font.pixelSize
+            detached: widget.detached.font.pixelSize,
+            repeated: rep.itemAt(0).font.pixelSize, pruned: fonts._seen.size === seenBefore - 2
         }));
         Qt.quit();
     }
     Component.onCompleted: {
         late.active = true;
-        Qt.callLater(() => Qt.callLater(report));
+        // A Repeater dropping a delegate: the next walk forgets it.
+        Qt.callLater(() => {
+            seenBefore = fonts._seen.size;
+            rep.model = 1;
+            Qt.callLater(() => Qt.callLater(report));
+        });
     }
 }
 QML
@@ -156,6 +165,8 @@ QML
         assert_eq "bar: a child a Loader adds later is adopted" true "$(jq '.late == .body' <<<"$result")"
         assert_eq "bar: TextMetrics at button.fontSize measures the drawn size" true "$(jq '.metrics == .body' <<<"$result")"
         assert_eq "bar: text outside the visual tree is untouched" 7 "$(jq '.detached' <<<"$result")"
+        assert_eq "bar: a Repeater's delegates are adopted" true "$(jq '.repeated == .body' <<<"$result")"
+        assert_eq "bar: a delegate the Repeater dropped is not kept" true "$(jq '.pruned' <<<"$result")"
     else
         _fail "bar font probe result not produced" "$OUTPUT"
     fi

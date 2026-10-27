@@ -4,7 +4,7 @@
 
 - **Priority**: P1
 - **Effort**: M
-- **Risk**: MEDIUM. About 390 size lines in 120 files change. Most keep
+- **Risk**: MEDIUM. 379 size lines in 112 files change. Most keep
   their pixel size at the default base of 12. Some move by one or two pixels
   onto the nearest role, and the menu and launcher cards lose the 9% that a
   stale base of 11 added. Third-party bar widgets change size by design.
@@ -13,15 +13,15 @@
 - **Category**: shell
 - **Planned at**: 2026-10-27
 - **State**: DONE 2026-10-27. Test results:
-  - `tests/test-shell.sh` 270/270;
-  - `tests/test-compat-font.sh` 26/26;
+  - `tests/test-shell.sh` 277/277;
+  - `tests/test-compat-font.sh` 28/28;
   - `tools/fonts.py check`: 264 files, one family, one scale;
-  - `tests/run.sh --affected`: 68 files, every test passes. The security
-    suites (`test-vapt-panel-conformance`, `test-vapt-security-ui`,
+  - `tests/run.sh --affected`: 68 files, 6115/6115. The security suites
+    (`test-vapt-panel-conformance`, `test-vapt-security-ui`,
     `test-vapt-ui-adversarial`, 222/222) needed the type scale in their
-    stand-in `Theme` (`tests/fixtures/vapt-qml-lib.sh`). `test-menu-back`
-    (34/34) passes when run from a short path: from a long worktree path its
-    quickshell socket path exceeds the 108-byte limit.
+    stand-in `Theme` (`tests/fixtures/vapt-qml-lib.sh`). The run is from a
+    short path: from a long worktree path `test-menu-back`'s quickshell
+    socket path exceeds the 108-byte limit.
 
 ## Problem
 
@@ -42,20 +42,19 @@ Plan 115 (70ac0c4) gave haseen Omarchy 4.5's type scale: `Theme.font`
 `Commons/Style.qml:328-339` values. Most plugins never used them:
 
 - **Offsets from the base size.** On origin/main the built-in plugins drew
-  text at 370 `Theme.fontSize` expressions (`git diff origin/main` of this
-  branch):
+  text at 372 `Theme.fontSize` expressions (see Evidence for the count):
 
   | Expression | Sites |
   |---|---|
-  | `Theme.fontSize` | 143 |
+  | `Theme.fontSize` | 144 |
   | `Theme.fontSize - 1` | 86 |
   | `Math.max(1, Theme.fontSize - 1)` | 42 |
   | `Theme.fontSize + 2` | 32 |
   | `Theme.fontSize - 2` | 12 |
   | `Math.max(1, Theme.fontSize - 2)` | 8 |
 
-  Hero sizes such as `* 2`, `* 3`, `* 4.5`, `+ 3`, `+ 5` and `+ 6` varied from
-  plugin to plugin. A battery percentage, a weather temperature and a pager
+  The other 48 were hero sizes such as `* 2`, `* 3`, `* 4.5`, `+ 3`, `+ 5`
+  and `+ 6`, which varied from plugin to plugin. A battery percentage, a weather temperature and a pager
   bell were each a size of their own.
 - **A stale base of 11.** The menu (`MenuStyle.js` `scale()`), the launcher
   (`Haseen/MenuMetrics.qml`) and `haseen.security` still divided by 11, a
@@ -112,7 +111,8 @@ their Omarchy role:
 
 - **`display`** for a panel's hero glyph or number (PanelHero's icon role):
   the battery, media, network, weather, todoist, omarr and omaconnect
-  heroes, the pager bell, the calendar card and the overlay template.
+  heroes, the pager bell, the calendar card, the theme picker's "Aa"
+  sample and the overlay template.
 - **`title`** for a hero's name and its unit (PanelHero's title).
 - **`icon`** for the forecast glyphs and the omarr button glyph.
 - **`heading`** and **`title`** for the OSD card's value and icon, which
@@ -170,13 +170,23 @@ fails when any of these is true:
   token. The checker follows property references through:
   - the singleton a qualified reference names (`MenuMetrics.iconSize`);
   - otherwise the same file, the same directory, then anywhere;
+- an assignment in JavaScript (`label.font.pixelSize = …`) does not resolve
+  to a token, or is compound (`+=`), which is relative by nature;
 - `font.pointSize` is used.
+
+Before it looks, the checker blanks comments and masks strings and regex
+literals, keeping every offset. A regex is told from a division by what
+precedes the `/` (an operator, a bracket or a keyword such as `return`), and
+a single or double quote left open ends at its line, so one stray quote
+cannot hide the rest of a file.
 
 `tools/lint.sh` runs it after `i18n.py`, and `tests/test-shell.sh` asserts it
 passes over the tree. The same test checks a fixture of known breaches:
 arithmetic on the base size, a missing family, a literal family,
-`pointSize`, and a missing pixel size. It also checks that a token-holding
-property, a condition between tokens and an exempt definition pass.
+`pointSize`, a missing pixel size, breaches after a regex that holds a
+quote, and sizes assigned in JavaScript. It also checks that a token-holding
+property, a condition between tokens, an exempt definition, `font:
+other.font` and a theme family assigned in JavaScript pass.
 
 ### Third-party bar widgets, `Compat/BarFonts.qml`
 
@@ -215,7 +225,9 @@ visual children, which are what the bar shows. A plugin's popout is a
 The bindings follow the text, so a label that turns into an icon resizes.
 Children that appear later (a Loader's item, a Repeater's delegate) are
 walked when `childrenChanged` reports them, through `Qt.callLater`. There is
-no timer (architecture 6).
+no timer (architecture 6). Each walk rebuilds the set of items it adopted,
+so one no longer in the tree (a delegate a Repeater dropped) is forgotten
+and the set does not grow with a churning model.
 
 The engine scenario in `tests/test-compat-font.sh` builds such a widget in
 Quickshell. It checks that:
@@ -230,6 +242,8 @@ Quickshell. It checks that:
 - an nf-md glyph draws at 13 px and keeps "Symbols Nerd Font";
 - Arabic draws at 12 px and keeps Noto Naskh Arabic;
 - a Loader's late `Text` is adopted;
+- a Repeater's delegates are adopted, and the two it drops when its model
+  shrinks from 3 to 1 leave the set;
 - a `TextMetrics` at `button.fontSize` reads 12;
 - a `Text` outside the visual tree stays at 7 px.
 
@@ -254,19 +268,22 @@ Quickshell. It checks that:
 
 ## Evidence
 
-The scale on origin/main came from `git diff origin/main -U0 -- share/haseen/shell`,
-counting `font.pixelSize` lines: 394 added lines, 370 of them replacing a
-`Theme.fontSize` expression. The tallies in Problem come from the same diff.
+The counts come from `git diff origin/main -U0 -- share/haseen/shell`.
+Lines holding `font.pixelSize`: 379 added, in 112 files, and 376 removed.
+Of the removed lines, 372 held a `Theme.fontSize` expression. Problem's
+table counts each removed value, the text after `font.pixelSize:`, exactly
+as written.
 
 | Case | Before | After |
 |---|---|---|
 | Stale /11 rule | `MenuStyle.js:26` `fontSize / 11`; `MenuMetrics.qml:15` `Theme.fontSize / 11`; `haseen.security` `Math.round(12 * Theme.fontSize / 11)` in `Field.qml`, `GroupFilter.qml` and `SelectableText.qml` | `Theme.fontScale` and `Theme.font.body` |
 | Omarchy's tokens | `/usr/share/omarchy/shell/Commons/Style.qml:328-339` | caption 10 to iconLarge 18 at base 12 |
 
-Engine probe output from the scenario above:
+Engine probe output from the scenario above. The test runs in a hermetic
+home, so the bar font is the theme's default, JetBrainsMono Nerd Font:
 
 ```
-{"body":12,"icon":13,"mono":"BerkeleyMono Nerd Font","cell":12,"cellFamily":"BerkeleyMono Nerd Font","iconCell":13,"helper":6,"squeezed":10,"small":12,"smallFamily":"BerkeleyMono Nerd Font","smallIcon":13,"glyph":13,"glyphFamily":"Symbols Nerd Font","arabic":12,"arabicFamily":"Noto Naskh Arabic","late":12,"metrics":12,"detached":7}
+{"body":12,"icon":13,"mono":"JetBrainsMono Nerd Font","cell":12,"cellFamily":"JetBrainsMono Nerd Font","iconCell":13,"helper":6,"squeezed":10,"small":12,"smallFamily":"JetBrainsMono Nerd Font","smallIcon":13,"glyph":13,"glyphFamily":"Symbols Nerd Font","arabic":12,"arabicFamily":"Noto Naskh Arabic","late":12,"metrics":12,"detached":7,"repeated":12,"pruned":true}
 ```
 
 ## Residual
@@ -282,3 +299,52 @@ Engine probe output from the scenario above:
   button.
 - Panels of third-party plugins are untouched. They use Omarchy's `Style`
   tokens, which are haseen's scale already (plan 115).
+- A plugin that sets a size in JavaScript after `BarFonts` adopted the item
+  (`button.fontSize = 9` in a handler) replaces the binding, and that size
+  stays. Declarative bindings are replaced by `BarFonts`'. No built-in
+  plugin and none of the owner's (a grep of `~/.config/omarchy/plugins` and
+  `~/.config/DankMaterialShell/plugins` on 2026-10-27) assigns a size in
+  JavaScript.
+- `iconOnly()` knows the private-use areas only. An icon outside them (the
+  power symbols at U+23FB to U+23FE, an emoji) counts as text: 12 px in the
+  bar font, so a colour emoji reaches its face through fontconfig's
+  fallback.
+- The checker resolves a bare property name, when neither its file nor its
+  directory defines it, from any file in scope. An unrelated property of the
+  same name that holds a token would satisfy it. The reviewer found no case
+  in the tree.
+
+## Review
+
+Round 1 (DeepSeek V4.1 Flash, head 0735808, REQUEST_CHANGES):
+
+1. **A quote in a regex literal hid the rest of a file from the checker.**
+   `mask()` treated `/^["']?…/` as opening a string, which ran to the end of
+   the file. `haseen.themepicker/ThemeCard.qml` hid two sizes this way, the
+   "Aa" sample at `Theme.fontSize * 2` and the theme name at
+   `Theme.fontSize`. Fixed: `mask()` knows regex literals and ends an open
+   quote at its line, and the two sizes are `display` and `body`. The
+   fixture's `Regex.qml` fails without the fix (the old checker passed it
+   as "1 files, one family, one scale").
+2. **A size set in JavaScript after adoption escapes `BarFonts`.** Recorded
+   in Residual. Re-asserting the binding on every change would fight the
+   plugin.
+3. **`_seen` never shrank.** Fixed by rebuilding it on every walk rather
+   than a `WeakSet`: the walk already visits every item, a rebuilt set drops
+   an item as soon as it leaves the tree rather than at garbage collection,
+   and its size is observable, so `tests/test-compat-font.sh` checks it. A
+   destroyed item's `childrenChanged` connection goes with the item.
+4. **The checker missed assignments in JavaScript, and its "anywhere"
+   lookup can be satisfied by an unrelated file.** The first is fixed (see
+   the checker above); the second is in Residual.
+5. **The plan's numbers did not reproduce.** They are recounted from the
+   current diff, and Evidence gives the method. The reviewer's 377 lines in
+   111 files plus the two `ThemeCard.qml` lines are the 379 in 112.
+6. **Icons outside the private-use areas, and CJK outside the BMP.**
+   `otherScript()` now covers U+20000 to U+2FFFF; the icons are in Residual.
+
+The reviewer also observed that the largest changes are heroes: the weather
+temperature 54 and 48 to 24, battery and media 36 to 24, network 29 to 24,
+omarr and omaconnect 18 to 24, the forecast icon 24 to 14, and the OSD 19
+to 16. All follow the role table above. They are Omarchy's `display` size,
+and the owner can ask for a larger hero role.

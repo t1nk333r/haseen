@@ -23,6 +23,11 @@ Rules:
      choose between them (`vertical ? Theme.font.caption : Theme.font.body`);
      arithmetic, Math.* and Theme.fontSize may not make one up.
   4. font.pointSize is never used.
+  5. An assignment in JavaScript (`label.font.pixelSize = …`) follows 2 to 4;
+     a compound one (`+=`) is never a token.
+
+Strings, comments and regex literals are masked first, so a brace, colon or
+quote inside them changes nothing; a quote left open ends at its line.
 
 A line, or the line above it, marked `// fonts-ignore: <why>` is exempt: the
 lock and the screensaver are full-screen and scale with it, and Arabic script
@@ -55,6 +60,9 @@ IGNORE = "fonts-ignore:"
 ELEMENT = re.compile(r"(?<![\w.])(?:\w+\.)?(" + "|".join(TEXT_TYPES) + r")\s*\{")
 REF = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
 ASSIGN = re.compile(r"(?<![\w.])font\.(family|pixelSize)\s*:(?!:)")
+# An assignment in JavaScript, `label.font.pixelSize = …`; "op" is set for a
+# compound one (+=), which is relative to a size and never a token.
+IMPERATIVE = re.compile(r"(?<![\w$])font\.(family|pixelSize|pointSize)\s*(?P<op>[-+*/]?)=(?!=)")
 PROPERTY = re.compile(r"\b(?:readonly\s+)?(?:required\s+)?property\s+\w+\s+(\w+)\s*:")
 
 
@@ -77,9 +85,31 @@ def files():
     return out
 
 
+# A "/" after one of these, or after one of the keywords, starts a regex
+# literal; after anything else (a name, a number, ")" or "]") it divides.
+REGEX_AFTER = set("(,=:[!&|?{};+-*%<>~^")
+REGEX_KEYWORDS = {"return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else", "do", "yield", "await"}
+
+
+def regex_starts(out, i):
+    """Whether the "/" at i opens a regex literal, from what precedes it."""
+    k = i - 1
+    while k >= 0 and out[k] in " \t\r\n":
+        k -= 1
+    if k < 0 or out[k] in REGEX_AFTER:
+        return True
+    j = k
+    while j >= 0 and (out[j].isalnum() or out[j] in "_$"):
+        j -= 1
+    return "".join(out[j + 1:k + 1]) in REGEX_KEYWORDS
+
+
 def mask(text):
-    """The text with comments blanked and string contents replaced, so braces
-    and colons inside them do not count; offsets stay the same."""
+    """The text with comments blanked and the contents of strings and regex
+    literals replaced, so braces, colons and quotes inside them do not count;
+    offsets stay the same. A quote that is not closed on its line ends there
+    (JavaScript strings cannot span lines; template literals can), so one
+    stray quote cannot hide the rest of a file."""
     out = list(text)
     i, n = 0, len(text)
     while i < n:
@@ -94,12 +124,31 @@ def mask(text):
             j = n if j < 0 else j + 2
             out[i:j] = [ch if ch == "\n" else " " for ch in text[i:j]]
             i = j
+        elif c == "/" and regex_starts(out, i):
+            j, in_class = i + 1, False
+            while j < n and text[j] != "\n":
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == "[":
+                    in_class = True
+                elif text[j] == "]":
+                    in_class = False
+                elif text[j] == "/" and not in_class:
+                    break
+                j += 1
+            if j < n and text[j] == "/":
+                out[i + 1:j] = "_" * (j - i - 1)
+                i = j + 1
+            else:
+                i += 1
         elif c in "\"'`":
             j = i + 1
-            while j < n and text[j] != c:
+            while j < n and text[j] != c and (c == "`" or text[j] != "\n"):
                 j += 2 if text[j] == "\\" else 1
-            out[i + 1:j] = "_" * (j - i - 1)
-            i = j + 1
+            j = min(j, n)
+            out[i + 1:j] = [ch if ch == "\n" else "_" for ch in text[i + 1:j]]
+            i = j + 1 if j < n and text[j] == c else j
         else:
             i += 1
     return "".join(out)
@@ -261,6 +310,15 @@ class Checker:
             for m in ASSIGN.finditer(masked):
                 expr, _ = expression(text, masked, m.end())
                 self.value(path, self.line(text, m.start()), m.group(1), expr)
+            for m in IMPERATIVE.finditer(masked):
+                line = self.line(text, m.start())
+                if m.group(1) == "pointSize":
+                    self.report(path, line, "font.pointSize; use a Theme.font pixel size")
+                elif m.group("op"):
+                    self.report(path, line, f"font.{m.group(1)} {m.group('op')}= is relative; assign a theme token")
+                else:
+                    expr, _ = expression(text, masked, m.end())
+                    self.value(path, line, m.group(1), expr)
             for m in ELEMENT.finditer(masked):
                 open_at = m.end() - 1
                 self.element(path, text, masked, m.group(1), open_at, close_of(masked, open_at))

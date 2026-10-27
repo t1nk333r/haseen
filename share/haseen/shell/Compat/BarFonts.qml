@@ -30,16 +30,21 @@ QtObject {
     property string family: Theme.fontMono
     readonly property int textSize: Theme.font.body
     readonly property int iconSize: Theme.barMetrics.iconFont
+    // The items adopted, as of the last walk. Each walk builds a new set, so
+    // an item that is gone (a Repeater's old delegate) is not kept.
     property var _seen: new Set()
 
     // Nerd Font icons: the BMP private-use area and, as surrogate pairs, the
     // supplementary one (the nf-md set).
     function iconOnly(text: string): bool {
-        return /^(?:[-\s]|[\udb80-\udbff][\udc00-\udfff])+$/.test(text);
+        return /^(?:[\ue000-\uf8ff\s]|[\udb80-\udbff][\udc00-\udfff])+$/.test(text);
     }
 
+    // Hebrew to Mongolian and the rest of the BMP's non-Latin scripts the bar
+    // font may lack (CJK, Hangul, Arabic presentation forms), and CJK's
+    // supplementary planes (U+20000 to U+2FFFF) as surrogate pairs.
     function otherScript(text: string): bool {
-        return /[֐-᳿⺀-꓏가-힯豈-﫿יִ-﷿ﹰ-﻿]/.test(text);
+        return /[\u0590-\u1cff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\ufb1d-\ufdff\ufe70-\ufeff]|[\ud840-\ud87f][\udc00-\udfff]/.test(text);
     }
 
     function sizeFor(text: string): int {
@@ -57,12 +62,12 @@ QtObject {
     }
 
     // The whole tree each time: a new child can sit under an item already
-    // seen. What was adopted once is not adopted again.
-    function adopt(item: Item) {
-        if (!item)
+    // seen. What was adopted is not adopted again while it stays in the tree.
+    function adopt(item: Item, seen: var) {
+        if (!item || seen.has(item))
             return;
+        seen.add(item);
         if (!_seen.has(item)) {
-            _seen.add(item);
             if (typeof item.adoptBarFont === "function") {
                 if (item.bar)
                     item.adoptBarFont(root);
@@ -72,12 +77,14 @@ QtObject {
             item.childrenChanged.connect(root.schedule);
         }
         for (const child of item.children)
-            adopt(child);
+            adopt(child, seen);
     }
 
     function scan() {
+        const seen = new Set();
         if (target)
-            adopt(target);
+            adopt(target, seen);
+        _seen = seen;
     }
 
     function schedule() {
