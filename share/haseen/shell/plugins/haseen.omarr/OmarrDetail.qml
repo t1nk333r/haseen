@@ -83,7 +83,7 @@ Column {
             text: root.snap ? (Model.statusLabel(root.snap.statusText, I18n) || Model.fleetLine(root.snap, I18n)) : ""
             color: root.dim
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             wrapMode: Text.WordWrap
         }
     }
@@ -250,7 +250,7 @@ Column {
                 text: root.pager.label
                 color: root.dim
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
             }
 
             OmarrButton {
@@ -292,7 +292,7 @@ Column {
                     text: historyRow.modelData.title || ""
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     elide: Text.ElideRight
                 }
 
@@ -303,7 +303,7 @@ Column {
                     text: historyRow.modelData.status || ""
                     color: historyRow.modelData.status === "failed" ? Theme.urgent : root.dim
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     elide: Text.ElideRight
                 }
             }
@@ -334,7 +334,7 @@ Column {
                     text: day.modelData.heading
                     color: root.dim
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     font.bold: true
                 }
 

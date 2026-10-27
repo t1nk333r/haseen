@@ -278,7 +278,7 @@ Column {
             textFormat: Text.PlainText
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         BarButton {
@@ -299,7 +299,7 @@ Column {
         textFormat: Text.PlainText
         color: Theme.warning
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // ---------------------------------------------------------------- list
@@ -321,7 +321,7 @@ Column {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 1
+            font.pixelSize: Theme.font.subtitle
             clip: true
             onTextChanged: root.query = text
             Keys.onEscapePressed: {
@@ -422,7 +422,7 @@ Column {
         textFormat: Text.PlainText
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Repeater {
@@ -448,7 +448,7 @@ Column {
         text: I18n.tr("This plugin declares no settings.")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     BarButton {

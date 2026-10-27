@@ -61,7 +61,7 @@ Column {
             text: I18n.tr("Package updates")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -73,7 +73,7 @@ Column {
             }
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -90,7 +90,7 @@ Column {
             text: modelData
             color: Theme.urgent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -106,7 +106,7 @@ Column {
             text: modelData
             color: Theme.foreground
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 

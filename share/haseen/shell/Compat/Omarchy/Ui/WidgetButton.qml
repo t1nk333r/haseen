@@ -45,6 +45,16 @@ Item {
         root.pressed(button);
     }
 
+    // The bar host calls this for every WidgetButton in a bar widget
+    // (Compat/BarFonts.qml, plan 141): the label takes the bar's size and
+    // font, whatever the plugin asked for. fontSize itself is rebound, so a
+    // plugin that measures its label at button.fontSize (to reserve a fixed
+    // width) measures what is drawn.
+    function adoptBarFont(fonts) {
+        root.fontSize = Qt.binding(() => fonts.sizeFor(root.text));
+        root.fontFamily = Qt.binding(() => fonts.family);
+    }
+
     function hideOwnTooltip() {
         if (root.bar)
             root.bar.hideTooltip(root);

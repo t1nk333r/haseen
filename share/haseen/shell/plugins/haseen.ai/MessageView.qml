@@ -58,7 +58,7 @@ Item {
                 textFormat: Text.PlainText
                 color: root.mine ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
                 font.bold: root.mine
             }
 
@@ -91,7 +91,7 @@ Item {
             selectionColor: Theme.selection
             selectedTextColor: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
     }
 }

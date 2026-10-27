@@ -32,6 +32,12 @@ Item {
     implicitWidth: widget !== null && widget.visible ? widget.implicitWidth : 0
     implicitHeight: parent ? parent.height : Config.barHeight
 
+    // The pill's text at the bar's size and font, as haseen's own widgets
+    // draw theirs (plan 141).
+    BarFonts {
+        target: host.widget
+    }
+
     // shell.json settings are part of pluginData.
     onSettingsChanged: {
         if (widget !== null && typeof widget.loadPluginData === "function")

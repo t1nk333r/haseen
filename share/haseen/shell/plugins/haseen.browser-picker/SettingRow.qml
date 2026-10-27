@@ -37,7 +37,7 @@ Item {
             elide: Text.ElideRight
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Text {
@@ -47,7 +47,7 @@ Item {
             elide: Text.ElideRight
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 

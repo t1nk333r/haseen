@@ -48,7 +48,7 @@ Item {
         elide: Text.ElideRight
         color: Theme.foreground
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
         font.bold: root.active
     }
 

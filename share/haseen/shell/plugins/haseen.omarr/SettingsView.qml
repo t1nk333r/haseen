@@ -369,7 +369,7 @@ Column {
             text: root.service && root.service.credsWhy ? I18n.tr("credentials.json cannot be read (%1). Nothing is polled and no key is saved until it can be.", root.service.credsWhy) : I18n.tr("credentials.json cannot be read. Nothing is polled and no key is saved until it can be.")
             color: Theme.urgent
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Text {
@@ -380,7 +380,7 @@ Column {
             text: I18n.tr("Pinging common ports on this machine…")
             color: root.dim
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
             font.italic: true
         }
 
@@ -396,7 +396,7 @@ Column {
                 text: I18n.tr("Found on localhost")
                 color: root.dim
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
                 font.bold: true
             }
 
@@ -435,7 +435,7 @@ Column {
                             text: scanRow.modelData.name + " · " + scanRow.modelData.url
                             color: Theme.foreground
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
+                            font.pixelSize: Theme.font.body
                             elide: Text.ElideRight
                         }
                     }
@@ -461,7 +461,7 @@ Column {
             wrapMode: Text.WordWrap
             color: root.dim
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             font.italic: true
         }
 
@@ -487,7 +487,7 @@ Column {
                     text: Model.groupLabel(groupCol.modelData.group, I18n)
                     color: root.dim
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     font.bold: true
                 }
 
@@ -539,7 +539,7 @@ Column {
                                     text: svcRow.modelData.name
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize
+                                    font.pixelSize: Theme.font.body
                                     font.bold: true
                                     elide: Text.ElideRight
                                 }
@@ -551,7 +551,7 @@ Column {
                                     text: root.confirmRemoveId === svcRow.modelData.id ? I18n.tr("Click remove again to delete it and its credentials") : I18n.tr(Model.kindLabel(svcRow.modelData.kind)) + " · " + (svcRow.modelData.url || I18n.tr("no url"))
                                     color: root.confirmRemoveId === svcRow.modelData.id ? Theme.urgent : root.dim
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                                    font.pixelSize: Theme.font.bodySmall
                                     elide: Text.ElideRight
                                 }
                             }
@@ -612,7 +612,7 @@ Column {
             text: I18n.tr("Kind")
             color: root.dim
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Flow {

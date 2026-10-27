@@ -90,7 +90,7 @@ ColumnLayout {
         }
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     // One unit is `root.unit` px; every key is placed from Model.keysFor, so
@@ -153,7 +153,7 @@ ColumnLayout {
                     // standing for an action the firmware will not name.
                     color: key.relabelled ? Theme.urgent : (root.fnView && (key.fn.source === "documented" || key.fn.source === "internal") ? Theme.subtle(Theme.surfaceAlt) : (root.fnView && key.fn.source === "learned" ? Theme.accent : Theme.foreground))
                     font.family: Theme.fontFamily
-                    font.pixelSize: key.shown.length > 3 ? Theme.fontSize - 3 : Theme.fontSize
+                    font.pixelSize: key.shown.length > 3 ? Theme.font.caption : Theme.font.body
                     font.bold: key.actuated
                 }
 
@@ -192,7 +192,7 @@ ColumnLayout {
         text: I18n.tr("Unmapped: %1", root.stray.map(k => "r" + k.row + "c" + k.col + " " + Model.hidName(k.code) + " " + Math.round(k.value * 100) + "%").join("   "))
         color: Theme.urgent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Text {
@@ -214,6 +214,6 @@ ColumnLayout {
         }
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 2
+        font.pixelSize: Theme.font.caption
     }
 }

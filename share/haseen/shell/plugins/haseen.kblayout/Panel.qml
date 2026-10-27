@@ -59,7 +59,7 @@ Column {
         text: I18n.tr("Keyboard layout")
         color: Theme.accent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize + 2
+        font.pixelSize: Theme.font.title
     }
 
     Repeater {
@@ -93,7 +93,7 @@ Column {
                 text: row.modelData.code
                 color: row.active ? Theme.accent : Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 font.bold: true
             }
 
@@ -109,7 +109,7 @@ Column {
                 text: Keyboard.layoutName(row.modelData.layout)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -122,7 +122,7 @@ Column {
                 text: row.modelData.variant !== "" ? row.modelData.layout + " " + row.modelData.variant : row.modelData.layout
                 color: Theme.subtle(row.fill)
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
 
             MouseArea {

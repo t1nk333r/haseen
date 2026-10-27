@@ -9,7 +9,7 @@ Controls.TextArea {
     textFormat: TextEdit.PlainText
     color: Theme.foreground
     font.family: Theme.fontMono
-    font.pixelSize: Math.round(12 * Theme.fontSize / 11)
+    font.pixelSize: Theme.font.body
     selectionColor: Theme.selection
     selectedTextColor: Theme.foreground
     Accessible.role: Accessible.EditableText

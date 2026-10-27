@@ -148,6 +148,11 @@ Item {
         target: api.tooltipVisible ? api.tooltipTarget : null
         text: api.tooltipVisible ? api.tooltipText : ""
     }
+    // A bar widget's text at the bar's size and font, as haseen's own
+    // widgets draw theirs (plan 141).
+    BarFonts {
+        target: host.kind === "bar-widget" ? host.widget : null
+    }
     // Below the plugin's own MouseAreas: forwards only otherwise unhandled
     // slot presses, avoiding a duplicate press on interactive plugin children.
     MouseArea {

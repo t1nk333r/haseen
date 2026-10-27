@@ -48,7 +48,7 @@ Column {
                 text: card.media.title || I18n.tr("Nothing playing")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -59,7 +59,7 @@ Column {
                 text: [card.media.artist, card.media.player].filter(s => s !== "").join(" · ")
                 color: card.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }

@@ -98,7 +98,7 @@ Item {
                 color: Theme.foreground
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -109,7 +109,7 @@ Item {
                 color: row.statusColor
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.font.caption
             }
         }
 
@@ -138,7 +138,7 @@ Item {
                 anchors.centerIn: parent
                 glyph: row.forgetVisible ? "\u{F0159}" : "\u{F033E}"
                 color: row.forgetVisible ? Theme.urgent : Theme.muted
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             MouseArea {
@@ -182,7 +182,7 @@ Item {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             clip: true
             onTextChanged: field.edited(text)
             Keys.onReturnPressed: field.accepted()
@@ -271,7 +271,7 @@ Item {
                 text: row.failed ? row.statusText : I18n.tr("Connecting…")
                 color: row.failed ? Theme.urgent : Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
 

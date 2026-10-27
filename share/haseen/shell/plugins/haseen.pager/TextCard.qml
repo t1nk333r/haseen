@@ -56,7 +56,7 @@ Rectangle {
             color: Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(8, Theme.fontSize - 2)
+            font.pixelSize: Theme.font.caption
         }
 
         Text {
@@ -66,7 +66,7 @@ Rectangle {
             color: Theme.foreground
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             font.bold: true
         }
 
@@ -82,7 +82,7 @@ Rectangle {
             maximumLineCount: root.open ? root.openLines : root.closedLines
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
     }
 }

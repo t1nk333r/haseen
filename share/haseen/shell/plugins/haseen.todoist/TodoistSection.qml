@@ -10,7 +10,7 @@ Text {
     horizontalAlignment: Text.AlignLeft
     color: Theme.accent
     font.family: Theme.fontFamily
-    font.pixelSize: Math.max(1, Theme.fontSize - 2)
+    font.pixelSize: Theme.font.caption
     font.bold: true
     font.letterSpacing: 1.1
     elide: Text.ElideRight

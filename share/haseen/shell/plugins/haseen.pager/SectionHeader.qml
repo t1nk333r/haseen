@@ -29,7 +29,7 @@ Item {
         color: Theme.muted
         elide: Text.ElideRight
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(8, Theme.fontSize - 2)
+        font.pixelSize: Theme.font.caption
         font.bold: true
         font.letterSpacing: 1
     }

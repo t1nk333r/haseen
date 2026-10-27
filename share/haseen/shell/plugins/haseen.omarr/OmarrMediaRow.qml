@@ -30,7 +30,7 @@ Column {
         text: root.title
         color: Theme.foreground
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
         elide: Text.ElideRight
     }
 
@@ -42,7 +42,7 @@ Column {
         text: root.subtitle
         color: root.subtitleColor
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
         elide: Text.ElideRight
     }
 

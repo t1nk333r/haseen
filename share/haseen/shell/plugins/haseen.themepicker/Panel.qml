@@ -219,7 +219,7 @@ Column {
             text: I18n.tr("Themes")
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
             font.bold: true
         }
 
@@ -231,7 +231,7 @@ Column {
             color: root.notice !== "" ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 

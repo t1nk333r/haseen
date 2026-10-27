@@ -34,7 +34,7 @@ Scope {
             text: root.pluginId
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize * 2
+            font.pixelSize: Theme.font.display
         }
     }
 }

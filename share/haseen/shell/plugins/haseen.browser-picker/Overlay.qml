@@ -100,7 +100,7 @@ PanelWindow {
                 elide: Text.ElideMiddle
                 color: Theme.accent
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
+                font.pixelSize: Theme.font.title
             }
 
             Rectangle {
@@ -122,7 +122,7 @@ PanelWindow {
                     color: Theme.foreground
                     selectionColor: Theme.selection
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize + 1
+                    font.pixelSize: Theme.font.subtitle
                     clip: true
                     onTextChanged: {
                         root.filter = text;
@@ -161,7 +161,7 @@ PanelWindow {
                 elide: Text.ElideRight
                 color: Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             ListView {
@@ -216,7 +216,7 @@ PanelWindow {
                         elide: Text.ElideRight
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
                     }
 
                     MouseArea {
@@ -244,7 +244,7 @@ PanelWindow {
                 elide: Text.ElideRight
                 color: root.offersRule ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }

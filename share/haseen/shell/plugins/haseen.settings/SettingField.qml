@@ -44,7 +44,7 @@ Item {
                 elide: Text.ElideRight
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             BarButton {
@@ -67,7 +67,7 @@ Item {
             textFormat: Text.PlainText
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
 
         BarButton {
@@ -99,7 +99,7 @@ Item {
                 color: Theme.foreground
                 selectionColor: Theme.selection
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 clip: true
                 onAccepted: root.edited(text)
                 onActiveFocusChanged: if (!activeFocus && text !== Model.formatValue(root.field.type, root.shownValue))
@@ -113,7 +113,7 @@ Item {
             text: I18n.tr(root.error)
             color: Theme.urgent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 }

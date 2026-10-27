@@ -65,7 +65,7 @@ PanelWindow {
                 glyph: win.card.glyph
                 // Off or muted: the glyph steps back, still readable (3:1).
                 color: win.card.dim ? Theme.subtle(Theme.surface) : Theme.foreground
-                font.pixelSize: Theme.fontSize * 1.6
+                font.pixelSize: Theme.font.heading
             }
 
             // The layout code where the glyph would be.
@@ -75,7 +75,7 @@ PanelWindow {
                 text: win.card.text
                 color: Theme.accent
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize * 1.4
+                font.pixelSize: Theme.font.heading
                 font.bold: true
             }
 
@@ -105,7 +105,7 @@ PanelWindow {
                 color: win.card.dim ? Theme.subtle(Theme.surface) : Theme.foreground
                 horizontalAlignment: Text.AlignRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -116,7 +116,7 @@ PanelWindow {
                 // "Caps Lock off" is the message: it stays in the text colour.
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize * 1.2
+                font.pixelSize: Theme.font.title
             }
         }
     }

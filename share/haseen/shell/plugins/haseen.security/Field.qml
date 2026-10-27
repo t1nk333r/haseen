@@ -19,7 +19,7 @@ Column {
         height: Math.max(40, implicitHeight)
         color: Theme.foreground
         font.family: Theme.fontMono
-        font.pixelSize: Math.round(12 * Theme.fontSize / 11)
+        font.pixelSize: Theme.font.body
         selectionColor: Theme.selection
         selectedTextColor: Theme.foreground
         activeFocusOnTab: true

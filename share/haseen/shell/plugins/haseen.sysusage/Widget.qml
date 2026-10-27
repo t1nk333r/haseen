@@ -92,6 +92,7 @@ Item {
                 Glyph {
                     glyph: root.glyphs[parent.modelData]
                     color: parent.tint
+                    font.pixelSize: Theme.barMetrics.iconFont
                 }
 
                 Text {
@@ -99,7 +100,7 @@ Item {
                     text: parent.value < 0 ? "--" : parent.value + (root.vertical ? "" : "%")
                     color: parent.tint
                     font.family: Theme.fontMono
-                    font.pixelSize: root.vertical ? Theme.fontSize - 2 : Theme.fontSize
+                    font.pixelSize: root.vertical ? Theme.font.caption : Theme.font.body
                     horizontalAlignment: Text.AlignRight
                     width: Math.ceil(metrics.advanceWidth)
                 }
@@ -110,7 +111,7 @@ Item {
     TextMetrics {
         id: metrics
         font.family: Theme.fontMono
-        font.pixelSize: root.vertical ? Theme.fontSize - 2 : Theme.fontSize
+        font.pixelSize: root.vertical ? Theme.font.caption : Theme.font.body
         text: root.vertical ? "100" : "100%"
     }
 

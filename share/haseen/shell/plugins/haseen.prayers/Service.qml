@@ -94,6 +94,9 @@ Scope {
     // IPC status() is not interface text: it is Arabic only when the setting
     // says Arabic, so `haseen language` never changes what it returns.
     readonly property string ipcLanguage: languageSetting === "Arabic" ? "Arabic" : "English"
+    // Arabic names need a face with Arabic glyphs; the theme's monospace
+    // family has none.
+    // fonts-ignore: Arabic script
     readonly property string arabicFont: String(setting("arabicFont", "Noto Naskh Arabic"))
     readonly property string barDisplay: String(setting("barDisplay", "Strip + countdown"))
     readonly property bool isArabic: language === "Arabic"
@@ -207,11 +210,11 @@ Scope {
     readonly property color faint: alpha(foreground, 0.42)
     readonly property string fontFamily: Theme.fontFamily
     readonly property real scale: Math.max(1, Theme.fontSize) / 12
-    readonly property int fCaption: fontPx(0.833)
-    readonly property int fBodySmall: fontPx(0.917)
-    readonly property int fBody: fontPx(1.0)
-    readonly property int fTitle: fontPx(1.167)
-    readonly property int fDisplay: fontPx(2.0)
+    readonly property int fCaption: Theme.font.caption
+    readonly property int fBodySmall: Theme.font.bodySmall
+    readonly property int fBody: Theme.font.body
+    readonly property int fTitle: Theme.font.title
+    readonly property int fDisplay: Theme.font.display
     readonly property int hairline: sp(1)
 
     function fontPx(mult: real): int {

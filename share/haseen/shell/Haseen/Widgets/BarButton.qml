@@ -48,10 +48,13 @@ Item {
         horizontalItemAlignment: Grid.AlignHCenter
         verticalItemAlignment: Grid.AlignVCenter
 
+        // A bar glyph is Omarchy's bar icon (Style.bar.iconFont, the
+        // BarIconButton size), the size plugin bar icons take too (plan 141).
         Glyph {
             glyph: root.glyph
             color: root.color
             visible: root.glyph !== ""
+            font.pixelSize: Theme.barMetrics.iconFont
         }
 
         Text {
@@ -63,7 +66,7 @@ Item {
             elide: !root.vertical && root.maxTextWidth > 0 ? Text.ElideRight : Text.ElideNone
             color: root.color
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             fontSizeMode: root.vertical ? Text.HorizontalFit : Text.FixedSize
             minimumPixelSize: Math.max(6, Theme.fontSize - 5)
             horizontalAlignment: Text.AlignHCenter

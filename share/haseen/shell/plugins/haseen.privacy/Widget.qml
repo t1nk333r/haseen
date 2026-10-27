@@ -242,7 +242,7 @@ Item {
                     textFormat: Text.PlainText
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
             }
         }

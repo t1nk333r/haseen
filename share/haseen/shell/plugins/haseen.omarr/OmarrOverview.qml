@@ -52,7 +52,7 @@ Column {
                 text: modelData.title + " · " + Model.statusLabel(modelData.body, I18n)
                 color: Theme.urgent
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
                 wrapMode: Text.WordWrap
             }
         }
@@ -92,7 +92,7 @@ Column {
         text: I18n.tr("Queue is quiet.")
         color: root.dim
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
         font.italic: true
     }
 
@@ -163,7 +163,7 @@ Column {
                     text: day.modelData.heading
                     color: root.dim
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     font.bold: true
                 }
 
@@ -190,7 +190,7 @@ Column {
             text: root.tab === "recent" ? I18n.tr("Nothing recently added.") : root.tab === "calendar" ? I18n.tr("Calendar is empty.") : I18n.tr("Nothing on deck.")
             color: root.dim
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
             font.italic: true
         }
     }

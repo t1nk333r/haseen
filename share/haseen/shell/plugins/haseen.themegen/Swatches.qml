@@ -52,7 +52,7 @@ Column {
                         elide: Text.ElideRight
                         color: Theme.subtle(Theme.surface)
                         font.family: Theme.fontFamily
-                        font.pixelSize: Math.max(8, Theme.fontSize - 3)
+                        font.pixelSize: Theme.font.caption
                     }
                 }
             }

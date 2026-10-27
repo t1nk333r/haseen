@@ -9,7 +9,7 @@ Controls.Button {
     property string explanation: ""
     property string glyph: ""
     property bool glyphOnly: false
-    readonly property real textScale: Math.max(1 / 11, Theme.fontSize / 11)
+    readonly property real textScale: Theme.fontScale
     implicitHeight: Math.max(40 * textScale, contentItem.implicitHeight + 24 * textScale)
     implicitWidth: contentItem.implicitWidth + 24 * textScale
     padding: 12 * textScale
@@ -30,7 +30,7 @@ Controls.Button {
             height: 24 * control.textScale
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            font.pixelSize: Math.round(18 * control.textScale)
+            font.pixelSize: Theme.font.icon
             Accessible.ignored: true
         }
         Label {

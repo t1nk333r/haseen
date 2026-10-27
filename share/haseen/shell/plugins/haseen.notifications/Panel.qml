@@ -32,7 +32,7 @@ Column {
             text: root.service && root.service.dnd ? I18n.tr("Notifications (do not disturb)") : I18n.tr("Notifications")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Row {
@@ -67,7 +67,7 @@ Column {
         color: Theme.muted
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Flickable {

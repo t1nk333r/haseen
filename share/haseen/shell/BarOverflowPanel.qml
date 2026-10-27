@@ -260,7 +260,7 @@ PanelWindow {
                     color: Theme.barForeground
                     opacity: 0.6
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(8, Theme.fontSize - 3)
+                    font.pixelSize: Theme.font.caption
                 }
 
                 BarButton {
@@ -288,7 +288,7 @@ PanelWindow {
                     color: Theme.barForeground
                     opacity: 0.6
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(8, Theme.fontSize - 3)
+                    font.pixelSize: Theme.font.caption
                 }
 
                 Repeater {

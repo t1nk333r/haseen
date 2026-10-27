@@ -104,7 +104,7 @@ Column {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
             onTextChanged: root.query = text
             onAccepted: root.accept(grid.currentIndex)
             // Left and Right move on screen: in a mirrored (right-to-left)
@@ -135,7 +135,7 @@ Column {
             text: I18n.tr("Search emoji")
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
     }
 
@@ -165,11 +165,12 @@ Column {
             current: GridView.isCurrentItem
             hasCursor: tileMouse.containsMouse
 
+            // fonts-ignore: emoji; a monospace primary family splits ZWJ sequences
             Text {
                 anchors.centerIn: parent
                 text: tile.modelData.e
                 textFormat: Text.PlainText
-                font.pixelSize: Theme.fontSize * 1.8
+                font.pixelSize: Theme.font.display
             }
 
             MouseArea {
@@ -190,6 +191,6 @@ Column {
         color: Theme.muted
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 }

@@ -195,7 +195,7 @@ Column {
             text: I18n.tr("Display")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -205,7 +205,7 @@ Column {
             text: I18n.tr("Looking for monitors…")
             color: root.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -260,7 +260,7 @@ Column {
                     text: row.device.label
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Text {
@@ -271,7 +271,7 @@ Column {
                     text: row.shownPercent + "%"
                     color: root.subtle
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
 
@@ -295,7 +295,7 @@ Column {
                 text: row.error !== "" ? I18n.tr("%1 did not accept the change", row.device.label) : ""
                 color: Theme.urgent
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }
@@ -307,7 +307,7 @@ Column {
         text: I18n.tr(Model.emptyText(root.devices.length, root.sysfsDone && root.ddcDone))
         color: root.subtle
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Item {
@@ -337,7 +337,7 @@ Column {
             text: I18n.tr("Night light")
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         // The state only: the row's MouseArea above it takes the click.

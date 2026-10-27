@@ -7,7 +7,7 @@ Controls.ComboBox {
     Accessible.name: I18n.tr("Tool group filter")
     activeFocusOnTab: true
     font.family: Theme.fontFamily
-    font.pixelSize: Math.round(12 * Theme.fontSize / 11)
+    font.pixelSize: Theme.font.body
     palette.window: Theme.surface
     palette.base: Theme.surface
     palette.button: Theme.surfaceAlt

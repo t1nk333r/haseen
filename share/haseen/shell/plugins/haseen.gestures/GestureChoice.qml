@@ -39,7 +39,7 @@ Column {
             color: Theme.foreground
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Rectangle {
@@ -63,7 +63,7 @@ Column {
                 color: root.current ? Theme.foreground : Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
             }
 
             Text {
@@ -74,7 +74,8 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.open ? "\u25b4" : "\u25be"
                 color: Theme.muted
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.font.bodySmall
             }
 
             MouseArea {
@@ -112,7 +113,7 @@ Column {
                 color: row.modelData.value === root.value ? Theme.accent : Theme.foreground
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
             }
 
             MouseArea {

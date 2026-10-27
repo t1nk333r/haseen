@@ -94,7 +94,7 @@ Column {
 
         color: navMouse.containsMouse ? Theme.accent : Theme.foreground
         font.family: Theme.fontMono
-        font.pixelSize: Theme.fontSize + 2
+        font.pixelSize: Theme.font.title
         width: root.cell
         horizontalAlignment: Text.AlignHCenter
 
@@ -124,7 +124,7 @@ Column {
             text: root.locale.standaloneMonthName(root.month, Locale.LongFormat) + " " + root.year
             color: titleMouse.containsMouse ? Theme.accent : Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
             font.bold: true
 
             MouseArea {
@@ -157,7 +157,7 @@ Column {
             text: parent.moon.title
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Text {
@@ -166,7 +166,7 @@ Column {
             text: parent.moon.detail
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -193,7 +193,7 @@ Column {
                     text: modelData
                     color: Theme.muted
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSize - 2
+                    font.pixelSize: Theme.font.caption
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -215,7 +215,7 @@ Column {
                     text: modelData
                     color: Theme.muted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -248,7 +248,7 @@ Column {
                         color: slot.isToday ? Theme.accentFg : slot.modelData.inMonth ? Theme.foreground : Theme.muted
                         opacity: slot.modelData.inMonth ? 1 : 0.6
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
                         font.bold: slot.isToday
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -285,7 +285,7 @@ Column {
                 text: I18n.tr("Day name")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 verticalAlignment: Text.AlignVCenter
             }
         }

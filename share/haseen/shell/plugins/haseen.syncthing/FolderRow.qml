@@ -36,7 +36,7 @@ Column {
                 text: row.folder.label + "  ·  " + Model.folderText(row.folder, I18n)
                 color: Model.folderFailed(row.folder) ? Theme.urgent : Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -46,7 +46,7 @@ Column {
                 text: row.folder.path + "  ·  " + Model.formatBytes(row.folder.globalBytes)
                 color: row.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
 

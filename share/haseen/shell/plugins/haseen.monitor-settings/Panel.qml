@@ -175,7 +175,7 @@ Column {
             text: I18n.tr("Monitors")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Pill {
@@ -192,7 +192,7 @@ Column {
         text: I18n.tr("Reading the monitors…")
         color: root.subtle
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Arrangement {
@@ -254,6 +254,6 @@ Column {
         text: root.error
         color: Theme.urgent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 }

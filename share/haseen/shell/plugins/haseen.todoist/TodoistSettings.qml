@@ -47,7 +47,7 @@ Column {
         wrapMode: Text.Wrap
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
     }
 
     TodoistField {
@@ -90,7 +90,7 @@ Column {
         wrapMode: Text.Wrap
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Row {
@@ -131,7 +131,7 @@ Column {
         wrapMode: Text.Wrap
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Row {
@@ -218,7 +218,7 @@ Column {
                 text: I18n.tr(sizeRow.modelData.label, sizeRow.value)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Pill {

@@ -5,5 +5,5 @@ import qs.Haseen
 Text {
     color: Theme.subtle(Theme.surface)
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSize - 1
+    font.pixelSize: Theme.font.bodySmall
 }

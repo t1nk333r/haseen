@@ -167,7 +167,7 @@ Column {
             text: I18n.tr("Images")
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
             font.bold: true
         }
 
@@ -178,7 +178,7 @@ Column {
             color: root.notice !== "" ? Theme.urgent : Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -201,7 +201,7 @@ Column {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             onTextChanged: root.query = text
             onAccepted: root.apply(grid.currentIndex)
             Keys.onUpPressed: root.step(-root.columns)

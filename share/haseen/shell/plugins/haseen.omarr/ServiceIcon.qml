@@ -53,6 +53,7 @@ Item {
             }
             color: Theme.foreground
             font.family: Theme.fontFamily
+            // fonts-ignore: the fallback letter fills its tile, whatever the tile's size
             font.pixelSize: Math.max(8, Math.round(root.iconSize * 0.46))
             font.bold: true
         }

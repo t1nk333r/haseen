@@ -199,7 +199,7 @@ Item {
             maximumLineCount: 1
             textFormat: Text.PlainText
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Item {
@@ -236,7 +236,7 @@ Item {
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
             }
 
@@ -278,7 +278,7 @@ Item {
                 wrapMode: Text.WordWrap
                 textFormat: Text.PlainText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
         }
     }

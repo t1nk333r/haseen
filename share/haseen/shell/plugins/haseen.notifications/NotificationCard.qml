@@ -109,7 +109,7 @@ Rectangle {
                 color: Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
 
             Glyph {
@@ -119,7 +119,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "\uf00d"
                 color: closeArea.containsMouse ? Theme.foreground : Theme.muted
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
 
                 MouseArea {
                     id: closeArea
@@ -162,7 +162,7 @@ Rectangle {
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                     font.bold: true
                 }
 
@@ -176,7 +176,7 @@ Rectangle {
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
         }
@@ -209,7 +209,7 @@ Rectangle {
                         text: actionButton.modelData.text
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
+                        font.pixelSize: Theme.font.bodySmall
                     }
 
                     MouseArea {

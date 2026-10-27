@@ -24,7 +24,7 @@ TextInput {
     clip: true
     selectByMouse: true
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSize
+    font.pixelSize: Theme.font.body
 
     Rectangle {
         z: -1

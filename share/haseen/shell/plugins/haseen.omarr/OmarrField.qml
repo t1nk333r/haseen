@@ -27,7 +27,7 @@ TextInput {
     echoMode: password ? TextInput.Password : TextInput.Normal
     inputMethodHints: password ? Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase : Qt.ImhNoAutoUppercase
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSize
+    font.pixelSize: Theme.font.body
 
     Rectangle {
         z: -1

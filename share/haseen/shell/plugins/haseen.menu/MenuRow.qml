@@ -100,7 +100,7 @@ Rectangle {
             elide: Text.ElideRight
             textFormat: Text.PlainText
             font.family: row.menu.fontFamily
-            font.pixelSize: row.menu.fontPx(0.917)
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 

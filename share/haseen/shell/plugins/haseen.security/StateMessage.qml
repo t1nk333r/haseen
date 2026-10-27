@@ -13,7 +13,7 @@ Column {
     Label { width: parent.width; text: root.description }
     Repeater {
         model: root.kind === "loading" ? 3 : 0
-        delegate: Rectangle { required property int index; width: root.width; height: Math.round(64 * Theme.fontSize / 11); radius: Theme.radius; color: Theme.surfaceAlt }
+        delegate: Rectangle { required property int index; width: root.width; height: Math.round(64 * Theme.fontScale); radius: Theme.radius; color: Theme.surfaceAlt }
     }
     // Anchored to the start, so it sits on the right in a mirrored panel.
     ActionButton { id: actionButton; anchors.left: parent.left; visible: root.action !== ""; text: root.action; onClicked: root.activated() }

@@ -88,7 +88,7 @@ Item {
             text: row.completing ? "\u{f0133}" : "\u{f0130}"
             color: checkMouse.containsMouse ? Theme.accent : row.textColor
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
 
             MouseArea {
                 id: checkMouse
@@ -126,7 +126,7 @@ Item {
                 color: row.textColor
                 wrapMode: Text.Wrap
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             TodoistField {
@@ -146,7 +146,7 @@ Item {
                 color: row.overdue ? Theme.urgent : Theme.muted
                 wrapMode: Text.Wrap
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 2)
+                font.pixelSize: Theme.font.caption
             }
         }
     }

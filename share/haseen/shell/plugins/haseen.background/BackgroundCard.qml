@@ -81,7 +81,7 @@ Item {
             elide: Text.ElideRight
             textFormat: Text.PlainText
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             font.bold: card.selected
         }
     }

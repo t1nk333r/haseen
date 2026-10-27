@@ -621,7 +621,7 @@ Column {
             text: root.quickLookOpen ? I18n.tr("Quick Look") : I18n.tr("Theme generator")
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
             font.bold: true
         }
 
@@ -636,7 +636,7 @@ Column {
             color: root.noticeIsError ? Theme.urgent : root.subtle
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -648,7 +648,7 @@ Column {
         color: root.subtle
         wrapMode: Text.WordWrap
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Row {
@@ -698,7 +698,7 @@ Column {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             onTextChanged: if (root.source === "local")
                 root.query = text
             // Enter (a search first, on Wallhaven) or Down: to the pictures.
@@ -863,7 +863,7 @@ Column {
                     selectionColor: Theme.selection
                     clip: true
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                     onTextEdited: {
                         root.nameEdited = text !== "";
                         root.name = text;
@@ -931,7 +931,7 @@ Column {
                     }
                     color: Model.canWrite(root.preview.target) ? root.subtle : Theme.urgent
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                    font.pixelSize: Theme.font.caption
                 }
             }
         }

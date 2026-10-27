@@ -13,7 +13,7 @@ Row {
     // The back arrow points to where the row starts: right in a mirrored
     // (right-to-left) panel.
     ActionButton { id: backButton; visible: root.nested; text: I18n.rightToLeft ? "\uf061" : "\uf060"; glyphOnly: true; width: height; Accessible.name: I18n.tr("Back to %1", I18n.tr(root.backPage)); onClicked: root.back() }
-    Label { width: Math.max(1, root.width - controls.width - (backButton.visible ? backButton.width + root.spacing : 0) - root.spacing); height: Math.max(Math.round(48 * Theme.fontSize / 11), implicitHeight); text: I18n.tr("Security workstation"); heading: true; font.pixelSize: Math.round(16 * Theme.fontSize / 11); verticalAlignment: Text.AlignVCenter }
+    Label { width: Math.max(1, root.width - controls.width - (backButton.visible ? backButton.width + root.spacing : 0) - root.spacing); height: Math.max(Math.round(48 * Theme.fontScale), implicitHeight); text: I18n.tr("Security workstation"); heading: true; font.pixelSize: Theme.font.title; verticalAlignment: Text.AlignVCenter }
     Row {
         id: controls
         spacing: Theme.gap

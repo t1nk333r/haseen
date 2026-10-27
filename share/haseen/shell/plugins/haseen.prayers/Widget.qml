@@ -115,7 +115,7 @@ Item {
             text: root.ready ? Model.remaining(root.host.nextEvent, root.host.nowTick, root.host.language) : ""
             color: root.tone
             font.family: root.ready && root.host.isArabic ? root.host.arabicFont : Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
     }
 
@@ -182,7 +182,7 @@ Item {
                     textFormat: Text.PlainText
                     color: Theme.foreground
                     font.family: root.host && root.host.isArabic ? root.host.arabicFont : Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
             }
         }

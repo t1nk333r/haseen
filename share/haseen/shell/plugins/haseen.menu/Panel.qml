@@ -90,8 +90,9 @@ Item {
     readonly property int rowPeek: Math.round(baseRowHeight * 0.55)
     readonly property int rowSpacing: space(3)
     readonly property int dividerHeight: space(17)
-    readonly property int headingSize: fontPx(1.333)
-    readonly property int iconSize: fontPx(1.5)
+    readonly property int headingSize: Theme.font.heading
+    // Omarchy's Menu.qml draws row icons at Style.font.iconLarge.
+    readonly property int iconSize: Theme.font.iconLarge
     readonly property int iconColumn: space(36)
     readonly property bool wide: Style.WIDE_MENUS.indexOf(activeMenu) >= 0
     readonly property int baseWidth: typeof settings.width === "number" && settings.width >= 260 ? settings.width : Style.WIDTH
@@ -1250,7 +1251,7 @@ Item {
                         opacity: Style.EMPTY_GLYPH
                         horizontalAlignment: Text.AlignHCenter
                         font.family: root.fontFamily
-                        font.pixelSize: root.fontPx(2.333)
+                        font.pixelSize: Theme.font.displayLarge
                     }
 
                     Text {
@@ -1261,7 +1262,7 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         textFormat: Text.PlainText
                         font.family: root.fontFamily
-                        font.pixelSize: root.fontPx(1.167)
+                        font.pixelSize: Theme.font.title
                     }
                 }
             }

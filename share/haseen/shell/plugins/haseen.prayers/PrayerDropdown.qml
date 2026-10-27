@@ -97,7 +97,7 @@ Column {
             color: root.foreground
             elide: Text.ElideRight
             font.family: root.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Text {
@@ -108,7 +108,8 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             text: root.popupOpen ? "\u25b4" : "\u25be"
             color: Theme.muted
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.family: root.fontFamily
+            font.pixelSize: Theme.font.bodySmall
         }
 
         MouseArea {
@@ -129,7 +130,7 @@ Column {
         placeholderText: root.placeholderText
         foreground: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
         onTextChanged: root.highlighted = 0
         Keys.onPressed: event => root.keys(event)
     }
@@ -141,7 +142,7 @@ Column {
         text: root.emptyText
         color: Theme.muted
         font.family: root.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
     }
 
     ListView {
@@ -183,7 +184,7 @@ Column {
                     color: String(row.modelData.value) === root.value ? Theme.accent : root.foreground
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                 }
 
                 Text {
@@ -194,7 +195,7 @@ Column {
                     color: Theme.muted
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 2)
+                    font.pixelSize: Theme.font.caption
                 }
             }
 

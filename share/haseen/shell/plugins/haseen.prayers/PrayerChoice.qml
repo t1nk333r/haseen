@@ -11,7 +11,7 @@ Row {
     property string value: ""
     property color foreground: Theme.foreground
     property string fontFamily: Theme.fontFamily
-    property int fontSize: Theme.fontSize
+    property int fontSize: Theme.font.body
 
     signal changed(string next)
 

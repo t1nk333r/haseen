@@ -96,7 +96,7 @@ Column {
         textFormat: Text.PlainText
         wrapMode: Text.NoWrap
         font.family: Theme.fontMono
-        font.pixelSize: root.brandText.indexOf("\n") >= 0 ? Theme.fontSize - 2 : Theme.fontSize * 2
+        font.pixelSize: root.brandText.indexOf("\n") >= 0 ? Theme.font.caption : Theme.font.display
         font.bold: true
     }
 
@@ -122,7 +122,7 @@ Column {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
         }
     }

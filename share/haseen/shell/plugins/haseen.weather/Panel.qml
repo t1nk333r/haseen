@@ -137,7 +137,7 @@ Column {
         text: I18n.tr("The weather service is not running (enable haseen.weather in shell.json).")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // ---- Hero: big icon and temperature; location and stats on the right.
@@ -157,7 +157,7 @@ Column {
             Glyph {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: root.service && root.service.label ? root.service.label : "—"
-                font.pixelSize: Theme.fontSize * 4.5
+                font.pixelSize: Theme.font.display
             }
 
             // The number and its unit read "21°C" in every language.
@@ -173,7 +173,7 @@ Column {
                     text: root.service && root.service.reportTempNum ? root.service.reportTempNum : "—"
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize * 4
+                    font.pixelSize: Theme.font.display
                     font.bold: true
                 }
 
@@ -184,7 +184,7 @@ Column {
                     text: root.hasCurrent ? root.service.tempUnit : ""
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize * 2
+                    font.pixelSize: Theme.font.title
                 }
             }
         }
@@ -216,7 +216,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: "\uf041" // nf-fa-map_marker
                     color: Theme.muted
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Text {
@@ -227,7 +227,7 @@ Column {
                     color: Theme.muted
                     elide: Text.ElideRight
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                     font.letterSpacing: 1
                 }
             }
@@ -252,7 +252,7 @@ Column {
                     selectionColor: Theme.selection
                     selectedTextColor: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
 
                     onTextChanged: {
                         if (root.editingLocation && !root.savingLocation)
@@ -314,7 +314,7 @@ Column {
                         anchors.centerIn: parent
                         glyph: root.savingLocation ? "\u{f0996}" : "✕"
                         color: Theme.muted
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
 
                         RotationAnimator on rotation {
                             running: root.savingLocation
@@ -360,7 +360,7 @@ Column {
                             text: I18n.tr(modelData.label)
                             color: Theme.muted
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize - 2
+                            font.pixelSize: Theme.font.caption
                             font.letterSpacing: 1
                         }
 
@@ -369,7 +369,7 @@ Column {
                             text: modelData.value
                             color: Theme.foreground
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 3
+                            font.pixelSize: Theme.font.title
                         }
                     }
                 }
@@ -409,7 +409,7 @@ Column {
                         text: suggestion.modelData.name
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
                     }
 
                     Text {
@@ -419,7 +419,7 @@ Column {
                         text: suggestion.modelData.description
                         color: Theme.muted
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                        font.pixelSize: Theme.font.caption
                     }
                 }
 
@@ -440,7 +440,7 @@ Column {
         text: I18n.tr("Fetching forecast…")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
         font.italic: true
     }
 
@@ -476,7 +476,7 @@ Column {
                     Glyph {
                         anchors.verticalCenter: parent.verticalCenter
                         glyph: Model.dayIcon(day.modelData)
-                        font.pixelSize: Theme.fontSize * 2
+                        font.pixelSize: Theme.font.icon
                     }
 
                     Column {
@@ -488,7 +488,7 @@ Column {
                             text: root.dayName(day.modelData.date).toUpperCase()
                             color: Theme.muted
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize - 3
+                            font.pixelSize: Theme.font.caption
                             font.letterSpacing: 1
                         }
 
@@ -500,7 +500,7 @@ Column {
                                 text: Model.bareTempForDay(day.modelData, "max", root.service && root.service.useImperial)
                                 color: Theme.foreground
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize
+                                font.pixelSize: Theme.font.body
                             }
 
                             Text {
@@ -508,7 +508,7 @@ Column {
                                 text: Model.bareTempForDay(day.modelData, "min", root.service && root.service.useImperial)
                                 color: Theme.muted
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize
+                                font.pixelSize: Theme.font.body
                             }
                         }
                     }
@@ -526,7 +526,7 @@ Column {
         text: root.sourceText()
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 3
+        font.pixelSize: Theme.font.caption
     }
 
     Process {

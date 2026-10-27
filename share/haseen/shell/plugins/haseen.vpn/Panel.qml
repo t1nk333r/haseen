@@ -256,7 +256,7 @@ Column {
                 elide: Text.ElideRight
                 color: Theme.accent
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
+                font.pixelSize: Theme.font.title
             }
 
             Text {
@@ -267,7 +267,7 @@ Column {
                 elide: Text.ElideRight
                 color: Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
 
                 MouseArea {
                     anchors.fill: parent
@@ -346,7 +346,7 @@ Column {
         textFormat: Text.PlainText
         color: root.copiedText === "" && root.statusIsError ? Theme.warning : Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // The tunnel that is up.
@@ -368,7 +368,7 @@ Column {
                 elide: Text.ElideRight
                 color: Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
 
             Text {
@@ -381,7 +381,7 @@ Column {
                 elide: Text.ElideLeft
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }
@@ -425,7 +425,7 @@ Column {
                     elide: Text.ElideRight
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Text {
@@ -436,7 +436,7 @@ Column {
                     elide: Text.ElideRight
                     color: Theme.muted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
 
@@ -449,7 +449,7 @@ Column {
                 text: toggle.modelData.busy ? "…" : toggle.modelData.value ? I18n.tr("On") : I18n.tr("Off")
                 color: toggle.modelData.value ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             MouseArea {
@@ -482,7 +482,7 @@ Column {
             verticalAlignment: TextInput.AlignVCenter
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             clip: true
             onTextChanged: if (root.backend)
                 root.backend.filter = text
@@ -568,7 +568,7 @@ Column {
                     elide: Text.ElideRight
                     color: row.here ? Theme.accent : Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Text {
@@ -579,7 +579,7 @@ Column {
                     elide: Text.ElideRight
                     color: Theme.muted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
 
@@ -604,7 +604,7 @@ Column {
         textFormat: Text.PlainText
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Text {
@@ -614,6 +614,6 @@ Column {
         elide: Text.ElideRight
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 }

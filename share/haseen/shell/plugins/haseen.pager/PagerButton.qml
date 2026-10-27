@@ -15,7 +15,7 @@ Rectangle {
     property string text: ""
     property color foreground: Theme.foreground
     property string fontFamily: Theme.fontFamily
-    property real fontSize: Theme.fontSize
+    property real fontSize: Theme.font.body
     property bool bordered: true
     property bool hot: false
     property bool trackHover: false

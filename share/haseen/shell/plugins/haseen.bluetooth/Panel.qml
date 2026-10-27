@@ -120,7 +120,7 @@ Column {
             text: I18n.tr("Bluetooth")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         BarButton {
@@ -142,7 +142,7 @@ Column {
         text: root.adapter === null ? I18n.tr("No Bluetooth adapter.") : root.adapter.state === BluetoothAdapterState.Blocked ? I18n.tr("Bluetooth is blocked (rfkill).") : I18n.tr("Bluetooth is off.")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // Omarchy's panel section caption, Ui/PanelSectionHeader.qml (plan 117):
@@ -199,7 +199,7 @@ Column {
                 color: Theme.foreground
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -209,7 +209,7 @@ Column {
                 color: Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.font.caption
             }
         }
 
@@ -222,7 +222,7 @@ Column {
             text: row.action
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -269,7 +269,7 @@ Column {
         text: I18n.tr("Nothing found yet.")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Repeater {
