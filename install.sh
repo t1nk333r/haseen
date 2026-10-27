@@ -267,8 +267,28 @@ install_tree() {
     info "haseen $(cat "$REPO/share/haseen/VERSION") installed under $PREFIX"
 }
 
+# The checkout this tree is built from, and whether git already knows of newer
+# commits. A stale tree installs old code silently: IO (owner, 2026-10-27) ran
+# `git switch main` without a fetch, so the installer built 90d9c2c and met the
+# mise/go trap plan 130 had closed two commits later. Read-only and offline — it
+# compares local refs only, so it costs nothing and cannot be wrong about what
+# is on disk. No git, no line.
+report_checkout() {
+    local commit day upstream behind
+    commit="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)" || return 0
+    [[ -n $commit ]] || return 0
+    day="$(git -C "$REPO" log -1 --format=%cd --date=short 2>/dev/null)" || day=unknown
+    printf '    checkout=%s (%s)\n' "$commit" "${day:-unknown}"
+    upstream="$(git -C "$REPO" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || return 0
+    [[ -n $upstream ]] || return 0
+    behind="$(git -C "$REPO" rev-list --count "HEAD..$upstream" 2>/dev/null)" || return 0
+    [[ $behind =~ ^[0-9]+$ ]] || return 0
+    ((behind == 0)) || printf '    behind=%s by %d commit(s); run: git fetch && git pull --ff-only\n' "$upstream" "$behind"
+}
+
 preflight_all
 preflight_report | sed 's/^/    /'
+report_checkout
 case "$HASEEN_DISTRO" in
 cachyos | arch) ;;
 omarchy)
