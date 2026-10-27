@@ -16,7 +16,8 @@
   - `tests/test-shell.sh` 283/283;
   - `tests/test-compat-font.sh` 28/28;
   - `tools/fonts.py check`: 264 files, one family, one scale;
-  - `tests/run.sh --affected`: 68 files, 6115/6115. The security suites
+  - `tests/run.sh --affected`: 68 files, 6153/6153 after merging main
+    with plan 140. The security suites
     (`test-vapt-panel-conformance`, `test-vapt-security-ui`,
     `test-vapt-ui-adversarial`, 222/222) needed the type scale in their
     stand-in `Theme` (`tests/fixtures/vapt-qml-lib.sh`). The run is from a
