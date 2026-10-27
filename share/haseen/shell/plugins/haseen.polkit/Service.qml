@@ -104,7 +104,7 @@ Scope {
                             text: I18n.tr("Authentication required")
                             color: Theme.accent
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 2
+                            font.pixelSize: Theme.font.title
                         }
                     }
 
@@ -115,7 +115,7 @@ Scope {
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
                     }
 
                     Text {
@@ -129,7 +129,7 @@ Scope {
                         }
                         color: Theme.muted
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
+                        font.pixelSize: Theme.font.bodySmall
 
                         MouseArea {
                             anchors.fill: parent
@@ -163,7 +163,7 @@ Scope {
                             color: Theme.foreground
                             selectionColor: Theme.selection
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
+                            font.pixelSize: Theme.font.body
                             onAccepted: {
                                 if (root.flow && root.flow.isResponseRequired) {
                                     root.flow.submit(text);
@@ -187,7 +187,7 @@ Scope {
                             text: root.flow && root.flow.inputPrompt !== "" ? root.flow.inputPrompt : I18n.tr("Password")
                             color: Theme.muted
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
+                            font.pixelSize: Theme.font.body
                         }
                     }
 
@@ -205,7 +205,7 @@ Scope {
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
+                        font.pixelSize: Theme.font.bodySmall
                     }
 
                     Row {

@@ -29,7 +29,9 @@ Rectangle {
     readonly property int fieldWidth: 381
     readonly property int fieldHeight: 67
     readonly property int outlineThickness: 3
+    // fonts-ignore: the lock is a full-screen surface, sized like Omarchy's hyprlock field
     readonly property int fieldFontSize: Math.round(Theme.font.heading * 1.125)
+    // fonts-ignore: the password dots are sized like hyprlock's
     readonly property int passwordDotFontSize: Math.round(Theme.font.heading * 1.33)
     readonly property int passwordDotLetterSpacing: Math.round(Theme.font.heading * 0.19)
     // Room inside the outline between it and the field's text.
@@ -103,6 +105,7 @@ Rectangle {
             text: Qt.formatTime(clock.date, "HH:mm")
             color: Theme.lock.text
             font.family: Theme.fontFamily
+            // fonts-ignore: the full-screen clock
             font.pixelSize: Theme.fontSize * 6
         }
 
@@ -113,7 +116,7 @@ Rectangle {
             text: I18n.formatDate(clock.date, I18n.tr("dddd, d MMMM"))
             color: Theme.lock.placeholder
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Rectangle {
@@ -146,6 +149,7 @@ Rectangle {
                 selectionColor: Theme.lock.selection
                 selectedTextColor: Theme.lock.text
                 font.family: Theme.fontFamily
+                // fonts-ignore: the field's sizes above
                 font.pixelSize: text.length > 0 ? Math.max(1, Math.floor(root.passwordDotFontSize * root.passwordDotScale)) : root.fieldFontSize
                 font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing * root.passwordDotScale : 0
                 onAccepted: root.submitted(text)
@@ -188,6 +192,7 @@ Rectangle {
                 text: "󰈷"
                 color: root.fingerprintError ? Theme.urgent : Theme.lock.placeholder
                 font.family: Theme.fontMono
+                // fonts-ignore: the fingerprint glyph sits in the field, at its size
                 font.pixelSize: Math.round(root.fieldFontSize * 1.1)
             }
         }
@@ -198,7 +203,7 @@ Rectangle {
             text: I18n.tr("Preview: the session is not locked. Escape closes it.")
             color: Theme.warning
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
     }
 

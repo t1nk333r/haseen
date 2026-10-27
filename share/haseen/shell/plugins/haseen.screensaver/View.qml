@@ -63,6 +63,7 @@ Item {
             color: Theme.accent
             textFormat: Text.PlainText
             font.family: Theme.fontMono
+            // fonts-ignore: scales with the screen it covers
             font.pixelSize: Math.max(10, Math.round(view.height / 48))
         }
 
@@ -71,6 +72,7 @@ Item {
             text: view.clock
             color: Theme.foreground
             font.family: Theme.fontFamily
+            // fonts-ignore: scales with the screen it covers
             font.pixelSize: Math.max(32, Math.round(Math.min(view.width, view.height) / 5))
             font.weight: Font.Light
         }
@@ -80,6 +82,7 @@ Item {
             text: view.date
             color: Theme.muted
             font.family: Theme.fontFamily
+            // fonts-ignore: scales with the screen it covers
             font.pixelSize: Math.max(Theme.fontSize, Math.round(view.height / 40))
         }
     }

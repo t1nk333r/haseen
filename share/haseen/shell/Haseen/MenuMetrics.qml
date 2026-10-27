@@ -8,11 +8,11 @@ import qs.Haseen
 // plugins/haseen.menu/MenuStyle.js (and its Panel.qml turns them into
 // pixels).
 //
-// The numbers are Omarchy's pixels at its base size of 12, scaled to haseen's
-// fontSize — haseen's default of 11 stands for Omarchy's 12 — exactly as
+// The numbers are Omarchy's pixels at its base size of 12, which is haseen's
+// default fontSize too (plan 115), scaled by Theme.fontScale exactly as
 // MenuStyle.js scales them, so a font change moves both cards together.
 QtObject {
-    readonly property real scale: Math.max(1 / 11, Theme.fontSize / 11)
+    readonly property real scale: Theme.fontScale
 
     function space(px: real): int {
         const n = px * scale;
@@ -34,6 +34,6 @@ QtObject {
     readonly property int detailRowHeight: Math.max(space(58), fontPx(1) + fontPx(0.833) + space(12) * 2)
     readonly property int rowSpacing: space(3)
     readonly property int iconColumn: space(36)
-    readonly property int headingSize: fontPx(1.333)
-    readonly property int iconSize: fontPx(1.5)
+    readonly property int headingSize: Theme.font.heading
+    readonly property int iconSize: Theme.font.iconLarge
 }

@@ -65,7 +65,7 @@ Item {
                 elide: Text.ElideRight
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -75,7 +75,7 @@ Item {
                 text: row.muted ? I18n.tr("Muted") : Math.round(row.volume * 100) + "%"
                 color: Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
 

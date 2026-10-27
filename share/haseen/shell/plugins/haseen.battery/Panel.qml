@@ -149,7 +149,7 @@ Column {
             text: I18n.tr("Power and Battery")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -159,7 +159,7 @@ Column {
             text: Model.stateLabel(root.deviceState, root.status.state === "holding", root.status.threshold || "", I18n.tr)
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -170,7 +170,7 @@ Column {
         text: I18n.tr("No battery (UPower reports none).")
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Row {
@@ -183,7 +183,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             glyph: Model.glyph(root.percent, root.charging)
             color: root.charging ? Theme.success : Theme.foreground
-            font.pixelSize: Theme.fontSize * 3
+            font.pixelSize: Theme.font.display
         }
 
         Column {
@@ -194,7 +194,7 @@ Column {
                 text: root.percent + "%"
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize * 2
+                font.pixelSize: Theme.font.display
                 font.bold: true
             }
 
@@ -204,7 +204,7 @@ Column {
                 text: root.present ? Model.timeLine(root.deviceState, root.device.timeToEmpty, root.device.timeToFull, I18n.tr) : ""
                 color: Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
         }
     }
@@ -224,7 +224,7 @@ Column {
                 text: I18n.tr(parent.modelData.label)
                 color: Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -234,7 +234,7 @@ Column {
                 text: parent.modelData.value
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
         }
     }
@@ -335,7 +335,7 @@ Column {
             text: I18n.tr("Setup")
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         MouseArea {

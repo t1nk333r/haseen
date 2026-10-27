@@ -99,7 +99,7 @@ Item {
         text: I18n.tr("The prayers service is not running (add haseen.prayers to shell.json services).")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Flickable {

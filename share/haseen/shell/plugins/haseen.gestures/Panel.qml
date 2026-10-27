@@ -44,7 +44,7 @@ Column {
         wrapMode: Text.WordWrap
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 2)
+        font.pixelSize: Theme.font.caption
     }
 
     // One finger count: both swipe axes and the pinch.

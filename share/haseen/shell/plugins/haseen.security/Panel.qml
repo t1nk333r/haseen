@@ -11,7 +11,7 @@ Item {
     property var settings: ({})
     property var screen: null
     readonly property string cli: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin/haseen"
-    readonly property real textScale: Math.max(1 / 11, Theme.fontSize / 11)
+    readonly property real textScale: Theme.fontScale
     readonly property int clearance: Math.max(Theme.gap * 2, Math.round(12 * textScale))
     readonly property int frame: Config.frameEnabled ? Config.frameThickness : 0
     readonly property bool refreshing: menuRead.running || statusRead.running || sourcesRead.running || toolsRead.running || servicesRead.running || doctorRead.running

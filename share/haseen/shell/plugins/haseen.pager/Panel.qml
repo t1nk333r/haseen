@@ -69,7 +69,7 @@ Column {
     onQuietChanged: recentExpanded = !quiet
 
     readonly property color dim: Theme.muted
-    readonly property int small: Math.max(8, Theme.fontSize - 2)
+    readonly property int small: Theme.font.caption
     readonly property string timeFormat: String(settings.timeFormat || "system")
 
     readonly property string bellOff: "\u{f009b}"
@@ -216,7 +216,7 @@ Column {
             glyph: root.silenced ? root.bellOff : (root.globalSnoozed || root.snoozed.length > 0) ? root.bellSleep : root.bell
             color: root.silenced ? Theme.urgent : (root.globalSnoozed || root.snoozed.length > 0) ? Theme.accent : Theme.foreground
             opacity: root.hasState ? 1 : 0.6
-            font.pixelSize: Theme.fontSize + 6
+            font.pixelSize: Theme.font.display
         }
 
         Column {
@@ -233,7 +233,7 @@ Column {
                 color: Theme.accent
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
+                font.pixelSize: Theme.font.title
             }
 
             Text {
@@ -310,7 +310,7 @@ Column {
                 text: I18n.tr("Sharing detected")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 font.bold: true
             }
 
@@ -498,7 +498,7 @@ Column {
                                 color: Theme.foreground
                                 elide: Text.ElideRight
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize
+                                font.pixelSize: Theme.font.body
                             }
 
                             // When it comes back, and what it has cost so far.

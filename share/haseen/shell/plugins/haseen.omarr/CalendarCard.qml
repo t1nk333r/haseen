@@ -142,7 +142,7 @@ Item {
             text: "\u{f048d}"
             color: Theme.foreground
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontSize * 2
+            font.pixelSize: Theme.font.display
             opacity: root.showPlaceholder ? 0.5 : 0
             visible: opacity > 0.01
 
@@ -195,7 +195,7 @@ Item {
                     text: "\u{f012c}"
                     color: Theme.foreground
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Text {
@@ -203,7 +203,7 @@ Item {
                     text: I18n.tr("Watched")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     font.bold: true
                 }
             }
@@ -234,7 +234,7 @@ Item {
                     text: root.item && root.item.title ? String(root.item.title) : ""
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -250,7 +250,7 @@ Item {
                     text: root.ratingLabel
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     font.bold: true
                 }
             }
@@ -263,7 +263,7 @@ Item {
                 text: root.item && root.item.subtitle ? String(root.item.subtitle) : ""
                 color: Theme.subtle(Theme.background)
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
                 elide: Text.ElideRight
             }
         }

@@ -232,7 +232,7 @@ Scope {
                         horizontalAlignment: TextInput.AlignLeft
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
                         focus: true
                         text: root.query
                         onTextChanged: root.query = text
@@ -299,7 +299,7 @@ Scope {
                                                 text: I18n.tr(modelData.header)
                                                 color: Theme.accent
                                                 font.family: Theme.fontFamily
-                                                font.pixelSize: Theme.fontSize
+                                                font.pixelSize: Theme.font.body
                                                 font.bold: true
                                             }
 
@@ -314,7 +314,7 @@ Scope {
                                                 elide: Text.ElideRight
                                                 color: Theme.foreground
                                                 font.family: Theme.fontMono
-                                                font.pixelSize: Theme.fontSize
+                                                font.pixelSize: Theme.font.body
                                             }
 
                                             Text {
@@ -328,7 +328,7 @@ Scope {
                                                 elide: Text.ElideRight
                                                 color: Theme.muted
                                                 font.family: Theme.fontFamily
-                                                font.pixelSize: Theme.fontSize
+                                                font.pixelSize: Theme.font.body
                                             }
                                         }
                                     }

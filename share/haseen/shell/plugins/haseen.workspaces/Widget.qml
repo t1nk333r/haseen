@@ -152,7 +152,7 @@ Item {
             text: cell.label
             color: cell.tint
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             font.bold: cell.bold
         }
 

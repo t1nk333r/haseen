@@ -42,7 +42,7 @@ Column {
             text: card.service.tailscaleLoading ? I18n.tr("Asking Tailscale…") : card.service.tailscaleMissing ? I18n.tr("Tailscale is not installed (optional).") : !card.ts ? I18n.tr("Tailscale is not connected.") : card.ts.running ? I18n.tr("Tailscale: this machine is %1. Add a peer that runs KDE Connect:", card.ts.self) : I18n.tr("Tailscale: %1", card.ts.backend)
             color: card.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Field {
@@ -75,7 +75,7 @@ Column {
                     text: [peer.modelData.name, peer.modelData.address].concat(peer.modelData.online ? [] : [I18n.tr("offline")]).join(" · ")
                     color: peer.modelData.online ? Theme.foreground : card.subtle
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
 
                 Pill {
@@ -129,7 +129,7 @@ Column {
                 text: I18n.tr("Saved:")
                 color: card.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
 
             Repeater {

@@ -38,7 +38,7 @@ Flow {
                 text: I18n.tr(chip.modelData.label)
                 color: chip.selected || mouse.containsMouse ? Theme.foreground : Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
-                font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                font.pixelSize: Theme.font.bodySmall
                 font.bold: true
                 font.letterSpacing: 1.1
             }

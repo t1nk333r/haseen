@@ -53,7 +53,7 @@ Column {
             text: "KDE Connect" // i18n-ignore
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Pill {
@@ -87,7 +87,7 @@ Column {
         }
         color: root.subtle
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     DeviceCard {
@@ -126,7 +126,7 @@ Column {
         text: root.service && (root.service.error || root.service.message) ? I18n.tr(root.service.noticeTemplate, ...root.service.noticeArgs) : ""
         color: root.service && root.service.error ? Theme.urgent : Theme.accent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     NetworkCard {

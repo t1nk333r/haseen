@@ -43,7 +43,7 @@ Item {
                     text: root.imagePath === "" || picture.status === Image.Error ? I18n.tr("Preview unavailable") : I18n.tr("Loading preview…")
                     color: Theme.subtle(Theme.surface)
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                     visible: picture.status !== Image.Ready
                 }
             }
@@ -57,7 +57,7 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }

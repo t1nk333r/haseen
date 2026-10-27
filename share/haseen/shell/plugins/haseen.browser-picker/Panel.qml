@@ -153,7 +153,7 @@ Column {
             text: I18n.tr("Browser picker")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         BarButton {
@@ -173,7 +173,7 @@ Column {
         text: I18n.tr("The picker is not running: add haseen.browser-picker to shell.json services (haseen plugin enable haseen.browser-picker).")
         color: Theme.warning
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Item {
@@ -189,7 +189,7 @@ Column {
             elide: Text.ElideRight
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         BarButton {
@@ -231,7 +231,7 @@ Column {
         text: root.service ? I18n.tn("%1 rule", "%1 rules", root.service.rules.length) : I18n.tr("Rules")
         color: Theme.accent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Rectangle {
@@ -251,7 +251,7 @@ Column {
             verticalAlignment: TextInput.AlignVCenter
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             clip: true
             onTextChanged: root.ruleFilter = text
 
@@ -296,7 +296,7 @@ Column {
         text: root.ruleFilter !== "" ? I18n.tr("No rule matches.") : I18n.tr("No rules yet. Pick the same profile for a site a few times and the picker offers one, or add one here.")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // A site, then Enter: the profile list below picks where it opens.
@@ -317,7 +317,7 @@ Column {
             verticalAlignment: TextInput.AlignVCenter
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             clip: true
             onAccepted: {
                 const p = text.trim().toLowerCase();
@@ -346,7 +346,7 @@ Column {
         elide: Text.ElideRight
         color: Theme.accent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     ListView {
@@ -381,7 +381,7 @@ Column {
                 elide: Text.ElideRight
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             MouseArea {

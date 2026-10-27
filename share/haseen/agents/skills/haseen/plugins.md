@@ -171,7 +171,10 @@ missing piece, `haseen shell ipc shell reload` checks again.
   share them), `Theme.fontSize radius gap borderWidth gapsOut` (numbers),
   `Theme.mode` (`"dark"`/`"light"`). They follow `haseen theme set` live, and
   `radius`/`gapsOut` follow Hyprland's rounding and half its gaps_out.
-  Omarchy's own vocabulary is there too: `Theme.font.caption … displayLarge`,
+  Size text with Omarchy's type scale, `Theme.font.caption bodySmall body
+  subtitle title heading display displayLarge icon` (10 to 28 px at the
+  default base), so it matches every other panel; `Theme.fontSize` is the base
+  size, for geometry. Omarchy's own vocabulary is there too:
   `Theme.spacing.md … popupPadding`, `Theme.space(px)`, the state fills and
   borders (`Theme.hoverFill`, `Theme.selectedFillFor(fg, accent)`, …), the
   surfaces (`Theme.popups.background`, `Theme.menu.selectedBackground`, …) and

@@ -155,7 +155,7 @@ Column {
             text: I18n.tr("Agents")
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
             font.bold: true
         }
 
@@ -166,7 +166,7 @@ Column {
             color: Theme.muted
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -176,7 +176,7 @@ Column {
         color: Theme.muted
         visible: root.rows.length === 0
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Repeater {
@@ -210,7 +210,7 @@ Column {
                 text: Agents.duration(modelData.seconds, root.tx)
                 color: Theme.muted
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -224,7 +224,7 @@ Column {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 font.bold: true
             }
 
@@ -240,7 +240,7 @@ Column {
                 textFormat: Text.PlainText
                 visible: root.showPaths
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.font.caption
             }
 
             MouseArea {
@@ -258,7 +258,7 @@ Column {
         color: Theme.muted
         elide: Text.ElideRight
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Repeater {
@@ -282,7 +282,7 @@ Column {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             MouseArea {
@@ -301,7 +301,7 @@ Column {
         text: I18n.tr("Usage · as last collected")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     // One record per collector, read once when the panel opens. A record
@@ -331,7 +331,7 @@ Column {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 font.bold: true
             }
 
@@ -342,7 +342,7 @@ Column {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.font.caption
             }
         }
     }

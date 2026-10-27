@@ -8,6 +8,9 @@
 #   tools/i18n.py check                         interface catalogs fresh and
 #                                               complete, no bare English
 #                                               (plan 109; also tests/test-i18n.sh)
+#   tools/fonts.py check                        one font family and one type
+#                                               scale in the shell (plan 141;
+#                                               also tests/test-shell.sh)
 #   tools/affected-tests.sh --check             every file covered by a test,
 #                                               global or exempt (plan 100)
 # SHELLCHECK / QMLLINT env vars override the binaries (CI pins versions).
@@ -60,6 +63,10 @@ version="$(cat share/haseen/VERSION 2>/dev/null || true)"
 # no bare English in a QML text property. tests/test-i18n.sh runs it too;
 # here it fails before any test runs.
 python3 tools/i18n.py check || fail=1
+
+# One family and one type scale (plan 141): every built-in text element
+# takes its family and pixel size from Theme's tokens.
+python3 tools/fonts.py check >/dev/null || fail=1
 
 if [[ -x $QMLLINT && -d share/haseen/shell ]]; then
     mapfile -t qml_files < <(find share/haseen/shell -name '*.qml')

@@ -30,6 +30,6 @@ Rectangle {
         text: root.text
         color: Theme.foreground
         font.family: root.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
     }
 }

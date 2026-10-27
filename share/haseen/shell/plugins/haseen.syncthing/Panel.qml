@@ -49,7 +49,7 @@ Column {
             text: "Syncthing" // i18n-ignore
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -65,7 +65,7 @@ Column {
             text: root.service ? Model.overall(root.service.info, root.service.online, I18n).text : ""
             color: root.service && root.service.summary.kind === "error" ? Theme.urgent : root.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Row {
@@ -105,7 +105,7 @@ Column {
             text: !root.service ? I18n.tr("The haseen.syncthing service is not running: list it in the shell's services.") : I18n.tr(root.service.problem)
             color: root.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Pill {
@@ -138,7 +138,7 @@ Column {
                 text: I18n.tr("%1 (%2) wants to connect", invite.modelData.name, invite.modelData.id.slice(0, 7))
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Row {
@@ -182,7 +182,7 @@ Column {
                 text: I18n.tr("%1 offers the folder %2", offer.modelData.deviceName, offer.modelData.label)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Row {
@@ -284,7 +284,7 @@ Column {
                 text: modelData.name + " · " + (modelData.paused ? I18n.tr("paused") : modelData.connected ? I18n.tr("connected") : I18n.tr("offline")) + "   "
                 color: modelData.connected ? Theme.foreground : root.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }
@@ -306,7 +306,7 @@ Column {
             text: Model.activityText(modelData, root.info ? root.info.folders : [], I18n)
             color: modelData.error ? Theme.urgent : root.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -318,6 +318,6 @@ Column {
         text: root.service ? I18n.tr(root.service.error || root.service.message) : ""
         color: root.service && root.service.error ? Theme.urgent : Theme.accent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 }

@@ -342,7 +342,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         glyph: "\u{f048d}"
                         color: Theme.foreground
-                        font.pixelSize: Theme.fontSize + 6
+                        font.pixelSize: Theme.font.display
                     }
 
                     Text {
@@ -351,7 +351,7 @@ Item {
                         text: "omARR" // i18n-ignore: the plugin's name
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 5
+                        font.pixelSize: Theme.font.title
                         font.bold: true
                     }
                 }
@@ -367,7 +367,7 @@ Item {
                     text: root.service ? String(root.service.statusLabel || "").toUpperCase() : ""
                     color: root.dim
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                     font.bold: true
                     font.letterSpacing: 1.2
                     horizontalAlignment: Text.AlignHCenter
@@ -473,7 +473,7 @@ Item {
                         wrapMode: Text.WordWrap
                         color: root.dim
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.pixelSize: Theme.font.body
                         font.italic: true
                     }
 
@@ -541,7 +541,7 @@ Item {
                                             text: Model.groupLabel(fleetGroup.modelData.group, I18n)
                                             color: root.dim
                                             font.family: Theme.fontFamily
-                                            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                                            font.pixelSize: Theme.font.bodySmall
                                             font.bold: true
                                         }
 
@@ -601,7 +601,7 @@ Item {
                                                             text: fleetRow.modelData.name
                                                             color: Theme.foreground
                                                             font.family: Theme.fontFamily
-                                                            font.pixelSize: Theme.fontSize
+                                                            font.pixelSize: Theme.font.body
                                                             font.bold: true
                                                             elide: Text.ElideRight
                                                         }
@@ -613,7 +613,7 @@ Item {
                                                             text: Model.fleetLine(fleetRow.modelData, I18n)
                                                             color: root.dim
                                                             font.family: Theme.fontFamily
-                                                            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                                                            font.pixelSize: Theme.font.bodySmall
                                                             elide: Text.ElideRight
                                                         }
                                                     }

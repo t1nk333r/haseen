@@ -111,7 +111,7 @@ Column {
             color: Theme.foreground
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
     }
 
@@ -125,7 +125,7 @@ Column {
             text: I18n.tr("Audio")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -135,7 +135,7 @@ Column {
             text: visible ? I18n.tr(Model.outputVolumeName(root.sink.audio.volume, root.sink.audio.muted)) : ""
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -146,7 +146,7 @@ Column {
         text: I18n.tr("No audio output (is PipeWire running?).")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     PanelSeparator {

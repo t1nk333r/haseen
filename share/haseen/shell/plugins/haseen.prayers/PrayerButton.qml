@@ -12,7 +12,7 @@ Rectangle {
     property color foreground: Theme.foreground
     property color background: "transparent"
     property string fontFamily: Theme.fontFamily
-    property int fontSize: Theme.fontSize
+    property int fontSize: Theme.font.body
     property int horizontalPadding: Math.round(Theme.fontSize * 0.7)
     property int verticalPadding: Math.round(Theme.fontSize * 0.3)
     property string tooltipText: ""

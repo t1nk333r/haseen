@@ -49,7 +49,7 @@ Item {
         color: Theme.foreground
         selectionColor: Theme.selection
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
         clip: true
         onAccepted: root.commit()
         onActiveFocusChanged: if (!activeFocus)
@@ -67,7 +67,7 @@ Item {
         elide: Text.ElideRight
         color: root.targetLabel !== "" ? Theme.foreground : Theme.warning
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
 
         MouseArea {
             anchors.fill: parent

@@ -56,7 +56,7 @@ Column {
                 text: I18n.tr(card.monitor.label)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -66,7 +66,7 @@ Column {
                 text: card.monitor.disabled ? I18n.tr("%1 · off", card.monitor.name) : card.monitor.name + " · " + card.monitor.width + " × " + card.monitor.height + " @ " + Model.formatHz(card.monitor.refreshRate)
                 color: card.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
 
@@ -95,7 +95,7 @@ Column {
         text: I18n.tr("Your ~/.config/hypr/monitors.lua (or hyprmod) also sets this monitor; that rule wins at the next reload.")
         color: Theme.warning
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     PillRow {

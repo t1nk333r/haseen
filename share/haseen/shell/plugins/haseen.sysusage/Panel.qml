@@ -54,7 +54,7 @@ Column {
                 text: meter.label
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 font.bold: true
             }
 
@@ -63,7 +63,7 @@ Column {
                 text: (meter.detail !== "" ? meter.detail + "  " : "") + (meter.value < 0 ? "--" : Math.round(meter.value) + "%")
                 color: Theme.muted
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
         }
 
@@ -115,7 +115,7 @@ Column {
         text: I18n.tr("Top processes")
         color: Theme.foreground
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
         font.bold: true
     }
 
@@ -125,7 +125,7 @@ Column {
         text: I18n.tr("Sampling…")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Repeater {
@@ -145,7 +145,7 @@ Column {
                 elide: Text.ElideRight
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -154,7 +154,7 @@ Column {
                 text: I18n.tr("%1% cpu %2% mem", modelData.cpu.toFixed(1).padStart(5), modelData.mem.toFixed(1).padStart(4))
                 color: Theme.muted
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }

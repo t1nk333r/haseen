@@ -18,7 +18,7 @@ TextInput {
     selectionColor: Theme.selection
     selectedTextColor: Theme.foreground
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSize
+    font.pixelSize: Theme.font.body
 
     Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_Escape && field.text !== ""
     Keys.onPressed: event => {

@@ -31,7 +31,7 @@ Item {
             color: Theme.foreground
             elide: Text.ElideRight
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Text {
@@ -41,7 +41,7 @@ Item {
             color: Theme.muted
             wrapMode: Text.WordWrap
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 2)
+            font.pixelSize: Theme.font.caption
         }
     }
 

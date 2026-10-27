@@ -729,7 +729,7 @@ Column {
         color: Theme.muted
         elide: Text.ElideRight
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 2
+        font.pixelSize: Theme.font.caption
         font.bold: true
         font.letterSpacing: 1.1
     }
@@ -746,7 +746,7 @@ Column {
         wrapMode: Text.WordWrap
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     component IconAction: Item {
@@ -804,7 +804,7 @@ Column {
             text: detail.label
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Text {
@@ -814,7 +814,7 @@ Column {
             text: detail.value
             color: detail.valueColor
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
             font.underline: copyMouse.containsMouse
 
             MouseArea {
@@ -843,7 +843,7 @@ Column {
             glyph: Model.connectionIcon(root.kind, root.signalStrength)
             color: root.kind === "disconnected" ? Theme.muted : root.restricted ? Theme.warning : Theme.accent
             opacity: root.networkManagerAvailable ? 1 : 0.5
-            font.pixelSize: Math.round(Theme.fontSize * 2.4)
+            font.pixelSize: Theme.font.display
         }
 
         Row {
@@ -893,7 +893,7 @@ Column {
                 color: Theme.foreground
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 3
+                font.pixelSize: Theme.font.title
                 font.bold: true
             }
 
@@ -909,7 +909,7 @@ Column {
                 color: root.hint === "" && root.restricted ? Theme.warning : Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.font.caption
                 font.bold: true
                 font.letterSpacing: 1.2
                 onTextChanged: {

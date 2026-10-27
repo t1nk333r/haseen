@@ -4,8 +4,8 @@
 // onto haseen's Theme: menu.background = background, menu.text and the
 // border = foreground, selected-background =
 // foreground at SELECTED_FILL, selected-text = accent. Sizes are Omarchy's
-// pixels at its default base size of 12, which haseen's default fontSize of
-// 11 stands for (scale()).
+// pixels at its default base size of 12, haseen's default fontSize since plan
+// 115, scaled by fontSize / 12 (scale(), Theme.fontScale).
 //
 // Adapted from Omarchy (MIT, Copyright (c) David Heinemeier Hansson).
 .pragma library
@@ -23,7 +23,7 @@ var WIDE_MENUS = ["trigger.capture.screenrecord", "style.font"];
 
 // Omarchy's Style.space and font scale for a haseen fontSize.
 function scale(fontSize) {
-    return Math.max(1 / 11, fontSize / 11);
+    return Math.max(1 / 12, fontSize / 12);
 }
 
 function space(fontSize, px) {

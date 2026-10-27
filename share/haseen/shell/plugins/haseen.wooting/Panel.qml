@@ -68,7 +68,7 @@ Column {
             text: I18n.tr("Keyboard profile")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -78,7 +78,7 @@ Column {
             text: root.keyboard.present ? (root.modelName || "Wooting") + (root.keyboard.firmware ? " · v" + root.keyboard.firmware : "") : ""
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -94,7 +94,7 @@ Column {
         }
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Repeater {
@@ -121,7 +121,7 @@ Column {
         text: I18n.tr(root.keyboard.error)
         color: Theme.urgent
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     Row {

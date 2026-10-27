@@ -36,7 +36,7 @@ Item {
         text: root.lead
         color: Theme.foreground
         font.family: Theme.fontMono
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     Image {
@@ -63,7 +63,7 @@ Item {
         textFormat: Text.PlainText
         color: Theme.foreground
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
         elide: Text.ElideRight
     }
 
@@ -76,7 +76,7 @@ Item {
         text: root.trail
         color: Theme.foreground
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     MouseArea {

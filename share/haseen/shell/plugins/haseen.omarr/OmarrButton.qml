@@ -34,7 +34,7 @@ Rectangle {
         text: root.glyph
         color: mouse.containsMouse && root.enabled ? root.hoverColor : root.foreground
         font.family: Theme.fontMono
-        font.pixelSize: Theme.fontSize + 3
+        font.pixelSize: Theme.font.icon
     }
 
     MouseArea {

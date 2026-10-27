@@ -77,9 +77,14 @@ Item {
     readonly property color dimColor: Theme.muted
     readonly property color bodyColor: Theme.foreground
     readonly property color accentColor: critical ? Theme.urgent : (row.urgency === 0 ? Theme.muted : Theme.accent)
-    readonly property int titleSize: Math.round((Theme.fontSize + 1) * fontScale)
-    readonly property int bodySize: Math.round(Theme.fontSize * fontScale)
-    readonly property int captionSize: Math.round(Math.max(8, Theme.fontSize - 2) * fontScale)
+    // The pager's own fontScale setting (manifest.json) multiplies the theme's
+    // tokens; at its default of 1 they are the tokens.
+    // fonts-ignore: scaled by the pager's fontScale setting
+    readonly property int titleSize: Math.round(Theme.font.subtitle * fontScale)
+    // fonts-ignore: scaled by the pager's fontScale setting
+    readonly property int bodySize: Math.round(Theme.font.body * fontScale)
+    // fonts-ignore: scaled by the pager's fontScale setting
+    readonly property int captionSize: Math.round(Theme.font.caption * fontScale)
     readonly property bool hasBody: String(row.body || "").length > 0
     readonly property real contentPaddingY: hasBody ? 10 : 7
     // A card behind the front one in a collapsed deck is a shape, not a message.

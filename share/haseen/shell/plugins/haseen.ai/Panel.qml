@@ -308,7 +308,7 @@ Item {
                 text: root.endpoint || I18n.tr("AI")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 font.bold: true
             }
 
@@ -317,7 +317,7 @@ Item {
                 text: root.policy === "local" ? I18n.tr("local only") : root.policy === "any" ? I18n.tr("remote allowed") : ""
                 color: root.policy === "local" ? Theme.success : Theme.warning
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.font.caption
             }
         }
 
@@ -361,7 +361,7 @@ Item {
         color: Theme.warning
         wrapMode: Text.Wrap
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 
     ListView {
@@ -393,7 +393,7 @@ Item {
         text: root.policy === "local" ? I18n.tr("Chats stay on this machine: the local policy only allows loopback endpoints.") : I18n.tr("Ask anything.")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // Input: Enter sends, Shift+Enter breaks the line. Escape closes the
@@ -442,7 +442,7 @@ Item {
                 selectionColor: Theme.selection
                 selectedTextColor: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
                 onCursorRectangleChanged: inputScroll.follow(cursorRectangle)
 
                 Keys.onReturnPressed: event => {

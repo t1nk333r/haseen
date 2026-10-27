@@ -198,7 +198,7 @@ Column {
             text: I18n.tr("Clipboard")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Row {
@@ -212,7 +212,7 @@ Column {
                 text: root.query === "" ? I18n.tn("%1 item", "%1 items", history.entries.length) : I18n.tr("%1 of %2", root.results.length, history.entries.length)
                 color: Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             BarButton {
@@ -243,7 +243,7 @@ Column {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 1
+            font.pixelSize: Theme.font.subtitle
             clip: true
             onTextChanged: root.query = text
 
@@ -294,7 +294,7 @@ Column {
         text: !history.available ? I18n.tr("cliphist is not installed.") : !root.recording ? I18n.tr("History is not being recorded: add haseen.clipboard to shell.json services.") : root.query === "" ? I18n.tr("Nothing copied yet.") : I18n.tr("No matches.")
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     ListView {
@@ -377,7 +377,7 @@ Column {
                 maximumLineCount: 1
                 textFormat: Text.PlainText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             BarButton {

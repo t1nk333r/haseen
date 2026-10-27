@@ -11,7 +11,7 @@ Text {
     textFormat: Text.PlainText
     color: Theme.accent
     font.family: fontFamily
-    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+    font.pixelSize: Theme.font.bodySmall
     font.bold: true
     font.letterSpacing: 1.1
     elide: Text.ElideRight

@@ -373,7 +373,7 @@ Column {
                 text: "Typist" // i18n-ignore: the tool's name
                 color: Theme.accent
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 2
+                font.pixelSize: Theme.font.title
             }
 
             Text {
@@ -386,7 +386,7 @@ Column {
                 elide: Text.ElideLeft
                 color: Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
         }
     }
@@ -409,7 +409,7 @@ Column {
             color: Theme.foreground
             selectionColor: Theme.selection
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 1
+            font.pixelSize: Theme.font.subtitle
             clip: true
             onTextChanged: {
                 root.disarmDelete();
@@ -478,7 +478,7 @@ Column {
                 elide: Text.ElideRight
                 color: entry.modelData.header !== undefined ? Theme.accent : Theme.muted
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - (entry.modelData.header !== undefined ? 0 : 1)
+                font.pixelSize: entry.modelData.header !== undefined ? Theme.font.body : Theme.font.bodySmall
             }
 
             CursorSurface {
@@ -519,7 +519,7 @@ Column {
                     maximumLineCount: 1
                     color: entry.row && entry.row.tooLarge ? Theme.muted : Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Text {
@@ -529,7 +529,7 @@ Column {
                     elide: Text.ElideRight
                     color: Theme.muted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
         }
@@ -542,6 +542,6 @@ Column {
         elide: Text.ElideRight
         color: Theme.muted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize - 1
+        font.pixelSize: Theme.font.bodySmall
     }
 }

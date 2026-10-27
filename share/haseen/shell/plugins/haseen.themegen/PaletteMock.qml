@@ -70,7 +70,7 @@ Rectangle {
                         text: String(parent.index + 1)
                         color: parent.index === 0 ? root.colors.background : root.colors.dark_foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
+                        font.pixelSize: Theme.font.bodySmall
                         font.bold: parent.index === 0
                     }
                 }
@@ -82,7 +82,7 @@ Rectangle {
             text: "10:24"
             color: root.colors.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
             font.bold: true
         }
 
@@ -133,7 +133,7 @@ Rectangle {
                 text: "<font color='" + root.colors.green + "'>~/Pictures</font> <font color='" + root.colors.blue + "'>❯</font> ls"
                 color: root.colors.foreground
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
 
             Rectangle {
@@ -149,7 +149,7 @@ Rectangle {
                     text: I18n.tr("a selected row")
                     color: root.colors.foreground
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
 
@@ -159,7 +159,7 @@ Rectangle {
                 text: I18n.tr("# muted comment")
                 color: root.colors.dark_foreground
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
                 font.italic: true
             }
 
@@ -177,7 +177,7 @@ Rectangle {
                         text: modelData
                         color: root.colors[modelData]
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontSize - 1
+                        font.pixelSize: Theme.font.bodySmall
                     }
                 }
             }

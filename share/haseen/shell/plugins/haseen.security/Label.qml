@@ -18,7 +18,7 @@ Text {
     }
     color: Theme.foreground
     font.family: mono ? Theme.fontMono : Theme.fontFamily
-    font.pixelSize: Math.round((heading ? 14 : 12) * Math.max(1 / 11, Theme.fontSize / 11))
+    font.pixelSize: heading ? Theme.font.title : Theme.font.body
     font.bold: heading
     wrapMode: Text.Wrap
     // Set, not implied: Qt mirrors only an explicit alignment, so in a

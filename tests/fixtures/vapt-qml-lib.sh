@@ -115,6 +115,23 @@ QtObject {
     property int fontSize: 11
     property string fontFamily: "sans-serif"
     property string fontMono: "monospace"
+    // The real Theme's type scale (Theme.qml), from fontSize: the tests
+    // change fontSize and expect the panel to reflow.
+    readonly property real fontScale: Math.max(1 / 12, fontSize / 12)
+    function px(mult) { return Math.max(1, Math.round(fontSize * mult)); }
+    readonly property QtObject font: QtObject {
+        readonly property int caption: px(0.833)
+        readonly property int bodySmall: px(0.917)
+        readonly property int body: px(1.0)
+        readonly property int subtitle: px(1.083)
+        readonly property int title: px(1.167)
+        readonly property int heading: px(1.333)
+        readonly property int display: px(2.0)
+        readonly property int displayLarge: px(2.333)
+        readonly property int iconSmall: bodySmall
+        readonly property int icon: title
+        readonly property int iconLarge: px(1.5)
+    }
 }
 EOF
     cat >"$H/imports/qs/Haseen/Config.qml" <<'EOF'

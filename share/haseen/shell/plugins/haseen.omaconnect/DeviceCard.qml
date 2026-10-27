@@ -52,7 +52,7 @@ Column {
             width: Theme.fontSize * 2.2
             glyph: card.device ? (card.settings.showDeviceTypeIcons !== false ? Model.deviceGlyph(card.device.type) : Model.deviceGlyph("phone")) : ""
             color: Model.canAct(card.device) ? Theme.accent : Theme.foreground
-            font.pixelSize: Theme.fontSize + 6
+            font.pixelSize: Theme.font.display
         }
 
         Column {
@@ -69,7 +69,7 @@ Column {
                 text: card.device ? card.device.name : ""
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 1
+                font.pixelSize: Theme.font.subtitle
             }
 
             Text {
@@ -80,7 +80,7 @@ Column {
                 text: [I18n.tr(Model.status(card.device))].concat(Model.detailParts(card.device, card.settings.showBatteryStats, card.settings.showNetworkStats).map(part => I18n.tr(part))).join(" · ")
                 color: card.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
 
@@ -107,7 +107,7 @@ Column {
             text: card.device ? I18n.tr("%1 wants to pair. Accept only if the device shows the same key: %2", card.device.name, Model.formatKey(card.device.verificationKey)) : ""
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Row {
@@ -147,7 +147,7 @@ Column {
             text: card.device ? I18n.tr("Key %1", Model.formatKey(card.device.verificationKey)) : ""
             color: card.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 }

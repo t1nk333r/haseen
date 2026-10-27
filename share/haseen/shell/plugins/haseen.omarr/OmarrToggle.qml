@@ -38,7 +38,7 @@ Item {
             text: root.label
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
             elide: Text.ElideRight
         }
 
@@ -50,7 +50,7 @@ Item {
             text: root.description
             color: Theme.subtle(Theme.surface)
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
             wrapMode: Text.WordWrap
         }
     }

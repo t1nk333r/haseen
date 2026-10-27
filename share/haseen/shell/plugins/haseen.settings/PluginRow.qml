@@ -65,7 +65,7 @@ Item {
             elide: Text.ElideRight
             color: root.row.valid && root.row.unmet.length === 0 ? Theme.foreground : Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.font.body
         }
 
         Text {
@@ -75,7 +75,7 @@ Item {
             elide: Text.ElideRight
             color: Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
 
         Text {
@@ -86,7 +86,7 @@ Item {
             elide: Text.ElideRight
             color: Theme.warning
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 

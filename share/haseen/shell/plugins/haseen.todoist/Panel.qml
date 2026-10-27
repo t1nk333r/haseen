@@ -237,7 +237,7 @@ FocusScope {
                 text: "\u{f0756}"
                 color: Theme.foreground
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSize * 2
+                font.pixelSize: Theme.font.display
             }
 
             Column {
@@ -258,7 +258,7 @@ FocusScope {
                     text: "Todoist" // i18n-ignore: the product's name
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize + 3
+                    font.pixelSize: Theme.font.title
                     font.bold: true
                 }
 
@@ -270,7 +270,7 @@ FocusScope {
                     elide: Text.ElideRight
                     color: root.ready && root.service.tokenInvalid ? Theme.urgent : Theme.muted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 2)
+                    font.pixelSize: Theme.font.caption
                     font.bold: true
                     font.letterSpacing: 1.2
                 }
@@ -319,7 +319,7 @@ FocusScope {
                         elide: Text.ElideRight
                         color: Theme.muted
                         font.family: Theme.fontFamily
-                        font.pixelSize: Math.max(1, Theme.fontSize - 2)
+                        font.pixelSize: Theme.font.caption
                     }
 
                     Text {
@@ -330,7 +330,7 @@ FocusScope {
                         elide: Text.ElideRight
                         color: modelData.alert ? Theme.urgent : Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                        font.pixelSize: Theme.font.bodySmall
                     }
                 }
             }
@@ -399,7 +399,7 @@ FocusScope {
                     wrapMode: Text.Wrap
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Math.max(1, Theme.fontSize - 1)
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
 
@@ -470,7 +470,7 @@ FocusScope {
             text: root.viewLabel
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 2)
+            font.pixelSize: Theme.font.caption
             font.bold: true
             font.letterSpacing: 1.1
         }
@@ -501,7 +501,7 @@ FocusScope {
                     wrapMode: Text.Wrap
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Theme.font.body
                 }
 
                 Row {
@@ -576,7 +576,7 @@ FocusScope {
             wrapMode: Text.Wrap
             color: root.ready && root.service.errorText !== "" ? Theme.urgent : Theme.muted
             font.family: Theme.fontFamily
-            font.pixelSize: Math.max(1, Theme.fontSize - 1)
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 }

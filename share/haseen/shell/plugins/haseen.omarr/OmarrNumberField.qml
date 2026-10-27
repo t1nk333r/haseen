@@ -42,7 +42,7 @@ Column {
         text: root.label
         color: Theme.subtle(Theme.surface)
         font.family: Theme.fontFamily
-        font.pixelSize: Math.max(1, Theme.fontSize - 1)
+        font.pixelSize: Theme.font.bodySmall
         elide: Text.ElideRight
     }
 

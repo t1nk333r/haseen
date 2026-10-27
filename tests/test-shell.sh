@@ -5,7 +5,7 @@
 # haseen:covers bin/haseen-shell-{ipc,restart,run} bin/haseen-toggle-idle share/haseen/VERSION
 # haseen:covers share/haseen/default/shell.json share/haseen/layers/dms/ipc-translate
 # haseen:covers share/haseen/layers/shell/** share/haseen/lib/{cairn,layers,packages,preflight}.sh
-# haseen:covers share/haseen/omarchy/** share/haseen/shell/**
+# haseen:covers share/haseen/omarchy/** share/haseen/shell/** tools/fonts.py
 # haseen:covers tests/fixtures/cachyos-limine-luks-dualboot/**
 # haseen:covers tests/fixtures/shell-quickshell-installed/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
@@ -75,6 +75,40 @@ assert_eq "no unmarked or too-fast Timer in shell QML" "" "$(find "$SHELL_DIR" -
     # The brace on the next line would hide a Timer from the check above.
     /^[[:space:]]*([^"]*:[[:space:]]*)?Timer[[:space:]]*$/ { start = FNR; report("Timer without its { on the same line") }
     { prev = $0 }' {} +)"
+
+# One family and one type scale (plan 141): every built-in text element takes
+# its family and pixel size from Theme's tokens.
+capture python3 -I "$REPO/tools/fonts.py" check
+assert_status "built-in text uses one family and one scale" 0 "$STATUS"
+assert_contains "and says so" "$OUTPUT" "one family, one scale"
+# The checker itself, over a tree of known breaches.
+sandbox shell-fonts
+fonts="$SANDBOX/fonts/share/haseen/shell/plugins/haseen.demo"
+mkdir -p "$fonts" "$SANDBOX/fonts/share/haseen/shell/Haseen"
+cat >"$fonts/Widget.qml" <<'QML'
+Item {
+    readonly property int ownSize: Theme.font.caption
+    // fonts-ignore: full-screen
+    readonly property int screenSize: Math.round(height / 10)
+    Text { font.family: Theme.fontFamily; font.pixelSize: Theme.fontSize - 1 }
+    Text { font.pixelSize: Theme.font.body }
+    Text { font.family: "Inter"; font.pixelSize: ownSize }
+    Text { font.family: Theme.fontMono; font.pixelSize: vertical ? Theme.font.caption : Theme.font.body }
+    Text { font.family: Theme.fontMono; font.pixelSize: screenSize }
+    Text { font.family: Theme.fontMono; font.pointSize: 9 }
+}
+QML
+capture python3 -I "$REPO/tools/fonts.py" --root "$SANDBOX/fonts" check
+assert_status "the checker fails on breaches" 1 "$STATUS"
+assert_contains "arithmetic on the base size is not a token" "$OUTPUT" "Widget.qml:5: size 'Theme.fontSize - 1' is not a theme token"
+assert_contains "a text element without a family is reported" "$OUTPUT" "Widget.qml:6: Text has no font.family"
+assert_contains "a literal family is reported" "$OUTPUT" "Widget.qml:7: family '\"Inter\"' is not a theme token"
+assert_contains "font.pointSize is reported" "$OUTPUT" "Widget.qml:10: font.pointSize"
+assert_contains "and a pixel size is still required" "$OUTPUT" "Widget.qml:10: Text has no font.pixelSize"
+assert_not_contains "a size property holding a token passes" "$OUTPUT" "Widget.qml:7: size"
+assert_not_contains "a condition choosing between tokens passes" "$OUTPUT" "Widget.qml:8:"
+assert_not_contains "a property exempt at its definition passes" "$OUTPUT" "Widget.qml:9:"
+assert_contains "and counts them" "$OUTPUT" "fonts: 5 problem(s)"
 
 # --- validate: built-ins pass ----------------------------------------------
 sandbox shell-validate

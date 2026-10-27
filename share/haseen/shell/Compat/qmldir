@@ -9,3 +9,4 @@ DmsDesktopHost 1.0 DmsDesktopHost.qml
 DmsDesktopWindow 1.0 DmsDesktopWindow.qml
 singleton DmsStartupGate 1.0 DmsStartupGate.qml
 Tooltip 1.0 Tooltip.qml
+BarFonts 1.0 BarFonts.qml

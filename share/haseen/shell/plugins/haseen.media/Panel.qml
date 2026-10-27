@@ -129,7 +129,7 @@ Column {
             text: I18n.tr("Media")
             color: Theme.accent
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 2
+            font.pixelSize: Theme.font.title
         }
 
         Text {
@@ -142,7 +142,7 @@ Column {
             text: root.labels.length > 0 ? root.shown(root.labels[0]) : ""
             color: root.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 
@@ -153,7 +153,7 @@ Column {
         text: I18n.tr("Nothing is playing (no MPRIS player on the bus).")
         color: root.subtle
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.font.body
     }
 
     // The switcher: one pill per player, the shown one filled.
@@ -200,7 +200,7 @@ Column {
                 visible: artImage.status !== Image.Ready
                 glyph: "\uf001"
                 color: root.subtle
-                font.pixelSize: Theme.fontSize * 3
+                font.pixelSize: Theme.font.display
             }
 
             Image {
@@ -231,7 +231,7 @@ Column {
                 text: root.title
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 1
+                font.pixelSize: Theme.font.subtitle
                 font.bold: true
             }
 
@@ -243,7 +243,7 @@ Column {
                 text: root.player ? String(root.player.trackArtist || "").trim() : ""
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
+                font.pixelSize: Theme.font.body
             }
 
             Text {
@@ -254,7 +254,7 @@ Column {
                 text: root.player ? String(root.player.trackAlbum || "").trim() : ""
                 color: root.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }
@@ -287,7 +287,7 @@ Column {
                 text: Media.formatTime(root.position)
                 color: root.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
 
             Text {
@@ -295,7 +295,7 @@ Column {
                 text: root.player ? Media.formatTime(root.player.length) : ""
                 color: root.subtle
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 1
+                font.pixelSize: Theme.font.bodySmall
             }
         }
     }
@@ -416,7 +416,7 @@ Column {
             text: Math.round((root.player ? root.player.volume : 0) * 100) + "%"
             color: root.subtle
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 1
+            font.pixelSize: Theme.font.bodySmall
         }
     }
 }

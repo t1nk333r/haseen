@@ -70,7 +70,7 @@ Item {
                     text: box.monitor ? I18n.tr(box.monitor.label) : box.info.name
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.font.bodySmall
                 }
 
                 MouseArea {
