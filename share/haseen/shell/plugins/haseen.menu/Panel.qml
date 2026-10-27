@@ -235,19 +235,23 @@ Item {
 
     // A step taken inside the open menu freezes the card first (Omarchy); a
     // route opened from outside (open()) shows the menu centred as it is.
-    function setActiveMenu(id: string, push: bool, fromPointer: bool, rowId: string): void {
+    function setActiveMenu(id: string, push: bool, fromPointer: bool, rowId: string, restore: var): void {
         freezeCardTop(true);
-        enter(id, push, fromPointer, rowId);
+        enter(id, push, fromPointer, rowId, restore);
     }
 
-    function enter(id: string, push: bool, fromPointer: bool, rowId: string): void {
+    function enter(id: string, push: bool, fromPointer: bool, rowId: string, restore: var): void {
         finishPick(null);
         if (id !== ":about" && !items[id])
             id = "root";
+        // The frame keeps the query the row was found under: coming back must
+        // land on those results, not on the unfiltered page (plan 138).
         if (push && id !== activeMenu)
-            navStack = navStack.concat([{ menu: activeMenu, row: rowId }]);
+            navStack = navStack.concat([{ menu: activeMenu, row: rowId, filter: filterText }]);
         activeMenu = id;
-        filterText = "";
+        // A step forward starts with no query; a step back restores the one it
+        // left, so the row it selected is a row again.
+        filterText = typeof restore === "string" ? restore : "";
         selectedIndex = 0;
         cursorActive = true;
         if (fromPointer)
@@ -256,6 +260,8 @@ Item {
             pointerGate.reset();
         if (id === ":about")
             about.refresh();
+        if (filterText.trim() !== "")
+            searchProviders();
         rebuildDisplay(false);
         loadProvider(id, true);
     }
@@ -269,7 +275,7 @@ Item {
         if (navStack.length > 0) {
             const frame = navStack[navStack.length - 1];
             navStack = navStack.slice(0, -1);
-            setActiveMenu(frame.menu, false, false, "");
+            setActiveMenu(frame.menu, false, false, "", frame.filter);
             selectRow(frame.row || child);
         } else {
             const entry = items[activeMenu];
@@ -532,7 +538,7 @@ Item {
             close();
             launchApp(r.appId);
         } else {
-            run(r.action);
+            run(r.action, r.itemId);
         }
     }
 
@@ -545,9 +551,11 @@ Item {
     // Actions run in bash with haseen's bin/ first on PATH, in their own
     // scope. Two kinds stay in-process: opening the About view, and toggling
     // another panel (which replaces this one, so close first).
-    function run(action: string): void {
+    function run(action: string, rowId: string): void {
         if (action.trim() === "haseen about") {
-            setActiveMenu(":about", true, false, "");
+            // About is a view, not a panel: Back must return to the row it was
+            // opened from, with the query it was found under (plan 138).
+            setActiveMenu(":about", true, false, rowId || "");
             return;
         }
         close();

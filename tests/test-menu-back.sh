@@ -137,16 +137,51 @@ ipc haseen.menu search reminder >/dev/null
 until_state "search finds the deep Reminder submenu" \
     '.menu == "root" and .query == "reminder" and (.rows | index("Reminder >")) != null'
 reminder_index="$(row_index 'Reminder >')"
+search_rows="$(jq -c '.rows' <<<"$STATE")"
 ipc haseen.menu select "$reminder_index" >/dev/null
 ipc haseen.menu accept >/dev/null
 until_state "search opens the deep Reminder submenu" '.menu == "trigger.reminder"'
 ipc haseen.menu back >/dev/null
-until_state "back from search-only submenu returns to root" '.menu == "root" and .query == ""'
+# Owner, 2026-10-27: "i search for agent accounts and i access it when i come
+# back from it by left arrow i get sent to the first page and not the search
+# items i was on". Back keeps the query and the row (plan 138); plan 068
+# dropped the query and parked the cursor on the unfiltered first row.
+until_state "back from a searched submenu keeps the query" \
+    '.menu == "root" and .query == "reminder" and (.rows | index("Reminder >")) != null'
 search_back_state="$(state)"
-assert_eq "the search-only submenu row is absent from root" -1 \
-    "$(jq -r '.rows | index("Reminder >") // -1' <<<"$search_back_state")"
-assert_eq "search back leaves a valid selection on the root" true \
-    "$(jq -r '.current >= 0 and .current < (.rows | length) and .rows[.current] == "Apps >"' <<<"$search_back_state")"
+assert_eq "back selects the row that was searched" "$reminder_index" "$(s .current)"
+assert_eq "and it is still the Reminder row" "Reminder >" \
+    "$(jq -r '.rows[.current]' <<<"$search_back_state")"
+assert_eq "the same results come back, in the same order" "$search_rows" \
+    "$(jq -c '.rows' <<<"$search_back_state")"
+
+# A row that is not the first result: the index itself has to come back, which
+# is what the owner saw lost ("i lose the preivoues index i was on").
+ipc haseen.menu search link >/dev/null
+until_state "search lists both links" \
+    '.menu == "root" and ([.rows[] | select(endswith("Link >"))] | length) == 2'
+link_back_index="$(row_index 'System Link >')"
+assert_eq "System Link is not the first result" true \
+    "$( [[ $link_back_index -gt 0 ]] && echo true || echo false )"
+ipc haseen.menu select "$link_back_index" >/dev/null
+ipc haseen.menu accept >/dev/null
+until_state "the second link enters System" '.menu == "system"'
+ipc haseen.menu back >/dev/null
+until_state "back from the second link keeps the query" '.menu == "root" and .query == "link"'
+assert_eq "and the cursor is on the second result" "$link_back_index" "$(s .current)"
+
+# About is a view in the same stack, so it owes the same return: the row that
+# opened it, under the query that found it.
+ipc haseen.menu search about >/dev/null
+until_state "search finds the About row" \
+    '.menu == "root" and .query == "about" and (.rows | index("About")) != null'
+about_index="$(row_index 'About')"
+ipc haseen.menu select "$about_index" >/dev/null
+ipc haseen.menu accept >/dev/null
+until_state "accept opens the About view" '.menu == ":about"'
+ipc haseen.menu back >/dev/null
+until_state "back from About keeps the query" '.menu == "root" and .query == "about"'
+assert_eq "back from About selects its row" "$about_index" "$(s .current)"
 
 cleanup_menu_panel
 trap - EXIT
