@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Haseen
 import qs.Haseen.Widgets
+import "Osd.js" as Osd
 
 // The OSD card (Osd.js levelCard / layoutCard / lockCard) in an overlay that
 // takes no input. A file of its own, loaded by URL, so Service.qml compiles
@@ -36,10 +37,12 @@ PanelWindow {
         id: cardBox
 
         // Omarchy's card: 16 px padding and the display-large line height,
-        // the [popups] surface and its 2 px border.
+        // the [popups] surface and its 2 px border. Whole pixels, so the
+        // window is exactly the card and no edge of the border is cut
+        // (Osd.js extent, plan 139).
         readonly property int padding: Theme.space(16)
-        implicitWidth: row.implicitWidth + padding * 2
-        implicitHeight: Math.max(row.implicitHeight, Theme.font.displayLarge) + padding * 2
+        implicitWidth: Osd.extent(row.implicitWidth, 0, padding)
+        implicitHeight: Osd.extent(row.implicitHeight, Theme.font.displayLarge, padding)
         color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.97)
         radius: Theme.radius
         border.color: Theme.popups.border
