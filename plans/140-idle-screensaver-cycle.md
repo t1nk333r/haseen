@@ -14,7 +14,8 @@
 - **Planned at**: 2026-10-27
 - **State**: DONE 2026-10-27 (`tests/test-idle.sh` 127/127,
   `tests/test-ambient.sh` 252/252). Round 1 of the review (DeepSeek V4.1
-  Flash) asked for changes; they are in "Review" below.
+  Flash) asked for changes and round 2 approved; both are in "Review"
+  below.
 
 ## Problem
 
@@ -170,11 +171,21 @@ CYCLE 1793096777826 lock.lock
 
 ## What this does not do
 
-- **A new `lockAfter` or `dpmsAfter` during a cycle** applies from the next
-  one. The running cycle keeps the times it started with, so a lowered
-  `lockAfter` (unplugging, with a shorter one on battery) does not lock
-  sooner, and a raised one does not lock later. Before this plan, the new
-  value counted again from the change, which could be later than either.
+- **A new `lockAfter` or `dpmsAfter` during a cycle**, for a monitor
+  already counting, applies from the next cycle. The running cycle keeps the
+  times it started with, so a lowered `lockAfter` (unplugging, with a
+  shorter one on battery) does not lock sooner, and a raised one does not
+  lock later. Before this plan, the new value counted again from the change,
+  which could be later than either. A monitor turned on during the cycle
+  (from 0) counts its full current time from that moment, so a value that
+  goes to 0 and back mid-cycle restarts that count.
+- **A cycle that ends without input with the displays off** leaves a dpms
+  monitor that was never idle. The input that turns the displays back on
+  does not reach it, so the service still counts them as off. If a window
+  re-check then finds that monitor idle, it sends `dpms.on` with nobody
+  back, which can undo a `haseen screen off` (plan 084) given in between.
+  Waking the displays at the cycle's end instead would turn them on for a
+  plug event in an empty room, which is worse.
 - **A video that starts during the screensaver** does not hold off the lock
   or the dpms off. Their counts are input-only for that stretch. Omarchy's
   timers do the same. A video already playing still keeps the screensaver
@@ -216,7 +227,9 @@ CYCLE 1793096777826 lock.lock
   - a dpms monitor that respects inhibitors going active does nothing;
   - removal still undoes;
   - the lock and suspend still fire.
-- **`cycleEnd`** with and without displays off.
+- **`cycleEnd`** without displays off, with them off and no input, with
+  them off and input (the only case that sends `dpms.on`), and with input
+  alone.
 - **Cycle keys** with the defaults, with `respectInhibitors` off and a
   suspend, with dpms before the screensaver, with screensaver-off, with
   idle-off, without lock or dpms, and with `dpmsAfter` equal to
@@ -244,7 +257,10 @@ CYCLE 1793096777826 lock.lock
   The model follows the service's order, which the next block measures: a
   removed monitor's `Component.onDestruction` runs at once with the new
   keys, `onTimeoutsChanged` runs before the keys change, and `Qt.callLater`
-  runs after the event.
+  runs after the event. That order is Qt 6's behaviour, not a documented
+  guarantee, and the service does not depend on it (another order only
+  reorders idempotent dispatches), so a Qt that changes it changes these
+  expectations, not the service.
 - **The service itself**: `Service.qml` under Qt's `qml`, on stand-ins for
   Quickshell (`IdleMonitor` with a settable `isIdle`, a `ScriptModel` that
   keeps unchanged rows) and `qs.Haseen`, with every role call and dispatch
@@ -294,3 +310,17 @@ Round 1 (DeepSeek V4.1 Flash, head c41bb5f, REQUEST_CHANGES):
    input-only creation is cited at `:89`.
 6. **Unloading mid-cycle could queue `_endCycle`.** Fixed: a removed
    presence monitor returns nothing, and the harness shows nothing is sent.
+
+Round 2 (DeepSeek V4.1 Flash, head 9b808e2, APPROVE): every round-1
+finding fixed, checked by running (1020/1020 on the affected selection, the
+round-1 code failing exactly the four service asserts), and five nits, all
+taken:
+
+1. The index row still said 108/108; it says 127/127.
+2. "A new value applies from the next cycle" did not hold for a monitor
+   turned on mid-cycle; "What this does not do" now says both.
+3. The `cycleEnd` test line listed two of its four cases.
+4. The measured Qt order is not a documented guarantee; "Tests" says so.
+5. A cycle ending without input with the displays off can later send
+   `dpms.on` with nobody back; recorded under "What this does not do", with
+   why waking the displays at the end is worse.
