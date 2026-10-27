@@ -164,6 +164,14 @@ Window {
            { glyph: "", text: "AR", label: "Arabic (Buckwalter)", value: 0, dim: false }, O.layoutCard("Arabic (Buckwalter)", "AR"));
         eq("lock cards", [["Caps Lock on", false], ["Num Lock off", true]],
            [O.lockCard({ key: "caps", on: true }), O.lockCard({ key: "num", on: false })].map(c => [c.label, c.dim]));
+        // The card's sides are whole pixels (plan 139): IO's "English (US)" row
+        // is 133.0625 px, and 165.0625 cut the right border under the software
+        // renderer at 1.25.
+        eq("card extent: a fractional row rounds up, then the padding", [166, 115, 32],
+           [O.extent(133.0625, 0, 16), O.extent(82.71875, 0, 16), O.extent(0, 0, 16)]);
+        eq("card extent: the minimum wins over a shorter row, whole too", [61, 62],
+           [O.extent(20, 29, 16), O.extent(29.4, 28, 16)]);
+        eq("card extent: a whole row stays as it is", 150, O.extent(118, 0, 16));
         eq("lock changes: caps", [{ key: "caps", on: true }], O.lockChanges({ caps: false, num: true }, { caps: true, num: true }));
         eq("lock changes: num", [{ key: "num", on: false }], O.lockChanges({ caps: true, num: true }, { caps: true, num: false }));
         eq("lock changes: nothing changed (Compose on the Caps key)", [], O.lockChanges({ caps: false, num: true }, { caps: false, num: true }));
@@ -181,7 +189,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "50" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "53" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi

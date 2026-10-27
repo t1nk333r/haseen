@@ -41,6 +41,16 @@ function levelCard(glyph, value, muted) {
     };
 }
 
+// The card's side: its content, at least `minimum`, rounded up to a whole
+// pixel, plus the padding on both sides. Text gives fractional widths
+// ("English (US)" is 133.06 px in JetBrains Mono 12), the window that holds
+// the card is a whole number of pixels, and under the software renderer at a
+// fractional scale (shell.qml, IO's 1.25) a card overhanging it by a fraction
+// loses the straight edge of its right border (plan 139).
+function extent(content, minimum, padding) {
+    return Math.ceil(Math.max(Number(content) || 0, Number(minimum) || 0)) + 2 * (Number(padding) || 0);
+}
+
 function layoutCard(name, code) {
     return {
         glyph: code ? "" : "\uf11c",
