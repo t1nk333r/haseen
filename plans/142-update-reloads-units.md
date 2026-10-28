@@ -17,7 +17,7 @@
 - **Planned at**: 2026-10-28
 - **State**: DONE 2026-10-28 (`tests/test-update-haseen.sh` 53/53; the
   affected set, 7 files, 978/978). Review: DeepSeek V4.1 Flash approved
-  round 1 with three nits, all taken (see "Review").
+  rounds 1 and 2 with four nits in all, every one taken (see "Review").
 
 ## Problem
 
@@ -70,10 +70,12 @@ units, as before.
 
 ## What this does not do
 
-Only `haseen update haseen` reads the units again. After a bare `install.sh`,
-or `haseen update haseen --no-reload`, run `systemctl --user daemon-reload`
-before the shell starts again, as IO's deploy note does. These paths start
-or restart the shell from the copy read at login until then:
+Two of the commands that start the shell read the units first:
+`haseen update haseen`, and `haseen shell use`, which reloads before it
+switches units (`bin/haseen-shell-use:53-55`). After a bare `install.sh`, or
+`haseen update haseen --no-reload`, run `systemctl --user daemon-reload`
+before the shell starts again, as IO's deploy note does. Until then, these
+paths start or restart the shell from the copy read at login:
 
 - `haseen shell restart` (`bin/haseen-shell-restart:26-30`). It is also the
   restart button in panels, so it does not reload every time.
@@ -145,3 +147,11 @@ nits, all taken:
 
 The reviewer also noted that the warning named "no user manager" for any
 failure. It now names the failed command.
+
+**Round 2 (4c4be14): APPROVE.** It re-ran 53/53, the three mutations
+(49/53, 50/53, 52/53) and the affected set (978/978), and confirmed the
+stopped-shell case reaches the "not running" branch through `is-active`, not
+the DMS branch. Its one nit was taken:
+
+- **N4.** "Only `haseen update haseen` reads the units again" was false:
+  `haseen shell use` reloads too. The paragraph now names both.
