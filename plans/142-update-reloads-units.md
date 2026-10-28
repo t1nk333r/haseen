@@ -4,15 +4,20 @@
 
 - **Priority**: P2
 - **Effort**: S
-- **Risk**: LOW. One `systemctl --user daemon-reload` between the install
-  and the shell restart, only on the path that already restarts; it starts,
-  stops and restarts nothing itself. Measured at 119–129 ms on luna
-  (systemd 262).
+- **Risk**: LOW. One `systemctl --user daemon-reload` after the install,
+  before the shell restart. It queues no job, so it starts, stops and
+  restarts nothing itself (`systemctl(1)`, `systemd.unit(5)`); measured at
+  119–129 ms on luna (systemd 262). What it changes is which unit the next
+  start runs. A broken `haseen-shell.service` now takes the shell down
+  through its start limit and plan 061's recovery offer, where the stale
+  copy used to keep the old shell running. That is the point: the update
+  now runs what it installed.
 - **Depends on**: 134 (`haseen update haseen`)
 - **Category**: install
 - **Planned at**: 2026-10-28
-- **State**: DONE 2026-10-28 (`tests/test-update-haseen.sh` 49/49; the
-  affected set, 7 files, 974/974).
+- **State**: DONE 2026-10-28 (`tests/test-update-haseen.sh` 53/53; the
+  affected set, 7 files, 978/978). Review: DeepSeek V4.1 Flash approved
+  round 1 with three nits, all taken (see "Review").
 
 ## Problem
 
@@ -53,9 +58,11 @@ twice, and the restart printed the same warning. A new `Environment=` or
 shell check. It sits outside the `is-active` branch, because install.sh
 rewrites every haseen unit (`haseen-background`, `haseen-splash-follow.timer`
 and the rest), not only the shell's. `run` makes `--dry-run` print
-`DRYRUN: systemctl --user daemon-reload`. When no user manager answers (ssh
-without `XDG_RUNTIME_DIR`), it warns that the units are read again at the
-next login and goes on: the update itself has succeeded.
+`DRYRUN: systemctl --user daemon-reload`. When the reload fails (no user
+manager answers, as over ssh without `XDG_RUNTIME_DIR`), it warns that the
+units are read again at the next login and goes on, because the update
+itself has succeeded. systemctl's own error stays on stderr, above the
+warning.
 
 `--no-reload` and an already-installed commit both exit before
 `reload_desktop` (`bin/haseen-update-haseen:243-249`), so neither reloads
@@ -63,11 +70,18 @@ units, as before.
 
 ## What this does not do
 
-- Running `install.sh` by hand and then `haseen shell restart` still restarts
-  from the old unit and prints the warning. `haseen shell restart` is also the
-  restart button in panels, so it does not reload every time; after a bare
-  install, run `systemctl --user daemon-reload` first, as IO's deploy note
-  does.
+Only `haseen update haseen` reads the units again. After a bare `install.sh`,
+or `haseen update haseen --no-reload`, run `systemctl --user daemon-reload`
+before the shell starts again, as IO's deploy note does. These paths start
+or restart the shell from the copy read at login until then:
+
+- `haseen shell restart` (`bin/haseen-shell-restart:26-30`). It is also the
+  restart button in panels, so it does not reload every time.
+- The recovery offer: `resume_shell` in `bin/haseen-shell-recover:68-74`
+  (`reset-failed`, then `start`), reached through `OnFailure=` when the shell
+  hits its start limit.
+- `haseen lock release` (`bin/haseen-lock-release:82`), which starts the
+  shell after an unlock from a TTY.
 - Running services other than the shell keep their old process. The reload
   makes systemd read their new unit, which applies at their next start.
   Restarting them is a separate decision for each unit.
@@ -88,19 +102,46 @@ units, as before.
 
 ## Tests
 
-`tests/test-update-haseen.sh` (49/49). Its `systemctl` stub logs every call,
-and `SYSTEMCTL_NO_MANAGER` makes `daemon-reload` fail. The new assertions:
+`tests/test-update-haseen.sh` (53/53). Its `systemctl` stub logs every call,
+`SYSTEMCTL_NO_MANAGER` makes `daemon-reload` fail, and
+`SYSTEMCTL_SHELL_STOPPED` makes `is-active` report the shell stopped. The
+new assertions:
 
 - **The update:** the log holds exactly `daemon-reload`, then
   `restart haseen-shell.service`, in that order.
 - **`--dry-run`:** prints the reload and makes no `daemon-reload` call.
 - **No manager:** with `SYSTEMCTL_NO_MANAGER` it exits 0, prints the warning
   and still reaches the shell step.
+- **Shell stopped:** with `SYSTEMCTL_SHELL_STOPPED` the units are still read
+  again, the shell is not restarted, and the update says it is not running.
+  This pins the reload outside the `is-active` branch.
 - **`--no-reload`:** the existing empty-log assertion now also covers the
   reload.
 
 Mutations:
-- Without the fix it is 46/49: the dry-run line, the order and the warning
-  fail.
-- With the reload moved after the restart it is 47/49: the dry-run line and
-  the order fail.
+- Without the fix it is 49/53: the dry-run line, the order, the warning and
+  the stopped-shell reload fail.
+- With the reload moved after the restart it is 50/53: the dry-run line, the
+  order and the stopped-shell reload fail.
+- With the reload moved inside the `is-active` branch it is 52/53: the
+  stopped-shell reload fails.
+
+## Review
+
+DeepSeek V4.1 Flash, run through `codex exec`, reviewed each round on the
+exact head.
+
+**Round 1 (10b09f1): APPROVE.** It re-ran 49/49, both mutations (46/49,
+47/49) and the affected set (974/974), and checked every citation, the
+`install -D` mtime claim and the no-ERR-trap fall-through. It raised three
+nits, all taken:
+
+- **N1.** "What this does not do" missed the recovery offer and
+  `haseen lock release`. Both are now listed.
+- **N2.** Nothing pinned the reload outside the `is-active` branch: moved
+  inside, all 49 still passed. The stopped-shell case now catches it
+  (52/53).
+- **N3.** Risk did not say that a broken unit now takes effect. It does now.
+
+The reviewer also noted that the warning named "no user manager" for any
+failure. It now names the failed command.

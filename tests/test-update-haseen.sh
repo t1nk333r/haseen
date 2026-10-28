@@ -19,9 +19,11 @@ export LOG
 mkdir -p "$SANDBOX/tools-stubs" "$SANDBOX/stubs"
 printf '%s\n' '#!/bin/sh' 'echo "hyprctl $*" >>"$LOG"' >"$SANDBOX/tools-stubs/hyprctl"
 # SYSTEMCTL_NO_MANAGER makes daemon-reload fail, as it does when no user
-# manager answers (ssh without XDG_RUNTIME_DIR).
+# manager answers (ssh without XDG_RUNTIME_DIR); SYSTEMCTL_SHELL_STOPPED makes
+# is-active report the shell stopped.
 printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >>"$LOG"' \
-    '[ "$2" = daemon-reload ] && [ -n "${SYSTEMCTL_NO_MANAGER:-}" ] && exit 1' 'exit 0' >"$SANDBOX/tools-stubs/systemctl"
+    '[ "$2" = daemon-reload ] && [ -n "${SYSTEMCTL_NO_MANAGER:-}" ] && exit 1' \
+    '[ "$2" = is-active ] && [ -n "${SYSTEMCTL_SHELL_STOPPED:-}" ] && exit 3' 'exit 0' >"$SANDBOX/tools-stubs/systemctl"
 chmod 755 "$SANDBOX/tools-stubs"/*
 REAL_PATH="$SANDBOX/tools-stubs:$REPO/bin:/usr/bin:/bin"
 g() { env PATH="$REAL_PATH" git "$@"; }
@@ -120,8 +122,17 @@ assert_contains "--force reloads too" "$(cat "$LOG")" "hyprctl reload"
 : >"$LOG"
 capture env SYSTEMCTL_NO_MANAGER=1 PATH="$REAL_PATH" HASEEN_INLINE=1 haseen update haseen --source "$work" --prefix "$prefix" --force
 assert_status "a user manager that does not answer is not a failure" 0 "$STATUS"
-assert_contains "it says the units wait for the next login" "$OUTPUT" "no user manager answered; the units are read again at the next login"
+assert_contains "it says the units wait for the next login" "$OUTPUT" "systemctl --user daemon-reload failed; the units are read again at the next login"
 assert_contains "and goes on to the shell" "$(cat "$LOG")" "systemctl --user restart haseen-shell.service"
+
+# A stopped shell is not restarted, but its unit and the others are read
+# again all the same: its next start must run the new unit (plan 142).
+: >"$LOG"
+capture env SYSTEMCTL_SHELL_STOPPED=1 PATH="$REAL_PATH" HASEEN_INLINE=1 haseen update haseen --source "$work" --prefix "$prefix" --force
+assert_status "an update with the shell stopped runs" 0 "$STATUS"
+assert_contains "the units are read again with the shell stopped" "$(cat "$LOG")" "systemctl --user daemon-reload"
+assert_not_contains "a stopped shell is not restarted" "$(cat "$LOG")" "restart haseen-shell.service"
+assert_contains "and the update says it is not running" "$OUTPUT" "haseen-shell.service is not running"
 
 # --- the flags ----------------------------------------------------------------
 : >"$LOG"
