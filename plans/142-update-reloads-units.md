@@ -17,7 +17,7 @@
 - **Planned at**: 2026-10-28
 - **State**: DONE 2026-10-28 (`tests/test-update-haseen.sh` 53/53; the
   affected set, 7 files, 978/978). Review: DeepSeek V4.1 Flash approved
-  rounds 1 and 2 with four nits in all, every one taken (see "Review").
+  rounds 1 to 3 with five nits in all, every one taken (see "Review").
 
 ## Problem
 
@@ -84,9 +84,12 @@ paths start or restart the shell from the copy read at login:
   hits its start limit.
 - `haseen lock release` (`bin/haseen-lock-release:82`), which starts the
   shell after an unlock from a TTY.
-- Running services other than the shell keep their old process. The reload
-  makes systemd read their new unit, which applies at their next start.
-  Restarting them is a separate decision for each unit.
+- `omarchy-launch-shell` (`share/haseen/omarchy/bin/omarchy-launch-shell:50`),
+  where Omarchy's own shell restart ends (plan 093).
+
+Running services other than the shell keep their old process. The reload
+makes systemd read their new unit, which applies at their next start.
+Restarting them is a separate decision for each unit.
 
 ## Rejected options
 
@@ -155,3 +158,8 @@ the DMS branch. Its one nit was taken:
 
 - **N4.** "Only `haseen update haseen` reads the units again" was false:
   `haseen shell use` reloads too. The paragraph now names both.
+
+**Round 3 (51cdd08): APPROVE.** It listed every command that starts or
+restarts `haseen-shell.service` and confirmed that exactly two reload first.
+Its one nit was taken: the list of paths that do not reload lacked
+`omarchy-launch-shell`, which is now the fourth.
