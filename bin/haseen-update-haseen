@@ -222,6 +222,10 @@ reload_desktop() {
             hyprctl reload >/dev/null || warn "hyprctl reload did not answer; the next session loads the new binds"
         fi
     fi
+    # install.sh has rewritten the user units, and the user manager keeps the
+    # copy it read until told to read them again: a restart without this runs
+    # the old unit and warns that it changed on disk (plan 142).
+    run systemctl --user daemon-reload || warn "systemctl --user daemon-reload failed; the units are read again at the next login"
     if systemctl --user is-active --quiet haseen-shell.service 2>/dev/null; then
         if $DRY_RUN; then
             echo "DRYRUN: systemctl --user restart haseen-shell.service"
