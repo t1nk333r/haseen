@@ -18,7 +18,10 @@ export LOG
 # ahead of /usr/bin, while the real git comes from /usr/bin.
 mkdir -p "$SANDBOX/tools-stubs" "$SANDBOX/stubs"
 printf '%s\n' '#!/bin/sh' 'echo "hyprctl $*" >>"$LOG"' >"$SANDBOX/tools-stubs/hyprctl"
-printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >>"$LOG"' 'exit 0' >"$SANDBOX/tools-stubs/systemctl"
+# SYSTEMCTL_NO_MANAGER makes daemon-reload fail, as it does when no user
+# manager answers (ssh without XDG_RUNTIME_DIR).
+printf '%s\n' '#!/bin/sh' 'echo "systemctl $*" >>"$LOG"' \
+    '[ "$2" = daemon-reload ] && [ -n "${SYSTEMCTL_NO_MANAGER:-}" ] && exit 1' 'exit 0' >"$SANDBOX/tools-stubs/systemctl"
 chmod 755 "$SANDBOX/tools-stubs"/*
 REAL_PATH="$SANDBOX/tools-stubs:$REPO/bin:/usr/bin:/bin"
 g() { env PATH="$REAL_PATH" git "$@"; }
@@ -74,6 +77,8 @@ assert_status "--dry-run reports a plan" 0 "$STATUS"
 assert_contains "--dry-run prints the fast-forward" "$OUTPUT" "DRYRUN: git -C $work merge --ff-only --quiet origin/main"
 assert_contains "--dry-run prints the install" "$OUTPUT" "DRYRUN: (cd $work && ./install.sh --yes --prefix $prefix)"
 assert_contains "--dry-run prints the Hyprland reload" "$OUTPUT" "DRYRUN: hyprctl reload"
+assert_contains "--dry-run prints the unit reload" "$OUTPUT" "DRYRUN: systemctl --user daemon-reload"
+assert_not_contains "--dry-run reloads no units" "$(cat "$LOG")" "daemon-reload"
 assert_not_contains "--dry-run installs nothing" "$OUTPUT" "install: --yes"
 assert_eq "--dry-run leaves the checkout where it was" "0.2.0-dev" "$(cat "$work/share/haseen/VERSION")"
 
@@ -84,6 +89,11 @@ assert_contains "the checkout is fast-forwarded" "$OUTPUT" "pulling 1 commit(s) 
 assert_contains "the tree is installed through install.sh" "$OUTPUT" "install: --yes --prefix $prefix"
 assert_contains "Hyprland is reloaded" "$(cat "$LOG")" "hyprctl reload"
 assert_contains "the shell is restarted" "$(cat "$LOG")" "systemctl --user restart haseen-shell.service"
+# install.sh rewrote the units: the manager reads them again first, or the
+# restart runs the old haseen-shell.service (plan 142).
+assert_eq "the units are read again, then the shell restarts" \
+    "systemctl --user daemon-reload|systemctl --user restart haseen-shell.service" \
+    "$(grep -E 'daemon-reload|restart haseen-shell' "$LOG" | paste -sd'|')"
 assert_contains "the update says what it did" "$OUTPUT" "haseen-shell.service restarted"
 assert_eq "the checkout is at the new commit" "$commit" "$(g -C "$work" rev-parse --short HEAD)"
 assert_eq "and at the new version" "0.3.0-dev" "$(cat "$work/share/haseen/VERSION")"
@@ -106,6 +116,12 @@ capture hx --force
 assert_status "--force reinstalls" 0 "$STATUS"
 assert_contains "--force runs the installer again" "$OUTPUT" "install: --yes --prefix $prefix"
 assert_contains "--force reloads too" "$(cat "$LOG")" "hyprctl reload"
+
+: >"$LOG"
+capture env SYSTEMCTL_NO_MANAGER=1 PATH="$REAL_PATH" HASEEN_INLINE=1 haseen update haseen --source "$work" --prefix "$prefix" --force
+assert_status "a user manager that does not answer is not a failure" 0 "$STATUS"
+assert_contains "it says the units wait for the next login" "$OUTPUT" "no user manager answered; the units are read again at the next login"
+assert_contains "and goes on to the shell" "$(cat "$LOG")" "systemctl --user restart haseen-shell.service"
 
 # --- the flags ----------------------------------------------------------------
 : >"$LOG"
