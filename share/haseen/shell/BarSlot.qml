@@ -172,7 +172,7 @@ PluginSlot {
             onActiveChanged: {
                 if (active) {
                     slot.host.reportPress(slot);
-                    if (centroid.pressedButtons & Qt.LeftButton)
+                    if (press.point.pressedButtons & Qt.LeftButton)
                         hold.restart();
                 } else {
                     hold.stop();
