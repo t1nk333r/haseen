@@ -152,7 +152,7 @@ assert_contains "a silent drag ends on a marked single-shot timeout" "$strip" $'
 slot="$(cat "$SHELL_DIR/BarSlot.qml")"
 assert_contains "a held widget asks the bar to edit it" "$slot" "slot.host.editWidget(slot.modelData)"
 assert_contains "after 700 ms" "$slot" "interval: 700"
-assert_contains "only for the left button" "$slot" "centroid.pressedButtons & Qt.LeftButton"
+assert_contains "only for the left button" "$slot" "press.point.pressedButtons & Qt.LeftButton"
 assert_contains "and travel cancels the hold" "$slot" "p.position.x - p.pressPosition.x"
 assert_contains "the strip runs haseen bar edit" "$strip" 'Quickshell.execDetached(["haseen", "bar", "edit", id])'
 assert_eq "no colour literals in the drag's files" "" \
@@ -722,6 +722,17 @@ ShellRoot {
                         l = Overflow.move(l, m[0], m[1], m[2], m[3]) || l;
                     r.replay = [l.left, l.center, l.right, l.overflow, l.pinned];
                 }
+                // Plan 126's hold: a left press held still on a widget asks
+                // the bar to edit it (the stub haseen records the call).
+                r.arrangingAtHold = strip.arranging;
+                { const p = S.pos("me.b"); S.down(p.x, p.y); }
+                S.next(); break;
+            case 25:
+                if (S.since() < 900) break;
+                { const p = S.pos("me.b"); S.up(p.x, p.y); }
+                S.next(); break;
+            case 26:
+                if (S.since() < 300) break; // the detached stub writes its line
                 S.finish();
             }
         }
@@ -738,11 +749,15 @@ QML
         assert_status "the drag scenario completes in the real engine ($1)" 0 "$STATUS"
         R="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
     }
+    # The hold at the end of the scenario runs `haseen bar edit`: record it.
+    stub haseen "printf '%s\\n' \"\$*\" >>'$SANDBOX/haseen-calls'"
+    : >"$SANDBOX/haseen-calls"
     # Arabic first: the bar is never mirrored (plan 109), so every drag, drop
     # and edge must come out exactly as in English.
     scenario ar
     RTL="$R"
     scenario en
+    rm -f "$SANDBOX/stubs/haseen" # the CLI checks below run the real command
     assert_eq "the Arabic run is right to left" true "$(jq '.rightToLeft' <<<"$RTL")"
     assert_eq "in Arabic every drag, drop and bar move is the same as in English" \
         "$(jq -cS 'del(.rightToLeft)' <<<"$R")" "$(jq -cS 'del(.rightToLeft)' <<<"$RTL")"
@@ -751,6 +766,12 @@ QML
     else
         g() { jq -c "$1" <<<"$R"; }
         assert_eq "every fixture loaded" "null" "$(g .notReady)"
+        # Plan 126, run: PointHandler has `point`, not `centroid`; reading
+        # centroid threw on every press and the hold never started.
+        assert_eq "the hold is tried outside arrange mode" false "$(g .arrangingAtHold)"
+        assert_eq "a left press held still edits the widget, once a run" $'bar edit me.b\nbar edit me.b' \
+            "$(grep -x 'bar edit .*' "$SANDBOX/haseen-calls" || true)"
+        assert_not_contains "a press on a widget throws no ReferenceError" "$OUTPUT" "ReferenceError"
         assert_eq "one pool entry per shown widget, in a fixed order" \
             '["dms.click-fixture","haseen.tray","me.a","me.b","me.button","me.c","me.d","me.oma","me.optout","me.own","me.slide","me.slider","me.tap"]' "$(g .pool)"
         assert_eq "the threshold is past Qt's drag distance" true "$(jq '.threshold > 10' <<<"$R")"
