@@ -13,7 +13,8 @@
 - **Planned at**: 2026-10-29, owner report on luna: "super + c and super + V
   have some issues"
 - **State**: DONE 2026-10-29 (`tests/test-keybinds.sh` 127/127; both bugs
-  reproduced and the fix driven in a nested Hyprland 0.56.2, see "Tests")
+  reproduced and the fix driven in a nested Hyprland 0.56.2, see "Tests").
+  Review: DeepSeek V4.1 Flash, see "Review".
 
 ## Problem
 
@@ -25,7 +26,7 @@ Hyprland 0.56.2, the version luna runs (`hyprctl version`).
 luna types `us,ara` with `grp:alts_toggle` (`hyprctl getoption
 input:kb_layout`, `input:kb_options`). `send_key_state` turns a key name into
 a code in `resolveKeycode` (`src/config/lua/bindings/LuaBindingsDispatchers.cpp`
-at v0.56.2, lines 353-398). It builds an xkb state for the keyboard's
+at v0.56.2, lines 353-400). It builds an xkb state for the keyboard's
 *current* layout group (`xkb_state_update_mask(..., KB->m_modifiersState.group)`)
 and looks for a key whose symbol is the name. In the Arabic group no key
 yields `c`, `v` or `x`, so the call fails with "key not found" and nothing
@@ -44,9 +45,14 @@ reading raw bytes:
 | Arabic | CTRL + `code:53` | `^X` received |
 
 `resolveKeycode` takes `code:NN` before any name lookup (same file, lines
-353-357), and an xkb key code is the same key under every layout. The app
-reads that key with the mods sent, which is what the physical CTRL + C does
-under Arabic.
+357-358), and an xkb key code is the same key under every layout. The app
+reads it in layout group 0, because `Actions::pass` sends group 0 with the
+mods of every synthetic key (`src/config/shared/actions/ConfigActions.cpp`,
+line 1554), so CTRL + code:54 is CTRL + C even while Arabic is active. A
+physical CTRL + C under Arabic is not: in that group key 54 is
+`Arabic_hamzaonwaw` (`xkbcli compile-keymap --layout us,ara`). The fix
+relies on the same group reset this plan lists under "What this does not
+do".
 
 ### 2. A panel over a terminal is sent the terminal's chord
 
@@ -68,16 +74,23 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
   used by all three chords.
 - `keyboard_on_panel()` walks `hl.get_layers()`. A mapped layer holds the
   keyboard when it asks for it exclusively (`interactivity` 1) on the top or
-  overlay level (`layer` 2 or 3), or when it is a haseen or compat panel
-  (`haseen-panel`, `haseen-overlay`, `omarchy-keyboard-panel`) that asks on
-  demand (2). `PanelPopup.qml` primes the keyboard exclusively and then holds
-  it on demand, and its `HyprlandFocusGrab` closes the panel on any click
-  elsewhere (`share/haseen/shell/PanelPopup.qml:51-77`), so a mapped panel has
-  the keyboard. The nested probe's exclusive panel read `interactivity=1
-  layer=2 mapped=true`. `focused_is_terminal()` is false while one is up.
-- A desktop widget (`haseen-desktop-widget`, on demand,
-  `share/haseen/shell/Compat/DmsDesktopWindow.qml:86-88`) stays mapped all
-  the time and does not count, or every terminal would be sent CTRL + C.
+  overlay level (`layer` 2 or 3), or when it is a haseen panel
+  (`haseen-panel`, `haseen-overlay`) that asks on demand (2). An exclusive
+  layer keeps every window from the keyboard while it is mapped.
+  `PanelPopup.qml` primes the keyboard exclusively and then holds it on
+  demand, and its `HyprlandFocusGrab` keeps the keyboard in the panel and
+  closes it on a click elsewhere (`share/haseen/shell/PanelPopup.qml:51-77`;
+  `BarOverflowPanel.qml:120,155-163` the same, with no keyboard while it is
+  held), so a mapped panel with keyboard interactivity has the keyboard. The
+  nested probe's exclusive panel read `interactivity=1 layer=2 mapped=true`.
+  `focused_is_terminal()` is false while one is up.
+- An on-demand layer without that grab does not count: it can stay mapped
+  while a window takes the keyboard, and counting it would send CTRL + C, an
+  interrupt, into a terminal. That covers the desktop widgets
+  (`haseen-desktop-widget`, `share/haseen/shell/Compat/DmsDesktopWindow.qml:86-88`,
+  always mapped) and the compat `omarchy-keyboard-panel`
+  (`share/haseen/shell/Compat/Omarchy/Ui/KeyboardPanel.qml:103,116`), which
+  goes on demand after its prime and has no focus grab.
 
 ## What this does not do
 
@@ -89,7 +102,14 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
   and the app keeps group 0 (English letters under Arabic) and no NumLock
   until a modifier moves. That is Hyprland's, and no Lua call sends the real
   state; it is recorded here, not worked around.
-- Omarchy's `default/hypr/bindings/clipboard.lua` has both bugs; nothing is
+- An Omarchy plugin's panel (`omarchy-keyboard-panel`) or any other
+  on-demand panel with its own namespace, open over a terminal, is still sent
+  the terminal's CTRL + SHIFT chord, which its Qt fields ignore. Paste there
+  needs CTRL + V by hand until such a panel takes a focus grab like
+  haseen's; giving the compat KeyboardPanel one would change how every
+  Omarchy plugin panel closes, which is its own change.
+- Omarchy's `default/hypr/bindings/clipboard.lua` has the same two bugs as
+  far as its code shows (key names, the active window's tag); nothing is
   sent upstream from here.
 
 ## Rejected options
@@ -106,15 +126,22 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
   was measured to need or not need the gap, so it stays.
 - **Any layer with keyboard interactivity counts.** The always-mapped desktop
   widgets ask on demand, which would send CTRL + C into every terminal.
+- **Counting the compat `omarchy-keyboard-panel` too** (round 1 of the
+  review). It has no focus grab, so a window can take the keyboard while it
+  stays mapped (Hyprland drops an on-demand layer from its exclusive list,
+  `LayerSurface.cpp:386-387` at v0.56.2), and SUPER + C would interrupt the
+  terminal.
 
 ## Tests
 
 - `tests/test-keybinds.sh`: the chords expect `code:54/55/53`, and a new case
-  presses SUPER + C/V over foot with layers in the stub: a `haseen-panel`, a
-  `haseen-overlay` and an `omarchy-keyboard-panel` on demand, and an exclusive
-  overlay get CTRL; a desktop widget on demand, an unmapped panel and an
-  exclusive background layer leave foot CTRL + SHIFT. 127/127. With the old
-  `binds.lua` both chord assertions fail (125/127).
+  presses SUPER + C/V over foot with layers in the stub: a `haseen-panel` and
+  a `haseen-overlay` on demand and an exclusive overlay get CTRL; an
+  `omarchy-keyboard-panel` and an unknown panel on demand, a desktop widget,
+  an unmapped panel, an exclusive background layer and no layer list at all
+  leave foot CTRL + SHIFT. 127/127. With the old `binds.lua` both chord
+  assertions fail (125/127); with round 1's, which counted the compat panel,
+  the panel assertion fails (126/127).
 - Nested Hyprland 0.56.2 (Wayland backend on luna, hidden special
   workspace), `kb_layout = "us,ara"`, the clipboard block copied from this
   `binds.lua` and its functions called directly:
@@ -127,3 +154,16 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
   special workspace addressed by window selector: CTRL + `V` and CTRL + `C`
   by name arrived as `^V` and `^C` in English, so the send path itself works
   there.
+
+## Review
+
+- **Round 1** (DeepSeek V4.1 Flash, 8f71b84): REQUEST_CHANGES. Should-fix:
+  `omarchy-keyboard-panel` has no focus grab, so counting it could send
+  CTRL + C into a terminal that took the keyboard while the panel stayed
+  mapped; it no longer counts, and the gap it leaves is under "What this does
+  not do". Nits, all taken: the comment and plan said the app reads the code
+  as the physical chord under Arabic, but it reads it in group 0 because of
+  `Actions::pass`; two line ranges in `LuaBindingsDispatchers.cpp`; the test
+  gained an unknown on-demand panel and a nil layer list. The reviewer
+  confirmed 127/127, the 125/127 mutation, the affected selection (19 files,
+  3603/3603) and keycodes 53/54/55 for X/C/V.

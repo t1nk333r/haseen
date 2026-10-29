@@ -74,8 +74,10 @@ b("SUPER + B", "Browser", launch('"$(xdg-settings get default-web-browser)"'))
 -- The keys go by key code (xkb, evdev + 8), not by name (plan 143).
 -- send_key_state looks a name up in the active layout only, so under a second
 -- layout without Latin letters (Arabic, Russian) "C" is "key not found" and
--- nothing is sent. The code is the same key under every layout, and the app
--- reads it with the mods sent, as it would the physical chord.
+-- nothing is sent. The code is the same key under every layout. The app reads
+-- it in layout group 0 (Latin here): Hyprland sends group 0 with the mods of
+-- every synthetic key (Actions::pass), so CTRL + code:54 is CTRL + C even
+-- while Arabic is the active layout.
 local KEY_C, KEY_V, KEY_X = "code:54", "code:55", "code:53"
 
 local function send_once(mods, key)
@@ -91,15 +93,19 @@ end
 -- active window: hl.get_active_window() still names the window under it, so a
 -- launcher opened over a terminal was sent the terminal's CTRL + SHIFT + V,
 -- which Qt's text fields ignore (plan 143). A top or overlay layer that asks
--- for the keyboard exclusively holds it while it is mapped; a haseen panel
--- holds it on demand once open, and its focus grab closes it on any click
--- elsewhere (shell/PanelPopup.qml), so a mapped one is the focus. Desktop
--- widgets also ask on demand but stay mapped, so they do not count.
+-- for the keyboard exclusively holds it while it is mapped: Hyprland gives
+-- no window the keyboard meanwhile. A haseen panel (shell/PanelPopup.qml,
+-- shell/BarOverflowPanel.qml) holds it on demand once open: its focus grab
+-- keeps the keyboard in the panel and closes it on a click elsewhere, so a
+-- mapped one with keyboard interactivity is the focus. Only those namespaces
+-- count. An on-demand layer without that
+-- grab, such as an Omarchy plugin's KeyboardPanel or a desktop widget, can
+-- stay mapped while a window has the keyboard, and counting it would send
+-- CTRL + C, an interrupt, into a terminal.
 local KEYBOARD_EXCLUSIVE, LAYER_TOP = 1, 2
 local PANEL_NAMESPACES = {
   ["haseen-panel"] = true,
   ["haseen-overlay"] = true,
-  ["omarchy-keyboard-panel"] = true,
 }
 
 local function keyboard_on_panel()

@@ -537,11 +537,13 @@ hl = setmetatable({
   get_layers = function() return layers end,
 }, { __index = function() return function() end end })
 function PRESS(keys, window, over)
-  active, layers = window, over or {}
+  -- over == false: hl.get_layers() returns nil.
+  active, layers = window, over ~= false and (over or {}) or nil
   local names = {}
-  for _, l in ipairs(layers) do names[#names + 1] = l.namespace end
+  for _, l in ipairs(layers or {}) do names[#names + 1] = l.namespace end
   print("-- " .. keys .. " in " .. (window and window.class or "nothing")
-    .. (#names > 0 and ", layers " .. table.concat(names, ",") or ""))
+    .. (#names > 0 and ", layers " .. table.concat(names, ",") or "")
+    .. (layers == nil and ", no layer list" or ""))
   fns[keys]()
 end
 EOF
@@ -557,10 +559,12 @@ assert_eq "terminals copy and paste the clipboard with CTRL + SHIFT, other windo
     "$(paste -sd'|' <<<"$OUTPUT")"
 assert_not_contains "no chord reaches for Insert" "$OUTPUT" "Insert"
 # A focused layer is not the active window: a launcher over foot leaves foot
-# active, and its Qt field ignores CTRL + SHIFT + V. Layers that take the
-# keyboard get CTRL; layers that do not, and a desktop widget that only may,
-# leave the terminal its chord. interactivity: 1 exclusive, 2 on demand;
-# layer: 2 top, 3 overlay.
+# active, and its Qt field ignores CTRL + SHIFT + V. Layers that hold the
+# keyboard get CTRL: haseen's panels (a focus grab) and exclusive top or
+# overlay layers. An on-demand layer without haseen's grab (a compat
+# KeyboardPanel, a desktop widget, any other) can stay mapped while foot has
+# the keyboard, so foot keeps its chord: CTRL + C there would interrupt.
+# interactivity: 1 exclusive, 2 on demand; layer: 1 bottom, 2 top, 3 overlay.
 capture lua -e "dofile('$SANDBOX/hl-chord.lua')" -e "dofile('$REPO/share/haseen/default/hypr/init.lua')
 local foot = { class = 'foot', tags = { 'terminal*' } }
 local function layer(ns, interactivity, level, mapped)
@@ -568,14 +572,16 @@ local function layer(ns, interactivity, level, mapped)
 end
 PRESS('SUPER + V', foot, { layer('haseen-bar', 0, 2), layer('haseen-panel', 2, 2) })
 PRESS('SUPER + C', foot, { layer('haseen-overlay', 1, 3) })
-PRESS('SUPER + V', foot, { layer('omarchy-keyboard-panel', 2, 2) })
 PRESS('SUPER + V', foot, { layer('haseen-polkit', 1, 3) })
+PRESS('SUPER + C', foot, { layer('omarchy-keyboard-panel', 2, 2) })
+PRESS('SUPER + C', foot, { layer('some-plugin-panel', 2, 2) })
 PRESS('SUPER + V', foot, { layer('haseen-bar', 0, 2), layer('haseen-desktop-widget', 2, 1) })
 PRESS('SUPER + V', foot, { layer('haseen-panel', 2, 2, false) })
-PRESS('SUPER + V', foot, { layer('wallpaper', 1, 0) })"
+PRESS('SUPER + V', foot, { layer('wallpaper', 1, 0) })
+PRESS('SUPER + C', foot, false)"
 assert_status "the panel chords run under the stub" 0 "$STATUS"
-assert_eq "a panel or exclusive layer with the keyboard gets CTRL, a terminal under anything else CTRL + SHIFT" \
-    "-- SUPER + V in foot, layers haseen-bar,haseen-panel|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers omarchy-keyboard-panel|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-polkit|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-bar,haseen-desktop-widget|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper|down CTRL SHIFT code:55|up CTRL SHIFT code:55" \
+assert_eq "a haseen panel or exclusive layer with the keyboard gets CTRL, a terminal under anything else CTRL + SHIFT" \
+    "-- SUPER + V in foot, layers haseen-bar,haseen-panel|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers haseen-polkit|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers omarchy-keyboard-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + C in foot, layers some-plugin-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + V in foot, layers haseen-bar,haseen-desktop-widget|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + C in foot, no layer list|down CTRL SHIFT code:54|up CTRL SHIFT code:54" \
     "$(paste -sd'|' <<<"$OUTPUT")"
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
 
