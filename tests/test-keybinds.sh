@@ -515,9 +515,11 @@ done
 # clipboard chord every tagged terminal binds by default; SHIFT + Insert would
 # paste the primary selection and CTRL + Insert copies nothing in foot. The
 # window rule's dynamic tag carries a trailing "*". Timers fire at once here,
-# so each chord is one down and one up.
+# so each chord is one down and one up. The keys are key codes (C 54, V 55,
+# X 53), which Hyprland finds under every layout, and a shell panel that has
+# the keyboard gets CTRL even over a terminal (plan 143).
 cat >"$SANDBOX/hl-chord.lua" <<'EOF'
-local fns, active = {}, nil
+local fns, active, layers = {}, nil, {}
 local function proxy(name)
   return setmetatable({}, {
     __index = function(_, k) return proxy(name .. "." .. k) end,
@@ -532,10 +534,14 @@ hl = setmetatable({
   dispatch = function(d) if d.chord then print(d.chord) end end,
   timer = function(f) f() end,
   get_active_window = function() return active end,
+  get_layers = function() return layers end,
 }, { __index = function() return function() end end })
-function PRESS(keys, window)
-  active = window
-  print("-- " .. keys .. " in " .. (window and window.class or "nothing"))
+function PRESS(keys, window, over)
+  active, layers = window, over or {}
+  local names = {}
+  for _, l in ipairs(layers) do names[#names + 1] = l.namespace end
+  print("-- " .. keys .. " in " .. (window and window.class or "nothing")
+    .. (#names > 0 and ", layers " .. table.concat(names, ",") or ""))
   fns[keys]()
 end
 EOF
@@ -547,9 +553,30 @@ PRESS('SUPER + C', browser); PRESS('SUPER + V', browser)
 PRESS('SUPER + V', nil)"
 assert_status "the clipboard chords run under the stub" 0 "$STATUS"
 assert_eq "terminals copy and paste the clipboard with CTRL + SHIFT, other windows with CTRL" \
-    "-- SUPER + C in foot|down CTRL SHIFT C|up CTRL SHIFT C|-- SUPER + V in foot|down CTRL SHIFT V|up CTRL SHIFT V|-- SUPER + X in foot|down CTRL X|up CTRL X|-- SUPER + C in helium|down CTRL C|up CTRL C|-- SUPER + V in helium|down CTRL V|up CTRL V|-- SUPER + V in nothing|down CTRL V|up CTRL V" \
+    "-- SUPER + C in foot|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + V in foot|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + X in foot|down CTRL code:53|up CTRL code:53|-- SUPER + C in helium|down CTRL code:54|up CTRL code:54|-- SUPER + V in helium|down CTRL code:55|up CTRL code:55|-- SUPER + V in nothing|down CTRL code:55|up CTRL code:55" \
     "$(paste -sd'|' <<<"$OUTPUT")"
 assert_not_contains "no chord reaches for Insert" "$OUTPUT" "Insert"
+# A focused layer is not the active window: a launcher over foot leaves foot
+# active, and its Qt field ignores CTRL + SHIFT + V. Layers that take the
+# keyboard get CTRL; layers that do not, and a desktop widget that only may,
+# leave the terminal its chord. interactivity: 1 exclusive, 2 on demand;
+# layer: 2 top, 3 overlay.
+capture lua -e "dofile('$SANDBOX/hl-chord.lua')" -e "dofile('$REPO/share/haseen/default/hypr/init.lua')
+local foot = { class = 'foot', tags = { 'terminal*' } }
+local function layer(ns, interactivity, level, mapped)
+  return { namespace = ns, interactivity = interactivity, layer = level, mapped = mapped ~= false }
+end
+PRESS('SUPER + V', foot, { layer('haseen-bar', 0, 2), layer('haseen-panel', 2, 2) })
+PRESS('SUPER + C', foot, { layer('haseen-overlay', 1, 3) })
+PRESS('SUPER + V', foot, { layer('omarchy-keyboard-panel', 2, 2) })
+PRESS('SUPER + V', foot, { layer('haseen-polkit', 1, 3) })
+PRESS('SUPER + V', foot, { layer('haseen-bar', 0, 2), layer('haseen-desktop-widget', 2, 1) })
+PRESS('SUPER + V', foot, { layer('haseen-panel', 2, 2, false) })
+PRESS('SUPER + V', foot, { layer('wallpaper', 1, 0) })"
+assert_status "the panel chords run under the stub" 0 "$STATUS"
+assert_eq "a panel or exclusive layer with the keyboard gets CTRL, a terminal under anything else CTRL + SHIFT" \
+    "-- SUPER + V in foot, layers haseen-bar,haseen-panel|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers omarchy-keyboard-panel|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-polkit|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-bar,haseen-desktop-widget|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper|down CTRL SHIFT code:55|up CTRL SHIFT code:55" \
+    "$(paste -sd'|' <<<"$OUTPUT")"
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
 
 # --- a user bind on a key haseen binds replaces it ---------------------------

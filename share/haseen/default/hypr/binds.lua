@@ -70,6 +70,14 @@ b("SUPER + B", "Browser", launch('"$(xdg-settings get default-web-browser)"'))
 -- surface, so the held SUPER never merges into it; down and up are split
 -- because Hyprland's send_shortcut can leave a synthetic key stuck
 -- (hyprwm/Hyprland discussion 14099).
+--
+-- The keys go by key code (xkb, evdev + 8), not by name (plan 143).
+-- send_key_state looks a name up in the active layout only, so under a second
+-- layout without Latin letters (Arabic, Russian) "C" is "key not found" and
+-- nothing is sent. The code is the same key under every layout, and the app
+-- reads it with the mods sent, as it would the physical chord.
+local KEY_C, KEY_V, KEY_X = "code:54", "code:55", "code:53"
+
 local function send_once(mods, key)
   return function()
     hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
@@ -79,7 +87,39 @@ local function send_once(mods, key)
   end
 end
 
+-- Whether a shell panel has the keyboard. A focused layer surface is not the
+-- active window: hl.get_active_window() still names the window under it, so a
+-- launcher opened over a terminal was sent the terminal's CTRL + SHIFT + V,
+-- which Qt's text fields ignore (plan 143). A top or overlay layer that asks
+-- for the keyboard exclusively holds it while it is mapped; a haseen panel
+-- holds it on demand once open, and its focus grab closes it on any click
+-- elsewhere (shell/PanelPopup.qml), so a mapped one is the focus. Desktop
+-- widgets also ask on demand but stay mapped, so they do not count.
+local KEYBOARD_EXCLUSIVE, LAYER_TOP = 1, 2
+local PANEL_NAMESPACES = {
+  ["haseen-panel"] = true,
+  ["haseen-overlay"] = true,
+  ["omarchy-keyboard-panel"] = true,
+}
+
+local function keyboard_on_panel()
+  for _, layer in ipairs(hl.get_layers() or {}) do
+    if layer.mapped and (layer.interactivity or 0) ~= 0 then
+      if PANEL_NAMESPACES[layer.namespace] then
+        return true
+      end
+      if layer.interactivity == KEYBOARD_EXCLUSIVE and (layer.layer or 0) >= LAYER_TOP then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 local function focused_is_terminal()
+  if keyboard_on_panel() then
+    return false
+  end
   local window = hl.get_active_window()
   for _, tag in ipairs(window and window.tags or {}) do
     if tag:gsub("%*$", "") == "terminal" then
@@ -99,9 +139,9 @@ local function universal(mods, key, terminal_mods, terminal_key)
   end
 end
 
-b("SUPER + C", "Universal copy", universal("CTRL", "C", "CTRL SHIFT", "C"))
-b("SUPER + V", "Universal paste", universal("CTRL", "V", "CTRL SHIFT", "V"))
-b("SUPER + X", "Universal cut", send_once("CTRL", "X"))
+b("SUPER + C", "Universal copy", universal("CTRL", KEY_C, "CTRL SHIFT", KEY_C))
+b("SUPER + V", "Universal paste", universal("CTRL", KEY_V, "CTRL SHIFT", KEY_V))
+b("SUPER + X", "Universal cut", send_once("CTRL", KEY_X))
 
 -- Capture ----------------------------------------------------------------------
 -- PRINT is Omasnap (plan 107): drag a region, click a window or open space,
