@@ -99,10 +99,10 @@ end
 -- A haseen panel (shell/PanelPopup.qml, shell/BarOverflowPanel.qml) holds it
 -- on demand once open: its focus grab keeps the keyboard in the panel and
 -- closes it on a click elsewhere, so a mapped one with keyboard interactivity
--- is the focus. Only those namespaces count on demand. A layer without that
--- grab, such as an Omarchy plugin's KeyboardPanel or a desktop widget, can
--- stay mapped while a window has the keyboard, and counting it would send
--- CTRL + C, an interrupt, into a terminal.
+-- is the focus. Only those namespaces count on demand. An on-demand layer
+-- without that grab, such as an Omarchy plugin's KeyboardPanel or a desktop
+-- widget, can stay mapped while a window has the keyboard, and counting it
+-- would send CTRL + C, an interrupt, into a terminal.
 local KEYBOARD_EXCLUSIVE, LAYER_TOP = 1, 2
 local PANEL_NAMESPACES = {
   ["haseen-panel"] = true,

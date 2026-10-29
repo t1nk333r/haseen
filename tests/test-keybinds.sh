@@ -540,9 +540,14 @@ function PRESS(keys, window, over)
   -- over == false: hl.get_layers() returns nil.
   active, layers = window, over ~= false and (over or {}) or nil
   local names = {}
-  for _, l in ipairs(layers or {}) do names[#names + 1] = l.namespace end
+  -- namespace(interactivity,layer): the same namespace pressed two ways reads
+  -- differently.
+  for _, l in ipairs(layers or {}) do
+    names[#names + 1] = string.format("%s(%s,%s%s)", l.namespace, l.interactivity,
+      l.layer, l.mapped and "" or ",unmapped")
+  end
   print("-- " .. keys .. " in " .. (window and window.class or "nothing")
-    .. (#names > 0 and ", layers " .. table.concat(names, ",") or "")
+    .. (#names > 0 and ", layers " .. table.concat(names, " ") or "")
     .. (layers == nil and ", no layer list" or ""))
   fns[keys]()
 end
@@ -582,7 +587,7 @@ PRESS('SUPER + V', foot, { layer('wallpaper', 1, 0) })
 PRESS('SUPER + C', foot, false)"
 assert_status "the panel chords run under the stub" 0 "$STATUS"
 assert_eq "a haseen panel or exclusive layer with the keyboard gets CTRL, a terminal under anything else CTRL + SHIFT" \
-    "-- SUPER + V in foot, layers haseen-bar,haseen-panel|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers haseen-overlay|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-polkit|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers omarchy-keyboard-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + C in foot, layers some-plugin-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + V in foot, layers haseen-bar,haseen-desktop-widget|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + C in foot, no layer list|down CTRL SHIFT code:54|up CTRL SHIFT code:54" \
+    "-- SUPER + V in foot, layers haseen-bar(0,2) haseen-panel(2,2)|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay(1,3)|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers haseen-overlay(2,3)|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-polkit(1,3)|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers omarchy-keyboard-panel(2,2)|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + C in foot, layers some-plugin-panel(2,2)|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + V in foot, layers haseen-bar(0,2) haseen-desktop-widget(2,1)|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel(2,2,unmapped)|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper(1,0)|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + C in foot, no layer list|down CTRL SHIFT code:54|up CTRL SHIFT code:54" \
     "$(paste -sd'|' <<<"$OUTPUT")"
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
 

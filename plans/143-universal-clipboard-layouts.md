@@ -171,5 +171,10 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
 - **Round 2** (90b2654): APPROVE. Two nits, both taken with the rebase over
   plan 144: the test pressed `haseen-overlay` only as an exclusive layer, so
   dropping it from the list stayed green; it now presses it on demand too,
-  and dropping it fails the panel assertion (126/127).
-  And the comment above `keyboard_on_panel()` is reflowed.
+  and dropping it fails the panel assertion (126/127). The comment above
+  `keyboard_on_panel()` is reflowed.
+- **Round 3** (0fdbfa8): APPROVE, with the rebase found content-neutral
+  (range-diff). Two nits, both taken: the reflow had dropped "on-demand" from
+  "a layer without that grab", which an exclusive top layer contradicts; and
+  the test's labels now name each layer's interactivity, level and mapped
+  state, so the two `haseen-overlay` presses read apart.
