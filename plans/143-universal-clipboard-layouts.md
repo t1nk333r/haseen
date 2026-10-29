@@ -136,7 +136,8 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
 
 - `tests/test-keybinds.sh`: the chords expect `code:54/55/53`, and a new case
   presses SUPER + C/V over foot with layers in the stub: a `haseen-panel` and
-  a `haseen-overlay` on demand and an exclusive overlay get CTRL; an
+  a `haseen-overlay` on demand, an exclusive `haseen-overlay` and an exclusive
+  overlay of another namespace get CTRL; an
   `omarchy-keyboard-panel` and an unknown panel on demand, a desktop widget,
   an unmapped panel, an exclusive background layer and no layer list at all
   leave foot CTRL + SHIFT. 127/127. With the old `binds.lua` both chord
@@ -167,3 +168,8 @@ CTRL + C / CTRL + Insert (`QKeySequence::Paste`, `QKeySequence::Copy`).
   gained an unknown on-demand panel and a nil layer list. The reviewer
   confirmed 127/127, the 125/127 mutation, the affected selection (19 files,
   3603/3603) and keycodes 53/54/55 for X/C/V.
+- **Round 2** (90b2654): APPROVE. Two nits, both taken with the rebase over
+  plan 144: the test pressed `haseen-overlay` only as an exclusive layer, so
+  dropping it from the list stayed green; it now presses it on demand too,
+  and dropping it fails the panel assertion (126/127).
+  And the comment above `keyboard_on_panel()` is reflowed.

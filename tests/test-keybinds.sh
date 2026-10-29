@@ -572,6 +572,7 @@ local function layer(ns, interactivity, level, mapped)
 end
 PRESS('SUPER + V', foot, { layer('haseen-bar', 0, 2), layer('haseen-panel', 2, 2) })
 PRESS('SUPER + C', foot, { layer('haseen-overlay', 1, 3) })
+PRESS('SUPER + V', foot, { layer('haseen-overlay', 2, 3) })
 PRESS('SUPER + V', foot, { layer('haseen-polkit', 1, 3) })
 PRESS('SUPER + C', foot, { layer('omarchy-keyboard-panel', 2, 2) })
 PRESS('SUPER + C', foot, { layer('some-plugin-panel', 2, 2) })
@@ -581,7 +582,7 @@ PRESS('SUPER + V', foot, { layer('wallpaper', 1, 0) })
 PRESS('SUPER + C', foot, false)"
 assert_status "the panel chords run under the stub" 0 "$STATUS"
 assert_eq "a haseen panel or exclusive layer with the keyboard gets CTRL, a terminal under anything else CTRL + SHIFT" \
-    "-- SUPER + V in foot, layers haseen-bar,haseen-panel|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers haseen-polkit|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers omarchy-keyboard-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + C in foot, layers some-plugin-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + V in foot, layers haseen-bar,haseen-desktop-widget|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + C in foot, no layer list|down CTRL SHIFT code:54|up CTRL SHIFT code:54" \
+    "-- SUPER + V in foot, layers haseen-bar,haseen-panel|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers haseen-overlay|down CTRL code:54|up CTRL code:54|-- SUPER + V in foot, layers haseen-overlay|down CTRL code:55|up CTRL code:55|-- SUPER + V in foot, layers haseen-polkit|down CTRL code:55|up CTRL code:55|-- SUPER + C in foot, layers omarchy-keyboard-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + C in foot, layers some-plugin-panel|down CTRL SHIFT code:54|up CTRL SHIFT code:54|-- SUPER + V in foot, layers haseen-bar,haseen-desktop-widget|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers haseen-panel|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + V in foot, layers wallpaper|down CTRL SHIFT code:55|up CTRL SHIFT code:55|-- SUPER + C in foot, no layer list|down CTRL SHIFT code:54|up CTRL SHIFT code:54" \
     "$(paste -sd'|' <<<"$OUTPUT")"
 assert_eq "every bind has a description" "" "$(awk -F'\t' '$2 == "nil" || $2 == ""' <<<"$shipped")"
 

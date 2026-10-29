@@ -94,11 +94,12 @@ end
 -- launcher opened over a terminal was sent the terminal's CTRL + SHIFT + V,
 -- which Qt's text fields ignore (plan 143). A top or overlay layer that asks
 -- for the keyboard exclusively holds it while it is mapped: Hyprland gives
--- no window the keyboard meanwhile. A haseen panel (shell/PanelPopup.qml,
--- shell/BarOverflowPanel.qml) holds it on demand once open: its focus grab
--- keeps the keyboard in the panel and closes it on a click elsewhere, so a
--- mapped one with keyboard interactivity is the focus. Only those namespaces
--- count. An on-demand layer without that
+-- no window the keyboard meanwhile.
+--
+-- A haseen panel (shell/PanelPopup.qml, shell/BarOverflowPanel.qml) holds it
+-- on demand once open: its focus grab keeps the keyboard in the panel and
+-- closes it on a click elsewhere, so a mapped one with keyboard interactivity
+-- is the focus. Only those namespaces count on demand. A layer without that
 -- grab, such as an Omarchy plugin's KeyboardPanel or a desktop widget, can
 -- stay mapped while a window has the keyboard, and counting it would send
 -- CTRL + C, an interrupt, into a terminal.
