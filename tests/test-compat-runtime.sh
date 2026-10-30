@@ -66,6 +66,15 @@ Scope {
     Component.onDestruction: console.log("OVERLAY_STOPPED")
 }
 QML
+    # Enabled but in no bar section and no services list, so nothing hosts its
+    # overlay: luna's t1nk33r.browser-picker, whose summon answered nothing
+    # while the caller waited 5 minutes (plan 145).
+    unhosted="$HOME/.config/omarchy/plugins/me.unhosted"
+    mkdir -p "$unhosted"
+    cat >"$unhosted/manifest.json" <<'JSON'
+{"schemaVersion":1,"id":"me.unhosted","name":"Unhosted","version":"1.0.0","kinds":["overlay"],"entryPoints":{"overlay":"Overlay.qml"}}
+JSON
+    cp "$legacy/Overlay.qml" "$unhosted/Overlay.qml"
     native="$HOME/.config/haseen/plugins/me.independent"
     cat >"$native/manifest.json" <<'JSON'
 {"schemaVersion":1,"id":"me.independent","name":"Independent","version":"1.0.0","kinds":["service"],"entry":{"service":"Service.qml"}}
@@ -120,7 +129,8 @@ ShellRoot {
                 probe.nativeService = independent;
                 probe.result.companionIds = Plugins.serviceIds.filter(id => id === "me.gauge").length;
                 probe.result.helperResult = service.helperResult;
-                Compat.Runtime.summon("me.gauge", JSON.stringify({view: "details"}));
+                probe.result.summonAnswer = Compat.Runtime.summon("me.gauge", JSON.stringify({view: "details"}));
+                probe.result.unhostedAnswer = Compat.Runtime.summon("me.unhosted", JSON.stringify({view: "details"}));
                 probe.result.overlayPayloadView = overlay.view;
                 probe.result.overlayOpened = overlay.opened;
                 probe.result.surfaceCount = Plugins.serviceKeys.filter(key => key.endsWith(":me.gauge")).length;
@@ -153,6 +163,8 @@ QML
         assert_eq "one companion service shared by both bar sections" 1 "$(jq -r .companionIds <<<"$result")"
         assert_eq "service and overlay occupy separate lifecycle keys" 2 "$(jq -r .surfaceCount <<<"$result")"
         assert_eq "summon opens the actual overlay provider" true "$(jq -r .overlayOpened <<<"$result")"
+        assert_eq "summon answers true when it opened something" true "$(jq -r .summonAnswer <<<"$result")"
+        assert_eq "summon of an overlay nothing hosts answers false" false "$(jq -r .unhostedAnswer <<<"$result")"
         assert_eq "overlay receives structured summon payload" details "$(jq -r .overlayPayloadView <<<"$result")"
         assert_eq "initial settings and manifest locate the plugin's actual resource" 6 "$(jq -r .helperResult <<<"$result")"
         assert_eq "settings update keeps the live service instance" true "$(jq -r .sameInstanceOnSettingsChange <<<"$result")"

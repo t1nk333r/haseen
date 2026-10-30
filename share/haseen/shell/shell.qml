@@ -334,6 +334,23 @@ ShellRoot {
         }
     }
 
+    // Omarchy's `shell summon|toggle <id> [payload]`, as omarchy-shell hands
+    // them on (plan 145). The payload reaches the plugin, and the answer says
+    // whether anything opened or closed: a caller that waits on the plugin
+    // (a browser picker waiting for its choice) must hear "no" and fall back
+    // at once. Why not is in the shell's log (Runtime.unsupported).
+    IpcHandler {
+        target: "compat"
+
+        function summon(id: string, payload: string): string {
+            return Compat.Runtime.summon(id, payload) ? "ok" : "unavailable: " + id;
+        }
+
+        function toggle(id: string, payload: string): string {
+            return Compat.Runtime.toggle(id, payload) ? "ok" : "unavailable: " + id;
+        }
+    }
+
     IpcHandler {
         target: "launcher"
 
