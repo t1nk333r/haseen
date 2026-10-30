@@ -163,11 +163,14 @@ behind="$(git -C "$src" rev-list --count "HEAD..$upstream")"
 # pull request was squash-merged never moves again: luna stayed on
 # compat/summon-answers at 5944f3e while main went on (owner, 2026-10-31, plan
 # 147). Installing a branch under test is legitimate (plan 136), so this warns
-# rather than refuses, and only when the remote names its default branch.
+# rather than refuses, and only when the remote names its default branch and
+# that branch has commits the checkout lacks.
 default_branch="$(git -C "$src" symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)"
 if [[ -n $default_branch && $default_branch != "$upstream" ]]; then
     ahead="$(git -C "$src" rev-list --count "HEAD..$default_branch" 2>/dev/null || true)"
-    warn "the checkout follows $upstream, not $default_branch${ahead:+ ($ahead commit(s) there are not in this checkout)}; to follow it: git -C $src switch ${default_branch#"$remote"/}"
+    if [[ $ahead =~ ^[0-9]+$ ]] && ((ahead > 0)); then
+        warn "the checkout follows $upstream, not $default_branch ($ahead commit(s) there are not in this checkout); to follow it: git -C $src switch ${default_branch#"$remote"/}"
+    fi
 fi
 installed_commit="$(install_stamp_get "$prefix" commit || true)"
 installed_version="$(install_stamp_get "$prefix" version || true)"

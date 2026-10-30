@@ -216,6 +216,8 @@ assert_eq "a tree without git is the file" "0.4.0-dev" "$(bv "$rel")"
 # (owner, 2026-10-31). The update still runs from it, and says so.
 g -C "$work" switch -q -c topic
 g -C "$work" push -q -u origin topic
+capture hx --check
+assert_not_contains "a topic branch that has all of main is not warned about" "$OUTPUT" "the checkout follows"
 printf 'four\n' >"$other/NOTES"
 g -C "$other" commit -qam four
 g -C "$other" push -q origin main

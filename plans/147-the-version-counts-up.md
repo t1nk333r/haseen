@@ -14,8 +14,9 @@
 - **Planned at**: 2026-10-31 (owner, after `haseen update haseen --tree-only`
   on luna printed `haseen 0.2.0-dev installed under /usr/local`: "its still
   not incrementing … this is what i ment")
-- **State**: DONE 2026-10-31 (`tests/test-update-haseen.sh` 64/64,
-  `tests/test-install-picker.sh` 93/93)
+- **State**: DONE 2026-10-31 (`tests/test-update-haseen.sh` 65/65,
+  `tests/test-install-picker.sh` 93/93; review round 1, GLM 5.3 Flash,
+  approved 03e24fe with two nits, answered under Review)
 
 ## Problem
 
@@ -53,10 +54,10 @@
   ledger, the user-agent strings, plugin `requires.haseen`) now sees the
   build's number with no change of its own.
 - **`bin/haseen-update-haseen`** prints the same version in `--check` and in
-  its install and "already installed" lines (`:178`, `:202`), and warns when
-  the checkout's upstream is not the remote's default branch
-  (`refs/remotes/<remote>/HEAD`, `:167`), with how many commits there the
-  checkout lacks and the `git switch` that follows it.
+  its install and "already installed" lines, and warns when the checkout's
+  upstream is not the remote's default branch (`refs/remotes/<remote>/HEAD`)
+  and that branch has commits the checkout lacks, with how many and the
+  `git switch` that follows it.
 
 ## Rejected options
 
@@ -82,13 +83,29 @@
   commit that set `VERSION` reports the file; one commit on installs as
   `0.3.0-dev.1`; a release version takes `+2`; an uncommitted bump and a tree
   without git report the file as it is; a checkout on `origin/topic` warns
-  with main's one extra commit and the `git switch main` to follow it, and one
-  on main does not. 64/64.
+  with main's one extra commit and the `git switch main` to follow it, while
+  a topic branch that already has all of main and a checkout on main are not
+  warned about. 65/65.
 - `tests/test-install-picker.sh`, with a stubbed git that reports 21 commits
   since the bump: the installed `VERSION`, the stamp and the closing line all
   carry `<VERSION>.21`, and the run stays dry; with no git the stamp keeps
   the file's version. 93/93. With `install.sh` reading the file again, the
   three new assertions fail (90/93).
+
+## Review
+
+Round 1, GLM 5.3 Flash, approved 03e24fe and reran the focused files (64/64,
+93/93), the affected selection (16 files, 1970/1970, VAPT included), lint and
+shellcheck. Two nits:
+
+- *The warning fires by name, not content*: a checkout that follows another
+  branch which already holds everything on the default one was still warned
+  about. Fixed: the warning needs at least one commit there that the checkout
+  lacks, and the topic-branch test asserts no warning before main moves.
+- *A `since` that is no longer an ancestor would make the count jump*: no
+  change. `git log -1 -- share/haseen/VERSION` walks HEAD's own history, so
+  the commit it returns is an ancestor of HEAD by construction; a rebase that
+  rewrites the bump returns the rewritten commit.
 
 ## Owner steps
 
