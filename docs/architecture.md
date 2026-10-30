@@ -558,7 +558,7 @@ When `~/.local/state/haseen/active-shell` contains `dms`, it hands the call to
 |---|---|
 | `shell` | `reload()`, `plugins(): string` |
 | `panel` | `toggle(id)`, `close()` |
-| `compat` | `summon(id, payload): string`, `toggle(id, payload): string`: Omarchy's `shell summon\|toggle` as `omarchy-shell` hands them on for any id that is not a `haseen.*` panel (plan 145); the JSON payload reaches the plugin, and the answer is `ok` only when something opened or closed, else `unavailable: <id>` with the reason in the shell's log; a plugin whose `open` throws leaves the answer empty (the error is in the log), which is no `ok` either |
+| `compat` | `summon(id, payload): string`, `toggle(id, payload): string`: Omarchy's `shell summon\|toggle` as `omarchy-shell` hands them on for any id that is not a `haseen.*` panel (plan 145); the JSON payload reaches the plugin, and the answer is `ok` only when something opened or closed, else `unavailable: <id>` (where the shell knows why, the reason is in its log; a plugin's `open` that returns false gives none); a plugin whose `open` throws leaves the answer empty (the error is in the log), which is no `ok` either |
 | `launcher` | `toggle()` |
 | `menu` | `toggle(path)`; `haseen menu [path]` wraps it. `select(request): string`: the card as a pick list (plan 071) on a JSON request file `{prompt, options, selectionFile, doneFile, width, height}`; the choice goes to `selectionFile`, then one line to the caller's FIFO `doneFile`, also when nothing was chosen; answers the shell's PID. `haseen menu select` wraps it |
 | `lock` | `lock()` |

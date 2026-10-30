@@ -14,7 +14,8 @@
 - **State**: DONE 2026-10-30 (`tests/test-omarchy-commands.sh` 189/189,
   184/189 with the old `omarchy-shell`; `tests/test-compat-runtime.sh` 35/35;
   review round 1, DeepSeek V4.1 Flash, approved ff52d06 with five nits, each
-  answered in this file and §5.5)
+  answered here, §5.5 for the throwing `open`; round 2 approved 211ac8c with
+  three wording nits, fixed)
 
 ## Problem
 
@@ -60,10 +61,12 @@ Any Omarchy plugin that waits on its own summon hangs the same way.
   `toggle(id, payload)`, both strings. They call `Compat.Runtime.summon` and
   `Compat.Runtime.toggle` with the payload and answer `ok` when something
   opened or closed, else `unavailable: <id>`. Why is in the shell's log, which
-  `Runtime.unsupported` already writes. A plugin whose `open` throws
-  (`Runtime.openProvider` calls it directly) leaves the answer empty: qs
-  0.3.2 logs the error, prints nothing and exits 0. That is not `ok` either,
-  so `omarchy-shell` still fails.
+  `Runtime.unsupported` already writes; a plugin's `open` that returns false
+  (`Runtime.qml:364`) and a legacy role id with no provider
+  (`Runtime.qml:382`) answer `unavailable` without a line. A plugin whose
+  `open` throws (`Runtime.openProvider` calls it directly) leaves the answer
+  empty: qs 0.3.2 logs the error, prints nothing and exits 0. That is not
+  `ok` either, so `omarchy-shell` still fails.
 - `omarchy-shell` (`share/haseen/omarchy/bin/omarchy-shell:131-143`): an id
   that resolves to a `haseen.*` panel still goes to `panel toggle` (lines
   133-136). Any other id goes to `compat <summon|toggle> <id> <payload>`
@@ -90,9 +93,9 @@ Of the owner's Omarchy plugins, two summon through `omarchy-shell`:
   its manifest default and luna's value. On luna it sits in a bar section, so
   its overlay is hosted: SUPER + CTRL + PRINT and SUPER + SHIFT + PRINT now
   hand it `{mode: "ocr"|"circle"}` instead of an empty payload, and a summon
-  no longer closes a card that is open. Outside the bar its overlay is not
-  hosted, and the script, under `set -e` with no `||`, now exits 1 where it
-  used to exit 0 having done nothing.
+  no longer closes a card that is open. Outside the bar and `services` its
+  overlay is not hosted, and the script, under `set -e` with no `||`, now
+  exits 1 where it used to exit 0 having done nothing.
 
 ## Known limits
 
