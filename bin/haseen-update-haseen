@@ -159,13 +159,23 @@ run git -C "$src" fetch --quiet "$remote"
 checkout_commit="$(git -C "$src" rev-parse --short HEAD)"
 upstream_commit="$(git -C "$src" rev-parse --short "$upstream")"
 behind="$(git -C "$src" rev-list --count "HEAD..$upstream")"
+# A checkout left on a topic branch pulls only that branch, and a branch whose
+# pull request was squash-merged never moves again: luna stayed on
+# compat/summon-answers at 5944f3e while main went on (owner, 2026-10-31, plan
+# 147). Installing a branch under test is legitimate (plan 136), so this warns
+# rather than refuses, and only when the remote names its default branch.
+default_branch="$(git -C "$src" symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)"
+if [[ -n $default_branch && $default_branch != "$upstream" ]]; then
+    ahead="$(git -C "$src" rev-list --count "HEAD..$default_branch" 2>/dev/null || true)"
+    warn "the checkout follows $upstream, not $default_branch${ahead:+ ($ahead commit(s) there are not in this checkout)}; to follow it: git -C $src switch ${default_branch#"$remote"/}"
+fi
 installed_commit="$(install_stamp_get "$prefix" commit || true)"
 installed_version="$(install_stamp_get "$prefix" version || true)"
 
 if $check; then
     printf 'source     %s\n' "$src"
     printf 'branch     %s, %s commit(s) to pull\n' "$upstream" "$behind"
-    printf 'checkout   %s (%s)\n' "$checkout_commit" "$(cat "$src/share/haseen/VERSION")"
+    printf 'checkout   %s (%s)\n' "$checkout_commit" "$(install_build_version "$src")"
     if [[ -n $installed_commit ]]; then
         printf 'installed  %s (%s)\n' "$installed_commit" "${installed_version:-unknown}"
     else
@@ -189,7 +199,7 @@ else
     info "the checkout is already at $upstream_commit"
 fi
 commit="$(git -C "$src" rev-parse --short HEAD)"
-version="$(cat "$src/share/haseen/VERSION")"
+version="$(install_build_version "$src")"
 
 # The stamp is what the last install wrote; a tree installed before haseen
 # knew about stamps has none, and that is never taken as current.

@@ -171,3 +171,58 @@ capture env PATH="$REAL_PATH" bash -c '
 assert_status "the stamp round-trips" 0 "$STATUS"
 assert_contains "it keeps the commit, version and prefix" "$OUTPUT" "abc123|0.3.0-dev|$SANDBOX/stamp-prefix"
 assert_contains "a missing stamp answers nothing" "$OUTPUT" "none"
+
+# --- the version counts up between bumps (plan 147) ----------------------------
+# VERSION is set by hand and stays put between bumps, so every install printed
+# 0.2.0-dev however many merges it carried (owner, 2026-10-31). The build adds
+# the commits since the file last changed.
+printf 'notes\n' >"$other/NOTES"
+g -C "$other" add NOTES
+g -C "$other" commit -qm three
+g -C "$other" push -q origin main
+three="$(g -C "$other" rev-parse --short HEAD)"
+capture hx --check
+assert_contains "the checkout at the bump is the version as set" "$OUTPUT" "checkout   $commit (0.3.0-dev)"
+capture hx
+assert_status "an update past the bump runs" 0 "$STATUS"
+assert_contains "it installs one commit past the bump as .1" "$OUTPUT" "installing $work (0.3.0-dev.1, $three) under $prefix"
+
+# bv DIR — install_build_version on its own, with the real git.
+bv() { env PATH="$REAL_PATH" bash -c 'source "$1/lib/install-stamp.sh"; install_build_version "$2"' bash "$HASEEN_PATH" "$1"; }
+assert_eq "a checkout at the commit that set VERSION is the file" "0.2.0-dev" "$(bv "$seed")"
+assert_eq "one commit on is .1" "0.3.0-dev.1" "$(bv "$work")"
+rel="$SANDBOX/release"
+g init -q -b main "$rel"
+g -C "$rel" config user.email t@example.invalid
+g -C "$rel" config user.name Test
+mkdir -p "$rel/share/haseen"
+printf '0.3.0\n' >"$rel/share/haseen/VERSION"
+g -C "$rel" add -A
+g -C "$rel" commit -qm release
+for n in 1 2; do
+    printf '%s\n' "$n" >"$rel/f"
+    g -C "$rel" add f
+    g -C "$rel" commit -qm "after $n"
+done
+assert_eq "a release version takes the count as build metadata" "0.3.0+2" "$(bv "$rel")"
+printf '0.4.0-dev\n' >"$rel/share/haseen/VERSION"
+assert_eq "an uncommitted bump is the file as edited" "0.4.0-dev" "$(bv "$rel")"
+rm -rf "$rel/.git"
+assert_eq "a tree without git is the file" "0.4.0-dev" "$(bv "$rel")"
+
+# --- a checkout that follows another branch -----------------------------------
+# luna stayed on compat/summon-answers, a branch whose pull request was
+# squash-merged, so every update found nothing to pull while main moved on
+# (owner, 2026-10-31). The update still runs from it, and says so.
+g -C "$work" switch -q -c topic
+g -C "$work" push -q -u origin topic
+printf 'four\n' >"$other/NOTES"
+g -C "$other" commit -qam four
+g -C "$other" push -q origin main
+capture hx --check
+assert_status "--check on a topic branch still reports" 0 "$STATUS"
+assert_contains "it names the branch it follows and what main has" "$OUTPUT" \
+    "Warning: the checkout follows origin/topic, not origin/main (1 commit(s) there are not in this checkout); to follow it: git -C $work switch main"
+g -C "$work" switch -q main
+capture hx --check
+assert_not_contains "on main there is no warning" "$OUTPUT" "the checkout follows"
