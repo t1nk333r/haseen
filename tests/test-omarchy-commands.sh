@@ -453,8 +453,9 @@ FAKE="$SANDBOX/fake"
 mkdir -p "$FAKE/bin" "$FAKE/share/haseen"
 for d in lib omarchy shell; do ln -s "$HASEEN_PATH/$d" "$FAKE/share/haseen/$d"; done
 # A recording haseen command logs its name and arguments in brackets to
-# $CALLS; the fake IPC answers `shell plugins` from $IPC_PLUGINS and fails
-# with $IPC_RC.
+# $CALLS; the fake IPC answers `shell plugins` from $IPC_PLUGINS, logs every
+# other call to $CALLS too, answers `compat` with $IPC_COMPAT (default ok) and
+# fails with $IPC_RC.
 export CALLS="$SANDBOX/calls"
 for t in haseen-menu haseen-plugin-enable haseen-plugin-disable haseen-bar-add haseen-bar-transparent; do
     printf '#!/bin/sh\n{ printf %%s "${0##*/}"; for a in "$@"; do printf " [%%s]" "$a"; done; echo; } >>"$CALLS"\n' >"$FAKE/bin/$t"
@@ -463,6 +464,8 @@ cat >"$FAKE/bin/haseen-shell-ipc" <<'IPC'
 #!/bin/sh
 [ -n "$IPC_RC" ] && exit "$IPC_RC"
 if [ "$1 $2" = "shell plugins" ]; then printf '%s\n' "$IPC_PLUGINS"; exit 0; fi
+{ printf 'ipc'; for a in "$@"; do printf ' [%s]' "$a"; done; echo; } >>"$CALLS"
+if [ "$1" = compat ]; then printf '%s\n' "${IPC_COMPAT:-ok}"; exit 0; fi
 printf 'ipc'; for a in "$@"; do printf ' [%s]' "$a"; done; echo
 IPC
 chmod +x "$FAKE/bin"/*
@@ -489,6 +492,27 @@ capture oshell shell summon omarchy.menu '{"menu":"root"}'
 assert_eq "the root route is the top level" "haseen-menu" "$(tail -n1 "$CALLS")"
 capture oshell shell toggle omarchy.weather
 assert_eq "an Omarchy built-in opens haseen's own panel" "ok" "$OUTPUT"
+assert_eq "haseen's own panel is a panel toggle, which DMS knows" "ipc [panel] [toggle] [haseen.weather]" "$(tail -n1 "$CALLS")"
+# An Omarchy plugin gets its payload, and an answer: the old browser picker
+# summoned itself with its request and waited 5 minutes for a choice that a
+# dropped payload never let it make (plan 145).
+capture oshell shell summon t1nk33r.browser-picker '{"urls":["https://example.org"]}'
+assert_eq "a compat plugin that opens answers ok" "ok" "$OUTPUT"
+assert_eq "summon carries the payload" \
+    'ipc [compat] [summon] [t1nk33r.browser-picker] [{"urls":["https://example.org"]}]' "$(tail -n1 "$CALLS")"
+capture oshell shell toggle t1nk33r.updates
+assert_eq "toggle stays a toggle, with an empty payload" "ipc [compat] [toggle] [t1nk33r.updates] []" "$(tail -n1 "$CALLS")"
+capture oshell shell toggle omarchy.nonesuch
+assert_eq "an Omarchy built-in haseen lacks goes to the compat host" \
+    "ipc [compat] [toggle] [omarchy.nonesuch] []" "$(tail -n1 "$CALLS")"
+IPC_COMPAT="unavailable: t1nk33r.browser-picker" capture oshell shell summon t1nk33r.browser-picker '{}'
+assert_status "a plugin haseen cannot open fails, so its caller falls back" 1 "$STATUS"
+assert_contains "and says which" "$OUTPUT" "haseen's shell cannot open t1nk33r.browser-picker"
+IPC_COMPAT="unavailable: t1nk33r.browser-picker" capture oshell -q shell summon t1nk33r.browser-picker '{}'
+assert_status "-q still never fails" 0 "$STATUS"
+assert_eq "-q still prints nothing" "" "$OUTPUT"
+IPC_RC=1 capture oshell shell summon t1nk33r.browser-picker '{}'
+assert_contains "no shell: the summon fails as not running" "$OUTPUT" "haseen's shell is not running"
 capture oshell shell toggle omarchy.launcher
 assert_eq "the launcher is a role, not a panel" "ok" "$OUTPUT"
 capture oshell shell call t1nk33r.updates refresh

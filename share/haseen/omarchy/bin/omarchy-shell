@@ -39,7 +39,9 @@ shell (or DMS after 'haseen shell use dms'). Omarchy's verbs map to haseen's:
   shell toggle|summon <id> [json]     opens or closes a panel (omarchy.menu:
                                       haseen's menu at the payload's "menu";
                                       omarchy.launcher: the launcher;
-                                      omarchy.X: haseen.X when there is one)
+                                      omarchy.X: haseen.X when there is one;
+                                      any other plugin gets the payload, and
+                                      fails when haseen cannot open it)
   shell hide <id>                     closes the open panels
   shell listPlugins                   haseen's plugins in Omarchy's shape
   shell rescanPlugins                 reloads haseen's shell
@@ -126,7 +128,20 @@ case "$target $method" in
         haseen_run menu ${route:+"$route"}
         ;;
     omarchy.launcher) ask launcher toggle >/dev/null ;;
-    *) ask panel toggle "$(panel_id "$1")" >/dev/null ;;
+    *)
+        id="$(panel_id "$1")"
+        if [[ $id == haseen.* ]]; then
+            # haseen's own panels take no payload, and `panel toggle` is the
+            # call the DMS translation knows.
+            ask panel toggle "$id" >/dev/null
+        else
+            # Anything else is a plugin in haseen's compat host: it gets its
+            # payload, and one haseen cannot open is a failure, as its caller
+            # may be waiting on it (plan 145: a link waited 5 minutes).
+            out="$(ask compat "$method" "$id" "${2:-}")"
+            [[ $out == ok ]] || fail "haseen's shell cannot open $1"
+        fi
+        ;;
     esac
     say ok
     ;;
