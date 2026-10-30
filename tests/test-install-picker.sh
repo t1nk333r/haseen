@@ -203,6 +203,26 @@ assert_status "a checkout without git still installs" 0 "$STATUS"
 assert_contains "the rest of the banner is unchanged" "$OUTPUT" "    distro="
 assert_not_contains "no git names no checkout" "$OUTPUT" "checkout="
 assert_not_contains "no git claims nothing about being behind" "$OUTPUT" "behind="
+assert_contains "with no git the installed version is the file" "$OUTPUT" "| version=$(cat "$REPO/share/haseen/VERSION")"$'\n'
+
+# --- the installed version counts the commits since the last bump (plan 147) ---
+# VERSION is set by hand, so every install printed 0.2.0-dev however many
+# merges it carried (owner, 2026-10-31). The installed tree, its stamp and the
+# closing line carry the build's number instead; the checkout's file stays.
+stub git 'case "$*" in
+*"rev-parse --short HEAD") echo abc1234 ;;
+*"log -1 --format=%H -- share/haseen/VERSION") echo 1111111111111111111111111111111111111111 ;;
+*"rev-list --count 1111111111111111111111111111111111111111..HEAD") echo 21 ;;
+esac
+exit 0'
+capture "$REPO/install.sh" --dry-run --tree-only </dev/null
+build="$(cat "$REPO/share/haseen/VERSION").21"
+assert_status "a checkout past its bump installs" 0 "$STATUS"
+assert_contains "the installed tree gets the build's version" "$OUTPUT" \
+    "DRYRUN: write /usr/local/share/haseen.new/VERSION (mode 0644):"$'\n'"    | $build"$'\n'
+assert_contains "the stamp records it" "$OUTPUT" "| version=$build"$'\n'
+assert_contains "and the install names it" "$OUTPUT" "haseen $build installed under"
+assert_dry_pure "a counted version" "$OUTPUT"
 
 # --- the banner says when the remote last reached the checkout -------------------
 # `behind` is only as fresh as the refs git holds: on IO both HEAD and origin/main

@@ -218,7 +218,7 @@ uninstall_tree() {
 }
 
 install_tree() {
-    local f
+    local f version
     # The sampling daemon is compiled into the tree before it is copied, or,
     # when this machine has no Go toolchain, fetched from the sidecar release
     # and checked against its SHA256SUMS (plan 127). If neither is possible the
@@ -237,6 +237,11 @@ install_tree() {
     # Root-owned, not the checkout owner's: root commands (sudo haseen …) and the
     # greeter, which runs as another user, execute from this tree.
     run_root cp -R --preserve=mode,timestamps,links "$REPO/share/haseen" "$PREFIX/share/haseen.new"
+    # The installed tree carries the build's version, not the file as set by
+    # hand: every merge since the last bump counts up (plan 147), and
+    # `haseen --version`, `haseen about` and the stamp all read this one.
+    version="$(install_build_version "$REPO")"
+    printf '%s\n' "$version" | write_root_file "$PREFIX/share/haseen.new/VERSION"
     if [[ -d $PREFIX/share/haseen ]]; then
         run_root mv "$PREFIX/share/haseen" "$PREFIX/share/haseen.old"
     fi
@@ -262,9 +267,8 @@ install_tree() {
     # checkout's commit, so a later run over the same tree says so instead of
     # reinstalling it. A checkout without git records "unknown", which never
     # counts as current.
-    install_stamp_write "$PREFIX" "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
-        "$(cat "$REPO/share/haseen/VERSION")"
-    info "haseen $(cat "$REPO/share/haseen/VERSION") installed under $PREFIX"
+    install_stamp_write "$PREFIX" "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)" "$version"
+    info "haseen $version installed under $PREFIX"
 }
 
 # The checkout this tree is built from, whether git already knows of newer
