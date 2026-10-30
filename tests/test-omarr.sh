@@ -93,7 +93,9 @@ case "$url" in
 *) printf "\n404" ;;
 esac'
     # The download card's sender: prints an id, then waits like notify-send -A.
+    # An event toast (its action is Open) answers as one that expired unclicked.
     stub notify-send 'printf "%s\n" "$*" >>"$NOTIFY_LOG"
+for a in "$@"; do [ "$a" = "exec=Open" ] && { echo 8; exit 0; }; done
 for a in "$@"; do [ "$a" = "-A" ] && { echo 7; exec sleep 30; }; done
 for a in "$@"; do [ "$a" = "-p" ] && echo 7; done
 exit 0'
@@ -188,8 +190,12 @@ ShellRoot {
                     downloads: s.nowFeed.downloadingCount, job: s.progressJob ? s.progressJob.title : "", noteId: s.progressNoteId,
                     sonarr: s.snapshots[0].statusText, queue: s.snapshots[0].queue.length };
                 probe.panel.showSettings = true;
+                // An event notification: the notification server keeps it,
+                // so the bar badge must not count it.
+                s.sendToast({ type: "grabbed", serviceName: "Sonarr", body: "Fixture Show" }, s.services[0]);
                 probe.step = 1;
             } else if (probe.step === 1) {
+                probe.seen.toast = { bar: probe.widget.text, badge: s.badgeCount, unread: typeof s.unreadCount };
                 probe.seen.settings = { loaded: !!probe.panel.children };
                 probe.panel.showSettings = false;
                 probe.panel.detailId = "svc-1";
@@ -228,6 +234,9 @@ EOF
     assert_eq "engine: the download card follows the job" "Fixture.Show.S01E02|7" "$(r '[.loaded.job, .loaded.noteId] | join("|")')"
     assert_contains "engine: the card is a waiting haseen notification with the client's icon" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sabnzbd.svg -t 0 -p -A exec=Hide -- Fixture.Show.S01E02 42% · 3.1 MB/s · 4m left · SABnzbd"
     assert_eq "engine: the scroll marks sit on their views' right edge" "end,end,end" "$(r .marks)"
+    assert_contains "engine: an event goes to the notification server" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sonarr.svg -p -A exec=Open -- Sonarr grabbed Fixture Show"
+    assert_eq "engine: the bar badge does not count it, the server keeps it" "1|1|undefined" "$(r '[.toast.bar, .toast.badge, .toast.unread] | map(tostring) | join("|")')"
+    assert_eq "engine: the feed carries no unread tally" "false|true" "$(jq -r '[has("unreadCount"), has("badgeCount")] | map(tostring) | join("|")' "$legacy/feed.json" 2>&1)"
     assert_eq "engine: a closed panel tells the service" "false" "$(r .closed.panelOpen)"
     assert_eq "engine: turning the card off closes it without hiding the job" "|" "$(r '[.cardOff.noteId, .cardOff.dismissed] | join("|")')"
     assert_eq "engine: the setting was saved" "false" "$(jq -r '.plugins["haseen.omarr"].settings.showProgressToast' "$XDG_CONFIG_HOME/haseen/shell.json")"

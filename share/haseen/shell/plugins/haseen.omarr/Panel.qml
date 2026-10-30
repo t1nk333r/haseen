@@ -311,7 +311,7 @@ Item {
         keyCatcher.forceActiveFocus();
     }
     // The service polls its downloaders fast and fetches art only while a
-    // panel is open, and clears the unread badge when one opens.
+    // panel is open.
     Component.onDestruction: {
         if (openedService)
             openedService.setPanelOpen(false);

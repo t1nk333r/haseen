@@ -2028,7 +2028,6 @@ function feedDocument(state, nowMs) {
     statusText: feedText(s.statusText),
     badgeCount: Math.max(0, parseInt(s.badgeCount, 10) || 0),
     badgeUrgent: s.badgeUrgent === true,
-    unreadCount: Math.max(0, parseInt(s.unreadCount, 10) || 0),
     downloadingCount: Math.max(0, parseInt(feed.downloadingCount, 10) || 0),
     downCount: Math.max(0, parseInt(feed.downCount, 10) || 0),
     // One element per configured service, whole: the lists below are the ones
