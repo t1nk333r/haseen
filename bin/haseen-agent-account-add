@@ -84,13 +84,24 @@ have "$PROVIDER" ||
 acct_require_registry "$PROVIDER"
 mapfile -t login < <(acct_login_command "$PROVIDER")
 
-browser="" pending=""
+browser="" pending="" login_done=false discard=false
 cleanup() {
     # A dry run made nothing; its paths are placeholders.
     $DRY_RUN && return 0
     [[ -n $browser ]] && run rm -f -- "$browser"
-    # A login that did not become an account leaves no half-made home.
-    [[ -n $pending && $pending == "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/"* ]] && run rm -rf -- "$pending"
+    [[ -n $pending && $pending == "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/"* ]] || return 0
+    # Interrupted while the CLI was signing in (a closed terminal), the CLI
+    # may still be writing there: the receipt lets the next add decide, once
+    # nothing runs in the home (plan 146).
+    $login_done || return 0
+    # A finished login that was not registered (the registry could not be
+    # written) is kept for the next add to register; any other half-made home
+    # goes.
+    if ! $discard && acct_signed_in "$PROVIDER" "$pending"; then
+        warn "the $name sign-in finished but was not added; haseen agent account add $PROVIDER adds it"
+        return 0
+    fi
+    run rm -rf -- "$pending"
     return 0
 }
 trap cleanup EXIT
@@ -146,6 +157,21 @@ if ! acct_signed_in "$PROVIDER" "$(acct_primary_home "$PROVIDER")"; then
     exit 0
 fi
 
+# A finished sign-in an earlier add could not register is added before
+# another login is asked for (Omarchy's recover; plan 146). The lock is let
+# go again before the browser login, which may take minutes.
+acct_lock "$PROVIDER"
+acct_recover "$PROVIDER"
+if ((${#ACCT_RECOVERED[@]} > 0)); then
+    for entry in "${ACCT_RECOVERED[@]}"; do
+        echo "Added $(jq -r '.label + (if (.email // "") != "" then " (" + .email + ")" else "" end)' <<<"$entry"), a sign-in that was interrupted before it was added."
+    done
+    acct_usage_timer_sync "$PROVIDER" "$(acct_load "$PROVIDER")"
+    echo "Switch to it with: haseen agent account use $PROVIDER $(jq -r .id <<<"${ACCT_RECOVERED[0]}")"
+    exit 0
+fi
+acct_unlock
+
 if [[ -z $label && -t 0 ]] && ! $DRY_RUN; then
     read -r -p "Name this $name account: " label || exit 130
 fi
@@ -163,7 +189,11 @@ else
     pending="$(run mktemp -d "$AGENT_ACCOUNTS_DIR/$PROVIDER/.pending/login-XXXXXX")"
 fi
 acct_link_shared "$PROVIDER" "$pending"
-login_in "$pending" || die "the $name sign-in did not finish, so no account was added"
+acct_receipt_write "$pending" "$label"
+status=0
+login_in "$pending" || status=$?
+login_done=true
+((status == 0)) || die "the $name sign-in did not finish, so no account was added"
 if $DRY_RUN; then
     echo "DRYRUN: register the login in $pending as a $name account (a dry run signs in nobody)"
     exit 0
@@ -175,6 +205,7 @@ acct_lock "$PROVIDER"
 reg="$(acct_load "$PROVIDER")"
 if same="$(jq -ce --arg id "$(jq -r .accountId <<<"$found")" \
     'first(.accounts[] | select((.accountId // "") == $id))' <<<"$reg")"; then
+    discard=true
     die "that is $(jq -r '.label + (if (.email // "") != "" then " (" + .email + ")" else "" end)' <<<"$same"), already here; try again and sign in as the other account in the private window"
 fi
 [[ -n $label ]] || label="$(jq -r '.email | split("@")[0]' <<<"$found")"
@@ -183,10 +214,16 @@ id="$(acct_unique_id "$PROVIDER" "$reg" "$label")"
 home="$AGENT_ACCOUNTS_DIR/$PROVIDER/$id"
 [[ $PROVIDER == claude ]] && acct_carry_settings "$pending"
 acct_private_credentials "$PROVIDER" "$pending"
-run mv -T -- "$pending" "$home"
-pending=""
 entry="$(jq -c --arg id "$id" --arg label "$label" --arg home "$home" \
     '{id: $id, label: $label, home: $home, primary: false} + .' <<<"$found")"
-acct_save "$PROVIDER" "$(jq -c --argjson e "$entry" '.accounts += [$e]' <<<"$reg")"
+# The receipt carries the entry across the move, so an add that dies before
+# the save leaves an account the next add registers (plan 146).
+acct_receipt_write "$pending" "$label" "$entry"
+run mv -T -- "$pending" "$home"
+pending=""
+reg="$(jq -c --argjson e "$entry" '.accounts += [$e]' <<<"$reg")"
+acct_save "$PROVIDER" "$reg"
+run rm -f -- "$home/$AGENT_LOGIN_RECEIPT"
+acct_usage_timer_sync "$PROVIDER" "$reg"
 echo "Added $label$(jq -r 'if .email != "" then " (" + .email + ")" else "" end' <<<"$found")."
 echo "Switch to it with: haseen agent account use $PROVIDER $id"

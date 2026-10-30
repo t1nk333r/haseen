@@ -9,10 +9,21 @@
 # lives in ~/.cache/haseen/agent-usage instead of ~/.cache/omarchy, and its
 # argparse name; it runs under the system Python, isolated (plan 093).
 #
-# Credentials: the access token is read from Claude Code's own
-# .credentials.json at run time, as Omarchy does, and goes nowhere but the
-# Authorization header of the limits probe. Nothing prints or stores it; the
-# cache holds only the limits. No probe is made without a live token.
+# With two or more Claude accounts (plan 108), every account's limits are
+# probed from its own home, each with a cache of its own, and the record lists
+# them under "accounts"; the top level keeps describing the account in use.
+# Ported from Omarchy 4.5's collector (v4.5.0-rc1 account_limits, c05d90196
+# #13770; rc2 account_entry and the seven_day week, 80e94608 #14040), along
+# with rc1's "Limits paused" for a lapsed access token (75250d37 #14049); plan
+# 146. One account keys its cache by who it is signed in as, so a switch never
+# shows the last account's numbers.
+#
+# Credentials: each access token is read from Claude Code's own
+# .credentials.json in its home at run time, as Omarchy does, and goes nowhere
+# but the Authorization header of that account's limits probe. Nothing prints
+# or stores it; the caches hold only the limits. No probe is made without a
+# live token. The registry passed below holds ids, labels, homes and display
+# fields; it never held a token.
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
@@ -21,6 +32,17 @@ omarchy_help "Usage: omarchy-agent-usage-claude [--force] [--limits-only] [--cac
 Prints the Claude Code usage record as one JSON line. --force rescans the
 transcripts and re-probes the limits; --limits-only reuses a recent scan.
 Writes only its cache under ${XDG_CACHE_HOME:-$HOME/.cache}/haseen/agent-usage." "$@"
+# shellcheck source=../../lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+HASEEN_AGENT_ACCOUNTS=""
+if acct_registry_source claude >/dev/null; then
+    HASEEN_AGENT_ACCOUNTS="$(acct_load claude | jq -c --arg primary "$(acct_primary_home claude)" '
+        if (.accounts | length) < 2 then empty else .active as $a
+        | [.accounts[] | {id, label: (.label // .id), email: (.email // ""), plan: (.plan // ""),
+            accountId: (.accountId // ""), primary: (.primary == true), active: (.id == $a),
+            home: (if (.home // "") == "" then $primary else .home end)}] end')" || HASEEN_AGENT_ACCOUNTS=""
+fi
+export HASEEN_AGENT_ACCOUNTS
 
 exec /usr/bin/python3 -I -B - "$@" <<'PY'
 """Collect Claude Code usage into one display-ready JSON record.
@@ -598,20 +620,30 @@ def merge_stats(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------- limits
 
 
-# The access token, its expiry, and the display-safe plan label from the
-# CLI's login. Nothing else leaves the credential store: the token goes
-# nowhere but the Authorization header of the limits probe, and only the
-# plan label may travel into the printed record.
-def oauth_login(claude_dir: Path) -> tuple[str, int, str]:
+# A JSON object from a file, or {} for anything else.
+def read_json(path: Path) -> dict[str, Any]:
   try:
-    data = json.loads((claude_dir / ".credentials.json").read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
   except Exception:
-    return "", 0, ""
-  login = data.get("claudeAiOauth")
+    return {}
+  return data if isinstance(data, dict) else {}
+
+
+# The access token, its expiry and its refresh token's, and the display-safe
+# plan label from the CLI's login. Nothing else leaves the credential store:
+# the token goes nowhere but the Authorization header of the limits probe,
+# and only the plan label may travel into the printed record.
+def oauth_login(claude_dir: Path) -> tuple[str, int, int, str]:
+  login = read_json(claude_dir / ".credentials.json").get("claudeAiOauth")
   if not isinstance(login, dict):
-    return "", 0, ""
+    return "", 0, 0, ""
   plan = plan_label(str(login.get("rateLimitTier") or ""), str(login.get("subscriptionType") or ""))
-  return str(login.get("accessToken") or ""), number(login.get("expiresAt")), plan
+  return (
+    str(login.get("accessToken") or ""),
+    number(login.get("expiresAt")),
+    number(login.get("refreshTokenExpiresAt")),
+    plan,
+  )
 
 
 def plan_label(tier: str, subscription: str) -> str:
@@ -747,8 +779,14 @@ def probe_limits(access_token: str) -> dict[str, Any]:
       help_text = "Anthropic's usage endpoint is rate limiting checks right now" + (
         f" (retry after {retry_after}s)" if retry_after else ""
       ) + ". Local Claude Code stats are still shown."
-    else:
-      help_text = f"Anthropic's usage endpoint returned status {error.code}. Local Claude Code stats are still shown."
+      return {"ok": False, "rateLimited": True, "helpText": help_text}
+    if error.code in (401, 403):
+      return {
+        "ok": False,
+        "refused": True,
+        "helpText": "Anthropic refused Claude Code's sign-in. Start Claude Code, or run `claude auth login`, to sign in again.",
+      }
+    help_text = f"Anthropic's usage endpoint returned status {error.code}. Local Claude Code stats are still shown."
     return {"ok": False, "helpText": help_text}
   except Exception:
     # A transport failure reached no server at all — no route, no DNS. Any
@@ -759,8 +797,14 @@ def probe_limits(access_token: str) -> dict[str, Any]:
       "transport": True,
       "helpText": "Couldn't reach Anthropic's usage endpoint. Retrying shortly. Local Claude Code stats are still shown.",
     }
+  if not isinstance(payload, dict):
+    payload = {}
 
-  weekly = usage_bucket(payload, "seven_day_oauth_apps") or usage_bucket(payload, "seven_day")
+  # The account's week is `seven_day`, the row Claude Code's own /usage titles
+  # "Current week (all models)". `seven_day_oauth_apps` is a side bucket it
+  # groups with cowork and never shows as the weekly limit (Omarchy
+  # v4.5.0-rc2, 80e94608).
+  weekly = usage_bucket(payload, "seven_day")
   session = usage_bucket(payload, "five_hour")
   raw = [session.get("utilization") if session else None, weekly.get("utilization") if weekly else None]
   # One payload speaks one convention, so the scoped entries settle the scale
@@ -812,15 +856,28 @@ def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
   ]
 
 
-def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
-  result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
+# Numbers measured this recently still describe the account when a later
+# probe is only rate limited (Omarchy's CURRENT_ENOUGH_SECONDS).
+CURRENT_ENOUGH_SECONDS = 900
+
+
+# `live` says the numbers came from Anthropic just now (or within the reuse
+# window) rather than from a cache kept past a failed or impossible probe;
+# `fetchedAtMs` says when they were measured, so a stale account can say how
+# old they are. Each account keeps its own cache, `cache_name`, so one
+# account's allowance never stands in for another's.
+def collect_limits(access_token: str, expires_at_ms: int, refresh_expires_at_ms: int, force: bool, cache_name: str = "claude-limits.json") -> dict[str, Any]:
+  result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP, "live": False, "fetchedAtMs": 0}
 
   # A panel that is opened and shut repeatedly must not turn into a request
   # per flick, so recent probe results are reused for a short window — and
   # kept as the answer of record when a later probe fails.
-  probe_cache = cache_root() / "claude-limits.json"
+  probe_cache = cache_root() / cache_name
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fallback = usable_cached_limits(cached)
+  fetched_at_ms = number(cached.get("fetchedAtMs"))
+  result["fetchedAtMs"] = fetched_at_ms if fallback else 0
+  now_ms = time.time() * 1000
 
   # Probing needs a live token and only the Claude Code CLI can mint one: it
   # refreshes the credential file when it runs, so a machine left alone long
@@ -831,8 +888,20 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
     result["limits"] = fallback
     result["usageStatusText"] = "Waiting for auth"
     return result
-  if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
+  if expires_at_ms > 0 and expires_at_ms <= now_ms:
     result["limits"] = fallback
+    # A lapsed access token is routine, not a sign-out: it lives about eight
+    # hours, and the CLI mints a new one from the refresh token the next time
+    # it runs, so an account not in use reads this within hours. Only a
+    # lapsed refresh token is a sign-in a person must redo.
+    if refresh_expires_at_ms > now_ms:
+      result["usageStatusText"] = "Limits paused"
+      result["authHelpText"] = (
+        "Claude Code's access token has lapsed"
+        + (" — showing the last known limits." if fallback else ".")
+        + " Start Claude Code to refresh it; signing in again is not needed."
+      )
+      return result
     result["usageStatusText"] = "Sign-in expired"
     result["authHelpText"] = (
       "Claude Code's saved sign-in expired"
@@ -844,15 +913,19 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   # --force is a person asking for fresh numbers, so it skips the reuse window
   # entirely; the interval is there to absorb repeated panel opens, not to
   # overrule someone who pressed refresh.
-  fetched_at = number(cached.get("fetchedAtMs")) / 1000
-  if fallback and not force and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
+  if fallback and not force and time.time() - fetched_at_ms / 1000 < PROBE_MIN_INTERVAL_SECONDS:
     result["limits"] = fallback
+    result["live"] = True
+    result["authHelpText"] = ""
     return result
 
   probe = probe_limits(access_token)
   if probe["ok"]:
     result["limits"] = probe["limits"]
-    write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": probe["limits"]})
+    result["live"] = True
+    result["authHelpText"] = ""
+    result["fetchedAtMs"] = round(time.time() * 1000)
+    write_json(probe_cache, {"fetchedAtMs": result["fetchedAtMs"], "limits": probe["limits"]})
     return result
 
   # The first probe after login often fires before DHCP has handed out a
@@ -861,10 +934,87 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
     result["retryAdvised"] = True
   if fallback:
     result["limits"] = fallback
+    result["authHelpText"] = probe["helpText"]
+    # Anthropic rate-limits this endpoint readily, and a 429 only says "ask
+    # later": numbers measured minutes ago still describe the account. Any
+    # other failure leaves them stale.
+    result["live"] = bool(probe.get("rateLimited")) and time.time() - fetched_at_ms / 1000 < CURRENT_ENOUGH_SECONDS
   else:
     result["usageStatusText"] = "Claude limits unavailable"
     result["authHelpText"] = probe["helpText"]
+  if probe.get("refused"):
+    result["usageStatusText"] = "Sign-in expired"
   return result
+
+
+# ---------------------------------------------------------------- accounts
+
+
+# The CLI's profile for a config home: a legacy .config.json inside it, else
+# ~/.claude.json for the default home and <home>/.claude.json for one it was
+# pointed at with CLAUDE_CONFIG_DIR. Another home's profile describes another
+# account.
+def profile_path(home: Path) -> Path:
+  legacy = home / ".config.json"
+  if legacy.exists():
+    return legacy
+  configured = os.environ.get("CLAUDE_CONFIG_DIR")
+  if home == expand_path("~/.claude") and not (configured and expand_path(configured) == home):
+    return Path.home() / ".claude.json"
+  return home / ".claude.json"
+
+
+# Who a home is signed in as now, made safe for a file name.
+def current_account_key(home: Path) -> str:
+  account = read_json(profile_path(home)).get("oauthAccount")
+  identity = str(account.get("accountUuid") or "") if isinstance(account, dict) else ""
+  return re.sub(r"[^A-Za-z0-9_-]", "", identity)
+
+
+# The accounts `haseen agent account` keeps for Claude, as the bash part of
+# this command read them from the registry: id, label, home, display fields
+# and which one new sessions use. Only two or more matter: with one, the
+# record is exactly what it always was.
+def registered_accounts() -> list[dict[str, Any]]:
+  try:
+    data = json.loads(os.environ.get("HASEEN_AGENT_ACCOUNTS") or "[]")
+  except Exception:
+    return []
+  accounts = [a for a in data if isinstance(a, dict) and a.get("id") and a.get("home")] if isinstance(data, list) else []
+  if len(accounts) < 2:
+    return []
+  if not any(a.get("active") is True for a in accounts):
+    accounts[0]["active"] = True
+  return accounts
+
+
+def account_limits(account: dict[str, Any], force: bool) -> dict[str, Any]:
+  home = expand_path(str(account["home"]))
+  access_token, expires_at_ms, refresh_expires_at_ms, plan = oauth_login(home)
+  # Keyed by the subscription, not the label: forget "Work" and add a
+  # different "Work", and the new one must never fall back on the old one's
+  # allowance. Who the home is signed in as now, not when it was added: a
+  # `claude auth login` run in it by hand makes it a different subscription.
+  identity = current_account_key(home)
+  key = identity or re.sub(r"[^A-Za-z0-9_-]", "", str(account.get("accountId") or "")) \
+    or re.sub(r"[^A-Za-z0-9_-]", "", str(account["id"])) or "account"
+  # The primary keeps the single-account cache until it says who it is.
+  cache_name = "claude-limits.json" if account.get("primary") is True and not identity else f"claude-limits-{key}.json"
+  limits = collect_limits(access_token, expires_at_ms, refresh_expires_at_ms, force, cache_name)
+  return {
+    "id": str(account["id"]),
+    "label": str(account.get("label") or account["id"]),
+    "email": str(account.get("email") or ""),
+    "plan": plan or str(account.get("plan") or ""),
+    "active": account.get("active") is True,
+    "primary": account.get("primary") is True,
+    "limits": limits["limits"],
+    "stale": not limits["live"] and bool(limits["limits"]),
+    "fetchedAt": limits["fetchedAtMs"],
+    "usageStatusText": limits["usageStatusText"],
+    "authHelpText": limits["authHelpText"],
+    "retryAdvised": bool(limits.get("retryAdvised")),
+  }
 
 
 # -------------------------------------------------------------------- record
@@ -900,8 +1050,22 @@ def main() -> int:
   if opencode is not None:
     stats = merge_stats(stats, opencode)
 
-  access_token, expires_at_ms, plan = oauth_login(claude_dir)
-  limits = collect_limits(access_token, expires_at_ms, args.force)
+  accounts = [account_limits(account, args.force) for account in registered_accounts()]
+  current = next((a for a in accounts if a["active"]), None)
+  if current:
+    # The top-level fields keep describing the account new sessions use, so
+    # anything reading one set of limits stays right.
+    plan = current["plan"]
+    limits = {key: current[key] for key in ("limits", "usageStatusText", "authHelpText", "retryAdvised")}
+    stale, fetched_at = current["stale"], current["fetchedAt"]
+  else:
+    access_token, expires_at_ms, refresh_expires_at_ms, plan = oauth_login(claude_dir)
+    # Keyed by who the home is signed in as, as an account's is, so signing
+    # in to another subscription never shows the last one's numbers.
+    identity = current_account_key(claude_dir)
+    cache_name = f"claude-limits-{identity}.json" if identity else "claude-limits.json"
+    limits = collect_limits(access_token, expires_at_ms, refresh_expires_at_ms, args.force, cache_name)
+    stale, fetched_at = not limits["live"] and bool(limits["limits"]), limits["fetchedAtMs"]
 
   record = {
     "schemaVersion": 1,
@@ -914,9 +1078,15 @@ def main() -> int:
     "usageStatusText": limits["usageStatusText"],
     "authHelpText": limits["authHelpText"],
     "limits": limits["limits"],
+    # Numbers kept past a failed probe, and when they were measured, so the
+    # panel can tell them apart from ones checked just now.
+    "limitsStale": stale,
+    "limitsFetchedAt": fetched_at,
   }
   if limits.get("retryAdvised"):
     record["retryAdvised"] = True
+  if accounts:
+    record["accounts"] = accounts
   record.update(stats)
   print(json.dumps(record, separators=(",", ":"), sort_keys=True))
   return 0

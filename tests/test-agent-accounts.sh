@@ -27,6 +27,17 @@ acct() {
     LOG="$SANDBOX/calls"
     : >"$LOG"
     STATE="$HOME/.local/state/haseen/agents/accounts"
+    # A user manager stand-in (plan 146's limits timer): it records every call
+    # and links the timer into timers.target.wants as `enable` does, so the
+    # next change sees it enabled.
+    SYSTEMCTL_LOG="$SANDBOX/systemctl.log"
+    : >"$SYSTEMCTL_LOG"
+    local wants="$XDG_CONFIG_HOME/systemd/user/timers.target.wants"
+    stub systemctl "echo \"systemctl \$*\" >>\"$SYSTEMCTL_LOG\"
+case \" \$* \" in
+*' enable --now '*) mkdir -p \"$wants\" && ln -sf /dev/null \"$wants/haseen-agent-usage.timer\" ;;
+*' disable --now '*) rm -f \"$wants/haseen-agent-usage.timer\" ;;
+esac"
     local cli
     for cli in claude codex grok; do
         cat >"$SANDBOX/stubs/$cli" <<EOF
@@ -75,6 +86,7 @@ EOF
     done
 }
 logins() { cat "$LOG"; }
+timer_calls() { cat "$SYSTEMCTL_LOG"; }
 # never_printed LABEL TEXT — no fake credential appears in TEXT.
 never_printed() { assert_not_contains "$1 prints no credential" "$2" "$FAKE_TOKEN"; }
 
@@ -520,7 +532,7 @@ capture "$OMA/omarchy-agent-account-mode" claude
 assert_contains "mode says accounts switch when told" "$OUTPUT" "Claude switches accounts when you say so"
 capture "$OMA/omarchy-agent-account-mode" claude auto 90
 assert_status "automatic switching is refused" 1 "$STATUS"
-assert_contains "with the reason" "$OUTPUT" "haseen's usage collectors read only the active account's"
+assert_contains "with the reason" "$OUTPUT" "switching near a limit is not built (plan 146)"
 : >"$LOG"
 capture "$OMA/omarchy-agent-account-add" --events claude --dry-run
 assert_status "add drops Omarchy's --events" 0 "$STATUS"
@@ -597,3 +609,197 @@ for spec in antigravity:agy antigravity-cli:agy kimi-code:kimi openrouter:ori ge
 done
 assert_eq "the menu offers the three new agents" "agy kimi ori" \
     "$(grep -oE '"setup\.default\.agent\.(agy|kimi|ori)"' "$HASEEN_PATH/default/menu.jsonc" | grep -oE '(agy|kimi|ori)' | tr '\n' ' ' | sed 's/ $//')"
+
+# --- every Claude account's limits (plan 146) -------------------------------------
+acct accounts-limits
+# Any probe that slipped past the seeded caches would end at a closed local
+# port: https goes through the proxy's CONNECT, so no token leaves TLS and
+# nothing reaches Anthropic.
+export https_proxy=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9
+unset no_proxy NO_PROXY
+haseen agent account add claude >/dev/null
+assert_eq "one Claude account starts no timer" "" "$(timer_calls)"
+capture env FAKE_ACCOUNT=uuid-work FAKE_USER=work haseen agent account add claude Work </dev/null
+assert_status "the second account is added" 0 "$STATUS"
+assert_eq "and the second Claude account starts the limits timer" \
+    "systemctl --user enable --now haseen-agent-usage.timer" "$(timer_calls)"
+: >"$SYSTEMCTL_LOG"
+haseen agent account add codex >/dev/null
+FAKE_ACCOUNT=acct-2 FAKE_USER=second haseen agent account add codex Second </dev/null >/dev/null
+FAKE_ACCOUNT=uuid-third FAKE_USER=third haseen agent account add claude Third </dev/null >/dev/null
+assert_eq "Codex accounts and a third Claude one leave the timer alone" "" "$(timer_calls)"
+haseen agent account remove claude third --yes >/dev/null
+assert_eq "so does a remove that leaves two" "" "$(timer_calls)"
+
+# A live token whose numbers were just measured, and a lapsed one whose
+# refresh token is still good, each with its own cache. The fresh cache is
+# dated ahead, so the probe's reuse window cannot lapse on a slow runner.
+now_ms=$(($(date +%s) * 1000))
+future_ms=$((now_ms + 86400000))
+LIMITS="$XDG_CACHE_HOME/haseen/agent-usage"
+mkdir -p "$LIMITS"
+printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":%s,"refreshTokenExpiresAt":%s,"rateLimitTier":"default_claude_max_20x"}}\n' \
+    "$FAKE_TOKEN" "$FAKE_TOKEN" "$future_ms" "$future_ms" >"$HOME/.claude/.credentials.json"
+printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":1,"refreshTokenExpiresAt":%s}}\n' \
+    "$FAKE_TOKEN" "$FAKE_TOKEN" "$future_ms" >"$STATE/claude/work/.credentials.json"
+printf '{"fetchedAtMs":%s,"limits":[{"label":"Session","title":"Session","percent":0.42,"resetsAt":""}]}\n' \
+    "$((now_ms + 600000))" >"$LIMITS/claude-limits-uuid-main.json"
+printf '{"fetchedAtMs":1700000000000,"limits":[{"label":"Week","title":"Week","percent":0.5,"resetsAt":""}]}\n' \
+    >"$LIMITS/claude-limits-uuid-work.json"
+haseen agent account use claude work >/dev/null
+capture env HASEEN_AGENT_USAGE_DIR="$SANDBOX/usage" "$OMA/omarchy-agent-usage-update" claude
+assert_status "the usage update with two accounts succeeds" 0 "$STATUS"
+rec="$(cat "$SANDBOX/usage/claude.json")"
+assert_eq "the record lists every account, in the registry's order" "main:false work:true" \
+    "$(jq -r '[.accounts[] | .id + ":" + (.active | tostring)] | join(" ")' <<<"$rec")"
+assert_eq "each account's limits come from its own sign-in" "main 0.42|work 0.5" \
+    "$(jq -r '[.accounts[] | .id + " " + (.limits[0].percent | tostring)] | join("|")' <<<"$rec")"
+assert_eq "numbers measured now are current" "false|||Max 20x" \
+    "$(jq -r '.accounts[0] | [(.stale | tostring), .usageStatusText, .authHelpText, .plan] | join("|")' <<<"$rec")"
+assert_eq "a lapsed access token with a good refresh token pauses, keeping its numbers" "true|Limits paused|1700000000000" \
+    "$(jq -r '.accounts[1] | [(.stale | tostring), .usageStatusText, (.fetchedAt | tostring)] | join("|")' <<<"$rec")"
+assert_contains "and needs no new sign-in" "$(jq -r '.accounts[1].authHelpText' <<<"$rec")" "signing in again is not needed"
+assert_eq "the record's own fields describe the account in use" "work|Limits paused|0.5|true|1700000000000" \
+    "$(jq -r '[.account.id, .usageStatusText, (.limits[0].percent | tostring), (.limitsStale | tostring), (.limitsFetchedAt | tostring)] | join("|")' <<<"$rec")"
+never_printed "the record" "$rec"
+assert_eq "no cache holds a token" "" "$(grep -rl "$FAKE_TOKEN" "$LIMITS" "$SANDBOX/usage" || true)"
+assert_eq "no shared cache stands in for an account" "no" "$([[ -e $LIMITS/claude-limits.json ]] && echo yes || echo no)"
+
+# haseen agent account usage: by hand it asks for fresh numbers; the timer's
+# run asks only while there is a second account and the panel shows usage.
+capture haseen agent account usage --dry-run
+assert_eq "a run by hand forces fresh numbers" "DRYRUN: $OMA/omarchy-agent-usage-update --force claude" "$OUTPUT"
+capture haseen agent account usage --timer --dry-run
+assert_status "the timer's run with the usage section off" 0 "$STATUS"
+assert_eq "asks nobody" "" "$OUTPUT"
+mkdir -p "$XDG_CONFIG_HOME/haseen"
+printf '{"plugins":{"haseen.agents":{"settings":{"usage":true}}}}\n' >"$XDG_CONFIG_HOME/haseen/shell.json"
+capture haseen agent account usage --timer --dry-run
+assert_eq "with it on, the timer's run reuses recent numbers" \
+    "DRYRUN: $OMA/omarchy-agent-usage-update --limits-only claude" "$OUTPUT"
+capture haseen agent account usage --help
+assert_status "usage --help" 0 "$STATUS"
+assert_contains "names the timer" "$OUTPUT" "haseen-agent-usage.timer"
+capture haseen agent account usage --every-minute
+assert_status "an unknown option is refused" 2 "$STATUS"
+
+: >"$SYSTEMCTL_LOG"
+capture haseen agent account remove claude work --dry-run
+assert_contains "a dry remove that leaves one prints the timer's stop" "$OUTPUT" \
+    "DRYRUN: systemctl --user disable --now haseen-agent-usage.timer"
+assert_eq "and stops nothing" "" "$(timer_calls)"
+haseen agent account remove claude work --yes >/dev/null
+assert_eq "the remove that leaves one stops the timer" \
+    "systemctl --user disable --now haseen-agent-usage.timer" "$(timer_calls)"
+capture haseen agent account usage --timer --dry-run
+assert_eq "and with one account the timer's run asks nobody" "" "$OUTPUT"
+
+# One account: its cache is keyed by who the home is signed in as, so the
+# numbers a shared cache kept for another subscription are never shown.
+printf '{"fetchedAtMs":%s,"limits":[{"label":"Session","title":"Session","percent":0.99,"resetsAt":""}]}\n' \
+    "$((now_ms + 600000))" >"$LIMITS/claude-limits.json"
+capture env HASEEN_AGENT_USAGE_DIR="$SANDBOX/usage" "$OMA/omarchy-agent-usage-update" claude
+assert_eq "one account reads its own cache, not the shared one" "0.42|false" \
+    "$(jq -r '[(.limits[0].percent | tostring), (has("accounts") | tostring)] | join("|")' "$SANDBOX/usage/claude.json")"
+
+# No user manager (a console, a container): the account is still added.
+stub systemctl 'exit 1'
+capture env FAKE_ACCOUNT=uuid-late FAKE_USER=late haseen agent account add claude Late </dev/null
+assert_status "an add without a user manager still succeeds" 0 "$STATUS"
+assert_contains "and says the timer did not start" "$OUTPUT" "could not start haseen-agent-usage.timer"
+unset https_proxy HTTPS_PROXY
+
+# --- a finished sign-in an add could not register (plan 146) ----------------------
+acct accounts-recover
+haseen agent account add claude >/dev/null
+P="$STATE/claude/.pending"
+# finished_login HOME UUID USER — what the fake CLI's login leaves there.
+finished_login() {
+    mkdir -p "$1"
+    chmod 700 "$1"
+    printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":1}}\n' \
+        "$FAKE_TOKEN" "$FAKE_TOKEN" >"$1/.credentials.json"
+    printf '{"oauthAccount":{"accountUuid":"%s","emailAddress":"%s@example.com"}}\n' "$2" "$3" >"$1/.claude.json"
+}
+# receipt HOME LABEL OWNER STARTED — the add that owns HOME.
+receipt() {
+    jq -nc --arg label "$2" --argjson owner "$3" --arg started "$4" \
+        '{label: $label, owner: $owner, started: $started}' >"$1/.haseen-login.json"
+}
+stat_rest="$(cat /proc/$$/stat)"
+stat_rest=${stat_rest##*") "}
+read -ra stat_fields <<<"$stat_rest"
+alive_start=${stat_fields[19]}
+finished_login "$P/login-dead" uuid-side side
+receipt "$P/login-dead" Side 1 not-a-start-time
+finished_login "$P/login-live" uuid-live live
+receipt "$P/login-live" Live "$$" "$alive_start"
+mkdir -p "$P/login-empty"
+receipt "$P/login-empty" Empty 1 not-a-start-time
+finished_login "$P/login-unowned" uuid-unowned unowned
+: >"$LOG"
+capture env FAKE_ACCOUNT=uuid-other FAKE_USER=other haseen agent account add claude Other </dev/null
+assert_status "an add that finds a finished, abandoned sign-in succeeds" 0 "$STATUS"
+assert_contains "it adds that one" "$OUTPUT" "Added Side (side@example.com), a sign-in that was interrupted before it was added."
+assert_contains "and says how to switch" "$OUTPUT" "haseen agent account use claude side"
+assert_eq "without a new login" "" "$(grep ' login ' "$LOG" || true)"
+assert_eq "registered under its receipt's name" "main side" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
+assert_eq "in its own home, without the receipt" "yes no" \
+    "$([[ -f $STATE/claude/side/.credentials.json ]] && echo yes || echo no) $([[ -e $STATE/claude/side/.haseen-login.json ]] && echo yes || echo no)"
+assert_eq "an abandoned home without a login is deleted" "no" "$([[ -e $P/login-empty ]] && echo yes || echo no)"
+assert_eq "a live add's home is left alone" "yes" "$([[ -d $P/login-live ]] && echo yes || echo no)"
+assert_eq "a home without a receipt is left alone" "yes" "$([[ -d $P/login-unowned ]] && echo yes || echo no)"
+assert_eq "the second account starts the timer" "systemctl --user enable --now haseen-agent-usage.timer" "$(timer_calls)"
+never_printed "the recovery" "$OUTPUT"
+
+# The same login abandoned twice: the copy is deleted, and the add goes on.
+finished_login "$P/login-again" uuid-side side
+receipt "$P/login-again" Side 1 not-a-start-time
+: >"$LOG"
+capture env FAKE_ACCOUNT=uuid-third FAKE_USER=third haseen agent account add claude Third </dev/null
+assert_status "an add after a duplicate abandoned sign-in succeeds" 0 "$STATUS"
+assert_eq "the duplicate is deleted" "no" "$([[ -e $P/login-again ]] && echo yes || echo no)"
+assert_contains "and the add signs in as asked" "$(logins)" "claude login home=$P/login-"
+assert_contains "and adds that account" "$OUTPUT" "Added Third (third@example.com)."
+
+# Root ignores a read-only directory, so this part needs another user.
+if ((EUID != 0)); then
+    # The registry cannot be written (the accounts directory is read-only):
+    # the add fails after moving the login into place, and its receipt
+    # carries the entry for the next add.
+    chmod 500 "$STATE"
+    capture env FAKE_ACCOUNT=uuid-spare FAKE_USER=spare haseen agent account add claude Spare </dev/null
+    chmod 700 "$STATE"
+    assert_eq "an add whose registry cannot be written fails" "1" "$((STATUS != 0))"
+    assert_eq "the finished login stays, with its receipt" "yes" \
+        "$([[ -f $STATE/claude/spare/.credentials.json && -f $STATE/claude/spare/.haseen-login.json ]] && echo yes || echo no)"
+    assert_eq "the receipt is private" "600" "$(stat -c %a "$STATE/claude/spare/.haseen-login.json")"
+    assert_eq "and holds its owner and entry, no credential" "entry,label,owner,started|" \
+        "$(jq -r '(keys | join(",")) + "|" + ([.. | strings | select(test("fake-token"))] | join(","))' "$STATE/claude/spare/.haseen-login.json")"
+    assert_eq "the registry lacks it" "main side third" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
+    : >"$LOG"
+    capture haseen agent account add claude </dev/null
+    assert_status "the next add registers it" 0 "$STATUS"
+    assert_contains "and says so" "$OUTPUT" "Added Spare (spare@example.com), a sign-in that was interrupted before it was added."
+    assert_eq "with the entry it was moved with" "main side third spare" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
+    assert_eq "and no login" "" "$(grep ' login ' "$LOG" || true)"
+    assert_eq "its receipt is gone" "no" "$([[ -e $STATE/claude/spare/.haseen-login.json ]] && echo yes || echo no)"
+fi
+
+# --- the agent finds tools installed after it started (plan 146) ------------------
+acct accounts-shims
+stub claude 'printf "%s\n" "$PATH"'
+shim_path="$(MISE_DATA_DIR="$SANDBOX/mise" "$OMA/omarchy-agent-account-exec" claude)"
+assert_eq "mise's wrappers come first" "$SANDBOX/mise/command-wrappers/bin" "${shim_path%%:*}"
+assert_eq "and its shims last" "$SANDBOX/mise/shims" "${shim_path##*:}"
+shim_path="$(PATH="$SANDBOX/mise/shims:$PATH" MISE_DATA_DIR="$SANDBOX/mise" "$OMA/omarchy-agent-account-exec" claude)"
+assert_eq "shims already there are not added again" "1" "$(tr ':' '\n' <<<"$shim_path" | grep -cxF "$SANDBOX/mise/shims")"
+
+# --- a Grok settings cache that is not an object costs only the plan --------------
+acct accounts-grok-cache
+haseen agent account add grok >/dev/null
+printf '{"payload":"{\\"settings\\":\\"not an object\\"}"}\n' >"$HOME/.grok/settings_cache.json"
+capture haseen agent account list --json grok
+assert_status "list reads it" 0 "$STATUS"
+assert_eq "the account keeps its identity, without a plan" "main@example.com|" \
+    "$(jq -r '.[] | select(.provider == "grok") | .accounts[0] | .email + "|" + .plan' <<<"$OUTPUT")"

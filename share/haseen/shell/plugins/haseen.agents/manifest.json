@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "haseen.agents",
   "name": "Agents",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "The coding agents running right now: what, where, and for how long, scanned when the panel opens; optional sections for several Claude, Codex and Grok accounts and their last-collected usage",
   "kinds": [
     "panel"
@@ -24,12 +24,12 @@
     "accounts": {
       "type": "boolean",
       "default": false,
-      "description": "Show the Claude, Codex and Grok accounts (haseen agent account list); clicking one makes new sessions start as it"
+      "description": "Show the Claude, Codex and Grok accounts (haseen agent account list); clicking one makes new sessions start as it, its pencil renames it, and an add row adds one in the floating terminal"
     },
     "usage": {
       "type": "boolean",
       "default": false,
-      "description": "Show the usage records omarchy-agent-usage-update last collected (read as files; the panel never asks a provider)"
+      "description": "Show the usage records omarchy-agent-usage-update last collected, one line per Claude account when there are several (read as files; the panel never asks a provider; haseen-agent-usage.timer refreshes them while Claude has two accounts)"
     },
     "debugIpc": {
       "type": "boolean",

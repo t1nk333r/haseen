@@ -35,8 +35,9 @@
 #   anything but the primary home, and nothing here signs in by itself (no
 #   seed, layer, migration or timer runs a login; only `haseen agent account
 #   add` does). A machine or user can refuse sign-ins per provider (below).
-# - Not built: automatic switching near a limit (haseen's usage collectors
-#   read one home) and copying logins to another machine (refused; plan 108).
+# - Not built: switching near a limit (not chosen, plan 146; the Claude
+#   collector does read every account's limits) and copying logins to
+#   another machine (refused; plan 108).
 
 [[ -n ${HASEEN_AGENT_ACCOUNTS_SH:-} ]] && return 0
 HASEEN_AGENT_ACCOUNTS_SH=1
@@ -496,4 +497,154 @@ acct_active_label() {
         | ($d.active // "main") as $a
         | (first(($d.accounts // [])[]? | objects | select(.id == $a)) // {id: "main", label: "Main"})
         | {id: (.id | tostring), label: (.label // .id | tostring)}' "$src" 2>/dev/null
+}
+
+# The user timer that keeps every Claude account's limits fresh for the
+# agents panel (plan 146): `haseen agent account usage --timer` every 15
+# minutes, enabled while Claude has two or more accounts. Only Claude's
+# collector reads every account's limits.
+AGENT_USAGE_TIMER=haseen-agent-usage.timer
+
+# acct_usage_timer_on — the timer is enabled (`systemctl --user enable` links
+# it into timers.target.wants). Read from the file system, so an account
+# change that leaves it as it is starts no systemctl.
+acct_usage_timer_on() {
+    [[ -L ${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/timers.target.wants/$AGENT_USAGE_TIMER ]]
+}
+
+# acct_usage_timer_sync P REG — after a change to P's accounts, REG being the
+# registry as saved: enable and start the timer once Claude has two or more,
+# disable and stop it when one is left. Without a user manager (a console, a
+# container) the accounts still change; this only warns.
+acct_usage_timer_sync() {
+    [[ $1 == claude ]] || return 0
+    if (($(jq '.accounts | length' <<<"$2") >= 2)); then
+        acct_usage_timer_on && return 0
+        run systemctl --user enable --now "$AGENT_USAGE_TIMER" ||
+            warn "could not start $AGENT_USAGE_TIMER; the agents panel shows each Claude account's limits once it runs (systemctl --user enable --now $AGENT_USAGE_TIMER)"
+    else
+        acct_usage_timer_on || return 0
+        run systemctl --user disable --now "$AGENT_USAGE_TIMER" ||
+            warn "could not stop $AGENT_USAGE_TIMER (systemctl --user disable --now $AGENT_USAGE_TIMER)"
+    fi
+    return 0
+}
+
+# acct_unlock — let the provider's lock go before a long wait (a browser
+# login), so the panel and a typed command are not blocked by it.
+acct_unlock() {
+    [[ -n ${ACCT_LOCK_FD:-} ]] || return 0
+    exec {ACCT_LOCK_FD}>&-
+    ACCT_LOCK_FD=""
+}
+
+# A login in progress keeps a receipt in its home (plan 146, from Omarchy's
+# LOGIN_RECEIPT, 64ec3839a #15399): the pid and start time of the `add` that
+# owns it, the label it was given and, once it is about to be registered, its
+# registry entry. Display fields only, never a credential. It lets a finished
+# login survive the `add` dying before it was registered.
+AGENT_LOGIN_RECEIPT=.haseen-login.json
+
+# acct_process_start PID — the process's start time (field 22 of
+# /proc/PID/stat, in clock ticks), nothing when it is gone. The command name
+# before it may hold spaces and parentheses.
+acct_process_start() {
+    local stat rest
+    local -a fields
+    stat="$(cat -- "$(sysroot_path /proc)/$1/stat" 2>/dev/null)" || return 0
+    rest=${stat##*") "}
+    read -ra fields <<<"$rest"
+    printf '%s\n' "${fields[19]:-}"
+}
+
+# acct_receipt_write HOME LABEL [ENTRY_JSON] — HOME is this process's login.
+acct_receipt_write() {
+    jq -nc --arg label "$2" --argjson owner "$$" --arg started "$(acct_process_start "$$")" \
+        --argjson entry "${3:-null}" '{label: $label, owner: $owner, started: $started}
+        + (if $entry == null then {} else {entry: $entry} end)' |
+        replace_user_file "$1/$AGENT_LOGIN_RECEIPT"
+}
+
+# acct_receipt_orphaned HOME P — HOME has a receipt whose `add` has exited,
+# and no session runs in it: nothing is still writing there. A home without a
+# receipt is never orphaned (an older add may still own it).
+acct_receipt_orphaned() {
+    local receipt="$1/$AGENT_LOGIN_RECEIPT" owner started
+    [[ -f $receipt && ! -L $receipt ]] || return 1
+    owner="$(jq -r '.owner // "" | tostring' "$receipt" 2>/dev/null)" || return 1
+    started="$(jq -r '.started // "" | tostring' "$receipt" 2>/dev/null)" || return 1
+    if [[ $owner =~ ^[0-9]+$ && -n $started && $(acct_process_start "$owner") == "$started" ]]; then
+        return 1
+    fi
+    ! acct_home_in_use "$2" "$1"
+}
+
+# acct_recover P — register what an `add` that died left behind (Omarchy's
+# recover), with the provider's lock held by the caller. In
+# <provider>/.pending: an orphaned home with a finished login becomes an
+# account, or is deleted when that login is already here; one without a
+# finished login is deleted. Beside the homes: an orphaned home whose receipt
+# holds the entry it was moved there with, but which the registry lacks (the
+# add died between the move and the save), is registered with that entry.
+# Each account it added, as JSON, is appended to ACCT_RECOVERED.
+acct_recover() {
+    local provider="$1" root home receipt reg found label id target entry
+    ACCT_RECOVERED=()
+    root="$AGENT_ACCOUNTS_DIR/$provider"
+    for home in "$root/.pending"/login-*; do
+        [[ -d $home && ! -L $home ]] && acct_receipt_orphaned "$home" "$provider" || continue
+        receipt="$home/$AGENT_LOGIN_RECEIPT"
+        if ! acct_signed_in "$provider" "$home"; then
+            run rm -rf -- "$home"
+            continue
+        fi
+        reg="$(acct_load "$provider")"
+        found="$(acct_identity "$provider" "$home")"
+        if jq -e --arg id "$(jq -r .accountId <<<"$found")" 'any(.accounts[]; (.accountId // "") == $id)' <<<"$reg" >/dev/null; then
+            run rm -rf -- "$home"
+            continue
+        fi
+        label="$(jq -r '.label // "" | tostring' "$receipt" 2>/dev/null || true)"
+        [[ -n $label ]] || label="$(jq -r '.email | split("@")[0]' <<<"$found")"
+        [[ -n $label ]] || label=Account
+        id="$(acct_unique_id "$provider" "$reg" "$label")"
+        target="$root/$id"
+        [[ $provider == claude ]] && acct_carry_settings "$home"
+        acct_private_credentials "$provider" "$home"
+        entry="$(jq -c --arg id "$id" --arg label "$label" --arg home "$target" \
+            '{id: $id, label: $label, home: $home, primary: false} + .' <<<"$found")"
+        run mv -T -- "$home" "$target"
+        acct_save "$provider" "$(jq -c --argjson e "$entry" '.accounts += [$e]' <<<"$reg")"
+        run rm -f -- "$target/$AGENT_LOGIN_RECEIPT"
+        ACCT_RECOVERED+=("$entry")
+    done
+    for home in "$root"/*/; do
+        home="${home%/}"
+        [[ -d $home && ! -L $home && ${home##*/} != .pending ]] || continue
+        acct_receipt_orphaned "$home" "$provider" || continue
+        receipt="$home/$AGENT_LOGIN_RECEIPT"
+        reg="$(acct_load "$provider")"
+        entry="$(jq -c '.entry // empty | objects' "$receipt" 2>/dev/null || true)"
+        # A committed account (renamed since, maybe) needs only its receipt gone.
+        if jq -e --arg home "$home" 'any(.accounts[]; (.home // "") == $home)' <<<"$reg" >/dev/null; then
+            run rm -f -- "$receipt"
+            continue
+        fi
+        [[ -n $entry && $(jq -r '.home // ""' <<<"$entry") == "$home" && $(jq -r '.id // ""' <<<"$entry") == "${home##*/}" ]] ||
+            continue
+        acct_signed_in "$provider" "$home" || continue
+        found="$(acct_identity "$provider" "$home")"
+        # Registered under another home by a retry: this copy goes.
+        if jq -e --arg id "$(jq -r .accountId <<<"$found")" 'any(.accounts[]; (.accountId // "") == $id)' <<<"$reg" >/dev/null; then
+            run rm -rf -- "$home"
+            continue
+        fi
+        id="$(jq -r .id <<<"$entry")"
+        jq -e --arg id "$id" 'any(.accounts[]; .id == $id)' <<<"$reg" >/dev/null &&
+            id="$(acct_unique_id "$provider" "$reg" "$(jq -r '.label // .id' <<<"$entry")")"
+        entry="$(jq -c --arg id "$id" --argjson found "$found" '.id = $id | . + $found' <<<"$entry")"
+        acct_save "$provider" "$(jq -c --argjson e "$entry" '.accounts += [$e]' <<<"$reg")"
+        run rm -f -- "$receipt"
+        ACCT_RECOVERED+=("$entry")
+    done
 }
