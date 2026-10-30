@@ -51,6 +51,9 @@ if [[ $(readlink -m -- "$(dirname "$home")") == "$(readlink -m -- "$AGENT_ACCOUN
 else
     info "its home stays where it was made: $home"
 fi
-acct_save "$PROVIDER" "$(jq -c --arg id "$id" '.accounts |= map(select(.id != $id))
+reg="$(jq -c --arg id "$id" '.accounts |= map(select(.id != $id))
     | if .active == $id then .active = .accounts[0].id else . end' <<<"$reg")"
+acct_save "$PROVIDER" "$reg"
 $DRY_RUN || echo "Forgot $label."
+# One Claude account left: nothing to compare, so the limits timer stops.
+acct_usage_timer_sync "$PROVIDER" "$reg"

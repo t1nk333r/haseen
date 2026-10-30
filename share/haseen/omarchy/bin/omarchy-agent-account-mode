@@ -2,9 +2,9 @@
 # omarchy-agent-account-mode — Omarchy switches accounts automatically near a
 # limit, or notifies with a one-click switch (c05d90196, #13770). haseen's
 # accounts (plan 108) switch only when told (haseen agent account use): the
-# switch needs every account's limits, and haseen's usage collectors read the
-# active account's alone. So this says how haseen switches, accepts manual,
-# and refuses auto; it writes nothing. Translates Omarchy's command of the
+# owner did not choose switching near a limit (plan 146), though haseen now
+# collects every Claude account's limits. So this says how haseen switches,
+# accepts manual, and refuses auto; it writes nothing. Translates Omarchy's command of the
 # name (MIT, Copyright (c) David Heinemeier Hansson).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
@@ -23,7 +23,7 @@ case "${ACCT_ARGS[0]:-manual}" in
 manual) ;;
 auto)
     omarchy_refuse "haseen agent account use $PROVIDER <account>" \
-        "Switching automatically near a limit needs every account's limits; haseen's usage collectors read only the active account's (plan 108)."
+        "haseen switches accounts only when told; switching near a limit is not built (plan 146)."
     ;;
 *)
     echo "Usage: omarchy-agent-account-mode [claude|codex|grok] [manual|auto] [threshold]" >&2

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# haseen:summary Collect every Claude account's limits for the agents panel
+# haseen:args [--timer] [--dry-run]
+set -Eeuo pipefail
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/agent-accounts.sh
+source "$HASEEN_PATH/lib/agent-accounts.sh"
+# shellcheck source=../share/haseen/shell/lib/plugin.sh
+source "$HASEEN_PATH/shell/lib/plugin.sh"
+umask 077
+
+usage() {
+    cat <<EOF
+Usage: haseen agent account usage [--timer] [--dry-run]
+
+Asks Anthropic for the limits of every signed-in Claude account, each with
+its own sign-in, and writes the usage record the agents panel's usage
+section reads ($HASEEN_USER_STATE/agents/usage/claude.json, through
+omarchy-agent-usage-update). Run by hand it asks for fresh numbers.
+
+  --timer   what $AGENT_USAGE_TIMER runs every 15 minutes: nothing
+            unless Claude has two or more accounts and the agents panel's
+            usage section is on (settings.usage), and recent numbers are
+            reused
+
+The timer is enabled by haseen agent account add when a second Claude
+account is registered, and disabled by remove when one is left (plan 146).
+EOF
+}
+parse_common_flags "$@"
+set -- "${REST[@]}"
+timer=false
+while (($#)); do
+    case $1 in
+    --timer) timer=true ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    shift
+done
+
+# usage_section_on — the agents panel shows its usage section. A shell.json
+# that does not parse counts as off: the timer then asks nobody for anything.
+usage_section_on() {
+    local merged
+    merged="$( (shell_merged_json) 2>/dev/null)" || return 1
+    jq -e '.plugins["haseen.agents"].settings.usage == true' <<<"$merged" >/dev/null 2>&1
+}
+
+flags=(--force)
+if $timer; then
+    # Nothing to compare with one account, and nobody to read the numbers
+    # with the section off: the timer's run ends here, quietly.
+    (($(acct_load claude | jq '.accounts | length') >= 2)) || exit 0
+    usage_section_on || exit 0
+    flags=(--limits-only)
+fi
+run "$HASEEN_PATH/omarchy/bin/omarchy-agent-usage-update" "${flags[@]}" claude

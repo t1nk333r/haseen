@@ -45,5 +45,11 @@ if ! agent_binary=$(type -P "$provider"); then
         die "$provider is not installed: install it with 'mise use -g $provider' or its own installer"
     fi
 fi
-export PATH="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/command-wrappers/bin:$PATH"
+# mise also drops its shims, leaving only the tools installed at launch; a
+# long-lived agent needs them back to find tools installed after it started
+# (Omarchy v4.5.0-rc2, e59c675c #16593; plan 146).
+mise_data_dir=${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}
+PATH="$mise_data_dir/command-wrappers/bin:$PATH"
+[[ :$PATH: == *":$mise_data_dir/shims:"* ]] || PATH="$PATH:$mise_data_dir/shims"
+export PATH
 exec "$agent_binary" "$@"

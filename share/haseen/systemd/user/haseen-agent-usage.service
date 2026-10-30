@@ -1,0 +1,12 @@
+[Unit]
+Description=haseen: collect every Claude account's limits for the agents panel
+# Plan 146. Started by haseen-agent-usage.timer. Asks Anthropic's usage
+# endpoint for each signed-in Claude account's limits with that account's own
+# token and writes the record the agents panel reads; nothing when Claude has
+# one account or the panel's usage section is off.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env haseen agent account usage --timer
+TimeoutStartSec=5min
+Slice=background.slice

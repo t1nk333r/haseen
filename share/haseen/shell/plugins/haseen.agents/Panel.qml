@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import qs.Haseen
 import qs.Haseen.Widgets
@@ -17,11 +18,15 @@ import "Agents.js" as Agents
 // by default (plan 108), follow Omarchy 4.5's panel (c05d90196, f41da937b):
 //   settings.accounts  the Claude, Codex and Grok accounts (`haseen agent
 //                      account list --json`); clicking one makes new sessions
-//                      start as it (`haseen agent account use`), the panel's
-//                      only change of state;
+//                      start as it (`haseen agent account use`), its pencil
+//                      renames it (`haseen agent account rename`), and an add
+//                      row runs `haseen agent account add` in the floating
+//                      terminal (plan 146): the panel's only changes of state;
 //   settings.usage     the usage records omarchy-agent-usage-update keeps in
-//                      haseen's state, read as files; the panel never runs
-//                      the collectors, which ask the providers.
+//                      haseen's state, read as files, one line per Claude
+//                      account when there are several (plan 146); the panel
+//                      never runs the collectors, which ask the providers
+//                      (haseen-agent-usage.timer does).
 //
 // Nothing runs until the panel opens, and nothing polls: one scan (and one
 // account list) when it opens, one more per `r`.
@@ -45,6 +50,8 @@ Column {
     property var rows: []
     property bool scanned: false
     property var accounts: []
+    // The account row being renamed, "provider:id", or "".
+    property string renaming: ""
     // I18n's translators for Agents.js, which stays English on its own.
     readonly property var tx: ({
             tr: (text, ...args) => I18n.tr(text, ...args),
@@ -63,6 +70,25 @@ Column {
             return;
         useProc.command = [root.cli, "agent", "account", "use", row.provider, row.id];
         useProc.running = true;
+    }
+
+    // An add row: the CLI's add in the floating terminal, where its name
+    // prompt and browser hand-off run; the panel closes, as the launcher does.
+    function addAccount(provider): void {
+        Apps.launch(Agents.addCommand(root.cli, provider));
+        const win = QsWindow.window;
+        if (win && typeof win.closeRequested === "function")
+            win.closeRequested();
+    }
+
+    function renameAccount(row, name): void {
+        root.renaming = "";
+        root.forceActiveFocus();
+        const argv = Agents.renameCommand(root.cli, row, name);
+        if (argv.length === 0 || renameProc.running)
+            return;
+        renameProc.command = argv;
+        renameProc.running = true;
     }
 
     width: Theme.fontSize * 26
@@ -139,6 +165,15 @@ Column {
     // A click on an account: new sessions start as it; then list again.
     Process {
         id: useProc
+
+        stdout: StdioCollector {}
+        stderr: StdioCollector {}
+        onExited: root.refresh()
+    }
+
+    // A name typed into an account's row; then list again.
+    Process {
+        id: renameProc
 
         stdout: StdioCollector {}
         stderr: StdioCollector {}
@@ -254,7 +289,7 @@ Column {
     Text {
         width: parent.width
         visible: root.showAccounts
-        text: root.accounts.length > 0 ? I18n.tr("Accounts · click one to start new sessions as it") : I18n.tr("Accounts · none signed in (haseen agent account add)")
+        text: root.accounts.length > 0 ? I18n.tr("Accounts · click one to start new sessions as it") : I18n.tr("Accounts · none signed in")
         color: Theme.muted
         elide: Text.ElideRight
         font.family: Theme.fontFamily
@@ -262,35 +297,94 @@ Column {
     }
 
     Repeater {
-        model: root.showAccounts ? root.accounts : []
+        model: root.showAccounts ? Agents.section(root.accounts) : []
 
         delegate: CursorSurface {
+            id: accountRow
+
             required property var modelData
+            readonly property bool isAdd: modelData.kind === "add"
+            readonly property bool editing: !isAdd && root.renaming === modelData.provider + ":" + modelData.id
 
             width: root.width
             height: Theme.fontSize * 2.2
-            hasCursor: accountHover.containsMouse && !modelData.active
-
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.gap
-                anchors.right: parent.right
-                anchors.rightMargin: Theme.gap
-                anchors.verticalCenter: parent.verticalCenter
-                text: (modelData.active ? "● " : "○ ") + modelData.name + " · " + modelData.label + (modelData.plan !== "" ? " · " + modelData.plan : "") + (modelData.signedIn ? "" : " · " + I18n.tr("signed out"))
-                color: modelData.active ? Theme.accent : Theme.foreground
-                elide: Text.ElideRight
-                textFormat: Text.PlainText
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.font.body
-            }
+            hasCursor: accountHover.containsMouse && !editing && (isAdd || !modelData.active)
 
             MouseArea {
                 id: accountHover
 
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: root.useAccount(modelData)
+                enabled: !accountRow.editing
+                onClicked: accountRow.isAdd ? root.addAccount(accountRow.modelData.provider) : root.useAccount(accountRow.modelData)
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.gap
+                anchors.right: pencil.left
+                anchors.rightMargin: Theme.gap
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !accountRow.editing
+                text: accountRow.isAdd ? "+ " + I18n.tr("Add a %1 account…", accountRow.modelData.name) : (accountRow.modelData.active ? "● " : "○ ") + accountRow.modelData.name + " · " + accountRow.modelData.label + (accountRow.modelData.plan !== "" ? " · " + accountRow.modelData.plan : "") + (accountRow.modelData.signedIn ? "" : " · " + I18n.tr("signed out"))
+                color: accountRow.isAdd ? Theme.muted : (accountRow.modelData.active ? Theme.accent : Theme.foreground)
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.font.body
+            }
+
+            // Rename: the pencil shows while the row is hovered, and turns
+            // the label into a field. Enter renames; Escape or leaving the
+            // field keeps the old name.
+            Glyph {
+                id: pencil
+
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.gap
+                anchors.verticalCenter: parent.verticalCenter
+                width: Theme.fontSize * 1.6
+                glyph: "\uf040"
+                color: pencilHover.containsMouse ? Theme.accent : Theme.muted
+                visible: !accountRow.isAdd && !accountRow.editing && (accountHover.containsMouse || pencilHover.containsMouse)
+
+                MouseArea {
+                    id: pencilHover
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: root.renaming = accountRow.modelData.provider + ":" + accountRow.modelData.id
+                }
+            }
+
+            TextInput {
+                id: nameField
+
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.gap
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.gap
+                anchors.verticalCenter: parent.verticalCenter
+                visible: accountRow.editing
+                text: accountRow.modelData.label || ""
+                color: Theme.foreground
+                selectionColor: Theme.selection
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.font.body
+                clip: true
+                onVisibleChanged: if (visible) {
+                    selectAll();
+                    forceActiveFocus();
+                }
+                onAccepted: root.renameAccount(accountRow.modelData, text)
+                onActiveFocusChanged: if (!activeFocus && accountRow.editing)
+                    root.renaming = ""
+                // Escape cancels the rename here instead of closing the panel.
+                Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_Escape
+                Keys.onEscapePressed: {
+                    root.renaming = "";
+                    root.forceActiveFocus();
+                }
             }
         }
     }
@@ -321,7 +415,7 @@ Column {
             FileView {
                 path: root.usageDir + usageRow.modelData + ".json"
                 printErrors: false
-                onLoaded: usageRow.line = Agents.usage(text(), root.tx)
+                onLoaded: usageRow.line = Agents.usage(text(), root.tx, Date.now())
             }
 
             Text {
@@ -337,12 +431,30 @@ Column {
 
             Text {
                 width: parent.width
+                visible: text !== ""
                 text: usageRow.line ? usageRow.line.detail : ""
                 color: Theme.muted
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.font.caption
+            }
+
+            // Several accounts: one line each, the one in use first.
+            Repeater {
+                model: usageRow.line ? usageRow.line.accounts : []
+
+                delegate: Text {
+                    required property var modelData
+
+                    width: usageRow.width
+                    text: (modelData.active ? "● " : "○ ") + modelData.label + " · " + modelData.detail
+                    color: modelData.active ? Theme.foreground : Theme.muted
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.font.caption
+                }
             }
         }
     }

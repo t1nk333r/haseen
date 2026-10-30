@@ -129,11 +129,18 @@ ag="$(cat "$PLUGINS/haseen.agents/Panel.qml")"
 assert_contains "agents runs its own scanner" "$ag" "command: [root.script].concat(root.commands)"
 assert_eq "agents starts, stops and signals nothing" "" \
     "$(grep -nE 'execDetached|Hyprland\.dispatch|kill|pkill|systemctl' "$PLUGINS/haseen.agents"/*.qml || true)"
-# Plan 108: the scan, the account list and the one change it may make (which
-# account new sessions use), each through haseen's CLI with a fixed argv.
-assert_eq "three Processes in the agents panel" "3" "$(grep -c 'Process {' <<<"$ag")"
+# Plan 108: the scan, the account list and the changes it may make (which
+# account new sessions use; plan 146: an account's name), each through
+# haseen's CLI with a fixed argv. Adding runs the CLI's own add in the
+# floating terminal, as the launcher's add row does (plan 132).
+assert_eq "four Processes in the agents panel" "4" "$(grep -c 'Process {' <<<"$ag")"
 assert_contains "the accounts come from haseen's list" "$ag" 'command: [root.cli, "agent", "account", "list", "--json"]'
 assert_contains "a click switches through haseen's use" "$ag" '[root.cli, "agent", "account", "use", row.provider, row.id]'
+assert_contains "a rename runs the argv Agents.js builds" "$ag" "const argv = Agents.renameCommand(root.cli, row, name);"
+assert_contains "an add row runs the CLI's add in its own scope" "$ag" "Apps.launch(Agents.addCommand(root.cli, provider));"
+assert_contains "Escape in the name field cancels the rename, not the panel" "$ag" \
+    "Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_Escape"
+assert_contains "the account rows include the add rows" "$ag" "Agents.section(root.accounts)"
 assert_eq "both sections are off by default" "false false" \
     "$(jq -r '[.settings.accounts.default, .settings.usage.default] | map(tostring) | join(" ")' "$PLUGINS/haseen.agents/manifest.json")"
 assert_contains "the account list runs only when its section is on" "$ag" "if (showAccounts)"
@@ -175,11 +182,12 @@ if [[ -x $QML_BIN ]]; then
     printf 'var tsv = %s;\n' \
         "$(printf '1000\tclaude\t10000\t/srv/people/Projects/haseen\n1001\tcodex\t100\t/srv/people/Projects/site\n9\t\t5\t/x\nnot a line\n1006\taider\t5000\t/srv/work\n' | jq -Rs .)" \
         >"$harness/data.js"
-    printf 'var accounts = %s;\nvar usage = %s;\nvar usageEmpty = %s;\nvar usageBoth = %s;\n' \
+    printf 'var accounts = %s;\nvar usage = %s;\nvar usageEmpty = %s;\nvar usageBoth = %s;\nvar usageMany = %s;\n' \
         "$(jq -Rs . <<<'[{"provider":"claude","name":"Claude","accounts":[{"id":"main","label":"Main","active":false,"signedIn":true},{"id":"work","label":"Work","plan":"Max 20x","active":true,"signedIn":true}]},{"provider":"codex","name":"Codex","accounts":[{"id":"main","label":"Main","active":true,"signedIn":false}]}]')" \
         "$(jq -Rs . <<<'{"id":"claude","name":"Claude","account":{"id":"work","label":"Work"},"limits":[{"label":"Session","percent":0.42},{"label":"Week","percent":0.1}]}')" \
         "$(jq -Rs . <<<'{"id":"codex","name":"Codex","limits":[]}')" \
-        "$(jq -Rs . <<<'{"id":"cpa","name":"CLIProxyAPI","usageStatusText":"1.5k requests · $4.75","limits":[{"label":"Codex · 7d","percent":0.91}]}')" >>"$harness/data.js"
+        "$(jq -Rs . <<<'{"id":"cpa","name":"CLIProxyAPI","usageStatusText":"1.5k requests · $4.75","limits":[{"label":"Codex · 7d","percent":0.91}]}')" \
+        "$(jq -Rs . <<<'{"id":"claude","name":"Claude","account":{"id":"work","label":"Work"},"limits":[{"label":"Session","percent":0.42}],"accounts":[{"id":"main","label":"Main","active":false,"stale":true,"fetchedAt":1000000,"usageStatusText":"Limits paused","limits":[{"label":"Session","percent":0.9},{"label":"Week","percent":0.5}]},{"id":"work","label":"Work","active":true,"stale":false,"fetchedAt":4600000,"limits":[{"label":"Session","percent":0.42}]},{"id":"spare","label":"Spare","active":false,"limits":[]}]}')" >>"$harness/data.js"
     cat >"$harness/Harness.qml" <<EOF
 import QtQuick
 import "file://$PLUGINS/haseen.imagepicker/Images.js" as I
@@ -205,6 +213,13 @@ Item {
         out("accountsBad", [A.accounts("not json").length, A.accounts("").length]);
         out("usage", [A.usage(D.usage), A.usage(D.usageEmpty), A.usage("{")]);
         out("usageBoth", A.usage(D.usageBoth));
+        out("usageMany", A.usage(D.usageMany, undefined, 4600000));
+        out("usageOneAccount", A.usage(JSON.stringify(Object.assign(JSON.parse(D.usageMany), {accounts: [JSON.parse(D.usageMany).accounts[1]]}))).accounts.length);
+        const listed = A.accounts(D.accounts);
+        out("section", A.section(listed).map(r => r.kind + ":" + r.provider + (r.kind === "add" ? ":" + r.name : ":" + r.id)));
+        out("sectionNone", A.section([]).map(r => r.kind + ":" + r.provider + ":" + r.name));
+        out("addCommand", A.addCommand("/opt/haseen/bin/haseen", "claude"));
+        out("rename", [A.renameCommand("h", listed[0], "  Personal  "), A.renameCommand("h", listed[0], "Main"), A.renameCommand("h", listed[0], "   "), A.renameCommand("h", null, "x")]);
         Qt.quit();
     }
 }
@@ -232,9 +247,23 @@ EOF
         '["claude:main:Main:false:true","claude:work:Work:true:true"]' "$(r accounts)"
     assert_eq "Agents: an unreadable account list draws nothing" '[0,0]' "$(r accountsBad)"
     assert_eq "Agents: a usage line names the account and its limits" \
-        '[{"name":"Claude · Work","detail":"Session 42% · Week 10%"},null,null]' "$(r usage)"
+        '[{"name":"Claude · Work","detail":"Session 42% · Week 10%","accounts":[]},null,null]' "$(r usage)"
     assert_eq "Agents: a usage line keeps the stats beside the limits" \
-        '{"name":"CLIProxyAPI","detail":"Codex · 7d 91% · 1.5k requests · $4.75"}' "$(r usageBoth)"
+        '{"name":"CLIProxyAPI","detail":"Codex · 7d 91% · 1.5k requests · $4.75","accounts":[]}' "$(r usageBoth)"
+    # Plan 146: one line per Claude account, the one in use first; numbers
+    # kept past a failed check say how old they are (3600 s here).
+    assert_eq "Agents: one usage line per account, the one in use first" \
+        '{"name":"Claude","detail":"","accounts":[{"label":"Work","active":true,"detail":"Session 42%"},{"label":"Main","active":false,"detail":"Session 90% · Week 50% · Limits paused · checked 1h 00m ago"},{"label":"Spare","active":false,"detail":"Not checked yet"}]}' \
+        "$(r usageMany)"
+    assert_eq "Agents: one listed account draws the record's own line" "0" "$(r usageOneAccount)"
+    assert_eq "Agents: each listed provider's accounts, then its add row" \
+        '["account:claude:main","account:claude:work","add:claude:Claude"]' "$(r section)"
+    assert_eq "Agents: nothing listed, an add row per provider" \
+        '["add:claude:Claude","add:codex:Codex","add:grok:Grok"]' "$(r sectionNone)"
+    assert_eq "Agents: an add row runs the CLI's add in the floating terminal" \
+        '["/opt/haseen/bin/haseen","config","terminal","--","/opt/haseen/bin/haseen","agent","account","add","claude"]' "$(r addCommand)"
+    assert_eq "Agents: a rename trims the name; blank or unchanged asks for nothing" \
+        '[["h","agent","account","rename","claude","main","Personal"],[],[],[]]' "$(r rename)"
 else
     echo "  skip: $QML_BIN not installed, Images.js/Agents.js not exercised" >&2
 fi

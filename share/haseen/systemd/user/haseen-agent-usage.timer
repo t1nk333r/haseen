@@ -1,0 +1,14 @@
+[Unit]
+Description=haseen: keep every Claude account's limits fresh for the agents panel
+# Plan 146. `haseen agent account add` enables it when a second Claude
+# account is registered, and `remove` disables it when one is left. Each run
+# collects only while the agents panel's usage section is on.
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Unit=haseen-agent-usage.service
+
+[Install]
+WantedBy=timers.target
