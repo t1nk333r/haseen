@@ -22,7 +22,9 @@ import "Model.js" as Model
 //   API keys and passwords are never copied or moved;
 // - notifications go through `haseen notification send` (the shell's own
 //   notification server and its history), and the download card is one such
-//   notification updated in place instead of a window of its own;
+//   notification updated in place instead of a window of its own; the server
+//   keeps what was missed (Recent, Held Back), so the bar badge counts no
+//   unread events of its own;
 // - pages open through Apps.launch, outside the shell's cgroup;
 // - the 2 s downloader poll runs only while a client reported an active job
 //   or the panel is open, instead of always (architecture 6).
@@ -56,7 +58,6 @@ Scope {
     // shows statusLabel, the same line in the interface language.
     property string statusText: "omARR"
     readonly property string statusLabel: credsState === "error" ? I18n.tr("Keys unreadable") : configured ? Model.barStatusText(snapshots, I18n) : I18n.tr("Add a service")
-    property int unreadCount: 0
     property var artReady: ({})
     property var artPending: ({})
     property var artRev: ({})
@@ -574,8 +575,7 @@ Scope {
             nowFeed: root.nowFeed,
             statusText: root.statusText,
             badgeCount: root.badgeCount,
-            badgeUrgent: root.badgeUrgent,
-            unreadCount: root.unreadCount
+            badgeUrgent: root.badgeUrgent
         };
         const signature = Model.feedSignature(state);
         const now = Date.now();
@@ -648,11 +648,6 @@ Scope {
         // The sender waits for the notification's click, so it runs detached.
         Quickshell.execDetached(cmd);
         root.noteSent(cmd);
-        root.unreadCount += 1;
-    }
-
-    function clearUnread() {
-        root.unreadCount = 0;
     }
 
     function handleSuccess(text) {
@@ -1486,10 +1481,8 @@ Scope {
     onServicesChanged: root.rebuildSnapshots()
     onShowProgressToastChanged: root.syncProgressNote()
     onPanelOpenChanged: {
-        if (root.panelOpen) {
-            root.clearUnread();
+        if (root.panelOpen)
             root.forcePoll();
-        }
     }
 
     Component.onCompleted: stateProbe.running = true
@@ -1514,7 +1507,6 @@ Scope {
                 badgeCount: root.badgeCount,
                 badgeUrgent: root.badgeUrgent,
                 statusText: root.statusText,
-                unreadCount: root.unreadCount,
                 notes: root.sentNotes
             });
         }

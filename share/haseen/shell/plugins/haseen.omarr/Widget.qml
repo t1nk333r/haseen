@@ -4,8 +4,9 @@ import qs.Haseen
 import qs.Haseen.Widgets
 
 // The omARR bar cell: the server glyph and a badge from the haseen.omarr
-// service (role `omarr`). The badge is the unread event count, else the
-// services down or downloads running; it is hidden at zero. The glyph is
+// service (role `omarr`). The badge is the services down, else the downloads
+// running; it is hidden at zero. Missed events are the notification server's
+// to keep (haseen.pager), so the badge does not count them. The glyph is
 // muted while no service is configured and urgent while one is down. Left
 // click toggles the panel, middle click polls every service now.
 //
@@ -26,10 +27,9 @@ BarButton {
         return entry && entry.id === root.pluginId ? entry.instance : null;
     }
     readonly property int badgeCount: service ? Number(service.badgeCount || 0) : 0
-    readonly property int unreadCount: service ? Number(service.unreadCount || 0) : 0
 
     glyph: "\u{f048d}"
-    text: unreadCount > 0 ? String(unreadCount) : badgeCount > 0 ? String(badgeCount) : ""
+    text: badgeCount > 0 ? String(badgeCount) : ""
     color: !service || !service.configured ? Theme.muted : service.badgeUrgent ? Theme.urgent : Theme.barForeground
     visible: service !== null
     implicitWidth: visible ? contentWidth : 0

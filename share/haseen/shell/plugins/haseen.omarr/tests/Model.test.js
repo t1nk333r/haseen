@@ -1139,7 +1139,7 @@ var feedState = {
   snapshots: [feedSnap],
   nowFeed: Model.mergeNow([feedSnap]),
   statusText: "1 downloading",
-  badgeCount: 1, badgeUrgent: false, unreadCount: 2
+  badgeCount: 1, badgeUrgent: false
 }
 var feedDoc = Model.feedDocument(feedState, 1700000000000)
 eq([
@@ -1149,7 +1149,7 @@ eq([
   [feedDoc.statusText, "1 downloading", "bar summary carried"],
   [feedDoc.badgeCount, 1, "badge count carried"],
   [feedDoc.badgeUrgent, false, "badge urgency carried"],
-  [feedDoc.unreadCount, 2, "unread carried"],
+  [feedDoc.unreadCount, undefined, "no unread tally: missed events are the notification server's (haseen.pager)"],
   [feedDoc.downloadingCount, 1, "downloading count carried"],
   [feedDoc.downCount, 0, "down count carried"],
   [feedDoc.snapshots.length, 1, "one row per configured service"],
@@ -1224,7 +1224,7 @@ function feedWithDownloadPatch(state, patch) {
   feed.downloads = [row].concat(feed.downloads.slice(1))
   return {
     snapshots: state.snapshots, nowFeed: feed, statusText: state.statusText,
-    badgeCount: state.badgeCount, badgeUrgent: state.badgeUrgent, unreadCount: state.unreadCount
+    badgeCount: state.badgeCount, badgeUrgent: state.badgeUrgent
   }
 }
 var sigBase = Model.feedSignature(feedState)
@@ -1270,7 +1270,7 @@ function feedRoot(overrides) {
   var writes = []
   var root = {
     dirsReady: true, snapshots: [], nowFeed: Model.mergeNow([]), statusText: "omARR",
-    badgeCount: 0, badgeUrgent: false, unreadCount: 0, feedWrittenAt: 0, feedSignature: "",
+    badgeCount: 0, badgeUrgent: false, feedWrittenAt: 0, feedSignature: "",
     stateDir: "/state/omarchy/omarr",
     enqueueWrite: function(dir, name, text, then) { writes.push({ dir: dir, name: name, text: text, then: then }) }
   }
