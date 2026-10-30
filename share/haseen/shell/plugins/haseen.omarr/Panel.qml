@@ -242,8 +242,13 @@ Item {
         return dim;
     }
 
+    // Only art the service has on disk: a file still on its way, or one the
+    // server has no image for, would only fail to open. The card falls back
+    // the same either way.
     function artUrl(path: string): string {
-        const rev = service ? service.artRev : null;
+        if (!service || !service.artReady[path])
+            return "";
+        const rev = service.artRev;
         return Model.fileUrl(path, rev && rev[path]);
     }
 

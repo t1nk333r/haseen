@@ -140,6 +140,18 @@ ShellRoot {
         return svc.snapshots.length === 2 && svc.snapshots.every(s => s.health === "up");
     }
 
+    // Where each scroll mark (2 px, with a view) sits: "end" on its view's
+    // right edge, else its x and the view's width.
+    function marks(item: var, out: var): var {
+        for (let i = 0; i < item.children.length; i++) {
+            const c = item.children[i];
+            if (c.view && c.width === 2)
+                out.push(c.x === c.view.width - c.width ? "end" : "x=" + c.x + "/" + c.view.width);
+            probe.marks(c, out);
+        }
+        return out;
+    }
+
     FloatingWindow {
         id: win
 
@@ -183,6 +195,7 @@ ShellRoot {
                 probe.panel.detailId = "svc-1";
                 probe.step = 2;
             } else if (probe.step === 2) {
+                probe.seen.marks = probe.marks(probe.panel, []).join(",");
                 probe.panel.detailId = "";
                 probe.panel.destroy();
                 probe.step = 3;
@@ -214,6 +227,7 @@ EOF
     assert_eq "engine: an open panel tells the service" "true" "$(r .loaded.panelOpen)"
     assert_eq "engine: the download card follows the job" "Fixture.Show.S01E02|7" "$(r '[.loaded.job, .loaded.noteId] | join("|")')"
     assert_contains "engine: the card is a waiting haseen notification with the client's icon" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sabnzbd.svg -t 0 -p -A exec=Hide -- Fixture.Show.S01E02 42% · 3.1 MB/s · 4m left · SABnzbd"
+    assert_eq "engine: the scroll marks sit on their views' right edge" "end,end,end" "$(r .marks)"
     assert_eq "engine: a closed panel tells the service" "false" "$(r .closed.panelOpen)"
     assert_eq "engine: turning the card off closes it without hiding the job" "|" "$(r '[.cardOff.noteId, .cardOff.dismissed] | join("|")')"
     assert_eq "engine: the setting was saved" "false" "$(jq -r '.plugins["haseen.omarr"].settings.showProgressToast' "$XDG_CONFIG_HOME/haseen/shell.json")"
@@ -225,7 +239,7 @@ EOF
     # goes out without its key (CI once saw all four of them bare).
     assert_eq "engine: every Sonarr request carries the header" "" "$(grep ':8989/' "$LOG" | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
     assert_eq "engine: the cache directory is private" "700" "$(stat -c %a "$XDG_CACHE_HOME/haseen/omarr")"
-    assert_eq "engine: no QML warnings" "" "$(grep -E 'ReferenceError|TypeError|is not defined|Cannot read property|Unable to assign|Binding loop|haseen.omarr/.*(error|warning)' <<<"$OUTPUT" || true)"
+    assert_eq "engine: no QML warnings" "" "$(grep -E 'ReferenceError|TypeError|is not defined|Cannot read property|Unable to assign|Binding loop|Cannot anchor|Cannot open|haseen.omarr/.*(error|warning)' <<<"$OUTPUT" || true)"
 
     # Fail closed: a credentials file that cannot be read stops polling
     # instead of sending the requests without their keys; repairing it in

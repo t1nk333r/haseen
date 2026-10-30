@@ -693,6 +693,29 @@ jellyfinSnap.sessions = jellyfinNow
 jellyfinSnap.onDeck = jellyfinDeck
 jellyfinSnap.recent = jellyfinRecent
 assert.ok(Model.fleetLine(jellyfinSnap).indexOf("Watching") !== -1, "jellyfin fleet watching")
+
+// The panel's fleet rows hand fleetLine a Repeater's modelData, whose lists
+// are Qt sequences: indexed and with a length, but not Arrays.
+function qtSequence(list) {
+  var seq = { length: list.length }
+  for (var si = 0; si < list.length; si++) seq[si] = list[si]
+  return seq
+}
+var seqJellyfin = Object.assign({}, jellyfinSnap, { sessions: qtSequence(jellyfinSnap.sessions), onDeck: qtSequence(jellyfinSnap.onDeck) })
+assert.equal(Model.fleetLine(seqJellyfin), Model.fleetLine(jellyfinSnap), "fleet line reads a Qt sequence of sessions")
+var seqIdle = Object.assign({}, seqJellyfin, { sessions: qtSequence([]) })
+assert.ok(/on deck/.test(Model.fleetLine(seqIdle)), "fleet line reads a Qt sequence on deck")
+var rdtSnap = Model.emptySnapshot({ id: "r", kind: "qbittorrent", name: "RDT" })
+rdtSnap.health = "up"
+rdtSnap.version = "5.0.0"
+rdtSnap.queue = qtSequence([{ id: "a", status: "downloading", progress: 0, kind: "qbittorrent" },
+  { id: "b", status: "downloading", progress: 0, kind: "qbittorrent" }])
+assert.equal(Model.fleetLine(rdtSnap), "2 downloading", "fleet line counts a Qt sequence queue, not idle or the version")
+var calSnap = Model.emptySnapshot({ id: "s", kind: "sonarr", name: "Sonarr" })
+calSnap.health = "up"
+calSnap.version = "4.0.9"
+calSnap.calendar = qtSequence([{ id: "e", title: "Fixture Show", airDate: "2026-10-31" }])
+assert.equal(Model.fleetLine(calSnap), "Fixture Show", "fleet line reads a Qt sequence calendar")
 var jellyfinFeed = Model.mergeNow([jellyfinSnap])
 assert.equal(jellyfinFeed.sessions[0].kind, "jellyfin", "jellyfin merged session")
 var jellyfinPrev = Model.emptySnapshot({ id: "j", kind: "jellyfin", name: "Jellyfin" })
