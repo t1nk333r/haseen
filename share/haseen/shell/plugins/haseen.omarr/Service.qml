@@ -1180,24 +1180,40 @@ Scope {
             });
         }
         if (service.kind === "qbittorrent") {
-            if (action !== "pause-item" && action !== "resume-item")
-                return;
-            const pause = action === "pause-item";
             const hashes = String(itemId || "");
-            // qBittorrent renamed pause/resume to stop/start in 5.0; both are
-            // sent, and the one a version does not know answers 404.
-            root.commandReq(service, {
-                url: pause ? Model.qbitPauseUrl(service.url) : Model.qbitResumeUrl(service.url),
-                method: "POST",
-                bodyText: Model.qbitHashesBody(hashes),
-                cookieRead: root.cookiePath(service.id)
-            });
-            root.commandReq(service, {
-                url: pause ? Model.qbitStopUrl(service.url) : Model.qbitStartUrl(service.url),
-                method: "POST",
-                bodyText: Model.qbitHashesBody(hashes),
-                cookieRead: root.cookiePath(service.id)
-            });
+            // The session cookie only once a login gave one, as the poll does:
+            // a client that asks for no login has no cookie jar, and a command
+            // that names a missing jar never goes out.
+            const jar = root.qbitReady[service.id] === true ? root.cookiePath(service.id) : "";
+            if (action === "remove-item" || action === "remove-item-files") {
+                // Exactly one torrent: never "all", never a list.
+                if (!Model.isTorrentHash(hashes))
+                    return;
+                root.commandReq(service, {
+                    url: Model.qbitDeleteUrl(service.url),
+                    method: "POST",
+                    bodyText: Model.qbitDeleteBody(hashes, action === "remove-item-files"),
+                    cookieRead: jar
+                });
+            } else if (action === "pause-item" || action === "resume-item") {
+                const pause = action === "pause-item";
+                // qBittorrent renamed pause/resume to stop/start in 5.0; both
+                // are sent, and the one a version does not know answers 404.
+                root.commandReq(service, {
+                    url: pause ? Model.qbitPauseUrl(service.url) : Model.qbitResumeUrl(service.url),
+                    method: "POST",
+                    bodyText: Model.qbitHashesBody(hashes),
+                    cookieRead: jar
+                });
+                root.commandReq(service, {
+                    url: pause ? Model.qbitStopUrl(service.url) : Model.qbitStartUrl(service.url),
+                    method: "POST",
+                    bodyText: Model.qbitHashesBody(hashes),
+                    cookieRead: jar
+                });
+            } else {
+                return;
+            }
         }
         Qt.callLater(root.forcePoll);
     }

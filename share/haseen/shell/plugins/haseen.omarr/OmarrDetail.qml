@@ -5,8 +5,8 @@ import "Model.js" as Model
 // One service's detail, beside the fleet: its name, status and a button to
 // open it. A media server (Jellyfin) shows what is playing, on deck and
 // recently added; the others their queue page by page, with pause and resume
-// on a downloader's rows, SABnzbd its history, and Sonarr or Radarr their
-// calendar. `panel` is the Panel that owns it.
+// on a downloader's rows and remove on qBittorrent's, SABnzbd its history, and
+// Sonarr or Radarr their calendar. `panel` is the Panel that owns it.
 //
 // Adapted from Panel.qml in omARR (MIT, Copyright (c) 2026 luccast), as the
 // owner's fork t1nk33r.omarr 1.0.0; see LICENSE and UPSTREAM.md beside this
@@ -29,6 +29,22 @@ Column {
     readonly property var history: snap && snap.kind === "sabnzbd" ? (snap.activity || []) : []
     readonly property var calendarGroups: snap && !media && snap.calendar && snap.calendar.length > 0 ? Model.groupedCalendar(snap.calendar, null, I18n) : []
     readonly property color dim: Theme.subtle(Theme.surface)
+    readonly property bool torrents: !!snap && snap.kind === "qbittorrent"
+    // The torrent whose remove waits for a second click: the first only asks,
+    // since a removal cannot be undone and can take the files with it.
+    property string confirmRemoveId: ""
+
+    function removeTorrent(id: string, deleteFiles: bool): void {
+        if (confirmRemoveId !== id) {
+            confirmRemoveId = id;
+            return;
+        }
+        confirmRemoveId = "";
+        if (service)
+            service.runControl(snapId, deleteFiles ? "remove-item-files" : "remove-item", id);
+    }
+
+    onSnapIdChanged: confirmRemoveId = ""
 
     spacing: Theme.gap * 2.5
 
@@ -170,6 +186,7 @@ Column {
                 id: queueRow
 
                 required property var modelData
+                readonly property bool confirming: root.torrents && root.confirmRemoveId !== "" && root.confirmRemoveId === modelData.id
 
                 width: parent.width
                 implicitHeight: queueCol.implicitHeight + Theme.gap * 1.5
@@ -193,8 +210,8 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - (root.downloader ? queueActions.width + parent.spacing : 0)
                         title: queueRow.modelData.title || ""
-                        subtitle: Model.queueLine(queueRow.modelData, I18n)
-                        subtitleColor: queueRow.modelData.status === "warning" || queueRow.modelData.status === "error" ? Theme.urgent : root.dim
+                        subtitle: queueRow.confirming ? I18n.tr("Remove this torrent? Its files stay unless you delete them too") : Model.queueLine(queueRow.modelData, I18n)
+                        subtitleColor: queueRow.confirming || queueRow.modelData.status === "warning" || queueRow.modelData.status === "error" ? Theme.urgent : root.dim
                         progress: queueRow.modelData.progress || 0
                     }
 
@@ -206,6 +223,7 @@ Column {
                         spacing: 2
 
                         OmarrButton {
+                            visible: !queueRow.confirming
                             glyph: "\u{f03e4}"
                             tooltipText: I18n.tr("Pause")
                             onClicked: {
@@ -215,12 +233,40 @@ Column {
                         }
 
                         OmarrButton {
+                            visible: !queueRow.confirming
                             glyph: "\u{f040a}"
                             tooltipText: I18n.tr("Resume")
                             onClicked: {
                                 if (root.service)
                                     root.service.runControl(root.snapId, "resume-item", queueRow.modelData.id);
                             }
+                        }
+
+                        // Asked once, this removes the torrent and keeps its
+                        // files; deleting them is the button beside it.
+                        OmarrButton {
+                            visible: root.torrents
+                            glyph: "\u{f01b4}"
+                            tooltipText: queueRow.confirming ? I18n.tr("Remove, keep its files") : I18n.tr("Remove")
+                            foreground: queueRow.confirming ? Theme.urgent : Theme.foreground
+                            hoverColor: Theme.urgent
+                            onClicked: root.removeTorrent(queueRow.modelData.id, false)
+                        }
+
+                        OmarrButton {
+                            visible: queueRow.confirming
+                            glyph: "\u{f05e8}"
+                            tooltipText: I18n.tr("Remove and delete its files")
+                            foreground: Theme.urgent
+                            hoverColor: Theme.urgent
+                            onClicked: root.removeTorrent(queueRow.modelData.id, true)
+                        }
+
+                        OmarrButton {
+                            visible: queueRow.confirming
+                            glyph: "\u{f0156}"
+                            tooltipText: I18n.tr("Cancel")
+                            onClicked: root.confirmRemoveId = ""
                         }
                     }
                 }
@@ -239,6 +285,7 @@ Column {
                 tooltipText: I18n.tr("Previous page")
                 enabled: root.pager.hasPrev
                 onClicked: {
+                    root.confirmRemoveId = "";
                     if (root.service)
                         root.service.turnQueuePage(root.snapId, -1);
                 }
@@ -258,6 +305,7 @@ Column {
                 tooltipText: I18n.tr("Next page")
                 enabled: root.pager.hasNext
                 onClicked: {
+                    root.confirmRemoveId = "";
                     if (root.service)
                         root.service.turnQueuePage(root.snapId, 1);
                 }

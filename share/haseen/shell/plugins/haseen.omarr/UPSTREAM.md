@@ -64,6 +64,9 @@ unmodified with their `NOTICE` and `LICENSE-APACHE`.
   the rows are their own files); square art corners instead of a
   `MultiEffect` mask; a still glyph instead of the endless spinner; the kind
   dropdown is a row of pills; removing a service asks for a second click.
+  A qBittorrent row can remove its torrent (`torrents/delete`, which upstream
+  did not call): the first click asks, the second removes it and keeps its
+  files, and a button beside it deletes the files too.
   Escape always closes the panel (the host's), and Tab cycles the overview
   tabs instead of switching to a neighbouring panel.
 

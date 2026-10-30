@@ -249,6 +249,59 @@ is still polled, as upstream, and shows the server's 401.
 - *Merge a key edit into the unreadable file*: its other keys are unknown, so
   any rewrite could drop them; the edit waits until the file reads.
 
+## Follow-up 2026-10-30: remove a torrent
+
+**Problem.** The owner asked for qBittorrent's delete, citing qbittorrent-api's
+`torrents_delete(delete_files=False, torrent_hashes=None)`: remove torrents by
+hash, a list or `all`, and delete their files only when asked. A qBittorrent
+row in the panel had only pause and resume (`OmarrDetail.qml`,
+`queueActions`), and upstream never calls `torrents/delete`.
+
+**Change.**
+- `Model.js`: `qbitDeleteUrl` (`POST /api/v2/torrents/delete`),
+  `qbitDeleteBody(hash, deleteFiles)` (`hashes=…&deleteFiles=true|false`,
+  `false` unless `deleteFiles` is exactly `true`) and `isTorrentHash`, which
+  admits one info hash (40 hex digits, or 64) and so never `all` or a
+  `|`-joined list.
+- `Service.runControl` takes `remove-item` and `remove-item-files` for
+  qBittorrent (RDT included: it is configured as qBittorrent) and refuses
+  anything but one hash. qBittorrent 5.0 renamed pause and resume, not delete,
+  so one request does.
+- `OmarrDetail.qml`: a remove button on each qBittorrent row. The first click
+  only asks: the row's second line turns urgent ("Its files stay unless you
+  delete them too") and pause and resume give way to remove (keeps the files),
+  delete the files too, and cancel. Turning the page or opening another
+  service drops the question. Removing a service in the settings asks the same
+  way (`SettingsView.qml`, `removeRow`).
+- qBittorrent commands send the session cookie only once a login gave one, as
+  the poll does (`enqueueQbit`). They used to name the jar always, and the
+  wrapper refuses a jar that is not there (`Model.safeCurlCmd`), so on a client
+  that asks for no login pause and resume never reached curl either.
+
+**Evidence.**
+- `tests/test-omarr.sh` 57/57 (53 before): a qBittorrent service with one
+  finished torrent joins the engine fleet. Its first remove click asks on that
+  row only, cancel clears it, the second click removes it. The curl log holds
+  exactly two posts to `:8081/api/v2/torrents/delete`, `deleteFiles=false`
+  then `deleteFiles=true`, neither with a cookie; `all`, from the row or
+  straight to `runControl`, sends nothing.
+- With the old cookie line (the jar always named), 55/57: both delete checks
+  fail, as no delete reached curl.
+- `tests/Model.test.js`: the URL, both bodies, a string `"true"` keeping the
+  files, v1 and v2 hashes taken, and `all`, a list, empty and undefined
+  refused.
+- `tests/run.sh --affected` (core, i18n, omarr, shell, surfaces) 691/691;
+  `tools/lint.sh`, `tools/check-docs.sh` and `tools/i18n.py check` pass.
+
+**Rejected.**
+- *A delete-files setting*: the choice belongs to each removal, as the API
+  makes it; a remembered default could delete files on a click meant to keep
+  them.
+- *Removing several, or all, torrents at once*: the API allows it, but a row
+  acts on its own torrent, and `isTorrentHash` keeps a stray `all` from
+  emptying the client.
+- *Remove on SABnzbd rows too* (`mode=queue&name=delete`): not asked for.
+
 ## Rejected
 
 - **Keep Todoist's preferences in `shell.json`.** The token and preferences
