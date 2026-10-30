@@ -21,6 +21,8 @@ P="$HASEEN_PATH/shell/plugins/haseen.omarr"
 M="$P/manifest.json"
 QS_BIN=${QS_BIN:-/usr/bin/qs}
 FIXTURE="fixture-sonarr-0123"
+# A torrent's info hash, as qBittorrent names it.
+TORRENT="0123456789abcdef0123456789abcdef01234567"
 export FIXTURE
 
 sandbox omarr
@@ -73,6 +75,7 @@ else
     printf '{"appName":"Sonarr","version":"4.0.9"}' >"$FIX/status.json"
     printf '{"queue":{"paused":false,"speed":"3.1 M","kbpersec":"3174","timeleft":"0:04:12","noofslots":1,"slots":[{"nzo_id":"SABnzbd_nzo_1","filename":"Fixture.Show.S01E02","status":"Downloading","mb":"1000","mbleft":"580","percentage":"42","timeleft":"0:04:12"}]}}' >"$FIX/sab-queue.json"
     printf '{"history":{"slots":[]}}' >"$FIX/sab-history.json"
+    printf '[{"hash":"%s","name":"Fixture.Torrent","state":"stalledUP","progress":1,"dlspeed":0,"upspeed":0,"eta":0,"size":1000}]' "$TORRENT" >"$FIX/qbit-torrents.json"
     export CURL_LOG="$LOG" CURL_FIX="$FIX" NOTIFY_LOG="$NOTES"
     stub curl 'url="" body=""
 prev=""
@@ -90,6 +93,9 @@ case "$url" in
 */api)
     if grep -q "mode=history" "$body" 2>/dev/null; then cat "$CURL_FIX/sab-history.json"; else cat "$CURL_FIX/sab-queue.json"; fi
     printf "\n200" ;;
+*/api/v2/torrents/info*) cat "$CURL_FIX/qbit-torrents.json"; printf "\n200" ;;
+*/api/v2/transfer/info) printf "{\"dl_info_speed\":0,\"up_info_speed\":0}\n200" ;;
+*/api/v2/torrents/delete) printf "body %s\n" "$(cat "$body")" >>"$CURL_LOG"; printf "Ok.\n200" ;;
 *) printf "\n404" ;;
 esac'
     # The download card's sender: prints an id, then waits like notify-send -A.
@@ -107,7 +113,8 @@ exit 0'
     mkdir -p "$XDG_CONFIG_HOME/haseen"
     jq -n '{plugins: {"haseen.omarr": {settings: {debugIpc: true, pollSeconds: 60, services: [
         {id: "svc-1", kind: "sonarr", name: "Sonarr", url: "http://127.0.0.1:8989"},
-        {id: "svc-2", kind: "sabnzbd", name: "SABnzbd", url: "http://127.0.0.1:8080"}]}}}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
+        {id: "svc-2", kind: "sabnzbd", name: "SABnzbd", url: "http://127.0.0.1:8080"},
+        {id: "svc-3", kind: "qbittorrent", name: "qBittorrent", url: "http://127.0.0.1:8081"}]}}}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
 
     harness="$SANDBOX/shell"
     mkdir -p "$harness"
@@ -139,7 +146,27 @@ ShellRoot {
     }
 
     function up(): bool {
-        return svc.snapshots.length === 2 && svc.snapshots.every(s => s.health === "up");
+        return svc.snapshots.length === 3 && svc.snapshots.every(s => s.health === "up");
+    }
+
+    // The first item below (or at) item that has the property, else null.
+    function find(item: var, prop: string): var {
+        if (item[prop] !== undefined)
+            return item;
+        for (let i = 0; i < item.children.length; i++) {
+            const hit = probe.find(item.children[i], prop);
+            if (hit)
+                return hit;
+        }
+        return null;
+    }
+
+    // How many items below item have the property set.
+    function count(item: var, prop: string): int {
+        let n = item[prop] === true ? 1 : 0;
+        for (let i = 0; i < item.children.length; i++)
+            n += probe.count(item.children[i], prop);
+        return n;
     }
 
     // Where each scroll mark (2 px, with a view) sits: "end" on its view's
@@ -202,15 +229,42 @@ ShellRoot {
                 probe.step = 2;
             } else if (probe.step === 2) {
                 probe.seen.marks = probe.marks(probe.panel, []).join(",");
+                probe.panel.detailId = "svc-3";
+                probe.step = 3;
+            } else if (probe.step === 3) {
+                // Removing a torrent from its row: the first click asks, the
+                // second removes and keeps the files, the one beside it
+                // deletes them too; "all" is never sent.
+                const d = probe.find(probe.panel, "removeTorrent");
+                if (!d || d.queue.length === 0)
+                    return;
+                const rm = {};
+                rm.rows = d.queue.length;
+                d.removeTorrent("$TORRENT", false);
+                rm.asked = d.confirmRemoveId;
+                rm.confirming = probe.count(probe.panel, "confirming");
+                d.confirmRemoveId = "";
+                rm.cancelled = d.confirmRemoveId;
+                d.removeTorrent("$TORRENT", false);
+                d.removeTorrent("$TORRENT", false);
+                rm.after = d.confirmRemoveId;
+                d.removeTorrent("$TORRENT", true);
+                d.removeTorrent("$TORRENT", true);
+                d.removeTorrent("all", true);
+                d.removeTorrent("all", true);
+                s.runControl("svc-3", "remove-item", "all");
+                probe.seen.remove = rm;
+                probe.step = 4;
+            } else if (probe.step === 4 && s.reqQueue.length === 0 && s.currentReq === null) {
                 probe.panel.detailId = "";
                 probe.panel.destroy();
-                probe.step = 3;
-            } else if (probe.step === 3 && !s.panelOpen) {
+                probe.step = 5;
+            } else if (probe.step === 5 && !s.panelOpen) {
                 probe.seen.closed = { panelOpen: s.panelOpen };
                 // Turning the card off closes it: its sender is stopped.
                 s.persistSettings({ showProgressToast: false });
-                probe.step = 4;
-            } else if (probe.step === 4 && s.progressNoteId === "" && s.settingsWriting === null && s.settingsWrites.length === 0) {
+                probe.step = 6;
+            } else if (probe.step === 6 && s.progressNoteId === "" && s.settingsWriting === null && s.settingsWrites.length === 0) {
                 probe.seen.cardOff = { noteId: s.progressNoteId, dismissed: s.progressDismissedKey };
                 console.log("RESULT " + JSON.stringify(probe.seen));
                 Qt.quit();
@@ -234,13 +288,21 @@ EOF
     assert_eq "engine: the download card follows the job" "Fixture.Show.S01E02|7" "$(r '[.loaded.job, .loaded.noteId] | join("|")')"
     assert_contains "engine: the card is a waiting haseen notification with the client's icon" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sabnzbd.svg -t 0 -p -A exec=Hide -- Fixture.Show.S01E02 42% · 3.1 MB/s · 4m left · SABnzbd"
     assert_eq "engine: the scroll marks sit on their views' right edge" "end,end,end" "$(r .marks)"
+    assert_eq "engine: a torrent's remove asks first, on its row, and can be cancelled" "1|$TORRENT|1|" \
+        "$(r '[.remove.rows, .remove.asked, .remove.confirming, .remove.cancelled] | map(tostring) | join("|")')"
+    assert_eq "engine: the second click removes it" "" "$(r .remove.after)"
+    # No login asked for, so no cookie jar: the delete still goes out.
+    assert_eq "engine: removed once keeping the files, once deleting them, never all" \
+        "body hashes=$TORRENT&deleteFiles=false|body hashes=$TORRENT&deleteFiles=true" "$(grep '^body hashes=' "$LOG" | paste -sd'|')"
+    assert_eq "engine: each removal posted to torrents/delete without a cookie" "2|0" \
+        "$(grep -c ':8081/api/v2/torrents/delete' "$LOG")|$(grep ':8081/api/v2/torrents/delete' "$LOG" | grep -c -- ' -b ')"
     assert_contains "engine: an event goes to the notification server" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sonarr.svg -p -A exec=Open -- Sonarr grabbed Fixture Show"
     assert_eq "engine: the bar badge does not count it, the server keeps it" "1|1|undefined" "$(r '[.toast.bar, .toast.badge, .toast.unread] | map(tostring) | join("|")')"
     assert_eq "engine: the feed carries no unread tally" "false|true" "$(jq -r '[has("unreadCount"), has("badgeCount")] | map(tostring) | join("|")' "$legacy/feed.json" 2>&1)"
     assert_eq "engine: a closed panel tells the service" "false" "$(r .closed.panelOpen)"
     assert_eq "engine: turning the card off closes it without hiding the job" "|" "$(r '[.cardOff.noteId, .cardOff.dismissed] | join("|")')"
     assert_eq "engine: the setting was saved" "false" "$(jq -r '.plugins["haseen.omarr"].settings.showProgressToast' "$XDG_CONFIG_HOME/haseen/shell.json")"
-    assert_eq "engine: saving kept the fleet in shell.json" "2" "$(jq -r '.plugins["haseen.omarr"].settings.services | length' "$XDG_CONFIG_HOME/haseen/shell.json")"
+    assert_eq "engine: saving kept the fleet in shell.json" "3" "$(jq -r '.plugins["haseen.omarr"].settings.services | length' "$XDG_CONFIG_HOME/haseen/shell.json")"
     assert_not_contains "engine: the API key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
     assert_not_contains "engine: nor shell.json" "$(cat "$XDG_CONFIG_HOME/haseen/shell.json")" "$FIXTURE"
     assert_contains "engine: the key travels in the private header file" "$(cat "$LOG")" "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt"
@@ -303,7 +365,7 @@ ShellRoot {
                 return;
             }
             const s = probe.svc;
-            if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 2) {
+            if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 3) {
                 // What would queue requests and write keys: opening the panel,
                 // editing a service with a new key.
                 s.panelOpen = true;
@@ -317,7 +379,7 @@ ShellRoot {
                     status: s.statusText };
                 Quickshell.execDetached(["sh", "$repair"]);
                 probe.step = 2;
-            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 2 && s.snapshots[0].health === "up"
+            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 3 && s.snapshots[0].health === "up"
                 && s.reqQueue.length === 0 && s.currentReq === null) {
                 // Only once the repaired poll has drained (the open panel's
                 // wanted/missing is queued last): the permission step below

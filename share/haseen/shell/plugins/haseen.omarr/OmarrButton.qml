@@ -2,8 +2,8 @@ import QtQuick
 import qs.Haseen
 
 // A square glyph button with a tooltip, haseen.omarr's stand-in for
-// upstream's PanelActionButton (header actions, queue pause/resume, paging,
-// reorder and remove in settings).
+// upstream's PanelActionButton (header actions, queue pause/resume/remove,
+// paging, reorder and remove in settings).
 //
 // Adapted from Panel.qml in omARR (MIT, Copyright (c) 2026 luccast), as the
 // owner's fork t1nk33r.omarr 1.0.0; see LICENSE and UPSTREAM.md beside this

@@ -1103,6 +1103,21 @@ function qbitStartUrl(base) {
   return apiUrl(base, "/api/v2/torrents/start")
 }
 
+function qbitDeleteUrl(base) {
+  return apiUrl(base, "/api/v2/torrents/delete")
+}
+
+// One torrent's info hash (40 hex digits; 64 for a v2 hash). The delete call
+// also takes "all" and a "|"-joined list, which a row must never send.
+function isTorrentHash(id) {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(id == null ? "" : id))
+}
+
+// qBittorrent keeps the torrent's files unless deleteFiles is "true".
+function qbitDeleteBody(hash, deleteFiles) {
+  return formEncode({ hashes: String(hash || ""), deleteFiles: deleteFiles === true ? "true" : "false" })
+}
+
 function headerJellyfin(token) {
   var value = String(token || "").replace(/[\r\n"]/g, "")
   return "Authorization: MediaBrowser Client=\"omARR\", Device=\"haseen\", DeviceId=\"" + PLUGIN_ID
@@ -2465,6 +2480,9 @@ if (typeof module !== "undefined" && module.exports) {
     qbitResumeUrl: qbitResumeUrl,
     qbitStopUrl: qbitStopUrl,
     qbitStartUrl: qbitStartUrl,
+    qbitDeleteUrl: qbitDeleteUrl,
+    isTorrentHash: isTorrentHash,
+    qbitDeleteBody: qbitDeleteBody,
     headerJellyfin: headerJellyfin,
     curlHeaderConfig: curlHeaderConfig,
     headerIsConfig: headerIsConfig,
