@@ -737,6 +737,10 @@ receipt "$P/login-live" Live "$$" "$alive_start"
 mkdir -p "$P/login-empty"
 receipt "$P/login-empty" Empty 1 not-a-start-time
 finished_login "$P/login-unowned" uuid-unowned unowned
+# A receipt without a start time (written where /proc was unreadable) is
+# owned while its pid lives.
+finished_login "$P/login-nostart" uuid-nostart nostart
+receipt "$P/login-nostart" Nostart "$$" ""
 : >"$LOG"
 capture env FAKE_ACCOUNT=uuid-other FAKE_USER=other haseen agent account add claude Other </dev/null
 assert_status "an add that finds a finished, abandoned sign-in succeeds" 0 "$STATUS"
@@ -749,6 +753,7 @@ assert_eq "in its own home, without the receipt" "yes no" \
 assert_eq "an abandoned home without a login is deleted" "no" "$([[ -e $P/login-empty ]] && echo yes || echo no)"
 assert_eq "a live add's home is left alone" "yes" "$([[ -d $P/login-live ]] && echo yes || echo no)"
 assert_eq "a home without a receipt is left alone" "yes" "$([[ -d $P/login-unowned ]] && echo yes || echo no)"
+assert_eq "so is one whose receipt has no start time while its pid lives" "yes" "$([[ -d $P/login-nostart ]] && echo yes || echo no)"
 assert_eq "the second account starts the timer" "systemctl --user enable --now haseen-agent-usage.timer" "$(timer_calls)"
 never_printed "the recovery" "$OUTPUT"
 
@@ -761,6 +766,22 @@ assert_status "an add after a duplicate abandoned sign-in succeeds" 0 "$STATUS"
 assert_eq "the duplicate is deleted" "no" "$([[ -e $P/login-again ]] && echo yes || echo no)"
 assert_contains "and the add signs in as asked" "$(logins)" "claude login home=$P/login-"
 assert_contains "and adds that account" "$OUTPUT" "Added Third (third@example.com)."
+
+# An add that died unreaped is a zombie, which keeps its pid and start time;
+# it has exited all the same. A fixture /proc holds it beside this shell.
+export HASEEN_SYSROOT="$SANDBOX/root"
+mkdir -p "$HASEEN_SYSROOT/proc/4343" "$HASEEN_SYSROOT/proc/$$"
+cp /proc/$$/stat "$HASEEN_SYSROOT/proc/$$/stat"
+printf '4343 (haseen-agent-a) Z 1 4343 4343 0 -1 4194572 0 0 0 0 0 0 0 0 20 0 1 0 5555 0 0\n' >"$HASEEN_SYSROOT/proc/4343/stat"
+finished_login "$P/login-zombie" uuid-zombie zombie
+receipt "$P/login-zombie" Zombie 4343 5555
+capture haseen agent account add claude </dev/null
+assert_status "an add whose owner is a zombie" 0 "$STATUS"
+assert_contains "registers its login" "$OUTPUT" "Added Zombie (zombie@example.com), a sign-in that was interrupted before it was added."
+assert_not_contains "and only that one" "$OUTPUT" "Added Live"
+assert_eq "live receipts stay owned" "yes yes" \
+    "$([[ -d $P/login-live ]] && echo yes || echo no) $([[ -d $P/login-nostart ]] && echo yes || echo no)"
+unset HASEEN_SYSROOT
 
 # Root ignores a read-only directory, so this part needs another user.
 if ((EUID != 0)); then
@@ -776,12 +797,12 @@ if ((EUID != 0)); then
     assert_eq "the receipt is private" "600" "$(stat -c %a "$STATE/claude/spare/.haseen-login.json")"
     assert_eq "and holds its owner and entry, no credential" "entry,label,owner,started|" \
         "$(jq -r '(keys | join(",")) + "|" + ([.. | strings | select(test("fake-token"))] | join(","))' "$STATE/claude/spare/.haseen-login.json")"
-    assert_eq "the registry lacks it" "main side third" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
+    assert_eq "the registry lacks it" "main side third zombie" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
     : >"$LOG"
     capture haseen agent account add claude </dev/null
     assert_status "the next add registers it" 0 "$STATUS"
     assert_contains "and says so" "$OUTPUT" "Added Spare (spare@example.com), a sign-in that was interrupted before it was added."
-    assert_eq "with the entry it was moved with" "main side third spare" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
+    assert_eq "with the entry it was moved with" "main side third zombie spare" "$(jq -r '[.accounts[].id] | join(" ")' "$STATE/claude.json")"
     assert_eq "and no login" "" "$(grep ' login ' "$LOG" || true)"
     assert_eq "its receipt is gone" "no" "$([[ -e $STATE/claude/spare/.haseen-login.json ]] && echo yes || echo no)"
 fi

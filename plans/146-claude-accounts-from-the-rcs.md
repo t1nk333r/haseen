@@ -13,7 +13,7 @@
   switch), 132 (the launcher's account rows)
 - **Category**: agents, Omarchy compatibility
 - **Planned at**: 2026-10-30, owner decision (below)
-- **State**: DONE 2026-10-30 (`tests/test-agent-accounts.sh` 347/347, `tests/test-widgets-c.sh` 124/124; owner steps below)
+- **State**: DONE 2026-10-30 (`tests/test-agent-accounts.sh` 352/352, `tests/test-widgets-c.sh` 124/124; owner steps below)
 
 ## Decision (owner, 2026-10-30)
 
@@ -180,7 +180,9 @@ account's probe; the record and caches hold limits only (tests below).
   with a stub `systemctl`; recovery of a finished login whose owner exited,
   a live owner's login left alone, a duplicate deleted, a home without a
   receipt left alone, a finished login kept when registering it fails (a
-  read-only accounts directory, so that part is skipped as root); the exec's
+  read-only accounts directory, so that part is skipped as root), a receipt
+  without a start time owned while its pid lives and a zombie owner counted
+  as exited (review round 2); the exec's
   shims; the Grok guard; `mode auto`'s new reason. A proxy on a closed local
   port stands guard, so a probe that slipped past the seeded caches would
   fail without leaving the machine.

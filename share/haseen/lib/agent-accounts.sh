@@ -545,15 +545,22 @@ acct_unlock() {
 # login survive the `add` dying before it was registered.
 AGENT_LOGIN_RECEIPT=.haseen-login.json
 
-# acct_process_start PID — the process's start time (field 22 of
-# /proc/PID/stat, in clock ticks), nothing when it is gone. The command name
-# before it may hold spaces and parentheses.
-acct_process_start() {
-    local stat rest
-    local -a fields
+# acct_process_fields PID — /proc/PID/stat from its state (field 3) on,
+# nothing when it cannot be read. The command name before it may hold spaces
+# and parentheses.
+acct_process_fields() {
+    local stat
     stat="$(cat -- "$(sysroot_path /proc)/$1/stat" 2>/dev/null)" || return 0
-    rest=${stat##*") "}
-    read -ra fields <<<"$rest"
+    printf '%s\n' "${stat##*") "}"
+}
+
+# acct_process_start PID — the process's start time (field 22, in clock
+# ticks), nothing when it is gone. A zombie has exited: nothing reaps one
+# reparented to a PID 1 that never waits (a container's).
+acct_process_start() {
+    local -a fields
+    read -ra fields <<<"$(acct_process_fields "$1")"
+    [[ ${fields[0]:-} != Z ]] || return 0
     printf '%s\n' "${fields[19]:-}"
 }
 
@@ -567,14 +574,21 @@ acct_receipt_write() {
 
 # acct_receipt_orphaned HOME P — HOME has a receipt whose `add` has exited,
 # and no session runs in it: nothing is still writing there. A home without a
-# receipt is never orphaned (an older add may still own it).
+# receipt is never orphaned (an older add may still own it). A receipt written
+# without a start time (an unreadable /proc) is owned while its pid lives.
 acct_receipt_orphaned() {
     local receipt="$1/$AGENT_LOGIN_RECEIPT" owner started
+    local -a fields
     [[ -f $receipt && ! -L $receipt ]] || return 1
     owner="$(jq -r '.owner // "" | tostring' "$receipt" 2>/dev/null)" || return 1
     started="$(jq -r '.started // "" | tostring' "$receipt" 2>/dev/null)" || return 1
-    if [[ $owner =~ ^[0-9]+$ && -n $started && $(acct_process_start "$owner") == "$started" ]]; then
-        return 1
+    if [[ $owner =~ ^[0-9]+$ ]]; then
+        if [[ -n $started ]]; then
+            [[ $(acct_process_start "$owner") == "$started" ]] && return 1
+        elif [[ -e $(sysroot_path /proc)/$owner ]]; then
+            read -ra fields <<<"$(acct_process_fields "$owner")"
+            [[ ${fields[0]:-} == Z ]] || return 1
+        fi
     fi
     ! acct_home_in_use "$2" "$1"
 }
