@@ -12,7 +12,9 @@
 - **Planned at**: 2026-10-30 (owner, "the browser takes long time to
   activate ... via the browser picker plugin")
 - **State**: DONE 2026-10-30 (`tests/test-omarchy-commands.sh` 189/189,
-  184/189 with the old `omarchy-shell`; `tests/test-compat-runtime.sh` 35/35)
+  184/189 with the old `omarchy-shell`; `tests/test-compat-runtime.sh` 35/35;
+  review round 1, DeepSeek V4.1 Flash, approved ff52d06 with five nits, each
+  answered in this file and §5.5)
 
 ## Problem
 
@@ -58,7 +60,10 @@ Any Omarchy plugin that waits on its own summon hangs the same way.
   `toggle(id, payload)`, both strings. They call `Compat.Runtime.summon` and
   `Compat.Runtime.toggle` with the payload and answer `ok` when something
   opened or closed, else `unavailable: <id>`. Why is in the shell's log, which
-  `Runtime.unsupported` already writes.
+  `Runtime.unsupported` already writes. A plugin whose `open` throws
+  (`Runtime.openProvider` calls it directly) leaves the answer empty: qs
+  0.3.2 logs the error, prints nothing and exits 0. That is not `ok` either,
+  so `omarchy-shell` still fails.
 - `omarchy-shell` (`share/haseen/omarchy/bin/omarchy-shell:131-143`): an id
   that resolves to a `haseen.*` panel still goes to `panel toggle` (lines
   133-136). Any other id goes to `compat <summon|toggle> <id> <payload>`
@@ -74,6 +79,31 @@ Any Omarchy plugin that waits on its own summon hangs the same way.
   answered in 15-22 ms (three calls with a missing request file, so no card
   opened). Neither picker had routing rules (`rules: []` in both
   `browser-picker.json` files), so none were lost.
+
+## The owner's other callers
+
+Of the owner's Omarchy plugins, two summon through `omarchy-shell`:
+
+- `t1nk33r.browser-picker` (`bin/browser-picker:104`): the bug above. It now
+  falls back to fzf at once.
+- `t1nk33r.screen-search` (`bin/screen-search:37`), when `resultUi` is `osd`,
+  its manifest default and luna's value. On luna it sits in a bar section, so
+  its overlay is hosted: SUPER + CTRL + PRINT and SUPER + SHIFT + PRINT now
+  hand it `{mode: "ocr"|"circle"}` instead of an empty payload, and a summon
+  no longer closes a card that is open. Outside the bar its overlay is not
+  hosted, and the script, under `set -e` with no `||`, now exits 1 where it
+  used to exit 0 having done nothing.
+
+## Known limits
+
+- A `haseen.*` id still goes to `panel toggle`, which returns nothing, so a
+  disabled built-in (`omarchy.updates` → `haseen.updates`, off by default)
+  still answers `ok` for a panel that did not open. Unchanged by this plan;
+  a caller waiting on one would wait as before.
+- No test calls the new handler through a real `qs` (the real `shell.qml`
+  needs a Wayland backend). Review round 1 probed the contract by hand on qs
+  0.3.2 with an `IpcHandler` of the same signature: an empty payload arrives
+  as `""`, one argument is "Too few arguments provided", which `ask` catches.
 
 ## Under DMS
 
