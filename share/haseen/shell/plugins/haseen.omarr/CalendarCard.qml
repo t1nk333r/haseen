@@ -244,8 +244,9 @@ Item {
 
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
+                    // No width binding: the text is empty, so 0 wide, whenever
+                    // it is hidden, and `width: implicitWidth` looped.
                     visible: root.ratingLabel !== ""
-                    width: visible ? implicitWidth : 0
                     textFormat: Text.PlainText
                     text: root.ratingLabel
                     color: Theme.foreground

@@ -1757,25 +1757,28 @@ function mergeNow(snapshots) {
   }
 }
 
+// The panel's fleet rows pass a Repeater's modelData, whose lists are Qt
+// sequences rather than JS arrays (Array.isArray is false), so they are read
+// through toList: Array.isArray here made every row "idle" or its version.
 function fleetLine(snapshot, i18n) {
   var snap = snapshot || emptySnapshot({})
   if (snap.health === "down") return trText(i18n, N_("down"))
   if (snap.health === "unknown") return trText(i18n, N_("waiting"))
   if (isMediaKind(snap.kind)) {
-    var watching = Array.isArray(snap.sessions) ? snap.sessions : []
+    var watching = toList(snap.sessions)
     if (watching.length === 1) return trText(i18n, N_("Watching %1"), [watching[0].title || ""])
     if (watching.length > 1) return countText(i18n, N_n("%1 watching", "%1 watching"), watching.length)
-    var deck = Array.isArray(snap.onDeck) ? snap.onDeck : []
+    var deck = toList(snap.onDeck)
     if (deck.length > 0) return countText(i18n, N_n("%1 on deck", "%1 on deck"), deck.length)
   }
   var active = 0
-  var queue = Array.isArray(snap.queue) ? snap.queue : []
+  var queue = toList(snap.queue)
   for (var i = 0; i < queue.length; i++) if (isActiveDownload(queue[i])) active += 1
   if (active > 0) {
     if (snap.speed > 0) return formatSpeed(snap.speed)
     return countText(i18n, N_n("%1 downloading", "%1 downloading"), active)
   }
-  var cal = Array.isArray(snap.calendar) ? snap.calendar : []
+  var cal = toList(snap.calendar)
   if (cal.length && cal[0].airDate) return cal[0].title || cal[0].airDate
   if (snap.version) return snap.version
   return trText(i18n, N_("idle"))
