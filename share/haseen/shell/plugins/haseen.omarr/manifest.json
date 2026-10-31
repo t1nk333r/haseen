@@ -3,7 +3,7 @@
   "id": "haseen.omarr",
   "name": "omARR",
   "version": "1.0.0",
-  "description": "Arr stack for self-hosted services (Sonarr, Radarr, SABnzbd, qBittorrent, Jellyfin, Seerr, any URL): health, active downloads and outages in the bar; a panel with the fleet, now playing, on deck, recently added, the calendar and the queues, pause and resume, and Seerr's requests to approve or decline; notifications for grabs, imports, new requests, finished or failed downloads and services that drop, and a live download card. Off by default. API keys and passwords stay in a private state file, never in shell.json",
+  "description": "Arr stack for self-hosted services (Sonarr, Radarr, SABnzbd, qBittorrent, Jellyfin, Seerr, any URL): health, active downloads and outages in the bar; a panel with the fleet, now playing, on deck, recently added, the calendar and the queues, pause and resume, and Seerr's requests (approve or decline the waiting ones), trending, upcoming and search, with requests made from the panel; notifications for grabs, imports, new requests, finished or failed downloads and services that drop, and a live download card. Off by default. API keys and passwords stay in a private state file, never in shell.json",
   "kinds": [
     "service",
     "bar-widget",

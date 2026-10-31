@@ -389,6 +389,127 @@ key. Jellyseerr and Overseerr answer the same API.
   fleet row and the notification already show them ("no visual clutter").
 - *Delete, retry or edit requests*: not asked for.
 
+## Follow-up 2026-10-31: Seerr's requests, discover lists and search
+
+**Problem.** Once the owner's three waiting requests were answered, the Seerr
+detail was empty: it listed only `filter=pending`, and Seerr then held none
+(`/api/v1/request/count` answered `"pending":0` beside 551 requests,
+2026-10-31). The owner said "it has nothing, I want something more" and chose
+recent requests, trending and upcoming, and search with requests from the
+panel (asked 2026-10-31; request counts were offered and not chosen).
+
+**Sources.** The owner's Seerr 3.5.1, read with its key from a 0600 header
+file, 2026-10-31:
+- `GET /api/v1/request?filter=all` gives each request's `status` (1 pending,
+  2 approved, 3 declined, 4 failed, 5 completed) and `media.status` (3
+  processing, 4 partly available, 5 available). Its 20 newest: 10 available,
+  5 partly available, 4 processing, 1 declined.
+- `/api/v1/discover/trending`, `/discover/movies/upcoming` and
+  `/discover/tv/upcoming` answer pages of 20 with `mediaType`, `title` or
+  `name`, the date, `posterPath`, `voteAverage` and `mediaInfo.status` (or no
+  `mediaInfo` for a title Seerr does not track). Trending holds people too.
+  `totalPages` reaches 500 (TMDB's limit).
+- `/api/v1/search?query=` found `ocean's eleven` (`'` sent as `%27`),
+  `wall·e` and an Arabic title, each answering 200.
+- `/imageproxy/tmdb/t/p/w154/<posterPath>` answers `image/jpg` without a key,
+  with `cacheImages: false` in `/api/v1/settings/main`.
+- Seerr's `seerr-api.yml`: `POST /api/v1/request` takes `{mediaType,
+  mediaId, seasons: number[] | "all"}`. `MediaRequest.request` leaves out
+  the seasons already there or asked for, and answers 202 when none is left;
+  409 means the request exists already.
+
+**Change.**
+- `Model.js`:
+  - Request states: `seerrRequestState` (a 4K request reads the 4K media)
+    and `seerrMediaState`, with their labels. `requestLine` now starts with
+    the state, except for a waiting request.
+  - Lists: `seerrRequestsUrl` takes the filter; `seerrAnswered` drops the
+    waiting requests from a page of all of them.
+  - Discover and search: their URLs (`seerrQuery` also encodes `!'()*`,
+    which `encodeURIComponent` leaves; at most 100 characters; pages up to
+    500); `parseSeerrResults`, which lists movies and series only and marks
+    what can be requested; `mergeSeerrUpcoming`, soonest first;
+    `seerrMediaLine`.
+  - Requests from the panel: `isSeerrMediaKey`, `seerrCreateBody` (a series
+    asks for `"all"`) and `seerrCreateOutcome`.
+  - Posters: `seerrPosterPath` takes only a TMDB file name, which
+    `seerrPosterUrl` and `seerrPosterCachePath` build on.
+  - The snapshot gains `pending` and `pendingTotal`, which `fleetLine`
+    ("3 pending"), the `request` event and the feed now read. `queue` holds
+    every request.
+- `Service.qml`:
+  - Each poll asks for the waiting requests and for all of them; the keyed
+    list of all still decides health.
+  - A title lookup is no longer sent twice when both lists hold the title.
+    A list now waits until none of its titles is on its way
+    (`seerrLooking`), instead of committing on its own last lookup.
+  - `browseSeerr` asks for one page of a tab when it is shown. A token drops
+    an answer the panel no longer wants, and UPCOMING asks for movies and
+    series and shows one list even when one of them fails.
+  - `runControl` takes `request-media` with one media key, and refuses a
+    second while the first is on its way. It posts JSON (`runCurl` sends
+    `Content-Type: application/json` for `json` requests), then asks for
+    the request lists again. What the request came to shows on its row.
+  - Posters are fetched while the panel is open, never with the key.
+- `SeerrPane.qml` (new) holds the four tabs:
+  - REQUESTS: WAITING FOR APPROVAL, with approve, and decline that asks
+    first, plus a line for any past the page size. Then RECENT, the
+    answered requests with their state, paged.
+  - TRENDING, UPCOMING and SEARCH: a field, which Enter or the button
+    searches; the results; their pages.
+  `SeerrRow.qml` (new) is one row: poster, title, line and buttons. Request
+  asks first ("Request this movie?", "Request every season it lacks?"), and
+  a click on the row opens the title in Seerr. `OmarrDetail.qml` hands Seerr
+  to the pane, and `Panel.qml` gains `seerrPosterSource` and `restoreKeys`.
+
+**Evidence.**
+- `tests/test-omarr.sh` 83/83 (69 before):
+  - Waiting requests: the two are listed by title, and RECENT shows "Fight
+    Club (1999): Processing · Movie · by dana" and "Breaking Bad (2008):
+    Declined · Season 1".
+  - Lookups and posters: each title is looked up once though both lists
+    hold it, and a request's poster comes through `/imageproxy/` with no
+    key.
+  - TRENDING lists the movie and the series, never the person, and only the
+    title Seerr lacks can be requested. The request asks on its row, and the
+    second click posts `{"mediaType":"movie","mediaId":1507696}` once, as
+    JSON with the header file. A repeated click, `person:287` and `movie:0`
+    send nothing, and the row then reads "Requested" with no button.
+  - UPCOMING shows "Sooner|Later" though the series list answered 500.
+  - SEARCH sends `query=the%20matrix%20%281999%29%21`.
+  - Notifications: only the request that arrives later notifies; the ones
+    found at start, the answered ones and the panel's own do not.
+- `tests/Model.test.js`: states, labels, lines, URLs, query encoding, poster
+  paths, create bodies and outcomes, result parsing, the merge, title
+  waiting, and the fleet line and feed.
+- `tests/run.sh --affected` 5239/5239 (the manifest change selects 59 test
+  files; `test-menu-back` passes from a worktree with a short path).
+  `tools/lint.sh`, `tools/check-docs.sh`, `tools/i18n.py check`, gitleaks
+  and the privacy patterns of `tools/secrets.sh` pass.
+- Read-only, against the owner's Seerr: the parsers turned its 551 requests,
+  trending (20 of 500 pages), upcoming (40 merged) and five searches into
+  rows, and a poster came through the proxy keyless (200, 11629 bytes).
+  Nothing was requested on it.
+
+**Rejected.**
+- *One list, with pending rows acted on in place*: a request waiting past
+  the newest page would not show, and the fleet's count would need its own
+  call; the waiting list is one more call and gives both.
+- *Request counts on the card*: offered, not chosen.
+- *Choose a series' seasons*: one button asks for every season Seerr lacks,
+  which Seerr computes itself; choosing seasons is Seerr's own page, a click
+  away.
+- *Search as you type*: a request to Seerr and TMDB per key; Enter or the
+  button searches.
+- *Posters from TMDB*: the desktop would ask a third party directly.
+  Seerr's proxy keeps it to the owner's server.
+- *Discover and search polled*: they change slowly and are wanted only while
+  shown.
+
+**Remaining.**
+- No request was made against the owner's Seerr, so the 201 path is checked
+  only against the scripted Seerr.
+
 ## Rejected
 
 - **Keep Todoist's preferences in `shell.json`.** The token and preferences

@@ -80,6 +80,14 @@ unmodified with their `NOTICE` and `LICENSE-APACHE`.
   later. A click on the row opens it in Seerr. The keyless `/api/v1/status`
   gives the version only: health comes from the keyed list, so a wrong key
   shows the service down instead of flipping it every poll.
+  The detail has four tabs. REQUESTS shows the waiting ones, then every
+  request with its state (processing, available, declined…), page by page.
+  TRENDING and UPCOMING (movies and series together) are Seerr's discover
+  lists, and SEARCH finds movies and series by name. These three are asked
+  for when shown, never polled. A title Seerr does not have can be requested
+  from its row (`POST /api/v1/request`, JSON; a series for every season it
+  lacks) after a second click. Posters come through Seerr's
+  `/imageproxy/tmdb/`, without the key.
 - **The request queue.** A handler that queues more work (qBittorrent's poll
   after a login, Jellyfin's library after its users, Seerr's titles) no longer
   starts it inside the finished request's exit, where `currentReq` was cleared

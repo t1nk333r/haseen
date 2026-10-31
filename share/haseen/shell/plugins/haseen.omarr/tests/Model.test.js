@@ -1323,8 +1323,9 @@ eq([
   [Model.iconSlug({ kind: "generic", name: "Seerr" }), "seerr", "a generic named seerr"],
   [Model.iconSlug({ kind: "generic", name: "Jellyseerr" }), "jellyseerr", "jellyseerr is not seerr"],
   [Model.seerrStatusUrl("http://s:5055/"), "http://s:5055/api/v1/status", "seerr status url"],
-  [Model.seerrRequestsUrl("http://s:5055", 1, 20), "http://s:5055/api/v1/request?take=20&skip=0&filter=pending&sort=added&sortDirection=desc", "seerr pending requests"],
-  [Model.seerrRequestsUrl("http://s:5055", 3, 10), "http://s:5055/api/v1/request?take=10&skip=20&filter=pending&sort=added&sortDirection=desc", "seerr requests page 3"],
+  [Model.seerrRequestsUrl("http://s:5055", 1, 20, "pending"), "http://s:5055/api/v1/request?take=20&skip=0&filter=pending&sort=added&sortDirection=desc", "seerr pending requests"],
+  [Model.seerrRequestsUrl("http://s:5055", 3, 10, "all"), "http://s:5055/api/v1/request?take=10&skip=20&filter=all&sort=added&sortDirection=desc", "seerr requests page 3"],
+  [Model.seerrRequestsUrl("http://s:5055", 1, 20, "approved&x=1"), "http://s:5055/api/v1/request?take=20&skip=0&filter=all&sort=added&sortDirection=desc", "any other filter lists all"],
   [Model.seerrTitleKey("tv", "1399"), "tv:1399", "title key tv"], [Model.seerrTitleKey("other", 603), "movie:603", "title key movie"],
   [Model.seerrTitleKey("movie", 0), "", "no title key without an id"],
   [Model.seerrTitleUrl("http://s:5055", "movie:603"), "http://s:5055/api/v1/movie/603", "movie title url"],
@@ -1361,11 +1362,19 @@ eq([
   [Model.parseSeerrTitle("{}"), "", "no title"], [Model.parseSeerrTitle("nope"), "", "junk title"],
   [Model.seerrMissingTitles(asked.items, {}).join(","), "tv:1399,movie:603", "both titles to look up"],
   [Model.seerrMissingTitles(asked.items.concat(asked.items), { "tv:1399": "Got" }).join(","), "movie:603", "each once, known ones skipped"],
-  [Model.seerrMissingTitles(asked.items, { "tv:1399": "", "movie:603": "" }).join(","), "", "a failed lookup is not repeated"]
+  [Model.seerrMissingTitles(asked.items, { "tv:1399": "", "movie:603": "" }).join(","), "", "a failed lookup is not repeated"],
+  [Model.seerrMissingTitles(asked.items, {}, { "tv:1399": true }).join(","), "movie:603", "a lookup on its way is not asked twice"],
+  [Model.seerrTitlesSettled(asked.items, { "tv:1399": true }), false, "a list waits for its titles"],
+  [Model.seerrTitlesSettled(asked.items, { "movie:550": true }), true, "but not for others"],
+  [Model.parseSeerrTitleInfo('{"title":"The Matrix","releaseDate":"1999-03-30","posterPath":"/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg"}').posterPath, "/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg", "a lookup keeps the poster"],
+  [Model.parseSeerrTitleInfo('{"title":"X","posterPath":"/../../etc/passwd"}').posterPath, "", "a path that is no poster is dropped"],
+  [Model.parseSeerrTitleInfo("nope").title, "", "junk lookup"]
 ])
-var named = Model.applySeerrTitles(asked.items, { "movie:603": "The Matrix (1999)", "tv:1399": "" })
+var named = Model.applySeerrTitles(asked.items, { "movie:603": { title: "The Matrix (1999)", posterPath: "/m603.jpg" }, "tv:1399": {} })
 eq([
   [named[1].title, "The Matrix (1999)", "title applied"], [named[0].title, "TMDB 1399", "the id without one"],
+  [named[1].posterPath, "/m603.jpg", "poster applied"], [named[0].posterPath, "", "no poster without one"],
+  [Model.applySeerrTitles(asked.items, { "movie:603": "Old (1999)" })[1].title, "Old (1999)", "a title kept as text still names it"],
   [asked.items[1].title, "", "the parsed rows are not changed"],
   [Model.requestLine(named[1]), "Movie · by Alice", "movie line"],
   [Model.requestLine(named[0]), "Seasons 1, 2 · 4K · by bob", "series line"],
@@ -1380,12 +1389,12 @@ var seerrSvc = { id: "s", kind: "seerr", name: "Seerr", notifyGrab: true }
 var seerrPrev = Model.emptySnapshot(seerrSvc)
 seerrPrev.health = "up"
 seerrPrev.version = "3.5.1"
-seerrPrev.queue = [named[0]]
-seerrPrev.queueTotal = 1
+seerrPrev.pending = [named[0]]
+seerrPrev.pendingTotal = 1
 var seerrNext = Model.emptySnapshot(seerrSvc)
 seerrNext.health = "up"
-seerrNext.queue = named
-seerrNext.queueTotal = 3
+seerrNext.pending = named
+seerrNext.pendingTotal = 3
 var seerrEvents = Model.eventsFromPoll(seerrPrev, seerrNext, seerrSvc)
 eq([
   [seerrEvents.length, 1, "one new request"], [seerrEvents[0].id, "request-s-7", "request event id"],
@@ -1396,8 +1405,93 @@ eq([
   [Model.eventsFromPoll(seerrNext, seerrNext, seerrSvc).length, 0, "no event for a request already seen"],
   [Model.fleetLine(seerrNext), "3 pending", "fleet line counts the pending"],
   [Model.fleetLine(seerrPrev), "1 pending", "one pending"],
-  [Model.fleetLine(Object.assign({}, seerrPrev, { queue: [], queueTotal: 0 })), "3.5.1", "none pending shows the version"],
+  [Model.fleetLine(Object.assign({}, seerrPrev, { pending: [], pendingTotal: 0, queue: named, queueTotal: 551 })), "3.5.1", "none pending shows the version"],
+  [Model.eventsFromPoll(Object.assign({}, seerrPrev, { queue: [] }), Object.assign({}, seerrPrev, { queue: named }), seerrSvc).length, 0, "a request already answered is no news"],
+  [Model.emptySnapshot(seerrSvc).pending.length + Model.emptySnapshot(seerrSvc).pendingTotal, 0, "a snapshot starts with none waiting"],
+  [Model.feedDocument({ snapshots: [seerrNext] }, 1).snapshots[0].pendingTotal, 3, "the feed carries the count waiting"],
   [Model.mergeNow([Object.assign({}, seerrNext, { showQueue: true })]).downloadingCount, 0, "requests never count as downloads"]
 ])
+
+// --- Seerr: request states, discover lists, search, requests from the panel --
+eq([
+  [Model.seerrRequestState(1, 2), "pending", "status 1 waits"], [Model.seerrRequestState(3, 1), "declined", "declined"],
+  [Model.seerrRequestState(4, 3), "failed", "failed"], [Model.seerrRequestState(2, 3), "processing", "approved and on its way"],
+  [Model.seerrRequestState(2, 4), "partial", "partly there"], [Model.seerrRequestState(5, 5), "available", "there"],
+  [Model.seerrRequestState(2, 2), "approved", "approved, media still pending"], [Model.seerrRequestState(5, 1), "completed", "completed"],
+  [Model.seerrRequestState(2, 7), "deleted", "deleted since"], [Model.seerrRequestState(2, 6), "blocklisted", "blocklisted"],
+  [Model.seerrMediaState(2), "requested", "media requested"], [Model.seerrMediaState(1), "", "unknown is untracked"],
+  [Model.seerrMediaState(undefined), "", "no media info"],
+  [Model.seerrStateLabel("partial"), "Partly available", "state label"], [Model.seerrStateLabel("x"), "", "no label for junk"]
+])
+var answeredRaw = JSON.stringify({ pageInfo: { results: 551 }, results: [
+  { id: 5, status: 2, type: "movie", media: { tmdbId: 550, status: 3 }, requestedBy: { displayName: "dana" } },
+  { id: 6, status: 2, type: "movie", is4k: true, media: { tmdbId: 551, status: 5, status4k: 3 } },
+  { id: 4, status: 3, type: "tv", media: { tmdbId: 1396, status: 1 }, seasons: [{ seasonNumber: 1 }] },
+  { id: 3, status: 1, type: "movie", media: { tmdbId: 552, status: 2 } }
+] })
+var answered = Model.applySeerrTitles(Model.parseSeerrRequests(answeredRaw, 20).items, { "movie:550": { title: "Fight Club (1999)" } })
+eq([
+  [answered.map(r => r.status).join(","), "processing,processing,declined,pending", "each request's state; a 4K one by its 4K media"],
+  [Model.requestLine(answered[0]), "Processing · Movie · by dana", "an answered request says its state"],
+  [Model.requestLine(answered[2]), "Declined · Season 1", "declined series"],
+  [Model.requestLine(answered[3]), "Movie", "a waiting one does not"],
+  [Model.seerrAnswered(answered).map(r => r.id).join(","), "5,6,4", "the waiting ones leave the answered list"],
+  [Model.fleetLine(Object.assign(Model.emptySnapshot(seerrSvc), { health: "up", version: "3.5.1", queue: answered, queueTotal: 551 })), "3.5.1", "answered requests are not counted as pending"]
+])
+eq([
+  [Model.seerrDiscoverUrl("http://s:5055/", "trending", 2), "http://s:5055/api/v1/discover/trending?page=2", "trending url"],
+  [Model.seerrDiscoverUrl("http://s:5055", "movies", 0), "http://s:5055/api/v1/discover/movies/upcoming?page=1", "upcoming movies url"],
+  [Model.seerrDiscoverUrl("http://s:5055", "tv", 9999), "http://s:5055/api/v1/discover/tv/upcoming?page=500", "pages stop at 500"],
+  [Model.seerrDiscoverUrl("http://s:5055", "../settings", 1), "", "only the known lists"],
+  [Model.seerrQuery("  the   matrix (1999)! "), "the%20matrix%20%281999%29%21", "a query encoded past encodeURIComponent"],
+  [Model.seerrQuery("x".repeat(150)).length, 100, "at most 100 characters"],
+  [Model.seerrQuery("a&page=9#b"), "a%26page%3D9%23b", "no parameter smuggled in"],
+  [Model.seerrSearchUrl("http://s:5055", "dune", 1), "http://s:5055/api/v1/search?query=dune&page=1", "search url"],
+  [Model.seerrSearchUrl("http://s:5055", "   ", 1), "", "no search without words"],
+  [Model.seerrPosterPath("/plu8tTviVZDO5jP7nzNXsDHLu8P.jpg"), "/plu8tTviVZDO5jP7nzNXsDHLu8P.jpg", "a poster path"],
+  [Model.seerrPosterPath("/a/../b.jpg"), "", "no traversal"], [Model.seerrPosterPath("http://x/y.jpg"), "", "no url"],
+  [Model.seerrPosterUrl("http://s:5055", "/p1.jpg"), "http://s:5055/imageproxy/tmdb/t/p/w154/p1.jpg", "posters through seerr's proxy"],
+  [Model.seerrPosterUrl("http://s:5055", "p1.jpg"), "", "no poster url for a bad path"],
+  [Model.seerrPosterCachePath("/c", "svc-8", "/p1.jpg"), "/c/svc-8-p1-seerr-hd.jpg", "a poster's cache file"],
+  [Model.seerrPosterCachePath("/c", "svc-8", ""), "", "none without a poster"],
+  [Model.isSeerrMediaKey("movie:603"), true, "a movie key"], [Model.isSeerrMediaKey("tv:1399"), true, "a series key"],
+  [Model.isSeerrMediaKey("person:1"), false, "no person"], [Model.isSeerrMediaKey("movie:0"), false, "no zero"],
+  [Model.isSeerrMediaKey("movie:603/x"), false, "no path"],
+  [Model.seerrCreateBody("movie:603"), '{"mediaType":"movie","mediaId":603}', "request a movie"],
+  [Model.seerrCreateBody("tv:1399"), '{"mediaType":"tv","mediaId":1399,"seasons":"all"}', "request every season of a series"],
+  [Model.seerrCreateBody("tv:x"), "", "nothing for a bad key"],
+  [Model.seerrCreateUrl("http://s:5055"), "http://s:5055/api/v1/request", "create url"],
+  [Model.seerrCreateOutcome(201), "requested", "made"], [Model.seerrCreateOutcome(409), "requested", "there already"],
+  [Model.seerrCreateOutcome(202), "nothing", "no season left"], [Model.seerrCreateOutcome(403), "HTTP 403", "refused"],
+  [Model.seerrCreateOutcome(0), "unreachable", "not reached"]
+])
+var trending = Model.parseSeerrResults(JSON.stringify({ page: 1, totalPages: 900, results: [
+  { id: 1507696, mediaType: "movie", title: "Apocalypse Z", releaseDate: "2026-10-09", posterPath: "/a.jpg", voteAverage: 6.53, mediaInfo: null },
+  { id: 287, mediaType: "person", name: "Brad Pitt" },
+  { id: 1399, mediaType: "tv", name: "Game of Thrones", firstAirDate: "2011-04-17", posterPath: "/g.jpg", mediaInfo: { status: 4 } },
+  { id: 603, mediaType: "movie", title: "The Matrix", releaseDate: "1999-03-30", mediaInfo: { status: 5 } },
+  { id: 604, mediaType: "movie", title: "Reloaded", mediaInfo: { status: 2 } },
+  { id: 0, mediaType: "movie", title: "No id" }
+] }))
+eq([
+  [trending.items.map(r => r.id).join(","), "movie:1507696,tv:1399,movie:603,movie:604", "movies and series only, by key"],
+  [trending.pages, 500, "Seerr pages stop at 500"], [trending.page, 1, "the page"],
+  [trending.items.map(r => r.requestable).join(","), "true,true,false,false", "requestable: new, or a series partly there"],
+  [trending.items[0].rating, 6.5, "rating to one decimal"], [trending.items[0].date, "2026-10-09", "date"],
+  [Model.seerrMediaLine(trending.items[0]), "Movie · 2026 · \u2605 6.5", "a new title's line"],
+  [Model.seerrMediaLine(trending.items[1]), "Series · 2011 · Partly available", "a series partly there"],
+  [Model.seerrMediaLine(trending.items[0], null, "sending"), "Movie · 2026 · Requesting… · \u2605 6.5", "on its way"],
+  [Model.seerrMediaLine(trending.items[0], null, "requested"), "Movie · 2026 · Requested · \u2605 6.5", "requested from the panel"],
+  [Model.seerrMediaLine(trending.items[1], null, "nothing"), "Series · 2011 · Nothing left to request", "nothing left"],
+  [Model.seerrMediaLine(trending.items[2], null, "HTTP 403"), "Movie · 1999 · Request failed (HTTP 403)", "refused"],
+  [Model.seerrMediaLine(trending.items[2], null, "unreachable"), "Movie · 1999 · Request failed (Unreachable)", "not reached"],
+  [Model.parseSeerrResults("junk").items.length, 0, "junk has no results"],
+  [Model.itemOpenUrl({ url: "http://s:5055", kind: "seerr" }, trending.items[1]), "http://s:5055/tv/1399", "a result opens in seerr"]
+])
+var upcoming = Model.mergeSeerrUpcoming([
+  [{ id: "movie:1", title: "B", date: "2026-12-16" }, { id: "movie:2", title: "Undated", date: "" }],
+  [{ id: "tv:3", title: "A", date: "2026-11-01" }, { id: "tv:4", title: "C", date: "2026-12-16" }, { id: "movie:1", title: "B", date: "2026-12-16" }]
+])
+eq([[upcoming.map(r => r.title).join(","), "A,B,C,Undated", "upcoming soonest first, undated last, once each"]])
 
 console.log("Model.test.js ok")

@@ -8,7 +8,8 @@
 // (haseen notification send, xdg-open through Apps.launch), the Jellyfin
 // device name, settings read from the manifest instead of Omarchy's
 // shell.json, the Omarchy host-write guards dropped with the host, and a
-// Seerr kind (its requests waiting for approval).
+// Seerr kind (its requests, discover lists and search, and requests made
+// from the panel).
 
 // Interface strings stay English here and are translated where QML shows
 // them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). The helpers
@@ -1445,18 +1446,22 @@ function parseJellyfinSessions(raw, pageSize) {
 }
 
 // --- Seerr --------------------------------------------------------------------
-// Its requests waiting for approval, newest first. A request names its media
-// only by TMDB id, so each title comes from one lookup (seerrTitleUrl), which
-// the service keeps for the session; a row without one shows the id.
+// Its requests, the ones waiting for approval apart, newest first. A request
+// names its media only by TMDB id, so each title (and poster) comes from one
+// lookup (seerrTitleUrl), which the service keeps for the session; a row
+// without one shows the id. Discover lists and search answer with titles of
+// their own. Art comes through Seerr's image proxy, never from TMDB itself.
 
 function seerrStatusUrl(base) {
   return apiUrl(base, "/api/v1/status")
 }
 
-function seerrRequestsUrl(base, page, pageSize) {
+// filter "pending" lists the requests waiting for approval; anything else
+// every request.
+function seerrRequestsUrl(base, page, pageSize, filter) {
   var size = clampPageSize(pageSize)
   return apiUrl(base, "/api/v1/request?take=" + size + "&skip=" + listOffset(page, size)
-    + "&filter=pending&sort=added&sortDirection=desc")
+    + "&filter=" + (filter === "pending" ? "pending" : "all") + "&sort=added&sortDirection=desc")
 }
 
 function seerrMediaType(value) {
@@ -1467,6 +1472,11 @@ function seerrMediaType(value) {
 function seerrTitleKey(mediaType, tmdbId) {
   var id = parseInt(tmdbId, 10)
   return id > 0 ? seerrMediaType(mediaType) + ":" + id : ""
+}
+
+// A media key as the panel sends it to be requested; nothing else is.
+function isSeerrMediaKey(key) {
+  return /^(movie|tv):[1-9][0-9]{0,9}$/.test(String(key == null ? "" : key))
 }
 
 function seerrTitleUrl(base, key) {
@@ -1493,6 +1503,64 @@ function parseSeerrStatus(raw) {
   return { version: data && typeof data === "object" ? String(data.version || "") : "" }
 }
 
+// A media's state in Seerr (MediaStatus: 2 pending, 3 processing, 4 partly
+// available, 5 available, 6 blocklisted, 7 deleted); "" for one it does not
+// track (1, or no mediaInfo at all).
+function seerrMediaState(status) {
+  var n = parseInt(status, 10)
+  if (n === 2) return "requested"
+  if (n === 3) return "processing"
+  if (n === 4) return "partial"
+  if (n === 5) return "available"
+  if (n === 6) return "blocklisted"
+  if (n === 7) return "deleted"
+  return ""
+}
+
+// A request's state in one word: its own status (1 pending, 2 approved,
+// 3 declined, 4 failed, 5 completed), and once approved its media's, the
+// 4K one for a 4K request.
+function seerrRequestState(status, mediaStatus) {
+  var n = parseInt(status, 10)
+  if (n === 1) return "pending"
+  if (n === 3) return "declined"
+  if (n === 4) return "failed"
+  var media = seerrMediaState(mediaStatus)
+  if (media && media !== "requested") return media
+  return n === 5 ? "completed" : "approved"
+}
+
+var SEERR_STATE_LABELS = {
+  pending: N_("Pending"), approved: N_("Approved"), declined: N_("Declined"), failed: N_("Failed"),
+  completed: N_("Completed"), requested: N_("Requested"), processing: N_("Processing"),
+  partial: N_("Partly available"), available: N_("Available"), blocklisted: N_("Blocklisted"),
+  deleted: N_("Deleted")
+}
+
+function seerrStateLabel(state, i18n) {
+  var text = SEERR_STATE_LABELS[String(state || "")]
+  return text ? trText(i18n, text) : ""
+}
+
+// A poster's path in TMDB's image store ("/abc.jpg"), as Seerr passes it on;
+// anything else is no poster.
+function seerrPosterPath(value) {
+  var text = String(value || "")
+  return /^\/[A-Za-z0-9_-]{1,100}\.(jpg|jpeg|png|webp)$/.test(text) ? text : ""
+}
+
+// Through Seerr's image proxy, keyless: the key is never sent along with an
+// image request, and the desktop never asks TMDB itself.
+function seerrPosterUrl(base, posterPath) {
+  var poster = seerrPosterPath(posterPath)
+  return poster ? apiUrl(base, "/imageproxy/tmdb/t/p/w154" + poster) : ""
+}
+
+function seerrPosterCachePath(cacheDir, serviceId, posterPath) {
+  var poster = seerrPosterPath(posterPath)
+  return poster ? artCachePath(cacheDir, serviceId, poster.slice(1).replace(/\.[a-z]+$/, ""), "seerr") : ""
+}
+
 function parseSeerrRequests(raw, pageSize) {
   var data = parseJson(raw, {})
   var rows = data && Array.isArray(data.results) ? data.results : []
@@ -1511,6 +1579,7 @@ function parseSeerrRequests(raw, pageSize) {
     }
     seasons.sort(function(a, b) { return a - b })
     var by = row.requestedBy && typeof row.requestedBy === "object" ? row.requestedBy : {}
+    var is4k = row.is4k === true
     items.push({
       id: String(row.id),
       kind: "seerr",
@@ -1518,10 +1587,11 @@ function parseSeerrRequests(raw, pageSize) {
       tmdbId: parseInt(media.tmdbId, 10) || 0,
       titleKey: seerrTitleKey(type, media.tmdbId),
       title: "",
+      posterPath: "",
       seasons: seasons,
-      is4k: row.is4k === true,
+      is4k: is4k,
       requestedBy: String(by.displayName || by.username || ""),
-      status: "pending"
+      status: seerrRequestState(row.status, is4k ? media.status4k : media.status)
     })
   }
   return { items: capList(items, pageSize), total: parseInt(info.results, 10) || items.length }
@@ -1537,21 +1607,43 @@ function parseSeerrTitle(raw) {
   return /^[0-9]{4}$/.test(year) ? name + " (" + year + ")" : name
 }
 
+// What the service keeps of one lookup: the title and the poster.
+function parseSeerrTitleInfo(raw) {
+  var data = parseJson(raw, {})
+  return {
+    title: parseSeerrTitle(raw),
+    posterPath: data && typeof data === "object" ? seerrPosterPath(data.posterPath) : ""
+  }
+}
+
 // The titles still to look up for these requests, once each. A key the
 // service holds is known, even empty: a lookup that answered with an error
-// is not repeated every poll.
-function seerrMissingTitles(items, titles) {
+// is not repeated every poll. One already on its way (busy) is not asked
+// for twice.
+function seerrMissingTitles(items, titles, busy) {
   var list = toList(items)
   var known = titles && typeof titles === "object" ? titles : {}
+  var asking = busy && typeof busy === "object" ? busy : {}
   var seen = {}
   var out = []
   for (var i = 0; i < list.length; i++) {
     var key = String((list[i] && list[i].titleKey) || "")
-    if (!key || seen[key] || Object.prototype.hasOwnProperty.call(known, key)) continue
+    if (!key || seen[key] || Object.prototype.hasOwnProperty.call(known, key) || asking[key]) continue
     seen[key] = true
     out.push(key)
   }
   return out
+}
+
+// Whether every title these requests need has answered (or failed this
+// round): none of them is still being looked up.
+function seerrTitlesSettled(items, busy) {
+  var list = toList(items)
+  var asking = busy && typeof busy === "object" ? busy : {}
+  for (var i = 0; i < list.length; i++) {
+    if (asking[String((list[i] && list[i].titleKey) || "")]) return false
+  }
+  return true
 }
 
 function applySeerrTitles(items, titles) {
@@ -1561,18 +1653,21 @@ function applySeerrTitles(items, titles) {
   for (var i = 0; i < list.length; i++) {
     var row = {}
     for (var k in list[i]) row[k] = list[i][k]
-    var title = known[row.titleKey]
+    var info = known[row.titleKey]
+    var title = info && typeof info === "object" ? info.title : info
     row.title = title ? String(title) : row.tmdbId ? "TMDB " + row.tmdbId : "TMDB"
+    row.posterPath = info && typeof info === "object" ? seerrPosterPath(info.posterPath) : ""
     out.push(row)
   }
   return out
 }
 
-// A request's second line: what was asked for (a movie, or which seasons),
-// 4K when it is, and who asked.
+// A request's second line: its state once it left the queue, what was asked
+// for (a movie, or which seasons), 4K when it is, and who asked.
 function requestLine(item, i18n) {
   var row = item || {}
   var parts = []
+  if (row.status && row.status !== "pending") parts.push(seerrStateLabel(row.status, i18n) || String(row.status))
   var seasons = toList(row.seasons)
   if (row.mediaType === "tv")
     parts.push(seasons.length ? countText(i18n, N_n("Season %2", "Seasons %2"), seasons.length, [seasons.join(", ")])
@@ -1582,6 +1677,147 @@ function requestLine(item, i18n) {
   if (row.is4k === true) parts.push("4K")
   if (row.requestedBy) parts.push(trText(i18n, N_("by %1"), [row.requestedBy]))
   return parts.join(" · ")
+}
+
+// The requests already answered: the ones waiting have a list of their own.
+function seerrAnswered(items) {
+  var list = toList(items)
+  var out = []
+  for (var i = 0; i < list.length; i++) if (list[i] && list[i].status !== "pending") out.push(list[i])
+  return out
+}
+
+// The discover lists the panel shows: Seerr's trending, and its upcoming
+// movies and series together.
+var SEERR_DISCOVER = {
+  trending: "/api/v1/discover/trending",
+  movies: "/api/v1/discover/movies/upcoming",
+  tv: "/api/v1/discover/tv/upcoming"
+}
+var SEERR_PAGE_MAX = 500
+
+function seerrPage(page) {
+  return Math.min(SEERR_PAGE_MAX, listPage(page))
+}
+
+function seerrDiscoverUrl(base, list, page) {
+  var path = SEERR_DISCOVER[String(list || "")]
+  return path ? apiUrl(base, path + "?page=" + seerrPage(page)) : ""
+}
+
+// The search words as Seerr's query parameter: trimmed, at most 100
+// characters, and encoded past encodeURIComponent, whose !'()* Seerr's
+// request validation refuses.
+function seerrQuery(text) {
+  var words = String(text || "").replace(/\s+/g, " ").replace(/^ | $/g, "").slice(0, 100)
+  return encodeURIComponent(words).replace(/[!'()*]/g, function(c) {
+    return "%" + c.charCodeAt(0).toString(16).toUpperCase()
+  })
+}
+
+function seerrSearchUrl(base, text, page) {
+  var query = seerrQuery(text)
+  return query ? apiUrl(base, "/api/v1/search?query=" + query + "&page=" + seerrPage(page)) : ""
+}
+
+// A discover or search page: its movies and series (people and collections
+// are left out), each with its state in Seerr.
+function parseSeerrResults(raw) {
+  var data = parseJson(raw, {})
+  var rows = data && Array.isArray(data.results) ? data.results : []
+  var items = []
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object") continue
+    var type = String(row.mediaType || "")
+    if (type !== "movie" && type !== "tv") continue
+    var key = seerrTitleKey(type, row.id)
+    if (!key) continue
+    var name = String(row.title || row.name || "").replace(/^\s+|\s+$/g, "")
+    var date = String(row.releaseDate || row.firstAirDate || "")
+    var info = row.mediaInfo && typeof row.mediaInfo === "object" ? row.mediaInfo : {}
+    var state = seerrMediaState(info.status)
+    items.push({
+      id: key,
+      kind: "seerr",
+      mediaType: type,
+      tmdbId: parseInt(row.id, 10),
+      title: name || "TMDB " + parseInt(row.id, 10),
+      date: /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(date) ? date.slice(0, 10) : "",
+      posterPath: seerrPosterPath(row.posterPath),
+      rating: Number(row.voteAverage) > 0 ? Math.round(Number(row.voteAverage) * 10) / 10 : 0,
+      state: state,
+      // A series partly there can still ask for the seasons it lacks.
+      requestable: state === "" || state === "deleted" || (type === "tv" && state === "partial")
+    })
+  }
+  return {
+    items: items,
+    page: listPage(data && data.page),
+    pages: Math.min(SEERR_PAGE_MAX, Math.max(0, parseInt(data && data.totalPages, 10) || 0))
+  }
+}
+
+// Upcoming movies and series as one list, soonest first; a title without a
+// date goes last.
+function mergeSeerrUpcoming(lists) {
+  var all = []
+  var seen = {}
+  var parts = toList(lists)
+  for (var p = 0; p < parts.length; p++) {
+    var items = toList(parts[p])
+    for (var i = 0; i < items.length; i++) {
+      if (!items[i] || seen[items[i].id]) continue
+      seen[items[i].id] = true
+      all.push(items[i])
+    }
+  }
+  all.sort(function(a, b) {
+    var da = a.date || "9999"
+    var db = b.date || "9999"
+    if (da !== db) return da < db ? -1 : 1
+    return String(a.title).localeCompare(String(b.title))
+  })
+  return all
+}
+
+// A discover or search row's second line: movie or series, its year, its
+// state in Seerr (or what a request from the panel came to), its rating.
+function seerrMediaLine(item, i18n, asked) {
+  var row = item || {}
+  var parts = [trText(i18n, row.mediaType === "tv" ? N_("Series") : N_("Movie"))]
+  if (row.date) parts.push(row.date.slice(0, 4))
+  var outcome = String(asked || "")
+  if (outcome === "sending") parts.push(trText(i18n, N_("Requesting…")))
+  else if (outcome === "requested") parts.push(seerrStateLabel("requested", i18n))
+  else if (outcome === "nothing") parts.push(trText(i18n, N_("Nothing left to request")))
+  else if (outcome) parts.push(trText(i18n, N_("Request failed (%1)"), [outcome === "unreachable" ? trText(i18n, N_("Unreachable")) : outcome]))
+  else if (row.state) parts.push(seerrStateLabel(row.state, i18n))
+  if (row.rating > 0) parts.push("★ " + row.rating)
+  return parts.join(" · ")
+}
+
+function seerrCreateUrl(base) {
+  return apiUrl(base, "/api/v1/request")
+}
+
+// A request for one movie, or for every season of a series Seerr does not
+// have yet (it leaves out what is already there or asked for).
+function seerrCreateBody(key) {
+  if (!isSeerrMediaKey(key)) return ""
+  var parts = String(key).split(":")
+  var body = { mediaType: parts[0], mediaId: parseInt(parts[1], 10) }
+  if (parts[0] === "tv") body.seasons = "all"
+  return JSON.stringify(body)
+}
+
+// What a request from the panel came to: "requested" (made, or there
+// already), "nothing" (no season left to ask for) or the failure to show.
+function seerrCreateOutcome(statusCode) {
+  var code = parseInt(statusCode, 10) || 0
+  if (code === 200 || code === 201 || code === 409) return "requested"
+  if (code === 202) return "nothing"
+  return code ? "HTTP " + code : "unreachable"
 }
 
 function emptySnapshot(service) {
@@ -1600,6 +1836,9 @@ function emptySnapshot(service) {
     queue: [],
     queuePage: 1,
     queueTotal: 0,
+    // Seerr: the requests waiting for approval, beside every request in queue.
+    pending: [],
+    pendingTotal: 0,
     calendar: [],
     activity: [],
     wanted: [],
@@ -1937,7 +2176,7 @@ function fleetLine(snapshot, i18n) {
     if (deck.length > 0) return countText(i18n, N_n("%1 on deck", "%1 on deck"), deck.length)
   }
   if (snap.kind === "seerr") {
-    var pending = parseInt(snap.queueTotal, 10) || toList(snap.queue).length
+    var pending = parseInt(snap.pendingTotal, 10) || toList(snap.pending).length
     if (pending > 0) return countText(i18n, N_n("%1 pending", "%1 pending"), pending)
   }
   var active = 0
@@ -2092,7 +2331,7 @@ var FEED_MAX_WRITE_MS = 120000   // idle refresh: updatedAt must not stall
 var FEED_SNAPSHOT_FIELDS = {
   id: "t", kind: "t", name: "t", group: "t", url: "u", health: "t", statusText: "t",
   version: "t", paused: "b", speed: "n", downloadingCount: "n", queueTotal: "n",
-  showQueue: "b", showCalendar: "b"
+  pendingTotal: "n", showQueue: "b", showCalendar: "b"
 }
 var FEED_DOWNLOAD_FIELDS = {
   id: "t", serviceId: "t", serviceName: "t", kind: "t", title: "t", progress: "n",
@@ -2321,10 +2560,14 @@ function eventsFromPoll(prev, next, service) {
     }
   }
   if (after.kind === "seerr") {
+    // A new request waiting for approval; one approved at once (a request
+    // made with the right to) is no news.
+    var prevPending = toList(before.pending)
+    var nextPending = toList(after.pending)
     var asked = {}
-    for (var pq = 0; pq < prevQueue.length; pq++) asked[String(prevQueue[pq].id)] = true
-    for (var nq = 0; nq < nextQueue.length; nq++) {
-      var request = nextQueue[nq]
+    for (var pq = 0; pq < prevPending.length; pq++) asked[String(prevPending[pq].id)] = true
+    for (var nq = 0; nq < nextPending.length; nq++) {
+      var request = nextPending[nq]
       if (!request.id || asked[request.id]) continue
       events.push({
         id: "request-" + after.id + "-" + request.id,
@@ -2686,7 +2929,27 @@ if (typeof module !== "undefined" && module.exports) {
     parseSeerrRequests: parseSeerrRequests,
     parseSeerrTitle: parseSeerrTitle,
     seerrMissingTitles: seerrMissingTitles,
+    seerrTitlesSettled: seerrTitlesSettled,
     applySeerrTitles: applySeerrTitles,
+    parseSeerrTitleInfo: parseSeerrTitleInfo,
+    isSeerrMediaKey: isSeerrMediaKey,
+    seerrMediaState: seerrMediaState,
+    seerrRequestState: seerrRequestState,
+    seerrStateLabel: seerrStateLabel,
+    seerrPosterPath: seerrPosterPath,
+    seerrPosterUrl: seerrPosterUrl,
+    seerrPosterCachePath: seerrPosterCachePath,
+    seerrAnswered: seerrAnswered,
+    seerrPage: seerrPage,
+    seerrDiscoverUrl: seerrDiscoverUrl,
+    seerrQuery: seerrQuery,
+    seerrSearchUrl: seerrSearchUrl,
+    parseSeerrResults: parseSeerrResults,
+    mergeSeerrUpcoming: mergeSeerrUpcoming,
+    seerrMediaLine: seerrMediaLine,
+    seerrCreateUrl: seerrCreateUrl,
+    seerrCreateBody: seerrCreateBody,
+    seerrCreateOutcome: seerrCreateOutcome,
     requestLine: requestLine,
     emptySnapshot: emptySnapshot,
     applyHttpHealth: applyHttpHealth,

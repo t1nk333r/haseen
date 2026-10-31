@@ -28,8 +28,9 @@ import "Model.js" as Model
 // - pages open through Apps.launch, outside the shell's cgroup;
 // - the 2 s downloader poll runs only while a client reported an active job
 //   or the panel is open, instead of always (architecture 6);
-// - a Seerr kind: its requests waiting for approval, each named by a TMDB
-//   title lookup, approved or declined from the panel.
+// - a Seerr kind: its requests, each named by a TMDB title lookup, the
+//   waiting ones approved or declined from the panel; its discover lists and
+//   search, asked for while the panel shows them, and requests made there.
 Scope {
     id: root
 
@@ -52,12 +53,32 @@ Scope {
     property var snapshots: []
     property var nowFeed: ({ downloads: [], calendar: [], warnings: [], sessions: [], onDeck: [], recent: [], downloadingCount: 0, downCount: 0 })
     property var qbitReady: ({})
-    // Seerr: the titles looked up, by Model.seerrTitleKey ("" for a lookup
-    // that answered an error), and each request page waiting for its titles,
-    // by "<service id>:<page>".
+    // Seerr: the titles and posters looked up, by Model.seerrTitleKey (empty
+    // for a lookup that answered an error), the lookups on their way, and
+    // each request list waiting for its titles, by "<service id>:<list>:<page>".
     property var seerrTitles: ({})
+    property var seerrLooking: ({})
     property var seerrBatches: ({})
-    property int seerrBatchSeq: 0
+    // What the Seerr detail's TRENDING, UPCOMING and SEARCH tabs show: one
+    // page of one list, asked for while the panel shows it, never polled.
+    // `token` drops the answer to a page no longer asked for.
+    property var seerrBrowse: ({
+            serviceId: "",
+            tab: "",
+            query: "",
+            page: 1,
+            pages: 0,
+            items: [],
+            state: "",
+            error: "",
+            token: 0,
+            lists: [],
+            parts: ({})
+        })
+    property int seerrBrowseSeq: 0
+    // What each request made from the panel came to, by "<service id>|<media
+    // key>": "sending", "requested", "nothing" or the failure (Model.seerrCreateOutcome).
+    property var seerrAsked: ({})
     property var detailQueue: []
     property int detailQueuePage: 1
     property int detailQueueTotal: 0
@@ -408,7 +429,7 @@ Scope {
                 cmd.push("-H", "@" + root.headerPath);
         }
         if (req.bodyText) {
-            cmd.push("-H", "Content-Type: application/x-www-form-urlencoded");
+            cmd.push("-H", req.json === true ? "Content-Type: application/json" : "Content-Type: application/x-www-form-urlencoded");
             cmd.push("--data-binary", "@" + root.bodyPath);
         }
         const wrap = req.outputPath || req.cookieWrite || req.cookieRead;
@@ -440,7 +461,7 @@ Scope {
 
     function cloneSnap(snap) {
         const next = Model.emptySnapshot(snap);
-        const keys = ["health", "statusText", "version", "machineId", "paused", "speed", "queue", "queuePage", "queueTotal", "calendar", "activity", "wanted", "sessions", "onDeck", "recent"];
+        const keys = ["health", "statusText", "version", "machineId", "paused", "speed", "queue", "queuePage", "queueTotal", "pending", "pendingTotal", "calendar", "activity", "wanted", "sessions", "onDeck", "recent"];
         for (let i = 0; i < keys.length; i++)
             next[keys[i]] = snap[keys[i]];
         return next;
@@ -503,7 +524,7 @@ Scope {
             root.enqueue({
                 kind: "seerr-requests",
                 serviceId: service.id,
-                url: Model.seerrRequestsUrl(service.url, page, root.pageSize),
+                url: Model.seerrRequestsUrl(service.url, page, root.pageSize, "all"),
                 headerText: auth.apiKey ? Model.headerApiKey(auth.apiKey) : "",
                 page: page
             });
@@ -828,6 +849,13 @@ Scope {
             }
             return;
         }
+        if (req.kind === "seerr-pending") {
+            if (parsed.status >= 200 && parsed.status < 400) {
+                const waiting = Model.parseSeerrRequests(parsed.body, root.pageSize);
+                root.nameSeerrRequests(service, "pending", 1, waiting.items, waiting.total);
+            }
+            return;
+        }
         if (req.kind === "seerr-requests") {
             if (parsed.status < 200 || parsed.status >= 400) {
                 if (!(req.page > 1))
@@ -837,14 +865,20 @@ Scope {
             const asked = Model.parseSeerrRequests(parsed.body, root.pageSize);
             if (!(req.page > 1))
                 root.setHealthMisses(service.id, 0);
-            root.nameSeerrRequests(service, req.page > 1 ? req.page : 1, asked.items, asked.total);
+            root.nameSeerrRequests(service, "all", req.page > 1 ? req.page : 1, asked.items, asked.total);
             return;
         }
         if (req.kind === "seerr-title") {
             const ok = parsed.status >= 200 && parsed.status < 400;
-            root.keepSeerrTitle(req.titleKey, ok ? Model.parseSeerrTitle(parsed.body) : "");
-            if (req.last)
-                root.finishSeerrBatch(req.batchKey, req.token);
+            root.keepSeerrTitle(req.titleKey, ok ? Model.parseSeerrTitleInfo(parsed.body) : ({}));
+            return;
+        }
+        if (req.kind === "seerr-browse") {
+            root.finishSeerrBrowsePart(req, parsed.status, parsed.body);
+            return;
+        }
+        if (req.kind === "seerr-create") {
+            root.finishSeerrCreate(req, parsed.status);
             return;
         }
         if (req.kind === "jellyfin-identity") {
@@ -906,8 +940,15 @@ Scope {
         }
         // Not kept: curl did not reach Seerr, so the next poll asks again.
         if (req && req.kind === "seerr-title") {
-            if (req.last)
-                root.finishSeerrBatch(req.batchKey, req.token);
+            root.keepSeerrTitle(req.titleKey, null);
+            return;
+        }
+        if (req && req.kind === "seerr-browse") {
+            root.finishSeerrBrowsePart(req, 0, "");
+            return;
+        }
+        if (req && req.kind === "seerr-create") {
+            root.finishSeerrCreate(req, 0);
             return;
         }
         if (!req || !Model.isHealthKind(req.kind) || req.page > 1)
@@ -1017,61 +1058,81 @@ Scope {
 
     function enqueueSeerr(service, requestsOnly) {
         const auth = root.cred(service.id);
+        const header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : "";
         if (!requestsOnly)
             root.enqueue({ kind: "seerr-status", serviceId: service.id, url: Model.seerrStatusUrl(service.url) });
         root.enqueue({
+            kind: "seerr-pending",
+            serviceId: service.id,
+            url: Model.seerrRequestsUrl(service.url, 1, root.pageSize, "pending"),
+            headerText: header
+        });
+        root.enqueue({
             kind: "seerr-requests",
             serviceId: service.id,
-            url: Model.seerrRequestsUrl(service.url, 1, root.pageSize),
-            headerText: auth.apiKey ? Model.headerApiKey(auth.apiKey) : ""
+            url: Model.seerrRequestsUrl(service.url, 1, root.pageSize, "all"),
+            headerText: header
         });
     }
 
-    // A page of Seerr requests waits for the titles it lacks: one lookup
-    // each, queued behind it, and the last one's answer commits the page. The
-    // queue runs one request at a time in order, so by then every lookup of
-    // the page has answered. The page is committed whole, titles and all,
-    // so a new request's notification names what was asked for.
-    function nameSeerrRequests(service, page, items, total) {
-        const batchKey = service.id + ":" + page;
-        const token = root.seerrBatchSeq + 1;
-        root.seerrBatchSeq = token;
+    // A list of Seerr requests waits for the titles it lacks: one lookup
+    // each, queued behind it, never two for one title (the waiting list and
+    // every request share most), and is committed whole once none of its
+    // titles is still on its way, so a new request's notification names what
+    // was asked for. `list` is "pending" or "all".
+    function nameSeerrRequests(service, list, page, items, total) {
         const batches = root.copyMap(root.seerrBatches);
-        batches[batchKey] = { token: token, serviceId: service.id, page: page, items: items, total: total };
+        batches[service.id + ":" + list + ":" + page] = { serviceId: service.id, list: list, page: page, items: items, total: total };
         root.seerrBatches = batches;
-        const missing = Model.seerrMissingTitles(items, root.seerrTitles);
-        if (!missing.length) {
-            root.finishSeerrBatch(batchKey, token);
-            return;
+        const missing = Model.seerrMissingTitles(items, root.seerrTitles, root.seerrLooking);
+        if (missing.length) {
+            const looking = root.copyMap(root.seerrLooking);
+            const auth = root.cred(service.id);
+            const header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : "";
+            for (let i = 0; i < missing.length; i++) {
+                looking[missing[i]] = true;
+                root.enqueue({
+                    kind: "seerr-title",
+                    serviceId: service.id,
+                    url: Model.seerrTitleUrl(service.url, missing[i]),
+                    headerText: header,
+                    titleKey: missing[i]
+                });
+            }
+            root.seerrLooking = looking;
         }
-        const auth = root.cred(service.id);
-        const header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : "";
-        for (let i = 0; i < missing.length; i++) {
-            root.enqueue({
-                kind: "seerr-title",
-                serviceId: service.id,
-                url: Model.seerrTitleUrl(service.url, missing[i]),
-                headerText: header,
-                titleKey: missing[i],
-                batchKey: batchKey,
-                token: token,
-                last: i === missing.length - 1
-            });
-        }
+        root.settleSeerrBatches();
     }
 
-    function keepSeerrTitle(key, title) {
+    // A lookup's answer: its title and poster, or nothing for one curl could
+    // not make (info null), which the next poll asks for again.
+    function keepSeerrTitle(key, info) {
         if (!key)
             return;
-        // A title per media asked for; a long session starts over past this.
-        const titles = Object.keys(root.seerrTitles).length >= Model.SEEN_LIMIT ? {} : root.copyMap(root.seerrTitles);
-        titles[key] = String(title || "");
-        root.seerrTitles = titles;
+        const looking = root.copyMap(root.seerrLooking);
+        delete looking[key];
+        root.seerrLooking = looking;
+        if (info) {
+            // A title per media asked for; a long session starts over past this.
+            const titles = Object.keys(root.seerrTitles).length >= Model.SEEN_LIMIT ? {} : root.copyMap(root.seerrTitles);
+            titles[key] = { title: String(info.title || ""), posterPath: String(info.posterPath || "") };
+            root.seerrTitles = titles;
+        }
+        root.settleSeerrBatches();
     }
 
-    function finishSeerrBatch(batchKey, token) {
+    function settleSeerrBatches() {
+        const keys = Object.keys(root.seerrBatches);
+        for (let i = 0; i < keys.length; i++) {
+            const batch = root.seerrBatches[keys[i]];
+            if (batch && Model.seerrTitlesSettled(batch.items, root.seerrLooking))
+                root.finishSeerrBatch(keys[i]);
+        }
+    }
+
+    function finishSeerrBatch(batchKey) {
         const batch = root.seerrBatches[batchKey];
-        if (!batch || batch.token !== token)
+        if (!batch)
             return;
         const batches = root.copyMap(root.seerrBatches);
         delete batches[batchKey];
@@ -1080,16 +1141,135 @@ Scope {
         if (!service)
             return;
         const items = Model.applySeerrTitles(batch.items, root.seerrTitles);
-        if (batch.page > 1) {
+        if (batch.list === "all" && batch.page > 1) {
             root.setDetailQueue(service.id, batch.page, items, batch.total);
+        } else {
+            let snap = Model.applyServiceMeta(root.cloneSnap(root.snapshotFor(service)), service);
+            if (batch.list === "pending") {
+                snap.pending = items;
+                snap.pendingTotal = batch.total;
+            } else {
+                snap = Model.applyHttpHealth(snap, 200);
+                snap.queue = items;
+                snap.queueTotal = batch.total;
+                snap.queuePage = 1;
+            }
+            root.commitSnapshot(snap, service);
+        }
+        if (root.panelOpen)
+            root.enqueueSeerrPosters(service, items);
+    }
+
+    // Posters through Seerr's image proxy, without the key: an image request
+    // never carries it.
+    function enqueueSeerrPosters(service, items) {
+        const list = items || [];
+        for (let i = 0; i < list.length; i++) {
+            const poster = Model.seerrPosterPath(list[i] && list[i].posterPath);
+            if (!poster)
+                continue;
+            root.enqueueArt({
+                kind: "poster",
+                serviceId: service.id,
+                url: Model.seerrPosterUrl(service.url, poster),
+                outputPath: Model.seerrPosterCachePath(root.cacheDir, service.id, poster),
+                image: true
+            });
+        }
+    }
+
+    // One page of the Seerr detail's TRENDING, UPCOMING (movies and series,
+    // asked for together and shown as one list) or SEARCH. An empty search
+    // clears the list.
+    function browseSeerr(serviceId, tab, query, page) {
+        const service = root.serviceById(serviceId);
+        if (!service || service.kind !== "seerr")
+            return;
+        const lists = tab === "trending" ? ["trending"] : tab === "upcoming" ? ["movies", "tv"] : tab === "search" ? ["search"] : [];
+        if (!lists.length)
+            return;
+        const words = String(query || "").trim();
+        const token = root.seerrBrowseSeq + 1;
+        root.seerrBrowseSeq = token;
+        const at = Model.seerrPage(page);
+        root.seerrBrowse = {
+            serviceId: service.id,
+            tab: tab,
+            query: words,
+            page: at,
+            pages: 0,
+            items: [],
+            state: tab === "search" && words === "" ? "" : "loading",
+            error: "",
+            token: token,
+            lists: lists,
+            parts: ({})
+        };
+        if (root.seerrBrowse.state === "")
+            return;
+        const auth = root.cred(service.id);
+        const header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : "";
+        for (let i = 0; i < lists.length; i++) {
+            root.enqueue({
+                kind: "seerr-browse",
+                serviceId: service.id,
+                url: lists[i] === "search" ? Model.seerrSearchUrl(service.url, words, at) : Model.seerrDiscoverUrl(service.url, lists[i], at),
+                headerText: header,
+                list: lists[i],
+                token: token
+            });
+        }
+        root.pump();
+    }
+
+    function finishSeerrBrowsePart(req, statusCode, body) {
+        const browse = root.seerrBrowse;
+        if (!req || browse.token !== req.token)
+            return;
+        const ok = statusCode >= 200 && statusCode < 400;
+        const parts = root.copyMap(browse.parts);
+        parts[req.list] = ok ? Model.parseSeerrResults(body) : {
+            items: [],
+            pages: 0,
+            error: statusCode ? "HTTP " + statusCode : "unreachable"
+        };
+        const next = root.copyMap(browse);
+        next.parts = parts;
+        if (Object.keys(parts).length < browse.lists.length) {
+            root.seerrBrowse = next;
             return;
         }
-        let snap = Model.applyServiceMeta(root.cloneSnap(root.snapshotFor(service)), service);
-        snap = Model.applyHttpHealth(snap, 200);
-        snap.queue = items;
-        snap.queueTotal = batch.total;
-        snap.queuePage = 1;
-        root.commitSnapshot(snap, service);
+        const answered = browse.lists.map(list => parts[list]);
+        const failed = answered.filter(part => !!part.error);
+        next.items = browse.tab === "upcoming" ? Model.mergeSeerrUpcoming(answered.map(part => part.items)) : answered[0].items;
+        next.pages = Math.max.apply(null, answered.map(part => part.pages || 0));
+        next.state = failed.length === answered.length ? "error" : "ok";
+        next.error = next.state === "error" ? failed[0].error : "";
+        next.parts = ({});
+        root.seerrBrowse = next;
+        const service = root.serviceById(req.serviceId);
+        if (service && root.panelOpen)
+            root.enqueueSeerrPosters(service, next.items);
+    }
+
+    function seerrAskedFor(serviceId, key) {
+        return root.seerrAsked[String(serviceId) + "|" + String(key)] || "";
+    }
+
+    function setSeerrAsked(serviceId, key, outcome) {
+        const asked = root.copyMap(root.seerrAsked);
+        asked[String(serviceId) + "|" + String(key)] = outcome;
+        root.seerrAsked = asked;
+    }
+
+    // A request made from the panel: what it came to shows on its row, and
+    // the request lists are asked for again, so it appears there too.
+    function finishSeerrCreate(req, statusCode) {
+        const outcome = Model.seerrCreateOutcome(statusCode);
+        root.setSeerrAsked(req.serviceId, req.mediaKey, outcome);
+        const service = root.serviceById(req.serviceId);
+        if (service && (outcome === "requested" || outcome === "nothing"))
+            root.enqueueSeerr(service, true);
     }
 
     function enqueueSab(service, queueOnly) {
@@ -1349,6 +1529,26 @@ Scope {
                 return;
             }
         }
+        if (service.kind === "seerr" && action === "request-media") {
+            // One movie or series by its media key, and never twice at once.
+            const media = String(itemId || "");
+            const body = Model.seerrCreateBody(media);
+            if (!body || root.seerrAskedFor(service.id, media) === "sending")
+                return;
+            root.setSeerrAsked(service.id, media, "sending");
+            root.enqueue({
+                kind: "seerr-create",
+                serviceId: service.id,
+                url: Model.seerrCreateUrl(service.url),
+                method: "POST",
+                headerText: auth.apiKey ? Model.headerApiKey(auth.apiKey) : "",
+                bodyText: body,
+                json: true,
+                mediaKey: media
+            });
+            root.pump();
+            return;
+        }
         if (service.kind === "seerr") {
             const request = String(itemId || "");
             if ((action !== "approve-item" && action !== "decline-item") || !Model.isSeerrRequestId(request))
@@ -1377,6 +1577,10 @@ Scope {
 
     function mediaPath(serviceId, itemId) {
         return Model.jellyfinCachePath(root.cacheDir, serviceId, itemId);
+    }
+
+    function seerrPosterFile(serviceId, posterPath) {
+        return Model.seerrPosterCachePath(root.cacheDir, serviceId, posterPath);
     }
 
     function copyMap(obj) {

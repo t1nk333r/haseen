@@ -6,8 +6,8 @@ import "Model.js" as Model
 // open it. A media server (Jellyfin) shows what is playing, on deck and
 // recently added; the others their queue page by page, with pause and resume
 // on a downloader's rows and remove on qBittorrent's, SABnzbd its history, and
-// Sonarr or Radarr their calendar. Seerr's queue is its requests waiting for
-// approval, each with approve and decline. `panel` is the Panel that owns it.
+// Sonarr or Radarr their calendar. Seerr shows its requests, discover lists
+// and search (SeerrPane). `panel` is the Panel that owns it.
 //
 // Adapted from Panel.qml in omARR (MIT, Copyright (c) 2026 luccast), as the
 // owner's fork t1nk33r.omarr 1.0.0; see LICENSE and UPSTREAM.md beside this
@@ -32,9 +32,8 @@ Column {
     readonly property color dim: Theme.subtle(Theme.surface)
     readonly property bool torrents: !!snap && snap.kind === "qbittorrent"
     readonly property bool requests: !!snap && snap.kind === "seerr"
-    // The row whose remove (a torrent) or decline (a request) waits for a
-    // second click: the first only asks, since neither can be undone (Seerr
-    // approves only a pending request) and a removal can take the files.
+    // The torrent whose remove waits for a second click: the first only
+    // asks, since it cannot be undone and can take the files.
     property string confirmId: ""
 
     function removeTorrent(id: string, deleteFiles: bool): void {
@@ -45,22 +44,6 @@ Column {
         confirmId = "";
         if (service)
             service.runControl(snapId, deleteFiles ? "remove-item-files" : "remove-item", id);
-    }
-
-    function approveRequest(id: string): void {
-        confirmId = "";
-        if (service)
-            service.runControl(snapId, "approve-item", id);
-    }
-
-    function declineRequest(id: string): void {
-        if (confirmId !== id) {
-            confirmId = id;
-            return;
-        }
-        confirmId = "";
-        if (service)
-            service.runControl(snapId, "decline-item", id);
     }
 
     onSnapIdChanged: confirmId = ""
@@ -121,6 +104,13 @@ Column {
             font.pixelSize: Theme.font.body
             wrapMode: Text.WordWrap
         }
+    }
+
+    SeerrPane {
+        width: parent.width
+        visible: root.requests
+        panel: root.panel
+        snap: root.requests ? root.snap : null
     }
 
     Column {
@@ -196,7 +186,7 @@ Column {
     Column {
         width: parent.width
         spacing: Theme.gap
-        visible: !!root.snap && !root.media && (root.queue.length > 0 || root.pager.hasPrev || root.pager.hasNext)
+        visible: !!root.snap && !root.media && !root.requests && (root.queue.length > 0 || root.pager.hasPrev || root.pager.hasNext)
 
         Repeater {
             model: root.queue
@@ -205,7 +195,7 @@ Column {
                 id: queueRow
 
                 required property var modelData
-                readonly property bool confirming: (root.torrents || root.requests) && root.confirmId !== "" && root.confirmId === modelData.id
+                readonly property bool confirming: root.torrents && root.confirmId !== "" && root.confirmId === modelData.id
 
                 width: parent.width
                 implicitHeight: queueCol.implicitHeight + Theme.gap * 1.5
@@ -216,12 +206,6 @@ Column {
 
                     anchors.fill: parent
                     hoverEnabled: true
-                    // A request opens its page in Seerr.
-                    cursorShape: root.requests ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: {
-                        if (root.requests)
-                            root.panel.openCard(queueRow.modelData, root.snapId);
-                    }
                 }
 
                 Row {
@@ -235,7 +219,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - (queueActions.visible ? queueActions.width + parent.spacing : 0)
                         title: queueRow.modelData.title || ""
-                        subtitle: !queueRow.confirming ? Model.queueLine(queueRow.modelData, I18n) : root.requests ? I18n.tr("Decline this request? It cannot be approved later") : I18n.tr("Remove this torrent? Its files stay unless you delete them too")
+                        subtitle: !queueRow.confirming ? Model.queueLine(queueRow.modelData, I18n) : I18n.tr("Remove this torrent? Its files stay unless you delete them too")
                         subtitleColor: queueRow.confirming || queueRow.modelData.status === "warning" || queueRow.modelData.status === "error" ? Theme.urgent : root.dim
                         progress: queueRow.modelData.progress || 0
                     }
@@ -244,7 +228,7 @@ Column {
                         id: queueActions
 
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: root.downloader || root.requests
+                        visible: root.downloader
                         spacing: 2
 
                         OmarrButton {
@@ -285,23 +269,6 @@ Column {
                             foreground: Theme.urgent
                             hoverColor: Theme.urgent
                             onClicked: root.removeTorrent(queueRow.modelData.id, true)
-                        }
-
-                        OmarrButton {
-                            visible: root.requests && !queueRow.confirming
-                            glyph: "\u{f012c}"
-                            tooltipText: I18n.tr("Approve")
-                            onClicked: root.approveRequest(queueRow.modelData.id)
-                        }
-
-                        // Asked once, as a torrent's remove is.
-                        OmarrButton {
-                            visible: root.requests
-                            glyph: "\u{f073a}"
-                            tooltipText: I18n.tr("Decline")
-                            foreground: queueRow.confirming ? Theme.urgent : Theme.foreground
-                            hoverColor: Theme.urgent
-                            onClicked: root.declineRequest(queueRow.modelData.id)
                         }
 
                         OmarrButton {
