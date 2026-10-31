@@ -76,6 +76,12 @@ Scope {
             parts: ({})
         })
     property int seerrBrowseSeq: 0
+    // The order those three tabs show their page in (Model.sortSeerrResults),
+    // kept while the shell runs, so a closed panel opens the way it was left.
+    property var seerrSort: ({
+            key: "seerr",
+            ascending: false
+        })
     // What each request made from the panel came to, by "<service id>|<media
     // key>": "sending", "requested", "nothing" or the failure (Model.seerrCreateOutcome).
     property var seerrAsked: ({})
@@ -1250,6 +1256,17 @@ Scope {
         const service = root.serviceById(req.serviceId);
         if (service && root.panelOpen)
             root.enqueueSeerrPosters(service, next.items);
+    }
+
+    // A new key starts in its own direction; the key shown flips it. Seerr's
+    // order has none.
+    function sortSeerr(key) {
+        const by = Model.seerrSortKey(key);
+        const same = root.seerrSort.key === by;
+        root.seerrSort = {
+            key: by,
+            ascending: same && by !== "seerr" ? !root.seerrSort.ascending : Model.seerrSortAscending(by)
+        };
     }
 
     function seerrAskedFor(serviceId, key) {

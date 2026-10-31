@@ -8,6 +8,8 @@ import "Model.js" as Model
 // - TRENDING and UPCOMING: Seerr's discover lists, upcoming movies and
 //   series as one list;
 // - SEARCH: movies and series by name.
+// The last three sort their page by Seerr's order, rating, name or year; a
+// second click on the key shown reverses it.
 // A title Seerr does not have can be requested, a series for every season it
 // lacks, after a second click. A row opens the title in Seerr. Only the
 // requests are polled; the other tabs ask for their page when shown.
@@ -31,7 +33,11 @@ Column {
     readonly property var pager: panel.detailPager
     readonly property var browse: service ? service.seerrBrowse : ({})
     readonly property bool browseShown: tab !== "requests" && browse.serviceId === snapId && browse.tab === tab
-    readonly property var results: browseShown ? (browse.items || []) : []
+    readonly property var sort: service ? service.seerrSort : ({
+            key: "seerr",
+            ascending: false
+        })
+    readonly property var results: browseShown ? Model.sortSeerrResults(browse.items || [], sort.key, sort.ascending) : []
     readonly property color dim: Theme.subtle(Theme.surface)
     readonly property var tabModel: [
         {
@@ -49,6 +55,31 @@ Column {
         {
             id: "search",
             label: I18n.mark("SEARCH")
+        }
+    ]
+
+    // The key shown carries its direction: up for A to Z, oldest or lowest
+    // first.
+    readonly property var sortModel: [
+        {
+            id: "seerr",
+            label: I18n.mark("DEFAULT"),
+            suffix: ""
+        },
+        {
+            id: "rating",
+            label: I18n.mark("RATING"),
+            suffix: sortArrow("rating")
+        },
+        {
+            id: "name",
+            label: I18n.mark("NAME"),
+            suffix: sortArrow("name")
+        },
+        {
+            id: "year",
+            label: I18n.mark("YEAR"),
+            suffix: sortArrow("year")
         }
     ]
 
@@ -84,6 +115,10 @@ Column {
         confirmMedia = "";
         if (service)
             service.runControl(snapId, "request-media", key);
+    }
+
+    function sortArrow(key: string): string {
+        return sort.key === key ? (sort.ascending ? " \u2191" : " \u2193") : "";
     }
 
     function asked(key: string): string {
@@ -286,7 +321,33 @@ Column {
         }
     }
 
-    // ---- TRENDING, UPCOMING and SEARCH results
+    // ---- TRENDING, UPCOMING and SEARCH results, in the order picked here
+    Row {
+        width: parent.width
+        visible: root.browseShown && root.browse.state === "ok" && root.results.length > 1
+        spacing: Theme.gap * 2
+
+        Text {
+            id: sortLabel
+
+            textFormat: Text.PlainText
+            text: I18n.tr("Sort by")
+            color: root.dim
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.font.bodySmall
+        }
+
+        OmarrTabs {
+            width: parent.width - sortLabel.width - parent.spacing
+            model: root.sortModel
+            current: root.sort.key
+            onPicked: id => {
+                if (root.service)
+                    root.service.sortSeerr(id);
+            }
+        }
+    }
+
     Text {
         width: parent.width
         visible: root.browseShown && (root.browse.state === "loading" || root.browse.state === "error")

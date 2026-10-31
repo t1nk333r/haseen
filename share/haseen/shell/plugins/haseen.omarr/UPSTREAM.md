@@ -88,6 +88,8 @@ unmodified with their `NOTICE` and `LICENSE-APACHE`.
   from its row (`POST /api/v1/request`, JSON; a series for every season it
   lacks) after a second click. Posters come through Seerr's
   `/imageproxy/tmdb/`, without the key.
+  Their page sorts by Seerr's order, rating, name or year, a second click
+  reversing it.
 - **The request queue.** A handler that queues more work (qBittorrent's poll
   after a login, Jellyfin's library after its users, Seerr's titles) no longer
   starts it inside the finished request's exit, where `currentReq` was cleared

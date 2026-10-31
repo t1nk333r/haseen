@@ -1,9 +1,10 @@
 import QtQuick
 import qs.Haseen
 
-// Underlined text tabs: the overview's ON DECK / RECENTLY ADDED / CALENDAR
-// and the settings' SETTINGS / FLEET. `model` is [{id, label}], each label
-// English marked with I18n.mark and shown in the interface language.
+// Underlined text tabs: the overview's ON DECK / RECENTLY ADDED / CALENDAR,
+// the settings' SETTINGS / FLEET, and Seerr's tabs and sort keys. `model` is
+// [{id, label, suffix}], each label English marked with I18n.mark and shown in
+// the interface language; an optional suffix (a sort's arrow) follows it as is.
 //
 // Adapted from Panel.qml and SettingsView.qml in omARR (MIT, Copyright (c)
 // 2026 luccast), as the owner's fork t1nk33r.omarr 1.0.0; see LICENSE and
@@ -35,7 +36,7 @@ Flow {
                 id: label
 
                 textFormat: Text.PlainText
-                text: I18n.tr(chip.modelData.label)
+                text: I18n.tr(chip.modelData.label) + (chip.modelData.suffix || "")
                 color: chip.selected || mouse.containsMouse ? Theme.foreground : Theme.subtle(Theme.surface)
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.font.bodySmall
