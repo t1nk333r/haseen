@@ -79,7 +79,7 @@ The owner's other repos:
 | Login: splash, greeter, autologin | `share/haseen/lib/{greeter,plymouth,boot}.sh`, `bin/haseen-{greeter,setup-greeter,plymouth-set,plymouth-status}`, `share/haseen/shell/greeter/` | 036 |
 | Boot splash follows the theme: a 2-minute user timer, a polkit-allowed root template unit that parses its name, the rebuild held across shutdown, nothing on Secure Boot machines | `share/haseen/lib/plymouth.sh`, `bin/haseen-plymouth-{follow,apply}`, `share/haseen/default/systemd/haseen-splash@.service`, `share/haseen/default/polkit/50-haseen-splash.rules`, `share/haseen/systemd/user/haseen-splash-follow.{timer,service}`, `share/haseen/migrations/1792669390-splash-follows-theme.sh`, `tests/test-splash-follow.sh` | 110 |
 | Interface language: English (default) and Arabic, right to left; keyed-by-English catalogs and their checker, the I18n singleton, bash notifications, `haseen language`, the compat host's Omarchy 4.5 I18n and Translations | `share/haseen/i18n/`, `tools/i18n.py`, `share/haseen/shell/Haseen/{I18n.qml,I18nPlural.js}`, `share/haseen/lib/i18n.sh`, `bin/haseen-language`, `share/haseen/shell/Compat/Omarchy/Commons/{I18n,Translations}.qml`, `tests/test-i18n.sh` | 109 |
-| Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088, 090 |
+| Optional VAPT provisioning, owned workflow and explicit local actions | `share/haseen/layers/vapt/{workflow.py,workflow.sh,workflow_menu.py,workflow_actions.py,workflow_actions.sh,workflow_ca.py,workflow_support.py,metadata.py}`, `share/haseen/default/vapt/`, `bin/haseen-vapt-*`, `tests/test-vapt-{discovery,workflow,services,net}.sh`, `docs/vapt.md` | 007, 087, 088, 090, 148 |
 | Optional Security panel and menu | `share/haseen/shell/plugins/haseen.security/`, `share/haseen/shell/Haseen/{SecurityRoute.qml,SecurityEvidence.js}`, `share/haseen/shell/plugins/haseen.menu/`, `tests/test-vapt-security-ui.sh` | 088, 090 |
 | Omarchy package guard: Omarchy's migrations sealed (per user, a migration, the base layer's pacman hook), its notice silenced, its splash reset undone, its polkit repair carried, `boot_hooks` read as mkinitcpio reads them; the importer and settings mirror read 4.5's six bar sections | `share/haseen/lib/omarchy-guard.sh`, `bin/haseen-migrate-omarchy`, `bin/haseen-omarchy-guard`, `share/haseen/default/omarchy-guard/`, `share/haseen/lib/boot.sh`, `tests/test-omarchy-guard.sh` | 101 |
 | Boot and logout from Omarchy 4.5: the root= guard before Limine drop-ins, the binfmt and mount-event boot drop-ins, closing apps before logout/reboot/shutdown, the opt-in 1-second boot menu | `share/haseen/lib/boot.sh`, `share/haseen/lib/bootmenu.sh`, `share/haseen/lib/limine-header.sh`, `bin/haseen-setup-boot-menu`, `bin/haseen-system`, `share/haseen/default/systemd/`, `tests/test-omarchy45-boot.sh` | 104 |
@@ -99,7 +99,8 @@ tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
 the optional `vapt` layer; plan 087 extends its inventory and adds the opt-in
 private oniomarchy source (`share/haseen/layers/vapt/oniomarchy.sh`,
 `bin/haseen-vapt-repo-status`), plan 088 the installed workflow and Security
-panel, plan 090 the 2026-10-13 audit fixes.
+panel, plan 090 the 2026-10-13 audit fixes, plan 148 support for an Omarchy
+host and Arch's own repositories over any HTTPS mirror.
 
 ## Decisions
 

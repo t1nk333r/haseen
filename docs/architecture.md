@@ -112,8 +112,13 @@ Rules every layer follows:
   already-enabled Chaotic-AUR, CachyOS, then Arch. It differs because it
   reproduces the source policy of the owner's waydots security inventory,
   which consults BlackArch before the general repositories (`docs/vapt.md`),
-  and it has no Omarchy or AUR tier at all. Each tier matches only the
-  tool's name or a reviewed alias, checked against any canonical upstream
+  and it has no Omarchy or AUR tier at all. A source's mirror must be HTTPS
+  and, apart from Arch's own `core`, `extra` and `multilib`, must not be an
+  Omarchy host: a mirror is transport, not provenance, and the sources that
+  publish their own packages never reach the trust path through Omarchy's
+  channel (owner, 2026-10-31, plan 148). An Omarchy host is a supported VAPT
+  host for the same reason haseen supports one at all. Each tier matches only
+  the tool's name or a reviewed alias, checked against any canonical upstream
   identity; a Provides line counts only through such a reviewed identity,
   and only after every tier's name. Its dedicated transaction path
   excludes AUR/Omarchy dependencies, reports unavailable items, and never runs

@@ -49,6 +49,20 @@ capture env HASEEN_SYSROOT="$ROOT" haseen layer apply vapt -- --groups web,bogus
 assert_status "layer apply validates the group list too" 2 "$STATUS"
 assert_eq "layer refusal changes nothing on disk" "$before" "$(vapt_tree)"
 
+# The distro gate. An Omarchy host is a supported VAPT host: haseen's own
+# preflight supports it (haseen replaces Omarchy, ADR 0001) and its mirrorlist
+# is an HTTPS mirror of Arch's own repositories, so the layer's distro list and
+# the two command paths that re-check it must all agree (owner, 2026-10-31).
+# NixOS stays refused by name.
+cp "$FIXTURES/omarchy-limine-host/etc/os-release" "$ROOT/etc/os-release"
+vapt_plan 'an Omarchy host' --groups core
+assert_not_contains 'the distro gate opens for an Omarchy host' "$OUTPUT" 'does not support distro'
+printf 'NAME="NixOS"\nPRETTY_NAME="NixOS"\nID=nixos\n' >"$ROOT/etc/os-release"
+vapt_cli install --dry-run --groups core
+assert_status 'nixos is still refused' 1 "$STATUS"
+assert_contains 'the nixos refusal names the distro' "$OUTPUT" "does not support distro 'nixos'"
+assert_not_contains 'the nixos refusal plans nothing' "$OUTPUT" "DRYRUN:"
+
 # install.sh validates --vapt-groups before installing the tree; a fake
 # installed CLI reports what each phase would receive.
 stage="$SANDBOX/stage"

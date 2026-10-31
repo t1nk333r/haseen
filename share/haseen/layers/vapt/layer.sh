@@ -1,11 +1,23 @@
 # shellcheck shell=bash disable=SC2034
 LAYER_SUMMARY='Optional owner VAPT inventory, pinned native environments and passive workstation configuration'
-LAYER_DISTROS=(arch cachyos)
+# An Omarchy host is supported: haseen replaces Omarchy (ADR 0001) and treats
+# such a host as supported (lib/preflight.sh), and its mirrorlist is a
+# legitimate HTTPS mirror of Arch's own repositories (owner, 2026-10-31).
+LAYER_DISTROS=(arch cachyos omarchy)
 LAYER_REQUIRES=()
 LAYER_CONFLICTS=()
 # Provisioning needs explicit groups, so the install picker never offers it:
 # ./install.sh --vapt-groups (or --layers vapt --vapt-groups) is the route.
 LAYER_PICKABLE=false
+# vapt_distro_supported — this layer's distro gate, read from LAYER_DISTROS so
+# the list and the command paths cannot drift apart.
+vapt_distro_supported() {
+    local distro
+    for distro in "${LAYER_DISTROS[@]}"; do
+        [[ $distro == "$HASEEN_DISTRO" ]] && return 0
+    done
+    return 1
+}
 layer_usage() {
     cat <<'EOF'
 Usage: haseen layer apply vapt [--dry-run] [--yes] -- [--with-oniomarchy] --groups GROUP,...
@@ -28,8 +40,8 @@ EOF
 layer_precheck() {
     require_not_root
     preflight_distro
-    [[ $HASEEN_DISTRO == arch || $HASEEN_DISTRO == cachyos ]] || {
-        warn "VAPT supports Arch/CachyOS only (detected $HASEEN_DISTRO)"; return 2;
+    vapt_distro_supported || {
+        warn "VAPT does not support distro '$HASEEN_DISTRO' (supports: ${LAYER_DISTROS[*]})"; return 2;
     }
     local command
     for command in python3 pacman vercmp curl gpg; do
@@ -170,8 +182,8 @@ vapt_repo() (
     require_not_root
     vapt_refuse_sysroot_mutation || return $?
     preflight_distro
-    [[ $HASEEN_DISTRO == arch || $HASEEN_DISTRO == cachyos ]] || {
-        warn "VAPT supports Arch/CachyOS only (detected $HASEEN_DISTRO)"; return 2;
+    vapt_distro_supported || {
+        warn "VAPT does not support distro '$HASEEN_DISTRO' (supports: ${LAYER_DISTROS[*]})"; return 2;
     }
     for command in python3 pacman vercmp curl gpg; do
         have "$command" || { warn "VAPT prerequisite missing: $command"; return 2; }

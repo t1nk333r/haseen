@@ -243,8 +243,19 @@ cases = [
     ('oniomarchy', 'https://pkgs.oniomarchy.com/$repo/os/$arch', False),
     ('oniomarchy', 'file:///srv/oniomarchy/$arch', False),
     ('extra', 'https://pkgs.oniomarchy.com/$arch', False),
-    ('extra', 'https://mirror.example.org/omarchy/$arch', False),
+    ('extra', 'https://mirror.example.org/omarchy/$arch', True),
     ('extra', 'https://geo.mirror.pkgbuild.com/$repo/os/$arch', True),
+    # ARCH_BASE: Arch's own repositories are Arch's whatever HTTPS mirror
+    # serves them (owner, 2026-10-31, luna's /etc/pacman.d/mirrorlist). The
+    # source that publishes its own packages still refuses an Omarchy mirror,
+    # and the private source's host mirrors nothing else.
+    ('core', 'https://stable-mirror.omarchy.org/$repo/os/$arch', True),
+    ('multilib', 'https://stable-mirror.omarchy.org/$repo/os/$arch', True),
+    ('extra', 'http://stable-mirror.omarchy.org/$repo/os/$arch', False),
+    ('blackarch', 'https://stable-mirror.omarchy.org/$repo/os/$arch', False),
+    ('chaotic-aur', 'https://stable-mirror.omarchy.org/$repo/os/$arch', False),
+    ('cachyos', 'https://stable-mirror.omarchy.org/$repo/os/$arch', False),
+    ('omarchy', 'https://pkgs.omarchy.org/stable/$arch', False),
     ('blackarch', 'http://blackarch.org/blackarch/$repo/os/$arch', False),
 ]
 for repo, url, expected in cases:
@@ -262,6 +273,7 @@ policies = [
 for lines, expected in policies:
     print('policy', ' | '.join(lines), str(expected), 'ok' if m.repository_policy_safe('oniomarchy', lines) == expected else 'WRONG', sep='\t')
 print('vendor', 'oniomarchy is never a base vendor', 'ok' if not m.BASE_VENDOR.fullmatch('oniomarchy') else 'WRONG', sep='\t')
+print('allowed', 'omarchy is never an allowed source', 'ALLOWED', 'ok' if not m.ALLOWED.fullmatch('omarchy') else 'WRONG', sep='\t')
 EOF
 )"
 while IFS=$'\t' read -r kind subject detail verdict; do
