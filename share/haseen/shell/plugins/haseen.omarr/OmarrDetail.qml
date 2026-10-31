@@ -6,7 +6,8 @@ import "Model.js" as Model
 // open it. A media server (Jellyfin) shows what is playing, on deck and
 // recently added; the others their queue page by page, with pause and resume
 // on a downloader's rows and remove on qBittorrent's, SABnzbd its history, and
-// Sonarr or Radarr their calendar. `panel` is the Panel that owns it.
+// Sonarr or Radarr their calendar. Seerr's queue is its requests waiting for
+// approval, each with approve and decline. `panel` is the Panel that owns it.
 //
 // Adapted from Panel.qml in omARR (MIT, Copyright (c) 2026 luccast), as the
 // owner's fork t1nk33r.omarr 1.0.0; see LICENSE and UPSTREAM.md beside this
@@ -30,21 +31,39 @@ Column {
     readonly property var calendarGroups: snap && !media && snap.calendar && snap.calendar.length > 0 ? Model.groupedCalendar(snap.calendar, null, I18n) : []
     readonly property color dim: Theme.subtle(Theme.surface)
     readonly property bool torrents: !!snap && snap.kind === "qbittorrent"
-    // The torrent whose remove waits for a second click: the first only asks,
-    // since a removal cannot be undone and can take the files with it.
-    property string confirmRemoveId: ""
+    readonly property bool requests: !!snap && snap.kind === "seerr"
+    // The row whose remove (a torrent) or decline (a request) waits for a
+    // second click: the first only asks, since neither can be undone (Seerr
+    // approves only a pending request) and a removal can take the files.
+    property string confirmId: ""
 
     function removeTorrent(id: string, deleteFiles: bool): void {
-        if (confirmRemoveId !== id) {
-            confirmRemoveId = id;
+        if (confirmId !== id) {
+            confirmId = id;
             return;
         }
-        confirmRemoveId = "";
+        confirmId = "";
         if (service)
             service.runControl(snapId, deleteFiles ? "remove-item-files" : "remove-item", id);
     }
 
-    onSnapIdChanged: confirmRemoveId = ""
+    function approveRequest(id: string): void {
+        confirmId = "";
+        if (service)
+            service.runControl(snapId, "approve-item", id);
+    }
+
+    function declineRequest(id: string): void {
+        if (confirmId !== id) {
+            confirmId = id;
+            return;
+        }
+        confirmId = "";
+        if (service)
+            service.runControl(snapId, "decline-item", id);
+    }
+
+    onSnapIdChanged: confirmId = ""
 
     spacing: Theme.gap * 2.5
 
@@ -186,7 +205,7 @@ Column {
                 id: queueRow
 
                 required property var modelData
-                readonly property bool confirming: root.torrents && root.confirmRemoveId !== "" && root.confirmRemoveId === modelData.id
+                readonly property bool confirming: (root.torrents || root.requests) && root.confirmId !== "" && root.confirmId === modelData.id
 
                 width: parent.width
                 implicitHeight: queueCol.implicitHeight + Theme.gap * 1.5
@@ -197,6 +216,12 @@ Column {
 
                     anchors.fill: parent
                     hoverEnabled: true
+                    // A request opens its page in Seerr.
+                    cursorShape: root.requests ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: {
+                        if (root.requests)
+                            root.panel.openCard(queueRow.modelData, root.snapId);
+                    }
                 }
 
                 Row {
@@ -208,9 +233,9 @@ Column {
                         id: queueCol
 
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - (root.downloader ? queueActions.width + parent.spacing : 0)
+                        width: parent.width - (queueActions.visible ? queueActions.width + parent.spacing : 0)
                         title: queueRow.modelData.title || ""
-                        subtitle: queueRow.confirming ? I18n.tr("Remove this torrent? Its files stay unless you delete them too") : Model.queueLine(queueRow.modelData, I18n)
+                        subtitle: !queueRow.confirming ? Model.queueLine(queueRow.modelData, I18n) : root.requests ? I18n.tr("Decline this request? It cannot be approved later") : I18n.tr("Remove this torrent? Its files stay unless you delete them too")
                         subtitleColor: queueRow.confirming || queueRow.modelData.status === "warning" || queueRow.modelData.status === "error" ? Theme.urgent : root.dim
                         progress: queueRow.modelData.progress || 0
                     }
@@ -219,11 +244,11 @@ Column {
                         id: queueActions
 
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: root.downloader
+                        visible: root.downloader || root.requests
                         spacing: 2
 
                         OmarrButton {
-                            visible: !queueRow.confirming
+                            visible: root.downloader && !queueRow.confirming
                             glyph: "\u{f03e4}"
                             tooltipText: I18n.tr("Pause")
                             onClicked: {
@@ -233,7 +258,7 @@ Column {
                         }
 
                         OmarrButton {
-                            visible: !queueRow.confirming
+                            visible: root.downloader && !queueRow.confirming
                             glyph: "\u{f040a}"
                             tooltipText: I18n.tr("Resume")
                             onClicked: {
@@ -254,7 +279,7 @@ Column {
                         }
 
                         OmarrButton {
-                            visible: queueRow.confirming
+                            visible: root.torrents && queueRow.confirming
                             glyph: "\u{f05e8}"
                             tooltipText: I18n.tr("Remove and delete its files")
                             foreground: Theme.urgent
@@ -263,10 +288,27 @@ Column {
                         }
 
                         OmarrButton {
+                            visible: root.requests && !queueRow.confirming
+                            glyph: "\u{f012c}"
+                            tooltipText: I18n.tr("Approve")
+                            onClicked: root.approveRequest(queueRow.modelData.id)
+                        }
+
+                        // Asked once, as a torrent's remove is.
+                        OmarrButton {
+                            visible: root.requests
+                            glyph: "\u{f073a}"
+                            tooltipText: I18n.tr("Decline")
+                            foreground: queueRow.confirming ? Theme.urgent : Theme.foreground
+                            hoverColor: Theme.urgent
+                            onClicked: root.declineRequest(queueRow.modelData.id)
+                        }
+
+                        OmarrButton {
                             visible: queueRow.confirming
                             glyph: "\u{f0156}"
                             tooltipText: I18n.tr("Cancel")
-                            onClicked: root.confirmRemoveId = ""
+                            onClicked: root.confirmId = ""
                         }
                     }
                 }
@@ -285,7 +327,7 @@ Column {
                 tooltipText: I18n.tr("Previous page")
                 enabled: root.pager.hasPrev
                 onClicked: {
-                    root.confirmRemoveId = "";
+                    root.confirmId = "";
                     if (root.service)
                         root.service.turnQueuePage(root.snapId, -1);
                 }
@@ -305,7 +347,7 @@ Column {
                 tooltipText: I18n.tr("Next page")
                 enabled: root.pager.hasNext
                 onClicked: {
-                    root.confirmRemoveId = "";
+                    root.confirmId = "";
                     if (root.service)
                         root.service.turnQueuePage(root.snapId, 1);
                 }

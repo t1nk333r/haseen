@@ -47,6 +47,10 @@ Column {
             label: "Jellyfin" // i18n-ignore
         },
         {
+            value: "seerr",
+            label: "Seerr" // i18n-ignore
+        },
+        {
             value: "sabnzbd",
             label: "SABnzbd" // i18n-ignore
         },
@@ -708,9 +712,10 @@ Column {
             onClicked: root.formShowCalendar = !root.formShowCalendar
         }
 
+        // Seerr's new requests share the grab switch (notifyGrab).
         OmarrToggle {
-            visible: root.arrKind || Model.isMediaKind(root.formKind)
-            label: Model.isMediaKind(root.formKind) ? I18n.tr("Notify on newly added") : I18n.tr("Notify on grab")
+            visible: root.arrKind || Model.isMediaKind(root.formKind) || root.formKind === "seerr"
+            label: Model.isMediaKind(root.formKind) ? I18n.tr("Notify on newly added") : root.formKind === "seerr" ? I18n.tr("Notify on new requests") : I18n.tr("Notify on grab")
             checked: root.formNotifyGrab
             onClicked: root.formNotifyGrab = !root.formNotifyGrab
         }

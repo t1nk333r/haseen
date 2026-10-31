@@ -67,6 +67,24 @@ unmodified with their `NOTICE` and `LICENSE-APACHE`.
   A qBittorrent row can remove its torrent (`torrents/delete`, which upstream
   did not call): the first click asks, the second removes it and keeps its
   files, and a button beside it deletes the files too.
+- **Seerr.** A kind upstream did not have (its scan named port 5055
+  "Jellyseerr" and checked only that it answered). It also serves Jellyseerr
+  and Overseerr, which share the API. Its queue is the requests waiting for
+  approval, newest first: `/api/v1/request?filter=pending`, keyed with
+  `X-Api-Key` like an \*arr. A request names its media only by TMDB id, so
+  each title is one lookup (`/api/v1/movie/<id>` or `/api/v1/tv/<id>`), kept
+  for the session, and a page is committed once its titles have answered, so
+  a new request's notification ("New request on Seerr") names what was asked
+  for and by whom. It goes with the grab switch (`notifyGrab`). A row approves
+  in one click; decline asks first, as a declined request cannot be approved
+  later. A click on the row opens it in Seerr. The keyless `/api/v1/status`
+  gives the version only: health comes from the keyed list, so a wrong key
+  shows the service down instead of flipping it every poll.
+- **The request queue.** A handler that queues more work (qBittorrent's poll
+  after a login, Jellyfin's library after its users, Seerr's titles) no longer
+  starts it inside the finished request's exit, where `currentReq` was cleared
+  just after: that request's answer was dropped. It starts once the exit has
+  run (`settling`).
   Escape always closes the panel (the host's), and Tab cycles the overview
   tabs instead of switching to a neighbouring panel.
 

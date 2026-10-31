@@ -7,7 +7,8 @@
 // file. haseen changes: the plugin id, the notification and open commands
 // (haseen notification send, xdg-open through Apps.launch), the Jellyfin
 // device name, settings read from the manifest instead of Omarchy's
-// shell.json, and the Omarchy host-write guards dropped with the host.
+// shell.json, the Omarchy host-write guards dropped with the host, and a
+// Seerr kind (its requests waiting for approval).
 
 // Interface strings stay English here and are translated where QML shows
 // them (I18n.tr); N_ marks them for tools/i18n.py (plan 109). The helpers
@@ -53,7 +54,9 @@ var PAGE_SIZE_MAX = 50
 // only the generic artCachePath primitive is common. The name "plex" survives
 // once, in the icon name-match table, so a *generic* service someone happens to
 // call "Plex" still gets a sensible tile icon; that is not Plex support.
-var KINDS = ["generic", "sonarr", "radarr", "sabnzbd", "qbittorrent", "jellyfin"]
+// Seerr is Overseerr's successor, merged with Jellyseerr: all three answer
+// the same API (/api/v1), so the one kind serves each of them.
+var KINDS = ["generic", "sonarr", "radarr", "sabnzbd", "qbittorrent", "jellyfin", "seerr"]
 
 // The default groups are stored as English and shown through groupLabel();
 // a default name is the product's, or "Service" (shown through I18n.tr).
@@ -63,7 +66,8 @@ var KIND_DEFAULTS = {
   radarr: { name: "Radarr", group: N_("Media"), port: 7878 },
   sabnzbd: { name: "SABnzbd", group: N_("Downloads"), port: 8080 },
   qbittorrent: { name: "qBittorrent", group: N_("Downloads"), port: 8080 },
-  jellyfin: { name: "Jellyfin", group: N_("Media"), port: 8096 }
+  jellyfin: { name: "Jellyfin", group: N_("Media"), port: 8096 },
+  seerr: { name: "Seerr", group: N_("Media"), port: 5055 }
 }
 
 var SCAN_SERVICES = [
@@ -74,7 +78,7 @@ var SCAN_SERVICES = [
   { kind: "jellyfin", port: 8096, name: "Jellyfin" },
   { kind: "generic", port: 8123, name: "Home Assistant" },
   { kind: "generic", port: 9696, name: "Prowlarr" },
-  { kind: "generic", port: 5055, name: "Jellyseerr" }
+  { kind: "seerr", port: 5055, name: "Seerr" }
 ]
 
 function curlBounds(maxBytes) {
@@ -128,7 +132,7 @@ function normalizeGroup(value, fallback) {
 
 function kindNeedsApiKey(kind) {
   var k = kindOf(kind)
-  return k === "sonarr" || k === "radarr" || k === "sabnzbd" || k === "jellyfin"
+  return k === "sonarr" || k === "radarr" || k === "sabnzbd" || k === "jellyfin" || k === "seerr"
 }
 
 function kindNeedsUserPass(kind) {
@@ -149,7 +153,7 @@ var ICON_SLUGS = [
   "grafana", "home-assistant", "immich", "jellyfin", "jellyseerr", "kavita",
   "kodi", "komga", "lidarr", "navidrome", "nextcloud", "nginx-proxy-manager",
   "nzbget", "overseerr", "paperless-ngx", "pi-hole", "plex", "portainer",
-  "prowlarr", "qbittorrent", "radarr", "readarr", "sabnzbd", "sonarr",
+  "prowlarr", "qbittorrent", "radarr", "readarr", "sabnzbd", "seerr", "sonarr",
   "syncthing", "tautulli", "traefik", "transmission", "uptime-kuma", "whisparr"
 ]
 
@@ -209,6 +213,11 @@ function lookupIconSlug(value) {
 function iconSlug(service) {
   var svc = service && typeof service === "object" ? service : {}
   var kind = kindOf(svc.kind)
+  // A Seerr kind named Jellyseerr or Overseerr keeps that one's mark.
+  if (kind === "seerr") {
+    var fork = lookupIconSlug(svc.name)
+    return fork === "jellyseerr" || fork === "overseerr" ? fork : kind
+  }
   if (kind !== "generic") return kind
   var fromName = lookupIconSlug(svc.name)
   if (fromName) return fromName
@@ -1435,6 +1444,146 @@ function parseJellyfinSessions(raw, pageSize) {
   return capList(out, pageSize)
 }
 
+// --- Seerr --------------------------------------------------------------------
+// Its requests waiting for approval, newest first. A request names its media
+// only by TMDB id, so each title comes from one lookup (seerrTitleUrl), which
+// the service keeps for the session; a row without one shows the id.
+
+function seerrStatusUrl(base) {
+  return apiUrl(base, "/api/v1/status")
+}
+
+function seerrRequestsUrl(base, page, pageSize) {
+  var size = clampPageSize(pageSize)
+  return apiUrl(base, "/api/v1/request?take=" + size + "&skip=" + listOffset(page, size)
+    + "&filter=pending&sort=added&sortDirection=desc")
+}
+
+function seerrMediaType(value) {
+  return String(value || "") === "tv" ? "tv" : "movie"
+}
+
+// "movie:603" or "tv:1399": one title for every request of that media.
+function seerrTitleKey(mediaType, tmdbId) {
+  var id = parseInt(tmdbId, 10)
+  return id > 0 ? seerrMediaType(mediaType) + ":" + id : ""
+}
+
+function seerrTitleUrl(base, key) {
+  var parts = String(key || "").split(":")
+  var id = parseInt(parts[1], 10)
+  if (parts.length !== 2 || !(id > 0)) return ""
+  return apiUrl(base, "/api/v1/" + seerrMediaType(parts[0]) + "/" + id)
+}
+
+// One request's id as Seerr numbers them; approve and decline take nothing else.
+function isSeerrRequestId(id) {
+  return /^[1-9][0-9]{0,9}$/.test(String(id == null ? "" : id))
+}
+
+function seerrDecisionUrl(base, requestId, approve) {
+  if (!isSeerrRequestId(requestId)) return ""
+  return apiUrl(base, "/api/v1/request/" + String(requestId) + (approve === true ? "/approve" : "/decline"))
+}
+
+// /api/v1/status answers without a key: its version only, never the health,
+// which the keyed request list decides (a wrong key would flip it otherwise).
+function parseSeerrStatus(raw) {
+  var data = parseJson(raw, {})
+  return { version: data && typeof data === "object" ? String(data.version || "") : "" }
+}
+
+function parseSeerrRequests(raw, pageSize) {
+  var data = parseJson(raw, {})
+  var rows = data && Array.isArray(data.results) ? data.results : []
+  var info = data && data.pageInfo && typeof data.pageInfo === "object" ? data.pageInfo : {}
+  var items = []
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object" || !isSeerrRequestId(row.id)) continue
+    var media = row.media && typeof row.media === "object" ? row.media : {}
+    var type = seerrMediaType(row.type || media.mediaType)
+    var seasons = []
+    var asked = Array.isArray(row.seasons) ? row.seasons : []
+    for (var s = 0; s < asked.length; s++) {
+      var n = parseInt(asked[s] && asked[s].seasonNumber, 10)
+      if (n >= 0 && seasons.indexOf(n) === -1) seasons.push(n)
+    }
+    seasons.sort(function(a, b) { return a - b })
+    var by = row.requestedBy && typeof row.requestedBy === "object" ? row.requestedBy : {}
+    items.push({
+      id: String(row.id),
+      kind: "seerr",
+      mediaType: type,
+      tmdbId: parseInt(media.tmdbId, 10) || 0,
+      titleKey: seerrTitleKey(type, media.tmdbId),
+      title: "",
+      seasons: seasons,
+      is4k: row.is4k === true,
+      requestedBy: String(by.displayName || by.username || ""),
+      status: "pending"
+    })
+  }
+  return { items: capList(items, pageSize), total: parseInt(info.results, 10) || items.length }
+}
+
+// A movie's or a series' title, with its year, from Seerr's details of it.
+function parseSeerrTitle(raw) {
+  var data = parseJson(raw, {})
+  if (!data || typeof data !== "object") return ""
+  var name = String(data.title || data.name || "").replace(/^\s+|\s+$/g, "")
+  if (!name) return ""
+  var year = String(data.releaseDate || data.firstAirDate || "").slice(0, 4)
+  return /^[0-9]{4}$/.test(year) ? name + " (" + year + ")" : name
+}
+
+// The titles still to look up for these requests, once each. A key the
+// service holds is known, even empty: a lookup that answered with an error
+// is not repeated every poll.
+function seerrMissingTitles(items, titles) {
+  var list = toList(items)
+  var known = titles && typeof titles === "object" ? titles : {}
+  var seen = {}
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var key = String((list[i] && list[i].titleKey) || "")
+    if (!key || seen[key] || Object.prototype.hasOwnProperty.call(known, key)) continue
+    seen[key] = true
+    out.push(key)
+  }
+  return out
+}
+
+function applySeerrTitles(items, titles) {
+  var list = toList(items)
+  var known = titles && typeof titles === "object" ? titles : {}
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var row = {}
+    for (var k in list[i]) row[k] = list[i][k]
+    var title = known[row.titleKey]
+    row.title = title ? String(title) : row.tmdbId ? "TMDB " + row.tmdbId : "TMDB"
+    out.push(row)
+  }
+  return out
+}
+
+// A request's second line: what was asked for (a movie, or which seasons),
+// 4K when it is, and who asked.
+function requestLine(item, i18n) {
+  var row = item || {}
+  var parts = []
+  var seasons = toList(row.seasons)
+  if (row.mediaType === "tv")
+    parts.push(seasons.length ? countText(i18n, N_n("Season %2", "Seasons %2"), seasons.length, [seasons.join(", ")])
+      : trText(i18n, N_("Series")))
+  else
+    parts.push(trText(i18n, N_("Movie")))
+  if (row.is4k === true) parts.push("4K")
+  if (row.requestedBy) parts.push(trText(i18n, N_("by %1"), [row.requestedBy]))
+  return parts.join(" · ")
+}
+
 function emptySnapshot(service) {
   var svc = service && typeof service === "object" ? service : {}
   return {
@@ -1482,6 +1631,7 @@ function isHealthKind(kind) {
   var k = String(kind || "")
   return k === "arr-status" || k === "sab-queue" || k === "generic"
     || k === "qbit-torrents" || k === "qbit-login" || k === "jellyfin-identity"
+    || k === "seerr-requests"
 }
 
 function decideHealth(previousHealth, statusCode, missCount) {
@@ -1786,6 +1936,10 @@ function fleetLine(snapshot, i18n) {
     var deck = toList(snap.onDeck)
     if (deck.length > 0) return countText(i18n, N_n("%1 on deck", "%1 on deck"), deck.length)
   }
+  if (snap.kind === "seerr") {
+    var pending = parseInt(snap.queueTotal, 10) || toList(snap.queue).length
+    if (pending > 0) return countText(i18n, N_n("%1 pending", "%1 pending"), pending)
+  }
   var active = 0
   var queue = toList(snap.queue)
   for (var i = 0; i < queue.length; i++) if (isActiveDownload(queue[i])) active += 1
@@ -1872,6 +2026,7 @@ function formatTimeLeft(raw, i18n) {
 // then the time left (formatEta, translated when QML passes I18n).
 function queueLine(item, i18n) {
   var row = item || {}
+  if (row.kind === "seerr") return requestLine(row, i18n)
   var parts = []
   var status = String(row.status || "").toLowerCase()
   if (status) parts.push(status)
@@ -2165,6 +2320,22 @@ function eventsFromPoll(prev, next, service) {
       })
     }
   }
+  if (after.kind === "seerr") {
+    var asked = {}
+    for (var pq = 0; pq < prevQueue.length; pq++) asked[String(prevQueue[pq].id)] = true
+    for (var nq = 0; nq < nextQueue.length; nq++) {
+      var request = nextQueue[nq]
+      if (!request.id || asked[request.id]) continue
+      events.push({
+        id: "request-" + after.id + "-" + request.id,
+        type: "request",
+        serviceId: after.id,
+        serviceName: after.name,
+        title: after.name,
+        body: request.requestedBy ? request.title + " \u00b7 " + request.requestedBy : request.title
+      })
+    }
+  }
   if (after.kind === "qbittorrent") {
     var prevMap = {}
     for (var p = 0; p < prevQueue.length; p++) prevMap[String(prevQueue[p].id)] = prevQueue[p]
@@ -2195,7 +2366,7 @@ function shouldNotify(event, service, seen) {
   if (list.indexOf(String(event.id)) !== -1) return false
   var svc = service && typeof service === "object" ? service : {}
   var type = String(event.type || "")
-  if (type === "grabbed" || type === "library-added") return svc.notifyGrab !== false
+  if (type === "grabbed" || type === "library-added" || type === "request") return svc.notifyGrab !== false
   if (type === "import") return svc.notifyImport !== false
   if (type === "service-down" || type === "service-up") return svc.notifyHealth !== false
   if (type === "download-finished" || type === "download-failed") return svc.notifyDownload !== false
@@ -2214,13 +2385,14 @@ function toastParts(event, i18n) {
   else if (type === "service-up") title = trText(i18n, N_("%1 is back"), name)
   else if (type === "grabbed") title = trText(i18n, N_("%1 grabbed"), name)
   else if (type === "library-added") title = trText(i18n, N_("%1 added"), name)
+  else if (type === "request") title = trText(i18n, N_("New request on %1"), name)
   else if (type === "import") title = trText(i18n, N_("%1 imported"), name)
   else if (type === "download-finished") title = trText(i18n, N_("%1 finished"), name)
   else if (type === "download-failed") title = trText(i18n, N_("%1 failed"), name)
   var glyph = "󰕙"
   if (type === "service-down") glyph = "󰀦"
   else if (type === "service-up") glyph = "󰗠"
-  else if (type === "grabbed" || type === "library-added") glyph = "󰑓"
+  else if (type === "grabbed" || type === "library-added" || type === "request") glyph = "󰑓"
   else if (type === "import") glyph = "󰋚"
   else if (type === "download-failed") glyph = "󰅙"
   var body = String(row.body || "")
@@ -2354,6 +2526,10 @@ function itemOpenUrl(service, item) {
   var slug = String((item && item.slug) || "")
   if (kind === "sonarr") return slug ? base + "/series/" + encodeURIComponent(slug) : base
   if (kind === "radarr") return slug ? base + "/movie/" + encodeURIComponent(slug) : base
+  if (kind === "seerr") {
+    var tmdb = parseInt(item && item.tmdbId, 10)
+    return tmdb > 0 ? base + "/" + seerrMediaType(item.mediaType) + "/" + tmdb : base
+  }
   return base
 }
 
@@ -2500,6 +2676,18 @@ if (typeof module !== "undefined" && module.exports) {
     applyJellyfinProfileMiss: applyJellyfinProfileMiss,
     parseJellyfinLibrary: parseJellyfinLibrary,
     parseJellyfinSessions: parseJellyfinSessions,
+    seerrStatusUrl: seerrStatusUrl,
+    seerrRequestsUrl: seerrRequestsUrl,
+    seerrTitleKey: seerrTitleKey,
+    seerrTitleUrl: seerrTitleUrl,
+    isSeerrRequestId: isSeerrRequestId,
+    seerrDecisionUrl: seerrDecisionUrl,
+    parseSeerrStatus: parseSeerrStatus,
+    parseSeerrRequests: parseSeerrRequests,
+    parseSeerrTitle: parseSeerrTitle,
+    seerrMissingTitles: seerrMissingTitles,
+    applySeerrTitles: applySeerrTitles,
+    requestLine: requestLine,
     emptySnapshot: emptySnapshot,
     applyHttpHealth: applyHttpHealth,
     isHealthKind: isHealthKind,
