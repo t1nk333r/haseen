@@ -632,6 +632,7 @@ haseen vapt tool-help TOOL --entry /absolute/owned/entry --dry-run
 haseen vapt tool-run TOOL --entry /absolute/owned/entry --dry-run
 haseen vapt status --json
 haseen vapt doctor --json --dry-run
+haseen vapt doctor --verbose
 haseen vapt menu --enabled --json
 ```
 
@@ -669,6 +670,16 @@ nothing, dry-run or not. JSON is exactly one `schemaVersion: 1` object;
 diagnostics go to stderr. Status keeps 0 healthy / 1 missing / 2 degraded;
 doctor maps missing and degraded to 1 and usage to 2, and repairs nothing.
 [Plan 088](../plans/088-vapt-security-workflow.md) has the full schema.
+
+`status` and `doctor` also take `--verbose`, which prints the same report as
+text: one section per JSON field and one line per inventory item, so a report
+can be read by eye and filtered with grep. It is a rendering, not a second
+contract — the JSON stays the stable interface — and it never combines with
+`--json`, nor applies to `tool-list`, which already prints one line per
+entrypoint. A tool line counts a tool's entrypoints instead of listing them,
+because one inventory holds thousands. `doctor` adds the capability rows;
+`status` does not build them. The exit code is the report's, unchanged: 0, 1
+or 2 for `status`, and 0 or 1 for `doctor`.
 
 `menu` reads the deep-merged default and user shell configuration and returns
 enabled only for literal `plugins.haseen.security.enabled: true`; it enables

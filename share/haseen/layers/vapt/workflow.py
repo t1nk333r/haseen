@@ -438,6 +438,56 @@ def refuse_fixture_execution(shell, evidence):
         raise ValueError('explicit help/session execution refused with HASEEN_SYSROOT; use --dry-run')
 
 
+def verbose_report(result):
+    """doctor/status as text: every section the JSON carries, one fact per line.
+
+    Meant to be read and grepped, not parsed: the JSON is the stable
+    interface and this text is not. A tool line counts a tool's entrypoints
+    instead of listing them, because one inventory has thousands; `tool-list`
+    is the command that prints them one per line.
+    """
+    lines = ['sources:']
+    for row in result['sources']:
+        lines.append('  ' + row['name'] + ' ' + row['state'] + ' (' + str(row['cachedPackages'])
+                     + ' cached packages) ' + row['reason'])
+    private = result['privateSource']
+    lines.append('private source: ' + private['name'] + ' ' + private['state'] + ' (' + private['reason'] + ')')
+    provisioning = result['provisioning']
+    lines.append('provisioning: ' + provisioning['state'] + ' (exit ' + str(provisioning['exitCode']) + ')')
+    lines.extend('  ' + line for line in provisioning['diagnostics'])
+    for record in provisioning['resolutions']:
+        lines.append('  resolution ' + record['id'] + ' ' + str(record.get('state')) + ' from '
+                     + str(record.get('source')) + '/' + str(record.get('target')) + ': ' + str(record.get('reason')))
+    workflow = result['workflow']
+    values = workflow['settings']
+    lines.append('workflow: ' + str(workflow['entrypoints']) + ' owned entrypoints; '
+                 + str(workflow['documentationReady']) + ' with matching documents')
+    lines.append('  settings: bindAddress=' + values['bindAddress']
+                 + ' showLocalAddresses=' + str(values['showLocalAddresses']).lower()
+                 + ' enumerationScript=' + str(values['enumerationScript'] or '(none)'))
+    lines.append('  menu: ' + workflow['menu']['plugin'] + ' enabled=' + str(workflow['menu']['enabled']).lower())
+    for row in workflow.get('capabilities', []):
+        line = '  capability ' + row['id'] + ' ' + row['state'] + ' command=' + row['command']
+        if row.get('prerequisitePackages'):
+            line += ' packages=' + ','.join(row['prerequisitePackages'])
+        lines.append(line + ': ' + row['reason'])
+    counts = {}
+    for tool in result['tools']:
+        counts[tool['state']] = counts.get(tool['state'], 0) + 1
+    lines.append('tools: ' + str(len(result['tools'])) + ' ('
+                 + ', '.join(name + ' ' + str(counts[name]) for name in sorted(counts)) + ')')
+    for tool in result['tools']:
+        line = '  ' + tool['state'] + ' ' + tool['id'] + ' [' + ','.join(tool['groups']) + ']'
+        for package in tool['packages']:
+            line += ' ' + package['name'] + ' ' + package['version'] + ' ' + package['provenance']
+            if package['source']:
+                line += ' from ' + ','.join(package['source'])
+        if tool['native']:
+            line += ' native=' + tool['native']['state']
+        lines.append(line + ' ' + str(len(tool['entrypoints'])) + ' entrypoints: ' + tool['reason'])
+    return lines
+
+
 def show_help(args):
     tool, entry = selected(args.tool, args.entry)
     evidence = usage_evidence(tool, entry)
@@ -518,12 +568,17 @@ def main():
     parser.add_argument('--group')
     parser.add_argument('--all', action='store_true')
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     args.status_code = int(os.environ.get('VAPT_WORKFLOW_STATUS_CODE', '0'))
     action = args.command in ('tool-help', 'tool-run')
-    if (action != bool(args.tool) or (action and (args.json or args.all or args.group))
-            or (args.entry and not action) or ((args.all or args.group) and args.command != 'tool-list')):
+    # --verbose is the text report doctor and status already build, so it is one
+    # rendering of one object: never with --json, never with tool-list (which
+    # is already one line per entrypoint), and never on a launch action.
+    if (action != bool(args.tool) or (action and (args.json or args.all or args.group or args.verbose))
+            or (args.entry and not action) or ((args.all or args.group) and args.command != 'tool-list')
+            or (args.verbose and (args.json or args.command == 'tool-list'))):
         parser.error('unsupported or missing operands')
     try:
         if action:
@@ -556,6 +611,8 @@ def main():
                     print('  ' + entry['id'])
                 if tool['state'] == 'installed' and not tool['entrypoints']:
                     print('  no owned executable (data-only or unavailable entry evidence)')
+        elif args.verbose:
+            print('\n'.join(verbose_report(result)))
         else:
             print('\n'.join(result['provisioning']['diagnostics']))
             print('workflow: ' + str(result['workflow']['entrypoints']) + ' owned entrypoints; ' + str(result['workflow']['documentationReady']) + ' with matching documents')
