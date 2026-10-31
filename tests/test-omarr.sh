@@ -209,6 +209,15 @@ ShellRoot {
         return n;
     }
 
+    // The texts shown below item that match re, in order.
+    function shown(item: var, re: var, out: var): var {
+        if (item.visible && typeof item.text === "string" && re.test(item.text))
+            out.push(item.text);
+        for (let i = 0; i < item.children.length; i++)
+            probe.shown(item.children[i], re, out);
+        return out;
+    }
+
     // Where each scroll mark (2 px, with a view) sits: "end" on its view's
     // right edge, else its x and the view's width.
     function marks(item: var, out: var): var {
@@ -333,6 +342,18 @@ ShellRoot {
                     return;
                 const tr = { titles: d.results.map(r => r.title).join("|"), lines: d.results.map(r => Model.seerrMediaLine(r, null, "")).join("|"),
                     requestable: d.results.map(r => r.requestable).join(","), page: b.page + "/" + b.pages };
+                // The page sorted by each key, a second click reversing it;
+                // the key shown carries its arrow.
+                const order = () => d.results.map(r => r.title).join("|");
+                const sorted = [];
+                for (const key of ["name", "name", "rating", "rating", "year", "year"]) {
+                    s.sortSeerr(key);
+                    sorted.push(key + (s.seerrSort.ascending ? "+" : "-") + "=" + order());
+                }
+                tr.sorted = sorted.join(" ");
+                tr.arrows = probe.shown(probe.panel, /[\u2191\u2193]/, []).join(",");
+                s.sortSeerr("seerr");
+                tr.seerr = order() + "|" + probe.shown(probe.panel, /[\u2191\u2193]/, []).length;
                 d.requestMedia("movie:1507696");
                 tr.asked = d.confirmMedia;
                 tr.confirming = probe.count(probe.panel, "confirming");
@@ -433,6 +454,11 @@ EOF
     assert_eq "engine: TRENDING lists movies and series, never people" "Apocalypse Z|Game of Thrones|1/3" "$(r '[.trending.titles, .trending.page] | join("|")')"
     assert_eq "engine: each with its kind, year, state and rating" "Movie · 2026 · ★ 6.5|Series · 2011 · Available" "$(r .trending.lines)"
     assert_eq "engine: only a title Seerr lacks can be requested" "true,false" "$(r .trending.requestable)"
+    assert_eq "engine: the page sorts by name, rating and year, each reversed on a second click, unrated last" \
+        "name+=Apocalypse Z|Game of Thrones name-=Game of Thrones|Apocalypse Z rating-=Apocalypse Z|Game of Thrones rating+=Apocalypse Z|Game of Thrones year-=Apocalypse Z|Game of Thrones year+=Game of Thrones|Apocalypse Z" \
+        "$(r .trending.sorted)"
+    assert_eq "engine: the key shown carries its arrow" "YEAR ↑" "$(r .trending.arrows)"
+    assert_eq "engine: Seerr's own order comes back, with no arrow" "Apocalypse Z|Game of Thrones|0" "$(r .trending.seerr)"
     assert_eq "engine: a request asks first, on its row" "movie:1507696|1|" "$(r '[.trending.asked, .trending.confirming, .trending.after] | map(tostring) | join("|")')"
     assert_eq "engine: the second click sends it" "sending" "$(r .trending.sending)"
     assert_eq "engine: sent once, as JSON, with the key's header" "1|1" \

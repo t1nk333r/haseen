@@ -510,6 +510,52 @@ file, 2026-10-31:
 - No request was made against the owner's Seerr, so the 201 path is checked
   only against the scripted Seerr.
 
+## Follow-up 2026-10-31: sort Seerr's lists by rating, name or year
+
+**Problem.** The owner asked for "sortable lists by ratings names years"
+(2026-10-31). TRENDING, UPCOMING and SEARCH showed their page only in
+Seerr's order (popularity, soonest, best match).
+
+**Sources.** Each row already holds `rating` (TMDB's `voteAverage`, 0 when
+unrated), `title` and `date` (`parseSeerrResults`, Model.js). Seerr's
+`/discover/trending`, `/discover/*/upcoming` and `/search` take no sort
+parameter (`seerr-api.yml`), so the panel sorts the page it has.
+
+**Change.**
+- `Model.js`: `SEERR_SORTS` (`seerr`, `rating`, `name`, `year`),
+  `seerrSortKey`, `seerrSortAscending` (a key's first direction: best rated,
+  A to Z, newest) and `sortSeerrResults`. A title without a rating or a date
+  goes last either way, ties fall back to the name and then Seerr's order,
+  and YEAR compares the whole date.
+- `Service.qml`: `seerrSort` and `sortSeerr(key)` keep the order while the
+  shell runs, so a closed panel reopens sorted the same way. The key shown
+  flips its direction; another key starts in its own.
+- `SeerrPane.qml`: a "Sort by" row of DEFAULT, RATING, NAME and YEAR above a
+  page of two or more results; the key in use shows ↑ or ↓.
+  `OmarrTabs.qml` takes an optional suffix after a translated label.
+
+**Evidence.**
+- `tests/test-omarr.sh` 86/86 (83 before): on TRENDING, NAME, RATING and
+  YEAR each sort the page and reverse on a second click, the unrated series
+  stays last, the row shows "YEAR ↑", and DEFAULT brings Seerr's order back
+  with no arrow.
+- `tests/Model.test.js`: keys, first directions, each order both ways, rows
+  without a rating or a date last, a blank row dropped, an unknown key kept
+  in Seerr's order, the page left unchanged.
+- `tests/run.sh` on the affected set (test-core, test-i18n, test-omarr,
+  test-shell, test-surfaces) 720/720. `tools/lint.sh`, `tools/check-docs.sh`
+  and `tools/i18n.py check` pass.
+- Read-only, against the owner's Seerr: page 1 of trending and of a search
+  (20 rows each) sorted as expected, the unrated title last by rating.
+
+**Rejected.**
+- *Sort across every page*: up to 500 pages of 20 from TMDB; the order
+  holds for the page shown, and the page arrows still work.
+- *Seerr's sorted discover (`/discover/movies?sortBy=`)*: a different list
+  from trending and upcoming, and search has no such parameter.
+- *Sort the requests*: they carry no rating, and newest first is their
+  point.
+
 ## Rejected
 
 - **Keep Todoist's preferences in `shell.json`.** The token and preferences

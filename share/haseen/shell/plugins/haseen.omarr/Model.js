@@ -1781,6 +1781,54 @@ function mergeSeerrUpcoming(lists) {
   return all
 }
 
+// The orders a discover or search page can be shown in: Seerr's own
+// (popularity, soonest, or best match), or by rating, name or year. A key
+// starts in its own direction (the best rated, A to Z, the newest), and the
+// panel flips it on a second click. Only the page shown is sorted: Seerr
+// sorts neither its trending and upcoming lists nor a search.
+var SEERR_SORTS = ["seerr", "rating", "name", "year"]
+
+function seerrSortKey(key) {
+  return SEERR_SORTS.indexOf(String(key || "")) >= 0 ? String(key) : "seerr"
+}
+
+function seerrSortAscending(key) {
+  return seerrSortKey(key) === "name"
+}
+
+// The page in the chosen order, a new list. A title without a rating or a
+// date goes last whichever way; ties keep the name, then Seerr's order. YEAR
+// compares the whole date, so a year's titles are in date order too.
+function sortSeerrResults(items, key, ascending) {
+  var by = seerrSortKey(key)
+  var rows = []
+  var list = toList(items)
+  for (var i = 0; i < list.length; i++) if (list[i]) rows.push({ row: list[i], at: i })
+  if (by === "seerr") return rows.map(function(r) { return r.row })
+  var up = ascending === undefined || ascending === null ? seerrSortAscending(by) : ascending === true
+  function name(r) { return String(r.row.title || "") }
+  function value(r) {
+    if (by === "rating") return Number(r.row.rating) > 0 ? Number(r.row.rating) : null
+    if (by === "year") return /^[0-9]{4}/.test(String(r.row.date || "")) ? String(r.row.date) : null
+    return name(r)
+  }
+  rows.sort(function(a, b) {
+    var va = value(a)
+    var vb = value(b)
+    if (va === null || vb === null) {
+      if (va !== vb) return va === null ? 1 : -1
+    } else if (by === "name") {
+      var named = va.localeCompare(vb)
+      if (named !== 0) return up ? named : -named
+    } else if (va !== vb) {
+      return (va < vb) === up ? -1 : 1
+    }
+    var tie = by === "name" ? 0 : name(a).localeCompare(name(b))
+    return tie !== 0 ? tie : a.at - b.at
+  })
+  return rows.map(function(r) { return r.row })
+}
+
 // A discover or search row's second line: movie or series, its year, its
 // state in Seerr (or what a request from the panel came to), its rating.
 function seerrMediaLine(item, i18n, asked) {
@@ -2946,6 +2994,10 @@ if (typeof module !== "undefined" && module.exports) {
     seerrSearchUrl: seerrSearchUrl,
     parseSeerrResults: parseSeerrResults,
     mergeSeerrUpcoming: mergeSeerrUpcoming,
+    SEERR_SORTS: SEERR_SORTS,
+    seerrSortKey: seerrSortKey,
+    seerrSortAscending: seerrSortAscending,
+    sortSeerrResults: sortSeerrResults,
     seerrMediaLine: seerrMediaLine,
     seerrCreateUrl: seerrCreateUrl,
     seerrCreateBody: seerrCreateBody,

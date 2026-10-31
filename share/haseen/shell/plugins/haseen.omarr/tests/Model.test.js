@@ -1494,4 +1494,31 @@ var upcoming = Model.mergeSeerrUpcoming([
 ])
 eq([[upcoming.map(r => r.title).join(","), "A,B,C,Undated", "upcoming soonest first, undated last, once each"]])
 
+var page = [
+  { id: "movie:1", title: "Beta", date: "2024-05-01", rating: 7.1 },
+  { id: "movie:2", title: "alpha", date: "", rating: 0 },
+  { id: "tv:3", title: "Gamma", date: "2024-01-09", rating: 8.4 },
+  { id: "movie:4", title: "Delta", date: "1999-03-30", rating: 7.1 },
+  null,
+  { id: "tv:5", title: "Epsilon", date: "2026-11-01", rating: 0 }
+]
+var titles = rows => rows.map(r => r.title).join(",")
+eq([
+  [Model.SEERR_SORTS.join(","), "seerr,rating,name,year", "the sort keys, Seerr's own first"],
+  [Model.seerrSortKey("rating"), "rating", "a known key"], [Model.seerrSortKey("votes"), "seerr", "an unknown key is Seerr's order"],
+  [Model.seerrSortKey(""), "seerr", "no key is Seerr's order"],
+  [Model.seerrSortAscending("name"), true, "names start A to Z"], [Model.seerrSortAscending("rating"), false, "ratings start with the best"],
+  [Model.seerrSortAscending("year"), false, "years start with the newest"],
+  [titles(Model.sortSeerrResults(page, "seerr")), "Beta,alpha,Gamma,Delta,Epsilon", "Seerr's order, the blank row left out"],
+  [titles(Model.sortSeerrResults(page, "rating")), "Gamma,Beta,Delta,alpha,Epsilon", "best rated first, ties by name, unrated last"],
+  [titles(Model.sortSeerrResults(page, "rating", true)), "Beta,Delta,Gamma,alpha,Epsilon", "lowest rated first, unrated still last"],
+  [titles(Model.sortSeerrResults(page, "name")), "alpha,Beta,Delta,Epsilon,Gamma", "A to Z, whatever the case"],
+  [titles(Model.sortSeerrResults(page, "name", false)), "Gamma,Epsilon,Delta,Beta,alpha", "Z to A"],
+  [titles(Model.sortSeerrResults(page, "year")), "Epsilon,Beta,Gamma,Delta,alpha", "newest first, by the whole date, undated last"],
+  [titles(Model.sortSeerrResults(page, "year", true)), "Delta,Gamma,Beta,Epsilon,alpha", "oldest first, undated still last"],
+  [titles(Model.sortSeerrResults(page, "votes")), "Beta,alpha,Gamma,Delta,Epsilon", "an unknown key keeps Seerr's order"],
+  [Model.sortSeerrResults(null, "name").length, 0, "nothing to sort"],
+  [titles(page.filter(Boolean)), "Beta,alpha,Gamma,Delta,Epsilon", "the page itself is left as it was"]
+])
+
 console.log("Model.test.js ok")
