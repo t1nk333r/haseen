@@ -177,6 +177,36 @@ for cmd in status doctor; do
     assert_eq "$cmd provisioning missing truth" missing "$(jq -r '.provisioning.state' <<<"$OUTPUT")"
     assert_eq "$cmd owned entry count" 3 "$(jq '.workflow.entrypoints' <<<"$OUTPUT")"
 done
+# --verbose is the same object as text: one section per JSON field, one line
+# per tool, and never beside --json or on tool-list, which is already one line
+# per entrypoint. The exit code is the JSON report's, not a new one.
+for cmd in status doctor; do
+    capture "haseen-vapt-$cmd" --verbose
+    assert_status "$cmd verbose keeps the report exit code" 1 "$STATUS"
+    assert_contains "$cmd verbose names its sources" "$OUTPUT" 'sources:'
+    assert_contains "$cmd verbose shows a reviewed source" "$OUTPUT" 'core safe'
+    assert_contains "$cmd verbose shows the private source" "$OUTPUT" 'private source: oniomarchy'
+    assert_contains "$cmd verbose carries the diagnostics" "$OUTPUT" 'missing: no per-user VAPT provisioning report'
+    assert_contains "$cmd verbose counts entrypoints" "$OUTPUT" 'workflow: 3 owned entrypoints;'
+    assert_contains "$cmd verbose counts tools by state" "$OUTPUT" 'tools: 204 (installed '
+    assert_contains "$cmd verbose prints one line per installed tool" "$OUTPUT" 'installed nmap ['
+    assert_contains "$cmd verbose prints one line per missing tool" "$OUTPUT" 'missing aircrack-ng ['
+    assert_not_contains "$cmd verbose is not JSON" "$OUTPUT" 'schemaVersion'
+done
+capture haseen-vapt-doctor --verbose
+assert_contains 'doctor verbose lists the fixed capabilities' "$OUTPUT" 'capability listener '
+assert_contains 'doctor verbose carries a capability command' "$OUTPUT" 'command=net-listener'
+assert_contains 'doctor verbose carries a capability prerequisite' "$OUTPUT" 'packages=openbsd-netcat'
+capture haseen-vapt-status --verbose
+assert_not_contains 'status verbose carries no doctor-only capability section' "$OUTPUT" 'capability '
+for bad in '--json --verbose' '--verbose --json --dry-run'; do
+    capture haseen-vapt-doctor $bad
+    assert_status "doctor refuses '$bad'" 2 "$STATUS"
+done
+capture haseen-vapt-tool-list --verbose
+assert_status 'tool-list refuses --verbose (it already lists entrypoints)' 2 "$STATUS"
+capture haseen-vapt-status --verbose --json
+assert_status 'status refuses two renderings of one object' 2 "$STATUS"
 printf 'logical\tselected_groups\tselected_source\ttarget\tresolution_state\tapply_state\treason\tattempted_tiers\nnmap\tnetwork\textra\textra/nmap\tresolved\tinstalled\tfixture\textra\n' >"$ROOT$XDG_STATE_HOME/haseen/vapt/report.tsv"
 capture haseen-vapt-status --json
 assert_status 'status degraded code preserved' 2 "$STATUS"

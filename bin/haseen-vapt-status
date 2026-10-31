@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # haseen:summary Show VAPT provisioning metadata and unavailable items
-# haseen:args [--json] [--dry-run]
+# haseen:args [--json | --verbose] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
 source "$HASEEN_PATH/layers/vapt/workflow.sh"
-usage() { echo "Usage: haseen vapt status [--json] [--dry-run]"; }
+usage() { echo "Usage: haseen vapt status [--json | --verbose] [--dry-run]"; }
 parse_common_flags "$@"
 flags=()
 $DRY_RUN && flags+=(--dry-run)
-if ((${#REST[@]} == 0)); then
-    layer_run_status vapt
-elif ((${#REST[@]} == 1)) && [[ ${REST[0]} == --json ]]; then
-    vapt_workflow_status status --json "${flags[@]}"
-else
+# No operand keeps the provisioning verifier's own report; --json and
+# --verbose are two renderings of the installed-report object and never
+# combine, so one operand at most selects them.
+case "${REST[*]:-}" in
+'') layer_run_status vapt ;;
+--json) vapt_workflow_status status --json "${flags[@]}" ;;
+--verbose) vapt_workflow_status status --verbose "${flags[@]}" ;;
+*)
     usage >&2
     exit 2
-fi
+    ;;
+esac

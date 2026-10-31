@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # haseen:summary Inspect VAPT source, package, entrypoint, and workflow prerequisites without running tools
-# haseen:args [--json] [--dry-run]
+# haseen:args [--json | --verbose] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
 source "$HASEEN_PATH/layers/vapt/workflow.sh"
-usage() { echo "Usage: haseen vapt doctor [--json] [--dry-run]"; }
+usage() { echo "Usage: haseen vapt doctor [--json | --verbose] [--dry-run]"; }
 parse_common_flags "$@"
 flags=()
 $DRY_RUN && flags+=(--dry-run)

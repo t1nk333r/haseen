@@ -69,7 +69,9 @@ guess `--help`. `tool-run` shows the same document, then opens an ordinary
 interactive shell, never the selected program.
 
 `haseen vapt status --json` keeps the 0/1/2 provisioning health;
-`haseen vapt doctor --json --dry-run` observes and never repairs.
+`haseen vapt doctor --json --dry-run` observes and never repairs. Both also
+take `--verbose` for the same report as text — one section per JSON field,
+one line per tool — and it never combines with `--json`.
 `haseen vapt menu --enabled --json` reports the literal merged enable flag of
 the optional `haseen.security` panel and enables nothing. None of these runs
 an installed tool, refreshes a source or seeds settings. Never edit the
