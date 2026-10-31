@@ -1,10 +1,10 @@
 # Optional VAPT tooling
 
-The `vapt` layer installs security tool groups the user picks, on Arch or
-CachyOS. Nothing is installed by default, and nothing it installs is ever
-run by it: no tool, no service start or enable, no assessment. The full
-contract is `docs/vapt.md` in the haseen repository; `haseen vapt install
---help` prints the usage.
+The `vapt` layer installs security tool groups the user picks, on Arch,
+CachyOS or an Omarchy host. Nothing is installed by default, and nothing it
+installs is ever run by it: no tool, no service start or enable, no
+assessment. The full contract is `docs/vapt.md` in the haseen repository;
+`haseen vapt install --help` prints the usage.
 
 ```bash
 haseen vapt install --groups sdr,wireless --dry-run   # preview: offline, writes nothing

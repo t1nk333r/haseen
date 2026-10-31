@@ -32,6 +32,15 @@ ALLOWED = re.compile(r"^(core|extra|multilib|blackarch|chaotic-aur|oniomarchy|ca
 # maintenance programs. Narrower than ALLOWED: never BlackArch, Chaotic or
 # the private oniomarchy source.
 BASE_VENDOR = re.compile(r"^(core|extra|multilib|cachyos(?:-[a-z0-9-]+)?)$")
+# Arch's own repositories. Their database and their packages are Arch's and are
+# verified against the Arch keyring pacman already holds, so haseen accepts any
+# HTTPS mirror of them: the mirror is transport, not provenance (owner,
+# 2026-10-31, luna's /etc/pacman.d/mirrorlist). Omarchy's own repository is not
+# here, is not in ALLOWED, and its packages stay refused by name.
+ARCH_BASE = ('core', 'extra', 'multilib')
+# The private source's host mirrors nothing else: it is admitted only as the
+# reviewed private source, at its one exact root and under its 52 names.
+ONIOMARCHY_HOST = 'pkgs.oniomarchy.com'
 ACTIVATION = re.compile(r"(?:systemctl|service|rc-update|sv)\s+(?:[^\n;]*\s)?(?:enable|start|restart|preset|add)\b|(?:ln|install|cp)\s+[^\n]*\.wants/|omarchy", re.I)
 # The reviewed BlackArch stanza. A bootstrap stages it in memory for the
 # private review and frozen commit; it reaches /etc/pacman.conf only after the
@@ -719,22 +728,35 @@ def activation_refusal(text):
 
 
 def repository_mirror_safe(repo, url):
-    """One mirror rule for snapshot, rendering, closure and bootstrap: HTTPS
-    and no Omarchy host for every source; the private source only at its one
-    exact HTTPS root (no credentials, port, query, fragment or other path)."""
+    """One mirror rule for snapshot, rendering, closure and bootstrap.
+
+    HTTPS for every source. A source that publishes its *own* packages is
+    never mirrored by an Omarchy host: that is what keeps Omarchy's packages
+    out of a VAPT transaction, alongside the name, dependency and reviewed
+    identity checks and ALLOWED's missing `omarchy`. ARCH_BASE is the
+    exception: Arch's own repositories are Arch's whatever HTTPS mirror serves
+    them, because every package still has to satisfy the Arch keyring pacman
+    verifies against. The private source is only ever its one exact HTTPS root
+    (no credentials, port, query, fragment or other path)."""
     url = url.strip(' \t\r\v\f')
     if repo == ONIOMARCHY:
         return url in (ONIOMARCHY_SERVER, 'https://pkgs.oniomarchy.com/x86_64')
-    return url.startswith('https://') and 'omarchy' not in url.lower()
+    if not url.startswith('https://'):
+        return False
+    if ONIOMARCHY_HOST in url.lower():
+        return False
+    return repo in ARCH_BASE or 'omarchy' not in url.lower()
 
 
 def mirror_refusal(repo, url):
-    """Why repository_mirror_safe refused URL, for the report."""
+    """Why repository_mirror_safe refused URL, for the report. Only reached
+    after that function returned False, so the label follows the same order."""
+    url = url.strip(' \t\r\v\f')
     if repo == ONIOMARCHY:
         return 'not the reviewed private source root:'
-    if 'omarchy' in url.lower():
-        return omarchy_refusal(url) + ':'
-    return 'non-HTTPS'
+    if not url.startswith('https://'):
+        return 'non-HTTPS'
+    return omarchy_refusal(url) + ':'
 
 
 def repository_policy_safe(repo, lines):

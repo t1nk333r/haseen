@@ -452,11 +452,23 @@ vapt_installed 'libprovider|1-1|https://example.org/libprovider|libvirtual|omarc
 solver_plan "$WHOIS_ROW"
 assert_status 'retained allowed provider cannot hide Omarchy dependency' 1 "$STATUS"
 
-# A repository can exist and still be unsafe. Mirrors are runtime dependencies.
+# A repository can exist and still be unsafe. A mirror is a runtime dependency
+# for a source that publishes its own packages. Arch's own repositories are
+# Arch's whatever HTTPS mirror serves them, because every package still has to
+# satisfy the Arch keyring pacman verifies against; that is what lets an
+# Omarchy host provision at all, and luna's /etc/pacman.d/mirrorlist is
+# stable-mirror.omarchy.org (owner, 2026-10-31).
 vapt_root
 printf '[options]\n[extra]\nServer = https://stable-mirror.omarchy.org/$repo/os/$arch\n' >"$ROOT/etc/pacman.conf"
 capture python3 "$VAPT_META" config --root "$ROOT"
-assert_status 'Omarchy mirror refused as hidden dependency' 1 "$STATUS"
+assert_status 'an Omarchy mirror of Arch extra is a usable source' 0 "$STATUS"
+assert_contains 'the accepted mirror is rendered as the host wrote it' "$OUTPUT" \
+    'Server = https://stable-mirror.omarchy.org/$repo/os/$arch'
+vapt_root
+printf '[options]\n[blackarch]\nServer = https://stable-mirror.omarchy.org/$repo/os/$arch\n' >"$ROOT/etc/pacman.conf"
+capture python3 "$VAPT_META" config --root "$ROOT"
+assert_status 'a source publishing its own packages refuses an Omarchy mirror' 1 "$STATUS"
+assert_contains 'the refusal names the mirror' "$OUTPUT" 'forbidden Omarchy:'
 
 # --- downloaded archives and host hooks are audited before install ----------
 if command -v bsdtar >/dev/null 2>&1; then

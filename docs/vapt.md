@@ -1,11 +1,16 @@
 # Optional VAPT workstation provisioning
 
 The `vapt` layer provisions the owner's waydots tool inventory, plus tool
-groups taken from oniomarchy's categories (plan 087), on **Arch and
-CachyOS**. It does not run assessments, launch security tools, start their
-backends, change firewall rules or enable services. It needs no desktop,
-Omarchy, Chaotic-AUR or AUR layer, and selects no tools by default. Hosts
-whose OS identity is `omarchy` are refused.
+groups taken from oniomarchy's categories (plan 087), on **Arch, CachyOS and
+an Omarchy host**. It does not run assessments, launch security tools, start
+their backends, change firewall rules or enable services. It needs no
+desktop, Omarchy, Chaotic-AUR or AUR layer, and selects no tools by default.
+An Omarchy host is supported, not refused (owner, 2026-10-31): haseen replaces
+Omarchy (ADR 0001), `share/haseen/lib/preflight.sh` already treats such a host
+as supported, and Omarchy 4 ships an Arch mirrorlist
+(`https://stable-mirror.omarchy.org/$repo/os/$arch`) that is an HTTPS mirror
+of Arch's own repositories. Omarchy's packages and its own `[omarchy]`
+repository stay refused either way.
 
 Runtime prerequisites are `python3` with its standard library, `pacman`,
 `vercmp`, `curl`, `gpg` and libalpm's own `libarchive.so.13`, through which
@@ -98,6 +103,16 @@ builds, arbitrary repositories and Omarchy packages or providers are excluded
 before source selection, so a forbidden provider cannot shadow a genuine
 package from a later tier. An unsafe or unverifiable item is reported and
 skipped, never handed to the general resolver.
+
+A source's mirror must be HTTPS. A source that publishes its *own* packages —
+BlackArch, Chaotic-AUR, CachyOS and the private source — is never mirrored by
+an Omarchy host, and the private source's host mirrors nothing else. Arch's
+own `core`, `extra` and `multilib` are the exception (owner, 2026-10-31): they
+accept any HTTPS mirror, because their database and their packages are Arch's
+and every package still has to satisfy the Arch keyring pacman verifies
+against (`metadata.py` `ARCH_BASE`). A mirror is transport, not provenance.
+Omarchy's own repository is not a usable source at all: it is absent from
+`ALLOWED`, so it never reaches the mirror rule.
 
 ### Package audit
 
@@ -601,8 +616,9 @@ is not a package uninstaller or a workstation rollback.
 
 The engineering record is in [plan 007](../plans/007-vapt-layer.md),
 [plan 087](../plans/087-vapt-oniomarchy-provisioning.md),
-[plan 088](../plans/088-vapt-security-workflow.md) and
-[plan 090](../plans/090-vapt-audit-fixes.md).
+[plan 088](../plans/088-vapt-security-workflow.md),
+[plan 090](../plans/090-vapt-audit-fixes.md) and
+[plan 148](../plans/148-vapt-on-an-omarchy-host.md).
 
 ## Installed inventory and explicit usage (plan 088)
 
