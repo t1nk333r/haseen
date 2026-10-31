@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary List verified installed VAPT tools and their owned entrypoints
+# haseen:summary List installed VAPT tools and the commands VAPT runs for each
 # haseen:args [--json] [--dry-run] [--group GROUP] [--all]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

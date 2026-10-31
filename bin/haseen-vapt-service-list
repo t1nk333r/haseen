@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary List owned installed service units and current state
+# haseen:summary List the services VAPT can start or stop, and their state
 # haseen:args [--json] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

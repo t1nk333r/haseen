@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Show VAPT provisioning metadata and unavailable items
+# haseen:summary Show what VAPT provisioned, what is missing and why
 # haseen:args [--json | --verbose] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

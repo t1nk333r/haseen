@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Serve an explicitly selected local directory in the foreground
+# haseen:summary Serve files from a local directory over HTTP in the foreground
 # haseen:args [--dry-run] [--yes] [--bind ADDRESS] [DIR] [PORT]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

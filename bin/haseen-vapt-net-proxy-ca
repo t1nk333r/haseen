@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Inspect or explicitly manage one fingerprint-bound system proxy CA anchor
+# haseen:summary Show, trust or remove one system proxy CA certificate, pinned by fingerprint
 # haseen:args status [--json] | inspect CERT [--json] [--dry-run] | trust CERT [--dry-run] [--yes] | remove FINGERPRINT [--dry-run] [--yes]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

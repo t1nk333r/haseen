@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Restart an explicitly selected installed service after exposure confirmation
+# haseen:summary Restart a VAPT service after you accept the exposure risk
 # haseen:args [--dry-run] [--yes] [--expect-unit UNIT] [--expect-fragment PATH] SERVICE
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

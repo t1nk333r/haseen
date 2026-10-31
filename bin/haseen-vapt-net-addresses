@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Read local interface addresses without probing other machines
+# haseen:summary List this machine's interface addresses
 # haseen:args [--json] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

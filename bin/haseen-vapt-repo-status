@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Inspect VAPT repository trust and availability without changing it
+# haseen:summary Report the oniomarchy source's trust and availability offline
 # haseen:args [--json] [--dry-run] [oniomarchy]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

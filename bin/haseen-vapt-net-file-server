@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Serve one selected package-owned file as bytes without executing it
+# haseen:summary Serve one installed package's file over HTTP in the foreground
 # haseen:args [--dry-run] [--yes] [--file FILE] [--bind ADDRESS] [PORT]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

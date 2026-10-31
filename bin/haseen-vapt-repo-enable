@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Approve the pinned oniomarchy source for dedicated VAPT transactions
+# haseen:summary Trust the oniomarchy signing key for VAPT installs only
 # haseen:args [--dry-run] [--yes] oniomarchy
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

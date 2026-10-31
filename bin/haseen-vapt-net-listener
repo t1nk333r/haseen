@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Open a foreground local TCP listener without executing received data
+# haseen:summary Open a TCP listener in the foreground and never run what it receives
 # haseen:args [--dry-run] [--yes] [--bind ADDRESS] [PORT]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

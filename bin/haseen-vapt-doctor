@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Inspect VAPT source, package, entrypoint, and workflow prerequisites without running tools
+# haseen:summary Check VAPT sources, packages and entrypoints; runs no tools
 # haseen:args [--json | --verbose] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

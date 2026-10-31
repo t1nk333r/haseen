@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Remove owned unchanged VAPT links; retain packages and environments
+# haseen:summary Remove the VAPT links haseen added and keep packages and Python environments
 # haseen:args [--dry-run] [--yes]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

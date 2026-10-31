@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Read the effective optional Security surface configuration
+# haseen:summary Show whether the Security plugin is enabled in shell.json
 # haseen:args [--enabled] [--json] [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Stop an explicitly selected installed service
+# haseen:summary Stop a VAPT service
 # haseen:args [--dry-run] [--yes] [--expect-unit UNIT] [--expect-fragment PATH] SERVICE
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

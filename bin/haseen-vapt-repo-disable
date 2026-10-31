@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Disable the privately configured oniomarchy source without removing packages or signing keys
+# haseen:summary Drop haseen's private oniomarchy repo entry and keep packages and keys
 # haseen:args [--dry-run] [--yes] oniomarchy
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

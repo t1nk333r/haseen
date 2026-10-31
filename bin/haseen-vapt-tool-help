@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Display the installed tool own usage without starting a workflow
+# haseen:summary Print a tool's own usage; opens no shell
 # haseen:args [--dry-run] TOOL [--entry ENTRY_ID]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"

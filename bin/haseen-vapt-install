@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Provision explicitly selected VAPT groups from reviewed sources without running tools
+# haseen:summary Install the VAPT groups you name from reviewed sources; starts none of their tools
 # haseen:args [--dry-run] [--yes] [--with-oniomarchy] (--groups GROUP,... | --all)
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"

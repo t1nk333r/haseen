@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# haseen:summary Open the verified installed remote desktop client without connecting automatically
+# haseen:summary Open the installed Remmina client without connecting anywhere
 # haseen:args [--dry-run]
 set -Eeuo pipefail
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
