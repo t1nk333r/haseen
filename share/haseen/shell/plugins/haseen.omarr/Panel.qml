@@ -264,6 +264,15 @@ Item {
         return service && itemId ? artUrl(service.mediaPath(serviceId, itemId)) : "";
     }
 
+    function seerrPosterSource(serviceId: string, posterPath: var): string {
+        return service && posterPath ? artUrl(service.seerrPosterFile(serviceId, posterPath)) : "";
+    }
+
+    // The panel's keys again, after a field in the pane had them.
+    function restoreKeys(): void {
+        keyCatcher.forceActiveFocus();
+    }
+
     function handleKey(event: var): void {
         if (settingsBlocked || (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
             return;

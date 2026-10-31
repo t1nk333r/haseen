@@ -82,11 +82,27 @@ else
     jq '.pageInfo.results = 4 | .results = [{id: 11, status: 1, type: "movie", is4k: false,
         media: {tmdbId: 27205, mediaType: "movie"}, seasons: [], requestedBy: {displayName: "Carol"}}] + .results' \
         "$FIX/seerr-requests.json" >"$FIX/seerr-requests-new.json"
+    # Every request: the waiting ones and two answered, one on its way and
+    # one declined.
+    jq '.pageInfo.results = 551 | .results += [
+        {id: 5, status: 2, type: "movie", media: {tmdbId: 550, status: 3}, requestedBy: {displayName: "dana"}},
+        {id: 4, status: 3, type: "tv", media: {tmdbId: 1396, status: 1}, seasons: [{seasonNumber: 1}]}]' \
+        "$FIX/seerr-requests.json" >"$FIX/seerr-all.json"
+    # Discover and search pages: a person and a title Seerr has are listed
+    # but never requested; upcoming series fail, upcoming movies still show.
+    jq -n '{page: 1, totalPages: 3, results: [
+        {id: 1507696, mediaType: "movie", title: "Apocalypse Z", releaseDate: "2026-10-09", posterPath: "/az.jpg", voteAverage: 6.53},
+        {id: 287, mediaType: "person", name: "Brad Pitt"},
+        {id: 1399, mediaType: "tv", name: "Game of Thrones", firstAirDate: "2011-04-17", mediaInfo: {status: 5}}]}' >"$FIX/seerr-trending.json"
+    jq -n '{page: 1, totalPages: 1, results: [
+        {id: 2, mediaType: "movie", title: "Later", releaseDate: "2026-12-16"},
+        {id: 1, mediaType: "movie", title: "Sooner", releaseDate: "2026-11-01"}]}' >"$FIX/seerr-movies.json"
+    jq -n '{page: 1, totalPages: 1, results: [{id: 603, mediaType: "movie", title: "The Matrix", releaseDate: "1999-03-30", mediaInfo: {status: 2}}]}' >"$FIX/seerr-search.json"
     export CURL_LOG="$LOG" CURL_FIX="$FIX" NOTIFY_LOG="$NOTES"
-    stub curl 'url="" body=""
+    stub curl 'url="" body="" out=""
 prev=""
 for a in "$@"; do
-    case "$prev" in --data-binary) body="${a#@}" ;; esac
+    case "$prev" in --data-binary) body="${a#@}" ;; -o) out="$a" ;; esac
     prev="$a"
     url="$a"
 done
@@ -104,8 +120,17 @@ case "$url" in
 */api/v2/torrents/delete) printf "body %s\n" "$(cat "$body")" >>"$CURL_LOG"; printf "Ok.\n200" ;;
 */api/v1/status) printf "{\"version\":\"3.5.1\"}\n200" ;;
 */api/v1/request/*/approve|*/api/v1/request/*/decline) printf "{}\n200" ;;
-*/api/v1/request\?*) cat "$CURL_FIX/seerr-requests.json"; printf "\n200" ;;
-*/api/v1/movie/603) printf "{\"title\":\"The Matrix\",\"releaseDate\":\"1999-03-30\"}\n200" ;;
+*/api/v1/request\?*filter=pending*) cat "$CURL_FIX/seerr-requests.json"; printf "\n200" ;;
+*/api/v1/request\?*) cat "$CURL_FIX/seerr-all.json"; printf "\n200" ;;
+*/api/v1/request) printf "create %s\n" "$(cat "$body")" >>"$CURL_LOG"; printf "{}\n201" ;;
+*/api/v1/discover/trending\?*) cat "$CURL_FIX/seerr-trending.json"; printf "\n200" ;;
+*/api/v1/discover/movies/upcoming\?*) cat "$CURL_FIX/seerr-movies.json"; printf "\n200" ;;
+*/api/v1/discover/tv/upcoming\?*) printf "\n500" ;;
+*/api/v1/search\?*) cat "$CURL_FIX/seerr-search.json"; printf "\n200" ;;
+*/imageproxy/tmdb/t/p/w154/*) [ -n "$out" ] && printf poster >"$out"; printf "\n200" ;;
+*/api/v1/movie/603) printf "{\"title\":\"The Matrix\",\"releaseDate\":\"1999-03-30\",\"posterPath\":\"/m603.jpg\"}\n200" ;;
+*/api/v1/movie/550) printf "{\"title\":\"Fight Club\",\"releaseDate\":\"1999-10-15\"}\n200" ;;
+*/api/v1/tv/1396) printf "{\"name\":\"Breaking Bad\",\"firstAirDate\":\"2008-01-20\"}\n200" ;;
 */api/v1/movie/27205) printf "{\"title\":\"Inception\",\"releaseDate\":\"2010-07-15\"}\n200" ;;
 */api/v1/tv/1399) printf "{\"name\":\"Game of Thrones\",\"firstAirDate\":\"2011-04-17\"}\n200" ;;
 *) printf "\n404" ;;
@@ -274,14 +299,16 @@ ShellRoot {
                 probe.panel.detailId = "svc-4";
                 probe.step = 5;
             } else if (probe.step === 5) {
-                // Seerr's requests, named by their lookups: approve goes at
-                // once, decline asks first, and only a request id is sent.
+                // Seerr's requests: the waiting ones named by their lookups,
+                // approve at once, decline asks first, and only a request id
+                // is sent; the answered ones below, with their state.
                 const d = probe.find(probe.panel, "declineRequest");
-                if (!d || d.queue.length === 0)
+                if (!d || d.pending.length === 0 || d.answered.length === 0)
                     return;
                 const snap = s.snapshots.find(x => x.id === "svc-4");
-                const rq = { titles: d.queue.map(r => r.title).join("|"), lines: d.queue.map(r => Model.queueLine(r, null)).join("|"),
-                    fleet: Model.fleetLine(snap, null), status: snap.statusText };
+                const rq = { titles: d.pending.map(r => r.title).join("|"), lines: d.pending.map(r => Model.requestLine(r, null)).join("|"),
+                    answered: d.answered.map(r => r.title + ": " + Model.requestLine(r, null)).join("|"),
+                    fleet: Model.fleetLine(snap, null), status: snap.statusText, tab: d.tab };
                 d.approveRequest("9");
                 d.declineRequest("7");
                 rq.asked = d.confirmId;
@@ -295,25 +322,70 @@ ShellRoot {
                 d.declineRequest("all");
                 s.runControl("svc-4", "approve-item", "1/approve");
                 probe.seen.requests = rq;
-                Quickshell.execDetached(["cp", "$FIX/seerr-requests-new.json", "$FIX/seerr-requests.json"]);
+                d.showTab("trending");
                 probe.step = 6;
             } else if (probe.step === 6) {
+                // TRENDING: asked for when shown; a title Seerr lacks is
+                // requested on the second click, once.
+                const d = probe.find(probe.panel, "declineRequest");
+                const b = s.seerrBrowse;
+                if (b.tab !== "trending" || b.state !== "ok")
+                    return;
+                const tr = { titles: d.results.map(r => r.title).join("|"), lines: d.results.map(r => Model.seerrMediaLine(r, null, "")).join("|"),
+                    requestable: d.results.map(r => r.requestable).join(","), page: b.page + "/" + b.pages };
+                d.requestMedia("movie:1507696");
+                tr.asked = d.confirmMedia;
+                tr.confirming = probe.count(probe.panel, "confirming");
+                d.requestMedia("movie:1507696");
+                tr.after = d.confirmMedia;
+                tr.sending = s.seerrAskedFor("svc-4", "movie:1507696");
+                s.runControl("svc-4", "request-media", "movie:1507696");
+                s.runControl("svc-4", "request-media", "person:287");
+                s.runControl("svc-4", "request-media", "movie:0");
+                probe.seen.trending = tr;
+                probe.step = 7;
+            } else if (probe.step === 7 && s.seerrAskedFor("svc-4", "movie:1507696") === "requested") {
+                const d = probe.find(probe.panel, "declineRequest");
+                probe.seen.made = { line: Model.seerrMediaLine(d.results[0], null, "requested"), rows: probe.count(probe.panel, "canRequest") };
+                d.showTab("upcoming");
+                probe.step = 8;
+            } else if (probe.step === 8) {
+                // UPCOMING: movies and series as one list; the series failed.
+                const d = probe.find(probe.panel, "declineRequest");
+                const b = s.seerrBrowse;
+                if (b.tab !== "upcoming" || b.state !== "ok")
+                    return;
+                probe.seen.upcoming = { titles: d.results.map(r => r.title).join("|") };
+                d.showTab("search");
+                probe.find(d, "placeholderText").text = "the matrix (1999)!";
+                d.search();
+                probe.step = 9;
+            } else if (probe.step === 9) {
+                const d = probe.find(probe.panel, "declineRequest");
+                const b = s.seerrBrowse;
+                if (b.tab !== "search" || b.state !== "ok")
+                    return;
+                probe.seen.search = { titles: d.results.map(r => r.title).join("|"), lines: d.results.map(r => Model.seerrMediaLine(r, null, "")).join("|"),
+                    query: b.query };
+                Quickshell.execDetached(["cp", "$FIX/seerr-requests-new.json", "$FIX/seerr-requests.json"]);
+                probe.step = 10;
+            } else if (probe.step === 10) {
                 // A request arrives: the next poll notifies it, by its title.
-                const fresh = s.snapshots.find(x => x.id === "svc-4").queue.find(r => r.id === "11");
+                const fresh = s.snapshots.find(x => x.id === "svc-4").pending.find(r => r.id === "11");
                 if (fresh && s.reqQueue.length === 0 && s.currentReq === null) {
-                    probe.seen.fresh = { title: fresh.title, total: s.snapshots.find(x => x.id === "svc-4").queueTotal };
+                    probe.seen.fresh = { title: fresh.title, total: s.snapshots.find(x => x.id === "svc-4").pendingTotal };
                     probe.panel.detailId = "";
                     probe.panel.destroy();
-                    probe.step = 7;
+                    probe.step = 11;
                 } else if (s.reqQueue.length === 0 && s.currentReq === null && ++probe.held % 5 === 0) {
                     s.forcePoll();
                 }
-            } else if (probe.step === 7 && !s.panelOpen) {
+            } else if (probe.step === 11 && !s.panelOpen) {
                 probe.seen.closed = { panelOpen: s.panelOpen };
                 // Turning the card off closes it: its sender is stopped.
                 s.persistSettings({ showProgressToast: false });
-                probe.step = 8;
-            } else if (probe.step === 8 && s.progressNoteId === "" && s.settingsWriting === null && s.settingsWrites.length === 0) {
+                probe.step = 12;
+            } else if (probe.step === 12 && s.progressNoteId === "" && s.settingsWriting === null && s.settingsWrites.length === 0) {
                 probe.seen.cardOff = { noteId: s.progressNoteId, dismissed: s.progressDismissedKey };
                 console.log("RESULT " + JSON.stringify(probe.seen));
                 Qt.quit();
@@ -345,19 +417,34 @@ EOF
         "body hashes=$TORRENT&deleteFiles=false|body hashes=$TORRENT&deleteFiles=true" "$(grep '^body hashes=' "$LOG" | paste -sd'|')"
     assert_eq "engine: each removal posted to torrents/delete without a cookie" "2|0" \
         "$(grep -c ':8081/api/v2/torrents/delete' "$LOG")|$(grep ':8081/api/v2/torrents/delete' "$LOG" | grep -c -- ' -b ')"
-    assert_eq "engine: Seerr's requests named by their lookups, newest first" "Game of Thrones (2011)|The Matrix (1999)" "$(r .requests.titles)"
+    assert_eq "engine: Seerr's waiting requests named by their lookups, newest first" "Game of Thrones (2011)|The Matrix (1999)|requests" "$(r '[.requests.titles, .requests.tab] | join("|")')"
     assert_eq "engine: each says what was asked for and by whom" "Seasons 1, 2 · 4K · by bob|Movie · by Alice" "$(r .requests.lines)"
+    assert_eq "engine: the answered ones below, with their state" "Fight Club (1999): Processing · Movie · by dana|Breaking Bad (2008): Declined · Season 1" "$(r .requests.answered)"
     assert_eq "engine: the fleet row counts them, the detail shows the version" "3 pending|3.5.1" "$(r '[.requests.fleet, .requests.status] | join("|")')"
     assert_eq "engine: a decline asks first, on its row, and can be cancelled" "7|1|" "$(r '[.requests.asked, .requests.confirming, .requests.cancelled] | map(tostring) | join("|")')"
     assert_eq "engine: the second click declines it" "" "$(r .requests.after)"
     assert_eq "engine: approved once, declined once, nothing else" "1|1|0" \
         "$(grep -c -- '-X POST.*:5055/api/v1/request/9/approve' "$LOG")|$(grep -c -- '-X POST.*:5055/api/v1/request/7/decline' "$LOG")|$(grep -cE ':5055/api/v1/request/(all|1)/' "$LOG")"
-    assert_eq "engine: every keyed Seerr request carries the header, the status needs none" "" \
-        "$(grep ':5055/' "$LOG" | grep -v ':5055/api/v1/status' | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
-    assert_eq "engine: each title is looked up once" "1|1" "$(grep -c ':5055/api/v1/movie/603' "$LOG")|$(grep -c ':5055/api/v1/tv/1399' "$LOG")"
+    assert_eq "engine: every keyed Seerr request carries the header, the status and the posters need none" "" \
+        "$(grep ':5055/' "$LOG" | grep -v -e ':5055/api/v1/status' -e ':5055/imageproxy/' | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
+    assert_eq "engine: each title is looked up once, though both lists hold it" "1|1" "$(grep -c ':5055/api/v1/movie/603' "$LOG")|$(grep -c ':5055/api/v1/tv/1399' "$LOG")"
+    assert_contains "engine: a request's poster comes through Seerr's image proxy" "$(cat "$LOG")" ":5055/imageproxy/tmdb/t/p/w154/m603.jpg"
+    assert_eq "engine: and no image request carries the key" "" "$(grep ':5055/imageproxy/' "$LOG" | grep -e header.txt -e X-Api-Key || true)"
+    assert_eq "engine: TRENDING lists movies and series, never people" "Apocalypse Z|Game of Thrones|1/3" "$(r '[.trending.titles, .trending.page] | join("|")')"
+    assert_eq "engine: each with its kind, year, state and rating" "Movie · 2026 · ★ 6.5|Series · 2011 · Available" "$(r .trending.lines)"
+    assert_eq "engine: only a title Seerr lacks can be requested" "true,false" "$(r .trending.requestable)"
+    assert_eq "engine: a request asks first, on its row" "movie:1507696|1|" "$(r '[.trending.asked, .trending.confirming, .trending.after] | map(tostring) | join("|")')"
+    assert_eq "engine: the second click sends it" "sending" "$(r .trending.sending)"
+    assert_eq "engine: sent once, as JSON, with the key's header" "1|1" \
+        "$(grep -c '^create {"mediaType":"movie","mediaId":1507696}$' "$LOG")|$(grep -- '-X POST.*:5055/api/v1/request$' "$LOG" | grep -- '-H Content-Type: application/json' | grep -c -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt")"
+    assert_eq "engine: nothing else was requested" "1" "$(grep -c '^create ' "$LOG")"
+    assert_eq "engine: the row says it was requested, and asks no more" "Movie · 2026 · Requested · ★ 6.5|0" "$(r '[.made.line, .made.rows] | map(tostring) | join("|")')"
+    assert_eq "engine: UPCOMING is soonest first, though the series failed" "Sooner|Later" "$(r .upcoming.titles)"
+    assert_contains "engine: SEARCH sends the words encoded" "$(cat "$LOG")" ":5055/api/v1/search?query=the%20matrix%20%281999%29%21&page=1"
+    assert_eq "engine: and lists what it found" "The Matrix|Movie · 1999 · Requested|the matrix (1999)!" "$(r '[.search.titles, .search.lines, .search.query] | join("|")')"
     assert_eq "engine: a new request is listed by its title" "Inception (2010)|4" "$(r '[.fresh.title, .fresh.total] | map(tostring) | join("|")')"
     assert_contains "engine: and notified, with Seerr's icon" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/seerr.svg -p -A exec=Open -- New request on Seerr Inception (2010) · Carol"
-    assert_eq "engine: the requests found at start are not notified" "1" "$(grep -c 'New request on Seerr' "$NOTES")"
+    assert_eq "engine: the requests found at start, the answered ones and the panel's own are not notified" "1" "$(grep -c 'New request on Seerr' "$NOTES")"
     assert_not_contains "engine: Seerr's key never reached an argv" "$(cat "$LOG")" "$SEERR_FIXTURE"
     assert_contains "engine: an event goes to the notification server" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sonarr.svg -p -A exec=Open -- Sonarr grabbed Fixture Show"
     assert_eq "engine: the bar badge does not count it, the server keeps it" "1|1|undefined" "$(r '[.toast.bar, .toast.badge, .toast.unread] | map(tostring) | join("|")')"
