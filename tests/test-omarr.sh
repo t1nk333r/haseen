@@ -23,6 +23,7 @@ QS_BIN=${QS_BIN:-/usr/bin/qs}
 FIXTURE="fixture-sonarr-0123"
 # A torrent's info hash, as qBittorrent names it.
 TORRENT="0123456789abcdef0123456789abcdef01234567"
+SEERR_FIXTURE="fixture-seerr-0789"
 export FIXTURE
 
 sandbox omarr
@@ -76,6 +77,11 @@ else
     printf '{"queue":{"paused":false,"speed":"3.1 M","kbpersec":"3174","timeleft":"0:04:12","noofslots":1,"slots":[{"nzo_id":"SABnzbd_nzo_1","filename":"Fixture.Show.S01E02","status":"Downloading","mb":"1000","mbleft":"580","percentage":"42","timeleft":"0:04:12"}]}}' >"$FIX/sab-queue.json"
     printf '{"history":{"slots":[]}}' >"$FIX/sab-history.json"
     printf '[{"hash":"%s","name":"Fixture.Torrent","state":"stalledUP","progress":1,"dlspeed":0,"upspeed":0,"eta":0,"size":1000}]' "$TORRENT" >"$FIX/qbit-torrents.json"
+    cp "$P/tests/fixtures/seerr-requests.json" "$FIX/seerr-requests.json"
+    # The same list after a new request arrives, swapped in by the probe.
+    jq '.pageInfo.results = 4 | .results = [{id: 11, status: 1, type: "movie", is4k: false,
+        media: {tmdbId: 27205, mediaType: "movie"}, seasons: [], requestedBy: {displayName: "Carol"}}] + .results' \
+        "$FIX/seerr-requests.json" >"$FIX/seerr-requests-new.json"
     export CURL_LOG="$LOG" CURL_FIX="$FIX" NOTIFY_LOG="$NOTES"
     stub curl 'url="" body=""
 prev=""
@@ -96,6 +102,12 @@ case "$url" in
 */api/v2/torrents/info*) cat "$CURL_FIX/qbit-torrents.json"; printf "\n200" ;;
 */api/v2/transfer/info) printf "{\"dl_info_speed\":0,\"up_info_speed\":0}\n200" ;;
 */api/v2/torrents/delete) printf "body %s\n" "$(cat "$body")" >>"$CURL_LOG"; printf "Ok.\n200" ;;
+*/api/v1/status) printf "{\"version\":\"3.5.1\"}\n200" ;;
+*/api/v1/request/*/approve|*/api/v1/request/*/decline) printf "{}\n200" ;;
+*/api/v1/request\?*) cat "$CURL_FIX/seerr-requests.json"; printf "\n200" ;;
+*/api/v1/movie/603) printf "{\"title\":\"The Matrix\",\"releaseDate\":\"1999-03-30\"}\n200" ;;
+*/api/v1/movie/27205) printf "{\"title\":\"Inception\",\"releaseDate\":\"2010-07-15\"}\n200" ;;
+*/api/v1/tv/1399) printf "{\"name\":\"Game of Thrones\",\"firstAirDate\":\"2011-04-17\"}\n200" ;;
 *) printf "\n404" ;;
 esac'
     # The download card's sender: prints an id, then waits like notify-send -A.
@@ -108,13 +120,14 @@ exit 0'
 
     legacy="$HOME/.local/state/omarchy/omarr"
     mkdir -p "$legacy" && chmod 700 "$legacy"
-    printf '{"svc-1":{"apiKey":"%s"}}\n' "$FIXTURE" >"$legacy/credentials.json"
+    printf '{"svc-1":{"apiKey":"%s"},"svc-4":{"apiKey":"%s"}}\n' "$FIXTURE" "$SEERR_FIXTURE" >"$legacy/credentials.json"
     chmod 600 "$legacy/credentials.json"
     mkdir -p "$XDG_CONFIG_HOME/haseen"
     jq -n '{plugins: {"haseen.omarr": {settings: {debugIpc: true, pollSeconds: 60, services: [
         {id: "svc-1", kind: "sonarr", name: "Sonarr", url: "http://127.0.0.1:8989"},
         {id: "svc-2", kind: "sabnzbd", name: "SABnzbd", url: "http://127.0.0.1:8080"},
-        {id: "svc-3", kind: "qbittorrent", name: "qBittorrent", url: "http://127.0.0.1:8081"}]}}}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
+        {id: "svc-3", kind: "qbittorrent", name: "qBittorrent", url: "http://127.0.0.1:8081"},
+        {id: "svc-4", kind: "seerr", name: "Seerr", url: "http://127.0.0.1:5055"}]}}}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
 
     harness="$SANDBOX/shell"
     mkdir -p "$harness"
@@ -126,12 +139,14 @@ exit 0'
 import QtQuick
 import Quickshell
 import qs.Haseen
+import "plugins/haseen.omarr/Model.js" as Model
 
 ShellRoot {
     id: probe
 
     property var svc: null
     property var widget: null
+    property int held: 0
     property var panel: null
     property int step: 0
     property int ticks: 0
@@ -146,7 +161,7 @@ ShellRoot {
     }
 
     function up(): bool {
-        return svc.snapshots.length === 3 && svc.snapshots.every(s => s.health === "up");
+        return svc.snapshots.length === 4 && svc.snapshots.every(s => s.health === "up");
     }
 
     // The first item below (or at) item that has the property, else null.
@@ -241,13 +256,13 @@ ShellRoot {
                 const rm = {};
                 rm.rows = d.queue.length;
                 d.removeTorrent("$TORRENT", false);
-                rm.asked = d.confirmRemoveId;
+                rm.asked = d.confirmId;
                 rm.confirming = probe.count(probe.panel, "confirming");
-                d.confirmRemoveId = "";
-                rm.cancelled = d.confirmRemoveId;
+                d.confirmId = "";
+                rm.cancelled = d.confirmId;
                 d.removeTorrent("$TORRENT", false);
                 d.removeTorrent("$TORRENT", false);
-                rm.after = d.confirmRemoveId;
+                rm.after = d.confirmId;
                 d.removeTorrent("$TORRENT", true);
                 d.removeTorrent("$TORRENT", true);
                 d.removeTorrent("all", true);
@@ -256,15 +271,49 @@ ShellRoot {
                 probe.seen.remove = rm;
                 probe.step = 4;
             } else if (probe.step === 4 && s.reqQueue.length === 0 && s.currentReq === null) {
-                probe.panel.detailId = "";
-                probe.panel.destroy();
+                probe.panel.detailId = "svc-4";
                 probe.step = 5;
-            } else if (probe.step === 5 && !s.panelOpen) {
+            } else if (probe.step === 5) {
+                // Seerr's requests, named by their lookups: approve goes at
+                // once, decline asks first, and only a request id is sent.
+                const d = probe.find(probe.panel, "declineRequest");
+                if (!d || d.queue.length === 0)
+                    return;
+                const snap = s.snapshots.find(x => x.id === "svc-4");
+                const rq = { titles: d.queue.map(r => r.title).join("|"), lines: d.queue.map(r => Model.queueLine(r, null)).join("|"),
+                    fleet: Model.fleetLine(snap, null), status: snap.statusText };
+                d.approveRequest("9");
+                d.declineRequest("7");
+                rq.asked = d.confirmId;
+                rq.confirming = probe.count(probe.panel, "confirming");
+                d.confirmId = "";
+                rq.cancelled = d.confirmId;
+                d.declineRequest("7");
+                d.declineRequest("7");
+                rq.after = d.confirmId;
+                d.declineRequest("all");
+                d.declineRequest("all");
+                s.runControl("svc-4", "approve-item", "1/approve");
+                probe.seen.requests = rq;
+                Quickshell.execDetached(["cp", "$FIX/seerr-requests-new.json", "$FIX/seerr-requests.json"]);
+                probe.step = 6;
+            } else if (probe.step === 6) {
+                // A request arrives: the next poll notifies it, by its title.
+                const fresh = s.snapshots.find(x => x.id === "svc-4").queue.find(r => r.id === "11");
+                if (fresh && s.reqQueue.length === 0 && s.currentReq === null) {
+                    probe.seen.fresh = { title: fresh.title, total: s.snapshots.find(x => x.id === "svc-4").queueTotal };
+                    probe.panel.detailId = "";
+                    probe.panel.destroy();
+                    probe.step = 7;
+                } else if (s.reqQueue.length === 0 && s.currentReq === null && ++probe.held % 5 === 0) {
+                    s.forcePoll();
+                }
+            } else if (probe.step === 7 && !s.panelOpen) {
                 probe.seen.closed = { panelOpen: s.panelOpen };
                 // Turning the card off closes it: its sender is stopped.
                 s.persistSettings({ showProgressToast: false });
-                probe.step = 6;
-            } else if (probe.step === 6 && s.progressNoteId === "" && s.settingsWriting === null && s.settingsWrites.length === 0) {
+                probe.step = 8;
+            } else if (probe.step === 8 && s.progressNoteId === "" && s.settingsWriting === null && s.settingsWrites.length === 0) {
                 probe.seen.cardOff = { noteId: s.progressNoteId, dismissed: s.progressDismissedKey };
                 console.log("RESULT " + JSON.stringify(probe.seen));
                 Qt.quit();
@@ -296,13 +345,27 @@ EOF
         "body hashes=$TORRENT&deleteFiles=false|body hashes=$TORRENT&deleteFiles=true" "$(grep '^body hashes=' "$LOG" | paste -sd'|')"
     assert_eq "engine: each removal posted to torrents/delete without a cookie" "2|0" \
         "$(grep -c ':8081/api/v2/torrents/delete' "$LOG")|$(grep ':8081/api/v2/torrents/delete' "$LOG" | grep -c -- ' -b ')"
+    assert_eq "engine: Seerr's requests named by their lookups, newest first" "Game of Thrones (2011)|The Matrix (1999)" "$(r .requests.titles)"
+    assert_eq "engine: each says what was asked for and by whom" "Seasons 1, 2 · 4K · by bob|Movie · by Alice" "$(r .requests.lines)"
+    assert_eq "engine: the fleet row counts them, the detail shows the version" "3 pending|3.5.1" "$(r '[.requests.fleet, .requests.status] | join("|")')"
+    assert_eq "engine: a decline asks first, on its row, and can be cancelled" "7|1|" "$(r '[.requests.asked, .requests.confirming, .requests.cancelled] | map(tostring) | join("|")')"
+    assert_eq "engine: the second click declines it" "" "$(r .requests.after)"
+    assert_eq "engine: approved once, declined once, nothing else" "1|1|0" \
+        "$(grep -c -- '-X POST.*:5055/api/v1/request/9/approve' "$LOG")|$(grep -c -- '-X POST.*:5055/api/v1/request/7/decline' "$LOG")|$(grep -cE ':5055/api/v1/request/(all|1)/' "$LOG")"
+    assert_eq "engine: every keyed Seerr request carries the header, the status needs none" "" \
+        "$(grep ':5055/' "$LOG" | grep -v ':5055/api/v1/status' | grep -v -- "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt" || true)"
+    assert_eq "engine: each title is looked up once" "1|1" "$(grep -c ':5055/api/v1/movie/603' "$LOG")|$(grep -c ':5055/api/v1/tv/1399' "$LOG")"
+    assert_eq "engine: a new request is listed by its title" "Inception (2010)|4" "$(r '[.fresh.title, .fresh.total] | map(tostring) | join("|")')"
+    assert_contains "engine: and notified, with Seerr's icon" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/seerr.svg -p -A exec=Open -- New request on Seerr Inception (2010) · Carol"
+    assert_eq "engine: the requests found at start are not notified" "1" "$(grep -c 'New request on Seerr' "$NOTES")"
+    assert_not_contains "engine: Seerr's key never reached an argv" "$(cat "$LOG")" "$SEERR_FIXTURE"
     assert_contains "engine: an event goes to the notification server" "$(cat "$NOTES")" "-a omARR -u low -i $harness/plugins/haseen.omarr/icons/sonarr.svg -p -A exec=Open -- Sonarr grabbed Fixture Show"
     assert_eq "engine: the bar badge does not count it, the server keeps it" "1|1|undefined" "$(r '[.toast.bar, .toast.badge, .toast.unread] | map(tostring) | join("|")')"
     assert_eq "engine: the feed carries no unread tally" "false|true" "$(jq -r '[has("unreadCount"), has("badgeCount")] | map(tostring) | join("|")' "$legacy/feed.json" 2>&1)"
     assert_eq "engine: a closed panel tells the service" "false" "$(r .closed.panelOpen)"
     assert_eq "engine: turning the card off closes it without hiding the job" "|" "$(r '[.cardOff.noteId, .cardOff.dismissed] | join("|")')"
     assert_eq "engine: the setting was saved" "false" "$(jq -r '.plugins["haseen.omarr"].settings.showProgressToast' "$XDG_CONFIG_HOME/haseen/shell.json")"
-    assert_eq "engine: saving kept the fleet in shell.json" "3" "$(jq -r '.plugins["haseen.omarr"].settings.services | length' "$XDG_CONFIG_HOME/haseen/shell.json")"
+    assert_eq "engine: saving kept the fleet in shell.json" "4" "$(jq -r '.plugins["haseen.omarr"].settings.services | length' "$XDG_CONFIG_HOME/haseen/shell.json")"
     assert_not_contains "engine: the API key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
     assert_not_contains "engine: nor shell.json" "$(cat "$XDG_CONFIG_HOME/haseen/shell.json")" "$FIXTURE"
     assert_contains "engine: the key travels in the private header file" "$(cat "$LOG")" "-H @$XDG_CACHE_HOME/haseen/omarr/header.txt"
@@ -365,7 +428,7 @@ ShellRoot {
                 return;
             }
             const s = probe.svc;
-            if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 3) {
+            if (probe.step === 0 && s.dirsReady && s.credsState === "error" && s.services.length === 4) {
                 // What would queue requests and write keys: opening the panel,
                 // editing a service with a new key.
                 s.panelOpen = true;
@@ -379,7 +442,7 @@ ShellRoot {
                     status: s.statusText };
                 Quickshell.execDetached(["sh", "$repair"]);
                 probe.step = 2;
-            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 3 && s.snapshots[0].health === "up"
+            } else if (probe.step === 2 && s.credsState === "ok" && s.snapshots.length === 4 && s.snapshots[0].health === "up"
                 && s.reqQueue.length === 0 && s.currentReq === null) {
                 // Only once the repaired poll has drained (the open panel's
                 // wanted/missing is queued last): the permission step below

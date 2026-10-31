@@ -1,0 +1,30 @@
+{
+  "pageInfo": { "pages": 1, "pageSize": 20, "results": 3, "page": 1 },
+  "results": [
+    {
+      "id": 9,
+      "status": 1,
+      "type": "tv",
+      "is4k": true,
+      "createdAt": "2026-10-30T18:00:00.000Z",
+      "media": { "id": 31, "tmdbId": 1399, "tvdbId": 121361, "mediaType": "tv", "status": 2 },
+      "seasons": [
+        { "id": 52, "seasonNumber": 2, "status": 1 },
+        { "id": 51, "seasonNumber": 1, "status": 1 }
+      ],
+      "requestedBy": { "id": 3, "username": "bob", "displayName": "" }
+    },
+    {
+      "id": 7,
+      "status": 1,
+      "type": "movie",
+      "is4k": false,
+      "createdAt": "2026-10-29T09:30:00.000Z",
+      "media": { "id": 30, "tmdbId": 603, "tvdbId": null, "mediaType": "movie", "status": 2 },
+      "seasons": [],
+      "requestedBy": { "id": 2, "displayName": "Alice" }
+    },
+    { "status": 1, "type": "movie", "media": { "tmdbId": 11 } },
+    { "id": "1/approve", "status": 1, "type": "movie", "media": { "tmdbId": 12 } }
+  ]
+}

@@ -27,7 +27,9 @@ import "Model.js" as Model
 //   unread events of its own;
 // - pages open through Apps.launch, outside the shell's cgroup;
 // - the 2 s downloader poll runs only while a client reported an active job
-//   or the panel is open, instead of always (architecture 6).
+//   or the panel is open, instead of always (architecture 6);
+// - a Seerr kind: its requests waiting for approval, each named by a TMDB
+//   title lookup, approved or declined from the panel.
 Scope {
     id: root
 
@@ -50,6 +52,12 @@ Scope {
     property var snapshots: []
     property var nowFeed: ({ downloads: [], calendar: [], warnings: [], sessions: [], onDeck: [], recent: [], downloadingCount: 0, downCount: 0 })
     property var qbitReady: ({})
+    // Seerr: the titles looked up, by Model.seerrTitleKey ("" for a lookup
+    // that answered an error), and each request page waiting for its titles,
+    // by "<service id>:<page>".
+    property var seerrTitles: ({})
+    property var seerrBatches: ({})
+    property int seerrBatchSeq: 0
     property var detailQueue: []
     property int detailQueuePage: 1
     property int detailQueueTotal: 0
@@ -78,6 +86,11 @@ Scope {
     // Why credentials.json is not usable, for the panel; "" while it is.
     property string credsWhy: ""
     property var writeQueue: []
+    // True while a finished request is handled. What the handler queues (a
+    // login's poll, Jellyfin's library, Seerr's titles) starts after it:
+    // started inside the exit, it became currentReq just before the exit
+    // cleared that, and its answer was dropped.
+    property bool settling: false
     property string pendingWriteText: ""
     property string pendingWriteThen: ""
     property string progressDismissedKey: ""
@@ -315,7 +328,7 @@ Scope {
     }
 
     function pump() {
-        if (!root.ready || apiProc.running || secretProc.running || root.writeQueue.length)
+        if (!root.ready || root.settling || apiProc.running || secretProc.running || root.writeQueue.length)
             return;
         if (!root.reqQueue.length) {
             root.refreshDerived();
@@ -484,6 +497,14 @@ Scope {
                 serviceId: service.id,
                 url: Model.qbitTorrentsUrl(service.url, page, root.pageSize),
                 cookieRead: ready ? root.cookiePath(service.id) : "",
+                page: page
+            });
+        } else if (service.kind === "seerr") {
+            root.enqueue({
+                kind: "seerr-requests",
+                serviceId: service.id,
+                url: Model.seerrRequestsUrl(service.url, page, root.pageSize),
+                headerText: auth.apiKey ? Model.headerApiKey(auth.apiKey) : "",
                 page: page
             });
         } else {
@@ -798,6 +819,34 @@ Scope {
             }
             return;
         }
+        if (req.kind === "seerr-status") {
+            if (parsed.status >= 200 && parsed.status < 400) {
+                snap.version = Model.parseSeerrStatus(parsed.body).version;
+                if (snap.health === "up")
+                    snap.statusText = snap.version || "Reachable";
+                root.commitSnapshot(snap, service);
+            }
+            return;
+        }
+        if (req.kind === "seerr-requests") {
+            if (parsed.status < 200 || parsed.status >= 400) {
+                if (!(req.page > 1))
+                    root.commitHealth(service, snap, parsed.status);
+                return;
+            }
+            const asked = Model.parseSeerrRequests(parsed.body, root.pageSize);
+            if (!(req.page > 1))
+                root.setHealthMisses(service.id, 0);
+            root.nameSeerrRequests(service, req.page > 1 ? req.page : 1, asked.items, asked.total);
+            return;
+        }
+        if (req.kind === "seerr-title") {
+            const ok = parsed.status >= 200 && parsed.status < 400;
+            root.keepSeerrTitle(req.titleKey, ok ? Model.parseSeerrTitle(parsed.body) : "");
+            if (req.last)
+                root.finishSeerrBatch(req.batchKey, req.token);
+            return;
+        }
         if (req.kind === "jellyfin-identity") {
             const jellyfin = Model.parseJellyfinIdentity(parsed.body);
             root.commitIdentity(service, snap, parsed.status, {
@@ -853,6 +902,12 @@ Scope {
         const req = root.currentReq;
         if (req && req.kind === "poster") {
             root.finishArt(req.outputPath, false);
+            return;
+        }
+        // Not kept: curl did not reach Seerr, so the next poll asks again.
+        if (req && req.kind === "seerr-title") {
+            if (req.last)
+                root.finishSeerrBatch(req.batchKey, req.token);
             return;
         }
         if (!req || !Model.isHealthKind(req.kind) || req.page > 1)
@@ -958,6 +1013,83 @@ Scope {
         root.enqueue({ kind: "arr-history", serviceId: service.id, url: Model.arrHistoryUrl(service.url, service.kind, root.pageSize), headerText: header });
         if (root.panelOpen)
             root.enqueue({ kind: "arr-wanted", serviceId: service.id, url: Model.arrWantedUrl(service.url, service.kind), headerText: header });
+    }
+
+    function enqueueSeerr(service, requestsOnly) {
+        const auth = root.cred(service.id);
+        if (!requestsOnly)
+            root.enqueue({ kind: "seerr-status", serviceId: service.id, url: Model.seerrStatusUrl(service.url) });
+        root.enqueue({
+            kind: "seerr-requests",
+            serviceId: service.id,
+            url: Model.seerrRequestsUrl(service.url, 1, root.pageSize),
+            headerText: auth.apiKey ? Model.headerApiKey(auth.apiKey) : ""
+        });
+    }
+
+    // A page of Seerr requests waits for the titles it lacks: one lookup
+    // each, queued behind it, and the last one's answer commits the page. The
+    // queue runs one request at a time in order, so by then every lookup of
+    // the page has answered. The page is committed whole, titles and all,
+    // so a new request's notification names what was asked for.
+    function nameSeerrRequests(service, page, items, total) {
+        const batchKey = service.id + ":" + page;
+        const token = root.seerrBatchSeq + 1;
+        root.seerrBatchSeq = token;
+        const batches = root.copyMap(root.seerrBatches);
+        batches[batchKey] = { token: token, serviceId: service.id, page: page, items: items, total: total };
+        root.seerrBatches = batches;
+        const missing = Model.seerrMissingTitles(items, root.seerrTitles);
+        if (!missing.length) {
+            root.finishSeerrBatch(batchKey, token);
+            return;
+        }
+        const auth = root.cred(service.id);
+        const header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : "";
+        for (let i = 0; i < missing.length; i++) {
+            root.enqueue({
+                kind: "seerr-title",
+                serviceId: service.id,
+                url: Model.seerrTitleUrl(service.url, missing[i]),
+                headerText: header,
+                titleKey: missing[i],
+                batchKey: batchKey,
+                token: token,
+                last: i === missing.length - 1
+            });
+        }
+    }
+
+    function keepSeerrTitle(key, title) {
+        if (!key)
+            return;
+        // A title per media asked for; a long session starts over past this.
+        const titles = Object.keys(root.seerrTitles).length >= Model.SEEN_LIMIT ? {} : root.copyMap(root.seerrTitles);
+        titles[key] = String(title || "");
+        root.seerrTitles = titles;
+    }
+
+    function finishSeerrBatch(batchKey, token) {
+        const batch = root.seerrBatches[batchKey];
+        if (!batch || batch.token !== token)
+            return;
+        const batches = root.copyMap(root.seerrBatches);
+        delete batches[batchKey];
+        root.seerrBatches = batches;
+        const service = root.serviceById(batch.serviceId);
+        if (!service)
+            return;
+        const items = Model.applySeerrTitles(batch.items, root.seerrTitles);
+        if (batch.page > 1) {
+            root.setDetailQueue(service.id, batch.page, items, batch.total);
+            return;
+        }
+        let snap = Model.applyServiceMeta(root.cloneSnap(root.snapshotFor(service)), service);
+        snap = Model.applyHttpHealth(snap, 200);
+        snap.queue = items;
+        snap.queueTotal = batch.total;
+        snap.queuePage = 1;
+        root.commitSnapshot(snap, service);
     }
 
     function enqueueSab(service, queueOnly) {
@@ -1073,6 +1205,8 @@ Scope {
                 return;
             else if (svc.kind === "jellyfin")
                 root.enqueueJellyfin(svc);
+            else if (svc.kind === "seerr")
+                root.enqueueSeerr(svc);
             else
                 root.enqueueGeneric(svc);
         }
@@ -1214,6 +1348,21 @@ Scope {
             } else {
                 return;
             }
+        }
+        if (service.kind === "seerr") {
+            const request = String(itemId || "");
+            if ((action !== "approve-item" && action !== "decline-item") || !Model.isSeerrRequestId(request))
+                return;
+            root.commandReq(service, {
+                url: Model.seerrDecisionUrl(service.url, request, action === "approve-item"),
+                method: "POST",
+                headerText: auth.apiKey ? Model.headerApiKey(auth.apiKey) : ""
+            });
+            // The answered request leaves the list now, not at the next poll:
+            // page 1, and the page shown when it is another.
+            root.enqueueSeerr(service, true);
+            if (root.detailQueueId === service.id && root.detailQueuePage > 1)
+                root.turnQueuePage(service.id, 0);
         }
         Qt.callLater(root.forcePoll);
     }
@@ -1388,8 +1537,13 @@ Scope {
             root.pendingWriteThen = "";
             if (code !== 0) {
                 if (thenKind === "body" || thenKind === "curl") {
-                    root.handleFailure();
-                    root.currentReq = null;
+                    root.settling = true;
+                    try {
+                        root.handleFailure();
+                    } finally {
+                        root.currentReq = null;
+                        root.settling = false;
+                    }
                 }
                 Qt.callLater(root.pumpWrites);
                 Qt.callLater(root.pump);
@@ -1437,15 +1591,20 @@ Scope {
             waitForEnd: true
         }
         onExited: exitCode => {
-            if (root.currentReq && root.currentReq.kind === "scan") {
-                if (exitCode === 0)
+            root.settling = true;
+            try {
+                if (root.currentReq && root.currentReq.kind === "scan") {
+                    if (exitCode === 0)
+                        root.handleSuccess(apiOut.text);
+                } else if (exitCode !== 0) {
+                    root.handleFailure();
+                } else {
                     root.handleSuccess(apiOut.text);
-            } else if (exitCode !== 0) {
-                root.handleFailure();
-            } else {
-                root.handleSuccess(apiOut.text);
+                }
+            } finally {
+                root.currentReq = null;
+                root.settling = false;
             }
-            root.currentReq = null;
             if (!root.reqQueue.length) {
                 root.seeding = false;
                 root.persistSeen();

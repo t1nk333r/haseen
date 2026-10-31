@@ -302,6 +302,93 @@ row in the panel had only pause and resume (`OmarrDetail.qml`,
   emptying the client.
 - *Remove on SABnzbd rows too* (`mode=queue&name=delete`): not asked for.
 
+## Follow-up 2026-10-31: Seerr
+
+**Problem.** The owner asked whether Seerr can be in omARR. It could only as
+a generic tile: `SCAN_SERVICES` named port 5055 "Jellyseerr" with
+`kind: "generic"` (`Model.js`, before this change), which checks that the
+URL answers and nothing else. The owner runs Seerr 3.5.1
+(`/api/v1/status` answered `{"version":"3.5.1",…}`, 2026-10-31); their fleet
+(`shell.json`) has no Seerr entry yet.
+
+**Sources.** Seerr's `seerr-api.yml` and `server/routes/request.ts`
+(seerr-team/seerr, `develop`, 2026-10-31): `GET /api/v1/request` takes
+`take`, `skip`, `filter=pending`, `sort=added`, `sortDirection` and answers
+`{pageInfo: {results}, results: [MediaRequest]}`; a `MediaRequest` carries
+`media.tmdbId`, `type`, `seasons[].seasonNumber`, `is4k` and `requestedBy`,
+and no title (`server/entity/Media.ts` has no title column), which Seerr's
+own request list fetches from `/api/v1/movie/<id>` or `/api/v1/tv/<id>`.
+`POST /api/v1/request/<id>/approve|decline` answers 409 unless the request
+is pending. Requests are keyed with `X-Api-Key`; `/api/v1/status` needs no
+key. Jellyseerr and Overseerr answer the same API.
+
+**Change.**
+- `Model.js`: a `seerr` kind (name Seerr, group Media, port 5055, API key),
+  which the port scan now finds. The request list, title lookup and decision
+  URLs; `isSeerrRequestId`, so approve and decline take one numeric id and
+  never a path; the parsers; `applySeerrTitles`, which shows `TMDB <id>`
+  until a title answers; `requestLine` ("Seasons 1, 2 · 4K · by bob");
+  `fleetLine` "3 pending"; a `request` event per new request id, which the
+  grab switch (`notifyGrab`) silences; and `itemOpenUrl` to the request's
+  page in Seerr. The bundled Dashboard Icon `icons/seerr.svg` (Apache-2.0,
+  unmodified); a Seerr kind named Jellyseerr or Overseerr keeps that mark.
+- `Service.qml`: the status gives the version only, and the keyed request
+  list decides health, so a wrong key shows the service down instead of
+  flipping it every poll. A page waits for the titles it lacks: one lookup
+  each, queued behind it, kept for the session (an HTTP error is kept too,
+  so it is not asked every poll; a lookup curl could not send is asked again). The last lookup's answer commits the page whole,
+  so a new request's notification names what was asked for. `runControl`
+  takes `approve-item` and `decline-item` and refreshes the list behind the
+  decision. Paging works as for the other queues.
+- `OmarrDetail.qml`: approve and decline on each request. Decline asks first,
+  sharing the torrent remove's question (`confirmRemoveId` became
+  `confirmId`), as a declined request cannot be approved later. A click on
+  the row opens it in Seerr. `SettingsView.qml`: the Seerr pill and "Notify
+  on new requests".
+- The request queue (an older bug, found by this test): a handler that
+  queues more work started it inside the finished request's exit
+  (`enqueue` pumps, and `apiProc.running` is already false there). The exit
+  then cleared `currentReq`, and the request just started had its answer
+  dropped. That request was whichever was first in the queue: here the first
+  title lookup and later a queued decline. qBittorrent's poll after a login
+  and Jellyfin's on-deck fetch after its users take the same path. `pump`
+  now waits while a finished request is handled (`settling`).
+
+**Evidence.**
+- `tests/test-omarr.sh` 69/69 (57 before): a Seerr service joins the engine
+  fleet with its own key. Its two pending requests are listed by their
+  looked-up titles, newest first, with their lines; the fleet row says
+  "3 pending" and the detail the version. Approve posts once to
+  `request/9/approve`. Decline asks on its row, can be cancelled, and posts
+  once to `request/7/decline`. `all` and `1/approve` send nothing. Every
+  keyed request carries the header file, the status none, and the key never
+  reaches an argv. Each title is looked up once. A request that arrives
+  later is notified as "New request on Seerr Inception (2010) · Carol" with
+  Seerr's icon, and the requests found at start are not.
+- Without `settling`, 68/69: the decline never reached curl, and the first
+  poll lost its first title lookup (the curl log showed only
+  `movie/603`, with `tv/1399` asked a poll later).
+- `tests/Model.test.js`: the kind, scan, icons, URLs, ids, parsers, titles,
+  lines, events, notification switch and fleet line.
+- `tests/run.sh --affected` 5191/5192 (the manifest and catalogue changes
+  select 59 test files). The one failure is `test-menu-back`: its IPC socket path
+  in this checkout is 109 bytes, over the 108-byte limit, and run from a
+  short bind mount it passes 34/34. `tools/lint.sh`, `tools/check-docs.sh`
+  and `tools/i18n.py check` pass.
+
+**Rejected.**
+- *Read the status for health*: it needs no key, so a wrong key would read
+  up there and down on the list, and notify both every poll.
+- *Commit the list first and the titles as they come*: the notification for
+  a new request would go out with its TMDB id, and the requests found at
+  start would notify once their titles arrived after the start had ended.
+- *Skip a lookup already in flight*: a newer page would then commit without
+  that title and replace the page waiting for it; a second lookup, when a
+  request arrives between two refreshes, is cheaper.
+- *Seerr's requests on the bar badge or the overview*: not asked for; the
+  fleet row and the notification already show them ("no visual clutter").
+- *Delete, retry or edit requests*: not asked for.
+
 ## Rejected
 
 - **Keep Todoist's preferences in `shell.json`.** The token and preferences
