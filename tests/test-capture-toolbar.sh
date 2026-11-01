@@ -60,7 +60,7 @@ Window {
 
     function run() {
         const s0 = M.initialState({});
-        eq("defaults", { mode: "screenshot", targets: { screenshot: "region", video: "region", audio: "" }, delay: 0, desktop: false, mic: false, format: "mp3" }, s0);
+        eq("defaults", { mode: "screenshot", targets: { screenshot: "region", video: "region", audio: "" }, delay: 0, desktop: false, mic: false, format: "mp3", edit: false }, s0);
         const bad = M.initialState({ mode: "film", target: "moon", delay: 7, desktopAudio: "yes", audioFormat: "aiff" });
         eq("bad settings fall back", ["screenshot", "region", 0, false, "mp3"], [bad.mode, bad.targets.screenshot, bad.delay, bad.desktop, bad.format]);
         const v0 = M.initialState({ mode: "video", target: "window", delay: 5, microphone: true });
@@ -70,6 +70,7 @@ Window {
         // Commands.
         eq("screenshot region", ["haseen", "capture", "screenshot", "region"], M.startCommand(s0, false));
         eq("screenshot edit", ["haseen", "capture", "screenshot", "region", "--edit"], M.startCommand(s0, true));
+        eq("the editor switch edits every screenshot", ["haseen", "capture", "screenshot", "region", "--edit"], M.startCommand(M.initialState({ edit: true }), false));
         const all = M.withChange(s0, "target", "screen");
         eq("every screen", ["haseen", "capture", "screenshot", "screen"], M.startCommand(all, false));
         let v = M.withChange(M.withChange(s0, "mode", "video"), "desktop", true);
@@ -95,25 +96,35 @@ Window {
         eq("since", [1700000000, 0, 0], [M.sinceSeconds("1700000000\n"), M.sinceSeconds(""), M.sinceSeconds("soon")]);
         eq("elapsed", ["0:00", "1:15", "1:02:05", "0:00"], [M.elapsedText(0), M.elapsedText(75.9), M.elapsedText(3725), M.elapsedText(-4)]);
 
-        // Rows and the cursor.
+        // Rows and the cursor: the bar, and the options card above it.
+        const bar = ["mode:screenshot", "mode:video", "mode:audio", "target:region", "target:window", "target:output", "target:screen", "capture", "options", "close"];
         const r0 = M.rows(s0, false);
-        eq("screenshot rows", [["mode:screenshot", "mode:video", "mode:audio"], ["target:region", "target:window", "target:output", "target:screen"], ["delay:0", "delay:3", "delay:5", "delay:10"], ["capture", "edit"]], r0);
-        eq("audio rows", [["mode:screenshot", "mode:video", "mode:audio"], ["desktop", "mic"], ["format:mp3", "format:opus", "format:flac", "format:wav", "format:m4a", "format:ogg"], ["capture"]], M.rows(a, false));
-        eq("a recording is one stop", [["stop"]], M.rows(s0, true));
-        eq("home is the capture button", ["capture", "stop"], [M.home(r0), M.home(M.rows(s0, true))]);
-        eq("up keeps the column", "delay:3", M.move(r0, "edit", "up"));
-        eq("down into a shorter row takes its last", "edit", M.move(r0, "delay:10", "down"));
-        eq("left and right stop at the ends", ["mode:screenshot", "target:screen"], [M.move(r0, "mode:screenshot", "left"), M.move(r0, "target:screen", "right")]);
-        eq("up from the top stays", "mode:video", M.move(r0, "mode:video", "up"));
-        eq("Tab walks every row and wraps", ["edit", "mode:screenshot", "edit"], [M.move(r0, "capture", "next"), M.move(r0, "edit", "next"), M.move(r0, "mode:screenshot", "previous")]);
-        eq("a control gone starts at home", "capture", M.move(r0, "format:ogg", "down"));
+        const ro = M.rows(s0, false, true);
+        eq("the bar is one row", [bar], r0);
+        eq("screenshot options: the delay, then the editor", [["delay:0", "delay:3", "delay:5", "delay:10"], ["edit"], bar], ro);
+        eq("video options: the sound, then the delay", [["desktop", "mic"], ["delay:0", "delay:3", "delay:5", "delay:10"]], M.rows(M.withChange(s0, "mode", "video"), false, true).slice(0, 2));
+        eq("sound: its sources on the bar, its formats in the options", [["format:mp3", "format:opus", "format:flac", "format:wav", "format:m4a", "format:ogg"], ["mode:screenshot", "mode:video", "mode:audio", "desktop", "mic", "capture", "options", "close"]], M.rows(a, false, true));
+        eq("a recording is stop and close", [["stop", "close"]], M.rows(s0, true, true));
+        eq("home is the capture button, or stop", ["capture", "capture", "stop"], [M.home(r0), M.home(ro), M.home(M.rows(s0, true))]);
+        eq("up from the bar into the card takes the row's last", ["edit", "delay:0"], [M.move(ro, "capture", "up"), M.move(ro, "edit", "up")]);
+        eq("down keeps the column where it can", ["edit", "mode:screenshot"], [M.move(ro, "delay:10", "down"), M.move(ro, "edit", "down")]);
+        eq("left and right stop at the ends", ["mode:screenshot", "close"], [M.move(r0, "mode:screenshot", "left"), M.move(r0, "close", "right")]);
+        eq("with the card closed up stays on the bar", "capture", M.move(r0, "capture", "up"));
+        eq("Tab walks the card and the bar and wraps", ["delay:0", "close"], [M.move(ro, "close", "next"), M.move(ro, "delay:0", "previous")]);
+        eq("a control gone starts at home", "capture", M.move(r0, "edit", "down"));
 
         // Activation.
-        eq("activate", [{ key: "mode", value: "video" }, { key: "delay", value: 3 }, { key: "mic", value: true }, { key: "desktop", value: false }, { action: "edit" }, null],
-            [M.activate(s0, "mode:video"), M.activate(s0, "delay:3"), M.activate(s0, "mic"), M.activate(M.withChange(s0, "desktop", true), "desktop"), M.activate(s0, "edit"), M.activate(s0, "nonsense")]);
+        eq("activate", [{ key: "mode", value: "video" }, { key: "delay", value: 3 }, { key: "mic", value: true }, { key: "desktop", value: false }, { key: "edit", value: true }, { action: "options" }, { action: "close" }, null],
+            [M.activate(s0, "mode:video"), M.activate(s0, "delay:3"), M.activate(s0, "mic"), M.activate(M.withChange(s0, "desktop", true), "desktop"), M.activate(s0, "edit"), M.activate(s0, "options"), M.activate(s0, "close"), M.activate(s0, "nonsense")]);
+        eq("the editor switch is kept", true, M.withChange(s0, "edit", true).edit);
+
+        // The names the hint shows for the icon buttons; chips carry their own.
+        eq("labels", ["Video", "All screens", "Microphone", "Capture", "Record", "Options", "Close", "Stop", ""],
+            [M.label(s0, "mode:video"), M.label(s0, "target:screen"), M.label(s0, "mic"), M.label(s0, "capture"), M.label(a, "capture"), M.label(s0, "options"), M.label(s0, "close"), M.label(s0, "stop"), M.label(s0, "delay:3")]);
 
         // The controller.
         eq("pad moves, presses and closes", [{ move: "up" }, { press: true }, { close: true }], [M.padAction(s0, "up", false), M.padAction(s0, "a", false), M.padAction(s0, "b", false)]);
+        eq("Y opens the options, not while recording", [{ action: "options" }, null], [M.padAction(s0, "y", false), M.padAction(s0, "y", true)]);
         eq("pad triggers change the mode, wrapping", [{ change: { key: "mode", value: "video" } }, { change: { key: "mode", value: "audio" } }], [M.padAction(s0, "rt", false), M.padAction(s0, "lt", false)]);
         eq("pad bumpers change the target", [{ change: { key: "target", value: "window" } }, { change: { key: "target", value: "screen" } }], [M.padAction(s0, "rb", false), M.padAction(s0, "lb", false)]);
         eq("sound has no target to change", null, M.padAction(a, "rb", false));
@@ -135,7 +146,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "41" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "47" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -406,8 +417,12 @@ ShellRoot {
                 probe.panel = probe.make("Panel.qml", { pluginId: "haseen.capture", x: 80, y: 80, settings: Qt.binding(() => Plugins.settingsFor("haseen.capture")) });
                 probe.step = 1;
             } else if (probe.step === 1) {
-                probe.seen.open = { panelOpen: s.panelOpen, cursor: probe.panel.cursor, delay: s.state.delay, edit: probe.shown("captureEdit"), mic: probe.shown("captureMic") };
-                // The cursor and the keys: up from Capture, right twice, Enter picks 5 s.
+                probe.seen.open = { panelOpen: s.panelOpen, cursor: probe.panel.cursor, delay: s.state.delay, edit: probe.shown("captureEdit"), mic: probe.shown("captureMic"), go: probe.shown("captureGo") };
+                // Y opens the options card above the bar; up from Capture
+                // reaches its editor switch, up again its delays, right twice
+                // and Enter pick 5 s.
+                s.padLine("press y");
+                probe.panel.moveCursor("up");
                 probe.panel.moveCursor("up");
                 probe.panel.moveCursor("right");
                 probe.panel.moveCursor("right");
@@ -418,8 +433,11 @@ ShellRoot {
                 probe.step = 2;
             } else if (probe.step === 2) {
                 probe.seen.driven = { cursor: probe.panel.cursor, delay: s.state.delay, mode: s.state.mode, target: s.state.targets.video, shotTarget: s.state.targets.screenshot,
-                    mic: probe.shown("captureMic"), edit: probe.shown("captureEdit") };
+                    card: probe.panel.cardShown, mic: probe.shown("captureOption-mic"), edit: probe.shown("captureEdit") };
                 probe.panel.press("mic");
+                // B closes the card first; the toolbar stays.
+                s.padLine("press b");
+                probe.seen.back = { card: probe.panel.cardShown, cursor: probe.panel.cursor };
                 probe.panel.capture(false);
                 probe.step = 3;
             } else if (probe.step === 3) {
@@ -458,16 +476,17 @@ result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n1)"
 [[ -n $result ]] || _fail "capture engine produced no result" "$OUTPUT"
 r() { jq -r "$1" <<<"${result:-"{}"}"; }
 assert_eq "engine: no error" "null" "$(r .error)"
-assert_eq "engine: the open toolbar tells the service, cursor on Capture" "true|capture|3|true|false" \
-    "$(r '[.open.panelOpen, .open.cursor, .open.delay, .open.edit, .open.mic] | map(tostring) | join("|")')"
-assert_eq "engine: arrows and Enter pick 5 s; RT and RB switch to a video of the window, screenshots keep theirs" "delay:5|5|video|window|region|true|false" \
-    "$(r '[.driven.cursor, .driven.delay, .driven.mode, .driven.target, .driven.shotTarget, .driven.mic, .driven.edit] | map(tostring) | join("|")')"
+assert_eq "engine: the open toolbar tells the service, cursor on Capture, the options closed" "true|capture|3|false|false|true" \
+    "$(r '[.open.panelOpen, .open.cursor, .open.delay, .open.edit, .open.mic, .open.go] | map(tostring) | join("|")')"
+assert_eq "engine: Y, arrows and Enter pick 5 s in the card; RT and RB switch to a video of the window, screenshots keep theirs" "delay:5|5|video|window|region|true|true|false" \
+    "$(r '[.driven.cursor, .driven.delay, .driven.mode, .driven.target, .driven.shotTarget, .driven.card, .driven.mic, .driven.edit] | map(tostring) | join("|")')"
+assert_eq "engine: B closes the card first, the cursor back on Capture" "false|capture" "$(r '[.back.card, .back.cursor] | map(tostring) | join("|")')"
 assert_eq "engine: a capture waits out its delay with the command ready" 'true|["haseen","capture","screenrecord","--window","--microphone"]' \
     "$(r '[.pending.pending, (.pending.command | tojson)] | map(tostring) | join("|")')"
 assert_eq "engine: sound without a source does not start" "false|false" "$(r '[.silent.capture, .silent.pending] | map(tostring) | join("|")')"
 assert_eq "engine: a running recording, its start from the flag" "video|$started|true|true|true" \
     "$(r '[.recording.kind, .recording.since, .recording.elapsedOk, .recording.stop, .recording.ticking] | map(tostring) | join("|")')"
-assert_eq "engine: the toolbar is its stop row" '[["stop"]]' "$(r '.recording.rows | tojson')"
+assert_eq "engine: the bar is stop and close" '[["stop","close"]]' "$(r '.recording.rows | tojson')"
 assert_eq "engine: closed, the service knows and the clock stops (no pill)" "false|false" "$(r '[.closed.panelOpen, .closed.ticking] | map(tostring) | join("|")')"
 assert_eq "engine: the Guide button stops it" "true" "$(r .stopped)"
 # Offscreen has no layer-shell backend, so the pill's window type is missing

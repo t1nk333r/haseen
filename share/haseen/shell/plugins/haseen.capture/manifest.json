@@ -3,7 +3,7 @@
   "id": "haseen.capture",
   "name": "Capture",
   "version": "1.0.0",
-  "description": "A capture toolbar: screenshots of a region, window or screen, screen and sound recordings with a timer pill, driven by the keyboard, the mouse or a game controller",
+  "description": "A floating capture toolbar: screenshots of a region, window or screen, screen and sound recordings with a timer pill, driven by the keyboard, the mouse or a game controller",
   "kinds": [
     "service",
     "panel"
@@ -43,6 +43,11 @@
       "default": "mp3",
       "description": "A sound recording's format: mp3, opus, flac, wav, m4a or ogg"
     },
+    "edit": {
+      "type": "boolean",
+      "default": false,
+      "description": "Screenshots open in the editor (Omasnap) after the capture; Ctrl+Space does it for one capture"
+    },
     "pill": {
       "type": "boolean",
       "default": true,
@@ -51,7 +56,17 @@
     "controller": {
       "type": "boolean",
       "default": false,
-      "description": "Read a game controller while the toolbar is open or a recording runs (python3): the D-pad moves, A presses, B closes, LT/RT change the mode, LB/RB the target, Start captures and the Guide button stops a recording"
+      "description": "Read a game controller while the toolbar is open or a recording runs (python3): the D-pad moves, A presses, B closes (the options card first), Y opens the options, LT/RT change the mode, LB/RB the target, Start captures and the Guide button stops a recording"
+    },
+    "placement": {
+      "type": "string",
+      "default": "overlay",
+      "description": "Where the toolbar opens: overlay (a floating bar near the bottom of the screen, the default), center (a panel in the middle of the screen) or bar (a panel under the bar)"
+    },
+    "shape": {
+      "type": "string",
+      "default": "pill",
+      "description": "The bar, its buttons and the options card: pill (fully rounded, the default) or theme (the theme's corners)"
     },
     "debugIpc": {
       "type": "boolean",
