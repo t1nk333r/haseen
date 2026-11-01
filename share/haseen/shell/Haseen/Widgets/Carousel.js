@@ -161,6 +161,19 @@ function slot(rel, width, mirrored, g) {
     return r;
 }
 
+// How many slices a side fit wholly inside `width`, at most `cap`: a compact
+// carousel in a panel card shows no slice its card would cut. Slices sit
+// symmetrically, so mirroring changes nothing here.
+function fitReach(width, g, cap) {
+    for (let n = cap; n > 0; n--) {
+        const left = slot(-n, width, false, g);
+        const right = slot(n, width, false, g);
+        if (left.x >= 0 && right.x + right.width <= width)
+            return n;
+    }
+    return 0;
+}
+
 // Omarchy's filter editing keys (Util.editsFilter/editedFilter): Backspace
 // drops a character, Ctrl+Backspace a word, Ctrl+U the whole filter.
 // Alt- and Meta-modified keys belong to other shortcuts.

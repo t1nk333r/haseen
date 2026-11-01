@@ -15,7 +15,7 @@
 - **Planned at**: 2026-11-01, owner: "make the wallpaper selector and theme
   selector like omarchy but without the diming"
 - **State**: DONE 2026-11-02 (`tests/test-carousel.sh` 44/44, the affected
-  set 74 files 6614/6614; the live pickers are an owner step)
+  set 74 files; the live pickers are an owner step)
 
 ## Problem
 
@@ -79,8 +79,9 @@ menus.
 - **Manifests**: `columns` and `rows` are gone; a `placement` setting
   defaults to `overlay` (the whole screen, no dim). `center` and `bar` show a
   compact carousel (`SkewCarousel.compact`: the selected item and two slices
-  a side in 1120 px, so about a 1150 px card with its padding) inside a
-  panel card. There Escape closes the picker at once, as it does a menu
+  a side in 1120 px, so about a 1150 px card with its padding; on a screen
+  under about 1160 px only the slices that fit the card, one a side)
+  inside a panel card. There Escape closes the picker at once, as it does a menu
   placed in a panel: `PanelPopup`'s window shortcut takes it before the
   carousel (`PanelPopup.qml:79-90`), and only an overlay panel handles
   Escape itself.
@@ -112,8 +113,10 @@ after it.
   `dimColor`, `MultiEffect`, `ShaderEffect` or `layer.effect`, no hex
   literals, keep the MIT notice and decode at the selected size. `Carousel.js`
   under `qml`: labels, filter, step and keep, fit, reach, slots (also
-  mirrored), card, design and compact widths (two slices a side fit the
-  compact card, a third does not) and the filter keys, value for value. A draw test
+  mirrored), card, design and compact widths, the compact card's reach
+  (two slices a side, one on a 1080 px screen, never past the card at any
+  width from 0 to 2000) and the filter keys, value for value. A `fitReach`
+  that ignores the card's width fails it. A draw test
   renders `SkewSlice` on the software scene graph and reads the pixels: the
   centre is filled, the top-left and bottom-right corners are cut, the other
   two are kept, a vertical stripe stays vertical (upright), and the mouse
@@ -122,16 +125,20 @@ after it.
   which fails three corner and stripe checks.
 - `tests/test-widgets-c.sh` and `tests/test-themes2.sh` pass.
 - `tests/run.sh --affected`: 74 files (the shared widgets, manifests and
-  i18n catalogs widen it), 6614/6614, run from a short bind mount: from
-  this checkout's own path `tests/test-menu-back.sh` cannot open its IPC
-  socket (past the 108-byte limit, plan 101's known case). The reviewer's
-  run at 30f2396 selected the same 74 and passed 6608/6608.
+  i18n catalogs widen it), run from a short bind mount: 6614/6614 at
+  c2c68e3, 6612/6614 at the final head, where `tests/test-shell-tokens.sh`'s
+  two checks that wait for a Hyprland config reload missed it once in the
+  parallel run and pass alone (73/73, twice; this change does not touch
+  Theme or Config). From this checkout's own path `tests/test-menu-back.sh`
+  cannot open its IPC socket (past the 108-byte limit, plan 101's known
+  case). The reviewer's runs selected the same 74 and passed 6608/6608 at
+  30f2396 and 6614/6614 at c2c68e3.
   `tools/lint.sh` lint OK; `tools/check-docs.sh` OK.
 - Rendered offscreen in a real Quickshell over a background, both pickers:
   open on the current item, moved, the theme filter `ro` showing 2 of 32
   with "Retro 82" selected, and right-to-left with the next themes on the
   left. The desktop shows through unchanged around the carousel. In the
-  `center` placement the carousel is 1120×609 (the card about 1150×637
+  `center` placement the carousel is 1120×609 (the card about 1150×640
   with its padding); with no screen the carousel takes its design size, 1822×609, and
   the engine prints no binding loop.
 
@@ -150,11 +157,18 @@ after it.
   4. The verification numbers predated the docs; they are re-cited below.
 - Round 2, DeepSeek Flash at fa780fa: APPROVE; the four fixes reproduce
   (no binding loop with no screen, a 1120 px compact carousel, 42/42 and
-  6612/6612). Four nits, taken in the next commit: the compact carousel's reach is capped at
-  two slices a side (the third overlapped the card's padding by 58 px), the
-  manifests compare Escape with a menu placed in a panel rather than the
-  menu (an overlay by default), and the plan's preload and card-size
-  sentences are corrected.
+  6612/6612). Four nits, taken in the next commit: the compact carousel's
+  reach is capped at two slices a side (the third overlapped the card's
+  padding by 58 px), the manifests compare Escape with a menu placed in a
+  panel rather than the menu (an overlay by default), and the plan's
+  preload and card-size sentences are corrected.
+- Round 3, DeepSeek Flash at c2c68e3: APPROVE; the cap reproduces (0 pixels
+  outside a 1120 px card, 19,373 at fa780fa), also mirrored. Three nits,
+  taken: the cap ignored the width, so on a screen under 1160 px the two
+  slices still spilled up to 70 px past a narrower card; `Carousel.fitReach`
+  now counts only the slices that fit, tested by value over every width
+  from 0 to 2000 instead of by a grep of the source; and the card size reads
+  about 1150×640, which covers a theme with or without a border.
 
 ## Rejected options
 
