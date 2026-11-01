@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# haseen:summary Start or stop a sound-only recording (ffmpeg) into ~/Music
+# haseen:args [--desktop-audio] [--microphone] [--format mp3|opus|flac|wav|m4a|ogg] [--stop] [--dry-run]
+#
+# The sound half of `haseen capture screenrecord` (plan 150), for the
+# haseen.capture toolbar: the same command starts and stops it, a detached
+# supervisor writes the `audio-recording` flag (its first line the start, in
+# seconds since the epoch) and an EXIT trap removes it however ffmpeg ends.
+# ffmpeg reads PipeWire through its PulseAudio server: @DEFAULT_MONITOR@ is
+# what the speakers play, @DEFAULT_SOURCE@ the default microphone; both are
+# mixed into one track, as screenrecord merges them.
+set -Eeuo pipefail
+
+SELF="$(readlink -f "$0")"
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$SELF")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture audiorecord [options]
+
+Starts a sound recording, or stops the running one (same command toggles).
+
+Options:
+  --desktop-audio  record what the speakers play
+  --microphone     record the default microphone (the default when neither
+                   source is given; both are mixed into one track)
+  --format FMT     mp3 (default), opus, flac, wav, m4a or ogg
+  --stop           only stop; exit 1 when nothing is recording
+  --dry-run        print the plan
+
+Files go to \$HASEEN_AUDIORECORD_DIR or \$(xdg-user-dir MUSIC).
+EOF
+}
+
+FLAG="$HASEEN_USER_STATE/flags/audio-recording"
+RUN_DIR="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-audiorecord"
+PID_FILE="$RUN_DIR/pid"
+FFMPEG_PID_FILE="$RUN_DIR/ffmpeg.pid"
+
+notify() { have notify-send && notify-send -a haseen "$@" || true; }
+
+music_dir() {
+    local d=${HASEEN_AUDIORECORD_DIR:-}
+    [[ -n $d ]] || d="$(xdg-user-dir MUSIC 2>/dev/null || true)"
+    [[ -n $d && $d != "$HOME" ]] || d="$HOME/Music"
+    printf '%s\n' "$d"
+}
+
+# A PID is alive when it exists and is not a zombie (see screenrecord).
+alive() {
+    [[ -n ${1:-} ]] && kill -0 "$1" 2>/dev/null || return 1
+    local stat
+    stat="$(cat "/proc/$1/stat" 2>/dev/null)" || return 0
+    [[ ${stat##*) } != Z* ]]
+}
+supervisor_pid() { [[ -r $PID_FILE ]] && cat "$PID_FILE" 2>/dev/null || true; }
+active() { alive "$(supervisor_pid)"; }
+
+clear_stale() {
+    active && return 0
+    [[ -e $FLAG || -e $PID_FILE || -e $FFMPEG_PID_FILE ]] || return 0
+    if $DRY_RUN; then
+        echo "DRYRUN: rm -f $FLAG $PID_FILE $FFMPEG_PID_FILE (stale: recorder not running)"
+    else
+        rm -f "$FLAG" "$PID_FILE" "$FFMPEG_PID_FILE"
+        echo "Cleared a stale recording flag"
+    fi
+}
+
+# --supervise FILE -- FFMPEG_ARGS...
+supervise() {
+    local file=$1
+    shift 2
+    # A global, not a local: the EXIT trap runs after this function returns.
+    ffmpeg_pid=""
+    local rc=0
+    mkdir -p "$RUN_DIR" "$(dirname "$FLAG")"
+    echo $$ >"$PID_FILE"
+    finish() { rm -f "$FLAG" "$PID_FILE" "$FFMPEG_PID_FILE"; }
+    trap finish EXIT
+    trap 'alive "$ffmpeg_pid" && kill -INT "$ffmpeg_pid"' INT TERM HUP
+
+    # ffmpeg must see SIGINT to write the file's trailer; without job control
+    # bash starts background jobs with it ignored.
+    set -m
+    ffmpeg "$@" "$file" &
+    ffmpeg_pid=$!
+    echo "$ffmpeg_pid" >"$FFMPEG_PID_FILE"
+    date +%s >"$FLAG"
+    notify "$(i18n "Sound recording started")" "$(i18n "Run it again to stop")"
+
+    while alive "$ffmpeg_pid"; do
+        wait "$ffmpeg_pid" && rc=0 || rc=$?
+    done
+    if [[ -s $file ]]; then
+        notify "$(i18n "Sound recording saved")" "${file/#"$HOME"/\~}"
+    else
+        notify -u critical "$(i18n "Sound recording failed")" "$(i18n "ffmpeg exited (%1)" "$rc")"
+    fi
+}
+
+stop_recording() {
+    local sup rec i
+    sup="$(supervisor_pid)"
+    rec="$(cat "$FFMPEG_PID_FILE" 2>/dev/null || true)"
+    if $DRY_RUN; then
+        echo "DRYRUN: kill -INT ${rec:-$sup} (stop ffmpeg, supervisor $sup removes $FLAG)"
+        return 0
+    fi
+    if alive "$rec"; then kill -INT "$rec"; else kill -TERM "$sup" 2>/dev/null || true; fi
+    for ((i = 0; i < 50; i++)); do
+        alive "$sup" || break
+        sleep 0.1
+    done
+    if alive "$sup"; then
+        alive "$rec" && kill -KILL "$rec" 2>/dev/null
+        kill -TERM "$sup" 2>/dev/null || true
+        notify -u critical "$(i18n "Sound recording error")" "$(i18n "The recorder had to be killed; the file may be damaged")"
+    fi
+    echo "Recording stopped"
+}
+
+if [[ ${1:-} == --supervise ]]; then
+    shift
+    supervise "$@"
+    exit
+fi
+
+parse_common_flags "$@"
+set -- "${REST[@]}"
+desktop=false mic=false format=mp3 stop_only=false
+while (($#)); do
+    case "$1" in
+    --desktop-audio) desktop=true ;;
+    --microphone) mic=true ;;
+    --format)
+        (($# > 1)) || { usage >&2; exit 2; }
+        format=$2
+        shift
+        ;;
+    --format=*) format=${1#*=} ;;
+    --stop) stop_only=true ;;
+    *) usage >&2; exit 2 ;;
+    esac
+    shift
+done
+case $format in
+mp3) codec=(-c:a libmp3lame -q:a 2) ;;
+opus) codec=(-c:a libopus -b:a 128k) ;;
+flac) codec=(-c:a flac) ;;
+wav) codec=(-c:a pcm_s16le) ;;
+m4a) codec=(-c:a aac -b:a 192k) ;;
+ogg) codec=(-c:a libvorbis -q:a 5) ;;
+*)
+    echo "Error: --format wants mp3, opus, flac, wav, m4a or ogg, got: $format" >&2
+    exit 2
+    ;;
+esac
+
+clear_stale
+if active; then
+    stop_recording
+    exit 0
+fi
+if $stop_only; then
+    echo "Not recording" >&2
+    exit 1
+fi
+
+$desktop || $mic || mic=true
+require_cmds ffmpeg
+
+inputs=()
+$desktop && inputs+=(-f pulse -i @DEFAULT_MONITOR@)
+$mic && inputs+=(-f pulse -i @DEFAULT_SOURCE@)
+mix=()
+# One track: a player picks only one of several.
+$desktop && $mic && mix=(-filter_complex "[0:a][1:a]amix=inputs=2:duration=longest[a]" -map "[a]")
+ffmpeg_args=(-hide_banner -loglevel error -nostdin "${inputs[@]}" "${mix[@]}" "${codec[@]}" -y)
+
+dir="$(music_dir)"
+file="$dir/audiorecording-$(date +%Y-%m-%d_%H-%M-%S).$format"
+
+if $DRY_RUN; then
+    echo "DRYRUN: ffmpeg ${ffmpeg_args[*]} $file"
+    echo "DRYRUN: date +%s >$FLAG (removed when the recorder exits)"
+    exit 0
+fi
+
+mkdir -p "$dir" "$RUN_DIR"
+log="$RUN_DIR/log"
+setsid -f "$SELF" --supervise "$file" -- "${ffmpeg_args[@]}" </dev/null >"$log" 2>&1
+
+for ((i = 0; i < 30; i++)); do
+    [[ -e $FLAG ]] && break
+    sleep 0.1
+done
+if [[ ! -e $FLAG ]]; then
+    die "recording did not start (see $log)"
+fi
+echo "Recording to $file"

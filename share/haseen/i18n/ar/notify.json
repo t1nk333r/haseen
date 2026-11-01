@@ -62,8 +62,13 @@
   "Select a region containing a QR code": "حدّد منطقة تحتوي على رمز QR",
   "Single-window square ratio off": "النسبة المربعة للنافذة الواحدة متوقفة",
   "Single-window square ratio on": "النسبة المربعة للنافذة الواحدة مُشغّلة",
+  "Sound recording error": "خطأ في تسجيل الصوت",
+  "Sound recording failed": "فشل تسجيل الصوت",
+  "Sound recording saved": "حُفظ تسجيل الصوت",
+  "Sound recording started": "بدأ تسجيل الصوت",
   "Swipes and pinches work again.": "عادت إيماءات السحب والقرص للعمل.",
   "The copy in %1 now wins over haseen's updates.": "النسخة في %1 أصبحت تتقدّم على تحديثات haseen.",
+  "The recorder had to be killed; the file may be damaged": "اضطُرّ إلى إنهاء المسجّل قسرًا؛ قد يكون الملف تالفًا",
   "The recorder had to be killed; the video may be damaged": "اضطُرّ إلى إنهاء المسجّل قسرًا؛ قد يكون الفيديو تالفًا",
   "Touchpad disabled": "لوحة اللمس مُعطّلة",
   "Touchpad enabled": "لوحة اللمس مُفعّلة",
@@ -75,5 +80,6 @@
   "Turn them back on from the gestures panel in the bar, or with %1": "أعد تشغيلها من لوحة الإيماءات في الشريط، أو بالأمر %1",
   "Upcoming reminders": "التذكيرات القادمة",
   "Workspace layout set to %1": "ضُبط تخطيط مساحة العمل على %1",
+  "ffmpeg exited (%1)": "خرج ffmpeg (%1)",
   "gpu-screen-recorder exited (%1)": "خرج gpu-screen-recorder (%1)"
 }

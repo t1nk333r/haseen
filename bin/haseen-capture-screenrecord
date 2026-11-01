@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Start or stop a screen recording (gpu-screen-recorder) into ~/Videos
-# haseen:args [--fullscreen|--geometry "X,Y WxH"] [--desktop-audio] [--microphone] [--webcam] [--stop] [--dry-run]
+# haseen:args [--fullscreen|--window|--geometry "X,Y WxH"] [--desktop-audio] [--microphone] [--webcam] [--stop] [--dry-run]
 #
 # Adapted from Omarchy bin/omarchy-capture-screenrecording (MIT, Copyright (c)
 # David Heinemeier Hansson): slurp region or full monitor, merged desktop and
@@ -10,7 +10,8 @@
 # --supervise). The supervisor writes the `recording` flag the bar and privacy
 # dot watch, and an EXIT trap removes it however the recorder ends. If the
 # supervisor itself is SIGKILLed, the next start sees its PID is gone and
-# clears the stale flag.
+# clears the stale flag. The flag's first line is the start, in seconds since
+# the epoch, for the haseen.capture pill's clock (plan 150).
 set -Eeuo pipefail
 
 SELF="$(readlink -f "$0")"
@@ -27,6 +28,7 @@ Starts a recording, or stops the running one (same command toggles).
 
 Options:
   --fullscreen          record the focused monitor (default: pick a region)
+  --window              record the focused window's rectangle
   --geometry "X,Y WxH"  record this rectangle (no picker)
   --desktop-audio       record desktop audio
   --microphone          record the default microphone (merged with desktop)
@@ -108,7 +110,7 @@ supervise() {
     gpu-screen-recorder "$@" -o "$file" &
     gsr_pid=$!
     echo "$gsr_pid" >"$GSR_PID_FILE"
-    : >"$FLAG"
+    date +%s >"$FLAG"
     notify "$(i18n "Screen recording started")" "$(i18n "Run it again to stop")"
 
     # wait returns early when a trapped signal arrives; keep waiting for the
@@ -153,10 +155,11 @@ fi
 
 parse_common_flags "$@"
 set -- "${REST[@]}"
-fullscreen=false geometry="" desktop=false mic=false webcam=false webcam_dev="" stop_only=false
+fullscreen=false window=false geometry="" desktop=false mic=false webcam=false webcam_dev="" stop_only=false
 while (($#)); do
     case "$1" in
     --fullscreen) fullscreen=true ;;
+    --window) window=true ;;
     --geometry)
         (($# > 1)) || { usage >&2; exit 2; }
         geometry=$2
@@ -188,6 +191,13 @@ if $stop_only; then
 fi
 
 require_cmds gpu-screen-recorder
+
+# The window's rectangle as Hyprland reports it, which is the logical space
+# gpu-screen-recorder and slurp share; it is read once, at the start.
+if $window && [[ -z $geometry ]]; then
+    geometry="$(hyprctl activewindow -j | jq -r 'select(.at) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')"
+    [[ -n $geometry ]] || die "no focused window"
+fi
 
 target=()
 if $fullscreen; then
@@ -232,7 +242,7 @@ file="$dir/screenrecording-$(date +%Y-%m-%d_%H-%M-%S).mp4"
 if $DRY_RUN; then
     [[ -n $webcam_dev ]] && echo "DRYRUN: mpv av://v4l2:$webcam_dev --wayland-app-id=$WEBCAM_ID (webcam overlay)"
     echo "DRYRUN: gpu-screen-recorder ${gsr_args[*]} -o $file"
-    echo "DRYRUN: touch $FLAG (removed when the recorder exits)"
+    echo "DRYRUN: date +%s >$FLAG (removed when the recorder exits)"
     exit 0
 fi
 

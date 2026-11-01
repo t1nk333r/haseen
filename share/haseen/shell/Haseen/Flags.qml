@@ -30,6 +30,12 @@ Singleton {
     readonly property bool screensaverOff: screensaverOffFile.on || omarchyScreensaverOff.on
     readonly property bool nightlight: nightlightFile.on
     readonly property bool recording: recordingFile.on
+    // `haseen capture audiorecord`'s flag (plan 150): a sound-only recording.
+    readonly property bool audioRecording: audioRecordingFile.on
+    // Each recording flag's first line is its start, in seconds since the
+    // epoch (plan 150); "" when off or written by an older recorder.
+    readonly property string recordingStart: recordingFile.on ? recordingFile.value : ""
+    readonly property string audioRecordingStart: audioRecordingFile.on ? audioRecordingFile.value : ""
     // Set by the `gestures` hardware quirk on a machine with a touchpad: the
     // haseen.gestures bar widget shows only then.
     readonly property bool gestures: gesturesFile.on
@@ -103,6 +109,10 @@ Singleton {
     FlagFile {
         id: recordingFile
         name: "recording"
+    }
+    FlagFile {
+        id: audioRecordingFile
+        name: "audio-recording"
     }
     FlagFile {
         id: gesturesFile

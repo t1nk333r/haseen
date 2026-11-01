@@ -54,8 +54,13 @@
   "Select a region containing a QR code": "Select a region containing a QR code",
   "Single-window square ratio off": "Single-window square ratio off",
   "Single-window square ratio on": "Single-window square ratio on",
+  "Sound recording error": "Sound recording error",
+  "Sound recording failed": "Sound recording failed",
+  "Sound recording saved": "Sound recording saved",
+  "Sound recording started": "Sound recording started",
   "Swipes and pinches work again.": "Swipes and pinches work again.",
   "The copy in %1 now wins over haseen's updates.": "The copy in %1 now wins over haseen's updates.",
+  "The recorder had to be killed; the file may be damaged": "The recorder had to be killed; the file may be damaged",
   "The recorder had to be killed; the video may be damaged": "The recorder had to be killed; the video may be damaged",
   "Touchpad disabled": "Touchpad disabled",
   "Touchpad enabled": "Touchpad enabled",
@@ -67,5 +72,6 @@
   "Turn them back on from the gestures panel in the bar, or with %1": "Turn them back on from the gestures panel in the bar, or with %1",
   "Upcoming reminders": "Upcoming reminders",
   "Workspace layout set to %1": "Workspace layout set to %1",
+  "ffmpeg exited (%1)": "ffmpeg exited (%1)",
   "gpu-screen-recorder exited (%1)": "gpu-screen-recorder exited (%1)"
 }
