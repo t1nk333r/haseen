@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.capture",
+  "name": "Capture",
+  "version": "1.0.0",
+  "description": "A capture toolbar: screenshots of a region, window or screen, screen and sound recordings with a timer pill, driven by the keyboard, the mouse or a game controller",
+  "kinds": [
+    "service",
+    "panel"
+  ],
+  "entry": {
+    "service": "Service.qml",
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "mode": {
+      "type": "string",
+      "default": "screenshot",
+      "description": "The mode the toolbar opens in the first time: screenshot, video or audio"
+    },
+    "target": {
+      "type": "string",
+      "default": "region",
+      "description": "What that mode captures first: region, window, output (the focused screen) or screen (every screen, screenshots only)"
+    },
+    "delay": {
+      "type": "integer",
+      "default": 0,
+      "description": "Seconds to wait before a screenshot or video starts: 0, 3, 5 or 10"
+    },
+    "desktopAudio": {
+      "type": "boolean",
+      "default": false,
+      "description": "Recordings start with what the speakers play"
+    },
+    "microphone": {
+      "type": "boolean",
+      "default": false,
+      "description": "Recordings start with the default microphone"
+    },
+    "audioFormat": {
+      "type": "string",
+      "default": "mp3",
+      "description": "A sound recording's format: mp3, opus, flac, wav, m4a or ogg"
+    },
+    "pill": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show a pill with the elapsed time and a stop button while a recording runs"
+    },
+    "controller": {
+      "type": "boolean",
+      "default": false,
+      "description": "Read a game controller while the toolbar is open or a recording runs (python3): the D-pad moves, A presses, B closes, LT/RT change the mode, LB/RB the target, Start captures and the Guide button stops a recording"
+    },
+    "debugIpc": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test hook: expose IPC target haseen.capture to drive the toolbar without a keyboard"
+    }
+  },
+  "provides": [
+    "capture"
+  ],
+  "permissions": [
+    "exec",
+    "files:read"
+  ]
+}

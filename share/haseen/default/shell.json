@@ -37,7 +37,8 @@
     "haseen.active-window": { "enabled": false },
     "haseen.power": { "enabled": false },
     "haseen.updates": { "enabled": false },
-    "haseen.nook": { "enabled": false }
+    "haseen.nook": { "enabled": false },
+    "haseen.capture": { "enabled": false }
   },
   "services": [
     "haseen.pager",

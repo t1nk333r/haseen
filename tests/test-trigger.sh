@@ -72,9 +72,10 @@ check_dry "screenshot output" "grim -o <focused monitor>" haseen capture screens
 check_dry "screenshot clipboard only" "DRYRUN: rm " haseen capture screenshot screen --no-save
 check_dry "screenrecord" "-w 640x480+10+20 -c mp4" haseen capture screenrecord --geometry "10,20 640x480" --desktop-audio --microphone
 assert_contains "screenrecord merges audio" "$OUTPUT" "-a default_output|default_input -ac aac"
-assert_contains "screenrecord writes the flag" "$OUTPUT" "touch $FLAG"
+assert_contains "screenrecord writes the flag with its start" "$OUTPUT" "date +%s >$FLAG"
 assert_contains "screenrecord into Videos" "$OUTPUT" "-o $HOME/VIDEOS/screenrecording-"
 check_dry "screenrecord fullscreen" "-w focused" haseen capture screenrecord --fullscreen
+check_dry "screenrecord window" "-w 300x200+10+20 -c mp4" haseen capture screenrecord --window
 check_dry "text" "tesseract stdin stdout --oem 1 --psm 6 -l ara+eng -c preserve_interword_spaces=1 | wl-copy" haseen capture text --geometry "0,0 10x10"
 check_dry "qr" "zbarimg -q --raw -Sdisable -Sqrcode.enable - | wl-copy --sensitive" haseen capture qr
 check_dry "color" "hyprpicker -z -f hex" haseen capture color
@@ -129,6 +130,7 @@ capture haseen capture screenrecord --geometry "0,0 100x100"
 assert_status "record start" 0 "$STATUS"
 assert_contains "record start reports the file" "$OUTPUT" "Recording to $HOME/VIDEOS/screenrecording-"
 assert_eq "flag exists while recording" yes "$([[ -e $FLAG ]] && echo yes)"
+assert_eq "the flag holds the start in epoch seconds" yes "$([[ $(head -n1 "$FLAG") =~ ^[0-9]+$ ]] && echo yes)"
 sup="$(cat "$XDG_RUNTIME_DIR/haseen-screenrecord/pid" 2>/dev/null)"
 assert_eq "supervisor alive" yes "$(kill -0 "$sup" 2>/dev/null && echo yes)"
 assert_contains "recorder got the region" "$(<"$CALLS")" "gsr -w 100x100+0+0"
