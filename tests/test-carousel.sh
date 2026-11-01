@@ -73,6 +73,8 @@ Item {
         out("mirrored", [C.slot(0, 1536, true, G).x, C.slot(1, 1536, true, G).x, C.slot(-1, 1536, true, G).x]);
         out("card", [C.stripWidth(G), C.cardWidth(G, 1536), C.cardWidth(G, 3840)]);
         out("sizes", [C.designWidth(), C.compactWidth(), C.cardWidth(C.fit(C.compactWidth(), 864, 134), C.compactWidth()), C.reach(1120, G)]);
+        const inCard = rel => { const p = C.slot(rel, 1120, false, G); return p.x >= 0 && p.x + p.width <= 1120; };
+        out("compact", [C.COMPACT_STEPS, inCard(-C.COMPACT_STEPS), inCard(C.COMPACT_STEPS), inCard(C.COMPACT_STEPS + 1)]);
         out("edits", [C.editsFilter(Qt.Key_Backspace, Qt.NoModifier, "ab"), C.editsFilter(Qt.Key_Backspace, Qt.NoModifier, ""),
             C.editsFilter(Qt.Key_U, Qt.ControlModifier, "ab"), C.editsFilter(Qt.Key_U, Qt.ControlModifier | Qt.ShiftModifier, "ab"),
             C.editsFilter(Qt.Key_Backspace, Qt.AltModifier, "ab")]);
@@ -100,6 +102,10 @@ assert_eq "Omarchy's strip and card widths" '[1782,1456,1822]' "$(r card)"
 # No screen: the full design size. Compact (a panel card): the selected item
 # and two slices a side, at full size.
 assert_eq "design width, compact width, its card, its reach" '[1902,1200,1120,3]' "$(r sizes)"
+# Uncapped, a third slice a side would reach past the compact card.
+assert_eq "two slices a side fit the compact card, a third does not" '[2,true,true,false]' "$(r compact)"
+assert_contains "the compact carousel caps its reach" "$(cat "$W/SkewCarousel.qml")" \
+    'compact ? Math.min(Carousel.COMPACT_STEPS, Carousel.reach(strip.width, geometry))'
 assert_eq "Omarchy's filter editing keys" '[true,false,true,false,false]' "$(r edits)"
 assert_eq "Backspace, Ctrl+Backspace, Ctrl+U" '["a","tokyo ",""]' "$(r edited)"
 assert_eq "one printable key types, a shortcut does not" '[true,true,false,false]' "$(r typed)"

@@ -14,7 +14,7 @@
     "placement": {
       "type": "string",
       "default": "overlay",
-      "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (a narrower carousel in a panel in the middle of the screen) or bar (the same in a panel under the bar); in a panel, Escape closes the picker at once, as it does the menu"
+      "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (a narrower carousel in a panel in the middle of the screen) or bar (the same in a panel under the bar); in a panel, Escape closes the picker at once, as it does a menu placed in a panel"
     },
     "debugIpc": {
       "type": "boolean",

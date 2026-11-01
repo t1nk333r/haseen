@@ -57,7 +57,9 @@ Item {
     readonly property var geometry: Carousel.fit(areaWidth, areaHeight, topMargin + bottomChrome)
     readonly property var shown: Carousel.shown(names, filterable ? filterText : "")
     readonly property int selectedPosition: Math.max(0, shown.indexOf(currentIndex))
-    readonly property int reach: Carousel.reach(strip.width, geometry)
+    // A compact card shows COMPACT_STEPS slices a side: a third would reach
+    // past the card into its padding.
+    readonly property int reach: compact ? Math.min(Carousel.COMPACT_STEPS, Carousel.reach(strip.width, geometry)) : Carousel.reach(strip.width, geometry)
     readonly property bool hasSelection: shown.indexOf(currentIndex) >= 0
     readonly property string label: {
         if (notice !== "")
