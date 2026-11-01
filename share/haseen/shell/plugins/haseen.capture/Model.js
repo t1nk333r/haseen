@@ -1,35 +1,57 @@
 // haseen.capture: the toolbar's pure logic (plan 150), shared by Service.qml
 // and Panel.qml and run headless by tests/test-capture-toolbar.sh. What
 // to capture is the toolbar's state, { mode, target, delay, desktop, mic,
-// format }; this file turns it into the haseen command that does the work
-// (haseen capture screenshot, screenrecord or audiorecord), lays out the
+// format, edit }; this file turns it into the haseen command that does the
+// work (haseen capture screenshot, screenrecord or audiorecord), lays out the
 // toolbar's rows for the keyboard and controller cursor, and maps a
 // controller button to an action. Labels are English, marked N_() and
-// translated where the panel shows them (architecture 5.8).
+// translated where the panel shows them (architecture 5.8). Glyphs are Nerd
+// Font Material Design codepoints (nf-md-*), as Compat/Dms/Widgets/icons.js.
 
 function N_(s) { return s }
 
 var MODES = [
-    { id: "screenshot", label: N_("Screenshot"), glyph: "\uf030" },
-    { id: "video", label: N_("Video"), glyph: "\uf03d" },
-    { id: "audio", label: N_("Audio"), glyph: "\uf130" }
+    { id: "screenshot", label: N_("Screenshot"), glyph: "\u{F0100}" },
+    { id: "video", label: N_("Video"), glyph: "\u{F0567}" },
+    { id: "audio", label: N_("Audio"), glyph: "\u{F147D}" }
 ]
 
 // The screenshot targets are haseen capture screenshot's modes; the video
 // ones map to screenrecord's picker, --window and --fullscreen.
 var TARGETS = {
     screenshot: [
-        { id: "region", label: N_("Region") },
-        { id: "window", label: N_("Window") },
-        { id: "output", label: N_("Screen") },
-        { id: "screen", label: N_("All screens") }
+        { id: "region", label: N_("Region"), glyph: "\u{F0A6D}" },
+        { id: "window", label: N_("Window"), glyph: "\u{F05AF}" },
+        { id: "output", label: N_("Screen"), glyph: "\u{F0379}" },
+        { id: "screen", label: N_("All screens"), glyph: "\u{F037A}" }
     ],
     video: [
-        { id: "region", label: N_("Region") },
-        { id: "window", label: N_("Window") },
-        { id: "output", label: N_("Screen") }
+        { id: "region", label: N_("Region"), glyph: "\u{F0A6D}" },
+        { id: "window", label: N_("Window"), glyph: "\u{F05AF}" },
+        { id: "output", label: N_("Screen"), glyph: "\u{F0379}" }
     ],
     audio: []
+}
+
+// A recording's sound: what the speakers play and the default microphone.
+// Sound mode shows them on the bar, where the other modes show targets;
+// video shows them in its options.
+var SOURCES = [
+    { id: "desktop", label: N_("Desktop audio"), glyph: "\u{F057E}" },
+    { id: "mic", label: N_("Microphone"), glyph: "\u{F036C}" }
+]
+
+// The bar's other glyphs.
+var GLYPHS = {
+    capture: "\u{F0104}",
+    record: "\u{F044A}",
+    options: "\u{F0493}",
+    close: "\u{F0156}",
+    stop: "\u{F04DB}",
+    edit: "\u{F03EB}",
+    delay: "\u{F051B}",
+    format: "\u{F0223}",
+    sound: "\u{F147D}"
 }
 
 var DELAYS = [0, 3, 5, 10]
@@ -88,7 +110,8 @@ function initialState(settings) {
         delay: delay(s.delay),
         desktop: s.desktopAudio === true,
         mic: s.microphone === true,
-        format: format(s.audioFormat)
+        format: format(s.audioFormat),
+        edit: s.edit === true
     }
 }
 
@@ -100,7 +123,8 @@ function withChange(state, key, value) {
         delay: state.delay,
         desktop: state.desktop,
         mic: state.mic,
-        format: state.format
+        format: state.format,
+        edit: state.edit === true
     }
     if (key === "mode")
         next.mode = mode(value)
@@ -114,6 +138,8 @@ function withChange(state, key, value) {
         next.mic = value === true
     else if (key === "format")
         next.format = format(value)
+    else if (key === "edit")
+        next.edit = value === true
     return next
 }
 
@@ -126,12 +152,13 @@ function canCapture(state) {
     return state.mode !== "audio" || state.desktop || state.mic
 }
 
-// The command a capture runs. edit only means something for a screenshot.
+// The command a capture runs. A screenshot opens the editor when the state
+// says so or this one capture asks (Ctrl+Space); the other modes ignore it.
 function startCommand(state, edit) {
     var t = currentTarget(state)
     if (state.mode === "screenshot") {
         var shot = ["haseen", "capture", "screenshot", t]
-        if (edit === true)
+        if (edit === true || state.edit === true)
             shot.push("--edit")
         return shot
     }
@@ -184,32 +211,49 @@ function elapsedText(seconds) {
     return h > 0 ? h + ":" + two(m) + ":" + two(sec) : m + ":" + two(sec)
 }
 
-// The toolbar's rows for the cursor, top to bottom, each a list of control
-// ids: mode:<id>, target:<id>, delay:<n>, desktop, mic, format:<f>, capture,
-// edit and stop. While a recording runs the toolbar is its stop row.
-function rows(state, recording) {
-    if (recording)
-        return [["stop"]]
-    var out = [modeIds().map(function(id) { return "mode:" + id })]
+// The bar's controls, start to end: the modes, the targets (or, for sound,
+// its sources), then capture, options and close.
+function barRow(state) {
+    var out = modeIds().map(function(id) { return "mode:" + id })
     var t = targets(state.mode)
     if (t.length > 0)
-        out.push(t.map(function(x) { return "target:" + x.id }))
-    if (state.mode !== "screenshot")
-        out.push(["desktop", "mic"])
-    if (state.mode === "audio")
-        out.push(FORMATS.map(function(f) { return "format:" + f }))
+        out = out.concat(t.map(function(x) { return "target:" + x.id }))
     else
-        out.push(DELAYS.map(function(d) { return "delay:" + d }))
-    out.push(state.mode === "screenshot" ? ["capture", "edit"] : ["capture"])
-    return out
+        out = out.concat(SOURCES.map(function(x) { return x.id }))
+    return out.concat(["capture", "options", "close"])
 }
 
-// Where the cursor starts: the capture button.
+// The options card's rows for a mode, top to bottom.
+function optionRows(state) {
+    var delays = DELAYS.map(function(d) { return "delay:" + d })
+    if (state.mode === "screenshot")
+        return [delays, ["edit"]]
+    if (state.mode === "video")
+        return [["desktop", "mic"], delays]
+    return [FORMATS.map(function(f) { return "format:" + f })]
+}
+
+// The toolbar's rows for the cursor, top to bottom, each a list of control
+// ids: mode:<id>, target:<id>, desktop, mic, capture, options and close on
+// the bar; delay:<n>, edit, desktop, mic and format:<f> in the options card,
+// which opens above the bar. While a recording runs the bar is its stop and
+// close buttons.
+function rows(state, recording, options) {
+    if (recording)
+        return [["stop", "close"]]
+    return (options === true ? optionRows(state) : []).concat([barRow(state)])
+}
+
+// Where the cursor starts: the capture button, or stop while recording.
 function home(rowList) {
     var list = toList(rowList)
-    for (var r = 0; r < list.length; r++)
-        if (toList(list[r]).indexOf("capture") >= 0)
+    for (var r = 0; r < list.length; r++) {
+        var row = toList(list[r])
+        if (row.indexOf("capture") >= 0)
             return "capture"
+        if (row.indexOf("stop") >= 0)
+            return "stop"
+    }
     return list.length > 0 && toList(list[0]).length > 0 ? toList(list[0])[0] : ""
 }
 
@@ -247,8 +291,43 @@ function move(rowList, id, direction) {
     return flat[(at + step + flat.length) % flat.length]
 }
 
+// The names the bar's icon buttons go by: the hint under the bar shows the
+// one under the cursor (haseen draws no tooltips). Chips carry their text.
+var LABELS = {
+    capture: N_("Capture"),
+    record: N_("Record"),
+    options: N_("Options"),
+    close: N_("Close"),
+    stop: N_("Stop"),
+    edit: N_("Open in the editor")
+}
+
+function labelIn(list, id) {
+    for (var i = 0; i < list.length; i++)
+        if (list[i].id === id)
+            return list[i].label
+    return ""
+}
+
+// The English name of control id, or "" for a chip.
+function label(state, id) {
+    var s = String(id || "")
+    var colon = s.indexOf(":")
+    var kind = colon >= 0 ? s.slice(0, colon) : s
+    var arg = colon >= 0 ? s.slice(colon + 1) : ""
+    if (kind === "mode")
+        return labelIn(MODES, arg)
+    if (kind === "target")
+        return labelIn(targets(state.mode), arg)
+    if (kind === "desktop" || kind === "mic")
+        return labelIn(SOURCES, kind)
+    if (kind === "capture")
+        return state.mode === "screenshot" ? LABELS.capture : LABELS.record
+    return LABELS[kind] || ""
+}
+
 // What activating control id does: { key, value } for withChange, or
-// { action: "capture" | "edit" | "stop" }.
+// { action: "capture" | "stop" | "options" | "close" }.
 function activate(state, id) {
     var s = String(id || "")
     var colon = s.indexOf(":")
@@ -258,9 +337,9 @@ function activate(state, id) {
         return { key: kind, value: arg }
     if (kind === "delay")
         return { key: "delay", value: Number(arg) }
-    if (kind === "desktop" || kind === "mic")
+    if (kind === "desktop" || kind === "mic" || kind === "edit")
         return { key: kind, value: !state[kind] }
-    if (kind === "capture" || kind === "edit" || kind === "stop")
+    if (kind === "capture" || kind === "stop" || kind === "options" || kind === "close")
         return { action: kind }
     return null
 }
@@ -274,10 +353,11 @@ function stepIn(list, id, step) {
 
 // A controller button (gamepad.py's names) while the toolbar is open: the
 // D-pad and left stick move the cursor, A presses the control under it,
-// B closes, LT/RT change the mode, LB/RB the target, Start captures, the
-// Guide button stops a recording.
+// B closes (the options card first), Y opens or closes the options, LT/RT
+// change the mode, LB/RB the target, Start captures, the Guide button stops
+// a recording.
 //   -> { move: dir } | { press: true } | { close: true } | { change: {key, value} }
-//      | { action: "capture" | "stop" } | null
+//      | { action: "capture" | "stop" | "options" } | null
 function padAction(state, button, recording) {
     switch (button) {
     case "up":
@@ -289,6 +369,8 @@ function padAction(state, button, recording) {
         return { press: true }
     case "b":
         return { close: true }
+    case "y":
+        return recording ? null : { action: "options" }
     case "start":
         return { action: recording ? "stop" : "capture" }
     case "guide":
