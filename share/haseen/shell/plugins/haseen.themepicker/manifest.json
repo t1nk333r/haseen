@@ -3,7 +3,7 @@
   "id": "haseen.themepicker",
   "name": "Theme picker",
   "version": "1.0.0",
-  "description": "Grid of themes with their previews (or a palette strip); Enter applies with haseen theme set",
+  "description": "Omarchy's carousel of theme previews (or palettes), without its dim; typing filters, Enter applies with haseen theme set",
   "kinds": [
     "panel"
   ],
@@ -11,15 +11,10 @@
     "panel": "Panel.qml"
   },
   "settings": {
-    "columns": {
-      "type": "integer",
-      "default": 4,
-      "description": "Themes per row"
-    },
-    "rows": {
-      "type": "integer",
-      "default": 3,
-      "description": "Rows shown at once; the grid scrolls past them"
+    "placement": {
+      "type": "string",
+      "default": "overlay",
+      "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (the carousel in a panel in the middle of the screen) or bar (in a panel under the bar)"
     },
     "debugIpc": {
       "type": "boolean",

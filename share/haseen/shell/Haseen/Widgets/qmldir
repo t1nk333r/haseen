@@ -11,3 +11,5 @@ PanelSwitch 1.0 PanelSwitch.qml
 PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml
 CursorSurface 1.0 CursorSurface.qml
+SkewSlice 1.0 SkewSlice.qml
+SkewCarousel 1.0 SkewCarousel.qml

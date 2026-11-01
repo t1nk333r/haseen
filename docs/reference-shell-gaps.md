@@ -88,7 +88,7 @@ Legend: **H** has · **P** partial · **M** missing · **R** rejected by haseen 
 ### Wallpaper and theming
 | Feature | haseen | Omarchy 4 | DMS | end-4 | caelestia | noctalia |
 |---|---|---|---|---|---|---|
-| Theme picker | H `haseen.themepicker`, 23 themes | H | H ThemeBrowser | H | H scheme | H |
+| Theme picker | H `haseen.themepicker`, 23 themes, Omarchy's carousel (plan 152) | H | H ThemeBrowser | H | H scheme | H |
 | Wallpaper picker | H `haseen.background`, `haseen.imagepicker` | H image-picker | H | H wallpaperSelector | H | H |
 | Colours from wallpaper | H on demand: `haseen theme wallpaper`, `haseen theme generate` (matugen, 067), Wallhaven (072) | – | H automatic matugen | H automatic | H dynamic scheme | H |
 | Slideshow / automation | **M** (`theme bg next` by hand) | – | H WallpaperCyclingTab | – | H random | H automation |
