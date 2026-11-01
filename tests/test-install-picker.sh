@@ -216,7 +216,10 @@ stub git 'case "$*" in
 esac
 exit 0'
 capture "$REPO/install.sh" --dry-run --tree-only </dev/null
-build="$(cat "$REPO/share/haseen/VERSION").21"
+# A pre-release counts on after a dot, a release after a plus (0.2.5+21);
+# test-update-haseen.sh checks both forms with real git.
+build="$(cat "$REPO/share/haseen/VERSION")"
+if [[ $build == *-* ]]; then build+=".21"; else build+="+21"; fi
 assert_status "a checkout past its bump installs" 0 "$STATUS"
 assert_contains "the installed tree gets the build's version" "$OUTPUT" \
     "DRYRUN: write /usr/local/share/haseen.new/VERSION (mode 0644):"$'\n'"    | $build"$'\n'
