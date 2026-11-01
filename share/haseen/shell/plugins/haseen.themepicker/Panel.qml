@@ -204,6 +204,8 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         screen: root.screen
+        // In a panel card (`center`, `bar`) a narrower carousel.
+        compact: (root.settings.placement || "overlay") !== "overlay"
         names: root.themes
         showLabels: true
         filterable: true

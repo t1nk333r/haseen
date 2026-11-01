@@ -21,7 +21,6 @@ Item {
     property int decodeHeight: 0
 
     property var colours: ({})
-    readonly property bool hasPreview: image.status === Image.Ready
     readonly property bool wide: width > height
     readonly property var stripKeys: ["red", "yellow", "green", "cyan", "blue", "magenta", "accent", "foreground"]
     readonly property var ansiKeys: ({

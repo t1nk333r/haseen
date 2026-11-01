@@ -35,15 +35,20 @@ Item {
     // Said in place of the label (an error, an empty list).
     property string notice: ""
     property Component slice: null
-    // The screen the picker fits (ShellScreen), else its own size.
+    // The screen the picker fits (ShellScreen). Without one it takes its
+    // full design size: its own size would feed back into its implicit size.
     property var screen: null
+    // A narrower carousel for a panel card (the `center` and `bar`
+    // placements): the selected item and Carousel.COMPACT_STEPS slices a side.
+    property bool compact: false
 
     signal activated(int index)
     signal dismissed
 
     readonly property bool mirrored: LayoutMirroring.enabled
-    readonly property real areaWidth: screen && screen.width > 0 ? screen.width : width
-    readonly property real areaHeight: screen && screen.height > 0 ? screen.height : height
+    readonly property real screenWidth: screen && screen.width > 0 ? screen.width : Carousel.designWidth()
+    readonly property real areaWidth: compact ? Math.min(screenWidth, Carousel.compactWidth()) : screenWidth
+    readonly property real areaHeight: screen && screen.height > 0 ? screen.height : topMargin + Carousel.GEOMETRY.expandedHeight + bottomChrome
     readonly property real pixelRatio: screen && screen.devicePixelRatio ? screen.devicePixelRatio : 1
     // Omarchy's margin over the carousel and its room under it
     // (ImagePicker.qml:48,398).

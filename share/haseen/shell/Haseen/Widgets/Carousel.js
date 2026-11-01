@@ -21,6 +21,9 @@ const GEOMETRY = {
 // The slices that may load their picture beyond those on screen, so one
 // arriving from the edge is already decoded.
 const PRELOAD = 2;
+// Slices a side in a compact carousel: the one a panel card shows in the
+// `center` and `bar` placements, not over the whole screen.
+const COMPACT_STEPS = 2;
 
 // "tokyo-night" or "/x/1-deep_sea.jpg" -> "Tokyo Night", "1 Deep Sea"
 // (ImagePickerModel.nameForPath, labelForPath).
@@ -109,10 +112,25 @@ function cardWidth(g, screenWidth) {
     return screenWidth > 0 ? Math.min(screenWidth - 80, w) : w;
 }
 
+// The screen width the carousel fits at full size, every step shown: what it
+// assumes with no screen to fit.
+function designWidth() {
+    return stripWidth(GEOMETRY) + 120;
+}
+
+// The width a compact carousel fits instead of the screen's: the selected
+// item and COMPACT_STEPS slices a side, at full size, in its card.
+function compactWidth() {
+    return GEOMETRY.expandedWidth + 2 * COMPACT_STEPS * (GEOMETRY.sliceWidth + GEOMETRY.spacing) + 120;
+}
+
 // How many slices beside the selected one reach into `width`, on each side.
+// None before the carousel has a width, so nothing loads ahead of layout.
 function reach(width, g) {
     const stepPx = g.sliceWidth + g.spacing;
-    if (!(width > 0) || stepPx <= 0)
+    if (!(width > 0))
+        return 0;
+    if (stepPx <= 0)
         return g.steps;
     const room = (width - g.expandedWidth) / 2 - g.spacing;
     return Math.max(1, Math.ceil(room / stepPx));

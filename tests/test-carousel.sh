@@ -24,6 +24,7 @@ for id in haseen.background haseen.themepicker; do
     assert_contains "$id draws the shared carousel" "$entry" "SkewCarousel {"
     assert_eq "$id opens over the whole screen" "overlay" "$(jq -r '.settings.placement.default' "$PLUGINS/$id/manifest.json")"
     assert_eq "$id lost the grid's settings" "" "$(jq -r '.settings | keys[] | select(. == "columns" or . == "rows")' "$PLUGINS/$id/manifest.json")"
+    assert_contains "$id is compact in a panel card" "$entry" 'compact: (root.settings.placement || "overlay") !== "overlay"'
     # The owner's ask (plan 152): no scrim over the screen, no shade over the
     # slices Omarchy dims, no shader to draw either.
     assert_eq "$id has no scrim, shade or shader" "" \
@@ -71,6 +72,7 @@ Item {
         out("slots", [C.slot(0, 1536, false, G), C.slot(-1, 1536, false, G), C.slot(1, 1536, false, G), C.slot(2, 1536, false, G)]);
         out("mirrored", [C.slot(0, 1536, true, G).x, C.slot(1, 1536, true, G).x, C.slot(-1, 1536, true, G).x]);
         out("card", [C.stripWidth(G), C.cardWidth(G, 1536), C.cardWidth(G, 3840)]);
+        out("sizes", [C.designWidth(), C.compactWidth(), C.cardWidth(C.fit(C.compactWidth(), 864, 134), C.compactWidth()), C.reach(1120, G)]);
         out("edits", [C.editsFilter(Qt.Key_Backspace, Qt.NoModifier, "ab"), C.editsFilter(Qt.Key_Backspace, Qt.NoModifier, ""),
             C.editsFilter(Qt.Key_U, Qt.ControlModifier, "ab"), C.editsFilter(Qt.Key_U, Qt.ControlModifier | Qt.ShiftModifier, "ab"),
             C.editsFilter(Qt.Key_Backspace, Qt.AltModifier, "ab")]);
@@ -89,12 +91,15 @@ assert_eq "stepping wraps, and starts from the first match when the selection hi
 assert_eq "a filter keeps the selection while it shows" '[2,1,3]' "$(r keep)"
 assert_eq "Omarchy's size on a screen it fits" '[1,768,28,1]' "$(r fit)"
 assert_eq "a small screen shrinks it to fit" '[true,true,true]' "$(r fitSmall)"
-assert_eq "the slices that reach into the screen, each side" '[6,21,13]' "$(r reach)"
+assert_eq "the slices that reach into the screen, each side, none before layout" '[6,21,0]' "$(r reach)"
 assert_eq "the selected item centred, slices beside it at Omarchy's step" \
     '[{"x":384,"y":0,"width":768,"height":475,"z":100},{"x":306,"y":22,"width":108,"height":432,"z":49},{"x":1122,"y":22,"width":108,"height":432,"z":49},{"x":1200,"y":22,"width":108,"height":432,"z":48}]' \
     "$(r slots)"
 assert_eq "right to left, the next item sits on the left" '[384,306,1122]' "$(r mirrored)"
 assert_eq "Omarchy's strip and card widths" '[1782,1456,1822]' "$(r card)"
+# No screen: the full design size. Compact (a panel card): the selected item
+# and two slices a side, at full size.
+assert_eq "design width, compact width, its card, its reach" '[1902,1200,1120,3]' "$(r sizes)"
 assert_eq "Omarchy's filter editing keys" '[true,false,true,false,false]' "$(r edits)"
 assert_eq "Backspace, Ctrl+Backspace, Ctrl+U" '["a","tokyo ",""]' "$(r edited)"
 assert_eq "one printable key types, a shortcut does not" '[true,true,false,false]' "$(r typed)"
