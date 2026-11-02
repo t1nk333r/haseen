@@ -164,8 +164,9 @@ cmd_status() {
         if [[ $active == true ]]; then marker='*'; fi
         if [[ $named != true ]]; then suffix='  (unnamed slot)'; fi
         printf '  %s %s  %s%s\n' "$marker" "$slot" "$name" "$suffix"
-        # The settings are the last field, so an empty one cannot shift the
-        # others under read's tab splitting.
+        # A tab is whitespace to read, so an empty field merges into the next.
+        # The settings are last, where an empty one has nothing to shift, and
+        # the name is never empty: wootingd labels an unnamed slot.
         if [[ -n $settings ]]; then printf '       %s\n' "$settings"; fi
     done < <(jq -r "def settings: $SETTINGS_JQ;"' .profiles[] | [(.slot | tostring), .name, (.named | tostring), (.active | tostring), settings] | @tsv' <<<"$reply")
 }

@@ -28,9 +28,9 @@ the panel, with no writes to the keyboard.
 
 - Rejected, **"Read and edit"**: also change actuation and Rapid Trigger
   from haseen. OpenKeyboard's notes say a profile write goes straight to
-  flash with no commit step (`docs/wooting.md:384-385`), and that sending a
+  flash with no commit step (`docs/wooting.md:391`), and that sending a
   long write in the wrong report size stored damaged lighting on their
-  keyboard (`docs/wooting.md:35`, `:310`).
+  keyboard (`docs/wooting.md:35`, `:313`).
 - Rejected, **"Plan only"**: record the gap and stop.
 
 Not offered, because neither can work:
@@ -60,10 +60,11 @@ Facts taken (`docs/wooting.md`):
   sensitivity, 7 continuous Rapid Trigger, stored inverted, and Tachyon Mode
   in fields 5 and 9 together (`:133-144`);
 - the metadata reply (0x37) has a colour message in field 2, with red, green
-  and blue in its fields 1, 2 and 3 (`:116-121`);
+  and blue in its fields 1, 2 and 3 (`:115-121`);
 - a distance is precise, 0x4000..=0x7FFF over 0x3FFF steps, or legacy,
-  0..=0xFF over 255, both spanning 0 to 4 mm (`:166-167`), and Wootility
-  steps values by 0.05 mm (`:155`).
+  0..=0xFF over 255, both spanning 0 to 4 mm (`:166-167`); Wootility
+  sets actuation from 0.1 to 4.0 mm and Rapid Trigger sensitivity from 0.1
+  to 2.35 mm, in 0.05 mm steps (`:158`).
 
 Known there and not taken: per-key actuation (0x31) and per-key Rapid
 Trigger (0x3D), lighting (0x32, 0x23, 0x24, the live frame 0x4A), and every
@@ -99,16 +100,18 @@ Two findings beyond OpenKeyboard's notes:
 ### wootingd
 
 - `proto.rs`:
-  - `read_varint` and `protobuf_varint` (`:416`, `:432`): varint fields with
-    multi-byte keys and lengths. A value cut short is None, never a guess.
-  - `travel_hundredths` (`:465`): both encodings, in hundredths of a
+  - `read_varint` and `protobuf_varint` (`:417`, `:436`): varint fields with
+    multi-byte keys and lengths. A value cut short, or one with bits past the
+    64th, is None, never a guess.
+  - `travel_hundredths` (`:471`): both encodings, in hundredths of a
     millimetre, rounded to the 0.05 mm step in integers. Raw values between
-    the two ranges, or above them, are not distances.
-  - `ProfileSettings::decode` (`:483`, `:499`). Every value is an `Option`:
+    the two ranges, or above them, are not distances, and neither is zero:
+    Wootility sets nothing below 0.1 mm, so a zero is more likely unset.
+  - `ProfileSettings::decode` (`:492`, `:508`). Every value is an `Option`:
     a payload that does not carry a field shows nothing rather than a wrong
     value. Either Tachyon field set means on, because which one the firmware
     reads is not known (`docs/wooting.md:144`).
-  - `ProfileMeta::decode` (`:530`, `:539`): the name as before, and the
+  - `ProfileMeta::decode` (`:539`, `:548`): the name as before, and the
     colour only when its message arrived whole.
   - 6 tests, built from the captures above.
 - `device.rs`: `profile_settings` (`:410`) replaces `profile_stored`. It is
@@ -131,9 +134,11 @@ Two findings beyond OpenKeyboard's notes:
 
 - `bin/haseen-wooting status` prints the settings indented under each
   profile, for example `actuation 1.00 mm, continuous Rapid Trigger 0.40 mm`.
-  One jq definition builds the line (`SETTINGS_JQ`, `:121`). It is the last
-  tab-separated field, so an empty one cannot shift the others under
-  `read`'s tab splitting (`:169`). `list` keeps its documented three
+  One jq definition builds the line (`SETTINGS_JQ`, `:121`). A tab is
+  whitespace to `read`, so an empty field merges into the next one. The
+  settings are therefore the last field, where an empty one shifts nothing,
+  and the name before them is never empty, since wootingd labels an unnamed
+  slot (`:170`). `list` keeps its documented three
   columns, and `list --json` passes the new fields through.
 - `Model.js`:
   - `profileEntry` (`:91`) keeps the six values, and turns anything that is
@@ -192,6 +197,35 @@ profile panel, which opens on demand, and the bar is unchanged.
   literals in the plugin tree, which a model test's `"#FFD45C"` broke. The
   test now builds the string. Rerun after the fix, `tests/test-shell.sh` with
   `tests/test-wooting.sh`: 575/575.
+
+## Review
+
+DeepSeek Flash reviewed PR 113 at `671e2adbdb27453ee4616d11893679cfdea0b65e`
+and approved it with no blocker and no should-fix. It reran cargo (57),
+`tests/test-wooting.sh` (292/292), `tests/test-wootingd.sh` (25/25), and
+the affected selection (20 files, 2621/2621). It also fed 89,905 payloads
+through both decoders: none panicked, and every travel stayed within
+0..=400. Its nits and what became of them:
+
+1. A raw 0 decoded to `0.00 mm`. Fixed: zero is unset (`travel_hundredths`
+   above), because Wootility sets nothing below 0.1 mm.
+2. A malformed colour message, whole but unparsable, read its missing
+   components as 0. Kept: the outer length is checked first, so this needs
+   firmware that sends a broken message; protobuf leaves zero components
+   out, so an absent one must read 0.
+3. The status comment's reason was weaker than stated: a tab is whitespace
+   to `read`, so an empty name would shift the fields after it. Fixed: the
+   comment and this plan now give the real reason, and wootingd never sends
+   an empty name.
+4. A tenth varint byte above 1 lost its high bits silently. Fixed:
+   `read_varint` returns None, and a test pins `u64::MAX` and the 65th bit.
+5. `status` names Tachyon Mode only when it is on, while `wootingd doctor`
+   prints on or off. Kept: the panel and `status` list what is on, and
+   `doctor` is a diagnostic.
+
+Rechecking every OpenKeyboard citation against the pinned file for this
+round found four in this plan that pointed at the wrong lines. They now
+read `:391`, `:313`, `:158` and `:115-121`, the last also in `proto.rs`.
 
 ## Residual unknowns
 

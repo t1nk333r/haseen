@@ -412,12 +412,16 @@ pub fn protobuf_bytes(payload: &[u8], field: u8, truncated: bool) -> Option<&[u8
 }
 
 /// One protobuf varint at `*i`, moving `*i` past it. None when it runs off
-/// the end or past the ten bytes a u64 takes.
+/// the end or past the ten bytes a u64 takes, or when its tenth byte holds
+/// more than the one bit left, which would otherwise be dropped unseen.
 fn read_varint(buf: &[u8], i: &mut usize) -> Option<u64> {
     let mut value = 0u64;
     for shift in (0..64).step_by(7) {
         let byte = *buf.get(*i)?;
         *i += 1;
+        if shift == 63 && byte > 1 {
+            return None;
+        }
         value |= u64::from(byte & 0x7F) << shift;
         if byte & 0x80 == 0 {
             return Some(value);
@@ -459,7 +463,9 @@ pub fn protobuf_varint(payload: &[u8], field: u64) -> Option<u64> {
 /// step Wootility offers. Two encodings occur, both spanning 0 to 4 mm
 /// (OpenKeyboard docs/wooting.md:166-167): precise, 0x4000..=0x7FFF over
 /// 0x3FFF steps, and legacy, 0..=0xFF over 255. Anything else is not a
-/// distance. PROBED 2.14.1: every distance in this 60HE+'s three profiles is
+/// distance, and neither is zero: Wootility sets nothing below 0.1 mm
+/// (docs/wooting.md:158), so a zero is more likely unset than a setting, and
+/// "0.00 mm" would be a wrong value where nothing is the honest one. PROBED 2.14.1: every distance in this 60HE+'s three profiles is
 /// precise; their actuation points read 0x67FF, 0x5000 and 0x5999, which are
 /// 2.50, 1.00 and 1.60 mm.
 pub fn travel_hundredths(raw: u64) -> Option<u16> {
@@ -470,6 +476,9 @@ pub fn travel_hundredths(raw: u64) -> Option<u16> {
     };
     // 4 mm is 80 steps of 0.05 mm; rounded half up, in integers.
     let steps = (offset * 80 * 2 + span) / (2 * span);
+    if steps == 0 {
+        return None;
+    }
     u16::try_from(steps * 5).ok()
 }
 
@@ -524,7 +533,7 @@ impl ProfileSettings {
 
 /// What the `CMD_SLOT_NAME` (55, 0x37) payload says about a profile: field 1
 /// the name, field 2 a colour message whose fields 1, 2 and 3 are red, green
-/// and blue (OpenKeyboard docs/wooting.md:116-121); field 3, the icon, is not
+/// and blue (OpenKeyboard docs/wooting.md:115-121); field 3, the icon, is not
 /// read.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ProfileMeta {
@@ -769,6 +778,13 @@ mod tests {
         assert_eq!(read_varint(&[0x90, 0xA0], &mut i), None, "cut short");
         let mut i = 0;
         assert_eq!(read_varint(&[0x80; 11], &mut i), None, "longer than a u64");
+        let mut max = [0xFF; 10];
+        max[9] = 0x01;
+        let mut i = 0;
+        assert_eq!(read_varint(&max, &mut i), Some(u64::MAX), "all 64 bits");
+        max[9] = 0x02;
+        let mut i = 0;
+        assert_eq!(read_varint(&max, &mut i), None, "a 65th bit");
         assert_eq!(protobuf_varint(&[0x08, 0x05, 0x10, 0x07], 2), Some(7));
         assert_eq!(protobuf_varint(&[0x08, 0x05], 2), None);
         // A length-delimited field before the wanted one is skipped whole.
@@ -788,9 +804,11 @@ mod tests {
         assert_eq!(travel_hundredths(0x5999), Some(160));
         assert_eq!(travel_hundredths(0x5010), Some(100));
         assert_eq!(travel_hundredths(0x4666), Some(40));
-        // The ends of the precise range.
-        assert_eq!(travel_hundredths(0x4000), Some(0));
+        // The ends of the precise range; zero, in either encoding, is unset.
+        assert_eq!(travel_hundredths(0x4000), None);
+        assert_eq!(travel_hundredths(0x4001), None, "rounds to zero");
         assert_eq!(travel_hundredths(0x7FFF), Some(400));
+        assert_eq!(travel_hundredths(0), None);
         // Legacy 8-bit: 0x1A is 0.408 mm and 0x3F 0.988 mm, shown on the step.
         assert_eq!(travel_hundredths(0x1A), Some(40));
         assert_eq!(travel_hundredths(0x3F), Some(100));
