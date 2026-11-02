@@ -3,7 +3,7 @@
   "id": "haseen.background",
   "name": "Background",
   "version": "1.0.0",
-  "description": "Picker for the current theme's backgrounds; Enter runs haseen theme bg set, n runs haseen theme bg next",
+  "description": "Omarchy's carousel of the current theme's backgrounds, without its dim; Enter runs haseen theme bg set, n runs haseen theme bg next",
   "kinds": [
     "panel"
   ],
@@ -11,15 +11,10 @@
     "panel": "Panel.qml"
   },
   "settings": {
-    "columns": {
-      "type": "integer",
-      "default": 3,
-      "description": "Backgrounds per row"
-    },
-    "rows": {
-      "type": "integer",
-      "default": 2,
-      "description": "Rows shown at once; the grid scrolls past them"
+    "placement": {
+      "type": "string",
+      "default": "overlay",
+      "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (a narrower carousel in a panel in the middle of the screen) or bar (the same in a panel under the bar); in a panel, Escape closes the picker at once, as it does a menu placed in a panel"
     },
     "debugIpc": {
       "type": "boolean",

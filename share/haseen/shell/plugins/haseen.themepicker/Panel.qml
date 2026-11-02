@@ -2,17 +2,25 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
+import qs.Haseen.Widgets
 
-// haseen.themepicker: every theme `haseen theme list` knows, as a grid of
-// previews. Arrows (or Tab) move, Enter or a click runs `haseen theme set`
-// and closes; Escape closes (the panel host handles it). A theme without a
-// preview shows its palette; `haseen theme fetch --all` caches the Omarchy
-// previews. Open with `haseen shell ipc panel toggle haseen.themepicker`.
+// haseen.themepicker: every theme `haseen theme list` knows, in Omarchy's
+// theme switcher (its image-picker carousel with labels and a filter, MIT,
+// Copyright (c) David Heinemeier Hansson; SkewCarousel, plan 152): the
+// current theme selected in the middle, the others as slanted slices beside
+// it, its name under it, over the desktop with no dim. Left/Right (or Tab)
+// move, typing filters by name, Enter or a click on the selected one runs
+// `haseen theme set` and closes, a click on another slice selects it;
+// Escape clears the filter, then closes, as does a click away from the
+// picker. A theme without a preview shows its palette; `haseen theme fetch
+// --all` caches the Omarchy previews. Open with
+// `haseen shell ipc panel toggle haseen.themepicker`.
 //
 // Nothing runs until the panel opens: one `find` for the user themes' files
 // and the cached previews, one `haseen theme list`, then one colors.toml
-// read and one asynchronous, thumbnail-sized decode per card.
-Column {
+// read and one asynchronous decode, at the selected item's size, per slice
+// on screen or next to it.
+Item {
     id: root
 
     // Contract (architecture 5.2): every entry component gets these.
@@ -24,11 +32,6 @@ Column {
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property string userThemes: Paths.userConfig + "/themes"
     readonly property string cacheDir: (Quickshell.env("HASEEN_USER_CACHE") || (Quickshell.env("XDG_CACHE_HOME") || Paths.home + "/.cache") + "/haseen") + "/themes"
-    readonly property int columns: typeof settings.columns === "number" && settings.columns >= 1 ? Math.round(settings.columns) : 4
-    readonly property int rows: typeof settings.rows === "number" && settings.rows >= 1 ? Math.round(settings.rows) : 3
-    readonly property int cardWidth: Theme.fontSize * 16
-    readonly property int cellWidth: cardWidth + Theme.gap * 2
-    readonly property int cellHeight: Math.round(cardWidth * 9 / 16) + Theme.fontSize * 2 + Theme.gap * 2
 
     property var themes: []
     property string currentTheme: ""
@@ -87,29 +90,15 @@ Column {
     function selectName(name: string): void {
         const i = themes.indexOf(name);
         if (i >= 0)
-            grid.currentIndex = i;
+            carousel.currentIndex = i;
     }
 
-    width: columns * cellWidth
-    spacing: Theme.gap
-    focus: true
-
-    // Enter applies the highlighted cell. A window shortcut, not a key handler
-    // on this item: the grid cell that holds focus took the press before it
-    // could propagate here, so Enter did nothing (io, plan 050).
-    Shortcut {
-        sequences: ["Return", "Enter"]
-        context: Qt.WindowShortcut
-        onActivated: root.apply(grid.currentIndex)
-    }
-    // Tab is the next theme, Backtab the previous one: in a mirrored
-    // (right-to-left) panel the grid runs from the right, so next is left.
-    Keys.onTabPressed: grid.LayoutMirroring.enabled ? grid.moveCurrentIndexLeft() : grid.moveCurrentIndexRight()
-    Keys.onBacktabPressed: grid.LayoutMirroring.enabled ? grid.moveCurrentIndexRight() : grid.moveCurrentIndexLeft()
+    implicitWidth: carousel.implicitWidth
+    implicitHeight: carousel.implicitHeight
 
     Component.onCompleted: {
         scanProc.running = true;
-        grid.forceActiveFocus();
+        carousel.forceActiveFocus();
     }
 
     // Test hook (settings.debugIpc): move, inspect and accept over IPC while
@@ -123,38 +112,27 @@ Column {
         }
 
         function move(direction: string): void {
-            switch (direction) {
-            case "left":
-                grid.moveCurrentIndexLeft();
-                break;
-            case "right":
-                grid.moveCurrentIndexRight();
-                break;
-            case "up":
-                grid.moveCurrentIndexUp();
-                break;
-            case "down":
-                grid.moveCurrentIndexDown();
-                break;
-            }
+            if (direction === "left" || direction === "right")
+                carousel.move(direction === "left" ? -1 : 1);
+        }
+
+        function filter(text: string): void {
+            carousel.setFilter(text);
         }
 
         function accept(): void {
-            root.apply(grid.currentIndex);
+            if (carousel.hasSelection)
+                root.apply(carousel.currentIndex);
         }
 
         function state(): string {
-            const cards = [];
-            for (let i = 0; i < grid.count; i++) {
-                const item = grid.itemAtIndex(i);
-                if (item)
-                    cards.push(item.name + (item.hasPreview ? ":preview" : ":palette"));
-            }
             return JSON.stringify({
-                current: root.themes[grid.currentIndex] || "",
+                current: carousel.hasSelection ? root.themes[carousel.currentIndex] : "",
                 active: root.currentTheme,
                 count: root.themes.length,
-                loaded: cards,
+                shown: carousel.shown.length,
+                filter: carousel.filterText,
+                cards: root.themes.map(n => n + (root.previewOf[n] ? ":preview" : ":palette")),
                 notice: root.notice
             });
         }
@@ -195,86 +173,54 @@ Column {
                 return;
             }
             root.themes = listOut.text.split("\n").filter(l => l.trim() !== "");
-            Qt.callLater(() => {
-                root.selectName(root.currentTheme);
-                grid.positionViewAtIndex(grid.currentIndex, GridView.Contain);
-            });
+            carousel.currentIndex = root.themes.length > 0 ? 0 : -1;
+            root.selectName(root.currentTheme);
         }
     }
 
-    // A fresh install has no theme yet; that is not worth a log line.
+    // A fresh install has no theme yet; that is not worth a log line. Read
+    // before the list arrives, as a rule; when it lands later, the picker
+    // still opens on it.
     FileView {
         path: Paths.userState + "/current/theme.name"
         printErrors: false
-        onLoaded: root.currentTheme = text().trim()
-    }
-
-    Row {
-        width: parent.width
-        spacing: Theme.gap
-
-        Text {
-            id: title
-
-            text: I18n.tr("Themes")
-            color: Theme.foreground
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.font.title
-            font.bold: true
-        }
-
-        Text {
-            anchors.baseline: title.baseline
-            // A width, or the elide below never applies to a long error.
-            width: parent.width - title.width - Theme.gap
-            text: root.notice !== "" ? root.notice : I18n.tr("Enter applies · Esc closes")
-            color: root.notice !== "" ? Theme.urgent : Theme.muted
-            elide: Text.ElideRight
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.font.bodySmall
+        onLoaded: {
+            root.currentTheme = text().trim();
+            root.selectName(root.currentTheme);
         }
     }
 
-    GridView {
-        id: grid
+    // A click away from the picker closes it; the carousel's card takes its
+    // own clicks.
+    MouseArea {
+        anchors.fill: parent
+        onClicked: root.close()
+    }
 
-        width: root.columns * root.cellWidth
-        height: Math.max(1, Math.min(Math.ceil(root.themes.length / root.columns), root.rows)) * root.cellHeight
-        cellWidth: root.cellWidth
-        cellHeight: root.cellHeight
-        clip: true
-        focus: true
-        keyNavigationWraps: true
-        boundsBehavior: Flickable.StopAtBounds
-        highlightMoveDuration: 0
-        model: root.themes
+    SkewCarousel {
+        id: carousel
 
-        delegate: Item {
-            id: cell
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        screen: root.screen
+        // In a panel card (`center`, `bar`) a narrower carousel.
+        compact: (root.settings.placement || "overlay") !== "overlay"
+        names: root.themes
+        showLabels: true
+        filterable: true
+        notice: root.notice
+        onActivated: index => root.apply(index)
+        onDismissed: root.close()
 
-            required property string modelData
-            required property int index
-
-            readonly property string name: modelData
-            readonly property bool hasPreview: card.hasPreview
-
-            width: root.cellWidth
-            height: root.cellHeight
-
-            ThemeCard {
-                id: card
-
-                x: Theme.gap
-                y: Theme.gap
-                width: root.cardWidth
-                name: cell.modelData
-                previewPath: root.previewOf[cell.modelData] || ""
-                colorFile: root.colorFileFor(cell.modelData)
-                selected: cell.GridView.isCurrentItem
-                active: root.currentTheme === cell.modelData
-                pixelRatio: root.screen && root.screen.devicePixelRatio ? root.screen.devicePixelRatio : 1
-                onHovered: grid.currentIndex = cell.index
-                onPicked: root.apply(cell.index)
+        slice: Component {
+            ThemePreview {
+                // The Loader holding it carries the model index.
+                name: root.themes[parent ? parent.modelIndex : -1] || ""
+                previewPath: root.previewOf[name] || ""
+                colorFile: name !== "" ? root.colorFileFor(name) : ""
+                decodeWidth: Math.round(carousel.geometry.expandedWidth * carousel.pixelRatio)
+                decodeHeight: Math.round(carousel.geometry.expandedHeight * carousel.pixelRatio)
             }
         }
     }
