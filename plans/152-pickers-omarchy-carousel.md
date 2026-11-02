@@ -80,8 +80,9 @@ menus.
   defaults to `overlay` (the whole screen, no dim). `center` and `bar` show a
   compact carousel (`SkewCarousel.compact`: the selected item and two slices
   a side in 1120 px, so about a 1150 px card with its padding; on a screen
-  under about 1160 px only the slices that fit the card, one a side)
-  inside a panel card. There Escape closes the picker at once, as it does a menu
+  under about 1160 px it shows only the slices that fit the card: one a
+  side down to about 1000 px, then the selected item alone) inside a panel
+  card. There Escape closes the picker at once, as it does a menu
   placed in a panel: `PanelPopup`'s window shortcut takes it before the
   carousel (`PanelPopup.qml:79-90`), and only an overlay panel handles
   Escape itself.
@@ -115,7 +116,7 @@ after it.
   under `qml`: labels, filter, step and keep, fit, reach, slots (also
   mirrored), card, design and compact widths, the compact card's reach
   (two slices a side, one on a 1080 px screen, never past the card at any
-  width from 0 to 2000) and the filter keys, value for value. A `fitReach`
+  whole width from 0 to 2000) and the filter keys, value for value. A `fitReach`
   that ignores the card's width fails it. A draw test
   renders `SkewSlice` on the software scene graph and reads the pixels: the
   centre is filled, the top-left and bottom-right corners are cut, the other
@@ -125,14 +126,14 @@ after it.
   which fails three corner and stripe checks.
 - `tests/test-widgets-c.sh` and `tests/test-themes2.sh` pass.
 - `tests/run.sh --affected`: 74 files (the shared widgets, manifests and
-  i18n catalogs widen it), run from a short bind mount: 6614/6614 at
-  c2c68e3, 6612/6614 at the final head, where `tests/test-shell-tokens.sh`'s
-  two checks that wait for a Hyprland config reload missed it once in the
-  parallel run and pass alone (73/73, twice; this change does not touch
-  Theme or Config). From this checkout's own path `tests/test-menu-back.sh`
+  i18n catalogs widen it), 6614/6614, run from a short bind mount. One
+  run at 8ba2e73 missed two of `tests/test-shell-tokens.sh`'s checks that
+  wait for a Hyprland config reload; they pass alone (73/73, twice), this
+  change does not touch Theme or Config, and the reviewer's run of that
+  head passed 6614/6614 and the file 7 times out of 7 under load. From this checkout's own path `tests/test-menu-back.sh`
   cannot open its IPC socket (past the 108-byte limit, plan 101's known
   case). The reviewer's runs selected the same 74 and passed 6608/6608 at
-  30f2396 and 6614/6614 at c2c68e3.
+  30f2396, 6614/6614 at c2c68e3 and 6614/6614 at 8ba2e73.
   `tools/lint.sh` lint OK; `tools/check-docs.sh` OK.
 - Rendered offscreen in a real Quickshell over a background, both pickers:
   open on the current item, moved, the theme filter `ro` showing 2 of 32
@@ -169,6 +170,12 @@ after it.
   now counts only the slices that fit, tested by value over every width
   from 0 to 2000 instead of by a grep of the source; and the card size reads
   about 1150×640, which covers a theme with or without a border.
+- Round 4, DeepSeek Flash at 8ba2e73: APPROVE; `fitReach` reproduces (0
+  pixels outside the card at 1536 and 1080 px, also mirrored; 11,712 at
+  c2c68e3 on 1080), and so does the mutant's failure. Three wording nits,
+  taken: below about 1000 px the compact carousel shows the selected item
+  alone, the index leads with the passing run, and the reach test steps
+  through every whole width instead of every fourth.
 
 ## Rejected options
 

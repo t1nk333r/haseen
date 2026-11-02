@@ -75,10 +75,10 @@ Item {
         out("sizes", [C.designWidth(), C.compactWidth(), C.cardWidth(C.fit(C.compactWidth(), 864, 134), C.compactWidth()), C.reach(1120, G)]);
         // The compact card on a wide screen (1120), a 1080 px one (1000), a
         // 1024 px one (944); uncapped room (1500); before layout (0). Then
-        // every width from 0 to 2000: the reached slices always fit.
+        // every whole width from 0 to 2000: the reached slices always fit.
         const cardFor = w => C.cardWidth(C.fit(Math.min(w, C.compactWidth()), 864, 134), Math.min(w, C.compactWidth()));
         let fits = true;
-        for (let w = 0; w <= 2000; w += 4) {
+        for (let w = 0; w <= 2000; w++) {
             const g = C.fit(Math.min(w, C.compactWidth()), 864, 134);
             const card = cardFor(w);
             const n = C.fitReach(card, g, C.COMPACT_STEPS);
