@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# haseen:summary Open or close the capture toolbar, or take a screenshot when haseen.capture is off
+# haseen:args [--dry-run]
+#
+# PRINT runs this (owner, 2026-11-02, plan 154). The toolbar is a plugin that
+# ships off, so the key asks the running shell first and falls back to what
+# PRINT did before: `haseen capture screenshot`, Omasnap's picker.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen capture toolbar [--dry-run]
+
+Opens or closes the capture toolbar when the haseen.capture plugin is on
+(haseen plugin enable haseen.capture). When it is off, fails to load, or no
+haseen shell answers, takes a screenshot as haseen capture screenshot does.
+PRINT runs it.
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+
+# `qs ipc call` exits 0 even when the target or the plugin is missing, so read
+# the shell's plugin list rather than a status. Safe mode reports held plugins
+# as not enabled. Under DMS `shell plugins` has no translation and fails.
+toolbar_on() {
+    local plugins
+    plugins=$(haseen-shell-ipc shell plugins 2>/dev/null) || return 1
+    jq -e 'any(.plugins[]?; .id == "haseen.capture" and .valid == true and .enabled == true)' \
+        <<<"$plugins" >/dev/null 2>&1
+}
+
+if toolbar_on; then
+    run haseen-shell-ipc panel toggle haseen.capture
+    exit 0
+fi
+flags=()
+$DRY_RUN && flags=(--dry-run)
+exec haseen-capture-screenshot "${flags[@]}"

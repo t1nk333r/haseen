@@ -79,7 +79,10 @@ between parts. The engineering record is `plans/`, indexed by
     plan 105): SUPER + GRAVE console, SUPER + CTRL + ALT + F full-screen
     desktop, SUPER + CTRL + ALT + C screenshot, SUPER + SHIFT + CTRL + arrows
     window to monitor. Per-monitor workspaces on SUPER + 1..0 are off until
-    `haseen toggle monitor-workspaces on` (plan 105).
+    `haseen toggle monitor-workspaces on` (plan 105). PRINT opens
+    haseen.capture's toolbar while that plugin is on, and is Omasnap's
+    screenshot otherwise (owner, 2026-11-02, "bind the printscreen button",
+    plan 154).
   - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
     plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.

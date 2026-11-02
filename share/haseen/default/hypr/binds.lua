@@ -151,10 +151,11 @@ b("SUPER + V", "Universal paste", universal("CTRL", KEY_V, "CTRL SHIFT", KEY_V))
 b("SUPER + X", "Universal cut", send_once("CTRL", KEY_X))
 
 -- Capture ----------------------------------------------------------------------
--- PRINT is Omasnap (plan 107): drag a region, click a window or open space,
--- S for a scrolling region; pressed again it dismisses. The two below stay
--- one-key captures without a picker.
-b("PRINT", "Screenshot", "haseen capture screenshot")
+-- PRINT opens haseen.capture's toolbar while that plugin is on (owner,
+-- 2026-11-02, plan 154). Otherwise it is Omasnap (plan 107): drag a region,
+-- click a window or open space, S for a scrolling region; pressed again it
+-- dismisses. The two below stay one-key captures without a picker.
+b("PRINT", "Capture toolbar or screenshot", "haseen capture toolbar")
 b("SHIFT + PRINT", "Screenshot window", "haseen capture screenshot window")
 b("CTRL + PRINT", "Screenshot monitor", "haseen capture screenshot output")
 b("ALT + PRINT", "Screen recording start/stop", "haseen capture screenrecord")
@@ -166,7 +167,7 @@ b("SUPER + CTRL + PRINT", "OCR screen region", "haseen search screen text")
 b("SUPER + SHIFT + PRINT", "Search a screen region", "haseen search screen image")
 b("SUPER + CTRL + C", "Capture menu", "haseen menu trigger.capture")
 -- Omarchy 4.5's screenshot chord (0a7beb7d6, #16048), for keyboards without a
--- PRINT key: the same Omasnap capture.
+-- PRINT key: Omasnap's capture, which PRINT takes while the toolbar is off.
 b("SUPER + CTRL + ALT + C", "Screenshot", "haseen capture screenshot")
 
 -- Session ----------------------------------------------------------------------

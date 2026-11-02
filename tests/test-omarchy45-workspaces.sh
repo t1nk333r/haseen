@@ -1029,7 +1029,8 @@ assert_eq "SUPER + CTRL + ALT + F is the full-screen desktop" \
     'Full-screen desktop|exec|haseen toggle fullscreen-desktop|Windows' "$(row $((SUPER + CTRL + ALT)) F)"
 assert_eq "SUPER + CTRL + ALT + C takes the screenshot" \
     'Screenshot|exec|haseen capture screenshot|Capture' "$(row $((SUPER + CTRL + ALT)) C)"
-assert_eq "PRINT still takes it too" 'Screenshot|exec|haseen capture screenshot|Capture' "$(row 0 PRINT)"
+assert_eq "PRINT takes it too, or opens the capture toolbar" \
+    'Capture toolbar or screenshot|exec|haseen capture toolbar|Capture' "$(row 0 PRINT)"
 for pair in "LEFT l left" "RIGHT r right" "UP u up" "DOWN d down"; do
     read -r key dir name <<<"$pair"
     assert_eq "SUPER + SHIFT + CTRL + $key moves the window to the $name monitor" \
