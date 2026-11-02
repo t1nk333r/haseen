@@ -1,5 +1,4 @@
-# hash<TAB>reason — hex ids cited in plans/ that are not commits of this repo,
-# or no longer are (a pull request's heads rewritten by a rebase)
+# hash<TAB>reason — hex ids cited in plans/ that are not commits of this repo
 c59305b	nixpkgs pin cited by plan 009 (Nix support dropped)
 ba33415	Secure Boot input pin cited by plan 009 (Nix support dropped)
 efb5099	Hyprland 0.56.2 build commit (plan 003)
@@ -26,5 +25,3 @@ de754a6b36148a9f54074a060b62070146e7d57b	ShayBox/Wooting-Profile-Switcher master
 247a784869e30bb6cb89406fa9726db63f899ebf	clemenscodes/wootswitch main, read for facts only by plan 099
 03ff1eff3812933f7088484533784d2f63eaf19a	Omarchy v4.5.0-rc1, the theme asset pin since plan 106
 4029a069189e5542e86ebceaac9d95e8b95e885e	OpenKeyboard-Pr0ject/openkeyboard main, wootingd's profile-settings fact pin (plan 153)
-dfc99ba	PR #115's first head, reviewed in round 1; rewritten by its rebase onto #114 (plan 156)
-71097e2	PR #115's second head, reviewed in round 2; rewritten by the same rebase (plan 156)

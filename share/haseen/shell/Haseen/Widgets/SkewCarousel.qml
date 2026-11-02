@@ -1,45 +1,50 @@
 // Adapted from Omarchy shell/plugins/image-picker/ImagePicker.qml.
 // MIT, Copyright (c) David Heinemeier Hansson.
-// haseen: no scrim and no shade over unselected slices; a widget the
-// background and theme pickers share (plan 152).
+// haseen: no scrim and no shade over unselected slices. The background and
+// theme pickers share this widget (plan 152).
 import QtQuick
 import qs.Haseen
 import "Carousel.js" as Carousel
 
-// Omarchy's image picker as a widget: the selected item large in the middle
-// of the screen, the others as slanted slices on either side, its label
-// under it. Left/Right (Tab/Shift+Tab) move, Enter or a click on the
-// selected item emits activated(index), a click on another slice selects
-// it. A filterable carousel takes typed text as a filter on the names
-// (Backspace, Ctrl+Backspace and Ctrl+U edit it); Escape clears the filter,
-// then emits dismissed(). Keys it does not use reach the parent.
+// Omarchy's image picker as a widget. The selected item sits large in the
+// middle of the screen with its label under it, and the other items are
+// slanted slices on either side. Left and Right, or Tab and Shift+Tab, move
+// the selection. Enter, or a click on the selected item, emits
+// activated(index). A click on another slice selects it.
+//
+// A filterable carousel takes typed text as a filter on the names.
+// Backspace, Ctrl+Backspace and Ctrl+U edit the filter. Escape clears the
+// filter first, then emits dismissed(). Keys the carousel does not use go to
+// its parent.
 //
 // Omarchy dims the screen behind the picker and shades every slice but the
-// selected one. haseen does neither (owner, 2026-11-01, "make the wallpaper
-// selector and theme selector like omarchy but without the dimming"): the
-// picker opens over the desktop as it is, as the menu does (plan 152).
+// selected one. This carousel does neither, at the owner's request
+// (2026-11-01), so it opens over the desktop as it is, as the menu does.
 //
-// Each slice holds one `slice` component, loaded only while the slice is on
-// screen or about to be (Carousel.PRELOAD). The Loader that holds it carries
-// `modelIndex` and `selected`, and sizes the picture to the slice.
+// Each slice holds one `slice` component, which it loads only while the
+// slice is on screen or within Carousel.PRELOAD slices of it. The Loader
+// that holds the component has `modelIndex` and `selected`, and sizes it to
+// the slice.
 Item {
     id: root
 
-    // One name per item: a theme name or an image path. Filtering and the
+    // One name per item, a theme name or an image path. The filter and the
     // label read it.
     property var names: []
     property int currentIndex: -1
     property bool showLabels: false
     property bool filterable: false
     property string filterText: ""
-    // Said in place of the label (an error, an empty list).
+    // Text shown in place of the label, such as an error or an empty list.
     property string notice: ""
     property Component slice: null
-    // The screen the picker fits (ShellScreen). Without one it takes its
-    // full design size: its own size would feed back into its implicit size.
+    // The ShellScreen the carousel fits. Without one it takes its full
+    // design size, because fitting its own size would make the size depend
+    // on itself.
     property var screen: null
-    // A narrower carousel for a panel card (the `center` and `bar`
-    // placements): the selected item and Carousel.COMPACT_STEPS slices a side.
+    // A narrower carousel for a panel card, in the `center` and `bar`
+    // placements. It shows the selected item and up to
+    // Carousel.COMPACT_STEPS slices on each side.
     property bool compact: false
 
     signal activated(int index)
@@ -50,16 +55,16 @@ Item {
     readonly property real areaWidth: compact ? Math.min(screenWidth, Carousel.compactWidth()) : screenWidth
     readonly property real areaHeight: screen && screen.height > 0 ? screen.height : topMargin + Carousel.GEOMETRY.expandedHeight + bottomChrome
     readonly property real pixelRatio: screen && screen.devicePixelRatio ? screen.devicePixelRatio : 1
-    // Omarchy's margin over the carousel and its room under it
-    // (ImagePicker.qml:48,398).
+    // Omarchy's margin above the carousel and its room for the label and
+    // filter below it (ImagePicker.qml:48,398).
     readonly property int topMargin: Theme.space(30)
     readonly property int bottomChrome: Theme.space(showLabels || notice !== "" ? (filterable ? 104 : 74) : (filterable ? 60 : 30))
     readonly property var geometry: Carousel.fit(areaWidth, areaHeight, topMargin + bottomChrome)
     readonly property var shown: Carousel.shown(names, filterable ? filterText : "")
     readonly property int selectedPosition: Math.max(0, shown.indexOf(currentIndex))
-    // A compact card shows up to COMPACT_STEPS slices a side, and only those
-    // that fit inside it: on a narrow screen one more would reach past the
-    // card into its padding.
+    // A compact card shows up to COMPACT_STEPS slices on each side, and only
+    // those that fit inside it. On a narrow screen another slice would reach
+    // past the card into its padding.
     readonly property int reach: compact ? Carousel.fitReach(strip.width, geometry, Carousel.COMPACT_STEPS) : Carousel.reach(strip.width, geometry)
     readonly property bool hasSelection: shown.indexOf(currentIndex) >= 0
     readonly property string label: {
@@ -75,7 +80,8 @@ Item {
             currentIndex = index;
     }
 
-    // +1 is the next item, -1 the previous one, wrapping.
+    // A direction of +1 moves to the next item and -1 to the previous one.
+    // The selection wraps at both ends.
     function move(direction: int): void {
         const next = Carousel.step(shown, currentIndex, direction);
         if (next >= 0)
@@ -91,8 +97,8 @@ Item {
     implicitHeight: topMargin + geometry.expandedHeight + bottomChrome
     focus: true
 
-    // Left and Right move on screen: in a mirrored (right-to-left) carousel
-    // the next item sits on the left.
+    // Left and Right follow the screen. In a right-to-left carousel the next
+    // item sits on the left, so Left moves forward.
     Keys.onPressed: event => {
         const k = event.key;
         event.accepted = true;
@@ -122,7 +128,7 @@ Item {
     }
 
     // The card around the strip takes clicks, so only a click well away from
-    // the picker closes it (ImagePicker.qml:380-392).
+    // the picker closes it (ImagePicker.qml:380-393).
     MouseArea {
         anchors.horizontalCenter: parent.horizontalCenter
         width: Carousel.cardWidth(root.geometry, root.width)
@@ -174,8 +180,8 @@ Item {
         }
     }
 
-    // The label over whatever is behind the picker: an outline in the
-    // theme's background keeps it legible on any wallpaper
+    // The label sits over whatever is behind the picker. An outline in the
+    // theme's background colour keeps it readable on any wallpaper
     // (ImagePicker.qml:557-558).
     Text {
         id: label

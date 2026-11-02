@@ -1,13 +1,14 @@
 .pragma library
 
-// The arithmetic of SkewCarousel.qml, after Omarchy's image picker
+// The arithmetic of SkewCarousel.qml, adapted from Omarchy's image picker
 // (shell/plugins/image-picker/ImagePicker.qml and ImagePickerModel.js,
-// MIT, Copyright (c) David Heinemeier Hansson). Pure: no Qt types beyond the
-// key constants, so tests/test-carousel.sh runs it headless (plan 152).
+// MIT, Copyright (c) David Heinemeier Hansson). It uses no Qt types except
+// the key constants, so tests/test-carousel.sh runs it without a window
+// (plan 152).
 
-// Omarchy's geometry (ImagePicker.qml:42-47): the selected item at 768x475,
-// the others as 108x432 slices that overlap by 30, every one slanted 28 px.
-// 13 slice steps fit in Omarchy's strip beside the selected one.
+// Omarchy's geometry (ImagePicker.qml:42-47, 389). The selected item is
+// 768x475. The others are 108x432 slices that overlap by 30 px, each
+// slanted 28 px. Omarchy's strip has room for 13 slice steps.
 const GEOMETRY = {
     expandedWidth: 768,
     expandedHeight: 475,
@@ -18,15 +19,16 @@ const GEOMETRY = {
     steps: 13
 };
 
-// The slices that may load their picture beyond those on screen, so one
-// arriving from the edge is already decoded.
+// How many slices past the screen's edge load their picture early, so a
+// slice that moves on screen is already decoded.
 const PRELOAD = 2;
-// Slices a side in a compact carousel: the one a panel card shows in the
-// `center` and `bar` placements, not over the whole screen.
+// The most slices on each side of a compact carousel, the one a panel card
+// shows in the `center` and `bar` placements.
 const COMPACT_STEPS = 2;
 
-// "tokyo-night" or "/x/1-deep_sea.jpg" -> "Tokyo Night", "1 Deep Sea"
-// (ImagePickerModel.nameForPath, labelForPath).
+// The name and label of a theme or a path. "tokyo-night" reads
+// "Tokyo Night", and "/x/1-deep_sea.jpg" reads "1 Deep Sea"
+// (ImagePickerModel.nameForPath and labelForPath).
 function nameFor(path) {
     return String(path || "").split("/").pop().replace(/\.[^/.]+$/, "");
 }
@@ -35,8 +37,8 @@ function labelFor(path) {
     return nameFor(path).replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// Whether `name` matches the typed filter: a case-insensitive substring of
-// the name or of its label (ImagePickerModel.itemMatches).
+// Whether `name` matches the typed filter, as a case-insensitive substring
+// of the name or of its label (ImagePickerModel.itemMatches).
 function matches(name, filter) {
     const needle = String(filter || "").toLowerCase();
     if (needle === "")
@@ -44,7 +46,7 @@ function matches(name, filter) {
     return nameFor(name).toLowerCase().indexOf(needle) !== -1 || labelFor(name).toLowerCase().indexOf(needle) !== -1;
 }
 
-// The model indices on show for `filter`, in model order.
+// The model indices that `filter` leaves visible, in model order.
 function shown(names, filter) {
     const out = [];
     const list = names || [];
@@ -54,9 +56,10 @@ function shown(names, filter) {
     return out;
 }
 
-// The model index `direction` (+1 or -1) steps to from `current` along
-// `on`, wrapping at both ends (ImagePicker.selectAdjacent). A current
-// index the filter hid steps from the first match. -1 when nothing shows.
+// The model index one step from `current` along `on`, in `direction` (+1
+// or -1), wrapping at both ends (ImagePicker.selectAdjacent). If the filter
+// hid `current`, the step goes to the first match. Returns -1 when nothing
+// is visible.
 function step(on, current, direction) {
     const n = on ? on.length : 0;
     if (n === 0)
@@ -67,8 +70,9 @@ function step(on, current, direction) {
     return on[((at + direction) % n + n) % n];
 }
 
-// The selection after the filter changed: kept while it still shows, else
-// the first match, else unchanged, so clearing the filter returns to it
+// The selection after the filter changes. It stays while it is visible and
+// moves to the first match otherwise. With no match it stays unchanged, so
+// clearing the filter returns to it
 // (ImagePickerModel.nextSelectedIndexForFilter).
 function keep(on, current) {
     if (!on || on.length === 0 || on.indexOf(current) >= 0)
@@ -76,10 +80,11 @@ function keep(on, current) {
     return on[0];
 }
 
-// GEOMETRY shrunk to fit a screen of width x height whose labels need
-// `chrome` px under the carousel: the selected item keeps one slice of
-// room on each side. Omarchy draws at full size whatever the screen; a
-// screen it fits on keeps that size (scale 1).
+// GEOMETRY shrunk to fit a screen `width` by `height` that needs `chrome`
+// px under the carousel for its labels. The selected item keeps one slice's
+// width of room on each side. Omarchy draws at full size on any screen. Here
+// a screen that fits the full size keeps it (scale 1), and the geometry
+// never grows.
 function fit(width, height, chrome) {
     const g = GEOMETRY;
     let s = 1;
@@ -101,8 +106,8 @@ function fit(width, height, chrome) {
     };
 }
 
-// The strip Omarchy centres on the screen, and the card around it that
-// takes clicks without closing the picker (ImagePicker.qml:389,392,402).
+// The strip that Omarchy centres on the screen, and the card around it that
+// takes clicks without closing the picker (ImagePicker.qml:389, 393, 402).
 function stripWidth(g) {
     return g.expandedWidth + g.steps * (g.sliceWidth + g.spacing);
 }
@@ -112,20 +117,21 @@ function cardWidth(g, screenWidth) {
     return screenWidth > 0 ? Math.min(screenWidth - 80, w) : w;
 }
 
-// The screen width the carousel fits at full size, every step shown: what it
-// assumes with no screen to fit.
+// The screen width that shows the carousel at full size with every step.
+// The carousel assumes it when it has no screen to fit.
 function designWidth() {
     return stripWidth(GEOMETRY) + 120;
 }
 
-// The width a compact carousel fits instead of the screen's: the selected
-// item and COMPACT_STEPS slices a side, at full size, in its card.
+// The width a compact carousel fits instead of the screen's. It holds the
+// selected item and COMPACT_STEPS slices on each side at full size, in its
+// card.
 function compactWidth() {
     return GEOMETRY.expandedWidth + 2 * COMPACT_STEPS * (GEOMETRY.sliceWidth + GEOMETRY.spacing) + 120;
 }
 
-// How many slices beside the selected one reach into `width`, on each side.
-// None before the carousel has a width, so nothing loads ahead of layout.
+// How many slices on each side of the selected one reach into `width`. It
+// is 0 before the carousel has a width, so nothing loads before layout.
 function reach(width, g) {
     const stepPx = g.sliceWidth + g.spacing;
     if (!(width > 0))
@@ -136,10 +142,10 @@ function reach(width, g) {
     return Math.max(1, Math.ceil(room / stepPx));
 }
 
-// Where the item `rel` places from the selected one sits in a carousel
-// `width` wide: { x, y, width, height, z } (ImagePicker.qml:406-407,458-461). The
-// selected item is centred; earlier items go left, later ones right, and a
-// mirrored (right-to-left) carousel swaps the sides.
+// The rectangle { x, y, width, height, z } of the item `rel` places from the
+// selected one, in a carousel `width` wide (ImagePicker.qml:406-407,
+// 458-462). The selected item is centred, earlier items go left and later
+// ones right. A right-to-left carousel swaps the sides.
 function slot(rel, width, mirrored, g) {
     const previewX = (width - g.expandedWidth) / 2;
     const stepPx = g.sliceWidth + g.spacing;
@@ -161,9 +167,9 @@ function slot(rel, width, mirrored, g) {
     return r;
 }
 
-// How many slices a side fit wholly inside `width`, at most `cap`: a compact
-// carousel in a panel card shows no slice its card would cut. Slices sit
-// symmetrically, so mirroring changes nothing here.
+// How many slices on each side fit wholly inside `width`, at most `cap`. A
+// compact carousel in a panel card shows no slice that its card would cut.
+// The slices sit symmetrically, so mirroring changes nothing here.
 function fitReach(width, g, cap) {
     for (let n = cap; n > 0; n--) {
         const left = slot(-n, width, false, g);
@@ -174,9 +180,9 @@ function fitReach(width, g, cap) {
     return 0;
 }
 
-// Omarchy's filter editing keys (Util.editsFilter/editedFilter): Backspace
-// drops a character, Ctrl+Backspace a word, Ctrl+U the whole filter.
-// Alt- and Meta-modified keys belong to other shortcuts.
+// Omarchy's filter keys (Util.editsFilter and editedFilter). Backspace
+// deletes a character, Ctrl+Backspace a word, and Ctrl+U the whole filter.
+// Keys with Alt or Meta belong to other shortcuts.
 function editsFilter(key, modifiers, text) {
     if (!text || (modifiers & (Qt.AltModifier | Qt.MetaModifier)))
         return false;
@@ -193,8 +199,8 @@ function editedFilter(key, modifiers, text) {
     return text.slice(0, -1);
 }
 
-// A key that types into the filter: one printable character, unmodified or
-// shifted.
+// Whether a key types into the filter. It must be one printable character,
+// with no modifier or with Shift only.
 function typed(text, modifiers) {
     return text.length === 1 && text.charCodeAt(0) >= 32 && text.charCodeAt(0) !== 127 && (modifiers === Qt.NoModifier || modifiers === Qt.ShiftModifier);
 }

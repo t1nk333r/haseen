@@ -4,22 +4,24 @@ import Quickshell.Io
 import qs.Haseen
 import qs.Haseen.Widgets
 
-// haseen.themepicker: every theme `haseen theme list` knows, in Omarchy's
-// theme switcher (its image-picker carousel with labels and a filter, MIT,
-// Copyright (c) David Heinemeier Hansson; SkewCarousel, plan 152): the
-// current theme selected in the middle, the others as slanted slices beside
-// it, its name under it, over the desktop with no dim. Left/Right (or Tab)
-// move, typing filters by name, Enter or a click on the selected one runs
-// `haseen theme set` and closes, a click on another slice selects it;
-// Escape clears the filter, then closes, as does a click away from the
-// picker. A theme without a preview shows its palette; `haseen theme fetch
-// --all` caches the Omarchy previews. Open with
-// `haseen shell ipc panel toggle haseen.themepicker`.
+// haseen.themepicker: every theme that `haseen theme list` knows, in
+// Omarchy's theme switcher (SkewCarousel, plan 152), over the desktop with
+// no dim. Omarchy's switcher is its image-picker carousel with labels and a
+// filter (MIT, Copyright (c) David Heinemeier Hansson). The current theme
+// is selected in the middle with its name under it, and the others are
+// slanted slices beside it. Left and Right, or Tab, move the selection, and
+// typing filters by name. Enter, or a click on the selected slice, runs
+// `haseen theme set` and closes the picker. A click on another slice
+// selects it. Escape clears the filter, and a second Escape closes the
+// picker. A click away from the picker also closes it. A theme without a
+// preview shows its palette, and `haseen theme fetch --all` caches
+// Omarchy's previews.
+// Open it with `haseen shell ipc panel toggle haseen.themepicker`.
 //
-// Nothing runs until the panel opens: one `find` for the user themes' files
-// and the cached previews, one `haseen theme list`, then one colors.toml
-// read and one asynchronous decode, at the selected item's size, per slice
-// on screen or next to it.
+// Nothing runs until the panel opens. Then one `find` lists the user
+// themes' files and the cached previews, and `haseen theme list` runs once.
+// Each slice on screen or next to it reads one colors.toml and decodes one
+// picture at the selected item's size.
 Item {
     id: root
 
@@ -28,7 +30,8 @@ Item {
     property var settings: ({})
     property var screen: null
 
-    // bin/haseen next to share/haseen (checkout, /usr/local, /usr).
+    // The haseen command next to share/haseen, in a checkout, /usr/local or
+    // /usr.
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property string userThemes: Paths.userConfig + "/themes"
     readonly property string cacheDir: (Quickshell.env("HASEEN_USER_CACHE") || (Quickshell.env("XDG_CACHE_HOME") || Paths.home + "/.cache") + "/haseen") + "/themes"
@@ -36,9 +39,10 @@ Item {
     property var themes: []
     property string currentTheme: ""
     property string notice: ""
-    // name -> preview path: a user theme's own preview.png, else the fetched
-    // preview-thumb.png, else the fetched preview.png (rank: lower wins).
-    // And the user themes that ship their own colors.toml.
+    // previewOf maps a theme name to its preview: the user theme's own
+    // preview.png first, then the fetched preview-thumb.png, then the
+    // fetched preview.png. userColours lists the user themes that ship their
+    // own colors.toml.
     property var previewOf: ({})
     property var userColours: ({})
 
@@ -46,7 +50,7 @@ Item {
         return (userColours[name] ? userThemes : Paths.haseenPath + "/themes") + "/" + name + "/colors.toml";
     }
 
-    // One path per line from scanProc.
+    // Reads scanProc's output, one path per line. The lowest rank wins.
     function indexFiles(text: string): void {
         const previews = {};
         const rank = {};
@@ -101,8 +105,9 @@ Item {
         carousel.forceActiveFocus();
     }
 
-    // Test hook (settings.debugIpc): move, inspect and accept over IPC while
-    // the panel is open, so a smoke test never injects keys into the session.
+    // A test hook, on with settings.debugIpc. A smoke test moves, inspects
+    // and accepts over IPC while the panel is open, so it never sends keys
+    // into the session.
     IpcHandler {
         target: "haseen.themepicker"
         enabled: root.settings.debugIpc === true
@@ -138,10 +143,10 @@ Item {
         }
     }
 
-    // Existing files only, so no card asks for an image or colors.toml that
-    // is not there. A missing directory makes find exit 1; its output still
-    // counts. The list starts after it, so every card is created once with
-    // its final paths.
+    // Lists existing files only, so no slice asks for an image or a
+    // colors.toml that is not there. A missing directory makes find exit 1,
+    // and its output still counts. The theme list runs after the scan, so
+    // every slice is created once, with its final paths.
     Process {
         id: scanProc
 
@@ -149,7 +154,8 @@ Item {
         stdout: StdioCollector {
             id: scanOut
         }
-        // "No such file or directory" for an absent dir: expected, not news.
+        // find reports "No such file or directory" for an absent directory.
+        // That is expected, so the panel drops it.
         stderr: StdioCollector {}
         onExited: {
             root.indexFiles(scanOut.text);
@@ -178,9 +184,9 @@ Item {
         }
     }
 
-    // A fresh install has no theme yet; that is not worth a log line. Read
-    // before the list arrives, as a rule; when it lands later, the picker
-    // still opens on it.
+    // A fresh install has no theme yet, so a missing file prints nothing.
+    // The file usually loads before the list arrives. If it loads later,
+    // the picker still selects the current theme.
     FileView {
         path: Paths.userState + "/current/theme.name"
         printErrors: false
@@ -190,8 +196,8 @@ Item {
         }
     }
 
-    // A click away from the picker closes it; the carousel's card takes its
-    // own clicks.
+    // A click away from the picker closes it. The carousel's card takes the
+    // clicks that land on it.
     MouseArea {
         anchors.fill: parent
         onClicked: root.close()
@@ -204,7 +210,8 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         screen: root.screen
-        // In a panel card (`center`, `bar`) a narrower carousel.
+        // A narrower carousel in a panel card, for the `center` and `bar`
+        // placements.
         compact: (root.settings.placement || "overlay") !== "overlay"
         names: root.themes
         showLabels: true
@@ -215,7 +222,7 @@ Item {
 
         slice: Component {
             ThemePreview {
-                // The Loader holding it carries the model index.
+                // The Loader that holds this item has the model index.
                 name: root.themes[parent ? parent.modelIndex : -1] || ""
                 previewPath: root.previewOf[name] || ""
                 colorFile: name !== "" ? root.colorFileFor(name) : ""
