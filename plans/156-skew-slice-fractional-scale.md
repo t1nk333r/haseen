@@ -84,9 +84,9 @@ and the matrix has no flip.
 - On the GPU renderer (`QT_QUICK_BACKEND=rhi`, offscreen through
   Xwayland's GLX on luna) the same probe drew correctly at scales 1, 1.25
   and 2. CI has no GL display, so this check stays manual.
-- The real card (768x475) and slice (108x432), drawn over a 1920x1080
-  wallpaper at scale 1.25 on the software renderer, lost their bottom
-  quarter before the fix, as on IO.
+- The real card (768x475) and slice (108x432) were drawn over a 1920x1080
+  wallpaper at scale 1.25 on the software renderer. Before the fix the card
+  lost its bottom quarter, as on IO.
 - `tests/run.sh --affected` selected 47 files and passed 3912/3912.
 
 ## Review

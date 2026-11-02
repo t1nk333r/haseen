@@ -58,7 +58,8 @@ for both pickers. Nothing in them darkens the screen or a slice.
   a `slice` component, and it loads a slice only while it is on screen or
   within `PRELOAD` (2) slices of it. The label and filter lines follow
   Omarchy (`ImagePicker.qml:547-580`). The label is `Theme.font.display` in
-  DemiBold, outlined in `Theme.background`. The keys follow Omarchy too:
+  DemiBold, outlined in `Theme.background` at 0.7 alpha. The keys follow
+  Omarchy too:
   Left and Right, Tab and Shift+Tab, Enter, and Escape, which clears the
   filter before it closes the picker. The colours come from
   `Theme.imagePicker` (`Theme.qml:427`, Omarchy's `[image-picker]` keys).
@@ -82,11 +83,10 @@ for both pickers. Nothing in them darkens the screen or a slice.
 - **Manifests.** The `columns` and `rows` settings are gone. A new
   `placement` setting defaults to `overlay`, the whole screen. `center` and
   `bar` put a compact carousel, 1120 px wide, in a panel card of about
-  1150x640 with its padding. It shows up
-  to two slices on each side, one below a screen width of about 1160 px,
-  and none below about 1000 px. In a panel card, Escape closes the picker
-  at once, because `PanelPopup`'s window shortcut takes it first
-  (`PanelPopup.qml:79-90`).
+  1150x640 with its padding. It shows up to two slices on each side, one
+  below a screen width of about 1160 px, and none below about 1000 px. In a
+  panel card, Escape closes the picker at once, because `PanelPopup`'s
+  window shortcut takes it first (`PanelPopup.qml:79-90`).
 - **Translations.** The grid's strings "Background", "Background · %1",
   "Themes" and "Enter applies · n next · Esc closes" left both catalogs.
 - **`tests/test-widgets-c.sh`.** Its comment-skipping grep now passes `-H`.
@@ -101,9 +101,9 @@ second decode. A 16:9 picture cropped to a 108x432 slice needs a 768x432
 decode anyway, so this costs about 10% more per slice. At most `reach + 2`
 slices exist on each side, and before the carousel has a width only the two
 preloaded slices on each side load. The reviewer measured the theme picker
-with 23 themes against one with 3. It used 13 MB more at scale 1 and 40 MB
-more at scale 2. The images use `cache: false` and the panel unloads on close, so the memory
-is released when the picker closes.
+with 23 themes against one with 3. The picker with 23 used 13 MB more at
+scale 1 and 40 MB more at scale 2. The images use `cache: false` and the
+panel unloads on close, so the memory is released when the picker closes.
 
 ## Verification
 
