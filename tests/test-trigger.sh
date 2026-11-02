@@ -126,6 +126,9 @@ stub qs 'case "$*" in
 *" ipc call shell plugins") cat "$QS_ANSWER"; exit "$(cat "$QS_STATUS")" ;;
 *) echo "qs $*" >>"$CALLS" ;;
 esac'
+# Present, so the fallback plans Omasnap's pick whether or not the host has
+# it, and fatal if run.
+stub omasnap 'echo "STUB-CALLED: omasnap $*" >&2; exit 97'
 shell_answers() { # TEXT [STATUS]
     printf '%s\n' "$1" >"$QS_ANSWER"
     echo "${2:-0}" >"$QS_STATUS"
