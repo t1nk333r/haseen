@@ -26,8 +26,8 @@ Omarchy opens both as its image-picker carousel
 (`/usr/share/omarchy/shell/plugins/image-picker/ImagePicker.qml` and
 `ImagePickerModel.js`). The selected picture is large in the middle of the
 screen, the others are slanted slices beside it, and typing filters the
-themes. Omarchy also dims the whole screen (`ImagePicker.qml:377`) and
-shades every unselected slice at 0.42 alpha (`ImagePicker.qml:518`). The
+themes. Omarchy's picker also dims the whole screen (`ImagePicker.qml:377`)
+and shades every unselected slice at 0.42 alpha (`ImagePicker.qml:518`). The
 owner asked for the carousel without either dim, as plan 123 did for the
 menus.
 
@@ -41,11 +41,11 @@ for both pickers. Nothing in them darkens the screen or a slice.
 - **`Carousel.js`** holds the arithmetic, so a test can run it without a
   window. It has Omarchy's geometry (`ImagePicker.qml:42-48`): the selected
   item at 768x475, slices of 108x432 that overlap by 30 px, a 28 px slant
-  and 13 slice steps. `fit()` shrinks it for a small screen. It also has the
-  card width (`ImagePicker.qml:389`), each slice's position
-  (`ImagePicker.qml:458-462`), Omarchy's filter
-  (`ImagePickerModel.js:36`) and filter keys, and the labels that turn
-  `tokyo-night` into "Tokyo Night".
+  and 13 slice steps. `fit()` shrinks it for a small screen and never
+  enlarges it. It also has the card width (`ImagePicker.qml:389`), each
+  slice's position (`ImagePicker.qml:458-462`), Omarchy's filter
+  (`ImagePickerModel.js:36`), the filter keys (Backspace, Ctrl+Backspace and
+  Ctrl+U), and the labels that turn `tokyo-night` into "Tokyo Night".
 - **`SkewSlice.qml`** draws one slanted slice. Omarchy cuts the slant with a
   `MultiEffect` mask (`ImagePicker.qml:496`), and that draws nothing on the
   software renderer haseen uses. `SkewSlice` instead draws its content
@@ -57,10 +57,11 @@ for both pickers. Nothing in them darkens the screen or a slice.
 - **`SkewCarousel.qml`** lays out the slices. It takes a list of names and
   a `slice` component, and it loads a slice only while it is on screen or
   within `PRELOAD` (2) slices of it. The label and filter lines follow
-  Omarchy (`ImagePicker.qml:548-577`), and so do the keys: Left and Right,
-  Tab and Shift+Tab, Enter, and Escape, which clears the filter before it
-  closes the picker. The colours come from `Theme.imagePicker`
-  (`Theme.qml:427`, Omarchy's `[image-picker]` keys).
+  Omarchy (`ImagePicker.qml:547-580`). The label is `Theme.font.display` in
+  DemiBold, outlined in `Theme.background`. The keys follow Omarchy too:
+  Left and Right, Tab and Shift+Tab, Enter, and Escape, which clears the
+  filter before it closes the picker. The colours come from
+  `Theme.imagePicker` (`Theme.qml:427`, Omarchy's `[image-picker]` keys).
 
 ### The pickers
 
@@ -80,13 +81,14 @@ for both pickers. Nothing in them darkens the screen or a slice.
 
 - **Manifests.** The `columns` and `rows` settings are gone. A new
   `placement` setting defaults to `overlay`, the whole screen. `center` and
-  `bar` put a compact carousel, 1120 px wide, in a panel card. It shows up
+  `bar` put a compact carousel, 1120 px wide, in a panel card of about
+  1150x640 with its padding. It shows up
   to two slices on each side, one below a screen width of about 1160 px,
   and none below about 1000 px. In a panel card, Escape closes the picker
   at once, because `PanelPopup`'s window shortcut takes it first
   (`PanelPopup.qml:79-90`).
-- **Translations.** The grid's four title and hint strings left both
-  catalogs.
+- **Translations.** The grid's strings "Background", "Background · %1",
+  "Themes" and "Enter applies · n next · Esc closes" left both catalogs.
 - **`tests/test-widgets-c.sh`.** Its comment-skipping grep now passes `-H`.
   With one QML file left in the background plugin, grep printed no file
   name, and the filter that expects `file:line:` stopped working.
@@ -97,16 +99,19 @@ Every slice decodes its picture at the selected item's size times the
 screen's scale (768x475 at scale 1, 1.46 MB), so selecting a slice needs no
 second decode. A 16:9 picture cropped to a 108x432 slice needs a 768x432
 decode anyway, so this costs about 10% more per slice. At most `reach + 2`
-slices exist on each side. The reviewer measured the theme picker with 23
-themes against one with 3: 13 MB more at scale 1 and 40 MB more at scale 2.
-The images use `cache: false` and the panel unloads on close, so the memory
+slices exist on each side, and before the carousel has a width only the two
+preloaded slices on each side load. The reviewer measured the theme picker
+with 23 themes against one with 3. It used 13 MB more at scale 1 and 40 MB
+more at scale 2. The images use `cache: false` and the panel unloads on close, so the memory
 is released when the picker closes.
 
 ## Verification
 
 - `tests/test-carousel.sh` (new) passed 44/44.
   - Static checks: both panels use the carousel, open as overlays and have
-    no dim, shader or hex colour.
+    no dim or shader. The widgets have no hex colour, and
+    `tests/test-themes2.sh` and `tests/test-widgets-c.sh` check the panels
+    for one.
   - `Carousel.js` runs under Qt's `qml` engine and each result is compared
     by value. At no whole width from 0 to 2000 px does a compact slice cross
     the card's edge.
@@ -128,12 +133,12 @@ is released when the picker closes.
 ## Review
 
 DeepSeek Flash approved five rounds (GLM 5.3 Flash's provider was out of
-credits). Its notes led to three fixes that the text above already
-describes. Without a screen the carousel's size depended on itself, and Qt
-reported three binding loops. The `center` and `bar` placements opened a
-card as wide as the screen. And on a narrow screen the compact card cut its
-outer slices: the reviewer counted 11,712 pixels outside the card at
-1080 px before `fitReach`, and 0 after.
+credits). Its notes led to the fixes the text above describes, and to
+removing the unused `ThemePreview.hasPreview`. Without a screen the
+carousel's size depended on itself, and Qt reported three binding loops.
+The `center` and `bar` placements opened a card as wide as the screen. On a
+narrow screen the compact card cut its outer slices. The reviewer counted
+11,712 pixels outside the card at 1080 px before `fitReach`, and 0 after.
 
 ## Rejected options
 

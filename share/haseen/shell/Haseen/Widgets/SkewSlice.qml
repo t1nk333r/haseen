@@ -31,11 +31,12 @@ Item {
 
     readonly property real shear: skew / Math.max(1, height)
     // Qt 6.12's software renderer always draws a layer's texture upside
-    // down (qsgsoftwareinternalimagenode.cpp:465), so it first renders the
-    // layer upside down. At a fractional scale that render loses part of the
-    // picture, the bottom quarter at 1.25 and all of it at 2
-    // (qsgsoftwarelayer.cpp:204-208). On that renderer this slice renders
-    // its layer unflipped and flips the content itself (plan 156).
+    // down (qsgsoftwareinternalimagenode.cpp:465), because it expects the
+    // layer to have been rendered upside down. At a fractional scale that
+    // upside-down render loses part of the picture, the bottom quarter at
+    // 1.25 and all of it at 2 (qsgsoftwarelayer.cpp:204-208). On that
+    // renderer this slice renders its layer unflipped and flips the content
+    // itself (plan 156).
     readonly property bool flipped: GraphicsInfo.api === GraphicsInfo.Software
 
     Item {

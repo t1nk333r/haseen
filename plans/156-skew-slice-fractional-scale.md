@@ -46,10 +46,10 @@ a layer wrong at any scale other than 1, in two steps:
    (`qsgsoftwarepixmaprenderer.cpp:65`) on a pixmap that already includes
    the scale (`qsgsoftwarelayer.cpp:191-193`).
 
-The second step pushes part of the picture outside the texture. A probe on
-2026-11-02 showed the whole picture at scale 1, 0.75 of it at 1.25 and
-nothing at 2, even for a plain layer with no transform. An item without a
-layer drew normally at every scale.
+The second step pushes part of the picture outside the texture. A probe of
+four variants on 2026-11-02 showed the whole picture at scale 1, 0.75 of it
+at 1.25 and nothing at 2, even for a plain layer with no transform. An item
+without a layer drew normally at every scale.
 
 ## Fix
 
@@ -84,6 +84,9 @@ and the matrix has no flip.
 - On the GPU renderer (`QT_QUICK_BACKEND=rhi`, offscreen through
   Xwayland's GLX on luna) the same probe drew correctly at scales 1, 1.25
   and 2. CI has no GL display, so this check stays manual.
+- The real card (768x475) and slice (108x432), drawn over a 1920x1080
+  wallpaper at scale 1.25 on the software renderer, lost their bottom
+  quarter before the fix, as on IO.
 - `tests/run.sh --affected` selected 47 files and passed 3912/3912.
 
 ## Review
@@ -115,7 +118,7 @@ below. The plan was numbered 154 until PR 114 took that number.
 - **Read the grab through a `Canvas`, as plan 152's test did.** At a
   fractional scale its readback did not match the grab either. The test
   uses ImageMagick, as `tests/test-frame.sh` does, and CI installs it
-  (`.github/workflows/ci.yml`).
+  (`.github/workflows/ci.yml`, package `imagemagick`).
 - **Report the bug upstream first.** The fix does not depend on it. The
   Cause section names the exact lines for whoever files it.
 

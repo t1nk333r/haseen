@@ -132,10 +132,11 @@ assert_eq "one printable key types, a shortcut does not" '[true,true,false,false
 # bottom edge. The slant must cut the top-left and bottom-right corners and
 # keep the rest. The green stripe must sit at the same x at the top and at
 # the bottom, because a sheared picture would move it 28 px at the top. The
-# slice is drawn at scale 1, at IO's 1.25 and at 2. Without plan 156's fix it
-# lost the bottom quarter of its picture at 1.25 and all of it at 2, and the
-# yellow band and the stripes catch that. ImageMagick reads the grab,
-# because a Canvas reads pixels back wrong at a fractional scale too.
+# slice is drawn at scale 1, at IO's 1.25 and at 2. Qt 6.12's software layer
+# lost the bottom quarter of the picture at 1.25 and all of it at 2, which
+# plan 156 works around, and the yellow band and the stripes catch that.
+# ImageMagick reads the grab, because a Canvas reads pixels back wrong at a
+# fractional scale too.
 draw="$SANDBOX/draw"
 mkdir -p "$draw"
 cp "$W/SkewSlice.qml" "$draw/"

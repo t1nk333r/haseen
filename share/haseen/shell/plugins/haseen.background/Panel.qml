@@ -15,12 +15,12 @@ import qs.Haseen.Widgets
 //
 // Adapted from Omarchy shell/plugins/background and image-picker
 // (MIT, Copyright (c) David Heinemeier Hansson). Omarchy's background plugin
-// both draws the wallpaper and opens a switcher for it. haseen leaves the
-// drawing to swaybg under haseen-background.service
-// (bin/haseen-theme-bg-run), which shows the current/background symlink
-// that `haseen theme bg set|next` moves. This plugin only picks. It paints
-// no wallpaper and starts no daemon, and it changes the background only
-// through the CLI, so the shell and a terminal always agree.
+// both draws the wallpaper and opens a switcher for it. In haseen, swaybg
+// under haseen-background.service (bin/haseen-theme-bg-run) draws it from
+// the current/background symlink that `haseen theme bg set|next` moves.
+// This plugin only picks. It paints no wallpaper and starts no daemon, and
+// it changes the background only through the CLI, so the shell and a
+// terminal always agree.
 //
 // Nothing runs until the panel opens. Then it runs `haseen theme bg list`
 // and `haseen theme bg current` once each, and decodes one picture, at the
