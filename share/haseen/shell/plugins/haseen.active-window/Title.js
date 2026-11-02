@@ -61,3 +61,45 @@ function titleOf(toplevel) {
         return "";
     return String(toplevel.title || toplevel.appId || "");
 }
+
+// Lowercase ASCII words: "Jellyfin MPV Shim" and "jellyfin-mpv-shim" both
+// read jellyfin, mpv, shim. A name in another script yields none, so it never
+// matches and its title is kept whole.
+function words(text) {
+    return String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(w => w !== "");
+}
+
+// Whether `needle` occurs in `hay` as consecutive whole words.
+function wordRun(needle, hay) {
+    if (needle.length === 0)
+        return false;
+    for (let i = 0; i + needle.length <= hay.length; i++) {
+        if (needle.every((w, j) => hay[i + j] === w))
+            return true;
+    }
+    return false;
+}
+
+// `title` without a trailing " - App Name" when that name is the window's
+// own app (plan 155): "Big Buck Bunny - Jellyfin MPV Shim" from
+// com.github.iwalton3.jellyfin-mpv-shim reads "Big Buck Bunny". The middle
+// ellipsis keeps a title's tail, and an app's name there is what the bar
+// least needs. The app is the id's last dotted part, matched as whole words
+// either way round ("Mozilla Firefox" from firefox, "Brave" from
+// brave-browser) or run together ("Text Editor" from org.gnome.TextEditor),
+// so "football" never matches foot. Only the last segment after a dash
+// between spaces goes, and only when text stays before it on the same line.
+function withoutAppName(title, appId) {
+    const text = String(title || "");
+    const id = String(appId || "");
+    const app = words(id.slice(id.lastIndexOf(".") + 1));
+    const match = /^(.*\S)[ \t]+[-–—][ \t]+(.+)$/.exec(text);
+    if (app.length === 0 || !match)
+        return text;
+    const tail = words(match[2]);
+    if (tail.length === 0)
+        return text;
+    if (tail.join("") === app.join("") || wordRun(app, tail) || wordRun(tail, app))
+        return match[1];
+    return text;
+}

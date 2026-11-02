@@ -138,6 +138,21 @@ Item {
         eq("title: the title", "Doc", T.titleOf({ title: "Doc", appId: "x" }));
         eq("title: else the app id", "foot", T.titleOf({ title: "", appId: "foot" }));
         eq("title: no window", "", T.titleOf(null));
+        eq("app name: the app's own suffix goes", "Big Buck Bunny - s1e01 - Pilot",
+           T.withoutAppName("Big Buck Bunny - s1e01 - Pilot - Jellyfin MPV Shim", "com.github.iwalton3.jellyfin-mpv-shim"));
+        eq("app name: the app's words inside the suffix", "Page", T.withoutAppName("Page — Mozilla Firefox", "firefox"));
+        eq("app name: the suffix inside the app's words", "Page", T.withoutAppName("Page - Brave", "brave-browser"));
+        eq("app name: words run together", "Untitled", T.withoutAppName("Untitled – Text Editor", "org.gnome.TextEditor"));
+        eq("app name: whole words only", "~/src - football", T.withoutAppName("~/src - football", "foot"));
+        eq("app name: another app's name stays", "Song - Artist", T.withoutAppName("Song - Artist", "mpv"));
+        eq("app name: only the last segment", "a - foot - b", T.withoutAppName("a - foot - b", "foot"));
+        eq("app name: the name alone stays", "Jellyfin MPV Shim", T.withoutAppName("Jellyfin MPV Shim", "com.github.iwalton3.jellyfin-mpv-shim"));
+        eq("app name: a hyphen inside a word is no separator", "jellyfin-mpv-shim", T.withoutAppName("jellyfin-mpv-shim", "jellyfin-mpv-shim"));
+        eq("app name: no app id", "Page - Firefox", T.withoutAppName("Page - Firefox", ""));
+        eq("app name: a suffix without words", "Title - ★", T.withoutAppName("Title - ★", "foot"));
+        eq("app name: no title", "", T.withoutAppName(null, "foot"));
+        eq("app name: a separator with nothing before it", "- foot", T.withoutAppName("- foot", "foot"));
+        eq("app name: a line break is no space", "Page\n- foot", T.withoutAppName("Page\n- foot", "foot"));
 
         // updates Model.js
         const r = U.parse('{"repo":2,"aur":1,"lines":["a 1 -> 2","b 1 -> 2","c 1 -> 2  (AUR)"],"errors":[],"cached":true}');
@@ -201,7 +216,7 @@ if [[ -x $QML ]]; then
     capture env QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML" "$H/Units.qml"
     assert_status "JS units run under the Qt JS engine" 0 "$STATUS"
     assert_eq "no JS unit fails" "" "$(grep 'UNIT-FAIL' <<<"$OUTPUT" || true)"
-    assert_eq "every JS unit ran" "58" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
+    assert_eq "every JS unit ran" "72" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
 else
     _fail "qml missing: $QML"
 fi
@@ -299,7 +314,7 @@ ShellRoot {
     QtObject {
         id: fake
 
-        property string title: "A rather long window title, really"
+        property string title: "A rather long window title, really - foot"
         property string appId: "foot"
         property int activated: 0
         property int closed: 0
@@ -438,7 +453,7 @@ QML
     RESULT="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
     CALLS="$(cat "$LOG")"
     s() { jq -c ".[$1]$2" <<<"$RESULT"; }
-    assert_eq "active-window: the title within 9 characters" '"A ra…ally"' "$(s 0 .aw.text)"
+    assert_eq "active-window: the title within 9 characters, less the app's name" '"A ra…ally"' "$(s 0 .aw.text)"
     assert_eq "active-window: takes room with a window" "true" "$(jq '.[0].aw | .visible and .width > 0' <<<"$RESULT")"
     assert_eq "active-window: left focuses, middle and right close" '[1,2]' "$(jq -c '.[1].aw | [.activated, .closed]' <<<"$RESULT")"
     assert_eq "active-window: no window takes no room" '[false,0]' "$(jq -c '.[2].aw | [.visible, .width]' <<<"$RESULT")"

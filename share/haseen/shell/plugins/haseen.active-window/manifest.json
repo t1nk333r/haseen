@@ -3,7 +3,7 @@
   "id": "haseen.active-window",
   "name": "Active window",
   "version": "1.0.0",
-  "description": "Title of the focused window, its head and tail kept around a middle ellipsis; takes no room without one or in a vertical bar. A left click focuses it, a middle or right click closes it. Adopted from the owner's t1nk33r.active-window; off by default",
+  "description": "Title of the focused window, less a trailing name of its own app, its head and tail kept around a middle ellipsis; takes no room without one or in a vertical bar. A left click focuses it, a middle or right click closes it. Adopted from the owner's t1nk33r.active-window; off by default",
   "kinds": [
     "bar-widget"
   ],
