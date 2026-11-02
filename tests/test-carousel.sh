@@ -9,7 +9,7 @@
 # own engine; one slanted slice (SkewSlice.qml) is drawn by the software
 # renderer the shell uses, at scales 1, 1.25 and 2, and its pixels read
 # back, which proves the slant cuts the picture without a shader and leaves
-# it upright and whole (plan 154); and the two
+# it upright and whole (plan 156); and the two
 # pickers are checked to use the carousel, to dim nothing and to open as
 # overlays.
 
@@ -28,7 +28,7 @@ for id in haseen.background haseen.themepicker; do
     assert_contains "$id is compact in a panel card" "$entry" 'compact: (root.settings.placement || "overlay") !== "overlay"'
     # The owner's ask (plan 152): no scrim over the screen, no shade over the
     # slices Omarchy dims, no shader to draw either. ShaderEffectSource is a
-    # layer's texture setting, not a shader (plan 154).
+    # layer's texture setting, not a shader (plan 156).
     assert_eq "$id has no scrim, shade or shader" "" \
         "$(grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' "$PLUGINS/$id"/*.qml || true)"
 done
@@ -131,7 +131,7 @@ assert_eq "one printable key types, a shortcut does not" '[true,true,false,false
 # keep the rest, and leave the green stripe where it is at the top and at
 # the bottom: a sheared picture would move it 28 px at the top. It is drawn
 # at scale 1, at IO's 1.25 and at 2: Qt's software layer used to lose the
-# bottom quarter of the picture at 1.25 and all of it at 2 (plan 154),
+# bottom quarter of the picture at 1.25 and all of it at 2 (plan 156),
 # which the yellow band and the stripes catch. The grab is read with
 # ImageMagick: a Canvas reads pixels back at a fractional scale no better.
 draw="$SANDBOX/draw"

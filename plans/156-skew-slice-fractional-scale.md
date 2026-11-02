@@ -1,4 +1,4 @@
-# Plan 154: The carousel's slices keep their whole picture at a fractional scale
+# Plan 156: The carousel's slices keep their whole picture at a fractional scale
 
 ## Status
 
@@ -105,6 +105,14 @@ and the matrix has no flip.
   nits are taken: the content must not take input (comment and Memory),
   `magick` is required under `HASEEN_REQUIRE_ENGINE=1` as CI sets it, and
   Memory says when the workaround should go.
+- Round 2, DeepSeek Flash on `71097e2` (the nits): approved. It confirmed the
+  QML change was comment-only, the test at 65/65, and both missing-`magick`
+  branches (41/42 with the requirement, 41/41 without). Its two nits are
+  taken: a flip keeps the full-height stripes, so the Memory line names the
+  bottom band and the corners; and the comment says the content's
+  coordinates are flipped while its picture draws upright.
+- Renumbered from 154 to 156 before merging: #114 merged as plan 154 and
+  the open branch `active-window/drop-app-suffix` holds 155.
 
 ## Rejected options
 
@@ -137,8 +145,10 @@ and the matrix has no flip.
   (`QT_SCALE_FACTOR=1.25`) as well as at 1.
 - The workaround leans on Qt always flipping a layer's texture on the
   software renderer. If a Qt release changes that, the slices come out
-  upside down; `tests/test-carousel.sh` fails then (its stripes and bottom
-  band), and the workaround should go.
-- The slice's content is laid out upside down on the software renderer, so
-  it must not take input: a MouseArea in it would be mirrored. The slice's
-  own MouseArea, outside the layer, takes the clicks.
+  upside down; `tests/test-carousel.sh` fails then (its bottom band and the
+  slant's corners; the stripes run the full height, so a flip keeps them),
+  and the workaround should go.
+- On the software renderer the slice's content has flipped coordinates,
+  though its picture draws upright, so it must not take input: a MouseArea
+  in it would be mirrored. The slice's own MouseArea, outside the layer,
+  takes the clicks.

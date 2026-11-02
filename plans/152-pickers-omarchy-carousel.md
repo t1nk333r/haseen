@@ -16,7 +16,7 @@
   selector like omarchy but without the diming"
 - **State**: DONE 2026-11-02 (`tests/test-carousel.sh` 44/44, the affected
   set 74 files; the live pickers are an owner step)
-- **Follow-up**: plan 154. At a fractional scale on the software renderer
+- **Follow-up**: plan 156. At a fractional scale on the software renderer
   (IO, 1.25) every slice lost the bottom of its picture; this plan tested
   scale 1 only.
 

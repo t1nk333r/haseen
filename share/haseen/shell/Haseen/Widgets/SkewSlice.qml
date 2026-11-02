@@ -12,7 +12,7 @@ import QtQuick.Shapes
 // content is drawn slanted the other way into a layer and the layer is
 // slanted back: the slice's edge is a parallelogram and the picture inside
 // is not sheared at all. A layer is a texture, not a shader, so the
-// software renderer draws it too (plan 152), at any scale (plan 154).
+// software renderer draws it too (plan 152), at any scale (plan 156).
 Item {
     id: slice
 
@@ -21,9 +21,10 @@ Item {
     property real borderWidth: 1
     // The picture, upright, filling the slice's bounding box; the slant cuts
     // `skew` px off its top-left and bottom-right corners. Keep it free of
-    // mouse areas and handlers: on the software renderer it is laid out
-    // upside down (`flipped`), so its hit areas would be too; the slice's
-    // own MouseArea below takes the clicks.
+    // mouse areas and handlers: on the software renderer its coordinates
+    // are flipped (`flipped`), so a hit area in it would be mirrored, though
+    // the picture still draws upright; the slice's own MouseArea below takes
+    // the clicks.
     default property alias content: frame.data
 
     signal clicked
@@ -34,7 +35,7 @@ Item {
     // have been rendered flipped already, which it renders wrong at a
     // fractional scale: at 1.25 the bottom quarter of the picture is lost,
     // at 2 all of it (qsgsoftwarelayer.cpp:204-208). There the layer is
-    // rendered unflipped and the content flips itself instead (plan 154).
+    // rendered unflipped and the content flips itself instead (plan 156).
     readonly property bool flipped: GraphicsInfo.api === GraphicsInfo.Software
 
     Item {
