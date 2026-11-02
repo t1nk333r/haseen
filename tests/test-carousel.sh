@@ -4,14 +4,13 @@
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# The carousel the background and theme pickers share (plan 152): Omarchy's
-# image picker without its dim. Its arithmetic (Carousel.js) runs under Qt's
-# own engine; one slanted slice (SkewSlice.qml) is drawn by the software
-# renderer the shell uses, at scales 1, 1.25 and 2, and its pixels read
-# back, which proves the slant cuts the picture without a shader and leaves
-# it upright and whole (plan 156); and the two
-# pickers are checked to use the carousel, to dim nothing and to open as
-# overlays.
+# The carousel that the background and theme pickers share (plan 152), which
+# is Omarchy's image picker without its dim. The test runs the arithmetic in
+# Carousel.js under Qt's own engine. It draws one slanted slice
+# (SkewSlice.qml) on the software renderer the shell uses, at scales 1, 1.25
+# and 2, and reads its pixels back. That proves the slant cuts the picture
+# without a shader and leaves it upright and whole (plan 156). It also checks
+# that both pickers use the carousel, dim nothing and open as overlays.
 
 W="$HASEEN_PATH/shell/Haseen/Widgets"
 PLUGINS="$HASEEN_PATH/shell/plugins"
@@ -26,9 +25,10 @@ for id in haseen.background haseen.themepicker; do
     assert_eq "$id opens over the whole screen" "overlay" "$(jq -r '.settings.placement.default' "$PLUGINS/$id/manifest.json")"
     assert_eq "$id lost the grid's settings" "" "$(jq -r '.settings | keys[] | select(. == "columns" or . == "rows")' "$PLUGINS/$id/manifest.json")"
     assert_contains "$id is compact in a panel card" "$entry" 'compact: (root.settings.placement || "overlay") !== "overlay"'
-    # The owner's ask (plan 152): no scrim over the screen, no shade over the
-    # slices Omarchy dims, no shader to draw either. ShaderEffectSource is a
-    # layer's texture setting, not a shader (plan 156).
+    # The owner asked for no scrim over the screen and no shade over the
+    # slices that Omarchy dims (plan 152), and the slant needs no shader. The
+    # check skips ShaderEffectSource, which names a layer's texture setting
+    # (plan 156).
     assert_eq "$id has no scrim, shade or shader" "" \
         "$(grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' "$PLUGINS/$id"/*.qml || true)"
 done
@@ -75,9 +75,10 @@ Item {
         out("mirrored", [C.slot(0, 1536, true, G).x, C.slot(1, 1536, true, G).x, C.slot(-1, 1536, true, G).x]);
         out("card", [C.stripWidth(G), C.cardWidth(G, 1536), C.cardWidth(G, 3840)]);
         out("sizes", [C.designWidth(), C.compactWidth(), C.cardWidth(C.fit(C.compactWidth(), 864, 134), C.compactWidth()), C.reach(1120, G)]);
-        // The compact card on a wide screen (1120), a 1080 px one (1000), a
-        // 1024 px one (944); uncapped room (1500); before layout (0). Then
-        // every whole width from 0 to 2000: the reached slices always fit.
+        // The compact card on a wide screen (1120 px), on a 1080 px screen
+        // (1000) and on a 1024 px screen (944), with room for more than the
+        // cap (1500), and before layout (0). Then, at every whole width from
+        // 0 to 2000, the slices it reaches always fit.
         const cardFor = w => C.cardWidth(C.fit(Math.min(w, C.compactWidth()), 864, 134), Math.min(w, C.compactWidth()));
         let fits = true;
         for (let w = 0; w <= 2000; w++) {
@@ -113,10 +114,11 @@ assert_eq "the selected item centred, slices beside it at Omarchy's step" \
     "$(r slots)"
 assert_eq "right to left, the next item sits on the left" '[384,306,1122]' "$(r mirrored)"
 assert_eq "Omarchy's strip and card widths" '[1782,1456,1822]' "$(r card)"
-# No screen: the full design size. Compact (a panel card): the selected item
-# and two slices a side, at full size.
+# With no screen the carousel takes its full design size. A compact one, in a
+# panel card, holds the selected item and two slices on each side at full size.
 assert_eq "design width, compact width, its card, its reach" '[1902,1200,1120,3]' "$(r sizes)"
-# A compact card shows only the slices that fit inside it, two at most.
+# A compact card shows only the slices that fit inside it, two at most on
+# each side.
 assert_eq "the compact card's reach: 2, then 1 on a narrow screen, never past the card" \
     '[2,1120,1000,2,1,1,2,0,true]' "$(r compact)"
 assert_contains "the compact carousel fits its reach to the card" "$(cat "$W/SkewCarousel.qml")" 'Carousel.fitReach('
@@ -125,15 +127,16 @@ assert_eq "Backspace, Ctrl+Backspace, Ctrl+U" '["a","tokyo ",""]' "$(r edited)"
 assert_eq "one printable key types, a shortcut does not" '[true,true,false,false]' "$(r typed)"
 
 # --- one slanted slice, drawn by the software renderer -----------------------------
-# A 200x300 slice with a 28 px slant over a red picture with two upright
-# stripes (blue at x 0-10, green at x 100-110) and a yellow band along its
-# bottom edge. The slant must cut the top-left and bottom-right corners,
-# keep the rest, and leave the green stripe where it is at the top and at
-# the bottom: a sheared picture would move it 28 px at the top. It is drawn
-# at scale 1, at IO's 1.25 and at 2: Qt's software layer used to lose the
-# bottom quarter of the picture at 1.25 and all of it at 2 (plan 156),
-# which the yellow band and the stripes catch. The grab is read with
-# ImageMagick: a Canvas reads pixels back at a fractional scale no better.
+# A 200x300 slice with a 28 px slant. Its picture is red, with two upright
+# stripes (blue at x 0-10, green at x 100-110) and a yellow band along the
+# bottom edge. The slant must cut the top-left and bottom-right corners and
+# keep the rest. The green stripe must sit at the same x at the top and at
+# the bottom, because a sheared picture would move it 28 px at the top. The
+# slice is drawn at scale 1, at IO's 1.25 and at 2. Qt 6.12's software layer
+# lost the bottom quarter of the picture at 1.25 and all of it at 2, which
+# plan 156 works around, and the yellow band and the stripes catch that.
+# ImageMagick reads the grab, because a Canvas reads pixels back wrong at a
+# fractional scale too.
 draw="$SANDBOX/draw"
 mkdir -p "$draw"
 cp "$W/SkewSlice.qml" "$draw/"
@@ -157,8 +160,8 @@ Window {
             Rectangle { x: 100; width: 10; height: parent.height; color: "lime" }
         }
     }
-    // At the screen's scale: a grab at another size is a layer rescaled by
-    // the same bug.
+    // Grab at the screen's scale. A grab at another size goes through a
+    // rescaled layer with the same bug.
     Component.onCompleted: Qt.callLater(() => stage.grabToImage(r => {
         r.saveToFile("$draw/slice.png");
         const mouse = slice.children.filter(c => c.cursorShape !== undefined)[0];
@@ -178,7 +181,8 @@ have_magick=1
 command -v magick >/dev/null || {
     have_magick=0
     echo "  (magick missing: the slice's pixels were not read back)" >&2
-    # CI installs it (ARCH_PACKAGES): there the pixels are the point.
+    # CI installs it (ARCH_PACKAGES), so there a missing magick fails the
+    # test instead of skipping the pixel checks.
     [[ ${HASEEN_REQUIRE_ENGINE:-0} != 1 ]] || assert_eq "carousel: required magick prerequisite" available unavailable
 }
 for scale in 1 1.25 2; do

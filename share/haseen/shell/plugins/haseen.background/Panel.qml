@@ -5,25 +5,26 @@ import qs.Haseen
 import qs.Haseen.Widgets
 
 // haseen.background: the current theme's backgrounds in Omarchy's carousel
-// (SkewCarousel, plan 152): the one on screen selected in the middle, the
-// others as slanted slices beside it, over the desktop with no dim.
-// Left/Right (or Tab) move, Enter or a click on the selected one runs
-// `haseen theme bg set`, a click on another slice selects it, `n` runs
-// `haseen theme bg next`; Escape or a click away from the picker closes it.
-// Open with `haseen shell ipc panel toggle haseen.background`.
+// (SkewCarousel, plan 152), over the desktop with no dim. The background on
+// screen is selected in the middle, and the others are slanted slices
+// beside it. Left and Right, or Tab, move the selection. Enter, or a click
+// on the selected slice, runs `haseen theme bg set`. A click on another
+// slice selects it, and `n` runs `haseen theme bg next`. Escape, or a click
+// away from the picker, closes it.
+// Open it with `haseen shell ipc panel toggle haseen.background`.
 //
 // Adapted from Omarchy shell/plugins/background and image-picker
 // (MIT, Copyright (c) David Heinemeier Hansson). Omarchy's background plugin
-// both *draws* the wallpaper and opens a switcher for it. haseen keeps the
-// drawing where it already is: swaybg under haseen-background.service
-// (bin/haseen-theme-bg-run), fed by the current/background symlink that
-// `haseen theme bg set|next` moves. This plugin is only the picker over that
-// same state — it paints no wallpaper, it starts no daemon, and every change
-// goes through the CLI, so the shell and a terminal always agree.
+// both draws the wallpaper and opens a switcher for it. In haseen, swaybg
+// under haseen-background.service (bin/haseen-theme-bg-run) draws it from
+// the current/background symlink that `haseen theme bg set|next` moves.
+// This plugin only picks. It paints no wallpaper and starts no daemon, and
+// it changes the background only through the CLI, so the shell and a
+// terminal always agree.
 //
-// Nothing runs until the panel opens: one `haseen theme bg list`, one
-// `haseen theme bg current`, then one asynchronous decode, at the selected
-// item's size, per slice on screen or next to it.
+// Nothing runs until the panel opens. Then it runs `haseen theme bg list`
+// and `haseen theme bg current` once each, and decodes one picture, at the
+// selected item's size, for each slice on screen or next to it.
 Item {
     id: root
 
@@ -32,15 +33,17 @@ Item {
     property var settings: ({})
     property var screen: null
 
-    // bin/haseen next to share/haseen (checkout, /usr/local, /usr).
+    // The haseen command next to share/haseen, in a checkout, /usr/local or
+    // /usr.
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
 
     property var backgrounds: []
     property string current: ""
     property string themeName: ""
     property string notice: ""
-    // The list from `bg list`, shown once `bg current` says which is on
-    // screen, so the carousel opens on it instead of moving there.
+    // The list from `bg list`. The carousel shows it only once `bg current`
+    // says which background is on screen, so it opens on that one instead of
+    // moving to it.
     property var listed: []
     property bool shown: false
 
@@ -62,8 +65,9 @@ Item {
         close();
     }
 
-    // The CLI picks the next background and restarts the unit; the panel only
-    // asks what it landed on, so the selection follows without a watcher.
+    // The CLI picks the next background and restarts the unit. The panel
+    // then asks which background is current, so the selection follows it
+    // without watching any file.
     function next(): void {
         if (!nextProc.running)
             nextProc.running = true;
@@ -91,8 +95,9 @@ Item {
         carousel.forceActiveFocus();
     }
 
-    // Test hook (settings.debugIpc): move, inspect and accept over IPC while
-    // the panel is open, so a smoke test never injects keys into the session.
+    // A test hook, on with settings.debugIpc. A smoke test moves, inspects
+    // and accepts over IPC while the panel is open, so it never sends keys
+    // into the session.
     IpcHandler {
         target: "haseen.background"
         enabled: root.settings.debugIpc === true
@@ -126,8 +131,9 @@ Item {
         }
     }
 
-    // The theme's backgrounds, in the CLI's own order (user dir, the theme's
-    // own, then the fetched cache), so `next` and this carousel agree.
+    // The theme's backgrounds in the CLI's order: the user's directory, the
+    // theme's own, then the fetched cache. `bg next` uses the same order, so
+    // it moves the way this carousel does.
     Process {
         id: listProc
 
@@ -150,8 +156,8 @@ Item {
         }
     }
 
-    // `haseen theme bg current` reads the symlink swaybg was started on. It
-    // exits 1 with no background set, which is a state, not a failure.
+    // `haseen theme bg current` reads the symlink that swaybg started on. It
+    // exits 1 when no background is set, which is a state, not an error.
     Process {
         id: currentProc
 
@@ -186,15 +192,15 @@ Item {
         }
     }
 
-    // A fresh install has no theme yet; that is not worth a log line.
+    // A fresh install has no theme yet, so a missing file prints nothing.
     FileView {
         path: Paths.userState + "/current/theme.name"
         printErrors: false
         onLoaded: root.themeName = text().trim()
     }
 
-    // A click away from the picker closes it; the carousel's card takes its
-    // own clicks.
+    // A click away from the picker closes it. The carousel's card takes the
+    // clicks that land on it.
     MouseArea {
         anchors.fill: parent
         onClicked: root.close()
@@ -207,22 +213,23 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         screen: root.screen
-        // In a panel card (`center`, `bar`) a narrower carousel.
+        // A narrower carousel in a panel card, for the `center` and `bar`
+        // placements.
         compact: (root.settings.placement || "overlay") !== "overlay"
         names: root.backgrounds
         notice: root.notice
         onActivated: index => root.apply(index)
         onDismissed: root.close()
 
-        // One background, decoded at the selected item's size whichever
-        // slice shows it, so selecting a slice never decodes it again: a 4K
+        // One background. Every slice decodes it at the selected item's
+        // size, so selecting a slice needs no second decode, and a 4K
         // wallpaper costs that size, not 4K. The theme's background colour
-        // fills the slice until the decode lands.
+        // fills the slice until the decode finishes.
         slice: Component {
             Item {
                 id: picture
 
-                // The Loader holding it carries the model index.
+                // The Loader that holds this item has the model index.
                 readonly property string path: root.backgrounds[parent ? parent.modelIndex : -1] || ""
 
                 Rectangle {

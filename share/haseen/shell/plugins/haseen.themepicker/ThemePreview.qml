@@ -2,21 +2,22 @@ import QtQuick
 import Quickshell.Io
 import qs.Haseen
 
-// One theme in the picker's carousel, filling its slice: the preview image
-// when one exists (the theme's own preview.png, else the one `haseen theme
-// fetch` cached), else the theme's palette read from its colors.toml — the
-// sample "Aa" over a row of swatches in the selected item, a column of
-// swatches in a narrow slice. The colours drawn here are the theme's data,
-// not styling; the fallback fill uses Theme tokens.
+// One theme in the picker's carousel, filling its slice. It shows the
+// theme's preview image if one exists: the theme's own preview.png, or the
+// one `haseen theme fetch` cached. Otherwise it shows the palette from the
+// theme's colors.toml, as "Aa" over a row of swatches in the selected item
+// and as a column of swatches in a narrow slice. These colours are the
+// theme's data, not haseen's styling. The fallback fill uses Theme tokens.
 Item {
     id: preview
 
     property string name: ""
-    // An existing preview image, or "" (the panel scanned for it).
+    // The path of an existing preview image, or "" if the panel found none.
     property string previewPath: ""
-    // The colors.toml staging would use (user theme over stock).
+    // The colors.toml that `haseen theme set` would use, the user theme's
+    // before the stock one.
     property string colorFile: ""
-    // The size every slice decodes at: the selected item's, in pixels.
+    // The size every slice decodes at, the selected item's size in pixels.
     property int decodeWidth: 0
     property int decodeHeight: 0
 
@@ -35,7 +36,8 @@ Item {
             accent: "color4"
         })
 
-    // The colour for key, through the colours colors.toml spells it with.
+    // The colour for `key`, under its own name or its ANSI name in
+    // colors.toml.
     function swatch(key: string): string {
         return colours[key] || colours[ansiKeys[key] || ""] || "";
     }
@@ -84,8 +86,8 @@ Item {
             font.bold: true
         }
 
-        // The palette in its own order (red … foreground): data, so a
-        // right-to-left panel does not reverse it.
+        // The palette in its own order, from red to foreground. It is data,
+        // so a right-to-left panel does not reverse it.
         Grid {
             anchors.horizontalCenter: parent.horizontalCenter
             LayoutMirroring.enabled: false

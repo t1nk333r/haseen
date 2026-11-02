@@ -3,7 +3,7 @@
   "id": "haseen.themepicker",
   "name": "Theme picker",
   "version": "1.0.0",
-  "description": "Omarchy's carousel of theme previews (or palettes), without its dim; typing filters, Enter applies with haseen theme set",
+  "description": "Theme previews, or each theme's palette, in Omarchy's carousel without its dim. Typing filters, and Enter runs haseen theme set",
   "kinds": [
     "panel"
   ],
@@ -14,7 +14,7 @@
     "placement": {
       "type": "string",
       "default": "overlay",
-      "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (a narrower carousel in a panel in the middle of the screen) or bar (the same in a panel under the bar); in a panel, Escape closes the picker at once, as it does a menu placed in a panel"
+      "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (a narrower carousel in a panel in the middle of the screen) or bar (the same in a panel under the bar). In a panel, Escape closes the picker at once, as it closes a menu placed in a panel"
     },
     "debugIpc": {
       "type": "boolean",

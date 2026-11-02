@@ -1,41 +1,43 @@
 // Adapted from Omarchy shell/plugins/image-picker/ImagePicker.qml (one
 // carousel item: its slanted outline and mask).
 // MIT, Copyright (c) David Heinemeier Hansson.
-// haseen: no shader mask, no shade over an unselected slice (plan 152).
+// haseen: no shader mask and no shade over an unselected slice (plan 152).
 import QtQuick
 import QtQuick.Shapes
 
-// One slanted slice of SkewCarousel: a parallelogram whose top edge starts
-// `skew` px in and whose bottom edge ends `skew` px short, with the picture
-// upright inside it. Omarchy cuts the shape with a MultiEffect mask, which
-// draws nothing on haseen's software renderer (architecture §6). Here the
-// content is drawn slanted the other way into a layer and the layer is
-// slanted back: the slice's edge is a parallelogram and the picture inside
-// is not sheared at all. A layer is a texture, not a shader, so the
-// software renderer draws it too (plan 152), at any scale (plan 156).
+// One slanted slice of SkewCarousel. Its outline is a parallelogram: the top
+// edge starts `skew` px in and the bottom edge ends `skew` px short. The
+// picture inside stays upright.
+//
+// Omarchy cuts the slant with a MultiEffect mask, which draws nothing on
+// haseen's software renderer (architecture §6). This slice draws its content
+// into a layer with the inverse shear, then shears the layer back. A layer
+// is a texture, so both renderers draw it.
 Item {
     id: slice
 
     property real skew: 28
     property color borderColor: "transparent"
     property real borderWidth: 1
-    // The picture, upright, filling the slice's bounding box; the slant cuts
-    // `skew` px off its top-left and bottom-right corners. Keep it free of
-    // mouse areas and handlers: on the software renderer its coordinates
-    // are flipped (`flipped`), so a hit area in it would be mirrored, though
-    // the picture still draws upright; the slice's own MouseArea below takes
-    // the clicks.
+    // The picture. It fills the slice's bounding box, and the slant cuts
+    // `skew` px off its top-left and bottom-right corners. Put no mouse area
+    // or handler in it. On the software renderer its coordinates are flipped
+    // (see `flipped`), so a hit area in it would be mirrored, even though the
+    // picture draws upright. The slice's own MouseArea below takes the
+    // clicks.
     default property alias content: frame.data
 
     signal clicked
 
     readonly property real shear: skew / Math.max(1, height)
-    // Qt 6.12's software renderer draws a layer's texture flipped upside
-    // down (qsgsoftwareinternalimagenode.cpp:465) and expects the layer to
-    // have been rendered flipped already, which it renders wrong at a
-    // fractional scale: at 1.25 the bottom quarter of the picture is lost,
-    // at 2 all of it (qsgsoftwarelayer.cpp:204-208). There the layer is
-    // rendered unflipped and the content flips itself instead (plan 156).
+    // Qt 6.12's software renderer always draws a layer's texture upside
+    // down (qsgsoftwareinternalimagenode.cpp:465), because it expects the
+    // layer to have been rendered upside down. It renders that upside-down
+    // layer through a projection multiplied by the scale, which at any
+    // scale other than 1 loses part of the picture, the bottom quarter at
+    // 1.25 and all of it at 2 (qsgsoftwarelayer.cpp:204-208). On that
+    // renderer this slice renders its layer unflipped and flips the content
+    // itself (plan 156).
     readonly property bool flipped: GraphicsInfo.api === GraphicsInfo.Software
 
     Item {
@@ -46,15 +48,15 @@ Item {
         layer.enabled: true
         layer.smooth: true
         layer.textureMirroring: slice.flipped ? ShaderEffectSource.NoMirroring : ShaderEffectSource.MirrorVertically
-        // x' = x - shear * y + skew: the layer's rectangle lands on the
-        // slanted outline.
+        // Shear the layer by x' = x - shear * y + skew. That puts its
+        // rectangle on the slanted outline.
         transform: Matrix4x4 {
             matrix: Qt.matrix4x4(1, -slice.shear, 0, slice.skew, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
         }
 
-        // The inverse, so the content comes out upright; on the software
-        // renderer also upside down (y' = height - y), which its layer
-        // undoes.
+        // The inverse shear, so the content comes out upright. On the
+        // software renderer the matrix also flips the content
+        // (y' = height - y), and Qt's flip of the layer's texture undoes it.
         Item {
             id: frame
 
@@ -100,8 +102,8 @@ Item {
         }
     }
 
-    // Only the slanted shape takes the click: the corners it leaves belong
-    // to the neighbouring slice, which they overlap.
+    // Only the slanted shape takes clicks. A click in a cut corner goes to
+    // the neighbouring slice, which overlaps that corner.
     MouseArea {
         anchors.fill: parent
         containmentMask: outline
