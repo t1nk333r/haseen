@@ -41,10 +41,10 @@ menus.
   small screen (never up), the card width (`ImagePicker.qml:389`), each
   slice's slot (`ImagePicker.qml:458-461`), mirrored for right-to-left, how
   many slices fit on each side (`reach`), the filter (case-insensitive
-  substring on the name or the label, as `ImagePickerModel.js:36-44`), selection that wraps
-  and skips hidden items, the theme label (`tokyo-night` → `Tokyo Night`)
-  and Omarchy's filter keys (Backspace, Ctrl+Backspace, Ctrl+U, typed
-  characters).
+  substring on the name or the label, as `ImagePickerModel.js:36-44`),
+  selection that wraps and skips hidden items, the theme label
+  (`tokyo-night` → `Tokyo Night`) and Omarchy's filter keys (Backspace,
+  Ctrl+Backspace, Ctrl+U, typed characters).
 - **`SkewSlice.qml`** (new): one slanted slice. Omarchy cuts the shape with
   a `MultiEffect` mask (`ImagePicker.qml:496-501`), which draws nothing on
   haseen's software renderer. Here the content is drawn with the inverse
@@ -130,18 +130,19 @@ after it.
   run at 8ba2e73 missed two of `tests/test-shell-tokens.sh`'s checks that
   wait for a Hyprland config reload; they pass alone (73/73, twice), this
   change does not touch Theme or Config, and the reviewer's run of that
-  head passed 6614/6614 and the file 7 times out of 7 under load. From this checkout's own path `tests/test-menu-back.sh`
-  cannot open its IPC socket (past the 108-byte limit, plan 101's known
-  case). The reviewer's runs selected the same 74 and passed 6608/6608 at
-  30f2396, 6614/6614 at c2c68e3 and 6614/6614 at 8ba2e73.
+  head passed 6614/6614 and the file seven times, six of them under load.
+  From this checkout's own path `tests/test-menu-back.sh` cannot open its
+  IPC socket (past the 108-byte limit, plan 101's known case). The
+  reviewer's runs selected the same 74 and passed 6608/6608 at 30f2396
+  and 6614/6614 at c2c68e3, 8ba2e73 and aec70ce.
   `tools/lint.sh` lint OK; `tools/check-docs.sh` OK.
 - Rendered offscreen in a real Quickshell over a background, both pickers:
   open on the current item, moved, the theme filter `ro` showing 2 of 32
   with "Retro 82" selected, and right-to-left with the next themes on the
   left. The desktop shows through unchanged around the carousel. In the
   `center` placement the carousel is 1120×609 (the card about 1150×640
-  with its padding); with no screen the carousel takes its design size, 1822×609, and
-  the engine prints no binding loop.
+  with its padding); with no screen the carousel takes its design size,
+  1822×609, and the engine prints no binding loop.
 
 ## Review
 
@@ -176,6 +177,10 @@ after it.
   taken: below about 1000 px the compact carousel shows the selected item
   alone, the index leads with the passing run, and the reach test steps
   through every whole width instead of every fourth.
+- Round 5, DeepSeek Flash at aec70ce: APPROVE; 44/44, 6614/6614, and the
+  narrow-screen boundaries recomputed exactly (one slice a side from 1004
+  to 1159 px, two from 1160). Two cosmetic nits, taken: this paragraph's
+  wrapping and "seven times, six of them under load".
 
 ## Rejected options
 
