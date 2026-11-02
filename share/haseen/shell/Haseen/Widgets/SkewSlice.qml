@@ -33,8 +33,8 @@ Item {
     // Qt 6.12's software renderer always draws a layer's texture upside
     // down (qsgsoftwareinternalimagenode.cpp:465), because it expects the
     // layer to have been rendered upside down. It renders that upside-down
-    // layer through a projection multiplied by the scale, which at a
-    // fractional scale loses part of the picture, the bottom quarter at
+    // layer through a projection multiplied by the scale, which at any
+    // scale other than 1 loses part of the picture, the bottom quarter at
     // 1.25 and all of it at 2 (qsgsoftwarelayer.cpp:204-208). On that
     // renderer this slice renders its layer unflipped and flips the content
     // itself (plan 156).

@@ -86,13 +86,15 @@ and the matrix has no flip.
   and 2. CI has no GL display, so this check stays manual.
 - The real card (768x475) and slice (108x432) were drawn over a 1920x1080
   wallpaper at scale 1.25 on the software renderer. Before the fix the card
-  lost its bottom quarter, as on IO.
+  lost its bottom quarter, as on IO. The slice's loss shows in the test
+  above, whose bottom-band check fails at 1.25.
 - `tests/run.sh --affected` selected 47 files and passed 3912/3912.
 
 ## Review
 
-DeepSeek Flash approved four rounds with no blocking finding and
-reproduced the numbers above. It also confirmed that `flipped` reads
+DeepSeek Flash approved four rounds with no blocking finding. It
+reproduced the test, mutation, GPU-renderer and affected-set results above,
+but not the real-size probe. It also confirmed that `flipped` reads
 `false` outside a window and turns `true` once Qt places the slice in a
 software window. Its notes made `magick` a required tool under
 `HASEEN_REQUIRE_ENGINE=1`, which CI sets, and added the last two notes
