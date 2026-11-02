@@ -7,8 +7,9 @@
 # The carousel the background and theme pickers share (plan 152): Omarchy's
 # image picker without its dim. Its arithmetic (Carousel.js) runs under Qt's
 # own engine; one slanted slice (SkewSlice.qml) is drawn by the software
-# renderer the shell uses and its pixels read back, which proves the slant
-# cuts the picture without a shader and leaves it upright; and the two
+# renderer the shell uses, at scales 1, 1.25 and 2, and its pixels read
+# back, which proves the slant cuts the picture without a shader and leaves
+# it upright and whole (plan 154); and the two
 # pickers are checked to use the carousel, to dim nothing and to open as
 # overlays.
 
@@ -26,12 +27,13 @@ for id in haseen.background haseen.themepicker; do
     assert_eq "$id lost the grid's settings" "" "$(jq -r '.settings | keys[] | select(. == "columns" or . == "rows")' "$PLUGINS/$id/manifest.json")"
     assert_contains "$id is compact in a panel card" "$entry" 'compact: (root.settings.placement || "overlay") !== "overlay"'
     # The owner's ask (plan 152): no scrim over the screen, no shade over the
-    # slices Omarchy dims, no shader to draw either.
+    # slices Omarchy dims, no shader to draw either. ShaderEffectSource is a
+    # layer's texture setting, not a shader (plan 154).
     assert_eq "$id has no scrim, shade or shader" "" \
-        "$(grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect|layer\.effect' "$PLUGINS/$id"/*.qml || true)"
+        "$(grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' "$PLUGINS/$id"/*.qml || true)"
 done
 assert_eq "the carousel has no scrim, shade or shader" "" \
-    "$(grep -vE '^\s*//' "$W"/{SkewCarousel,SkewSlice}.qml | grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect|layer\.effect' || true)"
+    "$(grep -vE '^\s*//' "$W"/{SkewCarousel,SkewSlice}.qml | grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' || true)"
 assert_eq "the carousel's colours come from Theme" "" \
     "$(grep -nE '#[0-9A-Fa-f]{3,8}\b' "$W"/{SkewCarousel,SkewSlice}.qml "$W/Carousel.js" || true)"
 assert_contains "the widgets module lists the slice" "$(cat "$W/qmldir")" "SkewSlice 1.0 SkewSlice.qml"
@@ -124,10 +126,14 @@ assert_eq "one printable key types, a shortcut does not" '[true,true,false,false
 
 # --- one slanted slice, drawn by the software renderer -----------------------------
 # A 200x300 slice with a 28 px slant over a red picture with two upright
-# stripes (blue at x 0-10, green at x 100-110), read back through a canvas.
-# The slant must cut the top-left and bottom-right corners, keep the rest,
-# and leave the green stripe where it is at the top and at the bottom: a
-# sheared picture would move it 28 px at the top.
+# stripes (blue at x 0-10, green at x 100-110) and a yellow band along its
+# bottom edge. The slant must cut the top-left and bottom-right corners,
+# keep the rest, and leave the green stripe where it is at the top and at
+# the bottom: a sheared picture would move it 28 px at the top. It is drawn
+# at scale 1, at IO's 1.25 and at 2: Qt's software layer used to lose the
+# bottom quarter of the picture at 1.25 and all of it at 2 (plan 154),
+# which the yellow band and the stripes catch. The grab is read with
+# ImageMagick: a Canvas reads pixels back at a fractional scale no better.
 draw="$SANDBOX/draw"
 mkdir -p "$draw"
 cp "$W/SkewSlice.qml" "$draw/"
@@ -137,7 +143,7 @@ import QtQuick
 import QtQuick.Window
 Window {
     id: win
-    width: 520; height: 340; visible: true; color: "transparent"
+    width: 260; height: 340; visible: true; color: "transparent"
     function out(k, v) { console.warn("RESULT " + k + " " + JSON.stringify(v)); }
     Item {
         id: stage
@@ -146,48 +152,46 @@ Window {
             id: slice
             x: 20; y: 10; width: 200; height: 300; skew: 28; borderWidth: 0
             Rectangle { anchors.fill: parent; color: "red" }
+            Rectangle { y: 280; width: parent.width; height: 20; color: "yellow" }
             Rectangle { x: 0; width: 10; height: parent.height; color: "blue" }
             Rectangle { x: 100; width: 10; height: parent.height; color: "lime" }
         }
     }
-    Canvas {
-        id: probe
-        x: 260; width: 240; height: 320
-        property string file: "$draw/slice.png"
-        onImageLoaded: requestPaint()
-        onPaint: {
-            if (!isImageLoaded("file://" + file))
-                return;
-            const ctx = getContext("2d");
-            ctx.drawImage("file://" + file, 0, 0);
-            const at = (x, y) => { const d = ctx.getImageData(x, y, 1, 1).data; return [d[0], d[1], d[2], d[3]].join(","); };
-            const local = (x, y) => at(slice.x + x, slice.y + y);
-            win.out("pixels", {
-                centre: local(150, 150),
-                topLeftCut: local(8, 5),
-                bottomRightCut: local(195, 295),
-                topRightKept: local(195, 5),
-                bottomLeftKept: local(5, 295),
-                stripeTop: local(105, 5),
-                stripeBottom: local(105, 295)
-            });
-            const mouse = slice.children.filter(c => c.cursorShape !== undefined)[0];
-            win.out("clicks", [mouse.contains(Qt.point(150, 150)), mouse.contains(Qt.point(8, 5)), mouse.contains(Qt.point(195, 295)), mouse.contains(Qt.point(5, 295))]);
-            Qt.quit();
-        }
-    }
-    Component.onCompleted: Qt.callLater(() => stage.grabToImage(r => { r.saveToFile(probe.file); probe.loadImage("file://" + probe.file); }))
+    // At the screen's scale: a grab at another size is a layer rescaled by
+    // the same bug.
+    Component.onCompleted: Qt.callLater(() => stage.grabToImage(r => {
+        r.saveToFile("$draw/slice.png");
+        const mouse = slice.children.filter(c => c.cursorShape !== undefined)[0];
+        win.out("clicks", [mouse.contains(Qt.point(150, 150)), mouse.contains(Qt.point(8, 5)), mouse.contains(Qt.point(195, 295)), mouse.contains(Qt.point(5, 295))]);
+        Qt.quit();
+    }))
 }
 EOF
-draw_out="$(cd "$draw" && QT_QUICK_BACKEND=software QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" Draw.qml 2>&1)"
-d() { sed -n "s/^.*RESULT $1 //p" <<<"$draw_out"; }
-px() { jq -r --arg k "$1" '.[$k]' <<<"$(d pixels)"; }
-assert_eq "the slice draws its picture inside the slant" "255,0,0,255" "$(px centre)"
-assert_eq "the slant cuts the top-left corner" "0" "$(px topLeftCut | cut -d, -f4)"
-assert_eq "the slant cuts the bottom-right corner" "0" "$(px bottomRightCut | cut -d, -f4)"
-assert_eq "the top-right corner is kept" "255,0,0,255" "$(px topRightKept)"
-assert_eq "the bottom-left corner is kept" "0,0,255,255" "$(px bottomLeftKept)"
-assert_eq "the picture is upright: the stripe at the top" "0,255,0,255" "$(px stripeTop)"
-assert_eq "the picture is upright: the stripe at the bottom" "0,255,0,255" "$(px stripeBottom)"
-assert_eq "only the slanted shape takes a click" '[true,false,false,true]' "$(d clicks)"
-assert_eq "the slice loads without a warning" "" "$(grep -iE 'error|warning|TypeError|ReferenceError|Cannot' <<<"$draw_out" | grep -v RESULT || true)"
+# The pixel at (x, y) in the slice, at scale $1, as "r,g,b,a".
+pixel() {
+    local x y
+    x=$(awk -v s="$1" -v v="$2" 'BEGIN { printf "%d", (20 + v) * s }')
+    y=$(awk -v s="$1" -v v="$3" 'BEGIN { printf "%d", (10 + v) * s }')
+    magick "$draw/slice.png" -crop "1x1+$x+$y" -depth 8 txt:- | sed -n 's/^0,0: *(\([^)]*\)).*/\1/p' | tr -d ' '
+}
+have_magick=1
+command -v magick >/dev/null || {
+    have_magick=0
+    echo "  (magick missing: the slice's pixels were not read back)" >&2
+}
+for scale in 1 1.25 2; do
+    rm -f "$draw/slice.png"
+    draw_out="$(cd "$draw" && QT_SCALE_FACTOR=$scale QT_QUICK_BACKEND=software QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" Draw.qml 2>&1)"
+    at=" (scale $scale)"
+    assert_eq "only the slanted shape takes a click$at" '[true,false,false,true]' "$(sed -n 's/^.*RESULT clicks //p' <<<"$draw_out")"
+    assert_eq "the slice loads without a warning$at" "" "$(grep -iE 'error|warning|TypeError|ReferenceError|Cannot' <<<"$draw_out" | grep -v RESULT || true)"
+    ((have_magick)) || continue
+    assert_eq "the slice draws its picture inside the slant$at" "255,0,0,255" "$(pixel "$scale" 150 150)"
+    assert_eq "the slant cuts the top-left corner$at" "0" "$(pixel "$scale" 8 5 | cut -d, -f4)"
+    assert_eq "the slant cuts the bottom-right corner$at" "0" "$(pixel "$scale" 195 295 | cut -d, -f4)"
+    assert_eq "the top-right corner is kept$at" "255,0,0,255" "$(pixel "$scale" 195 5)"
+    assert_eq "the bottom-left corner is kept$at" "0,0,255,255" "$(pixel "$scale" 5 295)"
+    assert_eq "the picture is upright: the stripe at the top$at" "0,255,0,255" "$(pixel "$scale" 105 5)"
+    assert_eq "the picture is upright: the stripe at the bottom$at" "0,255,0,255" "$(pixel "$scale" 105 295)"
+    assert_eq "the picture reaches the slice's bottom edge$at" "255,255,0,255" "$(pixel "$scale" 60 290)"
+done

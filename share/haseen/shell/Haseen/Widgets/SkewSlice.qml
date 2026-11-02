@@ -11,8 +11,8 @@ import QtQuick.Shapes
 // draws nothing on haseen's software renderer (architecture §6). Here the
 // content is drawn slanted the other way into a layer and the layer is
 // slanted back: the slice's edge is a parallelogram and the picture inside
-// is not sheared at all. A layer is a texture, not a shader, so both
-// renderers draw it the same (plan 152).
+// is not sheared at all. A layer is a texture, not a shader, so the
+// software renderer draws it too (plan 152), at any scale (plan 154).
 Item {
     id: slice
 
@@ -26,6 +26,13 @@ Item {
     signal clicked
 
     readonly property real shear: skew / Math.max(1, height)
+    // Qt 6.12's software renderer draws a layer's texture flipped upside
+    // down (qsgsoftwareinternalimagenode.cpp:465) and expects the layer to
+    // have been rendered flipped already, which it renders wrong at a
+    // fractional scale: at 1.25 the bottom quarter of the picture is lost,
+    // at 2 all of it (qsgsoftwarelayer.cpp:204-208). There the layer is
+    // rendered unflipped and the content flips itself instead (plan 154).
+    readonly property bool flipped: GraphicsInfo.api === GraphicsInfo.Software
 
     Item {
         id: sheared
@@ -34,20 +41,23 @@ Item {
         height: slice.height
         layer.enabled: true
         layer.smooth: true
+        layer.textureMirroring: slice.flipped ? ShaderEffectSource.NoMirroring : ShaderEffectSource.MirrorVertically
         // x' = x - shear * y + skew: the layer's rectangle lands on the
         // slanted outline.
         transform: Matrix4x4 {
             matrix: Qt.matrix4x4(1, -slice.shear, 0, slice.skew, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
         }
 
-        // The inverse, so the content comes out upright.
+        // The inverse, so the content comes out upright; on the software
+        // renderer also upside down (y' = height - y), which its layer
+        // undoes.
         Item {
             id: frame
 
             width: slice.width
             height: slice.height
             transform: Matrix4x4 {
-                matrix: Qt.matrix4x4(1, slice.shear, 0, -slice.skew, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+                matrix: Qt.matrix4x4(1, slice.shear, 0, -slice.skew, 0, slice.flipped ? -1 : 1, 0, slice.flipped ? slice.height : 0, 0, 0, 1, 0, 0, 0, 0, 1)
             }
         }
     }
