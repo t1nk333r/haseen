@@ -29,7 +29,8 @@ usage() {
     cat <<'EOF'
 Usage: haseen wooting <command> [--json] [--dry-run]
 
-  status [--json]     device and profile summary
+  status [--json]     device and profile summary, with each profile's
+                      actuation point, Rapid Trigger and Tachyon Mode
   get                 print the active profile slot, nothing else
   list [--json]       one line per profile: SLOT<TAB>NAME<TAB>active|-
   set SLOT|NAME       switch profile (0-based slot, or profile name; a bare
@@ -112,6 +113,23 @@ parse_flags() {
     (($# == 0)) || fail "$cmd takes no further arguments (try --help)" 2
 }
 
+# The jq that turns one profile into its settings line for `status`: what the
+# keyboard said and nothing it did not (wootingd sends null for that). These
+# are the profile's own values; keys with their own are not read (plan 153).
+# Millimetres keep two decimals, as Wootility shows them.
+# shellcheck disable=SC2016 # jq's variables, not the shell's
+SETTINGS_JQ='
+    def mm: (. * 100 | round) as $h | "\($h / 100 | floor).\(($h % 100) + 100 | tostring | .[1:]) mm";
+    [ (if .actuation != null then "actuation \(.actuation | mm)" else empty end),
+      (if .rapidTrigger == true then
+          (if .sensitivity != null
+           then "\(if .continuous == true then "continuous " else "" end)Rapid Trigger \(.sensitivity | mm)"
+           else "Rapid Trigger on" end)
+       elif .rapidTrigger == false then "Rapid Trigger off"
+       else empty end),
+      (if .tachyon == true then "Tachyon Mode" else empty end)
+    ] | join(", ")'
+
 cmd_status() {
     local reply
     parse_flags status "$@"
@@ -133,7 +151,7 @@ cmd_status() {
         exit 4
     fi
 
-    local slot name named active
+    local slot name named active settings
     printf '%-15s %s\n' 'keyboard:' 'present'
     printf '%-15s v%s\n' 'firmware:' "$(jq -r '.firmware' <<<"$reply")"
     printf '%-15s %s\n' 'serial:' "$(jq -r '.serial' <<<"$reply")"
@@ -141,12 +159,16 @@ cmd_status() {
         "$(jq -r '.node' <<<"$reply")" "$(jq -r '.framing' <<<"$reply")"
     printf '%-15s %s of %s\n' 'active slot:' \
         "$(jq -r '.active' <<<"$reply")" "$(jq -r '.count' <<<"$reply")"
-    while IFS=$'\t' read -r slot name named active; do
+    while IFS=$'\t' read -r slot name named active settings; do
         local marker=' ' suffix=''
         if [[ $active == true ]]; then marker='*'; fi
         if [[ $named != true ]]; then suffix='  (unnamed slot)'; fi
         printf '  %s %s  %s%s\n' "$marker" "$slot" "$name" "$suffix"
-    done < <(jq -r '.profiles[] | [(.slot | tostring), .name, (.named | tostring), (.active | tostring)] | @tsv' <<<"$reply")
+        # A tab is whitespace to read, so an empty field merges into the next.
+        # The settings are last, where an empty one has nothing to shift, and
+        # the name is never empty: wootingd labels an unnamed slot.
+        if [[ -n $settings ]]; then printf '       %s\n' "$settings"; fi
+    done < <(jq -r "def settings: $SETTINGS_JQ;"' .profiles[] | [(.slot | tostring), .name, (.named | tostring), (.active | tostring), settings] | @tsv' <<<"$reply")
 }
 
 cmd_get() {

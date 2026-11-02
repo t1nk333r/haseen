@@ -14,8 +14,8 @@ owner wrote it; there is no third-party upstream.
 
 | Original | haseen |
 |---|---|
-| `daemon/` (Rust crate `wootingd`) | `core/wootingd/`, built by `tools/build-sidecar.sh` into `share/haseen/sidecar/wootingd`; behaviour unchanged |
-| `Model.js`, `tests/model.test.js` | `Model.js`, `tests/model.test.js` here; the logic is unchanged |
+| `daemon/` (Rust crate `wootingd`) | `core/wootingd/`, built by `tools/build-sidecar.sh` into `share/haseen/sidecar/wootingd`; behaviour unchanged by the port (plan 153 later added profile settings, below) |
+| `Model.js`, `tests/model.test.js` | `Model.js`, `tests/model.test.js` here; the logic is unchanged by the port (plan 153 later added profile settings, below) |
 | `Panel.qml` (bar widget and its popup) | `Widget.qml` (bar), `Panel.qml` (the profile list, as haseen's lazy panel), `ProfileRow.qml` |
 | `LayoutPanel.qml` (keyboard layout overlay) | `Board.qml`, shown inside the panel by its Keyboard layout pill |
 | the socket lifecycle repeated in both QML files | `WootingLink.qml`, one copy |
@@ -56,3 +56,14 @@ became haseen manifest settings with the same names and defaults.
   39, 48 and 55 are named `CMD_APPLY_PROFILE`, `CMD_SLOT_CONTENT`,
   `CMD_SLOT_KEYMAP` and `CMD_SLOT_NAME`; the protocol citations are pinned to commits, and the facts
   taken from the unlicensed wootswitch are stated without its text.
+
+## Since the port
+
+- **Profile settings (plan 153).** wootingd decodes each profile's actuation
+  point, Rapid Trigger with its sensitivity, continuous Rapid Trigger, Tachyon
+  Mode and colour from the two replies it already read for every profile
+  (commands 39 and 55), and publishes them in each profile object. It sends
+  no new command. `wootingd doctor` and `haseen wooting status` print them,
+  and the panel shows them under each profile's name. The field meanings are
+  facts from OpenKeyboard's protocol notes (AGPL-3.0, nothing copied;
+  `NOTICE.md`), checked against the owner's 60HE+.

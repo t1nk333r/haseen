@@ -26,8 +26,19 @@
 //! source of facts only (a number, a byte position), and nothing of its text
 //! is quoted or copied here.
 //!
+//! What the profile-settings and metadata payloads hold (plan 153) is known
+//! from OpenKeyboard's protocol notes, cited as
+//!
+//!   OpenKeyboard           = github.com/OpenKeyboard-Pr0ject/openkeyboard
+//!                            (AGPL-3.0) @ 4029a069189e5542e86ebceaac9d95e8b95e885e
+//!
+//! by `docs/wooting.md:<line>`. AGPL-3.0 is not MIT: OpenKeyboard is a source
+//! of facts only (a field number, an encoding range), as wootswitch is, and
+//! none of its code or text is quoted or copied here.
+//!
 //! Lines marked PROBED were established on a Wooting 60HE+ (31e3:1322,
-//! firmware v2.14.0) because no source publishes them.
+//! firmware v2.14.0) because no source publishes them; PROBED 2.14.1 marks
+//! what plan 153 read from the same keyboard on firmware v2.14.1.
 
 /// wooting-rgb-sdk/src/wooting-usb.c:34  `#define WOOTING_VID2 0x31e3`
 pub const WOOTING_VID: u16 = 0x31E3;
@@ -177,6 +188,8 @@ pub fn framing(arm: bool) -> Framing {
 /// Reply buffer size. On ARM firmware every reply is a single input report of
 /// 33 bytes, the report id followed by 32 bytes (PROBED: every reply on this
 /// device arrived that way); 128 leaves headroom for a longer report.
+/// PROBED 2.14.1: the longer report is real; slot metadata over 26 bytes
+/// arrives as report 2, 63 bytes.
 pub const MAX_REPLY: usize = 128;
 
 /// wooting-rgb-sdk/src/wooting-usb.c:31  `#define WOOTING_READ_RESPONSE_TIMEOUT 1000`
@@ -243,14 +256,17 @@ pub const CMD_APPLY_PROFILE: u8 = 38;
 /// addressable and slot 4 returns 0xFF, matching the 4 onboard profiles in
 /// Wooting's quickstart docs (Fn+O / Fn+P / Fn+[ / Fn+]). Addressable is NOT
 /// the same as activatable — see `CMD_ACTIVATE_PROFILE` and
-/// `Device::profile_stored`.
+/// `Device::profile_settings`.
 pub const CMD_SLOT_KEYMAP: u8 = 48;
 /// Reads what a slot holds: ordinal 39 in wootswitch's list (a fact; no code
 /// taken). PROBED: the activatable-slot oracle. Slot 0 returns a 22-byte
 /// payload, slots 1..=3 return a zero-length payload on this device.
+/// What the payload is, the profile's own settings, is plan 153's
+/// (`ProfileSettings`).
 pub const CMD_SLOT_CONTENT: u8 = 39;
 /// Reads a slot's name: ordinal 55 in wootswitch's list (a fact; no code
-/// taken). PROBED: answers the name as protobuf (`protobuf_bytes`).
+/// taken). PROBED: answers the name as protobuf (`protobuf_bytes`). The
+/// profile colour in the same payload is plan 153's (`ProfileMeta`).
 pub const CMD_SLOT_NAME: u8 = 55;
 
 /// Upper bound of the slot-range probe (`Device::profile_range`): the range
@@ -288,8 +304,11 @@ pub fn frame(arm: bool, command: u8, params: [u8; 4]) -> [u8; COMMAND_SIZE] {
     ]
 }
 
-/// A parsed reply. Fixed-size: replies are one 33-byte report, so nothing is
+/// A parsed reply. Fixed-size: a reply is one input report, so nothing is
 /// heap-allocated on the hot path (the poll loop runs this every tick).
+/// PROBED 2.14.1: a payload of up to 26 bytes comes in report 1 (33 bytes
+/// read), a longer one in report 2 (63 bytes read: slot metadata with a name
+/// and a colour), which `MAX_REPLY` holds whole.
 pub struct Reply {
     pub buf: [u8; MAX_REPLY],
     pub len: usize,
@@ -392,6 +411,161 @@ pub fn protobuf_bytes(payload: &[u8], field: u8, truncated: bool) -> Option<&[u8
     None
 }
 
+/// One protobuf varint at `*i`, moving `*i` past it. None when it runs off
+/// the end or past the ten bytes a u64 takes, or when its tenth byte holds
+/// more than the one bit left, which would otherwise be dropped unseen.
+fn read_varint(buf: &[u8], i: &mut usize) -> Option<u64> {
+    let mut value = 0u64;
+    for shift in (0..64).step_by(7) {
+        let byte = *buf.get(*i)?;
+        *i += 1;
+        if shift == 63 && byte > 1 {
+            return None;
+        }
+        value |= u64::from(byte & 0x7F) << shift;
+        if byte & 0x80 == 0 {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// The first varint field with the given number, or None when there is none
+/// or the bytes stop making sense before it. A field cut short by the
+/// transport is None, never a guess: its value would be wrong.
+pub fn protobuf_varint(payload: &[u8], field: u64) -> Option<u64> {
+    let mut i = 0usize;
+    while i < payload.len() {
+        let key = read_varint(payload, &mut i)?;
+        if key == 0 {
+            return None; // zero padding: end of meaningful data
+        }
+        match key & 0x07 {
+            0 => {
+                let value = read_varint(payload, &mut i)?;
+                if key >> 3 == field {
+                    return Some(value);
+                }
+            }
+            2 => {
+                let len = usize::try_from(read_varint(payload, &mut i)?).ok()?;
+                i = i.checked_add(len)?;
+            }
+            5 => i += 4,
+            1 => i += 8,
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// A stored distance in hundredths of a millimetre, rounded to the 0.05 mm
+/// step Wootility offers. Two encodings occur, both spanning 0 to 4 mm
+/// (OpenKeyboard docs/wooting.md:166-167): precise, 0x4000..=0x7FFF over
+/// 0x3FFF steps, and legacy, 0..=0xFF over 255. Anything else is not a
+/// distance, and neither is zero. Zero is the field's default value, the one
+/// protobuf leaves out, and Wootility sets nothing below 0.1 mm
+/// (docs/wooting.md:158), so a zero is more likely unset than a setting:
+/// "0.00 mm" would be a wrong value where nothing is the honest one. A value
+/// that rounds to 0.05 mm stays: it is not the default, so it was stored.
+///
+/// PROBED 2.14.1: every distance in this 60HE+'s three profiles is precise;
+/// their actuation points read 0x67FF, 0x5000 and 0x5999, which are 2.50,
+/// 1.00 and 1.60 mm.
+pub fn travel_hundredths(raw: u64) -> Option<u16> {
+    let (offset, span) = match raw {
+        0x4000..=0x7FFF => (raw - 0x4000, 0x3FFF),
+        0..=0xFF => (raw, 0xFF),
+        _ => return None,
+    };
+    // 4 mm is 80 steps of 0.05 mm; rounded half up, in integers.
+    let steps = (offset * 80 * 2 + span) / (2 * span);
+    if steps == 0 {
+        return None;
+    }
+    u16::try_from(steps * 5).ok()
+}
+
+/// One profile's own settings, from the `CMD_SLOT_CONTENT` (39, 0x27) payload:
+/// a protobuf whose field 1 is the settings message (OpenKeyboard
+/// docs/wooting.md:133-144). Each value is None when the payload does not
+/// carry it, so an unknown firmware shows nothing rather than a wrong value.
+/// These are the profile's defaults: a key with its own actuation or Rapid
+/// Trigger (commands 0x31 and 0x3D, not read) overrides them.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ProfileSettings {
+    /// Actuation point, hundredths of a millimetre (`travel_hundredths`).
+    pub actuation: Option<u16>,
+    pub rapid_trigger: Option<bool>,
+    /// Rapid Trigger sensitivity, hundredths of a millimetre.
+    pub sensitivity: Option<u16>,
+    /// Continuous Rapid Trigger. Stored inverted: field 7 is 1 when it is off.
+    pub continuous: Option<bool>,
+    pub tachyon: Option<bool>,
+}
+
+impl ProfileSettings {
+    /// PROBED 2.14.1, slot 0 of this 60HE+: `0a 14 08 ff cf 01 10 01 18 00 20
+    /// 90 a0 01 28 00 30 02 38 01 48 00`, actuation 2.50 mm, Rapid Trigger off
+    /// at 1.00 mm, continuous off, Tachyon off. Fields 2 and 6 are not known
+    /// and not read.
+    pub fn decode(payload: &[u8], truncated: bool) -> ProfileSettings {
+        let Some(inner) = protobuf_bytes(payload, 1, truncated) else {
+            return ProfileSettings::default();
+        };
+        let flag = |field| match protobuf_varint(inner, field) {
+            Some(0) => Some(false),
+            Some(1) => Some(true),
+            _ => None,
+        };
+        // Tachyon Mode moved fields 5 and 9 together on OpenKeyboard's 80HE
+        // (docs/wooting.md:141,144) and which one the firmware reads is not
+        // known, so either one set means on.
+        let tachyon = match (protobuf_varint(inner, 5), protobuf_varint(inner, 9)) {
+            (None, None) => None,
+            (a, b) => Some(a.unwrap_or(0) != 0 || b.unwrap_or(0) != 0),
+        };
+        ProfileSettings {
+            actuation: protobuf_varint(inner, 1).and_then(travel_hundredths),
+            rapid_trigger: flag(3),
+            sensitivity: protobuf_varint(inner, 4).and_then(travel_hundredths),
+            continuous: flag(7).map(|off| !off),
+            tachyon,
+        }
+    }
+}
+
+/// What the `CMD_SLOT_NAME` (55, 0x37) payload says about a profile: field 1
+/// the name, field 2 a colour message whose fields 1, 2 and 3 are red, green
+/// and blue (OpenKeyboard docs/wooting.md:115-121); field 3, the icon, is not
+/// read.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ProfileMeta {
+    pub name: Option<String>,
+    pub color: Option<(u8, u8, u8)>,
+}
+
+impl ProfileMeta {
+    /// PROBED 2.14.1: slot 2 of this 60HE+ answers `0a 07 "Firefly" 12 08 08
+    /// ff 01 10 d4 01 18 5c 1a 0c "woot:p:black"`, colour (255, 212, 92); its
+    /// other two profiles carry no colour message at all.
+    pub fn decode(payload: &[u8], truncated: bool) -> ProfileMeta {
+        let name = protobuf_bytes(payload, 1, truncated)
+            .map(|bytes| String::from_utf8_lossy(bytes).trim().to_string());
+        // A colour cut short by the transport is not a colour, so it is read
+        // only when whole. Inside it a missing component is 0, as protobuf
+        // leaves zero values out.
+        let color = protobuf_bytes(payload, 2, false).and_then(|message| {
+            let part = |field| match protobuf_varint(message, field) {
+                None => Some(0),
+                Some(value) => u8::try_from(value).ok(),
+            };
+            Some((part(1)?, part(2)?, part(3)?))
+        });
+        ProfileMeta { name, color }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,8 +644,8 @@ mod tests {
     }
 
     /// The unconfigured-slot case as the hardware sends it: a full 33-byte
-    /// report whose length byte is zero. `profile_stored` decides "empty" from
-    /// exactly this.
+    /// report whose length byte is zero. `profile_settings` decides "empty"
+    /// from exactly this.
     #[test]
     fn empty_payload_for_unconfigured_slot() {
         let r = arm_report(39, 0x88, 0, &[]);
@@ -584,5 +758,145 @@ mod tests {
         // Fixed64 / fixed32 keys at the end of the buffer.
         assert_eq!(protobuf_bytes(&[0x09], 1, false), None);
         assert_eq!(protobuf_bytes(&[0x0D, 1, 2], 1, false), None);
+    }
+
+    // --- plan 153: profile settings and colour ---------------------------------
+    // The SLOT_* captures are this 60HE+'s replies on firmware 2.14.1, read
+    // with commands 39 and 55 alone.
+
+    const SLOT0_SETTINGS: &[u8] = &[
+        0x0A, 0x14, 0x08, 0xFF, 0xCF, 0x01, 0x10, 0x01, 0x18, 0x00, 0x20, 0x90, 0xA0, 0x01, 0x28,
+        0x00, 0x30, 0x02, 0x38, 0x01, 0x48, 0x00,
+    ];
+    const SLOT1_SETTINGS: &[u8] = &[
+        0x0A, 0x14, 0x08, 0x80, 0xA0, 0x01, 0x10, 0x01, 0x18, 0x00, 0x20, 0xE6, 0x8C, 0x01, 0x28,
+        0x00, 0x30, 0x02, 0x38, 0x01, 0x48, 0x00,
+    ];
+
+    #[test]
+    fn varints_read_whole_or_not_at_all() {
+        let mut i = 0;
+        assert_eq!(read_varint(&[0xFF, 0xCF, 0x01], &mut i), Some(0x67FF));
+        assert_eq!(i, 3);
+        let mut i = 0;
+        assert_eq!(read_varint(&[0x90, 0xA0], &mut i), None, "cut short");
+        let mut i = 0;
+        assert_eq!(read_varint(&[0x80; 11], &mut i), None, "longer than a u64");
+        let mut max = [0xFF; 10];
+        max[9] = 0x01;
+        let mut i = 0;
+        assert_eq!(read_varint(&max, &mut i), Some(u64::MAX), "all 64 bits");
+        max[9] = 0x02;
+        let mut i = 0;
+        assert_eq!(read_varint(&max, &mut i), None, "a 65th bit");
+        assert_eq!(protobuf_varint(&[0x08, 0x05, 0x10, 0x07], 2), Some(7));
+        assert_eq!(protobuf_varint(&[0x08, 0x05], 2), None);
+        // A length-delimited field before the wanted one is skipped whole.
+        assert_eq!(protobuf_varint(&[0x0A, 0x02, 0x10, 0x09, 0x10, 0x03], 2), Some(3));
+        // A two-byte key (field 16) is read as one key, not two.
+        assert_eq!(protobuf_varint(&[0x80, 0x01, 0x05, 0x08, 0x02], 1), Some(2));
+        assert_eq!(protobuf_varint(&[0x08], 1), None, "value missing");
+        assert_eq!(protobuf_varint(&[0x00, 0x08, 0x01], 1), None, "zero padding ends the scan");
+        assert_eq!(protobuf_varint(&[0x0B], 1), None, "group wire types are not ours");
+    }
+
+    #[test]
+    fn travel_follows_both_encodings_and_wootility_step() {
+        // This 60HE+'s own values.
+        assert_eq!(travel_hundredths(0x67FF), Some(250));
+        assert_eq!(travel_hundredths(0x5000), Some(100));
+        assert_eq!(travel_hundredths(0x5999), Some(160));
+        assert_eq!(travel_hundredths(0x5010), Some(100));
+        assert_eq!(travel_hundredths(0x4666), Some(40));
+        // The ends of the precise range; zero, in either encoding, is unset.
+        assert_eq!(travel_hundredths(0x4000), None);
+        assert_eq!(travel_hundredths(0x4001), None, "rounds to zero");
+        assert_eq!(travel_hundredths(0x7FFF), Some(400));
+        assert_eq!(travel_hundredths(0), None);
+        // Legacy 8-bit: 0x1A is 0.408 mm and 0x3F 0.988 mm, shown on the step.
+        assert_eq!(travel_hundredths(0x1A), Some(40));
+        assert_eq!(travel_hundredths(0x3F), Some(100));
+        assert_eq!(travel_hundredths(0xFF), Some(400));
+        // Between the encodings, and above them, is not a distance.
+        assert_eq!(travel_hundredths(0x100), None);
+        assert_eq!(travel_hundredths(0x3FFF), None);
+        assert_eq!(travel_hundredths(0x8000), None);
+    }
+
+    #[test]
+    fn settings_decode_this_keyboards_profiles() {
+        assert_eq!(
+            ProfileSettings::decode(SLOT0_SETTINGS, false),
+            ProfileSettings {
+                actuation: Some(250),
+                rapid_trigger: Some(false),
+                sensitivity: Some(100),
+                continuous: Some(false),
+                tachyon: Some(false),
+            }
+        );
+        let slot1 = ProfileSettings::decode(SLOT1_SETTINGS, false);
+        assert_eq!((slot1.actuation, slot1.sensitivity), (Some(100), Some(40)));
+    }
+
+    #[test]
+    fn settings_flags_rapid_trigger_continuous_and_tachyon() {
+        // Rapid Trigger on, continuous on (field 7 = 0), Tachyon in field 5 only.
+        let on = [0x0A, 0x0C, 0x08, 0x80, 0xA0, 0x01, 0x18, 0x01, 0x28, 0x01, 0x38, 0x00, 0x20, 0x1A];
+        let s = ProfileSettings::decode(&on, false);
+        assert_eq!(s.rapid_trigger, Some(true));
+        assert_eq!(s.continuous, Some(true));
+        assert_eq!(s.tachyon, Some(true));
+        assert_eq!(s.sensitivity, Some(40), "a legacy sensitivity");
+        // Tachyon in field 9 only is on too.
+        let s = ProfileSettings::decode(&[0x0A, 0x04, 0x28, 0x00, 0x48, 0x01], false);
+        assert_eq!(s.tachyon, Some(true));
+        // Neither field: unknown, not off.
+        let s = ProfileSettings::decode(&[0x0A, 0x02, 0x18, 0x01], false);
+        assert_eq!((s.tachyon, s.rapid_trigger), (None, Some(true)));
+        // A flag that is neither 0 nor 1 is unknown.
+        assert_eq!(ProfileSettings::decode(&[0x0A, 0x02, 0x18, 0x02], false).rapid_trigger, None);
+    }
+
+    #[test]
+    fn settings_missing_or_cut_show_nothing_wrong() {
+        assert_eq!(ProfileSettings::decode(&[], false), ProfileSettings::default());
+        assert_eq!(ProfileSettings::decode(&[0x12, 0x00], false), ProfileSettings::default());
+        // Cut inside the sensitivity varint: what came before is kept, the cut
+        // value and everything after it are unknown.
+        let cut = &SLOT0_SETTINGS[..12];
+        let s = ProfileSettings::decode(cut, true);
+        assert_eq!((s.actuation, s.rapid_trigger), (Some(250), Some(false)));
+        assert_eq!((s.sensitivity, s.continuous, s.tachyon), (None, None, None));
+        // Without the transport's word that it was cut, the same bytes are malformed.
+        assert_eq!(ProfileSettings::decode(cut, false), ProfileSettings::default());
+    }
+
+    #[test]
+    fn metadata_carries_the_colour_when_whole() {
+        let mut firefly = vec![0x0A, 0x07];
+        firefly.extend_from_slice(b"Firefly");
+        firefly.extend_from_slice(&[0x12, 0x08, 0x08, 0xFF, 0x01, 0x10, 0xD4, 0x01, 0x18, 0x5C]);
+        firefly.extend_from_slice(&[0x1A, 0x0C]);
+        firefly.extend_from_slice(b"woot:p:black");
+        let meta = ProfileMeta::decode(&firefly, false);
+        assert_eq!(meta.name.as_deref(), Some("Firefly"));
+        assert_eq!(meta.color, Some((255, 212, 92)));
+
+        // Slot 0 as it reads: a name and an icon, no colour.
+        let mut typing = vec![0x0A, 0x10];
+        typing.extend_from_slice(b"1 Typing Profile");
+        typing.extend_from_slice(&[0x1A, 0x0C]);
+        typing.extend_from_slice(b"woot:p:black");
+        let meta = ProfileMeta::decode(&typing, false);
+        assert_eq!((meta.name.as_deref(), meta.color), (Some("1 Typing Profile"), None));
+
+        // A zero component left out is 0; a value past 255 is no colour.
+        assert_eq!(ProfileMeta::decode(&[0x12, 0x03, 0x08, 0xFF, 0x01], false).color, Some((255, 0, 0)));
+        assert_eq!(ProfileMeta::decode(&[0x12, 0x03, 0x08, 0x80, 0x02], false).color, None);
+        // Cut by the transport inside the colour: the name survives, the colour does not.
+        let meta = ProfileMeta::decode(&firefly[..14], true);
+        assert_eq!((meta.name.as_deref(), meta.color), (Some("Firefly"), None));
+        assert_eq!(ProfileMeta::decode(&[], false), ProfileMeta::default());
     }
 }

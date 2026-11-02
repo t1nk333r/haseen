@@ -106,6 +106,10 @@ Column {
             width: root.width
             // A slot without stored metadata carries wootingd's positional label.
             text: modelData.name
+            // The profile's own actuation, Rapid Trigger and Tachyon Mode
+            // (plan 153), millimetres in the language's digits.
+            detail: Model.settingsParts(modelData).map(part => part.value === undefined ? I18n.tr(part.text) : I18n.tr(part.text, I18n.formatNumber(part.value, 2))).join(" · ")
+            swatch: modelData.color || ""
             active: modelData.slot === root.keyboard.active
             onClicked: root.choose(modelData.slot)
         }

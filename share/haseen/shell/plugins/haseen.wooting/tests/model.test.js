@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // From the owner's t1nk33r.wooting (t1nk333r/haseen-wooting tests/model.test.js
-// at 184f6fa, MIT, Copyright (c) 2026 t1nk33r); plan 099, unchanged otherwise.
+// at 184f6fa, MIT, Copyright (c) 2026 t1nk33r); plan 099, unchanged otherwise
+// until plan 153 added the profiles' settings and colour.
 // Unit tests for Model.js (pure view-model logic behind the bar widget). The
 // file begins with `.pragma library` (a QML directive, invalid Node JS) —
 // strip it, evaluate, then assert against the exported functions.
@@ -27,7 +28,8 @@ new Function("exports", src + `
   exports.CODE_FN = CODE_FN; exports.FN_LAYER = FN_LAYER; exports.namedCount = namedCount;
   exports.CODE_UNASSIGNED = CODE_UNASSIGNED;
   exports.emptyLink = emptyLink; exports.linkStep = linkStep; exports.linkHint = linkHint;
-  exports.LINK_RETRY_LIMIT = LINK_RETRY_LIMIT;`)(M)
+  exports.LINK_RETRY_LIMIT = LINK_RETRY_LIMIT;
+  exports.profileEntry = profileEntry; exports.settingsParts = settingsParts;`)(M)
 
 let pass = 0, fail = 0
 function eq(got, want, label) {
@@ -37,13 +39,15 @@ function eq(got, want, label) {
 }
 function ok(cond, label) { cond ? pass++ : (fail++, console.log(`  FAIL: ${label}`)) }
 
-// Verbatim daemon output, keyboard connected.
+// Verbatim daemon output, keyboard connected; slot 0's settings as wootingd
+// read them on firmware 2.14.1 (plan 153). The other slots carry none.
 const STATUS = {
   ok: true, present: true, firmware: "2.14.0",
   serial: "A00B0000W00T00000S00H00000", node: "/dev/hidraw5", framing: "arm",
   count: 4, active: 0,
   profiles: [
-    { slot: 0, name: "1 Typing Profile", named: true, active: true },
+    { slot: 0, name: "1 Typing Profile", named: true, active: true,
+      actuation: 2.5, rapidTrigger: false, sensitivity: 1, continuous: false, tachyon: false, color: null },
     { slot: 1, name: "Profile 2", named: false, active: false },
     { slot: 2, name: "Profile 3", named: false, active: false },
     { slot: 3, name: "Profile 4", named: false, active: false }
@@ -82,7 +86,10 @@ eq(live.node, "/dev/hidraw5", "applyMessage: node")
 eq(live.count, 4, "applyMessage: count")
 eq(live.active, 0, "applyMessage: active")
 eq(live.profiles.length, 4, "applyMessage: four profiles")
-eq(live.profiles[0], { slot: 0, name: "1 Typing Profile", named: true }, "applyMessage: slot 0 mapped")
+eq(live.profiles[0], {
+  slot: 0, name: "1 Typing Profile", named: true,
+  actuation: 2.5, rapidTrigger: false, sensitivity: 1, continuous: false, tachyon: false, color: null
+}, "applyMessage: slot 0 mapped with its settings")
 eq(live.profiles[1].named, false, "applyMessage: unnamed slot flagged")
 
 // A subscription event carries the same fields under a different key.
@@ -126,12 +133,46 @@ const junk = M.applyMessage(M.emptyState(), {
   profiles: [{ slot: 0, name: "a", named: true }, { name: "no slot" }, null, 7, "x", { slot: 1 }]
 })
 eq(junk.profiles.length, 2, "applyMessage: entries without a slot are dropped")
-eq(junk.profiles[1], { slot: 1, name: "", named: false }, "applyMessage: missing name defaults empty")
+eq(junk.profiles[1], { slot: 1, name: "", named: false, actuation: null, rapidTrigger: null, sensitivity: null, continuous: null, tachyon: null, color: null }, "applyMessage: missing name defaults empty")
 // A null entry must not throw: an exception inside the QML onRead handler
 // would drop the whole update.
 let threw = false
 try { M.applyMessage(M.emptyState(), { ok: true, profiles: [null] }) } catch (e) { threw = true }
 ok(!threw, "applyMessage: null profile entry does not throw")
+
+// ---- profile settings and colour (plan 153) ----------------------------
+eq(moved.profiles[0].actuation, 2.5, "applyMessage: bare active keeps the settings")
+eq(M.cloneState(live).profiles[0].sensitivity, 1, "cloneState: keeps the settings")
+// Built, not written out: the plugin tree keeps no colour literal
+// (tests/test-shell.sh), and this one is keyboard data anyway.
+const firefly = "#" + "ffd45c"
+eq(M.profileEntry({ slot: 2, color: firefly.toUpperCase() }).color, firefly, "profileEntry: colour, lower case")
+const odd = M.profileEntry({
+  slot: 2, actuation: "2.5", rapidTrigger: 1, sensitivity: 9, continuous: "no", tachyon: null, color: "gold"
+})
+eq([odd.actuation, odd.rapidTrigger, odd.sensitivity, odd.continuous, odd.tachyon, odd.color],
+  [null, null, null, null, null, null], "profileEntry: what is not a value of its kind is unknown")
+eq(M.profileEntry({ slot: 0, actuation: -0.1 }).actuation, null, "profileEntry: negative travel")
+eq(M.profileEntry({ slot: 0, sensitivity: Infinity }).sensitivity, null, "profileEntry: infinite travel")
+// wootingd sends no zero (plan 153), but the model does not second-guess one.
+eq(M.profileEntry({ slot: 0, actuation: 0 }).actuation, 0, "profileEntry: 0 mm stays a number")
+eq(M.profileEntry({ slot: 0, sensitivity: 4 }).sensitivity, 4, "profileEntry: 4 mm is a value")
+
+eq(M.settingsParts(live.profiles[0]), [
+  { text: "Actuation %1 mm", value: 2.5 }, { text: "Rapid Trigger off" }
+], "settingsParts: this keyboard's slot 0")
+eq(M.settingsParts(M.profileEntry({ slot: 1, actuation: 1, rapidTrigger: true, sensitivity: 0.4, continuous: false })), [
+  { text: "Actuation %1 mm", value: 1 }, { text: "Rapid Trigger %1 mm", value: 0.4 }
+], "settingsParts: Rapid Trigger on, with its sensitivity")
+eq(M.settingsParts(M.profileEntry({ slot: 1, rapidTrigger: true, sensitivity: 0.4, continuous: true, tachyon: true })), [
+  { text: "Continuous Rapid Trigger %1 mm", value: 0.4 }, { text: "Tachyon Mode" }
+], "settingsParts: continuous Rapid Trigger and Tachyon Mode")
+eq(M.settingsParts(M.profileEntry({ slot: 1, rapidTrigger: true })), [{ text: "Rapid Trigger on" }],
+  "settingsParts: Rapid Trigger on without a sensitivity")
+eq(M.settingsParts(M.profileEntry({ slot: 1, rapidTrigger: false, continuous: true, tachyon: false })),
+  [{ text: "Rapid Trigger off" }], "settingsParts: continuous says nothing while Rapid Trigger is off")
+eq(M.settingsParts(live.profiles[1]), [], "settingsParts: a profile without settings says nothing")
+eq(M.settingsParts(null), [], "settingsParts: no profile")
 
 // ---- immutability -------------------------------------------------------
 // The widget assigns a fresh object to trigger QML bindings; mutating the

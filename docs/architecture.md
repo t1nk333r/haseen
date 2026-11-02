@@ -604,7 +604,9 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 
 haseen has two compiled languages: Go for `core/` (§5.6) and Rust for
 `core/wootingd/`, the daemon the owner wrote for the t1nk33r.wooting plugin,
-vendored by owner decision (2026-10-21) with its behaviour unchanged.
+vendored by owner decision (2026-10-21) with its behaviour unchanged; plan 153
+added each profile's settings and colour to what it publishes, decoded from
+replies it already read.
 `tools/build-sidecar.sh` builds it with `cargo build --release --locked`
 in a target directory outside the tree (`$CARGO_TARGET_DIR`, else
 `$XDG_CACHE_HOME/haseen/wootingd-target`) and installs the binary as
@@ -613,7 +615,7 @@ fails, it says so and skips it, like the Go part without go: the daemon
 serves one off-by-default plugin and never stops an install.
 `HASEEN_REQUIRE_CARGO=1` makes that an error. Its
 one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
-`rust` and runs its 49 unit tests (`tests/test-wootingd.sh`).
+`rust` and runs its 57 unit tests (`tests/test-wootingd.sh`).
 
 - **One owner.** Only one process may hold a Wooting keyboard's vendor
   command interface (HID usage page 0xFF55; 0x1337 on standard firmware).
@@ -630,21 +632,21 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
   never enabled. So wootingd runs only while a Wooting is attached, and
   removes its socket on SIGTERM.
 - **Resource profile: a recorded exception to §6.** The daemon is vendored
-  unchanged (owner, 2026-10-21, plan 099), so §6's 2 s floor does not hold
-  inside it. While it runs:
+  (owner, 2026-10-21, plan 099), and plan 153 added no device I/O, so §6's
+  2 s floor does not hold inside it. While it runs:
   - one thread reads the active profile every 1.5 s, which is one HID round
-    trip, and the profile list every 30 s (`core/wootingd/src/main.rs:50`,
-    `:202`, loop at `:917`);
+    trip, and the profile list every 30 s (`core/wootingd/src/main.rs:52`,
+    `:274`, loop at `:992`);
   - a second thread owns the analog interface for the daemon's whole life,
-    whether or not anyone subscribed (`main.rs:459`, spawned at `:940`).
+    whether or not anyone subscribed (`main.rs:529`, spawned at `:1015`).
     - It blocks in `poll(2)` for at most 250 ms (`ANALOG_READ_TIMEOUT_MS`,
-      `main.rs:443`), so an idle keyboard wakes it about 4 times a second.
+      `main.rs:513`), so an idle keyboard wakes it about 4 times a second.
     - While keys move, every analog report, up to 1 kHz, is decoded and given
-      to the Fn-layer learner (`fnmap.observe`, `main.rs:528`). Broadcasts
+      to the Fn-layer learner (`fnmap.observe`, `main.rs:598`). Broadcasts
       are coalesced to at most 60 a second, and the learned map is written
       to disk only on a release that taught it something.
     - While the interface is absent it retries every 1.5 s (`ANALOG_RETRY`,
-      `main.rs:445`).
+      `main.rs:515`).
 
   The shell side never polls. The 250 ms read timeout only bounds how fast
   an unplug is noticed, so the owner could raise it later.
@@ -659,7 +661,9 @@ one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
 - **The shell side.** `haseen.wooting` (off by default) has no HID code and
   no timer but a bounded 2 s connect retry: it watches the socket file
   through `FileView` (inotify), so with no keyboard it takes no room and does
-  nothing. The panel lists the stored profiles; its keyboard drawing opens
+  nothing. The panel lists the stored profiles, each with its own actuation
+  point, Rapid Trigger and Tachyon Mode and its colour (plan 153); its
+  keyboard drawing opens
   the shell's analog subscription only while it is shown, and receives at
   most 60 frames a second, coalesced by the daemon. The daemon reads the
   analog interface whether or not anyone subscribed (above).
