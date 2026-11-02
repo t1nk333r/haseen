@@ -241,7 +241,7 @@ EOF
     assert_contains "lua: volume via wpctl" "$OUTPUT" "BIND XF86AudioRaiseVolume -> wpctl set-volume"
     assert_contains "lua: brightness via haseen brightness" "$OUTPUT" "BIND XF86MonBrightnessUp -> haseen brightness up"
     assert_contains "lua: keyboard backlight via haseen brightness" "$OUTPUT" "BIND XF86KbdBrightnessDown -> haseen brightness down kbd"
-    assert_contains "lua: screenshot via haseen capture" "$OUTPUT" "BIND PRINT -> haseen capture screenshot"
+    assert_contains "lua: PRINT opens the capture toolbar or a screenshot" "$OUTPUT" "BIND PRINT -> haseen capture toolbar"
     assert_contains "lua: menu bind" "$OUTPUT" "BIND SUPER + SPACE -> haseen menu"
     assert_eq "lua: no key bound twice" "" "$(grep -oE '^BIND [^>]+->' <<<"$OUTPUT" | sort | uniq -d)"
     assert_contains "lua: workspace binds" "$OUTPUT" "BIND SUPER + code:19 -> dsp.focus"

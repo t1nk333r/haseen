@@ -402,7 +402,7 @@ assert_eq "without the desktop layer: nothing to do" "0 " "$STATUS $OUTPUT"
 
 # --- binds, the overlay rule and the seed ---------------------------------------------
 binds="$(cat "$HASEEN_PATH/default/hypr/binds.lua")"
-assert_contains "PRINT is Omasnap's pick" "$binds" 'b("PRINT", "Screenshot", "haseen capture screenshot")'
+assert_contains "PRINT is Omasnap's pick while the capture toolbar is off" "$binds" 'b("PRINT", "Capture toolbar or screenshot", "haseen capture toolbar")'
 assert_contains "SHIFT + PRINT stays the focused window at once" "$binds" '"haseen capture screenshot window"'
 rules="$(sed -n '/name = "haseen_omasnap_overlay"/,/})/p' "$HASEEN_PATH/default/hypr/windowrules.lua")"
 assert_contains "Omasnap's overlay opens without the layer fade" "$rules" 'match = { namespace = "^omasnap$" }'

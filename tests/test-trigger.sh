@@ -117,6 +117,58 @@ done
 
 assert_eq "transcode wrote nothing" no "$([[ -e $SANDBOX/in-medium.jpg ]] && echo yes || echo no)"
 
+# --- PRINT: the capture toolbar, else the screenshot (plan 154) --------------
+trig_sandbox trigger-toolbar
+export QS_ANSWER="$SANDBOX/qs.answer" QS_STATUS="$SANDBOX/qs.status"
+# The shell answers `shell plugins` from QS_ANSWER with QS_STATUS (qs exits 0
+# even for a missing target); every other IPC call is logged.
+stub qs 'case "$*" in
+*" ipc call shell plugins") cat "$QS_ANSWER"; exit "$(cat "$QS_STATUS")" ;;
+*) echo "qs $*" >>"$CALLS" ;;
+esac'
+# Present, so the fallback plans Omasnap's pick whether or not the host has
+# it, and fatal if run.
+stub omasnap 'echo "STUB-CALLED: omasnap $*" >&2; exit 97'
+shell_answers() { # TEXT [STATUS]
+    printf '%s\n' "$1" >"$QS_ANSWER"
+    echo "${2:-0}" >"$QS_STATUS"
+}
+plugins_json() { # VALID ENABLED — haseen.capture's entry among others
+    printf '{"ready":true,"plugins":[{"id":"haseen.clock","valid":true,"enabled":true},{"id":"haseen.capture","valid":%s,"enabled":%s}]}' "$1" "$2"
+}
+before="$(tree)"
+shell_answers "$(plugins_json true true)"
+capture haseen capture toolbar --dry-run
+assert_status "toolbar on: dry run exits 0" 0 "$STATUS"
+assert_eq "toolbar on: PRINT toggles the toolbar" "DRYRUN: haseen-shell-ipc panel toggle haseen.capture" "$OUTPUT"
+assert_eq "toolbar on: the dry run calls nothing" "" "$(<"$CALLS")"
+capture haseen capture toolbar
+assert_status "toolbar on: exits 0" 0 "$STATUS"
+assert_contains "toolbar on: the shell toggles haseen.capture" "$(<"$CALLS")" " ipc call panel toggle haseen.capture"
+fallback_case() { # LABEL ANSWER [STATUS]
+    shell_answers "$2" "${3:-0}"
+    : >"$CALLS"
+    capture haseen capture toolbar --dry-run
+    assert_status "$1: dry run exits 0" 0 "$STATUS"
+    assert_not_contains "$1: no toolbar" "$OUTPUT" "panel toggle"
+    assert_contains "$1: PRINT takes the screenshot, Omasnap's pick" "$OUTPUT" " omasnap smart"
+    assert_dry_pure "$1" "$OUTPUT"
+    assert_eq "$1: nothing else reaches the shell" "" "$(<"$CALLS")"
+}
+fallback_case "toolbar off" "$(plugins_json true false)"
+fallback_case "toolbar failed to load" "$(plugins_json false true)"
+fallback_case "toolbar not installed" '{"ready":true,"plugins":[{"id":"haseen.clock","valid":true,"enabled":true}]}'
+fallback_case "no haseen shell running" 'No running instances for "shell.qml"' 255
+fallback_case "a shell without the plugin list" 'Target not found.'
+assert_eq "toolbar: HOME untouched" "$before" "$(tree)"
+mkdir -p "$HOME/.local/state/haseen"
+echo dms >"$HOME/.local/state/haseen/active-shell"
+fallback_case "DMS active" "$(plugins_json true true)"
+capture haseen capture toolbar region
+assert_status "toolbar takes no mode" 2 "$STATUS"
+capture "$REPO/bin/haseen-capture-toolbar" --help
+assert_status "capture-toolbar --help" 0 "$STATUS"
+
 # --- recording flag lifecycle (stub recorder) --------------------------------
 trig_sandbox trigger-record
 # Fake gpu-screen-recorder: creates its -o file, finalises on SIGINT.
