@@ -371,7 +371,7 @@ impl Device {
     ///
     /// This is the *address space*, NOT the list of usable profiles. On this
     /// 60HE+ it reports 4 while only slot 0 can actually be activated — use
-    /// `profile_stored` to find the profiles a user can switch to.
+    /// `profile_settings` to find the profiles a user can switch to.
     pub fn profile_range(&mut self) -> io::Result<u8> {
         for slot in 0..MAX_PROFILES {
             let params = slot_params(self.arm, slot);
@@ -389,14 +389,14 @@ impl Device {
         Ok(MAX_PROFILES)
     }
 
-    /// Whether a slot holds a stored keyboard profile, i.e. whether it is a
-    /// profile the user can switch to.
+    /// The settings of the profile stored in a slot, or None when the slot
+    /// holds no profile, i.e. when it is not one the user can switch to.
     ///
-    /// PROBED, and the reason this function exists: an addressable slot is not
-    /// necessarily an activatable one. On this 60HE+ only slot 0 holds data —
-    /// `CMD_SLOT_CONTENT` (39) returns a 22-byte payload for slot 0 and a
-    /// zero-length payload for slots 1..=3 — and `ActivateProfile` (23)
-    /// answers 0xFF for exactly those empty slots while accepting slot 0.
+    /// PROBED, and the reason the None case exists: an addressable slot is not
+    /// necessarily an activatable one. On this 60HE+ only slot 0 held data at
+    /// first: `CMD_SLOT_CONTENT` (39) returned a 22-byte payload for slot 0
+    /// and a zero-length payload for slots 1..=3, and `ActivateProfile` (23)
+    /// answered 0xFF for exactly those empty slots while accepting slot 0.
     /// Reporting the addressable range as the profile list therefore offers
     /// the user three profiles that cannot be selected.
     ///
@@ -404,30 +404,30 @@ impl Device {
     /// activatable held for every slot on the only device available. A slot
     /// that answers with data but still refuses activation would surface as
     /// the daemon's `profile set` error rather than as a silent no-op.
-    pub fn profile_stored(&mut self, slot: u8) -> io::Result<bool> {
+    ///
+    /// The payload itself is the profile's settings (plan 153), so this one
+    /// read answers both questions.
+    pub fn profile_settings(&mut self, slot: u8) -> io::Result<Option<ProfileSettings>> {
         let params = slot_params(self.arm, slot);
         let reply = self.exchange(CMD_SLOT_CONTENT, params)?;
-        if reply.status() != STATUS_SUCCESS {
-            return Ok(false);
+        if reply.status() != STATUS_SUCCESS || reply.payload().is_empty() {
+            return Ok(None);
         }
-        Ok(!reply.payload().is_empty())
+        Ok(Some(ProfileSettings::decode(reply.payload(), reply.truncated())))
     }
 
-    /// Profile name for a slot, if the firmware has metadata stored for it.
+    /// Profile name and colour for a slot, as far as the firmware has
+    /// metadata stored for it.
     ///
     /// Unconfigured slots answer 0x88 with a zero-length payload (PROBED:
     /// slots 1..=3 on this device), which is not an error — the slot is still
     /// switchable, it just has no name.
-    pub fn profile_name(&mut self, slot: u8) -> io::Result<Option<String>> {
+    pub fn profile_meta(&mut self, slot: u8) -> io::Result<ProfileMeta> {
         let params = slot_params(self.arm, slot);
         let reply = self.exchange_ok(CMD_SLOT_NAME, params)?;
-        let payload = reply.payload();
-        // field 1 = name, field 3 = RGB theme id (PROBED: `0a 10 "1 Typing
-        // Profile" 1a 0c "woot:p:black"`).
-        match protobuf_bytes(payload, 1, reply.truncated()) {
-            Some(bytes) => Ok(Some(String::from_utf8_lossy(bytes).trim().to_string())),
-            None => Ok(None),
-        }
+        // field 1 = name, field 2 = colour, field 3 = RGB theme id (PROBED:
+        // `0a 10 "1 Typing Profile" 1a 0c "woot:p:black"`).
+        Ok(ProfileMeta::decode(reply.payload(), reply.truncated()))
     }
 
     /// Switch the active profile and verify the switch took effect.

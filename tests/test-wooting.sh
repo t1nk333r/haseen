@@ -84,7 +84,7 @@ assert_contains "UPSTREAM.md names plan 099" "$(cat "$PLUGIN/UPSTREAM.md")" "pla
 NOTICE="$(cat "$REPO/NOTICE.md")"
 assert_contains "NOTICE.md lists the plugin" "$NOTICE" "share/haseen/shell/plugins/haseen.wooting/"
 assert_contains "NOTICE.md lists the daemon" "$NOTICE" "core/wootingd/"
-for src in WootingKb/wooting-rgb-sdk WootingKb/wooting-analog-sdk ShayBox/Wooting-Profile-Switcher clemenscodes/wootswitch; do
+for src in WootingKb/wooting-rgb-sdk WootingKb/wooting-analog-sdk ShayBox/Wooting-Profile-Switcher clemenscodes/wootswitch OpenKeyboard-Pr0ject/openkeyboard; do
     assert_contains "NOTICE.md names $src as a source of wootingd's protocol facts" "$NOTICE" "$src"
 done
 ADOPTED=$(tr -s ' \n' ' ' <"$REPO/CLAUDE.md")
@@ -121,7 +121,7 @@ done
 if command -v node >/dev/null; then
     capture node "$PLUGIN/tests/model.test.js"
     assert_status "Model.js suite (the original's)" 0 "$STATUS"
-    assert_contains "Model.js suite count" "$OUTPUT" "269 passed, 0 failed"
+    assert_contains "Model.js suite count" "$OUTPUT" "284 passed, 0 failed"
 else
     engine_skip "node not installed; the Model.js suite"
 fi
@@ -210,6 +210,8 @@ else
     assert_contains "status names the node and framing" "$WOUT" "/dev/hidraw5 (arm framing)"
     assert_contains "status counts the selectable profiles" "$WOUT" "active slot:    0 of 1"
     assert_contains "status marks the active profile" "$WOUT" "* 0  1 Typing Profile"
+    assert_contains "status shows the profile's own settings under it (plan 153)" "$WOUT" \
+        "$(printf '  * 0  1 Typing Profile\n       actuation 2.50 mm, Rapid Trigger off')"
     assert_eq "a healthy status says nothing on stderr" "" "$WERR"
     raw=$(fake_ask status)
     wrun status --json
@@ -253,6 +255,10 @@ else
     wrun status
     assert_contains "status counts every stored profile" "$WOUT" "active slot:    0 of 4"
     assert_contains "status flags nameless stored slots" "$WOUT" "  1  Profile 2  (unnamed slot)"
+    assert_contains "status says continuous Rapid Trigger with its sensitivity" "$WOUT" \
+        "$(printf '  1  Profile 2  (unnamed slot)\n       actuation 1.00 mm, continuous Rapid Trigger 0.40 mm')"
+    assert_contains "status says Tachyon Mode when it is on" "$WOUT" "actuation 1.60 mm, Rapid Trigger off, Tachyon Mode"
+    assert_eq "a profile the daemon could not decode gets no settings line" "    3  Profile 4  (unnamed slot)" "$(tail -n1 <<<"$WOUT")"
     wrun set 2 --dry-run
     assert_eq "set --dry-run asks for nothing" "0|DRYRUN: wootingd profile set 2" "$STATUS|$WOUT"
     wrun get
@@ -805,6 +811,7 @@ ShellRoot {
         id: t2; interval: 3000
         onTriggered: {
             line("after", { shown: w.visible, text: w.text, profiles: p.keyboard.profiles.map(x => x.name), active: p.keyboard.active });
+            line("rows", p.children.filter(c => c.swatch !== undefined).map(c => c.detail + "|" + c.swatch));
             p.choose(2);
             t3.running = true;
         }
@@ -848,6 +855,9 @@ QML
     assert_eq "no keyboard: the widget takes no room" '{"shown":false,"width":0}' "$(result before)"
     assert_eq "the daemon appears: the widget shows the short name, the panel lists the stored profiles" \
         '{"shown":true,"text":"Typing","profiles":["1 Typing Profile","Profile 2","Profile 3","Profile 4"],"active":0}' "$(result after)"
+    assert_eq "each profile row shows its own settings and colour, and nothing it does not know (plan 153)" \
+        '["Actuation 2.50 mm · Rapid Trigger off|","Actuation 1.00 mm · Continuous Rapid Trigger 0.40 mm|","Actuation 1.60 mm · Rapid Trigger off · Tachyon Mode|#ffd45c","|"]' \
+        "$(result rows)"
     assert_eq "a switch from the panel reaches the bar through the daemon" '{"text":"Profile 3","widget":2,"panel":2}' "$(result switched)"
     assert_eq "the layout view draws the 60HE+ and its key travel" '{"keys":61,"model":"Wooting 60HE+","pressed":1}' "$(result layout)"
     assert_eq "the daemon goes: the widget hides again" '{"shown":false,"width":0,"panelPresent":false}' "$(result gone)"

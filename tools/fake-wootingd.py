@@ -6,7 +6,8 @@ Copyright (c) 2026 t1nk33r); plan 099. haseen added two things the real
 daemon does (core/wootingd/src/main.rs): a `profile set` is broadcast to every
 `subscribe`d connection as a {"event":"change",...} snapshot, and SIGTERM
 removes the socket before exiting, which is how the bar learns the daemon
-went away.
+went away. Plan 153 added each profile's settings and colour, as the daemon
+now publishes them.
 
 Every reply shape here was captured from a live daemon run against the real
 Wooting 60HE+ (compare daemon/src/main.rs, Snapshot::json, Core::set_profile
@@ -19,6 +20,9 @@ The default fixture is the reference keyboard as it actually is: 4 addressable
 slots, of which only slot 0 holds a stored profile ("1 Typing Profile"), so
 `count` is 1 and `profile set 1..3` is refused with the daemon's
 "holds no stored profile" line while `profile set 4+` is "out of range".
+Slot 0's settings are that profile's as wootingd read them on firmware
+2.14.1; the settings of slots 1..3 are made up to cover Rapid Trigger,
+Tachyon Mode, a colour and a profile the daemon could not decode.
 
 usage: fake-wootingd.py SOCKET [options]
 
@@ -40,6 +44,7 @@ usage: fake-wootingd.py SOCKET [options]
 
 import json
 import os
+import re
 import signal
 import socket
 import sys
@@ -55,14 +60,42 @@ SERIAL = "A00B0000W00T00000S00H00000"
 NODE = "/dev/hidraw5"
 FIRMWARE = "2.14.0"
 
+# Millimetres travel through json as marked strings, because the daemon writes
+# them with two decimals (2.50) and json would write 2.5; dump() unmarks them.
+MM = "\x00mm:"
+
+
+def mm(value):
+    return MM + "%.2f" % value
+
+
+SETTING_KEYS = ("actuation", "rapidTrigger", "sensitivity", "continuous", "tachyon", "color")
+UNKNOWN = dict.fromkeys(SETTING_KEYS)
+SETTINGS = [
+    {"actuation": mm(2.5), "rapidTrigger": False, "sensitivity": mm(1.0),
+     "continuous": False, "tachyon": False, "color": None},
+    {"actuation": mm(1.0), "rapidTrigger": True, "sensitivity": mm(0.4),
+     "continuous": True, "tachyon": False, "color": None},
+    {"actuation": mm(1.6), "rapidTrigger": False, "sensitivity": mm(0.4),
+     "continuous": False, "tachyon": True, "color": "#ffd45c"},
+    UNKNOWN,
+]
+
 
 def dump(obj):
     """Compact separators and raw UTF-8, exactly like the daemon's esc()."""
-    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+    text = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+    return re.sub(r'"\\u0000mm:([0-9.]+)"', r"\1", text)
 
 
 def label(slot):
     return NAMES[slot] if NAMES[slot] else "Profile %d" % (slot + 1)
+
+
+def settings(slot, state):
+    """A stored slot's settings; the active slot kept without stored data
+    (Profile::bare) has none."""
+    return SETTINGS[slot] if slot < state["profiles"] else UNKNOWN
 
 
 def stored(state):
@@ -123,12 +156,15 @@ def snapshot(state, tag, tag_value):
             "count": len(slots),
             "active": active,
             "profiles": [
-                {
-                    "slot": slot,
-                    "name": label(slot),
-                    "named": NAMES[slot] is not None,
-                    "active": slot == active,
-                }
+                dict(
+                    {
+                        "slot": slot,
+                        "name": label(slot),
+                        "named": NAMES[slot] is not None,
+                        "active": slot == active,
+                    },
+                    **settings(slot, state),
+                )
                 for slot in slots
             ],
         }

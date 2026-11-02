@@ -1,7 +1,9 @@
 //! wootingd — sole owner of the Wooting vendor HID command interface.
 //!
 //! Vendored from the owner's t1nk333r/haseen-wooting, daemon/src/main.rs at
-//! 184f6fa (MIT, Copyright (c) 2026 t1nk33r); plan 099. Only comments differ.
+//! 184f6fa (MIT, Copyright (c) 2026 t1nk33r); plan 099, where only comments
+//! differed. Plan 153 adds each profile's own settings and colour to the
+//! snapshot and to `doctor`, read from replies the daemon already asked for.
 //! haseen builds it with tools/build-sidecar.sh next to haseen-sidecar.
 //!
 //! Speaks line-delimited JSON over a unix socket so that QML (Quickshell
@@ -11,7 +13,7 @@
 //! Verbs (one per line):
 //!   status              -> full snapshot
 //!   profile get         -> active slot
-//!   profile list        -> slots + names
+//!   profile list        -> slots, names, settings and colours
 //!   profile set <n>     -> switch, verified by read-back
 //!   subscribe           -> snapshot now, then a line on every change
 //!   analog get          -> keys currently reporting travel
@@ -58,6 +60,18 @@ struct Profile {
     slot: u8,
     /// Name stored in firmware metadata, absent for a profile that has one.
     name: Option<String>,
+    /// Colour stored in the same metadata, absent unless the profile has one.
+    color: Option<(u8, u8, u8)>,
+    /// The profile's own actuation, Rapid Trigger and Tachyon Mode.
+    settings: proto::ProfileSettings,
+}
+
+impl Profile {
+    /// The active slot when its own reads told nothing: no name, no colour,
+    /// no settings.
+    fn bare(slot: u8) -> Profile {
+        Profile { slot, name: None, color: None, settings: proto::ProfileSettings::default() }
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -140,16 +154,74 @@ impl Snapshot {
                 out.push(',');
             }
             let named = matches!(&profile.name, Some(n) if !n.is_empty());
+            let s = &profile.settings;
             out.push_str(&format!(
-                "{{\"slot\":{},\"name\":\"{}\",\"named\":{},\"active\":{}}}",
+                "{{\"slot\":{},\"name\":\"{}\",\"named\":{},\"active\":{},\
+                 \"actuation\":{},\"rapidTrigger\":{},\"sensitivity\":{},\
+                 \"continuous\":{},\"tachyon\":{},\"color\":{}}}",
                 profile.slot,
                 esc(&Snapshot::label(profile)),
                 named,
-                profile.slot == self.active
+                profile.slot == self.active,
+                json_mm(s.actuation),
+                json_flag(s.rapid_trigger),
+                json_mm(s.sensitivity),
+                json_flag(s.continuous),
+                json_flag(s.tachyon),
+                json_color(profile.color)
             ));
         }
         out.push_str("]}");
         out
+    }
+}
+
+/// Millimetres with two decimals, as Wootility shows them: 2.50, not 2.5.
+/// null when the profile did not say.
+fn json_mm(hundredths: Option<u16>) -> String {
+    match hundredths {
+        Some(h) => format!("{}.{:02}", h / 100, h % 100),
+        None => "null".to_string(),
+    }
+}
+
+fn json_flag(flag: Option<bool>) -> String {
+    flag.map_or_else(|| "null".to_string(), |f| f.to_string())
+}
+
+fn json_color(color: Option<(u8, u8, u8)>) -> String {
+    match color {
+        Some((r, g, b)) => format!("\"#{r:02x}{g:02x}{b:02x}\""),
+        None => "null".to_string(),
+    }
+}
+
+/// One profile's settings as `doctor` prints them; unknown values say nothing.
+fn settings_summary(s: &proto::ProfileSettings) -> String {
+    let mm = |h: u16| format!("{}.{:02} mm", h / 100, h % 100);
+    let mut parts = Vec::new();
+    if let Some(h) = s.actuation {
+        parts.push(format!("actuation {}", mm(h)));
+    }
+    match (s.rapid_trigger, s.sensitivity) {
+        (Some(true), Some(h)) => parts.push(format!(
+            "{}Rapid Trigger {}",
+            if s.continuous == Some(true) { "continuous " } else { "" },
+            mm(h)
+        )),
+        (Some(true), None) => parts.push("Rapid Trigger on".to_string()),
+        (Some(false), _) => parts.push("Rapid Trigger off".to_string()),
+        (None, _) => {}
+    }
+    match s.tachyon {
+        Some(true) => parts.push("Tachyon Mode on".to_string()),
+        Some(false) => parts.push("Tachyon Mode off".to_string()),
+        None => {}
+    }
+    if parts.is_empty() {
+        "settings not decoded".to_string()
+    } else {
+        parts.join(", ")
     }
 }
 
@@ -260,19 +332,17 @@ impl Core {
         let range = dev.profile_range()?;
         let mut profiles = Vec::with_capacity(range as usize);
         for slot in 0..range {
-            if !dev.profile_stored(slot).unwrap_or(false) {
+            let Some(settings) = dev.profile_settings(slot).unwrap_or(None) else {
                 continue;
-            }
-            profiles.push(Profile {
-                slot,
-                name: dev.profile_name(slot).unwrap_or(None),
-            });
+            };
+            let meta = dev.profile_meta(slot).unwrap_or_default();
+            profiles.push(Profile { slot, name: meta.name, color: meta.color, settings });
         }
         let active = dev.active_profile()?;
         // The active profile is by definition selectable, so never hide it —
         // even if its slot somehow reported no stored data.
         if !profiles.iter().any(|p| p.slot == active) {
-            profiles.push(Profile { slot: active, name: None });
+            profiles.push(Profile::bare(active));
             profiles.sort_by_key(|p| p.slot);
         }
         // Layout is decoration, not identity: a firmware that refuses cmd 19
@@ -818,9 +888,11 @@ fn doctor() -> i32 {
                     match dev.profile_range() {
                         Ok(range) => {
                             let mut stored = Vec::new();
+                            let mut settings = Vec::new();
                             for slot in 0..range {
-                                if dev.profile_stored(slot).unwrap_or(false) {
+                                if let Ok(Some(s)) = dev.profile_settings(slot) {
                                     stored.push(slot.to_string());
+                                    settings.push((slot, s));
                                 }
                             }
                             println!("slot range    : {range} addressable");
@@ -834,6 +906,9 @@ fn doctor() -> i32 {
                             );
                             if stored.len() < range as usize {
                                 println!("note          : empty slots refuse ActivateProfile (0xFF); create profiles in Wootility to use them");
+                            }
+                            for (slot, s) in &settings {
+                                println!("slot {slot:<9}: {}", settings_summary(s));
                             }
                         }
                         Err(e) => println!("slot range    : FAILED — {e}"),
@@ -986,5 +1061,66 @@ mod tests {
         let mut core = Core::new();
         core.acquire_failed("identify failed", &"timed out");
         assert_eq!(core.acquire_backoff, ACQUIRE_BACKOFF_TICKS);
+    }
+
+    /// The profile objects clients read (plan 153): millimetres with two
+    /// decimals, flags, a #rrggbb colour, and null for what the keyboard did
+    /// not say. The first profile is this 60HE+'s slot 2 as it reads.
+    #[test]
+    fn snapshot_profiles_carry_settings_and_colour() {
+        let mut snap = Snapshot::absent();
+        snap.present = true;
+        snap.active = 2;
+        snap.profiles = vec![
+            Profile {
+                slot: 2,
+                name: Some("Firefly".to_string()),
+                color: Some((255, 212, 92)),
+                settings: proto::ProfileSettings {
+                    actuation: Some(160),
+                    rapid_trigger: Some(false),
+                    sensitivity: Some(40),
+                    continuous: Some(false),
+                    tachyon: Some(false),
+                },
+            },
+            Profile::bare(3),
+        ];
+        let json = snap.json("ok", "true");
+        assert!(json.contains(
+            "{\"slot\":2,\"name\":\"Firefly\",\"named\":true,\"active\":true,\
+             \"actuation\":1.60,\"rapidTrigger\":false,\"sensitivity\":0.40,\
+             \"continuous\":false,\"tachyon\":false,\"color\":\"#ffd45c\"}"
+        ));
+        assert!(json.contains(
+            "{\"slot\":3,\"name\":\"Profile 4\",\"named\":false,\"active\":false,\
+             \"actuation\":null,\"rapidTrigger\":null,\"sensitivity\":null,\
+             \"continuous\":null,\"tachyon\":null,\"color\":null}"
+        ));
+        assert_eq!(json_mm(Some(5)), "0.05");
+        assert_eq!(json_mm(Some(400)), "4.00");
+    }
+
+    #[test]
+    fn doctor_summary_says_only_what_is_known() {
+        let mut s = proto::ProfileSettings {
+            actuation: Some(250),
+            rapid_trigger: Some(false),
+            sensitivity: Some(100),
+            continuous: Some(false),
+            tachyon: Some(false),
+        };
+        assert_eq!(settings_summary(&s), "actuation 2.50 mm, Rapid Trigger off, Tachyon Mode off");
+        s.rapid_trigger = Some(true);
+        s.continuous = Some(true);
+        s.tachyon = Some(true);
+        assert_eq!(
+            settings_summary(&s),
+            "actuation 2.50 mm, continuous Rapid Trigger 1.00 mm, Tachyon Mode on"
+        );
+        s.sensitivity = None;
+        s.continuous = None;
+        assert_eq!(settings_summary(&s), "actuation 2.50 mm, Rapid Trigger on, Tachyon Mode on");
+        assert_eq!(settings_summary(&proto::ProfileSettings::default()), "settings not decoded");
     }
 }

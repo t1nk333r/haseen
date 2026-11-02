@@ -1,9 +1,10 @@
 .pragma library
 // Pure view-model logic for the Wooting bar widget and panel (plan 099),
 // from the owner's t1nk33r.wooting (t1nk333r/haseen-wooting Model.js at
-// 184f6fa, MIT, Copyright (c) 2026 t1nk33r). Logic unchanged; comments name
-// haseen's places. No Qt types below this line: tests/model.test.js runs
-// this file under plain node.
+// 184f6fa, MIT, Copyright (c) 2026 t1nk33r). The port left the logic
+// unchanged; plan 153 added each profile's settings and colour
+// (profileEntry, settingsParts). No Qt types below this line:
+// tests/model.test.js runs this file under plain node.
 //
 // The daemon is the only source of truth. This module's whole job is to turn
 // the daemon's JSON lines into the handful of values the bar draws, and to
@@ -77,16 +78,61 @@ function applyMessage(state, message) {
       // A null or non-object entry would throw inside the QML onRead handler
       // and drop the whole update; skip it instead.
       return entry && typeof entry === "object" && typeof entry.slot === "number"
-    }).map(function(entry) {
-      return {
-        slot: entry.slot,
-        name: typeof entry.name === "string" ? entry.name : "",
-        named: entry.named === true
-      }
-    })
+    }).map(profileEntry)
   }
 
   return next
+}
+
+// One profile as the panel keeps it. The settings are the profile's own
+// (plan 153): millimetres or null, true, false or null, a #rrggbb colour or
+// null. wootingd sends null for what the keyboard did not say, and anything
+// else it might send reads as unknown too, never as a wrong value.
+function profileEntry(entry) {
+  return {
+    slot: entry.slot,
+    name: typeof entry.name === "string" ? entry.name : "",
+    named: entry.named === true,
+    actuation: millimetres(entry.actuation),
+    rapidTrigger: flag(entry.rapidTrigger),
+    sensitivity: millimetres(entry.sensitivity),
+    continuous: flag(entry.continuous),
+    tachyon: flag(entry.tachyon),
+    color: typeof entry.color === "string" && /^#[0-9a-fA-F]{6}$/.test(entry.color)
+      ? entry.color.toLowerCase() : null
+  }
+}
+
+// A key's travel is 0 to 4 mm on every Wooting board.
+function millimetres(value) {
+  return typeof value === "number" && isFinite(value) && value >= 0 && value <= 4 ? value : null
+}
+
+function flag(value) {
+  return typeof value === "boolean" ? value : null
+}
+
+// The profile's settings as short phrases for its row in the panel: English
+// with a %1 for the millimetres, translated where QML shows them. A value the
+// keyboard did not report adds nothing. Continuous only qualifies a Rapid
+// Trigger that is on: the firmware keeps the flag either way.
+function settingsParts(profile) {
+  var parts = []
+  if (!profile) return parts
+  if (typeof profile.actuation === "number")
+    parts.push({ text: N_("Actuation %1 mm"), value: profile.actuation })
+  if (profile.rapidTrigger === true) {
+    if (typeof profile.sensitivity === "number")
+      parts.push({
+        text: profile.continuous === true ? N_("Continuous Rapid Trigger %1 mm") : N_("Rapid Trigger %1 mm"),
+        value: profile.sensitivity
+      })
+    else parts.push({ text: N_("Rapid Trigger on") })
+  } else if (profile.rapidTrigger === false) {
+    parts.push({ text: N_("Rapid Trigger off") })
+  }
+  if (profile.tachyon === true) parts.push({ text: N_("Tachyon Mode") })
+  return parts
 }
 
 function cloneState(state) {
@@ -100,9 +146,7 @@ function cloneState(state) {
   base.active = typeof state.active === "number" ? state.active : 0
   base.error = state.error || ""
   base.connected = state.connected === true
-  base.profiles = (state.profiles || []).map(function(entry) {
-    return { slot: entry.slot, name: entry.name, named: entry.named === true }
-  })
+  base.profiles = (state.profiles || []).map(profileEntry)
   return base
 }
 
