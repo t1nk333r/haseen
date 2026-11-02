@@ -112,7 +112,15 @@ and the matrix has no flip.
   bottom band and the corners; and the comment says the content's
   coordinates are flipped while its picture draws upright.
 - Renumbered from 154 to 156 before merging: #114 merged as plan 154 and
-  the open branch `active-window/drop-app-suffix` holds 155.
+  the open branch `active-window/drop-app-suffix` holds 155. The rebase
+  rewrote both reviewed heads, so they are listed in
+  `plans/.known-external-refs`: CI's docs check could not find them.
+- Round 3, DeepSeek Flash on the rebased head: approved. It checked that no
+  reference this branch adds still says 154 and that #114's plan 154 is
+  untouched (`git range-diff`: the code commits are unchanged), and reran
+  the test (65/65), the affected set (47 files, 3912/3912), lint and docs.
+  Its nit is taken: the pickers row in `handoff.md` lists 156. Its other
+  note is for the branch holding 155: its README row goes above 156.
 
 ## Rejected options
 
