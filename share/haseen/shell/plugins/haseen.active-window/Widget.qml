@@ -9,11 +9,12 @@ import "Title.js" as Title
 // t1nk33r.active-window, a fork of Omarchy's active-window widget
 // (ActiveWindow.qml, MIT, Copyright (c) David Heinemeier Hansson). The
 // toplevel comes from the compositor's foreign-toplevel protocol
-// (Quickshell's ToplevelManager), an event, never a poll. A long title keeps
-// its head and tail around a middle ellipsis within `maxChars` characters;
-// `maxWidth` (pixels, 0 = none) is an optional clamp for a narrow bar, with
-// an end ellipsis as its backstop. No window, or a vertical bar (a title does
-// not read sideways), takes no room.
+// (Quickshell's ToplevelManager), an event, never a poll. A trailing
+// " - App Name" naming the window's own app is dropped (plan 155), and a
+// long title keeps its head and tail around a middle ellipsis within
+// `maxChars` characters; `maxWidth` (pixels, 0 = none) is an optional clamp
+// for a narrow bar, with an end ellipsis as its backstop. No window, or a
+// vertical bar (a title does not read sideways), takes no room.
 //
 // A left click focuses the window; a middle or right click closes it, as in
 // the owner's fork. Off by default.
@@ -32,7 +33,7 @@ BarButton {
 
     visible: active
     implicitWidth: active ? contentWidth : 0
-    text: Title.label(title, settings.maxChars)
+    text: Title.label(Title.withoutAppName(title, toplevel ? toplevel.appId : ""), settings.maxChars)
     maxTextWidth: Math.max(0, Number(settings.maxWidth) || 0)
 
     onClicked: button => {
