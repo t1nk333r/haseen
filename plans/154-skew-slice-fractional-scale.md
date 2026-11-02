@@ -95,6 +95,17 @@ and the matrix has no flip.
 - The affected set (`tests/run.sh --affected`, 47 files, selected by the
   `Haseen/Widgets` and plans globs): 3912/3912.
 
+## Review
+
+- Round 1, DeepSeek Flash on `dfc99ba`: approved, no blocker or should-fix.
+  It reran the test (65/65), the mutations (main's slice 55/65, `NoMirroring`
+  without the flip 50/65, the flip without `NoMirroring` 50/65), the
+  affected set (47 files, 3912/3912), the GPU renderer at 1, 1.25 and 2, and
+  `GraphicsInfo.api` before and after the item enters a window. Its three
+  nits are taken: the content must not take input (comment and Memory),
+  `magick` is required under `HASEEN_REQUIRE_ENGINE=1` as CI sets it, and
+  Memory says when the workaround should go.
+
 ## Rejected options
 
 - **Run IO's shell on the GPU renderer**, as luna does with a user drop-in:
@@ -124,3 +135,10 @@ and the matrix has no flip.
 - Qt 6.12's software layer is wrong at any scale but 1. A test of anything
   drawn through a layer, a grab or a Canvas must run at a fractional scale
   (`QT_SCALE_FACTOR=1.25`) as well as at 1.
+- The workaround leans on Qt always flipping a layer's texture on the
+  software renderer. If a Qt release changes that, the slices come out
+  upside down; `tests/test-carousel.sh` fails then (its stripes and bottom
+  band), and the workaround should go.
+- The slice's content is laid out upside down on the software renderer, so
+  it must not take input: a MouseArea in it would be mirrored. The slice's
+  own MouseArea, outside the layer, takes the clicks.

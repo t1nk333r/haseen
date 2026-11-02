@@ -20,7 +20,10 @@ Item {
     property color borderColor: "transparent"
     property real borderWidth: 1
     // The picture, upright, filling the slice's bounding box; the slant cuts
-    // `skew` px off its top-left and bottom-right corners.
+    // `skew` px off its top-left and bottom-right corners. Keep it free of
+    // mouse areas and handlers: on the software renderer it is laid out
+    // upside down (`flipped`), so its hit areas would be too; the slice's
+    // own MouseArea below takes the clicks.
     default property alias content: frame.data
 
     signal clicked

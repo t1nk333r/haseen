@@ -178,6 +178,8 @@ have_magick=1
 command -v magick >/dev/null || {
     have_magick=0
     echo "  (magick missing: the slice's pixels were not read back)" >&2
+    # CI installs it (ARCH_PACKAGES): there the pixels are the point.
+    [[ ${HASEEN_REQUIRE_ENGINE:-0} != 1 ]] || assert_eq "carousel: required magick prerequisite" available unavailable
 }
 for scale in 1 1.25 2; do
     rm -f "$draw/slice.png"
