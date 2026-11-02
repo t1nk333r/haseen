@@ -117,10 +117,16 @@ and the matrix has no flip.
   `plans/.known-external-refs`: CI's docs check could not find them.
 - Round 3, DeepSeek Flash on the rebased head: approved. It checked that no
   reference this branch adds still says 154 and that #114's plan 154 is
-  untouched (`git range-diff`: the code commits are unchanged), and reran
+  untouched (`git range-diff`: one commit is identical, the other differs
+  only in its `plans/README.md` hunk), and reran
   the test (65/65), the affected set (47 files, 3912/3912), lint and docs.
-  Its nit is taken: the pickers row in `handoff.md` lists 156. Its other
-  note is for the branch holding 155: its README row goes above 156.
+  Its nit is taken: the pickers row in `handoff.md` lists 156.
+- Round 4, DeepSeek Flash on the head that listed the two rewritten heads
+  (docs only): approved. In a clone without them, `tools/check-docs.sh`
+  no longer names them. Its two nits are taken: the header of
+  `plans/.known-external-refs` now says it also holds rewritten heads, and
+  the range-diff note above is exact. Plan 155 (#116) then merged, so the
+  branch was rebased again; its row sits above this one.
 
 ## Rejected options
 

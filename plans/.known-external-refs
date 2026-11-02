@@ -1,4 +1,5 @@
-# hash<TAB>reason — hex ids cited in plans/ that are not commits of this repo
+# hash<TAB>reason — hex ids cited in plans/ that are not commits of this repo,
+# or no longer are (a pull request's heads rewritten by a rebase)
 c59305b	nixpkgs pin cited by plan 009 (Nix support dropped)
 ba33415	Secure Boot input pin cited by plan 009 (Nix support dropped)
 efb5099	Hyprland 0.56.2 build commit (plan 003)
