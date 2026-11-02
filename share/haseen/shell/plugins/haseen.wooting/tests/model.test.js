@@ -154,7 +154,8 @@ eq([odd.actuation, odd.rapidTrigger, odd.sensitivity, odd.continuous, odd.tachyo
   [null, null, null, null, null, null], "profileEntry: what is not a value of its kind is unknown")
 eq(M.profileEntry({ slot: 0, actuation: -0.1 }).actuation, null, "profileEntry: negative travel")
 eq(M.profileEntry({ slot: 0, sensitivity: Infinity }).sensitivity, null, "profileEntry: infinite travel")
-eq(M.profileEntry({ slot: 0, actuation: 0 }).actuation, 0, "profileEntry: 0 mm is a value")
+// wootingd sends no zero (plan 153), but the model does not second-guess one.
+eq(M.profileEntry({ slot: 0, actuation: 0 }).actuation, 0, "profileEntry: 0 mm stays a number")
 eq(M.profileEntry({ slot: 0, sensitivity: 4 }).sensitivity, 4, "profileEntry: 4 mm is a value")
 
 eq(M.settingsParts(live.profiles[0]), [

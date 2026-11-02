@@ -103,15 +103,15 @@ Two findings beyond OpenKeyboard's notes:
   - `read_varint` and `protobuf_varint` (`:417`, `:436`): varint fields with
     multi-byte keys and lengths. A value cut short, or one with bits past the
     64th, is None, never a guess.
-  - `travel_hundredths` (`:471`): both encodings, in hundredths of a
+  - `travel_hundredths` (`:475`): both encodings, in hundredths of a
     millimetre, rounded to the 0.05 mm step in integers. Raw values between
     the two ranges, or above them, are not distances, and neither is zero:
     Wootility sets nothing below 0.1 mm, so a zero is more likely unset.
-  - `ProfileSettings::decode` (`:492`, `:508`). Every value is an `Option`:
+  - `ProfileSettings::decode` (`:496`, `:512`). Every value is an `Option`:
     a payload that does not carry a field shows nothing rather than a wrong
     value. Either Tachyon field set means on, because which one the firmware
     reads is not known (`docs/wooting.md:144`).
-  - `ProfileMeta::decode` (`:539`, `:548`): the name as before, and the
+  - `ProfileMeta::decode` (`:543`, `:552`): the name as before, and the
     colour only when its message arrived whole.
   - 6 tests, built from the captures above.
 - `device.rs`: `profile_settings` (`:410`) replaces `profile_stored`. It is
@@ -205,7 +205,9 @@ and approved it with no blocker and no should-fix. It reran cargo (57),
 `tests/test-wooting.sh` (292/292), `tests/test-wootingd.sh` (25/25), and
 the affected selection (20 files, 2621/2621). It also fed 89,905 payloads
 through both decoders: none panicked, and every travel stayed within
-0..=400. Its nits and what became of them:
+0..=400. Its diff audit found no new command and no write in `device.rs` or
+`main.rs`. It did not rerun the hardware reads or compare every upstream file
+for the licence, and it said so. Its nits and what became of them:
 
 1. A raw 0 decoded to `0.00 mm`. Fixed: zero is unset (`travel_hundredths`
    above), because Wootility sets nothing below 0.1 mm.
@@ -224,8 +226,19 @@ through both decoders: none panicked, and every travel stayed within
    `doctor` is a diagnostic.
 
 Rechecking every OpenKeyboard citation against the pinned file for this
-round found four in this plan that pointed at the wrong lines. They now
-read `:391`, `:313`, `:158` and `:115-121`, the last also in `proto.rs`.
+round found three in this plan that pointed at blank or wrong lines (they
+now read `:391`, `:313` and `:158`) and one, `:116-121`, that started a
+line early (now `:115-121`, here and in `proto.rs`).
+
+A delta round on `b1439db74885cf3793b822476dfa2c4138110661` approved the
+fixes. It fed all 65,536 raw travel values and all 256 tenth varint bytes
+through the decoders, and reran cargo (57) and both suites (317/317). Its
+nits were wording: a comment line that had swallowed a paragraph break, the
+count of wrong citations (three, not four), the reason zero is unset but
+0.05 mm is not, and a model test still labelled as if wootingd sent 0 mm.
+All four are fixed. Two notes need no change: a profile name with a tab in
+it would still shift the status columns, as before this plan, and this
+section now records more of round 1's evidence.
 
 ## Residual unknowns
 

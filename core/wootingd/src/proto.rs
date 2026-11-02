@@ -463,11 +463,15 @@ pub fn protobuf_varint(payload: &[u8], field: u64) -> Option<u64> {
 /// step Wootility offers. Two encodings occur, both spanning 0 to 4 mm
 /// (OpenKeyboard docs/wooting.md:166-167): precise, 0x4000..=0x7FFF over
 /// 0x3FFF steps, and legacy, 0..=0xFF over 255. Anything else is not a
-/// distance, and neither is zero: Wootility sets nothing below 0.1 mm
-/// (docs/wooting.md:158), so a zero is more likely unset than a setting, and
-/// "0.00 mm" would be a wrong value where nothing is the honest one. PROBED 2.14.1: every distance in this 60HE+'s three profiles is
-/// precise; their actuation points read 0x67FF, 0x5000 and 0x5999, which are
-/// 2.50, 1.00 and 1.60 mm.
+/// distance, and neither is zero. Zero is the field's default value, the one
+/// protobuf leaves out, and Wootility sets nothing below 0.1 mm
+/// (docs/wooting.md:158), so a zero is more likely unset than a setting:
+/// "0.00 mm" would be a wrong value where nothing is the honest one. A value
+/// that rounds to 0.05 mm stays: it is not the default, so it was stored.
+///
+/// PROBED 2.14.1: every distance in this 60HE+'s three profiles is precise;
+/// their actuation points read 0x67FF, 0x5000 and 0x5999, which are 2.50,
+/// 1.00 and 1.60 mm.
 pub fn travel_hundredths(raw: u64) -> Option<u16> {
     let (offset, span) = match raw {
         0x4000..=0x7FFF => (raw - 0x4000, 0x3FFF),
