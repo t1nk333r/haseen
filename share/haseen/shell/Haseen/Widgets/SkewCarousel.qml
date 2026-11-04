@@ -3,6 +3,7 @@
 // haseen: no scrim and no shade over unselected slices. The background and
 // theme pickers share this widget (plan 152).
 import QtQuick
+import Quickshell
 import qs.Haseen
 import "Carousel.js" as Carousel
 
@@ -54,7 +55,12 @@ Item {
     readonly property real screenWidth: screen && screen.width > 0 ? screen.width : Carousel.designWidth()
     readonly property real areaWidth: compact ? Math.min(screenWidth, Carousel.compactWidth()) : screenWidth
     readonly property real areaHeight: screen && screen.height > 0 ? screen.height : topMargin + Carousel.GEOMETRY.expandedHeight + bottomChrome
-    readonly property real pixelRatio: screen && screen.devicePixelRatio ? screen.devicePixelRatio : 1
+    // Device pixels per logical pixel in the carousel's window, the size
+    // every picture decodes at. A ShellScreen reports the output's scale
+    // rounded up to a whole number, 2 on IO's 1.25 screen, which decodes
+    // 2.56 times the pixels the window shows (plan 158). So the window's own
+    // ratio comes first.
+    readonly property real pixelRatio: QsWindow.window && QsWindow.window.devicePixelRatio > 0 ? QsWindow.window.devicePixelRatio : (screen && screen.devicePixelRatio ? screen.devicePixelRatio : 1)
     // Omarchy's margin above the carousel and its room for the label and
     // filter below it (ImagePicker.qml:48,398).
     readonly property int topMargin: Theme.space(30)
