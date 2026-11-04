@@ -63,8 +63,8 @@ not enough. As keyd does, the last line binding the same keys counts (a
 chord's keys in any order), a layer keeps its first header (keyd's own
 `control`, `shift`, `alt`, `meta` and `altgr` come before any file), and a
 modifier set keyd cannot read (`[hyper:CMAS]`) holds no modifiers. Like
-keyd, it reads a set up to a second colon and takes a trailing dash
-(`[hyper:C-M-A-S-]`).
+keyd, it skips empty fields between colons, reads a set up to the next
+colon and takes a trailing dash (`[hyper::C-M-A-S-]`).
 
 Each line becomes rows under a new section, "CapsLock":
 
@@ -189,8 +189,8 @@ shipped config and an enabled `keyd.service`. It checks:
 - a layer with no modifiers (no "Hold for" row);
 - the same keys bound twice, in the same and in another order, and a
   layer given two headers;
-- a modifier set keyd cannot read, one with a trailing dash or a second
-  colon, and a built-in layer redeclared;
+- a modifier set keyd cannot read, one after an empty field, with a
+  trailing dash or before a second colon, and a built-in layer redeclared;
 - a `keyd.service` linked under `requires/`;
 - the live machine asking systemd and listing nothing while keyd is not
   running. With keyd running there, the test would have to read the
@@ -222,3 +222,7 @@ modifier sets was stricter than keyd: keyd 2.6.0 also accepts a trailing
 dash and stops at a second colon (`parse_modset` and `new_layer`, checked
 by the reviewer against keyd's own parser), so `[hyper:C-M-A-]` lost its
 CAPSLOCK names. The fourth head accepts both.
+
+The fourth review approved the fourth head and found one more form: keyd
+skips an empty field between colons, so `[hyper::C-M-A-S]` holds all four
+modifiers where the sheet read none. The fifth head skips it too.
