@@ -19,13 +19,16 @@ TESTS_RUN=0
 TESTS_FAILED=0
 
 # Binaries a dry run must never execute. Read-only tools tests rely on (od,
-# sed, grep, jq) are deliberately absent.
+# sed, grep, jq) are deliberately absent. tailscale reaches the live tailscaled
+# through its own socket, which the sandbox does not cut off: unstubbed, a
+# remover test's `tailscale down` took the machine running it off the tailnet
+# (plan 159).
 STUBBED_CMDS=(sudo pkexec pacman paru yay makepkg sbctl systemctl limine
     limine-enroll-config limine-update limine-entry-tool limine-scan
     mkinitcpio bootctl efibootmgr mokutil cryptsetup systemd-cryptenroll
     podman docker distrobox ollama llama-server ufw snapper hyprctl qs
     quickshell dms flatpak curl wget git pkill gsettings secret-tool
-    notify-send xdg-open systemd-run uwsm-app brightnessctl ddcutil)
+    notify-send xdg-open systemd-run uwsm-app brightnessctl ddcutil tailscale)
 
 # sandbox NAME — fresh scratch HOME + stub PATH; sets SANDBOX.
 sandbox() {
