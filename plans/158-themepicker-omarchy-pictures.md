@@ -97,7 +97,7 @@ window draws.
   The cache comes first because it is fetched from the commit that haseen's
   stock colours come from (`THEME_OMARCHY_COMMIT`), while an installed
   Omarchy can be another release. A background's order is JavaScript's
-  string order, which equals `sort` under `LC_ALL=C`.
+  string order, which for ASCII names equals `sort` under `LC_ALL=C`.
 - **`haseen.themepicker/Panel.qml`** scans the three places with one
   `find`, down to `backgrounds/`, and hands the output to `Previews.js`.
   It reads the installed Omarchy's path as
@@ -156,7 +156,7 @@ window draws.
 
 ## Review
 
-DeepSeek Flash reviewed `baa8eab`. Codex's requests to the proxy's DeepSeek
+DeepSeek Flash reviewed the first head, before the rebase. Codex's requests to the proxy's DeepSeek
 route now fail with a 422 on the `developer` message role, so the reviewer
 ran in `omp` with that role turned off. It reproduced the counts above,
 65/65 at the base, lint and the docs check. It ran `Previews.js` over the
@@ -165,7 +165,7 @@ installed Omarchy's 22 themes and got the same 22 previews as
 its own. Its findings:
 
 - **Blocker: the plan number.** PR 118 merged its own plan 157 while this
-  was open, so this plan became 158 (`d46cb2a`).
+  was open, so this plan became 158 when the branch was rebased onto it.
 - **Two fixture lines could not fail.** A root guard without its `/` and an
   image pattern without its `$` each still passed 72/72. Each edge case is
   now the only candidate for its theme (`uXz/preview.png`,
@@ -177,6 +177,15 @@ its own. Its findings:
   can show a window's ratio, and the live run above is the evidence.
 - **An animated GIF would animate in a slice.** It would not: QML's `Image`
   shows a GIF's first frame, and only `AnimatedImage` plays it.
+
+The second round reviewed the rebased head and the fixes. It accepted each
+response above, and both mutations now failed for it too. It found one
+more blocker: this section cited the first head's commit, which the rebase
+had replaced, so `tools/check-docs.sh` failed in a fresh clone. The
+section now names no branch commit. It also asked for "for ASCII names"
+in the sort note above. Its affected run counted 7083/7083 over the same
+76 files: plan 157 added 11 checks to `tests/test-pager.sh`, which is in
+the selection.
 
 ## Rejected options
 
@@ -201,7 +210,8 @@ its own. Its findings:
 
 ## Notes for later changes
 
-- A theme's first background is the first in C order (`LC_ALL=C sort`).
+- A theme's first background is the first in JavaScript's string order,
+  which for ASCII names is C order (`LC_ALL=C sort`).
   Omarchy's switcher sorts in the session's locale, so for names that differ
   in case, such as `Z.jpg` and `a.jpg`, it can pick the other one.
 

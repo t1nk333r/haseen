@@ -94,7 +94,7 @@ Item {
     function out(k, v) { console.warn("RESULT " + k + " " + JSON.stringify(v)); }
     Component.onCompleted: {
         // A path under a root that only shares the user root's prefix is
-        // not a user theme: "uXz" must not read as theme "z" under "u".
+        // not under it: without the guard's "/", "uXz" would read as a user theme.
         const found = $(jq -Rs . <<<"$found") + "\n$fx/uXz/preview.png\n";
         const picked = P.index(found, { user: "$fx/u", cache: "$fx/c", omarchy: "$fx/o" });
         out("previews", Object.keys(picked.previews).sort().map(k => k + "=" + picked.previews[k].slice("$fx/".length)));
