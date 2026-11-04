@@ -127,7 +127,8 @@ window draws.
   `Previews.js` it failed "each theme's picture, in Omarchy's order".
   `tests/test-themes2.sh` passed 226/226.
 - `tests/run.sh --affected` selected 76 of 172 test files and passed
-  7072/7072. The shared widget makes the set wide.
+  7072/7072 before plan 157 merged, and 7083/7083 after it (Review). The
+  shared widget makes the set wide.
 - The scan of IO's real files (`find` over IO's three places, 2026-11-04,
   read only) ranked through `Previews.js` gives 31 of IO's 34 themes a
   picture, up from 15, 14 of them blurry. The 22 Omarchy stock themes get
@@ -156,9 +157,10 @@ window draws.
 
 ## Review
 
-DeepSeek Flash reviewed the first head, before the rebase. Codex's requests to the proxy's DeepSeek
-route now fail with a 422 on the `developer` message role, so the reviewer
-ran in `omp` with that role turned off. It reproduced the counts above,
+DeepSeek Flash reviewed the first head, before the rebase. Codex's
+requests to the proxy's DeepSeek route now fail with a 422 on the
+`developer` message role, so the reviewer ran in `omp` with that role
+turned off. It reproduced the counts above,
 65/65 at the base, lint and the docs check. It ran `Previews.js` over the
 installed Omarchy's 22 themes and got the same 22 previews as
 `find_preview`. It also ran an adversarial fixture and seven mutations of
@@ -183,9 +185,15 @@ response above, and both mutations now failed for it too. It found one
 more blocker: this section cited the first head's commit, which the rebase
 had replaced, so `tools/check-docs.sh` failed in a fresh clone. The
 section now names no branch commit. It also asked for "for ASCII names"
-in the sort note above. Its affected run counted 7083/7083 over the same
-76 files: plan 157 added 11 checks to `tests/test-pager.sh`, which is in
-the selection.
+in the sort note above, and for the `uXz` fixture's comment to say what
+the path would read as without the guard. Plan 020 still says fetch makes
+`preview-thumb.png`; it stays as the record of that plan. Its affected run
+counted 7083/7083 over the same 76 files: plan 157 added 11 checks to
+`tests/test-pager.sh`, which is in the selection.
+
+The third round approved. Its nits were a long line here, two round-two
+items missing from the paragraph above, and the 7072 in Verification
+without the count after plan 157. All three are fixed.
 
 ## Rejected options
 
