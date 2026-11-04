@@ -619,3 +619,132 @@ haseen.rebind('SUPER + A', 'Exposé', hl.dsp.event('x'))
 REPORT()"
 assert_status "rebind runs on top of the shipped config" 0 "$STATUS"
 assert_eq "a rebound key fires one action, not two" "" "$OUTPUT"
+
+# --- CapsLock through keyd (plan 160) -----------------------------------------
+# While keyd runs, the sheet lists what keyd does with CapsLock, and a bind on
+# the modifiers holding CapsLock sends reads CAPSLOCK + key: before, the sheet
+# cut SUPER + SHIFT + CTRL + ALT + H off before its key. A sysroot has no
+# running units, so its enabled keyd.service stands in for a running one.
+sandbox keybinds-keyd
+export HASEEN_PATH="$REPO/share/haseen"
+root="$SANDBOX/root"
+wants="$root/etc/systemd/system/multi-user.target.wants"
+mkdir -p "$root/etc/keyd" "$wants"
+cp "$HASEEN_PATH/default/keyd/default.conf" "$root/etc/keyd/default.conf"
+touch "$wants/keyd.service"
+export HASEEN_SYSROOT="$root"
+cat >"$SANDBOX/binds.json" <<'JSON'
+[
+ {"has_description":true,"modmask":77,"submap":"","key":"H","keycode":0,"description":"Snap left","dispatcher":"__lua","arg":"1","repeat":false,"locked":false},
+ {"has_description":true,"modmask":77,"submap":"","key":"BRACKETRIGHT","keycode":0,"description":"Snap top-right","dispatcher":"__lua","arg":"2","repeat":false,"locked":false},
+ {"has_description":true,"modmask":73,"submap":"","key":"H","keycode":0,"description":"Three modifiers","dispatcher":"__lua","arg":"3","repeat":false,"locked":false},
+ {"has_description":true,"modmask":13,"submap":"","key":"K","keycode":0,"description":"Meh key","dispatcher":"__lua","arg":"4","repeat":false,"locked":false}
+]
+JSON
+export HASEEN_BINDS_FIXTURE="$SANDBOX/binds.json"
+stub hyprctl 'case "$1" in
+    binds) cat "$HASEEN_BINDS_FIXTURE" ;;
+    dispatch) shift; printf "%s\n" "dispatch $*" >>"'"$SANDBOX"'/dispatch.log" ;;
+esac'
+combo_of() { jq -r --arg d "$1" '.[] | select(.description == $d) | .combo' <<<"$OUTPUT"; }
+
+capture haseen keybinds --json
+assert_status "keyd's CapsLock: the sheet reads" 0 "$STATUS"
+assert_eq "a hyper bind reads CAPSLOCK + its key" "CAPSLOCK + H" "$(combo_of "Snap left")"
+assert_eq "the longest CapsLock key" "CAPSLOCK + BRACKETRIGHT" "$(combo_of "Snap top-right")"
+assert_eq "its mods stay the modifiers Hyprland matches" '["SUPER","SHIFT","CTRL","ALT"]' \
+    "$(jq -c '.[] | select(.description == "Snap left") | .mods' <<<"$OUTPUT")"
+assert_eq "three of the four modifiers are not CapsLock" "SUPER + SHIFT + ALT + H" "$(combo_of "Three modifiers")"
+assert_eq "CapsLock's own rows: hold, the RightAlt chord, tap" \
+    '[["CAPSLOCK","Hold for SUPER+SHIFT+CTRL+ALT"],["RIGHT ALT + CAPSLOCK","Press for CAPSLOCK"],["CAPSLOCK","Tap for ESCAPE"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description]]' <<<"$OUTPUT")"
+assert_eq "a CapsLock row is keyd's, with its keyd line as the action" '{"dispatcher":"keyd","action":"overload(hyper, esc)"}' \
+    "$(jq -c '[.[] | select(.description == "Tap for ESCAPE")][0] | {dispatcher, action}' <<<"$OUTPUT")"
+assert_eq "a chord row names its key and the key held with it" '{"key":"CAPSLOCK","mods":["RIGHT ALT"]}' \
+    "$(jq -c '.[] | select(.description == "Press for CAPSLOCK") | {key, mods}' <<<"$OUTPUT")"
+
+capture haseen keybinds
+assert_contains "the terminal sheet has a CapsLock section" "$OUTPUT" $'\nCapsLock\n'
+assert_contains "the terminal sheet shows CAPSLOCK + key" "$OUTPUT" "CAPSLOCK + H"
+
+# The menu's list shows the rows too, and a keyd row is never dispatched.
+capture haseen keybinds list --print
+assert_contains "the list shows a CapsLock bind" "$OUTPUT" "CAPSLOCK + H"
+assert_contains "the list shows keyd's tap" "$OUTPUT" "Tap for ESCAPE"
+stub haseen-menu-select 'grep -m1 "Tap for ESCAPE"'
+rm -f "$SANDBOX/dispatch.log"
+capture haseen-keybinds-list
+assert_status "Enter on a keyd row" 1 "$STATUS"
+assert_contains "and says it is keyd's" "$OUTPUT" "keyd remaps this key"
+assert_eq "nothing is dispatched for it" "" "$(cat "$SANDBOX/dispatch.log" 2>/dev/null)"
+capture haseen-keybinds-list --dry-run
+assert_eq "--dry-run says the same" "DRYRUN: nothing (a key keyd remaps)" "$OUTPUT"
+
+# keyd off (`haseen setup keyd off` keeps the config): the plain modifiers.
+command rm -f "$wants/keyd.service"
+capture haseen keybinds --json
+assert_eq "keyd off: the bind reads its four modifiers" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"
+assert_eq "keyd off: no CapsLock rows" 0 "$(jq '[.[] | select(.category == "CapsLock")] | length' <<<"$OUTPUT")"
+touch "$wants/keyd.service"
+
+# CapsLock held as one modifier: SUPER + CTRL is pressed with those keys.
+printf '[main]\ncapslock = overload(control, esc)\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a one-modifier hold renames nothing" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"
+assert_eq "a one-modifier hold is listed" '["Hold for CTRL","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
+
+# Three modifiers (a "meh" layer) are a CapsLock chord too.
+printf '[main]\ncapslock = layer(meh)\n\n[meh:C-A-S]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a three-modifier hold names its binds CAPSLOCK" "CAPSLOCK + K" "$(combo_of "Meh key")"
+assert_eq "and leaves the hyper binds alone" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"
+
+# Anything else keyd does is listed by its keyd line.
+printf '[main]\ncapslock = overload(nav, macro(a b))\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "an action the sheet cannot name shows as keyd wrote it" '[["CAPSLOCK","","overload(nav, macro(a b))"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
+
+# A layer keyd gives no modifiers holds none: it is listed by its keyd line.
+printf '[main]\ncapslock = overload(nav, esc)\n\n[nav:layout]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a layer without modifiers is not a hold for nothing" '[["CAPSLOCK","Tap for ESCAPE","overload(nav, esc)"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
+
+# Keys bound twice: keyd keeps the last binding and a layer's first modifiers.
+printf '[main]\ncapslock = esc\ncapslock = overload(hyper, esc)\n\n[hyper:C-M-A-S]\n[hyper:C]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "the last binding of CapsLock counts" '["Hold for SUPER+SHIFT+CTRL+ALT","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
+assert_eq "and the layer's first modifiers" "CAPSLOCK + H" "$(combo_of "Snap left")"
+printf '[main]\ncapslock+rightalt = a\nrightalt+capslock = b\ncapslock = layer(nav)\n\n[nav]\n[nav:C]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a chord is its keys in any order, and a header without modifiers is a layer's first" \
+    '[["CAPSLOCK","","layer(nav)"],["RIGHT ALT + CAPSLOCK","Press for B","b"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
+printf '[main]\ncapslock = overload(hyper, esc)\ncapslock+shift = overload(control, esc)\n\n[hyper:CMAS]\n[control:A]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a modifier set keyd cannot read holds none" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"
+assert_eq "and a built-in layer keeps its own modifier" '["Hold for CTRL","Tap for ESCAPE","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
+printf '[main]\ncapslock = overload(hyper, esc)\ncapslock+shift = layer(nav)\n\n[hyper::C-M-A-S-]\n[nav:C:x]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a modifier set may follow an empty field and end in a dash" "CAPSLOCK + H" "$(combo_of "Snap left")"
+assert_eq "and ends at a second colon" '["Hold for CTRL","Hold for SUPER+SHIFT+CTRL+ALT","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
+
+# A unit linked under requires/ is enabled too, as `haseen setup keyd status` reads it.
+cp "$HASEEN_PATH/default/keyd/default.conf" "$root/etc/keyd/default.conf"
+command rm -f "$wants/keyd.service"
+mkdir -p "$root/etc/systemd/system/graphical.target.requires"
+touch "$root/etc/systemd/system/graphical.target.requires/keyd.service"
+capture haseen keybinds --json
+assert_eq "a required keyd.service counts as enabled" "CAPSLOCK + H" "$(combo_of "Snap left")"
+
+# The live machine: keyd counts only while systemd says it runs.
+unset HASEEN_SYSROOT
+stub systemctl 'printf "%s\n" "$*" >>"'"$SANDBOX"'/systemctl.log"; exit 3'
+capture haseen keybinds --json
+assert_contains "the live machine asks systemd whether keyd runs" "$(cat "$SANDBOX/systemctl.log")" "is-active --quiet keyd.service"
+assert_eq "keyd not running: no CapsLock rows" 0 "$(jq '[.[] | select(.category == "CapsLock")] | length' <<<"$OUTPUT")"
