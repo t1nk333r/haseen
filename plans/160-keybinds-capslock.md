@@ -13,7 +13,7 @@
 - **Category**: shell, keybinds
 - **Planned at**: 2026-11-04, owner, on IO: "add the capslock binded
   shortcuts to the keybind helper"
-- **State**: DONE 2026-11-04 (`tests/test-keybinds.sh` 159/159, the
+- **State**: DONE 2026-11-04 (`tests/test-keybinds.sh` 161/161, the
   affected set of 9 files). IO gets it with its next update.
 
 ## Problem
@@ -62,7 +62,9 @@ a sysroot, which has no running units, an enabled `keyd.service` (a
 not enough. As keyd does, the last line binding the same keys counts (a
 chord's keys in any order), a layer keeps its first header (keyd's own
 `control`, `shift`, `alt`, `meta` and `altgr` come before any file), and a
-modifier set keyd cannot read (`[hyper:CMAS]`) holds no modifiers.
+modifier set keyd cannot read (`[hyper:CMAS]`) holds no modifiers. Like
+keyd, it reads a set up to a second colon and takes a trailing dash
+(`[hyper:C-M-A-S-]`).
 
 Each line becomes rows under a new section, "CapsLock":
 
@@ -187,7 +189,8 @@ shipped config and an enabled `keyd.service`. It checks:
 - a layer with no modifiers (no "Hold for" row);
 - the same keys bound twice, in the same and in another order, and a
   layer given two headers;
-- a modifier set keyd cannot read, and a built-in layer redeclared;
+- a modifier set keyd cannot read, one with a trailing dash or a second
+  colon, and a built-in layer redeclared;
 - a `keyd.service` linked under `requires/`;
 - the live machine asking systemd and listing nothing while keyd is not
   running. With keyd running there, the test would have to read the
@@ -213,3 +216,9 @@ written in another order (`capslock+rightalt`, then `rightalt+capslock`)
 gave two rows where keyd keeps the last; and a modifier set keyd rejects,
 such as `[hyper:CMAS]`, still named the hyper binds CAPSLOCK. It also
 pointed out the one line here over 80 columns.
+
+The third review approved the third head and found that its new check of
+modifier sets was stricter than keyd: keyd 2.6.0 also accepts a trailing
+dash and stops at a second colon (`parse_modset` and `new_layer`, checked
+by the reviewer against keyd's own parser), so `[hyper:C-M-A-]` lost its
+CAPSLOCK names. The fourth head accepts both.

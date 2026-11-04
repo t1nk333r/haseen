@@ -728,6 +728,11 @@ capture haseen keybinds --json
 assert_eq "a modifier set keyd cannot read holds none" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"
 assert_eq "and a built-in layer keeps its own modifier" '["Hold for CTRL","Tap for ESCAPE","Tap for ESCAPE"]' \
     "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
+printf '[main]\ncapslock = overload(hyper, esc)\ncapslock+shift = layer(nav)\n\n[hyper:C-M-A-S-]\n[nav:C:x]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a modifier set may end in a dash" "CAPSLOCK + H" "$(combo_of "Snap left")"
+assert_eq "and ends at a second colon" '["Hold for CTRL","Hold for SUPER+SHIFT+CTRL+ALT","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
 
 # A unit linked under requires/ is enabled too, as `haseen setup keyd status` reads it.
 cp "$HASEEN_PATH/default/keyd/default.conf" "$root/etc/keyd/default.conf"

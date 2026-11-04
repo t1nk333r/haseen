@@ -236,12 +236,15 @@ keyd_capslock() {
             if (index(section, ":")) {
                 set = substr(section, index(section, ":") + 1)
                 section = substr(section, 1, index(section, ":") - 1)
+                # keyd reads the set up to a second colon.
+                if (index(set, ":")) set = substr(set, 1, index(set, ":") - 1)
             }
             # keyd keeps the first header of a layer, and mounts one whose
-            # modifier set it cannot read ([nav:CMAS]) with none.
+            # modifier set it cannot read ([nav:CMAS]) with none. It takes a
+            # trailing dash ([nav:C-]).
             if (!(section in HEADER)) {
                 HEADER[section] = 1
-                if (set ~ /^[MSCAG](-[MSCAG])*$/) LAYER[section] = set
+                if (set ~ /^[MSCAG](-[MSCAG])*-?$/) LAYER[section] = set
             }
             next
         }
