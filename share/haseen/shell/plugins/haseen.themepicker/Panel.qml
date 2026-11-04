@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Haseen
 import qs.Haseen.Widgets
+import "Previews.js" as Previews
 
 // haseen.themepicker: every theme that `haseen theme list` knows, in
 // Omarchy's theme switcher (SkewCarousel, plan 152), over the desktop with
@@ -13,13 +14,16 @@ import qs.Haseen.Widgets
 // typing filters by name. Enter, or a click on the selected slice, runs
 // `haseen theme set` and closes the picker. A click on another slice
 // selects it. Escape clears the filter, and a second Escape closes the
-// picker. A click away from the picker also closes it. A theme without a
-// preview shows its palette, and `haseen theme fetch --all` caches
-// Omarchy's previews.
+// picker. A click away from the picker also closes it. Each theme shows the
+// picture Omarchy's switcher shows (Previews.js, plan 158): a preview, else
+// the first background. The user's theme comes first. Then comes a stock
+// preview, from the cache of `haseen theme fetch` or the installed Omarchy's
+// own themes, and only then a stock background. A theme with no picture
+// anywhere shows its palette.
 // Open it with `haseen shell ipc panel toggle haseen.themepicker`.
 //
-// Nothing runs until the panel opens. Then one `find` lists the user
-// themes' files and the cached previews, and `haseen theme list` runs once.
+// Nothing runs until the panel opens. Then one `find` lists the theme files
+// in the three places, and `haseen theme list` runs once.
 // Each slice on screen or next to it reads one colors.toml and decodes one
 // picture at the selected item's size.
 Item {
@@ -35,14 +39,15 @@ Item {
     readonly property string cli: Paths.haseenPath + "/../../bin/haseen"
     readonly property string userThemes: Paths.userConfig + "/themes"
     readonly property string cacheDir: (Quickshell.env("HASEEN_USER_CACHE") || (Quickshell.env("XDG_CACHE_HOME") || Paths.home + "/.cache") + "/haseen") + "/themes"
+    // The installed Omarchy's stock themes, each with its preview.png and
+    // backgrounds. haseen reads them and never ships or copies them.
+    readonly property string omarchyThemes: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/themes"
 
     property var themes: []
     property string currentTheme: ""
     property string notice: ""
-    // previewOf maps a theme name to its preview: the user theme's own
-    // preview.png first, then the fetched preview-thumb.png, then the
-    // fetched preview.png. userColours lists the user themes that ship their
-    // own colors.toml.
+    // previewOf maps a theme name to the picture it shows. userColours
+    // lists the user themes that ship their own colors.toml.
     property var previewOf: ({})
     property var userColours: ({})
 
@@ -50,31 +55,15 @@ Item {
         return (userColours[name] ? userThemes : Paths.haseenPath + "/themes") + "/" + name + "/colors.toml";
     }
 
-    // Reads scanProc's output, one path per line. The lowest rank wins.
+    // Reads scanProc's output, one path per line.
     function indexFiles(text: string): void {
-        const previews = {};
-        const rank = {};
-        const colours = {};
-        for (const path of text.split("\n")) {
-            const parts = path.split("/");
-            if (parts.length < 3)
-                continue;
-            const name = parts[parts.length - 2];
-            const file = parts[parts.length - 1];
-            const fromUser = path.startsWith(userThemes + "/");
-            if (file === "colors.toml") {
-                if (fromUser)
-                    colours[name] = true;
-                continue;
-            }
-            const r = fromUser ? (file === "preview.png" ? 0 : 3) : (file === "preview-thumb.png" ? 1 : 2);
-            if (rank[name] === undefined || r < rank[name]) {
-                rank[name] = r;
-                previews[name] = path;
-            }
-        }
-        previewOf = previews;
-        userColours = colours;
+        const found = Previews.index(text, {
+            user: userThemes,
+            cache: cacheDir,
+            omarchy: omarchyThemes
+        });
+        previewOf = found.previews;
+        userColours = found.colours;
     }
 
     function close(): void {
@@ -145,12 +134,13 @@ Item {
 
     // Lists existing files only, so no slice asks for an image or a
     // colors.toml that is not there. A missing directory makes find exit 1,
-    // and its output still counts. The theme list runs after the scan, so
-    // every slice is created once, with its final paths.
+    // and its output still counts. Previews.js drops what is not a theme's
+    // preview, background or colors.toml. The theme list runs after the
+    // scan, so every slice is created once, with its final paths.
     Process {
         id: scanProc
 
-        command: ["find", "-L", root.userThemes, root.cacheDir, "-mindepth", "2", "-maxdepth", "2", "(", "-name", "preview.png", "-o", "-name", "preview-thumb.png", "-o", "-name", "colors.toml", ")", "-type", "f", "-print"]
+        command: ["find", "-L", root.userThemes, root.cacheDir, root.omarchyThemes, "-mindepth", "2", "-maxdepth", "3", "-type", "f", "(", "-iname", "preview.*", "-o", "-name", "colors.toml", "-o", "-path", "*/backgrounds/*", ")", "-print"]
         stdout: StdioCollector {
             id: scanOut
         }

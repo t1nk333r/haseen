@@ -16,7 +16,8 @@
   `tests/test-carousel.sh` passed 44/44.
 - **Follow-up**: plan 156. At scale 1.25 on the software renderer every
   slice lost the bottom quarter of its picture. This plan tested scale 1
-  only.
+  only. Plan 158 then took each theme's picture the way Omarchy's switcher
+  does, from the installed Omarchy too, instead of the palette below.
 
 ## Problem
 

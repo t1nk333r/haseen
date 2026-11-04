@@ -30,8 +30,6 @@ sha256 recorded in share/haseen/layers/theme/omarchy-assets.txt; anything else
 is deleted. Files already cached and intact are kept, and an interrupted
 download resumes from its .part file. When the theme is current and has no
 background yet, the first one is linked and haseen-background restarted.
-With glycin-thumbnailer (from gdk-pixbuf2) a 512 px preview-thumb.png is made
-for the theme picker.
 EOF
 }
 
@@ -162,39 +160,6 @@ fetch_one() {
     say "$name/$rel ($size bytes)"
 }
 
-# file_url PATH — file:// URL with everything outside a safe set escaped.
-file_url() {
-    local LC_ALL=C path="$1" out="" c i
-    for ((i = 0; i < ${#path}; i++)); do
-        c="${path:i:1}"
-        case "$c" in
-        [abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._~-]) out+="$c" ;;
-        *) out+="$(printf '%%%02X' "'$c")" ;;
-        esac
-    done
-    printf 'file://%s\n' "$out"
-}
-
-# make_thumb DIR — preview-thumb.png (512 px) beside preview.png, for the
-# theme picker: each 1800x1012 original decoded leaves ~5 MiB more in the
-# shell after the picker closes (measured: 4 originals +49.6 MiB RSS, 4 or 1
-# thumbnails +27 MiB, which is the one-off cost of loading any image).
-# glycin-thumbnailer comes with gdk-pixbuf2 (a swaybg dependency); without it
-# the picker shows the full preview.
-make_thumb() {
-    local preview="$1/preview.png" thumb="$1/preview-thumb.png" tmp="$1/.preview-thumb.png.tmp"
-    [[ -f $preview ]] || return 0
-    [[ -f $thumb && ! $thumb -ot $preview ]] && return 0
-    have glycin-thumbnailer || return 0
-    if glycin-thumbnailer --input "$(file_url "$preview")" --output "$tmp" --size 512 >/dev/null 2>&1 &&
-        [[ $(file --brief --mime-type -- "$tmp" 2>/dev/null) == image/png ]]; then
-        mv -f -- "$tmp" "$thumb"
-    else
-        rm -f -- "$tmp"
-        warn "${1##*/}: could not make preview-thumb.png (the picker uses preview.png)"
-    fi
-}
-
 rc=0
 for name in "${names[@]}"; do
     dir="$THEME_CACHE_DIR/$name"
@@ -212,7 +177,6 @@ for name in "${names[@]}"; do
         total=$((total + 1))
         fetch_one "$name" "$sha" "$size" "$rel" || failed=$((failed + 1))
     done 3< <(theme_assets "$name")
-    make_thumb "$dir"
     exec 8>&-
     if ((failed > 0)); then
         warn "$name: $failed of $total images failed"

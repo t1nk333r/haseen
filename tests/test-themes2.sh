@@ -99,9 +99,6 @@ row() { printf '%s %s %s\n' "$(sha256sum <"$m/$1" | cut -d' ' -f1)" "$(stat -c %
 } >"$share/layers/theme/omarchy-assets.txt"
 stub curl "echo \"\$*\" >>'$SANDBOX/curl.log'; exec /usr/bin/curl \"\$@\""
 touch "$SANDBOX/curl.log"
-# The thumbnailer writes a PNG to --output (args: --input URL --output PATH --size N).
-img_png "$SANDBOX/thumb.png" thumb
-stub glycin-thumbnailer "echo \"\$*\" >>'$SANDBOX/thumb.log'; cp '$SANDBOX/thumb.png' \"\$4\""
 
 # Pinned upstream URLs (dry run: nothing is downloaded).
 capture haseen theme fetch tokyo-night --dry-run
@@ -128,8 +125,9 @@ assert_contains "curl limited to the mirror's scheme" "$(cat "$SANDBOX/curl.log"
 assert_contains "curl size limit" "$(cat "$SANDBOX/curl.log")" "--max-filesize 8388608"
 assert_contains "curl resumes" "$(cat "$SANDBOX/curl.log")" "--continue-at -"
 assert_eq "no partial files left" "" "$(find "$CACHE" -name '*.part')"
-assert_eq "thumbnail made beside the preview" "$(sha256sum <"$SANDBOX/thumb.png")" "$(sha256sum <"$CACHE/tokyo-night/preview-thumb.png" 2>/dev/null)"
-assert_eq "thumbnailer gets a file URL and 512 px" "--input file://$CACHE/tokyo-night/preview.png --output $CACHE/tokyo-night/.preview-thumb.png.tmp --size 512" "$(cat "$SANDBOX/thumb.log")"
+# The theme picker reads preview.png itself, so fetch makes no thumbnail
+# (plan 158).
+assert_eq "no thumbnail beside the preview" "" "$(find "$CACHE" -name 'preview-thumb.png')"
 
 # Idempotent: intact files are not downloaded again.
 : >"$SANDBOX/curl.log"

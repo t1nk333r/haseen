@@ -3,7 +3,7 @@
   "id": "haseen.themepicker",
   "name": "Theme picker",
   "version": "1.0.0",
-  "description": "Theme previews, or each theme's palette, in Omarchy's carousel without its dim. Typing filters, and Enter runs haseen theme set",
+  "description": "Each theme's picture as Omarchy's switcher finds it, or its palette, in Omarchy's carousel without its dim. Typing filters, and Enter runs haseen theme set",
   "kinds": [
     "panel"
   ],

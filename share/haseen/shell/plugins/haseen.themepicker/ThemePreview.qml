@@ -3,16 +3,16 @@ import Quickshell.Io
 import qs.Haseen
 
 // One theme in the picker's carousel, filling its slice. It shows the
-// theme's preview image if one exists: the theme's own preview.png, or the
-// one `haseen theme fetch` cached. Otherwise it shows the palette from the
-// theme's colors.toml, as "Aa" over a row of swatches in the selected item
-// and as a column of swatches in a narrow slice. These colours are the
-// theme's data, not haseen's styling. The fallback fill uses Theme tokens.
+// picture the panel found for the theme (Previews.js): Omarchy's preview of
+// it, or a background. Otherwise it shows the palette from the theme's
+// colors.toml, as "Aa" over a row of swatches in the selected item and as a
+// column of swatches in a narrow slice. These colours are the theme's data,
+// not haseen's styling. The fallback fill uses Theme tokens.
 Item {
     id: preview
 
     property string name: ""
-    // The path of an existing preview image, or "" if the panel found none.
+    // The path of an existing picture, or "" if the panel found none.
     property string previewPath: ""
     // The colors.toml that `haseen theme set` would use, the user theme's
     // before the stock one.

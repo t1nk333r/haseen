@@ -10,7 +10,9 @@
 # (SkewSlice.qml) on the software renderer the shell uses, at scales 1, 1.25
 # and 2, and reads its pixels back. That proves the slant cuts the picture
 # without a shader and leaves it upright and whole (plan 156). It also checks
-# that both pickers use the carousel, dim nothing and open as overlays.
+# that both pickers use the carousel, dim nothing and open as overlays, and
+# that the theme picker finds each theme's picture in the order Omarchy's
+# switcher does (plan 158).
 
 W="$HASEEN_PATH/shell/Haseen/Widgets"
 PLUGINS="$HASEEN_PATH/shell/plugins"
@@ -46,10 +48,40 @@ for id in haseen.background haseen.themepicker; do
     assert_contains "$id decodes at the selected item's size" "$(cat "$PLUGINS/$id"/*.qml)" "carousel.geometry.expandedWidth * carousel.pixelRatio"
 done
 
+# The theme picker shows the picture Omarchy's switcher shows, and also
+# reads the installed Omarchy's own themes (plan 158).
+TP="$PLUGINS/haseen.themepicker"
+assert_contains "the theme picker reads the installed Omarchy's themes" "$(cat "$TP/Panel.qml")" \
+    '(Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/themes"'
+assert_contains "Previews.js keeps the Omarchy MIT notice" "$(cat "$TP/Previews.js")" "MIT, Copyright (c) David"
+assert_eq "the theme picker no longer reads the 512 px thumbnail" "" "$(grep -n 'preview-thumb' "$TP"/*.qml "$TP"/*.js || true)"
+# Decode at the window's ratio, not the screen's rounded-up one (plan 158).
+assert_contains "the carousel decodes at its window's pixel ratio" "$(cat "$W/SkewCarousel.qml")" \
+    "QsWindow.window && QsWindow.window.devicePixelRatio > 0 ? QsWindow.window.devicePixelRatio"
+
 if [[ ! -x $QML_BIN ]]; then
     echo "  (no $QML_BIN: the carousel's arithmetic and drawing were not exercised)" >&2
     return 0
 fi
+
+# --- the theme picker's pictures, from the panel's own find -----------------------
+# A user theme, the fetched cache and an installed Omarchy, each holding
+# what Omarchy's switcher would pick from. The find command is read from
+# Panel.qml, so the test runs the panel's real scan.
+fx="$SANDBOX/previews"
+for f in u/mine/preview.PNG u/mine/preview.jpg u/mine/backgrounds/a.jpg u/mine/colors.toml \
+    u/wall/backgrounds/b.png u/wall/backgrounds/a.jpg u/wall/colors.toml u/partial/backgrounds/a.jpg.part \
+    c/tokyo-night/preview.png c/tokyo-night/preview-thumb.png c/tokyo-night/backgrounds/1.webp \
+    o/tokyo-night/preview.png o/lumon/preview.png o/lumon/backgrounds/0-x.jpg c/lumon/backgrounds/1.webp \
+    o/miasma/backgrounds/02.jpg o/miasma/backgrounds/01.jpg o/miasma/backgrounds/notes.txt o/miasma/colors.toml \
+    o/deep/sub/preview.png; do
+    mkdir -p "$fx/$(dirname "$f")"
+    : >"$fx/$f"
+done
+scan="$(grep -m1 'command: \["find"' "$TP/Panel.qml" | sed 's/^ *command: //; s/root\.userThemes/"@U"/; s/root\.cacheDir/"@C"/; s/root\.omarchyThemes/"@O"/')"
+mapfile -t scan_args < <(jq -r '.[]' <<<"$scan" | sed "s|^@U\$|$fx/u|; s|^@C\$|$fx/c|; s|^@O\$|$fx/o|")
+assert_eq "the panel's scan is a find over the three places" "find -L $fx/u $fx/c $fx/o" "${scan_args[*]:0:5}"
+found="$("${scan_args[@]}" 2>/dev/null || true)"
 
 # --- the arithmetic, under the Qt JS engine ----------------------------------------
 harness="$SANDBOX/harness"
@@ -57,9 +89,16 @@ mkdir -p "$harness"
 cat >"$harness/Harness.qml" <<EOF
 import QtQuick
 import "file://$W/Carousel.js" as C
+import "file://$TP/Previews.js" as P
 Item {
     function out(k, v) { console.warn("RESULT " + k + " " + JSON.stringify(v)); }
     Component.onCompleted: {
+        // A path under a root that only shares the user root's prefix is
+        // not under it: without the guard's "/", "uXz" would read as a user theme.
+        const found = $(jq -Rs . <<<"$found") + "\n$fx/uXz/preview.png\n";
+        const picked = P.index(found, { user: "$fx/u", cache: "$fx/c", omarchy: "$fx/o" });
+        out("previews", Object.keys(picked.previews).sort().map(k => k + "=" + picked.previews[k].slice("$fx/".length)));
+        out("colours", Object.keys(picked.colours).sort());
         const G = C.GEOMETRY;
         const names = ["tokyo-night", "rose-pine", "retro-82", "nord"];
         out("labels", [C.labelFor("tokyo-night"), C.labelFor("/x/1-deep_sea.jpg"), C.nameFor("/x/a.b.png")]);
@@ -102,6 +141,14 @@ Item {
 EOF
 qml_out="$(cd "$harness" && QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" Harness.qml 2>&1)"
 r() { sed -n "s/^.*RESULT $1 //p" <<<"$qml_out"; }
+# Omarchy's order: a theme's own preview.png before its other previews and
+# its first background in sorted order, the user's theme first. Of the
+# stock copies, the fetched cache's preview comes first, then the installed
+# Omarchy's, and any stock preview comes before a stock background.
+assert_eq "each theme's picture, in Omarchy's order" \
+    '["lumon=o/lumon/preview.png","miasma=o/miasma/backgrounds/01.jpg","mine=u/mine/preview.PNG","tokyo-night=c/tokyo-night/preview.png","wall=u/wall/backgrounds/a.jpg"]' \
+    "$(r previews)"
+assert_eq "only a user theme's colors.toml counts as its own" '["mine","wall"]' "$(r colours)"
 assert_eq "labels read as Omarchy's: words, capitals, no extension" '["Tokyo Night","1 Deep Sea","a.b"]' "$(r labels)"
 assert_eq "the filter matches a name or its label, any case" '[[0,1,2,3],[1,2],[0],[]]' "$(r shown)"
 assert_eq "stepping wraps, and starts from the first match when the selection hides" '[0,3,2,1,-1]' "$(r step)"
