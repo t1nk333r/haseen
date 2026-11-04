@@ -36,11 +36,12 @@ plan 103 (`plans/103-omarchy45-fixes.md`), each checked against
 
 | haseen | upstream | change |
 |---|---|---|
-| `Detect.js`, `Layout.js`, `Markup.js` | same | notice header only |
+| `Detect.js`, `Markup.js` | same | notice header only |
+| `Layout.js` | same | `edgeFor` and `fromEdge` added: the deck's corner follows the bar, and a bottom deck counts up from the bar (plan 157) |
 | `Security.js` | same | `parseOmarchyExecArgv` and `safeLocalFilePath` removed (Omarchy-only click actions) |
 | `Store.js` | same | `execArgv` / `omarchy-action` dropped; the Python store's writer queue replaced by pure disk-store rules (`forDisk`, `closeInto`, `trimHistory`, `newest`, `forgetHeld`, `putLive`, `parseFile`) |
 | `Service.qml` | `Service.qml` | rewritten against `qs.Haseen` (below) |
-| `Toast.qml`, `DeedButton.qml` | same | Theme tokens instead of Omarchy's Style/Color/Border/Button; no `MultiEffect`; single-shot expiry; a critical card on show keeps its action row up without hover (plan 075: the battery countdown's Cancel) |
+| `Toast.qml`, `DeedButton.qml` | same | Theme tokens instead of Omarchy's Style/Color/Border/Button; no `MultiEffect`; single-shot expiry; a critical card on show keeps its action row up without hover (plan 075: the battery countdown's Cancel); against a bottom bar a card is turned over and grows upwards (plan 157) |
 | `PagerButton.qml`, `SectionHeader.qml`, `TextCard.qml` | parts of `Toast.qml`/`Widget.qml` | haseen has no shared kit control, so the small pieces are their own files |
 | `IconDir.qml` | (new) | lists the icon override and cache directories, so only existing files are tried |
 | `Widget.qml` | bar half of `Widget.qml` | a `BarButton`; text in `Theme.barForeground` |
@@ -93,7 +94,10 @@ settings live in `shell.json`), the Bubblewrap helper sandbox and its
 - **Surface.** The deck's layer surface exists only while cards are on screen
   (plus 800 ms for the last exit animation), instead of upstream's
   always-mapped canvas; it uses the normal exclusion mode, so it sits below
-  the bar on its own. `fullscreenOverlay` became `avoidFullscreen`
+  the bar on its own. Its corner follows the bar (plan 157): top-right beside
+  a top or right bar, top-left beside a left bar, bottom-right above a bottom
+  bar, where the newest card sits against the bar and the deck opens
+  upwards. `fullscreenOverlay` became `avoidFullscreen`
   (`off`/`all`/`steam`, upstream's `-away` modes); the step-aside modes are
   unnecessary without an idle canvas.
 - **Timers.** The card's 100 ms countdown ticker is a single-shot timer that

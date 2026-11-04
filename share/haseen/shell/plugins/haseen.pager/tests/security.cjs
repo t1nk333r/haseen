@@ -287,6 +287,18 @@ const same = (a, b, m) => assert.equal(JSON.stringify(a), JSON.stringify(b), m);
   assert.equal(L.deckKeyFor(rows[0], 'all'), 'all');
   const leaving = L.compute([rows[0]], {stacking:'all', heightOf:h});
   assert.equal(leaving.placements.a.hidden, false);
+  // The deck's corner follows the bar (plan 157).
+  same(L.edgeFor('top'), {bottom:false, left:false});
+  same(L.edgeFor('right'), {bottom:false, left:false});
+  same(L.edgeFor('left'), {bottom:false, left:true});
+  same(L.edgeFor('bottom'), {bottom:true, left:false});
+  same(L.edgeFor(undefined), {bottom:false, left:false});
+  // Against a top bar a placement is drawn as it is; against a bottom bar the
+  // newest card sits on the deck's bottom edge and the deck grows upwards.
+  assert.equal(L.fromEdge(56, 50, 200, false), 56);
+  assert.equal(L.fromEdge(0, 50, 200, true), 150, 'the front card touches the bar');
+  assert.equal(L.fromEdge(56, 50, 200, true), 94, 'older cards stack above it');
+  assert.equal(L.fromEdge(L.fromEdge(37, 0, 200, true), 0, 200, true), 37, 'a point turns back');
 }
 // Grouping keys: per site for the web, per forwarded app for KDE Connect.
 {

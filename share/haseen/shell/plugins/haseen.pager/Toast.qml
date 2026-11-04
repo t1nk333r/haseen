@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Haseen
 
+import "Layout.js" as Layout
 import "Markup.js" as Markup
 import "Security.js" as Security
 
@@ -344,12 +345,14 @@ Item {
             menuOpen = false;
     }
 
-    // Position, size and opacity all come from the scene clock.
-    y: scene ? scene.at(row.key, "y") : 0
+    // Position, size and opacity all come from the scene clock. The scene's y
+    // counts from the edge the deck stacks against (plan 157): against a
+    // bottom bar the card is turned over and shrinks towards that edge.
+    y: scene ? Layout.fromEdge(scene.at(row.key, "y"), drawnHeight, scene.deckHeight, scene.atBottom === true) : 0
     z: place.z
     scale: scene ? scene.at(row.key, "scale") : 1
     opacity: place.hidden ? 0 : (scene ? scene.at(row.key, "opacity") : 1)
-    transformOrigin: Item.Top
+    transformOrigin: scene && scene.atBottom === true ? Item.Bottom : Item.Top
     // `visible` is deliberately not bound: anything the layout produces is the
     // wrong side of that fence (binding loops). `enabled` refuses the pointer.
     enabled: !place.hidden
@@ -375,7 +378,9 @@ Item {
             id: layoutRow
 
             // Anchored to the top: a card grows downwards when its buttons or
-            // reply field appear, and the words must not move.
+            // reply field appear, and the words must not move. Against a
+            // bottom bar the card's bottom is what stays put (plan 157), so
+            // the card grows upwards and its words rise with it.
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top

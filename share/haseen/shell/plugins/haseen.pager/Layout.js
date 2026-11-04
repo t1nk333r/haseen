@@ -23,6 +23,22 @@ function deckKeyFor(row, stacking) {
   return String(row.groupKey || row.source || row.app || "?")
 }
 
+// haseen (plan 157): which corner the deck sits in follows the bar. A bottom
+// bar keeps it bottom-right, stacked against the bar; a left bar puts it
+// top-left; a top or right bar leaves it top-right.
+function edgeFor(barPosition) {
+  return { bottom: barPosition === "bottom", left: barPosition === "left" }
+}
+
+// haseen (plan 157): every y here counts from the edge the deck stacks
+// against. That is the top, or with a bottom bar the bottom, so the cards
+// rise from the bar and an open deck grows upwards. The deck draws top-down,
+// so a bottom deck turns a placement over; the same turn takes a point back
+// (height 0).
+function fromEdge(y, height, deckHeight, bottom) {
+  return bottom ? deckHeight - y - height : y
+}
+
 function groupKeyFor(row) {
   return String(row.groupKey || row.source || row.app || "?")
 }
