@@ -1145,6 +1145,12 @@ Scope {
     property string hoverKey: ""
     property real hoverX: -1
     property real hoverY: -1
+    // The deck's corner follows the bar (owner, 2026-11-04, plan 157): against
+    // a bottom bar it stacks up from the bar and opens upwards; beside a left
+    // bar it sits top-left; otherwise top-right. Placements count from the
+    // edge it stacks against (Layout.fromEdge).
+    readonly property var edge: Layout.edgeFor(Config.barPosition)
+    readonly property bool atBottom: edge.bottom
     property var heights: ({})
     property int layoutRevision: 0
 
@@ -2432,7 +2438,8 @@ Scope {
                 anchors {
                     top: true
                     bottom: true
-                    right: true
+                    left: service.edge.left
+                    right: !service.edge.left
                 }
                 implicitWidth: clipper.width + 10
                 WlrLayershell.namespace: "haseen-pager"
@@ -2451,22 +2458,28 @@ Scope {
 
                     readonly property int motionInset: 4
 
-                    anchors.right: parent.right
-                    anchors.top: parent.top
+                    // On the bar's side of the screen, edgeSpacing from the
+                    // bar or the screen edge; the inset is on the far sides.
+                    anchors.left: service.edge.left ? parent.left : undefined
+                    anchors.right: service.edge.left ? undefined : parent.right
+                    anchors.top: service.atBottom ? undefined : parent.top
+                    anchors.bottom: service.atBottom ? parent.bottom : undefined
                     anchors.topMargin: service.edgeSpacing
+                    anchors.bottomMargin: service.edgeSpacing
                     width: service.cardWidth + motionInset + service.edgeSpacing
-                    height: deck.y + deck.height + motionInset
+                    height: deck.height + motionInset
                     clip: true
 
                     Item {
                         id: deck
 
-                        x: clipper.motionInset
+                        x: service.edge.left ? service.edgeSpacing : clipper.motionInset
+                        y: service.atBottom ? clipper.motionInset : 0
                         width: service.cardWidth
                         height: service.deckHeight
                         // The cards' own window, not a PanelPopup: mirror them
                         // in a right-to-left language (plan 109). Not on the
-                        // clipper, whose right anchor keeps the deck at the
+                        // clipper, whose anchors keep the deck at its
                         // screen edge; the deck itself sits at an explicit x.
                         LayoutMirroring.enabled: I18n.rightToLeft
                         LayoutMirroring.childrenInherit: true
@@ -2480,6 +2493,8 @@ Scope {
                             function hoverAt(x, y) {
                                 service.hoverX = x;
                                 service.hoverY = y;
+                                // Placements count from the stacking edge.
+                                const along = Layout.fromEdge(y, 0, height, service.atBottom);
                                 const places = service.placements;
                                 let found = "";
                                 for (const key in places) {
@@ -2487,7 +2502,7 @@ Scope {
                                     if (pl.hidden)
                                         continue;
                                     const h = pl.height || 58;
-                                    if (y >= pl.y && y <= pl.y + h) {
+                                    if (along >= pl.y && along <= pl.y + h) {
                                         found = key;
                                         break;
                                     }
@@ -2517,6 +2532,7 @@ Scope {
                                 // In source mode, which deck you are over opens.
                                 if (service.stacking !== "source")
                                     return;
+                                const along = Layout.fromEdge(mouse.y, 0, height, service.atBottom);
                                 for (const d of service.layout.decks) {
                                     const first = d.rows[0];
                                     const place = service.layout.placements[first.key];
@@ -2524,7 +2540,7 @@ Scope {
                                         continue;
                                     const top = place.y;
                                     const bottom = top + (service.heights[first.key] || 58);
-                                    if (mouse.y >= top - 6 && mouse.y <= bottom + 6) {
+                                    if (along >= top - 6 && along <= bottom + 6) {
                                         service.pointerEntered(d.key);
                                         return;
                                     }

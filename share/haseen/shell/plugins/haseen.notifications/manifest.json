@@ -3,7 +3,7 @@
   "id": "haseen.notifications",
   "name": "Notifications",
   "version": "1.0.0",
-  "description": "Notification server: popups top-right, do-not-disturb (the dnd flag) with a bar indicator while it is on, and a panel with recent notifications (memory only)",
+  "description": "Notification server: popups in the bar's corner (top-right, top-left beside a left bar, bottom-right above a bottom bar), do-not-disturb (the dnd flag) with a bar indicator while it is on, and a panel with recent notifications (memory only)",
   "kinds": [
     "service",
     "panel",

@@ -107,8 +107,17 @@ assert_contains "a card opens its source site only for a web row" "$svc" \
     'String(row.groupKey || "").indexOf("web:") === 0 && Markup.hostname(row.source)'
 assert_contains "a muted notification stays tracked, so its updates keep one key" "$svc" "retainMuted(key);"
 
+# --- the deck's corner follows the bar (plan 157) ---------------------------------------
+assert_contains "the pager's corner follows bar.position" "$svc" "Layout.edgeFor(Config.barPosition)"
+assert_contains "beside a left bar the pager window sits on the left" "$svc" "left: service.edge.left"
+assert_contains "against a bottom bar the deck hangs from the bottom" "$svc" "anchors.bottom: service.atBottom ? parent.bottom : undefined"
+assert_contains "hover hit-tests in the same turned-over coordinates" "$svc" "Layout.fromEdge(y, 0, height, service.atBottom)"
+
 # --- haseen.notifications is the fallback ---------------------------------------------
 fallback="$(cat "$PLUGINS/haseen.notifications/Service.qml")"
+assert_contains "fallback popups follow a bottom bar" "$fallback" 'readonly property bool atBottom: Config.barPosition === "bottom"'
+assert_contains "and a left bar" "$fallback" 'readonly property bool atLeft: Config.barPosition === "left"'
+assert_contains "the newest fallback popup is the one nearest the bar" "$fallback" "root.atBottom ? root.popups.slice().reverse() : root.popups"
 assert_contains "fallback knows it is superseded" "$fallback" 'Config.services.indexOf("haseen.pager") >= 0'
 assert_contains "fallback server only while not superseded" "$fallback" "model: root.superseded ? 0 : 1"
 assert_contains "fallback gives up the role" "$fallback" 'Plugins.unregisterRole("notifications", root)'
@@ -184,6 +193,18 @@ ShellRoot {
             return;
         }
         card = c.createObject(probe, { row: rows.get(0) });
+        // Plan 157: the scene's y counts from the edge the deck stacks
+        // against. Against a bottom bar a card is turned over: 10 px from the
+        // bar means its bottom edge sits 10 px above the deck's bottom.
+        const at = (k, w) => ({ y: 10, scale: 1, opacity: 1, height: 58 })[w];
+        const below = c.createObject(probe, { row: rows.get(0), drawnHeight: 58,
+                                              scene: { at: at, deckHeight: 200, atBottom: true } });
+        const above = c.createObject(probe, { row: rows.get(0), drawnHeight: 58,
+                                              scene: { at: at, deckHeight: 200, atBottom: false } });
+        probe.out.bottomGap = 200 - below.y - below.height;
+        probe.out.bottomOrigin = below.transformOrigin === Item.Bottom;
+        probe.out.topY = above.y;
+        probe.out.topOrigin = above.transformOrigin === Item.Top;
     }
     Timer {
         interval: 100
@@ -221,6 +242,10 @@ QML
     assert_eq "then read again" true "$(jq -r .reloaded <<<"$result")"
     assert_eq "from the same path" "image://icon//tmp/cover.png" "$(jq -r .source <<<"$result")"
     assert_eq "a sender's own file is never served from the cache" false "$(jq -r .cached <<<"$result")"
+    assert_eq "against a bottom bar a card counts up from the deck's bottom (plan 157)" 10 "$(jq -r .bottomGap <<<"$result")"
+    assert_eq "and shrinks towards the bar" true "$(jq -r .bottomOrigin <<<"$result")"
+    assert_eq "against a top bar it counts down from the top" 10 "$(jq -r .topY <<<"$result")"
+    assert_eq "and shrinks towards the top" true "$(jq -r .topOrigin <<<"$result")"
 else
     echo "  (qs not found: the replaced-card check is skipped)"
 fi

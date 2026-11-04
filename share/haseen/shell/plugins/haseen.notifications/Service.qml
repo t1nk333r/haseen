@@ -6,8 +6,11 @@ import Quickshell.Wayland
 import qs.Haseen
 
 // haseen.notifications: the org.freedesktop.Notifications server.
-// New notifications pop up top-right (at most maxPopups, newest on top) and
-// stay in memory for the panel until dismissed; nothing is written to disk.
+// New notifications pop up in the bar's corner (at most maxPopups) and stay
+// in memory for the panel until dismissed; nothing is written to disk. The
+// corner follows the bar (plan 157): top-right, newest on top, beside a top or
+// right bar; top-left beside a left bar; bottom-right above a bottom bar,
+// newest against the bar, so the stack grows upwards.
 // Do-not-disturb keeps everything but critical out of the popups. Its state
 // is the `dnd` flag (qs.Haseen Flags), so `haseen toggle dnd`, the panel,
 // the bar indicator and `notifications toggleDnd` all agree.
@@ -33,6 +36,8 @@ Scope {
     readonly property int popupWidth: _int(settings.width, 360, 200)
 
     readonly property bool dnd: Flags.dnd
+    readonly property bool atBottom: Config.barPosition === "bottom"
+    readonly property bool atLeft: Config.barPosition === "left"
     // Notification objects shown as popups, newest first.
     property var popups: []
     // Every tracked notification, oldest first (the panel reverses it).
@@ -173,11 +178,15 @@ Scope {
         PanelWindow {
             screen: root.focusedScreen()
             anchors {
-                top: true
-                right: true
+                top: !root.atBottom
+                bottom: root.atBottom
+                left: root.atLeft
+                right: !root.atLeft
             }
             margins {
                 top: Theme.gap
+                bottom: Theme.gap
+                left: Theme.gap
                 right: Theme.gap
             }
             exclusiveZone: 0
@@ -200,9 +209,10 @@ Scope {
 
                 Repeater {
                     // ScriptModel diffs by identity: a new popup does not
-                    // recreate (and restart the timers of) the others.
+                    // recreate (and restart the timers of) the others. The
+                    // newest is the card nearest the bar.
                     model: ScriptModel {
-                        values: root.popups
+                        values: root.atBottom ? root.popups.slice().reverse() : root.popups
                     }
 
                     delegate: NotificationCard {
