@@ -63,8 +63,11 @@ SUPER+CTRL+L lock.
 
 Hyper binds (`SUPER + SHIFT + ALT + CTRL + key`) need keyd: `haseen setup
 keyd on` makes holding CapsLock send all four modifiers (tap = Escape,
-RightAlt+CapsLock = CapsLock). It is off by default, and the defaults ship
-no hyper binds: add your own in `bindings.lua`.
+RightAlt+CapsLock = CapsLock). It is off by default. The defaults put the
+snap layer on hyper (`binds.lua`, "Snap layer"); add your own in
+`bindings.lua`. While keyd runs, the keybind sheet (SUPER + F1, `haseen
+keybinds`) names those binds `CAPSLOCK + key` and lists what keyd does with
+CapsLock under "CapsLock".
 
 ## Monitors (`~/.config/hypr/monitors.lua`)
 

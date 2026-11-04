@@ -26,14 +26,17 @@ Scope {
     property string query: ""
     property var binds: []
 
-    // `haseen keybinds` names a bind outside any section "Other".
+    // `haseen keybinds` names a bind outside any section "Other", and lists
+    // what keyd does with CapsLock under "CapsLock".
     readonly property string otherSection: I18n.mark("Other")
+    readonly property string capsLockSection: I18n.mark("CapsLock")
 
     // A description from the Lua config in the interface language. The
-    // workspace binds build theirs at run time ("Workspace " .. n), so they
+    // workspace binds build theirs at run time ("Workspace " .. n), and so
+    // does `haseen keybinds` for keyd's CapsLock ("Tap for ESCAPE"), so they
     // are matched by pattern and translated as one template each.
     function describe(text: string): string {
-        const patterns = [[/^Workspace (\S+)$/, I18n.tr("Workspace %1", "%1")], [/^Move window silently to workspace (\S+)$/, I18n.tr("Move window silently to workspace %1", "%1")], [/^Move window to workspace (\S+)$/, I18n.tr("Move window to workspace %1", "%1")], [/^Move window to left monitor$/, I18n.tr("Move window to left monitor")], [/^Move window to right monitor$/, I18n.tr("Move window to right monitor")], [/^Move window to up monitor$/, I18n.tr("Move window to the monitor above")], [/^Move window to down monitor$/, I18n.tr("Move window to the monitor below")]];
+        const patterns = [[/^Workspace (\S+)$/, I18n.tr("Workspace %1", "%1")], [/^Hold for (.+)$/, I18n.tr("Hold for %1", "%1")], [/^Tap for (.+)$/, I18n.tr("Tap for %1", "%1")], [/^Press for (.+)$/, I18n.tr("Press for %1", "%1")], [/^Move window silently to workspace (\S+)$/, I18n.tr("Move window silently to workspace %1", "%1")], [/^Move window to workspace (\S+)$/, I18n.tr("Move window to workspace %1", "%1")], [/^Move window to left monitor$/, I18n.tr("Move window to left monitor")], [/^Move window to right monitor$/, I18n.tr("Move window to right monitor")], [/^Move window to up monitor$/, I18n.tr("Move window to the monitor above")], [/^Move window to down monitor$/, I18n.tr("Move window to the monitor below")]];
         for (const [pattern, template] of patterns) {
             const m = pattern.exec(text);
             if (m)
@@ -198,10 +201,13 @@ Scope {
             }
 
             // A fixed-size card: PanelSurface sizes itself to its content, and
-            // the list inside this one fills the card instead.
+            // the list inside this one fills the card instead. At 35
+            // characters of the body font a column, the 42% key column holds
+            // 23 characters: CAPSLOCK + BRACKETRIGHT, the longest CapsLock
+            // key (plan 160).
             Rectangle {
                 anchors.centerIn: parent
-                width: Math.min(parent.width - Theme.gap * 8, Theme.fontSize * 34 * root.columns)
+                width: Math.min(parent.width - Theme.gap * 8, Theme.fontSize * 35 * root.columns)
                 height: Math.min(parent.height - Theme.gap * 8, Theme.fontSize * 40)
                 color: Theme.surface
                 radius: Theme.radius

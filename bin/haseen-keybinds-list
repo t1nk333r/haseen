@@ -19,7 +19,8 @@ Usage: haseen keybinds list [--print] [--dry-run]
 
 Shows every live binding as "KEYS → description" in the menu's searchable
 list; Enter runs the chosen one, as if its keys were pressed. A bind whose
-action is a Lua function cannot be replayed and only closes the list.
+action is a Lua function cannot be replayed and only closes the list, and
+neither can what keyd does with CapsLock.
 
   --print     print the rows instead of showing them
   --dry-run   show the list, then print the dispatch instead of running it
@@ -96,6 +97,7 @@ dispatch() {
         exec) echo "DRYRUN: hyprctl dispatch hl.dsp.exec_cmd($(lua_string "$arg"))" ;;
         lua) echo "DRYRUN: hyprctl dispatch $arg" ;;
         "") echo "DRYRUN: nothing (a Lua function)" ;;
+        keyd) echo "DRYRUN: nothing (a key keyd remaps)" ;;
         *) echo "DRYRUN: hyprctl dispatch $dispatcher $arg" ;;
         esac
         return 0
@@ -111,6 +113,10 @@ dispatch() {
         ;;
     "")
         warn "this bind runs a Lua function, which cannot be replayed from the list"
+        return 1
+        ;;
+    keyd)
+        warn "keyd remaps this key itself: press it, the list cannot"
         return 1
         ;;
     *)

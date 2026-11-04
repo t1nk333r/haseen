@@ -31,7 +31,12 @@ Lists the live bindings, grouped by the section they were written under.
               "arg","category","submap","repeat","locked"}]
              key is readable (code:10 becomes 1, mouse:272 LEFT MOUSE BUTTON);
              dispatcher is exec, lua (arg: a hl.dsp expression), a native
-             dispatcher, or "" for a Lua function nothing can replay
+             dispatcher, "" for a Lua function nothing can replay, or keyd
+             While keyd runs (haseen setup keyd), what it does with
+             CapsLock is listed under CapsLock (dispatcher keyd, action
+             the keyd line), and a bind on the modifiers holding CapsLock
+             sends (SUPER + SHIFT + CTRL + ALT) has the combo
+             CAPSLOCK + key; its mods stay those modifiers
   --reload   ask Hyprland to reload its config first, so an edit you just
              made is included
 EOF
@@ -129,7 +134,134 @@ keysyms() {
         }' || true
 }
 
-records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --arg lua "$(lua_binds)" --arg syms "$(keysyms)" '
+# What keyd does with CapsLock (`haseen setup keyd`), from the [main] lines of
+# /etc/keyd/default.conf that name it, alone or in a chord:
+#   row<TAB>combo<TAB>description<TAB>action  one per thing CapsLock does
+#   hold<TAB>MODMASK                          the modifiers holding it sends,
+#                                             when three or more
+# Only while keyd runs: `haseen setup keyd off` leaves the config behind. A
+# sysroot has no running units, so there an enabled keyd.service stands in.
+keyd_capslock() {
+    if in_sysroot; then
+        compgen -G "$(sysroot_path /etc/systemd/system)/*.wants/keyd.service" >/dev/null || return 0
+    else
+        have systemctl && systemctl is-active --quiet keyd.service 2>/dev/null || return 0
+    fi
+    local conf
+    conf="$(sysroot_path /etc/keyd/default.conf)"
+    [[ -r $conf ]] || return 0
+    awk '
+        function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
+        # keyd modifier letters (C-M-A-S) in the order binds.lua writes them.
+        function mods(letters,    i, l, out) {
+            out = ""
+            for (i = 1; i <= 5; i++) {
+                l = substr("MSCAG", i, 1)
+                if (index(letters, l)) out = out (out == "" ? "" : "+") NAME[l]
+            }
+            return out
+        }
+        function count(letters,    i, c) {
+            c = 0
+            for (i = 1; i <= 5; i++) if (index(letters, substr("MSCAG", i, 1))) c++
+            return c
+        }
+        function mask(letters,    i, l, m) {
+            m = 0
+            for (i = 1; i <= 5; i++) {
+                l = substr("MSCAG", i, 1)
+                if (index(letters, l)) m += BIT[l]
+            }
+            return m
+        }
+        # A key name as the sheet writes keys: capslock CAPSLOCK, rightalt
+        # RIGHT ALT, esc ESCAPE.
+        function keyname(k,    side) {
+            k = tolower(k)
+            if (k == "esc") return "ESCAPE"
+            if (k ~ /^(left|right)(alt|shift|control|meta)$/) {
+                side = k ~ /^left/ ? "LEFT " : "RIGHT "
+                sub(/^(left|right)/, "", k)
+            }
+            if (k == "control") k = "ctrl"
+            if (k == "meta") k = "super"
+            return side toupper(k)
+        }
+        # A key keyd sends, with any modifier prefixes (C-S-x): CTRL+SHIFT+X.
+        # "" when it is anything else (a macro, a layer, ...).
+        function sends(k,    letters) {
+            letters = ""
+            while (k ~ /^[CMASG]-./) { letters = letters substr(k, 1, 1); k = substr(k, 3) }
+            if (k !~ /^[a-z0-9_]+$/) return ""
+            return (letters == "" ? "" : mods(letters) "+") keyname(k)
+        }
+        function chord(lhs,    n, part, i, out) {
+            n = split(lhs, part, "+")
+            out = ""
+            for (i = 1; i <= n; i++) out = out (out == "" ? "" : " + ") keyname(trim(part[i]))
+            return out
+        }
+        function row(combo, desc, action) { printf "row\t%s\t%s\t%s\n", combo, desc, action }
+        BEGIN {
+            NAME["M"] = "SUPER"; NAME["S"] = "SHIFT"; NAME["C"] = "CTRL"; NAME["A"] = "ALT"; NAME["G"] = "ALTGR"
+            BIT["M"] = 64; BIT["S"] = 1; BIT["C"] = 4; BIT["A"] = 8; BIT["G"] = 128
+            # The modifier layers keyd has built in.
+            LAYER["control"] = "C"; LAYER["shift"] = "S"; LAYER["alt"] = "A"; LAYER["meta"] = "M"; LAYER["altgr"] = "G"
+        }
+        /^[ \t]*(#|$)/ { next }
+        /^[ \t]*\[/ {
+            section = trim($0)
+            sub(/^\[/, "", section)
+            sub(/\]$/, "", section)
+            if (index(section, ":")) {
+                LAYER[substr(section, 1, index(section, ":") - 1)] = substr(section, index(section, ":") + 1)
+                section = substr(section, 1, index(section, ":") - 1)
+            }
+            next
+        }
+        section == "main" && index($0, "=") {
+            lhs = tolower(trim(substr($0, 1, index($0, "=") - 1)))
+            if (("+" lhs "+") !~ /\+capslock\+/) next
+            n++
+            LHS[n] = lhs
+            RHS[n] = trim(substr($0, index($0, "=") + 1))
+        }
+        END {
+            for (i = 1; i <= n; i++) {
+                combo = chord(LHS[i])
+                rhs = RHS[i]
+                layer = tap = ""
+                if (rhs ~ /^(overload|overloadt|overloadt2|lettermod)\(.*\)$/) {
+                    args = rhs
+                    sub(/^[a-z0-9]+\(/, "", args)
+                    sub(/\)$/, "", args)
+                    split(args, arg, ",")
+                    layer = trim(arg[1])
+                    tap = sends(trim(arg[2]))
+                } else if (rhs ~ /^layer\(.*\)$/) {
+                    layer = rhs
+                    sub(/^layer\(/, "", layer)
+                    sub(/\)$/, "", layer)
+                    layer = trim(layer)
+                } else if (sends(rhs) != "") {
+                    row(combo, "Press for " sends(rhs), rhs)
+                    continue
+                }
+                if (layer in LAYER) {
+                    row(combo, "Hold for " mods(LAYER[layer]), rhs)
+                    # A chord of three or more modifiers is only ever pressed
+                    # through the key that holds them all.
+                    if (LHS[i] == "capslock" && count(LAYER[layer]) >= 3)
+                        printf "hold\t%d\n", mask(LAYER[layer])
+                }
+                if (tap != "") row(combo, "Tap for " tap, rhs)
+                if (!(layer in LAYER) && tap == "") row(combo, "", rhs)
+            }
+        }
+    ' "$conf" || true
+}
+
+records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --arg lua "$(lua_binds)" --arg syms "$(keysyms)" --arg keyd "$(keyd_capslock)" '
     def tsv: split("\n") | map(select(length > 0) | split("\t"));
     (tsv | map({key: .[0], value: .[1]}) | from_entries) as $cats
     # The last line for a code wins: the keymap over the fallback.
@@ -150,7 +282,11 @@ records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --
         else . end;
     [1, 2, 4, 8, 16, 32, 64, 128] as $bits
     | ["SHIFT", "CAPS", "CTRL", "ALT", "MOD2", "MOD3", "SUPER", "MOD5"] as $names
-    | $binds | map(
+    | ($keyd | tsv) as $keyd
+    # The modifiers holding CapsLock sends: a bind on exactly those is
+    # pressed as CAPSLOCK + its key.
+    | ($keyd | map(select(.[0] == "hold") | .[1] | tonumber) | first) as $hold
+    | ($binds | map(
         . as $bind
         | (if .has_description then .description else "" end) as $desc
         # A Lua bind reports "SUPER + code:20" or, for code:N, nothing at all.
@@ -166,7 +302,7 @@ records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --
         | {
             key: $name,
             mods: $mods,
-            combo: (($mods + [$name]) | join(" + ")),
+            combo: (if .modmask == $hold then "CAPSLOCK + " + $name else ($mods + [$name]) | join(" + ") end),
             description: $desc,
             action: (if $do.kind == "exec" then ($do.arg | sub("^uwsm-app -- "; ""))
                 elif $do.kind == "lua" or $do.kind == "" then $do.arg
@@ -180,7 +316,21 @@ records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --
             submap: .submap,
             repeat: .repeat,
             locked: .locked
-        })
+        }))
+    # What keyd itself does with CapsLock: a key, not a Hyprland bind.
+    + ($keyd | map(select(.[0] == "row") | (.[1] | split(" + ")) as $keys | {
+        key: $keys[-1],
+        mods: $keys[:-1],
+        combo: .[1],
+        description: (.[2] // ""),
+        action: (.[3] // ""),
+        dispatcher: "keyd",
+        arg: "",
+        category: "CapsLock",
+        submap: "",
+        repeat: false,
+        locked: false
+    }))
     | sort_by(.category, .description, .combo)')" || die "could not read the bindings"
 
 if $json; then
