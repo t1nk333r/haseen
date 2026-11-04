@@ -154,6 +154,30 @@ window draws.
 - Screenshots of the live tests showed luna's own notifications and were
   deleted after viewing.
 
+## Review
+
+DeepSeek Flash reviewed `baa8eab`. Codex's requests to the proxy's DeepSeek
+route now fail with a 422 on the `developer` message role, so the reviewer
+ran in `omp` with that role turned off. It reproduced the counts above,
+65/65 at the base, lint and the docs check. It ran `Previews.js` over the
+installed Omarchy's 22 themes and got the same 22 previews as
+`find_preview`. It also ran an adversarial fixture and seven mutations of
+its own. Its findings:
+
+- **Blocker: the plan number.** PR 118 merged its own plan 157 while this
+  was open, so this plan became 158 (`d46cb2a`).
+- **Two fixture lines could not fail.** A root guard without its `/` and an
+  image pattern without its `$` each still passed 72/72. Each edge case is
+  now the only candidate for its theme (`uXz/preview.png`,
+  `partial/backgrounds/a.jpg.part`), and both mutations fail.
+- **`docs/architecture.md` and `Panel.qml` misstated the order.** They now
+  say that any stock preview comes before any stock background.
+- **Omarchy's `sort` follows the locale** (Notes for later changes).
+- **The pixel ratio is checked only in the source text.** No offscreen test
+  can show a window's ratio, and the live run above is the evidence.
+- **An animated GIF would animate in a slice.** It would not: QML's `Image`
+  shows a GIF's first frame, and only `AnimatedImage` plays it.
+
 ## Rejected options
 
 - **Keep the thumbnail ahead of `preview.png`.** It is drawn at 1.9 times
@@ -176,6 +200,10 @@ window draws.
 - **Keep the screen's pixel ratio.** It is 2 on IO's 1.25 screen.
 
 ## Notes for later changes
+
+- A theme's first background is the first in C order (`LC_ALL=C sort`).
+  Omarchy's switcher sorts in the session's locale, so for names that differ
+  in case, such as `Z.jpg` and `a.jpg`, it can pick the other one.
 
 - `haseen.imagepicker` (`Panel.qml:259`) and `haseen.themegen`
   (`Panel.qml:56`) still decode at the screen's ratio, so on IO they decode

@@ -15,10 +15,11 @@ import "Previews.js" as Previews
 // `haseen theme set` and closes the picker. A click on another slice
 // selects it. Escape clears the filter, and a second Escape closes the
 // picker. A click away from the picker also closes it. Each theme shows the
-// picture Omarchy's switcher shows (Previews.js, plan 158): its preview,
-// else its first background, from the user's theme, then the previews
-// `haseen theme fetch` cached, then the installed Omarchy's own themes. A
-// theme with no picture anywhere shows its palette.
+// picture Omarchy's switcher shows (Previews.js, plan 158): a preview, else
+// the first background. The user's theme comes first. Then comes a stock
+// preview, from the cache of `haseen theme fetch` or the installed Omarchy's
+// own themes, and only then a stock background. A theme with no picture
+// anywhere shows its palette.
 // Open it with `haseen shell ipc panel toggle haseen.themepicker`.
 //
 // Nothing runs until the panel opens. Then one `find` lists the theme files

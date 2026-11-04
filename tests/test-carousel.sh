@@ -70,7 +70,7 @@ fi
 # Panel.qml, so the test runs the panel's real scan.
 fx="$SANDBOX/previews"
 for f in u/mine/preview.PNG u/mine/preview.jpg u/mine/backgrounds/a.jpg u/mine/colors.toml \
-    u/wall/backgrounds/b.png u/wall/backgrounds/a.jpg u/wall/backgrounds/a.jpg.part u/wall/colors.toml \
+    u/wall/backgrounds/b.png u/wall/backgrounds/a.jpg u/wall/colors.toml u/partial/backgrounds/a.jpg.part \
     c/tokyo-night/preview.png c/tokyo-night/preview-thumb.png c/tokyo-night/backgrounds/1.webp \
     o/tokyo-night/preview.png o/lumon/preview.png o/lumon/backgrounds/0-x.jpg c/lumon/backgrounds/1.webp \
     o/miasma/backgrounds/02.jpg o/miasma/backgrounds/01.jpg o/miasma/backgrounds/notes.txt o/miasma/colors.toml \
@@ -94,8 +94,8 @@ Item {
     function out(k, v) { console.warn("RESULT " + k + " " + JSON.stringify(v)); }
     Component.onCompleted: {
         // A path under a root that only shares the user root's prefix is
-        // not a user theme.
-        const found = $(jq -Rs . <<<"$found") + "\n$fx/u2/z/preview.png\n";
+        // not a user theme: "uXz" must not read as theme "z" under "u".
+        const found = $(jq -Rs . <<<"$found") + "\n$fx/uXz/preview.png\n";
         const picked = P.index(found, { user: "$fx/u", cache: "$fx/c", omarchy: "$fx/o" });
         out("previews", Object.keys(picked.previews).sort().map(k => k + "=" + picked.previews[k].slice("$fx/".length)));
         out("colours", Object.keys(picked.colours).sort());
