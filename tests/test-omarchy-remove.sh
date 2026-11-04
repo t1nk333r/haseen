@@ -536,7 +536,11 @@ mkpkg tailscale
 mkdir -p "$HOME/.local/share/applications"
 printf '[Desktop Entry]\nExec=helium --app=https://login.tailscale.com/admin\n' >"$HOME/.local/share/applications/Tailscale.desktop"
 stub systemctl "echo \"systemctl \$*\" >>'$LOG'; exit 0"
+# Not a dry run: tailscale must be a recorder, or `tailscale down` reaches the
+# live tailscaled (plan 159).
+stub tailscale "echo \"tailscale \$*\" >>'$LOG'; exit 0"
 capture fake omarchy-remove-service-tailscale
+assert_eq "tailscale: the machine leaves the tailnet first" "tailscale down" "$(head -n 1 "$LOG")"
 assert_contains "tailscale: removed with tailscaled through the catalogue entry" "$(calls)" "haseen-remove [app] [tailscale] [--yes]"
 assert_contains "tailscale: Omarchy's receiver is disabled, not deleted" "$(calls)" \
     "systemctl --user disable --now omarchy-tailscale-receive.service"
