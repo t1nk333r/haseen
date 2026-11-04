@@ -706,6 +706,27 @@ capture haseen keybinds --json
 assert_eq "an action the sheet cannot name shows as keyd wrote it" '[["CAPSLOCK","","overload(nav, macro(a b))"]]' \
     "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
 
+# A layer keyd gives no modifiers holds none: it is listed by its keyd line.
+printf '[main]\ncapslock = overload(nav, esc)\n\n[nav:layout]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a layer without modifiers is not a hold for nothing" '[["CAPSLOCK","Tap for ESCAPE","overload(nav, esc)"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
+
+# Keys bound twice: keyd keeps the last binding and a layer's first modifiers.
+printf '[main]\ncapslock = esc\ncapslock = overload(hyper, esc)\n\n[hyper:C-M-A-S]\n[hyper:C]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "the last binding of CapsLock counts" '["Hold for SUPER+SHIFT+CTRL+ALT","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
+assert_eq "and the layer's first modifiers" "CAPSLOCK + H" "$(combo_of "Snap left")"
+
+# A unit linked under requires/ is enabled too, as `haseen setup keyd status` reads it.
+cp "$HASEEN_PATH/default/keyd/default.conf" "$root/etc/keyd/default.conf"
+command rm -f "$wants/keyd.service"
+mkdir -p "$root/etc/systemd/system/graphical.target.requires"
+touch "$root/etc/systemd/system/graphical.target.requires/keyd.service"
+capture haseen keybinds --json
+assert_eq "a required keyd.service counts as enabled" "CAPSLOCK + H" "$(combo_of "Snap left")"
+
 # The live machine: keyd counts only while systemd says it runs.
 unset HASEEN_SYSROOT
 stub systemctl 'printf "%s\n" "$*" >>"'"$SANDBOX"'/systemctl.log"; exit 3'

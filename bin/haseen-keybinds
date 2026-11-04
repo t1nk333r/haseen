@@ -143,7 +143,9 @@ keysyms() {
 # sysroot has no running units, so there an enabled keyd.service stands in.
 keyd_capslock() {
     if in_sysroot; then
-        compgen -G "$(sysroot_path /etc/systemd/system)/*.wants/keyd.service" >/dev/null || return 0
+        local etc
+        etc="$(sysroot_path /etc/systemd/system)"
+        compgen -G "$etc/*.wants/keyd.service" >/dev/null || compgen -G "$etc/*.requires/keyd.service" >/dev/null || return 0
     else
         have systemctl && systemctl is-active --quiet keyd.service 2>/dev/null || return 0
     fi
@@ -152,7 +154,8 @@ keyd_capslock() {
     [[ -r $conf ]] || return 0
     awk '
         function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
-        # keyd modifier letters (C-M-A-S) in the order binds.lua writes them.
+        # keyd modifier letters (C-M-A-S) in the order the sheet writes
+        # modifiers ($mods in the jq below).
         function mods(letters,    i, l, out) {
             out = ""
             for (i = 1; i <= 5; i++) {
@@ -201,7 +204,11 @@ keyd_capslock() {
             for (i = 1; i <= n; i++) out = out (out == "" ? "" : " + ") keyname(trim(part[i]))
             return out
         }
-        function row(combo, desc, action) { printf "row\t%s\t%s\t%s\n", combo, desc, action }
+        # A tab in a value would split the record.
+        function row(combo, desc, action) {
+            gsub(/\t/, " ", action)
+            printf "row\t%s\t%s\t%s\n", combo, desc, action
+        }
         BEGIN {
             NAME["M"] = "SUPER"; NAME["S"] = "SHIFT"; NAME["C"] = "CTRL"; NAME["A"] = "ALT"; NAME["G"] = "ALTGR"
             BIT["M"] = 64; BIT["S"] = 1; BIT["C"] = 4; BIT["A"] = 8; BIT["G"] = 128
@@ -214,17 +221,25 @@ keyd_capslock() {
             sub(/^\[/, "", section)
             sub(/\]$/, "", section)
             if (index(section, ":")) {
-                LAYER[substr(section, 1, index(section, ":") - 1)] = substr(section, index(section, ":") + 1)
-                section = substr(section, 1, index(section, ":") - 1)
+                name = substr(section, 1, index(section, ":") - 1)
+                # keyd keeps the first modifier set a layer is given.
+                if (!(name in HEADER)) {
+                    HEADER[name] = 1
+                    LAYER[name] = substr(section, index(section, ":") + 1)
+                }
+                section = name
             }
             next
         }
         section == "main" && index($0, "=") {
             lhs = tolower(trim(substr($0, 1, index($0, "=") - 1)))
             if (("+" lhs "+") !~ /\+capslock\+/) next
-            n++
-            LHS[n] = lhs
-            RHS[n] = trim(substr($0, index($0, "=") + 1))
+            # The same keys bound twice: keyd keeps the last.
+            if (!(lhs in IDX)) {
+                IDX[lhs] = ++n
+                LHS[n] = lhs
+            }
+            RHS[IDX[lhs]] = trim(substr($0, index($0, "=") + 1))
         }
         END {
             for (i = 1; i <= n; i++) {
@@ -247,15 +262,17 @@ keyd_capslock() {
                     row(combo, "Press for " sends(rhs), rhs)
                     continue
                 }
-                if (layer in LAYER) {
-                    row(combo, "Hold for " mods(LAYER[layer]), rhs)
+                # A layer without modifiers ([nav], [nav:layout]) holds none.
+                held = layer in LAYER ? mods(LAYER[layer]) : ""
+                if (held != "") {
+                    row(combo, "Hold for " held, rhs)
                     # A chord of three or more modifiers is only ever pressed
                     # through the key that holds them all.
                     if (LHS[i] == "capslock" && count(LAYER[layer]) >= 3)
                         printf "hold\t%d\n", mask(LAYER[layer])
                 }
                 if (tap != "") row(combo, "Tap for " tap, rhs)
-                if (!(layer in LAYER) && tap == "") row(combo, "", rhs)
+                if (held == "" && tap == "") row(combo, "", rhs)
             }
         }
     ' "$conf" || true
@@ -296,7 +313,7 @@ records="$(printf '%s' "$(categories)" | jq -R -s -c --argjson binds "$binds" --
         | ($luado["\(.modmask)\t\($desc)\t\($key | ascii_upcase)"] // {kind: "", arg: "", section: ""}) as $src
         | (if .dispatcher == "__lua" then $src else {kind: .dispatcher, arg: .arg} end) as $do
         | select(.dispatcher != "__lua" or $desc != "")
-        # In the order binds.lua writes them: SUPER + SHIFT + CTRL + ALT.
+        # In the order the sheet writes them: SUPER + SHIFT + CTRL + ALT.
         | ([[6, 0, 2, 3, 1, 4, 5, 7][] | select(($bind.modmask % ($bits[.] * 2)) >= $bits[.]) | $names[.]]) as $mods
         | ($key | keyname) as $name
         | {

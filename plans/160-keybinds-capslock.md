@@ -13,7 +13,7 @@
 - **Category**: shell, keybinds
 - **Planned at**: 2026-11-04, owner, on IO: "add the capslock binded
   shortcuts to the keybind helper"
-- **State**: DONE 2026-11-04 (`tests/test-keybinds.sh` 152/152, the
+- **State**: DONE 2026-11-04 (`tests/test-keybinds.sh` 156/156, the
   affected set of 9 files). IO gets it with its next update.
 
 ## Problem
@@ -56,9 +56,11 @@ Tap for Escape and RightAlt + CapsLock are keyd's, not Hyprland's, so
 `/etc/keyd/default.conf` whose left side names `capslock`, alone or in a
 chord, and the layer headers such as `[hyper:C-M-A-S]`. It runs only while
 keyd does: on the live machine `systemctl is-active keyd.service`, and in
-a sysroot, which has no running units, an enabled `keyd.service`, as
-`haseen setup keyd status` reads it. `haseen setup keyd off` leaves the
-config in place, so the file alone is not enough.
+a sysroot, which has no running units, an enabled `keyd.service` (a
+`wants/` or `requires/` link, as `haseen setup keyd status` reads it).
+`haseen setup keyd off` leaves the config in place, so the file alone is
+not enough. As keyd does, the last line binding the same keys counts, and
+a layer keeps the first modifier set its headers give it.
 
 Each line becomes rows under a new section, "CapsLock":
 
@@ -67,8 +69,9 @@ Each line becomes rows under a new section, "CapsLock":
   modifiers, and "Tap for" the key.
 - `layer(layer)`: "Hold for" its modifiers.
 - A plain key: "Press for" it.
-- Anything else (a macro, a layer the file gives no modifiers): no
-  description, and the keyd line as the action, which the sheet shows.
+- Anything else (a macro, a layer with no modifiers, such as `[nav]` or
+  `[nav:layout]`): no description, and the keyd line as the action, which
+  the sheet shows. A tab in the line becomes a space.
 
 Key names follow the sheet's: `capslock` is CAPSLOCK, `rightalt` RIGHT ALT,
 `esc` ESCAPE, and a key with modifier prefixes such as `C-S-esc` is
@@ -159,8 +162,9 @@ defaults ship no hyper binds: the snap layer is on hyper.
 
 ## Limits
 
-Only `[main]` is read. An `include`, the `[ids]` a file applies to, and
-what other layers do with CapsLock are not followed. A keyd action the
+Only `/etc/keyd/default.conf` is read, though keyd loads every
+`/etc/keyd/*.conf`, and only its `[main]`. An `include`, the `[ids]` a
+file applies to, and what other layers do with CapsLock are not followed. A keyd action the
 sheet cannot name is listed by its keyd line. The sheet names a bind
 CAPSLOCK only while keyd runs.
 
@@ -178,5 +182,21 @@ shipped config and an enabled `keyd.service`. It checks:
 - a one-modifier hold (no renaming);
 - a three-modifier `meh` layer (renamed);
 - an action it cannot name (the keyd line);
+- a layer with no modifiers (no "Hold for" row);
+- the same keys bound twice and a layer given two modifier sets;
+- a `keyd.service` linked under `requires/`;
 - the live machine asking systemd and listing nothing while keyd is not
-  running.
+  running. With keyd running there, the test would have to read the
+  host's `/etc/keyd`, so that branch is untested.
+
+## Review
+
+DeepSeek Flash reviewed the first head and approved it with seven nits.
+Four were fixed in the second head: a layer with an empty modifier set
+gave "Hold for " with nothing after it; a `requires/` link did not count as
+enabled; a tab in a keyd value cut its action; and duplicate lines did not
+follow keyd (the last binding wins, a layer's first modifier set wins).
+Two comments said binds.lua writes the modifiers in the sheet's order; it
+does not (`SUPER + SHIFT + ALT + CTRL`), so they now name the sheet. The
+Limits above now say that other keyd files are not read. The seventh nit,
+the untested live branch, stays as it is.
