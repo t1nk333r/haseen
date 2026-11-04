@@ -718,6 +718,16 @@ capture haseen keybinds --json
 assert_eq "the last binding of CapsLock counts" '["Hold for SUPER+SHIFT+CTRL+ALT","Tap for ESCAPE"]' \
     "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
 assert_eq "and the layer's first modifiers" "CAPSLOCK + H" "$(combo_of "Snap left")"
+printf '[main]\ncapslock+rightalt = a\nrightalt+capslock = b\ncapslock = layer(nav)\n\n[nav]\n[nav:C]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a chord is its keys in any order, and a header without modifiers is a layer's first" \
+    '[["CAPSLOCK","","layer(nav)"],["RIGHT ALT + CAPSLOCK","Press for B","b"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
+printf '[main]\ncapslock = overload(hyper, esc)\ncapslock+shift = overload(control, esc)\n\n[hyper:CMAS]\n[control:A]\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a modifier set keyd cannot read holds none" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"
+assert_eq "and a built-in layer keeps its own modifier" '["Hold for CTRL","Tap for ESCAPE","Tap for ESCAPE"]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | .description]' <<<"$OUTPUT")"
 
 # A unit linked under requires/ is enabled too, as `haseen setup keyd status` reads it.
 cp "$HASEEN_PATH/default/keyd/default.conf" "$root/etc/keyd/default.conf"

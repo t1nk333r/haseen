@@ -13,7 +13,7 @@
 - **Category**: shell, keybinds
 - **Planned at**: 2026-11-04, owner, on IO: "add the capslock binded
   shortcuts to the keybind helper"
-- **State**: DONE 2026-11-04 (`tests/test-keybinds.sh` 156/156, the
+- **State**: DONE 2026-11-04 (`tests/test-keybinds.sh` 159/159, the
   affected set of 9 files). IO gets it with its next update.
 
 ## Problem
@@ -59,8 +59,10 @@ keyd does: on the live machine `systemctl is-active keyd.service`, and in
 a sysroot, which has no running units, an enabled `keyd.service` (a
 `wants/` or `requires/` link, as `haseen setup keyd status` reads it).
 `haseen setup keyd off` leaves the config in place, so the file alone is
-not enough. As keyd does, the last line binding the same keys counts, and
-a layer keeps the first modifier set its headers give it.
+not enough. As keyd does, the last line binding the same keys counts (a
+chord's keys in any order), a layer keeps its first header (keyd's own
+`control`, `shift`, `alt`, `meta` and `altgr` come before any file), and a
+modifier set keyd cannot read (`[hyper:CMAS]`) holds no modifiers.
 
 Each line becomes rows under a new section, "CapsLock":
 
@@ -164,9 +166,9 @@ defaults ship no hyper binds: the snap layer is on hyper.
 
 Only `/etc/keyd/default.conf` is read, though keyd loads every
 `/etc/keyd/*.conf`, and only its `[main]`. An `include`, the `[ids]` a
-file applies to, and what other layers do with CapsLock are not followed. A keyd action the
-sheet cannot name is listed by its keyd line. The sheet names a bind
-CAPSLOCK only while keyd runs.
+file applies to, and what other layers do with CapsLock are not followed.
+A keyd action the sheet cannot name is listed by its keyd line. The sheet
+names a bind CAPSLOCK only while keyd runs.
 
 ## Tests
 
@@ -183,7 +185,9 @@ shipped config and an enabled `keyd.service`. It checks:
 - a three-modifier `meh` layer (renamed);
 - an action it cannot name (the keyd line);
 - a layer with no modifiers (no "Hold for" row);
-- the same keys bound twice and a layer given two modifier sets;
+- the same keys bound twice, in the same and in another order, and a
+  layer given two headers;
+- a modifier set keyd cannot read, and a built-in layer redeclared;
 - a `keyd.service` linked under `requires/`;
 - the live machine asking systemd and listing nothing while keyd is not
   running. With keyd running there, the test would have to read the
@@ -200,3 +204,12 @@ Two comments said binds.lua writes the modifiers in the sheet's order; it
 does not (`SUPER + SHIFT + ALT + CTRL`), so they now name the sheet. The
 Limits above now say that other keyd files are not read. The seventh nit,
 the untested live branch, stays as it is.
+
+DeepSeek Flash approved the second head too, with three low findings, all
+fixed in the third: a layer's first header counted only when it named
+modifiers (so `[nav]` then `[nav:C]` read "Hold for CTRL", where keyd keeps
+`[nav]`), and keyd's built-in modifier layers could be redeclared; a chord
+written in another order (`capslock+rightalt`, then `rightalt+capslock`)
+gave two rows where keyd keeps the last; and a modifier set keyd rejects,
+such as `[hyper:CMAS]`, still named the hyper binds CAPSLOCK. It also
+pointed out the one line here over 80 columns.

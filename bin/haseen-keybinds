@@ -205,6 +205,17 @@ keyd_capslock() {
             return out
         }
         # A tab in a value would split the record.
+        # A chord as a set: the same keys in any order.
+        function keyset(lhs,    n, part, i, j, t, out) {
+            n = split(lhs, part, "+")
+            for (i = 2; i <= n; i++)
+                for (j = i; j > 1 && trim(part[j - 1]) > trim(part[j]); j--) {
+                    t = part[j]; part[j] = part[j - 1]; part[j - 1] = t
+                }
+            out = ""
+            for (i = 1; i <= n; i++) out = out (i > 1 ? "+" : "") trim(part[i])
+            return out
+        }
         function row(combo, desc, action) {
             gsub(/\t/, " ", action)
             printf "row\t%s\t%s\t%s\n", combo, desc, action
@@ -212,34 +223,36 @@ keyd_capslock() {
         BEGIN {
             NAME["M"] = "SUPER"; NAME["S"] = "SHIFT"; NAME["C"] = "CTRL"; NAME["A"] = "ALT"; NAME["G"] = "ALTGR"
             BIT["M"] = 64; BIT["S"] = 1; BIT["C"] = 4; BIT["A"] = 8; BIT["G"] = 128
-            # The modifier layers keyd has built in.
+            # The modifier layers keyd has built in, declared before any file.
             LAYER["control"] = "C"; LAYER["shift"] = "S"; LAYER["alt"] = "A"; LAYER["meta"] = "M"; LAYER["altgr"] = "G"
+            for (name in LAYER) HEADER[name] = 1
         }
         /^[ \t]*(#|$)/ { next }
         /^[ \t]*\[/ {
             section = trim($0)
             sub(/^\[/, "", section)
             sub(/\]$/, "", section)
+            set = ""
             if (index(section, ":")) {
-                name = substr(section, 1, index(section, ":") - 1)
-                # keyd keeps the first modifier set a layer is given.
-                if (!(name in HEADER)) {
-                    HEADER[name] = 1
-                    LAYER[name] = substr(section, index(section, ":") + 1)
-                }
-                section = name
+                set = substr(section, index(section, ":") + 1)
+                section = substr(section, 1, index(section, ":") - 1)
+            }
+            # keyd keeps the first header of a layer, and mounts one whose
+            # modifier set it cannot read ([nav:CMAS]) with none.
+            if (!(section in HEADER)) {
+                HEADER[section] = 1
+                if (set ~ /^[MSCAG](-[MSCAG])*$/) LAYER[section] = set
             }
             next
         }
         section == "main" && index($0, "=") {
             lhs = tolower(trim(substr($0, 1, index($0, "=") - 1)))
             if (("+" lhs "+") !~ /\+capslock\+/) next
-            # The same keys bound twice: keyd keeps the last.
-            if (!(lhs in IDX)) {
-                IDX[lhs] = ++n
-                LHS[n] = lhs
-            }
-            RHS[IDX[lhs]] = trim(substr($0, index($0, "=") + 1))
+            # The same keys bound twice, in any order: keyd keeps the last.
+            keys = keyset(lhs)
+            if (!(keys in IDX)) IDX[keys] = ++n
+            LHS[IDX[keys]] = lhs
+            RHS[IDX[keys]] = trim(substr($0, index($0, "=") + 1))
         }
         END {
             for (i = 1; i <= n; i++) {
