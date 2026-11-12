@@ -712,6 +712,10 @@
   "trigger.capture.text": {
     "label": "نص"
   },
+  "trigger.computer": {
+    "description": "المعالج والذاكرة والحرارة والتخزين",
+    "label": "حاسوبك"
+  },
   "trigger.context": {
     "label": "السياق"
   },

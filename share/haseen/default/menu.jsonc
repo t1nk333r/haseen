@@ -58,6 +58,7 @@
 
   // Trigger
   "trigger.emoji": {"icon":"","label":"Emoji","aliases":["emoji","emojis"],"action":"haseen shell ipc panel toggle haseen.emoji"},
+  "trigger.computer": {"icon":"","label":"Your Computer","aliases":["computer","your-computer","system-monitor"],"description":"processor, memory, temperature, storage","when":"! jq -e '.plugins[\"haseen.computer\"].enabled == false' \"${XDG_CONFIG_HOME:-$HOME/.config}/haseen/shell.json\" >/dev/null 2>&1","action":"haseen shell ipc panel toggle haseen.computer"},
   "trigger.reminder": {"icon":"󰢌","label":"Reminder","aliases":["reminder"]},
   "trigger.reminder.set": {"icon":"󰢌","label":"Set one","aliases":["reminder-set","remind"],"action":"haseen reminder set"},
   "trigger.reminder.show": {"icon":"󰢌","label":"Show all","action":"haseen reminder show"},
