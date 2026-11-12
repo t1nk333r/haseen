@@ -52,6 +52,7 @@
     "haseen.clipboard",
     "haseen.weather",
     "haseen.keybinds",
-    "haseen.battery"
+    "haseen.battery",
+    "haseen.stage"
   ]
 }
