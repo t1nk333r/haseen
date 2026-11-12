@@ -33,7 +33,11 @@ ShaderEffect {
     // reads as a pencil line rather than a glow.
     property color ember: "transparent"
     property color ink: "transparent"
-    readonly property bool compiled: status === ShaderEffect.Compiled
+    // Only Error is trusted. Qt keeps a compiled shader by URL, and an effect
+    // that takes it from that cache, as every change after the shell's first
+    // does, draws with it but reports Uncompiled for good, so waiting for
+    // Compiled held each later cover until its load timeout (found live on
+    // luna). A shader that fails to build reports Error on its first change.
     readonly property bool failed: status === ShaderEffect.Error
 
     fragmentShader: Qt.resolvedUrl("transition-1.frag.qsb")

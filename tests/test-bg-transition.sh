@@ -452,3 +452,63 @@ for fx in contagion outline; do
     assert_eq "rhi $fx: mid still shows the old image" yes "$(awk -v v="$red" 'BEGIN { print (v > 0.05) ? "yes" : "no" }')"
     assert_eq "rhi $fx: mid already shows the new one" yes "$(awk -v v="$newer" 'BEGIN { print (v > 0.05) ? "yes" : "no" }')"
 done
+
+# A second change in the same shell (plan 161, found live on luna): Qt keeps
+# the compiled shader by URL, and the next change's ShaderEffect draws from
+# that cache but reports Uncompiled for good. A cover that waited for Compiled
+# never reported ready, and every change after the first was cut to the new
+# image. Two covers, one after the other, each in a new window as the service
+# makes them: both must become ready and draw the new image at progress 1.
+cat >"$draw/Twice.qml" <<EOF
+import QtQuick
+import QtQuick.Window
+import "file://$BG"
+Item {
+    id: root
+    property int made: 0
+    property var readyAt: []
+    function out(k, v) { console.warn("RESULT " + k + " " + JSON.stringify(v)); }
+    Component {
+        id: cover
+        Window {
+            id: w
+            width: 320; height: 180; visible: true; color: "black"
+            TransitionView {
+                anchors.fill: parent
+                oldSource: "file://$draw/old.png"
+                newSource: "file://$draw/new.png"
+                effect: "contagion"
+                onReadyChanged: if (ready) {
+                    progress = 1;
+                    const shader = useShader;
+                    Qt.callLater(() => grabToImage(r => {
+                        r.saveToFile("$draw/twice-" + root.made + ".png");
+                        root.readyAt.push(shader);
+                        w.destroy();
+                        root.next();
+                    }));
+                }
+            }
+        }
+    }
+    function next() {
+        if (made === 2) { out("twice", readyAt); Qt.quit(); return; }
+        made++;
+        Qt.callLater(() => cover.createObject(root));
+    }
+    Component.onCompleted: next()
+    // haseen:ui-timeout
+    Timer { interval: 5000; repeat: false; running: true; onTriggered: { root.out("twice", root.readyAt); Qt.quit(); } }
+}
+EOF
+twice="$(cd "$draw" && env DISPLAY="$HASEEN_GL_DISPLAY" QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl \
+    QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" Twice.qml 2>&1 | sed -n 's/^.*RESULT twice //p')"
+if [[ $twice == "[]" || -z $twice ]]; then
+    echo "  (no GL context on $HASEEN_GL_DISPLAY: the second cover was not drawn)" >&2
+else
+    assert_eq "rhi: a second change in the same shell is ready too, with the shader" "[true,true]" "$twice"
+    for n in 1 2; do
+        assert_eq "rhi: change $n in the same shell draws the new image at t=1" yes \
+            "$(near "$(pixel "$draw/twice-$n.png" 160 90 1)" 255,255,255)"
+    done
+fi

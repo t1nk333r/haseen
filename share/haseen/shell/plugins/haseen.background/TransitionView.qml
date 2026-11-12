@@ -30,8 +30,10 @@ Item {
     readonly property bool shaderFailed: shaderLoader.status === Loader.Error || (shaderLoader.item !== null && shaderLoader.item.failed)
     readonly property bool useShader: wantsShader && !shaderFailed
     readonly property bool shaderLoaded: shaderLoader.item !== null
-    // Both images decoded and, for the shader, the shader built.
-    readonly property bool ready: rendererKnown && oldPicture.status === Image.Ready && newPicture.status === Image.Ready && (!useShader || (shaderLoader.item !== null && shaderLoader.item.compiled))
+    // Both images decoded and, for the shader, the effect created. Not its
+    // Compiled status: an effect built from Qt's shader cache never reports
+    // it (ShaderView.qml). The cover waits two frames after this anyway.
+    readonly property bool ready: rendererKnown && oldPicture.status === Image.Ready && newPicture.status === Image.Ready && (!useShader || shaderLoader.item !== null)
     readonly property bool failed: oldPicture.status === Image.Error || newPicture.status === Image.Error
 
     // Decoded at the screen's pixel size, large enough to cover it: an image

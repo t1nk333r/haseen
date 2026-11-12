@@ -17,10 +17,11 @@
   transitions ...", pointing at pocket-dots; asked in the same session the
   owner chose "Shader, GPU only" and approved "Wallpaper transition" on by
   default (owner, 2026-11-12)
-- **State**: DONE 2026-11-12. `tests/test-bg-transition.sh` passed 103/103
-  with a GL display (`HASEEN_GL_DISPLAY=:0`) and 73/73 without one. Seeing
-  it live on luna (GPU scene graph) and IO (software, scale 1.25) is an
-  owner step.
+- **State**: DONE 2026-11-12; fixed 2026-11-13 after the owner saw it live on
+  luna ("only the first transition had the new [one], the other did not",
+  see Verification). `tests/test-bg-transition.sh` passes 106/106 with a GL
+  display (`HASEEN_GL_DISPLAY=:0`) and 85/85 without one. IO (software,
+  scale 1.25) is still an owner step.
 
 ## Problem
 
@@ -246,6 +247,22 @@ The new image is decoded with mipmaps only when the shader draws it.
   covers the plugin's QML (`test-bg-transition.sh`, `test-widgets-c.sh`,
   `test-carousel.sh`, `test-shell.sh`, `test-i18n.sh`) passed from a short
   bind mount: 1070/1070 and 108/108.
+
+Live on luna (2026-11-13). The first change after the shell started played;
+every later one was cut, and `haseen shell ipc background status` read
+`"last":"restarted before covered"`. A logging copy of the plugin, run as a
+second `qs` on luna's display, showed the cause. In `ShaderEffect.Status`,
+0 is Compiled and 1 is Uncompiled. The first cover's effect went from 1 to
+0. Every later cover's effect, built from Qt's shader cache (the same
+`.qsb` URL), drew correctly but stayed at 1 for good, so `TransitionView`'s
+`ready`, which waited for Compiled, never came true. The service's 1.5 s
+load bound fired ("too slow to load"), and the CLI restarted swaybg
+uncovered. `ready` now waits for the effect to exist, not for Compiled;
+`ShaderView` reports only Error, which a shader that fails to build reaches
+on its first change. A new check in `tests/test-bg-transition.sh` makes two
+covers one after the other in one engine, each in a new window. Before the
+fix it failed (`[true]`: only the first became ready). With the fix both
+become ready and draw the new image at progress 1 through the shader.
 
 ## Rejected options
 
