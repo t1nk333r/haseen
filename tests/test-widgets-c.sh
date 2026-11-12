@@ -32,7 +32,10 @@ assert_not_contains "no plugin asks for network" "$OUTPUT" "warning:"
 assert_dry_pure "plugin validate" "$OUTPUT"
 
 for id in "${IDS[@]}"; do
-    assert_eq "$id is a panel and nothing else" "panel" "$(jq -r '.kinds | join(" ")' "$PLUGINS/$id/manifest.json")"
+    # haseen.background also has the wallpaper transition's service (plan 161).
+    kinds=panel
+    [[ $id != haseen.background ]] || kinds="panel service"
+    assert_eq "$id is a panel and nothing else" "$kinds" "$(jq -r '.kinds | join(" ")' "$PLUGINS/$id/manifest.json")"
     assert_eq "$id entry is Panel.qml" "Panel.qml" "$(jq -r '.entry.panel' "$PLUGINS/$id/manifest.json")"
     assert_eq "$id debugIpc defaults off" "false" "$(jq -r '.settings.debugIpc.default' "$PLUGINS/$id/manifest.json")"
     # Every entry root takes the three contract properties (architecture 5.2).
@@ -83,21 +86,28 @@ assert_eq "colours come from Theme only" "" \
 assert_eq "panels use Theme.foreground, never the bar token" "" \
     "$(grep -rn 'Theme.barForeground' "${DIRS[@]}" --include='*.qml' || true)"
 # Event-driven or nothing: these three panels scan when they open and when
-# asked, so not one of them may own a Timer or a clock tick.
-assert_eq "no Timer anywhere in the three plugins" "" \
-    "$(grep -rln 'Timer *{' "${DIRS[@]}" --include='*.qml' || true)"
+# asked, so not one of them may own a Timer or a clock tick. The one
+# exception is haseen.background's transition service (plan 161), whose
+# single-shot bounds run only during a background change
+# (tests/test-bg-transition.sh).
+assert_eq "no Timer anywhere in the three panels" "" \
+    "$(grep -rln 'Timer *{' "${DIRS[@]}" --include='*.qml' --exclude=Transition.qml || true)"
 assert_eq "no clock ticks either" "" \
-    "$(grep -rnE 'SystemClock|Qt\.callLater\(.*running|interval:' "${DIRS[@]}" --include='*.qml' || true)"
+    "$(grep -rnE 'SystemClock|Qt\.callLater\(.*running|interval:' "${DIRS[@]}" --include='*.qml' --exclude=Transition.qml || true)"
 assert_eq "paths come from Paths, never a hard-coded home" "" \
     "$(grep -rnE '"/home/|\.local/state/haseen|\.config/haseen' "${DIRS[@]}" --include='*.qml' --include='*.js' || true)"
 
 # --- the background panel is a picker, not a second wallpaper daemon -------------
 # (the header comment names swaybg and the link, so the code greps skip comments;
-# -H keeps the file name the filter keys on when the plugin has one QML file)
+# -H keeps the file name the filter keys on). The transition's covers
+# (TransitionWindows.qml, plan 161) are windows of their own, but only while a
+# change runs; swaybg still draws the wallpaper (tests/test-bg-transition.sh).
 code_lines() { grep -vE '^[^:]+:[0-9]+:[[:space:]]*//'; }
 bg="$(cat "$PLUGINS/haseen.background/Panel.qml")"
-assert_eq "background paints no wallpaper of its own" "" \
-    "$(grep -nHE 'PanelWindow|WlrLayershell|Quickshell\.screens|Variants \{|swaybg|ShellRoot' "$PLUGINS/haseen.background"/*.qml | code_lines || true)"
+assert_eq "the background picker paints no wallpaper of its own" "" \
+    "$(grep -nHE 'PanelWindow|WlrLayershell|Quickshell\.screens|Variants \{|swaybg|ShellRoot' "$PLUGINS/haseen.background/Panel.qml" | code_lines || true)"
+assert_eq "the transition starts no wallpaper daemon" "" \
+    "$(grep -nHE 'swaybg|Process \{|execDetached' "$PLUGINS/haseen.background"/Transition*.qml | code_lines || true)"
 assert_contains "background lists through the CLI" "$bg" '[root.cli, "theme", "bg", "list"]'
 assert_contains "background asks the CLI what is current" "$bg" '[root.cli, "theme", "bg", "current"]'
 assert_contains "picking runs haseen theme bg set" "$bg" '[cli, "theme", "bg", "set", path]'

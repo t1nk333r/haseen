@@ -31,8 +31,10 @@ for id in haseen.background haseen.themepicker; do
     # slices that Omarchy dims (plan 152), and the slant needs no shader. The
     # check skips ShaderEffectSource, which names a layer's texture setting
     # (plan 156).
+    # haseen.background's ShaderView.qml is the wallpaper transition's
+    # shader, not the picker's (plan 161, tests/test-bg-transition.sh).
     assert_eq "$id has no scrim, shade or shader" "" \
-        "$(grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' "$PLUGINS/$id"/*.qml || true)"
+        "$(grep -nE --exclude=ShaderView.qml 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' "$PLUGINS/$id"/*.qml || true)"
 done
 assert_eq "the carousel has no scrim, shade or shader" "" \
     "$(grep -vE '^\s*//' "$W"/{SkewCarousel,SkewSlice}.qml | grep -nE 'scrim|dimColor|MultiEffect|ShaderEffect\b|layer\.effect' || true)"

@@ -976,11 +976,74 @@ theme_background_active() {
     [[ -n ${XDG_RUNTIME_DIR:-} && -L $XDG_RUNTIME_DIR/systemd/units/invocation:$THEME_BG_UNIT ]]
 }
 
+# theme_background_shown — the image swaybg shows now: the --image argument
+# of the background service's main process. Nothing when it shows a colour,
+# is not running or systemd does not answer.
+theme_background_shown() {
+    local pid cmdline arg prev=""
+    pid="$(systemctl --user show -p MainPID --value "$THEME_BG_UNIT" 2>/dev/null)" || return 0
+    [[ $pid =~ ^[1-9][0-9]*$ ]] || return 0
+    cmdline="$(sysroot_path "/proc/$pid/cmdline")"
+    [[ -r $cmdline ]] || return 0
+    while IFS= read -r -d '' arg; do
+        if [[ $prev == --image ]]; then
+            printf '%s\n' "$arg"
+            return 0
+        fi
+        prev="$arg"
+    done <"$cmdline"
+}
+
+# theme_background_ipc FN [ARGS...] — call the running haseen shell's
+# `background` target (haseen.background's transition, plan 161), silently
+# and for a second at most. Fails when DMS is the active shell or no haseen
+# shell answers.
+theme_background_ipc() {
+    local active=""
+    if [[ -r $HASEEN_USER_STATE/active-shell ]]; then
+        read -r active _ <"$HASEEN_USER_STATE/active-shell" || true
+    fi
+    [[ $active != dms ]] && have qs || return 1
+    timeout 1 qs -p "$HASEEN_PATH/shell" ipc call background "$@" 2>/dev/null
+}
+
 # theme_background_reload — restart the running background service so swaybg
 # shows the new link. Not running (no session, other shell): nothing to do.
+#
+# Around the restart, the shell covers the change (plan 161): asked first, it
+# opens a cover per screen showing the image swaybg shows now and starts the
+# transition once that is on screen, which this waits for (about a second
+# at most). swaybg restarts underneath, unseen; `shown` then lets the cover
+# end on the new image and go. Every step is best effort: with no haseen
+# shell, under DMS, or with any answer but "loading", swaybg restarts at once
+# as before, so the wallpaper always changes.
 theme_background_reload() {
     theme_background_active || return 0
+    local old new answer="" state deadline
+    new="$(readlink -f -- "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+    if $DRY_RUN; then
+        echo "DRYRUN: haseen shell ipc background begin <the image swaybg shows> ${new:-<no image>}"
+        run systemctl --user try-restart "$THEME_BG_UNIT"
+        echo "DRYRUN: haseen shell ipc background shown"
+        return 0
+    fi
+    old="$(theme_background_shown)"
+    if [[ -n $old && -n $new && $old != "$new" && -f $new ]]; then
+        answer="$(theme_background_ipc begin "$old" "$new" || true)"
+    fi
+    if [[ $answer == loading ]]; then
+        # EPOCHREALTIME's separator follows the locale; microseconds either way.
+        deadline=$((${EPOCHREALTIME/[.,]/} + 1200000))
+        while ((${EPOCHREALTIME/[.,]/} < deadline)); do
+            state="$(theme_background_ipc state || true)"
+            [[ $state == loading ]] || break
+            sleep 0.03
+        done
+    fi
     run systemctl --user try-restart "$THEME_BG_UNIT" || warn "restarting $THEME_BG_UNIT failed"
+    if [[ $answer == loading ]]; then
+        theme_background_ipc shown >/dev/null || true
+    fi
 }
 
 # --- fetched images (haseen theme fetch) ------------------------------------

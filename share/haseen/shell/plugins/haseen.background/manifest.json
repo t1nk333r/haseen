@@ -2,19 +2,31 @@
   "schemaVersion": 1,
   "id": "haseen.background",
   "name": "Background",
-  "version": "1.0.0",
-  "description": "The current theme's backgrounds in Omarchy's carousel, without its dim. Enter runs haseen theme bg set, and n runs haseen theme bg next",
+  "version": "1.1.0",
+  "description": "The current theme's backgrounds in Omarchy's carousel, without its dim. Enter runs haseen theme bg set, and n runs haseen theme bg next. Its service covers each background change with a transition while swaybg restarts on the new image",
   "kinds": [
-    "panel"
+    "panel",
+    "service"
   ],
   "entry": {
-    "panel": "Panel.qml"
+    "panel": "Panel.qml",
+    "service": "Transition.qml"
   },
   "settings": {
     "placement": {
       "type": "string",
       "default": "overlay",
       "description": "Where the picker opens: overlay (Omarchy's carousel over the whole screen, with no dim), center (a narrower carousel in a panel in the middle of the screen) or bar (the same in a panel under the bar). In a panel, Escape closes the picker at once, as it closes a menu placed in a panel"
+    },
+    "transition": {
+      "type": "string",
+      "default": "auto",
+      "description": "How a new background arrives: auto (contagion and outline in turn), contagion (colonies eat through the old image in small square cells, their edge lit in the theme's accent), outline (a thin line traces the new image's edges, then it fills in from them), fade (a crossfade) or none (a cut). contagion and outline need the GPU scene graph; on the software renderer, haseen's default, every effect but none is the crossfade. Skipped while Hyprland's animations are off and in the game context"
+    },
+    "transitionDuration": {
+      "type": "integer",
+      "default": 1800,
+      "description": "Length of the transition in milliseconds, held to 400-5000"
     },
     "debugIpc": {
       "type": "boolean",
