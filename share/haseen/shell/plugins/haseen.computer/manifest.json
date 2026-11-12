@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.computer",
+  "name": "Your computer",
+  "version": "1.0.0",
+  "description": "A panel with the processor and memory over the last 90 s, the processor's temperature, the root disk's space, the uptime and the battery; it samples only while open",
+  "kinds": [
+    "panel"
+  ],
+  "entry": {
+    "panel": "Panel.qml"
+  },
+  "settings": {
+    "mount": {
+      "type": "string",
+      "default": "/",
+      "description": "Mountpoint of the disk the storage card shows (the root filesystem when nothing is mounted there)"
+    }
+  },
+  "permissions": [
+    "files:read"
+  ]
+}

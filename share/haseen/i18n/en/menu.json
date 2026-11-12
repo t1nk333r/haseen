@@ -712,6 +712,10 @@
   "trigger.capture.text": {
     "label": "Text"
   },
+  "trigger.computer": {
+    "description": "processor, memory, temperature, storage",
+    "label": "Your Computer"
+  },
   "trigger.context": {
     "label": "Context"
   },

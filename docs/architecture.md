@@ -585,7 +585,7 @@ Smoke tests drive the UI through these, never through injected input.
 
 | stream | what | subscriber |
 |---|---|---|
-| `sysusage` | CPU, memory, GPU, processes (plan 032) | the haseen.sysusage widget, the DMS `DgopService` |
+| `sysusage` | CPU, memory, GPU, processes (plan 032); with `system`, the CPU temperature and clock, network rates and disks | the haseen.sysusage widget, the DMS `DgopService`, the haseen.computer panel (with `system`, every 3 s, only while open; plan 162) |
 | `borderwipe` | turns the active border's gradient for a theme that asks (§7, plan 069) | `qs.Haseen.BorderWipe`, while the theme's `colors.toml` has `border_wipe` |
 
 Methods: `subscribe`/`unsubscribe` (with `stream`), `capabilities`, `status` (answers `{"borderwipe": {state, reason, secondsPerTurn, angle, frames}}`), `shutdown`.

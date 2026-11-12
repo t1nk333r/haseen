@@ -38,6 +38,9 @@ b("SUPER + F1", "Keybindings", ipc("keybinds", "toggle"))
 b("ALT + V", "Clipboard history", ipc("panel", "toggle", "haseen.clipboard"))
 b("SUPER + CTRL + E", "Emoji picker", ipc("panel", "toggle", "haseen.emoji"))
 b("SUPER + ALT + C", "Calendar", ipc("panel", "toggle", "haseen.calendar"))
+-- The owner's chord for the panel (2026-11-12, plan 162). Omarchy puts its
+-- Docker TUI here; haseen binds no Docker key, so nothing is displaced.
+b("SUPER + SHIFT + D", "Your computer", ipc("panel", "toggle", "haseen.computer"))
 
 -- Style ------------------------------------------------------------------------
 -- Omarchy's keys: SUPER+CTRL+SHIFT+SPACE picks a theme, SUPER+CTRL+SPACE picks a
