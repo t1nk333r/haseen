@@ -51,7 +51,8 @@ between parts. The engineering record is `plans/`, indexed by
       privacy, idle, pager, media, prayers, sysusage, weather, gestures;
     - services: lock, idle, osd, polkit, screensaver, nightlight, clipboard,
       keybinds, battery (low-battery warnings; owner, 2026-10-07, plan 075;
-      `criticalAction` stays `none`);
+      `criticalAction` stays `none`), stage (the Stage Manager edge; owner,
+      2026-11-12, plan 163; no key bound);
     - also: calculator, indicators, calendar, emoji, ai, agents and the pickers;
     - also: the launcher's agent accounts, no prefix: type `account` (owner,
       2026-10-26, plan 132);
