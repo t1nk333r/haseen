@@ -56,6 +56,8 @@ between parts. The engineering record is `plans/`, indexed by
     - also: calculator, indicators, calendar, emoji, ai, agents and the pickers;
     - also: the launcher's agent accounts, no prefix: type `account` (owner,
       2026-10-26, plan 132);
+    - also: the Your computer panel, haseen.computer (owner, 2026-11-12,
+      plan 162);
     - the desktop itself, never optional: launcher, menu, notifications,
       session, background.
   - Installed with the shell layer (owner, 2026-10-07, plan 073): the Helium
@@ -83,7 +85,8 @@ between parts. The engineering record is `plans/`, indexed by
     `haseen toggle monitor-workspaces on` (plan 105). PRINT opens
     haseen.capture's toolbar while that plugin is on, and is Omasnap's
     screenshot otherwise (owner, 2026-11-02, "bind the printscreen button",
-    plan 154).
+    plan 154). SUPER + SHIFT + D opens the Your computer panel (owner,
+    2026-11-12, plan 162).
   - haseen.clipboard's preview pane is on by default (owner, 2026-10-08,
     plan 042): it shows only while the clipboard panel is open.
   - A new built-in plugin is off until the owner adds it to this list.
