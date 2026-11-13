@@ -11,12 +11,13 @@ import "Computer.js" as Computer
 // and the battery. Behaviour taken from pocket-dots' "Your computer" panel
 // (GPL-3.0, reference only, nothing copied).
 //
-// haseen-sidecar does the sampling. This panel subscribes to its `sysusage`
-// stream with `system` (temperature and disks) every 3 s while it is shown,
-// and the host creates it only while it is open (a LazyLoader), so the
-// history starts when the panel opens and goes with it: nothing samples or
-// remembers anything while it is closed (architecture 6). The uptime and the
-// load are re-read when a sample arrives, the thread count once.
+// haseen-sidecar does the sampling. The plugin's service (Service.qml, plan
+// 165) keeps the histories while the panel is closed, so the panel opens on
+// the last 90 s and only draws them. Without the service (a user's own
+// `services` list without it) the panel subscribes to the `sysusage` stream
+// itself while it is shown and keeps a history that starts when it opens, as
+// plan 162 built it. The uptime and the load are re-read when a sample
+// arrives, the thread count once.
 //
 // Open with SUPER + SHIFT + D, the menu's Trigger > Your Computer, or
 // `haseen shell ipc panel toggle haseen.computer`.
@@ -35,10 +36,19 @@ Column {
     readonly property bool available: Sidecar.has("sysusage")
     readonly property var sample: Sidecar.streams["sysusage"] || null
 
-    // The histories, {t, v} per sample, newest last (Computer.push).
-    property var cpuHistory: []
-    property var memHistory: []
-    property var tempHistory: []
+    readonly property var service: {
+        const entry = Plugins.roles.computer;
+        return entry && entry.id === root.pluginId ? entry.instance : null;
+    }
+
+    // The histories, {t, v} per sample, newest last (Computer.push): the
+    // service's, else the panel's own.
+    readonly property var cpuHistory: service ? service.cpuHistory : _cpu
+    readonly property var memHistory: service ? service.memHistory : _mem
+    readonly property var tempHistory: service ? service.tempHistory : _temp
+    property var _cpu: []
+    property var _mem: []
+    property var _temp: []
     property var _last: null
 
     readonly property real cpu: sample && typeof sample.cpu === "number" ? sample.cpu : -1
@@ -67,9 +77,13 @@ Column {
     function record(s: var, t: real): void {
         if (!s)
             return;
-        cpuHistory = Computer.push(cpuHistory, t, s.cpu);
-        memHistory = Computer.push(memHistory, t, s.mem ? s.mem.percent : -1);
-        tempHistory = Computer.push(tempHistory, t, s.cpuTempC);
+        if (service) {
+            service.record(s, t);
+            return;
+        }
+        _cpu = Computer.push(_cpu, t, s.cpu);
+        _mem = Computer.push(_mem, t, s.mem ? s.mem.percent : -1);
+        _temp = Computer.push(_temp, t, s.cpuTempC);
     }
 
     function percent(v: real): string {
@@ -102,12 +116,13 @@ Column {
         return parts.join(" · ");
     }
 
-    // The subscription, only while the panel is shown: one key of its own,
-    // merged by Sidecar with the bar widget's, so the daemon runs one sampler.
+    // The panel's own subscription, only without the service and only while
+    // the panel is shown: one key of its own, merged by Sidecar with the bar
+    // widget's, so the daemon runs one sampler.
     readonly property string _key: "computer:" + String(root)
 
     function _apply(): void {
-        if (!visible) {
+        if (!visible || service) {
             Sidecar.drop(_key);
             return;
         }
@@ -119,13 +134,15 @@ Column {
     }
 
     onVisibleChanged: _apply()
+    onServiceChanged: _apply()
     onSampleChanged: {
         // Sidecar.streams changes for every stream; only a new sysusage
-        // frame is a sample.
+        // frame is a sample. The service records it itself.
         if (!sample || sample === _last)
             return;
         _last = sample;
-        record(sample, Date.now());
+        if (!service)
+            record(sample, Date.now());
         uptimeFile.reload();
         loadFile.reload();
     }
