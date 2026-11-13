@@ -138,3 +138,32 @@ fn failures_exit_1() {
         ("haseen-palette: extract colours: failed to decode image: unsafe image dimensions 30000x10\n", 1)
     );
 }
+
+#[test]
+fn a_path_that_is_not_utf8_still_works() {
+    // A Latin-1 file name: std::env::args would panic on it (plan 167's
+    // review); Go read it as bytes and so does this.
+    use std::os::unix::ffi::OsStrExt;
+    let dir = std::env::temp_dir().join(format!("haseen-palette-latin1-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let odd = dir.join(std::ffi::OsStr::from_bytes(b"w\xe9.png"));
+    std::fs::copy(corpus("png-pal4-trns.png"), &odd).unwrap();
+    let plain = run(&["--json", &corpus("png-pal4-trns.png")]);
+    let out = Command::new(BIN)
+        .arg("--json")
+        .arg(&odd)
+        .env("HASEEN_PALETTE_CACHE", dir.join("cache"))
+        .output()
+        .expect("run haseen-palette");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).replace("\"cached\":true", "\"cached\":false"),
+        plain.0
+    );
+}

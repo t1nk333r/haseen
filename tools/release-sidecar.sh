@@ -104,22 +104,30 @@ if [[ $(uname -m) != aarch64 ]]; then
         echo "release-sidecar: no qemu-aarch64-static; the arm64 helpers are published untried" >&2
     fi
 fi
+# The palette ports BSD-licensed Go code, whose licence a binary release
+# must carry: it goes up beside the binaries (plan 167).
+install -m 0644 "$REPO/core/palette/LICENSE-GO" "$TMP/haseen-palette-LICENSE-GO"
 (cd "$TMP" && sha256sum haseen-*-linux-* >SHA256SUMS)
 ls -l "$TMP"
 
 if $DRY_RUN; then
-    assets="$(printf '%q ' "$TMP"/haseen-*-linux-* "$TMP/SHA256SUMS")"
-    printf "DRYRUN: gh release view '%s' (create when absent)\n" "$TAG"
+    assets="$(printf '%q ' "$TMP"/haseen-*-linux-* "$TMP/haseen-palette-LICENSE-GO" "$TMP/SHA256SUMS")"
+    printf "DRYRUN: gh release view '%s' (create when absent, else edit its notes)\n" "$TAG"
     printf "DRYRUN: gh release create '%s' --title 'haseen-sidecar %s' --target %s\n" "$TAG" "$VERSION" "$(git -C "$REPO" rev-parse "$TARGET")"
     printf "DRYRUN: gh release upload '%s' %s--clobber\n" "$TAG" "$assets"
     exit 0
 fi
 
+NOTES="Prebuilt static haseen-sidecar (core/sidecar/) and haseen-palette (core/palette/), both Rust, for linux/amd64 and linux/arm64, built at $(git -C "$REPO" rev-parse --short HEAD). A machine without the toolchains downloads these when install.sh runs (tools/build-sidecar.sh, plan 127); SHA256SUMS is checked before anything is installed. haseen-palette ports BSD-3-Clause code from Go; its licence is haseen-palette-LICENSE-GO."
 if ! gh release view "$TAG" >/dev/null 2>&1; then
     gh release create "$TAG" \
         --title "haseen-sidecar $VERSION" \
         --target "$(git -C "$REPO" rev-parse "$TARGET")" \
-        --notes "Prebuilt static haseen-sidecar (core/sidecar/) and haseen-palette (core/palette/), both Rust, for linux/amd64 and linux/arm64, built at $(git -C "$REPO" rev-parse --short HEAD). A machine without the toolchains downloads these when install.sh runs (tools/build-sidecar.sh, plan 127); SHA256SUMS is checked before anything is installed."
+        --notes "$NOTES"
+else
+    # A re-cut release keeps its tag, but its notes must describe what is
+    # uploaded now (plan 167's review).
+    gh release edit "$TAG" --notes "$NOTES"
 fi
-gh release upload "$TAG" "$TMP"/haseen-*-linux-* "$TMP/SHA256SUMS" --clobber
+gh release upload "$TAG" "$TMP"/haseen-*-linux-* "$TMP/haseen-palette-LICENSE-GO" "$TMP/SHA256SUMS" --clobber
 echo "release-sidecar: $TAG updated ($(gh release view "$TAG" --json url -q .url))"

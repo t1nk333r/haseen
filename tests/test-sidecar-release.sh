@@ -59,7 +59,7 @@ assert_contains "the release is created at HEAD" "$(cat "$LOG")" \
     "release create $TAG --title haseen-sidecar $VERSION --target $HEAD_SHA"
 assert_contains "and its URL is reported" "$OUTPUT" "sidecar-v$VERSION updated"
 for asset in haseen-sidecar-linux-amd64 haseen-sidecar-linux-arm64 \
-    haseen-palette-linux-amd64 haseen-palette-linux-arm64 SHA256SUMS; do
+    haseen-palette-linux-amd64 haseen-palette-linux-arm64 haseen-palette-LICENSE-GO SHA256SUMS; do
     assert_contains "the upload carries $asset" "$(cat "$LOG")" "$asset"
 done
 assert_contains "assets are replaced, not added" "$(cat "$LOG")" "--clobber"
@@ -76,6 +76,7 @@ capture "$RELEASE"
 assert_status "an existing release publishes" 0 "$STATUS"
 assert_not_contains "without a second create" "$(cat "$LOG")" "release create"
 assert_contains "but still uploads" "$(cat "$LOG")" "release upload $TAG"
+assert_contains "and rewrites its notes for what it now holds" "$(cat "$LOG")" "release edit $TAG --notes Prebuilt static"
 
 # --- the dry run builds and prints, and calls no gh ------------------------
 : >"$LOG"

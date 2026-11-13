@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 // Generated from golang.org/x/image v0.46.0 (vp8/token.go, vp8/pred.go,
 // vp8/partition.go) by plan 167's port: the tables as Go has them,
 // flattened in index order. Not edited by hand.

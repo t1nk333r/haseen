@@ -1,3 +1,6 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause) and, through
+// it, fdlibm (Copyright (C) 1993 Sun Microsystems); both notices are in
+// core/palette/LICENSE-GO.
 //! Go's `math` functions, ported so a palette is the one the Go generator
 //! wrote, bit for bit, whatever C library this is linked against.
 //!
@@ -81,6 +84,17 @@ pub fn modf(f: f64) -> (f64, f64) {
     (int, (f - int).copysign(f))
 }
 
+// The Go code is a modified version of the original C code from
+// http://www.netlib.org/fdlibm/s_cbrt.c and came with this notice.
+//
+// ====================================================
+// Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+//
+// Developed at SunSoft, a Sun Microsystems, Inc. business.
+// Permission to use, copy, modify, and distribute this
+// software is freely granted, provided that this notice
+// is preserved.
+// ====================================================
 /// Go's `math.Cbrt` (FreeBSD's s_cbrt.c, as Go has it).
 pub fn cbrt(x: f64) -> f64 {
     const B1: u64 = 715094163;
@@ -120,6 +134,17 @@ pub fn cbrt(x: f64) -> f64 {
     t
 }
 
+// Go's log follows FreeBSD's /usr/src/lib/msun/src/e_log.c, which came
+// with this notice:
+//
+// ====================================================
+// Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+//
+// Developed at SunPro, a Sun Microsystems, Inc. business.
+// Permission to use, copy, modify, and distribute this
+// software is freely granted, provided that this notice
+// is preserved.
+// ====================================================
 /// Go's `math.Log`.
 pub fn log(x: f64) -> f64 {
     const LN2_HI: f64 = 6.93147180369123816490e-01;
@@ -330,6 +355,18 @@ pub fn pow(x: f64, y: f64) -> f64 {
     ldexp(a1, ae)
 }
 
+// Go took these from the Cephes library (sin.c, atan.c), with its notice:
+//
+// Cephes Math Library Release 2.8:  June, 2000
+// Copyright 1984, 1987, 1989, 1992, 2000 by Stephen L. Moshier
+//
+// The readme file at http://netlib.sandia.gov/cephes/ says:
+//    Some software in this archive may be from the book _Methods and
+// Programs for Mathematical Functions_ (Prentice-Hall or Simon & Schuster
+// International, 1989) or from the Cephes Mathematical Library, a
+// commercial product. In either event, it is copyrighted by the author.
+// What you see here may be used freely but it comes with no support or
+// guarantee.
 fn xatan(x: f64) -> f64 {
     const P0: f64 = -8.750608600031904122785e-01;
     const P1: f64 = -1.615753718733365076637e+01;

@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! VP8L (lossless WebP), a port of golang.org/x/image/vp8l (v0.46.0). The
 //! format is lossless, so the pixels are any decoder's; it is ported so the
 //! errors and the NRGBA image are Go's, and so the crate has no dependency.

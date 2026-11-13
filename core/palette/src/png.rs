@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! PNG, a port of Go's image/png reader (Go 1.27): the same image type per
 //! colour type and bit depth, tRNS handling, palette growth, Adam7, CRC and
 //! chunk-order checks, and its error text. The zlib stream is pulled

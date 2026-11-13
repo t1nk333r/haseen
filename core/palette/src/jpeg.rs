@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! JPEG, a port of Go's image/jpeg decoder (Go 1.27: reader.go, scan.go,
 //! huffman.go and the integer IDCT of dct.go). It returns what Go returns:
 //! Gray, YCbCr with Go's subsample ratios (no chroma upsampling: the scaler

@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! Go's `sort.Slice` (pdqsort, `sort/zsortfunc.go`), ported because it is
 //! not stable and the generator depends on where it leaves equal elements:
 //! median cut splits a bucket at the middle of its pixels sorted by one OKLab

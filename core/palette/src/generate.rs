@@ -32,8 +32,12 @@ pub struct Generated {
 }
 
 /// An io::Error as Go's os package words it: "<op> <path>: <errno text>".
-pub fn path_error(op: &str, path: &str, err: &std::io::Error) -> String {
-    format!("{op} {path}: {}", errno_text(err))
+pub fn path_error(op: &str, path: impl AsRef<Path>, err: &std::io::Error) -> String {
+    format!(
+        "{op} {}: {}",
+        path.as_ref().to_string_lossy(),
+        errno_text(err)
+    )
 }
 
 /// The C library's message, lower-cased first letter, as Go's syscall table
@@ -92,23 +96,40 @@ pub fn clean(path: &str) -> String {
 }
 
 pub fn cache_dir() -> String {
-    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
-    if let Some(dir) = var("HASEEN_PALETTE_CACHE") {
+    // var_os, not var: a set variable that is not UTF-8 must not read as
+    // unset and send the cache somewhere else. The cache paths are strings
+    // here, so such a directory means no cache, where Go cached in it
+    // (plan 167's review).
+    let var = |name: &str| -> Result<Option<String>, ()> {
+        match std::env::var_os(name) {
+            None => Ok(None),
+            Some(v) if v.is_empty() => Ok(None),
+            Some(v) => v.into_string().map(Some).map_err(|_| ()),
+        }
+    };
+    let Ok(dir) = var("HASEEN_PALETTE_CACHE") else {
+        return String::new();
+    };
+    if let Some(dir) = dir {
         return dir;
     }
-    let base = match var("XDG_CACHE_HOME") {
+    let Ok(xdg) = var("XDG_CACHE_HOME") else {
+        return String::new();
+    };
+    let base = match xdg {
         Some(b) => b,
         // Go's os.UserHomeDir fails without HOME, and then there is no cache.
         None => match var("HOME") {
-            Some(home) => go_join(&[&home, ".cache"]),
-            None => return String::new(),
+            Ok(Some(home)) => go_join(&[&home, ".cache"]),
+            _ => return String::new(),
         },
     };
     go_join(&[&base, "haseen", "palette"])
 }
 
 /// The content hash of the image file.
-pub fn seed_hash(path: &str) -> Result<String, String> {
+pub fn seed_hash(path: impl AsRef<Path>) -> Result<String, String> {
+    let path = path.as_ref();
     let mut f = std::fs::File::open(path).map_err(|e| path_error("open", path, &e))?;
     let mut sum = sha256::Sha256::default();
     let mut buf = vec![0u8; 64 * 1024];
@@ -257,18 +278,25 @@ fn save_cached(
 /// The palette for one image. The cache holds the generator's own palette;
 /// the anchors are clamped on every return, cached or fresh. A palette that
 /// could not be cached is still returned, with the error, as Go did.
-pub fn generate(image: &str, light: bool, mode: &str) -> (Option<Generated>, Option<String>) {
+pub fn generate(
+    image: impl AsRef<Path>,
+    light: bool,
+    mode: &str,
+) -> (Option<Generated>, Option<String>) {
     generate_with_cache(image, light, mode, &cache_dir())
 }
 
 /// generate with the cache directory given ("" for none): tests pass their
 /// own instead of setting HASEEN_PALETTE_CACHE across threads.
 pub fn generate_with_cache(
-    image: &str,
+    image: impl AsRef<Path>,
     light: bool,
     mode: &str,
     cache: &str,
 ) -> (Option<Generated>, Option<String>) {
+    // A path is bytes, not UTF-8; messages show it lossily (plan 167's review).
+    let image = image.as_ref();
+    let shown = image.to_string_lossy();
     let mode = if mode.is_empty() { "normal" } else { mode };
     if !modes::valid_mode(mode) {
         return (
@@ -278,7 +306,7 @@ pub fn generate_with_cache(
     }
     let seed = match seed_hash(image) {
         Ok(s) => s,
-        Err(e) => return (None, Some(format!("read {image}: {e}"))),
+        Err(e) => return (None, Some(format!("read {shown}: {e}"))),
     };
     let key = cache_key(&seed, mode, light);
     let (generated, cached, cache_err) = match load_cached(cache, &key) {
@@ -290,7 +318,7 @@ pub fn generate_with_cache(
                     Err(e) => return (None, Some(format!("extract colours: {e}"))),
                 };
             if dominant.len() < 8 {
-                return (None, Some(format!("not enough colours in {image}")));
+                return (None, Some(format!("not enough colours in {shown}")));
             }
             let weights = modes::normalize_counts(&counts);
             let p = modes::normalize_brightness(modes::generate_by_mode(
@@ -320,7 +348,10 @@ pub fn generate_with_cache(
 }
 
 /// Dominant colours and their pixel counts, most first.
-pub fn extract_dominant_colors(image: &str, n: usize) -> Result<(Vec<String>, Vec<usize>), String> {
+pub fn extract_dominant_colors(
+    image: impl AsRef<Path>,
+    n: usize,
+) -> Result<(Vec<String>, Vec<usize>), String> {
     let pixels = sample::load_and_sample_pixels(image)?;
     median_cut::extract_from_pixels(&pixels, n)
 }

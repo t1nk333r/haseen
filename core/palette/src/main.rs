@@ -63,6 +63,8 @@ struct Flags {
     mode: String,
     version: bool,
     args: Vec<String>,
+    /// Where `args` starts in the command line.
+    first_arg: usize,
 }
 
 /// Go's flag package: `-name` or `--name`, `=value` or the next argument
@@ -75,6 +77,7 @@ fn parse_flags(args: &[String]) -> Flags {
         mode: "normal".into(),
         version: false,
         args: Vec::new(),
+        first_arg: 0,
     };
     let fail = |msg: String| -> ! {
         eprintln!("{msg}");
@@ -136,30 +139,57 @@ fn parse_flags(args: &[String]) -> Flags {
             f.mode = value;
         }
     }
-    f.args = args[i.min(args.len())..].to_vec();
+    f.first_arg = i.min(args.len());
+    f.args = args[f.first_arg..].to_vec();
     f
 }
 
+/// BSD-3-Clause asks a binary to carry the notice of the Go code ported
+/// into it: it is kept in the executable, and the release uploads it beside.
+#[used]
+static LICENSE_GO: &str = include_str!("../LICENSE-GO");
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    // args_os: an image path need not be UTF-8, and std::env::args panics on
+    // one that is not. Flags are read from a lossy copy; the image path is
+    // passed on as it came (plan 167's review).
+    let os_args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let args: Vec<String> = os_args
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
     let f = parse_flags(&args);
     if f.version {
-        println!("{VERSION}");
+        emit(&format!("{VERSION}\n"));
         return;
     }
     if f.args.len() != 1 {
         usage();
         std::process::exit(2);
     }
-    let (result, err) = generate(&f.args[0], f.light, &f.mode);
+    let (result, err) = generate(&os_args[f.first_arg], f.light, &f.mode);
     if let Some(e) = err {
         eprintln!("haseen-palette: {e}");
         std::process::exit(1);
     }
     let result = result.expect("a palette when there is no error");
     if f.json {
-        println!("{}", result.json_line());
+        emit(&format!("{}\n", result.json_line()));
         return;
     }
-    print!("{}", result.colors_toml());
+    emit(&result.colors_toml());
+}
+
+/// Standard output as Go's fmt wrote it: an error is ignored (a full disk
+/// exits 0), except a closed pipe, which killed the Go command with SIGPIPE
+/// (141 to the shell). println! would panic, and panic aborts with a core
+/// dump (plan 167's review).
+fn emit(text: &str) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    if let Err(e) = out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(141);
+        }
+    }
 }

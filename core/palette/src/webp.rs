@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! WebP, a port of golang.org/x/image/webp and its riff reader (v0.46.0):
 //! a lossy VP8 frame is a 4:2:0 YCbCr image, with an ALPH chunk an
 //! NYCbCrA one; a lossless VP8L frame is NRGBA.
@@ -198,7 +200,13 @@ fn decode_inner(data: &[u8], config_only: bool) -> Result<Decoded, String> {
                     return Err(invalid());
                 }
                 if chunk.len() < 10 {
-                    return Err("unexpected EOF".into());
+                    // io.ReadFull: EOF when nothing came, as Go words it.
+                    return Err(if chunk.is_empty() {
+                        "EOF"
+                    } else {
+                        "unexpected EOF"
+                    }
+                    .into());
                 }
                 let b = chunk;
                 want_alpha = b[0] & (1 << 4) != 0;

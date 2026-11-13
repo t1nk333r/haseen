@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! zlib (RFC 1950) and DEFLATE (RFC 1951) decompression for PNG, pulled a
 //! byte at a time from a source so the PNG reader can feed it IDAT chunks as
 //! Go's does. Lossless: any correct inflater gives the same bytes. The

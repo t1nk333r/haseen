@@ -4,7 +4,8 @@
 #           changes affect (tools/affected-tests.sh, plan 100); on a push to
 #           main, the full tests/run.sh, so anything the mapping misses fails
 #           there; as a normal user (haseen refuses to run as root); rust is
-#           in ARCH_PACKAGES for wootingd's cargo tests (plan 099)
+#           in ARCH_PACKAGES for the crates' cargo tests: haseen-sidecar and
+#           haseen-palette (plan 167) and wootingd (plan 099)
 #   docs    tools/check-docs.sh (needs full history: plans cite commits)
 #   secrets gitleaks over every commit + tools/secrets.sh privacy patterns
 # Lint and tests run in an Arch container, the distro haseen targets, so

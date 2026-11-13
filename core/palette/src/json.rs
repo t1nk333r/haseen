@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! The little JSON the palette needs: reading a cache entry, writing one, and
 //! Go's `%q` for the --json line and colors.toml. Hand-written, as the
 //! sidecar's is (plan 167): no dependency for three small jobs.

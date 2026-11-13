@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! GIF, a port of Go's image/gif reader and compress/lzw decoder (Go
 //! 1.27): the first frame only, as image.Decode returns it, a Paletted
 //! image of the frame's own size, its local or global table, the

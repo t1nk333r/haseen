@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! VP8 (lossy WebP), a port of golang.org/x/image/vp8 (v0.46.0). VP8's
 //! reconstruction is normative, so its Y, Cb and Cr planes are what any
 //! conforming decoder produces; what matters here is that, like Go, it
@@ -914,12 +916,15 @@ impl<'a> Decoder<'a> {
 
     // --- idct.go ------------------------------------------------------------
 
+    /// Go's arithmetic is int32 and wraps on corrupt coefficients; Wrapping
+    /// does the same in every build profile (plan 167's review).
     fn inverse_dct4(&mut self, y: usize, x: usize, mut coeff_base: usize) {
-        const C1: i32 = 85627;
-        const C2: i32 = 35468;
-        let mut m = [[0i32; 4]; 4];
+        use std::num::Wrapping as W;
+        const C1: W<i32> = W(85627);
+        const C2: W<i32> = W(35468);
+        let mut m = [[W(0i32); 4]; 4];
         for row in m.iter_mut() {
-            let k = |o: usize| self.coeff[coeff_base + o] as i32;
+            let k = |o: usize| W(self.coeff[coeff_base + o] as i32);
             let a = k(0) + k(8);
             let b = k(0) - k(8);
             let c = ((k(4) * C2) >> 16) - ((k(12) * C1) >> 16);
@@ -928,16 +933,16 @@ impl<'a> Decoder<'a> {
             coeff_base += 1;
         }
         for j in 0..4 {
-            let dc = m[0][j] + 4;
+            let dc = m[0][j] + W(4);
             let a = dc + m[2][j];
             let b = dc - m[2][j];
             let c = ((m[1][j] * C2) >> 16) - ((m[3][j] * C1) >> 16);
             let d = ((m[1][j] * C1) >> 16) + ((m[3][j] * C2) >> 16);
             let row = &mut self.ybr[y + j];
-            row[x] = clip8(row[x] as i32 + ((a + d) >> 3));
-            row[x + 1] = clip8(row[x + 1] as i32 + ((b + c) >> 3));
-            row[x + 2] = clip8(row[x + 2] as i32 + ((b - c) >> 3));
-            row[x + 3] = clip8(row[x + 3] as i32 + ((a - d) >> 3));
+            row[x] = clip8((W(row[x] as i32) + ((a + d) >> 3)).0);
+            row[x + 1] = clip8((W(row[x + 1] as i32) + ((b + c) >> 3)).0);
+            row[x + 2] = clip8((W(row[x + 2] as i32) + ((b - c) >> 3)).0);
+            row[x + 3] = clip8((W(row[x + 3] as i32) + ((a - d) >> 3)).0);
         }
     }
 

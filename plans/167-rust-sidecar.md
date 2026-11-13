@@ -24,10 +24,10 @@ Verification.
   daemon to Rust in three phases, each its own pull request
 - **State**: phase 1 DONE 2026-11-13 (PR #128: `core/sidecar/`,
   `tools/sidecar-play.py`; nothing installed). Phase 2 IMPLEMENTED
-  2026-11-13 (PR 2): the Rust daemon is what `tools/build-sidecar.sh` builds
+  2026-11-13 (PR #129): the Rust daemon is what `tools/build-sidecar.sh` builds
   and `tools/release-sidecar.sh` publishes, static musl for amd64 and arm64;
   the Go daemon is removed and its answers kept as golden files. Phase 3
-  IMPLEMENTED 2026-11-13 (PR 3): haseen-palette is Rust (`core/palette/`,
+  IMPLEMENTED 2026-11-13 (PR #130): haseen-palette is Rust (`core/palette/`,
   no dependencies), every palette of a 32-image corpus is the Go
   generator's byte for byte, and Go is gone from the repository ("Phase 3,
   as built"). The owner answered Q2, Q6 and Q7 on 2026-11-13 ("Do all 6";
@@ -1016,7 +1016,9 @@ above, this section is right.
   channel difference 0**. Summed run time was Go 195.3 s against Rust
   200.7 s.
 - **Damaged files.** 666 truncated and byte-flipped variants of the corpus
-  give identical output and exit codes from both. Neither panics.
+  give identical output and exit codes from both. Neither panics. The
+  review's 34,000 more fuzz cases found exit codes identical everywhere and
+  two kinds of error text that differ (below).
 - **Memory.** Peak RSS, measured once with `wait4`:
 
   | image | Go | Rust |
@@ -1094,15 +1096,37 @@ corpus, the wallpapers or the damaged files:
 - Some malformed files that panicked Go now return an error: a VP8L Huffman
   node index or group index out of range.
 - `strconv.Quote` is reproduced for what an error message can hold. Valid
-  non-ASCII text is printed as Go prints a printable rune, and invalid
-  bytes as `\xHH`. Go's full `IsPrint` table is not ported.
+  non-ASCII text is printed as Go prints a printable rune. Go's full
+  `IsPrint` table is not ported. A path that is not UTF-8 is read as the
+  bytes it is, as Go read it, and shown in messages with U+FFFD where Go
+  printed the raw bytes.
+- A cache directory (`HASEEN_PALETTE_CACHE`, `XDG_CACHE_HOME`, `HOME`) that
+  is not UTF-8 means no cache; Go cached in it. The cache paths are strings
+  here, and the alternative, falling back to the next variable, would have
+  written somewhere else.
+- Two kinds of damaged input word their error differently, with the same
+  exit code (1) and no palette either way: a PNG whose zlib stream ends with
+  one extra byte and a bad Adler-32 says `too much pixel data` where Go,
+  whose flate returns that byte together with EOF, says `zlib: invalid
+  checksum` (13 of 30,000 fuzz cases); the empty VP8X case the review found
+  now says `EOF` as Go does.
+- A progressive JPEG whose header claims 20000 x 10000 (86 bytes of data)
+  peaks at 1,146 MB RSS against Go's 770 MB: still bounded by the 200 M
+  pixel limit (Sonnet's measurement).
+- Version-2 cache entries the Go generator wrote are never removed; they
+  are a few hundred bytes each.
 - The Payne–Hanek reduction in Go's `Sin`/`Cos` is not ported. Hue angles
   here are under 7 radians, where Go uses the Cody–Waite path that is
   ported.
-- Go's `Exp` gives different answers on a CPU without FMA, where it falls
-  back to pure Go. So the Go generator's own palettes depended on the CPU.
-  The goldens are the FMA answers, and Rust gives them on every CPU
-  (`f64::mul_add`).
+- Go's `Exp` gives different answers on a CPU without FMA, where its amd64
+  assembly takes a separate SSE path, and on arm64. So the Go generator's
+  own `Exp` and `Pow` bits depended on the CPU. The goldens are the amd64
+  FMA answers, and Rust gives them on every CPU (`f64::mul_add`, correctly
+  rounded in software where there is no FMA): Fable 5.2 hashed 2,000,000
+  `exp` and 4,000,000 `pow` results identical for Rust on glibc, x86_64
+  musl, both under `qemu-x86_64-static -cpu Nehalem`, and aarch64 musl, and
+  512 palettes identical for Rust, Rust without FMA, Go, Go without FMA and
+  Go on arm64.
 - The goldens cover all 23 modes for 12 images and eight modes for the
   other 17, not every mode for every image. The modes share one extractor,
   and the 12 images span every decoder.
@@ -1110,6 +1134,44 @@ corpus, the wallpapers or the damaged files:
   read-ahead with an approximation. It matched Go on every damaged file.
 - Go code that nothing called (`AdjustColor`, `HexToRGBString`,
   `IsHexColor` and similar) was not ported.
+
+### Phase 3 review
+
+Claude Sonnet reviewed PR #130 at its first head: about 10,000 runs against
+the Go generator (the corpus, 339 PIL and ImageMagick images, 1,313 images
+under /usr/share) gave 0 differences, and about 34,000 fuzz cases gave the
+same exit codes. Fable 5.2 checked that review and probed the FMA claim, the
+CI change and the corpus script. Fixed:
+
+- **The Go code's notices** (Sonnet, medium; Fable widened it). The decoders,
+  the scaler, `math`, `sort.Slice` and the quoting are ported from Go's
+  standard library and golang.org/x/image, BSD-3-Clause, and `gomath.rs`
+  carries fdlibm (Sun) and Cephes code through Go. `core/palette/LICENSE-GO`
+  holds the BSD licence and both notices, every ported file names it in its
+  header, the Sun and Cephes notices are kept above the functions they
+  cover, NOTICE.md has two new rows (its section now says MIT, BSD-3-Clause
+  and other permissive licences), the binary keeps the licence text, and
+  the release uploads it as `haseen-palette-LICENSE-GO` and says so in its
+  notes. CLAUDE.md names MIT sources to adapt; BSD-3-Clause is compatible
+  and is recorded here as adopted for this crate.
+- **A path that is not UTF-8 aborted** with a core dump (Sonnet; Fable added
+  `--mode` and the environment). Arguments are read with `args_os` and the
+  image path is passed on as bytes; the cache variables with `var_os`. New
+  test `a_path_that_is_not_utf8_still_works`, which fails before.
+- **A failed write to stdout aborted** (Fable): output now goes through one
+  function that ignores a write error as Go's fmt did, and exits 141 on a
+  closed pipe.
+- **A re-cut release kept its old notes** (Fable): an existing release's
+  notes are rewritten (`gh release edit`).
+- **The VP8 inverse DCT** wraps explicitly, so a debug build no longer
+  panics where Go's int32 arithmetic wrapped (Sonnet).
+- **`core/*/target/`** is ignored, so a cargo build run inside a crate
+  stays out of the deploy tree; the tests' crate listing skips it (Sonnet).
+- **The test's suite counts** no longer pin 29, 5 and 3 (Sonnet), a cargo
+  that does not run skips the test (Fable), and ci.yml's comment names the
+  crates its rust package builds (Fable).
+- The plan's description of Go's non-FMA `Exp`, the review's measurements
+  and the deviations above (Fable, Sonnet).
 
 ## Rejected options
 

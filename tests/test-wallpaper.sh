@@ -18,7 +18,8 @@ sandbox wallpaper
 [[ ! -d $rustup_home ]] || export RUSTUP_HOME="$rustup_home"
 CRATE="$REPO/core/palette"
 
-if ! command -v cargo >/dev/null; then
+# A rustup proxy with no toolchain is on PATH and does not run: no cargo.
+if ! command -v cargo >/dev/null || ! cargo --version >/dev/null 2>&1; then
     echo "  skip: cargo missing; haseen-palette not built or tested" >&2
     [[ ${HASEEN_REQUIRE_ENGINE:-0} != 1 ]] || assert_eq "wallpaper: required cargo prerequisite" available unavailable
     return 0 2>/dev/null || exit 0
@@ -33,8 +34,11 @@ VERSION="$(cat "$HASEEN_PATH/VERSION")"
 capture env HASEEN_VERSION="$VERSION" cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml"
 assert_status "cargo test --locked passes" 0 "$STATUS"
 assert_not_contains "no failed Rust test" "$OUTPUT" "FAILED"
-assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 29 passed; 0 failed"
-assert_contains "the command-line tests ran" "$OUTPUT" "test result: ok. 5 passed; 0 failed"
+# Three suites with tests in them: the unit tests, the command line, and the
+# Go generator's answers (tests/golden.rs); their counts may grow.
+assert_eq "the unit, command-line and golden tests ran" 3 \
+    "$(grep -c '^test result: ok\. [1-9][0-9]* passed; 0 failed' <<<"$OUTPUT")"
+capture env HASEEN_VERSION="$VERSION" cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml" --test golden
 assert_contains "the Go generator's answers were compared" "$OUTPUT" "test result: ok. 3 passed; 0 failed"
 if cargo clippy --version >/dev/null 2>&1; then
     capture cargo clippy --locked --quiet --all-targets --manifest-path "$CRATE/Cargo.toml" -- -D warnings
@@ -49,8 +53,8 @@ assert_eq "the crate has no dependency" "" \
     "$(sed -n '/^\[dependencies\]/,/^\[/p' "$CRATE/Cargo.toml" | sed -n 's/^\([a-z_-]*\) = .*/\1/p')"
 assert_eq "and its lock file only the crate" "haseen-palette" \
     "$(sed -n 's/^name = "\(.*\)"/\1/p' "$CRATE/Cargo.lock" | paste -sd' ')"
-crate_files() { (cd "$CRATE" && find . -not -path "./src/*" -not -path "./tests/*" -not -name . | LC_ALL=C sort | paste -sd" "); }
-assert_eq "no build output in the tracked crate" "./Cargo.lock ./Cargo.toml ./src ./tests" "$(crate_files)"
+crate_files() { (cd "$CRATE" && find . -not -path "./src/*" -not -path "./tests/*" -not -path "./target" -not -path "./target/*" -not -name . | LC_ALL=C sort | paste -sd" "); }
+assert_eq "no build output in the tracked crate" "./Cargo.lock ./Cargo.toml ./LICENSE-GO ./src ./tests" "$(crate_files)"
 
 capture env HASEEN_BUILD_WOOTINGD=0 HASEEN_BUILD_DAEMON=0 HASEEN_FETCH_SIDECAR=0 "$REPO/tools/build-sidecar.sh" "$SANDBOX/haseen-sidecar"
 assert_status "the generator builds" 0 "$STATUS"

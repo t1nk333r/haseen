@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! Decoded images in the shapes Go's decoders return them, because the
 //! scaler treats each shape differently (golang.org/x/image/draw has a fast
 //! path per type, and they round differently): PNG gives Gray, Gray16,

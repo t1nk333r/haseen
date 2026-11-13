@@ -24,7 +24,8 @@ required() { # TOOL WHAT — a missing prerequisite: a skip, or a failure in CI
     [[ ${HASEEN_REQUIRE_ENGINE:-0} != 1 ]] || assert_eq "sidecar: required $1 prerequisite" available unavailable
 }
 
-if ! command -v cargo >/dev/null; then
+# A rustup proxy with no toolchain is on PATH and does not run: no cargo.
+if ! command -v cargo >/dev/null || ! cargo --version >/dev/null 2>&1; then
     required cargo "haseen-sidecar not built or tested"
     return 0 2>/dev/null || exit 0
 fi
@@ -63,7 +64,7 @@ assert_contains "the build reports where it landed" "$OUTPUT" "$binary"
 assert_eq "the build announces its capabilities" "sysusage borderwipe" "$("$binary" -capabilities)"
 
 assert_eq "and the tree's version" "$VERSION" "$("$binary" -version)"
-crate_files() { (cd "$CRATE" && find . -not -path "./src/*" -not -path "./tests/*" -not -name . | LC_ALL=C sort | paste -sd" "); }
+crate_files() { (cd "$CRATE" && find . -not -path "./src/*" -not -path "./tests/*" -not -path "./target" -not -path "./target/*" -not -name . | LC_ALL=C sort | paste -sd" "); }
 assert_eq "no build output in the tracked crate" "./Cargo.lock ./Cargo.toml ./src ./tests" "$(crate_files)"
 
 # --- the Go daemon's answers ------------------------------------------------------

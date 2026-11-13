@@ -1,3 +1,5 @@
+// Ported from Go (Copyright 2009 The Go Authors; BSD-3-Clause, the licence
+// in core/palette/LICENSE-GO).
 //! The wallpaper scaled to fit 400 px with golang.org/x/image/draw's
 //! CatmullRom kernel (`kernelScaler.Scale` into an NRGBA image with
 //! draw.Over), then sampled (x_pixel_sampler.go, decode.go).
@@ -209,7 +211,8 @@ fn fit(a: usize, b: usize) -> usize {
 
 /// Every step-th pixel of the scaled image, skipping transparent ones
 /// (alpha under 128).
-pub fn load_and_sample_pixels(path: &str) -> Result<Vec<Rgb>, String> {
+pub fn load_and_sample_pixels(path: impl AsRef<std::path::Path>) -> Result<Vec<Rgb>, String> {
+    let path = path.as_ref();
     let data = std::fs::read(path)
         .map_err(|e| format!("failed to open image: {}", path_error("open", path, &e)))?;
     let src = decode_image(&data).map_err(|e| format!("failed to decode image: {e}"))?;
