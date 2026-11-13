@@ -52,18 +52,23 @@ Scope {
     property int coveredScreens: 0
     property int screenCount: 0
     // One per change: a cover kept across a change during a change counts
-    // its screen again (TransitionWindows.qml).
+    // its screen again (TransitionCover.qml).
     property int generation: 0
 
     function dispatch(event: string): void {
         const before = machine.name;
         machine = Transition.reduce(machine, event);
-        if (machine.name !== before)
+        // begin re-enters loading when a change arrives during a change.
+        if (machine.name !== before || event === "begin")
             enter(machine.name);
     }
 
     function enter(name: string): void {
         if (name === "loading") {
+            holdTimer.stop();
+            safetyTimer.stop();
+            play.stop();
+            fadeOut.stop();
             coveredScreens = 0;
             progress = 0;
             coverOpacity = 1;
@@ -105,10 +110,11 @@ Scope {
             why = "not a path";
         if (!why && Quickshell.screens.length === 0)
             why = "no screen";
-        // A change during a change: the running one ends at once.
-        if (machine.name !== "idle")
-            dispatch("abort");
         if (why) {
+            // A skipped change during a change ends the running one: the
+            // CLI restarts swaybg at once.
+            if (machine.name !== "idle")
+                dispatch("abort");
             lastResult = why;
             return "skip " + why;
         }
@@ -119,6 +125,10 @@ Scope {
         seed = Math.floor(Math.random() * 600) / 10;
         screenCount = Quickshell.screens.length;
         generation++;
+        // A change during a change starts over in the covers already on
+        // screen: tearing them down would show swaybg, mid-restart, between
+        // the two. Each keeps its picture until the new pair is decoded, and
+        // counts as covered again only once the new old image is drawn.
         dispatch("begin");
         return machine.name;
     }

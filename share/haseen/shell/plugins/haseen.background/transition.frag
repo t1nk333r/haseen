@@ -4,18 +4,20 @@
 // for the length of one background change. Every value is worked out here,
 // per pixel, from the two images and a seed: no map is prepared beforehand.
 //
-// mode 0, contagion: colonies start at random places and moments and eat
-// through the old image along a noise field, in square cells of `cell`
-// device pixels. A cell lights up in `ember` for a moment as it turns.
-// mode 1, outline: a thin line in `ink` traces the new image's strong edges
-// (a Sobel filter on its luminance), the cells near those edges turn first,
-// and the rest follows outwards in the same cells.
+// mode 0, contagion: the screen is split into square blocks `cell` device
+// pixels wide. Each block switches from the old picture to the new one at a
+// time set by its distance to the nearest of six seeded starting points,
+// measured through a noise-warped space; a block that has just switched is
+// tinted with `glow`, which drains away over 4 % of the change.
+// mode 1, outline: a Sobel filter on the new picture's luminance finds its
+// strong edges and draws them in `pencil`; blocks switch in order of how
+// much edge lies near them, mixed with a slow noise.
 //
-// progress 0 is exactly the old image and 1 exactly the new one, so the
-// cover can hand over to swaybg without a visible step at either end.
+// At progress 0 the output is the old picture's texel and at 1 the new
+// one's, unchanged, so the cover and swaybg agree at both ends.
 //
-// Compiled into transition-1.frag.qsb with
-//   /usr/lib/qt6/bin/qsb --qt6 -o transition-1.frag.qsb transition.frag
+// Compiled into transition-2.frag.qsb with
+//   /usr/lib/qt6/bin/qsb --qt6 -o transition-2.frag.qsb transition.frag
 // (qt6-shadertools 6.12). Change the number in the file name with the
 // shader: Qt caches a compiled shader by its URL.
 
@@ -32,8 +34,8 @@ layout(std140, binding = 0) uniform buf {
     vec2 resolution;
     vec2 oldScale;
     vec2 newScale;
-    vec4 ember;
-    vec4 ink;
+    vec4 glow;
+    vec4 pencil;
 };
 
 layout(binding = 1) uniform sampler2D oldTex;
@@ -69,10 +71,14 @@ vec2 cover(vec2 uv, vec2 s) {
     return vec2(0.5) + (uv - vec2(0.5)) * s;
 }
 
-// The new image's luminance at uv, `blur` mip levels softer: the image is
-// decoded with mipmaps, so a coarse level is a blurred copy for free.
+// The new image's luminance at uv from mip level `blur`: the image is
+// decoded at the screen's size with mipmaps, so level n is a copy blurred
+// over 2^n pixels. An explicit level, not a bias: a bias is added to the
+// level the GPU derives per 2x2 pixel quad, and cellUv jumps at a cell's
+// edge, so quads across an odd-sized cell's edge (5 px at scale 1.25) read a
+// much blurrier level and drew a grid.
 float luma(vec2 uv, float blur) {
-    return dot(texture(newTex, uv, blur).rgb, vec3(0.299, 0.587, 0.114));
+    return dot(textureLod(newTex, uv, blur).rgb, vec3(0.299, 0.587, 0.114));
 }
 
 // The new image's edge strength around uv, `d` texture units apart.
@@ -177,9 +183,9 @@ void main() {
         if (age < 0.0) {
             colour = before;
         } else if (age < 1.0) {
-            // The burning edge: lit at once, cooling into the new image.
+            // Just switched: tinted, the tint draining quadratically.
             float heat = pow(1.0 - age, 2.0);
-            vec3 lit = mix(ember.rgb, vec3(1.0), 0.3 * heat);
+            vec3 lit = mix(glow.rgb, vec3(1.0), 0.3 * heat);
             colour = vec4(mix(after.rgb, lit, 0.9 * heat), 1.0);
         } else {
             colour = after;
@@ -211,8 +217,11 @@ void main() {
         float order = field(px / resolution.y * 2.5 + vec2(seed * 0.71, 3.0));
         float drawn = smoothstep(0.03 + order * 0.36, 0.07 + order * 0.36, progress);
         float fade = 1.0 - smoothstep(0.72, 0.95, progress);
-        float line = edge * drawn * fade * ink.a;
-        colour.rgb = mix(colour.rgb, ink.rgb, line);
+        // pencil arrives premultiplied (rgb already times its alpha), so its
+        // alpha weighs the picture under the line once, and its rgb is not
+        // scaled by it a second time.
+        float line = edge * drawn * fade;
+        colour.rgb = colour.rgb * (1.0 - line * pencil.a) + pencil.rgb * line;
     }
     fragColor = colour * qt_Opacity;
 }

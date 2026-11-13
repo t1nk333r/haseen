@@ -28,11 +28,10 @@ ShaderEffect {
     readonly property var _newCover: Transition.coverScale(width, height, newImage.implicitWidth, newImage.implicitHeight)
     readonly property point oldScale: Qt.point(_oldCover.x, _oldCover.y)
     readonly property point newScale: Qt.point(_newCover.x, _newCover.y)
-    // The burning edge is the theme's accent; the line is the theme's
-    // foreground, a little towards the accent and not fully opaque, so it
-    // reads as a pencil line rather than a glow.
-    property color ember: "transparent"
-    property color ink: "transparent"
+    // The tint of a contagion cell that has just switched, and the outline's
+    // line colour (TransitionCover.qml picks both from Theme).
+    property color glow: "transparent"
+    property color pencil: "transparent"
     // Only Error is trusted. Qt keeps a compiled shader by URL, and an effect
     // that takes it from that cache, as every change after the shell's first
     // does, draws with it but reports Uncompiled for good, so waiting for
@@ -40,5 +39,5 @@ ShaderEffect {
     // luna). A shader that fails to build reports Error on its first change.
     readonly property bool failed: status === ShaderEffect.Error
 
-    fragmentShader: Qt.resolvedUrl("transition-1.frag.qsb")
+    fragmentShader: Qt.resolvedUrl("transition-2.frag.qsb")
 }
