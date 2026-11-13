@@ -43,7 +43,7 @@ file changes in the same commit.
 | `share/haseen/default/applications/mimeapps.list` | vendor default handlers → `PREFIX/share/applications/mimeapps.list` (lowest XDG precedence, so the user always wins) | desktop |
 | `share/haseen/default/xdg-terminal-exec/` | terminal preference → `PREFIX/share/xdg-terminal-exec/` | desktop |
 | `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
-| `share/haseen/sidecar/` | compiled helpers put into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` and `haseen-palette` (Go, `core/`, or the `sidecar-v<version>` release when there is no Go toolchain, plan 127), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
+| `share/haseen/sidecar/` | compiled helpers put into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` (Rust, `core/sidecar/`, plan 167) and `haseen-palette` (Go, `core/`), either fetched from the `sidecar-v<version>` release when its toolchain is missing (plan 127), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `share/haseen/i18n/` | interface language catalogs (§5.8, plan 109): `locales.json` (each language's name, direction, date locale, digits), `<code>/{shell,menu,notify}.json`; `en/` is generated from the code by `tools/i18n.py extract`, `ar/provenance.json` says who translated it and what the owner reviewed | shell |
@@ -582,7 +582,7 @@ Smoke tests drive the UI through these, never through injected input.
 
 ### 5.6 haseen-sidecar
 
-`core/` builds `haseen-sidecar` into `share/haseen/sidecar/` (`tools/build-sidecar.sh`); a machine without a Go toolchain fetches the same two binaries from the `sidecar-v<share/haseen/VERSION>` release, checked against its `SHA256SUMS` (plan 127), so an install needs no toolchain — `tools/release-sidecar.sh` publishes them for `linux/amd64` and `linux/arm64`. `qs.Haseen.Sidecar` (`shell/Haseen/Sidecar.qml`) starts it on demand and talks JSON lines over `$XDG_RUNTIME_DIR/haseen/sidecar.sock` (`core/internal/proto`). The daemon greets with its capabilities, runs a stream only while some client subscribes to it, and exits 5 minutes after its last client leaves. `haseen sidecar status` (`bin/haseen-sidecar`) shows the binary, the socket and the border wipe's state.
+`core/sidecar/` (Rust, plan 167; it replaced the Go daemon of plan 032 and answers as it did, byte for byte, but for the differences plan 167 lists: an idle exit up to 1 s sooner, the later of two clients' GPU choices, `bad json` past 100 levels of nesting, and a theme's pace clamped to one frame of 100 ms, with `inf` asking for no wipe) builds `haseen-sidecar` into `share/haseen/sidecar/` with `cargo build --release --locked` (`tools/build-sidecar.sh`), in a target directory outside the tree (`$CARGO_TARGET_DIR`, else `$XDG_CACHE_HOME/haseen/sidecar-target`). Its one dependency is `libc`. A machine without a working cargo, or whose compiler cannot build the crate, fetches the binary from the `sidecar-v<share/haseen/VERSION>` release, checked against its `SHA256SUMS` (plan 127), so an install needs no toolchain — `tools/release-sidecar.sh` publishes static musl builds for `linux/amd64` and `linux/arm64`, and runs each one's `-version` (arm64 under `qemu-aarch64-static`) before it uploads. `qs.Haseen.Sidecar` (`shell/Haseen/Sidecar.qml`) starts it on demand and talks JSON lines over `$XDG_RUNTIME_DIR/haseen/sidecar.sock` (`core/sidecar/src/proto.rs`). The daemon greets with its capabilities, runs a stream only while some client subscribes to it, and exits 5 minutes after its last client leaves. `haseen sidecar status` (`bin/haseen-sidecar`) shows the binary, the socket and the border wipe's state.
 
 | stream | what | subscriber |
 |---|---|---|
@@ -591,7 +591,7 @@ Smoke tests drive the UI through these, never through injected input.
 
 Methods: `subscribe`/`unsubscribe` (with `stream`), `capabilities`, `status` (answers `{"borderwipe": {state, reason, secondsPerTurn, angle, frames}}`), `shutdown`.
 
-The border wipe loop (`core/internal/borderwipe`) is a port of the owner's `hypr-border-wipe` from luna. Each frame is one `eval hl.config(...)` on Hyprland's request socket (connect, send, receive, close), built in a reused buffer, with no process started. Frames run at most 10 a second, a degree each at 36 s a turn. Its states:
+The border wipe loop (`core/sidecar/src/borderwipe/`) is a port of the owner's `hypr-border-wipe` from luna. Each frame is one `eval hl.config(...)` on Hyprland's request socket (connect, send, receive, close), built in a reused buffer, with no process started. Frames run at most 10 a second, a degree each at 36 s a turn. Its states:
 
 - `off`: nobody subscribed, or the theme asks for no wipe.
 - `waiting`: Hyprland is not answering. It retries every 2 s and reconnects when the socket returns. A shell started after a Hyprland restart subscribes with the new instance's signature.
@@ -603,8 +603,9 @@ A reload that hands the border back (a theme without the wipe, or one that `bord
 
 ### 5.7 wootingd (plan 099)
 
-haseen has two compiled languages: Go for `core/` (§5.6) and Rust for
-`core/wootingd/`, the daemon the owner wrote for the t1nk33r.wooting plugin,
+haseen has two compiled languages: Rust for haseen-sidecar (§5.6) and
+`core/wootingd/`, and Go for haseen-palette (`core/`) until plan 167's third
+phase ports it. wootingd is the daemon the owner wrote for the t1nk33r.wooting plugin,
 vendored by owner decision (2026-10-21) with its behaviour unchanged; plan 153
 added each profile's settings and colour to what it publishes, decoded from
 replies it already read.
@@ -612,7 +613,7 @@ replies it already read.
 in a target directory outside the tree (`$CARGO_TARGET_DIR`, else
 `$XDG_CACHE_HOME/haseen/wootingd-target`) and installs the binary as
 `share/haseen/sidecar/wootingd`. Without a working cargo, or when the build
-fails, it says so and skips it, like the Go part without go: the daemon
+fails, it says so and skips it (no release carries it): the daemon
 serves one off-by-default plugin and never stops an install.
 `HASEEN_REQUIRE_CARGO=1` makes that an error. Its
 one dependency is `parking_lot`; no Wooting SDK is linked. CI installs
@@ -730,7 +731,7 @@ locale (`LANG`), other apps and terminal output are left alone, and
 - No blur, no shaders, no wallpaper-derived colour generation at runtime. No Python for shell startup or polling. The optional Security panel invokes its Python workflow only for finite, explicit reads and actions (§3), never as a background sampler. The optional `haseen.capture` toolbar's controller listener (`gamepad.py`, plan 150) runs only when its `controller` setting is on and the toolbar is open or a recording runs; it sleeps in `select()` on the controllers' evdev nodes and an inotify watch on `/dev/input`, so only a press or a plug wakes it.
 - Panels are `LazyLoader`s: nothing is instantiated until first open.
 - haseen.stage (on by default, plan 163) keeps one transparent strip two pixels wide per screen at rest, with no timer but the dwell's single shot while the pointer rests on it. The stage's window is a `LazyLoader` created on each open and destroyed when it has slid out, and its window pictures (one Hyprland toplevel capture each, `live: false`) exist only while it is out.
-- The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 12 MiB RSS.
+- The border wipe (§7) is the one continuous animation. Its sidecar loop draws at most 10 frames a second, with one socket round trip and no process per frame. While it is paused or off, no frame is drawn. Plan 069 measured it at 36 s a turn: 0.27 % of a core for haseen-sidecar and 1.67 % for Hyprland. Hyprland's native `borderangle` loop at 10 s a turn redraws at the refresh rate and cost 6.9 %. haseen-sidecar holds 3.2 MiB RSS and 4 threads while sampling every 3 s, 2.7 MiB idle (Rust, plan 167; the Go daemon it replaced held 12.1 MiB and 14 threads, measured the same minute).
 - Measure before claiming. `haseen doctor` matches the shell by canonicalizing absolute `qs -p` paths and resolving relative ones against that process's working directory; equivalent path spellings are recognized. It also prints the running shell's RSS and PSS. The idle budget is **< 200 MiB RSS, ~0 % CPU**. It was revised from an unmeasured 150 MiB after plan 005's measurement on the reference machine (Iris Xe, quickshell 0.3.1):
   - bare `qs` with an empty config: 122 MiB RSS
   - haseen default bar on the software backend: 178 MiB RSS / 126 MiB PSS, 0.01 s CPU per 60 s

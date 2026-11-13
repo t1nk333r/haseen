@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """tools/sidecar-play.py SOCKET BASE SCRIPT - play a script to haseen-sidecar.
 
-tests/test-sidecar-rs.sh runs the same script against the Go daemon and the
-Rust one (plan 167) and compares what each prints. SCRIPT has one JSON object
+tests/test-sidecar.sh compares what the daemon prints for each script with what
+the Go daemon printed (core/sidecar/tests/golden/, plan 167). SCRIPT has one JSON object
 per line:
 
   {"send": "<a request line>"}           write it to the socket

@@ -220,7 +220,7 @@ uninstall_tree() {
 install_tree() {
     local f version
     # The sampling daemon is compiled into the tree before it is copied, or,
-    # when this machine has no Go toolchain, fetched from the sidecar release
+    # when this machine cannot build it (no cargo), fetched from the sidecar release
     # and checked against its SHA256SUMS (plan 127). If neither is possible the
     # tree ships without it: the shell then finds no capability and hides what
     # needs it (plan 032).

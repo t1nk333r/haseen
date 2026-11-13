@@ -335,7 +335,13 @@ impl Loop {
     }
 
     fn publish(&mut self, state: &'static str, reason: &str) {
-        let seconds = self.theme.seconds;
+        // A pace JSON cannot carry (`inf`) is reported as none: the theme
+        // asks for no wipe then, and the status must still encode.
+        let seconds = if self.theme.seconds.is_finite() {
+            self.theme.seconds
+        } else {
+            0.0
+        };
         let changed = {
             let mut core = match self.shared.core.lock() {
                 Ok(g) => g,
@@ -933,6 +939,21 @@ mod tests {
             n,
             "frames went out beside the native loop"
         );
+    }
+
+    #[test]
+    fn an_endless_turn_is_no_wipe_and_still_reported() {
+        let h = start(false);
+        h.wait_state(STATE_RUNNING, "");
+        write_theme(
+            &h.state.0,
+            "border_wipe = \"rgba(F25623ff) rgba(F2562311)\"\nborder_wipe_seconds = inf\n",
+        );
+        h.fake.push("configreloaded>>");
+        h.wait_state(STATE_OFF, "no wipe");
+        let s = h.c.status();
+        assert_eq!(s.seconds_per_turn, 0.0);
+        assert!(s.encode(&mut Vec::new()), "the status encodes");
     }
 
     #[test]
