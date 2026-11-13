@@ -61,7 +61,7 @@ install_asset() {
 
 # fetch_assets WHY NAME... — the prebuilt helpers for the release of this
 # version. WHY says what could not build them. Nothing is installed unless
-# SHA256SUMS names every one and the hashes match. It is called as
+# SHA256SUMS names every one and the hashes match. It is called
 # plainly, so errexit ends the script on a `return 1`; and every step that can
 # fail is checked here anyway, because an `||` around the call would turn
 # errexit off for the whole body (plan 167's review).
