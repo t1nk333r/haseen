@@ -9,7 +9,7 @@
 //! flags, the lines on stdout and the wire format are the same.
 
 use haseen_sidecar::borderwipe;
-use haseen_sidecar::gocompat::{format_duration, parse_duration};
+use haseen_sidecar::gocompat::{clean, format_duration, parse_duration};
 use haseen_sidecar::proto::CAPABILITIES;
 use haseen_sidecar::server::{self, log, ListenError};
 use std::ffi::CString;
@@ -29,11 +29,26 @@ fn runtime_dir() -> PathBuf {
     }
 }
 
+/// Go's filepath.Join of these parts: cleaned, empty parts skipped.
+fn go_join(parts: &[&str]) -> String {
+    let joined = parts
+        .iter()
+        .filter(|p| !p.is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join("/");
+    if joined.is_empty() {
+        return String::new();
+    }
+    String::from_utf8_lossy(&clean(joined.as_bytes())).into_owned()
+}
+
 fn default_socket() -> String {
-    runtime_dir()
-        .join("haseen/sidecar.sock")
-        .display()
-        .to_string()
+    go_join(&[
+        &runtime_dir().display().to_string(),
+        "haseen",
+        "sidecar.sock",
+    ])
 }
 
 /// $HASEEN_USER_STATE, as share/haseen/lib/common.sh sets it.
@@ -43,10 +58,15 @@ fn default_state() -> String {
         return dir;
     }
     if let Some(dir) = var("XDG_STATE_HOME") {
-        return format!("{dir}/haseen");
+        return go_join(&[&dir, "haseen"]);
     }
-    let home = var("HOME").unwrap_or_default();
-    format!("{home}/.local/state/haseen")
+    // Without HOME, Go's os.UserHomeDir is "" and the path is relative.
+    go_join(&[
+        &var("HOME").unwrap_or_default(),
+        ".local",
+        "state",
+        "haseen",
+    ])
 }
 
 struct Flags {

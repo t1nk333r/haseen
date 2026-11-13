@@ -24,7 +24,7 @@ Verification.
   `tests/test-sidecar-rs.sh`, `tools/sidecar-play.py`; nothing installed).
   Phases 2 and 3 are planned and wait on the owner's answers below.
 - **Planned by**: Claude Fable 5.2; implemented by Claude Opus 5.5; reviewed
-  by Claude Sonnet, and that review checked by Fable 5.2, before the merge
+  by Claude Sonnet, and that review checked by Fable 5.2 ("Review" below)
   (owner, 2026-11-13: "Ask
   fable 5.2 to plan it then you opus to implement and sonnet to review it and
   then fable 5.2 to review the review").
@@ -704,9 +704,9 @@ why. Every point is checked by a test named here.
 - **Go writes `\b` and `\f`** as such (Go 1.22 and later), not `\u0008`;
   the encoder does the same (test `string_escapes_are_gos`).
 - **Frame timing follows Go's ticker**, not "now + interval" (D4): frames sit
-  on a fixed grid, and a tick missed while the loop was busy fires once, at
-  once (`borderwipe::Ticker`). `TurnsTheBorderOneDegreeAFrame` checks the
-  angles.
+  on a fixed grid, and the ticks missed while the loop was busy fire once, at
+  once, the next on the first slot after (`borderwipe::Ticker`; tests
+  `ticker_drops_missed_slots_like_gos` and `TurnsTheBorderOneDegreeAFrame`).
 - **The reply to a sysusage subscribe comes before its first event.** Go
   sampled on a goroutine, so either could come first; the Rust server asks
   for the sample after writing the reply (`Inner::dispatch`). The parity test
@@ -747,9 +747,9 @@ same minute (the Go figures differ from the planning machine's):
 | voluntary wakeups idle, 10 s, `-idle-timeout 0` | 0 | 0 | 0 |
 | binary, stripped | 3.9 MB | 613 KB | 1 MB |
 
-Tests: `cargo test --locked` runs 54 unit tests (every Go test of D6's table
+Tests: `cargo test --locked` runs 56 unit tests (every Go test of D6's table
 under its snake-case name, plus the encoder, decoder, duration and flag
-cases) and 9 protocol tests against the built binary
+cases) and 10 protocol tests against the built binary
 (`core/sidecar/tests/protocol.rs`, including
 `concurrent_subscribers_are_served`, the counterpart of PR #126's
 `TestConcurrentSamplesAreSerialised`). `tests/test-sidecar-rs.sh` runs them,
@@ -759,6 +759,68 @@ the protocol cases, two samples of every reader with the fixture moved
 between them, an empty root, the border wipe's states without a Hyprland,
 and every flag and exit; then test-sidecar.sh's socket checks against the
 Rust binary.
+
+## Review
+
+Claude Sonnet reviewed 410ecac against the Go daemon, with probes of its
+own: a fake Hyprland, 44 hostile request lines and four extra fixture
+families through both daemons, and 400 clients at once. Fable 5.2 then
+checked that review and probed what it missed. Fixed before the merge:
+
+- **Connect with no timeout** (Sonnet 1, medium). A Hyprland alive but not
+  accepting (a full backlog) blocked the wipe thread in `connect(2)` for
+  good, so it handled no subscribe, unsubscribe or event. Go set the send
+  timeout before connecting and dialled the event socket with a 2 s limit.
+  `hypr::connect_within` now does the same for both sockets (test
+  `a_full_backlog_times_out`).
+- **The ticker fired twice after a stall** (Sonnet 2). Now one step to the
+  first slot after the late tick; Fable 5.2 replaced the suggested loop,
+  which a 1 ns interval would have run billions of times.
+- **A value Go could not encode** (Sonnet 3: `border_wipe_seconds = inf`)
+  produced invalid JSON in `status` and dropped the wipe event silently; Go
+  closed the connection, and now so does this daemon.
+- **A stuck client stopped every other client's samples** (Fable 5.2, missed
+  by the first review). The reader's cleanup waited for the writer lock that
+  the sampler held while blocked writing to that client. Each client now has
+  one fd, writers take a separate lock and closing takes none (test
+  `a_stuck_client_does_not_stop_the_others`, which fails on 410ecac). This
+  also halves the fds per client: with 1024 fds the reviewed build served
+  510 clients where Go served 1014.
+- **The default `-socket` and `-state`** are cleaned as Go's filepath.Join
+  cleaned them, and without HOME the state default is relative, as Go's
+  (Sonnet 4; the usage text of both daemons compared under three
+  environments).
+- **The parity test** asserts that each transcript starts with a hello, so
+  two daemons that both failed to start cannot compare equal; it adds an
+  empty line, a CRLF line and `intervalMs` 0 and -5; its covers globs add
+  what it uses (`tools/build-sidecar.sh`, `share/haseen/VERSION`,
+  `bin/haseen-sidecar`, the haseen theme's colors.toml). The test scratch
+  directory stays short enough for a socket under a long TMPDIR.
+
+Recorded, not changed:
+
+- **Number text both daemons parse differently** (Sonnet 5): Go's
+  ParseFloat takes `1_0` and hex floats and refuses `1e400`; Rust's parse
+  refuses the first two and reads `1e400` as infinity, so a sysfs node
+  holding `1e400` reads 100 here and -1 in Go. Request keys fold ASCII case
+  only, where Go also folds `ſ` to `s`. `parse_duration` takes
+  `9223372036854775808ns` and rounds `0.5ns` up. `nvidia-smi` is found by
+  its mode bits, not by access(2). A complete line over 1 MiB that arrives
+  in one read with the line before it is still read. None is reachable from
+  a real file or client.
+- **A theme's seconds** are not clamped in either daemon: under 0.1 s a turn
+  is one frame per turn with no minimum (1000 requests a second at 0.001),
+  `inf` panicked Go's NewTicker and gives this daemon a 296-day frame. A
+  clamp is a follow-up for phase 2.
+- **A client that never reads** still stops the sampler once its buffer is
+  full, until it closes: Go's timer was not re-armed either (Sonnet 6).
+- **An accept error ends the daemon** (`EMFILE`), exit 1, socket left, as in
+  Go.
+- **Masked fields** in the parity test (rates, a process's cpu, a chosen rc6
+  card's gpu, disk sizes) are checked only for being -1 or not; their
+  arithmetic is covered by the unit tests. PR 2's golden files can pin more.
+- **D5's idle budget** is missed by 0.7 MiB and one thread (2.7 MiB, 3
+  threads); the owner decides whether that matters.
 
 ## Rejected options
 
@@ -812,8 +874,8 @@ Commands run while planning, on `origin/main` at `87a14f5`:
 
 Phase 1, on the branch `sidecar/rust`:
 
-- `cargo test --locked` (Arch rust 1.99.0): `test result: ok. 54 passed`,
-  `test result: ok. 9 passed`.
+- `cargo test --locked` (Arch rust 1.99.0): `test result: ok. 56 passed`,
+  `test result: ok. 10 passed`.
 - `cargo clippy --all-targets -- -D warnings`: no finding.
 - `tests/run.sh tests/test-sidecar-rs.sh`: 41/41, every comparison empty.
 - D5's table: "Phase 1, as built" above.

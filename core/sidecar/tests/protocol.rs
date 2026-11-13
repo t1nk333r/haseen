@@ -416,3 +416,27 @@ fn a_socket_that_cannot_be_made_fails() {
         format!("failed listen unix {long}: bind: invalid argument\n")
     );
 }
+
+// A client that stops reading and then half-closes must not stop the others:
+// closing it releases a write blocked on it, as closing the connection did in
+// the Go daemon (found in review: the Rust daemon once waited for the writer).
+#[test]
+fn a_stuck_client_does_not_stop_the_others() {
+    let scratch = Scratch::new("stuck");
+    let d = start(&scratch, &[]);
+    let mut stuck = UnixStream::connect(&d.socket).unwrap();
+    let line = b"{\"id\":0,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"gpu\":\"off\"}}\n";
+    // Every subscribe sends a sample it never reads, until its buffer is full
+    // and the sampler waits on it.
+    for _ in 0..6000 {
+        stuck.write_all(line).unwrap();
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    stuck.shutdown(std::net::Shutdown::Write).unwrap();
+
+    let mut c = Client::connect(&d.socket);
+    c.frame();
+    c.send(r#"{"id":1,"method":"subscribe","stream":"sysusage","params":{"intervalMs":500,"gpu":"off"}}"#);
+    c.until(r#""stream":"sysusage""#);
+    drop(stuck);
+}

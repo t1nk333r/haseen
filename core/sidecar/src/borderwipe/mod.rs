@@ -198,8 +198,8 @@ impl Drop for Controller {
     }
 }
 
-/// A ticker in the manner of Go's time.Ticker: ticks on a fixed grid, and a
-/// tick missed while the loop was busy fires once, at once, not once per
+/// A ticker in the manner of Go's time.Ticker: ticks on a fixed grid, and the
+/// ticks missed while the loop was busy fire once, at once, not once per
 /// missed slot.
 struct Ticker {
     next: Instant,
@@ -216,12 +216,17 @@ impl Ticker {
         }
     }
 
+    /// The tick due at `next` was just taken at `now`: the next one is the
+    /// first grid point after `now`, as Go's ticker drops the slots missed in
+    /// between. Worked out in one step, since the interval may be 1 ns.
     fn advance(&mut self, now: Instant) {
-        self.next += self.interval;
-        if self.next <= now {
-            let behind = now.duration_since(self.next).as_nanos() / self.interval.as_nanos();
-            self.next += self.interval * behind.min(u32::MAX as u128) as u32;
-        }
+        let interval = self.interval.as_nanos();
+        let missed = now.saturating_duration_since(self.next).as_nanos() / interval;
+        let step = interval.saturating_mul(missed + 1).min(u64::MAX as u128) as u64;
+        self.next = self
+            .next
+            .checked_add(Duration::from_nanos(step))
+            .unwrap_or(now + self.interval);
     }
 }
 
@@ -548,9 +553,11 @@ impl Loop {
             return false;
         }
         let (request, events) = socket_paths(&self.opts.runtime_dir, &sig);
-        let Ok(conn) = UnixStream::connect(&events) else {
+        // DialTimeout(2 s) in the Go daemon; reads on it wait for events.
+        let Ok(conn) = hypr::connect_within(&events, Duration::from_secs(2)) else {
             return false;
         };
+        let _ = conn.set_write_timeout(None);
         let Ok(reader) = conn.try_clone() else {
             return false;
         };
@@ -942,6 +949,25 @@ mod tests {
             n,
             "frames after the last subscriber left"
         );
+    }
+
+    // Go's ticker: on time, the next slot; late, one tick at once and then
+    // the first slot after it, never two at once.
+    #[test]
+    fn ticker_drops_missed_slots_like_gos() {
+        let ms = Duration::from_millis;
+        let mut t = Ticker::new(ms(100));
+        let start = t.next - ms(100);
+        t.advance(start + ms(100));
+        assert_eq!(t.next, start + ms(200));
+        // Busy until 550 ms after the start: the 200 ms tick is taken late,
+        // and the next is at 600, not at once.
+        t.advance(start + ms(550));
+        assert_eq!(t.next, start + ms(600));
+        let mut fine = Ticker::new(Duration::from_nanos(1));
+        let at = fine.next + Duration::from_secs(5);
+        fine.advance(at);
+        assert_eq!(fine.next, at + Duration::from_nanos(1));
     }
 
     #[test]

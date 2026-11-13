@@ -1,6 +1,8 @@
 # shellcheck shell=bash
 # haseen:covers core/sidecar/** tools/sidecar-play.py core/{go.mod,go.sum}
 # haseen:covers core/cmd/haseen-sidecar/** core/internal/{proto,server,sysusage,borderwipe}/**
+# haseen:covers tools/build-sidecar.sh share/haseen/VERSION bin/haseen-sidecar
+# haseen:covers share/haseen/themes/haseen/colors.toml
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -34,8 +36,8 @@ VERSION="$(cat "$HASEEN_PATH/VERSION")"
 capture env HASEEN_VERSION="$VERSION" cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml"
 assert_status "cargo test --locked passes" 0 "$STATUS"
 assert_not_contains "no failed Rust test" "$OUTPUT" "FAILED"
-assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 54 passed; 0 failed"
-assert_contains "the protocol tests ran" "$OUTPUT" "test result: ok. 9 passed; 0 failed"
+assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 56 passed; 0 failed"
+assert_contains "the protocol tests ran" "$OUTPUT" "test result: ok. 10 passed; 0 failed"
 if cargo clippy --version >/dev/null 2>&1; then
     capture cargo clippy --locked --quiet --all-targets --manifest-path "$CRATE/Cargo.toml" -- -D warnings
     assert_status "clippy finds nothing" 0 "$STATUS"
@@ -154,8 +156,10 @@ if ((compare)); then
         done
     }
 
-    same() { # LABEL NAME — the two transcripts are identical
+    same() { # LABEL NAME — the two transcripts are identical, and real
         local d
+        assert_contains "$1: the Rust daemon answered" "$(head -1 "$SANDBOX/$2.rs")" '{"type":"hello","protocol":1,'
+        assert_contains "$1: the Go daemon answered" "$(head -1 "$SANDBOX/$2.go")" '{"type":"hello","protocol":1,'
         d="$(diff "$SANDBOX/$2.go" "$SANDBOX/$2.rs" || true)"
         assert_eq "$1" "" "$d"
         assert_not_contains "$1: nothing timed out" "$(cat "$SANDBOX/$2.rs")" "TIMEOUT"
@@ -189,6 +193,15 @@ if ((compare)); then
 {"wait": "reply"}
 {"send": "{\"id\":0,\"method\":\"unsubscribe\"}"}
 {"send": "{\"id\":7,\"method\":\"status\"}"}
+{"wait": "reply"}
+{"send": ""}
+{"send": "{\"id\":11,\"method\":\"capabilities\"}\r"}
+{"wait": "reply"}
+{"send": "{\"id\":12,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":0,\"gpu\":\"off\"}}"}
+{"wait": "event"}
+{"send": "{\"id\":13,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":-5,\"gpu\":\"off\"}}"}
+{"wait": "event"}
+{"send": "{\"id\":14,\"method\":\"unsubscribe\",\"stream\":\"sysusage\"}"}
 {"wait": "reply"}
 {"send": "{\"id\":-8,\"method\":\"capabilities\",\"params\":{\"a\":[1e400]}}"}
 {"wait": "reply"}

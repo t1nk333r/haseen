@@ -46,9 +46,14 @@ impl Hypr {
     pub fn request(&mut self, msg: &[u8]) -> Result<&[u8], String> {
         let timed_out =
             |e: &std::io::Error| matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut);
-        let mut conn = UnixStream::connect(&self.path).map_err(|e| e.to_string())?;
+        let mut conn = connect_within(&self.path, TIMEOUT).map_err(|e| {
+            if timed_out(&e) {
+                ERR_TIMEOUT.to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
         let _ = conn.set_read_timeout(Some(TIMEOUT));
-        let _ = conn.set_write_timeout(Some(TIMEOUT));
         if let Err(e) = conn.write_all(msg) {
             return Err(if timed_out(&e) {
                 ERR_TIMEOUT.to_string()
@@ -65,6 +70,59 @@ impl Hypr {
             });
         }
         Ok(&self.reply)
+    }
+}
+
+/// Connects with a send timeout set before connect(2), which bounds the
+/// wait for a Hyprland that is alive but not accepting (a full backlog), as
+/// the Go daemon's raw socket and DialTimeout did. The timeout stays set for
+/// writes; the caller clears it where a write may wait.
+pub fn connect_within(path: &Path, timeout: Duration) -> std::io::Result<UnixStream> {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::io::FromRawFd;
+    let bytes = path.as_os_str().as_bytes();
+    // SAFETY: a plain socket(2)/setsockopt(2)/connect(2) sequence on an fd
+    // this function owns until it is handed to UnixStream or closed.
+    unsafe {
+        let mut addr: libc::sockaddr_un = std::mem::zeroed();
+        if bytes.len() >= addr.sun_path.len() {
+            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
+        }
+        addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+        for (dst, &src) in addr.sun_path.iter_mut().zip(bytes) {
+            *dst = src as libc::c_char;
+        }
+        let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0);
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let stream = UnixStream::from_raw_fd(fd);
+        let tv = libc::timeval {
+            tv_sec: timeout.as_secs() as libc::time_t,
+            tv_usec: timeout.subsec_micros() as libc::suseconds_t,
+        };
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_SNDTIMEO,
+            &tv as *const libc::timeval as *const libc::c_void,
+            std::mem::size_of::<libc::timeval>() as libc::socklen_t,
+        );
+        let len = (std::mem::size_of::<libc::sa_family_t>() + bytes.len() + 1) as libc::socklen_t;
+        loop {
+            let rc = libc::connect(
+                fd,
+                &addr as *const libc::sockaddr_un as *const libc::sockaddr,
+                len,
+            );
+            if rc == 0 {
+                return Ok(stream);
+            }
+            let err = std::io::Error::last_os_error();
+            if err.kind() != ErrorKind::Interrupted {
+                return Err(err);
+            }
+        }
     }
 }
 
@@ -353,6 +411,33 @@ pub(crate) mod tests {
         );
         assert!(!has_focus(b"{}"));
         assert!(has_focus(br#"{"address": "0x55d0", "class": "foot"}"#));
+    }
+
+    // A Hyprland that is alive but not accepting (its backlog full) is "not
+    // answering" after 2 s, not a thread blocked for good.
+    #[test]
+    fn a_full_backlog_times_out() {
+        use std::os::unix::io::AsRawFd;
+        let dir = crate::sysusage::tests::TempDir::new();
+        let path = dir.0.join("r.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        // SAFETY: listen(2) on the listener's own fd, to shrink its backlog.
+        unsafe { libc::listen(listener.as_raw_fd(), 0) };
+        let mut held = Vec::new();
+        while let Ok(c) = connect_within(&path, Duration::from_millis(50)) {
+            held.push(c);
+            assert!(held.len() < 64, "the backlog never filled");
+        }
+        let t0 = std::time::Instant::now();
+        let got = Hypr::new(path.clone())
+            .request(b"j/animations")
+            .map(<[u8]>::to_vec);
+        let took = t0.elapsed();
+        assert_eq!(got, Err(ERR_TIMEOUT.to_string()));
+        assert!(
+            took >= Duration::from_millis(1900) && took < Duration::from_secs(4),
+            "{took:?}"
+        );
     }
 
     #[test]

@@ -54,22 +54,29 @@ pub enum ListenError {
     Failed(String),
 }
 
+/// One client's socket, read by its own thread and written by whoever has a
+/// line for it. One fd: `&UnixStream` reads and writes.
 struct Conn {
-    stream: Mutex<UnixStream>,
+    stream: UnixStream,
+    /// Serialises writers, so a reply and an event never interleave.
+    writing: Mutex<()>,
 }
 
 impl Conn {
     /// Writes one line; a client that cannot take it is closed, which ends
     /// its reader and removes it.
     fn send(&self, line: &[u8]) {
-        let stream = lock(&self.stream);
-        if (&*stream).write_all(line).is_err() {
-            let _ = stream.shutdown(Shutdown::Both);
+        let _turn = lock(&self.writing);
+        if (&self.stream).write_all(line).is_err() {
+            self.close();
         }
     }
 
+    /// Shuts the socket down without waiting for a writer: a write blocked on
+    /// a client that stopped reading returns with an error, as closing the
+    /// connection released the Go daemon's.
     fn close(&self) {
-        let _ = lock(&self.stream).shutdown(Shutdown::Both);
+        let _ = self.stream.shutdown(Shutdown::Both);
     }
 }
 
@@ -309,11 +316,9 @@ impl Inner {
     }
 
     fn handle(&self, stream: UnixStream) {
-        let Ok(writer) = stream.try_clone() else {
-            return;
-        };
         let conn = Arc::new(Conn {
-            stream: Mutex::new(writer),
+            stream,
+            writing: Mutex::new(()),
         });
         let id = {
             let mut state = lock(&self.state);
@@ -334,7 +339,7 @@ impl Inner {
         self.changed.notify_all();
 
         conn.send(&proto::hello(&self.opts.version, std::process::id()));
-        read_lines(stream, |line| match proto::decode_request(line) {
+        read_lines(&conn.stream, |line| match proto::decode_request(line) {
             Ok(req) => self.dispatch(id, &conn, req),
             Err(proto::BadJson) => conn.send(&Reply::error(0, "bad json".to_string()).encode()),
         });
@@ -403,7 +408,12 @@ impl Inner {
             }
             proto::METHOD_STATUS => {
                 let mut data = b"{\"borderwipe\":".to_vec();
-                self.wipe.status().encode(&mut data);
+                if !self.wipe.status().encode(&mut data) {
+                    // A value Go could not encode (a theme's `inf` seconds)
+                    // closed the connection.
+                    conn.close();
+                    return;
+                }
                 data.push(b'}');
                 reply.data = Some(data);
             }
@@ -534,6 +544,8 @@ impl Inner {
         };
         let mut data = Vec::with_capacity(128);
         if !status.encode(&mut data) {
+            // Go's encoder failed for every subscriber and closed each.
+            subs.iter().for_each(|c| c.close());
             return;
         }
         let line = proto::event(proto::STREAM_BORDER_WIPE, &data);
@@ -546,7 +558,7 @@ impl Inner {
 /// Calls `f` for every non-empty line, a trailing `\r` dropped, until the
 /// client closes or sends a line longer than MAX_LINE (Go's scanner stopped
 /// there too). A last line without a newline still counts.
-fn read_lines(mut stream: UnixStream, mut f: impl FnMut(&[u8])) {
+fn read_lines(mut stream: &UnixStream, mut f: impl FnMut(&[u8])) {
     let mut buf: Vec<u8> = Vec::with_capacity(4096);
     let mut chunk = vec![0u8; 4096];
     let mut scanned = 0;

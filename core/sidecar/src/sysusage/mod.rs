@@ -512,8 +512,10 @@ pub(crate) mod tests {
         pub fn new() -> Self {
             use std::sync::atomic::{AtomicUsize, Ordering};
             static N: AtomicUsize = AtomicUsize::new(0);
+            // Short enough for the sockets the border wipe tests bind.
             let base = std::env::var_os("TMPDIR")
                 .map(PathBuf::from)
+                .filter(|p| p.as_os_str().len() < 60)
                 .unwrap_or_else(|| PathBuf::from("/tmp"));
             let dir = base.join(format!(
                 "hs-{}-{}",
