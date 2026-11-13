@@ -77,6 +77,11 @@ type Server struct {
 	ln      net.Listener
 	sampler sysusage.Sampler
 	wipe    *borderwipe.Controller
+	// sampleMu runs one sample at a time. The sampler keeps the previous
+	// counters in plain maps, and a subscribe samples at once beside the
+	// ticker's run: two at the same moment wrote those maps from two
+	// goroutines, which the Go runtime answers by killing the daemon.
+	sampleMu sync.Mutex
 
 	mu      sync.Mutex
 	clients map[*client]struct{}
@@ -380,7 +385,10 @@ func (s *Server) sampleOnce() {
 	// One sample for every subscriber: two bars on two screens and the panel
 	// read the same files once, which the per-widget QML sampler could not do.
 	// The process list and the system stats are read when anyone asks, and
-	// everyone receives them.
+	// everyone receives them. Held through the sends too, so every client
+	// gets the samples in the order they were taken.
+	s.sampleMu.Lock()
+	defer s.sampleMu.Unlock()
 	sample := s.sampler.Sample(gpu, top, system)
 	event := proto.Event{Type: proto.TypeEvent, Stream: proto.StreamSysusage, Data: sample}
 	for _, c := range subs {

@@ -1,17 +1,22 @@
 # shellcheck shell=bash
 # haseen:covers share/haseen/shell/plugins/haseen.computer/**
-# haseen:covers share/haseen/shell/Haseen/Sidecar.qml
+# haseen:covers share/haseen/shell/Haseen/Sidecar.qml share/haseen/migrations/1794530533-computer-service.sh
+# haseen:covers share/haseen/default/shell.json share/haseen/default/hypr/binds.lua share/haseen/default/menu.jsonc
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# The Your computer panel (plan 162). The test runs Computer.js under Qt's own
+# The Your computer panel (plan 162) and its background history (plan 165).
+# The test runs Computer.js under Qt's own
 # engine: the history window, the graph scales, the point mapping and the
 # smooth line, the temperature's word, the sizes, the uptime, the load, the
 # thread count and the disk it picks. Then it loads the real Panel.qml under
 # qs, offscreen on the software renderer, against a fake sidecar frame and a
 # fixture /proc, and reads back what it says, what it asks the sidecar for
 # and when it stops asking; and it reads the drawn graph's pixels at scales
-# 1 and 1.25, where a Canvas or a layer would come out wrong (plan 156).
+# 1 and 1.25, where a Canvas or a layer would come out wrong (plan 156). Then
+# it runs the service with the panel closed, opens the panel on the history
+# the service kept, and closes it again: the service keeps asking and keeps
+# the history.
 
 P="$HASEEN_PATH/shell/plugins/haseen.computer"
 QML_BIN=${QML_BIN:-/usr/lib/qt6/bin/qml}
@@ -22,14 +27,21 @@ sandbox computer
 # --- the plugin's shape --------------------------------------------------------
 capture haseen-plugin-validate "$P"
 assert_status "the manifest validates" 0 "$STATUS"
-assert_eq "a panel only" "panel" "$(jq -r '.kinds | join(" ")' "$P/manifest.json")"
+assert_eq "a service and a panel" "service panel" "$(jq -r '.kinds | join(" ")' "$P/manifest.json")"
+assert_eq "the service answers the computer role" "computer" "$(jq -r '.provides | join(" ")' "$P/manifest.json")"
+assert_eq "the service is on by default, last in services (owner, 2026-11-13)" "haseen.computer" \
+    "$(jq -r '.services[-1]' "$HASEEN_PATH/default/shell.json")"
+service="$(cat "$P/Service.qml")"
+assert_contains "the service subscribes to the sidecar's stream" "$service" 'Sidecar.want(_key, "sysusage"'
+assert_contains "the service asks for the temperature and the disks" "$service" "system: true"
+assert_contains "the service lets go when it goes" "$service" "Component.onDestruction: Sidecar.drop(_key)"
 assert_eq "the storage card shows / by default" "/" "$(jq -r '.settings.mount.default' "$P/manifest.json")"
 assert_eq "on by default: not switched off in the shipped shell.json" "null" \
     "$(jq -r '.plugins["haseen.computer"].enabled' "$HASEEN_PATH/default/shell.json")"
 panel="$(cat "$P/Panel.qml")"
 assert_contains "the panel subscribes to the sidecar's stream" "$panel" 'Sidecar.want(_key, "sysusage"'
 assert_contains "it asks for the temperature and the disks" "$panel" "system: true"
-assert_contains "it asks only while shown" "$panel" "if (!visible) {"
+assert_contains "it asks only while shown, and only without the service" "$panel" "if (!visible || service) {"
 assert_contains "it lets go when the panel goes" "$panel" "Component.onDestruction: Sidecar.drop(_key)"
 assert_contains "it is gated on the sidecar's capability" "$panel" 'Sidecar.has("sysusage")'
 assert_contains "system files are read under HASEEN_SYSROOT" "$panel" 'Quickshell.env("HASEEN_SYSROOT")'
@@ -62,6 +74,34 @@ if [[ ! -x $QML_BIN ]]; then
     return 0
 fi
 
+# --- migration ------------------------------------------------------------------
+MIGRATION=1794530533-computer-service.sh
+run_migration() {
+    capture env HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$MIGRATION" \
+        bash -Eeuo pipefail "$HASEEN_PATH/migrations/$MIGRATION"
+}
+CFG="$XDG_CONFIG_HOME/haseen/shell.json"
+printf '{"services":["haseen.pager","me.svc"],"plugins":{"me.svc":{"enabled":true}}}\n' >"$CFG"
+run_migration
+assert_status "migration exits 0" 0 "$STATUS"
+assert_eq "migration: appended to a user's own services" '["haseen.pager","me.svc","haseen.computer"]' "$(jq -c .services "$CFG")"
+assert_eq "migration: the rest of shell.json survives" "true" "$(jq '.plugins["me.svc"].enabled' "$CFG")"
+after="$(cat "$CFG")"
+run_migration
+assert_eq "migration: a re-run is a no-op" "$after" "$(cat "$CFG")"
+printf '{"services":["haseen.computer"],"plugins":{"haseen.computer":{"enabled":false}}}\n' >"$CFG"
+before="$(cat "$CFG")"
+run_migration
+assert_eq "migration: a user's own off stays off" "$before" "$(cat "$CFG")"
+printf '{"bar":{"left":[]}}\n' >"$CFG"
+before="$(cat "$CFG")"
+run_migration
+assert_eq "migration: no own services list, nothing written" "$before" "$(cat "$CFG")"
+rm -f "$CFG"
+run_migration
+assert_status "migration without a shell.json exits 0" 0 "$STATUS"
+assert_eq "migration: no shell.json, none written" no "$([[ -e $CFG ]] && echo yes || echo no)"
+
 # --- Computer.js, under the Qt JS engine -----------------------------------------
 units="$SANDBOX/units"
 mkdir -p "$units"
@@ -79,6 +119,8 @@ Item {
         out("skips", [C.push([], 0, -1).length, C.push([], 0, NaN).length, C.push([], 0, undefined).length, C.push(null, 5, 0).length]);
         const fresh = C.push([], 1000, 5);
         out("immutable", [C.push(fresh, 2000, 6) !== fresh, fresh.length]);
+        // The clock stepped back an hour: what was recorded "later" goes.
+        out("clockBack", C.push([{ t: 3600000, v: 1 }, { t: 3603000, v: 2 }], 3000, 3).map(s => s.t));
         out("ceiling", [C.ceiling([]), C.ceiling([{ t: 0, v: 7 }]), C.ceiling([{ t: 0, v: 10 }]), C.ceiling([{ t: 0, v: 34 }]), C.ceiling([{ t: 0, v: 51 }]), C.ceiling([{ t: 0, v: 140 }])]);
         out("tempRange", [C.tempRange([]), C.tempRange([{ t: 0, v: 40 }]), C.tempRange([{ t: 0, v: 40 }, { t: 1, v: 62 }]), C.tempRange([{ t: 0, v: 1 }])]);
         // Newest on the right edge, a sample 45 s older half-way, the top
@@ -111,6 +153,7 @@ r() { sed -n "s/^.*RESULT $1 //p" <<<"$OUTPUT" | head -1; }
 assert_eq "the window keeps 90 s of samples" '[31,27000,39,90000,3000]' "$(r window)"
 assert_eq "unknown readings are not recorded" '[0,0,0,1]' "$(r skips)"
 assert_eq "each push makes a new history" '[true,1]' "$(r immutable)"
+assert_eq "samples from after a clock step back are dropped" '[3000]' "$(r clockBack)"
 assert_eq "the scale steps 10, 25, 50, 100" '[10,10,10,50,100,100]' "$(r ceiling)"
 assert_eq "the temperature range is whole tens, 20 °C or more" \
     '[{"lo":30,"hi":50},{"lo":30,"hi":50},{"lo":30,"hi":70},{"lo":0,"hi":20}]' "$(r tempRange)"
@@ -366,3 +409,115 @@ assert_eq "Arabic: the processor card is on the right" "true" "$(state 1 '.usage
 if command -v magick >/dev/null; then
     assert_eq "Arabic: the processor line still crosses its graph" 10 "$(strips "$SANDBOX/panel-ar.png" "$(state 1 .cpuGraph)" 1 "$accent")"
 fi
+
+# --- the service keeps the history while the panel is closed (plan 165) ------
+# The service runs from the start, the panel closed: 29 samples on a fake
+# clock and the daemon's live frame land in its history. Then the panel opens
+# on that history, adds no subscription of its own, and closes; the service
+# still asks and still holds the 30 samples.
+svch="$SANDBOX/service-shell"
+mkdir -p "$svch"
+for module in Haseen Compat Ui Commons plugins; do
+    ln -s "$HASEEN_PATH/shell/$module" "$svch/$module"
+done
+cat >"$svch/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import qs.Haseen
+import qs.Haseen.Widgets
+import "plugins/haseen.computer" as Computer
+
+ShellRoot {
+    id: shell
+
+    property int step: 0
+    property var panel: loader.item
+
+    function sample(cpu, temp): var {
+        return {
+            cpu: cpu,
+            mem: { totalKiB: 16148070, usedKiB: 6815744, availableKiB: 0, percent: 42.2, swapTotalKiB: 0, swapUsedKiB: 0 },
+            gpu: -1,
+            cpuTempC: temp,
+            disks: [{ mount: "/", device: "/dev/nvme0n1p2", fstype: "btrfs", totalKiB: 184654234, usedKiB: 132644864, availKiB: 52009370, percent: 76 }]
+        };
+    }
+
+    function state(): string {
+        return JSON.stringify({
+            consumers: Object.keys(Sidecar._consumers).length,
+            service: svc.cpuHistory.length,
+            panel: panel ? panel.cpuHistory.length : -1,
+            panelTemp: panel ? panel.tempHistory.length : -1,
+            uses: panel ? panel.service === svc : null
+        });
+    }
+
+    // As ServiceHost does for a manifest's `provides`.
+    Computer.Service {
+        id: svc
+        pluginId: "haseen.computer"
+        Component.onCompleted: Plugins.registerRole("computer", "haseen.computer", svc)
+    }
+
+    FloatingWindow {
+        implicitWidth: 600
+        implicitHeight: 400
+        visible: true
+        color: "transparent"
+
+        Loader {
+            id: loader
+
+            active: false
+            sourceComponent: Computer.Panel {
+                pluginId: "haseen.computer"
+                settings: Plugins.settingsFor("haseen.computer")
+            }
+        }
+    }
+
+    // 0: record, panel closed. 1: open it. 2: closed again.
+    Timer {
+        interval: 700
+        repeat: true
+        running: true
+        onTriggered: {
+            if (shell.step === 0) {
+                const now = Date.now();
+                for (let i = 0; i < 29; i++)
+                    svc.record(shell.sample(10 + i, 40 + (i % 4)), now - (29 - i) * 3000);
+                Sidecar.capabilities = ["sysusage"];
+                Sidecar.streams = { sysusage: shell.sample(7.2, 40.4) };
+            } else if (shell.step === 1) {
+                loader.active = true;
+            } else if (shell.step === 3) {
+                loader.active = false;
+            } else if (shell.step === 5) {
+                Qt.quit();
+            }
+            console.warn("STATE " + shell.step + " " + shell.state());
+            shell.step++;
+        }
+    }
+}
+QML
+run="$(mktemp -d "$SANDBOX/run.XXXXXX")"
+chmod 700 "$run"
+setsid env XDG_RUNTIME_DIR="$run" HASEEN_PATH="$hp" HASEEN_SYSROOT="$root" \
+    DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' \
+    QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+    timeout -k 5 60 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$svch" \
+    >"$SANDBOX/service.out" 2>&1 &
+group=$!
+STATUS=0
+wait "$group" || STATUS=$?
+kill -- -"$group" 2>/dev/null || true
+OUTPUT="$(cat "$SANDBOX/service.out")"
+assert_status "the service harness completes" 0 "$STATUS"
+assert_eq "panel closed: the service asks the sidecar and keeps 30 samples" '1 30 -1' "$(state 0 '"\(.consumers) \(.service) \(.panel)"')"
+assert_eq "panel open: it draws the service's history at once, with no subscription of its own" \
+    '1 30 30 true' "$(state 2 '"\(.consumers) \(.service) \(.panel) \(.uses)"')"
+assert_eq "panel open: the temperature history too" 30 "$(state 2 .panelTemp)"
+assert_eq "panel closed again: the service still asks and keeps the history" '1 30' "$(state 4 '"\(.consumers) \(.service)"')"
+assert_not_contains "no QML error from the plugin" "$OUTPUT" "plugins/haseen.computer/"
