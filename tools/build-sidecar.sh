@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 # tools/build-sidecar.sh [DEST] — build haseen's compiled helpers into the tree:
-# haseen-sidecar from core/sidecar/ (Rust, plan 167), haseen-palette from
-# core/ (Go), and wootingd from core/wootingd/ (Rust, plan 099).
+# haseen-sidecar from core/sidecar/ and haseen-palette from core/palette/
+# (Rust, plan 167), and wootingd from core/wootingd/ (Rust, plan 099).
 #
 # DEST defaults to share/haseen/sidecar/haseen-sidecar, which is where the
 # installed tree keeps it and where qs.Haseen.Sidecar looks; the other two
-# land beside it. The daemon is built with cargo and the palette with go; a
-# tool that is on PATH but does not run — a mise shim with no version set, a
-# rustup with no toolchain — counts as none. Whatever cannot be built is
-# **downloaded** from the sidecar release
+# land beside it. All three are built with cargo; a cargo that is on PATH but
+# does not run — a rustup with no toolchain — counts as none. Whatever of
+# the daemon and the palette cannot be built is **downloaded** from the
+# sidecar release
 # (plan 127): `sidecar-v$VERSION` on GitHub, assets named
 # haseen-sidecar-linux-<arch> and haseen-palette-linux-<arch>, checked against
 # the release's SHA256SUMS before anything is installed. A cargo build that
-# fails (a compiler too old for the crate) fetches the daemon the same way. A
-# machine with neither a toolchain nor a reachable release ships without the
-# daemon: the shell then finds no capability and hides what needs it (plan 032).
+# fails (a compiler too old for the crate) fetches the same way. A machine
+# with neither a toolchain nor a reachable release ships without them: the
+# shell then finds no capability and hides what needs it (plan 032), and
+# `haseen theme wallpaper` says it has no generator.
 # HASEEN_FETCH_SIDECAR=0 turns the download off; HASEEN_SIDECAR_URL points it
 # at another base (a mirror, or a file:// directory in tests).
 # Without a working cargo (none, or a rustup with no toolchain) or when its
@@ -31,9 +32,6 @@ REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 DEST="${1:-$REPO/share/haseen/sidecar/haseen-sidecar}"
 VERSION="$(cat "$REPO/share/haseen/VERSION")"
 OUT_DIR="$(dirname "$DEST")"
-# GO overrides the toolchain, as tools/lint.sh and the tests do; a value that
-# does not run is the same as none.
-GO="${GO:-go}"
 SIDECAR_URL="${HASEEN_SIDECAR_URL:-https://github.com/t1nk333r/haseen/releases/download/sidecar-v$VERSION}"
 
 # release_arch — the asset suffix for this machine, or nothing.
@@ -175,22 +173,28 @@ build_sidecar() {
     echo "build-sidecar: $DEST ($VERSION)"
 }
 
+# build_palette — the wallpaper palette generator, from core/palette/ (plan
+# 167). It has no dependencies, so the build needs no network.
 build_palette() {
-    # `go version`, not only `command -v`: a mise shim is on PATH with no
-    # version set and then fails ("mise ERROR No version is set for shim: go",
-    # IO, 2026-10-26), which used to stop the install instead of fetching the
-    # release (plan 130).
-    if ! "$GO" version >/dev/null 2>&1; then
-        want_fetch haseen-palette "no go toolchain"
+    local target
+    if ! command -v cargo >/dev/null; then
+        want_fetch haseen-palette "no cargo"
         return
     fi
-    mkdir -p "$OUT_DIR"
-    # -trimpath keeps the build reproducible and -buildvcs=false keeps it from
-    # shelling out to git.
-    (
-        cd "$REPO/core"
-        "$GO" build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$OUT_DIR/haseen-palette" ./cmd/haseen-palette
-    )
+    if ! cargo_runs; then
+        want_fetch haseen-palette "cargo does not run"
+        return
+    fi
+    target="${CARGO_TARGET_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/haseen/palette-target}"
+    # --locked: Cargo.lock says the crate has no dependencies. The version is
+    # what `haseen-palette -version` reports.
+    if ! HASEEN_VERSION="$VERSION" CARGO_TARGET_DIR="$target" \
+        cargo build --release --locked --quiet --manifest-path "$REPO/core/palette/Cargo.toml" ||
+        [[ ! -x $target/release/haseen-palette ]]; then
+        want_fetch haseen-palette "the cargo build failed (see above)"
+        return
+    fi
+    install_asset haseen-palette "$target/release/haseen-palette"
     echo "build-sidecar: $OUT_DIR/haseen-palette ($VERSION)"
 }
 

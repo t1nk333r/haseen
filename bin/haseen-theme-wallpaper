@@ -2,7 +2,7 @@
 # haseen:summary Build a theme from a wallpaper's own colours and switch to it
 # haseen:args <image> [--mode M] [--light] [--name N] [--no-apply] [--dry-run]
 #
-# Colour extraction is `haseen-palette` (core/internal/palette, a port of
+# Colour extraction is `haseen-palette` (core/palette, a port of
 # aether's median-cut extractor, MIT, Copyright (c) Bjarne Overli). The cache,
 # the serialised regeneration and the "unchanged seed writes nothing" rule
 # follow DankMaterialShell core/internal/matugen (seedcache.go, queue.go,

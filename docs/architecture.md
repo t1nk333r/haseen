@@ -43,7 +43,7 @@ file changes in the same commit.
 | `share/haseen/default/applications/mimeapps.list` | vendor default handlers → `PREFIX/share/applications/mimeapps.list` (lowest XDG precedence, so the user always wins) | desktop |
 | `share/haseen/default/xdg-terminal-exec/` | terminal preference → `PREFIX/share/xdg-terminal-exec/` | desktop |
 | `share/haseen/branding/` | haseen's marks (§11): `<mark>/{mark,symbolic,symbolic-24,wordmark}.svg` and `logo-<mark>.txt` | shell |
-| `share/haseen/sidecar/` | compiled helpers put into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` (Rust, `core/sidecar/`, plan 167) and `haseen-palette` (Go, `core/`), either fetched from the `sidecar-v<version>` release when its toolchain is missing (plan 127), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
+| `share/haseen/sidecar/` | compiled helpers put into the tree by `tools/build-sidecar.sh`, never tracked: `haseen-sidecar` (Rust, `core/sidecar/`, plan 167) and `haseen-palette` (Rust, `core/palette/`, plan 167), either fetched from the `sidecar-v<version>` release when its toolchain is missing (plan 127), `wootingd` (Rust, `core/wootingd/`, plan 099) | build |
 | `share/haseen/default/applications/*.desktop` | desktop entries (the `dms://` link handler, `haseen plugin url`) → `PREFIX/share/applications` | shell |
 | `share/haseen/agents/skills/haseen/` | end-user agent skill | AI |
 | `share/haseen/i18n/` | interface language catalogs (§5.8, plan 109): `locales.json` (each language's name, direction, date locale, digits), `<code>/{shell,menu,notify}.json`; `en/` is generated from the code by `tools/i18n.py extract`, `ar/provenance.json` says who translated it and what the owner reviewed | shell |
@@ -601,11 +601,12 @@ The border wipe loop (`core/sidecar/src/borderwipe/`) is a port of the owner's `
 
 A reload that hands the border back (a theme without the wipe, or one that `borderangle` turns) after frames went out gets one more `reload`, so that a late frame cannot keep the old gradient.
 
+`haseen-palette` (`core/palette/`, Rust since plan 167's third phase; plan 034) is built beside the daemon by the same script and fetched from the same release. It is the wallpaper extractor behind `haseen theme wallpaper`: a port of the Go generator it replaced that writes the same `colors.toml` and `--json` line, byte for byte, for the corpus in `core/palette/tests/corpus/` (PNG, GIF, JPEG and WebP; the Go answers are `core/palette/tests/golden/`). Its decoders, scaler and float functions follow Go's, so a palette does not move by a step. It has no dependencies. Images over 20000 px a side or 200 M pixels are refused from their header. Palettes are cached on the image's SHA-256 under `$HASEEN_PALETTE_CACHE`, else `$XDG_CACHE_HOME/haseen/palette/`, written atomically (a `.new` file renamed); the cache version is 3, so no palette the Go generator cached is reused.
+
 ### 5.7 wootingd (plan 099)
 
-haseen has two compiled languages: Rust for haseen-sidecar (§5.6) and
-`core/wootingd/`, and Go for haseen-palette (`core/`) until plan 167's third
-phase ports it. wootingd is the daemon the owner wrote for the t1nk33r.wooting plugin,
+haseen has one compiled language, Rust: haseen-sidecar and haseen-palette
+(§5.6, plan 167) and `core/wootingd/`. wootingd is the daemon the owner wrote for the t1nk33r.wooting plugin,
 vendored by owner decision (2026-10-21) with its behaviour unchanged; plan 153
 added each profile's settings and colour to what it publishes, decoded from
 replies it already read.

@@ -54,8 +54,8 @@ assert_eq "and its lock file nothing else" "haseen-sidecar libc" \
     "$(sed -n 's/^name = "\(.*\)"/\1/p' "$CRATE/Cargo.lock" | LC_ALL=C sort | paste -sd' ')"
 
 binary="$SANDBOX/haseen-sidecar"
-# wootingd (Rust) has its own file, tests/test-wootingd.sh, and the palette
-# (Go) tests/test-wallpaper.sh.
+# wootingd has its own file, tests/test-wootingd.sh, and the palette
+# tests/test-wallpaper.sh.
 capture env HASEEN_BUILD_WOOTINGD=0 HASEEN_BUILD_PALETTE=0 HASEEN_FETCH_SIDECAR=0 "$REPO/tools/build-sidecar.sh" "$binary"
 assert_status "the daemon builds" 0 "$STATUS"
 assert_contains "the build reports where it landed" "$OUTPUT" "$binary"

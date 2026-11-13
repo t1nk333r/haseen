@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# haseen:covers bin/haseen-theme-set bin/haseen-theme-wallpaper core/{go.mod,go.sum} core/cmd/**
-# haseen:covers core/internal/** share/haseen/VERSION share/haseen/default/nvim/**
+# haseen:covers bin/haseen-theme-set bin/haseen-theme-wallpaper core/palette/**
+# haseen:covers share/haseen/VERSION share/haseen/default/nvim/**
 # haseen:covers share/haseen/default/shell.json share/haseen/layers/theme/theme-lib.sh
 # haseen:covers share/haseen/themed/** tools/build-sidecar.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
@@ -8,24 +8,51 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # `haseen theme wallpaper`: a wallpaper becomes an ordinary haseen theme, the
 # palette is cached on the image's content, and an unchanged palette rewrites
-# nothing. Needs the Go toolchain to build the generator; without it a machine
-# has no generator either, which is what the command says.
+# nothing. haseen-palette is Rust since plan 167 (core/palette/): its own
+# tests come first, among them every palette of the corpus against the Go
+# generator's recorded answers (core/palette/tests/golden/). Without cargo
+# the file skips, which is the state of a machine without it and without the
+# release; under HASEEN_REQUIRE_ENGINE=1 (CI) a missing cargo fails instead.
+rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 sandbox wallpaper
+[[ ! -d $rustup_home ]] || export RUSTUP_HOME="$rustup_home"
+CRATE="$REPO/core/palette"
 
-GO="${GO:-go}"
-if ! command -v "$GO" >/dev/null; then
-    echo "  skip: no go toolchain (set GO=...); haseen-palette not built or tested" >&2
+if ! command -v cargo >/dev/null; then
+    echo "  skip: cargo missing; haseen-palette not built or tested" >&2
+    [[ ${HASEEN_REQUIRE_ENGINE:-0} != 1 ]] || assert_eq "wallpaper: required cargo prerequisite" available unavailable
     return 0 2>/dev/null || exit 0
 fi
-go_bin="$(dirname "$(command -v "$GO")")"
-export PATH="$go_bin:$PATH"
-# Go writes its module cache read-only, so neither rm -rf nor the next
-# sandbox could remove it: -modcacherw writes it removable (plan 094), and a
-# cache an older run left read-only is made removable here.
-export GOPATH="$OUT/gopath" GOFLAGS="-mod=mod -modcacherw"
-[[ ! -d $GOPATH/pkg/mod ]] || chmod -R u+w -- "$GOPATH/pkg/mod"
 
-capture env HASEEN_BUILD_WOOTINGD=0 HASEEN_BUILD_DAEMON=0 "$REPO/tools/build-sidecar.sh" "$SANDBOX/haseen-sidecar"
+# A private cargo home and target dir under tests/.out (ignored), kept between
+# runs; build-sidecar.sh reads CARGO_TARGET_DIR too, so it reuses the build.
+# The crate has no dependencies, so nothing is fetched.
+export CARGO_HOME="$OUT/cargo-home" CARGO_TARGET_DIR="$OUT/palette-target"
+VERSION="$(cat "$HASEEN_PATH/VERSION")"
+
+capture env HASEEN_VERSION="$VERSION" cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml"
+assert_status "cargo test --locked passes" 0 "$STATUS"
+assert_not_contains "no failed Rust test" "$OUTPUT" "FAILED"
+assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 29 passed; 0 failed"
+assert_contains "the command-line tests ran" "$OUTPUT" "test result: ok. 5 passed; 0 failed"
+assert_contains "the Go generator's answers were compared" "$OUTPUT" "test result: ok. 3 passed; 0 failed"
+if cargo clippy --version >/dev/null 2>&1; then
+    capture cargo clippy --locked --quiet --all-targets --manifest-path "$CRATE/Cargo.toml" -- -D warnings
+    assert_status "clippy finds nothing" 0 "$STATUS"
+fi
+if cargo fmt --version >/dev/null 2>&1; then
+    capture cargo fmt --check --manifest-path "$CRATE/Cargo.toml"
+    assert_status "the crate is rustfmt-clean" 0 "$STATUS"
+fi
+# Decoders, SHA-256, inflate and JSON are written in the crate (plan 167).
+assert_eq "the crate has no dependency" "" \
+    "$(sed -n '/^\[dependencies\]/,/^\[/p' "$CRATE/Cargo.toml" | sed -n 's/^\([a-z_-]*\) = .*/\1/p')"
+assert_eq "and its lock file only the crate" "haseen-palette" \
+    "$(sed -n 's/^name = "\(.*\)"/\1/p' "$CRATE/Cargo.lock" | paste -sd' ')"
+crate_files() { (cd "$CRATE" && find . -not -path "./src/*" -not -path "./tests/*" -not -name . | LC_ALL=C sort | paste -sd" "); }
+assert_eq "no build output in the tracked crate" "./Cargo.lock ./Cargo.toml ./src ./tests" "$(crate_files)"
+
+capture env HASEEN_BUILD_WOOTINGD=0 HASEEN_BUILD_DAEMON=0 HASEEN_FETCH_SIDECAR=0 "$REPO/tools/build-sidecar.sh" "$SANDBOX/haseen-sidecar"
 assert_status "the generator builds" 0 "$STATUS"
 export HASEEN_PALETTE_BIN="$SANDBOX/haseen-palette"
 assert_eq "haseen-palette landed beside the sidecar" 0 "$([[ -x $HASEEN_PALETTE_BIN ]] && echo 0 || echo 1)"

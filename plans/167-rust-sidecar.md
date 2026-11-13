@@ -27,8 +27,11 @@ Verification.
   2026-11-13 (PR 2): the Rust daemon is what `tools/build-sidecar.sh` builds
   and `tools/release-sidecar.sh` publishes, static musl for amd64 and arm64;
   the Go daemon is removed and its answers kept as golden files. Phase 3
-  (the palette) is next. The owner answered Q2, Q6 and Q7 on 2026-11-13
-  ("Do all 6"; below).
+  IMPLEMENTED 2026-11-13 (PR 3): haseen-palette is Rust (`core/palette/`,
+  no dependencies), every palette of a 32-image corpus is the Go
+  generator's byte for byte, and Go is gone from the repository ("Phase 3,
+  as built"). The owner answered Q2, Q6 and Q7 on 2026-11-13 ("Do all 6";
+  below).
 - **Planned by**: Claude Fable 5.2; implemented by Claude Opus 5.5; reviewed
   by Claude Sonnet, and that review checked by Fable 5.2 ("Review" below)
   (owner, 2026-11-13: "Ask
@@ -939,8 +942,186 @@ architectures and checks each daemon runs); then one machine without cargo
 installs and shows `haseen sidecar status`, the sysusage pill, the Your
 computer panel and the border wipe.
 
+## Phase 3, as built
+
+`core/palette/` replaces `core/cmd/haseen-palette/` and
+`core/internal/palette/` (3,419 lines of Go without the tests, plus
+`golang.org/x/image` v0.46.0 for the scaler and WebP). It is 11,434 lines of
+Rust in `src/`, most of them the decoders. Where it departs from PR 3's text
+above, this section is right.
+
+- **No dependencies, and no tolerance.** PR 3 planned decoder crates and a
+  one-step tolerance for JPEG and lossy WebP. Both went, for one reason:
+  the palette is not stable under small changes. Grey pixels' OKLab
+  residues decide their hues, and median cut splits on ties, so a one-bit
+  difference in a cube root, or a chroma sample upsampled where Go left it
+  subsampled, can move a palette entry by far more than one step. Go's
+  JPEG decoder returns `YCbCr` with subsampled chroma, and `x/image/draw`
+  converts each source pixel with that type's own integer formula; a crate
+  that returns upsampled RGB changes the scaler's input. So the crate
+  ports what the generator used, from Go 1.27.3 and `x/image` v0.46.0:
+  - the decoders of `image/png` (with `compress/zlib` and `flate`),
+    `image/gif` (first frame, with `compress/lzw`), `image/jpeg` (Go's
+    integer IDCT from `dct.go`, baseline, progressive, restart markers,
+    CMYK and Adobe transforms) and `x/image/webp` (VP8, VP8L, ALPH, VP8X),
+    each returning Go's image type (`src/image.rs`);
+  - `x/image/draw`'s CatmullRom `kernelScaler`, its two float passes in
+    Go's order and each type's 16-bit premultiplied conversion
+    (`src/sample.rs`);
+  - Go's pure-Go `Cbrt`, `Log`, `Pow`, `Atan2`, `Sin`/`Cos`, `Frexp`,
+    `Ldexp`, `Modf`, `Max`/`Min`, and `Exp` from `exp_amd64.s`, which Go
+    uses on a CPU with FMA (`src/gomath.rs`, with tests that pin Go's bit
+    patterns);
+  - `sort.Slice` (pdqsort, unstable, its pattern breaker seeded with the
+    length), because ties land where it puts them (`src/gosort.rs`);
+  - SHA-256, `strconv.Quote` and the JSON parser for the cache file are
+    written in the crate too.
+
+  `Cargo.lock` names only the crate. `tests/test-wallpaper.sh` asserts the
+  empty dependency list.
+- **Corpus.** `core/palette/tests/corpus/` has 32 images and
+  `generate.py`, 94,030 bytes with the generator. Every picture is drawn from
+  arithmetic; none is a photograph. PNG and GIF are written by hand to
+  reach each path Go's decoders treat differently:
+  - PNG: 8- and 16-bit RGB and RGBA, grey at 2, 8 and 16 bits, grey with
+    alpha, tRNS, Adam7, paletted at 4 and 8 bits;
+  - GIF: global and local tables, interlace, transparency, a frame offset,
+    and a second frame that must be ignored.
+
+  JPEG and WebP come from Pillow:
+  - JPEG: 4:2:0, 4:2:2, 4:4:4 at odd sizes, grey, progressive, restart
+    markers, CMYK;
+  - WebP: lossy, lossless, a lossless image with few colours, and both with
+    alpha.
+
+  Three bad files cover one colour, a 30000 px header and a file that is
+  not an image.
+- **Goldens.** `core/palette/tests/golden/` holds what the Go generator
+  wrote for the corpus, recorded on amd64 (an FMA CPU) before the Go code
+  was removed:
+  - `palettes.txt`, 830 lines: the clamped selection and color0..color15;
+    all 23 modes, dark and light, for 12 images that cover every decoder,
+    eight modes for the other 17; normal for the three bad files;
+  - `json.txt`, the `--json` line for every image;
+  - `png-rgb8-light-pastel.toml`, one whole `colors.toml`.
+
+  `cargo test` compares all of them: **830/830 identical**, along with the
+  JSON lines and the TOML. The same holds for the musl builds, the arm64
+  one under qemu (`cargo test --target aarch64-unknown-linux-musl` with
+  `qemu-aarch64-static` as the runner: 29, 5 and 3 tests pass).
+- **Real wallpapers, read-only.** Go and Rust were compared over the 80
+  wallpapers on the author's laptop: 55 JPEG and 25 PNG, 182 MB, none of
+  them committed. Six runs each: normal dark and light, monochromatic,
+  complementary, pastel light, fire. Result: **480/480 identical, largest
+  channel difference 0**. Summed run time was Go 195.3 s against Rust
+  200.7 s.
+- **Damaged files.** 666 truncated and byte-flipped variants of the corpus
+  give identical output and exit codes from both. Neither panics.
+- **Memory.** Peak RSS, measured once with `wait4`:
+
+  | image | Go | Rust |
+  |---|---|---|
+  | largest PNG (9,985,810 bytes) | 69,772 KB | 72,068 KB |
+  | largest JPEG (5,725,223 bytes) | 242,060 KB | 183,468 KB |
+- **The command is the same.** The same is true of:
+  - Go's `flag` parsing (`-x` and `--x`, `=value`, `--`, bool spellings),
+    the usage text, `-h` exiting 0, flag errors exiting 2 and generation
+    errors exiting 1 with `haseen-palette: ` and Go's error text;
+  - `--json` with Go's `%q` and `colors.toml`;
+  - the header limits of 20000 px a side and 200 M pixels;
+  - `$HASEEN_PALETTE_CACHE`, else `$XDG_CACHE_HOME/haseen/palette/`;
+  - the atomic write (`.new`, mode 0600, rename).
+
+  `tests/cli.rs` holds the usage and the flag cases. All were compared with
+  the Go binary before it was removed, and differed only in `-version`
+  without `HASEEN_VERSION`.
+- **`cacheVersion` is 3.** That is what keeps a palette cached by the Go
+  generator from being reused (`a_go_cache_entry_is_regenerated`).
+  `share/haseen/VERSION` stays 0.2.5. The `sidecar-v0.2.5` release is
+  re-cut after each phase merges; `--clobber` replaces the assets, and
+  after this one both helpers are Rust.
+- **Go's tests.** All eleven test functions of `palette_test.go` and
+  `anchors_test.go` are ported (`src/generate.rs` `go_tests`,
+  `src/anchors.rs` `go_tests`, `src/color.rs`). They join the corpus tests:
+  29 unit tests, 5 command-line tests, 3 golden tests.
+- **Binary sizes.** Release profile as `core/sidecar/` (`opt-level = "s"`,
+  LTO, `panic = "abort"`, stripped); rustc 1.99.0:
+
+  | build | bytes | linked |
+  |---|---|---|
+  | x86_64 glibc | 577,528 | dynamic (libc, libgcc_s) |
+  | x86_64-unknown-linux-musl | 671,416 | static-pie |
+  | aarch64-unknown-linux-musl (rust-lld) | 577,488 | static |
+  | Go, `-s -w`, for comparison | 3,784,864 | static |
+
+  Both musl builds answer `-version` with `0.2.5`, arm64 under
+  qemu-aarch64-static 11.1.2. No aarch64 glibc build was made: there is no
+  cross linker here, and the release ships musl only.
+- **Build, test and release.**
+  - `tools/build-sidecar.sh` builds the palette with cargo (target
+    `$CARGO_TARGET_DIR`, else `$XDG_CACHE_HOME/haseen/palette-target`).
+    Without a working cargo, or when the build fails, it is fetched from
+    the release, as the daemon is. The `GO` variable is gone.
+  - `tools/release-sidecar.sh` builds both crates for both musl targets
+    and checks each binary's `-version`.
+  - `tools/lint.sh` drops its Go block and checks `cargo fmt` for
+    `core/palette/`. Clippy runs in `tests/test-wallpaper.sh`, which now
+    runs the crate's tests, clippy and rustfmt, then builds with
+    `HASEEN_BUILD_DAEMON=0 HASEEN_FETCH_SIDECAR=0`; its assertions after the
+    build are unchanged. Its covers name `core/palette/**`.
+  - `tests/test-sidecar-fetch.sh` and `tests/test-sidecar-release.sh` lose
+    their go stubs. Their cargo stubs build whichever crate the manifest
+    names, and the fetch test adds a cargo that builds both, where nothing
+    is fetched.
+  - `go` leaves `ARCH_PACKAGES` in `ci.yml`, which runs the full suite
+    once.
+- **Removed:** `core/go.mod`, `core/go.sum`, `core/cmd/`, `core/internal/`.
+  `git ls-files '*.go'` is empty, and `grep -rnw go tools .github` finds
+  nothing.
+- **Docs:** architecture §5.6 (a haseen-palette paragraph), §5.7 (one
+  compiled language) and the tree table; `handoff.md` (the map row, the
+  gates and the install note); `NOTICE.md` (the aether row names
+  `core/palette/`); `bin/haseen-sidecar`'s help; the headers of
+  `bin/haseen-theme-wallpaper` and `bin/haseen-theme-generate`; the comment
+  in `install.sh`. `README.md` named no Go.
+
+Deviations from the Go generator, none of which changes an answer for the
+corpus, the wallpapers or the damaged files:
+
+- The image is read into memory whole before decoding. Go read it through a
+  buffered reader. Peak memory is above; the header limits are checked
+  before any pixel is decoded, as before.
+- Some malformed files that panicked Go now return an error: a VP8L Huffman
+  node index or group index out of range.
+- `strconv.Quote` is reproduced for what an error message can hold. Valid
+  non-ASCII text is printed as Go prints a printable rune, and invalid
+  bytes as `\xHH`. Go's full `IsPrint` table is not ported.
+- The Payne–Hanek reduction in Go's `Sin`/`Cos` is not ported. Hue angles
+  here are under 7 radians, where Go uses the Cody–Waite path that is
+  ported.
+- Go's `Exp` gives different answers on a CPU without FMA, where it falls
+  back to pure Go. So the Go generator's own palettes depended on the CPU.
+  The goldens are the FMA answers, and Rust gives them on every CPU
+  (`f64::mul_add`).
+- The goldens cover all 23 modes for 12 images and eight modes for the
+  other 17, not every mode for every image. The modes share one extractor,
+  and the 12 images span every decoder.
+- The offset in "flate: corrupt input before offset N" accounts for
+  read-ahead with an approximation. It matched Go on every damaged file.
+- Go code that nothing called (`AdjustColor`, `HexToRGBString`,
+  `IsHexColor` and similar) was not ported.
+
 ## Rejected options
 
+- **Decoder crates for phase 3** (`png`, `gif`, `jpeg-decoder`,
+  `image-webp`, `sha2`), as PR 3 first said. Their pixels are right, but
+  not Go's pixels in Go's types: JPEG chroma comes back upsampled to RGB,
+  and the IDCT differs from Go's. The scaler and median cut amplify that
+  beyond one step ("Phase 3, as built"). Matching Go exactly needs Go's
+  decoders anyway, and then a crate adds nothing.
+- **A tolerance on JPEG and WebP goldens.** It is not needed once the
+  decoders are Go's, and a tolerance would have hidden a real drift in
+  the colour maths.
 - **A cargo workspace with wootingd.** D1.
 - **`serde` + `serde_json`.** It prints an integral float as `50.0`, which
   breaks `tests/test-sidecar.sh:132` and the status line
@@ -997,6 +1178,24 @@ Phase 1, on the branch `sidecar/rust`:
 - `tests/run.sh tests/test-sidecar-rs.sh`: 41/41, every comparison empty.
 - D5's table: "Phase 1, as built" above.
 
+Phase 3, on the branch `palette/rust` (rustc 1.99.0, Go 1.27.3 for the
+comparisons, before the Go code was removed):
+
+- `cargo test --locked`: `29 passed`, `5 passed`, `3 passed` (the golden
+  test asserts 830 cases); the same under
+  `--target aarch64-unknown-linux-musl` with qemu-aarch64-static as the
+  runner.
+- `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: clean.
+- The three release builds' `--json` for the whole corpus against
+  `golden/json.txt` (warm cache): identical, 32 lines each.
+- The real-wallpaper and damaged-file comparisons and the memory table:
+  "Phase 3, as built".
+- `git ls-files '*.go' | wc -l`: 0. `grep -rnw go tools .github`: no match.
+- `tests/run.sh` on `test-wallpaper` (34/34), `test-sidecar` (65/65),
+  `test-sidecar-fetch` (37/37) and `test-sidecar-release` (26/26), with
+  `test-wootingd`, `test-omarchy-commands`, `test-core`, `test-theme-haseen`,
+  `test-themegen`, `test-themegen-keys` and `test-i18n`: 905/905.
+
 ## Risks
 
 - **Float and string text.** The largest source of silent drift. Contained
@@ -1016,9 +1215,11 @@ Phase 1, on the branch `sidecar/rust`:
 - **CI time.** `cargo test` plus a release build of a one-dependency crate
   is expected to take under a minute; if the parity test passes two
   minutes, say so in the pull request.
-- **Phase 3 can shift a generated theme by one level a channel** for JPEG
-  and lossy WebP wallpapers. The `cacheVersion` bump makes that happen once,
-  visibly, on the next generation.
+- **Phase 3 could shift a generated theme by one level a channel** for JPEG
+  and lossy WebP wallpapers. Settled: the decoders and float functions are
+  Go's, and the corpus, 80 wallpapers and 666 damaged files give identical
+  palettes ("Phase 3, as built"). The `cacheVersion` bump still makes every
+  palette regenerate once.
 - **PR #126** touches `server.go` and adds a Go test. Phase 1 reads the Go
   code, so a late merge means re-reading one function, not a conflict.
 

@@ -83,26 +83,15 @@ if [[ -x $QMLLINT && -d share/haseen/shell ]]; then
     fi
 fi
 
-# The palette (core/, Go) is only linted where a Go toolchain exists. Both
-# tools run inside the module: from the repo root `./core/...` is not part of
-# it.
-GO="${GO:-go}"
-if command -v "$GO" >/dev/null && [[ -f core/go.mod ]]; then
-    unformatted="$(cd core && "$GO" fmt ./... 2>/dev/null || true)"
-    if [[ -n $unformatted ]]; then
-        echo "gofmt: $unformatted" >&2
-        fail=1
-    fi
-    (cd core && "$GO" vet ./...) || fail=1
-    echo "go: $(find core -name '*.go' | wc -l) files"
-fi
-
-# The daemon (core/sidecar/, Rust, plan 167) is formatted where cargo runs;
-# clippy needs a build, so it runs in tests/test-sidecar.sh. wootingd is
+# The daemon and the palette (core/sidecar/, core/palette/, Rust, plan 167)
+# are formatted where cargo runs; clippy needs a build, so it runs in their
+# tests (tests/test-sidecar.sh, tests/test-wallpaper.sh). wootingd is
 # vendored unchanged and is neither formatted nor linted here.
 if command -v cargo >/dev/null && cargo fmt --version >/dev/null 2>&1; then
-    cargo fmt --check --manifest-path core/sidecar/Cargo.toml >&2 || fail=1
-    echo "rust: $(find core/sidecar -name '*.rs' | wc -l) files"
+    for crate in core/sidecar core/palette; do
+        cargo fmt --check --manifest-path "$crate/Cargo.toml" >&2 || fail=1
+    done
+    echo "rust: $(find core/sidecar core/palette -name '*.rs' | wc -l) files"
 fi
 
 # Every file is claimed by a test's `# haseen:covers` glob, or is global or

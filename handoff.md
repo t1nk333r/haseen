@@ -64,7 +64,7 @@ The owner's other repos:
 | Screen off / Screen on | `bin/haseen-screen-{off,on}`, menu System rows, the battery panel's Screen row, `tests/test-screen.sh` | 084 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
 | Sampling daemon (Rust since plan 167's phase 2; the Go one it replaced is gone, its answers kept as `core/sidecar/tests/golden/`) | `core/sidecar/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh`, `tools/release-sidecar.sh`, `tests/test-sidecar.sh` | 032 167 |
-| Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
+| Wallpaper palettes (Rust since plan 167's phase 3; the Go generator's answers kept as `core/palette/tests/golden/`) | `core/palette/`, `bin/haseen-theme-wallpaper`, `tests/test-wallpaper.sh` | 034 167 |
 | Hibernation | `bin/haseen-hibernation-*`, `share/haseen/lib/hibernate.sh` | 033 |
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
 | Todoist and omARR (adopted from the owner's plugins, off by default): private token and key files, migration from the old ids | `share/haseen/shell/plugins/haseen.{todoist,omarr}/`, `share/haseen/migrations/1791560200-adopt-todoist-omarr.sh`, `tests/test-{todoist,omarr,migrate-097}.sh` | 097 |
@@ -132,7 +132,7 @@ host and Arch's own repositories over any HTTPS mirror.
 Run before every PR, all from the repo root:
 
 ```sh
-SHELLCHECK=$(command -v shellcheck) GO=<go ≥ 1.26> tools/lint.sh
+SHELLCHECK=$(command -v shellcheck) tools/lint.sh
 QT_QPA_PLATFORM=offscreen tests/run.sh --affected   # before a commit: only the tests your change affects
 tools/check-docs.sh
 tools/secrets.sh                          # before every push
@@ -144,8 +144,9 @@ selection on every pull request and the full suite on `main` after each
 merge (~85-90 of the job's 150 min), so a test a change broke but its
 `# haseen:covers` did not claim fails there (plan 100).
 
-`core/go.mod` needs Go ≥ 1.26; pass a mise-installed Go as `GO=` when the
-system one is older. Tests are behavioural only and run only through
+The compiled helpers (`core/sidecar/`, `core/palette/`, `core/wootingd/`)
+are Rust and need only cargo; there is no Go in the tree since plan 167.
+Tests are behavioural only and run only through
 `tests/run.sh` (`--affected` for a change, no arguments for all); since plan
 074 `tests/lib.sh` `sandbox()` cuts every test off the live session. Supported targets are CachyOS and Arch. NixOS support was
 dropped by owner decision on 2026-10-05 (plan 009); the installer refuses it.
@@ -191,7 +192,7 @@ Every change lands by PR (AGENTS.md). Parallel PRs conflict only in
 Build tree = checkout files (`git ls-files -co --exclude-standard`, so WIP is
 included) plus `git diff <last-installed-main> origin/main` for code paths
 (not docs, plans, NOTICE, AGENTS, handoff, README) applied with
-`patch -p1`. Then `./install.sh --tree-only --yes` with Go on `PATH`,
+`patch -p1`. Then `./install.sh --tree-only --yes` with cargo on `PATH`,
 `systemctl --user daemon-reload`, `hyprctl reload`, `haseen migrate`, and
 re-apply the theme. `--tree-only` runs no seeds; `haseen migrate` runs
 `haseen seed user` once (migration `1791466288-seed-user.sh`); run it by

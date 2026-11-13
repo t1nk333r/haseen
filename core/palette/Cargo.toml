@@ -1,0 +1,23 @@
+[package]
+name = "haseen-palette"
+version = "0.1.0"
+edition = "2021"
+description = "haseen's wallpaper palette generator: an image to a 16-colour theme (plan 034, Rust since plan 167)"
+license = "MIT"
+# No rust-version, as the sidecar and wootingd declare none (plan 167, open
+# question 5): a cargo build that fails fetches the release instead.
+
+# No dependencies. The decoders are ports of Go's (the palette must stay the
+# one the Go generator wrote), and SHA-256, inflate and JSON are small enough
+# to write; so it builds offline (plan 167).
+[dependencies]
+
+[[bin]]
+name = "haseen-palette"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true
