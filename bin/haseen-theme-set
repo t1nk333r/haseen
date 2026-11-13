@@ -142,7 +142,7 @@ info "theme: $name"
 theme_post_set "$THEME_CURRENT_PATH"
 if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
     theme_background_reload "$shown_before"
-    theme_background_unkeep
+    theme_background_unkeep "$shown_before"
     # Omarchy images arrive in the background; haseen-theme-fetch links the
     # first one when this theme is still current and has none.
     theme_fetch_in_background "$name"

@@ -241,13 +241,23 @@ stub qs "case \"\$*\" in
 *' state') echo playing ;;
 *' shown') echo \"at shown: \$([ -f \"\$(cat '$SANDBOX/old.path')\" ] && echo kept || echo gone)\" >>'$CALLS'; echo holding ;;
 esac"
+# Another theme set still running keeps its own picture (a pid that is
+# alive); one killed halfway left one behind (a pid that is not running).
+sleep 300 &
+live=$!
+: >"$CUR/.background-shown-$live-other.png"
+: >"$CUR/.background-shown-2147483646-stale.png"
 capture env HASEEN_SYSROOT="$ROOT" haseen theme set t-two
 assert_status "theme set t-two" 0 "$STATUS"
 assert_eq "theme set: the cover gets the picture swaybg showed, kept past the swap" \
-    "begin $CUR/.background-shown-BG1.png $(readlink -f "$CUR/theme")/backgrounds/BG1.png
+    "begin $CUR/.background-shown-PID-BG1.png $(readlink -f "$CUR/theme")/backgrounds/BG1.png
 old holds: first theme
-at shown: kept" "$(cat "$CALLS")"
-assert_eq "theme set: and removes the kept copy afterwards" "" "$(cd "$CUR" && find . -maxdepth 1 -name '.background-shown-*')"
+at shown: kept" "$(sed 's/\.background-shown-[0-9]*-/.background-shown-PID-/' "$CALLS")"
+assert_eq "theme set: and removes only its own kept copy and the dead run's" "./.background-shown-$live-other.png" \
+    "$(cd "$CUR" && find . -maxdepth 1 -name '.background-shown-*')"
+kill "$live" 2>/dev/null || true
+wait "$live" 2>/dev/null || true
+rm -f "$CUR/.background-shown-$live-other.png"
 
 if [[ ! -x $QML_BIN ]]; then
     echo "  (no $QML_BIN: the transition's logic and drawing were not exercised)" >&2

@@ -24,6 +24,17 @@
   176/176 with a GL display (`HASEEN_GL_DISPLAY=:0`) and 113/113 without
   one. IO (software, scale 1.25) is still an owner step.
 
+
+After the merge review (DeepSeek Flash, approved with one should-fix): two
+`theme set` runs at once deleted each other's kept picture, because
+`theme_background_keep` began by removing every `.background-shown-*` and
+`theme set` removed them all again after its reload. The kept file is now
+`.background-shown-<pid>-<name>`, `theme_background_unkeep PATH` removes only
+this run's, and `theme_background_prune` removes only those whose pid is no
+longer running (a run killed halfway). The test keeps a live run's picture
+and a dead run's beside a `theme set`: the live one stays, the dead one
+goes; on the previous code both checks fail.
+
 ## Problem
 
 A background change is a cut. `haseen theme bg set|next` and `haseen theme

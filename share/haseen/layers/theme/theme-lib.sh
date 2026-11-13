@@ -1001,29 +1001,40 @@ theme_background_shown() {
 # backgrounds into it), and theme_swap deletes that tree before
 # theme_background_reload asks for the transition, which then had no old
 # image, or the new theme's file of the same name (plan 161). Keeps it as
-# current/.background-shown-<name>, a hard link (else a copy), and prints
-# that path for theme_background_reload. Prints nothing when swaybg is not
-# running or shows an image outside current/theme, which outlives the swap.
-# theme_background_unkeep removes it.
+# current/.background-shown-<pid>-<name>, a hard link (else a copy), and
+# prints that path for theme_background_reload. Prints nothing when swaybg is
+# not running or shows an image outside current/theme, which outlives the
+# swap. `theme_background_unkeep PATH` removes it. The pid keeps two theme
+# sets at once from deleting each other's picture (plan 161's review).
 theme_background_keep() {
-    theme_background_unkeep
+    theme_background_prune
     theme_background_active || return 0
     local shown cur keep
     shown="$(theme_background_shown || true)"
     [[ -n $shown && -f $shown ]] || return 0
     cur="$(readlink -f -- "$THEME_CURRENT_PATH" 2>/dev/null || true)"
     [[ -n $cur && $shown == "$cur"/* ]] || return 0
-    keep="$THEME_CURRENT_DIR/.background-shown-${shown##*/}"
+    keep="$THEME_CURRENT_DIR/.background-shown-$$-${shown##*/}"
     ln -f -- "$shown" "$keep" 2>/dev/null || cp -f -- "$shown" "$keep" 2>/dev/null || return 0
     printf '%s\n' "$keep"
 }
 
-# theme_background_unkeep — remove what theme_background_keep kept, also one
-# left by a theme set that was killed halfway.
+# theme_background_unkeep [PATH] — remove the picture this theme set kept.
 theme_background_unkeep() {
-    local f
+    [[ -z ${1:-} ]] || rm -f -- "$1"
+    return 0
+}
+
+# theme_background_prune — remove pictures kept by theme sets that are gone
+# (killed halfway); a live one's stays.
+theme_background_prune() {
+    local f pid
     for f in "$THEME_CURRENT_DIR"/.background-shown-*; do
-        if [[ -e $f ]]; then rm -f -- "$f"; fi
+        [[ -e $f ]] || continue
+        pid="${f##*/.background-shown-}"
+        pid="${pid%%-*}"
+        if [[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then continue; fi
+        rm -f -- "$f"
     done
     return 0
 }
