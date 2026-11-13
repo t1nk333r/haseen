@@ -2,12 +2,14 @@
   "schemaVersion": 1,
   "id": "haseen.computer",
   "name": "Your computer",
-  "version": "1.0.0",
-  "description": "A panel with the processor and memory over the last 90 s, the processor's temperature, the root disk's space, the uptime and the battery; it samples only while open",
+  "version": "1.1.0",
+  "description": "A panel with the processor and memory over the last 90 s, the processor's temperature, the root disk's space, the uptime and the battery; a service keeps the 90 s history in the background from the sidecar's 3 s samples",
   "kinds": [
+    "service",
     "panel"
   ],
   "entry": {
+    "service": "Service.qml",
     "panel": "Panel.qml"
   },
   "settings": {
@@ -19,5 +21,8 @@
   },
   "permissions": [
     "files:read"
+  ],
+  "provides": [
+    "computer"
   ]
 }
