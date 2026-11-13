@@ -1,0 +1,99 @@
+== -capabilities: 0
+sysusage borderwipe
+== --capabilities: 0
+sysusage borderwipe
+== -capabilities=false -version: 0
+VERSION
+== -nonsense: 2
+flag provided but not defined: -nonsense
+Usage of BIN:
+  -capabilities
+    	print the capabilities this build has and exit
+  -idle-timeout duration
+    	exit this long after the last client leaves (0 = never) (default 5m0s)
+  -root string
+    	filesystem root to sample (tests only)
+  -socket string
+    	unix socket to listen on (default "SANDBOX/run/haseen/sidecar.sock")
+  -state string
+    	haseen user state: the current theme and the context flag (border wipe) (default "SANDBOX/home/.local/state/haseen")
+  -version
+    	print the version and exit
+== -idle-timeout soon: 2
+invalid value "soon" for flag -idle-timeout: parse error
+Usage of BIN:
+  -capabilities
+    	print the capabilities this build has and exit
+  -idle-timeout duration
+    	exit this long after the last client leaves (0 = never) (default 5m0s)
+  -root string
+    	filesystem root to sample (tests only)
+  -socket string
+    	unix socket to listen on (default "SANDBOX/run/haseen/sidecar.sock")
+  -state string
+    	haseen user state: the current theme and the context flag (border wipe) (default "SANDBOX/home/.local/state/haseen")
+  -version
+    	print the version and exit
+== -socket: 2
+flag needs an argument: -socket
+Usage of BIN:
+  -capabilities
+    	print the capabilities this build has and exit
+  -idle-timeout duration
+    	exit this long after the last client leaves (0 = never) (default 5m0s)
+  -root string
+    	filesystem root to sample (tests only)
+  -socket string
+    	unix socket to listen on (default "SANDBOX/run/haseen/sidecar.sock")
+  -state string
+    	haseen user state: the current theme and the context flag (border wipe) (default "SANDBOX/home/.local/state/haseen")
+  -version
+    	print the version and exit
+== -h: 0
+Usage of BIN:
+  -capabilities
+    	print the capabilities this build has and exit
+  -idle-timeout duration
+    	exit this long after the last client leaves (0 = never) (default 5m0s)
+  -root string
+    	filesystem root to sample (tests only)
+  -socket string
+    	unix socket to listen on (default "SANDBOX/run/haseen/sidecar.sock")
+  -state string
+    	haseen user state: the current theme and the context flag (border wipe) (default "SANDBOX/home/.local/state/haseen")
+  -version
+    	print the version and exit
+== ---x: 2
+bad flag syntax: ---x
+Usage of BIN:
+  -capabilities
+    	print the capabilities this build has and exit
+  -idle-timeout duration
+    	exit this long after the last client leaves (0 = never) (default 5m0s)
+  -root string
+    	filesystem root to sample (tests only)
+  -socket string
+    	unix socket to listen on (default "SANDBOX/run/haseen/sidecar.sock")
+  -state string
+    	haseen user state: the current theme and the context flag (border wipe) (default "SANDBOX/home/.local/state/haseen")
+  -version
+    	print the version and exit
+== -version=maybe: 2
+invalid boolean value "maybe" for -version: parse error
+Usage of BIN:
+  -capabilities
+    	print the capabilities this build has and exit
+  -idle-timeout duration
+    	exit this long after the last client leaves (0 = never) (default 5m0s)
+  -root string
+    	filesystem root to sample (tests only)
+  -socket string
+    	unix socket to listen on (default "SANDBOX/run/haseen/sidecar.sock")
+  -state string
+    	haseen user state: the current theme and the context flag (border wipe) (default "SANDBOX/home/.local/state/haseen")
+  -version
+    	print the version and exit
+== blocked: 1
+failed mkdir SANDBOX/blocked: not a directory
+== long: 1
+failed listen unix SANDBOX/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/s.sock: bind: invalid argument

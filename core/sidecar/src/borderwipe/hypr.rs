@@ -97,9 +97,11 @@ pub fn connect_within(path: &Path, timeout: Duration) -> std::io::Result<UnixStr
             return Err(std::io::Error::last_os_error());
         }
         let stream = UnixStream::from_raw_fd(fd);
+        // `as _`: libc deprecates naming time_t and suseconds_t on musl
+        // (their width changes in musl 1.2), and the field types are the same.
         let tv = libc::timeval {
-            tv_sec: timeout.as_secs() as libc::time_t,
-            tv_usec: timeout.subsec_micros() as libc::suseconds_t,
+            tv_sec: timeout.as_secs() as _,
+            tv_usec: timeout.subsec_micros() as _,
         };
         libc::setsockopt(
             fd,

@@ -129,7 +129,7 @@ Window {
     }
 
     function run() {
-        // Parsing moved into haseen-sidecar (plan 032); core/internal/sysusage
+        // Parsing moved into haseen-sidecar (plan 032); core/sidecar/src/sysusage/
         // owns those tests. Only formatting is left here.
         eq("format GiB", "3.0 GiB", U.formatKiB(3145728));
         eq("format MiB", "512 MiB", U.formatKiB(524288));

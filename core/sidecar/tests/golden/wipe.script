@@ -1,0 +1,16 @@
+{"send": "{\"id\":1,\"method\":\"subscribe\",\"stream\":\"borderwipe\"}"}
+{"wait": "event", "n": 2}
+{"send": "{\"id\":2,\"method\":\"status\"}"}
+{"wait": "reply"}
+{"write": ["state/current/theme/colors.toml", "accent = \"#7aa2f7\"\n"]}
+{"send": "{\"id\":0,\"method\":\"unsubscribe\",\"stream\":\"borderwipe\"}"}
+{"sleep": 100}
+{"send": "{\"id\":3,\"method\":\"subscribe\",\"stream\":\"borderwipe\",\"params\":{\"signature\":\"nobody\"}}"}
+{"wait": "event", "n": 2}
+{"write": ["state/current/theme/colors.toml", "border_wipe = \"rgba(F25623ff) os.execute('x')\"\nborder_wipe_seconds = 36\n"]}
+{"send": "{\"id\":0,\"method\":\"unsubscribe\"}"}
+{"sleep": 100}
+{"send": "{\"id\":4,\"method\":\"subscribe\",\"stream\":\"borderwipe\"}"}
+{"wait": "event", "n": 2}
+{"send": "{\"id\":5,\"method\":\"status\"}"}
+{"wait": "reply"}

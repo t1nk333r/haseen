@@ -5,8 +5,8 @@
 //!
 //! Started on demand by the shell, and it exits again once the last client has
 //! been gone for -idle-timeout, so a machine that never shows the widget never
-//! runs it. A port of the Go daemon in core/cmd/haseen-sidecar (plan 167): the
-//! flags, the lines on stdout and the wire format are the same.
+//! runs it. A port of the Go daemon that was core/cmd/haseen-sidecar (plan 167):
+//! the flags, the lines on stdout and the wire format are the same.
 
 use haseen_sidecar::borderwipe;
 use haseen_sidecar::gocompat::{clean, format_duration, parse_duration};

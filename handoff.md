@@ -63,7 +63,7 @@ The owner's other repos:
 | Adopted tools, off by default: typist, plugin manager, browser picker, VPN; migration of the old ids | `share/haseen/shell/plugins/haseen.{typist,settings,browser-picker,vpn}/`, `bin/haseen-{typist,browser-picker,browser-scan,vpn-openconnect}`, `share/haseen/migrations/1791560100-adopt-tools-forks.sh`, `tests/test-adopted-tools.sh` | 096 |
 | Screen off / Screen on | `bin/haseen-screen-{off,on}`, menu System rows, the battery panel's Screen row, `tests/test-screen.sh` | 084 |
 | Hardware quirks (DMI table) | `share/haseen/lib/hardware.sh`, `share/haseen/hardware/`, `bin/haseen-hw-*` | 031 |
-| Sampling daemon (Go; its Rust port beside it, built and compared but not installed until plan 167's phase 2) | `core/`, `core/sidecar/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh`, `tests/test-sidecar-rs.sh` | 032 167 |
+| Sampling daemon (Rust since plan 167's phase 2; the Go one it replaced is gone, its answers kept as `core/sidecar/tests/golden/`) | `core/sidecar/`, `share/haseen/shell/Haseen/Sidecar.qml`, `bin/haseen-sidecar`, `tools/build-sidecar.sh`, `tools/release-sidecar.sh`, `tests/test-sidecar.sh` | 032 167 |
 | Wallpaper palettes | `core/internal/palette/`, `core/cmd/haseen-palette`, `bin/haseen-theme-wallpaper` | 034 |
 | Hibernation | `bin/haseen-hibernation-*`, `share/haseen/lib/hibernate.sh` | 033 |
 | Power profiles, speaker tuning, web apps, notifications, seeds | `bin/haseen-{powerprofile,audio-tuning,webapp,notification,seed}-*`, `share/haseen/{audio,default}/` | 033 |
