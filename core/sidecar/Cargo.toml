@@ -1,0 +1,25 @@
+[package]
+name = "haseen-sidecar"
+version = "0.1.0"
+edition = "2021"
+description = "haseen's sampling and border wipe daemon: JSON lines over a unix socket (plan 167)"
+license = "MIT"
+# No rust-version, as wootingd declares none: it is built and tested with
+# Arch's rust (1.99 when it was written), and its lock file needs cargo 1.78
+# or later (plan 167, open question 5).
+
+# One dependency, for statfs, signal, sysconf and _exit. JSON is written by
+# hand: Go's encoder is the wire format, and serde_json prints 36.0 where Go
+# prints 36 (plan 167, Rejected).
+[dependencies]
+libc = "0.2"
+
+[[bin]]
+name = "haseen-sidecar"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true
