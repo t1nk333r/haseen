@@ -5,6 +5,9 @@
 /share/haseen/sidecar/haseen-sidecar
 /share/haseen/sidecar/haseen-palette
 /share/haseen/sidecar/wootingd
+# A cargo build run inside a crate (the build script and tests build outside)
+/core/sidecar/target/
+/core/palette/target/
 /tools/vptr/vptr
 /tools/vptr/wlr-virtual-pointer-unstable-v1-client-protocol.h
 /tools/vptr/wlr-virtual-pointer-unstable-v1-protocol.c

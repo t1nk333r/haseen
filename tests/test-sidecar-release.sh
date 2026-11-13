@@ -5,44 +5,35 @@
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Plan 127: tools/release-sidecar.sh is what the installer's fetch points at,
 # so its tag, architectures and asset names have to stay the ones
-# tools/build-sidecar.sh asks for. A stub `go` writes the asset path it is asked
-# to build, a stub `cargo` writes a daemon that prints the version it was built
-# with where cargo would put it for each musl target (plan 167), a stub `gh`
-# records the calls and answers view/create, and neither a toolchain nor the
-# network is touched.
+# tools/build-sidecar.sh asks for. A stub `cargo` writes the helper its
+# manifest names (core/sidecar or core/palette), printing the version it was
+# built with, where cargo would put it for each musl target (plan 167); a
+# stub `gh` records the calls and answers view/create, and neither a
+# toolchain nor the network is touched.
 sandbox sidecar-release
 export SANDBOX
 stub git 'exec /usr/bin/git "$@"'
-stub cargo 'target=""
+stub cargo 'target="" crate=""
 while [ $# -gt 0 ]; do
     case $1 in
     --target)
         shift
         target=$1
         ;;
-    esac
-    shift
-done
-[ -n "$target" ] || exit 1
-printf "%s\n" "$target" >>"$SANDBOX/cargo.log"
-mkdir -p "$CARGO_TARGET_DIR/$target/release"
-printf "#!/bin/sh\necho %s\n" "${FAKE_VERSION:-$HASEEN_VERSION}" >"$CARGO_TARGET_DIR/$target/release/haseen-sidecar"
-chmod +x "$CARGO_TARGET_DIR/$target/release/haseen-sidecar"'
-# The arm64 daemon is tried under qemu; the stub runs the fake directly.
-stub qemu-aarch64-static 'exec "$@"'
-stub go 'out=""
-while [ $# -gt 0 ]; do
-    case $1 in
-    -o)
+    --manifest-path)
         shift
-        out=$1
+        crate=$(basename "$(dirname "$1")")
         ;;
     esac
     shift
 done
-[[ -n $out ]] || exit 1
-printf "fake asset\n" >"$out"
-chmod +x "$out"'
+[ -n "$target" ] && [ -n "$crate" ] || exit 1
+printf "%s %s\n" "$target" "$crate" >>"$SANDBOX/cargo.log"
+mkdir -p "$CARGO_TARGET_DIR/$target/release"
+printf "#!/bin/sh\necho %s\n" "${FAKE_VERSION:-$HASEEN_VERSION}" >"$CARGO_TARGET_DIR/$target/release/haseen-$crate"
+chmod +x "$CARGO_TARGET_DIR/$target/release/haseen-$crate"'
+# The arm64 daemon is tried under qemu; the stub runs the fake directly.
+stub qemu-aarch64-static 'exec "$@"'
 stub gh 'printf "%s\n" "$*" >>"$SANDBOX/gh.log"
 case "$*" in
 *"--json url"*)
@@ -68,13 +59,15 @@ assert_contains "the release is created at HEAD" "$(cat "$LOG")" \
     "release create $TAG --title haseen-sidecar $VERSION --target $HEAD_SHA"
 assert_contains "and its URL is reported" "$OUTPUT" "sidecar-v$VERSION updated"
 for asset in haseen-sidecar-linux-amd64 haseen-sidecar-linux-arm64 \
-    haseen-palette-linux-amd64 haseen-palette-linux-arm64 SHA256SUMS; do
+    haseen-palette-linux-amd64 haseen-palette-linux-arm64 haseen-palette-LICENSE-GO SHA256SUMS; do
     assert_contains "the upload carries $asset" "$(cat "$LOG")" "$asset"
 done
 assert_contains "assets are replaced, not added" "$(cat "$LOG")" "--clobber"
-assert_eq "the daemon is built for both musl targets" "x86_64-unknown-linux-musl aarch64-unknown-linux-musl" \
-    "$(paste -sd' ' "$SANDBOX/cargo.log")"
+assert_eq "both helpers are built for both musl targets" \
+    "x86_64-unknown-linux-musl sidecar,x86_64-unknown-linux-musl palette,aarch64-unknown-linux-musl sidecar,aarch64-unknown-linux-musl palette" \
+    "$(paste -sd, "$SANDBOX/cargo.log")"
 assert_contains "and each one is run before it is published" "$OUTPUT" "haseen-sidecar-linux-arm64 runs ($VERSION)"
+assert_contains "the palette too" "$OUTPUT" "haseen-palette-linux-arm64 runs ($VERSION)"
 
 # --- an existing release is not created again ------------------------------
 : >"$LOG"
@@ -83,6 +76,7 @@ capture "$RELEASE"
 assert_status "an existing release publishes" 0 "$STATUS"
 assert_not_contains "without a second create" "$(cat "$LOG")" "release create"
 assert_contains "but still uploads" "$(cat "$LOG")" "release upload $TAG"
+assert_contains "and rewrites its notes for what it now holds" "$(cat "$LOG")" "release edit $TAG --notes Prebuilt static"
 
 # --- the dry run builds and prints, and calls no gh ------------------------
 : >"$LOG"

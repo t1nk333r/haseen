@@ -5,11 +5,12 @@
 #
 # A machine the installer runs on without the toolchains downloads these
 # instead of building them (tools/build-sidecar.sh), so this is what makes a
-# new machine's sidecar arrive with `install.sh`. Both are static: the daemon
-# is Rust built for the musl targets (plan 167; rustup target add
-# x86_64-unknown-linux-musl aarch64-unknown-linux-musl), the palette Go with
-# CGO off. Assets are replaced (`--clobber`) on every run: one release per
-# version, and the SHA256SUMS beside them is what the installer checks.
+# new machine's sidecar arrive with `install.sh`. Both are Rust, static,
+# built for the musl targets (plan 167; rustup target add
+# x86_64-unknown-linux-musl aarch64-unknown-linux-musl). Assets are replaced
+# (`--clobber`) on every run: one release per version, re-cut at the same
+# version when a helper changes, and the SHA256SUMS beside them is what the
+# installer checks.
 set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -29,7 +30,7 @@ while (($# > 0)); do
         shift
         ;;
     -h | --help)
-        sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
     *)
@@ -40,10 +41,6 @@ while (($# > 0)); do
     shift
 done
 
-command -v go >/dev/null || {
-    echo "release-sidecar: no go toolchain to build with" >&2
-    exit 1
-}
 command -v cargo >/dev/null || {
     echo "release-sidecar: no cargo to build with" >&2
     exit 1
@@ -63,65 +60,74 @@ musl_target() {
 
 for arch in amd64 arm64; do
     target="$(musl_target "$arch")"
-    # rust-lld links the arm64 binary with the target's self-contained musl
-    # runtime: the host's cc cannot (measured, plan 167). A fresh target
-    # directory: never an earlier build of another version.
-    if ! HASEEN_VERSION="$VERSION" CARGO_TARGET_DIR="$TMP/target" \
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld \
-        cargo build --release --locked --quiet --target "$target" \
-        --manifest-path "$REPO/core/sidecar/Cargo.toml"; then
-        echo "release-sidecar: the $target build failed (rustup target add $target?)" >&2
-        exit 1
-    fi
-    install -m 0755 "$TMP/target/$target/release/haseen-sidecar" "$TMP/haseen-sidecar-linux-$arch"
-    (cd "$REPO/core" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-        go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" \
-        -o "$TMP/haseen-palette-linux-$arch" ./cmd/haseen-palette)
+    for crate in sidecar palette; do
+        # rust-lld links the arm64 binary with the target's self-contained
+        # musl runtime: the host's cc cannot (measured, plan 167). A fresh
+        # target directory: never an earlier build of another version.
+        if ! HASEEN_VERSION="$VERSION" CARGO_TARGET_DIR="$TMP/target" \
+            CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld \
+            cargo build --release --locked --quiet --target "$target" \
+            --manifest-path "$REPO/core/$crate/Cargo.toml"; then
+            echo "release-sidecar: the $target build of core/$crate failed (rustup target add $target?)" >&2
+            exit 1
+        fi
+        install -m 0755 "$TMP/target/$target/release/haseen-$crate" "$TMP/haseen-$crate-linux-$arch"
+    done
 done
 rm -rf -- "$TMP/target"
 
-# Each daemon must at least start and know its version before it is
+# Each helper must at least start and know its version before it is
 # published: amd64 here, arm64 under qemu when this machine has it.
 check_version() { # ARCH RUNNER...
-    local arch="$1" got
+    local arch="$1" got name
     shift
-    got="$("$@" "$TMP/haseen-sidecar-linux-$arch" -version 2>&1)" || got="failed: $got"
-    if [[ $got != "$VERSION" ]]; then
-        echo "release-sidecar: haseen-sidecar-linux-$arch -version said '$got', not $VERSION" >&2
-        exit 1
-    fi
-    echo "release-sidecar: haseen-sidecar-linux-$arch runs ($got)"
+    for name in haseen-sidecar haseen-palette; do
+        got="$("$@" "$TMP/$name-linux-$arch" -version 2>&1)" || got="failed: $got"
+        if [[ $got != "$VERSION" ]]; then
+            echo "release-sidecar: $name-linux-$arch -version said '$got', not $VERSION" >&2
+            exit 1
+        fi
+        echo "release-sidecar: $name-linux-$arch runs ($got)"
+    done
 }
 case "$(uname -m)" in
 x86_64) check_version amd64 env ;;
 aarch64)
     check_version arm64 env
-    echo "release-sidecar: an arm64 host; the amd64 daemon is published untried" >&2
+    echo "release-sidecar: an arm64 host; the amd64 helpers are published untried" >&2
     ;;
 esac
 if [[ $(uname -m) != aarch64 ]]; then
     if command -v qemu-aarch64-static >/dev/null; then
         check_version arm64 qemu-aarch64-static
     else
-        echo "release-sidecar: no qemu-aarch64-static; the arm64 daemon is published untried" >&2
+        echo "release-sidecar: no qemu-aarch64-static; the arm64 helpers are published untried" >&2
     fi
 fi
+# The palette ports BSD-licensed Go code, whose licence a binary release
+# must carry: it goes up beside the binaries (plan 167).
+install -m 0644 "$REPO/core/palette/LICENSE-GO" "$TMP/haseen-palette-LICENSE-GO"
 (cd "$TMP" && sha256sum haseen-*-linux-* >SHA256SUMS)
 ls -l "$TMP"
 
 if $DRY_RUN; then
-    assets="$(printf '%q ' "$TMP"/haseen-*-linux-* "$TMP/SHA256SUMS")"
-    printf "DRYRUN: gh release view '%s' (create when absent)\n" "$TAG"
+    assets="$(printf '%q ' "$TMP"/haseen-*-linux-* "$TMP/haseen-palette-LICENSE-GO" "$TMP/SHA256SUMS")"
+    printf "DRYRUN: gh release view '%s' (create when absent, else edit its notes)\n" "$TAG"
     printf "DRYRUN: gh release create '%s' --title 'haseen-sidecar %s' --target %s\n" "$TAG" "$VERSION" "$(git -C "$REPO" rev-parse "$TARGET")"
     printf "DRYRUN: gh release upload '%s' %s--clobber\n" "$TAG" "$assets"
     exit 0
 fi
 
+NOTES="Prebuilt static haseen-sidecar (core/sidecar/) and haseen-palette (core/palette/), both Rust, for linux/amd64 and linux/arm64, built at $(git -C "$REPO" rev-parse --short HEAD). A machine without the toolchains downloads these when install.sh runs (tools/build-sidecar.sh, plan 127); SHA256SUMS is checked before anything is installed. haseen-palette ports BSD-3-Clause code from Go; its licence is haseen-palette-LICENSE-GO."
 if ! gh release view "$TAG" >/dev/null 2>&1; then
     gh release create "$TAG" \
         --title "haseen-sidecar $VERSION" \
         --target "$(git -C "$REPO" rev-parse "$TARGET")" \
-        --notes "Prebuilt static haseen-sidecar (Rust, core/sidecar/) and haseen-palette (Go, core/) for linux/amd64 and linux/arm64, built at $(git -C "$REPO" rev-parse --short HEAD). A machine without the toolchains downloads these when install.sh runs (tools/build-sidecar.sh, plan 127); SHA256SUMS is checked before anything is installed."
+        --notes "$NOTES"
+else
+    # A re-cut release keeps its tag, but its notes must describe what is
+    # uploaded now (plan 167's review).
+    gh release edit "$TAG" --notes "$NOTES"
 fi
-gh release upload "$TAG" "$TMP"/haseen-*-linux-* "$TMP/SHA256SUMS" --clobber
+gh release upload "$TAG" "$TMP"/haseen-*-linux-* "$TMP/haseen-palette-LICENSE-GO" "$TMP/SHA256SUMS" --clobber
 echo "release-sidecar: $TAG updated ($(gh release view "$TAG" --json url -q .url))"

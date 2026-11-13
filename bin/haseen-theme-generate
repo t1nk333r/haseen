@@ -5,8 +5,8 @@
 # matugen (InioX/matugen, GPL-2.0) runs as a separate program and only prints
 # JSON (`--json hex --dry-run`); haseen takes no code from it. Its Material
 # roles are mapped to colors.toml keys here, the anchors go through the same
-# contrast floors as plan 064's palette clamp (core/internal/palette
-# anchors.go: text 4.5:1, accent 3:1), measured and mixed with theme-lib's
+# contrast floors as plan 064's palette clamp (core/palette
+# src/anchors.rs: text 4.5:1, accent 3:1), measured and mixed with theme-lib's
 # _theme_contrast and _theme_mix, and the image is copied in as the theme's
 # background. The result is an ordinary user theme, so `haseen theme set`
 # renders every template exactly as for a stock one.
