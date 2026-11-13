@@ -1,0 +1,12 @@
+{"type":"hello","protocol":1,"version":"V","pid":0,"capabilities":["sysusage","borderwipe"]}
+{"type":"event","stream":"borderwipe","data":{"state":"waiting","reason":"Hyprland is not answering","secondsPerTurn":36,"angle":0,"frames":0}}
+{"type":"event","stream":"borderwipe","data":{"state":"waiting","reason":"Hyprland is not answering","secondsPerTurn":36,"angle":0,"frames":0}}
+{"type":"reply","id":1,"ok":true}
+{"type":"reply","id":2,"ok":true,"data":{"borderwipe":{"state":"waiting","reason":"Hyprland is not answering","secondsPerTurn":36,"angle":0,"frames":0}}}
+{"type":"event","stream":"borderwipe","data":{"state":"off","reason":"the theme asks for no wipe","angle":0,"frames":0}}
+{"type":"event","stream":"borderwipe","data":{"state":"off","reason":"the theme asks for no wipe","angle":0,"frames":0}}
+{"type":"reply","id":3,"ok":true}
+{"type":"event","stream":"borderwipe","data":{"state":"off","reason":"colors.toml: border_wipe: a colour is not rgba(RRGGBBAA), rgb(RRGGBB) or 0xAARRGGBB","angle":0,"frames":0}}
+{"type":"event","stream":"borderwipe","data":{"state":"off","reason":"colors.toml: border_wipe: a colour is not rgba(RRGGBBAA), rgb(RRGGBB) or 0xAARRGGBB","angle":0,"frames":0}}
+{"type":"reply","id":4,"ok":true}
+{"type":"reply","id":5,"ok":true,"data":{"borderwipe":{"state":"off","reason":"colors.toml: border_wipe: a colour is not rgba(RRGGBBAA), rgb(RRGGBB) or 0xAARRGGBB","angle":0,"frames":0}}}

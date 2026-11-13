@@ -1,39 +1,200 @@
 # shellcheck shell=bash
-# haseen:covers bin/haseen-sidecar core/{go.mod,go.sum} core/cmd/** core/internal/**
+# haseen:covers bin/haseen-sidecar core/sidecar/** tools/sidecar-play.py
 # haseen:covers share/haseen/VERSION share/haseen/shell/Haseen/Sidecar.qml
 # haseen:covers share/haseen/shell/Haseen/qmldir share/haseen/themes/haseen/colors.toml
 # haseen:covers tools/build-sidecar.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
-# haseen-sidecar: its Go tests, the wire protocol over a real socket, and the
-# CLI around it. Everything here needs the built daemon; without a Go toolchain
-# the whole file skips, which is the same state a machine without it is in.
+# haseen-sidecar (Rust, core/sidecar/, plan 167): its own tests, its answers
+# against the Go daemon's it replaced (core/sidecar/tests/golden/, recorded
+# from the Go daemon over the same fixtures before it was removed), the wire
+# protocol over a real socket, and the CLI around it. Everything here needs
+# the built daemon; without cargo the whole file skips, which is the same
+# state a machine without it and without the release is in. Under
+# HASEEN_REQUIRE_ENGINE=1 (CI) a missing tool fails instead.
+rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 sandbox sidecar
-GO="${GO:-go}"
-if ! command -v "$GO" >/dev/null; then
-    echo "  skip: no go toolchain (set GO=...); haseen-sidecar not built or tested" >&2
+[[ ! -d $rustup_home ]] || export RUSTUP_HOME="$rustup_home"
+CRATE="$REPO/core/sidecar"
+GOLDEN="$CRATE/tests/golden"
+
+required() { # TOOL WHAT — a missing prerequisite: a skip, or a failure in CI
+    echo "  skip: $1 missing; $2" >&2
+    [[ ${HASEEN_REQUIRE_ENGINE:-0} != 1 ]] || assert_eq "sidecar: required $1 prerequisite" available unavailable
+}
+
+if ! command -v cargo >/dev/null; then
+    required cargo "haseen-sidecar not built or tested"
     return 0 2>/dev/null || exit 0
 fi
-go_bin="$(dirname "$(command -v "$GO")")"
-export PATH="$go_bin:$PATH"
-# Go writes its module cache read-only, so neither rm -rf nor the next
-# sandbox could remove it: -modcacherw writes it removable (plan 094), and a
-# cache an older run left read-only is made removable here.
-export GOPATH="$OUT/gopath" GOFLAGS="-mod=mod -modcacherw"
-[[ ! -d $GOPATH/pkg/mod ]] || chmod -R u+w -- "$GOPATH/pkg/mod"
 
-capture env GOFLAGS="$GOFLAGS -count=1" bash -c 'cd "$1/core" && exec "$2" test ./...' bash "$REPO" "$GO"
-assert_status "go tests pass" 0 "$STATUS"
-assert_not_contains "no go test failures" "$OUTPUT" "FAIL"
+# A private cargo home and target dir under tests/.out (ignored), kept between
+# runs: the crate's one dependency, libc, is fetched once. build-sidecar.sh
+# reads CARGO_TARGET_DIR too, so it reuses the same build.
+export CARGO_HOME="$OUT/cargo-home" CARGO_TARGET_DIR="$OUT/sidecar-target"
+VERSION="$(cat "$HASEEN_PATH/VERSION")"
+
+capture env HASEEN_VERSION="$VERSION" cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml"
+assert_status "cargo test --locked passes" 0 "$STATUS"
+assert_not_contains "no failed Rust test" "$OUTPUT" "FAILED"
+assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 57 passed; 0 failed"
+assert_contains "the protocol tests ran" "$OUTPUT" "test result: ok. 10 passed; 0 failed"
+if cargo clippy --version >/dev/null 2>&1; then
+    capture cargo clippy --locked --quiet --all-targets --manifest-path "$CRATE/Cargo.toml" -- -D warnings
+    assert_status "clippy finds nothing" 0 "$STATUS"
+fi
+if cargo fmt --version >/dev/null 2>&1; then
+    capture cargo fmt --check --manifest-path "$CRATE/Cargo.toml"
+    assert_status "the crate is rustfmt-clean" 0 "$STATUS"
+fi
+assert_eq "the crate has one dependency" '["libc"]' \
+    "$(sed -n '/^\[dependencies\]/,/^\[/p' "$CRATE/Cargo.toml" | sed -n 's/^\([a-z_-]*\) = .*/"\1"/p' | jq -sc .)"
+assert_eq "and its lock file nothing else" "haseen-sidecar libc" \
+    "$(sed -n 's/^name = "\(.*\)"/\1/p' "$CRATE/Cargo.lock" | LC_ALL=C sort | paste -sd' ')"
 
 binary="$SANDBOX/haseen-sidecar"
-# wootingd (Rust) has its own file, tests/test-wootingd.sh.
-capture env HASEEN_BUILD_WOOTINGD=0 "$REPO/tools/build-sidecar.sh" "$binary"
+# wootingd (Rust) has its own file, tests/test-wootingd.sh, and the palette
+# (Go) tests/test-wallpaper.sh.
+capture env HASEEN_BUILD_WOOTINGD=0 HASEEN_BUILD_PALETTE=0 HASEEN_FETCH_SIDECAR=0 "$REPO/tools/build-sidecar.sh" "$binary"
 assert_status "the daemon builds" 0 "$STATUS"
 assert_contains "the build reports where it landed" "$OUTPUT" "$binary"
 
 assert_eq "the build announces its capabilities" "sysusage borderwipe" "$("$binary" -capabilities)"
+
+assert_eq "and the tree's version" "$VERSION" "$("$binary" -version)"
+crate_files() { (cd "$CRATE" && find . -not -path "./src/*" -not -path "./tests/*" -not -name . | LC_ALL=C sort | paste -sd" "); }
+assert_eq "no build output in the tracked crate" "./Cargo.lock ./Cargo.toml ./src ./tests" "$(crate_files)"
+
+# --- the Go daemon's answers ------------------------------------------------------
+# Each golden file is what the Go daemon wrote for the script beside it, over
+# make_root's fixture, through tools/sidecar-play.py (which masks pids,
+# versions, rates and sizes); the sandbox path reads SANDBOX. They were
+# recorded by plan 167's phase 1 comparison, where both daemons ran side by
+# side and every transcript was identical.
+if ! command -v python3 >/dev/null || ! command -v jq >/dev/null; then
+    required python3/jq "the daemon is not compared with the Go daemon's answers"
+else
+    case_dir="$SANDBOX/c"
+
+# make_root — the fixture the daemon reads, written fresh before each case.
+make_root() {
+    rm -rf "$case_dir"
+    local r="$case_dir/root" s="$case_dir/state"
+    mkdir -p "$r/proc/net" "$r/proc/self" "$s/current/theme"
+    printf 'cpu  100 0 100 700 100 0 0 0 0 0\ncpu0 1 2 3 4\n' >"$r/proc/stat"
+    printf 'MemTotal:       32554964 kB\nMemFree:  1 kB\nMemAvailable:   18094064 kB\nSwapTotal:      1000 kB\nSwapFree:       250 kB\n' >"$r/proc/meminfo"
+    printf 'Inter-|   Receive\n face |bytes\n  lo: 5 1 0 0 0 0 0 0 5 1 0 0 0 0 0 0\n  wlan0: 1000 10 0 0 0 0 0 0 100 10 0 0 0 0 0 0\n' >"$r/proc/net/dev"
+    printf 'processor\t: 0\ncpu MHz\t\t: 1000.500\n' >"$r/proc/cpuinfo"
+    # Two processes; one's name holds what Go escapes, and a parenthesis.
+    mkdir -p "$r/proc/10" "$r/proc/11"
+    printf '10 (quiet) R 1 1 1 0 -1 0 0 0 0 0 100 0 0 0 20 0 1 0 0 0 25\n' >"$r/proc/10/stat"
+    printf '11 (a<b>&(c)) R 1 1 1 0 -1 0 0 0 0 0 100 0 0 0 20 0 1 0 0 0 50\n' >"$r/proc/11/stat"
+    printf 'Uid:\t0\t0\t0\t0\n' >"$r/proc/10/status"
+    printf 'Uid:\t0\t0\t0\t0\n' >"$r/proc/11/status"
+    printf 'busy\0--flag\0' >"$r/proc/11/cmdline"
+    # Cards: an AMD busy card, the boot VGA Intel freq card, an xe rc6 card,
+    # and a connector that is not a card.
+    local drm="$r/sys/class/drm"
+    mkdir -p "$drm/card0/device" "$drm/card1/device" "$drm/card2/device/tile0/gt0/gtidle" "$drm/card1-eDP-1"
+    printf 'DRIVER=amdgpu\nPCI_SLOT_NAME=0000:03:00.0\n' >"$drm/card0/device/uevent"
+    printf '0\n' >"$drm/card0/device/boot_vga"
+    printf '37\n' >"$drm/card0/device/gpu_busy_percent"
+    printf 'DRIVER=i915\nPCI_SLOT_NAME=0000:00:02.0\n' >"$drm/card1/device/uevent"
+    printf '1\n' >"$drm/card1/device/boot_vga"
+    printf '350\n' >"$drm/card1/gt_act_freq_mhz"
+    printf '1400\n' >"$drm/card1/gt_max_freq_mhz"
+    printf 'DRIVER=xe\n' >"$drm/card2/device/uevent"
+    printf '1000\n' >"$drm/card2/device/tile0/gt0/gtidle/idle_residency_ms"
+    # An unlabelled k10temp, which wins over the thermal zone.
+    mkdir -p "$r/sys/class/hwmon/hwmon0" "$r/sys/class/thermal/thermal_zone0"
+    printf 'k10temp\n' >"$r/sys/class/hwmon/hwmon0/name"
+    printf '45250\n' >"$r/sys/class/hwmon/hwmon0/temp1_input"
+    printf 'x86_pkg_temp\n' >"$r/sys/class/thermal/thermal_zone0/type"
+    printf '51000\n' >"$r/sys/class/thermal/thermal_zone0/temp"
+    mkdir -p "$r/sys/devices/system/cpu/cpu0/cpufreq" "$r/sys/devices/system/cpu/cpu1/cpufreq"
+    printf '2000000\n' >"$r/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+    printf '3000000\n' >"$r/sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq"
+    # Mounts: one device at two subvolumes, an escaped space, an image and
+    # zram that are not disks, a pseudo filesystem, a mount that is gone.
+    mkdir -p "$r/home" "$r/media/My Disk"
+    printf '%s\n' 'proc /proc proc rw 0 0' \
+        '/dev/mapper/root /home btrfs rw,subvol=/@home 0 0' \
+        '/dev/mapper/root / btrfs rw,subvol=/@ 0 0' \
+        '/dev/sdb1 /media/My\040Disk fuseblk rw 0 0' \
+        '/dev/loop0 /snap/core/1 squashfs ro 0 0' \
+        '/dev/zram0 /tmp ext4 rw 0 0' \
+        '/dev/sdc1 /mnt/gone ext4 rw 0 0' >"$r/proc/self/mounts"
+    cp "$HASEEN_PATH/themes/haseen/colors.toml" "$s/current/theme/colors.toml"
+}
+
+
+    # play NAME SCRIPT [rootless] — the daemon on its own socket over a fresh
+    # fixture; leaves the masked transcript in $SANDBOX/NAME.
+    play() {
+        local name="$1" script="$2" root sock="$SANDBOX/play.sock" pid i
+        make_root
+        root="$case_dir/root"
+        [[ ${3:-} != rootless ]] || root="$case_dir/empty"
+        mkdir -p "$root"
+        env -u HYPRLAND_INSTANCE_SIGNATURE "$binary" -socket "$sock" -idle-timeout 0 -root "$root" \
+            -state "$case_dir/state" >"$SANDBOX/$name.log" 2>&1 &
+        pid=$!
+        for ((i = 0; i < 100; i++)); do
+            [[ -S $sock ]] && break
+            sleep 0.05
+        done
+        timeout 60 python3 "$REPO/tools/sidecar-play.py" "$sock" "$case_dir" "$script" 2>&1 |
+            sed "s#$SANDBOX#SANDBOX#g" >"$SANDBOX/$name"
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    }
+
+    same() { # LABEL NAME — the transcript is the Go daemon's, and real
+        assert_contains "$1: the daemon answered" "$(head -1 "$SANDBOX/$2")" '{"type":"hello","protocol":1,'
+        assert_eq "$1" "" "$(diff "$GOLDEN/$2.out" "$SANDBOX/$2" || true)"
+        assert_not_contains "$1: nothing timed out" "$(cat "$SANDBOX/$2")" "TIMEOUT"
+    }
+
+    play protocol "$GOLDEN/protocol.script" rootless
+    same "the protocol answers as the Go daemon's" protocol
+
+    play sysusage "$GOLDEN/sysusage.script"
+    same "every sample matches the Go daemon's" sysusage
+    assert_contains "the comparison saw the escaped process name" "$(cat "$SANDBOX/sysusage")" '"command":"busy --flag"'
+    assert_contains "and the btrfs root once, at its shortest mount" "$(cat "$SANDBOX/sysusage")" '"mount":"/","device":"/dev/mapper/root"'
+    assert_contains "and an Intel card at half its clock" "$(cat "$SANDBOX/sysusage")" '"gpu":50,'
+
+    play empty "$GOLDEN/sysusage.script" rootless
+    same "an empty root is unknown, as in the Go daemon" empty
+
+    play wipe "$GOLDEN/wipe.script"
+    same "the border wipe's states match the Go daemon's" wipe
+    assert_contains "the comparison saw the theme's pace" "$(cat "$SANDBOX/wipe")" '"state":"waiting","reason":"Hyprland is not answering","secondsPerTurn":36'
+    assert_contains "and a colour refused" "$(cat "$SANDBOX/wipe")" '"reason":"colors.toml: border_wipe: a colour is not rgba(RRGGBBAA), rgb(RRGGBB) or 0xAARRGGBB"'
+fi
+
+# --- flags, stdout and exits, as the Go daemon's ----------------------------------
+flags_of() { # BIN — what each invocation prints, the binary's path masked
+    local bin="$1" args
+    for args in "-capabilities" "--capabilities" "-capabilities=false -version" "-nonsense" \
+        "-idle-timeout soon" "-socket" "-h" "---x" "-version=maybe"; do
+        # shellcheck disable=SC2086 # the arguments are split on purpose
+        capture "$bin" $args
+        printf '== %s: %s\n%s\n' "$args" "$STATUS" "${OUTPUT//$bin/BIN}"
+    done
+    blocked="$SANDBOX/blocked"
+    : >"$blocked"
+    capture "$bin" -socket "$blocked/s.sock"
+    printf '== blocked: %s\n%s\n' "$STATUS" "$(head -1 <<<"$OUTPUT")"
+    local long
+    long="$SANDBOX/$(printf 'x%.0s' {1..120})/s.sock"
+    capture "$bin" -socket "$long"
+    printf '== long: %s\n%s\n' "$STATUS" "$(head -1 <<<"$OUTPUT")"
+    rm -rf "${long%/s.sock}"
+}
+flags_of "$binary" | sed -e "s#$SANDBOX#SANDBOX#g" -e "s/^$VERSION\$/VERSION/" >"$SANDBOX/flags"
+assert_eq "flags, usage and exit codes match the Go daemon's" "" "$(diff "$GOLDEN/flags.out" "$SANDBOX/flags" || true)"
 
 # --- the wire protocol over a real socket -------------------------------------
 if ! command -v socat >/dev/null; then

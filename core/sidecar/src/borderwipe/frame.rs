@@ -13,7 +13,9 @@ pub struct Pace {
 }
 
 /// A turn of `seconds` in whole frames no shorter than `min_frame`, at most one
-/// a degree. 36 s is 360 frames of 1 degree every 100 ms.
+/// a degree. 36 s is 360 frames of 1 degree every 100 ms. A turn shorter than
+/// one frame is one frame of `min_frame`: Go sent it every turn, so a theme
+/// asking for 0.001 s sent 1000 requests a second (plan 167's review).
 pub fn pace_for(seconds: f64, min_frame: Duration) -> Pace {
     // Go's Duration(seconds * 1e9): nanoseconds, truncated.
     let turn_ns = (seconds * 1e9) as i64;
@@ -28,7 +30,7 @@ pub fn pace_for(seconds: f64, min_frame: Duration) -> Pace {
     if frames < 1 {
         frames = 1;
     }
-    let interval_ns = (turn_ns / frames).max(0);
+    let interval_ns = (turn_ns / frames).max(min_ns).max(0);
     Pace {
         frames: frames as usize,
         interval: Duration::from_nanos(interval_ns as u64),
@@ -124,7 +126,10 @@ mod tests {
 
     #[test]
     fn pace_cuts_a_turn_into_frames() {
-        let cases: [(f64, usize, u64, [usize; 4]); 4] = [
+        let cases: [(f64, usize, u64, [usize; 4]); 5] = [
+            // Shorter than a frame: one frame, still no faster than 10 a
+            // second (Go sent one every millisecond here).
+            (0.001, 1, 100, [0, 0, 0, 0]),
             // luna's loop: a degree every 100 ms.
             (36.0, 360, 100, [0, 10, 20, 3590]),
             // Faster: fewer, bigger steps, never more than 10 frames a second.

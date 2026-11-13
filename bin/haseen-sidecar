@@ -22,8 +22,10 @@ Usage: haseen sidecar [status|start|stop|build] [--dry-run]
            border), paused or running, with the reason
   start    run the daemon in the background (the shell does this on demand)
   stop     ask the running daemon to exit
-  build    compile it from core/ into $BINARY (needs go), and wootingd
-           beside it from core/wootingd/ (needs cargo; plan 099)
+  build    compile it from core/sidecar/ into $BINARY (needs cargo;
+           plan 167), haseen-palette beside it from core/ (needs go) and
+           wootingd from core/wootingd/ (cargo; plan 099); what cannot be
+           built is fetched from the sidecar release (plan 127)
 EOF
 }
 

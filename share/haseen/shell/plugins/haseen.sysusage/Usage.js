@@ -2,7 +2,7 @@
 
 // Formatting for haseen.sysusage. The parsing that used to live here (/proc,
 // GPU sysfs, top output) moved into haseen-sidecar when the plugin stopped
-// polling from QML (plan 032); core/internal/sysusage owns it and its tests.
+// polling from QML (plan 032); core/sidecar/src/sysusage/ owns it and its tests.
 // No Qt or Quickshell types, so tests/test-widgets-a.sh runs this headless
 // under /usr/lib/qt6/bin/qml.
 

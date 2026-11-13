@@ -1,0 +1,24 @@
+{"type":"hello","protocol":1,"version":"V","pid":0,"capabilities":["sysusage","borderwipe"]}
+{"type":"reply","id":1,"ok":true,"capabilities":["sysusage","borderwipe"]}
+{"type":"reply","id":0,"ok":false,"error":"bad json"}
+{"type":"reply","id":0,"ok":false,"error":"bad json"}
+{"type":"reply","id":0,"ok":false,"error":"bad json"}
+{"type":"reply","id":0,"ok":false,"error":"unknown method: "}
+{"type":"reply","id":0,"ok":false,"error":"bad json"}
+{"type":"reply","id":2,"ok":true,"capabilities":["sysusage","borderwipe"]}
+{"type":"reply","id":3,"ok":false,"error":"unknown method: nonsense"}
+{"type":"reply","id":4,"ok":false,"error":"unknown stream: nonsense"}
+{"type":"reply","id":0,"ok":false,"error":"unknown stream: nope"}
+{"type":"reply","id":5,"ok":true}
+{"type":"reply","id":6,"ok":true}
+{"type":"reply","id":7,"ok":true,"data":{"borderwipe":{"state":"off","reason":"nobody subscribed","angle":0,"frames":0}}}
+{"type":"reply","id":11,"ok":true,"capabilities":["sysusage","borderwipe"]}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[]}}
+{"type":"reply","id":12,"ok":true}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[]}}
+{"type":"reply","id":13,"ok":true}
+{"type":"reply","id":14,"ok":true}
+{"type":"reply","id":0,"ok":false,"error":"bad json"}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[]}}
+{"type":"reply","id":9,"ok":true}
+{"type":"reply","id":10,"ok":true}

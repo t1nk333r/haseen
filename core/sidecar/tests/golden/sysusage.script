@@ -1,0 +1,20 @@
+{"send": "{\"id\":1,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"processes\":true,\"system\":true}}"}
+{"wait": "event"}
+{"write": ["root/proc/stat", "cpu  150 0 150 800 100 0 0 0 0 0\n"]}
+{"write": ["root/proc/10/stat", "10 (quiet) R 1 1 1 0 -1 0 0 0 0 0 110 0 0 0 20 0 1 0 0 0 25\n"]}
+{"write": ["root/proc/11/stat", "11 (a<b>&(c)) R 1 1 1 0 -1 0 0 0 0 0 400 0 0 0 20 0 1 0 0 0 50\n"]}
+{"write": ["root/proc/net/dev", "Inter-|\n face |\n  wlan0: 5000 10 0 0 0 0 0 0 1100 10 0 0 0 0 0 0\n  tun0: 7 1 0 0 0 0 0 0 7 1 0 0 0 0 0 0\n"]}
+{"write": ["root/sys/class/drm/card1/gt_act_freq_mhz", "700\n"]}
+{"sleep": 50}
+{"send": "{\"id\":2,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"processes\":true,\"system\":true}}"}
+{"wait": "event"}
+{"send": "{\"id\":3,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"gpu\":\"card0\"}}"}
+{"wait": "event"}
+{"send": "{\"id\":4,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"gpu\":\"card2\",\"system\":true}}"}
+{"wait": "event"}
+{"send": "{\"id\":5,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"gpu\":\"card9\"}}"}
+{"wait": "event"}
+{"write": ["root/proc/stat", "garbage\n"]}
+{"write": ["root/proc/meminfo", "MemTotal: 100 kB\nMemFree: 50 kB\nBuffers: 10 kB\nCached: 10 kB\n"]}
+{"send": "{\"id\":6,\"method\":\"subscribe\",\"stream\":\"sysusage\",\"params\":{\"intervalMs\":3600000,\"gpu\":\"off\"}}"}
+{"wait": "event"}

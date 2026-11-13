@@ -1,0 +1,13 @@
+{"type":"hello","protocol":1,"version":"V","pid":0,"capabilities":["sysusage","borderwipe"]}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[],"cpuTempC":-1,"cpuFreqMHz":-1,"net":{"rxBps":-1,"txBps":-1},"disks":[]}}
+{"type":"reply","id":1,"ok":true}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[],"cpuTempC":-1,"cpuFreqMHz":-1,"net":{"rxBps":-1,"txBps":-1},"disks":[]}}
+{"type":"reply","id":2,"ok":true}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[]}}
+{"type":"reply","id":3,"ok":true}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[],"cpuTempC":-1,"cpuFreqMHz":-1,"net":{"rxBps":-1,"txBps":-1},"disks":[]}}
+{"type":"reply","id":4,"ok":true}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[]}}
+{"type":"reply","id":5,"ok":true}
+{"type":"event","stream":"sysusage","data":{"cpu":-1,"mem":null,"gpu":-1,"gpus":null,"gpuInfo":null,"processes":[]}}
+{"type":"reply","id":6,"ok":true}

@@ -15,10 +15,11 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// The declaration is complete: two stops to turn and a pace. One colour
-    /// has no visible angle.
+    /// The declaration is complete: two stops to turn and a finite pace. One
+    /// colour has no visible angle. `inf` panicked Go's ticker; here it asks
+    /// for no wipe (plan 167's review).
     pub fn wants(&self) -> bool {
-        self.colors.len() >= 2 && self.seconds > 0.0
+        self.colors.len() >= 2 && self.seconds.is_finite() && self.seconds > 0.0
     }
 }
 
@@ -117,6 +118,12 @@ mod tests {
             "border_wipe = \"rgba(F25623ff) os.execute('x')\"\nborder_wipe_seconds = 36\n",
         );
         assert_eq!(read_theme(&path).unwrap_err(), ERR_BAD_COLOUR);
+        write(
+            &path,
+            "border_wipe = \"rgba(F25623ff) rgba(F2562311)\"\nborder_wipe_seconds = inf\n",
+        );
+        let th = read_theme(&path).unwrap();
+        assert!(!th.wants(), "an endless turn is no wipe");
     }
 
     #[test]
