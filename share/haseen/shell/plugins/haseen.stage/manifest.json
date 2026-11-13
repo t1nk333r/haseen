@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "haseen.stage",
+  "name": "Stage Manager",
+  "version": "1.0.0",
+  "description": "Push the pointer against the screen's left edge and that monitor's other workspaces slide in as small stacks of their windows, turned towards the middle; click one to go there, move away or press Escape to close. Nothing shows until the push",
+  "kinds": [
+    "service"
+  ],
+  "entry": {
+    "service": "Service.qml"
+  },
+  "settings": {
+    "edge": {
+      "type": "string",
+      "default": "left",
+      "description": "The screen edge that opens the stage: left or right. With the bar on that edge the hot strip sits along the bar's inner side"
+    },
+    "dwell": {
+      "type": "integer",
+      "default": 200,
+      "description": "How long the pointer must stay against the edge before the stage opens, in ms (100-1000), so passing by does nothing"
+    },
+    "maxWindows": {
+      "type": "integer",
+      "default": 3,
+      "description": "Windows drawn per workspace stack, the most recently focused in front (1-4)"
+    },
+    "tilt": {
+      "type": "integer",
+      "default": 50,
+      "description": "How far each stack turns towards the middle of the screen, in degrees (0-60); 0 draws the stacks flat"
+    }
+  },
+  "permissions": []
+}

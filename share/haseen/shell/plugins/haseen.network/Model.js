@@ -485,3 +485,66 @@ function dnsChoice(raw) {
     const value = String(raw || "").trim().toLowerCase();
     return dnsProviders.some(p => p.id === value) ? value : "dhcp";
 }
+
+// The Wi-Fi QR card (plan 166), after Omarchy's omarchy.wifiqr panel and its
+// Model.js: `haseen network qr --meta` prints "meta<TAB>iface<TAB>security<TAB>
+// ssid" (the SSID last, so it may hold tabs), then a square 0/1 matrix. A
+// malformed matrix parses empty rather than drawing a code that cannot scan.
+function parseQr(raw) {
+    const lines = String(raw || "").split(/\r?\n/).filter(line => line !== "");
+    const out = {
+        iface: "",
+        security: "",
+        ssid: "",
+        rows: [],
+        size: 0
+    };
+    if (lines.length > 0 && lines[0].indexOf("meta\t") === 0) {
+        const fields = lines.shift().split("\t");
+        out.iface = fields[1] || "";
+        out.security = fields[2] || "";
+        out.ssid = fields.slice(3).join("\t");
+    }
+    const size = lines.length;
+    if (size === 0 || lines.some(line => line.length !== size || !/^[01]+$/.test(line)))
+        return out;
+    out.rows = lines;
+    out.size = size;
+    return out;
+}
+
+// One SVG path for the dark modules, a rectangle per horizontal run, so a
+// single Shape fills them together: no seams between neighbours at a
+// fractional scale, where a Canvas or a layer draws wrong (plan 156).
+function qrPath(rows, module) {
+    const m = Number(module) || 0;
+    if (!rows || m <= 0)
+        return "";
+    let path = "";
+    for (let y = 0; y < rows.length; y++) {
+        const row = rows[y];
+        let x = 0;
+        while (x < row.length) {
+            if (row.charAt(x) !== "1") {
+                x++;
+                continue;
+            }
+            let end = x;
+            while (end < row.length && row.charAt(end) === "1")
+                end++;
+            path += "M" + x * m + " " + y * m + "h" + (end - x) * m + "v" + m + "h" + -(end - x) * m + "z";
+            x = end;
+        }
+    }
+    return path;
+}
+
+// The command's one-line refusals, kept English and translated where shown;
+// anything else reads as the generic failure.
+var qrErrors = [N_("No active Wi-Fi connection"), N_("Could not read the Wi-Fi name"), N_("Enterprise Wi-Fi cannot be shared with a QR code"), N_("Could not read the Wi-Fi password"), N_("This network has no password")];
+
+function qrError(stderr, fallback) {
+    const lines = String(stderr || "").trim().split(/\r?\n/);
+    const last = lines[lines.length - 1];
+    return qrErrors.indexOf(last) >= 0 ? last : fallback;
+}
