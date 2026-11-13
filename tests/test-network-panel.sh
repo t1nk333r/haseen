@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# haseen:covers bin/haseen-network-band bin/haseen-network-portal bin/haseen-network-status
+# haseen:covers bin/haseen-network-band bin/haseen-network-portal bin/haseen-network-qr
+# haseen:covers bin/haseen-network-status
 # haseen:covers bin/haseen-plugin-validate
 # haseen:covers share/haseen/shell/Compat/Manifest.js share/haseen/shell/lib/plugin.sh
 # haseen:covers share/haseen/shell/plugin.schema.json share/haseen/shell/plugins/haseen.network/**
@@ -10,7 +11,7 @@
 # haseen.network panel (port of Omarchy's): the manifest declares the panel,
 # the pure helpers in Model.js (icons, details, ping and traffic, band, row
 # order, sections and status, credentials, failure reasons, DNS names, the
-# captive-portal state of plan 106) run headless under the real Qt JS engine
+# captive-portal state of plan 106, the QR card of plan 166) run headless under the real Qt JS engine
 # (/usr/lib/qt6/bin/qml, offscreen), the two commands the panel samples read
 # stubbed ip/iw/ping/nmcli and a fixture /sys, and `haseen network portal`
 # opens a stub browser and asks a stub nmcli. Nothing here touches the
@@ -154,6 +155,20 @@ Window {
         eq("connected row on a limited link stays Connected", "Connected", N.rowStatus(rows[0], idle, ok, false, "limited"));
         eq("other rows say nothing about the portal", "", N.rowStatus(rows[1], idle, ok, false, "portal"));
         eq("an action in flight beats the portal line", "Disconnecting…", N.rowStatus(rows[0], { kind: "disconnect", ssid: "Now" }, ok, false, "portal"));
+
+        const qr = N.parseQr("meta\twlan0\tWPA\tCafe\tNet\n101\n010\n111\n");
+        eq("qr meta, the SSID keeping its tab", ["wlan0", "WPA", "Cafe\tNet"], [qr.iface, qr.security, qr.ssid]);
+        eq("qr matrix", [3, ["101", "010", "111"]], [qr.size, qr.rows]);
+        eq("qr without meta", 2, N.parseQr("10\n01").size);
+        eq("a ragged qr matrix draws nothing", 0, N.parseQr("meta\twlan0\tWPA\tx\n101\n01\n111").size);
+        eq("a non-square qr matrix draws nothing", 0, N.parseQr("10\n01\n11").size);
+        eq("stray characters draw nothing", 0, N.parseQr("1#\n01").size);
+        eq("no output, no code, meta kept", ["wlan0", 0], [N.parseQr("meta\twlan0\tnopass\tx\n").iface, N.parseQr("meta\twlan0\tnopass\tx\n").size]);
+        eq("one rectangle per dark run", "M0 0h4v2h-4zM2 2h2v2h-2z", N.qrPath(["110", "010"], 2));
+        eq("a run reaching the edge closes", "M2 0h4v2h-4z", N.qrPath(["011"], 2));
+        eq("no module size, no path", "", N.qrPath(["1"], 0));
+        eq("a known refusal is shown", "No active Wi-Fi connection", N.qrError("No active Wi-Fi connection\n", "x"));
+        eq("anything else is the fallback", "Could not make the QR code", N.qrError("Error: missing required command(s): qrencode", "Could not make the QR code"));
     }
 }
 EOF
@@ -166,7 +181,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         assert_eq "js: ${line#*UNIT-FAIL }" "" "fail"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "js unit count" "68" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "js unit count" "80" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
@@ -321,3 +336,85 @@ capture haseen-network-band
 assert_eq "no Wi-Fi connected prints nothing" "" "$OUTPUT"
 capture haseen-network-band 5 --dry-run
 assert_status "pin without Wi-Fi fails" 1 "$STATUS"
+
+# --- the Wi-Fi QR card (plan 166) ------------------------------------------------
+panel="$(cat "$PLUGIN/Panel.qml")"
+assert_contains "the QR button shows only on a personal Wi-Fi network" "$panel" 'readonly property bool canShareWifi: networkManagerAvailable && kind === "wifi" && connectedWifiNetwork !== null && !isEnterprise(connectedWifiNetwork.security)'
+assert_contains "the card reads the code with haseen network qr" "$panel" 'command: [root.binDir + "/haseen-network-qr", "--meta"]'
+assert_contains "the password is read only on a click, for the shared interface" "$panel" 'pwProc.command = [binDir + "/haseen-network-qr", "--password", qrIface];'
+assert_contains "another network closes the card" "$panel" 'onConnectedSsidChanged: closeQr()'
+assert_contains "the code is one Shape path, not a Canvas" "$panel" 'path: Model.qrPath(root.qrRows, qrCode.module)'
+assert_eq "the panel draws no Canvas and no layer" "" "$(grep -nE 'Canvas \{|layer\.enabled' "$PLUGIN/Panel.qml" || true)"
+assert_eq "the debug hook never reads the password" "" "$(sed -n '/IpcHandler {/,/^    }/p' "$PLUGIN/Panel.qml" | grep -nE 'togglePassword|wifiPassword' || true)"
+
+# --- haseen network qr: the join code and the password ---------------------------
+sandbox network-qr
+root="$SANDBOX/root"
+mkdir -p "$root/sys/class/net/wlan0/wireless" "$root/sys/class/net/eth0"
+stub ip '[ -n "$ROUTE_DEV" ] && echo "1.1.1.1 via 192.0.2.1 dev $ROUTE_DEV src 192.0.2.10 uid 1000"; exit 0'
+# Fields: ssid, key-mgmt, psk, hidden, wep-key0, one per line as nmcli prints
+# them with --escape no.
+stub nmcli 'case "$*" in
+"-t -f DEVICE,TYPE,STATE device status") printf "eth0:ethernet:connected\nwlan1:wifi:connected\n" ;;
+"--get-values GENERAL.CON-UUID device show wlan0"|"--get-values GENERAL.CON-UUID device show wlan1") echo "${UUID-u-1}" ;;
+"--show-secrets --escape no --get-values 802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,802-11-wireless.hidden,802-11-wireless-security.wep-key0 connection show uuid u-1")
+    printf "%s\n%s\n%s\n%s\n%s\n" "${SSID-Cafe;Net}" "${KM-wpa-psk}" "${PSK-pa:ss,w\\d}" "${HIDDEN-no}" "${WEP-}" ;;
+*) echo "STUB-CALLED: nmcli $*" >&2; exit 97 ;;
+esac'
+# qrencode records the payload it was given on stdin and draws a 2x2 code.
+stub qrencode 'cat >"$SANDBOX_QR"; printf "##  \n  ##\n"'
+export SANDBOX_QR="$SANDBOX/payload"
+
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 haseen-network-qr --meta
+assert_status "qr on wifi" 0 "$STATUS"
+assert_eq "meta line, then the matrix" $'meta\twlan0\tWPA\tCafe;Net\n10\n01' "$OUTPUT"
+assert_eq "the payload escapes ; , : and backslash" 'WIFI:T:WPA;S:Cafe\;Net;P:pa\:ss\,w\\d;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=eth0 haseen-network-qr
+assert_eq "a wired default route falls back to the connected Wi-Fi, no meta by default" $'10\n01' "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 HIDDEN=yes KM=none PSK= haseen-network-qr
+assert_eq "an open hidden network" 'WIFI:T:nopass;S:Cafe\;Net;H:true;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 KM=none PSK= WEP=abcde haseen-network-qr --meta
+assert_contains "WEP is key-mgmt none with a wep-key" "$OUTPUT" $'meta\twlan0\tWEP\t'
+assert_eq "WEP shares its key" 'WIFI:T:WEP;S:Cafe\;Net;P:abcde;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 SSID='say "hi"' haseen-network-qr
+assert_eq "a double quote is escaped" 'WIFI:T:WPA;S:say \"hi\";P:pa\:ss\,w\\d;;' "$(cat "$SANDBOX_QR")"
+
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 haseen-network-qr --password
+assert_eq "--password prints the password only" 'pa:ss,w\d' "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 KM=none PSK= haseen-network-qr --password
+assert_status "an open network has no password" 1 "$STATUS"
+assert_eq "and says so" "This network has no password" "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 KM=wpa-eap haseen-network-qr
+assert_status "enterprise refused" 1 "$STATUS"
+assert_eq "enterprise says why" "Enterprise Wi-Fi cannot be shared with a QR code" "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 PSK= haseen-network-qr
+assert_eq "a secured profile without a stored password" "Could not read the Wi-Fi password" "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 UUID=-- haseen-network-qr
+assert_eq "no active profile" "No active Wi-Fi connection" "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 SSID= haseen-network-qr
+assert_eq "no SSID" "Could not read the Wi-Fi name" "$OUTPUT"
+capture haseen-network-qr --bogus
+assert_status "an unknown option is a usage error" 2 "$STATUS"
+capture haseen network qr --help
+assert_contains "help says the password goes to stdout only" "$OUTPUT" "The password goes to stdout only"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 "$HASEEN_PATH/omarchy/bin/omarchy-network-qr" --meta wlan0
+assert_eq "Omarchy's command answers through haseen network qr" $'meta\twlan0\tWPA\tCafe;Net\n10\n01' "$OUTPUT"
+
+# The real qrencode: the matrix is square and decodes back to the payload.
+if [[ -x /usr/bin/qrencode && -x /usr/bin/zbarimg ]]; then
+    command rm -f "$SANDBOX/stubs/qrencode"
+    capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 haseen-network-qr
+    assert_status "real qrencode" 0 "$STATUS"
+    size=$(head -n1 <<<"$OUTPUT" | tr -d '\n' | wc -c)
+    assert_eq "a square matrix" "$size" "$(wc -l <<<"$OUTPUT")"
+    assert_eq "with the quiet zone" "0000" "$(head -n1 <<<"$OUTPUT" | cut -c1-4)"
+    # Each module as 4x4 pixels of a plain PBM, which zbarimg reads.
+    {
+        printf 'P1\n%d %d\n' $((size * 4)) $((size * 4))
+        while IFS= read -r row; do
+            line=$(sed 's/./& & & & /g' <<<"$row")
+            printf '%s\n%s\n%s\n%s\n' "$line" "$line" "$line" "$line"
+        done <<<"$OUTPUT"
+    } >"$SANDBOX/qr.pbm"
+    assert_eq "the code joins the network" 'QR-Code:WIFI:T:WPA;S:Cafe\;Net;P:pa\:ss\,w\\d;;' "$(zbarimg -q "$SANDBOX/qr.pbm" 2>/dev/null || true)"
+fi

@@ -1,11 +1,14 @@
 // Adapted from Omarchy shell/plugins/panels/network/Panel.qml.
 // MIT, Copyright (c) David Heinemeier Hansson.
 // haseen: own layout on haseen widgets and theme tokens; haseen commands
-// (network status/band, setup dns, test network, network portal); no keyboard
-// cursor, Wi-Fi QR card or router ping; samplers at 2 s or slower. The
+// (network status/band, setup dns, test network, network portal, network
+// qr); no keyboard cursor or router ping; samplers at 2 s or slower. The
 // captive-portal row and its re-check follow Omarchy 41a40ccc7 (#8859) and
-// 3357f9059 (#16186), plan 106.
+// 3357f9059 (#16186), plan 106. The Wi-Fi QR card follows Omarchy's
+// omarchy.wifiqr panel (shell/plugins/panels/wifiqr/Panel.qml), shown inline
+// here instead of over a full-screen scrim, plan 166.
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
@@ -21,7 +24,10 @@ import "Model.js" as Model
 // NetworkManager reports a captive portal or limited connectivity, a Sign in
 // row opens the browser on a fixed plain-HTTP page the portal can intercept
 // (`haseen network portal`), and the panel asks NetworkManager to check again
-// every 5 s while it is open; at other times nothing re-checks. Wi-Fi
+// every 5 s while it is open; at other times nothing re-checks. On a
+// personal Wi-Fi network the QR button opens a card with the code that joins
+// it (`haseen network qr`) and, on a click, its password; both are read only
+// then and dropped when the card or the panel closes. Wi-Fi
 // state and actions go through Quickshell.Networking (NetworkManager D-Bus);
 // details, band and DNS through haseen commands sampled only while the panel
 // is open, which is the only time it exists (the host loads panels lazily).
@@ -98,6 +104,30 @@ Column {
     property var wifiNetworks: []
     property bool scanning: false
     readonly property bool wifiStationAvailable: wifiDevice !== null
+
+    // The Wi-Fi QR card (plan 166). Nothing is read until it opens; the
+    // password only on a click, and closeQr() drops both.
+    readonly property bool canShareWifi: networkManagerAvailable && kind === "wifi" && connectedWifiNetwork !== null && !isEnterprise(connectedWifiNetwork.security)
+    readonly property string connectedSsid: connectedWifiNetwork ? (connectedWifiNetwork.name || "") : ""
+    property bool qrOpen: false
+    property bool qrDone: false
+    property var qrRows: []
+    property int qrSize: 0
+    property string qrSsid: ""
+    property string qrIface: ""
+    property string qrSecurity: ""
+    property string qrStderr: ""
+    property string wifiPassword: ""
+    property bool passwordShown: false
+    property bool passwordDone: false
+    property string passwordStderr: ""
+    readonly property string qrFailure: qrDone && qrSize === 0 ? Model.qrError(qrStderr, I18n.mark("Could not make the QR code")) : ""
+    readonly property string passwordFailure: passwordDone && wifiPassword === "" ? Model.qrError(passwordStderr, I18n.mark("Could not read the Wi-Fi password")) : ""
+    // A code scans only dark on light: the lighter of the theme's two ends is
+    // the paper, whatever the theme.
+    readonly property bool qrDarkOnLight: luminance(Theme.foreground) < luminance(Theme.background)
+    readonly property color qrPaper: qrDarkOnLight ? Theme.background : Theme.foreground
+    readonly property color qrInk: qrDarkOnLight ? Theme.foreground : Theme.background
 
     property string dnsProvider: ""
     property string pendingDns: ""
@@ -316,6 +346,67 @@ Column {
         Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "close"]);
     }
 
+    function luminance(c: color): real {
+        return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    }
+
+    function openQr(): void {
+        if (!canShareWifi || qrOpen)
+            return;
+        qrOpen = true;
+        if (qrProc.running)
+            return;
+        qrDone = false;
+        qrStderr = "";
+        qrProc.running = true;
+    }
+
+    // A run cut short leaves a partial matrix, which parses empty: a card
+    // reopened on another network shows an error, never the old code.
+    function closeQr(): void {
+        qrOpen = false;
+        qrProc.running = false;
+        pwProc.running = false;
+        qrDone = false;
+        qrRows = [];
+        qrSize = 0;
+        qrSsid = "";
+        qrIface = "";
+        qrSecurity = "";
+        qrStderr = "";
+        wifiPassword = "";
+        passwordShown = false;
+        passwordDone = false;
+        passwordStderr = "";
+    }
+
+    function updateQr(raw: string): void {
+        const qr = Model.parseQr(raw);
+        qrRows = qr.rows;
+        qrSize = qr.size;
+        qrSsid = qr.ssid;
+        qrIface = qr.iface;
+        qrSecurity = qr.security;
+        qrDone = true;
+    }
+
+    function togglePassword(): void {
+        if (passwordShown) {
+            passwordShown = false;
+            return;
+        }
+        if (wifiPassword !== "") {
+            passwordShown = true;
+            return;
+        }
+        if (pwProc.running || qrIface === "")
+            return;
+        passwordDone = false;
+        passwordStderr = "";
+        pwProc.command = [binDir + "/haseen-network-qr", "--password", qrIface];
+        pwProc.running = true;
+    }
+
     function runSpeedTest(): void {
         Apps.launch([binDir + "/haseen-test-network"]);
         Quickshell.execDetached(["qs", "ipc", "--pid", String(Quickshell.processId), "call", "panel", "close"]);
@@ -436,6 +527,10 @@ Column {
     onWifiNetworkObjectsChanged: syncWifiNetworks()
     onMaxNetworksChanged: syncWifiNetworks()
     onWifiOnChanged: refresh(true)
+    // Another network, or none: the card's code and password are stale.
+    onCanShareWifiChanged: if (!canShareWifi)
+        closeQr()
+    onConnectedSsidChanged: closeQr()
     // A restricted answer may be minutes old (NetworkManager backs off to its
     // 300 s interval): ask again once on open.
     Component.onCompleted: {
@@ -507,6 +602,44 @@ Column {
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: root.dnsProvider = Model.dnsChoice(text)
+        }
+    }
+
+    // Output landing after the card closed is dropped (qrOpen).
+    Process {
+        id: qrProc
+
+        command: [root.binDir + "/haseen-network-qr", "--meta"]
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: if (root.qrOpen)
+                root.updateQr(text)
+        }
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: if (root.qrOpen)
+                root.qrStderr = text
+        }
+    }
+
+    // The password goes from stdout into the card and nowhere else.
+    Process {
+        id: pwProc
+
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                if (!root.qrOpen)
+                    return;
+                root.wifiPassword = text.trim();
+                root.passwordShown = root.wifiPassword !== "";
+                root.passwordDone = true;
+            }
+        }
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: if (root.qrOpen)
+                root.passwordStderr = text
         }
     }
 
@@ -692,6 +825,11 @@ Column {
             root.openPasswordPrompt(name);
         }
 
+        // Opens the QR card; reads the code, never the password.
+        function showQr(): void {
+            root.openQr();
+        }
+
         function state(): string {
             return JSON.stringify({
                 backend: root.networkManagerAvailable ? "NetworkManager" : "none",
@@ -711,6 +849,14 @@ Column {
                     shown: root.canSelectBand
                 },
                 prompting: root.passwordSsid,
+                qr: {
+                    shareable: root.canShareWifi,
+                    open: root.qrOpen,
+                    size: root.qrSize,
+                    ssid: root.qrSsid,
+                    security: root.qrSecurity,
+                    failure: root.qrFailure
+                },
                 sections: root.wifiNetworks.map((n, i) => Model.wifiSectionTitle(root.wifiNetworks, i)).filter(t => t !== ""),
                 networks: root.wifiNetworks.map(n => ({
                             name: n.ssid,
@@ -855,6 +1001,14 @@ Column {
 
             IconAction {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: root.canShareWifi
+                glyph: "\u{F0432}"
+                hintText: root.qrOpen ? I18n.tr("Hide the QR code") : I18n.tr("Share this Wi-Fi with a QR code")
+                onClicked: root.qrOpen ? root.closeQr() : root.openQr()
+            }
+
+            IconAction {
+                anchors.verticalCenter: parent.verticalCenter
                 visible: !!root.info.iface
                 glyph: "\u{F04C5}"
                 hintText: I18n.tr("Run a speed test")
@@ -925,6 +1079,82 @@ Column {
     Note {
         visible: !root.networkManagerAvailable
         text: I18n.tr("NetworkManager is not running.")
+    }
+
+    // ---------- Wi-Fi QR card: only while asked for ----------
+    Column {
+        width: parent.width
+        visible: root.qrOpen
+        spacing: Theme.gap
+
+        // The quiet zone is in the matrix, so the paper's corners can round
+        // without touching the code. Integer modules keep the edges crisp.
+        Rectangle {
+            id: qrCode
+
+            readonly property int module: root.qrSize > 0 ? Math.max(3, Math.floor(Math.min(Theme.space(240), root.width) / root.qrSize)) : 0
+
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.qrSize > 0
+            width: root.qrSize * module
+            height: width
+            radius: Theme.radius
+            color: root.qrPaper
+
+            // One path for every dark module: a Shape has a software backend
+            // and draws right at a fractional scale (plan 156).
+            Shape {
+                anchors.fill: parent
+
+                ShapePath {
+                    strokeColor: "transparent"
+                    strokeWidth: 0
+                    fillColor: root.qrInk
+
+                    PathSvg {
+                        path: Model.qrPath(root.qrRows, qrCode.module)
+                    }
+                }
+            }
+        }
+
+        Note {
+            visible: !root.qrDone
+            horizontalAlignment: Text.AlignHCenter
+            text: I18n.tr("Making the QR code…")
+        }
+
+        Note {
+            visible: root.qrFailure !== ""
+            horizontalAlignment: Text.AlignHCenter
+            color: Theme.urgent
+            text: I18n.tr(root.qrFailure)
+        }
+
+        Note {
+            visible: root.qrSize > 0
+            horizontalAlignment: Text.AlignHCenter
+            text: I18n.tr("Scan with a phone's camera to join %1", root.qrSsid || root.connectedSsid)
+        }
+
+        Note {
+            visible: root.qrSize > 0 && root.qrSecurity !== "" && root.qrSecurity !== "nopass"
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WrapAnywhere
+            color: root.passwordFailure !== "" ? Theme.urgent : root.passwordShown ? Theme.foreground : Theme.accent
+            text: root.passwordFailure !== "" ? I18n.tr(root.passwordFailure) : root.passwordShown ? root.wifiPassword : I18n.tr("Show password")
+            font.underline: passwordMouse.containsMouse
+
+            MouseArea {
+                id: passwordMouse
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: root.hint = containsMouse ? (root.passwordShown ? I18n.tr("Hide the password") : I18n.tr("Show the Wi-Fi password")) : ""
+                onClicked: root.togglePassword()
+            }
+        }
     }
 
     // ---------- Captive portal: only while the link is restricted ----------

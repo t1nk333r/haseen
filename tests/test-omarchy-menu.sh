@@ -43,7 +43,7 @@ SCRIPTS="omarchy-menu omarchy-menu-clipboard omarchy-menu-emoji
 omarchy-menu-emoji-insert omarchy-menu-file omarchy-menu-herdr-keybindings
 omarchy-menu-images omarchy-menu-input omarchy-menu-plugin omarchy-menu-share
 omarchy-menu-tmux-keybindings omarchy-mise-install omarchy-monitor-state
-omarchy-network-password omarchy-network-qr omarchy-network-speedtest
+omarchy-network-password omarchy-network-speedtest
 omarchy-network-status omarchy-notification-battery omarchy-notification-dismiss
 omarchy-notification-send omarchy-notification-time omarchy-notification-wait
 omarchy-notification-weather omarchy-openclaw-onboard omarchy-osd omarchy-pkg-add

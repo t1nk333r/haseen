@@ -760,7 +760,7 @@ Generated from `share/haseen/omarchy/commands.tsv` (446 rows; `omarchy commands 
 |---|---|---|---|
 | `omarchy-network-band` | shim | `haseen-network-band` | reports or sets the Wi-Fi band (auto, 2.4, 5, 6) |
 | `omarchy-network-password` | port |  | prints the active Wi-Fi profile's password, read with nmcli |
-| `omarchy-network-qr` | port |  | prints the Wi-Fi network's QR code as a 0/1 matrix for the QR panel |
+| `omarchy-network-qr` | shim | `haseen-network-qr` | prints the Wi-Fi network's QR code as a 0/1 matrix for the QR panel (a shim since plan 166) |
 | `omarchy-network-speedtest` | port |  | streams one download or upload Mbps figure per second |
 | `omarchy-network-status` | translate | `haseen-network-status` | prints connection type, name, signal and band; --verbose is haseen network status |
 
