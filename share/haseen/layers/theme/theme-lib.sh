@@ -976,11 +976,142 @@ theme_background_active() {
     [[ -n ${XDG_RUNTIME_DIR:-} && -L $XDG_RUNTIME_DIR/systemd/units/invocation:$THEME_BG_UNIT ]]
 }
 
-# theme_background_reload — restart the running background service so swaybg
-# shows the new link. Not running (no session, other shell): nothing to do.
+# theme_background_shown — the image swaybg shows now: the --image argument
+# of the background service's main process. Nothing when it shows a colour,
+# is not running or systemd does not answer.
+theme_background_shown() {
+    local pid cmdline arg prev=""
+    pid="$(systemctl --user show -p MainPID --value "$THEME_BG_UNIT" 2>/dev/null)" || return 0
+    [[ $pid =~ ^[1-9][0-9]*$ ]] || return 0
+    cmdline="$(sysroot_path "/proc/$pid/cmdline")"
+    [[ -r $cmdline ]] || return 0
+    # swaybg can exit between the check and the read (another command
+    # restarting it): then it shows nothing, which is not an error.
+    while IFS= read -r -d '' arg; do
+        if [[ $prev == --image ]]; then
+            printf '%s\n' "$arg"
+            return 0
+        fi
+        prev="$arg"
+    done 2>/dev/null <"$cmdline" || return 0
+}
+
+# theme_background_keep — for theme set, before theme_swap: the image swaybg
+# shows usually lives in current/theme (theme_stage copies a theme's
+# backgrounds into it), and theme_swap deletes that tree before
+# theme_background_reload asks for the transition, which then had no old
+# image, or the new theme's file of the same name (plan 161). Keeps it as
+# current/.background-shown-<pid>-<name>, a hard link (else a copy), and
+# prints that path for theme_background_reload. Prints nothing when swaybg is
+# not running or shows an image outside current/theme, which outlives the
+# swap. `theme_background_unkeep PATH` removes it. The pid keeps two theme
+# sets at once from deleting each other's picture (plan 161's review).
+theme_background_keep() {
+    theme_background_prune
+    theme_background_active || return 0
+    local shown cur keep
+    shown="$(theme_background_shown || true)"
+    [[ -n $shown && -f $shown ]] || return 0
+    cur="$(readlink -f -- "$THEME_CURRENT_PATH" 2>/dev/null || true)"
+    [[ -n $cur && $shown == "$cur"/* ]] || return 0
+    keep="$THEME_CURRENT_DIR/.background-shown-$$-${shown##*/}"
+    ln -f -- "$shown" "$keep" 2>/dev/null || cp -f -- "$shown" "$keep" 2>/dev/null || return 0
+    printf '%s\n' "$keep"
+}
+
+# theme_background_unkeep [PATH] — remove the picture this theme set kept.
+theme_background_unkeep() {
+    [[ -z ${1:-} ]] || rm -f -- "$1"
+    return 0
+}
+
+# theme_background_prune — remove pictures kept by theme sets that are gone
+# (killed halfway); a live one's stays.
+theme_background_prune() {
+    local f pid
+    for f in "$THEME_CURRENT_DIR"/.background-shown-*; do
+        [[ -e $f ]] || continue
+        pid="${f##*/.background-shown-}"
+        pid="${pid%%-*}"
+        if [[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then continue; fi
+        rm -f -- "$f"
+    done
+    return 0
+}
+
+# theme_background_ipc FN [ARGS...] — call the running haseen shell's
+# `background` target (haseen.background's transition, plan 161), silently
+# and for a second at most. Fails when DMS is the active shell or no haseen
+# shell answers.
+theme_background_ipc() {
+    local active=""
+    if [[ -r $HASEEN_USER_STATE/active-shell ]]; then
+        read -r active _ <"$HASEEN_USER_STATE/active-shell" || true
+    fi
+    [[ $active != dms ]] && have qs || return 1
+    timeout 1 qs -p "$HASEEN_PATH/shell" ipc call background "$@" 2>/dev/null
+}
+
+# theme_background_reload [OLD] — restart the running background service so
+# swaybg shows the new link. Not running (no session, other shell): nothing
+# to do. OLD is the image swaybg shows when it can no longer be read from
+# swaybg's arguments (theme set, theme_background_keep).
+#
+# Around the restart, the shell covers the change (plan 161): asked first, it
+# opens a cover per screen showing the image swaybg shows now and starts the
+# transition once that is on screen, which this waits for (about a second
+# at most). swaybg restarts underneath, unseen; `shown` then lets the cover
+# end on the new image and go. Every step is best effort: with no haseen
+# shell, under DMS, or with any answer but "loading", swaybg restarts at once
+# as before, so the wallpaper always changes.
+#
+# One reload at a time (a lock beside the link): a second `bg next` pressed
+# during a change waits for the first one's `shown`, so that `shown` never
+# lands on the second change. The shell keeps its covers for the second.
 theme_background_reload() {
     theme_background_active || return 0
+    if $DRY_RUN; then
+        local new
+        new="$(readlink -f -- "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+        echo "DRYRUN: haseen shell ipc background begin <the image swaybg shows> ${new:-<no image>}"
+        run systemctl --user try-restart "$THEME_BG_UNIT"
+        echo "DRYRUN: haseen shell ipc background shown"
+        return 0
+    fi
+    local lock="" rc=0
+    # A whole reload takes 4.2 s at worst (1 s begin, 1.2 s of polls, the
+    # last poll's 1 s, 1 s shown); past 5 s, go ahead unlocked.
+    if exec {lock}>>"$THEME_CURRENT_DIR/.background-reload.lock"; then
+        flock -w 5 "$lock" || true
+    fi 2>/dev/null
+    _theme_background_reload_locked "$@" || rc=$?
+    if [[ -n $lock ]]; then exec {lock}>&-; fi
+    return "$rc"
+}
+
+_theme_background_reload_locked() {
+    local old="${1:-}" new answer="" state deadline rc=0
+    new="$(readlink -f -- "$THEME_BACKGROUND_LINK" 2>/dev/null || true)"
+    [[ -n $old ]] || old="$(theme_background_shown || true)"
+    if [[ -n $old && -n $new && $old != "$new" && -f $old && -f $new ]]; then
+        answer="$(theme_background_ipc begin "$old" "$new")" || rc=$?
+    fi
+    if [[ $answer == loading ]]; then
+        # EPOCHREALTIME's separator follows the locale; microseconds either way.
+        deadline=$((${EPOCHREALTIME/[.,]/} + 1200000))
+        while ((${EPOCHREALTIME/[.,]/} < deadline)); do
+            state="$(theme_background_ipc state || true)"
+            [[ $state == loading ]] || break
+            sleep 0.03
+        done
+    fi
     run systemctl --user try-restart "$THEME_BG_UNIT" || warn "restarting $THEME_BG_UNIT failed"
+    # Also after a `begin` that timed out (124): a busy shell may still run
+    # it after the restart, and would then cover the new image with the old
+    # one until its safety bound; `shown` while loading ends that change.
+    if [[ $answer == loading ]] || ((rc == 124)); then
+        theme_background_ipc shown >/dev/null || true
+    fi
 }
 
 # --- fetched images (haseen theme fetch) ------------------------------------

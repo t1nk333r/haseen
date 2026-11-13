@@ -270,6 +270,15 @@ hl.layer_rule({
   no_anim = true,
   animation = "none",
 })
+-- The wallpaper transition's covers (plan 161) must be whole on their first
+-- frame: the CLI restarts swaybg under them once they have drawn, and a
+-- cover still fading in would show the gap.
+hl.layer_rule({
+  name = "haseen_background_transition",
+  match = { namespace = "^haseen-background-transition$" },
+  no_anim = true,
+  animation = "none",
+})
 hl.layer_rule({
   name = "haseen_popped_layers",
   match = { namespace = "^(haseen-osd|haseen-panel|omarchy-keyboard-panel)$" },

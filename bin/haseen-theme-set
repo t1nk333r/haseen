@@ -124,6 +124,12 @@ exec 9>"$THEME_CURRENT_DIR/.theme-set.lock"
 flock 9
 theme_stage "$name" || exit 1
 theme_remember_background
+# The image swaybg shows is usually inside current/theme, which theme_swap
+# deletes: keep it for the transition's old picture (plan 161).
+shown_before=""
+if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
+    shown_before="$(theme_background_keep)"
+fi
 theme_swap "$name"
 theme_link_background "$name"
 flock -u 9
@@ -135,7 +141,8 @@ for line in "${THEME_NVIM_CHANGED[@]}"; do info "$line"; done
 info "theme: $name"
 theme_post_set "$THEME_CURRENT_PATH"
 if [[ ${HASEEN_THEME_HEADLESS:-0} != 1 ]]; then
-    theme_background_reload
+    theme_background_reload "$shown_before"
+    theme_background_unkeep "$shown_before"
     # Omarchy images arrive in the background; haseen-theme-fetch links the
     # first one when this theme is still current and has none.
     theme_fetch_in_background "$name"

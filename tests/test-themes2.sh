@@ -233,7 +233,10 @@ assert_eq "dry run restarts nothing" "" "$(cat "$SANDBOX/systemctl.log" 2>/dev/n
 capture haseen theme bg set 3-c.webp
 assert_status "bg set by file name" 0 "$STATUS"
 assert_eq "bg set links it" "$CACHE/tokyo-night/backgrounds/3-c.webp" "$(readlink "$CUR/background")"
-assert_eq "bg set restarts the service" "systemctl --user try-restart haseen-background.service" "$(cat "$SANDBOX/systemctl.log")"
+# It first asks which image swaybg shows, for the transition (plan 161); the
+# stub names no process, so no transition is asked for.
+assert_eq "bg set restarts the service" "systemctl --user show -p MainPID --value haseen-background.service
+systemctl --user try-restart haseen-background.service" "$(cat "$SANDBOX/systemctl.log")"
 capture haseen theme bg set "$HOME/.config/haseen/backgrounds/tokyo-night/0-mine.png"
 assert_eq "bg set by path" "$HOME/.config/haseen/backgrounds/tokyo-night/0-mine.png" "$(readlink "$CUR/background")"
 capture haseen theme bg set "$HOME/notes.txt"
