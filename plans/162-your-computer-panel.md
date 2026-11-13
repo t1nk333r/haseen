@@ -17,7 +17,9 @@
   Unix socket paths too long there, and those three files, `test-media`,
   `test-menu-back` and `test-wooting`, 368/368 from a short bind mount; seen live
   in a harness against a real haseen-sidecar on luna; the panel in the
-  owner's session on luna and IO is an owner step).
+  owner's session on luna and IO is an owner step). The history moved to a
+  background service in plan 165 (owner, 2026-11-13): the panel no longer
+  starts an empty graph each time it opens.
 
 ## Problem
 

@@ -1,7 +1,7 @@
 .pragma library
 
-// The arithmetic behind haseen.computer's panel (plan 162): the history kept
-// while the panel is open, where each sample lands on a graph, the smooth line
+// The arithmetic behind haseen.computer's panel (plans 162, 165): the
+// history the service keeps, where each sample lands on a graph, the smooth line
 // through them, the temperature's word, the sizes and the uptime. No Qt or
 // Quickshell types, so tests/test-computer.sh runs it headless under
 // /usr/lib/qt6/bin/qml.
@@ -13,19 +13,21 @@
 // them (I18n.tr); N_ marks them for tools/i18n.py (plan 109).
 function N_(text) { return text; }
 
-// The span every graph shows, and how often the panel asks the sidecar for a
-// sample while it is open: 30 samples make the 90 s line.
+// The span every graph shows, and how often the service asks the sidecar for
+// a sample: 30 samples make the 90 s line.
 var WINDOW_MS = 90000;
 var INTERVAL_MS = 3000;
 
 // push(history, t, value) -> a new history with {t, v} appended and every
-// sample older than the window before t dropped. A value that is not a
-// finite number, or a negative one (the sidecar's -1, "unknown"), is not
-// recorded, so a sensor that never answers leaves its history empty. A new
-// array each time, so a QML binding on the property sees the change.
+// sample older than the window before t dropped, and every sample newer than
+// t: the clock stepped back, and a history the service keeps for the whole
+// session would otherwise hold them until the clock caught up. A value that
+// is not a finite number, or a negative one (the sidecar's -1, "unknown"), is
+// not recorded, so a sensor that never answers leaves its history empty. A
+// new array each time, so a QML binding on the property sees the change.
 function push(history, t, value, windowMs) {
     const span = windowMs > 0 ? windowMs : WINDOW_MS;
-    const kept = (history || []).filter(s => s && t - s.t <= span);
+    const kept = (history || []).filter(s => s && s.t <= t && t - s.t <= span);
     if (typeof value === "number" && isFinite(value) && value >= 0)
         kept.push({ t: t, v: value });
     return kept;

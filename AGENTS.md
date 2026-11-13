@@ -59,7 +59,8 @@ between parts. The engineering record is `plans/`, indexed by
     - also: the launcher's agent accounts, no prefix: type `account` (owner,
       2026-10-26, plan 132);
     - also: the Your computer panel, haseen.computer (owner, 2026-11-12,
-      plan 162);
+      plan 162), and its service, which keeps the panel's 90 s history in
+      the background (owner, 2026-11-13, plan 165);
     - the desktop itself, never optional: launcher, menu, notifications,
       session, background.
   - Installed with the shell layer (owner, 2026-10-07, plan 073): the Helium
