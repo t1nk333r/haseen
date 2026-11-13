@@ -1100,6 +1100,9 @@ corpus, the wallpapers or the damaged files:
   `IsPrint` table is not ported. A path that is not UTF-8 is read as the
   bytes it is, as Go read it, and shown in messages with U+FFFD where Go
   printed the raw bytes.
+- A `--mode` value that is not UTF-8 is refused with the same exit code (1)
+  but shown with U+FFFD, where Go printed `\xHH` for each invalid byte; the
+  flags are read from a lossy copy of the arguments.
 - A cache directory (`HASEEN_PALETTE_CACHE`, `XDG_CACHE_HOME`, `HOME`) that
   is not UTF-8 means no cache; Go cached in it. The cache paths are strings
   here, and the alternative, falling back to the next variable, would have
@@ -1160,7 +1163,10 @@ CI change and the corpus script. Fixed:
   test `a_path_that_is_not_utf8_still_works`, which fails before.
 - **A failed write to stdout aborted** (Fable): output now goes through one
   function that ignores a write error as Go's fmt did, and exits 141 on a
-  closed pipe.
+  closed pipe. Sonnet's delta review found the same on stderr (a full
+  stderr exited 134 where Go exited 1 or 2); a follow-up pull request
+  writes stderr the same way (test `a_full_stderr_is_not_a_crash`, which
+  fails before).
 - **A re-cut release kept its old notes** (Fable): an existing release's
   notes are rewritten (`gh release edit`).
 - **The VP8 inverse DCT** wraps explicitly, so a debug build no longer
