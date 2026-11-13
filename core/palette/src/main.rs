@@ -45,7 +45,7 @@ fn usage() {
         }
         text.push('\n');
     }
-    eprint!("{text}");
+    say(&text);
 }
 
 /// Go's bool flag values.
@@ -80,7 +80,7 @@ fn parse_flags(args: &[String]) -> Flags {
         first_arg: 0,
     };
     let fail = |msg: String| -> ! {
-        eprintln!("{msg}");
+        say(&format!("{msg}\n"));
         usage();
         std::process::exit(2);
     };
@@ -169,7 +169,7 @@ fn main() {
     }
     let (result, err) = generate(&os_args[f.first_arg], f.light, &f.mode);
     if let Some(e) = err {
-        eprintln!("haseen-palette: {e}");
+        say(&format!("haseen-palette: {e}\n"));
         std::process::exit(1);
     }
     let result = result.expect("a palette when there is no error");
@@ -178,6 +178,13 @@ fn main() {
         return;
     }
     emit(&result.colors_toml());
+}
+
+/// Standard error as Go wrote it: a failed write is ignored. eprintln!
+/// would panic, and panic aborts with a core dump (plan 167's review).
+fn say(text: &str) {
+    use std::io::Write;
+    let _ = std::io::stderr().lock().write_all(text.as_bytes());
 }
 
 /// Standard output as Go's fmt wrote it: an error is ignored (a full disk

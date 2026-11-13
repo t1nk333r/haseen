@@ -167,3 +167,27 @@ fn a_path_that_is_not_utf8_still_works() {
         plain.0
     );
 }
+
+#[test]
+fn a_full_stderr_is_not_a_crash() {
+    // Go ignored a failed write to stderr; eprintln! would panic and the
+    // release profile aborts on panic (plan 167's review).
+    let full = || {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .expect("/dev/full")
+    };
+    let missing = Command::new(BIN)
+        .arg("no-such-image.png")
+        .stderr(full())
+        .status()
+        .expect("run haseen-palette");
+    assert_eq!(missing.code(), Some(1));
+    let bad_flag = Command::new(BIN)
+        .arg("--bogus")
+        .stderr(full())
+        .status()
+        .expect("run haseen-palette");
+    assert_eq!(bad_flag.code(), Some(2));
+}
