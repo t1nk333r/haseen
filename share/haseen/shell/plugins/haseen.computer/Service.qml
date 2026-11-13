@@ -12,7 +12,12 @@ import "Computer.js" as Computer
 // `sysusage` stream every 3 s with `system` (the temperature and the disks),
 // which Sidecar merges with the bar widget's 3 s one, so the daemon still runs
 // one sampler and only adds the system readings to it. What it keeps is
-// bounded by time: 31 samples per history at most.
+// bounded by time, the last 90 s: 31 samples while every consumer asks for
+// 3 s, as all shipped ones do.
+//
+// It does not restart a daemon that died: Sidecar keeps the subscription and
+// sends it again on the next hello, but only an ensure() from elsewhere
+// (opening the panel, the bar widget) starts the daemon again.
 Scope {
     id: root
 
@@ -21,7 +26,6 @@ Scope {
     property var settings: ({})
     property var screen: null
 
-    readonly property bool available: Sidecar.has("sysusage")
     readonly property var sample: Sidecar.streams["sysusage"] || null
 
     // The histories, {t, v} per sample, newest last (Computer.push).

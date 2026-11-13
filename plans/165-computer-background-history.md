@@ -6,8 +6,9 @@
 - **Effort**: S
 - **Risk**: LOW. One always-on service that only remembers: it adds the
   `system` readings to the sidecar sample the bar widget already asks for
-  every 3 s, and holds at most 31 samples per graph. A one-line lock in the
-  sidecar serialises samples that could already overlap.
+  every 3 s, and holds the last 90 s per graph (31 samples while every
+  consumer asks for 3 s, as all shipped ones do). A short lock in the sidecar
+  (`sampleMu`) serialises samples that could already overlap.
 - **Depends on**: 032 (haseen-sidecar), 075 (appending a default service to
   a user's own list), 162 (the Your computer panel)
 - **Category**: shell, sidecar
