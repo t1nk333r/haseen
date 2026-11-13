@@ -23,7 +23,8 @@
 # plugin, so it never stops an install. HASEEN_REQUIRE_CARGO=1 makes that an
 # error instead.
 # HASEEN_BUILD_SIDECAR=0 leaves out the daemon and the palette,
-# HASEEN_BUILD_PALETTE=0 the palette only, HASEEN_BUILD_WOOTINGD=0 wootingd.
+# HASEEN_BUILD_DAEMON=0 the daemon only, HASEEN_BUILD_PALETTE=0 the palette
+# only, HASEEN_BUILD_WOOTINGD=0 wootingd.
 set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -50,9 +51,10 @@ cargo_runs() {
     command -v cargo >/dev/null && cargo --version >/dev/null 2>&1
 }
 
-# install_asset NAME FILE — put one helper where the tree keeps it.
+# install_asset NAME FILE — put one helper where the tree keeps it. Every
+# step returns its failure: fetch_assets runs where errexit is off.
 install_asset() {
-    mkdir -p "$OUT_DIR"
+    mkdir -p "$OUT_DIR" || return 1
     case $1 in
     haseen-sidecar) install -m 0755 "$2" "$DEST" ;;
     *) install -m 0755 "$2" "$OUT_DIR/$1" ;;
@@ -61,7 +63,10 @@ install_asset() {
 
 # fetch_assets WHY NAME... — the prebuilt helpers for the release of this
 # version. WHY says what could not build them. Nothing is installed unless
-# SHA256SUMS names every one and the hashes match.
+# SHA256SUMS names every one and the hashes match. It is called as
+# plainly, so errexit ends the script on a `return 1`; and every step that can
+# fail is checked here anyway, because an `||` around the call would turn
+# errexit off for the whole body (plan 167's review).
 fetch_assets() {
     local why="$1" arch tmp name where
     shift
@@ -73,7 +78,10 @@ fetch_assets() {
         echo "build-sidecar: $why and no curl; $* not installed" >&2
         return 0
     fi
-    tmp="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sidecar.XXXXXX")"
+    if ! tmp="$(mktemp -d "${TMPDIR:-/tmp}/haseen-sidecar.XXXXXX")"; then
+        echo "build-sidecar: no temporary directory for the download; $* not installed" >&2
+        return 1
+    fi
     # A slow link is not a missing release: IO took 2m6s for the palette on
     # 2026-10-26, past the 120 s this used to allow, and the install said the
     # asset was not in the release. HASEEN_SIDECAR_TIMEOUT moves the limit.
@@ -115,7 +123,11 @@ fetch_assets() {
         return 1
     fi
     for name in "$@"; do
-        install_asset "$name" "$tmp/$name-linux-$arch"
+        if ! install_asset "$name" "$tmp/$name-linux-$arch"; then
+            rm -rf -- "$tmp"
+            echo "build-sidecar: $name could not be installed in $OUT_DIR" >&2
+            return 1
+        fi
         [[ $name == haseen-sidecar ]] && where="$DEST" || where="$OUT_DIR/$name"
         echo "build-sidecar: $where ($VERSION, fetched linux-$arch)"
     done
@@ -212,13 +224,13 @@ build_wootingd() {
 }
 
 if [[ ${HASEEN_BUILD_SIDECAR:-1} != 0 ]]; then
-    build_sidecar
+    [[ ${HASEEN_BUILD_DAEMON:-1} == 0 ]] || build_sidecar
     [[ ${HASEEN_BUILD_PALETTE:-1} == 0 ]] || build_palette
     if ((${#FETCH[@]} > 0)); then
         # One reason, or both when the two helpers failed differently.
         why="${FETCH_WHY[0]}"
         [[ ${FETCH_WHY[1]:-${FETCH_WHY[0]}} == "${FETCH_WHY[0]}" ]] || why+=" and ${FETCH_WHY[1]}"
-        fetch_assets "$why" "${FETCH[@]}" || exit
+        fetch_assets "$why" "${FETCH[@]}"
     fi
 fi
 [[ ${HASEEN_BUILD_WOOTINGD:-1} == 0 ]] || build_wootingd

@@ -29,7 +29,7 @@ while (($# > 0)); do
         shift
         ;;
     -h | --help)
-        sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
     *)
@@ -94,7 +94,10 @@ check_version() { # ARCH RUNNER...
 }
 case "$(uname -m)" in
 x86_64) check_version amd64 env ;;
-aarch64) check_version arm64 env ;;
+aarch64)
+    check_version arm64 env
+    echo "release-sidecar: an arm64 host; the amd64 daemon is published untried" >&2
+    ;;
 esac
 if [[ $(uname -m) != aarch64 ]]; then
     if command -v qemu-aarch64-static >/dev/null; then

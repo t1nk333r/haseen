@@ -53,6 +53,17 @@ assert_status "sums that name neither asset fail" 1 "$STATUS"
 assert_contains "and say so" "$OUTPUT" "SHA256SUMS does not name haseen-sidecar-linux-$arch"
 assert_eq "with nothing installed" "no" "$([[ -e $SANDBOX/out4/haseen-sidecar ]] && echo yes || echo no)"
 
+# --- a destination that cannot be written is an error, not a fetch ----------
+# The fetch runs where bash suspends errexit, so a failed install used to be
+# reported as fetched and exit 0 (plan 167's review). A file where the
+# directory should be stops root as well.
+assets
+: >"$SANDBOX/blocker"
+capture env GO="$SANDBOX/no-go" HASEEN_SIDECAR_URL="file://$rel" HASEEN_BUILD_WOOTINGD=0 "$BUILD" "$SANDBOX/blocker/haseen-sidecar"
+assert_status "an unwritable destination fails" 1 "$STATUS"
+assert_contains "and says what could not be installed" "$OUTPUT" "haseen-sidecar could not be installed in $SANDBOX/blocker"
+assert_not_contains "with nothing reported as fetched" "$OUTPUT" "fetched linux-$arch"
+
 # --- a go that is on PATH but does not run counts as none -------------------
 # A mise shim with no version set is a `go` that exists and then fails; the
 # install has to fetch, not stop (IO, 2026-10-26; plan 130).

@@ -15,8 +15,10 @@ Verification.
   nothing to a user: the Rust binary is built and compared, not installed.
 - **Depends on**: 032 (the sidecar), 058 (system stats), 069 (border wipe),
   099 (wootingd, the Rust precedent), 100 (affected tests), 127 (release
-  binaries), 165 (PR #126, open while this was planned: it adds `sampleMu`
-  and `core/internal/server/server_test.go`)
+  binaries), 165 (PR #126, open while this was planned and merged
+  2026-11-13 as bc0c876: it added `sampleMu` and
+  `core/internal/server/server_test.go`, both removed with the Go daemon in
+  phase 2)
 - **Category**: core
 - **Planned at**: 2026-11-13, owner through the coordinator: port the Go
   daemon to Rust in three phases, each its own pull request
@@ -836,7 +838,8 @@ The rest were not asked again and keep this plan's recommendation: Q3 the
 release stays a local script; Q4 `libc` stays the one dependency; Q5 no
 `rust-version` (a cargo build that fails now fetches the release, which is
 what an old compiler needs); Q8 and Q9 keep Go's behaviour; Q10 was moot
-(PR #126 merged first, and its Go test went with the Go server: the Rust
+(PR #126 merged first; merging main brought its `server.go` change and
+`server_test.go`, and both went with the Go server: the Rust
 daemon has one sampler thread, and `concurrent_subscribers` plus
 `a_stuck_client_does_not_stop_the_others` cover what the test guarded).
 
@@ -856,9 +859,12 @@ daemon has one sampler thread, and `concurrent_subscribers` plus
   release in one go, under one `SHA256SUMS`, with the reasons joined (`cargo
   does not run and no go toolchain`); a cargo build that fails is fetched
   too. `HASEEN_BUILD_SIDECAR=0` still leaves both out (test-wootingd uses
-  it); `HASEEN_BUILD_PALETTE=0` leaves out the palette only.
-  `tests/test-sidecar-fetch.sh` (27 checks) adds a cargo that builds while go
-  is missing (only the palette is fetched) and a cargo build that fails.
+  it); `HASEEN_BUILD_PALETTE=0` leaves out the palette only, and
+  `HASEEN_BUILD_DAEMON=0` the daemon only (test-wallpaper uses it, so it
+  builds no daemon it does not use). `tests/test-sidecar-fetch.sh` (30
+  checks) adds a cargo that builds while go is missing (only the palette is
+  fetched), a cargo build that fails, and a destination that cannot be
+  written.
 - **`tools/release-sidecar.sh`** builds the daemon for
   `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, linking
   arm64 with `rust-lld` (the host's `cc` cannot: `ld` failed on the first
@@ -869,11 +875,18 @@ daemon has one sampler thread, and `concurrent_subscribers` plus
   qemu-aarch64-static 11.1.2. That settles the "arm64 static link is
   unverified" risk. `tests/test-sidecar-release.sh` (25 checks) stubs cargo
   per target and checks the refusal.
-- **`share/haseen/VERSION` is not bumped here** (D7 said phase 2). The next
-  release is cut after phase 3, which bumps it once for both helpers; until
-  then a machine without cargo fetches `sidecar-v0.2.5`, whose Go daemon
-  answers byte for byte as this one. Bumping it here would also select about
-  a hundred test files for a number no user sees.
+- **`share/haseen/VERSION` stays 0.2.5** (D7 said bump it). It is haseen's
+  own version, set in its own PR (3581f75), not the sidecar's. Instead the
+  `sidecar-v0.2.5` release is re-cut right after this phase merges:
+  `tools/release-sidecar.sh` replaces its assets (`--clobber`) with the
+  static Rust daemons and the same Go palette. That has to happen at once,
+  not after phase 3: the 0.2.5 assets were built on 2026-10-31, before PR
+  #126's `sampleMu` fix, and #126 also turned on the always-on subscriber
+  that makes the race likely, so until the re-cut a machine without cargo
+  fetches a Go daemon that can crash (Fable 5.2's review). The tag stays on
+  3581f75, because `--target` only applies when a release is created, and an
+  install during the upload can fail the hash check and stop: both as
+  before.
 - **The theme's pace is clamped** (the follow-up phase 1's review left): a
   turn shorter than one frame is one frame of 100 ms, not one frame a turn
   (`pace_cuts_a_turn_into_frames`, 0.001 s), and `border_wipe_seconds = inf`
@@ -891,10 +904,40 @@ daemon has one sampler thread, and `concurrent_subscribers` plus
   `NOTICE.md` (the DMS row now names `core/sidecar/`); `handoff.md`;
   `bin/haseen-sidecar`'s help.
 
-Owner steps after phase 3 merges: `tools/release-sidecar.sh` (it builds
-both helpers for both architectures and checks each daemon runs), then one
-machine without cargo installs and shows `haseen sidecar status`, the
-sysusage pill, the Your computer panel and the border wipe.
+### Phase 2 review
+
+Claude Sonnet reviewed 8d0c00f (probes: the build matrix with stubs, the
+golden files replayed against the Go daemon built from ed40e17, 31/31, and
+mutations of the Rust daemon, which failed the comparisons). Fable 5.2 then
+checked that review. Fixed:
+
+- **A failed install was reported as fetched** (Sonnet, medium). The fetch
+  was called as `fetch_assets ... || exit`, and bash turns errexit off for
+  everything inside an `||` list, so with an unwritable destination it
+  printed "Permission denied", then "fetched", and exited 0. It is now
+  called plainly (Fable's fix) and every install step and `mktemp` is
+  checked too; the new fetch case fails three checks without the fix.
+- **`release-sidecar.sh --help`** printed `set -Eeuo pipefail` (Sonnet).
+- **An arm64 host** published the amd64 daemon untried without a word; it
+  now warns, as the missing-qemu case does (Sonnet).
+- **"Byte for byte"** in architecture §5.6 now lists the differences
+  (Sonnet).
+- **The branch lacked PR #126** (Fable, missed by the first review): main
+  is merged and #126's Go server change and test are removed with the rest.
+- **Not bumping VERSION would have kept fetching a racy Go daemon** (Fable):
+  the release is re-cut right after the merge (the VERSION bullet above).
+- **test-wallpaper built a daemon it does not use**, `install.sh`'s comment
+  still named Go, and the README row named the removed test (Fable).
+
+Recorded, not changed: a sub-frame turn is one frame at angle 0 every
+100 ms and `status` still reports the theme's seconds (Sonnet, an
+observation).
+
+Owner steps after this phase merges: the coordinator re-cuts the 0.2.5
+release with `tools/release-sidecar.sh` (it builds both helpers for both
+architectures and checks each daemon runs); then one machine without cargo
+installs and shows `haseen sidecar status`, the sysusage pill, the Your
+computer panel and the border wipe.
 
 ## Rejected options
 
