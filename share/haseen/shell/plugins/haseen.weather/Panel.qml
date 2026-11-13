@@ -6,8 +6,9 @@ import qs.Haseen.Widgets
 import "Model.js" as Model
 
 // The weather panel, laid out as Omarchy's (shell/plugins/panels/weather/
-// Panel.qml; MIT, Copyright (c) David Heinemeier Hansson): big icon and
-// temperature, the location with feels/wind/humidity, the next three days.
+// Panel.qml; MIT, Copyright (c) David Heinemeier Hansson), compacted (plan
+// 164): icon, temperature and location on one row, feels/wind/humidity on
+// the next, then the next three days.
 // Click the location (or press Enter) to search a city (Open-Meteo
 // geocoding); an empty search returns to automatic (GeoClue, else IP).
 // The data comes from the haseen.weather service (role `weather`).
@@ -116,8 +117,8 @@ Column {
             cancelEditingLocation();
     }
 
-    width: Theme.fontSize * 34
-    spacing: Theme.gap * 1.5
+    width: Theme.fontSize * 26
+    spacing: Theme.gap
     Component.onCompleted: keyCatcher.forceActiveFocus()
 
     Item {
@@ -140,30 +141,29 @@ Column {
         font.pixelSize: Theme.font.body
     }
 
-    // ---- Hero: big icon and temperature; location and stats on the right.
+    // ---- Hero: icon and temperature, the location at the row's end.
     Item {
         width: parent.width
-        height: Math.max(heroLeft.height, heroRight.height)
+        height: Math.max(heroLeft.height, locationLabel.height)
         visible: root.service !== null
 
         Row {
             id: heroLeft
 
             anchors.left: parent.left
-            anchors.leftMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Theme.gap * 1.5
+            spacing: Theme.gap
 
             Glyph {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: root.service && root.service.label ? root.service.label : "—"
-                font.pixelSize: Theme.font.display
+                font.pixelSize: Theme.font.iconLarge
             }
 
             // The number and its unit read "21°C" in every language.
             Row {
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
+                spacing: 1
                 LayoutMirroring.enabled: false
 
                 Text {
@@ -173,205 +173,202 @@ Column {
                     text: root.service && root.service.reportTempNum ? root.service.reportTempNum : "—"
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.font.display
+                    font.pixelSize: Theme.font.heading
                     font.bold: true
                 }
 
                 Text {
-                    anchors.top: tempBig.top
-                    anchors.topMargin: Theme.gap
+                    anchors.baseline: tempBig.baseline
                     textFormat: Text.PlainText
                     text: root.hasCurrent ? root.service.tempUnit : ""
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.font.title
+                    font.pixelSize: Theme.font.bodySmall
                 }
             }
         }
 
-        Column {
-            id: heroRight
+        // Anchored to the row's end, so a mirrored panel (plan 109) puts it
+        // on the left.
+        Row {
+            id: locationLabel
 
             anchors.right: parent.right
-            anchors.rightMargin: Theme.gap
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.max(stats.implicitWidth, Theme.fontSize * 14)
-            spacing: Theme.gap
+            visible: !root.editingLocation
+            spacing: Math.round(Theme.gap / 2)
 
-            // Anchored to the column's start, so a mirrored panel (plan 109)
-            // lines these rows up on the right.
-            Row {
-                anchors.left: parent.left
-                visible: !root.editingLocation
+            TapHandler {
+                onTapped: root.startEditingLocation()
+            }
+            HoverHandler {
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            Glyph {
+                id: marker
+
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: "" // nf-fa-map_marker
+                color: Theme.muted
+                font.pixelSize: Theme.font.bodySmall
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, root.width - heroLeft.width - marker.width - Theme.gap * 2)
+                textFormat: Text.PlainText
+                text: root.service && root.service.reportLocation !== "" ? root.service.reportLocation.toUpperCase() : I18n.tr("SET LOCATION")
+                color: Theme.muted
+                elide: Text.ElideRight
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.font.bodySmall
+                font.letterSpacing: 1
+            }
+        }
+    }
+
+    // ---- The city search, in place of the stats while it is open.
+    Row {
+        width: parent.width
+        visible: root.service !== null && root.editingLocation
+        spacing: Math.round(Theme.gap / 2)
+
+        TextInput {
+            id: locationField
+
+            width: parent.width - clearButton.width - parent.spacing
+            enabled: !root.savingLocation
+            leftPadding: Math.round(Theme.gap * 0.75)
+            rightPadding: leftPadding
+            topPadding: Math.round(Theme.gap / 2)
+            bottomPadding: topPadding
+            clip: true
+            selectByMouse: true
+            color: Theme.foreground
+            selectionColor: Theme.selection
+            selectedTextColor: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.font.body
+
+            onTextChanged: {
+                if (root.editingLocation && !root.savingLocation)
+                    geocodeDebounce.restart();
+            }
+            // Escape cancels the search instead of closing the panel
+            // (PanelPopup's window shortcut).
+            Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_Escape
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Escape) {
+                    root.cancelEditingLocation();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Down) {
+                    if (root.suggestionIndex < root.locationSuggestions.length - 1)
+                        root.suggestionIndex++;
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Up) {
+                    if (root.suggestionIndex > 0)
+                        root.suggestionIndex--;
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.commitLocation();
+                    event.accepted = true;
+                }
+            }
+
+            Rectangle {
+                z: -1
+                anchors.fill: parent
+                radius: Theme.radius
+                color: Theme.surfaceAlt
+                border.width: Theme.borderWidth
+                border.color: locationField.activeFocus ? Theme.accent : Theme.border
+            }
+
+            Text {
+                anchors.fill: parent
+                anchors.leftMargin: locationField.leftPadding
+                verticalAlignment: Text.AlignVCenter
+                visible: locationField.text === ""
+                text: I18n.tr("Search city (empty = automatic)")
+                color: Theme.muted
+                elide: Text.ElideRight
+                font: locationField.font
+            }
+        }
+
+        // Clear back to automatic; a spinner while a location loads.
+        Rectangle {
+            id: clearButton
+
+            width: Theme.fontSize + Theme.gap
+            height: width
+            anchors.verticalCenter: parent.verticalCenter
+            radius: Theme.radius
+            color: !root.savingLocation && clearArea.containsMouse ? Theme.selection : "transparent"
+
+            Glyph {
+                anchors.centerIn: parent
+                glyph: root.savingLocation ? "\u{f0996}" : "✕"
+                color: Theme.muted
+                font.pixelSize: Theme.font.body
+
+                RotationAnimator on rotation {
+                    running: root.savingLocation
+                    from: 0
+                    to: 360
+                    duration: 800
+                    loops: Animation.Infinite
+                }
+            }
+
+            MouseArea {
+                id: clearArea
+
+                anchors.fill: parent
+                enabled: !root.savingLocation
+                hoverEnabled: true
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: root.clearLocation()
+            }
+        }
+    }
+
+    // ---- Feels, wind and humidity on one line; wraps if a language needs it.
+    Flow {
+        width: parent.width
+        visible: root.hasCurrent && !root.editingLocation
+        spacing: Theme.gap * 2
+
+        Repeater {
+            model: [
+                { label: I18n.mark("FEELS"), value: root.service ? root.service.reportFeels : "" },
+                { label: I18n.mark("WIND"), value: root.service ? root.service.reportWind : "" },
+                { label: I18n.mark("HUMID"), value: root.service ? root.service.reportHumidity : "" }
+            ]
+
+            delegate: Row {
+                required property var modelData
+
                 spacing: Math.round(Theme.gap / 2)
 
-                TapHandler {
-                    onTapped: root.startEditingLocation()
-                }
-                HoverHandler {
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                Glyph {
-                    anchors.verticalCenter: parent.verticalCenter
-                    glyph: "\uf041" // nf-fa-map_marker
+                Text {
+                    anchors.baseline: statValue.baseline
+                    text: I18n.tr(modelData.label)
                     color: Theme.muted
-                    font.pixelSize: Theme.font.body
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.font.caption
+                    font.letterSpacing: 1
                 }
 
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, heroRight.width - Theme.fontSize * 2)
+                    id: statValue
+
                     textFormat: Text.PlainText
-                    text: root.service && root.service.reportLocation !== "" ? root.service.reportLocation.toUpperCase() : I18n.tr("SET LOCATION")
-                    color: Theme.muted
-                    elide: Text.ElideRight
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.font.body
-                    font.letterSpacing: 1
-                }
-            }
-
-            Row {
-                anchors.left: parent.left
-                visible: root.editingLocation
-                spacing: Math.round(Theme.gap / 2)
-
-                TextInput {
-                    id: locationField
-
-                    width: heroRight.width - clearButton.width - parent.spacing
-                    enabled: !root.savingLocation
-                    leftPadding: Math.round(Theme.gap * 0.75)
-                    rightPadding: leftPadding
-                    topPadding: Math.round(Theme.gap / 2)
-                    bottomPadding: topPadding
-                    clip: true
-                    selectByMouse: true
+                    text: modelData.value
                     color: Theme.foreground
-                    selectionColor: Theme.selection
-                    selectedTextColor: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.font.body
-
-                    onTextChanged: {
-                        if (root.editingLocation && !root.savingLocation)
-                            geocodeDebounce.restart();
-                    }
-                    // Escape cancels the search instead of closing the panel
-                    // (PanelPopup's window shortcut).
-                    Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_Escape
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Escape) {
-                            root.cancelEditingLocation();
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Down) {
-                            if (root.suggestionIndex < root.locationSuggestions.length - 1)
-                                root.suggestionIndex++;
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Up) {
-                            if (root.suggestionIndex > 0)
-                                root.suggestionIndex--;
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            root.commitLocation();
-                            event.accepted = true;
-                        }
-                    }
-
-                    Rectangle {
-                        z: -1
-                        anchors.fill: parent
-                        radius: Theme.radius
-                        color: Theme.surfaceAlt
-                        border.width: Theme.borderWidth
-                        border.color: locationField.activeFocus ? Theme.accent : Theme.border
-                    }
-
-                    Text {
-                        anchors.fill: parent
-                        anchors.leftMargin: locationField.leftPadding
-                        verticalAlignment: Text.AlignVCenter
-                        visible: locationField.text === ""
-                        text: I18n.tr("Search city (empty = automatic)")
-                        color: Theme.muted
-                        elide: Text.ElideRight
-                        font: locationField.font
-                    }
-                }
-
-                // Clear back to automatic; a spinner while a location loads.
-                Rectangle {
-                    id: clearButton
-
-                    width: Theme.fontSize + Theme.gap
-                    height: width
-                    anchors.verticalCenter: parent.verticalCenter
-                    radius: Theme.radius
-                    color: !root.savingLocation && clearArea.containsMouse ? Theme.selection : "transparent"
-
-                    Glyph {
-                        anchors.centerIn: parent
-                        glyph: root.savingLocation ? "\u{f0996}" : "✕"
-                        color: Theme.muted
-                        font.pixelSize: Theme.font.body
-
-                        RotationAnimator on rotation {
-                            running: root.savingLocation
-                            from: 0
-                            to: 360
-                            duration: 800
-                            loops: Animation.Infinite
-                        }
-                    }
-
-                    MouseArea {
-                        id: clearArea
-
-                        anchors.fill: parent
-                        enabled: !root.savingLocation
-                        hoverEnabled: true
-                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: root.clearLocation()
-                    }
-                }
-            }
-
-            Row {
-                id: stats
-
-                anchors.left: parent.left
-                visible: root.hasCurrent
-                spacing: Theme.gap * 2.5
-
-                Repeater {
-                    model: [
-                        { label: I18n.mark("FEELS"), value: root.service ? root.service.reportFeels : "" },
-                        { label: I18n.mark("WIND"), value: root.service ? root.service.reportWind : "" },
-                        { label: I18n.mark("HUMID"), value: root.service ? root.service.reportHumidity : "" }
-                    ]
-
-                    delegate: Column {
-                        required property var modelData
-
-                        spacing: Math.round(Theme.gap / 3)
-
-                        Text {
-                            text: I18n.tr(modelData.label)
-                            color: Theme.muted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.font.caption
-                            font.letterSpacing: 1
-                        }
-
-                        Text {
-                            textFormat: Text.PlainText
-                            text: modelData.value
-                            color: Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.font.title
-                        }
-                    }
                 }
             }
         }
@@ -451,27 +448,28 @@ Column {
         color: Theme.border
     }
 
-    // ---- The next three days: icon, day name, high and low.
-    Item {
+    // ---- The next three days in equal columns: icon, short day name, high
+    // and low.
+    Row {
         visible: root.forecastDays.length > 0
         width: parent.width
-        height: forecastRow.height
 
-        Row {
-            id: forecastRow
+        Repeater {
+            model: root.forecastDays
 
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.gap * 3
+            delegate: Item {
+                id: day
 
-            Repeater {
-                model: root.forecastDays
+                required property var modelData
 
-                delegate: Row {
-                    id: day
+                width: root.width / Math.max(1, root.forecastDays.length)
+                height: dayRow.height
 
-                    required property var modelData
+                Row {
+                    id: dayRow
 
-                    spacing: Theme.gap
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: Math.round(Theme.gap * 0.75)
 
                     Glyph {
                         anchors.verticalCenter: parent.verticalCenter
@@ -481,7 +479,6 @@ Column {
 
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 2
 
                         Text {
                             textFormat: Text.PlainText
@@ -500,7 +497,7 @@ Column {
                                 text: Model.bareTempForDay(day.modelData, "max", root.service && root.service.useImperial)
                                 color: Theme.foreground
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.font.body
+                                font.pixelSize: Theme.font.bodySmall
                             }
 
                             Text {
@@ -508,7 +505,7 @@ Column {
                                 text: Model.bareTempForDay(day.modelData, "min", root.service && root.service.useImperial)
                                 color: Theme.muted
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.font.body
+                                font.pixelSize: Theme.font.bodySmall
                             }
                         }
                     }
