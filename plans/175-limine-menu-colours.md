@@ -112,13 +112,16 @@ spelling is absent (menu.c:1836-1853). Omarchy's file uses the alias.
   - a bare header given the options above the entry, and `-` removing them
     again;
   - an option inside an entry left alone;
-  - refusals for a duplicate across spellings, no entry, and record lines
-    that are not hex colours of known options;
+  - refusals for a duplicate across spellings, no entry, a header value
+    `colours-off` could not put back (`0x1a1b26`, a spaced palette,
+    `#1a1b26`, empty), and record lines that are not hex colours of known
+    options;
   - the helper for real: colours, uncolour, a bad colour and a bad record,
     with the file left alone on both;
   - the command, dry: the theme's colours drawn readable, the backup before
     the record before the helper, `colors` as an alias, refusal without a
-    theme and of a malformed rerun, "already wears" when nothing changes,
+    theme and of a malformed rerun, a record written when the menu already
+    matches but no record exists, "already wears" when it does,
     `colours-off` with and without a record or with a bad one, status in
     both states, and the root step when the ESP is root-only.
 - `tests/test-splash-follow.sh`: with no record, `apply` leaves Limine
@@ -148,8 +151,10 @@ Rejected from that round:
 
 - Writing `term_background` as `ff` plus the colour. Limine documents TT as
   transparency, so the six-digit form, TT 00, is opaque.
-- Clearing a stale `block.png` without magick, so it matches `logo.png`.
+- Clearing a stale `block.png` without magick. It is haseen's own square
+  in an earlier accent: deleting it would turn the prompt into underscores
+  for a colour difference, and `logo.png` is left the same way. The install
+  warning now says so.
 - Moving the record write after the edit. A kill after the edit would then
   lose the original values, which is worse than a record of an edit that
   never happened.
-

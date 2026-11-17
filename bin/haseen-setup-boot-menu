@@ -191,7 +191,7 @@ recolour() {
         $had_record || echo "  then the menu follows the theme with the splash (haseen plymouth follow)"
     else
         echo "Boot menu: colours-off, in $ESP_PATH/limine.conf"
-        echo "  the colour lines colours replaced come back; the menu stops following the theme"
+        echo "  the colour lines recorded in $BOOTMENU_COLOUR_RECORD come back; the menu stops following the theme"
     fi
     case "$REENROLL" in
     sign) echo "  then:    haseen secureboot sign (Limine's config hash is enrolled again)" ;;

@@ -123,7 +123,8 @@ plymouth_install_logo() {
 # plymouth_install_block ACCENT — $PLYMOUTH_THEME_DIR/block.png, an 8 px
 # square in ACCENT: the script stretches it into the scanner, the caret and
 # the brackets, because text it draws in the initramfs can only be ASCII
-# (plan 174). Without magick the script draws underscores instead.
+# (plan 174). Without magick the block from an earlier install stays, in its
+# old accent, and with none the script draws underscores instead.
 plymouth_install_block() {
     local accent="$1" tmp
     if $DRY_RUN; then
@@ -132,7 +133,7 @@ plymouth_install_block() {
         return 0
     fi
     if ! have magick; then
-        warn "magick is not installed: the splash draws its caret and scanner with underscores"
+        warn "magick is not installed: the splash keeps its caret and scanner from the last install, or draws them with underscores"
         return 0
     fi
     tmp="$(mktemp -d)"
