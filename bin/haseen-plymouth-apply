@@ -14,6 +14,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/plymouth.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/plymouth.sh"
+# shellcheck source=../share/haseen/lib/bootmenu.sh
+source "$HASEEN_PATH/lib/bootmenu.sh"
 
 usage() {
     cat <<EOF
@@ -25,7 +27,9 @@ each) with that mark ($(
         IFS='|'
         echo "${BRANDING_MARKS[*]}"
     )), rebuilds the initramfs and records it
-in $PLYMOUTH_STAMP. Nothing when the boot image already carries them.
+in $PLYMOUTH_STAMP. Nothing when the boot image already carries them. When
+\`haseen setup boot-menu colours\` gave Limine's menu the splash's colours,
+the menu is recoloured too.
 
 Refused when haseen's splash is not the one plymouthd shows, on a machine
 that checks its boot files (Secure Boot, sbctl keys, an enrolled Limine
@@ -86,6 +90,39 @@ if [[ $(plymouth_built_request) == "$request" ]]; then
     exit 0
 fi
 
+# limine_colours BG FG ACCENT — Limine's menu in the splash's colours, when
+# `haseen setup boot-menu colours` made them haseen's (its record exists;
+# plan 175). After the rebuild, which rewrites limine.conf's entries under the
+# same lock. Never fatal: the splash is already built. No config hash can be
+# enrolled here (plymouth_signed_boot refused that above), so nothing has to
+# be enrolled again.
+limine_colours() {
+    local fg accent conf problems shadows
+    [[ -e $(sysroot_path "$BOOTMENU_COLOUR_RECORD") ]] || return 0
+    # For sb_limine_shadows; plymouth_follow_trusted covers its directory.
+    # shellcheck source=../share/haseen/layers/secureboot/secureboot.sh
+    source "$HASEEN_PATH/layers/secureboot/secureboot.sh"
+    preflight_bootloader
+    if [[ $BOOTLOADER != limine || -z $ESP_PATH ]]; then
+        warn "Limine's menu colours were not followed: this machine boots with ${BOOTLOADER/unknown/an undetected bootloader}"
+        return 0
+    fi
+    conf="$(sysroot_path "$ESP_PATH/limine.conf")"
+    problems="$(bootmenu_colour_problems "$conf")"
+    shadows="$(sb_limine_shadows)"
+    if [[ -n $problems || -n $shadows ]]; then
+        warn "Limine's menu colours were not followed: ${problems:-Limine reads $(head -n1 <<<"$shadows") first}"
+        return 0
+    fi
+    fg="$(plymouth_readable "$1" "$2")"
+    accent="$(plymouth_readable "$1" "$3")"
+    # One copy, replaced each time: following must not fill the state
+    # directory with a backup per theme change.
+    install_root_file "$ESP_PATH/limine.conf" "$BOOTMENU_DIR/limine.conf.followed" 0600 &&
+        run_root "$HASEEN_PATH/lib/limine-header.sh" colours "$ESP_PATH/limine.conf" "$1" "$fg" "$accent" ||
+        warn "Limine's menu colours were not followed (haseen setup boot-menu colours does it by hand)"
+}
+
 # rate_ok — fewer than RATE_MAX rebuilds in the last hour; records this one.
 rate_ok() {
     local now kept=() t
@@ -120,5 +157,6 @@ if $PLYMOUTH_STOPPED; then
 fi
 boot_initramfs_rebuild
 plymouth_record_built "$request"
+limine_colours "$bg" "$fg" "$accent"
 $PLYMOUTH_STOPPED && info "a stop arrived during the rebuild; it finished first"
 info "boot splash rebuilt; it shows on the next boot"

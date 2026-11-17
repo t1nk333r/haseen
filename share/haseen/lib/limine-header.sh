@@ -1,24 +1,36 @@
 #!/usr/bin/env bash
-# limine-header.sh — change the menu wait in Limine's config (plan 104).
-#   limine-header.sh set CONF TIMEOUT QUIET   set timeout: and quiet: (- removes one)
-#   limine-header.sh restore CONF BACKUP      put CONF's bytes back from BACKUP
-# Run as root by bin/haseen-setup-boot-menu (through run_root; the ESP is
-# 0700), never sourced. It takes Limine's own boot-partition lock while it
-# reads and replaces CONF, so a limine-entry-tool or limine-snapper-sync
-# write is neither lost nor overwritten, checks the layout again under that
-# lock, and replaces CONF through a temporary file beside it and a rename, as
-# limine-hash-assets.sh does. Nothing else in CONF changes.
+# limine-header.sh — change the menu wait (plan 104) or colours (plan 175) in Limine's config.
+#   limine-header.sh set CONF TIMEOUT QUIET       set timeout: and quiet: (- removes one)
+#   limine-header.sh colours CONF BG FG ACCENT    the menu in these #rrggbb colours
+#   limine-header.sh uncolour CONF RECORD         the colour options RECORD holds put back
+#   limine-header.sh restore CONF BACKUP          put CONF's bytes back from BACKUP
+# Run as root by bin/haseen-setup-boot-menu and bin/haseen-plymouth-apply
+# (through run_root; the ESP is 0700), never sourced. It takes Limine's own
+# boot-partition lock while it reads and replaces CONF, so a
+# limine-entry-tool or limine-snapper-sync write is neither lost nor
+# overwritten, checks the layout again under that lock, and replaces CONF
+# through a temporary file beside it and a rename, as limine-hash-assets.sh
+# does. Nothing else in CONF changes.
 set -Eeuo pipefail
 # shellcheck source=bootmenu.sh
 source "$(dirname "$(readlink -f "$0")")/bootmenu.sh"
 
-usage() { sed -n '3,4s/^# \{0,1\}//p' "$0"; }
+usage() { sed -n '3,6s/^# \{0,1\}//p' "$0"; }
 
 mode="${1:-}"
 if [[ $mode == set ]] && (($# == 4)); then
     if ! bootmenu_valid timeout "$3" || ! bootmenu_valid quiet "$4"; then
         die "not a timeout/quiet pair haseen writes: '$3' '$4'"
     fi
+elif [[ $mode == colours ]] && (($# == 5)); then
+    for c in "$3" "$4" "$5"; do
+        [[ $c =~ ^#?[0-9a-fA-F]{6}$ ]] || die "not a #rrggbb colour: '$c'"
+    done
+    spec="$(bootmenu_colour_spec "$3" "$4" "$5")"
+elif [[ $mode == uncolour ]] && (($# == 3)); then
+    [[ -f $3 && -r $3 ]] || die "not a readable record: $3"
+    spec="$(cat -- "$3")"
+    bootmenu_colour_spec_valid <<<"$spec" || die "$3 does not hold colour options haseen wrote"
 elif [[ $mode != restore ]] || (($# != 3)); then
     usage >&2
     exit 2
@@ -37,6 +49,10 @@ if [[ $mode == set ]]; then
     problems="$(bootmenu_problems "$conf")"
     [[ -z $problems ]] || die "$conf is not a layout haseen edits: ${problems//$'\n'/; }"
     bootmenu_render "$conf" "$3" "$4" >"$tmp"
+elif [[ $mode == colours || $mode == uncolour ]]; then
+    problems="$(bootmenu_colour_problems "$conf")"
+    [[ -z $problems ]] || die "$conf is not a layout haseen recolours: ${problems//$'\n'/; }"
+    bootmenu_render_colours "$conf" <<<"$spec" >"$tmp"
 else
     [[ -f $3 && -r $3 ]] || die "not a readable backup: $3"
     cat -- "$3" >"$tmp"
@@ -49,4 +65,8 @@ fi
 chmod --reference="$conf" "$tmp" 2>/dev/null || true
 mv -f -- "$tmp" "$conf"
 sync -f "$conf" 2>/dev/null || true
-echo "limine.conf: timeout: $(bootmenu_value timeout "$conf"), quiet: $(bootmenu_value quiet "$conf")"
+case "$mode" in
+colours) echo "limine.conf: menu colours background ${3#\#}, text ${4#\#}, accent ${5#\#}" ;;
+uncolour) echo "limine.conf: menu colours put back" ;;
+*) echo "limine.conf: timeout: $(bootmenu_value timeout "$conf"), quiet: $(bootmenu_value quiet "$conf")" ;;
+esac

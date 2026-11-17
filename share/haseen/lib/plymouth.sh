@@ -5,8 +5,8 @@
 # Hansson): theme the splash from the active colour scheme, set it as the
 # default, and rebuild the initramfs so the next boot shows it. haseen's theme
 # is drawn by a script, not composed from PNGs, so a theme change is a colour
-# substitution and this repository ships no binary assets: the one image, the
-# mark, is rendered from its SVG when the theme is installed.
+# substitution and this repository ships no binary assets: the two images,
+# the mark and a solid square, are rendered when the theme is installed.
 #
 # The point of the splash is not decoration: with an encrypted root the disk
 # password is typed here, and with autologin that is the only password the
@@ -120,6 +120,28 @@ plymouth_install_logo() {
     rm -rf "$tmp"
 }
 
+# plymouth_install_block ACCENT — $PLYMOUTH_THEME_DIR/block.png, an 8 px
+# square in ACCENT: the script stretches it into the scanner, the caret and
+# the brackets, because text it draws in the initramfs can only be ASCII
+# (plan 174). Without magick the block from an earlier install stays, in its
+# old accent, and with none the script draws underscores instead.
+plymouth_install_block() {
+    local accent="$1" tmp
+    if $DRY_RUN; then
+        echo "DRYRUN: render an 8 px square in $accent -> block.png"
+        install_root_file block.png "$PLYMOUTH_THEME_DIR/block.png"
+        return 0
+    fi
+    if ! have magick; then
+        warn "magick is not installed: the splash keeps its caret and scanner from the last install, or draws them with underscores"
+        return 0
+    fi
+    tmp="$(mktemp -d)"
+    magick -size 8x8 "xc:$accent" "$tmp/block.png"
+    install_root_file "$tmp/block.png" "$PLYMOUTH_THEME_DIR/block.png"
+    rm -rf "$tmp"
+}
+
 # plymouth_contrast A B — the WCAG 2 contrast ratio of two #rrggbb colours,
 # times 100 (100 for the same colour, 2100 for black on white).
 plymouth_contrast() {
@@ -167,7 +189,8 @@ plymouth_readability_note() {
 }
 
 # plymouth_install_theme BG FG ACCENT MARK — haseen's splash in these colours
-# and this mark into $PLYMOUTH_THEME_DIR: the descriptor, the script, the mark.
+# and this mark into $PLYMOUTH_THEME_DIR: the descriptor, the script, the mark
+# and the block.
 # What `haseen plymouth set` and the root side of following (`haseen plymouth
 # apply`) both install, so the two paths cannot drift. A text or accent colour
 # that would not read on the background is replaced (plymouth_readable).
@@ -178,6 +201,7 @@ plymouth_install_theme() {
     install_root_file "$PLYMOUTH_SOURCE_DIR/haseen.plymouth" "$PLYMOUTH_THEME_DIR/haseen.plymouth"
     plymouth_script "$bg" "$fg" "$accent" | write_root_file "$PLYMOUTH_THEME_DIR/haseen.script"
     plymouth_install_logo "$accent" "$4"
+    plymouth_install_block "$accent"
 }
 
 # plymouth_theme_ours — haseen's splash is installed and is the one plymouthd

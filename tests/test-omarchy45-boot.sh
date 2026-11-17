@@ -586,6 +586,147 @@ if [[ $EUID != 0 ]]; then
     assert_contains "an unreadable ESP: the root step" "$OUTPUT" "DRYRUN: sudo $HELPER set /boot/limine.conf 1 yes"
 fi
 
+# --- the boot menu's colours (plan 175) -----------------------------------------
+# Omarchy's header (default/limine/limine.conf, as installed on IO), which
+# spells the interface colours *_color.
+OMA_HEADER='default_entry: 2\ninterface_branding: Omarchy Bootloader\ninterface_branding_color: 9ece6a\ninterface_help_color: 9ece6a\ninterface_help_color_bright: 9ece6a\nhash_mismatch_panic: no\n\nterm_background: 1a1b26\nbackdrop: 1a1b26\n\n# Terminal colors (Tokyo Night palette)\nterm_palette: 15161e;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;a9b1d6\nterm_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5\n\n# Text colors\nterm_foreground: c0caf5\nterm_foreground_bright: c0caf5\nterm_background_bright: 24283b\n'
+printf "$OMA_HEADER"'/+Omarchy\n    //linux\n        protocol: efi\n' >"$BMD/oma-colours.conf"
+spec="$(bm bootmenu_colour_spec '#171717' '#CCD0CF' '#F25623')"
+assert_eq "colours: the spec, from three colours" \
+    "backdrop=171717
+term_background=171717
+term_foreground=ccd0cf
+term_background_bright=323333
+term_foreground_bright=ccd0cf
+term_palette=171717;f25623;f25623;f25623;f25623;f25623;848685;ccd0cf
+term_palette_bright=565857;f25623;f25623;f25623;f25623;f25623;848685;ccd0cf
+interface_branding_colour=f25623
+interface_help_colour=f25623
+interface_help_colour_bright=ccd0cf" "$spec"
+assert_eq "colours: Omarchy's header is one haseen recolours" "" "$(bm bootmenu_colour_problems "$BMD/oma-colours.conf")"
+bm bootmenu_render_colours "$BMD/oma-colours.conf" <<<"$spec" >"$BMD/oma-new.conf"
+assert_eq "colours: only the colour lines change, in their own spelling" \
+    "3,5c3,5
+< interface_branding_color: 9ece6a
+< interface_help_color: 9ece6a
+< interface_help_color_bright: 9ece6a
+---
+> interface_branding_color: f25623
+> interface_help_color: f25623
+> interface_help_color_bright: ccd0cf" "$(diff "$BMD/oma-colours.conf" "$BMD/oma-new.conf" | head -8)"
+assert_eq "colours: ten lines changed, nothing added" 10 "$(diff "$BMD/oma-colours.conf" "$BMD/oma-new.conf" | grep -c '^>')"
+bm bootmenu_colour_snapshot "$BMD/oma-colours.conf" >"$BMD/oma-snap"
+assert_contains "colours: the snapshot reads an alias by its canonical name" "$(cat "$BMD/oma-snap")" "interface_branding_colour=9ece6a"
+assert_eq "colours: the snapshot puts the file back" "$(cat "$BMD/oma-colours.conf")" "$(bm bootmenu_render_colours "$BMD/oma-new.conf" <"$BMD/oma-snap")"
+assert_eq "colours: a header without them gets them above the first entry" \
+    "$(printf 'default_entry: 1\n%s\n/Arch\n    protocol: linux' "$(sed 's/=/: /' <<<"$spec")")" \
+    "$(bm bootmenu_render_colours "$BMD/bare.conf" <<<"$spec")"
+assert_eq "colours: - removes a line it added" "$(cat "$BMD/bare.conf")" \
+    "$(bm bootmenu_render_colours "$BMD/bare.conf" <<<"$spec" >"$BMD/bare-c.conf"; bm bootmenu_colour_snapshot "$BMD/bare.conf" | bm bootmenu_render_colours "$BMD/bare-c.conf")"
+printf 'term_palette: 000000\n/x\n    term_palette: 111111\n' >"$BMD/entry-opt.conf"
+bm bootmenu_render_colours "$BMD/entry-opt.conf" <<<"$spec" >"$BMD/entry-opt.new"
+assert_eq "colours: the header's option is recoloured" \
+    "term_palette: 171717;f25623;f25623;f25623;f25623;f25623;848685;ccd0cf" "$(head -n1 "$BMD/entry-opt.new")"
+assert_eq "colours: an entry's option of that name is left alone" "    term_palette: 111111" "$(tail -n1 "$BMD/entry-opt.new")"
+printf 'interface_branding_color: 1\nINTERFACE_BRANDING_COLOUR: 2\n/x\n' >"$BMD/bad.conf"
+assert_contains "colours refused: both spellings of one option" "$(bm bootmenu_colour_problems "$BMD/bad.conf")" "sets interface_branding_colour: more than once"
+printf 'term_background: 000000\n' >"$BMD/bad.conf"
+assert_contains "colours refused: no entry" "$(bm bootmenu_colour_problems "$BMD/bad.conf")" "no menu entry"
+# Values Limine reads but colours-off could not put back (review round 1).
+for v in '0x1a1b26' '1a1b26; 7aa2f7' '#1a1b26' ''; do
+    printf 'term_palette: %s\n/x\n' "$v" >"$BMD/bad.conf"
+    assert_contains "colours refused: a value it could not put back: '$v'" "$(bm bootmenu_colour_problems "$BMD/bad.conf")" "its term_palette: value '$v' is not hex colours"
+done
+assert_eq "colours: a record line haseen wrote" 0 "$(bm bootmenu_colour_spec_valid <<<'term_palette=000000;111111' && echo 0)"
+for line in 'term_palette=red' 'nosuch=000000' $'term_background=1\nterm_background=2' 'term_foreground=00:1'; do
+    assert_eq "colours: a record line refused: ${line//$'\n'/ | }" 1 "$(bm bootmenu_colour_spec_valid <<<"$line" || echo 1)"
+done
+
+# The helper, for real on a scratch file.
+cp "$BMD/oma-colours.conf" "$BMD/esp-c.conf"
+capture env HASEEN_SYSROOT="$BMD" "$HELPER" colours "$BMD/esp-c.conf" '#171717' '#CCD0CF' '#F25623'
+assert_status "helper: colours" 0 "$STATUS"
+assert_eq "helper: says what it set" "limine.conf: menu colours background 171717, text CCD0CF, accent F25623" "$OUTPUT"
+assert_eq "helper: the recoloured file" "$(cat "$BMD/oma-new.conf")" "$(cat "$BMD/esp-c.conf")"
+capture env HASEEN_SYSROOT="$BMD" "$HELPER" uncolour "$BMD/esp-c.conf" "$BMD/oma-snap"
+assert_eq "helper: uncolour" "limine.conf: menu colours put back" "$OUTPUT"
+cmp -s "$BMD/esp-c.conf" "$BMD/oma-colours.conf" && _pass || _fail "helper: uncolour puts the original lines back"
+capture env HASEEN_SYSROOT="$BMD" "$HELPER" colours "$BMD/esp-c.conf" 'red' '#CCD0CF' '#F25623'
+assert_status "helper: a colour it does not write" 1 "$STATUS"
+printf 'term_palette=$(id)\n' >"$BMD/bad-record"
+capture env HASEEN_SYSROOT="$BMD" "$HELPER" uncolour "$BMD/esp-c.conf" "$BMD/bad-record"
+assert_status "helper: a record haseen did not write" 1 "$STATUS"
+cmp -s "$BMD/esp-c.conf" "$BMD/oma-colours.conf" && _pass || _fail "helper: and the file is left alone"
+
+# The command: the theme's colours, as the splash draws them.
+root="$(limine_root colours 'root=UUID=abc rw')"
+printf "$OMA_HEADER"'/+Omarchy\n    //linux\n' >"$root/boot/limine.conf"
+theme_dir="$XDG_STATE_HOME/haseen/current/theme"
+mkdir -p "$theme_dir"
+printf 'background = "#171717"\nforeground = "#CCD0CF"\naccent = "#F25623"\n' >"$theme_dir/colors.toml"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu
+assert_contains "status: the file's own colours" "$OUTPUT" "colours: the file's own"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours --dry-run
+assert_status "colours" 0 "$STATUS"
+assert_dry_pure "colours" "$OUTPUT"
+assert_contains "colours: the splash's colours" "$OUTPUT" "background #171717, text #ccd0cf, accent #f25623 (the boot splash's)"
+assert_contains "colours: says it follows from now on" "$OUTPUT" "follows the theme with the splash"
+assert_contains "colours: backs the file up first" "$OUTPUT" "DRYRUN: sudo install -Dm0600 /boot/limine.conf /var/lib/haseen/boot-menu/limine.conf."
+assert_contains "colours: records what it replaces" "$OUTPUT" $'DRYRUN: write /var/lib/haseen/boot-menu/colours (mode 0600):\n    | backdrop=1a1b26'
+assert_contains "colours: the helper edits as root" "$OUTPUT" "DRYRUN: sudo $HELPER colours /boot/limine.conf #171717 #ccd0cf #f25623"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colors --dry-run
+assert_contains "colors is the same verb" "$OUTPUT" "$HELPER colours"
+printf 'background = "#13131a"\nforeground = "#13131a"\naccent = "#13131a"\n' >"$theme_dir/colors.toml"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours --dry-run
+assert_contains "colours: what does not read is drawn readable, as on the splash" "$OUTPUT" "$HELPER colours /boot/limine.conf #13131a #ffffff #ffffff"
+rm "$theme_dir/colors.toml"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours --dry-run
+assert_status "colours without a theme: refused" 1 "$STATUS"
+assert_contains "and why" "$OUTPUT" "no theme is set"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours 171717-ccd0cf-f25623 --dry-run
+assert_status "colours from root's rerun: no theme needed" 0 "$STATUS"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours '171717-ccd0cf-f25623;x' --dry-run
+assert_status "a malformed rerun is refused" 1 "$STATUS"
+assert_not_contains "and nothing written" "$OUTPUT" "DRYRUN"
+# Already in those colours: without a record the edit still runs, with one there is nothing to do.
+bm bootmenu_colour_spec '#171717' '#ccd0cf' '#f25623' | bm bootmenu_render_colours "$root/boot/limine.conf" >"$root/boot/limine.new"
+mv "$root/boot/limine.new" "$root/boot/limine.conf"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours 171717-ccd0cf-f25623 --dry-run
+assert_contains "colours again without a record: still records, so the menu follows (review round 1)" "$OUTPUT" "DRYRUN: write /var/lib/haseen/boot-menu/colours (mode 0600):"
+mkdir -p "$root/var/lib/haseen/boot-menu"
+cp "$BMD/oma-snap" "$root/var/lib/haseen/boot-menu/colours"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours 171717-ccd0cf-f25623 --dry-run
+assert_eq "colours again with the record: nothing to do" "[*] the boot menu already wears background #171717, text #ccd0cf, accent #f25623" "$OUTPUT"
+rm -r "$root/var/lib/haseen"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours-off --dry-run
+assert_contains "colours-off without a record: nothing to put back" "$OUTPUT" "nothing to put back"
+mkdir -p "$root/var/lib/haseen/boot-menu"
+cp "$BMD/oma-snap" "$root/var/lib/haseen/boot-menu/colours"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu
+assert_contains "status: haseen's colours" "$OUTPUT" "colours: haseen's (now background 171717, text ccd0cf, accent f25623); they follow the theme where the splash does"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours-off --dry-run
+assert_status "colours-off" 0 "$STATUS"
+assert_dry_pure "colours-off" "$OUTPUT"
+assert_contains "colours-off: puts the record back" "$OUTPUT" "DRYRUN: sudo $HELPER uncolour /boot/limine.conf /var/lib/haseen/boot-menu/colours"
+assert_contains "colours-off: forgets the record" "$OUTPUT" "DRYRUN: sudo rm -f /var/lib/haseen/boot-menu/colours"
+printf 'term_palette=$(id)\n' >"$root/var/lib/haseen/boot-menu/colours"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours-off --dry-run
+assert_status "colours-off: a record haseen did not write is refused" 1 "$STATUS"
+rm -r "$root/var/lib/haseen"
+printf 'term_background: 1\nterm_background: 2\n/x\n' >"$root/boot/limine.conf"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours 171717-ccd0cf-f25623 --dry-run
+assert_status "colours: a layout it does not recolour is refused" 1 "$STATUS"
+assert_not_contains "and nothing written" "$OUTPUT" "DRYRUN"
+if [[ $EUID != 0 ]]; then
+    chmod 000 "$root/boot"
+    printf 'background = "#171717"\nforeground = "#CCD0CF"\naccent = "#F25623"\n' >"$theme_dir/colors.toml"
+    capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours --dry-run
+    chmod 755 "$root/boot"
+    assert_status "colours, an unreadable ESP: dry run" 0 "$STATUS"
+    assert_contains "colours, an unreadable ESP: the root step in the theme's colours" "$OUTPUT" "DRYRUN: sudo $HELPER colours /boot/limine.conf #171717 #ccd0cf #f25623"
+    rm "$theme_dir/colors.toml"
+fi
+
 # Secure Boot: the edited config is enrolled again, the way haseen signs.
 enroll_hash() { printf 'MZ fixture\n++CONFIG_B2SUM_SIGNATURE++%s\n' "$(b2sum "$1/boot/limine.conf" | cut -d' ' -f1)" >"$1/boot/EFI/limine/limine_x64.efi"; }
 root="$(limine_root sb 'root=UUID=abc rw')"
