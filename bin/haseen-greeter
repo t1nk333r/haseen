@@ -77,7 +77,7 @@ lua_string() {
 # home; a layout that cannot type Latin letters gets "us" in front, so a
 # password typed in Latin still works, with both Alts to switch (plan 103).
 greeter_input() {
-    local layout variant options="compose:caps" first
+    local layout variant options="" first
     local latin=" us gb de fr es it pt br nl be ch at se no dk fi pl cz sk hu ro tr latam ca ie "
     layout="$(greeter_vconsole XKBLAYOUT)" || layout=us
     variant="$(greeter_vconsole XKBVARIANT)" || variant=""
@@ -87,7 +87,7 @@ greeter_input() {
     *)
         layout="us,$layout"
         variant=",$variant"
-        options+=",grp:alts_toggle"
+        options="grp:alts_toggle"
         ;;
     esac
     printf '  input = { kb_layout = %s, kb_variant = %s, kb_options = %s },\n' \

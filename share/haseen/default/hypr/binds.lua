@@ -195,8 +195,8 @@ b("XF86AudioPrev", "Previous track", "playerctl previous", once)
 -- Lock keys ----------------------------------------------------------------
 -- Hyprland sends no event when Caps Lock or Num Lock changes, so a bind on
 -- the keys tells the OSD to read the state once (plan 079). code:66 and
--- code:77 are those keys whatever they type (under compose:caps, Caps is
--- Compose and the read finds nothing changed). non_consuming: the key still
+-- code:77 are those keys whatever they type (with keyd on, a CapsLock tap is
+-- Escape and the read finds nothing changed). non_consuming: the key still
 -- reaches xkb and the app; release: the lock state has settled; ignore_mods:
 -- Shift + Caps Lock too. This OSD is off by default and Caps is a busy key,
 -- so the bind is one `test`; the IPC call (two scripts and a qs client,

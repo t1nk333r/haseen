@@ -13,7 +13,8 @@ seed_main() {
     [[ -e $COMPOSE || -L $COMPOSE ]] && return 0
     write_user_file "$COMPOSE" <<EOF
 # Your compose sequences. haseen writes this file once and never again.
-# The Compose key is CapsLock (hypr input option compose:caps).
+# haseen binds no Compose key: add one with kb_options in ~/.config/hypr/local.lua
+# (for example compose:ralt), then log in again.
 
 # The sequences of your locale.
 include "%L"

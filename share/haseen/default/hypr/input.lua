@@ -27,7 +27,9 @@ end
 local console = vconsole()
 local layout = console.XKBLAYOUT or "us"
 local variant = console.XKBVARIANT or ""
-local options = "compose:caps"
+-- No compose:caps (owner, 2026-11-14, plan 173): CapsLock is Caps Lock. Add
+-- your own kb_options in ~/.config/hypr/local.lua for a Compose key.
+local options = ""
 
 -- Hyprland resolves binds against the first layout. When that layout cannot
 -- type Latin letters (Arabic, Persian, Cyrillic, …) put "us" first so
@@ -39,7 +41,7 @@ local first = layout:match("^[^,]*")
 if not latin[first] then
   layout = "us," .. layout
   variant = "," .. variant
-  options = options .. ",grp:alts_toggle"
+  options = "grp:alts_toggle"
 end
 
 hl.config({
