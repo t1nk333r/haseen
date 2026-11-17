@@ -97,7 +97,7 @@ The owner's other repos:
 | Stage Manager (on by default): push the pointer against a screen's left edge and the monitor's other workspaces slide in as turned stacks of their windows' pictures; click one to switch, move away or Escape to close; one transparent strip per screen at rest | `share/haseen/shell/plugins/haseen.stage/`, `share/haseen/migrations/1794512737-stage-service.sh`, `tests/test-stage.sh` | 163 |
 | The Wi-Fi QR code: the network panel's QR button and card (on a personal Wi-Fi network; the code as one Shape path in the theme's colours, the password on click) and `haseen network qr` (`omarchy-network-qr` is a shim over it) | `share/haseen/shell/plugins/haseen.network/`, `bin/haseen-network-qr`, `tests/test-network-panel.sh` | 166 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
-| Affected tests: `# haseen:covers` per test, `tests/run.sh --affected` on PRs and before commits, the full suite on `main` after each merge | `tools/affected-tests.sh`, `tests/test-affected.sh` | 100 |
+| Affected tests: `# haseen:covers` per test, `tests/run.sh --affected` before commits, on PRs and on each push to `main`; the full suite only by hand | `tools/affected-tests.sh`, `tests/test-affected.sh`, `.github/workflows/ci.yml` | 100 176 |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
 tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
@@ -140,10 +140,13 @@ tools/secrets.sh                          # before every push
 ```
 
 The full suite (`QT_QPA_PLATFORM=offscreen tests/run.sh`, no arguments,
-≈ 14,500 checks; run it in tmux) is for when you want it. CI runs the
-selection on every pull request and the full suite on `main` after each
-merge (~85-90 of the job's 150 min), so a test a change broke but its
-`# haseen:covers` did not claim fails there (plan 100).
+≈ 20,800 checks; run it in tmux) is for when you want it. CI runs the
+selection on every pull request and on every push to `main` (plan 176); the
+full suite (~85-90 of the job's 150 min) runs there only from a manual run
+of the `ci` workflow (`gh workflow run ci --ref main`) or when a change
+touches a global path. A test a change broke but its `# haseen:covers` did
+not claim is not caught by CI, so a covers line belongs in the change that
+makes a test read a new file.
 
 The compiled helpers (`core/sidecar/`, `core/palette/`, `core/wootingd/`)
 are Rust and need only cargo; there is no Go in the tree since plan 167.
