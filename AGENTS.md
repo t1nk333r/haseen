@@ -121,9 +121,10 @@ tools/secrets.sh          # before every push: gitleaks (history) + privacy patt
 **Test the affected code, not the whole suite.** The local gate is
 `tests/run.sh --affected`; while iterating, run the one file you are changing
 (`tests/run.sh tests/test-<name>.sh`). Do not run every test to check one
-change, and do not wait for the full suite before a commit: the full run is
-CI's job on every push to `main` (and a release), and it is the only place
-that pays for it. If a change touches shared infrastructure (`share/haseen/lib/`,
+change, and do not wait for the full suite before a commit. CI runs the
+affected selection too, on pull requests and on every push to `main` (owner,
+2026-11-17, plan 176); the full suite runs only when someone starts the
+workflow by hand or a change touches a global path. If a change touches shared infrastructure (`share/haseen/lib/`,
 `tests/lib.sh`, the install flow), say so and let the affected selection widen
 — do not fall back to the whole suite by hand.
 
@@ -131,8 +132,9 @@ that pays for it. If a change touches shared infrastructure (`share/haseen/lib/`
 `# haseen:covers` globs match a path changed since the merge base with BASE
 (default origin/main), staged, unstaged and untracked files included;
 `tools/affected-tests.sh` prints why each path selects what it does. Pull
-requests run the same selection in CI. Every push to `main` runs the full suite
-after the merge, and `tests/run.sh` with no arguments still runs every test. A
+requests run the same selection in CI, and every push to `main` runs the
+selection for that push's own changes. `tests/run.sh` with no arguments still
+runs every test, as does a manual run of the `ci` workflow. A
 new test declares what it exercises in its leading comments, and lint fails on
 a file no test covers that is neither global nor exempt (plan 100).
 

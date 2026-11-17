@@ -28,8 +28,10 @@
 #   4. every test whose covers match it;
 #   5. nothing, if it matches EXEMPT;
 #   6. every test otherwise: a file no test claims is never skipped silently.
-# The full suite still runs on every push to main (.github/workflows/ci.yml), so
-# a declaration that misses something shows up red there.
+# CI runs this selection on pull requests and on every push to main, and the
+# full suite only by hand (.github/workflows/ci.yml, plan 176): a declaration
+# that misses something skips that test until its own files change, so keep
+# covers complete when a test starts reading a new file.
 #
 # Globs are matched against repository-relative paths, whole path only:
 #   *      any characters except /        ?      one character except /

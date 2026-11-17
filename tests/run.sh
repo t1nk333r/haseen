@@ -23,8 +23,8 @@ cd "$(dirname "$0")/.."
 
 files=("$@")
 # --affected [--committed] [BASE]: only the test files the change since BASE
-# affects, as tools/affected-tests.sh chooses them (plan 100). Pull requests
-# and pre-commit runs use it; main runs everything after each merge.
+# affects, as tools/affected-tests.sh chooses them (plan 100). Pre-commit runs,
+# pull requests and pushes to main use it (plan 176).
 if [[ ${1:-} == --affected ]]; then
     shift
     selection="$(tools/affected-tests.sh "$@")" || exit

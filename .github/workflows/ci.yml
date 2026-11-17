@@ -1,9 +1,10 @@
 # haseen CI: the same gates AGENTS.md asks for before every commit and push.
 #   lint    tools/lint.sh (bash -n, shellcheck, luac, jq, qmllint)
-#   test    on a pull request, tests/run.sh --affected: only the tests its
-#           changes affect (tools/affected-tests.sh, plan 100); on a push to
-#           main, the full tests/run.sh, so anything the mapping misses fails
-#           there; as a normal user (haseen refuses to run as root); rust is
+#   test    tests/run.sh --affected: only the tests a change affects
+#           (tools/affected-tests.sh, plans 100 and 176), a pull request's
+#           since its base and a push to main's since the commit before it;
+#           the full tests/run.sh only on a manual run; as a normal user
+#           (haseen refuses to run as root); rust is
 #           in ARCH_PACKAGES for the crates' cargo tests: haseen-sidecar and
 #           haseen-palette (plan 167) and wootingd (plan 099)
 #   docs    tools/check-docs.sh (needs full history: plans cite commits)
@@ -23,13 +24,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # A newer push to a pull request cancels its older run. A running suite on
-  # main is never cancelled: each merge's full run is the safety net for pull
-  # requests that ran only their affected tests (plan 100). GitHub keeps one
-  # pending run per group and cancels an older pending one, so of several
-  # merges queued behind a running suite the newest still gets a full run,
-  # and it carries every earlier merge.
+  # A newer push to a pull request cancels its older run. Every other run has
+  # a group of its own, so nothing cancels it, running or pending: a push to
+  # main tests only what that push changed (plan 176), and in a shared group
+  # GitHub drops a pending run when a newer one queues behind it, and with
+  # it the only run of that merge's tests.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -70,10 +70,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container: archlinux:latest
-    # The suite took 85-88 minutes here by 2026-10-21 and plan 099's cargo
-    # build pushed main's run past the old 90-minute limit (run 39613979814,
-    # cancelled at 90 min, nothing failed). 150 leaves room to grow; a future
-    # deadlock must still fail this job instead of consuming hours.
+    # The full suite took 85-88 minutes here by 2026-10-21 and plan 099's
+    # cargo build pushed it past the old 90-minute limit (run 39613979814,
+    # cancelled at 90 min, nothing failed). It runs by hand now, or when a
+    # change touches a global path (tests/lib.sh, this file); 150 leaves room
+    # to grow, and a deadlock must still fail this job instead of consuming
+    # hours.
     timeout-minutes: 150
     steps:
       - name: Tools
@@ -92,17 +94,27 @@ jobs:
           chown -R ci:ci "$GITHUB_WORKSPACE"
       - name: tests/run.sh
         # A pull request runs the tests its changes affect, measured from the
-        # event's base commit to the checked-out head; a push to main and a
-        # manual run run the full suite. An empty selection passes, so the
-        # required check reports on a docs-only pull request too. runuser
-        # keeps the working directory (the checkout).
+        # event's base commit to the checked-out head. A push to main runs
+        # the tests that push affects, measured from the commit main was at
+        # before it (plan 176); if that commit is not an ancestor of the head
+        # (a new branch's all-zero SHA, rewritten history), and on a manual
+        # run, the full suite runs. An empty selection passes, so the required
+        # check reports on a docs-only change too. git runs as ci, who owns
+        # the checkout; runuser keeps the working directory (the checkout).
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           args=()
-          if [[ $GITHUB_EVENT_NAME == pull_request ]]; then
-              args=(--affected --committed "$BASE_SHA")
-          fi
+          case $GITHUB_EVENT_NAME in
+              pull_request)
+                  args=(--affected --committed "$BASE_SHA") ;;
+              push)
+                  if runuser -u ci -- git merge-base --is-ancestor "$BASE_SHA" HEAD 2>/dev/null; then
+                      args=(--affected --committed "$BASE_SHA")
+                  else
+                      echo "the commit before this push ($BASE_SHA) is not an ancestor of HEAD: running the full suite"
+                  fi ;;
+          esac
           runuser -u ci -- env QT_QPA_PLATFORM=offscreen HASEEN_REQUIRE_ENGINE=1 HOME=/home/ci tests/run.sh "${args[@]}"
 
   docs:
