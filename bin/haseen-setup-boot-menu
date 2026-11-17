@@ -131,7 +131,7 @@ status() {
         echo "haseen:  has not changed the menu wait"
     fi
     if [[ -e $(sysroot_path "$BOOTMENU_COLOUR_RECORD") ]]; then
-        echo "colours: haseen's, following the splash (background $(bootmenu_snapshot_value term_background "$conf"), text $(bootmenu_snapshot_value term_foreground "$conf"), accent $(bootmenu_snapshot_value interface_branding_colour "$conf")); colours-off puts back the file's own"
+        echo "colours: haseen's (now background $(bootmenu_snapshot_value term_background "$conf"), text $(bootmenu_snapshot_value term_foreground "$conf"), accent $(bootmenu_snapshot_value interface_branding_colour "$conf")); they follow the theme where the splash does (haseen plymouth follow status); colours-off puts back the file's own"
     else
         echo "colours: the file's own (haseen setup boot-menu colours gives it the theme's)"
     fi
@@ -176,8 +176,10 @@ recolour() {
             return 0
         fi
         bootmenu_colour_spec_valid <"$record" ||
-            die "$BOOTMENU_COLOUR_RECORD does not hold colour options haseen wrote; set them in limine.conf by hand"
-    elif [[ $(bootmenu_colour_snapshot "$conf") == "$(bootmenu_colour_spec "#$c_bg" "#$c_fg" "#$c_accent")" ]]; then
+            die "$BOOTMENU_COLOUR_RECORD does not hold colour options haseen wrote; set the colours in limine.conf by hand, then remove that record"
+    elif $had_record && [[ $(bootmenu_colour_snapshot "$conf") == "$(bootmenu_colour_spec "#$c_bg" "#$c_fg" "#$c_accent")" ]]; then
+        # Without a record the edit still runs, changing no byte: writing the
+        # record is what makes the menu follow the theme.
         info "the boot menu already wears background #$c_bg, text #$c_fg, accent #$c_accent"
         return 0
     fi

@@ -632,6 +632,11 @@ printf 'interface_branding_color: 1\nINTERFACE_BRANDING_COLOUR: 2\n/x\n' >"$BMD/
 assert_contains "colours refused: both spellings of one option" "$(bm bootmenu_colour_problems "$BMD/bad.conf")" "sets interface_branding_colour: more than once"
 printf 'term_background: 000000\n' >"$BMD/bad.conf"
 assert_contains "colours refused: no entry" "$(bm bootmenu_colour_problems "$BMD/bad.conf")" "no menu entry"
+# Values Limine reads but colours-off could not put back (review round 1).
+for v in '0x1a1b26' '1a1b26; 7aa2f7' '#1a1b26' ''; do
+    printf 'term_palette: %s\n/x\n' "$v" >"$BMD/bad.conf"
+    assert_contains "colours refused: a value it could not put back: '$v'" "$(bm bootmenu_colour_problems "$BMD/bad.conf")" "its term_palette: value '$v' is not hex colours"
+done
 assert_eq "colours: a record line haseen wrote" 0 "$(bm bootmenu_colour_spec_valid <<<'term_palette=000000;111111' && echo 0)"
 for line in 'term_palette=red' 'nosuch=000000' $'term_background=1\nterm_background=2' 'term_foreground=00:1'; do
     assert_eq "colours: a record line refused: ${line//$'\n'/ | }" 1 "$(bm bootmenu_colour_spec_valid <<<"$line" || echo 1)"
@@ -683,17 +688,22 @@ assert_status "colours from root's rerun: no theme needed" 0 "$STATUS"
 capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours '171717-ccd0cf-f25623;x' --dry-run
 assert_status "a malformed rerun is refused" 1 "$STATUS"
 assert_not_contains "and nothing written" "$OUTPUT" "DRYRUN"
-# Already in those colours: nothing to do.
+# Already in those colours: without a record the edit still runs, with one there is nothing to do.
 bm bootmenu_colour_spec '#171717' '#ccd0cf' '#f25623' | bm bootmenu_render_colours "$root/boot/limine.conf" >"$root/boot/limine.new"
 mv "$root/boot/limine.new" "$root/boot/limine.conf"
 capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours 171717-ccd0cf-f25623 --dry-run
-assert_eq "colours again: nothing to do" "[*] the boot menu already wears background #171717, text #ccd0cf, accent #f25623" "$OUTPUT"
+assert_contains "colours again without a record: still records, so the menu follows (review round 1)" "$OUTPUT" "DRYRUN: write /var/lib/haseen/boot-menu/colours (mode 0600):"
+mkdir -p "$root/var/lib/haseen/boot-menu"
+cp "$BMD/oma-snap" "$root/var/lib/haseen/boot-menu/colours"
+capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours 171717-ccd0cf-f25623 --dry-run
+assert_eq "colours again with the record: nothing to do" "[*] the boot menu already wears background #171717, text #ccd0cf, accent #f25623" "$OUTPUT"
+rm -r "$root/var/lib/haseen"
 capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours-off --dry-run
 assert_contains "colours-off without a record: nothing to put back" "$OUTPUT" "nothing to put back"
 mkdir -p "$root/var/lib/haseen/boot-menu"
 cp "$BMD/oma-snap" "$root/var/lib/haseen/boot-menu/colours"
 capture env HASEEN_SYSROOT="$root" haseen setup boot-menu
-assert_contains "status: haseen's colours" "$OUTPUT" "colours: haseen's, following the splash (background 171717, text ccd0cf, accent f25623)"
+assert_contains "status: haseen's colours" "$OUTPUT" "colours: haseen's (now background 171717, text ccd0cf, accent f25623); they follow the theme where the splash does"
 capture env HASEEN_SYSROOT="$root" haseen setup boot-menu colours-off --dry-run
 assert_status "colours-off" 0 "$STATUS"
 assert_dry_pure "colours-off" "$OUTPUT"

@@ -12,7 +12,7 @@
   follows the theme), 174
 - **Category**: boot
 - **Planned at**: 2026-11-17, from the owner
-- **State**: DONE 2026-11-17 (`tests/test-omarchy45-boot.sh` 276/276,
+- **State**: DONE 2026-11-17 (`tests/test-omarchy45-boot.sh` 281/281,
   `tests/test-splash-follow.sh` 285/285; IO's menu is recoloured with
   `haseen setup boot-menu colours`, and the menu's look at the next boot is
   an owner check).
@@ -125,3 +125,31 @@ spelling is absent (menu.c:1836-1853). Omarchy's file uses the alias.
   alone. With one, it recolours after the stamp in the readable colours,
   after a rolling backup. A layout it cannot recolour warns, edits nothing
   and does not fail the splash.
+
+## Review
+
+DeepSeek Flash reviewed the first head (round 1, REQUEST_CHANGES, no
+blockers). Two should-fix findings were taken:
+
+- `colours` returned "already wears" whenever the menu matched, even with no
+  record. After a wiped `/var/lib/haseen` the menu then never followed the
+  theme. The shortcut now needs the record. Without it the edit runs,
+  changes no byte, and writes the record.
+- The record kept raw header values that Limine reads but `uncolour`
+  refuses (`0x1a1b26`, a palette with a space after `;`, `#1a1b26`, an empty
+  value), so `colours-off` could be locked out for good.
+  `bootmenu_colour_problems` now refuses such a file before anything
+  changes, and the `colours-off` error names the record.
+
+The status line no longer says the colours follow the splash. It says they
+follow where the splash does and points at `haseen plymouth follow status`.
+
+Rejected from that round:
+
+- Writing `term_background` as `ff` plus the colour. Limine documents TT as
+  transparency, so the six-digit form, TT 00, is opaque.
+- Clearing a stale `block.png` without magick, so it matches `logo.png`.
+- Moving the record write after the edit. A kill after the edit would then
+  lose the original values, which is worse than a record of an edit that
+  never happened.
+

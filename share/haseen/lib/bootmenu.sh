@@ -193,7 +193,10 @@ BOOTMENU_CANON_AWK='
 
 # bootmenu_colour_problems FILE — why haseen cannot recolour FILE's menu, one
 # reason per line; nothing when it can: a readable regular file with a menu
-# entry, and each colour option set at most once above it.
+# entry, and each colour option set at most once above it, to a value haseen
+# could put back (bootmenu_colour_value_valid). Limine also reads 0x1a1b26 or
+# a palette spaced after its semicolons, but a record of such a value would
+# be refused by `colours-off`, so the file is refused before anything changes.
 bootmenu_colour_problems() {
     local f="$1" key n
     if [[ ! -f $f || -L $f ]]; then
@@ -217,6 +220,12 @@ bootmenu_colour_problems() {
             END { print n + 0 }' "$f")"
         ((n <= 1)) || echo "it sets $key: more than once"
     done
+    local line value
+    while IFS= read -r line; do
+        value="${line#*=}"
+        bootmenu_colour_value_valid "$value" ||
+            echo "its ${line%%=*}: value '$value' is not hex colours haseen could put back (write it as rrggbb, palettes as rrggbb;rrggbb with no spaces)"
+    done < <(bootmenu_colour_snapshot "$f")
     return 0
 }
 
