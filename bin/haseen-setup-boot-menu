@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# haseen:summary Limine's boot menu: wait 1 second, quietly (fast), or as before (normal)
-# haseen:args    [fast|normal|status] [--dry-run] [--yes]
+# haseen:summary Limine's boot menu: wait 1 second, quietly (fast), or as before (normal); wear the theme's colours (colours)
+# haseen:args    [fast|normal|colours|colours-off|status] [--dry-run] [--yes]
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
@@ -8,23 +8,32 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/com
 source "$HASEEN_PATH/lib/bootmenu.sh"
 # shellcheck source=../share/haseen/layers/secureboot/secureboot.sh
 source "$HASEEN_PATH/layers/secureboot/secureboot.sh"
+# shellcheck source=../share/haseen/lib/plymouth.sh
+source "$HASEEN_PATH/lib/plymouth.sh"
 
 BIN_DIR="$(dirname "$(readlink -f "$0")")"
 HELPER="$HASEEN_PATH/lib/limine-header.sh"
 
 usage() {
     cat <<EOF
-Usage: haseen setup boot-menu [fast|normal|status] [--dry-run] [--yes]
+Usage: haseen setup boot-menu [fast|normal|colours|colours-off|status] [--dry-run] [--yes]
 
-  fast    Limine waits 1 second, quietly, before it boots the default entry
-          (timeout: 1 and quiet: yes in limine.conf's header, as Omarchy 4.5
-          ships it). Press any key during that second to see the menu.
-  normal  puts back the timeout: and quiet: lines fast replaced.
-  status  the menu wait now, what normal would put back, and whether the
-          config hash enrolled in Limine matches (default).
+  fast         Limine waits 1 second, quietly, before it boots the default
+               entry (timeout: 1 and quiet: yes in limine.conf's header, as
+               Omarchy 4.5 ships it). Press any key during that second to see
+               the menu.
+  normal       puts back the timeout: and quiet: lines fast replaced.
+  colours      the menu in the current theme's background, text and accent,
+               the boot splash's colours. From then on the menu follows the
+               theme wherever the splash does (haseen plymouth follow).
+  colours-off  puts back the colour lines colours replaced, and stops
+               following.
+  status       the menu wait and colours now, what normal and colours-off
+               would put back, and whether the config hash enrolled in Limine
+               matches (default).
 
-Off by default. Limine only. Only those two lines of limine.conf change, and
-only in a layout haseen understands; the file is copied to
+Off by default. Limine only. Only those header lines of limine.conf change,
+and only in a layout haseen understands; the file is copied to
 $BOOTMENU_DIR/ first. When Limine has a config hash enrolled (Secure Boot),
 the edited file is enrolled again: haseen secureboot sign with haseen's
 Secure Boot keys, else limine-enroll-config. If that fails, the file is put
@@ -121,22 +130,131 @@ status() {
     else
         echo "haseen:  has not changed the menu wait"
     fi
+    if [[ -e $(sysroot_path "$BOOTMENU_COLOUR_RECORD") ]]; then
+        echo "colours: haseen's, following the splash (background $(bootmenu_snapshot_value term_background "$conf"), text $(bootmenu_snapshot_value term_foreground "$conf"), accent $(bootmenu_snapshot_value interface_branding_colour "$conf")); colours-off puts back the file's own"
+    else
+        echo "colours: the file's own (haseen setup boot-menu colours gives it the theme's)"
+    fi
     echo "hash:    $(enrollment "$conf")"
 }
 
-parse_common_flags "$@"
-((${#REST[@]} <= 1)) || {
-    usage >&2
-    exit 2
+# bootmenu_snapshot_value KEY FILE — one colour option's value in FILE.
+bootmenu_snapshot_value() {
+    bootmenu_colour_snapshot "$2" | sed -n "s/^$1=//p"
 }
+
+# theme_colours — the current theme's colours as the splash draws them
+# (plymouth_readable), as BG-FG-ACCENT in six lowercase hex digits each, the
+# form `colours` is rerun with as root (root reads no one's theme).
+theme_colours() {
+    local file="$HASEEN_USER_STATE/current/theme/colors.toml" bg fg accent
+    [[ -r $file ]] || die "no theme is set (haseen theme set NAME); the menu takes the theme's colours"
+    read -r bg fg accent <<<"$(plymouth_theme_colors "$file")"
+    fg="$(plymouth_readable "$bg" "$fg")"
+    accent="$(plymouth_readable "$bg" "$accent")"
+    printf '%s-%s-%s\n' "${bg#\#}" "${fg#\#}" "${accent#\#}" | tr 'A-F' 'a-f'
+}
+
+# recolour — colours or colours-off on a readable limine.conf: the same steps
+# as the menu wait (check, enrolment plan, confirm, backup, record, edit,
+# enrol again or put the file back), on the colour options (plan 175).
+recolour() {
+    local problems shadows had_record=false backup record
+    record="$(sysroot_path "$BOOTMENU_COLOUR_RECORD")"
+    [[ -e $record ]] && had_record=true
+    problems="$(bootmenu_colour_problems "$conf")"
+    if [[ -n $problems ]]; then
+        sed 's/^/  /' <<<"$problems" >&2
+        die "$ESP_PATH/limine.conf is not a layout haseen recolours; set its colours by hand"
+    fi
+    shadows="$(sb_limine_shadows)"
+    [[ -z $shadows ]] ||
+        die "Limine reads $(head -n1 <<<"$shadows") before $ESP_PATH/limine.conf (/usr/share/doc/limine/CONFIG.md, \"Location of the config file\"); remove it or edit that one"
+    if [[ $verb == colours-off ]]; then
+        if ! $had_record; then
+            info "haseen has not changed the boot menu's colours ($BOOTMENU_COLOUR_RECORD is absent); nothing to put back"
+            return 0
+        fi
+        bootmenu_colour_spec_valid <"$record" ||
+            die "$BOOTMENU_COLOUR_RECORD does not hold colour options haseen wrote; set them in limine.conf by hand"
+    elif [[ $(bootmenu_colour_snapshot "$conf") == "$(bootmenu_colour_spec "#$c_bg" "#$c_fg" "#$c_accent")" ]]; then
+        info "the boot menu already wears background #$c_bg, text #$c_fg, accent #$c_accent"
+        return 0
+    fi
+    reenroll_plan
+
+    if [[ $verb == colours ]]; then
+        echo "Boot menu: colours, in $ESP_PATH/limine.conf"
+        echo "  background #$c_bg, text #$c_fg, accent #$c_accent (the boot splash's)"
+        $had_record || echo "  then the menu follows the theme with the splash (haseen plymouth follow)"
+    else
+        echo "Boot menu: colours-off, in $ESP_PATH/limine.conf"
+        echo "  the colour lines colours replaced come back; the menu stops following the theme"
+    fi
+    case "$REENROLL" in
+    sign) echo "  then:    haseen secureboot sign (Limine's config hash is enrolled again)" ;;
+    enroll) echo "  then:    limine-enroll-config (Limine's config hash is enrolled again)" ;;
+    none) echo "  then:    nothing (no config hash is enrolled in Limine)" ;;
+    esac
+    confirm "Change Limine's menu colours in $ESP_PATH/limine.conf?" || die "cancelled; nothing changed"
+
+    backup="$BOOTMENU_DIR/limine.conf.$(date -u +%Y%m%dT%H%M%SZ)"
+    install_root_file "$ESP_PATH/limine.conf" "$backup" 0600
+    if [[ $verb == colours ]] && ! $had_record; then
+        bootmenu_colour_snapshot "$conf" | write_root_file "$BOOTMENU_COLOUR_RECORD" 0600
+    fi
+    local edit=(uncolour "$ESP_PATH/limine.conf" "$BOOTMENU_COLOUR_RECORD")
+    [[ $verb == colours ]] && edit=(colours "$ESP_PATH/limine.conf" "#$c_bg" "#$c_fg" "#$c_accent")
+    if ! sb_root "$HELPER" "${edit[@]}"; then
+        forget_colour_record
+        die "$ESP_PATH/limine.conf was not changed"
+    fi
+    if ! reenroll; then
+        warn "the edited config was not enrolled again; putting $ESP_PATH/limine.conf back from $backup"
+        sb_root "$HELPER" restore "$ESP_PATH/limine.conf" "$backup" ||
+            die "$ESP_PATH/limine.conf could not be put back: copy $backup over it and run haseen secureboot sign before you reboot with Secure Boot on"
+        forget_colour_record
+        reenroll || die "the restored config was not enrolled again either: do not reboot with Secure Boot on until haseen secureboot status is all ok"
+        die "the boot menu's colours were not changed"
+    fi
+    [[ $verb == colours-off ]] && run_root rm -f "$BOOTMENU_COLOUR_RECORD"
+    info "boot menu: $verb (the previous limine.conf is $backup)"
+}
+
+# forget_colour_record — drop the record a first `colours` wrote when the
+# edit did not happen.
+forget_colour_record() {
+    if [[ $verb == colours ]] && ! $had_record; then
+        run_root rm -f "$BOOTMENU_COLOUR_RECORD"
+    fi
+}
+
+parse_common_flags "$@"
 verb="${REST[0]:-status}"
 case "$verb" in
-status | fast | normal) ;;
+colors) verb=colours ;;
+colors-off) verb="colours-off" ;;
+esac
+# colours takes one more word, BG-FG-ACCENT, when it reruns itself as root.
+colours=""
+if [[ $verb == colours ]] && ((${#REST[@]} == 2)); then
+    colours="${REST[1]}"
+    [[ $colours =~ ^[0-9a-f]{6}-[0-9a-f]{6}-[0-9a-f]{6}$ ]] || die "not BG-FG-ACCENT (six lowercase hex digits each): $colours"
+elif ((${#REST[@]} > 1)); then
+    usage >&2
+    exit 2
+fi
+case "$verb" in
+status | fast | normal | colours | colours-off) ;;
 *)
     usage >&2
     exit 2
     ;;
 esac
+if [[ $verb == colours ]]; then
+    [[ -n $colours ]] || colours="$(theme_colours)"
+    IFS=- read -r c_bg c_fg c_accent <<<"$colours"
+fi
 
 preflight_all
 [[ $BOOTLOADER == limine ]] ||
@@ -154,20 +272,28 @@ if in_sysroot && ! $DRY_RUN &&
     ! { [[ ${HASEEN_TEST_STUBBED_SUDO:-} == 1 ]] && ((EUID != 0)) && sudo_is_test_stub; }; then
     die "HASEEN_SYSROOT=$HASEEN_SYSROOT describes another system, but this would edit this machine's limine.conf: use --dry-run with HASEEN_SYSROOT, or unset it"
 fi
-sb_reexec_as_root "$(readlink -f "$0")" "$@"
+reargs=("$verb")
+[[ $verb == colours ]] && reargs+=("$colours")
+$ASSUME_YES && reargs+=(--yes)
+sb_reexec_as_root "$(readlink -f "$0")" "${reargs[@]}"
 
 conf="$(sb_limine_conf)"
 if ! sb_esp_readable; then
     # Only a dry run as a normal user gets here.
     echo "    (the ESP $ESP_PATH is readable only by root: the layout is checked, and the config hash enrolled again, when this runs as root)"
-    if [[ $verb == fast ]]; then
-        sb_root "$HELPER" set "$ESP_PATH/limine.conf" "$BOOTMENU_FAST_TIMEOUT" "$BOOTMENU_FAST_QUIET"
-    else
-        echo "    (normal puts back the values recorded in $BOOTMENU_RECORD)"
-    fi
+    case "$verb" in
+    fast) sb_root "$HELPER" set "$ESP_PATH/limine.conf" "$BOOTMENU_FAST_TIMEOUT" "$BOOTMENU_FAST_QUIET" ;;
+    colours) sb_root "$HELPER" colours "$ESP_PATH/limine.conf" "#$c_bg" "#$c_fg" "#$c_accent" ;;
+    colours-off) echo "    (colours-off puts back the values recorded in $BOOTMENU_COLOUR_RECORD)" ;;
+    *) echo "    (normal puts back the values recorded in $BOOTMENU_RECORD)" ;;
+    esac
     exit 0
 fi
 [[ -e $conf ]] || die "$ESP_PATH/limine.conf not found"
+if [[ $verb == colours || $verb == colours-off ]]; then
+    recolour
+    exit 0
+fi
 problems="$(bootmenu_problems "$conf")"
 if [[ -n $problems ]]; then
     sed 's/^/  /' <<<"$problems" >&2

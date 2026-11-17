@@ -156,3 +156,153 @@ bootmenu_describe() {
     quiet:no) echo "no (the menu shows)" ;;
     esac
 }
+
+# --- Colours: Limine's menu in the splash's colours (plan 175) ---------------
+#
+# The menu wears the same three colours as the boot splash (background, text,
+# accent), so the screen does not change palette between Limine and the disk
+# password. Limine draws the menu from these header options
+# (/usr/share/doc/limine/CONFIG.md, limine 12.9.4): the entries in
+# term_foreground on term_background, the selected one in reverse video, the
+# entries' comments in the palette's cyan, the branding and the key help in
+# their own colours (common/menu.c: `\e[7m`, `\e[36m`, menu_branding_colour,
+# interface_help_colour). The same rules as the menu wait apply: only those
+# header lines change, the file is copied to BOOTMENU_DIR first, and what
+# haseen replaced is recorded once, so `colours-off` puts it back.
+
+# The options haseen sets, by their canonical names. Limine reads the
+# interface_*_color spellings as aliases of *_colour; an existing line keeps
+# its spelling.
+BOOTMENU_COLOUR_KEYS=(backdrop term_background term_foreground term_background_bright
+    term_foreground_bright term_palette term_palette_bright interface_branding_colour
+    interface_help_colour interface_help_colour_bright)
+# The values haseen replaced: one KEY=VALUE line per option, - for none. While
+# it exists the menu's colours are haseen's, and following the theme
+# (haseen plymouth apply) recolours them.
+BOOTMENU_COLOUR_RECORD="$BOOTMENU_DIR/colours"
+
+# The awk function that names a header option by its canonical name, shared
+# by the readers and the renderer below.
+BOOTMENU_CANON_AWK='
+    function canon(line,   k) {
+        if (line !~ /^[[:space:]]*[A-Za-z_]+:/) return ""
+        k = line; sub(/^[[:space:]]*/, "", k); sub(/:.*/, "", k); k = tolower(k)
+        if (k ~ /^interface_.*_color(_bright)?$/) sub(/_color/, "_colour", k)
+        return k
+    }'
+
+# bootmenu_colour_problems FILE — why haseen cannot recolour FILE's menu, one
+# reason per line; nothing when it can: a readable regular file with a menu
+# entry, and each colour option set at most once above it.
+bootmenu_colour_problems() {
+    local f="$1" key n
+    if [[ ! -f $f || -L $f ]]; then
+        echo "$f is not a regular file"
+        return 0
+    fi
+    if [[ ! -r $f ]]; then
+        echo "$f is not readable"
+        return 0
+    fi
+    if ! tr -d '\000\r' <"$f" | cmp -s - "$f"; then
+        echo "it contains NUL or carriage-return bytes"
+    fi
+    if ! grep -q '^[[:space:]]*/' "$f"; then
+        echo "it has no menu entry (no line starting with /)"
+    fi
+    for key in "${BOOTMENU_COLOUR_KEYS[@]}"; do
+        n="$(awk -v want="$key" "$BOOTMENU_CANON_AWK"'
+            /^[[:space:]]*\// { exit }
+            canon($0) == want { n++ }
+            END { print n + 0 }' "$f")"
+        ((n <= 1)) || echo "it sets $key: more than once"
+    done
+    return 0
+}
+
+# bootmenu_colour_snapshot FILE — KEY=VALUE for every colour option, FILE's
+# header value or - when it sets none: what BOOTMENU_COLOUR_RECORD keeps.
+bootmenu_colour_snapshot() {
+    local keys="${BOOTMENU_COLOUR_KEYS[*]}"
+    awk -v keys="$keys" "$BOOTMENU_CANON_AWK"'
+        /^[[:space:]]*\// { exit }
+        { k = canon($0) }
+        k != "" && !(k in v) { s = $0; sub(/^[^:]*:[[:space:]]*/, "", s); sub(/[[:space:]]+$/, "", s); v[k] = s }
+        END { n = split(keys, a, " "); for (i = 1; i <= n; i++) print a[i] "=" ((a[i] in v) ? v[a[i]] : "-") }
+    ' "$1"
+}
+
+# bootmenu_colour_value_valid VALUE — VALUE is one haseen writes or puts back
+# into a colour option: hex colours (a palette separates them with ;), or -.
+bootmenu_colour_value_valid() { [[ $1 == - || $1 =~ ^[0-9A-Fa-f]{1,8}(;[0-9A-Fa-f]{1,8}){0,7}$ ]]; }
+
+# bootmenu_colour_spec_valid — stdin is KEY=VALUE lines haseen may apply: known
+# keys, each once, valid values.
+bootmenu_colour_spec_valid() {
+    local line key value seen=" "
+    while IFS= read -r line; do
+        [[ $line == *=* ]] || return 1
+        key="${line%%=*}" value="${line#*=}"
+        [[ " ${BOOTMENU_COLOUR_KEYS[*]} " == *" $key "* && $seen != *" $key "* ]] || return 1
+        bootmenu_colour_value_valid "$value" || return 1
+        seen+="$key "
+    done
+}
+
+# bootmenu_mix A B T — #rrggbb A moved T (0..1) of the way to B, as rrggbb.
+bootmenu_mix() {
+    awk -v a="${1#\#}" -v b="${2#\#}" -v t="$3" '
+        function ch(h, i) { return index("0123456789abcdef", substr(tolower(h), i, 1)) - 1 }
+        function c(h, i) { return ch(h, i) * 16 + ch(h, i + 1) }
+        BEGIN { for (i = 1; i <= 5; i += 2) printf "%02x", int(c(a, i) + (c(b, i) - c(a, i)) * t + 0.5); print "" }'
+}
+
+# bootmenu_colour_spec BG FG ACCENT — the KEY=VALUE lines for a menu in these
+# colours (#rrggbb, already readable: plymouth_readable). The selected entry
+# is reverse video, so it needs nothing of its own; comments (the palette's
+# cyan) are text faded 40% towards the background; the editor's syntax
+# colours are the accent.
+bootmenu_colour_spec() {
+    local bg="${1#\#}" fg="${2#\#}" accent="${3#\#}" dim grey muted a
+    bg="${bg,,}" fg="${fg,,}" accent="${accent,,}"
+    dim="$(bootmenu_mix "$bg" "$fg" 0.15)"
+    grey="$(bootmenu_mix "$bg" "$fg" 0.35)"
+    muted="$(bootmenu_mix "$bg" "$fg" 0.6)"
+    a="$accent;$accent;$accent;$accent;$accent"
+    printf '%s\n' "backdrop=$bg" "term_background=$bg" "term_foreground=$fg" \
+        "term_background_bright=$dim" "term_foreground_bright=$fg" \
+        "term_palette=$bg;$a;$muted;$fg" "term_palette_bright=$grey;$a;$muted;$fg" \
+        "interface_branding_colour=$accent" "interface_help_colour=$accent" \
+        "interface_help_colour_bright=$fg"
+}
+
+# bootmenu_render_colours FILE — FILE with the colour options in the
+# KEY=VALUE lines on stdin set, on stdout: an option's existing header line
+# keeps its spelling and place, a missing one goes just above the first
+# entry, - removes it. Every other line is copied as is. FILE must pass
+# bootmenu_colour_problems.
+bootmenu_render_colours() {
+    local spec
+    spec="$(cat)"
+    BOOTMENU_SPEC="$spec" awk "$BOOTMENU_CANON_AWK"'
+        BEGIN {
+            n = split(ENVIRON["BOOTMENU_SPEC"], lines, "\n")
+            for (i = 1; i <= n; i++) {
+                if (lines[i] == "") continue
+                k = lines[i]; sub(/=.*/, "", k); v = lines[i]; sub(/^[^=]*=/, "", v)
+                order[++m] = k; want[k] = v
+            }
+        }
+        !body && /^[[:space:]]*\// {
+            for (i = 1; i <= m; i++) if (!(order[i] in done) && want[order[i]] != "-") print order[i] ": " want[order[i]]
+            body = 1
+        }
+        !body { k = canon($0) }
+        !body && (k in want) {
+            done[k] = 1
+            if (want[k] != "-") { key = $0; sub(/:.*/, "", key); print key ": " want[k] }
+            next
+        }
+        { print }
+    ' "$1"
+}

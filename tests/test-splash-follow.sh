@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-plymouth-{apply,follow,set,status} bin/haseen-theme-set bin/haseen-branding
-# haseen:covers share/haseen/lib/{plymouth,boot,branding,preflight}.sh share/haseen/layers/secureboot/secureboot.sh
+# haseen:covers share/haseen/lib/{plymouth,boot,bootmenu,branding,preflight,limine-header}.sh share/haseen/layers/secureboot/secureboot.sh
 # haseen:covers share/haseen/default/systemd/haseen-splash@.service share/haseen/default/polkit/**
 # haseen:covers share/haseen/systemd/user/haseen-splash-follow.* share/haseen/default/plymouth/**
 # haseen:covers share/haseen/migrations/1792669390-splash-follows-theme.sh tests/fixtures/polkit-harness.js
@@ -444,6 +444,31 @@ assert_contains "with the prompt drawn readable" "$OUTPUT" \
     "the theme's accent #13131a reads at 1.00:1 on #13131a, under 4.5:1: drawn in #ffffff"
 assert_contains "in white" "$OUTPUT" "accent_r = 1.000"
 assert_contains "and recorded as asked" "$OUTPUT" "    | 13131a-13131a-13131a-kufic"
+assert_not_contains "without haseen's colour record, Limine's menu is left alone" "$OUTPUT" "limine-header.sh"
+
+# Limine's menu wears the splash's colours once `haseen setup boot-menu
+# colours` recorded them as haseen's (plan 175): recoloured after the rebuild,
+# in the colours the splash draws.
+mkdir -p "$SYS/boot/EFI/limine" "$SYS/var/lib/haseen/boot-menu"
+printf 'MZ fixture Limine EFI binary\n++CONFIG_B2SUM_SIGNATURE++%0128d\n' 0 >"$SYS/boot/EFI/limine/limine_x64.efi"
+printf 'term_background: 1a1b26\n/+Arch\n    //linux\n' >"$SYS/boot/limine.conf"
+printf 'term_background=1a1b26\n' >"$SYS/var/lib/haseen/boot-menu/colours"
+apply 13131a-e4e1ec-13131a-kufic --dry-run
+assert_status "with the record: apply plans" 0 "$STATUS"
+assert_dry_pure "apply with Limine colours" "$OUTPUT"
+assert_contains "Limine's menu is recoloured, the accent drawn readable" "$OUTPUT" \
+    "DRYRUN: sudo $HASEEN_PATH/lib/limine-header.sh colours /boot/limine.conf #13131a #e4e1ec #ffffff"
+assert_contains "after one rolling backup" "$OUTPUT" \
+    "DRYRUN: sudo install -Dm0600 /boot/limine.conf /var/lib/haseen/boot-menu/limine.conf.followed"
+stamp_at="$(grep -n 'write /var/lib/haseen/splash' <<<"$OUTPUT" | cut -d: -f1)"
+menu_at="$(grep -n 'limine-header.sh colours' <<<"$OUTPUT" | cut -d: -f1)"
+assert_eq "the menu follows only after the splash is rebuilt and recorded" 1 "$((stamp_at < menu_at))"
+printf 'term_background: 1a1b26\nterm_background: 000000\n/+Arch\n' >"$SYS/boot/limine.conf"
+apply 13131a-e4e1ec-13131a-kufic --dry-run
+assert_status "a layout it does not recolour does not fail the splash" 0 "$STATUS"
+assert_contains "it says so" "$OUTPUT" "Limine's menu colours were not followed: it sets term_background: more than once"
+assert_not_contains "and edits nothing" "$OUTPUT" "limine-header.sh"
+rm -rf "${SYS:?}/boot" "${SYS:?}/var/lib/haseen/boot-menu"
 
 # The root helpers' sudo becomes a plain call only for root (review round 1).
 assert_eq "apply refuses a non-root run before it changes sudo" 1 \

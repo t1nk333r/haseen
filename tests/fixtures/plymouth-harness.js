@@ -15,8 +15,11 @@
 // removed, so a callback that relied on another call's local fails here as it
 // would there.
 //
-// Images are rectangles with a text or a scale source; text is a fixed cell
-// (11 x 22 px, a 14 pt monospace at 96 dpi), enough for layout, not pixels.
+// Images are rectangles with a text, a file or a scale source; text is a
+// fixed cell (11 x 22 px, a 14 pt monospace at 96 dpi), enough for layout,
+// not pixels. block.png, which `haseen plymouth set` installs beside the
+// script, is an 8 px square; HARNESS_NO_BLOCK=1 runs as if magick had not
+// made it. logo.png is never there.
 "use strict";
 const fs = require("fs");
 const vm = require("vm");
@@ -50,7 +53,11 @@ const imageProto = {
     GetHeight() { return this.h; },
     Scale(w, h) { return makeImage({ kind: "scaled", src: this.text ?? this.src, color: this.color, w, h }); },
 };
-function Image(file) { return null; } // no logo.png beside the script here
+function Image(file) {
+    if (file === "block.png" && process.env.HARNESS_NO_BLOCK !== "1")
+        return makeImage({ kind: "file", src: file, color: null, w: 8, h: 8 });
+    return null;
+}
 Image.Text = (text, r, g, b, a, font) => {
     const t = String(text);
     textCalls.push({ text: t, color: [r, g, b], font: font ?? null });
@@ -69,6 +76,8 @@ const Window = { GetWidth: () => WIDTH, GetHeight: () => HEIGHT,
 const Plymouth = new Proxy({}, { get: (_, name) => fn => { callbacks[name] = fn; } });
 
 const ctx = vm.createContext({ Image, Sprite, Window, Plymouth });
+// Plymouth's Math.Int is floor (src/plugins/splash/script/script-lib-math.c).
+vm.runInContext("Math.Int = Math.floor;", ctx);
 vm.runInContext(translate(fs.readFileSync(process.argv[2], "utf8")), ctx, { filename: process.argv[2] });
 const loaded = new Set(Object.keys(ctx));
 
@@ -98,7 +107,7 @@ report.empty = snapshot();
 report.blink = [];
 for (let i = 0; i < 100; i++) {
     call("SetRefreshFunction");
-    const caret = sprites.find(s => s.image && s.image.text === "█");
+    const caret = sprites.find(s => s.z === 11);
     report.blink.push(caret ? +caret.opacity.toFixed(4) : null);
 }
 call("SetDisplayPasswordFunction", "", 3);

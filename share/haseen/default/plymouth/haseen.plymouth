@@ -6,6 +6,7 @@ ModuleName=script
 [script]
 ImageDir=/usr/share/plymouth/themes/haseen
 ScriptFile=/usr/share/plymouth/themes/haseen/haseen.script
-# The label font; the plymouth hook copies it into the initramfs. Inter has the
-# bullet the password dots and the progress bar are drawn with.
+# The label font; the plymouth hook copies it into the initramfs. The script
+# draws ASCII only (plan 174): the asterisks use the monospace font the hook
+# copies beside this one.
 Font=Inter 14

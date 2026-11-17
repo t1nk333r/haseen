@@ -57,6 +57,8 @@ assert_contains "puts splash on the command line" "$OUTPUT" "quiet splash"
 assert_contains "and rebuilds the initramfs" "$OUTPUT" "mkinitcpio -P"
 assert_contains "it renders the selected mark in the accent (plan 059)" "$OUTPUT" "render $HASEEN_PATH/branding/kufic/mark.svg in #dcd7ba -> logo.png (mark: kufic)"
 assert_contains "and installs it beside the script" "$OUTPUT" "/usr/share/plymouth/themes/haseen/logo.png"
+assert_contains "it renders the block the script stretches, in the accent (plan 174)" "$OUTPUT" "render an 8 px square in #dcd7ba -> block.png"
+assert_contains "and installs it too" "$OUTPUT" "/usr/share/plymouth/themes/haseen/block.png"
 mkdir -p "$XDG_CONFIG_HOME/haseen"
 echo '{"branding": {"mark": "gate"}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
 capture haseen plymouth set --dry-run
@@ -83,6 +85,10 @@ assert_contains "the background is the theme's, as plymouth floats" "$script" "b
 assert_contains "and its blue channel too" "$script" "bg_b = 0.157"
 assert_contains "the password prompt is drawn by the theme" "$script" "SetDisplayPasswordFunction"
 assert_not_contains "boot messages are not drawn: the splash shows no text" "$script" "SetMessageFunction"
+# plymouthd in the initramfs runs in the C locale, where its freetype label
+# plugin cannot decode a multibyte character and draws a missing-glyph box
+# (plan 174, the owner's photo of IO's prompt, 2026-11-17).
+assert_eq "the script is ASCII only" "0" "$(grep -cP '[^\x00-\x7f]' <<<"$script" || true)"
 
 # --- the LUKS prompt under a fake Plymouth (plan 036, 2026-10-08) -------------
 # tests/fixtures/plymouth-harness.js runs the rendered script with a recording
@@ -96,28 +102,29 @@ else
     assert_status "the script runs under the fake Plymouth" 0 "$STATUS"
     report="$OUTPUT"
     q() { jq -c "$1" <<<"$report"; }
-    # Sprites by what they show: the caret is the bare block, the brackets are
-    # blocks stretched to arms, the scanner is the stretched bullet, the
-    # asterisks are text of '*'.
-    CARET='map(select(.kind == "text" and .text == "█"))[0]'
-    ARMS='map(select(.src == "█"))'
+    # Sprites by what they show: the caret is block.png stretched to a cell
+    # and drawn on top (z 11), the brackets are blocks stretched to arms
+    # (z 10), the scanner is blocks under them, the asterisks are text of '*'.
+    CARET='map(select(.z == 11))[0]'
+    ARMS='map(select(.z == 10 and .src == "block.png"))'
     STARS='map(select(.kind == "text" and (.text // "" | test("^\\*+$"))))[0]'
-    SCAN='map(select(.src == "•"))'
+    SCAN='map(select(.src == "block.png" and .z < 10))'
     assert_eq "it registers the four callbacks it uses" \
         '["SetDisplayNormalFunction","SetDisplayPasswordFunction","SetQuitFunction","SetRefreshFunction"]' "$(q .registered)"
 
     # Before the first key: a lit caret inside four corner brackets, no text.
     assert_eq "before a key: the caret shows" "1" "$(q ".empty | $CARET | .opacity")"
+    assert_eq "the caret is block.png, one asterisk's cell" '["block.png",11,22]' "$(q ".empty | $CARET | [.src, .w, .h]")"
     assert_eq "before a key: eight bracket arms show" "8" "$(q "[.empty | $ARMS | .[] | select(.opacity > 0)] | length")"
     assert_eq "the brackets are thin (2 px) arms of 12 px" '[[2,12],[12,2]]' "$(q "[.empty | $ARMS | .[] | [.w, .h]] | unique")"
     assert_eq "the brackets are dimmer than the caret" "0.6" "$(q "[.empty | $ARMS | .[] | .opacity] | unique | .[0]")"
-    assert_eq "before a key: no asterisk shows" "true" "$(q "[.empty[] | select(.kind == \"text\" and .text != \"█\" and .opacity > 0)] | length == 0")"
+    assert_eq "before a key: no asterisk shows" "true" "$(q "[.empty[] | select(.kind == \"text\" and .opacity > 0)] | length == 0")"
     assert_eq "the scanner hides while the prompt is up" "0" "$(q "[.empty | $SCAN | .[] | .opacity] | max")"
-    assert_eq "the caret is tinted like the scanner" "$(q ".empty | $SCAN | .[0].color")" "$(q ".empty | $CARET | .color")"
+    assert_eq "the scanner is drawn from the same block" "6" "$(q "[.empty | $SCAN | .[]] | length")"
     # The field takes the scanner's place: the track's width (a quarter of the
     # 1920 px screen), centred, and the caret sits inside it.
     box() { q "(.$1 | $ARMS) as \$a | [([\$a[] | .x] | min), ([\$a[] | .y] | min), ([\$a[] | .x + .w] | max), ([\$a[] | .y + .h] | max)]"; }
-    assert_eq "the field is the track's width, centred" '[720,519,1200,565]' "$(box empty)"
+    assert_eq "the field is the track's width, centred on the screen's centre" '[720,517,1200,563]' "$(box empty)"
     inside() { q "(.$1 | $ARMS) as \$a | (.$1 | $CARET) as \$c | \$c.x > ([\$a[] | .x] | min) and \$c.x + \$c.w < ([\$a[] | .x + .w] | max) and \$c.y > ([\$a[] | .y] | min) and \$c.y + \$c.h < ([\$a[] | .y + .h] | max)"; }
     assert_eq "the caret sits inside the brackets" "true" "$(inside empty)"
 
@@ -137,10 +144,20 @@ else
         "$(q "(.typed | $STARS) as \$s | (.typed | $CARET) as \$c | \$c.x == \$s.x + \$s.w + 2 and \$c.y == \$s.y")"
     assert_eq "a key press restarts the blink lit" "1" "$(q ".typedNextFrame | $CARET | .opacity")"
     assert_eq "the field keeps its size for a short password" "$(box empty)" "$(box typed)"
+    # The asterisks and the caret are one line centred on the screen's centre
+    # (owner, 2026-11-17, "center the password prompt"), to the pixel: the
+    # gaps either side differ by at most the one odd pixel.
+    centred() { q "(.$1 | $CARET) as \$c | ((.$1 | $STARS | select(.opacity > 0) | .x) // \$c.x) as \$l | [(\$l + \$c.x + \$c.w - 1920), (2 * \$c.y + \$c.h - 1080)] | map(if . < 0 then -. else . end) | max <= 1"; }
+    assert_eq "before a key: the caret is on the screen's centre" "true" "$(centred empty)"
+    assert_eq "three keys: the asterisks and caret are centred" "true" "$(centred typed)"
+    assert_eq "120 keys: still centred" "true" "$(centred long)"
+    assert_eq "the scanner's track is centred on it too" '[960,540]' \
+        "$(q '[.normal[] | select(.src == "block.png" and .z == 1)][0] | [.x + .w / 2, .y + .h / 2]')"
     assert_eq "120 keys: the field widens to hold them" "true" "$(q "(.long | $ARMS) as \$a | ([\$a[] | .x + .w] | max) - ([\$a[] | .x] | min) > 120 * 11")"
     assert_eq "and the caret stays inside" "true" "$(inside long)"
-    assert_eq "the caret and the asterisks share one monospace font" '["Monospace 14"]' \
-        "$(q '[.textCalls[] | select(.text == "█" or (.text | test("^\\*+$"))) | .font] | unique')"
+    assert_eq "the caret's cell and the asterisks share one monospace font" '["Monospace 14"]' \
+        "$(q '[.textCalls[] | select(.text | test("^\\*+$")) | .font] | unique')"
+    assert_eq "every string it draws is ASCII" "true" "$(q '[.textCalls[] | .text | test("^[ -~]*$")] | all')"
 
     # Back to normal and quit: the prompt goes, the scanner comes back.
     assert_eq "normal: the caret hides" "0" "$(q ".normal | $CARET | .opacity")"
@@ -149,6 +166,15 @@ else
     assert_eq "normal: the scanner returns" "1" "$(q "[.normal | $SCAN | .[] | .opacity] | max")"
     assert_eq "quit: nothing of the prompt or the scanner stays" "0" \
         "$(q "[(.quit | $ARMS | .[]), (.quit | $SCAN | .[]), (.quit | $CARET), (.quit | $STARS)] | map(.opacity) | max")"
+
+    # Without block.png (no magick when the theme was installed): underscores
+    # stand in, still ASCII, and the prompt still works.
+    capture env HARNESS_NO_BLOCK=1 "$NODE" "$REPO/tests/fixtures/plymouth-harness.js" "$SANDBOX/haseen.script"
+    assert_status "without block.png the script still runs" 0 "$STATUS"
+    report="$OUTPUT"
+    assert_eq "without block.png: the caret is a stretched underscore" '"_"' "$(q ".empty | $CARET | .src")"
+    assert_eq "without block.png: it shows before a key" "1" "$(q ".empty | $CARET | .opacity")"
+    assert_eq "without block.png: every string is still ASCII" "true" "$(q '[.textCalls[] | .text | test("^[ -~]*$")] | all')"
 fi
 
 # --- the hook is evaluated the way mkinitcpio does it -------------------------

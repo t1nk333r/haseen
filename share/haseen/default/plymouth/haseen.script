@@ -1,8 +1,15 @@
 # haseen's Plymouth theme: the boot screen, and the box that asks for the disk
 # password. Drawn, not composed from images, so a theme change is three colour
-# substitutions; the one image, haseen's mark (logo.png), is rendered from the
-# selected mark's SVG in the accent colour when the theme is installed, so no
-# binary asset lives in this repository either.
+# substitutions; the two images, haseen's mark (logo.png, from the selected
+# mark's SVG) and a solid square (block.png), are rendered in the accent
+# colour when the theme is installed, so no binary asset lives in this
+# repository either.
+#
+# Every string drawn here is ASCII (plan 174). In the initramfs plymouthd
+# runs in the C locale, and its freetype label plugin decodes text with
+# mbrtowc (src/plugins/controls/label-freetype/plugin.c, load_glyph), which
+# fails there on any multibyte character: a block or a bullet comes out as
+# the font's missing-glyph box. Solid shapes are block.png, stretched.
 #
 # haseen-plymouth-set substitutes the colour placeholders below with the
 # current theme's values before installing this file.
@@ -22,14 +29,18 @@ Window.SetBackgroundBottomColor(bg_r, bg_g, bg_b);
 
 screen_width = Window.GetWidth();
 screen_height = Window.GetHeight();
+# The screen's exact centre, in whole pixels: the scanner and the password
+# prompt are centred on it in both directions, and the mark sits above it.
+centre_x = Math.Int(screen_width / 2);
+centre_y = Math.Int(screen_height / 2);
 
 # --- the mark: above the password prompt, so it stays while the disk asks ----
 
 logo = Image("logo.png");
 if (logo) {
     logo_sprite = Sprite(logo);
-    logo_sprite.SetX((screen_width - logo.GetWidth()) / 2);
-    logo_sprite.SetY(screen_height / 2 - 72 - logo.GetHeight());
+    logo_sprite.SetX(centre_x - Math.Int(logo.GetWidth() / 2));
+    logo_sprite.SetY(centre_y - 72 - logo.GetHeight());
     logo_sprite.SetZ(1);
 }
 
@@ -37,19 +48,23 @@ if (logo) {
 # One lit segment runs back and forth along a dim track, leaving a fading
 # trail of ghosts at the positions it just passed.
 
-track_width = screen_width / 4;
-track_x = (screen_width - track_width) / 2;
+track_width = Math.Int(screen_width / 4);
+track_x = centre_x - Math.Int(track_width / 2);
 bar_height = 4;
-bar_y = screen_height / 2;
+bar_y = centre_y - bar_height / 2;
 seg_width = track_width / 6;
 travel = track_width - seg_width;
 
 # Plymouth's script module cannot make a blank image or set pixels (its Image
-# is a file, a text label, or a transform of one): a single bullet in the
-# accent colour, stretched, is each bar.
-dot = Image.Text("•", accent_r, accent_g, accent_b);
-seg = dot.Scale(seg_width, bar_height);
-track = dot.Scale(track_width, bar_height);
+# is a file, a text label, or a transform of one): block.png, a square in the
+# accent colour, stretched, is each bar. Without it (no ImageMagick when the
+# theme was installed) an ASCII underscore stands in, so nothing draws as a
+# missing glyph.
+block = Image("block.png");
+if (!block)
+    block = Image.Text("_", accent_r, accent_g, accent_b);
+seg = block.Scale(seg_width, bar_height);
+track = block.Scale(track_width, bar_height);
 track_sprite = Sprite(track);
 track_sprite.SetX(track_x);
 track_sprite.SetY(bar_y);
@@ -99,7 +114,11 @@ Plymouth.SetRefreshFunction(refresh_callback);
 # 2026-10-08): four thin corner brackets frame it like the Machine's
 # surveillance boxes, and a block caret in the scanner's accent pulses at 1 Hz
 # where the next asterisk goes, so the prompt shows before the first key.
-# The field takes the scanner's place: as wide as its track, centred on it.
+# The caret and the arms are block.png stretched; the caret is one asterisk's
+# cell, so it lines up with the text.
+# The field takes the scanner's place: as wide as its track, centred on the
+# screen's centre. Inside it the asterisks and the caret are one line,
+# centred on the same point, so the prompt stays in the middle as it grows.
 
 prompt_font = "Monospace 14";
 prompt_pad = 12;
@@ -111,14 +130,13 @@ bracket_opacity = 0.6;
 # out, the way a KITT segment dies away. A key press restarts the cycle lit.
 blink_frames = 50;
 
-# A full block is a solid cell: the caret as it is, and stretched, each arm
-# of the brackets.
-caret_image = Image.Text("█", accent_r, accent_g, accent_b, 1, prompt_font);
+cell = Image.Text("*", accent_r, accent_g, accent_b, 1, prompt_font);
+caret_image = block.Scale(cell.GetWidth(), cell.GetHeight());
 caret_sprite = Sprite(caret_image);
 caret_sprite.SetZ(11);
 caret_sprite.SetOpacity(0);
-arm_h = caret_image.Scale(bracket_arm, bracket_line);
-arm_v = caret_image.Scale(bracket_line, bracket_arm);
+arm_h = block.Scale(bracket_arm, bracket_line);
+arm_v = block.Scale(bracket_line, bracket_arm);
 # Corner c: horizontal arm bracket[c], vertical arm bracket[c + 4]; corners
 # 1 and 3 are on the right, 2 and 3 at the bottom.
 for (i = 0; i < 4; i++) {
@@ -162,28 +180,31 @@ fun place_bracket(c, right, bottom, left_x, top_y, width, height) {
     bracket[c + 4].SetY(vy);
 }
 
-# Lay the field out around text_width pixels of asterisks: the asterisks from
-# the left padding, the caret right after them, the brackets widening past
-# the track when a long passphrase needs it.
+# Lay the field out around text_width pixels of asterisks: the asterisks and
+# the caret after them centred as one line on the screen's centre, the
+# brackets around them, widening past the track when a long passphrase needs
+# it.
 fun layout_prompt(text_width) {
     gap = 0;
     if (text_width > 0)
         gap = 2;
+    line_width = text_width + gap + caret_image.GetWidth();
     field_width = track_width;
-    needed = text_width + gap + caret_image.GetWidth() + 2 * prompt_pad;
-    if (needed > field_width)
-        field_width = needed;
+    if (line_width + 2 * prompt_pad > field_width)
+        field_width = line_width + 2 * prompt_pad;
     field_height = caret_image.GetHeight() + 2 * prompt_pad;
-    left_x = (screen_width - field_width) / 2;
-    top_y = bar_y + bar_height / 2 - field_height / 2;
+    left_x = centre_x - Math.Int(field_width / 2);
+    top_y = centre_y - Math.Int(field_height / 2);
+    line_x = centre_x - Math.Int(line_width / 2);
+    line_y = centre_y - Math.Int(caret_image.GetHeight() / 2);
     place_bracket(0, 0, 0, left_x, top_y, field_width, field_height);
     place_bracket(1, 1, 0, left_x, top_y, field_width, field_height);
     place_bracket(2, 0, 1, left_x, top_y, field_width, field_height);
     place_bracket(3, 1, 1, left_x, top_y, field_width, field_height);
-    bullets_sprite.SetX(left_x + prompt_pad);
-    bullets_sprite.SetY(top_y + prompt_pad);
-    caret_sprite.SetX(left_x + prompt_pad + text_width + gap);
-    caret_sprite.SetY(top_y + prompt_pad);
+    bullets_sprite.SetX(line_x);
+    bullets_sprite.SetY(line_y);
+    caret_sprite.SetX(line_x + text_width + gap);
+    caret_sprite.SetY(line_y);
 }
 
 fun show_prompt(on) {
