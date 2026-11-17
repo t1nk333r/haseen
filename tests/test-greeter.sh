@@ -166,13 +166,13 @@ vc_check() {
     VC_GREETER="$greeter"
 }
 vc_check "no vconsole.conf falls back to us"
-assert_eq "and that is plain us" "[us] [] [compose:caps]" "$VC_GREETER"
+assert_eq "and that is plain us" "[us] [] []" "$VC_GREETER"
 vc_check "a Latin layout passes through" $'KEYMAP=de-latin1\nXKBLAYOUT=de\nXKBVARIANT=nodeadkeys\n'
-assert_eq "and keeps its variant" "[de] [nodeadkeys] [compose:caps]" "$VC_GREETER"
+assert_eq "and keeps its variant" "[de] [nodeadkeys] []" "$VC_GREETER"
 vc_check "Arabic gets us in front" $'XKBLAYOUT=ara\n'
-assert_eq "with both Alts to switch" "[us,ara] [,] [compose:caps,grp:alts_toggle]" "$VC_GREETER"
+assert_eq "with both Alts to switch" "[us,ara] [,] [grp:alts_toggle]" "$VC_GREETER"
 vc_check "quoted values" $'XKBLAYOUT="ru"\nXKBVARIANT=\'phonetic\'\n'
-assert_eq "lose their quotes" "[us,ru] [,phonetic] [compose:caps,grp:alts_toggle]" "$VC_GREETER"
+assert_eq "lose their quotes" "[us,ru] [,phonetic] [grp:alts_toggle]" "$VC_GREETER"
 vc_check "a non-Latin first layout of two" $'XKBLAYOUT=ir,us\n'
 vc_check "a Latin first layout of two" $'XKBLAYOUT=us,ara\nXKBVARIANT=,\n'
 vc_check "spaces around the value" $'  XKBLAYOUT = fr  \n'

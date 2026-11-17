@@ -1,8 +1,8 @@
 # haseen compose sequences, included by ~/.XCompose.
 #
 # Adapted from Omarchy default/xcompose (MIT, Copyright (c) David Heinemeier
-# Hansson). The Compose key is CapsLock (kb_options compose:caps in
-# share/haseen/default/hypr/input.lua), so every sequence below starts with it.
+# Hansson). Every sequence below starts with the Compose key, which haseen
+# leaves unbound (plan 173): set one with kb_options in ~/.config/hypr/local.lua.
 #
 # This file is haseen's and is replaced on upgrade. Put your own sequences in
 # ~/.XCompose, after the include.
