@@ -23,6 +23,10 @@ shutdown  systemctl poweroff
 logout, reboot and shutdown first ask every window to close and wait, at most
 2 seconds, for the apps to exit, so a browser saves its session. The terminal
 this runs in stays open until the end.
+
+reboot and shutdown first write a theme change the boot splash has not
+caught up with into the boot image (haseen plymouth follow now), so the next
+boot shows the theme in use.
 EOF
 }
 
@@ -69,6 +73,18 @@ close_apps() {
         IFS=,
         echo "${pids[*]}"
     )" || true
+}
+
+# follow_now — a theme changed less than 2 minutes ago and the boot splash
+# follows it (plan 110): rebuild the boot image now, before the session ends,
+# so the next boot shows the theme in use (plan 177). It runs before the apps
+# close, so a long rebuild leaves the session usable meanwhile. A failure is
+# notified there and never stops the reboot.
+follow_now() {
+    local flags=()
+    $DRY_RUN && flags+=(--dry-run)
+    haseen plymouth follow now "${flags[@]+"${flags[@]}"}" ||
+        warn "the boot splash was not brought up to date (haseen plymouth follow status)"
 }
 
 parse_common_flags "$@"
@@ -127,10 +143,12 @@ logout)
     fi
     ;;
 reboot)
+    follow_now
     close_apps
     run systemctl reboot
     ;;
 shutdown)
+    follow_now
     close_apps
     run systemctl poweroff
     ;;
