@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Keep the boot splash in the current theme's colours and mark, rebuilt in the background
-# haseen:args [on|off|status] [--dry-run] [--yes]
+# haseen:args [on|off|status|now] [--dry-run] [--yes]
 #
 # Plan 110 (owner, 2026-10-22: "In the background"). lib/plymouth.sh says how
 # the user's side and root's side meet. request and poke are this command's
@@ -17,7 +17,7 @@ source "$HASEEN_PATH/lib/terminal.sh"
 
 usage() {
     cat <<EOF
-Usage: haseen plymouth follow [on|off|status] [--dry-run] [--yes]
+Usage: haseen plymouth follow [on|off|status|now] [--dry-run] [--yes]
 
 Keeps the boot splash in the current theme's colours and haseen's mark.
 Once a theme or mark has stayed applied about 2 minutes, the boot image is
@@ -33,6 +33,10 @@ and only a failure is notified.
   off     disable the timer, remove the rule and the service.
   status  following, and whether the boot image matches the current theme
           (default).
+  now     when the boot image is behind the current theme, rebuild it at
+          once and wait, instead of after the 2 minutes. haseen system
+          reboot and shutdown run it first, so the next boot shows the theme
+          in use.
 
 The root side reads nothing in your home: the colours and the mark travel
 in the unit's name (haseen-splash@BG-FG-ACCENT-MARK.service), which it parses
@@ -137,6 +141,30 @@ request() {
     fi
 }
 
+# now — the boot image is behind the current theme: rebuild it at once and
+# wait, instead of 2 minutes after the change. haseen system reboot and
+# shutdown run it (plan 177), so the next boot shows the theme in use. It
+# starts the user's service rather than asking root itself: a rebuild the
+# timer has already begun is waited for, never begun twice, and a failure is
+# notified as the timer's would be. The wait is bounded by root's own stop
+# limit (TimeoutStopSec in haseen-splash@.service): past it, the shutdown
+# still waits for a rebuild that has begun. Nothing when the image matches,
+# when following is off, or where a rebuild must be signed again.
+now() {
+    local want
+    plymouth_follow_on || return 0
+    plymouth_theme_ours || return 0
+    want="$(plymouth_current_request)" || return 0
+    [[ $want != "$(plymouth_built_request)" ]] || return 0
+    ! plymouth_signed_boot >/dev/null || return 0
+    info "rebuilding the boot splash in the current theme first"
+    if have notify-send; then
+        run notify-send -a haseen -i haseen "$(i18n "Updating the boot splash")" \
+            "$(i18n "The current theme's colours go into the boot image first.")" || true
+    fi
+    run timeout 5m systemctl --user start "${PLYMOUTH_FOLLOW_TIMER%.timer}.service"
+}
+
 parse_common_flags "$@"
 ((${#REST[@]} <= 1)) || {
     usage >&2
@@ -152,6 +180,7 @@ on | off)
     "$verb" "${flags[@]+"${flags[@]}"}"
     ;;
 request) request ;;
+now) now ;;
 poke) plymouth_follow_poke ;;
 *)
     usage >&2

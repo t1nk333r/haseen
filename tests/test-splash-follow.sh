@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# haseen:covers bin/haseen-plymouth-{apply,follow,set,status} bin/haseen-theme-set bin/haseen-branding
+# haseen:covers bin/haseen-plymouth-{apply,follow,set,status} bin/haseen-theme-set bin/haseen-branding bin/haseen-system
 # haseen:covers share/haseen/lib/{plymouth,boot,bootmenu,branding,preflight,limine-header}.sh share/haseen/layers/secureboot/secureboot.sh
 # haseen:covers share/haseen/default/systemd/haseen-splash@.service share/haseen/default/polkit/**
 # haseen:covers share/haseen/systemd/user/haseen-splash-follow.* share/haseen/default/plymouth/**
@@ -36,9 +36,11 @@ EOF
 WANT=13131a-e4e1ec-96d69a-kufic
 
 # Every systemctl and notify-send call is recorded; SYSTEMCTL_FAIL makes a
-# `start` fail as a refused polkit check does.
+# `start` fail as a refused polkit check does, SYSTEMCTL_USER_FAIL the user's
+# service.
 stub systemctl "echo \"systemctl \$*\" >>'$CALLS'
 case \"\$*\" in
+'--user start'*) if [ -n \"\${SYSTEMCTL_USER_FAIL:-}\" ]; then echo 'Job failed' >&2; exit 1; fi ;;
 start*) if [ -n \"\${SYSTEMCTL_FAIL:-}\" ]; then echo 'Failed to start x.service: Access denied' >&2; exit 1; fi
         if [ -n \"\${SYSTEMCTL_RETHEME:-}\" ]; then printf 'background = \"#000000\"\\n' >'$CUR/colors.toml'; fi ;;
 esac
@@ -287,6 +289,63 @@ assert_status "another splash chosen: nothing to follow" 0 "$STATUS"
 assert_eq "silently" "" "$(calls)"
 printf 'Theme=haseen\n' >"$SYS/etc/plymouth/plymouthd.conf"
 
+# --- now: before a reboot, without the 2-minute wait (plan 177) -------------------
+NOW_START="systemctl --user start haseen-splash-follow.service"
+reset_calls
+capture haseen plymouth follow now
+assert_status "now, with the boot image behind the theme" 0 "$STATUS"
+assert_eq "it says so, then waits for the user's service, which asks root" \
+    "notify-send -a haseen -i haseen Updating the boot splash The current theme's colours go into the boot image first.
+$NOW_START" "$(calls)"
+reset_calls
+capture haseen plymouth follow now --dry-run
+assert_dry_pure "follow now" "$OUTPUT"
+assert_contains "now --dry-run plans the bounded wait" "$OUTPUT" "DRYRUN: timeout 5m $NOW_START"
+assert_eq "and starts nothing" "" "$(calls)"
+reset_calls
+capture env SYSTEMCTL_USER_FAIL=1 haseen plymouth follow now
+assert_status "a failed rebuild fails now" 1 "$STATUS"
+
+# haseen system reboot and shutdown run it before anything closes, and a
+# failure does not stop them.
+reset_calls
+capture haseen system reboot
+assert_status "reboot with the splash behind" 0 "$STATUS"
+assert_eq "the splash is rebuilt, then the machine reboots" \
+    "notify-send -a haseen -i haseen Updating the boot splash The current theme's colours go into the boot image first.
+$NOW_START
+systemctl reboot" "$(calls)"
+reset_calls
+capture env SYSTEMCTL_USER_FAIL=1 haseen system shutdown
+assert_status "a failed rebuild does not stop a shutdown" 0 "$STATUS"
+assert_contains "it warns" "$OUTPUT" "the boot splash was not brought up to date (haseen plymouth follow status)"
+assert_eq "and powers off after it" "systemctl poweroff" "$(calls | tail -n1)"
+reset_calls
+capture haseen system reboot --dry-run
+assert_dry_pure "reboot with the splash behind" "$OUTPUT"
+now_at="$(grep -n "DRYRUN: timeout 5m $NOW_START" <<<"$OUTPUT" | cut -d: -f1)"
+act_at="$(grep -n 'DRYRUN: systemctl reboot' <<<"$OUTPUT" | cut -d: -f1)"
+[[ -n $now_at && -n $act_at ]] && ((now_at < act_at)) && _pass || _fail "reboot --dry-run plans the rebuild before the reboot"
+assert_eq "a dry reboot starts nothing" "" "$(calls)"
+reset_calls
+capture haseen system suspend
+assert_eq "suspend does not wait for the splash" "systemctl suspend" "$(calls)"
+
+# Nothing to do: no notification, no wait, straight to the reboot.
+printf '%s\n' "$WANT" >"$SYS/var/lib/haseen/splash"
+reset_calls
+capture haseen plymouth follow now
+assert_eq "now, with the boot image up to date: nothing" "" "$(calls)"
+reset_calls
+capture haseen system reboot
+assert_eq "so a reboot only reboots" "systemctl reboot" "$(calls)"
+printf '1f1f28-dcd7ba-dcd7ba-kufic\n' >"$SYS/var/lib/haseen/splash"
+follow_off
+reset_calls
+capture haseen plymouth follow now
+assert_eq "now, with following off: nothing" "" "$(calls)"
+follow_on
+
 # A machine that checks its boot files: never rebuilt in the background,
 # notified once.
 EFIVARS="$SYS/sys/firmware/efi/efivars"
@@ -305,6 +364,9 @@ capture haseen plymouth follow request
 assert_eq "the next request does not notify again" "" "$(calls)"
 capture haseen plymouth status
 assert_contains "status: no, and what to do" "$OUTPUT" "matches:   no (Secure Boot is on: run haseen plymouth set"
+reset_calls
+capture haseen plymouth follow now
+assert_eq "now, with Secure Boot on: nothing, so a reboot is not held up" "" "$(calls)"
 printf '\x06\x00\x00\x00\x00' >"$SBVAR"
 capture lib plymouth_signed_boot
 assert_status "Secure Boot off and nothing enrolled: not signed" 1 "$STATUS"

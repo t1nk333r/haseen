@@ -60,6 +60,7 @@
   "Sound recording started": "Sound recording started",
   "Swipes and pinches work again.": "Swipes and pinches work again.",
   "The copy in %1 now wins over haseen's updates.": "The copy in %1 now wins over haseen's updates.",
+  "The current theme's colours go into the boot image first.": "The current theme's colours go into the boot image first.",
   "The recorder had to be killed; the file may be damaged": "The recorder had to be killed; the file may be damaged",
   "The recorder had to be killed; the video may be damaged": "The recorder had to be killed; the video may be damaged",
   "Touchpad disabled": "Touchpad disabled",
@@ -71,6 +72,7 @@
   "Transcoded to %1 %2": "Transcoded to %1 %2",
   "Turn them back on from the gestures panel in the bar, or with %1": "Turn them back on from the gestures panel in the bar, or with %1",
   "Upcoming reminders": "Upcoming reminders",
+  "Updating the boot splash": "Updating the boot splash",
   "Workspace layout set to %1": "Workspace layout set to %1",
   "ffmpeg exited (%1)": "ffmpeg exited (%1)",
   "gpu-screen-recorder exited (%1)": "gpu-screen-recorder exited (%1)"
