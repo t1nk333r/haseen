@@ -540,6 +540,8 @@ assert_contains "example seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/haseen
 assert_contains "unit enabled" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-shell.service"
 assert_contains "lock-before-sleep enabled with it" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-sleep-lock.service"
 assert_contains "and the crash watcher" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-crash-watch.service"
+assert_contains "and the update notice (plan 183)" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-update-notify.timer"
+assert_contains "remembering that haseen turned it on" "$OUTPUT" "DRYRUN: touch $XDG_STATE_HOME/haseen/update-notify-enabled"
 assert_contains "Helium with it (plan 073)" "$OUTPUT" "helium-browser-bin"
 assert_contains "and Cairn handed to Helium" "$OUTPUT" "DRYRUN: write $XDG_CONFIG_HOME/net.imput.helium/External Extensions/bddeidknhkokohcgdkpgdmlppgfkblig.json:"
 assert_eq "layer dry-run wrote nothing" "" "$(find "$HOME" -mindepth 1 -print -quit)"
@@ -559,6 +561,20 @@ assert_status "status: degraded without the lock-before-sleep unit" 2 "$STATUS"
 assert_contains "status says what that costs" "$OUTPUT" "no lock before suspend"
 ln -s /usr/lib/systemd/user/haseen-sleep-lock.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-sleep-lock.service"
 ln -s /usr/lib/systemd/user/haseen-crash-watch.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-crash-watch.service"
+shell_layer "$fx_qs" 'layer_run_status shell'
+assert_contains "status names the update notice when it is off" "$OUTPUT" \
+    "missing: haseen-update-notify.timer not enabled (no notice when updates are waiting)"
+# Turned off after haseen enabled it: the user's choice, kept.
+mkdir -p "$XDG_STATE_HOME/haseen"
+: >"$XDG_STATE_HOME/haseen/update-notify-enabled"
+shell_layer "$fx_qs" 'layer_run_status shell'
+assert_contains "status calls a notice turned off a choice" "$OUTPUT" "ok: haseen-update-notify.timer off (your choice"
+shell_layer "$fx_qs" 'layer_run_apply shell --dry-run'
+assert_not_contains "and a re-apply does not turn it on again" "$OUTPUT" "enable haseen-update-notify.timer"
+assert_contains "it says it stays off" "$OUTPUT" "haseen-update-notify.timer stays off (your choice)"
+rm -f "$XDG_STATE_HOME/haseen/update-notify-enabled"
+mkdir -p "$XDG_CONFIG_HOME/systemd/user/timers.target.wants"
+ln -s /usr/lib/systemd/user/haseen-update-notify.timer "$XDG_CONFIG_HOME/systemd/user/timers.target.wants/haseen-update-notify.timer"
 shell_layer "$fx_bare" 'layer_run_status shell'
 assert_status "status: degraded without packages" 2 "$STATUS"
 assert_contains "status names the missing package" "$OUTPUT" "missing: package quickshell"
@@ -576,4 +592,6 @@ assert_dry_pure "re-apply" "$OUTPUT"
 assert_not_contains "re-apply never reseeds shell.json" "$OUTPUT" "seed $XDG_CONFIG_HOME/haseen/shell.json "
 assert_not_contains "re-apply does not re-enable" "$OUTPUT" "systemctl --user enable"
 assert_contains "re-apply reports enabled" "$OUTPUT" "already enabled"
+assert_contains "an update notice already on is remembered as haseen's" "$OUTPUT" \
+    "DRYRUN: touch $XDG_STATE_HOME/haseen/update-notify-enabled"
 assert_eq "user shell.json kept" '{"bar":{"height":30}}' "$(cat "$XDG_CONFIG_HOME/haseen/shell.json")"

@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# haseen:summary Notify once when haseen or package updates are waiting (timer)
+# haseen:args [--dry-run]
+#
+# Plan 183 (owner, 2026-11-21: "One notification"). haseen-update-notify.timer
+# starts this every few hours. It fetches haseen's own copy of the repository
+# (lib/self-update.sh), counts the commits the installed tree lacks and the
+# pending packages (`haseen update check`), and sends one notification with an
+# Update button, which runs `haseen update`. Nothing is added to the bar.
+#
+# What was notified about is kept in $HASEEN_USER_STATE/update-notified, one
+# line per update ("haseen <commit>", or a package line). A run notifies only
+# when something is pending that is not on that list, so a dismissed
+# notification comes back with the next new commit or package, not every four
+# hours. With nothing pending the list is removed.
+set -Eeuo pipefail
+
+# shellcheck source=../share/haseen/lib/common.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
+# shellcheck source=../share/haseen/lib/install-stamp.sh
+source "$HASEEN_PATH/lib/install-stamp.sh"
+# shellcheck source=../share/haseen/lib/self-update.sh
+source "$HASEEN_PATH/lib/self-update.sh"
+
+usage() {
+    cat <<EOF
+Usage: haseen update notify [--dry-run]
+
+Looks for haseen and package updates and sends one notification when
+something new is waiting; its Update button runs 'haseen update'. Started by
+haseen-update-notify.timer. To stop the checks (re-applying the shell
+layer keeps them off):
+  systemctl --user disable --now haseen-update-notify.timer
+
+  --dry-run  use haseen's copy as it is (no fetch), count no packages, send
+             nothing and remember nothing; print what would be sent
+EOF
+}
+
+parse_common_flags "$@"
+((${#REST[@]} == 0)) || {
+    usage >&2
+    exit 2
+}
+require_not_root
+
+state="$HASEEN_USER_STATE/update-notified"
+# This tree's own router, as for every sibling command (lib/catalog.sh).
+exe="$(cd "$HASEEN_PATH/../../bin" 2>/dev/null && pwd)/haseen"
+[[ -x $exe ]] || exe=haseen
+pending=()
+haseen_new=0 haseen_line=""
+
+# haseen: the commits the installed tree lacks. A copy that cannot be fetched
+# (offline) counts as nothing new; the next run tries again.
+prefix="$(self_update_prefix)"
+installed="$(install_stamp_get "$prefix" commit || true)"
+installed_at="$(install_stamp_get "$prefix" date || true)"
+dir="$(self_update_dir)"
+rc=0
+(self_update_fetch) >/dev/null 2>&1 || rc=$?
+if ((rc == 0)) && [[ -d $dir/.git ]]; then
+    target="$(git -C "$dir" rev-parse --short "$SELF_UPDATE_REF")"
+    case "$(self_update_relation "$dir" "$installed" "$target" "$installed_at")" in
+    behind)
+        haseen_new="$(self_update_new_commits "$dir" "$installed" "$target" | grep -c . || true)"
+        haseen_line="$(i18n_n "haseen: %1 new change" "haseen: %1 new changes" "$haseen_new")"
+        pending+=("haseen $target")
+        ;;
+    apart | unknown)
+        haseen_line="$(i18n "haseen: a new version")"
+        pending+=("haseen $target")
+        ;;
+    esac
+fi
+
+# Packages: a check that failed counts as nothing pending, not as an error to
+# notify about.
+packages=0
+if $DRY_RUN; then
+    echo "DRYRUN: haseen update check"
+else
+    counts="$("$exe" update check 2>/dev/null || true)"
+    if jq -e '(.errors | length) == 0' <<<"$counts" >/dev/null 2>&1; then
+        mapfile -t lines < <(jq -r '.lines[]' <<<"$counts")
+        packages=${#lines[@]}
+        ((packages == 0)) || pending+=("${lines[@]}")
+    fi
+fi
+
+if ((${#pending[@]} == 0)); then
+    run rm -f -- "$state"
+    exit 0
+fi
+
+# Something not on the list from the last notification?
+new=false
+for item in "${pending[@]}"; do
+    if ! grep -Fxq -- "$item" "$state" 2>/dev/null; then
+        new=true
+        break
+    fi
+done
+$new || exit 0
+
+body=()
+[[ -z $haseen_line ]] || body+=("$haseen_line")
+((packages == 0)) || body+=("$(i18n_n "%1 package to upgrade" "%1 packages to upgrade" "$packages")")
+message="${body[0]}"
+((${#body[@]} < 2)) || message+=" · ${body[1]}"
+title="$(i18n "Updates are ready")"
+
+if $DRY_RUN; then
+    echo "DRYRUN: notify: $title: $message"
+    exit 0
+fi
+
+# Without a notification daemon (no graphical session) nothing is remembered,
+# so the next run in a session still notifies.
+if ! have notify-send || { have busctl && ! busctl --user status org.freedesktop.Notifications &>/dev/null; }; then
+    printf '%s: %s. Run: haseen update\n' "$title" "$message" >&2
+    exit 0
+fi
+
+# Remembered before the notification waits: a later run while it is still
+# open, or after it was dismissed, finds nothing new.
+mkdir -p "$HASEEN_USER_STATE"
+printf '%s\n' "${pending[@]}" >"$state"
+
+# --wait keeps the unit alive until the notification is answered or
+# dismissed; the action id is printed when it is clicked.
+answer="$(notify-send -a haseen --wait -A "update=$(i18n "Update")" "$title" "$message" || true)"
+[[ $answer == update ]] || exit 0
+# The update must not run in this unit: it would inherit its idle priority
+# (Nice, IOSchedulingClass) for pacman and the builds, and keep the unit
+# active until the terminal closed. A transient unit of the user manager is a
+# fresh process in the apps' slice; with no terminal there, haseen update
+# opens its own floating one.
+if have systemd-run; then
+    exec systemd-run --user --quiet --collect --slice=app-graphical.slice -- "$exe" update
+fi
+exec "$exe" update

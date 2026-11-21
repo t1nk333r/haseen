@@ -57,6 +57,8 @@ file changes in the same commit.
 | `PREFIX/lib/systemd/user/omarchy-migrate-notify.service.d/haseen.conf` | silences Omarchy's own pending-migration notice (plan 101) | repo → installed with the user units |
 | `~/.config/haseen/` | user config: `shell.json`, `ai.json`, `plugins/`, `themes/`, `hooks/`, `language` (the interface language's code, written by `haseen language`; absent = English, plan 109) | user |
 | `~/.local/state/haseen/` | `current/theme/` (rendered), `active-shell`, `dotfiles-backup/<timestamp>/` (files `haseen setup dotfiles` replaced), `rc-include` (the rcs `haseen seed user` added its include line to, one path per line), `splash-follow` (the last boot splash request: `ok`, `failed` or `skipped`, plan 110), `theme-backgrounds/<theme>` (the background each theme last showed, one path per file, plan 106), `toggles/hypr/*.lua` (Hyprland toggles, below), `monitor-workspaces` and `monitor-workspaces-merged` (per-monitor workspaces, below) | runtime |
+| `~/.local/share/haseen/checkout/` | haseen's own clone of the repository (blobless, `HASEEN_UPDATE_REMOTE`, default GitHub, branch `HASEEN_UPDATE_BRANCH`, default `main`): what `haseen update` installs and what `haseen-update-notify.timer` compares the install stamp with; never a developer's checkout (plan 183) | self-update.sh |
+| `~/.local/state/haseen/update-notified` | the updates the last update notice was about, one per line; a notice goes out only for one not on it (plan 183) | update notify |
 | `~/.local/share/haseen/extensions/cairn/<version>/` | Cairn's release `.crx`, downloaded and checked; Helium installs it from `~/.config/net.imput.helium/External Extensions/<id>.json` (plan 073) | shell |
 
 `PREFIX` is `/usr/local` for the installer. When the PKGBUILD phase lands it

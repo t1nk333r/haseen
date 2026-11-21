@@ -1,5 +1,6 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-update-haseen share/haseen/lib/install-stamp.sh
+# haseen:covers share/haseen/lib/self-update.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -153,9 +154,6 @@ capture env PATH="$REAL_PATH" HASEEN_INLINE=1 haseen update haseen --source "$SA
 assert_status "a directory that is not a checkout is refused" 1 "$STATUS"
 assert_contains "and names what is missing" "$OUTPUT" "not a haseen checkout: $SANDBOX"
 
-capture env -u HASEEN_SOURCE PATH="$REAL_PATH" HASEEN_INLINE=1 haseen update haseen --prefix "$prefix"
-assert_status "no source is refused" 1 "$STATUS"
-assert_contains "and says where to point it" "$OUTPUT" "no haseen checkout to install from"
 
 # --- the stamp itself ---------------------------------------------------------
 capture env PATH="$REAL_PATH" bash -c '
@@ -228,3 +226,126 @@ assert_contains "it names the branch it follows and what main has" "$OUTPUT" \
 g -C "$work" switch -q main
 capture hx --check
 assert_not_contains "on main there is no warning" "$OUTPUT" "the checkout follows"
+
+# --- haseen's own copy (plan 183) ----------------------------------------------
+# Without --source or $HASEEN_SOURCE the update clones the remote into
+# $XDG_DATA_HOME/haseen/checkout and installs its main from there. The
+# developer's checkout that `haseen bar edit` names is not read: dirty or on a
+# topic branch, it kept IO and luna from getting main (owner, 2026-11-21).
+data="$SANDBOX/data" mprefix="$SANDBOX/mprefix"
+copy="$data/haseen/checkout"
+mkdir -p "$HOME/.config/haseen"
+printf '%s\n' "$work" >"$HOME/.config/haseen/source"
+hm() { env -u HASEEN_SOURCE PATH="$REAL_PATH" HASEEN_INLINE=1 XDG_DATA_HOME="$data" HASEEN_UPDATE_REMOTE="$origin" \
+    haseen update haseen --prefix "$mprefix" "$@"; }
+# stamp COMMIT DATE — what install.sh would have written under $mprefix.
+stamp() {
+    mkdir -p "$mprefix/share/haseen"
+    printf 'prefix=%s\ncommit=%s\nversion=0.3.0-dev\ndate=%s\n' "$mprefix" "$1" "$2" >"$mprefix/share/haseen/.installed"
+}
+tip="$(g -C "$origin" rev-parse --short main)"
+
+: >"$LOG"
+capture hm --dry-run
+assert_status "a dry run without a copy reports" 0 "$STATUS"
+assert_contains "it plans the clone" "$OUTPUT" "DRYRUN: git clone --quiet --filter=blob:none --branch main $origin $copy"
+assert_eq "and makes none" "" "$(ls -A "$data" 2>/dev/null)"
+
+capture hm --check
+assert_status "--check clones haseen's copy" 0 "$STATUS"
+assert_contains "it names the copy and what it follows" "$OUTPUT" "source     $copy (haseen's copy of $origin main)"
+assert_contains "it names main's commit" "$OUTPUT" "latest     $tip ("
+assert_contains "it says when nothing is installed yet" "$OUTPUT" "installed  unknown: no install stamp under $mprefix"
+assert_contains "an unstamped tree is updated" "$OUTPUT" "update     available: the installed tree is not on origin/main"
+assert_not_contains "the developer's checkout is not read" "$OUTPUT" "$work"
+assert_eq "--check installs nothing" "" "$(cat "$LOG")"
+
+capture hm
+assert_status "the update from the copy runs" 0 "$STATUS"
+assert_contains "it installs the copy" "$OUTPUT" "installing $copy ("
+assert_contains "under the prefix" "$OUTPUT" "install: --yes --prefix $mprefix"
+assert_eq "the copy is at main" "$tip" "$(g -C "$copy" rev-parse --short HEAD)"
+assert_contains "and the desktop is reloaded" "$(cat "$LOG")" "hyprctl reload"
+
+# A stamp from another clone may abbreviate the same commit to more characters.
+stamp "$(g -C "$origin" rev-parse --short=12 main)" 2026-01-01T00:00:00+00:00
+: >"$LOG"
+capture hm
+assert_status "main installed: nothing to do" 0 "$STATUS"
+assert_contains "it says so" "$OUTPUT" "is already installed under $mprefix"
+assert_eq "and installs nothing" "" "$(cat "$LOG")"
+capture hm --check
+assert_contains "--check calls it the latest" "$OUTPUT" "update     none: the installed tree is the latest"
+
+printf 'five\n' >"$other/NOTES"
+g -C "$other" commit -qam five
+g -C "$other" push -q origin main
+five="$(g -C "$other" rev-parse --short HEAD)"
+capture hm --check
+assert_contains "--check counts the new commits" "$OUTPUT" "update     available: 1 new commit(s)"
+capture hm
+assert_status "a newer main is installed" 0 "$STATUS"
+assert_contains "it installs the new commit" "$OUTPUT" "($(cd "$copy" && env PATH="$REAL_PATH" bash -c 'source "$1/lib/install-stamp.sh"; install_build_version .' bash "$HASEEN_PATH"), $five) under $mprefix"
+
+# An installed tree newer than main stays: a reinstall of main would go back.
+printf 'six\n' >"$other/NOTES"
+g -C "$other" commit -qam six
+six="$(g -C "$other" rev-parse --short HEAD)"
+g -C "$other" push -q origin HEAD:refs/heads/next
+g -C "$copy" fetch -q origin next
+stamp "$six" 2026-01-01T00:00:00+00:00
+: >"$LOG"
+capture hm
+assert_status "a newer installed tree is left" 0 "$STATUS"
+assert_contains "it says why" "$OUTPUT" "the installed tree ($six) is newer than origin/main ($five); leaving it"
+assert_eq "and installs nothing" "" "$(cat "$LOG")"
+capture hm --check
+assert_contains "--check says it is newer" "$OUTPUT" "update     none: the installed tree is newer than origin/main"
+capture hm --force
+assert_contains "--force installs main all the same" "$OUTPUT" "install: --yes --prefix $mprefix"
+
+# A pull request's tree, installed before it is merged: a commit the copy does
+# not have. Installed after main's latest commit, it stays until main moves;
+# installed before, main replaces it.
+stamp 0123abc "$(date -Iseconds -d '+1 hour')"
+: >"$LOG"
+capture hm
+assert_status "a newer tree from elsewhere is left" 0 "$STATUS"
+assert_contains "it says so" "$OUTPUT" "is not on origin/main but was installed after its latest commit"
+assert_eq "and installs nothing" "" "$(cat "$LOG")"
+capture hm --check
+assert_contains "--check agrees" "$OUTPUT" "update     none: the installed tree is not on origin/main but was installed after its latest commit"
+stamp 0123abc 2000-01-01T00:00:00+00:00
+capture hm --check
+assert_contains "an older tree from elsewhere is updated" "$OUTPUT" "update     available: the installed tree is not on origin/main"
+# install.sh stamps "unknown" for a tree without git: never current, whatever
+# its date.
+stamp unknown "$(date -Iseconds -d '+1 hour')"
+capture hm --check
+assert_contains "a tree of unknown commit is updated" "$OUTPUT" "update     available: the installed tree is not on origin/main"
+
+# The copy is haseen's: a change made in it by hand is refused, not lost.
+printf 'by hand\n' >>"$copy/install.sh"
+stamp "$tip" 2026-01-01T00:00:00+00:00
+capture hm
+assert_status "a copy changed by hand is refused" 1 "$STATUS"
+assert_contains "and says how to start over" "$OUTPUT" "has changes made by hand"
+g -C "$copy" checkout -q -- install.sh
+
+# Another remote (a fork, a mirror): the copy follows it from the next run.
+mirror="$SANDBOX/mirror.git"
+g clone -q --bare "$origin" "$mirror"
+g -C "$other" push -q "$mirror" HEAD:refs/heads/main 2>/dev/null || true
+printf 'seven\n' >"$other/NOTES"
+g -C "$other" commit -qam seven
+g -C "$other" push -q "$mirror" HEAD:main
+stamp "$five" 2026-01-01T00:00:00+00:00
+capture env -u HASEEN_SOURCE PATH="$REAL_PATH" HASEEN_INLINE=1 XDG_DATA_HOME="$data" HASEEN_UPDATE_REMOTE="$mirror" \
+    haseen update haseen --prefix "$mprefix" --check
+assert_contains "a new remote is followed" "$OUTPUT" "source     $copy (haseen's copy of $mirror main)"
+assert_eq "the copy's origin is changed" "$mirror" "$(g -C "$copy" remote get-url origin)"
+assert_contains "and its commits are counted" "$OUTPUT" "update     available: 2 new commit(s)"
+
+capture env -u HASEEN_SOURCE PATH="$REAL_PATH" HASEEN_INLINE=1 XDG_DATA_HOME="$SANDBOX/no-net" \
+    HASEEN_UPDATE_REMOTE="$SANDBOX/missing.git" haseen update haseen --prefix "$mprefix"
+assert_status "a remote that cannot be reached fails" 128 "$STATUS"

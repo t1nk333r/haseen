@@ -840,6 +840,10 @@
   "update": {
     "label": "التحديث"
   },
+  "update.all": {
+    "description": "haseen والحزم في خطوة واحدة، ثم إعادة التحميل",
+    "label": "كل شيء"
+  },
   "update.config": {
     "label": "الضبط",
     "title": "إعادة إلى الافتراضي"
@@ -877,7 +881,7 @@
     "label": "Wi-Fi"
   },
   "update.haseen": {
-    "description": "اسحب مستودعه، ثبّت، ثم أعد تحميل Hyprland والواجهة",
+    "description": "ثبّت أحدث haseen، ثم أعد تحميل Hyprland والواجهة",
     "label": "haseen"
   },
   "update.password": {

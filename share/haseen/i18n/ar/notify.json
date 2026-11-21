@@ -7,6 +7,14 @@
     "many": "%1 خطأ",
     "other": "%1 خطأ"
   },
+  "%1 packages to upgrade": {
+    "zero": "لا توجد حزم للترقية",
+    "one": "حزمة واحدة للترقية",
+    "two": "حزمتان للترقية",
+    "few": "%1 حزم للترقية",
+    "many": "%1 حزمة للترقية",
+    "other": "%1 حزمة للترقية"
+  },
   "%1 requests · %2 tokens · %3": "طلبات: %1 · توكن: %2 · تكلفة: %3",
   "%1, so a rebuild must be signed again: %2.": "%1، لذا يجب توقيع إعادة البناء من جديد: %2.",
   "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand.": "%1. سيعرض الإقلاع التالي شاشة البدء القديمة؛ يشرح الأمر haseen plymouth follow status المزيد، ويعيد الأمر haseen plymouth set بناءها يدويًا.",
@@ -80,8 +88,19 @@
   "Transcoded to %1 %2": "حُوّل إلى %1 %2",
   "Turn them back on from the gestures panel in the bar, or with %1": "أعد تشغيلها من لوحة الإيماءات في الشريط، أو بالأمر %1",
   "Upcoming reminders": "التذكيرات القادمة",
+  "Update": "حدّث",
+  "Updates are ready": "التحديثات جاهزة",
   "Updating the boot splash": "تحديث شاشة الإقلاع",
   "Workspace layout set to %1": "ضُبط تخطيط مساحة العمل على %1",
   "ffmpeg exited (%1)": "خرج ffmpeg (%1)",
-  "gpu-screen-recorder exited (%1)": "خرج gpu-screen-recorder (%1)"
+  "gpu-screen-recorder exited (%1)": "خرج gpu-screen-recorder (%1)",
+  "haseen: %1 new changes": {
+    "zero": "haseen: لا تغييرات جديدة",
+    "one": "haseen: تغيير جديد واحد",
+    "two": "haseen: تغييران جديدان",
+    "few": "haseen: %1 تغييرات جديدة",
+    "many": "haseen: %1 تغييرًا جديدًا",
+    "other": "haseen: %1 تغيير جديد"
+  },
+  "haseen: a new version": "haseen: إصدار جديد"
 }

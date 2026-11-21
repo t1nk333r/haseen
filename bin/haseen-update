@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# haseen:summary Update the system (pacman, AUR, Flatpak) or the firmware (fwupd)
-# haseen:args [system|firmware] [--dry-run] [--yes]
+# haseen:summary Update haseen and the system in one step, or the system or firmware alone
+# haseen:args [all|system|firmware] [--dry-run] [--yes]
 #
 # Firmware steps adapted from omarchy bin/omarchy-update-firmware (MIT,
 # Copyright (c) David Heinemeier Hansson). The pacman scope and the cold AUR
 # phase are adapted from omarchy bin/omarchy-update-pacman and
-# bin/omarchy-update (MIT, same notice), plan 103.
+# bin/omarchy-update (MIT, same notice), plan 103. The one-step update (`all`,
+# the default: haseen itself, the packages, migrations, then the desktop
+# reloaded) follows omarchy bin/omarchy-update's order and its confirmation
+# and single authorization (MIT, same notice), plan 183.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/catalog.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/catalog.sh"
@@ -13,14 +16,26 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/cat
 source "$HASEEN_PATH/lib/preflight.sh"
 # shellcheck source=../share/haseen/lib/branding.sh
 source "$HASEEN_PATH/lib/branding.sh"
+# shellcheck source=../share/haseen/lib/install-stamp.sh
+source "$HASEEN_PATH/lib/install-stamp.sh"
+# shellcheck source=../share/haseen/lib/self-update.sh
+source "$HASEEN_PATH/lib/self-update.sh"
 
 FWUPD_EFI=/usr/lib/fwupd/efi/fwupdx64.efi
 
 usage() {
     cat <<EOF
-Usage: haseen update [system|firmware] [--dry-run] [--yes]
+Usage: haseen update [all|system|firmware] [--dry-run] [--yes]
 
-  system     (default) pacman -Syu as root, then AUR packages with paru/yay
+  all        (default) everything, in one go: shows what is new and, on a
+             terminal, asks once (--yes skips the question; without a
+             terminal it does not ask), asks for sudo once, then installs
+             the latest haseen (haseen update haseen), upgrades the
+             repositories' packages, runs haseen's pending migrations,
+             updates Flatpak apps, runs the post-update hooks, builds AUR
+             upgrades, and reloads Hyprland and the shell when haseen
+             changed. The steps after haseen's install run from the new tree.
+  system     pacman -Syu as root, then AUR packages with paru/yay
              (-Sua), then 'flatpak update' for the user and, when it holds
              apps, the system installation. Runs the post-update hooks.
              pacman runs in its own systemd scope, so a session that ends
@@ -41,7 +56,7 @@ parse_common_flags "$@"
     exit 2
 }
 require_not_root
-what="${REST[0]:-system}"
+what="${REST[0]:-all}"
 
 # The update opens on haseen's name: the selected mark's terminal logo (the
 # one `haseen about` and the screensaver show) when a person watches the
@@ -57,7 +72,7 @@ banner() {
     info "haseen update: $what"
 }
 
-update_system() {
+update_pacman() {
     local yes=()
     $ASSUME_YES && yes=(--noconfirm)
     info "official repositories"
@@ -81,8 +96,11 @@ update_system() {
     systemd="$(sysroot_path /run/systemd/system)"
     [[ -d $systemd && ! -L $systemd ]] && have systemd-run && scope=(systemd-run --scope --quiet --collect)
     run_root "${guard[@]}" "${scope[@]}" pacman -Syu "${yes[@]}"
+}
 
-    local helper
+update_aur() {
+    local yes=() helper
+    $ASSUME_YES && yes=(--noconfirm)
     helper="$(aur_helper)"
     if [[ -n $helper ]]; then
         info "AUR ($helper)"
@@ -98,7 +116,9 @@ update_system() {
         esac
         run_cold "$helper" "${cold[@]}" -Sua "${yes[@]}"
     fi
+}
 
+update_flatpak() {
     if have flatpak || $DRY_RUN; then
         local fyes=()
         $ASSUME_YES && fyes=(-y)
@@ -108,10 +128,150 @@ update_system() {
             run flatpak update --system "${fyes[@]}"
         fi
     fi
+}
 
+run_post_update_hooks() {
     local hook=(run post-update)
     $DRY_RUN && hook+=(--dry-run)
     "$HASEEN_EXE" hook "${hook[@]}"
+}
+
+# reboot_hint — a kernel upgrade removes the running kernel's modules; until
+# a reboot, a driver that is not loaded yet can no longer be.
+reboot_hint() {
+    $DRY_RUN && return 0
+    local modules
+    modules="$(sysroot_path /usr/lib/modules)"
+    if [[ -d $modules && ! -d $modules/$(uname -r) ]]; then
+        info "the running kernel was replaced: reboot to use the new one"
+    fi
+}
+
+update_system() {
+    update_pacman
+    update_aur
+    update_flatpak
+    run_post_update_hooks
+    reboot_hint
+}
+
+# --- all: haseen and the system in one step (plan 183) ------------------------
+
+# pass — the flags the steps this one starts are given.
+pass=()
+$DRY_RUN && pass+=(--dry-run)
+$ASSUME_YES && pass+=(--yes)
+
+# preview — what an update would bring, before anything is asked: haseen's
+# new commits (from its own copy, fetched) and the pending packages.
+preview() {
+    local prefix installed at dir target relation commits n rc=0 counts
+    prefix="$(self_update_prefix)"
+    installed="$(install_stamp_get "$prefix" commit || true)"
+    at="$(install_stamp_get "$prefix" date || true)"
+    dir="$(self_update_dir)"
+    # In a subshell: a copy it cannot use ends in die, which must not end this.
+    (self_update_fetch) >/dev/null 2>&1 || rc=$?
+    if ((rc == 3)); then
+        printf '  haseen     cloned from %s on the first run\n' "$SELF_UPDATE_REMOTE"
+    elif ((rc != 0)); then
+        printf '  haseen     could not fetch %s; the update tries again\n' "$SELF_UPDATE_REMOTE"
+    else
+        target="$(git -C "$dir" rev-parse --short "$SELF_UPDATE_REF")"
+        relation="$(self_update_relation "$dir" "$installed" "$target" "$at")"
+        case $relation in
+        same | ahead | local) printf '  haseen     up to date (%s)\n' "${installed:-$target}" ;;
+        behind)
+            commits="$(self_update_new_commits "$dir" "$installed" "$target")"
+            n="$(grep -c . <<<"$commits")"
+            printf '  haseen     %s new commit(s), %s to %s:\n' "$n" "$installed" "$target"
+            head -n 8 <<<"$commits" | sed 's/^/               /'
+            ((n <= 8)) || printf '               and %s more\n' "$((n - 8))"
+            ;;
+        *) printf '  haseen     %s, from %s %s\n' "$target" "$SELF_UPDATE_REMOTE" "$SELF_UPDATE_BRANCH" ;;
+        esac
+    fi
+    if $DRY_RUN; then
+        printf '  packages   counted by: haseen update check\n'
+        return 0
+    fi
+    counts="$("$HASEEN_EXE" update check --force 2>/dev/null || true)"
+    if jq -e '(.errors | length) == 0' <<<"$counts" >/dev/null 2>&1; then
+        printf '  packages   %s from the repositories, %s from the AUR\n' \
+            "$(jq -r .repo <<<"$counts")" "$(jq -r .aur <<<"$counts")"
+    else
+        printf '  packages   not counted (%s); pacman checks again\n' \
+            "$(jq -r '.errors[0] // "no answer"' <<<"$counts" 2>/dev/null || echo "no answer")"
+    fi
+}
+
+# ask_to_update — yes on Enter: the user typed `haseen update` or clicked
+# Update, and the question is there to show what is coming.
+ask_to_update() {
+    local reply
+    { $ASSUME_YES || $DRY_RUN; } && return 0
+    [[ -t 0 ]] || return 0
+    read -r -p "Update now? [Y/n] " reply
+    [[ -z $reply || $reply =~ ^[Yy] ]]
+}
+
+# update_all — the first half: ask, authorize, install haseen, then hand over
+# to the tree just installed, so the packages, migrations and reload run its
+# code (HASEEN_UPDATE_STAGE=rest).
+update_all() {
+    banner
+    info "looking for updates"
+    preview
+    ask_to_update || {
+        info "nothing was changed"
+        exit 0
+    }
+    sudo_keep_warm || die "sudo did not authorize the update; nothing was changed"
+    local prefix before after haseen_rc=0
+    prefix="$(self_update_prefix)"
+    before="$(install_stamp_get "$prefix" commit || true)"
+    info "haseen"
+    HASEEN_INLINE=1 "$HASEEN_EXE" update haseen --tree-only --no-reload "${pass[@]}" || haseen_rc=$?
+    after="$(install_stamp_get "$prefix" commit || true)"
+    local changed=0
+    if [[ $before != "$after" ]]; then
+        changed=1
+    fi
+    ((haseen_rc == 0)) || warn "haseen itself was not updated (exit $haseen_rc); the packages are updated all the same"
+    # The installed router, also when this one runs from a checkout: the rest
+    # must be the tree just installed, finding its own HASEEN_PATH.
+    local next=$HASEEN_EXE unset=()
+    if [[ -x $prefix/bin/haseen && $(readlink -f "$prefix/bin/haseen") != "$(readlink -f "$HASEEN_EXE")" ]]; then
+        next=$prefix/bin/haseen
+        unset=(-u HASEEN_PATH)
+    fi
+    exec env "${unset[@]}" HASEEN_UPDATE_STAGE=rest HASEEN_UPDATE_TREE_CHANGED=$changed \
+        HASEEN_UPDATE_HASEEN_RC=$haseen_rc "$next" update all "${pass[@]}"
+}
+
+# update_rest — the second half, in the new tree. Migrations wait for the
+# packages, which they may be written against; the AUR builds go last, against
+# the upgraded system and without the warm sudo; the reload comes once
+# nothing else is left to change.
+update_rest() {
+    update_pacman
+    info "haseen migrations"
+    "$HASEEN_EXE" migrate "${pass[@]}"
+    update_flatpak
+    run_post_update_hooks
+    sudo_keep_warm_stop
+    update_aur
+    if [[ ${HASEEN_UPDATE_TREE_CHANGED:-0} == 1 ]]; then
+        info "reloading the desktop"
+        self_update_reload_desktop
+    fi
+    reboot_hint
+    local haseen_rc=${HASEEN_UPDATE_HASEEN_RC:-0}
+    if [[ $haseen_rc != 0 ]]; then
+        warn "the packages are updated, haseen is not: run 'haseen update haseen' to see why"
+        exit "$haseen_rc"
+    fi
+    info "haseen update: done"
 }
 
 update_firmware() {
@@ -132,6 +292,13 @@ update_firmware() {
 }
 
 case "$what" in
+all)
+    if [[ ${HASEEN_UPDATE_STAGE:-} == rest ]]; then
+        update_rest
+    else
+        update_all
+    fi
+    ;;
 system)
     banner
     update_system

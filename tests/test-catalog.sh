@@ -205,7 +205,7 @@ assert_dry_pure "remove" "$all"
 
 # --- update, time, password user, restart, refresh (dry-run) ------------------
 all=""
-capture haseen update --dry-run
+capture haseen update system --dry-run
 all+="$OUTPUT"
 assert_contains "update: opens on haseen's name" "$OUTPUT" "[*] haseen update: system"
 assert_not_contains "update: never Omarchy's" "$OUTPUT" "Omarchy"
@@ -223,14 +223,14 @@ assert_contains "update: system flatpaks when present" "$OUTPUT" "DRYRUN: flatpa
 guard_root="$SANDBOX/omarchy-guard"
 mkdir -p "$guard_root/usr/share/libalpm/hooks"
 : >"$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
-capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+capture env HASEEN_SYSROOT="$guard_root" haseen update system --dry-run
 assert_contains "update: passes Omarchy's pacman guard where it is installed" "$OUTPUT" \
     "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syu"
 # Under systemd, pacman runs in a scope of PID 1's, so a logout or systemd's
 # own re-exec mid-upgrade cannot kill the transaction (plan 103). The guard's
 # variable is set outside the scope, which runs pacman as its own child.
 mkdir -p "$guard_root/run/systemd/system"
-capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+capture env HASEEN_SYSROOT="$guard_root" haseen update system --dry-run
 assert_contains "update: pacman runs in its own scope under systemd" "$OUTPUT" \
     "DRYRUN: sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 systemd-run --scope --quiet --collect pacman -Syu"
 assert_dry_pure "update with a scope" "$OUTPUT"
@@ -242,7 +242,7 @@ mkdir -p "$nosr/bin"
 cp -as /usr/bin/. "$nosr/bin/"
 rm -f "$nosr/bin/systemd-run"
 mv "$SANDBOX/stubs/systemd-run" "$SANDBOX/systemd-run.off"
-capture env PATH="$SANDBOX/stubs:$REPO/bin:$nosr/bin" HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+capture env PATH="$SANDBOX/stubs:$REPO/bin:$nosr/bin" HASEEN_SYSROOT="$guard_root" haseen update system --dry-run
 mv "$SANDBOX/systemd-run.off" "$SANDBOX/stubs/systemd-run"
 assert_status "update: systemd without systemd-run still updates" 0 "$STATUS"
 assert_contains "update: and pacman runs without the scope" "$OUTPUT" \
@@ -251,14 +251,14 @@ assert_not_contains "update: no systemd-run is planned" "$OUTPUT" "systemd-run"
 rm -rf "$nosr" "$guard_root/run/systemd/system" "$guard_root/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
 mkdir -p "$guard_root/elsewhere"
 ln -s ../../elsewhere "$guard_root/run/systemd/system"
-capture env HASEEN_SYSROOT="$guard_root" haseen update --dry-run
+capture env HASEEN_SYSROOT="$guard_root" haseen update system --dry-run
 assert_contains "update: a linked /run/systemd/system is not systemd" "$OUTPUT" "DRYRUN: sudo pacman -Syu"
 assert_not_contains "update: and gets no scope" "$OUTPUT" "systemd-run"
 # yay gets its own spelling of "no sudo loop". Only where no real paru would
 # be found once the sandbox's stub is gone (a dry run executes neither).
 if [[ ! -e /usr/bin/paru && ! -e /bin/paru ]]; then
     mv "$SANDBOX/stubs/paru" "$SANDBOX/stubs/paru.off"
-    capture haseen update --dry-run
+    capture haseen update system --dry-run
     assert_contains "update: yay runs cold too" "$OUTPUT" \
         "DRYRUN: yay --sudo sudo --sudoloop=false -Sua (each sudo it runs is sudo -N: it asks, and caches nothing)"
     mv "$SANDBOX/stubs/paru.off" "$SANDBOX/stubs/paru"
@@ -280,7 +280,7 @@ for c in sudo paru flatpak; do
     printf '#!/bin/sh\necho "RAN: %s $*"\n' "$c" >"$tty_bin/$c"
     chmod +x "$tty_bin/$c"
 done
-capture env PATH="$tty_bin:$PATH" script -qec "haseen update" /dev/null
+capture env PATH="$tty_bin:$PATH" script -qec "haseen update system" /dev/null
 assert_status "update on a TTY: completes" 0 "$STATUS"
 assert_not_contains "update on a TTY: no missing banner file" "$OUTPUT" "No such file"
 assert_contains "update on a TTY: shows the mark's logo" "$OUTPUT" "$(head -n1 "$HASEEN_PATH/branding/logo-kufic.txt")"
@@ -321,7 +321,7 @@ sudo -k
 EOF
 printf '#!/bin/sh\n' >"$cold_bin/flatpak"
 chmod +x "$cold_bin/sudo" "$cold_bin/paru" "$cold_bin/flatpak"
-capture env PATH="$cold_bin:$PATH" TMPDIR="$cold_tmp" script -qec "haseen update" /dev/null
+capture env PATH="$cold_bin:$PATH" TMPDIR="$cold_tmp" script -qec "haseen update system" /dev/null
 assert_status "cold AUR phase: the update completes" 0 "$STATUS"
 assert_eq "cold AUR phase: what sudo was asked, in order" \
     "SUDO: pacman -Syu|SUDO: -k|SUDO: -h|PARU: --sudo sudo --nosudoloop -Sua|SUDO: -N pacman -U example-1-1-x86_64.pkg.tar.zst|SUDO: -N -n true|SUDO: -k|SUDO: -k" \
