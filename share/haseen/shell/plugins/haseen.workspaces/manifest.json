@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.workspaces",
   "name": "Workspaces",
-  "version": "2.1.0",
-  "description": "Hyprland workspaces: persistent 1-5, scratchpads, click to focus, scroll to walk; each monitor's own 1-0 with haseen toggle monitor-workspaces",
+  "version": "2.2.0",
+  "description": "Hyprland workspaces: persistent 1-5, click to focus, scroll to walk; scratchpads as stars when turned on; each monitor's own 1-0 with haseen toggle monitor-workspaces",
   "kinds": [
     "bar-widget"
   ],
@@ -15,6 +15,11 @@
       "type": "integer",
       "default": 5,
       "description": "Workspaces 1..N always shown, even when empty (0-10); with per-monitor workspaces, the monitor's own first N"
+    },
+    "scratchpads": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show each scratchpad (special workspace, such as the SUPER + GRAVE console) as a star after the workspaces; click one to show or hide it"
     },
     "allMonitors": {
       "type": "boolean",
