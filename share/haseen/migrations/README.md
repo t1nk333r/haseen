@@ -18,6 +18,12 @@ Rules for a migration body:
 - It touches the user's own files and system state, never this tree.
 - It must not need the shell to be running; it can be run from a TTY.
 
+`haseen update` installs the tree only (`install.sh --tree-only`) and then
+runs what is pending here; it applies no layers. A change that needs
+something on machines that already have haseen (a new default package, a
+unit to enable) needs a migration, or it reaches only new installs (plan
+182).
+
 A fresh HOME has nothing to upgrade, so `install.sh` records every shipped
 migration as sealed (`haseen migrate --seal`) instead of running them. A HOME
 haseen has run in (a migration ledger, `~/.config/haseen/shell.json` or

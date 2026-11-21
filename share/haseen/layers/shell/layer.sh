@@ -26,6 +26,9 @@ CRASH_WATCH_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical
 # new set (bin/haseen-update-notify; owner, 2026-11-21, plan 182).
 UPDATE_NOTIFY_TIMER=haseen-update-notify.timer
 UPDATE_NOTIFY_TIMER_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/timers.target.wants/$UPDATE_NOTIFY_TIMER"
+# Written when haseen first enables it: a timer disabled after that is the
+# user's choice, which status reports as such and a re-apply keeps.
+UPDATE_NOTIFY_MARK="$HASEEN_USER_STATE/update-notify-enabled"
 # dms:// links (the DankMaterialShell plugin gallery's Install button) open
 # bin/haseen-plugin-url. The desktop file is installed with the tree.
 DMS_URL_DESKTOP=haseen-dms-url.desktop
@@ -90,6 +93,9 @@ layer_status() {
     if [[ -L $UPDATE_NOTIFY_TIMER_WANTS ]]; then
         echo "ok: $UPDATE_NOTIFY_TIMER enabled"
         ok=$((ok + 1))
+    elif [[ -e $UPDATE_NOTIFY_MARK ]]; then
+        echo "ok: $UPDATE_NOTIFY_TIMER off (your choice; on again: systemctl --user enable --now $UPDATE_NOTIFY_TIMER)"
+        ok=$((ok + 1))
     else
         echo "missing: $UPDATE_NOTIFY_TIMER not enabled (no notice when updates are waiting)"
         missing=$((missing + 1))
@@ -140,8 +146,12 @@ layer_apply() {
     fi
     if [[ -L $UPDATE_NOTIFY_TIMER_WANTS ]]; then
         info "$UPDATE_NOTIFY_TIMER already enabled"
+    elif [[ -e $UPDATE_NOTIFY_MARK ]]; then
+        info "$UPDATE_NOTIFY_TIMER stays off (your choice)"
     else
         run systemctl --user enable "$UPDATE_NOTIFY_TIMER"
+        run mkdir -p "$HASEEN_USER_STATE"
+        run touch "$UPDATE_NOTIFY_MARK"
     fi
     local handler
     handler="$(dms_url_handler)"

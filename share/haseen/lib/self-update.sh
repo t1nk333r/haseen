@@ -109,7 +109,9 @@ self_update_relation() {
         fi
     fi
     when="$(date -d "$at" +%s 2>/dev/null || true)"
-    if [[ -z $installed || -z $when ]]; then
+    # "unknown" is what install.sh stamps for a tree without git, which never
+    # counts as current.
+    if [[ -z $installed || $installed == unknown || -z $when ]]; then
         echo unknown
     elif ((when >= $(git -C "$dir" show -s --format=%ct "$b"))); then
         echo local

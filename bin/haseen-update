@@ -27,8 +27,9 @@ usage() {
     cat <<EOF
 Usage: haseen update [all|system|firmware] [--dry-run] [--yes]
 
-  all        (default) everything, in one go: shows what is new and asks once
-             (--yes skips the question), asks for sudo once, then installs
+  all        (default) everything, in one go: shows what is new and, on a
+             terminal, asks once (--yes skips the question; without a
+             terminal it does not ask), asks for sudo once, then installs
              the latest haseen (haseen update haseen), upgrades the
              repositories' packages, runs haseen's pending migrations,
              updates Flatpak apps, runs the post-update hooks, builds AUR
@@ -237,8 +238,15 @@ update_all() {
         changed=1
     fi
     ((haseen_rc == 0)) || warn "haseen itself was not updated (exit $haseen_rc); the packages are updated all the same"
-    HASEEN_UPDATE_STAGE=rest HASEEN_UPDATE_TREE_CHANGED=$changed HASEEN_UPDATE_HASEEN_RC=$haseen_rc \
-        exec "$HASEEN_EXE" update all "${pass[@]}"
+    # The installed router, also when this one runs from a checkout: the rest
+    # must be the tree just installed, finding its own HASEEN_PATH.
+    local next=$HASEEN_EXE unset=()
+    if [[ -x $prefix/bin/haseen && $(readlink -f "$prefix/bin/haseen") != "$(readlink -f "$HASEEN_EXE")" ]]; then
+        next=$prefix/bin/haseen
+        unset=(-u HASEEN_PATH)
+    fi
+    exec env "${unset[@]}" HASEEN_UPDATE_STAGE=rest HASEEN_UPDATE_TREE_CHANGED=$changed \
+        HASEEN_UPDATE_HASEEN_RC=$haseen_rc "$next" update all "${pass[@]}"
 }
 
 # update_rest — the second half, in the new tree. Migrations wait for the

@@ -840,6 +840,10 @@
   "update": {
     "label": "Update"
   },
+  "update.all": {
+    "description": "haseen and the packages in one step, then reload",
+    "label": "Everything"
+  },
   "update.config": {
     "label": "Config",
     "title": "Reset to default"
@@ -877,7 +881,7 @@
     "label": "Wi-Fi"
   },
   "update.haseen": {
-    "description": "pull its checkout, install, reload Hyprland and the shell",
+    "description": "install the latest haseen, reload Hyprland and the shell",
     "label": "haseen"
   },
   "update.password": {

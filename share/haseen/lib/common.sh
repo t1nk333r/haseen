@@ -474,17 +474,26 @@ confirm_typed() {
 # the update just installed) or as soon as sudo answers no: run_cold drops the
 # timestamp before the AUR builds, and they get no warm sudo. Adapted from
 # Omarchy bin/omarchy-update's authorize_update (MIT, Copyright (c) David
-# Heinemeier Hansson).
+# Heinemeier Hansson). HASEEN_SUDO_WARM_INTERVAL (seconds, 60) is for tests.
 sudo_keep_warm() {
     if $DRY_RUN; then
         echo "DRYRUN: sudo true (kept warm while the update runs)"
         return 0
     fi
     sudo true || return 1
-    local owner=$$
+    local owner=$$ interval=${HASEEN_SUDO_WARM_INTERVAL:-60}
+    [[ $interval =~ ^[0-9]+$ ]] || interval=60
     (
+        # The sleep is waited on, not run in the foreground, so a stop ends
+        # it at once instead of leaving it to run out.
+        nap=""
         trap - EXIT ERR
-        while sleep 60; do
+        trap '[[ -z $nap ]] || kill "$nap" 2>/dev/null; exit 0' TERM
+        while :; do
+            sleep "$interval" &
+            nap=$!
+            wait "$nap"
+            nap=""
             kill -0 "$owner" 2>/dev/null || exit 0
             sudo -n true 2>/dev/null || exit 0
         done

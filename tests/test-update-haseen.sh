@@ -318,6 +318,11 @@ assert_contains "--check agrees" "$OUTPUT" "update     none: the installed tree 
 stamp 0123abc 2000-01-01T00:00:00+00:00
 capture hm --check
 assert_contains "an older tree from elsewhere is updated" "$OUTPUT" "update     available: the installed tree is not on origin/main"
+# install.sh stamps "unknown" for a tree without git: never current, whatever
+# its date.
+stamp unknown "$(date -Iseconds -d '+1 hour')"
+capture hm --check
+assert_contains "a tree of unknown commit is updated" "$OUTPUT" "update     available: the installed tree is not on origin/main"
 
 # The copy is haseen's: a change made in it by hand is refused, not lost.
 printf 'by hand\n' >>"$copy/install.sh"
@@ -326,6 +331,20 @@ capture hm
 assert_status "a copy changed by hand is refused" 1 "$STATUS"
 assert_contains "and says how to start over" "$OUTPUT" "has changes made by hand"
 g -C "$copy" checkout -q -- install.sh
+
+# Another remote (a fork, a mirror): the copy follows it from the next run.
+mirror="$SANDBOX/mirror.git"
+g clone -q --bare "$origin" "$mirror"
+g -C "$other" push -q "$mirror" HEAD:refs/heads/main 2>/dev/null || true
+printf 'seven\n' >"$other/NOTES"
+g -C "$other" commit -qam seven
+g -C "$other" push -q "$mirror" HEAD:main
+stamp "$five" 2026-01-01T00:00:00+00:00
+capture env -u HASEEN_SOURCE PATH="$REAL_PATH" HASEEN_INLINE=1 XDG_DATA_HOME="$data" HASEEN_UPDATE_REMOTE="$mirror" \
+    haseen update haseen --prefix "$mprefix" --check
+assert_contains "a new remote is followed" "$OUTPUT" "source     $copy (haseen's copy of $mirror main)"
+assert_eq "the copy's origin is changed" "$mirror" "$(g -C "$copy" remote get-url origin)"
+assert_contains "and its commits are counted" "$OUTPUT" "update     available: 2 new commit(s)"
 
 capture env -u HASEEN_SOURCE PATH="$REAL_PATH" HASEEN_INLINE=1 XDG_DATA_HOME="$SANDBOX/no-net" \
     HASEEN_UPDATE_REMOTE="$SANDBOX/missing.git" haseen update haseen --prefix "$mprefix"

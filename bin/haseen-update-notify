@@ -30,7 +30,8 @@ Usage: haseen update notify [--dry-run]
 
 Looks for haseen and package updates and sends one notification when
 something new is waiting; its Update button runs 'haseen update'. Started by
-haseen-update-notify.timer. To stop the checks:
+haseen-update-notify.timer. To stop the checks (re-applying the shell
+layer keeps them off):
   systemctl --user disable --now haseen-update-notify.timer
 
   --dry-run  use haseen's copy as it is (no fetch), count no packages, send
@@ -46,6 +47,9 @@ parse_common_flags "$@"
 require_not_root
 
 state="$HASEEN_USER_STATE/update-notified"
+# This tree's own router, as for every sibling command (lib/catalog.sh).
+exe="$(cd "$HASEEN_PATH/../../bin" 2>/dev/null && pwd)/haseen"
+[[ -x $exe ]] || exe=haseen
 pending=()
 haseen_new=0 haseen_line=""
 
@@ -78,7 +82,7 @@ packages=0
 if $DRY_RUN; then
     echo "DRYRUN: haseen update check"
 else
-    counts="$(haseen update check 2>/dev/null || true)"
+    counts="$("$exe" update check 2>/dev/null || true)"
     if jq -e '(.errors | length) == 0' <<<"$counts" >/dev/null 2>&1; then
         mapfile -t lines < <(jq -r '.lines[]' <<<"$counts")
         packages=${#lines[@]}
@@ -129,5 +133,12 @@ printf '%s\n' "${pending[@]}" >"$state"
 # dismissed; the action id is printed when it is clicked.
 answer="$(notify-send -a haseen --wait -A "update=$(i18n "Update")" "$title" "$message" || true)"
 [[ $answer == update ]] || exit 0
-# No terminal here, so haseen update opens its own floating one.
-exec haseen update
+# The update must not run in this unit: it would inherit its idle priority
+# (Nice, IOSchedulingClass) for pacman and the builds, and keep the unit
+# active until the terminal closed. A transient unit of the user manager is a
+# fresh process in the apps' slice; with no terminal there, haseen update
+# opens its own floating one.
+if have systemd-run; then
+    exec systemd-run --user --quiet --collect --slice=app-graphical.slice -- "$exe" update
+fi
+exec "$exe" update

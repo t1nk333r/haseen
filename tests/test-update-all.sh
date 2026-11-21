@@ -25,11 +25,15 @@ mk() {
     printf '#!/bin/sh\necho "%s $*" >>"$LOG"\n%s\n' "$1" "${2:-exit 0}" >"$tools/$1"
     chmod 755 "$tools/$1"
 }
-mk sudo "[ \"\$1\" = -h ] && echo 'usage: sudo [-ABbEHkNnPS] [-C num]'; exit 0"
-mk paru 'case "$*" in *-Qua*) [ -n "${PARU_QUA:-}" ] || exit 1; printf "%s\n" "$PARU_QUA" ;; esac; exit 0'
-mk flatpak
+mk sudo "[ \"\$1\" = -h ] && echo 'usage: sudo [-ABbEHkNnPS] [-C num]'; [ \"\$1\" = true ] && [ -n \"\${SUDO_FAIL:-}\" ] && exit 1; exit 0"
+# The AUR build and Flatpak take a moment, so a sudo kept warm every second
+# would show up in the log while they run.
+mk paru 'case "$*" in *-Qua*) [ -n "${PARU_QUA:-}" ] || exit 1; printf "%s\n" "$PARU_QUA" ;; *-Sua*) sleep "${PARU_SLEEP:-0}" ;; esac; exit 0'
+mk flatpak 'sleep "${FLATPAK_SLEEP:-0}"'
 mk hyprctl
-mk systemctl 'exit 0'
+mk systemctl '[ "$2" = show-environment ] && [ -n "${SYSTEMCTL_NO_MANAGER:-}" ] && exit 1; exit 0'
+# A transient unit: run what follows --.
+mk systemd-run 'while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done; shift; exec "$@"'
 mk notify-send 'printf "%s" "${NOTIFY_ANSWER:-}"'
 mk busctl '[ -z "${BUSCTL_FAIL:-}" ]'
 printf '#!/bin/sh\n[ -n "${CHECKUPDATES_OUT:-}" ] || exit 2\nprintf "%%s\\n" "$CHECKUPDATES_OUT"\n' >"$tools/checkupdates"
@@ -102,8 +106,12 @@ assert_eq "a dry run calls nothing" "" "$(calls)"
 assert_eq "and clones nothing" "" "$(ls -A "$data" 2>/dev/null)"
 
 # --- the update ------------------------------------------------------------------
-CHECKUPDATES_OUT="mesa 1-1 -> 1-2" capture hu --yes
+CHECKUPDATES_OUT="mesa 1-1 -> 1-2" HASEEN_SUDO_WARM_INTERVAL=1 FLATPAK_SLEEP=2 PARU_SLEEP=3 capture hu --yes
 assert_status "the update runs" 0 "$STATUS"
+# sudo is kept warm through the hand-over to the new tree, and stops before
+# the AUR: a PKGBUILD never runs beside a refreshed timestamp (plan 103).
+assert_contains "sudo is kept warm while the update runs" "$(sed -n '/^install:/,/^paru .*-Sua/p' "$LOG")" "sudo -n true"
+assert_eq "and no longer once the AUR builds start" "" "$(sed -n '/^paru .*-Sua/,$p' "$LOG" | grep 'sudo -n true' || true)"
 assert_contains "it shows haseen's new commits" "$OUTPUT" "haseen     1 new commit(s), $one to $two:"
 assert_contains "by their subjects" "$OUTPUT" "               weather: a smoother curve"
 assert_contains "and the packages" "$OUTPUT" "packages   1 from the repositories, 0 from the AUR"
@@ -130,6 +138,29 @@ assert_contains "it says the packages are counted" "$OUTPUT" "packages   0 from 
 assert_not_contains "it installs no haseen" "$(calls)" "install:"
 assert_contains "the packages are still upgraded" "$(calls)" "pacman -Syu"
 assert_not_contains "and an unchanged tree is not reloaded" "$(calls)" "hyprctl reload"
+
+# --- sudo refused -----------------------------------------------------------------
+: >"$LOG"
+capture env SUDO_FAIL=1 PATH="$REAL_PATH" HASEEN_INLINE=1 XDG_DATA_HOME="$data" HASEEN_UPDATE_REMOTE="$origin" \
+    HASEEN_UPDATE_PREFIX="$prefix" haseen update --yes
+assert_status "a refused sudo stops the update" 1 "$STATUS"
+assert_contains "it says nothing was changed" "$OUTPUT" "sudo did not authorize the update; nothing was changed"
+assert_not_contains "and nothing is installed" "$(calls)" "install:"
+assert_not_contains "or upgraded" "$(calls)" "pacman -Syu"
+
+# --- the rest runs the installed router -----------------------------------------
+# Started from a checkout, the second half is the prefix's haseen, finding its
+# own tree, not the checkout's.
+mkdir -p "$prefix/bin"
+printf '#!/bin/sh\necho "prefix-router $* stage=$HASEEN_UPDATE_STAGE path=${HASEEN_PATH:-unset}" >>"$LOG"\n' >"$prefix/bin/haseen"
+chmod 755 "$prefix/bin/haseen"
+: >"$LOG"
+capture hu --yes
+assert_status "the hand-over to the prefix runs" 0 "$STATUS"
+assert_contains "the rest is the prefix's router, in the second stage, on its own tree" "$(calls)" \
+    "prefix-router update all --yes stage=rest path=unset"
+assert_not_contains "and the checkout's code does not upgrade" "$(calls)" "pacman -Syu"
+rm -rf "$prefix/bin"
 
 # --- the question ---------------------------------------------------------------
 push "bar: a new widget"
@@ -198,6 +229,8 @@ assert_eq "and remembers nothing, for the next run in a session" "no" "$([[ -e $
 capture env NOTIFY_ANSWER=update HASEEN_INLINE=1 PATH="$REAL_PATH" XDG_DATA_HOME="$data" HASEEN_UPDATE_REMOTE="$origin" \
     HASEEN_UPDATE_PREFIX="$prefix" CHECKUPDATES_OUT="mesa 1-1 -> 1-2" haseen update notify
 assert_status "Update runs the update" 0 "$STATUS"
+assert_contains "in a unit of its own, not the notice's idle one" "$(calls)" \
+    "systemd-run --user --quiet --collect --slice=app-graphical.slice -- $REPO/bin/haseen update"
 assert_contains "it reaches pacman" "$(calls)" "pacman -Syu"
 assert_contains "and finishes" "$OUTPUT" "[*] haseen update: done"
 
@@ -219,9 +252,16 @@ assert_status "without haseen's shell the migration has nothing to do" 0 "$STATU
 assert_eq "and enables nothing" "" "$(calls)"
 mkdir -p "$wants/graphical-session.target.wants"
 ln -s /dev/null "$wants/graphical-session.target.wants/haseen-shell.service"
+export SYSTEMCTL_NO_MANAGER=1
+capture runmig
+unset SYSTEMCTL_NO_MANAGER
+assert_status "without a user manager the migration does not fail" 0 "$STATUS"
+assert_contains "it says how to turn the notice on" "$OUTPUT" "to turn the update notice on: systemctl --user enable --now haseen-update-notify.timer"
+assert_not_contains "and enables nothing" "$(calls)" "enable"
 capture runmig
 assert_status "with haseen's shell it runs" 0 "$STATUS"
 assert_contains "it enables and starts the timer" "$(calls)" "systemctl --user enable --now haseen-update-notify.timer"
+assert_eq "and remembers that haseen turned it on" "yes" "$([[ -e $HOME/.local/state/haseen/update-notify-enabled ]] && echo yes || echo no)"
 mkdir -p "$wants/timers.target.wants"
 ln -s /dev/null "$wants/timers.target.wants/haseen-update-notify.timer"
 : >"$LOG"

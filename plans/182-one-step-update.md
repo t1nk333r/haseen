@@ -15,8 +15,9 @@
   read again), 147 (the build version)
 - **Category**: commands, install
 - **Planned at**: 2026-11-21, from the owner
-- **State**: DONE 2026-11-21 (`tests/test-update-all.sh` 58/58,
-  `tests/test-update-haseen.sh` 98/98; luna and IO are the owner's check)
+- **State**: DONE 2026-11-21 (`tests/test-update-all.sh` 72/72,
+  `tests/test-update-haseen.sh` 102/102 after a Sonnet review, every finding
+  taken; luna and IO are the owner's check)
 
 ## Why
 
@@ -44,7 +45,11 @@ upgrades the packages, runs migrations, restarts what changed, then builds AUR
 packages.
 
 Asked, the owner chose "Managed clone of main" for where haseen comes from
-and "One notification" for how to learn about updates.
+and "One notification" for how to learn about updates. That option read: "A
+background check (every few hours) sends one notification when new haseen
+commits or packages arrive, with an Update button. Nothing is added to the
+bar." Running it on existing machines (the migration) follows from that
+answer.
 
 ## Decision
 
@@ -56,9 +61,11 @@ and "One notification" for how to learn about updates.
   3. Asks for sudo once (`sudo_keep_warm`, `lib/common.sh`). A loop keeps
      the timestamp fresh every 60 s while the update runs.
   4. Installs haseen: `haseen update haseen --tree-only --no-reload`.
-  5. Then `exec`s the newly installed `haseen update all`
-     (`HASEEN_UPDATE_STAGE=rest`), so everything after runs the new tree's
-     code. An exec keeps the PID, so the sudo loop carries over.
+  5. Then `exec`s the prefix's `haseen update all`
+     (`HASEEN_UPDATE_STAGE=rest`), so everything after runs the tree just
+     installed. That holds also when the first half ran from a checkout:
+     `HASEEN_PATH` is unset for the prefix's router. An exec keeps the PID, so
+     the sudo loop carries over.
   6. The rest: pacman, then `haseen migrate` (migrations may be written
      against the new packages, as in Omarchy), then Flatpak, then the
      post-update hooks.
@@ -93,8 +100,10 @@ and "One notification" for how to learn about updates.
   - Each run (`haseen update notify`) fetches the copy and counts haseen's new
     commits and the pending packages.
   - It sends one notification ("Updates are ready", "haseen: 3 new changes ·
-    12 packages to upgrade") with an Update button that runs `haseen update`
-    in a floating terminal.
+    12 packages to upgrade") with an Update button. The button starts
+    `haseen update` as a transient unit in `app-graphical.slice`
+    (`systemd-run --user`), not inside the notice's idle-priority unit; with
+    no terminal there, it opens a floating one.
   - What it was about is kept in `~/.local/state/haseen/update-notified`. A
     run notifies only for something not on that list, so a dismissed notice
     comes back with the next commit or package, not every four hours.
@@ -102,9 +111,19 @@ and "One notification" for how to learn about updates.
     nothing is remembered.
   - The shell layer enables the timer (status reports it). Migration
     `1795289723-update-notify-timer.sh` enables and starts it where the shell
-    layer was applied before.
+    layer was applied before. Without a user manager (su, ssh without
+    `XDG_RUNTIME_DIR`) the migration says how to turn it on and succeeds,
+    rather than stopping every later migration.
+  - Both write `~/.local/state/haseen/update-notify-enabled` when they turn
+    it on. A timer disabled after that is the user's choice: status reports
+    it as "off (your choice)" and a re-apply leaves it off.
   - It is a new default, approved by the owner (AGENTS.md).
-- **Strings.** Five notification strings with Arabic.
+- **Strings.** Five notification strings with Arabic. The menu's Update
+  submenu gains "Everything" (`haseen update`), and the haseen entry no
+  longer says it pulls a checkout.
+- `share/haseen/migrations/README.md` says that `haseen update` applies no
+  layers, so a new default package or unit for existing machines needs a
+  migration.
 
 ## Rejected
 
@@ -135,10 +154,48 @@ and "One notification" for how to learn about updates.
   commit, merged or not. `haseen update haseen --force` installs main at once.
 - The timer counts on `checkupdates` and the AUR helper for packages; a check
   that fails counts as nothing pending, and the next run tries again.
+- A package's new version is a new update, so on a rolling release the
+  notice comes about once a day while updates are left waiting.
+- `haseen update` applies no layers: what a change needs on existing machines
+  comes through a migration (README above).
+
+## Review
+
+A Sonnet subagent reviewed `38216ca`: REQUEST_CHANGES, one major finding.
+Every finding was taken:
+
+1. **Major:** the Update button `exec`ed the update inside the notice's
+   unit, so pacman and the builds ran at `Nice=10` and idle I/O, and the unit
+   stayed active until the terminal closed. It is now a transient unit in
+   `app-graphical.slice`, checked by the test.
+2. The migration failed without a user bus, which would stop every later
+   migration and the update's second half. It now warns and succeeds.
+3. A stamp of `unknown` (a tree without git) with a recent date read as
+   `local` and was never updated. `unknown` is now always updated.
+4. Run from a checkout, the second half ran the checkout's code. It now
+   runs the prefix's router with its own tree.
+5. Disabling the timer showed as a degraded layer, and a re-apply turned it
+   on again. There is now the opt-out marker above.
+6. The menu still described the old `haseen update haseen` and had no entry
+   for the one-step update.
+7. The `--tree-only` choice was not written down where migrations are
+   written. It now is.
+8. Escaped mutations: the keepalive stop removed, and the remote reset
+   removed. The keepalive is now tested through the hand-over: it refreshes
+   every second (`HASEEN_SUDO_WARM_INTERVAL`), and none after the AUR starts;
+   removing the stop fails that check. Also tested: a changed remote, sudo
+   refused, and the second stage reaching the prefix's router.
+9. A stopped keepalive left its `sleep` running. The sleep is now waited on
+   and killed with the loop.
+10. Without a terminal the update does not ask. The usage now says so.
+11. The notice called `haseen` through `PATH`. It now uses its own tree's
+    router.
+12. The plan now quotes the option the owner chose, and the noise on a
+    rolling release is a limitation above.
 
 ## Verification
 
-- `tests/test-update-all.sh` (58 checks):
+- `tests/test-update-all.sh` (72 checks):
   - the dry-run plan;
   - a real run against a bare repository and stubs: the preview, the order
     (sudo once, install, pacman, Flatpak, the cold AUR, reload);
@@ -149,7 +206,7 @@ and "One notification" for how to learn about updates.
     with nothing pending, nothing remembered without a daemon, Update running
     the update;
   - the units, the shell layer line and the migration.
-- `tests/test-update-haseen.sh` (98 checks): the managed copy cloned by
+- `tests/test-update-haseen.sh` (102 checks): the managed copy cloned by
   `--check`, installed, a longer stamp abbreviation, a new commit, a newer
   installed tree left (and `--force`), the pull-request case by date, a copy
   changed by hand refused, and an unreachable remote.

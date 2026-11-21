@@ -563,6 +563,15 @@ ln -s /usr/lib/systemd/user/haseen-crash-watch.service "$XDG_CONFIG_HOME/systemd
 shell_layer "$fx_qs" 'layer_run_status shell'
 assert_contains "status names the update notice when it is off" "$OUTPUT" \
     "missing: haseen-update-notify.timer not enabled (no notice when updates are waiting)"
+# Turned off after haseen enabled it: the user's choice, kept.
+mkdir -p "$XDG_STATE_HOME/haseen"
+: >"$XDG_STATE_HOME/haseen/update-notify-enabled"
+shell_layer "$fx_qs" 'layer_run_status shell'
+assert_contains "status calls a notice turned off a choice" "$OUTPUT" "ok: haseen-update-notify.timer off (your choice"
+shell_layer "$fx_qs" 'layer_run_apply shell --dry-run'
+assert_not_contains "and a re-apply does not turn it on again" "$OUTPUT" "enable haseen-update-notify.timer"
+assert_contains "it says it stays off" "$OUTPUT" "haseen-update-notify.timer stays off (your choice)"
+rm -f "$XDG_STATE_HOME/haseen/update-notify-enabled"
 mkdir -p "$XDG_CONFIG_HOME/systemd/user/timers.target.wants"
 ln -s /usr/lib/systemd/user/haseen-update-notify.timer "$XDG_CONFIG_HOME/systemd/user/timers.target.wants/haseen-update-notify.timer"
 shell_layer "$fx_bare" 'layer_run_status shell'
