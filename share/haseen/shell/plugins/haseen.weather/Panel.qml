@@ -1,18 +1,24 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import qs.Haseen
 import qs.Haseen.Widgets
+import qs.Ui
 import "Model.js" as Model
 
-// The weather panel, laid out as Omarchy's (shell/plugins/panels/weather/
-// Panel.qml; MIT, Copyright (c) David Heinemeier Hansson), compacted (plan
-// 164): icon, temperature and location on one row, feels/wind/humidity on
-// the next, then the next three days.
+// The weather panel, from Omarchy's (shell/plugins/panels/weather/Panel.qml;
+// MIT, Copyright (c) David Heinemeier Hansson), redesigned (plan 180): the
+// icon, temperature, condition and today's high and low with the location
+// at the row's end, feels/wind/humidity on the next line, then two tabs:
+// the coming hours and five days with their ranges on a shared scale, or a
+// 24-hour temperature curve and three days. The body keeps the taller tab's
+// height, so switching never resizes the panel.
 // Click the location (or press Enter) to search a city (Open-Meteo
 // geocoding); an empty search returns to automatic (GeoClue, else IP).
 // The data comes from the haseen.weather service (role `weather`).
-// Open with `haseen shell ipc panel toggle haseen.weather` or a bar click.
+// Open with `haseen shell ipc panel toggle haseen.weather` or a bar click;
+// Tab or the arrow keys switch the tabs.
 Column {
     id: root
 
@@ -21,12 +27,26 @@ Column {
     property var settings: ({})
     property var screen: null
 
-    readonly property var service: {
+    // A test may hand the panel a service of its own.
+    property var service: {
         const entry = Plugins.roles.weather;
         return entry && entry.id === root.pluginId ? entry.instance : null;
     }
     readonly property bool hasCurrent: !!(service && service.current)
     readonly property var forecastDays: service ? service.forecastDays : []
+    readonly property bool imperial: !!(service && service.useImperial)
+    readonly property int tab: service ? service.panelTab : 0
+    readonly property var daysScale: Model.daysScale(forecastDays, imperial)
+    // "Now" (the current conditions), then the next three-hourly forecasts.
+    readonly property var slots: {
+        if (!hasCurrent)
+            return [];
+        const now = [{ hour: I18n.tr("Now"), temp: service.reportTempNum, icon: service.label, now: true }];
+        return now.concat((service.hours || []).map(h => ({ hour: h.hour, temp: imperial ? h.tempF : h.tempC, icon: h.icon, now: false })));
+    }
+    readonly property int curveTop: Theme.font.caption + Theme.gap
+    readonly property int curveHeight: Theme.fontSize * 4.5
+    readonly property var curve: Model.curve(slots.map(s => s.temp), width, curveTop, curveHeight, curveTop + curveHeight + Theme.gap)
 
     property bool editingLocation: false
     property var locationSuggestions: []
@@ -97,6 +117,11 @@ Column {
         return Model.dayName(dateString, d => I18n.formatDate(d, "dddd"));
     }
 
+    function setTab(index: int): void {
+        if (service)
+            service.panelTab = (index + 2) % 2;
+    }
+
     function sourceText(): string {
         if (!service)
             return "";
@@ -117,8 +142,8 @@ Column {
             cancelEditingLocation();
     }
 
-    width: Theme.fontSize * 26
-    spacing: Theme.gap
+    width: Theme.fontSize * 28
+    spacing: Math.round(Theme.gap * 1.5)
     Component.onCompleted: keyCatcher.forceActiveFocus()
 
     Item {
@@ -129,6 +154,11 @@ Column {
         focus: true
         Keys.onReturnPressed: root.startEditingLocation()
         Keys.onEnterPressed: root.startEditingLocation()
+        Keys.onTabPressed: root.setTab(root.tab + 1)
+        Keys.onBacktabPressed: root.setTab(root.tab - 1)
+        // The arrow points at the tab it selects, also in a mirrored panel.
+        Keys.onLeftPressed: root.setTab(root.tab + (root.LayoutMirroring.enabled ? 1 : -1))
+        Keys.onRightPressed: root.setTab(root.tab + (root.LayoutMirroring.enabled ? -1 : 1))
     }
 
     Text {
@@ -141,7 +171,8 @@ Column {
         font.pixelSize: Theme.font.body
     }
 
-    // ---- Hero: icon and temperature, the location at the row's end.
+    // ---- Hero: icon and temperature, the condition and today's high and
+    // low beside them, the location at the row's end.
     Item {
         width: parent.width
         height: Math.max(heroLeft.height, locationLabel.height)
@@ -157,7 +188,8 @@ Column {
             Glyph {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: root.service && root.service.label ? root.service.label : "—"
-                font.pixelSize: Theme.font.iconLarge
+                color: Theme.accent
+                font.pixelSize: Theme.font.display
             }
 
             // The number and its unit read "21°C" in every language.
@@ -173,15 +205,43 @@ Column {
                     text: root.service && root.service.reportTempNum ? root.service.reportTempNum : "—"
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.font.heading
+                    font.pixelSize: Theme.font.display
                     font.bold: true
                 }
 
                 Text {
-                    anchors.baseline: tempBig.baseline
+                    anchors.top: tempBig.top
+                    anchors.topMargin: Math.round(Theme.gap / 2)
                     textFormat: Text.PlainText
                     text: root.hasCurrent ? root.service.tempUnit : ""
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.font.bodySmall
+                }
+            }
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.hasCurrent
+                spacing: 2
+
+                Text {
+                    textFormat: Text.PlainText
+                    text: root.service ? root.service.condition : ""
                     color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.font.body
+                }
+
+                Text {
+                    readonly property var range: root.service ? root.service.todayRange : null
+                    readonly property string high: range ? (root.imperial ? range.maxF : range.maxC) : ""
+                    readonly property string low: range ? (root.imperial ? range.minF : range.minC) : ""
+
+                    visible: high !== "" && low !== ""
+                    textFormat: Text.PlainText
+                    text: I18n.tr("H %1°  L %2°", high, low)
+                    color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.font.bodySmall
                 }
@@ -194,7 +254,7 @@ Column {
             id: locationLabel
 
             anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top: parent.top
             visible: !root.editingLocation
             spacing: Math.round(Theme.gap / 2)
 
@@ -202,7 +262,14 @@ Column {
                 onTapped: root.startEditingLocation()
             }
             HoverHandler {
+                id: locationHover
+
                 cursorShape: Qt.PointingHandCursor
+            }
+            // Where the forecast comes from and when it was fetched.
+            PanelToolTip {
+                visible: locationHover.hovered && text !== ""
+                text: root.sourceText()
             }
 
             Glyph {
@@ -211,18 +278,18 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "" // nf-fa-map_marker
                 color: Theme.muted
-                font.pixelSize: Theme.font.bodySmall
+                font.pixelSize: Theme.font.caption
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, root.width - heroLeft.width - marker.width - Theme.gap * 2)
+                width: Math.max(0, Math.min(implicitWidth, root.width - heroLeft.width - marker.width - Theme.gap * 2))
                 textFormat: Text.PlainText
                 text: root.service && root.service.reportLocation !== "" ? root.service.reportLocation.toUpperCase() : I18n.tr("SET LOCATION")
                 color: Theme.muted
                 elide: Text.ElideRight
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.font.bodySmall
+                font.pixelSize: Theme.font.caption
                 font.letterSpacing: 1
             }
         }
@@ -441,46 +508,356 @@ Column {
         font.italic: true
     }
 
+    // ---- The tabs: a segmented control, the selected tab in the accent.
     Rectangle {
-        visible: root.forecastDays.length > 0
+        id: tabBar
+
+        readonly property int fiveDays: Math.min(5, root.forecastDays.length)
+        readonly property int threeDays: Math.min(3, root.forecastDays.length)
+
+        visible: root.hasCurrent
         width: parent.width
-        height: Theme.borderWidth
-        color: Theme.border
-    }
+        height: Theme.font.body + Theme.gap * 2
+        radius: Theme.radius
+        color: "transparent"
+        border.width: Theme.borderWidth
+        border.color: Theme.border
 
-    // ---- The next three days in equal columns: icon, short day name, high
-    // and low.
-    Row {
-        visible: root.forecastDays.length > 0
-        width: parent.width
+        Row {
+            anchors.fill: parent
+            anchors.margins: Theme.borderWidth + 1
 
-        Repeater {
-            model: root.forecastDays
+            Repeater {
+                model: [
+                    tabBar.fiveDays > 0 ? I18n.tn("Hourly · %1 day", "Hourly · %1 days", tabBar.fiveDays) : I18n.tr("Hourly"),
+                    tabBar.threeDays > 0 ? I18n.tn("Curve · %1 day", "Curve · %1 days", tabBar.threeDays) : I18n.tr("Curve")
+                ]
 
-            delegate: Item {
-                id: day
+                delegate: Rectangle {
+                    id: tabCell
 
-                required property var modelData
+                    required property string modelData
+                    required property int index
+                    readonly property bool selected: index === root.tab
 
-                width: root.width / Math.max(1, root.forecastDays.length)
-                height: dayRow.height
+                    width: (tabBar.width - (Theme.borderWidth + 1) * 2) / 2
+                    height: parent.height
+                    radius: Math.max(0, Theme.radius - Theme.borderWidth - 1)
+                    color: selected ? Theme.accent : (tabArea.containsMouse ? Theme.selection : "transparent")
 
-                Row {
-                    id: dayRow
-
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: Math.round(Theme.gap * 0.75)
-
-                    Glyph {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: Model.dayIcon(day.modelData)
-                        font.pixelSize: Theme.font.icon
+                    Text {
+                        anchors.centerIn: parent
+                        width: Math.min(implicitWidth, parent.width - Theme.gap)
+                        elide: Text.ElideRight
+                        textFormat: Text.PlainText
+                        text: tabCell.modelData
+                        color: tabCell.selected ? Theme.accentFg : Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.font.bodySmall
                     }
 
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
+                    MouseArea {
+                        id: tabArea
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.setTab(tabCell.index)
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- The tab's body, as tall as the taller tab.
+    Item {
+        visible: root.hasCurrent
+        width: parent.width
+        height: Math.max(hoursTab.implicitHeight, curveTab.implicitHeight)
+
+        // Tab 1: the coming hours, then five days.
+        Column {
+            id: hoursTab
+
+            width: parent.width
+            visible: root.tab === 0
+            spacing: Math.round(Theme.gap * 1.5)
+
+            Row {
+                width: parent.width
+
+                Repeater {
+                    model: root.slots
+
+                    delegate: Column {
+                        id: slot
+
+                        required property var modelData
+
+                        width: root.width / Math.max(1, root.slots.length)
+                        spacing: Math.round(Theme.gap / 2)
+
+                        // One line height for every label, so a taller script's
+                        // "Now" does not push its column down.
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            height: Math.ceil(Theme.font.caption * 1.6)
+                            verticalAlignment: Text.AlignVCenter
+                            textFormat: Text.PlainText
+                            text: slot.modelData.hour
+                            color: slot.modelData.now ? Theme.accent : Theme.muted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.caption
+                        }
+
+                        Glyph {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            glyph: slot.modelData.icon
+                            font.pixelSize: Theme.font.icon
+                        }
 
                         Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            textFormat: Text.PlainText
+                            text: slot.modelData.temp !== "" ? slot.modelData.temp + "°" : "—"
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.bodySmall
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: root.forecastDays.length > 0
+                width: parent.width
+                height: Theme.borderWidth
+                color: Theme.border
+            }
+
+            // Day, icon, low, the range on the days' shared scale, high.
+            Column {
+                width: parent.width
+                spacing: Theme.gap
+
+                Repeater {
+                    model: root.forecastDays
+
+                    delegate: Row {
+                        id: dayRow
+
+                        required property var modelData
+                        readonly property var bar: Model.rangeBar(modelData, root.daysScale, root.imperial)
+
+                        width: parent.width
+                        height: Theme.font.icon + 4
+                        spacing: Theme.gap
+
+                        Text {
+                            id: dayName
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Theme.fontSize * 3.5
+                            elide: Text.ElideRight
+                            textFormat: Text.PlainText
+                            text: Model.dayName(dayRow.modelData.date, d => I18n.formatDate(d, "ddd"))
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.body
+                        }
+
+                        Glyph {
+                            id: dayIcon
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Theme.fontSize * 2
+                            glyph: Model.dayIcon(dayRow.modelData)
+                            font.pixelSize: Theme.font.icon
+                        }
+
+                        Text {
+                            id: dayLow
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Theme.fontSize * 2.5
+                            horizontalAlignment: Text.AlignRight
+                            textFormat: Text.PlainText
+                            text: Model.bareTempForDay(dayRow.modelData, "min", root.imperial)
+                            color: Theme.muted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.bodySmall
+                        }
+
+                        // Anchored from the track's start, so a mirrored
+                        // panel runs the bar from the right.
+                        Item {
+                            id: track
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - dayName.width - dayIcon.width - dayLow.width - dayHigh.width - dayRow.spacing * 4
+                            height: 4
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: height / 2
+                                color: Theme.border
+                            }
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.leftMargin: track.width * dayRow.bar.start
+                                visible: dayRow.bar.width > 0
+                                width: Math.max(height, track.width * dayRow.bar.width)
+                                height: parent.height
+                                radius: height / 2
+                                color: Theme.accent
+                            }
+                        }
+
+                        Text {
+                            id: dayHigh
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Theme.fontSize * 2.5
+                            textFormat: Text.PlainText
+                            text: Model.bareTempForDay(dayRow.modelData, "max", root.imperial)
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.bodySmall
+                        }
+                    }
+                }
+            }
+        }
+
+        // Tab 2: the temperature curve over the same hours, then three days.
+        // The curve is a timeline and reads left to right in every language.
+        Column {
+            id: curveTab
+
+            width: parent.width
+            visible: root.tab === 1
+            spacing: Math.round(Theme.gap * 1.5)
+
+            Item {
+                width: parent.width
+                height: root.curveTop + root.curveHeight + Theme.gap * 2 + Theme.font.icon + Theme.font.caption + 4
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
+
+                Shape {
+                    anchors.fill: parent
+                    visible: root.curve.line !== ""
+
+                    ShapePath {
+                        strokeColor: "transparent"
+                        fillGradient: LinearGradient {
+                            x1: 0
+                            y1: root.curveTop
+                            x2: 0
+                            y2: root.curveTop + root.curveHeight + Theme.gap
+                            GradientStop {
+                                position: 0
+                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28)
+                            }
+                            GradientStop {
+                                position: 1
+                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0)
+                            }
+                        }
+                        PathSvg {
+                            path: root.curve.area
+                        }
+                    }
+
+                    ShapePath {
+                        strokeColor: Theme.accent
+                        strokeWidth: 2
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg {
+                            path: root.curve.line
+                        }
+                    }
+                }
+
+                Repeater {
+                    model: root.curve.points.length === root.slots.length ? root.slots : []
+
+                    delegate: Item {
+                        id: point
+
+                        required property var modelData
+                        required property int index
+                        readonly property var at: root.curve.points[index]
+
+                        Rectangle {
+                            x: point.at[0] - width / 2
+                            y: point.at[1] - height / 2
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: point.modelData.now ? Theme.accent : Theme.popups.background
+                            border.color: Theme.accent
+                            border.width: 1.5
+                        }
+
+                        Text {
+                            x: point.at[0] - width / 2
+                            y: point.at[1] - height - 4
+                            textFormat: Text.PlainText
+                            text: point.modelData.temp + "°"
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.caption
+                        }
+
+                        Glyph {
+                            x: point.at[0] - width / 2
+                            y: root.curveTop + root.curveHeight + Theme.gap * 1.5
+                            glyph: point.modelData.icon
+                            color: Theme.muted
+                            font.pixelSize: Theme.font.icon
+                        }
+
+                        Text {
+                            x: point.at[0] - width / 2
+                            y: root.curveTop + root.curveHeight + Theme.gap * 1.5 + Theme.font.icon + 4
+                            textFormat: Text.PlainText
+                            text: point.modelData.hour
+                            color: point.modelData.now ? Theme.accent : Theme.muted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.font.caption
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: root.forecastDays.length > 0
+                width: parent.width
+                height: Theme.borderWidth
+                color: Theme.border
+            }
+
+            // Three days in equal columns: the name over icon, high and low.
+            Row {
+                width: parent.width
+
+                Repeater {
+                    model: root.forecastDays.slice(0, 3)
+
+                    delegate: Column {
+                        id: day
+
+                        required property var modelData
+
+                        width: root.width / 3
+                        spacing: Math.round(Theme.gap / 2)
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
                             textFormat: Text.PlainText
                             text: root.dayName(day.modelData.date).toUpperCase()
                             color: Theme.muted
@@ -490,19 +867,28 @@ Column {
                         }
 
                         Row {
-                            spacing: Math.round(Theme.gap / 2)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: Theme.gap
+
+                            Glyph {
+                                anchors.verticalCenter: parent.verticalCenter
+                                glyph: Model.dayIcon(day.modelData)
+                                font.pixelSize: Theme.font.icon
+                            }
 
                             Text {
+                                anchors.verticalCenter: parent.verticalCenter
                                 textFormat: Text.PlainText
-                                text: Model.bareTempForDay(day.modelData, "max", root.service && root.service.useImperial)
+                                text: Model.bareTempForDay(day.modelData, "max", root.imperial)
                                 color: Theme.foreground
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.font.bodySmall
                             }
 
                             Text {
+                                anchors.verticalCenter: parent.verticalCenter
                                 textFormat: Text.PlainText
-                                text: Model.bareTempForDay(day.modelData, "min", root.service && root.service.useImperial)
+                                text: Model.bareTempForDay(day.modelData, "min", root.imperial)
                                 color: Theme.muted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.font.bodySmall
@@ -512,18 +898,6 @@ Column {
                 }
             }
         }
-    }
-
-    Text {
-        width: parent.width
-        visible: text !== ""
-        horizontalAlignment: Text.AlignRight
-        elide: Text.ElideLeft
-        textFormat: Text.PlainText
-        text: root.sourceText()
-        color: Theme.muted
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.font.caption
     }
 
     Process {

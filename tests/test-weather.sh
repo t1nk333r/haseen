@@ -28,6 +28,10 @@ assert_status "weather validates" 0 "$STATUS"
 assert_contains "weather ok" "$OUTPUT" "ok: haseen.weather (builtin:"
 assert_dry_pure "plugin validate" "$OUTPUT"
 assert_eq "kinds" "service,bar-widget,panel" "$(jq -r '.kinds | join(",")' "$PLUGIN/manifest.json")"
+# Plan 180: the temperature beside the bar icon, on unless turned off.
+assert_eq "the bar's temperature is on by default" "true" "$(jq -r '.settings.temperature.default' "$PLUGIN/manifest.json")"
+assert_contains "the pill shows it unless settings.temperature is false" "$(cat "$PLUGIN/Widget.qml")" \
+    'text: settings.temperature !== false && service && service.reportTempNum !== "" ? service.reportTempNum + "°" : ""'
 assert_eq "manual location empty by default (GeoClue, else IP)" "" "$(jq -r '.settings.location.default' "$PLUGIN/manifest.json")"
 assert_eq "debug hook off by default" "false" "$(jq -r '.settings.debugIpc.default' "$PLUGIN/manifest.json")"
 
@@ -54,7 +58,10 @@ chmod +x "$WAI"
 export HASEEN_WHERE_AM_I="$WAI"
 
 J1="$SANDBOX/j1.json"
-jq '.nearest_area[0].latitude = "52.520" | .nearest_area[0].longitude = "13.405"' "$FIXTURES/wttr/j1.json" >"$J1"
+# The forecast days are today and the next two, so the hourly slots are live.
+jq --arg d0 "$(date +%F)" --arg d1 "$(date -d '+1 day' +%F)" --arg d2 "$(date -d '+2 day' +%F)" \
+    '.nearest_area[0].latitude = "52.520" | .nearest_area[0].longitude = "13.405"
+     | .weather[0].date = $d0 | .weather[1].date = $d1 | .weather[2].date = $d2' "$FIXTURES/wttr/j1.json" >"$J1"
 OM="$SANDBOX/open-meteo.json"
 d() { date -d "+$1 day" +%F; }
 cat >"$OM" <<EOF
@@ -221,9 +228,9 @@ Window {
         eq("open-meteo current", ["19", "65", "17", "11", "60"], [cur.temp_C, cur.temp_F, cur.FeelsLikeC, cur.windspeedKmph, cur.humidity]);
         eq("night clear icon", "\ue32b", M.currentIcon(cur, ""));
         const days = M.buildForecastDays(null, om, "2026-10-06");
-        eq("three future days", ["2026-10-07", "2026-10-08", "2026-10-09"], days.map(x => x.date));
+        eq("the future days, five at most", ["2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10"], days.map(x => x.date));
         eq("day temps", ["17°", "11°", "63°"], [M.bareTempForDay(days[0], "max", false), M.bareTempForDay(days[0], "min", false), M.bareTempForDay(days[0], "max", true)]);
-        eq("day icons", ["\ue318", "\ue30d", "\ue31d"], days.map(M.dayIcon));
+        eq("day icons", ["\ue318", "\ue30d", "\ue31d", "\ue33d"], days.map(M.dayIcon));
         eq("wttr days when open-meteo is missing", ["2026-10-05"], M.buildForecastDays({ weather: [{ date: "2026-10-04" }, { date: "2026-10-05" }] }, null, "2026-10-04").map(x => x.date));
         eq("wttr icon nearest noon", "\ue318", M.dayIcon({ hourly: [{ time: "0", weatherCode: "113" }, { time: "1200", weatherCode: "296" }] }));
         eq("fog at night", "\ue346", M.iconForCode(143, true));
@@ -233,6 +240,38 @@ Window {
             M.currentIcon({ weatherCode: "113", weatherIconUrl: [{ value: "https://cdn.worldweatheronline.com/images/wsymbols01_png_64/wsymbol_0001_sunny.png" }] }, ""),
             M.currentIcon({ weatherCode: "113" }, "")]);
         eq("save completes on the source that has the location", [true, false, true], [M.weatherResponseCompletesSave(true, "open-meteo"), M.weatherResponseCompletesSave(true, "wttr"), M.weatherResponseCompletesSave(false, "wttr")]);
+        // Plan 180: the redesigned panel's data.
+        eq("open-meteo asks for today and five days", true, M.openMeteoUrl(1, 2).indexOf("&forecast_days=6") > 0);
+        const sixDays = { daily: { time: ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11", "2026-10-12"], weather_code: [0, 0, 0, 0, 0, 0, 0],
+            temperature_2m_max: [1, 2, 3, 4, 5, 6, 7], temperature_2m_min: [0, 0, 0, 0, 0, 0, 0] } };
+        eq("five days at most", 5, M.buildForecastDays(null, sixDays, "2026-10-06").length);
+        const night = "https://cdn.worldweatheronline.com/images/wsymbols01_png_64/wsymbol_0008_clear_sky_night.png";
+        const wttr = { weather: [
+            { date: "2026-10-06", maxtempC: "22", mintempC: "13", maxtempF: "72", mintempF: "55", hourly: [
+                { time: "900", tempC: "15", tempF: "59", weatherCode: "113" }, { time: "1200", tempC: "20", tempF: "68", weatherCode: "116" },
+                { time: "1500", tempC: "21", tempF: "70", weatherCode: "119" }, { time: "2100", tempC: "16", tempF: "61", weatherCode: "113", weatherIconUrl: [{ value: night }] }] },
+            { date: "2026-10-07", hourly: [{ time: "0", tempC: "14", tempF: "57", weatherCode: "296" }, { time: "300", tempC: "13", tempF: "55", weatherCode: "296" }] }] };
+        eq("hours after now, across midnight", ["15|21|70", "21|16|61", "00|14|57"],
+            M.hourlySlots(wttr, new Date(2026, 9, 6, 12, 30), 3).map(h => h.hour + "|" + h.tempC + "|" + h.tempF));
+        eq("an hour's night icon from its symbol", "\ue32b", M.hourlySlots(wttr, new Date(2026, 9, 6, 20, 0), 1)[0].icon);
+        eq("an hour on the clock is past", "1500", M.hourlySlots(wttr, new Date(2026, 9, 6, 12, 0), 1)[0].hour + "00");
+        eq("today's range from open-meteo", { maxC: "20", minC: "12", maxF: "68", minF: "54" }, M.todayRange(wttr, om, "2026-10-06"));
+        eq("today's range from wttr.in without it", { maxC: "22", minC: "13", maxF: "72", minF: "55" }, M.todayRange(wttr, null, "2026-10-06"));
+        eq("no range for another day", "", M.todayRange(wttr, null, "2026-10-09").maxC);
+        eq("conditions in words", ["Sunny", "Clear", "Partly cloudy", "Light rain", "Thunderstorm", ""],
+            [M.conditionForCode(113, false), M.conditionForCode(113, true), M.conditionForCode("116"), M.conditionForCode(296), M.conditionForCode(389), M.conditionForCode(999)]);
+        eq("open-meteo's condition, day and night", ["Clear", "Rain"], [M.currentCondition(cur), M.currentCondition({ openMeteoWeatherCode: 63, isDay: 1 })]);
+        eq("wttr.in's condition, night from its symbol", "Clear", M.currentCondition({ weatherCode: "113", weatherIconUrl: [{ value: night }] }));
+        const scaled = [{ mintempC: "10", maxtempC: "20" }, { mintempC: "15", maxtempC: "30" }];
+        eq("the days' shared scale", { lo: 10, hi: 30 }, M.daysScale(scaled, false));
+        eq("a range bar on it", { start: 0.25, width: 0.75 }, M.rangeBar(scaled[1], M.daysScale(scaled, false), false));
+        eq("no scale for one number", null, M.daysScale([{ mintempC: "10", maxtempC: "10" }], false));
+        const c = M.curve(["20", "30", "10"], 300, 10, 100, 120);
+        eq("curve points: slot centres, warmest at the top", [[50, 60], [150, 10], [250, 110]], c.points);
+        eq("the line starts at the first point", "M 50 60 C", c.line.slice(0, 9));
+        eq("the area closes at the bottom", true, /L 250 120 L 50 120 Z$/.test(c.area));
+        eq("a flat curve sits in the middle", [60, 60], M.curve(["5", "5"], 100, 10, 100, 120).points.map(p => p[1]));
+        eq("no curve for one value", "", M.curve(["5"], 100, 10, 100, 120).line);
         eq("status line", "Berlin  ·  Temp 19°C  ·  Wind 9 km/h", M.statusLine("berlin", "19°C", "9 km/h"));
         eq("status without data", "Weather unavailable", M.statusLine("Berlin", "", ""));
     }
@@ -241,7 +280,7 @@ EOF
     capture env QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML" "$H/Units.qml"
     assert_status "Model.js units" 0 "$STATUS"
     assert_eq "no unit failures" "" "$(grep 'UNIT-FAIL' <<<"$OUTPUT" || true)"
-    assert_eq "units ran" "34" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
+    assert_eq "units ran" "53" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
 else
     echo "  skip: $QML not installed, Model.js not exercised" >&2
 fi
@@ -285,7 +324,26 @@ ShellRoot {
     function state(): var {
         return { source: svc.locationSource, query: svc.locationQuery, location: svc.reportLocation, note: svc.geoclueNote,
             label: svc.label, temp: svc.reportTempNum, feels: svc.reportFeels, wind: svc.reportWind, humidity: svc.reportHumidity,
-            days: svc.forecastDays.length, status: svc.statusLine, saving: svc.savingLocation, fromOpenMeteo: svc.labelFromOpenMeteo };
+            days: svc.forecastDays.length, status: svc.statusLine, saving: svc.savingLocation, fromOpenMeteo: svc.labelFromOpenMeteo,
+            hours: svc.hours.length, condition: svc.condition, high: svc.todayRange.maxC, low: svc.todayRange.minC, panel: panelState() };
+    }
+
+    // Plan 180: the redesigned panel on this service: "Now" and the hours,
+    // the curve's points, the tab it opens on, and switching.
+    function panelState(): var {
+        const c = Qt.createComponent("file://$PLUGIN/Panel.qml");
+        const p = c.createObject(probe, { pluginId: "haseen.weather", service: svc });
+        if (!p)
+            return { error: c.errorString() };
+        const s = { tab: p.tab, first: p.slots.length ? p.slots[0].hour + "|" + p.slots[0].temp : "", slots: p.slots.length, points: p.curve.points.length,
+            line: p.curve.line !== "", scale: p.daysScale !== null, height: p.implicitHeight };
+        p.setTab(1);
+        s.switched = svc.panelTab;
+        s.curveHeight = p.implicitHeight;
+        p.setTab(2);
+        s.wrapped = svc.panelTab;
+        p.destroy();
+        return s;
     }
 
     // Created once the registry knows the plugin; settings stay bound to
@@ -345,6 +403,18 @@ EOF
     assert_eq "GeoClue: Open-Meteo's current conditions" "19|17°C|11 km/h|60%" "$(sr '"\(.temp)|\(.feels)|\(.wind)|\(.humidity)"')"
     assert_eq "GeoClue: night icon from is_day" "$(printf '\xee\x8c\xab')" "$(sr .label)"
     assert_eq "GeoClue: and wttr.in's day icon does not replace it" "true" "$(sr .fromOpenMeteo)"
+    # Plan 180: the redesigned panel's data, with Open-Meteo answering.
+    assert_eq "GeoClue: seven hours ahead from wttr.in" "7" "$(sr .hours)"
+    assert_eq "GeoClue: the condition in words" "Clear" "$(sr .condition)"
+    assert_eq "GeoClue: today's high and low from Open-Meteo" "20|12" "$(sr '"\(.high)|\(.low)"')"
+    assert_eq "panel: built on the service" "null" "$(sr .panel.error)"
+    assert_eq "panel: Now first, at the current temperature" "Now|19" "$(sr .panel.first)"
+    assert_eq "panel: then the seven hours" "8" "$(sr .panel.slots)"
+    assert_eq "panel: a curve point per slot" "8|true" "$(sr '"\(.panel.points)|\(.panel.line)"')"
+    assert_eq "panel: the days have a shared scale" "true" "$(sr .panel.scale)"
+    assert_eq "panel: opens on the first tab" "0" "$(sr .panel.tab)"
+    assert_eq "panel: switching is kept by the service, and wraps" "1|0" "$(sr '"\(.panel.switched)|\(.panel.wrapped)"')"
+    assert_eq "panel: the same height on both tabs" "$(sr .panel.height)" "$(sr .panel.curveHeight)"
     assert_eq "GeoClue: area name from wttr.in" "Berlin" "$(sr .location)"
     assert_eq "three days" "3" "$(sr .days)"
     assert_eq "status line" "Berlin  ·  Temp 19°C  ·  Wind 11 km/h" "$(sr .status)"
@@ -377,6 +447,9 @@ EOF
     assert_eq "Open-Meteo refused: the bar has wttr.in's night icon" "$(printf '\xee\x8c\xab')" "$(sr .label)"
     assert_eq "Open-Meteo refused: not marked as Open-Meteo's" "false" "$(sr .fromOpenMeteo)"
     assert_eq "Open-Meteo refused: wttr.in's temperature" "19" "$(sr .temp)"
+    assert_eq "Open-Meteo refused: wttr.in's condition, at night" "Clear" "$(sr .condition)"
+    assert_eq "Open-Meteo refused: today's range from wttr.in" "20|13" "$(sr '"\(.high)|\(.low)"')"
+    assert_eq "Open-Meteo refused: wttr.in's next two days" "2" "$(sr .days)"
 
     # The panel's pick: Config.setRuntime at once, shell.json via --set.
     run_service ok '{}' 1
