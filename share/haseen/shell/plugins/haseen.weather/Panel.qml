@@ -44,9 +44,18 @@ Column {
         const now = [{ hour: I18n.tr("Now"), temp: service.reportTempNum, icon: service.label, now: true }];
         return now.concat((service.hours || []).map(h => ({ hour: h.hour, temp: imperial ? h.tempF : h.tempC, icon: h.icon, now: false })));
     }
-    readonly property int curveTop: Theme.font.caption + Theme.gap
+    // Room above the warmest point for its label, whatever the theme's gap.
+    readonly property int curveTop: Math.ceil(Theme.font.caption * 1.4) + 6
     readonly property int curveHeight: Theme.fontSize * 4.5
     readonly property var curve: Model.curve(slots.map(s => s.temp), width, curveTop, curveHeight, curveTop + curveHeight + Theme.gap)
+    // Hours to show: "Now" and at least one forecast, every temperature a
+    // number. Without wttr.in's report there is only "Now", and both tabs
+    // say so instead of a lone column or an empty curve.
+    readonly property bool hasHours: curve.line !== ""
+    // For the test: the body is as tall as the taller tab.
+    readonly property int bodyHeight: body.height
+    readonly property int hoursTabHeight: hoursTab.implicitHeight
+    readonly property int curveTabHeight: curveTab.implicitHeight
 
     property bool editingLocation: false
     property var locationSuggestions: []
@@ -119,7 +128,18 @@ Column {
 
     function setTab(index: int): void {
         if (service)
-            service.panelTab = (index + 2) % 2;
+            service.panelTab = Math.max(0, Math.min(1, index));
+    }
+
+    // The tab a key selects: Tab and Shift+Tab cycle; an arrow points at the
+    // tab it selects (also in a mirrored panel) and stops at the end.
+    function tabForKey(key: int): int {
+        if (key === Qt.Key_Tab || key === Qt.Key_Backtab)
+            return (tab + 1) % 2;
+        const forward = (key === Qt.Key_Right) !== root.LayoutMirroring.enabled;
+        if (key === Qt.Key_Left || key === Qt.Key_Right)
+            return Math.max(0, Math.min(1, tab + (forward ? 1 : -1)));
+        return tab;
     }
 
     function sourceText(): string {
@@ -154,11 +174,10 @@ Column {
         focus: true
         Keys.onReturnPressed: root.startEditingLocation()
         Keys.onEnterPressed: root.startEditingLocation()
-        Keys.onTabPressed: root.setTab(root.tab + 1)
-        Keys.onBacktabPressed: root.setTab(root.tab - 1)
-        // The arrow points at the tab it selects, also in a mirrored panel.
-        Keys.onLeftPressed: root.setTab(root.tab + (root.LayoutMirroring.enabled ? 1 : -1))
-        Keys.onRightPressed: root.setTab(root.tab + (root.LayoutMirroring.enabled ? -1 : 1))
+        Keys.onTabPressed: root.setTab(root.tabForKey(Qt.Key_Tab))
+        Keys.onBacktabPressed: root.setTab(root.tabForKey(Qt.Key_Backtab))
+        Keys.onLeftPressed: root.setTab(root.tabForKey(Qt.Key_Left))
+        Keys.onRightPressed: root.setTab(root.tabForKey(Qt.Key_Right))
     }
 
     Text {
@@ -571,6 +590,8 @@ Column {
 
     // ---- The tab's body, as tall as the taller tab.
     Item {
+        id: body
+
         visible: root.hasCurrent
         width: parent.width
         height: Math.max(hoursTab.implicitHeight, curveTab.implicitHeight)
@@ -583,7 +604,18 @@ Column {
             visible: root.tab === 0
             spacing: Math.round(Theme.gap * 1.5)
 
+            Text {
+                visible: !root.hasHours
+                width: parent.width
+                text: I18n.tr("No hourly forecast")
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.font.bodySmall
+                font.italic: true
+            }
+
             Row {
+                visible: root.hasHours
                 width: parent.width
 
                 Repeater {
@@ -707,7 +739,9 @@ Column {
                                 anchors.left: parent.left
                                 anchors.leftMargin: track.width * dayRow.bar.start
                                 visible: dayRow.bar.width > 0
-                                width: Math.max(height, track.width * dayRow.bar.width)
+                                // A short range still shows as a dot, never
+                                // past the track's end.
+                                width: Math.min(track.width - anchors.leftMargin, Math.max(height, track.width * dayRow.bar.width))
                                 height: parent.height
                                 radius: height / 2
                                 color: Theme.accent
@@ -744,6 +778,16 @@ Column {
                 height: root.curveTop + root.curveHeight + Theme.gap * 2 + Theme.font.icon + Theme.font.caption + 4
                 LayoutMirroring.enabled: false
                 LayoutMirroring.childrenInherit: true
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !root.hasHours
+                    text: I18n.tr("No hourly forecast")
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.font.bodySmall
+                    font.italic: true
+                }
 
                 Shape {
                     anchors.fill: parent

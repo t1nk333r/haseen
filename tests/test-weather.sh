@@ -76,7 +76,7 @@ echo "$url" >>"$CURL_LOG"
 case "$url" in
 *api.open-meteo.com*) if [ "${WEATHER_OM:-}" = refused ]; then exit 22; fi; cat "$OM" ;;
 *format=%l*) echo "Berlin, Berlin, Germany" ;;
-*format=j1*) cat "$J1" ;;
+*format=j1*) if [ "${WEATHER_WTTR:-}" = refused ]; then exit 22; fi; cat "$J1" ;;
 *) exit 22 ;;
 esac'
 mkdir -p "$HOME/.config/haseen"
@@ -258,8 +258,9 @@ Window {
         eq("today's range from open-meteo", { maxC: "20", minC: "12", maxF: "68", minF: "54" }, M.todayRange(wttr, om, "2026-10-06"));
         eq("today's range from wttr.in without it", { maxC: "22", minC: "13", maxF: "72", minF: "55" }, M.todayRange(wttr, null, "2026-10-06"));
         eq("no range for another day", "", M.todayRange(wttr, null, "2026-10-09").maxC);
-        eq("conditions in words", ["Sunny", "Clear", "Partly cloudy", "Light rain", "Thunderstorm", ""],
-            [M.conditionForCode(113, false), M.conditionForCode(113, true), M.conditionForCode("116"), M.conditionForCode(296), M.conditionForCode(389), M.conditionForCode(999)]);
+        eq("conditions in words", ["Sunny", "Clear", "Partly cloudy", "Light rain", "Thunderstorm", "Snow", "Sleet", ""],
+            [M.conditionForCode(113, false), M.conditionForCode(113, true), M.conditionForCode("116"), M.conditionForCode(296), M.conditionForCode(389),
+             M.conditionForCode(179), M.conditionForCode(182), M.conditionForCode(999)]);
         eq("open-meteo's condition, day and night", ["Clear", "Rain"], [M.currentCondition(cur), M.currentCondition({ openMeteoWeatherCode: 63, isDay: 1 })]);
         eq("wttr.in's condition, night from its symbol", "Clear", M.currentCondition({ weatherCode: "113", weatherIconUrl: [{ value: night }] }));
         const scaled = [{ mintempC: "10", maxtempC: "20" }, { mintempC: "15", maxtempC: "30" }];
@@ -272,6 +273,10 @@ Window {
         eq("the area closes at the bottom", true, /L 250 120 L 50 120 Z$/.test(c.area));
         eq("a flat curve sits in the middle", [60, 60], M.curve(["5", "5"], 100, 10, 100, 120).points.map(p => p[1]));
         eq("no curve for one value", "", M.curve(["5"], 100, 10, 100, 120).line);
+        eq("no curve with a missing value", "", M.curve(["5", "", "7"], 300, 10, 100, 120).line);
+        const zig = M.curve(["10", "30", "10", "30"], 400, 10, 100, 120);
+        eq("the line's control points stay inside the band", true,
+            zig.line.split(" C ").slice(1).every(seg => { const n = seg.split(" ").map(Number); return [n[1], n[3], n[5]].every(y => y >= 10 && y <= 110); }));
         eq("status line", "Berlin  ·  Temp 19°C  ·  Wind 9 km/h", M.statusLine("berlin", "19°C", "9 km/h"));
         eq("status without data", "Weather unavailable", M.statusLine("Berlin", "", ""));
     }
@@ -280,7 +285,7 @@ EOF
     capture env QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML" "$H/Units.qml"
     assert_status "Model.js units" 0 "$STATUS"
     assert_eq "no unit failures" "" "$(grep 'UNIT-FAIL' <<<"$OUTPUT" || true)"
-    assert_eq "units ran" "53" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
+    assert_eq "units ran" "55" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
 else
     echo "  skip: $QML not installed, Model.js not exercised" >&2
 fi
@@ -294,7 +299,7 @@ echo "$url" >>"$CURL_LOG"
 case "$url" in
 *api.open-meteo.com*) if [ "${WEATHER_OM:-}" = refused ]; then exit 22; fi; cat "$OM" ;;
 *format=%l*) echo "Berlin, Berlin, Germany" ;;
-*format=j1*) cat "$J1" ;;
+*format=j1*) if [ "${WEATHER_WTTR:-}" = refused ]; then exit 22; fi; cat "$J1" ;;
 *) exit 22 ;;
 esac'
     XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/haseen-weather.XXXXXX")"
@@ -325,7 +330,7 @@ ShellRoot {
         return { source: svc.locationSource, query: svc.locationQuery, location: svc.reportLocation, note: svc.geoclueNote,
             label: svc.label, temp: svc.reportTempNum, feels: svc.reportFeels, wind: svc.reportWind, humidity: svc.reportHumidity,
             days: svc.forecastDays.length, status: svc.statusLine, saving: svc.savingLocation, fromOpenMeteo: svc.labelFromOpenMeteo,
-            hours: svc.hours.length, condition: svc.condition, high: svc.todayRange.maxC, low: svc.todayRange.minC, panel: panelState() };
+            hours: svc.hours.length, condition: svc.condition, high: svc.todayRange.maxC, low: svc.todayRange.minC, panel: panelState(), pill: pillState() };
     }
 
     // Plan 180: the redesigned panel on this service: "Now" and the hours,
@@ -335,14 +340,38 @@ ShellRoot {
         const p = c.createObject(probe, { pluginId: "haseen.weather", service: svc });
         if (!p)
             return { error: c.errorString() };
+        svc.panelTab = 0;
         const s = { tab: p.tab, first: p.slots.length ? p.slots[0].hour + "|" + p.slots[0].temp : "", slots: p.slots.length, points: p.curve.points.length,
-            line: p.curve.line !== "", scale: p.daysScale !== null, height: p.implicitHeight };
+            hasHours: p.hasHours, scale: p.daysScale !== null,
+            tall: p.bodyHeight >= p.hoursTabHeight && p.bodyHeight >= p.curveTabHeight && p.hoursTabHeight > 0 && p.curveTabHeight > 0,
+            // A forecast slot's temperature is in the panel's unit.
+            unit: p.slots.length > 1 && svc.hours.length > 0 ? p.slots[1].temp === (svc.useImperial ? svc.hours[0].tempF : svc.hours[0].tempC) : null };
+        // Keys: Tab cycles, the arrows point at the tab they select and stop.
+        s.keys = [p.tabForKey(Qt.Key_Left), p.tabForKey(Qt.Key_Right), p.tabForKey(Qt.Key_Tab)].join(",");
         p.setTab(1);
         s.switched = svc.panelTab;
-        s.curveHeight = p.implicitHeight;
-        p.setTab(2);
-        s.wrapped = svc.panelTab;
+        s.keysOnSecond = [p.tabForKey(Qt.Key_Right), p.tabForKey(Qt.Key_Left), p.tabForKey(Qt.Key_Backtab)].join(",");
+        p.LayoutMirroring.enabled = true;
+        s.keysMirrored = [p.tabForKey(Qt.Key_Left), p.tabForKey(Qt.Key_Right)].join(",");
+        p.setTab(0);
+        s.keysMirroredFirst = [p.tabForKey(Qt.Key_Left), p.tabForKey(Qt.Key_Right)].join(",");
         p.destroy();
+        return s;
+    }
+
+    // The bar pill on the same service: the temperature beside the icon,
+    // none with settings.temperature false or without a service.
+    function pillState(): var {
+        const c = Qt.createComponent("file://$PLUGIN/Widget.qml");
+        const on = c.createObject(probe, { pluginId: "haseen.weather", service: svc });
+        const off = c.createObject(probe, { pluginId: "haseen.weather", service: svc, settings: { temperature: false } });
+        const none = c.createObject(probe, { pluginId: "haseen.weather", service: null });
+        if (!on || !off || !none)
+            return { error: c.errorString() };
+        const s = { on: on.text, off: off.text, offGlyph: off.glyph !== "", none: none.text, noneVisible: none.visible };
+        on.destroy();
+        off.destroy();
+        none.destroy();
         return s;
     }
 
@@ -369,7 +398,8 @@ ShellRoot {
             // With Open-Meteo refusing (WEATHER_OM=refused) there is no
             // forecast to wait for: wttr.in's report and its icon are all.
             const refused = Quickshell.env("WEATHER_OM") === "refused";
-            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.report || probe.svc.savingLocation || probe.svc.persistingLocation)
+            const noWttr = Quickshell.env("WEATHER_WTTR") === "refused";
+            if (!probe.svc || probe.svc.updated <= 0 || (!noWttr && !probe.svc.report) || probe.svc.savingLocation || probe.svc.persistingLocation)
                 return;
             if (refused ? probe.svc.label === "" : !probe.svc.dailyForecastReport)
                 return;
@@ -410,11 +440,20 @@ EOF
     assert_eq "panel: built on the service" "null" "$(sr .panel.error)"
     assert_eq "panel: Now first, at the current temperature" "Now|19" "$(sr .panel.first)"
     assert_eq "panel: then the seven hours" "8" "$(sr .panel.slots)"
-    assert_eq "panel: a curve point per slot" "8|true" "$(sr '"\(.panel.points)|\(.panel.line)"')"
+    assert_eq "panel: a curve point per slot" "8|true" "$(sr '"\(.panel.points)|\(.panel.hasHours)"')"
     assert_eq "panel: the days have a shared scale" "true" "$(sr .panel.scale)"
     assert_eq "panel: opens on the first tab" "0" "$(sr .panel.tab)"
-    assert_eq "panel: switching is kept by the service, and wraps" "1|0" "$(sr '"\(.panel.switched)|\(.panel.wrapped)"')"
-    assert_eq "panel: the same height on both tabs" "$(sr .panel.height)" "$(sr .panel.curveHeight)"
+    assert_eq "panel: the body is as tall as either tab" "true" "$(sr .panel.tall)"
+    assert_eq "panel: forecast temperatures in Celsius" "true" "$(sr .panel.unit)"
+    assert_eq "panel: on the first tab, Left stays, Right and Tab select the second" "0,1,1" "$(sr .panel.keys)"
+    assert_eq "panel: switching is kept by the service" "1" "$(sr .panel.switched)"
+    assert_eq "panel: on the second tab, Right stays, Left and Shift+Tab go back" "1,0,0" "$(sr .panel.keysOnSecond)"
+    assert_eq "panel: mirrored, on the second tab Left stays and Right goes back" "1,0" "$(sr .panel.keysMirrored)"
+    assert_eq "panel: mirrored, on the first tab Left selects the second" "1,0" "$(sr .panel.keysMirroredFirst)"
+    assert_eq "pill: built on the service" "null" "$(sr .pill.error)"
+    assert_eq "pill: the temperature beside the icon" "19°" "$(sr .pill.on)"
+    assert_eq "pill: none with settings.temperature false, the icon stays" "|true" "$(sr '"\(.pill.off)|\(.pill.offGlyph)"')"
+    assert_eq "pill: nothing without a service" "|false" "$(sr '"\(.pill.none)|\(.pill.noneVisible)"')"
     assert_eq "GeoClue: area name from wttr.in" "Berlin" "$(sr .location)"
     assert_eq "three days" "3" "$(sr .days)"
     assert_eq "status line" "Berlin  ·  Temp 19°C  ·  Wind 11 km/h" "$(sr .status)"
@@ -432,6 +471,8 @@ EOF
     assert_eq "manual: city query" "Paris" "$(sr .query)"
     assert_eq "manual: name shown" "Paris" "$(sr .location)"
     assert_eq "manual: imperial" "66" "$(sr .temp)"
+    assert_eq "manual: the panel's hours in Fahrenheit too" "true" "$(sr .panel.unit)"
+    assert_eq "manual: and the pill" "66°" "$(sr .pill.on)"
 
     # Plan 179: saved coordinates and Open-Meteo refusing every request (the
     # owner's luna, 2026-11-21): the bar still gets wttr.in's icon, night
@@ -450,6 +491,20 @@ EOF
     assert_eq "Open-Meteo refused: wttr.in's condition, at night" "Clear" "$(sr .condition)"
     assert_eq "Open-Meteo refused: today's range from wttr.in" "20|13" "$(sr '"\(.high)|\(.low)"')"
     assert_eq "Open-Meteo refused: wttr.in's next two days" "2" "$(sr .days)"
+
+    # Plan 180 review: wttr.in failing with saved coordinates. Open-Meteo
+    # alone gives the icon, the temperature and the days; there are no hours,
+    # and the panel says so on both tabs instead of a lone column or a blank
+    # curve.
+    # Metric pinned: without wttr.in's country the test locale would pick
+    # Fahrenheit.
+    export WEATHER_WTTR=refused
+    run_service ok '{"location":"52.52,13.4","locationName":"Berlin","units":"metric"}'
+    unset WEATHER_WTTR
+    assert_eq "wttr.in refused: Open-Meteo's temperature and icon" "19|$(printf '\xee\x8c\xab')" "$(sr '"\(.temp)|\(.label)"')"
+    assert_eq "wttr.in refused: no hours" "0" "$(sr .hours)"
+    assert_eq "wttr.in refused: the panel has only Now and no curve" "1|false" "$(sr '"\(.panel.slots)|\(.panel.hasHours)"')"
+    assert_eq "wttr.in refused: Open-Meteo's days" "3" "$(sr .days)"
 
     # The panel's pick: Config.setRuntime at once, shell.json via --set.
     run_service ok '{}' 1

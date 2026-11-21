@@ -17,7 +17,8 @@ BarButton {
     property var settings: ({})
     property var screen: null
 
-    readonly property var service: {
+    // A test may hand the pill a service of its own.
+    property var service: {
         const entry = Plugins.roles.weather;
         return entry && entry.id === root.pluginId ? entry.instance : null;
     }

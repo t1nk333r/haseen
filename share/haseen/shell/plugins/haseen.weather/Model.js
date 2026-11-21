@@ -366,7 +366,8 @@ function iconForOpenMeteoCode(code, night) {
 }
 
 // wttr.in code -> the condition in words (English, marked for the catalogs;
-// the panel translates it). Grouped as the icons are; "" for an unknown code.
+// the panel translates it). The icons' groups, with rain split into light
+// and heavier; "" for an unknown code.
 function conditionForCode(code, night) {
     const c = parseInt(String(code || "0"), 10);
     switch (c) {
@@ -384,11 +385,11 @@ function conditionForCode(code, night) {
         return N_("Light rain");
     case 299: case 302: case 305: case 308: case 356: case 359:
         return N_("Rain");
-    case 179: case 182: case 185: case 281: case 284: case 311: case 314:
+    case 182: case 185: case 281: case 284: case 311: case 314:
     case 317: case 320: case 350: case 362: case 365: case 374: case 377:
         return N_("Sleet");
-    case 227: case 230: case 323: case 326: case 329: case 332: case 335:
-    case 338: case 368: case 371:
+    case 179: case 227: case 230: case 323: case 326: case 329: case 332:
+    case 335: case 338: case 368: case 371:
         return N_("Snow");
     case 200: case 386: case 389: case 392: case 395:
         return N_("Thunderstorm");
@@ -487,12 +488,14 @@ function rangeBar(day, scale, useImperial) {
 
 // The temperature curve through `values`, one point per slot centre across
 // `width`, between y = top (warmest) and top + height (coldest); flat values
-// sit in the middle. Catmull-Rom through the points as cubic Béziers.
+// sit in the middle. Catmull-Rom through the points as cubic Béziers, their
+// control points kept inside that band so the line never overshoots it.
 // { points: [[x, y]], line: SVG path, area: the line closed down to
-// `bottom` }, empty paths for fewer than two values.
+// `bottom` }; empty for fewer than two values or any value that is not a
+// number, so a gap never shifts the points against their slots.
 function curve(values, width, top, height, bottom) {
-    const nums = (values || []).map(v => parseFloat(String(v))).filter(v => !isNaN(v));
-    if (nums.length < 2)
+    const nums = (values || []).map(v => parseFloat(String(v)));
+    if (nums.length < 2 || nums.some(v => isNaN(v)))
         return { points: [], line: "", area: "" };
     const lo = Math.min(...nums), hi = Math.max(...nums);
     const points = nums.map((v, i) => [
@@ -500,11 +503,12 @@ function curve(values, width, top, height, bottom) {
         Math.round((hi === lo ? top + height / 2 : top + (1 - (v - lo) / (hi - lo)) * height) * 10) / 10
     ]);
     const r = n => Math.round(n * 10) / 10;
+    const band = y => r(Math.min(top + height, Math.max(top, y)));
     let line = "M " + points[0][0] + " " + points[0][1];
     for (let i = 0; i < points.length - 1; ++i) {
         const a = points[Math.max(0, i - 1)], b = points[i], c = points[i + 1], e = points[Math.min(points.length - 1, i + 2)];
-        line += " C " + r(b[0] + (c[0] - a[0]) / 6) + " " + r(b[1] + (c[1] - a[1]) / 6)
-            + " " + r(c[0] - (e[0] - b[0]) / 6) + " " + r(c[1] - (e[1] - b[1]) / 6)
+        line += " C " + r(b[0] + (c[0] - a[0]) / 6) + " " + band(b[1] + (c[1] - a[1]) / 6)
+            + " " + r(c[0] - (e[0] - b[0]) / 6) + " " + band(c[1] - (e[1] - b[1]) / 6)
             + " " + c[0] + " " + c[1];
     }
     const last = points[points.length - 1];

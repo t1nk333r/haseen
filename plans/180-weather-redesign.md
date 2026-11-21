@@ -11,7 +11,8 @@
   replaces), 179 (wttr.in's icon as fallback)
 - **Category**: shell
 - **Planned at**: 2026-11-21, from the owner
-- **State**: DONE 2026-11-21 (`tests/test-weather.sh` 97/97; the real panel
+- **State**: DONE 2026-11-21 (`tests/test-weather.sh` 112/112 after the
+  review below; the real panel
   rendered from the live service at scale 1 and 1.25 and in Arabic;
   luna's and IO's panels are the owner's check)
 
@@ -46,7 +47,8 @@ A rendered mockup of that, both tabs at 400 × 345 px, was answered "go".
 - **Tabs.** A bordered segmented control, the selected segment filled
   with the accent: "Hourly · 5 days" and "Curve · 3 days" (plural forms,
   counting the days there are). Click, Tab and Shift+Tab, or the arrows
-  (which point at the tab they select, also mirrored) switch. The service
+  (which point at the tab they select, also mirrored, and stop at the end;
+  `tabForKey`) switch. The service
   keeps the last tab (`panelTab`) for as long as the shell runs. The body
   is as tall as the taller tab, so switching never resizes the panel.
   - Tab 1: "Now" (the current icon and temperature), then the next seven
@@ -59,12 +61,16 @@ A rendered mockup of that, both tabs at 400 × 345 px, was answered "go".
     icons and hours below. Then three days in columns. The curve is a
     timeline and reads left to right in every language. Everything else
     mirrors.
+  - Without hours to show (wttr.in failed while Open-Meteo answered, so
+    only "Now" is there, or a temperature is missing), both tabs say "No
+    hourly forecast" where the strip or the curve would be.
 - **Model** (`Model.js`):
   - `hourlySlots`: wttr.in's hourly forecasts after this machine's clock,
     night icons from the hour's symbol (plan 179's `wttrIsNight`).
   - `todayRange`: Open-Meteo's first day when it is today, else wttr.in's.
-  - `conditionForCode` and `currentCondition`: wttr.in codes grouped like
-    the icons into eleven marked strings, translated in the panel.
+  - `conditionForCode` and `currentCondition`: wttr.in codes in the icons'
+    groups, with rain split into light and heavier, as eleven marked
+    strings translated in the panel.
     Open-Meteo codes go through `wttrCodeForOpenMeteo`, which
     `iconForOpenMeteoCode` now uses too.
   - `FORECAST_DAYS = 5`: Open-Meteo is asked for `forecast_days=6` (today
@@ -77,12 +83,13 @@ A rendered mockup of that, both tabs at 400 × 345 px, was answered "go".
 - **Bar pill.** The temperature beside the icon (`26°`), on by default,
   `settings.temperature: false` for the icon alone. Plan 164 had rejected
   this. The owner chose it here.
-- **Strings.** Seventeen new interface strings, with Arabic translations.
+- **Strings.** Eighteen new interface strings, with Arabic translations.
   The high and low line isolates each number with its degree sign
   (U+2066/U+2069) in Arabic, which otherwise put the sign on the wrong
   side.
-- Manifest 2.1.0. `Panel.qml`'s `service` is a plain property with the
-  same default binding, so a test can hand the panel a service.
+- Manifest 2.1.0. `service` in `Panel.qml` and `Widget.qml` is a plain
+  property with the same default binding, so a test can hand them a
+  service.
 
 ## Rejected
 
@@ -105,19 +112,63 @@ A rendered mockup of that, both tabs at 400 × 345 px, was answered "go".
   starts its hours at the wrong slot.
 - Without Open-Meteo, the first tab lists wttr.in's two future days, and
   its label says so ("Hourly · 2 days").
+- Without wttr.in there are no hours, only the note, and the label still
+  counts the days.
+
+## Review
+
+A Sonnet subagent reviewed `f08d735` (the owner, 2026-11-21: "sonnet
+reviewer over deepseek"): REQUEST_CHANGES, one blocker. Every finding was
+taken:
+
+1. **Blocker:** with saved coordinates and wttr.in failing, the curve tab
+   was blank and "Now" spanned the hourly strip. Now `hasHours` gates both,
+   with the note above. A scenario with wttr.in refused checks it (only
+   "Now", no curve, Open-Meteo's three days).
+2. The "same height" check compared one fixed height with itself and
+   passed whichever tab set it (the reviewer's mutation). Now it checks
+   that the body is at least as tall as each tab (`bodyHeight`,
+   `hoursTabHeight`, `curveTabHeight`).
+3. Keys, mirroring and units were untested (three mutations at once still
+   passed). Key handling moved into `tabForKey` and is checked on both
+   tabs, mirrored and not. A forecast slot's unit is checked in Celsius
+   and in Fahrenheit.
+4. The pill was tested by grepping its source. Now the real `Widget.qml`
+   is built on the service: `19°` (`66°` in Fahrenheit), no text with
+   `temperature: false` (the icon stays), nothing without a service.
+5. Code 179 ("patchy snow possible") read "Sleet" beside a snow icon. It
+   is "Snow", and the plan no longer says the words follow the icons
+   exactly.
+6. The arrows wrapped from the last tab to the first. They stop at the end.
+7. A short range near the scale's end could overhang the track. Its width
+   is clamped to the track.
+8. A missing temperature dropped one point and shifted every label off
+   its slot. `Model.curve` now returns no curve unless every value is a
+   number.
+9. The warmest label sat above the item at a small `Theme.gap`, and the
+   curve's control points could overshoot its band. The label room is
+   `caption × 1.4 + 6` px, independent of the gap, and the control points
+   are clamped to the band.
+10. This section and the Limitations line above.
+
+The reviewer's four escaped mutations (body height from one tab, imperial
+slots swapped, Tab a no-op, mirrored arrows inverted) now fail 1, 2, 2 and
+4 checks.
 
 ## Verification
 
-- `tests/test-weather.sh` (97/97):
-  - 19 new Model units (hours across midnight and at the hour, night
+- `tests/test-weather.sh` (112/112):
+  - 21 new Model units (hours across midnight and at the hour, night
     icons, today's range from either source, conditions, the scale and a
-    bar, the curve's points and paths, five days, the URL);
+    bar, the curve's points and paths, no curve with a missing value,
+    control points inside the band, five days, the URL);
   - the service, live in Quickshell: seven hours, the condition and
     Open-Meteo's high and low, and with Open-Meteo refused, wttr.in's;
   - the real `Panel.qml` created on that service: "Now" first, eight
-    slots, eight curve points, the days' scale, the first tab, switching
-    kept by the service and wrapping, and one height for both tabs;
-  - the bar setting's default and the pill's binding.
+    slots, eight curve points, the days' scale, the first tab, the body at
+    least as tall as each tab, the slots' unit, the keys (above), and
+    without wttr.in only "Now" and no curve;
+  - the real `Widget.qml`: the temperature, the setting and no service.
 - Rendered, not committed: a scratch Quickshell harness creates the real
   service (live data for the owner's city, Open-Meteo answering) and the
   real panel in a `PanelSurface`, offscreen on the software renderer, and
