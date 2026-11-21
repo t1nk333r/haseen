@@ -161,7 +161,8 @@ answer.
 
 ## Review
 
-A Sonnet subagent reviewed `38216ca`: REQUEST_CHANGES, one major finding.
+A Sonnet subagent reviewed the first commit of pull request #141: REQUEST_CHANGES,
+one major finding.
 Every finding was taken:
 
 1. **Major:** the Update button `exec`ed the update inside the notice's
