@@ -286,6 +286,20 @@ Window {
             return Math.abs((pt[1] - inc[1]) * (out[0] - pt[0]) - (out[1] - pt[1]) * (pt[0] - inc[0])) < 0.5;
         }));
         eq("flat at a peak", true, Math.abs(segs[0][3] - segs[0][5]) < 0.01 && Math.abs(segs[1][1] - segs[0][5]) < 0.01);
+        // The exact paths: a straight line for two points (tangents at the
+        // ends, controls a third along), and the zig-zag flat at each turn.
+        eq("two points: a straight line", "M 75 110 C 125 76.67 175 43.33 225 10", M.curve(["1", "2"], 300, 10, 100, 120).line);
+        eq("a zig-zag: flat at every turn", "M 50 110 C 83.33 76.67 116.67 10 150 10 C 183.33 10 216.67 110 250 110 C 283.33 110 316.67 43.33 350 10",
+            M.curve(["10", "30", "10", "30"], 400, 10, 100, 120).line);
+        // Steep between flat stretches: the limit keeps every control point
+        // between its segment's two points, so nothing overshoots.
+        const steep = M.curve(["0", "1", "100", "101"], 400, 10, 100, 120).line.split(" C ").slice(1).map(seg => seg.split(" ").map(Number));
+        const starts = [110].concat(steep.map(seg => seg[5]));
+        eq("a steep segment between flat ones stays between its points", true, steep.every((seg, i) => {
+            const lo = Math.min(starts[i], seg[5]) - 0.011, hi = Math.max(starts[i], seg[5]) + 0.011;
+            return [seg[1], seg[3]].every(y => y >= lo && y <= hi);
+        }));
+        eq("no curve before the panel has a width", ["", ""], [M.curve(["1", "2", "3"], 0, 10, 100, 120).line, M.curve(["1", "2", "3"], 0.1, 10, 100, 120).line]);
         eq("the line's control points stay inside the band", true,
             zig.line.split(" C ").slice(1).every(seg => { const n = seg.split(" ").map(Number); return [n[1], n[3], n[5]].every(y => y >= 10 && y <= 110); }));
         eq("status line", "Berlin  ·  Temp 19°C  ·  Wind 9 km/h", M.statusLine("berlin", "19°C", "9 km/h"));
@@ -296,7 +310,7 @@ EOF
     capture env QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML" "$H/Units.qml"
     assert_status "Model.js units" 0 "$STATUS"
     assert_eq "no unit failures" "" "$(grep 'UNIT-FAIL' <<<"$OUTPUT" || true)"
-    assert_eq "units ran" "57" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
+    assert_eq "units ran" "61" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
 else
     echo "  skip: $QML not installed, Model.js not exercised" >&2
 fi

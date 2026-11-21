@@ -40,13 +40,16 @@ collinear, which shows as a corner.
 - `Model.curve` draws a monotone cubic (Fritsch and Carlson, 1980) as
   cubic Béziers:
   - each point has one tangent: the mean of its two secants, zero at a
-    peak or trough, scaled down where it would overshoot;
+    peak, a trough or a level stretch, scaled down where it would
+    overshoot;
   - the control points sit a third of each segment along those tangents,
     rounded to 0.01 px so the tangents stay continuous.
 
   The line therefore turns smoothly through every point and stays between
   each segment's two points, so it never leaves the band and needs no
-  clamp. The points, the labels and the area fill are unchanged.
+  clamp. Slots too narrow to tell apart (a panel not laid out yet, width
+  0) give no curve instead of a path with a division by zero. The points,
+  the labels and the area fill are unchanged.
 
 ## Rejected
 
@@ -59,13 +62,37 @@ collinear, which shows as a corner.
 
 ## Verification
 
-- `tests/test-weather.sh` 113/113. Two new Model units: at every inner
-  point of a six-point wave, the incoming control point, the point and
-  the outgoing control point are collinear, and the tangent is flat at a
-  peak. A source check covers `Shape.CurveRenderer`. The band check from
-  plan 180 still passes.
+- `tests/test-weather.sh` 113/113, with six new Model units (61 in all):
+  - at every inner point of a six-point wave, the incoming control point,
+    the point and the outgoing control point are collinear;
+  - the tangent is flat at a peak;
+  - the exact paths for two points (a straight line) and for a zig-zag;
+  - a steep segment between flat ones keeps its control points between
+    its two points;
+  - no curve at width 0 or 0.1.
+
+  A source check covers `Shape.CurveRenderer`. The band check from plan
+  180 still passes.
 - Rendered with live data for the owner's city, scratch harness, not
   committed:
   - on the GPU scene graph as above: stair-stepped before, smooth and
     antialiased after;
   - on the software renderer at `QT_SCALE_FACTOR=1.25` (IO): smooth.
+
+## Review
+
+A Sonnet subagent reviewed `dcd7959`: REQUEST_CHANGES. The maths was
+correct; the gaps were taken:
+
+1. At width 0 every x was equal, so the path held NaN (Catmull-Rom never
+   divided by dx). Now there is no curve unless the slots' x values
+   strictly increase.
+2. Removing the overshoot limit passed every test, because the band check
+   used symmetric data. The steep-between-flat unit catches it now.
+3. Wrong end tangents and control points at half instead of a third
+   passed too. The exact two-point and zig-zag paths catch them now.
+4. The level-segment block changed nothing; it is a commented `continue`
+   now.
+
+With these, removing the limit, zero end tangents and controls at half
+each fail three checks.

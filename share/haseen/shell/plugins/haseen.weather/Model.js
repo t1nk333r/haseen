@@ -506,18 +506,23 @@ function curve(values, width, top, height, bottom) {
         Math.round((hi === lo ? top + height / 2 : top + (1 - (v - lo) / (hi - lo)) * height) * 10) / 10
     ]);
     const n = points.length;
+    // Slots too narrow to tell apart (a panel not laid out yet): no curve,
+    // never a path with a division by zero in it.
+    for (let i = 0; i < n - 1; ++i) {
+        if (!(points[i + 1][0] > points[i][0]))
+            return { points: [], line: "", area: "" };
+    }
     // Secant slopes, then each point's tangent: the mean of its two secants,
-    // zero at a peak or trough, limited so no segment overshoots.
+    // zero at a peak, a trough or a level stretch, limited so no segment
+    // overshoots.
     const d = [];
     for (let i = 0; i < n - 1; ++i)
         d.push((points[i + 1][1] - points[i][1]) / (points[i + 1][0] - points[i][0]));
     const m = points.map((p, i) => i === 0 ? d[0] : i === n - 1 ? d[n - 2] : (d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2));
     for (let i = 0; i < n - 1; ++i) {
-        if (d[i] === 0) {
-            m[i] = 0;
-            m[i + 1] = 0;
+        // A level segment's ends already have tangent 0 (the sign rule).
+        if (d[i] === 0)
             continue;
-        }
         const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
         if (s > 9) {
             const t = 3 / Math.sqrt(s);
