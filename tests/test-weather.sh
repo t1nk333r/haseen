@@ -30,6 +30,8 @@ assert_dry_pure "plugin validate" "$OUTPUT"
 assert_eq "kinds" "service,bar-widget,panel" "$(jq -r '.kinds | join(",")' "$PLUGIN/manifest.json")"
 # Plan 180: the temperature beside the bar icon, on unless turned off.
 assert_eq "the bar's temperature is on by default" "true" "$(jq -r '.settings.temperature.default' "$PLUGIN/manifest.json")"
+assert_contains "the curve asks for antialiased curves on the GPU scene graph" "$(cat "$PLUGIN/Panel.qml")" \
+    'preferredRendererType: Shape.CurveRenderer'
 assert_contains "the pill shows it unless settings.temperature is false" "$(cat "$PLUGIN/Widget.qml")" \
     'text: settings.temperature !== false && service && service.reportTempNum !== "" ? service.reportTempNum + "°" : ""'
 assert_eq "manual location empty by default (GeoClue, else IP)" "" "$(jq -r '.settings.location.default' "$PLUGIN/manifest.json")"
@@ -275,6 +277,15 @@ Window {
         eq("no curve for one value", "", M.curve(["5"], 100, 10, 100, 120).line);
         eq("no curve with a missing value", "", M.curve(["5", "", "7"], 300, 10, 100, 120).line);
         const zig = M.curve(["10", "30", "10", "30"], 400, 10, 100, 120);
+        // Plan 181: smooth through every point. At each inner point the
+        // incoming and outgoing control points and the point are on one line.
+        const wave = M.curve(["20", "28", "24", "26", "18", "22"], 600, 10, 100, 120);
+        const segs = wave.line.split(" C ").slice(1).map(seg => seg.split(" ").map(Number));
+        eq("the curve turns smoothly through every point", true, segs.slice(0, -1).every((seg, i) => {
+            const inc = [seg[2], seg[3]], pt = [seg[4], seg[5]], out = [segs[i + 1][0], segs[i + 1][1]];
+            return Math.abs((pt[1] - inc[1]) * (out[0] - pt[0]) - (out[1] - pt[1]) * (pt[0] - inc[0])) < 0.5;
+        }));
+        eq("flat at a peak", true, Math.abs(segs[0][3] - segs[0][5]) < 0.01 && Math.abs(segs[1][1] - segs[0][5]) < 0.01);
         eq("the line's control points stay inside the band", true,
             zig.line.split(" C ").slice(1).every(seg => { const n = seg.split(" ").map(Number); return [n[1], n[3], n[5]].every(y => y >= 10 && y <= 110); }));
         eq("status line", "Berlin  ·  Temp 19°C  ·  Wind 9 km/h", M.statusLine("berlin", "19°C", "9 km/h"));
@@ -285,7 +296,7 @@ EOF
     capture env QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 NO_AT_BRIDGE=1 timeout 60 "$QML" "$H/Units.qml"
     assert_status "Model.js units" 0 "$STATUS"
     assert_eq "no unit failures" "" "$(grep 'UNIT-FAIL' <<<"$OUTPUT" || true)"
-    assert_eq "units ran" "55" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
+    assert_eq "units ran" "57" "$(grep -c 'UNIT-PASS' <<<"$OUTPUT")"
 else
     echo "  skip: $QML not installed, Model.js not exercised" >&2
 fi

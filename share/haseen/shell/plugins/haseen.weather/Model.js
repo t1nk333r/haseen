@@ -488,8 +488,11 @@ function rangeBar(day, scale, useImperial) {
 
 // The temperature curve through `values`, one point per slot centre across
 // `width`, between y = top (warmest) and top + height (coldest); flat values
-// sit in the middle. Catmull-Rom through the points as cubic Béziers, their
-// control points kept inside that band so the line never overshoots it.
+// sit in the middle. A monotone cubic through the points (Fritsch and
+// Carlson, 1980), as cubic Béziers: one tangent per point, so the line
+// turns smoothly through every point, and each segment stays between its
+// two points, so it never overshoots the band (plan 181; Catmull-Rom with
+// clamped control points left corners at the peaks).
 // { points: [[x, y]], line: SVG path, area: the line closed down to
 // `bottom` }; empty for fewer than two values or any value that is not a
 // number, so a gap never shifts the points against their slots.
@@ -502,14 +505,35 @@ function curve(values, width, top, height, bottom) {
         Math.round((i + 0.5) * width / nums.length * 10) / 10,
         Math.round((hi === lo ? top + height / 2 : top + (1 - (v - lo) / (hi - lo)) * height) * 10) / 10
     ]);
-    const r = n => Math.round(n * 10) / 10;
-    const band = y => r(Math.min(top + height, Math.max(top, y)));
+    const n = points.length;
+    // Secant slopes, then each point's tangent: the mean of its two secants,
+    // zero at a peak or trough, limited so no segment overshoots.
+    const d = [];
+    for (let i = 0; i < n - 1; ++i)
+        d.push((points[i + 1][1] - points[i][1]) / (points[i + 1][0] - points[i][0]));
+    const m = points.map((p, i) => i === 0 ? d[0] : i === n - 1 ? d[n - 2] : (d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2));
+    for (let i = 0; i < n - 1; ++i) {
+        if (d[i] === 0) {
+            m[i] = 0;
+            m[i + 1] = 0;
+            continue;
+        }
+        const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+        if (s > 9) {
+            const t = 3 / Math.sqrt(s);
+            m[i] = t * a * d[i];
+            m[i + 1] = t * b * d[i];
+        }
+    }
+    // Control points at a third of each segment along the tangents; finer
+    // rounding than the points, so the tangents stay continuous.
+    const r = v => Math.round(v * 100) / 100;
     let line = "M " + points[0][0] + " " + points[0][1];
-    for (let i = 0; i < points.length - 1; ++i) {
-        const a = points[Math.max(0, i - 1)], b = points[i], c = points[i + 1], e = points[Math.min(points.length - 1, i + 2)];
-        line += " C " + r(b[0] + (c[0] - a[0]) / 6) + " " + band(b[1] + (c[1] - a[1]) / 6)
-            + " " + r(c[0] - (e[0] - b[0]) / 6) + " " + band(c[1] - (e[1] - b[1]) / 6)
-            + " " + c[0] + " " + c[1];
+    for (let i = 0; i < n - 1; ++i) {
+        const dx = (points[i + 1][0] - points[i][0]) / 3;
+        line += " C " + r(points[i][0] + dx) + " " + r(points[i][1] + m[i] * dx)
+            + " " + r(points[i + 1][0] - dx) + " " + r(points[i + 1][1] - m[i + 1] * dx)
+            + " " + points[i + 1][0] + " " + points[i + 1][1];
     }
     const last = points[points.length - 1];
     const area = line + " L " + last[0] + " " + bottom + " L " + points[0][0] + " " + bottom + " Z";
