@@ -467,6 +467,39 @@ confirm_typed() {
     read -r -p "$prompt Type '$word' to continue: " reply
     [[ $reply == "$word" ]]
 }
+# sudo_keep_warm — ask for sudo's password now, once, and keep its timestamp
+# fresh while this process runs (plan 182): a long download between two root
+# steps of `haseen update` must not stop to ask again halfway. The loop ends
+# with this process (an exec keeps the PID, so it carries over to the tree
+# the update just installed) or as soon as sudo answers no: run_cold drops the
+# timestamp before the AUR builds, and they get no warm sudo. Adapted from
+# Omarchy bin/omarchy-update's authorize_update (MIT, Copyright (c) David
+# Heinemeier Hansson).
+sudo_keep_warm() {
+    if $DRY_RUN; then
+        echo "DRYRUN: sudo true (kept warm while the update runs)"
+        return 0
+    fi
+    sudo true || return 1
+    local owner=$$
+    (
+        trap - EXIT ERR
+        while sleep 60; do
+            kill -0 "$owner" 2>/dev/null || exit 0
+            sudo -n true 2>/dev/null || exit 0
+        done
+    ) </dev/null >/dev/null 2>&1 &
+    HASEEN_SUDO_WARM_PID=$!
+    export HASEEN_SUDO_WARM_PID
+}
+
+# sudo_keep_warm_stop — end sudo_keep_warm's loop, also one an exec'd
+# predecessor of this process started.
+sudo_keep_warm_stop() {
+    [[ -n ${HASEEN_SUDO_WARM_PID:-} ]] || return 0
+    kill "$HASEEN_SUDO_WARM_PID" 2>/dev/null || true
+    HASEEN_SUDO_WARM_PID=""
+}
 
 start_logging() {
     local log="$1"

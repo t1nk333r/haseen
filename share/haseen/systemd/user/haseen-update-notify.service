@@ -1,0 +1,15 @@
+[Unit]
+Description=haseen: notify when haseen or package updates are waiting
+# Plan 182. Started by haseen-update-notify.timer. Fetches haseen's own copy
+# of the repository, counts the pending packages, and sends one notification
+# with an Update button for each new set of updates.
+
+[Service]
+# The notification waits for a click, so a long run is the normal case, not a
+# hang; while it waits, the timer starts no second one.
+Type=simple
+ExecStart=/usr/bin/env haseen update notify
+TimeoutStopSec=5
+Nice=10
+IOSchedulingClass=idle
+Slice=background-graphical.slice

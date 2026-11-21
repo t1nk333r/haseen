@@ -22,6 +22,10 @@ SLEEP_LOCK_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-
 # good shell.json for shell recovery (bin/haseen-crash-watch, plan 061).
 CRASH_WATCH_UNIT=haseen-crash-watch.service
 CRASH_WATCH_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$CRASH_WATCH_UNIT"
+# Looks for haseen and package updates every few hours and notifies once per
+# new set (bin/haseen-update-notify; owner, 2026-11-21, plan 182).
+UPDATE_NOTIFY_TIMER=haseen-update-notify.timer
+UPDATE_NOTIFY_TIMER_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/timers.target.wants/$UPDATE_NOTIFY_TIMER"
 # dms:// links (the DankMaterialShell plugin gallery's Install button) open
 # bin/haseen-plugin-url. The desktop file is installed with the tree.
 DMS_URL_DESKTOP=haseen-dms-url.desktop
@@ -83,6 +87,13 @@ layer_status() {
         echo "missing: $CRASH_WATCH_UNIT not enabled (no crash notifications)"
         missing=$((missing + 1))
     fi
+    if [[ -L $UPDATE_NOTIFY_TIMER_WANTS ]]; then
+        echo "ok: $UPDATE_NOTIFY_TIMER enabled"
+        ok=$((ok + 1))
+    else
+        echo "missing: $UPDATE_NOTIFY_TIMER not enabled (no notice when updates are waiting)"
+        missing=$((missing + 1))
+    fi
     local handler
     handler="$(dms_url_handler)"
     case "$handler" in
@@ -126,6 +137,11 @@ layer_apply() {
         info "$CRASH_WATCH_UNIT already enabled"
     else
         run systemctl --user enable "$CRASH_WATCH_UNIT"
+    fi
+    if [[ -L $UPDATE_NOTIFY_TIMER_WANTS ]]; then
+        info "$UPDATE_NOTIFY_TIMER already enabled"
+    else
+        run systemctl --user enable "$UPDATE_NOTIFY_TIMER"
     fi
     local handler
     handler="$(dms_url_handler)"

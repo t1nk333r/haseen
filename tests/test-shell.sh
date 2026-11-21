@@ -540,6 +540,7 @@ assert_contains "example seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/haseen
 assert_contains "unit enabled" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-shell.service"
 assert_contains "lock-before-sleep enabled with it" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-sleep-lock.service"
 assert_contains "and the crash watcher" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-crash-watch.service"
+assert_contains "and the update notice (plan 182)" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-update-notify.timer"
 assert_contains "Helium with it (plan 073)" "$OUTPUT" "helium-browser-bin"
 assert_contains "and Cairn handed to Helium" "$OUTPUT" "DRYRUN: write $XDG_CONFIG_HOME/net.imput.helium/External Extensions/bddeidknhkokohcgdkpgdmlppgfkblig.json:"
 assert_eq "layer dry-run wrote nothing" "" "$(find "$HOME" -mindepth 1 -print -quit)"
@@ -559,6 +560,11 @@ assert_status "status: degraded without the lock-before-sleep unit" 2 "$STATUS"
 assert_contains "status says what that costs" "$OUTPUT" "no lock before suspend"
 ln -s /usr/lib/systemd/user/haseen-sleep-lock.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-sleep-lock.service"
 ln -s /usr/lib/systemd/user/haseen-crash-watch.service "$XDG_CONFIG_HOME/systemd/user/graphical-session.target.wants/haseen-crash-watch.service"
+shell_layer "$fx_qs" 'layer_run_status shell'
+assert_contains "status names the update notice when it is off" "$OUTPUT" \
+    "missing: haseen-update-notify.timer not enabled (no notice when updates are waiting)"
+mkdir -p "$XDG_CONFIG_HOME/systemd/user/timers.target.wants"
+ln -s /usr/lib/systemd/user/haseen-update-notify.timer "$XDG_CONFIG_HOME/systemd/user/timers.target.wants/haseen-update-notify.timer"
 shell_layer "$fx_bare" 'layer_run_status shell'
 assert_status "status: degraded without packages" 2 "$STATUS"
 assert_contains "status names the missing package" "$OUTPUT" "missing: package quickshell"

@@ -3,6 +3,10 @@
     "one": "%1 error",
     "other": "%1 errors"
   },
+  "%1 packages to upgrade": {
+    "one": "%1 package to upgrade",
+    "other": "%1 packages to upgrade"
+  },
   "%1 requests · %2 tokens · %3": "%1 requests · %2 tokens · %3",
   "%1, so a rebuild must be signed again: %2.": "%1, so a rebuild must be signed again: %2.",
   "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand.": "%1. The next boot shows the old splash; haseen plymouth follow status says more, and haseen plymouth set rebuilds it by hand.",
@@ -72,8 +76,15 @@
   "Transcoded to %1 %2": "Transcoded to %1 %2",
   "Turn them back on from the gestures panel in the bar, or with %1": "Turn them back on from the gestures panel in the bar, or with %1",
   "Upcoming reminders": "Upcoming reminders",
+  "Update": "Update",
+  "Updates are ready": "Updates are ready",
   "Updating the boot splash": "Updating the boot splash",
   "Workspace layout set to %1": "Workspace layout set to %1",
   "ffmpeg exited (%1)": "ffmpeg exited (%1)",
-  "gpu-screen-recorder exited (%1)": "gpu-screen-recorder exited (%1)"
+  "gpu-screen-recorder exited (%1)": "gpu-screen-recorder exited (%1)",
+  "haseen: %1 new changes": {
+    "one": "haseen: %1 new change",
+    "other": "haseen: %1 new changes"
+  },
+  "haseen: a new version": "haseen: a new version"
 }
