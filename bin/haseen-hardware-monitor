@@ -256,9 +256,12 @@ cmd_cursor() {
     [[ -n $theme ]] || theme="${XCURSOR_THEME:-default}"
     run gsettings set org.gnome.desktop.interface cursor-size "$size" || warn "gsettings did not take the cursor size (GTK apps keep theirs)"
     run hyprctl setcursor "$theme" "$size"
-    # The session starts with XCURSOR_SIZE from uwsm's env.d (the desktop
-    # layer's 60-haseen-defaults sets 20); this file loads after it.
-    printf '# Written by haseen hardware monitor cursor (plan 098).\nexport XCURSOR_SIZE=%s\n' "$size" | write_user_file "$CURSOR_ENV"
+    # The session starts with the sizes from uwsm's env.d (the desktop
+    # layer's 10-haseen sets XCURSOR_SIZE=20); this file loads after them.
+    # Hyprland sizes its cursor from HYPRCURSOR_SIZE when that is set, so an
+    # earlier file that exports it (a user's own cursor theme) would win at
+    # every login unless this one overrides both (plan 182).
+    printf '# Written by haseen hardware monitor cursor (plans 098, 182).\nexport XCURSOR_SIZE=%s\nexport HYPRCURSOR_SIZE=%s\n' "$size" "$size" | write_user_file "$CURSOR_ENV"
     $DRY_RUN || info "cursor size $size ($theme)"
 }
 
