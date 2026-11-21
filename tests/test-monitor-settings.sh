@@ -107,7 +107,9 @@ capture haseen hardware monitor cursor 40
 assert_status "cursor applies" 0 "$STATUS"
 assert_contains "cursor: Hyprland now" "$(cat "$LOG")" "hyprctl setcursor Bibata 40"
 assert_contains "cursor: GTK now" "$(cat "$LOG")" "gsettings set org.gnome.desktop.interface cursor-size 40"
-assert_eq "cursor: the next login" "export XCURSOR_SIZE=40" "$(tail -1 "$XDG_CONFIG_HOME/uwsm/env.d/61-haseen-cursor")"
+assert_eq "cursor: the next login" "export XCURSOR_SIZE=40" "$(sed -n 2p "$XDG_CONFIG_HOME/uwsm/env.d/61-haseen-cursor")"
+# Hyprland reads HYPRCURSOR_SIZE before XCURSOR_SIZE (plan 182).
+assert_eq "cursor: Hyprland's size at the next login" "export HYPRCURSOR_SIZE=40" "$(sed -n 3p "$XDG_CONFIG_HOME/uwsm/env.d/61-haseen-cursor")"
 capture haseen hardware monitor cursor 4
 assert_status "cursor refuses a tiny size" 1 "$STATUS"
 
