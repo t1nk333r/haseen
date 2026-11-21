@@ -1222,6 +1222,13 @@ assert_contains "it watches the toggle Hyprland loads" "$body" '"/toggles/hypr/m
 assert_contains "and the blocks Hyprland writes" "$body" '"/monitor-workspaces"'
 assert_contains "the toggle is read again on a config reload" "$body" 'name === "configreloaded"'
 assert_contains "it keeps Omarchy's MIT notice" "$(cat "$WIDGET/Workspaces.js")" "MIT, Copyright (c) David"
+# Plan 178: no scratchpad stars unless the owner turns them on.
+assert_contains "the stars come only with the scratchpads setting" "$body" \
+    'readonly property var specials: scratchpads ? all.filter('
+assert_contains "and the refresh they need with them" "$body" \
+    'if (root.scratchpads && (name === "activespecial" || name === "activespecialv2"))'
+assert_eq "the setting is off by default" "false" \
+    "$(jq -r '.settings.scratchpads.default' "$WIDGET/manifest.json")"
 QML=/usr/lib/qt6/bin/qml
 cat >"$SANDBOX/Units.qml" <<EOF
 import QtQuick
@@ -1322,6 +1329,10 @@ ShellRoot {
                 return;
             if (probe.phase === 0 && w.perMonitor && w.blocks["DP-3"] === 2) {
                 probe.result.on = { blocks: w.blocks };
+                probe.result.stars = w.scratchpads;
+                w.settings = { scratchpads: true };
+                probe.result.starsOn = w.scratchpads;
+                w.settings = ({});
                 Quickshell.execDetached(["rm", "-f", probe.toggle]);
                 probe.phase = 1;
             } else if (probe.phase === 1 && !w.perMonitor) {
@@ -1344,5 +1355,5 @@ QML
     assert_status "the widget runs in the real engine" 0 "$STATUS"
     result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT")"
     assert_eq "it reads the toggle and the blocks, then follows the toggle off and on" \
-        '{"on":{"blocks":{"eDP-1":0,"DP-3":2}},"off":true,"again":true}' "$result"
+        '{"on":{"blocks":{"eDP-1":0,"DP-3":2}},"stars":false,"starsOn":true,"off":true,"again":true}' "$result"
 fi

@@ -11,15 +11,18 @@ import "Workspaces.js" as Ws
 //   - workspaces 1..persistent always show; other existing ones up to 10 join;
 //   - the active workspace shows Omarchy's dot glyph, empty ones are dimmed,
 //     10 is labelled "0", urgent ones use Theme.urgent;
-//   - special workspaces (scratchpads) follow as stars while they exist,
-//     bright while shown on this monitor; click toggles one;
+//   - special workspaces (scratchpads, the SUPER + GRAVE console) follow as
+//     stars while they exist, bright while shown on this monitor, only with
+//     the scratchpads setting on (off by default: owner, 2026-11-21, plan
+//     178); click toggles one;
 //   - click focuses, wheel walks e-1/e+1 like SUPER+wheel.
 //   - with per-monitor workspaces on (plan 105, `haseen toggle
 //     monitor-workspaces`), each bar shows its own monitor's block of ten,
 //     labelled 1-0, then any workspace only visiting from an unplugged
 //     monitor, set apart by a gap; the wheel walks that row.
 // Everything comes from Hyprland's event socket (Quickshell.Hyprland); the
-// only requests are a monitor refresh on an `activespecial` event, because
+// only requests are a monitor refresh on an `activespecial` event while the
+// stars show, because
 // HyprlandMonitor exposes the shown special workspace only via lastIpcObject,
 // and, with per-monitor workspaces, a refresh when workspaces move between
 // monitors or change number, which Quickshell does not track (Omarchy 4.5's
@@ -41,6 +44,7 @@ Item {
     readonly property var monitor: screen ? Hyprland.monitorFor(screen) : null
     readonly property string monitorName: monitor ? monitor.name : ""
     readonly property bool allMonitors: settings.allMonitors === true
+    readonly property bool scratchpads: settings.scratchpads === true
     readonly property int persistent: typeof settings.persistent === "number" ? settings.persistent : 5
     readonly property var all: Hyprland.workspaces.values
     readonly property var listed: all.map(ws => ({
@@ -56,7 +60,7 @@ Item {
     readonly property int block: Ws.monitorBlock(blocks, monitorName, activeId)
 
     readonly property var ids: perMonitor ? Ws.monitorWorkspaceIds(listed, persistent, monitorName, block) : Ws.workspaceIds(listed, persistent, monitorName, allMonitors)
-    readonly property var specials: all.filter(ws => ws.name.startsWith("special:") && (allMonitors || !monitor || ws.monitor === monitor))
+    readonly property var specials: scratchpads ? all.filter(ws => ws.name.startsWith("special:") && (allMonitors || !monitor || ws.monitor === monitor)) : []
     readonly property string shownSpecial: {
         const ipc = monitor ? monitor.lastIpcObject : null;
         return ipc && ipc.specialWorkspace ? String(ipc.specialWorkspace.name || "") : "";
@@ -91,7 +95,7 @@ Item {
         target: Hyprland
         function onRawEvent(event: var): void {
             const name = event.name;
-            if (name === "activespecial" || name === "activespecialv2")
+            if (root.scratchpads && (name === "activespecial" || name === "activespecialv2"))
                 Hyprland.refreshMonitors();
             if (name === "configreloaded")
                 toggleFile.reload();
