@@ -6,7 +6,7 @@
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # `haseen update` in one step, and the notice that updates are waiting
-# (plan 182). A real bare repository stands in for GitHub, so the clone,
+# (plan 183). A real bare repository stands in for GitHub, so the clone,
 # fetch and commit comparisons are the real thing; root, pacman's helpers,
 # Flatpak, Hyprland, systemd and the notification daemon are stubs that
 # record what they were asked.

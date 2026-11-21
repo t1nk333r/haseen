@@ -8,7 +8,7 @@
 # bin/omarchy-update (MIT, same notice), plan 103. The one-step update (`all`,
 # the default: haseen itself, the packages, migrations, then the desktop
 # reloaded) follows omarchy bin/omarchy-update's order and its confirmation
-# and single authorization (MIT, same notice), plan 182.
+# and single authorization (MIT, same notice), plan 183.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/catalog.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/catalog.sh"
@@ -155,7 +155,7 @@ update_system() {
     reboot_hint
 }
 
-# --- all: haseen and the system in one step (plan 182) ------------------------
+# --- all: haseen and the system in one step (plan 183) ------------------------
 
 # pass — the flags the steps this one starts are given.
 pass=()

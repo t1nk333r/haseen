@@ -1,4 +1,4 @@
-# Plan 182: `haseen update` in one step, and one notification when updates wait
+# Plan 183: `haseen update` in one step, and one notification when updates wait
 
 ## Status
 

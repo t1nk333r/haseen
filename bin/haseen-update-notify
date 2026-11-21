@@ -2,7 +2,7 @@
 # haseen:summary Notify once when haseen or package updates are waiting (timer)
 # haseen:args [--dry-run]
 #
-# Plan 182 (owner, 2026-11-21: "One notification"). haseen-update-notify.timer
+# Plan 183 (owner, 2026-11-21: "One notification"). haseen-update-notify.timer
 # starts this every few hours. It fetches haseen's own copy of the repository
 # (lib/self-update.sh), counts the commits the installed tree lacks and the
 # pending packages (`haseen update check`), and sends one notification with an

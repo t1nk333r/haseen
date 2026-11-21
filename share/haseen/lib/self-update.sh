@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# lib/self-update.sh — where haseen updates itself from (plan 182).
+# lib/self-update.sh — where haseen updates itself from (plan 183).
 #
 # `haseen update` installs haseen from its own copy of the repository, kept in
 # $XDG_DATA_HOME/haseen/checkout and following one branch of one remote

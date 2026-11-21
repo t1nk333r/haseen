@@ -540,7 +540,7 @@ assert_contains "example seeded" "$OUTPUT" "DRYRUN: seed $XDG_CONFIG_HOME/haseen
 assert_contains "unit enabled" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-shell.service"
 assert_contains "lock-before-sleep enabled with it" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-sleep-lock.service"
 assert_contains "and the crash watcher" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-crash-watch.service"
-assert_contains "and the update notice (plan 182)" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-update-notify.timer"
+assert_contains "and the update notice (plan 183)" "$OUTPUT" "DRYRUN: systemctl --user enable haseen-update-notify.timer"
 assert_contains "remembering that haseen turned it on" "$OUTPUT" "DRYRUN: touch $XDG_STATE_HOME/haseen/update-notify-enabled"
 assert_contains "Helium with it (plan 073)" "$OUTPUT" "helium-browser-bin"
 assert_contains "and Cairn handed to Helium" "$OUTPUT" "DRYRUN: write $XDG_CONFIG_HOME/net.imput.helium/External Extensions/bddeidknhkokohcgdkpgdmlppgfkblig.json:"

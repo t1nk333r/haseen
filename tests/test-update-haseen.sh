@@ -227,7 +227,7 @@ g -C "$work" switch -q main
 capture hx --check
 assert_not_contains "on main there is no warning" "$OUTPUT" "the checkout follows"
 
-# --- haseen's own copy (plan 182) ----------------------------------------------
+# --- haseen's own copy (plan 183) ----------------------------------------------
 # Without --source or $HASEEN_SOURCE the update clones the remote into
 # $XDG_DATA_HOME/haseen/checkout and installs its main from there. The
 # developer's checkout that `haseen bar edit` names is not read: dirty or on a

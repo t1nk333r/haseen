@@ -10,7 +10,7 @@
 # command.
 #
 # The checkout is haseen's own copy of the repository (lib/self-update.sh,
-# plan 182), unless --source or $HASEEN_SOURCE names one of your own.
+# plan 183), unless --source or $HASEEN_SOURCE names one of your own.
 # `haseen update` runs this first, then the packages.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
@@ -105,7 +105,7 @@ installed_at="$(install_stamp_get "$prefix" date || true)"
 # The checkout to install: --source, else $HASEEN_SOURCE, else haseen's own
 # copy. ~/.config/haseen/source (the checkout `haseen bar edit` writes to) is
 # not read here: a developer's checkout, dirty or on a topic branch, kept
-# updates from installing main on IO and luna (owner, 2026-11-21, plan 182).
+# updates from installing main on IO and luna (owner, 2026-11-21, plan 183).
 src="${want_source:-${HASEEN_SOURCE:-}}"
 src="${src%/}"
 if [[ -z $src ]]; then

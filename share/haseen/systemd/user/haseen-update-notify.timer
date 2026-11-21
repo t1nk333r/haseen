@@ -1,6 +1,6 @@
 [Unit]
 Description=haseen: look for haseen and package updates every few hours
-# Plan 182 (owner, 2026-11-21: "One notification"). Enabled by the shell
+# Plan 183 (owner, 2026-11-21: "One notification"). Enabled by the shell
 # layer, and on existing machines by a migration. Each run notifies only when
 # something new has arrived since the last notification.
 

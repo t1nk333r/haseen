@@ -59,7 +59,7 @@ between parts. The engineering record is `plans/`, indexed by
     - also: the update notice, `haseen-update-notify.timer` (every four hours,
       one notification per new set of haseen or package updates; its Update
       button runs `haseen update`; owner, 2026-11-21, "One notification",
-      plan 182);
+      plan 183);
     - also: the launcher's agent accounts, no prefix: type `account` (owner,
       2026-10-26, plan 132);
     - also: the Your computer panel, haseen.computer (owner, 2026-11-12,

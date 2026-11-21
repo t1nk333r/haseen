@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Plan 182: haseen-update-notify.timer (one notification when haseen or
+# Plan 183: haseen-update-notify.timer (one notification when haseen or
 # package updates are waiting; owner, 2026-11-21) is on by default. The shell
 # layer enables it on a new machine; this enables it where the shell layer
 # was applied before the timer existed. Without haseen's shell there is no

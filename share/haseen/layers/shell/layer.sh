@@ -23,7 +23,7 @@ SLEEP_LOCK_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-
 CRASH_WATCH_UNIT=haseen-crash-watch.service
 CRASH_WATCH_UNIT_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/graphical-session.target.wants/$CRASH_WATCH_UNIT"
 # Looks for haseen and package updates every few hours and notifies once per
-# new set (bin/haseen-update-notify; owner, 2026-11-21, plan 182).
+# new set (bin/haseen-update-notify; owner, 2026-11-21, plan 183).
 UPDATE_NOTIFY_TIMER=haseen-update-notify.timer
 UPDATE_NOTIFY_TIMER_WANTS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/timers.target.wants/$UPDATE_NOTIFY_TIMER"
 # Written when haseen first enables it: a timer disabled after that is the

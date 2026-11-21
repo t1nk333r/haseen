@@ -468,7 +468,7 @@ confirm_typed() {
     [[ $reply == "$word" ]]
 }
 # sudo_keep_warm — ask for sudo's password now, once, and keep its timestamp
-# fresh while this process runs (plan 182): a long download between two root
+# fresh while this process runs (plan 183): a long download between two root
 # steps of `haseen update` must not stop to ask again halfway. The loop ends
 # with this process (an exec keeps the PID, so it carries over to the tree
 # the update just installed) or as soon as sudo answers no: run_cold drops the

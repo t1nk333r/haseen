@@ -1,6 +1,6 @@
 [Unit]
 Description=haseen: notify when haseen or package updates are waiting
-# Plan 182. Started by haseen-update-notify.timer. Fetches haseen's own copy
+# Plan 183. Started by haseen-update-notify.timer. Fetches haseen's own copy
 # of the repository, counts the pending packages, and sends one notification
 # with an Update button for each new set of updates.
 
