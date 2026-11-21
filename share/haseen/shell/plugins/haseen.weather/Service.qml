@@ -12,7 +12,9 @@ import "Model.js" as Model
 // current conditions and the reported area, Open-Meteo for the day/night-aware
 // icon and the next three days (at once when coordinates are known, else from
 // the area wttr.in reports), three quick retries per source, a refresh every
-// 15 minutes, and wttr.in's IP lookup when no location is known.
+// 15 minutes, and wttr.in's IP lookup when no location is known. The bar's
+// icon is wttr.in's until Open-Meteo answers, so a refused Open-Meteo request
+// still leaves an icon (plan 179).
 // haseen changes: the location is settings.location (a city or "lat,lon",
 // locationName labels coordinates), else a GeoClue position from
 // `haseen-weather-location --detect`, else the IP lookup; edits persist
@@ -49,6 +51,9 @@ Scope {
     property string wttrLocation: ""
     // The condition glyph for the bar and the panel hero.
     property string label: ""
+    // label came from Open-Meteo (day/night aware): wttr.in no longer
+    // replaces it until the location changes.
+    property bool labelFromOpenMeteo: false
     property real updated: 0
     property int forecastRetries: 0
     property int dailyForecastRetries: 0
@@ -78,6 +83,7 @@ Scope {
     onLocationQueryChanged: {
         if (savingLocation)
             savingLocationQueryStarted = true;
+        labelFromOpenMeteo = false;
         forecastRetries = 0;
         dailyForecastRetries = 0;
         forecastProc.running = false;
@@ -150,8 +156,11 @@ Scope {
             return false;
         root.report = parsed;
         root.updated = Date.now();
-        if (!root.hasConfiguredCoordinates)
-            root.label = Model.provisionalCurrentIcon(parsed.current_condition[0], root.label);
+        // wttr.in's icon also when coordinates are known: Open-Meteo may
+        // refuse or fail (owner's luna, 2026-11-21: nginx 403 for every
+        // forecast request), and the bar would otherwise stay empty.
+        if (!root.labelFromOpenMeteo)
+            root.label = Model.currentIcon(parsed.current_condition[0], root.label);
         root.forecastRetries = 0;
         if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "wttr"))
             root.finishSavingLocation();
@@ -177,7 +186,10 @@ Scope {
             return false;
         root.dailyForecastReport = parsed;
         root.updated = Date.now();
-        root.label = Model.currentIcon(parsedCurrent, root.label);
+        if (parsedCurrent) {
+            root.label = Model.currentIcon(parsedCurrent, root.label);
+            root.labelFromOpenMeteo = true;
+        }
         root.dailyForecastRetries = 0;
         if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "open-meteo"))
             root.finishSavingLocation();

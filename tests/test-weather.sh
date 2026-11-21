@@ -67,7 +67,7 @@ export J1 OM CURL_LOG
 stub curl 'url=""; for a in "$@"; do url="$a"; done
 echo "$url" >>"$CURL_LOG"
 case "$url" in
-*api.open-meteo.com*) cat "$OM" ;;
+*api.open-meteo.com*) if [ "${WEATHER_OM:-}" = refused ]; then exit 22; fi; cat "$OM" ;;
 *format=%l*) echo "Berlin, Berlin, Germany" ;;
 *format=j1*) cat "$J1" ;;
 *) exit 22 ;;
@@ -228,7 +228,10 @@ Window {
         eq("wttr icon nearest noon", "\ue318", M.dayIcon({ hourly: [{ time: "0", weatherCode: "113" }, { time: "1200", weatherCode: "296" }] }));
         eq("fog at night", "\ue346", M.iconForCode(143, true));
         eq("unknown code", "\ue33d", M.iconForCode(999, false));
-        eq("wttr fills an empty icon only", ["\ue33d", "\ue32b"], [M.provisionalCurrentIcon({ weatherCode: "122" }, ""), M.provisionalCurrentIcon({ weatherCode: "122" }, "\ue32b")]);
+        eq("wttr icon: night from its symbol's name, else day", ["\ue32b", "\ue30d", "\ue30d"], [
+            M.currentIcon({ weatherCode: "113", weatherIconUrl: [{ value: "https://cdn.worldweatheronline.com/images/wsymbols01_png_64/wsymbol_0008_clear_sky_night.png" }] }, ""),
+            M.currentIcon({ weatherCode: "113", weatherIconUrl: [{ value: "https://cdn.worldweatheronline.com/images/wsymbols01_png_64/wsymbol_0001_sunny.png" }] }, ""),
+            M.currentIcon({ weatherCode: "113" }, "")]);
         eq("save completes on the source that has the location", [true, false, true], [M.weatherResponseCompletesSave(true, "open-meteo"), M.weatherResponseCompletesSave(true, "wttr"), M.weatherResponseCompletesSave(false, "wttr")]);
         eq("status line", "Berlin  ·  Temp 19°C  ·  Wind 9 km/h", M.statusLine("berlin", "19°C", "9 km/h"));
         eq("status without data", "Weather unavailable", M.statusLine("Berlin", "", ""));
@@ -250,7 +253,7 @@ else
     stub curl 'url=""; for a in "$@"; do url="$a"; done
 echo "$url" >>"$CURL_LOG"
 case "$url" in
-*api.open-meteo.com*) cat "$OM" ;;
+*api.open-meteo.com*) if [ "${WEATHER_OM:-}" = refused ]; then exit 22; fi; cat "$OM" ;;
 *format=%l*) echo "Berlin, Berlin, Germany" ;;
 *format=j1*) cat "$J1" ;;
 *) exit 22 ;;
@@ -282,7 +285,7 @@ ShellRoot {
     function state(): var {
         return { source: svc.locationSource, query: svc.locationQuery, location: svc.reportLocation, note: svc.geoclueNote,
             label: svc.label, temp: svc.reportTempNum, feels: svc.reportFeels, wind: svc.reportWind, humidity: svc.reportHumidity,
-            days: svc.forecastDays.length, status: svc.statusLine, saving: svc.savingLocation };
+            days: svc.forecastDays.length, status: svc.statusLine, saving: svc.savingLocation, fromOpenMeteo: svc.labelFromOpenMeteo };
     }
 
     // Created once the registry knows the plugin; settings stay bound to
@@ -305,7 +308,12 @@ ShellRoot {
                 probe.create();
             // Wait for the forecast and for the pick to reach shell.json: the
             // save runs as its own process and may finish after the forecast.
-            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.dailyForecastReport || !probe.svc.report || probe.svc.savingLocation || probe.svc.persistingLocation)
+            // With Open-Meteo refusing (WEATHER_OM=refused) there is no
+            // forecast to wait for: wttr.in's report and its icon are all.
+            const refused = Quickshell.env("WEATHER_OM") === "refused";
+            if (!probe.svc || probe.svc.updated <= 0 || !probe.svc.report || probe.svc.savingLocation || probe.svc.persistingLocation)
+                return;
+            if (refused ? probe.svc.label === "" : !probe.svc.dailyForecastReport)
                 return;
             if (Quickshell.env("WEATHER_SAVE") === "1" && !probe.saved) {
                 probe.saved = true;
@@ -336,6 +344,7 @@ EOF
     assert_not_contains "GeoClue: no IP lookup" "$(cat "$CURL_LOG")" "format=%l"
     assert_eq "GeoClue: Open-Meteo's current conditions" "19|17°C|11 km/h|60%" "$(sr '"\(.temp)|\(.feels)|\(.wind)|\(.humidity)"')"
     assert_eq "GeoClue: night icon from is_day" "$(printf '\xee\x8c\xab')" "$(sr .label)"
+    assert_eq "GeoClue: and wttr.in's day icon does not replace it" "true" "$(sr .fromOpenMeteo)"
     assert_eq "GeoClue: area name from wttr.in" "Berlin" "$(sr .location)"
     assert_eq "three days" "3" "$(sr .days)"
     assert_eq "status line" "Berlin  ·  Temp 19°C  ·  Wind 11 km/h" "$(sr .status)"
@@ -353,6 +362,21 @@ EOF
     assert_eq "manual: city query" "Paris" "$(sr .query)"
     assert_eq "manual: name shown" "Paris" "$(sr .location)"
     assert_eq "manual: imperial" "66" "$(sr .temp)"
+
+    # Plan 179: saved coordinates and Open-Meteo refusing every request (the
+    # owner's luna, 2026-11-21): the bar still gets wttr.in's icon, night
+    # when its symbol says so, and its current conditions.
+    J1_DAY="$J1"
+    J1="$SANDBOX/j1-night.json"
+    jq '.current_condition[0].weatherCode = "113" | .current_condition[0].weatherIconUrl = [{"value": "https://cdn.worldweatheronline.com/images/wsymbols01_png_64/wsymbol_0008_clear_sky_night.png"}]' "$J1_DAY" >"$J1"
+    export WEATHER_OM=refused
+    run_service ok '{"location":"52.52,13.4","locationName":"Berlin"}'
+    unset WEATHER_OM
+    J1="$J1_DAY"
+    assert_contains "Open-Meteo refused: it was asked" "$(cat "$CURL_LOG")" "api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.4&"
+    assert_eq "Open-Meteo refused: the bar has wttr.in's night icon" "$(printf '\xee\x8c\xab')" "$(sr .label)"
+    assert_eq "Open-Meteo refused: not marked as Open-Meteo's" "false" "$(sr .fromOpenMeteo)"
+    assert_eq "Open-Meteo refused: wttr.in's temperature" "19" "$(sr .temp)"
 
     # The panel's pick: Config.setRuntime at once, shell.json via --set.
     run_service ok '{}' 1

@@ -275,14 +275,17 @@ function currentIcon(current, fallback) {
     if (current.openMeteoWeatherCode !== undefined && current.openMeteoWeatherCode !== null)
         return iconForOpenMeteoCode(current.openMeteoWeatherCode, Number(current.isDay) === 0);
     if (current.weatherCode !== undefined && current.weatherCode !== null)
-        return iconForCode(current.weatherCode, false);
+        return iconForCode(current.weatherCode, wttrIsNight(current));
     return fallback || "";
 }
 
-// wttr.in has no day/night flag. Use its icon only to fill an empty initial
-// state, never to replace a day/night-aware icon resolved by Open-Meteo.
-function provisionalCurrentIcon(current, resolvedIcon) {
-    return resolvedIcon || currentIcon(current, "");
+// wttr.in has no day/night flag, but the World Weather Online symbol it links
+// for the current condition names the night ones
+// (wsymbol_0008_clear_sky_night.png); without a link, day.
+function wttrIsNight(current) {
+    const urls = current && current.weatherIconUrl;
+    const url = urls && urls[0] ? String(urls[0].value || "") : "";
+    return /_night\.png$/i.test(url);
 }
 
 function weatherResponseCompletesSave(hasConfiguredCoordinates, source) {
