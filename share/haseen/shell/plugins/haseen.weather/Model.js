@@ -24,6 +24,9 @@ function fill(text, ...args) {
     });
 }
 
+// Days the panel lists (plan 180): five on its first tab, three on its second.
+const FORECAST_DAYS = 5;
+
 const COORDS = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
 
 function trim(value) {
@@ -99,7 +102,7 @@ function openMeteoUrl(latitude, longitude) {
         + "&longitude=" + encodeURIComponent(String(longitude))
         + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
         + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day"
-        + "&forecast_days=4"
+        + "&forecast_days=" + (FORECAST_DAYS + 1)
         + "&timezone=auto";
 }
 
@@ -231,7 +234,7 @@ function openMeteoForecastDays(dailyForecastReport, todayString) {
     if (!daily || !daily.time)
         return [];
     const result = [];
-    for (let i = 0; i < daily.time.length && result.length < 3; ++i) {
+    for (let i = 0; i < daily.time.length && result.length < FORECAST_DAYS; ++i) {
         const date = daily.time[i];
         if (!isFutureForecastDate(date, todayString))
             continue;
@@ -295,7 +298,7 @@ function weatherResponseCompletesSave(hasConfiguredCoordinates, source) {
 function wttrNextForecastDays(report, todayString) {
     const days = report && report.weather ? report.weather : [];
     const result = [];
-    for (let i = 0; i < days.length && result.length < 3; ++i) {
+    for (let i = 0; i < days.length && result.length < FORECAST_DAYS; ++i) {
         if (isFutureForecastDate(days[i].date, todayString))
             result.push(days[i]);
     }
@@ -336,25 +339,181 @@ function dayIcon(day) {
     return iconForCode(best.weatherCode, false);
 }
 
-function iconForOpenMeteoCode(code, night) {
+// Open-Meteo (WMO) code -> the wttr.in code that draws and names it.
+function wttrCodeForOpenMeteo(code) {
     const c = parseInt(String(code || "0"), 10);
     if (c === 0)
-        return iconForCode(113, night);
+        return 113;
     if (c === 1 || c === 2)
-        return iconForCode(116, night);
+        return 116;
     if (c === 3)
-        return iconForCode(119, night);
+        return 119;
     if (c === 45 || c === 48)
-        return iconForCode(143, night);
+        return 143;
     if (c === 51 || c === 53 || c === 55 || c === 56 || c === 57 || c === 61)
-        return iconForCode(266, night);
+        return 266;
     if (c === 63 || c === 65 || c === 66 || c === 67 || c === 80 || c === 81 || c === 82)
-        return iconForCode(308, night);
+        return 308;
     if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86)
-        return iconForCode(338, night);
+        return 338;
     if (c === 95 || c === 96 || c === 99)
-        return iconForCode(389, night);
-    return iconForCode(119, night);
+        return 389;
+    return 119;
+}
+
+function iconForOpenMeteoCode(code, night) {
+    return iconForCode(wttrCodeForOpenMeteo(code), night);
+}
+
+// wttr.in code -> the condition in words (English, marked for the catalogs;
+// the panel translates it). The icons' groups, with rain split into light
+// and heavier; "" for an unknown code.
+function conditionForCode(code, night) {
+    const c = parseInt(String(code || "0"), 10);
+    switch (c) {
+    case 113:
+        return night ? N_("Clear") : N_("Sunny");
+    case 116:
+        return N_("Partly cloudy");
+    case 119:
+        return N_("Cloudy");
+    case 122:
+        return N_("Overcast");
+    case 143: case 248: case 260:
+        return N_("Fog");
+    case 176: case 263: case 266: case 293: case 296: case 353:
+        return N_("Light rain");
+    case 299: case 302: case 305: case 308: case 356: case 359:
+        return N_("Rain");
+    case 182: case 185: case 281: case 284: case 311: case 314:
+    case 317: case 320: case 350: case 362: case 365: case 374: case 377:
+        return N_("Sleet");
+    case 179: case 227: case 230: case 323: case 326: case 329: case 332:
+    case 335: case 338: case 368: case 371:
+        return N_("Snow");
+    case 200: case 386: case 389: case 392: case 395:
+        return N_("Thunderstorm");
+    default:
+        return "";
+    }
+}
+
+// The current conditions in words, from either source's shape.
+function currentCondition(current) {
+    if (!current)
+        return "";
+    if (current.openMeteoWeatherCode !== undefined && current.openMeteoWeatherCode !== null)
+        return conditionForCode(wttrCodeForOpenMeteo(current.openMeteoWeatherCode), Number(current.isDay) === 0);
+    if (current.weatherCode !== undefined && current.weatherCode !== null)
+        return conditionForCode(current.weatherCode, wttrIsNight(current));
+    return "";
+}
+
+function pad(n, width) {
+    let s = String(n);
+    while (s.length < width)
+        s = "0" + s;
+    return s;
+}
+
+// The next `count` three-hourly forecasts after `now` (a Date) from
+// wttr.in's report: { hour: "15", tempC, tempF, icon }, night icons where
+// wttr.in's symbol says so. wttr.in gives each day's date and hours in the
+// forecast place's time; they are compared with this machine's clock.
+function hourlySlots(report, now, count) {
+    const days = report && report.weather ? report.weather : [];
+    const nowKey = now.getFullYear() + "-" + pad(now.getMonth() + 1, 2) + "-" + pad(now.getDate(), 2) + " " + pad(now.getHours() * 100 + now.getMinutes(), 4);
+    const result = [];
+    for (let d = 0; d < days.length && result.length < count; ++d) {
+        const hourly = days[d].hourly || [];
+        for (let i = 0; i < hourly.length && result.length < count; ++i) {
+            const time = parseInt(String(hourly[i].time || "0"), 10);
+            if (isNaN(time) || String(days[d].date) + " " + pad(time, 4) <= nowKey)
+                continue;
+            result.push({
+                hour: pad(Math.floor(time / 100), 2),
+                tempC: roundedTemp(hourly[i].tempC),
+                tempF: roundedTemp(hourly[i].tempF),
+                icon: iconForCode(hourly[i].weatherCode, wttrIsNight(hourly[i]))
+            });
+        }
+    }
+    return result;
+}
+
+// Today's high and low: Open-Meteo's when its first day is today, else
+// wttr.in's. { maxC, minC, maxF, minF }, "" where unknown.
+function todayRange(report, dailyForecastReport, todayString) {
+    const daily = dailyForecastReport && dailyForecastReport.daily ? dailyForecastReport.daily : null;
+    if (daily && daily.time && String(daily.time[0]).slice(0, 10) === String(todayString)) {
+        const maxC = daily.temperature_2m_max ? daily.temperature_2m_max[0] : "";
+        const minC = daily.temperature_2m_min ? daily.temperature_2m_min[0] : "";
+        return { maxC: roundedTemp(maxC), minC: roundedTemp(minC), maxF: roundedTemp(celsiusToFahrenheit(maxC)), minF: roundedTemp(celsiusToFahrenheit(minC)) };
+    }
+    const days = report && report.weather ? report.weather : [];
+    for (let i = 0; i < days.length; ++i) {
+        if (String(days[i].date) === String(todayString))
+            return { maxC: roundedTemp(days[i].maxtempC), minC: roundedTemp(days[i].mintempC), maxF: roundedTemp(days[i].maxtempF), minF: roundedTemp(days[i].mintempF) };
+    }
+    return { maxC: "", minC: "", maxF: "", minF: "" };
+}
+
+// The lowest low and highest high of the listed days, the shared scale of
+// their range bars; null without two distinct numbers.
+function daysScale(days, useImperial) {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < (days || []).length; ++i) {
+        const min = parseFloat(String(useImperial ? days[i].mintempF : days[i].mintempC));
+        const max = parseFloat(String(useImperial ? days[i].maxtempF : days[i].maxtempC));
+        if (!isNaN(min))
+            lo = Math.min(lo, min);
+        if (!isNaN(max))
+            hi = Math.max(hi, max);
+    }
+    return isFinite(lo) && isFinite(hi) && hi > lo ? { lo: lo, hi: hi } : null;
+}
+
+// Where a day's range bar starts and how wide it is, as fractions of the
+// track; a day without numbers gets none.
+function rangeBar(day, scale, useImperial) {
+    if (!day || !scale)
+        return { start: 0, width: 0 };
+    const min = parseFloat(String(useImperial ? day.mintempF : day.mintempC));
+    const max = parseFloat(String(useImperial ? day.maxtempF : day.maxtempC));
+    if (isNaN(min) || isNaN(max))
+        return { start: 0, width: 0 };
+    const span = scale.hi - scale.lo;
+    return { start: (min - scale.lo) / span, width: Math.max(0, max - min) / span };
+}
+
+// The temperature curve through `values`, one point per slot centre across
+// `width`, between y = top (warmest) and top + height (coldest); flat values
+// sit in the middle. Catmull-Rom through the points as cubic Béziers, their
+// control points kept inside that band so the line never overshoots it.
+// { points: [[x, y]], line: SVG path, area: the line closed down to
+// `bottom` }; empty for fewer than two values or any value that is not a
+// number, so a gap never shifts the points against their slots.
+function curve(values, width, top, height, bottom) {
+    const nums = (values || []).map(v => parseFloat(String(v)));
+    if (nums.length < 2 || nums.some(v => isNaN(v)))
+        return { points: [], line: "", area: "" };
+    const lo = Math.min(...nums), hi = Math.max(...nums);
+    const points = nums.map((v, i) => [
+        Math.round((i + 0.5) * width / nums.length * 10) / 10,
+        Math.round((hi === lo ? top + height / 2 : top + (1 - (v - lo) / (hi - lo)) * height) * 10) / 10
+    ]);
+    const r = n => Math.round(n * 10) / 10;
+    const band = y => r(Math.min(top + height, Math.max(top, y)));
+    let line = "M " + points[0][0] + " " + points[0][1];
+    for (let i = 0; i < points.length - 1; ++i) {
+        const a = points[Math.max(0, i - 1)], b = points[i], c = points[i + 1], e = points[Math.min(points.length - 1, i + 2)];
+        line += " C " + r(b[0] + (c[0] - a[0]) / 6) + " " + band(b[1] + (c[1] - a[1]) / 6)
+            + " " + r(c[0] - (e[0] - b[0]) / 6) + " " + band(c[1] - (e[1] - b[1]) / 6)
+            + " " + c[0] + " " + c[1];
+    }
+    const last = points[points.length - 1];
+    const area = line + " L " + last[0] + " " + bottom + " L " + points[0][0] + " " + bottom + " Z";
+    return { points: points, line: line, area: area };
 }
 
 // wttr.in (WorldWeatherOnline) code -> Nerd Font glyph, as

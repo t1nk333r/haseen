@@ -45,7 +45,7 @@ The owner's other repos:
 | Capture, recording, emoji, toggles, hardware, share, tests | `bin/haseen-{capture,reminder,toggle,hardware,share,test}-*`, `haseen.emoji` | 018 |
 | Screensaver (ttfx + native), night light, stay awake, DND | `haseen.{screensaver,nightlight,idle,notifications}`, `share/haseen/shell/Haseen/Flags.qml` | 019 |
 | 23 Omarchy themes, backgrounds, picker | `share/haseen/themes/`, `bin/haseen-theme-{fetch,bg}`, `haseen.themepicker`, `haseen.background` (Omarchy's carousel without the dim, in `share/haseen/shell/Haseen/Widgets/SkewCarousel.qml`), `haseen-background.service` | 020 152 156 158 |
-| Starter widgets | `haseen.{sysusage,privacy,workspaces,media,calendar,clipboard,weather,bluetooth,network}` | 021, 022 |
+| Starter widgets | `haseen.{sysusage,privacy,workspaces,media,calendar,clipboard,weather,bluetooth,network}` | 021, 022, 180 (the weather panel's two tabs) |
 | Your computer panel (SUPER + SHIFT + D, Trigger > Your Computer): the processor and memory over the last 90 s, the temperature, the root disk, the uptime and the battery, from haseen-sidecar's `sysusage` stream; its service keeps the 90 s history in the background, so the panel opens on a full graph; graphs in QtQuick.Shapes | `share/haseen/shell/plugins/haseen.computer/`, `tests/test-computer.sh` | 162, 165 |
 | Migration ledger | `bin/haseen-migrate*`, `share/haseen/lib/migrate.sh`, `share/haseen/migrations/`, `share/haseen/systemd/user/haseen-migrate-notify.service` | 028 |
 | Dual boot (EFI BootNext) and drives | `bin/haseen-boot-*`, `bin/haseen-drive-*`, `share/haseen/shell/plugins/haseen.session/` | 029 |

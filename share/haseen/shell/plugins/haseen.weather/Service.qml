@@ -67,7 +67,19 @@ Scope {
     readonly property var openMeteoCurrent: Model.openMeteoCurrentCondition(dailyForecastReport)
     readonly property var current: (hasConfiguredCoordinates && openMeteoCurrent) ? openMeteoCurrent : ((report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : openMeteoCurrent)
     readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
-    readonly property var forecastDays: Model.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(updated || Date.now()), "yyyy-MM-dd"))
+    readonly property string today: Qt.formatDate(new Date(updated || Date.now()), "yyyy-MM-dd")
+    readonly property var forecastDays: Model.buildForecastDays(report, dailyForecastReport, today)
+    // The panel's two tabs (plan 180): the next three-hourly forecasts after
+    // the current conditions, today's high and low, and the condition in
+    // words. Recomputed with each answer (updated).
+    readonly property var hours: Model.hourlySlots(report, new Date(updated || Date.now()), 7)
+    readonly property var todayRange: Model.todayRange(report, dailyForecastReport, today)
+    // From the same source as the icon (label), so the words never contradict
+    // it: Open-Meteo's once it gave the icon, else wttr.in's.
+    readonly property string condition: I18n.tr(Model.currentCondition(labelFromOpenMeteo && openMeteoCurrent ? openMeteoCurrent : current))
+    // The tab the panel opens on: the last one used, for as long as the
+    // shell runs.
+    property int panelTab: 0
     readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
     readonly property bool useImperial: Model.shouldUseImperial(settings.units, Qt.locale().name, reportCountry)
 

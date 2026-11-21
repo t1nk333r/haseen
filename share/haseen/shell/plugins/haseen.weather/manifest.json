@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "haseen.weather",
   "name": "Weather",
-  "version": "2.0.1",
-  "description": "Condition icon in the bar and a forecast panel (wttr.in + Open-Meteo, every 15 min while enabled; off by default). Location: settings, else GeoClue, else IP",
+  "version": "2.1.0",
+  "description": "Condition icon and temperature in the bar and a forecast panel with an hourly and a curve tab (wttr.in + Open-Meteo, every 15 min while enabled; off by default). Location: settings, else GeoClue, else IP",
   "kinds": [
     "service",
     "bar-widget",
@@ -29,6 +29,11 @@
       "type": "string",
       "default": "",
       "description": "metric (°C, km/h), imperial (°F, mph), or empty = from the forecast's country, else the locale"
+    },
+    "temperature": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show the temperature beside the icon in the bar"
     },
     "debugIpc": {
       "type": "boolean",
