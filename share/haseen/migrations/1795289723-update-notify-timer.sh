@@ -13,7 +13,13 @@ source "$HASEEN_PATH/lib/common.sh"
 
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 [[ -L $units/graphical-session.target.wants/haseen-shell.service ]] || exit 0
-[[ -L $units/timers.target.wants/haseen-update-notify.timer ]] && exit 0
+if [[ -L $units/timers.target.wants/haseen-update-notify.timer ]]; then
+    # Enabled already (by hand, or an earlier build): remember it, so turning
+    # it off later counts as a choice.
+    run mkdir -p "$HASEEN_USER_STATE"
+    run touch "$HASEEN_USER_STATE/update-notify-enabled"
+    exit 0
+fi
 
 if ! systemctl --user show-environment >/dev/null 2>&1; then
     warn "haseen-update-notify.timer was not enabled (no user manager here); to turn the update notice on: systemctl --user enable --now haseen-update-notify.timer"

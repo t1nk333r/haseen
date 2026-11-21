@@ -146,6 +146,12 @@ layer_apply() {
     fi
     if [[ -L $UPDATE_NOTIFY_TIMER_WANTS ]]; then
         info "$UPDATE_NOTIFY_TIMER already enabled"
+        # Enabled by hand or by an earlier build: turning it off later is a
+        # choice all the same.
+        if [[ ! -e $UPDATE_NOTIFY_MARK ]]; then
+            run mkdir -p "$HASEEN_USER_STATE"
+            run touch "$UPDATE_NOTIFY_MARK"
+        fi
     elif [[ -e $UPDATE_NOTIFY_MARK ]]; then
         info "$UPDATE_NOTIFY_TIMER stays off (your choice)"
     else

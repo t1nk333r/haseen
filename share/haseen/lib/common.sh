@@ -482,7 +482,7 @@ sudo_keep_warm() {
     fi
     sudo true || return 1
     local owner=$$ interval=${HASEEN_SUDO_WARM_INTERVAL:-60}
-    [[ $interval =~ ^[0-9]+$ ]] || interval=60
+    [[ $interval =~ ^[1-9][0-9]*$ ]] || interval=60
     (
         # The sleep is waited on, not run in the foreground, so a stop ends
         # it at once instead of leaving it to run out.

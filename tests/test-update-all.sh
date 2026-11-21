@@ -160,7 +160,7 @@ assert_status "the hand-over to the prefix runs" 0 "$STATUS"
 assert_contains "the rest is the prefix's router, in the second stage, on its own tree" "$(calls)" \
     "prefix-router update all --yes stage=rest path=unset"
 assert_not_contains "and the checkout's code does not upgrade" "$(calls)" "pacman -Syu"
-rm -rf "$prefix/bin"
+rm -rf "${prefix:?}/bin"
 
 # --- the question ---------------------------------------------------------------
 push "bar: a new widget"
@@ -264,6 +264,9 @@ assert_contains "it enables and starts the timer" "$(calls)" "systemctl --user e
 assert_eq "and remembers that haseen turned it on" "yes" "$([[ -e $HOME/.local/state/haseen/update-notify-enabled ]] && echo yes || echo no)"
 mkdir -p "$wants/timers.target.wants"
 ln -s /dev/null "$wants/timers.target.wants/haseen-update-notify.timer"
+rm -f "$HOME/.local/state/haseen/update-notify-enabled"
 : >"$LOG"
 capture runmig
 assert_eq "an enabled timer is left as it is" "" "$(calls)"
+assert_eq "and remembered, so turning it off later is a choice" "yes" \
+    "$([[ -e $HOME/.local/state/haseen/update-notify-enabled ]] && echo yes || echo no)"
