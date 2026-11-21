@@ -792,6 +792,10 @@ Column {
                 Shape {
                     anchors.fill: parent
                     visible: root.curve.line !== ""
+                    // Antialiased curves on the GPU scene graph (luna's
+                    // rhi), which otherwise draws them stair-stepped; the
+                    // software renderer antialiases either way (plan 181).
+                    preferredRendererType: Shape.CurveRenderer
 
                     ShapePath {
                         strokeColor: "transparent"
