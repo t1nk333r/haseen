@@ -82,6 +82,13 @@ ShellRoot {
             console.info("haseen: panel toggle: plugin '" + id + "' is disabled");
             return;
         }
+        // The capture toolbar opens over the open panel, on its screen, rather
+        // than in its place: PRINT is there to capture it (plan 184).
+        const capture = Plugins.roles.capture;
+        if (capture && capture.id === id && openPanels.length > 0) {
+            openPanels = openPanels.concat([id]);
+            return;
+        }
         panelOpener = press;
         panelScreen = press ? press.screen : focusedScreen();
         openPanels = [id];

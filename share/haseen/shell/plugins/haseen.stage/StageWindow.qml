@@ -56,6 +56,19 @@ PanelWindow {
         }
     }
 
+    // A screenshot that took the keyboard (plan 184): when it is over, take
+    // it back, as when the stage appeared, so Escape still closes it. Only
+    // if it was taken: Exclusive again on a window that stayed active would
+    // never be primed back to OnDemand.
+    Connections {
+        target: Capture
+
+        function onActiveChanged(): void {
+            if (!Capture.active && !view.Window.active)
+                win.focusPrimed = false;
+        }
+    }
+
     // Another workspace on this monitor, however it came: the stacks are
     // stale, so the stage goes.
     Connections {

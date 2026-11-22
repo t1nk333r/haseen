@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Haseen
 import qs.Haseen.Widgets
@@ -70,10 +69,14 @@ PanelWindow {
         }
     }
 
-    HyprlandFocusGrab {
+    // A screenshot holds the grab instead of closing the panel (plan 184),
+    // then the panel takes the keyboard again, as when it appeared.
+    CaptureFocusGrab {
         windows: [popup]
         active: popup.visible
+        ignoresCapture: Plugins.roles.capture !== undefined && Plugins.roles.capture.id === popup.pluginId
         onCleared: popup.closeRequested()
+        onResumed: popup.focusPrimed = false
     }
 
     // Escape closes the panel whatever item inside it has focus. A key handler

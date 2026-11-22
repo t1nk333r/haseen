@@ -163,14 +163,17 @@ Item {
     }
 
     // A short grace after the pointer leaves, so a pointer that slips off a
-    // stack for a moment does not close the stage.
+    // stack for a moment does not close the stage. A screenshot tool's layer
+    // over the stage takes the pointer too, and is no leaving (plan 184): the
+    // stage stays to be captured, and afterwards until the pointer comes back
+    // and leaves again.
     // haseen:ui-timeout
     Timer {
         id: grace
 
         interval: 350
         repeat: false
-        onTriggered: if (!view.inside)
+        onTriggered: if (!view.inside && !Capture.active)
             view.dismissed()
     }
 }
