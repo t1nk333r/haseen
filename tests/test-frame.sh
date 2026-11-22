@@ -205,7 +205,7 @@ menu="$(cat "$tray_dir/TrayMenu.qml")"
 assert_contains "menu drills into submenus" "$menu" "function enterSubmenu("
 assert_contains "menu entries trigger" "$menu" "entry.modelData.triggered();"
 assert_contains "menu settle is a marked UI timeout" "$menu" $'// haseen:ui-timeout\n    Timer {'
-assert_contains "menu closes on outside click" "$menu" "HyprlandFocusGrab {"
+assert_contains "menu closes on outside click, not under a screenshot (plan 184)" "$menu" "CaptureFocusGrab {"
 
 # --- toggle (session only) --------------------------------------------------
 sandbox frame-toggle

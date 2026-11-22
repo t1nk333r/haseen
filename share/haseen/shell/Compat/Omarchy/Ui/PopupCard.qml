@@ -3,9 +3,9 @@
 // haseen compatibility: palette and geometry follow qs.Haseen theme tokens.
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 import qs.Commons
 import qs.Commons as Commons
+import qs.Haseen.Widgets as HaseenWidgets
 
 PopupWindow {
   id: root
@@ -103,7 +103,8 @@ PopupWindow {
   // is routed only to the listed windows; clicking anywhere else clears the
   // grab and we close the popup. Skipped for hover-mode popups so the cursor
   // can move freely between the trigger and the popup.
-  HyprlandFocusGrab {
+  // A screenshot keeps the card open to be captured (haseen plan 184).
+  HaseenWidgets.CaptureFocusGrab {
     active: root.open && root.triggerMode === "click"
     windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
     onCleared: root.close()

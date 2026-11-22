@@ -1,8 +1,8 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 import qs.Common
 import qs.Haseen as Haseen
+import qs.Haseen.Widgets as HaseenWidgets
 import qs.Compat as Compat
 
 // qs.Modules.Plugins.PluginPopout for DankMaterialShell plugins (architecture
@@ -105,7 +105,8 @@ PopupWindow {
         }
     }
 
-    HyprlandFocusGrab {
+    // A screenshot keeps the popout open to be captured (plan 184).
+    HaseenWidgets.CaptureFocusGrab {
         active: root.shouldBeVisible
         windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
         onCleared: root.close()

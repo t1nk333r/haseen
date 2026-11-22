@@ -59,6 +59,14 @@ Scope {
     // A controller press while the toolbar is open, for the toolbar.
     signal padPressed(string button)
 
+    // The open toolbar and a capture waiting out its delay hold every other
+    // panel, menu and the stage open, so the capture shows them (plan 184).
+    Binding {
+        target: Capture
+        property: "toolbar"
+        value: root.panelOpen || root.pending
+    }
+
     function change(key: string, value: var): void {
         state = Model.withChange(state, key, value);
     }
@@ -124,9 +132,13 @@ Scope {
 
         repeat: false
         onTriggered: {
-            root.pending = false;
             const argv = root.pendingCommand;
             root.pendingCommand = [];
+            // Expected before `pending` drops, so the panels it holds never
+            // see a moment without a capture.
+            if (argv.length > 0)
+                Capture.expect();
+            root.pending = false;
             if (argv.length > 0)
                 Apps.launch(argv, {});
         }

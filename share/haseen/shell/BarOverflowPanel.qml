@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Haseen
 import qs.Haseen.Widgets
@@ -152,7 +151,8 @@ PanelWindow {
 
     // The bar is inside the grab: its button closes the panel itself, and a
     // press on another bar widget is not an outside click.
-    HyprlandFocusGrab {
+    // A screenshot does not close it either (plan 184).
+    CaptureFocusGrab {
         windows: [panel, panel.barWindow]
         active: panel.visible && !panel.hold
         // While held, the grab is off and its end means nothing.
@@ -160,6 +160,7 @@ PanelWindow {
             if (!panel.hold)
                 panel.closeRequested();
         }
+        onResumed: panel.focusPrimed = false
     }
 
     // A popup that becomes active right after a press on a widget in here is

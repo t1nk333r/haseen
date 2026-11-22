@@ -5,8 +5,8 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
-import Quickshell.Hyprland
 import qs.Haseen
+import qs.Haseen.Widgets
 
 // A tray item's DBus menu rendered in-shell. Submenus drill down inside the
 // same card: each level keeps its own live QsMenuOpener, because a child
@@ -113,7 +113,8 @@ PopupWindow {
         onTriggered: root.settling = false
     }
 
-    HyprlandFocusGrab {
+    // A screenshot keeps the menu open to be captured (plan 184).
+    CaptureFocusGrab {
         windows: [root]
         active: root.visible
         onCleared: root.closeRequested()
