@@ -25,7 +25,12 @@ unit to enable) needs a migration, or it reaches only new installs (plan
 182).
 
 A fresh HOME has nothing to upgrade, so `install.sh` records every shipped
-migration as sealed (`haseen migrate --seal`) instead of running them. A HOME
+migration as sealed (`haseen migrate --seal`) instead of running them. A
+migration that checks and repairs the machine rather than the user's files
+(the polkit stack, Omarchy's own ledger) carries the line `# haseen:seal run`,
+and sealing runs it instead: a HOME new to haseen says nothing about `/etc`.
+One that fails there is named and stays pending, and the rest are still
+sealed (plan 186). A HOME
 haseen has run in (a migration ledger, `~/.config/haseen/shell.json` or
 `~/.local/state/haseen/current/theme.name`) gets what is pending run instead,
 even when it has no ledger yet. The ledger lives in the user's state dir, so a

@@ -11,6 +11,10 @@
 # Safe to re-run: a sealed or applied migration is left alone, and without
 # Omarchy's package there is nothing to seal. It never touches
 # ~/.config/omarchy/plugins.
+#
+# A first install runs it too rather than sealing it (plan 186): an Omarchy
+# user's HOME is new to haseen, but Omarchy's ledger in it is not.
+# haseen:seal run
 
 # shellcheck source=../lib/omarchy-guard.sh
 source "$HASEEN_PATH/lib/omarchy-guard.sh"
