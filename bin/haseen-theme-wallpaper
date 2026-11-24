@@ -102,6 +102,10 @@ if [[ -e $theme_dir || -L $theme_dir ]]; then
     fi
     $ours || die "$theme_dir is a theme of yours that haseen theme wallpaper did not write; pick another --name"
 fi
+# The link replaces only a link: a picture of the user's own that happens to
+# carry the link's name (backgrounds/<name>/<name>.png) is their file.
+[[ ! -e $link || -L $link ]] ||
+    die "$link is a picture of yours, not a link haseen theme wallpaper made; move it or pick another --name"
 
 flags=()
 $light && flags+=(--light)

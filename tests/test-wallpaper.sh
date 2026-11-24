@@ -195,6 +195,18 @@ assert_eq "and no overlay of it was written" 1 \
     "$([[ -e $XDG_CONFIG_HOME/haseen/themes/tokyo-night ]] && echo 0 || echo 1)"
 capture haseen theme wallpaper "$wall" --name tokyo-night --dry-run
 assert_status "a dry run refuses it too" 1 "$STATUS"
+# A picture of the user's own under the link's name is never replaced by the
+# link, and nothing is written for the theme (plan 194, review).
+mkdir -p "$XDG_CONFIG_HOME/haseen/backgrounds/mypic"
+cp "$other" "$XDG_CONFIG_HOME/haseen/backgrounds/mypic/mypic.png"
+capture haseen theme wallpaper "$wall" --name mypic --no-apply
+assert_status "a picture of the user's under the link's name is refused" 1 "$STATUS"
+assert_contains "and the refusal names it" "$OUTPUT" "is a picture of yours"
+assert_eq "the picture is untouched" 0 \
+    "$([[ ! -L $XDG_CONFIG_HOME/haseen/backgrounds/mypic/mypic.png ]] &&
+        cmp -s "$other" "$XDG_CONFIG_HOME/haseen/backgrounds/mypic/mypic.png" && echo 0 || echo 1)"
+assert_eq "and no theme was written" 1 \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/themes/mypic ]] && echo 0 || echo 1)"
 # What a failed run of an older version left (the directory and its .lock)
 # is this command's own.
 mkdir -p "$XDG_CONFIG_HOME/haseen/themes/leftover"
