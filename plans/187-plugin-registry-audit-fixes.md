@@ -8,18 +8,18 @@
   update and lock skip what is not a link into a checkout, install puts
   back what it moved when the new commit does not validate, and a fresh
   install is written down as off. A plugin someone already installed keeps
-  the state it has.
+  the state it has, through a reinstall too.
 - **Depends on**: 035 (the plugin registry and lockfile), 052 (the Omarchy
   settings mirror), 093 (omarchy-plugin-add never enables)
 - **Category**: plugins
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit of 2f7f472a)
-- **State**: DONE 2026-11-24 (`tests/test-registry.sh` 95/95 and
-  `tests/test-omarchy-menu.sh` 167/167, in the affected selection (14 files,
-  2097/2097) against
+- **State**: DONE 2026-11-24, review round 1 taken
+  (`tests/test-registry.sh` 103/103 and `tests/test-omarchy-menu.sh`
+  167/167, in the affected selection (14 files, 2105/2105) against
   9a9e82ab; on 9a9e82ab's code the new registry test aborts after the
-  emptied registries.json, and with only fix 2 applied 25 of its 95 checks
-  fail)
+  emptied registries.json, and with only fix 2 applied 25 of the first
+  round's 95 checks fail)
 
 ## Problem
 
@@ -102,15 +102,20 @@ plugin new` reserves the namespace (`bin/haseen-plugin-new:66`).
 **Fix.** `install` without `--enable` writes a new id as off with `haseen
 plugin disable` unless `shell.json` already switches it (`plugins.<id>.enabled`
 present) or places it (a bar section or `services`), and its last line says
-`off until: haseen plugin enable <id>`. It refuses `haseen.*` before anything
+`off until: haseen plugin enable <id>`. A reinstall over a plugin that is
+already there (the confirmed replace) writes nothing either: that plugin
+keeps the state it had, including one installed before this rule with no
+entry. It refuses `haseen.*` before anything
 is fetched; a deliberate copy of a built-in is still made by hand, as the
 skill shows. `docs/architecture.md` §5.3 says both.
 
 **Test.** `tests/test-registry.sh`: after `install alice.load`,
 `plugins["alice.load"].enabled` is `false` and the output names `haseen
 plugin enable`; an `alice.clock` that `shell.json` already turned on stays
-on through its install; `install .../haseen.lock` fails with "reserved for
-built-in plugins" and links nothing.
+on through its install; a reinstall over an installed `alice.load` whose
+entry was deleted from `shell.json` leaves it without one;
+`install .../haseen.lock` fails with "reserved for built-in plugins" and
+links nothing.
 
 **Rejected.**
 - Making every non-built-in plugin count as off unless `enabled: true`
@@ -142,7 +147,9 @@ it moves an existing `plugins/<id>` (link or directory) aside to a hidden
 entries), links and validates the id, then checks every lockfile sibling
 linked into that checkout with the new `registry_check` (validate without
 removing). If anything fails, or the link step dies, `put_back` checks the
-old HEAD out again, removes the new link and puts the aside entry back; on
+old HEAD out again, removes the new link (a `linked` flag set just before
+`registry_link`, so a fresh install with nothing aside loses it too) and
+puts the aside entry back if there is one; on
 success the aside copy is removed and the pins move. The move aside comes
 after the fetch, so a fetch that fails (no network, no such commit) never
 touches the installed plugin.
@@ -152,7 +159,9 @@ that breaks `alice.clock` fails, names the sibling, leaves `alice.load` at
 1.1.0, its pin at the second commit, the sibling valid and no aside copy;
 reinstalling at a commit where `alice.load` itself does not validate fails
 and leaves the old, valid `alice.load`. On 9a9e82ab's install (with fix 2
-applied so the test gets this far) all seven of these checks fail.
+applied so the test gets this far) all seven of these checks fail. After
+`uninstall alice.load`, a fresh install at the commit that breaks
+`alice.clock` fails and leaves neither a link nor a pin.
 
 **Rejected.**
 - Validating siblings with `registry_validate`: it removes a failing link,
@@ -200,3 +209,28 @@ rule in CLAUDE.md: that rule is about files haseen seeded, and Omarchy's
 `shell.json` is not one; plan 052 and `docs/architecture.md` §5.4 are its
 record. Whether the ground rule should name it is the owner's call, and
 nothing in the code depends on it.
+
+## Review
+
+The first review (Sonnet, independent) asked for one change and raised two
+nits.
+
+- **Should fix: a fresh install whose sibling check failed kept its link.**
+  `put_back` returned as soon as nothing had been put aside, so with
+  `alice.load` uninstalled, `install alice.load` at a commit that broke
+  `alice.clock` exited 1 saying it was not installed but left
+  `plugins/alice.load` linked into the rolled-back checkout: unpinned, never
+  written as off (the off-write comes after the failure), so on for a panel
+  or launcher provider, and pinned by the next `lock --write`. Fixed:
+  `put_back` removes `target_dir` whenever this run linked it, then moves an
+  aside entry back if there is one. The new test (uninstall, install at the
+  breaking commit, no link and no pin) fails on the first head's install
+  script and passes now.
+- **Nit: a reinstall turned a plugin off.** The confirmed replace of a
+  plugin installed before this change, with no `shell.json` entry, wrote it
+  as off, against the Risk line above. Taken: the off-write is skipped when
+  something was replaced, with a test (delete the entry, reinstall, still no
+  entry) that also fails on the first head.
+- **Nit: restore leaves a restored plugin on when the other machine had no
+  `shell.json`.** Already recorded under fix 3's rejected options (restore
+  reproduces another machine, whose `shell.json` decides); no change.

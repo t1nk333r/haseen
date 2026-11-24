@@ -228,6 +228,28 @@ capture haseen plugin validate "$XDG_CONFIG_HOME/haseen/plugins/alice.clock"
 assert_status "the sibling still validates" 0 "$STATUS"
 assert_eq "no copy is left aside" "" "$(compgen -G "$XDG_CONFIG_HOME/haseen/plugins/.alice.load.*" || true)"
 
+# The same on a fresh install, with nothing to put aside: the new link goes
+# too, rather than staying behind unpinned and, never written as off, on.
+capture haseen plugin uninstall alice.load --yes
+assert_status "a plugin is uninstalled" 0 "$STATUS"
+capture haseen plugin install alice.load --yes
+assert_status "a fresh install that breaks a sibling fails" 1 "$STATUS"
+assert_contains "and names the sibling" "$OUTPUT" "alice.clock does not validate"
+assert_eq "and leaves no link behind" "none" \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/plugins/alice.load || -L $XDG_CONFIG_HOME/haseen/plugins/alice.load ]] || echo none)"
+assert_eq "nor a pin" "null" \
+    "$(jq -r '.plugins["alice.load"] // "null"' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
+capture haseen plugin install alice.load --commit "$second_commit" --yes
+assert_status "at the commit the sibling validates at, it installs" 0 "$STATUS"
+# A replace keeps the state the plugin had, even with nothing in shell.json
+# (one installed before installs wrote new ids as off): it is not turned off.
+jq 'del(.plugins["alice.load"])' "$XDG_CONFIG_HOME/haseen/shell.json" >"$SANDBOX/shell.json"
+mv "$SANDBOX/shell.json" "$XDG_CONFIG_HOME/haseen/shell.json"
+capture haseen plugin install alice.load --commit "$second_commit" --yes
+assert_status "a reinstall replaces it" 0 "$STATUS"
+assert_eq "and does not write it as off" "false" \
+    "$(jq -r '.plugins // {} | has("alice.load")' "$XDG_CONFIG_HOME/haseen/shell.json")"
+
 # A replacement that does not validate itself gives the old link back.
 plugin_files "$repo/packages/alice.clock" alice.clock
 rm "$repo/Widget.qml"
