@@ -205,3 +205,15 @@ starts with a 503 login that is shown as `HTTP 503`, holds nothing and is
 followed by a fresh login. Against the first version's `Service.qml` the
 two new engine checks fail (`down|Login failed|1` and one login instead of
 two); they pass here.
+
+Round 2 (Sonnet, approve, one nit). A transient login error goes through
+`commitHealth`'s hysteresis (`Model.decideHealth`): a row that was up
+stays up on the first 502 or 503 and goes down on the second, as for the
+other request kinds, but the engine probe only covered a login error on a
+row that was not yet up. Taken: once the right password has logged in, the
+probe expires the session (a 403 on `/api/v2/torrents/info`) and answers
+the next two logins with a 503. It checks that the row is still `up` with
+its old status after the first miss, shows `HTTP 503` after the second,
+and logs in again on the poll after. With `decideHealth`'s threshold
+lowered to one miss, the new check fails (`tests/test-omarr.sh`, 98 of 100);
+it passes here.

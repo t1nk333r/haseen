@@ -609,13 +609,18 @@ EOF
     # qBittorrent answers a wrong password with 200 "Fails.": the row is
     # down ("Login failed") and the same credentials are not sent again,
     # even with the panel's 2 s downloader poll running; new ones go out at
-    # once. A Sonarr added later seeds the history it finds instead of
-    # notifying every row, and a grab after that is notified.
+    # once. Once it is up, a session that expires into two 503s on login
+    # keeps the row up through the first miss and shows the code on the
+    # second (Model.decideHealth's hysteresis), then logs in again. A Sonarr
+    # added later seeds the history it finds instead of notifying every
+    # row, and a grab after that is notified.
     LOG3="$SANDBOX/curl-login.log"
     : >"$LOG3"
     FLAKY3="$SANDBOX/qbit-login-503"
-    : >"$FLAKY3"
+    printf '1\n' >"$FLAKY3"
     export CURL_FLAKY3="$FLAKY3"
+    EXPIRE3="$SANDBOX/qbit-session-expired"
+    export CURL_EXPIRE3="$EXPIRE3"
     jq -n '{records: [range(1; 4) | {id: (9000 + .), eventType: "grabbed", series: {title: ("Old Show " + tostring)}}]}' >"$FIX/history-3.json"
     jq '.records = [{id: 9004, eventType: "grabbed", series: {title: "New Show"}}] + .records' "$FIX/history-3.json" >"$FIX/history-4.json"
     command cp -f "$FIX/history-3.json" "$FIX/history.json"
@@ -631,9 +636,11 @@ printf "%s\n" "$*" >>"$CURL_LOG3"
 case "$url" in
 */api/v2/auth/login)
     printf "login %s\n" "$(cat "$body")" >>"$CURL_LOG3"
-    if [ -e "$CURL_FLAKY3" ]; then rm -f "$CURL_FLAKY3"; printf "Service Unavailable\n503"
+    n="$(cat "$CURL_FLAKY3" 2>/dev/null || true)"
+    if [ "${n:-0}" -gt 0 ]; then printf "%s\n" "$((n - 1))" >"$CURL_FLAKY3"; printf "Service Unavailable\n503"
     elif grep -q "password=right" "$body"; then [ -n "$jar" ] && printf "jar\n" >"$jar"; printf "Ok.\n200"; else printf "Fails.\n200"; fi ;;
-*/api/v2/torrents/info*) case " $* " in *" -b "*) printf "[]\n200" ;; *) printf "Forbidden\n403" ;; esac ;;
+*/api/v2/torrents/info*) if [ -e "$CURL_EXPIRE3" ]; then rm -f "$CURL_EXPIRE3"; printf "Forbidden\n403"; exit 0; fi
+    case " $* " in *" -b "*) printf "[]\n200" ;; *) printf "Forbidden\n403" ;; esac ;;
 */api/v2/transfer/info) printf "{\"dl_info_speed\":0,\"up_info_speed\":0}\n200" ;;
 */api/v3/system/status) cat "$CURL_FIX/status.json"; printf "\n200" ;;
 */api/v3/queue*) printf "{\"records\":[],\"totalRecords\":0}\n200" ;;
@@ -682,7 +689,7 @@ ShellRoot {
         repeat: true
         running: true
         onTriggered: {
-            if (++probe.ticks > 450) {
+            if (++probe.ticks > 600) {
                 console.log("RESULT " + JSON.stringify({ error: "timeout at step " + probe.step, seen: probe.seen }));
                 Qt.quit();
                 return;
@@ -713,6 +720,16 @@ ShellRoot {
                 probe.step = 2;
             } else if (probe.step === 2 && probe.snap("qbittorrent").health === "up") {
                 probe.seen.fixed = { status: probe.snap("qbittorrent").statusText };
+                // The session expires (403) and the next two logins meet a 503.
+                Quickshell.execDetached(["sh", "-c", "printf '2\\n' >'$FLAKY3' && : >'$EXPIRE3'"]);
+                probe.step = 6;
+            } else if (probe.step === 6 && s.healthMisses["svc-1"] === 1) {
+                probe.seen.firstMiss = { health: probe.snap("qbittorrent").health, status: probe.snap("qbittorrent").statusText };
+                probe.step = 7;
+            } else if (probe.step === 7 && probe.snap("qbittorrent").health === "down") {
+                probe.seen.secondMiss = { status: probe.snap("qbittorrent").statusText };
+                probe.step = 8;
+            } else if (probe.step === 8 && probe.snap("qbittorrent").health === "up") {
                 s.addService({ kind: "sonarr", name: "Sonarr", url: "http://127.0.0.1:8989" }, { apiKey: "$FIXTURE" });
                 probe.step = 3;
             } else if (probe.step === 3 && (probe.snap("sonarr").activity || []).length === 3 && probe.idle()) {
@@ -739,7 +756,10 @@ EOF
     assert_eq "engine: the wrong password went out twice, met a 503 and a refusal, then never again" "2" "$(grep -c '^login username=admin&password=wrong$' "$LOG3")"
     assert_eq "engine: nothing else went to qBittorrent while they held" "" \
         "$(sed -n '/password=right/q;p' "$LOG3" | grep ':8081/' | grep -v ':8081/api/v2/auth/login' || true)"
-    assert_eq "engine: new credentials go out at once and log in" "1|Idle" "$(grep -c '^login username=admin&password=right$' "$LOG3")|$(r .fixed.status)"
+    assert_eq "engine: new credentials go out at once and log in" "Idle" "$(r .fixed.status)"
+    assert_eq "engine: a row that was up stays up through one 503 on login" "up|Idle" "$(r '[.firstMiss.health, .firstMiss.status] | join("|")')"
+    assert_eq "engine: and shows the code on the second" "HTTP 503" "$(r .secondMiss.status)"
+    assert_eq "engine: the right password went out once, twice into a 503, then logged in again" "4" "$(grep -c '^login username=admin&password=right$' "$LOG3")"
     assert_eq "engine: a Sonarr added mid-session notifies none of the history it finds" "0" "$(r .added.grabs)"
     assert_eq "engine: and notifies the grab that follows, once" "1" "$(r '.later.grabs | length')"
     assert_contains "engine: naming it" "$(r '.later.grabs[0]')" "Sonarr grabbed New Show"
