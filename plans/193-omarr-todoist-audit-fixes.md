@@ -14,8 +14,8 @@
 - **Category**: plugins
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit of 2f7f472a)
-- **State**: DONE 2026-11-24 (`tests/test-omarr.sh` 96/96,
-  `tests/test-todoist.sh` 69/69; review pending)
+- **State**: DONE 2026-11-24 (`tests/test-omarr.sh` 97/97,
+  `tests/test-todoist.sh` 69/69; review round 1 addressed, see Review)
 
 Each finding was traced again on main at 9a9e82ab before it was fixed. The
 line numbers below are from that commit, which matches the audited
@@ -39,8 +39,14 @@ the loop. On 9a9e82ab the new engine check showed the row as
 probe held the panel open. qBittorrent's stock settings ban an address
 after 5 failures, for an hour.
 
-**Fix.** `Model.qbitLoginOk(status, body)` decides a login: any `Fails`
-body or non-2xx/3xx answer is a refusal. A refusal is committed down
+**Fix.** `Model.qbitLoginOutcome(status, body)` decides a login: "ok",
+"refused" or "error". Only an answer about the credentials is a refusal: a
+2xx/3xx with a `Fails` body, or a 401 or 403 (a ban, or a WebUI that wants
+other credentials). Any other answer (a 502 or 503 from a reverse proxy or
+VPN container while qBittorrent restarts, a 404, a 429, no status) is an
+error: it clears any hold, is committed through `commitHealth` with its
+code ("HTTP 503"), and the next poll logs in again, as before this plan.
+`Model.qbitLoginOk` is `outcome === "ok"`. A refusal is committed down
 through `Model.applyLoginFailure` (health down, status "Login failed", new
 string, with Arabic), whatever the HTTP code. The service records
 `{key, at}` in `qbitLoginFailed`. The key is an md5 of the URL, user name
@@ -51,14 +57,17 @@ nothing to that service. `enqueueQbitLogin`, reached from a 401/403 on
 credentials or a new URL change the key, so they go out at once. A good
 login clears the record, and so does removing the service.
 
-**Test.** `haseen.omarr/tests/Model.test.js`: 200 `Fails.`, a ban page and
-no answer are refusals. A refused snapshot is down with "Login failed".
+**Test.** `haseen.omarr/tests/Model.test.js`: 200 `Fails.`, 401 and a 403
+ban page are refusals; 502, 503 (even with a `Fails.` body), 504, 404, 429
+and no status are errors. A refused snapshot is down with "Login failed".
 The hold lasts the hour for the same key, ends after it or for a new key,
 and never holds for an empty key or a clock set back. `tests/test-omarr.sh`
-engine probe: a qBittorrent with a wrong password shows `down|Login failed`
-and stays so through 5 s of the open panel's 2 s poll. The wrong password
-is sent exactly once, and nothing else goes to that qBittorrent while the
-hold lasts. Saving the right password logs in at once and the row reads
+engine probe: the first login meets a 503, and the row reads
+`down|HTTP 503` with nothing held. The open panel's next 2 s poll logs in
+again, meets the wrong password's 200 `Fails.`, shows `down|Login failed`
+and stays so through 5 s of polling. The wrong password is sent exactly
+twice (the 503 and the refusal), and nothing else goes to that qBittorrent
+while the hold lasts. Saving the right password logs in at once and the row reads
 "Idle".
 
 **Rejected.** Backing off exponentially (2 s, 4 s, 8 s…): five failures
@@ -67,7 +76,11 @@ until the credentials change: a qBittorrent that was misconfigured on its
 own side would never recover without a settings edit, and one retry an hour
 stays under five failures for hours. Showing "Login failed" but keeping the
 `torrents/info` poll: with blank fields it is what triggers the `admin`
-login, so the loop would remain.
+login, so the loop would remain. Holding on any non-2xx/3xx answer (this
+plan's first version): a 502 or 503 while qBittorrent restarts behind a
+proxy says nothing about the password, yet it held the right credentials
+for an hour behind "Login failed", with no way to retry short of editing
+them (see Review).
 
 ## 2. Todoist: a second edit or delete sent while the first runs is lost
 
@@ -175,3 +188,20 @@ timer.
 `haseen.omarr/UPSTREAM.md` (per-list seeding under Notifications, a
 qBittorrent login entry) and `haseen.todoist/UPSTREAM.md` (one queue for
 close, edit and delete, the bar count's mode) describe the new behaviour.
+
+## Review
+
+Round 1 (Sonnet, request changes, one should-fix). The first version held
+the credentials on any non-2xx/3xx login answer. A transient 502, 503,
+504, 404 or 429 on `/api/v2/auth/login`, common when qBittorrent sits
+behind a reverse proxy or a VPN container and restarts, then read "Login
+failed" and sent nothing to that service for an hour although the
+credentials were right; before this plan the next poll recovered, and
+`forcePoll` did not clear the hold. Fixed by splitting the decision
+(`Model.qbitLoginOutcome`): only a `Fails` body or a 401/403 holds; any
+other answer clears the hold, shows its HTTP code and is retried on the
+next poll. `Model.test.js` covers each code, and the engine probe now
+starts with a 503 login that is shown as `HTTP 503`, holds nothing and is
+followed by a fresh login. Against the first version's `Service.qml` the
+two new engine checks fail (`down|Login failed|1` and one login instead of
+two); they pass here.

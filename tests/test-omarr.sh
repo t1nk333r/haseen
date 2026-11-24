@@ -604,6 +604,8 @@ EOF
     assert_not_contains "engine: the repaired key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
 
     # A refused qBittorrent login and a service added mid-session (plan 193).
+    # The first login meets a 503 (a proxy while qBittorrent restarts): the
+    # row shows the code and nothing is held, so the next poll logs in again.
     # qBittorrent answers a wrong password with 200 "Fails.": the row is
     # down ("Login failed") and the same credentials are not sent again,
     # even with the panel's 2 s downloader poll running; new ones go out at
@@ -611,6 +613,9 @@ EOF
     # notifying every row, and a grab after that is notified.
     LOG3="$SANDBOX/curl-login.log"
     : >"$LOG3"
+    FLAKY3="$SANDBOX/qbit-login-503"
+    : >"$FLAKY3"
+    export CURL_FLAKY3="$FLAKY3"
     jq -n '{records: [range(1; 4) | {id: (9000 + .), eventType: "grabbed", series: {title: ("Old Show " + tostring)}}]}' >"$FIX/history-3.json"
     jq '.records = [{id: 9004, eventType: "grabbed", series: {title: "New Show"}}] + .records' "$FIX/history-3.json" >"$FIX/history-4.json"
     command cp -f "$FIX/history-3.json" "$FIX/history.json"
@@ -626,7 +631,8 @@ printf "%s\n" "$*" >>"$CURL_LOG3"
 case "$url" in
 */api/v2/auth/login)
     printf "login %s\n" "$(cat "$body")" >>"$CURL_LOG3"
-    if grep -q "password=right" "$body"; then [ -n "$jar" ] && printf "jar\n" >"$jar"; printf "Ok.\n200"; else printf "Fails.\n200"; fi ;;
+    if [ -e "$CURL_FLAKY3" ]; then rm -f "$CURL_FLAKY3"; printf "Service Unavailable\n503"
+    elif grep -q "password=right" "$body"; then [ -n "$jar" ] && printf "jar\n" >"$jar"; printf "Ok.\n200"; else printf "Fails.\n200"; fi ;;
 */api/v2/torrents/info*) case " $* " in *" -b "*) printf "[]\n200" ;; *) printf "Forbidden\n403" ;; esac ;;
 */api/v2/transfer/info) printf "{\"dl_info_speed\":0,\"up_info_speed\":0}\n200" ;;
 */api/v3/system/status) cat "$CURL_FIX/status.json"; printf "\n200" ;;
@@ -691,9 +697,13 @@ ShellRoot {
             const s = probe.svc;
             if (probe.step === 0 && s.ready && probe.snap("qbittorrent").health !== undefined
                 && probe.snap("qbittorrent").health !== "unknown" && probe.idle()) {
-                probe.seen.refused = { health: probe.snap("qbittorrent").health, status: probe.snap("qbittorrent").statusText };
+                probe.seen.transient = { health: probe.snap("qbittorrent").health, status: probe.snap("qbittorrent").statusText,
+                    held: Object.keys(s.qbitLoginFailed).length };
                 // The open panel polls the downloaders every 2 s.
                 s.panelOpen = true;
+                probe.step = 5;
+            } else if (probe.step === 5 && probe.snap("qbittorrent").statusText === "Login failed" && probe.idle()) {
+                probe.seen.refused = { health: probe.snap("qbittorrent").health, status: probe.snap("qbittorrent").statusText };
                 probe.step = 1;
             } else if (probe.step === 1) {
                 if (++probe.held < 50)
@@ -723,9 +733,10 @@ EOF
     result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n1)"
     [[ -n $result ]] || _fail "omarr login engine produced no result" "$OUTPUT"
     assert_eq "engine: no error with a refused login" "null" "$(r .error)"
+    assert_eq "engine: a 503 on login shows the code, not a failed login" "down|HTTP 503|0" "$(r '[.transient.health, .transient.status, .transient.held] | map(tostring) | join("|")')"
     assert_eq "engine: qBittorrent's 200 \"Fails.\" is a failed login, not a reachable service" "down|Login failed" "$(r '[.refused.health, .refused.status] | join("|")')"
     assert_eq "engine: it stays failed while the panel polls" "down|Login failed" "$(r '[.held.health, .held.status] | join("|")')"
-    assert_eq "engine: the refused credentials were sent once, never again" "1" "$(grep -c '^login username=admin&password=wrong$' "$LOG3")"
+    assert_eq "engine: the wrong password went out twice, met a 503 and a refusal, then never again" "2" "$(grep -c '^login username=admin&password=wrong$' "$LOG3")"
     assert_eq "engine: nothing else went to qBittorrent while they held" "" \
         "$(sed -n '/password=right/q;p' "$LOG3" | grep ':8081/' | grep -v ':8081/api/v2/auth/login' || true)"
     assert_eq "engine: new credentials go out at once and log in" "1|Idle" "$(grep -c '^login username=admin&password=right$' "$LOG3")|$(r .fixed.status)"

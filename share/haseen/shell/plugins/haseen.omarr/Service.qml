@@ -833,17 +833,23 @@ Scope {
             const ready = {};
             for (const rk in root.qbitReady)
                 ready[rk] = root.qbitReady[rk];
-            ready[service.id] = Model.qbitLoginOk(parsed.status, parsed.body);
+            const outcome = Model.qbitLoginOutcome(parsed.status, parsed.body);
+            ready[service.id] = outcome === "ok";
             root.qbitReady = ready;
             const failed = root.copyMap(root.qbitLoginFailed);
-            if (ready[service.id]) {
+            if (outcome !== "refused") {
                 delete failed[service.id];
                 root.qbitLoginFailed = failed;
-                root.enqueueQbit(service, true);
+                if (ready[service.id])
+                    root.enqueueQbit(service, true);
+                else
+                    // Not an answer about the credentials (a 502 while
+                    // qBittorrent restarts): show the code, retry next poll.
+                    root.commitHealth(service, snap, parsed.status);
                 return;
             }
-            // Refused (a wrong password answers 200 "Fails."): down, and
-            // the same credentials wait (Model.QBIT_LOGIN_RETRY_MS).
+            // Refused (a wrong password answers 200 "Fails.", a ban 403):
+            // down, and the same credentials wait (Model.QBIT_LOGIN_RETRY_MS).
             failed[service.id] = {
                 key: req.loginKey,
                 at: Date.now()

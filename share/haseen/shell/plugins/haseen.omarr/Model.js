@@ -1080,11 +1080,22 @@ function qbitLoginBody(username, password) {
   return formEncode({ username: String(username || ""), password: String(password || "") })
 }
 
-// Whether qBittorrent took a login. A wrong password still answers 200,
-// with the body "Fails." instead of "Ok.".
-function qbitLoginOk(statusCode, body) {
+// What qBittorrent's answer to a login means: "ok", "refused" or "error".
+// Only the credentials can be refused: a wrong password answers 200 with
+// the body "Fails." instead of "Ok.", and a ban or a WebUI that wants other
+// credentials answers 401 or 403. Any other answer (a 502 or 503 from a
+// proxy or VPN container while qBittorrent restarts, a 404, a 429, no
+// status at all) says nothing about the password, so it is an "error": the
+// row shows the HTTP code and the next poll tries again.
+function qbitLoginOutcome(statusCode, body) {
   var code = parseInt(statusCode, 10) || 0
-  return code >= 200 && code < 400 && String(body === undefined || body === null ? "" : body).indexOf("Fails") === -1
+  if (code === 401 || code === 403) return "refused"
+  if (code < 200 || code >= 400) return "error"
+  return String(body === undefined || body === null ? "" : body).indexOf("Fails") === -1 ? "ok" : "refused"
+}
+
+function qbitLoginOk(statusCode, body) {
+  return qbitLoginOutcome(statusCode, body) === "ok"
 }
 
 // A refused login ({key, at}, key naming the URL and credentials it used)
@@ -2967,6 +2978,7 @@ if (typeof module !== "undefined" && module.exports) {
     headerApiKey: headerApiKey,
     sabBody: sabBody,
     qbitLoginBody: qbitLoginBody,
+    qbitLoginOutcome: qbitLoginOutcome,
     qbitLoginOk: qbitLoginOk,
     qbitLoginHeld: qbitLoginHeld,
     applyLoginFailure: applyLoginFailure,
