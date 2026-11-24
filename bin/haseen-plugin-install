@@ -86,15 +86,57 @@ else
 fi
 [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "unsafe plugin id: $id"
 [[ $path != /* && $path != *..* ]] || die "unsafe path: $path"
+# The user directory wins over the built-in one, so a foreign haseen.lock
+# would become the lock screen. `haseen plugin new` reserves the namespace
+# for the same reason; a deliberate copy of a built-in is made by hand.
+[[ $id != haseen.* ]] || die "the haseen.* namespace is reserved for built-in plugins; $id is not installed"
 
-if [[ -e $PLUGIN_USER_DIR/$id ]] && ! $DRY_RUN; then
+target_dir="$PLUGIN_USER_DIR/$id"
+if [[ -e $target_dir ]] && ! $DRY_RUN; then
     confirm "$id is already installed; replace it?" || exit 1
 fi
 
+# The checkout is shared by every plugin pinned from this repository, so
+# moving it moves them too: note where it was and what this id was, and put
+# both back unless the new commit validates for all of them. An EXIT trap,
+# so a failed fetch or link after the move puts them back as well.
+checkout="$(repo_dir "$url")"
+prev_head=""
+[[ -d $checkout/.git ]] && prev_head="$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)"
+aside=""
+kept=false
+# shellcheck disable=SC2317  # run by the EXIT trap
+put_back() {
+    $kept && return 0
+    if [[ -n $prev_head ]] && ! $DRY_RUN; then
+        git -C "$checkout" checkout --quiet "$prev_head" 2>/dev/null ||
+            warn "could not put $url back at ${prev_head:0:12}"
+    fi
+    [[ -z $aside ]] && return 0
+    run rm -rf -- "$target_dir"
+    run mv -T -- "$aside" "$target_dir"
+}
+trap put_back EXIT
+
 info "installing $id from $url${path:+ ($path)}"
 resolved="$(registry_fetch "$url" "$commit")"
+if [[ -e $target_dir || -L $target_dir ]]; then
+    aside="$PLUGIN_USER_DIR/.$id.replaced.$$"
+    run mv -T -- "$target_dir" "$aside"
+fi
 registry_link "$id" "$url" "$path"
 registry_validate "$id" || die "$id does not validate against plugin.schema.json; not installed"
+# lockfile_pin moves every sibling's pin to this commit, and their links
+# already show it: each must validate too, as `haseen plugin update` checks.
+failed=()
+while IFS= read -r mid; do
+    [[ -n $mid && $mid != "$id" ]] || continue
+    registry_linked "$mid" "$url" || continue
+    registry_check "$mid" || failed+=("$mid")
+done < <(lockfile_read | jq -r --arg repo "$url" '.plugins | to_entries[] | select(.value.repo == $repo) | .key')
+((${#failed[@]} == 0)) || die "${failed[*]} does not validate at ${resolved:0:12}; $id is not installed and $url is back where it was"
+kept=true
+[[ -z $aside ]] || run rm -rf -- "$aside"
 $DRY_RUN || lockfile_pin "$id" "$url" "$path" "$resolved"
 $DRY_RUN && echo "DRYRUN: pin $id to $url@$resolved in $PLUGIN_LOCKFILE"
 
@@ -104,11 +146,28 @@ $DRY_RUN && echo "DRYRUN: pin $id to $url@$resolved in $PLUGIN_LOCKFILE"
 shell_id="$id"
 $DRY_RUN || shell_id="$(plugin_id_of "$PLUGIN_USER_DIR/$id" 2>/dev/null || echo "$id")"
 
+# DRY_RUN is "true" or "false", never empty, so the flag is chosen here.
+dry=()
+$DRY_RUN && dry=(--dry-run)
+state="on"
 if $enable; then
-    # DRY_RUN is "true" or "false", never empty, so the flag is chosen here.
-    dry=()
-    $DRY_RUN && dry=(--dry-run)
     haseen-plugin-enable "$shell_id" "${dry[@]+"${dry[@]}"}" 2>/dev/null ||
         warn "installed, but could not enable $shell_id (haseen plugin enable $shell_id)"
+elif ! shell_merged_json 2>/dev/null | jq -e --arg id "$shell_id" '
+        (.plugins[$id] | type == "object" and has("enabled"))
+        or ([.bar.left, .bar.center, .bar.right, .services] | map(. // []) | add | index($id) != null)' >/dev/null; then
+    # Installing does not turn a plugin on. The shell counts a panel or a
+    # launcher provider as on unless shell.json says otherwise, so a new id
+    # is written down as off. An id shell.json already places or switches
+    # keeps what the user chose.
+    state="off"
+    haseen-plugin-disable "$shell_id" "${dry[@]+"${dry[@]}"}" >/dev/null 2>&1 ||
+        warn "installed, but could not write $shell_id as off (haseen plugin disable $shell_id)"
 fi
-$DRY_RUN || info "$id installed at ${resolved:0:12}, loaded as '$shell_id' (haseen shell ipc shell reload)"
+if ! $DRY_RUN; then
+    if [[ $state == off ]]; then
+        info "$id installed at ${resolved:0:12} as '$shell_id', off until: haseen plugin enable $shell_id"
+    else
+        info "$id installed at ${resolved:0:12}, loaded as '$shell_id' (haseen shell ipc shell reload)"
+    fi
+fi

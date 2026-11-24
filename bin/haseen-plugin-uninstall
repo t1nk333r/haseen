@@ -27,7 +27,9 @@ set -- "${REST[@]+"${REST[@]}"}"
 }
 id="$1"
 [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "unsafe plugin id: $id"
-[[ -e $PLUGIN_USER_DIR/$id ]] || die "$id is not installed in $PLUGIN_USER_DIR"
+# -L as well: a link whose target was moved or deleted is still installed,
+# and removing it is exactly what is wanted (omarchy-plugin-remove asks here).
+[[ -e $PLUGIN_USER_DIR/$id || -L $PLUGIN_USER_DIR/$id ]] || die "$id is not installed in $PLUGIN_USER_DIR"
 
 confirm "Remove $id?" || exit 1
 # The shell knows the plugin by its manifest id (a DMS plugin is `dms.<name>`),
