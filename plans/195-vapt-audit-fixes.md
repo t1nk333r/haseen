@@ -69,17 +69,32 @@ components under seven systemd roots. systemd.unit(5) also enables through
 `.upholds`, and a `*.d/*.conf` member under those roots is refused when its
 body sets `Wants=`, `Requires=`, `BindsTo=`, `Upholds=`, `OnFailure=` or
 `OnSuccess=`, or when the body cannot be read from the archive (a symlink or
-hardlink).
+hardlink). After review, a link under those roots is accepted only when its
+name ends in a unit type of systemd.unit(5) (`.service`, `.socket`, `.target`
+and the rest: an alias or a mask). A link such as
+`usr/lib/systemd/system/multi-user.target.d -> /opt/pkg/dropins` hides the
+drop-ins behind it from the archive listing, and systemd follows it at boot;
+`etc/systemd/system.control` and `usr/local/lib/systemd/system` (neither
+normally exists, so pacman can create the link) do the same for whole unit
+directories.
 
 **Test.** `tests/test-vapt-followups.sh`: the link loop covers
 `etc/xdg/systemd/user` and `usr/lib/systemd/user` with `wants`, `requires`
 and `upholds`; the drop-in loop refuses `Wants=`, an indented
 `Requires =`, `BindsTo=`, `Upholds=` and a symlinked drop-in, and accepts an
-`Environment=` drop-in.
+`Environment=` drop-in. The directory-link loop accepts each package without
+the link and refuses it with a link at
+`usr/lib/systemd/system/multi-user.target.d`,
+`usr/lib/systemd/user/default.target.d`, `etc/systemd/system.control`,
+`usr/local/lib/systemd/system` or a top-level `subject.conf`, whose target
+`opt/subject/dropins/subject.conf` holds `Wants=subject.service`.
 
 **Rejected.** `PartOf=` and `Requisite=` (they do not start the other
 unit); refusing every drop-in (packages ship harmless ones for limits and
-environment).
+environment); refusing only links whose name ends in `.d` (the review's
+first suggestion), which leaves `system.control` and
+`usr/local/lib/systemd/system` open; refusing every link (unit aliases and
+masks are ordinary).
 
 ## 3. A selected tool could end up recorded as a dependency
 
@@ -220,7 +235,10 @@ stage (`oniomarchy.sh:189-191`) that only a normal return removes
 
 **Fix.** `vapt_oniomarchy_enable_staged` runs the enable command in a
 subshell with the EXIT/INT/TERM traps `vapt_provision` uses, plus HUP for a
-closed terminal; `vapt_repo` and the fixture runner call it.
+closed terminal; `vapt_repo` calls it. The fixture runner's `repo-enable`
+calls `vapt_repo enable` itself (its sysroot guard is the runner's no-op, and
+it sources `lib/preflight.sh` as `layer_run_function` does), so the tests
+reach the public wiring.
 
 **Test.** `tests/test-vapt-oniomarchy-trust.sh`
 `vapt-onio-trust-interrupted`: the curl stub sends TERM to the enable
@@ -303,3 +321,32 @@ From the worktree's real path through the hermetic wrapper:
   35/38, `-env` 252/254, `-trust` 234/238, `-oniomarchy-trust` 268/270;
   every failure is a new assertion.
 - `tools/check-docs.sh`: OK.
+- After the first review round (below): `tools/lint.sh` lint OK;
+  `tests/run.sh --affected 9a9e82ab` 36 test files, 6607/6607;
+  `tools/check-docs.sh` OK.
+
+## Review
+
+The first round (an independent Sonnet review of the first head) asked for
+changes, with two should-fix findings and one nit:
+
+- **A symlinked drop-in directory bypassed section 2.** A package that ships
+  `usr/lib/systemd/system/multi-user.target.d` as a link to `/opt/pkg/dropins`,
+  whose `subject.conf` holds `Wants=subject.service`, passed the audit: the
+  drop-in rule only read regular `*.conf` members under a `.d` parent. The
+  same was true of `usr/lib/systemd/user/default.target.d` and
+  `etc/systemd/system.control`. Fixed as section 2 now describes: a link under
+  a systemd root must be named like a unit. The review suggested refusing
+  links whose name ends in `.d`; that leaves `system.control` (which the
+  review also listed) and `usr/local/lib/systemd/system` open, so the rule
+  allows unit names instead. The new directory-link cases fail without the
+  rule (96/106) and pass with it.
+- **No test reached `vapt_repo enable`.** The fixture runner called
+  `vapt_oniomarchy_enable_staged` directly, so reverting `layer.sh`'s
+  `enable)` branch to `vapt_oniomarchy_enable_command` kept
+  `test-vapt-oniomarchy-trust.sh` at 270/270. The runner now calls
+  `vapt_repo enable` (section 10); with that revert the two interrupted
+  approval checks fail (268/270).
+- **Nit: docs lines.** The `docs/vapt.md` paragraphs this plan touched are
+  re-wrapped, and the `inspect CERT` parenthetical moved after its object.
+

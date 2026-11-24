@@ -589,6 +589,13 @@ CONTROL = re.compile('[\x00-\x1f\x7f-\x9f]')
 SYSTEMD_ROOTS = ('etc/systemd/', 'usr/lib/systemd/', 'lib/systemd/', 'usr/local/lib/systemd/',
                  'usr/share/systemd/', 'usr/local/share/systemd/', 'run/systemd/', 'etc/xdg/systemd/')
 SYSTEMD_ENABLING = ('.wants', '.requires', '.upholds')
+# The unit types of systemd.unit(5). A link under a systemd root named like a
+# unit is an alias or a mask; any other link may stand in for a directory
+# systemd reads (multi-user.target.d, system.control, usr/local/lib/systemd/
+# system) whose members the archive never lists, so nothing here could review
+# them.
+SYSTEMD_UNIT_SUFFIXES = ('.service', '.socket', '.device', '.mount', '.automount', '.swap',
+                         '.target', '.path', '.timer', '.slice', '.scope')
 SYSTEMD_DEPENDENCY = re.compile(r'^[ \t]*(?:Wants|Requires|BindsTo|Upholds|OnFailure|OnSuccess)[ \t]*=', re.M)
 
 
@@ -1285,6 +1292,8 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
                 if (any(p.endswith(SYSTEMD_ENABLING) for p in parts[:-1])
                         or (not member.endswith('/') and name.endswith(SYSTEMD_ENABLING))):
                     raise ValueError('incoming enabled systemd unit link/path ' + name)
+                if kind == stat.S_IFLNK and not name.endswith(SYSTEMD_UNIT_SUFFIXES):
+                    raise ValueError('incoming systemd link may hide a unit or drop-in directory ' + name)
                 # A drop-in that adds a starting dependency to an existing unit
                 # (multi-user.target.d/x.conf with Wants=x.service) enables x
                 # as surely as a .wants link. One that cannot be read here

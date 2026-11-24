@@ -3,6 +3,8 @@
 # wrappers redirect filesystem operations to the sysroot and never run managers.
 set -uo pipefail
 source "$HASEEN_PATH/lib/common.sh"
+# layer_run_function sources preflight.sh too; vapt_repo reads the distro.
+source "$HASEEN_PATH/lib/preflight.sh"
 LAYER_DIR="$HASEEN_PATH/layers/vapt"
 source "$LAYER_DIR/layer.sh"
 source "$LAYER_DIR/provision.sh"
@@ -126,8 +128,10 @@ repo-enable)
     for arg in "$@"; do
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac
     done
-    # The public command's own staged subshell: its traps clean up.
-    vapt_oniomarchy_enable_staged ;;
+    # The public entry point (plan 195): vapt_repo's enable branch must reach
+    # the staged subshell whose traps remove both stages. vapt_repo sources
+    # provision.sh again, so a VAPT_FAIL_WRITE override does not reach it.
+    vapt_repo enable ;;
 repo-disable)
     for arg in "$@"; do
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac

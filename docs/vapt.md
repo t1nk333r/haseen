@@ -124,10 +124,14 @@ snapshots. Enabled systemd-unit links are refused even without an install
 script: `.wants/`, `.requires/` and `.upholds/` entries for system and user
 units (`/etc/xdg/systemd/user` included), and a unit drop-in (`*.d/*.conf`)
 that adds `Wants=`, `Requires=`, `BindsTo=`, `Upholds=`, `OnFailure=` or
-`OnSuccess=`, or whose body is a link the audit cannot read. Replacement or conflict removals, missing old file inventories,
-opaque helpers and relevant backup/NoExtract/NoUpgrade ambiguities require
-manual review and are reported unsupported; NoUpgrade-protected dropped hooks
-are still audited.
+`OnSuccess=`, or whose body is a link the audit cannot read. Under a systemd
+directory, a link is accepted only when it is named like a unit (an alias or
+a mask). Any other link, such as a `multi-user.target.d`, `system.control` or
+`/usr/local/lib/systemd/system` link to a directory elsewhere, could hide
+drop-ins or units the archive never lists, so it is refused. Replacement or
+conflict removals, missing old file inventories, opaque helpers and relevant
+backup/NoExtract/NoUpgrade ambiguities require manual review and are reported
+unsupported; NoUpgrade-protected dropped hooks are still audited.
 
 Hook matching follows libalpm's ordered targets and transaction-wide file
 events, including ordered `NoExtract` exceptions. Hook grammar is validated
@@ -241,11 +245,11 @@ BlackArch signer set, the oniomarchy signer pin and its admission table), and
 the Arch/CachyOS vendor keyrings and revocation records are protected in the
 current and future transaction views, including link targets and parent
 redirects; each policy is guarded beside both the logical module and the
-physical module parent the auditor actually reads. Incoming changes or removals there require
-authenticated base-repository provenance. The non-base identical-entry
-exception also keeps file permissions and file/link ownership and refuses
-incoming extended attributes. Other keyrings are ordinary package data,
-except for the private source (below).
+physical module parent the auditor actually reads. Incoming changes or
+removals there require authenticated base-repository provenance. The non-base
+identical-entry exception also keeps file permissions and file/link ownership
+and refuses incoming extended attributes. Other keyrings are ordinary package
+data, except for the private source (below).
 
 That identical-entry exception also needs a confined root-produced authority
 record, because retained access/security attributes and a regular file's
@@ -660,9 +664,9 @@ Readability is established by a confined descriptor open; showing the
 document reopens it and revalidates ownership and inode. Input and expanded
 gzip output are each capped at 4 MiB; an oversized, invalid or truncated
 document refuses with exit 1 and a diagnostic, printing nothing. Tabs are
-expanded to spaces and other control bytes removed. Otherwise a
-reviewed package/entry-specific help-only argv binding is required; the
-shipped registry is empty, so there is no `--help` guess. Missing or
+expanded to spaces and other control bytes removed. Otherwise a reviewed
+package/entry-specific help-only argv binding is required; the shipped
+registry is empty, so there is no `--help` guess. Missing or
 ambiguous evidence is a refusal. Dry-run reports the evidence and intended
 argv without running anything.
 
@@ -720,9 +724,10 @@ on an explicit request; every dry-run is offline and write-free.
 - `service-start ID` and `service-restart ID` ask in a terminal (`--yes`
   accepts the unknown exposure); `service-stop ID` asks nothing and needs no
   terminal. A verified unit whose manager state reads `unknown`
-  (`maintenance`, `refreshing`) is still acted on. Root authorisation is always required, ownership is rechecked
-  right before the root gateway, and nothing is enabled, preset, initialised
-  or installed. `--expect-unit UNIT --expect-fragment PATH` bind a displayed
+  (`maintenance`, `refreshing`) is still acted on. Root authorisation is
+  always required, ownership is rechecked right before the root gateway, and
+  nothing is enabled, preset, initialised or installed.
+  `--expect-unit UNIT --expect-fragment PATH` bind a displayed
   snapshot: a mismatch refuses before any privileged step; dry-run reports
   the check.
 - `haseen vapt net-addresses --json`: local interface addresses, with no DNS
@@ -740,10 +745,10 @@ on an explicit request; every dry-run is offline and write-free.
 - `haseen vapt net-http-server [--bind ADDRESS] DIR PORT`: byte-only
   foreground HTTP for an explicitly selected directory (a relative `DIR` or
   `~/…`, also at the prompt, is resolved against the working directory or
-  home; `..` is refused). Opened descriptors
-  confine requests; traversal, symlinks and multiply-linked files are
-  refused, with the link count checked on every request. No listing, CGI,
-  upload, firewall change, daemon or fetched content.
+  home; `..` is refused). Opened descriptors confine requests; traversal,
+  symlinks and multiply-linked files are refused, with the link count checked
+  on every request. No listing, CGI, upload, firewall change, daemon or
+  fetched content.
 - `haseen vapt net-file-server [--file FILE] [--bind ADDRESS] [PORT]`: one
   explicitly selected package-owned single-link regular file at `/file`,
   from the `enumerationScript` setting or a prompt; it never guesses a
@@ -754,10 +759,10 @@ on an explicit request; every dry-run is offline and write-free.
   serially with a five-second idle wait and a thirty-second absolute
   connection deadline. A helper restarted on the same port right after a
   download binds again (`SO_REUSEADDR`; never over a port still listening).
-  A request whose `Host` is neither `localhost` nor a
-  local literal address of the bind (any local address of the family for a
-  wildcard bind), or that carries several `Host` headers, gets 421, so a
-  DNS-rebinding page cannot read served files; an HTTP/1.0 request without
+  A request whose `Host` is neither `localhost` nor a local literal address
+  of the bind (any local address of the family for a wildcard bind), or that
+  carries several `Host` headers, gets 421, so a DNS-rebinding page cannot
+  read served files; an HTTP/1.0 request without
   `Host` is served. After consent the wrapper hands its process to the
   helper, so a signal to it cannot leave a helper holding the endpoint.
 - `haseen vapt net-remmina`: launch only the verified owned client, with no
@@ -772,7 +777,8 @@ adapter, source and selection evidence; capability records carry fixed
 
 `haseen vapt net-proxy-ca status --json` reports none, owned, foreign,
 modified or unknown (incomplete) anchor state. `inspect CERT --json` reads
-(a relative `CERT` from the working directory) one bounded public PEM/DER CA and reports subject, issuer, uppercase SHA-256,
+one bounded public PEM/DER CA (a relative `CERT` is resolved against the
+working directory) and reports subject, issuer, uppercase SHA-256,
 validity and CA/private-key flags; it refuses bundles, private keys, non-CAs
 and expired material, prints no certificate contents and changes no trust.
 CA status comes only from OpenSSL's decoding of the `basicConstraints`

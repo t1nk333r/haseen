@@ -17,6 +17,7 @@ repack() {
     local members=(.PKGINFO usr)
     [[ ! -f $PACKAGE/.INSTALL ]] || members+=(.INSTALL)
     [[ ! -d $PACKAGE/etc ]] || members+=(etc)
+    [[ ! -d $PACKAGE/opt ]] || members+=(opt)
     tar -czf "$ARCHIVE" -C "$PACKAGE" "${members[@]}"
 }
 review() { capture python3 "$VAPT_META" audit "$ARCHIVE" --root "$ROOT"; }
@@ -73,6 +74,28 @@ for dropin in wants requires bindsto upholds environment symlink; do
     review
     assert_status "multi-user.target.d drop-in ($dropin) is $( ((expected)) && echo refused || echo provisionable)" "$expected" "$STATUS"
     vapt_tools_untouched "drop-in $dropin"
+done
+
+# A link that stands in for a directory systemd reads hides that directory's
+# members from the archive listing: a symlinked multi-user.target.d whose
+# target holds Wants=subject.service enables subject as surely as a .wants
+# link. Every link under a systemd root not named like a unit is refused;
+# a unit alias stays provisionable (the loop above).
+for link in usr/lib/systemd/system/multi-user.target.d usr/lib/systemd/user/default.target.d \
+    etc/systemd/system.control usr/local/lib/systemd/system usr/lib/systemd/system/subject.conf; do
+    followup_case "vapt-enabled-dirlink-${link//\//-}"
+    mkdir -p "$PACKAGE/opt/subject/dropins" "$PACKAGE/${link%/*}" "$PACKAGE/usr/lib/systemd/system"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    printf '[Unit]\nWants=subject.service\n' >"$PACKAGE/opt/subject/dropins/subject.conf"
+    repack
+    review
+    assert_status "$link without the link is provisionable" 0 "$STATUS"
+    ln -s /opt/subject/dropins "$PACKAGE/$link"
+    repack
+    review
+    assert_status "$link as a link is refused" 1 "$STATUS"
+    assert_contains "$link refusal names the link" "$OUTPUT" "may hide a unit or drop-in directory $link"
+    vapt_tools_untouched "directory link $link"
 done
 
 # Pre phases run CURRENT helper bytes; post phases run reviewed replacement
