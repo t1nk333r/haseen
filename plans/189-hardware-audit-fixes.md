@@ -204,6 +204,22 @@ passed 46/51: these four and the optional-modules check.
   makes the recovery remove the toggle, so the panel stays on. That is the
   safe direction.
 
+## Review
+
+An independent Sonnet review approved the branch and raised two nits:
+
+- The quirk's warning still told the owner to rebuild the initramfs and
+  reboot, which changes nothing while no NVIDIA driver is installed: the
+  modules are optional now, so the file is inert until one arrives. The
+  warning now says early KMS takes effect once a driver such as
+  `nvidia-open` is installed, the initramfs is rebuilt and the machine
+  reboots.
+- The persisted `haseen hardware monitor set eDP-1 --off` rule can still
+  outlive the external monitor (see Limitations). It is an explicit choice
+  in the monitor tool, outside the clamshell path this plan fixes, so it is
+  deferred to a follow-up plan for the monitor tool rather than changed
+  here.
+
 ## Verification
 
 From the worktree's real path, through the hermetic wrapper:

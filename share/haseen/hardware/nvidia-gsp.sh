@@ -31,4 +31,6 @@ write_root_file "$conf" <<'EOF'
 # Written by `haseen hw apply` (quirk: nvidia-gsp).
 MODULES+=('nvidia?' 'nvidia_modeset?' 'nvidia_uvm?' 'nvidia_drm?')
 EOF
-warn "hw nvidia-gsp: wrote $conf; rebuild the initramfs ('sudo mkinitcpio -P') and reboot"
+# Without a driver the file is inert, so say that rather than send the owner
+# off to rebuild an initramfs that would change nothing.
+warn "hw nvidia-gsp: wrote $conf; early KMS takes effect after a driver such as nvidia-open is installed, the initramfs is rebuilt ('sudo mkinitcpio -P') and the machine reboots"
