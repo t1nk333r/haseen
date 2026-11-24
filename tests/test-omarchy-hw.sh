@@ -12,6 +12,7 @@
 # haseen:covers share/haseen/omarchy/bin/omarchy-{git-url-check,hibernation-remove}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{hibernation-setup,hook,hook-install,menu-file}
 # haseen:covers share/haseen/omarchy/lib.sh bin/haseen-hw-match share/haseen/hardware/quirks.tsv
+# haseen:covers share/haseen/default/hypr/init.lua
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -333,6 +334,37 @@ assert_contains "recover-internal-monitor: the dry run plans the panel's return"
 capture "$OMA/omarchy-hw-recover-internal-monitor"
 [[ ! -e $TOGGLES/laptop-display-off.lua && ! -e $FLAGS/clamshell-display-off ]] && _pass ||
     _fail "recover-internal-monitor: alone, the panel comes back at the next start"
+
+# Hyprland's config runs the recovery before it loads the toggles, so a laptop
+# that boots undocked with the lid open does not start with its only display
+# off: the lid-open event that removes the toggle never came (plan 189). The
+# real init.lua runs under a stub hl that prints each hl.monitor rule.
+hl_stub="$SANDBOX/hl-monitor.lua"
+cat >"$hl_stub" <<'EOF'
+local function proxy(name)
+  return setmetatable({}, {
+    __index = function(_, k) return proxy(name .. "." .. k) end,
+    __call = function() return {} end,
+  })
+end
+hl = setmetatable({
+  dsp = proxy("dsp"),
+  monitor = function(rule) print("MONITOR " .. tostring(rule.output) .. " disabled=" .. tostring(rule.disabled)) end,
+}, { __index = function() return function() end end })
+EOF
+boot_config() { capture lua -e "dofile('$hl_stub')" "$HASEEN_PATH/default/hypr/init.lua"; }
+printf '%s\n' 'hl.monitor({ output = "eDP-1", disabled = true })' >"$TOGGLES/laptop-display-off.lua"
+echo connected >"$ROOT/sys/class/drm/card1-HDMI-A-1/status"
+boot_config
+assert_status "the config loads with the laptop-display toggle" 0 "$STATUS"
+assert_contains "docked, the config keeps the built-in panel off" "$OUTPUT" "MONITOR eDP-1 disabled=true"
+[[ -f $TOGGLES/laptop-display-off.lua ]] && _pass || _fail "docked, the config removed the laptop-display toggle"
+echo disconnected >"$ROOT/sys/class/drm/card1-HDMI-A-1/status"
+boot_config
+assert_status "the config loads undocked" 0 "$STATUS"
+assert_not_contains "undocked, the config leaves the built-in panel on" "$OUTPUT" "MONITOR eDP-1"
+[[ ! -e $TOGGLES/laptop-display-off.lua ]] && _pass ||
+    _fail "undocked, the config left the laptop-display toggle for the next reload"
 
 # --- Hyprland queries ---------------------------------------------------------------------
 box omarchy-hyprland-query
