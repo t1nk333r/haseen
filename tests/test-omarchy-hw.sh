@@ -684,6 +684,40 @@ box omarchy-hibernation-remove
 capture env BOOTLOADER=limine "$OMA/omarchy-hibernation-remove" --dry-run
 assert_contains "hibernation-remove: nothing set up" "$OUTPUT" "Hibernation is not set up"
 mkdir -p "$ROOT/etc/mkinitcpio.conf.d" "$ROOT/etc/limine-entry-tool.d" "$ROOT/etc/kernel" "$ROOT/swap" "$ROOT/proc"
+# Plain swap in the Arch wiki's btrfs layout, written by its owner: no resume
+# hook, no resume=, no setup comment. That is not hibernation, and Omarchy's
+# command leaves it alone too (plan 188).
+cat >"$ROOT/etc/fstab" <<'EOF'
+UUID=abcd / btrfs subvol=/@,rw,noatime 0 0
+# my swap
+UUID=abcd /swap btrfs subvol=/@swap,rw,noatime 0 0
+/swap/swapfile none swap defaults 0 0
+EOF
+touch "$ROOT/swap/swapfile"
+printf 'Filename\tType\tSize\tUsed\tPriority\n/swap/swapfile\tfile\t33554428\t0\t-2\n' >"$ROOT/proc/swaps"
+capture env BOOTLOADER=limine "$OMA/omarchy-hibernation-remove" --dry-run --yes
+assert_status "hibernation-remove: plain swap" 0 "$STATUS"
+assert_contains "hibernation-remove: plain swap is not hibernation" "$OUTPUT" "Hibernation is not set up"
+assert_not_contains "hibernation-remove: and stays on" "$OUTPUT" "swapoff"
+assert_not_contains "hibernation-remove: and its subvolume stays" "$OUTPUT" "btrfs subvolume delete"
+# The same swap with a resume hook (haseen hibernation setup reused the
+# owner's /swap mount, so it wrote no image-area comment): the swapfile goes,
+# but the mount line someone else wrote stays, and so does the subvolume it
+# mounts. Deleting it under a kept line would stop the next boot (plan 188).
+touch "$ROOT/etc/mkinitcpio.conf.d/haseen-resume.conf"
+capture env BOOTLOADER=limine "$OMA/omarchy-hibernation-remove" --dry-run --yes
+assert_status "hibernation-remove: an owner's mount line" 0 "$STATUS"
+assert_dry_pure "hibernation-remove: an owner's mount line" "$OUTPUT"
+assert_contains "hibernation-remove: the owner's swapfile goes" "$OUTPUT" "DRYRUN: sudo rm -f /swap/swapfile"
+assert_contains "hibernation-remove: fstab keeps the owner's mount line" "$OUTPUT" "DRYRUN: write /etc/fstab (mode 0644):
+    | UUID=abcd / btrfs subvol=/@,rw,noatime 0 0
+    | # my swap
+    | UUID=abcd /swap btrfs subvol=/@swap,rw,noatime 0 0
+"
+assert_contains "hibernation-remove: and says why the subvolume stays" "$OUTPUT" "keeping that line and the subvolume it mounts"
+assert_not_contains "hibernation-remove: /swap stays mounted" "$OUTPUT" "umount /swap"
+assert_not_contains "hibernation-remove: the mounted subvolume is not deleted" "$OUTPUT" "btrfs subvolume delete"
+rm -f "$ROOT/etc/mkinitcpio.conf.d/haseen-resume.conf"
 cat >"$ROOT/etc/fstab" <<'EOF'
 UUID=abcd / btrfs subvol=/@,rw,noatime 0 0
 
