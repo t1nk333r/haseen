@@ -17,9 +17,12 @@ HASEEN_OMARCHY_IMPORT_SH=1
 # (/usr/bin/omarchy-foo, $OMARCHY_PATH/bin/omarchy-foo), which runs Omarchy's
 # own copy past haseen's answers (architecture 5.4; plan 200). Paths such as
 # ~/.config/omarchy/… and hypr.omarchy-*, and identifiers such as
-# omarchy_scale, do not match. OMARCHY_LUA_AWK below uses this same ERE.
+# omarchy_scale, do not match. OMARCHY_LUA_AWK below uses this same ERE on
+# multi-line chunks, so the router's gap is [[:blank:]] (space or tab, in grep
+# and awk alike): [[:space:]] would also span a newline and read a name
+# `omarchy` ending one line as a call with the next line's first word.
 # shellcheck disable=SC2034  # read by bin/haseen-import-omarchy
-OMARCHY_CMD_ERE='(^|[^A-Za-z0-9_/.~-])omarchy(-[a-z]|[[:space:]]+[a-z])|(^|[^A-Za-z0-9_.-])bin/omarchy-[a-z]'
+OMARCHY_CMD_ERE='(^|[^A-Za-z0-9_/.~-])omarchy(-[a-z]|[[:blank:]]+[a-z])|(^|[^A-Za-z0-9_.-])bin/omarchy-[a-z]'
 
 # Omarchy built-in bar widgets with a haseen built-in that does the same job,
 # and the settings whose meaning carries over unchanged (both use Qt date

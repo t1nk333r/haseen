@@ -63,7 +63,9 @@ done
 
 require_cmds hyprctl jq
 # The reload is a compositor state change, so --dry-run prints it (plan
-# 200); on stderr, since stdout is the sheet or its JSON.
+# 200); on stderr, since stdout is the sheet or its JSON. This is the one
+# place the command skips common.sh's run on purpose: run prints its DRYRUN
+# line to stdout, which would break --json.
 if $reload; then
     if $DRY_RUN; then echo "DRYRUN: hyprctl reload" >&2; else hyprctl reload >/dev/null; fi
 fi

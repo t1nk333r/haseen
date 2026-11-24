@@ -147,7 +147,10 @@ installed fine and never ran.
   still do not match. Test: hooks calling `/usr/bin/omarchy-*` and
   `"$OMARCHY_PATH"/bin/omarchy-*` are reported and not copied, one reading
   `~/.config/omarchy` is copied, a bind running `/usr/bin/omarchy-menu` is
-  skipped and reported beside a plain bind that is carried.
+  skipped and reported beside a plain bind that is carried. The gap after
+  the `omarchy` router is `[[:blank:]]+` (space or tab in both grep and
+  awk), since the awk copy matches whole multi-line chunks, where
+  `[[:space:]]` would span a newline (see Review).
 - **4.** `id -nG | tr -s '[:space:]' '\n' | grep -qx docker`: the whole
   name. Test: `wheel docker-users ci-docker` still needs sudo.
 - **5.** `dry=$DRY_RUN`; the `--dry-run` word only adds to it. Test:
@@ -228,6 +231,26 @@ test-omarchy-45/restart/keybinds/trigger/crashwatch/omarchy-import
   shared infrastructure (every VAPT suite); `install.sh` applies the vapt
   layer through `haseen layer apply` anyway.
 
+## Review
+
+An independent Sonnet reviewer read the first commit of this plan's branch
+and returned APPROVE with two nits, both taken:
+
+1. `haseen keybinds --reload --dry-run` prints its DRYRUN line with a plain
+   `echo` to stderr instead of common.sh's `run`. That is deliberate (`run`
+   prints to stdout and would break `--json`, as Rejected records); the
+   comment above the line in `bin/haseen-keybinds` now says it is the one
+   place the command skips `run` on purpose.
+2. Before this plan the Lua translator's awk copy of the rule used
+   `[ \t]+` after `omarchy`; sharing `OMARCHY_CMD_ERE` gave it
+   `[[:space:]]+`, which matches a newline inside a multi-line chunk, so
+   a Lua name `omarchy` ending one line (`local omarchy`) read as the
+   `omarchy foo` router with the next line's first word, and the chunk was
+   skipped. The ERE now uses `[[:blank:]]+`, which means space or tab in
+   both grep and awk (`[ \t]` would be a literal backslash and `t` in grep's
+   bracket). Test: a multi-line `hl.bind` holding `local omarchy` is carried
+   and not reported; it failed before the change (178/180) and passes after.
+
 ## Gates
 
 - `tests/run.sh --affected 9a9e82ab` selected 35 files (the changes touch
@@ -237,5 +260,8 @@ test-omarchy-45/restart/keybinds/trigger/crashwatch/omarchy-import
   `omarchy/` anywhere in the output, and the checkout lived in a directory
   named `g16-omarchy`. The same tree copied to a path without it passed
   `tests/test-vapt.sh` 364/364; CI's checkout path has no such name.
+  After the review round the same selection (35 files) gave 6042/6043,
+  the same single failure for the same reason; test-vapt.sh from a copy at
+  a neutral path passed 364/364 again.
 - `tools/lint.sh`: lint OK.
 - `tools/check-docs.sh`: check-docs OK.

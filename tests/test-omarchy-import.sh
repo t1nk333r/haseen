@@ -313,6 +313,10 @@ printf '%s\n' '#!/bin/bash' '/usr/bin/omarchy-restart-waybar' >"$src/hooks/theme
 printf '%s\n' '#!/bin/bash' '"$OMARCHY_PATH"/bin/omarchy-restart-btop' >"$src/hooks/post-update"
 printf '%s\n' '#!/bin/bash' 'cp ~/.config/omarchy/notes.txt ~/notes.txt' >"$src/hooks/post-boot"
 printf '%s\n' 'o.bind("SUPER + M", "Menu", "/usr/bin/omarchy-menu")' 'o.bind("SUPER + T", "Terminal", "foot")' >"$hy/bindings.lua"
+# A Lua name `omarchy` at the end of one line is not the `omarchy foo` router
+# with the next line's first word: the ERE's gap is [[:blank:]], not
+# [[:space:]], which spans the newlines inside a multi-line chunk (plan 200).
+printf '%s\n' 'hl.bind("SUPER + O", function()' '    local omarchy' '    hl.exec_cmd("foot")' 'end)' >>"$hy/bindings.lua"
 capture "$REPO/bin/haseen-import-omarchy" --from "$src" --hypr "$hy" --state "$SANDBOX/none"
 assert_status "an import with path calls succeeds" 0 "$STATUS"
 hd="$XDG_CONFIG_HOME/haseen/hooks"
@@ -324,6 +328,8 @@ binds="$(cat "$XDG_CONFIG_HOME/hypr/bindings.lua" 2>/dev/null)"
 assert_contains "a bind running /usr/bin/omarchy-* is skipped and reported" "$OUTPUT" 'bindings.lua: runs an Omarchy command: o.bind("SUPER + M"'
 assert_not_contains "and not carried" "$(grep -v '^[[:space:]]*--' <<<"$binds")" "omarchy-menu"
 assert_contains "a plain bind beside it is" "$binds" 'haseen.rebind("SUPER + T", "Terminal", "foot")'
+assert_contains "a chunk with a name omarchy ending a line is carried" "$binds" '    local omarchy'
+assert_not_contains "and not reported as an Omarchy command" "$OUTPUT" 'runs an Omarchy command: hl.bind("SUPER + O"'
 
 # --- an omagesture g3Up gesture: the hl.* 3-finger-up gesture would duplicate it
 import_sandbox omarchy-import-g3up
