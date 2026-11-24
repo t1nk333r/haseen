@@ -11,7 +11,8 @@
 //   constants    pi π e tau
 //   functions    sqrt cbrt abs round floor ceil sin cos tan asin acos atan
 //                ln log (base 10) log2 exp min max
-//   percent      50% → 0.5 ; 200 + 10% → 220 (as most calculators do)
+//   percent      50% → 0.5 ; 200 + 10% → 220, 200 + 10% - 5 → 215 (as most
+//                calculators do); modulo by a negative number: 10 % (-3)
 //
 // evaluate(text) -> {ok: true, value} or {ok: false, error}; a failure also
 // carries the English template of its message and the template's arguments
@@ -137,13 +138,15 @@ Parser.prototype.term = function () {
     }
 };
 
-// `%` followed by an operand is modulo; otherwise it marks a percentage.
+// `%` followed by an operand is modulo; otherwise it marks a percentage. A
+// minus after `%` is a subtraction, as a plus is (`200 + 10% - 5` is 215,
+// `50% - 10` is -9.5); a negative divisor needs brackets: `10 % (-3)`.
 Parser.prototype.isModulo = function () {
     const t = this.peek();
     const next = this.tokens[this.pos + 1];
     if (!t || t.type !== "op" || t.value !== "%" || !next)
         return false;
-    if (next.type === "num" || next.type === "word" || (next.type === "op" && (next.value === "(" || next.value === "-"))) {
+    if (next.type === "num" || next.type === "word" || (next.type === "op" && next.value === "(")) {
         this.pos++;
         return true;
     }
@@ -189,7 +192,7 @@ Parser.prototype.peekPercent = function () {
     if (!t || t.type !== "op" || t.value !== "%")
         return false;
     const next = this.tokens[this.pos + 1];
-    return !next || (next.type === "op" && next.value !== "(" && next.value !== "-");
+    return !next || (next.type === "op" && next.value !== "(");
 };
 
 Parser.prototype.primary = function () {

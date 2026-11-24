@@ -55,6 +55,12 @@ Window {
             eq("subtracting a percentage", "180", val("200 - 10%"));
             eq("percent of a product", "30", val("200 * 15%"));
             eq("modulo", "1", val("10 % 3"));
+            // A minus after a percentage subtracts, as a plus adds (plan 197):
+            // it was read as modulo by a negative number.
+            eq("a percentage, then a subtraction", "215", val("200 + 10% - 5"));
+            eq("plus and minus agree after a percentage", ["225", "215"], [val("200 + 10% + 5"), val("200 + 10% - 5")]);
+            eq("a percentage alone, then a subtraction", ["-9.5", "-4.9"], [val("50% - 10"), val("10%-5")]);
+            eq("modulo by a negative number takes brackets", "1", val("10 % (-3)"));
             eq("x as times between numbers", "12", val("3x4"));
             eq("× and ÷", "6", val("12 × 2 ÷ 4"));
             eq("functions", "1.41421356237", val("sqrt(2)"));
@@ -85,7 +91,7 @@ if [[ -x $QML ]]; then
     while read -r line; do
         _fail "js: ${line#*UNIT-FAIL }"
     done < <(grep 'UNIT-FAIL' <<<"$units" || true)
-    assert_eq "calculator unit count" "26" "$(grep -c 'UNIT-PASS' <<<"$units")"
+    assert_eq "calculator unit count" "30" "$(grep -c 'UNIT-PASS' <<<"$units")"
 else
     _fail "qml runner missing: $QML"
 fi
