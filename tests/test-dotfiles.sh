@@ -3,7 +3,7 @@
 # haseen:covers share/haseen/default/hypr/** share/haseen/default/nvim/**
 # haseen:covers share/haseen/default/shell.json
 # haseen:covers share/haseen/layers/theme/{omarchy-assets.txt,theme-lib.sh}
-# haseen:covers share/haseen/lib/{gestures,omarchy-import,packages,terminal}.sh
+# haseen:covers share/haseen/lib/{gestures,omarchy-import,packages,shellrc,terminal}.sh
 # haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugins/*/manifest.json
 # haseen:covers share/haseen/shell/plugins/haseen.gestures/** tests/fixtures/omarchy-import/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
@@ -73,8 +73,18 @@ EOF
     cat >"$SANDBOX/stubs/yadm" <<'EOF'
 #!/bin/sh
 repo="${XDG_DATA_HOME:-$HOME/.local/share}/yadm/repo.git"
+# Like yadm: -Y moves the yadm dir, whose hooks/post_<command> runs as the
+# command exits when it is executable (/usr/bin/yadm exit_with_hook).
+ydir="${XDG_CONFIG_HOME:-$HOME/.config}/yadm"
+if [ "$1" = -Y ]; then
+    ydir="$2"
+    echo "yadm-dir $ydir" >>"$DOT_LOG/yadm.log"
+    shift 2
+fi
 echo "yadm $*" >>"$DOT_LOG/yadm.log"
 g() { git --git-dir="$repo" --work-tree="$HOME" "$@"; }
+cmd="$1"
+rc=0
 case "$1" in
 introspect) echo "$repo" ;;
 clone)
@@ -92,8 +102,10 @@ clone)
     g ls-files --deleted | while IFS= read -r f; do g checkout -- ":/$f"; done
     ;;
 bootstrap) touch "$DOT_LOG/bootstrap-ran" ;;
-*) exec git --git-dir="$repo" --work-tree="$HOME" "$@" ;;
+*) git --git-dir="$repo" --work-tree="$HOME" "$@" || rc=$? ;;
 esac
+[ -x "$ydir/hooks/post_$cmd" ] && "$ydir/hooks/post_$cmd"
+exit "$rc"
 EOF
     chmod +x "$SANDBOX/stubs/pacman" "$SANDBOX/stubs/yadm"
     mkdir -p "$HOME/.config/hypr" "$HOME/.config/omarchy/plugins/me.keep" "$HOME/.config/mpv/mpv.conf"
@@ -192,6 +204,57 @@ assert_status "different remote: refused" 1 "$STATUS"
 assert_contains "different remote: names both" "$OUTPUT" "with remote '$URL', not $FIX/other.git; refusing"
 capture haseen-setup-dotfiles "$FIX/other.git" --dry-run
 assert_status "different remote: refused under --dry-run too" 1 "$STATUS"
+
+# --- the repo's yadm hooks do not run, the shell include comes back (plan 191) ---
+# yadm clone checks out ~/.config/yadm/hooks/post_clone and runs it as it
+# exits, and the checkout of the replaced files runs post_checkout: repo code
+# without --bootstrap. A repo .bashrc without haseen's include replaced the
+# one haseen added, and rc-include kept `haseen seed user` from adding it back.
+HOOKFIX="$OUT/dotfiles-hooks-fixture"
+rm -rf "$HOOKFIX"
+mkdir -p "$HOOKFIX/src/.config/yadm/hooks"
+hgit() { "$REAL_GIT" -C "$HOOKFIX/src" -c user.name=fixture -c user.email=fixture@example.invalid "$@"; }
+printf '%s\n' 'export EDITOR=nvim # from the hooks repo' >"$HOOKFIX/src/.bashrc"
+for h in post_clone post_checkout; do
+    printf '#!/bin/sh\ntouch "$DOT_LOG/%s-ran"\n' "$h" >"$HOOKFIX/src/.config/yadm/hooks/$h"
+    chmod 0755 "$HOOKFIX/src/.config/yadm/hooks/$h"
+done
+hgit init -q -b main
+hgit add -A
+hgit commit -q -m hooks
+"$REAL_GIT" clone -q --bare "$HOOKFIX/src" "$HOOKFIX/dotfiles.git"
+HURL="$HOOKFIX/dotfiles.git"
+
+dot_sandbox dotfiles-hooks
+INCLUDE="$HASEEN_PATH/default/shell/init.sh"
+printf '# mine\n[ -r "%s" ] && . "%s"\n' "$INCLUDE" "$INCLUDE" >"$HOME/.bashrc"
+mkdir -p "$XDG_STATE_HOME/haseen"
+printf '%s\n' "$HOME/.bashrc" "$HOME/.zshrc" >"$XDG_STATE_HOME/haseen/rc-include"
+capture haseen-setup-dotfiles "$HURL" --dry-run
+assert_status "hooks: dry run" 0 "$STATUS"
+assert_contains "hooks: the plan lists the repo's hooks" "$OUTPUT" \
+    $'not run by this clone; your later yadm commands run them):\n    ~/.config/yadm/hooks/post_checkout\n    ~/.config/yadm/hooks/post_clone'
+assert_contains "hooks: the clone gets a yadm dir without them" "$OUTPUT" "/yadm-dir clone --no-bootstrap $HURL"
+assert_contains "hooks: so does the checkout" "$OUTPUT" "/yadm-dir checkout -- .bashrc"
+assert_contains "include: the plan names the rc that loses it" "$OUTPUT" \
+    $'(`haseen seed user` adds it again):\n    ~/.bashrc'
+assert_contains "include: the record is rewritten" "$OUTPUT" "DRYRUN: write $XDG_STATE_HOME/haseen/rc-include:"
+assert_contains "include: the other rc keeps its record" "$OUTPUT" "    | $HOME/.zshrc"
+assert_not_contains "include: the replaced rc's record goes" "$OUTPUT" "    | $HOME/.bashrc"
+stub sudo 'exec "$@"'
+capture haseen-setup-dotfiles "$HURL" --yes
+assert_status "hooks: clone" 0 "$STATUS"
+assert_eq "hooks: the repo's .bashrc wins" "export EDITOR=nvim # from the hooks repo" "$(<"$HOME/.bashrc")"
+assert_eq "hooks: post_clone is placed" "yes" "$([[ -x $HOME/.config/yadm/hooks/post_clone ]] && echo yes)"
+assert_eq "hooks: post_clone did not run" "" "$(compgen -G "$DOT_LOG/post_clone-ran" || true)"
+assert_eq "hooks: post_checkout did not run" "" "$(compgen -G "$DOT_LOG/post_checkout-ran" || true)"
+assert_eq "include: only the other rc stays recorded" "$HOME/.zshrc" "$(cat "$XDG_STATE_HOME/haseen/rc-include")"
+assert_contains "include: the user is told how it comes back" "$OUTPUT" \
+    "the repo's ~/.bashrc does not include haseen's shell fragment: run 'haseen seed user'"
+capture haseen seed user
+assert_status "include: seeding afterwards succeeds" 0 "$STATUS"
+assert_eq "include: the seed adds the line to the repo's rc" "1" "$(grep -cF ". \"$INCLUDE\"" "$HOME/.bashrc")"
+assert_contains "include: the rc is recorded again" "$(cat "$XDG_STATE_HOME/haseen/rc-include")" "$HOME/.bashrc"
 
 # --- a haseen branch: its hyprland.lua wins, no import, bootstrap on request ---------
 dot_sandbox dotfiles-branch

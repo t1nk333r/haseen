@@ -16,6 +16,8 @@ source "${HASEEN_PATH:-$BIN_DIR/../share/haseen}/lib/common.sh"
 source "$HASEEN_PATH/lib/terminal.sh"
 # shellcheck source=../share/haseen/lib/packages.sh
 source "$HASEEN_PATH/lib/packages.sh"
+# shellcheck source=../share/haseen/lib/shellrc.sh
+source "$HASEEN_PATH/lib/shellrc.sh"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$HASEEN_USER_STATE/dotfiles-backup/$STAMP"
@@ -39,6 +41,8 @@ Clones a yadm dotfiles repository into \$HOME (installs yadm first):
   2. Copies every file it replaces to
      $HASEEN_USER_STATE/dotfiles-backup/<timestamp>/ first.
   3. Runs \`yadm clone --no-bootstrap\`, then lets the repo's version win.
+     The repo's yadm hooks are placed but not run by these steps; your later
+     yadm commands, and \`yadm bootstrap\` with --bootstrap, run them.
 
 Kept as they are:
   ~/.config/hypr      when the repo's hyprland.lua does not load haseen (an
@@ -246,6 +250,55 @@ for i in "${!paths[@]}"; do
     fi
 done
 
+# haseen's shell include (seeds/60-shell.sh) goes into an rc once, and
+# rc-include records that so a line the user deleted stays deleted. A repo rc
+# that replaces one of those rcs is a file haseen never added to: without an
+# include of its own, haseen's aliases, zoxide, mise and fzf would be gone for
+# good. Its record is dropped, so `haseen seed user` adds the line again.
+RC_MARKER="$HASEEN_USER_STATE/rc-include"
+RC_RESET=()
+for p in "${CONFLICT[@]+"${CONFLICT[@]}"}" "${NEW[@]+"${NEW[@]}"}"; do
+    [[ $p == .bashrc || $p == .zshrc ]] || continue
+    grep -qsxF "$HOME/$p" "$RC_MARKER" || continue
+    pgit cat-file -p "HEAD:$p" >"$PLAN_TMP/rc"
+    [[ $(shellrc_include "$PLAN_TMP/rc") == live ]] || RC_RESET+=("$p")
+done
+
+# yadm runs the repo's own hooks around its commands ($YADM_DIR/hooks, which
+# `yadm clone` checks out itself before it exits): post_clone would run before
+# the backups' checkout and the Hyprland clean-up, without --bootstrap and
+# under --yes, and post_checkout after that checkout. haseen's own yadm calls
+# get a yadm dir with an empty hooks directory and the real config and encrypt
+# list, so the clone is otherwise the same (plan 191).
+yadm_base="${XDG_CONFIG_HOME:-}"
+[[ $yadm_base == /* ]] || yadm_base="$HOME/.config"
+YADM_DIR_REAL="$yadm_base/yadm"
+YADM_REL="${YADM_DIR_REAL#"$HOME"/}"
+HOOKS=()
+YADM_ALT_FILES=false
+for p in "${paths[@]}"; do
+    [[ $p == "$YADM_REL"/hooks/* ]] && HOOKS+=("$p")
+    [[ $p == "$YADM_REL"/alt/* ]] && YADM_ALT_FILES=true
+done
+yadm_g=()
+if ((${#HOOKS[@]} > 0)); then
+    YADM_SHIM="$PLAN_TMP/yadm-dir"
+    mkdir -p "$YADM_SHIM/hooks"
+    ln -s "$YADM_DIR_REAL/encrypt" "$YADM_SHIM/encrypt"
+    if $YADM_ALT_FILES; then
+        # yadm finds its alt directory by path ($YADM_DIR/alt), which this
+        # one cannot have, so linking now would put the links in the wrong
+        # place: they wait for `yadm alt`, named at the end. A copy of the
+        # config, not an include: yadm reads it with `git config --file`,
+        # which ignores includes.
+        { cat -- "$YADM_DIR_REAL/config" 2>/dev/null || true
+          printf '[yadm]\n\tauto-alt = false\n'; } >"$YADM_SHIM/config"
+    else
+        ln -s "$YADM_DIR_REAL/config" "$YADM_SHIM/config"
+    fi
+    yadm_g=(-Y "$YADM_SHIM")
+fi
+
 RUN_IMPORT=false
 $HAS_OMARCHY && ! $HASEEN_NATIVE && RUN_IMPORT=true
 import_args=(--merge)
@@ -277,6 +330,8 @@ if $OMARCHY_HYPR; then
 fi
 list "Kept (plugin directories are never rewritten):" "${PROTECTED[@]+"${PROTECTED[@]}"}"
 list "Skipped (a directory is in the way):" "${BLOCKED[@]+"${BLOCKED[@]}"}"
+list "yadm hooks from the repo (placed, not run by this clone; your later yadm commands run them):" "${HOOKS[@]+"${HOOKS[@]}"}"
+list "Without haseen's shell include (\`haseen seed user\` adds it again):" "${RC_RESET[@]+"${RC_RESET[@]}"}"
 if $RUN_IMPORT; then
     echo "Then: haseen import omarchy ${import_args[*]}"
 elif $HAS_OMARCHY; then
@@ -302,10 +357,17 @@ fi
 
 yadm_args=(clone --no-bootstrap)
 [[ -z $BRANCH ]] || yadm_args+=(-b "$BRANCH")
-run yadm "${yadm_args[@]}" "$URL"
+run yadm "${yadm_g[@]+"${yadm_g[@]}"}" "${yadm_args[@]}" "$URL"
 # yadm clone leaves every differing file alone; the backups are taken, so the
 # repo's version wins now.
-((${#CONFLICT[@]} == 0)) || run yadm checkout -- "${CONFLICT[@]}"
+((${#CONFLICT[@]} == 0)) || run yadm "${yadm_g[@]+"${yadm_g[@]}"}" checkout -- "${CONFLICT[@]}"
+
+if ((${#RC_RESET[@]} > 0)); then
+    rc_drop=()
+    for p in "${RC_RESET[@]}"; do rc_drop+=(-e "$HOME/$p"); done
+    rc_keep="$(grep -vxF "${rc_drop[@]}" "$RC_MARKER" || true)"
+    printf '%s' "${rc_keep:+$rc_keep$'\n'}" | write_user_file "$RC_MARKER"
+fi
 
 if $OMARCHY_HYPR; then
     # yadm clone placed the Omarchy files that were missing here; take them
@@ -328,6 +390,12 @@ fi
 $DRY_RUN && exit 0
 info "dotfiles from $URL are in place (${#NEW[@]} new, ${#CONFLICT[@]} replaced)"
 ((${#CONFLICT[@]} == 0)) || info "replaced files are backed up in $BACKUP_DIR"
+if ((${#HOOKS[@]} > 0)) && $YADM_ALT_FILES; then
+    info "the repo keeps alternates in ~/$YADM_REL/alt: run 'yadm alt' to link them (it runs the repo's alt hooks)"
+fi
+for p in "${RC_RESET[@]+"${RC_RESET[@]}"}"; do
+    info "the repo's ~/$p does not include haseen's shell fragment: run 'haseen seed user' to add the one line"
+done
 if $OMARCHY_HYPR; then
     info "haseen's ~/$HYPR_REL stays: \`yadm status\` lists it as changed until the repo carries a hyprland.lua that loads haseen"
 fi
