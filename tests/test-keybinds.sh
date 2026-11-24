@@ -769,6 +769,14 @@ capture haseen keybinds --json
 assert_eq "a chord is pressed together, a layer's key while its modifier is held" \
     '[["CTRL + CAPSLOCK","Press for ESCAPE"],["RIGHT ALT + CAPSLOCK","Press together for CAPSLOCK"]]' \
     "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description]]' <<<"$OUTPUT")"
+# keyd names a layer by its header up to the first colon, and compares names
+# case-sensitively (config_get_layer_index's strcmp in keyd 2.6.0's config.c):
+# [altgr:G] is RightAlt's layer, [AltGr] a new layer no key holds.
+printf '[main]\n\n[altgr:G]\ncapslock = capslock\n\n[Control]\ncapslock = esc\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a modifier layer's header may carry its modifiers, and its name is case-sensitive" \
+    '[["RIGHT ALT + CAPSLOCK","Press for CAPSLOCK"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description]]' <<<"$OUTPUT")"
 printf '[main]\ncapslock = overload(hyper, esc)\ncapslock+shift = overload(control, esc)\n\n[hyper:CMAS]\n[control:A]\n' >"$root/etc/keyd/default.conf"
 capture haseen keybinds --json
 assert_eq "a modifier set keyd cannot read holds none" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"

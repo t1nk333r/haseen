@@ -13,7 +13,7 @@
 - **Category**: defaults
 - **Planned at**: 2026-11-24, from the 35-auditor audit (owner, 2026-11-24,
   "fix them")
-- **State**: DONE 2026-11-24 (`tests/test-keybinds.sh` 168/168,
+- **State**: DONE 2026-11-24 (`tests/test-keybinds.sh` 169/169,
   `tests/test-keyd.sh` 45/45, `tests/test-mux.sh` 100/100,
   `tests/test-seeds.sh` 98/98, `tests/test-weather.sh` 116/116; each fix's
   new checks fail on main 9a9e82ab; the keys on a live session are an owner
@@ -73,6 +73,14 @@ fcitx5-configtool rewrites it), and haseen never edits a user file after
 seeding it (CLAUDE.md). Only the default changes: new installs and fresh
 seeds get Super+i; an existing machine keeps Control+space until the user
 changes it in fcitx5-configtool.
+
+**On a machine seeded before this plan** (luna and IO among them), the owner
+moves the key by hand: in fcitx5-configtool, Global Options, set Trigger
+Input Method to Super+I and apply. Without the GUI, quit fcitx5
+(`fcitx5-remote -e`), set `0=Super+i` under `[Hotkey/TriggerKeys]` in
+`~/.config/fcitx5/config`, and start it again (`fcitx5 -d`). Edit the file
+only while fcitx5 is stopped, since a running fcitx5 can save its own
+settings over it.
 
 **Tests.** `tests/test-seeds.sh`: the seeded trigger is `Super+i` and not
 `Control+space`. `tests/test-mux.sh`: every fcitx5 trigger key, normalised
@@ -196,6 +204,27 @@ default had it off (finding 4).
 
 **Fix.** The same change as finding 4: the default now matches the guide,
 which needs no edit.
+
+## Review
+
+The independent Sonnet review of the first head returned APPROVE with three
+nits, taken as follows.
+
+- Already-seeded machines keep Control+space, with no owner-facing note on
+  how to change it. Taken: the instructions above under "On a machine seeded
+  before this plan", for the pull request description to repeat. A login
+  notice was rejected: it would be a new on-screen element for a one-time
+  change on two machines.
+- The [altgr] lookup in `bin/haseen-keybinds` would miss `[altgr:G]` or
+  `[Control]`. Half not a defect: the header is already cut at its first
+  colon before the lookup, so `[altgr:G]` is RightAlt's layer. Lowercasing
+  was rejected because keyd itself is case-sensitive: keyd 2.6.0's
+  `config_get_layer_index` (src/config.c) compares names with `strcmp`, so
+  `[Control]` is a new layer that no key holds, and the sheet would be wrong
+  to list it as Ctrl. A new `tests/test-keybinds.sh` check pins both.
+- The owner decisions (weather on, Ctrl+Space staying the multiplexer
+  prefix) cannot be verified from the repository. No change: weather is in
+  CLAUDE.md's approved list, and plan 044 set the prefix.
 
 ## Gates
 
