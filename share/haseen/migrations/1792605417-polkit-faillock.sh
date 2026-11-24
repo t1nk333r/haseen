@@ -6,9 +6,10 @@
 # `include system-auth`, which drops pam_faillock: polkit prompts had no
 # lockout and their failures never counted. Omarchy repairs it in its
 # migration 1788256455, which haseen's seal (1792605416) skips, so haseen runs
-# the same check. haseen's own setup commands only add a line to an existing
-# file (bin/haseen-setup-fingerprint, bin/haseen-setup-fido2), so they never
-# write this stack.
+# the same check. haseen's own setup commands only add a line to the stack
+# polkit already reads, /etc/pam.d/polkit-1 or else the vendor one in
+# /usr/lib/pam.d, which includes system-auth (bin/haseen-setup-fingerprint,
+# bin/haseen-setup-fido2; plan 185), so they never write this stack.
 #
 # Adapted from Omarchy migrations/1788256455.sh@v4.5.0-rc1 (MIT, Copyright (c)
 # David Heinemeier Hansson): only the exact stack those commands produced is

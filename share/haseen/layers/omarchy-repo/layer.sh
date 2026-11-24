@@ -52,7 +52,7 @@ layer_apply() {
 
     run_root pacman-key --recv-keys "$OMARCHY_KEY_FPR" --keyserver keys.openpgp.org
     if ! $DRY_RUN; then
-        sudo pacman-key --finger "$OMARCHY_KEY_FPR" 2>/dev/null | tr -d ' ' | grep -q "$OMARCHY_KEY_FPR" ||
+        run_root pacman-key --finger "$OMARCHY_KEY_FPR" 2>/dev/null | tr -d ' ' | grep -q "$OMARCHY_KEY_FPR" ||
             die "the Omarchy key fingerprint does not match $OMARCHY_KEY_FPR; not trusting it"
     else
         echo "DRYRUN: verify the key fingerprint is $OMARCHY_KEY_FPR"

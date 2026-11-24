@@ -462,12 +462,14 @@ setup omarchy-remove-sshd
 mkdir -p "$ROOT/usr/bin" "$ROOT/etc/ssh/sshd_config.d" "$HOME/.ssh"
 printf '#!/bin/sh\n' >"$ROOT/usr/bin/ufw"
 chmod +x "$ROOT/usr/bin/ufw"
-touch "$ROOT/etc/ssh/sshd_config.d/90-haseen.conf"
+touch "$ROOT/etc/ssh/sshd_config.d/90-haseen.conf" "$ROOT/etc/ssh/sshd_config.d/01-haseen.conf"
 echo "ssh-ed25519 AAAA test" >"$HOME/.ssh/authorized_keys"
 capture oma omarchy-remove-security-sshd --dry-run
 assert_dry_pure "sshd" "$OUTPUT"
 assert_contains "sshd: the server is disabled" "$OUTPUT" "DRYRUN: sudo systemctl disable --now sshd.service"
-assert_contains "sshd: haseen's drop-in goes" "$OUTPUT" "DRYRUN: sudo rm -f -- /etc/ssh/sshd_config.d/90-haseen.conf"
+# 01-haseen.conf since plan 185, 90-haseen.conf before it.
+assert_contains "sshd: haseen's drop-in goes" "$OUTPUT" "DRYRUN: sudo rm -f -- /etc/ssh/sshd_config.d/01-haseen.conf"
+assert_contains "sshd: its old name goes" "$OUTPUT" "DRYRUN: sudo rm -f -- /etc/ssh/sshd_config.d/90-haseen.conf"
 assert_contains "sshd: haseen's ufw rule goes" "$OUTPUT" "DRYRUN: sudo ufw --force delete allow 22/tcp"
 assert_contains "sshd: the keys are asked about" "$OUTPUT" "DRYRUN: rm -f -- $HOME/.ssh/authorized_keys"
 recording_sudo

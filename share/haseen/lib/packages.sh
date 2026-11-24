@@ -142,9 +142,25 @@ _pkg_denied_in() {
 # target that pulls them in is in PKG_OMARCHY_APPROVED; otherwise it refuses,
 # so an unattended run never brings omarchy in. A closure pacman cannot
 # resolve is left to pacman, which fails on the same name.
-pkg_guard_closure() {
-    local closure denied p a ok row unapproved=()
-    closure="$(pkg_closure "$@")" || return 0
+pkg_guard_closure() { _pkg_guard pkg_closure "pacman would install" "$@"; }
+
+# pkg_guard_aur_closure NAME... — the same guard before the AUR helper builds
+# NAME...: the helper installs their dependencies itself, and under --yes it
+# asks nothing (plan 185). A closure that cannot be read (no helper, the AUR
+# unreachable) is refused under --yes, since nothing would check it then;
+# without --yes the helper lists the dependencies and asks.
+pkg_guard_aur_closure() { _pkg_guard pkg_aur_closure "building them would install" "$@"; }
+
+# _pkg_guard CLOSURE_FN LABEL NAME... — pkg_guard_closure's body, with the
+# function that lists the closure of NAME....
+_pkg_guard() {
+    local fn="$1" label="$2" closure denied p a ok row unapproved=()
+    shift 2
+    if ! closure="$("$fn" "$@")"; then
+        [[ $fn == pkg_aur_closure ]] && $ASSUME_YES &&
+            die "cannot read what building ${*##*/} from the AUR would install, so --yes cannot rule out omarchy packages among it; run the command without --yes and read the helper's list"
+        return 0
+    fi
     denied="$(_pkg_denied_in "$closure")"
     [[ -n $denied ]] || return 0
     for p in "$@"; do
@@ -155,7 +171,7 @@ pkg_guard_closure() {
         $ok || unapproved+=("$p")
     done
     warn "installing ${*##*/} also installs $(paste -sd' ' <<<"$denied"), which haseen never installs on its own (docs/decisions/0001)"
-    info "pacman would install: $(paste -sd' ' <<<"$closure")"
+    info "$label: $(paste -sd' ' <<<"$closure")"
     if grep -qx omarchy-settings <<<"$denied"; then
         info "omarchy-settings then owns these system files, which land on haseen subsystems (pacman -Ql omarchy-settings 4.0.4-1, read 2026-10-05):"
         for row in "${PKG_OMARCHY_COLLISIONS[@]}"; do
@@ -164,11 +180,84 @@ pkg_guard_closure() {
     fi
     info "removing ${*##*/} with haseen remove (pacman -Rns) removes $(paste -sd' ' <<<"$denied") and their files again, unless another package still needs them"
     if $ASSUME_YES && ((${#unapproved[@]} > 0)); then
-        closure="$(pkg_closure "${unapproved[@]}")" || closure="$(printf '%s\n' "${PKG_DENY[@]}")"
+        closure="$("$fn" "${unapproved[@]}")" || closure="$(printf '%s\n' "${PKG_DENY[@]}")"
         [[ -z $(_pkg_denied_in "$closure") ]] ||
             die "${unapproved[*]##*/} would bring in omarchy packages, which --yes never accepts; run the command without --yes to review the list above and answer yourself"
     fi
     confirm "Install them, the omarchy packages included?" || die "not confirmed; nothing was installed"
+}
+
+# _pkg_dep_satisfied DEP — an installed package satisfies DEP (a name or a
+# provided name). Under a sysroot, one by that name is installed.
+_pkg_dep_satisfied() {
+    if in_sysroot; then
+        pkg_installed "$1"
+    else
+        pacman -T -- "$1" &>/dev/null
+    fi
+}
+
+# _pkg_aur_deps NAME — the depends, makedepends and checkdepends of the AUR
+# package NAME, one name per line, version constraints dropped: what the
+# helper installs to build it. Read from the helper's `-Si --aur` (the AUR's
+# RPC; LC_ALL=C keeps the field names English). Under a sysroot the fixture
+# answers: var/lib/pacman/sync/NAME.deps, the pkg_closure convention.
+_pkg_aur_deps() {
+    if in_sysroot; then
+        local deps
+        deps="$(sysroot_path "/var/lib/pacman/sync/$1.deps")"
+        [[ ! -r $deps ]] || cat -- "$deps"
+        return 0
+    fi
+    local helper out
+    helper="$(aur_helper)"
+    [[ -n $helper ]] || return 1
+    out="$(LC_ALL=C "$helper" -Si --aur -- "$1" </dev/null 2>/dev/null)" || return 1
+    [[ -n $out ]] || return 1
+    # "Depends On      : a  b>=2" and so on; a long value may wrap onto
+    # indented lines, which belong to the field above them.
+    awk '
+        /^[^[:space:]][^:]*:/ {
+            f = $0; sub(/[[:space:]]*:.*/, "", f)
+            v = $0; sub(/^[^:]*:[[:space:]]*/, "", v)
+            want = (f == "Depends On" || f == "Make Deps" || f == "Check Deps")
+            if (want) emit(v)
+            next
+        }
+        want { emit($0) }
+        function emit(s,   n, i, w, a) {
+            n = split(s, a, /[[:space:]]+/)
+            for (i = 1; i <= n; i++) {
+                w = a[i]; sub(/[<>=].*/, "", w)
+                if (w != "" && w != "None") print w
+            }
+        }' <<<"$out"
+}
+
+# pkg_aur_closure NAME... — what building NAME... from the AUR would install:
+# the targets, and each dependency not installed yet: one a sync repo has
+# expanded by pkg_closure, one only the AUR has followed the same way. Fails
+# when a package's dependencies cannot be read.
+pkg_aur_closure() {
+    local queue=("$@") seen=" " list="" n d out sub
+    while ((${#queue[@]} > 0)); do
+        n="${queue[0]}"
+        queue=("${queue[@]:1}")
+        [[ $seen != *" $n "* ]] || continue
+        seen+="$n "
+        list+="$n"$'\n'
+        out="$(_pkg_aur_deps "$n")" || return 1
+        while read -r d; do
+            [[ -n $d ]] || continue
+            _pkg_dep_satisfied "$d" && continue
+            if sub="$(pkg_closure "$d")" && [[ -n $sub ]]; then
+                list+="$sub"$'\n'
+            else
+                queue+=("$d")
+            fi
+        done <<<"$out"
+    done
+    awk 'NF && !seen[$0]++' <<<"$list"
 }
 
 # pkg_install NAME... — install official-repo packages that are missing.
@@ -217,14 +306,21 @@ omarchy_repo_enabled() { pkg_enabled_repos | grep -qx omarchy; }
 # pkg_source NAME — where an aur: entry comes from: "repo:REPO" (an enabled
 # official/CachyOS repo carries it after all), "chaotic", "omarchy" or "aur".
 # Chaotic-AUR and [omarchy] are third-party binary repos and are asked only
-# after the official ones, in that order.
+# after the official ones, in that order. A dry run that applies the chaotic
+# layer earlier plans every such entry from Chaotic-AUR, which the real run
+# will have enabled by then (plan 185; its database cannot be read before).
 pkg_source() {
     local repo
     while read -r repo; do
         [[ -n $repo && $repo != chaotic-aur && $repo != omarchy ]] || continue
         pkg_repo_has "$repo" "$1" && { echo "repo:$repo"; return 0; }
     done < <(pkg_enabled_repos)
-    if chaotic_enabled && pkg_repo_has chaotic-aur "$1"; then
+    if chaotic_enabled; then
+        if pkg_repo_has chaotic-aur "$1"; then
+            echo chaotic
+            return 0
+        fi
+    elif $DRY_RUN && _layer_applied_before chaotic; then
         echo chaotic
         return 0
     fi
@@ -255,8 +351,11 @@ pkg_install_aur() {
         *) aur_pkgs+=("$p") ;;
         esac
     done
-    # An AUR build's dependencies are resolved by the helper, which lists them
-    # before it builds; only the binary-repo part has a closure to check here.
+    if ((${#chaotic_pkgs[@]} > 0)) && ! chaotic_enabled; then
+        info "planned from Chaotic-AUR, which this run enables first: ${chaotic_pkgs[*]#chaotic-aur/} (a package it does not carry goes on to [omarchy] or the AUR)"
+    fi
+    # The binary-repo part is checked here; an AUR build's part below, once a
+    # helper can read it.
     local binary=("${repo_pkgs[@]}" "${chaotic_pkgs[@]}" "${omarchy_pkgs[@]}")
     ((${#binary[@]} == 0)) || pkg_guard_closure "${binary[@]}"
     local flags=(--needed)
@@ -281,16 +380,35 @@ pkg_install_aur() {
             die "AUR packages needed (${aur_pkgs[*]}) but neither paru nor yay is installed (haseen layer apply chaotic provides paru)"
         fi
     fi
-    run "$helper" -S "${flags[@]}" "${aur_pkgs[@]}"
+    # The helper installs the build's dependencies itself, --noconfirm under
+    # --yes: what it would install gets the same omarchy guard first. A live
+    # dry run does not ask the AUR (the network) for it; a fixture answers.
+    if $DRY_RUN && ! in_sysroot; then
+        echo "DRYRUN: read what building ${aur_pkgs[*]} would install from the AUR, and refuse omarchy or omarchy-settings among it as pacman installs do"
+    else
+        pkg_guard_aur_closure "${aur_pkgs[@]}"
+    fi
+    # A PKGBUILD is code from whoever maintains it, and the pacman steps above
+    # may have left sudo's timestamp warm: run_cold drops it and makes every
+    # sudo the build runs ask afresh (plan 103). The helper uses the `sudo` on
+    # PATH, whatever its config names, and keeps no sudo loop, which with
+    # nothing cached would only prompt again and again. These options go after
+    # the targets so the plan still reads "paru -S --needed NAME".
+    local cold=(--sudo sudo)
+    case $helper in
+    paru) cold+=(--nosudoloop) ;;
+    yay) cold+=(--sudoloop=false) ;;
+    esac
+    run_cold "$helper" -S "${flags[@]}" "${aur_pkgs[@]}" "${cold[@]}"
 }
 
-# _omarchy_repo_applied_before — this `haseen layer apply` run applies the
-# omarchy-repo layer before the current one (HASEEN_APPLY_LAYERS, the apply
-# order haseen-layer-apply exports).
-_omarchy_repo_applied_before() {
+# _layer_applied_before NAME — this `haseen layer apply` run applies layer
+# NAME before the current one (HASEEN_APPLY_LAYERS, the apply order
+# haseen-layer-apply exports).
+_layer_applied_before() {
     local n
     for n in ${HASEEN_APPLY_LAYERS:-}; do
-        [[ $n == omarchy-repo ]] && return 0
+        [[ $n == "$1" ]] && return 0
         [[ $n == "${LAYER_NAME:-}" ]] && return 1
     done
     return 1
@@ -321,7 +439,7 @@ pkg_install_omarchy() {
         done
         ((${#absent[@]} == 0)) ||
             warn "skipping ${absent[*]}: haseen installs them only from Omarchy's [omarchy] repo, which does not list them; no other repository is used and nothing is built from the AUR"
-    elif $DRY_RUN && _omarchy_repo_applied_before; then
+    elif $DRY_RUN && _layer_applied_before omarchy-repo; then
         from_repo=("${missing[@]/#/omarchy/}")
     else
         warn "skipping ${missing[*]}: haseen installs them only from Omarchy's [omarchy] repo, which is not enabled. To add them: haseen layer apply omarchy-repo${LAYER_NAME:+ $LAYER_NAME}"

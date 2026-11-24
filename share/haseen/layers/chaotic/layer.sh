@@ -6,8 +6,9 @@
 # Steps follow https://aur.chaotic.cx/docs; ported from the owner's waydots
 # lib/packages.sh (ensure_chaotic_aur), including its pinned key fingerprint.
 # pacman has no drop-in directory for repositories, so the [chaotic-aur]
-# stanza is appended to /etc/pacman.conf: the one exception to the drop-in
-# rule besides Limine's (docs/architecture.md §3).
+# stanza is appended to /etc/pacman.conf, or put before an [omarchy] section
+# already there: the one exception to the drop-in rule besides Limine's
+# (docs/architecture.md §3).
 
 LAYER_SUMMARY="Chaotic-AUR: prebuilt AUR packages, preferred over building from the AUR"
 LAYER_REQUIRES=(base)
@@ -21,6 +22,19 @@ CHAOTIC_CDN=https://cdn-mirror.chaotic.cx/chaotic-aur
 # no database, and every lookup then misses silently. The repo's own
 # mirrorlist package is the canary.
 chaotic_works() { chaotic_enabled && pkg_repo_has chaotic-aur chaotic-mirrorlist; }
+
+# chaotic_before_omarchy — pacman.conf with the [chaotic-aur] stanza put
+# before the [omarchy] section, so the source order (official, Chaotic-AUR,
+# [omarchy]) is also pacman's repo order. Everything else is kept as it is.
+chaotic_before_omarchy() {
+    awk '!done && /^[[:space:]]*\[omarchy\][[:space:]]*$/ {
+            print "[chaotic-aur]"
+            print "Include = /etc/pacman.d/chaotic-mirrorlist"
+            print ""
+            done = 1
+        }
+        { print }' "$(sysroot_path /etc/pacman.conf)"
+}
 
 layer_status() {
     if chaotic_works; then
@@ -45,7 +59,7 @@ layer_apply() {
 
     run_root pacman-key --recv-key "$CHAOTIC_KEY_FPR" --keyserver keyserver.ubuntu.com
     if ! $DRY_RUN; then
-        sudo pacman-key --finger "$CHAOTIC_KEY_FPR" 2>/dev/null | tr -d ' ' | grep -q "$CHAOTIC_KEY_FPR" ||
+        run_root pacman-key --finger "$CHAOTIC_KEY_FPR" 2>/dev/null | tr -d ' ' | grep -q "$CHAOTIC_KEY_FPR" ||
             die "the Chaotic-AUR key fingerprint does not match $CHAOTIC_KEY_FPR; not trusting it"
     else
         echo "DRYRUN: verify the key fingerprint is $CHAOTIC_KEY_FPR"
@@ -53,7 +67,19 @@ layer_apply() {
     run_root pacman-key --lsign-key "$CHAOTIC_KEY_FPR"
     run_root pacman -U --noconfirm "$CHAOTIC_CDN/chaotic-keyring.pkg.tar.zst" "$CHAOTIC_CDN/chaotic-mirrorlist.pkg.tar.zst"
     if ! chaotic_enabled; then
-        printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' | append_root_file /etc/pacman.conf
+        if omarchy_repo_enabled; then
+            # Applied after omarchy-repo (`haseen layer apply omarchy-repo
+            # desktop` resolves chaotic in after it): the stanza goes before
+            # [omarchy], which stays last (plan 185). The file is read whole
+            # first, because the write truncates it.
+            local conf
+            conf="$(chaotic_before_omarchy)"
+            printf '%s\n' "$conf" | write_root_file /etc/pacman.conf 0644
+        elif $DRY_RUN && _layer_applied_before omarchy-repo; then
+            echo "DRYRUN: put the [chaotic-aur] stanza before the [omarchy] section omarchy-repo adds to /etc/pacman.conf"
+        else
+            printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' | append_root_file /etc/pacman.conf
+        fi
     fi
     # A full upgrade, not a bare -Sy: syncing without upgrading and then
     # installing is a partial upgrade.

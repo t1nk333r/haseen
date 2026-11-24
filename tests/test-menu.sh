@@ -7,6 +7,7 @@
 # haseen:covers share/haseen/shell/plugins/haseen.{emoji,security,themegen}/manifest.json
 # haseen:covers share/haseen/shell/plugins/haseen.themepicker/manifest.json
 # haseen:covers share/haseen/shell/templates/** share/haseen/layers/theme/theme-lib.sh
+# haseen:covers share/haseen/migrations/1795510988-sshd-dropin-first.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -438,21 +439,68 @@ printf '#%%PAM-1.0\nauth\t\tinclude\t\tsystem-auth\naccount\t\tinclude\t\tsystem
 before_sum="$(b2sum "$ROOT/etc/pam.d/sudo")"
 capture env HASEEN_SYSROOT="$ROOT" haseen setup fingerprint --dry-run
 assert_dry_pure "fingerprint" "$OUTPUT"
-assert_contains "fingerprint installs fprintd" "$OUTPUT" "DRYRUN: sudo pacman -S --needed --noconfirm fprintd"
+# Packages go through pkg_install: pacman asks unless --yes (plan 185).
+assert_contains "fingerprint installs fprintd" "$OUTPUT" "DRYRUN: sudo pacman -S --needed fprintd"
+assert_not_contains "fingerprint: pacman asks without --yes" "$OUTPUT" "--noconfirm"
 assert_contains "fingerprint pam first" "$OUTPUT" $'    | #%PAM-1.0\n    | auth      sufficient pam_fprintd.so\n    | auth\t\tinclude'
 assert_not_contains "fingerprint skips absent pam files" "$OUTPUT" "polkit-1"
 assert_contains "fingerprint enrolls" "$OUTPUT" "DRYRUN: fprintd-enroll"
+capture env HASEEN_SYSROOT="$ROOT" haseen setup fingerprint --dry-run --yes
+assert_contains "fingerprint --yes: pacman asks nothing" "$OUTPUT" "DRYRUN: sudo pacman -S --needed --noconfirm fprintd"
 capture env HASEEN_SYSROOT="$ROOT" haseen setup fido2 --dry-run
 assert_dry_pure "fido2" "$OUTPUT"
+assert_contains "fido2 installs through pkg_install" "$OUTPUT" "DRYRUN: sudo pacman -S --needed pam-u2f libfido2"
+assert_not_contains "fido2: pacman asks without --yes" "$OUTPUT" "--noconfirm"
 assert_contains "fido2 registers key" "$OUTPUT" "DRYRUN: pamu2fcfg >> $XDG_CONFIG_HOME/Yubico/u2f_keys"
 assert_contains "fido2 pam" "$OUTPUT" "auth      sufficient pam_u2f.so cue"
+assert_contains "fido2 names a service with no PAM stack" "$OUTPUT" "no PAM stack for polkit-1"
 assert_eq "pam fixture untouched" "$before_sum" "$(b2sum "$ROOT/etc/pam.d/sudo")"
+# Current Arch ships polkit's stack in /usr/lib/pam.d only: the line goes into
+# an /etc/pam.d/polkit-1 made from it, which PAM reads instead (plan 185).
+mkdir -p "$ROOT/usr/lib/pam.d"
+printf '#%%PAM-1.0\n\nauth       include      system-auth\naccount    include      system-auth\n' >"$ROOT/usr/lib/pam.d/polkit-1"
+for cmd in fido2 fingerprint; do
+    capture env HASEEN_SYSROOT="$ROOT" haseen setup "$cmd" --dry-run
+    assert_dry_pure "$cmd with polkit's vendor stack" "$OUTPUT"
+    assert_contains "$cmd: polkit from its vendor stack" "$OUTPUT" "DRYRUN: write /etc/pam.d/polkit-1 (mode 0644):"
+    assert_not_contains "$cmd: no skipped service" "$OUTPUT" "no PAM stack"
+done
+assert_contains "fingerprint: vendor stack kept, line first" "$OUTPUT" \
+    $'    | #%PAM-1.0\n    | \n    | auth      sufficient pam_fprintd.so\n    | auth       include      system-auth\n    | account    include      system-auth'
+command rm -rf "$ROOT/usr/lib/pam.d"
+mkdir -p "$ROOT/etc/ssh/sshd_config.d"
+printf '# Written by `haseen setup sshd`.\nPasswordAuthentication no\n' >"$ROOT/etc/ssh/sshd_config.d/90-haseen.conf"
 capture env HASEEN_SYSROOT="$ROOT" haseen setup sshd --dry-run
 assert_dry_pure "sshd" "$OUTPUT"
+assert_contains "sshd installs through pkg_install" "$OUTPUT" "DRYRUN: sudo pacman -S --needed openssh"
+assert_not_contains "sshd: pacman asks without --yes" "$OUTPUT" "--noconfirm"
+# sshd keeps the first value it reads: haseen's drop-in sorts first (plan 185).
+assert_contains "sshd drop-in read first" "$OUTPUT" "DRYRUN: write /etc/ssh/sshd_config.d/01-haseen.conf (mode 0644):"
 assert_contains "sshd key-only" "$OUTPUT" "PasswordAuthentication no"
+assert_contains "sshd: the old drop-in goes" "$OUTPUT" "DRYRUN: sudo rm -f /etc/ssh/sshd_config.d/90-haseen.conf"
 assert_contains "sshd enabled" "$OUTPUT" "DRYRUN: sudo systemctl enable --now sshd.service"
+assert_contains "sshd: a running server reads it" "$OUTPUT" "DRYRUN: sudo systemctl reload-or-restart sshd.service"
+# Machines set up before: the migration renames the drop-in the command wrote.
+sshd_migration="$REPO/share/haseen/migrations/1795510988-sshd-dropin-first.sh"
+sshd_migrate() {
+    capture env DRY_RUN=true HASEEN_SYSROOT="$ROOT" HASEEN_MIGRATION=1795510988-sshd-dropin-first.sh \
+        bash -Eeuo pipefail "$sshd_migration"
+}
+sshd_migrate
+assert_dry_pure "sshd migration" "$OUTPUT"
+assert_contains "sshd migration: renamed" "$OUTPUT" \
+    "DRYRUN: sudo mv -- /etc/ssh/sshd_config.d/90-haseen.conf /etc/ssh/sshd_config.d/01-haseen.conf"
+assert_contains "sshd migration: a running sshd reloads" "$OUTPUT" "DRYRUN: sudo systemctl try-reload-or-restart sshd.service"
+printf 'PasswordAuthentication yes\n' >"$ROOT/etc/ssh/sshd_config.d/90-haseen.conf"
+sshd_migrate
+assert_eq "sshd migration: a file haseen did not write stays" "" "$OUTPUT"
+command rm -f "$ROOT/etc/ssh/sshd_config.d/90-haseen.conf"
+sshd_migrate
+assert_eq "sshd migration: nothing to rename" "" "$OUTPUT"
 capture env HASEEN_SYSROOT="$ROOT" haseen setup ssh-agent --dry-run
 assert_dry_pure "ssh-agent" "$OUTPUT"
+assert_contains "ssh-agent installs through pkg_install" "$OUTPUT" "DRYRUN: sudo pacman -S --needed gcr-4"
+assert_not_contains "ssh-agent: pacman asks without --yes" "$OUTPUT" "--noconfirm"
 assert_contains "ssh-agent socket" "$OUTPUT" "DRYRUN: systemctl --user enable --now gcr-ssh-agent.socket"
 capture haseen setup passwordless-sudo --dry-run
 assert_dry_pure "passwordless-sudo" "$OUTPUT"

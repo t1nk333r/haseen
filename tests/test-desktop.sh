@@ -355,7 +355,10 @@ assert_status "gaming arch: exit" 0 "$STATUS"
 assert_dry_pure "gaming arch" "$OUTPUT"
 assert_contains "gaming arch: plain packages" "$OUTPUT" "DRYRUN: sudo pacman -S --needed steam gamemode lib32-gamemode mangohud lib32-mangohud gamescope lib32-mesa lib32-vulkan-intel"
 assert_not_contains "gaming arch: no cachyos meta" "$OUTPUT" "cachyos-gaming"
-assert_contains "gaming arch: legacy nvidia lib32 from AUR" "$OUTPUT" "DRYRUN: paru -S --needed lib32-nvidia-580xx-utils"
+# Not in the official repos: the run applies chaotic first, so the dry run
+# plans it from Chaotic-AUR, as the real run installs it (plan 185).
+assert_contains "gaming arch: legacy nvidia lib32 from Chaotic-AUR" "$OUTPUT" "DRYRUN: sudo pacman -S --needed chaotic-aur/lib32-nvidia-580xx-utils"
+assert_not_contains "gaming arch: nothing built from the AUR" "$OUTPUT" "paru -S"
 desktop_dry "$FIXTURES/desk-arch-hybrid" gaming -- --apps
 assert_contains "gaming arch: --apps refused politely" "$OUTPUT" "--apps needs the CachyOS repositories"
 

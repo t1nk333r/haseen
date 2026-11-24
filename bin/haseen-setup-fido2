@@ -5,8 +5,8 @@
 # Steps adapted from Omarchy bin/omarchy-setup-security-fido2 (MIT,
 # Copyright (c) David Heinemeier Hansson).
 set -Eeuo pipefail
-# shellcheck source=../share/haseen/lib/common.sh
-source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/packages.sh"
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "$HASEEN_PATH/lib/terminal.sh"
 
@@ -24,11 +24,15 @@ into $KEYS (touch the key when it blinks), then puts
 EOF
 }
 
-# pam_prepend FILE LINE — FILE with LINE inserted before its first rule.
+# pam_prepend FILE LINE — FILE with LINE inserted before its first rule. A
+# service with no file in /etc/pam.d reads its vendor stack in /usr/lib/pam.d
+# (polkit's, on current Arch): that stack with LINE is written to FILE, which
+# PAM then reads instead (plan 185). Fails when the service has neither.
 pam_prepend() {
     local src
     src="$(sysroot_path "$1")"
-    [[ -r $src ]] || return 0
+    [[ -r $src ]] || src="$(sysroot_path "/usr/lib/pam.d/${1##*/}")"
+    [[ -r $src ]] || return 1
     grep -qF pam_u2f.so "$src" && return 0
     awk -v line="$2" '!done && /^[[:space:]]*[a-z-]+[[:space:]]/ && !/^[[:space:]]*#/ { print line; done = 1 } { print } END { if (!done) print line }' "$src" | write_root_file "$1" 0644
 }
@@ -41,7 +45,7 @@ parse_common_flags "$@"
 }
 require_not_root
 confirm "Enable FIDO2 security key authentication for sudo and polkit?" || exit 1
-[[ -x $(sysroot_path /usr/bin/pamu2fcfg) ]] || run_root pacman -S --needed --noconfirm pam-u2f libfido2
+[[ -x $(sysroot_path /usr/bin/pamu2fcfg) ]] || pkg_install pam-u2f libfido2
 if $DRY_RUN; then
     echo "DRYRUN: pamu2fcfg >> $KEYS"
 else
@@ -55,7 +59,10 @@ else
     chmod 600 "$KEYS"
 fi
 # pam_u2f looks in ~/.config/Yubico/u2f_keys by default; nothing else to set.
+skipped=()
 for f in "${PAM_FILES[@]}"; do
-    pam_prepend "$f" "$PAM_LINE"
+    pam_prepend "$f" "$PAM_LINE" || skipped+=("${f##*/}")
 done
+((${#skipped[@]} == 0)) ||
+    warn "no PAM stack for ${skipped[*]} in /etc/pam.d or /usr/lib/pam.d: the key is not asked for there"
 info "FIDO2 key set up"
