@@ -82,20 +82,29 @@ confirm "Use that much disk on the boot drive for hibernation?" || exit 1
 # 1. A top-level subvolume for the swap area, mounted at $SWAP_MOUNT.
 root_uuid="$(findmnt -no UUID / 2>/dev/null || true)"
 [[ -n $root_uuid ]] || die "could not read the root filesystem UUID"
+# The subvolume looked for is the one created and mounted below (plan 188:
+# the check once named "swap" while "@swap" was made). A failed create still
+# unmounts the top level before it stops, and a new fstab line is written only
+# after the subvolume it names has mounted: a line that cannot mount would
+# stop the next boot.
 if ! findmnt -no TARGET "$SWAP_MOUNT" >/dev/null 2>&1; then
     top="$(mktemp -d)"
     run_root mount -o subvolid=5 "/dev/disk/by-uuid/$root_uuid" "$top"
-    if $DRY_RUN || ! run_root btrfs subvolume show "$top/${SWAP_SUBVOL_NAME#@}" >/dev/null 2>&1; then
-        run_root btrfs subvolume create "$top/$SWAP_SUBVOL_NAME"
+    created=0
+    if $DRY_RUN || ! run_root btrfs subvolume show "$top/$SWAP_SUBVOL_NAME" >/dev/null 2>&1; then
+        run_root btrfs subvolume create "$top/$SWAP_SUBVOL_NAME" || created=$?
     fi
     run_root umount "$top"
     rmdir "$top" 2>/dev/null || true
+    ((created == 0)) || die "could not create the $SWAP_SUBVOL_NAME subvolume"
     run_root mkdir -p "$SWAP_MOUNT"
-    if ! grep -q "[[:space:]]${SWAP_MOUNT}[[:space:]]" "$(sysroot_path /etc/fstab)" 2>/dev/null; then
+    if grep -q "[[:space:]]${SWAP_MOUNT}[[:space:]]" "$(sysroot_path /etc/fstab)" 2>/dev/null; then
+        run_root mount "$SWAP_MOUNT"
+    else
+        run_root mount -o "subvol=/$SWAP_SUBVOL_NAME,noatime" "/dev/disk/by-uuid/$root_uuid" "$SWAP_MOUNT"
         printf '\n# haseen: hibernation image area\nUUID=%s %s btrfs subvol=/%s,noatime 0 0\n' \
             "$root_uuid" "$SWAP_MOUNT" "$SWAP_SUBVOL_NAME" | append_root_file /etc/fstab
     fi
-    run_root mount "$SWAP_MOUNT"
 fi
 
 # 2. The swapfile itself. mkswapfile sets NOCOW and refuses compression, which
@@ -130,11 +139,21 @@ cmdline="resume=$device resume_offset=$offset"
 [[ $(cat "$(sysroot_path /sys/power/mem_sleep)" 2>/dev/null) == *"[s2idle]"* ]] &&
     cmdline+=" rtc_cmos.use_acpi_alarm=1"
 
-boot_cmdline_add resume "$cmdline" || true
+# Status 2: written nowhere the kernel reads it (GRUB, an unknown loader, or a
+# Limine drop-in that a later `=` replaces); boot_cmdline_add said where to
+# add it. The initramfs is still rebuilt for the resume hook, but this is not
+# a finished setup, so it does not say so (plan 188).
+cmdline_rc=0
+boot_cmdline_add resume "$cmdline" || cmdline_rc=$?
 
-$no_rebuild && {
+if $no_rebuild; then
     info "initramfs not rebuilt (--no-rebuild); run mkinitcpio -P and reboot"
-    exit 0
-}
-boot_initramfs_rebuild
+else
+    boot_initramfs_rebuild
+fi
+if ((cmdline_rc != 0)); then
+    warn "hibernation is not set up yet: '$cmdline' does not reach the kernel command line; add it as said above, then run haseen hibernation status"
+    exit 1
+fi
+$no_rebuild && exit 0
 info "hibernation is set up; reboot once so the new command line is in effect"
