@@ -60,8 +60,10 @@ Usage: ./install.sh [--dry-run] [--yes] [--prefix DIR] [--layers a,b,c] [--pick]
   --tree-only   install bin/ and share/ only, apply no layers
   --uninstall-tree
                 remove PREFIX/bin/haseen*, haseen's omarchy* links in
-                PREFIX/bin, PREFIX/share/haseen and the user units; applied
-                layers stay (remove them first with haseen layer remove)
+                PREFIX/bin, PREFIX/share/haseen, the user units and the base
+                layer's pacman hook that runs PREFIX/bin/haseen; other
+                applied layers stay (remove them first with haseen layer
+                remove)
 EOF
 }
 
@@ -195,6 +197,22 @@ uninstall_omarchy_notify_dropin() {
     run_root rmdir --ignore-fail-on-non-empty "$(dirname "$dropin")"
 }
 
+# The base layer's pacman hook (lib/omarchy-guard.sh) runs PREFIX/bin/haseen
+# as root whenever omarchy or omarchy-settings changes. base has no remove
+# step, so the hook goes with the tree it names: left behind, every such
+# transaction would run a missing binary (plan 186). A hook whose Exec names
+# another haseen (another prefix) is that one's and stays.
+uninstall_omarchy_guard_hook() {
+    local hook
+    hook="$(sysroot_path "$OMARCHY_GUARD_HOOK")"
+    [[ -f $hook ]] || return 0
+    if grep -qxF "Exec = ${PREFIX%/}/bin/haseen omarchy guard --hook" "$hook"; then
+        run_root rm -f "$OMARCHY_GUARD_HOOK"
+    else
+        warn "$OMARCHY_GUARD_HOOK runs another haseen than ${PREFIX%/}/bin/haseen; it stays"
+    fi
+}
+
 uninstall_tree() {
     local f links=()
     for f in "$REPO"/bin/haseen*; do
@@ -206,6 +224,7 @@ uninstall_tree() {
         [[ -e $f ]] && run_root rm -f "$UNIT_DIR/${f##*/}"
     done
     uninstall_omarchy_notify_dropin
+    uninstall_omarchy_guard_hook
     for f in "${VENDOR_FILES[@]}"; do
         run_root rm -f "$PREFIX/share/$f"
     done
@@ -263,12 +282,23 @@ install_tree() {
     done
     branding_svg mark "$(branding_accent)" | write_root_file "$ICON_DIR/scalable/apps/haseen.svg"
     install_root_file "$(branding_file symbolic)" "$ICON_DIR/symbolic/apps/haseen-symbolic.svg" 0644
-    # What this install put here, for `haseen update haseen` (plan 134): the
-    # checkout's commit, so a later run over the same tree says so instead of
-    # reinstalling it. A checkout without git records "unknown", which never
-    # counts as current.
-    install_stamp_write "$PREFIX" "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)" "$version"
+    BUILD_VERSION=$version
     info "haseen $version installed under $PREFIX"
+}
+
+# stamp_install SCOPE — what this install put here, for `haseen update haseen`
+# (plan 134): the checkout's commit, so a later run over the same tree says so
+# instead of reinstalling it. A checkout without git records "unknown", which
+# never counts as current. Written once the whole run asked for has
+# succeeded (the tree for --tree-only; layers, migrations, seeds and hardware
+# otherwise): a stamp written with the tree made a failed layer or migration
+# step look installed, so the next update said "already installed" and
+# skipped it all (plan 186). SCOPE is `tree` after --tree-only (or the VAPT
+# tooling alone) and `full` otherwise, so a full update of a commit installed
+# tree-only still applies its layers and migrations.
+stamp_install() {
+    install_stamp_write "$PREFIX" "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+        "$BUILD_VERSION" "$1"
 }
 
 # The checkout this tree is built from, whether git already knows of newer
@@ -333,7 +363,10 @@ selection="${LAYERS[*]}"
 confirm "Install haseen into $PREFIX and apply: $selection${PICK_SETUP[*]:+, then setup: ${PICK_SETUP[*]}}?" || exit 1
 if $PICKED; then picker_save; fi
 install_tree
-$TREE_ONLY && exit 0
+if $TREE_ONLY; then
+    stamp_install tree
+    exit 0
+fi
 
 # Under --dry-run nothing was copied, so plan the layers from the checkout.
 haseen_bin="$PREFIX/bin/haseen"
@@ -362,7 +395,11 @@ if [[ -n $VAPT_GROUPS ]]; then
     HASEEN_PATH="$installed_haseen_path" HASEEN_INSTALL_PATH="$PREFIX/share/haseen" "$haseen_bin" layer apply vapt "${flags[@]}" -- "${vapt_args[@]}" || installer_rc=$?
 fi
 # Tooling-only opt-in does not apply hardware quirks or unrelated migrations.
-$VAPT_ONLY && exit "$installer_rc"
+# Its stamp reads as tree-only: no layer or migration of the update path ran.
+if $VAPT_ONLY; then
+    ((installer_rc != 0)) || stamp_install tree
+    exit "$installer_rc"
+fi
 
 # A fresh HOME has nothing to upgrade, so its migrations are recorded as
 # sealed; an existing haseen user gets what is genuinely pending run.
@@ -386,6 +423,10 @@ HASEEN_PATH="$installed_haseen_path" "$haseen_bin" seed user "${flags[@]}" ||
 # Hardware quirks are matched against this machine and applied once each; the
 # ledger makes a reinstall and every later run a no-op.
 HASEEN_PATH="$installed_haseen_path" "$haseen_bin" hw apply "${flags[@]}"
+
+# Everything the update path asks for is done; the optional setup steps below
+# are the picker's, which `haseen update haseen` (--yes) never runs.
+((installer_rc != 0)) || stamp_install full
 
 # The optional setup steps the picker chose; none otherwise.
 picker_run_setup "$haseen_bin" "${flags[@]}"

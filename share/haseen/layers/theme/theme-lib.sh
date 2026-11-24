@@ -317,12 +317,14 @@ _theme_contrast() {
             printf "%d", int((x + 0.05) / (y + 0.05) * 100) }')"
 }
 
-# The shell draws its foreground text on `selection` (highlighted rows, pager
-# buttons, switches). Terminals pair selection_background with its own
-# selection_foreground instead, so themes often pick a bright accent there
-# (haseen: orange under light grey, 2.3:1). shell_selection is that
-# colour pulled toward the background until foreground text on it reaches
-# 4.5:1 (WCAG AA); a selection that already reads well is kept as is.
+# shell_selection is `selection` pulled toward the background until
+# foreground text on it reaches 4.5:1 (WCAG AA); a selection that already
+# reads well is kept as is. Themes often pick a bright accent for `selection`
+# (haseen: orange under light grey, 2.3:1), since terminals pair it with their
+# own selection_foreground. No template reads shell_selection: the shell's
+# selected fill is shell.json's 18 % foreground mix since plan 115, not
+# `selection`. Its one reader is `omarchy-theme-color --all` (plan 093), so it
+# stays for Omarchy's scripts and plugins (plan 194).
 _theme_shell_selection() {
     local sel="${THEME_COLORS[selection]:-}" fg="${THEME_COLORS[foreground]:-}"
     local bg="${THEME_COLORS[background]:-}" amount=0 candidate

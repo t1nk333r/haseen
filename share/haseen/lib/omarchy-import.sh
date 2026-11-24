@@ -110,8 +110,9 @@ def place($sec; $raw; $drawer):
             | .report += $t.report
             | .mapped += ["\($oid) -> \($hid)"]
             | (if ($t.settings | length) > 0 then .cfg.plugins[$hid].settings = ((.cfg.plugins[$hid].settings // {}) + $t.settings) else . end)
-            # haseen ships the weather widget off (it asks wttr.in); being in
-            # the Omarchy bar is the opt-in, with the location Omarchy kept.
+            # Being in the Omarchy bar turns the weather widget on even where
+            # the user file had it off, with the location Omarchy
+            # kept (the haseen default has it on since plan 190).
             | (if $hid == "haseen.weather" then
                  .cfg.plugins[$hid].enabled = true
                  | (if $wloc != "" then .cfg.plugins[$hid].settings.location = $wloc else . end)

@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-plugin-validate share/haseen/VERSION share/haseen/default/shell.json
 # haseen:covers share/haseen/migrations/17915603* share/haseen/shell/Compat/Manifest.js
+# haseen:covers share/haseen/migrations/1795510386-bar-null.sh
 # haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
 # haseen:covers share/haseen/shell/plugins/haseen.{monitor-settings,omaconnect,syncthing}/**
 # haseen:covers share/haseen/shell/plugins/*/manifest.json
@@ -13,7 +14,9 @@
 # a native service beside a listed widget, settings the new manifests
 # declare, the new entry winning; nested references and the original plugin
 # directories untouched; a dry run, a second run and a HOME without the old
-# ids change nothing.
+# ids change nothing. Plan 186: a shell.json without a bar of its own keeps
+# the default bar (the migration once wrote "bar": null there), and
+# migration 1795510386-bar-null removes a null bar it already wrote.
 
 M=1791560300-adopt-integrations.sh
 run_m() {
@@ -110,3 +113,50 @@ write_cfg <<<'{"bar": '
 run_m
 assert_status "a broken shell.json stops the migration" 1 "$STATUS"
 assert_eq "and is not overwritten" '{"bar": ' "$(cat "$(CFG)")"
+
+# --- plan 186: a shell.json without a bar of its own keeps the default bar ------
+# `.bar |= ...` on a file with no `bar` wrote "bar": null, and both merges let
+# that null replace the whole default bar: no widgets at all.
+sandbox migrate-integrations-no-bar
+write_cfg <<<'{"plugins":{"io.github.ilyazar.syncthing":{"enabled":false}}}'
+run_m
+assert_status "a shell.json without a bar migrates" 0 "$STATUS"
+cfg="$(cat "$(CFG)")"
+assert_eq "no bar key is written" "false" "$(jq 'has("bar")' <<<"$cfg")"
+assert_eq "the plugin entry still moves" '{"plugins":{"haseen.syncthing":{"enabled":false}}}' "$(jq -c . <<<"$cfg")"
+assert_eq "the merged config keeps the default bar" "$(jq -c .bar "$HASEEN_PATH/default/shell.json")" \
+    "$(bash -c 'source "$HASEEN_PATH/shell/lib/plugin.sh"; shell_merged_json' | jq -c .bar)"
+write_cfg <<<'{"services":["haseen.pager","omaconnect"]}'
+run_m
+cfg="$(cat "$(CFG)")"
+assert_eq "services alone: re-pointed, still no bar key" '{"services":["haseen.pager","haseen.omaconnect"]}' "$(jq -c . <<<"$cfg")"
+
+# --- plan 186: 1795510386-bar-null removes the null bar 1791560300 wrote --------
+R=1795510386-bar-null.sh
+run_r() {
+    capture env HASEEN_PATH="$HASEEN_PATH" HASEEN_MIGRATION="$R" "$@" bash -Eeuo pipefail "$HASEEN_PATH/migrations/$R"
+}
+sandbox migrate-bar-null
+run_r
+assert_status "bar-null: no shell.json, nothing to do" 0 "$STATUS"
+assert_eq "bar-null: and none is created" "no" "$([[ -e $(CFG) ]] && echo yes || echo no)"
+write_cfg <<<'{"plugins":{"haseen.syncthing":{"enabled":false}},"bar":null}'
+before="$(cat "$(CFG)")"
+run_r DRY_RUN=true
+assert_status "bar-null: dry run succeeds" 0 "$STATUS"
+assert_contains "bar-null: dry run shows the write" "$OUTPUT" "DRYRUN: write"
+assert_eq "bar-null: dry run leaves shell.json alone" "$before" "$(cat "$(CFG)")"
+run_r
+assert_status "bar-null: the repair succeeds" 0 "$STATUS"
+assert_eq "bar-null: the null bar goes, nothing else changes" '{"plugins":{"haseen.syncthing":{"enabled":false}}}' "$(jq -c . "$(CFG)")"
+assert_contains "bar-null: it says so" "$OUTPUT" "hid every bar widget"
+assert_eq "bar-null: the merged config has the default bar again" "$(jq -c .bar "$HASEEN_PATH/default/shell.json")" \
+    "$(bash -c 'source "$HASEEN_PATH/shell/lib/plugin.sh"; shell_merged_json' | jq -c .bar)"
+cfg="$(cat "$(CFG)")"
+run_r
+assert_eq "bar-null: a second run changes nothing" "$cfg" "$(cat "$(CFG)")"
+for own in '{"bar":{}}' '{"bar":{"left":[]}}' '{"services":["haseen.pager"]}'; do
+    write_cfg <<<"$own"
+    run_r
+    assert_eq "bar-null: $own is left alone" "$own" "$(cat "$(CFG)")"
+done

@@ -50,7 +50,9 @@ export HASEEN_SYSROOT="$FIXTURES/hw-asus-rog"
 capture haseen hw apply --dry-run --yes
 assert_dry_pure "asus fixture dry run" "$OUTPUT"
 assert_contains "the fkeys body writes the modprobe drop-in" "$OUTPUT" "options hid_apple fnmode=2"
-assert_contains "the nvidia body writes early-KMS modules" "$OUTPUT" "MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)"
+# Optional (`?`): the quirk matches the PCI id alone, and a required module
+# that is not installed yet fails every mkinitcpio run (plan 189).
+assert_contains "the nvidia body writes early-KMS modules, each optional" "$OUTPUT" "MODULES+=('nvidia?' 'nvidia_modeset?' 'nvidia_uvm?' 'nvidia_drm?')"
 assert_contains "a matched quirk with no body is reported" "$OUTPUT" "matched but not implemented yet:"
 assert_contains "and it is named" "$OUTPUT" "asus-rog"
 assert_contains "the summary line counts it" "$OUTPUT" "unimplemented"
@@ -108,6 +110,22 @@ capture haseen hw apply probe-row --yes
 assert_status "a failing quirk fails the run" 1 "$STATUS"
 assert_contains "the failure names the quirk" "$OUTPUT" "hardware quirk probe-row failed"
 assert_eq "a failed quirk keeps no marker" "" "$(compgen -G "$XDG_STATE_HOME/haseen/hardware/probe-row" || true)"
+
+# A failure in the middle of a body stops it there, even when the body's last
+# line would succeed: the failed write is not followed by its "wrote" message,
+# and the quirk is not recorded (plan 189).
+cat >"$table/probe-row.sh" <<'QUIRK'
+fail_write() { false; }
+printf 'ran\n' >>"$QUIRK_LOG"
+echo data | fail_write
+printf 'continued\n' >>"$QUIRK_LOG"
+QUIRK
+: >"$QUIRK_LOG"
+capture haseen hw apply probe-row --yes
+assert_status "a body that fails halfway fails the run" 1 "$STATUS"
+assert_contains "and the failure names the quirk" "$OUTPUT" "hardware quirk probe-row failed"
+assert_eq "the body stops at the failed command" "ran" "$(cat "$QUIRK_LOG")"
+assert_eq "a body that failed halfway keeps no marker" "" "$(compgen -G "$XDG_STATE_HOME/haseen/hardware/probe-row" || true)"
 
 # A malformed table is refused rather than half-read.
 printf 'Bad Id\t*\tnope\n' >"$table/quirks.tsv"

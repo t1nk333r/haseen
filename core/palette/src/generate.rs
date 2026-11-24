@@ -27,7 +27,9 @@ pub struct Generated {
     pub light: bool,
     pub cached: bool,
     pub palette: Palette,
-    /// The surface the shell draws foreground text on.
+    /// The surface terminals (selection_background), yazi, btop and neovim
+    /// draw the foreground on; the shell's own selection fill is shell.json's
+    /// 18 % mix and does not read it (plan 115, plan 194).
     pub selection: String,
 }
 
@@ -230,8 +232,9 @@ fn mkdir_all(dir: &Path, mode: u32) -> Result<(), String> {
     }
 }
 
-/// Written to <path>.new, then renamed: a half-written entry is never read
-/// back as a palette.
+/// Written to a temporary file of this writer's own, then renamed: a
+/// half-written entry is never read back as a palette, and two runs on the
+/// same image never share (and rename away) one temporary file (plan 194).
 fn save_cached(
     dir: &str,
     key: &str,
@@ -258,7 +261,9 @@ fn save_cached(
         text.push_str(&json::quote(c));
     }
     text.push_str("]}\n");
-    let tmp = format!("{}.new", path.display());
+    static WRITES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = format!("{}.{}.{n}.new", path.display(), std::process::id());
     {
         use std::io::Write;
         let mut f = std::fs::OpenOptions::new()
@@ -271,8 +276,10 @@ fn save_cached(
         f.write_all(text.as_bytes())
             .map_err(|e| path_error("write", &tmp, &e))?;
     }
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| format!("rename {tmp} {}: {}", path.display(), errno_text(&e)))
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename {tmp} {}: {}", path.display(), errno_text(&e))
+    })
 }
 
 /// The palette for one image. The cache holds the generator's own palette;
@@ -375,7 +382,10 @@ impl Generated {
         b.push_str(&format!("accent = {}\n", q(&p[4])));
         b.push_str(&format!("cursor = {}\n", q(&p[7])));
         b.push_str(&format!("selection = {}\n", q(&self.selection)));
-        b.push_str(&format!("selection_foreground = {}\n", q(&p[0])));
+        // Terminals draw selection_foreground on selection_background: the
+        // foreground, which the clamp holds at 4.5:1 on the selection. The
+        // Go generator wrote the background here, 1.4:1 (plan 194).
+        b.push_str(&format!("selection_foreground = {}\n", q(&p[7])));
         b.push_str(&format!(
             "selection_background = {}\n\n",
             q(&self.selection)
@@ -627,6 +637,44 @@ mod go_tests {
         assert!(text.starts_with("{\"version\":3,"), "{text}");
         std::fs::write(&path, text.replace("\"version\":3", "\"version\":2")).unwrap();
         assert!(load_cached(&cache, &key).is_none());
+    }
+
+    /// Two writers of one entry at once (two themes from one wallpaper):
+    /// each has its own temporary file, so neither renames the other's away.
+    #[test]
+    fn concurrent_writers_of_one_entry_both_succeed() {
+        let dir = TempDir::new("racecache");
+        let cache = dir.path("cache");
+        let palette: Palette = std::array::from_fn(|i| format!("#{i:02x}{i:02x}{i:02x}"));
+        let errors: Vec<String> = std::thread::scope(|s| {
+            let workers: Vec<_> = (0..8)
+                .map(|_| {
+                    s.spawn(|| {
+                        (0..100)
+                            .filter_map(|_| {
+                                save_cached(&cache, "key", "seed", "normal", false, &palette).err()
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .flat_map(|w| w.join().unwrap())
+                .collect()
+        });
+        assert!(
+            errors.is_empty(),
+            "{} failed writes: {:?}",
+            errors.len(),
+            errors.first()
+        );
+        assert_eq!(load_cached(&cache, "key"), Some(palette));
+        let left: Vec<_> = std::fs::read_dir(&cache)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, vec!["key.json".to_string()]);
     }
 
     #[test]

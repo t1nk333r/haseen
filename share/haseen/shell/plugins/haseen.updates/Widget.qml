@@ -31,8 +31,11 @@ BarButton {
 
     // bin/ next to share/haseen, so a checkout runs its own commands.
     readonly property string binDir: Paths.haseenPath.replace(/\/share\/haseen\/?$/, "") + "/bin"
-    // Where `haseen update check` caches a clean result.
-    readonly property string cachePath: (Quickshell.env("XDG_RUNTIME_DIR") || Quickshell.env("TMPDIR") || "/tmp") + "/haseen/updates.json"
+    // Where `haseen update check` caches a clean result: the runtime dir, or
+    // without one the state dir, never a shared temp dir another user could
+    // fill first (plan 186).
+    readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
+    readonly property string cachePath: (runtimeDir !== "" ? runtimeDir + "/haseen" : Paths.userState + "/updates") + "/updates.json"
     readonly property int intervalMinutes: Model.intervalMinutes(settings.interval)
     // null until the first check answers.
     property var result: null

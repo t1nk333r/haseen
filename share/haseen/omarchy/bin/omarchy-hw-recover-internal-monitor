@@ -8,7 +8,9 @@
 # adopted omarchy-hyprland-monitor-clamshell keeps goes with it. It removes
 # files only: run it before Hyprland reads its config, or reload afterwards
 # (plan 093). Omarchy's unit runs /usr/bin/omarchy-hw-recover-internal-monitor
-# by path; haseen starts nothing by itself.
+# by path; haseen's Hyprland config (default/hypr/init.lua) runs it before it
+# loads the toggles, at every start and reload while the toggle exists (plan
+# 189).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"

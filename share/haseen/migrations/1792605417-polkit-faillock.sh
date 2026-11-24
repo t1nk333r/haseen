@@ -16,6 +16,11 @@
 # no system-auth include yet); only the bare pam_unix lines change; a backup
 # is kept and restored if the result cannot be verified. Safe to re-run: a
 # fixed or administrator-written file is left alone.
+#
+# A first install runs it too rather than sealing it (plan 186): the file is
+# the machine's, and a HOME new to haseen says nothing about it. Sealed, the
+# repair would never run once the base layer's hook sealed Omarchy's own.
+# haseen:seal run
 
 # shellcheck source=../lib/common.sh
 source "$HASEEN_PATH/lib/common.sh"

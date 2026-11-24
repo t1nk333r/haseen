@@ -822,7 +822,7 @@ sb_track_chain() {
 # sudo_is_test_stub — the sudo on PATH is a file under this checkout's
 # tests/.out/, where tests/lib.sh writes its stubs (resolved through links). An
 # installed tree has no tests/, and a real sudo is never there. haseen
-# secureboot setup and haseen setup boot-menu let a real run under
+# secureboot setup and sign and haseen setup boot-menu let a real run under
 # HASEEN_SYSROOT proceed only then, for their tests' recorders.
 sudo_is_test_stub() {
     local sudo stubs

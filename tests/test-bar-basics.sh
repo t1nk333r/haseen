@@ -268,6 +268,31 @@ mkdir -p "$tools"
 for c in bash jq sed stat date flock mktemp mv cat rm mkdir dirname readlink env id; do ln -s "$(command -v "$c")" "$tools/$c"; done
 capture env PATH="$tools" "$REPO/bin/haseen-update-check" --force
 assert_eq "no checkupdates is named; no AUR helper is no error" '["checkupdates is not installed (pacman-contrib)"]' "$(jq -c .errors <<<"$OUTPUT")"
+# Without XDG_RUNTIME_DIR (su, cron) the fallback was a shared
+# ${TMPDIR:-/tmp}/haseen another user could create first: its cache was served
+# and a lock linked to one of this user's files truncated it (plan 186). The
+# state dir stands in, and a run dir that is a link or not this user's is
+# refused.
+stub checkupdates "printf 'linux 6.17.1-1 -> 6.17.2-1\n'"
+stub paru 'exit 1'
+shared="$SANDBOX/shared-tmp"
+mkdir -p "$shared/haseen"
+printf 'keep\n' >"$SANDBOX/victim"
+ln -s "$SANDBOX/victim" "$shared/haseen/updates.lock"
+printf '%s\n' '{"repo":9,"aur":0,"lines":["planted 1 -> 2"],"errors":[],"cached":true}' >"$shared/haseen/updates.json"
+capture env -u XDG_RUNTIME_DIR TMPDIR="$shared" haseen update check
+assert_eq "without XDG_RUNTIME_DIR a planted /tmp cache is not served" '{"repo":1,"cached":false}' "$(jq -c '{repo, cached}' <<<"$OUTPUT")"
+assert_eq "and a lock linked to a file of the user's leaves it alone" "keep" "$(cat "$SANDBOX/victim")"
+assert_eq "the state dir holds the cache instead" "1" "$(jq .repo "$XDG_STATE_HOME/haseen/updates/updates.json")"
+assert_eq "as a directory only the user can enter" "700" "$(stat -c %a "$XDG_STATE_HOME/haseen/updates")"
+linked="$SANDBOX/linked-runtime"
+mkdir -p "$linked"
+ln -s "$shared/haseen" "$linked/haseen"
+capture env XDG_RUNTIME_DIR="$linked" haseen update check
+assert_status "a linked run dir still exits 0" 0 "$STATUS"
+assert_eq "a run dir that is a link is refused before anything in it is read" \
+    "[\"$linked/haseen is not this user's own directory; no check was run\"] 0" "$(jq -c .errors <<<"$OUTPUT") $(jq .repo <<<"$OUTPUT")"
+assert_eq "and the lock's target is still untouched" "keep" "$(cat "$SANDBOX/victim")"
 unset HASEEN_SYSROOT
 
 # --- the widgets and the panel in the real engine ----------------------------------
