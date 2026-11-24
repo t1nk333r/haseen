@@ -19,7 +19,7 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/com
 
 usage() {
     cat <<EOF
-Usage: haseen syncthing <command> [--dry-run]
+Usage: haseen syncthing <command> [--dry-run] [-- ARG...]
 
   status                       one JSON object: this device, the web
                                interface's address, folders (state,
@@ -43,6 +43,8 @@ Usage: haseen syncthing <command> [--dry-run]
   service start|stop|restart|status
                                the syncthing.service user unit
   gui-url                      the web interface's address
+
+Everything after \`--\` is an argument, never an option.
 
 Exit codes: 0 ok, 2 usage, 64 a bad argument, 69 Syncthing is not answering
 (or has no readable config), 127 curl is missing.
@@ -237,8 +239,17 @@ cmd_service() {
     esac
 }
 
-parse_common_flags "$@"
-set -- "${REST[@]}"
+# `--` ends the options: what follows is passed on as it is. The panel puts it
+# before a folder label or device name a Syncthing peer chose, which may well
+# be "--dry-run" or "-h" (plan 199).
+opts=()
+while (($#)) && [[ $1 != -- ]]; do
+    opts+=("$1")
+    shift
+done
+(($#)) && shift
+parse_common_flags "${opts[@]+"${opts[@]}"}"
+set -- "${REST[@]+"${REST[@]}"}" "$@"
 verb=${1:-}
 (($#)) && shift
 case $verb in

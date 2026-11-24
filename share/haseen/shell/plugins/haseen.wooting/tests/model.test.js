@@ -29,7 +29,8 @@ new Function("exports", src + `
   exports.CODE_UNASSIGNED = CODE_UNASSIGNED;
   exports.emptyLink = emptyLink; exports.linkStep = linkStep; exports.linkHint = linkHint;
   exports.LINK_RETRY_LIMIT = LINK_RETRY_LIMIT;
-  exports.profileEntry = profileEntry; exports.settingsParts = settingsParts;`)(M)
+  exports.profileEntry = profileEntry; exports.settingsParts = settingsParts;
+  exports.switchOutcome = switchOutcome;`)(M)
 
 let pass = 0, fail = 0
 function eq(got, want, label) {
@@ -635,6 +636,16 @@ const un = M.unmapped(stray, sixty)
 eq(un.length, 1, "unmapped: one key outside the 60% grid")
 eq(un[0].code, 41, "unmapped: it is the (0,0) Esc press")
 eq(M.unmapped(stray, full).length, 0, "unmapped: nothing stray on a full grid")
+
+// ---- a switch from the panel (plan 199) ---------------------------------
+// The panel closes on the daemon's confirmation and stays open, showing the
+// error, on its refusal.
+eq(M.switchOutcome(2, { ok: true, active: 2 }), "done", "switchOutcome: the reply to profile set 2")
+eq(M.switchOutcome(2, { ok: false, error: "profile set 2: device still reports slot 0" }), "failed", "switchOutcome: a refused switch")
+eq(M.switchOutcome(2, { event: "status", present: true, active: 0, profiles: [] }), "", "switchOutcome: a snapshot is no answer")
+eq(M.switchOutcome(2, { ok: true, active: 1 }), "", "switchOutcome: another slot is no answer")
+eq(M.switchOutcome(-1, { ok: false, error: "x" }), "", "switchOutcome: nothing pending")
+eq(M.switchOutcome(2, null), "", "switchOutcome: an unparseable line")
 
 console.log(`model.test.js: ${pass} passed, ${fail} failed`)
 process.exit(fail === 0 ? 0 : 1)

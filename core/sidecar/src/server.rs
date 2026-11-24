@@ -239,6 +239,11 @@ pub fn listen(opts: Options) -> Result<Server, ListenError> {
                     }
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
+                // The last subscriber left: stop what runs between samples
+                // (nvidia-smi) and forget the baselines (plan 199).
+                if deadline.is_none() {
+                    sampler.idle();
+                }
             }
         })
         .map_err(|e| ListenError::Failed(e.to_string()))?;

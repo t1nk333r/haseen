@@ -98,7 +98,7 @@ esac
 
 printf 'haseen wooting doctor\n'
 
-# --- 1. tooling --------------------------------------------------------------
+# --- tooling -----------------------------------------------------------------
 head_line 'command-line tools'
 missing=()
 for dep in socat jq; do have "$dep" || missing+=("$dep"); done
@@ -110,7 +110,7 @@ else
     pass 'socat and jq are installed'
 fi
 
-# --- 2. udev rule ------------------------------------------------------------
+# --- udev rule ---------------------------------------------------------------
 head_line 'udev rule for vendor 31e3'
 rule=""
 for dir in $UDEV_DIRS; do
@@ -173,8 +173,9 @@ missing)
     ;;
 esac
 
-# --- 3. command interface ----------------------------------------------------
+# --- command interface -------------------------------------------------------
 head_line 'Wooting command interface (usage page 0xFF55 or 0x1337)'
+interface_step=$step
 cmd_node=""
 cmd_prefix=""
 analog_node=""
@@ -210,7 +211,7 @@ else
     note_fail 4
 fi
 
-# --- 4. permissions ----------------------------------------------------------
+# --- permissions -------------------------------------------------------------
 head_line 'access to the command interface'
 if [[ -z $cmd_node ]]; then
     warned 'skipped: no command interface to test'
@@ -222,12 +223,13 @@ else
     note_fail 4
 fi
 
-# --- 5. conflicting owner ----------------------------------------------------
+# --- conflicting owner -------------------------------------------------------
 # Who actually has the node open, read out of /proc, beats guessing process
 # names. The case that proved it in the original: Wootility Web holds the
 # keyboard from inside the browser, so no name pattern can catch it, and the
 # doctor passed green beside a device that answered nothing.
 head_line 'conflicting owner'
+owner_step=$step
 if [[ -n $cmd_node ]]; then
     holders=()
     foreign=0
@@ -277,7 +279,7 @@ else
     warned 'pgrep not found — cannot look for a conflicting Wootility process'
 fi
 
-# --- 6. daemon ---------------------------------------------------------------
+# --- daemon ------------------------------------------------------------------
 head_line 'wootingd'
 sock=$(wooting_socket)
 if [[ -S $sock ]]; then
@@ -293,7 +295,9 @@ if [[ -S $sock ]]; then
                 pass "sees the keyboard: firmware v$(jq -r '.firmware' <<<"$status"), $(jq -r '.count' <<<"$status") selectable profile(s), active slot $(jq -r '.active' <<<"$status")"
             else
                 failed 'running, but it reports no keyboard'
-                hint 'see checks 4-6 above'
+                # From the counter: the numbers moved once checks were added
+                # above, and the hint pointed past the conflicting owner (plan 199).
+                hint "see checks $interface_step-$owner_step above"
                 note_fail 4
             fi
         else
@@ -309,7 +313,7 @@ else
     hint 'if it was never set up: haseen setup wooting on'
     note_fail 3
 
-    # --- 7. direct device probe (only safe with the daemon down) -------------
+    # --- direct device probe (only safe with the daemon down) ----------------
     # No socket does not prove no daemon: one may be starting, or bound
     # elsewhere. `wootingd doctor` opens the device itself, and two owners
     # break both, so a live wootingd process vetoes the probe.
