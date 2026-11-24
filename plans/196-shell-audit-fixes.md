@@ -15,7 +15,7 @@
 - **State**: DONE 2026-11-24 (the tests named below; review and merge are
   the coordinator's)
 
-The audit ran at `2f7f472a`. Every finding was checked again on `9a9e82ab`
+The audit ran at 2f7f472a (the branch of plan 182 before its squash merge). Every finding was checked again on `9a9e82ab`
 (main after plans 182 to 184) and still held there. Line numbers below are
 `9a9e82ab`'s. Two of the nine findings share a cause (1 and 2: a role with no
 plugin is answered as if it had one).
