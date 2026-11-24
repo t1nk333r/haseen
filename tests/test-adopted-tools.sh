@@ -415,7 +415,7 @@ QML
     printf '{"version":1,"rules":[{"pattern":"work.example","entryId":"beta:","learned":false}]}\n' >"$XDG_CONFIG_HOME/haseen/browser-picker.json"
     printf '{"selectionFile":"%s/sel1","doneFile":"%s/done1","urls":["https://app.work.example/x"],"flags":[]}' "$SANDBOX" "$SANDBOX" >"$SANDBOX/req1.json"
     printf '{"selectionFile":"%s/sel2","doneFile":"%s/done2","urls":["https://other.example/y"],"flags":["--incognito"]}' "$SANDBOX" "$SANDBOX" >"$SANDBOX/req2.json"
-    for n in 3 4; do
+    for n in 3 4 5; do
         printf '{"selectionFile":"%s/sel%s","doneFile":"%s/done%s","urls":["https://n%s.work.example/"],"flags":[]}' "$SANDBOX" "$n" "$SANDBOX" "$n" "$n" >"$SANDBOX/req$n.json"
     done
     sed "s|@S@|$SANDBOX|g" >"$h/shell.qml" <<'QML'
@@ -446,16 +446,20 @@ ShellRoot {
             console.warn("RESULT asks " + JSON.stringify({ opened: s.opened, host: s.host }));
             s.finish(s.entries[0], true);
             console.warn("RESULT picked " + JSON.stringify({ answer: s.lastAnswer, opened: s.opened, rules: s.rules.map(r => r.pattern + "=" + r.entryId + "=" + r.learned) }));
-            // Two links at once: the second arrives while the first is read.
+            // Three links at once: the second and third arrive while the
+            // first is read. Quickshell restarts a running Process once,
+            // with its latest command, so without the queue the third
+            // replaced the second (plan 198).
             s.pick("@S@/req3.json");
             s.pick("@S@/req4.json");
+            s.pick("@S@/req5.json");
             t4.running = true;
         }
     }
     Timer {
         id: t4; interval: 800
         onTriggered: {
-            console.warn("RESULT burst " + JSON.stringify({ answer: s.lastAnswer, opened: s.opened, queued: s.requestQueue.length }));
+            console.warn("RESULT burst " + JSON.stringify({ answer: s.lastAnswer, opened: s.opened }));
             Qt.quit();
         }
     }
@@ -470,9 +474,11 @@ QML
         "{\"answer\":[\"$SANDBOX/alpha\",\"https://other.example/y\"],\"opened\":false,\"rules\":[\"other.example=alpha:=true\",\"work.example=beta:=false\"]}" "$(result picked)"
     assert_eq "browser-picker: the argv is NUL-separated in the selection file" "$SANDBOX/alpha|https://other.example/y|" "$(tr '\0' '|' <"$SANDBOX/sel2")"
     assert_eq "browser-picker: both callers were released" "x x" "$(cat "$SANDBOX/done1" "$SANDBOX/done2" | tr '\n' ' ' | sed 's/ $//')"
-    assert_eq "browser-picker: two links at once are both read and answered" "{\"answer\":[\"$SANDBOX/beta\",\"https://n4.work.example/\"],\"opened\":false,\"queued\":0}" "$(result burst)"
-    assert_eq "browser-picker: the first of the two got its own answer" "$SANDBOX/beta|https://n3.work.example/|" "$(tr '\0' '|' <"$SANDBOX/sel3" 2>/dev/null)"
-    assert_eq "browser-picker: and both of their callers were released" "x x" "$(cat "$SANDBOX/done3" "$SANDBOX/done4" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+    assert_eq "browser-picker: three links at once, the last answered last" "{\"answer\":[\"$SANDBOX/beta\",\"https://n5.work.example/\"],\"opened\":false}" "$(result burst)"
+    for n in 3 4 5; do
+        assert_eq "browser-picker: link $n of three at once got its own answer" "$SANDBOX/beta|https://n$n.work.example/|" "$(tr '\0' '|' <"$SANDBOX/sel$n" 2>/dev/null)"
+    done
+    assert_eq "browser-picker: and all three callers were released" "x x x" "$(cat "$SANDBOX/done3" "$SANDBOX/done4" "$SANDBOX/done5" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
     assert_eq "browser-picker: the rules file holds rules only" '["rules","version"]' "$(jq -c keys "$XDG_CONFIG_HOME/haseen/browser-picker.json")"
     assert_eq "browser-picker: rankings in haseen's state" '["alpha:","beta:"]' "$(jq -c '.entries | keys' "$XDG_STATE_HOME/haseen/browser-picker.json")"
 

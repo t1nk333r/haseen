@@ -58,10 +58,10 @@ Scope {
     property var targetScreen: null
     // The last argv answered, for the test hook.
     property var lastAnswer: null
-    // Request files not read yet. A running Process does not restart when its
-    // command changes, so a link that arrives while another is being read
-    // waits here instead of being dropped with its caller left waiting
-    // (plan 198).
+    // Request files not read yet. A running Process restarts only once after
+    // it exits, with whatever command it was last given, so of several links
+    // that arrive while one is being read all but the last were dropped,
+    // their callers left waiting. They wait here instead (plan 198).
     property var requestQueue: []
 
     function focusedScreen(): var {

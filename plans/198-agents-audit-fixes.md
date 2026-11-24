@@ -14,7 +14,7 @@
 - **Category**: agents, plugins
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit of 2026-11-24)
-- **State**: DONE 2026-11-24 (`tests/test-adopted-tools.sh` 247/247,
+- **State**: DONE 2026-11-24 (`tests/test-adopted-tools.sh` 249/249,
   `tests/test-webapp.sh` 55/55, `tests/test-widgets-c.sh` 127/127,
   `tests/test-launcher-providers.sh` 68/68, `tests/test-agent-accounts.sh`
   357/358, the one failure the laptop's own, see Notes; review is the
@@ -137,14 +137,22 @@ points of `default/menu.jsonc`'s agent glyphs.
 not empty. It now checks that each account row's glyph is one code point,
 U+F06C4 or U+F06A9.
 
-## 6. A second browser-picker request that arrived while the first was read was dropped
+## 6. Browser-picker requests that arrived while one was read were dropped
 
 `share/haseen/shell/plugins/haseen.browser-picker/Service.qml:71-78`
 replaced `requestReader.command` and set `running = true` without checking
-whether the reader still ran. A running Quickshell `Process` does not
-restart (the same file's `scan()` guards with `if (!scanner.running)`,
-`:101`), so the second request file was never read, while the IPC call had
-already returned the shell's PID (`:283`). Its caller,
+whether the reader still ran. The audit's premise, that a running Quickshell
+`Process` ignores `running = true`, is not quite what Quickshell 0.3.2
+(the engine the tests run) does. A probe in the scratchpad set a `Process`
+to `cat` a FIFO, then gave it two more commands in the same handler, each
+with `running = true`; `running` read `true` after each. The log was: the
+FIFO's text, exiting with the command already set to the last file; one
+restart; the last file's text; nothing more. So a running `Process`
+restarts once after it exits, with the last command it was given. Two
+requests that arrive together are both read, which is what the first review
+found when it put main's file back. A third that arrives while the first is
+read replaces the second, whose file is never read, while the IPC call had
+already returned the shell's PID (`:283`). That caller,
 `bin/haseen-browser-picker`, then waits on its FIFO for as long as the shell
 lives.
 
@@ -153,12 +161,21 @@ reader only when it is idle. `readNextRequest()` takes the next one,
 answering an open card "nothing chosen" first as before, and the reader's
 `onExited` reads the next file after starting the request it just read.
 
-**Test.** `tests/test-adopted-tools.sh`: two picks back to back, both
-matching a rule; both selection files get their own answer and both callers
-are released. Before the fix only the first was answered.
+**Test.** `tests/test-adopted-tools.sh`: three picks in one handler, all
+matching a rule. Each selection file gets its own answer and all three
+callers are released. With main's `Service.qml` and this test, the middle
+link's selection file is never written and its caller is not released (two
+assertions fail); the last link's answer is still right.
 
 **Rejected.** Reading the request with a `FileView`: a second request would
 still have to wait for the first to be answered, which is the queue again.
+Holding a queued request until the open card is answered, so that each link
+of a burst gets its own card (the review's optional suggestion): a newer
+link replacing an open card is the picker's documented behaviour, and it is
+also the only way out when a card cannot be answered (no screen to show it
+on). Holding requests behind the card would let one card that nobody can
+answer block every later link. Links a rule answers, the common case in a
+burst, are not affected either way.
 
 ## 7. The typist picker's snippet indexes were not the file's
 
@@ -232,11 +249,14 @@ drops it.
 
 ## Notes
 
-Every new assertion was run against main's code with this plan's tests
-(a detached worktree of `9a9e82ab`) and failed there: 10 in
+Every finding's test was run against main's code with this plan's tests
+(a detached worktree of `9a9e82ab`) and fails there: 10 assertions in
 `test-adopted-tools.sh`, 3 in `test-agent-accounts.sh`, 5 in
 `test-webapp.sh`, 1 each in `test-widgets-c.sh` and
-`test-launcher-providers.sh`.
+`test-launcher-providers.sh`. One of the 10 was the old burst assertion,
+which failed only on a field main does not have (see Review). Its
+replacement fails 2 assertions with main's `Service.qml`, so the count is
+now 11; the other assertions of the burst also pass on main.
 
 `tests/test-agent-accounts.sh` "and says where a plain CLI follows it"
 fails on the author's laptop before and after this plan: at that point the
@@ -244,3 +264,21 @@ test sets no `HASEEN_SYSROOT`, so `bin/haseen-agent-account-use:69` reads
 the laptop's real `/etc/mise/conf.d/omarchy-agent-accounts.toml` (Omarchy's
 mise wrapper is installed there) and prints the mise wording. CI has no
 such file. It is a test-hermeticity defect outside this plan's findings.
+
+## Review
+
+The first independent review approved the change with one should-fix and
+two nits.
+
+- *The burst test did not fail without the fix.* Correct: with main's
+  `Service.qml` both of the test's two requests were read, because
+  Quickshell 0.3.2 restarts a running `Process` once with its latest command
+  (section 6 now gives the probe). The drop needs a third request while the
+  first is read. The test now sends three, and with main's file it fails on
+  the middle link's answer and on its caller's release. Section 6's claim
+  that only the first was answered is gone. The `queued` field the old
+  assertion checked existed only in the new code, so it was dropped.
+- *The first of two links that need a card is cancelled at once.* Not
+  taken; section 6's Rejected says why.
+- *A one-off failure in `tests/test-menu.sh`.* The reviewer reran it and
+  it passed. Nothing to change.
