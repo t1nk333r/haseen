@@ -15,6 +15,13 @@
 #   - fstab is rewritten before the swap area goes, so a failure in between
 #     can never leave a boot-time mount of a deleted subvolume;
 #   - a swap subvolume that holds anything besides the swapfile is kept;
+#   - nothing is removed without a sign of hibernation (a resume hook,
+#     resume= where a loader reads it or on the running kernel's command
+#     line, or the setups' fstab comments): swap
+#     alone is not hibernation, as Omarchy's own check says (plan 188);
+#   - a top-level swap subvolume is deleted only when its fstab line is one
+#     setup wrote ("# haseen: hibernation image area"); a mount line someone
+#     else wrote is kept, and so is the subvolume it mounts (plan 188);
 #   - rtc_cmos.use_acpi_alarm=1 (in /etc/kernel/cmdline on systemd-boot),
 #     Omarchy's rtc-alarm.conf and its keyboard-backlight sleep hook are left
 #     in place: harmless without hibernation, and the first may predate setup.
@@ -48,12 +55,15 @@ require_not_root
 
 fstab="$(sysroot_path /etc/fstab)"
 
-# fstab_swap_mount — the fstab line that mounts the swap subvolume, if any.
+# fstab_swap_mount [FILE] — the fstab line that mounts the swap subvolume, if
+# any, in FILE (default /etc/fstab; - is stdin).
 fstab_swap_mount() {
-    awk -v m="$SWAP_MOUNT" '!/^[[:space:]]*#/ && $2 == m && $3 == "btrfs" { print; exit }' "$fstab" 2>/dev/null || true
+    awk -v m="$SWAP_MOUNT" '!/^[[:space:]]*#/ && $2 == m && $3 == "btrfs" { print; exit }' "${1:-$fstab}" 2>/dev/null || true
 }
-fstab_has_swapfile() {
-    awk -v f="$SWAP_FILE" '!/^[[:space:]]*#/ && $1 == f && $3 == "swap" { found = 1 } END { exit !found }' "$fstab" 2>/dev/null
+# fstab_hibernation_comment — fstab carries a comment haseen's or Omarchy's
+# setup writes above its hibernation lines.
+fstab_hibernation_comment() {
+    grep -qE '^# haseen: hibernation (image area|swapfile)|^# Btrfs swapfile for system hibernation$' "$fstab" 2>/dev/null
 }
 
 # fstab_without_hibernation — /etc/fstab minus the hibernation stanzas: the
@@ -122,10 +132,22 @@ if [[ -f $f && $(wc -l <"$f") -le 1 ]] && grep -qE '^KERNEL_CMDLINE\[default\]\+
 fi
 swapfile=false
 [[ -e $(sysroot_path "$SWAP_FILE") ]] && swapfile=true
-swap_entry=false
-fstab_has_swapfile && swap_entry=true
+kernel_cmdline="$(sysroot_path /etc/kernel/cmdline)"
+kernel_resume=false
+[[ -f $kernel_cmdline ]] && grep -qE '(^| )resume(_offset)?=' "$kernel_cmdline" && kernel_resume=true
+grub_resume=false
+grep -qE '^[[:space:]]*GRUB_CMDLINE_LINUX(_DEFAULT)?=.*resume(_offset)?=' "$(sysroot_path /etc/default/grub)" 2>/dev/null &&
+    grub_resume=true
+proc_resume=false
+grep -qE '(^| )resume=' "$(sysroot_path /proc/cmdline)" 2>/dev/null && proc_resume=true
+tagged=false
+fstab_hibernation_comment && tagged=true
 
-if ! $top_level && ! $swap_entry && ! $swapfile && ! $haseen_hook && ! $omarchy_hook && ! $limine_drop_in; then
+# Hibernation is set up when something says so. A swapfile, its fstab line
+# and a /swap subvolume alone are plain swap, which this leaves alone, as
+# Omarchy's command does without its resume hook.
+if ! $haseen_hook && ! $omarchy_hook && ! $limine_drop_in && ! $omarchy_drop_in &&
+    ! $kernel_resume && ! $grub_resume && ! $proc_resume && ! $tagged; then
     echo "Hibernation is not set up"
     exit 0
 fi
@@ -148,6 +170,10 @@ fi
 # 2. fstab, before the subvolume goes: a mount line for a deleted subvolume
 # would stop the next boot.
 new_fstab="$(fstab_without_hibernation)"
+# The swap subvolume goes only with its mount line: one that stays (written by
+# someone other than setup) keeps its subvolume too.
+mount_kept=false
+[[ -n $(fstab_swap_mount - <<<"$new_fstab") ]] && mount_kept=true
 if [[ $new_fstab != "$(cat "$fstab" 2>/dev/null)" ]]; then
     info "removing the hibernation lines from /etc/fstab (backup: /etc/fstab.<date>.back)"
     run_root cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
@@ -155,7 +181,9 @@ if [[ $new_fstab != "$(cat "$fstab" 2>/dev/null)" ]]; then
 fi
 
 # 3. The swap area.
-if $top_level; then
+if $top_level && $mount_kept; then
+    warn "$SWAP_MOUNT is mounted by an fstab line haseen hibernation setup did not write ($mount_line); keeping that line and the subvolume it mounts"
+elif $top_level; then
     read -r spec _ _ options _ <<<"$mount_line"
     subvol=""
     IFS=, read -ra opts <<<"$options"
@@ -218,8 +246,7 @@ if $omarchy_drop_in; then
     run_root rm -f "$OMARCHY_LIMINE_DROP_IN"
     cmdline_changed=true
 fi
-kernel_cmdline="$(sysroot_path /etc/kernel/cmdline)"
-if [[ -f $kernel_cmdline ]] && grep -qE '(^| )resume(_offset)?=' "$kernel_cmdline"; then
+if $kernel_resume; then
     new_cmdline=""
     for word in $(<"$kernel_cmdline"); do
         [[ $word == resume=* || $word == resume_offset=* ]] && continue
@@ -229,9 +256,9 @@ if [[ -f $kernel_cmdline ]] && grep -qE '(^| )resume(_offset)?=' "$kernel_cmdlin
     printf '%s\n' "$new_cmdline" | write_root_file /etc/kernel/cmdline 0644
     cmdline_changed=true
 fi
-if grep -qE 'resume(_offset)?=' "$(sysroot_path /etc/default/grub)" 2>/dev/null; then
+if $grub_resume; then
     warn "remove resume= and resume_offset= from GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then run: sudo grub-mkconfig -o /boot/grub/grub.cfg"
-elif ! $cmdline_changed && grep -qE '(^| )resume=' "$(sysroot_path /proc/cmdline)" 2>/dev/null; then
+elif ! $cmdline_changed && $proc_resume; then
     warn "the running kernel was booted with resume=; remove it from your $BOOTLOADER kernel command line yourself"
 fi
 $cmdline_changed && rebuild=true

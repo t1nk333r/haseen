@@ -353,10 +353,12 @@ assert_not_contains 'explicit user uv bin replaces default' "$OUTPUT" "$XDG_DATA
 vapt_tools_untouched fragment
 
 # Activation is read-only: a command in the rc (even a symlinked one) that
-# sources the link counts, whether it names the absolute path or $HOME. A
-# comment, an echo or the source of another file does not, and then the exact
-# line is reported. No rc is ever written or invented.
-for kind in absolute home comment echo other none; do
+# sources the link counts, whether it names the absolute path or $HOME, and so
+# does the include of haseen's init.sh that `haseen seed user` adds, which
+# sources the link itself (plan 195). A comment, an echo or the source of
+# another file does not, and then the exact line is reported. No rc is ever
+# written or invented.
+for kind in absolute home init comment echo other none; do
     env_case "vapt-env-rc-$kind"
     printf '# managed elsewhere\n' >"$ROOT/managed.rc"
     # shellcheck disable=SC2016  # the rc line itself names $HOME
@@ -365,7 +367,8 @@ for kind in absolute home comment echo other none; do
     home) printf '%s\n' '[ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"' ;;
     comment) printf '# [ -r "%s" ] && . "%s"\n' "$VAPT_LINK" "$VAPT_LINK" ;;
     echo) printf 'echo ". %s"\n' "$VAPT_LINK" ;;
-    other) printf '. "%s"\n' "$HASEEN_PATH/default/shell/init.sh" ;;
+    init) printf '[ -r "%s" ] && . "%s"\n' "$HASEEN_PATH/default/shell/init.sh" "$HASEEN_PATH/default/shell/init.sh" ;;
+    other) printf '. "%s"\n' "$HASEEN_PATH/default/shell/aliases.sh" ;;
     esac >>"$ROOT/managed.rc"
     ln -s /managed.rc "$TEST_HOME/.bashrc"
     before="$(cat "$ROOT/managed.rc")"
@@ -376,7 +379,7 @@ for kind in absolute home comment echo other none; do
     assert_contains "$kind rc environment state" "$(report)" $'# environment\tok'
     applied="$OUTPUT"
     vapt_api status
-    if [[ $kind == absolute || $kind == home ]]; then
+    if [[ $kind == absolute || $kind == home || $kind == init ]]; then
         assert_not_contains "$kind: an rc that sources the link is reused, nothing reported" "$applied" 'add this line yourself'
         assert_contains "$kind: status sees the activation" "$OUTPUT" 'ok: an interactive shell rc sources the VAPT link'
     else

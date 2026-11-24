@@ -7,9 +7,17 @@
 # carry no hash and panics on a stale one (USAGE.md "Secure Boot"). Kernel and
 # module paths are deliberately left alone: limine-entry-tool writes those, and
 # re-hashing whatever sits on the ESP would defeat the check.
+#
+# It holds Limine's boot-partition lock from the plan to the rename, as
+# limine-header.sh does: the plan names lines by number, so a
+# limine-snapper-sync or limine-entry-tool write in between would be lost or
+# have the wrong line replaced, and that config would then be enrolled
+# (plan 188).
 set -Eeuo pipefail
 # shellcheck source=secureboot.sh
 source "$(dirname "$(readlink -f "$0")")/secureboot.sh"
+# shellcheck source=../../lib/bootmenu.sh
+source "$SB_DIR/../../lib/bootmenu.sh" # BOOTMENU_LOCK
 
 (($# == 2)) || {
     echo "Usage: limine-hash-assets.sh /path/to/limine.conf /path/to/esp" >&2
@@ -17,8 +25,13 @@ source "$(dirname "$(readlink -f "$0")")/secureboot.sh"
 }
 conf="$1"
 esp="$2"
-[[ -f $conf && -r $conf ]] || die "not readable: $conf"
+[[ -f $conf && -r $conf && ! -L $conf ]] || die "not a readable regular file: $conf"
 [[ -d $esp ]] || die "not a directory: $esp"
+
+lock="$(sysroot_path "$BOOTMENU_LOCK")"
+mkdir -p "${lock%/*}"
+exec 9>"$lock"
+flock -w 30 9 || die "$BOOTMENU_LOCK is held by another Limine tool; try again"
 
 plan="$(sb_limine_asset_plan "$conf" "$esp")"
 [[ -n $plan ]] || exit 0

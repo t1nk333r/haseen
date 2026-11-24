@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Haseen
 import qs.Haseen.Widgets
@@ -10,13 +9,17 @@ import qs.Haseen.Widgets
 // second press. Open with `haseen shell ipc panel toggle haseen.session`.
 //
 // Lock goes to the `lock` role (haseen.lock), falling back to
-// `loginctl lock-session` for a lock daemon listening to logind. Log out is
-// Hyprland's exit dispatcher over its socket (what `hyprctl dispatch exit`
-// sends). Power actions go through `systemctl`, which asks logind and polkit.
+// `loginctl lock-session` for a lock daemon listening to logind. Log out,
+// Suspend, Reboot and Shut down run `haseen system`, as the menu's System
+// rows and SUPER + SHIFT + ESCAPE do: it asks every window to close first so
+// a browser saves its session (plan 104), and brings a pending boot splash up
+// to date before a reboot or shutdown (plan 177). The panel called systemctl
+// and Hyprland's exit dispatcher itself until plan 197, and skipped both.
 //
 // Another installed OS (Windows) is one more row: `haseen boot list` reads the
-// firmware's entries, and the row sets BootNext through pkexec and reboots, so
-// it starts once without touching the boot order or Secure Boot.
+// firmware's entries, and the row sets BootNext through pkexec and reboots
+// through `haseen system`, so it starts once without touching the boot order
+// or Secure Boot.
 Column {
     id: root
 
@@ -31,6 +34,32 @@ Column {
     // a power menu. settings.bootEntries decides what shows: "auto" (the
     // default) drops them by label, a list of ids or labels shows exactly those.
     readonly property var bootNoise: /^(USB|PXE|IDER|ATA\b|ATAPI|CD\/DVD|Setup|Boot Menu|Diagnostic|Network|Startup|Rescue|MEBx)/i
+    // settings.bootEntries as the panel reads it: null for "auto", [] for
+    // none, else the lowercased ids and labels to show. The manifest types it
+    // a string, so the Settings panel saves `false` and `0000, Windows` as
+    // text; a hand-edited shell.json may hold the boolean or a JSON list
+    // (plan 197). A list in settings can arrive as a Qt sequence, for which
+    // Array.isArray is false, so any object with a length counts.
+    readonly property var bootWanted: {
+        const v = settings.bootEntries;
+        if (v !== null && typeof v === "object" && typeof v.length === "number") {
+            const out = [];
+            for (let i = 0; i < v.length; i++) {
+                const w = String(v[i]).trim().toLowerCase();
+                if (w !== "")
+                    out.push(w);
+            }
+            return out;
+        }
+        if (v === false)
+            return [];
+        const text = typeof v === "string" ? v.trim().toLowerCase() : "auto";
+        if (text === "auto" || text === "")
+            return null;
+        if (text === "false" || text === "none" || text === "off")
+            return [];
+        return text.split(",").map(w => w.trim()).filter(w => w !== "");
+    }
     property var bootActions: []
     readonly property var actions: baseActions.concat(bootActions)
     // label and confirm (the armed row's line) are English, translated where
@@ -74,7 +103,7 @@ Column {
     // Entries the firmware can start, read once while the panel is open.
     Process {
         id: bootList
-        running: root.settings.bootEntries !== false
+        running: root.bootWanted === null || root.bootWanted.length > 0
         command: [root.cli + "-boot-list", "--json"]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -86,7 +115,7 @@ Column {
                 }
                 if (listing.status !== "ready")
                     return;
-                const wanted = Array.isArray(root.settings.bootEntries) ? root.settings.bootEntries.map(w => String(w).toLowerCase()) : null;
+                const wanted = root.bootWanted;
                 root.bootActions = (listing.entries || []).filter(entry => {
                     if (entry.id === listing.currentId)
                         return false;
@@ -125,31 +154,27 @@ Column {
         if (id.startsWith("boot:")) {
             const entry = actions.find(a => a.id === id);
             // pkexec authenticates the BootNext write; the reboot that follows
-            // is the user's own, through logind, and only once the firmware
-            // took it. Detached: close() frees this panel, and a Process it
-            // owned would die with it before the reboot. The id and label stay
-            // argv ($0 "$@"), never part of the script.
-            Quickshell.execDetached(["bash", "-c", 'pkexec "$0" "$@" && exec systemctl reboot', root.cli + "-boot-next", id.slice(5), "--label", entry.bootLabel, "--yes"]);
+            // is the user's own, `haseen system reboot` through logind, and
+            // only once the firmware took it. Detached in its own scope, as
+            // the menu runs `haseen system`: close() frees this panel, and a
+            // Process it owned would die with it before the reboot. The id
+            // and label stay argv ("$1", "${@:2}"), never part of the script.
+            Apps.launch(["bash", "-c", 'pkexec "${@:2}" && exec "$1" system reboot', "haseen-session", root.cli, root.cli + "-boot-next", id.slice(5), "--label", entry.bootLabel, "--yes"]);
             return;
         }
-        switch (id) {
-        case "lock":
+        if (id === "lock") {
             if (!Plugins.callRole("lock", "lock", []))
                 Quickshell.execDetached(["loginctl", "lock-session"]);
-            break;
-        case "logout":
-            Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.exit()" : "exit");
-            break;
-        case "suspend":
-            Quickshell.execDetached(["systemctl", "suspend"]);
-            break;
-        case "reboot":
-            Quickshell.execDetached(["systemctl", "reboot"]);
-            break;
-        case "poweroff":
-            Quickshell.execDetached(["systemctl", "poweroff"]);
-            break;
+            return;
         }
+        const verb = ({
+                logout: "logout",
+                suspend: "suspend",
+                reboot: "reboot",
+                poweroff: "shutdown"
+            })[id];
+        if (verb)
+            Apps.launch([root.cli, "system", verb]);
     }
 
     function shift(delta: int): void {

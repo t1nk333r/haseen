@@ -238,7 +238,15 @@ mise_install_tools() {
         grep -qs 'mise activate' "$rc" && return 0
         [[ $(shellrc_include "$rc") == live ]] && return 0
     done
-    info "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
+    # The seed adds its include to an rc once (seeds/60-shell.sh), so for an
+    # rc it has done that for, the line was deleted since and the seed would
+    # add nothing: the advice is the line itself.
+    local include="$HASEEN_PATH/default/shell/init.sh"
+    if grep -qsxF "$HOME/.bashrc" "$HASEEN_USER_STATE/rc-include"; then
+        info "mise tools reach PATH through haseen's shell fragment; add this line to ~/.bashrc: [ -r \"$include\" ] && . \"$include\""
+    else
+        info "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
+    fi
 }
 
 mise_remove_tools() {

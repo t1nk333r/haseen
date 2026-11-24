@@ -210,14 +210,20 @@ Item {
         }
     }
 
-    // Wheel anywhere on the widget; clicks go to the cells.
+    // Wheel anywhere on the widget; clicks go to the cells. Touchpads and
+    // hi-res wheels send fractions of a notch, which add up (BarButton's
+    // rule, plan 091; plan 197): rounding each event alone dropped them.
     MouseArea {
+        property real wheelDelta: 0
+
         anchors.fill: parent
         acceptedButtons: Qt.NoButton
         onWheel: event => {
-            const steps = Math.round(event.angleDelta.y / 120);
+            wheelDelta += event.angleDelta.y;
+            const steps = Math.trunc(wheelDelta / 120);
             if (steps === 0)
                 return;
+            wheelDelta -= steps * 120;
             if (root.perMonitor) {
                 const target = Ws.stepInRow(root.ids, root.activeId, steps);
                 if (target > 0)

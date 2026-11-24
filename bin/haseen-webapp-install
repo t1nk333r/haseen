@@ -70,10 +70,31 @@ download_icon() {
         [[ -s $2 ]] && [[ $(file -b --mime-type "$2") == image/* ]]
 }
 
+# favicon_host URL — the host alone, percent-encoded, for Google's favicon
+# service: the path, query, user info and port stay private (plan 192). A
+# non-ASCII (IDN) host fails instead: Google wants punycode, and percent-encoded
+# UTF-8 would only miss.
+favicon_host() {
+    local host="${1#*://}" out="" c i
+    host="${host%%[/?#]*}"
+    host="${host##*@}"
+    if [[ $host == \[* ]]; then host="${host%%]*}]"; else host="${host%%:*}"; fi
+    local LC_ALL=C
+    [[ $host != *[![:ascii:]]* ]] || return 1
+    for ((i = 0; i < ${#host}; i++)); do
+        c="${host:i:1}"
+        case "$c" in
+        [A-Za-z0-9.-]) out+="$c" ;;
+        *) printf -v c '%%%02X' "'$c"; out+="$c" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 # Prefer the site's own high-res icon (apple-touch-icon is typically 180px+),
 # then the well-known path, then Google's favicon service as a last resort.
 fetch_site_icon() {
-    local site_url="$1" dest="$2" origin page icon_url
+    local site_url="$1" dest="$2" origin page icon_url host
     origin="$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")"
     page="$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')" || true
     icon_url="$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
@@ -88,7 +109,8 @@ fetch_site_icon() {
 
     { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
         download_icon "$origin/apple-touch-icon.png" "$dest" ||
-        download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
+        { host="$(favicon_host "$site_url")" &&
+            download_icon "https://www.google.com/s2/favicons?domain=$host&sz=256" "$dest"; }
 }
 
 # Desktop Entry "string" value (freedesktop spec): a raw newline would start a

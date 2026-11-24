@@ -20,11 +20,28 @@ Rectangle {
     signal closeClicked
 
     readonly property bool critical: notification && notification.urgency === NotificationUrgency.Critical
+    // A file the sender names (a bare path as a file URL: IconImage would
+    // read it inside qrc:), else an icon theme name. Never another URL: an
+    // https icon would tell the sender who saw the toast, and when.
     readonly property string iconSource: {
         const icon = notification ? notification.appIcon : "";
         if (icon === "")
             return "";
-        return icon.startsWith("/") || icon.indexOf("://") >= 0 ? icon : Quickshell.iconPath(icon, true);
+        if (icon.startsWith("/"))
+            return "file://" + icon;
+        return icon.startsWith("file://") ? icon : Quickshell.iconPath(icon, true);
+    }
+    // The image hint, by the same rule: Quickshell serves image-data as an
+    // image:// URL it owns, but image-path is the sender's string, passed on.
+    readonly property string imageSource: {
+        const src = notification ? String(notification.image) : "";
+        if (src === "")
+            return "";
+        if (src.startsWith("/"))
+            return "file://" + src;
+        if (src.startsWith("file://") || src.startsWith("image://"))
+            return src;
+        return src.indexOf("://") >= 0 ? "" : Quickshell.iconPath(src, true);
     }
 
     // Omarchy's notification card (shell/plugins/notifications): 12 px sides,
@@ -108,6 +125,9 @@ Rectangle {
                 text: card.notification ? card.notification.appName : ""
                 color: Theme.muted
                 elide: Text.ElideRight
+                // The sender's text, as summary and body: StyledText would
+                // fetch an <img> source it names.
+                textFormat: Text.PlainText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.font.bodySmall
             }
@@ -141,7 +161,7 @@ Rectangle {
 
                 width: visible ? Theme.fontSize * 3 : 0
                 height: width
-                source: card.notification ? card.notification.image : ""
+                source: card.imageSource
                 visible: source.toString() !== "" && status === Image.Ready
                 sourceSize.width: Theme.fontSize * 3
                 sourceSize.height: Theme.fontSize * 3
@@ -208,6 +228,7 @@ Rectangle {
                         anchors.centerIn: parent
                         text: actionButton.modelData.text
                         color: Theme.foreground
+                        textFormat: Text.PlainText
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.font.bodySmall
                     }

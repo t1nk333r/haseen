@@ -266,6 +266,18 @@ end
 -- animations, workspace layout, displays, touchpad). They load after the
 -- defaults so they win, and before the user's files so those still win.
 local toggles = haseen.paths.state_home .. "/haseen/toggles/hypr"
+-- A built-in panel turned off while docked (`haseen hardware laptop-display
+-- off`, which the clamshell quirk binds to closing the lid) stays off until the
+-- lid opens again, and a laptop that boots undocked with the lid already open
+-- sends no lid event: the toggle would disable its only display. So before the
+-- toggles load, omarchy-hw-recover-internal-monitor asks the kernel whether an
+-- external monitor is connected and removes the toggle when none is. It runs
+-- only while that toggle exists (plan 189).
+local laptop_off = io.open(toggles .. "/laptop-display-off.lua", "r")
+if laptop_off then
+  laptop_off:close()
+  os.execute(shell_quote(haseen.path .. "/omarchy/bin/omarchy-hw-recover-internal-monitor") .. " >/dev/null 2>&1")
+end
 local listing = io.popen('ls -1 "' .. toggles .. '"/*.lua 2>/dev/null')
 if listing then
   for file in listing:lines() do

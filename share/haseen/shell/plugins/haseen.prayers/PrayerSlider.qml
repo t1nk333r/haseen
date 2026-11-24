@@ -65,6 +65,8 @@ Item {
         id: drag
 
         property real dragValue: root.value
+        // Wheel delta not yet worth a step.
+        property real wheelDelta: 0
 
         function valueAt(x: real): real {
             const f = Math.max(0, Math.min(1, x / Math.max(1, width)));
@@ -81,14 +83,21 @@ Item {
             if (v !== root.value)
                 root.released(v);
         }
-        // Held, the wheel nudges the value being dragged; release commits it
-        // with the rest of the drag.
+        // Held, the wheel nudges the value being dragged, a step a notch;
+        // release commits it with the rest of the drag. Fractions of a notch
+        // add up, and a sideways or zero delta moves nothing (BarButton's
+        // rule, plan 091; plan 197).
         onWheel: event => {
             if (!drag.pressed) {
                 event.accepted = false;
                 return;
             }
-            dragValue = root.snap(dragValue + (event.angleDelta.y > 0 ? root.step : -root.step));
+            wheelDelta += event.angleDelta.y;
+            const notches = Math.trunc(wheelDelta / 120);
+            if (notches === 0)
+                return;
+            wheelDelta -= notches * 120;
+            dragValue = root.snap(dragValue + notches * root.step);
         }
     }
 }
