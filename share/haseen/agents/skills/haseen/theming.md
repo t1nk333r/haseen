@@ -95,8 +95,9 @@ that path once (an include line), so it follows every theme change.
 
 ## Hooks
 
-Scripts run on events: `theme-set`, `post-update`, `post-boot`,
-`layer-applied`.
+Scripts run on events: `theme-set` (with the theme's name), `post-update`,
+`post-boot` and `layer-applied` (after `haseen layer apply`, once for each
+layer it applied, with the layer's name).
 
 ```bash
 haseen hook install theme-set ./restart-my-app.sh   # copies to ~/.config/haseen/hooks/theme-set.d/

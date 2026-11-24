@@ -353,6 +353,8 @@ capture "$OMA/omarchy-sudo-docker" --configured
 assert_status "outside the docker group sudo is needed" 0 "$STATUS"
 capture env ID_GROUPS="wheel docker" "$OMA/omarchy-sudo-docker" --configured
 assert_status "in the docker group it is not" 1 "$STATUS"
+capture env ID_GROUPS="wheel docker-users ci-docker" "$OMA/omarchy-sudo-docker" --configured
+assert_status "a group whose name only contains docker is not the docker group" 0 "$STATUS"
 capture "$OMA/omarchy-sudo-docker" --bogus
 assert_status "sudo-docker usage error" 2 "$STATUS"
 

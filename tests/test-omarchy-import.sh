@@ -63,10 +63,13 @@ assert_status "import succeeds" 0 "$STATUS"
 assert_eq "Omarchy's files are untouched" "$before" "$(omarchy_sum)"
 
 assert_eq "bar position and transparency carry over" '["top",false]' "$(cfg '[.bar.position, .bar.transparent]')"
-assert_eq "left section: built-ins mapped, add-ons kept, order kept" \
-    '["haseen.workspaces","agx.screen-time","t1nk33r.active-window"]' "$(cfg .bar.left)"
-assert_eq "centre section: indicators keep their slot, dropped built-ins leave no gap" \
-    '["haseen.indicators","haseen.clock","t1nk33r.omaprayers","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
+# Omarchy's menu button is haseen.logo, the mark that opens haseen's menu,
+# and its keyboard-layout widget haseen.kblayout (plan 200).
+assert_eq "left section: built-ins mapped (the menu button to the logo), add-ons kept, order kept" \
+    '["haseen.logo","haseen.workspaces","agx.screen-time","t1nk33r.active-window"]' "$(cfg .bar.left)"
+assert_eq "centre section: indicators and the keyboard layout keep their slot, dropped built-ins leave no gap" \
+    '["haseen.indicators","haseen.clock","t1nk33r.omaprayers","haseen.kblayout","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
+assert_eq "the keyboard-layout widget, off by default, is turned on" "true" "$(cfg '.plugins["haseen.kblayout"].enabled')"
 assert_eq "Omarchy's indicators settings would carry; none set, none written" "null" "$(cfg '.plugins["haseen.indicators"]')"
 # Omarchy's bar always carried notification state; the pager bell takes that
 # place right after the tray (haseen.tray leads bar.right; nothing goes before
@@ -100,10 +103,13 @@ assert_eq "Omarchy's service plugins are enabled after haseen's own services" \
     "$(cfg '[(.services | index("haseen.lock") != null), .plugins["io.github.sumanthmukkala.hot-corners"].enabled, .plugins["expose.window-overview"].enabled, .services[-2], .services[-1]]')"
 merged="$(jq -c --slurpfile u "$HC/shell.json" '. * $u[0] | .bar.left' "$HASEEN_PATH/default/shell.json")"
 assert_eq "the running shell's merged config shows the imported bar" \
-    '["haseen.workspaces","agx.screen-time","t1nk33r.active-window"]' "$merged"
+    '["haseen.logo","haseen.workspaces","agx.screen-time","t1nk33r.active-window"]' "$merged"
+assert_contains "the menu button is listed as mapped" "$OUTPUT" "bar: omarchy.menu -> haseen.logo"
+assert_contains "and the keyboard layout" "$OUTPUT" "bar: omarchy.keyboard-layout -> haseen.kblayout"
+assert_not_contains "neither is called one without an equivalent" "$OUTPUT" "omarchy.menu: Omarchy built-in"
+assert_not_contains "the keyboard layout neither" "$OUTPUT" "omarchy.keyboard-layout: Omarchy built-in"
 
-for item in "omarchy.menu: Omarchy built-in with no haseen equivalent" \
-    "omarchy.keyboard-layout: Omarchy built-in" "omarchy.system-update: Omarchy built-in" \
+for item in "omarchy.system-update: Omarchy built-in" \
     "omarchy.clock: setting formatAlt has no haseen equivalent" "bar.centerAnchor (omarchy.clock)" \
     "crmne.omastats"; do
     assert_contains "reported: ${item%%:*}" "$OUTPUT" "$item"
@@ -211,12 +217,12 @@ assert_eq "a merge dry run writes nothing" "$before" "$(haseen_sum)"
 capture "$REPO/bin/haseen-import-omarchy" --merge
 assert_status "--merge succeeds" 0 "$STATUS"
 assert_eq "values the user set win" '["bottom","HH:mm:ss"]' "$(cfg '[.bar.position, .plugins["haseen.clock"].settings.format]')"
-assert_eq "keys the user had not set are imported" '["HH\n—\nmm","haseen.workspaces",150]' \
+assert_eq "keys the user had not set are imported" '["HH\n—\nmm","haseen.logo",150]' \
     "$(cfg '[.plugins["haseen.clock"].settings.verticalFormat, .bar.left[0], .plugins["haseen.idle"].settings.screensaverAfter]')"
 assert_eq "service plugins are added to the user's own services list" \
     '["haseen.lock","io.github.sumanthmukkala.hot-corners","expose.window-overview"]' "$(cfg .services)"
 assert_eq "imported widgets the user bar lacks are added beside their Omarchy neighbours" \
-    '["haseen.indicators","haseen.clock","t1nk33r.omaprayers","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
+    '["haseen.indicators","haseen.clock","t1nk33r.omaprayers","haseen.kblayout","haseen.weather","t1nk33r.privacy"]' "$(cfg .bar.center)"
 assert_eq "haseen.tray leads bar.right; the bell is not put before it" \
     '["haseen.tray","mine.first","haseen.pager","haseen.sysusage","mine.extra","t1nk33r.adb-devices","t1nk33r.workspace-layout"]' "$(cfg '.bar.right[0:7]')"
 assert_eq "every other user widget is still there in the same relative order" \
@@ -240,6 +246,32 @@ assert_eq "a merge leaves Omarchy's files alone" "$before_omarchy" "$(omarchy_su
 before="$(haseen_sum)"
 capture "$REPO/bin/haseen-import-omarchy" --merge
 assert_eq "a second --merge changes nothing" "$before" "$(haseen_sum)"
+
+# --- a hand-edited closing marker (plan 200) -----------------------------------
+# An earlier import's input block whose closing line gained a trailing space
+# and a CR, then lines of the user's own: the block is replaced, and every
+# line after it stays.
+import_sandbox omarchy-import-marker
+mkdir -p "$HY"
+printf -- '-- mine\n-- >>> haseen import omarchy: input.lua\nold = 1\n-- <<< haseen import omarchy: input.lua \r\nhl.bind("SUPER + Q", "Mine", "foot")\nuser = 2\n' >"$HY/local.lua"
+capture "$REPO/bin/haseen-import-omarchy"
+assert_status "an import over an edited closing marker succeeds" 0 "$STATUS"
+localf="$(cat "$HY/local.lua")"
+assert_contains "the user's lines after the block stay" "$localf" 'hl.bind("SUPER + Q", "Mine", "foot")'
+assert_contains "all of them" "$localf" "user = 2"
+assert_not_contains "the old block is replaced" "$localf" "old = 1"
+assert_eq "by one new block" 1 "$(grep -c '>>> haseen import omarchy: input.lua' "$HY/local.lua")"
+# The closing line deleted: nothing tells where the block ends, so the file
+# keeps that block as it is and the import says why.
+import_sandbox omarchy-import-unclosed
+mkdir -p "$HY"
+printf -- '-- >>> haseen import omarchy: input.lua\nold = 1\nuser = 2\n' >"$HY/local.lua"
+capture "$REPO/bin/haseen-import-omarchy"
+assert_status "an import over an unclosed block succeeds" 0 "$STATUS"
+assert_contains "and reports the file it left" "$OUTPUT" "hypr/input.lua: $HY/local.lua has the line '-- >>> haseen import omarchy: input.lua' without its closing"
+localf="$(cat "$HY/local.lua")"
+assert_contains "the lines after the opening marker stay" "$localf" $'old = 1\nuser = 2'
+assert_contains "the other files' blocks still land" "$localf" "-- >>> haseen import omarchy: autostart.lua"
 
 # --- legacy ids, other built-ins, explicit sources ----------------------------
 sandbox omarchy-import-ids
@@ -265,6 +297,33 @@ capture "$REPO/bin/haseen-import-omarchy" --from "$SANDBOX/missing"
 assert_status "a missing Omarchy dir fails" 1 "$STATUS"
 capture "$REPO/bin/haseen-import-omarchy" --bogus
 assert_status "an unknown argument is a usage error" 2 "$STATUS"
+capture "$REPO/bin/haseen-import-omarchy" --help
+assert_contains "--help says o.bind becomes haseen.rebind (plan 200)" "$OUTPUT" "turned into haseen.rebind (an imported bind replaces"
+assert_not_contains "not haseen.bind" "$OUTPUT" "turned into haseen.bind"
+
+# --- Omarchy commands called by path (plan 200) ---------------------------------
+# /usr/bin/omarchy-x and $OMARCHY_PATH/bin/omarchy-x run Omarchy's own copy
+# past haseen's answers: such a hook or bind is not carried; a path into
+# ~/.config/omarchy still is.
+sandbox omarchy-import-paths
+src="$SANDBOX/om"
+hy="$SANDBOX/hy"
+mkdir -p "$src/hooks/theme-set.d" "$hy"
+printf '%s\n' '#!/bin/bash' '/usr/bin/omarchy-restart-waybar' >"$src/hooks/theme-set.d/waybar"
+printf '%s\n' '#!/bin/bash' '"$OMARCHY_PATH"/bin/omarchy-restart-btop' >"$src/hooks/post-update"
+printf '%s\n' '#!/bin/bash' 'cp ~/.config/omarchy/notes.txt ~/notes.txt' >"$src/hooks/post-boot"
+printf '%s\n' 'o.bind("SUPER + M", "Menu", "/usr/bin/omarchy-menu")' 'o.bind("SUPER + T", "Terminal", "foot")' >"$hy/bindings.lua"
+capture "$REPO/bin/haseen-import-omarchy" --from "$src" --hypr "$hy" --state "$SANDBOX/none"
+assert_status "an import with path calls succeeds" 0 "$STATUS"
+hd="$XDG_CONFIG_HOME/haseen/hooks"
+assert_contains "a hook calling /usr/bin/omarchy-* is not imported" "$OUTPUT" "hooks/theme-set.d/waybar: runs Omarchy commands"
+assert_eq "and not copied" "absent" "$([[ -e $hd/theme-set.d/waybar ]] && echo present || echo absent)"
+assert_contains "nor one calling \$OMARCHY_PATH/bin/omarchy-*" "$OUTPUT" "hooks/post-update: runs Omarchy commands"
+assert_eq "a hook that only reads ~/.config/omarchy is copied" "yes" "$([[ -x $hd/post-boot ]] && echo yes || echo no)"
+binds="$(cat "$XDG_CONFIG_HOME/hypr/bindings.lua" 2>/dev/null)"
+assert_contains "a bind running /usr/bin/omarchy-* is skipped and reported" "$OUTPUT" 'bindings.lua: runs an Omarchy command: o.bind("SUPER + M"'
+assert_not_contains "and not carried" "$(grep -v '^[[:space:]]*--' <<<"$binds")" "omarchy-menu"
+assert_contains "a plain bind beside it is" "$binds" 'haseen.rebind("SUPER + T", "Terminal", "foot")'
 
 # --- an omagesture g3Up gesture: the hl.* 3-finger-up gesture would duplicate it
 import_sandbox omarchy-import-g3up
@@ -304,14 +363,14 @@ hc="$XDG_CONFIG_HOME/haseen/shell.json"
 assert_eq "centerBegin and centerEnd join the centre section around its widgets" \
     '["haseen.indicators","haseen.clock","haseen.weather","t1nk33r.omaprayers"]' "$(jq -c .bar.center "$hc")"
 assert_eq "tray widgets go to the end of the right section" \
-    '["haseen.tray","haseen.pager","haseen.audio","t1nk33r.power","haseen.bluetooth"]' "$(jq -c .bar.right "$hc")"
-assert_eq "and into the overflow panel" '["t1nk33r.power","haseen.bluetooth"]' "$(jq -c .bar.overflow "$hc")"
+    '["haseen.tray","haseen.pager","haseen.audio","t1nk33r.power","haseen.bluetooth","haseen.kblayout"]' "$(jq -c .bar.right "$hc")"
+assert_eq "and into the overflow panel" '["t1nk33r.power","haseen.bluetooth","haseen.kblayout"]' "$(jq -c .bar.overflow "$hc")"
 assert_eq "settings of a widget in a new section carry over" '"Asia/Riyadh"' \
     "$(jq -c '.plugins["t1nk33r.omaprayers"].settings.timezone' "$hc")"
 assert_eq "background none is a transparent bar" "true" "$(jq -c .bar.transparent "$hc")"
 for item in "bar.centerBegin: haseen has one centre section" "bar.centerEnd: haseen has one centre section" \
     "bar.tray: haseen has no tray drawer; its widgets go to the overflow panel" \
-    "omarchy.keyboard-layout: Omarchy built-in with no haseen equivalent, dropped" \
+    "bar: omarchy.keyboard-layout -> haseen.kblayout" \
     "bar.overflow: haseen.bluetooth (in the overflow panel)" "dock: not a setting haseen imports"; do
     assert_contains "reported: $item" "$OUTPUT" "$item"
 done
@@ -334,8 +393,8 @@ done
 printf '%s\n' '{"bar":{"right":["haseen.tray","haseen.bluetooth"],"overflow":["mine.x"]}}' >"$hc"
 capture "$REPO/bin/haseen-import-omarchy" --from "$src" --state "$SANDBOX/none" --merge
 assert_status "a 4.5 merge succeeds" 0 "$STATUS"
-assert_eq "the user's overflow keeps its entries, and the missing drawer widget is added" \
-    '["mine.x","t1nk33r.power"]' "$(jq -c .bar.overflow "$hc")"
+assert_eq "the user's overflow keeps its entries, and the missing drawer widgets are added" \
+    '["mine.x","t1nk33r.power","haseen.kblayout"]' "$(jq -c .bar.overflow "$hc")"
 assert_contains "the addition is listed" "$OUTPUT" "bar.overflow: added t1nk33r.power to your overflow panel"
 
 # glassy: haseen draws no blur, so the bar stays opaque, and says so.

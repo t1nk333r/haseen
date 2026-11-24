@@ -22,7 +22,9 @@
   "Animations disabled": "الحركات مُعطّلة",
   "Animations enabled": "الحركات مُفعّلة",
   "Boot splash not rebuilt": "لم يُعَد بناء شاشة الإقلاع",
+  "Capture copied": "نُسخت اللقطة",
   "Choose one with: haseen setup default agent <name>": "اختر وكيلًا بالأمر: haseen setup default agent <name>",
+  "Click to diagnose with AI": "انقر للتشخيص بالذكاء الاصطناعي",
   "Click to run %1 pending migrations.": {
     "zero": "لا توجد ترحيلات معلّقة.",
     "one": "انقر لتشغيل ترحيل معلّق واحد.",
@@ -34,6 +36,8 @@
   "Colour copied": "نُسخ اللون",
   "Copied %1 so an agent can edit it": "نُسخ %1 ليتمكّن الوكيل من تعديله",
   "Copied text from the selection": "نُسخ النص من التحديد",
+  "Copied the text in the selection": "نُسخ النص الموجود في التحديد",
+  "Diagnose": "تشخيص",
   "Exporter unreachable at %1": "تعذّر الوصول إلى المصدّر على %1",
   "GPU mode: %1": "وضع GPU: %1",
   "Interface language: %1": "لغة الواجهة: %1",
@@ -46,10 +50,12 @@
   "No-gaps mode off": "وضع إلغاء الفجوات متوقف",
   "No-gaps mode on": "وضع إلغاء الفجوات مُشغّل",
   "Omasnap failed (exit %1): nothing was saved, copied or uploaded": "فشل Omasnap (رمز الخروج %1): لم يُحفظ أو يُنسخ أو يُرفع شيء",
+  "Paste it into %1": "الصقها في %1",
   "Pending haseen migrations": "ترحيلات haseen معلّقة",
   "Per-monitor workspaces off": "مساحات العمل لكل شاشة متوقفة",
   "Per-monitor workspaces on": "مساحات العمل لكل شاشة مُشغّلة",
   "Plugin link refused": "رُفض رابط الإضافة",
+  "Program crashed: %1": "تعطّل برنامج: %1",
   "QR code copied to clipboard": "نُسخ رمز QR إلى الحافظة",
   "Quota": "الحصة",
   "Reminder": "تذكير",
@@ -67,7 +73,10 @@
   "Screenshot not edited": "لم تُحرَّر لقطة الشاشة",
   "Screenshot saved": "حُفظت لقطة الشاشة",
   "Screenshot uploaded": "رُفعت لقطة الشاشة",
+  "Searching the capture": "جارٍ البحث باللقطة",
+  "Searching the selection": "جارٍ البحث عن التحديد",
   "Select a region containing a QR code": "حدّد منطقة تحتوي على رمز QR",
+  "Select a region with text in it": "حدّد منطقة فيها نص",
   "Single-window square ratio off": "النسبة المربعة للنافذة الواحدة متوقفة",
   "Single-window square ratio on": "النسبة المربعة للنافذة الواحدة مُشغّلة",
   "Sound recording error": "خطأ في تسجيل الصوت",
@@ -92,6 +101,14 @@
   "Updates are ready": "التحديثات جاهزة",
   "Updating the boot splash": "تحديث شاشة الإقلاع",
   "Workspace layout set to %1": "ضُبط تخطيط مساحة العمل على %1",
+  "Your %1 minutes are up": {
+    "zero": "انقضى الوقت",
+    "one": "انقضت دقيقتك",
+    "two": "انقضت دقيقتاك",
+    "few": "انقضت دقائقك الـ%1",
+    "many": "انقضت دقائقك الـ%1",
+    "other": "انقضت دقائقك الـ%1"
+  },
   "ffmpeg exited (%1)": "خرج ffmpeg (%1)",
   "gpu-screen-recorder exited (%1)": "خرج gpu-screen-recorder (%1)",
   "haseen: %1 new changes": {
@@ -102,5 +119,6 @@
     "many": "haseen: %1 تغييرًا جديدًا",
     "other": "haseen: %1 تغيير جديد"
   },
-  "haseen: a new version": "haseen: إصدار جديد"
+  "haseen: a new version": "haseen: إصدار جديد",
+  "in %1m": "بعد %1 دقيقة"
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # haseen:summary Show the key bindings this session actually has
-# haseen:args [--json] [--reload]
+# haseen:args [--json] [--reload] [--dry-run]
 #
 # Model adapted from DankMaterialShell core/internal/keybinds (MIT, Copyright
 # (c) 2025 Avenge Media LLC): one record per bind with key, modifiers,
@@ -23,7 +23,7 @@ source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/com
 
 usage() {
     cat <<EOF
-Usage: haseen keybinds [--json] [--reload]
+Usage: haseen keybinds [--json] [--reload] [--dry-run]
 
 Lists the live bindings, grouped by the section they were written under.
 
@@ -38,7 +38,8 @@ Lists the live bindings, grouped by the section they were written under.
              sends (SUPER + SHIFT + CTRL + ALT) has the combo
              CAPSLOCK + key; its mods stay those modifiers
   --reload   ask Hyprland to reload its config first, so an edit you just
-             made is included
+             made is included (runtime hyprctl keyword changes are lost)
+  --dry-run  with --reload, print the reload on stderr instead of doing it
 EOF
 }
 
@@ -48,6 +49,7 @@ for arg in "$@"; do
     case "$arg" in
     --json) json=true ;;
     --reload) reload=true ;;
+    --dry-run) DRY_RUN=true ;;
     -h | --help)
         usage
         exit 0
@@ -60,7 +62,11 @@ for arg in "$@"; do
 done
 
 require_cmds hyprctl jq
-$reload && hyprctl reload >/dev/null
+# The reload is a compositor state change, so --dry-run prints it (plan
+# 200); on stderr, since stdout is the sheet or its JSON.
+if $reload; then
+    if $DRY_RUN; then echo "DRYRUN: hyprctl reload" >&2; else hyprctl reload >/dev/null; fi
+fi
 
 binds="$(hyprctl binds -j)" || die "Hyprland is not answering (hyprctl binds)"
 

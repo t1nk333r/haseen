@@ -37,6 +37,16 @@ assert_not_contains "another user's crash is not ours to report" "$sent" "sshd"
 assert_not_contains "the watcher never reports itself" "$sent" "haseen-crash-watch"
 assert_contains "the executable's name beats the 15-character comm" "$sent" "Program crashed: verylongprogramname"
 assert_contains "a crash without an executable keeps its comm" "$sent" "Program crashed: bad"
+assert_contains "the click is offered as Diagnose" "$sent" "Click to diagnose with AI|--action-label|Diagnose|"
+
+# The toast is in the interface language, read per crash (plan 200).
+mkdir -p "$XDG_CONFIG_HOME/haseen"
+echo ar >"$XDG_CONFIG_HOME/haseen/language"
+: >"$log"
+HASEEN_AGENT=claude capture "$REPO/bin/haseen-crash-watch"
+assert_contains "in Arabic the crash toast is Arabic" "$(cat "$log")" \
+    "تعطّل برنامج: quickshell|انقر للتشخيص بالذكاء الاصطناعي|--action-label|تشخيص|--exec|haseen-agent-crash|101|"
+rm "$XDG_CONFIG_HOME/haseen/language"
 
 : >"$log"
 HASEEN_CRASH_IGNORE='^quickshell$' HASEEN_AGENT=claude capture "$REPO/bin/haseen-crash-watch"

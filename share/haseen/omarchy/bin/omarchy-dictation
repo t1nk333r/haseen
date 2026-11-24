@@ -5,25 +5,35 @@
 # omarchy-default-dictation and its adapter (omarchy-dictation-<backend>) from
 # beside this file (plan 102). haseen binds no dictation key: Omarchy's F9,
 # SUPER + CTRL + X and ALT + Right Alt need the owner's approval first.
+# --dry-run takes no lock and passes the flag on to the adapter (plan 200).
 set -Eeuo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "$(readlink -f "$0")")/../lib.sh"
-omarchy_help "Usage: omarchy-dictation <start|stop|toggle>
+omarchy_help "Usage: omarchy-dictation <start|stop|toggle> [--dry-run]
 
 haseen's answer to Omarchy's command: starts, stops or toggles dictation with
 the configured backend (Voxtype)." "$@"
+args=()
+for a in "$@"; do
+    if [[ $a == --dry-run ]]; then DRY_RUN=true; else args+=("$a"); fi
+done
+set -- "${args[@]+"${args[@]}"}"
 if (($# != 1)) || [[ $1 != start && $1 != stop && $1 != toggle ]]; then
     echo "Usage: omarchy dictation <start|stop|toggle>" >&2
     exit 1
 fi
 config="$HASEEN_USER_STATE/dictation-backend"
-mkdir -p "${config%/*}"
-exec 9>"$config.lock"
-flock -w 5 9 || die "Dictation is busy; try again."
+if ! $DRY_RUN; then
+    mkdir -p "${config%/*}"
+    exec 9>"$config.lock"
+    flock -w 5 9 || die "Dictation is busy; try again."
+fi
 backend=$("$HASEEN_OMARCHY_DIR/bin/omarchy-default-dictation") || exit 1
 adapter="$HASEEN_OMARCHY_DIR/bin/omarchy-dictation-$backend"
 if [[ ! -x $adapter ]]; then
     echo "The selected dictation backend ($backend) is not installed." >&2
     exit 1
 fi
-"$adapter" "$1" 9>&-
+pass=()
+$DRY_RUN && pass=(--dry-run)
+"$adapter" "$1" "${pass[@]+"${pass[@]}"}" 9>&-

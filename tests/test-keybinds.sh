@@ -32,9 +32,9 @@ binds='[
 printf '%s\n' "$binds" >"$SANDBOX/binds.json"
 stub hyprctl 'case "$*" in
     "binds -j") cat "$HASEEN_BINDS_FIXTURE" ;;
-    "reload") echo "ok" ;;
+    "reload") echo reload >>"$HASEEN_RELOAD_LOG"; echo "ok" ;;
 esac'
-export HASEEN_BINDS_FIXTURE="$SANDBOX/binds.json"
+export HASEEN_BINDS_FIXTURE="$SANDBOX/binds.json" HASEEN_RELOAD_LOG="$SANDBOX/reloads"
 
 capture haseen keybinds --json
 assert_status "the live binds are read" 0 "$STATUS"
@@ -56,6 +56,14 @@ submap="$(jq -c '.[] | select(.submap == "resize")' <<<"$sheet")"
 assert_eq "a submap bind is grouped by its submap" "Submap: resize" "$(jq -r .category <<<"$submap")"
 assert_eq "a bind without a description falls back to its dispatcher" "resizeactive 10 0" "$(jq -r .action <<<"$submap")"
 assert_eq "a Lua bind no config declares has no readable action" "" "$(jq -r '.[] | select(.description == "Launcher") | .action' <<<"$sheet")"
+
+# --reload is a compositor state change: --dry-run prints it (plan 200).
+capture haseen keybinds --reload --dry-run --json
+assert_status "a dry reload is not a usage error" 0 "$STATUS"
+assert_contains "it prints the reload" "$OUTPUT" "DRYRUN: hyprctl reload"
+assert_eq "and does not reload" "absent" "$([[ -e $HASEEN_RELOAD_LOG ]] && echo present || echo absent)"
+capture haseen keybinds --reload --json
+assert_eq "without --dry-run it reloads" "reload" "$(cat "$HASEEN_RELOAD_LOG" 2>/dev/null)"
 
 capture haseen keybinds
 assert_contains "the terminal sheet groups by category" "$OUTPUT" "Shell"
