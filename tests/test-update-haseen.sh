@@ -115,6 +115,25 @@ assert_eq "and reloads nothing" "" "$(cat "$LOG")"
 capture hx --check
 assert_contains "--check calls it up to date" "$OUTPUT" "update     none: the installed tree is this commit"
 
+# A --tree-only install of the commit is its tree, not its layers or
+# migrations (plan 186): a full update still runs the installer, and only
+# another --tree-only run takes it as current.
+printf 'prefix=%s\ncommit=%s\nversion=0.3.0-dev\nscope=tree\ndate=2026-10-26T00:00:00+03:00\n' "$prefix" "$commit" \
+    >"$prefix/share/haseen/.installed"
+: >"$LOG"
+capture hx --no-reload
+assert_status "a full update over a tree-only install runs" 0 "$STATUS"
+assert_contains "and runs the installer" "$OUTPUT" "install: --yes --prefix $prefix"
+capture hx --tree-only --no-reload
+assert_contains "another --tree-only run takes it as current" "$OUTPUT" "is already installed under $prefix"
+assert_not_contains "and installs nothing" "$OUTPUT" "install: --yes"
+capture hx --check
+assert_contains "--check says the layers wait" "$OUTPUT" "update     layers and migrations: this commit is installed tree-only"
+printf 'prefix=%s\ncommit=%s\nversion=0.3.0-dev\nscope=full\ndate=2026-10-26T00:00:00+03:00\n' "$prefix" "$commit" \
+    >"$prefix/share/haseen/.installed"
+capture hx --no-reload
+assert_contains "a full install of the commit is current" "$OUTPUT" "is already installed under $prefix"
+
 capture hx --force
 assert_status "--force reinstalls" 0 "$STATUS"
 assert_contains "--force runs the installer again" "$OUTPUT" "install: --yes --prefix $prefix"
@@ -161,13 +180,17 @@ capture env PATH="$REAL_PATH" bash -c '
     write_root_file() { mkdir -p "$(dirname "$1")"; cat >"$1"; }
     run_root() { "$@"; }
     install_stamp_write "$2/stamp-prefix" abc123 0.3.0-dev
-    printf "%s|%s|%s\n" "$(install_stamp_get "$2/stamp-prefix" commit)" \
+    printf "%s|%s|%s|%s\n" "$(install_stamp_get "$2/stamp-prefix" commit)" \
         "$(install_stamp_get "$2/stamp-prefix" version)" \
-        "$(install_stamp_get "$2/stamp-prefix" prefix)"
+        "$(install_stamp_get "$2/stamp-prefix" prefix)" \
+        "$(install_stamp_get "$2/stamp-prefix" scope)"
+    install_stamp_write "$2/stamp-prefix" abc123 0.3.0-dev tree
+    printf "scope %s\n" "$(install_stamp_get "$2/stamp-prefix" scope)"
     install_stamp_get "$2/no-stamp" commit || echo "none"
 ' bash "$HASEEN_PATH" "$SANDBOX"
 assert_status "the stamp round-trips" 0 "$STATUS"
-assert_contains "it keeps the commit, version and prefix" "$OUTPUT" "abc123|0.3.0-dev|$SANDBOX/stamp-prefix"
+assert_contains "it keeps the commit, version and prefix, and a full scope by default" "$OUTPUT" "abc123|0.3.0-dev|$SANDBOX/stamp-prefix|full"
+assert_contains "a tree-only install says so (plan 186)" "$OUTPUT" "scope tree"
 assert_contains "a missing stamp answers nothing" "$OUTPUT" "none"
 
 # --- the version counts up between bumps (plan 147) ----------------------------
