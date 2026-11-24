@@ -16,7 +16,7 @@
 - **Category**: migrations
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit)
-- **State**: DONE 2026-11-24 (`tests/test-migrate.sh` 61/61,
+- **State**: DONE 2026-11-24 (`tests/test-migrate.sh` 64/64,
   `tests/test-migrate-integrations.sh` 49/49, `tests/test-update-haseen.sh`
   109/109, `tests/test-paths.sh` 36/36, `tests/test-omarchy-guard.sh`
   157/157, `tests/test-bar-basics.sh` 147/147, `tests/test-theme-haseen.sh`
@@ -230,3 +230,25 @@ run dir that is a link is refused before anything in it is read. On
 concurrent callers share one result, which a private dir per run would
 lose. Refusing to run without `XDG_RUNTIME_DIR`: a cron or su check has a
 safe place in the state dir.
+
+## Review
+
+An independent Sonnet review of the first head approved it with two nits.
+Both were taken.
+
+- **`haseen layer remove base` still refuses.** True, and intended: finding
+  6 rejects a base remove step (see its Rejected paragraph), and the hook
+  goes with `install.sh --uninstall-tree`. The reviewer's other option, a
+  note in the layer docs, was cheap. The `base` row of docs/architecture.md
+  §3 now says base has no remove step and that the uninstall removes the
+  hook.
+- **The notifier hides a malformed-name refusal.** `bin/haseen-migrate-notify`
+  ran `haseen-migrate --pending 2>/dev/null || exit 0`, so after fix 4 and 5
+  a bad name made the notifier say nothing, anywhere. It still exits 0 with
+  no toast, since a toast cannot tell the user how to fix a shipped file,
+  but it no longer discards stderr, so the refusal lands in
+  `haseen-migrate-notify.service`'s journal. `--pending` prints nothing on
+  stderr when nothing waits, so a quiet login stays quiet. A new
+  `tests/test-migrate.sh` case runs the notifier with a mis-cased
+  `1790000005-Bad.sh`: exit 0, no toast, and the refusal on its output. With
+  the old notifier that last assertion fails (63/64).

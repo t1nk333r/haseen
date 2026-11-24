@@ -189,3 +189,12 @@ write_migration 1790000004-fourth.sh 'true'
 capture haseen migrate notify --dry-run
 assert_dry_pure "notify dry run" "$OUTPUT"
 assert_contains "the notifier counts what is pending" "$OUTPUT" "DRYRUN: notify about 1 pending migration"
+
+# A malformed name fails --pending; the notifier sends no toast but lets the
+# refusal through to its journal rather than hiding it (plan 186 review).
+write_migration 1790000005-Bad.sh 'true'
+capture haseen migrate notify
+assert_status "the notifier still exits 0 on a malformed name" 0 "$STATUS"
+assert_not_contains "no toast for a refused list" "$OUTPUT" "NOTIFY:"
+assert_contains "the refusal reaches the notifier's stderr" "$OUTPUT" "malformed migration name: 1790000005-Bad.sh"
+rm -f "$tree/migrations/1790000005-Bad.sh"

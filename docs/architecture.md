@@ -77,7 +77,7 @@ Preflight globals are already set when the layer runs.
 
 | Layer | Requires | Summary |
 |---|---|---|
-| `base` | — | essentials, firewall, snapper sanity, pacman hygiene on CachyOS, the Omarchy package guard hook (§5.4), Omarchy 4.5's boot drop-ins (§9) |
+| `base` | — | essentials, firewall, snapper sanity, pacman hygiene on CachyOS, the Omarchy package guard hook (§5.4), Omarchy 4.5's boot drop-ins (§9); no remove step (`haseen layer remove base` refuses), and `install.sh --uninstall-tree` removes the hook with the tree it runs (plan 186) |
 | `chaotic` | base | Chaotic-AUR (pinned key `EF925EA6…87B78AEB`), so `aur:` entries install prebuilt |
 | `omarchy-repo` | base | Omarchy's signed repo, appended last in pacman.conf: leaf packages (ttfx) prebuilt, and the only source of `omarchy:` entries (herdr, xdg-terminal-exec); `omarchy`/`omarchy-settings` refused (ADR 0001) |
 | `desktop` | base chaotic | Hyprland (Lua), uwsm, greetd + tuigreet, portals, audio, fonts, GPU session env |
