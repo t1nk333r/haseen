@@ -24,6 +24,26 @@ compatibility adapter.
 EOF
 }
 
+# registry_config_read — registries.json, read whole before anything writes
+# it: `jq FILE | write FILE` truncates the file while jq is still reading it.
+# A missing or empty file is no sources; anything else must be an object.
+registry_config_read() {
+    local text=""
+    [[ -f $REGISTRY_CONFIG ]] && text="$(cat "$REGISTRY_CONFIG")"
+    [[ -n ${text//[[:space:]]/} ]] || text='{"sources":[]}'
+    jq -e 'type == "object"' <<<"$text" >/dev/null 2>&1 ||
+        die "$REGISTRY_CONFIG is not a JSON object; fix it first"
+    printf '%s\n' "$text"
+}
+
+# registry_config_write JSON — replace registries.json atomically, and only
+# with one JSON object: an empty result would drop every source.
+registry_config_write() {
+    jq -e 'type == "object"' <<<"$1" >/dev/null 2>&1 ||
+        die "refusing to write $REGISTRY_CONFIG: the new content is not a JSON object (the file is unchanged)"
+    jq . <<<"$1" | replace_user_file "$REGISTRY_CONFIG"
+}
+
 parse_common_flags "$@"
 set -- "${REST[@]+"${REST[@]}"}"
 action="${1:-list}"
@@ -47,9 +67,9 @@ add)
     registry_name_ok "$2" || die "a source name is lower-case letters, digits and dashes: $2"
     registry_url_ok "$3" || die "a source URL must be https:// or git@host:path, with no credentials"
     [[ $2 == "$REGISTRY_DEFAULT_NAME" ]] && die "$2 is the built-in source"
-    current="$([[ -f $REGISTRY_CONFIG ]] && cat "$REGISTRY_CONFIG" || echo '{"sources":[]}')"
-    jq --arg n "$2" --arg u "$3" '.sources = ((.sources // []) | map(select(.name != $n)) + [{name: $n, url: $u}])' \
-        <<<"$current" | write_user_file "$REGISTRY_CONFIG"
+    current="$(registry_config_read)"
+    registry_config_write "$(jq --arg n "$2" --arg u "$3" \
+        '.sources = ((.sources // []) | map(select(.name != $n)) + [{name: $n, url: $u}])' <<<"$current")"
     info "added registry $2"
     ;;
 remove)
@@ -57,11 +77,10 @@ remove)
         usage >&2
         exit 2
     }
-    [[ -f $REGISTRY_CONFIG ]] || die "no registry named $2"
-    jq -e --arg n "$2" '.sources[]? | select(.name == $n)' "$REGISTRY_CONFIG" >/dev/null ||
+    current="$(registry_config_read)"
+    jq -e --arg n "$2" '.sources[]? | select(.name == $n)' <<<"$current" >/dev/null ||
         die "no registry named $2"
-    jq --arg n "$2" '.sources |= map(select(.name != $n))' "$REGISTRY_CONFIG" |
-        write_user_file "$REGISTRY_CONFIG"
+    registry_config_write "$(jq --arg n "$2" '.sources |= map(select(.name != $n))' <<<"$current")"
     run rm -rf "$(registry_clone_dir "$2")"
     info "removed registry $2"
     ;;

@@ -245,7 +245,9 @@ Delete the copy to go back to the built-in.
 ## Existing Omarchy plugins
 
 Their original directory is read-only. Do not move, rewrite or remove anything
-under `~/.config/omarchy/plugins/`; no Omarchy settings file is updated by haseen.
+under `~/.config/omarchy/plugins/`. One Omarchy settings file is written, and
+only in one case (below): an Omarchy plugin's own entry in an existing
+`~/.config/omarchy/shell.json`.
 Inspect before enabling: QML plugins can start helpers or modify device state.
 Native haseen plugins remain the default; imported plugins are opt-in.
 
@@ -270,7 +272,14 @@ Always check the source before live activation and use a protected offline
 namespace when testing unknown startup behavior.
 
 Scoped settings use `haseen plugin settings <id>` with JSON on stdin. They
-preserve unrelated haseen settings and never write back to the original source.
+preserve unrelated haseen settings, and haseen's `shell.json` is the record.
+The one write back: an Omarchy plugin that saves its settings (its
+`updateEntryInline`) may read them back from Omarchy's own
+`~/.config/omarchy/shell.json`, so when that file exists and already holds the
+plugin's entry (in `bar.layout`, else its `plugins[]` marker), that entry, and
+nothing else, is replaced with what the plugin saved. The write is atomic, and
+the first one keeps the old file as `~/.config/omarchy/shell.json.haseen-bak`.
+Do not hand-edit that file while such a plugin is saving.
 
 Omarchy commands a plugin runs (`omarchy-notification-send`,
 `omarchy-restart-shell`, `omarchy-menu`, `omarchy-shell <target> <fn>`, …)
