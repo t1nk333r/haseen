@@ -244,7 +244,11 @@ current() {
 write_env() {
     {
         echo "# Written by \`haseen setup default\`. Later files in env.d override it."
-        [[ -r $ENV_FILE ]] && grep -v -e "^export $1=" -e '^# Written by' "$ENV_FILE"
+        # grep exits 1 when VAR was the file's only line; under errexit that
+        # would end the group before the new export and leave the header alone.
+        if [[ -r $ENV_FILE ]]; then
+            grep -v -e "^export $1=" -e '^# Written by' "$ENV_FILE" || true
+        fi
         printf 'export %s=%q\n' "$1" "$2"
     } | write_user_file "$ENV_FILE"
 }

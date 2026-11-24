@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-network-band bin/haseen-network-portal bin/haseen-network-qr
-# haseen:covers bin/haseen-network-status
+# haseen:covers bin/haseen-network-status share/haseen/omarchy/bin/omarchy-network-password
 # haseen:covers bin/haseen-plugin-validate
 # haseen:covers share/haseen/shell/Compat/Manifest.js share/haseen/shell/lib/plugin.sh
 # haseen:covers share/haseen/shell/plugin.schema.json share/haseen/shell/plugins/haseen.network/**
@@ -352,13 +352,16 @@ sandbox network-qr
 root="$SANDBOX/root"
 mkdir -p "$root/sys/class/net/wlan0/wireless" "$root/sys/class/net/eth0"
 stub ip '[ -n "$ROUTE_DEV" ] && echo "1.1.1.1 via 192.0.2.1 dev $ROUTE_DEV src 192.0.2.10 uid 1000"; exit 0'
-# Fields: ssid, key-mgmt, psk, hidden, wep-key0, one per line as nmcli prints
-# them with --escape no.
+# Fields one per line, as nmcli prints them with --escape no: ssid and hidden,
+# then key-mgmt, psk and wep-key0. OPEN=1 is a profile without the
+# 802-11-wireless-security setting, for which nmcli prints nothing at all.
 stub nmcli 'case "$*" in
 "-t -f DEVICE,TYPE,STATE device status") printf "eth0:ethernet:connected\nwlan1:wifi:connected\n" ;;
 "--get-values GENERAL.CON-UUID device show wlan0"|"--get-values GENERAL.CON-UUID device show wlan1") echo "${UUID-u-1}" ;;
-"--show-secrets --escape no --get-values 802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,802-11-wireless.hidden,802-11-wireless-security.wep-key0 connection show uuid u-1")
-    printf "%s\n%s\n%s\n%s\n%s\n" "${SSID-Cafe;Net}" "${KM-wpa-psk}" "${PSK-pa:ss,w\\d}" "${HIDDEN-no}" "${WEP-}" ;;
+"--escape no --get-values 802-11-wireless.ssid,802-11-wireless.hidden connection show uuid u-1")
+    printf "%s\n%s\n" "${SSID-Cafe;Net}" "${HIDDEN-no}" ;;
+"--show-secrets --escape no --get-values 802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,802-11-wireless-security.wep-key0 connection show uuid u-1")
+    [ -n "${OPEN-}" ] || printf "%s\n%s\n%s\n" "${KM-wpa-psk}" "${PSK-pa:ss,w\\d}" "${WEP-}" ;;
 *) echo "STUB-CALLED: nmcli $*" >&2; exit 97 ;;
 esac'
 # qrencode records the payload it was given on stdin and draws a 2x2 code.
@@ -373,6 +376,19 @@ capture env HASEEN_SYSROOT="$root" ROUTE_DEV=eth0 haseen-network-qr
 assert_eq "a wired default route falls back to the connected Wi-Fi, no meta by default" $'10\n01' "$OUTPUT"
 capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 HIDDEN=yes KM=none PSK= haseen-network-qr
 assert_eq "an open hidden network" 'WIFI:T:nopass;S:Cafe\;Net;H:true;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 OPEN=1 haseen-network-qr --meta
+assert_status "a profile with no security setting is open" 0 "$STATUS"
+assert_contains "and shares a nopass code" "$OUTPUT" $'meta\twlan0\tnopass\t'
+assert_eq "an open profile as NetworkManager stores it" 'WIFI:T:nopass;S:Cafe\;Net;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 OPEN=1 HIDDEN=yes haseen-network-qr
+assert_eq "keeps its hidden flag" 'WIFI:T:nopass;S:Cafe\;Net;H:true;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 OPEN=1 haseen-network-qr --password
+assert_eq "and has no password" "This network has no password" "$OUTPUT"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 KM=owe PSK= haseen-network-qr --meta
+assert_status "an OWE (Enhanced Open) network" 0 "$STATUS"
+assert_eq "joins as open" 'WIFI:T:nopass;S:Cafe\;Net;;' "$(cat "$SANDBOX_QR")"
+capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 KM=owe PSK= haseen-network-qr --password
+assert_eq "OWE has no password" "This network has no password" "$OUTPUT"
 capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 KM=none PSK= WEP=abcde haseen-network-qr --meta
 assert_contains "WEP is key-mgmt none with a wep-key" "$OUTPUT" $'meta\twlan0\tWEP\t'
 assert_eq "WEP shares its key" 'WIFI:T:WEP;S:Cafe\;Net;P:abcde;;' "$(cat "$SANDBOX_QR")"
@@ -393,6 +409,12 @@ capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 UUID=-- haseen-network-qr
 assert_eq "no active profile" "No active Wi-Fi connection" "$OUTPUT"
 capture env HASEEN_SYSROOT="$root" ROUTE_DEV=wlan0 SSID= haseen-network-qr
 assert_eq "no SSID" "Could not read the Wi-Fi name" "$OUTPUT"
+capture env OPEN=1 "$HASEEN_PATH/omarchy/bin/omarchy-network-password" wlan0
+assert_eq "Omarchy's password command: an open profile" "This network has no password" "$OUTPUT"
+capture env KM=owe PSK= "$HASEEN_PATH/omarchy/bin/omarchy-network-password" wlan0
+assert_eq "Omarchy's password command: OWE has no password" "This network has no password" "$OUTPUT"
+capture "$HASEEN_PATH/omarchy/bin/omarchy-network-password" wlan0
+assert_eq "Omarchy's password command: WPA" 'pa:ss,w\d' "$OUTPUT"
 capture haseen-network-qr --bogus
 assert_status "an unknown option is a usage error" 2 "$STATUS"
 capture haseen network qr --help

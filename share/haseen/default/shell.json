@@ -25,7 +25,7 @@
   "frame": { "enabled": false, "thickness": 6 },
   "branding": { "mark": "kufic" },
   "plugins": {
-    "haseen.weather": { "enabled": false, "settings": { "location": "" } },
+    "haseen.weather": { "settings": { "location": "" } },
     "haseen.themegen": { "enabled": false },
     "haseen.display": { "enabled": false },
     "haseen.kblayout": { "enabled": false },

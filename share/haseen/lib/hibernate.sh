@@ -77,16 +77,39 @@ hibernate_resume_hook_present() {
     grep -qx resume <<<"$hooks"
 }
 
-# hibernate_cmdline — every kernel command line this machine can boot with:
-# the bootloader's own configuration plus the running one.
+# hibernate_cmdline — the kernel command line the next boot gets, as far as
+# this machine's bootloader lets haseen work it out. Limine's is exact:
+# KERNEL_CMDLINE[default] as limine-entry-tool merges its layers, so a drop-in
+# that a later `=` replaces does not count (or, while no layer sets the key,
+# the line the tool falls back to). Nothing when a layer cannot be read: not
+# ready is the safe answer. systemd-boot: /etc/kernel/cmdline plus the
+# running kernel's, which its loader entries gave it. GRUB: the uncommented
+# GRUB_CMDLINE_LINUX lines plus the running kernel's. Any other loader: the
+# running kernel's. Raw file text counted every one of those, comments too
+# (plan 188).
 hibernate_cmdline() {
-    local file
-    for file in "$(sysroot_path /etc/default/limine)" "$(sysroot_path /etc/limine-entry-tool.d)"/*.conf \
-        "$(sysroot_path /etc/kernel/cmdline)" "$(sysroot_path /etc/default/grub)" \
-        "$(sysroot_path /proc/cmdline)"; do
-        [[ -r $file ]] && cat "$file"
-    done
-    return 0
+    local f
+    [[ -n ${BOOTLOADER:-} ]] || preflight_bootloader 2>/dev/null
+    case "$BOOTLOADER" in
+    limine)
+        boot_limine_merge 2>/dev/null || return 0
+        if $BOOT_LIMINE_SET; then
+            printf '%s\n' "$BOOT_LIMINE_CMDLINE"
+        else
+            boot_limine_fallback
+        fi
+        return 0
+        ;;
+    systemd-boot)
+        f="$(sysroot_path /etc/kernel/cmdline)"
+        [[ -r $f ]] && grep -v '^[[:space:]]*#' "$f" || true
+        ;;
+    grub)
+        f="$(sysroot_path /etc/default/grub)"
+        [[ -r $f ]] && sed -n 's/^[[:space:]]*GRUB_CMDLINE_LINUX\(_DEFAULT\)\{0,1\}=//p' "$f" || true
+        ;;
+    esac
+    boot_cmdline
 }
 
 hibernate_cmdline_has_resume() { hibernate_cmdline | grep -q 'resume=[^ "]'; }

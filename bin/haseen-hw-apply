@@ -82,9 +82,19 @@ for id in "${ids[@]}"; do
     # Sourced, not executed: a quirk body uses the same run/write_root_file
     # helpers as everything else, so --dry-run prints its plan instead of
     # changing the machine. A failure stops the run with no marker written, so
-    # the next run retries it.
-    # shellcheck source=/dev/null
-    (source "$(hw_body "$id")") || die "hardware quirk $id failed; nothing after it ran"
+    # the next run retries it. The subshell must not sit under `||` or `if`:
+    # bash ignores `set -e` inside a command whose status is tested, so a write
+    # that failed halfway through a body would run on to the body's last `info`
+    # and the quirk would be recorded as applied (plan 189).
+    set +e
+    (
+        set -e
+        # shellcheck source=/dev/null
+        source "$(hw_body "$id")"
+    )
+    body_status=$?
+    set -e
+    ((body_status == 0)) || die "hardware quirk $id failed; nothing after it ran"
     ledger_record hardware "$id" applied
     applied=$((applied + 1))
 done

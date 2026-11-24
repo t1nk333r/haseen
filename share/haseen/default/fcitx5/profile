@@ -1,8 +1,8 @@
 # haseen fcitx5 input-method group: English first, Arabic second.
 #
 # fcitx5 owns this file once it is seeded; fcitx5-configtool rewrites it when
-# you change the group. Control+space (see ../fcitx5/config) toggles between
-# the first method and the last used one, which with exactly two entries means
+# you change the group. Super+i (see ../fcitx5/config) toggles between the
+# first method and the last used one, which with exactly two entries means
 # English <-> Arabic.
 
 [Groups/0]

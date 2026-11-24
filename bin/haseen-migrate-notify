@@ -25,7 +25,11 @@ EOF
 
 parse_common_flags "$@"
 
-pending="$(haseen-migrate --pending 2>/dev/null)" || exit 0
+# --pending exits 1 silently when nothing waits. A malformed migration name
+# also fails it, and its stderr is left alone so the refusal reaches the
+# unit's journal instead of vanishing; there is still no toast for it
+# (plan 186).
+pending="$(haseen-migrate --pending)" || exit 0
 count="$(grep -c . <<<"$pending")"
 message="$(i18n_n "Click to run %1 pending migration." "Click to run %1 pending migrations." "$count")"
 

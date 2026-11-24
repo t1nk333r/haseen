@@ -31,8 +31,11 @@ Installs the parts of haseen's defaults that root owns:
   $SNAPPER_CONFIG and $SNAPPER_CONF
       five numbered snapshots of /, no timeline (btrfs roots only)
 
-Nothing is installed on hardware or a filesystem that does not need it, and
-each step is skipped when it is already in place.
+Nothing is installed on hardware or a filesystem that does not need it. The
+udev rule, the root policy and root's entry in $SNAPPER_CONF are
+skipped when they are already in place. Other snapper configs (a \`home\`) stay
+in $SNAPPER_CONF, and snapper-timeline.timer is turned off only when
+root is the only config, because the timer serves them all.
 EOF
 }
 
@@ -74,7 +77,36 @@ root_is_btrfs() {
     awk '$1 !~ /^#/ && $2 == "/" { print $3 }' "$fstab" | grep -qx btrfs
 }
 
+# snapper_configs FILE — the names FILE's SNAPPER_CONFIGS lists, on one line.
+# The same read as share/haseen/omarchy/bin/omarchy-snapshot: the last
+# assignment wins, quotes are optional.
+snapper_configs() {
+    [[ -r $1 ]] || return 0
+    sed -nE 's/^[[:space:]]*SNAPPER_CONFIGS=["'\'']?([^"'\'']*)["'\'']?.*/\1/p' "$1" | tail -n1
+}
+
+# snapper_conf_with FILE NAMES... — FILE's content with SNAPPER_CONFIGS set to
+# NAMES. Every other line (snapper's comments, anything the user added) is
+# kept; a file without the variable gets it appended.
+snapper_conf_with() {
+    local file="$1" line set=false
+    shift
+    if [[ -r $file ]]; then
+        while IFS= read -r line || [[ -n $line ]]; do
+            if [[ $line =~ ^[[:space:]]*SNAPPER_CONFIGS= ]]; then
+                printf 'SNAPPER_CONFIGS="%s"\n' "$*"
+                set=true
+            else
+                printf '%s\n' "$line"
+            fi
+        done <"$file"
+    fi
+    $set || printf 'SNAPPER_CONFIGS="%s"\n' "$*"
+}
+
 seed_snapper() {
+    local conf
+    local -a configs
     if ! have snapper; then
         info "snapper is not installed: skipping the snapshot policy"
         return 0
@@ -98,9 +130,26 @@ seed_snapper() {
         install_root_file "$DEFAULTS/snapper/root" "$SNAPPER_CONFIG" 0644
     fi
 
-    printf '%s\n' 'SNAPPER_CONFIGS="root"' | write_root_file "$SNAPPER_CONF" 0644
+    # root joins the list snapper reads; the configs already there stay.
+    # Writing "root" alone would drop a `home` config from snapper's cleanup,
+    # from its timeline and from omarchy-snapshot's pre-update snapshots.
+    conf="$(sysroot_path "$SNAPPER_CONF")"
+    read -ra configs <<<"$(snapper_configs "$conf")"
+    if [[ " ${configs[*]} " == *" root "* ]]; then
+        info "$SNAPPER_CONF already lists root"
+    else
+        configs=(root "${configs[@]}")
+        snapper_conf_with "$conf" "${configs[@]}" | write_root_file "$SNAPPER_CONF" 0644
+    fi
 
-    run_root systemctl disable --now snapper-timeline.timer
+    # The timer is global, not per config. root's policy creates no timeline
+    # snapshots, so turning it off only matters to the other configs, whose
+    # timelines are the user's choice.
+    if ((${#configs[@]} == 1)); then
+        run_root systemctl disable --now snapper-timeline.timer
+    else
+        info "snapper-timeline.timer is left as it is: ${configs[*]:1} may use it"
+    fi
     run_root systemctl enable --now snapper-cleanup.timer
     # Only where the bootloader integration exists: it keeps the boot menu's
     # snapshot entries in step with the cleanup above.

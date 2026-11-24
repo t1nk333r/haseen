@@ -1,6 +1,8 @@
 # shellcheck shell=bash
 # install-stamp.sh — what the last install put where (plan 134). install.sh
-# writes it once the tree is in place; `haseen update haseen` reads it to say
+# writes it once the run it was asked for has succeeded (the tree for
+# --tree-only; the layers, migrations, seeds and hardware too otherwise, plan
+# 186), so a failed step is retried; `haseen update haseen` reads it to say
 # "already installed" instead of reinstalling the commit that is already
 # here, and to find the prefix it installed into. Sourced, never executed.
 #
@@ -37,13 +39,18 @@ install_build_version() {
     printf '%s\n' "$version"
 }
 
-# install_stamp_write PREFIX COMMIT VERSION — replace the stamp, as root,
-# atomically: a run interrupted mid-write leaves the previous stamp.
+# install_stamp_write PREFIX COMMIT VERSION [SCOPE] — replace the stamp, as
+# root, atomically: a run interrupted mid-write leaves the previous stamp.
+# SCOPE is `full` (the default: the tree, layers, migrations, seeds and
+# hardware) or `tree` (--tree-only: bin/ and share/ alone), so a full update
+# does not take a tree-only install of the same commit for its own (plan 186).
+# A stamp without the field predates it and reads as full.
 install_stamp_write() {
     local path tmp
     path="$(install_stamp_path "$1")"
     tmp="$path.new.$$"
-    printf 'prefix=%s\ncommit=%s\nversion=%s\ndate=%s\n' "${1%/}" "$2" "$3" "$(date -Iseconds)" | write_root_file "$tmp"
+    printf 'prefix=%s\ncommit=%s\nversion=%s\nscope=%s\ndate=%s\n' "${1%/}" "$2" "$3" "${4:-full}" "$(date -Iseconds)" |
+        write_root_file "$tmp"
     run_root mv -f -- "$tmp" "$path"
 }
 

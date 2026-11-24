@@ -79,6 +79,22 @@ assert_contains "the first run asks nothing" "$herdr_conf" "onboarding = false"
 
 tmux_conf="$(cat "$CONFIG/tmux/tmux.conf")"
 assert_contains "tmux has the same prefix" "$tmux_conf" "set -g prefix C-Space"
+
+# fcitx5 sees a key before the focused terminal does, so a switch key that is
+# also the multiplexers' prefix eats it (plan 190: Control+space was both).
+# key_norm KEY — one spelling for fcitx5's Control+space, herdr's ctrl+space
+# and tmux's C-Space.
+key_norm() { sed -E 's/^C-/ctrl+/; s/^M-/alt+/; s/^S-/shift+/' <<<"$1" | tr '[:upper:]' '[:lower:]' | sed 's/control/ctrl/g'; }
+fcitx_keys="$(sed -n '/^\[Hotkey\/TriggerKeys\]/,/^\[/{s/^[0-9][0-9]*=//p;}' "$CONFIG/fcitx5/config")"
+assert_eq "fcitx5 has one switch key" "1" "$(grep -c . <<<"$fcitx_keys")"
+herdr_prefix="$(key_norm "$(sed -n 's/^prefix = "\(.*\)"$/\1/p' <<<"$herdr_conf")")"
+tmux_prefixes="$(sed -n 's/^set -g prefix2\{0,1\} \([^ ]*\).*/\1/p' <<<"$tmux_conf" | while read -r k; do key_norm "$k"; done)"
+assert_eq "herdr's prefix is read" "ctrl+space" "$herdr_prefix"
+assert_contains "tmux's prefixes are read" "$tmux_prefixes" "ctrl+space"
+while IFS= read -r k; do
+    assert_eq "fcitx5's switch $k is not a multiplexer prefix" "" \
+        "$(grep -Fx "$(key_norm "$k")" <<<"$herdr_prefix"$'\n'"$tmux_prefixes" || true)"
+done <<<"$fcitx_keys"
 assert_contains "reload is on q, not r" "$tmux_conf" "bind -N \"Reload configuration\" q source-file"
 assert_contains "yazi's sixels get through tmux" "$tmux_conf" "set -g allow-passthrough all"
 assert_contains "CSI-u is on, or M-S-Enter is M-Enter" "$tmux_conf" "set -g extended-keys-format csi-u"
