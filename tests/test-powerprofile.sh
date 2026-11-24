@@ -95,6 +95,24 @@ assert_status "a machine with no battery succeeds" 0 "$STATUS"
 assert_contains "a desktop counts as AC even with no mains sensor online" "$OUTPUT" "(ac)"
 assert_eq "and gets the remembered AC profile" performance "$(last_set)"
 
+# A desktop with a wireless mouse: the mouse reports a Battery whose scope is
+# Device, which powers nothing but the mouse, so the desktop is still on AC.
+mouse_root="$SANDBOX/desktop-mouse"
+mouse="$mouse_root/sys/class/power_supply/hidpp_battery_0"
+mkdir -p "$mouse"
+echo Battery >"$mouse/type"
+echo Device >"$mouse/scope"
+echo Discharging >"$mouse/status"
+export HASEEN_SYSROOT="$mouse_root"
+capture haseen powerprofile set
+assert_status "a desktop with a wireless mouse succeeds" 0 "$STATUS"
+assert_contains "a peripheral's battery (scope Device) leaves a desktop on AC" "$OUTPUT" "(ac)"
+assert_eq "and it gets the remembered AC profile" performance "$(last_set)"
+# The machine's own battery (scope System, or no scope file) still counts.
+echo System >"$mouse/scope"
+capture haseen powerprofile set
+assert_contains "a battery with scope System is the machine's own" "$OUTPUT" "(battery)"
+
 # --- dry run changes nothing -------------------------------------------------
 export HASEEN_SYSROOT="$FIXTURES/power-ac"
 before="$(cat "$PPD_LOG")"

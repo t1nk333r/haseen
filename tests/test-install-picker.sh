@@ -166,6 +166,31 @@ assert_contains "its failure is reported" "$OUTPUT" "haseen setup dotfiles https
 install_with $'13\n4\n5\nhttps://example.invalid/my dots.git' --pick --dry-run
 assert_contains "a URL with a space is refused" "$OUTPUT" "skipping the dotfiles step"
 
+# The installer seeds before the setup steps; a dotfiles step that worked is
+# followed by one more seed, so an rc the repo replaced has haseen's include
+# again before the first login (plan 191). A failed one is not.
+PICKBIN="$SANDBOX/pick-bin/bin"
+mkdir -p "$PICKBIN"
+cat >"$PICKBIN/haseen" <<'EOF'
+#!/bin/sh
+echo "RAN: $*"
+[ "$2" != "$PICK_FAIL" ]
+EOF
+chmod +x "$PICKBIN/haseen"
+pick_run() { # FAIL-STEP STEP... — picker_run_setup with a stub haseen
+    local fail="$1"
+    shift
+    capture env PICK_FAIL="$fail" bash -c 'source "$1/lib/common.sh"; source "$1/lib/install-picker.sh"
+        bin="$2"; shift 2; PICK_SETUP=("$@"); PICK_DOTFILES_URL=https://example.invalid/dots.git
+        picker_run_setup "$bin" --dry-run' _ "$HASEEN_PATH" "$PICKBIN/haseen" "$@"
+}
+pick_run none keyd dotfiles
+assert_contains "dotfiles: the step runs" "$OUTPUT" "RAN: setup dotfiles https://example.invalid/dots.git --dry-run"$'\n'"[*] setup step: haseen seed user (after the dotfiles)"$'\n'"RAN: seed user --dry-run"
+assert_eq "dotfiles: only that step seeds again" "1" "$(grep -c '^RAN: seed user' <<<"$OUTPUT")"
+pick_run dotfiles dotfiles
+assert_contains "dotfiles: a failed step is reported" "$OUTPUT" "haseen setup dotfiles https://example.invalid/dots.git failed"
+assert_not_contains "dotfiles: and seeds nothing" "$OUTPUT" "RAN: seed user"
+
 # --- the banner names the checkout ----------------------------------------------
 # The installer builds whatever is checked out, so a tree that never fetched
 # installs old code in silence: IO ran 90d9c2c on 2026-10-27 and met the mise/go

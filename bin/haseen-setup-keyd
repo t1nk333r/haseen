@@ -19,9 +19,9 @@ usage() {
 Usage: haseen setup keyd [on|off|status] [--dry-run] [--yes]
 
   on      install keyd, write $CONF (hold CapsLock = hyper, i.e.
-          SUPER + SHIFT + ALT + CTRL; tap = Escape; RightAlt+CapsLock =
-          CapsLock), enable keyd.service and reload it. A different existing
-          $CONF is backed up first.
+          SUPER + SHIFT + ALT + CTRL; tap = Escape; CapsLock while RightAlt
+          is held = CapsLock), enable keyd.service and reload it. A different
+          existing $CONF is backed up first.
   off     disable and stop keyd.service ($CONF stays).
   status  installed, enabled/active and whether $CONF matches (default).
 
@@ -76,7 +76,7 @@ on() {
     if $changed; then
         run_root keyd reload
     fi
-    info "keyd on: hold CapsLock = hyper, tap = Escape, RightAlt+CapsLock = CapsLock"
+    info "keyd on: hold CapsLock = hyper, tap = Escape, hold RightAlt and press CapsLock = CapsLock"
 }
 
 off() {
