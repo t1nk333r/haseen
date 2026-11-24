@@ -42,6 +42,12 @@ capture "$shim" key --dry-run -d 0 30:1 30:0
 assert_status "dry run accepted" 0 "$STATUS"
 assert_eq "--dry-run sends nothing to Hyprland" "" "$(cat "$log" 2>/dev/null)"
 assert_contains "--dry-run shows the dispatch it would send" "$OUTPUT" "send_key_state"
+# A dry run creates nothing, not the state directory, not its lock (plan 196).
+fresh="$SANDBOX/run-dry"
+mkdir -p "$fresh"
+capture env XDG_RUNTIME_DIR="$fresh" "$shim" key --dry-run -d 0 42:1 30:1 30:0
+assert_status "dry run in a fresh session accepted" 0 "$STATUS"
+assert_eq "--dry-run creates nothing under XDG_RUNTIME_DIR" "" "$(command ls -A "$fresh")"
 
 capture "$shim" key 30:2
 assert_status "a state other than 0/1 is refused" 2 "$STATUS"
@@ -111,7 +117,10 @@ else
     chmod 700 "$XDG_RUNTIME_DIR"
     export XDG_RUNTIME_DIR
     unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE DBUS_SESSION_BUS_ADDRESS
-    stub notify-send "printf '%s\n' \"\$*\" >>'$SANDBOX/notify.log'"
+    # notify-send reads options until "--", as GOption does: an unknown one
+    # fails and shows nothing.
+    stub notify-send "for a in \"\$@\"; do case \$a in --) break ;; --app-name=* | --urgency=*) ;; -*) echo \"Unknown option \$a\" >&2; exit 1 ;; esac; done
+printf '%s\n' \"\$*\" >>'$SANDBOX/notify.log'"
     P="$XDG_CONFIG_HOME/haseen/plugins"
     allow="$SANDBOX/allow"
     echo no >"$allow"
@@ -199,6 +208,7 @@ ShellRoot {
                 // A check that never calls done is refused once its time is up.
                 Compat.DmsStartupGate.checkTimeoutMs = 400;
                 Compat.DmsStartupGate.run("dms.silent-fixture", ok => r.silent = ok);
+                Dms.ToastService.showInfo("-3 C outside", "--- connection lost ---");
                 probe.next(); break;
             case 1:
                 if (probe.since() < 1500) break;
@@ -246,6 +256,9 @@ QML
         assert_eq "a failing check keeps the plugin unloaded" false "$(get .failStarted)"
         assert_eq "the refusal is reported as a plugin error" '["dms: startup check: fixture-tool missing"]' "$(get .errors)"
         assert_contains "and as a notification with its details" "$(cat "$SANDBOX/notify.log" 2>/dev/null)" "fixture-tool missing"$'\n\n'"install it"
+        assert_contains "its title is text, never an option" "$(cat "$SANDBOX/notify.log" 2>/dev/null)" "--urgency=critical -- Fail Startup Failed"
+        assert_contains "a DMS toast that starts with - is shown" "$(cat "$SANDBOX/notify.log" 2>/dev/null)" \
+            "--app-name=haseen --urgency=low -- -3 C outside --- connection lost ---"
         assert_eq "a check that never calls done is refused after its timeout" false "$(get .silent)"
         assert_eq "with an error that says so" '["dms: startup check: startupCheck did not call done() within 0.4 s"]' "$(get .silentErrors)"
         assert_eq "settings.desktop places and sizes the widget" '[30,40,200,120]' "$(get .placed)"

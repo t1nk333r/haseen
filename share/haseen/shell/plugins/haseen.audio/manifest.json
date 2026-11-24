@@ -24,5 +24,7 @@
       "description": "Test hook: expose read-only IPC target haseen.audio (state) while the panel is open"
     }
   },
-  "permissions": []
+  "permissions": [
+    "exec"
+  ]
 }
