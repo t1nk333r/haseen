@@ -67,7 +67,10 @@ things go wrong:
      --defaults` (`:4`) runs `without_ctrl_space`
      (`default/input-methods/configure.py@v4.5.0-rc1:75-99`), which removes
      `Control+space` from fcitx5's trigger keys: haseen's English↔Arabic
-     switch (`share/haseen/default/fcitx5/config:14`).
+     switch (`share/haseen/default/fcitx5/config:14`). Omarchy did it because
+     Control+space is the tmux and herdr prefix, which haseen ships too; plan
+     190 moved haseen's switch to Super+i. The migration stays sealed: it
+     rewrites fcitx5's config, which haseen leaves to the user once seeded.
    - **1788129995** (c0ba99670): `omarchy-pkg-drop satty tensaku` (`:18`):
      haseen's capture editor (`share/haseen/layers/desktop/packages.txt:48`).
    - **1789764927** (b423f4993): installs OWE and enables `owed.service`

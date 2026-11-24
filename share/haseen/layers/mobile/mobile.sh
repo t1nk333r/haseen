@@ -194,12 +194,14 @@ mobile_ufw_enabled() {
 
 # mobile_ufw_rule_present PROTO — ufw already allows the KDE Connect range for
 # PROTO. /etc/ufw/user.rules is world-readable (0644) and carries the
-# generated iptables line for every rule.
+# generated iptables line for every rule. ufw writes a port range as
+# `-m multiport --dports A:B` (ufw/common.py, format_rule); `--dport` is
+# accepted too, for a rule written by hand.
 mobile_ufw_rule_present() {
     local rules
     rules="$(sysroot_path /etc/ufw/user.rules)"
     [[ -r $rules ]] || return 1
-    grep -qE -- "-p $1 .*--dport ${MOBILE_KDECONNECT_PORTS} -j ACCEPT" "$rules"
+    grep -qE -- "-p $1 .*--dports? ${MOBILE_KDECONNECT_PORTS} -j ACCEPT" "$rules"
 }
 
 mobile_firewalld_active() { unit_enabled firewalld.service; }

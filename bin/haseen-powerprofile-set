@@ -34,6 +34,9 @@ EOF
 
 # on_ac — true when the machine is running off mains. A machine with no
 # battery (a desktop) is always on AC, even when it exposes no supply at all.
+# A battery whose scope is Device is a peripheral (a wireless mouse, a gamepad,
+# a headset) reporting its own charge, not one that powers the machine, so it
+# does not count: haseen-battery-status skips the same supplies (plan 189).
 on_ac() {
     local dir supply type online have_battery=false
     dir="$(sysroot_path /sys/class/power_supply)"
@@ -42,6 +45,7 @@ on_ac() {
         type="$(<"$supply/type")"
         case "$type" in
         Battery)
+            [[ -r $supply/scope && "$(<"$supply/scope")" == Device ]] && continue
             have_battery=true
             ;;
         Mains | USB)

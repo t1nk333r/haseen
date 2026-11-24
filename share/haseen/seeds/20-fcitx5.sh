@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # fcitx5 and the input-method environment. Sourced by bin/haseen-seed-user.
 #
-# haseen:seed $CONFIG/fcitx5/{config,profile}|English <-> Arabic on Control+space
+# haseen:seed $CONFIG/fcitx5/{config,profile}|English <-> Arabic on Super+i
 # haseen:seed $CONFIG/fcitx5/conf/*.conf|fcitx5 addon settings
 # haseen:seed $CONFIG/environment.d/10-haseen-fcitx.conf|QT_IM_MODULE and friends
 #

@@ -453,23 +453,49 @@ esp="$SANDBOX/esp"
 cp -a "$FX_LIMINE/boot" "$esp"
 conf="$esp/limine.conf"
 orig="$(<"$conf")"
-capture "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
+# HASEEN_SYSROOT puts Limine's boot-partition lock in the sandbox; the conf
+# and ESP are named by host path, as sb_root passes them.
+capture env HASEEN_SYSROOT="$SANDBOX" "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
 assert_status "assets: exit" 0 "$STATUS"
 h1="$(b2sum "$esp/limine-splash.png" | cut -d' ' -f1)"
 assert_contains "assets: wallpaper hashed" "$(<"$conf")" "wallpaper: boot():/limine-splash.png#$h1"$'\n'
 assert_eq "assets: only the wallpaper line changed" \
     "$(sed '2d' <<<"$orig")" "$(sed '2d' "$conf")"
-capture "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
+capture env HASEEN_SYSROOT="$SANDBOX" "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
 assert_eq "assets: second run is silent" "" "$OUTPUT"
 assert_contains "assets: second run keeps the hash" "$(<"$conf")" "#$h1"
 printf 'a new splash\n' >"$esp/limine-splash.png"
 printf 'MZ tampered kernel\n' >"$esp/vmlinuz-linux-cachyos"
-capture "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
+capture env HASEEN_SYSROOT="$SANDBOX" "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
 h2="$(b2sum "$esp/limine-splash.png" | cut -d' ' -f1)"
 assert_contains "assets: stale wallpaper hash refreshed" "$(<"$conf")" "limine-splash.png#$h2"
 assert_not_contains "assets: old hash gone" "$(<"$conf")" "#$h1"
 assert_contains "assets: kernel hash never rewritten" "$(<"$conf")" \
     "vmlinuz-linux-cachyos#$(b2sum "$FX_LIMINE/boot/vmlinuz-linux-cachyos" | cut -d' ' -f1)"
+# Limine's boot-partition lock is held from the plan to the rename (plan 188):
+# the plan names lines by number, so a limine-snapper-sync write in between
+# would be lost or have the wrong line replaced.
+[[ -e $SANDBOX/run/lock/boot-partition.lock ]] && _pass || _fail "assets: takes Limine's boot-partition lock"
+assert_eq "assets: no temporary file left" "" "$(find "$esp" -name '*.haseen.*')"
+printf 'another splash\n' >"$esp/limine-splash.png"
+cp "$conf" "$SANDBOX/before.conf"
+if command -v flock >/dev/null; then
+    (
+        exec 9>"$SANDBOX/run/lock/boot-partition.lock"
+        flock 9
+        sleep 3
+    ) &
+    holder=$!
+    sleep 0.3
+    capture env HASEEN_SYSROOT="$SANDBOX" timeout 1 "$SB_LIB/limine-hash-assets.sh" "$conf" "$esp"
+    assert_status "assets: waits while another Limine tool holds the lock" 124 "$STATUS"
+    cmp -s "$conf" "$SANDBOX/before.conf" && _pass || _fail "assets: nothing written without the lock"
+    wait "$holder" || true
+fi
+ln -s "$conf" "$esp/link.conf"
+capture env HASEEN_SYSROOT="$SANDBOX" "$SB_LIB/limine-hash-assets.sh" "$esp/link.conf" "$esp"
+assert_status "assets: a symbolic link is refused" 1 "$STATUS"
+cmp -s "$conf" "$SANDBOX/before.conf" && _pass || _fail "assets: and its target is left alone"
 
 # --- sign ----------------------------------------------------------------------
 sandbox sb-sign
@@ -483,6 +509,18 @@ done
 capture env HASEEN_SYSROOT="$FX_LIMINE" haseen secureboot sign
 assert_status "manual sign without keys: refused" 1 "$STATUS"
 assert_contains "manual sign without keys: next step" "$OUTPUT" "haseen secureboot setup"
+# With keys, a real run under HASEEN_SYSROOT would sign this machine from the
+# fixture's facts: refused as setup refuses it (plan 188), sudo never reached.
+stub sudo 'echo "STUB-CALLED: sudo $*" >&2; exit 97'
+# Not the recorder: HASEEN_TEST_STUBBED_SUDO, which earlier cases export, is unset.
+capture env -u HASEEN_TEST_STUBBED_SUDO HASEEN_SYSROOT="$FX_SDON" haseen secureboot sign
+assert_status "real sign under a sysroot: refused" 1 "$STATUS"
+assert_contains "real sign under a sysroot: why" "$OUTPUT" "describes another system"
+assert_not_contains "real sign under a sysroot: nothing ran" "$OUTPUT" "STUB-CALLED"
+capture env -u HASEEN_TEST_STUBBED_SUDO HASEEN_SYSROOT="$FX_SDON" haseen secureboot sign --hook
+assert_status "the hook under a sysroot: refused too" 1 "$STATUS"
+assert_not_contains "the hook under a sysroot: nothing ran" "$OUTPUT" "STUB-CALLED"
+rm -f "$SANDBOX/stubs/sudo"
 
 # zz-sbctl.hook runs right after ours: the hook only adds the untracked kernel.
 capture env HASEEN_SYSROOT="$FX_SDON" haseen secureboot sign --hook --dry-run
