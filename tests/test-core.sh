@@ -257,6 +257,17 @@ sed -i '/^\[omarchy\]/,+1d' "$fx/etc/pacman.conf"
 capture env HASEEN_SYSROOT="$fx" haseen layer apply omarchy-repo chaotic --dry-run
 assert_contains "omarchy-repo then chaotic in one dry run: before [omarchy]" "$OUTPUT" \
     "DRYRUN: put the [chaotic-aur] stanza before the [omarchy] section omarchy-repo adds to /etc/pacman.conf"
+# pacman can list [omarchy] from an Include'd file, with no plain [omarchy]
+# line to put the stanza before: chaotic appends it rather than rewrite the
+# file unchanged and carry on without Chaotic-AUR (plan 185).
+capture env HASEEN_SYSROOT="$fx" DRY_RUN=true bash -c 'source "$HASEEN_PATH/lib/layers.sh"; preflight_all
+    LAYER_DIR="$HASEEN_PATH/layers/chaotic"; source "$LAYER_DIR/layer.sh"
+    omarchy_repo_enabled() { true; }; layer_apply'
+assert_status "[omarchy] from an Include: applied" 0 "$STATUS"
+assert_contains "[omarchy] from an Include: stanza appended" "$OUTPUT" \
+    $'DRYRUN: append to /etc/pacman.conf:\n    | \n    | [chaotic-aur]'
+assert_contains "[omarchy] from an Include: says why" "$OUTPUT" "is enabled but not as a plain [omarchy] line"
+assert_not_contains "[omarchy] from an Include: no unchanged rewrite" "$OUTPUT" "DRYRUN: write /etc/pacman.conf"
 command cp -f "$SANDBOX/pacman.conf.keep" "$fx/etc/pacman.conf"
 
 # --- [omarchy] repo: after Chaotic-AUR, before the AUR; never Omarchy itself --

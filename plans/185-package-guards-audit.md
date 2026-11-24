@@ -14,7 +14,8 @@
 - **Category**: install, security
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor read-only audit of 2026-11-24)
-- **State**: DONE 2026-11-24 (`tests/test-core.sh` 155/155,
+- **State**: DONE 2026-11-24 (`tests/test-core.sh` 159/159 after the
+  review round,
   `tests/test-menu.sh` 334/334, `tests/test-omarchy-remove.sh` 169/169,
   `tests/test-catalog.sh` 220/220, `tests/test-desktop.sh` 230/230; the
   affected selection is the whole suite, because `share/haseen/lib/common.sh`
@@ -167,7 +168,10 @@ sshd keeps the first value it reads, and Arch's `sshd_config` includes
 8. When `[omarchy]` is already in pacman.conf, the chaotic layer writes
    pacman.conf with the `[chaotic-aur]` stanza before the `[omarchy]`
    section (read whole first, because the write truncates the file). A dry
-   run that applies omarchy-repo first says it would do the same.
+   run that applies omarchy-repo first says it would do the same. When pacman
+   lists `[omarchy]` but the file has no plain `[omarchy]` line to put the
+   stanza before (an `Include`d file, or a header with more on the line), the
+   layer warns and appends the stanza, as it does without `[omarchy]`.
 9. The picker's dry-run line reads `then: haseen install aur <picked> (an
    official repo, Chaotic-AUR, [omarchy], the AUR last)`.
 10. `pam_prepend`, in both commands, falls back to the vendor stack in
@@ -196,7 +200,10 @@ detached worktree of it): 20 in `tests/test-core.sh`, 15 in
   warned about without it; a dry run with `HASEEN_APPLY_LAYERS="base chaotic
   desktop"` planning `chaotic-aur/ttfx` and no build, and still the AUR when
   chaotic comes after the layer; the `[chaotic-aur]` stanza written before
-  `[omarchy]`, and the dry-run line for `omarchy-repo chaotic`; `DRY_RUN=1`
+  `[omarchy]`, and the dry-run line for `omarchy-repo chaotic`; the stanza
+  appended, with a warning and no rewrite, when `omarchy_repo_enabled` holds
+  but pacman.conf has no `[omarchy]` line (the review round's case);
+  `DRY_RUN=1`
   planning without touching anything, `DRY_RUN=maybe` stopping, `0` and
   `yes` read as false and true; a real `write_root_file` (sudo stubbed to run
   the command) keeping a 0750 parent and creating missing ones; the sudo
@@ -212,6 +219,30 @@ detached worktree of it): 20 in `tests/test-core.sh`, 15 in
 - `tests/test-desktop.sh`: the gaming layer on Arch (apply order `base
   chaotic desktop gaming`) now plans `chaotic-aur/lib32-nvidia-580xx-utils`
   where it planned a paru build; the expectation follows decision 1.
+
+## Review
+
+An independent Sonnet review of the first head approved it with three nits.
+
+- The chaotic layer put the stanza only before a line that is exactly
+  `[omarchy]`, while `omarchy_repo_enabled` reads `pacman-conf --repo-list`
+  on a live system, which also counts a repo from an `Include`d file. The awk
+  then inserted nothing, `write_root_file` rewrote pacman.conf unchanged and
+  the layer went on without Chaotic-AUR. Fixed as decision 8 now says: the
+  layer checks that the rewritten text has a `[chaotic-aur]` line and
+  otherwise warns and appends. Run against the first head's layer, the new
+  `tests/test-core.sh` case printed `DRYRUN: write /etc/pacman.conf` with no
+  stanza; it now prints the append.
+- `pkg_aur_closure` cannot read a dependency that only an AUR package
+  provides under another name, so `--yes` refuses that build. Kept: it fails
+  safe and the message says to run without `--yes`. An AUR provides lookup
+  is the fix if it shows up in practice.
+- After `setup fido2` or `fingerprint` wrote `/etc/pam.d/polkit-1` from the
+  vendor stack, the remove commands take the line out and leave an `/etc`
+  copy that later polkit updates no longer change. Kept: the copy includes
+  `system-auth` and behaves like the vendor file, and the remove commands
+  cannot tell a copy haseen wrote from one the user made with the same
+  bytes, so deleting it is not theirs to decide.
 
 ## Rejected
 

@@ -67,17 +67,25 @@ layer_apply() {
     run_root pacman-key --lsign-key "$CHAOTIC_KEY_FPR"
     run_root pacman -U --noconfirm "$CHAOTIC_CDN/chaotic-keyring.pkg.tar.zst" "$CHAOTIC_CDN/chaotic-mirrorlist.pkg.tar.zst"
     if ! chaotic_enabled; then
+        local conf=""
         if omarchy_repo_enabled; then
             # Applied after omarchy-repo (`haseen layer apply omarchy-repo
             # desktop` resolves chaotic in after it): the stanza goes before
             # [omarchy], which stays last (plan 185). The file is read whole
             # first, because the write truncates it.
-            local conf
             conf="$(chaotic_before_omarchy)"
+        fi
+        if grep -qx '\[chaotic-aur\]' <<<"$conf"; then
             printf '%s\n' "$conf" | write_root_file /etc/pacman.conf 0644
-        elif $DRY_RUN && _layer_applied_before omarchy-repo; then
+        elif [[ -z $conf ]] && $DRY_RUN && _layer_applied_before omarchy-repo; then
             echo "DRYRUN: put the [chaotic-aur] stanza before the [omarchy] section omarchy-repo adds to /etc/pacman.conf"
         else
+            # No [omarchy], or no plain [omarchy] line to put the stanza
+            # before: pacman can list [omarchy] from an Include'd file or a
+            # header line the awk does not match, as in a hand-edited
+            # pacman.conf. Appending still enables Chaotic-AUR; rewriting the
+            # file unchanged would not.
+            [[ -z $conf ]] || warn "[omarchy] is enabled but not as a plain [omarchy] line in /etc/pacman.conf; appending [chaotic-aur] after it"
             printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' | append_root_file /etc/pacman.conf
         fi
     fi
