@@ -7,13 +7,19 @@ per line:
 
   {"send": "<a request line>"}           write it to the socket
   {"wait": "reply"|"event", "n": 1}      read until n frames of that type came
+  {"wait": "event", "n": 2, "and": "reply"}   ... and one frame of the other type
   {"write": ["<path under BASE>", "<text>"]}   rewrite a fixture file
   {"sleep": <ms>}
 
 Frames are printed one per line. The frames read between two waits are sorted,
 because Go answered a subscribe and sent its first sample from two goroutines,
-in either order. The hello's pid and version, and values divided by wall time
-(the network rates, a process's cpu, the gpu of a chosen rc6 card) are masked; the disks'
+in either order. A border wipe subscribe is answered from the connection's
+thread and its events come from the wipe's, so under load the reply can follow
+both events; its wait names the reply with "and", or the reply would land in
+the next group and sort among frames it does not belong to (plan 199).
+
+The hello's pid and version, and values divided by wall time (the network
+rates, a process's cpu, the gpu of a chosen rc6 card) are masked; the disks'
 sizes are masked too, since they come from the live filesystem under BASE.
 """
 
@@ -73,16 +79,18 @@ class Player:
             print(f)
         self.held = []
 
-    def wait(self, kind: str, n: int, timeout: float = 5.0) -> None:
-        seen = 0
-        while seen < n:
+    def wait(self, kind: str, n: int, also: str | None = None, timeout: float = 5.0) -> None:
+        seen, also_seen = 0, also is None
+        while seen < n or not also_seen:
             f = self.frame(timeout)
             if f is None:
-                self.held.append(f"TIMEOUT waiting for {kind} {n}")
+                self.held.append(f"TIMEOUT waiting for {kind} {n}" + (f" and {also}" if also else ""))
                 break
             self.held.append(mask(f))
-            if f'"type":"{kind}"' in f:
+            if f'"type":"{kind}"' in f and seen < n:
                 seen += 1
+            elif also is not None and f'"type":"{also}"' in f:
+                also_seen = True
         self.flush()
 
 
@@ -100,7 +108,7 @@ def main() -> int:
             if "send" in step:
                 p.sock.sendall(step["send"].encode() + b"\n")
             elif "wait" in step:
-                p.wait(step["wait"], step.get("n", 1))
+                p.wait(step["wait"], step.get("n", 1), step.get("and"))
             elif "write" in step:
                 rel, text = step["write"]
                 target = os.path.join(base, rel)

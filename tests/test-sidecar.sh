@@ -157,6 +157,42 @@ make_root() {
         assert_not_contains "$1: nothing timed out" "$(cat "$SANDBOX/$2")" "TIMEOUT"
     }
 
+    # A reply that comes after both of a subscribe's events stays in the
+    # subscribe's group when the wait names it with "and" (plan 199): the
+    # border wipe's events come from another thread than its reply, and
+    # under load the reply landed in the next group, sorted after an event.
+    late_sock="$SANDBOX/late.sock"
+    printf '%s\n' '{"send": "{\"id\":1,\"method\":\"subscribe\"}"}' \
+        '{"wait": "event", "n": 2, "and": "reply"}' \
+        '{"send": "{\"id\":2,\"method\":\"status\"}"}' '{"wait": "reply"}' >"$SANDBOX/late.script"
+    python3 - "$late_sock" <<'EOF' &
+import socket, sys, time
+srv = socket.socket(socket.AF_UNIX)
+srv.bind(sys.argv[1])
+srv.listen(1)
+conn, _ = srv.accept()
+conn.sendall(b'{"type":"hello"}\n')
+for line in conn.makefile("rb"):
+    if b'"id":1,' in line:
+        conn.sendall(b'{"type":"event","n":"a"}\n{"type":"event","n":"a"}\n')
+        time.sleep(0.3)
+        conn.sendall(b'{"type":"reply","id":1}\n')
+    elif b'"id":2,' in line:
+        conn.sendall(b'{"type":"reply","id":2}\n{"type":"event","n":"b"}\n')
+    else:
+        conn.sendall(b'{"type":"reply","id":987654}\n')
+        break
+EOF
+    late_pid=$!
+    for ((i = 0; i < 100; i++)); do
+        [[ -S $late_sock ]] && break
+        sleep 0.05
+    done
+    late_got="$(timeout 30 python3 "$REPO/tools/sidecar-play.py" "$late_sock" "$SANDBOX" "$SANDBOX/late.script" | paste -sd' ')"
+    wait "$late_pid" 2>/dev/null || true
+    assert_eq "a late reply stays with its subscribe's events" \
+        '{"type":"hello"} {"type":"event","n":"a"} {"type":"event","n":"a"} {"type":"reply","id":1} {"type":"reply","id":2} {"type":"event","n":"b"}' "$late_got"
+
     play protocol "$GOLDEN/protocol.script" rootless
     same "the protocol answers as the Go daemon's" protocol
 

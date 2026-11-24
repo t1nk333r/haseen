@@ -14,9 +14,9 @@
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit)
 - **State**: DONE 2026-11-24 (`tests/run.sh --affected 9a9e82ab`: 19 files,
-  2734/2735, the one failure the border wipe golden transcript's reply order
-  under load, unrelated and passing alone: `tests/test-sidecar.sh` 77/77;
-  review pending)
+  2736/2736 after the review round below, which also fixed the border wipe
+  golden transcript's flaky grouping; reviewed: one Sonnet round, APPROVE
+  with two nits)
 
 The audit ran at `2f7f472a`. Every finding was re-checked on `9a9e82ab`
 (main with plans 182-184) before it was fixed; every one still applied, at
@@ -253,3 +253,40 @@ the protocol test timed out waiting for nvidia-smi to stop, the two gap
 unit tests and the pairing test failed their assertions, and the shell
 tests failed 26 checks across `test-sidecar`, `test-syncthing`,
 `test-trigger`, `test-capture-toolbar` and `test-wooting`.
+
+## Review
+
+One round, by an independent Sonnet reviewer: APPROVE, with two nits.
+
+1. *The status line said review pending and recorded one failure in the
+   border wipe golden transcript that the reviewer could not reproduce
+   (`tests/test-sidecar.sh` passed 77/77 for them); is that transcript
+   flaky?* It is, and the cause is the harness, not this plan's code. A
+   border wipe subscribe queues an announce for the wipe's own thread
+   (`core/sidecar/src/server.rs:393`, `borderwipe/mod.rs:182-183`) and then
+   sends its reply from the connection's thread (`server.rs:434`). Under
+   load the wipe thread can send both events before the reply goes out.
+   `tools/sidecar-play.py` stopped the subscribe's group after two events,
+   so the late reply opened the next group, which stops at the first reply
+   it sees; the status reply then fell into the group after, where sorting
+   put it after the next subscribe's events. That is the reorder the
+   affected run showed. **Fixed:** a wait can name a second frame type
+   (`"and": "reply"`) and reads until it has seen that too; the three
+   border wipe subscribes in `wipe.script` use it. The golden output is
+   unchanged, since in it every subscribe's reply already sat with its
+   events. A new check in `tests/test-sidecar.sh` ("a late reply stays with
+   its subscribe's events") plays that script shape against a fake socket
+   that sends the reply 300 ms after both events; the base harness prints
+   the status reply after the next event and fails it. The status line
+   above now records this review and the final run.
+2. *Without socat, `stop` takes the pid from `ss -p`; if `ss` lists no pid,
+   `stop` dies and leaves the daemon running. Fall back to `pgrep -f`?*
+   **Not taken.** The socket sits under `XDG_RUNTIME_DIR` (`bin/haseen-sidecar:14`;
+   systemd makes it 0700 and per user), so its listener is the user's own process,
+   and `ss -p` names the pid of every socket the caller's processes hold.
+   `ss` can omit it only for another user's process or one in another pid
+   namespace, and SIGTERM could not reach either. A `pgrep -f` fallback
+   would match by binary, not by socket, and could stop a daemon serving a
+   different socket (a test's `-socket`, a second session's). `stop` then
+   says "no process listens on" the socket, which is true from the caller's
+   view.
