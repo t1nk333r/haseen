@@ -41,7 +41,8 @@ branch is left alone. 'haseen update' runs this first, then the packages.
   --check        report the commit to install, the installed one and whether
                  an update is available; fetches, installs nothing
   --tree-only    install bin/ and share/ only: no layers, no migrations, no
-                 package work — a fast refresh for shell and keybind changes
+                 package work — a fast refresh for shell and keybind changes;
+                 a later run without it still applies that commit's layers
   --no-reload    install and stop; the next session picks up the new tree
   --force        install even when the installed stamp names this commit or
                  a newer one
@@ -101,6 +102,14 @@ prefix="$(self_update_prefix "$want_prefix")"
 installed_commit="$(install_stamp_get "$prefix" commit || true)"
 installed_version="$(install_stamp_get "$prefix" version || true)"
 installed_at="$(install_stamp_get "$prefix" date || true)"
+# A --tree-only install of a commit is that commit's tree, not its layers or
+# migrations: it counts as current only for another --tree-only run (plan
+# 186). Stamps without the field predate it and count as full.
+installed_scope="$(install_stamp_get "$prefix" scope || true)"
+counts_as_current=true
+if [[ $installed_scope == tree ]] && ! $tree_only; then
+    counts_as_current=false
+fi
 
 # The checkout to install: --source, else $HASEEN_SOURCE, else haseen's own
 # copy. ~/.config/haseen/source (the checkout `haseen bar edit` writes to) is
@@ -129,7 +138,13 @@ if [[ -z $src ]]; then
             printf 'installed  unknown: no install stamp under %s\n' "$prefix"
         fi
         case $relation in
-        same) printf 'update     none: the installed tree is the latest\n' ;;
+        same)
+            if $counts_as_current; then
+                printf 'update     none: the installed tree is the latest\n'
+            else
+                printf 'update     layers and migrations: the latest is installed tree-only\n'
+            fi
+            ;;
         ahead) printf 'update     none: the installed tree is newer than %s\n' "$SELF_UPDATE_REF" ;;
         local)
             printf 'update     none: the installed tree is not on %s but was installed after its latest commit\n' \
@@ -154,7 +169,7 @@ if [[ -z $src ]]; then
     fi
     # Compared as commits, not as text: a stamp written from another clone
     # may abbreviate the same commit to more characters.
-    if [[ $relation == same ]] && ! $force; then
+    if [[ $relation == same ]] && $counts_as_current && ! $force; then
         info "haseen ${installed_version:-} ($installed_commit) is already installed under $prefix"
         exit 0
     fi
@@ -209,6 +224,8 @@ else
         fi
         if ((behind > 0)); then
             printf 'update     available: %s commit(s) to pull, then install\n' "$behind"
+        elif [[ $installed_commit == "$upstream_commit" ]] && ! $counts_as_current; then
+            printf 'update     layers and migrations: this commit is installed tree-only\n'
         elif [[ $installed_commit == "$upstream_commit" ]]; then
             printf 'update     none: the installed tree is this commit\n'
         else
@@ -241,7 +258,7 @@ version="$(install_build_version "$src")"
 
 # The stamp is what the last install wrote; a tree installed before haseen
 # knew about stamps has none, and that is never taken as current.
-if ! $force && [[ -n $installed_commit && $installed_commit == "$commit" ]]; then
+if ! $force && $counts_as_current && [[ -n $installed_commit && $installed_commit == "$commit" ]]; then
     info "haseen $version ($commit) is already installed under $prefix"
     exit 0
 fi

@@ -35,7 +35,7 @@ if [[ -n $package ]]; then
     $DRY_RUN && flags+=(--dry-run)
     $ASSUME_YES && flags+=(--yes)
     "$HASEEN_BIN/haseen-install" package "$package" "${flags[@]}"
-    echo "Add it to the input group in fcitx5's settings; Control+Space keeps switching."
+    echo "Add it to the input group in fcitx5's settings; Super+I keeps switching."
 fi
 have fcitx5-configtool || $DRY_RUN || die "fcitx5-configtool is not installed (haseen layer apply desktop)"
 run setsid -f fcitx5-configtool

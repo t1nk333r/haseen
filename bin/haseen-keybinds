@@ -135,7 +135,8 @@ keysyms() {
 }
 
 # What keyd does with CapsLock (`haseen setup keyd`), from the [main] lines of
-# /etc/keyd/default.conf that name it, alone or in a chord:
+# /etc/keyd/default.conf that name it, alone or in a chord, and its binding in
+# the layer of a modifier key held with it ([altgr] is RightAlt's):
 #   row<TAB>combo<TAB>description<TAB>action  one per thing CapsLock does
 #   hold<TAB>MODMASK                          the modifiers holding it sends,
 #                                             when three or more
@@ -226,6 +227,10 @@ keyd_capslock() {
             # The modifier layers keyd has built in, declared before any file.
             LAYER["control"] = "C"; LAYER["shift"] = "S"; LAYER["alt"] = "A"; LAYER["meta"] = "M"; LAYER["altgr"] = "G"
             for (name in LAYER) HEADER[name] = 1
+            # The key that holds each of them, as keyd binds it by default
+            # (leftalt = layer(alt), rightalt = layer(altgr), ...).
+            HELDBY["control"] = "control"; HELDBY["shift"] = "shift"; HELDBY["alt"] = "leftalt"
+            HELDBY["meta"] = "meta"; HELDBY["altgr"] = "rightalt"
         }
         /^[ \t]*(#|$)/ { next }
         /^[ \t]*\[/ {
@@ -258,6 +263,18 @@ keyd_capslock() {
             if (!(keys in IDX)) IDX[keys] = ++n
             LHS[IDX[keys]] = lhs
             RHS[IDX[keys]] = trim(substr($0, index($0, "=") + 1))
+            # A + left-hand side is a chord: its keys struck together.
+            TOGETHER[IDX[keys]] = index(lhs, "+") > 0
+        }
+        # CapsLock in the layer of a modifier key: pressed while it is held.
+        (section in HELDBY) && index($0, "=") {
+            lhs = tolower(trim(substr($0, 1, index($0, "=") - 1)))
+            if (lhs != "capslock") next
+            keys = section ">capslock"
+            if (!(keys in IDX)) IDX[keys] = ++n
+            LHS[IDX[keys]] = HELDBY[section] "+capslock"
+            RHS[IDX[keys]] = trim(substr($0, index($0, "=") + 1))
+            TOGETHER[IDX[keys]] = 0
         }
         END {
             for (i = 1; i <= n; i++) {
@@ -277,7 +294,7 @@ keyd_capslock() {
                     sub(/\)$/, "", layer)
                     layer = trim(layer)
                 } else if (sends(rhs) != "") {
-                    row(combo, "Press for " sends(rhs), rhs)
+                    row(combo, (TOGETHER[i] ? "Press together for " : "Press for ") sends(rhs), rhs)
                     continue
                 }
                 # A layer without modifiers ([nav], [nav:layout]) holds none.

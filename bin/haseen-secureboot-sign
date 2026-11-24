@@ -47,6 +47,14 @@ if ! pkg_installed sbctl || ! sb_keys_exist; then
     fi
     die "no Secure Boot keys yet: run haseen secureboot setup first"
 fi
+# HASEEN_SYSROOT redirects reads only; sudo, sbctl and the ESP they write are
+# this machine's, so a real run would sign and enroll it from a fixture's
+# facts. Refused as setup refuses it, after the hook's quiet exits; the one
+# exception is the tests' recorder (sudo_is_test_stub, plan 188).
+if in_sysroot && ! $DRY_RUN &&
+    ! { [[ ${HASEEN_TEST_STUBBED_SUDO:-} == 1 ]] && ((EUID != 0)) && sudo_is_test_stub; }; then
+    die "HASEEN_SYSROOT=$HASEEN_SYSROOT describes another system, but sign would sign this machine's boot chain: use --dry-run with HASEEN_SYSROOT, or unset it"
+fi
 $HOOK || sb_reexec_as_root "$(readlink -f "$0")" "$@"
 
 if [[ $BOOTLOADER == limine ]]; then
