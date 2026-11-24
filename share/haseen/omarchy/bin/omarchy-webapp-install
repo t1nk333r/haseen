@@ -105,6 +105,24 @@ download_icon() {
         [[ -s $2 ]] && [[ $(file -b --mime-type "$2") == image/* ]]
 }
 
+# favicon_host URL — the host alone, percent-encoded, for Google's favicon
+# service: the path, query, user info and port stay private (plan 192).
+favicon_host() {
+    local host="${1#*://}" out="" c i
+    host="${host%%[/?#]*}"
+    host="${host##*@}"
+    if [[ $host == \[* ]]; then host="${host%%]*}]"; else host="${host%%:*}"; fi
+    local LC_ALL=C
+    for ((i = 0; i < ${#host}; i++)); do
+        c="${host:i:1}"
+        case "$c" in
+        [A-Za-z0-9.-]) out+="$c" ;;
+        *) printf -v c '%%%02X' "'$c"; out+="$c" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 # The site's own high-resolution icon (apple-touch-icon), the well-known
 # path, then Google's favicon service.
 fetch_site_icon() {
@@ -121,7 +139,7 @@ fetch_site_icon() {
     esac
     { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
         download_icon "$origin/apple-touch-icon.png" "$dest" ||
-        download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
+        download_icon "https://www.google.com/s2/favicons?domain=$(favicon_host "$site_url")&sz=256" "$dest"
 }
 
 if [[ -z $icon || $icon =~ ^https?:// ]]; then

@@ -204,13 +204,20 @@ cairn_deploy() {
 }
 
 # cairn_install — the pinned release, unless a later one is already deployed
-# (`haseen setup cairn update`): a re-apply never downgrades.
+# (`haseen setup cairn update`): a re-apply never downgrades. A later version
+# stays only while its .crx is on disk or Helium has installed it; one whose
+# .crx went before Helium read it is nothing to keep, so the pin is deployed
+# again (plan 192; cairn_status sends the user here for exactly that state).
 cairn_install() {
     local have
     have="$(cairn_deployed_version)"
     if [[ -n $have ]] && cairn_version_gt "$have" "$CAIRN_VERSION"; then
-        info "Cairn $have stays (newer than haseen's pinned $CAIRN_VERSION)"
-        return 0
+        if [[ -f $(cairn_crx "$have") ]] ||
+            compgen -G "$HELIUM_USER_DATA/*/Extensions/$CAIRN_ID/${have}_*" >/dev/null; then
+            info "Cairn $have stays (newer than haseen's pinned $CAIRN_VERSION)"
+            return 0
+        fi
+        info "Cairn $have's .crx is gone and Helium never installed it; deploying the pinned $CAIRN_VERSION (haseen setup cairn update fetches the latest)"
     fi
     cairn_deploy "$CAIRN_VERSION" "$CAIRN_SHA256"
 }
