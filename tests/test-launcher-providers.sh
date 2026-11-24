@@ -319,10 +319,12 @@ import QtQuick
 import Quickshell
 import qs.Haseen
 import "plugins/haseen.launcher" as Launcher
+import "plugins/haseen.emoji" as EmojiPanel
 ShellRoot {
     id: probe
 
     property var launcher: null
+    property var emojiPanel: null
     property var out: ({})
     property int step: 0
 
@@ -332,10 +334,32 @@ ShellRoot {
     function titles(): var {
         return launcher.results.map(r => r.title);
     }
+    // The row the cursor is on: the result list's own currentIndex.
+    function list(item: var): var {
+        for (const child of item.children) {
+            if (child.highlightMoveDuration !== undefined)
+                return child;
+            const hit = list(child);
+            if (hit)
+                return hit;
+        }
+        return null;
+    }
+    function picked(): string {
+        const row = launcher.results[list(launcher).currentIndex];
+        return row ? row.title : "";
+    }
     function pick(title: string): void {
         const row = launcher.results.find(r => r.title === title);
         if (row)
             row.run();
+    }
+
+    Component {
+        id: emojiComponent
+        EmojiPanel.Panel {
+            pluginId: "haseen.emoji"
+        }
     }
 
     Component {
@@ -358,6 +382,7 @@ ShellRoot {
         onTriggered: {
             if (probe.step === 0 && Plugins.ready) {
                 probe.launcher = launcherComponent.createObject(null, { settings: Plugins.settingsFor("haseen.launcher") });
+                probe.emojiPanel = emojiComponent.createObject(null);
                 probe.put("providers", probe.launcher.providers.map(p => p.pluginId + "=" + p.prefix).sort());
                 probe.put("help", probe.launcher.prefixHelp);
                 probe.launcher.query = "?a b&c";
@@ -412,15 +437,21 @@ ShellRoot {
                 // The first `/` query: no guard has answered yet.
                 probe.launcher.query = "/fixture";
                 probe.put("commandsBefore", probe.titles());
+                // Down to the second row before the guard batch lands.
+                probe.launcher.shift(1);
+                probe.put("pickedBefore", probe.picked());
                 probe.step = 3;
-            } else if (probe.step === 3 && probe.provider("haseen.emojisearch").emojis.length > 0 && probe.provider("haseen.commands").guards) {
+            } else if (probe.step === 3 && probe.provider("haseen.emojisearch").emojis.length > 0 && probe.provider("haseen.commands").guards && probe.emojiPanel.emojis.length > 0) {
+                probe.put("emojiPanel", [probe.emojiPanel.emojis.length, probe.emojiPanel.results.length]);
                 probe.put("commandsAfter", probe.titles());
+                probe.put("pickedAfter", probe.picked());
                 probe.put("commandsSubtitle", probe.launcher.results[0].subtitle);
                 probe.put("commandsGlyphs", probe.launcher.results.map(r => r.icon === "" && r.glyph !== ""));
                 probe.pick("Fixture Go");
                 probe.pick("Fixture Guarded");
                 probe.pick("Fixture Panel");
                 probe.launcher.query = ":red heart";
+                probe.put("newQueryIndex", probe.list(probe.launcher).currentIndex);
                 probe.put("emoji", probe.titles().slice(0, 2));
                 probe.put("emojiGlyph", probe.launcher.results[0].glyph);
                 probe.launcher.results[0].run();
@@ -474,6 +505,10 @@ QML
     assert_eq "commands: before the guards answer, guarded rows are left out" '["Fixture Go","Fixture Panel"]' "$(r .commandsBefore)"
     assert_eq "commands: after the batch, a guard that answered true shows, false never" \
         '["Fixture Go","Fixture Guarded","Fixture Panel"]' "$(r .commandsAfter)"
+    assert_eq "launcher: Down picks the second row" '"Fixture Panel"' "$(r .pickedBefore)"
+    assert_eq "launcher: a late provider answer keeps the picked row where it moved, so Enter runs it" \
+        '"Fixture Panel"' "$(r .pickedAfter)"
+    assert_eq "launcher: a new query starts at the top row" "0" "$(r .newQueryIndex)"
     assert_eq "commands: a new open never shows a guarded row on the cached answers of an earlier one" \
         '["Fixture Go","Fixture Panel"]' "$(r .commandsReopen)"
     assert_eq "commands: the breadcrumb is the subtitle" '"Fixture"' "$(r .commandsSubtitle)"
@@ -484,6 +519,9 @@ QML
     assert_not_contains "commands: a guard that answered false never runs" "$ARGV" "fakeapp never"
     assert_contains "commands: a panel toggle goes to this shell over qs ipc" "$ARGV" "|call|panel|toggle|haseen.display"
     assert_eq "emoji: nothing is read before the first : query" true "$(r .emojiUnread)"
+    # The panel's grid stopped at 1000 of the 1870 entries (plan 197).
+    assert_eq "emoji panel: the empty query lists every emoji, flags included" \
+        "[$(jq length "$PLUGINS/haseen.emoji/emojis.json"),$(jq length "$PLUGINS/haseen.emoji/emojis.json")]" "$(r .emojiPanel)"
     assert_eq "emoji: :red heart lists the red heart first, the emoji in the icon column" '"❤️"' "$(r .emojiGlyph)"
     assert_eq "emoji: its title is its words, without the emoji" '"red heart heart love"' "$(r '.emoji[0]')"
     assert_contains "emoji: Enter copies it with wl-copy" "$ARGV" "wl-copy|--|❤️"

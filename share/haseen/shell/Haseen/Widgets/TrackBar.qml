@@ -100,6 +100,8 @@ Item {
         // False for the press itself, true for the moves after it: a press
         // always sends, a move only when the snapped value changes.
         property bool moving: false
+        // Wheel delta not yet worth a step.
+        property real wheelDelta: 0
 
         anchors.fill: parent
         enabled: bar.enabled
@@ -119,10 +121,18 @@ Item {
             if (!bar.live)
                 bar.moved(bar.dragValue);
         }
-        // With steps, one notch is at least one step, or snapping would undo it.
+        // One step a notch (120 of angleDelta). Touchpads and hi-res wheels
+        // send fractions of one, which add up; a sideways or zero delta
+        // moves nothing (BarButton's rule, plan 091; plan 197). With steps,
+        // one notch is at least one step, or snapping would undo it.
         onWheel: event => {
+            wheelDelta += event.angleDelta.y;
+            const notches = Math.trunc(wheelDelta / 120);
+            if (notches === 0)
+                return;
+            wheelDelta -= notches * 120;
             const step = bar.steps > 0 ? Math.max(bar.wheelStep, 1 / bar.steps) : bar.wheelStep;
-            bar.moved(bar.snap(bar.clamp(bar.value + (event.angleDelta.y > 0 ? step : -step))));
+            bar.moved(bar.snap(bar.clamp(bar.value + notches * step)));
         }
     }
 }

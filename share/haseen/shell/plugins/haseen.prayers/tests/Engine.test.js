@@ -16,6 +16,7 @@ let fixtureRowsPassed = 0
 let fuzzCasesPassed = 0
 let polarFuzzCasesPassed = 0
 let polarCasesPassed = 0
+let brokenAsrCases = 0
 const fuzzSeed = 0x5eedc0de
 const fuzzMax = { fajr: 0, sunrise: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 }
 const solarMax = { sunrise: 0, noon: 0, sunset: 0 }
@@ -151,6 +152,17 @@ function referenceMadhab(id) {
 function finiteReference(times) {
   return ["fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"]
     .every(name => Number.isFinite(times[name].getTime()))
+}
+
+// adhan's shadow-rule Asr falls before Dhuhr, before sunrise or after sunset
+// where the noon sun barely clears the horizon or stays below it; the engine
+// puts Asr in the middle of the afternoon there and says so (plan 197).
+// Elsewhere it must still match adhan.
+function compareAsr(ours, label) {
+  if (!ours.asrApproximate) return true
+  assert.ok(ours.dhuhr < ours.asr && ours.asr < ours.sunset, `${label}: Asr not between Dhuhr and sunset`)
+  brokenAsrCases++
+  return false
 }
 
 function createLcg(seed) {
@@ -321,7 +333,9 @@ test("seeded port-fidelity fuzz stays within one second of adhan 4.4.4", () => {
     const ours = Engine.prayerTimes(date.year, date.month, date.day, latitude, longitude,
       Engine.methodParameters({ method: selected[0] }), { school, latitudeAdjustmentMethod: rule, shafaq })
     assert.ok(ours, `fuzz case ${index} returned no result`)
+    const asrComparable = compareAsr(ours, `seed=${fuzzSeed} case=${index}`)
     for (const name of names) {
+      if (name === "asr" && !asrComparable) continue
       const delta = Math.abs(ours[name] - reference[name].getTime()) / 1000
       fuzzMax[name] = Math.max(fuzzMax[name], delta)
       assert.ok(delta <= 1, `seed=${fuzzSeed} case=${index} ${name} Δ=${delta}s`)
@@ -350,7 +364,9 @@ test("seeded port-fidelity fuzz stays within one second of adhan 4.4.4", () => {
     const ours = Engine.prayerTimes(date.year, date.month, date.day, latitude, longitude,
       Engine.methodParameters({ method: selected[0] }), { school, latitudeAdjustmentMethod: rule, shafaq: "general" })
     assert.ok(ours, `polar fuzz case ${index} returned no result`)
+    const asrComparable = compareAsr(ours, `seed=${fuzzSeed} polar=${index}`)
     for (const name of names) {
+      if (name === "asr" && !asrComparable) continue
       const delta = Math.abs(ours[name] - reference[name].getTime()) / 1000
       fuzzMax[name] = Math.max(fuzzMax[name], delta)
       assert.ok(delta <= 1, `seed=${fuzzSeed} polar=${index} ${name} Δ=${delta}s`)
@@ -361,6 +377,7 @@ test("seeded port-fidelity fuzz stays within one second of adhan 4.4.4", () => {
   assert.equal(fuzzCasesPassed, 3000)
   assert.equal(polarFuzzCasesPassed, 300)
   assert.ok(polarCasesPassed > 0, "seeded polar set did not exercise nearest-latitude")
+  assert.ok(brokenAsrCases > 0, "seeded polar set did not exercise the approximate Asr")
 })
 
 test("solar core agrees with an independent inline NOAA implementation", () => {
@@ -767,6 +784,49 @@ test("real prayer-zone output builds Cairo and Kiritimati schedules offline", ()
       const today = schedule.days.find(day => day.date === schedule.today)
       assert.match(today.timings.Dhuhr.at, new RegExp(`${currentOffset.replace("+", "[+]")}$`))
     }
+  } finally {
+    fs.rmSync(state, { recursive: true, force: true })
+  }
+})
+
+test("polar-circle winters keep Dhuhr before Asr before Maghrib", () => {
+  // The shadow rule put Asr before Dhuhr, even before sunrise, on 38 of
+  // these 69 days in Tromso, 49 at Longyearbyen, 6 at Rovaniemi and 34 at
+  // Utqiagvik (plan 197); the bar then counted down to Asr at 08:31.
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), "haseen-prayers-engine-polar-"))
+  const script = path.join(__dirname, "..", "haseen-prayers-zone.sh")
+  const now = Date.UTC(2026, 10, 24) / 1000
+  const environment = { ...process.env, XDG_STATE_HOME: state }
+  let tromso = null
+  try {
+    const cases = [
+      ["Europe/Oslo", 69.6492, 18.9553],
+      ["Arctic/Longyearbyen", 78.2232, 15.6267],
+      ["Europe/Helsinki", 66.5, 25.7294],
+      ["America/Anchorage", 71.2906, -156.7887]
+    ]
+    for (const [timezone, latitude, longitude] of cases) {
+      const zone = JSON.parse(execFileSync(script,
+        ["--timezone", timezone, "--days", "69", "--now", String(now)],
+        { encoding: "utf8", env: environment }))
+      for (const method of [3, 2]) {
+        const schedule = Engine.buildSchedule(
+          scheduleConfig(method, latitude, longitude, timezone), zone, now * 1000
+        )
+        assert.equal(schedule.ok, true, schedule.error)
+        assert.ok(schedule.days.length >= 60, `${timezone}: ${schedule.days.length} days`)
+        if (timezone === "Europe/Oslo" && method === 3) tromso = schedule
+        for (const day of schedule.days) {
+          const at = name => Date.parse(day.timings[name].at)
+          assert.ok(at("Sunrise") < at("Dhuhr") && at("Dhuhr") < at("Asr") && at("Asr") < at("Maghrib"),
+            `${timezone} method ${method} ${day.date}: Sunrise ${day.timings.Sunrise.time} Dhuhr ${day.timings.Dhuhr.time} Asr ${day.timings.Asr.time} Maghrib ${day.timings.Maghrib.time}`)
+        }
+      }
+    }
+    // The day the audit named (Asr 08:31 before) says it is approximate.
+    const first = tromso.days.find(day => day.date === "2026-11-24")
+    assert.equal(first.approximate, true)
+    assert.ok(first.timings.Asr.time > first.timings.Dhuhr.time, `Asr ${first.timings.Asr.time}`)
   } finally {
     fs.rmSync(state, { recursive: true, force: true })
   }

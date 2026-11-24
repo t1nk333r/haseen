@@ -208,6 +208,7 @@ Item {
     function out(k, v) { console.warn("RESULT " + k + " " + JSON.stringify(v)); }
     Component.onCompleted: {
         out("extensions", I.EXTENSIONS);
+        out("extensionsFor", [I.extensionsFor(false), I.extensionsFor(true)]);
         out("expand", [I.expandHome("~/Pictures", "/srv/u"), I.expandHome("\$HOME/x", "/srv/u"), I.expandHome("~", "/srv/u"), I.expandHome("/srv/pics", "/srv/u"), I.expandHome("  ", "/srv/u")]);
         out("dirs", I.directories(["~/Pictures", "~/Pictures", "relative", "", "/srv/pics"], "/srv/u"));
         out("label", [I.labelFor("/a/b/deep-blue_sea.jpg"), I.nameFor("/a/b/deep-blue_sea.jpg")]);
@@ -241,6 +242,13 @@ EOF
     # Qt can actually decode.
     assert_eq "Images: the scanned extensions" \
         '["jpg","jpeg","png","webp","gif","bmp","avif"]' "$(r extensions)"
+    # The default action, haseen theme bg set, refuses AVIF, and the panel
+    # has closed when it fails: it lists only what the background takes
+    # (plan 197). A configured command gets every image.
+    assert_eq "Images: the default action scans only what the background takes; a command, every image" \
+        '[["jpg","jpeg","png","webp","gif","bmp"],["jpg","jpeg","png","webp","gif","bmp","avif"]]' "$(r extensionsFor)"
+    assert_contains "Images: haseen theme bg set takes exactly those types" "$(cat "$REPO/bin/haseen-theme-bg")" \
+        "image/png | image/jpeg | image/webp | image/gif | image/bmp | image/x-ms-bmp) return 0 ;;"
     assert_eq "Images: ~ and \$HOME expand" '["/srv/u/Pictures","/srv/u/x","/srv/u","/srv/pics",""]' "$(r expand)"
     assert_eq "Images: absolute, deduplicated directories" '["/srv/u/Pictures","/srv/pics"]' "$(r dirs)"
     assert_eq "Images: label and name" '["Deep Blue Sea","deep-blue_sea"]' "$(r label)"

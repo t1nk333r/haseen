@@ -147,10 +147,40 @@ Column {
     function shift(delta: int): void {
         if (results.length === 0)
             return;
-        list.currentIndex = (list.currentIndex + delta + results.length) % results.length;
+        select((list.currentIndex + delta + results.length) % results.length);
     }
 
-    onResultsChanged: list.currentIndex = 0
+    // The keys and the pointer pick a row through here, so a rebuild finds it.
+    function select(index: int): void {
+        list.currentIndex = index;
+        keptRow = rowKey(results[index]);
+        keptIndex = index;
+    }
+
+    // `results` is rebuilt whenever anything a provider reads changes, not
+    // only the query: a window's title, the commands' guard batch, the
+    // accounts list answering. A new query starts at the top row; a rebuild
+    // of the same query keeps the row the user moved to, wherever it now is
+    // (else the same position), as haseen.menu does (MenuModel.selectionAfter),
+    // so Enter never runs a row the user did not pick (plan 197).
+    property string keptRow: ""
+    property int keptIndex: 0
+    property string keptQuery: ""
+
+    function rowKey(row: var): string {
+        return row ? row.title + "\n" + row.subtitle : "";
+    }
+
+    function selectionAfterRebuild(): int {
+        if (query !== keptQuery || keptRow === "") {
+            keptQuery = query;
+            keptRow = "";
+            keptIndex = 0;
+            return 0;
+        }
+        const at = results.findIndex(r => rowKey(r) === keptRow);
+        return at >= 0 ? at : Math.max(0, Math.min(keptIndex, results.length - 1));
+    }
 
     width: root.contentWidth + root.cardInset * 2
     leftPadding: root.cardInset
@@ -284,6 +314,9 @@ Column {
         boundsBehavior: Flickable.StopAtBounds
         highlightMoveDuration: 0
         currentIndex: 0
+        // A new model resets currentIndex to 0 after every resultsChanged
+        // handler has run, so the selection is placed here.
+        onModelChanged: currentIndex = root.selectionAfterRebuild()
 
         delegate: BorderSurface {
             id: row
@@ -367,7 +400,7 @@ Column {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: list.currentIndex = row.index
+                onEntered: root.select(row.index)
                 onClicked: root.launch(row.index)
             }
         }

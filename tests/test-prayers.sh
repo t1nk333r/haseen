@@ -51,6 +51,32 @@ else
     echo "  skip: node not installed (prayers engine suites)"
 fi
 
+# --- the Compact card's date line in Qt's engine ------------------------------------
+# Santiago skips 00:00 on 2026-09-06, and Qt's V4 resolves a local midnight
+# there onto 5 September: the line read SAT 5 SEP over Sunday's timetable
+# (plan 197). It builds the date at local noon now.
+assert_contains "the Compact date line builds the day at noon" "$(cat "$P/PanelCompact.qml")" "Model.civilDateAtNoon(host.todayDay.date)"
+QML_BIN=${QML_BIN:-/usr/lib/qt6/bin/qml}
+if [[ -x $QML_BIN ]]; then
+    mkdir -p "$SANDBOX/datequirk"
+    cat >"$SANDBOX/datequirk/Harness.qml" <<QML
+import QtQuick
+import "file://$P/Model.js" as Model
+Item {
+    Component.onCompleted: {
+        const noon = Model.civilDateAtNoon("2026-09-06");
+        console.warn("RESULT " + JSON.stringify([noon.getDate(), noon.toLocaleDateString(Qt.locale("en_US"), "ddd d MMM"), Model.civilDateAtNoon("2026-9"), Model.civilDateAtNoon("2026-02-xx")]));
+        Qt.quit();
+    }
+}
+QML
+    capture env TZ=America/Santiago QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" "$SANDBOX/datequirk/Harness.qml"
+    assert_eq "a day whose midnight Santiago skips is that day, not the one before" \
+        '[6,"Sun 6 Sep",null,null]' "$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
+else
+    echo "  skip: $QML_BIN not installed (the date line in Qt's engine)" >&2
+fi
+
 # --- zone script --------------------------------------------------------------------
 capture "$P/haseen-prayers-zone.sh" --timezone Asia/Riyadh --days 3 --now 1791100800
 assert_status "zone script ok" 0 "$STATUS"

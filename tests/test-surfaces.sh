@@ -137,6 +137,11 @@ assert_eq "and the menu still opens as its overlay card" "overlay" \
 assert_not_contains "the menu paints no scrim behind its card" "$(cat "$menu")" "color: root.scrim"
 assert_not_contains "and keeps no scrim token" "$(cat "$PLUGINS/haseen.menu/MenuStyle.js")" "SCRIM"
 assert_not_contains "the launcher paints no scrim either" "$(cat "$launcher")" "scrim"
+# The overlay placement's description and the menu's header said "dimmed
+# screen" after plan 123 removed the dim (plan 197).
+assert_not_contains "the overlay placement is not described as dimming the screen" \
+    "$(jq -r '.settings.placement.description' "$PLUGINS/haseen.menu/manifest.json")" "dimmed"
+assert_not_contains "nor is the menu in its header" "$(sed -n '1,30p' "$menu")" "dimmed screen"
 
 
 # --- default shell.json starts the services ----------------------------------
@@ -204,6 +209,11 @@ assert_eq "lock uses the system login PAM service by default" "login" \
     "$(jq -r '.settings.pamConfig.default' "$PLUGINS/haseen.lock/manifest.json")"
 assert_contains "session lock starts unlocked" "$(cat "$PLUGINS/haseen.lock/Service.qml")" "locked: false"
 session="$(cat "$PLUGINS/haseen.session/Panel.qml")"
-for cmd in '"systemctl", "suspend"' '"systemctl", "reboot"' '"systemctl", "poweroff"' '"loginctl", "lock-session"' 'hl.dsp.exit()'; do
+# Power actions go through `haseen system` (plan 197); test-session-panel.sh
+# presses each row in the engine.
+assert_contains "session falls back to loginctl lock-session" "$session" '"loginctl", "lock-session"'
+for cmd in 'Apps.launch([root.cli, "system", verb])' 'exec "$1" system reboot'; do
     assert_contains "session runs $cmd" "$session" "$cmd"
 done
+assert_not_contains "session never calls systemctl itself" "$session" '"systemctl"'
+assert_not_contains "nor Hyprland's exit dispatcher" "$session" 'dsp.exit'
