@@ -268,6 +268,18 @@ Compact line uses it.
 `TZ=America/Santiago`: `2026-09-06` is the 6th, "Sun 6 Sep", and malformed
 dates give null. The panel must call the helper.
 
+## Review
+
+The independent Sonnet reviewer approved the first round with two nits and
+no blocking or should-fix finding. Both were taken. The menu panel's header
+comment, reworded for finding 6, ran past the width of its neighbours and
+is re-wrapped. The seeded adhan fuzz skips the Asr comparison whenever the
+engine flags Asr as approximate, so a flag set by mistake would hide a real
+mismatch; the reviewer swept 13,500 cases up to 66 degrees without a false
+positive. The fuzz now also asserts that the flag stays off below 60
+degrees, where the noon sun stands at least six and a half degrees up and
+adhan's shadow rule always lands between Dhuhr and sunset.
+
 ## Notes
 
 Gates, from the worktree through the hermetic wrapper: `tools/lint.sh`

@@ -333,6 +333,11 @@ test("seeded port-fidelity fuzz stays within one second of adhan 4.4.4", () => {
     const ours = Engine.prayerTimes(date.year, date.month, date.day, latitude, longitude,
       Engine.methodParameters({ method: selected[0] }), { school, latitudeAdjustmentMethod: rule, shafaq })
     assert.ok(ours, `fuzz case ${index} returned no result`)
+    // Below 60 degrees the noon sun always stands high enough for adhan's
+    // shadow rule, so a flagged Asr there would hide a real mismatch.
+    if (Math.abs(latitude) < 60) {
+      assert.ok(!ours.asrApproximate, `seed=${fuzzSeed} case=${index} Asr flagged approximate at ${latitude}`)
+    }
     const asrComparable = compareAsr(ours, `seed=${fuzzSeed} case=${index}`)
     for (const name of names) {
       if (name === "asr" && !asrComparable) continue
