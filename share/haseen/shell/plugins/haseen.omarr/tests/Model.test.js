@@ -486,6 +486,40 @@ has([
   [Model.qbitTorrentsUrl("http://q:8080", 2), "offset=20", "qbit page 2"]
 ])
 eq([[Model.qbitLoginUrl("http://q:8080"), "http://q:8080/api/v2/auth/login", "qbit login url"]])
+// qBittorrent refuses a wrong password with 200 "Fails.": that is a failed
+// login, it marks the service down, and the same credentials wait an hour
+// before they go out again (plan 193).
+var refusedSnap = Model.applyLoginFailure(Object.assign(Model.emptySnapshot({ id: "q", kind: "qbittorrent", name: "qBittorrent" }), { health: "up", statusText: "Reachable" }))
+eq([
+  [Model.qbitLoginOk(200, "Ok."), true, "qbit login ok"], [Model.qbitLoginOk(200, "Fails."), false, "qbit 200 Fails. is refused"],
+  [Model.qbitLoginOk(403, "Your IP address has been banned"), false, "qbit ban is refused"], [Model.qbitLoginOk(0, ""), false, "qbit no answer is no login"],
+  [refusedSnap.health, "down", "a refused login is down"], [refusedSnap.statusText, "Login failed", "and says why"],
+  [Model.decideHealth("up", 401, 0).commit, true, "a refused login commits at once"],
+  [Model.QBIT_LOGIN_RETRY_MS, 3600000, "a refused login waits an hour"],
+  [Model.qbitLoginHeld({ key: "k", at: 1000 }, "k", 1000 + 2000), true, "the same credentials wait"],
+  [Model.qbitLoginHeld({ key: "k", at: 1000 }, "k", 1000 + Model.QBIT_LOGIN_RETRY_MS), false, "until the hour has passed"],
+  [Model.qbitLoginHeld({ key: "k", at: 1000 }, "other", 1000 + 2000), false, "new credentials go out at once"],
+  [Model.qbitLoginHeld({ key: "k", at: 5000 }, "k", 1000), false, "a clock set back does not hold forever"],
+  [Model.qbitLoginHeld(undefined, "k", 1000), false, "nothing refused, nothing held"],
+  [Model.qbitLoginHeld({ key: "", at: 1000 }, "", 1000), false, "an empty key never holds"]
+])
+// Only an answer about the credentials is a refusal. A proxy's 502 or 503
+// while qBittorrent restarts, a 404, a 429 or no status is an error the
+// next poll retries, never an hour's hold.
+eq([
+  [Model.qbitLoginOutcome(200, "Ok."), "ok", "qbit outcome ok"],
+  [Model.qbitLoginOutcome(204, ""), "ok", "qbit outcome ok without a body"],
+  [Model.qbitLoginOutcome(200, "Fails."), "refused", "qbit outcome Fails. refused"],
+  [Model.qbitLoginOutcome(401, ""), "refused", "qbit outcome 401 refused"],
+  [Model.qbitLoginOutcome(403, "Your IP address has been banned"), "refused", "qbit outcome 403 refused"],
+  [Model.qbitLoginOutcome(502, "Bad Gateway"), "error", "qbit outcome 502 is an error"],
+  [Model.qbitLoginOutcome(503, "Fails."), "error", "qbit outcome 503 is an error, whatever the body"],
+  [Model.qbitLoginOutcome(504, ""), "error", "qbit outcome 504 is an error"],
+  [Model.qbitLoginOutcome(404, ""), "error", "qbit outcome 404 is an error"],
+  [Model.qbitLoginOutcome(429, ""), "error", "qbit outcome 429 is an error"],
+  [Model.qbitLoginOutcome(0, ""), "error", "qbit outcome no status is an error"],
+  [Model.qbitLoginOk(503, "Ok."), false, "qbit 503 is no login"]
+])
 var manyTorrents = []
 for (var ti = 0; ti < 25; ti++) {
   manyTorrents.push({ hash: "h" + ti, name: "t" + ti, state: "pausedUP", progress: 1, dlspeed: 0, upspeed: 0, eta: 0, size: 1 })

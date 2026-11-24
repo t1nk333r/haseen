@@ -37,6 +37,15 @@ graphical greeter ever fails to start, switch back from a TTY (Ctrl+Alt+F2):
 EOF
 }
 
+# require_trusted_greeter — dies unless greetd may run this tree's
+# haseen-greeter (greeter_trusted): from a checkout, the login screen would
+# run code its owner can edit, or fail where the greeter cannot reach it.
+require_trusted_greeter() {
+    local why
+    why="$(greeter_trusted)" ||
+        die "the graphical greeter must come from an installed haseen only root can change: $why (install haseen, then run its haseen setup greeter; haseen setup greeter tuigreet works from here)"
+}
+
 parse_common_flags "$@"
 set -- "${REST[@]+"${REST[@]}"}"
 choice="${1:-status}"
@@ -58,6 +67,9 @@ if [[ $choice == autologin ]]; then
         usage >&2
         exit 2
     }
+    # The config names the greeter too: rewriting it must not point greetd at
+    # this tree's greeter unless that is allowed.
+    [[ $(greeter_choice) != haseen ]] || require_trusted_greeter
     if [[ $user == off ]]; then
         run_root rm -f "$GREETER_AUTOLOGIN_FILE"
         greetd_config "$(greeter_choice)" "" | write_root_file "$GREETD_CONFIG"
@@ -92,6 +104,7 @@ if [[ $choice == haseen ]]; then
     have Hyprland || die "the graphical greeter needs Hyprland (haseen layer apply desktop)"
     have qs || have quickshell || die "the graphical greeter needs quickshell"
     [[ -d $HASEEN_PATH/shell/greeter ]] || die "no greeter shell at $HASEEN_PATH/shell/greeter"
+    require_trusted_greeter
     confirm "Use haseen's graphical greeter? (switch back from a TTY if it fails)" || exit 1
 fi
 

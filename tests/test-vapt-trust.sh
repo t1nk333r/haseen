@@ -176,6 +176,29 @@ if command -v bsdtar >/dev/null 2>&1; then
         "revokes Arch/CachyOS keyring keys ($OTHER)"
 fi
 
+# A failed bootstrap says why in the report, never "BlackArch absent" as if it
+# had not been tried: a substituted keyserver key above all (plan 195).
+for failure in substituted-key keyserver-down; do
+    kr_case "vapt-keyring-reason-$failure" "${VECTOR[approved]}"
+    case "$failure" in
+    substituted-key) sed -i 's/^    fpr=.*/    fpr=FEDCBA9876543210FEDCBA9876543210FEDCBA98/' "$SANDBOX/stubs/gpg" ;;
+    keyserver-down) sed -i 's/^\*keyserver\*) .*/*keyserver*) exit 22 ;;/' "$SANDBOX/stubs/curl" ;;
+    esac
+    vapt_api install --yes --groups api
+    source_line="$(grep -F $'# source\t' <<<"$OUTPUT" || true)"
+    # A failed download counts as a failed step (exit 1), a refused key as an
+    # unavailable source (exit 0); neither changes trust.
+    assert_status "$failure: exit status" "$([[ $failure == keyserver-down ]] && echo 1 || echo 0)" "$STATUS"
+    assert_not_contains "$failure: no pacman-key trust change" "$(vapt_calls sudo)" 'pacman-key'
+    assert_not_contains "$failure: the report does not call a tried bootstrap absent" "$source_line" 'BlackArch absent'
+    case "$failure" in
+    substituted-key) assert_contains 'substituted-key: the report names the other primary' "$source_line" \
+        "pinned BlackArch signer $P has another primary fingerprint" ;;
+    keyserver-down) assert_contains 'keyserver-down: the report names the failed download' "$source_line" \
+        "keyserver download of pinned BlackArch signer $P failed" ;;
+    esac
+done
+
 # The reviewed upstream population script is a narrow keyring-only exception;
 # neither a changed payload nor a relevant host hook inherits that exception.
 KEYRING_SCRIPT="$(cat "$FIXTURES/vapt-keyring.INSTALL")"

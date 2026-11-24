@@ -10,7 +10,10 @@
 # that line, in share/haseen/default/shell/, and is replaced on upgrade.
 #
 # "Once" is recorded per rc in $HASEEN_USER_STATE/rc-include: install.sh and
-# a migration both seed, and a line the user deleted stays deleted.
+# a migration both seed, and a line the user deleted stays deleted. `haseen
+# setup dotfiles` drops an rc's record when it puts a repo rc without the
+# include in its place (plan 191): haseen replaced that file, the user did not
+# delete the line.
 #
 # The path is absolute because the rc has no $HASEEN_PATH, and it differs
 # between the checkout, /usr/local and /usr.

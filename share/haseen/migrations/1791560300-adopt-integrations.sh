@@ -52,9 +52,11 @@ jq --argjson map "$map" --argjson services "$services" --argjson keys "$keys" --
         else . end;
     # Ids a bar section listed, old or new, before the change.
     ([$m.bar // {} | (.left, .center, .right) | arrays | .[]] | map($map[.] // .)) as $barIds
-    | .bar |= (if type == "object" then
-        reduce ("left", "center", "right", "overflow", "pinned") as $s (.; if has($s) then .[$s] |= repoint else . end)
-      else . end)
+    # Only a bar the file sets itself: `.bar |= ...` on a file without one would
+    # write "bar": null, which replaces the whole default bar (plan 186).
+    | if (.bar | type) == "object" then
+        .bar |= reduce ("left", "center", "right", "overflow", "pinned") as $s (.; if has($s) then .[$s] |= repoint else . end)
+      else . end
     | if has("services") then .services |= repoint else . end
     | ($services | map(select(. as $n | $barIds | index([$n])))) as $needed
     | if ($needed | length) > 0 then

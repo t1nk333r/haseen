@@ -15,7 +15,8 @@ import "Images.js" as Images
 // whoever asked for one. haseen drops the overlay, the carousel and the
 // thumbnail cache: this is a panel, Qt decodes each visible image once at
 // thumbnail size, and the default action is `haseen theme bg set`, so the
-// picked image goes through the same background state as the CLI.
+// picked image goes through the same background state as the CLI. With that
+// default the scan lists only the types the command takes (no AVIF).
 //
 // Nothing runs until the panel opens: one `find` over the configured
 // directories, then one asynchronous decode per visible card.
@@ -134,10 +135,11 @@ Column {
         command: {
             const argv = ["find", "-L"].concat(root.dirs);
             argv.push("-maxdepth", String(root.depth), "-type", "f", "(");
-            for (let i = 0; i < Images.EXTENSIONS.length; i++) {
+            const extensions = Images.extensionsFor(root.customCommand);
+            for (let i = 0; i < extensions.length; i++) {
                 if (i > 0)
                     argv.push("-o");
-                argv.push("-iname", "*." + Images.EXTENSIONS[i]);
+                argv.push("-iname", "*." + extensions[i]);
             }
             argv.push(")", "-print");
             return argv;

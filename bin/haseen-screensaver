@@ -7,15 +7,17 @@
 # terminal per monitor, each on its own special workspace, running ttfx (the
 # Rust port of terminaltexteffects, AUR `ttfx`) over the branding text until
 # a key press or a focus change. The service starts it with --ttfx-launch and
-# ends it with --stop; --ttfx-run is the loop inside each terminal.
+# ends it with --stop, or with --stop-unfocused when Hyprland reports focus
+# moving; --ttfx-run is the loop inside each terminal.
 #
 # Adapted from Omarchy bin/omarchy-launch-screensaver and
 # bin/omarchy-screensaver (MIT, Copyright (c) David Heinemeier Hansson).
 # Changes: $TERMINAL instead of xdg-terminal-exec, terminal options on the
 # command line instead of shipped configs, polling `hyprctl clients` for the
 # new window instead of a socat event stream, the shell (not a background
-# loop) hands focus back, and ending kills the screensaver terminals by PID
-# instead of `pkill -f`.
+# loop) hands focus back and watches focus through Hyprland's activewindow
+# event (Omarchy asks hyprctl once a second in every terminal), and ending
+# kills the screensaver terminals by PID instead of `pkill -f`.
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
@@ -43,6 +45,7 @@ Internal, used by the shell service:
                   foot, alacritty, kitty or ghostty; default foot)
   --ttfx-run      the effect loop inside each terminal
   --stop          close every screensaver terminal
+  --stop-unfocused  close them unless one of them has focus
 EOF
 }
 
@@ -97,6 +100,11 @@ ttfx_stop() {
     hypr eval 'hl.config({ cursor = { invisible = false } })' || true
 }
 
+# Focus is on a screensaver terminal.
+screensaver_in_focus() {
+    hyprctl activewindow -j 2>/dev/null | jq -e --arg c "$APP_ID" '.class == $c' >/dev/null 2>&1
+}
+
 ttfx_launch() {
     local self cmd=() command focused m special workspace before deadline
     self="$(readlink -f "$0")"
@@ -133,10 +141,10 @@ ttfx_run() {
     local file pid started
     file="$(screensaver_text)"
 
-    screensaver_in_focus() {
-        hyprctl activewindow -j 2>/dev/null | jq -e --arg c "$APP_ID" '.class == $c' >/dev/null 2>&1
-    }
-    # One key or a focus change ends the screensaver on every monitor.
+    # One key ends the screensaver on every monitor. A focus change is the
+    # service's to see (Hyprland's activewindow event, then
+    # --stop-unfocused): asking hyprctl here would mean a hyprctl and a jq
+    # every second in every terminal for as long as it shows (plan 196).
     exit_screensaver() {
         kill "${pid:-}" 2>/dev/null || true
         ttfx_stop >/dev/null 2>&1 || true
@@ -160,7 +168,7 @@ ttfx_run() {
             --anchor-canvas c --anchor-text c --random-effect --no-eol --no-restore-cursor &
         pid=$!
         while kill -0 "$pid" 2>/dev/null; do
-            if read -rsn1 -t 1 || ! screensaver_in_focus; then
+            if read -rsn1 -t 1; then
                 exit_screensaver
             fi
         done
@@ -192,6 +200,7 @@ while (($#)); do
     --ttfx-launch) mode=launch ;;
     --ttfx-run) mode=run ;;
     --stop) mode=stop ;;
+    --stop-unfocused) mode=stop-unfocused ;;
     *) args+=("$1") ;;
     esac
     shift
@@ -217,6 +226,12 @@ launch)
 run) ttfx_run ;;
 stop)
     ttfx_stop
+    exit 0
+    ;;
+stop-unfocused)
+    # Asked once per focus event: the event may be stale by the time it is
+    # read (the launcher moving between monitors), Hyprland's answer is not.
+    screensaver_in_focus || ttfx_stop
     exit 0
     ;;
 esac

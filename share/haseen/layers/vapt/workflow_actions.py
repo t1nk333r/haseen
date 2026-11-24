@@ -247,7 +247,12 @@ def host_accepted(value, accepted):
 
 class LiteralHTTPServer(http.server.HTTPServer):
     """One client at a time, bounded idle/total waits, no reverse lookup."""
-    allow_reuse_address = False
+    # SO_REUSEADDR (http.server's default) lets a restarted helper bind the
+    # port while the last download's connection sits in TIME_WAIT. On Linux
+    # it never binds over a socket still listening there; SO_REUSEPORT, which
+    # would, stays off (plan 195).
+    allow_reuse_address = True
+    allow_reuse_port = False
     request_idle_seconds = 5.0
     request_total_seconds = 30.0
 
@@ -489,6 +494,12 @@ def main():
                 print(row['interface'] + ' ' + row['address'])
         else:
             print(json.dumps(result))
+        # A service row's state is the unit's manager state, not a verdict:
+        # service_selected already refused unverified ownership with a reason,
+        # and a verified unit in maintenance/refreshing ('unknown') is still
+        # one systemctl may act on (plan 195).
+        if args.command == 'service-plan':
+            return 0
         return 1 if result.get('state') in ('invalid', 'refused', 'modified', 'foreign', 'unknown') else 0
     except (OSError, ValueError, KeyError, TypeError) as error:
         reason = wf.clean(error)

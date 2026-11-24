@@ -49,10 +49,17 @@ impl Drop for Daemon {
 
 /// Starts the daemon on the scratch socket and waits for its `ready` line.
 fn start(scratch: &Scratch, extra: &[&str]) -> Daemon {
+    start_with(scratch, extra, |_| {})
+}
+
+/// `start`, with the daemon's environment changed by `env` first.
+fn start_with(scratch: &Scratch, extra: &[&str], env: impl FnOnce(&mut Command)) -> Daemon {
     let socket = scratch.socket();
     let state = scratch.0.join("state");
     std::fs::create_dir_all(&state).unwrap();
-    let mut child = Command::new(BIN)
+    let mut cmd = Command::new(BIN);
+    env(&mut cmd);
+    let mut child = cmd
         .arg("-socket")
         .arg(&socket)
         .args(["-idle-timeout", "0", "-root"])
@@ -439,4 +446,88 @@ fn a_stuck_client_does_not_stop_the_others() {
     c.send(r#"{"id":1,"method":"subscribe","stream":"sysusage","params":{"intervalMs":500,"gpu":"off"}}"#);
     c.until(r#""stream":"sysusage""#);
     drop(stuck);
+}
+
+/// The pids the fake nvidia-smi wrote so far, one per start.
+fn nvidia_pids(file: &Path) -> Vec<i32> {
+    std::fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.trim().parse().ok())
+        .collect()
+}
+
+fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !done() {
+        assert!(Instant::now() < deadline, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Running, not a zombie nobody reaped.
+fn running(pid: i32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|s| s.rsplit_once(") ").map(|(_, rest)| !rest.starts_with('Z')))
+        .unwrap_or(false)
+}
+
+// nvidia-smi -l 3 runs between samples, so it must stop when the last
+// subscriber leaves, by unsubscribing or by hanging up: otherwise it polls the
+// GPU for the rest of the session and keeps a hybrid laptop's dGPU awake
+// (plan 199).
+#[test]
+fn nvidia_smi_stops_with_the_last_subscriber() {
+    use std::os::unix::fs::PermissionsExt;
+    let scratch = Scratch::new("nv");
+    let card = scratch.0.join("root/sys/class/drm/card0/device");
+    std::fs::create_dir_all(&card).unwrap();
+    std::fs::write(
+        card.join("uevent"),
+        "DRIVER=nvidia\nPCI_SLOT_NAME=0000:01:00.0\n",
+    )
+    .unwrap();
+    std::fs::write(card.join("boot_vga"), "1\n").unwrap();
+    let bin = scratch.0.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let fake = bin.join("nvidia-smi");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\necho $$ >>\"$NV_PIDS\"\nwhile :; do echo 42; sleep 0.2; done\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let pids = scratch.0.join("pids");
+    let path = format!("{}:/usr/bin:/bin", bin.display());
+    let d = start_with(&scratch, &[], |c| {
+        c.env("PATH", &path).env("NV_PIDS", &pids);
+    });
+
+    let subscribe = r#"{"id":0,"method":"subscribe","stream":"sysusage","params":{"intervalMs":3600000,"gpu":"auto"}}"#;
+    let mut c = Client::connect(&d.socket);
+    c.frame();
+    c.send(subscribe);
+    let event = c.until(r#""stream":"sysusage""#);
+    assert!(event.contains(r#""method":"nvidia""#), "{event}");
+    wait_for("nvidia-smi to start", || nvidia_pids(&pids).len() == 1);
+    let first = nvidia_pids(&pids)[0];
+    assert!(running(first));
+
+    c.send(r#"{"id":3,"method":"unsubscribe","stream":"sysusage"}"#);
+    assert_eq!(c.until(r#""id":3"#), r#"{"type":"reply","id":3,"ok":true}"#);
+    wait_for("nvidia-smi to stop after unsubscribe", || !running(first));
+
+    // Subscribing again starts it again; hanging up stops it too.
+    c.send(subscribe);
+    c.until(r#""stream":"sysusage""#);
+    wait_for("nvidia-smi to start again", || {
+        nvidia_pids(&pids).len() == 2
+    });
+    let second = nvidia_pids(&pids)[1];
+    assert!(running(second));
+    drop(c);
+    wait_for("nvidia-smi to stop after the client left", || {
+        !running(second)
+    });
 }

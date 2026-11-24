@@ -97,6 +97,14 @@ PY
 capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-two
 assert_status 'uncompressed document input bounded' 1 "$STATUS"
 assert_contains 'uncompressed input limit diagnostic' "$OUTPUT" 'exceeds 4 MiB input limit'
+# Tab-aligned option tables keep their columns; control bytes still go
+# (plan 195).
+printf -- '-h\tshow help\n\033]0;title\a-v\tverbose\n' >"$ROOT/usr/share/doc/nmap/scan-two.txt"
+capture haseen-vapt-tool-help nmap --entry /usr/bin/scan-two
+assert_status 'tab-separated document printed' 0 "$STATUS"
+assert_contains 'a tab becomes spaces, not nothing' "$OUTPUT" '-h      show help'
+assert_not_contains 'fields are never joined' "$OUTPUT" '-hshow help'
+assert_not_contains 'terminal escapes are still removed' "$OUTPUT" $'\033'
 printf 'Second owned usage.\n' >"$ROOT/usr/share/doc/nmap/scan-two.txt"
 mkdir -p "$ROOT/etc"
 printf '/usr/bin/bash\n' >"$ROOT/etc/shells"
@@ -240,6 +248,19 @@ printf '{"bindAddress":"not-a-literal"}\n' >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/w
 capture haseen-vapt-doctor --json
 assert_eq 'invalid effective settings preserve diagnostics object' 1 "$(jq '.schemaVersion' <<<"$OUTPUT")"
 assert_eq 'invalid settings refuse capabilities' true "$(jq '[.workflow.capabilities[].state == "refused"] | all' <<<"$OUTPUT")"
+# A non-string hand-edited value reaches the text report too: it is printed,
+# not a crash that hides every section (plan 195).
+for bad in null 8080; do
+    printf '{"bindAddress":%s}\n' "$bad" >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json"
+    for cmd in doctor status; do
+        capture "haseen-vapt-$cmd" --verbose
+        assert_contains "$cmd verbose with bindAddress $bad still names its sources" "$OUTPUT" 'sources:'
+        assert_contains "$cmd verbose with bindAddress $bad prints the setting" "$OUTPUT" "settings: bindAddress=${bad/null/None}"
+        assert_not_contains "$cmd verbose with bindAddress $bad does not crash" "$OUTPUT" 'can only concatenate'
+    done
+    capture haseen-vapt-doctor --verbose
+    assert_contains "doctor verbose with bindAddress $bad shows the refused capability" "$OUTPUT" 'capability listener refused'
+done
 printf '{broken' >"$ROOT$XDG_CONFIG_HOME/haseen/vapt/workflow.json"
 haseen-vapt-doctor --json >"$SANDBOX/json-out" 2>"$SANDBOX/json-err" || true
 assert_eq 'operational JSON failure one object' 1 "$(jq -s 'length' "$SANDBOX/json-out")"

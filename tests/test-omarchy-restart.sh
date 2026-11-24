@@ -607,6 +607,22 @@ capture "$OMA/omarchy-system-lock"
 assert_status "lock always exits 0" 0 "$STATUS"
 assert_contains "the shell is asked to lock" "$(cat "$LOG")" "ipc call lock lock"
 assert_contains "the keyboard layout is reset" "$(cat "$LOG")" "hyprctl switchxkblayout all 0"
+# haseen system lock falls back to logind when the shell has no lock to give:
+# it answers "unavailable" when no plugin provides the role (plan 196).
+stub loginctl 'echo "loginctl $*" >>"'"$LOG"'"'
+lock_answer() { # ANSWER-SCRIPT
+    stub qs 'echo "qs $*" >>"'"$LOG"'"; '"$1"
+    : >"$LOG"
+    capture haseen system lock
+}
+lock_answer 'echo unavailable'
+assert_contains "system lock without a lock plugin locks through logind" "$(cat "$LOG")" "loginctl lock-session"
+lock_answer 'echo ok'
+assert_not_contains "a lock plugin that took it: logind is not asked" "$(cat "$LOG")" "loginctl"
+lock_answer 'exit 0'
+assert_not_contains "an empty answer (DMS's lock) counts as locked" "$(cat "$LOG")" "loginctl"
+lock_answer 'exit 1'
+assert_contains "no shell answering: logind" "$(cat "$LOG")" "loginctl lock-session"
 
 # --- system-lid-close ------------------------------------------------------------------------
 sandbox omarchy-lid

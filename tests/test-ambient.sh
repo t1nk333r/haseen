@@ -241,7 +241,7 @@ stub hyprctl '
 case "$1" in
 monitors) cat "$HOME/monitors.json" ;;
 clients) cat "$HOME/clients.json" ;;
-activewindow) cat "$HOME/active.json" ;;
+activewindow) echo activewindow >>"$HOME/active.log"; cat "$HOME/active.json" ;;
 dispatch|eval)
     printf "%s\n" "$*" >>"$HOME/hypr.log"
     case "$2" in *exec_cmd*)
@@ -334,13 +334,41 @@ capture timeout 3 haseen screensaver --ttfx-run </dev/null
 assert_status "ttfx-run loops until stopped" 124 "$STATUS"
 n="$(grep -c '^--random-effect$' "$HOME/ttfx.args")"
 assert_eq "ttfx-run: next effect after each one, no tight loop (2-4 runs in 3 s)" "yes" "$( ((n >= 2 && n <= 4)) && echo yes || echo no)"
-# Focus moving to another window ends it (Omarchy's screensaver_in_focus).
+# Focus is the service's to watch (Hyprland's activewindow event): the loop
+# in each terminal asks hyprctl nothing, so a screensaver left showing costs
+# no hyprctl and jq every second per monitor (plan 196).
 stub ttfx 'exec sleep 30'
 echo '{"class":"firefox"}' >"$HOME/active.json"
+rm -f "$HOME/active.log"
+capture timeout 3 haseen screensaver --ttfx-run </dev/null
+assert_status "ttfx-run: runs on whatever has focus" 124 "$STATUS"
+assert_eq "ttfx-run: never asks hyprctl for the focused window" "" "$(cat "$HOME/active.log" 2>/dev/null || true)"
+# --stop-unfocused, sent by the service on a focus event: closes the
+# terminals only if Hyprland, asked once, says none of them has focus.
+sleep 60 &
+t1=$!
+sleep 60 &
+other=$!
+printf '[{"class":"org.haseen.screensaver","pid":%d},{"class":"foot","pid":%d}]' "$t1" "$other" >"$HOME/clients.json"
+echo '{"class":"org.haseen.screensaver"}' >"$HOME/active.json"
+: >"$HOME/active.log"
+capture haseen screensaver --stop-unfocused
+assert_status "stop-unfocused with a terminal focused" 0 "$STATUS"
+assert_eq "stop-unfocused asks Hyprland once" "activewindow" "$(cat "$HOME/active.log")"
+assert_eq "a focused screensaver stays" "yes" "$(kill -0 "$t1" 2>/dev/null && echo yes || echo no)"
+echo '{"class":"firefox"}' >"$HOME/active.json"
 : >"$HOME/hypr.log"
-capture timeout 10 haseen screensaver --ttfx-run </dev/null
-assert_status "ttfx-run: focus loss ends it cleanly" 0 "$STATUS"
-assert_contains "ttfx-run: focus loss restores the cursor" "$(cat "$HOME/hypr.log")" "invisible = false"
+capture haseen screensaver --stop-unfocused --dry-run
+assert_dry_pure "stop-unfocused" "$OUTPUT"
+assert_contains "stop-unfocused --dry-run plans the kill" "$OUTPUT" "DRYRUN: kill $t1"
+capture haseen screensaver --stop-unfocused
+sleep 0.2
+assert_eq "focus elsewhere closes the screensaver terminals" "no" "$(kill -0 "$t1" 2>/dev/null && echo yes || echo no)"
+assert_eq "and only those" "yes" "$(kill -0 "$other" 2>/dev/null && echo yes || echo no)"
+assert_contains "and restores the cursor" "$(cat "$HOME/hypr.log")" "invisible = false"
+kill "$other" 2>/dev/null || true
+wait "$t1" "$other" 2>/dev/null || true
+echo '[]' >"$HOME/clients.json"
 echo '{"class":"org.haseen.screensaver"}' >"$HOME/active.json"
 rm -f "$HOME/ttfx.args"
 stub ttfx 'printf "%s\n" "$@" >>"$HOME/ttfx.args"; exit 3'
@@ -455,4 +483,157 @@ EOF
     assert_eq "night: temperature range and default" '[3000,4000,4000,4000,4000,4500]' "$(r temp)"
 else
     echo "  skip: $QML_BIN not installed, IdleLogic/Drift/NightlightLogic not exercised" >&2
+fi
+
+# --- the screensaver's focus watch and the notification card, in Quickshell ------
+# Plan 196. The screensaver service closes the ttfx terminals on Hyprland's
+# activewindow event once the launcher is done (it moves focus between
+# monitors while it works), through --stop-unfocused, which asks Hyprland
+# again first. Service.qml cannot load without a layer-shell backend, so its
+# _windowEvent runs as it is, cut out of the file, against stand-ins for the
+# service's state. The notification card shows a sender's app name and action
+# labels as plain text and loads an app icon only from a file, never a URL:
+# StyledText and Image would fetch a sender's <img> or https source.
+QS_BIN=${QS_BIN:-/usr/bin/qs}
+window_event_fn="$(awk '/^    function _windowEvent\(/,/^    }$/' "$PLUGINS/haseen.screensaver/Service.qml")"
+assert_contains "_windowEvent is found in the screensaver service" "$window_event_fn" "function _windowEvent"
+if [[ ! -x $QS_BIN ]]; then
+    echo "  skip: Quickshell not installed; screensaver focus and notification card not exercised" >&2
+else
+    sandbox ambient-engine
+    XDG_RUNTIME_DIR="$SANDBOX/run"
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 700 "$XDG_RUNTIME_DIR"
+    export XDG_RUNTIME_DIR
+    unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE DBUS_SESSION_BUS_ADDRESS
+    # Stands in for bin/haseen-screensaver: records how it is called.
+    printf '#!/bin/sh\necho "$*" >>"%s"\n' "$SANDBOX/screensaver.log" >"$SANDBOX/haseen-screensaver"
+    chmod +x "$SANDBOX/haseen-screensaver"
+    harness="$SANDBOX/shell"
+    mkdir -p "$harness"
+    for module in Haseen Compat Common Services Widgets Modules plugins; do
+        ln -s "$HASEEN_PATH/shell/$module" "$harness/$module"
+    done
+    {
+        cat <<'QML'
+import QtQuick
+import Quickshell
+import qs.Haseen
+ShellRoot {
+    id: probe
+    property var r: ({})
+    property int step: 0
+    // What the card reads of a Quickshell Notification.
+    component FakeNote: QtObject {
+        property string appName
+        property string appIcon
+        property string summary: "s"
+        property string body: "b"
+        property string image: ""
+        property int urgency: 1
+        property var actions: []
+    }
+    Component { id: fakeNote; FakeNote {} }
+    function card(icon, appName, action, image) {
+        const c = Qt.createComponent(Paths.fileUrl(Quickshell.shellDir + "/plugins/haseen.notifications/NotificationCard.qml"));
+        if (c.status !== Component.Ready) { console.log("CARD-ERROR " + c.errorString()); return null; }
+        const n = fakeNote.createObject(probe, { appName: appName, appIcon: icon, image: image || "",
+            actions: [{ identifier: "default", text: "open", invoke: () => {} }, { identifier: "a1", text: action, invoke: () => {} }] });
+        return c.createObject(probe, { width: 400, notification: n });
+    }
+    function textsOf(item, out) {
+        for (const child of item.children) {
+            if (child.textFormat !== undefined && typeof child.text === "string")
+                out.push({ text: child.text, plain: child.textFormat === Text.PlainText });
+            textsOf(child, out);
+        }
+        return out;
+    }
+    // The screensaver service's state, as show("ttfx") leaves it.
+    Scope {
+        id: ss
+        readonly property string appId: "org.haseen.screensaver"
+        readonly property string command: Quickshell.env("SS_COMMAND")
+        property bool active: true
+        property string style: "ttfx"
+        property var _windows: ({})
+        property int _windowCount: 0
+        property bool closed: false
+        function _allClosed() { closed = true; }
+QML
+        printf '%s\n' "$window_event_fn"
+        cat <<'QML'
+    }
+    QtObject { id: launcher; property bool running: true }
+    Timer {
+        interval: 25
+        repeat: true
+        running: true
+        onTriggered: {
+            const r = probe.r;
+            switch (probe.step) {
+            case 0: {
+                if (!Plugins.ready) return;
+                const markup = "<b>Spoof</b><img src=\"https://tracker.invalid/a.png\">";
+                const label = "<img src=\"https://tracker.invalid/p.png\"><b>Locked</b>";
+                const c = probe.card("https://tracker.invalid/x.png", markup, label);
+                const texts = c ? probe.textsOf(c, []) : [];
+                r.appNamePlain = texts.filter(t => t.text === markup).map(t => t.plain);
+                r.labelPlain = texts.filter(t => t.text === label).map(t => t.plain);
+                r.urlIcon = c ? c.iconSource : null;
+                r.fileIcon = probe.card("file:///usr/share/icons/x.png", "a", "b").iconSource;
+                r.pathIcon = probe.card("/usr/share/icons/x.png", "a", "b").iconSource;
+                r.urlImage = probe.card("", "a", "b", "https://tracker.invalid/i.png").imageSource;
+                r.pathImage = probe.card("", "a", "b", "/tmp/avatar.png").imageSource;
+                r.dataImage = probe.card("", "a", "b", "image://qsimage/1/2").imageSource;
+                // While the launcher places the terminals, focus moves by design.
+                ss._windowEvent("openwindow", "abc1,special:screensaver-DP-1,org.haseen.screensaver,ttfx");
+                ss._windowEvent("activewindow", "firefox,Mozilla Firefox");
+                launcher.running = false;
+                ss._windowEvent("activewindow", "org.haseen.screensaver,ttfx");
+                ss._windowEvent("activewindow", "firefox,Mozilla Firefox");
+                ss.active = false;
+                ss._windowEvent("activewindow", "firefox,Mozilla Firefox");
+                ss._windowEvent("closewindow", "abc1");
+                r.closed = ss.closed;
+                probe.step = 1;
+                break;
+            }
+            case 1:
+            case 2:
+            case 3:
+                probe.step++;
+                break;
+            default:
+                console.log("RESULT " + JSON.stringify(r));
+                Qt.quit();
+            }
+        }
+    }
+}
+QML
+    } >"$harness/shell.qml"
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        DBUS_SYSTEM_BUS_ADDRESS="unix:path=$SANDBOX/no-system-bus" SS_COMMAND="$SANDBOX/haseen-screensaver" \
+        timeout 40 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness"
+    result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT")"
+    if [[ -n $result ]]; then
+        get() { jq -c "$1" <<<"$result"; }
+        assert_eq "card: a sender's app name is plain text" '[true]' "$(get .appNamePlain)"
+        assert_eq "card: an action label is plain text" '[true]' "$(get .labelPlain)"
+        assert_not_contains "card: an https app icon is never loaded" "$(get .urlIcon)" "tracker.invalid"
+        assert_eq "card: a file:// app icon is" '"file:///usr/share/icons/x.png"' "$(get .fileIcon)"
+        assert_eq "card: so is an absolute path, as a file URL" '"file:///usr/share/icons/x.png"' "$(get .pathIcon)"
+        assert_eq "card: an https image hint is never loaded" '""' "$(get .urlImage)"
+        assert_eq "card: an image-path is, as a file URL" '"file:///tmp/avatar.png"' "$(get .pathImage)"
+        assert_eq "card: image-data, served by Quickshell, is" '"image://qsimage/1/2"' "$(get .dataImage)"
+        sleep 0.3
+        log="$(cat "$SANDBOX/screensaver.log" 2>/dev/null || true)"
+        assert_eq "screensaver: focus elsewhere, once the launcher is done and while it shows, asks once to close" \
+            "--stop-unfocused" "$log"
+        assert_eq "screensaver: the last terminal closing still ends it" true "$(get .closed)"
+        assert_not_contains "no QML type errors" "$OUTPUT" "TypeError"
+    else
+        _fail "screensaver/notification card result not produced" "$OUTPUT"
+    fi
 fi

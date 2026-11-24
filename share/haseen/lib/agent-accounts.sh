@@ -619,7 +619,7 @@ acct_recover() {
             continue
         fi
         label="$(jq -r '.label // "" | tostring' "$receipt" 2>/dev/null || true)"
-        [[ -n $label ]] || label="$(jq -r '.email | split("@")[0]' <<<"$found")"
+        [[ -n $label ]] || label="$(jq -r '(.email // "") | split("@")[0] // ""' <<<"$found")"
         [[ -n $label ]] || label=Account
         id="$(acct_unique_id "$provider" "$reg" "$label")"
         target="$root/$id"

@@ -258,11 +258,18 @@ Column {
         }
     }
 
+    // A month a notch; fractions of one (touchpads, hi-res wheels) add up
+    // (BarButton's rule, plan 091; plan 197).
     WheelHandler {
+        property real wheelDelta: 0
+
         onWheel: event => {
-            const steps = Math.round(event.angleDelta.y / 120);
-            if (steps !== 0)
+            wheelDelta += event.angleDelta.y;
+            const steps = Math.trunc(wheelDelta / 120);
+            if (steps !== 0) {
+                wheelDelta -= steps * 120;
                 root.shift(-steps);
+            }
         }
     }
 

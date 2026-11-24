@@ -4,9 +4,11 @@
 #
 # Adapted from Omarchy bin/omarchy-agent-crash (MIT, Copyright (c) David
 # Heinemeier Hansson): gather the facts systemd-coredump recorded and point an
-# agent at the diagnose-crash skill. haseen has no agent-account machinery, so
-# the agent is a single configurable command ($HASEEN_AGENT, set by
-# `haseen setup default agent`) rather than a per-agent wrapper.
+# agent at the diagnose-crash skill. The report goes to haseen's omarchy-agent,
+# as Omarchy's goes to omarchy-agent-prompt: it knows each agent's prompt
+# syntax and unattended flags, pins the account chosen with `haseen agent
+# account use`, and opens a terminal window, which a click on the crash
+# notification (run by haseen-crash-watch.service) has none of (plan 198).
 set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
@@ -17,12 +19,13 @@ usage() {
 Usage: haseen agent crash <pid> [comm] [exe] [signal] [--dry-run]
 
 Builds a report of what systemd-coredump recorded for a crashed PID (see
-\`coredumpctl list\`) and hands it to the coding agent as a prompt. The agent
-command is \$HASEEN_AGENT; set it with \`haseen setup default agent <name>\`.
+\`coredumpctl list\`) and starts the default coding agent with it as its
+prompt, in a terminal window of its own. Set the agent with \`haseen setup
+default agent <name>\`.
 
 The method itself lives in the diagnose-crash skill, so it is edited in one
-place and works with whichever agent is default. --dry-run prints the prompt
-and starts nothing.
+place and works with whichever agent is default. --dry-run prints the command,
+prompt included, and starts nothing.
 EOF
 }
 
@@ -83,14 +86,8 @@ mechanism, read the skill file directly and follow it instead:
 PROMPT
 )"
 
-agent="${HASEEN_AGENT:-$(haseen-setup-default agent 2>/dev/null || true)}"
-[[ -n $agent ]] ||
-    die "no coding agent is set (try: haseen setup default agent claude)"
-
-if $DRY_RUN; then
-    printf '%s\n' "$prompt"
-    echo "DRYRUN: $agent --prompt <report above>"
-    exit 0
-fi
-have "$agent" || die "coding agent '$agent' is not installed (haseen setup default agent)"
-exec "$agent" --prompt "$prompt"
+# omarchy-agent refuses an unset or missing agent itself, naming
+# `haseen setup default agent`.
+flags=()
+$DRY_RUN && flags+=(--dry-run)
+exec "$HASEEN_PATH/omarchy/bin/omarchy-agent" "${flags[@]}" --prompt "$prompt"

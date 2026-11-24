@@ -88,10 +88,13 @@ for a in "$@"; do
 done
 printf "%s %s ARGV:%s\n" "$method" "$url" "$*" >>"$CURL_LOG"
 case "$method $url" in
+"GET https://api.todoist.com/api/v1/tasks/filter?query=%23Inbox"*) printf "{\"results\":[{\"id\":\"201\",\"content\":\"In the inbox\"}],\"next_cursor\":null}\n200" ;;
 "GET https://api.todoist.com/api/v1/tasks/filter"*) cat "$CURL_FIX/today.json"; printf "\n200" ;;
 "GET https://api.todoist.com/api/v1/tasks?"*) cat "$CURL_FIX/all-page.json"; printf "\n200" ;;
 "POST https://api.todoist.com/api/v1/tasks/quick") printf "{\"id\":\"104\"}\n200" ;;
 "POST https://api.todoist.com/api/v1/tasks/"*"/close") printf "\n204" ;;
+"POST https://api.todoist.com/api/v1/tasks/"*) printf "{}\n200" ;;
+"DELETE https://api.todoist.com/api/v1/tasks/"*) printf "\n204" ;;
 *) printf "{\"error\":\"nope\"}\n404" ;;
 esac'
 
@@ -180,6 +183,7 @@ ShellRoot {
     property var panel: null
     property int step: 0
     property int ticks: 0
+    property real stamp: 0
     property var seen: ({})
 
     function make(file: string, props: var): var {
@@ -230,14 +234,36 @@ ShellRoot {
                 s.submitQuickAdd("buy milk");
                 probe.step = 2;
             } else if (probe.step === 2 && s.quickAddDone > 0 && !s.loading) {
+                // The bar count's mode changed while a count runs: the
+                // Inbox count in flight must not show as the total.
+                s.setBarCountMode("inbox");
+                s.setBarCountMode("all");
+                probe.seen.countAsked = { pending: s.barCountPending };
+                probe.step = 20;
+            } else if (probe.step === 20 && s.barCountFetch === null && !s.barCountPending) {
+                probe.seen.count = { value: s.barCountValue, truncated: s.barCountTruncated, tooltip: s.tooltipText };
                 s.selectQuickView("all");
                 probe.step = 3;
             } else if (probe.step === 3 && s.quickView === "all" && !s.loading && s.tasks.length > 3) {
                 probe.seen.all = { tasks: s.tasks.length, truncated: s.listTruncated, stat: s.taskCount };
                 probe.panel.destroy();
                 probe.step = 4;
-            } else if (probe.step === 4 && !s.panelOpen && s.writing === null && s.writes.length === 0) {
+            } else if (probe.step === 4 && !s.panelOpen && s.writing === null && s.writes.length === 0 && !s.loading) {
                 probe.seen.closed = { panelOpen: s.panelOpen, error: s.errorText };
+                // Three edits and three deletes back to back, as x, y, x, y,
+                // x, y does: each reaches the server, in order. One Process
+                // per verb ran the first and only the last of each three.
+                probe.stamp = s.lastSyncedAt;
+                s.editTask("a1", "first edit");
+                s.editTask("a2", "second edit");
+                s.editTask("a3", "third edit");
+                s.deleteTask("a4");
+                s.deleteTask("a5");
+                s.deleteTask("a6");
+                probe.seen.queued = { gone: !s.tasks.some(t => ["a4", "a5", "a6"].indexOf(t.id) !== -1), edited: s.tasks.filter(t => t.content.indexOf(" edit") !== -1).length };
+                probe.step = 5;
+            } else if (probe.step === 5 && s.actionQueue.length === 0 && s.lastSyncedAt > probe.stamp && !s.loading) {
+                probe.seen.actions = { error: s.errorText };
                 console.log("RESULT " + JSON.stringify(probe.seen));
                 Qt.quit();
             }
@@ -261,10 +287,22 @@ EOF
     assert_eq "engine: a token opens the task list, not Settings" "false" "$(r .loaded.settingsView)"
     assert_contains "engine: completing closes the task on the server" "$(cat "$LOG")" "POST https://api.todoist.com/api/v1/tasks/103/close"
     assert_contains "engine: quick add goes through Todoist's parser, due today" "$(cat "$LOG")" 'POST https://api.todoist.com/api/v1/tasks/quick ARGV:-sS --max-time 10 --proto =https -X POST -w \n%{http_code} -H Content-Type: application/json --data-binary {"text":"buy milk today"}'
+    assert_eq "engine: a count asked for while one runs waits for it" "true" "$(r .countAsked.pending)"
+    assert_eq "engine: the count in flight for the old mode is dropped, the new mode's shown" "2000|true|Todoist: 2000+ total" \
+        "$(r '[.count.value, .count.truncated, .count.tooltip] | map(tostring) | join("|")')"
+    assert_eq "engine: the Inbox count was asked once" "1" "$(grep -c 'GET https://api.todoist.com/api/v1/tasks/filter?query=%23Inbox' "$LOG")"
     assert_eq "engine: All pages to the cap and says so" "2000|true|2000" "$(r '[.all.tasks, .all.truncated, .all.stat] | map(tostring) | join("|")')"
     assert_eq "engine: the All view was saved" "all" "$(jq -r .quickView "$state/settings.json")"
     assert_eq "engine: saving the view kept the token" "true" "$(jq -r '.apiToken == env.TOKEN' "$state/settings.json")"
     assert_eq "engine: a closed panel tells the service" "false|" "$(r '[.closed.panelOpen, .closed.error] | map(tostring) | join("|")')"
+    assert_eq "engine: edits and deletes show at once" "true|3" "$(r '[.queued.gone, .queued.edited] | map(tostring) | join("|")')"
+    assert_eq "engine: back-to-back edits and deletes all reach the server, in order" \
+        "POST tasks/a1|POST tasks/a2|POST tasks/a3|DELETE tasks/a4|DELETE tasks/a5|DELETE tasks/a6" \
+        "$(grep -E '^(POST|DELETE) https://api.todoist.com/api/v1/tasks/a[0-9]+ ' "$LOG" | sed -E 's|^([A-Z]+) https://api.todoist.com/api/v1/(tasks/a[0-9]+) .*|\1 \2|' | paste -sd'|')"
+    assert_contains "engine: each edit sends its own text" "$(grep 'tasks/a2 ' "$LOG")" '{"content":"second edit"}'
+    assert_eq "engine: the list is fetched again once, after the last of them" "0|1" \
+        "$(sed -n '/tasks\/a1 /,/tasks\/a6 /p' "$LOG" | grep -c 'GET https://api.todoist.com/api/v1/tasks?limit=200 ')|$(sed -n '/tasks\/a6 /,$p' "$LOG" | grep -c 'GET https://api.todoist.com/api/v1/tasks?limit=200 ')"
+    assert_eq "engine: and no error" "" "$(r .actions.error)"
     assert_not_contains "engine: the token never reached an argv" "$(cat "$LOG")" "$TOKEN"
     assert_eq "engine: no QML warnings" "" "$(grep -E 'ReferenceError|TypeError|is not defined|Cannot read property|Unable to assign|Binding loop|haseen.todoist/.*(error|warning)' <<<"$OUTPUT" || true)"
 fi
