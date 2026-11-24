@@ -16,7 +16,7 @@
 - **Category**: boot
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit of 2f7f472a)
-- **State**: DONE 2026-11-24 (`tests/test-hibernation.sh` 66/66,
+- **State**: DONE 2026-11-24 (`tests/test-hibernation.sh` 72/72,
   `tests/test-omarchy-hw.sh` 281/281, `tests/test-secureboot.sh` 280/280;
   every new check fails on 9a9e82ab)
 
@@ -118,7 +118,9 @@ up" any more, because `hibernate_ready` is false. The status help and
 **Test.** `tests/test-hibernation.sh`: with a replacing `/etc/default/limine`
 status exits 1 and prints "no resume= parameter", and the same words in `+=`
 form exit 0 with "offset 123". A commented GRUB line does not count and an
-uncommented one does. `setup --dry-run --yes` on the replacing machine exits
+uncommented one does, with no systemd-boot note. On systemd-boot an
+uncommented `resume=` in `/etc/kernel/cmdline` counts, with offset 9 and the
+static-entry note, and the note goes once `/proc/cmdline` has `resume=`. `setup --dry-run --yes` on the replacing machine exits
 1, prints boot.sh's "replaces every drop-in" and "hibernation is not set up
 yet", and never prints "hibernation is set up;".
 
@@ -126,7 +128,10 @@ yet", and never prints "hibernation is set up;".
 line), `/etc/kernel/cmdline` is not what the loader reads. Status still
 trusts it, because it is where setup writes. Parsing loader entries is a
 larger change, which the verifier did not trace, and setup cannot write
-those entries either. The running kernel's line still counts on GRUB and
+those entries either. Status says so instead: on systemd-boot, while the
+`resume=` it counts is not on the running kernel's line yet, it prints a
+`note:` line asking the owner to check the `options` line of any static
+loader entry. The running kernel's line still counts on GRUB and
 systemd-boot: a `resume=` it booted with is real for this boot.
 
 **Rejected.** Reading only `/proc/cmdline`: right after setup, before the
@@ -228,13 +233,37 @@ system" and never reach sudo.
 **Rejected.** Refusing in `common.sh` for every command: other commands' tests
 rely on the recorder, and the change would widen to the whole suite.
 
+## Review
+
+The independent Sonnet reviewer approved the first head with three nits, all
+in `share/haseen/lib/hibernate.sh`.
+
+- systemd-boot with static Type 1 entries still trusts `/etc/kernel/cmdline`.
+  Parsing loader entries stays out of this plan (see the limitation under
+  finding 3); the reviewer's second suggestion was taken: `haseen hibernation
+  status` prints the static-entry note described there, with a test.
+- `hibernate_cmdline` runs `preflight_bootloader` on every call, and status
+  called it twice, each in a pipeline subshell where the result is lost (the
+  reviewer measured about 0.16 s for a whole `status`). Status now detects the
+  bootloader once, before its first use, under the same `BOOTLOADER` guard the
+  library uses, so the tests' `env BOOTLOADER=…` still wins. Setup already
+  calls `preflight_bootloader` first.
+- On GRUB, a `resume=` in `/etc/default/grub` counts before `grub-mkconfig`
+  has run. The function's comment calls the answer approximate, and the
+  reviewer asked for no change; none was made.
+
 ## Verification
 
 - `tools/lint.sh`: lint OK.
 - `tests/run.sh --affected 9a9e82ab62ed9c65083b56d6c9c488e62736d875`: 22
   files (the three above plus the suites that cover `hibernate.sh`,
-  `secureboot.sh` and the Omarchy shims), 3817/3817 passed.
+  `secureboot.sh` and the Omarchy shims), 3817/3817 passed; after the
+  review round, the same 22 files, 3823/3823.
 - `tools/check-docs.sh`: OK.
 - Each new check fails on 9a9e82ab's sources. With this plan's tests copied
   onto a detached 9a9e82ab worktree: test-hibernation 53/66 (13 failures),
-  test-omarchy-hw 275/281, test-secureboot 270/280.
+  test-omarchy-hw 275/281, test-secureboot 270/280. After the review round,
+  test-hibernation there is 58/72: the static-entry note is the one new
+  failure, and the other five new checks pass on both, because they guard the
+  places where the note must not appear and the systemd-boot readings that
+  base already got right.

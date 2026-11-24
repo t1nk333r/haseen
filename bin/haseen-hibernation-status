@@ -44,6 +44,10 @@ image_kib="$(hibernate_image_kib)"
 swap_kib="$(hibernate_swap_kib)"
 style="$(hibernate_initramfs_style)" || true
 human() { awk -v k="${1:-0}" 'BEGIN { printf "%.1f GiB", k / 1048576 }'; }
+# Detect the bootloader once here: hibernate_cmdline runs in a pipeline (a
+# subshell), so each call would otherwise run `bootctl status` and scan the
+# ESP again.
+[[ -n ${BOOTLOADER:-} ]] || preflight_bootloader 2>/dev/null || true
 
 if ! $quiet; then
     printf 'kernel:    %s\n' "$(hibernate_supported && echo "hibernation supported" || echo "no /sys/power/image_size")"
@@ -59,6 +63,13 @@ if ! $quiet; then
     fi
     if hibernate_cmdline_has_resume; then
         printf 'cmdline:   resume set, offset %s\n' "$(hibernate_cmdline_resume_offset)"
+        # systemd-boot reads /etc/kernel/cmdline only for the entries and UKIs
+        # kernel-install builds. A static Type 1 entry has its own `options`
+        # line, which haseen does not parse (plan 188), so say so while the
+        # running kernel has not shown the resume= yet.
+        if [[ ${BOOTLOADER:-} == systemd-boot ]] && ! boot_cmdline_states resume "$(boot_cmdline)"; then
+            printf "note:      systemd-boot: /etc/kernel/cmdline reaches only the entries kernel-install builds; check the options line of any static loader entry\n"
+        fi
     else
         printf 'cmdline:   no resume= parameter\n'
     fi

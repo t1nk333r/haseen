@@ -107,6 +107,25 @@ assert_status "GRUB: a commented resume= does not count" 1 "$STATUS"
 printf 'GRUB_CMDLINE_LINUX_DEFAULT="quiet resume=/dev/mapper/root resume_offset=9"\n' >"$grubroot/etc/default/grub"
 HASEEN_SYSROOT="$grubroot" capture env BOOTLOADER=grub haseen hibernation status
 assert_status "GRUB: the uncommented line does" 0 "$STATUS"
+assert_not_contains "GRUB: no systemd-boot note" "$OUTPUT" "static loader entry"
+
+# systemd-boot: /etc/kernel/cmdline counts, with a note that a static Type 1
+# entry's options line is not checked, until the running kernel shows resume=.
+sdbroot="$(make_sysroot sdboot)"
+add_swap "$sdbroot" 32554512
+printf 'HOOKS+=(resume)\n' >"$sdbroot/etc/mkinitcpio.conf.d/haseen-resume.conf"
+rm "$sdbroot/etc/default/limine"
+mkdir -p "$sdbroot/etc/kernel"
+printf '# resume=/dev/mapper/root\nroot=/dev/mapper/root rw resume=/dev/mapper/root resume_offset=9\n' \
+    >"$sdbroot/etc/kernel/cmdline"
+HASEEN_SYSROOT="$sdbroot" capture env BOOTLOADER=systemd-boot haseen hibernation status
+assert_status "systemd-boot: /etc/kernel/cmdline counts" 0 "$STATUS"
+assert_contains "systemd-boot: with its offset" "$OUTPUT" "offset 9"
+assert_contains "systemd-boot: the static-entry note" "$OUTPUT" "check the options line of any static loader entry"
+printf 'root=/dev/mapper/root rw resume=/dev/mapper/root resume_offset=9\n' >"$sdbroot/proc/cmdline"
+HASEEN_SYSROOT="$sdbroot" capture env BOOTLOADER=systemd-boot haseen hibernation status
+assert_status "systemd-boot: booted with resume=" 0 "$STATUS"
+assert_not_contains "systemd-boot: no note once the kernel has it" "$OUTPUT" "static loader entry"
 
 # --- hooks are evaluated the way mkinitcpio evaluates them -------------------
 # A drop-in that assigns HOOKS replaces the list; the systemd initramfs resumes
