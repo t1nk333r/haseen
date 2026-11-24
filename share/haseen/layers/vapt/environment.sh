@@ -49,9 +49,10 @@
 # reported, never borrowed as an interpreter), unavailable, or unselected.
 #
 # Activation links. Both point at default/vapt/shell.sh, a passive fragment:
-#   shell    ${XDG_CONFIG_HOME:-~/.config}/haseen/vapt/shell.sh, sourced by a
-#            line the user adds to their rc (vapt_shell_line; the layer never
-#            edits an rc);
+#   shell    ${XDG_CONFIG_HOME:-~/.config}/haseen/vapt/shell.sh, sourced by
+#            default/shell/init.sh (the include `haseen seed user` adds) or
+#            by a line the user adds to their rc (vapt_shell_line; the layer
+#            never edits an rc);
 #   session  ${XDG_CONFIG_HOME:-~/.config}/uwsm/env.d/70-haseen-vapt, the
 #            desktop layer's uwsm env.d convention, so apps launched from the
 #            session see the same PATH (the owner's waydots kept these

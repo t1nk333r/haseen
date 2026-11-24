@@ -38,7 +38,7 @@ def clean(value):
 
 def physical(path):
     if not isinstance(path, str) or not path.startswith('/') or '..' in Path(path).parts or clean(path) != path:
-        raise ValueError('invalid owned absolute path')
+        raise ValueError('path must be absolute, without .. or control characters')
     return meta.observed_resolve(Path(ROOT + path), ROOT)
 
 
@@ -462,9 +462,11 @@ def verbose_report(result):
     values = workflow['settings']
     lines.append('workflow: ' + str(workflow['entrypoints']) + ' owned entrypoints; '
                  + str(workflow['documentationReady']) + ' with matching documents')
-    lines.append('  settings: bindAddress=' + values['bindAddress']
-                 + ' showLocalAddresses=' + str(values['showLocalAddresses']).lower()
-                 + ' enumerationScript=' + str(values['enumerationScript'] or '(none)'))
+    # settings() does not validate a hand-edited workflow.json (doctor's
+    # capability rows report a refused value), so print whatever is there.
+    lines.append('  settings: bindAddress=' + clean(values.get('bindAddress'))
+                 + ' showLocalAddresses=' + clean(values.get('showLocalAddresses')).lower()
+                 + ' enumerationScript=' + clean(values.get('enumerationScript') or '(none)'))
     lines.append('  menu: ' + workflow['menu']['plugin'] + ' enabled=' + str(workflow['menu']['enabled']).lower())
     for row in workflow.get('capabilities', []):
         line = '  capability ' + row['id'] + ' ' + row['state'] + ' command=' + row['command']
@@ -514,7 +516,9 @@ def show_help(args):
             data = document_bytes(document, evidence['path'].endswith('.gz'))
         # Print document bytes as text: no man macros, pager, terminal or
         # helper execution. Keep line breaks, remove terminal control bytes.
-        print('\n'.join(clean(line) for line in data.decode('utf-8', errors='replace').splitlines()))
+        # A tab is layout, not control: expand it so option tables keep
+        # their columns (plan 195).
+        print('\n'.join(clean(line.expandtabs()) for line in data.decode('utf-8', errors='replace').splitlines()))
     if effective['showLocalAddresses']:
         for row in local_addresses(ROOT):
             print('Local address: ' + row['interface'] + ' ' + row['address'])

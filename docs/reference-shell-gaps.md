@@ -26,7 +26,7 @@ Legend: **H** has · **P** partial · **M** missing · **R** rejected by haseen 
 | Active window title | **M** (owner uses compat t1nk33r.window-title) | H ActiveWindow | H FocusedApp | H ActiveWindow.qml | H activeWindow | H active-window |
 | Microphone | P (privacy dot + audio panel input) | H Microphone.qml | – | – | H statusIcons microphone | H (volume input) |
 | Updates available | **P** (`haseen update` in one step, one notification per new set; plan 183) | H SystemUpdate | H SystemUpdate | H services/Updates.qml | – (CLI) | – |
-| Weather | H (off by default) | H | H | H bar/weather | H dashboard | H |
+| Weather | H (on by default, plan 190) | H | H | H bar/weather | H dashboard | H |
 | Privacy (mic/cam/screen/location) | H `haseen.privacy` | – | H PrivacyIndicator | H services/Privacy | – | H privacy |
 | Power profile | **M** (CLI `haseen powerprofile *`) | H power panel | H | – | H (power-profiles-daemon dep) | H power-profile |
 | Brightness | **M** | H omarchy.monitor | H DisplayService | H QuickSliders | H scroll action | H brightness |

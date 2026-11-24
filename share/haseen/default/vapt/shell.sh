@@ -3,9 +3,10 @@
 # `haseen layer apply vapt` creates and `haseen layer remove vapt` deletes, so
 # removing the layer deactivates this file without editing any rc:
 #   ${XDG_CONFIG_HOME:-~/.config}/haseen/vapt/shell.sh, sourced in interactive
-#     shells only by a `[ -r … ] && .` line the user adds to their rc (the
-#     layer prints it and never edits an rc). That line is inert once the
-#     link is gone;
+#     shells by haseen's default/shell/init.sh (which `haseen seed user`
+#     includes from the rc) or by a `[ -r … ] && .` line the user adds to
+#     their rc (the layer prints it and never edits an rc). Both are inert
+#     once the link is gone;
 #   ${XDG_CONFIG_HOME:-~/.config}/uwsm/env.d/70-haseen-vapt, sourced by uwsm
 #     at login on a desktop host, so session-launched apps get the same PATH.
 # Both may source it in one session; the result is the same.

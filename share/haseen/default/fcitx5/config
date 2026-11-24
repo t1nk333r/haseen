@@ -1,9 +1,12 @@
 # haseen fcitx5 defaults. Seeded once; fcitx5 owns the file afterwards.
 #
-# Switching: Control+space toggles between the group's first method
-# (keyboard-us) and the last used one (keyboard-ara). It is fcitx5's own
-# default key and collides with nothing in share/haseen/default/hypr/binds.lua,
-# where SUPER+SPACE is the menu.
+# Switching: Super+i toggles between the group's first method (keyboard-us)
+# and the last used one (keyboard-ara), the key Omarchy 4.5 gives "Switch input
+# language". Not fcitx5's default Control+space: that is the prefix of the
+# shipped herdr and tmux configs (../herdr/config.toml, ../tmux/tmux.conf), and
+# fcitx5 sees a key before the focused terminal does (plan 190). Super+i is
+# free in ../hypr/binds.lua, where SUPER+SPACE and every modifier on it are
+# taken, and in herdr, tmux and foot.
 
 [Hotkey]
 # Pressing the trigger again walks the group instead of toggling, which makes
@@ -11,7 +14,7 @@
 EnumerateWithTriggerKeys=True
 
 [Hotkey/TriggerKeys]
-0=Control+space
+0=Super+i
 
 [Hotkey/AltTriggerKeys]
 # Hold Shift to go back to the first method for as long as it is held.
@@ -24,7 +27,7 @@ EnumerateWithTriggerKeys=True
 0=Control+Shift_L
 
 [Behavior]
-# Sessions start in English; Control+space turns Arabic on.
+# Sessions start in English; Super+i turns Arabic on.
 ActiveByDefault=False
 # Per-window state: the terminal stays English while a chat window stays Arabic.
 ShareInputState=No
